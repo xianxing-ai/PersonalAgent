@@ -64,8 +64,9 @@ if (!existsSync(path.join(originalData,'Local State'))) {
     } catch(error) {
       report.errorCode=['INVALID_ARGUMENT','UNSUPPORTED_CAPABILITY','UNAUTHORIZED',
         'EXTERNAL_FAILURE','CANCELLED','TIMEOUT'].includes(error?.code) ? error.code : 'INTERNAL_FAILURE';
-      report.status=report.networkCalls>0 && ['CANCELLED','TIMEOUT'].includes(report.errorCode)
-        ? 'unknown' : 'failed';
+      const rejected=report.diagnostic?.stage==='http_response'
+        && [401,403].includes(report.diagnostic.httpStatus);
+      report.status=report.networkCalls>0 && !rejected ? 'unknown' : 'failed';
     }
     report.finishedAt=new Date().toISOString();
     writeFileSync(path.join(cache,`${callId}.json`),JSON.stringify(report,null,2));

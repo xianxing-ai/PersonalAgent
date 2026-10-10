@@ -13,6 +13,7 @@ import * as crypto from 'node:crypto';
 import {AgentArtsCloudAgentPort} from '@personal-agent/coordination';
 
 const filename=url.fileURLToPath(import.meta.url),support=path.dirname(filename),run=promisify(execFile);
+const unknownScenarios=['timeout','cancelled','network-error','http-503','unreadable-200','malformed-200'];
 async function syntheticCall(scenario){
   // Original Host and wrapper source, actual public CloudAgentPort and real
   // synthetic lock. Electron, configuration, spawn and cloud transport are Fake.
@@ -47,11 +48,17 @@ async function syntheticCall(scenario){
       const electron={app:{setPath(){},whenReady:()=>Promise.resolve(),exit:resolveExit},safeStorage:{},
         session:{defaultSession:{resolveProxy:async()=>'DIRECT'}},net:{fetch:async()=>{
           networkCalls++;
+          if(scenario==='network-error')throw Error('synthetic-private-network-error');
           if(scenario==='timeout'||scenario==='cancelled'){
             if(scenario==='cancelled')setImmediate(()=>hostController.abort());
             return new Promise(()=>{});
           }
-          if(scenario==='known-403')return new Response('synthetic-private-response-not-for-output',{status:403});
+          if(scenario==='known-401'||scenario==='known-403')return new Response('synthetic-private-response-not-for-output',
+            {status:scenario==='known-401'?401:403});
+          if(scenario==='http-503')return new Response('synthetic-private-service-error',{status:503});
+          if(scenario==='unreadable-200')return new Response(new ReadableStream({start(controller){controller.error(Error('synthetic-private-read-error'));}}),
+            {headers:{'content-type':'application/json'}});
+          if(scenario==='malformed-200')return new Response('synthetic-private-invalid-result',{headers:{'content-type':'application/json'}});
           return new Response(JSON.stringify([{event:'message',data:{text:'Synthetic terminal reply'}},{event:'task_end'},{event:'end'}]),
             {headers:{'content-type':'application/json'}});
         }}};
@@ -82,7 +89,7 @@ async function syntheticCall(scenario){
     const firstCalls=networkCalls,firstSpawns=spawnCalls,lockRetained=fs.existsSync(lock),
       firstReport=reports.at(-1),firstExit=wrapperProcess.exitCode??null;
     let repeatedBlocked=false;
-    if(scenario==='timeout'||scenario==='cancelled'){try{await evaluateWrapper();}catch{repeatedBlocked=true;}}
+    if(unknownScenarios.includes(scenario)){try{await evaluateWrapper();}catch{repeatedBlocked=true;}}
     return {scenario,networkCalls,spawnCalls,firstCalls,firstSpawns,wrapperExit:firstExit,
       report:firstReport,lockRetained,rejected,repeatedBlocked,
       fakeElectron:true,actualPublicPort:true,actualWrapper:true,syntheticLock:true,externalNetwork:false};
@@ -93,17 +100,20 @@ if(process.argv.includes('--synthetic-fixture-child')) {
 } else {
   const invoke=async scenario=>JSON.parse((await run(process.execPath,['--experimental-vm-modules',filename,
     '--synthetic-fixture-child',scenario],{timeout:10000})).stdout);
-  for(const scenario of ['timeout','cancelled'])test(`saved call ${scenario} preserves unknown result and actual synthetic shared lock`,async()=>{
-    const result=await invoke(scenario);assert.equal(result.report.status,'unknown');
-    assert.equal(result.report.errorCode,scenario==='timeout'?'TIMEOUT':'CANCELLED');assert.notEqual(result.wrapperExit,0);
+  for(const scenario of unknownScenarios)test(`saved call ${scenario} preserves unknown result and actual synthetic shared lock`,async t=>{
+    const result=await invoke(scenario);
+    t.diagnostic(JSON.stringify({scenario,firstCalls:result.firstCalls,networkCalls:result.networkCalls,wrapperExit:result.wrapperExit,
+      status:result.report.status,diagnostic:result.report.diagnostic,lockRetained:result.lockRetained,repeatedBlocked:result.repeatedBlocked}));
+    assert.equal(result.report.status,'unknown');
+    assert.equal(result.report.errorCode,scenario==='timeout'?'TIMEOUT':scenario==='cancelled'?'CANCELLED':'EXTERNAL_FAILURE');assert.notEqual(result.wrapperExit,0);
     assert.equal(result.lockRetained,true);assert.equal(result.repeatedBlocked,true);
     assert.equal(result.networkCalls,1);assert.equal(result.spawnCalls,1);assert.equal(result.firstCalls,1);
   });
-  for(const scenario of ['success','known-403','invalid-input','describe'])test(`saved call ${scenario} preserves known completion and lock release`,async()=>{
+  for(const scenario of ['success','known-401','known-403','invalid-input','describe'])test(`saved call ${scenario} preserves known completion and lock release`,async()=>{
     const result=await invoke(scenario);assert.equal(result.lockRetained,false);assert.equal(result.rejected,false);
-    assert.equal(result.spawnCalls,1);assert.equal(result.networkCalls,['success','known-403'].includes(scenario)?1:0);
+    assert.equal(result.spawnCalls,1);assert.equal(result.networkCalls,['success','known-401','known-403'].includes(scenario)?1:0);
     assert.equal(result.wrapperExit,scenario==='invalid-input'?2:0);
-    assert.equal(result.report.status,{'success':'succeeded','known-403':'failed','invalid-input':'invalid_request','describe':'configured'}[scenario]);
+    assert.equal(result.report.status,{'success':'succeeded','known-401':'failed','known-403':'failed','invalid-input':'invalid_request','describe':'configured'}[scenario]);
     assert.doesNotMatch(JSON.stringify(result.report),/synthetic-private-response|synthetic-credential/);
   });
   test('an existing shared unknown lock blocks dispatch without reading credentials or invoking cloud',async()=>{
