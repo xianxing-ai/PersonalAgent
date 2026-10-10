@@ -62,3 +62,19 @@ test('turning on reduced motion cancels a current click gesture before resuming'
   orb.setCalm(false);
   assert.equal(orb._kind(), 'voice');
 });
+
+test('stopping a hidden orb expires the click gesture without changing its task state', () => {
+  for (const state of ['idle', 'listening', 'executing', 'waiting']) {
+    const orb = Object.assign(Object.create(Orb.prototype), {
+      state, time: 10, running: true, calm: false, mix: 1, breathUntil: null,
+      _raf: null, _draw() {}, start() { this.running = true; },
+    });
+    orb.playBreath();
+    orb.stop();
+    assert.equal(orb.running, false);
+    assert.equal(orb.breathUntil, null);
+    orb.start();
+    assert.equal(orb.state, state);
+    assert.equal(orb._kind(), orbMotionKind({state}));
+  }
+});

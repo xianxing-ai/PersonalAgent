@@ -284,6 +284,7 @@ export class Orb {
 
   stop() {
     this.running = false;
+    this.breathUntil = null;
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = null;
   }
