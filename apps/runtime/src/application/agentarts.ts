@@ -131,6 +131,6 @@ export function createAgentArtsRuntimeApplication(
     coordination: new CompetitionCoordinator(cloud),
   });
   const closeRuntime = application.close.bind(application);
-  application.close = () => { cloud.close(); closeRuntime(); };
+  application.close = () => { closeRuntime(); cloud.close(); };
   return application;
 }

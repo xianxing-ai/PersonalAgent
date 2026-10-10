@@ -384,3 +384,45 @@ test('HTTPS fallback delivery ambiguity uses the same durable unknown guard inst
     assert.equal(fetches.length, 1);
   } finally { app.close(); }
 });
+
+
+test('refused close preserves an accepted active WSS task and its original result', async () => {
+  let originalFrame, originalSocket;
+  const h = factory(':memory:', (frame, socket) => {
+    if (frame.type !== 'invoke') return;
+    originalFrame = frame; originalSocket = socket; socket.accepted(frame);
+  });
+  let taskId;
+  try {
+    const client = new Client(h.app); await client.connect();
+    ({taskId} = await client.call('task.submit', {goal: 'Synthetic active close guard', conversationId: 'wss'},
+      {idempotencyKey: 'wss-close-refused'}));
+    for (let i = 0; i < 200 && !originalFrame; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(originalFrame);
+    assert.equal(h.app.runtime.getTask(taskId).state, 'running');
+    assert.equal(h.app.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight').accepted, true);
+    assert.throws(() => h.app.close(), {code: 'REVISION_CONFLICT'});
+    assert.equal(originalSocket.terminations, 0);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(h.app.runtime.getTask(taskId).state, 'running');
+    assert.equal(h.app.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown'), undefined);
+    originalSocket.result(originalFrame, 'Original accepted task completed');
+    const task = await waitState(h.app, taskId, ['succeeded', 'failed', 'waiting_reconciliation']);
+    assert.equal(task.state, 'succeeded');
+    assert.match(task.resultSummary, /Original accepted task completed/);
+    assert.equal(h.app.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight'), null);
+    assert.equal(h.fetches.length, 0);
+  } finally {
+    if (originalFrame && originalSocket.terminations === 0) originalSocket.result(originalFrame, 'Cleanup original result');
+    if (taskId) await waitState(h.app, taskId, ['succeeded', 'failed', 'waiting_reconciliation']);
+    h.app.close();
+  }
+  assert.equal(originalSocket.terminations, 1);
+});
+
+test('idle WSS application close requires no connection or HTTP fallback', () => {
+  const h = factory(':memory:', () => {throw Error('unexpected invocation');});
+  h.app.close();
+  assert.equal(h.sockets.length, 0);
+  assert.equal(h.fetches.length, 0);
+});
