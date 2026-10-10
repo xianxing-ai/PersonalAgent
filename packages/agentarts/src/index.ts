@@ -55,7 +55,9 @@ export class OwnedAgentOrchestrator {
     } else {
       const deterministic = this.commandReceipt(input);
       if (deterministic) return deterministic;
-      raw = await this.call('fast', FAST_PROMPT + DISPATCH_PROMPT, input, request);
+      raw = await this.call('fast', input.kind === 'goal_analysis'
+        ? FAST_PROMPT + '\n仅分析宿主 RECHECK 数据；只返回 text，不提出工具或修复候选。没有执行授权，尚未执行或修改计划。'
+        : FAST_PROMPT + DISPATCH_PROMPT, input, request);
     }
     this.check(request);
     const object = record(raw);
@@ -63,6 +65,11 @@ export class OwnedAgentOrchestrator {
     let result: CoordinationResult;
     try { result = parseCoordinationResult({...object, verification: 'unverified'}); }
     catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Agent output does not match the application contract'); }
+    if (input.kind === 'goal_analysis') {
+      if (result.kind !== 'text') throw new ProtocolError('EXTERNAL_FAILURE', 'Non-text output on an analysis-only route');
+      try { result = parseCoordinationResult({...result, text: result.text + '\n仅分析；尚未执行或修改计划。'}); }
+      catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Analysis output exceeds the application contract'); }
+    }
     if (result.kind === 'tool_proposal') {
       if (input.kind !== 'initial' || repair) throw new ProtocolError('EXTERNAL_FAILURE', 'Tool proposal on a result-only route');
       const tool = input.availableTools.find(item => item.name === result.toolName && item.version === result.toolVersion);
