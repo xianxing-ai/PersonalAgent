@@ -130,3 +130,24 @@ test('accepted unknown WSS task retains its original receipt when later sources 
  assert.equal(f.submits(),1);assert.equal(f.credentials(),1);assert.equal(f.sent.length,0);assert.equal(f.models.fast.requests.length,0);
  assert.equal(f.app.runtime.loadCheckpoint(f.task.taskId,'competition-cloud-unknown').accepted,true);
 });
+
+for(const summary of ['x'.repeat(8192),'x'.repeat(8190)+'\nZ'])test(`source summary ${summary.length} chars preserves the original export`,async t=>{
+ const f=await hostFixture(t,{newGoal:true,goalSummary:summary});assert.equal(f.task.state,'succeeded');
+ assert.equal(f.sent.length,1);assert.ok(f.sent[0].length<16000);
+ assert.equal(JSON.parse(f.sent[0].slice(f.sent[0].indexOf('\n')+1)).nodes[0].summary,summary);
+ assert.deepEqual([f.credentials(),f.submits(),f.models.fast.requests.length],[1,1,1]);
+});
+test('8193 character source stays local below the full Goal limit and a fresh short source restores export',async t=>{
+ const f=await hostFixture(t,{newGoal:true,goalSummary:'x'.repeat(8193)});
+ const card=f.host.snapshot().reviews.find(r=>r.action==='RECHECK');assert.ok(card);
+ assert.equal(card.cloudExport.reason,'source_summary_limit');assert.equal(card.cloudExport.maxChars,8192);
+ assert.match(card.choice,/缩短.*来源摘要.*重新分析/);assert.equal(card.state,'unavailable');
+ assert.deepEqual([f.credentials(),f.sent.length,f.submits(),f.models.fast.requests.length],[0,0,0,0]);
+ const feedback=await f.host.applyDecision(card.reviewTaskId);assert.equal(feedback.state,'unavailable');
+ assert.deepEqual([f.credentials(),f.sent.length,f.submits()],[0,0,0]);
+ f.host.configure({enabled:true,cloudAllowed:false});
+ f.store.append(f.store.read().revision,node('goal','goal',[ref('private-source')],'Shortened allowed source','private'));
+ f.store.append(f.store.read().revision,node('fresh-short-goal','goal',[],'Fresh allowed source','public'));
+ f.host.configure({enabled:true,cloudAllowed:true});await f.host.tick();assert.ok(f.announced.length);await settled(f.app,f.announced.at(-1).taskId);
+ assert.ok(f.sent.length);assert.ok(f.host.snapshot().reviews.some(r=>r.taskId && !r.cloudExport));
+});

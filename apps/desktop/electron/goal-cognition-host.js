@@ -7,6 +7,8 @@ import {isDeepStrictEqual} from 'node:util';
 const VERSION='desktop-goal-analysis-v1';
 // Match the existing AgentArts coordination goal contract; never trim a reviewed scope.
 const GOAL_EXPORT_MAX_CHARS=16_000;
+const SOURCE_SUMMARY_MAX_CHARS=8192;
+const SOURCE_SUMMARY_LIMIT='可发送的来源摘要超出云端上限；请缩短允许发送的来源摘要后重新分析。';
 const NO_EXPORTABLE_SOURCES='没有可供云端分析的来源；受限内容保留在本地，请补充允许发送的来源后重新分析。';
 const MARKER='desktop-goal-cognition-review';
 const HANDOFF_TASK_MARKER='desktop-goal-cognition-handoff-task-v1';
@@ -310,12 +312,19 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
   }
   function exportLimit(projected) {
     if(typeof projected?.goal!=='string') return;
+    let payload;
     try {
-      const payload=JSON.parse(projected.goal.slice(projected.goal.indexOf('\n')+1));
+      payload=JSON.parse(projected.goal.slice(projected.goal.indexOf('\n')+1));
       if(Array.isArray(payload.nodes) && payload.nodes.length===0) return {state:'blocked',reason:'no_exportable_sources'};
     } catch {}
-    return projected.goal.length>GOAL_EXPORT_MAX_CHARS
-      ? {state:'blocked',reason:'goal_text_limit',chars:projected.goal.length,maxChars:GOAL_EXPORT_MAX_CHARS} : undefined;
+    if(projected.goal.length>GOAL_EXPORT_MAX_CHARS) return {state:'blocked',reason:'goal_text_limit',
+      chars:projected.goal.length,maxChars:GOAL_EXPORT_MAX_CHARS};
+    if(Array.isArray(payload?.nodes) && payload.nodes.some(node=>typeof node.summary==='string' && node.summary.length>SOURCE_SUMMARY_MAX_CHARS))
+      return {state:'blocked',reason:'source_summary_limit',maxChars:SOURCE_SUMMARY_MAX_CHARS};
+  }
+  function exportExplanation(reason) {
+    return reason==='no_exportable_sources'?NO_EXPORTABLE_SOURCES
+      :reason==='source_summary_limit'?SOURCE_SUMMARY_LIMIT:'完整目标投影超出云端上限，方案保留在本地，尚未提交';
   }
   function cloudExport(value) {
     if(value.handoff?.state==='submitted') {
@@ -332,7 +341,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
   function execution(value) {
     let blocked;try {blocked=cloudExport(value);} catch {}
     if(blocked && value.handoff?.state!=='submitted') return {state:'unavailable',cloudExport:blocked,
-      executionStatus:blocked.reason==='no_exportable_sources'?NO_EXPORTABLE_SOURCES:'完整目标投影超出云端上限，方案保留在本地，尚未提交'};
+      executionStatus:exportExplanation(blocked.reason)};
 
     if (value.handoff?.state!=='submitted') return {state:value.handoff?.state??value.review?.selection?.state??'local',
       executionStatus:value.handoff?.state==='pending'?'编排受理结果待核实，尚未确认执行'
@@ -490,7 +499,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
         selected: r?.selectedOption?.id,
         sourceOutdated: Number.isSafeInteger(r?.graphRevision) && r.graphRevision>=0 && r.graphRevision!==graphRevision,
         trigger,
-        choice:choice+(feedback.cloudExport?.reason==='no_exportable_sources'?' · '+NO_EXPORTABLE_SOURCES:''),
+        choice:choice+(['no_exportable_sources','source_summary_limit'].includes(feedback.cloudExport?.reason)?' · '+exportExplanation(feedback.cloudExport.reason):''),
         executionVerified:false,graphUpdateVerified:false,...feedback,
       };
       })};
