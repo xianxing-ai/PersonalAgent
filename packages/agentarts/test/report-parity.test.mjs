@@ -61,6 +61,49 @@ for (const version of ['1.0','1.1']) {
   });
 }
 
+test('KEEP cannot conceal missing information, affected world items or unresolved plan classifications',async()=>{
+  const compactWorld={disposition:'KEEP',affected:[],reason:'无影响',missing_information:[]};
+  const fullWorld={...world(),recommended_disposition:'KEEP',changed_facts:[],affected_items:[]};
+  for(const w of [
+    {...compactWorld,missing_information:['缺来源']},
+    {...compactWorld,affected:[planId]},
+    {...fullWorld,missing_information:['缺来源']},
+    {...fullWorld,affected_items:world().affected_items},
+  ]) {
+    const {agent,models}=setup(w);
+    await assert.rejects(agent.invoke(request(payload())),{code:'EXTERNAL_FAILURE'});
+    assert.equal(models.plan.requests.length,0);assert.equal(models.review.requests.length,0);
+  }
+  const compactPlan={disposition:'KEEP',changes:[],missing_information:['缺依据']};
+  const compactRevisedWorld={disposition:'REVISE',affected:[planId],reason:'变化',missing_information:[]};
+  const c=setup(compactRevisedWorld,compactPlan);
+  await assert.rejects(c.agent.invoke(request(payload())),{code:'EXTERNAL_FAILURE'});
+  assert.equal(c.models.review.requests.length,0);
+  const keptPlan={...plan(),disposition:'KEEP',revised_steps:[],dependency_updates:[],
+    preserved_steps:[{node:ref(planId),reason:'已有计划满足新目标'}]};
+  for(const mutate of [p=>p.missing_information=['缺依据'],p=>{
+    p.preserved_steps=[];p.rechecked_steps=[{node:ref(planId),condition:'待核实'}];},p=>p.preserved_steps=[]]) {
+    const p=structuredClone(keptPlan);mutate(p);const {agent,models}=setup(world(),p);
+    await assert.rejects(agent.invoke(request(payload())),{code:'EXTERNAL_FAILURE'});
+    assert.equal(models.review.requests.length,0);
+  }
+});
+
+test('every revised step needs a complete matching dependency report before Review',async()=>{
+  const p=plan();p.dependency_updates=[];
+  const {agent,models}=setup(world(),p);
+  await assert.rejects(agent.invoke(request(payload())),{code:'EXTERNAL_FAILURE'});
+  assert.equal(models.review.requests.length,0);
+});
+
+test('KEEP with an inferred observation alone remains a non-executing compatible analysis',async()=>{
+  const w={...world(),recommended_disposition:'KEEP',changed_facts:[],affected_items:[]};
+  w.observed_facts[0].confidence='inferred';
+  const {agent,models}=setup(w);
+  assert.deepEqual(await agent.invoke(request(payload())),{kind:'text',text:'KEEP：世界状态分析无需修复。'});
+  assert.equal(models.plan.requests.length,0);assert.equal(models.review.requests.length,0);
+});
+
 test('full World and Plan retain versioned facts, impact, preserved steps and pending evidence; only revisions become candidate changes',async()=>{
   const {agent,models}=setup();
   assert.deepEqual(await agent.invoke(request(payload())),candidate());

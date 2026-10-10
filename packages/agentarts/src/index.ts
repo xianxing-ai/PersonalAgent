@@ -128,6 +128,9 @@ export class OwnedAgentOrchestrator {
     if (report.disposition === 'REVISE' && report.missing_information.length) {
       throw new ProtocolError('EXTERNAL_FAILURE', 'Repair has unresolved missing information');
     }
+    if (report.disposition === 'KEEP' && report.missing_information.length) {
+      throw new ProtocolError('EXTERNAL_FAILURE', 'KEEP has unresolved missing information');
+    }
     if (plan) {
       if (!Array.isArray(report.changes)) throw new ProtocolError('EXTERNAL_FAILURE', 'Invalid plan report');
       if (report.disposition === 'REVISE') this.validateChanges({expectedGraphRevision: context.expectedGraphRevision, changes: report.changes}, context);
@@ -169,6 +172,7 @@ export class OwnedAgentOrchestrator {
       this.validateReport(value, false, context);
       const affected = report.affected as string[];
       if (new Set(affected).size !== affected.length || (report.disposition === 'REVISE' && !affected.length)) this.reportFailure();
+      if (report.disposition === 'KEEP' && affected.length) this.reportFailure();
       return {disposition: report.disposition as string, affected, complete: false};
     }
     this.reportObject(report, ['reportVersion','revision','observed_facts','changed_facts','affected_items',
@@ -212,6 +216,7 @@ export class OwnedAgentOrchestrator {
       affected.push(node.id);
     }
     if (report.recommended_disposition === 'REVISE' && (missing.length || inferred || !changed.size || !affected.length)) this.reportFailure();
+    if (report.recommended_disposition === 'KEEP' && (missing.length || affected.length)) this.reportFailure();
     if (!sources.some(source => ['fact','goal'].includes(source.kind))
       && (report.recommended_disposition !== 'RECHECK' || !missing.length)) this.reportFailure();
     return {disposition: report.recommended_disposition as string, affected, complete: true};
@@ -258,9 +263,12 @@ export class OwnedAgentOrchestrator {
     }
     if (report.disposition === 'REVISE') {
       if (missing.length || !evidence.length || rechecked || world.affected.some(id => !classifications.has(id))) this.reportFailure();
+      if (changes.some(change => !updated.has(change.node.id))) this.reportFailure();
       if (changes.length) this.validateChanges({expectedGraphRevision: context.expectedGraphRevision, changes}, context);
       else if (!removed && !actions.length) this.reportFailure();
     } else if (changes.length || removed || updated.size || actions.length) this.reportFailure();
+    if (report.disposition === 'KEEP' && (missing.length || rechecked
+      || world.affected.some(id => classifications.get(id) !== 'preserved_steps'))) this.reportFailure();
     return {disposition: report.disposition as string, changes, unsupported: removed || actions.length > 0};
   }
   private validateChanges(value: unknown, context: RepairContext): void {
