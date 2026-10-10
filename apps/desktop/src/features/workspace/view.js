@@ -31,7 +31,7 @@ export function mountWorkspace(root,invoke,escape){
   const orbButton=root.querySelector('#workspace-orb');
   const orb=new Orb(orbButton.querySelector('canvas'),{variant:'matrix',layout:'shell',count:170});
   orb.setBreathing({min:.52,max:.76,rate:.7});
-  const syncMotion=()=>orb.setCalm(document.documentElement.dataset.calm==='true');syncMotion();window.addEventListener('preferences-changed',syncMotion);
+  const syncMotion=()=>{if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');};syncMotion();window.addEventListener('preferences-changed',syncMotion);
   const visibility=()=>{if(document.hidden)orb.stop();else syncMotion();};document.addEventListener('visibilitychange',visibility);
   let activationTimer;
   window.addEventListener('unload',()=>{clearTimeout(activationTimer);orb.dispose();window.removeEventListener('preferences-changed',syncMotion);document.removeEventListener('visibilitychange',visibility);});
@@ -76,6 +76,7 @@ export function mountWorkspace(root,invoke,escape){
     current=data;current.tasks ||= [];
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
+    if(document.hidden)orb.stop();
     root.querySelector('#workspace-greeting').hidden=current.tasks.length>0;root.querySelector('#workspace-intro').hidden=current.tasks.length>0;root.querySelector('#workspace-welcome').classList.toggle('compact',current.tasks.length>0);
     const signature=JSON.stringify(data.tasks);
     if(signature!==lastSignature){
