@@ -7,14 +7,16 @@ import {orbState,visualOrbState,orbStatusLabel,stateNames} from '../src/features
 
 const source=await readFile(new URL('../src/app/renderer.js',import.meta.url),'utf8');
 const ast=ts.createSourceFile('renderer.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
-let render,motion;const registrations=[];
+let render,motion,feedbackDeclarations,feedbackSync;const registrations=[];
 function visit(node){
-  if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='render'&&node.right.getText(ast).includes("button.setAttribute('aria-label'"))render=node.right.getText(ast);
+  if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='render'&&node.right.getText(ast).includes('orbLabel='))render=node.right.getText(ast);
+  if(ts.isVariableStatement(node)&&node.declarationList.declarations.some(item=>item.name.getText(ast)==='operationGeneration'))feedbackDeclarations=node.getText(ast);
+  if(ts.isVariableDeclaration(node)&&node.name.getText(ast)==='syncOperationFeedback')feedbackSync=node.getText(ast);
   if(ts.isVariableDeclaration(node)&&node.name.getText(ast)==='syncMotion')motion=node.getText(ast);
   if(ts.isExpressionStatement(node)&&node.getText(ast).includes('syncMotion')&&/^(window|document)\.addEventListener/.test(node.getText(ast)))registrations.push(node.getText(ast));
   ts.forEachChild(node,visit);
 }
-visit(ast);assert.ok(render&&motion);
+visit(ast);assert.ok(render&&motion&&feedbackDeclarations&&feedbackSync);
 function fixture(){
   const attributes={},events=new Map(),document={hidden:false,documentElement:{dataset:{calm:'false'}}};
   const orb={running:true,calm:false,setLevel(value){this.level=value;},setState(value){this.state=value;},setCalm(value){this.calm=value;this.running=!value;},stop(){this.running=false;}};
@@ -23,8 +25,8 @@ function fixture(){
     target.removeEventListener=event=>events.delete(`${name}:${event}`);
     if(name==='window')document.window=target;
   }
-  const context=vm.createContext({orb,document,window:document.window,visualOrbState,orbStatusLabel,button:{setAttribute:(key,value)=>attributes[key]=value}});
-  vm.runInContext(`const ${motion};`,context);for(const statement of registrations)vm.runInContext(statement,context);
+  const context=vm.createContext({orb,document,window:document.window,visualOrbState,orbStatusLabel,button:{setAttribute:(key,value)=>attributes[key]=value,removeAttribute:key=>delete attributes[key],set title(value){attributes.title=value;}}});
+  vm.runInContext(`const ${motion};${feedbackDeclarations}const ${feedbackSync};`,context);for(const statement of registrations)vm.runInContext(statement,context);
   return {orb,document,attributes,events,render:vm.runInContext(`(${render})`,context),sync:()=>vm.runInContext('syncMotion()',context)};
 }
 test('actual compact Orb consumer projects each Live status and keeps its snapshot untouched',()=>{
