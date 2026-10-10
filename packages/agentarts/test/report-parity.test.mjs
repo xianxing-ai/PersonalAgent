@@ -34,6 +34,33 @@ function setup(w=world(),p=plan(),r=candidate()) {
   return {models,agent:new OwnedAgentOrchestrator(models,4096)};
 }
 
+for (const version of ['1.0','1.1']) {
+  test(`owned-${version} World KEEP remains KEEP and stops before Plan or Review`,async()=>{
+    const w=version === '1.0'
+      ? {disposition:'KEEP',affected:[],reason:'没有相关影响',missing_information:[]}
+      : {...world(),recommended_disposition:'KEEP',changed_facts:[],affected_items:[],summary:'没有相关影响'};
+    const {agent,models}=setup(w);
+    assert.deepEqual(await agent.invoke(request(payload())),{kind:'text',text:'KEEP：世界状态分析无需修复。'});
+    assert.equal(models.world.requests.length,1);
+    assert.equal(models.plan.requests.length,0);
+    assert.equal(models.review.requests.length,0);
+  });
+  test(`owned-${version} Plan KEEP remains KEEP and stops before Review`,async()=>{
+    const w=version === '1.0'
+      ? {disposition:'REVISE',affected:[planId],reason:'目标变化',missing_information:[]}
+      : world();
+    const p=version === '1.0'
+      ? {disposition:'KEEP',changes:[],missing_information:[]}
+      : {...plan(),disposition:'KEEP',revised_steps:[],dependency_updates:[],
+        preserved_steps:[{node:ref(planId),reason:'现有步骤已经满足目标'},...plan().preserved_steps]};
+    const {agent,models}=setup(w,p);
+    assert.deepEqual(await agent.invoke(request(payload())),{kind:'text',text:'KEEP：现有计划无需修复。'});
+    assert.equal(models.world.requests.length,1);
+    assert.equal(models.plan.requests.length,1);
+    assert.equal(models.review.requests.length,0);
+  });
+}
+
 test('full World and Plan retain versioned facts, impact, preserved steps and pending evidence; only revisions become candidate changes',async()=>{
   const {agent,models}=setup();
   assert.deepEqual(await agent.invoke(request(payload())),candidate());
@@ -107,11 +134,11 @@ test('missing source projection and unresolved rechecks stop without generating 
     missing_information:['没有事实前后版本投影'],recommended_disposition:'RECHECK',summary:'补齐来源后再判断'};
   const {agent,models}=setup(w);
   const context={...payload().repairContext,targets:payload().repairContext.targets.map(({summary,...target})=>({...target,requestedSummary:summary}))};
-  assert.match((await agent.invoke(request(JSON.stringify({continuation:{proposalId:'p',state:'confirmed',result:{repairContext:context}}})))).text,/RECHECK/);
+  assert.equal((await agent.invoke(request(JSON.stringify({continuation:{proposalId:'p',state:'confirmed',result:{repairContext:context}}})))).text,'RECHECK：世界状态分析缺少确定的修复依据。');
   assert.equal(models.plan.requests.length,0);
   const p=plan(); p.disposition='RECHECK';p.revised_steps=[];p.dependency_updates=[];
   p.rechecked_steps=[{node:ref(planId),condition:'核实前后版本'}];p.missing_information=['待本地读回'];
-  const check=setup(world(),p); assert.match((await check.agent.invoke(request(payload()))).text,/RECHECK/);
+  const check=setup(world(),p); assert.equal((await check.agent.invoke(request(payload()))).text,'RECHECK：计划修复缺少确定依据。');
   assert.equal(check.models.review.requests.length,0);
 });
 

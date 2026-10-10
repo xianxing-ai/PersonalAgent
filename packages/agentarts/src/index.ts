@@ -40,9 +40,11 @@ export class OwnedAgentOrchestrator {
     if (repair) {
       const world = await this.call('world', WORLD_PROMPT, repair.data, request);
       const worldReport = this.validateWorld(world, repair.context, repair.sources);
+      if (worldReport.disposition === 'KEEP') return {kind: 'text', text: 'KEEP：世界状态分析无需修复。'};
       if (worldReport.disposition !== 'REVISE') return {kind: 'text', text: 'RECHECK：世界状态分析缺少确定的修复依据。'};
       const plan = await this.call('plan', PLAN_PROMPT, {input: repair.data, world}, request);
       const planReport = this.validatePlan(plan, repair.context, worldReport);
+      if (planReport.disposition === 'KEEP') return {kind: 'text', text: 'KEEP：现有计划无需修复。'};
       if (planReport.disposition !== 'REVISE') return {kind: 'text', text: 'RECHECK：计划修复缺少确定依据。'};
       if (planReport.unsupported) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Plan requests operations outside the repair candidate contract');
       if (planReport.changes.some(change => !worldReport.affected.includes(change.node.id))) {
