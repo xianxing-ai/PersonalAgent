@@ -3,10 +3,38 @@
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
-初始日期：2026-10-08；当前更新：2026-10-09；状态：`in_progress`；负责人：zemeng。
+初始日期：2026-10-08；当前更新：2026-10-11；状态：`in_progress`；负责人：zemeng。
 目标：`huawei_ict_agentarts`。工作树：`D:\PersonalAgent\.worktrees\agentarts-owned-image`，
 分支 `codex/agentarts-owned-image`，基线 `origin/main@e86bac53`。
 本包涉及 MOD-29/30/31 的云编排与既有 Coordination 消费接线。
+
+## 2026-10-11 公开消费者修复（本轮进行中）
+
+延续原 #317 与 `codex/agentarts-owned-image`，同步基线仍为 `main@e86bac53`；
+开发在独立 Linux 工作树进行，不覆盖此前 Windows 工作树和真实云资产记录。
+三个 GPT-6.1 Sol 子智能体按文件范围并行，根执行者逐份核对不可变源码及回归证据后整合。
+Desktop 展示修复单独沿既有 #313 交付，不新建任务或重复 PR。
+
+- Desktop 仅在显式 WSS 配置下注册传输观察者，默认或显式 HTTPS 不再被 WSS 参数守卫拒绝；
+  WSS 已发送但结果未知或鉴权失败后的 `closed` 不清除原诊断，下一次连接/配置绑定才更新提示。
+- WSS Workflow 名称通过既有独立传输公开解析器在读取凭据/建立连接前校验；
+  HTTPS 原名称范围保留。Runtime Application 拒绝关闭活动任务时保留现有 WSS 连接，
+  不把被拒绝的关闭变成结果未知。
+- Device 异常裁定的通知投递等待贯穿原 deadline/取消，拒绝或超时仍保留 pending/unknown，
+  迟到结果不得重放通知或自行变成 confirmed；交付核实沿原公开端口进行。
+- 原 Desktop Host 的合法首次规划与 Laya 不确定 `RECHECK` 投影进入纯文本分析路线，
+  禁止工具提案或修复候选，明确尚未执行或修改计划；`REVISE` 保留严格来源和修订约束。
+- 有效 `KEEP` 文字不再误称为 `RECHECK`；缺项、受影响分类和未完整描述的依赖更新
+  不得成为有效 KEEP/修复候选。原完整报告、候选 1.0 与公开任务契约未扩大。
+
+上述增量有真实原 Host/Client/Runtime/SQLite/Coordination 消费路径的离线复现与定向回归，
+模型、HTTP/WebSocket 端点、通知 OS 端口仍为显式合成替身。合法同批新版依赖和全部受限来源
+被省略后的 Host 出口守卫仍在本轮实现/验证；最终冻结源码完整 `npm run check` 尚未执行，
+因此不把历史 10-09 的完整检查或 GHCR 发布归给本轮代码。
+
+本轮不自行批准或合并；两位协作者当前 head 的设计阅读声明门槛保留。
+Windows 原生/物理音频、Huawei 实际 deployment、公网 WSS Upgrade、真实模型与 usage/费用
+读回仍未完成，分别由实际环境持有人及对应模块负责人处理，不能用本轮离线通过替代。
 
 ## 2026-10-09 WSS实施增量（当前分支）
 
