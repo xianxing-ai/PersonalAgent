@@ -126,14 +126,16 @@ export function parseRepairContext(value: unknown, initial: boolean): RepairCont
   return {expectedGraphRevision: context.expectedGraphRevision as number, targets, allowedDependencies: allowed};
 }
 
-export function repairInput(input: AgentInput): {context: RepairContext; data: unknown; initial: boolean; sources: RepairSource[]} | undefined {
+export function repairInput(input: AgentInput): {context: RepairContext; data: unknown; initial: boolean;
+  sources: RepairSource[]; prospectiveDependencies: RepairRef[]} | undefined {
   if (input.kind === 'goal_analysis') return undefined;
   if (input.kind === 'continuation') {
     const result = input.continuation.result;
     if (!result || typeof result !== 'object' || !Object.hasOwn(result, 'repairContext')) return undefined;
     // A context proves allowed references, not the text or provenance of a fact.
     // Until a host source projection is present, a complete report must RECHECK.
-    return {context: parseRepairContext(record(result).repairContext, false), data: input, initial: false, sources: []};
+    return {context: parseRepairContext(record(result).repairContext, false), data: input, initial: false,
+      sources: [], prospectiveDependencies: []};
   }
   if (!input.goal.startsWith('PersonalAgent 主动决策：')) return undefined;
   if (!input.goal.startsWith(GOAL_PREFIX)) invalid();
@@ -152,13 +154,23 @@ export function repairInput(input: AgentInput): {context: RepairContext; data: u
       || node.summary !== target.summary
       || [...nodes.values()].some(other => other.id === node.id && (other.revision as number) > target.node.revision)) invalid();
   }
+  const prospectiveDependencies: RepairRef[] = [];
   for (const dependency of context.allowedDependencies) {
     const node = nodes.get(key(dependency));
-    if (!node || node.state !== 'active'
-      || [...nodes.values()].some(other => other.id === node.id && (other.revision as number) > dependency.revision)) invalid();
+    if (node) {
+      if (node.state !== 'active'
+        || [...nodes.values()].some(other => other.id === node.id && (other.revision as number) > dependency.revision)) invalid();
+    } else {
+      // A same-batch target may produce its next revision. It is not an observed source.
+      // Target validation above already proves the committed latest active baseline.
+      const target = context.targets.find(target => target.node.id === dependency.id
+        && target.node.revision + 1 === dependency.revision);
+      if (!target) invalid();
+      prospectiveDependencies.push({...dependency});
+    }
   }
   const sources: RepairSource[] = [...nodes.values()]
     .map(node => ({node: {id: node.id as string, revision: node.revision as number},
       kind: node.kind as RepairSource['kind'], summary: node.summary as string, state: node.state as RepairSource['state']}));
-  return {context, data: payload, initial: true, sources};
+  return {context, data: payload, initial: true, sources, prospectiveDependencies};
 }

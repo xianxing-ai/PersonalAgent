@@ -43,7 +43,7 @@ export class OwnedAgentOrchestrator {
       if (worldReport.disposition === 'KEEP') return {kind: 'text', text: 'KEEP：世界状态分析无需修复。'};
       if (worldReport.disposition !== 'REVISE') return {kind: 'text', text: 'RECHECK：世界状态分析缺少确定的修复依据。'};
       const plan = await this.call('plan', PLAN_PROMPT, {input: repair.data, world}, request);
-      const planReport = this.validatePlan(plan, repair.context, worldReport);
+      const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies);
       if (planReport.disposition === 'KEEP') return {kind: 'text', text: 'KEEP：现有计划无需修复。'};
       if (planReport.disposition !== 'REVISE') return {kind: 'text', text: 'RECHECK：计划修复缺少确定依据。'};
       if (planReport.unsupported) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Plan requests operations outside the repair candidate contract');
@@ -78,7 +78,7 @@ export class OwnedAgentOrchestrator {
     }
     if (result.kind === 'repair_candidate') {
       if (!repair) throw new ProtocolError('EXTERNAL_FAILURE', 'Repair candidate on an ordinary route');
-      this.validateChanges(result.candidate, repair.context);
+      this.validateChanges(result.candidate, repair.context, repair.prospectiveDependencies);
       // Review may reject with text, but cannot silently replace the reviewed plan.
       const normalize = (changes: unknown) => (changes as typeof result.candidate.changes).map(change => ({
         node: {id: change.node.id, revision: change.node.revision}, summary: change.summary, reason: change.reason,
@@ -117,7 +117,8 @@ export class OwnedAgentOrchestrator {
       throw new ProtocolError('EXTERNAL_FAILURE', 'Agent role returned an invalid response');
     }
   }
-  private validateReport(value: unknown, plan: boolean, context: RepairContext): void {
+  private validateReport(value: unknown, plan: boolean, context: RepairContext,
+    prospectiveDependencies: readonly RepairRef[] = []): void {
     const report = record(value);
     const fields = plan ? ['disposition','changes','missing_information'] : ['disposition','affected','reason','missing_information'];
     if (Object.keys(report).length !== fields.length || fields.some(field => !Object.hasOwn(report, field))
@@ -133,7 +134,8 @@ export class OwnedAgentOrchestrator {
     }
     if (plan) {
       if (!Array.isArray(report.changes)) throw new ProtocolError('EXTERNAL_FAILURE', 'Invalid plan report');
-      if (report.disposition === 'REVISE') this.validateChanges({expectedGraphRevision: context.expectedGraphRevision, changes: report.changes}, context);
+      if (report.disposition === 'REVISE') this.validateChanges({expectedGraphRevision: context.expectedGraphRevision,
+        changes: report.changes}, context, prospectiveDependencies);
       else if (report.changes.length) throw new ProtocolError('EXTERNAL_FAILURE', 'Uncertain plan includes changes');
     } else if (!Array.isArray(report.affected) || typeof report.reason !== 'string'
       || report.affected.some(id => !context.targets.some(target => target.node.id === id))) {
@@ -221,11 +223,12 @@ export class OwnedAgentOrchestrator {
       && (report.recommended_disposition !== 'RECHECK' || !missing.length)) this.reportFailure();
     return {disposition: report.recommended_disposition as string, affected, complete: true};
   }
-  private validatePlan(value: unknown, context: RepairContext, world: WorldReport): PlanReport {
+  private validatePlan(value: unknown, context: RepairContext, world: WorldReport,
+    prospectiveDependencies: readonly RepairRef[]): PlanReport {
     const report = record(value);
     if (!Object.hasOwn(report, 'reportVersion')) {
       if (world.complete) this.reportFailure();
-      this.validateReport(value, true, context);
+      this.validateReport(value, true, context, prospectiveDependencies);
       return {disposition: report.disposition as string, changes: report.changes as RepairChange[], unsupported: false};
     }
     this.reportObject(report, ['reportVersion','base_revision','disposition','preserved_steps','rechecked_steps','revised_steps',
@@ -264,18 +267,20 @@ export class OwnedAgentOrchestrator {
     if (report.disposition === 'REVISE') {
       if (missing.length || !evidence.length || rechecked || world.affected.some(id => !classifications.has(id))) this.reportFailure();
       if (changes.some(change => !updated.has(change.node.id))) this.reportFailure();
-      if (changes.length) this.validateChanges({expectedGraphRevision: context.expectedGraphRevision, changes}, context);
+      if (changes.length) this.validateChanges({expectedGraphRevision: context.expectedGraphRevision,
+        changes}, context, prospectiveDependencies);
       else if (!removed && !actions.length) this.reportFailure();
     } else if (changes.length || removed || updated.size || actions.length) this.reportFailure();
     if (report.disposition === 'KEEP' && (missing.length || rechecked
       || world.affected.some(id => classifications.get(id) !== 'preserved_steps'))) this.reportFailure();
     return {disposition: report.disposition as string, changes, unsupported: removed || actions.length > 0};
   }
-  private validateChanges(value: unknown, context: RepairContext): void {
+  private validateChanges(value: unknown, context: RepairContext, prospectiveDependencies: readonly RepairRef[] = []): void {
     let parsed: Extract<CoordinationResult, {kind: 'repair_candidate'}>;
     try { parsed = parseCoordinationResult({kind:'repair_candidate',candidateVersion:'1.0',candidate:value,verification:'unverified'}) as typeof parsed; }
     catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Invalid repair report'); }
     if (parsed.candidate.expectedGraphRevision !== context.expectedGraphRevision) throw new ProtocolError('EXTERNAL_FAILURE', 'Repair revision changed');
+    const produced = new Set<string>();
     for (const change of parsed.candidate.changes) {
       const target = context.targets.find(item => item.node.id === change.node.id && item.node.revision === change.node.revision);
       const refs = (dependencies: typeof change.dependencies) => JSON.stringify(dependencies.map(dep => [dep.id, dep.revision]));
@@ -283,6 +288,13 @@ export class OwnedAgentOrchestrator {
         || (target.requestedSummary !== undefined && change.summary !== target.requestedSummary)) {
         throw new ProtocolError('EXTERNAL_FAILURE', 'Repair changed host constraints');
       }
+      for (const dependency of change.dependencies) {
+        if (prospectiveDependencies.some(ref => ref.id === dependency.id && ref.revision === dependency.revision)
+          && !produced.has(JSON.stringify([dependency.id, dependency.revision]))) {
+          throw new ProtocolError('EXTERNAL_FAILURE', 'Repair uses an unproduced prospective dependency');
+        }
+      }
+      produced.add(JSON.stringify([change.node.id, change.node.revision + 1]));
     }
   }
   private commandReceipt(input: AgentInput): AgentOutput | undefined {

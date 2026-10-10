@@ -3,7 +3,7 @@ import test from 'node:test';
 import {mkdir,mkdtemp,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {Client} from '@personal-agent/client';
-import {LayaActionChoiceService} from '@personal-agent/cognition';
+import {LayaActionChoiceService,previewStoredRepair} from '@personal-agent/cognition';
 import {createAgentArtsRuntimeApplication,createProactiveCognitionHost} from '@personal-agent/runtime/application';
 import {OwnedAgentOrchestrator} from '@personal-agent/agentarts';
 import {FakeModelProvider} from '@personal-agent/models';
@@ -22,6 +22,33 @@ function agentWith(response={kind:'text',text:'需要复核目标与来源，建
     role==='fast'?[{kind:'final',text:JSON.stringify(response)}]:[])]));
   return {models,agent:new OwnedAgentOrchestrator(models,2048)};
 }
+function repairAgent({mutatePlan=p=>p,mutateReview=r=>r}={}) {
+  const models=Object.fromEntries(['fast','world','plan','review'].map(role=>[role,new FakeModelProvider(role==='fast'?[]:[request=>{
+    const data=JSON.parse(request.messages[1].content),input=role==='world'?data:data.input;
+    const context=input.repairContext;
+    let value;
+    if(role==='world') {
+      const goals=input.nodes.filter(n=>n.kind==='goal').sort((a,b)=>a.revision-b.revision);
+      value={reportVersion:'1.1',revision:context.expectedGraphRevision,
+        observed_facts:goals.map(n=>({node:ref(n.id,n.revision),fact:n.summary,confidence:'explicit'})),
+        changed_facts:[{previous:ref(goals[0].id,goals[0].revision),current:ref(goals.at(-1).id,goals.at(-1).revision),change:'目标内容变化'}],
+        affected_items:context.targets.map(t=>({kind:input.nodes.find(n=>n.id===t.node.id).kind==='plan'?'plan_step':'decision',
+          node:t.node,impact:'direct',reason:'目标版本变化'})),missing_information:[],recommended_disposition:'REVISE',summary:'仅修复原宿主范围'};
+    } else if(role==='plan') {
+      value=mutatePlan({reportVersion:'1.1',base_revision:context.expectedGraphRevision,disposition:'REVISE',
+        preserved_steps:[],rechecked_steps:[],revised_steps:context.targets.map(t=>({node:t.node,
+          replacement:input.nodes.find(n=>n.id===t.node.id).kind==='decision'?'按修改后的目标更新决策':'按更新后的决策调整计划',reason:'目标版本变化'})),
+        removed_steps:[],dependency_updates:context.targets.map(t=>({node:t.node,dependencies:t.requestedDependencies,reason:'采用宿主精确引用'})),
+        evidence_required:['尚需本地 Policy、CAS 与独立读回'],missing_information:[],local_next_actions:[]},input);
+    } else {
+      value=mutateReview({kind:'repair_candidate',candidateVersion:'1.0',candidate:{expectedGraphRevision:context.expectedGraphRevision,
+        changes:data.plan.revised_steps.map(step=>({node:step.node,summary:step.replacement,reason:step.reason,
+          dependencies:context.targets.find(t=>t.node.id===step.node.id).requestedDependencies}))}},input);
+    }
+    return {kind:'final',text:JSON.stringify(value)};
+  }])]));
+  return {models,agent:new OwnedAgentOrchestrator(models,2048)};
+}
 async function settled(app,taskId) {
   for(let i=0;i<200;i++) {
     const task=app.runtime.getTask(taskId);
@@ -32,13 +59,20 @@ async function settled(app,taskId) {
 }
 // The existing Desktop Host produces the query. Only Laya inference, model
 // responses and HTTP transport are Fake; Runtime, Client and projection are real.
-async function hostFixture(t,{uncertain=false,newGoal=false}={}) {
+async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepProducerSummary=false}={}) {
   const root=new URL('../../.cache/owned-goal-analysis/',import.meta.url);await mkdir(root,{recursive:true});
   const directory=await mkdtemp(new URL('case-',root));
-  const owned=agentWith(),sent=[],rejections=[],announced=[];
+  const owned=repair?repairAgent({mutatePlan:(p,input)=>{
+    if(keepProducerSummary) {
+      const producer=input.nodes.find(n=>n.kind==='decision');
+      p.revised_steps.find(s=>s.node.id===producer.id).replacement=producer.summary;
+    }
+    return p;
+  }}):agentWith(),sent=[],rejections=[],announced=[];
   let host,goalWrites=0;
   const app=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',responseMode:'tool-proposal-json',
+    ...(repair?{repairCandidateVersion:'1.0'}:{}),
     authorizationProvider:{read:async()=> 'Bearer synthetic-no-real-key'},
     beforeCompetitionSend:request=>host.assertCloudSend(request),
     fetchImpl:async(_url,input)=>{
@@ -68,7 +102,10 @@ async function hostFixture(t,{uncertain=false,newGoal=false}={}) {
     memoryNamespace:'synthetic-public-memory',graphNamespace:namespace,consumerKey:'fixture'});
   const client=new Client(app);await client.connect();
   const chooser=new LayaActionChoiceService({infer:async payload=>{
-    const keys=Object.keys(payload.questions.action.criteria),choice=newGoal?keys[0]:keys.at(-1);
+    const keys=Object.keys(payload.questions.action.criteria),choice=repair
+      ? keys.find(key=>JSON.parse(payload.questions.action.criteria[key]).description.startsWith('Ask AgentArts to evaluate'))
+      : newGoal?keys[0]:keys.at(-1);
+    assert.ok(choice,'Synthetic Laya choice must match an actually offered option');
     const probability=uncertain?1/keys.length:0.98;
     return {answers:{action:{choice,probabilities:Object.fromEntries(keys.map(key=>[key,key===choice?probability:(1-probability)/(keys.length-1)])),
       answer_confidence:probability,confidence:0.5}}};
@@ -79,8 +116,75 @@ async function hostFixture(t,{uncertain=false,newGoal=false}={}) {
   host.configure({enabled:true,cloudAllowed:true});await host.tick();
   assert.ok(announced[0]);const task=await settled(app,announced[0].taskId);
   assert.equal(sent.length,1);assert.doesNotMatch(sent[0],/PRIVATE_SOURCE_SENTINEL|private-source/);
-  return {...owned,app,store,task,query:sent[0],rejections,goalWrites:()=>goalWrites};
+  return {...owned,app,store,host,task,query:sent[0],rejections,goalWrites:()=>goalWrites};
 }
+test('actual short-summary Host REVISE accepts ordered prospective dependencies without inventing committed source nodes',async t=>{
+  const f=await hostFixture(t,{repair:true});
+  const payload=JSON.parse(f.query.slice(f.query.indexOf('\n')+1));
+  assert.equal(payload.action,'REVISE');
+  const decision=payload.nodes.find(n=>n.kind==='decision');
+  assert.equal(decision.revision,1);
+  assert.ok(payload.repairContext.allowedDependencies.some(d=>d.id===decision.id && d.revision===2));
+  assert.equal(payload.nodes.some(n=>n.id===decision.id && n.revision===2),false);
+  assert.equal(f.task.state,'succeeded',`Owned rejection codes: ${f.rejections.join(',')}`);
+  assert.deepEqual(['fast','world','plan','review'].map(r=>f.models[r].requests.length),[0,1,1,1]);
+  const candidate=f.app.runtime.loadCheckpoint(f.task.taskId,'competition-repair-candidate');
+  assert.equal(candidate.candidate.changes[0].node.id,decision.id);
+  assert.ok(candidate.candidate.changes[1].dependencies.some(d=>d.id===decision.id && d.revision===2));
+  const prepared=f.host.readPreparedRepair(f.task.taskId);
+  assert.equal(prepared.kind,'prepared');assert.equal(prepared.preview.before.snapshot.revision,5);
+  assert.equal(prepared.preview.after.snapshot.revision,7);
+  assert.deepEqual(prepared.preview.inputs.map(n=>n.id),['decision','plan']);
+  assert.equal(f.store.read().revision,5);assert.equal(f.goalWrites(),0);
+  assert.equal(f.app.runtime.readToolExecutions(f.task.taskId).length,0);
+});
+test('dependency-only producer revisions remain valid; actual local preview rejects a producer with no effective revision',async t=>{
+  const f=await hostFixture(t,{repair:true,keepProducerSummary:true});
+  assert.equal(f.task.state,'succeeded');
+  const prepared=f.host.readPreparedRepair(f.task.taskId);assert.equal(prepared.kind,'prepared');
+  assert.equal(prepared.preview.inputs[0].summary,'关联决策');
+  assert.deepEqual(prepared.preview.inputs[0].dependencies,[ref('goal',2)]);
+  const noOp=structuredClone(prepared.request);
+  const original=f.store.read().history.findLast(n=>n.id==='decision');
+  noOp.changes[0].summary=original.summary;noOp.changes[0].dependencies=original.dependencies;
+  assert.throws(()=>previewStoredRepair(f.store,new Date().toISOString(),noOp),{code:'NOT_APPLICABLE'});
+  assert.equal(f.store.read().revision,5);assert.equal(f.goalWrites(),0);
+});
+test('prospective refs reject arbitrary future, stale, inactive or uncommitted targets before models',async t=>{
+  const f=await hostFixture(t,{repair:true});
+  const split=f.query.indexOf('\n'),prefix=f.query.slice(0,split+1),original=JSON.parse(f.query.slice(split+1));
+  const decision=original.nodes.find(n=>n.kind==='decision'),goal=original.nodes.find(n=>n.kind==='goal');
+  for(const mutate of [p=>{for(const refs of [p.repairContext.allowedDependencies,...p.repairContext.targets.map(t=>t.requestedDependencies)])
+    for(const d of refs)if(d.id===decision.id)d.revision=3;},
+    p=>{for(const refs of [p.repairContext.allowedDependencies,...p.repairContext.targets.map(t=>t.requestedDependencies)])
+      for(const d of refs)if(d.id===goal.id)d.revision=1;},
+    p=>p.nodes.find(n=>n.id===decision.id).state='withdrawn',
+    p=>p.nodes.splice(p.nodes.findIndex(n=>n.id===decision.id),1),
+    p=>p.nodes.push({...p.nodes.find(n=>n.id===decision.id),revision:2}),
+    p=>{for(const refs of [p.repairContext.allowedDependencies,...p.repairContext.targets.map(t=>t.requestedDependencies)])
+      for(const d of refs)if(d.id===decision.id)d.id='d'.repeat(64);},
+  ]) {
+    const payload=structuredClone(original);mutate(payload);const h=repairAgent();
+    await assert.rejects(h.agent.invoke(invocation(prefix+JSON.stringify(payload))),{code:'INVALID_ARGUMENT'});
+    assert.equal(h.models.world.requests.length,0);
+  }
+});
+test('a future dependency requires its producer change first, including in the reviewed candidate',async t=>{
+  const f=await hostFixture(t,{repair:true});
+  for(const mutation of ['missing-producer','reversed-plan','reversed-review']) {
+    const h=repairAgent({mutatePlan:(p,input)=>{
+      if(mutation==='missing-producer') {
+        const producer=input.nodes.find(n=>n.kind==='decision');
+        p.revised_steps=p.revised_steps.filter(s=>s.node.id!==producer.id);
+        p.dependency_updates=p.dependency_updates.filter(s=>s.node.id!==producer.id);
+        p.preserved_steps=[{node:ref(producer.id,producer.revision),reason:'未修订'}];
+      } else if(mutation==='reversed-plan')p.revised_steps.reverse();
+      return p;
+    },mutateReview:r=>{if(mutation==='reversed-review')r.candidate.changes.reverse();return r;}});
+    await assert.rejects(h.agent.invoke(invocation(f.query)),{code:'EXTERNAL_FAILURE'});
+    assert.equal(h.models.review.requests.length,mutation==='reversed-review'?1:0);
+  }
+});
 for(const options of [{uncertain:true},{newGoal:true}]) {
   test(`actual Desktop RECHECK handoff reaches owned text-only analysis: ${JSON.stringify(options)}`,async t=>{
     const f=await hostFixture(t,options);
