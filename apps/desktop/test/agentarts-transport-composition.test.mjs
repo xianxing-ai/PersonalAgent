@@ -109,3 +109,50 @@ test('HTTPS fallback remains explicit and cannot bypass the final host send guar
   } finally {app.close();}
   assert.throws(() => desktopOptions({PA_AGENTARTS_TRANSPORT:'https',PA_AGENTARTS_HTTPS_FALLBACK:'1'}),/wss/);
 });
+
+test('an actual accepted WSS disconnect retains its unknown notice and original Runtime reconciliation hold', async () => {
+  const desktop = desktopOptions(wssEnvironment), states = [];
+  let invokes = 0, fetches = 0;
+  const app = createAgentArtsRuntimeApplication({...desktop.options,path:':memory:',authorizationProvider:outer,
+    onTransportState:state => {states.push(state.state);desktop.options.onTransportState(state);},
+    websocketFactory:() => new SyntheticWebSocket((frame,socket) => {
+      if (frame.type === 'invoke') {invokes++;socket.accepted(frame);socket.disconnect();}
+    }),fetchImpl:async () => {fetches++;throw Error('Unexpected unknown replay');}});
+  try {
+    const task = await runTask(app);
+    assert.equal(task.state,'waiting_reconciliation');
+    assert.deepEqual(states,['connecting','wss_ready','result_unknown','closed']);
+    assert.match(desktop.notice(),/停止自动重发/);
+    assert.equal(app.runtime.loadCheckpoint(task.taskId,'competition-cloud-unknown').accepted,true);
+    assert.throws(() => app.resumeTask(task.taskId),{code:'RESULT_UNKNOWN'});
+    assert.equal(invokes,1);
+    assert.equal(fetches,0);
+    desktop.options.onTransportState({state:'connecting'});
+    assert.equal(desktop.notice(),'');
+    desktop.options.onTransportState({state:'result_unknown'});
+    desktop.options.onTransportState({state:'wss_ready'});
+    assert.equal(desktop.notice(),'');
+  } finally {app.close();}
+});
+for (const [statusCode,diagnostic,notice] of [[401,'auth_required',/认证失败/],[404,'unsupported',/尚未提供/]]) {
+  test(`an actual ${diagnostic} handshake retains its diagnostic through socket close`, async () => {
+    const desktop = desktopOptions(wssEnvironment), states = [];
+    let fetches = 0, invokes = 0;
+    const app = createAgentArtsRuntimeApplication({...desktop.options,path:':memory:',authorizationProvider:outer,
+      onTransportState:state => {states.push(state.state);desktop.options.onTransportState(state);},
+      websocketFactory:() => {
+        const socket = new SyntheticWebSocket(() => {invokes++;},{autoReady:false});
+        queueMicrotask(() => socket.emit('unexpected-response',undefined,{statusCode,resume(){}}));
+        return socket;
+      },fetchImpl:async () => {fetches++;throw Error('Unexpected handshake fallback');}});
+    try {
+      assert.equal((await runTask(app)).state,'failed');
+      assert.deepEqual(states,['connecting',diagnostic,'closed']);
+      assert.match(desktop.notice(),notice);
+      assert.equal(invokes,0);
+      assert.equal(fetches,0);
+      desktop.options.onTransportState({state:'connecting'});
+      assert.equal(desktop.notice(),'');
+    } finally {app.close();}
+  });
+}

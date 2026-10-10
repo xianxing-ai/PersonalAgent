@@ -1576,6 +1576,7 @@ async function initializeRuntime() {
         ...agentArtsTransportConfig,
         invokeMode: agentArtsInvokeMode,
         ...(agentArtsTransportConfig.transport === 'wss' ? {onTransportState: state => {
+          if (state.state === 'closed') return;
           cloudTransportNotice = agentArtsTransportNotice(state);
           publish();
         }} : {}),
