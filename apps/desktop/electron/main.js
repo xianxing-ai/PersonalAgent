@@ -114,6 +114,7 @@ let tray;
 let poll;
 let pinned = false;
 let dragging = false;
+let orbDragRevision = 0;
 let dragOffset;
 let panelDragOrigin;
 let away = 0;
@@ -582,6 +583,17 @@ function windowFor(mode, bounds, options = {}) {
     });
     win.webContents.on('render-process-gone', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
     win.webContents.on('destroyed', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
+  }
+  if (mode === 'orb') {
+    const invalidateDrag = () => {
+      if (win !== orb) return;
+      orbDragRevision++;
+      if (dragging === true) dragging = false;
+    };
+    win.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => {if (mainFrame) invalidateDrag();});
+    win.webContents.on('render-process-gone', invalidateDrag);
+    win.webContents.on('destroyed', invalidateDrag);
+    win.on('closed', invalidateDrag);
   }
   let presented = false;
   const present = () => {
@@ -2024,13 +2036,16 @@ async function action(event, name, payload) {
   if (name === 'panel.hide' && sender === panel) { await hidePanel(); return; }
   if (name === 'orb.open' && sender === orb) { pinned = true; openPanel(true); publish(); return; }
   if (name === 'orb.dragStart' && sender === orb) {
+    const revision = ++orbDragRevision, dragWindow = orb;
     await hidePanel();
+    if (revision !== orbDragRevision || orb !== dragWindow || dragWindow.isDestroyed()) return;
     dragging = true; const point = screen.getCursorScreenPoint(); const bounds = orb.getBounds();
     dragOffset = {x: point.x - bounds.x, y: point.y - bounds.y}; return;
   }
-  if (name === 'orb.dragEnd' && sender === orb) { dragging = false; desktopHost.snap(orb); away = Date.now() + 400; return; }
+  if (name === 'orb.dragEnd' && sender === orb) { orbDragRevision++; if (dragging === 'panel') return; dragging = false; desktopHost.snap(orb); away = Date.now() + 400; return; }
   if (name === 'panel.dragStart' && sender === panel) {
     if (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)) throw Error('拖动坐标无效');
+    orbDragRevision++;
     dragging = 'panel';
     panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getBounds()};
     return;
@@ -2040,7 +2055,7 @@ async function action(event, name, payload) {
     movePanelGroup(payload);
     return;
   }
-  if (name === 'panel.dragEnd' && sender === panel) { dragging = false; panelDragOrigin = undefined; away = Date.now() + 400; return; }
+  if (name === 'panel.dragEnd' && sender === panel) { orbDragRevision++; dragging = false; panelDragOrigin = undefined; away = Date.now() + 400; return; }
   if (name === 'app.quit') { app.quit(); return; }
   if (name === 'agentarts.configure') {
     if (sender!==admin || !competitionMode || runtimeApplication?.activeTaskCount || liveVoice?.hasActive()
