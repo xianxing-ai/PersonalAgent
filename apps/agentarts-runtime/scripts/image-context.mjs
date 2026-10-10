@@ -1,9 +1,11 @@
-import {readFile,writeFile,mkdir,cp,readdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,mkdtemp,cp,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root = fileURLToPath(new URL('../../../',import.meta.url));
 // Each invocation creates a fresh context, so old exports or secrets cannot survive.
-const output = path.join(root,'.cache','agentarts-image',`context-${Date.now()}`);
+const parent = path.join(root,'.cache','agentarts-image');
+await mkdir(parent,{recursive:true});
+const output = await mkdtemp(path.join(parent,'context-'));
 const workspacePaths = ['packages/contracts','packages/coordination','packages/models','packages/agentarts','apps/agentarts-runtime'];
 const fullLock = JSON.parse(await readFile(path.join(root,'package-lock.json'),'utf8'));
 const manifests = new Map();
