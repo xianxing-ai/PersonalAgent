@@ -62,15 +62,16 @@ if (!existsSync(path.join(originalData,'Local State'))) {
         goal:input.goal,deadline:input.deadline,signal:new AbortController().signal});
       report.status='succeeded';
     } catch(error) {
-      report.status='failed';
       report.errorCode=['INVALID_ARGUMENT','UNSUPPORTED_CAPABILITY','UNAUTHORIZED',
         'EXTERNAL_FAILURE','CANCELLED','TIMEOUT'].includes(error?.code) ? error.code : 'INTERNAL_FAILURE';
+      report.status=report.networkCalls>0 && ['CANCELLED','TIMEOUT'].includes(report.errorCode)
+        ? 'unknown' : 'failed';
     }
     report.finishedAt=new Date().toISOString();
     writeFileSync(path.join(cache,`${callId}.json`),JSON.stringify(report,null,2));
     console.log(JSON.stringify(report));
-    // A known failed request is finished, never automatically retried.
-    app.exit(0);
+    // A dispatched call without a result retains the shared reconciliation lock.
+    app.exit(report.status==='unknown'?3:0);
   }).catch(()=>{
     console.log(JSON.stringify({status:'host_failure',networkCalls:'unknown',credentialsRecorded:false}));
     app.exit(1);
