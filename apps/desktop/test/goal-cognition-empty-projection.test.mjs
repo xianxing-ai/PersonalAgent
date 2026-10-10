@@ -57,7 +57,7 @@ async function settled(app,taskId) {
 }
 // The existing Desktop Host produces the query. Only Laya inference, model
 // responses and HTTP transport are Fake; Runtime, Client and projection are real.
-async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goalSummary='原目标',changeDuringCredentials=false,unknown=false,repair=false,ancillary}={}) {
+async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goalSummary='原目标',changeDuringCredentials=false,unknown=false,repair=false,ancillary,targetCount}={}) {
   const root=new URL('../../../.cache/goal-empty-projection/',import.meta.url);await mkdir(root,{recursive:true});
   const directory=await mkdtemp(new URL('case-',root));
   const owned=repair?repairAgent():agentWith(),sent=[],rejections=[],announced=[]; let credentials=0,submits=0;
@@ -80,7 +80,10 @@ async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goa
   const store=app.runtime.provisionCoordinationStore(namespace);
   store.append(0,node('private-source','fact',[],ancillary==='public'?'Public ancillary source':'PRIVATE_SOURCE_SENTINEL',ancillary??'private'));
   store.append(1,node('goal','goal',[ref('private-source')],goalSummary,restricted?'restricted':'private'));
-  if(!newGoal){store.append(2,node('decision','decision',ancillary?[ref('goal'),ref('private-source')]:[ref('goal')],'关联决策',restricted?'restricted':'public'));
+  if(targetCount) {
+    for(let i=0;i<targetCount;i++)store.append(store.read().revision,node('decision-'+i,'decision',[ref('goal')],'Decision '+i));
+    store.append(store.read().revision,node('goal','goal',[ref('private-source')],'Modified Goal','private'));
+  } else if(!newGoal){store.append(2,node('decision','decision',ancillary?[ref('goal'),ref('private-source')]:[ref('goal')],'关联决策',restricted?'restricted':'public'));
     store.append(3,node('plan','plan',[ref('decision')],'关联计划',restricted?'restricted':'public'));
     store.append(4,node('goal','goal',[ref('private-source')],goalSummary+'修改',restricted?'restricted':'private'));}
   const source=app.runtime.submitTask({goal:'Synthetic prior Goal edit',conversationId:'fixture',idempotencyKey:'synthetic-goal-edit'});
@@ -89,7 +92,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goa
   const goalCore=createGoalHostCore(namespace,{getGoal:()=>{},listGoals:()=>[],createGoalTools:()=>[],
     GOAL_CREATE_TOOL:'goal.create',GOAL_REVISE_TOOL:'goal.revise',GOAL_TOOL_VERSION:'1.0.0'});goalCore.bind(app);
   const goalHost={listTasks:()=>[{taskId:source.taskId,state:'succeeded',result:{kind:'applied',
-    graphRevision:newGoal?2:5,...(newGoal?{}:{previousGoal:ref('goal')}),currentGoal:ref('goal',newGoal?1:2)}}],
+    graphRevision:store.read().revision,...(newGoal?{}:{previousGoal:ref('goal')}),currentGoal:ref('goal',newGoal?1:2)}}],
     revise:input=>{goalWrites++;return goalCore.revise(input);}};
   const facts=app.createCompetitionFactHost({memoryPath:path.join(directory,'memory.sqlite'),
     memoryNamespace:'synthetic-public-memory',graphNamespace:namespace,consumerKey:'fixture'});
@@ -105,7 +108,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goa
   t.after(async()=>{host.close();facts.close();app.close();await rm(directory,{recursive:true,force:true});});
   host.configure({enabled:true,cloudAllowed:true});await host.tick();
   const task=announced[0]?await settled(app,announced[0].taskId):undefined;
-  return {...owned,app,store,host,client,task,announced,sent,rejections,source,credentials:()=>credentials,submits:()=>submits,goalWrites:()=>goalWrites};
+  return {...owned,app,store,host,client,goalHost,task,announced,sent,rejections,source,credentials:()=>credentials,submits:()=>submits,goalWrites:()=>goalWrites};
 }
 
 
@@ -214,4 +217,30 @@ test('accepted repair unknown receipt survives later ancillary privacy changes',
  assert.equal(card.state,'waiting_reconciliation');assert.equal(card.cloudExport,undefined);
  const feedback=await f.host.applyDecision(card.reviewTaskId);assert.equal(feedback.taskId,f.task.taskId);assert.equal(feedback.state,'waiting_reconciliation');
  assert.deepEqual([f.credentials(),f.submits(),f.sent.length],[1,1,0]);
+});
+
+test('actual owned repair preserves the original sixteen-target limit and public preview',async t=>{
+ const f=await hostFixture(t,{repair:true,targetCount:16});assert.equal(f.task.state,'succeeded');
+ assert.deepEqual(['fast','world','plan','review'].map(r=>f.models[r].requests.length),[0,1,1,1]);
+ const p=JSON.parse(f.sent[0].slice(f.sent[0].indexOf('\n')+1));assert.equal(p.repairContext.targets.length,16);
+ const prepared=f.host.readPreparedRepair(f.task.taskId);assert.equal(prepared.kind,'prepared');
+ assert.equal(prepared.preview.inputs.length,16);assert.equal(prepared.preview.after.snapshot.revision,35);
+ assert.equal(f.store.read().revision,19);assert.equal(f.goalWrites(),0);
+});
+test('seventeen-target selected repair stays local and a newly narrowed revision scope recovers',async t=>{
+ const f=await hostFixture(t,{repair:true,targetCount:17});const card=f.host.snapshot().reviews.find(r=>r.action==='REVISE');
+ assert.equal(card.cloudExport.reason,'unsupported_repair_scope');assert.match(card.choice,/核对来源与本次修订范围/);
+ assert.deepEqual([f.credentials(),f.sent.length,f.submits(),f.announced.length],[0,0,0,0]);
+ assert.deepEqual(['fast','world','plan','review'].map(r=>f.models[r].requests.length),[0,0,0,0]);
+ assert.equal((await f.host.applyDecision(card.reviewTaskId)).state,'unavailable');
+ f.host.configure({enabled:true,cloudAllowed:false});
+ for(let i=0;i<17;i++)f.store.append(f.store.read().revision,{...node('decision-'+i,'decision',[ref('goal',2)],'Decision '+i),state:i===16?'withdrawn':'active'});
+ f.store.append(f.store.read().revision,node('goal','goal',[ref('private-source')],'Next narrowed revision','private'));
+ const source=f.app.runtime.submitTask({goal:'Synthetic next narrowed revision',conversationId:'fixture',idempotencyKey:'narrowed-scope'});
+ await f.app.runtime.runTask(source.taskId,async()=>({resultSummary:'Synthetic edit receipt'}),{deadline:new Date(Date.now()+5000).toISOString(),sideEffect:'read'});
+ f.goalHost.listTasks=()=>[{taskId:source.taskId,state:'succeeded',result:{kind:'applied',graphRevision:f.store.read().revision,previousGoal:ref('goal',2),currentGoal:ref('goal',3)}}];
+ f.host.configure({enabled:true,cloudAllowed:true});await f.host.tick();assert.ok(f.announced.length);
+ const next=await settled(f.app,f.announced.at(-1).taskId);assert.equal(next.state,'succeeded');
+ const p=JSON.parse(f.sent.at(-1).slice(f.sent.at(-1).indexOf('\n')+1));assert.equal(p.repairContext.targets.length,16);
+ assert.equal(f.store.read().revision,38);assert.equal(f.goalWrites(),0);
 });

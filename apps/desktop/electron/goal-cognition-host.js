@@ -7,6 +7,7 @@ import {isDeepStrictEqual} from 'node:util';
 const VERSION='desktop-goal-analysis-v1';
 // Match the existing AgentArts coordination goal contract; never trim a reviewed scope.
 const GOAL_EXPORT_MAX_CHARS=16_000;
+const UNSUPPORTED_REPAIR_SCOPE='本次修订范围暂不能交给云端分析；请核对来源与本次修订范围，或在本地继续。';
 const MISSING_REPAIR_SOURCES='本次修复所需的部分来源未获准发送或尚未提交，方案保留在本地；请使用可发送且已提交的来源重新分析。';
 const SOURCE_SUMMARY_MAX_CHARS=8192;
 const SOURCE_SUMMARY_LIMIT='可发送的来源摘要超出云端上限；请缩短允许发送的来源摘要后重新分析。';
@@ -332,11 +333,13 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
         && !targets.some(target=>target.node.id===ref.id && target.node.revision+1===ref.revision)))
         return {state:'blocked',reason:'missing_repair_sources'};
     }
+    if(payload?.action==='REVISE' && !payload.repairContext) return {state:'blocked',reason:'unsupported_repair_scope'};
   }
   function exportExplanation(reason) {
     return reason==='no_exportable_sources'?NO_EXPORTABLE_SOURCES
       :reason==='source_summary_limit'?SOURCE_SUMMARY_LIMIT
-      :reason==='missing_repair_sources'?MISSING_REPAIR_SOURCES:'完整目标投影超出云端上限，方案保留在本地，尚未提交';
+      :reason==='missing_repair_sources'?MISSING_REPAIR_SOURCES
+      :reason==='unsupported_repair_scope'?UNSUPPORTED_REPAIR_SCOPE:'完整目标投影超出云端上限，方案保留在本地，尚未提交';
   }
   function cloudExport(value) {
     if(value.handoff?.state==='submitted') {
@@ -511,7 +514,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
         selected: r?.selectedOption?.id,
         sourceOutdated: Number.isSafeInteger(r?.graphRevision) && r.graphRevision>=0 && r.graphRevision!==graphRevision,
         trigger,
-        choice:choice+(['no_exportable_sources','source_summary_limit','missing_repair_sources'].includes(feedback.cloudExport?.reason)?' · '+exportExplanation(feedback.cloudExport.reason):''),
+        choice:choice+(['no_exportable_sources','source_summary_limit','missing_repair_sources','unsupported_repair_scope'].includes(feedback.cloudExport?.reason)?' · '+exportExplanation(feedback.cloudExport.reason):''),
         executionVerified:false,graphUpdateVerified:false,...feedback,
       };
       })};
