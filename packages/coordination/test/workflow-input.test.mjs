@@ -140,3 +140,38 @@ test('constructor rejects invalid workflow names before I/O while __proto__ rema
   assert.equal(authCalls, 1);
   assert.equal(fetchCalls, 1);
 });
+
+
+test('WSS rejects HTTPS-only workflow names before any credentials or transport, including fallback', () => {
+  let credentials = 0, sockets = 0, fetches = 0;
+  const auth = {read: async () => { credentials++; return 'Bearer synthetic'; }};
+  const fetchImpl = async () => { fetches++; return response('unexpected'); };
+  for (const allowHttpsFallback of [false, true]) {
+    for (const workflowGoalInput of ['_goal', '__proto__', 'g'.repeat(65), 'g'.repeat(128)]) {
+      assert.throws(() => new AgentArtsCloudAgentPort({gatewayUrl, runtimeName, transport: 'wss',
+        websocketUrl: `wss://agentarts.example.test/runtimes/${runtimeName}/ws`,
+        workflowGoalInput, allowHttpsFallback}, auth, fetchImpl, undefined, undefined, undefined,
+        {factory: () => { sockets++; throw Error('unexpected socket'); }}),
+      error => error instanceof ProtocolError && error.code === 'UNSUPPORTED_CAPABILITY'
+        && error.message.includes('workflow goal input name'));
+    }
+  }
+  assert.deepEqual({credentials, sockets, fetches}, {credentials: 0, sockets: 0, fetches: 0});
+});
+
+test('WSS accepts current wire name boundaries and HTTPS preserves its broader names', async () => {
+  for (const workflowGoalInput of ['goal', 'g'.repeat(64)]) {
+    const cloud = new AgentArtsCloudAgentPort({gatewayUrl, runtimeName, transport: 'wss',
+      websocketUrl: `wss://agentarts.example.test/runtimes/${runtimeName}/ws`, workflowGoalInput},
+    authorization({count: 0}), async () => { throw Error('unexpected HTTP'); }, undefined, undefined, undefined,
+    {factory: () => { throw Error('unexpected socket'); }});
+    cloud.close();
+  }
+  for (const workflowGoalInput of ['_goal', 'g'.repeat(65), 'g'.repeat(128)]) {
+    let body;
+    const cloud = new AgentArtsCloudAgentPort({gatewayUrl, runtimeName, workflowGoalInput},
+      authorization({count: 0}), async (_url, init) => { body = JSON.parse(init.body); return response('accepted'); });
+    await cloud.invoke(request());
+    assert.deepEqual(body, {inputs: {[workflowGoalInput]: request().goal}});
+  }
+});

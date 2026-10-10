@@ -1,4 +1,5 @@
 import {ProtocolError} from '@personal-agent/contracts';
+import {AGENTARTS_TRANSPORT_VERSION, digestAgentArtsPayload, parseAgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
@@ -363,6 +364,17 @@ function validateRuntimeConfig(config: AgentArtsRuntimeConfig): {
   if (workflowGoalInput !== undefined && (typeof workflowGoalInput !== 'string'
     || !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(workflowGoalInput))) {
     invalid('AgentArts workflow goal input is invalid');
+  }
+  if (transport === 'wss' && workflowGoalInput !== undefined) {
+    const payload = {inputs: {[workflowGoalInput]: 'configuration validation'}};
+    try {
+      parseAgentArtsTransportFrame({protocolVersion: AGENTARTS_TRANSPORT_VERSION, type: 'invoke',
+        sessionId: 'configuration', requestId: 'configuration', idempotencyKey: 'configuration',
+        payloadDigest: digestAgentArtsPayload(payload), deadline: '2099-01-01T00:00:00Z', payload});
+    } catch {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY',
+        'AgentArts WSS transport does not support this workflow goal input name');
+    }
   }
   return {gatewayOrigin, runtimeName, invokeMode, responseMode, initialRequestMode, transport, allowHttpsFallback,
     ...(websocketUrl === undefined ? {} : {websocketUrl}),
