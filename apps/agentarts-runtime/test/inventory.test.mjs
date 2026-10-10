@@ -52,3 +52,22 @@ test('inventory preserves source bytes and existing metadata/hash contract witho
   for(const snippet of resource.snippetHashes){assert.equal(snippet.sha256,hash(marker));assert.equal(snippet.length,marker.length);}
   for(const content of [saved,result.stdout])for(const privateValue of [marker,credential,url])assert.equal(content.includes(privateValue),false);
 });
+for(const [name,level] of [['object',{privatePrompt:marker,credential}],['array',[marker,credential]],['private-string',marker]])
+  test(`inventory omits nonnumeric optional resource level: ${name}`,async t=>{
+    const directory=await fixture(t),input=path.join(directory,'input.jsonl'),output=path.join(directory,'inventory.json');
+    const source=JSON.stringify({...valid(),resource_level:level})+'\n';await writeFile(input,source);
+    const result=await call(input,output);assert.equal(result.code,0);assert.equal(result.stderr,'');
+    const saved=await readFile(output,'utf8'),inventory=JSON.parse(saved);
+    assert.equal(Object.hasOwn(inventory.resources[0],'level'),false);assert.equal(inventory.topLevelCount,0);
+    assert.equal(await readFile(input,'utf8'),source);
+    for(const content of [saved,result.stdout])for(const privateValue of [marker,credential,url])assert.equal(content.includes(privateValue),false);
+  });
+test('inventory retains actual numeric levels 1 and 2 and the existing top-level summary',async t=>{
+  const directory=await fixture(t),input=path.join(directory,'input.jsonl'),output=path.join(directory,'inventory.json');
+  const records=[valid(),{...valid(),resource_id:'synthetic-code',resource_type:'code',resource_level:2,level2_resources:[]}];
+  const source=records.map(r=>JSON.stringify(r)).join('\n')+'\n';await writeFile(input,source);
+  const result=await call(input,output);assert.equal(result.code,0);assert.equal(result.stderr,'');
+  const inventory=JSON.parse(await readFile(output,'utf8')),summary=JSON.parse(result.stdout);
+  assert.deepEqual(inventory.resources.map(r=>r.level),[1,2]);assert.equal(inventory.recordCount,2);assert.equal(inventory.topLevelCount,1);
+  assert.deepEqual(summary.workflows.map(r=>r.id),['synthetic-workflow']);assert.equal(await readFile(input,'utf8'),source);
+});

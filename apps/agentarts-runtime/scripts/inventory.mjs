@@ -24,7 +24,7 @@ const resources=records.map(r=>{
   }
   walk(r.dsl);
   const dependencies=Array.isArray(r.level2_resources)?r.level2_resources.filter(safe):[];
-  return {id:r.resource_id,type:r.resource_type,name:safe(r.resource_name),level:r.resource_level,schema:safe(r.schema_version),
+  return {id:r.resource_id,type:r.resource_type,name:safe(r.resource_name),level:Number.isSafeInteger(r.resource_level)?r.resource_level:undefined,schema:safe(r.schema_version),
     dependencies,missingDependencies:dependencies.filter(id=>!ids.has(id)),
     nodes:nodes.map(n=>({id:safe(n.id),name:safe(n.name),type:safe(n.type),configKeys:Object.keys(n.configs??{}).filter(k=>!/key|token|secret|credential|authorization|password/i.test(k))})),
     snippetHashes:snippets};
