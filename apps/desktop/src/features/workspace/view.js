@@ -8,6 +8,7 @@ const paths={settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',connectors:'M3
 const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]}"/></svg>`;
 export function mountWorkspace(root,invoke,escape){
   let current={tasks:[]},lastSignature='',cardsSignature='',inspected=null;
+  let updateRevision=0;
   root.innerHTML=`<section class="workspace focused-workspace">
     <header class="workspace-titlebar"><span class="workspace-app-title">PersonalAgent</span><span class="spacer"></span><button class="window-button" data-window="minimize" aria-label="最小化">${icon('minimize')}</button><button class="window-button" data-window="maximize" aria-label="最大化或还原">${icon('maximize')}</button><button class="window-button window-close" data-window="close" aria-label="关闭工作区">${icon('close')}</button></header>
     <main class="workspace-main"><header class="workspace-top"><strong>悬浮球对话</strong><span class="spacer"></span><button class="icon-btn" id="connectors-toggle" aria-label="显示或隐藏连接器" aria-expanded="true">${icon('connectors')}</button><button class="icon-btn" data-open-settings="settings" aria-label="打开设置">${icon('settings')}</button></header>
@@ -41,7 +42,7 @@ export function mountWorkspace(root,invoke,escape){
   root.querySelectorAll('[data-window]').forEach(button=>button.onclick=()=>invoke(`workspace.${button.dataset.window}`).catch(report));
   root.querySelectorAll('[data-open-settings]').forEach(button=>button.onclick=()=>invoke('admin.open',{page:button.dataset.openSettings}).catch(report));
   root.querySelector('#connectors-toggle').onclick=event=>{const hidden=root.querySelector('.connector-board').hidden;root.querySelector('.connector-board').hidden=!hidden;event.currentTarget.setAttribute('aria-expanded',String(hidden));};
-  root.querySelector('#connectors-refresh').onclick=async event=>{event.currentTarget.disabled=true;try{await invoke('capability.list');update(await invoke('snapshot'));}catch(error){report(error);}finally{root.querySelector('#connectors-refresh').disabled=false;}};
+  root.querySelector('#connectors-refresh').onclick=async event=>{event.currentTarget.disabled=true;const operationRevision=updateRevision;let readRevision;try{await invoke('capability.list');readRevision=updateRevision;const data=await invoke('snapshot');if(readRevision===updateRevision)update(data);}catch(error){if((readRevision??operationRevision)===updateRevision)report(error);}finally{root.querySelector('#connectors-refresh').disabled=false;}};
   root.querySelector('#inspector-close').onclick=()=>{inspected=null;root.querySelector('#conversation-inspector').hidden=true;};
   root.querySelector('#connector-cards').onclick=event=>{const card=event.target.closest('[data-connector]');if(!card)return;invoke('admin.open',{page:'connections'}).catch(report);};
   conversation.onclick=async event=>{
@@ -54,6 +55,7 @@ export function mountWorkspace(root,invoke,escape){
     root.querySelector('#inspector-content').innerHTML=`<h3>你的消息</h3><p>${escape(task.userMessage||'历史对话')}</p><h3>回答</h3><p>${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state])}</p>${task.resultMetadata?`<h3>模型与验证</h3><p>${escape(task.resultMetadata.profile)} · ${escape(task.resultMetadata.verification)}</p>`:'' }<h3>执行状态</h3><p>${escape(stateNames[task.state]||task.state)}</p>${(task.steps||[]).map(step=>`<p class="inspector-step">${escape(step.label)} · ${escape(step.state)}</p>`).join('')}`;
   }
   function update(data){
+    updateRevision++;
     const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference]);
     if(preferenceSignature!==nextPreferenceSignature) {
       modelChoice.replaceChildren(new Option('使用默认辅助模型',''),...(data.modelChoices??[]).map(item=>{
