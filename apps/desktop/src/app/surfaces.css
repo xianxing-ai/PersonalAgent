@@ -319,6 +319,10 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 }
 .admin .sis-fields > button {justify-self:start;min-height:36px;padding:8px 14px;border-radius:9px;font-weight:600}
 @media(max-width:640px) {
+  .admin .side {padding-inline:8px}
+  .admin .side-home {padding-inline:0}
+  .admin .side .brand {font-size:13px}
+  .admin .admin-search {padding-inline:6px;gap:4px}
   .admin .main[data-surface="settings"]:not([data-section="memory"]) :is(.settings-content.settings-single,.feature-page) {padding:22px 16px 48px}
   .admin .settings-list .setting-row {align-items:flex-start;flex-direction:column;gap:10px}
   .admin .settings-list .setting-control {max-width:none;justify-content:flex-start}
