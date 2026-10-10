@@ -1,5 +1,6 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
+async function inventoryExport() {
 const [input,output] = process.argv.slice(2);
 if (!input || !output) throw Error('Usage: inventory <export.jsonl> <inventory.json>');
 const bytes=await readFile(input);
@@ -34,3 +35,9 @@ const inventory={sourceSha256:hash(bytes),recordCount:records.length,topLevelCou
 await writeFile(output,JSON.stringify(inventory,null,2)+'\n',{flag:'wx'});
 console.log(JSON.stringify({output,sourceSha256:inventory.sourceSha256,records:inventory.recordCount,topLevel:inventory.topLevelCount,resourceTypes:inventory.resourceTypes,
   workflows:resources.filter(r=>r.level===1).map(r=>({name:r.name,id:r.id,nodes:r.nodes.map(n=>n.type),missingDependencies:r.missingDependencies}))}));
+}
+try { await inventoryExport(); }
+catch {
+  process.stderr.write('Agent inventory failed: check input and output files.\n');
+  process.exitCode = 1;
+}
