@@ -59,7 +59,7 @@ async function settled(app,taskId) {
 }
 // The existing Desktop Host produces the query. Only Laya inference, model
 // responses and HTTP transport are Fake; Runtime, Client and projection are real.
-async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepProducerSummary=false}={}) {
+async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepProducerSummary=false,baselineKind,baselineLength=1500}={}) {
   const root=new URL('../../.cache/owned-goal-analysis/',import.meta.url);await mkdir(root,{recursive:true});
   const directory=await mkdtemp(new URL('case-',root));
   const owned=repair?repairAgent({mutatePlan:(p,input)=>{
@@ -87,8 +87,8 @@ async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepPro
   const store=app.runtime.provisionCoordinationStore(namespace);
   store.append(0,node('private-source','fact',[],'PRIVATE_SOURCE_SENTINEL','private'));
   store.append(1,node('goal','goal',[ref('private-source')],'原目标','private'));
-  if(!newGoal){store.append(2,node('decision','decision',[ref('goal')],'关联决策'));
-    store.append(3,node('plan','plan',[ref('decision')],'关联计划'));
+  if(!newGoal){store.append(2,node('decision','decision',[ref('goal')],baselineKind==='decision'?'D'.repeat(baselineLength):'关联决策'));
+    store.append(3,node('plan','plan',[ref('decision')],baselineKind==='plan'?'P'.repeat(baselineLength):'关联计划'));
     store.append(4,node('goal','goal',[ref('private-source')],'修改后的目标','private'));}
   const source=app.runtime.submitTask({goal:'Synthetic prior Goal edit',conversationId:'fixture',idempotencyKey:'synthetic-goal-edit'});
   await app.runtime.runTask(source.taskId,async()=>({resultSummary:'Synthetic edit receipt'}),
@@ -137,6 +137,43 @@ test('actual short-summary Host REVISE accepts ordered prospective dependencies 
   assert.deepEqual(prepared.preview.inputs.map(n=>n.id),['decision','plan']);
   assert.equal(f.store.read().revision,5);assert.equal(f.goalWrites(),0);
   assert.equal(f.app.runtime.readToolExecutions(f.task.taskId).length,0);
+});
+for(const baselineKind of ['decision','plan'])test(`actual Host preserves long committed ${baselineKind} baseline while proposing bounded replacements`,async t=>{
+  const f=await hostFixture(t,{repair:true,baselineKind});
+  assert.equal(f.task.state,'succeeded',`Owned rejection codes: ${f.rejections.join(',')}`);
+  const payload=JSON.parse(f.query.slice(f.query.indexOf('\n')+1));
+  assert.equal(payload.nodes.find(n=>n.kind===baselineKind).summary.length,1500);
+  const candidate=f.app.runtime.loadCheckpoint(f.task.taskId,'competition-repair-candidate');
+  assert.ok(candidate.candidate.changes.every(c=>c.summary.length<=1024));
+  const prepared=f.host.readPreparedRepair(f.task.taskId);assert.equal(prepared.kind,'prepared');
+  assert.equal(prepared.preview.after.snapshot.revision,7);assert.equal(f.store.read().revision,5);
+});
+test('owned committed baseline boundary is 8192 with exact source equality; new summaries remain bounded',async t=>{
+  const f=await hostFixture(t,{repair:true});
+  const split=f.query.indexOf('\n'),prefix=f.query.slice(0,split+1),original=JSON.parse(f.query.slice(split+1));
+  // Captured actual Host projection, consumed directly: a doubled 8192 baseline
+  // exceeds the independent Desktop 16k whole-query guard, which remains intact.
+  const changed=(length,mismatch=false)=>{
+    const p=structuredClone(original),target=p.repairContext.targets[0];target.summary='D'.repeat(length);
+    p.nodes.find(n=>n.id===target.node.id).summary=mismatch?'different':target.summary;return p;
+  };
+  const h=repairAgent(),result=await h.agent.invoke(invocation(prefix+JSON.stringify(changed(8192))));
+  assert.equal(result.kind,'repair_candidate');assert.ok(result.candidate.changes.every(c=>c.summary.length<=1024));
+  for(const payload of [changed(8193),changed(8192,true)]) {
+    const rejected=repairAgent();await assert.rejects(rejected.agent.invoke(invocation(prefix+JSON.stringify(payload))),{code:'INVALID_ARGUMENT'});
+    assert.equal(rejected.models.world.requests.length,0);
+  }
+  const continuationContext=structuredClone(original.repairContext);
+  for(const target of continuationContext.targets){delete target.summary;target.requestedSummary='X'.repeat(1025);}
+  const continuation=repairAgent();
+  await assert.rejects(continuation.agent.invoke(invocation(JSON.stringify({continuation:{proposalId:'synthetic',
+    state:'confirmed',result:{repairContext:continuationContext}}}))),{code:'INVALID_ARGUMENT'});
+  assert.equal(continuation.models.world.requests.length,0);
+  for(const stage of ['plan','review']) {
+    const rejected=repairAgent({mutatePlan:p=>{if(stage==='plan')p.revised_steps[0].replacement='X'.repeat(1025);return p;},
+      mutateReview:r=>{if(stage==='review')r.candidate.changes[0].summary='X'.repeat(1025);return r;}});
+    await assert.rejects(rejected.agent.invoke(invocation(f.query)),{code:'EXTERNAL_FAILURE'});
+  }
 });
 test('dependency-only producer revisions remain valid; actual local preview rejects a producer with no effective revision',async t=>{
   const f=await hostFixture(t,{repair:true,keepProducerSummary:true});

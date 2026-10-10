@@ -115,7 +115,7 @@ export function parseRepairContext(value: unknown, initial: boolean): RepairCont
     exact(target, ['node', initial ? 'summary' : 'requestedSummary', 'requestedDependencies']);
     const node = ref(target.node);
     if (seen.has(node.id)) invalid(); seen.add(node.id);
-    boundedText(target[initial ? 'summary' : 'requestedSummary'], 1024);
+    boundedText(target[initial ? 'summary' : 'requestedSummary'], initial ? 8192 : 1024);
     if (!Array.isArray(target.requestedDependencies) || target.requestedDependencies.length > 16) invalid();
     const deps = target.requestedDependencies.map(ref);
     if (new Set(deps.map(item => item.id)).size !== deps.length
