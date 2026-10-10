@@ -1447,6 +1447,8 @@ async function initializeRuntime() {
           return choice.response===0 && admin && !admin.isDestroyed();
         }});
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(knowledgeSourceConfig);
+      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding});
+      cloudTransportNotice = '';
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         hostUserNamespace: namespace,
@@ -1571,12 +1573,12 @@ async function initializeRuntime() {
           competitionToolExports: [...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
         }),
         ...cloudBinding,
-        ...createAgentArtsTransportConfig({binding:cloudBinding}),
+        ...agentArtsTransportConfig,
         invokeMode: agentArtsInvokeMode,
-        onTransportState: state => {
+        ...(agentArtsTransportConfig.transport === 'wss' ? {onTransportState: state => {
           cloudTransportNotice = agentArtsTransportNotice(state);
           publish();
-        },
+        }} : {}),
         onDiagnostic: receipt => {
           if (process.env.PA_AGENTARTS_SAFE_DIAGNOSTICS === '1') desktopHost.logAgentArtsFailure(receipt);
           cloudRequestFailureNotice = agentArtsFailureNotice(receipt);
