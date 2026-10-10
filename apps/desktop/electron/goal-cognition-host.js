@@ -333,6 +333,8 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
         && !targets.some(target=>target.node.id===ref.id && target.node.revision+1===ref.revision)))
         return {state:'blocked',reason:'missing_repair_sources'};
     }
+    if(payload?.repairContext?.targets.some(target=>target.requestedDependencies.length>16))
+      return {state:'blocked',reason:'unsupported_repair_scope'};
     if(payload?.action==='REVISE' && !payload.repairContext) return {state:'blocked',reason:'unsupported_repair_scope'};
   }
   function exportExplanation(reason) {
