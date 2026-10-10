@@ -16,7 +16,7 @@ const LIVE_VOICE = new Set(['listening', 'speaking', 'connecting', 'reconnecting
 export function visualOrbState(data) {
   const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
   const base = data?.orbStateOverride ?? orbState(currentTask(tasks));
-  if (base === 'thinking' || base === 'executing' || base === 'error') return base;
+  if (base === 'thinking' || base === 'executing' || base === 'waiting' || base === 'error') return base;
   const live = data?.live;
   if (live?.active && live.status === 'working') return 'executing';
   if (live?.active && LIVE_VOICE.has(live.status)) return 'listening';

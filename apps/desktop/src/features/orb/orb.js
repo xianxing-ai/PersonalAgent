@@ -194,11 +194,11 @@ export class Orb {
   setLevel(v) { this.level = Math.max(0, Math.min(1, v)); }
   /* 大工作区点击与思考、执行共用同一段呼吸。 */
   playBreath(seconds = 3.2) {
+    if (this.calm) { this.breathUntil = null; return; }
     const span = Math.max(0.6, Number(seconds) || 3.2);
     this.breathOrigin = this.time;
     this.breathUntil = this.time + span;
-    if (this.calm) this._draw();
-    else if (!this.running) this.start();
+    if (!this.running) this.start();
   }
   _kind() {
     return orbMotionKind({
@@ -249,7 +249,7 @@ export class Orb {
   }
   setCalm(calm) {
     this.calm = calm;
-    if (calm) { this.mix = 1; this.stop(); this._draw(); }
+    if (calm) { this.breathUntil = null; this.mix = 1; this.stop(); this._draw(); }
     else this.start();
   }
 

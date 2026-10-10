@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {breathSample, orbMotionKind} from '../src/features/orb/orb.js';
+import {Orb, breathSample, orbMotionKind} from '../src/features/orb/orb.js';
 import {pcmLevel} from '../electron/audio-level.js';
 
 test('breath moves close, far, close, then closer, and brightness follows', () => {
@@ -30,4 +30,35 @@ test('pcm loudness stays inside 0..1', () => {
   const view = new DataView(loud.buffer);
   for (let i = 0; i < 200; i++) view.setInt16(i * 2, i % 2 ? 12000 : -12000, true);
   assert.equal(pcmLevel(loud), 1);
+});
+
+test('reduced motion ignores click gestures and does not replay them after motion resumes', () => {
+  const orb = Object.assign(Object.create(Orb.prototype), {
+    state: 'idle', time: 10, running: true, calm: false, mix: 1, breathUntil: null,
+    stop() { this.running = false; }, start() { this.running = true; }, _draw() {},
+  });
+  orb.setCalm(true);
+  orb.playBreath(3.2);
+  assert.equal(orb._kind(), 'earth');
+  assert.equal(orb.running, false);
+  orb.setCalm(false);
+  assert.equal(orb._kind(), 'earth');
+  assert.equal(orb.running, true);
+  orb.playBreath(3.2);
+  assert.equal(orb._kind(), 'breath');
+  orb.time += 3.2;
+  assert.equal(orb._kind(), 'earth');
+});
+
+test('turning on reduced motion cancels a current click gesture before resuming', () => {
+  const orb = Object.assign(Object.create(Orb.prototype), {
+    state: 'listening', time: 10, running: true, calm: false, mix: 1, breathUntil: null,
+    stop() { this.running = false; }, start() { this.running = true; }, _draw() {},
+  });
+  orb.playBreath();
+  assert.equal(orb._kind(), 'breath');
+  orb.setCalm(true);
+  assert.equal(orb._kind(), 'voice');
+  orb.setCalm(false);
+  assert.equal(orb._kind(), 'voice');
 });

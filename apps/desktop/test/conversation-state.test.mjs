@@ -23,3 +23,13 @@ test('live speech follows volume unless the task is thinking, executing, or fail
   assert.equal(visualOrbState({tasks: [], live: {active: true, status: 'working'}}), 'executing');
   assert.equal(visualOrbState({tasks: []}), 'idle');
 });
+
+test('Live speech and business work preserve task approval, reconciliation, and cancellation waits', () => {
+  for (const state of ['waiting_approval', 'waiting_external', 'waiting_reconciliation', 'cancelling']) {
+    for (const status of ['speaking', 'listening', 'connecting', 'reconnecting', 'working']) {
+      const task = {taskId: 'waiting', state};
+      assert.equal(visualOrbState({tasks: [task], live: {active: true, status}}), 'waiting', `${state}/${status}`);
+      assert.equal(task.state, state);
+    }
+  }
+});
