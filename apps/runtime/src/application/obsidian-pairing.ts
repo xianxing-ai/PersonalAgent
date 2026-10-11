@@ -1,6 +1,9 @@
 import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
+import {KnowledgeError} from '@personal-agent/knowledge';
+import {createWikiPort} from '@personal-agent/knowledge/wiki';
+import type {WikiSource, WikiCitationReference} from '@personal-agent/knowledge/wiki';
 import {createKnowledgeSearchTool} from '@personal-agent/knowledge/tool';
 import {isPairingPath, parseObsidianPairingDescriptor} from '@personal-agent/knowledge/pairing';
 import type {ObsidianPairingDescriptor, ObsidianPairingPeer} from '@personal-agent/knowledge/pairing';
@@ -74,8 +77,77 @@ export function createObsidianPairingHost(options: ObsidianPairingOptions) {
         }}};
     },
   };
+  const wikiSource = {
+    snapshot() {
+      try {
+        const session = check();
+        if (!session.peer.readCitation || !session.lease.read.readPage) return empty();
+        return {...structuredClone(session.original), dataLevel: 'private' as const,
+          writeAvailable: false, cloudExportAllowed: false, publicQueries: [], allowedNotePaths: []};
+      } catch {return empty();}
+    },
+    clearIndex: revoke,
+    acquireWiki(expected: {sourceId: string; configRevision: number}, context: {deadline: string; signal: AbortSignal}) {
+      if (!Number.isFinite(Date.parse(context?.deadline))) throw new KnowledgeError('INVALID_ARGUMENT');
+      const session = check(), binding = wikiSource.snapshot();
+      if (!binding.available || expected.sourceId !== binding.sourceId || expected.configRevision !== binding.configRevision) {
+        throw new KnowledgeError('SCOPE_DENIED');
+      }
+      const lease = source.acquire(session.binding, context.signal);
+      const validUntil = new Date(Math.min(Date.parse(context.deadline), session.expiresAt)).toISOString();
+      const scope = (request: {deadline: string; signal: AbortSignal}) => ({
+        deadline: new Date(Math.min(Date.parse(request.deadline), Date.now() + 30_000)).toISOString(),
+        signal: AbortSignal.any([request.signal, lease.signal]),
+      });
+      const assertCurrent = () => {lease.assertCurrent(); if (lease.signal.aborted) throw new KnowledgeError('SCOPE_DENIED');};
+      try {
+        const base = createWikiPort({...binding, vaultId: binding.sourceId, validUntil,
+          isCurrent: () => {assertCurrent(); return true;}, reader: {
+            async scanPages() {throw new KnowledgeError('SOURCE_UNAVAILABLE');},
+            async search(request) {
+              const result = await lease.read.search({...request, ...scope(request)});
+              return {...result, hits: result.hits.map(hit => ({...hit, source: {...hit.source, vaultId: binding.sourceId}}))};
+            },
+            async readPage(request) {
+              assertCurrent();
+              if (!isPairingPath(request.path) || !/\.md$/i.test(request.path)
+                || session.descriptor.folder !== '/' && !request.path.startsWith(session.descriptor.folder + '/')) {
+                throw new KnowledgeError('SCOPE_DENIED');
+              }
+              const read = scope(request);
+              const page = await bounded(signal => session.lease.read.readPage!({...request, ...read, signal}), read.deadline, read.signal);
+              assertCurrent(); return page;
+            },
+          }});
+        const verify = async (request: {source: WikiSource | WikiCitationReference; deadline: string; signal: AbortSignal},
+          read: () => Promise<string>) => {
+          const citation = await read(); assertCurrent();
+          const active = scope(request), original = request.source;
+          let result: string;
+          try {
+            result = await bounded(signal => session.peer.readCitation!({source: {
+              vaultId: session.descriptor.vaultId, path: original.path, line: original.line, revision: original.revision},
+              ...active, signal}), active.deadline, active.signal);
+          } catch (error) {
+            // Only a trusted local page change can withdraw a fact; plugin claims are unavailable evidence.
+            if (error instanceof KnowledgeError && error.code === 'SOURCE_CHANGED') throw new KnowledgeError('SOURCE_UNAVAILABLE');
+            throw error;
+          }
+          assertCurrent();
+          if (typeof result !== 'string' || result.length > 4000 || result !== citation) throw new KnowledgeError('SOURCE_UNAVAILABLE');
+          if (await read() !== citation) throw new KnowledgeError('SOURCE_CHANGED');
+          assertCurrent(); return result;
+        };
+        const wiki = {...base,
+          readCitation: (request: Parameters<typeof base.readCitation>[0]) => verify(request, () => base.readCitation(request)),
+          readReference: (request: Parameters<typeof base.readReference>[0]) => verify(request, () => base.readReference(request)),
+        };
+        return {...lease, binding, wiki};
+      } catch (error) {lease.release(); throw error;}
+    },
+  };
   return {
-    source, revoke,
+    source, wikiSource, revoke,
     async pair(peer: ObsidianPairingPeer, context: {deadline: string; signal: AbortSignal}) {
       if (closed || pairing) throw new ProtocolError('SCOPE_DENIED', 'Obsidian pairing busy or closed');
       const descriptor = parseObsidianPairingDescriptor(peer.describe()), original = structuredClone(options.source.snapshot());

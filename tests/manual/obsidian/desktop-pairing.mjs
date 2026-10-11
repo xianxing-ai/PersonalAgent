@@ -33,6 +33,7 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     await electron.evaluate(({dialog}, vault) => {
       globalThis.__pairingCloudAttempts = 0;
       globalThis.__pairingConfirmationDetails = [];
+      globalThis.__pairingMemoryDetails = []; globalThis.__pairingMemoryDecision = false;
       globalThis.fetch = async () => {globalThis.__pairingCloudAttempts++; throw Error('Synthetic acceptance forbids cloud calls');};
       dialog.showOpenDialog = async () => ({canceled: false, filePaths: [vault]});
       // Explicit Fake decision; the dedicated BrowserWindow and form below are real.
@@ -40,6 +41,12 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
         if (options.title === '确认 Obsidian 配对') globalThis.__pairingConfirmationDetails.push({
           defaultId: options.defaultId, cancelId: options.cancelId, bounded: !!options.signal,
           mentionsPrivate: options.detail.includes('私人'), mentionsReadonly: options.detail.includes('只读')});
+        if(options.title==='确认私人记忆') {
+          globalThis.__pairingMemoryDetails.push({defaultId:options.defaultId,cancelId:options.cancelId,
+            bounded:!!options.signal,hasVersion:options.detail.includes('来源版本：'),
+            hasExcerpt:options.detail.includes('摘录：Synthetic GOO122 needle')});
+          return {response:globalThis.__pairingMemoryDecision ? 0 : 1};
+        }
         return {response: 0};
       };
     }, vault);
@@ -81,12 +88,42 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     assert.equal(hits.hits.length, 1); assert.equal(hits.hits[0].source.path, 'Allowed/note.md');
     assert.equal(hits.hits[0].source.vaultId, paired.knowledge.sourceId);
     const tasks = await invoke('snapshot');
+    assert.equal(tasks.privateMemory.vaultSelected,true);
+    assert.equal(await admin.locator('#memory-query').isDisabled(),false);
+    // Actual admin form and native-dialog composition; only the synthetic content decision is Fake.
+    const searchMemory = async query => {
+      await admin.locator('#memory-query').fill(query);
+      await admin.locator('#memory-search-form button').click();
+      await wait(async()=>await admin.locator('[data-memory-summary="0"]').count()
+        && (await admin.locator('[data-memory-save="0"]').locator('..').textContent()).includes(query==='needle'?'Allowed/note.md':'Allowed/keep.md'));
+    };
+    const saveMemory = async (summary, expected) => {
+      await admin.locator('[data-memory-summary="0"]').fill(summary);
+      await admin.locator('[data-memory-save="0"]').click();
+      await wait(async()=>{const text=await admin.locator('#memory-search-form').locator('..').textContent();return text.includes(expected);});
+    };
+    await searchMemory('needle');
+    await saveMemory('Synthetic paired memory A','已取消');
+    assert.equal((await invoke('memory.listSaved')).facts.length,0);
+    await electron.evaluate(()=>{globalThis.__pairingMemoryDecision=true;});
+    await saveMemory('Synthetic paired memory A','已保存为版本 1');
+    await saveMemory('Synthetic paired memory A','已经保存');
+    await saveMemory('Synthetic paired memory B','已保存为版本 2');
+    let saved=(await invoke('memory.listSaved')).facts;
+    const target=saved.find(f=>f.summary==='Synthetic paired memory B');
+    assert.equal(target.ref.revision,2);
+    await searchMemory('preserved');
+    await saveMemory('Synthetic preserved memory','已保存为版本 1');
+    await admin.screenshot({path:path.join(base,'desktop-memory-confirmed.png')});
     await admin.locator('[data-knowledge-source="pair-status"]').scrollIntoViewIfNeeded();
     await admin.screenshot({path: path.join(base, 'desktop-paired.png')});
     evaluatePlugin("app.plugins.getPlugin('personal-agent-knowledge').revokeRuntimePairing();return JSON.stringify({revoked:true});");
     const disconnected = await wait(async () => {const result = await invoke('snapshot'); return !result.knowledge?.available && result;});
     assert.equal(disconnected.knowledgeSource.pairing.mode, 'plugin');
+    assert.equal(disconnected.privateMemory.vaultSelected,false);
+    await wait(async()=>await admin.locator('#memory-query').isDisabled());
     await assert.rejects(invoke('knowledge.search', {query: 'needle', limit: 5}));
+    await assert.rejects(invoke('memory.search',{query:'needle'}));
     await invoke('knowledge.pair.revoke');
     assert.equal((await invoke('snapshot')).knowledge.sourceId, original.sourceId);
     // Pair once more, then restart the actual Desktop process while this lease is active.
@@ -99,6 +136,9 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     await reconnect;
     assert.equal((await invoke('snapshot')).knowledgeSource.pairing.available, true);
     const confirmation = await electron.evaluate(() => ({details: globalThis.__pairingConfirmationDetails, cloudAttempts: globalThis.__pairingCloudAttempts}));
+    const memoryConfirmation = await electron.evaluate(()=>globalThis.__pairingMemoryDetails);
+    assert.equal(memoryConfirmation.length,4,'decline, initial, correction and unrelated save; duplicate skips confirmation');
+    assert.deepEqual(memoryConfirmation[0],{defaultId:1,cancelId:1,bounded:true,hasVersion:true,hasExcerpt:true});
     assert.equal(confirmation.cloudAttempts, 0); assert.equal(confirmation.details.length, 2);
     assert.deepEqual(confirmation.details[0], {defaultId: 1, cancelId: 1, bounded: true, mentionsPrivate: true, mentionsReadonly: true});
     await electron.close(); electron = undefined;
@@ -111,13 +151,39 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     await wait(async () => (await invoke('snapshot')).privateMemory?.available);
     const restarted = await invoke('snapshot');
     assert.equal(restarted.knowledgeSource.pairing.mode, 'plugin'); assert.equal(restarted.knowledge.available, false);
+    assert.equal(restarted.privateMemory.vaultSelected,false);
+    await wait(async()=>await admin.locator('#memory-query').isDisabled());
     await assert.rejects(invoke('knowledge.search', {query: 'needle', limit: 5}));
+    saved=(await invoke('memory.listSaved')).facts;
+    assert.equal(saved.length,2); assert.equal(saved.find(f=>f.ref.id===target.ref.id).summary,'Synthetic paired memory B');
+    await assert.rejects(invoke('memory.search',{query:'needle'}));
     const pluginClosed = evaluatePlugin("return JSON.stringify({aborted:app.plugins.getPlugin('personal-agent-knowledge').bridge?.signal.aborted});");
     assert.equal(pluginClosed.aborted, true);
+    await electron.evaluate(({dialog})=>{
+      globalThis.__pairingCloudAttempts=0;
+      globalThis.fetch=async()=>{globalThis.__pairingCloudAttempts++;throw Error('Synthetic acceptance forbids cloud calls');};
+      dialog.showMessageBox=async()=>({response:0}); // Explicit Fake withdraw/delete decisions.
+    });
+    await admin.locator('#memory-list-saved').click();
+    const targetIndex=saved.findIndex(f=>f.ref.id===target.ref.id);
+    await admin.locator(`[data-memory-withdraw="${targetIndex}"]`).click();
+    await wait(async()=>{const facts=(await invoke('memory.listSaved')).facts;return facts.find(f=>f.ref.id===target.ref.id)?.state==='withdrawn';});
+    await wait(async()=>await admin.locator('#memory-saved-status').textContent().then(t=>t.includes('已撤回')));
+    const deleteIndex=(await invoke('memory.listSaved')).facts.findIndex(f=>f.ref.id===target.ref.id);
+    await admin.locator(`[data-memory-delete="${deleteIndex}"]`).click();
+    await wait(async()=>await admin.locator('#memory-saved-status').textContent().then(t=>t.includes('已删除')));
+    saved=(await invoke('memory.listSaved')).facts;
+    assert.deepEqual(saved.map(f=>f.summary),['Synthetic preserved memory']);
+    assert.equal((await invoke('snapshot')).privateMemory.vaultSelected,false);
+    assert.equal(await admin.locator('#memory-query').isDisabled(),true);
+    await admin.screenshot({path:path.join(base,'desktop-memory-erased.png')});
+    assert.equal(await electron.evaluate(()=>globalThis.__pairingCloudAttempts),0);
     await invoke('knowledge.pair.revoke'); assert.equal((await invoke('snapshot')).knowledge.sourceId, original.sourceId);
     return {realDesktopHost: true, crossProcessRuntimePairing: true, source: 'synthetic', nativeDecision: 'explicit_fake',
       passwordInput: true, isolation, confirmedSearch: {hits: hits.hits.length, path: hits.hits[0].source.path},
       revocationFailsClosed: true, realDesktopRestartFailsClosed: true, explicitFilesystemRestore: true, cloudAttempts: confirmation.cloudAttempts,
-      taskCount: tasks.tasks?.length ?? tasks.tasks?.items?.length};
+      taskCount: tasks.tasks?.length ?? tasks.tasks?.items?.length,
+      memory:{nativeDecision:'explicit_fake',declinedWithoutWrite:true,savedRevision:2,duplicateWithoutConfirmation:true,
+        survivesRestart:true,disconnectedSearchDenied:true,disconnectedSearchDisabled:true,withdrawnRevision:3,targetErased:true,unrelatedFactPreserved:true}};
   } finally {if (electron) await electron.close();}
 }

@@ -1,6 +1,6 @@
 # MOD-08N：双进程认证桥接与原生配对界面
 
-- 状态：ready（本地实现、完整门禁与真实双进程合成验收已通过；按用户授权进行 Git 交付，待非作者评审/集成）
+- 状态：review（PR #322 已交付，Foundation 两次通过；待非作者评审/集成）
 - 日期：2026-10-11
 - Profile：huawei_ict_agentarts
 - 负责人：goo122；非作者评审：zemeng
@@ -64,11 +64,13 @@ ERR_SSL_NO_CERTIFICATE_SET；最终移除该路径，使用临时证书固定与
   `PA_RUNTIME_PROFILE=local` 后通过（7 次回环 Fake 模型请求、2 次取消），日志
   `.cache/obsidian-bridge-runtime-smoke-local.log`；它不作为本包 Competition 配对证据。
   Competition 的实际接线以以上双进程验收为依据。
-- 最终 `git diff --check` 通过。HEAD 仍 `91f8829a`，未暂存/提交；没有新依赖或数据库迁移。
+- 当次 `git diff --check` 通过；验证时基线为 `91f8829a`，尚未提交，后续交付见下节；没有新依赖或数据库迁移。
 
 ## 交付与剩余
 
-用户已通过“按计划执行”授权本包提交、推送和创建 PR；以本分支相对 PR #321 的增量交付，
-不合并或发布。后续 PR 和实际提交以 Git/GitHub 为准。完整 MOD-08/09 保持 in_progress。
+用户通过“按计划执行”授权 Git 交付后，已提交 `7f1b4f1b` 并推送至
+[PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322)，base 为 PR #321 分支。
+2026-10-11 核对当前 head 的两项 Foundation 均成功；未合并或发布，待非作者评审/集成。
+插件引用与逐条记忆确认继续见 [MOD-08O](MOD-08O-PAIRED-CITATION-MEMORY-01.md)。完整 MOD-08/09 保持 in_progress。
 公开桥接仍 provisional，须非作者评审/集成后按接口目录门槛判断，不能由合成验收提升
 整个模块为 done/frozen。云验收继续暂缓。

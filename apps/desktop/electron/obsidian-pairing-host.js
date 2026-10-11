@@ -2,7 +2,7 @@ import {connectObsidianBridge, parseObsidianBridgeCode} from '@personal-agent/kn
 import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 
-/** Root composition only: original Wiki source remains separate from the selected search lease. */
+/** Root composition only: search grants and durable citation identities have separate leases. */
 export function createDesktopObsidianPairing({source, createPairingHost, ui, userData, changed = () => {}}) {
   let mode = 'filesystem', busy = false, closed = false, epoch = new AbortController(), attempt;
   const file = userData && path.join(userData, 'obsidian-pairing-selection.json');
@@ -37,8 +37,22 @@ export function createDesktopObsidianPairing({source, createPairingHost, ui, use
       }};
     },
   };
+  const memorySource = {
+    snapshot: () => (mode === 'plugin' ? host.wikiSource : source).snapshot(),
+    clearIndex() {invalidate(); source.clearIndex?.(); changed();},
+    acquireWiki(expected, context) {
+      if (closed) throw Error('知识桥接已关闭');
+      const generation = epoch;
+      const lease = (mode === 'plugin' ? host.wikiSource : source).acquireWiki(expected,
+        {...context, signal: AbortSignal.any([context.signal, generation.signal])});
+      return {...lease, assertCurrent() {
+        if (generation.signal.aborted || generation !== epoch) throw Error('知识来源已切换');
+        lease.assertCurrent();
+      }};
+    },
+  };
   return {
-    source: effectiveSource,
+    source: effectiveSource, memorySource,
     snapshot() {return {mode, busy, available: !closed && mode === 'plugin' && host.source.snapshot().available,
       reason: busy ? '正在进行本机配对' : mode === 'plugin' ? host.source.snapshot().available
         ? 'Obsidian 已配对：私人、只读，最多 15 分钟' : 'Obsidian 配对未就绪或已失效，请重新配对或显式撤销' : '当前使用所选文件源'};},

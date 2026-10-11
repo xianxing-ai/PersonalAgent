@@ -2,7 +2,7 @@
 
 - Profile：`huawei_ict_agentarts`；负责人：`goo122`
 - 非作者评审：`zemeng` 或其他已登记协作者
-- 状态：`ready`；本地实现已验证，与 MOD-08N 按用户授权交付，待非作者评审/集成
+- 状态：`review`；与 MOD-08N 在 PR #322 `7f1b4f1b` 交付，待非作者评审/集成
 - 工作树：`.worktrees/goo122-wiki-source-revisions`
 - 分支：`codex/goo122-desktop-unicode-pairing`；基线：PR #321 `91f8829a`
 - 拥有目录：Desktop 受信知识/编程配置宿主、Knowledge 配对端口、Runtime Application、
@@ -54,9 +54,9 @@ Runtime 核对原有来源租约，等待原生确认后生成新 private source
 ## 剩余入口
 
 本包验收时 Obsidian 与 Electron 仍是独立进程，不提供跨进程认证、传输或原生配对 UI；
-后续实现与证据转入 [MOD-08N](MOD-08N-AUTHENTICATED-BRIDGE-01.md)。本包本身
-不能声称“插件已能直接调用 Desktop Runtime”。下一包先评审端点身份/进程认证和有界
-消息契约，再接通原生确认入口，验证实际双进程连接、到期、撤销和重启。
+后续跨进程认证、原生配对入口与实际双进程证据已在 [MOD-08N](MOD-08N-AUTHENTICATED-BRIDGE-01.md)
+随 PR #322 交付；引用与逐条私人记忆继续见 [MOD-08O](MOD-08O-PAIRED-CITATION-MEMORY-01.md)。
+MOD-08M 的独立验收本身不能声称“插件已能直接调用 Desktop Runtime”，各包证据分别记录。
 本包没有新增长期记忆确认或云发送许可。完整 MOD-08/09 仍未完成。
 
 PR #321 当前 head 的一个 Foundation 成功，一个在无关 CalDAV 取消用例中出现 TIMEOUT

@@ -70,7 +70,8 @@ export function mountKnowledgeSourceControls(root, invoke) {
     if ((state.allowedNotePaths ?? []).includes(selected)) field('note').value = selected;
     field('status').textContent = state.reason === '请选择知识库；尚未配置' ? '' : state.reason ?? '';
     const monitor = state.monitor;
-    field('monitor').textContent = !state.available || !monitor ? '' : monitor.state === 'ready'
+    field('monitor').textContent = state.pairing?.mode === 'plugin' ? '插件模式下，确认或使用记忆时核对引用；文件源后台检查已暂停'
+      : !state.available || !monitor ? '' : monitor.state === 'ready'
       ? `已检查 ${monitor.pageCount} 页；后台仅核对旧记忆，新摘录仍需确认`
       : monitor.state === 'retry_pending' ? '来源检查待重试；不会删除记忆或笔记'
       : '正在核对来源；后台不会自动保存新摘录';
