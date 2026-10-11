@@ -96,7 +96,8 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       const supplied = request.headers['x-pa-deadline'];
       if (supplied !== undefined) {
         if (typeof supplied !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(supplied)
-          || !Number.isFinite(Date.parse(supplied))) throw new ProtocolError('INVALID_ARGUMENT','Invalid invocation deadline');
+          || !Number.isFinite(Date.parse(supplied))
+          || supplied.replace(/\.000Z$/, 'Z') !== new Date(supplied).toISOString().replace(/\.000Z$/, 'Z')) throw new ProtocolError('INVALID_ARGUMENT','Invalid invocation deadline');
         expiresAt = Math.min(expiresAt,Date.parse(supplied));
       }
       if (expiresAt <= Date.now()) throw new ProtocolError('TIMEOUT','Invocation deadline expired');

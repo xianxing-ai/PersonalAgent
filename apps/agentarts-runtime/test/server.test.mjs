@@ -60,3 +60,19 @@ test('slow uploads do not invoke the provider after deadline',async t=>{
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(calls.length,0);
 });
+test('actual HTTP canonical deadline accepts original Z, milliseconds and leap-day controls',async t=>{
+  const {url,calls}=await host(t);
+  for(const deadline of ['2027-02-28T00:00:00Z','2027-02-28T00:00:00.000Z','2027-02-28T00:00:00.123Z','2028-02-29T00:00:00Z']){
+    const response=await post(url,{query:'Synthetic public deadline control'},{'x-pa-deadline':deadline});
+    assert.equal(response.status,200);await response.json();
+  }
+  assert.equal(calls.length,4);
+});
+test('actual HTTP noncanonical calendar deadlines reject before Synthetic invoker dispatch',async t=>{
+  const {url,calls}=await host(t);
+  for(const deadline of ['2027-02-29T00:00:00Z','2027-02-30T00:00:00.000Z','2027-04-31T00:00:00.123Z','2027-13-01T00:00:00Z','2027-01-01T24:00:00Z']){
+    const response=await post(url,{query:'Synthetic public invalid deadline'},{'x-pa-deadline':deadline});
+    assert.equal(response.status,400);assert.equal((await response.json()).data.error_code,'INVALID_ARGUMENT');
+  }
+  assert.equal(calls.length,0);
+});
