@@ -200,20 +200,34 @@ else {
   };
   header.addEventListener('pointerup',finishPanelDrag);header.addEventListener('pointercancel',finishPanelDrag);header.addEventListener('lostpointercapture',finishPanelDrag);
   const syncSlider=()=>{const v=Number(slider.value);const labels=['最低','低','平衡','深入','高','最高'];const fill=6+(88*v/5);slider.style.setProperty('--fill',fill+'%');depthLabel.textContent=labels[v]??'平衡';modelMenu.classList.toggle('maxed',v===5);};
+  const panelPreferenceRequests={model:0,thinking:0},panelPreferencePending={model:null,thinking:null},panelPreferenceErrors={model:null,thinking:null};
+  const syncPanelPreferenceBusy=()=>{modelChoice.setAttribute('aria-busy',String(Boolean(panelPreferencePending.model)));for(const control of [slider,fastBtn])control.setAttribute('aria-busy',String(Boolean(panelPreferencePending.thinking)));};
+  const projectPanelPreferences=()=>{
+    modelChoice.value=panelPreferencePending.model?.modelId??current?.conversationPreference?.modelId??'';
+    const thinking=panelPreferencePending.thinking??current?.thinking??current?.conversationPreference;
+    if(thinking){slider.value=String(thinking.depth??1);fastBtn.setAttribute('aria-pressed',String(Boolean(thinking.fast)));modelMenu.classList.toggle('fast',Boolean(thinking.fast));syncSlider();}
+    syncPanelPreferenceBusy();
+  };
+  const requestPanelPreference=async(group,name,payload)=>{
+    const request=++panelPreferenceRequests[group];panelPreferencePending[group]=payload;syncPanelPreferenceBusy();
+    try{await invoke(name,payload);if(request===panelPreferenceRequests[group]&&panelPreferenceErrors[group]===errorFeedbackRevision){setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}}
+    catch(error){if(request===panelPreferenceRequests[group]){panelPreferencePending[group]=null;projectPanelPreferences();report(error);panelPreferenceErrors[group]=errorFeedbackRevision;}}
+    finally{if(request===panelPreferenceRequests[group]){panelPreferencePending[group]=null;syncPanelPreferenceBusy();}}
+  };
   const setSendMode=hasText=>{sendBtn.dataset.mode=hasText?'send':'live';sendBtn.title=hasText?'发送':current?.live?.active?'关闭 Live 实时语音':'开启 Live 实时语音';sendBtn.setAttribute('aria-label',sendBtn.title);sendBtn.setAttribute('aria-pressed',String(!hasText&&Boolean(current?.live?.active)));sendBtn.disabled=hasText&&(pending || Boolean(current?.tasks.some(task=>!isTerminal(task))));};
   root.querySelector('#admin').onclick=()=>invoke('admin.open').catch(report);
   root.querySelector('#close').onclick=()=>invoke('panel.hide').catch(report);
   modelBtn.onclick=e=>{e.stopPropagation();const open=modelMenu.hidden;closeModel();closeBell();if(open){modelMenu.hidden=false;modelBtn.setAttribute('aria-expanded','true');}};
   const modelChoice = document.createElement('select');
   modelChoice.className='conversation-model-choice';modelChoice.setAttribute('aria-label','当前对话的辅助任务模型');
-  modelChoice.onchange=()=>invoke('conversation.model',{modelId:modelChoice.value}).catch(report);
+  modelChoice.onchange=()=>requestPanelPreference('model','conversation.model',{modelId:modelChoice.value});
   const modelChoiceLabel=document.createElement('label');modelChoiceLabel.textContent='辅助任务模型';
   modelChoiceLabel.append(modelChoice);modelMenu.querySelector('.mm-card').append(modelChoiceLabel);
   let modelChoiceSignature;
   bellBtn.onclick=e=>{e.stopPropagation();const open=bellMenu.hidden;closeBell();closeModel();if(open){bellMenu.hidden=false;bellBtn.setAttribute('aria-expanded','true');}};
   document.addEventListener('click',e=>{if(!modelMenu.hidden&&!e.target.closest('.model-box'))closeModel();if(!bellMenu.hidden&&!e.target.closest('.bell-box'))closeBell();});
-  slider.addEventListener('input',()=>{syncSlider();invoke('thinking.update',{depth:Number(slider.value),fast:fastBtn.getAttribute('aria-pressed')==='true'}).catch(report);});syncSlider();
-  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);invoke('thinking.update',{depth:Number(slider.value),fast:on}).catch(report);};
+  slider.addEventListener('input',()=>{syncSlider();return requestPanelPreference('thinking','thinking.update',{depth:Number(slider.value),fast:fastBtn.getAttribute('aria-pressed')==='true'});});syncSlider();
+  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);return requestPanelPreference('thinking','thinking.update',{depth:Number(slider.value),fast:on});};
   input.addEventListener('input',e=>{draftRevision++;setSendMode(Boolean(e.target.value.trim()));invoke('panel.pin',true).catch(report);});
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(input.value.trim()&&!pending)form.requestSubmit();}});
   sendBtn.addEventListener('click',e=>{e.preventDefault();if(sendBtn.dataset.mode==='live'){
@@ -312,7 +326,6 @@ else {
     root.querySelector('#model-label').textContent=modelIdentity;root.querySelector('#mm-model-label').textContent=modelIdentity;slider.setAttribute('aria-label',`${modelIdentity} 思考深度`);
     const modelConnected=modelReady||(data.model?.configured===true&&data.model?.status!=='error');const connectionNotice=root.querySelector('#connection-notice');connectionNode.hidden=modelConnected;if(connectionNotice){connectionNotice.hidden=modelConnected;connectionNotice.textContent=data.fakeModel?'当前使用 Fake Model，仅用于离线测试。':modelReady?`当前使用 ${modelIdentity}；语音尚未连接。`:`${data.model?.reason??'模型尚未连接'}；语音尚未连接。`;}
     modelBtn.title=modelReady?`${modelIdentity} · 模型与思考深度`:'思考设置可调整；模型尚未完成真实连接测试';
-    if(data.thinking){slider.value=String(data.thinking.depth??1);fastBtn.setAttribute('aria-pressed',String(Boolean(data.thinking.fast)));modelMenu.classList.toggle('fast',Boolean(data.thinking.fast));syncSlider();}
     const nextModelChoiceSignature=JSON.stringify([data.modelChoices,data.conversationPreference?.modelId]);
     if(modelChoiceSignature!==nextModelChoiceSignature) {
       modelChoice.replaceChildren(new Option('使用默认辅助模型',''),...(data.modelChoices??[]).map(item=>{
@@ -321,6 +334,7 @@ else {
       modelChoice.value=data.conversationPreference?.modelId??'';modelChoiceSignature=nextModelChoiceSignature;
     }
     modelChoiceLabel.hidden=!data.modelChoices?.length;
+    projectPanelPreferences();
     const tag=root.querySelector('#model-tag');if(tag)tag.textContent=modelReady?'已测试':data.model?.status==='configured'?'待测试':'未配置';
     const modelNotice=root.querySelector('#model-notice');if(modelNotice)modelNotice.textContent=data.thinking?.applied?data.thinking.reason:(modelReady?'思考设置已保存到桌面测试状态；Runtime 参数契约接入后才会影响任务。':`${data.model?.reason??'模型未完成真实连接测试'}；思考设置仍可调整，但不会用于真实任务。`);
     const voiceState=data.voice?.status;
