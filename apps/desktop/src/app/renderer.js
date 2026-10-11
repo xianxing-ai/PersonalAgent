@@ -28,7 +28,7 @@ async function invoke(action,payload) {
   if(!bridge) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
   const response=await bridge.invoke(action,payload); if(!response.ok) throw Error(response.error); return response.value;
 }
-let render, orb;
+let render, orb, reportSnapshotFailure, clearSnapshotFailure;
 if(mode==='orb') {
   root.innerHTML='<button class="orb-button" aria-label="打开 PersonalAgent"><canvas aria-hidden="true"></canvas></button>';
   orb=new Orb(root.querySelector('canvas'),{variant:'matrix',layout:'shell',count:170});
@@ -38,8 +38,14 @@ if(mode==='orb') {
   window.addEventListener('unload',()=>{window.removeEventListener('preferences-changed',syncMotion);document.removeEventListener('visibilitychange',syncMotion);},{once:true});
   let start,drag=false;
   const button=root.querySelector('button');
-  let operationGeneration=0,operationSequence=0,feedbackOwner=0,operationError='',orbLabel='打开 PersonalAgent',operationClosed=false;
-  const syncOperationFeedback=()=>{button.setAttribute('aria-label',operationError?`${orbLabel} · 操作失败：${operationError}`:orbLabel);if(operationError)button.title=`操作失败：${operationError}`;else button.removeAttribute('title');};
+  let operationGeneration=0,operationSequence=0,feedbackOwner=0,operationError='',orbLabel='打开 PersonalAgent',operationClosed=false,snapshotError='';
+  const syncOperationFeedback=()=>{
+    const feedback=operationError?`操作失败：${operationError}`:snapshotError?`状态读取失败：${snapshotError}`:'';
+    button.setAttribute('aria-label',feedback?`${orbLabel} · ${feedback}`:orbLabel);
+    if(feedback)button.title=feedback;else button.removeAttribute('title');
+  };
+  reportSnapshotFailure=error=>{snapshotError=error.message;syncOperationFeedback();};
+  clearSnapshotFailure=()=>{if(snapshotError){snapshotError='';syncOperationFeedback();}};
   const orbOperation=async action=>{
     const explicit=action!=='orb.dragEnd',generation=explicit?++operationGeneration:operationGeneration,sequence=++operationSequence;
     try{await invoke(action);if(!operationClosed&&explicit&&generation===operationGeneration&&sequence>=feedbackOwner){feedbackOwner=sequence;operationError='';syncOperationFeedback();}}
@@ -398,11 +404,17 @@ else {
 }
 if(bridge){
   let receivedUpdate=false,closed=false;
-  const unsubscribe=bridge.subscribe(data=>{if(closed)return;receivedUpdate=true;render(data);});
-  invoke('snapshot').then(data=>{if(!closed&&!receivedUpdate)render(data);}).catch(e=>{
+  if(mode!=='orb') {
+    const snapshotFeedback=document.createElement('p');snapshotFeedback.className='error';
+    snapshotFeedback.setAttribute('role','alert');snapshotFeedback.setAttribute('data-snapshot-error','');snapshotFeedback.hidden=true;
+    root.querySelector('.thread,.workspace-chat,.admin .main').prepend(snapshotFeedback);
+    reportSnapshotFailure=error=>{snapshotFeedback.textContent=`状态读取失败：${error.message}`;snapshotFeedback.hidden=false;};
+    clearSnapshotFailure=()=>{snapshotFeedback.textContent='';snapshotFeedback.hidden=true;};
+  }
+  const unsubscribe=bridge.subscribe(data=>{if(closed)return;render(data);receivedUpdate=true;clearSnapshotFailure();});
+  invoke('snapshot').then(data=>{if(!closed&&!receivedUpdate){render(data);clearSnapshotFailure();}}).catch(e=>{
     if(closed||receivedUpdate)return;
-    if(mode==='panel')root.querySelector('#error').textContent=e.message;
-    else root.textContent=e.message;
+    reportSnapshotFailure(e);
   });
   window.addEventListener('unload',()=>{closed=true;unsubscribe();orb?.dispose();});
 }
