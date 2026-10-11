@@ -233,7 +233,7 @@ else {
   sendBtn.addEventListener('click',e=>{e.preventDefault();if(sendBtn.dataset.mode==='live'){
     void liveControls.toggle();
   }else if(!pending)form.requestSubmit();});
-  document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!modelMenu.hidden){closeModel();return;}if(!bellMenu.hidden){closeBell();return;}invoke('panel.hide').catch(report);});
+  document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!modelMenu.hidden){const restore=modelMenu.contains(document.activeElement);closeModel();if(restore)modelBtn.focus({preventScroll:true});return;}if(!bellMenu.hidden){closeBell();return;}invoke('panel.hide').catch(report);});
   form.onsubmit=async e=>{e.preventDefault();if(pending||sendBtn.disabled||!input.value.trim())return;const submittedRevision=draftRevision,feedbackRevision=errorFeedbackRevision;pending=true;setSendMode(true);try{await invoke('task.submit',input.value);if(draftRevision===submittedRevision)input.value='';requestAnimationFrame(()=>{thread.scrollTop=thread.scrollHeight;});if(feedbackRevision===errorFeedbackRevision){setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}}catch(err){report(err);}finally{pending=false;setSendMode(Boolean(input.value.trim()));}};
   const stopButton=root.querySelector('#stop');
   // Stopping playback never sends task.cancel to Runtime.
