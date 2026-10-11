@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,mkdtemp,cp,readdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,mkdtemp,cp,readdir,chmod} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root = fileURLToPath(new URL('../../../',import.meta.url));
@@ -63,9 +63,16 @@ for (const relative of workspacePaths) {
 await cp(path.join(root,'apps/agentarts-runtime/Dockerfile'),path.join(output,'Dockerfile'));
 await writeFile(path.join(output,'.dockerignore'),'node_modules\n.env*\n*.local\n*.log\n');
 const files=[];
-async function visit(directory){ for(const entry of await readdir(directory,{withFileTypes:true})) {
-  const name=path.join(directory,entry.name); if(entry.isDirectory()) await visit(name); else files.push(path.relative(output,name).replaceAll('\\','/'));
+async function visit(directory){
+  // COPY preserves these modes as root-owned files; the image runs as USER node.
+  // Only this fresh allowlist export is normalized, never source or old contexts.
+  await chmod(directory,0o755);
+  for(const entry of await readdir(directory,{withFileTypes:true})) {
+  const name=path.join(directory,entry.name); if(entry.isDirectory()) await visit(name); else {
+    await chmod(name,0o644);files.push(path.relative(output,name).replaceAll('\\','/'));
+  }
 }}
 await visit(output);
 await writeFile(path.join(output,'context-manifest.json'),JSON.stringify({workspacePaths,files},null,2)+'\n');
+await chmod(path.join(output,'context-manifest.json'),0o644);
 console.log(JSON.stringify({context:output,workspaces:workspacePaths,files:files.length}));
