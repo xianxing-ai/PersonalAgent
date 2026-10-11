@@ -178,7 +178,7 @@ else {
   const slider=root.querySelector('#mm-slider'),depthLabel=root.querySelector('#mm-depth-label'),fastBtn=root.querySelector('#mm-fast');
   const closeModel=()=>{modelMenu.hidden=true;modelBtn.setAttribute('aria-expanded','false');};
   const closeBell=()=>{bellMenu.hidden=true;bellBtn.setAttribute('aria-expanded','false');};
-  const header=root.querySelector('header');let panelDragStart,panelDragging=false,panelDragReady,panelDragGeneration=0,panelDragClosed=false;
+  const header=root.querySelector('header');let panelDragStart,panelDragging=false,panelDragReady,panelDragGeneration=0,panelDragOwner=0,panelDragClosed=false;
   const panelDragCurrent=generation=>!panelDragClosed&&generation===panelDragGeneration;
   const panelDragReport=(generation,error)=>{if(panelDragCurrent(generation))report(error);};
   window.addEventListener('unload',()=>{panelDragClosed=true;});
@@ -188,13 +188,14 @@ else {
     const generation=panelDragGeneration;
     if(!panelDragging&&Math.hypot(e.screenX-panelDragStart.x,e.screenY-panelDragStart.y)>4){
       panelDragging=true;
+      panelDragOwner++;
       panelDragReady=invoke('panel.dragStart',panelDragStart).then(()=>true,error=>{panelDragReport(generation,error);return false;});
     }
     if(panelDragging)panelDragReady?.then(ready=>{if(ready&&panelDragging&&panelDragCurrent(generation))return invoke('panel.dragMove',{x:e.screenX,y:e.screenY}).catch(error=>panelDragReport(generation,error));});
   });
   const finishPanelDrag=()=>{
-    const generation=panelDragGeneration,ready=panelDragReady;
-    if(panelDragging)ready?.then(()=>{if(panelDragCurrent(generation))return invoke('panel.dragEnd').catch(error=>panelDragReport(generation,error));});
+    const generation=panelDragGeneration,owner=panelDragOwner,ready=panelDragReady;
+    if(panelDragging)ready?.then(()=>{if(!panelDragClosed&&owner===panelDragOwner)return invoke('panel.dragEnd').catch(error=>panelDragReport(generation,error));});
     panelDragStart=undefined;panelDragging=false;panelDragReady=undefined;
   };
   header.addEventListener('pointerup',finishPanelDrag);header.addEventListener('pointercancel',finishPanelDrag);header.addEventListener('lostpointercapture',finishPanelDrag);

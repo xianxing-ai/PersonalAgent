@@ -72,6 +72,28 @@ test('old panel reply cannot move or end a newer active gesture', async () => {
   }
 });
 
+test('a subsequent ordinary click cannot prevent cleanup of an already released Host drag', async () => {
+  for (const releaseWhileClickHeld of [false, true]) {
+    const f = fixture(); f.emit('pointerdown'); f.emit('pointermove', 130, 220); await settle(); f.emit('pointerup');
+    f.emit('pointerdown', 200, 300); f.emit('pointermove', 202, 301);
+    if (!releaseWhileClickHeld) f.emit('pointerup');
+    f.starts[0].resolve(); await settle();
+    assert.equal(f.host.dragging, false);
+    assert.deepEqual(f.calls.map(call => call.name), ['panel.dragStart', 'panel.dragEnd']);
+    assert.equal(f.moves.length, 0);
+    if (releaseWhileClickHeld) f.emit('pointerup');
+    await settle(); assert.equal(f.calls.length, 2);
+  }
+});
+
+test('old feedback is suppressed after a new ordinary click while released Host cleanup is retained', async () => {
+  const f = fixture(); f.emit('pointerdown'); f.emit('pointermove', 130, 220); await settle(); f.emit('pointerup');
+  f.emit('pointerdown', 200, 300); f.emit('pointermove', 202, 301); f.emit('pointerup');
+  f.starts[0].reject(Error('Older released gesture failure')); await settle();
+  assert.equal(f.errors.length, 0); assert.equal(f.host.dragging, false);
+  assert.deepEqual(f.calls.map(call => call.name), ['panel.dragStart', 'panel.dragEnd']);
+});
+
 test('current rejected start skips movement but release still cleans up and the next gesture can retry', async () => {
   const f = fixture(); f.emit('pointerdown'); f.emit('pointermove', 130, 220); await settle();
   f.starts[0].reject(Error('Fake start failure')); await settle(); f.emit('pointerup'); await settle();
