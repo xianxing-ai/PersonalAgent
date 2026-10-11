@@ -178,10 +178,25 @@ else {
   const slider=root.querySelector('#mm-slider'),depthLabel=root.querySelector('#mm-depth-label'),fastBtn=root.querySelector('#mm-fast');
   const closeModel=()=>{modelMenu.hidden=true;modelBtn.setAttribute('aria-expanded','false');};
   const closeBell=()=>{bellMenu.hidden=true;bellBtn.setAttribute('aria-expanded','false');};
-  const header=root.querySelector('header');let panelDragStart,panelDragging=false,panelDragReady;
-  header.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button'))return;panelDragStart={x:e.screenX,y:e.screenY};header.setPointerCapture(e.pointerId);});
-  header.addEventListener('pointermove',e=>{if(!panelDragStart)return;if(!panelDragging&&Math.hypot(e.screenX-panelDragStart.x,e.screenY-panelDragStart.y)>4){panelDragging=true;panelDragReady=invoke('panel.dragStart',panelDragStart).catch(report);}if(panelDragging)panelDragReady?.then(()=>invoke('panel.dragMove',{x:e.screenX,y:e.screenY}).catch(report));});
-  const finishPanelDrag=()=>{if(panelDragging)panelDragReady?.then(()=>invoke('panel.dragEnd').catch(report));panelDragStart=undefined;panelDragging=false;panelDragReady=undefined;};
+  const header=root.querySelector('header');let panelDragStart,panelDragging=false,panelDragReady,panelDragGeneration=0,panelDragClosed=false;
+  const panelDragCurrent=generation=>!panelDragClosed&&generation===panelDragGeneration;
+  const panelDragReport=(generation,error)=>{if(panelDragCurrent(generation))report(error);};
+  window.addEventListener('unload',()=>{panelDragClosed=true;});
+  header.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button'))return;panelDragGeneration++;panelDragStart={x:e.screenX,y:e.screenY};header.setPointerCapture(e.pointerId);});
+  header.addEventListener('pointermove',e=>{
+    if(!panelDragStart)return;
+    const generation=panelDragGeneration;
+    if(!panelDragging&&Math.hypot(e.screenX-panelDragStart.x,e.screenY-panelDragStart.y)>4){
+      panelDragging=true;
+      panelDragReady=invoke('panel.dragStart',panelDragStart).then(()=>true,error=>{panelDragReport(generation,error);return false;});
+    }
+    if(panelDragging)panelDragReady?.then(ready=>{if(ready&&panelDragging&&panelDragCurrent(generation))return invoke('panel.dragMove',{x:e.screenX,y:e.screenY}).catch(error=>panelDragReport(generation,error));});
+  });
+  const finishPanelDrag=()=>{
+    const generation=panelDragGeneration,ready=panelDragReady;
+    if(panelDragging)ready?.then(()=>{if(panelDragCurrent(generation))return invoke('panel.dragEnd').catch(error=>panelDragReport(generation,error));});
+    panelDragStart=undefined;panelDragging=false;panelDragReady=undefined;
+  };
   header.addEventListener('pointerup',finishPanelDrag);header.addEventListener('pointercancel',finishPanelDrag);header.addEventListener('lostpointercapture',finishPanelDrag);
   const syncSlider=()=>{const v=Number(slider.value);const labels=['最低','低','平衡','深入','高','最高'];const fill=6+(88*v/5);slider.style.setProperty('--fill',fill+'%');depthLabel.textContent=labels[v]??'平衡';modelMenu.classList.toggle('maxed',v===5);};
   const setSendMode=hasText=>{sendBtn.dataset.mode=hasText?'send':'live';sendBtn.title=hasText?'发送':current?.live?.active?'关闭 Live 实时语音':'开启 Live 实时语音';sendBtn.setAttribute('aria-label',sendBtn.title);sendBtn.setAttribute('aria-pressed',String(!hasText&&Boolean(current?.live?.active)));sendBtn.disabled=hasText&&(pending || Boolean(current?.tasks.some(task=>!isTerminal(task))));};
