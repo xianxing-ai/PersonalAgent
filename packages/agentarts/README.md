@@ -17,7 +17,8 @@ ModelPort 按角色注入，可替换供应商；每次调用必须提供输出 
 3个顶层 Controller 导出，按原有内部职责补充完整 World/Plan 报告；逐项迁移与缺口见
 [迁移矩阵](../../docs/modules/AGENTARTS-OWNED-IMAGE-PARITY.md)。清点不等于全量等价或真实云验收。
 
-`owned-1.1` 提示词输出 `reportVersion: "1.1"` 的完整内部报告，校验 graph revision、
+`owned-1.2` 提示词支持显式 prepared Goal target 的完整内部 World/Plan `reportVersion: "1.2"`；
+旧 Decision/Plan target 的完整 `reportVersion: "1.1"` 报告继续兼容。报告校验 graph revision、
 宿主提供的事实/Goal前后版本及原文、最新目标与允许依赖引用。World保留显式/推断观察、
 变化与 direct/transitive 影响标签；推断、缺项和缺少前后版本不能生成修复。
 direct/transitive 是待本地图谱预览的模型分析，当前投影没有完整旧依赖边，不能据此证明因果。
@@ -30,8 +31,25 @@ Plan保留保留/复核/修订/移除、依赖更新、证据需求与本地后�
 含确定移除/后续动作的报告返回 `UNSUPPORTED_CAPABILITY`，不假装已经迁移这些行为。
 `evidence_required` 仅是尚需可信本地核实的要求，保留给Review，不生成或满足真实Evidence。
 
-兼容 `owned-1.0` 的紧凑World/Plan报告供原有消费夹具使用；完整报告必须声明版本，
-不能混用完整World和紧凑Plan，也不直接执行无版本的旧导出DSL或报告。
+Goal target 必须精确对应宿主投影中已提交、最新且 active 的 Goal 节点及原基线；
+World 的影响类型只能按实际 source.kind 声明，不能把 Goal 冒称 Decision 或 Plan。
+有 Goal target 时只能使用完整 1.2；旧 Decision/Plan target 仍兼容 `owned-1.0` 紧凑报告。
+完整 World/Plan 必须声明相同版本，拒绝 1.1/1.2 混版和完整/紧凑混用，
+也不直接执行无版本的旧导出 DSL 或报告。
 继续轮次只含 `repairContext` 时没有可引用事实原文与前后版本，完整World必须RECHECK；
 后续需宿主公布来源投影契约，不能由模型补造。缺来源不静默切换旧提示词或供应商。
 应用 JSON 和本地 Runtime 契约保持原有 provisional 状态。
+
+公开 `candidateVersion: "1.0"` 保持不变。云端返回候选不会修改 Goal/Plan；
+只有后续独立的本地 Policy 审批、范围预览、CAS 提交及 Evidence/读回才能确认图更新。
+没有来源节点的继续轮次不能猜测 Goal 类型或把内部影响标签当成已校准图事实。
+
+来源摘要上限为 8192 字符；完整初始 goal 仍受 16000 字符约束，
+`{goal,availableTools}` 包装同时受公开 Coordination 和本包的 32768 UTF-8 字节限额约束。
+已提交的长基线不扩大 replacement、继续轮次 requestedSummary 或公开候选的 1024 字符限制。
+每角色输出 token 预算、原期限与取消仍生效；生产宿主默认输出预算为 2048，
+未证明真实模型能在该预算内输出包含长来源原文的完整报告。
+
+2026-10-11 的 1.2 消费验证使用合成图谱、Fake Laya/模型/HTTP，区分云端候选与独立本地
+审批/CAS，不代表真实云模型、费用、实体 Desktop 或全模块验收。
+此前基于 `7dfd4ada` 的全量检查不覆盖这次 1.2 累计变更，最新组合仍需重新完整验证。
