@@ -66,6 +66,7 @@ WSS 保活或真实模型/工具验收已通过。部署后还必须实测这些
 ## 构建与回滚
 
 `npm run image:context --workspace=@personal-agent/agentarts-runtime` 生成新的 allowlist 上下文。
+新导出目录明确为0755、公开文件为0644，避免严格umask或源文件权限使镜像默认`node`用户无法读取入口；仅规范本次新上下文，不修改源码、旧上下文或私人文件，也不扩大allowlist。POSIX权限组合测试在Windows明确跳过，原隔离测试仍跨平台执行。
 仅复制本入口和四个公开依赖包的 dist/schema/package.json，不复制 Desktop/Runtime、
 私人数据库、`.env`、云导出或当前根目录其他文件。
 

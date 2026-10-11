@@ -22,6 +22,12 @@
 - 手动开发调用已发出却没有合法结果时记录 unknown、保留共享锁，后续调用不再派发；明确鉴权拒绝、成功和已证明发送前失败保留原完成行为。VM 执行原宿主/外层入口及实际公开端口，用合成磁盘锁验证，不等于实体 Electron 或真实账号调用。
 - Goal get/list读取结果在投影、最终接收及异步凭据等待后的发送前，再核对原回执与当前精确 scoped Goal。原版本已受限、撤回或变化时保留旧confirmed回执及待核实Task，不发送陈旧投影、不覆盖或重放；新独立授权请求仍可正常执行，无关图更新不阻断。
 - 服务关闭时取消已受理HTTP工作并保留原CANCELLED/499响应；已504或早期401/404/400但上传未完成、以及尚未结束请求头的TCP连接也在关闭时结束。普通超时/拒绝的原响应码与关闭前行为保留，WSS沿原transport.close；不承诺远端提供者停止计费。
+- 新allowlist上下文明确目录0755/文件0644，严格umask下默认`node`用户也能读入口；只改新公开导出，不改源码、旧私有目录或allowlist。原本机f22上下文0700/0600导致EACCES的启动失败保留，不能由此推断GitHub普通umask产物失败。
+- legacy Meeting崩溃恢复不再凭共享event标签归属跨会议历史。仅匹配确定性历史修订内容才恢复完整节点，否则只记录原精确Fact与原区间；不写图、不重放或调用模型。实际生产Desktop使用reviewed Runtime路径，历史匹配不证明事务、审批或ExecutionEvidence。
+
+最新根固定提交`f5424159d5ba90b909c588ac73a7b45b25f15b09`在2026-10-11 01:13:32Z至01:21:19Z完成`npm run check`：2848项、2798通过、50跳过、0失败；Node24.15.0/npm11.12.1，1179个tracked文件哈希和HEAD前后一致。原日志SHA256为`86e43a5495cb2d51c112a31edc60bdbbe29da7fd5d1eec5e40c81d1ceae12f13`；手动未知结果保锁消费者另12/12，日志SHA256为`2155adfc5c94638e85bcfa200b80ab8554d596c286c7d5f74460dca153b456e6`。之后`1233a84b6f290bd0ee7ce1b6b9503ff2ae4518f2`仅给原五个POSIX SIGTERM用例添加明确Windows边界，所有生产源码及其余断言/期限不变；根Runtime55/55通过，日志SHA256为`615f6cfc0e148beebaf649421a5a7fb22e959f629cb3a9a3a8e5fcb0fcebd517`。旧公开f22两份Windows Foundation实际45/50，Node在Windows强制终止子进程不能证明POSIX优雅关闭，原失败日志保留；新head Windows检查另行核实，不用Linux结果冒充。
+
+严格077的新f542本机LinuxAMD64镜像默认CMD/USERnode实际HTTP8/8、内部WS4/4通过，dist为`owned-1.2`；真实SIGTERM、取消/期限、原身份回执重放和两容器重启unknown均已验证。公开f22预览的AMD64固定digest`sha256:2ab9c16bf58ef50c804c7ed48e52ee83b938c48ba2a0682989ea119e9bf31773`也已实际拉取，revision与默认user精确匹配，独立HTTP8/8及PID1 UID1000探针通过；不借本机修复结果覆盖公开产物。ARM64固定digest`sha256:7b0e6e84a16d2fa95fbbca5a2f1e8261ee2159c1d2848e6a081287eb82578c6f`已拉取核元数据，未执行。供应商、凭据和结果均为合成；TLS严格验证，redirect目标零请求、无自动重试。内部WS不是公网WSS，短运行未达到Docker HEALTHCHECK间隔，真实模型2048-token完整Goal报告、平台部署与账单仍未验收。
 
 固定提交 `0edf2449d820a1f3bcebf5e9939614004ca32cf7` 的完整 `npm run check` 在 Node24.15.0/npm11.12.1 下退出0：2839项、2789通过、50跳过；1179个tracked文件的检查前后哈希、HEAD与源码状态一致，原日志SHA256为 `34b34742bdb05b78d77df528dbcf0648a3de819fbb84cd19e46ebc4054a475ec`。该组合覆盖Goal1.2、UTF8下界、Goal read当前版本、服务shutdown及此前手动/元数据增量。之后仅HTTP canonical日期收口提交 `beeff9c7ed5826ba9eb1698398a75af7c2e2c531` 在根交付树以该轮已构建的Owned1.2依赖通过完整runtime50/50与类型检查，原runtime日志SHA256为 `479b3373a49ca2e293d0880d348fb2351414b95431eb6d60d5af014716da5c1f`；没有把旧完整检查借给新日期代码。HTTP非法日/月/24:00在dispatch前拒绝，合法Z/.000Z/.123Z及真闰日保持，公开Schema/期限预算不变。手动入口在workspace/integration测试globs外重新单独执行12/12。Goal合成路径使用实际Host/Client/Runtime/SQLite/公开候选预览，另由原本地Policy与测试审批完成CAS/Evidence/readback；云任务不执行工具、不获得本地审批。
 
