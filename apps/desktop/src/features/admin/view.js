@@ -90,7 +90,7 @@ export function mountAdmin(root, invoke, escape) {
   let memorySearch = {query: '', hits: [], truncated: false, status: ''};
   const memorySummaries = new Map();
   let savedMemory = {facts: [], status: ''};
-  let renderedSection, memoryRenderKey;
+  let renderedSection, renderedContent, memoryRenderKey;
   let historyGeneration = 0;
   async function loadHistory(reset = false) {
     if (history.loading && !reset) return;
@@ -412,7 +412,9 @@ export function mountAdmin(root, invoke, escape) {
         return;
       }
     }
+    if (['settings', 'shortcuts'].includes(section) && renderedSection === section && renderedContent === content) return;
     renderedSection = section; memoryRenderKey = nextMemoryKey;
+    renderedContent = content;
     root.querySelector('#content').innerHTML = content;
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);
