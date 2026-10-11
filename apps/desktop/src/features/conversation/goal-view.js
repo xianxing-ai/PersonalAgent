@@ -78,6 +78,7 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
   let taskVersion = 0;
   let listVersion = 0;
   let historyVersion = 0;
+  let historyTaskIds = [];
   let selecting = false;
   const cancellations = new Set();
   const decisions = new Set();
@@ -256,11 +257,26 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
   }
 
   function renderTaskHistory(tasks) {
+    historyTaskIds = tasks.map(task => task.taskId);
     taskHistory.replaceChildren();
     for (const task of tasks) {
-      taskHistory.append(action(`查看写入任务：${stateNames[task.state] ?? task.state}`,
-        () => void refreshTask(task.taskId)));
+      taskHistory.append(taskHistoryAction(task, '查看写入任务'));
     }
+  }
+
+  function taskIdentity(task) {
+    const id = String(task.taskId);
+    const abbreviate = value => value.length > 20 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
+    const short = historyTaskIds.some(other => other !== id && abbreviate(other) === abbreviate(id)) ? id : abbreviate(id);
+    const kind = task.operation === 'goals.create' ? '创建目标' : task.operation === 'goals.revise' ? '修改目标' : '目标写入';
+    return {id, short, kind};
+  }
+  function taskHistoryAction(task, prefix) {
+    const identity = taskIdentity(task), state = stateNames[task.state] ?? task.state;
+    const button = action(`${prefix}：${state} · ${identity.kind} ${identity.short}`, () => void refreshTask(task.taskId));
+    button.title = `任务 ID：${identity.id}`;
+    button.setAttribute('aria-label', `${prefix}：${state} · ${identity.kind}，任务 ID：${identity.id}`);
+    return button;
   }
 
   async function refreshTasks(scope = context()) {
@@ -278,6 +294,8 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
     } catch (error) {
       if (!current(scope) || request !== historyVersion) return;
       taskStatus.textContent = `目标任务恢复状态暂不可用：${message(error)}`;
+      taskStatus.title = '';
+      taskStatus.setAttribute('aria-label', taskStatus.textContent);
     }
   }
 
@@ -300,7 +318,10 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
     if (!task?.taskId || typeof task.state !== 'string') throw Error('目标任务读回格式无效');
     if (task.taskId === writeTask?.taskId) writeTask = task;
     activeTask = task;
-    taskStatus.textContent = `目标任务：${stateNames[task.state] ?? task.state} · 任务版本 ${task.revision}`;
+    const identity = taskIdentity(task);
+    taskStatus.textContent = `目标任务：${stateNames[task.state] ?? task.state} · 任务版本 ${task.revision} · ${identity.kind} ${identity.short}`;
+    taskStatus.title = `任务 ID：${identity.id}`;
+    taskStatus.setAttribute('aria-label', `目标任务：${stateNames[task.state] ?? task.state} · 任务版本 ${task.revision} · ${identity.kind}，任务 ID：${identity.id}`);
     taskActions.hidden = false;
     readTask.disabled = false;
     syncTaskActions();
@@ -451,8 +472,7 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
       save.disabled = writePending();
       if (current(scope)) await showTask(task, scope);
       else if (dialog.open) {
-        taskHistory.append(action(`查看已受理目标任务：${stateNames[task.state] ?? task.state}`,
-          () => void refreshTask(task.taskId)));
+        taskHistory.append(taskHistoryAction(task, '查看已受理目标任务'));
       }
     }
     catch (error) { if (current(scope)) setStatus('error', `提交结果未知：${message(error)}。草稿已保留，请核对目标任务；勿重复提交。`); }
