@@ -64,6 +64,7 @@ else {
   root.querySelector('#close').before(expand);
   expand.onclick=()=>invoke('workspace.open').catch(error=>{setFeedback(error.message);});
   let current,pending=false,lastTaskSignature='',draftRevision=0;const likedTasks=new Set();
+  const locateFeedback=new Map();let locateClosed=false;
   const approvalDecisions=new Map();
   const pendingCancelIds=new Set();
   let approvalExpiryTimer;
@@ -85,6 +86,45 @@ else {
     const action=focused.dataset.action??focused.dataset.uiAction;if(!action)return;
     const button=[...tasksNode.querySelectorAll('[data-action],[data-ui-action]')].find(item=>(item.dataset.action??item.dataset.uiAction)===action&&item.dataset.id===focused.dataset.id&&item.dataset.messageId===focused.dataset.messageId&&item.dataset.locateId===focused.dataset.locateId);
     if(button&&!button.disabled)button.focus({preventScroll:true});
+  };
+  const currentLocateFailure=(id,request)=>{
+    const task=current?.tasks.find(item=>item.taskId===id);
+    return task&&isTerminal(task)&&task.state===request.taskState&&task.error?.message===request.text
+      &&!resultText(task.resultSummary,task.resultMetadata);
+  };
+  const projectLocateFeedback=()=>{
+    for(const [id,request] of locateFeedback) if(!currentLocateFailure(id,request))locateFeedback.delete(id);
+    for(const button of tasksNode.querySelectorAll('[data-locate-id]')) {
+      const request=locateFeedback.get(button.dataset.locateId);
+      if(!request||request.text!==button.dataset.locateText)continue;
+      const resultNode=button.closest('.locate-block')?.querySelector('.locate-result');
+      if(!resultNode)continue;
+      resultNode.hidden=false;
+      if(request.html!==undefined)resultNode.innerHTML=request.html;else resultNode.textContent=request.message;
+    }
+  };
+  const locateFailure=async button=>{
+    const id=button.dataset.locateId,text=button.dataset.locateText||'';
+    const task=current?.tasks.find(item=>item.taskId===id);
+    if(locateClosed||!task)return;
+    const request={text,taskState:task.state,message:'定位中…'};
+    if(!currentLocateFailure(id,request))return;
+    locateFeedback.set(id,request);projectLocateFeedback();
+    const isCurrent=()=>!locateClosed&&locateFeedback.get(id)===request&&currentLocateFailure(id,request);
+    try {
+      const response=await invoke('task.locate',{text});
+      if(!isCurrent())return;
+      const report=response&&typeof response==='object'&&'failures' in response?response:null;
+      const failures=report&&Array.isArray(report.failures)?report.failures:[];
+      if(!failures.length)request.message='未能从错误输出定位到源码位置';
+      else request.html=failures.slice(0,3).map(f=>{
+        const top=f.frames&&f.frames[0];
+        const head=`<div class="locate-head">${escape(f.name)}${f.timedOut?'（超时）':''}</div>`;
+        const frames=top?`<div class="locate-frame">${escape(top.file)}:${top.line}${top.column?':'+top.column:''}<span class="locate-conf">置信度 ${(top.confidence*100).toFixed(0)}%</span></div>${top.snippet?`<pre class="locate-snippet">${escape(top.snippet)}</pre>`:''}`:'';
+        return head+frames;
+      }).join('');
+    } catch(err) {if(!isCurrent())return;request.message='定位失败：'+(err&&err.message?err.message:'未知错误');}
+    if(isCurrent())projectLocateFeedback();
   };
   const liveControls=mountLiveVoiceControls(root,invoke);
   const proactiveControls=mountProactiveControls(root.querySelector('.thread'),invoke);
@@ -134,7 +174,7 @@ else {
     input.dispatchEvent(new Event('input',{bubbles:true}));
     input.focus();input.setSelectionRange(input.value.length,input.value.length);
   });
-  window.addEventListener('unload',()=>{wakeClosed=true;clearTimeout(approvalExpiryTimer);approvalExpiryTimer=undefined;removeDictation?.();});
+  window.addEventListener('unload',()=>{wakeClosed=true;locateClosed=true;locateFeedback.clear();clearTimeout(approvalExpiryTimer);approvalExpiryTimer=undefined;removeDictation?.();});
   const sisSettings=document.createElement('details');
   sisSettings.className='sis-settings';
   sisSettings.innerHTML='<summary>华为云语音设置</summary><div class="sis-fields"><label>区域<select id="sis-region"><option value="cn-north-4">华北-北京四</option><option value="cn-east-3">华东-上海一</option></select></label><label>华为云账号名<input id="sis-domain" autocomplete="off" maxlength="128" placeholder="IAM 用户所属的账号名"></label><label>IAM 用户名<input id="sis-username" autocomplete="off" maxlength="128" value="personalagent-sis"></label><label>IAM 用户密码<input id="sis-password" type="password" autocomplete="off" maxlength="1024"></label><button type="button" id="sis-login">连接华为云语音</button><p class="notice">密码仅用于向华为 IAM 登录，不保存；项目令牌在本机加密保存。录音仅在你开启后发送到华为 SIS。</p><details><summary>已有 IAM Token：手动配置</summary><label>项目 ID<input id="sis-project" autocomplete="off" maxlength="128"></label><label>独立 IAM Token<input id="sis-token" type="password" autocomplete="off" maxlength="16384"></label><label>Token 到期时间（UTC，可选）<input id="sis-expiry" autocomplete="off" placeholder="YYYY-MM-DDTHH:mm:ssZ"></label><button type="button" id="sis-save">保存 SIS 配置</button></details><p class="notice" id="sis-reason"></p></div>';
@@ -251,7 +291,7 @@ else {
     catch(err){if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)report(err);}
     finally{if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)talkButton.disabled=Boolean(current?.live?.active)||wakeBlocksCapture(current)||!current?.voice?.experimental||!['unavailable','error','listening','awaiting_speech'].includes(current?.voice?.status);}
   };
-  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on)likedTasks.add(b.dataset.id);else likedTasks.delete(b.dataset.id);b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));return;}if(uiAction==='locate'){const block=b.closest('.locate-block');const resultNode=block?.querySelector('.locate-result');if(!resultNode)return;resultNode.hidden=false;resultNode.textContent='定位中…';try{const response=await invoke('task.locate',{text:b.dataset.locateText||''});const report=response&&typeof response==='object'&&'failures' in response?response:null;const failures=report&&Array.isArray(report.failures)?report.failures:[];if(!failures.length){resultNode.textContent='未能从错误输出定位到源码位置';}else{resultNode.innerHTML=failures.slice(0,3).map(f=>{const top=f.frames&&f.frames[0];const head=`<div class="locate-head">${escape(f.name)}${f.timedOut?'（超时）':''}</div>`;const frames=top?`<div class="locate-frame">${escape(top.file)}:${top.line}${top.column?':'+top.column:''}<span class="locate-conf">置信度 ${(top.confidence*100).toFixed(0)}%</span></div>${top.snippet?`<pre class="locate-snippet">${escape(top.snippet)}</pre>`:''}`:'';return head+frames;}).join('');}}catch(err){resultNode.textContent='定位失败：'+(err&&err.message?err.message:'未知错误');}return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}const cancelling=b.dataset.action==='task.cancel',id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
+  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on)likedTasks.add(b.dataset.id);else likedTasks.delete(b.dataset.id);b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}const cancelling=b.dataset.action==='task.cancel',id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
   const syncApprovalButtons=()=>{
     for(const [id,phase] of approvalDecisions)if(phase==='submitted' && !(current?.approvals??[]).some(item=>
       item.approvalId===id && item.state==='pending' && current?.tasks.some(task=>task.taskId===item.taskId && task.state==='waiting_approval')))approvalDecisions.delete(id);
@@ -352,7 +392,7 @@ else {
     const wasAtBottom=thread.scrollHeight-thread.scrollTop-thread.clientHeight<90;
     const focused=tasksNode.contains(document.activeElement)?document.activeElement:null;
     if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t);const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button><button type="button" data-ui-action="share" data-id="${escape(t.taskId)}" title="分享" aria-label="分享回答">${responseIcons.share}</button><button type="button" data-ui-action="like" data-id="${escape(t.taskId)}" title="点赞" aria-label="点赞回答" aria-pressed="${likedTasks.has(t.taskId)}" class="${likedTasks.has(t.taskId)?'active':''}">${responseIcons.like}</button></div>`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${!terminal?`<div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div>`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div><div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:''}</div>${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
-    syncCancelButtons();restoreTaskActionFocus(focused);
+    projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();setSendMode(Boolean(input.value.trim()));
     if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(wasAtBottom)thread.scrollTop=thread.scrollHeight;});}};
 }
