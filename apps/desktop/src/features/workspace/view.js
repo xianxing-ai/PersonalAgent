@@ -22,9 +22,33 @@ export function mountWorkspace(root,invoke,escape){
   preferences.innerHTML='<label>辅助任务模型 <select class="conversation-model-choice" aria-label="工作区辅助任务模型"></select></label><label>思考深度 <input type="range" min="0" max="5" step="1" aria-label="工作区思考深度"></label><label><input type="checkbox">快速模式</label>';
   root.querySelector('.workspace-top').after(preferences);
   const modelChoice=preferences.querySelector('select'),depth=preferences.querySelector('[type=range]'),fast=preferences.querySelector('[type=checkbox]');
-  const reportPreference=error=>{root.querySelector('#workspace-error').textContent=error.message;};
-  modelChoice.onchange=()=>invoke('conversation.model',{modelId:modelChoice.value}).catch(reportPreference);
-  const saveThinking=()=>invoke('thinking.update',{depth:Number(depth.value),fast:fast.checked}).catch(reportPreference);
+  let feedbackRevision=0;
+  const reportPreference=error=>report(error);
+  const preferenceRequests={model:0,thinking:0},preferencePending={model:null,thinking:null},preferenceErrors={model:null,thinking:null};
+  let preferenceEditing=null;
+  const syncPreferenceBusy=()=>{
+    modelChoice.setAttribute('aria-busy',String(Boolean(preferencePending.model)));
+    for(const control of [depth,fast])control.setAttribute('aria-busy',String(Boolean(preferencePending.thinking)));
+  };
+  const projectPreferenceControls=()=>{
+    const observed=current.conversationPreference??current.thinking??{};
+    modelChoice.value=preferencePending.model?.modelId??observed.modelId??'';
+    const thinking=preferenceEditing??preferencePending.thinking??observed;
+    depth.value=String(thinking.depth??current.thinking?.depth??1);
+    fast.checked=Boolean(thinking.fast??current.thinking?.fast);
+    syncPreferenceBusy();
+  };
+  const requestPreference=async(group,name,payload)=>{
+    const request=++preferenceRequests[group];
+    preferencePending[group]=payload;syncPreferenceBusy();
+    try{await invoke(name,payload);if(request===preferenceRequests[group]&&preferenceErrors[group]===feedbackRevision)report('');}
+    catch(error){if(request===preferenceRequests[group]){preferencePending[group]=null;projectPreferenceControls();reportPreference(error);preferenceErrors[group]=feedbackRevision;}}
+    finally{if(request===preferenceRequests[group]){preferencePending[group]=null;syncPreferenceBusy();}}
+  };
+  modelChoice.onchange=()=>requestPreference('model','conversation.model',{modelId:modelChoice.value});
+  const editThinking=()=>{preferenceEditing={depth:Number(depth.value),fast:fast.checked};};
+  depth.oninput=editThinking;fast.oninput=editThinking;
+  const saveThinking=()=>{const payload={depth:Number(depth.value),fast:fast.checked};preferenceEditing=null;return requestPreference('thinking','thinking.update',payload);};
   depth.onchange=saveThinking;fast.onchange=saveThinking;
   let preferenceSignature;
   const updateRail=mountConversationRail(root.querySelector('.workspace-chat'),stage);
@@ -39,7 +63,7 @@ export function mountWorkspace(root,invoke,escape){
     clearTimeout(activationTimer);orbButton.setAttribute('aria-pressed','true');orb.playBreath(3.2);
     activationTimer=setTimeout(()=>{activationTimer=0;orbButton.setAttribute('aria-pressed','false');},3200);
   };
-  const report=error=>{root.querySelector('#workspace-error').textContent=error.message||String(error);};
+  const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
   const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.cancel)||current.tasks.some(task=>task.taskId===button.dataset.cancel&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body)return;
@@ -64,16 +88,16 @@ export function mountWorkspace(root,invoke,escape){
   }
   function update(data){
     updateRevision++;
+    current=data;current.tasks ||= [];
     const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference]);
     if(preferenceSignature!==nextPreferenceSignature) {
       modelChoice.replaceChildren(new Option('使用默认辅助模型',''),...(data.modelChoices??[]).map(item=>{
         const option=new Option(item.displayName,item.id);option.disabled=!item.available;return option;
       }));
-      modelChoice.value=data.conversationPreference?.modelId??'';depth.value=String(data.thinking?.depth??1);fast.checked=Boolean(data.thinking?.fast);
       preferenceSignature=nextPreferenceSignature;
+      projectPreferenceControls();
     }
     preferences.querySelector('label').hidden=!data.modelChoices?.length;
-    current=data;current.tasks ||= [];
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
     if(document.hidden)orb.stop();
