@@ -436,7 +436,7 @@ function privateMemoryController() {
         buttons: ['删除所有版本', '取消'], defaultId: 1, cancelId: 1, noLink: true,
       });
       return answer.response === 0 && admin===originAdmin && !originAdmin.isDestroyed();
-    }, {confirmWithdraw:async current=>{
+    }, {knowledgeSource:()=>knowledgeSourceConfig, confirmWithdraw:async current=>{
       const originAdmin=admin;if(!originAdmin || originAdmin.isDestroyed())return false;
       const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'撤回私人记忆',
         message:'停止后续任务消费这条私人记忆？',detail:`版本 ${current.ref?.revision??current.revision}`,
@@ -494,7 +494,7 @@ function snapshot(surface) {
     health: structuredClone(health),
     capabilityDirectory: {...capabilityDirectory},
     privateMemory: {available: competitionMode && Boolean(runtimeApplication),
-      vaultSelected: Boolean(privateMemory?.selected), writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
+      vaultSelected: knowledgeSourceConfig?.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     approvals: [...approvals.values()],
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
@@ -1444,7 +1444,9 @@ async function initializeRuntime() {
             buttons:['确认本会话范围','取消'],defaultId:1,cancelId:1,noLink:true});
           return choice.response===0 && admin && !admin.isDestroyed();
         }});
-      knowledgeTools=runtimeModule.createTrustedKnowledgeTools(knowledgeSourceConfig);
+      knowledgeTools=runtimeModule.createTrustedKnowledgeTools(knowledgeSourceConfig, {
+        revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
+      });
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         hostUserNamespace: namespace,
@@ -1633,6 +1635,16 @@ async function initializeRuntime() {
       memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
         learningApplication,privateErasure,managedPrivateCopies:[]});
       await memoryLearningHost.recover();
+      // Original source writes are never retried. Only known receipts resume local projection checks.
+      let projectionBefore,projectionSnapshot;
+      do {
+        const page=runtimeApplication.runtime.listTasks({limit:100,
+          ...(projectionBefore===undefined?{}:{beforeSequence:projectionBefore}),
+          ...(projectionSnapshot===undefined?{}:{snapshotSequence:projectionSnapshot})});
+        projectionBefore=page.nextBeforeSequence;projectionSnapshot=page.snapshotSequence;
+        for (const task of page.items) await knowledgeTools.recoverProjection(task.taskId,
+          {deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal});
+      } while (projectionBefore!==undefined);
       feedsHost?.bindApplication(runtimeApplication, namespace);
       todoHost?.bindApplication(runtimeApplication);
       goalHost.bind(runtimeApplication);
@@ -2186,7 +2198,9 @@ async function action(event, name, payload) {
       if(!payload || Object.keys(payload).some(key=>key!=='taskId') || typeof payload.taskId!=='string')throw Error('原知识任务标识无效');
       const task=await runtimeApplication.reconcileKnowledgeWriteTask(payload.taskId,
         {deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal});
-      publish();return {taskId:task.taskId,state:task.state};
+      const projection=await knowledgeTools.recoverProjection(payload.taskId,
+        {deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal});
+      publish();return {taskId:task.taskId,state:task.state,projection};
     }
     if(action==='submitPatch') {
       const binding=knowledgeSourceConfig.snapshot();
@@ -2445,16 +2459,15 @@ async function action(event, name, payload) {
       throw Error('私人记忆仅在 Competition 管理后台可用');
     }
     if (name === 'memory.selectVault') {
-      const selected = await dialog.showOpenDialog(admin, {properties: ['openDirectory'],
-        title: '选择只读知识库文件夹'});
-      if (selected.canceled || selected.filePaths.length !== 1) return {selected: false};
-      await privateMemoryController().selectVault(selected.filePaths[0]);
+      if (!knowledgeSourceConfig) throw Error('受信知识源尚未就绪');
+      const before = knowledgeSourceConfig.snapshot().sourceId;
+      const selected = await knowledgeSourceConfig.select();
+      privateMemoryController();
       publish();
-      return {selected: true};
+      return {selected: selected.available && selected.sourceId !== before};
     }
     if (name === 'memory.search') {
-      if (!privateMemory) throw Error('请先选择本机 Vault');
-      return privateMemory.search(payload?.query);
+      return privateMemoryController().search(payload?.query);
     }
     if (name === 'memory.listSaved') return privateMemoryController().listSaved(payload);
     if (name === 'memory.selectForConversation') {

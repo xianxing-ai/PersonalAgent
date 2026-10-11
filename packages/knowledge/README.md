@@ -1,5 +1,45 @@
 # @personal-agent/knowledge — provisional Vault ports
 
+## Wiki 第一包：只读来源身份与版本（MOD-08G）
+
+`@personal-agent/knowledge/wiki` 提供 provisional 的 `WikiPort`：
+`scanPages` 返回页面清单，`search` 返回带绑定信息的引用，`readCitation` 核对当前
+页面身份和正文 revision 后返回所引用的一行。受信宿主选择已授权的整个根目录，
+显式绑定 sourceId/namespace/configRevision/dataLevel/validUntil，并通过 `isCurrent()` 在每次
+异步读取前后检查捕获的配置与读取许可；模型、Renderer 和正文不能提供此回调。
+不授予写入、长期记忆确认或出机权限。
+
+```js
+import {openReadOnlyWiki} from '@personal-agent/knowledge/wiki';
+const wiki = await openReadOnlyWiki({
+  vaultId: source.vaultId, rootPath: source.rootPath,
+  sourceId: source.sourceId, namespace: source.namespace,
+  configRevision: source.configRevision, dataLevel: source.dataLevel, validUntil: readLease.validUntil,
+  isCurrent: () => host.hasCurrentReadLease(source.sourceId, source.configRevision)
+});
+const pages = await wiki.scanPages({deadline, signal});
+```
+
+示例的 `source/host/readLease/deadline/signal` 由受信调用方提供，不能从模型请求自动产生。
+Desktop 私人记忆已通过受信知识源配置装配此入口；不新增 Runtime capability。既有 `KnowledgePort` 消费方
+保持原接口，不能将 Wiki 引用直接塞进旧工具的 wire 输出。
+
+页面 ID 基于根目录和文件的原生身份（bigint dev/ino/birthtimeNs），正文 SHA-256
+作为 revision；同内容的不同文件不会合并。同卷 rename 保持 ID，重新打开同一来源
+也保持 ID；复制、跨卷移动、编辑器替换保存视为新页面。根目录替换或硬链接明确拒绝。
+旧位置缺失/不可读返回 SOURCE_UNAVAILABLE，身份/版本不符返回 SOURCE_CHANGED。
+扫描复用既有上限，不是全库原子快照；空清单或失败不授权删除事实、索引或原文件。
+读取到来源变化时拒绝结果；没有 watcher、持久索引或自动确认。
+
+`formatWikiCitationReference/parseWikiCitationReference` 生成/读取稳定的 `wiki-v1:` 证据引用，
+不保存短时许可的有效期；`readReference` 只能在当前可信 lease 中核实该证据。
+Desktop 的逐条确认及按需来源失效投影见 [MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)。
+
+显式测试可用 `@personal-agent/knowledge/testing` 的 `createFakeWikiPort`，其路径派生
+ID 仅用于固定夹具。`createUnavailableWikiPort` 明确报不可用，不回退 Fake。
+完整边界与验收见 [MOD-08G](../../docs/modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)
+及 [ADR-0015](../../docs/adr/0015-wiki-source-identity.md)。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 PA008 MVP 新增独立受控写端口与受信知识源配置，目标 profile 为 `huawei_ict_agentarts`。

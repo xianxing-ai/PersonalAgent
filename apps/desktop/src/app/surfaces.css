@@ -73,7 +73,7 @@
 :root:not([data-theme="light"]) .activity-grid span {background:#1c3c66}
 .panel .composer {margin:0 12px 12px;padding:8px 12px;border-radius:17px}
 .panel .composer textarea {min-height:38px;font-size:14px;padding:4px 4px 0}
-.panel .composer-bar {margin-top:2px;min-width:0}
+.panel .composer-bar {position:relative;margin-top:2px;min-width:0}
 .panel .composer-bar>.icon-btn,.panel .composer-bar>.send-btn {width:32px;height:32px;flex:0 0 32px}
 .panel .model-box {flex:0 1 148px;min-width:0;max-width:148px}
 .panel .model-select {display:flex;width:100%;min-width:0;max-width:100%;overflow:hidden;font-size:12px;padding:4px 5px;white-space:nowrap}
@@ -149,7 +149,7 @@
 
 .panel .composer textarea {box-sizing:border-box;min-width:0;field-sizing:content;max-height:min(160px,28vh);overflow-y:auto}
 .panel .model-box {position:static}
-.panel .model-menu {right:14px;bottom:80px;width:252px;max-width:calc(100% - 28px);max-height:calc(100vh - 104px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.panel .model-menu {right:0;bottom:calc(100% + 8px);width:252px;max-width:calc(100% - 28px);max-height:calc(100vh - 104px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .panel .model-menu .mm-model {min-width:0;align-items:flex-start}
 .panel .model-menu #mm-model-label {min-width:0;flex:1;overflow-wrap:anywhere}
 .panel .model-menu .model-tag {flex:0 0 auto}

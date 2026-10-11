@@ -262,19 +262,28 @@ export function mountAdmin(root, invoke, escape) {
   function memoryPage(data) {
     if (!data.privateMemory?.available) return featurePage(data, 'memory');
     const selected = data.privateMemory.vaultSelected;
+    const citationLabel = value => {
+      if (typeof value === 'string' && value.startsWith('wiki-v1:')) {
+        try {
+          const source = JSON.parse(value.slice(8));
+          if (typeof source?.path === 'string' && Number.isSafeInteger(source.line)) return `${source.path}:${source.line}`;
+        } catch { /* Preserve an unrecognized reference as text. */ }
+      }
+      return value;
+    };
     const hits = memorySearch.hits.map((hit, index) => `<article class="sheet">
       <p>${escape(hit.excerpt)}</p><small>${escape(hit.source.path)}:${hit.source.line}</small>
       <label>拟保存的私人记忆<input data-memory-summary="${index}" maxlength="500"
         value="${escape(memorySummaries.get(index) ?? '')}" placeholder="逐条填写并确认摘要"></label>
       <button class="btn btn-sm" data-memory-save="${index}" ${data.privateMemory.writeEnabled ? '' : 'disabled'}>检查并确认</button></article>`).join('');
     const saved = savedMemory.facts.map((fact, index) => `<article class="sheet">
-      <p>${escape(fact.summary)}</p><small>${escape(fact.sourceRef)}</small>
-      <p class="muted">版本 ${escape(fact.ref.revision)}${fact.state === 'withdrawn' ? ' · 已撤回，后续任务不可消费' : ''}</p>
+      <p>${escape(fact.summary)}</p><small>${escape(citationLabel(fact.sourceRef))}</small>
+      <p class="muted">版本 ${escape(fact.ref.revision)}${fact.state === 'withdrawn' ? fact.confirmation === 'external_observation' ? ' · 来源已变化，后续任务不可消费' : ' · 已撤回，后续任务不可消费' : ''}</p>
       <button class="btn btn-sm" data-memory-delete="${index}">删除所有版本</button></article>`).join('');
     return `<section class="feature-page"><div class="settings-heading"><h2>私人记忆</h2>
       <p>只读检索本机 Vault；每条摘录或更正都需在原生对话框中确认。不会自动发送至云端。</p></div>
       <div class="sheet"><button class="btn btn-sm" id="memory-select-vault">选择本机 Vault 文件夹</button>
-      <p class="muted">${selected ? '已选择本机会话 Vault；重启后需重新选择。' : '尚未选择 Vault。'}</p>
+      <p class="muted">${selected ? '使用已选择的本机知识源；可在知识源设置中停用或撤销。' : '尚未选择可用知识源。'}</p>
       <form id="memory-search-form"><input id="memory-query" type="search" maxlength="200"
         value="${escape(memorySearch.query)}" placeholder="搜索摘录" ${selected ? '' : 'disabled'}>
         <button class="btn btn-sm" ${selected ? '' : 'disabled'}>搜索</button></form>

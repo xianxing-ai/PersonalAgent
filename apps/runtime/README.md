@@ -1,5 +1,16 @@
 # Runtime task core
 
+Wiki 来源增量提供可信 Application 入口 `revalidateWikiFact`：使用当前宿主 lease 精确读回
+既有确认事实的来源，已知版本变化或读回证明的同卷移动追加观察撤回；临时缺失与扫描失败
+保留历史并返回 source_unavailable。新事实仍通过 `ingestConfirmedPrivateCitation` 逐条确认，
+持久来源引用不授予文件访问或云发送权限。Feed/Goal 复用既有投影应用；参见
+[MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)，接口 provisional。
+
+`createTrustedKnowledgeTools(source, projectionPort?)` 可在原 TaskRuntime 检查点中分别记录
+正文结果与投影进度。`recoverProjection` 只重校验已知回执的来源；unknown 必须先通过
+原 `reconcileKnowledgeWriteTask` 真实读回及 finalize。投影失败保留待恢复记录，已知成功
+写入不被重做。参见 [MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 @personal-agent/runtime is the MOD-03 local task and event core for PA-004 and the scheduling boundary of PA-009.

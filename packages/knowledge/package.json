@@ -9,7 +9,8 @@
     "./obsidian": {"types": "./dist/obsidian.d.ts", "import": "./dist/obsidian.js"},
     "./tool": {"types": "./dist/tool.d.ts", "import": "./dist/tool.js"},
     "./testing": {"types": "./dist/testing.d.ts", "import": "./dist/testing.js"},
-    "./write": {"types": "./dist/write.d.ts", "import": "./dist/write.js"}
+    "./write": {"types": "./dist/write.d.ts", "import": "./dist/write.js"},
+    "./wiki": {"types": "./dist/wiki.d.ts", "import": "./dist/wiki.js"}
   },
   "dependencies": {
     "@personal-agent/contracts": "0.1.0-alpha.1",

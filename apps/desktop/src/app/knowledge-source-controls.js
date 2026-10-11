@@ -102,6 +102,7 @@ export function mountKnowledgeSourceControls(root, invoke) {
       if (result?.taskId !== lastSubmittedTaskId) throw Error('原整理任务读回不一致');
       field('write-status').textContent = result.state === 'waiting_reconciliation'
         ? '原写入结果仍待核实，已保留现场；请稍后再次核实'
+        : result.projection?.pending > 0 ? '原写入已核实，记忆来源更新仍待恢复；再次核实只更新记忆，不重复写笔记'
         : `原整理任务状态：${result.state ?? 'pending'}；以任务读回为准`;
     });
   });

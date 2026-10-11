@@ -110,7 +110,7 @@
 | MOD-05 | M1/M2 | review | goo122 / PR #7、#26、#49 已合并；任务级 SQLite 授权、参数绑定、审批恢复、工具 Evidence、幂等重放和 Competition 离线工具循环已验证；跨任务持续授权、真实 SecretStore 和真实写入恢复尚未完成 |
 | MOD-06 | M2 | todo | 未启动 |
 | MOD-07 | M2 | todo | 未启动 |
-| MOD-08 | M2 | in_progress | `goo122` / PR #93～#95、#97、#98 已经非作者评审并合并；只读端口、脱机及 Obsidian 只读适配器、Policy 检索工具和公开演示资料的 Competition Fake 审批链均完成离线验收。真实私人 Vault 授权/验收、生产注册、可安装插件、私人结果出机控制和 LLM Wiki 未完成 |
+| MOD-08 | M2 | in_progress | `goo122` / PR #93～#95、#97、#98 已经非作者评审并合并；只读端口、脱机及 Obsidian 只读适配器、Policy 检索工具和公开演示资料的 Competition Fake 审批链均完成离线验收。[MOD-08G](modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md) 已实现 Wiki 页面身份、来源配置/版本及旧引用校验，通过本机合成验收与完整 check。[MOD-08H](modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md) 已实现 Desktop 受信知识源共用、逐条确认及按需来源失效投影；Git 夹具与菜单遮挡门禁已修复并专项复验。[MOD-08I](modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md) 衔接受控正文写回、原操作读回和投影待恢复检查点，专项 18/18 含真实 Windows 合成写回，完整门禁见工作包。端口仍 provisional，待 Git 交付及非作者评审；可安装插件、后台全库同步、私人备份/跨库投影与完整 LLM Wiki 未完成 |
 | MOD-09 | M1.6/M4 | in_progress | `goo122` 保留在途范围，P7/P8 剩余按当前分工交接；#209/#210、经 #210 集成的 #211、#270/P8 生产桥及 #280 已进入 main，#284 的同步门禁修复及实际 Runtime 父/子副本回归经 #285 评审后进入 main。#289 已合并实际官方 MCP 与 SQLite 审批的学习验证/回滚/重启/删除验收和内部错误码失败持久化修复。#294 撤回后管理及删除恢复已合并到 main@4d15f063。2026-10-07 原生只读检索、取消确认及重启零事实通过；控件刷新修复已完成本地验收，提交及 PR 状态以 Git 为准，Desktop 453 通过/2 跳过，见 [本次记录](modules/MOD-09-NATIVE-READONLY-20261007.md)。真实来源具体摘要确认及持久生命周期、原生写入/管理、完整 parent→child 许可与云消费仍待验收；详见 [收口验收矩阵](modules/MOD-09-PA020-MVP-PRODUCTION.md#2026-10-06-收口验收矩阵2026-10-07-更新)；不能将本地通过记为整个模块 done |
 | MOD-10 | M4 后研究，无交付日期承诺 | todo | 未启动 |
 | MOD-11 | M1 | in_progress | `zemeng` / main@4b5ec614 已具受控 IPC、本机桌面设置/恢复及 SIS/Live 宿主消费；#75 已进入 main（非仅语音堆叠）。当前开发 #302 尚未合并；DPI/透明命中、真实崩溃和比赛实机验收仍未完成；[源码核对](../apps/desktop/README.md#2026-10-07-原功能源码核对) |

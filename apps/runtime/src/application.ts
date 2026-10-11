@@ -24,6 +24,8 @@ export type {FactImpactReceipt, FactProjectionReceipt, CompletedFactImpact} from
 export {ingestPublicSource} from './application/public-source.js';
 export {ingestConfirmedPrivateCitation} from './application/private-source.js';
 export type {ConfirmedPrivateFact} from './application/private-source.js';
+export {revalidateWikiFact} from './application/wiki-source.js';
+export type {WikiFactValidation} from './application/wiki-source.js';
 export {createWindowsHostBridgeTransport, createWindowsHostNotepadAdapter} from './application/windows-host-adapter.js';
 export {createRuntimeWindowsHostAttemptStore} from './application/windows-host-attempt-store.js';
 export type {WindowsHostTransport, VerifiedWindowsHostConnection, WindowsHostAttemptStore,
@@ -79,6 +81,7 @@ export type {SkillManifest, SkillOutcome, ReferenceSummaryInput, ReferenceSummar
   SkillReadReconciliationPort, SkillReadReconciliationQuery} from '@personal-agent/skills';
 export {createTrustedKnowledgeTools} from './application/knowledge-tools.js';
 export type {TrustedKnowledgeSource,TrustedKnowledgeBinding,KnowledgeToolTaskBindings} from './application/knowledge-tools.js';
+export type {KnowledgeWriteProjectionPort} from './application/knowledge-write-projection.js';
 export {createWorkflowLearningApplication,createBoundPublicFactErasureApplication,LEARNING_BINDING_CHECKPOINT} from './application/memory-learning.js';
 export type {WorkflowLearningOptions,LearningTaskBinding,LearningSkillManifest} from './application/memory-learning.js';
 export {KnowledgeWriteReconciliationAdapter} from './application/knowledge-write-reconciliation.js';

@@ -3,6 +3,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {openReadOnlyVault} from '@personal-agent/knowledge/filesystem';
+import {createWikiPort} from '@personal-agent/knowledge/wiki';
 import {openControlledVaultWriter} from '@personal-agent/knowledge/write';
 import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 
@@ -207,13 +208,26 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
     acquire(expected, signal) {
       checkBinding(expected);
       const controller = new AbortController(); inflight.add(controller);
+      let released = false;
       const binding = snapshot(), selectedVault = vault, selectedWriter = writer;
       return {binding, read: selectedVault, write: writeAllowed ? selectedWriter : undefined,
         reconcileWrite: selectedWriter ? (input, context) => selectedWriter.reconcile(input, context) : undefined,
         finalizeWrite: selectedWriter ? (accepted, context) => selectedWriter.finalize(accepted, context) : undefined,
         signal: AbortSignal.any([signal, controller.signal]),
-        assertCurrent() {checkBinding(expected); if (controller.signal.aborted) throw Error('知识源调用已撤销');},
-        release() {inflight.delete(controller);}};
+        assertCurrent() {checkBinding(expected); if (released || controller.signal.aborted) throw Error('知识源调用已撤销');},
+        release() {released = true; inflight.delete(controller);}};
+    },
+    /** Host-only Wiki lease, using the exact same root/configuration as Knowledge tools. */
+    acquireWiki(expected, context) {
+      const lease = this.acquire({...expected}, context?.signal);
+      try {
+        const wiki = createWikiPort({reader: lease.read, vaultId: lease.binding.sourceId,
+          sourceId: lease.binding.sourceId, namespace: lease.binding.namespace,
+          configRevision: lease.binding.configRevision, dataLevel: lease.binding.dataLevel,
+          validUntil: context.deadline,
+          isCurrent: () => {lease.assertCurrent(); return !lease.signal.aborted;}});
+        return {...lease, wiki};
+      } catch (error) {lease.release(); throw error;}
     },
     async readSelectedNote(input) {
       if (!input || Object.keys(input).some(key => !['sourceId', 'configRevision', 'path'].includes(key))) throw Error('无效的笔记请求');

@@ -1,5 +1,14 @@
 # @personal-agent/memory — provisional queries and fact feed Fake
 
+## Wiki 来源失效增量（MOD-08H，provisional）
+
+SQLite 可信写端口 `invalidateUserFactSource(namespace, request)` 要求用户创建记录、
+精确 expectedRevision/sourceRef 和有效 deadline/signal。事务内保留原摘要与证据，
+追加 withdrawn/external_observation 版本及既有 Feed 序列；重验已撤回头不重复追加。
+它不能生成用户确认、新事实或删除权限。失效头仍可管理、继续确认更正及彻底删除历史。
+没有迁移或新 wire operation；Desktop 私人 Feed 未自动绑定。边界和验收见
+[MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 This provisional Competition Profile package defines the first in-process
