@@ -34,6 +34,11 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   let closing = false;
   const httpControllers = new Set();
   const httpUploads = new Map();
+  const httpSockets = new Set();
+  const httpResponses = new Map();
+  const endSocket = socket => {
+    if (![...httpResponses.values()].includes(socket)) socket.destroy();
+  };
   const endUpload = (request,response) => {
     if (request.complete) return;
     if (response.destroyed || response.writableFinished) request.destroy();
@@ -56,6 +61,12 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   };
   let transport;
   const server = createServer(async (request,response) => {
+    httpResponses.set(response,request.socket);
+    response.once('finish',() => {
+      httpResponses.delete(response);
+      if (closing) endSocket(request.socket);
+    });
+    response.once('close',() => httpResponses.delete(response));
     httpUploads.set(request,response);
     request.once('close',() => httpUploads.delete(request));
     if (closing) {
@@ -137,6 +148,11 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       }
     }
   });
+  server.on('connection',socket => {
+    httpSockets.add(socket);
+    socket.once('close',() => httpSockets.delete(socket));
+    if (closing) endSocket(socket);
+  });
   server.requestTimeout = timeoutMs;
   server.headersTimeout = Math.min(timeoutMs,60_000);
   transport = attachAgentWebSocketTransport(server,{...websocket,authToken:wssAuthToken,invoke,acquire,release,timeoutMs});
@@ -149,6 +165,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     }
     for (const [request,response] of httpUploads) endUpload(request,response);
     transport.close();
+    for (const socket of httpSockets) endSocket(socket);
     return closeHttp(...args);
   };
   return server;

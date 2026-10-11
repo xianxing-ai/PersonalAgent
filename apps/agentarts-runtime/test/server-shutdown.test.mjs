@@ -6,7 +6,7 @@ import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {once} from 'node:events';
 import {createServer as httpsServer} from 'node:https';
-import {createServer as tcpServer} from 'node:net';
+import {createServer as tcpServer,connect} from 'node:net';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -94,7 +94,7 @@ test('close cancels a non-cooperative invocation once and repeated close remains
  const invocation=await started;assert.equal((await(await fetch(f.url+'/ping')).json()).status,'HealthyBusy');
  const rejected=await fetch(f.url+'/invocations',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+'s'.repeat(32)},body:'{"query":"second"}'});assert.equal(rejected.status,429);
  f.server.close();f.server.close();const response=await pending;assert.equal(response.status,499);assert.equal(invocation.signal.aborted,true);assert.equal(aborts,1);
- finish({kind:'text',text:'synthetic late result'});await pause(10);assert.equal(aborts,1);assert.equal((await response.text()).includes('late result'),false);
+ finish({kind:'text',text:'synthetic late result'});await pause(10);assert.equal(aborts,1);const body=await response.text();assert.equal(body.includes('late result'),false);assert.equal(JSON.parse(body).data.error_code,'CANCELLED');
 });
 test('close also cancels an incomplete authenticated status upload',async t=>{
  let calls=0;const f=await directHost(t,{invoke:async()=>{calls++;return {kind:'text',text:'synthetic'};}});
@@ -148,4 +148,11 @@ for(const [name,status,route,headers] of [
  const closed=once(f.server,'close');f.server.close();
  const state=await Promise.race([closed.then(()=>'closed'),pause(500).then(()=>'still_open')]);
  assert.equal(calls,0);assert.equal(state,'closed');
+});
+test('actual production shutdown closes incomplete headers before any HTTP dispatch',async t=>{
+ const f=await fixture(t);const socket=connect(f.port,'127.0.0.1');socket.on('error',()=>{});t.after(()=>socket.destroy());await once(socket,'connect');
+ socket.write('POST /invocations HTTP/1.1\r\nHost: synthetic\r\nContent-T');await pause(20);f.child.kill('SIGTERM');
+ const exit=await Promise.race([f.closed,pause(1000).then(()=>['still_open'])]);
+ t.diagnostic(JSON.stringify({actualProduction:true,incompleteHeaders:true,modelRequests:f.first.length,exit,realCloud:false}));
+ assert.equal(f.first.length,0);assert.deepEqual(exit,[0,null]);assert.equal(f.logs().stderr,'');
 });
