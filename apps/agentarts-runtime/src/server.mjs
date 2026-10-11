@@ -33,6 +33,12 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   let active = 0;
   let closing = false;
   const httpControllers = new Set();
+  const httpUploads = new Map();
+  const endUpload = (request,response) => {
+    if (request.complete) return;
+    if (response.destroyed || response.writableFinished) request.destroy();
+    else response.once('finish',() => request.destroy());
+  };
   const acquire = () => {
     if (active >= maxConcurrency) return false;
     active++; return true;
@@ -50,7 +56,12 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   };
   let transport;
   const server = createServer(async (request,response) => {
-    if (closing) return json(response,499,{event:'error',data:{error_code:'CANCELLED',status:'failed'}});
+    httpUploads.set(request,response);
+    request.once('close',() => httpUploads.delete(request));
+    if (closing) {
+      json(response,499,{event:'error',data:{error_code:'CANCELLED',status:'failed'}});
+      return endUpload(request,response);
+    }
     if (request.method === 'GET' && request.url === '/ping') {
       return json(response,200,{status:active ? 'HealthyBusy':'Healthy', time_of_last_update:Math.floor(Date.now()/1000)});
     }
@@ -122,8 +133,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       if (closing && !request.complete) {
         // Flush the cancellation response before terminating a withheld upload.
         // Otherwise close waits forever after the invocation timer is cleared.
-        if (response.destroyed || response.writableFinished) request.destroy();
-        else response.once('finish',() => request.destroy());
+        endUpload(request,response);
       }
     }
   });
@@ -137,6 +147,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     for (const controller of httpControllers) {
       controller.abort(new ProtocolError('CANCELLED','Agent server closed'));
     }
+    for (const [request,response] of httpUploads) endUpload(request,response);
     transport.close();
     return closeHttp(...args);
   };

@@ -120,3 +120,32 @@ test('actual SIGTERM closes an upload that never supplies its remaining body aft
   assert.deepEqual(exit,[0,null]);assert.equal(f.first.length,0);assert.equal(f.logs().stderr,'');
  } finally {request.destroy();}
 });
+test('actual production SIGTERM cleans an unfinished upload after its original deadline response',async t=>{
+ const f=await fixture(t);let upload;
+ const received=new Promise((resolve,reject)=>{
+  upload=httpRequest({hostname:'127.0.0.1',port:f.port,path:'/invocations',method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.inbound,'x-pa-deadline':new Date(Date.now()+150).toISOString()}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolve({status:response.statusCode,body}));});
+  upload.on('error',reject);upload.write('{"query":');
+ });t.after(()=>upload.destroy());
+ const response=await received;assert.equal(response.status,504);assert.equal(JSON.parse(response.body).data.error_code,'TIMEOUT');
+ // The ordinary deadline response does not acquire the new shutdown behavior.
+ await pause(20);assert.equal(upload.socket.destroyed,false);assert.equal(upload.writableEnded,false);
+ assert.equal(f.child.exitCode,null);f.child.kill('SIGTERM');
+ const exit=await Promise.race([f.closed,pause(1000).then(()=>['still_open'])]);
+ t.diagnostic(JSON.stringify({actualProduction:true,status:response.status,modelRequests:f.first.length,exit,realCloud:false}));
+ assert.equal(f.first.length,0);assert.deepEqual(exit,[0,null]);assert.equal(f.logs().stderr,'');
+});
+for(const [name,status,route,headers] of [
+ ['unauthorized',401,'/invocations',{}],
+ ['unknown route',404,'/not-a-route',{}],
+ ['invalid deadline',400,'/invocations',{'authorization':'Bearer '+'s'.repeat(32),'x-pa-deadline':'invalid'}],
+])test(`close cleans a half upload after early ${name} without changing its response`,async t=>{
+ let calls=0;const f=await directHost(t,{invoke:async()=>{calls++;return {kind:'text',text:'synthetic'};}});let upload;
+ const received=new Promise((resolve,reject)=>{
+  upload=httpRequest(f.url+route,{method:'POST',headers:{'content-type':'application/json',...headers}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolve({status:response.statusCode,body}));});
+  upload.on('error',reject);upload.write('{');
+ });t.after(()=>upload.destroy());
+ const response=await received;assert.equal(response.status,status);
+ const closed=once(f.server,'close');f.server.close();
+ const state=await Promise.race([closed.then(()=>'closed'),pause(500).then(()=>'still_open')]);
+ assert.equal(calls,0);assert.equal(state,'closed');
+});
