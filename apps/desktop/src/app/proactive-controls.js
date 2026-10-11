@@ -236,6 +236,9 @@ export function mountProactiveControls(container, invoke, {settings = false} = {
     if (reviewsList) {
       // Capture the native state before replacing nodes; periodic snapshots must not close a reader's disclosure.
       let focusedTriggerReview;
+      const focusedAction=reviewsList.contains(document.activeElement)&&document.activeElement.matches('button[data-action="apply-cognition"],button[data-action="retain-local-cognition"]')?document.activeElement:null;
+      const actionIdentity=button=>JSON.stringify(Object.entries(button.dataset).sort(([a],[b])=>a.localeCompare(b)));
+      const focusedActionIdentity=focusedAction&&!focusedAction.disabled?actionIdentity(focusedAction):null;
       for(const details of reviewsList.querySelectorAll('details[data-trigger-review]')) {
         triggerExpansion.set(details.dataset.triggerReview,details.open);
         if(details.querySelector('summary')===document.activeElement)focusedTriggerReview=details.dataset.triggerReview;
@@ -269,6 +272,10 @@ export function mountProactiveControls(container, invoke, {settings = false} = {
         for(const details of reviewsList.querySelectorAll('details[data-trigger-review]')) {
           if(details.dataset.triggerReview===focusedTriggerReview) {details.querySelector('summary').focus({preventScroll:true});break;}
         }
+      }
+      if(focusedActionIdentity!==null&&document.activeElement===document.body) {
+        const button=[...reviewsList.querySelectorAll('button[data-action]')].find(item=>{const review=cognitionReviews.find(review=>review.reviewTaskId===item.dataset.reviewId);return review&&!item.disabled&&!['expired','succeeded','failed','cancelled','applied'].includes(review.status??review.state)&&actionIdentity(item)===focusedActionIdentity;});
+        if(button)button.focus({preventScroll:true});
       }
     }
   }
