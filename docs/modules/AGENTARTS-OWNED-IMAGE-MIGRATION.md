@@ -23,7 +23,7 @@
 - Goal get/list读取结果在投影、最终接收及异步凭据等待后的发送前，再核对原回执与当前精确 scoped Goal。原版本已受限、撤回或变化时保留旧confirmed回执及待核实Task，不发送陈旧投影、不覆盖或重放；新独立授权请求仍可正常执行，无关图更新不阻断。
 - 服务关闭时取消已受理HTTP工作并保留原CANCELLED/499响应；已504或早期401/404/400但上传未完成、以及尚未结束请求头的TCP连接也在关闭时结束。普通超时/拒绝的原响应码与关闭前行为保留，WSS沿原transport.close；不承诺远端提供者停止计费。
 
-固定提交 `ac86e34239d63e54ad81c8ded1c805d95e61c256` 的完整 `npm run check` 在 Node24.15.0/npm11.12.1 下退出0：2814项、2764通过、50跳过；检查前后HEAD与源码状态一致，原日志SHA256为 `bd20c486a99851da3cad0a5ef2a9f7025001392ff214ab87eb48334a8d4633cb`。此检查覆盖Goal1.2、UTF8下界、手动/元数据此前增量，尚不覆盖后来的Goal read当前版本及服务shutdown收口；新组合须另做完整检查，不能借历史10-09的 GHCR 发布或旧 CI。Goal read关联22/22与Runtime66/66、子树shutdown完整48/48已通过；子树shutdown编译依赖仍是原1.1，最新1.2组合验证由根交付树负责。手动入口根交付树12/12在workspace/integration测试globs外单独执行。Goal合成路径使用实际Host/Client/Runtime/SQLite/公开候选预览，另由原本地Policy与测试审批完成CAS/Evidence/readback；云任务不执行工具、不获得本地审批。
+固定提交 `0edf2449d820a1f3bcebf5e9939614004ca32cf7` 的完整 `npm run check` 在 Node24.15.0/npm11.12.1 下退出0：2839项、2789通过、50跳过；1179个tracked文件的检查前后哈希、HEAD与源码状态一致，原日志SHA256为 `34b34742bdb05b78d77df528dbcf0648a3de819fbb84cd19e46ebc4054a475ec`。该组合覆盖Goal1.2、UTF8下界、Goal read当前版本、服务shutdown及此前手动/元数据增量。之后仅HTTP canonical日期收口提交 `beeff9c7ed5826ba9eb1698398a75af7c2e2c531` 在根交付树以该轮已构建的Owned1.2依赖通过完整runtime50/50与类型检查，原runtime日志SHA256为 `479b3373a49ca2e293d0880d348fb2351414b95431eb6d60d5af014716da5c1f`；没有把旧完整检查借给新日期代码。HTTP非法日/月/24:00在dispatch前拒绝，合法Z/.000Z/.123Z及真闰日保持，公开Schema/期限预算不变。手动入口在workspace/integration测试globs外重新单独执行12/12。Goal合成路径使用实际Host/Client/Runtime/SQLite/公开候选预览，另由原本地Policy与测试审批完成CAS/Evidence/readback；云任务不执行工具、不获得本地审批。
 
 本轮不自行批准或合并；两位协作者当前 head 的本机设计阅读声明门槛保留。真实 Windows/Electron、物理音频、Huawei deployment、公网 WSS Upgrade、真实模型与 usage/费用读回仍未完成，由实际环境持有人及对应模块负责人处理。离线通过、仓库交付和预览镜像均不能替代这些验收，全部 MOD 与整体 MVP 仍未完成。
 
