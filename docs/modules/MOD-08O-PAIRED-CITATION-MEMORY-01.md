@@ -1,6 +1,6 @@
 # MOD-08O：配对插件引用与逐条记忆确认
 
-- 状态：ready；实现与本包验收通过，待 Git 交付、非作者评审/集成
+- 状态：review；实现与本包验收通过，已交付 PR #323，待非作者评审/集成
 - 日期：2026-10-11；Profile：huawei_ict_agentarts
 - 负责人：goo122；非作者评审：zemeng 或其他已登记协作者
 - 工作树：`.worktrees/goo122-wiki-source-revisions`
@@ -55,7 +55,11 @@ Desktop 私人记忆页选择当前配对来源，预览准确摘录，原生确
   最新截图 `desktop-memory-erased.png` 已目视核对失效提示、搜索禁用、目标删除和无关事实；
   evidence 不含配对码、secret、私钥。失败轮次保留于独立缓存，不充作成功证据。
 
-## 剩余边界
+## 交付与剩余边界
+
+实现提交 `2718f064` 已推送至 [PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323)，
+base 为 PR #322 分支 `codex/goo122-desktop-unicode-pairing`。两个包独立交付，未合并或发布。
+本节交付记录为后续纯文档提交，不改变上述已验证代码；远程 CI 状态以当前 PR head 为准。
 
 真实人类逐条内容确认、真实私人数据出机和 AgentArts 云端验收未执行。插件页移动的全库
 扫描不提供；缺页保持来源不可核实。接口 provisional，待非作者评审和依赖栈集成。

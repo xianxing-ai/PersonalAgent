@@ -1,12 +1,13 @@
 # 开发计划与进度
 
-### 2026-10-11 goo122 配对引用与记忆确认（ready）
+### 2026-10-11 goo122 配对引用与记忆确认（review）
 
 认证桥接/中文路径已在 [PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322)
 `7f1b4f1b` 相对 #321 交付，待非作者评审/集成。[MOD-08O](modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md)
 在该基线上接通版本 2 插件引用、受信页身份与原生逐条记忆确认，复用现有恢复/撤回/删除。
 工作分支 `codex/goo122-paired-citation-memory`，完整 check 2714 项（2689 pass/25 skip/0 fail）、
-Desktop smoke 与实际双进程合成保存/更正/重启/撤回/删除验收通过；待独立 PR 与非作者评审/集成。
+Desktop smoke 与实际双进程合成保存/更正/重启/撤回/删除验收通过；已提交
+[PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323) `2718f064`，base 为 #322，待非作者评审/集成。
 批准为 explicit Fake，云调用 0；证据与失效界面修复见模块记录。
 原 Vault 只读，云验收继续暂缓；完整模块不转 done。
 
