@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
@@ -7,7 +6,6 @@ import vm from 'node:vm';
 import test from 'node:test';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-execFileSync(process.execPath, ['scripts/build.mjs'], {cwd: root});
 const nativeRequire = createRequire(import.meta.url);
 function fixture() {
   const commands = [], events = [];
@@ -27,9 +25,9 @@ function fixture() {
     close() {this.onClose();}
   }
   const module = {exports: {}};
-  vm.runInNewContext(readFileSync(root + 'dist/main.js', 'utf8'), {module, exports: module.exports, AbortController,
+  vm.runInNewContext(readFileSync(root + 'dist/main.js', 'utf8'), {module, exports: module.exports, AbortController, Buffer,
     require: id => id === 'obsidian' ? {Plugin, Modal, Notice: class {}}
-      : id.startsWith('./') ? nativeRequire(root + 'dist/' + id.slice(2)) : nativeRequire(id)});
+      : id.startsWith('./') ? (() => {throw Error('Obsidian does not resolve plugin sidecar modules');})() : nativeRequire(id)});
   const file = {path: 'Allowed/a.md', stat: {mtime: 1, size: 6}};
   let body = 'needle', reads = 0, opened = [], cursor;
   const plugin = new module.exports();
@@ -56,7 +54,7 @@ test('installable package loads without repository modules, binds explicitly and
   assert.deepEqual(f.opened, ['Allowed/a.md']); assert.equal(JSON.stringify(f.cursor), '{"line":0,"ch":0}');
   f.edit('changed'); await assert.rejects(f.plugin.openCitation(hit.source, scope().signal));
   assert.equal(f.opened.length, 1);
-  assert.deepEqual((await f.plugin.port.search({query: 'needle', limit: 20, ...scope()})).hits, []);
+  assert.equal((await f.plugin.port.search({query: 'needle', limit: 20, ...scope()})).hits.length, 0);
   f.plugin.disconnect(); await assert.rejects(f.plugin.openCitation(hit.source, scope().signal));
   f.plugin.onunload(); assert.throws(() => f.plugin.connect('/'));
 });

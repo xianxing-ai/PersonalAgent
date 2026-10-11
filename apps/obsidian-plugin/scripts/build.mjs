@@ -27,8 +27,8 @@ const cache={}; const nativeRequire=require;
 function load(id){if(!modules[id])return nativeRequire(id);if(cache[id])return cache[id].exports;
 const module={exports:{}};cache[id]=module;modules[id](module,module.exports,load);return module.exports;}
 module.exports=load(${JSON.stringify(adapterId)});\n`;
-writeFileSync(join(dist, 'knowledge-obsidian.cjs'), adapter);
 writeFileSync(join(dist, 'main.js'), readFileSync(join(root, 'src/main.cjs'), 'utf8')
-  .replace("require('@personal-agent/knowledge/obsidian')", "require('./knowledge-obsidian.cjs')"));
+  .replace("require('@personal-agent/knowledge/obsidian')",
+    `(function(){const module={exports:{}};${adapter}return module.exports;})()`));
 copyFileSync(join(root, 'manifest.json'), join(dist, 'manifest.json'));
 console.log('Obsidian package: ' + dist);

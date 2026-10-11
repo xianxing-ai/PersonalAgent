@@ -1,7 +1,7 @@
 # MOD-08J：Wiki 后台只读来源监视
 
 - Profile：`huawei_ict_agentarts`；负责人：`goo122`；非作者评审：其他已登记协作者
-- 状态：`review`；实现、专项、完整门禁及原生窗口复验通过，尚未 Git 交付、非作者评审及集成
+- 状态：`review`；实现、专项、完整门禁及原生窗口复验通过，已交付 [PR #321](https://github.com/zemeng5208/PersonalAgent/pull/321)，尚未非作者评审及集成
 - 依赖：[PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320)，`a871664b`
 - 分支：`codex/goo122-wiki-source-monitor`；复用本任务工作树 `.worktrees/goo122-wiki-source-revisions`
 - 拥有目录：Runtime Application、Desktop 可信组合/来源管理 UI、相关测试与文档
