@@ -1,5 +1,15 @@
 # 当前接口目录与冻结登记
 
+2026-10-11 本地未提交增量：[MOD-08M](../modules/MOD-08M-UNICODE-PAIRING-01.md)
+新增 `@personal-agent/knowledge/pairing` 与 Runtime Application `createObsidianPairingHost`。
+它们是 **host-only provisional** 组合端口，复用既有 KnowledgePort 和工具/Policy 链，
+不新增 task wire operation、数据库迁移或云 capability。后续本地增量
+[MOD-08N](../modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md) 增加公开
+`@personal-agent/knowledge/bridge` 的版本 1 回环 TLS 指纹/一次性密钥消息协议及原生配对窗口，
+仅私人只读检索，仍 **provisional**；下方知识模块的完整可用性不提升为 frozen。方案见
+[ADR-0020](../adr/0020-obsidian-authenticated-bridge.md) 与
+[ADR-0019](../adr/0019-obsidian-runtime-pairing.md)。
+
 版本：1.3 · 日期：2026-09-27 · 基线提交：`9c40a0853b8db9e05e91c978e35d8e1a40788b39`
 
 协议负责人：`goo122` · 核心认知与 AgentArts 消费负责人：`zemeng` · 连接器消费负责人：`Potatos498`（2026-10-07 三人独立交付重置）

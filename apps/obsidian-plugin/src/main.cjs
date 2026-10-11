@@ -1,11 +1,38 @@
 const {Plugin, Modal, Notice} = require('obsidian');
 const {createHash} = require('node:crypto');
 const {createObsidianVaultPort} = require('@personal-agent/knowledge/obsidian');
+const {createObsidianPairingPeer, localVaultPairingIdentity} = require('@personal-agent/knowledge/pairing');
+const {createObsidianBridgeOffer} = require('@personal-agent/knowledge/bridge');
 
 function element(parent, tag, text) {
   const el = parent.ownerDocument.createElement(tag);
   if (text !== undefined) el.textContent = text;
   parent.appendChild(el); return el;
+}
+
+class PairingModal extends Modal {
+  constructor(plugin, offer) {super(plugin.app); this.plugin = plugin; this.offer = offer;}
+  onOpen() {
+    element(this.contentEl, 'h2', '配对 Desktop Runtime');
+    element(this.contentEl, 'p', '在 Desktop 管理后台选择同一个 Vault 并启用，然后点击“配对 Obsidian”。配对码仅本机、单次使用，2 分钟失效；会话只读、私人，最多 15 分钟。');
+    const input = element(this.contentEl, 'input'); input.type = 'password'; input.readOnly = true;
+    input.autocomplete = 'off'; input.setAttribute('aria-label', '一次性配对码'); input.value = this.offer.code;
+    const copy = element(this.contentEl, 'button', '复制一次性配对码');
+    copy.addEventListener('click', async () => {
+      try {await navigator.clipboard.writeText(input.value); new Notice('已复制，请粘贴到 Desktop 专用配对窗口；勿发送聊天或云端');}
+      catch {new Notice('复制失败，可选中配对码复制');}
+    });
+    const status = element(this.contentEl, 'p'); status.setAttribute('role', 'status');
+    const revoke = element(this.contentEl, 'button', '撤销配对');
+    revoke.addEventListener('click', () => {this.plugin.revokeRuntimePairing(); this.close();});
+    this.timer = setInterval(() => {
+      if (this.offer.connected() || this.offer.signal.aborted) {
+        input.value = ''; this.offer.code = ''; copy.disabled = true;
+        status.textContent = this.offer.signal.aborted ? '配对已撤销或失效，请重新生成' : '连接已认证，请在 Desktop 完成原生确认';
+      } else status.textContent = `配对码将在 ${Math.max(0, Math.ceil((this.offer.expiresAt - Date.now()) / 1000))} 秒后失效`;
+    }, 250);
+  }
+  onClose() {clearInterval(this.timer); this.offer.code = ''; this.contentEl.replaceChildren(); this.plugin.modals.delete(this);}
 }
 
 class KnowledgeModal extends Modal {
@@ -45,11 +72,13 @@ class KnowledgeModal extends Modal {
 
 module.exports = class PersonalAgentKnowledge extends Plugin {
   async onload() {
-    this.port = undefined; this.modals = new Set(); this.closed = false;
+    this.port = undefined; this.modals = new Set(); this.peers = new Set(); this.closed = false;
     this.addCommand({id: 'connect-folder', name: '连接本机文件夹', callback: () => this.show(true)});
     this.addCommand({id: 'search-local', name: '检索本机知识库', callback: () => this.show(false)});
     this.addCommand({id: 'clear-index', name: '清除本机临时索引', callback: () => {this.port?.clearIndex(); new Notice('临时索引已清除');}});
     this.addCommand({id: 'disconnect-folder', name: '撤销知识库连接', callback: () => this.disconnect()});
+    this.addCommand({id: 'pair-runtime', name: '配对 Desktop Runtime', callback: () => {void this.pairRuntime();}});
+    this.addCommand({id: 'revoke-runtime', name: '撤销 Desktop 配对', callback: () => this.revokeRuntimePairing()});
     for (const event of ['modify', 'rename', 'delete', 'create']) {
       this.registerEvent(this.app.vault.on(event, () => this.port?.clearIndex()));
     }
@@ -64,9 +93,38 @@ module.exports = class PersonalAgentKnowledge extends Plugin {
     const port = createObsidianVaultPort({vaultId: createHash('sha256').update(this.app.vault.getName()).digest('hex'),
       allowedFolder: folder, vault: this.app.vault});
     if (folder !== '/' && !this.app.vault.getAbstractFileByPath(folder)?.children) throw Error('文件夹不存在');
-    this.disconnect(); this.port = port;
+    this.disconnect(); this.port = port; this.folder = folder;
+  }
+  /** Trusted bridge composition only. A peer offer never grants Runtime tool permission. */
+  createRuntimePairingPeer() {
+    this.revokeRuntimePairing();
+    const port = this.port;
+    if (!port || this.closed) throw Error('请先连接本机文件夹');
+    const root = this.app.vault.adapter.getBasePath(), vaultIdentity = localVaultPairingIdentity(root);
+    for (const previous of this.peers) previous.close(); this.peers.clear();
+    const peer = createObsidianPairingPeer({port, vaultIdentity,
+      vaultId: createHash('sha256').update(this.app.vault.getName()).digest('hex'), folder: this.folder,
+      bindingCurrent: () => !this.closed && this.port === port && localVaultPairingIdentity(this.app.vault.adapter.getBasePath()) === vaultIdentity});
+    this.peers.add(peer); return peer;
+  }
+  async pairRuntime() {
+    if (this.pairing || this.closed) return;
+    this.pairing = true;
+    try {
+      const offer = await createObsidianBridgeOffer(this.createRuntimePairingPeer());
+      if (this.closed || offer.signal.aborted) {offer.close(); return;}
+      this.bridge = {close: offer.close, signal: offer.signal};
+      const modal = new PairingModal(this, offer); this.modals.add(modal); modal.open();
+    } catch {new Notice('无法配对，请先连接本机 Vault 文件夹并重新生成配对码');}
+    finally {this.pairing = false;}
+  }
+  revokeRuntimePairing() {
+    this.bridge?.close(); this.bridge = undefined;
+    for (const modal of [...this.modals]) if (modal instanceof PairingModal) modal.close();
   }
   disconnect() {
+    this.revokeRuntimePairing();
+    for (const peer of this.peers) peer.close(); this.peers.clear();
     for (const modal of [...this.modals]) modal.close();
     this.port?.clearIndex(); this.port = undefined;
   }

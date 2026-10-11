@@ -1,5 +1,15 @@
 # 开发计划与进度
 
+### 2026-10-11 goo122 本机配对增量（ready）
+
+[MOD-08M](modules/MOD-08M-UNICODE-PAIRING-01.md) 在 PR #321 `91f8829a` 上继续：
+修复 Desktop 中文恢复目录经 PowerShell 标准输入损坏；新增版本化的 host-only 插件 peer
+和 Runtime 受信确认/租约适配。实际打包插件与原有 Policy 工具链的合成组合及真实 Obsidian
+peer 验收分别记录。[MOD-08N](modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md) 继续增加
+回环 TLS 指纹/一次性密钥认证桥接及专用原生配对窗口，实际双进程与自动化确认的证据分开记录。
+MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
+工作分支 `codex/goo122-desktop-unicode-pairing`，本地门禁通过，按用户授权提交并创建相对 PR #321 的 PR；待非作者评审/集成。
+
 更新：2026-10-08 · 本轮审查基线：main@efbfbdd2 · 项目主要负责人：zemeng / zemeng5208 · 整体 MVP：in_progress；代码集成、CI 与真实服务/设备验收分别记录
 
 本文维护工作状态，需求以 PRD 为准，当前交付顺序以[华为 ICT AgentArts Competition Profile](competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)为先。模块负责人和独占目录唯一登记在 [模块分工](MODULE_ASSIGNMENTS.md)，契约见[公共开发协议](DEVELOPMENT_PROTOCOL.md)，逐接口冻结和可用性见[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。`goo122` 负责共享底座、公共协议、Runtime、工具、知识与记忆；`zemeng` 负责 Competition Profile、AgentArts、核心认知和桌面执行；`Potatos498` 独立负责 MOD-20～26、MOD-34/35/38 及业务接线；三人各自验证和交付，不等待另一人的 PR 批准。历史作者与证据保留。Local Profile 只作为可选保留，不进入当前比赛退出条件。阶段不代表承诺日期；正式排期需根据比赛时间、团队人数和接口验证结果确定。

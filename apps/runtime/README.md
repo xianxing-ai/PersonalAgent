@@ -1,5 +1,12 @@
 # Runtime task core
 
+Obsidian 本机桥接沿用 `createObsidianPairingHost` 与 `createTrustedKnowledgeTools`。
+Desktop 根组合用公开 `@personal-agent/knowledge/bridge` 进行 TLS 证书指纹固定/一次性
+密钥认证，再请求原生确认；检索任务仍由 Runtime/Policy/ToolGateway 决定。配对恒为
+private、readonly，断连后 selected source 为 unavailable；旧任务不复用新 sourceId。
+Wiki 来源监视与记忆确认保持原文件源，不新增云能力或授权。见
+[MOD-08N](../../docs/modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md)，接口 provisional。
+
 Wiki 来源增量提供可信 Application 入口 `revalidateWikiFact`：使用当前宿主 lease 精确读回
 既有确认事实的来源，已知版本变化或读回证明的同卷移动追加观察撤回；临时缺失与扫描失败
 保留历史并返回 source_unavailable。新事实仍通过 `ingestConfirmedPrivateCitation` 逐条确认，
@@ -245,6 +252,22 @@ commit, push, draft PR and backlink still require their original Policy approval
 unknown cause and the complete real repair chain remain unverified.
 
 ## Limits
+
+### Obsidian pairing composition (MOD-08M)
+
+`@personal-agent/runtime/application` exposes `createObsidianPairingHost({source, vaultIdentity,
+confirmPairing})`. The trusted host supplies the existing native-selected Knowledge source, its
+physical Vault identity, and an explicit native confirmation callback. `pair(peer, {deadline,
+signal})` validates the public `@personal-agent/knowledge/pairing` descriptor and returns a fresh
+private, read-only session. Pass the host's `source` to the existing `createTrustedKnowledgeTools`.
+Pairing does not grant Policy permission; grants and task checkpoints remain required.
+
+Confirmation is bounded to 30 seconds; sessions expire after 15 minutes. Source changes, peer
+unload, cancellation, revocation and host shutdown invalidate leases. No state or credential is
+persisted. The port is host-only/provisional; an authenticated cross-process transport and native
+pairing UI remain unavailable. See [ADR-0019](../../docs/adr/0019-obsidian-runtime-pairing.md).
+
+### Existing core limitations
 
 - This is an in-process Runtime core, not a daemon or IPC server.
 - Schedules are one-shot; recurring rules, wake timers and sleep detection are not implemented.

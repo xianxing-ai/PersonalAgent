@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import test from 'node:test';
 import {createKnowledgeSourceConfig} from '../electron/knowledge-source-config.js';
+import {findWindowsExecutable} from '../electron/windows-executable-discovery.js';
 
 // Encryption fake is explicit; no real credentials or private Vault are used.
 const safeStorage = {isEncryptionAvailable: () => true, encryptString: value => Buffer.from('synthetic:' + value),
@@ -12,7 +13,7 @@ const safeStorage = {isEncryptionAvailable: () => true, encryptString: value => 
 async function fixture(t) {
   const parent = fileURLToPath(new URL('../../../data/test-tmp/', import.meta.url));
   await mkdir(parent, {recursive: true});
-  const base = await mkdtemp(join(parent, 'knowledge-source-'));
+  const base = await mkdtemp(join(parent, "knowledge-source-中文 ' 👋-"));
   const userData = join(base, 'host'), first = join(base, 'first'), second = join(base, 'second');
   await mkdir(userData); await mkdir(first); await mkdir(second);
   await writeFile(join(first, 'one.md'), '公开合成 first\n'); await writeFile(join(second, 'two.md'), '公开合成 second\n');
@@ -26,6 +27,20 @@ async function fixture(t) {
   return {userData, first, second, options, host, select: value => {selected = value;}};
 }
 const binding = host => ({sourceId: host.snapshot().sourceId, configRevision: host.snapshot().configRevision});
+
+test('real Windows knowledge recovery ACL accepts Unicode paths and keeps write consent explicit',
+  {skip: process.platform !== 'win32'}, async t => {
+    const f = await fixture(t), powerShellPath = findWindowsExecutable('pwsh.exe');
+    assert.ok(powerShellPath, 'PowerShell 7 is required for Windows recovery tests');
+    const host = await createKnowledgeSourceConfig({...f.options, powerShellPath}); t.after(() => host.close());
+    await host.select(); await host.selectNotes(binding(host));
+    assert.equal(host.snapshot().writeAvailable, false);
+    await host.configure({...binding(host), enabled: true, dataLevel: 'private', writeAllowed: true,
+      cloudExportAllowed: false, publicQueries: []});
+    assert.equal(host.snapshot().writeAvailable, true, host.snapshot().reason);
+    assert.match(host.pairingIdentity(), /^[a-f0-9]{64}$/);
+    await host.revoke(); assert.equal(host.pairingIdentity(), undefined);
+  });
 
 test('missing config is unavailable; native selection persists a host-bound root without snapshot paths', async t => {
   const {host, userData, first, options} = await fixture(t);

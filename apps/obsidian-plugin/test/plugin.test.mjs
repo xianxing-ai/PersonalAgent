@@ -46,7 +46,7 @@ test('installable package loads without repository modules, binds explicitly and
   assert.equal(manifest.id, 'personal-agent-knowledge'); assert.equal(manifest.isDesktopOnly, true);
   const f = fixture(); await f.plugin.onload();
   assert.equal(f.reads, 0); assert.equal(f.plugin.port, undefined);
-  assert.equal(f.commands.length, 4); assert.equal(f.events.length, 4);
+  assert.equal(f.commands.length, 6); assert.equal(f.events.length, 4);
   assert.throws(() => f.plugin.connect('../Allowed'));
   f.plugin.connect('Allowed');
   const hit = (await f.plugin.port.search({query: 'needle', limit: 20, ...scope()})).hits[0];

@@ -21,6 +21,8 @@ import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
+import {createDesktopObsidianPairing} from './obsidian-pairing-host.js';
+import {createObsidianPairingUI} from './obsidian-pairing-ui.js';
 import {createMicrophoneCaptureHost} from './microphone-capture-host.js';
 import {createDesktopEvidenceHost, ownsDesktopReferenceSkillTask} from './evidence-host.js';
 import {createDesktopCompetitionFactBridge} from './competition-fact-bridge.js';
@@ -222,7 +224,7 @@ let codingWorkspace;
 let referenceHost;
 let referenceClosing;
 let referenceClosed=false;
-let knowledgeSourceConfig,knowledgeTools,wikiSourceMonitor;
+let knowledgeSourceConfig,knowledgeTools,wikiSourceMonitor,obsidianPairing;
 let competitionToolAvailabilityList = [];
 let mailConfig;
 let calendarConfig;
@@ -524,9 +526,9 @@ function snapshot(surface) {
     reference:surface ? undefined : referenceHost?.snapshot(),
     agentArts: cloudSettings,
     laya: localLaya?.snapshot() ?? {state:'unavailable', ready:false, reason:'本地模型尚未装配'},
-    knowledge: knowledgeSourceConfig?.snapshot()??structuredClone(knowledgeStatus),
+    knowledge: (obsidianPairing?.source ?? knowledgeSourceConfig)?.snapshot()??structuredClone(knowledgeStatus),
     knowledgeSource:surface ? undefined : knowledgeSourceConfig ? {...knowledgeSourceConfig.snapshot(),
-      monitor:wikiSourceMonitor?.snapshot()} : undefined,
+      monitor:wikiSourceMonitor?.snapshot(),pairing:obsidianPairing?.snapshot()} : undefined,
     voice: voiceInput ? {...voiceInput.snapshot(), experimental: sisConfigHost?.snapshot().configured,
       configuration: sisConfigHost?.snapshot()} : {available: false, status: voiceInitializationFailure ? 'error' : 'unconfigured',
       reason: voiceInitializationFailure?.message ?? sisConfigHost?.snapshot().reason ?? 'SIS 尚未配置',
@@ -1446,7 +1448,12 @@ async function initializeRuntime() {
             buttons:['确认本会话范围','取消'],defaultId:1,cancelId:1,noLink:true});
           return choice.response===0 && admin && !admin.isDestroyed();
         }});
-      knowledgeTools=runtimeModule.createTrustedKnowledgeTools(knowledgeSourceConfig, {
+      obsidianPairing=createDesktopObsidianPairing({source:knowledgeSourceConfig,
+        userData:app.getPath('userData'),
+        createPairingHost:runtimeModule.createObsidianPairingHost,
+        ui:createObsidianPairingUI({BrowserWindow,ipcMain,dialog,owner:()=>admin}),
+        changed:()=>{cancelKnowledgeTasks();publish();}});
+      knowledgeTools=runtimeModule.createTrustedKnowledgeTools(obsidianPairing.source, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
@@ -1973,6 +1980,16 @@ function repoRootForLocate() {
   catch { return process.cwd(); }
 }
 
+function cancelKnowledgeTasks() {
+  if(!runtimeApplication) return;
+  for(const task of runtimeApplication.runtime.listTasks({limit:100}).items) {
+    if(!['succeeded','failed','cancelled'].includes(task.state)
+      && runtimeApplication.runtime.loadCheckpoint(task.taskId,'knowledge-source-binding-v1')!==undefined) {
+      runtimeApplication.runtime.requestCancel(task.taskId,'知识源配置已变更或撤销');
+    }
+  }
+}
+
 async function action(event, name, payload) {
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
@@ -2187,19 +2204,22 @@ async function action(event, name, payload) {
     }
     publish(); return mailSnapshot();
   }
+  if(name==='knowledge.pair' || name==='knowledge.pair.revoke') {
+    if(sender!==admin || !competitionMode || !obsidianPairing || payload!==undefined) throw Error('配对仅允许管理后台打开原生窗口');
+    if(name==='knowledge.pair') await obsidianPairing.pair();
+    else obsidianPairing.useFilesystem();
+    publish();return {...knowledgeSourceConfig.snapshot(),monitor:wikiSourceMonitor?.snapshot(),pairing:obsidianPairing.snapshot()};
+  }
   if (typeof name==='string' && name.startsWith('knowledge.source.')) {
     if(sender!==admin || !competitionMode || !knowledgeSourceConfig || !knowledgeTools) throw Error('知识源仅在正式管理后台可用');
     const action=name.slice('knowledge.source.'.length);
     if(['select','selectNotes','configure','revoke'].includes(action)) {
+      obsidianPairing?.useFilesystem();
       const result=await knowledgeSourceConfig[action](payload);
-      for(const task of runtimeApplication.runtime.listTasks({limit:100}).items) {
-        if(!['succeeded','failed','cancelled'].includes(task.state)
-          && runtimeApplication.runtime.loadCheckpoint(task.taskId,'knowledge-source-binding-v1')!==undefined) {
-          runtimeApplication.runtime.requestCancel(task.taskId,'知识源配置已变更或撤销');
-        }
-      }
+      cancelKnowledgeTasks();
       publish();return result;
     }
+    if(['readNote','submitPatch'].includes(action) && obsidianPairing?.snapshot().mode==='plugin') throw Error('插件配对仅支持只读检索；请先显式撤销配对以整理文件源');
     if(action==='readNote') return knowledgeSourceConfig.readSelectedNote(payload);
     if(action==='reconcile') {
       if(!payload || Object.keys(payload).some(key=>key!=='taskId') || typeof payload.taskId!=='string')throw Error('原知识任务标识无效');
@@ -2229,7 +2249,7 @@ async function action(event, name, payload) {
     if(sender!==admin || !knowledgeSourceConfig || !knowledgeTools) throw Error('知识检索仅在管理后台可用');
     const query=typeof payload?.query==='string'?payload.query.trim():'';
     if(!query) throw Error('检索词不能为空');
-    const binding=knowledgeSourceConfig.snapshot(),commandId='knowledge-search-'+randomUUID();
+    const binding=(obsidianPairing?.source ?? knowledgeSourceConfig).snapshot(),commandId='knowledge-search-'+randomUUID();
     const deadline=new Date(Date.now()+30000).toISOString();
     const task=runtimeApplication.prepareHostToolTask({commandId,toolName:'knowledge.search',toolVersion:'1.0.0',deadline});
     if(!knowledgeTools.bindTask(task.taskId)) {
@@ -2983,6 +3003,7 @@ app.whenReady().then(async () => {
       coordinationWatchInputs.clear();
       privateMemory?.close();
       learningStore?.close();
+      obsidianPairing?.close();
       knowledgeSourceConfig?.close();
       proactiveHost?.close();
       goalCloudHost?.close();

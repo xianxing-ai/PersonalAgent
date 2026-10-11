@@ -66,7 +66,7 @@ function recoveryDirectory(userData, root, powerShell) {
   if (!existsSync(target)) {
     mkdirSync(target, {recursive:true});
     const script = String.raw`$ErrorActionPreference='Stop'
-$target=[Console]::In.ReadToEnd()
+$target=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(target,'utf8').toString('base64')}'))
 $self=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
 $acl=[System.Security.AccessControl.DirectorySecurity]::new()
 $acl.SetOwner($self)
@@ -76,7 +76,7 @@ $acl.AddAccessRule($rule)
 Set-Acl -LiteralPath $target -AclObject $acl`;
     execFileSync(powerShell, ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',
       Buffer.from(script,'utf16le').toString('base64')],
-    {input:target,encoding:'utf8',windowsHide:true,timeout:10000,stdio:['pipe','pipe','pipe']});
+    {encoding:'utf8',windowsHide:true,timeout:10000,stdio:['pipe','pipe','pipe']});
   }
   return target;
 }
