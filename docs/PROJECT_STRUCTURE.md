@@ -22,7 +22,8 @@ PersonalAgent/
 ├─ .worktrees/               本地隔离工作树，禁止提交
 ├─ apps/                     可启动应用与可信装配入口
 │  ├─ desktop/               Electron 桌面应用
-│  └─ runtime/               当前 Runtime 应用与本地组合入口
+│  ├─ runtime/               当前 Runtime 应用与本地组合入口
+│  └─ obsidian-plugin/       可打包的本机只读知识检索插件
 ├─ packages/                 可复用核心模块
 │  ├─ contracts/
 │  ├─ client/

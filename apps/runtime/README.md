@@ -11,6 +11,10 @@ Wiki 来源增量提供可信 Application 入口 `revalidateWikiFact`：使用�
 原 `reconcileKnowledgeWriteTask` 真实读回及 finalize。投影失败保留待恢复记录，已知成功
 写入不被重做。参见 [MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)。
 
+`createWikiSourceMonitor` 由现有宿主 tick 驱动只读来源检查，30 秒节流；首次/重启检查
+既有确认事实，之后仅重校验变化路径。扫描/投影失败保留上次快照，不推导删除或自动
+确认新事实；关闭取消在途检查。参见 [MOD-08J](../../docs/modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md)。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 @personal-agent/runtime is the MOD-03 local task and event core for PA-004 and the scheduling boundary of PA-009.

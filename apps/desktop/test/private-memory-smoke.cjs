@@ -143,11 +143,21 @@ const {_electron} = require('playwright');
     await admin.locator('[data-memory-delete="0"]').click();
     await admin.waitForFunction(() => document.querySelector('#memory-saved-status')?.textContent.includes('已取消'));
     assert.equal((await read(ref.id)).length, 3);
+    const {DatabaseSync} = require('node:sqlite');
+    const backupDirectory = path.join(data, 'private-memory-backups');
+    fs.mkdirSync(backupDirectory, {recursive: true});
+    const backupPath = path.join(backupDirectory, 'synthetic.sqlite');
+    const sourceDatabase = new DatabaseSync(database);
+    try {sourceDatabase.exec("VACUUM INTO '" + backupPath.replaceAll("'", "''") + "'");}
+    finally {sourceDatabase.close();}
     await app.evaluate(({dialog}) => { dialog.showMessageBox = async () => ({response: 0}); });
     await admin.locator('[data-memory-delete="0"]').click();
     await admin.waitForFunction(() => document.querySelector('#memory-saved-status')?.textContent.includes('已删除'));
     assert.equal((await read()).length, 0);
     assert.equal((await read(ref.id)).length, 0);
+    const backupDatabase = new DatabaseSync(backupPath, {readOnly: true});
+    try {assert.equal(backupDatabase.prepare('SELECT 1 FROM memory_facts WHERE fact_id=?').get(ref.id), undefined);}
+    finally {backupDatabase.close();}
     await close();
     ({admin} = await launch());
     await admin.locator('#memory-list-saved').click();
@@ -166,6 +176,12 @@ const {_electron} = require('playwright');
     const wikiFact = (await read())[0];
     assert.ok(wikiFact.sourceRef.startsWith('wiki-v1:'));
     fs.writeFileSync(wikiNote, '合成Wiki：修改后的版本。\n');
+    // No Renderer refresh/Memory call: the resident Runtime monitor must invalidate it first.
+    const backgroundDeadline = Date.now() + 45000;
+    while ((await read()).length && Date.now() < backgroundDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    assert.equal((await read()).length, 0, 'resident Wiki check must invalidate the stale fact without opening its list');
     await admin.locator('#memory-list-saved').click();
     await admin.waitForFunction(() => document.querySelector('#content')?.textContent.includes('来源已变化，后续任务不可消费'));
     assert.equal((await read()).length, 0);
@@ -177,7 +193,7 @@ const {_electron} = require('playwright');
     await admin.waitForFunction(() => document.querySelector('#memory-saved-status')?.textContent.includes('已删除'));
     assert.equal((await read(wikiFact.ref.id)).length, 0);
     await close();
-    console.log('PASS: isolated Competition Electron save/correction/withdrawal/restart/delete and Wiki source invalidation; synthetic dialogs, zero cloud transport');
+    console.log('PASS: isolated Competition Electron save/correction/withdrawal/restart/delete and resident Wiki source invalidation without UI refresh; synthetic dialogs, zero cloud transport');
   } finally {
     if (app) await app.close();
     const relation = path.relative(os.tmpdir(), base);

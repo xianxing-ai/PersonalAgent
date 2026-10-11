@@ -162,6 +162,10 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
     },
     /** Trusted successful write recovery: refresh only projections of this exact source/path. */
     async revalidateSource(input, request = context()) {
+      return this.revalidateSources({...input, paths: [input.path]}, request);
+    },
+    /** Resident source checks share the write-recovery projection without storing new private facts. */
+    async revalidateSources(input, request = context()) {
       if (!memory && !existsSync(databasePath)) return;
       const read = acquireRead(input, request);
       try {
@@ -175,7 +179,8 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
           for (const fact of page.facts) {
             const source = parseWikiCitationReference(fact.sourceRef);
             if (fact.state !== 'active' || !source || source.sourceId !== input.sourceId
-              || source.configRevision !== input.configRevision || source.path !== input.path) continue;
+              || source.configRevision !== input.configRevision
+              || input.paths !== undefined && !input.paths.includes(source.path)) continue;
             // Another validation may have appended a withdrawal since this frozen page was created.
             const current = memoryHost().readUserFactHead(namespace, fact.ref.id);
             if (!current || current.state !== 'active' || current.sourceRef !== fact.sourceRef) continue;
@@ -298,8 +303,10 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
       if (!await confirmDelete(current)) return {state: 'declined'};
       head(target);
       maintenanceNeeded = true;
-      store.eraseUnboundFact(namespace, {factId: target.id, expectedRevision: target.revision,
-        operationId: `desktop-private-${hash(`${target.id}@${target.revision}`)}`, ...context()});
+      try {
+        store.eraseUnboundFact(namespace, {factId: target.id, expectedRevision: target.revision,
+          operationId: `desktop-private-${hash(`${target.id}@${target.revision}`)}`, ...context()});
+      } finally {knowledgeSource?.()?.clearIndex?.(); vault?.clearIndex();}
       maintenanceNeeded = false;
       const [visible, history] = await Promise.all([
         query.listCurrent({factId: target.id, at: new Date().toISOString(), limit: 1, ...context()}),

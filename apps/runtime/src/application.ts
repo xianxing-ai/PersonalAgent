@@ -82,6 +82,8 @@ export type {SkillManifest, SkillOutcome, ReferenceSummaryInput, ReferenceSummar
 export {createTrustedKnowledgeTools} from './application/knowledge-tools.js';
 export type {TrustedKnowledgeSource,TrustedKnowledgeBinding,KnowledgeToolTaskBindings} from './application/knowledge-tools.js';
 export type {KnowledgeWriteProjectionPort} from './application/knowledge-write-projection.js';
+export {createWikiSourceMonitor} from './application/wiki-source-monitor.js';
+export type {WikiSourceMonitorOptions, WikiSourceMonitorStatus} from './application/wiki-source-monitor.js';
 export {createWorkflowLearningApplication,createBoundPublicFactErasureApplication,LEARNING_BINDING_CHECKPOINT} from './application/memory-learning.js';
 export type {WorkflowLearningOptions,LearningTaskBinding,LearningSkillManifest} from './application/memory-learning.js';
 export {KnowledgeWriteReconciliationAdapter} from './application/knowledge-write-reconciliation.js';

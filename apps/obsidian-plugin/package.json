@@ -1,0 +1,12 @@
+{
+  "name": "@personal-agent/obsidian-plugin",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node --check src/main.cjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {"@personal-agent/knowledge": "0.1.0-alpha.1"}
+}

@@ -473,7 +473,8 @@ export function mountAdmin(root, invoke, escape) {
         if (result.state === 'deleted' || result.state === 'pending') {
           const page = await invoke('memory.listSaved');
           savedMemory = {...page, status: result.state === 'deleted' ? '已删除该记忆的全部版本并完成读回。'
-            : '来源已停止引用，关联任务副本仍待核实清除；删除尚未完成。'};
+            : result.pendingBackupIds?.length ? '记忆已停止引用；应用备份仍待清理或整篇笔记备份已保留，删除尚未完成。'
+              : '来源已停止引用，关联任务副本仍待核实清除；删除尚未完成。'};
         } else savedMemory.status = '已取消，未删除记忆。';
         render(current, true);
       } catch (error) { root.querySelector('#error').textContent = error.message; button.disabled = false; }

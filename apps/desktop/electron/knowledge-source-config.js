@@ -93,6 +93,7 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   const inflight = new Set();
   const invalidate = () => {
     for (const controller of inflight) controller.abort();
+    vault?.clearIndex();
     vault = undefined; writer = undefined; writeAllowed = false; cloudExportAllowed = false; publicQueries = [];
   };
   const current = () => {
@@ -160,6 +161,10 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   };
   return {
     snapshot,
+    clearIndex() {
+      for (const controller of inflight) controller.abort();
+      vault?.clearIndex();
+    },
     async select() {return mutate(async () => {
       const selected = await selectDirectory(); if (!selected) return snapshot();
       const rootPath = directory(selected), revision = (saved?.configRevision ?? 0) + 1;

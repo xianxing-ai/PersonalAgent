@@ -1,14 +1,25 @@
 # PersonalAgent Desktop
 
+本地 [MOD-08K](../../docs/modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 接通私人 SQLite
+备份清单与逐事实删除。备份放在 userData 的 `private-memory-backups/*.sqlite`；不自动
+创建，新增应用副本须登记。清理保留无关事实，失败或登记失联时不报告完成。
+整篇 Wiki 写回备份按用户选择保留，不能证明无关时明确显示删除仍未完成。
+Knowledge 索引仅在内存、总正文最多 8 MiB；删除私人事实和撤销来源会清空缓存。
+插件安装包由 `apps/obsidian-plugin` 构建，当前没有插件 Runtime 配对或真实宿主验收。
+
 Wiki 来源增量（[MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)）：
 Competition 私人记忆与知识工具共用受信知识源，原生目录选择与加密配置可在重启后复用；
 切库、停用或撤销阻止旧引文保存与消费。摘录及更正仍逐条原生确认，任务仍逐任务确认。
 新鲜第一页及消费前验证来源，已知变化显示“来源已变化”，缺失/扫描失败不自动删除。
-无后台同步或新增云调用；旧格式事实继续可管理与删除，消费需重新检索确认。
+无新增云调用；旧格式事实继续可管理与删除，消费需重新检索确认。
 
 Wiki 写回增量（[MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)）复用既有
 受控精确补丁工具。正文成功与记忆投影完成独立记录，重启恢复只做来源重校验；管理页核实
 原任务时可见投影是否仍待恢复。新摘录仍逐条确认，不自动写入 Memory 或发送云端。
+
+后续 [MOD-08J](../../docs/modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md) 装配后台只读来源
+检查，使用现有定时入口每 30 秒检查一次，并展示状态。仅校验原确认记忆，新增笔记
+不自动形成记忆；缺失与扫描失败保留历史，不删除文件。尚无完整全文索引或安装插件。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

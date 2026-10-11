@@ -17,6 +17,7 @@ import {readApprovalPage} from './approval-history.js';
 import {createPrivateMemoryController} from './private-memory.js';
 import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
+import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
@@ -163,7 +164,7 @@ let syntheticRepairHost;
 const repairPrompts = new Set();
 let microphonePermissionGate;
 let privateMemory;
-let privateConsumption, privateErasure;
+let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 let microphoneCaptureHost;
@@ -221,7 +222,7 @@ let codingWorkspace;
 let referenceHost;
 let referenceClosing;
 let referenceClosed=false;
-let knowledgeSourceConfig,knowledgeTools;
+let knowledgeSourceConfig,knowledgeTools,wikiSourceMonitor;
 let competitionToolAvailabilityList = [];
 let mailConfig;
 let calendarConfig;
@@ -432,7 +433,7 @@ function privateMemoryController() {
       const originAdmin=admin;if(!originAdmin || originAdmin.isDestroyed())return false;
       const answer = await dialog.showMessageBox(originAdmin, {
         type: 'warning', title: '删除私人记忆', message: '删除这条私人记忆的全部版本？',
-        detail: `当前摘要：${current.summary}\n来源：${current.sourceRef}`,
+        detail: `当前摘要：${current.summary}\n来源：${current.sourceRef}\n同时清理应用管理的记忆数据库备份。整篇笔记写回备份保留；存在可能相关副本时，删除仍显示未完成。`,
         buttons: ['删除所有版本', '取消'], defaultId: 1, cancelId: 1, noLink: true,
       });
       return answer.response === 0 && admin===originAdmin && !originAdmin.isDestroyed();
@@ -524,7 +525,8 @@ function snapshot(surface) {
     agentArts: cloudSettings,
     laya: localLaya?.snapshot() ?? {state:'unavailable', ready:false, reason:'本地模型尚未装配'},
     knowledge: knowledgeSourceConfig?.snapshot()??structuredClone(knowledgeStatus),
-    knowledgeSource:surface ? undefined : knowledgeSourceConfig?.snapshot(),
+    knowledgeSource:surface ? undefined : knowledgeSourceConfig ? {...knowledgeSourceConfig.snapshot(),
+      monitor:wikiSourceMonitor?.snapshot()} : undefined,
     voice: voiceInput ? {...voiceInput.snapshot(), experimental: sisConfigHost?.snapshot().configured,
       configuration: sisConfigHost?.snapshot()} : {available: false, status: voiceInitializationFailure ? 'error' : 'unconfigured',
       reason: voiceInitializationFailure?.message ?? sisConfigHost?.snapshot().reason ?? 'SIS 尚未配置',
@@ -1621,20 +1623,24 @@ async function initializeRuntime() {
           return answer.response===0 && admin && !admin.isDestroyed();
         }});
       privateConsumption?.close();
+      privateBackups=createPrivateMemoryBackupHost({userData:app.getPath('userData'),privateMemory:privateMemoryController()});
       privateConsumption=createPrivateMemoryConsumptionHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
         readTask:taskId=>runtimeApplication.runtime.getTask(taskId),
         readTaskBinding:taskId=>runtimeApplication.readPrivateTaskBinding(taskId),
         writeTaskBinding:(taskId,binding)=>runtimeApplication.writePrivateTaskBinding(taskId,binding),
         readConfigurationRef:()=>runtimeApplication.coordinationConfigurationRef,
-        assertCopyManagement:()=>privateErasure.assertReady([])});
+        assertCopyManagement:()=>privateErasure.assertReady(privateBackups.inventory())});
       privateErasure=createPrivateMemoryErasureHost({privateMemory:privateMemoryController(),consumptionHost:privateConsumption,
         listBindings:input=>runtimeApplication.listBindings(input),
         cancelTask:taskId=>runtimeApplication.runtime.requestCancel(taskId,'私人记忆使用已撤回'),
         eraseTaskCopies:scope=>runtimeApplication.eraseTaskCopies(scope),
-        readCopyErasureReceipt:taskId=>runtimeApplication.readCopyErasureReceipt(taskId)});
+        readCopyErasureReceipt:taskId=>runtimeApplication.readCopyErasureReceipt(taskId),backups:privateBackups});
       memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
-        learningApplication,privateErasure,managedPrivateCopies:[]});
+        learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
       await memoryLearningHost.recover();
+      wikiSourceMonitor?.close();
+      wikiSourceMonitor=runtimeModule.createWikiSourceMonitor({source:knowledgeSourceConfig,
+        revalidate:(input,context)=>privateMemoryController().revalidateSources(input,context)});
       // Original source writes are never retried. Only known receipts resume local projection checks.
       let projectionBefore,projectionSnapshot;
       do {
@@ -1710,7 +1716,7 @@ async function initializeRuntime() {
       return answer.response===0 && admin && !admin.isDestroyed();
     }});
     memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
-      learningApplication,publicErasure,privateErasure,managedPrivateCopies:[]});
+      learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
     await memoryLearningHost.recover();
   }
   if (competitionMode) {
@@ -1937,7 +1943,8 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
-  eventPoll = setInterval(() => {void pumpEvents(); void tickProactiveP5(); void refreshMail(); void notepadHost?.refresh(); void todoHost?.tick();tickKnowledgeSchedules();}, 120);
+  eventPoll = setInterval(() => {void pumpEvents(); void tickProactiveP5(); void refreshMail(); void notepadHost?.refresh(); void todoHost?.tick();tickKnowledgeSchedules();
+    void wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();});}, 120);
 }
 
 async function initializeProductServices() {
@@ -2972,6 +2979,7 @@ app.whenReady().then(async () => {
       knowledgeWatchHost?.dispose();
       modelApiHost?.dispose();
       privateConsumption?.close();
+      wikiSourceMonitor?.close();
       coordinationWatchInputs.clear();
       privateMemory?.close();
       learningStore?.close();

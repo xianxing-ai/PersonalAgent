@@ -128,7 +128,9 @@ P8 只有核对该 finalized 元数据回执后才能在原执行记录上完成
 准确限制：现有底层是锁内原地写入，**不是崩溃原子的文件替换**；应用/主机中断可能留下
 部分结果，必须通过保留备份和 unknown 读回处理。路径/身份检查不是对恶意并发操作者的
 OS 沙箱。本片不把该实现宣称为完整原子写入验收，也不扩展 coding-tools 原源。
-Vault 的自动索引、LLM Wiki 和可安装 Obsidian 插件仍未交付。
+本地 MOD-08K 增量提供每次查询重新验证来源的临时全文行索引（总正文上限 8 MiB），
+以及 `apps/obsidian-plugin` 的可安装只读插件包；尚未评审集成或完成真实 Obsidian 宿主验收。
+持久全文索引、插件 Runtime 配对和完整 LLM Wiki 仍未交付。
 
 私人结果不得因为截短就默认发送给 AgentArts。Competition availability/export 默认拒 private；
 公开资料还需本会话 native 确认出机、精确查询 allowlist、同一任务/来源/配置版本。
