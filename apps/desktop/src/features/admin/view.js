@@ -193,7 +193,7 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>')],
       appearance: ['外观', '延续 ORB-02 冷光青与标准毛玻璃设计',
         settingRow('界面主题', '所有窗口统一使用黑白主题，支持跟随系统自动切换', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
-        settingRow('降低动效', '暂停轨道脉冲并缩短界面过渡', '<label class="switch-control"><input id="pref-calm" type="checkbox"><span></span></label>') +
+        settingRow('降低动效', '暂停轨道脉冲并缩短界面过渡', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>') +
         settingRow('玻璃材质', '标准毛玻璃，由当前设计方案锁定', '<span class="value-pill">标准</span>') +
         settingRow('ORB-02', '黑核、白色规则点阵、球体模糊关闭', '<span class="value-pill">当前方案</span>')],
       interaction: ['交互', '悬浮球、面板与输入行为',
@@ -287,6 +287,9 @@ export function mountAdmin(root, invoke, escape) {
   }
 
   function render(data, refreshMemory = false) {
+    const focusedPreference = section === 'appearance' && renderedSection === section
+      && ['pref-theme', 'pref-calm'].includes(document.activeElement?.id)
+      && root.querySelector('#content').contains(document.activeElement) ? document.activeElement : undefined;
     current = data;
     for (const taskId of evidenceStates.keys()) {
       if (!data.tasks.some(task => task.taskId === taskId)) evidenceStates.delete(taskId);
@@ -501,6 +504,10 @@ export function mountAdmin(root, invoke, escape) {
     if (calmToggle) {
       calmToggle.checked = localStorage.getItem('pa-calm') === 'true';
       calmToggle.addEventListener('change', () => saveCalm(calmToggle.checked));
+    }
+    if (focusedPreference && !focusedPreference.disabled && section === 'appearance' && document.activeElement === document.body) {
+      const replacement = root.querySelector(`#${focusedPreference.id}`);
+      if (replacement && !replacement.disabled && replacement.tagName === focusedPreference.tagName && replacement.type === focusedPreference.type) replacement.focus({preventScroll: true});
     }
     root.querySelector('#refresh-capabilities')?.addEventListener('click', async () => {
       try { await invoke('capability.list'); } catch (error) { root.querySelector('#error').textContent = error.message; }
