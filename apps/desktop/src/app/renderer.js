@@ -58,6 +58,7 @@ if(mode==='orb') {
   button.addEventListener('pointerup',finish);button.addEventListener('pointercancel',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('lostpointercapture',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();orbOperation('orb.open');}});
+  button.addEventListener('click',e=>{if(e.detail===0)orbOperation('orb.open');});
   render=data=>{orb.setLevel(data.audioLevel??0);orb.setState(visualOrbState(data));if(document.hidden)orb.stop();orbLabel=`PersonalAgent · ${orbStatusLabel(data)}`;syncOperationFeedback();};
 } else if(mode==='admin') render=mountAdmin(root,invoke,escape);
 else if(mode==='workspace') render=mountWorkspace(root,invoke,escape);
