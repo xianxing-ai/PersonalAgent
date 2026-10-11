@@ -15,6 +15,10 @@ import {fileURLToPath} from 'node:url';
 const run=promisify(execFile),marker='synthetic-private-redirect-body';
 const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+// Windows child.kill('SIGTERM') forcefully terminates; it cannot test a POSIX handler.
+// Direct server.close() lifecycle tests below remain active on every platform.
+const posixSigterm={skip:process.platform==='win32'
+  ?'Windows child.kill(SIGTERM) is forceful termination, not POSIX graceful shutdown':false};
 async function fixture(t){
   // Two real HTTPS loopback origins and the actual production entry. The model
   // account, credentials and replies are Synthetic; no external service is used.
@@ -61,7 +65,7 @@ async function fixture(t){
   return {child,closed,port,inbound:env.PA_AGENT_INBOUND_TOKEN,first,second,post,setMode:value=>mode=value,disconnections:()=>disconnections,logs:()=>({stdout,stderr})};
 }
 
-test('actual SIGTERM cancels accepted partial HTTP upload before any model dispatch',async t=>{
+test('actual SIGTERM cancels accepted partial HTTP upload before any model dispatch',posixSigterm,async t=>{
  const f=await fixture(t);let resolveResponse,rejectResponse;const received=new Promise((r,j)=>{resolveResponse=r;rejectResponse=j});
  const request=httpRequest({hostname:'127.0.0.1',port:f.port,path:'/invocations',method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.inbound}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolveResponse({status:response.statusCode,body}));});request.on('error',rejectResponse);request.write('{"query":');
  const limit=Date.now()+3000;while((await(await fetch('http://127.0.0.1:'+f.port+'/ping')).json()).status!=='HealthyBusy'){assert.ok(Date.now()<limit);await pause(5);}
@@ -73,7 +77,7 @@ test('actual SIGTERM cancels accepted partial HTTP upload before any model dispa
  assert.equal(result.status,499);assert.equal(JSON.parse(result.body).data.error_code,'CANCELLED');
  assert.equal(f.first.length,0);assert.deepEqual(exit,[0,null]);assert.equal(f.logs().stderr,'');assert.equal(f.second.length,0);
 });
-test('actual SIGTERM aborts in-flight HTTPS model and never publishes its late success',async t=>{
+test('actual SIGTERM aborts in-flight HTTPS model and never publishes its late success',posixSigterm,async t=>{
  const f=await fixture(t);f.setMode('late');const pending=f.post();const limit=Date.now()+2000;
  while(f.first.length<1){assert.ok(Date.now()<limit);await pause(5);}f.child.kill('SIGTERM');
  const response=await pending;assert.equal(response.status,499);assert.equal((await response.json()).data.error_code,'CANCELLED');
@@ -108,7 +112,7 @@ test('ordinary successful HTTP invocation still releases its original shared slo
  for(let i=0;i<2;i++){const response=await post();assert.equal(response.status,200);assert.equal(JSON.parse((await response.json())[0].data.text).text,'synthetic success');}
  assert.equal(calls,2);assert.equal((await(await fetch(f.url+'/ping')).json()).status,'Healthy');
 });
-test('actual SIGTERM closes an upload that never supplies its remaining body after readable cancellation',async t=>{
+test('actual SIGTERM closes an upload that never supplies its remaining body after readable cancellation',posixSigterm,async t=>{
  const f=await fixture(t);let resolveResponse,rejectResponse;const received=new Promise((r,j)=>{resolveResponse=r;rejectResponse=j});
  const request=httpRequest({hostname:'127.0.0.1',port:f.port,path:'/invocations',method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.inbound}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolveResponse({status:response.statusCode,body}));});
  request.on('error',rejectResponse);request.write('{"query":');
@@ -120,7 +124,7 @@ test('actual SIGTERM closes an upload that never supplies its remaining body aft
   assert.deepEqual(exit,[0,null]);assert.equal(f.first.length,0);assert.equal(f.logs().stderr,'');
  } finally {request.destroy();}
 });
-test('actual production SIGTERM cleans an unfinished upload after its original deadline response',async t=>{
+test('actual production SIGTERM cleans an unfinished upload after its original deadline response',posixSigterm,async t=>{
  const f=await fixture(t);let upload;
  const received=new Promise((resolve,reject)=>{
   upload=httpRequest({hostname:'127.0.0.1',port:f.port,path:'/invocations',method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.inbound,'x-pa-deadline':new Date(Date.now()+150).toISOString()}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolve({status:response.statusCode,body}));});
@@ -149,7 +153,7 @@ for(const [name,status,route,headers] of [
  const state=await Promise.race([closed.then(()=>'closed'),pause(500).then(()=>'still_open')]);
  assert.equal(calls,0);assert.equal(state,'closed');
 });
-test('actual production shutdown closes incomplete headers before any HTTP dispatch',async t=>{
+test('actual production shutdown closes incomplete headers before any HTTP dispatch',posixSigterm,async t=>{
  const f=await fixture(t);const socket=connect(f.port,'127.0.0.1');socket.on('error',()=>{});t.after(()=>socket.destroy());await once(socket,'connect');
  socket.write('POST /invocations HTTP/1.1\r\nHost: synthetic\r\nContent-T');await pause(20);f.child.kill('SIGTERM');
  const exit=await Promise.race([f.closed,pause(1000).then(()=>['still_open'])]);
