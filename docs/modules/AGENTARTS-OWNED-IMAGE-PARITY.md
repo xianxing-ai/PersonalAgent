@@ -3,7 +3,7 @@
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
-日期：2026-10-09。目标 profile：`huawei_ict_agentarts`。本文件记录代码迁移和真实验收缺口，
+初始日期：2026-10-09；当前更新：2026-10-11。目标 profile：`huawei_ict_agentarts`。本文件记录代码迁移和真实验收缺口，
 设计与既有云资源不自动成为已实现能力。合并仍遵守
 [两人本机阅读与确认](../reviews/DESIGN_READING_GATE.md)。
 
@@ -40,7 +40,9 @@
 | PersonalAgent持续认知协调器 | World→最小Plan→Review分工由OwnedAgentOrchestrator承担 | partial；镜像提供受限角色编排，不代替本地持续Fact/Goal消费、Laya决策、持久状态、监督或平台原生Controller部署 |
 | PersonalAgent持续认知协调器_1 | 受限主路由、快速答复/工具提案、计划修复/审查 | partial；目录能力与source投影必须由受信宿主公开，原平台Controller身份、完整运行绑定和真实调用/评估另验收 |
 
-## 完整内部报告1.1与公共候选
+## 完整内部报告1.1/1.2与公共候选
+
+`owned-1.2` 新增显式 prepared Goal target 的完整报告兼容。Goal 目标必须是宿主投影中最新有效的精确来源；World 与 Plan 都使用 `reportVersion:1.2`，World 的 `affected_items.kind:goal` 必须与该已提交 Goal 来源匹配，缺来源的 confirmed 续接不能猜类型。旧 `1.1` 与 compact Decision/Plan 路径保留；Goal 禁止旧报告、compact 和新旧完整报告混用。Fact target、过期目标、跨 ID 前后变化、工具提案和替换候选继续拒绝。此为云端受限候选兼容，不创建另一套写入权限；本地原 Policy、审批、预览、CAS 和读回仍是执行入口。
 
 World固定字段为`reportVersion`、`revision`、`observed_facts`、`changed_facts`、
 `affected_items`、`missing_information`、`recommended_disposition`、`summary`。
