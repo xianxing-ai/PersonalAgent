@@ -7,6 +7,8 @@ import {isDeepStrictEqual} from 'node:util';
 const VERSION='desktop-goal-analysis-v1';
 // Match the existing AgentArts coordination goal contract; never trim a reviewed scope.
 const GOAL_EXPORT_MAX_CHARS=16_000;
+const INITIAL_QUERY_MAX_BYTES=32_768;
+const INITIAL_QUERY_BYTE_LIMIT='本次分析的完整输入超出云端预算，尚未出云；请缩小允许发送的来源或修订范围后重新分析。';
 const UNSUPPORTED_REPAIR_SCOPE='本次修订范围暂不能交给云端分析；请核对来源与本次修订范围，或在本地继续。';
 const MISSING_REPAIR_SOURCES='本次修复所需的部分来源未获准发送或尚未提交，方案保留在本地；请使用可发送且已提交的来源重新分析。';
 const SOURCE_SUMMARY_MAX_CHARS=8192;
@@ -31,7 +33,7 @@ const canHandoff=review=>machineReview(review) || Boolean(review?.selectedOption
     && toolArgumentsDigest(option)===toolArgumentsDigest(review.selectedOption)));
 
 /** Local Laya chooses; existing Runtime/AgentArts orchestrates. No direct repair execution. */
-export function createDesktopGoalCognitionHost({application,client,facts,namespace,goalHost,
+export function createDesktopGoalCognitionHost({application,client,facts,namespace,goalHost,initialRequestMode,
   chooser,ready,createHost,onTask=()=>{},onUpdate=()=>{},now=Date.now}) {
   const store=application.runtime.bindCoordinationStore(namespace);
   const conversationId=`desktop-proactive-goals:${namespace}`;
@@ -336,11 +338,19 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
     if(payload?.repairContext?.targets.some(target=>target.requestedDependencies.length>16))
       return {state:'blocked',reason:'unsupported_repair_scope'};
     if(payload?.action==='REVISE' && !payload.repairContext) return {state:'blocked',reason:'unsupported_repair_scope'};
+    if(initialRequestMode==='goal-with-tools-json') {
+      // The actual task-selected catalog adds bytes. Passing this lower bound
+      // does not replace its original adapter limit or validate its selection.
+      const minBytes=Buffer.byteLength(JSON.stringify({goal:projected.goal,availableTools:[]}), 'utf8');
+      if(minBytes>INITIAL_QUERY_MAX_BYTES) return {state:'blocked',reason:'initial_query_byte_limit',
+        chars:projected.goal.length,minBytes,maxBytes:INITIAL_QUERY_MAX_BYTES};
+    }
   }
   function exportExplanation(reason) {
     return reason==='no_exportable_sources'?NO_EXPORTABLE_SOURCES
       :reason==='source_summary_limit'?SOURCE_SUMMARY_LIMIT
       :reason==='missing_repair_sources'?MISSING_REPAIR_SOURCES
+      :reason==='initial_query_byte_limit'?INITIAL_QUERY_BYTE_LIMIT
       :reason==='unsupported_repair_scope'?UNSUPPORTED_REPAIR_SCOPE:'完整目标投影超出云端上限，方案保留在本地，尚未提交';
   }
   function cloudExport(value) {
@@ -516,7 +526,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
         selected: r?.selectedOption?.id,
         sourceOutdated: Number.isSafeInteger(r?.graphRevision) && r.graphRevision>=0 && r.graphRevision!==graphRevision,
         trigger,
-        choice:choice+(['no_exportable_sources','source_summary_limit','missing_repair_sources','unsupported_repair_scope'].includes(feedback.cloudExport?.reason)?' · '+exportExplanation(feedback.cloudExport.reason):''),
+        choice:choice+(['no_exportable_sources','source_summary_limit','missing_repair_sources','unsupported_repair_scope','initial_query_byte_limit'].includes(feedback.cloudExport?.reason)?' · '+exportExplanation(feedback.cloudExport.reason):''),
         executionVerified:false,graphUpdateVerified:false,...feedback,
       };
       })};

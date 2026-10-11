@@ -1692,6 +1692,7 @@ async function initializeRuntime() {
   await syncCapabilities();
   await syncRuntimeSnapshots();
   if (competitionMode) proactiveHost = createDesktopProactiveHost({application: runtimeApplication,
+    initialRequestMode: syntheticMvp ? 'goal' : 'goal-with-tools-json',
     client, userData: app.getPath('userData'), namespace: desktopHost.userNamespace, onUpdate: publish,
     goalHost,chooser:localLaya,cognitionReady:()=>localLaya.snapshot().state==='ready',
     createCognitionHost:runtimeModule.createProactiveCognitionHost,

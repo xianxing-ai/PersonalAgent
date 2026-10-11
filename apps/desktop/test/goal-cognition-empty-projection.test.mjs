@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdir,mkdtemp,rm} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,readFile} from 'node:fs/promises';
+import ts from 'typescript';
 import path from 'node:path';
 import {Client} from '@personal-agent/client';
 import {LayaActionChoiceService} from '@personal-agent/cognition';
@@ -18,7 +19,7 @@ const node=(id,kind,dependencies,summary=id,sensitivity='public')=>({id,kind,dep
   validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z'});
 function agentWith() {
   const response={kind:'final',text:JSON.stringify({kind:'text',text:'Synthetic analysis only; not executed'})};
-  return {models:{fast:new FakeModelProvider(Array.from({length:20},()=>response)),world:new FakeModelProvider([])}};
+  return {models:Object.fromEntries(['fast','world','plan','review'].map(role=>[role,new FakeModelProvider(role==='fast'?Array.from({length:20},()=>response):[])]))};
 }
 function repairAgent({mutatePlan=p=>p,mutateReview=r=>r}={}) {
   const models=Object.fromEntries(['fast','world','plan','review'].map(role=>[role,new FakeModelProvider(role==='fast'?[]:[request=>{
@@ -57,13 +58,14 @@ async function settled(app,taskId) {
 }
 // The existing Desktop Host produces the query. Only Laya inference, model
 // responses and HTTP transport are Fake; Runtime, Client and projection are real.
-async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goalSummary='原目标',changeDuringCredentials=false,unknown=false,repair=false,ancillary,targetCount,extraCount=0}={}) {
+async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goalSummary='原目标',changeDuringCredentials=false,unknown=false,repair=false,ancillary,targetCount,extraCount=0,initialRequestMode,catalog=false,catalogPadding=0,decisionSummary='关联决策',factSummary,shortCurrentGoal=false}={}) {
   const root=new URL('../../../.cache/goal-empty-projection/',import.meta.url);await mkdir(root,{recursive:true});
   const directory=await mkdtemp(new URL('case-',root));
   const owned=repair?repairAgent():agentWith(),sent=[],rejections=[],announced=[]; let credentials=0,submits=0;
   let host,goalWrites=0;
   const app=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
-    ...(repair?{repairCandidateVersion:'1.0'}:{}),gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',responseMode:'tool-proposal-json',
+    ...(repair?{repairCandidateVersion:'1.0'}:{}),
+    ...(catalog?{initialRequestMode:'goal-with-tools-json',tools:[{descriptor:{name:'fixture.read',version:'1.0.0',inputSchema:{type:'object',properties:{padding:{type:'string',...(catalogPadding?{enum:['x'.repeat(catalogPadding)]}:{})}},additionalProperties:false},outputSchema:{type:'object',properties:{}},sideEffect:'read',requiredScopes:[],idempotencySupport:true,recoverySupport:true,requiresPresence:false},execute:async()=>({})}],competitionToolExports:[{toolName:'fixture.read',toolVersion:'1.0.0',exportPolicyVersion:'fixture-v1',accepts:()=>true,project:()=>({})}],competitionToolAvailability:[{toolName:'fixture.read',toolVersion:'1.0.0',available:()=>true,publicEnumPaths:['/padding']}]}:{}),gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',responseMode:'tool-proposal-json',
     ...(unknown?{transport:'wss',websocketUrl:'wss://agentarts.example.test/runtimes/synthetic/ws',
       websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{if(frame.type==='invoke'){socket.accepted(frame);socket.disconnect();}})}:{}),
     authorizationProvider:{read:async()=> {credentials++;if(changeDuringCredentials)store.append(store.read().revision,node('goal','goal',[ref('private-source')],'Now restricted','restricted'));return 'Bearer synthetic-no-real-key';}},
@@ -71,22 +73,22 @@ async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goa
     fetchImpl:async(_url,input)=>{
       const payload=JSON.parse(input.body);sent.push(payload.query);
       let output;
-      try {if(repair)output=await owned.agent.invoke({query:payload.query,deadline:input.headers['X-PA-Deadline'],signal:input.signal,sessionId:'synthetic',requestId:'synthetic-repair'});else {const result=await owned.models.fast.complete({messages:[{role:'user',content:payload.query}],tools:[],
+      try {if(catalog&&!repair)output=await new OwnedAgentOrchestrator(owned.models,2048).invoke({query:payload.query,deadline:input.headers['X-PA-Deadline'],signal:input.signal,sessionId:'synthetic',requestId:'synthetic-analysis'});else if(repair)output=await owned.agent.invoke({query:payload.query,deadline:input.headers['X-PA-Deadline'],signal:input.signal,sessionId:'synthetic',requestId:'synthetic-repair'});else {const result=await owned.models.fast.complete({messages:[{role:'user',content:payload.query}],tools:[],
         deadline:input.headers['X-PA-Deadline'],signal:input.signal,maxOutputTokens:2048});output=JSON.parse(result.response.text);}}
       catch(error){rejections.push(error.code);throw error;}
       return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(output)}},{event:'task_end'},{event:'end'}]),
         {headers:{'content-type':'application/json'}});
     }});
   const store=app.runtime.provisionCoordinationStore(namespace);
-  store.append(0,node('private-source','fact',[],ancillary==='public'?'Public ancillary source':'PRIVATE_SOURCE_SENTINEL',ancillary??'private'));
+  store.append(0,node('private-source','fact',[],factSummary??(ancillary==='public'?'Public ancillary source':'PRIVATE_SOURCE_SENTINEL'),ancillary??'private'));
   for(let i=0;i<extraCount;i++)store.append(store.read().revision,node('public-fact-'+i,'fact',[],'Public ancillary '+i));
   store.append(store.read().revision,node('goal','goal',[ref('private-source')],goalSummary,restricted?'restricted':'private'));
   if(targetCount) {
     for(let i=0;i<targetCount;i++)store.append(store.read().revision,node('decision-'+i,'decision',[ref('goal')],'Decision '+i));
     store.append(store.read().revision,node('goal','goal',[ref('private-source')],'Modified Goal','private'));
-  } else if(!newGoal){store.append(store.read().revision,node('decision','decision',[ref('goal'),...(ancillary?[ref('private-source')]:[]),...Array.from({length:extraCount},(_,i)=>ref('public-fact-'+i))],'关联决策',restricted?'restricted':'public'));
+  } else if(!newGoal){store.append(store.read().revision,node('decision','decision',[ref('goal'),...(ancillary?[ref('private-source')]:[]),...Array.from({length:extraCount},(_,i)=>ref('public-fact-'+i))],decisionSummary,restricted?'restricted':'public'));
     store.append(store.read().revision,node('plan','plan',[ref('decision')],'关联计划',restricted?'restricted':'public'));
-    store.append(store.read().revision,node('goal','goal',[ref('private-source')],goalSummary+'修改',restricted?'restricted':'private'));}
+    store.append(store.read().revision,node('goal','goal',[ref('private-source')],shortCurrentGoal?'修改后的目标':goalSummary+'修改',restricted?'restricted':'private'));}
   const source=app.runtime.submitTask({goal:'Synthetic prior Goal edit',conversationId:'fixture',idempotencyKey:'synthetic-goal-edit'});
   await app.runtime.runTask(source.taskId,async()=>({resultSummary:'Synthetic edit receipt'}),
     {deadline:new Date(Date.now()+5000).toISOString(),sideEffect:'read'});
@@ -105,7 +107,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goa
     return {answers:{action:{choice,probabilities:Object.fromEntries(keys.map(key=>[key,key===choice?probability:(1-probability)/(keys.length-1)])),
       answer_confidence:probability,confidence:0.5}}};
   }});
-  host=createDesktopGoalCognitionHost({application:app,client,facts,namespace,goalHost,chooser,ready:()=>true,
+  host=createDesktopGoalCognitionHost({application:app,client,facts,initialRequestMode,namespace,goalHost,chooser,ready:()=>true,
     createHost:createProactiveCognitionHost,onTask:task=>announced.push(task)});
   t.after(async()=>{host.close();facts.close();app.close();await rm(directory,{recursive:true,force:true});});
   host.configure({enabled:true,cloudAllowed:true});await host.tick();
@@ -273,4 +275,73 @@ test('seventeen requested dependencies stay local and a narrower new repair sele
  assert.equal((await settled(f.app,f.announced.at(-1).taskId)).state,'succeeded');
  const p=JSON.parse(f.sent.at(-1).slice(f.sent.at(-1).indexOf('\n')+1));assert.equal(p.repairContext.targets[0].requestedDependencies.length,15);
  assert.equal(f.store.read().revision,24);assert.equal(f.goalWrites(),0);
+});
+
+const byteBudgetMessage='本次分析的完整输入超出云端预算，尚未出云；请缩小允许发送的来源或修订范围后重新分析。';
+const byteCases=character=>[
+ {name:'Decision baseline',repair:true,decisionSummary:character.repeat(5500),shortCurrentGoal:true},
+ {name:'two Goal revisions',uncertain:true,goalSummary:character.repeat(5500)},
+ {name:'public Fact and Goal',newGoal:true,ancillary:'public',factSummary:character.repeat(8192),goalSummary:character.repeat(5000)},
+];
+for(const options of byteCases('界'))test(`explicit catalog mode blocks impossible UTF8 lower bound before handoff: ${options.name}`,async t=>{
+ const f=await hostFixture(t,{...options,catalog:true,initialRequestMode:'goal-with-tools-json'});
+ const card=f.host.snapshot().reviews.find(r=>r.action===(options.repair?'REVISE':'RECHECK'));
+ assert.equal(card.cloudExport?.reason,'initial_query_byte_limit');assert.equal(card.state,'unavailable');
+ assert.ok(card.cloudExport.chars<=16000);assert.ok(card.cloudExport.minBytes>32768);
+ assert.match(card.choice,/完整输入.*预算.*尚未出云/);assert.equal(card.taskId,undefined);
+ assert.deepEqual([f.submits(),f.credentials(),f.sent.length,f.announced.length],[0,0,0,0]);
+ assert.equal(Object.values(f.models).reduce((n,m)=>n+m.requests.length,0),0);
+ const feedback=await f.host.applyDecision(card.reviewTaskId);assert.equal(feedback.executionStatus,byteBudgetMessage);
+ assert.equal(feedback.cloudExport.reason,'initial_query_byte_limit');assert.equal(f.submits(),0);
+});
+for(const options of byteCases('D'))test(`explicit catalog mode keeps ASCII input with actual public catalog: ${options.name}`,async t=>{
+ const f=await hostFixture(t,{...options,catalog:true,initialRequestMode:'goal-with-tools-json'});
+ assert.equal(f.task?.state,'succeeded');assert.deepEqual([f.submits(),f.credentials(),f.sent.length],[1,1,1]);
+ assert.ok(Buffer.byteLength(f.sent[0],'utf8')<=32768);assert.equal(f.goalWrites(),0);
+});
+for(const initialRequestMode of [undefined,'goal','unknown-provider-mode'])test(`generic goal provider preserves Chinese sources: ${String(initialRequestMode)}`,async t=>{
+ const f=await hostFixture(t,{...byteCases('界')[0],initialRequestMode});assert.equal(f.task?.state,'succeeded');
+ assert.deepEqual([f.submits(),f.credentials(),f.sent.length],[1,1,1]);assert.ok(Buffer.byteLength(f.sent[0],'utf8')>32768);
+ assert.equal(f.host.snapshot().reviews.find(r=>r.taskId===f.task.taskId).cloudExport,undefined);
+});
+test('a new smaller public source scope recovers after the lower-bound block',async t=>{
+ const f=await hostFixture(t,{...byteCases('界')[2],catalog:true,initialRequestMode:'goal-with-tools-json'});
+ const card=f.host.snapshot().reviews.find(r=>r.action==='RECHECK');assert.equal(card.cloudExport.reason,'initial_query_byte_limit');
+ f.host.configure({enabled:true,cloudAllowed:false});
+ f.store.append(f.store.read().revision,node('fresh-small-goal','goal',[],'Fresh small permitted source','public'));
+ f.host.configure({enabled:true,cloudAllowed:true});await f.host.tick();assert.ok(f.announced.length);
+ assert.equal((await settled(f.app,f.announced.at(-1).taskId)).state,'succeeded');assert.ok(f.sent.length);
+ assert.equal(f.host.snapshot().reviews.find(r=>r.taskId===f.announced.at(-1).taskId).cloudExport,undefined);
+});
+test('a catalog that alone exceeds remaining capacity still fails at the public adapter before credentials',async t=>{
+ const f=await hostFixture(t,{...byteCases('D')[0],catalog:true,catalogPadding:22000,initialRequestMode:'goal-with-tools-json'});
+ assert.equal(f.task?.state,'failed');assert.deepEqual([f.submits(),f.credentials(),f.sent.length],[1,0,0]);
+ assert.equal(Object.values(f.models).reduce((n,m)=>n+m.requests.length,0),0);
+ const card=f.host.snapshot().reviews.find(r=>r.taskId===f.task.taskId);assert.notEqual(card.cloudExport?.reason,'initial_query_byte_limit');
+});
+test('real Desktop main and proactive wrapper preserve explicit catalog mode and Synthetic goal mode',async()=>{
+ const extract=async(file,callee,key)=>{
+  const source=await readFile(new URL(file,import.meta.url),'utf8'),ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
+  let result;const visit=node=>{if(ts.isCallExpression(node)&&node.expression.getText(ast)===callee){
+   const property=node.arguments[0].properties.find(p=>p.name?.getText(ast)===key);assert.ok(property,`${callee} must pass ${key}`);
+   result=ts.isShorthandPropertyAssignment(property)?property.name.getText(ast):property.initializer.getText(ast);
+  }ts.forEachChild(node,visit);};visit(ast);assert.ok(result);return result;
+ };
+ const main=await extract('../electron/main.js','createDesktopProactiveHost','initialRequestMode');
+ const wrapper=await extract('../electron/proactive-host.js','createDesktopGoalCognitionHost','initialRequestMode');
+ for(const syntheticMvp of [false,true]){
+  const mode=Function('syntheticMvp',`return (${main})`)(syntheticMvp);
+  assert.equal(mode,syntheticMvp?'goal':'goal-with-tools-json');
+  assert.equal(Function('initialRequestMode',`return (${wrapper})`)(mode),mode);
+ }
+});
+
+test('explicit catalog budget never replaces an already accepted unknown task',async t=>{
+ const f=await hostFixture(t,{repair:true,unknown:true,initialRequestMode:'goal-with-tools-json'});
+ assert.equal(f.task.state,'waiting_reconciliation');const before=f.host.snapshot().reviews.find(r=>r.taskId===f.task.taskId);
+ f.store.append(f.store.read().revision,node('goal','goal',[ref('private-source')],'界'.repeat(8192),'private'));
+ const card=f.host.snapshot().reviews.find(r=>r.reviewTaskId===before.reviewTaskId);
+ assert.equal(card.state,'waiting_reconciliation');assert.equal(card.cloudExport,undefined);
+ const feedback=await f.host.applyDecision(card.reviewTaskId);assert.equal(feedback.taskId,f.task.taskId);
+ assert.equal(feedback.state,'waiting_reconciliation');assert.deepEqual([f.submits(),f.credentials(),f.sent.length],[1,1,0]);
 });
