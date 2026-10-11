@@ -31,6 +31,8 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     throw new ProtocolError('INVALID_ARGUMENT','Invalid server configuration');
   }
   let active = 0;
+  let closing = false;
+  const httpControllers = new Set();
   const acquire = () => {
     if (active >= maxConcurrency) return false;
     active++; return true;
@@ -48,6 +50,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   };
   let transport;
   const server = createServer(async (request,response) => {
+    if (closing) return json(response,499,{event:'error',data:{error_code:'CANCELLED',status:'failed'}});
     if (request.method === 'GET' && request.url === '/ping') {
       return json(response,200,{status:active ? 'HealthyBusy':'Healthy', time_of_last_update:Math.floor(Date.now()/1000)});
     }
@@ -60,6 +63,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     const invocationSlot = !statusRequest;
     if (invocationSlot && !acquire()) return json(response,429,{error:{code:'RATE_LIMITED'}});
     const controller = new AbortController();
+    httpControllers.add(controller);
     const abort = () => { if (!response.writableEnded) controller.abort(new ProtocolError('CANCELLED','Invocation disconnected')); };
     request.once('aborted',abort); response.once('close',abort);
     const receivedAt = Date.now();
@@ -111,9 +115,16 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       if (!response.destroyed) json(response,code==='INVALID_ARGUMENT'?400:code==='TIMEOUT'?504:code==='CANCELLED'?499:502,
         {event:'error',data:{error_code:code,status:'failed'}});
     } finally {
+      httpControllers.delete(controller);
       clearTimeout(timer); if (cancel) controller.signal.removeEventListener('abort',cancel);
       request.removeListener('aborted',abort); response.removeListener('close',abort);
       if (invocationSlot) release();
+      if (closing && !request.complete) {
+        // Flush the cancellation response before terminating a withheld upload.
+        // Otherwise close waits forever after the invocation timer is cleared.
+        if (response.destroyed || response.writableFinished) request.destroy();
+        else response.once('finish',() => request.destroy());
+      }
     }
   });
   server.requestTimeout = timeoutMs;
@@ -121,6 +132,13 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   transport = attachAgentWebSocketTransport(server,{...websocket,authToken:wssAuthToken,invoke,acquire,release,timeoutMs});
   // Node HTTP close does not close upgraded sockets. Stop them before awaiting close.
   const closeHttp = server.close.bind(server);
-  server.close = (...args) => {transport.close(); return closeHttp(...args);};
+  server.close = (...args) => {
+    closing = true;
+    for (const controller of httpControllers) {
+      controller.abort(new ProtocolError('CANCELLED','Agent server closed'));
+    }
+    transport.close();
+    return closeHttp(...args);
+  };
   return server;
 }
