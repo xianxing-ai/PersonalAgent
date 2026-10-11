@@ -403,6 +403,15 @@ export function mountAdmin(root, invoke, escape) {
       ? JSON.stringify({state: data.privateMemory, search: memorySearch, saved: savedMemory}) : undefined;
     if (section === 'memory' && data.privateMemory?.available && renderedSection === section
       && !refreshMemory && nextMemoryKey === memoryRenderKey) return;
+    if (section === 'appearance' && renderedSection === section) {
+      const theme = root.querySelector('#pref-theme'), calm = root.querySelector('#pref-calm');
+      if (theme && calm) {
+        const preference = themePreference(), reduceMotion = localStorage.getItem('pa-calm') === 'true';
+        if (theme.value !== preference) theme.value = preference;
+        if (calm.checked !== reduceMotion) calm.checked = reduceMotion;
+        return;
+      }
+    }
     renderedSection = section; memoryRenderKey = nextMemoryKey;
     root.querySelector('#content').innerHTML = content;
     if (section === 'authorizations') {
