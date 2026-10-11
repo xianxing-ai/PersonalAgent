@@ -189,3 +189,60 @@ test('review cannot erase or replace full-report repair changes',async()=>{
   const r=candidate();r.candidate.changes[0].reason='审查改写理由';
   await assert.rejects(setup(world(),plan(),r).agent.invoke(request(payload())),{code:'EXTERNAL_FAILURE'});
 });
+
+const goalRepairPayload=()=>{const p=payload();p.nodes.find(n=>n.id===planId).kind='goal';return p;};
+const goalWorld=()=>({...world(),reportVersion:'1.2',affected_items:world().affected_items.map(item=>({...item,kind:'goal'}))});
+const goalPlan=()=>({...plan(),reportVersion:'1.2'});
+test('complete 1.2 Goal target produces only the original unverified candidate1.0 shape',async()=>{
+ const {agent,models}=setup(goalWorld(),goalPlan());assert.deepEqual(await agent.invoke(request(goalRepairPayload())),candidate());
+ assert.deepEqual(['fast','world','plan','review'].map(r=>models[r].requests.length),[0,1,1,1]);
+});
+test('Goal targets require complete 1.2 reports and exact source kind',async()=>{
+ for(const w of [{...goalWorld(),reportVersion:'1.1'},
+   {disposition:'REVISE',affected:[planId],reason:'Goal change',missing_information:[]},
+   {...goalWorld(),affected_items:goalWorld().affected_items.map(i=>({...i,kind:'decision'}))},
+   {...goalWorld(),affected_items:goalWorld().affected_items.map(i=>({...i,kind:'plan_step'}))}]) {
+   const {agent,models}=setup(w,goalPlan());await assert.rejects(agent.invoke(request(goalRepairPayload())),{code:'EXTERNAL_FAILURE'});
+   assert.equal(models.world.requests.length,1);assert.equal(models.plan.requests.length,0);
+ }
+});
+test('mixed full report versions stop before Review and old Decision/Plan full versions remain usable',async()=>{
+ for(const [w,p] of [[world(),{...plan(),reportVersion:'1.2'}],[{...world(),reportVersion:'1.2'},plan()],[goalWorld(),plan()]]) {
+   const {agent,models}=setup(w,p);await assert.rejects(agent.invoke(request(w.affected_items[0].kind==='goal'?goalRepairPayload():payload())),{code:'EXTERNAL_FAILURE'});
+   assert.equal(models.review.requests.length,0);
+ }
+ const {agent}=setup({...world(),reportVersion:'1.2'},{...plan(),reportVersion:'1.2'});
+ assert.deepEqual(await agent.invoke(request(payload())),candidate());
+});
+test('Goal support rejects Fact targets, missing sources and stale Goal baselines before a model',async()=>{
+ for(const mutate of [p=>p.nodes.find(n=>n.id===planId).kind='fact',
+   p=>p.nodes=p.nodes.filter(n=>n.id!==planId),
+   p=>p.nodes.push(node(planId,2,'goal','Newer committed Goal'))]) {
+   const p=goalRepairPayload();mutate(p);const {agent,models}=setup(goalWorld(),goalPlan());
+   await assert.rejects(agent.invoke(request(p)),{code:'INVALID_ARGUMENT'});assert.equal(models.world.requests.length,0);
+ }
+});
+test('Goal affected report cannot join distinct Goal identities into one observed change',async()=>{
+ const p=goalRepairPayload();p.nodes.find(n=>n.id===planId).revision=2;p.repairContext.targets[0].node.revision=2;
+ const w=goalWorld();w.affected_items[0].node.revision=2;
+ w.observed_facts.push({node:ref(planId,2),fact:'14点准备',confidence:'explicit'});
+ w.changed_facts=[{previous:ref(goalId),current:ref(planId,2),change:'Invalid cross-id change'}];
+ const {agent,models}=setup(w,goalPlan());await assert.rejects(agent.invoke(request(p)),{code:'EXTERNAL_FAILURE'});
+ assert.equal(models.world.requests.length,1);assert.equal(models.plan.requests.length,0);
+});
+test('Goal report1.2 never authorizes a tool proposal or substituted candidate',async()=>{
+ for(const review of [{kind:'tool_proposal',proposalId:'not-authorized',toolName:'goal.revise',toolVersion:'1.0.0',arguments:{}},
+   {...candidate(),candidate:{...candidate().candidate,changes:[{...candidate().candidate.changes[0],node:ref(goalId,2)}]}}]) {
+   const {agent,models}=setup(goalWorld(),goalPlan(),review);
+   await assert.rejects(agent.invoke(request(goalRepairPayload())),{code:'EXTERNAL_FAILURE'});assert.equal(models.review.requests.length,1);
+ }
+});
+
+test('complete1.2 Goal impact cannot assert a kind without committed source projection on continuation',async()=>{
+ const context=goalRepairPayload().repairContext;
+ context.targets=context.targets.map(({summary,...target})=>({...target,requestedSummary:summary}));
+ const query=JSON.stringify({continuation:{proposalId:'synthetic-source-less',state:'confirmed',result:{repairContext:context}}});
+ const w={...goalWorld(),observed_facts:[],changed_facts:[],recommended_disposition:'RECHECK',missing_information:['Missing committed source projection']};
+ const {agent,models}=setup(w,goalPlan());await assert.rejects(agent.invoke(request(query)),{code:'EXTERNAL_FAILURE'});
+ assert.equal(models.world.requests.length,1);assert.equal(models.plan.requests.length,0);
+});

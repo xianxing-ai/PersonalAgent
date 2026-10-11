@@ -26,18 +26,21 @@ function repairAgent({mutatePlan=p=>p,mutateReview=r=>r}={}) {
   const models=Object.fromEntries(['fast','world','plan','review'].map(role=>[role,new FakeModelProvider(role==='fast'?[]:[request=>{
     const data=JSON.parse(request.messages[1].content),input=role==='world'?data:data.input;
     const context=input.repairContext;
+    const version=context.targets.some(t=>input.nodes.find(n=>n.id===t.node.id&&n.revision===t.node.revision)?.kind==='goal')?'1.2':'1.1';
     let value;
     if(role==='world') {
       const goals=input.nodes.filter(n=>n.kind==='goal').sort((a,b)=>a.revision-b.revision);
-      value={reportVersion:'1.1',revision:context.expectedGraphRevision,
+      const current=goals.findLast(n=>goals.some(old=>old.id===n.id&&old.revision+1===n.revision));
+      const previous=goals.find(n=>n.id===current.id&&n.revision+1===current.revision);
+      value={reportVersion:version,revision:context.expectedGraphRevision,
         observed_facts:goals.map(n=>({node:ref(n.id,n.revision),fact:n.summary,confidence:'explicit'})),
-        changed_facts:[{previous:ref(goals[0].id,goals[0].revision),current:ref(goals.at(-1).id,goals.at(-1).revision),change:'目标内容变化'}],
-        affected_items:context.targets.map(t=>({kind:input.nodes.find(n=>n.id===t.node.id).kind==='plan'?'plan_step':'decision',
+        changed_facts:[{previous:ref(previous.id,previous.revision),current:ref(current.id,current.revision),change:'目标内容变化'}],
+        affected_items:context.targets.map(t=>({kind:input.nodes.find(n=>n.id===t.node.id).kind==='plan'?'plan_step':input.nodes.find(n=>n.id===t.node.id).kind,
           node:t.node,impact:'direct',reason:'目标版本变化'})),missing_information:[],recommended_disposition:'REVISE',summary:'仅修复原宿主范围'};
     } else if(role==='plan') {
-      value=mutatePlan({reportVersion:'1.1',base_revision:context.expectedGraphRevision,disposition:'REVISE',
+      value=mutatePlan({reportVersion:version,base_revision:context.expectedGraphRevision,disposition:'REVISE',
         preserved_steps:[],rechecked_steps:[],revised_steps:context.targets.map(t=>({node:t.node,
-          replacement:input.nodes.find(n=>n.id===t.node.id).kind==='decision'?'按修改后的目标更新决策':'按更新后的决策调整计划',reason:'目标版本变化'})),
+          replacement:input.nodes.find(n=>n.id===t.node.id).kind==='decision'?'按修改后的目标更新决策':input.nodes.find(n=>n.id===t.node.id).kind==='goal'?'按修改后的目标更新相关目标':'按更新后的决策调整计划',reason:'目标版本变化'})),
         removed_steps:[],dependency_updates:context.targets.map(t=>({node:t.node,dependencies:t.requestedDependencies,reason:'采用宿主精确引用'})),
         evidence_required:['尚需本地 Policy、CAS 与独立读回'],missing_information:[],local_next_actions:[]},input);
     } else {
@@ -59,7 +62,7 @@ async function settled(app,taskId) {
 }
 // The existing Desktop Host produces the query. Only Laya inference, model
 // responses and HTTP transport are Fake; Runtime, Client and projection are real.
-async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepProducerSummary=false,baselineKind,baselineLength=1500}={}) {
+async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepProducerSummary=false,baselineKind,baselineLength=1500,dependentKind='decision',controlledRepair=false}={}) {
   const root=new URL('../../.cache/owned-goal-analysis/',import.meta.url);await mkdir(root,{recursive:true});
   const directory=await mkdtemp(new URL('case-',root));
   const owned=repair?repairAgent({mutatePlan:(p,input)=>{
@@ -71,6 +74,9 @@ async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepPro
   }}):agentWith(),sent=[],rejections=[],announced=[];
   let host,goalWrites=0;
   const app=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+    ...(controlledRepair?{localRepair:{graphNamespace:namespace,bindingVersion:'desktop-reviewed-execution-v1',
+      withSourceLock:async work=>work(),reviewedSource:{resolve:input=>{const prepared=host.readPreparedRepair(input.sourceTaskId);
+        return prepared?.kind==='prepared'&&prepared.binding.reviewTaskId===input.reviewTaskId?prepared:undefined;}}}}:{}),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',responseMode:'tool-proposal-json',
     ...(repair?{repairCandidateVersion:'1.0'}:{}),
     authorizationProvider:{read:async()=> 'Bearer synthetic-no-real-key'},
@@ -87,7 +93,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepPro
   const store=app.runtime.provisionCoordinationStore(namespace);
   store.append(0,node('private-source','fact',[],'PRIVATE_SOURCE_SENTINEL','private'));
   store.append(1,node('goal','goal',[ref('private-source')],'原目标','private'));
-  if(!newGoal){store.append(2,node('decision','decision',[ref('goal')],baselineKind==='decision'?'D'.repeat(baselineLength):'关联决策'));
+  if(!newGoal){store.append(2,node('decision',dependentKind,[ref('goal')],baselineKind==='decision'?'D'.repeat(baselineLength):'关联决策'));
     store.append(3,node('plan','plan',[ref('decision')],baselineKind==='plan'?'P'.repeat(baselineLength):'关联计划'));
     store.append(4,node('goal','goal',[ref('private-source')],'修改后的目标','private'));}
   const source=app.runtime.submitTask({goal:'Synthetic prior Goal edit',conversationId:'fixture',idempotencyKey:'synthetic-goal-edit'});
@@ -116,7 +122,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepPro
   host.configure({enabled:true,cloudAllowed:true});await host.tick();
   assert.ok(announced[0]);const task=await settled(app,announced[0].taskId);
   assert.equal(sent.length,1);assert.doesNotMatch(sent[0],/PRIVATE_SOURCE_SENTINEL|private-source/);
-  return {...owned,app,store,host,task,query:sent[0],rejections,goalWrites:()=>goalWrites};
+  return {...owned,app,store,host,client,task,query:sent[0],rejections,goalWrites:()=>goalWrites};
 }
 test('actual short-summary Host REVISE accepts ordered prospective dependencies without inventing committed source nodes',async t=>{
   const f=await hostFixture(t,{repair:true});
@@ -273,4 +279,38 @@ test('analysis retains the caller deadline and cancellation and never advances t
   for(let i=0;i<100 && models.fast.requests.length===0;i++)await new Promise(resolve=>setImmediate(resolve));
   controller.abort();await assert.rejects(running,{code:'CANCELLED'});
   assert.equal(models.world.requests.length,0);assert.equal(models.plan.requests.length,0);assert.equal(models.review.requests.length,0);
+});
+
+test('actual prepared dependent Goal uses complete1.2 roles then existing candidate and public preview without cloud writes',async t=>{
+ const f=await hostFixture(t,{repair:true,dependentKind:'goal'});assert.equal(f.task.state,'succeeded');
+ assert.deepEqual(['fast','world','plan','review'].map(r=>f.models[r].requests.length),[0,1,1,1]);
+ const payload=JSON.parse(f.query.slice(f.query.indexOf('\n')+1));
+ const target=payload.repairContext.targets[0];assert.equal(payload.nodes.find(n=>n.id===target.node.id).kind,'goal');
+ assert.equal(payload.nodes.some(n=>n.id===target.node.id&&n.revision===2),false);
+ const candidate=f.app.runtime.loadCheckpoint(f.task.taskId,'competition-repair-candidate');assert.equal(candidate.candidateVersion,'1.0');
+ const prepared=f.host.readPreparedRepair(f.task.taskId);assert.equal(prepared.kind,'prepared');
+ assert.deepEqual(prepared.preview.inputs.map(n=>n.kind),['goal','plan']);
+ assert.equal(prepared.preview.after.snapshot.revision,7);assert.equal(f.store.read().revision,5);
+ assert.equal(f.goalWrites(),0);assert.equal(f.app.runtime.readToolExecutions(f.task.taskId).length,0);
+ const original=f.store.read().history.findLast(n=>n.id==='decision');assert.equal(original.kind,'goal');
+ assert.equal(original.summary,'关联决策');assert.deepEqual(original.dependencies,[ref('goal')]);
+ assert.equal(f.app.runtime.listApprovals({}).items.length,0);
+});
+
+test('owned1.2 Goal candidate remains unexecuted until a separate original local Policy approval and CAS readback',async t=>{
+ const f=await hostFixture(t,{repair:true,dependentKind:'goal',controlledRepair:true});assert.equal(f.task.state,'succeeded');
+ assert.equal(f.store.read().revision,5);assert.equal(f.app.runtime.readToolExecutions(f.task.taskId).length,0);
+ const card=f.host.snapshot().reviews.find(r=>r.taskId===f.task.taskId);assert.ok(card);
+ const accepted=await f.host.applyDecision(card.reviewTaskId);assert.notEqual(accepted.taskId,f.task.taskId);
+ for(let i=0;i<200&&f.app.runtime.getTask(accepted.taskId).state!=='waiting_approval';i++)await new Promise(resolve=>setTimeout(resolve,5));
+ assert.equal(f.app.runtime.getTask(accepted.taskId).state,'waiting_approval');assert.equal(f.store.read().revision,5);
+ const approval=(await f.client.call('approval.list',{taskId:accepted.taskId})).items[0];assert.ok(approval);
+ await f.client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+ assert.equal((await settled(f.app,accepted.taskId)).state,'succeeded');
+ const result=await f.host.applyDecision(card.reviewTaskId);assert.equal(result.status,'applied');
+ assert.equal(result.executionVerified,true);assert.equal(result.graphUpdateVerified,true);
+ assert.deepEqual(result.updatedNodes.map(n=>[n.id,n.kind,n.revision]),[['decision','goal',2],['plan','plan',2]]);
+ assert.equal(f.store.read().revision,7);assert.equal(f.goalWrites(),0);
+ const executions=f.app.runtime.readToolExecutions(accepted.taskId);assert.equal(executions.length,1);
+ assert.equal(executions[0].toolName,'cognition.commit_repair');assert.equal(executions[0].state,'confirmed');
 });

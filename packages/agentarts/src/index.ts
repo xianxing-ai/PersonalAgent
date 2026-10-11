@@ -16,7 +16,7 @@ export type AgentOutput = Omit<Extract<CoordinationResult, {kind: 'text'}>, 'ver
   | Omit<Extract<CoordinationResult, {kind: 'tool_proposal'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'repair_candidate'}>, 'verification'>;
 type RepairChange = Extract<CoordinationResult, {kind: 'repair_candidate'}>['candidate']['changes'][number];
-interface WorldReport {disposition: string; affected: string[]; complete: boolean}
+interface WorldReport {disposition: string; affected: string[]; complete: boolean; reportVersion?: '1.1' | '1.2'}
 interface PlanReport {disposition: string; changes: RepairChange[]; unsupported: boolean}
 
 /** Cloud-only orchestration. There is deliberately no ToolHost, TaskRuntime or persistence. */
@@ -170,7 +170,10 @@ export class OwnedAgentOrchestrator {
   }
   private validateWorld(value: unknown, context: RepairContext, sources: RepairSource[]): WorldReport {
     const report = record(value);
+    const hasGoalTarget=context.targets.some(target=>sources.some(source=>source.kind==='goal'
+      && source.node.id===target.node.id && source.node.revision===target.node.revision));
     if (!Object.hasOwn(report, 'reportVersion')) {
+      if(hasGoalTarget) this.reportFailure();
       this.validateReport(value, false, context);
       const affected = report.affected as string[];
       if (new Set(affected).size !== affected.length || (report.disposition === 'REVISE' && !affected.length)) this.reportFailure();
@@ -179,7 +182,8 @@ export class OwnedAgentOrchestrator {
     }
     this.reportObject(report, ['reportVersion','revision','observed_facts','changed_facts','affected_items',
       'missing_information','recommended_disposition','summary']);
-    if (report.reportVersion !== '1.1' || report.revision !== context.expectedGraphRevision
+    if (!['1.1','1.2'].includes(report.reportVersion as string) || (hasGoalTarget && report.reportVersion !== '1.2')
+      || report.revision !== context.expectedGraphRevision
       || !['KEEP','RECHECK','REVISE'].includes(report.recommended_disposition as string)) this.reportFailure();
     this.reportText(report.summary);
     const missing = this.reportTexts(report.missing_information);
@@ -210,10 +214,10 @@ export class OwnedAgentOrchestrator {
       const item = this.reportObject(raw, ['kind','node','impact','reason']);
       const node = this.reportRef(item.node);
       this.reportText(item.reason);
-      if (!['decision','plan_step'].includes(item.kind as string) || !['direct','transitive'].includes(item.impact as string)
+      if (!(report.reportVersion==='1.2'?['goal','decision','plan_step']:['decision','plan_step']).includes(item.kind as string) || !['direct','transitive'].includes(item.impact as string)
         || !context.targets.some(target => target.node.id === node.id && target.node.revision === node.revision)
-        || (sources.length && !sources.some(source => source.node.id === node.id && source.node.revision === node.revision
-          && source.kind === (item.kind === 'plan_step' ? 'plan' : 'decision')))
+        || ((sources.length || item.kind==='goal') && !sources.some(source => source.node.id === node.id && source.node.revision === node.revision
+          && source.kind === (item.kind === 'plan_step' ? 'plan' : item.kind==='goal'?'goal':'decision')))
         || affected.includes(node.id)) this.reportFailure();
       affected.push(node.id);
     }
@@ -221,7 +225,7 @@ export class OwnedAgentOrchestrator {
     if (report.recommended_disposition === 'KEEP' && (missing.length || affected.length)) this.reportFailure();
     if (!sources.some(source => ['fact','goal'].includes(source.kind))
       && (report.recommended_disposition !== 'RECHECK' || !missing.length)) this.reportFailure();
-    return {disposition: report.recommended_disposition as string, affected, complete: true};
+    return {disposition: report.recommended_disposition as string, affected, complete: true, reportVersion: report.reportVersion as '1.1' | '1.2'};
   }
   private validatePlan(value: unknown, context: RepairContext, world: WorldReport,
     prospectiveDependencies: readonly RepairRef[]): PlanReport {
@@ -233,7 +237,7 @@ export class OwnedAgentOrchestrator {
     }
     this.reportObject(report, ['reportVersion','base_revision','disposition','preserved_steps','rechecked_steps','revised_steps',
       'removed_steps','dependency_updates','evidence_required','missing_information','local_next_actions']);
-    if (!world.complete || report.reportVersion !== '1.1' || report.base_revision !== context.expectedGraphRevision
+    if (!world.complete || report.reportVersion !== world.reportVersion || report.base_revision !== context.expectedGraphRevision
       || !['KEEP','RECHECK','REVISE'].includes(report.disposition as string)) this.reportFailure();
     const missing = this.reportTexts(report.missing_information), evidence = this.reportTexts(report.evidence_required);
     const actions = this.reportTexts(report.local_next_actions), seen = new Set<string>();

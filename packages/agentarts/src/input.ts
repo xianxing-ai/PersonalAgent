@@ -150,7 +150,7 @@ export function repairInput(input: AgentInput): {context: RepairContext; data: u
   const nodes = projectedNodes(payload.nodes);
   for (const target of context.targets) {
     const node = nodes.get(key(target.node));
-    if (!node || !['decision','plan'].includes(node.kind as string) || node.state !== 'active'
+    if (!node || !['goal','decision','plan'].includes(node.kind as string) || node.state !== 'active'
       || node.summary !== target.summary
       || [...nodes.values()].some(other => other.id === node.id && (other.revision as number) > target.node.revision)) invalid();
   }
