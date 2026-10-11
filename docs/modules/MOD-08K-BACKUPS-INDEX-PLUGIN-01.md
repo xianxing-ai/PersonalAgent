@@ -2,10 +2,11 @@
 
 - Profile：`huawei_ict_agentarts`
 - 负责人：`goo122`；评审者：`zemeng` 或其他已登记非作者协作者
-- 状态：`review`；本地增量已验证，尚未提交、推送或非作者评审
+- 状态：`review`；已提交推送 [PR #321](https://github.com/zemeng5208/PersonalAgent/pull/321)，尚未非作者评审或集成
 - 工作树：`.worktrees/goo122-wiki-source-revisions`
 - 分支：`codex/goo122-wiki-source-monitor`
 - 基线：PR #320 `a871664b`；同时保留本地 MOD-08J 来源监视器增量
+- 交付：`9c31fac6`，目标分支为 PR #320 的 `codex/goo122-wiki-source-revisions`
 - 方案：[ADR-0018](../adr/0018-managed-backups-and-volatile-index.md)
 
 ## 交付范围

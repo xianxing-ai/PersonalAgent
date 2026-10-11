@@ -50,7 +50,8 @@
 
 ## 剩余范围与交付
 
-本包尚未提交或推送；已交付的 PR #320 分支保持不变。原 PR 及本增量均未集成，
+本包已在 [PR #321](https://github.com/zemeng5208/PersonalAgent/pull/321) 提交并推送；
+目标为父 PR #320 分支，父分支保持不变。两条 PR 均未集成，
 整个 MOD-08/09 保持 in_progress。
 后续本地 [MOD-08K](MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 补充临时全文索引、可安装
 只读插件及应用 SQLite 备份协调；持久索引、插件真实宿主/Runtime 配对、其他绑定跨库
