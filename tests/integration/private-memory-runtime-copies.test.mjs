@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -91,7 +92,8 @@ async function fixture(t, asynchronousGate = false, delegation = false) {
   await memory.save(sourceA, 'Synthetic corrected A');
   await memory.save((await memory.search('Synthetic B')).hits[0].source, 'Synthetic independent B');
   const facts = (await memory.listSaved()).facts;
-  return {database, requests, consents, replies, facts, get client() {return client;}, get app() {return app;}, get erasure() {return erasure;},
+  return {database, vault, requests, consents, replies, facts, get client() {return client;}, get app() {return app;}, get erasure() {return erasure;},
+    get consumption() {return consumption;},
     get memory() {return memory;}, async restart() {close(); await open();},
     onNextRequest(callback) {beforeReply = callback;},
     allowPurge() {allowCopyPurge = true;},
@@ -235,4 +237,42 @@ test('an approved public dispatch uses the actual default child worker without g
   assert.equal(f.app.readCopyErasureReceipt(child.taskId), undefined);
   assert.equal(f.app.runtime.loadCheckpoint(child.taskId, 'subtask-parent').parentTaskId, parent.taskId);
   assert.equal(f.requests.length, 3);
+});
+
+test('persisted private context binding does not restore an egress lease after Runtime restart', async t => {
+  const f = await fixture(t);
+  const target = f.facts.find(fact => fact.summary === 'Synthetic corrected A');
+  const goal = 'Review the confirmed synthetic fact';
+  const conversationId = 'private-context-restart';
+  const prepareTask = idempotencyKey => {
+    const task = f.app.runtime.submitTask({goal, conversationId, idempotencyKey});
+    const scope = {taskId: task.taskId, conversationId, goal, ...context()};
+    f.app.runtime.saveCheckpoint(task.taskId, 'application-deadline', scope.deadline);
+    f.app.runtime.transitionTask(task.taskId, 'planning');
+    f.app.runtime.transitionTask(task.taskId, 'running');
+    return scope;
+  };
+  f.consumption.select({conversationId, ref: target.ref});
+  const original = prepareTask('private-context-original');
+  const prepared = await f.consumption.prepare(original);
+  assert.equal(prepared.state, 'authorized');
+  assert.equal(f.app.readPrivateTaskBinding(original.taskId).userGoalDigest,
+    createHash('sha256').update(goal).digest('hex'));
+  assert.equal(JSON.stringify(f.app.readPrivateTaskBinding(original.taskId)).includes(target.summary), false);
+  f.consumption.assertCloudSend({...original, goal: prepared.goal});
+  assert.deepEqual(f.consents, [original.taskId]);
+  await f.restart();
+  assert.deepEqual(f.app.runtime.recoverInterruptedTasks().map(task => task.taskId), [original.taskId]);
+  assert.equal(f.app.runtime.getTask(original.taskId).state, 'waiting_reconciliation');
+  assert.ok(f.app.readPrivateTaskBinding(original.taskId));
+  assert.throws(() => f.consumption.assertCloudSend({...original, goal: prepared.goal}), /授权已失效/);
+  await assert.rejects(f.consumption.prepare(original), /未跨重启恢复/);
+  assert.deepEqual(f.consents, [original.taskId]);
+  assert.equal(f.requests.length, 0);
+  await f.memory.selectVault(f.vault);
+  f.consumption.select({conversationId, ref: target.ref});
+  const fresh = prepareTask('private-context-fresh');
+  assert.equal((await f.consumption.prepare(fresh)).state, 'authorized');
+  assert.deepEqual(f.consents, [original.taskId, fresh.taskId]);
+  assert.equal(f.requests.length, 0);
 });

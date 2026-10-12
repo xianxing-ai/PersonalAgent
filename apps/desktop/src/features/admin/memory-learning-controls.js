@@ -45,7 +45,29 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
   const events = new AbortController();
   let busy = false;
   let disposed = false;
-  const render = () => { if (!disposed) root.innerHTML = memoryLearningControlsHtml(state); };
+  let renderedHtml;
+  const render = resolvedRevision => {
+    if (disposed) return;
+    let html=memoryLearningControlsHtml(state);
+    if (html===renderedHtml) return;
+    const active = root.ownerDocument?.activeElement;
+    const focusedName = active && root.contains?.(active) ? active.name : null;
+    const selection = focusedName && typeof active.selectionStart === 'number'
+      ? [active.selectionStart, active.selectionEnd, active.selectionDirection] : null;
+    for (const [key, name] of [['workflowId', 'ml-workflow'], ['path', 'ml-path'],
+      ['summary', 'ml-summary'], ['revision', 'ml-revision']]) {
+      const input = root.querySelector?.(`[name="${name}"]`);
+      if (input) state.form[key] = input.value;
+    }
+    if(resolvedRevision!==undefined)state.form.revision=resolvedRevision;
+    html=memoryLearningControlsHtml(state);
+    root.innerHTML=html;renderedHtml=html;
+    if (focusedName) {
+      const input = root.querySelector?.(`[name="${focusedName}"]`);
+      input?.focus({preventScroll: true});
+      if (selection && typeof input?.setSelectionRange === 'function') input.setSelectionRange(...selection);
+    }
+  };
   render();
   root.addEventListener('click', async event => {
     const button = event.target.closest('button');
@@ -64,6 +86,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
     state.form = {workflowId, revision, path, summary};
     busy = true;
     button.disabled = true;
+    let resolvedRevision;
     try {
       let result;
       if (use !== undefined) {
@@ -96,7 +119,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
           if (previous?.workflowId !== workflowId || previous?.revision !== revision) state.taskId = '';
         }
         if (action === 'propose') state.taskId = '';
-        if (result.version) state.form.revision = result.version.revision;
+        if (result.version) resolvedRevision = result.version.revision;
         if (action === 'startValidation') state.taskId = result.taskId;
         if (['startValidation', 'run'].includes(action)) {
           state.runningTask = {taskId: result.taskId, workflowId, revision: payload.revision};
@@ -121,7 +144,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
               : result.state === 'deleted' ? '删除读回完成。'
                 : result.state === 'withdrawn' ? '已撤回，后续任务不可消费。' : '状态已读回。';
     } catch (error) { state.message = error?.message ?? '操作失败，请刷新后核对。'; }
-    finally { busy = false; render(); }
+    finally { busy = false; render(resolvedRevision); }
   }, {signal: events.signal});
   return Object.freeze({dispose() { disposed = true; events.abort(); },
     update({status: next, refs: nextRefs}) {
