@@ -45,3 +45,24 @@
 未完成的原生验收不以单元测试替代；本记录不将 MOD-09 标为 done。工作包交付还需按用户规范完成非作者评审与集成。
 
 本轮本地验收已完成。交付分支为 `codex/goo122-local-learning-permission`；工作包等待非作者评审及集成。云端验收继续暂缓，不把本地固定 Skill 成功当作比赛云端能力完成。
+
+## 2026-10-12：PR #315 连续候选版本绑定修复
+
+独立工作树 `.worktrees/goo122-learning-revision-binding` 基于 #315 `9700880e`。
+原渲染逻辑保留草稿时会把旧 DOM 的 v1 覆盖到新候选 v2 的版本输入。
+现在先保留可编辑草稿与焦点，再应用宿主返回的版本；原异常、拒绝和快照更新不凭空
+改变流程版本。不更改原 TaskRuntime 状态、公共接口、依赖或数据库迁移。
+
+已先复现候选 v1 和已通过 v1 两种场景的 `1 !== 2`，原失败日志
+`.cache/learning-revision-repro.log` 保留。修复后 Desktop Host、Runtime 学习应用及
+MCP 集成专项 **18/18 通过、0 skip**（`.cache/learning-revision-focused.log`）：
+连续 v1→v2→验证的界面版本、请求和 SQLite checkpoint 均绑定 v2/new-reference.md，
+原草稿、焦点和选择范围保留，异步快照不能恢复旧版本。新增回归的 DOM、旧已通过
+版本证据为明确合成夹具；未启动 worker、模型或真实云服务。该修复需继续传递到 #316，
+并完成对应门禁、当前提交非作者评审和集成。验证中复用 #318 已有的 Windows Git
+夹具有界 EPERM 重试；Git 工具测试 30/30 通过、0 skip，保留身份与拒绝断言。
+该旧基线含已提交 CRLF，使用 `git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check`
+验证空白，不改动全文件换行或全局 Git 配置。
+相同修复传递到 #316 后，保留其自有文案与读回状态逻辑；组合完整门禁 2648 项、
+2623 pass、25 skip、0 fail/取消。该完整命令在独立 #316 工作树执行，不冒充本分支
+单独跑过完整门禁；本分支最终 Host 回归 10/10 通过、0 skip。

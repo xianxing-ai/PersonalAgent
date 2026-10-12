@@ -4,11 +4,66 @@ import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import test from 'node:test';
 import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
+import {openSqliteLearningHost} from '@personal-agent/learning';
+import {TaskRuntime} from '@personal-agent/runtime';
+import {createWorkflowLearningApplication, LEARNING_BINDING_CHECKPOINT} from '@personal-agent/runtime/application';
 import {createPrivateMemoryController} from '../electron/private-memory.js';
 import {createMemoryLearningHost} from '../electron/memory-learning-host.js';
 import {memoryLearningControlsHtml, mountMemoryLearningControls} from '../src/features/admin/memory-learning-controls.js';
 
 const context = () => ({deadline: new Date(Date.now() + 60_000).toISOString(), signal: new AbortController().signal});
+
+for(const oldPassed of [false,true])test(`successive candidates bind validation to v2/new-reference.md with old v1 ${oldPassed?'passed':'candidate'}`,async t=>{
+  const parent=fileURLToPath(new URL('../../../.cache/learning-revision/',import.meta.url));
+  await mkdir(parent,{recursive:true});const base=await mkdtemp(join(parent,'case-'));
+  const learning=openSqliteLearningHost(join(base,'learning.sqlite'));
+  const runtime=new TaskRuntime(join(base,'runtime.sqlite'));
+  const application=createWorkflowLearningApplication({profile:'huawei_ict_agentarts',namespace:'desktop-learning',learning,runtime,
+    skillManifest:()=>({id:'workspace-reference-summary',version:'1.0.0',digest:'b'.repeat(64),
+      steps:['read-reference','summarize-reference'],capabilities:[{toolName:'mcp.workspace.read_text',toolVersion:'1.0.0',sideEffect:'read'}]}),
+    submitSkillTask:binding=>runtime.submitTaskWithCheckpoint({goal:'Synthetic validation, worker not executed',
+      conversationId:'learning:desktop-learning',idempotencyKey:binding.operationId},LEARNING_BINDING_CHECKPOINT,binding).taskId,
+    confirmActivation:async()=>false,confirmDeletion:async()=>false});
+  const host=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:{},learningApplication:application});
+  const document={activeElement:null};let html='',inputs=new Map(),click,controls;
+  const root={ownerDocument:document,contains:()=>true,addEventListener:(_name,handler)=>{click=handler;},
+    querySelector:selector=>inputs.get(selector.match(/name="([^"]+)"/)?.[1]),
+    get innerHTML(){return html;},set innerHTML(value){
+      html=value;inputs=new Map();document.activeElement=null;
+      for(const [,attributes] of value.matchAll(/<input\b([^>]*)>/g)) {
+        const name=/\bname="([^"]+)"/.exec(attributes)?.[1];if(!name)continue;
+        inputs.set(name,{name,value:/\bvalue="([^"]*)"/.exec(attributes)?.[1]??'',
+          focus(){document.activeElement=this;},setSelectionRange(start,end,direction){
+            this.selectionStart=start;this.selectionEnd=end;this.selectionDirection=direction;}});
+      }
+    }};
+  const calls=[];
+  controls=mountMemoryLearningControls(root,{status:{learningAvailable:true},invoke:async(name,payload)=>{
+    calls.push([name,payload]);
+    const result=await host.invoke(name,payload);
+    if(name==='learning.propose')controls.update({status:{learningAvailable:true,writeEnabled:true}});
+    return result;
+  }});
+  t.after(async()=>{controls.dispose();learning.close();runtime.close();await rm(base,{recursive:true,force:true});});
+  const action=async name=>click({target:{closest:()=>({dataset:{mlAction:name},disabled:false})}});
+  inputs.get('ml-path').value='old-reference.md';inputs.get('ml-summary').value='Old draft';
+  await action('propose');
+  if(oldPassed)await learning.validate('desktop-learning','reference-review',1,
+    {validate:async()=>({passed:true,evidenceRef:'synthetic:old-v1'})},context());
+  inputs.get('ml-path').value='new-reference.md';inputs.get('ml-summary').value='New draft';
+  inputs.get('ml-summary').focus();inputs.get('ml-summary').setSelectionRange(1,3,'forward');
+  await action('propose');
+  assert.match(html,/<p>[^<]*v2/);assert.equal(inputs.get('ml-revision').value,'2');
+  assert.equal(inputs.get('ml-path').value,'new-reference.md');assert.equal(inputs.get('ml-summary').value,'New draft');
+  assert.equal(document.activeElement,inputs.get('ml-summary'));
+  assert.deepEqual([document.activeElement.selectionStart,document.activeElement.selectionEnd],[1,3]);
+  await action('startValidation');
+  assert.equal(calls.at(-1)[1].revision,2);
+  const task=runtime.listTasks({conversationId:'learning:desktop-learning'}).items[0];assert.ok(task);
+  const binding=runtime.loadCheckpoint(task.taskId,LEARNING_BINDING_CHECKPOINT);
+  assert.equal(binding.revision,2);assert.equal(binding.path,'new-reference.md');
+  assert.equal(runtime.readToolExecutions(task.taskId).length,0);
+});
 
 test('unchanged learning host snapshots preserve the native form and its draft',()=>{
   const draft={value:'reference-a.md'};
