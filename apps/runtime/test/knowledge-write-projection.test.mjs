@@ -66,3 +66,18 @@ test('substituted execution cannot acknowledge pending work; readback of old tas
   assert.throws(()=>host.accept('task','run','d'.repeat(64),receipt),{code:'SCOPE_DENIED'});
   f.change();assert.throws(()=>host.accept('task','run','b'.repeat(64),receipt),{code:'SCOPE_DENIED'});
 });
+
+test('original write acceptance survives configuration change without granting a new projection read',async()=>{
+  const f=fixture(),host=f.open();f.fail(false);host.prepare(input,context('run'));f.change();
+  host.accept('task','run','b'.repeat(64),receipt,input);
+  assert.deepEqual(await host.recover('task',scope()),{pending:1,unknown:0});assert.equal(f.calls(),0);
+});
+
+test('original write acceptance rejects changed digest, source, revision or path',async()=>{
+  const f=fixture(),host=f.open();host.prepare(input,context('run'));f.change();
+  for(const patch of [{sourceId:'other'},{configRevision:2},{path:'two.md'}]) {
+    assert.throws(()=>host.accept('task','run','b'.repeat(64),receipt,{...input,...patch}),{code:'SCOPE_DENIED'});
+  }
+  assert.throws(()=>host.accept('task','run','d'.repeat(64),receipt,input),{code:'SCOPE_DENIED'});
+  assert.deepEqual(await host.recover('task',scope()),{pending:0,unknown:1});assert.equal(f.calls(),0);
+});
