@@ -1,5 +1,11 @@
 # 开发计划与进度
 
+## 2026-10-12 ARM64 镜像真实 WSS 读取闭环（分支验收）
+
+#317 的镜像源码固定为 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6`，已发布 GHCR、导入 SWR，Latest 为 `arm64-194799c6`。实际 MaaS 模型提出工具请求，经本地 Runtime / Policy 一次性审批、生产文件读取和 Evidence 回传，任务 succeeded；读取 1 次、Evidence 1 条、HTTPS 应用调用 0。持久读回不重放任务且关闭退出 0；云端目录发现 8 Workflow / 3 Controller。只验证固定公开合成文件，详见 [真实华为证据与限制](modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
+
+本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。双人当前 head 阅读确认与审批仍必需。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
+
 ## 2026-10-12 镜像全部可承载绑定（in_progress）
 
 继续 #317：新增8个Workflow/3个Controller的实际调用、World/Plan/Review独立阶段、

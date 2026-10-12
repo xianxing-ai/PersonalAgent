@@ -8,6 +8,12 @@
 分支 `codex/agentarts-owned-image`，基线 `origin/main@e86bac53`。
 本包涉及 MOD-29/30/31 的云编排与既有 Coordination 消费接线。
 
+## 2026-10-12 新版 ARM64 真实云验收增量
+
+未合并预览源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 已发布 GHCR、导入 SWR，并替换 API Key Runtime 的 Latest 为 `arm64-194799c6`。真实 WSS 经 MaaS 模型提案、本地一次性 Policy 审批、生产文件读取、Evidence 和云端续答，任务 succeeded；执行 1 次、Evidence 1 条、HTTPS 应用调用 0、没有 Fake 或旧 Studio 调用。重开 Runtime Application 后仅持久读回验证关闭退出 0，没有网络或工具重放；云端目录发现 8 Workflow / 3 Controller。完整证据、原验收程序清理错误及尚未验收范围见 [真实华为记录](AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
+
+本增量只覆盖固定公开合成文件的真实读取场景，不能推导全部绑定逐项通过、真实写入、Wiki、自主修复或整模块完成。AMD64 Release/GHCR 专属版本已按用户确认撤销，详见 [撤销记录](OWNED-IMAGE-AMD64-RETIREMENT-20261012.md)。以下旧版本发布和失败为历史记录；工作包保持 in_progress，双人当前 head 阅读与审批门禁不变。
+
 ## 2026-10-12 可执行 Workflow/Controller 绑定
 
 按用户要求补齐所有能够由镜像承载的绑定：8 个 Workflow、3 个 Controller 的固定资源目录、
@@ -38,7 +44,7 @@ pin Node24.15.0/npm11.12.1。日志 `.cache/owned-bindings-20261012/full-check.l
 本地与发布的 AMD64/ARM64 镜像均以非 root UID1000、禁外网运行绑定测试，各9/9；
 使用实际编排核心和显式 Fake 模型。GitHub Release 的两架构 tar、设计/接口包及校验附件已读回上传状态，
 下载方法、源码版本和验证限制见 [已发布预览](../competition/OWNED_IMAGE_BINDINGS.md#已发布预览与使用入口2026-10-12)。
-这是未合并预览；真实 Huawei 部署和模型/工具闭环尚未完成，工作包保持 `in_progress`。
+这是当时的未合并预览；其真实 Huawei 部署和模型/工具闭环当时尚未完成。新版当前结果见上方增量，工作包仍保持 `in_progress`。
 
 ## 2026-10-11 公开消费者与 Goal 报告兼容
 

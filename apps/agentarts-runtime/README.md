@@ -1,5 +1,7 @@
 # 自有 AgentArts Runtime 镜像
 
+2026-10-12 真实部署增量：ARM64 源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 已发布并替换 Huawei Latest。平台公开路径为 `/runtimes/<runtimeName>/invocations/ws`，目录为 `/runtimes/<runtimeName>/invocations/bindings?endpoint=Latest`；平台 Session 头、外层鉴权及独立镜像凭据均必需。官方 MaaS DeepSeek 的 none 参数经宿主映射为 `chat_template_kwargs.thinking=false`。真实 WSS 模型/本地一次性授权文件读取/Evidence/续答场景已通过；逐项绑定、写入、Wiki、完整自主修复和备用整链仍未验收，详见 [实际证据](../../docs/modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。这是未合并预览，不提高公共协议冻结状态。
+
 2026-10-12：同一 HTTP/WS query 可显式选择8个Workflow或3个Controller；新增受宿主凭据保护的
 `GET /bindings`，可信启动可设置 `PA_AGENT_DEFAULT_CONTROLLER_ID`。普通调用保持兼容。
 World/Plan角色报告保持独立，不作为旧公共候选执行；原空MVP标记新owned绑定。

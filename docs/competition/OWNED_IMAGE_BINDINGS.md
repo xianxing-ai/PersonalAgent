@@ -5,23 +5,29 @@
 
 ## 已发布预览与使用入口（2026-10-12）
 
-镜像源码固定为 `0dae0ff5c1553b855825a29934b22270b675bb48`，仍在
+当前镜像源码固定为 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6`，仍在
 [PR #317](https://github.com/zemeng5208/PersonalAgent/pull/317) 中，尚未合并。
 后续文档提交不改变这个镜像的源码版本。
-[GitHub 预览 Release](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-0dae0ff5)
-提供 AMD64/ARM64 离线 tar、该源码版本的设计与接口包、`SHA256SUMS.txt` 和 `VERIFICATION.json`。
-所有五个附件均已读回 uploaded 状态，并核对大小及 SHA256。
+[GitHub ARM64 预览 Release](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-194799c6)
+提供 ARM64 离线 tar 和公开验收记录。按用户要求，今后交付不附单独校验文件。
+历史三个 Release 的 ARM64 tar 与设计材料保留；AMD64 tar 及五个 GHCR AMD64 专属版本已撤销。
 
-优先按固定多架构索引拉取，Docker 按本机架构选择镜像：
+拉取固定 ARM64 标签：
 
 ```powershell
-docker pull ghcr.io/zemeng5208/personal-agent-owned@sha256:82b7d1b0ac808ad89d2197b98871fd334084c88de9f56c016ffe29a75bd632dc
+docker pull --platform linux/arm64 ghcr.io/zemeng5208/personal-agent-owned:sha-194799c6979ed47d20dfd2d3ea17bbfd16f63fd6
 ```
 
-网络不便时下载对应架构 tar，先用 `Get-FileHash -Algorithm SHA256` 与 Release 校验文件比对，
-再执行 `docker load -i <对应架构的tar路径>`。运行配置见
+网络不便时下载 ARM64 tar，执行 `docker load -i <tar路径>`。AMD64 本机需要 Docker 的 ARM64 仿真支持；本轮不再发布 AMD64 镜像。运行配置见
 [Runtime README](../../apps/agentarts-runtime/README.md)；真实模型入口、模型名和宿主凭据由部署方注入，
-不会随镜像提供。华为部署使用 ARM64，部署流程仍单独验收。
+不会随镜像提供。华为部署使用 ARM64，新版部署和一个真实读取场景已分别验收。
+
+- [当前 ARM64 发布 Actions](https://github.com/zemeng5208/PersonalAgent/actions/runs/38260971500) 成功；实际 tar 配置为 linux/arm64、非 root 用户 node、源码 revision 与固定标签一致，凭据没有烘焙进镜像。
+- 新版已导入 SWR，API Key Runtime `pa-owned-bindings-0dae0ff5-api` 的 Latest 指向 `arm64-194799c6`；真实 WSS 经 MaaS 模型提案、本地 Policy 一次性审批、生产文件读取、Evidence 与云端续答，任务 succeeded，工具执行 1 次、Evidence 1 条、HTTPS 应用调用 0。
+- 同一任务的持久读回与关闭通过，新增网络/工具执行为 0；云端目录发现 8 Workflow / 3 Controller。原验收程序清理错误、修正后的只读回验证和所有限制见 [真实华为记录](../modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
+- 该证据只覆盖公开合成文件读取；全部 11 个入口逐项调用、真实写入、Wiki、自主修复、备用整链、平台 trace/评估及费用未验证。接口 provisional，预览不替代两位协作者的当前 head 阅读与审批。
+
+以下为旧 `0dae0ff5` 双架构发布时的历史证据，不能当作当前 AMD64 下载入口，也不能覆盖新版真实场景结果：
 
 - [预览发布 Actions](https://github.com/zemeng5208/PersonalAgent/actions/runs/38248749031) 已成功；
   [源码 PR Foundation](https://github.com/zemeng5208/PersonalAgent/actions/runs/38248819016) 已成功。
@@ -33,8 +39,8 @@ docker pull ghcr.io/zemeng5208/personal-agent-owned@sha256:82b7d1b0ac808ad89d219
   `7666fd39dc5e59eed5a9f3e4fe3beaa3d4e6fd4e143f7d39c042dda154364c24`。
 - 匿名配置读取 GHCR 索引和 AMD64 拉取已通过。ARM64 首次匿名层下载发生网络超时，
   随后固定 digest 的注册表拉取及容器测试成功；保留原失败记录，不将首次拉取记为成功。
-- 原云资源完整语义等价、真实 Huawei deployment、公网 WSS、真实模型/工具、trace、用量、费用和评估仍未验证。
-  预览发布不满足整个 MOD 的完成条件，也不替代 goo122 与 Potatos498 当前 head 的本机阅读和审批。
+- 旧版发布时，原云资源完整语义等价、真实 Huawei deployment、公网 WSS、真实模型/工具、trace、用量、费用和评估仍未验证。
+  新版只增加上方限定场景证据；预览发布不满足整个 MOD 的完成条件。
 
 ## 绑定目录
 

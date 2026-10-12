@@ -1,5 +1,11 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-12 新版真实云场景登记（不提升冻结范围）
+
+自有 ARM64 镜像源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 的未合并分支已取得真实 Huawei WSS → MaaS → 本地 Policy / 生产 workspace.read_text → Evidence → 云端续答证据，任务 succeeded，执行 1 次，Evidence 1 条，HTTPS 应用调用 0。重开 Runtime Application 后仅持久读回通过，不重放工具；真实云端 `/invocations/bindings?endpoint=Latest` 发现 8 Workflow / 3 Controller。详见 [验收记录](../modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
+
+仅固定公开合成文件读取场景可记为真实验证，接口继续 provisional，Core Runtime Profile 1 冻结集合、wire 1.0.0 和候选 1.0 均不变；不能据此公布未注册能力或提升所有连接器/绑定的 verification。main 集成、完整自主修复、真实 Wiki、写入及平台 trace/评估仍待独立验收。下文旧日期 unavailable / 未验收条目是当时状态，不覆盖本增量，也不由本增量整体转为可用。
+
 ## 2026-10-12 镜像可执行绑定登记
 
 `getOwnedBindings`、`OwnedAgentOrchestrator.invokeWorkflow/invokeController` 与受保护 `/bindings`
@@ -48,7 +54,7 @@ WSS主通道、显式HTTPS备用、同会话复用、发送前持久身份与未
 
 | 部署 profile | 优先级 | 当前能力 | 接口规则 |
 | --- | --- | --- | --- |
-| `huawei_ict_agentarts` | 当前唯一优先实现与比赛验收路径 | 架构 accepted；离线 Runtime/工具循环为 `provisional`；真实云运行 `unavailable` | 已有端口与 Fake 仅供受控开发；正式证据不静默回退 |
+| `huawei_ict_agentarts` | 当前唯一优先实现与比赛验收路径 | 架构 accepted；接口 `provisional`；#317 分支真实 WSS 文件读取闭环已验证，main 和其余场景未完成 | 只在明确已部署配置中使用上述场景；不静默回退，不扩大冻结集合 |
 | `local` | 可选保留 | 现有 Agent/Model 部分实现为 `provisional` | 不删除既有代码；新增 Local 能力不阻塞 Competition，也不计入比赛验收 |
 
 ## 2. 状态定义与冻结门槛
