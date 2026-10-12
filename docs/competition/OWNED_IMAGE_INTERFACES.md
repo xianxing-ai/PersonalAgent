@@ -1,5 +1,12 @@
 # 自有镜像接口与执行边界
 
+## 2026-10-12 可执行资源绑定增量
+
+新增 8 个 Workflow 与 3 个 Controller 的镜像专用调用及受保护目录；完整 ID、调用信封、
+前置报告、默认 Controller 和结果隔离见 [绑定接口](OWNED_IMAGE_BINDINGS.md)。
+该接口为 provisional，不扩本地 wire 或候选1.0，也不改变云输出不可信及本机执行边界。
+普通 HTTP/WS 调用保持兼容；原空 MVP Controller 使用明确的新 owned 路由，不能算原云绑定恢复。
+
 2026-10-09；MOD-29/30/31 与 MOD-04B/03 的必要消费接线，负责人 zemeng；Profile `huawei_ict_agentarts`。这是当前分支实现的 provisional 接口说明；真实 AgentArts 网关和 Wiki 仍待验收。
 
 ## 服务端部署接口

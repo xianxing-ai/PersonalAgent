@@ -1,5 +1,5 @@
 import {readFile} from 'node:fs/promises';
-import {OwnedAgentOrchestrator} from '@personal-agent/agentarts';
+import {OwnedAgentOrchestrator, getOwnedBindings} from '@personal-agent/agentarts';
 import {OpenAICompatibleModelProvider} from '@personal-agent/models';
 import {createAgentServer} from './server.mjs';
 
@@ -33,6 +33,7 @@ try {
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
   const server = createAgentServer({orchestrator,mode,...(authToken ? {authToken}:{}),
     ...(wssAuthToken ? {wssAuthToken}:{}),
+    getBindings:getOwnedBindings,defaultControllerId:process.env.PA_AGENT_DEFAULT_CONTROLLER_ID,
     workflowGoalInput:process.env.PA_AGENT_WORKFLOW_GOAL_INPUT,
     timeoutMs:integer('PA_AGENT_TIMEOUT_MS',60_000),maxConcurrency:integer('PA_AGENT_MAX_CONCURRENCY',8)});
   const port = integer('PORT',8080);

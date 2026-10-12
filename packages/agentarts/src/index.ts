@@ -1,4 +1,5 @@
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
+import {createHash} from 'node:crypto';
 import {parseCoordinationResult} from '@personal-agent/coordination';
 import type {CoordinationResult} from '@personal-agent/coordination';
 import {ModelGateway} from '@personal-agent/models';
@@ -6,7 +7,11 @@ import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
 import type {AgentInput, RepairContext, RepairRef, RepairSource} from './input.js';
 import {FAST_PROMPT, DISPATCH_PROMPT, WORLD_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
+import {ownedBinding} from './bindings.js';
+import type {OwnedBinding} from './bindings.js';
 export {parseAgentInput, PROMPT_VERSION};
+export {getOwnedBindings} from './bindings.js';
+export type {OwnedBinding} from './bindings.js';
 export type {AgentInput};
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
@@ -15,6 +20,14 @@ export interface RoleReceipt {role: AgentRole; requestId: string; promptVersion:
 export type AgentOutput = Omit<Extract<CoordinationResult, {kind: 'text'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'tool_proposal'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'repair_candidate'}>, 'verification'>;
+export interface WorkflowInvocation extends AgentInvocation {workflowId: string; world?: unknown; plan?: unknown}
+export interface ControllerInvocation extends AgentInvocation {controllerId: string}
+export interface OwnedBindingOutput {
+  bindingVersion: '1.0.0';
+  binding: Pick<OwnedBinding, 'id' | 'name' | 'type' | 'origin'>;
+  verification: 'unverified';
+  result: {kind: 'application_result'; value: AgentOutput} | {kind: 'role_report'; role: 'world' | 'plan'; value: unknown};
+}
 type RepairChange = Extract<CoordinationResult, {kind: 'repair_candidate'}>['candidate']['changes'][number];
 interface WorldReport {disposition: string; affected: string[]; complete: boolean; reportVersion?: '1.1' | '1.2'}
 interface PlanReport {disposition: string; changes: RepairChange[]; unsupported: boolean}
@@ -29,10 +42,7 @@ export class OwnedAgentOrchestrator {
       plan: new ModelGateway(models.plan), review: new ModelGateway(models.review)};
   }
   async invoke(request: AgentInvocation): Promise<AgentOutput> {
-    if (!(request.signal instanceof AbortSignal) || !Number.isFinite(Date.parse(request.deadline))) {
-      throw new ProtocolError('INVALID_ARGUMENT', 'Invalid invocation control');
-    }
-    this.check(request);
+    this.control(request);
     const input = parseAgentInput(request.query);
     const repair = repairInput(input);
     let raw: unknown;
@@ -59,6 +69,80 @@ export class OwnedAgentOrchestrator {
         ? FAST_PROMPT + '\n仅分析宿主 RECHECK 数据；只返回 text，不提出工具或修复候选。没有执行授权，尚未执行或修改计划。'
         : FAST_PROMPT + DISPATCH_PROMPT, input, request);
     }
+    return this.applicationOutput(raw, input, repair, reviewedChanges, request);
+  }
+  async invokeWorkflow(request: WorkflowInvocation): Promise<OwnedBindingOutput> {
+    this.control(request);
+    const binding = ownedBinding(request.workflowId, 'workflow');
+    if (!binding) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Unknown workflow binding');
+    if ((request.world !== undefined && !binding.requirements.includes('world_report'))
+      || (request.plan !== undefined && !binding.requirements.includes('plan_report'))) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Unexpected workflow role report');
+    }
+    if (binding.dispatch === 'router') return this.envelope(binding, {kind:'application_result',value:await this.invoke(request)});
+    const input = parseAgentInput(request.query), repair = repairInput(input);
+    if (binding.dispatch === 'fast' || binding.dispatch === 'deterministic') {
+      if (repair) throw new ProtocolError('INVALID_ARGUMENT', 'Repair input on an ordinary workflow');
+      let output: AgentOutput;
+      if (binding.dispatch === 'fast') output = await this.invoke(request);
+      else output = this.commandReceipt(input) ?? this.commandIntent(input, request)
+        ?? {kind:'text',text:'RECHECK：确定性意图不明确或当前工具目录未公布对应能力；未提出工具请求。'};
+      this.check(request);
+      return this.envelope(binding, {kind:'application_result',value:output});
+    }
+    if (!repair) throw new ProtocolError('INVALID_ARGUMENT', 'Repair input required by workflow');
+    if (binding.dispatch === 'world') {
+      const world = await this.call('world', WORLD_PROMPT, repair.data, request);
+      this.validateWorld(world, repair.context, repair.sources);
+      return this.envelope(binding, {kind:'role_report',role:'world',value:world});
+    }
+    if (request.world === undefined) throw new ProtocolError('INVALID_ARGUMENT', 'World report required by workflow');
+    const world = this.reportCopy(request.world);
+    const worldReport = this.validateWorld(world, repair.context, repair.sources);
+    if (worldReport.disposition !== 'REVISE') throw new ProtocolError('INVALID_ARGUMENT', 'World does not permit a repair proposal');
+    if (binding.dispatch === 'plan') {
+      const plan = await this.call('plan', PLAN_PROMPT, {input:repair.data,world}, request);
+      const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies);
+      this.planScope(planReport, worldReport);
+      return this.envelope(binding, {kind:'role_report',role:'plan',value:plan});
+    }
+    if (request.plan === undefined) throw new ProtocolError('INVALID_ARGUMENT', 'Plan report required by workflow');
+    const plan = this.reportCopy(request.plan);
+    const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies);
+    this.planScope(planReport, worldReport);
+    if (planReport.disposition !== 'REVISE') throw new ProtocolError('INVALID_ARGUMENT', 'Plan does not permit a repair candidate');
+    const raw = await this.call('review', REVIEW_PROMPT, {input:repair.data,world,plan}, request);
+    const output = this.applicationOutput(raw, input, repair, planReport.changes, request);
+    return this.envelope(binding, {kind:'application_result',value:output});
+  }
+  async invokeController(request: ControllerInvocation): Promise<OwnedBindingOutput> {
+    this.control(request);
+    const binding = ownedBinding(request.controllerId, 'controller');
+    if (!binding) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Unknown controller binding');
+    if (binding.dispatch === 'repair' && !repairInput(parseAgentInput(request.query))) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Repair input required by cognition controller');
+    }
+    return this.envelope(binding, {kind:'application_result',value:await this.invoke(request)});
+  }
+  private envelope(binding: OwnedBinding, result: OwnedBindingOutput['result']): OwnedBindingOutput {
+    const {id,name,type,origin} = binding;
+    return {bindingVersion:'1.0.0',binding:{id,name,type,origin},verification:'unverified',result};
+  }
+  private reportCopy(value: unknown): unknown {
+    try {
+      const encoded = JSON.stringify(value);
+      if (encoded.length > 16_000) this.reportFailure();
+      return JSON.parse(encoded);
+    } catch { return this.reportFailure(); }
+  }
+  private planScope(plan: PlanReport, world: WorldReport): void {
+    if (plan.unsupported) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Plan requests operations outside the repair candidate contract');
+    if (plan.changes.some(change => !world.affected.includes(change.node.id))) {
+      throw new ProtocolError('EXTERNAL_FAILURE', 'Plan exceeds world impact scope');
+    }
+  }
+  private applicationOutput(raw: unknown, input: AgentInput, repair: ReturnType<typeof repairInput>,
+    reviewedChanges: unknown, request: AgentInvocation): AgentOutput {
     this.check(request);
     const object = record(raw);
     if (Object.hasOwn(object, 'verification')) throw new ProtocolError('EXTERNAL_FAILURE', 'Agent output includes a trust claim');
@@ -90,6 +174,12 @@ export class OwnedAgentOrchestrator {
     }
     const {verification: _verification, ...output} = result;
     return output;
+  }
+  private control(request: AgentInvocation): void {
+    if (!(request.signal instanceof AbortSignal) || typeof request.deadline !== 'string' || !Number.isFinite(Date.parse(request.deadline))) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Invalid invocation control');
+    }
+    this.check(request);
   }
   private check(request: AgentInvocation): void {
     if (request.signal.aborted) throw new ProtocolError('CANCELLED', 'Agent invocation cancelled');
@@ -312,5 +402,43 @@ export class OwnedAgentOrchestrator {
       || !Number.isSafeInteger(result.exitCode) || typeof result.passed !== 'boolean'
       || result.passed !== (result.exitCode === 0)) throw new ProtocolError('INVALID_ARGUMENT', 'Inconsistent confirmed command result');
     return {kind:'text', text:`传入的已确认检查回执显示：${names[result.recipeId]}${result.passed ? '通过' : '未通过'}，退出码 ${result.exitCode}。`};
+  }
+  private commandIntent(input: AgentInput, request: AgentInvocation): AgentOutput | undefined {
+    if (input.kind !== 'initial') return undefined;
+    // Exact single intents only. Do not infer commands, arguments, workspaces or shell text.
+    const intent = input.goal.trim().replace(/[。.!！]$/u, '').replace(/^(?:请帮我|帮我|请)?\s*(?:执行|运行|进行)?\s*/u, '').trim();
+    const intents: Record<string, {name:string; recipeId:string}> = {
+      '语法检查':{name:'workspace.node_check',recipeId:'node-check'},
+      '构建':{name:'workspace.npm_build',recipeId:'npm-build'},
+      '测试':{name:'workspace.npm_test',recipeId:'npm-test'},
+    };
+    const command = Object.hasOwn(intents, intent) ? intents[intent] : undefined;
+    if (!command) return undefined;
+    for (const tool of input.availableTools.filter(tool => tool.name === command.name || tool.name === 'workspace.run_allowed_command')
+      .sort((left,right) => Number(right.name === command.name) - Number(left.name === command.name))) {
+      const argumentsValue = tool.name === command.name ? {} : {recipeId:command.recipeId};
+      if (tool.name === 'workspace.run_allowed_command') {
+        const schema = tool.inputSchema as {type?:unknown;properties?:Record<string,{type?:unknown;enum?:unknown}>;required?:unknown;additionalProperties?:unknown};
+        const recipe = schema.properties?.recipeId;
+        if (schema.type !== 'object' || schema.additionalProperties !== false
+          || Object.keys(schema.properties ?? {}).join(',') !== 'recipeId'
+          || !Array.isArray(schema.required) || schema.required.length !== 1 || schema.required[0] !== 'recipeId'
+          || recipe?.type !== 'string' || !Array.isArray(recipe.enum) || !recipe.enum.includes(command.recipeId)) continue;
+      } else {
+        const schema = tool.inputSchema as {type?:unknown;properties?:Record<string,unknown>;required?:unknown;additionalProperties?:unknown};
+        if (schema.type !== 'object' || schema.additionalProperties !== false || Object.keys(schema.properties ?? {}).length
+          || (schema.required !== undefined && (!Array.isArray(schema.required) || schema.required.length))) continue;
+      }
+      try { validateToolValue(tool.inputSchema, argumentsValue); }
+      catch { continue; }
+      const proposalId = 'owned-' + createHash('sha256').update(JSON.stringify([
+        request.sessionId,request.requestId,tool.name,tool.version,argumentsValue])).digest('hex');
+      const parsed = parseCoordinationResult({kind:'tool_proposal',proposalId,
+        toolName:tool.name,toolVersion:tool.version,arguments:argumentsValue,verification:'unverified'});
+      if (parsed.kind !== 'tool_proposal') throw new ProtocolError('EXTERNAL_FAILURE', 'Invalid deterministic proposal');
+      const {verification:_verification,...output} = parsed;
+      return output;
+    }
+    return undefined;
   }
 }

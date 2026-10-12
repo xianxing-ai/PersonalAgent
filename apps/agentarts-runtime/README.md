@@ -1,5 +1,10 @@
 # 自有 AgentArts Runtime 镜像
 
+2026-10-12：同一 HTTP/WS query 可显式选择8个Workflow或3个Controller；新增受宿主凭据保护的
+`GET /bindings`，可信启动可设置 `PA_AGENT_DEFAULT_CONTROLLER_ID`。普通调用保持兼容。
+World/Plan角色报告保持独立，不作为旧公共候选执行；原空MVP标记新owned绑定。
+详见 [资源绑定与调用](../../docs/competition/OWNED_IMAGE_BINDINGS.md)。
+
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 

@@ -2,6 +2,7 @@ import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import {attachAgentWebSocketTransport, equalInboundToken} from './websocket-transport.mjs';
+import {createBindingDispatcher} from './binding-dispatch.mjs';
 
 const MAX_BYTES = 1_200_000;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -22,7 +23,7 @@ function parsePayload(payload, workflowGoalInput) {
 }
 /** Both modes serve the same code. Only trusted startup selects mode/authentication. */
 export function createAgentServer({orchestrator, mode, authToken, wssAuthToken = authToken, workflowGoalInput,
-  timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
+  getBindings, defaultControllerId, timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
   if (!['agentarts','standalone-validation'].includes(mode)
     || !orchestrator || typeof orchestrator.invoke !== 'function'
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647
@@ -30,6 +31,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     || (authToken !== undefined && (typeof authToken !== 'string' || authToken.length < 32))) {
     throw new ProtocolError('INVALID_ARGUMENT','Invalid server configuration');
   }
+  const bindings = createBindingDispatcher({orchestrator,getBindings,defaultControllerId});
   let active = 0;
   let closing = false;
   const httpControllers = new Set();
@@ -49,10 +51,13 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     active++; return true;
   };
   const release = () => {active--;};
-  const invoke = async ({payload,deadline,signal,sessionId,requestId}) => {
+  const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false}) => {
     const query = parsePayload(payload,workflowGoalInput);
     signal.throwIfAborted();
-    const result = await orchestrator.invoke({query,deadline,signal,sessionId,requestId});
+    const binding = bindings.parse(query);
+    if (binding && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Owned binding credential required');
+    const invocation = {query,deadline,signal,sessionId,requestId};
+    const result = binding ? await bindings.invoke(invocation,binding) : await bindings.invokeDefault(invocation);
     signal.throwIfAborted();
     if (Date.now() >= Date.parse(deadline)) throw new ProtocolError('TIMEOUT','Invocation deadline expired');
     const text = JSON.stringify(result);
@@ -75,6 +80,12 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     }
     if (request.method === 'GET' && request.url === '/ping') {
       return json(response,200,{status:active ? 'HealthyBusy':'Healthy', time_of_last_update:Math.floor(Date.now()/1000)});
+    }
+    if (request.method === 'GET' && request.url === '/bindings') {
+      if (wssAuthToken === undefined) return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});
+      if (!equalInboundToken(request.headers,wssAuthToken)) return json(response,401,{error:{code:'UNAUTHORIZED'}});
+      try {return json(response,200,bindings.directory());}
+      catch {return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});}
     }
     const statusRequest = request.method === 'POST' && request.url === '/invocation-status';
     if (!statusRequest && (request.method !== 'POST' || request.url !== '/invocations')) return json(response,404,{error:{code:'NOT_FOUND'}});
@@ -128,14 +139,16 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
         const incomingId = request.headers['x-request-id'];
         if ((incomingSession !== undefined && !safeId(incomingSession)) || (incomingId !== undefined && !safeId(incomingId))) throw new ProtocolError('INVALID_ARGUMENT','Invalid request correlation');
         return invoke({payload,deadline:new Date(expiresAt).toISOString(),signal:controller.signal,
-          sessionId:incomingSession ?? `pa-${randomUUID()}`,requestId:incomingId ?? randomUUID()});
+          sessionId:incomingSession ?? `pa-${randomUUID()}`,requestId:incomingId ?? randomUUID(),
+          bindingAuthorized:wssAuthToken !== undefined && equalInboundToken(request.headers,wssAuthToken)});
       };
       const result = await Promise.race([execute(),expired,cancelled]);
       if (!response.destroyed) json(response,200,result);
     } catch (error) {
       const code = error instanceof ProtocolError && ['INVALID_ARGUMENT','UNAUTHORIZED','UNSUPPORTED_CAPABILITY','TIMEOUT','CANCELLED','RATE_LIMITED'].includes(error.code)
         ? error.code : 'EXTERNAL_FAILURE';
-      if (!response.destroyed) json(response,code==='INVALID_ARGUMENT'?400:code==='TIMEOUT'?504:code==='CANCELLED'?499:502,
+      if (!response.destroyed) json(response,code==='INVALID_ARGUMENT'?400:code==='UNAUTHORIZED'?401
+        :code==='UNSUPPORTED_CAPABILITY'?503:code==='TIMEOUT'?504:code==='CANCELLED'?499:code==='RATE_LIMITED'?429:502,
         {event:'error',data:{error_code:code,status:'failed'}});
     } finally {
       httpControllers.delete(controller);
@@ -156,7 +169,8 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   });
   server.requestTimeout = timeoutMs;
   server.headersTimeout = Math.min(timeoutMs,60_000);
-  transport = attachAgentWebSocketTransport(server,{...websocket,authToken:wssAuthToken,invoke,acquire,release,timeoutMs});
+  transport = attachAgentWebSocketTransport(server,{...websocket,authToken:wssAuthToken,
+    invoke:value=>invoke({...value,bindingAuthorized:true}),acquire,release,timeoutMs});
   // Node HTTP close does not close upgraded sockets. Stop them before awaiting close.
   const closeHttp = server.close.bind(server);
   server.close = (...args) => {

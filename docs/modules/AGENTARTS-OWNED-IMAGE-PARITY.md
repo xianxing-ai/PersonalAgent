@@ -1,5 +1,18 @@
 # 自有镜像 Workflow / Controller 迁移矩阵
 
+## 2026-10-12：全部可承载资源的可执行绑定
+
+本轮新增固定 8 Workflow、3 Controller 的实际调用入口，编译进镜像的安全目录见
+[绑定清单](OWNED-IMAGE-BINDINGS.json)，调用与前置报告见 [绑定接口](../competition/OWNED_IMAGE_BINDINGS.md)。
+World/Plan 可分别返回经校验的角色报告；Review 重验同一宿主来源后返回原候选1.0。
+两个持续认知 Controller 只执行一次固定图，原空 MVP 使用新的 owned 主路由并明确
+标记 new-owned-binding。确定性意图可零模型选择当前宿主公布的检查/构建/测试提案。
+
+下文 migrated subset/partial/unavailable 是原云资源的语义等价和真实依赖缺口，
+不能与本轮 owned 绑定的可调用状态混为一项。原 Controller 的空绑定、未映射计划操作、
+平台历史/插件、真实来源/账号和平台部署缺口仍如实保留。
+绑定代码、测试、镜像 source SHA/digest 和真实云验收分别在工作包记录，合并门槛不变。
+
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 

@@ -1,5 +1,14 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-12 镜像可执行绑定登记
+
+`getOwnedBindings`、`OwnedAgentOrchestrator.invokeWorkflow/invokeController` 与受保护 `/bindings`
+是 MOD-29/30/31 的镜像专用 provisional 增量，固定 8 Workflow/3 Controller；
+绑定1.0.0信封通过现有 HTTP/WS query 消费，World/Plan报告与旧可执行结果隔离。
+不进入 Core Runtime Profile 1 冻结集合，无数据库迁移，不扩 candidateVersion1.0。
+目录和调用实现不等于真实 Provider、平台 Controller、账号工具或部署可用。
+接口与验证边界见 [绑定接口](../competition/OWNED_IMAGE_BINDINGS.md)、[ADR-0015](../adr/0015-owned-workflow-controller-bindings.md)。
+
 ## 2026-10-09 自有镜像与 Wiki 状态补充
 
 自有镜像实现 HTTP `/ping`、`/invocations`、WS `/ws` 和受保护 `/invocation-status`，复用 ModelGateway、Coordination 动态工具目录/继续轮次/修复候选；精确接口见 [镜像接口](../competition/OWNED_IMAGE_INTERFACES.md)。传输0.1.0为独立provisional契约，不扩展本地wire冻结集合。本地check与合成容器证据不能提升真实云状态，真实AgentArts仍unavailable。

@@ -8,6 +8,31 @@
 分支 `codex/agentarts-owned-image`，基线 `origin/main@e86bac53`。
 本包涉及 MOD-29/30/31 的云编排与既有 Coordination 消费接线。
 
+## 2026-10-12 可执行 Workflow/Controller 绑定
+
+按用户要求补齐所有能够由镜像承载的绑定：8 个 Workflow、3 个 Controller 的固定资源目录、
+独立阶段调用、同来源前置报告复核、确定性零模型提案、受保护目录与默认 Controller。
+完整接口见 [绑定说明](../competition/OWNED_IMAGE_BINDINGS.md)，安全生成目录见
+[绑定清单](OWNED-IMAGE-BINDINGS.json)，决定见 [ADR-0015](../adr/0015-owned-workflow-controller-bindings.md)。
+
+原空 MVP Controller 新建 owned 主路由，原空导出事实保留；共享 Plan/Review 实现不冒充原提示词
+等价。工具目录消费、实际执行、来源、凭据、持久任务和授权仍按原公开宿主端口提供。
+未知/非法绑定、前置报告替换、目录缺失及候选无法表达的操作不放行。
+普通调用、WSS/HTTPS、deadline/cancel、并发与 shutdown 沿原路径，无数据库迁移和新依赖。
+
+实现阶段 pin Node24 的编排测试54/54（新增22项）与绑定/启动10/10通过；真实核心
+在合成本机HTTP对全部11个资源完成dispatch，WS验证World/Plan/Review报告隔离。
+原入口回归29通过、5个Windows SIGTERM边界跳过、0失败。完整check、镜像和发布
+另记录最终结果，不把这些离线通过标为华为部署/真实模型验收。
+
+本轮 Windows 根 `npm run check` 已退出0：各阶段累计2878项、2860通过、18跳过、0失败；
+pin Node24.15.0/npm11.12.1。日志 `.cache/owned-bindings-20261012/full-check.log`，SHA256
+`ad9bd6dc35249a1dcfde82fd03be4dbfa3ebadf04b3113677dfe614c423e0361`。
+整仓结果包含全部11资源的真实核心HTTP分派与中文World报告到Plan的预算兼容回归。
+后者按核心UTF-16字符限额处理，整体请求UTF-8限额和来源校验仍保持。
+公开绑定清单经生成器 `export-bindings.mjs --check` 校验，catalogSha256为
+`7666fd39dc5e59eed5a9f3e4fe3beaa3d4e6fd4e143f7d39c042dda154364c24`。
+
 ## 2026-10-11 公开消费者与 Goal 报告兼容
 
 延续原 #317 与 `codex/agentarts-owned-image`，同步基线为 `main@e86bac53`。开发在独立 Linux 工作树进行，保留此前 Windows 工作树与原云资产记录；三名 GPT-6.1 Sol 按明确文件范围并行，根执行者核对冻结源码 SHA 和回归证据后整合。Desktop 展示修复单独沿原 #313 交付。

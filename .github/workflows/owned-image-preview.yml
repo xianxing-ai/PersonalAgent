@@ -29,7 +29,9 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run build:owned-agent
       - name: Verify owned transport and orchestration before publishing
-        run: node --test packages/contracts/test/agentarts-transport.test.mjs packages/agentarts/test/*.test.mjs apps/agentarts-runtime/test/*.test.mjs
+        run: |
+          node apps/agentarts-runtime/scripts/export-bindings.mjs --check
+          node --test packages/contracts/test/agentarts-transport.test.mjs packages/agentarts/test/*.test.mjs apps/agentarts-runtime/test/*.test.mjs
       - name: Generate allowlist context
         id: context
         run: |

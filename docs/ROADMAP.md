@@ -1,5 +1,15 @@
 # 开发计划与进度
 
+## 2026-10-12 镜像全部可承载绑定（in_progress）
+
+继续 #317：新增8个Workflow/3个Controller的实际调用、World/Plan/Review独立阶段、
+受保护目录、可信默认Controller和确定性零模型工具提案。原空MVP为明确的新owned绑定。
+本机工具/来源/凭据/授权仍经原宿主端口提供，不扩大候选1.0或声称原平台完整语义等价。
+接口、逐项清单和阶段验证见 [绑定说明](competition/OWNED_IMAGE_BINDINGS.md) 与
+[工作包](modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)。整仓check、镜像构建/发布和真实云验收分开记录。
+本轮根check已成功（2878项/2860通过/18跳过/0失败），包括11绑定真实核心HTTP分派和中文阶段报告兼容。
+两人当前head阅读确认/审批门槛保持；本轮不强制合并，不把预览镜像当作main集成。
+
 ## 2026-10-09 当前工作包与合并规则
 
 自有镜像工作包 `codex/agentarts-owned-image`：提交编排/HTTP/WS服务、传输契约、Coordination/Runtime/Desktop接线及接口/构建/测试/脱敏清单。WSS和显式HTTPS备用已有本分支实现与合成连接验证，发送前持久身份阻止未知自动重发；自动status协调、公开网关、领域校准和真实AgentArts Golden Path仍未完成，不提高整体MOD状态。完整常驻设计及Wiki交接同步；Wiki由goo122后续实现。旧8工作流/3控制器逐项见[迁移矩阵](modules/AGENTARTS-OWNED-IMAGE-PARITY.md)。
