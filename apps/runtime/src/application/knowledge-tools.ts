@@ -183,8 +183,8 @@ export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource, proj
           projection?.accept(accepted.taskId, accepted.runId, accepted.argumentsDigest, {
             operationId: result.operationId, state: result.outcome === 'applied' ? 'verified' : 'conflict',
             changed: result.outcome === 'applied' && result.currentSha256 !==
-              (accepted.originalInput as KnowledgeNotePatch).expectedSha256});
-          await projection?.recover(accepted.taskId, {...context, signal: lease.signal});
+              (accepted.originalInput as KnowledgeNotePatch).expectedSha256}, accepted.originalInput as KnowledgeNotePatch);
+          // Commit the original Runtime result before callers independently recover projections.
         }
         return result;
       } finally {lease.release();}
