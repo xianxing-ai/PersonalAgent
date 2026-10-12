@@ -166,3 +166,11 @@ git diff --check
 读取覆盖：允许的 UTF-8 文本；精确 Schema；绝对/父级/盘符/UNC/设备/ADS；兄弟前缀和 symlink/junction 逃逸；敏感文件；大文件与二进制；缺 scope；deadline/cancel；现有 Host 的 register/dispose；控制字符转义膨胀拒绝与正常 UTF-8 序列化边界。
 
 枚举覆盖：根目录 `.`、稳定排序、limit/truncated、不递归、逃逸/敏感项/symlink-junction、独立 scope、扫描中 deadline、取消、严格 Schema、register/dispose。测试只使用系统临时目录中的合成文件；不读取真实用户工作区。
+## 2026-10-12 Windows 取消测试就绪同步
+
+取消进程树测试在孙进程 PID 已写出且确实存活后才发送取消。就绪等待与命令宿主
+既有 30 秒租约一致，以实际 deadline 计时；不会改变生产命令期限、取消结果或退出断言。
+回归额外模拟 11 秒启动延迟：旧 10 秒测试期限先触发 TIMEOUT，修复后仍须得到
+CANCELLED，并确认孙进程退出。专项 `workspace-command.test.mjs` 24/24 通过、0 skip。
+日志保留在修复工作树 `.cache/readiness-tests.log` 和 `.cache/readiness-old-lease-repro.log`。
+此为 #321 Foundation 的本地修复证据，尚不等于新提交的远程 CI 已通过。
