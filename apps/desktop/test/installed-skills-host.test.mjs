@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {mkdirSync,mkdtempSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {Client} from '@personal-agent/client';
@@ -80,6 +81,21 @@ test('install, preview, enable and use reach original SQLite Runtime/HTTP adapte
   const reopened=f.make();assert.throws(()=>reopened.assertTask(taskId));reopened.close();
   await f.host.uninstall(selected);assert.deepEqual(f.store.list(),[]);assert.equal(f.requests.length,1);
   assert.throws(()=>f.host.previewResource({...selected,path:resource.path}));
+});
+test('an oversized serialized Skill goal is rejected before run confirmation',async t=>{
+  const confirmations=[];
+  const header='---\nname: meeting-outline\ndescription: Public fixture outline\n---\n';
+  const content=Buffer.from(header+'"'.repeat(16_000-header.length));
+  const fileDigest=createHash('sha256').update(content).digest('hex');
+  const files=[{path:'SKILL.md',content:content.toString('base64'),digest:fileDigest}];
+  const digest=createHash('sha256').update(JSON.stringify(files.map(file=>[file.path,file.digest]))).digest('hex');
+  const entry={name:'meeting-outline',version:'fixture',digest,files,enabled:true,generation:1,installationId:'fixture'};
+  const host=createInstalledSkillsHost({store:{read:()=>entry},runtime:{},confirm:async input=>{confirmations.push(input);return true;}});
+  t.after(()=>host.close());
+
+  await assert.rejects(host.prepareRun({name:entry.name,digest,goal:'abcdefghijklmnopq'}),/16000/);
+
+  assert.equal(confirmations.some(item=>item.action==='run'),false);
 });
 for(const action of ['disable','uninstall']) test(`${action} during asynchronous credential lookup prevents adapter dispatch and invalidates old task after reinstall/re-enable`,async t=>{
   const f=fixture();t.after(()=>{f.host.close();f.app.close();});await f.host.install();
