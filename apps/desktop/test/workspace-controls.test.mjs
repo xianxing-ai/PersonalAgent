@@ -27,6 +27,23 @@ function harness(t, invoke = async () => undefined) {
     click: name => fields[name].listeners.get('click')()};
 }
 
+test('native workspace form can authorize local reads with cloud export unchecked',async t=>{
+  const calls=[];
+  const ui=harness(t,async(action,input)=>{
+    calls.push({action,input});
+    return {coding:{configured:true,displayName:'project',authorizationAvailable:true,
+      readAvailable:true,cloudExportAllowed:false,writeAllowed:false,commandAllowed:false}};
+  });
+  ui.render();
+  assert.equal(ui.fields.cloud.checked,false);
+  assert.equal(ui.fields.authorize.disabled,false);
+  await ui.click('authorize');
+  assert.deepEqual(calls,[{action:'coding.authorize',input:{cloudExportAllowed:false,
+    writeAllowed:false,commandAllowed:false,projectCodeAllowed:false}}]);
+  assert.equal(ui.fields.cloud.checked,false);
+  assert.match(ui.fields.capabilities.textContent,/读取：可用/);
+});
+
 test('workspace settled actions restore keyboard position only while origin remains valid and undisturbed', async t => {
   let resolve,reject;const calls=[];
   const ui=harness(t,action=>{calls.push(action);return new Promise((done,fail)=>{resolve=done;reject=fail;});});
@@ -240,7 +257,7 @@ test('permission drafts explain unchanged host authority without invoking until 
   assert.equal(ui.fields.write.checked, false);
   assert.match(ui.fields.status.textContent, /权限选择尚未生效/);
   ui.change('cloud', false);
-  assert.equal(ui.fields.authorize.disabled, true);
+  assert.equal(ui.fields.authorize.disabled, false);
   assert.match(ui.fields.status.textContent, /撤销授权/);
   assert.equal(calls.length, 0);
   ui.change('cloud', true);

@@ -92,7 +92,7 @@ test('persistent default children retain the original AgentArts candidate protoc
         app=open(initial);
         const client=new Client(app);await client.connect();
         const parent=await client.call('task.submit',{goal:'Delegate one role',conversationId:'binding'},
-          {idempotencyKey:'binding'});
+          {idempotencyKey:'binding',timeoutMs:60_000});
         await until(()=>app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-one`)
           &&app.activeTaskCount===0);
         const child=app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-one`);

@@ -21,7 +21,7 @@ export function mountWorkspaceControls(root, invoke) {
     <label class="setting-row"><input type="checkbox" data-workspace="project-code" disabled><span data-workspace="project-label">允许执行项目构建/测试（尚未准备好）</span></label>
     <p class="notice">项目构建和测试会执行工作区中的代码，可读写当前用户有权访问的内容。这不是隔离沙箱；只有本机执行组件就绪且你在本会话单独勾选后才会开放，每次执行仍需本地审批。</p>
     <p class="notice">发送范围与写入、命令许可由宿主保存；每次实际执行仍须经过本地 Policy 校验与必要审批。</p>
-    <button class="btn" type="button" data-workspace="authorize">授权所选权限</button>
+    <button class="btn" type="button" data-workspace="authorize">授权本地读取及所选权限</button>
     <button class="btn" type="button" data-workspace="revoke">撤销工作区授权</button>
     <p class="notice" data-workspace="status" role="status"></p>`;
   root.append(section);
@@ -47,7 +47,7 @@ export function mountWorkspaceControls(root, invoke) {
     const hostReason = (typeof state.reason === 'string' ? state.reason : '')
       || (state.configured === true ? '请按需选择授权范围；设置状态以宿主读回为准。' : '请先由本机宿主选择工作区。');
     field('status').textContent = feedback || (consentDirty && !busy && !unconfirmed
-      ? `权限选择尚未生效。点击“授权所选权限”应用；要停止当前权限，请撤销授权。当前生效状态：${hostReason}`
+      ? `权限选择尚未生效。点击“授权本地读取及所选权限”应用；要停止当前权限，请撤销授权。当前生效状态：${hostReason}`
       : hostReason);
   }
 
@@ -61,7 +61,7 @@ export function mountWorkspaceControls(root, invoke) {
     field('write').disabled = busy || !configured;
     field('command').disabled = busy || !configured;
     field('project-code').disabled = busy || !configured || state.projectScriptsAvailable !== true || !field('command').checked;
-    field('authorize').disabled = busy || !configured || state.authorizationAvailable !== true || !field('cloud').checked;
+    field('authorize').disabled = busy || !configured || state.authorizationAvailable !== true;
     field('revoke').disabled = busy || (!configured && state.cloudExportAllowed !== true);
     updateStatus();
   }
@@ -161,9 +161,9 @@ export function mountWorkspaceControls(root, invoke) {
   field('select-file').addEventListener('click', () => run('coding.selectCheckFile'));
   field('select-npm').addEventListener('click', () => run('coding.selectNpmCli'));
   field('authorize').addEventListener('click', () => {
-    if (!field('cloud').checked || state.configured !== true || state.authorizationAvailable !== true) return;
+    if (state.configured !== true || state.authorizationAvailable !== true) return;
     run('coding.authorize', {
-      cloudExportAllowed: true,
+      cloudExportAllowed: field('cloud').checked,
       writeAllowed: field('write').checked,
       commandAllowed: field('command').checked,
       projectCodeAllowed: state.projectScriptsAvailable === true && field('project-code').checked,
