@@ -48,9 +48,24 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
   let renderedHtml;
   const render = () => {
     if (disposed) return;
-    const html=memoryLearningControlsHtml(state);
+    let html=memoryLearningControlsHtml(state);
     if (html===renderedHtml) return;
+    const active = root.ownerDocument?.activeElement;
+    const focusedName = active && root.contains?.(active) ? active.name : null;
+    const selection = focusedName && typeof active.selectionStart === 'number'
+      ? [active.selectionStart, active.selectionEnd, active.selectionDirection] : null;
+    for (const [key, name] of [['workflowId', 'ml-workflow'], ['path', 'ml-path'],
+      ['summary', 'ml-summary'], ['revision', 'ml-revision']]) {
+      const input = root.querySelector?.(`[name="${name}"]`);
+      if (input) state.form[key] = input.value;
+    }
+    html=memoryLearningControlsHtml(state);
     root.innerHTML=html;renderedHtml=html;
+    if (focusedName) {
+      const input = root.querySelector?.(`[name="${focusedName}"]`);
+      input?.focus({preventScroll: true});
+      if (selection && typeof input?.setSelectionRange === 'function') input.setSelectionRange(...selection);
+    }
   };
   render();
   root.addEventListener('click', async event => {

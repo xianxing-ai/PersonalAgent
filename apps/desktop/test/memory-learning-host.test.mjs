@@ -26,6 +26,41 @@ test('unchanged learning host snapshots preserve the native form and its draft',
   assert.equal(replacements,2);
   controls.dispose();
 });
+
+test('changed learning host snapshots preserve form drafts and input focus',()=>{
+  const document={activeElement:null};
+  let html='',inputs=new Map();
+  const root={ownerDocument:document,addEventListener(){},contains:element=>[...inputs.values()].includes(element),
+    querySelector:selector=>inputs.get(selector.match(/name="([^"]+)"/)?.[1]),
+    get innerHTML(){return html;},set innerHTML(value){
+      html=value;inputs=new Map();document.activeElement=null;
+      for(const [,attributes] of value.matchAll(/<input\b([^>]*)>/g)) {
+        const name=/\bname="([^"]+)"/.exec(attributes)?.[1];
+        if(!name) continue;
+        const input={name,value:/\bvalue="([^"]*)"/.exec(attributes)?.[1]??'',
+          focus(){document.activeElement=this;},setSelectionRange(start,end,direction){
+            this.selectionStart=start;this.selectionEnd=end;this.selectionDirection=direction;
+          }};
+        inputs.set(name,input);
+      }
+    }};
+  const controls=mountMemoryLearningControls(root,{status:{learningAvailable:true},refs:[],invoke:async()=>{}});
+  inputs.get('ml-path').value='reference-a.md';
+  inputs.get('ml-summary').value='Draft summary';
+  inputs.get('ml-summary').selectionStart=5;
+  inputs.get('ml-summary').selectionEnd=12;
+  inputs.get('ml-summary').selectionDirection='forward';
+  inputs.get('ml-summary').focus();
+
+  controls.update({status:{learningAvailable:true,writeEnabled:true},refs:[]});
+
+  assert.equal(inputs.get('ml-path').value,'reference-a.md');
+  assert.equal(inputs.get('ml-summary').value,'Draft summary');
+  assert.equal(document.activeElement,inputs.get('ml-summary'));
+  assert.deepEqual([document.activeElement.selectionStart,document.activeElement.selectionEnd,
+    document.activeElement.selectionDirection],[5,12,'forward']);
+  controls.dispose();
+});
 async function fixture(t, options = {}) {
   const parent = fileURLToPath(new URL('../../../.cache/memory-learning-tests/', import.meta.url));
   await mkdir(parent, {recursive: true});
