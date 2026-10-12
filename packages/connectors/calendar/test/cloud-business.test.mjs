@@ -93,6 +93,32 @@ test('host cancellation and deadline stop confirmation and response-body reads w
   }
 });
 
+for(const timeoutOrigin of ['host','provider'])test(`an early ${timeoutOrigin} timer waits for its actual deadline before stopping confirmation`,async t=>{
+  let clock=now(),nextTimer=0,calls=0,confirmationSignal,entered;
+  const timers=new Map(),ready=new Promise(resolve=>{entered=resolve;});
+  t.mock.method(Date,'now',()=>clock);
+  t.mock.method(globalThis,'setTimeout',(callback,delay)=>{const id=++nextTimer;timers.set(id,{callback,delay});return id;});
+  t.mock.method(globalThis,'clearTimeout',id=>{timers.delete(id);});
+  const provider=new CalDavProvider({calendarUrl:'https://fixture.example.invalid/calendar/',requestTimeoutMs:timeoutOrigin==='provider'?100:30000,
+    fetchImpl:async(_url,init)=>{
+      calls++;
+      if(calls===1)return {status:207,ok:true,text:async()=>'<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+        +`<D:response><D:href>/old.ics</D:href><C:calendar-data>${escape(ics(1))}</C:calendar-data></D:response></D:multistatus>`};
+      confirmationSignal=init.signal;entered();return new Promise(()=>{});
+    }});
+  const operation=new CalendarService(provider,{now:Date.now}).listEvents('fixture',window,
+    {signal:new AbortController().signal,deadline:new Date(clock+(timeoutOrigin==='host'?100:5000)).toISOString()});
+  const observed=operation.then(value=>({value}),error=>({error}));
+  await ready;clock+=99;
+  [...timers.values()].at(-1).callback();
+  assert.equal(confirmationSignal.aborted,false,'an early timer must not end the active lease');
+  assert.equal([...timers.values()].at(-1).delay,1);
+  clock+=1;[...timers.values()].at(-1).callback();
+  const result=await observed;
+  assert.equal(result.value,undefined);assert.equal(result.error.code,timeoutOrigin==='host'?'TIMEOUT':'EXTERNAL_FAILURE');
+  assert.equal(calls,2);assert.equal(confirmationSignal.aborted,true);
+});
+
 test('CalDAV chooses one UID revision consistently in window and single-item paths, preserves TZID', async () => {
   const {provider, set} = server();
   const first = await provider.fetchWindow('fixture', window);
