@@ -168,8 +168,16 @@ function replaceRepositoryRoot(f, replacement = 'directory') {
   const original = statSync(root, {bigint: true});
   cpSync(root, copy, {recursive: true});
   renameSync(root, saved);
-  if (replacement === 'directory') renameSync(copy, root);
-  else symlinkSync(copy, root, process.platform === 'win32' ? 'junction' : 'dir');
+  if (replacement === 'directory') {
+    // A freshly copied Windows fixture may briefly retain an open file handle.
+    for (let attempt = 0; ; attempt++) {
+      try { renameSync(copy, root); break; }
+      catch (error) {
+        if (process.platform !== 'win32' || error.code !== 'EPERM' || attempt >= 19) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      }
+    }
+  } else symlinkSync(copy, root, process.platform === 'win32' ? 'junction' : 'dir');
   const current = statSync(root, {bigint: true});
   assert.notEqual(`${current.dev}:${current.ino}`, `${original.dev}:${original.ino}`);
   const git = args => execFileSync('git', args, {cwd: saved, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim();

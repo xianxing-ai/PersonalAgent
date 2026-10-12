@@ -48,7 +48,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
   let busy = false;
   let disposed = false;
   let renderedHtml;
-  const render = () => {
+  const render = resolvedRevision => {
     if (disposed) return;
     let html=memoryLearningControlsHtml(state);
     if (html===renderedHtml) return;
@@ -61,6 +61,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
       const input = root.querySelector?.(`[name="${name}"]`);
       if (input) state.form[key] = input.value;
     }
+    if(resolvedRevision!==undefined)state.form.revision=resolvedRevision;
     html=memoryLearningControlsHtml(state);
     root.innerHTML=html;renderedHtml=html;
     if (focusedName) {
@@ -87,6 +88,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
     state.form = {workflowId, revision, path, summary};
     busy = true;
     button.disabled = true;
+    let resolvedRevision;
     try {
       let result;
       if (use !== undefined) {
@@ -120,7 +122,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
           if (previous?.workflowId !== workflowId || previous?.revision !== revision) state.taskId = '';
         }
         if (action === 'propose') state.taskId = '';
-        if (result.version) state.form.revision = result.version.revision;
+        if (result.version) resolvedRevision = result.version.revision;
         if (action === 'startValidation') state.taskId = result.taskId;
         if (['startValidation', 'run'].includes(action)) {
           state.runningTask = {taskId: result.taskId, workflowId, revision: payload.revision};
@@ -149,7 +151,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
       if (action === 'read') { state.version = null; state.active = null; state.taskId = ''; }
       state.message = `${action === 'read' ? '版本未读回，已清除旧选择。' : ''}${error?.message ?? '操作失败，请刷新后核对。'}`;
     }
-    finally { busy = false; render(); }
+    finally { busy = false; render(resolvedRevision); }
   }, {signal: events.signal});
   return Object.freeze({dispose() { disposed = true; events.abort(); },
     update({status: next, refs: nextRefs}) {
