@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import {KnowledgeError} from '@personal-agent/knowledge';
@@ -38,14 +38,16 @@ async function fixture(t) {
       vaultIdentity: source.pairingIdentity(), bindingCurrent: () => true}); peers.push(next); return next;
   };
   let currentPeer = peer(); await host.pair(currentPeer, scope());
-  let decision = async () => true, confirmations = 0;
+  let decision = async () => true, confirmations = 0, consumptions = 0;
   const database = path.join(base, 'private.sqlite');
   const controller = () => createPrivateMemoryController(database, async details => {confirmations++; return decision(details);},
-    async () => true, {confirmWithdraw: async () => true, knowledgeSource: () => host.wikiSource});
+    async () => true, {confirmWithdraw: async () => true, knowledgeSource: () => host.wikiSource,
+      authorizeConsumption: async () => {consumptions++; return true;}});
   let memory = controller();
   t.after(() => {memory.close(); host.close(); source.close(); for (const p of peers) p.close(); rmSync(base, {recursive: true, force: true});});
-  return {source, original, root, database, pages, get memory() {return memory;}, get host() {return host;},
+  return {source, original, root, base, database, pages, get memory() {return memory;}, get host() {return host;},
     get peer() {return currentPeer;}, get confirmations() {return confirmations;}, decide: fn => {decision = fn;},
+    get consumptions() {return consumptions;},
     async restart(repair = false) {
       memory.close(); host.close();
       host = createObsidianPairingHost({source: trusted, vaultIdentity: () => source.pairingIdentity(), confirmPairing: async () => true});
@@ -146,4 +148,57 @@ test('a changed saved source withdraws its fact, while a missing peer leaves evi
   writeFileSync(path.join(f.root, 'Allowed/note.md'), 'changed synthetic\n');
   assert.equal((await f.memory.revalidate(ref)).state, 'withdrawn');
   assert.equal((await f.memory.listSaved()).facts[0].ref.revision, 2);
+});
+
+test('re-pairing after an offline edit withdraws only the old fact and blocks consumption before authorization', async t => {
+  const f = await fixture(t), source = (await f.memory.search('target')).hits[0].source;
+  await f.memory.save(source, 'Synthetic A', await f.memory.previewSave(source));
+  const keep = (await f.memory.search('unrelated')).hits[0].source;
+  await f.memory.save(keep, 'Synthetic keep', await f.memory.previewSave(keep));
+  const saved = (await f.memory.listSaved()).facts, target = saved.find(fact => fact.summary === 'Synthetic A');
+  const preserved = saved.find(fact => fact.summary === 'Synthetic keep');
+  await f.restart();
+  writeFileSync(path.join(f.root, 'Allowed/note.md'), 'changed synthetic\n');
+  await assert.rejects(f.memory.revalidate(target.ref));
+  assert.deepEqual((await f.memory.listSaved()).facts, saved, 'disconnect does not infer a changed fact');
+  await f.restart(true);
+  const invalidated = await f.memory.revalidate(target.ref);
+  assert.equal(invalidated.state, 'withdrawn'); assert.equal(invalidated.appended, true);
+  assert.equal(invalidated.fact.ref.revision, 2);
+  await assert.rejects(f.memory.consumeConfirmed({refs: [target.ref], taskId: 'synthetic-stale',
+    destination: 'agentarts', configurationRef: 'synthetic-only', ...scope()}));
+  await assert.rejects(f.memory.consumeConfirmed({refs: [invalidated.fact.ref], taskId: 'synthetic-withdrawn',
+    destination: 'agentarts', configurationRef: 'synthetic-only', ...scope()}));
+  await assert.rejects(f.memory.previewSave(source));
+  assert.equal(f.consumptions, 0); assert.equal(f.confirmations, 2, 'source observations never confirm new content');
+  const final = (await f.memory.listSaved()).facts;
+  assert.equal(final.length, 2); assert.equal(final.find(fact => fact.ref.id === target.ref.id).state, 'withdrawn');
+  assert.deepEqual(final.find(fact => fact.ref.id === preserved.ref.id), preserved);
+  assert.equal((await f.memory.revalidate(invalidated.fact.ref)).appended, false);
+});
+
+for (const change of ['rename', 'outside', 'missing']) test(`re-paired ${change} source remains unavailable until its original path is restored`, async t => {
+  const f = await fixture(t), source = (await f.memory.search('target')).hits[0].source;
+  await f.memory.save(source, 'Synthetic A', await f.memory.previewSave(source));
+  const keep = (await f.memory.search('unrelated')).hits[0].source;
+  await f.memory.save(keep, 'Synthetic keep', await f.memory.previewSave(keep));
+  const saved = (await f.memory.listSaved()).facts, target = saved.find(fact => fact.summary === 'Synthetic A');
+  const preserved = saved.find(fact => fact.summary === 'Synthetic keep');
+  const from = path.join(f.root, 'Allowed/note.md');
+  const moved = change === 'rename' ? path.join(f.root, 'Allowed/renamed.md')
+    : change === 'outside' ? path.join(f.root, 'outside-note.md') : path.join(f.base, 'held-note.md');
+  await f.restart(); renameSync(from, moved); await f.restart(true);
+  const unavailable = await f.memory.revalidate(target.ref);
+  assert.equal(unavailable.state, 'source_unavailable'); assert.equal(unavailable.appended, false);
+  await assert.rejects(f.memory.consumeConfirmed({refs: [target.ref], taskId: 'synthetic-unavailable',
+    destination: 'agentarts', configurationRef: 'synthetic-only', ...scope()}));
+  await assert.rejects(f.memory.previewSave(source));
+  assert.equal(f.consumptions, 0); assert.deepEqual((await f.memory.listSaved()).facts, saved);
+  const allowed = await f.memory.consumeConfirmed({refs: [preserved.ref], taskId: 'synthetic-preserved',
+    destination: 'agentarts', configurationRef: 'synthetic-only', ...scope()});
+  assert.equal(allowed.state, 'authorized'); assert.deepEqual(allowed.facts, [{ref: preserved.ref, summary: preserved.summary}]);
+  renameSync(moved, from);
+  assert.equal((await f.memory.revalidate(target.ref)).state, 'current');
+  assert.deepEqual((await f.memory.listSaved()).facts, saved, 'temporary absence is not a deletion or new revision');
+  assert.equal(f.confirmations, 2);
 });
