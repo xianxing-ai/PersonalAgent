@@ -23,6 +23,13 @@ TaskRuntime 内、正文派发前持久记录 sourceId/configRevision/path、原
 只有既有 Runtime 原操作核实器读取原 intent、execution、真实来源并成功 finalize 后，
 才接受该已知结果并恢复投影。历史无投影记录的任务继续兼容既有核实器。
 
+2026-10-12 原写入恢复修正：原核实器检查 intent/execution/摘要/Evidence 并成功 finalize 后，
+工厂按检查点保存的原 sourceId/configRevision/path 与摘要确认已知回执，将投影由 unknown
+转为 pending；该步骤不读取来源，也不更新原投影绑定。普通工具回执仍需当前完整绑定。
+finalize 不执行投影读取，调用方先让 Runtime 提交原终态，再通过既有 recoverProjection
+独立恢复。recover 仍核对当前完整配置与来源租约；配置已变或撤销时保留 pending，不能
+借原操作的完成结果获取新投影许可。无新增重新绑定或隐式重新授权入口。
+
 Desktop 重启遍历 Runtime 分页任务检查点，恢复已知 pending；管理页“核实原整理任务”
 显示原任务状态和投影是否待恢复。恢复不能改变 TaskRuntime 的终态，也不恢复已撤销权限。
 

@@ -9,7 +9,9 @@ Wiki 来源增量提供可信 Application 入口 `revalidateWikiFact`：使用�
 `createTrustedKnowledgeTools(source, projectionPort?)` 可在原 TaskRuntime 检查点中分别记录
 正文结果与投影进度。`recoverProjection` 只重校验已知回执的来源；unknown 必须先通过
 原 `reconcileKnowledgeWriteTask` 真实读回及 finalize。投影失败保留待恢复记录，已知成功
-写入不被重做。参见 [MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)。
+回执按原输入匹配检查点，配置变化不阻断原 Runtime 结果确认；旧投影绑定不变。
+原任务确认后调用 `recoverProjection`，仍检查当前配置/租约，不隐式重新绑定或授权。
+已知写入不被重做。参见 [MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

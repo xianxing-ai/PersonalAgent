@@ -42,10 +42,16 @@ export function createKnowledgeWriteProjection(port: KnowledgeWriteProjectionPor
       save(context.taskId, entries);
     },
     accept(taskId: string, runId: string, argumentsDigest: string, receipt: Pick<KnowledgeWriteReceipt,
-      'operationId' | 'state' | 'changed'>) {
+      'operationId' | 'state' | 'changed'>, originalInput?: KnowledgeNotePatch) {
       const entries = load(taskId), item = entries.find(entry => entry.runId === runId);
       if (!item) return; // Executions predating projection checkpoints remain compatible.
-      if (item.argumentsDigest !== argumentsDigest || item.binding !== binding()) {
+      // A finalized original run acknowledges its old checkpoint, not a new read permit.
+      // Normal tool receipts still require the current binding; recovery always checks it below.
+      const sameSource = originalInput
+        ? item.sourceId === originalInput.sourceId && item.configRevision === originalInput.configRevision
+          && item.path === originalInput.path
+        : item.binding === binding();
+      if (item.argumentsDigest !== argumentsDigest || !sameSource) {
         throw new ProtocolError('SCOPE_DENIED', 'Knowledge projection execution binding changed');
       }
       if (item.state === 'complete') return;
