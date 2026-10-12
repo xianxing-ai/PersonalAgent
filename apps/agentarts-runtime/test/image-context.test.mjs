@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {chmod,cp,mkdir,mkdtemp,readFile,readdir,rm,stat,writeFile} from 'node:fs/promises';
+import {chmod,cp,mkdir,mkdtemp,readFile,readdir,rm,stat,symlink,writeFile} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import path from 'node:path';
@@ -49,6 +49,19 @@ test('actual image-context script isolates fixed-clock concurrent builds and pre
       assert.equal(p.scripts,undefined);assert.equal(p.devDependencies,undefined);assert.ok(lock.packages[relative]);
     }
     assert.deepEqual((await readdir(path.join(result.context,'apps'))).sort(),['agentarts-runtime']);
+  }
+  if (process.platform !== 'win32') {
+    // A source symlink must not make the exporter chmod a file outside its fresh context.
+    const privateCanary=path.join(fixture,'private-mode-canary');
+    await writeFile(privateCanary,'synthetic private bytes',{mode:0o600});
+    await chmod(privateCanary,0o600);
+    await symlink(privateCanary,path.join(app,'src','private-mode-link'));
+    await assert.rejects(invoke(),error=>{
+      assert.match(error.stderr,/Non-regular owned image source/);
+      return true;
+    });
+    assert.equal((await stat(privateCanary)).mode&0o777,0o600);
+    assert.equal(await readFile(privateCanary,'utf8'),'synthetic private bytes');
   }
 });
 
