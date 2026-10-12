@@ -12,11 +12,14 @@ World/Plan 可分别返回经校验的角色报告；Review 重验同一宿主�
 不能与本轮 owned 绑定的可调用状态混为一项。原 Controller 的空绑定、未映射计划操作、
 平台历史/插件、真实来源/账号和平台部署缺口仍如实保留。
 绑定代码、测试、镜像 source SHA/digest 和真实云验收分别在工作包记录，合并门槛不变。
+源码 `0dae0ff5` 的双架构预览已发布，四次本地/发布镜像绑定测试均9/9，
+下载与验证记录见 [发布入口](../competition/OWNED_IMAGE_BINDINGS.md#已发布预览与使用入口2026-10-12)。
+这只提升 owned 绑定与镜像交付证据，不提升下文原平台语义等价或真实部署状态。
 
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
-初始日期：2026-10-09；当前更新：2026-10-11。目标 profile：`huawei_ict_agentarts`。本文件记录代码迁移和真实验收缺口，
+初始日期：2026-10-09；当前更新：2026-10-12。目标 profile：`huawei_ict_agentarts`。本文件记录代码迁移和真实验收缺口，
 设计与既有云资源不自动成为已实现能力。合并仍遵守
 [两人本机阅读与确认](../reviews/DESIGN_READING_GATE.md)。
 

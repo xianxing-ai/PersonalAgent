@@ -3,7 +3,7 @@
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
-初始日期：2026-10-08；当前更新：2026-10-11；状态：`in_progress`；负责人：zemeng。
+初始日期：2026-10-08；当前更新：2026-10-12；状态：`in_progress`；负责人：zemeng。
 目标：`huawei_ict_agentarts`。工作树：`D:\PersonalAgent\.worktrees\agentarts-owned-image`，
 分支 `codex/agentarts-owned-image`，基线 `origin/main@e86bac53`。
 本包涉及 MOD-29/30/31 的云编排与既有 Coordination 消费接线。
@@ -32,6 +32,13 @@ pin Node24.15.0/npm11.12.1。日志 `.cache/owned-bindings-20261012/full-check.l
 后者按核心UTF-16字符限额处理，整体请求UTF-8限额和来源校验仍保持。
 公开绑定清单经生成器 `export-bindings.mjs --check` 校验，catalogSha256为
 `7666fd39dc5e59eed5a9f3e4fe3beaa3d4e6fd4e143f7d39c042dda154364c24`。
+
+本轮源码 `0dae0ff5c1553b855825a29934b22270b675bb48` 已发布到 GHCR，多架构索引为
+`sha256:82b7d1b0ac808ad89d2197b98871fd334084c88de9f56c016ffe29a75bd632dc`。
+本地与发布的 AMD64/ARM64 镜像均以非 root UID1000、禁外网运行绑定测试，各9/9；
+使用实际编排核心和显式 Fake 模型。GitHub Release 的两架构 tar、设计/接口包及校验附件已读回上传状态，
+下载方法、源码版本和验证限制见 [已发布预览](../competition/OWNED_IMAGE_BINDINGS.md#已发布预览与使用入口2026-10-12)。
+这是未合并预览；真实 Huawei 部署和模型/工具闭环尚未完成，工作包保持 `in_progress`。
 
 ## 2026-10-11 公开消费者与 Goal 报告兼容
 

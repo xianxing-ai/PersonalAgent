@@ -3,6 +3,39 @@
 日期：2026-10-12；Profile `huawei_ict_agentarts`；本分支接口为 provisional。
 源码绑定、镜像构建/发布和真实华为部署是分别验收的结果。决定见 [ADR-0015](../adr/0015-owned-workflow-controller-bindings.md)。
 
+## 已发布预览与使用入口（2026-10-12）
+
+镜像源码固定为 `0dae0ff5c1553b855825a29934b22270b675bb48`，仍在
+[PR #317](https://github.com/zemeng5208/PersonalAgent/pull/317) 中，尚未合并。
+后续文档提交不改变这个镜像的源码版本。
+[GitHub 预览 Release](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-0dae0ff5)
+提供 AMD64/ARM64 离线 tar、该源码版本的设计与接口包、`SHA256SUMS.txt` 和 `VERIFICATION.json`。
+所有五个附件均已读回 uploaded 状态，并核对大小及 SHA256。
+
+优先按固定多架构索引拉取，Docker 按本机架构选择镜像：
+
+```powershell
+docker pull ghcr.io/zemeng5208/personal-agent-owned@sha256:82b7d1b0ac808ad89d2197b98871fd334084c88de9f56c016ffe29a75bd632dc
+```
+
+网络不便时下载对应架构 tar，先用 `Get-FileHash -Algorithm SHA256` 与 Release 校验文件比对，
+再执行 `docker load -i <对应架构的tar路径>`。运行配置见
+[Runtime README](../../apps/agentarts-runtime/README.md)；真实模型入口、模型名和宿主凭据由部署方注入，
+不会随镜像提供。华为部署使用 ARM64，部署流程仍单独验收。
+
+- [预览发布 Actions](https://github.com/zemeng5208/PersonalAgent/actions/runs/38248749031) 已成功；
+  [源码 PR Foundation](https://github.com/zemeng5208/PersonalAgent/actions/runs/38248819016) 已成功。
+- 源码的根 `npm run check`：2878 项，2860 通过、18 跳过、0 失败；Node24.15.0/npm11.12.1。
+- 本地构建镜像与按固定 digest 拉取的发布镜像分别在 AMD64/ARM64 上运行
+  `apps/agentarts-runtime/test/bindings.test.mjs`，四次均 9/9，非 root UID1000，`--network none`。
+  测试使用实际编排核心和显式 Fake 模型；它证明绑定与边界行为，不证明真实 Provider 可用。
+- 双架构镜像均读回相同源码 revision 和目录 SHA256：
+  `7666fd39dc5e59eed5a9f3e4fe3beaa3d4e6fd4e143f7d39c042dda154364c24`。
+- 匿名配置读取 GHCR 索引和 AMD64 拉取已通过。ARM64 首次匿名层下载发生网络超时，
+  随后固定 digest 的注册表拉取及容器测试成功；保留原失败记录，不将首次拉取记为成功。
+- 原云资源完整语义等价、真实 Huawei deployment、公网 WSS、真实模型/工具、trace、用量、费用和评估仍未验证。
+  预览发布不满足整个 MOD 的完成条件，也不替代 goo122 与 Potatos498 当前 head 的本机阅读和审批。
+
 ## 绑定目录
 
 目录由 `packages/agentarts/src/bindings.ts` 编译进入镜像中的 agentarts/dist，
@@ -27,7 +60,7 @@
 
 ## HTTP/WS 发现与调用
 
-`GET /bindings` 需要明确配置的 WSS/宿主凭据：
+`GET /bindings` 需要配置的 WSS/宿主凭据（`PA_AGENT_WSS_AUTH_TOKEN` 缺省继承 `PA_AGENT_INBOUND_TOKEN`）：
 `X-PA-Agent-Token: Bearer <独立宿主凭据>`。未配置不会开放目录。
 不返回模型端点、密钥、私人来源、工具账号或部署中的个人数据。
 
