@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import {attachAgentWebSocketTransport, equalInboundToken} from './websocket-transport.mjs';
 import {createBindingDispatcher} from './binding-dispatch.mjs';
+import {ownedRequestPath} from './request-path.mjs';
 
 const MAX_BYTES = 1_200_000;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -66,6 +67,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   };
   let transport;
   const server = createServer(async (request,response) => {
+    const route = ownedRequestPath(request.url);
     httpResponses.set(response,request.socket);
     response.once('finish',() => {
       httpResponses.delete(response);
@@ -78,17 +80,17 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       json(response,499,{event:'error',data:{error_code:'CANCELLED',status:'failed'}});
       return endUpload(request,response);
     }
-    if (request.method === 'GET' && request.url === '/ping') {
+    if (request.method === 'GET' && route === '/ping') {
       return json(response,200,{status:active ? 'HealthyBusy':'Healthy', time_of_last_update:Math.floor(Date.now()/1000)});
     }
-    if (request.method === 'GET' && request.url === '/bindings') {
+    if (request.method === 'GET' && route === '/bindings') {
       if (wssAuthToken === undefined) return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});
       if (!equalInboundToken(request.headers,wssAuthToken)) return json(response,401,{error:{code:'UNAUTHORIZED'}});
       try {return json(response,200,bindings.directory());}
       catch {return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});}
     }
-    const statusRequest = request.method === 'POST' && request.url === '/invocation-status';
-    if (!statusRequest && (request.method !== 'POST' || request.url !== '/invocations')) return json(response,404,{error:{code:'NOT_FOUND'}});
+    const statusRequest = request.method === 'POST' && route === '/invocation-status';
+    if (!statusRequest && (request.method !== 'POST' || route !== '/invocations')) return json(response,404,{error:{code:'NOT_FOUND'}});
     const innerCredential = request.headers['x-pa-agent-token'] !== undefined;
     const inboundToken = statusRequest || innerCredential ? wssAuthToken : authToken;
     if (statusRequest && inboundToken === undefined) return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});

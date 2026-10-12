@@ -39,10 +39,21 @@ Plan保留保留/复核/修订/移除、依赖更新、证据需求与本地后�
 
 Goal target 必须精确对应宿主投影中已提交、最新且 active 的 Goal 节点及原基线；
 World 的影响类型只能按实际 source.kind 声明，不能把 Goal 冒称 Decision 或 Plan。
-有 Goal target 时只能使用完整 1.2；旧 Decision/Plan target 仍兼容 `owned-1.0` 紧凑报告。
+有 Goal target 时只能使用完整 1.2。World、Plan、Review、Router、Controller 和默认 Controller
+都不接受没有 `reportVersion` 的 World/Plan 报告，并核对来源摘要、连续事实变化、节点修订、
+`expectedGraphRevision` 和影响范围。严格校验由这些可信入口固定开启，调用方不能传参关闭。
+直接 `invoke()` 在没有 Goal target 时保留 owned-1.0 紧凑报告，包括带来源的 Decision/Plan
+初始投影，以及只含 `repairContext` 的继续轮次；该路径不读取绑定信封。
 完整 World/Plan 必须声明相同版本，拒绝 1.1/1.2 混版和完整/紧凑混用，
 也不直接执行无版本的旧导出 DSL 或报告。
-继续轮次只含 `repairContext` 时没有可引用事实原文与前后版本，完整World必须RECHECK；
+继续轮次只含 `repairContext` 时 `sources` 为空。直接 `invoke()` 先判断 World 处置，再判断 sources：
+紧凑 KEEP 且 `affected` 为空、没有缺项时返回「KEEP：世界状态分析无需修复。」；
+紧凑 REVISE、RECHECK 或其他不能确定修复的结果才返回 RECHECK。
+没有事实或 Goal 来源时，版本化 KEEP 或 REVISE 在 `validateWorld` 被拒绝，不会返回 KEEP 文本；
+版本化 RECHECK 且写明缺项时，直接 `invoke()` 返回 RECHECK 文本。
+这些直接调用都不进入后续 Plan/Review，不产出 `repair_candidate`。
+绑定 Plan/Review 不接受无版本报告；版本化报告通过校验后 sources 仍为空，则返回
+`Repair source projection required`，同样不调用后续模型。
 后续需宿主公布来源投影契约，不能由模型补造。缺来源不静默切换旧提示词或供应商。
 应用 JSON 和本地 Runtime 契约保持原有 provisional 状态。
 

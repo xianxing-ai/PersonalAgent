@@ -174,3 +174,134 @@ main 远端已设置两次审批、最新推送后的批准、过期审批作废
 回滚只恢复旧 endpoint/版本，保留旧资产、数据库、任务和已确认副作用，不重复未知写入。
 部署授权、模型账号使用和公开发布按用户相应请求执行，不把本机现有凭据视作授权。
 依据见 [ADR-0012](../adr/0012-owned-agentarts-image.md) 与 [服务说明](../../apps/agentarts-runtime/README.md)。
+
+## 2026-10-12 无版本报告修复与源码传输验证
+
+工作树 `D:\PersonalAgent\.worktrees\agentarts-report-version`，分支 `codex/agentarts-report-version`，
+HEAD `c5e9222f8c24032a41f6c697ae29745292c739c5`。修复尚未提交。绑定入口拒绝调用方提交的无
+`reportVersion` World/Plan 报告。直接 `invoke()` 在 sources 为空时先判断 World 处置：紧凑 KEEP
+返回「KEEP：世界状态分析无需修复。」；紧凑 REVISE/RECHECK 返回 RECHECK。无事实或 Goal 来源的版本化
+KEEP 在校验中拒绝，不会返回 KEEP 文本。这些路径都不调用后续 Plan/Review，不产出 `repair_candidate`。
+
+本段只记录本次源码进程验证，不改写上文容器和发布镜像的 9 次请求证据。
+
+- 源码验证：`node --test packages/agentarts/test/orchestrator.test.mjs` 退出 0，13/13。新增紧凑 KEEP
+  与版本化 KEEP 两条无来源用例。此前同一工作树的根 `npm run check` 已退出 0，覆盖当时的共享校验逻辑；
+  本次没有再改 `packages/agentarts/src/index.ts`，也没有重跑全量 check。
+- 源码传输：在忽略目录 `.cache/agentarts-image/tls-fixture` 用既有 OpenSSL 命令生成 1 天合成证书，
+  SAN 为 `IP:127.0.0.1`，`notAfter=Oct 13 13:26:32 2026 GMT`。父进程未设置
+  `NODE_TLS_REJECT_UNAUTHORIZED`，未写入系统信任库。命令为设置 `PA_TEST_TLS_DIR` 后执行
+  `node apps/agentarts-runtime/test/production-transport.mjs`。子进程只通过 `NODE_EXTRA_CA_CERTS`
+  信任该证书，模型是 `https://127.0.0.1` 上的合成端点。
+- 该脚本在 Windows Node v26.3.0 上退出 1。关闭前的断言已通过：完整 World→Plan→Review 候选、无来源
+  精确 RECHECK 且仅新增 1 次 World 请求、Plan/Review 提示词未出现、模拟队列在后续非法输出用例前为空、
+  模型请求总数 10、提供者错误正文不含 `synthetic-private-provider-error`、stderr 为空、stdout 不含凭据。
+  `child.kill('SIGTERM')` 的实际关闭结果是 `[null, 'SIGTERM']`，不是脚本要求的 POSIX `[0, null]`。
+  因此 `main.mjs` 的 SIGTERM 关闭处理本次没有被证明已经执行。日志
+  `.cache/agentarts-image/production-transport-20261012-source.log`。
+- 容器验证：本次没有构建或运行容器。上文 2026-10-08 镜像内的 9 次回环请求、以及容器 16/16、21/21
+  记录保持原样。
+- 发布镜像验证：本次没有拉取、运行或发布 GHCR 镜像。`157d5769`、本地 `personal-agent-owned:20261008`
+  与已发布 `97aa51a6` 的生产 TLS 历史记录仍是 9 次请求。`0dae0ff5` 的已发布镜像记录仍是绑定测试各架构
+  9/9，本文没有把它改记成生产 TLS 10 次。当前未提交脚本比这些历史传输多一个无来源 RECHECK 用例，
+  所以本次源码进程的模型请求断言是 10；上述 9 次记录保持不变。
+
+## 2026-10-12 当前修复的 Linux AMD64 容器传输
+
+上一节的「未运行容器」只描述当时的源码进程验证。本节追加其后完成的本地 AMD64 容器运行。
+Windows 上 `[null, 'SIGTERM']` 的关闭失败、以及上文 9 次请求的历史镜像记录均保留，没有改写。
+关闭断言仍要求 `[0, null]`，没有放宽为接受强制终止。ARM64 本次未构建、未运行，标为未验证。
+镜像未提交、未推送、未发布。
+
+构建时未提交补丁为 7 个文件，+308 / -51，HEAD 仍是
+`c5e9222f8c24032a41f6c697ae29745292c739c5`。本节是容器跑完后追加的文档，不在镜像 allowlist 中。
+
+- 编译与上下文：`D:\nodejs\npm.cmd run build --workspace=@personal-agent/agentarts`，
+  然后 `D:\nodejs\npm.cmd run image:context --workspace=@personal-agent/agentarts-runtime`。
+  上下文为 `.cache/agentarts-image/context-PpsvcR`，58 个 allowlist 文件。
+  `packages/agentarts/dist/index.js` 的 SHA256 为
+  `9e455ecf4cc82ba2e5c89d41c6c2124926f016a3a9e7795908ae3f5bc5560a6f`，工作树与上下文一致，
+  且包含紧凑 KEEP 返回、`bound || hasGoalTarget` 和无来源 `Repair source projection required`。
+- 镜像构建：在该上下文执行
+  `docker buildx build --platform linux/amd64 --load --progress plain -t personal-agent-owned:report-version-local-amd64 .`，
+  退出 0。日志 `.cache/agentarts-image/report-version-amd64-build.log`。
+  本地镜像 ID `sha256:054138397547d9041d8534ba9ebaf8766a8bdafbb2c181c55684c67558571189`，
+  配置 `sha256:822866cde5a24c582c3808087b3ebba9f24e551ff6c35d43f8bc050056c73403`，
+  `linux/amd64`，用户 `node`，创建时间 `2026-10-12T13:40:09Z`，大小 392,049,593 bytes。
+  检查记录 `.cache/agentarts-image/report-version-amd64-inspect.json`。
+- 容器产物：`--network none` 下以 `node -e` 读取镜像内文件。`dist/index.js` 的 SHA256 与上述工作树构建一致，
+  `apps/agentarts-runtime/src/main.mjs` 的 SHA256 为
+  `2d9609cbf055586690174b4001a0965aca4588f6f3294b1552228a9a4dbe1aad`，也与工作树一致。
+  容器为 `linux` / `x64`，UID 1000，Node `v24.15.0`。测试脚本不在镜像内，运行时只读挂载工作树中的当前脚本。
+- 传输命令使用既有合成证书 `.cache/agentarts-image/tls-fixture`（SAN `IP:127.0.0.1`，
+  `notAfter=Oct 13 13:26:32 2026 GMT`；核对时间为 `2026-10-12T13:39:03Z`）。未设置
+  `NODE_TLS_REJECT_UNAUTHORIZED`，未改系统信任，未调用真实模型。容器 `--network none`，
+  只读挂载测试目录和证书目录，`PA_TEST_TLS_DIR=/tls`：
+
+```powershell
+docker run --rm --name personal-agent-report-version-transport --network none --user node `
+  --mount type=bind,source=<工作树>\apps\agentarts-runtime\test,target=/opt/personal-agent/apps/agentarts-runtime/test,readonly `
+  --mount type=bind,source=<工作树>\.cache\agentarts-image\tls-fixture,target=/tls,readonly `
+  -e PA_TEST_TLS_DIR=/tls personal-agent-owned:report-version-local-amd64 `
+  node apps/agentarts-runtime/test/production-transport.mjs
+```
+
+- 结果：退出 0。stdout 为
+  `{"status":"passed","productionEntry":true,"tlsVerification":true,"externalNetwork":false,"modelRequests":10,"cases":["health","auth","text","tool-proposal","continuation","world-plan-review","source-less-recheck","schema-rejection","sanitized-provider-error","deadline","shutdown"]}`，
+  stderr 为 0 字节。该通过发生在脚本断言 `child.kill('SIGTERM')` 的结果为 `[0, null]` 之后，
+  因此 Linux 容器内 SIGTERM 按预期正常退出。无来源用例的仅 World、队列清空和后续用例隔离断言也随脚本通过。
+  日志 `.cache/agentarts-image/production-transport-20261012-container-amd64.log`，
+  空错误日志 `.cache/agentarts-image/production-transport-20261012-container-amd64.err.log`。
+- ARM64：未验证。没有执行 `--platform linux/arm64` 构建或运行。
+- 这是本地测试镜像，不是 GHCR 发布镜像，也不替换 `personal-agent-owned:20261008`、`157d5769` 或 `97aa51a6` 的历史 9 次请求记录。
+
+## 2026-10-12 当前修复的 Linux ARM64 容器传输
+
+上一节写「ARM64：未验证」时，还没有执行 ARM64 构建。本节追加其后的 linux/arm64 验收。
+源码测试、先前本地 AMD64 记录、Windows 关闭失败，以及已发布镜像的 9 次请求记录都保留。
+本次没有把 AMD64 结果当作 ARM64。关闭断言仍要求 `[0, null]`。未调用真实模型，未部署华为，未发布镜像，
+也没有修改发布流水线。
+
+- 产物：重新执行 `tsc` 与 `image:context`。最终上下文 `.cache/agentarts-image/context-wsdYap`，60 个文件。
+  它包含当前报告校验修复，也包含当时工作树里已有的生产入口改动：`main.mjs`、`server.mjs`、
+  `model-fetch.mjs`、`request-path.mjs`。这些运行时文件不是本包修改的。
+  `packages/agentarts/dist/index.js` SHA256 为
+  `9e455ecf4cc82ba2e5c89d41c6c2124926f016a3a9e7795908ae3f5bc5560a6f`，
+  含紧凑 KEEP 返回、`bound || hasGoalTarget` 和 `Repair source projection required`。
+- 构建命令在该上下文执行，退出 0。日志 `.cache/agentarts-image/report-version-arm64-build.log`。
+
+```powershell
+docker buildx build --platform linux/arm64 --load --progress plain -t personal-agent-owned:report-version-local-arm64 .
+```
+
+- 镜像身份：本地标签 `personal-agent-owned:report-version-local-arm64`，
+  ID `sha256:1e53e9de00619fe15566c563ff66f0907d89e9905a1c80a9c36d1c8861d4cfa9`，
+  配置 `sha256:7363fb9efcb5a84aa6d38242a3d2ee2a13bab8d2c2bf0cfbdd323c66e6841715`，
+  `linux/arm64`，用户 `node`，创建时间 `2026-10-12T13:54:39Z`，大小 93,286,301 bytes。
+  检查记录 `.cache/agentarts-image/report-version-arm64-inspect.json`。
+  同标签早先的 `sha256:a03aa711723ba18d3ecc8420f018e03e23179ed9006d15f97f60c935191e1e45`
+  生成于上述生产入口改动进入上下文之前，不作为本次验收镜像。
+- 容器读回：`--platform linux/arm64 --network none` 下 `process.arch=arm64`、`process.platform=linux`、
+  UID 1000、Node `v24.15.0`。镜像内 `dist/index.js`、`main.mjs`、`server.mjs`、`model-fetch.mjs`、
+  `request-path.mjs` 的 SHA256 与构建时工作树一致。Docker 引擎本身是 linux/amd64，ARM64 进程通过该引擎的
+  linux/arm64 仿真运行；这不是 AMD64 容器结果。
+- 传输使用既有合成证书 `.cache/agentarts-image/tls-fixture`，SAN `IP:127.0.0.1`，
+  `notAfter=Oct 13 13:26:32 2026 GMT`。未设置 `NODE_TLS_REJECT_UNAUTHORIZED`，未改系统信任。
+  测试目录和证书目录只读挂载，`PA_TEST_TLS_DIR=/tls`：
+
+```powershell
+docker run --rm --name personal-agent-report-version-transport-arm64 --platform linux/arm64 --network none --user node `
+  --mount type=bind,source=<工作树>\apps\agentarts-runtime\test,target=/opt/personal-agent/apps/agentarts-runtime/test,readonly `
+  --mount type=bind,source=<工作树>\.cache\agentarts-image\tls-fixture,target=/tls,readonly `
+  -e PA_TEST_TLS_DIR=/tls personal-agent-owned:report-version-local-arm64 `
+  node apps/agentarts-runtime/test/production-transport.mjs
+```
+
+- 结果：退出 0，stderr 为 0 字节。stdout 为
+  `{"status":"passed","productionEntry":true,"tlsVerification":true,"externalNetwork":false,"modelRequests":10,"cases":["health","auth","text","tool-proposal","continuation","world-plan-review","source-less-recheck","schema-rejection","sanitized-provider-error","deadline","shutdown"]}`。
+  脚本仍先断言完整修复链、无来源只新增一次 World 请求、后续用例队列为空，以及 `SIGTERM` 结果为 `[0, null]`，
+  然后才写出该 JSON。日志 `.cache/agentarts-image/production-transport-20261012-container-arm64.log`，
+  空错误日志 `.cache/agentarts-image/production-transport-20261012-container-arm64.err.log`。
+- 分层：源码编排测试仍是此前的 13/13，本次没有重跑。ARM64 容器测试是本节。已发布镜像测试没有重做；
+  `157d5769`、`personal-agent-owned:20261008` 和 `97aa51a6` 的历史生产 TLS 仍是 9 次请求。
+- 剩余：没有原生 ARM64 硬件记录；没有推送或发布这个本地镜像；发布配置里的 AMD64 清理不在本包范围。

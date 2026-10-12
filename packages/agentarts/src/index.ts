@@ -42,6 +42,9 @@ export class OwnedAgentOrchestrator {
       plan: new ModelGateway(models.plan), review: new ModelGateway(models.review)};
   }
   async invoke(request: AgentInvocation): Promise<AgentOutput> {
+    return this.runInvocation(request, false);
+  }
+  private async runInvocation(request: AgentInvocation, bound: boolean): Promise<AgentOutput> {
     this.control(request);
     const input = parseAgentInput(request.query);
     const repair = repairInput(input);
@@ -49,11 +52,13 @@ export class OwnedAgentOrchestrator {
     let reviewedChanges: unknown;
     if (repair) {
       const world = await this.call('world', WORLD_PROMPT, repair.data, request);
-      const worldReport = this.validateWorld(world, repair.context, repair.sources);
+      const worldReport = this.validateWorld(world, repair.context, repair.sources, bound);
       if (worldReport.disposition === 'KEEP') return {kind: 'text', text: 'KEEP：世界状态分析无需修复。'};
-      if (worldReport.disposition !== 'REVISE') return {kind: 'text', text: 'RECHECK：世界状态分析缺少确定的修复依据。'};
+      if (worldReport.disposition !== 'REVISE' || repair.sources.length === 0) {
+        return {kind: 'text', text: 'RECHECK：世界状态分析缺少确定的修复依据。'};
+      }
       const plan = await this.call('plan', PLAN_PROMPT, {input: repair.data, world}, request);
-      const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies);
+      const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies, bound);
       if (planReport.disposition === 'KEEP') return {kind: 'text', text: 'KEEP：现有计划无需修复。'};
       if (planReport.disposition !== 'REVISE') return {kind: 'text', text: 'RECHECK：计划修复缺少确定依据。'};
       if (planReport.unsupported) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Plan requests operations outside the repair candidate contract');
@@ -79,12 +84,12 @@ export class OwnedAgentOrchestrator {
       || (request.plan !== undefined && !binding.requirements.includes('plan_report'))) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Unexpected workflow role report');
     }
-    if (binding.dispatch === 'router') return this.envelope(binding, {kind:'application_result',value:await this.invoke(request)});
+    if (binding.dispatch === 'router') return this.envelope(binding, {kind:'application_result',value:await this.runInvocation(request, true)});
     const input = parseAgentInput(request.query), repair = repairInput(input);
     if (binding.dispatch === 'fast' || binding.dispatch === 'deterministic') {
       if (repair) throw new ProtocolError('INVALID_ARGUMENT', 'Repair input on an ordinary workflow');
       let output: AgentOutput;
-      if (binding.dispatch === 'fast') output = await this.invoke(request);
+      if (binding.dispatch === 'fast') output = await this.runInvocation(request, true);
       else output = this.commandReceipt(input) ?? this.commandIntent(input, request)
         ?? {kind:'text',text:'RECHECK：确定性意图不明确或当前工具目录未公布对应能力；未提出工具请求。'};
       this.check(request);
@@ -93,22 +98,23 @@ export class OwnedAgentOrchestrator {
     if (!repair) throw new ProtocolError('INVALID_ARGUMENT', 'Repair input required by workflow');
     if (binding.dispatch === 'world') {
       const world = await this.call('world', WORLD_PROMPT, repair.data, request);
-      this.validateWorld(world, repair.context, repair.sources);
+      this.validateWorld(world, repair.context, repair.sources, true);
       return this.envelope(binding, {kind:'role_report',role:'world',value:world});
     }
     if (request.world === undefined) throw new ProtocolError('INVALID_ARGUMENT', 'World report required by workflow');
     const world = this.reportCopy(request.world);
-    const worldReport = this.validateWorld(world, repair.context, repair.sources);
+    const worldReport = this.validateWorld(world, repair.context, repair.sources, true);
+    if (repair.sources.length === 0) throw new ProtocolError('INVALID_ARGUMENT', 'Repair source projection required');
     if (worldReport.disposition !== 'REVISE') throw new ProtocolError('INVALID_ARGUMENT', 'World does not permit a repair proposal');
     if (binding.dispatch === 'plan') {
       const plan = await this.call('plan', PLAN_PROMPT, {input:repair.data,world}, request);
-      const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies);
+      const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies, true);
       this.planScope(planReport, worldReport);
       return this.envelope(binding, {kind:'role_report',role:'plan',value:plan});
     }
     if (request.plan === undefined) throw new ProtocolError('INVALID_ARGUMENT', 'Plan report required by workflow');
     const plan = this.reportCopy(request.plan);
-    const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies);
+    const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies, true);
     this.planScope(planReport, worldReport);
     if (planReport.disposition !== 'REVISE') throw new ProtocolError('INVALID_ARGUMENT', 'Plan does not permit a repair candidate');
     const raw = await this.call('review', REVIEW_PROMPT, {input:repair.data,world,plan}, request);
@@ -122,7 +128,7 @@ export class OwnedAgentOrchestrator {
     if (binding.dispatch === 'repair' && !repairInput(parseAgentInput(request.query))) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Repair input required by cognition controller');
     }
-    return this.envelope(binding, {kind:'application_result',value:await this.invoke(request)});
+    return this.envelope(binding, {kind:'application_result',value:await this.runInvocation(request, true)});
   }
   private envelope(binding: OwnedBinding, result: OwnedBindingOutput['result']): OwnedBindingOutput {
     const {id,name,type,origin} = binding;
@@ -258,12 +264,14 @@ export class OwnedAgentOrchestrator {
     if (!Number.isSafeInteger(item.revision) || (item.revision as number) < 1) this.reportFailure();
     return {id: item.id, revision: item.revision as number};
   }
-  private validateWorld(value: unknown, context: RepairContext, sources: RepairSource[]): WorldReport {
+  private validateWorld(value: unknown, context: RepairContext, sources: RepairSource[], bound: boolean): WorldReport {
     const report = record(value);
     const hasGoalTarget=context.targets.some(target=>sources.some(source=>source.kind==='goal'
       && source.node.id===target.node.id && source.node.revision===target.node.revision));
     if (!Object.hasOwn(report, 'reportVersion')) {
-      if(hasGoalTarget) this.reportFailure();
+      // Direct invoke keeps owned-1.0 compact reports for an initial source projection only.
+      // Binding entries always pass bound=true; callers have no parameter that selects this branch.
+      if (bound || hasGoalTarget) this.reportFailure();
       this.validateReport(value, false, context);
       const affected = report.affected as string[];
       if (new Set(affected).size !== affected.length || (report.disposition === 'REVISE' && !affected.length)) this.reportFailure();
@@ -318,10 +326,10 @@ export class OwnedAgentOrchestrator {
     return {disposition: report.recommended_disposition as string, affected, complete: true, reportVersion: report.reportVersion as '1.1' | '1.2'};
   }
   private validatePlan(value: unknown, context: RepairContext, world: WorldReport,
-    prospectiveDependencies: readonly RepairRef[]): PlanReport {
+    prospectiveDependencies: readonly RepairRef[], bound: boolean): PlanReport {
     const report = record(value);
     if (!Object.hasOwn(report, 'reportVersion')) {
-      if (world.complete) this.reportFailure();
+      if (bound || world.complete) this.reportFailure();
       this.validateReport(value, true, context, prospectiveDependencies);
       return {disposition: report.disposition as string, changes: report.changes as RepairChange[], unsupported: false};
     }

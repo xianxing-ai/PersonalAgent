@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {OwnedAgentOrchestrator, getOwnedBindings} from '@personal-agent/agentarts';
 import {OpenAICompatibleModelProvider} from '@personal-agent/models';
 import {createAgentServer} from './server.mjs';
+import {createOwnedModelFetch} from './model-fetch.mjs';
 
 function integer(name, fallback) {
   const value = Number(process.env[name] ?? fallback);
@@ -19,7 +20,7 @@ function model(role) {
   const key = process.env[`${prefix}_API_KEY`] ?? process.env.PA_AGENT_MODEL_API_KEY;
   if (!keyFile && !key) throw new Error('Agent model credential must be provided by the trusted host');
   return new OpenAICompatibleModelProvider({baseUrl:endpoint,model:name,
-    fetch:(input,init)=>globalThis.fetch(input,{...init,redirect:'error'}),
+    fetch:createOwnedModelFetch({endpoint,model:name}),
     apiKey:async () => keyFile ? (await readFile(keyFile,'utf8')).trim() : key,
     timeoutMs:integer('PA_AGENT_TIMEOUT_MS',60_000)});
 }
