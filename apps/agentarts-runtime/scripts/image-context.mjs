@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,mkdtemp,cp,readdir,chmod} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,mkdtemp,cp,readdir,chmod,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root = fileURLToPath(new URL('../../../',import.meta.url));
@@ -6,10 +6,18 @@ const root = fileURLToPath(new URL('../../../',import.meta.url));
 const parent = path.join(root,'.cache','agentarts-image');
 await mkdir(parent,{recursive:true});
 const output = await mkdtemp(path.join(parent,'context-'));
+// The exported context contains only real files/directories; never follow source links.
+const regularSource = async source => {
+  const entry = await lstat(source);
+  if (!entry.isFile() && !entry.isDirectory()) throw Error('Non-regular owned image source');
+  return true;
+};
 const workspacePaths = ['packages/contracts','packages/coordination','packages/models','packages/agentarts','apps/agentarts-runtime'];
+await regularSource(path.join(root,'package-lock.json'));
 const fullLock = JSON.parse(await readFile(path.join(root,'package-lock.json'),'utf8'));
 const manifests = new Map();
 for (const relative of workspacePaths) {
+  await regularSource(path.join(root,relative,'package.json'));
   const manifest = JSON.parse(await readFile(path.join(root,relative,'package.json'),'utf8'));
   delete manifest.devDependencies;
   delete manifest.scripts;
@@ -56,11 +64,11 @@ for (const relative of workspacePaths) {
   const destination = path.join(output,relative); await mkdir(destination,{recursive:true});
   await writeFile(path.join(destination,'package.json'),JSON.stringify(manifests.get(relative),null,2)+'\n');
   const directory = relative.startsWith('apps/') ? 'src' : 'dist';
-  await cp(path.join(root,relative,directory),path.join(destination,directory),{recursive:true});
+  await cp(path.join(root,relative,directory),path.join(destination,directory),{recursive:true,filter:regularSource});
   // Contracts uses its source-controlled protocol schema at runtime.
-  if (relative==='packages/contracts') await cp(path.join(root,relative,'schema'),path.join(destination,'schema'),{recursive:true});
+  if (relative==='packages/contracts') await cp(path.join(root,relative,'schema'),path.join(destination,'schema'),{recursive:true,filter:regularSource});
 }
-await cp(path.join(root,'apps/agentarts-runtime/Dockerfile'),path.join(output,'Dockerfile'));
+await cp(path.join(root,'apps/agentarts-runtime/Dockerfile'),path.join(output,'Dockerfile'),{filter:regularSource});
 await writeFile(path.join(output,'.dockerignore'),'node_modules\n.env*\n*.local\n*.log\n');
 const files=[];
 async function visit(directory){
@@ -68,9 +76,9 @@ async function visit(directory){
   // Only this fresh allowlist export is normalized, never source or old contexts.
   await chmod(directory,0o755);
   for(const entry of await readdir(directory,{withFileTypes:true})) {
-  const name=path.join(directory,entry.name); if(entry.isDirectory()) await visit(name); else {
+  const name=path.join(directory,entry.name); if(entry.isDirectory()) await visit(name); else if(entry.isFile()) {
     await chmod(name,0o644);files.push(path.relative(output,name).replaceAll('\\','/'));
-  }
+  } else throw Error('Non-regular owned image context entry');
 }}
 await visit(output);
 await writeFile(path.join(output,'context-manifest.json'),JSON.stringify({workspacePaths,files},null,2)+'\n');
