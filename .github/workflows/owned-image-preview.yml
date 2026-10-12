@@ -1,5 +1,12 @@
 name: Owned AgentArts image preview
 on:
+  workflow_dispatch:
+    inputs:
+      retire_legacy_amd64:
+        description: Repoint the five audited legacy preview tags to their existing ARM64 manifests
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [codex/agentarts-owned-image]
     paths:
@@ -16,7 +23,7 @@ permissions:
   packages: write
 jobs:
   publish-preview:
-    if: github.actor == 'zemeng5208'
+    if: github.actor == 'zemeng5208' && (github.event_name != 'workflow_dispatch' || !inputs.retire_legacy_amd64)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +55,7 @@ jobs:
         id: image
         with:
           context: ${{ steps.context.outputs.directory }}
-          platforms: linux/arm64,linux/amd64
+          platforms: linux/arm64
           push: true
           tags: ghcr.io/zemeng5208/personal-agent-owned:sha-${{ github.sha }}
           labels: |
@@ -71,4 +78,74 @@ jobs:
         with:
           name: owned-agentarts-arm64-${{ github.sha }}
           path: ${{ runner.temp }}/personal-agent-owned-arm64.tar
+          if-no-files-found: error
+  retire-legacy-amd64:
+    if: github.actor == 'zemeng5208' && github.event_name == 'workflow_dispatch' && inputs.retire_legacy_amd64 && github.ref == 'refs/heads/codex/agentarts-owned-image'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: owned-image-legacy-arm64-retirement
+      cancel-in-progress: false
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Preserve ARM64 and withdraw AMD64 from audited legacy tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo=ghcr.io/zemeng5208/personal-agent-owned
+          evidence="$RUNNER_TEMP/arm64-retirement"
+          mkdir -p "$evidence"
+          while read -r revision arm64 amd64; do
+            ref="$repo:sha-$revision"
+            docker buildx imagetools inspect --format '{{json .Manifest}}' "$ref" > "$evidence/$revision-before.json"
+            before=$(jq -r '.digest' "$evidence/$revision-before.json")
+            if [[ "$before" != "$arm64" ]]; then
+              jq -e --arg arm "$arm64" --arg amd "$amd64" '
+                [.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64" and .digest == $arm)] | length == 1
+              ' "$evidence/$revision-before.json" >/dev/null
+              jq -e --arg amd "$amd64" '
+                [.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")] |
+                length == 1 and .[0].digest == $amd
+              ' "$evidence/$revision-before.json" >/dev/null
+            fi
+            docker buildx imagetools inspect --format '{{json .Image}}' "$repo@$arm64" > "$evidence/$revision-arm64-config.json"
+            jq -e --arg revision "$revision" '
+              .os == "linux" and .architecture == "arm64" and
+              .config.Labels["org.opencontainers.image.revision"] == $revision
+            ' "$evidence/$revision-arm64-config.json" >/dev/null
+            docker pull --platform linux/arm64 "$repo@$arm64" > "$evidence/$revision-pull.txt"
+            if [[ "$before" != "$arm64" ]]; then
+              docker buildx imagetools create --prefer-index=false --tag "$ref" "$repo@$arm64"
+            fi
+            docker buildx imagetools inspect --format '{{json .Manifest}}' "$ref" > "$evidence/$revision-after.json"
+            after=$(jq -r '.digest' "$evidence/$revision-after.json")
+            [[ "$after" == "$arm64" ]]
+            docker buildx imagetools inspect --format '{{json .Image}}' "$ref" > "$evidence/$revision-after-config.json"
+            jq -e --arg revision "$revision" '
+              .os == "linux" and .architecture == "arm64" and
+              .config.Labels["org.opencontainers.image.revision"] == $revision
+            ' "$evidence/$revision-after-config.json" >/dev/null
+            jq -n --arg revision "$revision" --arg before "$before" --arg arm "$arm64" --arg amd "$amd64" --arg after "$after" '
+              {sourceRevision: $revision, oldTagDigest: $before, arm64Manifest: $arm,
+               withdrawnAMD64Manifest: $amd, newTagDigest: $after,
+               tagVerified: true, amd64VersionDeleted: false}
+            ' >> "$evidence/retirement.jsonl"
+            printf '%s: `%s` -> `%s` (linux/arm64; AMD64 child deletion remains separate)\n' "$revision" "$before" "$after" >> "$GITHUB_STEP_SUMMARY"
+          done <<'AUDITED_TAGS'
+          0dae0ff5c1553b855825a29934b22270b675bb48 sha256:8dc95c5b1bdfa1165f22b019daa0d3b17ae99320bda173046f2d001cc7ad437d sha256:d1dd285be6246f0628eeabdc73964847d2302363be88ad8ac0e0cf3cfb9a8bdc
+          0f2629ce9588792a4e148d8536255faf7042778a sha256:4dc10ceb2b3c3e7a07c81a88b208740cc23d15c896e011752dcf5c3003ed119b sha256:5483decdb567a8da191ede978d09b3689d7b3c8e10184e42e020a90b7c7c9536
+          f22ee14d06b72c96d0962d37f952af792e4a6364 sha256:7b0e6e84a16d2fa95fbbca5a2f1e8261ee2159c1d2848e6a081287eb82578c6f sha256:2ab9c16bf58ef50c804c7ed48e52ee83b938c48ba2a0682989ea119e9bf31773
+          97aa51a6f32e0dffcca6436fba0d3b51d1851d8f sha256:bcd38d221369ab3afb8fba76c457f6d15051372e015e1d63370d662cf8a853fb sha256:3bd4bfa216322ad3c864d669b820b3d6acffcd2dad6a97bf36fc49f1bc3a16ec
+          157d5769af952d36d938b3eac71dddf4a846aa1a sha256:0e9b3971eb25c9356ae6bfe5a6698bd7cdfa4308cfcb03786dab43facfa6643b sha256:8e4937958038f21a3c8fbafce23fa6bdca383622a948c75cafe617e4da13fbb2
+          AUDITED_TAGS
+          jq -s . "$evidence/retirement.jsonl" > "$evidence/retirement.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owned-agentarts-arm64-retirement-${{ github.run_id }}
+          path: ${{ runner.temp }}/arm64-retirement/
           if-no-files-found: error

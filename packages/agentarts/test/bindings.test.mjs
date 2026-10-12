@@ -222,3 +222,75 @@ test('bound invocations respect original cancellation and deadline before and du
   const cancel=new AbortController();const pending=stuck.invokeWorkflow({...request(),signal:cancel.signal,workflowId:workflow('PA-计划最小修复'),world:world()});
   cancel.abort();await assert.rejects(pending,{code:'CANCELLED'});
 });
+
+const legacyWorld={disposition:'REVISE',affected:[planId],reason:'调用方替换的旧报告',missing_information:[]};
+const legacyPlan={disposition:'REVISE',missing_information:[],changes:[{node:ref(planId),summary:'16点准备',reason:'调用方替换的旧报告',dependencies:[ref(goalId,2)]}]};
+const continuation=JSON.stringify({continuation:{proposalId:'synthetic-read',state:'confirmed',result:{repairContext:{
+  expectedGraphRevision:7,targets:[{node:ref(planId),requestedSummary:'16点准备',requestedDependencies:[ref(goalId,2)]}],
+  allowedDependencies:[ref(goalId,2)]}}}});
+const recheckWorld={reportVersion:'1.1',revision:7,observed_facts:[],changed_facts:[],affected_items:[],
+  missing_information:['没有宿主来源投影'],recommended_disposition:'RECHECK',summary:'补齐来源后再判断'};
+
+test('versionless caller reports never authorize either Plan or Review workflow',async()=>{
+  for(const name of ['PA-计划最小修复','PA-计划最小修复_1']){
+    const {agent,models}=setup();
+    await assert.rejects(agent.invokeWorkflow({...request(),workflowId:workflow(name),world:legacyWorld}),{code:'EXTERNAL_FAILURE'});
+    assert.deepEqual(counts(models),[0,0,0,0]);
+  }
+  for(const name of ['PA-证据安全审查','PA-证据安全审查_1']){
+    const {agent,models}=setup();
+    await assert.rejects(agent.invokeWorkflow({...request(),workflowId:workflow(name),world:legacyWorld,plan:legacyPlan}),{code:'EXTERNAL_FAILURE'});
+    assert.deepEqual(counts(models),[0,0,0,0]);
+  }
+});
+
+test('unchanged facts, another graph revision and another source stop before Plan',async()=>{
+  const base=JSON.parse(query().slice(GOAL_PREFIX.length));
+  const cases=[
+    payload=>{payload.nodes.filter(node=>node.kind==='goal').forEach(node=>node.summary='相同目标');},
+    payload=>{payload.repairContext.expectedGraphRevision=11;},
+    payload=>{payload.nodes.find(node=>node.id===goalId&&node.revision===2).summary='完全不同';},
+  ];
+  for(const mutate of cases){
+    const payload=structuredClone(base);mutate(payload);
+    const report=world();
+    if(payload.nodes.every(node=>node.kind!=='goal'||node.summary==='相同目标')){
+      report.observed_facts.forEach(item=>item.fact='相同目标');
+    }
+    const {agent,models}=setup();
+    await assert.rejects(agent.invokeWorkflow({...request(GOAL_PREFIX+JSON.stringify(payload)),workflowId:workflow('PA-计划最小修复_1'),world:report}),{code:'EXTERNAL_FAILURE'});
+    assert.deepEqual(counts(models),[0,0,0,0]);
+  }
+});
+
+test('source-less continuation never calls later roles or emits a repair candidate',async()=>{
+  for(const name of ['PA-计划最小修复','PA-计划最小修复_1']){
+    const {agent,models}=setup();
+    await assert.rejects(agent.invokeWorkflow({...request(continuation),workflowId:workflow(name),world:world()}),{code:'EXTERNAL_FAILURE'});
+    assert.deepEqual(counts(models),[0,0,0,0]);
+  }
+  for(const name of ['PA-证据安全审查','PA-证据安全审查_1']){
+    const {agent,models}=setup();
+    await assert.rejects(agent.invokeWorkflow({...request(continuation),workflowId:workflow(name),world:world(),plan:plan()}),{code:'EXTERNAL_FAILURE'});
+    assert.deepEqual(counts(models),[0,0,0,0]);
+  }
+  const router=workflow('PA-MVP-受限主路由');
+  for(const binding of [...bindings.filter(item=>item.type==='controller'),{id:router,type:'workflow'}]){
+    const {agent,models}=setup({world:[legacyWorld],plan:[legacyPlan],review:[candidate()]});
+    const run=binding.type==='workflow'
+      ? agent.invokeWorkflow({...request(continuation),workflowId:binding.id})
+      : agent.invokeController({...request(continuation),controllerId:binding.id});
+    await assert.rejects(run,{code:'EXTERNAL_FAILURE'});
+    assert.deepEqual(counts(models),[0,1,0,0]);
+  }
+  for(const id of [router,...bindings.filter(item=>item.type==='controller').map(item=>item.id)]){
+    const {agent,models}=setup({world:[recheckWorld]});
+    const output=id===router
+      ? await agent.invokeWorkflow({...request(continuation),workflowId:id})
+      : await agent.invokeController({...request(continuation),controllerId:id});
+    assert.equal(output.result.value.kind,'text');
+    assert.match(output.result.value.text,/RECHECK/);
+    assert.equal(output.result.value.kind==='repair_candidate',false);
+    assert.deepEqual(counts(models),[0,1,0,0]);
+  }
+});

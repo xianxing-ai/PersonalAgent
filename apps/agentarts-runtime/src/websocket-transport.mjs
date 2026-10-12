@@ -1,6 +1,7 @@
 import {timingSafeEqual, randomUUID} from 'node:crypto';
 import {WebSocketServer, WebSocket} from 'ws';
 import {ProtocolError} from '@personal-agent/contracts';
+import {ownedRequestPath} from './request-path.mjs';
 import {
   AGENTARTS_TRANSPORT_VERSION,
   parseAgentArtsTransportFrame,
@@ -194,7 +195,7 @@ export function attachAgentWebSocketTransport(server, {
     socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   };
   const upgrade = (request,socket,head) => {
-    if (request.method !== 'GET' || request.url !== '/ws') return rejectUpgrade(socket,404,'Not Found');
+    if (request.method !== 'GET' || ownedRequestPath(request.url) !== '/ws') return rejectUpgrade(socket,404,'Not Found');
     if (closed || authToken === undefined) return rejectUpgrade(socket,503,'Service Unavailable');
     if (!equalInboundToken(request.headers,authToken)) return rejectUpgrade(socket,401,'Unauthorized');
     if (!safeId(request.headers['x-hw-agentarts-session-id'])) return rejectUpgrade(socket,400,'Bad Request');

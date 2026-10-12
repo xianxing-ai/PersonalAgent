@@ -7,6 +7,7 @@ import {createServer as createTcpServer} from 'node:net';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {fileURLToPath} from 'node:url';
+import {GOAL_PREFIX} from '../../../packages/agentarts/dist/input.js';
 
 const fixture = process.env.PA_TEST_TLS_DIR;
 assert.ok(fixture, 'PA_TEST_TLS_DIR must explicitly name synthetic TLS fixtures');
@@ -78,14 +79,50 @@ try {
   assert.deepEqual(await result(await post(JSON.stringify({goal:'查杭州天气',availableTools:[tool]}))),proposal);
   pending.push({value:{kind:'text',text:'合成天气读回'}});
   assert.equal((await result(await post(JSON.stringify({continuation:{proposalId:'weather-1',state:'confirmed',result:{forecast:'小雨'}}})))).text,'合成天气读回');
-  const change={node:{id:'plan',revision:2},summary:'16:00准备',reason:'会议时间变更',dependencies:[{id:'fact',revision:3}]};
+  const goalId='b'.repeat(64),planId='a'.repeat(64);
+  const change={node:{id:planId,revision:1},summary:'16点准备',reason:'会议时间变更',dependencies:[{id:goalId,revision:2}]};
   const candidate={kind:'repair_candidate',candidateVersion:'1.0',candidate:{expectedGraphRevision:7,changes:[change]}};
-  pending.push({value:{disposition:'REVISE',affected:['plan'],reason:'变更',missing_information:[]}},
+  assert.equal(pending.length,0);
+  const repairStart=requests.length;
+  pending.push({value:{disposition:'REVISE',affected:[planId],reason:'变更',missing_information:[]}},
     {value:{disposition:'REVISE',changes:[change],missing_information:[]}},{value:candidate});
-  const repairContext={expectedGraphRevision:7,targets:[{node:change.node,requestedSummary:change.summary,requestedDependencies:change.dependencies}],allowedDependencies:change.dependencies};
-  assert.deepEqual(await result(await post(JSON.stringify({continuation:{proposalId:'read-1',state:'confirmed',result:{repairContext}}}))),candidate);
+  const repairQuery=GOAL_PREFIX+JSON.stringify({action:'REVISE',strategy:'最小修复',nodes:[
+    {id:goalId,revision:1,kind:'goal',summary:'14点准备',state:'active',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2027-01-01T00:00:00.000Z'},
+    {id:goalId,revision:2,kind:'goal',summary:'16点准备',state:'active',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2027-01-01T00:00:00.000Z'},
+    {id:planId,revision:1,kind:'plan',summary:'14点准备',state:'active',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2027-01-01T00:00:00.000Z'}],
+    repairContext:{expectedGraphRevision:7,targets:[{node:change.node,summary:'14点准备',requestedDependencies:change.dependencies}],allowedDependencies:change.dependencies},
+    omittedSources:0,calibrated:false,executed:false});
+  assert.deepEqual(await result(await post(repairQuery)),candidate);
+  assert.equal(requests.length,repairStart+3);
+  assert.equal(pending.length,0);
+  const repairSystems=requests.slice(repairStart).map(item=>item.messages[0].content);
+  assert.match(repairSystems[0],/observed_facts/);
+  assert.equal(repairSystems[0].includes('preserved_steps'),false);
+  assert.match(repairSystems[1],/preserved_steps/);
+  assert.equal(repairSystems[1].includes('candidateVersion始终1.0'),false);
+  assert.match(repairSystems[2],/candidateVersion始终1\.0/);
+  const sourceLessStart=requests.length;
+  pending.push({value:{disposition:'REVISE',affected:['plan'],reason:'旧报告',missing_information:[]}});
+  const sourceLess=JSON.stringify({continuation:{proposalId:'read-1',state:'confirmed',result:{repairContext:{expectedGraphRevision:7,
+    targets:[{node:{id:'plan',revision:2},requestedSummary:'16:00准备',requestedDependencies:[{id:'fact',revision:3}]}],
+    allowedDependencies:[{id:'fact',revision:3}]}}}});
+  assert.deepEqual(await result(await post(sourceLess)),{kind:'text',text:'RECHECK：世界状态分析缺少确定的修复依据。'});
+  assert.equal(requests.length,sourceLessStart+1);
+  assert.equal(pending.length,0);
+  const sourceLessCall=requests[sourceLessStart];
+  assert.match(sourceLessCall.messages[0].content,/只有repairContext而无原始节点内容必须RECHECK/);
+  assert.equal(sourceLessCall.messages[0].content.includes('preserved_steps'),false);
+  assert.equal(sourceLessCall.messages[0].content.includes('candidateVersion始终1.0'),false);
+  const sourceLessUser=JSON.parse(sourceLessCall.messages[1].content);
+  assert.equal(sourceLessUser.kind,'continuation');
+  assert.equal(Object.hasOwn(sourceLessUser,'nodes'),false);
+  const schemaStart=requests.length;
   pending.push({value:{kind:'text',text:'不合法权限',authorizationRef:'forged'}});
   assert.equal((await post('bad-schema')).status,502);
+  assert.equal(requests.length,schemaStart+1);
+  assert.equal(pending.length,0);
+  assert.match(requests[schemaStart].messages[0].content,/普通问候/);
+  assert.equal(requests[schemaStart].messages[0].content.includes('observed_facts'),false);
   pending.push({status:500});
   const failure=await post('provider-error');
   assert.equal(failure.status,502);
@@ -93,7 +130,7 @@ try {
   pending.push({hang:true});
   assert.equal((await post('deadline',{'x-pa-deadline':new Date(Date.now()+800).toISOString()})).status,504);
   assert.equal((await (await fetch(`${url}/ping`)).json()).status,'Healthy');
-  assert.equal(requests.length,9);
+  assert.equal(requests.length,10);
   assert.equal(pending.length,0);
   assert.equal(transportError,undefined);
   assert.equal(stdout.includes(modelKey)||stdout.includes(inboundToken)||stdout.includes('合成'),false);
@@ -106,7 +143,7 @@ try {
   const stopped=await Promise.race([closed,new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('shutdown timed out')),10000);timer.unref();})]);
   assert.deepEqual(stopped,[0,null]);
   process.stdout.write(JSON.stringify({status:'passed',productionEntry:true,tlsVerification:true,externalNetwork:false,modelRequests:requests.length,
-    cases:['health','auth','text','tool-proposal','continuation','world-plan-review','schema-rejection','sanitized-provider-error','deadline','shutdown']})+'\n');
+    cases:['health','auth','text','tool-proposal','continuation','world-plan-review','source-less-recheck','schema-rejection','sanitized-provider-error','deadline','shutdown']})+'\n');
 } finally {
   if (child.exitCode===null) child.kill('SIGKILL');
   endpoint.closeAllConnections();

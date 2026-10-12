@@ -17,6 +17,17 @@ const context={expectedGraphRevision:7,targets:[{node:{id:'plan',revision:2},req
 const change={node:context.targets[0].node,summary:context.targets[0].requestedSummary,reason:'会议时间变更',dependencies:context.targets[0].requestedDependencies};
 const candidate={kind:'repair_candidate',candidateVersion:'1.0',candidate:{expectedGraphRevision:7,changes:[change]}};
 const repairQuery=JSON.stringify({continuation:{proposalId:'read-1',state:'confirmed',result:{repairContext:context}}});
+const goalId='b'.repeat(64),planNodeId='a'.repeat(64);
+const sourcedChange={node:{id:planNodeId,revision:1},summary:'16点准备',reason:'会议时间变更',dependencies:[{id:goalId,revision:2}]};
+const sourcedCandidate={kind:'repair_candidate',candidateVersion:'1.0',candidate:{expectedGraphRevision:7,changes:[sourcedChange]}};
+const sourcedQuery=GOAL_PREFIX+JSON.stringify({action:'REVISE',strategy:'最小修复',nodes:[
+  {id:goalId,revision:1,kind:'goal',summary:'14点准备',state:'active',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2027-01-01T00:00:00.000Z'},
+  {id:goalId,revision:2,kind:'goal',summary:'16点准备',state:'active',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2027-01-01T00:00:00.000Z'},
+  {id:planNodeId,revision:1,kind:'plan',summary:'14点准备',state:'active',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2027-01-01T00:00:00.000Z'}],
+  repairContext:{expectedGraphRevision:7,targets:[{node:sourcedChange.node,summary:'14点准备',requestedDependencies:sourcedChange.dependencies}],allowedDependencies:sourcedChange.dependencies},
+  omittedSources:0,calibrated:false,executed:false});
+const compactWorld={disposition:'REVISE',affected:[planNodeId],reason:'变更',missing_information:[]};
+const compactPlan={disposition:'REVISE',changes:[sourcedChange],missing_information:[]};
 
 test('ordinary tool proposal and confirmed weather answer use fast only and no trust fields',async()=>{
   const {agent,models}=setup({fast:[proposal,{kind:'text',text:'已确认投影：杭州明天小雨，来源与时间见回执。'}]});
@@ -45,19 +56,37 @@ test('confirmed command result uses no model; nonzero and inconsistent receipts 
   assert.equal(models.fast.requests.length,0);
 });
 test('repair executes World Plan Review once, checks fixed revision/dependencies, emits content-free receipts',async()=>{
-  const {agent,models,receipts}=setup({world:[{disposition:'REVISE',affected:['plan'],reason:'变更',missing_information:[]}],
-    plan:[{disposition:'REVISE',changes:[change],missing_information:[]}],review:[candidate]});
-  assert.deepEqual(await agent.invoke(invoke(repairQuery)),candidate);
+  const {agent,models,receipts}=setup({world:[compactWorld],plan:[compactPlan],review:[sourcedCandidate]});
+  assert.deepEqual(await agent.invoke(invoke(sourcedQuery)),sourcedCandidate);
   assert.deepEqual(['world','plan','review'].map(r=>models[r].requests.length),[1,1,1]);
   assert.deepEqual(receipts.map(r=>r.role),['world','world','plan','plan','review','review']);
-  assert.equal(JSON.stringify(receipts).includes('16:00'),false);
+  assert.equal(JSON.stringify(receipts).includes('16点'),false);
+});
+test('source-less continuation stops before Plan and Review',async()=>{
+  const {agent,models}=setup({world:[{disposition:'REVISE',affected:['plan'],reason:'变更',missing_information:[]}],
+    plan:[{disposition:'REVISE',changes:[change],missing_information:[]}],review:[candidate]});
+  assert.deepEqual(await agent.invoke(invoke(repairQuery)),{kind:'text',text:'RECHECK：世界状态分析缺少确定的修复依据。'});
+  assert.deepEqual(['world','plan','review'].map(r=>models[r].requests.length),[1,0,0]);
+});
+test('source-less compact KEEP returns KEEP before the empty-source check',async()=>{
+  const {agent,models}=setup({world:[{disposition:'KEEP',affected:[],reason:'没有相关影响',missing_information:[]}],
+    plan:[{disposition:'REVISE',changes:[change],missing_information:[]}],review:[candidate]});
+  assert.deepEqual(await agent.invoke(invoke(repairQuery)),{kind:'text',text:'KEEP：世界状态分析无需修复。'});
+  assert.deepEqual(['world','plan','review'].map(r=>models[r].requests.length),[1,0,0]);
+});
+test('source-less versioned KEEP is rejected and does not return KEEP text',async()=>{
+  const versionedKeep={reportVersion:'1.1',revision:7,observed_facts:[],changed_facts:[],affected_items:[],
+    missing_information:[],recommended_disposition:'KEEP',summary:'没有相关影响'};
+  const {agent,models}=setup({world:[versionedKeep],
+    plan:[{disposition:'REVISE',changes:[change],missing_information:[]}],review:[candidate]});
+  await assert.rejects(agent.invoke(invoke(repairQuery)),{code:'EXTERNAL_FAILURE',message:'Invalid versioned role report'});
+  assert.deepEqual(['world','plan','review'].map(r=>models[r].requests.length),[1,0,0]);
 });
 test('repair rejects scope/revision/summary/dependency substitutions and wrong route',async()=>{
-  for(const altered of [{...change,node:{id:'unrelated',revision:2}}, {...change,summary:'编造计划'},
-    {...change,dependencies:[]}, {...change,node:{id:'plan',revision:99}}]) {
-    const {agent}=setup({world:[{disposition:'REVISE',affected:['plan'],reason:'变更',missing_information:[]}],
-      plan:[{disposition:'REVISE',changes:[altered],missing_information:[]}]});
-    await assert.rejects(agent.invoke(invoke(repairQuery)),{code:'EXTERNAL_FAILURE'});
+  for(const altered of [{...sourcedChange,node:{id:'c'.repeat(64),revision:1}}, {...sourcedChange,summary:'编造计划'},
+    {...sourcedChange,dependencies:[]}, {...sourcedChange,node:{id:planNodeId,revision:99}}]) {
+    const {agent}=setup({world:[compactWorld],plan:[{disposition:'REVISE',changes:[altered],missing_information:[]}]});
+    await assert.rejects(agent.invoke(invoke(sourcedQuery)),{code:'EXTERNAL_FAILURE'});
   }
   const {agent}=setup({fast:[candidate]});
   await assert.rejects(agent.invoke(invoke('你好')),{code:'EXTERNAL_FAILURE'});
@@ -93,12 +122,10 @@ test('strict input rejects unconfirmed, injected fields, malformed JSON and dupl
 });
 
 test('review cannot substitute plan and unresolved sources cannot enter repair',async()=>{
-  const world={disposition:'REVISE',affected:['plan'],reason:'变更',missing_information:[]};
-  const plan={disposition:'REVISE',changes:[change],missing_information:[]};
-  const {agent}=setup({world:[world],plan:[plan],review:[{...candidate,candidate:{...candidate.candidate,changes:[{...change,reason:'被替换的理由'}]}}]});
-  await assert.rejects(agent.invoke(invoke(repairQuery)),{code:'EXTERNAL_FAILURE'});
-  for (const badWorld of [{...world,missing_information:['缺少来源']},{...world,affected:[]}]) {
-    const {agent}=setup({world:[badWorld],plan:[plan]});
-    await assert.rejects(agent.invoke(invoke(repairQuery)),{code:'EXTERNAL_FAILURE'});
+  const {agent}=setup({world:[compactWorld],plan:[compactPlan],review:[{...sourcedCandidate,candidate:{...sourcedCandidate.candidate,changes:[{...sourcedChange,reason:'被替换的理由'}]}}]});
+  await assert.rejects(agent.invoke(invoke(sourcedQuery)),{code:'EXTERNAL_FAILURE'});
+  for (const badWorld of [{...compactWorld,missing_information:['缺少来源']},{...compactWorld,affected:[]}]) {
+    const {agent}=setup({world:[badWorld],plan:[compactPlan]});
+    await assert.rejects(agent.invoke(invoke(sourcedQuery)),{code:'EXTERNAL_FAILURE'});
   }
 });

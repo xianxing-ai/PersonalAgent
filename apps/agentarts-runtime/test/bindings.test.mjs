@@ -4,6 +4,7 @@ import {once} from 'node:events';
 import {request as httpRequest} from 'node:http';
 import {WebSocket} from 'ws';
 import {OwnedAgentOrchestrator,getOwnedBindings} from '@personal-agent/agentarts';
+import {GOAL_PREFIX} from '../../../packages/agentarts/dist/input.js';
 import {FakeModelProvider} from '@personal-agent/models';
 import {digestAgentArtsPayload,parseAgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 import {createAgentServer} from '../src/server.mjs';
@@ -16,12 +17,27 @@ const worldBinding=catalog.find(binding=>binding.roles.join(',')==='world');
 const planBinding=catalog.find(binding=>binding.roles.join(',')==='plan');
 const reviewBinding=catalog.find(binding=>binding.roles.join(',')==='review');
 const controller=catalog.find(binding=>binding.type==='controller'&&binding.origin==='new-owned-binding');
-const context={expectedGraphRevision:7,targets:[{node:{id:'plan',revision:2},requestedSummary:'局部修复',requestedDependencies:[{id:'fact',revision:3}]}],allowedDependencies:[{id:'fact',revision:3}]};
-const change={node:context.targets[0].node,summary:'局部修复',reason:'已观察的变化',dependencies:context.targets[0].requestedDependencies};
-const world={disposition:'REVISE',affected:['plan'],reason:'已观察的变化',missing_information:[]};
-const plan={disposition:'REVISE',changes:[change],missing_information:[]};
-const candidate={kind:'repair_candidate',candidateVersion:'1.0',candidate:{expectedGraphRevision:7,changes:[change]}};
-const repair=JSON.stringify({continuation:{proposalId:'synthetic-read',state:'confirmed',result:{repairContext:context}}});
+const goalId='b'.repeat(64),planId='a'.repeat(64),otherId='c'.repeat(64);
+const ref=(id,revision=1)=>({id,revision});
+const node=(id,revision,kind,summary)=>({id,revision,kind,summary,state:'active',
+  validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2027-01-01T00:00:00.000Z'});
+const repair=GOAL_PREFIX+JSON.stringify({action:'REVISE',strategy:'最小修复',nodes:[
+  node(goalId,1,'goal','14点准备'),node(goalId,2,'goal','16点准备'),node(planId,1,'plan','14点准备'),node(otherId,1,'plan','其他工作')],
+  repairContext:{expectedGraphRevision:7,targets:[
+    {node:ref(planId),summary:'14点准备',requestedDependencies:[ref(goalId,2)]},
+    {node:ref(otherId),summary:'其他工作',requestedDependencies:[ref(goalId,2)]}],allowedDependencies:[ref(goalId,2)]},
+  omittedSources:0,calibrated:false,executed:false});
+const world={reportVersion:'1.1',revision:7,observed_facts:[
+  {node:ref(goalId),fact:'14点准备',confidence:'explicit'},{node:ref(goalId,2),fact:'16点准备',confidence:'explicit'}],
+  changed_facts:[{previous:ref(goalId),current:ref(goalId,2),change:'目标时间变化'}],
+  affected_items:[{kind:'plan_step',node:ref(planId),impact:'direct',reason:'目标时间变化'}],
+  missing_information:[],recommended_disposition:'REVISE',summary:'只改准备时间'};
+const plan={reportVersion:'1.1',base_revision:7,disposition:'REVISE',preserved_steps:[{node:ref(otherId),reason:'其他工作不受影响'}],
+  rechecked_steps:[],revised_steps:[{node:ref(planId),replacement:'16点准备',reason:'目标时间变化'}],removed_steps:[],
+  dependency_updates:[{node:ref(planId),dependencies:[ref(goalId,2)],reason:'使用新目标版本'}],
+  evidence_required:['本地Policy、CAS及执行读回'],missing_information:[],local_next_actions:[]};
+const candidate={kind:'repair_candidate',candidateVersion:'1.0',candidate:{expectedGraphRevision:7,
+  changes:[{node:ref(planId),summary:'16点准备',reason:'目标时间变化',dependencies:[ref(goalId,2)]}]}};
 const app={kind:'text',text:'synthetic binding answer'};
 const envelope=(binding,query='synthetic ordinary goal',extra={})=>({bindingVersion:'1.0.0',type:binding.type,id:binding.id,query,...extra});
 const wrapper=(binding,result={kind:'application_result',value:app})=>({bindingVersion:'1.0.0',binding:{id:binding.id,name:binding.name,type:binding.type,origin:binding.origin},verification:'unverified',result});
@@ -152,22 +168,37 @@ test('actual WS keeps role reports in binding wrappers and never produces an old
   assert.equal((await connection.next('error')).code,'INVALID_ARGUMENT');assert.equal(models.fast.requests.length,0);
 });
 
-test('valid non-ASCII World reports retain the core JSON character budget through actual Plan dispatch',async t=>{
-  const report={...world,reason:'已确认变化'.repeat(1600)};
+test('versionless World reports stop before Plan, while valid Chinese reports keep the JSON character budget',async t=>{
+  const legacy={disposition:'REVISE',affected:[planId],reason:'已确认变化'.repeat(1600),missing_information:[]};
+  const legacyEncoded=JSON.stringify(legacy);
+  assert.ok(legacyEncoded.length<=16_000);assert.ok(Buffer.byteLength(legacyEncoded,'utf8')>16_000);
+  const {url,models}=await host(t);
+  const rejected=await post(url,envelope(planBinding,repair,{world:legacy}));
+  assert.equal(rejected.status,502);assert.match(await rejected.text(),/EXTERNAL_FAILURE/);
+  assert.equal(models.plan.requests.length,0);
+  const oldSummary='甲'.repeat(1024),newSummary='乙'.repeat(1024),extra='丙'.repeat(1024),extraId='d'.repeat(64);
+  const report={...world,observed_facts:[
+    {node:ref(goalId),fact:oldSummary,confidence:'explicit'},{node:ref(goalId,2),fact:newSummary,confidence:'explicit'},
+    {node:ref(extraId),fact:extra,confidence:'explicit'}],
+    changed_facts:[{previous:ref(goalId),current:ref(goalId,2),change:'丁'.repeat(1024)}],
+    affected_items:[{kind:'plan_step',node:ref(planId),impact:'direct',reason:'戊'.repeat(1024)}],summary:'己'.repeat(1024)};
   const encoded=JSON.stringify(report);
   assert.ok(encoded.length<=16_000);assert.ok(Buffer.byteLength(encoded,'utf8')>16_000);
-  const {url,models}=await host(t);
-  const response=await post(url,envelope(planBinding,repair,{world:report}));
+  const payload=JSON.parse(repair.slice(GOAL_PREFIX.length));
+  payload.nodes.find(item=>item.id===goalId&&item.revision===1).summary=oldSummary;
+  payload.nodes.find(item=>item.id===goalId&&item.revision===2).summary=newSummary;
+  payload.nodes.push(node(extraId,1,'fact',extra));
+  const response=await post(url,envelope(planBinding,GOAL_PREFIX+JSON.stringify(payload),{world:report}));
   assert.equal(response.status,200);
   const result=await output(response);assert.equal(result.result.kind,'role_report');assert.equal(result.result.role,'plan');
   assert.deepEqual(result.result.value,plan);assert.equal(models.plan.requests.length,1);
   assert.deepEqual(JSON.parse(models.plan.requests[0].messages[1].content).world,report);
-  const overLimit={...world,reason:'中'.repeat(16_001)};
+  const overLimit={...report,summary:'中'.repeat(16_001)};
   assert.ok(JSON.stringify(overLimit).length>16_000);
   assert.equal((await post(url,envelope(planBinding,repair,{world:overLimit}))).status,400);
   assert.equal(models.plan.requests.length,1);
-  const outOfScope={...report,affected:['not-in-repair-context']};
-  const invalid=await post(url,envelope(planBinding,repair,{world:outOfScope}));
+  const outOfScope=structuredClone(report);outOfScope.affected_items[0].node={id:'e'.repeat(64),revision:1};
+  const invalid=await post(url,envelope(planBinding,GOAL_PREFIX+JSON.stringify(payload),{world:outOfScope}));
   assert.equal(invalid.status,502);assert.match(await invalid.text(),/EXTERNAL_FAILURE/);
   assert.equal(models.plan.requests.length,1);
 });
@@ -211,4 +242,44 @@ test('bound calls share HTTP/WS limits, cancellation, deadlines and shutdown wit
   assert.equal(invocation.signal.aborted,true);
   const final=frame(envelope(fast),'shutdown');connection.send(final);await connection.next('accepted');
   const closed=once(connection.socket,'close');server.close();await closed;assert.equal(calls.at(-1).signal.aborted,true);
+});
+
+test('HTTP rejects versionless reports and source-less repair on both Plan and Review bindings',async t=>{
+  const {url,models}=await host(t);
+  const legacyWorld={disposition:'REVISE',affected:[planId],reason:'调用方替换的旧报告',missing_information:[]};
+  const legacyPlan={disposition:'REVISE',changes:candidate.candidate.changes,missing_information:[]};
+  const continuation=JSON.stringify({continuation:{proposalId:'synthetic-read',state:'confirmed',result:{repairContext:{
+    expectedGraphRevision:7,targets:[{node:ref(planId),requestedSummary:'16点准备',requestedDependencies:[ref(goalId,2)]}],
+    allowedDependencies:[ref(goalId,2)]}}}});
+  for(const binding of catalog.filter(item=>item.roles.join(',')==='plan')){
+    const response=await post(url,envelope(binding,repair,{world:legacyWorld}));
+    assert.equal(response.status,502,binding.name);assert.match(await response.text(),/EXTERNAL_FAILURE/);
+  }
+  for(const binding of catalog.filter(item=>item.roles.join(',')==='review')){
+    const response=await post(url,envelope(binding,continuation,{world,plan:legacyPlan}));
+    assert.equal(response.status,502,binding.name);assert.match(await response.text(),/EXTERNAL_FAILURE/);
+  }
+  assert.equal(models.plan.requests.length,0);assert.equal(models.review.requests.length,0);
+});
+
+test('default controller keeps ordinary answers and does not emit a source-less repair candidate',async t=>{
+  const continuation=JSON.stringify({continuation:{proposalId:'synthetic-read',state:'confirmed',result:{repairContext:{
+    expectedGraphRevision:7,targets:[{node:ref(planId),requestedSummary:'16点准备',requestedDependencies:[ref(goalId,2)]}],
+    allowedDependencies:[ref(goalId,2)]}}}});
+  const blocked=await host(t,{defaultControllerId:controller.id});
+  assert.deepEqual(await output(await post(blocked.url,'ordinary legacy query')),app);
+  const rejected=await post(blocked.url,continuation);
+  assert.equal(rejected.status,502);assert.match(await rejected.text(),/EXTERNAL_FAILURE/);
+  assert.equal(blocked.models.plan.requests.length,0);assert.equal(blocked.models.review.requests.length,0);
+  const recheck={reportVersion:'1.1',revision:7,observed_facts:[],changed_facts:[],affected_items:[],
+    missing_information:['没有宿主来源投影'],recommended_disposition:'RECHECK',summary:'补齐来源后再判断'};
+  const models=Object.fromEntries(['fast','world','plan','review'].map(role=>[role,new FakeModelProvider(
+    [{kind:'final',text:JSON.stringify(role==='world'?recheck:app)}])]));
+  const stopped=await host(t,{defaultControllerId:controller.id,orchestrator:new OwnedAgentOrchestrator(models,2048)});
+  const text=await output(await post(stopped.url,continuation));
+  assert.equal(text.kind,'text');assert.match(text.text,/RECHECK/);
+  assert.equal(models.plan.requests.length,0);assert.equal(models.review.requests.length,0);
+  const positive=await host(t,{defaultControllerId:controller.id});
+  assert.deepEqual(await output(await post(positive.url,repair)),candidate);
+  assert.deepEqual([positive.models.world.requests.length,positive.models.plan.requests.length,positive.models.review.requests.length],[1,1,1]);
 });
