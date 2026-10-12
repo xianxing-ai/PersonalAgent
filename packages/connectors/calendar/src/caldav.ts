@@ -318,8 +318,15 @@ export class CalDavProvider implements CalendarProvider {
     const controller = new AbortController();
     const abort = (): void => controller.abort();
     context?.signal?.addEventListener('abort', abort, {once: true});
-    const remainingMs = context?.deadline === undefined ? this.requestTimeoutMs : Date.parse(context.deadline) - Date.now();
-    const timeout = setTimeout(abort, Math.max(0, Math.min(this.requestTimeoutMs, remainingMs)));
+    const startedAt = Date.now();
+    const remainingMs = context?.deadline === undefined ? this.requestTimeoutMs : Date.parse(context.deadline) - startedAt;
+    const timeoutAt = startedAt + Math.min(this.requestTimeoutMs, remainingMs);
+    const expire = (): void => {
+      const remaining = timeoutAt - Date.now();
+      if (remaining > 0) {timeout = setTimeout(expire, remaining); return;}
+      abort();
+    };
+    let timeout = setTimeout(expire, Math.max(0, timeoutAt - Date.now()));
     const interrupted = (): ProtocolError => {
       assertReadActive(context);
       return new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 请求超时', true);
