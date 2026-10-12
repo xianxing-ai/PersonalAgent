@@ -2,7 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {lstatSync, realpathSync, statSync} from 'node:fs';
 import * as path from 'node:path';
 import {KnowledgeError} from './index.js';
-import type {KnowledgePort} from './index.js';
+import type {KnowledgePort, KnowledgeSource} from './index.js';
 import type {ObsidianReadOnlyPort} from './obsidian.js';
 
 export interface ObsidianPairingDescriptor {
@@ -20,6 +20,17 @@ export interface ObsidianPairingPeer extends KnowledgePort {
   readonly signal: AbortSignal;
   assertCurrent(): void;
   close(): void;
+  /** Optional for search-only version 1 peers. No reusable read or Memory authority. */
+  readCitation?: ObsidianReadOnlyPort['readCitation'];
+}
+
+export function validatePairingCitation(source: KnowledgeSource, descriptor: ObsidianPairingDescriptor): void {
+  if (!source || Object.keys(source).length !== 4
+    || Object.keys(source).some(key => !['vaultId', 'path', 'line', 'revision'].includes(key))
+    || source.vaultId !== descriptor.vaultId || !isPairingPath(source.path) || !/\.md$/i.test(source.path)
+    || !Number.isSafeInteger(source.line) || source.line < 1
+    || typeof source.revision !== 'string' || !/^[a-f0-9]{64}$/.test(source.revision)) throw new KnowledgeError('INVALID_ARGUMENT');
+  if (descriptor.folder !== '/' && !source.path.startsWith(descriptor.folder + '/')) throw new KnowledgeError('SCOPE_DENIED');
 }
 
 export function isPairingPath(value: unknown): value is string {
@@ -77,6 +88,15 @@ export function createObsidianPairingPeer(options: {
       const signal = AbortSignal.any([request.signal, controller.signal]);
       if (signal.aborted) throw new KnowledgeError('CANCELLED');
       const result = await options.port.search({...request, signal});
+      assertCurrent();
+      if (signal.aborted) throw new KnowledgeError('CANCELLED');
+      return result;
+    },
+    async readCitation(request) {
+      assertCurrent(); validatePairingCitation(request.source, descriptor);
+      const signal = AbortSignal.any([request.signal, controller.signal]);
+      if (signal.aborted) throw new KnowledgeError('CANCELLED');
+      const result = await options.port.readCitation({...request, signal});
       assertCurrent();
       if (signal.aborted) throw new KnowledgeError('CANCELLED');
       return result;

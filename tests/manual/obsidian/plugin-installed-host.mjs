@@ -23,6 +23,7 @@ const vault = path.join(base, 'Synthetic-Plugin-Acceptance'), config = path.join
 const vaultId = '0011223344556677', pluginId = 'personal-agent-knowledge';
 mkdirSync(profile); mkdirSync(path.join(vault, 'Allowed'), {recursive: true}); mkdirSync(config);
 writeFileSync(path.join(vault, 'Allowed', 'note.md'), 'Synthetic GOO122 needle <img src=x onerror=alert(1)>\n');
+writeFileSync(path.join(vault, 'Allowed', 'keep.md'), 'Synthetic preserved memory fixture\n');
 writeFileSync(path.join(vault, 'unrelated.md'), 'Unrelated synthetic note must remain unchanged\n');
 writeFileSync(path.join(config, 'core-plugins.json'), '[]');
 writeFileSync(path.join(config, 'community-plugins.json'), '[]');
@@ -54,7 +55,7 @@ function sensitiveCode() {
     const result = execFileSync(cli, ['vault=' + vaultId, 'eval', 'code=(()=>{' + code + '})()', '--user-data-dir=' + profile],
       {encoding: 'utf8', timeout: 20000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore']});
     const json = result.split(/\r?\n/).map(line => line.replace(/^=> /, '')).find(line => line.startsWith('{'));
-    const value = JSON.parse(json).code; if (typeof value !== 'string' || !value.startsWith('PA1.')) throw Error();
+    const value = JSON.parse(json).code; if (typeof value !== 'string' || !value.startsWith('PA2.')) throw Error();
     return value;
   } catch {throw Error('Synthetic plugin did not produce a valid private pairing code');}
 }

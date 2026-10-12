@@ -1,6 +1,13 @@
 # 当前接口目录与冻结登记
 
-2026-10-11 本地未提交增量：[MOD-08M](../modules/MOD-08M-UNICODE-PAIRING-01.md)
+2026-10-11 [MOD-08O](../modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md) 在 PR #322 上继续：
+peer 可选 readCitation、桥接版本 2（PA2，旧 PA1 仅检索）与 Runtime `wikiSource.acquireWiki`。
+TrustedKnowledgeSource 的读取租约可选提供既有 ReadOnlyPageVaultPort.readPage；缺少稳定页
+身份或引用能力时记忆来源 unavailable。接入原 WikiSource/逐条确认，不增加 task wire
+capability、迁移或依赖。接口保持 provisional，未完成真实用户/云端或主线集成验收；
+方案见 [ADR-0021](../adr/0021-paired-citation-memory.md)。
+
+2026-10-11 [PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322) 已交付、待非作者评审/集成：[MOD-08M](../modules/MOD-08M-UNICODE-PAIRING-01.md)
 新增 `@personal-agent/knowledge/pairing` 与 Runtime Application `createObsidianPairingHost`。
 它们是 **host-only provisional** 组合端口，复用既有 KnowledgePort 和工具/Policy 链，
 不新增 task wire operation、数据库迁移或云 capability。后续本地增量

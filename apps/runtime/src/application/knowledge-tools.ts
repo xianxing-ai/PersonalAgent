@@ -1,6 +1,7 @@
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolHost} from '@personal-agent/contracts';
 import type {KnowledgePort} from '@personal-agent/knowledge';
+import type {ReadOnlyPageVaultPort} from '@personal-agent/knowledge/filesystem';
 import {createKnowledgeSearchTool} from '@personal-agent/knowledge/tool';
 import {createKnowledgeWriteTool} from '@personal-agent/knowledge/write';
 import type {KnowledgeNotePatch, KnowledgeWriteReceipt, KnowledgeWritePort, KnowledgeWriteFinalizationAcceptance} from '@personal-agent/knowledge/write';
@@ -16,7 +17,7 @@ export interface TrustedKnowledgeBinding {
 export interface TrustedKnowledgeSource {
   snapshot(): TrustedKnowledgeBinding;
   acquire(expected: {sourceId: string; configRevision: number}, signal: AbortSignal): {
-    binding: TrustedKnowledgeBinding; read: KnowledgePort; write?: KnowledgeWritePort;
+    binding: TrustedKnowledgeBinding; read: KnowledgePort & Partial<Pick<ReadOnlyPageVaultPort, 'readPage'>>; write?: KnowledgeWritePort;
     reconcileWrite?: KnowledgeWritePort['reconcile'];
     finalizeWrite?: KnowledgeWritePort['finalize'];
     signal: AbortSignal; assertCurrent(): void; release(): void;

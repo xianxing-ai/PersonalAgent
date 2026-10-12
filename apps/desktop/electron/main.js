@@ -427,7 +427,8 @@ function privateMemoryController() {
       const answer = await dialog.showMessageBox(originAdmin, {
         type: 'question', title: '确认私人记忆',
         message: details.previous ? '确认更正这条私人记忆？' : '确认保存这条私人记忆？',
-        detail: `来源：${details.source.path}:${details.source.line}\n摘录：${details.citation}\n\n拟保存：${details.summary}`,
+        detail: `来源：${details.source.path}:${details.source.line}\n来源版本：${details.source.revision}\n摘录：${details.citation}\n\n拟保存：${details.summary}`,
+        signal: details.signal,
         buttons: ['确认保存', '取消'], defaultId: 1, cancelId: 1, noLink: true,
       });
       return answer.response === 0 && admin===originAdmin && !originAdmin.isDestroyed();
@@ -439,7 +440,7 @@ function privateMemoryController() {
         buttons: ['删除所有版本', '取消'], defaultId: 1, cancelId: 1, noLink: true,
       });
       return answer.response === 0 && admin===originAdmin && !originAdmin.isDestroyed();
-    }, {knowledgeSource:()=>knowledgeSourceConfig, confirmWithdraw:async current=>{
+    }, {knowledgeSource:()=>obsidianPairing?.memorySource, confirmWithdraw:async current=>{
       const originAdmin=admin;if(!originAdmin || originAdmin.isDestroyed())return false;
       const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'撤回私人记忆',
         message:'停止后续任务消费这条私人记忆？',detail:`版本 ${current.ref?.revision??current.revision}`,
@@ -497,7 +498,7 @@ function snapshot(surface) {
     health: structuredClone(health),
     capabilityDirectory: {...capabilityDirectory},
     privateMemory: {available: competitionMode && Boolean(runtimeApplication),
-      vaultSelected: knowledgeSourceConfig?.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
+      vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     approvals: [...approvals.values()],
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
@@ -1646,7 +1647,10 @@ async function initializeRuntime() {
         learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
       await memoryLearningHost.recover();
       wikiSourceMonitor?.close();
-      wikiSourceMonitor=runtimeModule.createWikiSourceMonitor({source:knowledgeSourceConfig,
+      wikiSourceMonitor=runtimeModule.createWikiSourceMonitor({source:{
+        snapshot:()=>({...knowledgeSourceConfig.snapshot(),available:obsidianPairing.snapshot().mode!=='plugin'
+          && knowledgeSourceConfig.snapshot().available}),
+        acquireWiki:(expected,context)=>obsidianPairing.memorySource.acquireWiki(expected,context)},
         revalidate:(input,context)=>privateMemoryController().revalidateSources(input,context)});
       // Original source writes are never retried. Only known receipts resume local projection checks.
       let projectionBefore,projectionSnapshot;
@@ -2487,6 +2491,7 @@ async function action(event, name, payload) {
     }
     if (name === 'memory.selectVault') {
       if (!knowledgeSourceConfig) throw Error('受信知识源尚未就绪');
+      obsidianPairing?.useFilesystem();
       const before = knowledgeSourceConfig.snapshot().sourceId;
       const selected = await knowledgeSourceConfig.select();
       privateMemoryController();
