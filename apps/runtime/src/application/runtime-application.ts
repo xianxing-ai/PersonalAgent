@@ -692,11 +692,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   readConversationContext(input:{taskId:string;conversationId:string;deadline:string;signal:AbortSignal;
     historyMessages?:readonly ConversationContextMessage[]}):ConversationContextMessage[] {
     const task=this.runtime.getTask(input.taskId);
-    if(task.conversationId!==input.conversationId || !Number.isFinite(Date.parse(input.deadline)) || input.signal.aborted
+    if(task.conversationId!==input.conversationId || task.cancelRequested || !Number.isFinite(Date.parse(input.deadline)) || input.signal.aborted
       || this.now().getTime()>=Date.parse(input.deadline))throw new ProtocolError('UNAUTHORIZED','Conversation scope expired');
     const result=new Map<string,ConversationContextMessage>();
+    const eligibleTasks=new Set<string>();
     for(const turn of this.runtime.readConversationHistory(input.conversationId,input.taskId,CONVERSATION_HISTORY_LIMIT)) {
       if(this.isHistoryWithheld(turn.taskId))continue;
+      eligibleTasks.add(turn.taskId);
       result.set(turn.taskId+':user',{id:turn.taskId+':user',taskId:turn.taskId,role:'user',content:turn.goal});
       result.set(turn.taskId+':assistant',{id:turn.taskId+':assistant',taskId:turn.taskId,role:'assistant',content:assistantText(turn.resultSummary)});
     }
@@ -704,6 +706,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(!nonEmptyText(message.id) || !['user','assistant'].includes(message.role) || typeof message.content!=='string') {
         throw new ProtocolError('INVALID_ARGUMENT','Invalid history overlay');
       }
+      if(message.taskId!==undefined && !eligibleTasks.has(message.taskId))continue;
       if(message.withheld || (message.taskId && this.isHistoryWithheld(message.taskId)))result.delete(message.id);
       else if(message.taskId!==input.taskId)result.set(message.id,structuredClone(message));
     }
