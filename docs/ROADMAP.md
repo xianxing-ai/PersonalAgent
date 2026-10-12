@@ -1,5 +1,16 @@
 # 开发计划与进度
 
+### 2026-10-12 goo122 PR #320～#323 原写入恢复 P2 修复（review）
+
+非作者指出的共同继承问题已由 `5918e706` 修复：同 Vault 配置升版后，原写入仍按原
+intent/execution/摘要/Evidence/finalization 确认，投影保留原绑定并独立恢复；正文不重写，
+当前读取权限不放宽。修复已顺序合入 #321→#322→#323，全部原功能和提交保留。
+真实 Windows/SQLite 复现及定向 15/15；最终组合 check 2717 项（2692 pass/25 skip/0 fail）
+与实际 Obsidian/Electron 双进程合成复验通过。记录见
+[MOD-08I](modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)，原生决定 explicit Fake、云调用 0。
+更新后 head 的远程 CI 与非作者重审单独核对；原 CHANGES_REQUESTED 未由作者撤销，
+未合并或发布。其他未合并 PR 的互相冲突仍属于后续集成，完整 MOD-08/09 保持 in_progress。
+
 ### 2026-10-12 goo122 配对后持久引用恢复（review）
 
 继续 [PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323) 的验收：实际 Desktop 重启后
