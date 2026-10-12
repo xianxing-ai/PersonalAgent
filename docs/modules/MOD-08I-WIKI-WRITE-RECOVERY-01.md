@@ -76,6 +76,18 @@ pending=1/unknown=0，0 次投影读取。重复核实/恢复仍不重写；无�
 explicit Fake，云调用 0，原 Vault 未访问/修改。将按 #320→#321→#322→#323 传播并进行
 最终组合门禁；原评审的 CHANGES_REQUESTED 不由作者自行撤销，须更新 head 后重审。
 
+最终修复源为 `5918e706`，已通过本地合并同步全部四分支，生产修复内容一致。
+在最终 #323 组合 `503c41e3` 上 `npm run check` 退出 0：**2717 tests / 2692 pass /
+25 skip / 0 fail / 0 cancelled**，包括架构、生成类型、类型检查、workspace 与根集成。
+日志 `.cache/pr320-stack-full-check.log`；使用既有隔离 .NET SDK 8，保留中文 TEMP。
+
+同一组合实际 Obsidian/Electron 双进程合成复验退出 0，日志
+`.cache/pr320-stack-dual-process.log`，证据 `.cache/obsidian-installed-host/case-j4wtpj/evidence.json`
+为 verified：配对/撤销、旧码拒绝、实际重启后重新配对、已存引用读回、重复保存不增版、
+再次撤回和指定事实删除均通过。Fake 原生决定、云调用 0、原 Vault 未访问/修改的边界不变；
+进程已关闭、合成插件已卸载。该组合证据不冒充各历史 head 的测试或真实人工/云验收。
+后续补充仅为文档记录，不改变已验证生产代码；远程检查以更新后各 PR head 为准。
+
 ## 范围外与下一阶段
 
 MOD-08/09 仍 `in_progress`。完整 LLM Wiki、后台 watcher/全库索引、可安装 Obsidian
