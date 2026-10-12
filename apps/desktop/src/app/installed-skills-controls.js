@@ -49,7 +49,7 @@ export function mountInstalledSkillsControls(root,invoke) {
         if(action==='uninstall') {host.querySelector('[data-skill-preview]').textContent='';resources.hidden=true;}
         status.textContent=action==='install'?(result.enabled?'此版本已安装且已启用。':'已安装，当前停用。'):action==='enable'?'启停已更新；旧使用许可不会恢复。':'已卸载应用副本，原目录保留。';
       }
-    } catch {if(host.isConnected)status.textContent=action==='resource'?'资源未显示。仅支持安装快照中最多 64 KiB 的普通 UTF-8 文本；二进制、控制字符或已卸载资源不可预览。':'操作未完成。请检查 Skill 格式、版本、启用状态及模型配置；不同版本请先卸载再安装。';}
+    } catch(error) {if(host.isConnected)status.textContent=action==='run' && /(?:Skill 与任务合并后|任务、Skill 与对话上下文合并后)超过 16000 字符限制/.test(String(error?.message??error))?'任务、Skill 与对话上下文超过 16000 字符限制；请缩短内容或减少对话历史。':action==='resource'?'资源未显示。仅支持安装快照中最多 64 KiB 的普通 UTF-8 文本；二进制、控制字符或已卸载资源不可预览。':'操作未完成。请检查 Skill 格式、版本、启用状态及模型配置；不同版本请先卸载再安装。';}
     finally {busy=false;buttons();}
   });
   return {show:visible=>{host.hidden=!visible;},render(value,tasks=[],ready=false){
