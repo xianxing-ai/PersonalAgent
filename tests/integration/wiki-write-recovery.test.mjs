@@ -25,9 +25,10 @@ async function fixture(t){
   const binding={sourceId:'synthetic-source',namespace:'synthetic',configRevision:1,available:true,
     writeAvailable:true,dataLevel:'public',cloudExportAllowed:false,publicQueries:[],allowedNotePaths:['one.md']};
   const reader=await openReadOnlyVault({vaultId:binding.sourceId,rootPath:root});
-  let writes=0,failProjection=true,crash=false,controller,app,factory;
-  const writer=openControlledVaultWriter({rootPath:root,recoveryRootPath:recovery,powerShellPath,
-    sourceId:binding.sourceId,configRevision:1,allowedNotePaths:binding.allowedNotePaths,bindingCurrent:()=>binding.available});
+  let writes=0,projections=0,failProjection=true,crash=false,controller,app,factory;
+  const openWriter=()=>openControlledVaultWriter({rootPath:root,recoveryRootPath:recovery,powerShellPath,
+    sourceId:binding.sourceId,configRevision:binding.configRevision,allowedNotePaths:binding.allowedNotePaths,bindingCurrent:()=>binding.available});
+  let writer=openWriter();
   const host={snapshot:()=>({...binding}),acquire(expected,signal){
     assert.equal(expected.sourceId,binding.sourceId);assert.equal(expected.configRevision,binding.configRevision);
     if(!binding.available)throw Error('revoked');
@@ -45,6 +46,7 @@ async function fixture(t){
     // Native decisions are explicit Fakes; only public synthetic files are used.
     controller=createPrivateMemoryController(memoryPath,async()=>true,async()=>true,{knowledgeSource:()=>host});
     factory=createTrustedKnowledgeTools(host,{revalidate:async(input,context)=>{
+      projections++;
       if(failProjection)throw Error('synthetic SQLite projection failure');
       await controller.revalidateSource(input,context);
     }});
@@ -69,6 +71,7 @@ async function fixture(t){
     edits:[{oldText:'hello original',newText:'hello organized'}]};
   return {root,recovery,first,other,args,get app(){return app;},get factory(){return factory;},get controller(){return controller;},
     counts:()=>writes,fail:value=>{failProjection=value;},crash:value=>{crash=value;},
+    projections:()=>projections,advanceConfiguration(){binding.configRevision++;writer=openWriter();},
     heads(){const store=openSqliteMemoryHost(memoryPath);try{return [store.readUserFactHead('desktop-private',first.id),
       store.readUserFactHead('desktop-private',other.id)];}finally{store.close();}},
     async restart(){controller.close();app.close();open();},
@@ -92,14 +95,36 @@ test('real write/readback survives projection failure and restart; recovery chan
   assert.equal(f.app.runtime.getTask(taskId).state,'succeeded');
 });
 
+test('configuration revision changes keep original readback finalization independent from pending projection', {skip:!windows},async t=>{
+  const f=await fixture(t);f.crash(true);f.fail(false);const taskId=await f.submit();
+  assert.equal(f.app.runtime.getTask(taskId).state,'waiting_reconciliation');
+  const intent=f.app.runtime.loadCheckpoint(taskId,'host-tool-intent');
+  const body=await readFile(join(f.root,'one.md'),'utf8');
+  f.advanceConfiguration();await f.restart();
+  await f.app.reconcileKnowledgeWriteTask(taskId,scope());
+  assert.equal(f.app.runtime.getTask(taskId).state,'succeeded');
+  assert.equal(f.app.runtime.readToolExecutions(taskId)[0].state,'confirmed');
+  assert.deepEqual(f.app.runtime.loadCheckpoint(taskId,'host-tool-intent'),intent);
+  assert.ok(f.app.runtime.readEvidence(taskId).some(e=>e.sourceRef==='runtime:knowledge-readback'&&e.verification==='verified'));
+  assert.deepEqual(await f.factory.recoverProjection(taskId,scope()),{pending:1,unknown:0});
+  await f.app.reconcileKnowledgeWriteTask(taskId,scope());
+  assert.deepEqual(await f.factory.recoverProjection(taskId,scope()),{pending:1,unknown:0});
+  assert.equal(f.projections(),0,'the old checkpoint must not authorize a read under the new configuration');
+  assert.equal(f.counts(),1);assert.equal(await readFile(join(f.root,'one.md'),'utf8'),body);
+  assert.equal(await readFile(join(f.root,'two.md'),'utf8'),'hello unrelated\n');
+  assert.equal(f.heads()[0].state,'active');assert.deepEqual(f.heads()[1].ref,f.other);
+});
+
 test('interrupted real write stays unknown until trusted Runtime readback/finalization; recovery never replays the write', {skip:!windows},async t=>{
   const f=await fixture(t);f.crash(true);f.fail(false);const taskId=await f.submit();
   assert.equal(f.app.runtime.getTask(taskId).state,'waiting_reconciliation');assert.equal(f.counts(),1);
   await f.restart();const body=await readFile(join(f.root,'one.md'),'utf8');
   assert.deepEqual(await f.factory.recoverProjection(taskId,scope()),{pending:0,unknown:1});assert.equal(f.heads()[0].state,'active');
   await f.app.reconcileKnowledgeWriteTask(taskId,scope());
-  assert.equal(f.app.runtime.getTask(taskId).state,'succeeded');assert.equal(f.heads()[0].state,'withdrawn');
+  assert.equal(f.app.runtime.getTask(taskId).state,'succeeded');assert.equal(f.heads()[0].state,'active');
+  assert.equal(f.projections(),0,'original finalization must not wait for projection reads');
   assert.deepEqual(await f.factory.recoverProjection(taskId,scope()),{pending:0,unknown:0});
+  assert.equal(f.heads()[0].state,'withdrawn');
   assert.equal(f.counts(),1);assert.equal(await readFile(join(f.root,'one.md'),'utf8'),body);
   assert.deepEqual(f.heads()[1].ref,f.other);
 });

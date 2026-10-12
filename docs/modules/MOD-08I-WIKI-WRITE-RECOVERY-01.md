@@ -55,6 +55,27 @@ finalize。管理页“核实原整理任务”同时返回投影是否待恢复
 原生决定与配置绑定使用显式 Fake；真实写入/读回发生在独立公开合成 Vault，使用实际
 SQLite、Runtime 和 Windows helper。未读取或写入 `D:\test\知识库`，未调用 AgentArts。
 
+## 2026-10-12：PR #320 原结果确认与投影恢复分离
+
+非作者审查指出，同 Vault 配置 revision 从 1 升至 2 后，原正文已写入并真实读回/finalize，
+但投影当前 binding 检查抛 SCOPE_DENIED，阻止 Runtime 原任务确认。原 #320～#323 都继承该问题。
+
+新增 Windows 原生 writer/真实 SQLite 回归先复现上述失败（`.cache/pr320-projection-repro.log`）。
+修复保留普通回执的当前完整 binding 检查；原 Runtime 核实器通过 intent/execution/参数摘要/
+Evidence/finalize 后，按投影检查点的原 sourceId/configRevision/path 及摘要接受已知结果。
+只将 unknown 转 pending，不更新旧绑定或授予读取许可。finalize 不再读取投影；先提交原
+Runtime 结果，再由已有 Desktop/启动 `recoverProjection` 入口独立恢复。
+
+定向 Runtime 构建及原核实/工具/投影/真实写回组合最终 **15/15、0 skip**：
+`.cache/pr320-projection-final-tests.log`。实际同 Vault 升版、原路径仍获许可时，原任务
+succeeded、execution confirmed、可信 readback Evidence 保留，正文只写一次；旧投影
+pending=1/unknown=0，0 次投影读取。重复核实/恢复仍不重写；无关笔记/事实保留。
+原配置信息、参数摘要、来源或路径替换仍拒绝，来源撤销/期限/取消检查保持。
+
+本增量无新 wire operation、数据库迁移或依赖，接口仍 provisional；合成原生决定为
+explicit Fake，云调用 0，原 Vault 未访问/修改。将按 #320→#321→#322→#323 传播并进行
+最终组合门禁；原评审的 CHANGES_REQUESTED 不由作者自行撤销，须更新 head 后重审。
+
 ## 范围外与下一阶段
 
 MOD-08/09 仍 `in_progress`。完整 LLM Wiki、后台 watcher/全库索引、可安装 Obsidian
