@@ -1,4 +1,4 @@
-name: Design reading confirmations
+name: Design review approval
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -11,8 +11,8 @@ concurrency:
   group: design-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
-  design-read-confirmations:
-    name: design-read-confirmations
+  design-review-approval:
+    name: design-review-approval
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-      - name: Verify both reviewers and version-bound local reading attestations
+      - name: Verify one eligible non-author current-head approval
         run: node scripts/review/check-design-review.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
