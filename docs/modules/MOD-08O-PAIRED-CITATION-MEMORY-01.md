@@ -55,6 +55,34 @@ Desktop 私人记忆页选择当前配对来源，预览准确摘录，原生确
   最新截图 `desktop-memory-erased.png` 已目视核对失效提示、搜索禁用、目标删除和无关事实；
   evidence 不含配对码、secret、私钥。失败轮次保留于独立缓存，不充作成功证据。
 
+### 2026-10-12：实际重启后重新配对与引用恢复
+
+- 本次更新前刷新远程，#320/#321/#322/#323 均为 OPEN、当时 head 两项 Foundation 成功
+  （#323 为 `39b6bd7e`）；本次新 head 的 CI 以 PR 读回为准。
+  #321 的历史失败已重跑成功，无需以新产品代码修复。尚无非作者评审，未合并。
+- 本次只扩展既有定向/双进程验收并更新文档，无生产接口、行为、依赖或迁移变化。
+  `node --check tests/manual/obsidian/desktop-pairing.mjs` 与
+  `node --test apps/desktop/test/paired-citation-memory.test.mjs apps/desktop/test/obsidian-pairing.test.mjs`
+  均退出 0，13 tests / 13 pass；`.cache/paired-citation-recovery-tests.log`。
+  新断言证明旧租约在重启后拒绝，重新配对的来源身份不同且旧绑定不能获取新租约。
+- 使用同一实际双进程命令，最终退出 0；
+  `.cache/paired-citation-recovery-dual-process-final.log` 与
+  `.cache/obsidian-installed-host/case-9AaW0i/evidence.json`（verified）。
+  实际 Desktop 重启后，原配对码经专用密码窗口提交仍被拒绝、不触发新的原生批准。
+  重新生成 PA2 并原生 Fake 批准后，搜索恢复，任务使用新的 sourceId。
+- 新记录器在实际 plugin peer 引用读取之后只记录 path/line/revision，保留原只读端口。
+  查看持久记忆触发实际插件读回；已确认事实、稳定 pageId 和内容版本不变。
+  新预览返回准确摘录，同一摘要重复保存保持版本 2、不弹出内容确认、不新增事实。
+  重新撤销后搜索再次拒绝/禁用，仍能撤回目标至版本 3、删除所有版本并保留无关事实。
+- `desktop-memory-repaired.png` 已目视核对恢复后的搜索、目标版本 2 与无关版本 1；
+  evidence 检查无配对码/secret/私钥。Fake 批准、合成 Vault/SQLite、云调用 0 和原 Vault
+  未访问/修改的边界不变；本次进程已关闭、合成插件已卸载。
+- 首轮验收记录器试图改写冻结端口且 CLI 结果为数组，导致验收失败；改为观察现有 peer
+  并返回有界 JSON 对象后通过。失败日志 `.cache/paired-citation-recovery-dual-process.log`
+  保留，不作为成功证据；没有放宽产品校验。
+- 本次增量结果为上述 13/13 与实际双进程；完整 check 的 2714/2689/25 记录来自
+  2026-10-11 已交付代码，未冒称本次重新运行。
+
 ## 交付与剩余边界
 
 实现提交 `2718f064` 已推送至 [PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323)，

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
+import {parseWikiCitationReference} from '@personal-agent/knowledge/wiki';
 
 /** Actual Desktop composition; only synthetic source selection/native decisions are automated. */
 export async function verifyDesktopPairing({workspace, base, vault, evaluatePlugin, sensitiveCode}) {
@@ -134,7 +135,8 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     try {await nextWindow.locator('#code').fill(nextCode); await nextWindow.locator('button[type=submit]').click();}
     catch {throw Error('Synthetic private re-pairing form could not be submitted');}
     await reconnect;
-    assert.equal((await invoke('snapshot')).knowledgeSource.pairing.available, true);
+    const beforeRestart = await invoke('snapshot');
+    assert.equal(beforeRestart.knowledgeSource.pairing.available, true);
     const confirmation = await electron.evaluate(() => ({details: globalThis.__pairingConfirmationDetails, cloudAttempts: globalThis.__pairingCloudAttempts}));
     const memoryConfirmation = await electron.evaluate(()=>globalThis.__pairingMemoryDetails);
     assert.equal(memoryConfirmation.length,4,'decline, initial, correction and unrelated save; duplicate skips confirmation');
@@ -161,9 +163,63 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     assert.equal(pluginClosed.aborted, true);
     await electron.evaluate(({dialog})=>{
       globalThis.__pairingCloudAttempts=0;
+      globalThis.__pairingRecoveryDetails=[];globalThis.__pairingRecoveryMemoryConfirmations=0;
       globalThis.fetch=async()=>{globalThis.__pairingCloudAttempts++;throw Error('Synthetic acceptance forbids cloud calls');};
-      dialog.showMessageBox=async()=>({response:0}); // Explicit Fake withdraw/delete decisions.
+      dialog.showMessageBox=async(_owner,options)=>{
+        if(options.title==='确认 Obsidian 配对') globalThis.__pairingRecoveryDetails.push({
+          defaultId:options.defaultId,cancelId:options.cancelId,bounded:!!options.signal});
+        if(options.title==='确认私人记忆') globalThis.__pairingRecoveryMemoryConfirmations++;
+        return {response:0}; // Explicit Fake pairing/withdraw/delete decisions.
+      };
     });
+    const replay = assert.rejects(invoke('knowledge.pair'));
+    const replayWindow = await wait(()=>electron.windows().find(page=>page.url().endsWith('/pairing/index.html')));
+    try {await replayWindow.locator('#code').fill(nextCode);await replayWindow.locator('button[type=submit]').click();}
+    catch {throw Error('Synthetic private replay form could not be submitted');}
+    await replay;
+    assert.equal((await invoke('snapshot')).privateMemory.vaultSelected,false);
+    assert.equal(await electron.evaluate(()=>globalThis.__pairingRecoveryDetails.length),0);
+    evaluatePlugin(`window.__personalAgentSyntheticRecoveryReads=[];
+      const p=app.plugins.getPlugin('personal-agent-knowledge'),create=p.createRuntimePairingPeer.bind(p);
+      p.createRuntimePairingPeer=()=>{const peer=create(),read=peer.readCitation.bind(peer);
+        peer.readCitation=async request=>{const result=await read(request);
+          window.__personalAgentSyntheticRecoveryReads.push({path:request.source.path,line:request.source.line,revision:request.source.revision});return result;};
+        return peer;};
+      await p.pairRuntime();return JSON.stringify({offered:true});`);
+    const recoveryCode=sensitiveCode(),repair=invoke('knowledge.pair');
+    const repairWindow=await wait(()=>electron.windows().find(page=>page.url().endsWith('/pairing/index.html')));
+    try {await repairWindow.locator('#code').fill(recoveryCode);await repairWindow.locator('button[type=submit]').click();}
+    catch {throw Error('Synthetic private recovery form could not be submitted');}
+    await repair;
+    const repaired=await invoke('snapshot');
+    assert.equal(repaired.privateMemory.vaultSelected,true);
+    assert.notEqual(repaired.knowledge.sourceId,beforeRestart.knowledge.sourceId);
+    assert.notEqual(repaired.knowledge.sourceId,paired.knowledge.sourceId);
+    await wait(async()=>!await admin.locator('#memory-query').isDisabled());
+    const recoveredSaved=(await invoke('memory.listSaved')).facts;
+    assert.deepEqual(recoveredSaved,saved,'fresh citation verification does not rewrite confirmed facts');
+    const reference=parseWikiCitationReference(target.sourceRef);assert.ok(reference);
+    const reads=evaluatePlugin('return JSON.stringify({reads:window.__personalAgentSyntheticRecoveryReads});').reads;
+    assert.ok(reads.some(read=>read.path===reference.path&&read.line===reference.line&&read.revision===reference.revision),
+      'saved reference must be read by the actual plugin after restarting Desktop');
+    const recoveredHit=(await invoke('memory.search',{query:'needle'})).hits[0].source;
+    assert.equal(recoveredHit.sourceId,original.sourceId);assert.equal(recoveredHit.pageId,reference.pageId);
+    assert.equal(recoveredHit.revision,reference.revision);
+    const recoveredPreview=await invoke('memory.previewSave',{source:recoveredHit});
+    assert.equal(recoveredPreview.citation,'Synthetic GOO122 needle <img src=x onerror=alert(1)>');
+    assert.deepEqual(await invoke('memory.save',{source:recoveredHit,baseline:recoveredPreview,summary:target.summary}),
+      {state:'unchanged',revision:2});
+    assert.deepEqual(await electron.evaluate(()=>globalThis.__pairingRecoveryDetails),[{defaultId:1,cancelId:1,bounded:true}]);
+    assert.equal(await electron.evaluate(()=>globalThis.__pairingRecoveryMemoryConfirmations),0);
+    const recoveredTask=await invoke('knowledge.search',{query:'needle',limit:5});
+    assert.equal(recoveredTask.hits[0].source.vaultId,repaired.knowledge.sourceId);
+    await searchMemory('needle');await admin.locator('#memory-list-saved').click();
+    await wait(async()=>await admin.locator('[data-memory-withdraw]').count()===2);
+    await admin.screenshot({path:path.join(base,'desktop-memory-repaired.png')});
+    evaluatePlugin("app.plugins.getPlugin('personal-agent-knowledge').revokeRuntimePairing();return JSON.stringify({revoked:true});");
+    await wait(async()=>!(await invoke('snapshot')).knowledge.available);
+    await wait(async()=>await admin.locator('#memory-query').isDisabled());
+    await assert.rejects(invoke('memory.search',{query:'needle'}));
     await admin.locator('#memory-list-saved').click();
     const targetIndex=saved.findIndex(f=>f.ref.id===target.ref.id);
     await admin.locator(`[data-memory-withdraw="${targetIndex}"]`).click();
@@ -184,6 +240,8 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
       revocationFailsClosed: true, realDesktopRestartFailsClosed: true, explicitFilesystemRestore: true, cloudAttempts: confirmation.cloudAttempts,
       taskCount: tasks.tasks?.length ?? tasks.tasks?.items?.length,
       memory:{nativeDecision:'explicit_fake',declinedWithoutWrite:true,savedRevision:2,duplicateWithoutConfirmation:true,
-        survivesRestart:true,disconnectedSearchDenied:true,disconnectedSearchDisabled:true,withdrawnRevision:3,targetErased:true,unrelatedFactPreserved:true}};
+        survivesRestart:true,disconnectedSearchDenied:true,disconnectedSearchDisabled:true,oldPairingCodeDenied:true,
+        repairedWithFreshTaskSource:true,savedCitationReadByPlugin:true,stablePageIdentity:true,repairedDuplicateRevision:2,
+        withdrawnRevision:3,targetErased:true,unrelatedFactPreserved:true}};
   } finally {if (electron) await electron.close();}
 }

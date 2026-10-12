@@ -1,5 +1,15 @@
 # 开发计划与进度
 
+### 2026-10-12 goo122 配对后持久引用恢复（review）
+
+继续 [PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323) 的验收：实际 Desktop 重启后
+旧配对码拒绝，重新配对的任务来源身份更新，持久引用由真实插件读回，pageId/版本不变，
+重复保存仍为版本 2；再次撤销后撤回/删除指定事实，保留无关事实。定向 13/13、实际双进程
+合成验收通过，证据见 [MOD-08O](modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md)。
+#320～#323 更新前刷新时 head 两项 Foundation 均成功（#323 `39b6bd7e`），#321 历史失败已重跑通过；
+未合并，仍待非作者评审/依赖栈集成。本次只增加验收与文档，接口 provisional，
+Fake 批准和云调用 0 不变；整个 MOD-08/09 不转 done。
+
 ### 2026-10-11 goo122 配对引用与记忆确认（review）
 
 认证桥接/中文路径已在 [PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322)

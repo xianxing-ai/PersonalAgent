@@ -73,10 +73,16 @@ test('paired citation confirmation reuses stable Wiki identity, survives restart
   f.decide(async () => true);
   await memory.save(keep, 'Synthetic keep', await memory.previewSave(keep));
   const target = (await memory.listSaved()).facts.find(f => f.summary === 'Synthetic B').ref;
+  const previousBinding = f.host.source.snapshot();
+  const previousLease = f.host.source.acquire(previousBinding, new AbortController().signal);
+  t.after(() => previousLease.release());
   await f.restart();
+  assert.throws(previousLease.assertCurrent);
   assert.equal(f.memory.selected, false); assert.equal((await f.memory.listSaved()).facts.length, 2);
   await assert.rejects(async () => f.memory.search('target'));
   await f.restart(true);
+  assert.notEqual(f.host.source.snapshot().sourceId, previousBinding.sourceId);
+  assert.throws(() => f.host.source.acquire(previousBinding, new AbortController().signal));
   assert.equal((await f.memory.revalidate(target)).state, 'current');
   assert.deepEqual(await f.memory.withdraw(target), {state: 'withdrawn', revision: 3});
   assert.deepEqual(await f.memory.delete({id: target.id, revision: 3}), {state: 'deleted'});
