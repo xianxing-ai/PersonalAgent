@@ -4,6 +4,6 @@
   "designDirectory": "docs/design/resident-developer-agent-20261008",
   "requiredFiles": ["index.html", "DESIGN.md", "architecture-overview.svg", "autonomy-lifecycle.svg", "trust-and-transport.svg", "wiki-memory.svg", "WIKI-MEMORY-HANDOFF.md", "modules.json"],
   "receiptMarker": "personalagent-design-read-v1",
-  "statusContext": "design-read-confirmations",
+  "statusContext": "design-review-approval",
   "normalization": "UTF-8, CRLF/CR converted to LF"
 }
