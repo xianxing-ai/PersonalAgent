@@ -20,3 +20,16 @@
 已有固定参考摘要 Skill、学习工作流、wire schema、SQLite 迁移和云 Skill selection 端口不改变。安装的通用 Skill 通过用户明确使用注入现有任务目标，不注册成 Tool；附带脚本需要以后独立受控执行工作包。脚本型 Skill 的任意代码能力不因此可用。真实云执行本轮暂缓，先用显式 Fake CloudAgentPort 验证相同 Runtime 接线，不能声称 AgentArts 实测成功。
 
 YAML 复用锁文件已有 js-yaml 4.3.2，声明为 skills 直接依赖；不维护自制 YAML 解析器。标准参考：[Agent Skills specification](https://agentskills.io/specification)。
+
+## 2026-10-12：最终输入预算
+
+Desktop 在逐任务确认前及确认返回后，读取与实际发送相同的有界对话历史和公开来源投影，
+复用 Runtime 的 `compileCoordinationGoal` 检查最终 16000 字符限制。没有任务 ID 的
+`readConversationContext` 仅供受信宿主预检，不创建任务、不获取凭据、不发送内容。
+无 task ID 时，TaskRuntime 用当前事件水位复用原历史 SQL 的状态、非空摘要与
+私人历史排除规则，不以列表查询另建一套筛选。
+实际发送再次编译和检查；确认或受理不保证之后变化的输入仍可发送。
+
+普通公开输入与 prepared 输入相同时，只在 `publicGoal` 保留一次；私人准备输入不同
+时仍保留两者并经过原私人记忆消费许可。不静默截断 Skill、不扩大协议上限。
+此变更为 host-only provisional 接线，无新增 wire capability、依赖或数据库迁移。

@@ -37,6 +37,33 @@
 
 专项命令：`node --test packages/skills/test/local-installation.test.mjs apps/desktop/test/installed-skills-host.test.mjs`。
 
+### 2026-10-12：PR #318 最终上下文预算修复
+
+独立工作树 `.worktrees/goo122-skill-final-input-budget` 基于 #318 `8575a044`。
+已用实际 LocalSkillStore、Client、SQLite Runtime 和 HTTP adapter 复现：8000 字符
+Skill 加已有成功历史被重复嵌入后，任务失败。HTTP 与确认均为显式合成夹具。
+
+修复后同一 Skill 只嵌入一次；Desktop 在确认前、确认后按实际历史编译预算，发送时
+Runtime 再次检查。最终专项 `installed-skills-host.test.mjs` **11/11 通过、0 skip**：
+有效历史任务成功；中文/引号转义和确认期间历史变化导致的超限在新任务受理前拒绝，
+凭据读取与 HTTP 发送均为 0；无 task ID 的 Desktop 历史覆盖也参与预检。
+私人准备导致超限时释放原输入许可，并保留 Runtime 对外部错误的原脱敏边界。
+预检直接复用 TaskRuntime 原历史 SQL；最新成功但无摘要的任务不掩盖较旧有效历史。
+日志 `.cache/skill-budget-focused-verified.log`；原失败日志
+`.cache/skill-budget-repro-authorized.log` 保留。无真实云调用或原 Vault 修改。
+最终生产代码的完整 `npm run check` 通过：2650 项、2625 通过、25 跳过、0 失败、
+0 取消。首轮 2647 项、2618 通过、29 跳过，其中 4 项原生 helper 测试随后单独
+构建并补跑，4/4 通过、0 skip；最终门禁已包含构建后的 helper，不能把首轮跳过
+记为首轮通过。
+Skill 组件和实际产品 main/preload/IPC smoke 均通过，原生确认回调为显式合成。
+既有 Runtime Application smoke 首次沿默认 Competition profile 找不到 Local 模型按钮；
+显式 `PA_RUNTIME_PROFILE=local` 后通过，7 次本机合成模型请求、2 次取消，只用于
+既有 Local 兼容性验证，不作 Competition 云验收。日志分别为
+`.cache/skill-budget-full-check-verified.log`、`skill-budget-native-tests.log`、`skill-budget-ui-smoke.log`、
+`skill-budget-product-smoke.log` 和 `skill-budget-application-smoke-local.log`。
+最终门禁包含原历史 SQL 复用增量，11 项专项均通过；记录和代码差异检查完成。
+PR 仍需 Git 交付、当前提交的非作者评审与集成。
+
 7 项通过：快照/默认停用/重开/卸载保留原目录；格式、重复 YAML、UTF-8、敏感文件、超限、符号链接、目录册篡改拒绝；安装/启用/纯本地预览/逐任务拒绝与允许；实际 SQLite Runtime 和 Competition HTTP adapter 接线；凭据读取期间停用或卸载阻止发送、重新启用或重装不恢复旧任务；来源在确认中改变拒绝、HTML 转义。
 
 HTTP、目录选择、安全确认是明确合成夹具，凭据为 synthetic 字符串；运行实际本地宿主、Client/Runtime 和 SQLite，不使用真实云服务或用户账号。测试脚本不会执行附带脚本。不能将这些结果标为原生人工或真实 AgentArts 验收。

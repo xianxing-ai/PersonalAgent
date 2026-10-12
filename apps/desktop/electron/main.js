@@ -1112,12 +1112,38 @@ async function promptSyntheticRepairCandidate(taskId) {
   } finally { repairPrompts.delete(taskId); }
 }
 
+async function readDesktopConversationContext(scope) {
+  if (!['desktop-panel','desktop-workspace'].includes(scope.conversationId)) {
+    if(scope.taskId)coordinationWatchInputs.set(scope.taskId,'[]');return [];
+  }
+  const task=scope.taskId ? runtimeApplication.runtime.getTask(scope.taskId) : undefined;
+  const cutoff=conversations.turns.get(scope.taskId)?.createdAt ?? task?.createdAt ?? task?.updatedAt ?? new Date().toISOString();
+  const surface=scope.conversationId === 'desktop-panel' ? 'panel' : 'workspace';
+  const messages=[...conversations.messagesFor(surface),...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
+    .filter(message=>Date.parse(message.createdAt)<=Date.parse(cutoff))
+    .map(message=>({id:message.id,role:message.role,content:message.text}));
+  let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages});
+  if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
+  const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
+    .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
+  if(scope.taskId)coordinationWatchInputs.set(scope.taskId,JSON.stringify(current));
+  if(current.length)context.push({id:'knowledge-watch-current',role:'assistant',
+    content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
+  return context.slice(-20);
+}
+
 async function initializeInstalledSkills() {
   if(competitionMode && !installedSkillsHost) {
     const {openLocalSkillStore}=await import('@personal-agent/skills');
     installedSkillsHost=createInstalledSkillsHost({
       store:openLocalSkillStore(path.join(app.getPath('userData'),'installed-skills.json')),onUpdate:publish,
       readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
+      validateRunInput:async publicGoal=>{
+        const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
+        const context=await readDesktopConversationContext({conversationId:'desktop-workspace',
+          deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal});
+        compileCoordinationGoal(publicGoal,publicGoal,context);
+      },
       selectDirectory:async()=>{
         const result=await dialog.showOpenDialog(admin,{title:'选择包含 SKILL.md 的 Skill 文件夹',properties:['openDirectory']});
         return result.canceled?undefined:result.filePaths[0];
@@ -1485,27 +1511,7 @@ async function initializeRuntime() {
             if (!privateConsumption) throw Error('私人记忆消费宿主尚未装配');
             return (await privateConsumption.prepare({...scope,goal:scope.publicGoal})).goal;
           },
-          readConversationContext:async scope=>{
-            if (!['desktop-panel','desktop-workspace'].includes(scope.conversationId)) {
-              coordinationWatchInputs.set(scope.taskId,'[]');return [];
-            }
-            const task=runtimeApplication.runtime.getTask(scope.taskId);
-            const cutoff=conversations.turns.get(scope.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt;
-            const surface=scope.conversationId === 'desktop-panel' ? 'panel'
-              : scope.conversationId === 'desktop-workspace' ? 'workspace' : undefined;
-            const messages=surface ? [...conversations.messagesFor(surface),
-              ...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
-              .filter(message=>Date.parse(message.createdAt)<=Date.parse(cutoff))
-              .map(message=>({id:message.id,role:message.role,content:message.text})) : [];
-            let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages});
-            if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
-            const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
-              .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
-            coordinationWatchInputs.set(scope.taskId,JSON.stringify(current));
-            if (current.length) context.push({id:'knowledge-watch-current',role:'assistant',
-              content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
-            return context;
-          },
+          readConversationContext:readDesktopConversationContext,
           beforeCoordinationSend:(request,scope)=>{
             cloudRequestFailureNotice = '';
             installedSkillsHost?.assertTask(request.taskId);

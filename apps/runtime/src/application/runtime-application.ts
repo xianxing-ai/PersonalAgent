@@ -292,6 +292,14 @@ export interface CloudSkillRuntimeHostPort {
   assertReceiptAllowed(selection:CloudSkillSelection,receipt:CloudSkillReceipt,context:CloudSkillContext):void;
 }
 export interface ConversationContextMessage {id:string; role:'user'|'assistant'; content:string; taskId?:string; withheld?:boolean;}
+/** Shared by trusted host preflight and the actual Coordination send. */
+export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
+  const goal=messages.length ? JSON.stringify({publicGoal,
+    ...(preparedGoal===publicGoal ? {} : {ephemeralGoal:preparedGoal}),
+    conversationContext:{treatment:'untrusted_data',messages}}) : preparedGoal;
+  if(goal.length>16_000)throw new ProtocolError('INVALID_ARGUMENT','任务、Skill 与对话上下文合并后超过 16000 字符限制，请缩短内容或减少对话历史');
+  return goal;
+}
 /** All hooks are trusted host composition, never model supplied. Bodies remain process-local. */
 export interface CoordinationInputHooks {
   prepareCoordinationGoal?: (scope:CoordinationGoalScope)=>Promise<string>;
@@ -648,12 +656,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }).slice(-CONVERSATION_HISTORY_LIMIT);
     const privateDerived=prepared!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
     // Context is data, never instructions or an authorization. It is not checkpointed.
-    const goal=context.length ? JSON.stringify({publicGoal:request.goal,ephemeralGoal:prepared,
-      conversationContext:{treatment:'untrusted_data',messages:context}}) : prepared;
-    const effective=Object.freeze({...request,goal});
-    this.ephemeralSends.set(task.taskId,effective);
-    this.ephemeralGoals.set(task.taskId,{publicGoal:request.goal,preparedGoal:prepared});
     try {
+      const goal=compileCoordinationGoal(request.goal,prepared,context);
+      const effective=Object.freeze({...request,goal});
+      this.ephemeralSends.set(task.taskId,effective);
+      this.ephemeralGoals.set(task.taskId,{publicGoal:request.goal,preparedGoal:prepared});
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
       this.assertInputActive(request);
@@ -689,13 +696,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Original Runtime cutoff; a host merges Conversations/Live by message id, then re-filters. */
-  readConversationContext(input:{taskId:string;conversationId:string;deadline:string;signal:AbortSignal;
+  readConversationContext(input:{taskId?:string;conversationId:string;deadline:string;signal:AbortSignal;
     historyMessages?:readonly ConversationContextMessage[]}):ConversationContextMessage[] {
-    const task=this.runtime.getTask(input.taskId);
-    if(task.conversationId!==input.conversationId || !Number.isFinite(Date.parse(input.deadline)) || input.signal.aborted
+    const task=input.taskId ? this.runtime.getTask(input.taskId) : undefined;
+    if((task && task.conversationId!==input.conversationId) || !Number.isFinite(Date.parse(input.deadline)) || input.signal.aborted
       || this.now().getTime()>=Date.parse(input.deadline))throw new ProtocolError('UNAUTHORIZED','Conversation scope expired');
     const result=new Map<string,ConversationContextMessage>();
-    for(const turn of this.runtime.readConversationHistory(input.conversationId,input.taskId,CONVERSATION_HISTORY_LIMIT)) {
+    // Without a task, a host can check the same bounded history before confirmation/acceptance.
+    const turns=this.runtime.readConversationHistory(input.conversationId,input.taskId,CONVERSATION_HISTORY_LIMIT);
+    for(const turn of turns) {
       if(this.isHistoryWithheld(turn.taskId))continue;
       result.set(turn.taskId+':user',{id:turn.taskId+':user',taskId:turn.taskId,role:'user',content:turn.goal});
       result.set(turn.taskId+':assistant',{id:turn.taskId+':assistant',taskId:turn.taskId,role:'assistant',content:assistantText(turn.resultSummary)});
@@ -705,7 +714,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         throw new ProtocolError('INVALID_ARGUMENT','Invalid history overlay');
       }
       if(message.withheld || (message.taskId && this.isHistoryWithheld(message.taskId)))result.delete(message.id);
-      else if(message.taskId!==input.taskId)result.set(message.id,structuredClone(message));
+      else if(!input.taskId || message.taskId!==input.taskId)result.set(message.id,structuredClone(message));
     }
     return [...result.values()].slice(-CONVERSATION_HISTORY_LIMIT);
   }
