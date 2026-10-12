@@ -55,13 +55,22 @@ deadline and persisted terminal state. Missing coordination, or a proposal witho
 trusted local tool, fails with UNSUPPORTED_CAPABILITY. Local text/model configuration APIs
 remain rejected in Competition mode.
 
-Adapters receive no Runtime object, authorization, history or attachments. For the offline
+Adapters receive no Runtime object, authorization or attachments. For the offline
 Fake path, Runtime checkpoints a proposal, enters `waiting_approval`, executes through the
 existing Policy/ToolGateway after `allow_once`, accumulates trusted Evidence references,
 and sends only a confirmed JSON result to the next coordination exchange. Unknown write
 results remain in reconciliation. The real AgentArts HTTP adapter is still text-only;
 deployment trace, usage and real cloud recovery remain unavailable. See
 [work package](../../docs/modules/COMPETITION-TOOL-LOOP-01.md).
+
+Trusted Competition composition can inject scoped conversation context as untrusted data.
+`readConversationContext` uses the original task creation cutoff and successful history;
+task-bound overlays must belong to that eligible history, so other conversations, unfinished,
+failed, cancelled, current/later and withheld tasks cannot be restored through an overlay.
+Host-scoped Live messages without a task binding remain the trusted host's responsibility.
+The merged context is limited to twenty messages (not twenty turns), and cancelled or expired
+reads are rejected. Context does not grant tool permissions or restore a private egress lease
+after restart. See [context regression record](../../docs/modules/MOD-09-COMPETITION-CONTEXT-20261008.md).
 
 Trusted composition can explicitly configure `competitionToolExports` for selected tools with
 bounded result projections. Each binding fixes a tool name/version and an `exportPolicyVersion`, checks task/proposal/arguments with
