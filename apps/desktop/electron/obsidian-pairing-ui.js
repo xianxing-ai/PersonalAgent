@@ -6,7 +6,7 @@ export function createObsidianPairingUI({BrowserWindow, ipcMain, dialog, owner})
   const channel = 'desktop:obsidian-pairing-code';
   ipcMain.handle(channel, (event, code) => {
     if (!current || event.sender !== current.window.webContents || event.senderFrame !== event.sender.mainFrame) throw Error('配对窗口无效');
-    if (typeof code !== 'string' || code.length > 4096 || !/^PA1\.[A-Za-z0-9_-]+$/.test(code)) return false;
+    if (typeof code !== 'string' || code.length > 4096 || !/^PA[12]\.[A-Za-z0-9_-]+$/.test(code)) return false;
     current.finish(code); return true;
   });
   return {

@@ -22,6 +22,13 @@ Windows 原生 API 在内存生成临时证书，Desktop 先固定证书指纹�
 协议版本与严格字段见 [ADR-0020](../../docs/adr/0020-obsidian-authenticated-bridge.md)，
 状态仍 provisional；配对码及结果均不能签发 Policy grant。
 
+MOD-08O 使用 PA2/版本 2 帧增加 peer 的可选 `readCitation`：四字段 KnowledgeSource，
+严格 Vault/文件夹/版本校验，返回最多 4000 字单行摘录或固定错误码；没有任意文件 RPC。
+新客户端兼容 PA1 的搜索，但 PA1 不提供引用能力；旧客户端拒绝 PA2，需同时升级插件和
+Desktop。Runtime 的 `wikiSource.acquireWiki` 结合本机稳定页身份与插件摘录重新验证，
+使用既有 WikiSource 和逐条确认，不以临时任务 sourceId 标识长期事实。缺少任一侧证据即
+unavailable；详见 [ADR-0021](../../docs/adr/0021-paired-citation-memory.md)。
+
 ## Wiki 第一包：只读来源身份与版本（MOD-08G）
 
 `@personal-agent/knowledge/wiki` 提供 provisional 的 `WikiPort`：

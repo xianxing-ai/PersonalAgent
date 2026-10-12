@@ -80,6 +80,10 @@ test('dedicated native input accepts only its own main frame, denies navigation 
   assert.throws(() => handler({sender: window.webContents, senderFrame: {}}, code));
   assert.equal(handler({sender: window.webContents, senderFrame: window.webContents.mainFrame}, code), true);
   assert.equal(await pending, code); assert.equal(window.isDestroyed(), true);
+  const updated = ui.requestCode(new AbortController().signal);
+  assert.equal(handler({sender: window.webContents, senderFrame: window.webContents.mainFrame}, 'PA3.synthetic'), false);
+  assert.equal(handler({sender: window.webContents, senderFrame: window.webContents.mainFrame}, 'PA2.synthetic'), true);
+  assert.equal(await updated, 'PA2.synthetic');
   const controller = new AbortController(), cancelled = ui.requestCode(controller.signal); controller.abort();
   assert.equal(await cancelled, undefined); ui.close(); assert.equal(removed, true);
 });

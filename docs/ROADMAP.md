@@ -1,6 +1,38 @@
 # 开发计划与进度
 
-### 2026-10-11 goo122 本机配对增量（ready）
+### 2026-10-12 goo122 PR #320～#323 原写入恢复 P2 修复（review）
+
+非作者指出的共同继承问题已由 `5918e706` 修复：同 Vault 配置升版后，原写入仍按原
+intent/execution/摘要/Evidence/finalization 确认，投影保留原绑定并独立恢复；正文不重写，
+当前读取权限不放宽。修复已顺序合入 #321→#322→#323，全部原功能和提交保留。
+真实 Windows/SQLite 复现及定向 15/15；最终组合 check 2717 项（2692 pass/25 skip/0 fail）
+与实际 Obsidian/Electron 双进程合成复验通过。记录见
+[MOD-08I](modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)，原生决定 explicit Fake、云调用 0。
+更新后 head 的远程 CI 与非作者重审单独核对；原 CHANGES_REQUESTED 未由作者撤销，
+未合并或发布。其他未合并 PR 的互相冲突仍属于后续集成，完整 MOD-08/09 保持 in_progress。
+
+### 2026-10-12 goo122 配对后持久引用恢复（review）
+
+继续 [PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323) 的验收：实际 Desktop 重启后
+旧配对码拒绝，重新配对的任务来源身份更新，持久引用由真实插件读回，pageId/版本不变，
+重复保存仍为版本 2；再次撤销后撤回/删除指定事实，保留无关事实。定向 13/13、实际双进程
+合成验收通过，证据见 [MOD-08O](modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md)。
+#320～#323 更新前刷新时 head 两项 Foundation 均成功（#323 `39b6bd7e`），#321 历史失败已重跑通过；
+未合并，仍待非作者评审/依赖栈集成。本次只增加验收与文档，接口 provisional，
+Fake 批准和云调用 0 不变；整个 MOD-08/09 不转 done。
+
+### 2026-10-11 goo122 配对引用与记忆确认（review）
+
+认证桥接/中文路径已在 [PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322)
+`7f1b4f1b` 相对 #321 交付，待非作者评审/集成。[MOD-08O](modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md)
+在该基线上接通版本 2 插件引用、受信页身份与原生逐条记忆确认，复用现有恢复/撤回/删除。
+工作分支 `codex/goo122-paired-citation-memory`，完整 check 2714 项（2689 pass/25 skip/0 fail）、
+Desktop smoke 与实际双进程合成保存/更正/重启/撤回/删除验收通过；已提交
+[PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323) `2718f064`，base 为 #322，待非作者评审/集成。
+批准为 explicit Fake，云调用 0；证据与失效界面修复见模块记录。
+原 Vault 只读，云验收继续暂缓；完整模块不转 done。
+
+### 2026-10-11 goo122 本机配对增量（review）
 
 [MOD-08M](modules/MOD-08M-UNICODE-PAIRING-01.md) 在 PR #321 `91f8829a` 上继续：
 修复 Desktop 中文恢复目录经 PowerShell 标准输入损坏；新增版本化的 host-only 插件 peer
@@ -8,7 +40,7 @@
 peer 验收分别记录。[MOD-08N](modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md) 继续增加
 回环 TLS 指纹/一次性密钥认证桥接及专用原生配对窗口，实际双进程与自动化确认的证据分开记录。
 MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
-工作分支 `codex/goo122-desktop-unicode-pairing`，本地门禁通过，按用户授权提交并创建相对 PR #321 的 PR；待非作者评审/集成。
+工作分支 `codex/goo122-desktop-unicode-pairing`，已交付 PR #322 `7f1b4f1b`，本地与远程门禁通过；待非作者评审/集成。
 
 更新：2026-10-08 · 本轮审查基线：main@efbfbdd2 · 项目主要负责人：zemeng / zemeng5208 · 整体 MVP：in_progress；代码集成、CI 与真实服务/设备验收分别记录
 
