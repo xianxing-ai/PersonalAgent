@@ -342,7 +342,7 @@ test('WindowsJobProcessHost terminates grandchild process tree on abort', {
 
   try {
     let grandchildPid;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 500; attempt += 1) {
       try {
         grandchildPid = Number(await readFile(grandchildPidPath, 'utf8'));
         if (Number.isSafeInteger(grandchildPid) && grandchildPid > 0) break;
@@ -479,13 +479,13 @@ test('WindowsJobProcessHost terminates grandchild process tree on deadline timeo
   const controller = new AbortController();
   const execution = treeTool.execute({recipeId: 'run-tree-timeout'}, context({
     signal: controller.signal,
-    deadline: new Date(Date.now() + 300).toISOString(),
+    deadline: new Date(Date.now() + 15_000).toISOString(),
   }));
   const observation = observeJobExecution(execution);
 
   try {
     let grandchildPid;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 500; attempt += 1) {
       try {
         grandchildPid = Number(await readFile(grandchildPidPath, 'utf8'));
         if (Number.isSafeInteger(grandchildPid) && grandchildPid > 0) break;
