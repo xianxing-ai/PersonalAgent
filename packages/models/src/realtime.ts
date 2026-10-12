@@ -40,10 +40,11 @@ export class QwenRealtimeModelGateway {
       {headers: {Authorization: `Bearer ${this.config.apiKey}`}, handshakeTimeout: 15_000,
         maxPayload: 2 * 1024 * 1024, followRedirects: false, perMessageDeflate: false},
     );
-    let ready = false, closing = false, currentResponse = '';
+    let ready = false, closing = false, currentResponse = '', responseRequested = false;
+    let turn = 0, continuationTurn: number | undefined;
     let resolveReady!: () => void, rejectReady!: (error: Error) => void;
     const initialized = new Promise<void>((resolve, reject) => {resolveReady = resolve; rejectReady = reject;});
-    const calls = new Map<string, {name: string; args: string; result: Promise<string>}>();
+    const calls = new Map<string, {name: string; args: string; result: Promise<string>; turn: number; returned: boolean}>();
     const ignored = new Set<string>();
     const allowed = new Set(request.tools.map(tool => tool.name));
     let resolveClosed!: () => void;
@@ -75,6 +76,18 @@ export class QwenRealtimeModelGateway {
       emit({type: 'error', message});
       void close();
     };
+    const forgetResponse = (id: string): void => {
+      ignored.add(id);
+      if (ignored.size > 64) ignored.delete(ignored.values().next().value!);
+    };
+    const continueTurn = (): void => {
+      if (closing || request.signal.aborted || currentResponse || responseRequested || continuationTurn !== turn
+        || [...calls.values()].some(call => call.turn === turn && !call.returned)) return;
+      try {
+        responseRequested = true; continuationTurn = undefined;
+        send({type: 'response.create'});
+      } catch {fail('Live 任务续答发送失败');}
+    };
     const abort = (): void => {void close();};
     const startTimer = setTimeout(() => fail('Live 连接或会话配置超时'), 20_000);
     const deadlineTimer = setTimeout(() => fail('Live 会话已到期，请重新开启'), remaining);
@@ -99,7 +112,8 @@ export class QwenRealtimeModelGateway {
     const toolCall = async (message: Record<string, unknown>): Promise<void> => {
       const {name, call_id: callId, arguments: args} = message;
       if (typeof name !== 'string' || !allowed.has(name) || typeof callId !== 'string'
-        || !/^[\w-]{1,256}$/.test(callId) || typeof args !== 'string' || args.length > 24000) {
+        || !/^[\w-]{1,256}$/.test(callId) || typeof args !== 'string' || args.length > 24000
+        || !currentResponse || typeof message.response_id !== 'string' || message.response_id !== currentResponse) {
         fail('Live 返回了无效的工具请求'); return;
       }
       const previous = calls.get(callId);
@@ -114,22 +128,30 @@ export class QwenRealtimeModelGateway {
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error();
         parsed = value as Record<string, unknown>;
       } catch {fail('Live 工具参数不是合法对象'); return;}
-      const result = Promise.resolve().then(() => request.onTool(name, parsed, callId));
-      calls.set(callId, {name, args, result});
+      const result = Promise.resolve().then(() => {
+        if (closing || request.signal.aborted) throw Error('Live 连接已关闭');
+        return request.onTool(name, parsed, callId);
+      });
+      const call = {name, args, result, turn, returned: false};
+      calls.set(callId, call);
       let output: string;
       try {output = await result;} catch {output = '任务请求未能完成。请查看本地任务状态；不要宣称成功。';}
       if (closing || request.signal.aborted) return;
       if (typeof output !== 'string' || output.length > 32000) {fail('Live 工具返回超出约定范围'); return;}
       try {
         send({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output}});
-        send({type: 'response.create'});
+        call.returned = true;
+        if (call.turn === turn) continuationTurn = turn;
+        continueTurn();
       } catch {fail('Live 任务结果回传失败');}
     };
     const interrupt = (): void => {
       if (!ready || closing) return;
+      turn++; continuationTurn = undefined;
+      // The native API cannot identify which turn owns a not-yet-created response.
+      if (responseRequested) {fail('Live 续答尚未确认，已停止通话；后台任务保留，请重新开启'); return;}
       if (currentResponse) {
-        ignored.add(currentResponse);
-        if (ignored.size > 64) ignored.delete(ignored.values().next().value!);
+        forgetResponse(currentResponse);
         try {send({type: 'response.cancel'});} catch {fail('Live 打断未能发送');}
       }
       currentResponse = '';
@@ -148,16 +170,26 @@ export class QwenRealtimeModelGateway {
         if (!ready) return;
         if (message.type === 'input_audio_buffer.speech_started') {emit({type: 'speech_started'}); interrupt(); return;}
         if (message.type === 'input_audio_buffer.speech_stopped') {emit({type: 'speech_stopped'}); return;}
-        if (message.type === 'response.created') {currentResponse = message.response?.id ?? ''; return;}
-        if (message.response_id && ignored.has(message.response_id)) return;
+        if (message.type === 'response.created') {
+          const id = message.response?.id;
+          if (typeof id !== 'string' || !id || id.length > 256) throw Error();
+          if (ignored.has(id) || currentResponse === id) return;
+          if (currentResponse) throw Error();
+          currentResponse = id; responseRequested = false; return;
+        }
+        const responseId = message.type === 'response.done' ? message.response?.id : message.response_id;
+        if (responseId && (ignored.has(responseId) || responseId !== currentResponse)) return;
         if (message.type === 'response.audio.delta') {
           if (typeof message.delta !== 'string' || message.delta.length > 512000
-            || !/^[A-Za-z0-9+/]+={0,2}$/.test(message.delta) || typeof message.response_id !== 'string') throw Error();
+            || !/^[A-Za-z0-9+/]+={0,2}$/.test(message.delta) || !currentResponse
+            || typeof message.response_id !== 'string' || message.response_id !== currentResponse) throw Error();
           const pcm = Buffer.from(message.delta, 'base64');
           if (!pcm.length || pcm.length % 2) throw Error();
           emit({type: 'audio', data: pcm, responseId: message.response_id});
         } else if (message.type === 'conversation.item.input_audio_transcription.completed'
           || message.type === 'response.audio_transcript.done') {
+          if (message.type === 'response.audio_transcript.done'
+            && (!currentResponse || message.response_id !== currentResponse)) throw Error();
           if (typeof message.transcript !== 'string' || message.transcript.length > 24000) throw Error();
           const trimmed = message.transcript.trim();
           if (!trimmed) return;
@@ -169,9 +201,15 @@ export class QwenRealtimeModelGateway {
           emit({type: 'transcript', id, role: message.type.startsWith('conversation.') ? 'user' : 'assistant', text: trimmed});
         } else if (message.type === 'response.function_call_arguments.done') {void toolCall(message);}
         else if (message.type === 'response.done') {
+          if (typeof responseId !== 'string' || !responseId) throw Error();
+          forgetResponse(responseId);
           currentResponse = '';
           if (message.response?.status === 'failed') {fail('Live 本轮回答失败'); return;}
-          emit({type: 'turn_complete'});
+          if (message.response?.status === 'cancelled') {
+            turn++; continuationTurn = undefined; emit({type: 'interrupted'}); return;
+          }
+          if (message.response?.status !== 'completed') {fail('Live 本轮回答未完整结束'); return;}
+          emit({type: 'turn_complete'}); continueTurn();
         }
       } catch {fail('Live 返回了无法解析的数据');}
     });
