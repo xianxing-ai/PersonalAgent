@@ -295,7 +295,7 @@ test('env option and recipe env are validated, merged, and do not leak inherited
   assert.equal(data.leaked, undefined); // No inherited process.env!
 });
 
-test('WindowsJobProcessHost terminates grandchild process tree on abort', {
+for (const startupDelayMs of [0, 11_000]) test(`WindowsJobProcessHost terminates grandchild process tree on abort${startupDelayMs ? ' after delayed readiness' : ''}`, {
   skip: process.platform !== 'win32' ? 'Windows only test' : false,
 }, async t => {
   const root = await fixture(t);
@@ -317,12 +317,14 @@ test('WindowsJobProcessHost terminates grandchild process tree on abort', {
     const { spawn } = require('node:child_process');
     const fs = require('node:fs');
     fs.writeFileSync(${JSON.stringify(stagePath)}, 'spawner-started');
+    setTimeout(() => {
     const child = spawn(process.execPath, ['-e', 'require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)', ${JSON.stringify(grandchildPidPath)}], {
       stdio: 'ignore',
       detached: false,
     });
     child.once('spawn', () => fs.writeFileSync(${JSON.stringify(stagePath)}, 'grandchild-spawned'));
     child.once('error', error => fs.writeFileSync(${JSON.stringify(stagePath)}, 'spawn-error:' + String(error.code).slice(0, 64)));
+    }, ${startupDelayMs});
     setInterval(() => {}, 1000);
   `);
 
@@ -337,12 +339,16 @@ test('WindowsJobProcessHost terminates grandchild process tree on abort', {
   });
 
   const controller = new AbortController();
-  const execution = treeTool.execute({recipeId: 'run-tree'}, context({signal: controller.signal}));
+  // Cancellation is exercised only after readiness, within the command host's
+  // existing 30-second lease. A shorter test lease can expire during cold startup.
+  const startupDeadline = Date.now() + 30_000;
+  const execution = treeTool.execute({recipeId: 'run-tree'}, context({signal: controller.signal,
+    deadline: new Date(startupDeadline).toISOString()}));
   const observation = observeJobExecution(execution);
 
   try {
     let grandchildPid;
-    for (let attempt = 0; attempt < 500; attempt += 1) {
+    while (Date.now() < startupDeadline) {
       try {
         grandchildPid = Number(await readFile(grandchildPidPath, 'utf8'));
         if (Number.isSafeInteger(grandchildPid) && grandchildPid > 0) break;
