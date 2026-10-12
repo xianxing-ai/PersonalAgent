@@ -216,6 +216,73 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     await searchMemory('needle');await admin.locator('#memory-list-saved').click();
     await wait(async()=>await admin.locator('[data-memory-withdraw]').count()===2);
     await admin.screenshot({path:path.join(base,'desktop-memory-repaired.png')});
+    // Only this harness's isolated synthetic note changes; native decisions remain explicit Fake.
+    const disconnectSource = async () => {
+      evaluatePlugin("app.plugins.getPlugin('personal-agent-knowledge').revokeRuntimePairing();return JSON.stringify({revoked:true});");
+      await wait(async()=>!(await invoke('snapshot')).knowledge.available);
+      await wait(async()=>await admin.locator('#memory-query').isDisabled());
+      await assert.rejects(invoke('memory.search',{query:'needle'}));
+    };
+    const repairSource = async () => {
+      evaluatePlugin("await app.plugins.getPlugin('personal-agent-knowledge').pairRuntime();return JSON.stringify({offered:true});");
+      const code=sensitiveCode(),pending=invoke('knowledge.pair');
+      const window=await wait(()=>electron.windows().find(page=>page.url().endsWith('/pairing/index.html')));
+      try {await window.locator('#code').fill(code);await window.locator('button[type=submit]').click();}
+      catch {throw Error('Synthetic source recovery form could not be submitted');}
+      await pending;
+      await wait(async()=>!await admin.locator('#memory-query').isDisabled());
+    };
+    const sourceRecovery = [];
+    for(const change of ['rename','outside','missing']) {
+      await disconnectSource();
+      const movedPath=change==='rename'?'Allowed/renamed.md':change==='outside'?'moved-outside.md':'held-note.md';
+      evaluatePlugin(`const file=app.vault.getAbstractFileByPath('Allowed/note.md');
+        window.__syntheticHeldBody=await app.vault.read(file);
+        await app.vault.rename(file,${JSON.stringify(movedPath)});
+        return JSON.stringify({originalMissing:!app.vault.getAbstractFileByPath('Allowed/note.md')});`);
+      await repairSource();
+      await assert.rejects(invoke('memory.previewSave',{source:recoveredHit}));
+      const unavailableSaved=(await invoke('memory.listSaved')).facts;
+      assert.deepEqual(unavailableSaved,saved,'unproved moves and temporary absence must not retract or rewrite facts');
+      assert.equal(await electron.evaluate(()=>globalThis.__pairingRecoveryMemoryConfirmations),0);
+      evaluatePlugin(`await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(movedPath)}),'Allowed/note.md');
+        return JSON.stringify({restored:!!app.vault.getAbstractFileByPath('Allowed/note.md')});`);
+      const restoredPreview=await invoke('memory.previewSave',{source:recoveredHit});
+      assert.equal(restoredPreview.citation,recoveredPreview.citation);
+      assert.deepEqual((await invoke('memory.listSaved')).facts,saved);
+      sourceRecovery.push({change,oldReferenceDenied:true,unrelatedFactPreserved:true,
+        noInferredWithdrawal:true,restoredWithoutNewRevision:true});
+    }
+    await disconnectSource();
+    evaluatePlugin("await app.vault.modify(app.vault.getAbstractFileByPath('Allowed/note.md'),'Synthetic changed needle body');return JSON.stringify({modified:true});");
+    assert.deepEqual((await invoke('memory.listSaved')).facts,saved,'disconnection alone cannot prove an edit');
+    await repairSource();
+    const changedSaved=(await invoke('memory.listSaved')).facts;
+    const changedTarget=changedSaved.find(f=>f.ref.id===target.ref.id);
+    assert.equal(changedTarget.state,'withdrawn');assert.equal(changedTarget.ref.revision,3);
+    assert.equal(changedSaved.length,2);
+    assert.deepEqual(changedSaved.find(f=>f.ref.id!==target.ref.id),saved.find(f=>f.ref.id!==target.ref.id));
+    await assert.rejects(invoke('memory.previewSave',{source:recoveredHit}));
+    const changedHit=(await invoke('memory.search',{query:'needle'})).hits[0].source;
+    assert.equal(changedHit.pageId,reference.pageId);assert.notEqual(changedHit.revision,reference.revision);
+    assert.equal(await electron.evaluate(()=>globalThis.__pairingRecoveryMemoryConfirmations),0);
+    assert.deepEqual((await invoke('memory.listSaved')).facts,changedSaved,'observed edit appends exactly one withdrawal');
+    await admin.locator('#memory-list-saved').click();
+    await wait(async()=>await admin.locator('[data-memory-delete]').first().locator('..').textContent().then(text=>text.includes('来源已变化'))
+      || await admin.locator('[data-memory-delete]').last().locator('..').textContent().then(text=>text.includes('来源已变化')));
+    await admin.screenshot({path:path.join(base,'desktop-memory-source-changed.png')});
+    // Leave the harness's initial note available for its original plugin invalidation check.
+    evaluatePlugin("await app.vault.modify(app.vault.getAbstractFileByPath('Allowed/note.md'),window.__syntheticHeldBody);return JSON.stringify({restored:true});");
+    assert.equal((await invoke('memory.listSaved')).facts.find(f=>f.ref.id===target.ref.id).state,'withdrawn',
+      'restoring source text never automatically confirms the withdrawn fact');
+    evaluatePlugin("await app.vault.modify(app.vault.getAbstractFileByPath('Allowed/note.md'),'Synthetic changed needle body');return JSON.stringify({modified:true});");
+    const correction=(await invoke('memory.search',{query:'needle'})).hits[0].source;
+    assert.deepEqual(await invoke('memory.save',{source:correction,baseline:await invoke('memory.previewSave',{source:correction}),
+      summary:'Synthetic explicitly corrected memory C'}),{state:'saved',revision:4});
+    assert.equal(await electron.evaluate(()=>globalThis.__pairingRecoveryMemoryConfirmations),1);
+    saved=(await invoke('memory.listSaved')).facts;
+    assert.equal(saved.find(f=>f.ref.id===target.ref.id).state,'active');
+    evaluatePlugin("await app.vault.modify(app.vault.getAbstractFileByPath('Allowed/note.md'),window.__syntheticHeldBody);return JSON.stringify({restored:true});");
     evaluatePlugin("app.plugins.getPlugin('personal-agent-knowledge').revokeRuntimePairing();return JSON.stringify({revoked:true});");
     await wait(async()=>!(await invoke('snapshot')).knowledge.available);
     await wait(async()=>await admin.locator('#memory-query').isDisabled());
@@ -225,6 +292,7 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     await admin.locator(`[data-memory-withdraw="${targetIndex}"]`).click();
     await wait(async()=>{const facts=(await invoke('memory.listSaved')).facts;return facts.find(f=>f.ref.id===target.ref.id)?.state==='withdrawn';});
     await wait(async()=>await admin.locator('#memory-saved-status').textContent().then(t=>t.includes('已撤回')));
+    assert.equal((await invoke('memory.listSaved')).facts.find(f=>f.ref.id===target.ref.id).ref.revision,5);
     const deleteIndex=(await invoke('memory.listSaved')).facts.findIndex(f=>f.ref.id===target.ref.id);
     await admin.locator(`[data-memory-delete="${deleteIndex}"]`).click();
     await wait(async()=>await admin.locator('#memory-saved-status').textContent().then(t=>t.includes('已删除')));
@@ -242,6 +310,8 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
       memory:{nativeDecision:'explicit_fake',declinedWithoutWrite:true,savedRevision:2,duplicateWithoutConfirmation:true,
         survivesRestart:true,disconnectedSearchDenied:true,disconnectedSearchDisabled:true,oldPairingCodeDenied:true,
         repairedWithFreshTaskSource:true,savedCitationReadByPlugin:true,stablePageIdentity:true,repairedDuplicateRevision:2,
-        withdrawnRevision:3,targetErased:true,unrelatedFactPreserved:true}};
+        withdrawnRevision:5,targetErased:true,unrelatedFactPreserved:true,observedWithdrawalRevision:3,explicitCorrectionRevision:4,
+        sourceRecovery,offlineEditWithdrawn:true,changedCitationDenied:true,newContentNotAutoConfirmed:true,
+        restoredTextDoesNotReactivate:true}};
   } finally {if (electron) await electron.close();}
 }

@@ -1,6 +1,6 @@
 # MOD-08O：配对插件引用与逐条记忆确认
 
-- 状态：review；实现与本包验收通过，已交付 PR #323，待非作者评审/集成
+- 状态：review；#323 已合入 #322 父分支，尚未进入 main；来源恢复验收增量已验证并获独立 PR 交付授权
 - 日期：2026-10-11；Profile：huawei_ict_agentarts
 - 负责人：goo122；非作者评审：zemeng 或其他已登记协作者
 - 工作树：`.worktrees/goo122-wiki-source-revisions`
@@ -93,9 +93,52 @@ Desktop 私人记忆页选择当前配对来源，预览准确摘录，原生确
 复核，原 CHANGES_REQUESTED 留存；与其他未合并 PR 的组合冲突未在本包宣称解决。
 
 实现提交 `2718f064` 已推送至 [PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323)，
-base 为 PR #322 分支 `codex/goo122-desktop-unicode-pairing`。两个包独立交付，未合并或发布。
+base 为 PR #322 分支 `codex/goo122-desktop-unicode-pairing`。这是原交付快照；2026-10-12
+#323 已由外部 squash 合入 #322，提交 `38a41c4d`，不等于进入 main 或产品发布。
 本节交付记录为后续纯文档提交，不改变上述已验证代码；远程 CI 状态以当前 PR head 为准。
 
 真实人类逐条内容确认、真实私人数据出机和 AgentArts 云端验收未执行。插件页移动的全库
 扫描不提供；缺页保持来源不可核实。接口 provisional，待非作者评审和依赖栈集成。
 完整 MOD-08/09 仍 in_progress，本包不合并或发布。
+
+### 2026-10-12：来源离线变更、改名与临时缺页恢复验收
+
+- 工作包：MOD-08O 来源恢复验收；负责人 goo122；Profile `huawei_ict_agentarts`。
+  隔离工作树 `.worktrees/goo122-wiki-source-recovery-acceptance`，分支
+  `codex/goo122-wiki-source-recovery-acceptance`，基线 #322 `18635529`。
+  复用现有 paired-citation 回归与实际 Obsidian/Desktop 验收，没有新建产品执行入口。
+- 本包仅修改测试、验收脚本和文档；无生产代码、公共协议、接口状态、迁移、依赖或权限变化。
+  Wiki/记忆接口仍 provisional。用户要求的非作者评审继续执行，不以存量文档的自审规则替代。
+- 定向命令 `node --test --test-reporter=tap apps/desktop/test/paired-citation-memory.test.mjs apps/desktop/test/obsidian-pairing.test.mjs`
+  退出 0：**17/17、0 skip**。来源被编辑时追加一次撤回，原引用不可消费；改名、越界和
+  暂时缺页返回 source_unavailable，不追加事实、不推断删除。原路径恢复后仍是原版本；
+  无关事实可获得显式 Fake 消费授权，目标失败在授权回调之前，原文件检索 fallback 禁用。
+- 删除/备份/来源观察命令运行 `private-memory-backups.test.mjs`、`private-memory-erasure.test.mjs`、
+  `wiki-memory-source.test.mjs`、Runtime `wiki-source-monitor.test.mjs`，退出 0：**20/20、0 skip**。
+  保留原有逐事实应用副本清理、不相关任务/检查点保留、未知结果恢复，以及相关整篇备份
+  保留时删除仍未完成的约束。本包未扩展删除保证到应用不管理的独立副本。
+- 实际命令 `node tests/manual/obsidian/plugin-installed-host.mjs --executable <Obsidian.exe绝对路径> --dual-process`
+  退出 0；Obsidian 1.12.7、实际 Electron Desktop、原生密码窗口、Preload/IPC/TLS 和 SQLite
+  在独立合成 Vault 中运行。最终证据 `.cache/obsidian-installed-host/case-urpZzt/evidence.json` 为 verified，
+  不是云端或真实私人数据验收；逐条内容、消费和配对决定全部 **explicit Fake**。
+- 实际流程：A/B 确认至版本 2；改名/移出允许文件夹/暂存原文件后重新配对，旧引用拒绝，
+  已保存事实和无关版本 1 不变；同一文件恢复不新增版本。断连后编辑正文，断连期间不
+  推断变化，重新配对读回后旧事实变为 external_observation 撤回版本 3；不自动保存新内容。
+  原正文恢复也不复活事实。新摘录经一次独立 Fake 原生确认成为版本 4；断连后手动撤回
+  成为版本 5，再删除所有版本并读回，仅剩无关事实；原合成笔记还在。
+- 截图 `desktop-memory-source-changed.png` 和 `desktop-memory-erased.png` 已目视核对：
+  来源变化时显示“后续任务不可消费”，目标删除后无关记忆保留、失效配对的搜索禁用。
+  evidence 已检查无配对码、secret、token 或私钥；本次启动的应用进程按原脚本关闭，合成
+  插件卸载。云调用 **0**；原 Vault `D:\test\知识库` 未访问、未修改，没有保存其中新事实。
+- 首轮 unit 夹具误将消费授权注入删除回调，修正为 authorizeConsumption 后全通过；首轮
+  双进程“临时缺页”夹具删除重建文件，触发正确的 SOURCE_CHANGED。改为暂存/恢复同一个
+  文件，不放宽身份/版本断言。失败日志保留 `.cache-wiki-recovery-focused.log`、
+  `.cache-wiki-recovery-dual-process.log`；最终日志 `.cache-wiki-recovery-focused-verified.log`、
+  `.cache-wiki-recovery-erasure-source.log`、`.cache-wiki-recovery-dual-process-verified.log`；
+  最终同一命令合并运行六个回归文件 **37/37、0 fail/取消/skip**，日志
+  `.cache-wiki-recovery-final-tests.log`。补证已撤回的当前版本也在消费授权之前拒绝，实际
+  手动撤回版本 5 明确读回，双进程最终日志 `.cache-wiki-recovery-dual-process-final.log`。
+- 本次没有重跑全仓 check，不把上文历史完整门禁计数作为本包新结果；本包行为验收为
+  上述 **37 项回归**及实际双进程。本包已获提交、普通推送与独立 PR 授权，以 #322 为 base；
+  新提交的 Foundation 与非作者评审单独核对，模块不转 done。
+  最新 #320 相对 main 存在冲突，#320→#321→#322 尚未进入 main；集成仍是独立下一步。
