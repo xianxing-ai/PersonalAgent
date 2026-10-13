@@ -19,4 +19,9 @@
 
 定向时序回归：Windows 上运行 `dotnet run --project apps/windows-host/test/WindowsHost.Timing.csproj`，受控交错在预期文本读取后改变输入 tick，以及不改变 tick 的程序改值，两者均必须在写前拒绝。写入前还会重新查找已确认窗口中唯一选中的标签及同一编辑控件，再检查精确文本、输入 tick 和前台身份。UIA 读取和 `SetValue` 之间没有原子 compare-and-swap；这些复核仍不能捕获所有接管，不能用此回归代替真实交互验收。
 
+执行核心的目标身份检查在同一 Process handle 的映像、包身份、启动时间及存活核验后，再次检查前台 HWND 和窗口 owner。
+窗口可能在慢进程查询期间关闭而进程仍存活；这时写前拒绝，写后保持 `ResultUnknown`，不返回过时的 `Verified`。
+上述 Timing fixture 还通过生产共用 guard 覆盖查询期间窗口关闭、前台/owner 改变、稳定身份与入口已失效。
+这些是受控交错回归，不是物理 PID/HWND 复用或真实 UIA 设备验收；最终检查后仍存在 Windows API 无法消除的短竞态。
+
 Host 和 Pipe Bridge 的受信启动、双向对端检查、目标观察、run 日志和恢复边界见 [host/README.md](host/README.md)。仅构建或运行它们不发布 `computer.notepad.replace_text`；产品侧必须先让 Runtime/Policy/ToolGateway 消费授权，再由可信主进程启动并绑定 Host。Windows 打包安装不属于此工作包。

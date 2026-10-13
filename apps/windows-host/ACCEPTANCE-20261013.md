@@ -1,7 +1,7 @@
 # MOD-16：本地就绪与现场边界（2026-10-13）
 
 目标 `huawei_ict_agentarts`；负责人 zemeng。工作树 `.worktrees/zemeng-windows-tools-completion`，
-分支 `codex/zemeng-windows-tools-completion`，起点 `5b581139`。未修改 Host 生产代码或 Desktop 配置。
+分支 `codex/zemeng-windows-tools-completion`，起点 `5b581139`。初始包仅做验收；后续执行核心修复见下文，未修改 Desktop 配置。
 本记录不把结构测试或握手提升为 UIA 完整验收，MOD-16 仍为 in_progress。
 
 ## 本轮实际验证
@@ -39,3 +39,24 @@ fixture 输出 `Windows Host portable contract and durable-run fixture passed`�
 同一 userData 的第二实例可能只激活既有窗口，不能据启动请求声称使用了本分支；不得擅自关闭原实例。
 无法识别现代 Notepad 单标签/唯一可写 ValuePattern 时应保留拒绝，不能改选私人窗口。
 当前缺现场 F9、目标确认、真实 UIA 写入和设备恢复回执；本地握手通过不代表 PA-016 完成。
+
+## 执行核心的迟到目标检查修复
+
+`NotepadAction.IsSameForegroundTarget` 原先在读取进程映像/包身份/启动时间之前检查前台 HWND 和 owner，
+但查询结束后未再次检查窗口。窗口可能在慢查询中关闭，Notepad 进程仍存活，且没有新增输入 tick 或取消；
+写后最终检查因此可能返回过时的 `Verified`。Host Observe/Resolve 已有查询后复核，本包只补执行核心。
+
+修复前通过生产共用 guard 保持旧检查顺序，受控回调在元数据查询中关闭合成窗口：
+Timing 构建成功，运行退出码 1，报 `Slow process lookup accepted closed window`。
+修复后同句柄进程检查补存活复核，最后重新核对前台 HWND/owner；沿用原写前拒绝、写后 `ResultUnknown` 的分支。
+
+```powershell
+dotnet build apps/windows-host/test/WindowsHost.Timing.csproj -c Release --no-restore
+dotnet apps/windows-host/test/bin/Release/net8.0-windows/WindowsHost.Timing.dll
+```
+
+修后构建 0 警告/0 错误，运行退出码 0，输出 `PASS: prewrite input and target identity changes rejected`。
+包含元数据查询内窗口关闭/前台切换/owner 变化、稳定身份通过、入口失效不查元数据、进程身份拒绝，
+并保留原用户输入和程序改值写前回归。首次 `--no-restore` 因该测试项目缺 assets 失败，正常还原后完成复现与验证；无新增依赖。
+本次没有重跑 Host/Bridge/全仓验证，没有打开真实窗口或观察私人内容；物理 PID/HWND 复用、真实 UIA 和现场 F9 仍未验证。
+Win32/UIA 没有原子身份快照，最终复核后的短竞态仍存在，本修复不宣称消除所有并发接管。
