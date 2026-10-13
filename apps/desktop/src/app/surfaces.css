@@ -73,7 +73,7 @@
 :root:not([data-theme="light"]) .activity-grid span {background:#1c3c66}
 .panel .composer {margin:0 12px 12px;padding:8px 12px;border-radius:17px}
 .panel .composer textarea {min-height:38px;font-size:14px;padding:4px 4px 0}
-.panel .composer-bar {margin-top:2px;min-width:0}
+.panel .composer-bar {position:relative;margin-top:2px;min-width:0}
 .panel .composer-bar>.icon-btn,.panel .composer-bar>.send-btn {width:32px;height:32px;flex:0 0 32px}
 .panel .model-box {flex:0 1 148px;min-width:0;max-width:148px}
 .panel .model-select {display:flex;width:100%;min-width:0;max-width:100%;overflow:hidden;font-size:12px;padding:4px 5px;white-space:nowrap}
@@ -149,7 +149,7 @@
 
 .panel .composer textarea {box-sizing:border-box;min-width:0;field-sizing:content;max-height:min(160px,28vh);overflow-y:auto}
 .panel .model-box {position:static}
-.panel .model-menu {right:14px;bottom:80px;width:252px;max-width:calc(100% - 28px);max-height:calc(100vh - 104px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.panel .model-menu {right:0;bottom:calc(100% + 8px);width:252px;max-width:calc(100% - 28px);max-height:calc(100vh - 104px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .panel .model-menu .mm-model {min-width:0;align-items:flex-start}
 .panel .model-menu #mm-model-label {min-width:0;flex:1;overflow-wrap:anywhere}
 .panel .model-menu .model-tag {flex:0 0 auto}
@@ -195,6 +195,9 @@
 .knowledge-source-settings .setting-row select,
 .knowledge-source-settings .setting-row textarea {box-sizing:border-box;flex:0 1 360px;width:100%;min-width:0;max-width:360px;border:1px solid var(--glass-border);border-radius:9px;padding:8px 10px;background:var(--surface-2);color:var(--fg);font:inherit}
 .knowledge-source-settings .setting-row textarea {flex:1 1 420px;max-width:520px;min-height:64px;max-height:180px;overflow:auto;resize:vertical}
+.installed-skills-settings .field {box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--glass-border);border-radius:9px;padding:8px 10px;background:var(--surface-2);color:var(--fg);font:inherit}
+.installed-skills-settings textarea {min-height:96px;resize:vertical}
+.installed-skills-settings pre {max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 .knowledge-source-settings .setting-row input[type="checkbox"],.knowledge-source-settings .setting-row input[type="radio"] {flex:0 0 auto;margin:0;accent-color:var(--accent)}
 .knowledge-source-settings .setting-row:has(input[type="checkbox"]),.knowledge-source-settings .setting-row:has(input[type="radio"]) {justify-content:flex-start;gap:8px}
 .knowledge-source-settings h3 {margin:18px 0 8px;font-size:14px}
