@@ -1,0 +1,62 @@
+# MOD-18：真实补丁、固定命令与恢复验收（2026-10-13）
+
+- Profile：`huawei_ict_agentarts`；负责人 zemeng；工作包状态 `review`。
+- 工作树：`.worktrees/zemeng-windows-tools-completion`；分支 `codex/zemeng-windows-tools-completion`；起点 `5b581139`。
+- 无生产 API、Schema、依赖或迁移改动，不触及 dev-workflows、git-tools、test-locate 或共享 ROADMAP。
+
+已有 P6 runner 未配置当前 Runtime 必需的 workspace patch binding。
+本次使其复用生产 `createDesktopCodingToolHost` 的 ACL、路径/文件身份固定和真实恢复端口，
+以 `workspacePatchReconciliation` 注入 Runtime。没有创建第二套授权或恢复状态库。
+
+## 首次执行与持久读回
+
+```powershell
+node tests/manual/coding/p6-runtime-acceptance.mjs (Get-Command pwsh).Source
+```
+
+Windows 普通用户会话，Node `24.15.0` / npm `11.12.1` / PowerShell `7.6.6`。
+退出码 0；回执 `.cache/p6-runtime-ZDgtLV/receipt.json`，同目录保留公开合成源码、独立数据库及 recovery。
+
+- read → preview → apply → 固定 `run-demo` 命令 → 二次读回全部成功，preview 未修改源码。
+- apply task：`d6d147d4-48f5-4191-b74a-f00b132e2ef6`；固定命令 task：`11d167be-08d4-4f67-b924-25abbacf4f31`。
+- 真实命令 exit 0，stdout 为 `P6_AFTER_中文`，stderr 空；没有任意 shell/argv 或私人项目。
+- 旧源摘要拒绝，审批前取消未写入；同进程 Runtime/SQLite 重开复用原任务/执行记录，替换原参数被拒绝。
+- 公共 Evidence 保持 `conditional`；文件读回和真实 stdout 作为独立本地验证，不改变公共证据等级。
+
+## 故障恢复
+
+```powershell
+node tests/manual/coding/patch-recovery-acceptance.mjs (Get-Command pwsh).Source
+```
+
+每次在新建的合成中文工作区运行。真实 Runtime 审批签发并消费授权，生产 helper 自己创建并 fsync marker，
+真实 PowerShell 进程身份查询核对 PID 与启动时间。runner 只观察 marker，不制造或修改其内容。
+
+| 故障 | 当前任务 / 回执 | 结果 |
+| --- | --- | --- |
+| marker 已持久、候选尚未发送时，专用 worker 自行 exit 73 | `c9f82e01-3ccf-4943-91be-c76722a2663a`；`.cache/mod18-recovery-Oscsh5/receipt.json` | 新进程重开 SQLite，原任务 `waiting_reconciliation → failed`，`not_applied`，原字节不变 |
+| 只读共享锁使生产 helper 完成写入后的 marker 清理失败 | `11dc389e-b8b4-486e-9494-75f49587ace7`；`.cache/mod18-recovery-edQaFp/receipt.json` | 真实 `RESULT_UNKNOWN`；释放自身 locker 后重开，原任务 `waiting_reconciliation → succeeded`，`applied`，新字节匹配 |
+
+两者均为单次工具派发、单次授权消费、同一 task/run。恢复端口保留 marker 时核对其仍在，
+清理 acknowledgement 前核对原 run 的持久执行记录与 reconciliation checkpoint 已匹配。
+重复恢复及再次重开 Runtime 的记录/Evidence 不变，未重新执行 apply；最终 marker 清除。
+锁定辅助进程只接触本次 marker，正常释放与超时均受界限约束；失败保留 fixture 与原身份供恢复，不按进程名杀用户进程。
+
+这分别证明候选派发前的宿主退出和写后 marker 清理失败的恢复；**不证明写入中崩溃或断电原子性**。
+第二种是故障注入，但文件写入、helper、SQLite、Policy 与恢复提供者均真实。
+回执未包含独立 SHA 校验文件，未读取/复制云凭据。
+
+51 项相关观测/补丁/Runtime 恢复回归通过、0 跳过。另命令与架构门禁 27/27 通过、0 跳过，
+包括 Windows Job helper 的正常退出、取消、超时和孙进程收尾；两个模块类型检查通过。
+用户随后要求不等待 CI、不扩大测试，本工作包遵循该要求，远端 CI 自行运行。
+
+## 根装配与剩余条件
+
+现有生产接线无需改动：`apps/desktop/electron/coding-tool-host.js` 的 `patchReconciliation`
+由 `workspace-config-host.js` 接至 Runtime `workspacePatchReconciliation`；恢复入口为
+`RuntimeApplication.reconcileWorkspacePatchTask(taskId)`。
+
+本次恢复只验证持久 `host-tool-intent` 任务；不能自动推广至 AgentArts proposal 的未知写入恢复。
+真实 AgentArts 提案/续答、正式 Desktop 设置/交互、用户选定真实项目以及 Artifact 服务仍需对应联合验收。
+由主对话的可信凭据宿主运行云段，仅使用明确允许出云的合成内容；本分支不复制凭据或扩大权限。
+MOD-18 保持 in_progress，独立验收增量进入 review；正常合并仍需一位非作者对当前提交有效批准。
