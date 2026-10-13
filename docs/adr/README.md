@@ -25,3 +25,6 @@ ADR 记录已经采纳且会长期影响多个模块的决定。编号递增，�
 
 - [ADR-0016：Wiki 写回与记忆投影恢复（proposed）](0016-wiki-write-projection-recovery.md)
 - [ADR-0022：本机 Wiki 页面身份与读取版本（proposed）](0022-wiki-source-identity.md)
+
+- [ADR-0017：Wiki 只读来源监视（proposed）](0017-wiki-source-monitor.md)
+- [ADR-0018：应用记忆备份与临时知识索引（proposed）](0018-managed-backups-and-volatile-index.md)

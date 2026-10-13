@@ -5,7 +5,8 @@ import type {BigIntStats} from 'node:fs';
 import {lstat, open, readdir, realpath} from 'node:fs/promises';
 import {isAbsolute, join, relative, sep, win32} from 'node:path';
 import {KnowledgeError} from './index.js';
-import type {KnowledgeHit, KnowledgePort, KnowledgeSearchRequest, KnowledgeSource} from './index.js';
+import {createTextIndex} from './text-index.js';
+import type {KnowledgePort, KnowledgeSearchRequest, KnowledgeSource} from './index.js';
 
 const MAX_FILES = 1000;
 const MAX_DIRECTORIES = 1000;
@@ -13,6 +14,8 @@ const MAX_DEPTH = 16;
 const MAX_FILE_BYTES = 512 * 1024;
 
 export interface ReadOnlyVaultPort extends KnowledgePort {
+  /** Drop volatile excerpts on source revocation or explicit index clearing. */
+  clearIndex(): void;
   /** Host-only selected-note view. No write or cloud-export permission is implied. */
   readNote(request: {readonly path: string; readonly deadline: string; readonly signal: AbortSignal}):
     Promise<{content: string; revision: string}>;
@@ -118,6 +121,7 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
     safeError(error);
   }
   const vaultId = options.vaultId;
+  const index = createTextIndex(vaultId);
 
   async function checkRoot(): Promise<void> {
     const current = await lstat(root);
@@ -226,6 +230,7 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
   }
 
   return Object.freeze({
+    clearIndex: () => index.clear(),
     scanPages: async (request: {deadline: string; signal: AbortSignal}) => {
       const deadline = checkContext(request);
       const pages: VaultPage[] = [];
@@ -246,25 +251,16 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
       if (typeof request.query !== 'string' || !request.query.trim() || request.query.length > 128
         || !Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 20) fail('INVALID_ARGUMENT');
       const query = request.query.trim().toLowerCase();
-      const hits: KnowledgeHit[] = [];
-      let truncated = false;
-      // Bounded rescan is shared with the Wiki inventory; no second index or watcher.
-      await scan(request.signal, deadline, ({path, content, revision}) => {
-        for (const [index, line] of content.split(/\r?\n/).entries()) {
-          checkActive(request.signal, deadline);
-          const offset = line.toLowerCase().indexOf(query);
-          if (offset < 0) continue;
-          if (hits.length === request.limit) {
-            truncated = true;
-            continue;
-          }
-          hits.push({
-            source: {vaultId, path, line: index + 1, revision},
-            excerpt: line.slice(Math.max(0, offset - 80), Math.max(0, offset - 80) + 320)
-          });
-        }
-      });
-      return {hits, truncated};
+      const pages: (VaultPage & {content: string})[] = [];
+      let bytes = 0;
+      try {
+        await scan(request.signal, deadline, page => {
+          bytes += Buffer.byteLength(page.content, 'utf8');
+          if (bytes > 8 * 1024 * 1024) fail('LIMIT_EXCEEDED');
+          pages.push(page);
+        });
+        return index.search(pages, query, request.limit, () => checkActive(request.signal, deadline));
+      } catch (error) {index.clear(); throw error;}
     },
     readCitation: async (request: {source: KnowledgeSource; deadline: string; signal: AbortSignal}) => {
       const deadline = checkContext(request);

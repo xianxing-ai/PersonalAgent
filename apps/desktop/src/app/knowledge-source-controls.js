@@ -16,7 +16,13 @@ export function mountKnowledgeSourceControls(root, invoke) {
     <label class="setting-row">公开查询（一行一条）<textarea rows="2" maxlength="2048" data-knowledge-source="queries"></textarea></label>
     <button class="btn" type="button" data-knowledge-source="save">保存所选权限</button>
     <button class="btn" type="button" data-knowledge-source="revoke">撤销知识源</button>
+    <h3>Obsidian 本机配对</h3>
+    <p>先选择并启用同一个 Vault，再从插件生成一次性配对码。配对会切换检索来源，仅私人、只读。</p>
+    <button class="btn" type="button" data-knowledge-source="pair">配对 Obsidian</button>
+    <button class="btn" type="button" data-knowledge-source="unpair">撤销配对并返回文件源</button>
+    <p class="notice" data-knowledge-source="pair-status" role="status"></p>
     <p class="notice" data-knowledge-source="status" role="status"></p>
+    <p class="notice" data-knowledge-source="monitor" role="status"></p>
     <h3>整理选定笔记</h3>
     <label class="setting-row">笔记 <select data-knowledge-source="note"></select></label>
     <button class="btn" type="button" data-knowledge-source="read">读取当前版本</button>
@@ -33,9 +39,14 @@ export function mountKnowledgeSourceControls(root, invoke) {
   const binding = () => ({sourceId: state.sourceId, configRevision: state.configRevision});
   function buttons() {
     for (const button of section.querySelectorAll('button')) button.disabled = busy;
-    field('notes').disabled = busy || !state.available;
-    field('read').disabled = busy || !state.available || !field('note').value;
-    field('submit').disabled = busy || !state.writeAvailable || !noteVersion;
+    const paired = state.pairing?.mode === 'plugin';
+    field('save').textContent = paired ? '保存文件源权限并退出配对' : '保存所选权限';
+    field('select').textContent = paired ? '选择文件源并退出配对' : '选择知识库';
+    field('pair').disabled = busy || state.pairing?.busy || !state.available;
+    field('unpair').disabled = busy || !paired && !state.pairing?.busy;
+    field('notes').disabled = busy || paired || !state.available;
+    field('read').disabled = busy || paired || !state.available || !field('note').value;
+    field('submit').disabled = busy || paired || !state.writeAvailable || !noteVersion;
     field('reconcile').disabled = busy || !state.available || !lastSubmittedTaskId;
     field('cloud').disabled = field('level').value !== 'public';
   }
@@ -43,6 +54,7 @@ export function mountKnowledgeSourceControls(root, invoke) {
   function render(next) {
     if (state.sourceId !== next.sourceId || state.configRevision !== next.configRevision) {clearNote(); settingsDirty = false;}
     state = next;
+    field('pair-status').textContent = state.pairing?.reason ?? '';
     field('name').textContent = state.configured ? `${state.displayName} · 配置版本 ${state.configRevision}` : '';
     if (!settingsDirty) {
       field('enabled').checked = state.enabled === true;
@@ -56,7 +68,14 @@ export function mountKnowledgeSourceControls(root, invoke) {
       const option = document.createElement('option'); option.value = value; option.textContent = value; return option;
     }));
     if ((state.allowedNotePaths ?? []).includes(selected)) field('note').value = selected;
-    field('status').textContent = state.reason === '请选择知识库；尚未配置' ? '' : state.reason ?? ''; buttons();
+    field('status').textContent = state.reason === '请选择知识库；尚未配置' ? '' : state.reason ?? '';
+    const monitor = state.monitor;
+    field('monitor').textContent = state.pairing?.mode === 'plugin' ? '插件模式下，确认或使用记忆时核对引用；文件源后台检查已暂停'
+      : !state.available || !monitor ? '' : monitor.state === 'ready'
+      ? `已检查 ${monitor.pageCount} 页；后台仅核对旧记忆，新摘录仍需确认`
+      : monitor.state === 'retry_pending' ? '来源检查待重试；不会删除记忆或笔记'
+      : '正在核对来源；后台不会自动保存新摘录';
+    buttons();
   }
   async function act(action, payload, receive = render) {
     if (busy) return;
@@ -66,6 +85,8 @@ export function mountKnowledgeSourceControls(root, invoke) {
     finally {busy = false; buttons();}
   }
   field('select').addEventListener('click', () => act('knowledge.source.select'));
+  field('pair').addEventListener('click', () => act('knowledge.pair'));
+  field('unpair').addEventListener('click', () => act('knowledge.pair.revoke'));
   field('notes').addEventListener('click', () => act('knowledge.source.selectNotes', binding()));
   field('revoke').addEventListener('click', () => act('knowledge.source.revoke'));
   field('save').addEventListener('click', () => act('knowledge.source.configure', {...binding(),

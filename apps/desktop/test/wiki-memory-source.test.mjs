@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import test from 'node:test';
 import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {parseWikiCitationReference} from '@personal-agent/knowledge/wiki';
+import {createWikiSourceMonitor} from '@personal-agent/runtime/application';
 import {createKnowledgeSourceConfig} from '../electron/knowledge-source-config.js';
 import {createPrivateMemoryController} from '../electron/private-memory.js';
 
@@ -42,6 +43,55 @@ async function fixture(t) {
       controller.close(); host.close(); host = await createKnowledgeSourceConfig(options); open();
     }};
 }
+
+test('deleting a private fact clears volatile source indexes and aborts already acquired source leases', async t => {
+  const f = await fixture(t); await f.save();
+  const ref = (await f.controller.listSaved()).facts[0].ref;
+  const lease = f.host.acquireWiki(f.host.snapshot(), scope());
+  try {
+    assert.equal((await f.controller.delete(ref)).state, 'deleted');
+    assert.equal(lease.signal.aborted, true);
+    assert.throws(() => lease.assertCurrent(), /撤销/);
+    await assert.rejects(lease.wiki.search({query: 'hello', limit: 5, ...scope()}), error => error.code === 'SCOPE_DENIED');
+    // The selected original source remains readable under a fresh lease; erased memory stays absent.
+    assert.ok(await f.search());
+    assert.deepEqual((await f.controller.listSaved()).facts, []);
+  } finally {lease.release();}
+});
+
+test('resident source checks invalidate edited facts without opening memory UI; scan failure retries and never imports new pages',async t=>{
+  const f=await fixture(t);await f.save();const fact=(await f.controller.listSaved()).facts[0];
+  const memory=f.observe();let failScan=false,failAfterProjection=false;
+  const monitor=createWikiSourceMonitor({source:{snapshot:()=>f.host.snapshot(),acquireWiki(expected,request){
+    const lease=f.host.acquireWiki(expected,request);
+    return {...lease,wiki:{scanPages:async context=>{if(failScan)throw Error('synthetic scan failure');return lease.wiki.scanPages(context);}}};
+  }},revalidate:async(input,request)=>{
+    await f.controller.revalidateSources(input,request);
+    if(failAfterProjection)throw Error('synthetic failure after SQLite commit');
+  }});t.after(()=>monitor.close());
+  await monitor.refresh(scope());assert.equal(memory.readUserFactHead('desktop-private',fact.ref.id).ref.revision,1);
+  await writeFile(f.file,'hello updated synthetic\n');await writeFile(join(f.root,'new.md'),'hello new unconfirmed page\n');
+  failScan=true;await monitor.refresh(scope());assert.equal(monitor.snapshot().state,'retry_pending');
+  assert.equal(memory.readUserFactHead('desktop-private',fact.ref.id).state,'active');
+  failScan=false;failAfterProjection=true;await monitor.refresh(scope());
+  assert.equal(monitor.snapshot().state,'retry_pending');
+  const head=memory.readUserFactHead('desktop-private',fact.ref.id);
+  assert.equal(head.state,'withdrawn');assert.equal(head.ref.revision,2);assert.equal(head.summary,fact.summary);
+  failAfterProjection=false;await monitor.refresh(scope());assert.equal(monitor.snapshot().state,'ready');
+  await monitor.refresh(scope());assert.equal(memory.readUserFactHead('desktop-private',fact.ref.id).ref.revision,2);
+  assert.equal((await memory.listUserFactHeads('desktop-private',{at:new Date().toISOString(),limit:20,...scope()})).facts.length,1);
+  assert.equal(monitor.snapshot().pageCount,2);assert.equal(f.prompts,1);
+});
+
+test('resident missing/empty scan preserves confirmed history and stays pending instead of inferring deletion',async t=>{
+  const f=await fixture(t);await f.save();const fact=(await f.controller.listSaved()).facts[0],memory=f.observe();
+  const monitor=createWikiSourceMonitor({source:f.host,revalidate:(input,request)=>f.controller.revalidateSources(input,request)});
+  t.after(()=>monitor.close());await monitor.refresh(scope());await rm(f.file);
+  await monitor.refresh(scope());assert.equal(monitor.snapshot().state,'retry_pending');assert.equal(monitor.snapshot().pageCount,1);
+  assert.deepEqual(memory.readUserFactHead('desktop-private',fact.ref.id),fact);
+  await writeFile(f.file,'hello restored new native identity\n');await monitor.refresh(scope());
+  assert.equal(memory.readUserFactHead('desktop-private',fact.ref.id).state,'withdrawn');assert.equal(monitor.snapshot().state,'ready');
+});
 
 test('unified host leases require confirmation; renewed/restarted reads do not duplicate facts', async t => {
   const f = await fixture(t), original = await readFile(f.file);

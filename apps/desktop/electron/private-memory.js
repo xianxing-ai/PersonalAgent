@@ -47,7 +47,9 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
     if (closed) throw Error('私人记忆控制器已关闭');
     const revision = generation();
     const scope = {...request};
-    scope.signal = AbortSignal.any([scope.signal, lifetime.signal]);
+    const remaining = Date.parse(scope.deadline) - Date.now();
+    if (!Number.isFinite(remaining) || remaining <= 0) throw Error('私人来源读取已过期');
+    scope.signal = AbortSignal.any([scope.signal, lifetime.signal, AbortSignal.timeout(remaining)]);
     const lease = knowledgeSource ? knowledgeSource()?.acquireWiki(source ?? sourceSnapshot(), scope) : undefined;
     const reader = lease?.wiki ?? (knowledgeSource ? undefined : vault);
     if (!reader) throw Error(knowledgeSource ? '请先选择受信知识库' : '请先选择本机 Vault');
@@ -127,10 +129,10 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
       const citation = structuredClone(source);
       const read = acquireRead(citation);
       try {
-        await read.reader.readCitation({source: citation, ...read.scope});
+        const excerpt = await read.reader.readCitation({source: citation, ...read.scope});
         read.stable();
         const current = memoryHost().readUserFactHead(namespace, sourceFactId(citation));
-        return {configurationRevision: read.revision, expectedRevision: current?.ref.revision ?? null};
+        return {configurationRevision: read.revision, expectedRevision: current?.ref.revision ?? null, citation: excerpt};
       } finally {read.release();}
     },
     async listSaved({at, snapshot, cursor} = {}) {
@@ -162,6 +164,10 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
     },
     /** Trusted successful write recovery: refresh only projections of this exact source/path. */
     async revalidateSource(input, request = context()) {
+      return this.revalidateSources({...input, paths: [input.path]}, request);
+    },
+    /** Resident source checks share the write-recovery projection without storing new private facts. */
+    async revalidateSources(input, request = context()) {
       if (!memory && !existsSync(databasePath)) return;
       const read = acquireRead(input, request);
       try {
@@ -175,7 +181,8 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
           for (const fact of page.facts) {
             const source = parseWikiCitationReference(fact.sourceRef);
             if (fact.state !== 'active' || !source || source.sourceId !== input.sourceId
-              || source.configRevision !== input.configRevision || source.path !== input.path) continue;
+              || source.configRevision !== input.configRevision
+              || input.paths !== undefined && !input.paths.includes(source.path)) continue;
             // Another validation may have appended a withdrawal since this frozen page was created.
             const current = memoryHost().readUserFactHead(namespace, fact.ref.id);
             if (!current || current.state !== 'active' || current.sourceRef !== fact.sourceRef) continue;
@@ -218,6 +225,7 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
           confirm: async citation => {
             if (citation.length > 4000) throw Error('摘录过长，无法完整展示确认');
             const allowed = await confirm({citation, summary, source: selectedSource,
+              signal: read.scope.signal,
               configurationRevision: generation, expectedRevision: current?.ref.revision ?? null,
               previous: current?.summary});
             stable();
@@ -298,8 +306,10 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
       if (!await confirmDelete(current)) return {state: 'declined'};
       head(target);
       maintenanceNeeded = true;
-      store.eraseUnboundFact(namespace, {factId: target.id, expectedRevision: target.revision,
-        operationId: `desktop-private-${hash(`${target.id}@${target.revision}`)}`, ...context()});
+      try {
+        store.eraseUnboundFact(namespace, {factId: target.id, expectedRevision: target.revision,
+          operationId: `desktop-private-${hash(`${target.id}@${target.revision}`)}`, ...context()});
+      } finally {knowledgeSource?.()?.clearIndex?.(); vault?.clearIndex();}
       maintenanceNeeded = false;
       const [visible, history] = await Promise.all([
         query.listCurrent({factId: target.id, at: new Date().toISOString(), limit: 1, ...context()}),

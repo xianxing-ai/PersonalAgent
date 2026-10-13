@@ -7,6 +7,8 @@
     ".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"},
     "./filesystem": {"types": "./dist/filesystem.d.ts", "import": "./dist/filesystem.js"},
     "./obsidian": {"types": "./dist/obsidian.d.ts", "import": "./dist/obsidian.js"},
+    "./pairing": {"types": "./dist/pairing.d.ts", "import": "./dist/pairing.js"},
+    "./bridge": {"types": "./dist/bridge.d.ts", "import": "./dist/bridge.js"},
     "./tool": {"types": "./dist/tool.d.ts", "import": "./dist/tool.js"},
     "./testing": {"types": "./dist/testing.d.ts", "import": "./dist/testing.js"},
     "./write": {"types": "./dist/write.d.ts", "import": "./dist/write.js"},
