@@ -7,8 +7,9 @@ import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
 import type {AgentInput, RepairContext, RepairRef, RepairSource} from './input.js';
-import {FAST_PROMPT, DISPATCH_PROMPT, WORLD_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
+import {FAST_PROMPT, DISPATCH_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
 import {ownedBinding} from './bindings.js';
+import {worldGuidance} from './world-guidance.js';
 import type {OwnedBinding} from './bindings.js';
 export {parseAgentInput, PROMPT_VERSION};
 export {getOwnedBindings} from './bindings.js';
@@ -56,7 +57,7 @@ export class OwnedAgentOrchestrator {
     let raw: unknown;
     let reviewedChanges: unknown;
     if (repair) {
-      const world = await this.call('world', WORLD_PROMPT, repair.data, request);
+      const world = await this.callWorld(repair, request);
       const worldReport = this.validateWorld(world, repair.context, repair.sources, bound);
       if (worldReport.disposition === 'KEEP') return {kind: 'text', text: 'KEEP：世界状态分析无需修复。'};
       if (worldReport.disposition !== 'REVISE' || repair.sources.length === 0) {
@@ -102,7 +103,7 @@ export class OwnedAgentOrchestrator {
     }
     if (!repair) throw new ProtocolError('INVALID_ARGUMENT', 'Repair input required by workflow');
     if (binding.dispatch === 'world') {
-      const world = await this.call('world', WORLD_PROMPT, repair.data, request);
+      const world = await this.callWorld(repair, request);
       this.validateWorld(world, repair.context, repair.sources, true);
       return this.envelope(binding, {kind:'role_report',role:'world',value:world});
     }
@@ -201,6 +202,10 @@ export class OwnedAgentOrchestrator {
       // A callback may be async even when assigned to a void-returning interface.
       void Promise.resolve(this.onReceipt?.(receipt)).catch(() => {});
     } catch { /* Observability cannot change a result. */ }
+  }
+  private callWorld(repair: NonNullable<ReturnType<typeof repairInput>>, request: AgentInvocation): Promise<unknown> {
+    return this.call('world', WORLD_PROMPT + WORLD_GUIDANCE_PROMPT, {input: repair.data,
+      report_constraints: worldGuidance(repair.context, repair.sources)}, request);
   }
   private async call(role: AgentRole, prompt: string, data: unknown, request: AgentInvocation): Promise<unknown> {
     this.check(request);
