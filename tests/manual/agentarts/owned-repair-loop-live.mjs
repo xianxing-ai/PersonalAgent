@@ -252,7 +252,12 @@ export async function runOwnedRepairLoop({mode, configuration, coordination, dea
       } catch {receipt.cleanupErrorCode = 'CLEANUP_NOT_CONFIRMED';}
     } else {host?.close(); host = undefined;}
     receipt.finishedAt = new Date().toISOString();
-    await save();
+    try {await save();}
+    catch {
+      receipt.status = 'failed';
+      receipt.verification = mode === 'fake' ? 'mock' : 'unverified';
+      receipt.receiptWriteErrorCode = 'RECEIPT_WRITE_NOT_CONFIRMED';
+    }
   }
   return {receipt, directory};
 }
@@ -272,7 +277,7 @@ export async function main(args = process.argv.slice(2), input = process.stdin) 
   try {
     const {receipt, directory} = await runOwnedRepairLoop({mode: 'live', configuration,
       deadline: args[3], signal: controller.signal, approveSyntheticFixture: true});
-    process.stdout.write(JSON.stringify({receiptPath: path.join(directory, 'receipt.json'), ...receipt}, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({receiptPath: receipt.receiptWriteErrorCode ? null : path.join(directory, 'receipt.json'), ...receipt}, null, 2) + '\n');
     process.exitCode = receipt.status === 'passed' ? 0 : 1;
   } finally {process.removeListener('SIGINT', abort); process.removeListener('SIGTERM', abort);}
 }
