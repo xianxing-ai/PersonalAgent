@@ -3,9 +3,17 @@ import test from 'node:test';
 import {OwnedAgentOrchestrator} from '../dist/index.js';
 import {worldGuidance} from '../dist/world-guidance.js';
 import {FakeModelProvider} from '@personal-agent/models';
-import {REPAIR_QUERY} from '../../../tests/manual/agentarts/owned-binding-live.mjs';
+import {GOAL_PREFIX} from '../dist/input.js';
 const ref=(id,revision=1)=>({id:id.repeat(64),revision});
 const source=(id,revision,kind,summary,state='active')=>({node:ref(id,revision),kind,summary,state});
+const projected=(id,revision,kind,summary)=>({...ref(id,revision),kind,summary,state:'active',
+  validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2027-01-01T00:00:00.000Z'});
+const REPAIR_QUERY=GOAL_PREFIX+JSON.stringify({action:'REVISE',strategy:'最小修复',nodes:[
+  projected('b',1,'goal','14点准备'),projected('b',2,'goal','16点准备'),
+  projected('a',1,'plan','14点准备'),projected('c',1,'plan','其他工作')],
+  repairContext:{expectedGraphRevision:7,targets:['a','c'].map(id=>({node:ref(id),
+    summary:id==='a'?'14点准备':'其他工作',requestedDependencies:[ref('b',2)]})),allowedDependencies:[ref('b',2)]},
+  omittedSources:0,calibrated:false,executed:false});
 
 test('world vocabulary restricts source kinds and latest adjacent changes without preselecting impact',()=>{
   const sources=[source('a',1,'fact','first'),source('a',2,'fact','second'),source('a',3,'fact','latest'),
