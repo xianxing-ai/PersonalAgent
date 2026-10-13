@@ -63,6 +63,6 @@ const {_electron}=require('playwright');
     assert.equal(fs.readFileSync(path.join(source,'SKILL.md'),'utf8'),original);
     assert.equal(fs.readFileSync(path.join(example,'SKILL.md'),'utf8'),original);
     console.log(JSON.stringify({state:'passed',main:'actual product',preload:'actual IPC',renderer:'actual admin',
-      nativeDialogs:'explicit synthetic',runtimeConfigured:false,cloudCalls:0,sourceUnchanged:true,restart:true}));
+      nativeDialogs:'explicit synthetic',runtimeConfigured:false,skillRunRejected:rejected.ok===false,sourceUnchanged:true,restart:true}));
   } finally {await instance?.app.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
