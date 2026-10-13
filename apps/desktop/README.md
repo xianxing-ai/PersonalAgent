@@ -9,7 +9,28 @@ Competition可信主进程已消费WSS传输及连接状态，此接入仍为 **
 `PA_AGENTARTS_APP_TOKEN`与镜像`PA_AGENT_WSS_AUTH_TOKEN`匹配并只留在受信环境。`PA_AGENTARTS_HTTPS_FALLBACK=1`明确允许证明未发出invoke的连接失败使用同部署备用。降级/认证失败/未知核实可见，未知任务不会重发。既有未配置消费者保留HTTPS兼容。配置、实际TLS连接、Runtime和Desktop合成验证分别记录，不代表华为公开WSS或物理窗口验收。具体接口与余项见[镜像接口](../../docs/competition/OWNED_IMAGE_INTERFACES.md)。
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
+本地 [MOD-08K](../../docs/modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 接通私人 SQLite
+备份清单与逐事实删除。备份放在 userData 的 `private-memory-backups/*.sqlite`；不自动
+创建，新增应用副本须登记。清理保留无关事实，失败或登记失联时不报告完成。
+整篇 Wiki 写回备份按用户选择保留，不能证明无关时明确显示删除仍未完成。
+Knowledge 索引仅在内存、总正文最多 8 MiB；删除私人事实和撤销来源会清空缓存。
+插件安装包由 `apps/obsidian-plugin` 构建，当前没有插件 Runtime 配对或真实宿主验收。
+
+Wiki 来源增量（[MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)）：
+Competition 私人记忆与知识工具共用受信知识源，原生目录选择与加密配置可在重启后复用；
+切库、停用或撤销阻止旧引文保存与消费。摘录及更正仍逐条原生确认，任务仍逐任务确认。
+新鲜第一页及消费前验证来源，已知变化显示“来源已变化”，缺失/扫描失败不自动删除。
+无新增云调用；旧格式事实继续可管理与删除，消费需重新检索确认。
+
+Wiki 写回增量（[MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)）复用既有
+受控精确补丁工具。正文成功与记忆投影完成独立记录，重启恢复只做来源重校验；管理页核实
+原任务时可见投影是否仍待恢复。新摘录仍逐条确认，不自动写入 Memory 或发送云端。
+
+后续 [MOD-08J](../../docs/modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md) 装配后台只读来源
+检查，使用现有定时入口每 30 秒检查一次，并展示状态。仅校验原确认记忆，新增笔记
+不自动形成记忆；缺失与扫描失败保留历史，不删除文件。尚无完整全文索引或安装插件。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

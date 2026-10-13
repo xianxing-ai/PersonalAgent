@@ -141,7 +141,9 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
         : action === 'read' && !result.version ? '所选版本不存在；当前启用状态已读回。'
         : result.state === 'declined' ? '已取消确认，未更改。'
         : result.state === 'pending' ? (result.phase === 'private_copy_erasure'
-          ? '来源已停止引用，关联任务副本仍待核实清除，请在任务区处理后读回。'
+          ? result.pendingBackupIds?.length
+            ? '记忆已停止引用；应用备份仍待清理或整篇笔记备份已保留，删除尚未完成。'
+            : '来源已停止引用，关联任务副本仍待核实清除，请在任务区处理后读回。'
           : `任务仍为${taskState(result.taskState)}，请在任务区处理后读回。`)
           : result.taskId ? `任务已受理：${result.taskId}（${taskState(result.state)}）`
             : result.version?.validation === 'failed' ? '验证失败，不能启用。'
