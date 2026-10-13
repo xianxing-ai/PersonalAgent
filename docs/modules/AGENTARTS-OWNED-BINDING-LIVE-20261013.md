@@ -10,7 +10,21 @@ Profile：`huawei_ict_agentarts`；负责人：zemeng；本工作包为 `in_prog
 - 修复合成会议宿主与生产 `workspace.read_text` 新增可选摘要字段的兼容：存在时严格核验内容一致性；公开投影仍只包含原批准的四项会议字段。其他字段和不匹配摘要仍拒绝。
 - CLI 接收 PowerShell 高精度 ISO 时间时规范化为协议接受的 UTC 毫秒时间，不续期。
 
-## 本次实际云端结果
+## 新镜像部署与增量验收（02:28 UTC 起）
+
+`owned-1.3` ARM64 镜像已由 GitHub 发布工作流发布，并导入华为 SWR；既有 Runtime 的 Latest
+已更新为 `arm64-7b6b4101`。控制台读回正常，保留原凭据、入站身份和权限，增加内容无关的部署版本标识。
+[预览镜像与验收附件](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-7b6b4101)。
+
+- 02:30:00–02:30:13 UTC：新镜像 World 绑定真实 WSS 调用通过，返回通过严格来源/结构校验的 `role_report/REVISE`；目录 8 Workflow / 3 Controller 一致。
+- 随后的全绑定运行在目录发现阶段遇到 `EXTERNAL_FAILURE`，所有 invoke 均未发送；不能算成 11 个模型调用失败。02:34 与 02:37 的只读诊断再次读回 HTTP 200/11 个绑定和 WSS ready，未发 invoke。
+- 02:33 的修复尝试在本地结果导出门禁拒绝：云端提案使用公开 Schema 已允许的 `maxBytes`，合成宿主却仅接受 `path`。现已允许固定夹具路径及可选的整数 `maxBytes=1..2048`；未知字段、其他路径与非法字节上限仍拒绝。
+- 02:39 的新尝试证明审批前零读，合成验收宿主批准后读取 1 次并记录 Evidence 1 条、图修订到 6。随后云端续答返回 `INVALID_ARGUMENT`，原任务保持 `waiting_reconciliation`，尚未取得修复候选、CAS 提交或完整闭环成功。
+
+上述审批来自明确标识的已授权合成验收宿主，不是用户本人点击；输入、文件与隔离数据库均是固定公开夹具。
+原始失败数据库保持原状，不通过清除挂起或重做未知写入掩盖问题。最新回执保存在忽略目录，公开文档仅记录脱敏结果。
+
+## 旧镜像当日较早的实际结果
 
 2026-10-13 01:31:53–01:32:16 UTC 的逐项运行：
 
