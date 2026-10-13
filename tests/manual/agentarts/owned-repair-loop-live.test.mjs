@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {mkdirSync, readdirSync, rmSync} from 'node:fs';
 import {mkdtemp, mkdir, readFile, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -123,4 +124,38 @@ test('live credentials are explicit, Huawei-only and cannot be mixed with a Fake
   await assert.rejects(() => runOwnedRepairLoop({...options, approveSyntheticFixture: false}), {code: 'INVALID_ARGUMENT'});
   const controller = new AbortController(); controller.abort();
   await assert.rejects(() => runOwnedRepairLoop({...options, signal: controller.signal}), {code: 'CANCELLED'});
+});
+
+test('unwritable receipt keeps confirmed source facts but cannot report durable success', async t => {
+  await mkdir(cacheRoot, {recursive: true});
+  const outputRoot = await mkdtemp(path.join(cacheRoot, 'run-'));
+  t.after(async () => {
+    assert.equal(path.dirname(outputRoot), path.resolve(cacheRoot));
+    await rm(outputRoot, {recursive: true, force: true});
+  });
+  let blocked = false;
+  const coordination = new FakeCoordinationPort(request => {
+    if (!request.continuation) return sourceProposal;
+    const cases = readdirSync(outputRoot);
+    assert.equal(cases.length, 1);
+    const receiptFile = path.join(outputRoot, cases[0], 'receipt.json');
+    rmSync(receiptFile);
+    mkdirSync(receiptFile);
+    blocked = true;
+    return candidate(request);
+  });
+  const {receipt, directory} = await runOwnedRepairLoop({mode: 'fake', coordination,
+    deadline: new Date(Date.now() + 30_000).toISOString(), signal: new AbortController().signal,
+    approveSyntheticFixture: true, outputRoot});
+  assert.equal(blocked, true);
+  assert.equal(receipt.status, 'failed');
+  assert.equal(receipt.verification, 'mock');
+  assert.equal(receipt.receiptWriteErrorCode, 'RECEIPT_WRITE_NOT_CONFIRMED');
+  assert.equal(receipt.sourceState, 'succeeded');
+  assert.equal(receipt.sourceExecutions, 1);
+  assert.equal(receipt.sourceEvidence, 1);
+  assert.equal(receipt.currentGraphRevision, 6);
+  assert.equal(receipt.repairTaskId, null);
+  assert.equal(receipt.hostCleanupVerified, true);
+  assert.equal(path.dirname(directory), path.resolve(outputRoot));
 });
