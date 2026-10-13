@@ -41,6 +41,7 @@ import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
+import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
 import {agentArtsFailureNotice} from './agentarts-failure-notice.js';
 import {createDeferredRuntimeStartup} from './runtime-startup.js';
@@ -123,6 +124,7 @@ let orbStateOverride = null;
 let connectionLabel = '未连接 Runtime';
 let runtimeError = '';
 let cloudRequestFailureNotice = '';
+let cloudTransportNotice = '';
 let capabilities = [];
 let health = [];
 let capabilityDirectory = {state: 'loading', reason: '正在读取 Runtime 能力目录'};
@@ -469,14 +471,14 @@ function taskResultMetadata(task) {
 
 function agentArtsSnapshot() {
   const value = agentArtsConfig?.snapshot();
-  return value && {...value, reason: cloudRequestFailureNotice || value.reason};
+  return value && {...value, reason: cloudRequestFailureNotice || cloudTransportNotice || value.reason};
 }
 
 function snapshot(surface) {
   const cloudSettings=agentArtsSnapshot();
   return {
     connection: connectionLabel,
-    connectionError: runtimeError || cloudRequestFailureNotice,
+    connectionError: runtimeError || cloudRequestFailureNotice || cloudTransportNotice,
     fakeModel: fakeModelMode,
     fake: fakeMode,
     pinned,
@@ -1449,6 +1451,8 @@ async function initializeRuntime() {
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(knowledgeSourceConfig, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
+      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding});
+      cloudTransportNotice = '';
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         hostUserNamespace: namespace,
@@ -1573,7 +1577,13 @@ async function initializeRuntime() {
           competitionToolExports: [...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
         }),
         ...cloudBinding,
+        ...agentArtsTransportConfig,
         invokeMode: agentArtsInvokeMode,
+        ...(agentArtsTransportConfig.transport === 'wss' ? {onTransportState: state => {
+          if (state.state === 'closed') return;
+          cloudTransportNotice = agentArtsTransportNotice(state);
+          publish();
+        }} : {}),
         onDiagnostic: receipt => {
           if (process.env.PA_AGENTARTS_SAFE_DIAGNOSTICS === '1') desktopHost.logAgentArtsFailure(receipt);
           cloudRequestFailureNotice = agentArtsFailureNotice(receipt);
@@ -1700,6 +1710,7 @@ async function initializeRuntime() {
   await syncCapabilities();
   await syncRuntimeSnapshots();
   if (competitionMode) proactiveHost = createDesktopProactiveHost({application: runtimeApplication,
+    initialRequestMode: syntheticMvp ? 'goal' : 'goal-with-tools-json',
     client, userData: app.getPath('userData'), namespace: desktopHost.userNamespace, onUpdate: publish,
     goalHost,chooser:localLaya,cognitionReady:()=>localLaya.snapshot().state==='ready',
     createCognitionHost:runtimeModule.createProactiveCognitionHost,

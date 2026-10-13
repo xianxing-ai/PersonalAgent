@@ -1,0 +1,21 @@
+{
+  "name": "@personal-agent/agentarts-runtime",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "exports": {".": "./src/server.mjs"},
+  "scripts": {
+    "build": "node --check src/server.mjs && node --check src/main.mjs && node --check src/websocket-transport.mjs && node --check src/binding-dispatch.mjs",
+    "typecheck": "node --check src/server.mjs && node --check src/main.mjs && node --check src/websocket-transport.mjs && node --check src/binding-dispatch.mjs",
+    "test": "node --test test/*.test.mjs",
+    "start": "node src/main.mjs",
+    "image:context": "node scripts/image-context.mjs",
+    "inventory": "node scripts/inventory.mjs"
+  },
+  "dependencies": {
+    "@personal-agent/agentarts": "0.1.0-alpha.1",
+    "@personal-agent/contracts": "0.1.0-alpha.1",
+    "@personal-agent/models": "0.1.0-alpha.1",
+    "ws": "8.22.0"
+  }
+}

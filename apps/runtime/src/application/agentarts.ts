@@ -5,9 +5,12 @@ import {
   type AgentArtsFailureDiagnostic,
   type AgentArtsFetch,
   type CoordinationRequest,
+  type AgentArtsTransportState,
+  type AgentArtsWebSocketFactory,
 } from '@personal-agent/coordination';
 import {ProtocolError} from '@personal-agent/contracts';
 import {createHash} from 'node:crypto';
+import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt} from './coordination.js';
 import {
   createRuntimeApplication,
   type RuntimeApplication,
@@ -24,6 +27,12 @@ export interface AgentArtsRuntimeApplicationOptions
   initialRequestMode?: 'goal' | 'goal-with-tools-json';
   authorizationProvider: AgentArtsAuthorizationProvider;
   fetchImpl?: AgentArtsFetch;
+  transport?: 'https' | 'wss';
+  websocketUrl?: string;
+  allowHttpsFallback?: boolean;
+  websocketAuthorizationProvider?: AgentArtsAuthorizationProvider;
+  websocketFactory?: AgentArtsWebSocketFactory;
+  onTransportState?: (state: AgentArtsTransportState) => void;
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
@@ -46,6 +55,12 @@ export function createAgentArtsRuntimeApplication(
     repairCandidateVersion,
     authorizationProvider,
     fetchImpl,
+    transport,
+    websocketUrl,
+    allowHttpsFallback,
+    websocketAuthorizationProvider,
+    websocketFactory,
+    onTransportState,
     onDiagnostic,
     beforeCompetitionSend,
     ...runtimeOptions
@@ -65,6 +80,9 @@ export function createAgentArtsRuntimeApplication(
     {
       gatewayUrl,
       runtimeName,
+      ...(transport === undefined ? {} : {transport}),
+      ...(websocketUrl === undefined ? {} : {websocketUrl}),
+      ...(allowHttpsFallback === undefined ? {} : {allowHttpsFallback}),
       ...(invokeMode === undefined ? {} : {invokeMode}),
       ...(workflowGoalInput === undefined ? {} : {workflowGoalInput}),
       ...(responseMode === undefined ? {} : {responseMode}),
@@ -84,6 +102,22 @@ export function createAgentArtsRuntimeApplication(
         availableTools: request.availableTools});
     },
     onDiagnostic,
+    transport !== 'wss' && websocketAuthorizationProvider === undefined && websocketFactory === undefined
+      && onTransportState === undefined ? undefined : {
+        ...(websocketAuthorizationProvider === undefined ? {} : {authorizationProvider: websocketAuthorizationProvider}),
+        ...(websocketFactory === undefined ? {} : {factory: websocketFactory}),
+        ...(onTransportState === undefined ? {} : {onState: onTransportState}),
+        onDispatch: (request, receipt) => {
+          application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
+          application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-received', null);
+        },
+        onAccepted: (request, receipt) => {
+          recordCompetitionCloudAcceptance(application.runtime, request.taskId, receipt);
+        },
+        onTerminal: (request, receipt) => {
+          recordCompetitionCloudReceipt(application.runtime, request.taskId, receipt);
+        },
+      },
   );
   application = createRuntimeApplication({
     ...runtimeOptions,
@@ -92,8 +126,11 @@ export function createAgentArtsRuntimeApplication(
     coordinationBinding:createHash('sha256').update(JSON.stringify({gatewayUrl,runtimeName,
       invokeMode:invokeMode??'published',workflowGoalInput:workflowGoalInput??null,
       responseMode:responseMode??'text',initialRequestMode:initialRequestMode??'goal',
+      ...(transport === 'wss' ? {transport,websocketUrl,allowHttpsFallback:allowHttpsFallback??false} : {}),
       ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion})})).digest('hex'),
     coordination: new CompetitionCoordinator(cloud),
   });
+  const closeRuntime = application.close.bind(application);
+  application.close = () => { closeRuntime(); cloud.close(); };
   return application;
 }

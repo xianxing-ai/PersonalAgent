@@ -1,5 +1,8 @@
 # DEV-WORKFLOWS：开发工作流自动化功能群（2026-10-02 登记）
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 > 2026-10-07 最新规则：以下为原轮次记录；集中验证、指定评审和唯一集成槽已取消。MOD-33/36/37 由 goo122、MOD-34/35/38 由 Potatos498 各自负责实现、接线、验证和交付，zemeng 专注核心与 AgentArts（MOD-37 仍未开工），详见 [模块分工](../MODULE_ASSIGNMENTS.md)。

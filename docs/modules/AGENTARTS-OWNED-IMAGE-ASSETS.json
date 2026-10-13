@@ -1,0 +1,2485 @@
+{
+  "sourceSha256": "9e76c85486254acbbf66ce0de94026f1cfb89d60e087c2569ff2b6f38946798f",
+  "recordCount": 15,
+  "topLevelCount": 8,
+  "resourceTypes": [
+    "workflow",
+    "provider",
+    "model"
+  ],
+  "resources": [
+    {
+      "id": "8004735c-cac6-4c09-9691-1a93233475ac",
+      "type": "workflow",
+      "name": "PA-证据安全审查_1",
+      "level": 1,
+      "schema": "V2.0",
+      "dependencies": [
+        "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+        "100"
+      ],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "response_template",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "98ff8101a82741bb7c458ebbc71d5d914c6689c93303a1f162e8c3cd47413252",
+          "length": 68
+        },
+        {
+          "path": "dsl.nodes[0].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[1].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.nodes[1].outputs[2].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[1].description",
+          "sha256": "7871286216cdc7c18c8c3db94acd0d18c42400660d19e45cb2a44d9972656d2e",
+          "length": 17
+        },
+        {
+          "path": "dsl.nodes[2].inputs[2].description",
+          "sha256": "2a41213a4fa83dcf7e5d613ab5e87578d63bf02026cfbd783260d47b5e6fc35b",
+          "length": 19
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.template_content",
+          "sha256": "35f44e9d8127fba1b71871c9f3d27425e04ba55a98514239dda9c084238fcd04",
+          "length": 106
+        },
+        {
+          "path": "dsl.nodes[2].configs.system_prompt",
+          "sha256": "8d6be89daaf25e98d684760e667c171cbc130acc52af0a9d69b7afe7418a6271",
+          "length": 1430
+        },
+        {
+          "path": "dsl.configs.variables[0].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.configs.variables[1].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        }
+      ]
+    },
+    {
+      "id": "71f3004f-faba-4487-9e6f-996194ec2b3c",
+      "type": "workflow",
+      "name": "PA-MVP-快速工具与答复",
+      "level": 1,
+      "schema": "V2.0",
+      "dependencies": [
+        "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+        "100"
+      ],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "2af785a9bb5e2efa46f68bdacf1769e578fac72f90c2ead7457659b82c5b8d06",
+          "length": 49
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[1].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.template_content",
+          "sha256": "8868fc514e5f7bd1a350480c5a825cd0f5b47b6c0c8da0ca62be71158f638c23",
+          "length": 9
+        },
+        {
+          "path": "dsl.nodes[2].configs.system_prompt",
+          "sha256": "0bb862c7baa2cea439838dbb4eb8101e638952d4c5a7f7218dc3e5b6a409b243",
+          "length": 1230
+        }
+      ]
+    },
+    {
+      "id": "8004735c-cac6-4c09-9691-1a93233475ac",
+      "type": "workflow",
+      "name": "PA-zhengjuanquanshencha_1",
+      "level": 2,
+      "schema": "V2.0",
+      "dependencies": [],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "response_template",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "98ff8101a82741bb7c458ebbc71d5d914c6689c93303a1f162e8c3cd47413252",
+          "length": 68
+        },
+        {
+          "path": "dsl.nodes[0].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[1].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.nodes[1].outputs[2].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[1].description",
+          "sha256": "7871286216cdc7c18c8c3db94acd0d18c42400660d19e45cb2a44d9972656d2e",
+          "length": 17
+        },
+        {
+          "path": "dsl.nodes[2].inputs[2].description",
+          "sha256": "2a41213a4fa83dcf7e5d613ab5e87578d63bf02026cfbd783260d47b5e6fc35b",
+          "length": 19
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.template_content",
+          "sha256": "35f44e9d8127fba1b71871c9f3d27425e04ba55a98514239dda9c084238fcd04",
+          "length": 106
+        },
+        {
+          "path": "dsl.nodes[2].configs.system_prompt",
+          "sha256": "8d6be89daaf25e98d684760e667c171cbc130acc52af0a9d69b7afe7418a6271",
+          "length": 1430
+        },
+        {
+          "path": "dsl.configs.variables[0].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.configs.variables[1].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        }
+      ]
+    },
+    {
+      "id": "b74bbcd0-b8f6-4a73-b436-0676f952ac9a",
+      "type": "workflow",
+      "name": "PA-MVP-确定性意图",
+      "level": 1,
+      "schema": "V2.0",
+      "dependencies": [
+        "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+        "100"
+      ],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_1790747710275",
+          "name": "代码",
+          "type": "Code",
+          "configKeys": [
+            "code",
+            "isDefaultName",
+            "exec_env"
+          ]
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "c7b460b695b14fd56e9b63e06283f79918d564440410f926379a7ba8d64a1071",
+          "length": 49
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[3].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[3].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[3].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[0].outputs[3].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[3].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[3].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[0].outputs[3].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[0].outputs[3].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[0].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "47b9ee9dd5b88eea1452819108453999051c74d534b7fde8ad985bdf08147237",
+          "length": 18
+        },
+        {
+          "path": "dsl.nodes[1].configs.code",
+          "sha256": "51912000e0502dfa1c29f1ac325fad81b5eae6758ffb486c4b15b664851a1a2e",
+          "length": 605
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].description",
+          "sha256": "a2cb2d365169a27fe24643ceb31094e33ed024b45579fb6274238df8043f5ca0",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[2].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        }
+      ]
+    },
+    {
+      "id": "71f3004f-faba-4487-9e6f-996194ec2b3c",
+      "type": "workflow",
+      "name": "PA-MVP-kuaisugongjuyudafu",
+      "level": 2,
+      "schema": "V2.0",
+      "dependencies": [],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "2af785a9bb5e2efa46f68bdacf1769e578fac72f90c2ead7457659b82c5b8d06",
+          "length": 49
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[1].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.template_content",
+          "sha256": "8868fc514e5f7bd1a350480c5a825cd0f5b47b6c0c8da0ca62be71158f638c23",
+          "length": 9
+        },
+        {
+          "path": "dsl.nodes[2].configs.system_prompt",
+          "sha256": "0bb862c7baa2cea439838dbb4eb8101e638952d4c5a7f7218dc3e5b6a409b243",
+          "length": 1230
+        }
+      ]
+    },
+    {
+      "id": "100",
+      "type": "provider",
+      "name": "华为云MaaS",
+      "schema": "V2.0",
+      "dependencies": [],
+      "missingDependencies": [],
+      "nodes": [],
+      "snippetHashes": []
+    },
+    {
+      "id": "7d06153e-6262-4679-86ae-1914b38e11f3",
+      "type": "workflow",
+      "name": "PA-世界状态影响分析",
+      "level": 1,
+      "schema": "V2.0",
+      "dependencies": [
+        "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+        "998031d7-ec28-40ed-83e6-96667f22ff51",
+        "ed2363d9-b770-4ce5-a988-9bf0903466f7",
+        "100"
+      ],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_1790343097102",
+          "name": "判断_1",
+          "type": "Branch",
+          "configKeys": [
+            "isDefaultName"
+          ]
+        },
+        {
+          "id": "node_1790340167819",
+          "name": "PA-计划最小修复",
+          "type": "Workflow",
+          "configKeys": [
+            "valid",
+            "version_name",
+            "plugins",
+            "name",
+            "id",
+            "version_id",
+            "descriptionText",
+            "type"
+          ]
+        },
+        {
+          "id": "node_1790344875967",
+          "name": "PA-证据安全审查_1",
+          "type": "Workflow",
+          "configKeys": [
+            "original_info",
+            "valid",
+            "version_name",
+            "plugins",
+            "name",
+            "id",
+            "version_id",
+            "type"
+          ]
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        },
+        {
+          "id": "node_1790342051827",
+          "name": "变量聚合",
+          "type": "Aggregation",
+          "configKeys": [
+            "mode",
+            "isDefaultName",
+            "groups"
+          ]
+        },
+        {
+          "id": "node_1790473613013",
+          "name": "PA-证据安全审查_2",
+          "type": "Workflow",
+          "configKeys": [
+            "original_info",
+            "valid",
+            "version_name",
+            "plugins",
+            "name",
+            "id",
+            "version_id",
+            "type"
+          ]
+        },
+        {
+          "id": "node_1790343078926",
+          "name": "代码_1",
+          "type": "Code",
+          "configKeys": [
+            "code",
+            "isDefaultName",
+            "exec_env"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "c418c341347b92408f2f0a0a24c5c25488a5efa0ea7914cd48ad37cf4e9c989a",
+          "length": 78
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].branches[0].configs.conditions[0].left.description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[1].branches[0].configs.conditions[0].right.description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[1].branches[1].configs.conditions[0].left.description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[1].branches[1].configs.conditions[0].right.description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[1].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].description",
+          "sha256": "0f38f14d74048143e59185fe6e280a09500f48bb551158b3b9f1675b21d87081",
+          "length": 22
+        },
+        {
+          "path": "dsl.nodes[2].configs.descriptionText",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[3].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[3].inputs[1].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.nodes[3].inputs[2].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[3].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[3].configs.original_info.description",
+          "sha256": "98ff8101a82741bb7c458ebbc71d5d914c6689c93303a1f162e8c3cd47413252",
+          "length": 68
+        },
+        {
+          "path": "dsl.nodes[4].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[4].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[4].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[4].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[5].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[5].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[5].configs.template_content",
+          "sha256": "8868fc514e5f7bd1a350480c5a825cd0f5b47b6c0c8da0ca62be71158f638c23",
+          "length": 9
+        },
+        {
+          "path": "dsl.nodes[5].configs.system_prompt",
+          "sha256": "0669c93b4514789e1712f930ed5e3e4156c96e02e293778bce4b0f2c21b37adb",
+          "length": 829
+        },
+        {
+          "path": "dsl.nodes[6].inputs[0].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[6].inputs[1].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[6].inputs[2].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[6].outputs[0].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[7].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[7].inputs[1].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.nodes[7].inputs[2].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[7].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[7].configs.original_info.description",
+          "sha256": "98ff8101a82741bb7c458ebbc71d5d914c6689c93303a1f162e8c3cd47413252",
+          "length": 68
+        },
+        {
+          "path": "dsl.nodes[8].inputs[0].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[8].outputs[0].description",
+          "sha256": "190fb190ea4eee4b3309f39825ae6373a1700cfc14821870bd1a99a281132d71",
+          "length": 21
+        },
+        {
+          "path": "dsl.nodes[8].outputs[1].description",
+          "sha256": "61a8e85ef2396071bbabb5a5cbefd5788ffea3f640ab848e7de7fa8c2b6d0228",
+          "length": 25
+        },
+        {
+          "path": "dsl.nodes[8].configs.code",
+          "sha256": "650a001d196b5133854f4f974c74808d137847907b6a6879320a56a3c876aa71",
+          "length": 4952
+        }
+      ]
+    },
+    {
+      "id": "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+      "type": "model",
+      "name": "deepseek-v4-flash",
+      "schema": "V2.0",
+      "dependencies": [],
+      "missingDependencies": [],
+      "nodes": [],
+      "snippetHashes": []
+    },
+    {
+      "id": "998031d7-ec28-40ed-83e6-96667f22ff51",
+      "type": "workflow",
+      "name": "PA-zhengjuanquanshencha",
+      "level": 2,
+      "schema": "V2.0",
+      "dependencies": [],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "response_template",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "enable_thinking",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "98ff8101a82741bb7c458ebbc71d5d914c6689c93303a1f162e8c3cd47413252",
+          "length": 68
+        },
+        {
+          "path": "dsl.nodes[0].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[1].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.nodes[1].outputs[2].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[1].description",
+          "sha256": "7871286216cdc7c18c8c3db94acd0d18c42400660d19e45cb2a44d9972656d2e",
+          "length": 17
+        },
+        {
+          "path": "dsl.nodes[2].inputs[2].description",
+          "sha256": "2a41213a4fa83dcf7e5d613ab5e87578d63bf02026cfbd783260d47b5e6fc35b",
+          "length": 19
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.template_content",
+          "sha256": "35f44e9d8127fba1b71871c9f3d27425e04ba55a98514239dda9c084238fcd04",
+          "length": 106
+        },
+        {
+          "path": "dsl.nodes[2].configs.system_prompt",
+          "sha256": "770501b2fc46214c7cb10a0d0f2df38ef953da4d793407372afd0b153883aa48",
+          "length": 2238
+        },
+        {
+          "path": "dsl.configs.variables[0].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.configs.variables[1].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        }
+      ]
+    },
+    {
+      "id": "ed2363d9-b770-4ce5-a988-9bf0903466f7",
+      "type": "workflow",
+      "name": "PA-计划最小修复",
+      "level": 1,
+      "schema": "V2.0",
+      "dependencies": [
+        "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+        "100"
+      ],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "enable_thinking",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "bac38f899c5854483f48eab0794303e428287060a40cf9368da78e943ce3b5cc",
+          "length": 72
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[1].description",
+          "sha256": "403d0209f640b960b7d81c26679feb1deae217b6c81eacaa93c7c4b80de81aa5",
+          "length": 21
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[1].configs.template_content",
+          "sha256": "fd659b57b5377977e2e19f7121334bb2fbc1203e2ff2fe1ddf6540adce462d62",
+          "length": 62
+        },
+        {
+          "path": "dsl.nodes[1].configs.system_prompt",
+          "sha256": "4154b4562e5879c8aaad3085057d9d25aa4d329d4d13a88b9988b640cdc4a81d",
+          "length": 927
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].description",
+          "sha256": "0f38f14d74048143e59185fe6e280a09500f48bb551158b3b9f1675b21d87081",
+          "length": 22
+        },
+        {
+          "path": "dsl.nodes[2].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[2].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.configs.variables[0].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        }
+      ]
+    },
+    {
+      "id": "65236810-db21-41cb-928b-39af691c4cfa",
+      "type": "workflow",
+      "name": "PA-计划最小修复_1",
+      "level": 1,
+      "schema": "V2.0",
+      "dependencies": [
+        "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+        "100"
+      ],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "bac38f899c5854483f48eab0794303e428287060a40cf9368da78e943ce3b5cc",
+          "length": 72
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[1].description",
+          "sha256": "0f38f14d74048143e59185fe6e280a09500f48bb551158b3b9f1675b21d87081",
+          "length": 22
+        },
+        {
+          "path": "dsl.nodes[1].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[1].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[1].description",
+          "sha256": "403d0209f640b960b7d81c26679feb1deae217b6c81eacaa93c7c4b80de81aa5",
+          "length": 21
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.template_content",
+          "sha256": "fd659b57b5377977e2e19f7121334bb2fbc1203e2ff2fe1ddf6540adce462d62",
+          "length": 62
+        },
+        {
+          "path": "dsl.nodes[2].configs.system_prompt",
+          "sha256": "9f620e6f599c3ff9ca5dc7770e4721a1e55544522e9e027eb0b1720ec5af80af",
+          "length": 1361
+        },
+        {
+          "path": "dsl.configs.variables[0].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        }
+      ]
+    },
+    {
+      "id": "81bc9eb8-cf6a-4869-a1a2-e3b446349447",
+      "type": "workflow",
+      "name": "PA-MVP-受限主路由",
+      "level": 1,
+      "schema": "V2.0",
+      "dependencies": [
+        "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+        "100",
+        "8004735c-cac6-4c09-9691-1a93233475ac",
+        "71f3004f-faba-4487-9e6f-996194ec2b3c",
+        "65236810-db21-41cb-928b-39af691c4cfa"
+      ],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_1790343097102",
+          "name": "判断_1",
+          "type": "Branch",
+          "configKeys": [
+            "isDefaultName"
+          ]
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_1790745936903",
+          "name": "PA-MVP-快速工具与答复",
+          "type": "Workflow",
+          "configKeys": [
+            "valid",
+            "version_name",
+            "plugins",
+            "name",
+            "id",
+            "version_id",
+            "descriptionText",
+            "type"
+          ]
+        },
+        {
+          "id": "node_1790762730315",
+          "name": "PA-证据安全审查_1_1",
+          "type": "Workflow",
+          "configKeys": [
+            "valid",
+            "version_name",
+            "plugins",
+            "name",
+            "id",
+            "version_id",
+            "descriptionText",
+            "type"
+          ]
+        },
+        {
+          "id": "node_1790342051827",
+          "name": "变量聚合",
+          "type": "Aggregation",
+          "configKeys": [
+            "mode",
+            "isDefaultName",
+            "groups"
+          ]
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        },
+        {
+          "id": "node_1790343078926",
+          "name": "代码_1",
+          "type": "Code",
+          "configKeys": [
+            "code",
+            "isDefaultName",
+            "exec_env"
+          ]
+        },
+        {
+          "id": "node_1790762719790",
+          "name": "PA-计划最小修复_1",
+          "type": "Workflow",
+          "configKeys": [
+            "valid",
+            "version_name",
+            "plugins",
+            "name",
+            "id",
+            "version_id",
+            "descriptionText",
+            "type"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "8cbf28cfd1461fceea999f11d5141f9026755518c1334abfade4b7979ff7177d",
+          "length": 102
+        },
+        {
+          "path": "dsl.nodes[0].branches[0].configs.conditions[0].left.description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[0].branches[0].configs.conditions[0].right.description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[0].branches[1].configs.conditions[0].left.description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[0].branches[1].configs.conditions[0].right.description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[1].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[1].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[3].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[3].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[3].configs.descriptionText",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[4].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[4].inputs[1].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.nodes[4].inputs[2].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[4].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[4].configs.descriptionText",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[5].inputs[0].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[5].inputs[1].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[5].inputs[2].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[5].outputs[0].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[6].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[6].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[6].configs.template_content",
+          "sha256": "8868fc514e5f7bd1a350480c5a825cd0f5b47b6c0c8da0ca62be71158f638c23",
+          "length": 9
+        },
+        {
+          "path": "dsl.nodes[6].configs.system_prompt",
+          "sha256": "588662b44293e773a9045134105dac9c2353c88e72edb4ca543c4fdf5cb56da6",
+          "length": 1372
+        },
+        {
+          "path": "dsl.nodes[7].inputs[0].description",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        },
+        {
+          "path": "dsl.nodes[7].outputs[0].description",
+          "sha256": "190fb190ea4eee4b3309f39825ae6373a1700cfc14821870bd1a99a281132d71",
+          "length": 21
+        },
+        {
+          "path": "dsl.nodes[7].outputs[1].description",
+          "sha256": "61a8e85ef2396071bbabb5a5cbefd5788ffea3f640ab848e7de7fa8c2b6d0228",
+          "length": 25
+        },
+        {
+          "path": "dsl.nodes[7].configs.code",
+          "sha256": "7d8816ec48db23f4a4834690edb0759c79b10c8538d2cf3242978d9d37b4cc03",
+          "length": 9575
+        },
+        {
+          "path": "dsl.nodes[8].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[8].inputs[1].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[8].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[8].outputs[1].description",
+          "sha256": "0f38f14d74048143e59185fe6e280a09500f48bb551158b3b9f1675b21d87081",
+          "length": 22
+        },
+        {
+          "path": "dsl.nodes[8].configs.descriptionText",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "998031d7-ec28-40ed-83e6-96667f22ff51",
+      "type": "workflow",
+      "name": "PA-证据安全审查",
+      "level": 1,
+      "schema": "V2.0",
+      "dependencies": [
+        "maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924",
+        "100"
+      ],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "response_template",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "enable_thinking",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "98ff8101a82741bb7c458ebbc71d5d914c6689c93303a1f162e8c3cd47413252",
+          "length": 68
+        },
+        {
+          "path": "dsl.nodes[0].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[1].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.nodes[1].outputs[2].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[1].outputs[3].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[1].description",
+          "sha256": "7871286216cdc7c18c8c3db94acd0d18c42400660d19e45cb2a44d9972656d2e",
+          "length": 17
+        },
+        {
+          "path": "dsl.nodes[2].inputs[2].description",
+          "sha256": "2a41213a4fa83dcf7e5d613ab5e87578d63bf02026cfbd783260d47b5e6fc35b",
+          "length": 19
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.template_content",
+          "sha256": "35f44e9d8127fba1b71871c9f3d27425e04ba55a98514239dda9c084238fcd04",
+          "length": 106
+        },
+        {
+          "path": "dsl.nodes[2].configs.system_prompt",
+          "sha256": "e050cac01480d6b09dfc39424994a5e676049311dd34ac7ab880f319899da2f9",
+          "length": 2401
+        },
+        {
+          "path": "dsl.configs.variables[0].description",
+          "sha256": "62f393a848ae28103b78b11875607249f92f1023794e9da3c1c7db8b36e6fafb",
+          "length": 18
+        },
+        {
+          "path": "dsl.configs.variables[1].description",
+          "sha256": "dc368870bf9b14c4e3c216751426bc8e7d5797c201c8d0ad9a375a05ed569e84",
+          "length": 24
+        }
+      ]
+    },
+    {
+      "id": "ed2363d9-b770-4ce5-a988-9bf0903466f7",
+      "type": "workflow",
+      "name": "PA-jihuazuixiaoxiufu",
+      "level": 2,
+      "schema": "V2.0",
+      "dependencies": [],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "enable_thinking",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "bac38f899c5854483f48eab0794303e428287060a40cf9368da78e943ce3b5cc",
+          "length": 72
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[1].description",
+          "sha256": "403d0209f640b960b7d81c26679feb1deae217b6c81eacaa93c7c4b80de81aa5",
+          "length": 21
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[1].configs.template_content",
+          "sha256": "fd659b57b5377977e2e19f7121334bb2fbc1203e2ff2fe1ddf6540adce462d62",
+          "length": 62
+        },
+        {
+          "path": "dsl.nodes[1].configs.system_prompt",
+          "sha256": "4154b4562e5879c8aaad3085057d9d25aa4d329d4d13a88b9988b640cdc4a81d",
+          "length": 927
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].outputs[1].description",
+          "sha256": "0f38f14d74048143e59185fe6e280a09500f48bb551158b3b9f1675b21d87081",
+          "length": 22
+        },
+        {
+          "path": "dsl.nodes[2].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[2].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.configs.variables[0].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        }
+      ]
+    },
+    {
+      "id": "65236810-db21-41cb-928b-39af691c4cfa",
+      "type": "workflow",
+      "name": "PA-jihuazuixiaoxiufu_1",
+      "level": 2,
+      "schema": "V2.0",
+      "dependencies": [],
+      "missingDependencies": [],
+      "nodes": [
+        {
+          "id": "node_start",
+          "name": "开始",
+          "type": "Start",
+          "configKeys": []
+        },
+        {
+          "id": "node_end",
+          "name": "结束",
+          "type": "End",
+          "configKeys": [
+            "is_stream_out",
+            "struct_output_template",
+            "enable_history",
+            "response_template",
+            "isStructMessage",
+            "response_mode"
+          ]
+        },
+        {
+          "id": "node_llm",
+          "name": "大模型",
+          "type": "LLM",
+          "configKeys": [
+            "history_size",
+            "isDefaultName",
+            "exception_process",
+            "template_content",
+            "system_prompt",
+            "enable_history",
+            "top_p",
+            "vision",
+            "frequency_penalty",
+            "response_format",
+            "stream",
+            "safety_barrier",
+            "temperature",
+            "model"
+          ]
+        }
+      ],
+      "snippetHashes": [
+        {
+          "path": "dsl.description",
+          "sha256": "bac38f899c5854483f48eab0794303e428287060a40cf9368da78e943ce3b5cc",
+          "length": 72
+        },
+        {
+          "path": "dsl.nodes[0].outputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[1].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].description",
+          "sha256": "9e71bfa3736c16d757ecb813fd8a2fec299b907697861a7aba9f30c7e604ec64",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].description",
+          "sha256": "dffd009c80f43ffca4bde94038c907351bd70f3e89df482da4b7aebba313a896",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].schema.schema[0].description",
+          "sha256": "c47b54e84e79d77fcdfe73e00633b201671bffd0700ef8052faae4a19bfaae77",
+          "length": 2
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[0].schema.schema[1].description",
+          "sha256": "387278213e791913477459711f5eb07d0bc8c6e0273caed009f9058d28489954",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[1].description",
+          "sha256": "7f9290cfeb16d2f0bb318a2114f746babca5c49c86435986893c611d9c6c1f91",
+          "length": 6
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[2].description",
+          "sha256": "c7d33bc124b5fe4b055b9e5dccb947975d1ea503af218fa97a2c7fed61382a0b",
+          "length": 11
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[3].description",
+          "sha256": "9f435955251091818b297fc9586172c62f9297e66f6aa1cf5d48bfacdd17b9ea",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[0].outputs[2].schema[4].description",
+          "sha256": "57d365d31bc267a42b2f3d0f1eea52b4a54d2adfe01556b4d0b021cd6ff55380",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].inputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[0].description",
+          "sha256": "4f90245ad30a6a9b7d6bf0269ee0dde228b0797d93aa94817e86d30e6f22d255",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[1].outputs[1].description",
+          "sha256": "0f38f14d74048143e59185fe6e280a09500f48bb551158b3b9f1675b21d87081",
+          "length": 22
+        },
+        {
+          "path": "dsl.nodes[1].configs.struct_output_template",
+          "sha256": "3882e9c58b725c2ddb704ca1d2e1efda17316533cb5efffcafb803ee1d833a59",
+          "length": 34
+        },
+        {
+          "path": "dsl.nodes[1].configs.response_template",
+          "sha256": "9b999b8b60164b4c1971e17661d48fd4b3b1e316898d536b2bade4a1dd4dabd5",
+          "length": 10
+        },
+        {
+          "path": "dsl.nodes[2].inputs[0].description",
+          "sha256": "718ca035879536818589325966696c2a8e92e0f8132e8a7c8f947d14eeccabc7",
+          "length": 4
+        },
+        {
+          "path": "dsl.nodes[2].inputs[1].description",
+          "sha256": "403d0209f640b960b7d81c26679feb1deae217b6c81eacaa93c7c4b80de81aa5",
+          "length": 21
+        },
+        {
+          "path": "dsl.nodes[2].outputs[0].description",
+          "sha256": "f0fe4220889d6f55a60d6213fdfb796051f415d94ba15a6cad1c34071a5b6977",
+          "length": 7
+        },
+        {
+          "path": "dsl.nodes[2].configs.template_content",
+          "sha256": "fd659b57b5377977e2e19f7121334bb2fbc1203e2ff2fe1ddf6540adce462d62",
+          "length": 62
+        },
+        {
+          "path": "dsl.nodes[2].configs.system_prompt",
+          "sha256": "9f620e6f599c3ff9ca5dc7770e4721a1e55544522e9e027eb0b1720ec5af80af",
+          "length": 1361
+        },
+        {
+          "path": "dsl.configs.variables[0].description",
+          "sha256": "284880fd19a31525163189bc5b69eff87279bbddf489ce6fe08e9f8af0aa131f",
+          "length": 24
+        }
+      ]
+    }
+  ]
+}

@@ -6,7 +6,7 @@
 - 需求：PA-008 可追溯知识检索；PA-024 来源版本与有效期（本包只交付 Wiki 来源部分）
 - 基线：`main@e86bac53`；分支：`codex/goo122-wiki-source-revisions`
 - 目录：`packages/knowledge`、本工作包文档、接口目录和必要集成验收
-- 决策：[ADR-0015](../adr/0015-wiki-source-identity.md)，状态 proposed
+- 决策：[ADR-0022](../adr/0022-wiki-source-identity.md)，状态 proposed
 
 ## 实现边界
 

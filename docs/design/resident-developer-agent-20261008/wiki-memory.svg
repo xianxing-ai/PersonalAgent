@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2800" height="1830" viewBox="0 0 2800 1830" role="img" aria-labelledby="title desc">
+<title id="title">Wiki 接入长期记忆：goo122 实施</title><desc id="desc">Wiki 正文、Memory 事实投影、Runtime 受控写回、来源失效、隐私和跨存储恢复；新增目标未验收。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52687d"/></marker></defs>
+<style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#183145} .muted{fill:#52697a} .white{fill:white} .strong{font-weight:700}</style>
+<rect x="0" y="0" width="2800" height="1830" rx="0" fill="#f3f6fa" stroke="none"/>
+<text x="50" y="72" font-size="40" class="strong" text-anchor="start">Wiki ↔ 长期记忆 · 来源、版本、写回与增量修复</text>
+<text x="50" y="119" font-size="23" class="muted" text-anchor="start">实施负责人 goo122：MOD-08/09；zemeng 通过公开端口消费；不把执行状态或授权写成 Wiki 台账</text>
+<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<rect x="50" y="230" width="720" height="430" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="72" y="273" font-size="28" class="strong" text-anchor="start">① 原始来源 / 用户编辑</text>
+<text x="72" y="322" font-size="25" class="muted" text-anchor="start">项目资料、确认偏好、排障经验；保留原来源与观察时间。用</text>
+<text x="72" y="361" font-size="25" class="muted" text-anchor="start">户选择库和范围；读取、写入、发送云端分别授权。扫描失败</text>
+<text x="72" y="400" font-size="25" class="muted" text-anchor="start">不等于页面删除。</text>
+<rect x="1000" y="230" width="760" height="430" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="1022" y="273" font-size="28" class="strong" text-anchor="start">② MOD-08 Wiki / 知识适配</text>
+<text x="1022" y="322" font-size="25" class="muted" text-anchor="start">知识正文、稳定页面身份、revision、段落/块引用与链接。优</text>
+<text x="1022" y="361" font-size="25" class="muted" text-anchor="start">先复用 Markdown/Obsidian 基础；具体 Wiki 适配由 goo122</text>
+<text x="1022" y="400" font-size="25" class="muted" text-anchor="start"> 选择。内容变化后旧引用失效。</text>
+<rect x="1990" y="230" width="760" height="430" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="2012" y="273" font-size="28" class="strong" text-anchor="start">③ MOD-09 Memory 投影</text>
+<text x="2012" y="322" font-size="25" class="muted" text-anchor="start">来源绑定的 Fact、检索索引、确认级别和 FactChangeFeed。</text>
+<text x="2012" y="361" font-size="25" class="muted" text-anchor="start">投影可重建；不制造与 Wiki 脱离的第二份真相。相同来源 rev</text>
+<text x="2012" y="400" font-size="25" class="muted" text-anchor="start">ision 去重；撤回传播。</text>
+<path d="M770,445 L1000,445" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<text x="804" y="413" font-size="23" class="" text-anchor="start">受信读取</text>
+<path d="M1760,445 L1990,445" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<text x="1786" y="413" font-size="23" class="" text-anchor="start">版本化引用</text>
+<rect x="1990" y="840" width="760" height="440" rx="14" fill="#f2edf8" stroke="#d5dfe8"/>
+<text x="2012" y="883" font-size="28" class="strong" text-anchor="start">④ MOD-27/28 图与认知</text>
+<text x="2012" y="932" font-size="25" class="muted" text-anchor="start">消费公开 MemoryQueryPort / FactChangeFeed。Wiki 变化</text>
+<text x="2012" y="971" font-size="25" class="muted" text-anchor="start">影响相关 Goal/Plan，触发局部核实和修复。链接关系不自动等</text>
+<text x="2012" y="1010" font-size="25" class="muted" text-anchor="start">于执行依赖；未经确认的模型摘要不是事实。</text>
+<path d="M2370,660 L2370,840" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<text x="2396" y="764" font-size="23" class="" text-anchor="start">变化/撤回/新鲜度</text>
+<rect x="1000" y="840" width="760" height="440" rx="14" fill="#edf6ef" stroke="#d5dfe8"/>
+<text x="1022" y="883" font-size="28" class="strong" text-anchor="start">⑤ MOD-03/05 Runtime 受控写回</text>
+<text x="1022" y="932" font-size="25" class="muted" text-anchor="start">执行 Evidence 或用户输入 → 精确补丁提案 → Policy 审批</text>
+<text x="1022" y="971" font-size="25" class="muted" text-anchor="start">/有效预授权 → ToolGateway。绑定 source/config、basel</text>
+<text x="1022" y="1010" font-size="25" class="muted" text-anchor="start">ine 与 edits；写后备份和实际哈希读回。</text>
+<path d="M1990,1060 L1760,1060" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<text x="1776" y="1028" font-size="22" class="" text-anchor="start">候选，不是授权</text>
+<path d="M1380,840 L1380,660" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<text x="1400" y="760" font-size="23" class="" text-anchor="start">受控更新正文</text>
+<rect x="50" y="840" width="720" height="440" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="72" y="883" font-size="28" class="strong" text-anchor="start">⑥ 对话检索 / 云端最小投影</text>
+<text x="72" y="932" font-size="25" class="muted" text-anchor="start">回答带来源与版本；变更返回 SOURCE_CHANGED 或重新核实</text>
+<text x="72" y="971" font-size="25" class="muted" text-anchor="start">。private 默认不出机；摘要/索引继承敏感级别。本地可检</text>
+<text x="72" y="1010" font-size="25" class="muted" text-anchor="start">索不等于可送 AgentArts。</text>
+<path d="M2370,1280 L2370,1340 L410,1340 L410,1280" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<text x="860" y="1384" font-size="25" class="" text-anchor="start">只提供当前有效、已授权、可核实的内容与引用；任务状态仍由 Runtime 管理</text>
+<rect x="50" y="1440" width="2700" height="325" rx="14" fill="#fff4e6" stroke="#d6aa6c"/>
+<text x="72" y="1485" font-size="28" class="strong" text-anchor="start">一致性与恢复：目标设计，不提升已有完成度</text>
+<text x="72" y="1530" font-size="25" class="muted" text-anchor="start">Wiki 文件 + Memory SQLite 无天然跨存储原子事务。正文已核实、投影待更新 → 持久 pending/receipt → 重启读回后补投影；未知写入不盲重试。统一采集 + operation/revision 去重避免回写循环。</text>
+<text x="72" y="1651" font-size="25" class="muted" text-anchor="start">来源切换/权限撤销取消旧租约；持久无人监管权限另行实现。修改、删除、移动、越界、私人出机、版本冲突与崩溃恢复必须验收。交付依据见 WIKI-MEMORY-HANDOFF.md。</text>
+</svg>
