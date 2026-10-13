@@ -1,0 +1,14 @@
+{
+  "name": "@personal-agent/obsidian-plugin",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node --check src/main.cjs && node --check src/installation.mjs && node --check scripts/install.mjs",
+    "install:vault": "node scripts/install.mjs",
+    "uninstall:vault": "node scripts/install.mjs --uninstall",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {"@personal-agent/knowledge": "0.1.0-alpha.1"}
+}
