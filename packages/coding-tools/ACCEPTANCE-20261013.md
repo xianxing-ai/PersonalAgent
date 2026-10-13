@@ -52,6 +52,13 @@ node tests/manual/coding/patch-recovery-acceptance.mjs (Get-Command pwsh).Source
 
 ## 根装配与剩余条件
 
+新增 [合成工作区云端联合验收入口](../../tests/manual/coding/SYNTHETIC-CLOUD-WORKSPACE.md)。
+它可由主对话可信宿主注入现有 AgentArts 配置，固定执行 read → 精确 patch → 固定字节验证命令，
+限制单任务、参数、次序及出云结果。调用方持有凭据和应用，入口不读环境变量或复制配置。
+参数拒绝、出云投影变值拒绝、显式 Fake coordination 驱动的真实本地三工具闭环，
+以及无活动 worker 的等待审批取消共 4/4 通过、0 跳过；失败会撤销执行与出云资格。
+没有真实云调用。回执明确区分本地 verified 字段与尚未取得的 deployment/trace 证据。
+
 现有生产接线无需改动：`apps/desktop/electron/coding-tool-host.js` 的 `patchReconciliation`
 由 `workspace-config-host.js` 接至 Runtime `workspacePatchReconciliation`；恢复入口为
 `RuntimeApplication.reconcileWorkspacePatchTask(taskId)`。
