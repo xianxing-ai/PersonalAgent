@@ -45,6 +45,22 @@
 未完成的原生验收不以单元测试替代；本记录不将 MOD-09 标为 done。工作包交付还需按用户规范完成非作者评审与集成。
 
 本轮本地验收已完成。交付分支为 `codex/goo122-local-learning-permission`；工作包等待非作者评审及集成。云端验收继续暂缓，不把本地固定 Skill 成功当作比赛云端能力完成。
+## 2026-10-12：继承 PR #315 连续候选版本绑定修复
+
+本次独立验证工作树 `.worktrees/goo122-learning-guidance-revision` 基于 #316 `cc9d6ba8`。
+继承 #315 的修复：渲染先保留编辑草稿和焦点，再应用 Host 返回的新候选版本，旧 DOM
+不能把 v2 恢复成 v1；保留 #316 自有的状态反馈和操作提示。
+
+新增回归使用真实 Desktop Host、Learning Application、SQLite TaskRuntime 与明确合成
+DOM/旧验证证据；检查 v1 candidate/passed→v2→验证时的界面、请求及持久 checkpoint。
+未运行 worker、模型或真实云服务。完整门禁首次发现旧 Git 夹具复制目录后重命名的
+Windows EPERM，复用 #318 已有的有界重试，保留原身份与拒绝断言；失败日志保留于
+`.cache/learning-guidance-full-check.log`。传递回归时新增的重复导入已移除，复用本分支
+原公开 imports；测试按显示的 v2 语义检查，保留本分支“版本”文案。两次完整失败与
+专项失败日志均保留。最终 Host/Runtime/MCP 专项 19/19、0 skip，完整 `npm run check`
+**2648 项、2623 pass、25 skip、0 fail/取消**，日志
+`.cache/learning-guidance-full-check-verified.log`。无新公共接口、依赖或迁移；仍待 Git
+交付、当前提交非作者评审和集成。
 
 ## 2026-10-12：PR #315 连续候选版本绑定修复
 
@@ -58,8 +74,8 @@
 MCP 集成专项 **18/18 通过、0 skip**（`.cache/learning-revision-focused.log`）：
 连续 v1→v2→验证的界面版本、请求和 SQLite checkpoint 均绑定 v2/new-reference.md，
 原草稿、焦点和选择范围保留，异步快照不能恢复旧版本。新增回归的 DOM、旧已通过
-版本证据为明确合成夹具；未启动 worker、模型或真实云服务。该修复需继续传递到 #316，
-并完成对应门禁、当前提交非作者评审和集成。验证中复用 #318 已有的 Windows Git
+版本证据为明确合成夹具；未启动 worker、模型或真实云服务。该修复已在本分支继承，
+对应组合门禁已通过，仍待当前提交非作者评审和集成。验证中复用 #318 已有的 Windows Git
 夹具有界 EPERM 重试；Git 工具测试 30/30 通过、0 skip，保留身份与拒绝断言。
 该旧基线含已提交 CRLF，使用 `git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check`
 验证空白，不改动全文件换行或全局 Git 配置。
