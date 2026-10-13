@@ -62,7 +62,7 @@ const diagnosticStages = new Set(['authorization', 'catalog_guard', 'export_guar
 const schemaCategories = new Set(['body_limit', 'body_shape', 'utf8', 'content_type', 'event_order',
   'event_shape', 'provider_failure', 'no_text', 'json_shape', 'application_json', 'application_contract', 'other']);
 const diagnosticCodes = new Set(['INVALID_ARGUMENT', 'UNSUPPORTED_CAPABILITY', 'UNAUTHORIZED',
-  'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT']);
+  'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT', 'RATE_LIMITED']);
 const uuid = value => typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 export function createCaseDiagnostics() {
