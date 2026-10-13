@@ -5,7 +5,7 @@ import {createDesktopGoalCognitionHost} from './goal-cognition-host.js';
 
 // Desktop preferences and notification metadata only. Runtime owns every sample/task/approval.
 export function createDesktopProactiveHost({application, client, userData, namespace,
-  goalHost, chooser, cognitionReady, createCognitionHost,
+  goalHost, chooser, cognitionReady, createCognitionHost, initialRequestMode,
   onUpdate = () => {}, onAnalysisTask = () => {}, now = Date.now}) {
   const file = path.join(userData, 'proactive-state.json');
   let stored = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {version: 1, cloudAnalysis: false, values: {}};
@@ -28,7 +28,7 @@ export function createDesktopProactiveHost({application, client, userData, names
   });
   const publish = () => {try {onUpdate();} catch {}};
   const cognition = createCognitionHost && createDesktopGoalCognitionHost({application,client,
-    facts:factHost,namespace,goalHost,chooser,ready:cognitionReady,createHost:createCognitionHost,
+    facts:factHost,namespace,goalHost,chooser,ready:cognitionReady,createHost:createCognitionHost,initialRequestMode,
     onTask:onAnalysisTask,onUpdate:publish,now});
   function observeAnalysis(item) {
     if (item.analysisTaskId) onAnalysisTask({taskId: item.analysisTaskId, goal: item.summary});

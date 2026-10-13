@@ -1,13 +1,68 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
-import {parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
-  type CoordinationResult, type CoordinationToolProposalResult} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
+  type CoordinationResult, type CoordinationToolProposalResult, type AgentArtsUnknownReceipt} from '@personal-agent/coordination';
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
 import {isDeepStrictEqual} from 'node:util';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 
 const DEFAULT_COMPETITION_STEPS = 4;
+
+function sameCloudInvocation(left: AgentArtsUnknownReceipt | undefined | null,
+  right: AgentArtsUnknownReceipt | undefined | null): boolean {
+  return !!left && !!right && left.sessionId === right.sessionId && left.requestId === right.requestId
+    && left.idempotencyKey === right.idempotencyKey && left.payloadDigest === right.payloadDigest;
+}
+
+function markCompetitionCloudUnknown(runtime: TaskRuntime, taskId: string,
+  receipt?: AgentArtsUnknownReceipt): boolean {
+  const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined;
+  if (!inflight) return false;
+  const received = runtime.loadCheckpoint(taskId, 'competition-cloud-received') as AgentArtsUnknownReceipt | undefined;
+  const unknown = receipt ?? (sameCloudInvocation(inflight, received) ? received : inflight);
+  if (!sameCloudInvocation(inflight, unknown)) return false;
+  runtime.saveCheckpoint(taskId, 'competition-cloud-unknown', {...unknown});
+  const state = runtime.getTask(taskId).state;
+  if (state === 'running' || state === 'cancelling') {
+    runtime.transitionTask(taskId, 'waiting_reconciliation', {error: {code: 'RESULT_UNKNOWN',
+      message: 'Cloud invocation delivery or result is unknown; reconcile before sending again', retryable: false}});
+  }
+  return true;
+}
+
+/** A transport receipt is not proof that the application consumed its result. */
+export function recordCompetitionCloudReceipt(runtime: TaskRuntime, taskId: string,
+  receipt: AgentArtsUnknownReceipt): void {
+  const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined | null;
+  if (!sameCloudInvocation(inflight, receipt)) {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Cloud receipt is not bound to the original send intent');
+  }
+  // Correlation metadata only. Inflight survives application parsing, host hooks
+  // and the crash window before the Runtime-owned result/checkpoint commit.
+  runtime.saveCheckpoint(taskId, 'competition-cloud-received', {...receipt});
+}
+
+/** Persist the server admission so cancellation preserves the strongest known receipt. */
+export function recordCompetitionCloudAcceptance(runtime: TaskRuntime, taskId: string,
+  receipt: AgentArtsUnknownReceipt): void {
+  const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined | null;
+  if (receipt.accepted !== true || !sameCloudInvocation(inflight, receipt)) {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Cloud acceptance is not bound to the original send intent');
+  }
+  runtime.saveCheckpoint(taskId, 'competition-cloud-inflight', {...receipt});
+}
+
+/** Call only after the corresponding parsed loop state or task success is durable. */
+function consumeCompetitionCloudReceipt(runtime: TaskRuntime, taskId: string): void {
+  const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined | null;
+  const received = runtime.loadCheckpoint(taskId, 'competition-cloud-received') as AgentArtsUnknownReceipt | undefined | null;
+  if (runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || !sameCloudInvocation(inflight, received)) return;
+  // The consumer checkpoint is committed first. A crash before this clear keeps
+  // reconciliation mandatory; a crash after it cannot replay the old result.
+  runtime.saveCheckpoint(taskId, 'competition-cloud-inflight', null);
+  runtime.saveCheckpoint(taskId, 'competition-cloud-received', null);
+}
 
 /** Trusted composition only. This permits result export, never tool execution. */
 export interface CompetitionToolExport {
@@ -131,9 +186,14 @@ async function exchange(
   availableTools?: readonly CompetitionAvailableTool[],
   onInvokeRevision?: (revision: number) => void,
 ): Promise<CoordinationResult> {
+  if (runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation before another send');
+  }
   let onAbort: () => void = () => {};
   const cancelled = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(new ProtocolError('CANCELLED', 'Coordination request cancelled'));
+    onAbort = () => reject(markCompetitionCloudUnknown(runtime, taskId)
+      ? new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation')
+      : new ProtocolError('CANCELLED', 'Coordination request cancelled'));
     context.signal.addEventListener('abort', onAbort, {once: true});
     if (context.signal.aborted) onAbort();
   });
@@ -156,7 +216,13 @@ async function exchange(
           ...(continuation === undefined ? {} : {continuation}),
           ...(availableTools === undefined ? {} : {availableTools: structuredClone(availableTools)}),
           }));
-        } catch {
+        } catch (error) {
+          if (error instanceof AgentArtsResultUnknownError) {
+            // Identity/digest only: never persist a cloud payload, credential or
+            // model response. The same loop cannot automatically resend it.
+            markCompetitionCloudUnknown(runtime, taskId, error.receipt);
+            throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation');
+          }
           // Adapter errors may contain credentials or private response bodies.
           throw new ProtocolError('EXTERNAL_FAILURE', 'Coordination adapter failed');
         }
@@ -178,8 +244,19 @@ export function startCoordinationTask(
   deadline: string,
   options: {resume?: boolean; toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<TaskSnapshot> {
-  return runtime.runTask(taskId, context => runCoordinationWorker(runtime,port,tools,taskId,goal,context,options),
+  const execution = runtime.runTask(taskId, context => runCoordinationWorker(runtime,port,tools,taskId,goal,context,options),
     {deadline,sideEffect:options.toolCatalog?.sideEffect??'read',...(options.resume?{resume:true}:{})});
+  // No adapter can dispatch an intent when the port is unavailable. Preserve
+  // that existing immediate-failure lifecycle without a consumption callback.
+  if (!port) return execution;
+  return execution.then(task => {
+      // Final text is consumed only by TaskRuntime's durable terminal commit.
+      // Waiting, failure, cancellation and an interrupted child retain the hold.
+      if (task.state === 'succeeded' && runtime.getTask(taskId).state === 'succeeded') {
+        consumeCompetitionCloudReceipt(runtime, taskId);
+      }
+      return task;
+    });
 }
 
 /** Shared worker for the original Runtime-owned parent and child task lifecycle. */
@@ -258,6 +335,7 @@ export async function runCoordinationWorker(
         continuation = receipt.continuation;
         pending = undefined;
         context.saveCheckpoint('competition-loop', {step: step + 1, continuation, evidenceRefs, receipts});
+        consumeCompetitionCloudReceipt(runtime, taskId);
         continue;
       }
 
@@ -272,6 +350,7 @@ export async function runCoordinationWorker(
       // This is a parsed proposal, not a receipt or permission. Trusted host
       // preflight readers must be able to verify it before any grant/execution.
       context.saveCheckpoint('competition-loop', {step, continuation, pending: result,pendingRevision:inputRevision,evidenceRefs, receipts});
+      consumeCompetitionCloudReceipt(runtime, taskId);
       const worker=options.workerCapabilities?.accepts(result)?options.workerCapabilities:undefined;
       if(result.verification!=='mock') {
         try {await options.prepareCompetitionToolExport?.({phase:'preflight',taskId,proposal:structuredClone(result),deadline:context.deadline,signal:context.signal});}

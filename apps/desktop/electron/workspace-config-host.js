@@ -232,7 +232,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   // Trusted main-process configuration only. A getter cannot grant read or
   // execute permission, and this record must not enter Renderer/cloud output.
   const readWorkspaceBinding=() => {
-    if(!active || consent?.cloudExportAllowed!==true || !selectionsCurrent() || !identityCurrent()
+    if(!active || !consent || !selectionsCurrent() || !identityCurrent()
       || !boundNode || savedNode!==boundNode || !nodeIdentity) return undefined;
     try {
       if(fixedNode(boundNode,boundRoot)!==boundNode) return undefined;
@@ -267,12 +267,12 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       && boundProjectHelper && outsideFile(boundProjectHelper,boundRoot,'项目命令')===boundProjectHelper;}
     catch {return false;}
   };
-  const enabled=tool => active && consent?.cloudExportAllowed===true && selectionsCurrent() && identityCurrent()
+  const enabled=tool => active && Boolean(consent) && selectionsCurrent() && identityCurrent()
     && commandReady(tool)
-    && (tool.descriptor.sideEffect==='read' || (isProject(tool)
+    && (tool.descriptor.sideEffect==='read' || (consent.cloudExportAllowed===true && (isProject(tool)
       ? consent.commandAllowed===true && consent.projectCodeAllowed===true && projectIdentityCurrent()
       : ['workspace.git_diff_check','workspace.node_check'].includes(tool.descriptor.name)
-        ? consent.commandAllowed===true : consent.writeAllowed===true))
+        ? consent.commandAllowed===true : consent.writeAllowed===true)))
     && (tool.descriptor.name!=='workspace.apply_text_patch' || applyHost?.available());
   const bound=(taskId, claim=false) => {
     if (!application || !taskId) return false;
@@ -284,7 +284,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   // These ports are Main-only. Session scope never grants PUBLIC export, and
   // only the original Runtime result checkpoint supplies bytes for confirmation.
   const readTool=implementations.find(tool=>tool.descriptor.name==='workspace.read_text');
-  const readWorkspaceExportConfigurationRef=() => readTool && enabled(readTool) ? generation : undefined;
+  const readWorkspaceExportConfigurationRef=() => consent?.cloudExportAllowed===true && readTool && enabled(readTool) ? generation : undefined;
   const readQuery=(query,withDigest=false,withArguments=false) => {
     if(!query || typeof query!=='object' || Array.isArray(query)
       || ![Object.prototype,null].includes(Object.getPrototypeOf(query))) return false;
@@ -533,7 +533,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       projectFailure='';return snapshot();
     },
     authorize(input) {
-      if (!input || Array.isArray(input) || input.cloudExportAllowed!==true || typeof input.writeAllowed!=='boolean'
+      if (!input || Array.isArray(input) || typeof input.cloudExportAllowed!=='boolean' || typeof input.writeAllowed!=='boolean'
         || typeof input.commandAllowed!=='boolean'
         || (input.projectCodeAllowed!==undefined && typeof input.projectCodeAllowed!=='boolean')
         || Object.keys(input).some(k=>!['cloudExportAllowed','writeAllowed','commandAllowed','projectCodeAllowed'].includes(k))) throw Error('请确认工作区权限');
@@ -545,14 +545,14 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     },
     revoke,
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
-      available:({taskId,signal})=>!signal.aborted && enabled(tool) && bound(taskId,true)})),
+      available:({taskId,signal})=>!signal.aborted && consent?.cloudExportAllowed===true && enabled(tool) && bound(taskId,true)})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
       exportPolicyVersion:isProject(tool)?'authorized-project-script-redacted-v1'
         :tool.descriptor.name==='workspace.node_check'
           ? 'authorized-node-check-redacted-v1':tool.descriptor.name==='workspace.read_text'
             ? 'workspace-reference-3.0.0':'coding-local-result-redacted-v2',
       accepts:input=> {
-        if(!enabled(tool) || !bound(input.taskId)) return false;
+        if(consent?.cloudExportAllowed!==true || !enabled(tool) || !bound(input.taskId)) return false;
         if(tool.descriptor.name!=='workspace.read_text') return true;
         try {
           if(!['preflight','final'].includes(input.phase)) return false;
@@ -564,7 +564,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       },
       project:({taskId,proposalId,result,signal})=> {
         if(signal.aborted) throw new ProtocolError('CANCELLED','Workspace result export cancelled');
-        if(!enabled(tool) || !bound(taskId)) throw new ProtocolError('UNAUTHORIZED','Workspace result export consent changed');
+        if(consent?.cloudExportAllowed!==true || !enabled(tool) || !bound(taskId)) throw new ProtocolError('UNAUTHORIZED','Workspace result export consent changed');
         if (tool.descriptor.name==='workspace.node_check' || isProject(tool)) {
           const recipeId=isProject(tool)
             ? tool.descriptor.name==='workspace.npm_build'?'npm-build':'npm-test':'node-check';

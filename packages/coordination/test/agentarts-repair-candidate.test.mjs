@@ -87,3 +87,19 @@ test('candidate continuation adds a fixed output contract without changing the g
   assert.equal(body.query.includes('private original goal'), false);
   assert.equal(body.query.includes('Bearer synthetic'), false);
 });
+
+test('candidate opt-in does not route weather and ordinary confirmed results into repair', async () => {
+  let body;
+  const value = {kind: 'text', text: '无法获得当前天气，不能提供未经核实的数据。'};
+  const cloud = new AgentArtsCloudAgentPort({...base, repairCandidateVersion: '1.0'},
+    {read: async () => 'Bearer synthetic'}, async (_url, init) => {
+      body = JSON.parse(init.body);
+      assert.equal(init.headers['X-PA-Deadline'].length > 0, true);
+      return new Response(JSON.stringify({event: 'message', data: {text: JSON.stringify(value)}}),
+        {headers: {'content-type': 'application/json'}});
+    }, () => {});
+  const continuation = {proposalId:'weather-1',state:'confirmed',result:{available:false,reason:'provider_failed'}};
+  assert.deepEqual(await cloud.invoke({...input(),continuation}),{...value,verification:'unverified'});
+  assert.deepEqual(body,{query:JSON.stringify({continuation})});
+  assert.equal(body.query.includes('缺少合法图谱上下文'),false);
+});

@@ -123,6 +123,7 @@ test('published JSON sends the exact bounded request and reads authorization per
     'x-hw-agentarts-session-id': calls[0].init.headers['x-hw-agentarts-session-id'],
     'X-Invoke-Mode': 'published',
     'X-Request-Id': `${calls[0].init.headers['x-hw-agentarts-session-id']}-7`,
+    'X-PA-Deadline': input.deadline,
   });
   assert.match(calls[0].init.headers['x-hw-agentarts-session-id'], /^pa-[0-9a-f]{32}$/);
   assert.equal(calls[0].init.headers['x-hw-agentarts-session-id'].includes('task'), false);

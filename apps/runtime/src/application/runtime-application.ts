@@ -10,7 +10,7 @@ import type {WorkerContext,WorkerResult} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
 import {QwenRealtimeModelGateway} from '@personal-agent/models';
-import {parseCoordinationRepairCandidate} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError, parseCoordinationRepairCandidate} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationRequest, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllowed, type CompetitionToolExport,type CoordinationWorkerCapabilityPort,type PrepareCompetitionToolExport} from './coordination.js';
 import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
@@ -636,7 +636,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(this.runtime.loadCheckpoint(request.taskId,'private-memory:consumption:v1')) {
         throw new ProtocolError('UNAUTHORIZED','Private input lease cannot be recovered automatically');
       }
-      try {return await port.execute(request);}catch(error) {this.holdCompetitionExport(request.taskId);throw error;}
+      try {return await port.execute(request);}catch(error) {
+        if (!(error instanceof AgentArtsResultUnknownError)) this.holdCompetitionExport(request.taskId);
+        throw error;
+      }
     }
     const task=this.runtime.getTask(request.taskId);
     const scope={taskId:task.taskId,conversationId:task.conversationId ?? '',publicGoal:request.goal,
@@ -671,7 +674,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.assertInputActive(request);
       return {...result,text:'Private-derived reply withheld from persistent task history'};
     } catch(error) {
-      this.holdCompetitionExport(task.taskId);throw error;
+      if (!(error instanceof AgentArtsResultUnknownError)) this.holdCompetitionExport(task.taskId);
+      throw error;
     } finally {
       this.ephemeralSends.delete(task.taskId);
       this.ephemeralGoals.delete(task.taskId);
@@ -1661,6 +1665,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   resumeTask(taskId: string): void {
+    if (this.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
+      throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation before task resume');
+    }
     if (this.activeTextTasks.has(taskId)) return;
     if (this.runtime.getTask(taskId).state !== 'waiting_approval') throw new ProtocolError('REVISION_CONFLICT', 'Task is not awaiting approval');
     if (this.runtime.loadCheckpoint(taskId,REFERENCE_SKILL_TASK)!==undefined
@@ -1757,6 +1764,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Trusted readback consumer, resuming the same loop only after exact original run confirmation. */
   resumeConfirmedTask(taskId:string):void {
+    if (this.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
+      throw new ProtocolError('RESULT_UNKNOWN', 'Confirmed local tool execution cannot replay an unknown cloud invocation');
+    }
     if(this.activeTextTasks.has(taskId))throw new ProtocolError('REVISION_CONFLICT','Original worker is still active');
     const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {step:number;pending?:{toolName:string;toolVersion:string;arguments:Record<string,unknown>};
       continuation?:{proposalId:string};receipts?:{proposal:{proposalId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>};runId?:string}[]}|undefined;
