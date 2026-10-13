@@ -35,7 +35,7 @@ Skill ADR 与主线事实流 ADR 的 0008 编号重复；保留已发布事实�
 - 首次受限环境 `npm run check` 在本机 TLS 桥接测试出现两项失败，并停在后续 TLS 请求；已停止该尝试，日志 `.cache-skill-wiki-check.log` 保留，不作为通过结果。
 - 相同未修改桥接代码在平台允许的本机执行环境中，两项定向测试 2/2、0 skip、0 fail；日志 `.cache-skill-wiki-bridge-environment.log`。随后以该环境重跑完整门禁，结果另行登记，不放宽断言。
 - 完整 `npm run check` 退出 0：3029 tests、2998 pass、31 skip、0 fail/取消；日志 `.cache-skill-wiki-check-host.log`。Windows 原生 helper 取消与 11 秒延迟就绪测试实际执行；8000 字符 Skill 加正式历史、确认前/确认中超限，以及三宿主退出清理回归均通过。
-- `test:skills-product-smoke` 退出 0：实际产品 main/Preload/管理 Renderer 的离线安装、资源预览、启停、重启保留和卸载通过；原生选择/确认为 explicit synthetic，未配置 Runtime 时使用被拒绝，cloudCalls 0，来源不变。日志 `.cache-skill-wiki-product-smoke.log`。
+- `test:skills-product-smoke` 退出 0：实际产品 main/Preload/管理 Renderer 的离线安装、资源预览、启停、重启保留和卸载通过；原生选择/确认为 explicit synthetic，未配置 Runtime 时使用被拒绝，当时脚本固定输出 cloudCalls 0（未测量云请求；后续脚本已改为报告断言的 skillRunRejected，尚未重新运行），来源不变。日志 `.cache-skill-wiki-product-smoke.log`。
 - 首次 `test:skills-smoke` 因已有测试新增三个拒绝场景后仍断言累计调用总数 1 而失败（实际 4）；保留日志 `.cache-skill-wiki-renderer-smoke.log`。改为记录拒绝场景后的水位，断言当前运行只增加一次，没有删除超限/脱敏/脚本安全断言；修复后退出 0，日志 `.cache-skill-wiki-renderer-smoke-fixed.log`。该独立烟测脚本不属于完整 check 的测试列表。
 - 实际 Obsidian 1.12.7/Desktop 双进程验收退出 0，证据 `.cache/obsidian-installed-host/case-mZhOVX/evidence.json` 为 verified，cloudAttempts 0。新增的同一实例 Skill 安装/启用、重启保留、记忆删除保留 Skill、Skill 卸载保留无关记忆以及原合成 SKILL.md 不变均为 true；原生决定 explicit Fake。新增手工验收脚本通过 `node --check` 并已实际运行。
 - 原配对和记忆恢复仍通过：旧码拒绝、断连搜索禁用、来源变化 v3 撤回、独立确认更正 v4、手动撤回 v5、精确删除、无关事实保留；改名/越界/缺页不推断撤回，同文件恢复不增加版本。
