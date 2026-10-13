@@ -1,0 +1,415 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2800" height="2900" viewBox="0 0 2800 2900" role="img" aria-labelledby="title desc">
+<title id="title">常驻自主开发者助手：完整模块架构</title><desc id="desc">全部39模块、负责人、位置与目标完成度；本地执行事实源、云端编排、WSS主通道与HTTPS备用。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52687d"/></marker></defs>
+<style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#183145} .muted{fill:#52697a} .white{fill:white} .strong{font-weight:700}</style>
+<rect x="0" y="0" width="2800" height="2900" rx="0" fill="#f3f6fa" stroke="none"/>
+<text x="50" y="72" font-size="40" class="strong" text-anchor="start">PersonalAgent · 常驻自主开发者助手：完整模块架构</text>
+<text x="50" y="119" font-size="23" class="muted" text-anchor="start">电脑运行时无人监管：观察变化 → 可信决策 → 局部修复 → 委派执行与监管 → 实际读回</text>
+<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<rect x="40" y="190" width="1780" height="2230" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="1870" y="190" width="890" height="2230" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="237" font-size="29" class="strong" text-anchor="start">本地电脑：可信宿主 + Runtime + 受限工具</text>
+<text x="1890" y="237" font-size="29" class="strong" text-anchor="start">华为 AgentArts：自有镜像 + 编排</text>
+<rect x="60" y="270" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="305" font-size="27" class="strong" text-anchor="start">① 用户入口与控制</text>
+<g data-module="MOD-11">
+<rect x="80.0" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="96.0" y="355" font-size="21" class="strong" text-anchor="start">MOD-11</text>
+<text x="394.4" y="355" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="96.0" y="389" font-size="23" class="strong" text-anchor="start">Desktop 外壳与桥接</text>
+<text x="96.0" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="96.0" y="461" font-size="17" class="muted" text-anchor="start">apps/desktop；Electron 主进程/Pr</text>
+<text x="96.0" y="482" font-size="17" class="muted" text-anchor="start">eload/IPC</text>
+</g>
+<g data-module="MOD-12">
+<rect x="422.4" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="438.4" y="355" font-size="21" class="strong" text-anchor="start">MOD-12</text>
+<text x="736.8" y="355" font-size="25" class="strong" text-anchor="end">70%</text>
+<text x="438.4" y="389" font-size="23" class="strong" text-anchor="start">Orb 与对话体验</text>
+<text x="438.4" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="438.4" y="461" font-size="17" class="muted" text-anchor="start">apps/desktop 的 Orb/Conversation</text>
+<text x="438.4" y="482" font-size="17" class="muted" text-anchor="start"> 功能</text>
+</g>
+<g data-module="MOD-13">
+<rect x="764.8" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="780.8" y="355" font-size="21" class="strong" text-anchor="start">MOD-13</text>
+<text x="1079.1999999999998" y="355" font-size="25" class="strong" text-anchor="end">60%</text>
+<text x="780.8" y="389" font-size="23" class="strong" text-anchor="start">管理与自主设置</text>
+<text x="780.8" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="780.8" y="461" font-size="17" class="muted" text-anchor="start">apps/desktop 的 Settings/Admin </text>
+<text x="780.8" y="482" font-size="17" class="muted" text-anchor="start">功能</text>
+</g>
+<g data-module="MOD-14">
+<rect x="1107.1999999999998" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="1123.1999999999998" y="355" font-size="21" class="strong" text-anchor="start">MOD-14</text>
+<text x="1421.6" y="355" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="1123.1999999999998" y="389" font-size="23" class="strong" text-anchor="start">ASR/TTS 与实时语音</text>
+<text x="1123.1999999999998" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1123.1999999999998" y="461" font-size="17" class="muted" text-anchor="start">packages/voice；apps/desktop/ele</text>
+<text x="1123.1999999999998" y="482" font-size="17" class="muted" text-anchor="start">ctron/live-voice-host.js</text>
+</g>
+<g data-module="MOD-15">
+<rect x="1449.6" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="1465.6" y="355" font-size="21" class="strong" text-anchor="start">MOD-15</text>
+<text x="1764.0" y="355" font-size="25" class="strong" text-anchor="end">35%</text>
+<text x="1465.6" y="389" font-size="23" class="strong" text-anchor="start">可选语音唤醒</text>
+<text x="1465.6" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1465.6" y="461" font-size="17" class="muted" text-anchor="start">packages/voice-wake；apps/deskto</text>
+<text x="1465.6" y="482" font-size="17" class="muted" text-anchor="start">p/electron/wake-voice-host.js</text>
+</g>
+<text x="80" y="522" font-size="20" class="muted" text-anchor="start">语音/文字、责任面板、审批、证据与暂停；Renderer 经 Preload/IPC 接入。</text>
+<rect x="60" y="580" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="615" font-size="27" class="strong" text-anchor="start">② 本地任务、世界图与决策</text>
+<g data-module="MOD-03">
+<rect x="80.0" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="96.0" y="665" font-size="21" class="strong" text-anchor="start">MOD-03</text>
+<text x="394.4" y="665" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="96.0" y="699" font-size="23" class="strong" text-anchor="start">任务 Runtime</text>
+<text x="96.0" y="746" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="96.0" y="771" font-size="17" class="muted" text-anchor="start">apps/runtime/src/application；Ru</text>
+<text x="96.0" y="792" font-size="17" class="muted" text-anchor="start">ntime 核心</text>
+</g>
+<g data-module="MOD-04B">
+<rect x="422.4" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="438.4" y="665" font-size="21" class="strong" text-anchor="start">MOD-04B</text>
+<text x="736.8" y="665" font-size="25" class="strong" text-anchor="end">55%</text>
+<text x="438.4" y="699" font-size="23" class="strong" text-anchor="start">协调与云端口</text>
+<text x="438.4" y="746" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="438.4" y="771" font-size="17" class="muted" text-anchor="start">packages/coordination；Runtime C</text>
+<text x="438.4" y="792" font-size="17" class="muted" text-anchor="start">loudAgentPort 消费方</text>
+</g>
+<g data-module="MOD-09">
+<rect x="764.8" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="780.8" y="665" font-size="21" class="strong" text-anchor="start">MOD-09</text>
+<text x="1079.1999999999998" y="665" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="780.8" y="699" font-size="23" class="strong" text-anchor="start">记忆与 Wiki 投影</text>
+<text x="780.8" y="746" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="780.8" y="771" font-size="17" class="muted" text-anchor="start">packages/memory；packages/learni</text>
+<text x="780.8" y="792" font-size="17" class="muted" text-anchor="start">ng</text>
+</g>
+<g data-module="MOD-27">
+<rect x="1107.1999999999998" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="1123.1999999999998" y="665" font-size="21" class="strong" text-anchor="start">MOD-27</text>
+<text x="1421.6" y="665" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="1123.1999999999998" y="699" font-size="23" class="strong" text-anchor="start">目标与世界状态图</text>
+<text x="1123.1999999999998" y="746" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1123.1999999999998" y="771" font-size="17" class="muted" text-anchor="start">packages/goals；版本化 Goal/Fact</text>
+<text x="1123.1999999999998" y="792" font-size="17" class="muted" text-anchor="start">/Decision/Plan</text>
+</g>
+<g data-module="MOD-28">
+<rect x="1449.6" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="1465.6" y="665" font-size="21" class="strong" text-anchor="start">MOD-28</text>
+<text x="1764.0" y="665" font-size="25" class="strong" text-anchor="end">55%</text>
+<text x="1465.6" y="699" font-size="23" class="strong" text-anchor="start">持续认知与 Laya</text>
+<text x="1465.6" y="746" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1465.6" y="771" font-size="17" class="muted" text-anchor="start">packages/cognition；Laya Action </text>
+<text x="1465.6" y="792" font-size="17" class="muted" text-anchor="start">Choice/Repair</text>
+</g>
+<text x="80" y="832" font-size="20" class="muted" text-anchor="start">唯一任务事实源；Wiki→Memory 投影由 goo122 接入；Laya 选择合法候选；复杂规划调用云。</text>
+<rect x="60" y="890" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="925" font-size="27" class="strong" text-anchor="start">③ 契约、权限与持久化</text>
+<g data-module="MOD-01">
+<rect x="80.0" y="945" width="558.6666666666666" height="176" rx="14" fill="#fff" stroke="#276f61"/>
+<text x="96.0" y="975" font-size="21" class="strong" text-anchor="start">MOD-01</text>
+<text x="622.6666666666666" y="975" font-size="25" class="strong" text-anchor="end">85%</text>
+<text x="96.0" y="1009" font-size="23" class="strong" text-anchor="start">工程与存储底座</text>
+<text x="96.0" y="1056" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="96.0" y="1081" font-size="17" class="muted" text-anchor="start">packages/storage；根配置</text>
+</g>
+<g data-module="MOD-02">
+<rect x="650.6666666666666" y="945" width="558.6666666666666" height="176" rx="14" fill="#fff" stroke="#276f61"/>
+<text x="666.6666666666666" y="975" font-size="21" class="strong" text-anchor="start">MOD-02</text>
+<text x="1193.3333333333333" y="975" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="666.6666666666666" y="1009" font-size="23" class="strong" text-anchor="start">公共契约与客户端</text>
+<text x="666.6666666666666" y="1056" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="666.6666666666666" y="1081" font-size="17" class="muted" text-anchor="start">packages/contracts；packages/client；packages/testkit</text>
+</g>
+<g data-module="MOD-05">
+<rect x="1221.3333333333333" y="945" width="558.6666666666666" height="176" rx="14" fill="#fff" stroke="#276f61"/>
+<text x="1237.3333333333333" y="975" font-size="21" class="strong" text-anchor="start">MOD-05</text>
+<text x="1764.0" y="975" font-size="25" class="strong" text-anchor="end">55%</text>
+<text x="1237.3333333333333" y="1009" font-size="23" class="strong" text-anchor="start">Policy 与工具网关</text>
+<text x="1237.3333333333333" y="1056" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="1237.3333333333333" y="1081" font-size="17" class="muted" text-anchor="start">packages/policy；packages/tool-gateway；packages/connect</text>
+<text x="1237.3333333333333" y="1102" font-size="17" class="muted" text-anchor="start">or-host</text>
+</g>
+<text x="80" y="1142" font-size="20" class="muted" text-anchor="start">一次性授权/租约、工具统一入口、去重与 checkpoint；云提案返回后必须再次过闸。</text>
+<rect x="60" y="1200" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="1235" font-size="27" class="strong" text-anchor="start">④ 受限工具与上下文</text>
+<g data-module="MOD-06">
+<rect x="80.0" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="96.0" y="1285" font-size="21" class="strong" text-anchor="start">MOD-06</text>
+<text x="337.3333333333333" y="1285" font-size="25" class="strong" text-anchor="end">55%</text>
+<text x="96.0" y="1319" font-size="23" class="strong" text-anchor="start">本地 MCP</text>
+<text x="96.0" y="1366" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="96.0" y="1391" font-size="17" class="muted" text-anchor="start">packages/mcp；可信宿主的固</text>
+<text x="96.0" y="1412" font-size="17" class="muted" text-anchor="start">定 stdio 服务</text>
+</g>
+<g data-module="MOD-07">
+<rect x="365.3333333333333" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="381.3333333333333" y="1285" font-size="21" class="strong" text-anchor="start">MOD-07</text>
+<text x="622.6666666666666" y="1285" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="381.3333333333333" y="1319" font-size="23" class="strong" text-anchor="start">Skills 执行</text>
+<text x="381.3333333333333" y="1366" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="381.3333333333333" y="1391" font-size="17" class="muted" text-anchor="start">packages/skills；固定 refe</text>
+<text x="381.3333333333333" y="1412" font-size="17" class="muted" text-anchor="start">rence-summary Bundle</text>
+</g>
+<g data-module="MOD-08">
+<rect x="650.6666666666666" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="666.6666666666666" y="1285" font-size="21" class="strong" text-anchor="start">MOD-08</text>
+<text x="908.0" y="1285" font-size="25" class="strong" text-anchor="end">45%</text>
+<text x="666.6666666666666" y="1319" font-size="23" class="strong" text-anchor="start">知识与 Wiki/Obsidia</text>
+<text x="666.6666666666666" y="1346" font-size="23" class="strong" text-anchor="start">n</text>
+<text x="666.6666666666666" y="1366" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="666.6666666666666" y="1391" font-size="17" class="muted" text-anchor="start">packages/knowledge；Wiki </text>
+<text x="666.6666666666666" y="1412" font-size="17" class="muted" text-anchor="start">适配/受控写入</text>
+</g>
+<g data-module="MOD-16">
+<rect x="936.0" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="952.0" y="1285" font-size="21" class="strong" text-anchor="start">MOD-16</text>
+<text x="1193.3333333333333" y="1285" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="952.0" y="1319" font-size="23" class="strong" text-anchor="start">Windows Host</text>
+<text x="952.0" y="1366" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="952.0" y="1391" font-size="17" class="muted" text-anchor="start">apps/windows-host；Runtime</text>
+<text x="952.0" y="1412" font-size="17" class="muted" text-anchor="start"> windows-host-adapter</text>
+</g>
+<g data-module="MOD-17">
+<rect x="1221.3333333333333" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="1237.3333333333333" y="1285" font-size="21" class="strong" text-anchor="start">MOD-17</text>
+<text x="1478.6666666666665" y="1285" font-size="25" class="strong" text-anchor="end">60%</text>
+<text x="1237.3333333333333" y="1319" font-size="23" class="strong" text-anchor="start">电脑状态观察</text>
+<text x="1237.3333333333333" y="1366" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1237.3333333333333" y="1391" font-size="17" class="muted" text-anchor="start">packages/windows-client</text>
+</g>
+<g data-module="MOD-18">
+<rect x="1506.6666666666665" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="1522.6666666666665" y="1285" font-size="21" class="strong" text-anchor="start">MOD-18</text>
+<text x="1763.9999999999998" y="1285" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="1522.6666666666665" y="1319" font-size="23" class="strong" text-anchor="start">编程工具与工件</text>
+<text x="1522.6666666666665" y="1366" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1522.6666666666665" y="1391" font-size="17" class="muted" text-anchor="start">packages/coding-tools；工</text>
+<text x="1522.6666666666665" y="1412" font-size="17" class="muted" text-anchor="start">作区受限工具</text>
+</g>
+<text x="80" y="1452" font-size="20" class="muted" text-anchor="start">Wiki/知识正文↔版本化记忆；MCP/Skills/Windows/编码；受控写回与真实隔离分别验证。</text>
+<rect x="60" y="1510" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="1545" font-size="27" class="strong" text-anchor="start">⑤ 外部世界与业务能力</text>
+<g data-module="MOD-20">
+<rect x="80.0" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="96.0" y="1595" font-size="21" class="strong" text-anchor="start">MOD-20</text>
+<text x="296.57142857142856" y="1595" font-size="25" class="strong" text-anchor="end">60%</text>
+<text x="96.0" y="1629" font-size="23" class="strong" text-anchor="start">效率与日历</text>
+<text x="96.0" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="96.0" y="1701" font-size="17" class="muted" text-anchor="start">packages/productivity</text>
+<text x="96.0" y="1722" font-size="17" class="muted" text-anchor="start">；packages/connectors</text>
+<text x="96.0" y="1743" font-size="17" class="muted" text-anchor="start">/calendar</text>
+</g>
+<g data-module="MOD-21">
+<rect x="324.57142857142856" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="340.57142857142856" y="1595" font-size="21" class="strong" text-anchor="start">MOD-21</text>
+<text x="541.1428571428571" y="1595" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="340.57142857142856" y="1629" font-size="23" class="strong" text-anchor="start">邮件连接器</text>
+<text x="340.57142857142856" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="340.57142857142856" y="1701" font-size="17" class="muted" text-anchor="start">packages/connectors/m</text>
+<text x="340.57142857142856" y="1722" font-size="17" class="muted" text-anchor="start">ail</text>
+</g>
+<g data-module="MOD-22">
+<rect x="569.1428571428571" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="585.1428571428571" y="1595" font-size="21" class="strong" text-anchor="start">MOD-22</text>
+<text x="785.7142857142857" y="1595" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="585.1428571428571" y="1629" font-size="23" class="strong" text-anchor="start">RSS/Atom 订阅</text>
+<text x="585.1428571428571" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="585.1428571428571" y="1701" font-size="17" class="muted" text-anchor="start">packages/connectors/f</text>
+<text x="585.1428571428571" y="1722" font-size="17" class="muted" text-anchor="start">eeds</text>
+</g>
+<g data-module="MOD-23">
+<rect x="813.7142857142858" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="829.7142857142858" y="1595" font-size="21" class="strong" text-anchor="start">MOD-23</text>
+<text x="1030.2857142857144" y="1595" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="829.7142857142858" y="1629" font-size="23" class="strong" text-anchor="start">通知与提醒</text>
+<text x="829.7142857142858" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="829.7142857142858" y="1701" font-size="17" class="muted" text-anchor="start">packages/notification</text>
+<text x="829.7142857142858" y="1722" font-size="17" class="muted" text-anchor="start">s；Desktop 消费</text>
+</g>
+<g data-module="MOD-24">
+<rect x="1058.2857142857142" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="1074.2857142857142" y="1595" font-size="21" class="strong" text-anchor="start">MOD-24</text>
+<text x="1274.857142857143" y="1595" font-size="25" class="strong" text-anchor="end">70%</text>
+<text x="1074.2857142857142" y="1629" font-size="23" class="strong" text-anchor="start">资料研究</text>
+<text x="1074.2857142857142" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="1074.2857142857142" y="1701" font-size="17" class="muted" text-anchor="start">packages/connectors/r</text>
+<text x="1074.2857142857142" y="1722" font-size="17" class="muted" text-anchor="start">esearch</text>
+</g>
+<g data-module="MOD-25">
+<rect x="1302.857142857143" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="1318.857142857143" y="1595" font-size="21" class="strong" text-anchor="start">MOD-25</text>
+<text x="1519.4285714285716" y="1595" font-size="25" class="strong" text-anchor="end">80%</text>
+<text x="1318.857142857143" y="1629" font-size="23" class="strong" text-anchor="start">天气与环境</text>
+<text x="1318.857142857143" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="1318.857142857143" y="1701" font-size="17" class="muted" text-anchor="start">packages/connectors/w</text>
+<text x="1318.857142857143" y="1722" font-size="17" class="muted" text-anchor="start">eather</text>
+</g>
+<g data-module="MOD-26">
+<rect x="1547.4285714285716" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="1563.4285714285716" y="1595" font-size="21" class="strong" text-anchor="start">MOD-26</text>
+<text x="1764.0000000000002" y="1595" font-size="25" class="strong" text-anchor="end">0%</text>
+<text x="1563.4285714285716" y="1629" font-size="23" class="strong" text-anchor="start">可选社交连接器</text>
+<text x="1563.4285714285716" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="1563.4285714285716" y="1701" font-size="17" class="muted" text-anchor="start">待选择平台后在 package</text>
+<text x="1563.4285714285716" y="1722" font-size="17" class="muted" text-anchor="start">s/connectors 扩展</text>
+</g>
+<text x="80" y="1762" font-size="20" class="muted" text-anchor="start">可信采集→FactChangeFeed；账户动作通过 ToolGateway；撤销/过期/去重均受控制。</text>
+<rect x="60" y="1820" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="1855" font-size="27" class="strong" text-anchor="start">⑥ 开发者责任工作流</text>
+<g data-module="MOD-33">
+<rect x="80.0" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="96.0" y="1905" font-size="21" class="strong" text-anchor="start">MOD-33</text>
+<text x="337.3333333333333" y="1905" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="96.0" y="1939" font-size="23" class="strong" text-anchor="start">GitHub 能力</text>
+<text x="96.0" y="1986" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="96.0" y="2011" font-size="17" class="muted" text-anchor="start">packages/connectors/github</text>
+</g>
+<g data-module="MOD-34">
+<rect x="365.3333333333333" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="381.3333333333333" y="1905" font-size="21" class="strong" text-anchor="start">MOD-34</text>
+<text x="622.6666666666666" y="1905" font-size="25" class="strong" text-anchor="end">60%</text>
+<text x="381.3333333333333" y="1939" font-size="23" class="strong" text-anchor="start">CI 修复工作流</text>
+<text x="381.3333333333333" y="1986" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="381.3333333333333" y="2011" font-size="17" class="muted" text-anchor="start">DEV-WORKFLOWS；CI Fix；cod</text>
+<text x="381.3333333333333" y="2032" font-size="17" class="muted" text-anchor="start">ing-tools/git-tools</text>
+</g>
+<g data-module="MOD-35">
+<rect x="650.6666666666666" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="666.6666666666666" y="1905" font-size="21" class="strong" text-anchor="start">MOD-35</text>
+<text x="908.0" y="1905" font-size="25" class="strong" text-anchor="end">70%</text>
+<text x="666.6666666666666" y="1939" font-size="23" class="strong" text-anchor="start">测试定位工作流</text>
+<text x="666.6666666666666" y="1986" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="666.6666666666666" y="2011" font-size="17" class="muted" text-anchor="start">DEV-WORKFLOWS；Test Locate</text>
+<text x="666.6666666666666" y="2032" font-size="17" class="muted" text-anchor="start">；TAP/证据定位</text>
+</g>
+<g data-module="MOD-36">
+<rect x="936.0" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="952.0" y="1905" font-size="21" class="strong" text-anchor="start">MOD-36</text>
+<text x="1193.3333333333333" y="1905" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="952.0" y="1939" font-size="23" class="strong" text-anchor="start">代码评审工作流</text>
+<text x="952.0" y="1986" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="952.0" y="2011" font-size="17" class="muted" text-anchor="start">packages/cognition 的 Code</text>
+<text x="952.0" y="2032" font-size="17" class="muted" text-anchor="start"> Review；GitHub 消费</text>
+</g>
+<g data-module="MOD-37">
+<rect x="1221.3333333333333" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="1237.3333333333333" y="1905" font-size="21" class="strong" text-anchor="start">MOD-37</text>
+<text x="1478.6666666666665" y="1905" font-size="25" class="strong" text-anchor="end">0%</text>
+<text x="1237.3333333333333" y="1939" font-size="23" class="strong" text-anchor="start">文档维护工作流</text>
+<text x="1237.3333333333333" y="1986" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="1237.3333333333333" y="2011" font-size="17" class="muted" text-anchor="start">DEV-WORKFLOWS；后续漂移检测</text>
+<text x="1237.3333333333333" y="2032" font-size="17" class="muted" text-anchor="start">/补丁/PR 工作包</text>
+</g>
+<g data-module="MOD-38">
+<rect x="1506.6666666666665" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="1522.6666666666665" y="1905" font-size="21" class="strong" text-anchor="start">MOD-38</text>
+<text x="1763.9999999999998" y="1905" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="1522.6666666666665" y="1939" font-size="23" class="strong" text-anchor="start">Issue 分诊与修复</text>
+<text x="1522.6666666666665" y="1986" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="1522.6666666666665" y="2011" font-size="17" class="muted" text-anchor="start">packages/cognition 的 Issu</text>
+<text x="1522.6666666666665" y="2032" font-size="17" class="muted" text-anchor="start">e Triage；GitHub 消费</text>
+</g>
+<text x="80" y="2072" font-size="20" class="muted" text-anchor="start">GitHub/CI/测试/评审/文档/Issue；不是独立任务库，复用图、Runtime 与工具端口。</text>
+<rect x="60" y="2130" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="2165" font-size="27" class="strong" text-anchor="start">⑦ 交付与分发</text>
+<g data-module="MOD-19">
+<rect x="80.0" y="2185" width="1700.0" height="176" rx="14" fill="#fff" stroke="#726551"/>
+<text x="96.0" y="2215" font-size="21" class="strong" text-anchor="start">MOD-19</text>
+<text x="1764.0" y="2215" font-size="25" class="strong" text-anchor="end">20%</text>
+<text x="96.0" y="2249" font-size="23" class="strong" text-anchor="start">Windows 分发</text>
+<text x="96.0" y="2296" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="96.0" y="2321" font-size="17" class="muted" text-anchor="start">scripts/release；apps/desktop</text>
+</g>
+<text x="80" y="2382" font-size="20" class="muted" text-anchor="start">源码、固定镜像 digest、配置契约和验收一起交付；安装器仍是后续工作。</text>
+<path d="M930,540 L930,575" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<path d="M930,850 L930,885" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<path d="M930,1160 L930,1195" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<path d="M930,1470 L930,1505" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<path d="M930,1780 L930,1815" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<path d="M930,2090 L930,2125" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<rect x="1890" y="270" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-29">
+<rect x="1910" y="288" width="810" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="318" font-size="21" class="strong" text-anchor="start">MOD-29</text>
+<text x="2704" y="318" font-size="25" class="strong" text-anchor="end">45%</text>
+<text x="1926" y="352" font-size="23" class="strong" text-anchor="start">AgentArts 基础与镜像</text>
+<text x="1926" y="399" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1926" y="424" font-size="17" class="muted" text-anchor="start">packages/agentarts；apps/agentarts-runtime</text>
+</g>
+<text x="1910" y="493" font-size="21" class="muted" text-anchor="start">容器 /ws 本地 provisional；restartRecovery=false，公开网关与新版镜像待验</text>
+<text x="1910" y="520" font-size="21" class="muted" text-anchor="start">收。</text>
+<rect x="1890" y="890" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-04A">
+<rect x="1910" y="908" width="810" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="938" font-size="21" class="strong" text-anchor="start">MOD-04A</text>
+<text x="2704" y="938" font-size="25" class="strong" text-anchor="end">70%</text>
+<text x="1926" y="972" font-size="23" class="strong" text-anchor="start">模型网关与 Provider</text>
+<text x="1926" y="1019" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="1926" y="1044" font-size="17" class="muted" text-anchor="start">packages/models；云镜像通过公开导出消费</text>
+</g>
+<text x="1910" y="1113" font-size="21" class="muted" text-anchor="start">公开模型包可复用；统一 Provider、取消与用量；模型不能签发权限。</text>
+<rect x="1890" y="1200" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-32">
+<rect x="1910" y="1218" width="810" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="1248" font-size="21" class="strong" text-anchor="start">MOD-32</text>
+<text x="2704" y="1248" font-size="25" class="strong" text-anchor="end">30%</text>
+<text x="1926" y="1282" font-size="23" class="strong" text-anchor="start">云 API/Trace/运维</text>
+<text x="1926" y="1329" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1926" y="1354" font-size="17" class="muted" text-anchor="start">AgentArts API；tests/manual/agentarts；云观测</text>
+</g>
+<text x="1910" y="1423" font-size="21" class="muted" text-anchor="start">deployment/API/trace/评估/费用/回滚；平台成功不等于本地工具成功。</text>
+<rect x="1890" y="1510" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-10">
+<rect x="1910" y="1528" width="810" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="1558" font-size="21" class="strong" text-anchor="start">MOD-10</text>
+<text x="2704" y="1558" font-size="25" class="strong" text-anchor="end">20%</text>
+<text x="1926" y="1592" font-size="23" class="strong" text-anchor="start">模型研究与训练</text>
+<text x="1926" y="1639" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1926" y="1664" font-size="17" class="muted" text-anchor="start">docs/research/agentarts；后续模型研究工作包</text>
+</g>
+<text x="1910" y="1733" font-size="21" class="muted" text-anchor="start">横向研究：领域标注集、校准与训练；不作为每次调用必经步骤。</text>
+<rect x="1890" y="580" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-30">
+<rect x="1910" y="598" width="399" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="628" font-size="21" class="strong" text-anchor="start">MOD-30</text>
+<text x="2293" y="628" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="1926" y="662" font-size="23" class="strong" text-anchor="start">云工作流与单 Agent</text>
+<text x="1926" y="709" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1926" y="734" font-size="17" class="muted" text-anchor="start">apps/agentarts-runtime；编排与继续轮次</text>
+</g>
+<g data-module="MOD-31">
+<rect x="2321" y="598" width="399" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="2337" y="628" font-size="21" class="strong" text-anchor="start">MOD-31</text>
+<text x="2704" y="628" font-size="25" class="strong" text-anchor="end">35%</text>
+<text x="2337" y="662" font-size="23" class="strong" text-anchor="start">多 Agent 与评估</text>
+<text x="2337" y="709" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="2337" y="734" font-size="17" class="muted" text-anchor="start">AgentArts 角色编排；Runtime Subagent Hos</text>
+<text x="2337" y="755" font-size="17" class="muted" text-anchor="start">t 消费</text>
+</g>
+<text x="1910" y="803" font-size="21" class="muted" text-anchor="start">完整World/Plan→Review→候选；缺来源RECHECK；工具仍由本地执行。</text>
+<path d="M1820,692 L1870,692" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" marker-start="url(#arrow)" />
+<rect x="1410" y="830" width="1320" height="50" rx="14" fill="#e0effa" stroke="#78a9cf"/>
+<text x="1430" y="863" font-size="24" class="strong" text-anchor="start">WSS 主通道 ⇄ HTTPS 备用 · 同部署/同任务/同去重 · 可见降级</text>
+<rect x="1890" y="1820" width="850" height="270" rx="14" fill="#fff4e6" stroke="#d6aa6c"/>
+<text x="1910" y="1858" font-size="25" class="strong" text-anchor="start">横向新增目标：尚未通过真实目标验收</text>
+<text x="1910" y="1906" font-size="22" class="" text-anchor="start">WSS 公开网关 + 结果未知/重启协调消费</text>
+<text x="1910" y="1950" font-size="22" class="" text-anchor="start">持久无人监管授权 + 完整委派/监管闭环</text>
+<text x="1910" y="1994" font-size="22" class="" text-anchor="start">Laya 领域校准 + 任意命令强沙箱</text>
+<text x="1910" y="2038" font-size="22" class="" text-anchor="start">新版云镜像 Golden Path + 迁移缺口验收</text>
+<rect x="1890" y="2130" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="1910" y="2170" font-size="26" class="strong" text-anchor="start">构建 → GHCR 协作 → AgentArts 部署 → 验收</text>
+<text x="1910" y="2210" font-size="22" class="muted" text-anchor="start">ARM64 / 8080；/ws 与 POST /invocations。华为拉取按平台配置，必要时 SW</text>
+<text x="1910" y="2243" font-size="22" class="muted" text-anchor="start">R；公开 Upgrade 与身份仍需实测。</text>
+<text x="1910" y="2321" font-size="22" class="muted" text-anchor="start">不打包用户数据/密钥；固定 tag + digest；新部署失败显式暂停或回滚。</text>
+<rect x="40" y="2460" width="2720" height="160" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="2501" font-size="28" class="strong" text-anchor="start">贯穿设计：权限、信任、隐私、状态恢复与证据</text>
+<text x="60" y="2542" font-size="24" class="muted" text-anchor="start">用户指令 ≠ 外部内容；云/模型输出先校验。数据最小投影；未知副作用先核实。父子任务取消需停止确认。切换传输不切换权限，不静默回退另一 Agent Profile。</text>
+<rect x="40" y="2650" width="2720" height="195" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="2691" font-size="27" class="strong" text-anchor="start">阅读图例与完成度口径</text>
+<text x="60" y="2730" font-size="23" class="muted" text-anchor="start">39 个模块全部入图。百分比 = 契约20 + 实现30 + 接线20 + 目标真实验收20 + 恢复安全10 的工程判断。详细区间、来源与缺口见 modules.json 和完整设计正文；不是成功概率，不等于历史 done。</text>
+<text x="60" y="2815" font-size="22" class="muted" text-anchor="start">箭头展示目标流向；新流程仍可能未实现。所有跨模块调用通过公开端口，不表示可以任意互相导入。</text>
+</svg>

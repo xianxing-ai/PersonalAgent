@@ -1,5 +1,31 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-12 新版真实云场景登记（不提升冻结范围）
+
+自有 ARM64 镜像源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 的未合并分支已取得真实 Huawei WSS → MaaS → 本地 Policy / 生产 workspace.read_text → Evidence → 云端续答证据，任务 succeeded，执行 1 次，Evidence 1 条，HTTPS 应用调用 0。重开 Runtime Application 后仅持久读回通过，不重放工具；真实云端 `/invocations/bindings?endpoint=Latest` 发现 8 Workflow / 3 Controller。详见 [验收记录](../modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
+
+仅固定公开合成文件读取场景可记为真实验证，接口继续 provisional，Core Runtime Profile 1 冻结集合、wire 1.0.0 和候选 1.0 均不变；不能据此公布未注册能力或提升所有连接器/绑定的 verification。main 集成、完整自主修复、真实 Wiki、写入及平台 trace/评估仍待独立验收。下文旧日期 unavailable / 未验收条目是当时状态，不覆盖本增量，也不由本增量整体转为可用。
+
+## 2026-10-12 镜像可执行绑定登记
+
+`getOwnedBindings`、`OwnedAgentOrchestrator.invokeWorkflow/invokeController` 与受保护 `/bindings`
+是 MOD-29/30/31 的镜像专用 provisional 增量，固定 8 Workflow/3 Controller；
+绑定1.0.0信封通过现有 HTTP/WS query 消费，World/Plan报告与旧可执行结果隔离。
+不进入 Core Runtime Profile 1 冻结集合，无数据库迁移，不扩 candidateVersion1.0。
+目录和调用实现不等于真实 Provider、平台 Controller、账号工具或部署可用。
+接口与验证边界见 [绑定接口](../competition/OWNED_IMAGE_BINDINGS.md)、[ADR-0015](../adr/0015-owned-workflow-controller-bindings.md)。
+
+## 2026-10-09 自有镜像与 Wiki 状态补充
+
+自有镜像实现 HTTP `/ping`、`/invocations`、WS `/ws` 和受保护 `/invocation-status`，复用 ModelGateway、Coordination 动态工具目录/继续轮次/修复候选；精确接口见 [镜像接口](../competition/OWNED_IMAGE_INTERFACES.md)。传输0.1.0为独立provisional契约，不扩展本地wire冻结集合。本地check与合成容器证据不能提升真实云状态，真实AgentArts仍unavailable。
+
+WSS主通道、显式HTTPS备用、同会话复用、发送前持久身份与未知防重发已在本分支接线；公开网关路径、真实调用及自动status恢复消费者尚未验收/交付，不能公布生产capability。Wiki自动同步仍是设计：来源适配/Memory投影由goo122在MOD-08/09发布，复用既有公开端口；真实Wiki/云端出机与端到端失效传播另验收。
+
+知识受控写入和固定 MCP/Skills已有受限增量，以当前公开源码/README为准；本文较旧历史矩阵不能抹去这些增量，也不能据存在代码冻结整个模块。合并确认是开发规则，不成为产品运行时授权或接口冻结证据。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 2026-10-11 [MOD-08O](../modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md) 在 PR #322 上继续：
 peer 可选 readCitation、桥接版本 2（PA2，旧 PA1 仅检索）与 Runtime `wikiSource.acquireWiki`。
 TrustedKnowledgeSource 的读取租约可选提供既有 ReadOnlyPageVaultPort.readPage；缺少稳定页
@@ -25,6 +51,11 @@ capability、迁移或依赖。接口保持 provisional，未完成真实用户/
 
 ## 1. 目的
 
+2026-10-08 自有云端镜像工作包（[记录](../modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)）：
+新编排包复用既有 ModelPort/Coordination 应用 JSON；HTTP 受信可选头 `X-PA-Deadline` 传递原期限，旧平台可忽略。
+普通 confirmed 续答仅在含 repairContext 时进入修复提示；Schema 和冻结集合未改变。
+本地 HTTP/Fake/文件验证不提升 AgentArts 真实 deployment、trace、评估或整链冻结状态。
+
 本文是当前跨模块接口的唯一状态登记。它回答四个不同问题：
 
 1. 接口形状是否已经冻结；
@@ -40,7 +71,7 @@ capability、迁移或依赖。接口保持 provisional，未完成真实用户/
 
 | 部署 profile | 优先级 | 当前能力 | 接口规则 |
 | --- | --- | --- | --- |
-| `huawei_ict_agentarts` | 当前唯一优先实现与比赛验收路径 | 架构 accepted；离线 Runtime/工具循环为 `provisional`；真实云运行 `unavailable` | 已有端口与 Fake 仅供受控开发；正式证据不静默回退 |
+| `huawei_ict_agentarts` | 当前唯一优先实现与比赛验收路径 | 架构 accepted；接口 `provisional`；#317 分支真实 WSS 文件读取闭环已验证，main 和其余场景未完成 | 只在明确已部署配置中使用上述场景；不静默回退，不扩大冻结集合 |
 | `local` | 可选保留 | 现有 Agent/Model 部分实现为 `provisional` | 不删除既有代码；新增 Local 能力不阻塞 Competition，也不计入比赛验收 |
 
 ## 2. 状态定义与冻结门槛

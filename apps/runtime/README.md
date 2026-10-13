@@ -1,5 +1,8 @@
 # Runtime task core
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
 Obsidian 本机桥接沿用 `createObsidianPairingHost` 与 `createTrustedKnowledgeTools`。
 Desktop 根组合用公开 `@personal-agent/knowledge/bridge` 进行 TLS 证书指纹固定/一次性
 密钥认证，再请求原生确认；检索任务仍由 Runtime/Policy/ToolGateway 决定。配对恒为

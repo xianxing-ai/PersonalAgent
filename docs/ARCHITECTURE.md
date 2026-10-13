@@ -1,5 +1,18 @@
 # 架构设计与技术契约
 
+## 2026-10-09 目标架构补充
+
+当前目标为本地常驻自主开发者助手，详见 ADR-0013 和完整设计。Electron/原生 HTML 的主进程内 Runtime 装配边界继续有效，不假定已有独立 Windows 服务。
+
+Wiki 知识正文经 MOD-08 受信适配，MOD-09 维护来源版本绑定的 Memory 投影与 FactChangeFeed；MOD-27/28 只用公开端口消费，变化驱动增量核实。跨正文文件与 SQLite 用可信记录恢复，不承诺天然原子事务。
+
+MOD-04B/29 的通信采用 WSS 主、HTTPS 备用，同部署/任务/幂等/授权语义；当前分支已实现容器 `/ws` 和本地客户端，公网路由与 Upgrade 仍为 provisional，不能用旧 HTTP 预览证明新版已发布。发送意图持久化，未知结果先核实，工具回执不允许云续答盲发；决定见 [ADR-0014](adr/0014-agentarts-wss-transport.md)。AgentArts 负责语义编排，本地 Runtime 维护状态/权限/工具/读回/Evidence。Laya 是决策建议端口，强 OS 隔离、领域校准和完整监管尚未验收。
+
+39 个模块的位置、所有权、估算及缺口以完整设计和 MODULE_ASSIGNMENTS 为依据。图的箭头是目标职责，不允许 packages 反向导入 apps 或绕过 ToolGateway。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 版本：0.7 · 日期：2026-09-09 · 状态：只实施 Huawei ICT AgentArts Competition Profile，Local Profile 可选留存

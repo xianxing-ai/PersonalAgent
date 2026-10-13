@@ -6,7 +6,7 @@
 - 基线：`main@e86bac53`；实际工作树：`.worktrees/goo122-wiki-source-revisions`
 - 分支：`codex/goo122-wiki-source-revisions`，与同一分支的 [MOD-08G](MOD-08G-WIKI-SOURCE-REVISIONS-01.md) 联合交付
 - 目录：Knowledge/Memory 公开端口、Runtime Application、Desktop 可信组合与管理界面、必要测试与文档
-- 决策：[ADR-0015](../adr/0015-wiki-source-identity.md)，proposed；接口仍 provisional
+- 决策：[ADR-0022](../adr/0022-wiki-source-identity.md)，proposed；接口仍 provisional
 
 ## 行为与权限
 

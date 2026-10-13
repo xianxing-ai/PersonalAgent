@@ -99,3 +99,25 @@ ERR_SSL_NO_CERTIFICATE_SET；最终移除该路径，使用临时证书固定与
   #318 的独立 Skill 安装与 #327 的学习指导增量不在这个组合中，不据此宣称它们已集成。
 - 本包更新现有 #322；新 head 的 Foundation 和有效非作者批准要重新核对。#320 当前
   缺非作者批准，不能越过父分支门槛合入 main；本轮不执行 GitHub PR 合并或发布。
+
+### 同日后续：#317/#327 主线后的最终组合
+
+主线在前一轮验证后推进到 `dd639d42`（#317 及 #327）。已在 #320 修复新的六处冲突，
+保留 Wiki 投影重验与 owned transport 配置，Wiki ADR 唯一编号改为 0022；随后沿父子栈
+传递。#321 合并保留备份删除未完成提示、#327 的停止/核实状态和中文指导，以及
+agentarts-runtime / obsidian-plugin 两个构建入口。#322 的四处冲突仅文档，保留双方记录。
+
+- 最终组合完整 `npm run check` 退出 0：**3015 tests / 2984 pass / 31 skip / 0 fail/取消**；
+  `.cache-final-wiki-stack-full-check.log`，包含新云端工作区、最新 Desktop/Runtime 和根集成。
+- 备份提示与备份宿主专项 **10/10、0 skip**，`.cache-final-wiki-stack-backup-ui.log`。
+  新行为回归证明相关备份保留时显示“删除尚未完成”，旧消费控件移除；不把删除说成已完成。
+- 实际 Obsidian/Desktop 双进程及 Desktop Fake Runtime smoke 均退出 0；
+  `.cache-final-wiki-stack-dual-process.log`、`.cache-final-wiki-stack-desktop-smoke.log`。
+  最终 evidence 为 `.cache/obsidian-installed-host/case-ySMVLf/evidence.json`，verified。
+  v3 来源撤回、v4 独立 Fake 确认更正、v5 手动撤回和精确删除保留；截图已核对。
+- 原生决定仍 explicit Fake、合成 Vault/SQLite，真实云调用 0；原 Vault 未访问或修改。
+  未留下 Obsidian 进程，合成插件卸载，evidence 检查无配对码/secret/私钥。
+- 原先的 2755 与根包 2952 完整门禁是对应历史组合，不冒充这次 3015 的命令结果；
+  早先本地 dev/两项 demo 记录属于 f81bb641 组合，最新 head 的全部 Foundation 以远端核对。
+- 更新 #320/#321/#322 后重新核对 CI 与非作者批准；这次没有 GitHub PR 合并或发布。
+  #318 Skill 安装仍为独立待集成增量，不把当前 Wiki 组合记作整个产品完成。

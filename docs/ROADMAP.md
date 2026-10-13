@@ -1,5 +1,41 @@
 # 开发计划与进度
 
+### 2026-10-13 当前组合补充（review）
+
+main 已包含 #317 与 #327，基线 dd639d42。Wiki 根包保留投影重验与新的传输配置，
+沿 #320→#321→#322 组合核对；插件/记忆证据与真实云读取单链分别记录，不升级完整 MOD 状态。
+下文“未进入 main”和“双人阅读审批”保留为当时的分支记录；当前合并规则以 AGENTS/
+CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查与冲突门槛为准。
+
+## 2026-10-12 ARM64 镜像真实 WSS 读取闭环（分支验收）
+
+#317 的镜像源码固定为 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6`，已发布 GHCR、导入 SWR，Latest 为 `arm64-194799c6`。实际 MaaS 模型提出工具请求，经本地 Runtime / Policy 一次性审批、生产文件读取和 Evidence 回传，任务 succeeded；读取 1 次、Evidence 1 条、HTTPS 应用调用 0。持久读回不重放任务且关闭退出 0；云端目录发现 8 Workflow / 3 Controller。只验证固定公开合成文件，详见 [真实华为证据与限制](modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
+
+本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。双人当前 head 阅读确认与审批仍必需。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
+
+## 2026-10-12 镜像全部可承载绑定（in_progress）
+
+继续 #317：新增8个Workflow/3个Controller的实际调用、World/Plan/Review独立阶段、
+受保护目录、可信默认Controller和确定性零模型工具提案。原空MVP为明确的新owned绑定。
+本机工具/来源/凭据/授权仍经原宿主端口提供，不扩大候选1.0或声称原平台完整语义等价。
+接口、逐项清单和阶段验证见 [绑定说明](competition/OWNED_IMAGE_BINDINGS.md) 与
+[工作包](modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)。整仓check、镜像构建/发布和真实云验收分开记录。
+本轮根check已成功（2878项/2860通过/18跳过/0失败），包括11绑定真实核心HTTP分派和中文阶段报告兼容。
+两人当前head阅读确认/审批门槛保持；本轮不强制合并，不把预览镜像当作main集成。
+
+## 2026-10-09 当前工作包与合并规则
+
+自有镜像工作包 `codex/agentarts-owned-image`：提交编排/HTTP/WS服务、传输契约、Coordination/Runtime/Desktop接线及接口/构建/测试/脱敏清单。WSS和显式HTTPS备用已有本分支实现与合成连接验证，发送前持久身份阻止未知自动重发；自动status协调、公开网关、领域校准和真实AgentArts Golden Path仍未完成，不提高整体MOD状态。完整常驻设计及Wiki交接同步；Wiki由goo122后续实现。旧8工作流/3控制器逐项见[迁移矩阵](modules/AGENTARTS-OWNED-IMAGE-PARITY.md)。
+
+已在该工作树执行完整 `npm run check` 并成功；新增阅读门槛6项测试成功。容器重建、GHCR 发布、Actions 工件与 PR 状态另保存实际证据，不把发布时间或已推送当 done。
+
+2026-10-09 已读回 main 保护：两次审批、最新推送批准、旧审批失效、必要 check/design-read-confirmations、管理员受保护、禁止强推/删除。goo122 与 Potatos498 两人均需当前版本本机阅读声明。2026-10-07 自审可合并政策已被覆盖，禁止强制合并、--admin、绕过检查或直接推 main。
+
+模块表维持原工作包事实；当前设计估算和历史台账 done 的口径不同。新镜像不是独立云电脑，公开发布也不等于华为部署/验收。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 ### 2026-10-12 goo122 Wiki 来源离线变更与恢复验收（review）
 
 按既有 P3 计划完成离线编辑、改名、越界、暂时缺页及重新配对回归：37/37、0 skip，
@@ -56,6 +92,11 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 本文维护工作状态，需求以 PRD 为准，当前交付顺序以[华为 ICT AgentArts Competition Profile](competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)为先。模块负责人和独占目录唯一登记在 [模块分工](MODULE_ASSIGNMENTS.md)，契约见[公共开发协议](DEVELOPMENT_PROTOCOL.md)，逐接口冻结和可用性见[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。`goo122` 负责共享底座、公共协议、Runtime、工具、知识与记忆；`zemeng` 负责 Competition Profile、AgentArts、核心认知和桌面执行；`Potatos498` 独立负责 MOD-20～26、MOD-34/35/38 及业务接线；三人各自验证和交付，不等待另一人的 PR 批准。历史作者与证据保留。Local Profile 只作为可选保留，不进入当前比赛退出条件。阶段不代表承诺日期；正式排期需根据比赛时间、团队人数和接口验证结果确定。
 
 ### 2026-10-08 最新状态与本轮集成
+
+- 自有 AgentArts ARM64 镜像迁移在隔离分支 `codex/agentarts-owned-image` 处于 `in_progress`，尚未集成：
+  云端角色/HTTP 服务、受信原期限与普通续接修复已实现；8个工作流和3个多智能体原始导出已保存并清点。
+  重启后 Docker/WSL 已正常运行，ARM64 镜像已构建；容器测试16/16、生产入口合成 HTTPS 传输验证通过。
+  剩余资产迁移、SWR/AgentArts 部署及真实云/独立宿主验收未完成，详见 [工作包](modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)。
 
 - 分工 PR #299/#300 已合并：zemeng 保持核心、AgentArts 和桌面执行；goo122 负责 MOD-33/36/37，Potatos498 负责 MOD-34/35/38。三人独立交付和自审，不恢复指定人员审批或集中验收门槛。
 - #298 已合并 Windows Job helper CI 执行；#301 已合并失败 GitHub job 空日志拒绝；#303 已合并代码预审 diff 缓存的 Evidence 保留；#304/#305 已合并私人记忆控件刷新及控制器关闭后拒绝来源访问。审查基线 efbfbdd2 的 Foundation run 37731330132 成功。

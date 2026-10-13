@@ -98,3 +98,22 @@ MOD-08/09 仍 `in_progress`。完整 LLM Wiki、后台 watcher/全库索引、�
 私人文件或他人数据，不能据此宣称整套删除覆盖完成。
 
 本分支联合交付 MOD-08G/H/I 与必要门禁修复；2026-10-11 用户已授权提交、推送和创建 PR。
+
+### 2026-10-13：#317 主线后的根包冲突修复
+
+- 工作树 `.worktrees/goo122-wiki-main-conflict-20261013`，从 #320 `a8fa8a9f` 保留全部提交。
+  主线合入 #317 至 `5b581139` 后产生六处冲突；生产代码仅 Desktop 装配点一处。
+  同时保留 `createTrustedKnowledgeTools` 的私人投影重验 callback 与新
+  `createAgentArtsTransportConfig` / 状态初始化；五处 Markdown 保留双方内容。
+- 主线已占用 ADR-0015 为 owned bindings；Wiki 只读来源 ADR 移至唯一 ADR-0022，
+  相关路径和标题引用同步。含冲突的 README 门槛对齐当前 AGENTS/CONTRIBUTING 的一位
+  非作者有效批准，不保留过期“两人均确认”约束；未修改设计或读取权限。
+- 该组合完整 `npm run check` 退出 0：**2952 tests / 2921 pass / 31 skip / 0 fail/取消**，
+  `.cache-pr320-new-main-full-check.log`；真实 Windows Job helper 启用。传输 Schema、根
+  工作区和锁文件继承 #317；本修复没有额外契约、迁移或依赖增量，不手改生成类型。
+- 随后正常接入 main `dd639d42` 的 #327 六个学习指导文件，无冲突。仅受影响回归
+  **16/16、0 skip** 与 Desktop 类型/语法检查通过；分别为 `.cache-pr320-guidance-focused.log`
+  和 `.cache-pr320-guidance-typecheck.log`。上一完整门禁属于 #327 之前的实际快照，
+  不冒称最后新 head 又运行了同一完整命令；远端 Foundation 仍需核对。
+- 原 Vault 未访问或修改，真实云调用 0；修复向 #321/#322 传递后再核对各包当前 head、
+  CI 与非作者批准。本次不自动合并 GitHub PR、不发布，整个 MOD-08/09 不标 done。

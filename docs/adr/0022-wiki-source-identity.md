@@ -1,4 +1,4 @@
-# ADR-0015：本机 Wiki 页面身份与读取版本
+# ADR-0022：本机 Wiki 页面身份与读取版本
 
 - 状态：proposed；仅用于 `huawei_ict_agentarts` 的离线增量
 - 日期：2026-10-10；负责人：goo122

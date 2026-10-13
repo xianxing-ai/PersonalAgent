@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
 import path from 'node:path';
+import {Client} from '@personal-agent/client';
+import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
+import {mkdtemp,rm} from 'node:fs/promises';
+import os from 'node:os';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createGoalTools} from '@personal-agent/goals/tool';
 import {getGoal,listGoals} from '@personal-agent/goals/commands';
@@ -210,4 +214,36 @@ test('exact Unicode Goal IDs survive bounded cloud pagination and SQLite reopen'
   cloud.revoke();
   await assert.rejects(() => reopened.execute('goals.list', {limit: 1}), /unavailable/);
   assert.equal(host.list().graphRevision, 3);
+});
+
+const exportGoal={id:'source-goal',kind:'goal',summary:'SYNTHETIC_PREVIOUS_ALLOWED_SUMMARY',sourceRef:'synthetic/direct-seed',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z',sensitivity:'public',state:'active',reason:'Synthetic user Goal',dependencies:[]};
+for(const toolName of ['goals.get','goals.list'])for(const change of ['none','restricted','withdrawn','revised','unrelated','private','empty'])test(`actual ${toolName} export after credential gap change=${change}`,async t=>{
+ const restrict=['restricted','withdrawn','revised'].includes(change);
+ const directory=await mkdtemp(path.join(os.tmpdir(),'synthetic-goal-export-'));let store,credentials=0;const queries=[];
+ const goalHost={tools:createGoalTools(()=>store),list:()=>listGoals(store),get:id=>getGoal(store,id)};
+ const cloud=createDesktopGoalCloudHost({goalHost,namespace:'synthetic-user'});
+ const app=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),gatewayUrl:'https://synthetic-agentarts.invalid',runtimeName:'synthetic',responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',hostUserNamespace:'synthetic-user',tools:cloud.tools,competitionToolAvailability:cloud.competitionToolAvailability,competitionToolExports:cloud.competitionToolExports,
+  authorizationProvider:{read:async()=>{credentials++;if(credentials===2&&restrict)store.append(1,{...exportGoal,summary:'SYNTHETIC_NEW_BODY',sensitivity:change==='restricted'?'restricted':'public',state:change==='withdrawn'?'withdrawn':'active'});if(credentials===2&&change==='unrelated')store.append(1,{...exportGoal,id:'unrelated-goal',summary:'Unrelated public Goal'});return 'Bearer synthetic-no-real-credential';}},
+  beforeCompetitionSend:request=>cloud.assertCloudSend(request),
+  fetchImpl:async(_url,init)=>{const query=JSON.parse(init.body).query;queries.push(query);const result=Object.hasOwn(JSON.parse(query),'goal')?{kind:'tool_proposal',proposalId:`synthetic-read-${queries.length}`,toolName,toolVersion:'1.0.0',arguments:toolName==='goals.get'?{id:exportGoal.id}:{}}:{kind:'text',text:'Synthetic terminal analysis'};return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});}});
+ t.after(async()=>{for(let i=0;i<200&&app.activeTaskCount;i++)await new Promise(r=>setTimeout(r,5));cloud.close();app.close();await rm(directory,{recursive:true,force:true});});
+ store=app.runtime.provisionCoordinationStore('synthetic-user');if(change!=='empty')store.append(0,{...exportGoal,sensitivity:change==='private'?'private':'public'});cloud.bindApplication(app);cloud.authorize({goalCloudConsent:true});
+ const client=new Client(app);await client.connect();const receipt=await client.call('task.submit',{conversationId:'desktop-panel',goal:'Read my permitted Goal'},{idempotencyKey:'synthetic-goal-read'});
+ let task;for(let i=0;i<200;i++){task=app.runtime.getTask(receipt.taskId);if(task.state==='waiting_approval'){const approval=(await client.call('approval.list',{taskId:task.taskId})).items[0];await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});}if(['succeeded','failed','waiting_reconciliation','cancelled'].includes(task.state))break;await new Promise(r=>setTimeout(r,5));}
+ const oldSummarySent=queries.slice(1).some(q=>q.includes(exportGoal.summary));
+ t.diagnostic(JSON.stringify({toolName,restrict,credentials,fetches:queries.length,state:task.state,currentGoalSensitivity:store.read().history.at(-1)?.sensitivity,currentRevision:store.read().revision,oldSummarySent,externalCloud:false}));
+ assert.equal(task.state,restrict?'waiting_reconciliation':'succeeded');assert.equal(queries.length,restrict?1:2);assert.equal(oldSummarySent,!restrict&&change!=='empty');
+ if(restrict){const receipt=app.runtime.loadCheckpoint(task.taskId,'competition-loop').receipts[0];assert.equal(receipt.continuation.state,'confirmed');assert.throws(()=>cloud.assertCloudSend({taskId:task.taskId,continuation:receipt.continuation,signal:new AbortController().signal}),/no longer exportable/);const binding=cloud.competitionToolExports.find(x=>x.toolName===toolName);assert.throws(()=>binding.project({taskId:task.taskId,result:receipt.continuation.result,signal:new AbortController().signal}),/no longer exportable/);}
+ if(change==='restricted')assert.equal(store.read().history.at(-1).sensitivity,'restricted');
+ if(restrict){
+  const originalReceipt=app.runtime.loadCheckpoint(task.taskId,'competition-loop').receipts[0];
+  store.append(2,{...exportGoal,summary:'SYNTHETIC_RESTORED_PUBLIC_SUMMARY'});
+  const next=await client.call('task.submit',{conversationId:'desktop-panel',goal:'Read the newly permitted current Goal'},{idempotencyKey:'synthetic-restored-read'});
+  for(let i=0;i<400;i++){const current=app.runtime.getTask(next.taskId);if(current.state==='waiting_approval'){const approval=(await client.call('approval.list',{taskId:current.taskId})).items[0];await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});}if(['succeeded','failed','waiting_reconciliation'].includes(current.state))break;await new Promise(r=>setTimeout(r,5));}
+  assert.equal(app.runtime.getTask(next.taskId).state,'succeeded');assert.equal(queries.length,3);
+  assert.equal(app.runtime.getTask(task.taskId).state,'waiting_reconciliation');
+  assert.deepEqual(app.runtime.loadCheckpoint(task.taskId,'competition-loop').receipts[0],originalReceipt);
+  assert.equal(app.runtime.readToolExecutions(task.taskId).length,1);
+ }
+
 });

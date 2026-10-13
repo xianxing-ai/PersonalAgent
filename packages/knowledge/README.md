@@ -1,5 +1,8 @@
 # @personal-agent/knowledge — provisional Vault ports
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
 ## 本机会话配对端口（MOD-08M）
 
 `@personal-agent/knowledge/pairing` 公开严格版本化 `ObsidianPairingDescriptor`、
@@ -67,7 +70,7 @@ Desktop 的逐条确认及按需来源失效投影见 [MOD-08H](../../docs/modul
 显式测试可用 `@personal-agent/knowledge/testing` 的 `createFakeWikiPort`，其路径派生
 ID 仅用于固定夹具。`createUnavailableWikiPort` 明确报不可用，不回退 Fake。
 完整边界与验收见 [MOD-08G](../../docs/modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)
-及 [ADR-0015](../../docs/adr/0015-wiki-source-identity.md)。
+及 [ADR-0022](../../docs/adr/0022-wiki-source-identity.md)。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

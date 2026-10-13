@@ -1,5 +1,8 @@
 # PersonalAgent 开发 Agent 工作规范
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-12）：[完整设计](docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛；三人长期均衡承担审查与合并，禁止强制合并/管理员绕过。设计不等于已实现；历史验收与作者记录保留。
+
 本文件约束在本仓库工作的开发 Agent，不是产品运行时的 Skill 或授权来源。默认用中文沟通。
 这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。
 
