@@ -96,6 +96,11 @@ World/Plan/Review 输出复用公开 `OwnedAgentOrchestrator` 的正式校验：
 `terminal` 表示已收到传输终态，不代表模型结果通过应用校验；回调缺失时不推断已经发帧。
 同会话的下一项重新开始记录，不能继承上一项的失败诊断或请求 ID。
 不保存原始报告、模型正文、错误 message/stack/response body、凭据或凭据摘要。
+目录发现失败时，真实传输内部错误另外提供固定 `phase: network | http | body | json`，
+已收到响应时可带 100–599 整数 `httpStatus`，网络错误仅保留固定允许列表中的 `errno`
+（包括 UND_ERR_CONNECT_TIMEOUT、ENOTFOUND、ECONNRESET）。未知 errno 省略；
+不复制普通注入错误中的同名字段，也不记录 URL、headers 或响应正文。HTTP 错误响应的
+body 释放失败不掩盖原 HTTP 状态。以上诊断不触发自动重试，也不证明 WSS 调用已发送。
 正常落盘时终端输出相同的脱敏回执。写入或替换失败会立即停止后续绑定，不重试写入、
 重命名、发现请求或模型调用；stdout 仍输出内存中的终态回执，并将整体 `status` 置为
 `failed`、退出码置为 1。已经收到的逐项结果保留，不能因落盘失败重发 invoke。
@@ -126,4 +131,5 @@ node --test --test-isolation=none tests/manual/agentarts/owned-binding-live.test
 WSS 会话复用和发送后未知结果不重试。注入文件系统失败并实际读回测试目录，验证最终
 rename 失败仍输出终态、部分 tmp 保留、首/中途 write 失败停止后续调用及错误脱敏。
 这些是合成文件系统错误，不证明真实故障由文件锁引起。无需凭据，无外网及付费模型调用。
+发现诊断另覆盖网络异常、HTTP 失败、body 读取/大小上限、JSON 解析及外部错误字段脱敏。
 `--test-isolation=none` 避免受限 Windows 下测试 runner 创建子进程被 EPERM 拒绝。

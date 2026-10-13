@@ -227,6 +227,47 @@ test('configuration rejects header injection and credential redirects before net
     assert.throws(() => validateConfiguration({...config, ...changes}), {code: 'INVALID_ARGUMENT'});
   }
 });
+test('discovery diagnoses network, HTTP, body and JSON failures without retry or sensitive output', async () => {
+  const sensitive = config.wssToken + config.inboundAuthorization + config.gatewayUrl;
+  const scenarios = [
+    [async () => { throw Object.assign(Error(sensitive), {cause: {code: 'UND_ERR_CONNECT_TIMEOUT', message: sensitive}}); },
+      {phase: 'network', errno: 'UND_ERR_CONNECT_TIMEOUT'}],
+    [async () => { throw Object.assign(Error(sensitive), {code: sensitive, cause: {code: sensitive}}); }, {phase: 'network'}],
+    [async () => ({status: 403, body: {cancel: async () => { throw Error(sensitive); }}}),
+      {phase: 'http', httpStatus: 403}, 'UNAUTHORIZED'],
+    [async () => new Response(sensitive, {status: 503}), {phase: 'http', httpStatus: 503}],
+    [async () => ({status: sensitive}), {phase: 'http'}],
+    [async () => new Response(new ReadableStream({start(controller) {
+      controller.error(Object.assign(Error(sensitive), {code: 'ECONNRESET'}));
+    }})), {phase: 'body', httpStatus: 200, errno: 'ECONNRESET'}],
+    [async () => new Response('x'.repeat(64_001)), {phase: 'body', httpStatus: 200}, 'INVALID_ARGUMENT'],
+    [async () => new Response(sensitive), {phase: 'json', httpStatus: 200}],
+  ];
+  for (const [fetchImpl, diagnostic, errorCode = 'EXTERNAL_FAILURE'] of scenarios) {
+    let gets = 0, sockets = 0;
+    const transport = createLiveTransport(config, new AbortController().signal, {
+      fetchImpl: async (...args) => { gets++; return fetchImpl(...args); },
+      socketFactory: () => { sockets++; throw Error('unexpected invoke'); },
+    });
+    const receipt = await runAcceptance({...transport, deadline: deadline()});
+    assert.deepEqual(receipt.discovery, {status: 'failed', errorCode, ...diagnostic});
+    assert.equal(receipt.status, 'failed'); assert.equal(receipt.cases.every(row => row.status === 'skipped'), true);
+    assert.equal(gets, 1); assert.equal(sockets, 0); assert.equal(receipt.retries, 0);
+    for (const secret of [config.wssToken, config.inboundAuthorization, config.gatewayUrl]) {
+      assert.equal(JSON.stringify(receipt).includes(secret), false);
+    }
+  }
+});
+
+test('generic injected discovery errors cannot supply receipt diagnostics', async () => {
+  const h = fake({discover: async () => { throw Object.assign(Error(config.wssToken),
+    {code: 'EXTERNAL_FAILURE', diagnostic: {phase: 'network', errno: 'ECONNRESET', httpStatus: 503},
+      phase: config.wssToken, httpStatus: 200, errno: config.inboundAuthorization}); }});
+  const receipt = await runAcceptance({...h, deadline: deadline()});
+  assert.deepEqual(receipt.discovery, {status: 'failed', errorCode: 'EXTERNAL_FAILURE'});
+  assert.equal(h.port.requests.length, 0);
+});
+
 test('real public WSS adapter consumes binding wrappers over existing FakeSocket; GET is discovery only', async () => {
   const sockets = [], calls = [], responses = fake();
   const transport = createLiveTransport(config, new AbortController().signal, {

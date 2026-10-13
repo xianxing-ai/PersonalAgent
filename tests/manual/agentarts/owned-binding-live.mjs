@@ -56,6 +56,19 @@ class ReceiptPersistenceError extends Error {
       errno: persistenceErrnos.has(error?.code) ? error.code : 'UNKNOWN'};
   }
 }
+const discoveryErrnos = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
+  'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET']);
+class DiscoveryError extends Error {
+  constructor(phase, code, {error, httpStatus} = {}) {
+    super('Owned binding discovery failed');
+    this.code = code;
+    this.diagnostic = {phase};
+    if (Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599) this.diagnostic.httpStatus = httpStatus;
+    const errno = discoveryErrnos.has(error?.code) ? error.code : error?.cause?.code;
+    if (discoveryErrnos.has(errno)) this.diagnostic.errno = errno;
+  }
+}
 /** Same-file commit only. Failed writes/renames keep any tmp; no automatic retry. */
 export function createReceiptWriter(receiptPath, {writeFileImpl = writeFile, renameImpl = rename} = {}) {
   return async receipt => {
@@ -224,7 +237,11 @@ export async function runAcceptance({discover, port, deadline, selection = selec
     try {
       control(); catalog = validateCatalog(await discover(signal)); control();
       receipt.discovery = {status: 'passed', workflows: 8, controllers: 3};
-    } catch (error) { catalog = undefined; receipt.discovery = {status: 'failed', errorCode: safeErrorCode(error)}; }
+    } catch (error) {
+      catalog = undefined;
+      receipt.discovery = {status: 'failed', errorCode: safeErrorCode(error),
+        ...(error instanceof DiscoveryError ? error.diagnostic : {})};
+    }
     await onProgress(structuredClone(receipt));
     const taskId = randomUUID();
     for (const item of selection) {
@@ -291,14 +308,22 @@ export function createLiveTransport(config, signal, {fetchImpl = fetch, socketFa
   {authorizationProvider: {read: async () => `Bearer ${value.wssToken}`}, ...(socketFactory ? {factory: socketFactory} : {}),
     onDispatch: caseDiagnostics.onDispatch, onAccepted: caseDiagnostics.onAccepted, onTerminal: caseDiagnostics.onTerminal});
   return {port, caseDiagnostics, discover: async () => {
-    const response = await fetchImpl(base + '/bindings?endpoint=Latest', {method: 'GET', redirect: 'error', signal,
-      headers: {'Content-Type': 'application/json', Authorization: value.inboundAuthorization,
-        'X-PA-Agent-Token': `Bearer ${value.wssToken}`, 'X-Hw-Agentarts-Session-Id': randomUUID()}});
+    let response;
+    try {
+      response = await fetchImpl(base + '/bindings?endpoint=Latest', {method: 'GET', redirect: 'error', signal,
+        headers: {'Content-Type': 'application/json', Authorization: value.inboundAuthorization,
+          'X-PA-Agent-Token': `Bearer ${value.wssToken}`, 'X-Hw-Agentarts-Session-Id': randomUUID()}});
+    } catch (error) { throw new DiscoveryError('network', 'EXTERNAL_FAILURE', {error}); }
     if (response.status !== 200) {
-      await response.body?.cancel();
-      fail([401, 403].includes(response.status) ? 'UNAUTHORIZED' : 'EXTERNAL_FAILURE');
+      try { await response.body?.cancel(); } catch { /* Preserve the received HTTP status. */ }
+      throw new DiscoveryError('http', [401, 403].includes(response.status) ? 'UNAUTHORIZED' : 'EXTERNAL_FAILURE',
+        {httpStatus: response.status});
     }
-    return JSON.parse(await readBounded(response.body, 64_000));
+    let body;
+    try { body = await readBounded(response.body, 64_000); }
+    catch (error) { throw new DiscoveryError('body', safeErrorCode(error), {error, httpStatus: response.status}); }
+    try { return JSON.parse(body); }
+    catch { throw new DiscoveryError('json', 'EXTERNAL_FAILURE', {httpStatus: response.status}); }
   }};
 }
 export function parseOptions(args) {
