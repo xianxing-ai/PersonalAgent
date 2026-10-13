@@ -103,10 +103,11 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
     const sessionDeadline = new Date(sharedDeadline).toISOString();
     const record = {senderId, controller, captureDeadline, sessionDeadline, phase: 'acquiring', subscription: undefined,
       buffer: createBuffer({signal: controller.signal, deadline: sessionDeadline, maxDurationMs: CAPTURE_MS}),
-      sessionId: undefined, replyId: undefined, parentSignal: lease?.signal};
+      sessionId: undefined, replyId: undefined, parentSignal: lease?.signal, cancelRequested: false};
     active = record;
     if (record.parentSignal) {
       record.onParentAbort = () => {
+        record.cancelRequested = true;
         record.controller.abort();
         void cleanup(record).catch(error => recordFailure('cleanup', error, '麦克风释放未确认'));
       };
@@ -168,6 +169,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       await sharedCleanups.get(signal);
       return {cancelled: false};
     }
+    active.cancelRequested = true;
     await cleanup(active);
     return {cancelled: true};
   }
@@ -200,7 +202,9 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
         });
         if (record.controller.signal.aborted || active !== record) throw Error('语音输入已取消');
         await cleanup(record);
-        if (record.parentSignal && (record.parentSignal.aborted || now() >= Date.parse(record.sessionDeadline))) {
+        // Normal cleanup also aborts the controller; explicit cancellation is separate.
+        if (disposed || record.cancelRequested || record.parentSignal?.aborted
+          || now() >= Date.parse(record.sessionDeadline)) {
           throw Object.assign(Error('语音输入已取消'), {code: 'CANCELLED'});
         }
         onTranscript({senderId, text});
@@ -217,12 +221,15 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       publish();
     } catch (error) {
       clip?.data.fill(0);
-      recordFailure(stage, error, stage === 'pcm_release' ? '麦克风释放未确认' : safeFailure(error));
+      let failureMessage = stage === 'pcm_release' ? '麦克风释放未确认' : safeFailure(error);
+      recordFailure(stage, error, failureMessage);
       try { await cleanup(record); } catch (releaseError) {
+        failureMessage = '麦克风释放未确认';
         recordFailure(stage === 'pcm_release' ? 'pcm_release' : 'cleanup',
-          releaseError, '麦克风释放未确认');
+          releaseError, failureMessage);
       }
-      throw Error(lastError);
+      // A concurrent successful cancel can clear the shared UI error while cleanup settles.
+      throw Error(failureMessage);
     }
     return autoPlay ? playReply(senderId) : snapshot();
   }
@@ -265,6 +272,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
   async function cancelCapture(senderId) {
     assertOwner(senderId);
     const record = active;
+    record.cancelRequested = true;
     record.phase = 'cancelling';
     publish();
     try { await cleanup(record); }

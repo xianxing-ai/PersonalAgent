@@ -3,8 +3,9 @@
 - 目标：`huawei_ict_agentarts`，MOD-14/15，PA-007/PA-021；负责人 zemeng。
 - 工作树：`.worktrees/zemeng-voice-completion`；分支 `codex/zemeng-voice-completion`；起点 `5b581139`。
 - 本增量为可审查离线修复；整体 MOD 仍 `in_progress` / `provisional`，不宣称 done。
-- 所有修改位于 `packages/voice/` 与 `packages/voice-wake/`；不修改 Desktop、models、
-  公共 contracts、根装配、依赖/锁文件、数据库或共享 ROADMAP。
+- 首次两个增量位于 `packages/voice/` 与 `packages/voice-wake/`；后续分工正式增加
+  Desktop `voice-input-core.js` 及其两份直接测试。未修改 main.js、models、公共 contracts、
+  根装配、依赖/锁文件、数据库或共享 ROADMAP。
 
 ## 已交付行为
 
@@ -27,6 +28,9 @@
    不恢复 listening；迟到的 stopSpeaking 回执不能覆盖新识别状态或会话终态。
 8. PCM 起动或释放失败后禁止在同一 port 重开 attachment；Windows System.Speech
    并发及重复 dispose 共用释放 Promise，全部调用都等待所有 child close。
+9. Desktop 听写在最终 cleanup/revoke 延迟期间被取消或销毁，不再回填旧草稿；手动和
+   共享听写都在投递前复查 sessionDeadline。普通 cleanup 不被当作取消，正常听写仍
+   只生成可编辑草稿；并发 cancel 清空 UI 错误不再导致 finishCapture 返回空异常。
 
 ## 首次增量验证（提交 `185185ce`）
 
@@ -84,6 +88,24 @@ node --test --test-isolation=none packages/voice/test/provider-start-lifecycle.t
 释放成功仍返回 interrupted，同时保留 stopped 终态；失败释放不恢复监听。最终 32 项
 包含这两项。按当前工作要求停止等待/轮询 CI；不把远端 CI 或合并状态写成已通过。
 
+### Desktop 听写取消增量
+
+主对话后续明确分配 `apps/desktop/electron/voice-input-core.js`、
+`voice-input-core.test.mjs`、`panel-voice-lifecycle.test.mjs` 与本记录，复用同一分支/PR。
+显式取消标志独立于正常 cleanup 使用的 AbortController：手动取消、匹配共享租约的
+直接取消及父 signal 撤销都立即标记；dispose 和 sessionDeadline 在最终投递前再次检查。
+cleanup 仍共用一次释放，不触发 task.submit、task.cancel 或自动播报。
+
+仅运行修改文件语法检查和两份直接消费者回归：**26/26**。新增六项覆盖延迟最终 revoke
+后的正常成功、手动取消、销毁、期限到达，未 abort signal 的共享取消，以及识别完成后
+隐藏/重开面板；包含真实 VoiceSessionManager/PCM 组合，供应商、设备与释放回执均为 Fake。
+没有重跑前面的 32 项包测试、全仓检查、桌面冒烟或真实设备调用。
+
+```text
+node --check apps/desktop/electron/voice-input-core.js
+node --test --test-isolation=none apps/desktop/test/voice-input-core.test.mjs apps/desktop/test/panel-voice-lifecycle.test.mjs
+```
+
 ### 本机原生就绪读回（真实进程，非真实音频）
 
 2026-10-13 09:25（Asia/Shanghai）运行固定脚本：`ready=false`、
@@ -93,7 +115,7 @@ node --test --test-isolation=none packages/voice/test/provider-start-lifecycle.t
 没有打开真实麦克风/扬声器，没有录音或调用 SIS/Live/AgentArts；不能把零检测解释为
 静音识别通过，也不能把进程关闭解释为物理麦克风释放。
 
-## Desktop 所有者的精确接线/修复交接
+## Desktop 接线与后续修复记录
 
 当前基线已有组合，不需新建调度器、语音 wire 或第二套 Runtime：
 
@@ -101,14 +123,12 @@ node --test --test-isolation=none packages/voice/test/provider-start-lifecycle.t
   共享 PCM、听写 consumer 与 Wake；Live 装配约 2757 行。公共包修复直接由原消费生效。
 - 分配说明里的 `apps/desktop/src/features/voice/` 当前不存在；Renderer 实际位于
   `apps/desktop/src/app/` 的 microphone/Live/SIS 文件。本包未迁移目录或修改 UI。
-- **仍需修复：手动听写迟到草稿。** `electron/voice-input-core.js` 的 `finishCapture()`
-  dictation 分支（约 201–206 行）在 `await cleanup(record)` 后仅检查共享 parentSignal；
-  手动模式没有该 signal。若最后释放回执延迟，这时 `cancelCapture()`（约 266–276 行）
-  或 `main.js` 的 `stopPanelVoice()`（约 672 行）取消，仍可能调用 onTranscript。
-  使用真实 VoiceSessionManager/PCM 和延迟 Fake revoke 复现 `lateDraftCount=1`；这不是
-  真实设备复现。建议 record 加独立取消/投递失效标志，在取消/隐藏/销毁时标记，
-  cleanup 后再核对；正常 cleanup 不能误当取消。扩展原 `panel-voice-lifecycle.test.mjs`
-  的手动听写测试，覆盖已识别→收尾延迟→取消/隐藏→重开，不允许旧草稿回填。
+- **已修复并定向验证：手动听写迟到草稿。** 原 `electron/voice-input-core.js` 的
+  `finishCapture()` dictation 分支在 cleanup 后只检查共享 parentSignal，手动模式没有
+  signal；曾使用真实 VoiceSessionManager/PCM 和延迟 Fake revoke 复现 `lateDraftCount=1`。
+  后续获得该文件所有权，增加独立取消标志与最终投递守卫，两份测试现为 26/26。
+  `main.js` 的 `stopPanelVoice()` 保持原样，测试覆盖其实际函数调用 cancelCapture 后的
+  延迟释放/隐藏/重开场景；Fake 无迟到草稿不构成真实设备或桌面现场验收。
 - Desktop README 和接口目录里“main 仍只有堆叠语音/未接 Wake”的部分文字落后于源码，
   由根集成所有者同步；`voice.start/stop` 公共 wire 仍 unavailable，不因本机 IPC 改级。
 
