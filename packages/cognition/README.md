@@ -331,6 +331,13 @@ result without returning partial completion, acknowledging a feed or writing
 the graph. This batching does not create a new feed receipt or relax the
 separate Policy/CAS gate for repair execution.
 
+Every affected event submitted to the advisory port requires exactly one
+suggestion bound to its event ID, source, Fact references and authorization
+revision. Missing, repeated or foreign answers reject the whole result, including
+a missing answer in the final chunk; valid answers retain the port's order.
+An empty or unrelated projection still returns no suggestions without calling
+the port. No failure publishes partial advice or changes the graph.
+
 `previewDurableFactRepair(boundStore, scopedHost, at, {graphNamespace,
 projection, changes})` uses the same durable completion and historical report
 check for an explicit candidate after advice. It reuses `previewProjectedRepair`
