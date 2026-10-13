@@ -57,7 +57,9 @@ fixture.close();
 包括没有活动 worker 的等待审批任务；保存 `failure.json` 并返回脱敏的 `RESULT_UNKNOWN`，不自动重新提交。
 调用方必须保留原 app、目录和任务，等待其 worker 停止并核实原执行；`activeTaskCount > 0` 时
 `fixture.close()` 明确拒绝释放绑定。不要在无条件 finally 中强行关闭仍运行的 app。
-当前 Runtime 对账仅覆盖已有 `host-tool-intent` 路径；本入口没有补齐通用云提案的未知写入恢复。
+Runtime 后续增加了 [Competition 原任务恢复](../../../packages/coding-tools/ACCEPTANCE-20261013.md#competition-原任务恢复增量)。
+本入口失败时仍会撤销自身执行与出云资格，不自动续云或重做任务；新恢复能力不能据此自动恢复已撤销的许可。
+真实云段和本入口故障后的宿主交互仍需联合验收。
 
 ## 回执与本次实际验证
 

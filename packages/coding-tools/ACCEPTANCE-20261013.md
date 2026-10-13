@@ -63,7 +63,36 @@ node tests/manual/coding/patch-recovery-acceptance.mjs (Get-Command pwsh).Source
 由 `workspace-config-host.js` 接至 Runtime `workspacePatchReconciliation`；恢复入口为
 `RuntimeApplication.reconcileWorkspacePatchTask(taskId)`。
 
-本次恢复只验证持久 `host-tool-intent` 任务；不能自动推广至 AgentArts proposal 的未知写入恢复。
+上述真实 helper 故障验收只覆盖持久 `host-tool-intent` 任务；Competition 增量的验证边界见下文。
 真实 AgentArts 提案/续答、正式 Desktop 设置/交互、用户选定真实项目以及 Artifact 服务仍需对应联合验收。
 由主对话的可信凭据宿主运行云段，仅使用明确允许出云的合成内容；本分支不复制凭据或扩大权限。
 MOD-18 保持 in_progress，独立验收增量进入 review；正常合并仍需一位非作者对当前提交有效批准。
+
+## Competition 原任务恢复增量
+
+云端提案的补丁结果未知时，旧适配器只接受 `host-tool-intent`，不能接回多步 Competition 任务。
+现在 Runtime 在原补丁审批/执行前保存每个 run 的 workspace binding、云配置、namespace、
+完整提案、参数摘要、源摘要及提案 revision。恢复缺少该原始绑定的旧任务仍等待核实，不能事后补造。
+核实异步返回后，再核对任务 revision、原意图和执行记录；配置或输入变化拒绝投影。
+
+- 可信恢复端口在同一次稳定文件读取中增加可选 `byteLength`，不增加读取或公开 wire 字段。
+  老端口对宿主直接任务保持兼容；Competition 缺少该字段时保留等待，不编造工具输出。
+- `applied` 必须有当前文件摘要等于候选摘要的独立读回。原 run 确认后任务仍等待，
+  完整核实结果留在本地，普通 patch 输出按现有 Schema 持久化并回读，再清理原 marker。
+- 成功清理的确认回执绑定原输入摘要与完整读回。清理中、失败或回执未落盘时不能续跑；
+  重启后只补齐规范结果与确认。已有确认的旧任务重复读取不再碰触同路径后来产生的 marker。
+- 仅通过现有 `resumeConfirmedTask` 接回原循环，Runtime 返回已确认缓存，不重新 apply 或消费授权。
+  pending 提案采用自己的 step/run，不能误用上一步读取的 run；云端最终返回前不标记任务成功。
+- 只有独立读回与旧文件摘要相符的 `not_applied` 才使原任务失败。未知、仍运行、缺 marker、
+  回执不完整及冲突不触发重做。取消后的 `applied` 保留 `waiting_reconciliation` 和 marker：
+  当前核心完成 API 不支持安全结束这一取消分支，本增量不将其错误标成 succeeded。
+- 原 deadline、云调用 unknown/inflight、出云许可撤销仍阻止续云；出云前校验失败时保留已确认写入与等待状态。
+
+必要验证：coding-tools 与 Runtime TypeScript 构建通过；旧宿主恢复及生产文件核实测试 22/22，
+新增 Competition 专项 23/23；追加持久 marker 确认后，仅重跑 4 条直接相关路径，全部通过。
+专项包含真实本地文件读写与读回、Runtime/Policy/SQLite 和 `unverified` 提案触发的生产出云校验，
+云端与补丁 helper 为明确的 Fake，未进行真实 AgentArts 调用、Windows helper 崩溃或 Desktop UI 验收。
+最初新夹具因缺幂等键及不完整输入 Schema 被拒绝，修正为复用生产 Schema 后通过，未放宽生产校验。
+
+修改范围为 Runtime Application 的原调用/核实接缝、coding-tools 稳定读回及专项测试；
+没有修改 TaskRuntime 核心、contracts Schema、锁文件、传输代码或凭据。
