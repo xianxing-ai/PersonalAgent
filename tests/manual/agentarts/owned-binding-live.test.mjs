@@ -1,0 +1,244 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {ProtocolError} from '@personal-agent/contracts';
+import {getOwnedBindings, OwnedAgentOrchestrator} from '@personal-agent/agentarts';
+import {FakeModelProvider} from '@personal-agent/models';
+import {FakeCloudAgentPort} from '@personal-agent/coordination/testing';
+import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
+import {CASES, createCaseDiagnostics, createLiveTransport, normalizeDeadline, parseOptions, runAcceptance, selectCases, validateCatalog,
+  validateConfiguration} from './owned-binding-live.mjs';
+
+const goalId = 'b'.repeat(64), planId = 'a'.repeat(64), otherId = 'c'.repeat(64);
+const ref = (id, revision = 1) => ({id, revision});
+const world = {reportVersion: '1.1', revision: 7, observed_facts: [
+  {node: ref(goalId), fact: '14点准备', confidence: 'explicit'},
+  {node: ref(goalId, 2), fact: '16点准备', confidence: 'explicit'},
+], changed_facts: [{previous: ref(goalId), current: ref(goalId, 2), change: '目标时间变化'}],
+affected_items: [{kind: 'plan_step', node: ref(planId), impact: 'direct', reason: '目标时间变化'}],
+missing_information: [], recommended_disposition: 'REVISE', summary: '只改准备时间'};
+const plan = {reportVersion: '1.1', base_revision: 7, disposition: 'REVISE',
+  preserved_steps: [{node: ref(otherId), reason: '其他工作不受影响'}], rechecked_steps: [],
+  revised_steps: [{node: ref(planId), replacement: '16点准备', reason: '目标时间变化'}], removed_steps: [],
+  dependency_updates: [{node: ref(planId), dependencies: [ref(goalId, 2)], reason: '使用新目标版本'}],
+  evidence_required: ['本地Policy、CAS及执行读回'], missing_information: [], local_next_actions: []};
+const candidate = {kind: 'repair_candidate', candidateVersion: '1.0', candidate: {expectedGraphRevision: 7,
+  changes: [{node: ref(planId), summary: '16点准备', reason: '目标时间变化', dependencies: [ref(goalId, 2)]}]}};
+const answer = {kind: 'text', text: 'synthetic private-output marker never saved'};
+const catalog = () => ({bindingVersion: '1.0.0', verification: 'unverified', bindings: getOwnedBindings()});
+const deadline = () => new Date(Date.now() + 30_000).toISOString();
+const config = {gatewayUrl: 'https://synthetic.cn-southwest-2.huaweicloud-agentarts.com', runtimeName: 'synthetic',
+  inboundAuthorization: 'Bearer synthetic-platform-secret', wssToken: 'synthetic-inner-token-private-at-least-32'};
+function core() {
+  const outputs = {world, plan, review: candidate, fast: answer};
+  return new OwnedAgentOrchestrator(Object.fromEntries(Object.entries(outputs).map(([role, value]) => [role,
+    new FakeModelProvider(Array.from({length: 16}, () => ({kind: 'final', text: JSON.stringify(value)})))])), 2048);
+}
+function fake({mutate = value => value, discover = async () => catalog()} = {}) {
+  const orchestrator = core(), envelopes = []; let closed = 0;
+  const port = new FakeCloudAgentPort(async request => {
+    const input = JSON.parse(request.goal); envelopes.push(input);
+    const control = {query: input.query, deadline: request.deadline, signal: request.signal,
+      sessionId: 'synthetic', requestId: String(request.revision)};
+    const result = input.type === 'workflow'
+      ? await orchestrator.invokeWorkflow({...control, workflowId: input.id, world: input.world, plan: input.plan})
+      : await orchestrator.invokeController({...control, controllerId: input.id});
+    return JSON.stringify(mutate(result, input));
+  });
+  port.close = () => closed++;
+  return {port, discover, envelopes, get closed() { return closed; }};
+}
+test('selection is exact, ordered and explicitly includes review prerequisites', () => {
+  assert.deepEqual(selectCases({bindings: [CASES[6].id]}).map(item => [item.key, item.prerequisite]),
+    [['world', true], ['plan_1', true], ['review_1', false]]);
+  assert.equal(selectCases().length, 11);
+  assert.throws(() => selectCases({bindings: ['not-a-binding']}), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => parseOptions(['--live', '--group', 'all']), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => parseOptions(['--plan', '--live']), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => parseOptions(['--live', '--token', 'secret']), {code: 'INVALID_ARGUMENT'});
+  assert.equal(parseOptions(['--plan', '--group', 'ordinary']).plan, true);
+});
+test('all 11 bindings pass actual core with Fake transport; reports are passed exactly and receipts are content-free', async () => {
+  const h = fake(), snapshots = [];
+  const result = await runAcceptance({...h, deadline: deadline(), onProgress: async value => snapshots.push(value)});
+  assert.equal(result.status, 'passed'); assert.equal(result.evidence, 'mock');
+  assert.equal(result.cases.filter(item => item.type === 'workflow').length, 8);
+  assert.equal(result.cases.filter(item => item.type === 'controller').length, 3);
+  assert.equal(result.toolExecutions, 0); assert.equal(result.executionAuthorized, false);
+  assert.equal(h.port.requests.length, 11); assert.equal(h.closed, 1);
+  assert.equal(new Set(h.port.requests.map(item => item.deadline)).size, 1);
+  const review = h.envelopes.find(item => item.id === CASES[5].id);
+  assert.deepEqual(review.world, world); assert.deepEqual(review.plan, plan);
+  assert.equal(result.cases.find(item => item.case === 'world').kind, 'role_report');
+  assert.equal(result.cases.find(item => item.case === 'deterministic').applicationKind, 'text');
+  assert.equal(JSON.stringify(snapshots).includes(answer.text), false);
+  assert.equal(JSON.stringify(snapshots).includes(goalId), false);
+});
+test('catalog identity, duplicate or requirements drift stops every invocation', async () => {
+  for (const change of [value => value.bindings.pop(), value => value.bindings[0].id = value.bindings[1].id,
+    value => value.bindings[0].requirements = []]) {
+    const bad = catalog(); change(bad);
+    assert.throws(() => validateCatalog(bad), {code: 'CATALOG_MISMATCH'});
+    const h = fake({discover: async () => bad});
+    const result = await runAcceptance({...h, deadline: deadline()});
+    assert.equal(result.status, 'failed'); assert.equal(h.port.requests.length, 0);
+    assert.ok(result.cases.every(item => item.status === 'skipped'));
+    assert.equal(h.closed, 1);
+  }
+});
+test('versionless or out-of-scope reports cannot reach plan/review; independent bindings still run once', async () => {
+  for (const change of [value => delete value.reportVersion,
+    value => value.affected_items[0].node.id = 'd'.repeat(64)]) {
+    const h = fake({mutate: value => {if (value.result.role === 'world') change(value.result.value); return value;}});
+    const result = await runAcceptance({...h, deadline: deadline()});
+    assert.equal(result.cases.find(item => item.case === 'world').status, 'failed');
+    assert.equal(result.cases.find(item => item.case === 'plan').status, 'skipped');
+    assert.equal(result.cases.find(item => item.case === 'review').status, 'skipped');
+    assert.equal(result.cases.find(item => item.case === 'controller_mvp').status, 'passed');
+    assert.equal(h.port.requests.length, 7);
+  }
+});
+test('review substitution is rejected by the same core validator; one failed review does not retry', async () => {
+  const h = fake({mutate: (value, input) => {
+    if (input.id === CASES[5].id) value.result.value.candidate.changes[0].reason = 'substituted private reason';
+    return value;
+  }});
+  const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({bindings: [CASES[5].id]})});
+  assert.equal(result.cases.at(-1).status, 'failed'); assert.equal(h.port.requests.length, 3);
+  assert.equal(JSON.stringify(result).includes('private reason'), false);
+});
+test('KEEP is not misreported as a positive repair result and prevents dependent calls', async () => {
+  const h = fake({mutate: value => {
+    if (value.result.role === 'world') {
+      value.result.value.recommended_disposition = 'KEEP'; value.result.value.affected_items = [];
+    }
+    return value;
+  }});
+  const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({bindings: [CASES[5].id]})});
+  assert.equal(result.cases[0].errorCode, 'EXPECTED_REVISE');
+  assert.equal(result.cases[1].errorCode, 'DEPENDENCY_FAILED'); assert.equal(h.port.requests.length, 1);
+});
+test('errors are allowlisted; foreign messages, codes, credentials and response bodies are never saved', async () => {
+  const h = fake();
+  h.port.invoke = async () => { throw Object.assign(Error(config.wssToken), {code: config.inboundAuthorization}); };
+  const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({group: 'ordinary'})});
+  assert.ok(result.cases.every(item => item.errorCode === 'EXTERNAL_FAILURE'));
+  assert.equal(JSON.stringify(result).includes(config.wssToken), false);
+  assert.equal(JSON.stringify(result).includes(config.inboundAuthorization), false);
+});
+test('expired deadline and cancellation stop discovery and invocation, with no extra attempts', async () => {
+  for (const cancelled of [false, true]) {
+    let discoveries = 0; const h = fake({discover: async () => {discoveries++; return catalog();}});
+    const controller = new AbortController(); if (cancelled) controller.abort();
+    const result = await runAcceptance({...h, deadline: cancelled ? deadline() : new Date(0).toISOString(), signal: controller.signal});
+    assert.equal(result.discovery.errorCode, cancelled ? 'CANCELLED' : 'TIMEOUT');
+    assert.equal(discoveries, 0); assert.equal(h.port.requests.length, 0);
+  }
+});
+test('configuration rejects header injection and credential redirects before network construction', () => {
+  for (const changes of [{gatewayUrl: 'https://evil.example'}, {gatewayUrl: config.gatewayUrl + '/redirect'},
+    {inboundAuthorization: 'Bearer secret\r\nInjected: secret'}, {wssToken: 'short'}, {runtimeName: '../other'}]) {
+    assert.throws(() => validateConfiguration({...config, ...changes}), {code: 'INVALID_ARGUMENT'});
+  }
+});
+test('real public WSS adapter consumes binding wrappers over existing FakeSocket; GET is discovery only', async () => {
+  const sockets = [], calls = [], responses = fake();
+  const transport = createLiveTransport(config, new AbortController().signal, {
+    fetchImpl: async (url, init) => {
+      calls.push({url, init}); return new Response(JSON.stringify(catalog()));
+    },
+    socketFactory: (url, options) => {
+      assert.equal(url, config.gatewayUrl.replace('https:', 'wss:') + '/runtimes/synthetic/invocations/ws');
+      assert.equal(options.rejectUnauthorized, true); assert.equal(options.followRedirects, false);
+      const socket = new SyntheticWebSocket((frame, peer) => {
+        if (frame.type !== 'invoke') return;
+        peer.accepted(frame);
+        responses.port.invoke({taskId: 'synthetic', revision: sockets.length, goal: frame.payload.query,
+          deadline: frame.deadline, signal: new AbortController().signal})
+          .then(result => peer.result(frame, result.text), () => peer.disconnect());
+      }); sockets.push(socket); return socket;
+    },
+  });
+  const result = await runAcceptance({...transport, deadline: deadline()});
+  assert.equal(result.status, 'passed'); assert.equal(calls.length, 1); assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[0].init.redirect, 'error'); assert.ok(calls[0].init.headers['X-Hw-Agentarts-Session-Id']);
+  assert.equal(sockets.length, 1); assert.equal(sockets[0].sent.filter(item => item.type === 'invoke').length, 11);
+  assert.equal(sockets[0].terminations, 1);
+});
+test('post-send disconnect stays RESULT_UNKNOWN with no retry, HTTPS fallback, or leaked receipt', async () => {
+  let invokes = 0, gets = 0;
+  const transport = createLiveTransport(config, new AbortController().signal, {
+    fetchImpl: async () => {gets++; return new Response(JSON.stringify(catalog()));},
+    socketFactory: () => new SyntheticWebSocket((frame, socket) => {
+      if (frame.type === 'invoke') { invokes++; socket.accepted(frame); socket.disconnect(); }
+    }),
+  });
+  const result = await runAcceptance({...transport, deadline: deadline(), selection: selectCases({bindings: [CASES[0].id]})});
+  assert.equal(result.cases[0].errorCode, 'RESULT_UNKNOWN'); assert.equal(invokes, 1); assert.equal(gets, 1);
+  assert.equal(Object.hasOwn(result.cases[0], 'payloadDigest'), false);
+});
+test('PowerShell seven-digit deadline is normalized before the real public port; raw form fails before socket creation', async () => {
+  assert.equal(normalizeDeadline('2026-10-13T01:49:46.0528240Z'), '2026-10-13T01:49:46.052Z');
+  assert.throws(() => normalizeDeadline('not-a-date'), {code: 'INVALID_ARGUMENT'});
+  const canonical = deadline(), powershell = canonical.replace(/(\.\d{3})Z$/, (_match, millis) => millis + '8240Z');
+  assert.equal(parseOptions(['--live', '--deadline', powershell]).deadline, canonical);
+  const sockets = [], calls = [], responses = fake();
+  const transport = createLiveTransport(config, new AbortController().signal, {
+    fetchImpl: async (url, init) => { calls.push({url, init}); return new Response(JSON.stringify(catalog())); },
+    socketFactory: () => {
+      const socket = new SyntheticWebSocket((frame, peer) => {
+        if (frame.type !== 'invoke') return;
+        assert.equal(frame.deadline, canonical);
+        peer.accepted(frame);
+        responses.port.invoke({taskId: 'synthetic', revision: 1, goal: frame.payload.query,
+          deadline: frame.deadline, signal: new AbortController().signal})
+          .then(result => peer.result(frame, result.text), () => peer.disconnect());
+      }); sockets.push(socket); return socket;
+    },
+  });
+  try {
+    await assert.rejects(transport.port.invoke({taskId: 'synthetic', revision: 1, goal: 'probe',
+      deadline: powershell, signal: new AbortController().signal}), {code: 'INVALID_ARGUMENT'});
+    assert.equal(sockets.length, 0); assert.equal(calls.length, 0);
+    const result = await runAcceptance({...transport, deadline: powershell,
+      selection: selectCases({bindings: [CASES[0].id]})});
+    assert.equal(result.status, 'passed'); assert.equal(result.deadline, canonical);
+    assert.equal(sockets.length, 1); assert.equal(calls.length, 1);
+    assert.equal(sockets[0].sent.filter(frame => frame.type === 'invoke').length, 1);
+    assert.equal(sockets[0].terminations, 1);
+  } finally { transport.port.close(); }
+});
+test('per-case diagnostics remain isolated on one WSS session and save only allowlisted fields', async () => {
+  const sockets = [], responses = fake(); let invokes = 0;
+  const transport = createLiveTransport(config, new AbortController().signal, {
+    fetchImpl: async () => new Response(JSON.stringify(catalog())),
+    socketFactory: () => {
+      const socket = new SyntheticWebSocket((frame, peer) => {
+        if (frame.type !== 'invoke') return;
+        invokes++; peer.accepted(frame);
+        if (invokes === 1) { peer.result(frame, ''); return; } // terminal wire events, invalid application text
+        responses.port.invoke({taskId: 'synthetic', revision: invokes, goal: frame.payload.query,
+          deadline: frame.deadline, signal: new AbortController().signal})
+          .then(result => peer.result(frame, result.text), () => peer.disconnect());
+      }); sockets.push(socket); return socket;
+    },
+  });
+  const result = await runAcceptance({...transport, deadline: deadline(), selection: selectCases({group: 'ordinary'})});
+  assert.equal(sockets.length, 1); assert.equal(invokes, 2);
+  const [first, second] = result.cases;
+  assert.equal(first.status, 'failed'); assert.equal(second.status, 'passed');
+  for (const row of result.cases) {
+    assert.equal(row.dispatch, true); assert.equal(row.accepted, true); assert.equal(row.terminal, true);
+    assert.match(row.requestId, /^[0-9a-f-]{36}$/i);
+  }
+  assert.notEqual(first.requestId, second.requestId);
+  assert.equal(first.diagnostic.stage, 'response_schema'); assert.equal(first.diagnostic.schemaCategory, 'no_text');
+  assert.equal(first.diagnostic.code, 'EXTERNAL_FAILURE'); assert.equal(first.diagnostic.httpStatus, 200);
+  assert.equal(Object.hasOwn(second, 'diagnostic'), false);
+  const probe = createCaseDiagnostics(); probe.begin('synthetic', 1);
+  probe.onDiagnostic({stage: config.wssToken, schemaCategory: config.inboundAuthorization,
+    code: 'EXTERNAL_FAILURE', httpStatus: '500 private', requestId: config.wssToken,
+    message: config.wssToken, stack: config.wssToken, url: config.gatewayUrl});
+  const sanitized = probe.finish();
+  assert.deepEqual(sanitized, {dispatch: false, accepted: false, terminal: false, diagnostic: {code: 'EXTERNAL_FAILURE'}});
+  assert.equal(JSON.stringify(result).includes(config.wssToken), false);
+});
