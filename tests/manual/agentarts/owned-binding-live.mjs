@@ -239,8 +239,11 @@ export async function runAcceptance({discover, port, deadline, selection = selec
       receipt.discovery = {status: 'passed', workflows: 8, controllers: 3};
     } catch (error) {
       catalog = undefined;
-      receipt.discovery = {status: 'failed', errorCode: safeErrorCode(error),
-        ...(error instanceof DiscoveryError ? error.diagnostic : {})};
+      const cancelled = signal.aborted;
+      const timedOut = !cancelled && Date.now() >= Date.parse(deadline);
+      receipt.discovery = {status: 'failed',
+        errorCode: cancelled ? 'CANCELLED' : timedOut ? 'TIMEOUT' : safeErrorCode(error),
+        ...(!cancelled && !timedOut && error instanceof DiscoveryError ? error.diagnostic : {})};
     }
     await onProgress(structuredClone(receipt));
     const taskId = randomUUID();

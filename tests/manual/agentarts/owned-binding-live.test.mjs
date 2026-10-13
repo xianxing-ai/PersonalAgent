@@ -160,6 +160,19 @@ test('all 11 bindings pass actual core with Fake transport; reports are passed e
   assert.equal(JSON.stringify(snapshots).includes(answer.text), false);
   assert.equal(JSON.stringify(snapshots).includes(goalId), false);
 });
+test('cancelled binding discovery is recorded as CANCELLED and invokes no bindings', async () => {
+  const controller = new AbortController();
+  const h = fake({discover: async signal => {
+    assert.equal(signal, controller.signal);
+    controller.abort();
+    throw Object.assign(new Error('synthetic cancelled request'), {code: 'ECONNRESET'});
+  }});
+  const result = await runAcceptance({...h, deadline: deadline(), signal: controller.signal});
+  assert.deepEqual(result.discovery, {status: 'failed', errorCode: 'CANCELLED'});
+  assert.equal(result.cases.every(row => row.status === 'skipped'), true);
+  assert.equal(h.port.requests.length, 0);
+  assert.equal(h.closed, 1);
+});
 test('catalog identity, duplicate or requirements drift stops every invocation', async () => {
   for (const change of [value => value.bindings.pop(), value => value.bindings[0].id = value.bindings[1].id,
     value => value.bindings[0].requirements = []]) {
