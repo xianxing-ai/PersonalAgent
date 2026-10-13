@@ -635,7 +635,9 @@ export class WakeLifecycleController {
   }
 
   private isActive(epoch: number): boolean {
-    return !this.disposed && this.active?.epoch === epoch && !this.active.controller.signal.aborted;
+    const active = this.active;
+    return !this.disposed && active?.epoch === epoch && !active.controller.signal.aborted
+      && !active.revocationSignal.aborted && !active.callerSignal?.aborted;
   }
 
   private abortReason(pending: PendingEnable): WakeEnableFailure {

@@ -153,6 +153,8 @@ export function createPcmKeywordWakeSignalSource(
       };
       const ensureActive = (): boolean => {
         if (stopped || failed) return false;
+        // Earlier abort listeners may deliver a final callback before onAbort runs.
+        if (context.signal.aborted) { void release(); return false; }
         if (Date.now() < deadlineAtMs) return true;
         // A suspended host may resume before its deadline timer is dispatched.
         fail('error');

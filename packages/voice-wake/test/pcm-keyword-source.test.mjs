@@ -94,6 +94,28 @@ test('requires detector and capture readiness before listening and drops early o
   assert.equal(host.stops, 1);
 });
 
+test('callbacks from an earlier abort observer cannot deliver wakes or audio after cancellation', async () => {
+  const host = setup({captureReady: {promise: Promise.resolve()}, detectorReady: {promise: Promise.resolve()}});
+  const abort = new AbortController();
+  abort.signal.addEventListener('abort', () => {
+    host.detectorOptions.onDetected();
+    host.captureOptions.onFrame(frame(1));
+  }, {once: true});
+  const subscription = await host.source.subscribe(event => host.events.push(event), {
+    signal: abort.signal, deadlineAtMs: Date.now() + 5000,
+  });
+  host.captureOptions.onFrame(frame(0));
+  host.detectorOptions.onDetected();
+  assert.equal(host.accepted.length, 1);
+  assert.deepEqual(host.events, [{kind: 'wake'}]);
+  abort.abort();
+  await subscription.closed;
+  assert.equal(host.accepted.length, 1);
+  assert.deepEqual(host.events, [{kind: 'wake'}]);
+  assert.equal(host.unsubscribes, 1);
+  assert.equal(host.stops, 1);
+});
+
 test('missing capture ready fails closed and never publishes lifecycle listening', async () => {
   const pcm = {
     subscribe() {

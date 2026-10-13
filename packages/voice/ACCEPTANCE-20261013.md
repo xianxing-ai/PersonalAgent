@@ -34,6 +34,9 @@
 10. 共享听写复用旧 lease 时，等待上次 cleanup 的启动请求也登记为可取消；等待结束后
     复查 disposed 和显式取消。同一 signal 的取消覆盖全部等待者，无关 signal 不影响它们。
     销毁/取消后不再向 source 或 manager 请求新采集；正常重复启动保留。
+11. Wake 控制器直接检查授权撤销和调用方信号；PCM adapter 直接检查输入取消信号。
+    即使较早注册的 abort 观察者在本组件取消监听器执行前交付最后的唤醒/音频回调，
+    信号已 aborted 时也不再转发，沿用既有释放流程。
 
 ## 首次增量验证（提交 `185185ce`）
 
@@ -91,6 +94,19 @@ node packages/voice/scripts/check-wake-readiness.mjs
 既有 parentSignal、leaseDeadline 和共享授权检查继续生效。直接 core 测试 **24/24** 通过，
 包含新增正常重复、销毁、同 signal 取消与无关 signal 取消四个对照。`node --check` 与
 `git diff --check` 通过；未重复面板、整包、原生构建或 CI，也未调用真实设备/服务。
+
+### Wake 撤销事件分派期间的迟到回调（2026-10-13 后续分工）
+
+仅修改 `voice-wake/src/index.ts`、`pcm-keyword-source.ts`、各自直接测试和本文档。
+纯 Fake 复现显示：宿主授权信号已 aborted，但较早注册的 abort 观察者交付回调时，
+控制器自身撤销监听器尚未运行，原实现仍调用 onWake；PCM adapter 的原守卫也在同一顺序下
+继续转发 wake 和音频帧。新守卫直接检查原始信号，不依赖内部取消标记更新的先后。
+会话替换、销毁后的旧 epoch 回调已有守卫和回归，未据此新增无依据的重构。
+
+`tsc -p packages/voice-wake/tsconfig.json` 通过；PCM 定向测试 **10/10** 通过。
+控制器既有 **27 项**通过，新增两项曾误用 Fake 不存在的计数字段；改用现有订阅数和活跃引用检查后，
+仅重跑新增的撤销/调用方取消顺序回归，**2/2** 通过。`git diff --check` 通过。
+以上验证的是 onWake/音频回调和释放行为，没有真实唤醒设备、Runtime 任务创建或声卡重开证据。
 
 最终必要回归命令：
 

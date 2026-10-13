@@ -71,6 +71,28 @@ test('revocation immediately stops the session and suppresses callbacks', async 
   assert.deepEqual(errors, [{code: 'AUTHORIZATION_REVOKED'}]);
 });
 
+for (const reason of ['revocation', 'caller-cancel']) {
+  test(`an earlier ${reason} observer cannot deliver wake while cancellation is being dispatched`, async () => {
+    const revoked = new AbortController(), caller = new AbortController();
+    const source = new FakeWakeSource();
+    const interrupted = reason === 'revocation' ? revoked : caller;
+    interrupted.signal.addEventListener('abort', () => source.emit({kind: 'wake'}), {once: true});
+    const {controller, wakes, errors} = setup({source, authorization: {check: async () => ({
+      kind: 'allowed', expiresAtMs: 100, revocationSignal: revoked.signal,
+    })}});
+    await controller.enable({deadlineAtMs: 100, signal: caller.signal});
+    source.emit({kind: 'wake'});
+    assert.equal(wakes.length, 1);
+    interrupted.abort();
+    assert.equal(wakes.length, 1);
+    assert.equal(source.activeSubscriptions, 0);
+    assert.equal(source.subscribeCount, 1);
+    assert.equal(controller.snapshot().state, 'disabled');
+    assert.deepEqual(errors, [{code: reason === 'revocation' ? 'AUTHORIZATION_REVOKED' : 'CANCELLED'}]);
+    controller.dispose();
+  });
+}
+
 test('expiry cancels the source and cannot be bypassed by a late event', async () => {
   const {controller, source, clock, wakes, errors} = setup();
   await enable(controller);
