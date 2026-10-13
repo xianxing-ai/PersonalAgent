@@ -60,6 +60,6 @@ const {_electron}=require('playwright');
     await page.locator('[data-skill="uninstall"]').click();await page.waitForFunction(()=>window.value.items.length===0);
     assert.equal(await page.locator('[data-skill-preview]').textContent(),'');assert.deepEqual(errors,[]);
     assert.equal(await page.locator('[data-skill-resources]').isVisible(),false);
-    console.log(JSON.stringify({state:'passed',renderer:'actual Electron DOM',bridge:'explicit synthetic',nativePicker:false,cloudCalls:0}));
+    console.log(JSON.stringify({state:'passed',renderer:'actual Electron DOM',bridge:'explicit synthetic',nativePicker:false,cloudCallsMeasured:false}));
   } finally {await app.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
