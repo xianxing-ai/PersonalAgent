@@ -452,7 +452,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     });
     if (options.workspacePatchReconciliation) {
       this.workspacePatchReconciliation = new WorkspacePatchReconciliationAdapter(
-        this.runtime, options.workspacePatchReconciliation, this.hostUserNamespace);
+        this.runtime, options.workspacePatchReconciliation, this.hostUserNamespace, this.coordinationBinding);
     }
     this.observationSessions = new SystemObservationSessions(() => this.now().getTime(), taskId => {
       this.runtime.policy.revoke(`host-tool-${taskId}`);
@@ -489,6 +489,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const tool = current.find(item => item.name === invocation.toolName && item.version === invocation.toolVersion);
         if (!tool) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Tool is not registered');
         validateToolValue(tool.inputSchema, invocation.arguments);
+        if (tool.name === WORKSPACE_PATCH_APPLY_TOOL_NAME
+          && this.runtime.loadCheckpoint(invocation.taskId, HOST_TOOL_CHECKPOINT) === undefined) {
+          this.workspacePatchBindingFor(tool.name);
+          this.workspacePatchReconciliation!.bindCompetitionInvocation({taskId: invocation.taskId,
+            runId: invocation.runId, toolVersion: tool.version, arguments: invocation.arguments as Record<string, unknown>});
+        }
         const observationSession = this.runtime.loadCheckpoint(invocation.taskId, SYSTEM_OBSERVATION_SESSION_CHECKPOINT);
         if (observationSession !== undefined) {
           if (typeof observationSession !== 'string' || invocation.toolName !== SYSTEM_OBSERVATION_NAME
@@ -904,11 +910,24 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Trusted host recovery entry for one persisted workspace patch task. */
-  reconcileWorkspacePatchTask(taskId: string): Promise<WorkspacePatchReconciliationReadback> {
+  async reconcileWorkspacePatchTask(taskId: string): Promise<WorkspacePatchReconciliationReadback> {
     if (!this.workspacePatchReconciliation) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Workspace patch reconciliation is not configured');
     }
-    return this.workspacePatchReconciliation.reconcile(taskId);
+    if (this.activeTextTasks.has(taskId)) throw new ProtocolError('REVISION_CONFLICT', 'Original patch worker is still active');
+    const readback = await this.workspacePatchReconciliation.reconcile(taskId);
+    const current = this.runtime.getTask(taskId);
+    const deadline = this.runtime.loadCheckpoint(taskId, 'application-deadline');
+    const record = this.runtime.readToolExecutions(taskId).find(item => item.evidenceId === readback.runId);
+    if (this.runtime.loadCheckpoint(taskId, HOST_TOOL_CHECKPOINT) === undefined
+      && current.state === 'waiting_reconciliation' && !current.cancelRequested
+      && record?.state === 'confirmed' && record.reconciliationOutcome === 'applied'
+      && !this.activeTextTasks.has(taskId) && typeof deadline === 'string' && this.now().getTime() < Date.parse(deadline)
+      && !this.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown')
+      && !this.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
+      this.resumeConfirmedTask(taskId);
+    }
+    return {...readback, task: this.runtime.getTask(taskId)};
   }
 
   /** Trusted UI consent only; no wire operation or generic tool permission. */
@@ -1450,7 +1469,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   testTextConnection(options?: Parameters<TextApplication['testConnection']>[0]) { this.requireLocalText(); return this.textApplication.testConnection(options); }
   close(): void {
-    if(this.activeTextTasks.size || this.activeWindowsRecovery.size)throw new ProtocolError('REVISION_CONFLICT','Cannot close while workers or recovery are active');
+    if(this.activeTextTasks.size || this.activeWindowsRecovery.size || this.workspacePatchReconciliation?.activeCount)throw new ProtocolError('REVISION_CONFLICT','Cannot close while workers or recovery are active');
     this.referenceSkill?.dispose(); this.observationSessions.stopAll(); this.mailReadSessions.stopAll();
     for(const taskId of this.ephemeralSends.keys())this.coordinationInput?.releaseTask?.(taskId);
     this.ephemeralSends.clear();this.ephemeralGoals.clear();this.runtime.close();
@@ -1774,7 +1793,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const proposal=loop?.pending??receipt?.proposal;
     if(!proposal || !Number.isSafeInteger(loop?.step))throw new ProtocolError('NOT_FOUND','No original Competition tool continuation');
     if(proposal.toolName===SUBAGENT_DISPATCH_TOOL_NAME && !this.confirmedSubagentWait(taskId))throw new ProtocolError('RESULT_UNKNOWN','Original children are not reconciled');
-    let input={runId:receipt?.runId??`competition-tool-${taskId}-${loop!.step}`,...proposal};
+    let input={runId:loop?.pending ? `competition-tool-${taskId}-${loop.step}`
+      : receipt?.runId??`competition-tool-${taskId}-${loop!.step}`,...proposal};
+    if (proposal.toolName === WORKSPACE_PATCH_APPLY_TOOL_NAME) {
+      this.workspacePatchBindingFor(proposal.toolName);
+      if (this.workspacePatchReconciliation!.isReconciling(taskId)) {
+        throw new ProtocolError('REVISION_CONFLICT', 'Original patch readback is still being acknowledged');
+      }
+      this.workspacePatchReconciliation!.assertConfirmedCompetitionResult(taskId, input.runId);
+    }
     if(proposal.toolName===REFERENCE_SKILL_WORKER_TOOL) {
       const intent=this.runtime.loadCheckpoint(taskId,REFERENCE_SKILL_TASK) as {input:ReferenceSummaryInput}|undefined;
       const selection=this.runtime.loadCheckpoint(taskId,'skill:cloud-selection:v1') as {choice:unknown;source:{path:string}}|undefined;

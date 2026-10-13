@@ -10,6 +10,7 @@ import {fileURLToPath} from 'node:url';
 import * as coding from '@personal-agent/coding-tools';
 import {Client} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
+import {createDesktopCodingToolHost} from '../../../apps/desktop/electron/coding-tool-host.js';
 
 if (process.platform !== 'win32') throw Error('Windows acceptance only');
 const powerShellPath = process.argv[2];
@@ -41,14 +42,19 @@ const before = `${casOnly ? '\ufeff' : ''}export const greeting = "P6_BEFORE";${
 const after = before.replace('P6_BEFORE', 'P6_AFTER_中文');
 const sha = value => createHash('sha256').update(value).digest('hex');
 await writeFile(source, before, {flag: 'wx'});
+const patchHost = createDesktopCodingToolHost({workspaceRoot: root, authorizedWorkspaceRoot: root,
+  recoveryRootPath: recovery, powerShellPath,
+  createWorkspacePatchApplyTool: coding.createWorkspacePatchApplyTool,
+  reconcileWorkspacePatchApply: coding.reconcileWorkspacePatchApply});
 const tools = [coding.createWorkspaceReadTool({rootPath: root}),
   coding.createWorkspacePatchPreviewTool({rootPath: root}),
-  coding.createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath: recovery, powerShellPath}),
+  ...patchHost.tools,
   coding.createWorkspaceCommandTool({rootPath: root,
     recipes: [{id: 'run-demo', executable: process.execPath, args: ['demo.mjs']}]}),
 ];
 const config = {path: path.join(base, 'runtime.sqlite'), profile: 'huawei_ict_agentarts',
-  hostUserNamespace: 'p6-manual-acceptance', tools};
+  hostUserNamespace: 'p6-manual-acceptance', tools,
+  workspacePatchReconciliation: patchHost.patchReconciliation};
 let app = createRuntimeApplication(config);
 let client;
 const receipts = [];
@@ -188,6 +194,6 @@ try {
     beforeSha256: sha(before), afterSha256: sha(after), taskIds: receipts.map(item => item.taskId)}));
   }
 } finally {
-  await until(() => app.activeTaskCount === 0);
-  app.close();
+  try { await until(() => app.activeTaskCount === 0); }
+  finally { try { app.close(); } finally { patchHost.close(); } }
 }

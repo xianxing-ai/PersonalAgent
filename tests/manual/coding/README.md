@@ -1,5 +1,13 @@
 # P6 编码工具真实本地验收
 
+2026-10-13 更新：本 runner 已接入生产 `createDesktopCodingToolHost` 的 ACL/身份绑定与
+`workspacePatchReconciliation`，兼容当前 Runtime 的强制恢复绑定；另新增
+`patch-recovery-acceptance.mjs`，使用真实 helper/marker 验证派发前 worker 退出和写后 marker 清理失败。
+命令、回执、恢复时序及未覆盖项见 [当前 MOD-18 验收](../../../packages/coding-tools/ACCEPTANCE-20261013.md)。
+另提供 [合成工作区云端联合验收入口](SYNTHETIC-CLOUD-WORKSPACE.md)，由已授权的可信凭据宿主调用；
+其三步本地工具链已用显式 Fake coordination 验证，真实 AgentArts 调用待宿主执行。
+当前合并规则以根 AGENTS/CONTRIBUTING 的一位非作者有效批准为准，覆盖下方历史双人门槛。
+
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
