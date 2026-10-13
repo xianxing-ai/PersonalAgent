@@ -322,6 +322,15 @@ another graph append during advice causes a revision conflict. Production
 composition and joint acceptance are still pending. Module tests use synthetic
 data only.
 
+The durable handoff accepts the feed's existing maximum of 100 links and calls
+the advisory port in ordered chunks of at most four. All chunks share the
+original deadline and cancellation signal; the full projection is isolated
+before the first await. Every chunk rechecks the graph revision before the next
+call. Cancellation, a changed graph, or a failed chunk rejects the whole advice
+result without returning partial completion, acknowledging a feed or writing
+the graph. This batching does not create a new feed receipt or relax the
+separate Policy/CAS gate for repair execution.
+
 `previewDurableFactRepair(boundStore, scopedHost, at, {graphNamespace,
 projection, changes})` uses the same durable completion and historical report
 check for an explicit candidate after advice. It reuses `previewProjectedRepair`
