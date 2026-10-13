@@ -40,7 +40,7 @@ import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
-import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
+import {agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
 import {agentArtsFailureNotice} from './agentarts-failure-notice.js';
 import {createDeferredRuntimeStartup} from './runtime-startup.js';
@@ -175,7 +175,7 @@ let sisPlaybackHost;
 let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
-let activeCloudBinding;
+let activeCloudBinding,activeCloudTransportConfig;
 const runtimeStartup = createDeferredRuntimeStartup({
   isConfigured: () => !competitionMode || agentArtsConfig?.snapshot().runtimeReady === true,
   initialize: initializeProductServices,
@@ -1447,7 +1447,8 @@ async function initializeRuntime() {
           return choice.response===0 && admin && !admin.isDestroyed();
         }});
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(knowledgeSourceConfig);
-      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding});
+      const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
+      activeCloudTransportConfig = agentArtsTransportConfig;
       cloudTransportNotice = '';
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
@@ -1587,7 +1588,7 @@ async function initializeRuntime() {
         },
         authorizationProvider: {
           read: async () => {
-            return agentArtsConfig.readAuthorization(cloudBinding);
+            return agentArtsConfig.readAuthorization(cloudBinding,agentArtsTransportConfig);
           },
         },
       });
@@ -2038,7 +2039,7 @@ async function action(event, name, payload) {
       const startup = await runtimeStartup.start();
       if (liveVoice && !liveShortcut.registered) registerLiveShortcut();
       const requiresRestart = startup.state !== 'ready' || result.gatewayUrl !== activeCloudBinding?.gatewayUrl
-        || result.runtimeName !== activeCloudBinding?.runtimeName;
+        || result.runtimeName !== activeCloudBinding?.runtimeName || !agentArtsConfig.isTransportCurrent(activeCloudTransportConfig);
       if (!requiresRestart) await initializeModelFromEnvironment();
       return {...result, requiresRestart, reason: requiresRestart
         ? '配置已加密保存，请重启应用完成连接。'

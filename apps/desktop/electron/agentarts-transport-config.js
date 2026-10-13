@@ -1,5 +1,5 @@
 /** Trusted main-process options. Neither credentials nor this provider enter Renderer snapshots. */
-export function createAgentArtsTransportConfig({binding,environment=process.env}) {
+export function createAgentArtsTransportConfig({binding,environment=process.env,readAppToken=()=>environment.PA_AGENTARTS_APP_TOKEN}) {
   const transport=environment.PA_AGENTARTS_TRANSPORT??'https';
   const fallback=environment.PA_AGENTARTS_HTTPS_FALLBACK??'0';
   if (!['https','wss'].includes(transport) || !['0','1'].includes(fallback)) {
@@ -37,7 +37,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env}
     throw Error('AgentArts WSS 必须使用同一网关与运行时地址');
   }
   const readToken=()=>{
-    const token=environment.PA_AGENTARTS_APP_TOKEN;
+    const token=readAppToken();
     if (typeof token!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(token)) {
       throw Error('请在受信主机环境中配置 AgentArts 自有镜像入站凭据');
     }

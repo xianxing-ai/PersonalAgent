@@ -1,7 +1,38 @@
 # AgentArts 安全配置入口
 
+## 2026-10-13 WSS 与独立镜像凭据配置
+
+“设置 → 模型 → AgentArts 主智能体”新增 WSS 地址、独立镜像访问令牌和显式 HTTPS 备用开关。
+新配置表单默认 WSS，备用默认关闭；已有三字段记录继续使用原 HTTPS / 宿主环境配置，
+不会猜测 WSS 公开地址或自动迁移。选择 WSS 后填写当前部署确认过的精确地址。
+
+| 设置 | 当前自有镜像的填写方式 |
+| --- | --- |
+| 网关地址 | Huawei Runtime 公布的 HTTPS 网关根地址 |
+| 运行时实例名称 | 当前部署实例名称；实例名与 WSS 路径必须一致 |
+| 平台 Authorization | AgentIdentity 入站 API Key 对应的完整 `Bearer …` 值 |
+| WSS 地址 | 同一网关的 `wss://网关/runtimes/实例名称/invocations/ws`；只接受明确填写的精确路径，不接受查询或片段 |
+| 独立镜像访问令牌 | 云端 `PA_AGENT_WSS_AUTH_TOKEN` 的原始令牌，不加 `Bearer` |
+| HTTPS 备用 | 显式勾选后才启用；只允许未发送调用时切换，结果未知仍停止重发 |
+
+两种凭据随配置一起由 Electron safeStorage 加密；Renderer 快照只返回公开连接选项，
+密码输入在保存提交和撤销时立即清空。空凭据只能沿用同一网关和实例；更换目标必须重新填写。
+同目标的凭据轮换可供后续调用读取。目标、WSS 路径、连接方式或备用策略改变后，旧 Runtime
+不能继续读取新配置凭据，保存结果提示重启。撤销失败会明确报错并立即关闭内存凭据入口，
+仍需解决本机存储问题并重试删除，不能把磁盘删除失败报告为已永久撤销。
+
+未保存新传输配置时仍支持 `PA_AGENTARTS_TRANSPORT`、`PA_AGENTARTS_WSS_URL`、
+`PA_AGENTARTS_APP_TOKEN`、`PA_AGENTARTS_HTTPS_FALLBACK` 宿主环境入口。
+显式保存传输配置后，以加密记录为准，不会被旧进程环境覆盖。旧格式无需数据库迁移。
+
+验收覆盖加密适配读回、旧记录显式迁移、凭据轮换与目标隔离、非法输入及撤销失败，
+以及恢复配置到真实 Runtime/Coordination 消费的合成 WSS 调用（外层与内层请求头独立、HTTPS 0 次）。
+实际设置组件使用生产样式在 1000px 和 400px 视口验证切换、保存与密码框清空；
+使用合成数据及本机页面，没有读取真实凭据或连接 Huawei。本次入口补齐不代表桌面到真实云端、
+完整自主修复或各业务工具已经验收；既有真实镜像文件读取证据仍按原记录单独计算。
+
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前目标与协作规则（2026-10-13）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛；三人均衡承担审查与合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
