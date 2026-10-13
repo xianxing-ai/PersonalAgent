@@ -728,6 +728,58 @@ test('MeetingRescheduleCoordinator: recovers from prior crash window after graph
   assert.equal(saved.status, 'already_processed');
 });
 
+test('historical meeting recovery matches deterministic content and retains differently sourced Plans', async () => {
+  const {store} = createMeetingFixture();
+  const event = guardedEvent({eventId: 'event-shared', sourceRevision: 'rev-shared'});
+  const beforeRevision = store.read().revision;
+  const original = new MeetingRescheduleCoordinator({store, inference: createMockLaya(),
+    executionPort: createStoreExecutionPort(store), receiptStore: {loadReceipt: () => undefined,
+      saveReceipt() {throw Error('Synthetic receipt failure after actual commit');}}});
+  await assert.rejects(original.processEvent(event), /Synthetic receipt failure/);
+  const originalHistory = store.read();
+  const expectedRefs = originalHistory.history.filter(node => node.graphRevision > beforeRevision)
+    .map(node => ({id: node.id, revision: node.revision}));
+  assert.equal(expectedRefs.length, 4, 'generated Fact, Goal, Decision and differently sourced Plan');
+  store.append(originalHistory.revision, {id: 'meeting-other', kind: 'fact', sourceRef: 'calendar:other',
+    summary: 'Independent meeting', sensitivity: 'private', state: 'active',
+    validFrom: '2026-09-29T10:00:00.000Z', validUntil: '2026-09-30T00:00:00.000Z', dependencies: [],
+    reason: 'Other event [eventId: event-shared] [sourceRevision: rev-shared]'});
+  let models = 0;
+  const coordinator = new MeetingRescheduleCoordinator({store, receiptStore: new InMemoryMeetingDecisionReceiptStore(),
+    chooser: {async choose() {models++; throw Error('Recovery must not infer');}}});
+  const before = store.read(), receipt = await coordinator.processEvent(event);
+  assert.equal(receipt.status, 'already_processed');
+  assert.deepEqual(receipt.appliedNodeRevisions, expectedRefs);
+  assert.equal(receipt.graphRevisionBefore, beforeRevision);
+  assert.equal(receipt.graphRevisionAfter, originalHistory.revision);
+  assert.match(receipt.reason, /不代表审批或执行已验证/);
+  assert.equal(models, 0);
+  assert.deepEqual(store.read(), before, 'recovery must not write or replay');
+  assert.deepEqual((await coordinator.getReceipt(event.eventId, event.source)).appliedNodeRevisions, expectedRefs);
+});
+
+test('unmatched historical repair content recovers only the exact Fact without claiming other revisions', async () => {
+  const {store} = createMeetingFixture(), event = guardedEvent({eventId: 'event-shared', sourceRevision: 'rev-shared'});
+  const previous = store.read().history.findLast(node => node.id === event.meetingFactId);
+  const {revision: _revision, graphRevision: _graphRevision, ...input} = previous;
+  store.append(store.read().revision, {...input, summary: event.newSummary,
+    reason: 'Fact update [eventId: event-shared] [sourceRevision: rev-shared]'});
+  const factRevision = store.read().revision;
+  store.append(factRevision, {id: 'meeting-other', kind: 'fact', sourceRef: 'calendar:other', summary: 'Independent',
+    sensitivity: 'public', state: 'active', validFrom: input.validFrom, validUntil: input.validUntil,
+    reason: 'Other event [eventId: event-shared] [sourceRevision: rev-shared]', dependencies: []});
+  const before = store.read();
+  const coordinator = new MeetingRescheduleCoordinator({store,
+    chooser: {async choose() {throw Error('Recovery must not infer');}}});
+  const receipt = await coordinator.processEvent(event);
+  assert.equal(receipt.status, 'already_processed');
+  assert.deepEqual(receipt.appliedNodeRevisions, [{id: event.meetingFactId, revision: previous.revision + 1}]);
+  assert.equal(receipt.graphRevisionBefore, factRevision - 1);
+  assert.equal(receipt.graphRevisionAfter, factRevision);
+  assert.match(receipt.reason, /其它修订未核验/);
+  assert.deepEqual(store.read(), before);
+});
+
 test('MeetingRescheduleCoordinator: proposal can be subsequently executed via applyApprovedProposal', async () => {
   const {store} = createMeetingFixture();
   const mockLaya = createMockLaya(0, 0.95);

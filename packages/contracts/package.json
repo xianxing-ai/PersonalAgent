@@ -13,7 +13,12 @@
       "types": "./dist/windows-host.d.ts",
       "import": "./dist/windows-host.js"
     },
-    "./windows-host-schema": "./schema/windows-host.json"
+    "./windows-host-schema": "./schema/windows-host.json",
+    "./agentarts-transport": {
+      "types": "./dist/agentarts-transport.d.ts",
+      "import": "./dist/agentarts-transport.js"
+    },
+    "./agentarts-transport-schema": "./schema/agentarts-transport.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

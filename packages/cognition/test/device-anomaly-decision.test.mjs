@@ -129,6 +129,69 @@ test('uncooperative device choices honor cancellation and deadline without block
   }
 });
 
+test('in-flight notification cancellation and deadline preserve unknown intent without blocking feedback', async t => {
+  for (const mode of ['cancel', 'deadline']) await t.test(mode, async () => {
+    let saved, releaseDelivery, enteredDelivery, deliveries = 0;
+    const entered = new Promise(resolve => {enteredDelivery = resolve;});
+    const checkpoint = {load: () => saved, save(value) {saved = structuredClone(value);}};
+    const controller = new AbortController();
+    const inference = createMockLayaChoiceInference();
+    const service = new DeviceAnomalyDecisionService(inference, {checkpoint, sustainedSampleCount: 1,
+      notificationPort: {sendAdvisoryNotification() {
+        deliveries++; enteredDelivery();
+        return new Promise(resolve => {releaseDelivery = resolve;});
+      }}});
+    const sample = {source: 'synthetic', timestamp: new Date().toISOString(), cpuPercent: 95,
+      memoryPercent: 20, samplingIntervalMs: 1000};
+    const pending = service.evaluateSample(sample, {signal: controller.signal,
+      deadline: new Date(Date.now() + (mode === 'deadline' ? 80 : 5000)).toISOString()});
+    await entered;
+    if (mode === 'cancel') controller.abort();
+    let guard;
+    try {
+      const receipt = await Promise.race([pending,
+        new Promise(resolve => {guard = setTimeout(() => resolve({status: 'unsettled'}), 300);})]);
+      assert.equal(receipt.status, 'indeterminate');
+      assert.equal(receipt.notificationDelivered, false);
+      const feedback = (await service.readFeedback())[0];
+      const deliveryId = feedback.pendingDeliveryId;
+      assert.ok(deliveryId);
+      assert.equal(saved.sources.synthetic.pendingDelivery.id, deliveryId);
+      assert.equal(saved.sources.synthetic.lastAlertTimestampMs, null);
+      const next = {...sample, timestamp: new Date(Date.parse(sample.timestamp) + 1000).toISOString()};
+      assert.equal((await service.evaluateSample(next)).status, 'indeterminate');
+      assert.equal(deliveries, 1, 'unknown notification must not be replayed');
+      const restarted = new DeviceAnomalyDecisionService(inference, {checkpoint, sustainedSampleCount: 1});
+      assert.equal((await restarted.readFeedback())[0].pendingDeliveryId, deliveryId);
+      await service.reconcileDelivery('synthetic', deliveryId, true);
+      assert.equal((await service.evaluateSample({...next, cpuPercent: 10})).status, 'recovered');
+      const reconciled = structuredClone(saved);
+      releaseDelivery({delivered: false}); await new Promise(setImmediate);
+      assert.deepEqual(saved, reconciled, 'late old result cannot overwrite explicit readback or newer telemetry');
+      assert.equal((await service.readFeedback())[0].pendingDeliveryId, undefined);
+    } finally {clearTimeout(guard); releaseDelivery?.({delivered: false}); await pending;}
+  });
+});
+
+test('synchronous notification delivery outcomes keep their confirmed and unknown semantics', async t => {
+  for (const result of ['true', 'false', 'throw']) await t.test(result, async () => {
+    let saved;
+    const checkpoint = {load: () => saved, save(value) {saved = structuredClone(value);}};
+    const service = new DeviceAnomalyDecisionService(createMockLayaChoiceInference(), {checkpoint,
+      sustainedSampleCount: 1, notificationPort: {sendAdvisoryNotification() {
+        if (result === 'throw') throw Error('Synthetic unknown delivery');
+        return {delivered: result === 'true'};
+      }}});
+    const sample = {source: 'synthetic', timestamp: new Date().toISOString(), cpuPercent: 95,
+      memoryPercent: 20, samplingIntervalMs: 1000};
+    const receipt = await service.evaluateSample(sample);
+    assert.equal(receipt.status, result === 'throw' ? 'indeterminate' : 'alert_triggered');
+    assert.equal(receipt.notificationDelivered, result === 'true');
+    assert.equal(Boolean((await service.readFeedback())[0].pendingDeliveryId), result === 'throw');
+    assert.equal(saved.sources.synthetic.lastAlertTimestampMs, result === 'true' ? Date.parse(sample.timestamp) : null);
+  });
+});
+
 test('cancellation or deadline expiry during durable intent save prevents notification and preserves recovery', async () => {
   for (const mode of ['cancelled', 'deadline']) {
     let saved, saves = 0, deliveries = 0, entered, release, firstIntent, clock = Date.now();

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2800" height="2040" viewBox="0 0 2800 2040" role="img" aria-labelledby="title desc">
+<title id="title">信任、双通道恢复与发布架构</title><desc id="desc">用户权限与沙箱独立；双通道同语义；本地执行事实源；发布验收与回滚。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52687d"/></marker></defs>
+<style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#183145} .muted{fill:#52697a} .white{fill:white} .strong{font-weight:700}</style>
+<rect x="0" y="0" width="2800" height="2040" rx="0" fill="#f3f6fa" stroke="none"/>
+<text x="50" y="72" font-size="40" class="strong" text-anchor="start">信任与连接 · 双通道恢复 · 发布与验收</text>
+<text x="50" y="119" font-size="23" class="muted" text-anchor="start">WSS 是主通道；HTTPS 是同一 AgentArts 的备用；切换传输不增加权限</text>
+<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<rect x="40" y="210" width="870" height="580" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="253" font-size="28" class="strong" text-anchor="start">A. 用户与本地可信边界</text>
+<rect x="940" y="210" width="870" height="580" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="960" y="253" font-size="28" class="strong" text-anchor="start">B. AgentArts 与外部输入边界</text>
+<rect x="1840" y="210" width="920" height="580" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="1860" y="253" font-size="28" class="strong" text-anchor="start">C. 执行限制与证据边界</text>
+<text x="60" y="313" font-size="23" class="muted" text-anchor="start">用户指令 / 明确预授权</text>
+<text x="60" y="385" font-size="23" class="muted" text-anchor="start">Renderer：输入与显示，不能持有密钥</text>
+<text x="60" y="457" font-size="23" class="muted" text-anchor="start">Preload/IPC → Client → Runtime Application</text>
+<text x="60" y="529" font-size="23" class="muted" text-anchor="start">可信宿主：配置、凭据适配与租约</text>
+<text x="60" y="601" font-size="23" class="muted" text-anchor="start">Policy：目标/工具/范围/参数/期限/revision</text>
+<text x="60" y="673" font-size="23" class="muted" text-anchor="start">TaskRuntime：任务终态与持久执行记录</text>
+<text x="960" y="313" font-size="23" class="muted" text-anchor="start">云/模型/网页/邮件/Issue：不可信数据</text>
+<text x="960" y="385" font-size="23" class="muted" text-anchor="start">最小可导出子图；不发送原始凭据</text>
+<text x="960" y="457" font-size="23" class="muted" text-anchor="start">云编排返回候选，经过 Schema 与新鲜度检查</text>
+<text x="960" y="529" font-size="23" class="muted" text-anchor="start">无权更改本机权限或直接操作 OS</text>
+<text x="960" y="601" font-size="23" class="muted" text-anchor="start">认证失败停止；协议不兼容明确拒绝</text>
+<text x="960" y="673" font-size="23" class="muted" text-anchor="start">Trace 是云追踪，不替代本机读回</text>
+<text x="1860" y="313" font-size="23" class="muted" text-anchor="start">工具统一经过 ToolGateway / Connector Host</text>
+<text x="1860" y="385" font-size="23" class="muted" text-anchor="start">固定能力、受限账户、目录和资源锁</text>
+<text x="1860" y="457" font-size="23" class="muted" text-anchor="start">沙箱：文件/网络/进程的实际隔离</text>
+<text x="1860" y="529" font-size="23" class="muted" text-anchor="start">路径检查与超时不是强 OS 沙箱</text>
+<text x="1860" y="601" font-size="23" class="muted" text-anchor="start">任意 Shell 自主执行：当前不开放</text>
+<text x="1860" y="673" font-size="23" class="muted" text-anchor="start">实际副作用读回 → Evidence → Runtime</text>
+<rect x="40" y="825" width="2720" height="595" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="870" font-size="29" class="strong" text-anchor="start">双通道状态：只有确认业务受理与执行结果后，才能安全切换</text>
+<rect x="80" y="940" width="420" height="140" rx="14" fill="#e7f0f8" stroke="#d5dfe8"/>
+<text x="100" y="982" font-size="26" class="strong" text-anchor="start">WSS_CONNECTING</text>
+<text x="100" y="1028" font-size="23" class="muted" text-anchor="start">握手/认证/能力协商</text>
+<rect x="660" y="940" width="420" height="140" rx="14" fill="#e7f0f8" stroke="#d5dfe8"/>
+<text x="680" y="982" font-size="26" class="strong" text-anchor="start">WSS_READY</text>
+<text x="680" y="1028" font-size="23" class="muted" text-anchor="start">严格受理/结果与继续轮次</text>
+<rect x="1250" y="940" width="480" height="140" rx="14" fill="#e7f0f8" stroke="#d5dfe8"/>
+<text x="1270" y="982" font-size="26" class="strong" text-anchor="start">RECONCILING</text>
+<text x="1270" y="1028" font-size="23" class="muted" text-anchor="start">已发送后未知；阻止重复发送</text>
+<rect x="1920" y="940" width="700" height="140" rx="14" fill="#e7f0f8" stroke="#d5dfe8"/>
+<text x="1940" y="982" font-size="26" class="strong" text-anchor="start">HTTPS_READY</text>
+<text x="1940" y="1028" font-size="23" class="muted" text-anchor="start">同目标 POST；仅未发送连接失败可备用</text>
+<path d="M500,1010 L660,1010" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<path d="M1080,1010 L1250,1010" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<text x="1096" y="978" font-size="20" class="" text-anchor="start">断线</text>
+<path d="M290,940 L290,904 L2270,904 L2270,940" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="9 7"/>
+<text x="1320" y="925" font-size="21" class="" text-anchor="start">invoke 从未发送才可自动备用</text>
+<path d="M2270,1080 L2270,1140 L870,1140 L870,1080" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="9 7"/>
+<text x="1120" y="1175" font-size="24" class="" text-anchor="start">目标恢复：验证 WSS → 暂停新发送 → 核实 → 后续调用回主通道</text>
+<text x="80" y="1230" font-size="24" class="muted" text-anchor="start">本地 provisional：0.1.0严格信封；发送前持久意图，未知结果/重启标记阻止重发。容器仅有界内存回执，restartRecovery=false；status unknown不能解释为未执行。HTTPS当前为单轮JSON事件数组，持久查询/游标恢复消费者待</text>
+<text x="80" y="1266" font-size="24" class="muted" text-anchor="start">验收。</text>
+<text x="80" y="1378" font-size="25" class="strong" text-anchor="start">真实网关、凭据/Upgrade与恢复另验收；认证/协议失败不触发备用，也不切换产品 Profile。</text>
+<rect x="40" y="1460" width="2720" height="520" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="1505" font-size="29" class="strong" text-anchor="start">发布链与各层验收：本地构建成功不能替代云端 Golden Path</text>
+<rect x="70" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="88" y="1592" font-size="27" class="strong" text-anchor="start">受限构建</text>
+<text x="88" y="1635" font-size="23" class="muted" text-anchor="start">ARM64 / 锁依赖 / 非 root</text>
+<path d="M580,1625 L610,1625" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<rect x="610" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="628" y="1592" font-size="27" class="strong" text-anchor="start">GHCR 协作 / 拉取</text>
+<text x="628" y="1635" font-size="23" class="muted" text-anchor="start">固定digest；云端按平台配置</text>
+<path d="M1120,1625 L1150,1625" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<rect x="1150" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="1168" y="1592" font-size="27" class="strong" text-anchor="start">AgentArts 部署</text>
+<text x="1168" y="1635" font-size="23" class="muted" text-anchor="start">版本 / 身份 / /ws 与 HTTP</text>
+<path d="M1660,1625 L1690,1625" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<rect x="1690" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="1708" y="1592" font-size="27" class="strong" text-anchor="start">真实闭环</text>
+<text x="1708" y="1635" font-size="23" class="muted" text-anchor="start">提案 → Policy → 工具 → 读回</text>
+<path d="M2200,1625 L2230,1625" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<rect x="2230" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="2248" y="1592" font-size="27" class="strong" text-anchor="start">评估与上线</text>
+<text x="2248" y="1635" font-size="23" class="muted" text-anchor="start">领域评估 / 小范围 / 回滚</text>
+<text x="70" y="1760" font-size="24" class="muted" text-anchor="start">协作者共享：源码 + 契约 + 配置说明 + 固定镜像 + 验收记录；个人密钥与原始认证导出不共享。新版本兼容旧 checkpoint；不兼容时暂停/迁移，不能通过切换传输掩盖。</text>
+<text x="70" y="1870" font-size="24" class="muted" text-anchor="start">每个真实验证分别记录 deployment/API/trace、工具参数摘要、实际读回与终态。Fake、隔离合成测试、控制台页面状态各自有价值，均不足以单独证明完整产品可用。</text>
+</svg>

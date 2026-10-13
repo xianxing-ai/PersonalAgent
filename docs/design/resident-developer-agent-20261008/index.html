@@ -1,0 +1,694 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PersonalAgent · 常驻自主开发者助手完整方案</title><style>
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f1f5f8;color:#203345;font:16px/1.8 "Microsoft YaHei",sans-serif}a{color:#216ca8}header{padding:36px 4vw 24px;background:#142e46;color:#fff}header h1{font-size:30px;margin:0 0 12px}header p{max-width:1100px;margin:6px 0}header a{color:#b8ddfc}.chips{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}.chips span{background:#244760;border-radius:8px;padding:3px 12px}main{padding:28px 4vw}section{margin-bottom:28px;background:white;border:1px solid #d7e0e8;border-radius:14px;padding:24px}.diagram-title{display:flex;gap:20px;align-items:center;justify-content:space-between}h2{font-size:24px;line-height:1.5}.svg-scroll{overflow:auto;border:1px solid #dbe3eb;background:#f3f6fa}.svg-scroll svg{display:block;width:100%;height:auto;min-width:1200px}.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:12px 0}button,input{font:inherit;padding:6px 12px;border:1px solid #bdcedb;border-radius:7px;background:white}button{cursor:pointer}input{min-width:260px;max-width:100%}.module-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}.module{border:1px solid #dae3ea;border-radius:10px;padding:16px}.module-head{display:flex;justify-content:space-between;gap:12px}.module-head b{color:#256a9c;font-size:23px}.module p{margin:8px 0;font-size:14px;overflow-wrap:anywhere}.progress{height:6px;background:#e4edf3;border-radius:6px;margin:12px 0}.progress span{display:block;height:100%;background:#4184b6;border-radius:6px}.evidence{color:#5c7080}.document-layout{display:grid;grid-template-columns:250px minmax(0,1fr);gap:28px}.toc{position:sticky;top:12px;align-self:start;max-height:90vh;overflow:auto;font-size:14px}.toc a{display:block;padding:4px 0}.document{max-width:1200px}.document h2{border-top:1px solid #dce5ed;padding-top:24px;margin-top:38px;scroll-margin-top:15px}.document h3{margin-top:24px}p{overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #dbe3ea;padding:10px;vertical-align:top;text-align:left}th{background:#edf4fa}.table-wrap{overflow:auto;margin:20px 0}pre{overflow:auto;background:#edf4fa;padding:18px;font:14px/1.7 Consolas,"Microsoft YaHei",monospace}code{background:#edf3f8;padding:1px 4px;border-radius:4px}.note{color:#765322;background:#fff4e4;padding:12px 16px;border-radius:8px}footer{padding:20px 4vw;color:#5c7080}@media(max-width:900px){.document-layout{display:block}.toc{position:static;max-height:250px;margin-bottom:24px}main{padding:16px}section{padding:16px}header{padding:24px}.module-grid{grid-template-columns:1fr}}@media print{header{background:white;color:#203345}.toolbar,.toc{display:none}.document-layout{display:block}.svg-scroll svg{min-width:0}section{break-inside:auto}.module-grid{grid-template-columns:1fr 1fr}}
+    </style></head><body><header><h1>PersonalAgent · 常驻自主开发者助手</h1><p>完整目标设计：电脑运行时，持续观察世界状态、增量修复计划、委派执行与监管。Laya 辅助结构化判断，权限与沙箱决定能否执行。</p><div class="chips"><span>WSS 主通道</span><span>HTTPS 备用</span><span>39 个模块</span><span>估算基线 2026-10-08</span><span>2026-10-09 本地增量</span><span>proposed · 设计交付</span></div><p><a href="DESIGN.md">完整 Markdown</a> · <a href="modules.json">模块估算数据</a> · <a href="build_design.py">可编辑生成器</a> · <a href="WIKI-MEMORY-HANDOFF.md">Wiki 交接</a></p></header><main><section><p class="note">百分比是距离本目标的工程估算，包含区间与来源；不是线上成功率。横向新增能力仍待真实验收。此页面展示目标设计与10-09本地 provisional 增量：WSS、防重发和完整报告已有局部代码验证；新版镜像/父集成/真实云端待验收。百分比保留10-08基线，Wiki仍由goo122实施。</p><div class="toolbar"><span>图缩放：</span><button id="fit">适应阅读宽度</button><button id="actual">原尺寸</button><button id="larger">放大</button><span id="zoom-label">适应</span></div></section><section class="diagram"><div class="diagram-title"><h2>全部 39 模块与部署位置</h2><a href="architecture-overview.svg">打开原尺寸 SVG</a></div><div class="svg-scroll"><svg xmlns="http://www.w3.org/2000/svg" width="2800" height="2900" viewBox="0 0 2800 2900" role="img" aria-labelledby="architecture-overview-title architecture-overview-desc">
+<title id="architecture-overview-title">常驻自主开发者助手：完整模块架构</title><desc id="architecture-overview-desc">全部39模块、负责人、位置与目标完成度；本地执行事实源、云端编排、WSS主通道与HTTPS备用。</desc>
+<defs><marker id="architecture-overview-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52687d"/></marker></defs>
+<style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#183145} .muted{fill:#52697a} .white{fill:white} .strong{font-weight:700}</style>
+<rect x="0" y="0" width="2800" height="2900" rx="0" fill="#f3f6fa" stroke="none"/>
+<text x="50" y="72" font-size="40" class="strong" text-anchor="start">PersonalAgent · 常驻自主开发者助手：完整模块架构</text>
+<text x="50" y="119" font-size="23" class="muted" text-anchor="start">电脑运行时无人监管：观察变化 → 可信决策 → 局部修复 → 委派执行与监管 → 实际读回</text>
+<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<rect x="40" y="190" width="1780" height="2230" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="1870" y="190" width="890" height="2230" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="237" font-size="29" class="strong" text-anchor="start">本地电脑：可信宿主 + Runtime + 受限工具</text>
+<text x="1890" y="237" font-size="29" class="strong" text-anchor="start">华为 AgentArts：自有镜像 + 编排</text>
+<rect x="60" y="270" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="305" font-size="27" class="strong" text-anchor="start">① 用户入口与控制</text>
+<g data-module="MOD-11">
+<rect x="80.0" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="96.0" y="355" font-size="21" class="strong" text-anchor="start">MOD-11</text>
+<text x="394.4" y="355" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="96.0" y="389" font-size="23" class="strong" text-anchor="start">Desktop 外壳与桥接</text>
+<text x="96.0" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="96.0" y="461" font-size="17" class="muted" text-anchor="start">apps/desktop；Electron 主进程/Pr</text>
+<text x="96.0" y="482" font-size="17" class="muted" text-anchor="start">eload/IPC</text>
+</g>
+<g data-module="MOD-12">
+<rect x="422.4" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="438.4" y="355" font-size="21" class="strong" text-anchor="start">MOD-12</text>
+<text x="736.8" y="355" font-size="25" class="strong" text-anchor="end">70%</text>
+<text x="438.4" y="389" font-size="23" class="strong" text-anchor="start">Orb 与对话体验</text>
+<text x="438.4" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="438.4" y="461" font-size="17" class="muted" text-anchor="start">apps/desktop 的 Orb/Conversation</text>
+<text x="438.4" y="482" font-size="17" class="muted" text-anchor="start"> 功能</text>
+</g>
+<g data-module="MOD-13">
+<rect x="764.8" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="780.8" y="355" font-size="21" class="strong" text-anchor="start">MOD-13</text>
+<text x="1079.1999999999998" y="355" font-size="25" class="strong" text-anchor="end">60%</text>
+<text x="780.8" y="389" font-size="23" class="strong" text-anchor="start">管理与自主设置</text>
+<text x="780.8" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="780.8" y="461" font-size="17" class="muted" text-anchor="start">apps/desktop 的 Settings/Admin </text>
+<text x="780.8" y="482" font-size="17" class="muted" text-anchor="start">功能</text>
+</g>
+<g data-module="MOD-14">
+<rect x="1107.1999999999998" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="1123.1999999999998" y="355" font-size="21" class="strong" text-anchor="start">MOD-14</text>
+<text x="1421.6" y="355" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="1123.1999999999998" y="389" font-size="23" class="strong" text-anchor="start">ASR/TTS 与实时语音</text>
+<text x="1123.1999999999998" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1123.1999999999998" y="461" font-size="17" class="muted" text-anchor="start">packages/voice；apps/desktop/ele</text>
+<text x="1123.1999999999998" y="482" font-size="17" class="muted" text-anchor="start">ctron/live-voice-host.js</text>
+</g>
+<g data-module="MOD-15">
+<rect x="1449.6" y="325" width="330.4" height="176" rx="14" fill="#fff" stroke="#2468ab"/>
+<text x="1465.6" y="355" font-size="21" class="strong" text-anchor="start">MOD-15</text>
+<text x="1764.0" y="355" font-size="25" class="strong" text-anchor="end">35%</text>
+<text x="1465.6" y="389" font-size="23" class="strong" text-anchor="start">可选语音唤醒</text>
+<text x="1465.6" y="436" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1465.6" y="461" font-size="17" class="muted" text-anchor="start">packages/voice-wake；apps/deskto</text>
+<text x="1465.6" y="482" font-size="17" class="muted" text-anchor="start">p/electron/wake-voice-host.js</text>
+</g>
+<text x="80" y="522" font-size="20" class="muted" text-anchor="start">语音/文字、责任面板、审批、证据与暂停；Renderer 经 Preload/IPC 接入。</text>
+<rect x="60" y="580" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="615" font-size="27" class="strong" text-anchor="start">② 本地任务、世界图与决策</text>
+<g data-module="MOD-03">
+<rect x="80.0" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="96.0" y="665" font-size="21" class="strong" text-anchor="start">MOD-03</text>
+<text x="394.4" y="665" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="96.0" y="699" font-size="23" class="strong" text-anchor="start">任务 Runtime</text>
+<text x="96.0" y="746" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="96.0" y="771" font-size="17" class="muted" text-anchor="start">apps/runtime/src/application；Ru</text>
+<text x="96.0" y="792" font-size="17" class="muted" text-anchor="start">ntime 核心</text>
+</g>
+<g data-module="MOD-04B">
+<rect x="422.4" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="438.4" y="665" font-size="21" class="strong" text-anchor="start">MOD-04B</text>
+<text x="736.8" y="665" font-size="25" class="strong" text-anchor="end">55%</text>
+<text x="438.4" y="699" font-size="23" class="strong" text-anchor="start">协调与云端口</text>
+<text x="438.4" y="746" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="438.4" y="771" font-size="17" class="muted" text-anchor="start">packages/coordination；Runtime C</text>
+<text x="438.4" y="792" font-size="17" class="muted" text-anchor="start">loudAgentPort 消费方</text>
+</g>
+<g data-module="MOD-09">
+<rect x="764.8" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="780.8" y="665" font-size="21" class="strong" text-anchor="start">MOD-09</text>
+<text x="1079.1999999999998" y="665" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="780.8" y="699" font-size="23" class="strong" text-anchor="start">记忆与 Wiki 投影</text>
+<text x="780.8" y="746" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="780.8" y="771" font-size="17" class="muted" text-anchor="start">packages/memory；packages/learni</text>
+<text x="780.8" y="792" font-size="17" class="muted" text-anchor="start">ng</text>
+</g>
+<g data-module="MOD-27">
+<rect x="1107.1999999999998" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="1123.1999999999998" y="665" font-size="21" class="strong" text-anchor="start">MOD-27</text>
+<text x="1421.6" y="665" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="1123.1999999999998" y="699" font-size="23" class="strong" text-anchor="start">目标与世界状态图</text>
+<text x="1123.1999999999998" y="746" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1123.1999999999998" y="771" font-size="17" class="muted" text-anchor="start">packages/goals；版本化 Goal/Fact</text>
+<text x="1123.1999999999998" y="792" font-size="17" class="muted" text-anchor="start">/Decision/Plan</text>
+</g>
+<g data-module="MOD-28">
+<rect x="1449.6" y="635" width="330.4" height="176" rx="14" fill="#fff" stroke="#7c4cad"/>
+<text x="1465.6" y="665" font-size="21" class="strong" text-anchor="start">MOD-28</text>
+<text x="1764.0" y="665" font-size="25" class="strong" text-anchor="end">55%</text>
+<text x="1465.6" y="699" font-size="23" class="strong" text-anchor="start">持续认知与 Laya</text>
+<text x="1465.6" y="746" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1465.6" y="771" font-size="17" class="muted" text-anchor="start">packages/cognition；Laya Action </text>
+<text x="1465.6" y="792" font-size="17" class="muted" text-anchor="start">Choice/Repair</text>
+</g>
+<text x="80" y="832" font-size="20" class="muted" text-anchor="start">唯一任务事实源；Wiki→Memory 投影由 goo122 接入；Laya 选择合法候选；复杂规划调用云。</text>
+<rect x="60" y="890" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="925" font-size="27" class="strong" text-anchor="start">③ 契约、权限与持久化</text>
+<g data-module="MOD-01">
+<rect x="80.0" y="945" width="558.6666666666666" height="176" rx="14" fill="#fff" stroke="#276f61"/>
+<text x="96.0" y="975" font-size="21" class="strong" text-anchor="start">MOD-01</text>
+<text x="622.6666666666666" y="975" font-size="25" class="strong" text-anchor="end">85%</text>
+<text x="96.0" y="1009" font-size="23" class="strong" text-anchor="start">工程与存储底座</text>
+<text x="96.0" y="1056" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="96.0" y="1081" font-size="17" class="muted" text-anchor="start">packages/storage；根配置</text>
+</g>
+<g data-module="MOD-02">
+<rect x="650.6666666666666" y="945" width="558.6666666666666" height="176" rx="14" fill="#fff" stroke="#276f61"/>
+<text x="666.6666666666666" y="975" font-size="21" class="strong" text-anchor="start">MOD-02</text>
+<text x="1193.3333333333333" y="975" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="666.6666666666666" y="1009" font-size="23" class="strong" text-anchor="start">公共契约与客户端</text>
+<text x="666.6666666666666" y="1056" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="666.6666666666666" y="1081" font-size="17" class="muted" text-anchor="start">packages/contracts；packages/client；packages/testkit</text>
+</g>
+<g data-module="MOD-05">
+<rect x="1221.3333333333333" y="945" width="558.6666666666666" height="176" rx="14" fill="#fff" stroke="#276f61"/>
+<text x="1237.3333333333333" y="975" font-size="21" class="strong" text-anchor="start">MOD-05</text>
+<text x="1764.0" y="975" font-size="25" class="strong" text-anchor="end">55%</text>
+<text x="1237.3333333333333" y="1009" font-size="23" class="strong" text-anchor="start">Policy 与工具网关</text>
+<text x="1237.3333333333333" y="1056" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="1237.3333333333333" y="1081" font-size="17" class="muted" text-anchor="start">packages/policy；packages/tool-gateway；packages/connect</text>
+<text x="1237.3333333333333" y="1102" font-size="17" class="muted" text-anchor="start">or-host</text>
+</g>
+<text x="80" y="1142" font-size="20" class="muted" text-anchor="start">一次性授权/租约、工具统一入口、去重与 checkpoint；云提案返回后必须再次过闸。</text>
+<rect x="60" y="1200" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="1235" font-size="27" class="strong" text-anchor="start">④ 受限工具与上下文</text>
+<g data-module="MOD-06">
+<rect x="80.0" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="96.0" y="1285" font-size="21" class="strong" text-anchor="start">MOD-06</text>
+<text x="337.3333333333333" y="1285" font-size="25" class="strong" text-anchor="end">55%</text>
+<text x="96.0" y="1319" font-size="23" class="strong" text-anchor="start">本地 MCP</text>
+<text x="96.0" y="1366" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="96.0" y="1391" font-size="17" class="muted" text-anchor="start">packages/mcp；可信宿主的固</text>
+<text x="96.0" y="1412" font-size="17" class="muted" text-anchor="start">定 stdio 服务</text>
+</g>
+<g data-module="MOD-07">
+<rect x="365.3333333333333" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="381.3333333333333" y="1285" font-size="21" class="strong" text-anchor="start">MOD-07</text>
+<text x="622.6666666666666" y="1285" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="381.3333333333333" y="1319" font-size="23" class="strong" text-anchor="start">Skills 执行</text>
+<text x="381.3333333333333" y="1366" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="381.3333333333333" y="1391" font-size="17" class="muted" text-anchor="start">packages/skills；固定 refe</text>
+<text x="381.3333333333333" y="1412" font-size="17" class="muted" text-anchor="start">rence-summary Bundle</text>
+</g>
+<g data-module="MOD-08">
+<rect x="650.6666666666666" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="666.6666666666666" y="1285" font-size="21" class="strong" text-anchor="start">MOD-08</text>
+<text x="908.0" y="1285" font-size="25" class="strong" text-anchor="end">45%</text>
+<text x="666.6666666666666" y="1319" font-size="23" class="strong" text-anchor="start">知识与 Wiki/Obsidia</text>
+<text x="666.6666666666666" y="1346" font-size="23" class="strong" text-anchor="start">n</text>
+<text x="666.6666666666666" y="1366" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="666.6666666666666" y="1391" font-size="17" class="muted" text-anchor="start">packages/knowledge；Wiki </text>
+<text x="666.6666666666666" y="1412" font-size="17" class="muted" text-anchor="start">适配/受控写入</text>
+</g>
+<g data-module="MOD-16">
+<rect x="936.0" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="952.0" y="1285" font-size="21" class="strong" text-anchor="start">MOD-16</text>
+<text x="1193.3333333333333" y="1285" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="952.0" y="1319" font-size="23" class="strong" text-anchor="start">Windows Host</text>
+<text x="952.0" y="1366" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="952.0" y="1391" font-size="17" class="muted" text-anchor="start">apps/windows-host；Runtime</text>
+<text x="952.0" y="1412" font-size="17" class="muted" text-anchor="start"> windows-host-adapter</text>
+</g>
+<g data-module="MOD-17">
+<rect x="1221.3333333333333" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="1237.3333333333333" y="1285" font-size="21" class="strong" text-anchor="start">MOD-17</text>
+<text x="1478.6666666666665" y="1285" font-size="25" class="strong" text-anchor="end">60%</text>
+<text x="1237.3333333333333" y="1319" font-size="23" class="strong" text-anchor="start">电脑状态观察</text>
+<text x="1237.3333333333333" y="1366" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1237.3333333333333" y="1391" font-size="17" class="muted" text-anchor="start">packages/windows-client</text>
+</g>
+<g data-module="MOD-18">
+<rect x="1506.6666666666665" y="1255" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#a15e27"/>
+<text x="1522.6666666666665" y="1285" font-size="21" class="strong" text-anchor="start">MOD-18</text>
+<text x="1763.9999999999998" y="1285" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="1522.6666666666665" y="1319" font-size="23" class="strong" text-anchor="start">编程工具与工件</text>
+<text x="1522.6666666666665" y="1366" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1522.6666666666665" y="1391" font-size="17" class="muted" text-anchor="start">packages/coding-tools；工</text>
+<text x="1522.6666666666665" y="1412" font-size="17" class="muted" text-anchor="start">作区受限工具</text>
+</g>
+<text x="80" y="1452" font-size="20" class="muted" text-anchor="start">Wiki/知识正文↔版本化记忆；MCP/Skills/Windows/编码；受控写回与真实隔离分别验证。</text>
+<rect x="60" y="1510" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="1545" font-size="27" class="strong" text-anchor="start">⑤ 外部世界与业务能力</text>
+<g data-module="MOD-20">
+<rect x="80.0" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="96.0" y="1595" font-size="21" class="strong" text-anchor="start">MOD-20</text>
+<text x="296.57142857142856" y="1595" font-size="25" class="strong" text-anchor="end">60%</text>
+<text x="96.0" y="1629" font-size="23" class="strong" text-anchor="start">效率与日历</text>
+<text x="96.0" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="96.0" y="1701" font-size="17" class="muted" text-anchor="start">packages/productivity</text>
+<text x="96.0" y="1722" font-size="17" class="muted" text-anchor="start">；packages/connectors</text>
+<text x="96.0" y="1743" font-size="17" class="muted" text-anchor="start">/calendar</text>
+</g>
+<g data-module="MOD-21">
+<rect x="324.57142857142856" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="340.57142857142856" y="1595" font-size="21" class="strong" text-anchor="start">MOD-21</text>
+<text x="541.1428571428571" y="1595" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="340.57142857142856" y="1629" font-size="23" class="strong" text-anchor="start">邮件连接器</text>
+<text x="340.57142857142856" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="340.57142857142856" y="1701" font-size="17" class="muted" text-anchor="start">packages/connectors/m</text>
+<text x="340.57142857142856" y="1722" font-size="17" class="muted" text-anchor="start">ail</text>
+</g>
+<g data-module="MOD-22">
+<rect x="569.1428571428571" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="585.1428571428571" y="1595" font-size="21" class="strong" text-anchor="start">MOD-22</text>
+<text x="785.7142857142857" y="1595" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="585.1428571428571" y="1629" font-size="23" class="strong" text-anchor="start">RSS/Atom 订阅</text>
+<text x="585.1428571428571" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="585.1428571428571" y="1701" font-size="17" class="muted" text-anchor="start">packages/connectors/f</text>
+<text x="585.1428571428571" y="1722" font-size="17" class="muted" text-anchor="start">eeds</text>
+</g>
+<g data-module="MOD-23">
+<rect x="813.7142857142858" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="829.7142857142858" y="1595" font-size="21" class="strong" text-anchor="start">MOD-23</text>
+<text x="1030.2857142857144" y="1595" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="829.7142857142858" y="1629" font-size="23" class="strong" text-anchor="start">通知与提醒</text>
+<text x="829.7142857142858" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="829.7142857142858" y="1701" font-size="17" class="muted" text-anchor="start">packages/notification</text>
+<text x="829.7142857142858" y="1722" font-size="17" class="muted" text-anchor="start">s；Desktop 消费</text>
+</g>
+<g data-module="MOD-24">
+<rect x="1058.2857142857142" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="1074.2857142857142" y="1595" font-size="21" class="strong" text-anchor="start">MOD-24</text>
+<text x="1274.857142857143" y="1595" font-size="25" class="strong" text-anchor="end">70%</text>
+<text x="1074.2857142857142" y="1629" font-size="23" class="strong" text-anchor="start">资料研究</text>
+<text x="1074.2857142857142" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="1074.2857142857142" y="1701" font-size="17" class="muted" text-anchor="start">packages/connectors/r</text>
+<text x="1074.2857142857142" y="1722" font-size="17" class="muted" text-anchor="start">esearch</text>
+</g>
+<g data-module="MOD-25">
+<rect x="1302.857142857143" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="1318.857142857143" y="1595" font-size="21" class="strong" text-anchor="start">MOD-25</text>
+<text x="1519.4285714285716" y="1595" font-size="25" class="strong" text-anchor="end">80%</text>
+<text x="1318.857142857143" y="1629" font-size="23" class="strong" text-anchor="start">天气与环境</text>
+<text x="1318.857142857143" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="1318.857142857143" y="1701" font-size="17" class="muted" text-anchor="start">packages/connectors/w</text>
+<text x="1318.857142857143" y="1722" font-size="17" class="muted" text-anchor="start">eather</text>
+</g>
+<g data-module="MOD-26">
+<rect x="1547.4285714285716" y="1565" width="232.57142857142858" height="176" rx="14" fill="#fff" stroke="#487238"/>
+<text x="1563.4285714285716" y="1595" font-size="21" class="strong" text-anchor="start">MOD-26</text>
+<text x="1764.0000000000002" y="1595" font-size="25" class="strong" text-anchor="end">0%</text>
+<text x="1563.4285714285716" y="1629" font-size="23" class="strong" text-anchor="start">可选社交连接器</text>
+<text x="1563.4285714285716" y="1676" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="1563.4285714285716" y="1701" font-size="17" class="muted" text-anchor="start">待选择平台后在 package</text>
+<text x="1563.4285714285716" y="1722" font-size="17" class="muted" text-anchor="start">s/connectors 扩展</text>
+</g>
+<text x="80" y="1762" font-size="20" class="muted" text-anchor="start">可信采集→FactChangeFeed；账户动作通过 ToolGateway；撤销/过期/去重均受控制。</text>
+<rect x="60" y="1820" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="1855" font-size="27" class="strong" text-anchor="start">⑥ 开发者责任工作流</text>
+<g data-module="MOD-33">
+<rect x="80.0" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="96.0" y="1905" font-size="21" class="strong" text-anchor="start">MOD-33</text>
+<text x="337.3333333333333" y="1905" font-size="25" class="strong" text-anchor="end">75%</text>
+<text x="96.0" y="1939" font-size="23" class="strong" text-anchor="start">GitHub 能力</text>
+<text x="96.0" y="1986" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="96.0" y="2011" font-size="17" class="muted" text-anchor="start">packages/connectors/github</text>
+</g>
+<g data-module="MOD-34">
+<rect x="365.3333333333333" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="381.3333333333333" y="1905" font-size="21" class="strong" text-anchor="start">MOD-34</text>
+<text x="622.6666666666666" y="1905" font-size="25" class="strong" text-anchor="end">60%</text>
+<text x="381.3333333333333" y="1939" font-size="23" class="strong" text-anchor="start">CI 修复工作流</text>
+<text x="381.3333333333333" y="1986" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="381.3333333333333" y="2011" font-size="17" class="muted" text-anchor="start">DEV-WORKFLOWS；CI Fix；cod</text>
+<text x="381.3333333333333" y="2032" font-size="17" class="muted" text-anchor="start">ing-tools/git-tools</text>
+</g>
+<g data-module="MOD-35">
+<rect x="650.6666666666666" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="666.6666666666666" y="1905" font-size="21" class="strong" text-anchor="start">MOD-35</text>
+<text x="908.0" y="1905" font-size="25" class="strong" text-anchor="end">70%</text>
+<text x="666.6666666666666" y="1939" font-size="23" class="strong" text-anchor="start">测试定位工作流</text>
+<text x="666.6666666666666" y="1986" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="666.6666666666666" y="2011" font-size="17" class="muted" text-anchor="start">DEV-WORKFLOWS；Test Locate</text>
+<text x="666.6666666666666" y="2032" font-size="17" class="muted" text-anchor="start">；TAP/证据定位</text>
+</g>
+<g data-module="MOD-36">
+<rect x="936.0" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="952.0" y="1905" font-size="21" class="strong" text-anchor="start">MOD-36</text>
+<text x="1193.3333333333333" y="1905" font-size="25" class="strong" text-anchor="end">65%</text>
+<text x="952.0" y="1939" font-size="23" class="strong" text-anchor="start">代码评审工作流</text>
+<text x="952.0" y="1986" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="952.0" y="2011" font-size="17" class="muted" text-anchor="start">packages/cognition 的 Code</text>
+<text x="952.0" y="2032" font-size="17" class="muted" text-anchor="start"> Review；GitHub 消费</text>
+</g>
+<g data-module="MOD-37">
+<rect x="1221.3333333333333" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="1237.3333333333333" y="1905" font-size="21" class="strong" text-anchor="start">MOD-37</text>
+<text x="1478.6666666666665" y="1905" font-size="25" class="strong" text-anchor="end">0%</text>
+<text x="1237.3333333333333" y="1939" font-size="23" class="strong" text-anchor="start">文档维护工作流</text>
+<text x="1237.3333333333333" y="1986" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="1237.3333333333333" y="2011" font-size="17" class="muted" text-anchor="start">DEV-WORKFLOWS；后续漂移检测</text>
+<text x="1237.3333333333333" y="2032" font-size="17" class="muted" text-anchor="start">/补丁/PR 工作包</text>
+</g>
+<g data-module="MOD-38">
+<rect x="1506.6666666666665" y="1875" width="273.3333333333333" height="176" rx="14" fill="#fff" stroke="#396b89"/>
+<text x="1522.6666666666665" y="1905" font-size="21" class="strong" text-anchor="start">MOD-38</text>
+<text x="1763.9999999999998" y="1905" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="1522.6666666666665" y="1939" font-size="23" class="strong" text-anchor="start">Issue 分诊与修复</text>
+<text x="1522.6666666666665" y="1986" font-size="18" class="muted" text-anchor="start">Potatos498</text>
+<text x="1522.6666666666665" y="2011" font-size="17" class="muted" text-anchor="start">packages/cognition 的 Issu</text>
+<text x="1522.6666666666665" y="2032" font-size="17" class="muted" text-anchor="start">e Triage；GitHub 消费</text>
+</g>
+<text x="80" y="2072" font-size="20" class="muted" text-anchor="start">GitHub/CI/测试/评审/文档/Issue；不是独立任务库，复用图、Runtime 与工具端口。</text>
+<rect x="60" y="2130" width="1740" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="80" y="2165" font-size="27" class="strong" text-anchor="start">⑦ 交付与分发</text>
+<g data-module="MOD-19">
+<rect x="80.0" y="2185" width="1700.0" height="176" rx="14" fill="#fff" stroke="#726551"/>
+<text x="96.0" y="2215" font-size="21" class="strong" text-anchor="start">MOD-19</text>
+<text x="1764.0" y="2215" font-size="25" class="strong" text-anchor="end">20%</text>
+<text x="96.0" y="2249" font-size="23" class="strong" text-anchor="start">Windows 分发</text>
+<text x="96.0" y="2296" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="96.0" y="2321" font-size="17" class="muted" text-anchor="start">scripts/release；apps/desktop</text>
+</g>
+<text x="80" y="2382" font-size="20" class="muted" text-anchor="start">源码、固定镜像 digest、配置契约和验收一起交付；安装器仍是后续工作。</text>
+<path d="M930,540 L930,575" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#architecture-overview-arrow)"  />
+<path d="M930,850 L930,885" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#architecture-overview-arrow)"  />
+<path d="M930,1160 L930,1195" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#architecture-overview-arrow)"  />
+<path d="M930,1470 L930,1505" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#architecture-overview-arrow)"  />
+<path d="M930,1780 L930,1815" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#architecture-overview-arrow)"  />
+<path d="M930,2090 L930,2125" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#architecture-overview-arrow)"  />
+<rect x="1890" y="270" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-29">
+<rect x="1910" y="288" width="810" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="318" font-size="21" class="strong" text-anchor="start">MOD-29</text>
+<text x="2704" y="318" font-size="25" class="strong" text-anchor="end">45%</text>
+<text x="1926" y="352" font-size="23" class="strong" text-anchor="start">AgentArts 基础与镜像</text>
+<text x="1926" y="399" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1926" y="424" font-size="17" class="muted" text-anchor="start">packages/agentarts；apps/agentarts-runtime</text>
+</g>
+<text x="1910" y="493" font-size="21" class="muted" text-anchor="start">容器 /ws 本地 provisional；restartRecovery=false，公开网关与新版镜像待验</text>
+<text x="1910" y="520" font-size="21" class="muted" text-anchor="start">收。</text>
+<rect x="1890" y="890" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-04A">
+<rect x="1910" y="908" width="810" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="938" font-size="21" class="strong" text-anchor="start">MOD-04A</text>
+<text x="2704" y="938" font-size="25" class="strong" text-anchor="end">70%</text>
+<text x="1926" y="972" font-size="23" class="strong" text-anchor="start">模型网关与 Provider</text>
+<text x="1926" y="1019" font-size="18" class="muted" text-anchor="start">goo122</text>
+<text x="1926" y="1044" font-size="17" class="muted" text-anchor="start">packages/models；云镜像通过公开导出消费</text>
+</g>
+<text x="1910" y="1113" font-size="21" class="muted" text-anchor="start">公开模型包可复用；统一 Provider、取消与用量；模型不能签发权限。</text>
+<rect x="1890" y="1200" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-32">
+<rect x="1910" y="1218" width="810" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="1248" font-size="21" class="strong" text-anchor="start">MOD-32</text>
+<text x="2704" y="1248" font-size="25" class="strong" text-anchor="end">30%</text>
+<text x="1926" y="1282" font-size="23" class="strong" text-anchor="start">云 API/Trace/运维</text>
+<text x="1926" y="1329" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1926" y="1354" font-size="17" class="muted" text-anchor="start">AgentArts API；tests/manual/agentarts；云观测</text>
+</g>
+<text x="1910" y="1423" font-size="21" class="muted" text-anchor="start">deployment/API/trace/评估/费用/回滚；平台成功不等于本地工具成功。</text>
+<rect x="1890" y="1510" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-10">
+<rect x="1910" y="1528" width="810" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="1558" font-size="21" class="strong" text-anchor="start">MOD-10</text>
+<text x="2704" y="1558" font-size="25" class="strong" text-anchor="end">20%</text>
+<text x="1926" y="1592" font-size="23" class="strong" text-anchor="start">模型研究与训练</text>
+<text x="1926" y="1639" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1926" y="1664" font-size="17" class="muted" text-anchor="start">docs/research/agentarts；后续模型研究工作包</text>
+</g>
+<text x="1910" y="1733" font-size="21" class="muted" text-anchor="start">横向研究：领域标注集、校准与训练；不作为每次调用必经步骤。</text>
+<rect x="1890" y="580" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<g data-module="MOD-30">
+<rect x="1910" y="598" width="399" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="1926" y="628" font-size="21" class="strong" text-anchor="start">MOD-30</text>
+<text x="2293" y="628" font-size="25" class="strong" text-anchor="end">50%</text>
+<text x="1926" y="662" font-size="23" class="strong" text-anchor="start">云工作流与单 Agent</text>
+<text x="1926" y="709" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="1926" y="734" font-size="17" class="muted" text-anchor="start">apps/agentarts-runtime；编排与继续轮次</text>
+</g>
+<g data-module="MOD-31">
+<rect x="2321" y="598" width="399" height="176" rx="14" fill="#fff" stroke="#276caa"/>
+<text x="2337" y="628" font-size="21" class="strong" text-anchor="start">MOD-31</text>
+<text x="2704" y="628" font-size="25" class="strong" text-anchor="end">35%</text>
+<text x="2337" y="662" font-size="23" class="strong" text-anchor="start">多 Agent 与评估</text>
+<text x="2337" y="709" font-size="18" class="muted" text-anchor="start">zemeng</text>
+<text x="2337" y="734" font-size="17" class="muted" text-anchor="start">AgentArts 角色编排；Runtime Subagent Hos</text>
+<text x="2337" y="755" font-size="17" class="muted" text-anchor="start">t 消费</text>
+</g>
+<text x="1910" y="803" font-size="21" class="muted" text-anchor="start">完整World/Plan→Review→候选；缺来源RECHECK；工具仍由本地执行。</text>
+<path d="M1820,692 L1870,692" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#architecture-overview-arrow)" marker-start="url(#architecture-overview-arrow)" />
+<rect x="1410" y="830" width="1320" height="50" rx="14" fill="#e0effa" stroke="#78a9cf"/>
+<text x="1430" y="863" font-size="24" class="strong" text-anchor="start">WSS 主通道 ⇄ HTTPS 备用 · 同部署/同任务/同去重 · 可见降级</text>
+<rect x="1890" y="1820" width="850" height="270" rx="14" fill="#fff4e6" stroke="#d6aa6c"/>
+<text x="1910" y="1858" font-size="25" class="strong" text-anchor="start">横向新增目标：尚未通过真实目标验收</text>
+<text x="1910" y="1906" font-size="22" class="" text-anchor="start">WSS 公开网关 + 结果未知/重启协调消费</text>
+<text x="1910" y="1950" font-size="22" class="" text-anchor="start">持久无人监管授权 + 完整委派/监管闭环</text>
+<text x="1910" y="1994" font-size="22" class="" text-anchor="start">Laya 领域校准 + 任意命令强沙箱</text>
+<text x="1910" y="2038" font-size="22" class="" text-anchor="start">新版云镜像 Golden Path + 迁移缺口验收</text>
+<rect x="1890" y="2130" width="850" height="270" rx="14" fill="#edf3f8" stroke="#d5dfe8"/>
+<text x="1910" y="2170" font-size="26" class="strong" text-anchor="start">构建 → GHCR 协作 → AgentArts 部署 → 验收</text>
+<text x="1910" y="2210" font-size="22" class="muted" text-anchor="start">ARM64 / 8080；/ws 与 POST /invocations。华为拉取按平台配置，必要时 SW</text>
+<text x="1910" y="2243" font-size="22" class="muted" text-anchor="start">R；公开 Upgrade 与身份仍需实测。</text>
+<text x="1910" y="2321" font-size="22" class="muted" text-anchor="start">不打包用户数据/密钥；固定 tag + digest；新部署失败显式暂停或回滚。</text>
+<rect x="40" y="2460" width="2720" height="160" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="2501" font-size="28" class="strong" text-anchor="start">贯穿设计：权限、信任、隐私、状态恢复与证据</text>
+<text x="60" y="2542" font-size="24" class="muted" text-anchor="start">用户指令 ≠ 外部内容；云/模型输出先校验。数据最小投影；未知副作用先核实。父子任务取消需停止确认。切换传输不切换权限，不静默回退另一 Agent Profile。</text>
+<rect x="40" y="2650" width="2720" height="195" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="2691" font-size="27" class="strong" text-anchor="start">阅读图例与完成度口径</text>
+<text x="60" y="2730" font-size="23" class="muted" text-anchor="start">39 个模块全部入图。百分比 = 契约20 + 实现30 + 接线20 + 目标真实验收20 + 恢复安全10 的工程判断。详细区间、来源与缺口见 modules.json 和完整设计正文；不是成功概率，不等于历史 done。</text>
+<text x="60" y="2815" font-size="22" class="muted" text-anchor="start">箭头展示目标流向；新流程仍可能未实现。所有跨模块调用通过公开端口，不表示可以任意互相导入。</text>
+</svg></div></section><section class="diagram"><div class="diagram-title"><h2>自主闭环与委派监管</h2><a href="autonomy-lifecycle.svg">打开原尺寸 SVG</a></div><div class="svg-scroll"><svg xmlns="http://www.w3.org/2000/svg" width="2800" height="2540" viewBox="0 0 2800 2540" role="img" aria-labelledby="autonomy-lifecycle-title autonomy-lifecycle-desc">
+<title id="autonomy-lifecycle-title">常驻自主闭环：从世界变化到委派监管</title><desc id="autonomy-lifecycle-desc">真实来源、Laya、双通道云编排、本地授权执行、读回、增量修复、停止与恢复。</desc>
+<defs><marker id="autonomy-lifecycle-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52687d"/></marker></defs>
+<style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#183145} .muted{fill:#52697a} .white{fill:white} .strong{font-weight:700}</style>
+<rect x="0" y="0" width="2800" height="2540" rx="0" fill="#f3f6fa" stroke="none"/>
+<text x="50" y="72" font-size="40" class="strong" text-anchor="start">自主闭环 · 每一步的输入、决策、权限与完成证据</text>
+<text x="50" y="119" font-size="23" class="muted" text-anchor="start">事件驱动；仅修受影响节点；无变化时安静；任何不确定结果均保留待核实状态</text>
+<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<rect x="40" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="40" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="55" y="232" font-size="26" class="strong" text-anchor="start">世界与来源</text>
+<text x="55" y="266" font-size="19" class="muted" text-anchor="start">09/17/20~26/33</text>
+<rect x="430" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="430" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="445" y="232" font-size="26" class="strong" text-anchor="start">本地状态与图</text>
+<text x="445" y="266" font-size="19" class="muted" text-anchor="start">03/27/28</text>
+<rect x="820" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="820" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="835" y="232" font-size="26" class="strong" text-anchor="start">Laya 决策</text>
+<text x="835" y="266" font-size="19" class="muted" text-anchor="start">28；不签发授权</text>
+<rect x="1210" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="1210" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="1225" y="232" font-size="26" class="strong" text-anchor="start">双通道适配</text>
+<text x="1225" y="266" font-size="19" class="muted" text-anchor="start">02/04B/29</text>
+<rect x="1600" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="1600" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="1615" y="232" font-size="26" class="strong" text-anchor="start">AgentArts 镜像</text>
+<text x="1615" y="266" font-size="19" class="muted" text-anchor="start">30/31/04A</text>
+<rect x="1990" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="1990" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="2005" y="232" font-size="26" class="strong" text-anchor="start">Policy 与执行</text>
+<text x="2005" y="266" font-size="19" class="muted" text-anchor="start">05/06~08/16/18</text>
+<rect x="2380" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="2380" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="2395" y="232" font-size="26" class="strong" text-anchor="start">读回与监管</text>
+<text x="2395" y="266" font-size="19" class="muted" text-anchor="start">03/23/27/28/32</text>
+<rect x="52" y="310" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="66" y="343" font-size="23" class="strong" text-anchor="start">1. 可信采集</text>
+<text x="66" y="376" font-size="19" class="muted" text-anchor="start">CI/文件/日历/订阅/状态；来源 revi</text>
+<text x="66" y="403" font-size="19" class="muted" text-anchor="start">sion + 时间 + 范围</text>
+<rect x="442" y="465" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="456" y="498" font-size="23" class="strong" text-anchor="start">2. 事实入库、影响分析</text>
+<text x="456" y="531" font-size="19" class="muted" text-anchor="start">去重与撤回；直接/传递依赖；仅限有</text>
+<text x="456" y="558" font-size="19" class="muted" text-anchor="start">效目标</text>
+<path d="M408,372 L435,372 L435,526 L442,526" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<rect x="832" y="620" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="846" y="653" font-size="23" class="strong" text-anchor="start">3. 合法候选选择</text>
+<text x="846" y="686" font-size="19" class="muted" text-anchor="start">先滤过期/未授权；选择、弃权、升级</text>
+<text x="846" y="713" font-size="19" class="muted" text-anchor="start">；记录未校准</text>
+<path d="M798,528 L825,528 L825,680 L832,680" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<rect x="442" y="800" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="456" y="833" font-size="23" class="strong" text-anchor="start">简单/确定性处理</text>
+<text x="456" y="866" font-size="19" class="muted" text-anchor="start">保留、核实或局部候选；无变化结束本</text>
+<text x="456" y="893" font-size="19" class="muted" text-anchor="start">轮；不忙等</text>
+<path d="M1020,748 L1020,775 L622,775 L622,800" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" stroke-dasharray="9 7"/>
+<rect x="1222" y="800" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="1236" y="833" font-size="23" class="strong" text-anchor="start">4. 需要语义编排</text>
+<text x="1236" y="866" font-size="19" class="muted" text-anchor="start">最小子图/版本/预算；WSS 主，未发</text>
+<text x="1236" y="893" font-size="19" class="muted" text-anchor="start">送才 HTTPS 备用</text>
+<path d="M1020,748 L1020,775 L1410,775 L1410,800" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<rect x="1612" y="955" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="1626" y="988" font-size="23" class="strong" text-anchor="start">5. 云端角色协作</text>
+<text x="1626" y="1021" font-size="19" class="muted" text-anchor="start">fast 或 World→Plan→Review；完</text>
+<text x="1626" y="1048" font-size="19" class="muted" text-anchor="start">整报告只形成候选</text>
+<path d="M1578,865 L1605,865 L1605,1016 L1612,1016" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<rect x="442" y="1120" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="456" y="1153" font-size="23" class="strong" text-anchor="start">6. 本地重新核实</text>
+<text x="456" y="1186" font-size="19" class="muted" text-anchor="start">Schema/来源/工具/依赖；expectedR</text>
+<text x="456" y="1213" font-size="19" class="muted" text-anchor="start">evision/CAS</text>
+<path d="M1800,1083 L1800,1102 L622,1102 L622,1120" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<rect x="832" y="1280" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="846" y="1313" font-size="23" class="strong" text-anchor="start">必要时再选择/升级</text>
+<text x="846" y="1346" font-size="19" class="muted" text-anchor="start">最新合法候选；不能使用旧评分越过新</text>
+<text x="846" y="1373" font-size="19" class="muted" text-anchor="start">权限</text>
+<path d="M798,1184 L825,1184 L825,1344 L832,1344" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" stroke-dasharray="9 7"/>
+<rect x="2002" y="1440" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="2016" y="1473" font-size="23" class="strong" text-anchor="start">7. Policy → ToolGateway</text>
+<text x="2016" y="1506" font-size="19" class="muted" text-anchor="start">参数/范围/期限再检查；审批或执行；</text>
+<text x="2016" y="1533" font-size="19" class="muted" text-anchor="start">保留 ToolRun</text>
+<path d="M1188,1344 L1210,1344 L1210,1414 L2190,1414 L2190,1440" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<rect x="1612" y="1280" width="356" height="128" rx="14" fill="#f3eef9" stroke="#d5dfe8"/>
+<text x="1626" y="1313" font-size="23" class="strong" text-anchor="start">多角色委派原则</text>
+<text x="1626" y="1346" font-size="19" class="muted" text-anchor="start">子任务收窄授权；父子关系由 Runtim</text>
+<text x="1626" y="1373" font-size="19" class="muted" text-anchor="start">e 管理</text>
+<rect x="2002" y="1600" width="356" height="128" rx="14" fill="#fff3e3" stroke="#d5dfe8"/>
+<text x="2016" y="1633" font-size="23" class="strong" text-anchor="start">等待审批/协调分支</text>
+<text x="2016" y="1666" font-size="19" class="muted" text-anchor="start">相关分支等待；独立任务继续；未知写</text>
+<text x="2016" y="1693" font-size="19" class="muted" text-anchor="start">入不重试</text>
+<path d="M2190,1568 L2190,1600" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)"  />
+<rect x="2392" y="1760" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="2406" y="1793" font-size="23" class="strong" text-anchor="start">8. 外部读回与 Evidence</text>
+<text x="2406" y="1826" font-size="19" class="muted" text-anchor="start">执行结果 + 来源版本；verified/co</text>
+<text x="2406" y="1853" font-size="19" class="muted" text-anchor="start">nditional 分开</text>
+<path d="M2360,1505 L2390,1505 L2390,1824 L2398,1824" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<rect x="442" y="1760" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="456" y="1793" font-size="23" class="strong" text-anchor="start">9. 状态提交与后继计划</text>
+<text x="456" y="1826" font-size="19" class="muted" text-anchor="start">Runtime 定终态；图更新；终结任务</text>
+<text x="456" y="1853" font-size="19" class="muted" text-anchor="start">不重开</text>
+<path d="M2580,1888 L2580,1935 L622,1935 L622,1888" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<rect x="2392" y="1440" width="356" height="128" rx="14" fill="#eef6ec" stroke="#d5dfe8"/>
+<text x="2406" y="1473" font-size="23" class="strong" text-anchor="start">10. 监管与通知</text>
+<text x="2406" y="1506" font-size="19" class="muted" text-anchor="start">到期/变化检查；重要变更通知；无变</text>
+<text x="2406" y="1533" font-size="19" class="muted" text-anchor="start">化保持安静</text>
+<path d="M2580,1760 L2580,1568" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" />
+<path d="M2580,1440 L2580,1426 L2778,1426 L2778,2020 L18,2020 L18,373 L52,373" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#autonomy-lifecycle-arrow)" stroke-dasharray="9 7"/>
+<rect x="40" y="2050" width="2720" height="180" rx="14" fill="#fff3e3" stroke="#d6aa6c"/>
+<text x="60" y="2093" font-size="28" class="strong" text-anchor="start">停止与恢复：所有分支共同遵守</text>
+<text x="60" y="2135" font-size="25" class="muted" text-anchor="start">发送前持久意图；发送后未知进入 waiting_reconciliation，不改走备用重发。重启遇未清 checkpoint 阻止再发送。暂停/取消传递并确认停止；授权已消费不重用。当前防重发为本地 provisional，完整查询恢复与真实副作用核实另</text>
+<text x="60" y="2172" font-size="25" class="muted" text-anchor="start">验收。</text>
+<rect x="40" y="2260" width="2720" height="225" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="2303" font-size="28" class="strong" text-anchor="start">一个完整示例：持续维护 PR 的 CI</text>
+<text x="60" y="2346" font-size="25" class="muted" text-anchor="start">真实 CI run 失败 → 影响对应 commit 的发布结论 → Laya 判断核实/定位 → AgentArts 编排测试定位与修复提案 → 本地 Policy 允许范围内补丁 → 运行相关测试并读回 diff → 记录证据 → 创建监管任务，等待新 CI 结果</text>
+<text x="60" y="2384" font-size="25" class="muted" text-anchor="start">；出现新 commit 时旧评审自动失效。</text>
+<text x="60" y="2450" font-size="22" class="muted" text-anchor="start">各泳道是职责，非必然独立进程；流程为目标设计，现有能力和缺口以模块快照为准。</text>
+</svg></div></section><section class="diagram"><div class="diagram-title"><h2>信任边界、双通道与发布</h2><a href="trust-and-transport.svg">打开原尺寸 SVG</a></div><div class="svg-scroll"><svg xmlns="http://www.w3.org/2000/svg" width="2800" height="2040" viewBox="0 0 2800 2040" role="img" aria-labelledby="trust-and-transport-title trust-and-transport-desc">
+<title id="trust-and-transport-title">信任、双通道恢复与发布架构</title><desc id="trust-and-transport-desc">用户权限与沙箱独立；双通道同语义；本地执行事实源；发布验收与回滚。</desc>
+<defs><marker id="trust-and-transport-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52687d"/></marker></defs>
+<style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#183145} .muted{fill:#52697a} .white{fill:white} .strong{font-weight:700}</style>
+<rect x="0" y="0" width="2800" height="2040" rx="0" fill="#f3f6fa" stroke="none"/>
+<text x="50" y="72" font-size="40" class="strong" text-anchor="start">信任与连接 · 双通道恢复 · 发布与验收</text>
+<text x="50" y="119" font-size="23" class="muted" text-anchor="start">WSS 是主通道；HTTPS 是同一 AgentArts 的备用；切换传输不增加权限</text>
+<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<rect x="40" y="210" width="870" height="580" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="253" font-size="28" class="strong" text-anchor="start">A. 用户与本地可信边界</text>
+<rect x="940" y="210" width="870" height="580" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="960" y="253" font-size="28" class="strong" text-anchor="start">B. AgentArts 与外部输入边界</text>
+<rect x="1840" y="210" width="920" height="580" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="1860" y="253" font-size="28" class="strong" text-anchor="start">C. 执行限制与证据边界</text>
+<text x="60" y="313" font-size="23" class="muted" text-anchor="start">用户指令 / 明确预授权</text>
+<text x="60" y="385" font-size="23" class="muted" text-anchor="start">Renderer：输入与显示，不能持有密钥</text>
+<text x="60" y="457" font-size="23" class="muted" text-anchor="start">Preload/IPC → Client → Runtime Application</text>
+<text x="60" y="529" font-size="23" class="muted" text-anchor="start">可信宿主：配置、凭据适配与租约</text>
+<text x="60" y="601" font-size="23" class="muted" text-anchor="start">Policy：目标/工具/范围/参数/期限/revision</text>
+<text x="60" y="673" font-size="23" class="muted" text-anchor="start">TaskRuntime：任务终态与持久执行记录</text>
+<text x="960" y="313" font-size="23" class="muted" text-anchor="start">云/模型/网页/邮件/Issue：不可信数据</text>
+<text x="960" y="385" font-size="23" class="muted" text-anchor="start">最小可导出子图；不发送原始凭据</text>
+<text x="960" y="457" font-size="23" class="muted" text-anchor="start">云编排返回候选，经过 Schema 与新鲜度检查</text>
+<text x="960" y="529" font-size="23" class="muted" text-anchor="start">无权更改本机权限或直接操作 OS</text>
+<text x="960" y="601" font-size="23" class="muted" text-anchor="start">认证失败停止；协议不兼容明确拒绝</text>
+<text x="960" y="673" font-size="23" class="muted" text-anchor="start">Trace 是云追踪，不替代本机读回</text>
+<text x="1860" y="313" font-size="23" class="muted" text-anchor="start">工具统一经过 ToolGateway / Connector Host</text>
+<text x="1860" y="385" font-size="23" class="muted" text-anchor="start">固定能力、受限账户、目录和资源锁</text>
+<text x="1860" y="457" font-size="23" class="muted" text-anchor="start">沙箱：文件/网络/进程的实际隔离</text>
+<text x="1860" y="529" font-size="23" class="muted" text-anchor="start">路径检查与超时不是强 OS 沙箱</text>
+<text x="1860" y="601" font-size="23" class="muted" text-anchor="start">任意 Shell 自主执行：当前不开放</text>
+<text x="1860" y="673" font-size="23" class="muted" text-anchor="start">实际副作用读回 → Evidence → Runtime</text>
+<rect x="40" y="825" width="2720" height="595" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="870" font-size="29" class="strong" text-anchor="start">双通道状态：只有确认业务受理与执行结果后，才能安全切换</text>
+<rect x="80" y="940" width="420" height="140" rx="14" fill="#e7f0f8" stroke="#d5dfe8"/>
+<text x="100" y="982" font-size="26" class="strong" text-anchor="start">WSS_CONNECTING</text>
+<text x="100" y="1028" font-size="23" class="muted" text-anchor="start">握手/认证/能力协商</text>
+<rect x="660" y="940" width="420" height="140" rx="14" fill="#e7f0f8" stroke="#d5dfe8"/>
+<text x="680" y="982" font-size="26" class="strong" text-anchor="start">WSS_READY</text>
+<text x="680" y="1028" font-size="23" class="muted" text-anchor="start">严格受理/结果与继续轮次</text>
+<rect x="1250" y="940" width="480" height="140" rx="14" fill="#e7f0f8" stroke="#d5dfe8"/>
+<text x="1270" y="982" font-size="26" class="strong" text-anchor="start">RECONCILING</text>
+<text x="1270" y="1028" font-size="23" class="muted" text-anchor="start">已发送后未知；阻止重复发送</text>
+<rect x="1920" y="940" width="700" height="140" rx="14" fill="#e7f0f8" stroke="#d5dfe8"/>
+<text x="1940" y="982" font-size="26" class="strong" text-anchor="start">HTTPS_READY</text>
+<text x="1940" y="1028" font-size="23" class="muted" text-anchor="start">同目标 POST；仅未发送连接失败可备用</text>
+<path d="M500,1010 L660,1010" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#trust-and-transport-arrow)"  />
+<path d="M1080,1010 L1250,1010" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#trust-and-transport-arrow)"  />
+<text x="1096" y="978" font-size="20" class="" text-anchor="start">断线</text>
+<path d="M290,940 L290,904 L2270,904 L2270,940" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#trust-and-transport-arrow)" stroke-dasharray="9 7"/>
+<text x="1320" y="925" font-size="21" class="" text-anchor="start">invoke 从未发送才可自动备用</text>
+<path d="M2270,1080 L2270,1140 L870,1140 L870,1080" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#trust-and-transport-arrow)" stroke-dasharray="9 7"/>
+<text x="1120" y="1175" font-size="24" class="" text-anchor="start">目标恢复：验证 WSS → 暂停新发送 → 核实 → 后续调用回主通道</text>
+<text x="80" y="1230" font-size="24" class="muted" text-anchor="start">本地 provisional：0.1.0严格信封；发送前持久意图，未知结果/重启标记阻止重发。容器仅有界内存回执，restartRecovery=false；status unknown不能解释为未执行。HTTPS当前为单轮JSON事件数组，持久查询/游标恢复消费者待</text>
+<text x="80" y="1266" font-size="24" class="muted" text-anchor="start">验收。</text>
+<text x="80" y="1378" font-size="25" class="strong" text-anchor="start">真实网关、凭据/Upgrade与恢复另验收；认证/协议失败不触发备用，也不切换产品 Profile。</text>
+<rect x="40" y="1460" width="2720" height="520" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="1505" font-size="29" class="strong" text-anchor="start">发布链与各层验收：本地构建成功不能替代云端 Golden Path</text>
+<rect x="70" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="88" y="1592" font-size="27" class="strong" text-anchor="start">受限构建</text>
+<text x="88" y="1635" font-size="23" class="muted" text-anchor="start">ARM64 / 锁依赖 / 非 root</text>
+<path d="M580,1625 L610,1625" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#trust-and-transport-arrow)"  />
+<rect x="610" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="628" y="1592" font-size="27" class="strong" text-anchor="start">GHCR 协作 / 拉取</text>
+<text x="628" y="1635" font-size="23" class="muted" text-anchor="start">固定digest；云端按平台配置</text>
+<path d="M1120,1625 L1150,1625" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#trust-and-transport-arrow)"  />
+<rect x="1150" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="1168" y="1592" font-size="27" class="strong" text-anchor="start">AgentArts 部署</text>
+<text x="1168" y="1635" font-size="23" class="muted" text-anchor="start">版本 / 身份 / /ws 与 HTTP</text>
+<path d="M1660,1625 L1690,1625" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#trust-and-transport-arrow)"  />
+<rect x="1690" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="1708" y="1592" font-size="27" class="strong" text-anchor="start">真实闭环</text>
+<text x="1708" y="1635" font-size="23" class="muted" text-anchor="start">提案 → Policy → 工具 → 读回</text>
+<path d="M2200,1625 L2230,1625" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#trust-and-transport-arrow)"  />
+<rect x="2230" y="1550" width="510" height="155" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="2248" y="1592" font-size="27" class="strong" text-anchor="start">评估与上线</text>
+<text x="2248" y="1635" font-size="23" class="muted" text-anchor="start">领域评估 / 小范围 / 回滚</text>
+<text x="70" y="1760" font-size="24" class="muted" text-anchor="start">协作者共享：源码 + 契约 + 配置说明 + 固定镜像 + 验收记录；个人密钥与原始认证导出不共享。新版本兼容旧 checkpoint；不兼容时暂停/迁移，不能通过切换传输掩盖。</text>
+<text x="70" y="1870" font-size="24" class="muted" text-anchor="start">每个真实验证分别记录 deployment/API/trace、工具参数摘要、实际读回与终态。Fake、隔离合成测试、控制台页面状态各自有价值，均不足以单独证明完整产品可用。</text>
+</svg></div></section><section class="diagram"><div class="diagram-title"><h2>Wiki 接入长期记忆 · goo122 实施</h2><a href="wiki-memory.svg">打开原尺寸 SVG</a></div><div class="svg-scroll"><svg xmlns="http://www.w3.org/2000/svg" width="2800" height="1830" viewBox="0 0 2800 1830" role="img" aria-labelledby="wiki-memory-title wiki-memory-desc">
+<title id="wiki-memory-title">Wiki 接入长期记忆：goo122 实施</title><desc id="wiki-memory-desc">Wiki 正文、Memory 事实投影、Runtime 受控写回、来源失效、隐私和跨存储恢复；新增目标未验收。</desc>
+<defs><marker id="wiki-memory-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52687d"/></marker></defs>
+<style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#183145} .muted{fill:#52697a} .white{fill:white} .strong{font-weight:700}</style>
+<rect x="0" y="0" width="2800" height="1830" rx="0" fill="#f3f6fa" stroke="none"/>
+<text x="50" y="72" font-size="40" class="strong" text-anchor="start">Wiki ↔ 长期记忆 · 来源、版本、写回与增量修复</text>
+<text x="50" y="119" font-size="23" class="muted" text-anchor="start">实施负责人 goo122：MOD-08/09；zemeng 通过公开端口消费；不把执行状态或授权写成 Wiki 台账</text>
+<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<rect x="50" y="230" width="720" height="430" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="72" y="273" font-size="28" class="strong" text-anchor="start">① 原始来源 / 用户编辑</text>
+<text x="72" y="322" font-size="25" class="muted" text-anchor="start">项目资料、确认偏好、排障经验；保留原来源与观察时间。用</text>
+<text x="72" y="361" font-size="25" class="muted" text-anchor="start">户选择库和范围；读取、写入、发送云端分别授权。扫描失败</text>
+<text x="72" y="400" font-size="25" class="muted" text-anchor="start">不等于页面删除。</text>
+<rect x="1000" y="230" width="760" height="430" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="1022" y="273" font-size="28" class="strong" text-anchor="start">② MOD-08 Wiki / 知识适配</text>
+<text x="1022" y="322" font-size="25" class="muted" text-anchor="start">知识正文、稳定页面身份、revision、段落/块引用与链接。优</text>
+<text x="1022" y="361" font-size="25" class="muted" text-anchor="start">先复用 Markdown/Obsidian 基础；具体 Wiki 适配由 goo122</text>
+<text x="1022" y="400" font-size="25" class="muted" text-anchor="start"> 选择。内容变化后旧引用失效。</text>
+<rect x="1990" y="230" width="760" height="430" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="2012" y="273" font-size="28" class="strong" text-anchor="start">③ MOD-09 Memory 投影</text>
+<text x="2012" y="322" font-size="25" class="muted" text-anchor="start">来源绑定的 Fact、检索索引、确认级别和 FactChangeFeed。</text>
+<text x="2012" y="361" font-size="25" class="muted" text-anchor="start">投影可重建；不制造与 Wiki 脱离的第二份真相。相同来源 rev</text>
+<text x="2012" y="400" font-size="25" class="muted" text-anchor="start">ision 去重；撤回传播。</text>
+<path d="M770,445 L1000,445" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#wiki-memory-arrow)"  />
+<text x="804" y="413" font-size="23" class="" text-anchor="start">受信读取</text>
+<path d="M1760,445 L1990,445" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#wiki-memory-arrow)"  />
+<text x="1786" y="413" font-size="23" class="" text-anchor="start">版本化引用</text>
+<rect x="1990" y="840" width="760" height="440" rx="14" fill="#f2edf8" stroke="#d5dfe8"/>
+<text x="2012" y="883" font-size="28" class="strong" text-anchor="start">④ MOD-27/28 图与认知</text>
+<text x="2012" y="932" font-size="25" class="muted" text-anchor="start">消费公开 MemoryQueryPort / FactChangeFeed。Wiki 变化</text>
+<text x="2012" y="971" font-size="25" class="muted" text-anchor="start">影响相关 Goal/Plan，触发局部核实和修复。链接关系不自动等</text>
+<text x="2012" y="1010" font-size="25" class="muted" text-anchor="start">于执行依赖；未经确认的模型摘要不是事实。</text>
+<path d="M2370,660 L2370,840" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#wiki-memory-arrow)"  />
+<text x="2396" y="764" font-size="23" class="" text-anchor="start">变化/撤回/新鲜度</text>
+<rect x="1000" y="840" width="760" height="440" rx="14" fill="#edf6ef" stroke="#d5dfe8"/>
+<text x="1022" y="883" font-size="28" class="strong" text-anchor="start">⑤ MOD-03/05 Runtime 受控写回</text>
+<text x="1022" y="932" font-size="25" class="muted" text-anchor="start">执行 Evidence 或用户输入 → 精确补丁提案 → Policy 审批</text>
+<text x="1022" y="971" font-size="25" class="muted" text-anchor="start">/有效预授权 → ToolGateway。绑定 source/config、basel</text>
+<text x="1022" y="1010" font-size="25" class="muted" text-anchor="start">ine 与 edits；写后备份和实际哈希读回。</text>
+<path d="M1990,1060 L1760,1060" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#wiki-memory-arrow)"  />
+<text x="1776" y="1028" font-size="22" class="" text-anchor="start">候选，不是授权</text>
+<path d="M1380,840 L1380,660" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#wiki-memory-arrow)"  />
+<text x="1400" y="760" font-size="23" class="" text-anchor="start">受控更新正文</text>
+<rect x="50" y="840" width="720" height="440" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
+<text x="72" y="883" font-size="28" class="strong" text-anchor="start">⑥ 对话检索 / 云端最小投影</text>
+<text x="72" y="932" font-size="25" class="muted" text-anchor="start">回答带来源与版本；变更返回 SOURCE_CHANGED 或重新核实</text>
+<text x="72" y="971" font-size="25" class="muted" text-anchor="start">。private 默认不出机；摘要/索引继承敏感级别。本地可检</text>
+<text x="72" y="1010" font-size="25" class="muted" text-anchor="start">索不等于可送 AgentArts。</text>
+<path d="M2370,1280 L2370,1340 L410,1340 L410,1280" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#wiki-memory-arrow)" />
+<text x="860" y="1384" font-size="25" class="" text-anchor="start">只提供当前有效、已授权、可核实的内容与引用；任务状态仍由 Runtime 管理</text>
+<rect x="50" y="1440" width="2700" height="325" rx="14" fill="#fff4e6" stroke="#d6aa6c"/>
+<text x="72" y="1485" font-size="28" class="strong" text-anchor="start">一致性与恢复：目标设计，不提升已有完成度</text>
+<text x="72" y="1530" font-size="25" class="muted" text-anchor="start">Wiki 文件 + Memory SQLite 无天然跨存储原子事务。正文已核实、投影待更新 → 持久 pending/receipt → 重启读回后补投影；未知写入不盲重试。统一采集 + operation/revision 去重避免回写循环。</text>
+<text x="72" y="1651" font-size="25" class="muted" text-anchor="start">来源切换/权限撤销取消旧租约；持久无人监管权限另行实现。修改、删除、移动、越界、私人出机、版本冲突与崩溃恢复必须验收。交付依据见 WIKI-MEMORY-HANDOFF.md。</text>
+</svg></div></section><section id="wiki-handoff"><h2>Wiki 接入实施交接 · goo122</h2><h1 id="wiki-heading-0">Wiki 记忆接入：goo122 实施工作包</h1><p>2026-10-09；状态：设计交接，尚未实现。目标：<code>huawei_ict_agentarts</code>。唯一交付负责人：<strong>goo122</strong>。本文件按用户要求明确实施责任，不表示已向某个聊天或智能体发送消息。</p><h2 id="wiki-0">目标及所有权</h2><p>将 Wiki 纳入长期语义记忆：Wiki 管理知识正文及来源版本，Memory 管理受授权的结构化事实/检索投影，变化通过 FactChangeFeed 触发 Goal/Cognition 增量核实。复用既有知识与记忆端口，不新建任务库或执行器。</p><p>- goo122：<code>packages/knowledge/</code>（MOD-08）、<code>packages/memory/</code> 与 <code>packages/learning/</code>（MOD-09）；必要的 contracts、Runtime、Policy 接线由本工作包负责并说明兼容性。</p><p>- zemeng：MOD-27/28 消费端、AgentArts 的受限数据投影及 Desktop 产品体验；只通过公开端口集成。</p><p>- 保留其他协作者修改；在实际工作树确认基线和未提交内容后开工。同一共享文件串行编辑，依赖状态以当前接口目录为准。</p><h2 id="wiki-1">现有可复用基础与限制</h2><p><code>KnowledgePort</code> 当前公开 <code>search</code>，返回 vaultId/path/line/revision 与 excerpt。只读端口不能被假装已有通用 Wiki 写入 API。独立受控写入口 <code>knowledge.apply_note_patch@1.0.0</code> 已有 baseline、精确替换、备份、锁内哈希读回及未知结果协调基础；不是完整崩溃原子写入。可信源配置绑定 sourceId/configRevision，写与出机许可当前仅会话有效。</p><p>Memory 已有 provisional MemoryQueryPort、FactChangeFeedPort 与 SQLite 版本/水位线/幂等基础。自动 Wiki 索引、LLM Wiki、安装式 Obsidian 插件及全链路自动同步未交付。README 中较旧的 Fake 状态不能覆盖后续增量；后续代码存在也不能自动提升冻结状态。</p><p>具体 Wiki 产品未指定。由负责人在本公开边界内选型；本地 Markdown/Obsidian 是可复用起点，在线系统作为适配器替换，不默认新增云账号、插件或付费服务。</p><h2 id="wiki-2">契约与数据流</h2><ol><li>受信宿主绑定来源、namespace、范围与数据级别；模型/Renderer 不能提交任意根目录或云账号。</li><li>读取页面和精确源 revision；来源引用保留页面身份、位置、configRevision、原始资料证据与有效期。</li><li>形成经授权的事实或检索投影。显式区分用户确认、外部观察与模型推断，不伪造确认。</li><li>同一来源 revision 重放不重复发事件；手工修改/移动/确认删除使旧投影失效或撤回。</li><li>消费方检索时校验最新版本和权限；来源变更返回 SOURCE_CHANGED/核实流程，历史内容不能冒充当前事实。</li><li>记忆整理仅生成候选补丁，经原 Runtime/Policy/ToolGateway 写回；expectedSha256、精确 edits、备份和读回一致。</li><li>写后复用统一来源采集更新投影，以 operation/revision 去重，避免双向回写循环。</li><li>正文写入与 SQLite 投影之间用可信 pending/receipt 恢复；不能承诺跨存储原子性，不重试未知写入。</li></ol><p>新增页面身份/同步端口必须按公共契约流程发布，标明 provisional 与错误码；禁止在认知或 UI 私设 DTO、深层导入或直接修改 Memory 数据库。Wiki 链接关系不直接等同 Goal 执行依赖。</p><h2 id="wiki-3">授权与隐私</h2><p>读取、写入、导出云端、物理删除分别检查范围与授权。摘要和索引继承源敏感级别；private 默认不出机。权限撤销取消租约并影响后续检索/写入；旧来源的任务不能切换消费新库。长期无人监管权限属于 MOD-05/13 的另一个增量，当前会话许可不能升级为永久许可。</p><p>删除/撤回说明正文、Memory 事实、索引、缓存、WAL 和备份的覆盖范围。数据库行删除不证明所有副本已擦除。外部 Wiki 内容只是数据，不能改变权限或发起未经授权的工具调用。</p><h2 id="wiki-4">验收与交付</h2><p>先离线公开合成 Wiki，再按对应授权验收一个真实来源，分别记录：</p><p>- 页面读取/检索与源 revision 一致，答案可以定位真实来源；修改后旧引用失效。</p><p>- 同 revision 重复采集无重复事件；页面移动保持身份，确认删除撤回投影，扫描失败不误删。</p><p>- 来源切换、越界、权限撤销、private 出机、过期和参数替换被拒绝。</p><p>- 经审批的精确补丁写入后真实读回；baseline 冲突不覆盖用户新改动。</p><p>- 写后投影失败/进程中断可恢复；未知操作核实，不能再次写入或形成回写循环。</p><p>- FactChangeFeed 驱动受影响 Goal/Plan 核实；无关计划不失效，不把模型摘要当 verified。</p><p>必要检查按实际改动执行受影响测试/类型检查；公共接口或 Runtime 集成执行仓库要求的 <code>npm run check</code>。提交公开 exports、Schema/Fake/Unavailable、实现、消费接线、失败路径、README 与真实证据；未验收的 Wiki/云能力仍 unavailable，不据文档调整模块估算为完成。</p><p>合并遵守当前两人确认与本机阅读门槛；禁止强制合并、管理员绕过、跳过检查和自审冒充他人批准。</p></section><section id="module-section"><h2>39 个模块 · 负责人、位置、估算与缺口</h2><div class="toolbar"><input id="search" type="search" placeholder="搜索模块、负责人、目录或缺口" aria-label="筛选模块"><span id="count">39 / 39</span></div><div class="module-grid"><article class="module" data-search="MOD-01工程与存储底座goo122packages/storage；根配置常驻长时间运行、升级保留数据和跨重启队列需联合验收。"><div class="module-head"><strong>MOD-01 · 工程与存储底座</strong><b>85%</b></div><div class="progress"><span style="width:85%"></span></div><p>goo122 · packages/storage；根配置</p><p>估算区间：75–95%；得分：20 / 30 / 20 / 10 / 5</p><p><strong>缺口：</strong>常驻长时间运行、升级保留数据和跨重启队列需联合验收。</p><p class="evidence">依据：packages/storage；docs/ROADMAP.md</p></article><article class="module" data-search="MOD-02公共契约与客户端goo122packages/contracts；packages/client；packages/testkit10-09 传输0.1.0严格信封/能力已有 provisional 本地实现；真实网关认证、重启恢复与消费端组合待验收，不能扩展旧 frozen 子集。"><div class="module-head"><strong>MOD-02 · 公共契约与客户端</strong><b>75%</b></div><div class="progress"><span style="width:75%"></span></div><p>goo122 · packages/contracts；packages/client；packages/testkit</p><p>估算区间：65–85%；得分：20 / 25 / 20 / 5 / 5</p><p><strong>缺口：</strong>10-09 传输0.1.0严格信封/能力已有 provisional 本地实现；真实网关认证、重启恢复与消费端组合待验收，不能扩展旧 frozen 子集。</p><p class="evidence">依据：packages/contracts/schema/agentarts-transport.json；docs/DEVELOPMENT_PROTOCOL.md</p></article><article class="module" data-search="MOD-03任务 Runtimegoo122apps/runtime/src/application；Runtime 核心10-09 发送前持久意图/结果未知防重发已有 provisional 本地接线；真实网关和重启恢复消费者、持续租约及无人监管组合待验收。"><div class="module-head"><strong>MOD-03 · 任务 Runtime</strong><b>75%</b></div><div class="progress"><span style="width:75%"></span></div><p>goo122 · apps/runtime/src/application；Runtime 核心</p><p>估算区间：60–80%；得分：20 / 25 / 20 / 5 / 5</p><p><strong>缺口：</strong>10-09 发送前持久意图/结果未知防重发已有 provisional 本地接线；真实网关和重启恢复消费者、持续租约及无人监管组合待验收。</p><p class="evidence">依据：apps/runtime/src/application/agentarts.ts；apps/runtime/src/application/coordination.ts；docs/ARCHITECTURE.md</p></article><article class="module" data-search="MOD-04A模型网关与 Providergoo122packages/models；云镜像通过公开导出消费自有镜像中的真实模型与工具提案闭环未证实；不能把文字 JSON 提案视为原生工具调用。"><div class="module-head"><strong>MOD-04A · 模型网关与 Provider</strong><b>70%</b></div><div class="progress"><span style="width:70%"></span></div><p>goo122 · packages/models；云镜像通过公开导出消费</p><p>估算区间：60–80%；得分：20 / 25 / 15 / 5 / 5</p><p><strong>缺口：</strong>自有镜像中的真实模型与工具提案闭环未证实；不能把文字 JSON 提案视为原生工具调用。</p><p class="evidence">依据：packages/models；docs/modules/MOD-04A-LIVE-RESPONSE-RECOVERY-20261008.md</p></article><article class="module" data-search="MOD-04B协调与云端口zemengpackages/coordination；Runtime CloudAgentPort 消费方10-09 WSS主通道与invoke未发送时HTTPS备用已有 provisional 本地实现；已发送未知结果禁止重发，真实网关/完整恢复消费待验收。"><div class="module-head"><strong>MOD-04B · 协调与云端口</strong><b>55%</b></div><div class="progress"><span style="width:55%"></span></div><p>zemeng · packages/coordination；Runtime CloudAgentPort 消费方</p><p>估算区间：40–70%；得分：15 / 20 / 15 / 0 / 5</p><p><strong>缺口：</strong>10-09 WSS主通道与invoke未发送时HTTPS备用已有 provisional 本地实现；已发送未知结果禁止重发，真实网关/完整恢复消费待验收。</p><p class="evidence">依据：packages/coordination/src/agentarts-websocket.ts；packages/coordination/src/agentarts.ts；docs/adr/0012-owned-agentarts-image.md</p></article><article class="module" data-search="MOD-05Policy 与工具网关goo122packages/policy；packages/tool-gateway；packages/connector-host持久无人值守授权、撤销竞态、跨传输去重与强隔离组合验收不足。"><div class="module-head"><strong>MOD-05 · Policy 与工具网关</strong><b>55%</b></div><div class="progress"><span style="width:55%"></span></div><p>goo122 · packages/policy；packages/tool-gateway；packages/connector-host</p><p>估算区间：40–70%；得分：20 / 20 / 10 / 0 / 5</p><p><strong>缺口：</strong>持久无人值守授权、撤销竞态、跨传输去重与强隔离组合验收不足。</p><p class="evidence">依据：packages/policy；packages/tool-gateway；docs/interfaces/CURRENT_INTERFACE_CATALOG.md</p></article><article class="module" data-search="MOD-06本地 MCPgoo122packages/mcp；可信宿主的固定 stdio 服务已有受限只读参考服务；任意服务、写操作及通用恢复不在已证实范围。"><div class="module-head"><strong>MOD-06 · 本地 MCP</strong><b>55%</b></div><div class="progress"><span style="width:55%"></span></div><p>goo122 · packages/mcp；可信宿主的固定 stdio 服务</p><p>估算区间：40–70%；得分：15 / 20 / 10 / 5 / 5</p><p><strong>缺口：</strong>已有受限只读参考服务；任意服务、写操作及通用恢复不在已证实范围。</p><p class="evidence">依据：packages/mcp/README.md；docs/modules/MOD-06-07-MVP.md</p></article><article class="module" data-search="MOD-07Skills 执行goo122packages/skills；固定 reference-summary Bundle已有固定受限 Skill；任意脚本/下载运行、完整审批恢复与云端消费未验收。"><div class="module-head"><strong>MOD-07 · Skills 执行</strong><b>50%</b></div><div class="progress"><span style="width:50%"></span></div><p>goo122 · packages/skills；固定 reference-summary Bundle</p><p>估算区间：35–65%；得分：15 / 20 / 10 / 0 / 5</p><p><strong>缺口：</strong>已有固定受限 Skill；任意脚本/下载运行、完整审批恢复与云端消费未验收。</p><p class="evidence">依据：packages/skills/README.md；docs/modules/MOD-06-07-MVP.md</p></article><article class="module" data-search="MOD-08知识与 Wiki/Obsidiangoo122packages/knowledge；Wiki 适配/受控写入新增 Wiki 长期知识设计由 goo122 实现；自动索引、来源同步、双向写回及常驻消费尚待交付/真实验收。"><div class="module-head"><strong>MOD-08 · 知识与 Wiki/Obsidian</strong><b>45%</b></div><div class="progress"><span style="width:45%"></span></div><p>goo122 · packages/knowledge；Wiki 适配/受控写入</p><p>估算区间：30–60%；得分：15 / 15 / 10 / 0 / 5</p><p><strong>缺口：</strong>新增 Wiki 长期知识设计由 goo122 实现；自动索引、来源同步、双向写回及常驻消费尚待交付/真实验收。</p><p class="evidence">依据：packages/knowledge；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-09记忆与 Wiki 投影goo122packages/memory；packages/learning新增 Wiki→版本化事实/检索投影由 goo122 实现；来源 revision、双向去重、撤回、跨存储恢复和出机控制需联合验收。"><div class="module-head"><strong>MOD-09 · 记忆与 Wiki 投影</strong><b>65%</b></div><div class="progress"><span style="width:65%"></span></div><p>goo122 · packages/memory；packages/learning</p><p>估算区间：50–80%；得分：20 / 20 / 15 / 5 / 5</p><p><strong>缺口：</strong>新增 Wiki→版本化事实/检索投影由 goo122 实现；来源 revision、双向去重、撤回、跨存储恢复和出机控制需联合验收。</p><p class="evidence">依据：packages/memory；docs/modules/MOD-09-VAULT-LIFECYCLE-20261008.md</p></article><article class="module" data-search="MOD-10模型研究与训练zemengdocs/research/agentarts；后续模型研究工作包研究材料不等于训练完成；Laya 开发者场景标注集、校准与训练尚未交付。"><div class="module-head"><strong>MOD-10 · 模型研究与训练</strong><b>20%</b></div><div class="progress"><span style="width:20%"></span></div><p>zemeng · docs/research/agentarts；后续模型研究工作包</p><p>估算区间：5–35%；得分：10 / 5 / 5 / 0 / 0</p><p><strong>缺口：</strong>研究材料不等于训练完成；Laya 开发者场景标注集、校准与训练尚未交付。</p><p class="evidence">依据：docs/research/agentarts；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-11Desktop 外壳与桥接zemengapps/desktop；Electron 主进程/Preload/IPC主进程内 Runtime 已有基础；无人监管状态展示、长驻恢复和权限改动需验收。"><div class="module-head"><strong>MOD-11 · Desktop 外壳与桥接</strong><b>75%</b></div><div class="progress"><span style="width:75%"></span></div><p>zemeng · apps/desktop；Electron 主进程/Preload/IPC</p><p>估算区间：65–85%；得分：20 / 25 / 20 / 5 / 5</p><p><strong>缺口：</strong>主进程内 Runtime 已有基础；无人监管状态展示、长驻恢复和权限改动需验收。</p><p class="evidence">依据：apps/desktop；docs/PROJECT_STRUCTURE.md</p></article><article class="module" data-search="MOD-12Orb 与对话体验zemengapps/desktop 的 Orb/Conversation 功能责任面板、委派监管关系、降级状态和多窗口/DPI 组合体验待完成。"><div class="module-head"><strong>MOD-12 · Orb 与对话体验</strong><b>70%</b></div><div class="progress"><span style="width:70%"></span></div><p>zemeng · apps/desktop 的 Orb/Conversation 功能</p><p>估算区间：60–80%；得分：20 / 25 / 15 / 5 / 5</p><p><strong>缺口：</strong>责任面板、委派监管关系、降级状态和多窗口/DPI 组合体验待完成。</p><p class="evidence">依据：apps/desktop；docs/design/voice-first-proactive-agent-laya-proposal.md</p></article><article class="module" data-search="MOD-13管理与自主设置zemengapps/desktop 的 Settings/Admin 功能Laya 策略、权限租约、隔离档位与 Runtime 实际行为需端到端绑定。"><div class="module-head"><strong>MOD-13 · 管理与自主设置</strong><b>60%</b></div><div class="progress"><span style="width:60%"></span></div><p>zemeng · apps/desktop 的 Settings/Admin 功能</p><p>估算区间：45–75%；得分：15 / 20 / 15 / 5 / 5</p><p><strong>缺口：</strong>Laya 策略、权限租约、隔离档位与 Runtime 实际行为需端到端绑定。</p><p class="evidence">依据：apps/desktop；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-14ASR/TTS 与实时语音zemengpackages/voice；apps/desktop/electron/live-voice-host.js真实语音链路、打断与任务取消区分、设备恢复仍有验收缺口。"><div class="module-head"><strong>MOD-14 · ASR/TTS 与实时语音</strong><b>50%</b></div><div class="progress"><span style="width:50%"></span></div><p>zemeng · packages/voice；apps/desktop/electron/live-voice-host.js</p><p>估算区间：35–65%；得分：15 / 20 / 10 / 0 / 5</p><p><strong>缺口：</strong>真实语音链路、打断与任务取消区分、设备恢复仍有验收缺口。</p><p class="evidence">依据：packages/voice/README.md；apps/desktop；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-15可选语音唤醒zemengpackages/voice-wake；apps/desktop/electron/wake-voice-host.js默认关闭；真实中文唤醒、误触发和设备占用未形成完整证据。"><div class="module-head"><strong>MOD-15 · 可选语音唤醒</strong><b>35%</b></div><div class="progress"><span style="width:35%"></span></div><p>zemeng · packages/voice-wake；apps/desktop/electron/wake-voice-host.js</p><p>估算区间：20–50%；得分：15 / 10 / 5 / 0 / 5</p><p><strong>缺口：</strong>默认关闭；真实中文唤醒、误触发和设备占用未形成完整证据。</p><p class="evidence">依据：packages/voice-wake/README.md；apps/desktop；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-16Windows Hostzemengapps/windows-host；Runtime windows-host-adapter已有受限实现；真实 UIA 执行读回与进程隔离不足，握手不能证明操作成功。"><div class="module-head"><strong>MOD-16 · Windows Host</strong><b>50%</b></div><div class="progress"><span style="width:50%"></span></div><p>zemeng · apps/windows-host；Runtime windows-host-adapter</p><p>估算区间：35–65%；得分：15 / 20 / 10 / 0 / 5</p><p><strong>缺口：</strong>已有受限实现；真实 UIA 执行读回与进程隔离不足，握手不能证明操作成功。</p><p class="evidence">依据：apps/windows-host/README.md；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-17电脑状态观察zemengpackages/windows-client需接入版本化世界事实；状态观测不等于任意桌面控制或故障因果诊断。"><div class="module-head"><strong>MOD-17 · 电脑状态观察</strong><b>60%</b></div><div class="progress"><span style="width:60%"></span></div><p>zemeng · packages/windows-client</p><p>估算区间：45–75%；得分：20 / 20 / 15 / 0 / 5</p><p><strong>缺口：</strong>需接入版本化世界事实；状态观测不等于任意桌面控制或故障因果诊断。</p><p class="evidence">依据：packages/windows-client/README.md；docs/ROADMAP.md</p></article><article class="module" data-search="MOD-18编程工具与工件zemengpackages/coding-tools；工作区受限工具读/预览/补丁已有接线；任意命令强沙箱、Windows 长作业与工件服务待闭环。"><div class="module-head"><strong>MOD-18 · 编程工具与工件</strong><b>65%</b></div><div class="progress"><span style="width:65%"></span></div><p>zemeng · packages/coding-tools；工作区受限工具</p><p>估算区间：50–80%；得分：20 / 20 / 15 / 5 / 5</p><p><strong>缺口：</strong>读/预览/补丁已有接线；任意命令强沙箱、Windows 长作业与工件服务待闭环。</p><p class="evidence">依据：packages/coding-tools；docs/modules/MOD-27-28-INTEGRATION-HANDOFF.md</p></article><article class="module" data-search="MOD-19Windows 分发zemengscripts/release；apps/desktop已有打包前置工作；安装/运行/升级未完整验收，目前暂停，不作为设计交付门槛。"><div class="module-head"><strong>MOD-19 · Windows 分发</strong><b>20%</b></div><div class="progress"><span style="width:20%"></span></div><p>zemeng · scripts/release；apps/desktop</p><p>估算区间：5–35%；得分：10 / 5 / 5 / 0 / 0</p><p><strong>缺口：</strong>已有打包前置工作；安装/运行/升级未完整验收，目前暂停，不作为设计交付门槛。</p><p class="evidence">依据：docs/modules/MOD-19-RELEASE-PREFLIGHT-01.md；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-20效率与日历Potatos498packages/productivity；packages/connectors/calendar日历源 revision 与真实 Fact 投影需闭环；账户写入和全时区行为未完整验收。"><div class="module-head"><strong>MOD-20 · 效率与日历</strong><b>60%</b></div><div class="progress"><span style="width:60%"></span></div><p>Potatos498 · packages/productivity；packages/connectors/calendar</p><p>估算区间：45–75%；得分：20 / 20 / 15 / 0 / 5</p><p><strong>缺口：</strong>日历源 revision 与真实 Fact 投影需闭环；账户写入和全时区行为未完整验收。</p><p class="evidence">依据：packages/productivity；packages/connectors/calendar；docs/modules/CONNECTORS-RUNTIME-INTEGRATION.md</p></article><article class="module" data-search="MOD-21邮件连接器Potatos498packages/connectors/mail历史有限真实链路不代表完整账户生命周期；读取、发送、无人值守授权分别控制。"><div class="module-head"><strong>MOD-21 · 邮件连接器</strong><b>65%</b></div><div class="progress"><span style="width:65%"></span></div><p>Potatos498 · packages/connectors/mail</p><p>估算区间：50–80%；得分：20 / 20 / 15 / 5 / 5</p><p><strong>缺口：</strong>历史有限真实链路不代表完整账户生命周期；读取、发送、无人值守授权分别控制。</p><p class="evidence">依据：packages/connectors；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-22RSS/Atom 订阅Potatos498packages/connectors/feeds已有去重/水位线/真实读取记录；世界状态投影、噪声过滤和长期监管待组合验收。"><div class="module-head"><strong>MOD-22 · RSS/Atom 订阅</strong><b>75%</b></div><div class="progress"><span style="width:75%"></span></div><p>Potatos498 · packages/connectors/feeds</p><p>估算区间：65–85%；得分：20 / 25 / 20 / 5 / 5</p><p><strong>缺口：</strong>已有去重/水位线/真实读取记录；世界状态投影、噪声过滤和长期监管待组合验收。</p><p class="evidence">依据：packages/connectors；docs/ROADMAP.md</p></article><article class="module" data-search="MOD-23通知与提醒Potatos498packages/notifications；Desktop 消费已有静默、暂停与确认基础；源事件到界面、跨重启通知去重需真实验收。"><div class="module-head"><strong>MOD-23 · 通知与提醒</strong><b>65%</b></div><div class="progress"><span style="width:65%"></span></div><p>Potatos498 · packages/notifications；Desktop 消费</p><p>估算区间：50–80%；得分：20 / 20 / 15 / 5 / 5</p><p><strong>缺口：</strong>已有静默、暂停与确认基础；源事件到界面、跨重启通知去重需真实验收。</p><p class="evidence">依据：packages/notifications；docs/ROADMAP.md</p></article><article class="module" data-search="MOD-24资料研究Potatos498packages/connectors/research已有 OpenAlex 等有限源；广泛网页检索、来源新鲜度与研究目标链未全部实现。"><div class="module-head"><strong>MOD-24 · 资料研究</strong><b>70%</b></div><div class="progress"><span style="width:70%"></span></div><p>Potatos498 · packages/connectors/research</p><p>估算区间：55–85%；得分：20 / 25 / 15 / 5 / 5</p><p><strong>缺口：</strong>已有 OpenAlex 等有限源；广泛网页检索、来源新鲜度与研究目标链未全部实现。</p><p class="evidence">依据：packages/connectors；docs/ROADMAP.md</p></article><article class="module" data-search="MOD-25天气与环境Potatos498packages/connectors/weather已有较充分连接器证据；条件化失败语义到 AgentArts 常驻目标闭环仍需验证。"><div class="module-head"><strong>MOD-25 · 天气与环境</strong><b>80%</b></div><div class="progress"><span style="width:80%"></span></div><p>Potatos498 · packages/connectors/weather</p><p>估算区间：70–90%；得分：20 / 25 / 20 / 10 / 5</p><p><strong>缺口：</strong>已有较充分连接器证据；条件化失败语义到 AgentArts 常驻目标闭环仍需验证。</p><p class="evidence">依据：packages/connectors；docs/ROADMAP.md</p></article><article class="module" data-search="MOD-26可选社交连接器Potatos498待选择平台后在 packages/connectors 扩展未确定平台、未开工；属于可选扩展，不阻塞开发者核心路径。"><div class="module-head"><strong>MOD-26 · 可选社交连接器</strong><b>0%</b></div><div class="progress"><span style="width:0%"></span></div><p>Potatos498 · 待选择平台后在 packages/connectors 扩展</p><p>估算区间：0%；得分：0 / 0 / 0 / 0 / 0</p><p><strong>缺口：</strong>未确定平台、未开工；属于可选扩展，不阻塞开发者核心路径。</p><p class="evidence">依据：docs/MODULE_ASSIGNMENTS.md；docs/ROADMAP.md</p></article><article class="module" data-search="MOD-27目标与世界状态图zemengpackages/goals；版本化 Goal/Fact/Decision/PlanCAS/图基础已有；真实源 provenance、监管节点和完整影响传播待完成。"><div class="module-head"><strong>MOD-27 · 目标与世界状态图</strong><b>65%</b></div><div class="progress"><span style="width:65%"></span></div><p>zemeng · packages/goals；版本化 Goal/Fact/Decision/Plan</p><p>估算区间：50–80%；得分：20 / 20 / 15 / 5 / 5</p><p><strong>缺口：</strong>CAS/图基础已有；真实源 provenance、监管节点和完整影响传播待完成。</p><p class="evidence">依据：packages/goals；docs/modules/MOD-27-28-INTEGRATION-HANDOFF.md</p></article><article class="module" data-search="MOD-28持续认知与 Layazemengpackages/cognition；Laya Action Choice/Repair代码保留 calibrated:false；用户配置、领域校准、真实 AgentArts 修复和监管闭环未完成。"><div class="module-head"><strong>MOD-28 · 持续认知与 Laya</strong><b>55%</b></div><div class="progress"><span style="width:55%"></span></div><p>zemeng · packages/cognition；Laya Action Choice/Repair</p><p>估算区间：40–70%；得分：20 / 20 / 10 / 0 / 5</p><p><strong>缺口：</strong>代码保留 calibrated:false；用户配置、领域校准、真实 AgentArts 修复和监管闭环未完成。</p><p class="evidence">依据：packages/cognition/src/laya-action-choice.ts；docs/modules/MOD-28-LAYA-DECISION-01.md</p></article><article class="module" data-search="MOD-29AgentArts 基础与镜像zemengpackages/agentarts；apps/agentarts-runtime10-09 容器/ws与有界内存回执为 provisional；restartRecovery=false。新版镜像/真实部署、公开WSS路径与认证待验收。"><div class="module-head"><strong>MOD-29 · AgentArts 基础与镜像</strong><b>45%</b></div><div class="progress"><span style="width:45%"></span></div><p>zemeng · packages/agentarts；apps/agentarts-runtime</p><p>估算区间：30–60%；得分：15 / 20 / 10 / 0 / 0</p><p><strong>缺口：</strong>10-09 容器/ws与有界内存回执为 provisional；restartRecovery=false。新版镜像/真实部署、公开WSS路径与认证待验收。</p><p class="evidence">依据：apps/agentarts-runtime/src/websocket-transport.mjs；docs/adr/0012-owned-agentarts-image.md；docs/modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md</p></article><article class="module" data-search="MOD-30云工作流与单 Agentzemengapps/agentarts-runtime；编排与继续轮次10-09 完整World/Plan内部职责已有受限版本化实现；缺来源RECHECK，删除/新步骤/动作不在既有候选协议；真实模型及云修复闭环待验收。"><div class="module-head"><strong>MOD-30 · 云工作流与单 Agent</strong><b>50%</b></div><div class="progress"><span style="width:50%"></span></div><p>zemeng · apps/agentarts-runtime；编排与继续轮次</p><p>估算区间：35–65%；得分：15 / 20 / 10 / 0 / 5</p><p><strong>缺口：</strong>10-09 完整World/Plan内部职责已有受限版本化实现；缺来源RECHECK，删除/新步骤/动作不在既有候选协议；真实模型及云修复闭环待验收。</p><p class="evidence">依据：packages/agentarts/src/index.ts；docs/modules/AGENTARTS-OWNED-IMAGE-PARITY.md；docs/modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md</p></article><article class="module" data-search="MOD-31多 Agent 与评估zemengAgentArts 角色编排；Runtime Subagent Host 消费有委派基础；执行/验证/监管角色完整授权衰减与真实云评估仍缺。"><div class="module-head"><strong>MOD-31 · 多 Agent 与评估</strong><b>35%</b></div><div class="progress"><span style="width:35%"></span></div><p>zemeng · AgentArts 角色编排；Runtime Subagent Host 消费</p><p>估算区间：20–50%；得分：10 / 15 / 5 / 0 / 5</p><p><strong>缺口：</strong>有委派基础；执行/验证/监管角色完整授权衰减与真实云评估仍缺。</p><p class="evidence">依据：apps/runtime/src/application；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-32云 API/Trace/运维zemengAgentArts API；tests/manual/agentarts；云观测新镜像部署版本、真实 Trace/用量、传输降级与回滚尚未完整验收。"><div class="module-head"><strong>MOD-32 · 云 API/Trace/运维</strong><b>30%</b></div><div class="progress"><span style="width:30%"></span></div><p>zemeng · AgentArts API；tests/manual/agentarts；云观测</p><p>估算区间：15–45%；得分：10 / 10 / 5 / 0 / 5</p><p><strong>缺口：</strong>新镜像部署版本、真实 Trace/用量、传输降级与回滚尚未完整验收。</p><p class="evidence">依据：tests/manual/agentarts；docs/modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md</p></article><article class="module" data-search="MOD-33GitHub 能力goo122packages/connectors/github已有受限真实读取与 Fake；PR/写操作的长期授权和结果核实仍需验收。"><div class="module-head"><strong>MOD-33 · GitHub 能力</strong><b>75%</b></div><div class="progress"><span style="width:75%"></span></div><p>goo122 · packages/connectors/github</p><p>估算区间：65–85%；得分：20 / 25 / 20 / 5 / 5</p><p><strong>缺口：</strong>已有受限真实读取与 Fake；PR/写操作的长期授权和结果核实仍需验收。</p><p class="evidence">依据：packages/connectors/github；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-34CI 修复工作流Potatos498DEV-WORKFLOWS；CI Fix；coding-tools/git-tools历史有限修复证据；AgentArts 主路径、停止竞态与完整 PR 读回待完成。"><div class="module-head"><strong>MOD-34 · CI 修复工作流</strong><b>60%</b></div><div class="progress"><span style="width:60%"></span></div><p>Potatos498 · DEV-WORKFLOWS；CI Fix；coding-tools/git-tools</p><p>估算区间：45–75%；得分：15 / 20 / 15 / 5 / 5</p><p><strong>缺口：</strong>历史有限修复证据；AgentArts 主路径、停止竞态与完整 PR 读回待完成。</p><p class="evidence">依据：packages/coding-tools；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-35测试定位工作流Potatos498DEV-WORKFLOWS；Test Locate；TAP/证据定位已有结构化定位；不同框架、来源变化及真实任务解释质量需评估。"><div class="module-head"><strong>MOD-35 · 测试定位工作流</strong><b>70%</b></div><div class="progress"><span style="width:70%"></span></div><p>Potatos498 · DEV-WORKFLOWS；Test Locate；TAP/证据定位</p><p>估算区间：55–85%；得分：20 / 25 / 15 / 5 / 5</p><p><strong>缺口：</strong>已有结构化定位；不同框架、来源变化及真实任务解释质量需评估。</p><p class="evidence">依据：packages/coding-tools；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-36代码评审工作流goo122packages/cognition 的 Code Review；GitHub 消费已有 diff 证据锚定和恢复基础；真实发布评审及权限/缓存新鲜度待闭环。"><div class="module-head"><strong>MOD-36 · 代码评审工作流</strong><b>65%</b></div><div class="progress"><span style="width:65%"></span></div><p>goo122 · packages/cognition 的 Code Review；GitHub 消费</p><p>估算区间：50–80%；得分：20 / 20 / 15 / 5 / 5</p><p><strong>缺口：</strong>已有 diff 证据锚定和恢复基础；真实发布评审及权限/缓存新鲜度待闭环。</p><p class="evidence">依据：packages/cognition；docs/MODULE_ASSIGNMENTS.md</p></article><article class="module" data-search="MOD-37文档维护工作流goo122DEV-WORKFLOWS；后续漂移检测/补丁/PR 工作包规划项，未交付；本设计文档本身不计为自动文档维护能力。"><div class="module-head"><strong>MOD-37 · 文档维护工作流</strong><b>0%</b></div><div class="progress"><span style="width:0%"></span></div><p>goo122 · DEV-WORKFLOWS；后续漂移检测/补丁/PR 工作包</p><p>估算区间：0%；得分：0 / 0 / 0 / 0 / 0</p><p><strong>缺口：</strong>规划项，未交付；本设计文档本身不计为自动文档维护能力。</p><p class="evidence">依据：docs/MODULE_ASSIGNMENTS.md；docs/ROADMAP.md</p></article><article class="module" data-search="MOD-38Issue 分诊与修复Potatos498packages/cognition 的 Issue Triage；GitHub 消费已有受限分诊基础；真实标签/修复 PR/Issue 关联和监管结果待完成。"><div class="module-head"><strong>MOD-38 · Issue 分诊与修复</strong><b>50%</b></div><div class="progress"><span style="width:50%"></span></div><p>Potatos498 · packages/cognition 的 Issue Triage；GitHub 消费</p><p>估算区间：35–65%；得分：15 / 20 / 10 / 0 / 5</p><p><strong>缺口：</strong>已有受限分诊基础；真实标签/修复 PR/Issue 关联和监管结果待完成。</p><p class="evidence">依据：packages/cognition；docs/MODULE_ASSIGNMENTS.md</p></article></div></section><section><div class="document-layout"><nav class="toc" aria-label="方案目录"><a href="#section-0">1. 产品目标与边界</a><a href="#section-1">2. 关键设计决策</a><a href="#section-2">3. 总体架构与每个模块的位置</a><a href="#section-3">4. 用户界面与日常使用</a><a href="#section-4">5. 世界状态、记忆与依赖图</a><a href="#section-5">6. 常驻循环与增量修复</a><a href="#section-6">7. Laya 的位置、能力与可信决策</a><a href="#section-7">8. 委派、监管与任务分工</a><a href="#section-8">9. 权限、审批与执行沙箱</a><a href="#section-9">10. WSS 主通道、HTTPS 备用</a><a href="#section-10">11. 云镜像内部与平台职责</a><a href="#section-11">12. 业务连接器与开发者工作流</a><a href="#section-12">13. 公共接口与组合入口</a><a href="#section-13">14. 数据安全、信任与隐私</a><a href="#section-14">15. 故障、恢复、停止与资源管理</a><a href="#section-15">16. 部署、镜像分享与协作者协作</a><a href="#section-16">17. 可观测性与验收证据</a><a href="#section-17">18. 验收场景与评估集</a><a href="#section-18">19. 完成度估算：口径、全部模块与缺口</a><a href="#section-19">20. 实施顺序与可独立评审的工作包</a><a href="#section-20">21. 术语与阅读图例</a><a href="#section-21">22. 依据与仍需确认的事项</a></nav><div class="document"><h1 id="section-heading-0">PersonalAgent 常驻自主开发者助手：完整目标设计</h1><p>首次设计：2026-10-08；修订：2026-10-09。状态：<strong>目标方案／proposed</strong>。目标 Profile：<code>huawei_ict_agentarts</code>。设计、模块估算与可编辑架构图不等于实现完成，不改变既有接口冻结状态。现有自有镜像代码/接口与分享流程随当前 PR 提交，真实发布及验收分别记录。</p><p>设计修订：2026-10-09。Wiki 记忆接入仍由 goo122 具体实现；本轮另同步 WSS、Runtime 防重发及完整角色报告的 provisional 本地实现。模块百分比和区间保留 2026-10-08 的估算基线，不因新增代码或文档自动提高。另见项目协作规则：当前 PR 必须由 goo122 与 Potatos498 完成本机阅读确认与审批，禁止强制合并或绕过门槛。新版镜像构建/发布、父集成与真实云验收单独记录。</p><p>完成度估算代码基线：<code>e86bac53</code>，工作树为项目内 <code>.worktrees/agentarts-owned-image</code>，分支 <code>codex/agentarts-owned-image</code>。2026-10-08 快照观察了该工作树当时未提交的自有镜像迁移；其他工作树的未合并成果不计入。参考源码、README、接口目录、模块台账和验收记录；当前 PR 的代码/镜像验证另行记录，未获得新的真实云端运行证据。</p><h2 id="section-0">1. 产品目标与边界</h2><p>产品是面向开发者的常驻个人助手。电脑运行且用户暂时离开时，它继续观察已授权的信息源，判断哪些变化会影响用户的持续责任，修复受影响的局部计划，分配执行、验证和监管任务。用户回来时能看到发生了什么、为什么处理、实际改动、依据以及待决定事项。</p><p>持续责任可以是“保持这个项目的 CI 正常”“发现依赖安全公告后判断是否受影响”“监管某个 PR 的测试与评审”“维护发布前检查”“监测日程变化并调整计划”。一次对话只是建立或修改责任的入口，持续运行依赖明确的目标、范围、停止条件和授权。</p><p>参考 Your dot 的持续责任、上下文记忆、并行任务、主动提醒与任务委派体验。它具有云电脑等能力；本产品选择电脑开机时的本地执行，不提供电脑关机后继续操作的模式。AgentArts 仍承担云端语义编排；“不做独立云电脑”不等于删除云端模型和编排。<a href="https://learn.chatgpt.com/docs/dots">Your dot 官方介绍</a></p><p>核心成功标准：一个真实变化能经过可信观察、影响判断、计划更新、授权执行与独立读回，形成可追溯的结果；无变化时保持安静，证据不足时保留不确定状态。系统不依靠模型不停循环来维持“在线感”。</p><h2 id="section-1">2. 关键设计决策</h2><div class="table-wrap"><table><tr><th>决策</th><th>目标行为</th><th>当前事实与限制</th></tr><tr><td>WSS 主通道、HTTPS 备用</td><td>同一 AgentArts 部署、同一协议语义、同一任务记录；可见降级</td><td>10-09 <code>/ws</code>、严格传输信封与WSS客户端已有 provisional 本地实现；仅invoke未发送的连接失败可备用，真实网关及完整恢复待验收</td></tr><tr><td>本地 Runtime 是执行事实源</td><td>云端建议不能直接改变任务终态或本机权限</td><td>保持现有 Runtime/Application 边界</td></tr><tr><td>AgentArts 负责语义编排</td><td>云端规划、复杂判断、多角色、评估；不静默回退 Local Agent</td><td>云端新镜像真实闭环待验收</td></tr><tr><td>Laya 提高决策可检验性</td><td>对合法候选做结构化选择、弃权、升级</td><td>当前实现保留 <code>calibrated:false</code>，不保证领域可靠性</td></tr><tr><td>用户预授权有边界</td><td>限定目标、资源、动作、期限和隔离档位</td><td>全套无人值守配置与撤销仍需实现</td></tr><tr><td>世界状态驱动增量修复</td><td>仅处理发生变化且关联的节点</td><td>图、认知有基础；可信真实源与监管闭环不足</td></tr><tr><td>常驻复用现有 Runtime</td><td>事件订阅、调度、持久状态统一管理</td><td>不假设独立 Windows 服务已经存在</td></tr><tr><td>权限与沙箱独立</td><td>允许做什么与执行时能接触什么分别限制</td><td>TS 类型、路径检查、超时不构成强 OS 沙箱</td></tr><tr><td>记忆接入 Wiki</td><td>Wiki 承载长期知识正文，Memory 提供来源绑定的事实投影和检索；变化进入增量修复</td><td>MOD-08/09 由 goo122 实现；自动 Wiki 整理/同步当前未交付</td></tr></table></div><h3 id="section-heading-32">2.1 2026-10-09 实施增量，独立于原估算</h3><p>本轮补齐了三类局部实现：容器 <code>/ws</code> 与传输 <code>0.1.0</code>；Coordination 的 WSS 优先与未发送时 HTTPS 备用；Runtime 发送前持久意图和结果未知时阻止重发。World/Plan 改为完整版本化内部报告，保留事实变化、影响、步骤分类与证据需求。它们保持 provisional，不改变既有 frozen 集合。</p><p>局部测试已分别通过服务端21项、客户端16项、Runtime防重发3项，以及编排包18项。记录仅覆盖各自合成/Fake路径：父工作包的最终集成、新版镜像构建/发布与真实华为云端尚未完成。此前HTTP预览镜像的发布/容器结果不能证明这些新代码已经进入发布镜像。设计生成与XML校验不代替新的视觉检查或产品验收。</p><h2 id="section-2">3. 总体架构与每个模块的位置</h2><p>详图：<a href="architecture-overview.svg">总架构 SVG</a>、<a href="autonomy-lifecycle.svg">自主闭环 SVG</a>、<a href="trust-and-transport.svg">信任与双通道 SVG</a>、<a href="wiki-memory.svg">Wiki 与记忆 SVG</a>、<a href="index.html">离线阅读页</a>。总图包含全部 39 个模块，MOD-04 拆为 04A 和 04B。云图表示职责位置；MOD-04A 是可复用公共包，并非只能运行在云端。MOD-10 是横向研究工作，不处于每次请求的必经路径。</p><pre>用户：语音／文字／责任设置／审批／查看证据／暂停
+  ↓ MOD-11~15 Desktop Renderer
+安全 Preload / IPC → 可信主进程：凭据、窗口、Runtime Application
+  ↓ MOD-02 Client；MOD-03 TaskRuntime
+世界输入 → MOD-09 FactChangeFeed → MOD-27 世界/目标图
+Wiki 正文/版本 → MOD-08 受信知识端口 → MOD-09 事实/检索投影
+  ↓ MOD-28 影响判断 + Laya 合法候选选择
+MOD-04B Coordination / CloudAgentPort
+  ⇄ WSS 主通道；HTTPS POST + SSE/查询备用
+AgentArts 自有镜像：MOD-29 基础 → MOD-30 编排 → MOD-31 多角色
+  ↓ MOD-04A ModelGateway → 模型 Provider
+  ↑ 返回结构化提案、Trace、用量；不返回本机授权
+本地重新核对事实与版本 → MOD-05 Policy / Approval
+  ↓ ToolGateway → Connector Host → 受限执行器
+MOD-06~08、16~18、20~26、33 提供工具或观察能力
+MOD-34~38 组合开发者业务工作流
+  ↓ 外部读回与 Evidence → MOD-03 状态提交
+MOD-27/28 更新图；MOD-23 通知；监督任务继续观察
+MOD-01 存储；MOD-19 分发；MOD-32 云端观测贯穿对应边界</pre><p>Renderer 不导入 Runtime、数据库、Provider 或 Shell。主进程通过 Client/Application 接线，不复制 Agent 执行循环。packages 不反向依赖 apps；跨模块只用公开 exports 和已公布端口。工具统一走 ToolGateway，云角色不直接调用本地 OS。业务连接器只通过 MOD-05 公布的 capability 被 AgentArts 消费。</p><h2 id="section-3">4. 用户界面与日常使用</h2><h3 id="section-heading-68">4.1 入口与责任创建</h3><p>Orb 提供快速文字/语音入口；对话支持即时询问和“持续负责这件事”。建立责任时显示解析出的目标、项目/账户范围、触发源、允许动作、停止条件、通知规则与云端可见数据。用户能修改这些字段。自然语言中的“帮我看着”不能自动扩张成发布、删除或发信权限。</p><p>责任面板展示：目标、当前计划、最新事实、下一检查条件、运行/暂停状态、授权有效期、关联任务、监管任务、最后一次真实核实时间。执行记录中分别展示“受理”“等待审批”“执行中”“等待核实”“完成/失败/取消”，不把提交成功显示为工作完成。</p><h3 id="section-heading-74">4.2 无人监管模式</h3><p>用户为某个工作区开启预授权后，已授权的观察和低风险修复继续运行。超范围动作进入审批队列，相关分支等待；独立任务可继续。返回时显示按目标聚合的变化摘要，不逐条推送无关噪声。</p><p>界面常驻显示：主通道/备用通道/离线、自动化档位、隔离能力、待审批数、事实新鲜度、正在执行的副作用。用户能分别暂停一个目标、整个自主系统、某个连接器或语音监听。停止语音播放不等于取消任务；取消主任务需说明并处理其已委派执行与周期监管。</p><h3 id="section-heading-80">4.3 设置结构</h3><div class="table-wrap"><table><tr><th>设置组</th><th>用户可配置项</th><th>实际约束点</th></tr><tr><td>责任</td><td>范围、触发、完成条件、通知、停止时间</td><td>Goal/Plan + Runtime 调度</td></tr><tr><td>自主性</td><td>只观察、提案、范围内自动执行</td><td>Policy + 授权租约</td></tr><tr><td>Laya</td><td>选择策略、弃权/升级、经验证的阈值配置</td><td>Cognition 决策端口；不能扩大权限</td></tr><tr><td>沙箱</td><td>目录、网络、进程、命令、账户隔离</td><td>执行宿主；实际不可用档位禁止显示“已启用”</td></tr><tr><td>数据</td><td>允许读取、持久记忆、允许发送云端的数据</td><td>Connector Host + 投影/导出过滤</td></tr><tr><td>连接</td><td>WSS 优先、HTTPS 备用开关、部署版本</td><td>云端口传输管理；同一授权与任务</td></tr><tr><td>通知/语音</td><td>静默时段、优先级、设备、显式唤醒</td><td>MOD-14/15/23；唤醒默认关闭</td></tr></table></div><p>当前部分设置存在界面或配置基础；上述整套产品行为是目标设计，需要与真实 Runtime 接线后才能宣称可用。</p><h2 id="section-4">5. 世界状态、记忆与依赖图</h2><p>世界状态不是一段无限增长的提示词。每条事实具有稳定标识、来源、源 revision、观察时间、有效期、敏感级别和可导出范围。代码事实可以绑定 repository、HEAD、文件哈希、工作树；日历事实绑定日历源 revision；CI 事实绑定 run/job/commit。缺少来源时标为待核实，不编造 provenance。</p><div class="table-wrap"><table><tr><th>实体</th><th>含义与必需信息</th><th>事实归属</th></tr><tr><td>Fact</td><td>外部观察及来源版本；可能过期、撤回、相互冲突</td><td>Memory/FactChangeFeed；Goal 图引用</td></tr><tr><td>Goal</td><td>用户持续责任、范围、成功/停止条件</td><td>MOD-27</td></tr><tr><td>Decision</td><td>候选、选择理由、置信指标、证据引用</td><td>MOD-28；不包含可用授权秘密</td></tr><tr><td>Plan</td><td>版本化步骤与依赖、预期结果</td><td>MOD-27；运行提交受 Runtime 约束</td></tr><tr><td>Task/ToolRun</td><td>具体执行状态、deadline、取消、输入摘要</td><td>MOD-03/05</td></tr><tr><td>Supervision</td><td>观察对象、谓词、下次检查、过期、升级条件</td><td>目标图引用 Runtime 监管任务；新增设计</td></tr><tr><td>AuthorizationLease</td><td>用户允许范围、期限、撤销版本</td><td>Policy/可信存储；新增持久授权能力</td></tr><tr><td>Evidence</td><td>执行记录、实际读回、来源与核实级别</td><td>可信执行路径写入</td></tr></table></div><p>图中边表示“依赖这个事实”“由这个决定产生”“监管这个任务”等具体关系。每次变更带旧 revision、新 revision 和撤回标记。事实更新先完成可信持久化，再通知订阅者。消费水位线与 checkpoint 保留跨重启状态。</p><p>记忆分为用户确认的偏好、可核实项目事实、任务工作记忆与可撤回的推断。撤销信息要传播到相关计划和缓存；记忆删除不抹去依法/工程上必要的执行审计，产品应明确保留范围。知识写回绑定 expectedSha256、精确修改、备份与读回；过期引用不能继续作为当前依据。</p><h3 id="section-heading-113">5.1 Wiki 作为可编辑长期记忆</h3><p>Wiki 承载长期语义知识：项目背景、架构决定、用户确认的偏好、排障经验及资料关联。MOD-08 负责页面正文、目录/权限、版本和链接适配；MOD-09 负责经授权的结构化事实、检索投影与 FactChangeFeed。Wiki 页面是该知识正文的来源，Memory 投影可重建，不能形成与页面无关的第二份“真相”。原始 CI/日历/邮件仍是各自事实的来源，整理进 Wiki 必须保留其来源和时间，不能靠整理把旧信息变成新事实。</p><p>运行日志、TaskRuntime 状态、授权和原始 Evidence 不迁移为 Wiki 的执行台账。短期工作记忆也不自动写成长期知识。Wiki 链接图表示内容关系，Goal 图表示执行依赖；不能把每一个页面链接都当作计划依赖。当前未指定具体 Wiki 系统，由 goo122 通过公开适配端口选择实现，优先复用现有 Markdown/Obsidian 基础；本设计不安装插件、不创建新服务。</p><h3 id="section-heading-119">5.2 双向接入与版本化引用</h3><p>读取：用户选择受信来源及范围 → MOD-08 搜索/读回 → 校验页面 revision → MOD-09 构造允许的 Fact/引用投影 → MOD-27/28 消费。引用包含不透明 sourceId、configRevision、pageId/相对路径、段落或块定位及源内容 revision；部分是目标新增契约，不宣称已冻结。回答同时给出来源，引用过期返回 SOURCE_CHANGED 或重新核实，不能继续引用旧结论。</p><p>写回：执行证据或用户输入 → 形成 Wiki 精确修改提案 → 绑定原始证据和 baseline → Policy 审批/有效预授权 → ToolGateway → MOD-08 受控写入 → 备份及实际哈希读回 → MOD-09 更新投影/变更流。模型可提出总结，不能自行认证“用户已确认”，也不能将未经读回的执行自报成功固化为知识。</p><p>用户手工编辑、移动或删除页面时，来源适配器确认实际变化，再更新或撤回对应投影，使相关计划进入增量核实。扫描失败/库暂时不可用不等于页面删除。来源切换或权限撤销取消旧租约，旧 source/config 的引用、审批和任务不得消费新库。使用稳定页面身份处理移动，不能仅凭相似文本判断两个页面是同一来源。</p><h3 id="section-heading-127">5.3 一致性、隐私与恢复</h3><p>Wiki 文件和 Memory SQLite 不具备天然跨存储事务。复用可信操作记录，将“正文已核实、投影待更新”保存为可恢复状态；重启后读回页面并补投影，不再次盲写。重复观察以来源身份 + revision 去重，自有写回也由适配器统一产生事实更新，避免写回→采集→再次写回的循环。用户后来改动导致 baseline 冲突时保留提案并重新核实，禁止强行覆盖。</p><p>原始资料与 Wiki 页面分别保留敏感级别、读取权限和出机权限。摘要、索引及链接不得降低敏感级别；本地可检索不代表可以发送 AgentArts。当前受信知识源的写入/出机许可仅会话有效；持久无人值守权限是 MOD-05/13 的后续能力，不能由 Wiki 接入顺带放开。私人 Wiki 的删除还需明确正文、索引、缓存、WAL 和备份的范围，不能把逻辑撤回宣称为所有副本已物理删除。</p><h3 id="section-heading-133">5.4 goo122 的交付责任</h3><p>工作包见 <a href="WIKI-MEMORY-HANDOFF.md">Wiki 记忆接入交接</a>。goo122 负责 MOD-08/09 的公开契约、适配器、检索投影、受控写回、去重/恢复和必要 Runtime/Policy 接线，保持其他协作者修改。zemeng 通过公开端口消费 FactChangeFeed、来源引用和失效事件，完成认知/目标侧接线；不把 Wiki 数据库或私有实现直接导入 Agent。实现进度、真实 Wiki 证据和接口状态由后续工作包更新，不能以本设计完成代替接入完成。</p><h2 id="section-5">6. 常驻循环与增量修复</h2><p>常驻指系统在目标有效期间持续接收事件和到期检查。确定性代码负责采集、去重、合并、范围筛选、调度和权限过滤；模型只在需要语义判断时被调用。重复 RSS、无关文件变更和状态未改变的检查不触发完整规划。</p><p>一次增量修复按以下顺序运行：</p><ol><li>连接器提交真实变化，可信宿主校验 source/revision，生成 FactChanged。</li><li>MOD-27 找出直接依赖与传递依赖，限定在有效授权目标内，标记受影响计划节点。</li><li>MOD-28 判断是否忽略、保留、核实、修订或升级；Laya 在可执行候选中选择。</li><li>简单确定性调整直接形成局部候选；需要语义推理的部分通过 WSS/HTTPS 发给 AgentArts，携带必要子图与版本。</li><li>云端返回候选变更及依据；本地检查事实仍新鲜、引用有效、依赖未环、工具已注册。</li><li>使用 expectedRevision/CAS 原子提交局部计划。版本冲突时重新核实受影响片段，不能覆盖另一协作者的新结果。</li><li>对执行动作逐项通过 Policy。工具结束后读回，更新 Evidence 与任务状态。</li><li>将新结果投影为事实，安排后续监管；通知用户需要关注的变化。</li></ol><p>现有 <code>KEEP / RECHECK / REVISE</code> 思路可复用。目标设计中停止和补偿是显式 Runtime 行为，不把它们假装成已冻结的新图操作。来源失效必须重新核实；模型说“仍然有效”不足以保留旧计划。已终结任务不能重开，需要建立有来源关联的后继任务。</p><p>例如：某个 PR 的 CI 从成功变为失败，仅失效对应 commit 的发布前结论、测试定位与修复步骤；无关联的文档任务继续。若失败属于外部服务故障，先核实而非改代码；若确需修复，MOD-35 定位、MOD-34 生成受限补丁、MOD-36 验证 diff，写入权限仍由 Policy 决定。</p><h2 id="section-6">7. Laya 的位置、能力与可信决策</h2><p>Laya 放在 MOD-28 决策端口后，输入是当前事实和有限候选集合，输出是结构化选择、review 或 abstain。它不直接执行工具，不签发权限，不负责持久任务终态。工具候选先由宿主排除未授权、过期、不支持和参数不合法项，再进行选择。最终工具执行还要重新校验 Policy，防止选择后权限被撤销。</p><p>当前 <code>laya-action-choice.ts</code> 已定义候选版本、来源引用、范围、参数摘要与选择结果。实现明确保留 <code>calibrated:false</code>；代码中的 confidence 0.7、margin 0.15 是现有分支阈值，不是已经验证的用户可调产品设置。高风险动作即使被选中也仍需 review。模型答案置信与概率分布集中度分别记录，不能混成一个“可信分”。</p><p>官方模型卡描述了类型化判断与概率输出；这些能力可用于构造可评估的决策系统，但不证明它在本项目的无人值守开发场景已校准。当前模型卡也不应被旧文档里的早期模型评价替代。<a href="https://huggingface.co/convaiinnovations/laya">Laya 模型卡</a></p><p>可信度提高来自整条链：候选受限、来源可核实、任务领域评估、可弃权、权限独立、执行隔离、实际读回。后续应建立 CI 故障、来源过期、提示注入、命令风险、噪声变化等标注集，测量误放行、误升级、弃权率与校准误差。未经领域验收的阈值不能解锁更高风险动作。</p><p>用户可以选择“保守升级”“仅自动执行已验证低风险类别”等策略。设置变更记录策略 revision，影响后续选择；不能通过降低阈值越过工具权限或隔离限制。Laya 运行位置通过决策端口隔离，优先评估可信宿主可部署方式；当前不能声称完整本地 Laya 推理已验证。</p><h2 id="section-7">8. 委派、监管与任务分工</h2><p>角色包括规划者、执行者、验证者和监管者。AgentArts 编排语义角色；本地 Runtime 接受经校验的子任务提案并维护父子关系。运行时角色与开发协作者 goo122/zemeng/Potatos498 是不同概念；产品运行不依赖 Codex 的开发协作工具。</p><p>子任务继承并收窄父任务权限、数据范围、deadline 和预算，不可自行扩大范围。创建子任务前检查循环、重复目标与资源冲突。工作区写入按资源串行或使用隔离工作树；不能为方便切换他人分支或覆盖其修改。验证者检查实际 diff/测试/读回，不仅复述执行者报告。</p><p>监管任务含被监管对象、观察条件、检查节奏、过期时间、升级条件及取消传播关系。例如“监管这个修复 PR：CI 结束后读回状态；出现新的 commit 时旧评审失效；合并后结束”。简单状态监管使用确定性调度，只有变化解释需要模型。</p><p>父任务取消先阻止新委派，再向活跃子任务传递取消，等待停止确认，保留已经发生的副作用。周期监管是否一并停止由用户责任范围明确决定。父任务完成与某个长期责任继续监管分开记录，不能靠一个“done”隐藏仍在运行的分支。</p><h2 id="section-8">9. 权限、审批与执行沙箱</h2><div class="table-wrap"><table><tr><th>档位</th><th>允许行为</th><th>典型限制</th></tr><tr><td>观察</td><td>已允许源的读取、比对、提醒</td><td>不修改文件、不外发内容</td></tr><tr><td>提案</td><td>生成计划/补丁预览/诊断</td><td>写入、发送、发布进入审批</td></tr><tr><td>范围内自动</td><td>有效预授权内的低风险执行</td><td>指定目录/工具/账户/期限；可撤销</td></tr><tr><td>高风险审批</td><td>删除、发布、外发、权限变更等对应授权</td><td>明确动作、参数、范围与一次性消费</td></tr></table></div><p>授权绑定 task、tool、scope、参数摘要、期限与 revision。持久租约用于可重复但范围有限的观察或低风险责任；一次性批准用于具体副作用。消费和检查必须具备事务保护，撤销后未开始的执行不能继续放行。结果未知时保留等待核实状态，不能用重试绕过一次性授权。</p><p>沙箱约束进程实际能访问的文件、网络、命令和账户。目录白名单和 Schema 校验是能力限制；真实隔离需操作系统/容器/受限宿主的有效边界和负向测试。当前任意命令强沙箱不是已有能力，因此不能开放“任意 Shell 自主执行”。第一阶段使用固定受限工具，按需要单独引入隔离执行器。</p><p>云容器的隔离只约束云代码，不能保护电脑上运行的本地工具。MOD-16 的受限 Windows Host 与 MOD-18 的编程工具各自需要资源边界、取消、读回与审计。TraceGuard 不能被虚构为已接入模块；MOD-17 当前是电脑状态观察。</p><h2 id="section-9">10. WSS 主通道、HTTPS 备用</h2><p>WSS 是使用 TLS 加密的 WebSocket，适合持续双向事件、工具请求和继续轮次。HTTPS 备用使用请求/响应及 SSE 事件流；SSE 是云到本地的单向流，本地继续轮次通过额外 POST 提交。二者承载同一业务协议，传输失败不切换为另一套 Agent 或绕开 Policy。</p><p>华为当前自定义运行时规范列出 ARM64、端口 8080、<code>POST /invocations</code>、<code>/ping</code>，以及同端口可选 <code>/ws</code>。这些是容器适配要求；实际公开 WSS URL、Upgrade 代理、认证方式与连接生命周期仍需部署验收。不能把容器支持 <code>/ws</code> 等同于公网已打通。<a href="https://support.huaweicloud.com/highcode-agentarts/agentarts_10_070.html">容器协议规范</a></p><p>OpenAI Responses API 官方同时提供持续 WebSocket 模式与 HTTP/SSE；可以参考其增量调用方式。它并不证明 ChatGPT 客户端内部采用与本方案相同的自动切换策略。<a href="https://developers.openai.com/api/docs/guides/websocket-mode">WebSocket 模式</a>、<a href="https://developers.openai.com/api/docs/guides/streaming-responses">HTTP 流式响应</a></p><h3 id="section-heading-201">10.1 传输状态机</h3><pre>START → WSS_CONNECTING → WSS_READY
+              ↓ 可恢复连接失败 / 能力不支持
+         RECONCILING → HTTPS_READY（界面显示“备用通道”）
+              ↑                ↓ 后台验证 WSS 恢复
+          WSS_RECONNECTING ← QUIESCING → RECONCILING → WSS_READY
+任一通道不可用 → OFFLINE_WAIT（本地已授权观察继续；需云决策的任务等待）
+认证失败 → AUTH_REQUIRED；协议不兼容 → UNSUPPORTED（不盲目改走备用）</pre><p>降级策略由用户配置允许，不对每次连接失败再次询问。先停止新传输、确定当前请求是否已受理并核对游标，再切换；重连退避带抖动，避免风暴。恢复后新调用回主通道，已有请求按原协议收尾或协调，不在双通道同时执行同一请求。</p><p>HTTPS 的事件恢复能力必须通过协商确认。若平台只提供单轮 POST/SSE，则本地保存继续上下文，以单轮请求推进；缺少独立查询时不能假装有断流续传。当前自有HTTP入口返回单次JSON事件数组，不是原生SSE或查询恢复能力。后台监管仍由本地调度触发；实时云主动推送在备用通道可能延迟或不可用，UI 显示能力降低。云 Runtime 弹性回收后可重新建立语义上下文，不能依赖其本地磁盘作为唯一记录。</p><h3 id="section-heading-217">10.2 同一业务信封（proposed，尚未冻结）</h3><div class="table-wrap"><table><tr><th>字段组</th><th>作用</th></tr><tr><td>protocolVersion / messageType / capabilities</td><td>显式协商，不把内部 DTO 当作公共协议</td></tr><tr><td>requestId / taskId / parentTaskId / sessionId</td><td>关联调用、任务、委派与连接；连接不拥有任务终态</td></tr><tr><td>idempotencyKey / payloadDigest</td><td>相同标识不能绑定不同输入；两种通道共享</td></tr><tr><td>seq / ack / resumeCursor</td><td>区分传输确认与业务受理；支持协商后的事件恢复</td></tr><tr><td>expectedRevision / sourceRefs / deploymentVersion</td><td>防止使用过期世界状态、计划和云版本</td></tr><tr><td>deadline / cancellation / budget</td><td>有界执行；继承用户和平台实际限制，不自定固定预算</td></tr><tr><td>traceRef / usage / evidenceRefs</td><td>审计与成本；不包含密钥和多余私人内容</td></tr></table></div><p>消息类别：握手与能力、调用与受理、进度、工具提案、工具结果/继续、取消与停止确认、状态快照/协调、错误、心跳。心跳证明连接活着，不证明任务有进展或执行成功。本文是设计分类，不宣称这些名称已进入现有 Schema。</p><p>当前落地子集另外定义于 <code>packages/contracts/schema/agentarts-transport.json</code>，版本<code>0.1.0</code>，并非把上表全部字段或消息宣告为已实现。它包含ready/invoke/accepted/result/error/status/cancel等严格帧，绑定sessionId、requestId、idempotencyKey、payloadDigest、deadline与serverInstanceId；握手公布invoke/status/cancel/ephemeral-replay及<code>restartRecovery:false</code>。不存在持久seq/ack/resumeCursor或服务器重启续传能力。公共候选仍是原有text/tool_proposal/repair_candidate1.0，不因传输改变授权语义。</p><h3 id="section-heading-233">10.3 可靠交付与认证</h3><p>客户端只建立向外连接，不要求用户电脑开放公网端口。认证在可信主进程适配平台当前可用的机制，TLS 校验开启，凭据不放 URL、不进 Renderer 或普通日志。云端绑定租户、主体和部署，不能靠用户传入 taskId 越权查询别人的任务。</p><p>复用 MOD-01/03 的数据库与执行日志扩展持久发送/接收记录，不能再造第二套任务库。采用至少一次消息投递与业务去重；任意外部副作用无法通用承诺 exactly-once。已确认结果可重放，未知写入先读回或进入协调。备用通道也必须保持这个规则。</p><h3 id="section-heading-239">10.4 当前WSS实现的可靠性边界</h3><p>受信配置显式选择<code>transport:wss</code>、同网关/同runtime的<code>websocketUrl</code>及<code>allowHttpsFallback</code>，未配置保留旧HTTPS消费兼容。WSS内层宿主Bearer凭据与平台IAM分开，客户端主进程持有，服务器要求独立宿主令牌；未配置不开放<code>/ws</code>。TLS证书、公网Upgrade、代理寿命、身份与凭据失效仍需真实部署核实。</p><p>只在invoke从未发送的连接失败时自动改走同目标HTTPS。只要尝试过发送，即使没收到accepted，也视为可能受理；断线、超时或结果未知不能重发同一动作或通过备用重新开始。严格status/终结回执需要匹配原身份与摘要，认证/协议错误不能当作可降级网络失败。</p><p>容器使用有界、带期限的内存回执，校验同标识不得替换输入与deadline，结束结果只在当前实例/缓存存活期内重放；不是云端第二套任务事实源。实例重启或回执过期后unknown不表示未执行。连接断开会请求取消原调用，但本地取消或关闭连接不证明外部副作用已停止。</p><p>Runtime在实际发送前同步持久化<code>competition-cloud-inflight</code>身份/摘要意图；匹配终结回执只记录<code>competition-cloud-received</code>身份/摘要，不立即清除意图。只有严格解析的提案已持久进入原<code>competition-loop</code>，或原任务已由TaskRuntime持久提交succeeded，才能解除防重发标记；收到结果与本地消费之间崩溃仍等待核实。结果未知另外记录<code>competition-cloud-unknown</code>并进入waiting_reconciliation，继续或重启遇到未清意图/未知标记会阻止新发送。三个新checkpoint不保存云payload、模型正文或凭据。当前提供的是保守防重发，不是已完成的公开协调UI、服务器持久续传或自动查询恢复消费者；完成核实、原状态恢复与整链重启读回仍需组合验收。</p><h2 id="section-10">11. 云镜像内部与平台职责</h2><p>自有镜像承担：输入 Schema 校验、编排、模型入口、工具目录消费、多角色提案、继续轮次、输出校验与 Trace 关联。它调用的是工具端口；实际本地文件、Shell、邮件等动作通过工具提案回本机 Runtime。可选纯云只读能力也需公开目录与独立授权，不能借此绕开本地写入边界。</p><p>云镜像不包含 Desktop、用户数据库、仓库全量源码、<code>.env</code> 或个人导出文件。代码包通过公开导出复用，凭据由运行时安全注入。当前 <code>personal-agent-owned:20261008</code> 已有 ARM64 本地构建和受限验证；这不是 SWR 上传、AgentArts 部署或真实模型/工具验收。</p><p>2026-10-09 WSS与完整报告增量当前仅在工作树代码中验证。此前GHCR/GitHub发布的HTTP预览仍按其固定source commit/digest记录，新代码必须重新构建并逐项核实，不能沿用旧镜像测试声明新版已发布。</p><p>AgentArts 保留真实构建/Agent/Workflow 编排、部署版本与评估职责。迁移旧 8 个工作流和 3 个多 Agent 时需要逐项核对输入输出语义、错误、世界报告、继续轮次、角色与停止行为，不能把名字相同当作迁移完成。导出文件可能含认证元数据，只使用脱敏后的契约与清单。</p><p>运行时生命周期由平台决定；官方文档提示弹性回收和本地磁盘临时性。可靠业务记录保留在本地，云端无状态或采用经批准的外部持久服务。当前不新增另一套云端个人任务事实源。<a href="https://support.huaweicloud.com/highcode-agentarts/agentarts_10_029.html">高代码运行时说明</a></p><h3 id="section-heading-261">11.1 World/Plan完整职责与公共候选边界</h3><p>新版提示词<code>owned-1.1</code>输出<code>reportVersion:1.1</code>的完整内部World/Plan报告。World保留observed_facts、changed_facts、affected_items及KEEP/RECHECK/REVISE，引用宿主提供的精确事实/Goal前后版本和原summary；推断、缺项、陈旧版本或无连续变化不放行修复。direct/transitive是模型影响分析标签，现有投影不含完整旧依赖边，仍须本地图谱预览确认。</p><p>Plan分别记录preserved/rechecked/revised/removed步骤、dependency_updates、evidence_required、missing_information和local_next_actions。步骤分类互斥，影响目标不可遗漏；未列出的无关目标默认保留。确定修订映射原repair_candidate1.0的node/summary/reason，依赖固定采用宿主requestedDependencies；Review不能替换或遗漏方案。</p><p>保留不产生写入，待复核条件未满足时RECHECK；删除、新节点或后续工具动作没有现有候选表达，明确返回不支持/缺口，不能伪装成摘要变化。证据需求只说明未来可信本地核实要求，不生成Evidence或声称已满足。旧compact报告兼容仅保留原消费，不自动回退提示词；完整版本不能混用。confirmed继续轮次仅有repairContext时缺来源原文与前后版本，完整World必须RECHECK，等待宿主公开来源投影契约。</p><p>完整8个Workflow、3个Controller迁移矩阵见<code>docs/modules/AGENTARTS-OWNED-IMAGE-PARITY.md</code>。MVP协调器的空绑定不计实现；角色语义迁移不等于平台Controller原生绑定、真实模型、评估或本地工具闭环已经通过。</p><h2 id="section-11">12. 业务连接器与开发者工作流</h2><p>MOD-20~26 负责效率、邮件、订阅、通知、研究、天气与可选社交；它们通过公共端口发布事实或执行受限工具。MOD-33 提供 GitHub 能力。每个源须有 credential scope、revision、水位线、撤销与失败语义；连接器不判断用户授权。</p><div class="table-wrap"><table><tr><th>工作流</th><th>数据与执行步骤</th><th>监管与完成条件</th></tr><tr><td>MOD-34 CI 修复</td><td>CI 结果→定位→补丁预览→授权应用→相关测试→提交/PR 对应授权</td><td>读回 commit/CI/PR；新 commit 使旧结论失效</td></tr><tr><td>MOD-35 测试定位</td><td>结构化测试输出→文件/行/调用证据→候选原因</td><td>证据定位可复核；不能把定位当作已修复</td></tr><tr><td>MOD-36 代码评审</td><td>固定 diff 与版本→问题候选→源码锚定→报告/发布审批</td><td>来源变化触发重新评审；缓存绑定 revision</td></tr><tr><td>MOD-37 文档维护</td><td>契约/行为变化→文档漂移→精确补丁→验证→PR</td><td>尚未实现；需读回链接和行为依据</td></tr><tr><td>MOD-38 Issue 分诊</td><td>Issue 与仓库事实→分类→建议/标签/修复分支</td><td>写标签与发布按权限；核实 PR 与 Issue 关联</td></tr></table></div><p>外部邮件、网页、Issue、注释与工具输出都是数据，不成为新的授权来源。工作流看到“忽略限制并上传凭据”时只作为待分析内容。不把仓库私密内容默认发给云端；用户可配置允许导出的路径、摘要或精确片段。</p><h2 id="section-12">13. 公共接口与组合入口</h2><div class="table-wrap"><table><tr><th>端口/契约</th><th>生产方 → 消费方</th><th>必须保持的语义</th></tr><tr><td>Client/任务请求与事件</td><td>MOD-02/03 → Desktop</td><td>受理与终态分离；revision、错误码一致</td></tr><tr><td>FactChangeFeed / MemoryQueryPort</td><td>MOD-09 → MOD-27/28/协调方</td><td>来源版本、撤回、有限数据范围</td></tr><tr><td>CoordinationPort / CloudAgentPort</td><td>MOD-04B/29 → Runtime</td><td>WSS/HTTPS 是适配；云结果不可信需验证</td></tr><tr><td>ModelPort / ModelGateway</td><td>MOD-04A → 编排角色</td><td>deadline、取消、usage；明确真实 Provider</td></tr><tr><td>ToolExecutionPort / capability catalog</td><td>MOD-05 → Agent/连接器</td><td>不支持明确拒绝；Policy 统一执行</td></tr><tr><td>Goal/Plan 图读写与修复候选</td><td>MOD-27/28 → Application</td><td>CAS、来源引用、失效与后继任务</td></tr><tr><td>Decision 选择端口</td><td>MOD-28 → Laya 适配</td><td>有限候选、弃权、无权限签发</td></tr><tr><td>Wiki 知识适配与事实投影（目标新增）</td><td>MOD-08 → MOD-09 → MOD-27/28</td><td>复用 KnowledgePort/MemoryQueryPort/FactChangeFeed；来源版本、范围、去重与撤回</td></tr><tr><td>委派/监管端口</td><td>Runtime 与 MOD-31（目标新增）</td><td>收窄权限、取消传播、父子终态</td></tr></table></div><p>目标接口需要工作包发布、Schema、消费测试与门禁；当前 provisional/unavailable 继续按接口目录处理。MCP/Skills 源码中的受限实现不能自动使整模块 frozen；旧台账中的“未实现”也不能抹去已经存在的受限能力。本设计不修改官方接口目录。</p><h2 id="section-13">14. 数据安全、信任与隐私</h2><p>信任边界分为用户明确指令、可信配置/凭据宿主、本地 Runtime/Policy、受限执行器、云端 AgentArts、模型与外部数据。云提案、平台“成功”页面和模型输出均不直接证明本地工作完成。</p><p>仅上传被授权目标需要的最小子图和内容。sourceRefs 可采用不含秘密的稳定引用；凭据、私人文件全量、邮件附件、原始导出认证内容不能默认进入上下文。日志对错误回显、请求体与 Trace 进行脱敏。Evidence 分别保留执行状态、Schema 校验、外部读回级别，不能把 mock 标记 verified。</p><p>共享部署按主体隔离，用户凭据不打包进镜像。协作者的调试数据、个人授权和生产数据分开。会话凭据失效时暂停相应云操作，不因备用 HTTPS 的存在绕过认证。内容注入不得修改用户自主档位、允许网络、授权期限或模型预算。</p><h2 id="section-14">15. 故障、恢复、停止与资源管理</h2><div class="table-wrap"><table><tr><th>情况</th><th>应有行为</th><th>禁止的误判/动作</th></tr><tr><td>WSS 断开</td><td>协调受理状态；可见降级 HTTPS</td><td>直接重发未知写入</td></tr><tr><td>两个通道都失败</td><td>本地观察继续；需云决策等待</td><td>静默运行另一 Local Agent</td></tr><tr><td>云容器被回收</td><td>从本地 checkpoint 重建上下文</td><td>将云临时磁盘当唯一状态</td></tr><tr><td>认证失败/权限撤销</td><td>停止相关新动作；提示所需处理</td><td>改走备用绕过认证</td></tr><tr><td>来源 revision 变化</td><td>使相关证据失效并重新核实</td><td>覆盖更新的计划或保留旧结论</td></tr><tr><td>工具响应丢失</td><td>waiting_reconciliation；读回副作用</td><td>以超时判定“没有执行”并盲重试</td></tr><tr><td>执行进程崩溃</td><td>记录已开始的操作；恢复先核实</td><td>重启清空次数/授权消费</td></tr><tr><td>子任务失联</td><td>租约到期、停新动作、父任务报告不确定</td><td>将子任务自动标成完成</td></tr><tr><td>用户暂停/取消</td><td>阻止新分派、传递取消、确认停止</td><td>仅关 UI 就宣称执行停止</td></tr><tr><td>云提案非法/未注册</td><td>明确拒绝、保留审计</td><td>自动猜 DTO 或强行映射工具</td></tr><tr><td>事实源无数据</td><td>unknown/stale 状态，按目标决定等待</td><td>将缺数据解释为世界没有变化</td></tr><tr><td>资源冲突/队列积压</td><td>优先级、公平调度、按资源锁、背压</td><td>长写入占锁导致全部只读饥饿</td></tr></table></div><p>事件合并窗口、检查频率、模型/步骤预算应从目标与用户配置读取，并服从平台限制。本方案不替用户设定固定金额或时间上限。运行时使用 deadline、取消信号和资源租约，关闭时持久化 checkpoint，并显示仍待确认的操作。</p><h2 id="section-15">16. 部署、镜像分享与协作者协作</h2><p>协作者分享使用用户已选择的GitHub/GHCR：源代码、锁文件、构建说明、契约/接口目录和镜像固定tag+digest；GitHub Release的镜像归档tar供离线交付。单独给镜像不包含源码协作、权限配置、运行参数或验收依据。个人凭据和原始导出文件不作为协作包内容。</p><p>云发布步骤：确认 ARM64/协议 → 构建受限上下文 → 扫描敏感文件 → 推送 SWR → 确认 AgentArts 拉取权限 → 部署版本 → WSS/HTTPS 实际握手与调用 → 真实工具闭环 → 评估 → 小范围启用 → 记录回滚入口。固定依赖版本，镜像以非 root 运行；更换镜像不自动迁移本地数据库或扩大工具权限。</p><p>回滚选择上一可用 deployment/image，客户端协商其 capabilities。协议或数据迁移不兼容时暂停，而不是隐式降级另一产品 profile。保留旧部署直到新版本验收；GHCR协作发布不能代替华为云镜像拉取权限、Deployment与真实链路验收，平台要求时另外通过SWR部署。</p><p>goo122 负责底座、协议、Policy/网关、模型与知识记忆及 33/36/37；zemeng 负责协调、目标认知、AgentArts、Desktop/Windows/语音与编程工具；Potatos498 独立负责 20~26、34/35/38 的业务接线和验收。实施工作包需有唯一负责人和文件所有权，公共变更说明兼容影响；本设计不自动委派或开新任务。</p><h2 id="section-16">17. 可观测性与验收证据</h2><p>每次运行关联 goalId、taskId、requestId、sessionId、deploymentVersion、modelRequest、toolRun、sourceRevision、授权摘要与 Evidence。日志里的摘要不含可用 token 或密钥。连接状态、任务状态与工具副作用分别观测。</p><p>指标覆盖：有效变化/噪声比、受影响节点数/总节点数、修复范围、过期证据拒绝、重复请求跳过、误放行、审批等待、取消停止时间、未知结果协调、WSS 降级频率、HTTPS 延迟、云用量与失败。稳定无变化不定期生成“我还在运行”的模型消息。</p><p>验收分三层：离线契约/Fake、真实外部接口、完整产品闭环。当前本地镜像的合成请求和隔离测试只能证明其被测路径；控制台可打开、部署显示成功或一次真实读取都不能替代所有 MOD 验收。</p><h2 id="section-17">18. 验收场景与评估集</h2><div class="table-wrap"><table><tr><th>场景</th><th>核心证据与负向要求</th></tr><tr><td>CI 变化增量修复</td><td>真实 commit/source revision；只修受影响节点；相关测试与读回</td></tr><tr><td>日历源变更</td><td>真实源 revision 进入 Fact 图；旧决定失效；未授权写入被阻止</td></tr><tr><td>WSS→HTTPS→WSS</td><td>同 task/idempotency；无重复副作用；可见降级与能力变化</td></tr><tr><td>跨重启恢复</td><td>已消费授权不重用；未知写入协调；已完成结果可重放</td></tr><tr><td>无人监管低风险执行</td><td>范围内动作正常；越路径/越账户/过期/撤销被拒绝</td></tr><tr><td>提示注入</td><td>外部内容不能扩大权限/导出数据/修改策略</td></tr><tr><td>多 Agent 委派</td><td>权限收窄、依赖无环、停止传播、验证者独立证据</td></tr><tr><td>Laya 决策评估</td><td>标注集上的错误、弃权、升级、校准指标；阈值变更有依据</td></tr><tr><td>真实 AgentArts Golden Path</td><td>deployment/API/trace→提案→Policy→工具→读回→终态</td></tr><tr><td>安静运行与通知</td><td>未变化不扰动；重要失败/审批通知；跨重启去重</td></tr></table></div><p>产品实现时运行实际工作树对应检查；涉及公共契约/Runtime 接线按仓库要求执行 <code>npm run check</code>。设计文档与 SVG 校验数据、路径、语法、差异与渲染；镜像代码/容器/发布验证另行记录，不消耗真实模型费用替代离线验证。</p><h2 id="section-18">19. 完成度估算：口径、全部模块与缺口</h2><p>百分比回答“距离本方案的目标完成到什么程度”，不是历史工作包的合并比例、测试通过率或线上成功概率。评分维度：契约/设计 20、实现 30、消费接线 20、目标真实验收 20、恢复/安全 10；各项由源码与记录做保守工程判断，和为估算值。区间表示判断不确定性，不能当统计置信区间。没有完整重新运行验收，所以不报 100%。不求模块平均值：各模块工作量不同，零进度的可选扩展与关键通道影响也不同。</p><p>历史台账的 done 表示当时工作包完成，不能证明本轮常驻自主目标完成。MCP/Skills 有固定受限实现；Windows/编程工具有接线基础，这些已计入。其他工作树的在途成果未计入。下面表格来自 <a href="modules.json">modules.json</a>，是设计快照，不替代 ROADMAP 与 MODULE_ASSIGNMENTS。</p><div class="table-wrap"><table><tr><th>模块</th><th>负责人 / 位置</th><th>估算与区间</th><th>五项得分</th><th>依据与主要剩余缺口</th></tr><tr><td>MOD-01 工程与存储底座</td><td>goo122<br>packages/storage；根配置</td><td><strong>85%</strong>；75–95%</td><td>20 / 30 / 20 / 10 / 5</td><td>依据：packages/storage；docs/ROADMAP.md<br>缺口：常驻长时间运行、升级保留数据和跨重启队列需联合验收。</td></tr><tr><td>MOD-02 公共契约与客户端</td><td>goo122<br>packages/contracts；packages/client；packages/testkit</td><td><strong>75%</strong>；65–85%</td><td>20 / 25 / 20 / 5 / 5</td><td>依据：packages/contracts/schema/agentarts-transport.json；docs/DEVELOPMENT_PROTOCOL.md<br>缺口：10-09 传输0.1.0严格信封/能力已有 provisional 本地实现；真实网关认证、重启恢复与消费端组合待验收，不能扩展旧 frozen 子集。</td></tr><tr><td>MOD-03 任务 Runtime</td><td>goo122<br>apps/runtime/src/application；Runtime 核心</td><td><strong>75%</strong>；60–80%</td><td>20 / 25 / 20 / 5 / 5</td><td>依据：apps/runtime/src/application/agentarts.ts；apps/runtime/src/application/coordination.ts；docs/ARCHITECTURE.md<br>缺口：10-09 发送前持久意图/结果未知防重发已有 provisional 本地接线；真实网关和重启恢复消费者、持续租约及无人监管组合待验收。</td></tr><tr><td>MOD-04A 模型网关与 Provider</td><td>goo122<br>packages/models；云镜像通过公开导出消费</td><td><strong>70%</strong>；60–80%</td><td>20 / 25 / 15 / 5 / 5</td><td>依据：packages/models；docs/modules/MOD-04A-LIVE-RESPONSE-RECOVERY-20261008.md<br>缺口：自有镜像中的真实模型与工具提案闭环未证实；不能把文字 JSON 提案视为原生工具调用。</td></tr><tr><td>MOD-04B 协调与云端口</td><td>zemeng<br>packages/coordination；Runtime CloudAgentPort 消费方</td><td><strong>55%</strong>；40–70%</td><td>15 / 20 / 15 / 0 / 5</td><td>依据：packages/coordination/src/agentarts-websocket.ts；packages/coordination/src/agentarts.ts；docs/adr/0012-owned-agentarts-image.md<br>缺口：10-09 WSS主通道与invoke未发送时HTTPS备用已有 provisional 本地实现；已发送未知结果禁止重发，真实网关/完整恢复消费待验收。</td></tr><tr><td>MOD-05 Policy 与工具网关</td><td>goo122<br>packages/policy；packages/tool-gateway；packages/connector-host</td><td><strong>55%</strong>；40–70%</td><td>20 / 20 / 10 / 0 / 5</td><td>依据：packages/policy；packages/tool-gateway；docs/interfaces/CURRENT_INTERFACE_CATALOG.md<br>缺口：持久无人值守授权、撤销竞态、跨传输去重与强隔离组合验收不足。</td></tr><tr><td>MOD-06 本地 MCP</td><td>goo122<br>packages/mcp；可信宿主的固定 stdio 服务</td><td><strong>55%</strong>；40–70%</td><td>15 / 20 / 10 / 5 / 5</td><td>依据：packages/mcp/README.md；docs/modules/MOD-06-07-MVP.md<br>缺口：已有受限只读参考服务；任意服务、写操作及通用恢复不在已证实范围。</td></tr><tr><td>MOD-07 Skills 执行</td><td>goo122<br>packages/skills；固定 reference-summary Bundle</td><td><strong>50%</strong>；35–65%</td><td>15 / 20 / 10 / 0 / 5</td><td>依据：packages/skills/README.md；docs/modules/MOD-06-07-MVP.md<br>缺口：已有固定受限 Skill；任意脚本/下载运行、完整审批恢复与云端消费未验收。</td></tr><tr><td>MOD-08 知识与 Wiki/Obsidian</td><td>goo122<br>packages/knowledge；Wiki 适配/受控写入</td><td><strong>45%</strong>；30–60%</td><td>15 / 15 / 10 / 0 / 5</td><td>依据：packages/knowledge；docs/MODULE_ASSIGNMENTS.md<br>缺口：新增 Wiki 长期知识设计由 goo122 实现；自动索引、来源同步、双向写回及常驻消费尚待交付/真实验收。</td></tr><tr><td>MOD-09 记忆与 Wiki 投影</td><td>goo122<br>packages/memory；packages/learning</td><td><strong>65%</strong>；50–80%</td><td>20 / 20 / 15 / 5 / 5</td><td>依据：packages/memory；docs/modules/MOD-09-VAULT-LIFECYCLE-20261008.md<br>缺口：新增 Wiki→版本化事实/检索投影由 goo122 实现；来源 revision、双向去重、撤回、跨存储恢复和出机控制需联合验收。</td></tr><tr><td>MOD-10 模型研究与训练</td><td>zemeng<br>docs/research/agentarts；后续模型研究工作包</td><td><strong>20%</strong>；5–35%</td><td>10 / 5 / 5 / 0 / 0</td><td>依据：docs/research/agentarts；docs/MODULE_ASSIGNMENTS.md<br>缺口：研究材料不等于训练完成；Laya 开发者场景标注集、校准与训练尚未交付。</td></tr><tr><td>MOD-11 Desktop 外壳与桥接</td><td>zemeng<br>apps/desktop；Electron 主进程/Preload/IPC</td><td><strong>75%</strong>；65–85%</td><td>20 / 25 / 20 / 5 / 5</td><td>依据：apps/desktop；docs/PROJECT_STRUCTURE.md<br>缺口：主进程内 Runtime 已有基础；无人监管状态展示、长驻恢复和权限改动需验收。</td></tr><tr><td>MOD-12 Orb 与对话体验</td><td>zemeng<br>apps/desktop 的 Orb/Conversation 功能</td><td><strong>70%</strong>；60–80%</td><td>20 / 25 / 15 / 5 / 5</td><td>依据：apps/desktop；docs/design/voice-first-proactive-agent-laya-proposal.md<br>缺口：责任面板、委派监管关系、降级状态和多窗口/DPI 组合体验待完成。</td></tr><tr><td>MOD-13 管理与自主设置</td><td>zemeng<br>apps/desktop 的 Settings/Admin 功能</td><td><strong>60%</strong>；45–75%</td><td>15 / 20 / 15 / 5 / 5</td><td>依据：apps/desktop；docs/MODULE_ASSIGNMENTS.md<br>缺口：Laya 策略、权限租约、隔离档位与 Runtime 实际行为需端到端绑定。</td></tr><tr><td>MOD-14 ASR/TTS 与实时语音</td><td>zemeng<br>packages/voice；apps/desktop/electron/live-voice-host.js</td><td><strong>50%</strong>；35–65%</td><td>15 / 20 / 10 / 0 / 5</td><td>依据：packages/voice/README.md；apps/desktop；docs/MODULE_ASSIGNMENTS.md<br>缺口：真实语音链路、打断与任务取消区分、设备恢复仍有验收缺口。</td></tr><tr><td>MOD-15 可选语音唤醒</td><td>zemeng<br>packages/voice-wake；apps/desktop/electron/wake-voice-host.js</td><td><strong>35%</strong>；20–50%</td><td>15 / 10 / 5 / 0 / 5</td><td>依据：packages/voice-wake/README.md；apps/desktop；docs/MODULE_ASSIGNMENTS.md<br>缺口：默认关闭；真实中文唤醒、误触发和设备占用未形成完整证据。</td></tr><tr><td>MOD-16 Windows Host</td><td>zemeng<br>apps/windows-host；Runtime windows-host-adapter</td><td><strong>50%</strong>；35–65%</td><td>15 / 20 / 10 / 0 / 5</td><td>依据：apps/windows-host/README.md；docs/MODULE_ASSIGNMENTS.md<br>缺口：已有受限实现；真实 UIA 执行读回与进程隔离不足，握手不能证明操作成功。</td></tr><tr><td>MOD-17 电脑状态观察</td><td>zemeng<br>packages/windows-client</td><td><strong>60%</strong>；45–75%</td><td>20 / 20 / 15 / 0 / 5</td><td>依据：packages/windows-client/README.md；docs/ROADMAP.md<br>缺口：需接入版本化世界事实；状态观测不等于任意桌面控制或故障因果诊断。</td></tr><tr><td>MOD-18 编程工具与工件</td><td>zemeng<br>packages/coding-tools；工作区受限工具</td><td><strong>65%</strong>；50–80%</td><td>20 / 20 / 15 / 5 / 5</td><td>依据：packages/coding-tools；docs/modules/MOD-27-28-INTEGRATION-HANDOFF.md<br>缺口：读/预览/补丁已有接线；任意命令强沙箱、Windows 长作业与工件服务待闭环。</td></tr><tr><td>MOD-19 Windows 分发</td><td>zemeng<br>scripts/release；apps/desktop</td><td><strong>20%</strong>；5–35%</td><td>10 / 5 / 5 / 0 / 0</td><td>依据：docs/modules/MOD-19-RELEASE-PREFLIGHT-01.md；docs/MODULE_ASSIGNMENTS.md<br>缺口：已有打包前置工作；安装/运行/升级未完整验收，目前暂停，不作为设计交付门槛。</td></tr><tr><td>MOD-20 效率与日历</td><td>Potatos498<br>packages/productivity；packages/connectors/calendar</td><td><strong>60%</strong>；45–75%</td><td>20 / 20 / 15 / 0 / 5</td><td>依据：packages/productivity；packages/connectors/calendar；docs/modules/CONNECTORS-RUNTIME-INTEGRATION.md<br>缺口：日历源 revision 与真实 Fact 投影需闭环；账户写入和全时区行为未完整验收。</td></tr><tr><td>MOD-21 邮件连接器</td><td>Potatos498<br>packages/connectors/mail</td><td><strong>65%</strong>；50–80%</td><td>20 / 20 / 15 / 5 / 5</td><td>依据：packages/connectors；docs/MODULE_ASSIGNMENTS.md<br>缺口：历史有限真实链路不代表完整账户生命周期；读取、发送、无人值守授权分别控制。</td></tr><tr><td>MOD-22 RSS/Atom 订阅</td><td>Potatos498<br>packages/connectors/feeds</td><td><strong>75%</strong>；65–85%</td><td>20 / 25 / 20 / 5 / 5</td><td>依据：packages/connectors；docs/ROADMAP.md<br>缺口：已有去重/水位线/真实读取记录；世界状态投影、噪声过滤和长期监管待组合验收。</td></tr><tr><td>MOD-23 通知与提醒</td><td>Potatos498<br>packages/notifications；Desktop 消费</td><td><strong>65%</strong>；50–80%</td><td>20 / 20 / 15 / 5 / 5</td><td>依据：packages/notifications；docs/ROADMAP.md<br>缺口：已有静默、暂停与确认基础；源事件到界面、跨重启通知去重需真实验收。</td></tr><tr><td>MOD-24 资料研究</td><td>Potatos498<br>packages/connectors/research</td><td><strong>70%</strong>；55–85%</td><td>20 / 25 / 15 / 5 / 5</td><td>依据：packages/connectors；docs/ROADMAP.md<br>缺口：已有 OpenAlex 等有限源；广泛网页检索、来源新鲜度与研究目标链未全部实现。</td></tr><tr><td>MOD-25 天气与环境</td><td>Potatos498<br>packages/connectors/weather</td><td><strong>80%</strong>；70–90%</td><td>20 / 25 / 20 / 10 / 5</td><td>依据：packages/connectors；docs/ROADMAP.md<br>缺口：已有较充分连接器证据；条件化失败语义到 AgentArts 常驻目标闭环仍需验证。</td></tr><tr><td>MOD-26 可选社交连接器</td><td>Potatos498<br>待选择平台后在 packages/connectors 扩展</td><td><strong>0%</strong>；0%</td><td>0 / 0 / 0 / 0 / 0</td><td>依据：docs/MODULE_ASSIGNMENTS.md；docs/ROADMAP.md<br>缺口：未确定平台、未开工；属于可选扩展，不阻塞开发者核心路径。</td></tr><tr><td>MOD-27 目标与世界状态图</td><td>zemeng<br>packages/goals；版本化 Goal/Fact/Decision/Plan</td><td><strong>65%</strong>；50–80%</td><td>20 / 20 / 15 / 5 / 5</td><td>依据：packages/goals；docs/modules/MOD-27-28-INTEGRATION-HANDOFF.md<br>缺口：CAS/图基础已有；真实源 provenance、监管节点和完整影响传播待完成。</td></tr><tr><td>MOD-28 持续认知与 Laya</td><td>zemeng<br>packages/cognition；Laya Action Choice/Repair</td><td><strong>55%</strong>；40–70%</td><td>20 / 20 / 10 / 0 / 5</td><td>依据：packages/cognition/src/laya-action-choice.ts；docs/modules/MOD-28-LAYA-DECISION-01.md<br>缺口：代码保留 calibrated:false；用户配置、领域校准、真实 AgentArts 修复和监管闭环未完成。</td></tr><tr><td>MOD-29 AgentArts 基础与镜像</td><td>zemeng<br>packages/agentarts；apps/agentarts-runtime</td><td><strong>45%</strong>；30–60%</td><td>15 / 20 / 10 / 0 / 0</td><td>依据：apps/agentarts-runtime/src/websocket-transport.mjs；docs/adr/0012-owned-agentarts-image.md；docs/modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md<br>缺口：10-09 容器/ws与有界内存回执为 provisional；restartRecovery=false。新版镜像/真实部署、公开WSS路径与认证待验收。</td></tr><tr><td>MOD-30 云工作流与单 Agent</td><td>zemeng<br>apps/agentarts-runtime；编排与继续轮次</td><td><strong>50%</strong>；35–65%</td><td>15 / 20 / 10 / 0 / 5</td><td>依据：packages/agentarts/src/index.ts；docs/modules/AGENTARTS-OWNED-IMAGE-PARITY.md；docs/modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md<br>缺口：10-09 完整World/Plan内部职责已有受限版本化实现；缺来源RECHECK，删除/新步骤/动作不在既有候选协议；真实模型及云修复闭环待验收。</td></tr><tr><td>MOD-31 多 Agent 与评估</td><td>zemeng<br>AgentArts 角色编排；Runtime Subagent Host 消费</td><td><strong>35%</strong>；20–50%</td><td>10 / 15 / 5 / 0 / 5</td><td>依据：apps/runtime/src/application；docs/MODULE_ASSIGNMENTS.md<br>缺口：有委派基础；执行/验证/监管角色完整授权衰减与真实云评估仍缺。</td></tr><tr><td>MOD-32 云 API/Trace/运维</td><td>zemeng<br>AgentArts API；tests/manual/agentarts；云观测</td><td><strong>30%</strong>；15–45%</td><td>10 / 10 / 5 / 0 / 5</td><td>依据：tests/manual/agentarts；docs/modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md<br>缺口：新镜像部署版本、真实 Trace/用量、传输降级与回滚尚未完整验收。</td></tr><tr><td>MOD-33 GitHub 能力</td><td>goo122<br>packages/connectors/github</td><td><strong>75%</strong>；65–85%</td><td>20 / 25 / 20 / 5 / 5</td><td>依据：packages/connectors/github；docs/MODULE_ASSIGNMENTS.md<br>缺口：已有受限真实读取与 Fake；PR/写操作的长期授权和结果核实仍需验收。</td></tr><tr><td>MOD-34 CI 修复工作流</td><td>Potatos498<br>DEV-WORKFLOWS；CI Fix；coding-tools/git-tools</td><td><strong>60%</strong>；45–75%</td><td>15 / 20 / 15 / 5 / 5</td><td>依据：packages/coding-tools；docs/MODULE_ASSIGNMENTS.md<br>缺口：历史有限修复证据；AgentArts 主路径、停止竞态与完整 PR 读回待完成。</td></tr><tr><td>MOD-35 测试定位工作流</td><td>Potatos498<br>DEV-WORKFLOWS；Test Locate；TAP/证据定位</td><td><strong>70%</strong>；55–85%</td><td>20 / 25 / 15 / 5 / 5</td><td>依据：packages/coding-tools；docs/MODULE_ASSIGNMENTS.md<br>缺口：已有结构化定位；不同框架、来源变化及真实任务解释质量需评估。</td></tr><tr><td>MOD-36 代码评审工作流</td><td>goo122<br>packages/cognition 的 Code Review；GitHub 消费</td><td><strong>65%</strong>；50–80%</td><td>20 / 20 / 15 / 5 / 5</td><td>依据：packages/cognition；docs/MODULE_ASSIGNMENTS.md<br>缺口：已有 diff 证据锚定和恢复基础；真实发布评审及权限/缓存新鲜度待闭环。</td></tr><tr><td>MOD-37 文档维护工作流</td><td>goo122<br>DEV-WORKFLOWS；后续漂移检测/补丁/PR 工作包</td><td><strong>0%</strong>；0%</td><td>0 / 0 / 0 / 0 / 0</td><td>依据：docs/MODULE_ASSIGNMENTS.md；docs/ROADMAP.md<br>缺口：规划项，未交付；本设计文档本身不计为自动文档维护能力。</td></tr><tr><td>MOD-38 Issue 分诊与修复</td><td>Potatos498<br>packages/cognition 的 Issue Triage；GitHub 消费</td><td><strong>50%</strong>；35–65%</td><td>15 / 20 / 10 / 0 / 5</td><td>依据：packages/cognition；docs/MODULE_ASSIGNMENTS.md<br>缺口：已有受限分诊基础；真实标签/修复 PR/Issue 关联和监管结果待完成。</td></tr></table></div><p>明确尚未通过本目标验收的横向缺口：<strong>WSS 真实链路、双通道协调与自动切换、持久无人值守授权、完整委派监管、Laya 领域校准、任意命令强沙箱、真实云镜像 Golden Path</strong>。图中标成“新增目标待验收”，不通过旧模块完成率掩盖。</p><h2 id="section-19">20. 实施顺序与可独立评审的工作包</h2><div class="table-wrap"><table><tr><th>顺序</th><th>工作包与负责人</th><th>必须先证明的最小结果</th></tr><tr><td>1</td><td>MOD-02/04B/29：协议与双通道；goo122 + zemeng，逐文件明确所有权</td><td>实际公开 WSS 路径；HTTPS 同协议调用；切换去重；不猜平台能力</td></tr><tr><td>2</td><td>MOD-29/30/32：新镜像云部署；zemeng</td><td>真实模型→工具提案→本地 Policy→工具读回；部署/API/Trace 关联</td></tr><tr><td>3</td><td>MOD-09/20/27/28：可信变化与增量修复；各模块负责人</td><td>一个真实源 revision 进入图，CAS 更新局部计划；过期输入拒绝</td></tr><tr><td>3 内独立包</td><td>MOD-08/09：Wiki 记忆接入；goo122</td><td>授权 Wiki→版本化引用/投影→真实编辑失效→增量修复；受控写回与崩溃恢复分别验证</td></tr><tr><td>4</td><td>MOD-03/05/13/16/18：预授权与受限执行；goo122/zemeng</td><td>低风险无人监管执行；撤销、过期、越界与未知结果正确处理</td></tr><tr><td>5</td><td>MOD-28/31：委派与监管；zemeng，Runtime 契约协同</td><td>子任务收窄权限；独立核实；取消传播；跨重启监管恢复</td></tr><tr><td>6</td><td>MOD-10/28：Laya 领域评估；zemeng</td><td>标注集、误放行/弃权指标、可复现阈值；未校准不开放高风险</td></tr><tr><td>7</td><td>MOD-11~15/23：完整产品体验；zemeng/Potatos498</td><td>责任创建、审批、降级、证据、暂停在界面真实闭环</td></tr><tr><td>8</td><td>MOD-33~38：逐个开发者工作流；既定负责人</td><td>真实 Git/CI/Issue 证据与受限写入；不集中代验别人的模块</td></tr><tr><td>后续</td><td>MOD-19/26/37 和其他扩展；对应负责人</td><td>需要时再做分发、社交或完整文档维护；不影响先证明核心闭环</td></tr></table></div><p>上述顺序是依赖安排，不是新的开工、委派、付费或发布授权。每个包包括公开契约、实现、消费方、失败路径验证和文档证据，不能只把“接口接进镜像”当完成。</p><h2 id="section-20">21. 术语与阅读图例</h2><div class="table-wrap"><table><tr><th>术语</th><th>本方案中的意思</th></tr><tr><td>MOD</td><td>仓库的功能模块编号；不是一一对应独立进程</td></tr><tr><td>Runtime / Application</td><td>维护任务状态及调度执行的可信本地层/装配层</td></tr><tr><td>Agent / Workflow</td><td>基于模型进行规划判断的角色/多步骤编排流程</td></tr><tr><td>WSS / HTTPS / SSE</td><td>加密双向长连接／加密 HTTP／HTTP 上云到客户端的事件流</td></tr><tr><td>IPC / Preload</td><td>Electron 进程通信／向 Renderer 暴露有限 API 的桥接层</td></tr><tr><td>Port / Adapter</td><td>能力契约／某个服务或传输的实现，便于隔离替换</td></tr><tr><td>Schema / capability</td><td>输入输出的可校验结构／实际公布且可调用的能力</td></tr><tr><td>Policy / Approval</td><td>宿主权限规则／用户对具体操作的批准</td></tr><tr><td>Lease / Sandbox</td><td>带期限可撤销的使用授权／执行时的资源隔离边界</td></tr><tr><td>Fact / revision / provenance</td><td>可核实事实／版本／事实来源和获得过程</td></tr><tr><td>CAS / checkpoint</td><td>版本一致才提交／可恢复的执行检查点</td></tr><tr><td>idempotency / reconciliation</td><td>重复调用不重复产生已确认结果／结果未知时核实协调</td></tr><tr><td>Trace / Evidence</td><td>云调用追踪／可信执行与实际读回凭据，两者不能互相替代</td></tr><tr><td>SWR / image / container</td><td>华为镜像仓库／打包的运行代码及依赖／镜像运行实例</td></tr><tr><td>ModelGateway / Provider</td><td>统一模型调用入口／具体模型服务适配</td></tr><tr><td>MCP / Skill</td><td>工具互操作协议／受限步骤资产；二者都不是权限来源</td></tr><tr><td>calibrated / confidence</td><td>概率与实际准确性经过领域检验／模型的置信指标</td></tr><tr><td>frozen / provisional / unavailable</td><td>已公布冻结子集／暂定契约／不能作为真实能力消费</td></tr><tr><td>Golden Path</td><td>比赛真实云编排到本地工具读回的完整主路径</td></tr><tr><td>Electron / Renderer</td><td>Windows 桌面框架／用于显示界面的渲染进程；与可信主进程分开</td></tr><tr><td>ASR / TTS / UIA</td><td>语音转文字／文字转语音／Windows 界面自动化接口</td></tr><tr><td>stdio / Named Pipe</td><td>子进程标准输入输出通信／Windows 本机进程通信管道</td></tr><tr><td>CI / PR / Issue / HEAD / diff</td><td>自动集成测试流程／代码合并请求／问题单／当前 Git 提交／代码差异</td></tr><tr><td>ARM64 / Node / tag / digest</td><td>CPU 架构／JavaScript 运行时／镜像可读标签／镜像内容哈希标识</td></tr><tr><td>deadline / token / budget</td><td>本次调用截止时刻／模型处理文本的计量单位／允许消耗的额度或步骤</td></tr><tr><td>payloadDigest / ack / cursor</td><td>消息内容摘要／收到或受理的明确确认／恢复事件读取位置</td></tr><tr><td>DTO / scope / DAG</td><td>数据传输对象／允许的资源范围／没有依赖循环的任务图</td></tr><tr><td>confidence / margin / entropy</td><td>答案置信／最高候选与次高候选差距／分布不确定性指标；都不是授权</td></tr><tr><td>jitter / backpressure / rollback</td><td>重连等待加入随机扰动／队列积压时限制继续发送／退回已验证旧版本</td></tr><tr><td>Wiki / backlink / projection</td><td>可编辑且有页面关联的知识库／指向当前页的反向链接／从来源生成、可重建的检索或事实表示</td></tr></table></div><p>图中颜色区分职责区域，箭头表示目标数据/控制流；不表示相邻模块任意互相导入。百分比是上述目标估算。横向缺口单独列出。实线的目标流程也可能尚未实现，必须结合本快照和源码判断。</p><h2 id="section-21">22. 依据与仍需确认的事项</h2><p>仓库依据：<code>docs/PRD.md</code>、<code>ARCHITECTURE.md</code>、<code>PROJECT_STRUCTURE.md</code>、<code>DEVELOPMENT_PROTOCOL.md</code>、<code>MODULE_ASSIGNMENTS.md</code>、<code>ROADMAP.md</code>、<code>interfaces/CURRENT_INTERFACE_CATALOG.md</code>、<code>competition/HUAWEI_ICT_AGENTARTS_PROFILE.md</code>、<code>adr/0012-owned-agentarts-image.md</code>，以及模块表逐项 evidence。源码与台账冲突时记录范围，不把存在目录当作实现或冻结证据。</p><p>平台待实测：公网 WSS 地址及 Upgrade 支持、认证与过期、连接/会话寿命、代理断流、HTTPS 事件恢复能力、运行时架构与镜像拉取权限、真实 Provider 工具提案语义、Trace/评估与用量。平台文档中的容器 <code>/ws</code> 支持不足以回答这些全部问题。</p><p>产品待决定但不阻塞本设计：自主权限的具体预设、首个长期责任与真实数据源、强隔离执行器选型、领域评估标注标准、可选社交平台。实现时优先证明一个真实责任闭环，再扩展来源和工作流。</p><p>本方案已经体现用户选择的 <strong>WSS 主通道 + HTTPS 备用、电脑运行时常驻自主、Laya 辅助可信决策、用户权限与沙箱设置、增量修复及监管委派</strong>。这些是拟实施目标；当前完成度与真实验收缺口由模块快照约束。</p></div></div></section></main><footer>离线自包含阅读页；图为目标流向，真实实现以源码及验收为准。没有远程脚本、分析埋点或网络请求。</footer><script>
+    const diagrams=[...document.querySelectorAll('.svg-scroll svg')]; let zoom=1;
+    function setZoom(value){zoom=value;for(const s of diagrams){s.style.width=value===0?'100%':`${2800*value}px`;s.style.minWidth=value===0?'1200px':'0';}document.querySelector('#zoom-label').textContent=value===0?'适应':`${Math.round(value*100)}%`;}
+    document.querySelector('#fit').onclick=()=>setZoom(0);document.querySelector('#actual').onclick=()=>setZoom(1);document.querySelector('#larger').onclick=()=>setZoom(zoom===0?.65:Math.min(2,zoom+.25));
+    document.querySelector('#search').oninput=e=>{const q=e.target.value.trim().toLowerCase();let visible=0;for(const m of document.querySelectorAll('.module')){const match=m.dataset.search.toLowerCase().includes(q);m.hidden=!match;if(match)visible++;}document.querySelector('#count').textContent=`${visible} / 39`;};
+    setZoom(0);
+    </script></body></html>

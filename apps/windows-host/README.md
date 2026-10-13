@@ -1,5 +1,8 @@
 # Windows Host: 记事本受限文本操作核心
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 此目录包含受限 Windows 类库和 `host/` 中的独立进程入口。Host 消费 [#168](https://github.com/zemeng5208/PersonalAgent/pull/168) 的 provisional `0.1.0` 内部 Schema。当前 main 已有公开 Runtime adapter、持久 attempt store 和 Desktop 的新记事本/F9 确认入口；Desktop 仅在 Windows 且固定 Host/Bridge Release 产物存在时注册本机工具，真实握手与 UIA 仍须另行验收。目标 Profile 为 `huawei_ict_agentarts`；本地执行不能由 AgentArts 的成功响应、Renderer 文本或单独的 `authorizationRef` 触发。正式入口与证据缺项见 [Desktop 记事本操作](../desktop/docs/notepad-operation.md)。
