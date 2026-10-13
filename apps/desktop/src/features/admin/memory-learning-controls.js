@@ -1,10 +1,12 @@
 const escape = value => String(value ?? '').replace(/[&<>"']/g,
   char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
+const taskState = value => ({created:'已创建',running:'运行中',cancelling:'正在取消',waiting_approval:'等待审批',
+  waiting_reconciliation:'等待结果核实',succeeded:'已完成',failed:'失败',cancelled:'已取消'}[value] ?? value);
 
 /** Only metadata and opaque references enter this independent admin component. */
 export function memoryLearningControlsHtml({status = {}, refs = [], version = null,
   active = null, taskId = '', runningTask = null, message = '', form = {}} = {}) {
-  const workflow = version ? `<p>候选 v${escape(version.revision)} · ${escape(version.validation)} ·
+  const workflow = version ? `<p>版本 v${escape(version.revision)} · ${escape({candidate:'待验证',passed:'验证通过',failed:'验证失败'}[version.validation] ?? version.validation)} ·
     ${version.hasEvidence ? '有 Runtime 验证记录' : '等待验证'}</p>` : '<p>尚未选择流程版本。</p>';
   const memories = refs.map((ref, index) => `<div class="setting-row"><span>私人记忆 ${index + 1} · v${escape(ref.revision)}</span>
     <div class="setting-control"><button class="btn btn-sm" data-ml-use="${index}" data-conversation="desktop-panel">用于主对话</button>
@@ -32,7 +34,7 @@ export function memoryLearningControlsHtml({status = {}, refs = [], version = nu
       <button class="btn btn-sm" data-ml-action="validate" ${taskId ? '' : 'disabled'}>读回验证</button>
       <button class="btn btn-sm" data-ml-action="activate" ${version?.validation === 'passed' ? '' : 'disabled'}>确认启用此版本</button>
       <button class="btn btn-sm" data-ml-action="run" ${active ? '' : 'disabled'}>运行已启用版本</button>
-      <button class="btn btn-sm" data-ml-action="stop" ${runningTask ? '' : 'disabled'}>停止此任务</button>
+      <button class="btn btn-sm" data-ml-action="stop" ${runningTask ? '' : 'disabled'}>停止或核实此任务</button>
       <button class="btn btn-sm btn-danger" data-ml-action="erase" ${version ? '' : 'disabled'}>删除流程</button>
     </div><p class="muted">${status.learningAvailable ? '学习宿主已配置' : '学习宿主未配置'}</p>
     <p role="status" aria-live="polite">${escape(message)}</p></section>`;
@@ -115,6 +117,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
         result = await invoke(`learning.${action}`, payload);
         if (result.version) state.version = result.version;
         if (action === 'read') {
+          state.version = result.version;
           state.active = result.active;
           if (previous?.workflowId !== workflowId || previous?.revision !== revision) state.taskId = '';
         }
@@ -124,7 +127,7 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
         if (['startValidation', 'run'].includes(action)) {
           state.runningTask = {taskId: result.taskId, workflowId, revision: payload.revision};
         }
-        if (action === 'stop' && (result.cancelRequested || ['succeeded', 'failed', 'cancelled'].includes(result.state))) {
+        if (action === 'stop' && ['succeeded', 'failed', 'cancelled'].includes(result.state)) {
           state.runningTask = null;
         }
         if (action === 'activate' && result.state === 'activated') state.active = state.version;
@@ -132,16 +135,22 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
           state.version = null; state.active = null; state.taskId = '';
         }
       }
-      state.message = action === 'stop' ? (result.cancelRequested ? `已请求停止，任务当前为 ${result.state}。` : `任务当前为 ${result.state}。`)
+      state.message = action === 'stop' ? (result.cancelRequested && state.runningTask
+        ? `停止请求已受理，任务仍为${taskState(result.state)}，尚未确认停止；可再次点击“停止或核实此任务”读回。`
+        : `任务当前为${taskState(result.state)}。`)
+        : action === 'read' && !result.version ? '所选版本不存在；当前启用状态已读回。'
         : result.state === 'declined' ? '已取消确认，未更改。'
         : result.state === 'pending' ? (result.phase === 'private_copy_erasure'
           ? '来源已停止引用，关联任务副本仍待核实清除，请在任务区处理后读回。'
-          : `任务仍为 ${result.taskState}，请在任务区处理后读回。`)
-          : result.taskId ? `任务已受理：${result.taskId}（${result.state}）`
+          : `任务仍为${taskState(result.taskState)}，请在任务区处理后读回。`)
+          : result.taskId ? `任务已受理：${result.taskId}（${taskState(result.state)}）`
             : result.version?.validation === 'failed' ? '验证失败，不能启用。'
               : result.state === 'deleted' ? '删除读回完成。'
                 : result.state === 'withdrawn' ? '已撤回，后续任务不可消费。' : '状态已读回。';
-    } catch (error) { state.message = error?.message ?? '操作失败，请刷新后核对。'; }
+    } catch (error) {
+      if (action === 'read') { state.version = null; state.active = null; state.taskId = ''; }
+      state.message = `${action === 'read' ? '版本未读回，已清除旧选择。' : ''}${error?.message ?? '操作失败，请刷新后核对。'}`;
+    }
     finally { busy = false; render(resolvedRevision); }
   }, {signal: events.signal});
   return Object.freeze({dispose() { disposed = true; events.abort(); },
