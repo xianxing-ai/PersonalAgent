@@ -23,7 +23,7 @@ export const REPAIR_QUERY = PREFIX + JSON.stringify({action: 'REVISE', strategy:
   node(planId, 1, 'plan', '14点准备'), node(otherId, 1, 'plan', '其他工作'),
 ], repairContext: {expectedGraphRevision: 7, targets: [
   {node: ref(planId), summary: '14点准备', requestedDependencies: [ref(goalId, 2)]},
-  {node: ref(otherId), summary: '其他工作', requestedDependencies: [ref(goalId, 2)]},
+  // Unrelated plan stays in nodes for preservation; it is not a repair target.
 ], allowedDependencies: [ref(goalId, 2)]}, omittedSources: 0, calibrated: false, executed: false});
 
 const definitions = [

@@ -9,7 +9,7 @@ import {getOwnedBindings, OwnedAgentOrchestrator} from '@personal-agent/agentart
 import {FakeModelProvider} from '@personal-agent/models';
 import {FakeCloudAgentPort} from '@personal-agent/coordination/testing';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
-import {CASES, createCaseDiagnostics, createLiveTransport, createReceiptWriter, main, normalizeDeadline, parseOptions, runAcceptance, selectCases, validateCatalog,
+import {CASES, REPAIR_QUERY, createCaseDiagnostics, createLiveTransport, createReceiptWriter, main, normalizeDeadline, parseOptions, runAcceptance, selectCases, validateCatalog,
   validateConfiguration} from './owned-binding-live.mjs';
 
 const goalId = 'b'.repeat(64), planId = 'a'.repeat(64), otherId = 'c'.repeat(64);
@@ -132,6 +132,15 @@ test('unrecognized filesystem codes are UNKNOWN and an initial write failure inv
   assert.equal(h.port.requests.length, 0); assert.equal(writes, 1); assert.equal(renames, 0);
   assert.equal(JSON.stringify(result).includes(config.wssToken), false);
   assert.equal(JSON.stringify(result).includes(config.inboundAuthorization), false);
+});
+
+test('repair fixture changes one plan and preserves unrelated context', () => {
+  const payload = JSON.parse(REPAIR_QUERY.slice(REPAIR_QUERY.indexOf('{')));
+  assert.deepEqual(payload.repairContext.targets, [
+    {node: ref(planId), summary: '14点准备', requestedDependencies: [ref(goalId, 2)]},
+  ]);
+  assert.ok(payload.nodes.some(item => item.id === otherId && item.kind === 'plan'
+    && item.summary === '其他工作'));
 });
 
 test('selection is exact, ordered and explicitly includes review prerequisites', () => {
