@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {runFixedSyntheticRepairBatch} from './fixed-synthetic-repair-batch.mjs';
 import {buildFixedSyntheticRepairCases} from './fixed-synthetic-repair-cases.mjs';
+import {appendVersion, currentNodes} from '@personal-agent/goals';
 
 const options = () => ({deadline: new Date(Date.now() + 10_000).toISOString(),
   signal: new AbortController().signal});
@@ -32,6 +33,9 @@ test('three fixed legal repairs use only input goals, unique request IDs and the
   assert.equal(result.stopReason, null);
   assert.equal(result.synthetic, true);
   assert.equal(result.verification, 'unverified');
+  assert.equal(result.evaluationMode, 'proposal-only');
+  assert.equal(result.readbackCounts.not_requested, 3);
+  assert.equal(result.scopeSummary.correctlyRepaired, 6);
   assert.ok(result.cases.every(item => item.status === 'passed' && item.errorCode === 'NONE'));
 });
 
@@ -68,7 +72,7 @@ test('different valid reason wording is accepted without exposing response, expe
   assert.equal(result.counts.passed, 3);
   assert.doesNotMatch(JSON.stringify(result), /private-response-canary|expectedGraphRevision|"dependencies":\s*\[|"summary"|"reason"|"snapshot"|traceId|totalTokens|evidenceRefs|taskId/);
   assert.deepEqual(Object.keys(result.cases[0]), ['caseId', 'runIndex', 'status', 'verification',
-    'errorCode', 'checks', 'durationMs']);
+    'errorCode', 'checks', 'scope', 'readback', 'durationMs']);
 });
 
 test('non-repair kinds and invalid candidates never count as matched repairs', async () => {
@@ -176,4 +180,111 @@ test('importing the module selects no service and performs no automatic network 
     `globalThis.fetch=()=>{throw Error('unexpected network')};await import(${JSON.stringify(url)});`],
   {encoding: 'utf8', timeout: 5000});
   assert.equal(child.status, 0, child.stderr); assert.equal(child.stdout, ''); assert.equal(child.stderr, '');
+});
+
+function appliedGraph(fixture) {
+  let graph = fixture.snapshot;
+  for (const change of fixture.expected.changes) {
+    const {revision, graphRevision, ...node} = currentNodes(graph).find(node => node.id === change.node.id);
+    graph = appendVersion(graph, graph.revision, {...node, summary: change.summary,
+      reason: change.reason, dependencies: change.dependencies});
+  }
+  return graph;
+}
+
+test('only an explicit local reader can supply separately scored task-bound graph observations', async () => {
+  const calls = [], data = fixtures();
+  const result = await runFixedSyntheticRepairBatch(port(correct()), {...options(), readback: {read(request) {
+    calls.push(request);
+    assert.deepEqual(Object.keys(request), ['taskId', 'caseId', 'runIndex', 'deadline', 'signal']);
+    const fixture = data.find(item => item.caseId === request.caseId);
+    return {taskId: request.taskId, before: fixture.snapshot, after: appliedGraph(fixture)};
+  }}});
+  assert.equal(result.evaluationMode, 'local-readback');
+  assert.equal(result.counts.passed, 3);
+  assert.equal(result.readbackCounts.passed, 3);
+  assert.equal(result.readbackScopeSummary.correctlyRepaired, 6);
+  assert.equal(new Set(calls.map(item => item.taskId)).size, 3);
+  assert.equal(result.verification, 'unverified');
+  assert.doesNotMatch(JSON.stringify(result), /"history"|"summary"|"dependencies"\s*:\s*\[|"taskId"|"namespace"\s*:\s*"/);
+});
+
+test('a correct proposal with an unchanged readback never becomes an applied repair result', async () => {
+  const result = await runFixedSyntheticRepairBatch(port(correct()), {...options(), readback: {read(request) {
+    const fixture = fixtures().find(item => item.caseId === request.caseId);
+    return {taskId: request.taskId, before: fixture.snapshot, after: fixture.snapshot};
+  }}});
+  assert.equal(result.counts.passed, 3); // Preserved proposal-quality meaning.
+  assert.equal(result.readbackCounts.passed, 0);
+  assert.equal(result.readbackCounts.failed, 3);
+  assert.equal(result.readbackScopeSummary.missed, 6);
+  assert.equal(result.readbackScopeSummary.unrepaired, 6);
+});
+
+test('local read failures retain proposal scores but are sanitized and never counted as readback success', async () => {
+  const result = await runFixedSyntheticRepairBatch(port(correct()), {...options(), readback: {read() {
+    throw Error('private-local-store-canary');
+  }}});
+  assert.equal(result.counts.passed, 3);
+  assert.equal(result.readbackCounts.error, 3);
+  assert.ok(result.cases.every(item => item.readback.errorCode === 'EVALUATION_READBACK_FAILED'));
+  assert.doesNotMatch(JSON.stringify(result), /private-local-store-canary/);
+});
+
+test('cancellation bounds a noncooperative local read without starting another model case', async () => {
+  const controller = new AbortController(), entered = Promise.withResolvers(), late = Promise.withResolvers();
+  const calls = []; let seenSignal;
+  const pending = runFixedSyntheticRepairBatch(port(correct(), calls), {...options(), signal: controller.signal,
+    readback: {read(request) {seenSignal = request.signal; entered.resolve(); return late.promise;}}});
+  await entered.promise; controller.abort();
+  const result = await pending;
+  assert.equal(calls.length, 1);
+  assert.equal(seenSignal.aborted, true);
+  assert.equal(result.stopReason, 'CANCELLED');
+  assert.equal(result.readbackCounts.error, 1);
+  assert.equal(result.cases[0].readback.errorCode, 'CANCELLED');
+  const frozen = structuredClone(result);
+  late.resolve({taskId: calls[0].taskId, before: fixtures()[0].snapshot, after: appliedGraph(fixtures()[0])});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(result, frozen);
+});
+
+test('a late readback past the original deadline is discarded even before its timer runs', async t => {
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  const deadline = new Date(now + 10_000).toISOString(), calls = [];
+  const result = await runFixedSyntheticRepairBatch(port(correct(), calls), {...options(), deadline,
+    readback: {read(request) {
+      const fixture = fixtures()[0]; now += 10_000;
+      return {taskId: request.taskId, before: fixture.snapshot, after: appliedGraph(fixture)};
+    }}});
+  assert.equal(calls.length, 1);
+  assert.equal(result.stopReason, 'TIMEOUT');
+  assert.equal(result.cases[0].readback.errorCode, 'TIMEOUT');
+  assert.equal(result.readbackCounts.passed, 0);
+});
+
+test('cancellation or expiry during observation validation cannot publish a successful readback', async t => {
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  for (const code of ['CANCELLED', 'TIMEOUT']) {
+    const controller = new AbortController(), calls = [];
+    const result = await runFixedSyntheticRepairBatch(port(correct(), calls), {...options(), signal: controller.signal,
+      readback: {read(request) {
+        const fixture = fixtures()[0];
+        return new Proxy({taskId: request.taskId, before: fixture.snapshot, after: appliedGraph(fixture)}, {
+          ownKeys(target) {
+            if (code === 'CANCELLED') controller.abort();
+            else now += 10_000;
+            return Reflect.ownKeys(target);
+          },
+        });
+      }}});
+    assert.equal(result.stopReason, code);
+    assert.equal(calls.length, 1);
+    assert.equal(result.cases[0].readback.status, 'error');
+    assert.equal(result.cases[0].readback.errorCode, code);
+    assert.equal(result.readbackCounts.passed, 0);
+    assert.equal(result.readbackScopeSummary.scoredCases, 0);
+  }
 });
