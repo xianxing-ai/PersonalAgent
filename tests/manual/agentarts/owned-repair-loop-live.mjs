@@ -21,7 +21,7 @@ const safeCode = error => safeCodes.has(error?.code) ? error.code : 'ACCEPTANCE_
 const diagnosticStages = new Set(['authorization', 'catalog_guard', 'export_guard', 'transport',
   'http_response', 'response_body', 'response_schema', 'application_schema']);
 const diagnosticCodes = new Set(['INVALID_ARGUMENT', 'UNSUPPORTED_CAPABILITY', 'UNAUTHORIZED',
-  'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT']);
+  'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT', 'RATE_LIMITED']);
 const schemaCategories = new Set(['body_limit', 'body_shape', 'utf8', 'content_type', 'event_order',
   'event_shape', 'provider_failure', 'no_text', 'json_shape', 'application_json', 'application_contract', 'other']);
 const httpStatuses = new Set(Object.keys(STATUS_CODES).map(Number));

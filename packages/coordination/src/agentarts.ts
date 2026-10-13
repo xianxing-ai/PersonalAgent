@@ -3,7 +3,7 @@ import {AGENTARTS_TRANSPORT_VERSION, digestAgentArtsPayload, parseAgentArtsTrans
 import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
-import {AgentArtsResultUnknownError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
+import {AgentArtsRemoteInvocationError, AgentArtsResultUnknownError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
 import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
 import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 
@@ -69,7 +69,7 @@ export type AgentArtsSchemaCategory =
 export interface AgentArtsFailureDiagnostic {
   readonly stage: AgentArtsDiagnosticStage;
   readonly code: 'INVALID_ARGUMENT' | 'UNSUPPORTED_CAPABILITY' | 'UNAUTHORIZED'
-    | 'EXTERNAL_FAILURE' | 'CANCELLED' | 'TIMEOUT';
+    | 'EXTERNAL_FAILURE' | 'CANCELLED' | 'TIMEOUT' | 'RATE_LIMITED';
   readonly requestId?: string;
   readonly httpStatus?: number;
   readonly contentType?: 'json' | 'sse' | 'missing' | 'other';
@@ -135,6 +135,7 @@ function external(message: string, retryable = false): never {
 
 function diagnosticCode(error: unknown): AgentArtsFailureDiagnostic['code'] {
   try {
+    if (error instanceof AgentArtsRemoteInvocationError) return error.remoteCode;
     if (error instanceof ProtocolError && [
       'INVALID_ARGUMENT', 'UNSUPPORTED_CAPABILITY', 'UNAUTHORIZED',
       'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT',
@@ -1294,6 +1295,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           throw new AgentArtsResultUnknownError(fallbackReceipt);
         }
         if (error instanceof AgentArtsResultUnknownError) throw error;
+        if (error instanceof AgentArtsRemoteInvocationError) throw error;
         if (error instanceof ProtocolError && (error.code === 'UNAUTHORIZED'
           || error.code === 'UNSUPPORTED_CAPABILITY')) throw error;
         throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts request failed', this.websocket === undefined);

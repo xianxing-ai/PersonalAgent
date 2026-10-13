@@ -84,6 +84,15 @@ export class AgentArtsResultUnknownError extends ProtocolError {
   }
 }
 
+/** Internal diagnostic marker for a schema- and identity-validated error frame.
+ * Preserve the existing public EXTERNAL_FAILURE semantics; a remote TIMEOUT or
+ * CANCELLED is not a local abort, and never grants a retry or fallback. */
+export class AgentArtsRemoteInvocationError extends ProtocolError {
+  constructor(readonly remoteCode: Extract<AgentArtsTransportFrame, {type: 'error'}>['code']) {
+    super('EXTERNAL_FAILURE', 'AgentArts WebSocket invocation failed', false);
+  }
+}
+
 /** An invoke frame has never been handed to the socket. This is the only automatic fallback condition. */
 class BeforeInvokeConnectionError extends ProtocolError {
   constructor() { super('EXTERNAL_FAILURE', 'AgentArts WebSocket connection is unavailable', false); }
@@ -336,7 +345,7 @@ export class AgentArtsWebSocketTransport {
           if (!pending.sent || frame.accepted !== pending.accepted) throw failProtocol();
           pending.afterTerminal({...pending.receipt, accepted: pending.accepted});
           this.dropPending(connection, frame.requestId);
-          pending.reject(new ProtocolError('EXTERNAL_FAILURE', 'AgentArts WebSocket invocation failed'));
+          pending.reject(new AgentArtsRemoteInvocationError(frame.code));
           return;
         }
         throw failProtocol();
