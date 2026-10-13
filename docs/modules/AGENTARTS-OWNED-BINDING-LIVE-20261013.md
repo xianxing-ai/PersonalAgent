@@ -24,6 +24,28 @@ Profile：`huawei_ict_agentarts`；负责人：zemeng；本工作包为 `in_prog
 上述审批来自明确标识的已授权合成验收宿主，不是用户本人点击；输入、文件与隔离数据库均是固定公开夹具。
 原始失败数据库保持原状，不通过清除挂起或重做未知写入掩盖问题。最新回执保存在忽略目录，公开文档仅记录脱敏结果。
 
+## 02:54 UTC 最新逐绑定结果与后续源码
+
+02:54:28.014–02:55:10.039 UTC 的真实 WSS 回执整体为 `failed`：目录精确 8 Workflow / 3 Controller，
+**3 项通过、4 项失败、4 项跳过**。该轮仍对应已确认部署的 `arm64-7b6b4101`。
+
+| 场景 | 实际结果 | 证据边界 |
+| --- | --- | --- |
+| Fast、Deterministic、Controller MVP | 通过，`application_result/text` | 仅这三项的当前真实答复 |
+| World、Router | 顶层 `EXTERNAL_FAILURE`，`transport` 诊断为 `RATE_LIMITED` | 已发送、受理并收到终态；未取得可用报告，不把所有失败归因于限流 |
+| Controller Repair、Controller Router | 合法 `application_result/repair_candidate`，场景断言 `EXPECTED_REPAIR_CANDIDATE` 失败 | 通过结构解析不等于符合固定最小修复场景，更不等于本地 CAS 或执行通过 |
+| Plan、Plan_1、Review、Review_1 | `DEPENDENCY_FAILED`，跳过 | World 前置失败，未伪造报告继续 |
+
+该 runner 工具执行为 0、`executionAuthorized=false`，不能作为完整最小修复闭环成功证据。
+原 02:39 任务及其 `waiting_reconciliation` 状态仍保留。
+
+后续源码 `0cbb3f1d` 已修复 strict continuation 的已确认来源传递，并完成相应必要检查。
+截至 02:57 UTC，本地 `linux/arm64` 镜像已构建成功；导出、推送和新云端部署由后续流程继续，
+尚无该版本的云端独立读回或真实 continuation 成功证据。构建成功不能替代部署及调用验收。
+[PR #343](https://github.com/zemeng5208/PersonalAgent/pull/343) 已交付 WSS upgrade 脱敏诊断，
+[PR #344](https://github.com/zemeng5208/PersonalAgent/pull/344) 已交付落盘失败及目录阶段诊断，
+后者 18 项离线测试通过；这些代码交付不提升本次云端失败或整 MOD 状态。
+
 ## 旧镜像当日较早的实际结果
 
 2026-10-13 01:31:53–01:32:16 UTC 的逐项运行：

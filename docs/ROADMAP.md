@@ -23,7 +23,7 @@
 
 所有未取得完整验收与实际集成证据的模块维持 `in_progress`。新工作包 PR、检查和真实验收结果分别记录，不凭百分比或历史 done 推导完成。
 
-当日旧镜像逐绑定调用为 2 通过、5 失败、4 因前置失败跳过。02:28 UTC 已部署新 ARM64 `owned-1.3` 镜像，新 World 真实 WSS 报告通过；本地合成宿主补齐可选 `maxBytes` 后，读取审批、一次真实文件读取和一条 Evidence 已通过，但续答报 `INVALID_ARGUMENT`，任务保留待核实，完整最小修复仍未通过。完整记录见 [10 月 13 日镜像验收](modules/AGENTARTS-OWNED-BINDING-LIVE-20261013.md)；离线通过、云端报告、工具执行和整 MOD 完成分别记录。
+02:54:28–02:55:10 UTC，已部署 `arm64-7b6b4101` 的最新逐绑定结果为 3 通过、4 失败、4 跳过：World/Router 的 transport 诊断为 `RATE_LIMITED`；两个修复 Controller 返回合法候选，但固定场景断言失败。较早的最小修复已完成审批后一次读取/Evidence，续答仍报 `INVALID_ARGUMENT`，任务保留待核实，完整闭环未通过。后续 `0cbb3f1d` strict continuation 修复及必要检查完成，本地新 ARM64 build 成功；截至 02:57 UTC 尚无新云版本部署/调用读回。完整记录见 [10 月 13 日镜像验收](modules/AGENTARTS-OWNED-BINDING-LIVE-20261013.md)；离线、构建、部署、实际执行及整 MOD 状态分别记录。
 
 ## 2026-10-12 ARM64 镜像真实 WSS 读取闭环（历史分支验收）
 
