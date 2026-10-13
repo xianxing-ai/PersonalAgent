@@ -4,6 +4,7 @@ import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync
 import path from 'node:path';
 import {openReadOnlyVault} from '@personal-agent/knowledge/filesystem';
 import {createWikiPort} from '@personal-agent/knowledge/wiki';
+import {localVaultPairingIdentity} from '@personal-agent/knowledge/pairing';
 import {openControlledVaultWriter} from '@personal-agent/knowledge/write';
 import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 
@@ -63,7 +64,7 @@ function prepareRecovery(userData, sourceId, powerShellPath) {
   if (!existsSync(target)) {
     mkdirSync(target, {recursive: true});
     const script = String.raw`$ErrorActionPreference='Stop'
-$target=[Console]::In.ReadToEnd()
+$target=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(target,'utf8').toString('base64')}'))
 $self=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
 $acl=[System.Security.AccessControl.DirectorySecurity]::new()
 $acl.SetOwner($self)
@@ -72,7 +73,7 @@ $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($se
 Set-Acl -LiteralPath $target -AclObject $acl`;
     execFileSync(powerShellPath, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
       Buffer.from(script, 'utf16le').toString('base64')],
-    {input: target, encoding: 'utf8', timeout: 10000, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']});
+    {encoding: 'utf8', timeout: 10000, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']});
   }
   verifyWindowsRecoveryAcl(target, powerShellPath);
   return directory(target);
@@ -210,6 +211,7 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
       failure = '知识源已撤销，请重新选择'; return snapshot();
     });},
     /** Trusted local admin consumers use this same binding as the Runtime tool factory. */
+    pairingIdentity() {return current() ? localVaultPairingIdentity(saved.rootPath) : undefined;},
     acquire(expected, signal) {
       checkBinding(expected);
       const controller = new AbortController(); inflight.add(controller);

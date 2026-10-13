@@ -3,6 +3,35 @@
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
 
+## 本机会话配对端口（MOD-08M）
+
+`@personal-agent/knowledge/pairing` 公开严格版本化 `ObsidianPairingDescriptor`、
+`ObsidianPairingPeer`、描述解析、物理 Vault 身份摘要和只读 peer 工厂。
+身份以规范路径及文件系统标识计算，不使用可碰撞的 Vault 显示名。描述不携带绝对路径、
+凭据或正文，且不构成授权。插件连接撤销和卸载中止 peer；Runtime 验证结果 Schema 与
+相对文件夹范围。仅供可信 composition；跨进程公开桥接见下一节。
+兼容与验收见 [ADR-0019](../../docs/adr/0019-obsidian-runtime-pairing.md) 和
+[MOD-08M](../../docs/modules/MOD-08M-UNICODE-PAIRING-01.md)。
+
+## 本机认证桥接（MOD-08N）
+
+`@personal-agent/knowledge/bridge` 提供 `createObsidianBridgeOffer(peer)`、
+`parseObsidianBridgeCode(code)` 和 `connectObsidianBridge(code,context)`。
+插件显式生成一次性 32 字节随机密钥，监听 127.0.0.1 随机端口，TLS 1.3 加密。
+Windows 原生 API 在内存生成临时证书，Desktop 先固定证书指纹，再发送密钥认证。
+配对码 2 分钟有效；一个成功连接后停止监听，拒绝重用、描述替换与证书认证回退。
+最多一个在途只读检索，每帧 128 KiB、每次读取 30 秒、会话 15 分钟。
+取消、断连、非法消息和卸载关闭会话；无自动重试、写入、云端发送或持久凭据。
+协议版本与严格字段见 [ADR-0020](../../docs/adr/0020-obsidian-authenticated-bridge.md)，
+状态仍 provisional；配对码及结果均不能签发 Policy grant。
+
+MOD-08O 使用 PA2/版本 2 帧增加 peer 的可选 `readCitation`：四字段 KnowledgeSource，
+严格 Vault/文件夹/版本校验，返回最多 4000 字单行摘录或固定错误码；没有任意文件 RPC。
+新客户端兼容 PA1 的搜索，但 PA1 不提供引用能力；旧客户端拒绝 PA2，需同时升级插件和
+Desktop。Runtime 的 `wikiSource.acquireWiki` 结合本机稳定页身份与插件摘录重新验证，
+使用既有 WikiSource 和逐条确认，不以临时任务 sourceId 标识长期事实。缺少任一侧证据即
+unavailable；详见 [ADR-0021](../../docs/adr/0021-paired-citation-memory.md)。
+
 ## Wiki 第一包：只读来源身份与版本（MOD-08G）
 
 `@personal-agent/knowledge/wiki` 提供 provisional 的 `WikiPort`：

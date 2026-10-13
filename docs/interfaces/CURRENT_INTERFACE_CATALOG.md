@@ -26,6 +26,23 @@ WSS主通道、显式HTTPS备用、同会话复用、发送前持久身份与未
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
+2026-10-11 [MOD-08O](../modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md) 在 PR #322 上继续：
+peer 可选 readCitation、桥接版本 2（PA2，旧 PA1 仅检索）与 Runtime `wikiSource.acquireWiki`。
+TrustedKnowledgeSource 的读取租约可选提供既有 ReadOnlyPageVaultPort.readPage；缺少稳定页
+身份或引用能力时记忆来源 unavailable。接入原 WikiSource/逐条确认，不增加 task wire
+capability、迁移或依赖。接口保持 provisional，未完成真实用户/云端或主线集成验收；
+方案见 [ADR-0021](../adr/0021-paired-citation-memory.md)。
+
+2026-10-11 [PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322) 已交付、待非作者评审/集成：[MOD-08M](../modules/MOD-08M-UNICODE-PAIRING-01.md)
+新增 `@personal-agent/knowledge/pairing` 与 Runtime Application `createObsidianPairingHost`。
+它们是 **host-only provisional** 组合端口，复用既有 KnowledgePort 和工具/Policy 链，
+不新增 task wire operation、数据库迁移或云 capability。后续本地增量
+[MOD-08N](../modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md) 增加公开
+`@personal-agent/knowledge/bridge` 的版本 1 回环 TLS 指纹/一次性密钥消息协议及原生配对窗口，
+仅私人只读检索，仍 **provisional**；下方知识模块的完整可用性不提升为 frozen。方案见
+[ADR-0020](../adr/0020-obsidian-authenticated-bridge.md) 与
+[ADR-0019](../adr/0019-obsidian-runtime-pairing.md)。
+
 版本：1.3 · 日期：2026-09-27 · 基线提交：`9c40a0853b8db9e05e91c978e35d8e1a40788b39`
 
 协议负责人：`goo122` · 核心认知与 AgentArts 消费负责人：`zemeng` · 连接器消费负责人：`Potatos498`（2026-10-07 三人独立交付重置）

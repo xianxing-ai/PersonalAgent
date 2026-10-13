@@ -21,14 +21,20 @@ function collect(file) {
   return id;
 }
 const adapterId = collect(entry);
+const pairingId = collect(fileURLToPath(import.meta.resolve('@personal-agent/knowledge/pairing')));
+const bridgeId = collect(fileURLToPath(import.meta.resolve('@personal-agent/knowledge/bridge')));
 const adapter = `const modules={${[...modules].map(([id, source]) =>
   JSON.stringify(id) + ':function(module,exports,require){\n' + source + '\n}').join(',')}};
 const cache={}; const nativeRequire=require;
 function load(id){if(!modules[id])return nativeRequire(id);if(cache[id])return cache[id].exports;
 const module={exports:{}};cache[id]=module;modules[id](module,module.exports,load);return module.exports;}
-module.exports=load(${JSON.stringify(adapterId)});\n`;
-writeFileSync(join(dist, 'main.js'), readFileSync(join(root, 'src/main.cjs'), 'utf8')
+return load;\n`;
+writeFileSync(join(dist, 'main.js'), `const __personalAgentLoad=(function(){${adapter}})();\n` + readFileSync(join(root, 'src/main.cjs'), 'utf8')
   .replace("require('@personal-agent/knowledge/obsidian')",
-    `(function(){const module={exports:{}};${adapter}return module.exports;})()`));
+    `__personalAgentLoad(${JSON.stringify(adapterId)})`)
+  .replace("require('@personal-agent/knowledge/pairing')",
+    `__personalAgentLoad(${JSON.stringify(pairingId)})`)
+  .replace("require('@personal-agent/knowledge/bridge')",
+    `__personalAgentLoad(${JSON.stringify(bridgeId)})`));
 copyFileSync(join(root, 'manifest.json'), join(dist, 'manifest.json'));
 console.log('Obsidian package: ' + dist);
