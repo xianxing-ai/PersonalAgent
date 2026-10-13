@@ -244,7 +244,23 @@ export function startCoordinationTask(
   deadline: string,
   options: {resume?: boolean; toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<TaskSnapshot> {
-  const execution = runtime.runTask(taskId, context => runCoordinationWorker(runtime,port,tools,taskId,goal,context,options),
+  const execution = runtime.runTask(taskId, async context => {
+    try { return await runCoordinationWorker(runtime,port,tools,taskId,goal,context,options); }
+    catch (error) {
+      const loop = context.loadCheckpoint('competition-loop') as CompetitionCheckpoint | undefined;
+      const replay = context.loadCheckpoint('competition-confirmed-replay') as {runId?: string; inputDigest?: string} | undefined;
+      // A confirmed write whose continuation permission changed must remain recoverable.
+      // This does not turn an unknown execution into a confirmed result or replay the tool.
+      if (loop?.pending?.toolName === 'workspace.apply_text_patch'
+        && replay?.runId === `competition-tool-${taskId}-${loop.step}`
+        && runtime.readToolExecutions(taskId).some(record => record.evidenceId === replay.runId
+          && record.inputDigest === replay.inputDigest && record.state === 'confirmed'
+          && record.executionStarted && record.policyDecision === 'allow')) {
+        withholdConfirmedExport(runtime, taskId);
+      }
+      throw error;
+    }
+  },
     {deadline,sideEffect:options.toolCatalog?.sideEffect??'read',...(options.resume?{resume:true}:{})});
   // No adapter can dispatch an intent when the port is unavailable. Preserve
   // that existing immediate-failure lifecycle without a consumption callback.
