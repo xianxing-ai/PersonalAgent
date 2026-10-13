@@ -280,7 +280,15 @@ export function createHuaweiSisRecognitionPort(options: HuaweiSisConfig): Speech
 
 function decodeWav(value: unknown): Uint8Array {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_TTS_RESPONSE_BYTES
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    || value.length % 4 !== 0) {
+    throw external();
+  }
+  const contentLength = value.length - (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0);
+  // Scan once without a repeated regex group that can exhaust the stack on large WAVs.
+  for (let index = 0; index < contentLength; index++) {
+    const code = value.charCodeAt(index);
+    if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+      || (code >= 48 && code <= 57) || code === 43 || code === 47) continue;
     throw external();
   }
   const audio = Buffer.from(value, 'base64');

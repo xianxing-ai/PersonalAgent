@@ -20,8 +20,15 @@
 5. 提供 `scripts/check-wake-readiness.mjs`：仅启动固定原生宿主和限定词语法，经 stdin
    提供生成的 100 ms 静音，然后关闭。启动期限为 15 秒；不打开麦克风或扬声器，
    不读取凭据、不联网。成功也只证明引擎就绪及本地句柄关闭，不证明中文命中或设备。
+6. SIS Base64 使用有界线性扫描，修复合法 4,096,044 字节 WAV 在旧重复分组正则中
+   栈溢出的问题；仍拒绝非法字符、长度和 padding，不放宽原大小上限或 WAV 校验。
+7. VoiceSessionManager 在调用 provider 前登记操作；recognize/consume/speak 内同步
+   stop 也必须等待最终返回的句柄释放。识别、消费和播放失败或打断时，释放完成前
+   不恢复 listening；迟到的 stopSpeaking 回执不能覆盖新识别状态或会话终态。
+8. PCM 起动或释放失败后禁止在同一 port 重开 attachment；Windows System.Speech
+   并发及重复 dispose 共用释放 Promise，全部调用都等待所有 child close。
 
-## 本轮验证
+## 首次增量验证（提交 `185185ce`）
 
 环境：Windows x64、Node **24.15.0**、npm **11.12.1**，此工作树独立安装必要 workspace
 依赖，未复用其它工作树 node_modules。仅构建 contracts → client → voice-wake → voice。
@@ -34,6 +41,8 @@
 | Desktop 消费测试 | 39/39；真实 Host/Core/Voice 代码，permission、设备、ASR、HTTP、播放均为 Fake |
 | 架构检查 | 3/3 |
 | preflight 脚本语法、`git diff --check` | 通过 |
+
+以上完整测试属于首次增量；后续修复使用下面的定向检查，未重复整包/全仓检查。
 
 对应命令（在仓库要求的 Node/npm 环境，从本工作树运行）：
 
@@ -51,6 +60,29 @@ node packages/voice/scripts/check-wake-readiness.mjs
 首次默认测试隔离子进程受到 sandbox `spawn EPERM` 限制；改用 Node 支持的同进程测试
 模式通过。原生 C# 编译也先遇到 `spawn EPERM`，经平台授权后成功。依赖首次离线安装
 缺 `undici-types` 缓存，经平台网络授权后安装成功；没有变更锁文件或版本。
+
+### 后续增量的定向验证
+
+- `tsc -p packages/voice/tsconfig.json`：最终源码通过。
+- 最终生命周期调整：`provider-start-lifecycle`、`voice-session`、
+  `resource-release-failure` 三个测试文件共 **32/32**。
+- PCM 禁止失败后重开：`pcm-source-lifecycle` **7/7**；Windows 重复释放：
+  `windows-system-speech` **8/8**；SIS 大 WAV 与 padding：`huawei-sis-wav` **3/3**。
+- 在中途桥接改动上运行的既有 `concurrent-start`、`terminal-playback-release` **4/4**。
+  这些未在最后的 catch 顺序调整后重跑；最后调整由上面的 32 项覆盖。
+- 新增测试只使用合成 PCM/WAV、Fake 供应商、内存 transport 和受控 child；无麦克风、
+  扬声器、网络或真实账号调用。最终 `git diff --check` 通过。
+
+最终必要回归命令：
+
+```text
+node node_modules/typescript/bin/tsc -p packages/voice/tsconfig.json
+node --test --test-isolation=none packages/voice/test/provider-start-lifecycle.test.mjs packages/voice/test/voice-session.test.mjs packages/voice/test/resource-release-failure.test.mjs
+```
+
+顺序调整中曾出现两项既有 interrupt 回执回归，已经修复：中断成立后再整会话 stop，
+释放成功仍返回 interrupted，同时保留 stopped 终态；失败释放不恢复监听。最终 32 项
+包含这两项。按当前工作要求停止等待/轮询 CI；不把远端 CI 或合并状态写成已通过。
 
 ### 本机原生就绪读回（真实进程，非真实音频）
 

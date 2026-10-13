@@ -413,6 +413,9 @@ export function createVoicePcmFrameSourcePort(
       if (disposed) {
         throw new VoiceSessionError('INVALID_STATE', 'Voice PCM frame source port is disposed');
       }
+      if (hasReleaseFailure) {
+        throw new VoiceSessionError('EXTERNAL_FAILURE', 'Voice PCM capture release failed');
+      }
       if (!options || typeof options !== 'object' || Array.isArray(options)) {
         invalid('Invalid voice PCM subscription options');
       }
