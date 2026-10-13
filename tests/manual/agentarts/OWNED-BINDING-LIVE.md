@@ -87,6 +87,12 @@ World/Plan/Review 输出复用公开 `OwnedAgentOrchestrator` 的正式校验：
 后续项为 skipped。其他独立入口继续，各自最多调用一次。发送后断线记录 RESULT_UNKNOWN，
 不重发、不转 HTTPS，也不自动重跑整组。是否进行新的付费调用由操作者结合回执决定。
 
+### 2026-10-13 固定场景夹具校正（待真实复验）
+
+公开合成输入仍保留“其他工作”计划节点，用于检查无关节点不被误改；`repairContext.targets` 只列需要从 14 点改到 16 点的准备计划。Controller 候选仍须恰好一处修订并匹配原节点版本、新摘要与依赖，来源和结构校验未放宽。
+
+旧 [02:54 真实逐绑定记录](../../../docs/modules/AGENTARTS-OWNED-BINDING-LIVE-20261013.md) 仍为 3 通过、4 失败、4 跳过。两个 Controller 的 `EXPECTED_REPAIR_CANDIDATE` 失败发生在旧版“双目标输入/单目标断言”组合上；脱敏回执不足以判断各候选的具体差异，不把失败直接归咎模型。修正后尚未重新执行真实华为 WSS、部署或 11 项验收，新增离线断言也须以实际测试/CI 结果为准；不能把这次源码修改写成云端通过。
+
 ## 回执与证据边界
 
 每次运行创建唯一 `receipt-<uuid>.json`，每项结束时原子替换该文件。回执包含固定 case/id/type、
