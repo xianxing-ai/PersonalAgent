@@ -25,11 +25,23 @@
 
 02:54:28–02:55:10 UTC，已部署 `arm64-7b6b4101` 的最新逐绑定结果为 3 通过、4 失败、4 跳过：World/Router 的 transport 诊断为 `RATE_LIMITED`；两个修复 Controller 返回合法候选，但固定场景断言失败。较早的最小修复已完成审批后一次读取/Evidence，续答仍报 `INVALID_ARGUMENT`，任务保留待核实，完整闭环未通过。后续 `0cbb3f1d` strict continuation 修复及必要检查完成，本地新 ARM64 build 成功；截至 02:57 UTC 尚无新云版本部署/调用读回。完整记录见 [10 月 13 日镜像验收](modules/AGENTARTS-OWNED-BINDING-LIVE-20261013.md)；离线、构建、部署、实际执行及整 MOD 状态分别记录。
 
-## 2026-10-12 ARM64 镜像真实 WSS 读取闭环（历史分支验收）
+## 2026-10-13 Wiki/Skill 主线集成
+### 2026-10-13：Wiki/Skill 已进入 main
+
+[组合工作包](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 已通过 #346→#320 集成至 main `31b0ce5c`；#320 的 `f9f3f390` 经 zemeng5208 有效非作者批准、完整 Foundation 和设计门禁后，由 zemeng5208 合并。main 与该 head 的代码树一致，合并后主线 CI 另行读回。重复 #318 经用户授权关闭，分支和评审记录保留。已交付安装/启停/使用/卸载、Wiki 来源监视、应用备份协调、索引、只读插件和受信配对；真人原生流程、真实云消费、跨库派生副本与完整 LLM Wiki 仍待对应验收。MOD-06/07/08/09 保持 in_progress、接口 provisional，不把本组合完成等同完整模块 done。下文旧阶段记录保留为历史快照。
+
+### 2026-10-13 当前组合补充（review）
+
+main 已包含 #317 与 #327，基线 dd639d42。Wiki 根包保留投影重验与新的传输配置，
+沿 #320→#321→#322 组合核对；插件/记忆证据与真实云读取单链分别记录，不升级完整 MOD 状态。
+下文“未进入 main”和“双人阅读审批”保留为当时的分支记录；当前合并规则以 AGENTS/
+CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查与冲突门槛为准。
+
+## 2026-10-12 ARM64 镜像真实 WSS 读取闭环（分支验收）
 
 #317 的镜像源码固定为 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6`，已发布 GHCR、导入 SWR，Latest 为 `arm64-194799c6`。实际 MaaS 模型提出工具请求，经本地 Runtime / Policy 一次性审批、生产文件读取和 Evidence 回传，任务 succeeded；读取 1 次、Evidence 1 条、HTTPS 应用调用 0。持久读回不重放任务且关闭退出 0；云端目录发现 8 Workflow / 3 Controller。只验证固定公开合成文件，详见 [真实华为证据与限制](modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
 
-本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。双人当前 head 阅读确认与审批仍必需。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
+本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。当时的双人阅读确认门槛已由现行单人有效批准规则取代。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
 
 ## 2026-10-12 镜像全部可承载绑定（in_progress）
 
@@ -53,6 +65,57 @@
 
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+### 2026-10-12 goo122 Wiki 来源离线变更与恢复验收（review）
+
+按既有 P3 计划完成离线编辑、改名、越界、暂时缺页及重新配对回归：37/37、0 skip，
+实际 Obsidian/Desktop 双进程合成验收通过。只有本机读回证明变化时撤回旧事实；未知来源
+保持不可用，不推断删除，不自动保存新内容；更正仍逐条 Fake 确认，精确删除保留无关事实。
+本包仅测试/文档，已获独立 PR 交付授权，待新提交 CI 与非作者评审；详见 [MOD-08O](modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md)。
+基线 #322 `18635529` 已包含由外部合入父分支的 #323，尚未进入 main；#320 当前相对 main
+存在冲突。以下早期记录保留为历史快照，完整 MOD-08/09 仍 in_progress；原 Vault 只读，云调用 0。
+
+### 2026-10-12 goo122 PR #320～#323 原写入恢复 P2 修复（review）
+
+非作者指出的共同继承问题已由 `5918e706` 修复：同 Vault 配置升版后，原写入仍按原
+intent/execution/摘要/Evidence/finalization 确认，投影保留原绑定并独立恢复；正文不重写，
+当前读取权限不放宽。修复已顺序合入 #321→#322→#323，全部原功能和提交保留。
+真实 Windows/SQLite 复现及定向 15/15；最终组合 check 2717 项（2692 pass/25 skip/0 fail）
+与实际 Obsidian/Electron 双进程合成复验通过。记录见
+[MOD-08I](modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)，原生决定 explicit Fake、云调用 0。
+更新后 head 的远程 CI 与非作者重审单独核对；原 CHANGES_REQUESTED 未由作者撤销，
+未合并或发布。其他未合并 PR 的互相冲突仍属于后续集成，完整 MOD-08/09 保持 in_progress。
+
+### 2026-10-12 goo122 配对后持久引用恢复（review）
+
+继续 [PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323) 的验收：实际 Desktop 重启后
+旧配对码拒绝，重新配对的任务来源身份更新，持久引用由真实插件读回，pageId/版本不变，
+重复保存仍为版本 2；再次撤销后撤回/删除指定事实，保留无关事实。定向 13/13、实际双进程
+合成验收通过，证据见 [MOD-08O](modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md)。
+#320～#323 更新前刷新时 head 两项 Foundation 均成功（#323 `39b6bd7e`），#321 历史失败已重跑通过；
+未合并，仍待非作者评审/依赖栈集成。本次只增加验收与文档，接口 provisional，
+Fake 批准和云调用 0 不变；整个 MOD-08/09 不转 done。
+
+### 2026-10-11 goo122 配对引用与记忆确认（review）
+
+认证桥接/中文路径已在 [PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322)
+`7f1b4f1b` 相对 #321 交付，待非作者评审/集成。[MOD-08O](modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md)
+在该基线上接通版本 2 插件引用、受信页身份与原生逐条记忆确认，复用现有恢复/撤回/删除。
+工作分支 `codex/goo122-paired-citation-memory`，完整 check 2714 项（2689 pass/25 skip/0 fail）、
+Desktop smoke 与实际双进程合成保存/更正/重启/撤回/删除验收通过；已提交
+[PR #323](https://github.com/zemeng5208/PersonalAgent/pull/323) `2718f064`，base 为 #322，待非作者评审/集成。
+批准为 explicit Fake，云调用 0；证据与失效界面修复见模块记录。
+原 Vault 只读，云验收继续暂缓；完整模块不转 done。
+
+### 2026-10-11 goo122 本机配对增量（review）
+
+[MOD-08M](modules/MOD-08M-UNICODE-PAIRING-01.md) 在 PR #321 `91f8829a` 上继续：
+修复 Desktop 中文恢复目录经 PowerShell 标准输入损坏；新增版本化的 host-only 插件 peer
+和 Runtime 受信确认/租约适配。实际打包插件与原有 Policy 工具链的合成组合及真实 Obsidian
+peer 验收分别记录。[MOD-08N](modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md) 继续增加
+回环 TLS 指纹/一次性密钥认证桥接及专用原生配对窗口，实际双进程与自动化确认的证据分开记录。
+MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
+工作分支 `codex/goo122-desktop-unicode-pairing`，已交付 PR #322 `7f1b4f1b`，本地与远程门禁通过；待非作者评审/集成。
 
 更新：2026-10-08 · 本轮审查基线：main@efbfbdd2 · 项目主要负责人：zemeng / zemeng5208 · 整体 MVP：in_progress；代码集成、CI 与真实服务/设备验收分别记录
 
@@ -167,9 +230,9 @@
 | MOD-04A | Local Profile 可选模型层 | review | `goo122` / 历史 PR #10、#11、#26 已合并；ModelGateway、Pangu 文本 Provider、JSON 提案适配离线通过；代码保留，但新增 Local 能力不进入当前比赛优先级 |
 | MOD-04B | Competition Coordination；Local Agent 可选 | review | `zemeng` / PR #36、#49、#72（Workflow 输入）、#80（continuation 边界）均已进入 main（2026-09-30 台账核对），离线审批工具循环已验证；真实 AgentArts 调用和多 Agent 结果仍未验收 |
 | MOD-05 | M1/M2 | review | goo122 / PR #7、#26、#49 已合并；任务级 SQLite 授权、参数绑定、审批恢复、工具 Evidence、幂等重放和 Competition 离线工具循环已验证；跨任务持续授权、真实 SecretStore 和真实写入恢复尚未完成 |
-| MOD-06 | M2 | todo | 未启动 |
-| MOD-07 | M2 | todo | 未启动 |
-| MOD-08 | M2 | in_progress | `goo122` / PR #93～#95、#97、#98 已经非作者评审并合并；只读端口、脱机及 Obsidian 只读适配器、Policy 检索工具和公开演示资料的 Competition Fake 审批链均完成离线验收。真实私人 Vault 授权/验收、生产注册、可安装插件、私人结果出机控制和 LLM Wiki 未完成 |
+| MOD-06 | M2 | in_progress | main 已有固定官方 filesystem stdio、受控只读映射与断连生命周期，详见 [MCP/Skill MVP](modules/MOD-06-07-MVP.md)；保持 provisional，不含任意服务/写工具；原生与真实云完整消费仍待验收 |
+| MOD-07 | M2 | in_progress | main 已有固定版本化参考摘要、受控调用及 Runtime/SQLite 审批恢复；本机 SKILL.md 安装/启停/使用/卸载和安装资源纯本地预览已由 #346→[PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 合入 main `31b0ce5c`，#318 已关闭并保留分支/评审。[安装说明](modules/MOD-07-LOCAL-INSTALLATION-20261009.md) 与[组合集成记录](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 区分历史与当前证据。原生真人完整流程及真实云消费未验收，不标整个模块 done，不含任意脚本引擎 |
+| MOD-08 | M2 | in_progress | `goo122` / #93～#95、#97、#98 历史工作包已进入 main；[PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 已评审并合入 main `31b0ce5c`，包含 Wiki 来源身份/版本、确认记忆失效投影、受控写回恢复、只读来源监视、SQLite 备份协调、临时全文索引、Obsidian 安装插件和受信配对，详见 [MOD-08G](modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)/[08I](modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)/[08K](modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md)/[组合集成](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md)。本机及实际 Obsidian/Desktop 双进程合成证据通过，原生决定仍 explicit Fake；整篇笔记备份按用户选择保留并报告 pending。真人原生流程、跨库派生副本、完整 LLM Wiki 与真实云消费待验收；接口 provisional，整个模块不标 done |
 | MOD-09 | M1.6/M4 | in_progress | `goo122` 保留在途范围，P7/P8 剩余按当前分工交接；#285 同步消费/实际父子副本、#289 官方 MCP/SQLite 学习验证和 #294 撤回管理/删除恢复已进入 main，#304/#305 原生控件及来源状态保护也已合并。2026-10-08 在 main@74b64c35，按用户逐条确认的 A/B 完成真实 Vault 来源、原生保存/更正、重启读回、撤回、全部历史及回执删除、再次重启无复活；原笔记哈希不变，无云任务；同 head Foundation attempt 2 成功，首次失败保留。Memory 44/44、相关定向 49/49、Desktop 703 通过/2 跳过为 cc64ebdf 基线结果，#307 仅改测试等待时间，后续 main@e86bac53 仅交接文档变化；见 [本次记录](modules/MOD-09-REAL-LOCAL-LIFECYCLE-20261008.md)。用户规范要求的非作者评审、完整 parent→child 许可、真实 AgentArts 消费及真实用户流程仍待核对/验收；详见 [收口验收矩阵](modules/MOD-09-PA020-MVP-PRODUCTION.md#2026-10-06-收口验收矩阵2026-10-07-更新)；接口 provisional，不能将本地通过记为整个模块 done |
 | MOD-10 | M4 后研究，无交付日期承诺 | todo | 未启动 |
 | MOD-11 | M1 | in_progress | `zemeng` / main@4b5ec614 已具受控 IPC、本机桌面设置/恢复及 SIS/Live 宿主消费；#75 已进入 main（非仅语音堆叠）。当前开发 #302 尚未合并；DPI/透明命中、真实崩溃和比赛实机验收仍未完成；[源码核对](../apps/desktop/README.md#2026-10-07-原功能源码核对) |

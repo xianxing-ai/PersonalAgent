@@ -39,7 +39,8 @@ PersonalAgent/
 ├─ apps/                     可启动应用与可信装配入口
 │  ├─ desktop/               Electron 桌面应用
 │  ├─ runtime/               当前 Runtime 应用与本地组合入口
-│  └─ agentarts-runtime/     自有云端编排的 HTTP/ARM64 镜像组合入口，ADR-0012
+│  ├─ agentarts-runtime/     自有云端编排的 HTTP/ARM64 镜像组合入口，ADR-0012
+│  └─ obsidian-plugin/       可打包的本机只读知识检索插件
 ├─ packages/                 可复用核心模块
 │  ├─ contracts/
 │  ├─ client/

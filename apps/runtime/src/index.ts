@@ -485,17 +485,17 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     return {items: page.map(({value}) => ({approvalId: value.approvalId, taskId: value.taskId, revision: value.revision, action: value.toolName, scopes: [...value.scopes], expiresAt: value.expiresAt, state: value.state, argumentsDigest: value.argumentsDigest, argumentSummary: 'redacted' as const})), snapshotSequence: this.snapshotSequence(), ...(more ? {nextBeforeRowId: page.at(-1)!.rowId} : {})};
   }
 
-  readConversationHistory(conversationId: string, beforeTaskId: string, limit = 20): ConversationTurn[] {
+  readConversationHistory(conversationId: string, beforeTaskId: string | undefined, limit = 20): ConversationTurn[] {
     const normalizedConversationId = requireText(conversationId, 'conversationId');
-    const normalizedTaskId = requireText(beforeTaskId, 'beforeTaskId');
+    const normalizedTaskId = beforeTaskId === undefined ? undefined : requireText(beforeTaskId, 'beforeTaskId');
     if (!Number.isInteger(limit) || limit <= 0) throw new Error('limit must be a positive integer');
 
-    this.getTask(normalizedTaskId);
-    const currentEvent = this.db.prepare(
+    if(normalizedTaskId)this.getTask(normalizedTaskId);
+    const currentEvent = normalizedTaskId ? this.db.prepare(
       `SELECT sequence FROM task_events
        WHERE task_id = ? AND type = 'task.created'
        ORDER BY sequence ASC LIMIT 1`,
-    ).get(normalizedTaskId) as {sequence?: number} | undefined;
+    ).get(normalizedTaskId) as {sequence?: number} | undefined : {sequence:this.snapshotSequence()+1};
     if (!currentEvent || typeof currentEvent.sequence !== 'number') return [];
 
     const rows = this.db.prepare(
