@@ -3,6 +3,7 @@ import {OwnedAgentOrchestrator, getOwnedBindings} from '@personal-agent/agentart
 import {OpenAICompatibleModelProvider} from '@personal-agent/models';
 import {createAgentServer} from './server.mjs';
 import {createOwnedModelFetch} from './model-fetch.mjs';
+import {createRoleReceiptWriter} from './role-receipts.mjs';
 
 function integer(name, fallback) {
   const value = Number(process.env[name] ?? fallback);
@@ -29,7 +30,7 @@ try {
   if (!['agentarts','standalone-validation'].includes(mode)) throw new Error('Explicit host mode required');
   const models = Object.fromEntries(['fast','world','plan','review'].map(role => [role,model(role)]));
   const orchestrator = new OwnedAgentOrchestrator(models,integer('PA_AGENT_MAX_OUTPUT_TOKENS',2048),
-    receipt => process.stdout.write(JSON.stringify(receipt)+'\n'));
+    createRoleReceiptWriter({deploymentVersion:process.env.PA_AGENT_DEPLOYMENT_VERSION}));
   const authToken = process.env.PA_AGENT_INBOUND_TOKEN;
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
   const server = createAgentServer({orchestrator,mode,...(authToken ? {authToken}:{}),
