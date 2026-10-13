@@ -7,6 +7,7 @@ import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {openSqliteLearningHost} from '@personal-agent/learning';
 import {TaskRuntime} from '@personal-agent/runtime';
 import {createWorkflowLearningApplication, LEARNING_BINDING_CHECKPOINT} from '@personal-agent/runtime/application';
+import {createReferenceSummarySkill} from '@personal-agent/skills';
 import {createPrivateMemoryController} from '../electron/private-memory.js';
 import {createMemoryLearningHost} from '../electron/memory-learning-host.js';
 import {memoryLearningControlsHtml, mountMemoryLearningControls} from '../src/features/admin/memory-learning-controls.js';
@@ -241,4 +242,67 @@ test('memory controls refresh exact references after confirmed changes but prese
     assert.equal(root.innerHTML.includes('data-ml-use="0"'), state === 'declined');
     controls.dispose();
   }
+});
+
+test('learning controls retain a real Runtime task until cancellation finishes without cancelling independent work',
+  {timeout: 10_000}, async t => {
+  let release;
+  const cleanup = new Promise(resolve => {release = resolve;});
+  let running, learning, runtime, skill;
+  t.after(async () => {release(); await running; skill?.dispose(); learning?.close(); runtime?.close();});
+  const f = await fixture(t);
+  learning = openSqliteLearningHost(join(f.base, 'learning.sqlite'));
+  runtime = new TaskRuntime(join(f.base, 'runtime.sqlite'));
+  skill = createReferenceSummarySkill(); // Manifest only; no tool or model invocation.
+  const submitted = [];
+  const app = createWorkflowLearningApplication({profile: 'huawei_ict_agentarts', namespace: 'desktop-learning',
+    learning, runtime, skillManifest: () => skill.manifest(),
+    submitSkillTask: binding => {
+      const task = runtime.submitTaskWithCheckpoint({goal: 'Synthetic cancellation acceptance',
+        conversationId: 'learning:desktop-learning', idempotencyKey: binding.operationId},
+      LEARNING_BINDING_CHECKPOINT, binding);
+      submitted.push(task.taskId);
+      return task.taskId;
+    }, confirmActivation: async () => false, confirmDeletion: async () => false});
+  const host = createMemoryLearningHost({profile: 'huawei_ict_agentarts', privateMemory: f.controller,
+    learningApplication: app});
+  let click;
+  const fields = {workflow: 'reference-review', revision: '1', path: 'note.md', summary: 'Synthetic workflow'};
+  const root = {innerHTML: '', contains: () => true,
+    querySelector: selector => ({value: fields[selector.match(/ml-(\w+)/)[1]]}),
+    addEventListener: (_name, handler) => {click = handler;}};
+  const controls = mountMemoryLearningControls(root, {status: host.snapshot(),
+    invoke: (name, payload) => host.invoke(name, payload)});
+  t.after(() => controls.dispose());
+  const action = name => click({target: {closest: () => ({dataset: {mlAction: name}, disabled: false})}});
+  await action('propose');
+  await action('startValidation');
+  const taskId = submitted[0];
+  const independent = await host.invoke('learning.startValidation', {workflowId: 'reference-review', revision: 1});
+  let started;
+  const entered = new Promise(resolve => {started = resolve;});
+  // Explicit synthetic worker delays completion; Runtime and its durable state are real.
+  running = runtime.runTask(taskId, async () => {started(); await cleanup; return {resultSummary: 'Synthetic cleanup'};},
+    {deadline: context().deadline, sideEffect: 'read'});
+  await entered;
+  await action('stop');
+  assert.equal(runtime.getTask(taskId).state, 'cancelling');
+  assert.equal(runtime.getTask(taskId).cancelRequested, true);
+  assert.match(root.innerHTML, /尚未确认停止/);
+  assert.match(root.innerHTML, /任务仍为正在取消/);
+  assert.ok(root.innerHTML.includes(`可停止任务：${taskId}`));
+  fields.workflow = 'unrelated-draft'; fields.revision = '99';
+  await action('stop');
+  assert.match(root.innerHTML, /尚未确认停止/);
+  release();
+  assert.equal((await running).state, 'cancelled');
+  await action('stop');
+  assert.match(root.innerHTML, /任务当前为已取消/);
+  assert.doesNotMatch(root.innerHTML, /可停止任务：/);
+  assert.match(root.innerHTML, /data-ml-action="stop" disabled/);
+  assert.equal(runtime.getTask(independent.taskId).state, 'created');
+  assert.equal(runtime.getTask(independent.taskId).cancelRequested, undefined);
+  assert.equal(app.readVersion('reference-review', 1).validation, 'candidate');
+  assert.equal(app.readActive('reference-review'), null);
+  assert.equal((await f.controller.listSaved()).facts.length, 0);
 });
