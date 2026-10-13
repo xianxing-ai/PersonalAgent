@@ -46,6 +46,19 @@ Profile：`huawei_ict_agentarts`；负责人：zemeng；本工作包为 `in_prog
 [PR #344](https://github.com/zemeng5208/PersonalAgent/pull/344) 已交付落盘失败及目录阶段诊断，
 后者 18 项离线测试通过；这些代码交付不提升本次云端失败或整 MOD 状态。
 
+## 收尾交付（2026-10-13）
+
+`0cbb3f1d` 源码已推送；strict continuation 的七文件修复已提交为
+[Draft PR #345](https://github.com/zemeng5208/PersonalAgent/pull/345)，依赖 #336，尚未合并。
+本地 ARM64 构建及镜像内 parser import 通过。
+[新预览 Release](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-0cbb3f1d)
+已读回：ARM64 tar（93,313,024 字节）与脱敏 `VERIFICATION.json` 均为 `uploaded`；归档上传完成于北京时间 11:12:37。没有额外 SHA256 附件。
+
+GHCR 工作流已触发，但未等待 CI 或核实其发布结果。SWR 上传完成状态与新 Runtime 部署未核实；最后已确认的云版本仍为 `arm64-7b6b4101`，新版本真实闭环仍未验证。
+两个 Controller 的旧场景失败已定位在协议解析后的内容比较；夹具公布两个修复目标，而断言要求仅修改第一个，现有脱敏回执不足以判定具体不符项。没有放宽断言或据此归因于模型。
+
+用户要求现有成果提交 PR 后停止；本次仅收尾，无新增真实模型调用、部署、合并或测试。MOD-19 保持暂停。
+
 ## 旧镜像当日较早的实际结果
 
 2026-10-13 01:31:53–01:32:16 UTC 的逐项运行：
