@@ -111,7 +111,6 @@ test('missing advice in the first or last chunk rejects the complete batch witho
     assert.deepEqual(store.read(), before);
   }
 });
-
 test('caller mutation during advice cannot replace the next chunk Fact binding', async () => {
   const {store, request, processed} = batchFixture();
   const calls = [];

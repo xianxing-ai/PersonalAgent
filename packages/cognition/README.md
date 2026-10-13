@@ -337,7 +337,6 @@ revision. Missing, repeated or foreign answers reject the whole result, includin
 a missing answer in the final chunk; valid answers retain the port's order.
 An empty or unrelated projection still returns no suggestions without calling
 the port. No failure publishes partial advice or changes the graph.
-
 `previewDurableFactRepair(boundStore, scopedHost, at, {graphNamespace,
 projection, changes})` uses the same durable completion and historical report
 check for an explicit candidate after advice. It reuses `previewProjectedRepair`

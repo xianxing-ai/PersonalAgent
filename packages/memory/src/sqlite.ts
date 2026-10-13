@@ -373,6 +373,9 @@ export class SqliteMemoryHost {
         const at = Date.parse(filter.at as string);
         affected = latest !== undefined && allowed.includes(latest.sensitivity as FactSensitivity)
           && (filter.privateAdminHeads === true ? latest.confirmation === 'user_confirmed'
+            || latest.state === 'withdrawn' && latest.confirmation === 'external_observation'
+              && this.db.prepare('SELECT 1 FROM memory_user_creations WHERE namespace = ? AND fact_id = ?')
+                .get(namespace, factId) !== undefined
             : (filter.factId === null || filter.factId === factId)
               && (filter.sourceRef === null || filter.sourceRef === latest.source_ref)
               && latest.state === 'active' && (latest.valid_from_ms as number) <= at
@@ -517,7 +520,10 @@ export class SqliteMemoryHost {
       ORDER BY f.revision DESC LIMIT 1`).get(namespace, factId) as Row | undefined;
     if (!row) return undefined;
     const saved = fact(parseJson(rowText(row, 'payload')));
-    if (saved.sensitivity !== 'private' || saved.confirmation !== 'user_confirmed') return queryFail('SCOPE_DENIED');
+    const invalidated = saved.state === 'withdrawn' && saved.confirmation === 'external_observation'
+      && this.db.prepare('SELECT 1 FROM memory_user_creations WHERE namespace = ? AND fact_id = ?')
+        .get(namespace, factId) !== undefined;
+    if (saved.sensitivity !== 'private' || saved.confirmation !== 'user_confirmed' && !invalidated) return queryFail('SCOPE_DENIED');
     return structuredClone(saved);
   }
 
@@ -873,6 +879,34 @@ export class SqliteMemoryHost {
           operation_id, namespace, fact_id, fact_revision, fingerprint
         ) VALUES (?, ?, ?, 1, ?)`).run(operationId, namespace, factId, fingerprint);
         return {fact: saved, appended: true};
+      }, () => active(operation, queryFail));
+    } catch (error) {
+      if (error instanceof MemoryQueryError) throw error;
+      return queryFail();
+    }
+  }
+
+  /** Trusted source invalidation only. Preserves the confirmed text/history; grants no new fact or deletion authority. */
+  invalidateUserFactSource(namespaceValue: unknown, value: unknown): {readonly fact: FactVersion; readonly appended: boolean} {
+    try {
+      const namespace = text(namespaceValue);
+      const record = exact(value, ['factId', 'expectedRevision', 'sourceRef', 'observedAt', 'deadline', 'signal']);
+      const operation = context(record, queryFail);
+      const factId = text(record.factId);
+      const sourceRef = text(record.sourceRef, MAX_SOURCE);
+      const observedAt = time(record.observedAt).text;
+      if (!Number.isSafeInteger(record.expectedRevision) || (record.expectedRevision as number) < 1) return queryFail();
+      return transaction(this.db, () => {
+        active(operation, queryFail);
+        if (this.db.prepare('SELECT 1 FROM memory_user_creations WHERE namespace = ? AND fact_id = ?')
+          .get(namespace, factId) === undefined) return queryFail('SCOPE_DENIED');
+        const current = this.readUserFactHead(namespace, factId);
+        if (!current) return queryFail('NOT_FOUND');
+        if (current.ref.revision !== record.expectedRevision || current.sourceRef !== sourceRef) return queryFail('REVISION_CONFLICT');
+        if (current.state === 'withdrawn') return {fact: current, appended: false};
+        const next = fact({...current, ref: {id: factId, revision: current.ref.revision + 1},
+          state: 'withdrawn', confirmation: 'external_observation', observedAt, corrects: current.ref});
+        return {fact: this.appendFact(namespace, next), appended: true};
       }, () => active(operation, queryFail));
     } catch (error) {
       if (error instanceof MemoryQueryError) throw error;
@@ -1386,7 +1420,9 @@ export class SqliteMemoryHost {
         namespace, watermark, ...allowed.values,
       ];
       if (criteria.privateAdminHeads) {
-        clauses.push("json_extract(f.payload, '$.confirmation') = 'user_confirmed'");
+        clauses.push("(json_extract(f.payload, '$.confirmation') = 'user_confirmed' OR (f.state = 'withdrawn'"
+          + " AND json_extract(f.payload, '$.confirmation') = 'external_observation' AND EXISTS (SELECT 1"
+          + " FROM memory_user_creations u WHERE u.namespace = f.namespace AND u.fact_id = f.fact_id)))");
       } else {
         clauses.push("f.state = 'active'", 'f.valid_from_ms <= ?', '? < f.valid_until_ms');
         parameters.push(criteria.at!, criteria.at!);

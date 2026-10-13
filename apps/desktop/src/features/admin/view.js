@@ -14,6 +14,7 @@ import {mountGoalCloudControls} from '../../app/goal-cloud-controls.js';
 import {mountKnowledgeControls} from '../../app/knowledge-controls.js';
 import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
+import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
 import {profilePage, bindProfile} from './profile.js';
@@ -134,6 +135,7 @@ export function mountAdmin(root, invoke, escape) {
   localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let installedSkillsControls;
   let modelApiSignature;
 
   function capabilityTable(data) {
@@ -262,19 +264,31 @@ export function mountAdmin(root, invoke, escape) {
   function memoryPage(data) {
     if (!data.privateMemory?.available) return featurePage(data, 'memory');
     const selected = data.privateMemory.vaultSelected;
+    const citationLabel = value => {
+      if (typeof value === 'string' && value.startsWith('wiki-v1:')) {
+        try {
+          const source = JSON.parse(value.slice(8));
+          if (typeof source?.path === 'string' && Number.isSafeInteger(source.line)) return `${source.path}:${source.line}`;
+        } catch { /* Preserve an unrecognized reference as text. */ }
+      }
+      return value;
+    };
     const hits = memorySearch.hits.map((hit, index) => `<article class="sheet">
       <p>${escape(hit.excerpt)}</p><small>${escape(hit.source.path)}:${hit.source.line}</small>
       <label>拟保存的私人记忆<input data-memory-summary="${index}" maxlength="500"
         value="${escape(memorySummaries.get(index) ?? '')}" placeholder="逐条填写并确认摘要"></label>
       <button class="btn btn-sm" data-memory-save="${index}" ${data.privateMemory.writeEnabled ? '' : 'disabled'}>检查并确认</button></article>`).join('');
     const saved = savedMemory.facts.map((fact, index) => `<article class="sheet">
-      <p>${escape(fact.summary)}</p><small>${escape(fact.sourceRef)}</small>
-      <p class="muted">版本 ${escape(fact.ref.revision)}${fact.state === 'withdrawn' ? ' · 已撤回，后续任务不可消费' : ''}</p>
+      <p>${escape(fact.summary)}</p><small>${escape(citationLabel(fact.sourceRef))}</small>
+      <p class="muted">版本 ${escape(fact.ref.revision)}${fact.state === 'withdrawn' ? fact.confirmation === 'external_observation' ? ' · 来源已变化，后续任务不可消费' : ' · 已撤回，后续任务不可消费' : ''}</p>
+      ${fact.state==='active' ? `<button class="btn btn-sm" data-memory-withdraw="${index}">撤回</button>` : ''}
       <button class="btn btn-sm" data-memory-delete="${index}">删除所有版本</button></article>`).join('');
     return `<section class="feature-page"><div class="settings-heading"><h2>私人记忆</h2>
       <p>只读检索本机 Vault；每条摘录或更正都需在原生对话框中确认。不会自动发送至云端。</p></div>
       <div class="sheet"><button class="btn btn-sm" id="memory-select-vault">选择本机 Vault 文件夹</button>
-      <p class="muted">${selected ? '已选择本机会话 Vault；重启后需重新选择。' : '尚未选择 Vault。'}</p>
+      <p class="muted">${data.knowledgeSource?.pairing?.mode==='plugin'
+        ? selected ? '使用已配对 Obsidian 的只读摘录；每条记忆仍需确认。' : 'Obsidian 配对已失效，请重新配对；已保存记忆仍可管理。'
+        : selected ? '使用已选择的本机知识源；可在知识源设置中停用或撤销。' : '尚未选择可用知识源。'}</p>
       <form id="memory-search-form"><input id="memory-query" type="search" maxlength="200"
         value="${escape(memorySearch.query)}" placeholder="搜索摘录" ${selected ? '' : 'disabled'}>
         <button class="btn btn-sm" ${selected ? '' : 'disabled'}>搜索</button></form>
@@ -339,6 +353,9 @@ export function mountAdmin(root, invoke, escape) {
     codingControls?.render(data);codingControls?.show(section==='worktrees' || section==='environment');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
     referenceControls?.render(data.reference);referenceControls?.show(section==='capabilities');
+    if(section==='capabilities' && data.installedSkills) installedSkillsControls??=mountInstalledSkillsControls(root.querySelector('.main'),invoke);
+    installedSkillsControls?.render(data.installedSkills,data.tasks,data.installedSkills?.runtimeAvailable && data.model?.provider==='agentarts' && data.model?.configured && data.model?.enabled!==false);
+    installedSkillsControls?.show(section==='capabilities');
     const showAgentArts=section==='models' && data.model?.provider==='agentarts';
     if (showAgentArts) {
       agentArtsControls ??= mountAgentArtsControls(root.querySelector('.main'),invoke);
@@ -457,6 +474,15 @@ export function mountAdmin(root, invoke, escape) {
         render(current, true);
       } catch (error) { root.querySelector('#error').textContent = error.message; }
     });
+    root.querySelectorAll('[data-memory-withdraw]').forEach(button => button.addEventListener('click', async () => {
+      button.disabled=true;
+      try {
+        const result=await invoke('memory.withdraw',{ref:savedMemory.facts[Number(button.dataset.memoryWithdraw)].ref});
+        savedMemory={...await invoke('memory.listSaved'),status:result.state==='withdrawn'
+          ? '已撤回，后续任务不可消费；历史仍可管理和删除。' : '已取消，未撤回记忆。'};
+        render(current,true);
+      } catch(error) {root.querySelector('#error').textContent=error.message;button.disabled=false;}
+    }));
     root.querySelectorAll('[data-memory-delete]').forEach(button => button.addEventListener('click', async () => {
       button.disabled = true;
       try {
@@ -464,7 +490,8 @@ export function mountAdmin(root, invoke, escape) {
         if (result.state === 'deleted' || result.state === 'pending') {
           const page = await invoke('memory.listSaved');
           savedMemory = {...page, status: result.state === 'deleted' ? '已删除该记忆的全部版本并完成读回。'
-            : '来源已停止引用，关联任务副本仍待核实清除；删除尚未完成。'};
+            : result.pendingBackupIds?.length ? '记忆已停止引用；应用备份仍待清理或整篇笔记备份已保留，删除尚未完成。'
+              : '来源已停止引用，关联任务副本仍待核实清除；删除尚未完成。'};
         } else savedMemory.status = '已取消，未删除记忆。';
         render(current, true);
       } catch (error) { root.querySelector('#error').textContent = error.message; button.disabled = false; }
@@ -475,6 +502,8 @@ export function mountAdmin(root, invoke, escape) {
       try {
         const source=memorySearch.hits[index].source;
         const baseline=await invoke('memory.previewSave',{source});
+        memorySearch.hits[index]={...memorySearch.hits[index],excerpt:baseline.citation};
+        render(current,true);
         const result = await invoke('memory.save', {source,baseline,
           summary: (memorySummaries.get(index) ?? '').trim()});
         memorySearch.status = result.state === 'saved' ? `私人记忆已保存为版本 ${result.revision}。`
