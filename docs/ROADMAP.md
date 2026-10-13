@@ -2,11 +2,11 @@
 
 ## 2026-10-13 当前主架构重构基线
 
-已合并#347（main 3275aa91）确定[28功能主架构](design/workflow-architecture-20261013/DESIGN.md)与离线图。本轮全项目文档重写工作包为DOC-ARCH-20261013，负责人zemeng5208，状态in_progress（提交PR后进入review）；目标profile为huawei_ict_agentarts。没有修改生产执行链、Schema或数据库。
+已合并#347（main 3275aa91）确定[28功能主架构](design/workflow-architecture-20261013/DESIGN.md)与离线图。本轮全项目文档重写工作包为DOC-ARCH-20261013，负责人zemeng5208，状态review，已提交[PR #349](https://github.com/zemeng5208/PersonalAgent/pull/349)并请求goo122、Potatos498审核；目标profile为huawei_ict_agentarts。没有修改生产执行链、Schema或数据库，尚未合并。
 
 | 工作包 | 目标 | 状态 | 负责人/依赖 |
 | --- | --- | --- | --- |
-| DOC-ARCH-20261013 | 当前架构/需求/协议/目录/分工/模块导航统一及全部流程说明 | in_progress | zemeng5208；两位协作者PR审核 |
+| DOC-ARCH-20261013 | 当前架构/需求/协议/目录/分工/模块导航统一及全部流程说明 | review | zemeng5208；PR #349，goo122/Potatos498审核 |
 | ARCH-D01 | 唯一国内决策配置与Laya/云角色兼容迁移 | todo | zemeng5208+goo122公开端口；新配置与真实模型验收 |
 | ARCH-D02 | 持续责任编译、版本快照与局部计划修复 | todo | zemeng5208；Runtime/Policy/Goal/Memory |
 | ARCH-D03 | F28多模型与原生思考映射、F27上下文恢复/缓存 | todo | 各端口负责人按MODULE_ASSIGNMENTS；D01 |
