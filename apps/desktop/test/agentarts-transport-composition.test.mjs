@@ -31,7 +31,7 @@ while (statements && !ts.isBlock(statements)) statements = statements.parent;
 const setup = ts.isBlock(statements) ? statements.statements.filter(statement => {
   if (ts.isVariableStatement(statement)) return statement.declarationList.declarations.some(declaration =>
     declaration.initializer && ts.isCallExpression(declaration.initializer)
-    && declaration.initializer.expression.getText(ast) === 'createAgentArtsTransportConfig');
+    && declaration.initializer.expression.getText(ast) === 'agentArtsConfig.transportConfig');
   return ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
     && statement.expression.left.getText(ast) === 'cloudTransportNotice';
 }).map(statement => statement.getText(ast)).join('\n') : '';
@@ -39,10 +39,10 @@ const setup = ts.isBlock(statements) ? statements.statements.filter(statement =>
 function desktopOptions(environment = {}, previousNotice = '') {
   let published = 0;
   const binding = {gatewayUrl:'https://agentarts.example.test', runtimeName:'synthetic'};
-  const evaluate = new Function('cloudBinding', 'process', 'createAgentArtsTransportConfig',
+  const evaluate = new Function('cloudBinding', 'process', 'agentArtsConfig',
     'agentArtsTransportNotice', 'publish', 'previousNotice',
     `let cloudTransportNotice = previousNotice; ${setup}\nconst options = {${transportProperties.map(property => property.getText(ast)).join(',\n')}}; return {options, notice: () => cloudTransportNotice};`);
-  const result = evaluate(binding, {env:environment}, input => createAgentArtsTransportConfig({...input, environment}),
+  const result = evaluate(binding, {env:environment}, {transportConfig:binding => createAgentArtsTransportConfig({binding, environment})},
     agentArtsTransportNotice, () => {published++;}, previousNotice);
   return {...result, published:() => published};
 }
