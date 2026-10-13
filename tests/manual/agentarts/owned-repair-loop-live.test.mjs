@@ -126,6 +126,19 @@ test('live credentials are explicit, Huawei-only and cannot be mixed with a Fake
   await assert.rejects(() => runOwnedRepairLoop({...options, signal: controller.signal}), {code: 'CANCELLED'});
 });
 
+test('fake mode rejects a non-Fake coordination port before creating a run', async t => {
+  await mkdir(cacheRoot, {recursive: true});
+  const outputRoot = await mkdtemp(path.join(cacheRoot, 'run-'));
+  t.after(async () => {
+    assert.equal(path.dirname(outputRoot), path.resolve(cacheRoot));
+    await rm(outputRoot, {recursive: true, force: true});
+  });
+  await assert.rejects(() => runOwnedRepairLoop({mode: 'fake', coordination: {execute() {}},
+    deadline: new Date(Date.now() + 30_000).toISOString(), signal: new AbortController().signal,
+    approveSyntheticFixture: true, outputRoot}), {code: 'INVALID_ARGUMENT'});
+  assert.deepEqual(readdirSync(outputRoot), []);
+});
+
 test('unwritable receipt keeps confirmed source facts but cannot report durable success', async t => {
   await mkdir(cacheRoot, {recursive: true});
   const outputRoot = await mkdtemp(path.join(cacheRoot, 'run-'));

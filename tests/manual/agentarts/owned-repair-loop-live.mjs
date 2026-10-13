@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
+import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {currentNodes} from '@personal-agent/goals';
 import {analyzeImpact} from '@personal-agent/cognition';
 import {createAgentArtsRuntimeApplication, createRuntimeApplication} from '@personal-agent/runtime/application';
@@ -68,7 +69,7 @@ export async function runOwnedRepairLoop({mode, configuration, coordination, dea
   deadline = new Date(deadline).toISOString();
   const config = mode === 'live' ? validateRepairConfiguration(configuration) : undefined;
   if ((mode === 'live' && coordination !== undefined) || (mode === 'fake'
-    && (configuration !== undefined || typeof coordination?.execute !== 'function'))) fail('INVALID_ARGUMENT');
+    && (configuration !== undefined || !(coordination instanceof FakeCoordinationPort)))) fail('INVALID_ARGUMENT');
   if (mode === 'live' && process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') fail('INVALID_ARGUMENT');
   const active = () => {if (signal.aborted) fail('CANCELLED'); if (Date.now() >= Date.parse(deadline)) fail('TIMEOUT');};
   active();
