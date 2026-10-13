@@ -35,7 +35,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
   }};
   const optional = ['referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
-    'privateConsumption','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
+    'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
@@ -81,22 +81,29 @@ test('a task finishing does not resume a refused quit; the next explicit quit cl
 });
 
 test('a zero-task quit retains the original cleanup sequence', async () => {
-  const f = fixture();f.app.quit();await tick();await tick();await tick();
+  const f = fixture();f.context.installedSkillsHost={close(){f.calls.push('installed-skills-close');}};
+  f.app.quit();await tick();await tick();await tick();
   assert.equal(f.exited, true);assert.equal(f.context.voiceDisposed, true);
   assert.equal(f.context.wakeQuitHandled, true);assert.equal(f.context.runtimeClosed, true);
   assert.ok(f.calls.indexOf('wake-dispose') < f.calls.indexOf('voice-dispose'));
   assert.ok(f.calls.indexOf('voice-dispose') < f.calls.indexOf('runtime-close'));
+  assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);
+  assert.ok(f.calls.indexOf('installed-skills-close') < f.calls.indexOf('runtime-close'));
 });
 
-test('accepted quit closes Wiki monitoring and pairing before Runtime; an active task refuses it',async()=>{
+test('accepted quit closes Wiki, pairing and installed Skills before Runtime; an active task refuses it',async()=>{
   const f=fixture({count:1});f.context.wikiSourceMonitor={close(){f.calls.push('wiki-monitor-close');}};
   f.context.obsidianPairing={close(){f.calls.push('obsidian-pairing-close');}};
+  f.context.installedSkillsHost={close(){f.calls.push('installed-skills-close');}};
   f.app.quit();await tick();assert.equal(f.calls.includes('wiki-monitor-close'),false);
   assert.equal(f.calls.includes('obsidian-pairing-close'),false);
+  assert.equal(f.calls.includes('installed-skills-close'),false);
   f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();await tick();await tick();
   assert.equal(f.exited,true);assert.equal(f.calls.filter(call=>call==='wiki-monitor-close').length,1);
   assert.ok(f.calls.indexOf('wiki-monitor-close')<f.calls.indexOf('runtime-close'));
   assert.equal(f.calls.filter(call=>call==='obsidian-pairing-close').length,1);
+  assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);
+  assert.ok(f.calls.indexOf('installed-skills-close')<f.calls.indexOf('runtime-close'));
   assert.ok(f.calls.indexOf('wiki-monitor-close')<f.calls.indexOf('obsidian-pairing-close'));
   assert.ok(f.calls.indexOf('obsidian-pairing-close')<f.calls.indexOf('runtime-close'));
 });
