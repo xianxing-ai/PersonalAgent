@@ -1,6 +1,8 @@
 import {createHash} from 'node:crypto';
 import {KnowledgeError} from './index.js';
 import type {KnowledgeHit, KnowledgePort, KnowledgeSearchRequest} from './index.js';
+import {createWikiPort} from './wiki.js';
+import type {WikiBinding, WikiPort} from './wiki.js';
 
 export interface FakeKnowledgeDocument {
   readonly path: string;
@@ -80,4 +82,23 @@ export function createFakeKnowledgePort(vaultIdValue: string, documents: readonl
       return {hits, truncated: false};
     }
   });
+}
+
+/** Explicit synthetic Wiki fixture. Path-based fixture identities are not native file identities. */
+export function createFakeWikiPort(options: WikiBinding & {
+  readonly vaultId: string; readonly documents: readonly FakeKnowledgeDocument[];
+}): WikiPort {
+  const searchPort = createFakeKnowledgePort(options.vaultId, options.documents);
+  const documents = options.documents.map(({path, content}) => ({path, content,
+    pageId: createHash('sha256').update(JSON.stringify([options.vaultId, path])).digest('hex'),
+    revision: createHash('sha256').update(content).digest('hex')}));
+  return createWikiPort({...options, reader: {
+    search: request => searchPort.search(request),
+    scanPages: async () => documents.map(({path, pageId, revision}) => ({path, pageId, revision})),
+    readPage: async request => {
+      const page = documents.find(page => page.path === request.path);
+      if (!page) throw new KnowledgeError('SOURCE_UNAVAILABLE');
+      return {...page};
+    }
+  }});
 }

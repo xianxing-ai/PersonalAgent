@@ -86,15 +86,26 @@ export async function decideDurableFactProjection(
     throw new DecisionError('INVALID_ARGUMENT');
   }
   if (Date.now() >= Date.parse(input.deadline)) throw new DecisionError('TIMEOUT');
+  const {graphNamespace, deadline, signal} = input;
   const {snapshot, report, currentProjection, scope} = completedScope(store, completion, input, input.at);
-  const suggestions = await decideProjectedFactImpact(decision, {
-    graphNamespace: input.graphNamespace,
-    projection: currentProjection,
-    impact: report,
-    deadline: input.deadline,
-    signal: input.signal
-  });
-  if (store.read().revision !== snapshot.revision) throw new CognitionError('REVISION_CONFLICT');
+  // A durable feed batch can contain up to 100 links, while the advisory port
+  // accepts at most four per call. Snapshot every link before the first await
+  // and share one lifecycle across ordered chunks; these views are not receipts.
+  const projection = structuredClone(currentProjection);
+  const suggestions: DecisionSuggestion[] = [];
+  for (let offset = 0; offset < Math.max(1, projection.links.length); offset += 4) {
+    const chunk = await decideProjectedFactImpact(decision, {
+      graphNamespace,
+      projection: {...projection, links: projection.links.slice(offset, offset + 4)},
+      impact: report,
+      deadline,
+      signal
+    });
+    // Stop before another model call when the graph changes. No partial result,
+    // feed acknowledgement or graph write is published if a later chunk fails.
+    if (store.read().revision !== snapshot.revision) throw new CognitionError('REVISION_CONFLICT');
+    suggestions.push(...chunk);
+  }
   return {scope, suggestions};
 }
 

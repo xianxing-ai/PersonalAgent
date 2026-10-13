@@ -26,6 +26,23 @@ WSS主通道、显式HTTPS备用、同会话复用、发送前持久身份与未
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
+2026-10-11 [MOD-08O](../modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md) 在 PR #322 上继续：
+peer 可选 readCitation、桥接版本 2（PA2，旧 PA1 仅检索）与 Runtime `wikiSource.acquireWiki`。
+TrustedKnowledgeSource 的读取租约可选提供既有 ReadOnlyPageVaultPort.readPage；缺少稳定页
+身份或引用能力时记忆来源 unavailable。接入原 WikiSource/逐条确认，不增加 task wire
+capability、迁移或依赖。接口保持 provisional，未完成真实用户/云端或主线集成验收；
+方案见 [ADR-0021](../adr/0021-paired-citation-memory.md)。
+
+2026-10-11 [PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322) 已交付、待非作者评审/集成：[MOD-08M](../modules/MOD-08M-UNICODE-PAIRING-01.md)
+新增 `@personal-agent/knowledge/pairing` 与 Runtime Application `createObsidianPairingHost`。
+它们是 **host-only provisional** 组合端口，复用既有 KnowledgePort 和工具/Policy 链，
+不新增 task wire operation、数据库迁移或云 capability。后续本地增量
+[MOD-08N](../modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md) 增加公开
+`@personal-agent/knowledge/bridge` 的版本 1 回环 TLS 指纹/一次性密钥消息协议及原生配对窗口，
+仅私人只读检索，仍 **provisional**；下方知识模块的完整可用性不提升为 frozen。方案见
+[ADR-0020](../adr/0020-obsidian-authenticated-bridge.md) 与
+[ADR-0019](../adr/0019-obsidian-runtime-pairing.md)。
+
 版本：1.3 · 日期：2026-09-27 · 基线提交：`9c40a0853b8db9e05e91c978e35d8e1a40788b39`
 
 协议负责人：`goo122` · 核心认知与 AgentArts 消费负责人：`zemeng` · 连接器消费负责人：`Potatos498`（2026-10-07 三人独立交付重置）
@@ -227,10 +244,10 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | 凭据 | SecretStore save/replace/delete/status 与迁移 | 只有 ConnectorHost 私有 read 端口；无公共管理面或 Windows 适配 | MOD-05 `goo122`、MOD-16 `zemeng` |
 | 通知 | Runtime 列表/恢复、已读/隐藏、策略配置与 Desktop 展示 | NotificationService 已集成但尚未接 wire 或 Desktop；`notification.created` 仍无生产发布链 | MOD-23 `Potatos498`、MOD-13 `zemeng` |
 | 语音 | `voice.start` / `voice.stop`、ASR/TTS 流和设备适配 | session/wake/transcript consumer 仍在冲突的堆叠分支，main 无生产提供者；真实供应商、流协议和设备验收未提供 | MOD-14/15 `zemeng` |
-| 知识 | `KnowledgePort`、Obsidian/LLM Wiki | PR #93～#95、#97、#98 已合并：provisional `KnowledgePort`、脱机及 Obsidian 只读适配器、显式 `knowledge.search` ToolGateway/Policy 接线、公开演示资料的 Fake Competition 审批链已完成离线验收。真实 Vault 授权/验收、生产 Runtime 注册、可安装插件、私人结果云端发送控制和 LLM Wiki 仍 unavailable | MOD-08 `goo122` |
+| 知识 | `KnowledgePort`、Obsidian/LLM Wiki | PR #93～#95、#97、#98 已合并：provisional KnowledgePort、只读 Vault、Policy 检索工具及公开资料 Fake Competition 链。[MOD-08G](../modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)/[08H](../modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)/[08I](../modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md) 在 [PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 提供 WikiPort、稳定来源引用、revalidateWikiFact 与 host-only 写回投影恢复；本机完整 check 通过，尚未评审/集成。[MOD-08J](../modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md) 新增 host-only createWikiSourceMonitor、状态和批量 revalidateSources，沿用现有 tick 驱动只读来源检查；专项及真实合成 Electron 后台链路通过，完整门禁见工作包，已在 [PR #321](https://github.com/zemeng5208/PersonalAgent/pull/321) 堆叠交付，待评审/集成。仍 provisional，无新 wire capability。[MOD-08K](../modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 通过 PR #321 提供应用 SQLite 备份协调、clearIndex 和临时全文索引及只读插件包；host-only provisional。[MOD-08L](../modules/MOD-08L-OBSIDIAN-INSTALLATION-01.md) 修复真实宿主相对 require，补齐显式安装/卸载，Obsidian 1.12.7 合成 Vault 验收通过；仍无新 wire 端口。整篇笔记备份保留并报告 pending；持久索引、插件 Runtime 配对、跨库投影、真实云消费与完整 LLM Wiki 仍 unavailable | MOD-08/09 `goo122` |
 | 记忆 | 生产 `MemoryQueryPort` / `FactChangeFeed` 提供者、确认消费、修正/删除 | PR #89、#90、#91 已合并 provisional 端口、Fake、SQLite 恢复与确认后原子激活投影；DEP02 仅新增可信组合和显式撤回版本，生产 Runtime capability、自动触发、真实来源及撤回证明仍未提供 | MOD-09 `goo122` |
-| MCP | 本地 MCP Host/Client 端口 | 对应 package、注册适配和真实调用未提供 | MOD-06 `goo122` |
-| Skills | 本地 Skill 加载/版本/执行端口 | 对应 package 和闭环未提供 | MOD-07 `goo122` |
+| MCP | 任意/远程服务与写工具 | main 已有 packages/mcp 固定官方只读 stdio 子集，provisional；通用服务配置与写工具未提供 | MOD-06 `goo122` |
+| Skills | 任意脚本引擎及真实云端使用 | main 已有 packages/skills 固定参考摘要；本机 SKILL.md 安装、资源本地预览和 Competition 使用增量在未合并 [PR #318](https://github.com/zemeng5208/PersonalAgent/pull/318)，见 [安装记录](../modules/MOD-07-LOCAL-INSTALLATION-20261009.md)，不冻结；原生完整安装、任意脚本与真实云验收未提供 | MOD-07 `goo122` |
 | 决策 | 目标/事实/决策图谱的生产集成 | main 已有版本图及 SQLite/Fake 原子 `appendBatch`；自动事实投影、真实事实来源与生产消费未完成 | MOD-27 `zemeng`，存储 `goo122` |
 | 认知 | 事件驱动的完整计划修复 | main 已有离线影响分析与显式修复预览/提交，并通过原子 `appendBatch` 写入；事实变化流、自动投影和真实 Evidence 未完成 | MOD-28 `zemeng` |
 | AgentArts | Competition Profile 的真实身份、Agent/Workflow、MaaS/模型、知识、MCP/Skill、工具提案与多 Agent | main 已有 provisional adapter 和离线工具循环；Workflow 输入仍在堆叠分支，没有成功 deployment/API/trace 与真实 MCP/Skill 读回 | MOD-29～31 `zemeng` |

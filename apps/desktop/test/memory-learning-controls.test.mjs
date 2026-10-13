@@ -2,19 +2,31 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {memoryLearningControlsHtml, mountMemoryLearningControls} from '../src/features/admin/memory-learning-controls.js';
 
-function fixture(invoke) {
+function fixture(invoke, refs = []) {
   let click;
   const fields={workflow:'reference-review',revision:'1',path:'reference.md',summary:'Synthetic workflow'};
   const root={innerHTML:'',contains:()=>true,
     querySelector:selector=>({value:fields[selector.match(/ml-(\w+)/)[1]]}),
     addEventListener:(_name,handler)=>{click=handler;}};
-  const controls=mountMemoryLearningControls(root,{status:{learningAvailable:true},invoke});
-  return {root,fields,controls,async action(action) {
-    await click({target:{closest:()=>({dataset:{mlAction:action},disabled:false})}});
+  const controls=mountMemoryLearningControls(root,{status:{learningAvailable:true},invoke,refs});
+  return {root,fields,controls,async action(action, dataset = {mlAction:action}) {
+    await click({target:{closest:()=>({dataset,disabled:false})}});
   }};
 }
 
 const version={workflowId:'reference-review',revision:1,validation:'passed',hasEvidence:true};
+
+test('a retained managed backup reports incomplete deletion and removes stale consumption controls',async()=>{
+  const ref={id:'synthetic-private-fact',revision:1};
+  const f=fixture(async(name,payload)=>{
+    assert.equal(name,'memory.delete');assert.deepEqual(payload,{ref});
+    return {state:'pending',phase:'private_copy_erasure',pendingBackupIds:['synthetic-note-backup']};
+  },[ref]);
+  await f.action(undefined,{mlDelete:'0'});
+  assert.match(f.root.innerHTML,/备份.*删除尚未完成/);
+  assert.doesNotMatch(f.root.innerHTML,/删除读回完成|data-ml-use=/);
+  f.controls.dispose();
+});
 
 test('a cancellation request preserves the exact task handle until Runtime reports a terminal state',async()=>{
   const calls=[];
