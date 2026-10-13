@@ -1,5 +1,21 @@
 # 项目目录与模块开发规范
 
+## 2026-10-09 当前目录增量
+
+- `packages/agentarts/`：公开契约消费与自有 fast/world/plan/review 编排，不包含本地工具宿主或任务库。
+- `apps/agentarts-runtime/`：8080 HTTP/WS 部署入口、独立传输校验、受保护状态查询、可信 Provider 配置、ARM64/AMD64 Dockerfile 与裁剪镜像上下文；公网 WSS 另验收。
+- `packages/contracts/agentarts-transport`：独立 provisional 0.1.0 Schema/生成类型/严格帧解析；既有本地 wire 1.0.0 保持兼容。
+- `packages/coordination/src/agentarts-websocket.ts`：可信宿主会话连接、逐次凭据读取、发送边界核验与有限 HTTPS 备用；持久任务/核实状态仍归 Runtime。
+- `docs/design/resident-developer-agent-20261008/`：完整方案、四张 SVG、离线阅读、模块估算和 Wiki 交接，可编辑生成器一并保留。
+- `scripts/review/`：本机打开/声明、内容清单及两人 review 校验；不是产品 Policy 或运行时依赖。
+- `scripts/docs/`：文档导航同步生成器，保留历史事实。
+- `.github/workflows/owned-image-preview.yml`：指定工作分支的 GHCR 预览构建；不合并 PR。
+
+Wiki 接入复用 `packages/knowledge/`、`packages/memory/` 与 `packages/learning/`，由 goo122 实施。此设计不提前创建空 Wiki workspace 或第二套数据库/调度器。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 版本：1.2 · 日期：2026-09-09 · 状态：只实施 Competition Profile、Local Profile 可选留存的目录与依赖基线
@@ -22,7 +38,8 @@ PersonalAgent/
 ├─ .worktrees/               本地隔离工作树，禁止提交
 ├─ apps/                     可启动应用与可信装配入口
 │  ├─ desktop/               Electron 桌面应用
-│  └─ runtime/               当前 Runtime 应用与本地组合入口
+│  ├─ runtime/               当前 Runtime 应用与本地组合入口
+│  └─ agentarts-runtime/     自有云端编排的 HTTP/ARM64 镜像组合入口，ADR-0012
 ├─ packages/                 可复用核心模块
 │  ├─ contracts/
 │  ├─ client/
@@ -30,7 +47,7 @@ PersonalAgent/
 │  ├─ coordination/          已有 provisional Competition 文字编排消费边界
 │  ├─ goals/                 已有离线版本图及 provisional 存储端口
 │  ├─ cognition/             已有离线依赖影响分析
-│  ├─ agentarts/             目标目录；AgentArts Adapter/Workflow/Evaluation
+│  ├─ agentarts/             自有云端语义编排；本地 Adapter 仍在 coordination
 │  ├─ models/
 │  ├─ policy/
 │  ├─ tool-gateway/

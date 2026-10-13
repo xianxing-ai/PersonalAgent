@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "historicalHttpPreview": true,
+  "newerWssRecord": "OWNED_IMAGE_WSS_RELEASE_20261009.json",
+  "recordedAt": "2026-10-09T14:13:22Z",
+  "profile": "huawei_ict_agentarts",
+  "status": "preview-unmerged",
+  "sourceCommit": "157d5769af952d36d938b3eac71dddf4a846aa1a",
+  "pr": "https://github.com/zemeng5208/PersonalAgent/pull/317",
+  "ghcr": {
+    "tag": "ghcr.io/zemeng5208/personal-agent-owned:sha-157d5769af952d36d938b3eac71dddf4a846aa1a",
+    "digest": "sha256:63743fbd69f6d86b301909f1874f6e1d71fcc78a900594cf2938b28902273353",
+    "platforms": [
+      {
+        "os": "linux",
+        "architecture": "arm64",
+        "manifest": "sha256:0e9b3971eb25c9356ae6bfe5a6698bd7cdfa4308cfcb03786dab43facfa6643b"
+      },
+      {
+        "os": "linux",
+        "architecture": "amd64",
+        "manifest": "sha256:8e4937958038f21a3c8fbafce23fa6bdca383622a948c75cafe617e4da13fbb2"
+      }
+    ],
+    "anonymousPullVerified": true,
+    "pullVerification": "Fresh Docker configuration without credentials pulled AMD64; registry index anonymously read; source OCI label matches sourceCommit"
+  },
+  "actions": {
+    "run": "https://github.com/zemeng5208/PersonalAgent/actions/runs/37941616458",
+    "conclusion": "success",
+    "arm64Artifact": {
+      "url": "https://github.com/zemeng5208/PersonalAgent/actions/runs/37941616458/artifacts/11620894254",
+      "id": 11620894254,
+      "archiveSha256": "67903c2ecc3ccb99590111716602103f01e74927207a1fb751345bfb87a041a6",
+      "expiresAt": "2027-01-07T14:05:37Z"
+    }
+  },
+  "release": {
+    "url": "https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-157d5769",
+    "prerelease": true,
+    "assets": [
+      {
+        "file": "personal-agent-owned-amd64.tar",
+        "sha256": "b6a385dbf7d2f78c670672a12897aed0eed62746791ce42c56deb8daed7aa275",
+        "source": "Anonymous pull of the published GHCR AMD64 image, followed by docker save --platform linux/amd64"
+      },
+      {
+        "file": "personal-agent-owned-arm64.tar",
+        "sha256": "573cef862e440af2e73419d39321078133b916ba4861cd906f84254a909915d4",
+        "source": "Downloaded published Actions ARM64 export"
+      }
+    ]
+  },
+  "validation": {
+    "rootCheck": "passed locally, pinned Node 24.15.0/npm 11.12.1",
+    "runtimeIntegration": "24/24",
+    "arm64Container": "16/16",
+    "publishedAmd64Container": "16/16",
+    "productionEntry": "9 synthetic TLS loopback model requests; verified TLS, no external network or real model account",
+    "reviewGateUnit": "6/6",
+    "restoredSkillResource": "Skills 12/12, affected Runtime 9/9 and integration 24/24 passed after restoring all 9 functional Skill/sample assets. Architecture, contracts, typechecks and all workspace tests passed during the local full check before the final integration-only correction.",
+    "initialRemoteCI": "Failed on 8 Runtime tests because a documentation banner changed a fixed-digest Skill; later local integration caught 2 fixed-citation line shifts. All functional assets restored without changing assertions or published image content. Final remote status is tracked on the PR.",
+    "design": "39 modules, 22 chapters, four SVGs, offline Wiki handoff, zero broken local links or duplicate IDs"
+  },
+  "unverified": [
+    "Real Huawei deployment and image pull",
+    "Real model, trace, usage, cost and evaluation",
+    "Public WSS, HTTPS fallback and reconciliation",
+    "Wiki automatic synchronization",
+    "Unattended autonomy authorization and complete delegation supervision"
+  ],
+  "merge": {
+    "requiredNamedReviewers": [
+      "goo122",
+      "Potatos498"
+    ],
+    "requiredOwnComputerReading": true,
+    "physicalReadingEvidence": "Personal GitHub attestation and current-content hashes; remote physical reading cannot be independently proven",
+    "forceMergeAllowed": false,
+    "merged": false
+  }
+}

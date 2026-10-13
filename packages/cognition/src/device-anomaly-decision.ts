@@ -424,7 +424,8 @@ export class DeviceAnomalyDecisionService {
               safeAdvice: '本次请求已取消或到期，通知未投递，继续监测且未锁定冷却窗口'};
           }
           try {
-            const deliveryResult = await this.notificationPort.sendAdvisoryNotification({
+            const deliveryResult = await withCognitionDeadline({deadline, signal}, () =>
+              Promise.resolve(this.notificationPort!.sendAdvisoryNotification({
               id: deliveryId,
               source: sample.source,
               title: `系统资源高负荷告警 (${sample.source})`,
@@ -432,13 +433,13 @@ export class DeviceAnomalyDecisionService {
               advice: safeAdvice,
               candidateId: selectedCandidate?.id ?? 'none',
               timestamp: sample.timestamp,
-            });
+              })), this.now);
             deliveryConfirmed = deliveryResult.delivered === true;
             notificationDelivered = deliveryConfirmed;
           } catch {
             return {receiptId: deliveryId, source: sample.source, status: 'indeterminate',
               isAlertActive: true, consecutiveElevatedCount: state.consecutiveElevatedCount,
-              sample, selection, candidates, safeAdvice: '通知端口异常，投递结果待受信宿主核实，未锁定冷却且不盲目重发',
+              sample, selection, candidates, safeAdvice: '通知投递未确认，结果待受信宿主核实，未锁定冷却且不盲目重发',
               notificationDelivered: false};
           }
         } else {

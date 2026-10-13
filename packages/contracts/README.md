@@ -1,5 +1,8 @@
 # 公共契约（MOD-02 / PA-004、PA-023）
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 包版本 0.1.0-alpha.1；wire 版本 1.0.0；负责人 goo122，消费端评审 zemeng。按接口分层登记：Core Runtime Profile 1 已冻结，整包及模型/工具/连接器/语音等其余形状仍为 `provisional` 或 `unavailable`。精确清单见[当前接口目录](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)。
@@ -29,3 +32,5 @@ Windows Host 的内部 Pipe `0.1.0` 契约单独位于 `schema/windows-host.json
 [Windows Host 内部通信契约](../../docs/interfaces/WINDOWS_HOST_CONTRACT.md)。
 
 新增依赖：Ajv 8.17.1（MIT）用于运行时校验，会增加客户端校验器代码和初始化成本；json-schema-to-typescript 15.0.4（MIT）仅开发时生成类型，不需进入产品包。替代方案是手写双份类型或编译期单独生成验证器；当前选择单一 Schema 和可测试生成流程。最终桌面打包体积和许可证声明留在分发验收中核验。
+
+AgentArts 自有镜像的独立传输 0.1.0 从 `@personal-agent/contracts/agentarts-transport` 导出，schema 为 `schema/agentarts-transport.json`，生成类型跟随既有 `generate`/`check:generated`。它是 provisional 云编排信封，不改变本地 wire 1.0.0 冻结集合；包含 invoke/status/cancel 与 ready/accepted/result/error/status，摘要绑定单键 HTTP payload，受理不等于完成，进程缓存不提供跨重启恢复。见 ADR-0014。

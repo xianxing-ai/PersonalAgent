@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2800" height="2540" viewBox="0 0 2800 2540" role="img" aria-labelledby="title desc">
+<title id="title">常驻自主闭环：从世界变化到委派监管</title><desc id="desc">真实来源、Laya、双通道云编排、本地授权执行、读回、增量修复、停止与恢复。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52687d"/></marker></defs>
+<style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#183145} .muted{fill:#52697a} .white{fill:white} .strong{font-weight:700}</style>
+<rect x="0" y="0" width="2800" height="2540" rx="0" fill="#f3f6fa" stroke="none"/>
+<text x="50" y="72" font-size="40" class="strong" text-anchor="start">自主闭环 · 每一步的输入、决策、权限与完成证据</text>
+<text x="50" y="119" font-size="23" class="muted" text-anchor="start">事件驱动；仅修受影响节点；无变化时安静；任何不确定结果均保留待核实状态</text>
+<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<rect x="40" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="40" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="55" y="232" font-size="26" class="strong" text-anchor="start">世界与来源</text>
+<text x="55" y="266" font-size="19" class="muted" text-anchor="start">09/17/20~26/33</text>
+<rect x="430" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="430" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="445" y="232" font-size="26" class="strong" text-anchor="start">本地状态与图</text>
+<text x="445" y="266" font-size="19" class="muted" text-anchor="start">03/27/28</text>
+<rect x="820" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="820" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="835" y="232" font-size="26" class="strong" text-anchor="start">Laya 决策</text>
+<text x="835" y="266" font-size="19" class="muted" text-anchor="start">28；不签发授权</text>
+<rect x="1210" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="1210" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="1225" y="232" font-size="26" class="strong" text-anchor="start">双通道适配</text>
+<text x="1225" y="266" font-size="19" class="muted" text-anchor="start">02/04B/29</text>
+<rect x="1600" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="1600" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="1615" y="232" font-size="26" class="strong" text-anchor="start">AgentArts 镜像</text>
+<text x="1615" y="266" font-size="19" class="muted" text-anchor="start">30/31/04A</text>
+<rect x="1990" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="1990" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="2005" y="232" font-size="26" class="strong" text-anchor="start">Policy 与执行</text>
+<text x="2005" y="266" font-size="19" class="muted" text-anchor="start">05/06~08/16/18</text>
+<rect x="2380" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<rect x="2380" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
+<text x="2395" y="232" font-size="26" class="strong" text-anchor="start">读回与监管</text>
+<text x="2395" y="266" font-size="19" class="muted" text-anchor="start">03/23/27/28/32</text>
+<rect x="52" y="310" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="66" y="343" font-size="23" class="strong" text-anchor="start">1. 可信采集</text>
+<text x="66" y="376" font-size="19" class="muted" text-anchor="start">CI/文件/日历/订阅/状态；来源 revi</text>
+<text x="66" y="403" font-size="19" class="muted" text-anchor="start">sion + 时间 + 范围</text>
+<rect x="442" y="465" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="456" y="498" font-size="23" class="strong" text-anchor="start">2. 事实入库、影响分析</text>
+<text x="456" y="531" font-size="19" class="muted" text-anchor="start">去重与撤回；直接/传递依赖；仅限有</text>
+<text x="456" y="558" font-size="19" class="muted" text-anchor="start">效目标</text>
+<path d="M408,372 L435,372 L435,526 L442,526" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<rect x="832" y="620" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="846" y="653" font-size="23" class="strong" text-anchor="start">3. 合法候选选择</text>
+<text x="846" y="686" font-size="19" class="muted" text-anchor="start">先滤过期/未授权；选择、弃权、升级</text>
+<text x="846" y="713" font-size="19" class="muted" text-anchor="start">；记录未校准</text>
+<path d="M798,528 L825,528 L825,680 L832,680" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<rect x="442" y="800" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="456" y="833" font-size="23" class="strong" text-anchor="start">简单/确定性处理</text>
+<text x="456" y="866" font-size="19" class="muted" text-anchor="start">保留、核实或局部候选；无变化结束本</text>
+<text x="456" y="893" font-size="19" class="muted" text-anchor="start">轮；不忙等</text>
+<path d="M1020,748 L1020,775 L622,775 L622,800" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="9 7"/>
+<rect x="1222" y="800" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="1236" y="833" font-size="23" class="strong" text-anchor="start">4. 需要语义编排</text>
+<text x="1236" y="866" font-size="19" class="muted" text-anchor="start">最小子图/版本/预算；WSS 主，未发</text>
+<text x="1236" y="893" font-size="19" class="muted" text-anchor="start">送才 HTTPS 备用</text>
+<path d="M1020,748 L1020,775 L1410,775 L1410,800" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<rect x="1612" y="955" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="1626" y="988" font-size="23" class="strong" text-anchor="start">5. 云端角色协作</text>
+<text x="1626" y="1021" font-size="19" class="muted" text-anchor="start">fast 或 World→Plan→Review；完</text>
+<text x="1626" y="1048" font-size="19" class="muted" text-anchor="start">整报告只形成候选</text>
+<path d="M1578,865 L1605,865 L1605,1016 L1612,1016" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<rect x="442" y="1120" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="456" y="1153" font-size="23" class="strong" text-anchor="start">6. 本地重新核实</text>
+<text x="456" y="1186" font-size="19" class="muted" text-anchor="start">Schema/来源/工具/依赖；expectedR</text>
+<text x="456" y="1213" font-size="19" class="muted" text-anchor="start">evision/CAS</text>
+<path d="M1800,1083 L1800,1102 L622,1102 L622,1120" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<rect x="832" y="1280" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="846" y="1313" font-size="23" class="strong" text-anchor="start">必要时再选择/升级</text>
+<text x="846" y="1346" font-size="19" class="muted" text-anchor="start">最新合法候选；不能使用旧评分越过新</text>
+<text x="846" y="1373" font-size="19" class="muted" text-anchor="start">权限</text>
+<path d="M798,1184 L825,1184 L825,1344 L832,1344" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="9 7"/>
+<rect x="2002" y="1440" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="2016" y="1473" font-size="23" class="strong" text-anchor="start">7. Policy → ToolGateway</text>
+<text x="2016" y="1506" font-size="19" class="muted" text-anchor="start">参数/范围/期限再检查；审批或执行；</text>
+<text x="2016" y="1533" font-size="19" class="muted" text-anchor="start">保留 ToolRun</text>
+<path d="M1188,1344 L1210,1344 L1210,1414 L2190,1414 L2190,1440" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<rect x="1612" y="1280" width="356" height="128" rx="14" fill="#f3eef9" stroke="#d5dfe8"/>
+<text x="1626" y="1313" font-size="23" class="strong" text-anchor="start">多角色委派原则</text>
+<text x="1626" y="1346" font-size="19" class="muted" text-anchor="start">子任务收窄授权；父子关系由 Runtim</text>
+<text x="1626" y="1373" font-size="19" class="muted" text-anchor="start">e 管理</text>
+<rect x="2002" y="1600" width="356" height="128" rx="14" fill="#fff3e3" stroke="#d5dfe8"/>
+<text x="2016" y="1633" font-size="23" class="strong" text-anchor="start">等待审批/协调分支</text>
+<text x="2016" y="1666" font-size="19" class="muted" text-anchor="start">相关分支等待；独立任务继续；未知写</text>
+<text x="2016" y="1693" font-size="19" class="muted" text-anchor="start">入不重试</text>
+<path d="M2190,1568 L2190,1600" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)"  />
+<rect x="2392" y="1760" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="2406" y="1793" font-size="23" class="strong" text-anchor="start">8. 外部读回与 Evidence</text>
+<text x="2406" y="1826" font-size="19" class="muted" text-anchor="start">执行结果 + 来源版本；verified/co</text>
+<text x="2406" y="1853" font-size="19" class="muted" text-anchor="start">nditional 分开</text>
+<path d="M2360,1505 L2390,1505 L2390,1824 L2398,1824" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<rect x="442" y="1760" width="356" height="128" rx="14" fill="#eff5fa" stroke="#d5dfe8"/>
+<text x="456" y="1793" font-size="23" class="strong" text-anchor="start">9. 状态提交与后继计划</text>
+<text x="456" y="1826" font-size="19" class="muted" text-anchor="start">Runtime 定终态；图更新；终结任务</text>
+<text x="456" y="1853" font-size="19" class="muted" text-anchor="start">不重开</text>
+<path d="M2580,1888 L2580,1935 L622,1935 L622,1888" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<rect x="2392" y="1440" width="356" height="128" rx="14" fill="#eef6ec" stroke="#d5dfe8"/>
+<text x="2406" y="1473" font-size="23" class="strong" text-anchor="start">10. 监管与通知</text>
+<text x="2406" y="1506" font-size="19" class="muted" text-anchor="start">到期/变化检查；重要变更通知；无变</text>
+<text x="2406" y="1533" font-size="19" class="muted" text-anchor="start">化保持安静</text>
+<path d="M2580,1760 L2580,1568" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" />
+<path d="M2580,1440 L2580,1426 L2778,1426 L2778,2020 L18,2020 L18,373 L52,373" fill="none" stroke="#52687d" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="9 7"/>
+<rect x="40" y="2050" width="2720" height="180" rx="14" fill="#fff3e3" stroke="#d6aa6c"/>
+<text x="60" y="2093" font-size="28" class="strong" text-anchor="start">停止与恢复：所有分支共同遵守</text>
+<text x="60" y="2135" font-size="25" class="muted" text-anchor="start">发送前持久意图；发送后未知进入 waiting_reconciliation，不改走备用重发。重启遇未清 checkpoint 阻止再发送。暂停/取消传递并确认停止；授权已消费不重用。当前防重发为本地 provisional，完整查询恢复与真实副作用核实另</text>
+<text x="60" y="2172" font-size="25" class="muted" text-anchor="start">验收。</text>
+<rect x="40" y="2260" width="2720" height="225" rx="14" fill="#fff" stroke="#d5dfe8"/>
+<text x="60" y="2303" font-size="28" class="strong" text-anchor="start">一个完整示例：持续维护 PR 的 CI</text>
+<text x="60" y="2346" font-size="25" class="muted" text-anchor="start">真实 CI run 失败 → 影响对应 commit 的发布结论 → Laya 判断核实/定位 → AgentArts 编排测试定位与修复提案 → 本地 Policy 允许范围内补丁 → 运行相关测试并读回 diff → 记录证据 → 创建监管任务，等待新 CI 结果</text>
+<text x="60" y="2384" font-size="25" class="muted" text-anchor="start">；出现新 commit 时旧评审自动失效。</text>
+<text x="60" y="2450" font-size="22" class="muted" text-anchor="start">各泳道是职责，非必然独立进程；流程为目标设计，现有能力和缺口以模块快照为准。</text>
+</svg>

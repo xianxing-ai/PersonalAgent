@@ -1,5 +1,8 @@
 # 公共客户端（MOD-02）
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 消费 @personal-agent/contracts 0.1.0-alpha.1；wire 1.0.0。Core Runtime Profile 1 的消息、任务、会话和审批只读查询子集已冻结；Transport、事件生命周期及其余 operation 仍按[当前接口目录](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)登记。Client 接受注入的 Transport，不导入 Node 系统 API、密钥或 Runtime 实现。
