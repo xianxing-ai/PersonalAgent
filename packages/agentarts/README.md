@@ -15,6 +15,13 @@ confirmed 普通结果只总结，不误入修复；命令检查回执可确定�
 所有输出仍是不可信提案。本包不拥有授权、工具执行、任务终态、数据库或 Evidence。
 
 入口为既有 `{goal,availableTools}`、`{continuation}`、普通文字或固定主动 Goal 包装。
+续答来源接线采用独立 wire 投影：`repairContext` 仅含 revision、targets、allowedDependencies，
+target 仅含 node、requestedSummary、requestedDependencies；本地 fact/projectedFact 和原始边留在宿主。
+新增 `repairSources`（sourceVersion `1.0`、expectedGraphRevision、nodes）只承载实际已确认图谱的
+最小原/新 Fact 与目标节点投影，不能从引用补造来源。解析器重验重复、最新 active 基线和依赖；
+同批目标下一版只记 prospective，不记已观察来源。初始输入仍要求 64hex ID，续答沿用已有引用 ID。
+旧续答无 repairSources 时继续 sources=[]/RECHECK；未知字段或版本拒绝。新 wire 不授权执行，
+不清除既有 hold、不重发旧任务；合成宿主导出策略版本随之更新。
 ModelPort 按角色注入，可替换供应商；每次调用必须提供输出 token 预算、原期限和取消信号。
 模型失败不回退；角色回执仅记录角色/请求标识/状态/token，不记录内容或凭据。
 `RoleReceipt` 兼容增加 `spanId`、`startedAt`、`endedAt`、`durationMs`：每次角色模型调用生成
