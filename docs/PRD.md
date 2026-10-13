@@ -1,5 +1,20 @@
 # PersonalAgent 产品需求文档
 
+## 2026-10-09 需求补充：常驻自主开发者助手
+
+本补充采用用户当前明确的产品方向，详细设计见 `design/resident-developer-agent-20261008/DESIGN.md`；不把需求批准等同实现完成。
+
+- 电脑运行时无人监管：对已授权的事件/世界变化持续负责，局部修复受影响计划，委派执行与监管；不提供独立云电脑或关机后执行。
+- WSS 是本地到 AgentArts 的主通道，HTTPS 同语义备用；状态可见、任务与授权一致，断线未知副作用先核实。
+- Wiki 接入长期记忆，正文/来源版本归 MOD-08，结构化事实/检索投影归 MOD-09，由 goo122 实施；TaskRuntime 和授权不迁入 Wiki。
+- Laya 选择有限合法候选、弃权/升级；用户配置授权和沙箱实现受限自主，不依靠一个置信阈值扩权。
+- 责任面板展示事实、计划、委派监管、证据、审批、降级与暂停；完成声明以真实读回为依据。
+
+验收使用完整设计第18节和 Wiki 交接；旧需求编号/历史验收保留，不因设计或镜像发布宣布整个 MOD 完成。开发合并必须满足两人本机阅读确认，属于协作门槛，不能变成产品运行时权限来源。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 版本：0.3 · 日期：2026-09-09 · 状态：只实施华为 ICT AgentArts Competition Profile，通用 Local Profile 可选留存
 
 产品负责人：用户 · 项目主要负责人：`zemeng` / `zemeng5208` · 底座/协议/Runtime/模型/记忆技术维护：`goo122` · 业务连接器与业务接线：`Potatos498`；三人独立交付，zemeng 继续负责核心与 AgentArts（2026-10-07 重置） · 具体分工见 [模块分工](MODULE_ASSIGNMENTS.md)

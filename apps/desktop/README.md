@@ -1,5 +1,16 @@
 # PersonalAgent Desktop
 
+## 2026-10-09 自有镜像 WSS 消费增量
+
+Competition可信主进程已消费WSS传输及连接状态，此接入仍为 **provisional**。启用`PA_AGENTARTS_TRANSPORT=wss`时，必须显式提供`PA_AGENTARTS_WSS_URL`，没有自动推导的公网地址，也不会依次试探不同路径。地址限定同一 HTTPS 网关 origin 与运行时名称，只接受`/runtimes/{runtimeName}/ws`或`/runtimes/{runtimeName}/invocations/ws`这两个精确路径；明文、跨源、URL认证信息、查询参数与其他路径均拒绝。
+
+官方目前只确认镜像内的`/ws`容器入口。直接公网`/runtimes/{runtimeName}/ws`没有已验证依据；`PREFIX_MATCH`的`/runtimes/{runtimeName}/invocations/ws`只有普通请求映射依据，WebSocket Upgrade 转发尚未证实。两个配置候选均不能据此宣称华为公开 WSS 已支持；实际公开地址、Upgrade、鉴权与连接生命周期须另行验收。
+
+`PA_AGENTARTS_APP_TOKEN`与镜像`PA_AGENT_WSS_AUTH_TOKEN`匹配并只留在受信环境。`PA_AGENTARTS_HTTPS_FALLBACK=1`明确允许证明未发出invoke的连接失败使用同部署备用。降级/认证失败/未知核实可见，未知任务不会重发。既有未配置消费者保留HTTPS兼容。配置、实际TLS连接、Runtime和Desktop合成验证分别记录，不代表华为公开WSS或物理窗口验收。具体接口与余项见[镜像接口](../../docs/competition/OWNED_IMAGE_INTERFACES.md)。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
 Wiki 来源增量（[MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)）：
 Competition 私人记忆与知识工具共用受信知识源，原生目录选择与加密配置可在重启后复用；
 切库、停用或撤销阻止旧引文保存与消费。摘录及更正仍逐条原生确认，任务仍逐任务确认。

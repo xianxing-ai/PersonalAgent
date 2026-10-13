@@ -1,0 +1,28 @@
+name: Design review approval
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: design-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  design-review-approval:
+    name: design-review-approval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Verify one eligible non-author current-head approval
+        run: node scripts/review/check-design-review.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

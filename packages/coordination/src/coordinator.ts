@@ -1,5 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult} from './index.js';
+import {AgentArtsResultUnknownError} from './agentarts-websocket.js';
 import type {
   CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationPort, CoordinationRequest,
   CoordinationResult,
@@ -122,6 +123,9 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
 }
 
 function sanitizeProviderError(error: unknown): never {
+  // Only the local transport class carries this category; remote JSON cannot
+  // promote itself into a trusted Runtime reconciliation decision.
+  if (error instanceof AgentArtsResultUnknownError) throw error;
   let code: unknown;
   try {
     if (error instanceof ProtocolError) code = error.code;

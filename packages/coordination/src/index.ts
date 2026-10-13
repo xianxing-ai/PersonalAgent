@@ -77,6 +77,9 @@ export interface CloudAgentPort {
 }
 
 export {AgentArtsCloudAgentPort} from './agentarts.js';
+export {AgentArtsResultUnknownError} from './agentarts-websocket.js';
+export type {AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocket,
+  AgentArtsWebSocketFactory, AgentArtsWebSocketConnectOptions} from './agentarts-websocket.js';
 export type {
   AgentArtsAuthorizationProvider,
   AgentArtsDiagnosticStage,
@@ -86,6 +89,7 @@ export type {
   AgentArtsResponse,
   AgentArtsRuntimeConfig,
   AgentArtsSchemaCategory,
+  AgentArtsWebSocketOptions,
 } from './agentarts.js';
 
 /** Runtime validates even typed adapters. Text is not execution evidence. */

@@ -1,5 +1,8 @@
 # Runtime task core
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
 Wiki 来源增量提供可信 Application 入口 `revalidateWikiFact`：使用当前宿主 lease 精确读回
 既有确认事实的来源，已知版本变化或读回证明的同卷移动追加观察撤回；临时缺失与扫描失败
 保留历史并返回 source_unavailable。新事实仍通过 `ingestConfirmedPrivateCitation` 逐条确认，

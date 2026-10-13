@@ -1,0 +1,17 @@
+{
+  "name": "@personal-agent/agentarts",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}},
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@personal-agent/contracts": "0.1.0-alpha.1",
+    "@personal-agent/coordination": "0.1.0-alpha.1",
+    "@personal-agent/models": "0.1.0-alpha.1"
+  }
+}

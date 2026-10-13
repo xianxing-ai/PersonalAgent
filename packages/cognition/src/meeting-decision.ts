@@ -665,10 +665,38 @@ export class MeetingRescheduleCoordinator {
         && node.reason?.includes(`[sourceRevision: ${event.sourceRevision}]`)
     );
     if (alreadyCommittedFact) {
-      const committedNodes = initialSnapshot.history.filter(
-        node => node.reason?.includes(`[eventId: ${event.eventId}]`)
-          && node.reason?.includes(`[sourceRevision: ${event.sourceRevision}]`)
-      );
+      let recoveredNodes = [alreadyCommittedFact];
+      const recoveredBefore = alreadyCommittedFact.graphRevision - 1;
+      let recoveredAfter = alreadyCommittedFact.graphRevision;
+      let completeHistoricalRepair = false;
+      try {
+        const historical = this.store.read(recoveredBefore);
+        const previous = historical.history.findLast(node => node.id === event.meetingFactId);
+        if (previous?.kind === 'fact' && previous.sourceRef === event.source
+          && previous.summary === event.originalSummary && isEffective(previous, event.detectedAt)) {
+          const {revision: _revision, graphRevision: _graphRevision, ...factInput} = alreadyCommittedFact;
+          const prospective = appendVersions(historical, recoveredBefore, [factInput]);
+          const items = analyzeImpact(prospective, event.detectedAt).items.filter(item => item.action === 'RECHECK'
+            && item.causes.some(cause => cause.reason === 'superseded'
+              && cause.reference.id === previous.id && cause.reference.revision === previous.revision
+              && cause.currentRevision === alreadyCommittedFact.revision));
+          const candidate = this.buildCandidates(prospective, alreadyCommittedFact, items, event)
+            .find(item => item.actionId === 'adjust_schedule');
+          const expected = appendVersions(historical, recoveredBefore,
+            [factInput, ...candidate!.proposedModifications!]);
+          // Per-node revisions span an ordered batch. Exact historical content
+          // does not establish transaction identity, approval or execution Evidence.
+          if (expected.revision <= initialSnapshot.revision
+            && isDeepStrictEqual(this.store.read(expected.revision), expected)) {
+            recoveredNodes = expected.history.filter(node => node.graphRevision > recoveredBefore);
+            recoveredAfter = expected.revision;
+            completeHistoricalRepair = true;
+          }
+        }
+      } catch {
+        // The matched Fact still prevents blind replay; other historical
+        // revisions cannot be attributed from event text alone.
+      }
       const recoveredReceipt: MeetingDecisionReceipt = {
         eventId: event.eventId,
         source: event.source,
@@ -678,11 +706,13 @@ export class MeetingRescheduleCoordinator {
         actionId: 'adjust_schedule',
         status: 'already_processed',
         confidence: null,
-        reason: '图谱已在历史事务中持久化该改期事件（崩溃恢复去重保护）',
-        graphRevisionBefore: initialSnapshot.revision - 1,
-        graphRevisionAfter: initialSnapshot.revision,
+        reason: completeHistoricalRepair
+          ? '历史内容与确定性会议修订一致（崩溃恢复去重保护）；仅恢复历史节点记录，不代表审批或执行已验证'
+          : '仅恢复该会议 Fact 历史记录（崩溃恢复去重保护）；其它修订未核验，不重放事件',
+        graphRevisionBefore: recoveredBefore,
+        graphRevisionAfter: recoveredAfter,
         evaluatedAt: event.detectedAt,
-        appliedNodeRevisions: committedNodes.map(n => ({ id: n.id, revision: n.revision })),
+        appliedNodeRevisions: recoveredNodes.map(n => ({ id: n.id, revision: n.revision })),
       };
       await this.saveReceiptRecord(event, inputDigest, recoveredReceipt);
       return recoveredReceipt;
