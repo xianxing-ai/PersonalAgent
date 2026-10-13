@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {runPairedSyntheticRepairBatch} from './paired-synthetic-repair-batch.mjs';
 import {buildFixedSyntheticRepairCases} from './fixed-synthetic-repair-cases.mjs';
+import {appendVersion, currentNodes} from '@personal-agent/goals';
 
 const options = () => ({deadline: new Date(Date.now() + 10_000).toISOString(), signal: new AbortController().signal});
 const cases = buildFixedSyntheticRepairCases();
@@ -40,7 +41,10 @@ test('compares complete fixed repair batches without sending evaluator expectati
   assert.ok(Number.isInteger(result.durationMs) && result.durationMs >= 0);
   assert.ok(result.pairs.every(item => Number.isInteger(item.candidateDurationMs) && item.candidateDurationMs >= 0
     && Number.isInteger(item.baselineDurationMs) && item.baselineDurationMs >= 0));
-  assert.doesNotMatch(JSON.stringify(result), /"goal"|"candidate"\s*:\s*\{|"changes"|traceId|tokens|evidenceRefs/);
+  assert.doesNotMatch(JSON.stringify(result), /"goal"|"candidateVersion"|"expectedGraphRevision"|"changes"|traceId|tokens|evidenceRefs/);
+  assert.equal(result.evaluationMode, 'proposal-only');
+  assert.equal(result.pairedScopeQuality.candidate.correctlyRepaired, 6);
+  assert.equal(result.pairedScopeQuality.baseline.unrepaired, 3);
 });
 
 test('both sides can fail differently without either becoming a successful comparison', async () => {
@@ -52,6 +56,10 @@ test('both sides can fail differently without either becoming a successful compa
   assert.equal(result.pairedRepairQuality.accuracyDelta, 0);
   assert.ok(result.batches[0].result.cases.every(item => item.status === 'failed' && !item.checks.nodeSet));
   assert.ok(result.batches[1].result.cases.every(item => item.status === 'failed' && !item.checks.summaries));
+  assert.equal(result.pairedScopeQuality.candidate.unrelated, 3);
+  assert.equal(result.pairedScopeQuality.candidate.missed, 0);
+  assert.equal(result.pairedScopeQuality.baseline.unrelated, 0);
+  assert.equal(result.pairedScopeQuality.baseline.unrepaired, 3);
 });
 
 test('ordinary errors remain in complete paired denominators and never disclose provider messages', async () => {
@@ -168,4 +176,53 @@ test('importing the paired repair module performs no automatic network call', as
     assert.equal(typeof imported.runPairedSyntheticRepairBatch, 'function');
     assert.equal(calls, 0);
   } finally {globalThis.fetch = original;}
+});
+
+test('paired local observations stay separate from the unchanged proposal accuracy', async () => {
+  const reader = applied => ({read(request) {
+    const fixture = cases.find(item => item.caseId === request.caseId);
+    let after = fixture.snapshot;
+    if (applied) for (const change of fixture.expected.changes) {
+      const {revision, graphRevision, ...node} = currentNodes(after).find(node => node.id === change.node.id);
+      after = appendVersion(after, after.revision, {...node, summary: change.summary,
+        reason: change.reason, dependencies: change.dependencies});
+    }
+    return {taskId: request.taskId, before: fixture.snapshot, after};
+  }});
+  const result = await runPairedSyntheticRepairBatch({candidate: port('candidate', []), baseline: port('baseline', [])},
+    {...options(), readbacks: {candidate: reader(true), baseline: reader(false)}});
+  assert.equal(result.evaluationMode, 'local-readback');
+  assert.equal(result.pairedRepairQuality.candidateAccuracy, 1);
+  assert.equal(result.pairedRepairQuality.baselineAccuracy, 1);
+  assert.equal(result.pairedReadbackQuality.candidate.counts.passed, 3);
+  assert.equal(result.pairedReadbackQuality.baseline.counts.passed, 0);
+  assert.equal(result.pairedReadbackQuality.baseline.counts.failed, 3);
+  assert.equal(result.pairedReadbackQuality.baseline.scope.unrepaired, 6);
+  assert.equal(result.verification, 'unverified');
+});
+
+test('paired readback mode requires both explicitly supplied readers before either model is called', async () => {
+  let calls = 0;
+  const p = {execute() {calls++;}};
+  for (const readbacks of [undefined, null, {}, {candidate: {read() {}}},
+    {candidate: {read() {}}, baseline: {}}, {candidate: {read() {}}, baseline: {read() {}}, extra: {}}]) {
+    await assert.rejects(runPairedSyntheticRepairBatch({candidate: p, baseline: p},
+      {...options(), readbacks}), {code: 'INVALID_ARGUMENT'});
+  }
+  assert.equal(calls, 0);
+});
+
+test('paired runs capture both local reader methods before the first observation', async () => {
+  const reads = [];
+  const readbacks = Object.fromEntries(['candidate', 'baseline'].map(variant => [variant, {read(request) {
+    reads.push(variant);
+    readbacks.candidate.read = readbacks.baseline.read = () => {throw Error('replacement must not run');};
+    const fixture = cases.find(item => item.caseId === request.caseId);
+    return {taskId: request.taskId, before: fixture.snapshot, after: fixture.snapshot};
+  }}]));
+  const result = await runPairedSyntheticRepairBatch({candidate: port('candidate', []), baseline: port('baseline', [])},
+    {...options(), readbacks});
+  assert.deepEqual(reads, ['candidate', 'candidate', 'candidate', 'baseline', 'baseline', 'baseline']);
+  assert.equal(result.pairedReadbackQuality.candidate.counts.error, 0);
+  assert.equal(result.pairedReadbackQuality.baseline.counts.error, 0);
 });
