@@ -14,6 +14,7 @@ import {mountGoalCloudControls} from '../../app/goal-cloud-controls.js';
 import {mountKnowledgeControls} from '../../app/knowledge-controls.js';
 import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
+import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
 import {profilePage, bindProfile} from './profile.js';
@@ -134,6 +135,7 @@ export function mountAdmin(root, invoke, escape) {
   localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let installedSkillsControls;
   let modelApiSignature;
 
   function capabilityTable(data) {
@@ -351,6 +353,9 @@ export function mountAdmin(root, invoke, escape) {
     codingControls?.render(data);codingControls?.show(section==='worktrees' || section==='environment');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
     referenceControls?.render(data.reference);referenceControls?.show(section==='capabilities');
+    if(section==='capabilities' && data.installedSkills) installedSkillsControls??=mountInstalledSkillsControls(root.querySelector('.main'),invoke);
+    installedSkillsControls?.render(data.installedSkills,data.tasks,data.installedSkills?.runtimeAvailable && data.model?.provider==='agentarts' && data.model?.configured && data.model?.enabled!==false);
+    installedSkillsControls?.show(section==='capabilities');
     const showAgentArts=section==='models' && data.model?.provider==='agentarts';
     if (showAgentArts) {
       agentArtsControls ??= mountAgentArtsControls(root.querySelector('.main'),invoke);

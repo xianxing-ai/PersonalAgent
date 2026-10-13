@@ -40,6 +40,7 @@ import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
+import {createInstalledSkillsHost} from './installed-skills-host.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
@@ -171,6 +172,7 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
+let installedSkillsHost;
 let microphoneCaptureHost;
 let voicePcmSource;
 let voiceInput;
@@ -502,6 +504,7 @@ function snapshot(surface) {
     privateMemory: {available: competitionMode && Boolean(runtimeApplication),
       vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
+    installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
     approvals: [...approvals.values()],
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     model: structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model),
@@ -1116,6 +1119,54 @@ async function promptSyntheticRepairCandidate(taskId) {
   } finally { repairPrompts.delete(taskId); }
 }
 
+async function readDesktopConversationContext(scope) {
+  if (!['desktop-panel','desktop-workspace'].includes(scope.conversationId)) {
+    if(scope.taskId)coordinationWatchInputs.set(scope.taskId,'[]');return [];
+  }
+  const task=scope.taskId ? runtimeApplication.runtime.getTask(scope.taskId) : undefined;
+  const cutoff=conversations.turns.get(scope.taskId)?.createdAt ?? task?.createdAt ?? task?.updatedAt ?? new Date().toISOString();
+  const surface=scope.conversationId === 'desktop-panel' ? 'panel' : 'workspace';
+  const messages=[...conversations.messagesFor(surface),...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
+    .filter(message=>Date.parse(message.createdAt)<=Date.parse(cutoff))
+    .map(message=>({id:message.id,role:message.role,content:message.text}));
+  let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages});
+  if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
+  const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
+    .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
+  if(scope.taskId)coordinationWatchInputs.set(scope.taskId,JSON.stringify(current));
+  if(current.length)context.push({id:'knowledge-watch-current',role:'assistant',
+    content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
+  return context.slice(-20);
+}
+
+async function initializeInstalledSkills() {
+  if(competitionMode && !installedSkillsHost) {
+    const {openLocalSkillStore}=await import('@personal-agent/skills');
+    installedSkillsHost=createInstalledSkillsHost({
+      store:openLocalSkillStore(path.join(app.getPath('userData'),'installed-skills.json')),onUpdate:publish,
+      readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
+      validateRunInput:async publicGoal=>{
+        const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
+        const context=await readDesktopConversationContext({conversationId:'desktop-workspace',
+          deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal});
+        compileCoordinationGoal(publicGoal,publicGoal,context);
+      },
+      selectDirectory:async()=>{
+        const result=await dialog.showOpenDialog(admin,{title:'选择包含 SKILL.md 的 Skill 文件夹',properties:['openDirectory']});
+        return result.canceled?undefined:result.filePaths[0];
+      },
+      confirm:async request=>{
+        const origin=admin,application=runtimeApplication;
+        if(!origin || origin.isDestroyed()) return false;
+        const actions={install:'安装 Skill',enable:'启用 Skill',uninstall:'卸载 Skill',run:'仅本任务使用 Skill'};
+        const answer=await dialog.showMessageBox(origin,{type:request.action==='uninstall'?'warning':'question',
+          title:actions[request.action],message:`${actions[request.action]}：${request.name}`,
+          detail:`SHA256：${request.digest}\n${request.detail}`,buttons:['取消','确认'],defaultId:0,cancelId:0,noLink:true});
+        return answer.response===1 && origin===admin && !origin.isDestroyed() && application===runtimeApplication;
+      }});
+  }
+}
+
 async function initializeRuntime() {
   const runtimeModule = await import('@personal-agent/runtime/application');
   const {createRuntimeApplication} = runtimeModule;
@@ -1472,31 +1523,14 @@ async function initializeRuntime() {
         coordinationInput:{
           prepareCoordinationGoal:async scope=>{
             if (!['desktop-panel','desktop-workspace'].includes(scope.conversationId)) return scope.publicGoal;
+            installedSkillsHost?.prepareTask(scope);
             if (!privateConsumption) throw Error('私人记忆消费宿主尚未装配');
             return (await privateConsumption.prepare({...scope,goal:scope.publicGoal})).goal;
           },
-          readConversationContext:async scope=>{
-            if (!['desktop-panel','desktop-workspace'].includes(scope.conversationId)) {
-              coordinationWatchInputs.set(scope.taskId,'[]');return [];
-            }
-            const task=runtimeApplication.runtime.getTask(scope.taskId);
-            const cutoff=conversations.turns.get(scope.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt;
-            const surface=scope.conversationId === 'desktop-panel' ? 'panel'
-              : scope.conversationId === 'desktop-workspace' ? 'workspace' : undefined;
-            const messages=surface ? [...conversations.messagesFor(surface),
-              ...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
-              .filter(message=>Date.parse(message.createdAt)<=Date.parse(cutoff))
-              .map(message=>({id:message.id,role:message.role,content:message.text})) : [];
-            const context=runtimeApplication.readConversationContext({...scope,historyMessages:messages});
-            const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
-              .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
-            coordinationWatchInputs.set(scope.taskId,JSON.stringify(current));
-            if (current.length) context.push({id:'knowledge-watch-current',role:'assistant',
-              content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
-            return context;
-          },
+          readConversationContext:readDesktopConversationContext,
           beforeCoordinationSend:(request,scope)=>{
             cloudRequestFailureNotice = '';
+            installedSkillsHost?.assertTask(request.taskId);
             const conversationId=runtimeApplication.runtime.getTask(request.taskId).conversationId;
             if (!['desktop-panel','desktop-workspace'].includes(conversationId)) return;
             if (!privateConsumption) throw Error('私人记忆发送门禁尚未装配');
@@ -1610,6 +1644,7 @@ async function initializeRuntime() {
       if (syntheticRepairHost) await syntheticRepairHost.initialize(runtimeApplication.runtime);
       if (mailHost) {mailHost.bindApplication(runtimeApplication); mailConfig.markBound(configuredMail.revision);}
       codingWorkspace.bindApplication(runtimeApplication);
+      installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
       const cloudSkillSelector=referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
       runtimeApplication.configureCloudSkillSelection({
@@ -2543,6 +2578,15 @@ async function action(event, name, payload) {
     const value = conversations.setPreference(conversationId,{...conversations.preference(conversationId),modelId:id});
     publish();return value;
   }
+  if (typeof name==='string' && name.startsWith('skill.') && name!=='skill.run') {
+    if(sender!==admin || !competitionMode || !installedSkillsHost) throw Error('Skill 安装仅在正式管理后台可用');
+    if(name==='skill.install') return installedSkillsHost.install();
+    if(name==='skill.preview') return installedSkillsHost.preview(payload);
+    if(name==='skill.resource') return installedSkillsHost.previewResource(payload);
+    if(name==='skill.enable') return installedSkillsHost.setEnabled(payload);
+    if(name==='skill.uninstall') return installedSkillsHost.uninstall(payload);
+    throw Error('不支持的 Skill 操作');
+  }
   if (sender === orb) throw Error('Action unavailable from orb');
   if (!client) throw Error('Runtime 未连接，此操作尚不可用');
   if (['evidence.list', 'evidence.get', 'authorization.revoke'].includes(name)) {
@@ -2584,19 +2628,23 @@ async function action(event, name, payload) {
     }
     throw Error('Unsupported Goal action');
   }
-  if (name === 'task.submit') {
-    if (sender !== panel && sender !== workspace) throw Error('请在对话工作区发送消息');
-    if (typeof payload !== 'string' || !payload.trim()) throw Error('请输入有效任务');
+  if (name === 'task.submit' || name==='skill.run') {
+    const skillRun=name==='skill.run';
+    if(skillRun ? sender!==admin || !competitionMode || !installedSkillsHost : sender !== panel && sender !== workspace) throw Error('请从可信界面提交任务');
+    if (!skillRun && (typeof payload !== 'string' || !payload.trim())) throw Error('请输入有效任务');
     if (competitionMode && !agentArtsConfig.snapshot().configured) throw Error('请先在设置 → 模型中保存 AgentArts Authorization；Live 语音配置无需重新填写');
     if (!fakeMode && model.enabled === false) throw Error('模型已停用，请先在模型设置中启用');
-    const surface = sender === workspace ? 'workspace' : 'panel';
+    const surface = skillRun || sender === workspace ? 'workspace' : 'panel';
     if (submitting.has(surface) || [...tasks.values()].some(task => taskSurface(task) === surface && !terminalTaskStates.has(task.state))) throw Error('请等待当前回答完成，或先停止当前任务');
     submitting.add(surface);
     try {
-    const goal = payload.trim();
+    const prepared=skillRun?await installedSkillsHost.prepareRun(payload):undefined;
+    if(prepared?.cancelled) return {cancelled:true};
+    const goal = skillRun?prepared.publicGoal:payload.trim();
     const result = await submitConversationTask(client, {goal, conversationId: `desktop-${surface}`}, {competition: competitionMode});
-    conversations.add(result.taskId, surface, goal);
-    taskGoals.set(result.taskId, goal);
+    const userGoal=skillRun?prepared.userGoal:goal;
+    conversations.add(result.taskId, surface, userGoal);
+    taskGoals.set(result.taskId, userGoal);
     if (sender === panel) pinned = true;
     const task = await refresh(result.taskId);
     return task;
@@ -2863,6 +2911,7 @@ app.whenReady().then(async () => {
   });
   try {
     conversations = new Conversations(dataPaths.conversations);
+    await initializeInstalledSkills();
     if (!competitionMode) restoreModelConfig();
     const startup = await runtimeStartup.start();
     if (startup.state === 'configuration_required') {
@@ -3016,6 +3065,7 @@ app.whenReady().then(async () => {
       modelApiHost?.dispose();
       privateConsumption?.close();
       wikiSourceMonitor?.close();
+      installedSkillsHost?.close();
       coordinationWatchInputs.clear();
       privateMemory?.close();
       learningStore?.close();

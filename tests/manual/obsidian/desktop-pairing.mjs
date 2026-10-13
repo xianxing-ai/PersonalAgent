@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {existsSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {parseWikiCitationReference} from '@personal-agent/knowledge/wiki';
 
 /** Actual Desktop composition; only synthetic source selection/native decisions are automated. */
 export async function verifyDesktopPairing({workspace, base, vault, evaluatePlugin, sensitiveCode}) {
+  const skillDirectory=path.join(base,'synthetic-paired-skill');mkdirSync(skillDirectory);
+  const skillText='---\nname: synthetic-paired-skill\ndescription: Public synthetic pairing fixture\n---\nUse three short public bullet points.\n';
+  writeFileSync(path.join(skillDirectory,'SKILL.md'),skillText);
   const require = createRequire(path.join(workspace, 'apps/desktop/package.json'));
   const {_electron} = require('playwright');
   const choices = ['apps/desktop/node_modules/electron/dist/electron.exe', 'node_modules/electron/dist/electron.exe'];
@@ -31,14 +34,16 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     const panel = await wait(() => electron.windows().find(page => page.url().includes('mode=panel')));
     await panel.evaluate(() => window.desktop.invoke('admin.open', {page: 'memory'}));
     admin = await wait(() => electron.windows().find(page => page.url().includes('mode=admin')));
-    await electron.evaluate(({dialog}, vault) => {
+    await electron.evaluate(({dialog}, {vault,skillDirectory}) => {
       globalThis.__pairingCloudAttempts = 0;
       globalThis.__pairingConfirmationDetails = [];
       globalThis.__pairingMemoryDetails = []; globalThis.__pairingMemoryDecision = false;
       globalThis.fetch = async () => {globalThis.__pairingCloudAttempts++; throw Error('Synthetic acceptance forbids cloud calls');};
-      dialog.showOpenDialog = async () => ({canceled: false, filePaths: [vault]});
+      dialog.showOpenDialog = async (_owner,options) => ({canceled: false,
+        filePaths: [options.title==='选择包含 SKILL.md 的 Skill 文件夹'?skillDirectory:vault]});
       // Explicit Fake decision; the dedicated BrowserWindow and form below are real.
       dialog.showMessageBox = async (_owner, options) => {
+        if(['安装 Skill','启用 Skill','卸载 Skill'].includes(options.title)) return {response:1}; // Explicit Fake Skill decisions.
         if (options.title === '确认 Obsidian 配对') globalThis.__pairingConfirmationDetails.push({
           defaultId: options.defaultId, cancelId: options.cancelId, bounded: !!options.signal,
           mentionsPrivate: options.detail.includes('私人'), mentionsReadonly: options.detail.includes('只读')});
@@ -50,7 +55,7 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
         }
         return {response: 0};
       };
-    }, vault);
+    }, {vault,skillDirectory});
     await wait(async () => {const result = await invoke('snapshot'); return result.privateMemory?.available;});
     const original = await invoke('knowledge.source.select'); assert.equal(original.available, true);
     await admin.waitForSelector('[data-knowledge-source="pair"]');
@@ -84,6 +89,12 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     }
     assert.equal(paired.knowledge.dataLevel, 'private'); assert.equal(paired.knowledge.writeAvailable, false);
     assert.equal(paired.knowledge.cloudExportAllowed, false); assert.notEqual(paired.knowledge.sourceId, original.sourceId);
+    assert.equal((await invoke('skill.install')).enabled,false);
+    const installed=(await invoke('snapshot')).installedSkills.items[0];
+    const skillRef={name:installed.name,digest:installed.digest};
+    await invoke('skill.enable',{...skillRef,enabled:true});
+    assert.equal((await invoke('snapshot')).knowledgeSource.pairing.available,true);
+    assert.match((await invoke('skill.preview',skillRef)).instructions,/three short public bullet points/);
     assert.equal(await admin.locator('[data-knowledge-source="submit"]').isDisabled(), true);
     const hits = await invoke('knowledge.search', {query: 'needle', limit: 5});
     assert.equal(hits.hits.length, 1); assert.equal(hits.hits[0].source.path, 'Allowed/note.md');
@@ -152,6 +163,8 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     admin = await wait(() => electron.windows().find(page => page.url().includes('mode=admin')));
     await wait(async () => (await invoke('snapshot')).privateMemory?.available);
     const restarted = await invoke('snapshot');
+    assert.equal(restarted.installedSkills.items[0].digest,skillRef.digest);
+    assert.equal(restarted.installedSkills.items[0].enabled,true);
     assert.equal(restarted.knowledgeSource.pairing.mode, 'plugin'); assert.equal(restarted.knowledge.available, false);
     assert.equal(restarted.privateMemory.vaultSelected,false);
     await wait(async()=>await admin.locator('#memory-query').isDisabled());
@@ -166,6 +179,7 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
       globalThis.__pairingRecoveryDetails=[];globalThis.__pairingRecoveryMemoryConfirmations=0;
       globalThis.fetch=async()=>{globalThis.__pairingCloudAttempts++;throw Error('Synthetic acceptance forbids cloud calls');};
       dialog.showMessageBox=async(_owner,options)=>{
+        if(options.title==='卸载 Skill') return {response:1}; // Explicit Fake uninstall decision.
         if(options.title==='确认 Obsidian 配对') globalThis.__pairingRecoveryDetails.push({
           defaultId:options.defaultId,cancelId:options.cancelId,bounded:!!options.signal});
         if(options.title==='确认私人记忆') globalThis.__pairingRecoveryMemoryConfirmations++;
@@ -298,12 +312,19 @@ export async function verifyDesktopPairing({workspace, base, vault, evaluatePlug
     await wait(async()=>await admin.locator('#memory-saved-status').textContent().then(t=>t.includes('已删除')));
     saved=(await invoke('memory.listSaved')).facts;
     assert.deepEqual(saved.map(f=>f.summary),['Synthetic preserved memory']);
+    assert.equal((await invoke('snapshot')).installedSkills.items[0].digest,skillRef.digest,'memory deletion preserves installed Skill');
+    await invoke('skill.uninstall',skillRef);
+    assert.deepEqual((await invoke('snapshot')).installedSkills.items,[]);
+    assert.deepEqual((await invoke('memory.listSaved')).facts.map(f=>f.summary),['Synthetic preserved memory']);
+    assert.equal(readFileSync(path.join(skillDirectory,'SKILL.md'),'utf8'),skillText);
     assert.equal((await invoke('snapshot')).privateMemory.vaultSelected,false);
     assert.equal(await admin.locator('#memory-query').isDisabled(),true);
     await admin.screenshot({path:path.join(base,'desktop-memory-erased.png')});
     assert.equal(await electron.evaluate(()=>globalThis.__pairingCloudAttempts),0);
     await invoke('knowledge.pair.revoke'); assert.equal((await invoke('snapshot')).knowledge.sourceId, original.sourceId);
     return {realDesktopHost: true, crossProcessRuntimePairing: true, source: 'synthetic', nativeDecision: 'explicit_fake',
+      installedSkill:{nativeDecision:'explicit_fake',installedWhilePaired:true,restartPreserved:true,
+        memoryDeletionPreservedSkill:true,uninstallPreservedMemory:true,originalSourceUnchanged:true},
       passwordInput: true, isolation, confirmedSearch: {hits: hits.hits.length, path: hits.hits[0].source.path},
       revocationFailsClosed: true, realDesktopRestartFailsClosed: true, explicitFilesystemRestore: true, cloudAttempts: confirmation.cloudAttempts,
       taskCount: tasks.tasks?.length ?? tasks.tasks?.items?.length,

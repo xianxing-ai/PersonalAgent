@@ -195,6 +195,9 @@
 .knowledge-source-settings .setting-row select,
 .knowledge-source-settings .setting-row textarea {box-sizing:border-box;flex:0 1 360px;width:100%;min-width:0;max-width:360px;border:1px solid var(--glass-border);border-radius:9px;padding:8px 10px;background:var(--surface-2);color:var(--fg);font:inherit}
 .knowledge-source-settings .setting-row textarea {flex:1 1 420px;max-width:520px;min-height:64px;max-height:180px;overflow:auto;resize:vertical}
+.installed-skills-settings .field {box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--glass-border);border-radius:9px;padding:8px 10px;background:var(--surface-2);color:var(--fg);font:inherit}
+.installed-skills-settings textarea {min-height:96px;resize:vertical}
+.installed-skills-settings pre {max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 .knowledge-source-settings .setting-row input[type="checkbox"],.knowledge-source-settings .setting-row input[type="radio"] {flex:0 0 auto;margin:0;accent-color:var(--accent)}
 .knowledge-source-settings .setting-row:has(input[type="checkbox"]),.knowledge-source-settings .setting-row:has(input[type="radio"]) {justify-content:flex-start;gap:8px}
 .knowledge-source-settings h3 {margin:18px 0 8px;font-size:14px}
