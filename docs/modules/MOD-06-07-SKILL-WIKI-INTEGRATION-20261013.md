@@ -52,7 +52,7 @@ main 31b0ce5c 的代码树与已批准 f9f3f390 完全一致，两条远端分�
 - #320 状态 MERGED，实际合并者 zemeng5208，合并提交 `31b0ce5cedd98c2e6511b696d1c9e6f8e0086c4c`，父提交 b03af83e；已复核非作者批准覆盖 f9f3f390，未解决评审线程 0。
 - 已批准 head 与 main 的完整代码树均为 `c1b36a2148e4ecd3e2b9fc10bfb77e707b48a362`，差异为空；原 Wiki/Skill 分支分别保留 f9f3f390/156692cf。
 - f9f3f390 的 PR 与 push Foundation 均完整成功，包括 npm ci、Windows helper、check、dev、demo:protocol、demo:runtime。批准前设计门禁首次失败保留；真实批准出现后 attempt 2 成功，合并前 GitHub 为 CLEAN、检查整体 SUCCESS。
-- main 31b0ce5c 的 Foundation 运行 #38386459297 独立启动；本记录同步时 npm ci、Windows helper 与 check 已成功，后续 dev/两个 demo 尚在运行。这不改变已验收代码树，也不代表发布或真实云验收。
+- main 31b0ce5c 的 Foundation 运行 #38386459297 已独立完成 SUCCESS，npm ci、Windows helper、check、dev、demo:protocol、demo:runtime 全部通过。该主线结果与合并前门禁分别读回，不代表发布或真实云验收。
 
 ## 2026-10-13：最新 PR 与验收表述复核
 
