@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {mkdir, mkdtemp, readFile, rename, rm, writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {Readable} from 'node:stream';
+import {fileURLToPath} from 'node:url';
 import {ProtocolError} from '@personal-agent/contracts';
 import {getOwnedBindings, OwnedAgentOrchestrator} from '@personal-agent/agentarts';
 import {FakeModelProvider} from '@personal-agent/models';
 import {FakeCloudAgentPort} from '@personal-agent/coordination/testing';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
-import {CASES, createCaseDiagnostics, createLiveTransport, normalizeDeadline, parseOptions, runAcceptance, selectCases, validateCatalog,
+import {CASES, createCaseDiagnostics, createLiveTransport, createReceiptWriter, main, normalizeDeadline, parseOptions, runAcceptance, selectCases, validateCatalog,
   validateConfiguration} from './owned-binding-live.mjs';
 
 const goalId = 'b'.repeat(64), planId = 'a'.repeat(64), otherId = 'c'.repeat(64);
@@ -47,6 +51,89 @@ function fake({mutate = value => value, discover = async () => catalog()} = {}) 
   port.close = () => closed++;
   return {port, discover, envelopes, get closed() { return closed; }};
 }
+async function offlineCli(t, transport, fs, group = 'ordinary') {
+  const root = fileURLToPath(new URL('../../../.cache/owned-binding-live-tests/', import.meta.url));
+  await mkdir(root, {recursive: true});
+  const directory = await mkdtemp(path.join(root, 'receipt-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  let text = '', exitCode, receiptPath;
+  await main(['--live', '--group', group, '--deadline', deadline(), '--out', directory],
+    Readable.from([JSON.stringify(config)]), {transportFactory: () => transport,
+      receiptWriterFactory: file => { receiptPath = file; return createReceiptWriter(file, fs); },
+      output: {write(value) { text += value; }}, setExitCode(value) { exitCode = value; }});
+  return {receipt: JSON.parse(text), text, exitCode, receiptPath};
+}
+
+test('final rename failure preserves tmp and prints the terminal receipt without replay or a saved claim', async t => {
+  for (const discoveryFailed of [false, true]) {
+    const h = fake(discoveryFailed ? {discover: async () => { throw new Error('synthetic discovery failure'); }} : {});
+    let writes = 0, renames = 0;
+    const actual = await offlineCli(t, h, {
+      writeFileImpl: async (...args) => { writes++; return writeFile(...args); },
+      renameImpl: async (from, to) => {
+        renames++;
+        const value = JSON.parse(await readFile(from, 'utf8'));
+        if (value.status !== 'running') throw Object.assign(new Error(config.wssToken),
+          {code: 'EPERM', path: 'synthetic-private-path', dest: config.inboundAuthorization});
+        return rename(from, to);
+      },
+    }, discoveryFailed ? 'all' : 'ordinary');
+    assert.equal(actual.exitCode, 1); assert.equal(actual.receipt.status, 'failed');
+    assert.equal(actual.receipt.evidence, 'mock');
+    assert.equal(actual.receipt.cases.length, discoveryFailed ? 11 : 2);
+    assert.equal(actual.receipt.cases.every(row => row.status === (discoveryFailed ? 'skipped' : 'passed')), true);
+    assert.ok(Number.isFinite(Date.parse(actual.receipt.finishedAt)));
+    assert.deepEqual(actual.receipt.persistence, {status: 'failed', stage: 'rename', errno: 'EPERM'});
+    assert.equal(h.port.requests.length, discoveryFailed ? 0 : 2);
+    assert.equal(writes, discoveryFailed ? 13 : 4); assert.equal(renames, writes);
+    const disk = JSON.parse(await readFile(actual.receiptPath, 'utf8'));
+    const tmp = JSON.parse(await readFile(actual.receiptPath + '.tmp', 'utf8'));
+    assert.equal(disk.status, 'running');
+    assert.equal(tmp.status, discoveryFailed ? 'failed' : 'passed');
+    assert.deepEqual(tmp.cases, actual.receipt.cases);
+    for (const secret of [config.wssToken, config.inboundAuthorization, 'synthetic-private-path', actual.receiptPath, 'saved']) {
+      assert.equal(actual.text.includes(secret), false);
+    }
+  }
+});
+
+test('a partial write failure stops remaining bindings and preserves the partial tmp with content-free diagnostics', async t => {
+  const h = fake(); let writes = 0, renames = 0;
+  const actual = await offlineCli(t, h, {
+    writeFileImpl: async (file, value) => {
+      writes++;
+      if (writes === 2) {
+        await writeFile(file, 'synthetic-partial-body');
+        throw Object.assign(new Error('synthetic-private-write-path'), {code: 'ENOSPC'});
+      }
+      return writeFile(file, value);
+    },
+    renameImpl: async (...args) => { renames++; return rename(...args); },
+  });
+  assert.equal(actual.exitCode, 1); assert.equal(actual.receipt.status, 'failed');
+  assert.deepEqual(actual.receipt.persistence, {status: 'failed', stage: 'write', errno: 'ENOSPC'});
+  assert.equal(h.port.requests.length, 1); assert.equal(writes, 2); assert.equal(renames, 1);
+  assert.equal(actual.receipt.cases[0].status, 'passed');
+  assert.equal((JSON.parse(await readFile(actual.receiptPath, 'utf8'))).cases.length, 0);
+  assert.equal(await readFile(actual.receiptPath + '.tmp', 'utf8'), 'synthetic-partial-body');
+  assert.equal(actual.text.includes('synthetic-partial-body'), false);
+  assert.equal(actual.text.includes('synthetic-private-write-path'), false);
+});
+
+test('unrecognized filesystem codes are UNKNOWN and an initial write failure invokes no binding', async () => {
+  const h = fake(); let writes = 0, renames = 0;
+  const writer = createReceiptWriter('unused-synthetic-path', {
+    writeFileImpl: async () => { writes++; throw Object.assign(Error(config.wssToken), {code: config.inboundAuthorization}); },
+    renameImpl: async () => { renames++; },
+  });
+  const result = await runAcceptance({...h, deadline: deadline(), onProgress: writer});
+  assert.equal(result.status, 'failed');
+  assert.deepEqual(result.persistence, {status: 'failed', stage: 'write', errno: 'UNKNOWN'});
+  assert.equal(h.port.requests.length, 0); assert.equal(writes, 1); assert.equal(renames, 0);
+  assert.equal(JSON.stringify(result).includes(config.wssToken), false);
+  assert.equal(JSON.stringify(result).includes(config.inboundAuthorization), false);
+});
+
 test('selection is exact, ordered and explicitly includes review prerequisites', () => {
   assert.deepEqual(selectCases({bindings: [CASES[6].id]}).map(item => [item.key, item.prerequisite]),
     [['world', true], ['plan_1', true], ['review_1', false]]);
