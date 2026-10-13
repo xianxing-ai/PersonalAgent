@@ -9,7 +9,7 @@ const active = scope => {
 
 /** Coordinates original Memory erasure markers with original Runtime/history redaction. Never retries tools. */
 export function createPrivateMemoryErasureHost({privateMemory, consumptionHost, listBindings,
-  cancelTask, eraseTaskCopies, readCopyErasureReceipt}) {
+  cancelTask, eraseTaskCopies, readCopyErasureReceipt, backups}) {
   const available = [listBindings, cancelTask, eraseTaskCopies, readCopyErasureReceipt]
     .every(value => typeof value === 'function') && Boolean(privateMemory && consumptionHost);
   const inventory = () => {
@@ -76,8 +76,11 @@ export function createPrivateMemoryErasureHost({privateMemory, consumptionHost, 
   return Object.freeze({
     inventory,
     assertReady(externalCopies = []) {
-      if (!Array.isArray(externalCopies) || externalCopies.length !== 0) throw Error('其他应用管理副本清除未接通');
+      if (!Array.isArray(externalCopies)) throw Error('其他应用管理副本清除未接通');
+      if (backups) backups.assertReady(externalCopies);
+      else if (externalCopies.length !== 0) throw Error('其他应用管理副本清除未接通');
       inventory();
+      backups?.inventory();
       return privateMemory.prepareWrite();
     },
     async withdraw(ref, scope = context()) {
@@ -94,6 +97,7 @@ export function createPrivateMemoryErasureHost({privateMemory, consumptionHost, 
       const target = structuredClone(ref);
       // Check coverage before native consent; no task is cancelled before exact source deletion commits.
       inventory();
+      backups?.inventory();
       let maintenancePending = false;
       try {
         const result = await privateMemory.delete(target);
@@ -106,24 +110,30 @@ export function createPrivateMemoryErasureHost({privateMemory, consumptionHost, 
       const marker = markerFor(target.id, scope);
       if (marker?.phase !== 'completed' || marker.expectedRevision !== target.revision) throw Error('私人删除未持久接受');
       const pendingTaskIds = await clean(target.id, scope);
-      if (maintenancePending || pendingTaskIds.length) return {state: 'pending', phase: 'private_copy_erasure',
-        pendingTaskIds, maintenancePending};
-      return {state: 'deleted', coverage: 'active_private_database_and_bound_task_copies'};
+      const {pendingBackupIds = []} = backups ? await backups.reconcile(scope) : {};
+      if (maintenancePending || pendingTaskIds.length || pendingBackupIds.length) return {state: 'pending', phase: 'private_copy_erasure',
+        pendingTaskIds, pendingBackupIds, maintenancePending};
+      return {state: 'deleted', coverage: backups ? 'active_private_database_bound_tasks_and_managed_sqlite_backups'
+        : 'active_private_database_and_bound_task_copies'};
     },
     async reconcile(scope = context()) {
       active(scope);
       inventory();
       privateMemory.prepareWrite();
       const pendingTaskIds = [];
+      let erased = false;
       let afterFactId;
       for (;;) {
         const markers = privateMemory.listErasureMarkers({limit: 100, ...scope,
           ...(afterFactId === undefined ? {} : {afterFactId})});
         for (const marker of markers) {
           active(scope);
-          if (marker.phase === 'completed') pendingTaskIds.push(...await clean(marker.factId, scope));
+          if (marker.phase === 'completed') { erased = true; pendingTaskIds.push(...await clean(marker.factId, scope)); }
         }
-        if (markers.length < 100) return {state: pendingTaskIds.length ? 'pending' : 'reconciled', pendingTaskIds};
+        if (markers.length < 100) {
+          const {pendingBackupIds = []} = erased && backups ? await backups.reconcile(scope) : {};
+          return {state: pendingTaskIds.length || pendingBackupIds.length ? 'pending' : 'reconciled', pendingTaskIds, pendingBackupIds};
+        }
         afterFactId = markers.at(-1).factId;
       }
     },

@@ -1,9 +1,12 @@
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolHost} from '@personal-agent/contracts';
 import type {KnowledgePort} from '@personal-agent/knowledge';
+import type {ReadOnlyPageVaultPort} from '@personal-agent/knowledge/filesystem';
 import {createKnowledgeSearchTool} from '@personal-agent/knowledge/tool';
 import {createKnowledgeWriteTool} from '@personal-agent/knowledge/write';
-import type {KnowledgeWritePort, KnowledgeWriteFinalizationAcceptance} from '@personal-agent/knowledge/write';
+import type {KnowledgeNotePatch, KnowledgeWriteReceipt, KnowledgeWritePort, KnowledgeWriteFinalizationAcceptance} from '@personal-agent/knowledge/write';
+import {createKnowledgeWriteProjection} from './knowledge-write-projection.js';
+import type {KnowledgeWriteProjectionPort} from './knowledge-write-projection.js';
 
 export interface TrustedKnowledgeBinding {
   sourceId: string; namespace: string; configRevision: number; available: boolean;
@@ -14,7 +17,7 @@ export interface TrustedKnowledgeBinding {
 export interface TrustedKnowledgeSource {
   snapshot(): TrustedKnowledgeBinding;
   acquire(expected: {sourceId: string; configRevision: number}, signal: AbortSignal): {
-    binding: TrustedKnowledgeBinding; read: KnowledgePort; write?: KnowledgeWritePort;
+    binding: TrustedKnowledgeBinding; read: KnowledgePort & Partial<Pick<ReadOnlyPageVaultPort, 'readPage'>>; write?: KnowledgeWritePort;
     reconcileWrite?: KnowledgeWritePort['reconcile'];
     finalizeWrite?: KnowledgeWritePort['finalize'];
     signal: AbortSignal; assertCurrent(): void; release(): void;
@@ -28,10 +31,12 @@ export interface KnowledgeToolTaskBindings {
 }
 
 /** Public Runtime composition factory. All execution still enters the existing ToolGateway/Policy. */
-export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource) {
+export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource, projectionPort?: KnowledgeWriteProjectionPort) {
   let application: KnowledgeToolTaskBindings | undefined;
   const key = 'knowledge-source-binding-v1';
   const token = (binding: TrustedKnowledgeBinding): string => `${binding.namespace}:${binding.sourceId}:${binding.configRevision}`;
+  const projection = projectionPort ? createKnowledgeWriteProjection(projectionPort, () => application,
+    (input, signal) => source.acquire(input, signal), () => token(source.snapshot())) : undefined;
   const bound = (taskId: string, claim = false): boolean => {
     const current = source.snapshot();
     if (!current.available || !application || !taskId) return false;
@@ -76,7 +81,11 @@ export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource) {
       let result: unknown;
       if (writing) {
         if (!lease.binding.writeAvailable || !lease.write) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Knowledge write unavailable');
+        projection?.prepare(input as KnowledgeNotePatch, active);
         result = await createKnowledgeWriteTool(lease.write).execute(input, active);
+        validateToolValue(writeTemplate.descriptor.outputSchema, result);
+        projection?.accept(context.taskId, context.runId, context.argumentsDigest!, result as KnowledgeWriteReceipt);
+        await projection?.recover(context.taskId, active);
       } else result = await createKnowledgeSearchTool(lease.read).execute({query: args.query, limit: args.limit}, active);
       lease.assertCurrent(); return result;
     } finally {lease.release();}
@@ -131,6 +140,9 @@ export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource) {
     }
   }));
   return {tools, competitionToolAvailability: availability, competitionToolExports: exports,
+    /** Trusted startup/admin recovery. Unknown writes require the original reconciliation adapter first. */
+    recoverProjection: (taskId: string, context: Pick<ToolContext, 'signal' | 'deadline'>) =>
+      projection?.recover(taskId, context) ?? Promise.resolve({pending: 0, unknown: 0}),
     bindApplication(value: KnowledgeToolTaskBindings) {application = value;},
     /** Trusted local submitters pin the same checkpoint before requesting approval. */
     bindTask(taskId: string): boolean {return bound(taskId, true);},
@@ -163,7 +175,18 @@ export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource) {
         if (!lease.finalizeWrite) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Knowledge finalization unavailable');
         lease.assertCurrent();
         const result = await lease.finalizeWrite(input.acceptedOriginal, {...context, signal: lease.signal});
-        lease.assertCurrent(); return result;
+        lease.assertCurrent();
+        if (result.state === 'finalized' && result.operationId === input.acceptedOriginal.operationId
+          && result.outcome === input.acceptedOriginal.outcome
+          && result.currentSha256 === input.acceptedOriginal.currentSha256) {
+          const accepted = input.acceptedOriginal;
+          projection?.accept(accepted.taskId, accepted.runId, accepted.argumentsDigest, {
+            operationId: result.operationId, state: result.outcome === 'applied' ? 'verified' : 'conflict',
+            changed: result.outcome === 'applied' && result.currentSha256 !==
+              (accepted.originalInput as KnowledgeNotePatch).expectedSha256}, accepted.originalInput as KnowledgeNotePatch);
+          // Commit the original Runtime result before callers independently recover projections.
+        }
+        return result;
       } finally {lease.release();}
     },
     register(host: ToolHost) {

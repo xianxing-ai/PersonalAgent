@@ -17,7 +17,9 @@
     "check:desktop-local": "node --check electron/desktop-host.js && node --check electron/desktop-state.js && node --check electron/desktop-preload.cjs && node --check src/desktop-settings/settings.js && node --check src/ui/desktop-shell.js",
     "test:workspace-smoke": "node test/workspace-smoke.cjs",
     "test:runtime-application-smoke": "node test/runtime-application-smoke.cjs",
-    "test:text-smoke": "node test/text-chat-smoke.cjs"
+    "test:text-smoke": "node test/text-chat-smoke.cjs",
+    "test:skills-smoke": "node test/installed-skills-smoke.cjs",
+    "test:skills-product-smoke": "node test/installed-skills-product-smoke.cjs"
   },
   "dependencies": {
     "@personal-agent/contracts": "0.1.0-alpha.1",

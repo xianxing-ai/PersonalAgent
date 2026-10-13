@@ -151,7 +151,7 @@ test('Competition HTTP goal carries bounded untrusted context without checkpoint
     {idempotencyKey: 'context-send'});
   assert.equal((await terminal(app, taskId)).state, 'succeeded');
   const goal = JSON.parse(requests[0].query);
-  assert.deepEqual(goal, {publicGoal: 'Synthetic current goal', ephemeralGoal: 'Synthetic current goal',
+  assert.deepEqual(goal, {publicGoal: 'Synthetic current goal',
     conversationContext: {treatment: 'untrusted_data', messages: [
       {id: `${earlier}:user`, taskId: earlier, role: 'user', content: 'Synthetic public question'},
       {id: `${earlier}:assistant`, taskId: earlier, role: 'assistant', content: 'Synthetic public answer'},

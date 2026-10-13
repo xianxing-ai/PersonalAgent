@@ -5,6 +5,6 @@
   "type": "module",
   "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}},
   "scripts": {"build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test test/*.test.mjs"},
-  "dependencies": {"@personal-agent/contracts": "0.1.0-alpha.1", "@personal-agent/agents": "0.1.0-alpha.1", "@personal-agent/coordination": "0.1.0-alpha.1", "@personal-agent/mcp": "0.1.0-alpha.1"},
+  "dependencies": {"@personal-agent/contracts": "0.1.0-alpha.1", "@personal-agent/agents": "0.1.0-alpha.1", "@personal-agent/coordination": "0.1.0-alpha.1", "@personal-agent/mcp": "0.1.0-alpha.1", "js-yaml": "4.3.2"},
   "devDependencies": {"@personal-agent/policy": "0.1.0-alpha.1", "@personal-agent/tool-gateway": "0.1.0-alpha.1"}
 }
