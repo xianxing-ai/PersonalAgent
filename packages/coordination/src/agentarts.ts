@@ -3,8 +3,9 @@ import {AGENTARTS_TRANSPORT_VERSION, digestAgentArtsPayload, parseAgentArtsTrans
 import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
-import {AgentArtsResultUnknownError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt} from './agentarts-websocket.js';
+import {AgentArtsResultUnknownError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
 import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
+import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_HTTP_DIAGNOSTIC_MS = 1_000;
@@ -1072,6 +1073,50 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
 
   /** Releases reusable sessions. It never resumes or retries an in-flight invocation. */
   close(): void { this.closed = true; this.websocket?.close(); }
+
+  /** Read-only provisional transport lookup. Returned events never authorize execution or task completion. */
+  async queryStatus(receipt: AgentArtsUnknownReceipt, controls: {deadline: string; signal: AbortSignal}):
+    Promise<Extract<AgentArtsTransportFrame, {type: 'status'; serverInstanceId: string}>> {
+    if (this.closed || this.websocket === undefined) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts WSS status query is unavailable');
+    }
+    const saved = snapshotAgentArtsUnknownReceipt(receipt);
+    let signal: AbortSignal, deadlineMs: number;
+    try {
+      signal = controls.signal;
+      const deadline = controls.deadline;
+      deadlineMs = Date.parse(deadline);
+      if (!(signal instanceof AbortSignal) || typeof deadline !== 'string' || !ISO_DEADLINE.test(deadline)
+        || !Number.isFinite(deadlineMs)
+        || deadline.replace(/\.000Z$/, 'Z') !== new Date(deadlineMs).toISOString().replace(/\.000Z$/, 'Z')) {
+        throw Error();
+      }
+    } catch { invalid('Invalid AgentArts status query control'); }
+    const combined = makeCombinedSignal(signal, deadlineMs);
+    try {
+      const initialAbort = currentAbortError(combined);
+      if (initialAbort) throw initialAbort;
+      let authorization: unknown;
+      try { authorization = await callWithAbort(() => this.authorizationProvider.read(combined.signal), combined); }
+      catch { throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts authorization is unavailable'); }
+      const outer = validateAuthorization(authorization);
+      let supplied: unknown = outer;
+      if (this.websocketAuthorizationProvider !== undefined) {
+        try { supplied = await callWithAbort(() => this.websocketAuthorizationProvider!.read(combined.signal), combined); }
+        catch { throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts WebSocket authorization is unavailable'); }
+      }
+      const inner = validateAuthorization(supplied);
+      if (!/^Bearer [\x21-\x7e]+$/.test(inner)) {
+        throw new ProtocolError('UNAUTHORIZED', 'AgentArts WebSocket needs a trusted Bearer authorization');
+      }
+      return await callWithAbort(() => this.websocket!.queryStatus(saved, {
+        Authorization: outer, 'X-PA-Agent-Token': inner, 'X-Invoke-Mode': this.invokeMode,
+      }, combined.signal), combined);
+    } catch (error) {
+      throw currentAbortError(combined) ?? (error instanceof ProtocolError ? error
+        : new ProtocolError('EXTERNAL_FAILURE', 'AgentArts status query failed'));
+    } finally { combined.dispose(); }
+  }
 
   async invoke(request: CoordinationRequest): Promise<CoordinationResult> {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
