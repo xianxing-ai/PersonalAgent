@@ -1,8 +1,8 @@
 # 开发计划与进度
 
-### 2026-10-13：Skill 与 Wiki 组合验证（in_progress）
+### 2026-10-13：Wiki/Skill 已进入 main
 
-[组合工作包](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 在隔离工作树组合 #320 `2b7ab2e0` 与 #318 `156692cf`，基线 main `dd639d42`。保留两侧生命周期与 Runtime/Policy 接线，修复 ADR 编号重复；本地合成验收及非作者评审不等同 main 集成或整个模块完成。真实云验收继续暂缓。
+[组合工作包](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 已通过 #346→#320 集成至 main `31b0ce5c`；#320 的 `f9f3f390` 经 zemeng5208 有效非作者批准、完整 Foundation 和设计门禁后，由 zemeng5208 合并。main 与该 head 的代码树一致，合并后主线 CI 另行读回。重复 #318 经用户授权关闭，分支和评审记录保留。已交付安装/启停/使用/卸载、Wiki 来源监视、应用备份协调、索引、只读插件和受信配对；真人原生流程、真实云消费、跨库派生副本与完整 LLM Wiki 仍待对应验收。MOD-06/07/08/09 保持 in_progress、接口 provisional，不把本组合完成等同完整模块 done。下文旧阶段记录保留为历史快照。
 
 ### 2026-10-13 当前组合补充（review）
 
@@ -205,8 +205,8 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 | MOD-04B | Competition Coordination；Local Agent 可选 | review | `zemeng` / PR #36、#49、#72（Workflow 输入）、#80（continuation 边界）均已进入 main（2026-09-30 台账核对），离线审批工具循环已验证；真实 AgentArts 调用和多 Agent 结果仍未验收 |
 | MOD-05 | M1/M2 | review | goo122 / PR #7、#26、#49 已合并；任务级 SQLite 授权、参数绑定、审批恢复、工具 Evidence、幂等重放和 Competition 离线工具循环已验证；跨任务持续授权、真实 SecretStore 和真实写入恢复尚未完成 |
 | MOD-06 | M2 | in_progress | main 已有固定官方 filesystem stdio、受控只读映射与断连生命周期，详见 [MCP/Skill MVP](modules/MOD-06-07-MVP.md)；保持 provisional，不含任意服务/写工具；原生与真实云完整消费仍待验收 |
-| MOD-07 | M2 | in_progress | main 已有固定版本化参考摘要、受控调用及 Runtime/SQLite 审批恢复；本机 SKILL.md 安装/启停/使用/卸载及安装资源本地预览增量进入 [PR #318](https://github.com/zemeng5208/PersonalAgent/pull/318)，详见 [安装使用记录](modules/MOD-07-LOCAL-INSTALLATION-20261009.md)。未集成、原生完整安装及真实云未验收，不标 done，不含任意脚本引擎 |
-| MOD-08 | M2 | in_progress | `goo122` / PR #93～#95、#97、#98 已评审并合并。[MOD-08G](modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)/[08H](modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)/[08I](modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md) 在 [PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 联合交付：页面身份/版本、共用受信来源与确认记忆失效投影、受控写回恢复；完整本机 check 2637 pass/25 skip/0 fail，待评审与集成。[MOD-08J](modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md) 继续实现只读后台来源监视，专项 18/18 和真实合成 Electron 后台链路通过，完整门禁见工作包，已在 [PR #321](https://github.com/zemeng5208/PersonalAgent/pull/321) 堆叠交付，待评审/集成。接口 provisional；[MOD-08K](modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 通过 PR #321 交付 SQLite 备份协调、临时全文索引和只读插件；整篇笔记备份按用户选择保留并报告 pending。[MOD-08L](modules/MOD-08L-OBSIDIAN-INSTALLATION-01.md) 补齐显式安装/卸载、单文件打包修复，真实 Obsidian 1.12.7 合成 Vault 验收通过；插件 Runtime 配对、跨库投影与完整 LLM Wiki 未验收 |
+| MOD-07 | M2 | in_progress | main 已有固定版本化参考摘要、受控调用及 Runtime/SQLite 审批恢复；本机 SKILL.md 安装/启停/使用/卸载和安装资源纯本地预览已由 #346→[PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 合入 main `31b0ce5c`，#318 已关闭并保留分支/评审。[安装说明](modules/MOD-07-LOCAL-INSTALLATION-20261009.md) 与[组合集成记录](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 区分历史与当前证据。原生真人完整流程及真实云消费未验收，不标整个模块 done，不含任意脚本引擎 |
+| MOD-08 | M2 | in_progress | `goo122` / #93～#95、#97、#98 历史工作包已进入 main；[PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 已评审并合入 main `31b0ce5c`，包含 Wiki 来源身份/版本、确认记忆失效投影、受控写回恢复、只读来源监视、SQLite 备份协调、临时全文索引、Obsidian 安装插件和受信配对，详见 [MOD-08G](modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)/[08I](modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)/[08K](modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md)/[组合集成](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md)。本机及实际 Obsidian/Desktop 双进程合成证据通过，原生决定仍 explicit Fake；整篇笔记备份按用户选择保留并报告 pending。真人原生流程、跨库派生副本、完整 LLM Wiki 与真实云消费待验收；接口 provisional，整个模块不标 done |
 | MOD-09 | M1.6/M4 | in_progress | `goo122` 保留在途范围，P7/P8 剩余按当前分工交接；#285 同步消费/实际父子副本、#289 官方 MCP/SQLite 学习验证和 #294 撤回管理/删除恢复已进入 main，#304/#305 原生控件及来源状态保护也已合并。2026-10-08 在 main@74b64c35，按用户逐条确认的 A/B 完成真实 Vault 来源、原生保存/更正、重启读回、撤回、全部历史及回执删除、再次重启无复活；原笔记哈希不变，无云任务；同 head Foundation attempt 2 成功，首次失败保留。Memory 44/44、相关定向 49/49、Desktop 703 通过/2 跳过为 cc64ebdf 基线结果，#307 仅改测试等待时间，后续 main@e86bac53 仅交接文档变化；见 [本次记录](modules/MOD-09-REAL-LOCAL-LIFECYCLE-20261008.md)。用户规范要求的非作者评审、完整 parent→child 许可、真实 AgentArts 消费及真实用户流程仍待核对/验收；详见 [收口验收矩阵](modules/MOD-09-PA020-MVP-PRODUCTION.md#2026-10-06-收口验收矩阵2026-10-07-更新)；接口 provisional，不能将本地通过记为整个模块 done |
 | MOD-10 | M4 后研究，无交付日期承诺 | todo | 未启动 |
 | MOD-11 | M1 | in_progress | `zemeng` / main@4b5ec614 已具受控 IPC、本机桌面设置/恢复及 SIS/Live 宿主消费；#75 已进入 main（非仅语音堆叠）。当前开发 #302 尚未合并；DPI/透明命中、真实崩溃和比赛实机验收仍未完成；[源码核对](../apps/desktop/README.md#2026-10-07-原功能源码核对) |
