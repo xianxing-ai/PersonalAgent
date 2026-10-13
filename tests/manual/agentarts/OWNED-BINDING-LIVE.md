@@ -96,7 +96,25 @@ World/Plan/Review 输出复用公开 `OwnedAgentOrchestrator` 的正式校验：
 `terminal` 表示已收到传输终态，不代表模型结果通过应用校验；回调缺失时不推断已经发帧。
 同会话的下一项重新开始记录，不能继承上一项的失败诊断或请求 ID。
 不保存原始报告、模型正文、错误 message/stack/response body、凭据或凭据摘要。
-终端输出相同的脱敏回执。退出码 0 表示所选项全通过，1 表示失败或依赖跳过。
+目录发现失败时，真实传输内部错误另外提供固定 `phase: network | http | body | json`，
+已收到响应时可带 100–599 整数 `httpStatus`，网络错误仅保留固定允许列表中的 `errno`
+（包括 UND_ERR_CONNECT_TIMEOUT、ENOTFOUND、ECONNRESET）。未知 errno 省略；
+不复制普通注入错误中的同名字段，也不记录 URL、headers 或响应正文。HTTP 错误响应的
+body 释放失败不掩盖原 HTTP 状态。以上诊断不触发自动重试，也不证明 WSS 调用已发送。
+正常落盘时终端输出相同的脱敏回执。写入或替换失败会立即停止后续绑定，不重试写入、
+重命名、发现请求或模型调用；stdout 仍输出内存中的终态回执，并将整体 `status` 置为
+`failed`、退出码置为 1。已经收到的逐项结果保留，不能因落盘失败重发 invoke。
+
+落盘诊断只包含 `persistence: {status: "failed", stage: "write" | "rename", errno: ...}`。
+`errno` 仅取固定允许列表中的文件系统代码（例如 EPERM、EBUSY、ENOSPC），其它值为
+`UNKNOWN`；不含错误 message、stack、路径、正文或凭据。目录创建失败归入 `write`，
+发生在验收开始前时通过 stderr 报告 `PERSISTENCE_FAILED`，不会启动真实调用。
+失败后保留已有 `.json` 和 `.json.tmp`，不清理、覆盖或把临时文件称为已保存的正式回执。
+正式 JSON 可能仍为 `running`，tmp 可能完整或仅部分写入；此时以 stdout 的明确落盘失败
+和已发生的逐项观察定位问题，独立核对文件后再人工恢复。EPERM/EBUSY 本身不能证明
+本次就是临时文件锁；本程序不自动重新提交临时文件或重跑验收。
+
+退出码 0 表示所选项全通过且最终落盘成功；1 表示验收失败、依赖跳过或落盘失败。
 
 程序不注册工具、不签发 Policy 授权、不写业务数据、不提交修复候选。候选仅解析及核对，
 永远不是实际执行授权或本地 Evidence。真实 HTTP 备用整链、模型用量和平台 trace
@@ -110,5 +128,8 @@ node --test --test-isolation=none tests/manual/agentarts/owned-binding-live.test
 
 测试复用现有 FakeCloudAgentPort、SyntheticWebSocket 以及实际 owned 编排核心，覆盖精确发现、
 两条报告链、非法/越界/旧版报告、Review 候选替换、依赖跳过、全局截止时间/取消、错误脱敏、
-WSS 会话复用和发送后未知结果不重试。无需凭据，无外网及付费模型调用。
+WSS 会话复用和发送后未知结果不重试。注入文件系统失败并实际读回测试目录，验证最终
+rename 失败仍输出终态、部分 tmp 保留、首/中途 write 失败停止后续调用及错误脱敏。
+这些是合成文件系统错误，不证明真实故障由文件锁引起。无需凭据，无外网及付费模型调用。
+发现诊断另覆盖网络异常、HTTP 失败、body 读取/大小上限、JSON 解析及外部错误字段脱敏。
 `--test-isolation=none` 避免受限 Windows 下测试 runner 创建子进程被 EPERM 拒绝。

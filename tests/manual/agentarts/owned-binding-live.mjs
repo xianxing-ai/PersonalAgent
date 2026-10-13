@@ -44,7 +44,40 @@ export const CASES = definitions.map(([key, id, group, dependencies]) => Object.
 Object.freeze(CASES);
 const safeCodes = new Set(['INVALID_ARGUMENT', 'UNAUTHORIZED', 'UNSUPPORTED_CAPABILITY', 'EXTERNAL_FAILURE',
   'TIMEOUT', 'CANCELLED', 'RATE_LIMITED', 'CONFLICT', 'EXPECTED_REVISE', 'EXPECTED_REPAIR_CANDIDATE',
-  'EXPECTED_RECHECK', 'CATALOG_MISMATCH', 'INVALID_BINDING_RESULT', 'DEPENDENCY_FAILED', 'DISCOVERY_FAILED']);
+  'EXPECTED_RECHECK', 'CATALOG_MISMATCH', 'INVALID_BINDING_RESULT', 'DEPENDENCY_FAILED', 'DISCOVERY_FAILED',
+  'PERSISTENCE_FAILED']);
+const persistenceErrnos = new Set(['EACCES', 'EPERM', 'EBUSY', 'ENOSPC', 'EIO', 'ENOENT', 'ENOTDIR',
+  'EISDIR', 'EEXIST', 'EMFILE', 'ENFILE', 'EROFS', 'EDQUOT', 'EINVAL', 'ENAMETOOLONG', 'ENOTEMPTY', 'EXDEV']);
+class ReceiptPersistenceError extends Error {
+  constructor(stage, error) {
+    super('Owned binding receipt persistence failed');
+    this.code = 'PERSISTENCE_FAILED';
+    this.persistence = {status: 'failed', stage,
+      errno: persistenceErrnos.has(error?.code) ? error.code : 'UNKNOWN'};
+  }
+}
+const discoveryErrnos = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
+  'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET']);
+class DiscoveryError extends Error {
+  constructor(phase, code, {error, httpStatus} = {}) {
+    super('Owned binding discovery failed');
+    this.code = code;
+    this.diagnostic = {phase};
+    if (Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599) this.diagnostic.httpStatus = httpStatus;
+    const errno = discoveryErrnos.has(error?.code) ? error.code : error?.cause?.code;
+    if (discoveryErrnos.has(errno)) this.diagnostic.errno = errno;
+  }
+}
+/** Same-file commit only. Failed writes/renames keep any tmp; no automatic retry. */
+export function createReceiptWriter(receiptPath, {writeFileImpl = writeFile, renameImpl = rename} = {}) {
+  return async receipt => {
+    try { await writeFileImpl(receiptPath + '.tmp', JSON.stringify(receipt, null, 2) + '\n'); }
+    catch (error) { throw new ReceiptPersistenceError('write', error); }
+    try { await renameImpl(receiptPath + '.tmp', receiptPath); }
+    catch (error) { throw new ReceiptPersistenceError('rename', error); }
+  };
+}
 export function safeErrorCode(error) {
   if (error instanceof AgentArtsResultUnknownError) return 'RESULT_UNKNOWN';
   return safeCodes.has(error?.code) ? error.code : 'EXTERNAL_FAILURE';
@@ -204,7 +237,14 @@ export async function runAcceptance({discover, port, deadline, selection = selec
     try {
       control(); catalog = validateCatalog(await discover(signal)); control();
       receipt.discovery = {status: 'passed', workflows: 8, controllers: 3};
-    } catch (error) { catalog = undefined; receipt.discovery = {status: 'failed', errorCode: safeErrorCode(error)}; }
+    } catch (error) {
+      catalog = undefined;
+      const cancelled = signal.aborted;
+      const timedOut = !cancelled && Date.now() >= Date.parse(deadline);
+      receipt.discovery = {status: 'failed',
+        errorCode: cancelled ? 'CANCELLED' : timedOut ? 'TIMEOUT' : safeErrorCode(error),
+        ...(!cancelled && !timedOut && error instanceof DiscoveryError ? error.diagnostic : {})};
+    }
     await onProgress(structuredClone(receipt));
     const taskId = randomUUID();
     for (const item of selection) {
@@ -241,6 +281,14 @@ export async function runAcceptance({discover, port, deadline, selection = selec
     receipt.finishedAt = new Date().toISOString();
     await onProgress(structuredClone(receipt));
     return receipt;
+  } catch (error) {
+    if (!(error instanceof ReceiptPersistenceError)) throw error;
+    // Retain observed outcomes even if the final snapshot could not be committed.
+    // Stop here: neither another save nor another invoke may overwrite/replay it.
+    receipt.status = 'failed';
+    receipt.finishedAt = new Date().toISOString();
+    receipt.persistence = {...error.persistence};
+    return receipt;
   } finally { port.close?.(); }
 }
 async function readBounded(stream, limit) {
@@ -263,14 +311,22 @@ export function createLiveTransport(config, signal, {fetchImpl = fetch, socketFa
   {authorizationProvider: {read: async () => `Bearer ${value.wssToken}`}, ...(socketFactory ? {factory: socketFactory} : {}),
     onDispatch: caseDiagnostics.onDispatch, onAccepted: caseDiagnostics.onAccepted, onTerminal: caseDiagnostics.onTerminal});
   return {port, caseDiagnostics, discover: async () => {
-    const response = await fetchImpl(base + '/bindings?endpoint=Latest', {method: 'GET', redirect: 'error', signal,
-      headers: {'Content-Type': 'application/json', Authorization: value.inboundAuthorization,
-        'X-PA-Agent-Token': `Bearer ${value.wssToken}`, 'X-Hw-Agentarts-Session-Id': randomUUID()}});
+    let response;
+    try {
+      response = await fetchImpl(base + '/bindings?endpoint=Latest', {method: 'GET', redirect: 'error', signal,
+        headers: {'Content-Type': 'application/json', Authorization: value.inboundAuthorization,
+          'X-PA-Agent-Token': `Bearer ${value.wssToken}`, 'X-Hw-Agentarts-Session-Id': randomUUID()}});
+    } catch (error) { throw new DiscoveryError('network', 'EXTERNAL_FAILURE', {error}); }
     if (response.status !== 200) {
-      await response.body?.cancel();
-      fail([401, 403].includes(response.status) ? 'UNAUTHORIZED' : 'EXTERNAL_FAILURE');
+      try { await response.body?.cancel(); } catch { /* Preserve the received HTTP status. */ }
+      throw new DiscoveryError('http', [401, 403].includes(response.status) ? 'UNAUTHORIZED' : 'EXTERNAL_FAILURE',
+        {httpStatus: response.status});
     }
-    return JSON.parse(await readBounded(response.body, 64_000));
+    let body;
+    try { body = await readBounded(response.body, 64_000); }
+    catch (error) { throw new DiscoveryError('body', safeErrorCode(error), {error, httpStatus: response.status}); }
+    try { return JSON.parse(body); }
+    catch { throw new DiscoveryError('json', 'EXTERNAL_FAILURE', {httpStatus: response.status}); }
   }};
 }
 export function parseOptions(args) {
@@ -291,7 +347,10 @@ export function parseOptions(args) {
   if (result.live && (!result.deadline || Date.parse(result.deadline) <= Date.now())) fail('INVALID_ARGUMENT');
   return result;
 }
-export async function main(args = process.argv.slice(2), input = process.stdin) {
+// Injected CLI dependencies are for explicit offline tests; normal CLI stays real WSS.
+export async function main(args = process.argv.slice(2), input = process.stdin,
+  {transportFactory = createLiveTransport, receiptWriterFactory = createReceiptWriter,
+    output = process.stdout, setExitCode = code => { process.exitCode = code; }} = {}) {
   const options = parseOptions(args), selection = selectCases(options);
   if (options.plan) {
     process.stdout.write(JSON.stringify({status: 'plan', networkRequests: 0, selection}, null, 2) + '\n'); return;
@@ -312,16 +371,15 @@ export async function main(args = process.argv.slice(2), input = process.stdin) 
   const directory = path.resolve(options.out ?? `.cache/owned-binding-live/${new Date().toISOString().replace(/[:.]/g, '-')}`);
   let transport;
   try {
-    await mkdir(directory, {recursive: true});
+    try { await mkdir(directory, {recursive: true}); }
+    catch (error) { throw new ReceiptPersistenceError('write', error); }
     const receiptPath = path.join(directory, `receipt-${randomUUID()}.json`);
-    transport = createLiveTransport(config, cancellation.signal);
+    transport = transportFactory(config, cancellation.signal);
     const receipt = await runAcceptance({...transport, deadline: options.deadline, signal: cancellation.signal, selection,
-      evidence: 'real-huawei-wss-attempt', onProgress: async value => {
-        await writeFile(receiptPath + '.tmp', JSON.stringify(value, null, 2) + '\n');
-        await rename(receiptPath + '.tmp', receiptPath);
-      }});
-    process.stdout.write(JSON.stringify(receipt, null, 2) + '\n');
-    process.exitCode = receipt.status === 'passed' ? 0 : 1;
+      evidence: transportFactory === createLiveTransport ? 'real-huawei-wss-attempt' : 'mock',
+      onProgress: receiptWriterFactory(receiptPath)});
+    output.write(JSON.stringify(receipt, null, 2) + '\n');
+    setExitCode(receipt.status === 'passed' ? 0 : 1);
   } finally {
     transport?.port.close(); clearTimeout(timer);
     process.removeListener('SIGINT', abort); process.removeListener('SIGTERM', abort);
@@ -329,7 +387,8 @@ export async function main(args = process.argv.slice(2), input = process.stdin) 
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(error => {
-    process.stderr.write(JSON.stringify({status: 'failed', errorCode: safeErrorCode(error)}) + '\n');
+    process.stderr.write(JSON.stringify({status: 'failed', errorCode: safeErrorCode(error),
+      ...(error instanceof ReceiptPersistenceError ? {persistence: error.persistence} : {})}) + '\n');
     process.exitCode = 1;
   });
 }
