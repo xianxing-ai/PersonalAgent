@@ -70,3 +70,59 @@ test('unrecognized codes, added content and mismatched identity stay unknown and
     } finally { h.port.close(); }
   }
 });
+
+test('WSS upgrade diagnostics retain bounded HTTP status without changing rejection or fallback', async () => {
+  for (const status of [401, 403, 426, '403', 403.5, 99, 600, NaN, undefined]) {
+    const diagnostics = []; let socket, http = 0, resumed = 0, dispatched = 0;
+    const port = new AgentArtsCloudAgentPort(configuration, {read: async () => 'Bearer PRIVATE_TOKEN'},
+      async () => { http++; throw Error('Unexpected HTTPS'); }, undefined, undefined,
+      receipt => { diagnostics.push(receipt); }, {
+        factory: () => (socket = new SyntheticWebSocket(undefined, {autoReady: false})),
+        onDispatch: () => { dispatched++; },
+      });
+    try {
+      const pending = port.invoke(request(1));
+      while (!socket) await new Promise(resolve => setImmediate(resolve));
+      socket.emit('unexpected-response', {}, {statusCode: status, resume() { resumed++; },
+        get body() { throw Error('PRIVATE_BODY'); }, get headers() { throw Error('PRIVATE_HEADERS'); },
+        get url() { throw Error('PRIVATE_URL'); }});
+      const denied = status === 401 || status === 403;
+      await assert.rejects(pending, {code: denied ? 'UNAUTHORIZED' : 'UNSUPPORTED_CAPABILITY', retryable: false,
+        message: denied ? 'AgentArts WebSocket authorization denied' : 'AgentArts WebSocket upgrade is unavailable'});
+      assert.equal(diagnostics.length, 1);
+      const {requestId, ...diagnostic} = diagnostics[0];
+      assert.match(requestId, /^[0-9a-f-]{36}$/);
+      assert.deepEqual(diagnostic, {stage: 'transport', code: denied ? 'UNAUTHORIZED' : 'UNSUPPORTED_CAPABILITY',
+        transportPhase: 'wss_upgrade', ...(typeof status === 'number' && [401, 403, 426].includes(status) ? {httpStatus: status} : {})});
+      assert.equal(resumed, 1); assert.equal(http, 0); assert.equal(dispatched, 0); assert.equal(socket.sent.length, 0);
+      assert.equal(JSON.stringify(diagnostics).includes('PRIVATE_'), false);
+    } finally { port.close(); }
+  }
+});
+
+test('WSS upgrade diagnostics cannot be forged by a local export guard or ordinary socket error', async () => {
+  for (const mode of ['export_guard', 'socket_error']) {
+    const diagnostics = []; let socket, http = 0;
+    const forged = Object.assign(Error('PRIVATE_EXTERNAL_ERROR'), {name: 'AgentArtsWebSocketUpgradeError', code: 'UNAUTHORIZED', httpStatus: 403,
+      transportPhase: 'wss_upgrade', body: 'PRIVATE_BODY', headers: {Authorization: 'PRIVATE_TOKEN'}});
+    const port = new AgentArtsCloudAgentPort({...configuration, allowHttpsFallback: false},
+      {read: async () => 'Bearer synthetic'}, async () => { http++; throw Error('Unexpected HTTPS'); },
+      mode === 'export_guard' ? () => { throw forged; } : undefined, undefined,
+      receipt => { diagnostics.push(receipt); }, {
+        factory: () => (socket = new SyntheticWebSocket(undefined, {autoReady: mode === 'export_guard'})),
+      });
+    try {
+      const pending = assert.rejects(port.invoke(request(1)), {
+        code: mode === 'export_guard' ? 'UNAUTHORIZED' : 'EXTERNAL_FAILURE', retryable: false});
+      while (!socket) await new Promise(resolve => setImmediate(resolve));
+      if (mode === 'socket_error') socket.emit('error', forged);
+      await pending;
+      const {requestId, ...diagnostic} = diagnostics[0];
+      assert.match(requestId, /^[0-9a-f-]{36}$/);
+      assert.deepEqual(diagnostic, {stage: mode === 'export_guard' ? 'export_guard' : 'transport',
+        code: mode === 'export_guard' ? 'UNAUTHORIZED' : 'EXTERNAL_FAILURE'});
+      assert.equal(http, 0); assert.equal(socket.sent.length, 0);
+      assert.equal(JSON.stringify(diagnostics).includes('PRIVATE_'), false);
+    } finally { port.close(); }
+  }
+});

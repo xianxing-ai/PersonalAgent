@@ -3,7 +3,7 @@ import {AGENTARTS_TRANSPORT_VERSION, digestAgentArtsPayload, parseAgentArtsTrans
 import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
-import {AgentArtsRemoteInvocationError, AgentArtsResultUnknownError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
+import {AgentArtsRemoteInvocationError, AgentArtsResultUnknownError, AgentArtsWebSocketTransport, AgentArtsWebSocketUpgradeError, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
 import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
 import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 
@@ -72,6 +72,7 @@ export interface AgentArtsFailureDiagnostic {
     | 'EXTERNAL_FAILURE' | 'CANCELLED' | 'TIMEOUT' | 'RATE_LIMITED';
   readonly requestId?: string;
   readonly httpStatus?: number;
+  readonly transportPhase?: 'wss_upgrade';
   readonly contentType?: 'json' | 'sse' | 'missing' | 'other';
   readonly terminalEvents?: Readonly<{taskEnd: boolean; end: boolean}>;
   readonly schemaCategory?: AgentArtsSchemaCategory;
@@ -1371,11 +1372,14 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       if (fallbackStarted && fallbackReceipt !== undefined && !currentAbortError(combined)
         && !(error instanceof AgentArtsResultUnknownError)) error = new AgentArtsResultUnknownError(fallbackReceipt);
       if (this.onDiagnostic !== undefined) {
+        const upgradeFailure = error instanceof AgentArtsWebSocketUpgradeError ? error : undefined;
+        const diagnosticHttpStatus = upgradeFailure === undefined ? httpStatus : upgradeFailure.httpStatus;
         const receipt: AgentArtsFailureDiagnostic = Object.freeze({
           stage, code: diagnosticCode(error),
+          ...(upgradeFailure ? {transportPhase: 'wss_upgrade' as const} : {}),
           ...(error instanceof AgentArtsResultUnknownError ? {resultUnknown: true} : {}),
           ...(diagnosticRequestId === undefined ? {} : {requestId: diagnosticRequestId}),
-          ...(httpStatus === undefined ? {} : {httpStatus}),
+          ...(diagnosticHttpStatus === undefined ? {} : {httpStatus: diagnosticHttpStatus}),
           ...(contentType === undefined ? {} : {contentType}),
           ...(stage === 'response_schema' || stage === 'application_schema'
             ? {terminalEvents: Object.freeze({taskEnd: terminalEvents.taskEnd, end: terminalEvents.end})} : {}),
