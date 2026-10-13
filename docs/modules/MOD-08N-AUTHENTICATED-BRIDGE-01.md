@@ -74,3 +74,28 @@ ERR_SSL_NO_CERTIFICATE_SET；最终移除该路径，使用临时证书固定与
 插件引用与逐条记忆确认继续见 [MOD-08O](MOD-08O-PAIRED-CITATION-MEMORY-01.md)。完整 MOD-08/09 保持 in_progress。
 公开桥接仍 provisional，须非作者评审/集成后按接口目录门槛判断，不能由合成验收提升
 整个模块为 done/frozen。云验收继续暂缓。
+
+### 2026-10-13：最新 main 与 Wiki 父分支组合
+
+- #320 的主线冲突已由既有 `a8fa8a9f` 解决；#321 `d2279d80` 已继承它和 main
+  `f81bb641`。本轮不重复这些修复，在已有隔离工作树 `.worktrees/goo122-pairing-readiness`
+  组合 #322 `ea32696a` 与该父分支；自动合并无冲突，保留 #323/#326 的全部验收增量。
+- 组合生产树 `986c28f343c39aa6d4b4c53e12fb652cd090a256` 的完整 `npm run check`
+  退出 0：**2755 tests / 2730 pass / 25 skip / 0 fail / 0 cancelled**；
+  日志 `.cache-wiki-main-compat-full-check.log`。后续只追加本记录，不冒称旧 head 的 CI。
+- 按既有 CI 使用显式外部目录构建 Windows Job helper；取消、11 秒延迟就绪、成功、
+  deadline、根进程退出及受限构建回归实际执行并通过。保留受信路径保护，未修改系统设置。
+  继承的 CRLF 文件用 `cr-at-eol` 检查，不全文件重排或改变全局 Git 配置。
+- `npm run dev`、`demo:protocol`、`demo:runtime` 均退出 0，分别记录于
+  `.cache-wiki-main-compat-dev.log`、`-protocol.log`、`-runtime.log`；这是本地合成示例。
+- Desktop `test:smoke` 退出 0；`.cache-wiki-main-compat-desktop-smoke.log`，Fake Runtime。
+- 实际 Obsidian 1.12.7/Desktop 双进程验收退出 0；证据
+  `.cache/obsidian-installed-host/case-DY6Ym0/evidence.json`，日志
+  `.cache-wiki-main-compat-dual-process.log`。旧配对码拒绝、重新配对、稳定引用、来源变更
+  撤回版本 3、独立确认更正版本 4、手动撤回版本 5及精确删除均保留，无关事实仍在。
+  截图已核对来源变化提示；原生内容/配对决定仍 explicit Fake，合成 Vault/SQLite，云调用 0。
+  evidence 不含配对码/secret/私钥；原 Vault 未访问或修改，合成应用关闭、插件卸载。
+- 无新公共接口、Schema、迁移、依赖或新增权限；本轮复用主线已交付行为，接口仍 provisional。
+  #318 的独立 Skill 安装与 #327 的学习指导增量不在这个组合中，不据此宣称它们已集成。
+- 本包更新现有 #322；新 head 的 Foundation 和有效非作者批准要重新核对。#320 当前
+  缺非作者批准，不能越过父分支门槛合入 main；本轮不执行 GitHub PR 合并或发布。
