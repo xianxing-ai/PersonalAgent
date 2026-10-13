@@ -11,6 +11,8 @@ import {
 import {ProtocolError} from '@personal-agent/contracts';
 import {createHash} from 'node:crypto';
 import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt} from './coordination.js';
+import {CompetitionCloudStatusReader, recordCompetitionCloudStatusBinding} from './competition-cloud-status.js';
+import type {CompetitionCloudStatusScope, CompetitionCloudStatusObservation} from './competition-cloud-status.js';
 import {
   createRuntimeApplication,
   type RuntimeApplication,
@@ -38,13 +40,18 @@ export interface AgentArtsRuntimeApplicationOptions
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
 }
 
+export type AgentArtsRuntimeApplication = RuntimeApplication & {
+  /** Trusted host only; reads persisted identity and returns metadata, never cloud event bodies. */
+  queryCompetitionCloudStatus(taskId:string,scope:CompetitionCloudStatusScope):Promise<CompetitionCloudStatusObservation>;
+};
+
 /**
  * Trusted Competition composition root. AgentArts provides unverified text;
  * RuntimeApplication remains the task-state and persistence authority.
  */
 export function createAgentArtsRuntimeApplication(
   options: AgentArtsRuntimeApplicationOptions
-): RuntimeApplication {
+): AgentArtsRuntimeApplication {
   const {
     gatewayUrl,
     runtimeName,
@@ -109,6 +116,7 @@ export function createAgentArtsRuntimeApplication(
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
         onDispatch: (request, receipt) => {
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
+          recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt);
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-received', null);
         },
         onAccepted: (request, receipt) => {
@@ -130,7 +138,8 @@ export function createAgentArtsRuntimeApplication(
       ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion})})).digest('hex'),
     coordination: new CompetitionCoordinator(cloud),
   });
+  const statusReader=new CompetitionCloudStatusReader(application.runtime,application.coordinationConfigurationRef,cloud,transport==='wss');
   const closeRuntime = application.close.bind(application);
-  application.close = () => { closeRuntime(); cloud.close(); };
-  return application;
+  application.close = () => { closeRuntime(); statusReader.close(); cloud.close(); };
+  return Object.assign(application,{queryCompetitionCloudStatus:statusReader.query.bind(statusReader)});
 }
