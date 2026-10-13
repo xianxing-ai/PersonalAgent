@@ -21,7 +21,7 @@ const world = {reportVersion: '1.1', revision: 7, observed_facts: [
 affected_items: [{kind: 'plan_step', node: ref(planId), impact: 'direct', reason: '目标时间变化'}],
 missing_information: [], recommended_disposition: 'REVISE', summary: '只改准备时间'};
 const plan = {reportVersion: '1.1', base_revision: 7, disposition: 'REVISE',
-  preserved_steps: [{node: ref(otherId), reason: '其他工作不受影响'}], rechecked_steps: [],
+  preserved_steps: [], rechecked_steps: [],
   revised_steps: [{node: ref(planId), replacement: '16点准备', reason: '目标时间变化'}], removed_steps: [],
   dependency_updates: [{node: ref(planId), dependencies: [ref(goalId, 2)], reason: '使用新目标版本'}],
   evidence_required: ['本地Policy、CAS及执行读回'], missing_information: [], local_next_actions: []};
