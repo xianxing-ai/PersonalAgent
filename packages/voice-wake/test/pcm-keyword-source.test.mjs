@@ -189,3 +189,68 @@ test('release failure rejects closed with a fixed error', async () => {
     return true;
   });
 });
+
+for (const readiness of ['detector', 'capture']) {
+  test(`expiry while ${readiness} readiness is pending fails closed before a delayed timer`, async t => {
+    let currentMs = 1_000;
+    t.mock.method(Date, 'now', () => currentMs);
+    const host = setup();
+    const abort = new AbortController();
+    const pending = host.source.subscribe(event => host.events.push(event), {
+      signal: abort.signal, deadlineAtMs: 1_500,
+    });
+    if (readiness === 'capture') {
+      host.detectorReady.resolve();
+      await tick();
+      assert.ok(host.captureOptions);
+    }
+    currentMs = 2_000;
+    host[`${readiness}Ready`].resolve();
+    await assert.rejects(pending, {message: 'Wake PCM source unavailable'});
+    await tick();
+
+    assert.equal(host.stops, 1);
+    assert.equal(host.unsubscribes, readiness === 'capture' ? 1 : 0);
+    if (readiness === 'detector') assert.equal(host.captureOptions, undefined);
+    assert.deepEqual(host.events, [{kind: 'error'}]);
+    host.detectorOptions.onDetected();
+    host.captureOptions?.onFrame(frame(0));
+    abort.abort();
+    await tick();
+    assert.deepEqual(host.accepted, []);
+    assert.deepEqual(host.events, [{kind: 'error'}]);
+    assert.equal(host.stops, 1);
+    assert.equal(host.unsubscribes, readiness === 'capture' ? 1 : 0);
+  });
+}
+
+for (const callback of ['frame', 'detection']) {
+  test(`a ${callback} at expiry stops listening before a delayed timer and releases once`, async t => {
+    let currentMs = 1_000;
+    t.mock.method(Date, 'now', () => currentMs);
+    const host = setup({
+      captureReady: {promise: Promise.resolve()},
+      detectorReady: {promise: Promise.resolve()},
+    });
+    const subscription = await host.source.subscribe(event => host.events.push(event), {
+      signal: new AbortController().signal, deadlineAtMs: 1_500,
+    });
+    currentMs = 1_500;
+    if (callback === 'frame') host.captureOptions.onFrame(frame(0));
+    else host.detectorOptions.onDetected();
+    await subscription.closed;
+    assert.deepEqual(host.accepted, []);
+    assert.deepEqual(host.events, [{kind: 'error'}]);
+    assert.equal(host.stops, 1);
+    assert.equal(host.unsubscribes, 1);
+
+    host.captureOptions.onFrame(frame(0));
+    host.detectorOptions.onDetected();
+    subscription.unsubscribe();
+    await subscription.closed;
+    assert.deepEqual(host.accepted, []);
+    assert.deepEqual(host.events, [{kind: 'error'}]);
+    assert.equal(host.stops, 1);
+    assert.equal(host.unsubscribes, 1);
+  });
+}

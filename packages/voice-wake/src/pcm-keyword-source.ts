@@ -151,6 +151,13 @@ export function createPcmKeywordWakeSignalSource(
         // onEnd may run synchronously inside pcm.subscribe before its handle is returned.
         if (!sourceStarting) void release();
       };
+      const ensureActive = (): boolean => {
+        if (stopped || failed) return false;
+        if (Date.now() < deadlineAtMs) return true;
+        // A suspended host may resume before its deadline timer is dispatched.
+        fail('error');
+        return false;
+      };
       const onAbort = (): void => { void release(); };
       const armDeadline = (): void => {
         if (stopped) return;
@@ -170,16 +177,18 @@ export function createPcmKeywordWakeSignalSource(
       else armDeadline();
 
       try {
-        if (stopped || failed) throw new Error('Wake subscription stopped');
+        if (!ensureActive()) throw new Error('Wake subscription stopped');
         session = detector.start({signal: context.signal, deadline, onDetected: () => {
-          if (!stopped && !failed && listening) listener({kind: 'wake'});
+          if (ensureActive() && listening) listener({kind: 'wake'});
         }});
         if (!session || !isPromise(session.ready) || !isPromise(session.closed)
           || typeof session.accept !== 'function' || typeof session.stop !== 'function') {
           throw new Error('Keyword detector readiness unavailable');
         }
         void session.closed.then(() => fail('error'), () => fail('error'));
-        if (!await waitReady(session.ready) || stopped || failed) throw new Error('Keyword detector unavailable');
+        if (!ensureActive() || !await waitReady(session.ready) || !ensureActive()) {
+          throw new Error('Keyword detector unavailable');
+        }
 
         sourceStarting = true;
         try {
@@ -187,7 +196,7 @@ export function createPcmKeywordWakeSignalSource(
             signal: context.signal,
             deadline,
             onFrame: frame => {
-              if (stopped || failed) return;
+              if (!ensureActive()) return;
               if (!validFrame(frame, nextSequence++)) { fail('error'); return; }
               try { session?.accept(frame); } catch { fail('error'); }
             },
@@ -202,7 +211,7 @@ export function createPcmKeywordWakeSignalSource(
           throw new Error('Trusted capture readiness unavailable');
         }
         void source.closed.then(() => fail('device_unavailable'), () => fail('error'));
-        if (failed || stopped || !await waitReady(source.ready) || stopped || failed) {
+        if (!ensureActive() || !await waitReady(source.ready) || !ensureActive()) {
           throw new Error('Trusted capture unavailable');
         }
         listening = true;

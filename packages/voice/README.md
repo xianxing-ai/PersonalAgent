@@ -1,9 +1,14 @@
 # MOD-14 voice session foundation
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前协作规则（2026-10-13）：以 [CONTRIBUTING](../../CONTRIBUTING.md) 为准；当前提交须取得一位非作者有效 Approve，并满足必要检查。禁止管理员绕过或虚构批准。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
+当前交付与真实设备继续入口：[MOD-14/15 验收记录（2026-10-13）](ACCEPTANCE-20261013.md)。
+基线 `5b581139` 已包含 Desktop SIS、Live、共享 PCM 和 Wake 的可信宿主组合；本机 IPC
+不等于公开 `voice.start`/`voice.stop` wire 已公布，也不等于真实设备验收。
+本轮修复 SIS 的异步期限、错误脱敏及播放释放；没有修改 Desktop main 或公共契约。
 
 This package is the provisional in-process voice-session boundary for the
 `huawei_ict_agentarts` Competition Profile. It implements a push-to-talk lifecycle

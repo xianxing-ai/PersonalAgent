@@ -470,6 +470,8 @@ export class WakeLifecycleController {
           if (!this.isActive(pending.epoch)) release(value);
         },
       );
+      // Source readiness can resume after expiry before the host runs its timer.
+      this.expire(pending.epoch);
       if (sourceResult.kind === 'aborted') {
         return {kind: 'not_listening', reason: this.abortReason(pending)};
       }
