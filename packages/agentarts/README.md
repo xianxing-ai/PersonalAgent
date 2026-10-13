@@ -16,7 +16,12 @@ confirmed 普通结果只总结，不误入修复；命令检查回执可确定�
 
 入口为既有 `{goal,availableTools}`、`{continuation}`、普通文字或固定主动 Goal 包装。
 ModelPort 按角色注入，可替换供应商；每次调用必须提供输出 token 预算、原期限和取消信号。
-模型失败不回退；角色 trace 仅记录角色/请求标识/状态/token，不记录内容或凭据。
+模型失败不回退；角色回执仅记录角色/请求标识/状态/token，不记录内容或凭据。
+`RoleReceipt` 兼容增加 `spanId`、`startedAt`、`endedAt`、`durationMs`：每次角色模型调用生成
+独立 span，同一 request 内的 World/Plan/Review 可关联，同角色并发也不会混淆；时间为 UTC ISO，
+耗时来自单调时钟。已开始的调用在成功、失败、取消或超时时各有一次结束回执，预先取消不开始调用。
+`completed` 仅表示模型输出已解析为对象，后续报告/候选校验仍可能拒绝，不能作为任务成功或工具执行证据。
+observer 的同步异常及异步拒绝均隔离；不维护额外 span 缓存。这是应用回执，不是华为平台 trace。
 部署入口在 `apps/agentarts-runtime`，迁移边界见 ADR-0012。
 
 这是 code-owned 路径的受限实现，提示词进入版本控制。2026-10-09 已核对已授权的8个 Workflow、

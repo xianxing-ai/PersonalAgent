@@ -1,5 +1,6 @@
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
+import {performance} from 'node:perf_hooks';
 import {parseCoordinationResult} from '@personal-agent/coordination';
 import type {CoordinationResult} from '@personal-agent/coordination';
 import {ModelGateway} from '@personal-agent/models';
@@ -16,7 +17,11 @@ export type {AgentInput};
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
 export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string}
-export interface RoleReceipt {role: AgentRole; requestId: string; promptVersion: string; status: 'started' | 'completed' | 'failed'; totalTokens?: number}
+export interface RoleReceipt {
+  role: AgentRole; requestId: string; promptVersion: string; status: 'started' | 'completed' | 'failed'; totalTokens?: number;
+  /** Additive application observability, not a platform trace or execution receipt. */
+  spanId?: string; startedAt?: string; endedAt?: string; durationMs?: number;
+}
 export type AgentOutput = Omit<Extract<CoordinationResult, {kind: 'text'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'tool_proposal'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'repair_candidate'}>, 'verification'>;
@@ -191,12 +196,20 @@ export class OwnedAgentOrchestrator {
     if (request.signal.aborted) throw new ProtocolError('CANCELLED', 'Agent invocation cancelled');
     if (Date.parse(request.deadline) <= Date.now()) throw new ProtocolError('TIMEOUT', 'Agent invocation deadline exceeded');
   }
-  private emit(role: AgentRole, request: AgentInvocation, status: RoleReceipt['status'], totalTokens?: number): void {
-    try { this.onReceipt?.({role, requestId: request.requestId, promptVersion: PROMPT_VERSION, status,
-      ...(totalTokens === undefined ? {} : {totalTokens})}); } catch { /* Observability cannot change a result. */ }
+  private emit(receipt: RoleReceipt): void {
+    try {
+      // A callback may be async even when assigned to a void-returning interface.
+      void Promise.resolve(this.onReceipt?.(receipt)).catch(() => {});
+    } catch { /* Observability cannot change a result. */ }
   }
   private async call(role: AgentRole, prompt: string, data: unknown, request: AgentInvocation): Promise<unknown> {
-    this.check(request); this.emit(role, request, 'started');
+    this.check(request);
+    // Stack-local identity also distinguishes concurrent calls reusing a requestId.
+    const span = {role, requestId: request.requestId, promptVersion: PROMPT_VERSION,
+      spanId: randomUUID(), startedAt: new Date().toISOString()};
+    const start = performance.now();
+    const end = () => ({...span, endedAt: new Date().toISOString(), durationMs: Math.max(0, performance.now() - start)});
+    this.emit({...span, status: 'started'});
     try {
       const result = await this.models[role].complete({messages: [{role: 'system', content: prompt},
         {role: 'user', content: JSON.stringify(data)}], tools: [], requiredCapabilities: ['text'],
@@ -205,10 +218,10 @@ export class OwnedAgentOrchestrator {
       if (result.response.kind !== 'final' || result.response.text.length > 16_000) throw new Error();
       const parsed: unknown = JSON.parse(result.response.text);
       record(parsed);
-      this.emit(role, request, 'completed', result.usage?.totalTokens);
+      this.emit({...end(), status: 'completed', ...(result.usage?.totalTokens === undefined ? {} : {totalTokens: result.usage.totalTokens})});
       return parsed;
     } catch (error) {
-      this.emit(role, request, 'failed');
+      this.emit({...end(), status: 'failed'});
       if (error instanceof ProtocolError) throw error;
       throw new ProtocolError('EXTERNAL_FAILURE', 'Agent role returned an invalid response');
     }
