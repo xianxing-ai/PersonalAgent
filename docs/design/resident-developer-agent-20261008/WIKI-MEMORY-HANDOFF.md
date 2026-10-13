@@ -1,5 +1,8 @@
 # Wiki 记忆接入：goo122 实施工作包
 
+<!-- current-design-20261013 -->
+> 历史设计，目标已由2026-10-13版替代；原基线/估算/验收保留。当前依据：[完整主架构](../workflow-architecture-20261013/DESIGN.md) · [28功能流程](../workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../workflow-architecture-20261013/index.html) · [接口状态](../../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 2026-10-09；状态：设计交接，尚未实现。目标：`huawei_ict_agentarts`。唯一交付负责人：**goo122**。本文件按用户要求明确实施责任，不表示已向某个聊天或智能体发送消息。
 
 ## 目标及所有权

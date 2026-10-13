@@ -1,5 +1,8 @@
 # MOD-07 本机 Skill 安装与使用（2026-10-09）
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 - goo122；非作者评审者 zemeng；Competition Profile；PA-005/006；`in_progress`、provisional。
 - 工作树 `.worktrees/goo122-local-skill-installation`，分支 `codex/goo122-local-skill-installation`，main 基线 `e86bac53`。独立于未合并 #315/#316，不包含其本地读取许可修复。
 - 用户确认本机标准 SKILL.md 目录安装；不做在线下载、不执行附带脚本、不开展真实云验收、不写私人记忆。

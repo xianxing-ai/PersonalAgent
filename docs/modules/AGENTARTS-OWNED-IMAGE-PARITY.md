@@ -1,5 +1,8 @@
 # 自有镜像 Workflow / Controller 迁移矩阵
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 ## 2026-10-12：全部可承载资源的可执行绑定
 
 本轮新增固定 8 Workflow、3 Controller 的实际调用入口，编译进镜像的安全目录见
@@ -16,8 +19,6 @@ World/Plan 可分别返回经校验的角色报告；Review 重验同一宿主�
 下载与验证记录见 [发布入口](../competition/OWNED_IMAGE_BINDINGS.md#已发布预览与使用入口2026-10-12)。
 这只提升 owned 绑定与镜像交付证据，不提升下文原平台语义等价或真实部署状态。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 初始日期：2026-10-09；当前更新：2026-10-12。目标 profile：`huawei_ict_agentarts`。本文件记录代码迁移和真实验收缺口，
 设计与既有云资源不自动成为已实现能力。合并仍遵守

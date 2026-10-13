@@ -1,9 +1,22 @@
 # @personal-agent/cognition — MOD-28 local impact core
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+<!-- architecture-scope-20261013 -->
+## 当前架构职责
 
-> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+目标profile：huawei_ict_agentarts。工程责任：MOD-28（zemeng5208）、MOD-36（goo122）、MOD-38（Potatos498）。产品流程：F01、F02、F03、F04、F05、F06、F07、F08、F09、F10、F11、F12、F13、F14、F15、F16、F17、F18、F19、F20、F21、F22、F23、F24、F25、F26、F27、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
+
+将现有有限建议消费逐步迁到唯一云决策配置；Laya代码是待迁移存量，不是新默认。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+统一语义裁决默认在华为国内MaaS唯一决策配置；本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。独立节点按真实依赖并行，影子/历史评估默认后台。
+
+本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+
+## 现有API、运行说明与历史验证参考
+<!-- /architecture-scope-20261013 -->
 
 Owner: zemeng. Profile: huawei_ict_agentarts. Pure local domain increment with
 an optional host-bound persistent-store consumer; no AgentArts, Memory,
@@ -189,9 +202,9 @@ proves only the durable graph append. It does not approve repair text, change
 task state, schedule or execute actions, rebind dependencies automatically, or
 claim cloud/real execution evidence.
 
-## Provisional Laya advice consumer
+## Legacy Laya advice consumer (migration pending)
 
-`ProactiveDecisionService` takes a bounded local decision model.
+Legacy implementation: `ProactiveDecisionService` takes a bounded local decision model. The 2026-10-13 target replaces Laya as the default; these exports remain until a compatible implementation migration.
 `LayaDecisionModel` and `LocalLayaHttpTransport` connect it to an authenticated
 loopback Laya server supplied by a trusted host. The service returns suggestions
 only; uncalibrated suppression or execution labels, low confidence, and model

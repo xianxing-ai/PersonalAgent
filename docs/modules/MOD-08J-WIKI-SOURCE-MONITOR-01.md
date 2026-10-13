@@ -1,5 +1,8 @@
 # MOD-08J：Wiki 后台只读来源监视
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 - Profile：`huawei_ict_agentarts`；负责人：`goo122`；非作者评审：其他已登记协作者
 - 状态：`review`；实现、专项、完整门禁及原生窗口复验通过，已交付 [PR #321](https://github.com/zemeng5208/PersonalAgent/pull/321)，尚未非作者评审及集成
 - 依赖：[PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320)，`a871664b`

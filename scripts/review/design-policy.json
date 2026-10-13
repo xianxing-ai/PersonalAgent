@@ -1,8 +1,20 @@
 {
   "version": 1,
-  "eligibleReviewers": ["zemeng5208", "goo122", "Potatos498"],
-  "designDirectory": "docs/design/resident-developer-agent-20261008",
-  "requiredFiles": ["index.html", "DESIGN.md", "architecture-overview.svg", "autonomy-lifecycle.svg", "trust-and-transport.svg", "wiki-memory.svg", "WIKI-MEMORY-HANDOFF.md", "modules.json"],
+  "eligibleReviewers": [
+    "zemeng5208",
+    "goo122",
+    "Potatos498"
+  ],
+  "designDirectory": "docs/design/workflow-architecture-20261013",
+  "requiredFiles": [
+    "index.html",
+    "DESIGN.md",
+    "WORKFLOWS.md",
+    "IMPLEMENTATION.md",
+    "MODULES.md",
+    "modules.json",
+    "DOCUMENTATION_INVENTORY.md"
+  ],
   "receiptMarker": "personalagent-design-read-v1",
   "statusContext": "design-review-approval",
   "normalization": "UTF-8, CRLF/CR converted to LF"

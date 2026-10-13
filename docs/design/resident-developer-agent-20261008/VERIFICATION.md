@@ -1,5 +1,8 @@
 # 设计产物验证记录
 
+<!-- current-design-20261013 -->
+> 历史设计，目标已由2026-10-13版替代；原基线/估算/验收保留。当前依据：[完整主架构](../workflow-architecture-20261013/DESIGN.md) · [28功能流程](../workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../workflow-architecture-20261013/index.html) · [接口状态](../../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 2026-10-09本轮实现验证补充：完整根`npm run check`退出0、末尾集成24/24；随后真实TLS+Runtime续答联测发现未知错误分类提前变为UNAUTHORIZED，已窄修两处捕获并复测43/43。两任务实际审批/ToolGateway文件读取各一次、confirmed Evidence持久化、续答断线及SQLite重启不重发均通过；模型明确为Fake。进一步修复终帧收到与本地消费之间的崩溃重发窗口，实际子进程中断独立复测新增云/工具调用均0，最终受影响回归215/215（新增WSS Runtime13/13）、构建/类型检查和根集成24/24通过，真实TLS Runtime9场景复测通过。ARM64本机容器21/21与生产入口合成TLS9次请求通过。精确范围见[本地WSS记录](../../../../tests/manual/agentarts/OWNED-WSS-VALIDATION-20261009.md)，不提升真实云/自动status/Wiki目标的完成度。
 
 验证日期：2026-10-08。验证对象仅为本目录设计产物；不是产品、镜像部署或真实模型验收。

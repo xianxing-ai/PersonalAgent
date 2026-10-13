@@ -6,6 +6,9 @@
 
 ## 查看
 
+- [完整主架构](DESIGN.md)、[28功能154节点详细流程](WORKFLOWS.md)。
+- [39工程模块](MODULES.md)、[重构接线与验收](IMPLEMENTATION.md)、[全仓文档清单](DOCUMENTATION_INVENTORY.md)。
+
 - 仓库中的 index.html：离线单文件，浏览器直接打开。
 - 本地开发/预览：npm run dev 或 npm run preview。
 - 同一张图包含 F01—F28、共用决策/模型/Runtime/Policy/工具/证据路径。
@@ -40,7 +43,7 @@ MaaS API 不提供直接改远端权重的能力。F23 默认改进提示、图�
 
 ## 现有代码适配
 
-基线：PersonalAgent main b03af83e（2026-10-13核对）。接口状态依据 docs/interfaces/CURRENT_INTERFACE_CATALOG.md；本图不提高任何冻结或验证等级。
+查看器初版核对基线为main b03af83e；本次全项目文档重写核对基线为已合并#347的main 3275aa91。接口状态依据docs/interfaces/CURRENT_INTERFACE_CATALOG.md；本图不提高任何冻结或验证等级。
 
 复用：TaskRuntime、ModelGateway、CloudAgentPort、Policy、ToolGateway、Evidence、MemoryQueryPort、KnowledgePort与subagentModels工厂。
 
@@ -77,6 +80,14 @@ source/ 为独立查看器源码，不导入产品Runtime，也不增加产品�
 - 构建存在单包约505KB的体积提示；不影响离线页面生成，后续可按需拆包。
 
 以上仅验证架构查看器，不证明生产模型、语音、工具、影子宿主或端到端延迟已可用。
+
+文档重写验证：28功能154节点、39工程模块、PA-001—031均有映射；生成正文一致，301份变更Markdown无新增失效相对链接，未改变生产代码/公共Schema/根依赖；审查规则7项回归通过。脚本入口：
+
+    node scripts/docs/rewrite-architecture-docs.mjs --check
+    node scripts/docs/check-workflow-documentation.mjs
+    node --test scripts/review/design-review.test.mjs
+
+脚本从仓库根目录运行。导航生成器仅输出补丁；原日期的查看器构建/浏览器证据未在纯文档重写中冒充重新运行。
 
 ![28个功能的连通架构总图](overview.png)
 

@@ -1,5 +1,25 @@
 # PersonalAgent Desktop
 
+<!-- architecture-scope-20261013 -->
+## 当前架构职责
+
+目标profile：huawei_ict_agentarts。工程责任：MOD-11（zemeng5208）、MOD-12（zemeng5208）、MOD-13（zemeng5208）、MOD-14（zemeng5208）。产品流程：F01、F02、F12、F24、F22、F23、F25、F26、F27、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+将主动语音询问、最终转写、问题/参数/revision绑定接到既有授权响应；保留直接本地停止。
+
+统一语义裁决默认在华为国内MaaS唯一决策配置；本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。独立节点按真实依赖并行，影子/历史评估默认后台。
+
+本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+
+## 现有API、运行说明与历史验证参考
+<!-- /architecture-scope-20261013 -->
+
 ## 2026-10-09 自有镜像 WSS 消费增量
 
 Competition可信主进程已消费WSS传输及连接状态，此接入仍为 **provisional**。启用`PA_AGENTARTS_TRANSPORT=wss`时，必须显式提供`PA_AGENTARTS_WSS_URL`，没有自动推导的公网地址，也不会依次试探不同路径。地址限定同一 HTTPS 网关 origin 与运行时名称，只接受`/runtimes/{runtimeName}/ws`或`/runtimes/{runtimeName}/invocations/ws`这两个精确路径；明文、跨源、URL认证信息、查询参数与其他路径均拒绝。
@@ -8,8 +28,6 @@ Competition可信主进程已消费WSS传输及连接状态，此接入仍为 **
 
 `PA_AGENTARTS_APP_TOKEN`与镜像`PA_AGENT_WSS_AUTH_TOKEN`匹配并只留在受信环境。`PA_AGENTARTS_HTTPS_FALLBACK=1`明确允许证明未发出invoke的连接失败使用同部署备用。降级/认证失败/未知核实可见，未知任务不会重发。既有未配置消费者保留HTTPS兼容。配置、实际TLS连接、Runtime和Desktop合成验证分别记录，不代表华为公开WSS或物理窗口验收。具体接口与余项见[镜像接口](../../docs/competition/OWNED_IMAGE_INTERFACES.md)。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
 
 本地 [MOD-08K](../../docs/modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 接通私人 SQLite
 备份清单与逐事实删除。备份放在 userData 的 `private-memory-backups/*.sqlite`；不自动
@@ -32,7 +50,6 @@ Wiki 写回增量（[MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.
 检查，使用现有定时入口每 30 秒检查一次，并展示状态。仅校验原确认记忆，新增笔记
 不自动形成记忆；缺失与扫描失败保留历史，不删除文件。尚无完整全文索引或安装插件。
 
-> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 ## 2026-10-07 原功能源码核对
 

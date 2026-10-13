@@ -1,7 +1,7 @@
 # PersonalAgent 开发 Agent 工作规范
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-12）：[完整设计](docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛；三人长期均衡承担审查与合并，禁止强制合并/管理员绕过。设计不等于已实现；历史验收与作者记录保留。
+<!-- current-design-20261013 -->
+> 当前目标与协作规则（2026-10-13）：[完整主架构](docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通总图](docs/design/workflow-architecture-20261013/index.html) · [协作规则](CONTRIBUTING.md)。唯一语义决策、责任图、真实依赖并行与后台影子；默认国内MaaS，沿用现有Runtime/Policy，不新增限制。设计不等于实现，每个PR仍须一位合资格非作者对当前提交有效批准及检查/冲突/意见门槛。
 
 本文件约束在本仓库工作的开发 Agent，不是产品运行时的 Skill 或授权来源。默认用中文沟通。
 这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。
@@ -87,7 +87,7 @@
 - Evidence 由可信执行路径记录。区分实际执行状态、Schema 校验和外部读回验证；模型自报成功不构成证据。`mock`、`conditional` 和 `verified` 按真实依据填写。
 - 默认测试使用显式 Fake 或 Unavailable，缺配置时不偷偷回退到 Fake，也不把其他 Provider 冒充盘古。文字 JSON 提案适配不等于原生 function calling 已验证。
 - 只冻结满足当前接口目录门槛的子集。Schema 中存在、能编译、配置成功或 Fake 通过，均不等于接口冻结或真实能力可用；未公布 capability 必须返回不支持。
-- 盘古原生工具调用和文字 JSON 工具提案真实闭环当前均未验证；Agent/Model/Tool 链不得标记 frozen。AgentArts 在完成部署 API 与本地执行读回前为 unavailable。
+- 盘古原生工具调用和文字 JSON 工具提案不得因离线适配声称真实闭环；新默认国内决策配置、完整语音/责任/影子按接口目录逐项登记。固定AgentArts读取场景的真实证据仅覆盖该场景，不把整条Agent/Model/Tool链标记frozen。
 - AgentArts deployment/version/trace、工具提案和云端结果必须作为不可信外部输入校验；不能把平台配置、页面截图或云端“成功”当成本地任务完成证据。
 - 真实、付费模型和真实账号操作按用户授权执行；本机存在环境变量或 .env 不代表可以自动使用。需要 API Key 时指导用户在本地配置，不要求贴到聊天、提交 Git 或写入测试夹具。
 - 凭据由受信宿主与安全存储管理；不得进入模型提示、Renderer 持久状态、日志、公开 Evidence 或错误回显。只读取当前任务必要的数据，私人内容及向云端发送的范围需要对应授权。

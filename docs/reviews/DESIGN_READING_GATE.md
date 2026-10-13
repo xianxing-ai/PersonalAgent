@@ -1,6 +1,6 @@
 # 设计审查与一人批准规则
 
-> 当前规则（2026-10-12）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读页及 SVG](../design/resident-developer-agent-20261008/index.html) · [仓库贡献规则](../../CONTRIBUTING.md)。设计中的 WSS 主通道、显式 HTTPS 备用与 Wiki 记忆分工仍需按实际代码和验收记录核对；设计不等于实现或真实环境验收。
+> 当前规则（2026-10-13）：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [仓库贡献规则](../../CONTRIBUTING.md)。当前阅读清单绑定新架构正文/流程/模块/迁移，不再绑定旧Laya/SVG设计包；人数与审批规则不变，设计不等于实现或真实验收。
 
 2026-10-09 的“两人分别批准、必须在本人电脑阅读并提交声明”是历史版本，已由用户 2026-10-12 确认的一人批准规则替代。历史提交记录可追溯，旧规则不是当前合并门槛。
 

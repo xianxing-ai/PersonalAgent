@@ -1,5 +1,8 @@
 # 自有镜像：8 个 Workflow 与 3 个 Controller 绑定
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 日期：2026-10-12；Profile `huawei_ict_agentarts`；本分支接口为 provisional。
 源码绑定、镜像构建/发布和真实华为部署是分别验收的结果。决定见 [ADR-0015](../adr/0015-owned-workflow-controller-bindings.md)。
 

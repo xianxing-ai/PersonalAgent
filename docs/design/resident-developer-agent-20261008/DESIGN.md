@@ -1,5 +1,8 @@
 # PersonalAgent 常驻自主开发者助手：完整目标设计
 
+<!-- current-design-20261013 -->
+> 历史设计，目标已由2026-10-13版替代；原基线/估算/验收保留。当前依据：[完整主架构](../workflow-architecture-20261013/DESIGN.md) · [28功能流程](../workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../workflow-architecture-20261013/index.html) · [接口状态](../../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 首次设计：2026-10-08；修订：2026-10-09。状态：**目标方案／proposed**。目标 Profile：`huawei_ict_agentarts`。设计、模块估算与可编辑架构图不等于实现完成，不改变既有接口冻结状态。现有自有镜像代码/接口与分享流程随当前 PR 提交，真实发布及验收分别记录。
 
 设计修订：2026-10-09。Wiki 记忆接入仍由 goo122 具体实现；本轮另同步 WSS、Runtime 防重发及完整角色报告的 provisional 本地实现。模块百分比和区间保留 2026-10-08 的估算基线，不因新增代码或文档自动提高。另见项目协作规则：当前 PR 必须由 goo122 与 Potatos498 完成本机阅读确认与审批，禁止强制合并或绕过门槛。新版镜像构建/发布、父集成与真实云验收单独记录。

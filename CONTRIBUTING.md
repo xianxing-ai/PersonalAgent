@@ -1,6 +1,8 @@
 # 协作开发规范
 
-版本：0.7 · 更新：2026-10-12 · 状态：只实施 Competition Profile 的多人独立开发与分层接口冻结基线
+版本：0.8 · 更新：2026-10-13 · 状态：按[当前主架构](docs/design/workflow-architecture-20261013/DESIGN.md)独立交付与分层接口冻结
+
+当前设计统一为28功能责任图、唯一语义决策、真实依赖并行和后台影子，详细节点见[WORKFLOWS](docs/design/workflow-architecture-20261013/WORKFLOWS.md)，39工程模块仍按MODULE_ASSIGNMENTS负责。新设计不新增模型封锁或审批门槛；旧Laya默认与双人本机阅读规则不作当前依据。代码、设计、检查、真实验收和发布分别记录。
 
 ## 1. 决策与职责
 

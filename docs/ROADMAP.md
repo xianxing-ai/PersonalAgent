@@ -1,5 +1,30 @@
 # 开发计划与进度
 
+## 2026-10-13 当前主架构重构基线
+
+已合并#347（main 3275aa91）确定[28功能主架构](design/workflow-architecture-20261013/DESIGN.md)与离线图。本轮全项目文档重写工作包为DOC-ARCH-20261013，负责人zemeng5208，状态in_progress（提交PR后进入review）；目标profile为huawei_ict_agentarts。没有修改生产执行链、Schema或数据库。
+
+| 工作包 | 目标 | 状态 | 负责人/依赖 |
+| --- | --- | --- | --- |
+| DOC-ARCH-20261013 | 当前架构/需求/协议/目录/分工/模块导航统一及全部流程说明 | in_progress | zemeng5208；两位协作者PR审核 |
+| ARCH-D01 | 唯一国内决策配置与Laya/云角色兼容迁移 | todo | zemeng5208+goo122公开端口；新配置与真实模型验收 |
+| ARCH-D02 | 持续责任编译、版本快照与局部计划修复 | todo | zemeng5208；Runtime/Policy/Goal/Memory |
+| ARCH-D03 | F28多模型与原生思考映射、F27上下文恢复/缓存 | todo | 各端口负责人按MODULE_ASSIGNMENTS；D01 |
+| ARCH-D04 | 主动语音询问及当前问题/参数/revision确认 | todo | zemeng5208；既有Voice/授权，责任内不重复询问 |
+| ARCH-D05 | 条件汇合、稳定副作用身份及图恢复接线 | todo | Runtime/核心/业务负责人；复用现有检查点 |
+| ARCH-D06 | 三模式后台影子、配置比较及回滚 | todo | zemeng5208+既有learning端口；独立宿主未交付 |
+| ARCH-D07 | 国内端点与28功能集成/延迟/Competition评估 | todo | 三人各自验收所负责路径，不集中代验 |
+
+“todo”是新重构工作包状态，不否认已有模块实现。拆分与验收详见[IMPLEMENTATION](design/workflow-architecture-20261013/IMPLEMENTATION.md)，接口状态见[目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。新工作包只按明确授权实施；本次只交付文档与PR。
+
+当前main已包含Wiki/Skill #320、Windows/补丁 #332及查看器#347。历史固定Huawei WSS读取有真实证据，完整责任/语音/影子及新默认决策未验收。实际延迟未知，不提高旧完成率或整MOD状态。
+
+## 历史执行台账（原日期/作者/证据保留）
+
+以下是此前工作包的记录，旧阶段“未合并”、Laya默认、双人本机阅读和百分比不作为当前架构/协作结论。当前协作以AGENTS/CONTRIBUTING的一位合资格非作者有效Approve、检查、无冲突与意见处理为准。
+
+<!-- historical-roadmap-body -->
+
 ### 2026-10-13：Wiki/Skill 已进入 main
 
 [组合工作包](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 已通过 #346→#320 集成至 main `31b0ce5c`；#320 的 `f9f3f390` 经 zemeng5208 有效非作者批准、完整 Foundation 和设计门禁后，由 zemeng5208 合并。main 与该 head 的代码树一致，合并后主线 CI 另行读回。重复 #318 经用户授权关闭，分支和评审记录保留。已交付安装/启停/使用/卸载、Wiki 来源监视、应用备份协调、索引、只读插件和受信配对；真人原生流程、真实云消费、跨库派生副本与完整 LLM Wiki 仍待对应验收。MOD-06/07/08/09 保持 in_progress、接口 provisional，不把本组合完成等同完整模块 done。下文旧阶段记录保留为历史快照。
@@ -37,8 +62,6 @@ CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查�
 
 模块表维持原工作包事实；当前设计估算和历史台账 done 的口径不同。新镜像不是独立云电脑，公开发布也不等于华为部署/验收。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 ### 2026-10-12 goo122 Wiki 来源离线变更与恢复验收（review）
 

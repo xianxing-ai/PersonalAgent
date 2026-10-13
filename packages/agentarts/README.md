@@ -1,13 +1,31 @@
 # 自有 AgentArts 编排包
 
+<!-- architecture-scope-20261013 -->
+## 当前架构职责
+
+目标profile：huawei_ict_agentarts。工程责任：MOD-29（zemeng5208）、MOD-30（zemeng5208）、MOD-31（zemeng5208）、MOD-32（zemeng5208）。产品流程：F26、F28、F01、F02、F03、F04、F05、F06、F07、F08、F09、F10、F11、F12、F13、F14、F15、F16、F17、F18、F19、F20、F21、F22、F23、F24、F25、F27；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+执行模型协作与候选评估；不创建第二个最终语义裁决模型，建立独立影子宿主的能力与证据。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+统一语义裁决默认在华为国内MaaS唯一决策配置；本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。独立节点按真实依赖并行，影子/历史评估默认后台。
+
+本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+
+## 现有API、运行说明与历史验证参考
+<!-- /architecture-scope-20261013 -->
+
 2026-10-12：新增 `getOwnedBindings()`、`invokeWorkflow()`、`invokeController()`，固定8个Workflow与3个Controller。
 World/Plan独立阶段返回 role_report；Review/Controller 返回 application_result；均为 unverified。
 前置报告逐次按当前宿主来源重验，不扩 candidateVersion1.0、授权或执行范围。
 原空 MVP Controller 使用标明 new-owned-binding 的新路由。接口见
 [镜像绑定说明](../../docs/competition/OWNED_IMAGE_BINDINGS.md)。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 `OwnedAgentOrchestrator` 只负责云端语义编排，复用 ModelGateway 和现有严格
 Coordination parser。普通目标走 fast，合法修复走 world → plan → review；

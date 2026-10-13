@@ -1,5 +1,8 @@
 # 合成工作区的 AgentArts 联合验收入口
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../../docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../../docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../../docs/design/workflow-architecture-20261013/index.html) · [接口状态](../../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 `synthetic-cloud-workspace.mjs` 提供可导入的 fixture，由已经获准调用 AgentArts 的可信宿主使用。
 它不读取环境变量、配置或凭据，不自行连接云端。导入没有副作用；创建 fixture 只准备本地合成工作区。
 目标 Profile 为 `huawei_ict_agentarts`，真实云端配置、授权、传输与应用生命周期由调用方负责。

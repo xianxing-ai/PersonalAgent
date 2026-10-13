@@ -1,5 +1,19 @@
 # 自有 AgentArts Runtime 镜像
 
+<!-- architecture-scope-20261013 -->
+## 当前架构职责
+
+目标profile：huawei_ict_agentarts。工程责任：MOD-29（zemeng5208）。产品流程：F26、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+统一语义裁决默认在华为国内MaaS唯一决策配置；本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。独立节点按真实依赖并行，影子/历史评估默认后台。
+
+本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+
+## 现有API、运行说明与历史验证参考
+<!-- /architecture-scope-20261013 -->
+
 2026-10-12 真实部署增量：ARM64 源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 已发布并替换 Huawei Latest。平台公开路径为 `/runtimes/<runtimeName>/invocations/ws`，目录为 `/runtimes/<runtimeName>/invocations/bindings?endpoint=Latest`；平台 Session 头、外层鉴权及独立镜像凭据均必需。官方 MaaS DeepSeek 的 none 参数经宿主映射为 `chat_template_kwargs.thinking=false`。真实 WSS 模型/本地一次性授权文件读取/Evidence/续答场景已通过；逐项绑定、写入、Wiki、完整自主修复和备用整链仍未验收，详见 [实际证据](../../docs/modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。这是未合并预览，不提高公共协议冻结状态。
 
 2026-10-12：同一 HTTP/WS query 可显式选择8个Workflow或3个Controller；新增受宿主凭据保护的
@@ -7,8 +21,6 @@
 World/Plan角色报告保持独立，不作为旧公共候选执行；原空MVP标记新owned绑定。
 详见 [资源绑定与调用](../../docs/competition/OWNED_IMAGE_BINDINGS.md)。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [当前设计审查门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。任意一位符合条件的非作者在当前 head 实际阅读并有效批准后，才可按授权合并；三人平等分担审查与合并责任，不得推卸，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 目标为 `huawei_ict_agentarts`；同一核心代码支持显式 `standalone-validation` 验证。
 本入口提供标准 8080 `/invocations`、`/ping`、同端口 `/ws` 和只读 `/invocation-status`，无需把现有 TS 改写为 Python。

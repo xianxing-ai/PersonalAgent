@@ -1,5 +1,8 @@
 # MOD-08H：Desktop Wiki 来源与确认记忆投影
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 - Profile：`huawei_ict_agentarts`
 - 负责人：`goo122`；非作者评审：其他已登记协作者
 - 状态：`review`；本地实现、相关回归及 Wiki 专项窗口验收完成；下列既有阻塞已修复并专项复验，完整 check 的最新结果见 MOD-08I；2026-10-11 已获 Git 交付授权，待非作者评审及集成

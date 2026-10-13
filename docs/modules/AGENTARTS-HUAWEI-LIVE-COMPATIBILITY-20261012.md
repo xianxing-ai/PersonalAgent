@@ -1,5 +1,8 @@
 # 当前 ARM64 镜像真实华为验收与兼容修复
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 目标 profile：`huawei_ict_agentarts`。本轮仅交付和验收 `linux/arm64`；AMD64 撤销独立记录，不改变历史双架构验证含义。
 
 ## 当前结果：新版镜像真实 WSS 与本地工具闭环通过
