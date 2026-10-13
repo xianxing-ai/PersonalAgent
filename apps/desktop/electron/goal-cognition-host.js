@@ -7,6 +7,13 @@ import {isDeepStrictEqual} from 'node:util';
 const VERSION='desktop-goal-analysis-v1';
 // Match the existing AgentArts coordination goal contract; never trim a reviewed scope.
 const GOAL_EXPORT_MAX_CHARS=16_000;
+const INITIAL_QUERY_MAX_BYTES=32_768;
+const INITIAL_QUERY_BYTE_LIMIT='本次分析的完整输入超出云端预算，尚未出云；请缩小允许发送的来源或修订范围后重新分析。';
+const UNSUPPORTED_REPAIR_SCOPE='本次修订范围暂不能交给云端分析；请核对来源与本次修订范围，或在本地继续。';
+const MISSING_REPAIR_SOURCES='本次修复所需的部分来源未获准发送或尚未提交，方案保留在本地；请使用可发送且已提交的来源重新分析。';
+const SOURCE_SUMMARY_MAX_CHARS=8192;
+const SOURCE_SUMMARY_LIMIT='可发送的来源摘要超出云端上限；请缩短允许发送的来源摘要后重新分析。';
+const NO_EXPORTABLE_SOURCES='没有可供云端分析的来源；受限内容保留在本地，请补充允许发送的来源后重新分析。';
 const MARKER='desktop-goal-cognition-review';
 const HANDOFF_TASK_MARKER='desktop-goal-cognition-handoff-task-v1';
 const REPAIR_TASK_MARKER='desktop-goal-cognition-repair-task-v1';
@@ -26,7 +33,7 @@ const canHandoff=review=>machineReview(review) || Boolean(review?.selectedOption
     && toolArgumentsDigest(option)===toolArgumentsDigest(review.selectedOption)));
 
 /** Local Laya chooses; existing Runtime/AgentArts orchestrates. No direct repair execution. */
-export function createDesktopGoalCognitionHost({application,client,facts,namespace,goalHost,
+export function createDesktopGoalCognitionHost({application,client,facts,namespace,goalHost,initialRequestMode,
   chooser,ready,createHost,onTask=()=>{},onUpdate=()=>{},now=Date.now}) {
   const store=application.runtime.bindCoordinationStore(namespace);
   const conversationId=`desktop-proactive-goals:${namespace}`;
@@ -113,6 +120,10 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
       add(item.node);
       for (const cause of item.causes) {add(cause.reference);if(cause.currentRevision) add({id:cause.reference.id,revision:cause.currentRevision});}
     }
+    const prepared=repairPreparation(review);
+    if(prepared.kind==='prepared') for(const dependency of prepared.binding.dependencies) {
+      if(snapshot.history.some(node=>sameRef(node,dependency))) add(dependency);
+    }
     const nodes=[];
     for (const ref of refs.values()) {
       const node=snapshot.history.find(n=>sameRef(n,ref));
@@ -121,7 +132,6 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
       nodes.push({id:hash(node.id),revision:node.revision,kind:node.kind,summary:node.summary,
         state:node.state,validFrom:node.validFrom,validUntil:node.validUntil});
     }
-    const prepared=repairPreparation(review);
     const repairContext=prepared.kind==='prepared'?{
       expectedGraphRevision:prepared.request.expectedGraphRevision,
       allowedDependencies:prepared.binding.dependencies.map(ref=>({id:hash(ref.id),revision:ref.revision})),
@@ -308,8 +318,40 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
     } while (beforeSequence!==undefined);
   }
   function exportLimit(projected) {
-    return typeof projected?.goal==='string' && projected.goal.length>GOAL_EXPORT_MAX_CHARS
-      ? {state:'blocked',reason:'goal_text_limit',chars:projected.goal.length,maxChars:GOAL_EXPORT_MAX_CHARS} : undefined;
+    if(typeof projected?.goal!=='string') return;
+    let payload;
+    try {
+      payload=JSON.parse(projected.goal.slice(projected.goal.indexOf('\n')+1));
+      if(Array.isArray(payload.nodes) && payload.nodes.length===0) return {state:'blocked',reason:'no_exportable_sources'};
+    } catch {}
+    if(projected.goal.length>GOAL_EXPORT_MAX_CHARS) return {state:'blocked',reason:'goal_text_limit',
+      chars:projected.goal.length,maxChars:GOAL_EXPORT_MAX_CHARS};
+    if(Array.isArray(payload?.nodes) && payload.nodes.some(node=>typeof node.summary==='string' && node.summary.length>SOURCE_SUMMARY_MAX_CHARS))
+      return {state:'blocked',reason:'source_summary_limit',maxChars:SOURCE_SUMMARY_MAX_CHARS};
+    if(payload?.repairContext) {
+      const {targets,allowedDependencies}=payload.repairContext;
+      const present=ref=>payload.nodes.some(node=>sameRef(node,ref));
+      if(targets.some(target=>!present(target.node)) || allowedDependencies.some(ref=>!present(ref)
+        && !targets.some(target=>target.node.id===ref.id && target.node.revision+1===ref.revision)))
+        return {state:'blocked',reason:'missing_repair_sources'};
+    }
+    if(payload?.repairContext?.targets.some(target=>target.requestedDependencies.length>16))
+      return {state:'blocked',reason:'unsupported_repair_scope'};
+    if(payload?.action==='REVISE' && !payload.repairContext) return {state:'blocked',reason:'unsupported_repair_scope'};
+    if(initialRequestMode==='goal-with-tools-json') {
+      // The actual task-selected catalog adds bytes. Passing this lower bound
+      // does not replace its original adapter limit or validate its selection.
+      const minBytes=Buffer.byteLength(JSON.stringify({goal:projected.goal,availableTools:[]}), 'utf8');
+      if(minBytes>INITIAL_QUERY_MAX_BYTES) return {state:'blocked',reason:'initial_query_byte_limit',
+        chars:projected.goal.length,minBytes,maxBytes:INITIAL_QUERY_MAX_BYTES};
+    }
+  }
+  function exportExplanation(reason) {
+    return reason==='no_exportable_sources'?NO_EXPORTABLE_SOURCES
+      :reason==='source_summary_limit'?SOURCE_SUMMARY_LIMIT
+      :reason==='missing_repair_sources'?MISSING_REPAIR_SOURCES
+      :reason==='initial_query_byte_limit'?INITIAL_QUERY_BYTE_LIMIT
+      :reason==='unsupported_repair_scope'?UNSUPPORTED_REPAIR_SCOPE:'完整目标投影超出云端上限，方案保留在本地，尚未提交';
   }
   function cloudExport(value) {
     if(value.handoff?.state==='submitted') {
@@ -326,7 +368,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
   function execution(value) {
     let blocked;try {blocked=cloudExport(value);} catch {}
     if(blocked && value.handoff?.state!=='submitted') return {state:'unavailable',cloudExport:blocked,
-      executionStatus:'完整目标投影超出云端上限，方案保留在本地，尚未提交'};
+      executionStatus:exportExplanation(blocked.reason)};
 
     if (value.handoff?.state!=='submitted') return {state:value.handoff?.state??value.review?.selection?.state??'local',
       executionStatus:value.handoff?.state==='pending'?'编排受理结果待核实，尚未确认执行'
@@ -484,7 +526,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
         selected: r?.selectedOption?.id,
         sourceOutdated: Number.isSafeInteger(r?.graphRevision) && r.graphRevision>=0 && r.graphRevision!==graphRevision,
         trigger,
-        choice,
+        choice:choice+(['no_exportable_sources','source_summary_limit','missing_repair_sources','unsupported_repair_scope','initial_query_byte_limit'].includes(feedback.cloudExport?.reason)?' · '+exportExplanation(feedback.cloudExport.reason):''),
         executionVerified:false,graphUpdateVerified:false,...feedback,
       };
       })};

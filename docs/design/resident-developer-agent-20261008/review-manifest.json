@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "normalization": "UTF-8, CRLF/CR converted to LF",
+  "files": [
+    {
+      "path": "docs/design/resident-developer-agent-20261008/index.html",
+      "sha256": "cef4198f54057f61536f140c10e9548c6450a2265e65ec634e5efb9e61d22da9"
+    },
+    {
+      "path": "docs/design/resident-developer-agent-20261008/DESIGN.md",
+      "sha256": "aba8b3f832fdb6c5857e134d9c9e5a2b48a7d66639620cf73ddaa38f88aa5709"
+    },
+    {
+      "path": "docs/design/resident-developer-agent-20261008/architecture-overview.svg",
+      "sha256": "65b3963f934b7823dce3379bd84f3216dfcd219f5de86b881342c250ced45c34"
+    },
+    {
+      "path": "docs/design/resident-developer-agent-20261008/autonomy-lifecycle.svg",
+      "sha256": "c5576d483bb89e4a73ea6529a94abba9ca2a625f75a71fd783141bc0515dbfd9"
+    },
+    {
+      "path": "docs/design/resident-developer-agent-20261008/trust-and-transport.svg",
+      "sha256": "0ca3398276cd14e93b754af3403283d38cc8232538f7ba6b131345991b74e878"
+    },
+    {
+      "path": "docs/design/resident-developer-agent-20261008/wiki-memory.svg",
+      "sha256": "6a11d749263142c64ce1259c5b5dcbce930126b7809c4034a4e843e43a604716"
+    },
+    {
+      "path": "docs/design/resident-developer-agent-20261008/WIKI-MEMORY-HANDOFF.md",
+      "sha256": "74dc18425bbb787c598287b3d98fc1817e41af3264220d0543b5c2d940f50952"
+    },
+    {
+      "path": "docs/design/resident-developer-agent-20261008/modules.json",
+      "sha256": "91d4df58da88c53975abf704b0b236f6b1e46fc5a11d7699796afcb60ea04676"
+    }
+  ],
+  "digest": "84b2c9d7b4729c6d1cab5ec52ce31fc4f0fad061a624e8d4332f8a3d4cfba1b8"
+}

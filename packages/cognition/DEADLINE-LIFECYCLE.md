@@ -1,5 +1,8 @@
 # ProactiveDecisionService 的独立期限生命周期
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 旧服务只依赖 `AbortSignal.timeout`。永不 settle 且不持有其他句柄的 model Promise 可能随事件循环退出，调用方得不到约定的 TIMEOUT。无其他句柄的 CLI 实际观察到 unsettled top-level await；仅增加诊断 keep-alive 后才读到 TIMEOUT。#261 CI 文件级失败与此相符，但其日志没有内部错误，本地 Node 24.19.0 与 CI 24.15.0 不同，不能宣称已确认那次 CI 根因。

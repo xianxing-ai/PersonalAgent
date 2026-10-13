@@ -1,5 +1,14 @@
 # 模块分工与独立交付清单
 
+## 2026-10-09 Wiki 与常驻设计分工
+
+goo122 具体交付 MOD-08/09 的 Wiki 适配、来源版本、事实/检索投影、受控写回、双向去重和恢复，并随工作包完成必要公共契约/Runtime/Policy 接线。zemeng 负责 MOD-27/28 与 AgentArts 公开端口消费、常驻增量修复及监管产品体验；Potatos498 的业务模块所有权不改变。
+
+独立工作包见 `design/resident-developer-agent-20261008/WIKI-MEMORY-HANDOFF.md`。新设计不等于接入实现；估算基线2026-10-08保留。合并需 goo122 与 Potatos498 本机阅读确认及审批；这不阻止各自独立开发、使用契约一致 Fake 或提交 PR。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 版本：1.0 · 日期：2026-10-07 · 状态：只实施 Huawei ICT AgentArts Competition Profile；Local Profile 可选留存
 
 本文件是未来工作负责人、文件所有权和交付边界的唯一登记处。[Competition Profile](competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 定义当前优先参赛路径，[PRD](PRD.md) 定义需求，[公共开发协议](DEVELOPMENT_PROTOCOL.md) 定义互通语义，[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) 决定接口是否冻结或可用，[ROADMAP](ROADMAP.md) 维护执行状态。
@@ -36,7 +45,7 @@ DEV-WORKFLOWS 保留已授权的 Local Profile 增量范围。每个模块由自
 ## 1. 独立推进、评审与集成
 
 1. **自己完成闭环**：每人负责本模块的公开端口、实现、必要消费接线、关键验证、文档和交付。开发、验证、创建交付 PR 不需要先取得另一位协作者的批准。
-2. **PR 自审与自动检查**：取消“必须由另一位指定协作者批准后才能合并”的项目规则。在相应 Git 操作已获授权、实际远端允许、关键检查通过、范围及兼容性说明完整且无已知阻断缺陷时，负责人可自行完成自审与合并；如实记为自审，不虚构他人批准。同行评审按需邀请，不作为默认等待门槛。
+2. **两人确认与自动检查**：2026-10-09 起，goo122 与 Potatos498 两人必须在自己的电脑打开当前完整设计/阅读页/全部 SVG，提交绑定 PR head 与内容摘要的本人阅读声明和审批，满足必要检查后才可按授权正常合并。禁止强制合并、管理员绕过、直接推 main 或用自审代替他人确认。开发与验证仍可独立进行；流程见 [阅读门槛](reviews/DESIGN_READING_GATE.md)。
 3. **接口先行，替身可自行提供**：优先使用 main 的公开 exports、Schema 和固定版本契约。上游尚不可用时，使用或自行补齐契约一致的 Fake/Unavailable 与消费测试，独立开发和验证；缺真实服务只阻止相应真实验收结论，不阻止模块实现。
 4. **必要接线随模块交付**：三人均可在自己的分支完成所需根配置、依赖锁、公开 Schema、迁移、Runtime/桌面注册和组合接线。公共区域由 goo122 长期维护，但不是其独占审批或集成槽；核心认知与 AgentArts 的长期责任仍归 zemeng。
 5. **共享文件用 Git 集成**：每人可自行使用隔离分支/工作树；不在同一物理 checkout 并发编辑。合并前基于最新 main 核对冲突和兼容，保留其他人的有效改动，不靠覆盖、强推或硬重置解决冲突。不再排队等待某位唯一集成人。
@@ -97,6 +106,13 @@ goo122 必须让上述模块在没有真实 Desktop、AgentArts 或 zemeng 私�
 
 zemeng 必须优先交付 MOD-29/30/32 的 Competition Golden Path，并让模块在没有 goo122 的真实数据库或未合并实现时使用 Fake Memory/Tool/Runtime 独立开发。AgentArts 成功不能直接把本地任务标为完成；Local Agent 新能力当前不作为必交项。
 
+2026-10-08 自有镜像工作包目录登记：zemeng 负责 `packages/agentarts/src/{index,input,prompts}.ts`、
+`apps/agentarts-runtime/`、相应模块/根集成测试和迁移文档，依赖既有 contracts/models/coordination 公开 exports。
+为同一包修改根构建/锁文件及 Coordination 期限/续接接线，并提供消费验证；不覆盖 goo122 的协议/本地授权所有权。
+实际隔离工作树、接口影响与验收缺口见 [迁移工作包](modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)。
+
+2026-10-09同包WSS增量：zemeng在此隔离分支负责云HTTP/WS宿主及必要的Coordination、Runtime Application、Desktop消费接线；独立传输0.1.0契约由本包提供生成类型、兼容说明和消费验证，长期contracts/Runtime维护责任仍归goo122。Wiki接入仍由goo122负责，业务连接器仍由Potatos498独立交付。本次子智能体分工只用于开发，不进入产品授权或执行链；未合并/未真实云验收不能提高MOD整体状态。
+
 ## 5. Potatos498：业务连接器与当前工作顺序
 
 | ID | 模块 / 需求 | 主要维护目录 | 依赖 | 独立交付与验收 |
@@ -143,4 +159,4 @@ Windows 安装包与安装流程继续暂停。PA-019 及其他 PRD P2 项是否
 
 每个模块必须交付：目标 profile、公开入口、消费的接口版本、README、Fake/夹具、代表性验证、接入说明、已知限制和真实验证条件。当前新增工作默认以 Competition Profile 验收；只有接口冻结不等于模块完成，只有 Fake 通过也不等于真实服务可用。
 
-模块负责人从最新 main 或明确固定的依赖提交建立分支，独立完成必要集成与自审。满足工作包验收、对应检查和实际合并后更新 done；同行评审结果如有则记录，不把未获得另一人批准作为默认阻塞。整体 MOD 和真实服务完成度仍按原验收范围判断。
+模块负责人从最新 main 或明确固定的依赖提交建立分支，独立完成必要集成与自审。合并必须满足两人本机阅读确认、审批和对应检查；实际集成且达到工作包验收后才能更新 done。整体 MOD 和真实服务完成度仍按原验收范围判断。

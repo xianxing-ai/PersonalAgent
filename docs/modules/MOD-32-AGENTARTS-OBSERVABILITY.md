@@ -1,5 +1,8 @@
 # MOD-32：AgentArts 请求级观测与恢复边界
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 ## 2026-10-07：显式只读 Trace helper
 
 [`read-platform-trace.mjs`](../../tests/manual/agentarts/support/read-platform-trace.mjs) 新增手动调用导出 `readAgentArtsTrace({traceId, deadline, signal, authorize, fetchImpl})`。导入时没有网络或文件操作；没有 CLI、凭据读取、自动调用、重试、云发布或资源创建。`fetchImpl` 默认使用 `globalThis.fetch`，也可由受信调用者提供传输实现。

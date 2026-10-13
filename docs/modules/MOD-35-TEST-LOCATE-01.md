@@ -1,5 +1,8 @@
 # MOD-35：测试失败自动定位（工作包 MOD-35-TEST-LOCATE-01）
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 ## 基本信息
 
 - 关联需求：DEV-WORKFLOWS 选题「测试失败自动定位」（痛点高/演示好/工作量中）

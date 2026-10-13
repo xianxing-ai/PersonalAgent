@@ -1,0 +1,30 @@
+/** Public, reviewed level-1 asset identities. Never load private Studio exports at runtime. */
+export interface OwnedBinding {
+  id: string;
+  name: string;
+  type: 'workflow' | 'controller';
+  roles: readonly ('fast' | 'world' | 'plan' | 'review')[];
+  origin: 'migrated' | 'new-owned-binding';
+  requirements: readonly string[];
+}
+export type BindingDispatch = 'fast' | 'deterministic' | 'world' | 'plan' | 'review' | 'router' | 'repair';
+const bindings: readonly (OwnedBinding & {dispatch: BindingDispatch})[] = [
+  {id:'8004735c-cac6-4c09-9691-1a93233475ac',name:'PA-证据安全审查_1',type:'workflow',roles:['review'],origin:'migrated',requirements:['repair_input','world_report','plan_report'],dispatch:'review'},
+  {id:'71f3004f-faba-4487-9e6f-996194ec2b3c',name:'PA-MVP-快速工具与答复',type:'workflow',roles:['fast'],origin:'migrated',requirements:['ordinary_input','host_tool_catalog_for_proposals'],dispatch:'fast'},
+  {id:'b74bbcd0-b8f6-4a73-b436-0676f952ac9a',name:'PA-MVP-确定性意图',type:'workflow',roles:[],origin:'migrated',requirements:['single_supported_intent','host_tool_catalog_or_confirmed_command_receipt'],dispatch:'deterministic'},
+  {id:'7d06153e-6262-4679-86ae-1914b38e11f3',name:'PA-世界状态影响分析',type:'workflow',roles:['world'],origin:'migrated',requirements:['repair_input'],dispatch:'world'},
+  {id:'ed2363d9-b770-4ce5-a988-9bf0903466f7',name:'PA-计划最小修复',type:'workflow',roles:['plan'],origin:'migrated',requirements:['repair_input','world_report'],dispatch:'plan'},
+  {id:'65236810-db21-41cb-928b-39af691c4cfa',name:'PA-计划最小修复_1',type:'workflow',roles:['plan'],origin:'migrated',requirements:['repair_input','world_report'],dispatch:'plan'},
+  {id:'81bc9eb8-cf6a-4869-a1a2-e3b446349447',name:'PA-MVP-受限主路由',type:'workflow',roles:['fast','world','plan','review'],origin:'migrated',requirements:['ordinary_or_repair_input'],dispatch:'router'},
+  {id:'998031d7-ec28-40ed-83e6-96667f22ff51',name:'PA-证据安全审查',type:'workflow',roles:['review'],origin:'migrated',requirements:['repair_input','world_report','plan_report'],dispatch:'review'},
+  {id:'ae641e4a-1524-4435-a132-c58fb13e288d',name:'PersonalAgent-MVP协调器',type:'controller',roles:['fast','world','plan','review'],origin:'new-owned-binding',requirements:['owned_router_not_restored_empty_studio_binding'],dispatch:'router'},
+  {id:'32d4d44c-eade-4f3f-8f76-209c74609e79',name:'PersonalAgent持续认知协调器',type:'controller',roles:['world','plan','review'],origin:'migrated',requirements:['repair_input','single_chain_no_duplicate_default'],dispatch:'repair'},
+  {id:'2f5d361c-bd85-4d2f-9903-bb35d4f55afa',name:'PersonalAgent持续认知协调器_1',type:'controller',roles:['fast','world','plan','review'],origin:'migrated',requirements:['ordinary_or_repair_input','single_chain_no_duplicate_default'],dispatch:'router'},
+];
+export function getOwnedBindings(): OwnedBinding[] {
+  return bindings.map(({dispatch: _dispatch, ...binding}) => ({...binding,roles:[...binding.roles],requirements:[...binding.requirements]}));
+}
+export function ownedBinding(id: string, type: OwnedBinding['type']): (OwnedBinding & {dispatch: BindingDispatch}) | undefined {
+  const binding = bindings.find(item => item.id === id && item.type === type);
+  return binding && {...binding,roles:[...binding.roles],requirements:[...binding.requirements]};
+}

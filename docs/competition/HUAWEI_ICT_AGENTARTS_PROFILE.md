@@ -1,10 +1,25 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
+## 2026-10-09 常驻目标与镜像分享增量
+
+当前比赛 profile 与本地 Runtime/Policy/工具/读回边界继续有效。面向开发者的常驻助手在电脑运行时负责世界变化、增量计划修复与执行/监管委派；不提供独立云电脑。
+
+目标通道 WSS 主、HTTPS 备用，同一 AgentArts 部署且降级可见；本分支已有HTTP/WS服务、本地/桌面接线与发送前持久防重发，公开WSS网关和真实云闭环仍待验收，自动status协调尚未交付。Wiki长期记忆由goo122在MOD-08/09接入，Laya与Goal/Cognition通过公开端口消费。详细图与缺口见完整设计和ADR-0013/0014。
+
+代码/接口随 PR 提交，GHCR 分享是预览产物；华为平台部署通常需按实际拉取能力和镜像导入方式继续处理，不能用 GHCR 上传代替 SWR/AgentArts 验收。合并要求两人本机阅读确认和审批，禁止强制合并；镜像预览发布不触发 main 合并。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 版本：1.1 · 日期：2026-09-20 · 状态：架构基线已确认，离线 Competition 执行面为 `provisional`，真实云端运行仍为 `unavailable`
 
 ## 1. 参赛口径
+
+2026-10-08 自有镜像增量：按 [ADR-0012](../adr/0012-owned-agentarts-image.md) 允许同一云端编排代码
+在 AgentArts ARM64 Runtime 托管，并显式在独立宿主验证赛后迁移性；没有新增通用 Local 执行循环或自动回退。
+当前实现和资产/验收缺口见 [迁移工作包](../modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)，真实 Competition 状态仍为 unavailable。
 
 本项目参加**华为 ICT 大赛创新赛道**，选择的赛题是“基于华为云 AgentArts 智能体开发平台的 Agent 设计和应用”。本 profile 是当前唯一实施和验收优先级；[通用 Local Profile](#4-比赛-profile-与可选-local-边界) 只保留现有代码，当前不新增、不扩展，也不替代比赛演示中的 AgentArts 主路径。
 

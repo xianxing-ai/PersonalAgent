@@ -1,5 +1,16 @@
 # 公共开发协议
 
+## 2026-10-09 双通道与 Wiki 契约增量
+
+WSS 主通道和 HTTPS 备用是同一 CloudAgentPort 的适配，不改变既有 TaskRuntime/wire 权限语义。当前分支独立 `agentarts-transport` 0.1.0 已实现握手、调用身份/摘要、受理/终态和进程内状态查询，仍为 provisional；接口详见 `competition/OWNED_IMAGE_INTERFACES.md`。公开网关、持久云回执、自动核实恢复与游标续传未验收，不能私设 DTO 或宣称 frozen。
+
+Wiki 复用 KnowledgePort、MemoryQueryPort 和 FactChangeFeed；新增页面身份、source/config revision、引用失效、写后投影和去重契约由 goo122 发布。原始内容权限、索引权限和出机权限分开；断线/未知写入不盲重试，任务终态归 Runtime。
+
+公共变更随工作包完成消费验证。开发可独立推进，但 Git 合并必须满足 goo122 与 Potatos498 两人的本机阅读声明/审批、当前 head 校验及必要检查，禁止强制合并/管理员绕过。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 版本：0.3.0 · 日期：2026-09-09 · 协议负责人：`goo122`
@@ -13,7 +24,7 @@
 - 状态分为 `frozen`、`provisional`、`unavailable`、`deprecated`。接口只有具备单一来源、生产实现、Fake/失败夹具、消费验证、负责人自审和 CI 后才可冻结；外部行为影响语义时还需要真实目标系统闭环。
 - 新增可选字段为兼容扩展；删除字段、修改含义、增加消费者无法处理的必需状态必须升级不兼容版本或协商能力。
 - 握手交换协议版本与能力列表；主版本不一致拒绝连接。新操作必须先通过能力发现，不能只凭次版本猜测支持。
-- 变更流程：提出差异和消费者影响 → 更新接口目录为 provisional → 实施者更新单一 Schema/夹具和必要接线 → 消费契约验证 → 自审与 CI → 按证据更新为 frozen。goo122 负责公共协议长期维护，不是独占实施或审批者；不等待指定他人批准，禁止 UI 和服务端私设临时字段。
+- 变更流程：提出差异和消费者影响 → 更新接口目录为 provisional → 实施者更新单一 Schema/夹具和必要接线 → 消费契约验证 → 自审与 CI → 两人本机阅读确认及审批后合并 → 按实际证据更新为 frozen。goo122 负责公共协议长期维护，不是独占实施者；开发可独立推进，合并遵守当前门槛，禁止 UI 和服务端私设临时字段。
 - Schema 中已知但生产握手未公布的 operation 为 unavailable；消费者不调用，Host 返回 `UNSUPPORTED_CAPABILITY`，UI 明确展示不可用。
 
 ## 2. Profile 与通信分层

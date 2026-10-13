@@ -1,5 +1,8 @@
 # AgentArts 安全配置入口
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 Competition 模式的“设置 → 模型”可配置网关地址、运行时实例名称、控制台 API 示例中的完整 Authorization 值。可信主进程验证目标、使用 Electron safeStorage 加密保存全部配置；快照只返回配置状态和公开端点，保存后清空输入框。缺少有效网关与实例时延后 Runtime 初始化；已有真实目标但缺凭据时可装配本地 Runtime 与独立的 Live/听写服务，AgentArts 仍明确显示未配置，发请求前仍必须取得有效凭据。首次保存后立即装配，同一实例更新凭据无需重启。更换目标或初始化部分失败后需重启，避免重复打开数据库和服务。既有环境变量仍可作为未保存设置时的兼容入口。
