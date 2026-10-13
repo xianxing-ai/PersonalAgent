@@ -182,6 +182,25 @@ node --test --test-isolation=none apps/desktop/test/voice-input-core.test.mjs ap
 当前缺少上述实机与真实服务回执。安装语音组件、供应商配置有效性、识别准确率、
 回声、物理设备释放及完整 Competition 语音闭环均未据此完成。
 
+### 下一次现场会话的最小续接清单
+
+- [ ] **设备与引擎**：目标 Windows 机接好麦克风及扬声器/耳机，用户允许当前应用录音；
+  Wake 需要可用的 .NET Framework 4.x/System.Speech 与 zh-CN 识别组件。先用现有
+  `node packages/voice/scripts/check-wake-readiness.mjs` 区分引擎就绪；上次 unavailable
+  不足以断定缺哪个组件。该脚本不打开设备，不能代替下列现场动作。
+- [ ] **SIS 凭据及听写**：在可信面板“华为 SIS 语音配置”填写支持区域、对应项目 ID、
+  有效的独立 SIS IAM Token，具体见 [SIS 配置说明](HUAWEI_SIS.md)。用户明确同意发送短测试音频后
+  点击麦克风，结束时应只得到可编辑草稿；令牌留在本机安全存储，不使用 AgentArts bearer 替代。
+- [ ] **Wake 现场动作**：在同一可见面板通过现有 `voice.wake.enable/disable` 入口明确开启有限许可，
+  说“你好小派”，再分别关闭/隐藏面板、撤销、等待原期限、重新打开；按上表读回实际命中和最终物理释放，
+  重开不恢复旧许可，并保留正词、负词、播放回声的真实样本计数。
+- [ ] **Live 凭据及设备交互**：现有“Live 实时语音设置”需要百炼北京业务空间 ID、API Key，
+  用户勾选音频/上下文发送同意，再点击波形按钮或已配置快捷键。核对连续听说、打断、Wake 互斥、
+  停止后设备释放及网络恢复；配置入口为 `apps/desktop/electron/live-voice-config.js`，本轮未检查凭据。
+- [ ] **Competition 联合读回**：通过既有 `npm run start:desktop` 使用主线当前交付的 Competition 配置，
+  用户显式提交一条约定的低风险工作；在同一任务核对 Runtime 状态、Policy/工具结果和目标系统读回，
+  再用语音查询进度。既有文字/云端成功不能代替此项；只记录时间、状态和脱敏回执，不新增私人音频附件。
+
 ## 交付与恢复
 
 本地实现、必要验证及自审完成后提交独立 PR；提交/PR/CI 的最终状态以 Git/GitHub 为准。
