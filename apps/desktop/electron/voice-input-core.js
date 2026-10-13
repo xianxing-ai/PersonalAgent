@@ -29,6 +29,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
   let lastFailure = null;
   let disposed = false;
   const sharedCleanups = new WeakMap();
+  const sharedStarts = new WeakMap();
   const publish = () => { try { onUpdate(); } catch {} };
 
   function recordFailure(stage, error, message = safeFailure(error)) {
@@ -89,8 +90,19 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
     if (!Number.isSafeInteger(senderId) || senderId <= 0) throw Error('语音操作来源不受信任');
     if (active) throw Error('请先结束当前语音会话');
     if (lease && sharedCleanups.has(lease.signal)) {
-      try {await sharedCleanups.get(lease.signal);} catch {throw Error('共享麦克风资源释放未确认');}
-      if (active) throw Error('请先结束当前语音会话');
+      const waiting = {cancelled: false};
+      const starts = sharedStarts.get(lease.signal) ?? new Set();
+      starts.add(waiting);
+      sharedStarts.set(lease.signal, starts);
+      try {
+        try {await sharedCleanups.get(lease.signal);} catch {throw Error('共享麦克风资源释放未确认');}
+        if (disposed) throw Error('语音试用当前不可用');
+        if (waiting.cancelled) throw Error('语音采集已取消');
+        if (active) throw Error('请先结束当前语音会话');
+      } finally {
+        starts.delete(waiting);
+        if (starts.size === 0) sharedStarts.delete(lease.signal);
+      }
     }
     const sharedDeadline = lease ? Date.parse(lease.deadline) : now() + SESSION_MS;
     if (lease && (inputMode !== 'dictation' || !Number.isFinite(sharedDeadline) || sharedDeadline <= now()
@@ -165,9 +177,12 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
   };
 
   async function cancelSharedCapture(signal) {
+    const starts = sharedStarts.get(signal);
+    const cancelledStart = Boolean(starts?.size);
+    for (const waiting of starts ?? []) waiting.cancelled = true;
     if (!active || active.parentSignal !== signal) {
       await sharedCleanups.get(signal);
-      return {cancelled: false};
+      return {cancelled: cancelledStart};
     }
     active.cancelRequested = true;
     await cleanup(active);

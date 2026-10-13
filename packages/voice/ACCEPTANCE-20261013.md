@@ -31,6 +31,9 @@
 9. Desktop 听写在最终 cleanup/revoke 延迟期间被取消或销毁，不再回填旧草稿；手动和
    共享听写都在投递前复查 sessionDeadline。普通 cleanup 不被当作取消，正常听写仍
    只生成可编辑草稿；并发 cancel 清空 UI 错误不再导致 finishCapture 返回空异常。
+10. 共享听写复用旧 lease 时，等待上次 cleanup 的启动请求也登记为可取消；等待结束后
+    复查 disposed 和显式取消。同一 signal 的取消覆盖全部等待者，无关 signal 不影响它们。
+    销毁/取消后不再向 source 或 manager 请求新采集；正常重复启动保留。
 
 ## 首次增量验证（提交 `185185ce`）
 
@@ -76,6 +79,18 @@ node packages/voice/scripts/check-wake-readiness.mjs
   这些未在最后的 catch 顺序调整后重跑；最后调整由上面的 32 项覆盖。
 - 新增测试只使用合成 PCM/WAV、Fake 供应商、内存 transport 和受控 child；无麦克风、
   扬声器、网络或真实账号调用。最终 `git diff --check` 通过。
+
+### 共享听写重复启动与销毁/取消竞态（2026-10-13 后续分工）
+
+只调整 `apps/desktop/electron/voice-input-core.js`、其直接测试及本文档。纯 Fake 已复现
+同一 lease 再次启动在 `await sharedCleanups` 让出执行时发生 dispose，恢复后仍调用 subscribe
+和 manager.start；同一 signal 显式取消也曾返回 false 并继续 listening。该证据只证明 core
+错误发出下游请求，实际声卡是否重开未经验证。
+
+现将等待中的共享启动按 signal 登记，销毁/取消后在订阅前拒绝；释放失败仍优先保留错误，
+既有 parentSignal、leaseDeadline 和共享授权检查继续生效。直接 core 测试 **24/24** 通过，
+包含新增正常重复、销毁、同 signal 取消与无关 signal 取消四个对照。`node --check` 与
+`git diff --check` 通过；未重复面板、整包、原生构建或 CI，也未调用真实设备/服务。
 
 最终必要回归命令：
 
