@@ -1,6 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {projectOwnedReleaseEvidence} from './export-owned-release-evidence.mjs';
+import {projectOwnedReleaseEvidence,projectOwnedLayaTokenTelemetry} from './export-owned-release-evidence.mjs';
+
+const tokenWindow={formatVersion:'1.0.0',truncated:false,droppedTokens:0,encoderMaxTokens:8192,maxLength:2001,headMaxLength:512,
+  stateTokens:[1890],requiredSequenceTokens:[2001],expectedInputTokens:[2001],headerTokens:[110],encodedTokens:2001};
+
+test('new Laya window telemetry preserves exact counts and queue wait; old missing fields stay absent and invalid accounting is rejected',()=>{
+  const value=projectOwnedLayaTokenTelemetry({queueWaitMs:17,fullCriterionDescriptions:'included_in_selector_state',tokenWindow,
+    privateCandidateDescriptions:'never export this'});
+  assert.equal(value.queueWaitMs,17);assert.equal(value.tokenWindow.encodedTokens,2001);assert.equal(value.tokenWindow.droppedTokens,0);
+  assert.equal(value.tokenWindowValidated,true);assert.equal(value.completeDecisionContextReported,true);
+  assert.equal(JSON.stringify(value).includes('never export'),false);
+  const old=projectOwnedLayaTokenTelemetry({});assert.deepEqual(old,{tokenWindowStatus:'not_recorded'});
+  for(const changed of [{...tokenWindow,droppedTokens:1},{...tokenWindow,encodedTokens:1000},
+    {...tokenWindow,headerTokens:[111]},{...tokenWindow,maxLength:1000},{...tokenWindow,truncated:true}]) {
+    const invalid=projectOwnedLayaTokenTelemetry({tokenWindow:changed,fullCriterionDescriptions:'included_in_selector_state'});
+    assert.equal(invalid.tokenWindowValidated,false);assert.equal(invalid.completeDecisionContextReported,false);
+  }
+});
 
 const metadata={schemaVersion:1,sourceRevision:'f'.repeat(40),indexDigest:'sha256:'+'1'.repeat(64),arm64Digest:'sha256:'+'2'.repeat(64),
   imageReference:'swr.cn-southwest-2.myhuaweicloud.com/public/owned:laya-preview',cpuTorchVersion:'2.14.0+cpu',
@@ -143,6 +160,77 @@ test('partial real public read/receipt/persistence retains its evidence and cons
   const unattributed=projectOwnedReleaseEvidence({metadata,cloudReceipt:{...partial,laya:{...partial.laya,sourceAuthenticity:undefined}}});
   assert.equal(unattributed.phases.cloudPublicFixture.laya.status,'unattributed_supplied_log');
   assert.equal(unattributed.phases.cloudPublicFixture.laya.sourceFileSha256,null);
+});
+
+test('full fixed F20 evidence requires actual compiler tool closure, every graph node, exact artifacts and legal durable Runtime completion',()=>{
+  const full={...cloud,status:'passed_public_f20_documentation_workflow',unavailable:[],
+    providers:{...cloud.providers,validationTool:'production_workspace.run_allowed_command',compiler:'real_typescript_noEmit'},
+    network:[...cloud.network,{stage:'validation_receipt_resume',httpStatus:200,transport:'https',requestId:'validation-req'}],
+    candidate:{candidateSha256:'4'.repeat(64),docSha256:'5'.repeat(64)},
+    validationTool:{nodeId:'F20_N03',operationId:'op-check',runId:'host-tool-check',toolName:'workspace.run_allowed_command',actualSideEffect:'local_write',
+      executionCount:1,policyDecision:'allow',localState:'succeeded',signedReceipt:true,evidence:[{evidenceId:'host-tool-check',verification:'conditional'}]},
+    validation:{state:'passed',sourceSha256:cloud.tool.independentlyReadContentSha256,candidateSha256:'4'.repeat(64),docSha256:'5'.repeat(64),
+      checkArtifactSha256:'6'.repeat(64),sampleSha256:'7'.repeat(64),compiler:{name:'TypeScript',version:'5.9.3',exitCode:0},checks:{typeCheckPassed:true,noPhantomFields:true}},
+    workflowCompletion:{workflowId:'F20',graphState:'settled',allRequiredNodesCompleted:true,
+      nodeStates:Object.fromEntries(['F20_N01','F20_N02','F20_N03','F20_N04'].map(node=>[node,'completed'])),
+      sourceSha256:cloud.tool.independentlyReadContentSha256,candidateSha256:'4'.repeat(64),docSha256:'5'.repeat(64),checkArtifactSha256:'6'.repeat(64),
+      docVersion:'public-fixture-1',synchronized:false,finalArtifactReadback:true,finalArtifactName:'owned-api-final-doc.md',
+      sourceRefs:['owned-workflow-public-fixture.txt','owned-api-check-result.json']},
+    parentTask:{state:'succeeded',terminalAuthority:'existing TaskRuntime.runTask',completionProducedByWorker:true,evidenceRefs:['host-tool-local-1','host-tool-check']},
+    continuation:{...cloud.continuation,graphState:'settled',completedPostReceiptModelNodes:['F20_N02','F20_N04']},
+    persistence:{...cloud.persistence,parentState:'succeeded',validation:{localState:'succeeded',toolRecordCount:1,evidenceCount:1}}};
+  const value=projectOwnedReleaseEvidence({metadata,cloudReceipt:full}),phase=value.phases.cloudPublicFixture;
+  assert.equal(phase.verified,true);assert.equal(phase.publicReadVerified,true);assert.equal(phase.publicValidationVerified,true);
+  assert.equal(phase.workflowVerified,true);assert.equal(phase.workflowCompletion.parentState,'succeeded');
+  assert.equal(value.businessMatrix.find(item=>item.featureId==='F20').fixtureWorkflowVerified,true);
+  assert.equal(value.businessMatrix.find(item=>item.featureId==='F20').fullyVerified,false);
+  assert.equal(value.releaseStatus,'development_preview'); // no deployment linkage was supplied
+  for(const changed of [
+    {...full,workflowCompletion:{...full.workflowCompletion,nodeStates:{...full.workflowCompletion.nodeStates,F20_N04:'unknown'}}},
+    {...full,validation:{...full.validation,compiler:{...full.validation.compiler,exitCode:1}}},
+    {...full,validationTool:{...full.validationTool,actualSideEffect:'read'}},
+    {...full,parentTask:{...full.parentTask,state:'created'}},
+    {...full,persistence:{...full.persistence,parentState:'waiting_reconciliation'}},
+    {...full,workflowCompletion:{...full.workflowCompletion,checkArtifactSha256:'wrong'}},
+    {...full,workflowCompletion:{...full.workflowCompletion,synchronized:true}},
+    {...full,workflowCompletion:{...full.workflowCompletion,sourceRefs:['invented']}}
+  ]) {
+    const projected=projectOwnedReleaseEvidence({metadata,cloudReceipt:changed});
+    assert.equal(projected.phases.cloudPublicFixture.workflowVerified,false);
+    assert.equal(projected.phases.cloudPublicFixture.publicReadVerified,true);
+  }
+  const local={...full,status:'passed_local_image_f20_documentation_workflow',providers:{...full.providers,cloud:'real_owned_image_http'},
+    target:{...full.target,validationSurface:'local_owned_image'},network:full.network.map(request=>({...request,transport:'http_loopback'})),
+    laya:{status:'correlated_supplied_image_log',sourceAuthenticity:'supplied image stdout; provenance requires independent image/source binding',
+      sourceFileSha256:'8'.repeat(64),records:[{event:'laya_choice',model:'multilingual',requestId:'req-2',candidateId:'candidate-001',
+        durationMs:100,queueWaitMs:17,fullCriterionDescriptions:'included_in_selector_state',tokenWindow}]}};
+  const platform={schemaVersion:1,evidenceKind:'owned-platform-readback',observed:true,published:true,deploymentState:'ready',runtimeName:'public-runtime',
+    version:'v2',endpointAlias:'Latest',aliasResolvedVersion:'v2',sourceRevision:metadata.sourceRevision,sourceRevisionBasis:'platform_reported',
+    imageDigest:metadata.arm64Digest,imageDigestBasis:'platform_reported'};
+  const isolated=projectOwnedReleaseEvidence({metadata,imageWorkflowReceipt:local,platformReadback:platform});
+  assert.equal(isolated.phases.imageWorkflowFixture.workflowVerified,true);
+  assert.equal(isolated.phases.imageWorkflowFixture.status,'passed_local_image_f20_documentation_workflow');
+  assert.equal(isolated.phases.imageWorkflowFixture.huaweiDeploymentVerified,false);
+  assert.equal(isolated.phases.imageWorkflowFixture.laya.allObservedChoiceWindowsValidated,true);
+  assert.equal(isolated.phases.cloudPublicFixture.verified,false);assert.equal(isolated.phases.cloudPublicFixture.status,'not_provided');
+  assert.equal(isolated.phases.platformDeployment.invocationBinding.verified,false);assert.equal(isolated.releaseStatus,'development_preview');
+  assert.equal(isolated.businessMatrix.find(item=>item.featureId==='F20').imageFixtureWorkflowVerified,true);
+  assert.equal(isolated.businessMatrix.find(item=>item.featureId==='F20').fixtureWorkflowVerified,false);
+  const wrongSlot=projectOwnedReleaseEvidence({metadata,cloudReceipt:local,platformReadback:platform});
+  assert.equal(wrongSlot.phases.cloudPublicFixture.workflowVerified,false);assert.equal(wrongSlot.phases.platformDeployment.invocationBinding.verified,false);
+  const badWindow={...local,laya:{...local.laya,records:[{...local.laya.records[0],tokenWindow:{...tokenWindow,droppedTokens:1}}]}};
+  assert.equal(projectOwnedReleaseEvidence({metadata,imageWorkflowReceipt:badWindow}).phases.imageWorkflowFixture.workflowVerified,false);
+  const native={...local,status:'passed_local_runtime_f20_documentation_workflow',providers:{...local.providers,cloud:'real_owned_runtime_http'},
+    target:{...local.target,kind:'local_owned_source_runtime',validationSurface:'local_owned_source_runtime'},
+    laya:{...local.laya,status:'correlated_supplied_runtime_log',sourceAuthenticity:'supplied source runtime stdout; provenance requires independent source/model binding'}};
+  const nativeOnly=projectOwnedReleaseEvidence({metadata,localRuntimeWorkflowReceipt:native,platformReadback:platform});
+  assert.equal(nativeOnly.phases.localRuntimeWorkflowFixture.workflowVerified,true);
+  assert.equal(nativeOnly.phases.localRuntimeWorkflowFixture.status,'passed_local_runtime_f20_documentation_workflow');
+  assert.equal(nativeOnly.phases.localRuntimeWorkflowFixture.laya.status,'correlated_supplied_runtime_log');
+  assert.equal(nativeOnly.phases.imageWorkflowFixture.verified,false);assert.equal(nativeOnly.phases.cloudPublicFixture.verified,false);
+  assert.equal(nativeOnly.phases.platformDeployment.invocationBinding.verified,false);assert.equal(nativeOnly.productionVerified,false);
+  assert.equal(nativeOnly.releaseStatus,'development_preview');
+  assert.equal(projectOwnedReleaseEvidence({metadata,imageWorkflowReceipt:native}).phases.imageWorkflowFixture.workflowVerified,false);
 });
 test('credential/env/raw-log input is rejected and absolute image paths are never emitted',()=>{
   for(const field of ['inboundAuthorization','env','rawNetworkLog','headers']) {

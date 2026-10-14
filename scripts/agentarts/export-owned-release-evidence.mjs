@@ -19,6 +19,30 @@ const forbidden=new Set(['authorization','inboundauthorization','innerauthorizat
   'receiptsecret','checkpointkey','password','credentials','privatekey','xpaagenttoken','headers','requestheaders','responseheaders',
   'env','environment','cloudenv','rawnetworklog','rawlog','pushlog','rawbody','rawresponse','stdout','stderr']);
 
+/** Only numeric window accounting and fixed provenance markers; never criterion text, prompt or hidden state. */
+export function projectOwnedLayaTokenTelemetry(record) {
+  const telemetry={};
+  if(number(record?.queueWaitMs)!==null)telemetry.queueWaitMs=record.queueWaitMs;
+  if(record?.fullCriterionDescriptions==='included_in_selector_state')telemetry.fullCriterionDescriptions=record.fullCriterionDescriptions;
+  if(record?.tokenWindow===undefined)return {...telemetry,tokenWindowStatus:'not_recorded'};
+  const window=record.tokenWindow,one=value=>Array.isArray(value)&&value.length===1&&Number.isSafeInteger(value[0])&&value[0]>=0;
+  const valid=plain(window)&&window.formatVersion==='1.0.0'&&window.truncated===false&&window.droppedTokens===0
+    &&['encoderMaxTokens','maxLength','headMaxLength','encodedTokens'].every(key=>Number.isSafeInteger(window[key])&&window[key]>0)
+    &&window.maxLength<=window.encoderMaxTokens&&window.headMaxLength<=window.maxLength
+    &&['stateTokens','requiredSequenceTokens','expectedInputTokens','headerTokens'].every(key=>one(window[key]))
+    &&window.headerTokens[0]>=3&&window.encodedTokens===window.requiredSequenceTokens[0]
+    &&window.encodedTokens===window.expectedInputTokens[0]&&window.encodedTokens<=window.maxLength
+    &&window.headerTokens[0]+window.stateTokens[0]+1===window.encodedTokens;
+  const projected=plain(window)?{formatVersion:window.formatVersion==='1.0.0'?'1.0.0':'not_recorded',
+    truncated:typeof window.truncated==='boolean'?window.truncated:null,
+    ...Object.fromEntries(['droppedTokens','encoderMaxTokens','maxLength','headMaxLength','encodedTokens']
+      .map(key=>[key,Number.isSafeInteger(window[key])&&window[key]>=0?window[key]:null])),
+    ...Object.fromEntries(['stateTokens','requiredSequenceTokens','expectedInputTokens','headerTokens']
+      .map(key=>[key,one(window[key])?[window[key][0]]:null]))}:null;
+  return {...telemetry,tokenWindowStatus:valid?'complete_reported_window':'invalid_or_incomplete',
+    tokenWindowValidated:valid,completeDecisionContextReported:valid&&telemetry.fullCriterionDescriptions==='included_in_selector_state',tokenWindow:projected};
+}
+
 /** Public-file admission. No raw credentials, environment, request headers or network logs are accepted. */
 function publicInput(value) {
   if(!plain(value))fail('PUBLIC_JSON_OBJECT_REQUIRED');
@@ -100,17 +124,23 @@ function imageProjection(input,metadata) {
     maasCalls:number(value.maasCalls),toolExecutions:number(value.toolExecutions),externalEffects:number(value.externalEffects)};
 }
 
-function cloudProjection(input) {
+function workflowFixtureProjection(input,surface='agentarts_cloud') {
   if(input===undefined)return {status:'not_provided',verified:false,laya:{status:'missing',records:[]},unavailable:[]};
   const value=publicInput(input);
   if(value.schemaVersion!==1||value.profile!=='huawei_ict_agentarts'||!plain(value.providers))fail('INVALID_PUBLIC_CLOUD_RECEIPT_SCHEMA');
   const tool=value.tool,continuation=value.continuation,persistence=value.persistence;
+  const localImage=surface==='local_owned_image',localRuntime=surface==='local_owned_source_runtime',localExecution=localImage||localRuntime;
+  const prefix=localImage?'local_image':localRuntime?'local_runtime':'public';
+  const completeStatus='passed_'+prefix+'_f20_documentation_workflow',readStatus='passed_'+prefix+'_read_and_graph_resume';
+  const partialStatus='partial_'+(localExecution?prefix+'_':'')+'receipt_admitted_model_recheck';
   const realProviders=value.providers.fakeSelector===false&&value.providers.fakeExecutionModel===false
-    &&value.providers.cloud==='real_agentarts_https'&&value.providers.localTool==='production_workspace.read_text';
+    &&value.providers.cloud===(localImage?'real_owned_image_http':localRuntime?'real_owned_runtime_http':'real_agentarts_https')
+    &&(!localExecution||value.target?.validationSurface===surface)&&value.providers.localTool==='production_workspace.read_text';
   const network=(value.network??[]).filter(item=>plain(item)).map(item=>({stage:id(item.stage),requestId:id(item.requestId),
     httpStatus:Number.isInteger(item.httpStatus)?item.httpStatus:null,durationMs:number(item.durationMs),
-    transport:item.transport==='https'?'https':'not_recorded'}));
-  const networkPassed=['catalog','proposal','receipt_resume'].every(stage=>network.some(item=>item.stage===stage&&item.httpStatus===200));
+    transport:['https','http_loopback'].includes(item.transport)?item.transport:'not_recorded'}));
+  const networkPassed=['catalog','proposal','receipt_resume'].every(stage=>network.some(item=>item.stage===stage&&item.httpStatus===200
+    &&(!localExecution||item.transport==='http_loopback')));
   const evidence=Array.isArray(tool?.evidence)?tool.evidence.map(item=>({evidenceId:id(item.evidenceId),
     verification:['conditional','verified','unverified','mock'].includes(item.verification)?item.verification:'not_recorded'})):[];
   const publicReadVerified=realProviders&&networkPassed
@@ -121,30 +151,72 @@ function cloudProjection(input) {
     &&continuation?.receiptAccepted===true&&continuation?.originalToolNodeState==='completed'
     &&persistence?.reopened===true&&persistence?.toolRecordCount===1&&persistence?.evidenceCount===1
     &&persistence?.additionalNetworkCalls===0&&persistence?.additionalToolExecutions===0;
-  const postReceiptModelVerified=realProviders&&value.status==='passed_public_read_and_graph_resume'
+  const postReceiptModelVerified=realProviders&&[readStatus,completeStatus].includes(value.status)
     &&Array.isArray(continuation?.completedPostReceiptModelNodes)
-    &&continuation.completedPostReceiptModelNodes.some(node=>/^F(?:15|20)_N\d{2}$/.test(node));
-  const publicReadPassed=publicReadVerified&&postReceiptModelVerified;
+    &&(value.status===completeStatus
+      ?['F20_N02','F20_N04'].every(node=>continuation.completedPostReceiptModelNodes.includes(node))
+      :continuation.completedPostReceiptModelNodes.some(node=>/^F(?:15|20)_N\d{2}$/.test(node)));
+  const validationTool=value.validationTool,validation=value.validation,completion=value.workflowCompletion,parent=value.parentTask;
+  const validationEvidence=Array.isArray(validationTool?.evidence)?validationTool.evidence.map(item=>({evidenceId:id(item.evidenceId),
+    verification:['conditional','verified','unverified','mock'].includes(item.verification)?item.verification:'not_recorded'})):[];
+  const publicValidationVerified=publicReadVerified&&value.providers.validationTool==='production_workspace.run_allowed_command'
+    &&value.providers.compiler==='real_typescript_noEmit'&&validationTool?.nodeId==='F20_N03'
+    &&validationTool?.toolName==='workspace.run_allowed_command'&&validationTool?.actualSideEffect==='local_write'
+    &&validationTool?.executionCount===1&&validationTool?.policyDecision==='allow'&&validationTool?.localState==='succeeded'
+    &&validationTool?.signedReceipt===true&&validationEvidence.length===1&&validationEvidence[0].evidenceId!==null
+    &&validationEvidence[0].evidenceId===id(validationTool.runId)&&['conditional','verified'].includes(validationEvidence[0].verification)
+    &&network.some(item=>item.stage==='validation_receipt_resume'&&item.httpStatus===200)
+    &&validation?.state==='passed'&&validation?.compiler?.exitCode===0&&validation?.checks?.typeCheckPassed===true
+    &&validation?.checks?.noPhantomFields===true&&artifactSha(validation?.sourceSha256)!==null
+    &&validation.sourceSha256===tool?.independentlyReadContentSha256&&artifactSha(validation?.candidateSha256)!==null
+    &&validation.candidateSha256===value.candidate?.candidateSha256&&artifactSha(validation?.docSha256)!==null
+    &&validation.docSha256===value.candidate?.docSha256&&artifactSha(validation?.checkArtifactSha256)!==null;
+  let workflowVerified=publicValidationVerified&&postReceiptModelVerified&&value.status===completeStatus
+    &&completion?.workflowId==='F20'&&completion?.graphState==='settled'&&continuation?.graphState==='settled'
+    &&completion?.allRequiredNodesCompleted===true&&['F20_N01','F20_N02','F20_N03','F20_N04'].every(node=>completion.nodeStates?.[node]==='completed')
+    &&completion?.sourceSha256===validation.sourceSha256&&completion?.candidateSha256===validation.candidateSha256
+    &&completion?.docSha256===validation.docSha256&&completion?.checkArtifactSha256===validation.checkArtifactSha256
+    &&id(completion?.docVersion)!==null&&completion?.synchronized===false&&completion?.finalArtifactReadback===true
+    &&completion?.finalArtifactName==='owned-api-final-doc.md'&&Array.isArray(completion?.sourceRefs)
+    &&['owned-workflow-public-fixture.txt','owned-api-check-result.json'].every(name=>completion.sourceRefs.includes(name))
+    &&parent?.state==='succeeded'&&parent?.terminalAuthority==='existing TaskRuntime.runTask'&&parent?.completionProducedByWorker===true
+    &&Array.isArray(parent?.evidenceRefs)&&[id(tool?.runId),id(validationTool?.runId)].every(ref=>parent.evidenceRefs.includes(ref))
+    &&persistence?.parentState==='succeeded'&&persistence?.validation?.localState==='succeeded'
+    &&persistence?.validation?.toolRecordCount===1&&persistence?.validation?.evidenceCount===1;
   const layaRecords=Array.isArray(value.laya?.records)?value.laya.records.flatMap(item=>{
     if(item?.event==='laya_ready'&&item.model==='multilingual'&&item.service==='embedded'&&item.warmed===true) {
       return [{event:'laya_ready',model:'multilingual',service:'embedded',warmed:true}];
     }
     if(item?.event==='laya_choice'&&item.model==='multilingual'&&id(item.requestId)&&id(item.candidateId)
       &&network.some(request=>request.requestId===item.requestId)&&number(item.durationMs)!==null) {
-      return [{event:'laya_choice',model:'multilingual',requestId:item.requestId,candidateId:item.candidateId,durationMs:item.durationMs}];
+      return [{event:'laya_choice',model:'multilingual',requestId:item.requestId,candidateId:item.candidateId,durationMs:item.durationMs,
+        ...projectOwnedLayaTokenTelemetry(item)}];
     }
     return [];
   }):[];
+  if(layaRecords.some(record=>record.event==='laya_choice'&&record.tokenWindowStatus==='invalid_or_incomplete'))workflowVerified=false;
+  const publicReadPassed=publicReadVerified&&postReceiptModelVerified&&(value.status===readStatus||workflowVerified);
   const unavailable=Array.isArray(value.unavailable)?value.unavailable.flatMap(item=>
     id(item?.nodeId)&&Array.isArray(item.capabilities)?[{nodeId:item.nodeId,
       capabilities:item.capabilities.filter(cap=>typeof cap==='string'&&/^[A-Za-z0-9_.:-]{1,160}$/.test(cap))}]:[]):[];
   const consoleLogBasis=value.laya?.status==='correlated_platform_console_readback'
     &&value.laya?.sourceAuthenticity==='authenticated AgentArts Runtime console readback; exact requestId match'
     &&artifactSha(value.laya?.sourceFileSha256)!==null;
-  return {status:publicReadPassed?'passed_public_read_fixture_and_resume':value.status==='partial_receipt_admitted_model_recheck'
-    ?'partial_receipt_admitted_model_recheck':'failed_or_unknown',verified:publicReadPassed,scope:'one fixed public workspace.read_text fixture; not all business workflows',
+  const imageLogBasis=localImage&&value.laya?.status==='correlated_supplied_image_log'
+    &&value.laya?.sourceAuthenticity==='supplied image stdout; provenance requires independent image/source binding'
+    &&artifactSha(value.laya?.sourceFileSha256)!==null;
+  const runtimeLogBasis=localRuntime&&value.laya?.status==='correlated_supplied_runtime_log'
+    &&value.laya?.sourceAuthenticity==='supplied source runtime stdout; provenance requires independent source/model binding'
+    &&artifactSha(value.laya?.sourceFileSha256)!==null;
+  return {status:workflowVerified?completeStatus:publicReadPassed?'passed_'+prefix+'_read_fixture_and_resume'
+    :value.status===partialStatus?partialStatus:'failed_or_unknown',verified:publicReadPassed,validationSurface:surface,
+    huaweiDeploymentVerified:false,
+    scope:workflowVerified?'one fixed public F20 API documentation candidate with actual TypeScript validation; not all business workflows'
+      :'one fixed public workspace.read_text fixture; not all business workflows',
     runtime:id(value.target?.runtime),invokeMode:['published','debug'].includes(value.target?.invokeMode)?value.target.invokeMode:'not_recorded',
+    expectedSourceRevision:sourceSha(value.target?.expectedSourceRevision),repositorySourceBinding:'not_verified_by_invocation',
     requestedVersion:id(value.target?.requestedVersion),requestedVersionVerified:false,publicReadVerified,postReceiptModelVerified,
+    publicValidationVerified,workflowVerified,
     selectedWorkflow:/^F(?:15|20)$/.test(value.catalog?.selectedWorkflow??'')?value.catalog.selectedWorkflow:null,
     templateVersion:id(value.catalog?.templateVersion),templateDigest:typeof value.catalog?.templateDigest==='string'
       &&/^[a-f0-9]{64}$/.test(value.catalog.templateDigest)?value.catalog.templateDigest:null,
@@ -159,12 +231,35 @@ function cloudProjection(input) {
       graphState:id(continuation?.graphState),completedPostReceiptModelNodes:Array.isArray(continuation?.completedPostReceiptModelNodes)
         ?continuation.completedPostReceiptModelNodes.filter(node=>/^F(?:15|20)_N\d{2}$/.test(node)):[]},
     persistence:{reopened:persistence?.reopened===true,toolRecordCount:number(persistence?.toolRecordCount),evidenceCount:number(persistence?.evidenceCount),
-      additionalNetworkCalls:number(persistence?.additionalNetworkCalls),additionalToolExecutions:number(persistence?.additionalToolExecutions)},
+      additionalNetworkCalls:number(persistence?.additionalNetworkCalls),additionalToolExecutions:number(persistence?.additionalToolExecutions),
+      parentState:id(persistence?.parentState),validation:persistence?.validation?{localState:id(persistence.validation.localState),
+        toolRecordCount:number(persistence.validation.toolRecordCount),evidenceCount:number(persistence.validation.evidenceCount)}:null},
+    validation:validation?{verified:publicValidationVerified,operationId:id(validationTool?.operationId),runId:id(validationTool?.runId),
+      toolName:validationTool?.toolName==='workspace.run_allowed_command'?'workspace.run_allowed_command':null,
+      actualSideEffect:validationTool?.actualSideEffect==='local_write'?'local_write':'not_recorded',evidence:validationEvidence,
+      sourceSha256:artifactSha(validation.sourceSha256),candidateSha256:artifactSha(validation.candidateSha256),docSha256:artifactSha(validation.docSha256),
+      checkArtifactSha256:artifactSha(validation.checkArtifactSha256),sampleSha256:artifactSha(validation.sampleSha256),
+      compiler:{name:validation.compiler?.name==='TypeScript'?'TypeScript':'not_recorded',
+        version:id(validation.compiler?.version),exitCode:Number.isInteger(validation.compiler?.exitCode)?validation.compiler.exitCode:null},
+      checks:{typeCheckPassed:validation.checks?.typeCheckPassed===true,noPhantomFields:validation.checks?.noPhantomFields===true,
+        scope:'API example arguments and TypeScript interface; whole Markdown still requires source review'}}:null,
+    workflowCompletion:completion?{verified:workflowVerified,workflowId:completion.workflowId==='F20'?'F20':null,
+      graphState:id(completion.graphState),nodeStates:Object.fromEntries(['F20_N01','F20_N02','F20_N03','F20_N04'].map(node=>[node,id(completion.nodeStates?.[node])])),
+      finalArtifactName:id(completion.finalArtifactName),finalArtifactReadback:completion.finalArtifactReadback===true,
+      sourceSha256:artifactSha(completion.sourceSha256),candidateSha256:artifactSha(completion.candidateSha256),docSha256:artifactSha(completion.docSha256),
+      checkArtifactSha256:artifactSha(completion.checkArtifactSha256),docVersion:id(completion.docVersion),synchronized:completion.synchronized===false?false:null,
+      parentState:id(parent?.state),terminalAuthority:parent?.terminalAuthority==='existing TaskRuntime.runTask'?'existing_TaskRuntime_runTask':'not_recorded'}:null,
     laya:{status:layaRecords.some(item=>item.event==='laya_choice')
-      ?consoleLogBasis?'correlated_platform_console_readback':'unattributed_supplied_log':'missing',
-      sourceAuthenticity:consoleLogBasis?'authenticated_platform_console_readback_reported':'not_independently_verified',
-      observationMethod:consoleLogBasis?'Runtime console DOM readback; not an official log file export':'not_recorded',
-      sourceFileSha256:consoleLogBasis?value.laya.sourceFileSha256:null,records:layaRecords},unavailable,
+      ?consoleLogBasis?'correlated_platform_console_readback':imageLogBasis?'correlated_supplied_image_log'
+        :runtimeLogBasis?'correlated_supplied_runtime_log':'unattributed_supplied_log':'missing',
+      sourceAuthenticity:consoleLogBasis?'authenticated_platform_console_readback_reported'
+        :imageLogBasis?'supplied_owned_image_stdout_reported':runtimeLogBasis?'supplied_owned_source_runtime_stdout_reported':'not_independently_verified',
+      observationMethod:consoleLogBasis?'Runtime console DOM readback; not an official log file export'
+        :imageLogBasis?'Explicit local image stdout; image/source binding requires independent verification'
+          :runtimeLogBasis?'Explicit local source runtime stdout; source/model binding requires independent verification':'not_recorded',
+      sourceFileSha256:consoleLogBasis||imageLogBasis||runtimeLogBasis?value.laya.sourceFileSha256:null,
+      allObservedChoiceWindowsValidated:layaRecords.some(record=>record.event==='laya_choice')
+        &&layaRecords.filter(record=>record.event==='laya_choice').every(record=>record.completeDecisionContextReported===true),records:layaRecords},unavailable,
     unknown:Array.isArray(value.unknown)?value.unknown.map(item=>({stage:id(item.stage),requestId:id(item.requestId),code:id(item.code)})):[]};
 }
 
@@ -195,7 +290,7 @@ function platformProjection(input,metadata,cloud) {
     :cloud.requestedVersion===version?'matched':'mismatched';
   const deploymentReadbackVerified=published&&digestMatched&&sourceMatched&&sourceEvidenceBound&&digestEvidenceBound
     &&version!==null&&(runtimeId!==null||runtimeName!==null);
-  const verified=deploymentReadbackVerified&&runtimeMatch==='matched'
+  const verified=deploymentReadbackVerified&&cloud.realProviders===true&&cloud.validationSurface==='agentarts_cloud'&&runtimeMatch==='matched'
     &&['matched','alias_readback_matched'].includes(requestMatch)&&cloud.invokeMode==='published';
   return {status:value.deploymentState==='draft'||value.published===false?'draft_or_unpublished'
     :deploymentReadbackVerified?'published_deployment_readback_matched':value.deploymentState==='failed'?'deployment_failed':'incomplete_or_mismatched_readback',
@@ -216,22 +311,34 @@ const FEATURES=['主对话与责任理解','语音交互与确认','世界状态
   '账户与数据范围','镜像部署','上下文管理','模型与思考分配'];
 
 /** Artifact projection, not a network verifier or authority to mark every workflow complete. */
-export function projectOwnedReleaseEvidence({metadata,imageAcceptance,cloudReceipt,platformReadback}) {
-  const build=metadataProjection(metadata),image=imageProjection(imageAcceptance,build),cloud=cloudProjection(cloudReceipt);
+export function projectOwnedReleaseEvidence({metadata,imageAcceptance,cloudReceipt,imageWorkflowReceipt,localRuntimeWorkflowReceipt,platformReadback}) {
+  const build=metadataProjection(metadata),image=imageProjection(imageAcceptance,build),cloud=workflowFixtureProjection(cloudReceipt);
+  const imageWorkflow=workflowFixtureProjection(imageWorkflowReceipt,'local_owned_image');
+  const localRuntimeWorkflow=workflowFixtureProjection(localRuntimeWorkflowReceipt,'local_owned_source_runtime');
   const platform=platformProjection(platformReadback,build,cloud);
   const businessMatrix=FEATURES.map((name,index)=>{
     const featureId='F'+String(index+1).padStart(2,'0');
     const unavailable=(cloud.unavailable??[]).filter(item=>item.nodeId.startsWith(featureId+'_'));
     return {featureId,name,graphTemplate:image.workflowCatalog?.boundAcceptanceVerified===true?'image_catalog_verified'
       :image.verified&&image.workflowCatalog?.templates===28&&image.workflowCatalog?.detailNodes===185?'catalog_count_observed_unbound':'not_verified',
-      businessStatus:unavailable.length?'unavailable_nodes_reported':cloud.publicReadVerified&&cloud.selectedWorkflow===featureId
-        ?'partial_public_read_step_verified':'not_verified',fullyVerified:false,unavailable};
+      businessStatus:unavailable.length?'unavailable_nodes_reported':cloud.workflowVerified&&featureId==='F20'?'fixed_public_f20_documentation_workflow_verified'
+        :cloud.publicReadVerified&&cloud.selectedWorkflow===featureId?'partial_public_read_step_verified':'not_verified',
+      fixtureWorkflowVerified:cloud.workflowVerified===true&&featureId==='F20',
+      imageFixtureWorkflowVerified:imageWorkflow.workflowVerified===true&&featureId==='F20',
+      imageFixtureBusinessStatus:imageWorkflow.workflowVerified&&featureId==='F20'?'local_image_fixed_public_f20_workflow_verified'
+        :imageWorkflow.publicReadVerified&&imageWorkflow.selectedWorkflow===featureId?'local_image_partial_public_read_verified':'not_verified',
+      localRuntimeFixtureWorkflowVerified:localRuntimeWorkflow.workflowVerified===true&&featureId==='F20',
+      localRuntimeFixtureBusinessStatus:localRuntimeWorkflow.workflowVerified&&featureId==='F20'?'local_runtime_fixed_public_f20_workflow_verified'
+        :localRuntimeWorkflow.publicReadVerified&&localRuntimeWorkflow.selectedWorkflow===featureId?'local_runtime_partial_public_read_verified':'not_verified',
+      fullyVerified:false,unavailable};
   });
   const result={schemaVersion:1,evidenceKind:'personal-agent-owned-release-public',profile:'huawei_ict_agentarts',
-    releaseStatus:cloud.verified&&platform.verified?'development_preview_with_real_public_read':'development_preview',
+    releaseStatus:cloud.workflowVerified&&platform.verified?'development_preview_with_verified_public_f20_workflow'
+      :cloud.verified&&platform.verified?'development_preview_with_real_public_read':'development_preview',
     productionVerified:false,provenance:'projection of explicitly supplied public artifacts; no independent network or credential access',
     source:{revision:build.sourceRevision},build,
-    phases:{imageAcceptance:image,registryPublication:build.registry,platformDeployment:platform,cloudPublicFixture:cloud},
+    phases:{imageAcceptance:image,registryPublication:build.registry,platformDeployment:platform,cloudPublicFixture:cloud,
+      imageWorkflowFixture:imageWorkflow,localRuntimeWorkflowFixture:localRuntimeWorkflow},
     businessMatrix,
     nativePlatformCapabilities:{inferenceGateway:'not_verified_by_these_artifacts',mcpGateway:'not_verified_by_these_artifacts',
       knowledgeBase:'not_verified_by_these_artifacts',trace:'not_verified_by_these_artifacts',evaluation:'not_verified_by_these_artifacts'},
@@ -240,7 +347,9 @@ export function projectOwnedReleaseEvidence({metadata,imageAcceptance,cloudRecei
       'Runtime identity, a read-back version/alias and recorded published invoke mode must match before linking a cloud invocation to deployment.',
       'An image catalog count without the acceptance receipt source/manifest binding is not a verified release template.',
       'Missing platform/cloud/Laya log evidence stays missing; container acceptance alone does not verify cloud publication.',
-      'One real public tool/receipt/resume fixture does not complete all 28 business workflows.',
+      'Local owned-image F20 execution is a separate Competition development fixture; it never verifies Huawei deployment or replaces a failed AgentArts call.',
+      'Native local source-runtime F20 results and timings are distinct from ARM container/QEMU and Huawei native ARM results.',
+      'Fixed public read/compiler fixtures do not complete all 28 business workflows.',
       'A source receipt signature is not a Policy grant or independently verified external effect.']};
   const inspect=(item)=>{
     if(typeof item==='string'&&(absolute(item)||/\bBearer\s+|[?&](?:token|key|signature|authorization|auth)=/i.test(item)))fail('UNSAFE_PUBLIC_PROJECTION');
@@ -265,13 +374,14 @@ async function readPublic(path) {
 
 export async function main(argv=process.argv.slice(2)) {
   try {
-    const allowed=new Set(['--metadata','--image-acceptance','--cloud-receipt','--platform-readback','--output']),args={};
+    const allowed=new Set(['--metadata','--image-acceptance','--cloud-receipt','--image-workflow-receipt','--runtime-workflow-receipt','--platform-readback','--output']),args={};
     for(let index=0;index<argv.length;index+=2) {
       const key=argv[index],value=argv[index+1];if(!allowed.has(key)||!value||args[key]!==undefined)fail('INVALID_ARGUMENTS');args[key]=value;
     }
     if(!args['--metadata'])fail('METADATA_REQUIRED');
     const inputs={};const hashes={};
-    for(const [flag,key] of [['--metadata','metadata'],['--image-acceptance','imageAcceptance'],['--cloud-receipt','cloudReceipt'],['--platform-readback','platformReadback']]) {
+    for(const [flag,key] of [['--metadata','metadata'],['--image-acceptance','imageAcceptance'],['--cloud-receipt','cloudReceipt'],
+      ['--image-workflow-receipt','imageWorkflowReceipt'],['--runtime-workflow-receipt','localRuntimeWorkflowReceipt'],['--platform-readback','platformReadback']]) {
       if(args[flag]){const artifact=await readPublic(args[flag]);inputs[key]=artifact.value;hashes[key]=artifact.sha256;}
     }
     const result={...projectOwnedReleaseEvidence(inputs),publicInputSha256:hashes};
