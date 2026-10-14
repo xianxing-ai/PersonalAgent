@@ -1,85 +1,106 @@
-# PersonalAgent 最终主架构查看页
+# PersonalAgent 架构查看页 · 2026-10-14 修订
 
-目标 profile：huawei_ict_agentarts。主架构方向经 Astra 独立复评，生产接线、真实模型调用和延迟实测尚未验收。
+目标 profile：`huawei_ict_agentarts`。这是一份可离线查看的架构页面，包含全部28个功能、185个详细节点、8个共享节点和113条跨流程关系。展开全部后共221个图节点。
 
-本目录只保留架构查看功能。聊天模拟、剧本播放、虚拟时钟、执行引擎、模拟邮箱/记忆及影子运行面板已移除，不作为产品运行时。
+沿用2026-10-13经Astra复评的主方向，本轮新增机制仍需当前PR审核和生产接线验证。此页不连接真实模型、邮箱、麦克风或账号，没有模拟执行、聊天剧本和演示成绩。
 
-## 查看
+## 直接打开，不需要Node.js
 
-- [完整主架构](DESIGN.md)、[28功能154节点详细流程](WORKFLOWS.md)。
+- [完整主架构](DESIGN.md)、[28功能详细流程](WORKFLOWS.md)。
 - [39工程模块](MODULES.md)、[重构接线与验收](IMPLEMENTATION.md)、[全仓文档清单](DOCUMENTATION_INVENTORY.md)。
 
-- 仓库中的 index.html：离线单文件，浏览器直接打开。
-- 本地开发/预览：npm run dev 或 npm run preview。
-- 同一张图包含 F01—F28、共用决策/模型/Runtime/Policy/工具/证据路径。
-- 支持全部节点展开、节点输入输出与依赖查看、实时/后台路径高亮、延迟说明。
-- 每个功能保留语义决策点、失败/取消/恢复，以及现有代码适配边界。
+下载本目录，或解压交付的压缩包后，用现代浏览器双击 **index.html**。JavaScript、CSS与图标都已打包在这个文件里，不依赖CDN、在线字体或外部资源。
 
-## 已定架构
+GitHub的文件预览只显示HTML源码；请下载后打开，或用下面的本地服务。官方文档链接只有点击后才访问外网。
 
-事件驱动责任图＋稳定功能模板＋按需隔离影子。TaskRuntime 仍是任务状态、执行记录和终态的事实源，ModelGateway、Policy、ToolGateway、Evidence 与既有公开端口复用。
+## 用Node.js运行，不需要安装依赖
 
-默认唯一语义决策模型为 DeepSeek-V4.1-Flash，目标通过华为云 MaaS 国内区域使用。执行模型默认候选包括 DeepSeek、GLM、Qwen、openPangu。模型角色匹配仍需工作流数据评测，不把厂商宣传或网页配置当作性能证据。
+运行器要求Node.js 18或以上，本次实测版本为26.3.0。在仓库根目录执行：
 
-华为云国产模型是默认偏好，不新增白名单、模型封锁、角色限制或审批门槛；保留可配置的模型入口。执行模型产生候选，不能代替可信宿主签发授权。
+```powershell
+cd docs/design/workflow-architecture-20261013
+npm start
+```
 
-## 延迟
+或者在该目录执行 `node serve.mjs`；Windows也可以双击 **启动设计页.cmd**。不要在PersonalAgent仓库根目录执行这里的 `npm start`。
 
-真实延迟未知，原演示的500ms/零成本占位已删除。响应时间由串行关键阶段耗时之和及并行阶段最大耗时决定。
+打开终端输出的地址，默认：
 
-本机受理、状态展示与直接停止不等云端；独立语义问题可合批，独立分支可并行，版本一致的决定可复用。依赖新工具结果的判断必须下一轮。
+**http://127.0.0.1:4173/architecture.html**
 
-影子、回放、历史评估与配置改进默认后台。原有执行或发布条件确实需要隔离验证时，验证只阻塞对应节点，不增加新的审批。
+`/`、`/index.html`、`/architecture.html`显示同一页面。Ctrl+C停止服务。只监听本机回环地址；无需安装依赖、配置API Key或构建整个PersonalAgent。
 
-实施后需测首响、P50/P95、并发排队、超时取消及长任务关键路径。普通语义任务需考虑秒级等待风险，不能根据图保证毫秒级响应。
+4173被占用时自动选择空闲端口，请以终端输出为准，不会停止占用端口的其他程序。也可以在PowerShell指定端口：
 
-## 语音与影子
+```powershell
+$env:PORT = '4174'
+npm start
+```
 
-明确拒绝、本地停止先走可信本机路径。语音同意绑定问题、revision及操作参数；修改参数使旧确认失效。ASR/云端不可用时保留本地直接入口，不能保证任意口头停止仍能识别。
+服务启动时读取HTML；替换页面后重启自己的这个服务，浏览器刷新即可。截图overview.png供文档预览，HTTP运行器只提供离线HTML页面。
 
-决策影子只比较判断；回放缺少工具结果标未知，不读未来数据；隔离执行只证明隔离场景行为。影子不写主任务、主记忆或消费主授权。
+## 在页面里怎么看
 
-MaaS API 不提供直接改远端权重的能力。F23 默认改进提示、图、调用配置或可用模型版本；独立权重训练需要另外实现与评测。
+- 默认总览：F01—F28与主决策、执行模型、Policy、工具、证据连接在同一图中。
+- 六大板块：交互、Runtime、云编排、工具、知识记忆、评估；点击高亮并查看关联功能。只是逻辑阅读分组，不增加进程或服务。
+- 核心机制：责任来源与语音、检索与上下文、局部修订与补偿、取消四种结果、模型分派与工具探索、按需影子、云端证据分工。
+- 点击功能或使用快速选择：查看全部节点、前置关系、条件分支、语义决策点、代码适配、恢复和验收方法。
+- 展开全部节点/展开单个功能：仍在同一图中；选节点能查看输入输出、条件、汇合方式与证据要求。
+- 实时/后台路径、决策连线、缩放与适应全部：便于读图。验证方案与延迟/设计状态列出测试方法和未验证项。
+- 窄屏按钮栏和板块栏可横向滚动；右侧详情可纵向滚动。详情关闭后继续操作图。
 
-## 现有代码适配
+## 本轮设计修订
 
 查看器初版核对基线为main b03af83e；本次全项目文档重写核对基线为已合并#347的main 3275aa91。接口状态依据docs/interfaces/CURRENT_INTERFACE_CATALOG.md；本图不提高任何冻结或验证等级。
+1. 唯一全局语义决策配置默认DeepSeek-V4.1-Flash，通过华为云国内MaaS。参与责任、记忆检索、上下文、分派、恢复、完成建议与影子选路。独立判断可并发，已有分派建议可复用。
+2. 可信用户原句/有效授权是责任来源。保存版本、否定、条件和对象/参数关系；`includes`只证明字符出现，事实`rule_ref`不自动提供动作授权。明确已授权责任直接生效，不增加每条新责任首次确认。
+3. 先召回再联合判断；按时间、地点、人物、资源宽松检索，未知项保留。缺证据按需扩充，不固定一跳、1–2轮或新增预算上限；相同检索无新信息时停止重复，沿用真实期限/取消/用户配置。
+4. F03计划修订保留已发生效果。补偿绑定具体原operation/effect ID、读回、变更原因及修正因果链；不能凭REVISE、同对象历史写入或模型自报operation_kind分类。未知原写入先核实；现有授权覆盖补偿则自动执行，缺决定才补问。
+5. F02语音与文字绑定同一当前问题、参数和revision，支持主动播报。修改使旧确认失效，已有授权仍覆盖时无需额外确认；拒绝、回声、沉默、中途转写和旧回答不会冒充同意。
+6. F24操作结果区分未开始、正在停止、结果待核实、已发生。直接本地停止不等云端；口头停止仍依赖ASR。读回缺失不证明未执行，迟到返回不能覆盖新控制revision。这不是新增公共task wire终态。
+7. F28主对话可分配不同厂商执行模型和实际支持的原生思考参数。执行者可以在受派范围选工具/探索，复用受限工具循环；请求仍经已有Policy/ToolGateway，不必每次工具选择串回全局模型。
+8. F22仅在失败、配置变化、异常、用户调试或配置采样时触发，不默认每请求双跑。决策影子比较判断，回放不读未来、缺反事实标未知；隔离只覆盖已支持的环境，不写主任务/记忆或消费主授权。
+9. F23提示/图/调用配置、用户项目补丁、可信宿主升级分别走原有测试、版本与发布。MaaS不能直接调整远端权重；AgentArts Evaluation接入仍为拟议，须真实作业读回。
+10. F08授权覆盖直接执行，真正缺决定才语音补问；资料检索、分类与独立线程并行。静默徽章承载普通等待，重要副作用、截止冲击或需要决定时主动通知。
 
-复用：TaskRuntime、ModelGateway、CloudAgentPort、Policy、ToolGateway、Evidence、MemoryQueryPort、KnowledgePort与subagentModels工厂。
+默认国内服务，不新增模型封锁、角色禁用或审批门槛。执行候选包括DeepSeek、GLM、Qwen、openPangu，入口可配置；角色匹配和思考深度的效果需要相同任务实测。
 
-待接线：自然语言责任编译、语音问题摘要及绑定、完整Competition多模型分派、上下文版本映射、图恢复/副作用对账、独立影子宿主与真实工具闭环。
+## 现有代码与证据边界
 
-图中的输入输出字段是架构表达，不是新增公共DTO。模型上下文能力向F27反馈；节点、快照与revision、required/optional汇合和未知结果对账在共用路径详情中明确。
+基线：PersonalAgent `origin/main 3275aa91`（2026-10-14核对）。接口状态以[当前接口目录](../../interfaces/CURRENT_INTERFACE_CATALOG.md)为准。本次只改查看器，不更改公共Schema、数据库、根workspace依赖或产品Runtime。
 
-## 墙内与离线
+复用TaskRuntime、ModelGateway、CloudAgentPort、Policy、ToolGateway、Evidence、MemoryQueryPort、KnowledgePort、subagentModels与subagent-host受限循环。后者提供执行者范围内探索的代码基础，不等于Competition多模型消费已验收。
 
-JS、CSS与图标本地打包，不使用国外CDN、在线字体、真实模型API或执行循环。使用开源React/React Flow不产生运行时外网依赖。官方文档只作为用户可点击链接，不自动加载。
+责任来源映射、DecisionReady/NeedContextExpansion、隐含依赖召回、效果因果关联、完整语音/影子/上下文适配都是设计内容或拟议内部记录。图中的字段不发布新wire DTO；TypeScript接口不是安全沙箱。
 
-项目级.npmrc采用华为云npm镜像；不修改系统全局配置。
+AgentArts承担云端world→plan→review方向，本地Runtime保有状态/控制/终态。分别留存构建、部署、invocation/trace、本地实际工具、读回和评估证据。平台截图或固定合成文件读取场景不能证明整链可用；Competition不静默回退Local。
 
-## 可编辑源码
+本地保存不等于没有数据出机；生产模型只接收当前获授权的必要上下文。离线桌面无法执行本地动作；未来云订阅/事件收件箱须另接线。此页不提升任何能力冻结或真实验证等级。
 
-source/ 为独立查看器源码，不导入产品Runtime，也不增加产品根workspace依赖。
+## 可编辑源码与重新打包
 
-    cd source
-    npm ci
-    npm run export:offline
+`source/`是独立React/React Flow查看器，不导入生产Runtime。源码构建使用Node.js **20.19+或22.12+**（按当前Vite依赖要求）；只查看页面不需要这些构建依赖。
 
-    npm run check:architecture
-    npm run lint
+```powershell
+cd docs/design/workflow-architecture-20261013/source
+npm ci
+npm run dev
+```
 
-生成 source/dist/architecture.html；仓库 index.html 是其发布副本。无需构建可直接离线查看。
+打开Vite终端给出的地址（通常http://localhost:5173/）。依赖使用项目级华为云npm配置和已有国内镜像锁文件，不修改系统全局配置。
 
-## 本次查看器验证
+修改入口：
 
-- export:offline：TypeScript 与 Vite 构建通过，离线页面生成成功。
-- check:architecture：28 个功能、154 个详细节点、36 个连通总览节点、102 条关系；本地停止与并行依赖检查通过。
-- lint、git diff --check：通过。
-- 浏览器：总览、展开为190节点、实时/后台高亮、节点详情及延迟面板可查看；阻断外部资源请求时离线页面仍可打开，页面无外部资源标签，控制台无错误。
-- 仓库页面与生成产物 SHA256 一致；可编辑源码与已验证源码一致。
-- 构建存在单包约505KB的体积提示；不影响离线页面生成，后续可按需拆包。
+| 内容 | 文件 |
+| --- | --- |
+| 28个功能、节点/依赖/条件/恢复 | source/src/data/architecture.json |
+| 六大板块、机制、目标与验收矩阵 | source/src/data/architectureRevisions.ts |
+| 跨功能关系、现有接口说明 | source/src/data/overview.ts |
+| 共享路径、延迟与设计状态 | source/src/data/architectureNotes.ts |
+| 模型候选与原生参数说明 | source/src/data/models.ts |
+| 总图及详情交互 | source/src/components/workflow/WorkflowOverview.tsx |
 
-以上仅验证架构查看器，不证明生产模型、语音、工具、影子宿主或端到端延迟已可用。
+重新构建并更新交付页面（在source目录执行）：
 
 文档重写验证：28功能154节点、39工程模块、PA-001—031均有映射；生成正文一致，301份变更Markdown无新增失效相对链接，未改变生产代码/公共Schema/根依赖；审查规则7项回归通过。脚本入口：
 
@@ -90,25 +111,39 @@ source/ 为独立查看器源码，不导入产品Runtime，也不增加产品�
 脚本从仓库根目录运行。导航生成器仅输出补丁；原日期的查看器构建/浏览器证据未在纯文档重写中冒充重新运行。
 
 ![28个功能的连通架构总图](overview.png)
+```powershell
+npm run export:offline
+npm run check:architecture
+npm run lint
+Copy-Item -LiteralPath ./dist/architecture.html -Destination ../index.html -Force
+```
 
-## 复评采用
+`export:offline`包含TypeScript/Vite构建；生成source/dist/architecture.html，复制后根目录index.html成为发布副本。启动器、源码及该副本一起打包给其他人。不要把node_modules、dist或本机账号配置放入压缩包。
 
-Astra：主架构可以定稿，不能称为实现或延迟已验收。
-已采纳：减少串行云决策、区分实时/后台、本地停止先于云端、补决策返回与revision/锁/汇合/对账、补上下文能力反馈、删除模拟性能及假能力说明、明确远端权重边界。
+## 验证与剩余项
 
-正式PR请求 goo122、Potatos498 审核；模型复评不替代非作者对当前提交的有效Approve。
+- 构建、类型检查、lint和架构结构检查通过；28功能、185详细节点、36连通总览节点、113关系。
+- 结构检查覆盖有效依赖/边、六板块完整分组、独立停止入口、真实并行/前置关系和邮件跳过未选择语音分支。
+- 浏览器已检查28功能详情、七机制、验证方案、邮件条件节点、全量221节点与收起、路径高亮及窄屏；无框架错误覆盖层和相关控制台错误。
+- 本地Node运行器的HTTP/HEAD、404/405与占用端口回退验证通过；离线HTML没有外部脚本/样式资源标签。
+- 浏览器插件仅允许HTTP/HTTPS，禁止file协议，因此双击离线文件未做本轮浏览器验收；可用已验证的Node回环服务查看相同HTML。
+- 发布HTML与生成产物一致；本轮修改的源码与实际构建源码一致。
+- 构建有单包超过500KB的体积提示，未掩盖；当前保留单文件便于离线交付。
 
-## 模型官方依据
+以上是**查看器验证**。真实模型/语音/邮箱/影子宿主和工作流首响、P50/P95、调用次数、用户打扰等指标尚未由本次工作验证。公平对照用相同模型、数据、授权、幂等、读回，只改变被测机制，不填模拟成绩。
 
-架构来源：Harness的任务契约与客观验证；Graph Engineering的真实依赖、fan-out/fan-in和局部修复；作用域记忆的来源/版本/失效；轨迹驱动的隔离评估与回归。采用方法，不将帖子自报性能当成本项目成绩。
+![28功能连通总图](overview.png)
 
-- https://x.com/mirku21/article/2098836008468992471
-- https://x.com/Promixyz/article/2102424036416348494
-- https://x.com/ArchimedesLore/status/2109716518837579893
-- https://github.com/comet-ml/opik
+## 设计来源与审查
 
-查看器实际复用本地打包的React Flow；生产编排复用AgentArts与现有Runtime，未安装第二个任务调度系统或外部观测SaaS。
+保留Harness任务契约、Graph Engineering真实依赖/fan-out/fan-in/局部修复、作用域记忆来源/版本/失效、失败轨迹隔离评估的方法；帖子自报性能不作为本项目成绩。
 
-- https://support.huaweicloud.com/model-call-maas/model-call-050.html
-- https://support.huaweicloud.com/bulletin-maas/bulletin-maas-0001.html
-- https://support.huaweicloud.com/model-call-maas/model-call-019.html
+- [Harness文章](https://x.com/mirku21/article/2098836008468992471)
+- [Graph Engineering文章](https://x.com/Promixyz/article/2102424036416348494)
+- [作用域记忆](https://x.com/ArchimedesLore/status/2109716518837579893)
+- [Opik开源仓库](https://github.com/comet-ml/opik)
+- [华为云模型目录](https://support.huaweicloud.com/model-call-maas/model-call-050.html)
+- [大陆区模型公告](https://support.huaweicloud.com/bulletin-maas/bulletin-maas-0001.html)
+- [原生思考参数](https://support.huaweicloud.com/model-call-maas/model-call-019.html)
+
+本轮不宣称新增机制已获Astra再次批准。PR请求goo122、Potatos498实质审核，按项目现行要求取得当前提交至少一位合资格非作者有效Approve；不会自动合并。本页修订独立于仍在审查的文档重写PR #349。

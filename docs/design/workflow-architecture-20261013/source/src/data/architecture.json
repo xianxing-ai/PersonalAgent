@@ -4,106 +4,104 @@
     "code": "F01",
     "name": "主对话与责任理解",
     "category": "交互与输入",
-    "summary": "接收用户自然语言指令，结合预设责任范围拆解任务、识别歧义，并驱动后续工作流。",
+    "summary": "从可信用户指令或既有授权建立责任，先召回再由唯一主决策配置联合理解、选路与分派；缺信息按需补查，清楚且已授权的责任直接生效。",
     "decisionPoints": [
-      "判断输入是单次临时任务、长期责任授权还是现有任务变更",
-      "识别目标收件人、核心动作边界与关键歧义点",
-      "选择适用的功能模板(如 F08 邮件处理)",
-      "调用 F28 为子任务推荐适任模型与思考预算"
+      "区分单次任务、持久责任与任务变更，保持否定、条件、对象和参数关系。",
+      "联合排序责任、事实、模板与模型能力；有新证据需求才扩充上下文。",
+      "提出任务图与各执行模型/原生思考深度；既有判断可被F28消费。",
+      "区分已授权动作、事实引用、推断建议与真正缺失的用户决定。"
     ],
     "nodes": [
       {
         "id": "F01_N01",
-        "label": "接收主对话指令",
+        "label": "保存可信用户原句、来源与指令版本",
         "kind": "input",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "session_input_stream"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "text"
+          "文字或最终语音转写",
+          "可信会话来源"
         ],
         "outputFields": [
-          "rawQuery",
-          "intentType"
+          "完整指令引用",
+          "条件与否定原文"
         ]
       },
       {
         "id": "F01_N02",
-        "label": "并行检索责任与上下文",
+        "label": "并行召回有效责任、上下文与能力",
         "kind": "tool_exec",
         "dependencies": [
           "F01_N01"
         ],
         "required": true,
-        "resourceKeys": [
-          "responsibility_db"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "queryKey"
+          "事件元数据或已知查询对象",
+          "现有数据范围"
         ],
         "outputFields": [
-          "matchedPolicyId",
-          "activeTaskCount"
+          "责任版本",
+          "事实片段",
+          "模板/模型能力"
         ],
-        "evidenceRequirement": "命中 resp-email-auto-01 授权记录"
+        "evidenceRequirement": "每个引用可回到原始来源；事实记录与动作授权分别标记。"
       },
       {
         "id": "F01_N03",
-        "label": "决策模型 语义判断与边界拆解",
+        "label": "唯一主模型联合判断责任、计划与分工",
         "kind": "semantic_decision",
         "dependencies": [
           "F01_N02"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "query",
-          "policy"
+          "原句",
+          "有效召回",
+          "当前任务快照"
         ],
         "outputFields": [
-          "templateSelected",
-          "branches",
-          "ambiguities"
+          "责任候选",
+          "任务图候选",
+          "模型/思考配置候选",
+          "就绪或需扩充建议"
         ],
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
-          "role": "核心决策模型",
-          "thinkingLevel": "standard"
+          "role": "唯一全局语义决策配置"
         }
       },
       {
         "id": "F01_N04",
-        "label": "确定性参数与权限校验",
+        "label": "宿主检查引用、适用范围与现有授权",
         "kind": "deterministic_check",
         "dependencies": [
           "F01_N03"
         ],
         "required": true,
-        "resourceKeys": [
-          "auth_token_vault"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "decision"
+          "来源定位",
+          "指令revision",
+          "现有授权记录",
+          "动作对象及参数"
         ],
         "outputFields": [
-          "validationPassed",
-          "permissionLevel"
+          "可采用候选或待澄清项"
         ],
-        "evidenceRequirement": "操作者具有 scoped_delegate 权限，无越权风险"
+        "evidenceRequirement": "字符串出现不证明自然语言等价；不能把“别发给张总”反转成发送授权。"
       },
       {
         "id": "F01_N05",
-        "label": "调用 F28 分配执行模型",
-        "kind": "execution_model",
+        "label": "F28适配执行模型与实际支持参数",
+        "kind": "deterministic_check",
         "dependencies": [
           "F01_N04"
         ],
@@ -111,80 +109,175 @@
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "tasks"
+          "已校验分工候选",
+          "原生能力目录"
         ],
         "outputFields": [
-          "draftModel",
-          "checkModel"
+          "子任务配置"
         ],
-        "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4-flash",
-          "role": "执行模型 (草稿起草)"
-        }
+        "evidenceRequirement": "消费主模型已有分派建议；只有新问题才再调用同一主决策配置。"
       },
       {
         "id": "F01_N06",
-        "label": "实例化工作流任务图",
-        "kind": "complete",
+        "label": "TaskRuntime建立责任关联任务图",
+        "kind": "checkpoint",
         "dependencies": [
           "F01_N05"
         ],
         "required": true,
-        "resourceKeys": [
-          "workflow_registry"
-        ],
+        "resourceKeys": [],
         "effectType": "本地状态 / 缓存",
-        "inputFields": [
-          "plan"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "workflowInstanceId",
-          "status"
+          "任务revision",
+          "依赖边",
+          "责任来源引用"
         ]
+      },
+      {
+        "id": "F01_N07",
+        "label": "缺信息：在既有数据范围扩充检索",
+        "kind": "tool_exec",
+        "dependencies": [
+          "F01_N03"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "新片段与来源版本",
+          "是否产生新信息"
+        ],
+        "condition": "需要新证据且数据范围已授权"
+      },
+      {
+        "id": "F01_N08",
+        "label": "真正歧义：主动语音或文字补问",
+        "kind": "wait_user",
+        "dependencies": [
+          "F01_N04"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "绑定当前问题的回答"
+        ],
+        "condition": "缺少关键条件、授权或责任范围有实际变化"
+      },
+      {
+        "id": "F01_N09",
+        "label": "明确已授权责任直接激活并留来源",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F01_N04"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "有效责任版本",
+          "适用范围",
+          "撤销/变更关联"
+        ],
+        "condition": "持久责任含义明确且现有授权覆盖"
       }
     ],
     "edges": [
       {
-        "id": "F01_E01",
+        "id": "F01_REV_E1",
         "source": "F01_N01",
         "target": "F01_N02",
         "required": true,
-        "branchLabel": "获取责任定义"
+        "branchLabel": "先召回"
       },
       {
-        "id": "F01_E02",
+        "id": "F01_REV_E2",
         "source": "F01_N02",
         "target": "F01_N03",
         "required": true,
-        "branchLabel": "决策模型语义拆解"
+        "branchLabel": "联合判断"
       },
       {
-        "id": "F01_E03",
+        "id": "F01_REV_E3",
         "source": "F01_N03",
         "target": "F01_N04",
         "required": true,
-        "branchLabel": "规则沙箱拦截"
+        "branchLabel": "候选核验"
       },
       {
-        "id": "F01_E04",
+        "id": "F01_REV_E4",
         "source": "F01_N04",
         "target": "F01_N05",
         "required": true,
-        "branchLabel": "模型角色匹配"
+        "branchLabel": "已授权且明确"
       },
       {
-        "id": "F01_E05",
+        "id": "F01_REV_E5",
         "source": "F01_N05",
         "target": "F01_N06",
         "required": true,
-        "branchLabel": "任务图实例化"
+        "branchLabel": "装配任务图"
+      },
+      {
+        "id": "F01_REV_E6",
+        "source": "F01_N03",
+        "target": "F01_N07",
+        "required": false,
+        "branchLabel": "缺新证据",
+        "condition": "按需"
+      },
+      {
+        "id": "F01_REV_E7",
+        "source": "F01_N07",
+        "target": "F01_N03",
+        "required": false,
+        "branchLabel": "新信息再判断",
+        "condition": "有新信息"
+      },
+      {
+        "id": "F01_REV_E8",
+        "source": "F01_N04",
+        "target": "F01_N08",
+        "required": false,
+        "branchLabel": "需要用户决定",
+        "condition": "实际缺失"
+      },
+      {
+        "id": "F01_REV_E9",
+        "source": "F01_N08",
+        "target": "F01_N03",
+        "required": false,
+        "branchLabel": "带新指令版本重判",
+        "condition": "回答到达"
+      },
+      {
+        "id": "F01_REV_E10",
+        "source": "F01_N04",
+        "target": "F01_N09",
+        "required": false,
+        "branchLabel": "授权明确则直接激活",
+        "condition": "持久责任"
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
+      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
+      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+    ],
+    "designNotes": [
+      "DecisionReady / NeedContextExpansion 是拟议内部状态概念，不是新发布的wire DTO。",
+      "宿主校验来源身份、版本和授权记录；语义相容性由模型提出并保留不确定性，不声称代码能普遍证明中文逻辑等价。",
+      "rule_ref可以支持事实或用户规则；只有对应有效动作授权才允许执行。模型推断不会静默扩权。",
+      "检索不设固定一跳；相同检索没有新信息时停止重复，并沿用实际截止时间、取消和用户配置。"
+    ],
+    "acceptance": [
+      "清楚的已授权新责任无需额外首轮确认；歧义才进入补问。",
+      "否定、条件、省略及多对象输入保持原文关联；不能只用includes判断同意或授权。",
+      "检索扩充能恢复遗漏依据，也能在无新增信息时退出；记录调用轮数与用户打扰分布。"
     ]
   },
   {
@@ -192,7 +285,7 @@
     "code": "F02",
     "name": "语音交互与确认",
     "category": "交互与输入",
-    "summary": "主动询问与语音确认绑定可信操作；明确拒绝与本地停止不等待云端。语义解释只给出意图建议，授权检查由可信宿主完成。",
+    "summary": "仅在真正缺少决定时主动补问；语音与文字回答同样绑定当前问题、操作和版本。清楚的既有授权直接执行，拒绝与本地直接停止不等待云模型。",
     "decisionPoints": [
       "从最终转写中提取用户真实意图（同意、拒绝、修改金额、附加条件）",
       "识别否定语义（如“我绝不同意”，防止被误判为同意）",
@@ -212,7 +305,8 @@
           "审批revision",
           "参数指纹"
         ],
-        "outputFields": []
+        "outputFields": [],
+        "condition": "已有Policy确实需要用户决定或关键含义仍不明确"
       },
       {
         "id": "F02_N02",
@@ -273,7 +367,9 @@
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "joinMode": "selected",
+        "condition": "明确回答或经过语义解释的回答；中途转写、回声、沉默不消费授权"
       },
       {
         "id": "F02_N06",
@@ -284,13 +380,13 @@
         ],
         "required": true,
         "resourceKeys": [],
-        "effectType": "读取",
+        "effectType": "写入（以工具描述为准）",
         "inputFields": [],
         "outputFields": []
       },
       {
         "id": "F02_N07",
-        "label": "修改或条件：作废旧确认，形成新候选与问题",
+        "label": "修改或条件：旧确认失效，再核对已有授权",
         "kind": "checkpoint",
         "dependencies": [
           "F02_N04"
@@ -299,7 +395,10 @@
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [
+          "新候选revision",
+          "是否仍需要新决定"
+        ]
       },
       {
         "id": "F02_N08",
@@ -456,6 +555,17 @@
       "本地停止先执行；语音同意需当前问题、revision与参数匹配。",
       "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
       "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+    ],
+    "designNotes": [
+      "确认记录关联可信用户回答，不称为密码学用户签名。",
+      "含“同意”子串不等于同意；“我绝不同意”按拒绝处理，附条件回答先处理条件。",
+      "直接停止入口不等ASR；口头停止仍取决于真实识别链，随后进入F24四种执行结果。",
+      "版本变化后旧回答失效；新参数已被既有授权覆盖时，不新增一律二次确认。"
+    ],
+    "acceptance": [
+      "同意、拒绝、修改、条件、旧版本、回声与中途转写分别核对。",
+      "主动播报与文字共用同一待决问题；无需专门点击弹窗。",
+      "取消受理与当前操作已停止分开显示，未知结果转读回。"
     ]
   },
   {
@@ -463,123 +573,302 @@
     "code": "F03",
     "name": "世界状态、目标与局部重规划",
     "category": "规划与记忆",
-    "summary": "感知外部环境突发事件（如会议提前），保留已验证结果，仅局部重排受影响节点。",
+    "summary": "按时间、地点、人物和资源宽松召回潜在依赖，由唯一主模型判断受影响子图。计划修订保留已发生操作；需要修正外部结果时另建可追溯补偿候选。",
     "decisionPoints": [
-      "判断突发事件是否冲击当前目标及具体冲击哪些节点",
-      "评估已产生阶段成果的有效性（保留仍有效部分）",
-      "重新编排受冲突分支的时间与优先级"
+      "关联重叠时间、邻近地点、出行和共享资源；保留未知项与不确定性。",
+      "判断哪些结果仍有效、哪些尚未执行节点失效、哪些真实外部效果需要修正。",
+      "提出局部重规划或补偿候选，不能把修改计划当成外部回滚。"
     ],
     "nodes": [
       {
         "id": "F03_N01",
-        "label": "接收日历变更事件",
+        "label": "接收事件或用户变更并核对版本",
         "kind": "input",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "event_bus_incoming"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "eventName",
-          "originalTime"
+          "变更来源",
+          "原任务revision"
         ],
         "outputFields": [
-          "shiftMinutes"
+          "有效变更原因"
         ]
       },
       {
-        "id": "F03_N02",
-        "label": "决策模型 评估目标影响范围",
-        "kind": "semantic_decision",
+        "id": "F03_N05",
+        "label": "并行宽松召回时间、地点、人物、资源",
+        "kind": "tool_exec",
         "dependencies": [
           "F03_N01"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "currentTask",
-          "event"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "impactedNodes",
-          "unaffectedNodes"
+          "重叠/邻近/出行候选",
+          "未知属性项",
+          "来源版本"
+        ],
+        "evidenceRequirement": "未知地点/时间不因优先级低被自动排除；能力和配置决定实际检索范围。"
+      },
+      {
+        "id": "F03_N02",
+        "label": "主模型判断依赖与受影响子图",
+        "kind": "semantic_decision",
+        "dependencies": [
+          "F03_N05"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "保留项",
+          "失效项",
+          "依赖假设及依据",
+          "可能补偿的原效果"
         ],
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
-          "role": "影响评估与重规划"
+          "role": "唯一全局语义决策配置"
         }
       },
       {
         "id": "F03_N03",
-        "label": "保留已有成果，废弃过时节点",
+        "label": "保留有效成果；仅使过时计划节点失效",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F03_N02"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "保留检查点",
+          "计划新revision"
+        ],
+        "evidenceRequirement": "不删除已发邮件或已发生写入的事实；依赖假设不是已验证因果关系。"
+      },
+      {
+        "id": "F03_N06",
+        "label": "宿主绑定原操作、效果与变更因果链",
         "kind": "deterministic_check",
         "dependencies": [
           "F03_N02"
         ],
         "required": true,
-        "resourceKeys": [
-          "checkpoint_storage"
-        ],
-        "effectType": "本地状态 / 缓存",
+        "resourceKeys": [],
+        "effectType": "读取",
         "inputFields": [
-          "keepCheckpoints",
-          "invalidate"
+          "稳定operation/effect ID",
+          "实际执行/读回记录",
+          "候选的原效果引用"
         ],
         "outputFields": [
-          "savedTokens"
-        ]
+          "已绑定的正向/重试/补偿上下文"
+        ],
+        "evidenceRequirement": "REVISE加同一对象存在写入不够；必须关联具体原效果与修正原因，不能相信模型自报分类。"
+      },
+      {
+        "id": "F03_N07",
+        "label": "未知原写入：先读回核实",
+        "kind": "verification",
+        "dependencies": [
+          "F03_N06"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "已发生/未发生/仍未知及证据"
+        ],
+        "condition": "原效果状态未知"
+      },
+      {
+        "id": "F03_N08",
+        "label": "现有Policy核对实际补偿授权",
+        "kind": "deterministic_check",
+        "dependencies": [
+          "F03_N06"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [
+          "原效果因果链",
+          "补偿对象/参数",
+          "现有授权"
+        ],
+        "outputFields": [
+          "已覆盖或需决定"
+        ],
+        "condition": "已核实原效果，且确有补偿候选",
+        "evidenceRequirement": "正向授权不自动等于补偿授权；已有范围覆盖更正时直接执行。"
+      },
+      {
+        "id": "F03_N09",
+        "label": "覆盖授权：执行补偿并读回",
+        "kind": "tool_exec",
+        "dependencies": [
+          "F03_N08"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "写入（以工具描述为准）",
+        "inputFields": [],
+        "outputFields": [
+          "独立补偿操作ID",
+          "补偿结果与读回"
+        ],
+        "condition": "实际补偿授权有效"
+      },
+      {
+        "id": "F03_N10",
+        "label": "缺决定：保留补偿草稿并语音补问",
+        "kind": "wait_user",
+        "dependencies": [
+          "F03_N08"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "草稿",
+          "待决问题引用"
+        ],
+        "condition": "缺少补偿授权或关键条件"
       },
       {
         "id": "F03_N04",
-        "label": "局部重调度就绪节点",
-        "kind": "complete",
+        "label": "F24按新依赖调度；独立分支继续",
+        "kind": "checkpoint",
         "dependencies": [
           "F03_N03"
         ],
         "required": true,
-        "resourceKeys": [
-          "task_scheduler_queue"
-        ],
+        "resourceKeys": [],
         "effectType": "本地状态 / 缓存",
-        "inputFields": [
-          "newOrder"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "replanApplied"
+          "可继续节点",
+          "等待核实/决定项"
         ]
       }
     ],
     "edges": [
       {
-        "id": "F03_E01",
+        "id": "F03_REV_E1",
         "source": "F03_N01",
-        "target": "F03_N02",
-        "required": true
+        "target": "F03_N05",
+        "required": true,
+        "branchLabel": "召回潜在关联"
       },
       {
-        "id": "F03_E02",
+        "id": "F03_REV_E2",
+        "source": "F03_N05",
+        "target": "F03_N02",
+        "required": true,
+        "branchLabel": "判断依赖"
+      },
+      {
+        "id": "F03_REV_E3",
         "source": "F03_N02",
         "target": "F03_N03",
         "required": true,
-        "branchLabel": "筛选受损边界"
+        "branchLabel": "计划修订"
       },
       {
-        "id": "F03_E03",
+        "id": "F03_REV_E4",
+        "source": "F03_N02",
+        "target": "F03_N06",
+        "required": true,
+        "branchLabel": "外部效果核对"
+      },
+      {
+        "id": "F03_REV_E5",
         "source": "F03_N03",
         "target": "F03_N04",
         "required": true,
-        "branchLabel": "局部热修替换"
+        "branchLabel": "局部调度"
+      },
+      {
+        "id": "F03_REV_E6",
+        "source": "F03_N06",
+        "target": "F03_N07",
+        "required": false,
+        "branchLabel": "先核实",
+        "condition": "结果未知"
+      },
+      {
+        "id": "F03_REV_E7",
+        "source": "F03_N07",
+        "target": "F03_N06",
+        "required": false,
+        "branchLabel": "保留原结果后再分类",
+        "condition": "核实完成"
+      },
+      {
+        "id": "F03_REV_E8",
+        "source": "F03_N06",
+        "target": "F03_N08",
+        "required": false,
+        "branchLabel": "具体原效果因果链",
+        "condition": "确需补偿"
+      },
+      {
+        "id": "F03_REV_E9",
+        "source": "F03_N08",
+        "target": "F03_N09",
+        "required": false,
+        "branchLabel": "已有授权覆盖",
+        "condition": "通过"
+      },
+      {
+        "id": "F03_REV_E10",
+        "source": "F03_N08",
+        "target": "F03_N10",
+        "required": false,
+        "branchLabel": "真正缺决定",
+        "condition": "未覆盖"
+      },
+      {
+        "id": "F03_REV_E11",
+        "source": "F03_N09",
+        "target": "F03_N04",
+        "required": false,
+        "branchLabel": "补偿证据返回",
+        "condition": "完成"
+      },
+      {
+        "id": "F03_REV_E12",
+        "source": "F03_N10",
+        "target": "F03_N08",
+        "required": false,
+        "branchLabel": "同一问题的新决定",
+        "condition": "回答到达"
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
+      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
+      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+    ],
+    "designNotes": [
+      "图更新和外部补偿是两种操作；不能靠换revision撤销已发生副作用。",
+      "原操作ID与效果ID在恢复、模型切换和重规划间保持稳定。",
+      "补偿分类由宿主结合实际图节点来源、原效果引用、前驱与证据绑定；同一收件人有历史发信不能把以后所有发信都归为补偿。"
+    ],
+    "acceptance": [
+      "同一对象的新正向动作、原动作重试与更正动作能分别追溯，不误分类。",
+      "原结果未知时不盲重试、不直接补偿；核实后保留原结果。",
+      "对比完整重规划与局部重规划时使用同样授权、幂等和读回能力。"
     ]
   },
   {
@@ -587,125 +876,200 @@
     "code": "F04",
     "name": "Wiki 与作用域记忆管理",
     "category": "规划与记忆",
-    "summary": "结构化记忆管理：包含事实、偏好、纠正与遗忘，区分版本链与矛盾隔离（不冒充确定事实）。",
+    "summary": "保存有来源、作用域和版本的事实/偏好，区分相容更新、冲突与失效。主模型参与关联与纠错，事实记忆不会自动变成执行授权。",
     "decisionPoints": [
-      "判断提取的信息是全局偏好、项目级规则还是特定任务纠正",
-      "检测与现有记忆库版本之间的兼容性与冲突矛盾",
-      "区分“暂停使用”、“撤销索引”与“彻底物理删除”"
+      "判断候选是事实、偏好、责任条款还是推断，分别留来源。",
+      "关联适用范围与已有版本，识别冲突及受影响上下文。",
+      "提出暂停使用、纠正或遗忘方式；使用现有授权和公开写入能力。"
     ],
     "nodes": [
       {
         "id": "F04_N01",
-        "label": "提取事实候选",
+        "label": "获取候选、来源与作用域",
         "kind": "input",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "session_input_stream"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "rawText"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "entity",
-          "newValue"
+          "来源引用",
+          "事实/偏好/责任/推断类型候选"
         ]
       },
       {
-        "id": "F04_N02",
-        "label": "决策模型 检索已有版本与作用域",
-        "kind": "semantic_decision",
+        "id": "F04_N05",
+        "label": "并行检索已有版本与有效授权引用",
+        "kind": "tool_exec",
         "dependencies": [
           "F04_N01"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "entity"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "matchedFactId",
-          "currentVersion",
-          "scope"
+          "事实版本链",
+          "冲突候选",
+          "授权引用（独立）"
+        ]
+      },
+      {
+        "id": "F04_N02",
+        "label": "主模型判断相容、冲突或失效",
+        "kind": "semantic_decision",
+        "dependencies": [
+          "F04_N05"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "版本关联候选",
+          "适用范围",
+          "冲突解释"
         ],
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
-          "role": "版本关联推理"
+          "role": "唯一全局语义决策配置"
         }
       },
       {
-        "id": "F04_N03",
-        "label": "写入新版本事实并归档旧版",
-        "kind": "tool_exec",
+        "id": "F04_N06",
+        "label": "宿主核对来源与公开写入能力",
+        "kind": "deterministic_check",
         "dependencies": [
           "F04_N02"
         ],
         "required": true,
-        "resourceKeys": [
-          "memory_wiki_storage"
-        ],
-        "effectType": "写入（以工具描述为准）",
-        "inputFields": [
-          "factId",
-          "newVersion",
-          "newContent"
-        ],
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
         "outputFields": [
-          "newFactId",
-          "supersededFactId"
-        ]
+          "可写候选或Unavailable"
+        ],
+        "evidenceRequirement": "已确认事实不等于动作授权；来源不可读或能力未发布时明确不可用。"
+      },
+      {
+        "id": "F04_N03",
+        "label": "相容：写新版本并保留旧版来源",
+        "kind": "tool_exec",
+        "dependencies": [
+          "F04_N06"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "写入（以工具描述为准）",
+        "inputFields": [],
+        "outputFields": [
+          "新事实版本",
+          "旧版关联"
+        ],
+        "condition": "相容更新且现有写入授权有效"
+      },
+      {
+        "id": "F04_N07",
+        "label": "冲突：隔离候选，按需澄清",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F04_N06"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "隔离标记",
+          "尚未解决事项"
+        ],
+        "condition": "证据矛盾未解决"
       },
       {
         "id": "F04_N04",
-        "label": "更新关联检索索引",
-        "kind": "complete",
+        "label": "通知受影响索引与上下文失效",
+        "kind": "checkpoint",
         "dependencies": [
-          "F04_N03"
+          "F04_N03",
+          "F04_N07"
         ],
         "required": true,
-        "resourceKeys": [
-          "memory_vector_index"
-        ],
+        "resourceKeys": [],
         "effectType": "本地状态 / 缓存",
-        "inputFields": [
-          "updatedFact"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "vectorIndexRefreshed"
-        ]
+          "失效传播事件",
+          "可恢复来源引用"
+        ],
+        "joinMode": "selected"
       }
     ],
     "edges": [
       {
-        "id": "F04_E01",
+        "id": "F04_REV_E1",
         "source": "F04_N01",
-        "target": "F04_N02",
-        "required": true
-      },
-      {
-        "id": "F04_E02",
-        "source": "F04_N02",
-        "target": "F04_N03",
+        "target": "F04_N05",
         "required": true,
-        "branchLabel": "版本链延伸"
+        "branchLabel": "查版本"
       },
       {
-        "id": "F04_E03",
+        "id": "F04_REV_E2",
+        "source": "F04_N05",
+        "target": "F04_N02",
+        "required": true,
+        "branchLabel": "语义关联"
+      },
+      {
+        "id": "F04_REV_E3",
+        "source": "F04_N02",
+        "target": "F04_N06",
+        "required": true,
+        "branchLabel": "可信核验"
+      },
+      {
+        "id": "F04_REV_E4",
+        "source": "F04_N06",
+        "target": "F04_N03",
+        "required": false,
+        "branchLabel": "相容",
+        "condition": "有效写入授权"
+      },
+      {
+        "id": "F04_REV_E5",
+        "source": "F04_N06",
+        "target": "F04_N07",
+        "required": false,
+        "branchLabel": "冲突",
+        "condition": "未解决"
+      },
+      {
+        "id": "F04_REV_E6",
         "source": "F04_N03",
         "target": "F04_N04",
         "required": true,
-        "branchLabel": "索引热更新"
+        "branchLabel": "版本变更"
+      },
+      {
+        "id": "F04_REV_E7",
+        "source": "F04_N07",
+        "target": "F04_N04",
+        "required": true,
+        "branchLabel": "隔离失效"
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
+      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
+      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+    ],
+    "designNotes": [
+      "Wiki与索引能力按现有接口目录接入；图不证明真实Wiki已写入。",
+      "每次回忆记录用了哪个版本及影响了哪项判断，能恢复原文核实。"
+    ],
+    "acceptance": [
+      "冲突候选不会覆盖已有确定事实；过期索引不用于新授权决定。",
+      "撤销与更正能传播到F05/F27及关联计划。"
     ]
   },
   {
@@ -713,79 +1077,86 @@
     "code": "F05",
     "name": "记忆搜索与来源回答",
     "category": "规划与记忆",
-    "summary": "精准召回可信知识并生成有据可依的回答，严禁模型凭空捏造未支持的主张。",
+    "summary": "代码先过滤有效来源与数据范围，多路召回后由唯一主模型排序并决定是否需要扩充。回答带来源，不支持的内容明确保留为未知。",
     "decisionPoints": [
-      "解析查询对象、时间范围与关键决策的证据需求",
-      "排序候选记忆片段，剔除过时、隔离或权限不符的内容",
-      "逐句核查执行模型生成的回答是否完全被召回证据支持"
+      "识别主题、对象、时间/地点/人物/资源及证据缺口。",
+      "排序有效片段，区分事实、授权和推断；需要新依据时提出扩充请求。",
+      "检查答案支持关系与反例；决定补查、改写或保留未知。"
     ],
     "nodes": [
       {
         "id": "F05_N01",
-        "label": "解析搜索意图与证据要求",
+        "label": "输入查询、事件线索与证据要求",
         "kind": "input",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "session_input_stream"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "query"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "targetTopic",
-          "evidenceNeed"
+          "可用检索线索",
+          "未知属性"
         ]
       },
       {
         "id": "F05_N02",
-        "label": "多源过滤与并行语义检索",
+        "label": "范围/版本初筛后并行多路召回",
         "kind": "tool_exec",
         "dependencies": [
           "F05_N01"
         ],
         "required": true,
-        "resourceKeys": [
-          "memory_vector_index"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "vectorQuery",
-          "scopeFilter"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "matchedChunks"
-        ]
+          "文本/事实/语义候选",
+          "来源与版本"
+        ],
+        "evidenceRequirement": "MemoryQueryPort事实查询与KnowledgePort.search分开；未提供向量能力不冒充已实现。"
       },
       {
         "id": "F05_N03",
-        "label": "决策模型 证据校验与排序",
+        "label": "主模型重排证据并判断缺口",
         "kind": "semantic_decision",
         "dependencies": [
           "F05_N02"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "candidates"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "primaryEvidenceId",
-          "confidenceScore"
+          "选用片段",
+          "支持关系",
+          "扩充建议或可回答建议"
         ],
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
-          "role": "来源证据排序"
+          "role": "唯一全局语义决策配置"
         }
       },
       {
+        "id": "F05_N06",
+        "label": "按需扩充已授权数据范围的检索",
+        "kind": "tool_exec",
+        "dependencies": [
+          "F05_N03"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "新增证据",
+          "检索条件与无新增标记"
+        ],
+        "condition": "存在可检索的新信息需求"
+      },
+      {
         "id": "F05_N04",
-        "label": "执行模型撰写带来源回答",
+        "label": "执行模型生成带来源候选回答",
         "kind": "execution_model",
         "dependencies": [
           "F05_N03"
@@ -793,74 +1164,131 @@
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "evidence"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "answer"
+          "回答候选",
+          "引用映射"
         ],
+        "condition": "已有依据足以回答或明确声明未知",
         "modelAssignment": {
           "vendor": "通义千问",
           "model": "qwen3-32b",
-          "role": "总结与回复生成"
+          "role": "来源回答候选"
         }
       },
       {
         "id": "F05_N05",
-        "label": "决策模型 最终事实支持性复验",
+        "label": "主模型检查支持关系；代码核对引用版本",
         "kind": "verification",
         "dependencies": [
           "F05_N04"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "draftAnswer",
-          "source"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "hallucinationDetected",
-          "verificationPass"
+          "支持/未支持项",
+          "需补查或未知"
         ],
-        "evidenceRequirement": "18秒、2秒指标及ADR-009编号在来源中字字对应"
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4.1-flash",
+          "role": "唯一全局语义决策配置"
+        },
+        "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。"
+      },
+      {
+        "id": "F05_N07",
+        "label": "发布有据回答并记录引用影响",
+        "kind": "complete",
+        "dependencies": [
+          "F05_N05"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "答案",
+          "来源清单",
+          "未解决项"
+        ]
       }
     ],
     "edges": [
       {
-        "id": "F05_E01",
+        "id": "F05_REV_E1",
         "source": "F05_N01",
         "target": "F05_N02",
-        "required": true
+        "required": true,
+        "branchLabel": "并行召回"
       },
       {
-        "id": "F05_E02",
+        "id": "F05_REV_E2",
         "source": "F05_N02",
         "target": "F05_N03",
         "required": true,
-        "branchLabel": "初筛过滤"
+        "branchLabel": "重排与缺口"
       },
       {
-        "id": "F05_E03",
+        "id": "F05_REV_E3",
+        "source": "F05_N03",
+        "target": "F05_N06",
+        "required": false,
+        "branchLabel": "按需扩充",
+        "condition": "需新信息"
+      },
+      {
+        "id": "F05_REV_E4",
+        "source": "F05_N06",
+        "target": "F05_N03",
+        "required": false,
+        "branchLabel": "新证据重判",
+        "condition": "新增信息"
+      },
+      {
+        "id": "F05_REV_E5",
         "source": "F05_N03",
         "target": "F05_N04",
         "required": true,
-        "branchLabel": "带原文包生成"
+        "branchLabel": "可回答"
       },
       {
-        "id": "F05_E04",
+        "id": "F05_REV_E6",
         "source": "F05_N04",
         "target": "F05_N05",
         "required": true,
-        "branchLabel": "抗幻觉复查"
+        "branchLabel": "引用复核"
+      },
+      {
+        "id": "F05_REV_E7",
+        "source": "F05_N05",
+        "target": "F05_N06",
+        "required": false,
+        "branchLabel": "还需依据",
+        "condition": "可补查"
+      },
+      {
+        "id": "F05_REV_E8",
+        "source": "F05_N05",
+        "target": "F05_N07",
+        "required": true,
+        "branchLabel": "有据或标未知"
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
+      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
+      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+    ],
+    "designNotes": [
+      "不固定检索跳数或Top-K；在实际上下文能力和配置内保留可能关联的未知项。",
+      "相同检索没有新增信息时停止重复；引用不足时回答未知，不伪造反事实结果。"
+    ],
+    "acceptance": [
+      "统计宽松召回漏检与误召回；测已知/未知属性以及来源过期。",
+      "对照相同模型、数据和范围，记录实际轮数/延迟/Token及答案支持率。"
     ]
   },
   {
@@ -868,7 +1296,7 @@
     "code": "F06",
     "name": "待办、提醒与跟进",
     "category": "个人助理与调度",
-    "summary": "管理具有时间约束的待办与虚拟时钟推进，写入具备幂等操作标识，未知时先核实。",
+    "summary": "管理具有时间约束的待办、提醒和跟进，使用实际时钟及当前责任版本；写入保留稳定操作标识，未知时先核实。",
     "decisionPoints": [
       "拆解主任务截止时间、前置检查提醒与完成判定条件",
       "解析“下午”等模糊时间，必要时主动澄清或按偏好设定",
@@ -941,7 +1369,7 @@
       },
       {
         "id": "F06_N04",
-        "label": "虚拟时间推进触发检查",
+        "label": "按实际时钟与当前提醒版本检查到期",
         "kind": "checkpoint",
         "dependencies": [
           "F06_N03"
@@ -1047,7 +1475,7 @@
       },
       {
         "id": "F07_N02",
-        "label": "代码读取并数学计算空闲窗口",
+        "label": "读取日历并计算空闲、出行与重叠窗口",
         "kind": "tool_exec",
         "dependencies": [
           "F07_N01"
@@ -1064,7 +1492,7 @@
         "outputFields": [
           "availableSlots"
         ],
-        "evidenceRequirement": "严格剔除周一至周五每日12:00-13:30时段"
+        "evidenceRequirement": "按用户实际工作/安静时段和最新日历计算；未知道路/地点保留不确定性。"
       },
       {
         "id": "F07_N03",
@@ -1110,7 +1538,7 @@
         "outputFields": [
           "versionConsistent"
         ],
-        "evidenceRequirement": "版本号一致，期间未发生其他人抢占"
+        "evidenceRequirement": "写入前读取当前版本与冲突；变更后原候选重新核验。"
       },
       {
         "id": "F07_N05",
@@ -1174,250 +1602,375 @@
     "code": "F08",
     "name": "邮件分类、草稿与发送",
     "category": "个人助理与调度",
-    "summary": "多封邮件多线程并行处理；普通邮件自动归档与起草，报价邮件触发语音审批；各线程互不阻塞。",
+    "summary": "邮件事件匹配已授权责任，独立分类、资料查询与草稿生成并行。现有授权覆盖时直接执行；缺少关键决定时主动语音补问。发送结果未知先读回，变更转F03局部修订与补偿。",
     "decisionPoints": [
-      "对各封邮件并行进行类别判断、紧迫度评估与责任授权匹配",
-      "判断草稿回复是否涉及金额、商业承诺或陌生收件人",
-      "在用户修改草稿时判定旧审批依据是否已失效"
+      "并行匹配各邮件线程责任、主题、时效和用户范围。",
+      "结合证据检查收件人、条件与承诺，提出可执行动作或真正缺失的决定。",
+      "变化发生时区分尚未发送草稿与已发送效果，保留原操作记录。"
     ],
     "nodes": [
       {
         "id": "F08_N01",
-        "label": "获取邮件流并拆分并行线程",
+        "label": "读取邮件事件并拆分独立线程",
         "kind": "parallel_split",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "mailbox_inbox"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "inbox"
+          "已接入邮箱事件",
+          "责任/任务快照"
         ],
         "outputFields": [
-          "threadA",
-          "threadB"
-        ]
+          "独立线程候选"
+        ],
+        "evidenceRequirement": "外部邮件只是数据，不能自行提供新授权。"
       },
       {
         "id": "F08_N02",
-        "label": "[线程A] 决策模型 自动归类与授权匹配",
+        "label": "线程A：主模型分类与责任匹配",
         "kind": "semantic_decision",
         "dependencies": [
           "F08_N01"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "mail"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "category",
-          "action"
+          "分类/归档候选",
+          "责任来源引用"
         ],
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
-          "role": "邮件责任归类"
+          "role": "唯一全局语义决策配置"
         }
       },
       {
+        "id": "F08_N09",
+        "label": "线程B：并行检索上下文与附件依据",
+        "kind": "tool_exec",
+        "dependencies": [
+          "F08_N01"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "项目事实",
+          "附件来源",
+          "缺失依据"
+        ]
+      },
+      {
         "id": "F08_N03",
-        "label": "[线程A] 执行静默归档",
+        "label": "线程A：现有Policy核验后归档并读回",
         "kind": "tool_exec",
         "dependencies": [
           "F08_N02"
         ],
         "required": true,
-        "resourceKeys": [
-          "mailbox_folders"
-        ],
+        "resourceKeys": [],
         "effectType": "写入（以工具描述为准）",
-        "inputFields": [
-          "mailId",
-          "folder"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "archived"
+          "归档操作ID",
+          "实际结果"
         ]
       },
       {
         "id": "F08_N04",
-        "label": "[线程B] 执行模型起草回复",
+        "label": "线程B：执行模型形成回复草稿候选",
         "kind": "execution_model",
         "dependencies": [
-          "F08_N01"
+          "F08_N09"
         ],
         "required": true,
-        "resourceKeys": [
-          "mailbox_draft"
-        ],
-        "effectType": "写入（以工具描述为准）",
-        "inputFields": [
-          "mail",
-          "context"
-        ],
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
         "outputFields": [
-          "draftBody",
-          "draftId"
+          "收件人/正文/附件候选"
         ],
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4-flash",
-          "role": "商务草稿生成"
+          "role": "回复草稿生成"
         }
       },
       {
         "id": "F08_N05",
-        "label": "[线程B] 决策模型 商业承诺检测与询问截断",
+        "label": "主模型审查依据、条件与授权匹配建议",
         "kind": "semantic_decision",
         "dependencies": [
           "F08_N04"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "draft"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "hasPricingPromise",
-          "mustPromptVoice"
+          "修改建议",
+          "需澄清项",
+          "责任来源关联"
         ],
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
-          "role": "Policy越界审查"
+          "role": "唯一全局语义决策配置"
         }
       },
       {
-        "id": "F08_N06",
-        "label": "[线程B] 发起主动语音核准",
-        "kind": "wait_user",
+        "id": "F08_N10",
+        "label": "宿主核对具体参数、revision与现有授权",
+        "kind": "deterministic_check",
         "dependencies": [
           "F08_N05"
         ],
         "required": true,
-        "resourceKeys": [
-          "audio_output_device"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "question",
-          "approvalId"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "userVoiceConfirmed"
-        ]
+          "可直接执行或待决问题"
+        ],
+        "evidenceRequirement": "有金额或商业内容不自动新增审批；按现有授权范围决定。"
+      },
+      {
+        "id": "F08_N06",
+        "label": "仅缺决定：调用F02主动语音/文字补问",
+        "kind": "wait_user",
+        "dependencies": [
+          "F08_N10"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "当前问题及revision的回答"
+        ],
+        "condition": "现有授权未覆盖或关键条件不明确"
       },
       {
         "id": "F08_N07",
-        "label": "[线程B] 发送信件并核验发件箱",
+        "label": "授权通过：稳定操作ID发送",
         "kind": "tool_exec",
         "dependencies": [
+          "F08_N10",
           "F08_N06"
         ],
         "required": true,
-        "resourceKeys": [
-          "email_smtp_outbox"
-        ],
-        "effectType": "外部写入（以工具描述为准）",
-        "inputFields": [
-          "draftId"
-        ],
+        "resourceKeys": [],
+        "effectType": "写入（以工具描述为准）",
+        "inputFields": [],
         "outputFields": [
-          "messageId",
-          "status"
-        ]
+          "原发送operation/effect ID",
+          "工具实际状态"
+        ],
+        "joinMode": "selected",
+        "condition": "已有授权直接通过，或待决问题得到有效决定"
       },
       {
-        "id": "F08_N08",
-        "label": "双线程结果汇合与状态更新",
-        "kind": "join",
+        "id": "F08_N11",
+        "label": "读取发件记录与稳定操作状态",
+        "kind": "verification",
         "dependencies": [
-          "F08_N03",
           "F08_N07"
         ],
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "threadA",
-          "threadB"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "totalProcessed",
-          "successful"
-        ]
+          "已发/未发/仍未知",
+          "原始读回证据"
+        ],
+        "evidenceRequirement": "缺少单次发件箱记录不证明未发送；沿用连接器支持的读回和实际截止配置。"
+      },
+      {
+        "id": "F08_N12",
+        "label": "结果未知：后台核实，禁止盲目重发",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F08_N11"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "待核实状态",
+          "原发送身份"
+        ],
+        "condition": "外部结果仍未知"
+      },
+      {
+        "id": "F08_N08",
+        "label": "汇合已选择线程；保留未完成项",
+        "kind": "complete",
+        "dependencies": [
+          "F08_N03",
+          "F08_N11"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "已核实结果",
+          "待核实/待决定事项"
+        ],
+        "joinMode": "selected"
+      },
+      {
+        "id": "F08_N13",
+        "label": "输入变化：转F03保留原效果并局部修订",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F08_N01"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "变更原因",
+          "原效果因果链"
+        ],
+        "condition": "用户或邮件线程出现有效新版本"
       }
     ],
     "edges": [
       {
-        "id": "F08_E01",
+        "id": "F08_REV_E1",
         "source": "F08_N01",
         "target": "F08_N02",
         "required": true,
-        "branchLabel": "分支A: 系统通知"
+        "branchLabel": "独立分类"
       },
       {
-        "id": "F08_E02",
+        "id": "F08_REV_E2",
+        "source": "F08_N01",
+        "target": "F08_N09",
+        "required": true,
+        "branchLabel": "独立查依据"
+      },
+      {
+        "id": "F08_REV_E3",
         "source": "F08_N02",
         "target": "F08_N03",
         "required": true,
-        "branchLabel": "自动归档"
+        "branchLabel": "分类动作"
       },
       {
-        "id": "F08_E03",
-        "source": "F08_N01",
+        "id": "F08_REV_E4",
+        "source": "F08_N09",
         "target": "F08_N04",
         "required": true,
-        "branchLabel": "分支B: 报价来信"
+        "branchLabel": "依据就绪"
       },
       {
-        "id": "F08_E04",
+        "id": "F08_REV_E5",
         "source": "F08_N04",
         "target": "F08_N05",
         "required": true,
-        "branchLabel": "草稿送审"
+        "branchLabel": "语义审查"
       },
       {
-        "id": "F08_E05",
+        "id": "F08_REV_E6",
         "source": "F08_N05",
-        "target": "F08_N06",
+        "target": "F08_N10",
         "required": true,
-        "branchLabel": "语音确认"
+        "branchLabel": "真实授权检查"
       },
       {
-        "id": "F08_E06",
+        "id": "F08_REV_E7",
+        "source": "F08_N10",
+        "target": "F08_N06",
+        "required": false,
+        "branchLabel": "真正缺决定",
+        "condition": "未覆盖/不明确"
+      },
+      {
+        "id": "F08_REV_E8",
+        "source": "F08_N10",
+        "target": "F08_N07",
+        "required": false,
+        "branchLabel": "现有授权直接执行",
+        "condition": "已覆盖"
+      },
+      {
+        "id": "F08_REV_E9",
         "source": "F08_N06",
         "target": "F08_N07",
-        "required": true,
-        "branchLabel": "安全发信"
+        "required": false,
+        "branchLabel": "回答重新核验",
+        "condition": "有效同意"
       },
       {
-        "id": "F08_E07",
+        "id": "F08_REV_E10",
+        "source": "F08_N07",
+        "target": "F08_N11",
+        "required": true,
+        "branchLabel": "外部读回"
+      },
+      {
+        "id": "F08_REV_E11",
+        "source": "F08_N11",
+        "target": "F08_N12",
+        "required": false,
+        "branchLabel": "待核实",
+        "condition": "仍未知"
+      },
+      {
+        "id": "F08_REV_E12",
+        "source": "F08_N12",
+        "target": "F08_N11",
+        "required": false,
+        "branchLabel": "支持的后续核实",
+        "condition": "未结束"
+      },
+      {
+        "id": "F08_REV_E13",
         "source": "F08_N03",
         "target": "F08_N08",
         "required": true,
-        "branchLabel": "汇合"
+        "branchLabel": "分类结果"
       },
       {
-        "id": "F08_E08",
-        "source": "F08_N07",
+        "id": "F08_REV_E14",
+        "source": "F08_N11",
         "target": "F08_N08",
         "required": true,
-        "branchLabel": "汇合"
+        "branchLabel": "发送证据或未完成事项"
+      },
+      {
+        "id": "F08_REV_E15",
+        "source": "F08_N01",
+        "target": "F08_N13",
+        "required": false,
+        "branchLabel": "有效变化",
+        "condition": "事件变更"
       }
     ],
     "recovery": [
-      "发送结果未知：查询线程与操作记录，确认是否已经发送。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "未知发送先保留原状态并读回，不换ID重发。",
+      "修改参数作废旧确认；既有授权覆盖新参数时直接重核验，确有缺失才补问。",
+      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
+      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
+      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+    ],
+    "designNotes": [
+      "授权明确时不串入语音确认；被拒绝/待核实线程不阻塞无依赖线程。",
+      "草稿候选与实际邮箱写入分开；写草稿也经既有工具/Policy。",
+      "普通核实过程用状态徽章；重要副作用、截止冲击或真正需用户决定时主动通知。"
+    ],
+    "acceptance": [
+      "首条真实闭环：邮件事件→责任→资料/分类并行→草稿→仅必要语音修改→执行→读回→局部修订→失败轨迹回放。",
+      "测自动执行与补问比例、取消四种结果、未知发送不重复及补偿关联准确性。"
     ]
   },
   {
@@ -1574,7 +2127,7 @@
       },
       {
         "id": "F10_N02",
-        "label": "[分支A] Qwen 搜集 LangGraph 架构与约束",
+        "label": "分支A：Qwen检索主题的一手资料",
         "kind": "execution_model",
         "dependencies": [
           "F10_N01"
@@ -1597,7 +2150,7 @@
       },
       {
         "id": "F10_N03",
-        "label": "[分支B] GLM 搜集 AutoGen 协同特点",
+        "label": "分支B：GLM寻找反例与替代路径",
         "kind": "execution_model",
         "dependencies": [
           "F10_N01"
@@ -1620,7 +2173,7 @@
       },
       {
         "id": "F10_N04",
-        "label": "[分支C] DeepSeek-V4-Flash 整理 Cloud 决策模型 责任图特点",
+        "label": "分支C：DeepSeek整理已有项目上下文",
         "kind": "execution_model",
         "dependencies": [
           "F10_N01"
@@ -1668,7 +2221,7 @@
       },
       {
         "id": "F10_N06",
-        "label": "决策模型 汇总生成带来源三方对比报告",
+        "label": "主模型判断证据差异并汇总候选",
         "kind": "join",
         "dependencies": [
           "F10_N05"
@@ -1778,7 +2331,7 @@
       },
       {
         "id": "F11_N02",
-        "label": "并行检索明日日程位置属性",
+        "label": "并行检索关联日程及未知地点项",
         "kind": "tool_exec",
         "dependencies": [
           "F11_N01"
@@ -1824,12 +2377,12 @@
       },
       {
         "id": "F11_N04",
-        "label": "主动发起语音询问",
+        "label": "仅真正缺决定时主动语音补问",
         "kind": "wait_user",
         "dependencies": [
           "F11_N03"
         ],
-        "required": true,
+        "required": false,
         "resourceKeys": [
           "audio_output_device"
         ],
@@ -1839,13 +2392,15 @@
         ],
         "outputFields": [
           "userConfirmed"
-        ]
+        ],
+        "condition": "现有授权未覆盖或关键条件不明确"
       },
       {
         "id": "F11_N05",
         "label": "更新日程属性并作废旧出行闹铃",
         "kind": "complete",
         "dependencies": [
+          "F11_N03",
           "F11_N04"
         ],
         "required": true,
@@ -1860,7 +2415,9 @@
         "outputFields": [
           "calendarUpdated",
           "oldTrafficAlarmVoided"
-        ]
+        ],
+        "joinMode": "selected",
+        "condition": "已授权直接执行或补问得到有效回答"
       }
     ],
     "edges": [
@@ -1890,6 +2447,13 @@
         "target": "F11_N05",
         "required": true,
         "branchLabel": "安全更新"
+      },
+      {
+        "id": "F11_REV_DIRECT",
+        "source": "F11_N03",
+        "target": "F11_N05",
+        "required": false,
+        "branchLabel": "授权覆盖则直接执行"
       }
     ],
     "recovery": [
@@ -1949,7 +2513,7 @@
           "isQuietModeActive",
           "allowUrgentBypass"
         ],
-        "evidenceRequirement": "当前严格处于 12:00-13:30 午休免打扰区间"
+        "evidenceRequirement": "使用当前用户安静时段、通知偏好和事件版本，不能套用固定午休样例。"
       },
       {
         "id": "F12_N03",
@@ -2103,7 +2667,7 @@
           "quotaNormal",
           "staleLockFound"
         ],
-        "evidenceRequirement": "探针证实进程882已僵死，但草稿锁未正常还回"
+        "evidenceRequirement": "探针结果、进程/锁身份与时间分别记录，不能从日志文字推定宿主已停止。"
       },
       {
         "id": "F13_N03",
@@ -2133,7 +2697,7 @@
       },
       {
         "id": "F13_N04",
-        "label": "执行受控锁解除与流程唤醒",
+        "label": "核实执行宿主与未知效果后恢复资源",
         "kind": "complete",
         "dependencies": [
           "F13_N03"
@@ -2149,7 +2713,8 @@
         "outputFields": [
           "lockReleased",
           "taskResumed"
-        ]
+        ],
+        "evidenceRequirement": "锁释放需要宿主生命周期与执行记录支持，不能凭模型说进程卡死强制解锁。"
       }
     ],
     "edges": [
@@ -2250,7 +2815,7 @@
       },
       {
         "id": "F14_N04",
-        "label": "决策模型 生成操作摘要并阻断提单",
+        "label": "主模型评估下一动作与已授权范围",
         "kind": "semantic_decision",
         "dependencies": [
           "F14_N03"
@@ -2275,12 +2840,12 @@
       },
       {
         "id": "F14_N05",
-        "label": "主动询问用户是否确认提交",
+        "label": "缺少决定时主动语音/文字确认",
         "kind": "wait_user",
         "dependencies": [
           "F14_N04"
         ],
-        "required": true,
+        "required": false,
         "resourceKeys": [
           "audio_output_device"
         ],
@@ -2290,13 +2855,15 @@
         ],
         "outputFields": [
           "confirmed"
-        ]
+        ],
+        "condition": "既有Policy确实需要用户决定"
       },
       {
         "id": "F14_N06",
         "label": "点击提交并释放输入锁",
         "kind": "complete",
         "dependencies": [
+          "F14_N04",
           "F14_N05"
         ],
         "required": true,
@@ -2310,7 +2877,10 @@
         "outputFields": [
           "receiptId",
           "lockReleased"
-        ]
+        ],
+        "joinMode": "selected",
+        "condition": "有效授权与参数通过宿主检查",
+        "evidenceRequirement": "动作后核对页面/目标身份；结果未知先观察读回，不盲目重复点击。"
       }
     ],
     "edges": [
@@ -2347,6 +2917,13 @@
         "target": "F14_N06",
         "required": true,
         "branchLabel": "提单并释锁"
+      },
+      {
+        "id": "F14_REV_DIRECT",
+        "source": "F14_N04",
+        "target": "F14_N06",
+        "required": false,
+        "branchLabel": "既有授权覆盖"
       }
     ],
     "recovery": [
@@ -2455,11 +3032,11 @@
           "model": "deepseek-v4-pro",
           "role": "补丁红线审查"
         },
-        "evidenceRequirement": "改动仅涉及1行防崩保护，无多余格式化"
+        "evidenceRequirement": "审查实际补丁、目标范围与行为影响，不能按改动行数宣布无风险。"
       },
       {
         "id": "F15_N05",
-        "label": "隔离工作区应用补丁并运行测试套件",
+        "label": "在支持的测试工作区应用补丁并运行必要检查",
         "kind": "tool_exec",
         "dependencies": [
           "F15_N04"
@@ -2477,11 +3054,11 @@
           "failedTests",
           "testDurationMs"
         ],
-        "evidenceRequirement": "28个单元测试全部回归通过"
+        "evidenceRequirement": "记录实际测试命令、基线、结果与失败；隔离能力按宿主真实实现描述。"
       },
       {
         "id": "F15_N06",
-        "label": "生成受控补丁凭证 (待核准提交)",
+        "label": "交付补丁及检查凭证，按既有发布条件处理",
         "kind": "complete",
         "dependencies": [
           "F15_N05"
@@ -2623,7 +3200,7 @@
       },
       {
         "id": "F16_N04",
-        "label": "确定性审查：未降低断言标准",
+        "label": "审查修复是否保留真实验收意图",
         "kind": "deterministic_check",
         "dependencies": [
           "F16_N03"
@@ -2638,7 +3215,7 @@
         "outputFields": [
           "noCheatingDetected"
         ],
-        "evidenceRequirement": "测试用例文件未受修改，断言数量保持12个不变"
+        "evidenceRequirement": "检查断言/测试行为与需求，不以文件未改或断言数量不变证明没有规避测试。"
       },
       {
         "id": "F16_N05",
@@ -2710,7 +3287,7 @@
     "nodes": [
       {
         "id": "F17_N01",
-        "label": "汇总 6 个失败调用栈",
+        "label": "固定失败日志、版本与调用栈",
         "kind": "input",
         "dependencies": [],
         "required": true,
@@ -3072,7 +3649,7 @@
           "originalBugGone",
           "verifiedPassed"
         ],
-        "evidenceRequirement": "真实运行触屏隔离验证事件，确认播放器确实开始播放，非假冒通过"
+        "evidenceRequirement": "按原问题复现并核实实际行为；PR合并、模型结论和Fake通过分别标记。"
       },
       {
         "id": "F19_N05",
@@ -3204,8 +3781,8 @@
       },
       {
         "id": "F20_N04",
-        "label": "检查来源支持并提出候选与保存候选版本",
-        "kind": "complete",
+        "label": "主模型检查来源支持并提出文档候选",
+        "kind": "semantic_decision",
         "dependencies": [
           "F20_N03"
         ],
@@ -3224,7 +3801,7 @@
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
-          "role": "文档一致性背书"
+          "role": "唯一全局语义决策配置"
         }
       }
     ],
@@ -3289,7 +3866,7 @@
       },
       {
         "id": "F21_N02",
-        "label": "[阶段1/3] 协议注册完成",
+        "label": "注册协议与能力元数据",
         "kind": "tool_exec",
         "dependencies": [
           "F21_N01"
@@ -3308,7 +3885,7 @@
       },
       {
         "id": "F21_N03",
-        "label": "[阶段2/3] 通信通道握手连通",
+        "label": "核对通信握手与健康状态",
         "kind": "deterministic_check",
         "dependencies": [
           "F21_N02"
@@ -3325,11 +3902,11 @@
           "connectionAlive",
           "latencyMs"
         ],
-        "evidenceRequirement": "stdio JSON-RPC 初始化报文握手成功"
+        "evidenceRequirement": "记录实际握手或Unavailable；注册不是可调用证明。"
       },
       {
         "id": "F21_N04",
-        "label": "[阶段3/3] 沙箱真实调用验证",
+        "label": "在支持的隔离环境验证具体能力",
         "kind": "verification",
         "dependencies": [
           "F21_N03"
@@ -3346,11 +3923,11 @@
           "filesReturned",
           "noSandboxEscape"
         ],
-        "evidenceRequirement": "证实该工具无法跨出 /sandbox 目录，越权拦截有效"
+        "evidenceRequirement": "独立核实调用、输出和实际隔离边界，不把TypeScript接口当安全沙箱。"
       },
       {
         "id": "F21_N05",
-        "label": "决策模型 纳入候选工具池并授权",
+        "label": "主模型匹配工具候选；宿主按现有授权启用",
         "kind": "complete",
         "dependencies": [
           "F21_N04"
@@ -3370,7 +3947,8 @@
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
           "role": "工具可用性审查"
-        }
+        },
+        "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。"
       }
     ],
     "edges": [
@@ -3413,7 +3991,7 @@
     "code": "F22",
     "name": "工作流调试与影子实验",
     "category": "影子与校准",
-    "summary": "针对历史或失败运行开展三类影子对比；主运行只读保护，沙箱隔离对比决策差异与不可推断项。",
+    "summary": "由失败、配置变化、异常、用户调试或实际配置采样按需触发。决策影子、历史回放和受支持隔离执行保留各自证据边界，后台提出改进候选。",
     "decisionPoints": [
       "研判该次运行适合决策影子、轨迹回放还是隔离执行模式",
       "对比新旧两套 Prompt 或微调版本下的语义推理分歧点",
@@ -3421,10 +3999,29 @@
     ],
     "nodes": [
       {
+        "id": "F22_N09",
+        "label": "按需触发：失败、变化、异常、调试或配置采样",
+        "kind": "deterministic_check",
+        "dependencies": [],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [
+          "触发依据",
+          "用户配置"
+        ],
+        "outputFields": [
+          "本次实验范围"
+        ],
+        "evidenceRequirement": "无触发时跳过；不默认每个请求双跑或强制固定采样率。"
+      },
+      {
         "id": "F22_N01",
         "label": "固定输入快照、来源版本与当时轨迹",
         "kind": "input",
-        "dependencies": [],
+        "dependencies": [
+          "F22_N09"
+        ],
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
@@ -3442,7 +4039,12 @@
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4.1-flash",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F22_N03",
@@ -3488,7 +4090,7 @@
       },
       {
         "id": "F22_N06",
-        "label": "缺失反事实工具结果：标未知，不伪造成功",
+        "label": "核对回放完整性：缺反事实工具结果标未知",
         "kind": "verification",
         "dependencies": [
           "F22_N04"
@@ -3505,7 +4107,7 @@
         "kind": "join",
         "dependencies": [
           "F22_N03",
-          "F22_N04",
+          "F22_N06",
           "F22_N05"
         ],
         "required": true,
@@ -3513,7 +4115,8 @@
         "effectType": "读取",
         "inputFields": [],
         "outputFields": [],
-        "condition": "只汇合已选择的实验模式；其他分支跳过"
+        "condition": "只汇合已选择的实验模式；其他分支跳过",
+        "joinMode": "selected"
       },
       {
         "id": "F22_N08",
@@ -3530,6 +4133,13 @@
       }
     ],
     "edges": [
+      {
+        "id": "F22_REV_TRIGGER",
+        "source": "F22_N09",
+        "target": "F22_N01",
+        "required": true,
+        "branchLabel": "有实际触发"
+      },
       {
         "id": "F22_ARCH_E0",
         "source": "F22_N01",
@@ -3573,13 +4183,6 @@
         "branchLabel": "比较判断"
       },
       {
-        "id": "F22_ARCH_E6",
-        "source": "F22_N04",
-        "target": "F22_N07",
-        "required": false,
-        "branchLabel": "可用历史结果"
-      },
-      {
         "id": "F22_ARCH_E7",
         "source": "F22_N05",
         "target": "F22_N07",
@@ -3599,12 +4202,28 @@
         "target": "F22_N08",
         "required": false,
         "branchLabel": "形成候选"
+      },
+      {
+        "id": "F22_REV_UNKNOWN_JOIN",
+        "source": "F22_N06",
+        "target": "F22_N07",
+        "required": false,
+        "branchLabel": "带缺失/未知标记"
       }
     ],
     "recovery": [
       "失败只重做受影响节点；保留已有证据与来源版本。",
       "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
       "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+    ],
+    "designNotes": [
+      "影子不读未来数据，不写主任务/主记忆，不消费主授权。",
+      "隔离执行只覆盖已支持的测试工作区和服务；不承诺复制Outlook、微信等真实账号环境。",
+      "比较标记：完全可比、部分可比、缺少证据、不可比。没有反事实工具结果就标未知。"
+    ],
+    "acceptance": [
+      "无触发正常请求不新增影子调用；触发场景记录额外调用与后台排队。",
+      "验证主库、主账号与主授权没有被影子写入/消费；隔离失败不得声称物理安全已证明。"
     ]
   },
   {
@@ -3612,7 +4231,7 @@
     "code": "F23",
     "name": "决策配置、评估与版本晋升",
     "category": "影子与校准",
-    "summary": "用有来源的标签评估提示、流程、调用配置与可用模型版本；MaaS API 不提供直接修改远端权重的能力。独立权重训练为另行实现事项。",
+    "summary": "对提示、图、调用配置与可用模型版本做时序隔离对比。唯一主模型提出质量建议，宿主使用既有验收/发布规则；MaaS不直接调整远端权重。",
     "decisionPoints": [
       "对决策记录切分训练、验证与保留测试集（按时间与任务来源切分）",
       "比对新旧版本在复杂长链推理、责任越界拦截与误报率方面的多维表现",
@@ -3655,7 +4274,7 @@
         "outputFields": [
           "noLeakageVerified"
         ],
-        "evidenceRequirement": "训练集与保留测试集 SHA256 无任何重复"
+        "evidenceRequirement": "核对时间切分、同源关联及可比性；SHA不重复也不能单独证明没有数据泄漏。"
       },
       {
         "id": "F23_N03",
@@ -3707,7 +4326,7 @@
       },
       {
         "id": "F23_N05",
-        "label": "固化版本配置版本并生成一键回滚锚点",
+        "label": "按现有发布条件固化配置版本与回滚点",
         "kind": "complete",
         "dependencies": [
           "F23_N04"
@@ -3760,6 +4379,15 @@
       "评估失败保留当前版本；撤回候选并使用已记录的回滚点。",
       "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
       "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+    ],
+    "designNotes": [
+      "用户项目补丁、提示/流程配置和受信宿主自身升级分别走已有测试、版本和发布流程，不默认热修可信Runtime。",
+      "AgentArts Evaluation作为拟议承载选项；实际项目、评估作业和结果需单独读回，截图不是接通证明。",
+      "对照组采用同一模型/数据/授权/幂等/读回，单独改变被测机制。"
+    ],
+    "acceptance": [
+      "记录正常放行和注入拒绝两方面，避免只追求拦截而阻止合法任务。",
+      "测调用轮数、首响/P50/P95、Token、用户打扰、召回与重规划成本；无数据时不填成绩。"
     ]
   },
   {
@@ -3767,152 +4395,372 @@
     "code": "F24",
     "name": "调度、并发、取消与恢复",
     "category": "个人助理与调度",
-    "summary": "多任务并发争抢共享资源锁，云端网络断开本地保护；检查点恢复，迟到结果不可覆盖新版本。",
+    "summary": "TaskRuntime按真实依赖调度，独立模型/只读任务并行，同资源写入协调。稳定操作身份和检查点贯穿恢复；停止请求分成未开始、停止中、结果待核实、已发生四种结果。",
     "decisionPoints": [
-      "研判两个并发子任务的优先级与资源排队顺序",
-      "在收到网络断开事件后，规划可行的离线检查点保存与恢复顺序",
-      "在外部重连后对迟到的返回结果进行版本过期校验（防回溯覆盖）"
+      "主模型建议优先级、失败归因与受影响子图，确定性调度和状态迁移归宿主。",
+      "根据已读回副作用建议继续、补查或转F03补偿；未知结果不能自报成功。"
     ],
     "nodes": [
       {
         "id": "F24_N01",
-        "label": "并发派发两组独立任务",
-        "kind": "parallel_split",
+        "label": "持久化任务图、revision与完成条件",
+        "kind": "checkpoint",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "task_scheduler_queue"
-        ],
-        "effectType": "读取",
-        "inputFields": [
-          "taskA",
-          "taskB"
-        ],
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
         "outputFields": [
-          "taskAId",
-          "taskBId"
+          "稳定节点/操作身份",
+          "required/optional与条件分支"
         ]
       },
       {
         "id": "F24_N02",
-        "label": "[任务A] 申请并获取草稿独占锁",
-        "kind": "deterministic_check",
+        "label": "就绪节点并行；资源冲突进入等待",
+        "kind": "parallel_split",
         "dependencies": [
           "F24_N01"
         ],
         "required": true,
-        "resourceKeys": [
-          "mailbox_draft"
-        ],
-        "effectType": "本地状态 / 缓存",
-        "inputFields": [
-          "requestLock"
-        ],
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
         "outputFields": [
-          "lockHeldBy"
+          "已选择且依赖满足节点",
+          "资源等待项"
         ],
-        "evidenceRequirement": "任务A成功拿到互斥锁"
+        "evidenceRequirement": "CPU/账号/服务能力按实际容量与用户配置调度；不新增固定并发上限。"
       },
       {
         "id": "F24_N03",
-        "label": "[任务B] 检测到锁冲突，进入排队等待",
-        "kind": "tool_exec",
-        "dependencies": [
-          "F24_N01"
-        ],
-        "required": true,
-        "resourceKeys": [
-          "resource_lock_manager"
-        ],
-        "effectType": "读取",
-        "inputFields": [
-          "waitFor"
-        ],
-        "outputFields": [
-          "queuePosition"
-        ]
-      },
-      {
-        "id": "F24_N04",
-        "label": "[任务A] 执行写入、落盘检查点并还锁",
-        "kind": "checkpoint",
+        "label": "执行前核对Policy、版本与操作身份",
+        "kind": "deterministic_check",
         "dependencies": [
           "F24_N02"
         ],
         "required": true,
-        "resourceKeys": [
-          "mailbox_draft"
-        ],
-        "effectType": "写入（以工具描述为准）",
-        "inputFields": [
-          "writeAction"
-        ],
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
         "outputFields": [
-          "checkpointId",
-          "lockReleased"
+          "获准的具体操作",
+          "当前控制revision"
         ]
       },
       {
-        "id": "F24_N05",
-        "label": "[任务B] 唤醒获取锁并完成执行",
-        "kind": "complete",
+        "id": "F24_N04",
+        "label": "经ModelGateway/ToolGateway执行并存检查点",
+        "kind": "tool_exec",
         "dependencies": [
-          "F24_N03",
+          "F24_N03"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "写入（以工具描述为准）",
+        "inputFields": [],
+        "outputFields": [
+          "执行记录",
+          "实际效果/未知状态"
+        ],
+        "evidenceRequirement": "读取、模型请求可并行；桌面输入和同资源写入遵守既有锁。"
+      },
+      {
+        "id": "F24_N05",
+        "label": "证据就绪：汇合已选择的必需分支",
+        "kind": "verification",
+        "dependencies": [
           "F24_N04"
         ],
         "required": true,
-        "resourceKeys": [
-          "mailbox_draft"
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "完成条件证据",
+          "未完成项"
         ],
-        "effectType": "写入（以工具描述为准）",
+        "evidenceRequirement": "TaskRuntime决定终态；模型自报、工具受理或取消受理都不等于完成。"
+      },
+      {
+        "id": "F24_N06",
+        "label": "本地取消/停止：先更新控制revision",
+        "kind": "deterministic_check",
+        "dependencies": [],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
         "inputFields": [
-          "acquiredAfterRelease"
+          "直接停止或已识别语音停止"
         ],
         "outputFields": [
-          "taskBFinished"
-        ]
+          "取消已受理",
+          "停止信号"
+        ],
+        "evidenceRequirement": "直接本地入口不等待云端；拦住尚未开始操作，取消传播到在途请求。"
+      },
+      {
+        "id": "F24_N07",
+        "label": "未开始：阻止当前操作并保留此前效果",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F24_N06"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "当前操作未开始",
+          "之前已发生效果"
+        ],
+        "condition": "当前操作尚未提交"
+      },
+      {
+        "id": "F24_N08",
+        "label": "已提交/在途：显示正在停止",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F24_N06"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "停止中",
+          "在途请求身份"
+        ],
+        "condition": "请求已提交，尚不能确认停止"
+      },
+      {
+        "id": "F24_N09",
+        "label": "结果未知：等待对账与外部读回",
+        "kind": "verification",
+        "dependencies": [
+          "F24_N06",
+          "F24_N08"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "原状态及读回依据",
+          "继续核实或明确结果"
+        ],
+        "joinMode": "selected",
+        "condition": "外部结果未知",
+        "evidenceRequirement": "一次缺失读回不是未执行证明；使用支持的查询/回查及实际期限。"
+      },
+      {
+        "id": "F24_N10",
+        "label": "已确认发生：保留结果，按需转补偿",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F24_N06",
+          "F24_N09"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "原效果证据",
+          "F03补偿候选"
+        ],
+        "joinMode": "selected",
+        "condition": "已有实际发生证据"
+      },
+      {
+        "id": "F24_N11",
+        "label": "恢复：读检查点及原操作结果再调度",
+        "kind": "checkpoint",
+        "dependencies": [],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "已确认结果复用",
+          "未知项先核实",
+          "可恢复节点"
+        ],
+        "condition": "重启、断连或恢复请求"
+      },
+      {
+        "id": "F24_N12",
+        "label": "状态徽章与必要主动通知",
+        "kind": "complete",
+        "dependencies": [
+          "F24_N05",
+          "F24_N07",
+          "F24_N08",
+          "F24_N09",
+          "F24_N10"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "完成/停止中/待核实/已发生",
+          "需要用户决定的事项"
+        ],
+        "joinMode": "selected",
+        "evidenceRequirement": "正常等待可静默；重要效果、截止冲击和必须决定的事项主动通知，不能一律隐藏。"
       }
     ],
     "edges": [
       {
-        "id": "F24_E01",
+        "id": "F24_REV_E1",
         "source": "F24_N01",
         "target": "F24_N02",
         "required": true,
-        "branchLabel": "任务A竞争"
+        "branchLabel": "满足依赖"
       },
       {
-        "id": "F24_E02",
-        "source": "F24_N01",
+        "id": "F24_REV_E2",
+        "source": "F24_N02",
         "target": "F24_N03",
         "required": true,
-        "branchLabel": "任务B排队"
+        "branchLabel": "资源可用"
       },
       {
-        "id": "F24_E03",
-        "source": "F24_N02",
+        "id": "F24_REV_E3",
+        "source": "F24_N03",
         "target": "F24_N04",
         "required": true,
-        "branchLabel": "写入并放锁"
+        "branchLabel": "获准操作"
       },
       {
-        "id": "F24_E04",
+        "id": "F24_REV_E4",
         "source": "F24_N04",
         "target": "F24_N05",
         "required": true,
-        "branchLabel": "接力执行"
+        "branchLabel": "实际证据"
       },
       {
-        "id": "F24_E05",
-        "source": "F24_N03",
-        "target": "F24_N05",
-        "required": true
+        "id": "F24_REV_E5",
+        "source": "F24_N06",
+        "target": "F24_N07",
+        "required": false,
+        "branchLabel": "未开始",
+        "condition": "提交前"
+      },
+      {
+        "id": "F24_REV_E6",
+        "source": "F24_N06",
+        "target": "F24_N08",
+        "required": false,
+        "branchLabel": "停止中",
+        "condition": "已提交/在途"
+      },
+      {
+        "id": "F24_REV_E7",
+        "source": "F24_N06",
+        "target": "F24_N09",
+        "required": false,
+        "branchLabel": "待核实",
+        "condition": "外部结果未知"
+      },
+      {
+        "id": "F24_REV_E8",
+        "source": "F24_N08",
+        "target": "F24_N09",
+        "required": false,
+        "branchLabel": "核实停止结果",
+        "condition": "仍未知"
+      },
+      {
+        "id": "F24_REV_E9",
+        "source": "F24_N06",
+        "target": "F24_N10",
+        "required": false,
+        "branchLabel": "已发生",
+        "condition": "已有证据"
+      },
+      {
+        "id": "F24_REV_E10",
+        "source": "F24_N09",
+        "target": "F24_N10",
+        "required": false,
+        "branchLabel": "读回确认发生",
+        "condition": "已核实"
+      },
+      {
+        "id": "F24_REV_E11",
+        "source": "F24_N09",
+        "target": "F24_N07",
+        "required": false,
+        "branchLabel": "读回确认未发生",
+        "condition": "有充分证据"
+      },
+      {
+        "id": "F24_REV_E12",
+        "source": "F24_N11",
+        "target": "F24_N09",
+        "required": false,
+        "branchLabel": "恢复未知项",
+        "condition": "不能确认"
+      },
+      {
+        "id": "F24_REV_E13",
+        "source": "F24_N11",
+        "target": "F24_N02",
+        "required": false,
+        "branchLabel": "复用结果后继续",
+        "condition": "可恢复"
+      },
+      {
+        "id": "F24_REV_E14",
+        "source": "F24_N05",
+        "target": "F24_N12",
+        "required": true,
+        "branchLabel": "汇总"
+      },
+      {
+        "id": "F24_REV_E15",
+        "source": "F24_N07",
+        "target": "F24_N12",
+        "required": true,
+        "branchLabel": "当前未开始"
+      },
+      {
+        "id": "F24_REV_E16",
+        "source": "F24_N08",
+        "target": "F24_N12",
+        "required": true,
+        "branchLabel": "停止中徽章"
+      },
+      {
+        "id": "F24_REV_E17",
+        "source": "F24_N09",
+        "target": "F24_N12",
+        "required": true,
+        "branchLabel": "待核实徽章"
+      },
+      {
+        "id": "F24_REV_E18",
+        "source": "F24_N10",
+        "target": "F24_N12",
+        "required": true,
+        "branchLabel": "保留效果并通知"
       }
     ],
     "recovery": [
-      "恢复检查点与稳定操作标识；未知写入先对账，迟到结果不能覆盖新revision。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
+      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
+      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+    ],
+    "designNotes": [
+      "四种结果描述当前操作及外部副作用，不是新增公共task wire终态。",
+      "恢复不能重置稳定操作ID或重复未知写入；迟到云结果保留审计，不能覆盖新控制revision。",
+      "取消受理不是停止证明；当前操作未开始也不表示任务此前没有副作用。"
+    ],
+    "acceptance": [
+      "在提交前、在途、超时未知和已确认发生四个阶段取消，核对UI与执行/读回记录一致。",
+      "恢复保留已发生效果且不重复写入；无依赖分支不会被别的等待决定阻塞。"
     ]
   },
   {
@@ -3972,7 +4820,7 @@
       },
       {
         "id": "F25_N03",
-        "label": "确定性出口过滤器物理剔除私人数据",
+        "label": "宿主依据实际授权组装出站上下文",
         "kind": "deterministic_check",
         "dependencies": [
           "F25_N02"
@@ -3987,7 +4835,7 @@
           "filteredOut",
           "cleanPayloadReady"
         ],
-        "evidenceRequirement": "物理扫描出站请求，确认 0 条私人笔记数据泄露出境"
+        "evidenceRequirement": "保留凭据隔离并核对数据范围；本地保存不等于没有内容送往已配置国内云。"
       },
       {
         "id": "F25_N04",
@@ -4110,7 +4958,7 @@
           "podRunning",
           "readinessProbe"
         ],
-        "evidenceRequirement": "容器存活探针连续3次返回200"
+        "evidenceRequirement": "分别读取实际镜像版本、deployment与健康结果；就绪探针不是语义工具闭环。"
       },
       {
         "id": "F26_N04",
@@ -4138,11 +4986,11 @@
           "model": "deepseek-v4.1-flash",
           "role": "云端决策闭环验证"
         },
-        "evidenceRequirement": "完整跑通闭环交互链路，所有Policy拦截有效"
+        "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。"
       },
       {
         "id": "F26_N05",
-        "label": "[阶段4/4] 验收通过并上线服务",
+        "label": "记录验收覆盖与剩余问题；按既有发布条件上线",
         "kind": "complete",
         "dependencies": [
           "F26_N04"
@@ -4201,129 +5049,218 @@
     "code": "F27",
     "name": "上下文预算、压缩与恢复",
     "category": "模型与上下文",
-    "summary": "滑动预算控制；超限时触发动态摘要，严格保留不可丢弃的安全Policy与问题；依据来源精准恢复。",
+    "summary": "根据实际模型上下文容量和用户配置分块、排序、摘要与恢复。唯一主模型判断相关性与证据缺口；代码保存关键指令、授权引用、原文版本和压缩映射。",
     "decisionPoints": [
-      "对各上下文区块按相关性与安全优先级打分排序",
-      "审查压缩后的摘要是否遗漏关键冲突或原始依据",
-      "在恢复时根据原始版本哈希精准重建，避免仅依赖抽象摘要发生失真"
+      "在主指令、当前责任、事实、工具证据和长日志中挑选当前需要内容。",
+      "决定是否压缩、补充检索或恢复被摘要片段，不把摘要当原始证据。",
+      "新来源/任务版本出现时让旧上下文映射失效，并反馈给F28模型适配。"
     ],
     "nodes": [
       {
         "id": "F27_N01",
-        "label": "统计上下文各区块 Token 消耗",
-        "kind": "input",
+        "label": "读取模型实际容量、配置与版本",
+        "kind": "deterministic_check",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "context_budget_monitor"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "totalTokens",
-          "budgetLimit"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "overBudgetTokens"
-        ]
+          "可用上下文容量",
+          "当前任务/事实版本"
+        ],
+        "evidenceRequirement": "不默认固定Token数；服务参数接受与内部思考深度验证分开。"
       },
       {
-        "id": "F27_N02",
-        "label": "决策模型 评估相关度并圈定压缩对象",
-        "kind": "semantic_decision",
+        "id": "F27_N05",
+        "label": "并行召回当前责任、事实与必要工具证据",
+        "kind": "tool_exec",
         "dependencies": [
           "F27_N01"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "chunks"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "mustRetainRaw",
-          "targetForCompression"
-        ],
-        "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
-          "role": "上下文优先级判定"
-        }
+          "原文片段与引用",
+          "未知/缺失项"
+        ]
       },
       {
-        "id": "F27_N03",
-        "label": "执行模型生成日志高质量摘要",
-        "kind": "execution_model",
+        "id": "F27_N02",
+        "label": "主模型联合排序上下文并识别缺口",
+        "kind": "semantic_decision",
         "dependencies": [
-          "F27_N02"
+          "F27_N05"
         ],
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [
-          "rawChunk"
-        ],
+        "inputFields": [],
         "outputFields": [
-          "summaryTokens",
-          "compressedRatio",
-          "summarySnippet"
+          "保留片段",
+          "压缩建议",
+          "扩充/恢复请求"
         ],
         "modelAssignment": {
-          "vendor": "通义千问",
-          "model": "qwen3-32b",
-          "role": "高保真压缩"
+          "vendor": "深度求索",
+          "model": "deepseek-v4.1-flash",
+          "role": "唯一全局语义决策配置"
         }
       },
       {
-        "id": "F27_N04",
-        "label": "确定性组装与预算回落达标",
-        "kind": "complete",
+        "id": "F27_N03",
+        "label": "长日志按需由执行模型摘要",
+        "kind": "execution_model",
         "dependencies": [
+          "F27_N02"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "摘要",
+          "原文区段映射"
+        ],
+        "condition": "确需压缩且原文可恢复",
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4-flash",
+          "role": "结构化摘要候选"
+        }
+      },
+      {
+        "id": "F27_N06",
+        "label": "需要原证据时恢复引用或扩充检索",
+        "kind": "tool_exec",
+        "dependencies": [
+          "F27_N02"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
+        "outputFields": [
+          "恢复原文",
+          "新增依据或无新增标记"
+        ],
+        "condition": "存在新证据需求或摘要不足"
+      },
+      {
+        "id": "F27_N04",
+        "label": "宿主组装关键指令/授权/版本映射",
+        "kind": "deterministic_check",
+        "dependencies": [
+          "F27_N02",
           "F27_N03"
         ],
         "required": true,
-        "resourceKeys": [
-          "context_budget_monitor"
-        ],
-        "effectType": "本地状态 / 缓存",
-        "inputFields": [
-          "assembledTokens",
-          "maxBudget"
-        ],
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [],
         "outputFields": [
-          "withinBudget",
-          "budgetUsage",
-          "sourcePointersIntact"
+          "上下文包",
+          "引用版本",
+          "保留/压缩原因"
+        ],
+        "joinMode": "selected",
+        "condition": "直接选取或摘要候选已就绪",
+        "evidenceRequirement": "关键指令与有效授权绑定不可被摘要替换；实际容量不足时明确报告。"
+      },
+      {
+        "id": "F27_N07",
+        "label": "变化使旧映射失效并反馈F28",
+        "kind": "checkpoint",
+        "dependencies": [
+          "F27_N04"
+        ],
+        "required": true,
+        "resourceKeys": [],
+        "effectType": "本地状态 / 缓存",
+        "inputFields": [],
+        "outputFields": [
+          "上下文版本",
+          "模型能力反馈",
+          "可复用片段"
         ]
       }
     ],
     "edges": [
       {
-        "id": "F27_E01",
+        "id": "F27_REV_E1",
         "source": "F27_N01",
-        "target": "F27_N02",
-        "required": true
+        "target": "F27_N05",
+        "required": true,
+        "branchLabel": "并行召回"
       },
       {
-        "id": "F27_E02",
+        "id": "F27_REV_E2",
+        "source": "F27_N05",
+        "target": "F27_N02",
+        "required": true,
+        "branchLabel": "联合重排"
+      },
+      {
+        "id": "F27_REV_E3",
         "source": "F27_N02",
         "target": "F27_N03",
-        "required": true,
-        "branchLabel": "定向压缩"
+        "required": false,
+        "branchLabel": "按需压缩",
+        "condition": "确需摘要"
       },
       {
-        "id": "F27_E03",
+        "id": "F27_REV_E4",
+        "source": "F27_N02",
+        "target": "F27_N06",
+        "required": false,
+        "branchLabel": "按需扩充/恢复",
+        "condition": "有缺口"
+      },
+      {
+        "id": "F27_REV_E5",
+        "source": "F27_N06",
+        "target": "F27_N02",
+        "required": false,
+        "branchLabel": "有新依据重判",
+        "condition": "新增信息"
+      },
+      {
+        "id": "F27_REV_E6",
+        "source": "F27_N02",
+        "target": "F27_N04",
+        "required": false,
+        "branchLabel": "无需摘要直接组装",
+        "condition": "容量足够"
+      },
+      {
+        "id": "F27_REV_E7",
         "source": "F27_N03",
         "target": "F27_N04",
         "required": true,
-        "branchLabel": "预算回落"
+        "branchLabel": "保留原文映射"
+      },
+      {
+        "id": "F27_REV_E8",
+        "source": "F27_N04",
+        "target": "F27_N07",
+        "required": true,
+        "branchLabel": "版本管理"
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
+      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
+      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+    ],
+    "designNotes": [
+      "不固定扩充一跳；无新信息时不重复同一检索，沿用实际取消和期限。",
+      "本地存储不等于数据不出机：仅把当前已授权上下文送到明确配置的国内服务。"
+    ],
+    "acceptance": [
+      "压缩后能定位原文，事实撤销/修订会让旧映射失效。",
+      "比较不同上下文策略的依据保留、实际Token与延迟，不仅比较摘要长度。"
     ]
   },
   {
@@ -4331,7 +5268,7 @@
     "code": "F28",
     "name": "多厂商模型、思考深度与主对话分配",
     "category": "模型与上下文",
-    "summary": "多厂商模型协同调度；决策模型作为唯一决策模型指派角色；严格适配原生思考参数，不支持明确提示。",
+    "summary": "主对话使用唯一全局决策配置分配不同厂商执行模型、实际支持的原生思考参数与验证强度。执行者在受派范围内可选工具和探索，任务终态与授权仍归宿主。",
     "decisionPoints": [
       "将复合指令拆解为资料调研、深度分析、代码实现三类子任务",
       "匹配各模型专长（Qwen长文搜集、DeepSeek深入推导、GLM编码）",
@@ -4360,26 +5297,28 @@
         "dependencies": [
           "F28_N01"
         ],
-        "required": true,
+        "required": false,
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
         "outputFields": [
-          "research",
-          "analysis",
-          "coder"
+          "任务角色与范围",
+          "能力匹配的模型候选",
+          "原生参数/验证强度候选"
         ],
         "modelAssignment": {
           "vendor": "深度求索",
           "model": "deepseek-v4.1-flash",
           "role": "语义决策"
-        }
+        },
+        "condition": "缺少有效分派建议，或新证据需要重判"
       },
       {
         "id": "F28_N03",
         "label": "区分原生思考、步骤预算与验证强度",
         "kind": "deterministic_check",
         "dependencies": [
+          "F28_N01",
           "F28_N02"
         ],
         "required": true,
@@ -4393,7 +5332,9 @@
           "analysis",
           "coder"
         ],
-        "evidenceRequirement": "文档依据与演示参数，不宣称服务或内部思考已验证"
+        "evidenceRequirement": "按实际MaaS/Provider能力映射；不支持的参数明确报告，步骤预算不冒充原生思考深度。",
+        "joinMode": "selected",
+        "condition": "复用有效已有分派建议，或本轮主模型分派完成"
       },
       {
         "id": "F28_N04",
@@ -4505,7 +5446,7 @@
           "sourcesSupported",
           "tests"
         ],
-        "evidenceRequirement": "合成来源与测试记录，模型自报不构成执行证据"
+        "evidenceRequirement": "独立来源核对与实际行为检查分别记录；模型自报不能充当工具执行证据。"
       },
       {
         "id": "F28_N05",
@@ -4541,6 +5482,28 @@
         "outputFields": [
           "result"
         ]
+      },
+      {
+        "id": "F28_N12",
+        "label": "执行者在派定范围内自主选工具与探索",
+        "kind": "tool_exec",
+        "dependencies": [
+          "F28_N04"
+        ],
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "读取",
+        "inputFields": [
+          "受派子任务",
+          "已公布工具能力",
+          "实际取消/期限/预算配置"
+        ],
+        "outputFields": [
+          "经ToolGateway的请求",
+          "局部观察与候选"
+        ],
+        "condition": "该子任务需要本地工具循环",
+        "evidenceRequirement": "复用subagent-host.ts受限工具循环；无需每次工具选择都回到全局模型。授权仍通过原有Policy。"
       }
     ],
     "edges": [
@@ -4627,12 +5590,38 @@
         "target": "F28_N11",
         "required": true,
         "branchLabel": "确定性完成条件"
+      },
+      {
+        "id": "F28_REV_SCOPED_TOOLS",
+        "source": "F28_N04",
+        "target": "F28_N12",
+        "required": false,
+        "branchLabel": "执行者按需探索"
+      },
+      {
+        "id": "F28_REV_REUSE_DISPATCH",
+        "source": "F28_N01",
+        "target": "F28_N03",
+        "required": false,
+        "branchLabel": "已有分派与快照/配置版本相符则复用",
+        "condition": "有效建议已存在"
       }
     ],
     "recovery": [
       "失败只重做受影响节点；保留已有证据与来源版本。",
       "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
       "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+    ],
+    "designNotes": [
+      "只有一个全局语义决策配置；不同执行模型的局部思考/工具选择不成为第二个全局决策层。",
+      "相同主判断已经包含分工时复用；新工具结果改变问题后再调用同一配置。",
+      "同一决策配置可以并发处理独立判断；执行者不能改变全局责任、签发授权或决定TaskRuntime终态。",
+      "模型厂商与深度配置入口保留，不新设封锁名单。默认国内MaaS，执行候选的角色优劣须实测。"
+    ],
+    "acceptance": [
+      "研究和现有上下文分析并行；依赖研究结果的编码必须等待真实前置结果。",
+      "主对话分派记录模型、原生参数映射和任务范围；不支持深度档位不会假装生效。",
+      "执行者的受限工具循环与真实工具/Policy接线分开记录可用性。"
     ]
   }
 ]

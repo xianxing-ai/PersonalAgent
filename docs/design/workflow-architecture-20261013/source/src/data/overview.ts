@@ -14,7 +14,8 @@ export const OVERVIEW_LINKS: [string, string, string, RelationKind][] = [
   ['F01', 'F03', '建立目标与责任', 'flow'],
   ['F03', 'F28', '拆分可执行子任务', 'flow'],
   ['F28', 'MODELS', '选择模型与原生思考参数', 'flow'],
-  ['MODELS', 'F24', '候选输出，按依赖并行', 'flow'],
+  ['MODELS', 'F24', '候选与局部观察，按真实依赖并行', 'flow'],
+  ['MODELS', 'POLICY', '执行者在派定范围自主提工具请求', 'flow'],
   ['F03', 'F24', '局部重规划', 'flow'],
   ['F24', 'F03', '变化使关联节点失效', 'flow'],
   ['F04', 'F05', '有效事实与版本', 'flow'],
@@ -54,7 +55,7 @@ export const OVERVIEW_LINKS: [string, string, string, RelationKind][] = [
   ['VERIFY', 'F24', '通过 / 补查 / 局部修复', 'evidence'],
   ['VERIFY', 'F12', '完成结果与未完成项', 'flow'],
   ['VERIFY', 'F04', '记忆候选，不自动改原始事实', 'flow'],
-  ['F24', 'F22', '全功能轨迹只读进入影子', 'shadow'],
+  ['F24', 'F22', '失败/变化/异常/调试或配置采样才触发', 'shadow'],
   ['EVIDENCE', 'F22', '当时的输入与工具结果', 'shadow'],
   ['F22', 'F23', '有标签的失败样本与改进候选', 'shadow'],
   ['F23', 'F22', '候选版本隔离评估', 'shadow'],
@@ -63,6 +64,16 @@ export const OVERVIEW_LINKS: [string, string, string, RelationKind][] = [
   ['DECISION', 'VERIFY', '语义判断不是完成证据', 'decision'],
   ['F28', 'F27', '模型上下文能力与数据许可反馈', 'flow'],
   ['F22', 'F03', '经验证的流程修改候选', 'shadow'],
+  ['F01', 'F05', '已授权责任与事实先召回', 'flow'],
+  ['F05', 'F01', '来源片段支持责任联合判断', 'evidence'],
+  ['F03', 'F05', '时间/地点/人物/资源宽松召回', 'flow'],
+  ['F27', 'F05', '按需扩充或恢复原文，不固定一跳', 'flow'],
+  ['F04', 'F03', '事实/责任版本变更，局部失效', 'flow'],
+  ['F08', 'F03', '线程变化关联原发送效果', 'flow'],
+  ['F24', 'F03', '已发生效果的补偿候选', 'evidence'],
+  ['EVIDENCE', 'F03', '具体原操作、读回与修正因果链', 'evidence'],
+  ['F03', 'POLICY', '实际补偿授权；已覆盖则直接执行', 'flow'],
+  ['F24', 'F12', '停止中/待核实徽章与必要通知', 'flow'],
 ];
 
 const dispatch = ['F04','F05','F06','F07','F08','F09','F10','F11','F13','F14','F15','F16','F17','F18','F19','F20','F21','F25','F26','F27'];
@@ -70,25 +81,27 @@ dispatch.forEach(id => OVERVIEW_LINKS.push(['F24', id, '按任务选路；独立
 ALL_FEATURES.forEach(f => OVERVIEW_LINKS.push([f.id, 'DECISION', '语义问题与结构化建议', 'decision']));
 
 export const INTERFACE_NOTES: Record<string, string> = {
-  F01: '复用 task.submit / TaskRuntime；责任图与自然语言责任编译为待接线设计。',
+  F01: '复用 task.submit / TaskRuntime 与既有授权；责任来源映射、联合判断与按需扩充为拟议内部编排，不新增wire DTO。',
   F02: '复用 authorization.respond；语音问题绑定与安全摘要仍需适配，演示不证明真实 ASR 确认。',
-  F04: '复用 MemoryQueryPort 的事实版本与 KnowledgePort；Wiki 写入与纠错消费需按公开端口接线。',
+  F03: '复用现有世界/目标/计划与TaskRuntime；四维宽松召回、原效果因果关联及补偿分类仍需接线，REVISE不等于撤销外部效果。',
+  F04: '复用 MemoryQueryPort 的事实版本与 KnowledgePort；Wiki 写入与纠错消费需按公开端口接线。确认事实不自动授权动作。',
   F05: '现有 MemoryQueryPort 为事实查询；KnowledgePort 提供 search。向量检索不能当成现有 MemoryQuery 能力。',
-  F22: '轨迹与测试夹具可复用；影子是独立命名空间，不等于物理沙箱已经部署。',
+  F08: '复用邮件公开能力、既有Policy与ToolGateway；事件责任、条件语音与发送读回按真实连接器逐项验证。此页不连接真实邮箱。',
+  F22: '按需消费轨迹与测试夹具；独立影子宿主及物理隔离需验收。AgentArts Evaluation拟议接入，不能写成已集成。',
   F23: '默认决策模型更换为 DeepSeek-V4.1-Flash；MaaS API 配置不能改远端模型权重，权重训练是独立拟议作业。',
-  F24: '复用现有 TaskRuntime、状态、事件、取消和检查点；图节点恢复与副作用记录需继续接线。',
+  F24: '复用现有 TaskRuntime、状态、事件、取消和检查点；四种操作结果、效果关联与读回UI待接线，不新增公共task终态。',
   F26: '复用 AgentArts 自有镜像与 CloudAgentPort；此网页不证明部署、调用或比赛验收已完成。',
   F27: '复用已有记忆、知识和模型端口；上下文分块、摘要引用映射与恢复为拟议编排。',
-  F28: '现有 subagentModels 工厂有模型配置入口；Competition 多模型分派与原生参数仍需适配。',
+  F28: 'subagentModels工厂和subagent-host.ts受限工具循环存在；执行者可范围内探索。Competition多模型分派与原生参数消费仍需适配。',
 };
 
 export const SHARED_NODES = [
-  {id:'USER',label:'用户输入',subtitle:'文字 · 语音 · 持续责任',kind:'flow'},
-  {id:'EVENT',label:'外部事件',subtitle:'邮件 · 日程 · 订阅 · CI',kind:'flow'},
+  {id:'USER',label:'可信用户指令',subtitle:'原句 · 条件 · 版本 · 授权',kind:'flow'},
+  {id:'EVENT',label:'外部事件与变化',subtitle:'邮件 · 日程 · 订阅 · CI',kind:'flow'},
   {id:'DECISION',label:'唯一语义决策模型',subtitle:'DeepSeek-V4.1-Flash · 华为云 MaaS',kind:'decision'},
-  {id:'MODELS',label:'执行模型池',subtitle:'DeepSeek · GLM · Qwen · openPangu',kind:'flow'},
+  {id:'MODELS',label:'受派执行模型',subtitle:'国内候选 · 范围内工具探索',kind:'flow'},
   {id:'POLICY',label:'现有授权与参数检查',subtitle:'沿用 Runtime / Policy；不新增限制',kind:'flow'},
-  {id:'TOOL',label:'ToolGateway',subtitle:'工具执行 · 资源锁 · 幂等',kind:'flow'},
+  {id:'TOOL',label:'ToolGateway',subtitle:'执行 · 稳定操作ID · 取消',kind:'flow'},
   {id:'EVIDENCE',label:'执行证据与外部读回',subtitle:'未知结果先核实',kind:'evidence'},
   {id:'VERIFY',label:'验证与必需分支汇合',subtitle:'完成条件 · 失败修复 · 部分结果',kind:'evidence'},
 ];
