@@ -98,7 +98,9 @@ def create_app(agent, api_key, warmed=False):
             raise HTTPException(400, "Invalid deadline") from None
         if seconds <= 0:
             raise HTTPException(408, "Deadline expired")
-        return min(seconds, 30.0)
+        # Explicit upstream deadlines include queue and model time. The old
+        # compatibility default applies only when no deadline was supplied.
+        return seconds
 
     async def infer(states, questions, seconds, request):
         if gate.locked():

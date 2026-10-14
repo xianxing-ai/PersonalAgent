@@ -9,6 +9,7 @@ from pathlib import Path
 import threading
 import unittest
 import tempfile
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -52,6 +53,35 @@ class Request:
 
 
 class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_deadline_reaches_inference_without_a_hidden_30_second_cap(self):
+        captured = []
+
+        class Agent:
+            def predict_batch(self, states, questions, batch_size):
+                return [{} for _ in states]
+
+        original_wait_for = asyncio.wait_for
+
+        async def observe_wait_for(awaitable, timeout):
+            captured.append(timeout)
+            return await original_wait_for(awaitable, timeout=timeout)
+
+        app = server.create_app(Agent(), "synthetic-test-key")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/batch")
+        async with app.router.lifespan_context(app):
+            with patch.object(server.asyncio, "wait_for", observe_wait_for):
+                await endpoint(Request(seconds=90))
+                legacy = Request()
+                del legacy.value["deadline"]
+                await endpoint(legacy)
+                with self.assertRaises(HTTPException) as expired:
+                    await endpoint(Request(seconds=-1))
+            self.assertEqual(expired.exception.status_code, 408)
+            self.assertEqual(len(captured), 2, "Expired requests never submit inference")
+            self.assertGreater(captured[0], 80, "An explicit 90-second deadline must not become 30 seconds")
+            self.assertLessEqual(captured[0], 90)
+            self.assertEqual(captured[1], 30.0, "Only the no-deadline compatibility endpoint defaults to 30 seconds")
+
     async def test_late_inference_failure_is_consumed_without_logging_private_error(self):
         release = threading.Event()
         finished = threading.Event()

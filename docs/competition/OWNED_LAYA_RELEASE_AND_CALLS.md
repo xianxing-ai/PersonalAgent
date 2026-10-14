@@ -108,6 +108,17 @@ SWR 上传读回、AgentArts 新版本读回、云请求关联、原本地工具
 这些本地测试中的模型/选择器是明确替身，不能冒充 Laya/MaaS/AgentArts 实测。
 实际发布与调用结果在同目录的发布 Evidence 记录中补充，以实际结果为准。
 
+真实镜像离线验收：`tests/manual/agentarts/owned-laya-image.mjs`，必须在 Linux ARM64 镜像内
+以 `--network none` 挂载执行；一个真实 Laya 实例，无 MaaS、工具或账号调用。
+本机 x86 经 QEMU 的时间不能推断原生华为 ARM64 延迟。
+第一次实际选择返回 408，诊断确认旧适配把显式 deadline 截为 30 秒；已修正为原剩余期限，
+无期限旧兼容入口仍默认 30 秒。相应 Python 定向测试 3 项通过；未放宽概率、候选和身份校验。
+
+真实云端公开读取与图续跑：参照 [验收 CLI 说明](../../tests/manual/agentarts/OWNED-WORKFLOW-LIVE.md)，
+从安全存储在内存构造配置，通过 stdin 调用 `owned-workflow-live.mjs`。
+该 CLI 无 Fake 模型，不重试未知云请求；等待原 Policy 后只授权精确公开文件读取，
+保存实际原工具/Evidence/签名续图与 SQLite 重开读回。纯 SSE 解析测试 4 项通过，不计云验收。
+
 平台能力接线沿用分工：[goo122 #353](https://github.com/zemeng5208/PersonalAgent/issues/353)；
 业务消费与实际读回：[Potatos498 #354](https://github.com/zemeng5208/PersonalAgent/issues/354)。
 不为该图模块复制他们的网关、注册宿主、业务连接器或数据库。

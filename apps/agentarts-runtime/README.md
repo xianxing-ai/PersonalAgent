@@ -8,6 +8,8 @@ Node 生成仅本进程使用的随机内部 Bearer，启动 Python 回环服务
 
 所有工作流与旧编排器共享同一 typed-choice FIFO。候选生成与无关工具可并行，Laya 前向串行，不增加固定排队上限；原 deadline 与取消覆盖等待。客户端超时后下一项先读回 `/health.inferenceBusy`，只对明确未受理的 429 等待空闲后重新提交，已受理的模型调用不重放。这个机制不改变未知工具写入必须先核实的规则。
 
+Python 服务遵循调用方的显式原 deadline，不另行截为 30 秒；仅旧无 deadline 兼容入口保留 30 秒默认值。实际模型耗时需要 ARM64 运行记录，不能由该期限修正推断。
+
 `OwnedAgentOrchestrator` 普通 fast 结果、World/Plan 的 KEEP/RECHECK，以及修复终审候选都经过 Laya；确定性命令结果校验保持代码执行。28 个功能的独立依赖图模板和推进器通过同一 Laya 选择端口组合；新图中的本地/平台 Host、真实回执验证缺配置时明确 unavailable，不把目录存在或 Fake 通过宣称为 28 个功能真实可用。
 
 受信配置还包括 `PA_AGENT_WORKFLOW_CHECKPOINT_KEY`（至少 32 字节，稳定的宿主密钥，用于图检查点完整性；不授予动作权限），以及既有国内 MaaS 与入站配置。`PA_WORKFLOW_RECEIPT_SECRET` 可注入已有本地 Host 工具任务结果的签名核实器；显式专用密钥优先，未指定时公开 `deriveOwnedWorkflowKeys` 从既有可信 `PA_AGENT_WSS_AUTH_TOKEN` 以 HKDF 不同 purpose 派生稳定的 checkpoint/peer-receipt 子密钥。本地可信桥接宿主用相同安全配置派生；没有任何配置不会生成假信任。签名核对受信 peer 来源和具体原回执，不能代替本地 Policy 或独立外部读回。`LAYA_MODEL_PATH` 在镜像中默认 `/opt/laya/models/multilingual`、`LAYA_PORT=8000`；Python 默认 `/opt/laya/venv/bin/python`，冷启动期限由 `PA_LAYA_STARTUP_TIMEOUT_MS` 配置。`legacy-without-laya` 只在明确 `standalone-validation` 的离线传输夹具中可用，AgentArts 模式拒绝这个值。
