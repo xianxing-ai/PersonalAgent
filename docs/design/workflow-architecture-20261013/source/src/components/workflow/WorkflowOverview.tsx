@@ -7,17 +7,18 @@ import { OVERVIEW_COLUMNS, OVERVIEW_LINKS, SHARED_NODES, INTERFACE_NOTES } from 
 import { MODEL_SOURCES, MODEL_CATALOG } from '../../data/models';
 import { SHARED_DETAILS, LATENCY_DESIGN, FINAL_DESIGN_STATUS } from '../../data/architectureNotes';
 import { ARCHITECTURE_AREAS, ARCHITECTURE_MECHANISMS, DESIGN_GOALS, ACCEPTANCE_MATRIX, GOLDEN_PATH } from '../../data/architectureRevisions';
+import { PLATFORM_INTEGRATIONS, PLATFORM_BASELINE, PLATFORM_SCOPE, PLATFORM_GOLDEN_PATH, PLATFORM_BOUNDARIES, RESOURCE_ROUTES } from '../../data/agentartsIntegration';
 
 type GraphData = Record<string, unknown> & {label:string; subtitle:string; kind:string; featureId?:string; count?:number; detail?:ArchitectureNode; focused?:boolean};
-type Panel = 'node' | 'area' | 'mechanism' | 'validation' | undefined;
-const COLORS:Record<string,string> = {flow:'#64748b',decision:'#a78bfa',evidence:'#34d399',shadow:'#fbbf24'};
+type Panel = 'node' | 'area' | 'mechanism' | 'validation' | 'platform' | undefined;
+const COLORS:Record<string,string> = {flow:'#64748b',decision:'#a78bfa',evidence:'#34d399',shadow:'#fbbf24',platform:'#22d3ee'};
 const FEATURE_MAP = new Map(ALL_FEATURES.map(f=>[f.id,f]));
 const TEMPLATE_COUNT = ALL_FEATURES.reduce((sum,f)=>sum+f.nodes.length,0);
 const KIND_LABELS:Record<string,string> = {input:'输入/事件',tool_exec:'工具/端口',semantic_decision:'主模型语义建议',execution_model:'执行模型候选',deterministic_check:'宿主检查',checkpoint:'状态/检查点',parallel_split:'并行分支',join:'分支汇合',verification:'结果核验',wait_user:'按需用户决定',complete:'汇合/交付'};
 const FlowCard = memo(({data,selected}:NodeProps<Node<GraphData>>)=>(
- <div className={'overview-node '+(selected?'selected ':'')+(data.focused?'focused':'')} data-feature-code={data.featureId} title={data.label}>
+ <div className={'overview-node '+(data.kind==='platform'?'platform ':'')+(selected?'selected ':'')+(data.focused?'focused':'')} data-feature-code={data.featureId} title={data.label}>
   <Handle type="target" position={Position.Left} id="in"/><Handle type="source" position={Position.Right} id="out"/>
-  <div className="overview-node-meta">{data.featureId || (data.kind==='decision'?'主决策':'共用路径')}<span>{data.detail?'架构节点':data.count!==undefined?data.count+' 节点':'设计'}</span></div>
+  <div className="overview-node-meta">{data.featureId || (data.kind==='decision'?'主决策':data.kind==='platform'?'AgentArts接入':'共用路径')}<span>{data.kind==='platform'?'待接线':data.detail?'架构节点':data.count!==undefined?data.count+' 节点':'设计'}</span></div>
   <div className="overview-node-title">{data.label}</div><div className="overview-node-subtitle">{data.subtitle}</div>
  </div>
 ));
@@ -71,7 +72,7 @@ function makeGraph(expanded:Set<string>,selected:string|undefined,showDecisions:
   edges.push({id:'relation-'+i,source,target,sourceHandle:'out',targetHandle:'in',label:related?label:undefined,type:'smoothstep',style:{stroke:color,strokeWidth:related?2.5:1.8,opacity:emphasized?(related?1:0.1):(kind==='decision'?0.32:0.65),strokeDasharray:kind==='decision'||kind==='shadow'?'6 5':undefined},labelStyle:{fill:'#e2e8f0',fontSize:12},labelBgStyle:{fill:'#111827',fillOpacity:0.96},markerEnd:{type:MarkerType.ArrowClosed,color}});
  });
  if(pathMode!=='all'){
-  const active=new Set(pathMode==='realtime'?['USER','F01','F02','F03','F05','F27','F24','F28','DECISION','MODELS','POLICY','TOOL','EVIDENCE','VERIFY']:['EVENT','F04','F05','F09','F10','F12','F22','F23','F26','F27','DECISION','MODELS','F24','EVIDENCE']);
+  const active=new Set(pathMode==='realtime'?['USER','F01','F02','F03','F05','F27','F24','F28','DECISION','MODELS','POLICY','TOOL','EVIDENCE','VERIFY','AA_GATEWAY','AA_KNOWLEDGE','AA_OBSERVE']:['EVENT','F04','F05','F09','F10','F12','F22','F23','F26','F27','DECISION','MODELS','F24','EVIDENCE','AA_KNOWLEDGE','AA_OBSERVE','AA_EVALUATE']);
   nodes.forEach(n=>{n.style={opacity:active.has(n.data.featureId || n.id)?1:0.25};});
   edges.forEach(e=>{if(!active.has(e.source.split('::')[0])||!active.has(e.target.split('::')[0]))e.style={...e.style,opacity:0.07};});
  }
@@ -83,22 +84,25 @@ function OverviewBody(){
  const [showDecisions,setShowDecisions]=useState(true),[panel,setPanel]=useState<Panel>();
  const [pathMode,setPathMode]=useState<'all'|'realtime'|'background'>('all'),[showLatency,setShowLatency]=useState(false);
  const [areaId,setAreaId]=useState(ARCHITECTURE_AREAS[0].id),[mechanismId,setMechanismId]=useState(ARCHITECTURE_MECHANISMS[0].id);
+ const [platformId,setPlatformId]=useState(PLATFORM_INTEGRATIONS[0].id);
  const area=ARCHITECTURE_AREAS.find(a=>a.id===areaId)!,mechanism=ARCHITECTURE_MECHANISMS.find(m=>m.id===mechanismId)!;
- const focusIds=useMemo(()=>panel==='area'?[...area.features,...area.shared]:panel==='mechanism'?[...mechanism.features,...mechanism.shared]:[],[panel,area,mechanism]);
+ const platform=PLATFORM_INTEGRATIONS.find(item=>item.id===platformId)!;
+ const focusIds=useMemo(()=>panel==='area'?[...area.features,...area.shared]:panel==='mechanism'?[...mechanism.features,...mechanism.shared]:panel==='platform'?[platform.nodeId,...platform.features,...platform.shared]:[],[panel,area,mechanism,platform]);
  const graph=useMemo(()=>makeGraph(expanded,selected,showDecisions,pathMode,focusIds),[expanded,selected,showDecisions,pathMode,focusIds]);
  const selectedNode=graph.nodes.find(n=>n.id===selected),f=FEATURE_MAP.get(selectedNode?.data.featureId||'');
  const connections=OVERVIEW_LINKS.filter(([s,t])=>s===f?.id||t===f?.id);
  const fit=()=>flow.fitView({padding:0.06,duration:300});
  const expand=(ids:string[])=>{setExpanded(new Set(ids));setSelected(undefined);setPanel(undefined);};
- const openFeature=(id:string)=>{setSelected(id);setPanel('node');};
+ const openFeature=(id:string)=>{setSelected(id);const entry=PLATFORM_INTEGRATIONS.find(item=>item.nodeId===id);if(entry){setPlatformId(entry.id);setPanel('platform');}else setPanel('node');};
  const togglePanel=(next:Panel)=>{setPanel(panel===next?undefined:next);setSelected(undefined);};
  const featureLinks=(ids:string[])=><div className="architecture-feature-links">{ids.map(id=><button key={id} onClick={()=>openFeature(id)}>{id} {FEATURE_MAP.get(id)?.name}</button>)}</div>;
  return <section className="overview-shell" aria-label="全部28个功能连通总图">
   <div className="overview-toolbar">
-   <div><h1>全部工作流 · 一张连通图</h1><p>28 个功能 · {TEMPLATE_COUNT} 个详细节点 · 授权范围内自治 / 真实依赖并行 / 按需影子</p></div>
+   <div><h1>全部工作流 · 一张连通图</h1><p>28 个功能 · {TEMPLATE_COUNT} 个详细节点 · 全部业务工作流在镜像 / 平台MCP直连与日志 / 按需影子</p></div>
    <div className="overview-actions">
     {(['all','realtime','background'] as const).map(mode=><button key={mode} aria-pressed={pathMode===mode} onClick={()=>setPathMode(mode)}>{mode==='all'?'全部路径':mode==='realtime'?'实时路径':'后台路径'}</button>)}
     <button aria-pressed={panel==='mechanism'} onClick={()=>togglePanel('mechanism')}>核心机制</button>
+    <button className="platform-entry" aria-pressed={panel==='platform'} onClick={()=>togglePanel('platform')}>AgentArts接入与代码核对</button>
     <button aria-pressed={panel==='validation'} onClick={()=>togglePanel('validation')}>验证方案</button>
     <button aria-pressed={showLatency} onClick={()=>setShowLatency(!showLatency)}>延迟与设计状态</button>
     <button onClick={()=>expand(ALL_FEATURES.map(item=>item.id))}>展开全部节点</button>
@@ -110,7 +114,7 @@ function OverviewBody(){
    <span>六大板块</span>{ARCHITECTURE_AREAS.map(item=><button key={item.id} aria-pressed={panel==='area'&&areaId===item.id} onClick={()=>{setAreaId(item.id);setPanel('area');setSelected(undefined);}}>{item.name}</button>)}
    <select aria-label="快速查看功能" value={f?.id||''} onChange={e=>{if(e.target.value)openFeature(e.target.value);}}><option value="">快速查看 F01–F28</option>{ALL_FEATURES.map(item=><option key={item.id} value={item.id}>{item.id} {item.name}</option>)}</select>
   </nav>
-  <div className="overview-caption">点击功能查看依赖、条件、恢复与现有代码适配；六大板块和核心机制在同一张图高亮。新增记录为拟议内部设计，生产接线与真实延迟待验证。</div>
+  <div className="overview-caption">架构定稿：全部业务工作流在自有镜像；蓝色平台节点接网关、知识、日志/Trace与评估。点击查看已有实现和最小增量；生产接线与真实延迟待验证。</div>
   {showLatency&&<div className="architecture-latency"><strong>{FINAL_DESIGN_STATUS}</strong><ul>{LATENCY_DESIGN.map((line,i)=><li key={i}>{line}</li>)}</ul></div>}
   <div className="overview-body">
    <div className="overview-canvas">
@@ -120,6 +124,22 @@ function OverviewBody(){
    </div>
    {panel&&<aside className="overview-detail" aria-label="架构详情">
     <button className="overview-close" onClick={()=>setPanel(undefined)} aria-label="关闭总图详情">×</button>
+    {panel==='platform'&&<>
+     <div className="overview-kicker">架构定稿 · 平台适配待实现/验收</div><h2>AgentArts平台接入</h2>
+     <p>{PLATFORM_SCOPE}</p>
+     <nav className="architecture-mechanism-tabs" aria-label="AgentArts接入分类">{PLATFORM_INTEGRATIONS.map(item=><button key={item.id} aria-pressed={item.id===platformId} onClick={()=>{setPlatformId(item.id);setSelected(item.nodeId);}}>{item.name}</button>)}</nav>
+     <h3>{platform.name}</h3><div className="platform-status">{platform.status}</div>
+     <h3>已有实现 · 可复用</h3><ul>{platform.existing.map(line=><li key={line}>{line}</li>)}</ul>
+     <h3>只补这些适配</h3><ul>{platform.increment.map(line=><li key={line}>{line}</li>)}</ul>
+     <h3>详细接入流程</h3><ol>{platform.steps.map(line=><li key={line}>{line}</li>)}</ol>
+     <h3>复用边界</h3><ul>{platform.reuse.map(line=><li key={line}>{line}</li>)}</ul>
+     <h3>平台价值与真实验收证据</h3><p>{platform.proof}</p>
+     <h3>关联工作流 · 同图高亮</h3>{featureLinks(platform.features)}
+     <details className="platform-section"><summary>知识库、MCP与Skill的多来源</summary>{RESOURCE_ROUTES.map(item=><article className="architecture-goal" key={item.name}><h3>{item.name}</h3><ul>{item.sources.map(source=><li key={source}>{source}</li>)}</ul><p>{item.route}</p><small>{item.existing}</small></article>)}<p>来源选择复用现有配置与宿主；不因平台、自制或第三方来源增加固定封锁名单、角色禁用或新的审批门槛。</p></details>
+     <details className="platform-section"><summary>四项代码核对与最小增量</summary><p>{PLATFORM_BASELINE}</p>{PLATFORM_INTEGRATIONS.map(item=><article className="architecture-goal" key={item.id}><h3>{item.name}</h3><p>{item.status}</p><ul>{item.code.map(code=><li className="platform-code" key={code}><code>{code}</code></li>)}</ul></article>)}<article className="architecture-goal"><h3>Skill已有代码</h3><code>packages/skills/src/local-installation.ts</code><br/><code>packages/skills/src/cloud-selection.ts</code><p>本机安装/快照与云选择端口已有；平台资产和网络来源适配、通用资源执行及云验收待交付。</p></article></details>
+     <details className="platform-section"><summary>首条真实验收路径与边界</summary><ol>{PLATFORM_GOLDEN_PATH.map(step=><li key={step}>{step}</li>)}</ol><ul>{PLATFORM_BOUNDARIES.map(line=><li key={line}>{line}</li>)}</ul></details>
+     <div className="platform-docs">官方接口依据：{platform.sources.map(source=><a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.label}</a>)}</div>
+    </>}
     {panel==='area'&&<>
      <div className="overview-kicker">六大逻辑板块 · 同图高亮</div><h2>{area.name}</h2><p>{area.description}</p>
      <div className="overview-adapter">阅读分组，不新增进程、服务或第二套任务系统。28个功能是模板库；模块编号是工程分工。</div>
@@ -147,6 +167,7 @@ function OverviewBody(){
      <div className="overview-kicker">{f?.id||'共用路径'} · 设计 / 逐项接线验证</div><h2>{selectedNode.data.label}</h2>
      {f?<>
       <p>{f.summary}</p><div className="overview-adapter"><strong>现有代码适配</strong><p>{INTERFACE_NOTES[f.id]||'复用已定义的公开能力与Runtime/ModelGateway/ToolGateway。真实可用性按现有接口目录；此页不提升验收或冻结等级。'}</p></div>
+      {PLATFORM_INTEGRATIONS.some(item=>item.features.includes(f.id))&&<div className="architecture-feature-links">{PLATFORM_INTEGRATIONS.filter(item=>item.features.includes(f.id)).map(item=><button key={item.id} onClick={()=>openFeature(item.nodeId)}>AgentArts · {item.name}</button>)}</div>}
       <div className="overview-actions"><button onClick={()=>setExpanded(prev=>{const next=new Set(prev);if(next.has(f.id))next.delete(f.id);else next.add(f.id);return next;})}>{expanded.has(f.id)?'收起此功能':'在本图展开节点'}</button><button onClick={()=>flow.setCenter(selectedNode.position.x+110,selectedNode.position.y+60,{zoom:1,duration:300})}>定位此功能</button></div>
       <h3>语义决策点</h3><ul>{f.decisionPoints.map((s,i)=><li key={i}>{s}</li>)}</ul>
       <h3>完整功能流程 · {f.nodes.length} 节点</h3><ol>{f.nodes.map(n=><li key={n.id}><button className="overview-text-button" onClick={()=>{setExpanded(prev=>new Set([...prev,f.id]));setSelected(f.id+'::'+n.id);}}>{n.label}</button><small>{n.dependencies.length?'前置：'+n.dependencies.join('、'):'入口 / 独立分支'} · {KIND_LABELS[n.kind]||n.kind}{n.joinMode==='selected'?' · 仅汇合已选择分支':''}</small>{n.condition&&<small className="architecture-condition">条件：{n.condition}</small>}</li>)}</ol>
@@ -162,7 +183,7 @@ function OverviewBody(){
     </>}
    </aside>}
   </div>
-  <div className="overview-legend"><span><i style={{background:COLORS.flow}}/>功能调用 / 条件分支</span><span><i style={{background:COLORS.decision}}/>唯一全局主决策（虚线）</span><span><i style={{background:COLORS.evidence}}/>效果证据 / 读回</span><span><i style={{background:COLORS.shadow}}/>按需影子 / 改进（虚线）</span><span>默认国内MaaS · 不新增限制</span></div>
+  <div className="overview-legend"><span><i style={{background:COLORS.flow}}/>功能调用 / 条件分支</span><span><i style={{background:COLORS.decision}}/>唯一全局主决策（虚线）</span><span><i style={{background:COLORS.evidence}}/>效果证据 / 读回</span><span><i style={{background:COLORS.shadow}}/>按需影子 / 改进（虚线）</span><span><i style={{background:COLORS.platform}}/>AgentArts接入（待接线）</span><span>国内MaaS · 平台/自有/第三方资源</span></div>
   <div className="overview-sources">模型文档依据：{MODEL_SOURCES.map(s=><a key={s.url} href={s.url} target="_blank" rel="noreferrer">{s.label}</a>)}<span>本地打包静态查看页，无模型调用、账号连接或执行循环。</span></div>
  </section>;
 }

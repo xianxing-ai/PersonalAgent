@@ -38,6 +38,8 @@ html, body, #root {
 .architecture-matrix strong{font-size:12px;color:#bae6fd}
 .architecture-condition{color:#fbbf24!important}
 .overview-detail{width:390px}.overview-node.focused{border-color:#22d3ee;background:#142b3c}
+.overview-node.platform{border-color:#168ba2;background:#102936}.overview-node.platform .overview-node-meta{color:#67e8f9}.overview-actions .platform-entry{border-color:#168ba2;color:#67e8f9}.overview-actions .platform-entry[aria-pressed=true]{background:#163344}
+.platform-status{font-size:12px;line-height:1.7;color:#fde68a;padding:10px;border:1px solid #66552c;border-radius:7px;background:#272313}.platform-section{margin:14px 0;border-top:1px solid #344155;padding-top:12px}.platform-section summary{cursor:pointer;font-size:12px;color:#7dd3fc;line-height:1.7}.platform-section code,.platform-code{font-size:10px;overflow-wrap:anywhere;color:#a5b8ce}.platform-docs{display:flex;flex-direction:column;gap:7px;font-size:11px;color:#94a3b8;margin:18px 0}.platform-docs a{color:#7dd3fc;text-decoration:underline}
 .overview-toolbar,.overview-caption,.overview-legend,.overview-sources{flex-shrink:0}
 @media(max-width:760px){.overview-detail{width:min(390px,94vw)}.architecture-areas{padding:7px 12px}.architecture-areas select{margin-left:6px;flex-shrink:0}.overview-toolbar>.overview-actions{flex-wrap:nowrap;overflow-x:auto;width:100%;padding-bottom:4px}.overview-toolbar>.overview-actions>*{flex-shrink:0}.overview-toolbar label{white-space:nowrap}.overview-caption{font-size:11px}.architecture-latency{max-height:145px;padding:8px 12px}.overview-legend span:last-child{display:none}}
 

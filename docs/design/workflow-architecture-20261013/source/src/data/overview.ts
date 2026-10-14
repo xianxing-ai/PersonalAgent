@@ -1,4 +1,5 @@
 import { ALL_FEATURES } from './architectureFeatures';
+import { PLATFORM_NODES } from './agentartsIntegration';
 
 export const OVERVIEW_COLUMNS = [
   { title: '主对话 · 目标 · 记忆', ids: ['F01', 'F03', 'F28', 'F24', 'F02', 'F04', 'F05', 'F27'] },
@@ -7,7 +8,7 @@ export const OVERVIEW_COLUMNS = [
   { title: '平台 · 影子 · 改进', ids: ['F25', 'F21', 'F26', 'F22', 'F23'] },
 ];
 
-export type RelationKind = 'flow' | 'decision' | 'evidence' | 'shadow';
+export type RelationKind = 'flow' | 'decision' | 'evidence' | 'shadow' | 'platform';
 export const OVERVIEW_LINKS: [string, string, string, RelationKind][] = [
   ['USER', 'F01', '文字 / 语音目标', 'flow'],
   ['EVENT', 'F03', '外部事件', 'flow'],
@@ -74,6 +75,23 @@ export const OVERVIEW_LINKS: [string, string, string, RelationKind][] = [
   ['EVIDENCE', 'F03', '具体原操作、读回与修正因果链', 'evidence'],
   ['F03', 'POLICY', '实际补偿授权；已覆盖则直接执行', 'flow'],
   ['F24', 'F12', '停止中/待核实徽章与必要通知', 'flow'],
+  ['F26', 'AA_GATEWAY', '自有镜像接入平台Target', 'platform'],
+  ['DECISION', 'AA_GATEWAY', '唯一决策配置的国内MaaS调用', 'platform'],
+  ['MODELS', 'AA_GATEWAY', 'ModelGateway → Inference Target', 'platform'],
+  ['TOOL', 'AA_GATEWAY', '既有授权后，MCP客户端直连平台网关', 'platform'],
+  ['AA_GATEWAY', 'AA_KNOWLEDGE', '知识检索Target：鉴权/区域待验证', 'platform'],
+  ['F05', 'AA_KNOWLEDGE', 'KnowledgePort平台提供者', 'platform'],
+  ['AA_KNOWLEDGE', 'F27', '原文片段、来源与上下文', 'platform'],
+  ['AA_GATEWAY', 'EVIDENCE', '实际工具结果进入现有执行记录', 'evidence'],
+  ['F26', 'AA_OBSERVE', 'Runtime日志 / 部署版本', 'platform'],
+  ['MODELS', 'AA_OBSERVE', '模型角色Span与用量，异步上报', 'platform'],
+  ['TOOL', 'AA_OBSERVE', 'MCP/本地工具日志与Span', 'platform'],
+  ['EVIDENCE', 'AA_OBSERVE', '任务/操作引用关联，不复制事实库', 'platform'],
+  ['F22', 'AA_OBSERVE', '按需影子与恢复轨迹', 'platform'],
+  ['AA_OBSERVE', 'AA_EVALUATE', '真实输入输出回流至评测集', 'platform'],
+  ['F22', 'AA_EVALUATE', '可比较的隔离结果，后台按需评估', 'shadow'],
+  ['F23', 'AA_EVALUATE', '复用本地用例与候选版本', 'shadow'],
+  ['AA_EVALUATE', 'F23', '真实评分与版本对照，沿原发布流程', 'shadow'],
 ];
 
 const dispatch = ['F04','F05','F06','F07','F08','F09','F10','F11','F13','F14','F15','F16','F17','F18','F19','F20','F21','F25','F26','F27'];
@@ -85,14 +103,15 @@ export const INTERFACE_NOTES: Record<string, string> = {
   F02: '复用 authorization.respond；语音问题绑定与安全摘要仍需适配，演示不证明真实 ASR 确认。',
   F03: '复用现有世界/目标/计划与TaskRuntime；四维宽松召回、原效果因果关联及补偿分类仍需接线，REVISE不等于撤销外部效果。',
   F04: '复用 MemoryQueryPort 的事实版本与 KnowledgePort；Wiki 写入与纠错消费需按公开端口接线。确认事实不自动授权动作。',
-  F05: '现有 MemoryQueryPort 为事实查询；KnowledgePort 提供 search。向量检索不能当成现有 MemoryQuery 能力。',
+  F05: '现有MemoryQueryPort为事实查询，KnowledgePort提供本地search；新增平台知识库提供者和来源映射，不重写Wiki。当前尚无原生检索API接入证据。',
   F08: '复用邮件公开能力、既有Policy与ToolGateway；事件责任、条件语音与发送读回按真实连接器逐项验证。此页不连接真实邮箱。',
-  F22: '按需消费轨迹与测试夹具；独立影子宿主及物理隔离需验收。AgentArts Evaluation拟议接入，不能写成已集成。',
-  F23: '默认决策模型更换为 DeepSeek-V4.1-Flash；MaaS API 配置不能改远端模型权重，权重训练是独立拟议作业。',
+  F21: 'MCP与Skill支持平台、自有及GitHub/Gitee/第三方来源。固定stdio MCP、本机Skill安装/快照和云选择端口已有；远程传输、通用资源执行及平台资产适配待接线，不新建宿主或执行器。',
+  F22: '按需消费已有轨迹与测试夹具；影子逻辑留在镜像。适合的真实结果送平台评测集评估，独立宿主/上报/报告仍待验收。',
+  F23: '复用已有本地评分和配对用例，补平台真实结果导出与任务适配；历史平台评测集已发布不等于评分完成。MaaS配置不直接修改远端权重。',
   F24: '复用现有 TaskRuntime、状态、事件、取消和检查点；四种操作结果、效果关联与读回UI待接线，不新增公共task终态。',
-  F26: '复用 AgentArts 自有镜像与 CloudAgentPort；此网页不证明部署、调用或比赛验收已完成。',
+  F26: '全部业务编排进入自有镜像。Runtime入站/WSS已有限定场景记录；新增推理/MCP网关、原生知识、日志/Trace与评估适配须分别验收。查看AgentArts接入面板了解已有代码和增量。',
   F27: '复用已有记忆、知识和模型端口；上下文分块、摘要引用映射与恢复为拟议编排。',
-  F28: 'subagentModels工厂和subagent-host.ts受限工具循环存在；执行者可范围内探索。Competition多模型分派与原生参数消费仍需适配。',
+  F28: 'subagentModels工厂和subagent-host受限循环存在；复用ModelGateway，把执行模型连接配置接到平台Inference Target。Competition分派、原生参数与网关消费仍需实测。',
 };
 
 export const SHARED_NODES = [
@@ -104,4 +123,5 @@ export const SHARED_NODES = [
   {id:'TOOL',label:'ToolGateway',subtitle:'执行 · 稳定操作ID · 取消',kind:'flow'},
   {id:'EVIDENCE',label:'执行证据与外部读回',subtitle:'未知结果先核实',kind:'evidence'},
   {id:'VERIFY',label:'验证与必需分支汇合',subtitle:'完成条件 · 失败修复 · 部分结果',kind:'evidence'},
+  ...PLATFORM_NODES,
 ];
