@@ -2,6 +2,14 @@
 export function describeModelThinking(entry, depth) {
   if (depth !== undefined && (!Number.isInteger(depth) || depth < 0 || depth > 5)) throw Error('思考深度无效');
   const requestedEffort = depth === undefined ? null : ['none', 'low', 'low', 'medium', 'high', 'high'][depth];
+  if (entry?.available && entry.nativeReasoning) {
+    return {configurationRef: entry.configurationRef ?? '', depth: depth ?? null,
+      stepBudget: {maxSteps: depth === undefined ? 6 : Math.max(2, (depth + 1) * 2)},
+      modelReasoning: {requestedEffort: entry.nativeReasoning.effort ?? null, effort: entry.nativeReasoning.effort ?? null, supported: true,
+        thinking: entry.nativeReasoning.thinking, outputTokenParameter: entry.nativeReasoning.outputTokenParameter,
+        verification: 'conditional', thinkingBudgetSupported: false,
+        reason: '按版本绑定的原生思考配置发送；步骤档位不覆盖它，真实端点尚未验证'}};
+  }
   const supported = Boolean(entry?.available && requestedEffort !== null && entry.reasoningEfforts?.includes(requestedEffort));
   return {configurationRef: entry?.configurationRef ?? '', depth: depth ?? null,
     stepBudget: {maxSteps: depth === undefined ? 6 : Math.max(2, (depth + 1) * 2)},
@@ -29,6 +37,11 @@ export function mountModelApiControls(root, invoke) {
     <fieldset><legend>当前模型支持的 reasoning_effort</legend>
       <p class="notice">请根据供应商文档或已有验证声明；未知模型保持不选。更改供应商、Endpoint 或模型后需重新确认。</p>
       ${['none', 'low', 'medium', 'high'].map(effort => `<label><input data-model-effort="${effort}" type="checkbox">${effort}</label>`).join('')}
+      ${['minimal', 'xhigh', 'max'].map(effort => `<label><input data-model-effort="${effort}" type="checkbox">${effort}（需下方原生配置）</label>`).join('')}
+      <label>原生思考开关<select data-model-api="nativeThinking"><option value="">未配置，保留旧档位行为</option><option value="enabled">开启</option><option value="disabled">关闭</option></select></label>
+      <label>固定原生强度<select data-model-api="nativeEffort"><option value="">由供应商默认</option>${['none','minimal','low','medium','high','xhigh','max'].map(effort => `<option value="${effort}">${effort}</option>`).join('')}</select></label>
+      <label>输出预算参数<select data-model-api="outputTokenParameter"><option value="max_tokens">max_tokens</option><option value="max_completion_tokens">max_completion_tokens（含思考）</option></select></label>
+      <p class="notice">原生配置仅适用于 OpenAI 兼容辅助模型。启用后，任务思考深度只调整步骤预算；关闭思考时不选任何强度。</p>
       <label><input data-model-api="reasoningConfirmed" type="checkbox">确认此目的地与模型支持所选参数</label>
     </fieldset>
     <p data-model-api="capabilities" class="notice"></p>
@@ -51,10 +64,13 @@ export function mountModelApiControls(root, invoke) {
     field('enabled').checked = entry?.enabled ?? true;
     field('default').checked = Boolean(entry && entry.id === state.defaultId);
     field('key').value = '';
-    for (const input of effortInputs) input.checked = Boolean(entry?.reasoningEfforts?.includes(input.dataset.modelEffort));
-    field('reasoningConfirmed').checked = Boolean(entry?.reasoningEfforts?.length);
+    for (const input of effortInputs) input.checked = Boolean((entry?.nativeReasoning?.supportedEfforts ?? entry?.reasoningEfforts)?.includes(input.dataset.modelEffort));
+    field('nativeThinking').value = entry?.nativeReasoning?.thinking ?? '';
+    field('nativeEffort').value = entry?.nativeReasoning?.effort ?? '';
+    field('outputTokenParameter').value = entry?.nativeReasoning?.outputTokenParameter ?? 'max_tokens';
+    field('reasoningConfirmed').checked = Boolean(entry?.nativeReasoning || entry?.reasoningEfforts?.length);
     field('capabilities').textContent = entry
-      ? `${entry.available ? '已配置，真实连接尚未验证' : '当前不可用或已停用'} · 文本与 JSON 工具提案；原生推理${entry.reasoningEfforts?.length ? `已声明 ${entry.reasoningEfforts.join(' / ')}，真实端点尚未验证` : '未声明'}；thinkingBudget 不支持`
+      ? `${entry.available ? '已配置，真实连接尚未验证' : '当前不可用或已停用'} · 文本与 JSON 工具提案；原生推理${entry.nativeReasoning ? `已配置 ${entry.nativeReasoning.thinking} / ${entry.nativeReasoning.effort ?? '供应商默认'}` : entry.reasoningEfforts?.length ? `已声明 ${entry.reasoningEfforts.join(' / ')}` : '未声明'}；thinkingBudget 不支持`
       : '执行步骤预算由任务控制；原生推理默认不发送，thinkingBudget 不支持';
     buttons();
   }
@@ -87,16 +103,27 @@ export function mountModelApiControls(root, invoke) {
   field('saved').onchange = select;
   for (const name of ['provider', 'baseUrl', 'model']) field(name).addEventListener('input', () => {
     for (const input of effortInputs) input.checked = false;
+    field('nativeThinking').value = '';
+    field('nativeEffort').value = '';
+    field('outputTokenParameter').value = 'max_tokens';
     field('reasoningConfirmed').checked = false;
     field('capabilities').textContent = '目的地或模型已更改，请重新声明支持列表；真实端点尚未验证';
   });
+  for (const control of [...effortInputs, ...['nativeThinking','nativeEffort','outputTokenParameter'].map(field)]) {
+    control.addEventListener('input', () => {field('reasoningConfirmed').checked = false;});
+  }
   field('save').onclick = async () => {
     if (busy || closed) return;
     const selected = state.models?.find(entry => entry.id === field('saved').value);
+    const supportedEfforts = effortInputs.filter(input => input.checked).map(input => input.dataset.modelEffort);
+    const nativeThinking = field('nativeThinking').value;
     const payload = {provider: field('provider').value, displayName: field('displayName').value,
       baseUrl: field('baseUrl').value, model: field('model').value, apiKey: field('key').value,
       enabled: field('enabled').checked, makeDefault: field('default').checked,
-      reasoningEfforts: effortInputs.filter(input => input.checked).map(input => input.dataset.modelEffort),
+      reasoningEfforts: nativeThinking ? [] : supportedEfforts,
+      ...(nativeThinking ? {nativeReasoning: {thinking: nativeThinking, supportedEfforts,
+        outputTokenParameter: field('outputTokenParameter').value,
+        ...(field('nativeEffort').value ? {effort: field('nativeEffort').value} : {})}} : {}),
       reasoningSupportConfirmed: field('reasoningConfirmed').checked,
       ...(selected?.configurationRef ? {expectedConfigurationRef: selected.configurationRef} : {}),
       ...(field('saved').value ? {id: field('saved').value} : {})};
