@@ -25,6 +25,22 @@ html, body, #root {
   color: #e6edf3;
 }
 
+*{box-sizing:border-box}button,select{font-family:inherit}button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}
+.architecture-areas{display:flex;align-items:center;gap:7px;padding:8px 20px;border-bottom:1px solid #26334b;overflow-x:auto;flex-shrink:0;white-space:nowrap}
+.architecture-areas>span{font-size:11px;color:#94a3b8;margin-right:3px}
+.architecture-areas button,.architecture-feature-links button,.architecture-mechanism-tabs button{border:1px solid #344660;background:#142034;color:#cbd5e1;border-radius:6px;padding:6px 8px;font-size:11px;cursor:pointer}
+.architecture-areas button[aria-pressed=true],.architecture-mechanism-tabs button[aria-pressed=true]{border-color:#22d3ee;color:#67e8f9;background:#163344}
+.architecture-areas select{margin-left:auto;border:1px solid #344660;background:#101827;color:#cbd5e1;padding:6px;border-radius:6px;font-size:11px;max-width:225px}
+.architecture-feature-links,.architecture-mechanism-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.architecture-feature-links button{text-align:left;color:#7dd3fc}
+.architecture-goal,.architecture-matrix article{margin:12px 0;padding:10px;border:1px solid #344155;border-radius:7px;background:#121e30}
+.architecture-goal h3{margin:0 0 6px}.architecture-goal p,.architecture-matrix p{margin:5px 0}
+.architecture-matrix strong{font-size:12px;color:#bae6fd}
+.architecture-condition{color:#fbbf24!important}
+.overview-detail{width:390px}.overview-node.focused{border-color:#22d3ee;background:#142b3c}
+.overview-toolbar,.overview-caption,.overview-legend,.overview-sources{flex-shrink:0}
+@media(max-width:760px){.overview-detail{width:min(390px,94vw)}.architecture-areas{padding:7px 12px}.architecture-areas select{margin-left:6px;flex-shrink:0}.overview-toolbar>.overview-actions{flex-wrap:nowrap;overflow-x:auto;width:100%;padding-bottom:4px}.overview-toolbar>.overview-actions>*{flex-shrink:0}.overview-toolbar label{white-space:nowrap}.overview-caption{font-size:11px}.architecture-latency{max-height:145px;padding:8px 12px}.overview-legend span:last-child{display:none}}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
