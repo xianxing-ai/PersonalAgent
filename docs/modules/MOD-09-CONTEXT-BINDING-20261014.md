@@ -37,8 +37,10 @@
 ## PR #351 远程门禁修复记录
 
 - 原 head `5f0aae79` 的 [PR Foundation](https://github.com/zemeng5208/PersonalAgent/actions/runs/38509143624) 失败：知识桥接的错误 key/pin 与过期/描述符替换两条 TLS 测试在 `ephemeralCertificate` 返回 `SOURCE_UNAVAILABLE`，耗时约 10.4/10.1 秒。底层错误被原实现屏蔽；接近 10 秒进程期限是排查线索，不作为已证明的根因。
-- 本机原测试独立 6/6，原知识包标准并发探测 51 通过、1 跳过，未复现该失败。修复将知识包测试文件串行化，降低 Windows 证书进程与其他夹具的资源争用，并在测试入口加载限定字段的诊断器。生产桥接源码、10 秒证书期限、TLS pin、一次性 offer、取消与私密输出处理均未改变。
+- 本机原测试独立 6/6，原知识包标准并发探测 51 通过、1 跳过，未复现该失败。第一阶段 `a39cdd0e` 将知识包测试文件串行化，降低 Windows 证书进程与其他夹具的资源争用，并在测试入口加载限定字段的诊断器；该阶段生产桥接源码、10 秒证书期限、TLS pin、一次性 offer、取消与私密输出处理均未改变。
 - 诊断器只输出进程耗时、spawn 耗时、timeout 和已知退出/取消类别；不输出命令、错误消息、stdout/stderr、PFX、私钥或配对秘密。新增两项测试验证字段保密与类别保留。诊断器不由产品入口加载。
-- 当前知识专项 53 通过、1 跳过、0 失败，保持原宿主测试覆盖；最终完整 check 退出 0，37 个 Node 汇总块共 3083 项：3052 通过、31 跳过、0 失败。新 head 远程 Foundation 待读回，不能以本机通过宣称远程已修复。
+- 第一阶段知识专项 53 通过、1 跳过、0 失败，保持原宿主测试覆盖；完整 check 退出 0，37 个 Node 汇总块共 3083 项：3052 通过、31 跳过、0 失败；三项本地 Foundation 演示通过。`a39cdd0e` 的 [PR Foundation](https://github.com/zemeng5208/PersonalAgent/actions/runs/38552156693) 与 [push Foundation](https://github.com/zemeng5208/PersonalAgent/actions/runs/38552151082) 均成功；实际诊断首次证书 9953ms、spawn 5ms，距 10000ms 期限仅 47ms，不能据绿色声称冷启动问题根治。
 - 本机验证环境还出现 unified exec 默认通道 setup refresh 失败、npm cmd 子进程找不到 node，以及短 PATH 缺少 PowerShell7 导致额外跳过。均使用正常权限通道、仅本次进程的短 PATH、现有 PowerShell7 与已构建宿主的实际路径恢复；没有修改系统配置。失败与修复日志在忽略的 `.cache-bridge-*`、`.cache-ci351-*` 中保留。PATH 8276 字符问题与 [Microsoft 的 cmd 8191 字符限制说明](https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation) 一致，与原 CI 证书失败分别记录。
 - 首次完整回归还因短 PATH 遗漏已有 OpenSSL 导致自有镜像的 3 个合成 HTTPS 用例 `spawn openssl ENOENT`；补回 Git 附带的 OpenSSL 后专项 3/3，再独立完整回归通过。未修改相关断言或生产代码；失败日志 `.cache-ci351-check.log`、最终日志 `.cache-ci351-check-final.log` 均保留。
+- 第二阶段减少固定证书脚本的启动依赖：直接输出两个生成的 Base64 JSON 字段，移除 `ConvertTo-Json` 的 Utility 模块加载，不扩大期限、不缓存/复用证书。一次本机脚本对照验证旧脚本加载 Utility、候选不加载，二者字段均为有效 cert/pfx Base64；该对照不是跨机器冷启动性能结论。新增方案无外部输入、字段/协议或依赖变化。
+- 第二阶段知识专项仍 53 通过、1 跳过，完整 check 仍 3052 通过、31 跳过、0 失败。日志 `.cache-ci351-certificate-tests.log`、`.cache-ci351-certificate-check.log`、`.cache-ci351-script-module-comparison.log` 保留。最终修复 head 的远程 Foundation 及首次证书耗时仍待读回；设计门禁和非作者评审分别核对。
