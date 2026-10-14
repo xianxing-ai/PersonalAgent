@@ -15,7 +15,7 @@
 
 ## 2. IMAGE-CORE：zemeng5208
 
-状态：in_progress（用户已授权开始；真实发布待验收）。
+状态：review（[开发预览 PR #356](https://github.com/zemeng5208/PersonalAgent/pull/356) 已提交；镜像及最小真实工具路径已发布，完整业务及比赛验收仍待补）。
 拥有：apps/agentarts-runtime、packages/agentarts、cognition核心/goals、scripts/laya、tests/manual/agentarts及相关模块文档。MOD-19暂停。
 
 第一交付：Laya服务/权重ARM64镜像生命周期、loopback调用、健康/启动错误、候选Schema/revision校验，保留现有runtime端口。接着映射全部28模板、并行/分支汇合、责任/语音及按需影子；每个业务节点复用实际公开能力，不以模板登记代替真实执行。
@@ -67,3 +67,14 @@
 官方高代码/自定义镜像、Inference Target、MCP gateway、原生知识API、Runtime/LTS/OTel及离线评测文档均需按实际账号区域做读回；比赛公开方向见[Competition Profile](../competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)。没有组委会个案认证，不以文档或演示证明参赛完成。
 
 发布登记需要source SHA、Laya资产版本/摘要、ARM64镜像digest、SWR位置、deployment/version、模型配置引用、健康/真实调用、平台trace/评测任务、真实工具Evidence和独立测试。共享示例不含密钥/私人正文。PR只记录已完成项，任一合資格非作者当前head有效Approve及实际检查/冲突/意见门槛不变。
+
+### 本次开发预览发布读回（2026-10-14）
+
+- 镜像源码：`fe886677d72a6f7a3312e054c68ef4d74a804fc4`；实际 Laya multilingual CPU 镜像已在离线 ARM64/QEMU 环境加载、预热并完成有限 choice。
+- SWR：`swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:laya-fe886677`，客户端上传后独立读回 ARM64 manifest `sha256:8120ad11915c5de9c6daa61b492d3228872978ccfbc0f9a79acf59432f42366c`。
+- AgentArts Runtime：`pa-owned-bindings-0dae0ff5-api`；实际新版本 `arm64-laya-fe886677`，访问方式 `Latest` 已指向该版本，原生运行日志已开启。保留原委托、鉴权、规格及旧版本。
+- 实测目录 28 项；固定公开文件经原 Policy、生产 ToolGateway 读取一次，保留原执行记录、1 条 conditional Evidence、独立文件 SHA、签名回执及 SQLite 重开读回；没有工具重放。
+- 整体为 partial：F20_N02 选择 `owned-review`，未继续下游模型执行。平台日志关联提案裁决 881 ms 和续图裁决 1477 ms；这是两个真实样本，不构成稳定 SLA 或完整业务验收。
+- 完整发布/API/凭据注入/调用/回执/恢复与公共 Evidence 位于 #356 的 `docs/competition/OWNED_LAYA_RELEASE_AND_CALLS.md` 及 `docs/competition/evidence/OWNED_LAYA_20261014.json`。原验收缓存、数据库、机器路径和密钥不随 PR 公开。
+
+本记录不宣称 #356 已合并、非作者已批准或 goo122/Potatos498 已接收任务。平台 MCP、原生知识、完整 Trace、效果评估、实际语音及各业务宿主仍按 #353/#354 独立交付；已发布目录不能替代这些能力的实际验收。
