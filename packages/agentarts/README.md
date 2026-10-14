@@ -8,6 +8,8 @@
 
 当前节点边界与整图目标明确分开：tool 候选只是尚未执行的 `{toolName,toolVersion,arguments}`，不要求在首个读取提案前拿到读取结果、后续比对产物或用户授权；执行仍由本地 Runtime/Policy 控制。完整用户输入及下游要求保留，适用于当前生成节点的额外合规字段也保留。运行日志用固定 `workflow_candidates/candidate_response`、nodeId、实际候选数量与错误码区分制备空结果和选择器失败。候选数组 SHA 只用于运行日志关联，不是模型质量、执行或授权证据，不记录候选正文、scope/path 或任意错误信息。
 
+候选制备与 Laya 选择共用同一当前节点边界；两处均可见该节点精确已公布工具目录及 inputSchema。选择问题评估“该阶段的候选是否受任务、参数、Schema 或实际来源支持”：尚未执行的请求不要求未来执行结果，生成事实/文档仍要求实际来源。此接线补足判断材料，不保证 Laya 必须接受任何候选，不改变复核项或本地 Policy。
+
 2026-10-12：新增 `getOwnedBindings()`、`invokeWorkflow()`、`invokeController()`，固定8个Workflow与3个Controller。
 World/Plan独立阶段返回 role_report；Review/Controller 返回 application_result；均为 unverified。
 前置报告逐次按当前宿主来源重验，不扩 candidateVersion1.0、授权或执行范围。

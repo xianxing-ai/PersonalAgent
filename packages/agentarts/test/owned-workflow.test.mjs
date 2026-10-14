@@ -60,6 +60,13 @@ test('selector receives the current node contract, settled predecessor state and
   assert.deepEqual(context.predecessors.F20_N01,source);assert.deepEqual(context.input,original.input);
   assert.deepEqual(context.candidateValues.find(value=>value.id==='candidate').value,{candidateFor:'F20_N02'});
   assert.equal(context.candidateValues.find(value=>value.id==='recheck').abstain,true);
+  const firstContext=seen.find(value=>value.nodeId==='F20_N01');
+  assert.equal(firstContext.currentCandidateBoundary.kind,'unexecuted_tool_request');
+  assert.equal(firstContext.currentCandidateBoundary.selectionBasis,'published_schema_and_task_arguments');
+  assert.equal(firstContext.currentCandidateBoundary.resultEvidenceStage,'after_actual_execution');
+  assert.deepEqual(firstContext.publishedTools,original.availableTools);
+  assert.deepEqual(firstContext.nodeContract.capabilities,getOwnedWorkflowTemplate('F20').nodes[0].capabilities);
+  assert.deepEqual(context.publishedTools,[],'Only the current node precise tool capabilities are supplied');
 });
 
 test('a frontier prepares three independent research branches concurrently; downstream waits for receipts',async()=>{

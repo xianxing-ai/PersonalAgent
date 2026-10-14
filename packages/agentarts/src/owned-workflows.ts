@@ -90,6 +90,18 @@ const referenced=(value:unknown):value is {kind:'trusted_tool_result_reference';
   plain(value)&&value.kind==='trusted_tool_result_reference'&&typeof value.valueDigest==='string';
 const NODE_OUTPUT_BYTES=(template:OwnedWorkflowTemplate):number=>Math.floor((1_100_000-65_536)/(4*template.nodes.length));
 
+/** One current-node boundary shared by candidate preparation and typed selection. */
+export function workflowCandidateMetadata(node:OwnedWorkflowNode,tools:readonly CoordinationAvailableTool[]) {
+  const proposed=node.kind==='tool'||node.kind==='host';
+  return {currentCandidateBoundary:{kind:node.kind==='tool'?'unexecuted_tool_request'
+      :node.kind==='host'?'unexecuted_host_arguments':'node_output_data',
+    nodeOutputStage:proposed?'after_actual_host_receipt':'candidate_data',
+    selectionBasis:node.kind==='tool'?'published_schema_and_task_arguments'
+      :node.kind==='host'?'bound_host_arguments_and_task_scope':'actual_sources_and_current_output_requirements',
+    resultEvidenceStage:proposed?'after_actual_execution':'required_for_generated_claims'},
+    publishedTools:tools.filter(tool=>node.capabilities.some(cap=>cap.kind==='tool'&&cap.name===tool.name)).map(tool=>copy(tool))};
+}
+
 /** Stateless cloud planning frontier. No DB, credentials, authorization issuer or real tool executor. */
 export class OwnedWorkflowEngine {
   private readonly secret:Buffer;
@@ -229,8 +241,9 @@ export class OwnedWorkflowEngine {
     const selected=await this.options.selector.select({context:JSON.stringify({workflowId:context.template.workflowId,
       nodeId:context.node.id,label:context.node.label,
       nodeContract:{kind:context.node.kind,designKind:context.node.designKind,inputFields:context.node.inputFields,
-        outputFields:context.node.outputFields,effect:context.node.effect,
+        outputFields:context.node.outputFields,effect:context.node.effect,capabilities:context.node.capabilities,
         ...(context.node.evidenceRequirement?{evidenceRequirement:context.node.evidenceRequirement}:{})},
+      ...workflowCandidateMetadata(context.node,context.availableTools),
       input:context.input,predecessorStates:context.predecessorStates,predecessors:context.predecessorOutputs,
       candidateValues:candidates.map(({id,value,branches,abstain})=>({id,value,...(branches?{branches}:{}),...(abstain?{abstain}:{} )})),mode:context.mode}),
       candidates:candidates.map(({id,description})=>({id,description})),deadline:context.deadline,
