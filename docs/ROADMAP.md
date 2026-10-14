@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-14 版本化上下文、预算与删除覆盖（in_progress）
+
+goo122 从 #350 `a378c3df` 开始 [F27 上下文工作包](modules/MOD-09-CONTEXT-BINDING-20261014.md)，沿既有编译/发送门禁增加持久摘要版本比较、可信 goal token 预算端口及新检查点删除覆盖。定向 33/33；完整 check 3050 通过、31 跳过、0 失败。无已验证 tokenizer 时明确 unmeasured，不把 goal 计量当作完整模型上下文窗；原私人确认、Skill 许可及整篇备份 pending 保持有效。真实云调用 0，PR/评审/集成未完成，完整模块状态不提升。
+
 ## 2026-10-13 PR #347 首批架构落地（in_progress）
 
 goo122 从 main `3275aa91` 开始 [MOD-04A 原生思考配置](modules/MOD-04A-NATIVE-REASONING-20261013.md)：先更新 F04/F05/F21/F24/F27/F28 与当前代码的对应关系，再沿 Competition 辅助模型路径接通原生开关、强度、输出预算和恢复绑定。采用 [ADR-0024](adr/0024-competition-native-reasoning.md)；无 wire Schema、数据库迁移或新增依赖。真实云调用 0，非作者评审和集成待完成；完整模块状态不提升。

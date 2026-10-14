@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-14 Competition 编译上下文增量（provisional）
+
+[F27 上下文工作包](../modules/MOD-09-CONTEXT-BINDING-20261014.md) 沿原 `coordinationInput` 与 TaskRuntime 增加 `competition-context:v1` 摘要绑定和 host-only `CoordinationGoalTokenBudget`。可信同步计数只覆盖最终编译 goal，加宿主输出预留；Desktop 未配置已验证 tokenizer 时记为 unmeasured。字符上限仍为 16000 UTF-16 units；发送、凭据等待与恢复比较版本，新检查点由原逐事实父/子任务删除链路清理。无 wire capability、Schema、迁移或冻结范围变更。真实云调用 0，非作者评审及集成待完成；见 [ADR-0025](../adr/0025-competition-context-binding.md)。
+
 ## 2026-10-13 Competition 辅助模型原生思考配置（provisional）
 
 [MOD-04A 首批架构落地](../modules/MOD-04A-NATIVE-REASONING-20261013.md) 沿现有 Runtime 工厂、ModelGateway 和 Desktop 加密配置增加 host-only `nativeReasoning`（开关、支持列表、固定强度、输出预算字段）。原生配置与步骤预算独立，恢复绑定配置版本与声明；参数拒绝先于凭据/网络。无新增 wire capability、Schema、数据库迁移或依赖，Core Runtime Profile 1 冻结范围不变。配置和离线测试不证明真实端点支持；真实云调用 0，尚未非作者评审或主线集成。边界见 [ADR-0024](../adr/0024-competition-native-reasoning.md)。
