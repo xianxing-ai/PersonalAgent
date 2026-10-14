@@ -34,6 +34,25 @@ function inferenceProjection(value) {
     cgroupBefore:cgroupProjection(value.cgroupBefore),cgroupAfter:cgroupProjection(value.cgroupAfter),
     cgroupCpuDelta:resourceProjection(value.cgroupCpuDelta,'cpuStat')};
 }
+async function contextRejection(response) {
+  const fallback={stage:'bound_rejection',errorCode:'HTTP_413'};
+  if(!response.body)return fallback;
+  const reader=response.body.getReader();let bytes=0;const chunks=[];
+  try {
+    while(true) {
+      const next=await reader.read();if(next.done)break;
+      bytes+=next.value.byteLength;if(bytes>4096){await reader.cancel();return fallback;}chunks.push(next.value);
+    }
+    const data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));
+    if(!plain(data?.detail)||data.detail.code!=='CONTEXT_WINDOW_EXCEEDED')return fallback;
+    const result={stage:'context_precheck',errorCode:'CONTEXT_WINDOW_EXCEEDED'};
+    for(const name of ['requiredTokens','encoderMaxTokens']) {
+      if(Number.isSafeInteger(data.detail[name])&&data.detail[name]>=0)result[name]=data.detail[name];
+    }
+    return result;
+  } catch {return fallback;}
+  finally {reader.releaseLock();}
+}
 
 /** Typed choice only; never a ModelPort, ToolGateway, authorization or task-state owner. */
 export function createOwnedLayaSelector({port, getApiKey, isReady = () => true, request = fetch, onDecision = () => {}}) {
@@ -112,9 +131,14 @@ export function createOwnedLayaSelector({port, getApiKey, isReady = () => true, 
         }
         check();
         if (!response.ok) {
+          if(response.status===413) {
+            const metadata=await contextRejection(response);
+            try {onDecision({event:'laya_rejected',model:'multilingual',requestId,httpStatus:413,
+              candidateCount:snapshot.length,durationMs:performance.now()-started,...metadata});} catch {}
+            throw new ProtocolError('UNSUPPORTED_CAPABILITY',
+              'Owned Laya requires scoped evidence: input exceeds the loaded context or transport window; no candidate was selected');
+          }
           await response.body?.cancel();
-          if(response.status===413) throw new ProtocolError('UNSUPPORTED_CAPABILITY',
-            'Owned Laya requires scoped evidence: input exceeds the loaded context or transport window; no candidate was selected');
           throw new ProtocolError(response.status === 408 ? 'TIMEOUT' : response.status === 429 ? 'RATE_LIMITED' : 'EXTERNAL_FAILURE', 'Owned Laya choice unavailable');
         }
         if (!response.body) throw new Error();

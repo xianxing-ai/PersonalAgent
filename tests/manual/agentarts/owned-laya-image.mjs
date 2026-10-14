@@ -59,7 +59,7 @@ try {
   assert.equal(health.model,'multilingual');assert.equal(health.warmed,true);assert.equal(health.inferenceBusy,false);
 
   phase='real_typed_choice';
-  const decisions=[];
+  const decisions=[],rejections=[];
   const selector=createOwnedLayaSelector({port:service.port,getApiKey:()=>service.key,isReady:service.isReady,
     request:async (url,options)=>{
       const response=await fetch(url,options);
@@ -104,7 +104,7 @@ try {
       }
       return response;
     },
-    onDecision:receipt=>decisions.push(receipt)});
+    onDecision:receipt=>receipt.event==='laya_choice'?decisions.push(receipt):rejections.push(receipt)});
   const inferenceStarted=performance.now();
   const selected=await selector.select({requestId:'owned-laya-image-public-synthetic',
     context:'Public synthetic offline check: select either the ready observation or the review observation. Neither choice authorizes a tool, proves task completion or changes persistent state.',
@@ -147,6 +147,7 @@ try {
   const afterOverflow=await readHealth();
   assert.equal(afterOverflow.inferenceCalls,beforeOverflow.inferenceCalls);assert.equal(afterOverflow.inferenceBusy,false);
   assert.equal(decisions.length,2,'Overflow must not fabricate a Laya review selection');
+  assert.equal(rejections.length,1);assert.equal(rejections[0].errorCode,'CONTEXT_WINDOW_EXCEEDED');
   const rejected=syntheticAnswerDiagnostics.at(-1);
   assert.equal(rejected.httpStatus,413);assert.equal(rejected.rejection.code,'CONTEXT_WINDOW_EXCEEDED');
   assert.ok(rejected.rejection.requiredTokens>8192);assert.equal(rejected.rejection.encoderMaxTokens,8192);
@@ -175,7 +176,7 @@ try {
     longContext:{selected:longSelected,validated:true,calibrated:false,tokenWindow:longWindow,
       inferenceMetrics:decisions[1].inferenceMetrics,selectorMetrics:{queueWaitMs:decisions[1].queueWaitMs,
         busyWaitMs:decisions[1].busyWaitMs,internalHttpMs:decisions[1].internalHttpMs,responseValidationMs:decisions[1].responseValidationMs}},
-    encoderOverflow:{rejected:true,code:'CONTEXT_WINDOW_EXCEEDED',additionalInferenceCalls:0,selectedCandidate:false},
+    encoderOverflow:{rejected:true,code:'CONTEXT_WINDOW_EXCEEDED',additionalInferenceCalls:0,selectedCandidate:false,diagnostic:rejections[0]},
     syntheticAnswerDiagnostics,
     workflows:{templates:templates.length,catalog:catalog.length,detailNodes:185,businessExecutionVerified:false},
     layaInstances:1,maasCalls:0,toolExecutions:0,externalEffects:0,

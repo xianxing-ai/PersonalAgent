@@ -50,6 +50,19 @@ test('encoder overflow requests scoped evidence and does not fabricate a review 
   }});
   await assert.rejects(selector.select(input()),{code:'UNSUPPORTED_CAPABILITY'});assert.equal(calls,1);
 });
+test('413 diagnostics distinguish encoder overflow from input bounds without leaking arbitrary error fields',async()=>{
+  for(const detail of [{code:'CONTEXT_WINDOW_EXCEEDED',requiredTokens:8193,encoderMaxTokens:8192,
+    scope:'synthetic-private-scope',path:'synthetic-private-path'},'synthetic-private-error-text']) {
+    let receipt;const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipt=value,
+      request:async()=>Response.json({detail},{status:413})});
+    await assert.rejects(selector.select(input()),{code:'UNSUPPORTED_CAPABILITY'});
+    assert.equal(receipt.event,'laya_rejected');assert.equal(receipt.httpStatus,413);assert.equal(receipt.candidateCount,2);
+    assert.equal(Object.hasOwn(receipt,'candidateId'),false,'No model selection is invented');
+    assert.equal(receipt.errorCode,typeof detail==='string'?'HTTP_413':'CONTEXT_WINDOW_EXCEEDED');
+    if(typeof detail!=='string')assert.equal(receipt.requiredTokens,8193);
+    assert.equal(JSON.stringify(receipt).includes('synthetic-private'),false);
+  }
+});
 test('delay diagnostics distinguish phases and project numeric cgroup fields without source text',async()=>{
   let receipt;const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipt=value,
     request:async()=>{

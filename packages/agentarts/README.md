@@ -6,6 +6,8 @@
 
 选择上下文包含节点种类、输入/输出字段、证据要求、前驱状态与完整实际值、完整候选值及分支/复核属性。候选制备要求语义有差异：单一明确输出只提供一份充分候选，不枚举同义措辞或样例变体；真实不同路线仍保留。此提示不保证真实模型一定消除冗余，须按实际候选与耗时读回；没有新增阈值、删除复核项或授予模型执行权限。
 
+当前节点边界与整图目标明确分开：tool 候选只是尚未执行的 `{toolName,toolVersion,arguments}`，不要求在首个读取提案前拿到读取结果、后续比对产物或用户授权；执行仍由本地 Runtime/Policy 控制。完整用户输入及下游要求保留，适用于当前生成节点的额外合规字段也保留。运行日志用固定 `workflow_candidates/candidate_response`、nodeId、实际候选数量与错误码区分制备空结果和选择器失败。候选数组 SHA 只用于运行日志关联，不是模型质量、执行或授权证据，不记录候选正文、scope/path 或任意错误信息。
+
 2026-10-12：新增 `getOwnedBindings()`、`invokeWorkflow()`、`invokeController()`，固定8个Workflow与3个Controller。
 World/Plan独立阶段返回 role_report；Review/Controller 返回 application_result；均为 unverified。
 前置报告逐次按当前宿主来源重验，不扩 candidateVersion1.0、授权或执行范围。

@@ -51,6 +51,33 @@ test('workflow preparation preserves node output contract and predecessor state 
   assert.deepEqual(data.node.outputFields,['docMarkdown']);assert.deepEqual(data.predecessorStates,{F20_N01:'completed'});
   assert.deepEqual(data.predecessorOutputs,{F20_N01:{content:'public contract'}});
 });
+test('current tool request boundary preserves global downstream requirements without fabricating their outputs',async()=>{
+  const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N01');
+  const input={goal:'Read the task-supplied public file before producing API docs',schemaFile:'public-api.json',codeFile:'public-api.json',
+    expectedOutputFields:['docMarkdown','exampleArguments']};
+  const value={toolName:'workspace.read_text',toolVersion:'1.0.0',arguments:{path:'public-api.json'}};
+  const {agent,models,receipts}=setup({fast:[{candidates:[{id:'source-read',description:'Read public source before comparison',value}]}]});
+  const prepared=await agent.prepareOwnedWorkflowCandidates({template,node,input,predecessorOutputs:{},predecessorStates:{},
+    availableTools:[{name:'workspace.read_text',version:'1.0.0',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path']}}],
+    mode:'main',namespace:'synthetic',...invoke('public source')});
+  const data=JSON.parse(models.fast.requests[0].messages[1].content);
+  assert.deepEqual(data.input,input);assert.deepEqual(data.node.outputFields,['diffFields']);
+  assert.deepEqual(data.currentCandidateBoundary,{kind:'unexecuted_tool_request',nodeOutputStage:'after_actual_host_receipt'});
+  assert.deepEqual(prepared[0].value,value);assert.equal(prepared[1].abstain,true);
+  const diagnostic=receipts.find(value=>value.event==='workflow_candidates');
+  assert.equal(diagnostic.stage,'candidate_response');assert.equal(diagnostic.nodeId,'F20_N01');assert.equal(diagnostic.candidateCount,1);
+  assert.match(diagnostic.candidateArrayDigest,/^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(diagnostic).includes('public-api.json'),false);
+});
+test('empty actual candidate array is separately diagnosed before any selector invocation',async()=>{
+  const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N01');let selections=0;
+  const {agent,receipts}=setup({fast:[{candidates:[]}]},{select:async()=>{selections++;return 'proposal';}});
+  await assert.rejects(agent.prepareOwnedWorkflowCandidates({template,node,input:{goal:'public source'},predecessorOutputs:{},
+    predecessorStates:{},availableTools:[],mode:'main',namespace:'synthetic',...invoke('public source')}),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(selections,0);const diagnostic=receipts.find(value=>value.event==='workflow_candidates');
+  assert.equal(diagnostic.candidateCount,0);assert.equal(diagnostic.status,'failed');assert.equal(diagnostic.errorCode,'UNSUPPORTED_CAPABILITY');
+  assert.match(diagnostic.candidateArrayDigest,/^[a-f0-9]{64}$/);
+});
 test('embedded decision can require review of the repair candidate after World Plan Review',async()=>{
   const selections=[];
   const {agent,models}=setup({world:[compactWorld],plan:[compactPlan],review:[sourcedCandidate]},
