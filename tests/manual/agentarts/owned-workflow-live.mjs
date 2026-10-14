@@ -82,6 +82,12 @@ export function parseOwnedWorkflowInvocationBody(body,contentType) {
   return value;
 }
 
+/** Public invocation target only; credentials are never part of the receipt target. */
+export function ownedWorkflowInvocationTarget(config) {
+  return {runtime:config.runtime,requestedVersion:config.version,invokeMode:config.invokeMode,requestedVersionVerified:false,
+    expectedSourceRevision:config.expectedSourceRevision??null,platformDeploymentReadback:'not_checked_by_this_cli'};
+}
+
 function configuration(value) {
   if(!plain(value))fail('INVALID_CONFIG','configuration');
   if(value.operation==='readback') {
@@ -177,8 +183,7 @@ async function execute(config) {
   let reads=0,app=createRuntimeApplication({path:join(runDirectory,'runtime.sqlite'),profile:'huawei_ict_agentarts',
     hostUserNamespace:'owned-public-live-harness',tools:[{descriptor:readTool.descriptor,execute:async(...arguments_)=>{reads++;return readTool.execute(...arguments_);}}]});
   const report={schemaVersion:1,profile:'huawei_ict_agentarts',status:'in_progress',startedAt:new Date().toISOString(),runDirectory,
-    target:{runtime:config.runtime,requestedVersion:config.version,requestedVersionVerified:false,
-      expectedSourceRevision:config.expectedSourceRevision??null,platformDeploymentReadback:'not_checked_by_this_cli'},
+    target:ownedWorkflowInvocationTarget(config),
     providers:{fakeSelector:false,fakeExecutionModel:false,cloud:'real_agentarts_https',localTool:'production_workspace.read_text'},
     credentialHandling:{via:'stdin',exported:false,receiptKeyMode:config.receiptKeyMode},
     scope:{fixture:FIXTURE_NAME,contentSha256:SHA(FIXTURE_CONTENT),actor:'authorized-public-fixture-acceptance-harness',

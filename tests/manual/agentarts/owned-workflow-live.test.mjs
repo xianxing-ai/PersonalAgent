@@ -1,9 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {parseOwnedWorkflowInvocationBody} from './owned-workflow-live.mjs';
+import {parseOwnedWorkflowInvocationBody,ownedWorkflowInvocationTarget} from './owned-workflow-live.mjs';
 
 const graph={workflowVersion:'1.0.0',verification:'unverified',workflowId:'F20',state:'awaiting_host',nodes:{},checkpoint:'test'};
 const events=[{event:'message',data:{text:JSON.stringify(graph)}},{event:'task_end'},{event:'end'}];
+
+test('manual live receipt target preserves actual configured invoke mode without exporting credentials',()=>{
+  for(const invokeMode of ['published','debug']) {
+    const value=ownedWorkflowInvocationTarget({runtime:'public-runtime',version:'Latest',invokeMode,
+      inboundAuthorization:'private',innerAuthorization:'private',receiptSecret:'private'});
+    assert.equal(value.invokeMode,invokeMode);assert.equal(value.runtime,'public-runtime');
+    assert.equal(value.requestedVersion,'Latest');assert.equal(value.requestedVersionVerified,false);
+    assert.deepEqual(Object.keys(value).sort(),['expectedSourceRevision','invokeMode','platformDeploymentReadback',
+      'requestedVersion','requestedVersionVerified','runtime'].sort());
+    assert.equal(JSON.stringify(value).includes('private'),false);
+  }
+});
 
 test('manual live parser accepts native owned-image JSON message/task_end/end without invoking anything',()=>{
   assert.deepEqual(parseOwnedWorkflowInvocationBody(JSON.stringify(events),'application/json; charset=utf-8'),graph);

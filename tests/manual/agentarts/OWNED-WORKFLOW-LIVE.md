@@ -80,7 +80,9 @@ HTTP 状态/类型/耗时/requestId、原 operationId/toolVersion、Policy/执�
 
 `state.json`、SQLite 和 sealed checkpoint 属于本地验收状态，不应放进 PR 或公开 Release。
 没有保存 Authorization、回执 key、完整模型回复或私人上下文。
-只有经检查的脱敏 `receipt.json` 可作为公开 Evidence 材料。
+原始 `receipt.json` 仍含本机绝对 `runDirectory`，只能留作内部验收材料或白名单投影输入，不能直接公开。
+使用 `scripts/agentarts/export-owned-release-evidence.mjs` 生成最终白名单 Evidence JSON，再审查该输出用于公开材料；
+不公开原回执、SQLite、state/checkpoint 或原日志。导出器只投影明确材料，不自行证明真实平台部署或完整业务通过。
 
 发生 HTTP 断连、SSE 不完整、期限届满或模型复核时，本次发送身份和原状态已经保存。
 只读回（不发网络、不补审批、不重放工具）：

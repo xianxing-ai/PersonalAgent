@@ -177,3 +177,32 @@ workflow/template/input/catalog/controlRevision 和明确失效节点。递增�
 下一步消费接线仍按原分工：goo122 负责现有 Runtime/ModelGateway/Policy/ToolGateway/
 MCP/Skills/Knowledge 的公开 provider；Potatos498 负责业务工具与业务侧回执/显示；
 zemeng 负责镜像云图、唯一 Laya、平台组合与部署验证。不会为图模块复制他们的数据库或工具宿主。
+
+### 2026-10-14 镜像发布与真实调用增量
+
+实现 PR：[#356](https://github.com/zemeng5208/PersonalAgent/pull/356)。镜像源码固定为
+`fe886677d72a6f7a3312e054c68ef4d74a804fc4`，后续发布材料提交不改变这份已发布镜像。
+SWR 客户端推送完成，并通过独立 `buildx imagetools inspect` 读回相同 ARM64 manifest：
+`sha256:8120ad11915c5de9c6daa61b492d3228872978ccfbc0f9a79acf59432f42366c`。
+AgentArts 实际保存新版本 `arm64-laya-fe886677`，`Latest` 访问方式已指向它；原生日志已开启。
+完整发布位置、构建来源及调用方法见[发布说明](../competition/OWNED_LAYA_RELEASE_AND_CALLS.md)。
+
+实际离线 ARM64 镜像验收加载、预热并调用了真实 Laya multilingual 权重；没有 MaaS、工具或网络调用。
+Windows x86 上 QEMU 的耗时仅为仿真实测，不能作为华为原生 ARM64 延迟。
+另一次真实 AgentArts HTTPS 调用读回 28 项目录，产生固定公开文件的准确工具提案；
+原 Policy 等待审批后，验收程序仅对此文件使用一次 `allow_once`，生产 ToolGateway 实际读取一次。
+原执行记录和一条 `conditional` Evidence 保留，独立文件摘要一致；签名回执被云图接纳，
+原 F20_N01 为 completed。SQLite 关闭重开后，记录与 Evidence 均保留，没有新增网络或工具执行。
+这不是 Desktop 人工点击或语音确认实测。
+
+本次整体结果为 **partial_receipt_admitted_model_recheck**。F20_N02 的 Laya 选择了
+`owned-review`，未激活后续执行，F20_N03/N04 仍 pending；网络未知列表为空。
+平台真实日志关联到提案请求（裁决 881 ms）和续图请求（裁决 1477 ms），并记录 embedded Laya 已预热。
+两个样本不构成稳定延迟承诺；HTTP 总耗时分别为目录 879 ms、提案 2726 ms、续图 3997 ms。
+不通过重跑或强制选择消除该复核，也不将云图状态写成原本地任务终态。
+
+公共材料经[Evidence 投影器](../../scripts/agentarts/export-owned-release-evidence.mjs)白名单处理；
+原验收目录、SQLite、检查点和带机器路径的原回执不公开。来源完整 SHA 来自 buildx provenance，
+部署摘要来自平台配置的准确镜像引用对应的 SWR 独立读回，不冒充平台直接报告完整 SHA/digest。
+原调用回执未记录 invokeMode，最终公共材料保留此关联缺项。
+28 个真实业务、平台 MCP/原生知识/完整 OTel Trace/效果评估及真实语音仍须各负责人独立接线验收。
