@@ -10,7 +10,7 @@ Renderer经安全Preload/Client提交请求与接收事实状态；Runtime管理
 
 ## 2. 已发布信封与操作
 
-Request含kind、protocolVersion、requestId、taskId（适用时）、operation、deadline、idempotencyKey（适用时）和具体payload。Response区分outcome=ok/data与error/error，保留evidenceRefs。Event含eventId、streamId、sequence、type、occurredAt和具体payload。详细必需/可选约束以Schema为准。
+Request含kind、protocolVersion、requestId、taskId（适用时）、operation、deadline、idempotencyKey（适用时）和具体payload。Response按outcome区分：ok携带data，error携带结构化error；两种结果都保留evidenceRefs。Event含eventId、streamId、sequence、type、occurredAt和具体payload。详细必需/可选约束以Schema为准。
 
 requestId关联单次请求，业务幂等不以requestId代替；授权引用仅由可信Runtime执行路径注入。工具目录公布name/version/inputSchema/outputSchema/sideEffect/requiredScopes/idempotencySupport/recoverySupport/requiresPresence等既有字段，外部自报需宿主核验。
 
