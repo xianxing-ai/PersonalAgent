@@ -33,3 +33,12 @@
 本增量不是完整 F27 或 MOD-09 done。Desktop 尚无已验证 tokenizer；当前 token 端口仅计编译 goal，完整云请求的工具目录/继续回执/额外提示计量、模型输出预留落实、历史选择与摘要副本仍需后续包。私人云消费验收继续暂缓，相关整篇 Wiki 备份仍保留并报告 pending。无 wire/迁移/依赖变化，接口继续 provisional。
 
 用户已授权本包提交、普通推送并创建基于 #350 分支的独立 PR，交付以本页分支及 GitHub 记录追踪。非作者评审、远程门禁及主线集成待完成，依赖 #350 的当前状态以 GitHub 为准。
+
+## PR #351 远程门禁修复记录
+
+- 原 head `5f0aae79` 的 [PR Foundation](https://github.com/zemeng5208/PersonalAgent/actions/runs/38509143624) 失败：知识桥接的错误 key/pin 与过期/描述符替换两条 TLS 测试在 `ephemeralCertificate` 返回 `SOURCE_UNAVAILABLE`，耗时约 10.4/10.1 秒。底层错误被原实现屏蔽；接近 10 秒进程期限是排查线索，不作为已证明的根因。
+- 本机原测试独立 6/6，原知识包标准并发探测 51 通过、1 跳过，未复现该失败。修复将知识包测试文件串行化，降低 Windows 证书进程与其他夹具的资源争用，并在测试入口加载限定字段的诊断器。生产桥接源码、10 秒证书期限、TLS pin、一次性 offer、取消与私密输出处理均未改变。
+- 诊断器只输出进程耗时、spawn 耗时、timeout 和已知退出/取消类别；不输出命令、错误消息、stdout/stderr、PFX、私钥或配对秘密。新增两项测试验证字段保密与类别保留。诊断器不由产品入口加载。
+- 当前知识专项 53 通过、1 跳过、0 失败，保持原宿主测试覆盖；最终完整 check 退出 0，37 个 Node 汇总块共 3083 项：3052 通过、31 跳过、0 失败。新 head 远程 Foundation 待读回，不能以本机通过宣称远程已修复。
+- 本机验证环境还出现 unified exec 默认通道 setup refresh 失败、npm cmd 子进程找不到 node，以及短 PATH 缺少 PowerShell7 导致额外跳过。均使用正常权限通道、仅本次进程的短 PATH、现有 PowerShell7 与已构建宿主的实际路径恢复；没有修改系统配置。失败与修复日志在忽略的 `.cache-bridge-*`、`.cache-ci351-*` 中保留。PATH 8276 字符问题与 [Microsoft 的 cmd 8191 字符限制说明](https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation) 一致，与原 CI 证书失败分别记录。
+- 首次完整回归还因短 PATH 遗漏已有 OpenSSL 导致自有镜像的 3 个合成 HTTPS 用例 `spawn openssl ENOENT`；补回 Git 附带的 OpenSSL 后专项 3/3，再独立完整回归通过。未修改相关断言或生产代码；失败日志 `.cache-ci351-check.log`、最终日志 `.cache-ci351-check-final.log` 均保留。
