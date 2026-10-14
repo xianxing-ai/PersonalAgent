@@ -52,7 +52,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     active++; return true;
   };
   const release = () => {active--;};
-  const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false}) => {
+  const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false,channel='http'}) => {
     const query = parsePayload(payload,workflowGoalInput);
     signal.throwIfAborted();
     const binding = bindings.parse(query);
@@ -62,7 +62,8 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     signal.throwIfAborted();
     if (Date.now() >= Date.parse(deadline)) throw new ProtocolError('TIMEOUT','Invocation deadline expired');
     const text = JSON.stringify(result);
-    if (Buffer.byteLength(text)>64_000) throw new ProtocolError('EXTERNAL_FAILURE','Agent output exceeds limit');
+    const outputLimit = binding?.workflow && channel==='http' ? 1_100_000 : 64_000;
+    if (Buffer.byteLength(text)>outputLimit) throw new ProtocolError('EXTERNAL_FAILURE','Agent output exceeds limit');
     return [{event:'message',data:{text}},{event:'task_end'},{event:'end'}];
   };
   let transport;
@@ -172,7 +173,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   server.requestTimeout = timeoutMs;
   server.headersTimeout = Math.min(timeoutMs,60_000);
   transport = attachAgentWebSocketTransport(server,{...websocket,authToken:wssAuthToken,
-    invoke:value=>invoke({...value,bindingAuthorized:true}),acquire,release,timeoutMs});
+    invoke:value=>invoke({...value,bindingAuthorized:true,channel:'websocket'}),acquire,release,timeoutMs});
   // Node HTTP close does not close upgraded sockets. Stop them before awaiting close.
   const closeHttp = server.close.bind(server);
   server.close = (...args) => {

@@ -1,0 +1,179 @@
+# 自有镜像 F01—F28 图内核与接线边界
+
+日期：2026-10-14。目标 profile：`huawei_ict_agentarts`。接口状态：**provisional**。
+
+本增量把设计页的 **28 个不同工作流、185 个详情节点**编译为镜像内的可执行图模板，
+并交付依赖/条件/分支汇合与原操作回执驱动的图内核。它不是把 28 个名称指向同一个 fast 模型。
+实际业务能力是否可运行仍取决于宿主已注册的工具及公开端口；缺项明确返回 unavailable。
+图计算、模型候选、工具提案、本地执行、可信读回和比赛平台部署是分别验收的事实。
+
+## 文件与兼容性
+
+- `packages/agentarts/src/owned-workflow-data.ts`：设计页数据的生成投影；保留节点、依赖、条件与反馈边。
+- `packages/agentarts/scripts/import-owned-workflows.mjs`：从审核过的 `architecture.json` 生成/核对该投影。
+- `packages/agentarts/src/owned-workflow-templates.ts`：模板编译和每个宿主步骤的准确工具/端口能力映射。
+- `packages/agentarts/src/owned-workflows.ts`：无磁盘状态的图 frontier 推进、唯一选择器、完整性签名检查点、回执核实。
+- `packages/agentarts/src/owned-workflow-host-bridge.ts`：复用本地 RuntimeApplication 主机工具任务的原操作绑定、真实回执来源签名与版本迁移证明。
+- `apps/agentarts-runtime/src/binding-dispatch.mjs`：现有受保护调用入口上的独立图协议。
+- `packages/agentarts/test/owned-workflow.test.mjs`：结构、并行、条件汇合、取消、签名、未知结果等测试。
+
+旧 `bindingVersion: "1.0.0"` 的 8 个 Workflow / 3 个 Controller 保留其身份和行为。
+新增的 28 图目录使用 **独立** `workflowVersion: "1.0.0"`，模板版本 `2026.10.14.1`。
+不增加本地 wire operation、数据库迁移或第二个任务/授权/工具注册体系。
+图结果为 `verification: "unverified"`；图的 `settled` 只表示本轮图节点已收敛，
+不是本地 TaskRuntime 的 `succeeded`，不授予执行权限。
+
+## 开发调用
+
+`GET /bindings` 仍需要独立宿主凭据；在启动组合真实注入图内核时，
+返回的 `bindings` 保持旧 11 项，同时新增 `workflowBindings` 28 项。
+目录包含节点数、模板版本/摘要与所需能力；不包含模型密钥、私人资料或账号配置。
+
+沿用 `POST /invocations` 的 `{ "query": "<JSON 字符串>" }`。
+获取一个完整模板的 query 对象：
+
+```json
+{"workflowVersion":"1.0.0","operation":"catalog","workflowId":"F08"}
+```
+
+推进一个图 frontier 的 query 对象：
+
+```json
+{
+  "workflowVersion":"1.0.0",
+  "operation":"advance",
+  "workflowId":"F17",
+  "taskId":"development-task-1",
+  "controlRevision":1,
+  "input":{"goal":"定位公开测试日志的失败原因"},
+  "availableTools":[]
+}
+```
+
+`availableTools` 仍使用现有 Coordination 目录：`name/version/inputSchema`。
+它不表示授权，图仅为确切已公布工具产生候选提案。
+结果包括 `nodes/proposals/unavailable/feedback/checkpoint`；继续请求带回原始 `checkpoint`。
+传输层注入 deadline、AbortSignal、sessionId 与 requestId，调用者不能通过 query 置换它们。
+本地消费者尚未消费此独立图协议时，直接调用它用于开发和测试，不能宣称完整产品已经切换。
+
+## 推进与回执
+
+1. 校验模板/输入/工具目录、task/session 身份及 control revision。
+2. 如果存在检查点，以可信启动 HMAC key 校验完整性和全部身份映射。
+3. 核实待处理回执是否绑定原 node、proposal、operation 与输入摘要。
+4. 冻结本轮 ready 集合；独立无实际副作用的候选制备使用 `Promise.all` 并行。
+5. 执行模型只准备有限的合法候选，镜像内唯一 Laya 选择器返回候选 ID。
+   复核/弃权候选保留 unknown，不生成执行、同意、权限或完成证明。
+6. 工具/宿主写步骤返回稳定 operation ID 的提案；本地 Policy/ToolGateway 执行、锁定与记录。
+7. 等到可信读回才继续依赖节点；没有回执时，不重新调用模型、不更换 operation ID。
+
+`WorkflowReceiptVerifier` 必须由受信启动组合提供、使用原 TaskRuntime/ToolGateway 的实际执行记录核实。
+**生产组合缺少该核实器时，客户端传入的 success、模型自报和 evidence 字符串均不会被采纳**；
+返回 unavailable 并保留原提案/检查点。默认实现不接受 `alwaysTrue`。
+回执状态支持 confirmed、failed、unknown、not_started 和 stopping，是图应用协议，
+不修改已有仅 confirmed 的 CoordinationContinuation，也不新增本地 wire 终态。
+
+未知写入维持原操作身份并等待读回，不重新提交、补偿或更换 ID。
+取消保留已确认效果；在途但尚无真实停止/读回结果时保持 unknown。
+本地急停先在现有 TaskRuntime 处理，云图仅消费可信停止观察，不能自行触发本地急停。
+语音问答节点通过已有问题、参数、revision 和授权链的宿主端口提出需要；云图不签发同意。
+
+HMAC key 由可信启动配置管理，同版本/同 key 重启可继续。轮换后旧检查点明确失效。
+签名检查点不是数据库，也不替代本地 TaskRuntime 的幂等、防重放、授权消费及终态控制。
+设计里的检索反馈/新用户指令回边保留为 `requires_host_revision`：当前图不会在原 revision 下
+自行重开已有实际效果的节点。合法变更使用受信宿主签发的 `migration`，绑定前后 task/session/
+workflow/template/input/catalog/controlRevision 和明确失效节点。递增版本后失效受影响的纯计算节点及无提案的只读宿主观察/检查；
+保留所有曾提出或已经确认、失败、未知的原工具/宿主操作及原参数、操作 ID、回执。
+新目录不得删除原操作的工具或偷换同版本 Schema。禁止丢弃旧检查点后重新运行写操作。
+仅有云端提案不证明本地已经提交。迁移后的旧 waiting_receipt 转为 unknown 并只保留原记录，
+不会重新出现在可执行 proposals 中；宿主必须核实原提交/效果状态，不能猜测“还没执行”。
+桥没有原持久操作 binding 时，首次 submit 必须与 proposal.originControlRevision 完全一致；
+即使只存在旧 submit intent，也不能在新版本首次提交旧参数。已有原 binding 的 submit 入口只读回，
+不会因迁移授权再次执行。需要新动作时使用现有 Runtime 的新版本/原效果核实和 Policy 路径，
+不把版本迁移证明当成动作授权。
+暂时的语义选择繁忙保持 pending，可按实际 deadline/取消恢复；实际未知操作仍等待读回。
+
+### 最小真实宿主桥
+
+`OwnedWorkflowHostBridge` 接收现有 RuntimeApplication 的 `submitHostToolTask/readHostToolTask`，
+以及现有 TaskRuntime 的 `loadCheckpoint/saveCheckpointOnce`。它先持久保存原 submit intent，
+再用稳定 `commandId` 创建受控工具任务；等待原 Policy 决定，经生产 ToolGateway 执行。
+只有 `readHostToolTask` 返回与原 tool/version/参数绑定的 confirmed 结果及真实 runId/Evidence，
+才产生来源签名。审批 pending 不会产生成功回执，桥不代替用户签同意。
+重启/重复 submit 只读回原任务，不创建第二个工具执行；unknown 仍等待原核实路径。
+
+云端 `createOwnedWorkflowReceiptVerifier` 使用独立可信 key 验证该来源签名；签名不授予工具权限。
+正式部署的 receipt key 应与发给调用者的 HTTP/WSS bearer 分开保管；
+共享开发 bearer 派生 key 只适用于受信开发协作者，不证明能抵御同 bearer 持有者伪造来源。
+密钥不得进入 Python/Laya、模型上下文、目录、图结果或日志。
+
+大工具结果保留在原 TaskRuntime/ToolGateway 来源。图检查点保存摘要哈希、大小及原 Evidence 引用；
+下游必须通过 `resolvedValues` 恢复与签名检查点哈希完全一致的原结果后才继续，不能以短摘要冒充原文。
+候选输出在发出提案/签检查点前核对本版图 HTTP 1.1 MiB 传输预算。
+超大候选而缺少原 Artifact/reference 适配器时明确 unavailable，不先执行再丢检查点。
+旧 Coordination/WSS 帧限制保留；大图协议使用上述 HTTP 入口，不宣称旧 WSS 能传任意大小图状态。
+
+## 28 个模板覆盖
+
+| 功能 | 节点数 | 云图内容 | 真实宿主依赖 |
+| --- | ---: | --- | --- |
+| F01 主对话与责任理解 | 9 | 召回→候选→责任/计划/模型分工，补查/补问反馈 | Memory/责任快照、Policy、原生参数、TaskRuntime |
+| F02 语音交互与确认 | 11 | 问题身份、语义解释、同意/修改/拒绝分支与本地停止观察 | 本地 ASR/TTS、当前问题与 Policy、原操作读回 |
+| F03 世界状态/局部重规划 | 10 | 受影响图、有效成果保留、原效果核实、补偿候选 | Memory、原操作因果绑定、Policy、修复/补偿接线 |
+| F04 Wiki/作用域记忆 | 7 | 相容更新与冲突隔离的条件汇合 | 知识来源/写检查、knowledge.apply_note_patch、记忆投影 |
+| F05 检索与来源回答 | 7 | 多源检索→重排→扩充/回答→来源核验 | knowledge.search、Memory、引用版本核对 |
+| F06 待办/提醒 | 5 | 查重候选、稳定写入、实际时钟/版本与提醒 | 注册待办写工具、Clock/提醒、通知 |
+| F07 日历 | 5 | 空闲窗口、排序、新鲜度与日程写候选 | calendar.events、当前日历版本与注册写工具 |
+| F08 邮件 | 13 | 分类/归档和检索/草稿并行；有必要才补问；未知发送核实 | mail.inbox、knowledge.search、注册归档/发送、mail.reconcile_send |
+| F09 订阅/信号 | 4 | 多源收集、去重、语义筛选与研究入队 | feeds.collect、去重与原 Runtime 入队 |
+| F10 深度研究 | 6 | 三个独立研究分支真实并行准备提案，证据汇合 | research.search、knowledge.search、支持关系核验 |
+| F11 天气/出行 | 5 | 日程关联、影响候选、按需问答与变更 | calendar.events、事件来源、日程/提醒接线 |
+| F12 主动通知 | 5 | 安静时段、紧急判断、立即/到期通知候选 | 现有 Policy、通知和 Clock |
+| F13 故障诊断 | 4 | 探针证据、归因与受控恢复候选 | 注册系统探针、原操作/资源恢复 |
+| F14 浏览器/桌面 | 6 | 新鲜观察、宿主锁、字段/下一动作/提交候选 | 实际 DOM/桌面观察、本地输入锁及 ToolGateway |
+| F15 编码/命令 | 6 | 修改范围、补丁候选、红线核验与必要检查 | workspace.read_text、复合补丁/检查的原 Runtime 接线 |
+| F16 CI 修复 | 5 | 绑定失败 SHA、修复、验收意图检查与重跑 | CI 快照、workspace.apply_text_patch/run_allowed_command |
+| F17 测试定位 | 4 | 固定日志、归因、最小复现提案与报告 | workspace.run_allowed_command、原证据报告接线 |
+| F18 PR 审查/合并 | 5 | 固定 head、审查、阻断项、当前真人批准/CI 门禁 | GitHub 当前 head/批准/冲突与注册合并工具 |
+| F19 Issue 修复 | 5 | 来源/查重、子任务、独立回归与关闭候选 | GitHub Issue/合并读回、原 Runtime 与注册关闭工具 |
+| F20 API 文档 | 4 | 原契约比对、文档候选、可执行示例与来源检查 | workspace.read_text/run_allowed_command |
+| F21 MCP/Skills | 5 | 来源、安装注册、握手、隔离探针与启用候选 | 统一 MCP/Skills 安装/运行宿主，平台/本地/自制来源 |
+| F22 影子实验 | 9 | 固定快照、选模式、已选分支汇合与改进候选 | 时序快照/轨迹/真实隔离端口；缺反事实保持 unknown |
+| F23 评估/晋升 | 5 | 数据切分、泄漏检查、真实输出评分与晋升候选 | 平台评测集/任务、现有评分和发布条件 |
+| F24 调度/取消/恢复 | 12 | ready 分支、版本、原操作、取消四种结果与恢复图 | TaskRuntime、Policy、原 Evidence/checkpoint，非第二调度数据库 |
+| F25 账户/范围 | 4 | 范围候选、出站上下文校验和安全引用 | 原 Policy/配置/凭据宿主；不把凭据放图数据 |
+| F26 镜像/部署 | 5 | 构建/部署/真实工具与比赛证据分别记录 | ARM64 构建、AgentArts 读回、实际 ToolGateway 验收 |
+| F27 上下文 | 7 | 原生容量、召回/排序、按需摘要/原文恢复和映射 | ModelGateway 原生能力、Memory/Knowledge、版本来源映射 |
+| F28 模型/思考分配 | 12 | 原分配复用或 Laya 判断；研究/分析并行、补丁依赖、检查汇合 | 实际原生 thinking 参数、受派 executor 工具循环与完成检查 |
+
+宿主能力名为组合接口需求，不是新发布的工具名。`knowledge.search` 等工具名来自当前公开代码；
+任何未实际注册名称都保持 unavailable。F15 的补丁和检查必须是复合宿主闭环，
+不会只执行 apply 后把“必要检查也通过”当作已完成。
+
+## 影子边界
+
+非 main 模式要求冻结 asOf/sourceVersions 与独立 namespace。
+决策影子仅比较冻结输入上的候选，不消费主授权、不发出真实工具写请求。
+轨迹回放缺真实反事实观察时保持 unknown，不读取未来数据替代结果。
+隔离执行必须有真实隔离宿主；当前内核不会把真实邮箱、GitHub 或桌面假装可 clone，
+没有该宿主就明确 unavailable。条件未有实际观察或 Laya 选定候选时，不擅自激活分支。
+
+## 验证与剩余工作
+
+本次定向测试使用明确的合成执行模型、选择器、宿主和带 proof 的核实器；
+只证明图控制与边界，不证明 Laya 权重装载、MaaS、真实账号、平台 MCP/知识/日志/评估或完整产品可用。
+构建、测试、镜像与真实 Huawei 调用证据由集成工作包分别补充到本记录。
+
+已执行 `node --test --test-isolation=none packages/agentarts/test/owned-workflow.test.mjs`：
+**15/15 通过**。覆盖真正三分支并行、选中/跳过分支汇合、唯一候选选择及弃权、缺能力、
+未知写原操作身份、拒绝 client claimed success、签名与版本失效、受信版本迁移保留原效果、
+大结果恢复、语义繁忙、影子与取消，以及旧未提交/仅 intent 提案不在新 revision 首次执行、
+受影响的只读宿主检查刷新而原效果不重复。`git diff --check` 通过。
+`npm run build:owned-agent` 通过。实际生产 SQLite/Policy/ToolGateway/workspace.read_text 与重开读回用例
+`apps/runtime/test/owned-workflow-host-bridge.test.mjs` 已执行 **1/1 通过**；与上面图用例合计 **16/16**。
+该用例确实读取新建公开合成文件、等待现有一次性 Policy、产生原执行 Evidence、来源签名续图，
+重开后仅读回而执行次数仍为 1；模型选择器仍为明确替身，不能作为华为/Laya/MaaS 实测验收。
+
+下一步消费接线仍按原分工：goo122 负责现有 Runtime/ModelGateway/Policy/ToolGateway/
+MCP/Skills/Knowledge 的公开 provider；Potatos498 负责业务工具与业务侧回执/显示；
+zemeng 负责镜像云图、唯一 Laya、平台组合与部署验证。不会为图模块复制他们的数据库或工具宿主。

@@ -1,5 +1,37 @@
 # 自有 AgentArts Runtime 镜像
 
+## 2026-10-14 镜像内 Laya 增量
+
+正式入口现在要求 `PA_AGENT_LAYA_MODE=embedded`：`laya[serve]==0.3.20` multilingual 的权重、encoder 配置、tokenizer 与 Python CPU 服务随自有 ARM64 镜像一起交付。它不是把 MaaS 模型改名 Laya，也不会把 Windows venv 或 wheels 拷入 Linux。通用国内 MaaS 经现有 ModelGateway 生成候选；一个镜像内 Laya 实例在有限候选中选择。TaskRuntime、Policy、ToolGateway、实际工具、终态与 Evidence 仍在可信本地。
+
+Node 生成仅本进程使用的随机内部 Bearer，启动 Python 回环服务；SHA 清单验证、权重加载及一次真实 synthetic 前向均通过后才开始监听 8080。Python 异常退出会关闭入站服务并使宿主失败，缺权重或 Laya 配置不会静默用旧 Agent。两个进程的受控停止复用原取消链；CPU 前向不可强制 HTTP 抢占，结束前服务保持忙状态。Python stdout/stderr 不公开，凭据与源正文不进入日志；公开 JSON 日志只记录 `laya_ready`、`laya_choice` 的请求、候选及耗时。
+
+所有工作流与旧编排器共享同一 typed-choice FIFO。候选生成与无关工具可并行，Laya 前向串行，不增加固定排队上限；原 deadline 与取消覆盖等待。客户端超时后下一项先读回 `/health.inferenceBusy`，只对明确未受理的 429 等待空闲后重新提交，已受理的模型调用不重放。这个机制不改变未知工具写入必须先核实的规则。
+
+`OwnedAgentOrchestrator` 普通 fast 结果、World/Plan 的 KEEP/RECHECK，以及修复终审候选都经过 Laya；确定性命令结果校验保持代码执行。28 个功能的独立依赖图模板和推进器通过同一 Laya 选择端口组合；新图中的本地/平台 Host、真实回执验证缺配置时明确 unavailable，不把目录存在或 Fake 通过宣称为 28 个功能真实可用。
+
+受信配置还包括 `PA_AGENT_WORKFLOW_CHECKPOINT_KEY`（至少 32 字节，稳定的宿主密钥，用于图检查点完整性；不授予动作权限），以及既有国内 MaaS 与入站配置。`PA_WORKFLOW_RECEIPT_SECRET` 可注入已有本地 Host 工具任务结果的签名核实器；显式专用密钥优先，未指定时公开 `deriveOwnedWorkflowKeys` 从既有可信 `PA_AGENT_WSS_AUTH_TOKEN` 以 HKDF 不同 purpose 派生稳定的 checkpoint/peer-receipt 子密钥。本地可信桥接宿主用相同安全配置派生；没有任何配置不会生成假信任。签名核对受信 peer 来源和具体原回执，不能代替本地 Policy 或独立外部读回。`LAYA_MODEL_PATH` 在镜像中默认 `/opt/laya/models/multilingual`、`LAYA_PORT=8000`；Python 默认 `/opt/laya/venv/bin/python`，冷启动期限由 `PA_LAYA_STARTUP_TIMEOUT_MS` 配置。`legacy-without-laya` 只在明确 `standalone-validation` 的离线传输夹具中可用，AgentArts 模式拒绝这个值。
+
+模型资产导出需要显式环境配置：
+
+```powershell
+$env:PA_LAYA_ASSET_ROOT = '<可信本地模型缓存根，仅该模型>'
+$env:PA_LAYA_MODEL_SOURCE = '<该根下 snapshots/<revision>/multilingual 绝对目录>'
+$env:PA_LAYA_MODEL_REVISION = '<40 位 revision>'
+npm run build:owned-agent
+npm run image:context --workspace=@personal-agent/agentarts-runtime
+```
+
+导出器只复制五个命名资产，允许解析信任根内的 HF blob 文件链接；拒绝链接逃逸和目录别名，不导出 cache/token/其他模型。新导出清单记录 revision、实际 bytes/SHA，不泄露原缓存绝对路径。tokenizer 配置只在新导出中进行 SDK 相同的兼容转换，不改原缓存。运行时强制 HF/Transformers offline，模型不在启动时访问海外服务。
+
+Docker 使用独立 Linux venv 与 `scripts/laya/requirements-image.txt`，apt/npm 默认华为公开镜像，其余 Python wheels 可从国内 PyPI 预取。导出锁将官方 npm tarball URL 映射到 `PA_IMAGE_NPM_REGISTRY`（默认华为），保留 version/integrity/依赖图及自有 registry URL，来源记录在 `npm-registry.json`；不改根锁或全局 npm。bookworm 的 Python 3.11 使用华为索引实际提供的 ARM64 NumPy 2.4.6 wheel；Windows 原 venv 仍为 2.5.3，不升级或拷入镜像。
+
+`PA_LAYA_WHEELHOUSE` 必须指向完整预下载的 Linux ARM64/pure Python CPU wheel 目录。2026-10-14 首次真实 Linux 构建发现 PyPI `torch==2.14.0` ARM64 包要求 CUDA 13，不能把 Windows 下载解析成功当 CPU 兼容证据。现固定 `torch==2.14.0+cpu`，使用 [PyTorch 官方 CPU 索引](https://download.pytorch.org/whl/cpu/torch/) 的 cp311/aarch64 wheel，SHA256 `08894195f84541edcbd09072e6c53b791d4cdd09f650b05473f35718a848fd7b`。该官方 CPU wheel 已下载并按官方索引 SHA 核对（159,239,175 bytes），METADATA 无 CUDA 依赖；华为 PyPI 本轮没有这个 `+cpu` 包，不能声称它由国内 PyPI 提供。
+
+导出仅 regular `.whl` 与 SHA 清单，拒绝符号链接、Windows/其他架构 wheel、普通 GPU Torch 或 CUDA runtime。BuildKit 从单独 stage 只读绑定 wheelhouse，以 `--no-index` 安装完整依赖、运行 `pip check` 并断言真实 Linux `torch.version.cuda is None`；不在最终发布镜像保留第二份大 wheel 包，不用 `--no-deps` 掩盖缺项，也不在构建/启动时访问官方海外 CPU 索引。墙内重建需先提供已准备的 CPU wheelhouse；正式用户与协作者拉取国内 SWR 镜像运行，无需这次上游下载。缺依赖明确构建失败，不切换到 GPU 包。基础镜像可由 `NODE_BASE_IMAGE` 指定已核验的国内 SWR 同版 ARM64 镜像；原默认 Node digest 只表示历史固定基线，不能保证所有网络可拉 Docker Hub。实际 Linux 导入、权重加载、平台发布与业务读回仍须分别验收，下面 2026-10-12 记录不能证明这个新增 Laya 版本已部署。
+
+新图应用返回仍为 `verification=unverified`。HTTP 图响应使用既有上传范围内的 1,100,000 字节限制，旧应用仍 64,000；WSS 保持已发布 0.1.0 传输的 64,000 字节结果限制，大图结果需显式 HTTP 调试，不能假称现有本地 Coordination 消费器已能自动消费新图协议。
+
 2026-10-12 真实部署增量：ARM64 源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 已发布并替换 Huawei Latest。平台公开路径为 `/runtimes/<runtimeName>/invocations/ws`，目录为 `/runtimes/<runtimeName>/invocations/bindings?endpoint=Latest`；平台 Session 头、外层鉴权及独立镜像凭据均必需。官方 MaaS DeepSeek 的 none 参数经宿主映射为 `chat_template_kwargs.thinking=false`。真实 WSS 模型/本地一次性授权文件读取/Evidence/续答场景已通过；逐项绑定、写入、Wiki、完整自主修复和备用整链仍未验收，详见 [实际证据](../../docs/modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。这是未合并预览，不提高公共协议冻结状态。
 
 2026-10-12：同一 HTTP/WS query 可显式选择8个Workflow或3个Controller；新增受宿主凭据保护的

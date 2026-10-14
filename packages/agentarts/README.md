@@ -1,5 +1,9 @@
 # 自有 AgentArts 编排包
 
+2026-10-14 增量：生产镜像注入公开进程内 `OwnedCandidateSelector`，普通结果、World/Plan KEEP/RECHECK 及修复终审候选由唯一镜像内 Laya 最后选取 `proposal` 或 `review`。候选先经过既有严格来源/Schema 校验，Laya 只返回有限标识，不产生长文、权限、Evidence 或任务终态。既有构造器前三参数保持兼容；不注入选择器的历史调用不是新的嵌入 Laya 比赛配置。
+
+可选第五参数接 `OwnedWorkflowEngine`；`getOwnedWorkflowCatalog/getOwnedWorkflowTemplate/invokeOwnedWorkflow` 公布并推进 F01–F28 的独立版本图。`prepareOwnedWorkflowCandidates` 复用现有角色 ModelGateway 制备候选数据，然后由相同选择器选择；真实 Host、工具和回执验证仍须独立注入。不新建任务库或公共 task wire，详细行为及缺口见自有工作流模块文档和镜像 README。目录/离线测试不证明真实 28 功能闭环。
+
 2026-10-12：新增 `getOwnedBindings()`、`invokeWorkflow()`、`invokeController()`，固定8个Workflow与3个Controller。
 World/Plan独立阶段返回 role_report；Review/Controller 返回 application_result；均为 unverified。
 前置报告逐次按当前宿主来源重验，不扩 candidateVersion1.0、授权或执行范围。

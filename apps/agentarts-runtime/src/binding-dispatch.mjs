@@ -1,6 +1,7 @@
 import {ProtocolError} from '@personal-agent/contracts';
 
 const VERSION = '1.0.0';
+const WORKFLOW_VERSION = '1.0.0';
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
 const invalid = () => {throw new ProtocolError('INVALID_ARGUMENT','Invalid owned binding invocation');};
 const unsupported = () => {throw new ProtocolError('UNSUPPORTED_CAPABILITY','Owned binding unavailable');};
@@ -28,6 +29,15 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
   });
   const available = getter !== undefined && typeof orchestrator.invokeWorkflow === 'function'
     && typeof orchestrator.invokeController === 'function';
+  const graphMethods = typeof orchestrator.invokeOwnedWorkflow === 'function'
+    && typeof orchestrator.getOwnedWorkflowCatalog === 'function' && typeof orchestrator.getOwnedWorkflowTemplate === 'function';
+  const workflowBindings = graphMethods ? orchestrator.getOwnedWorkflowCatalog() : [];
+  if (!Array.isArray(workflowBindings) || workflowBindings.length > 28
+    || new Set(workflowBindings.map(item=>item.workflowId)).size !== workflowBindings.length
+    || workflowBindings.some(item=>!record(item) || item.workflowVersion!==WORKFLOW_VERSION
+      || !/^F(?:0[1-9]|1[0-9]|2[0-8])$/.test(item.workflowId) || item.id!==`owned-${item.workflowId}`
+      || !text(item.templateVersion,128) || !/^[a-f0-9]{64}$/.test(item.templateDigest))) invalid();
+  const graphAvailable = graphMethods && workflowBindings.length===28;
   const find = (id,type) => bindings.find(binding=>binding.id===id && binding.type===type);
   if (defaultControllerId !== undefined && (!available || typeof defaultControllerId !== 'string'
     || !find(defaultControllerId,'controller'))) invalid();
@@ -36,6 +46,21 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
     try {value = JSON.parse(query);} catch {
       if (/^[\s]*\{/.test(query) && /"bindingVersion"\s*:/.test(query)) invalid();
       return undefined;
+    }
+    if (record(value) && Object.hasOwn(value,'workflowVersion')) {
+      if (Buffer.byteLength(query,'utf8')>1_100_000 || value.workflowVersion!==WORKFLOW_VERSION
+        || !['catalog','advance'].includes(value.operation)) invalid();
+      if (!graphAvailable) unsupported();
+      const allowed=value.operation==='catalog' ? ['workflowVersion','operation','workflowId']
+        : ['workflowVersion','operation','workflowId','taskId','controlRevision','input','availableTools',
+          'checkpoint','receipts','mode','snapshot','migration','resolvedValues'];
+      if (Object.keys(value).some(key=>!allowed.includes(key))) invalid();
+      if (value.operation==='advance' && (!['workflowVersion','operation','workflowId','taskId','controlRevision','input','availableTools']
+        .every(key=>Object.hasOwn(value,key)) || !Number.isSafeInteger(value.controlRevision) || value.controlRevision<0
+        || !text(value.taskId,128) || !Array.isArray(value.availableTools))) invalid();
+      if (value.workflowId!==undefined && !workflowBindings.some(item=>item.workflowId===value.workflowId||item.id===value.workflowId)) unsupported();
+      if (value.operation==='advance' && value.workflowId===undefined) invalid();
+      return {workflow:true,workflowEnvelope:value};
     }
     if (!record(value) || (!Object.hasOwn(value,'bindingVersion')
       && !['workflow','controller'].includes(value.type))) return undefined;
@@ -89,9 +114,31 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
     directory() {
       if (!available) unsupported();
       return {bindingVersion:VERSION,verification:'unverified',bindings:bindings.map(binding=>({...binding,
-        roles:[...binding.roles],requirements:[...binding.requirements]}))};
+        roles:[...binding.roles],requirements:[...binding.requirements]})),
+        ...(graphAvailable?{workflowVersion:WORKFLOW_VERSION,workflowBindings:structuredClone(workflowBindings)}:{})};
     },
-    async invoke(request,parsed) {return dispatch(request,parsed.binding,parsed.envelope);},
+    async invoke(request,parsed) {
+      if (!parsed.workflow) return dispatch(request,parsed.binding,parsed.envelope);
+      const value=parsed.workflowEnvelope;
+      if (value.operation==='catalog') {
+        const template=value.workflowId===undefined?undefined:orchestrator.getOwnedWorkflowTemplate(value.workflowId);
+        if (value.workflowId!==undefined&&!template) unsupported();
+        return {workflowVersion:WORKFLOW_VERSION,verification:'unverified',workflowBindings:structuredClone(workflowBindings),
+          ...(template?{template}:{})};
+      }
+      const {workflowVersion:_version,operation:_operation,...payload}=value;
+      const output=await orchestrator.invokeOwnedWorkflow({...payload,deadline:request.deadline,signal:request.signal,
+        sessionId:request.sessionId,requestId:request.requestId});
+      const identity=workflowBindings.find(item=>item.workflowId===output?.workflowId);
+      if (!record(output) || output.workflowVersion!==WORKFLOW_VERSION || output.verification!=='unverified'
+        || !identity || output.templateVersion!==identity.templateVersion || output.templateDigest!==identity.templateDigest
+        || !['progress','awaiting_host','unavailable','failed','unknown','cancelled','settled'].includes(output.state)
+        || typeof output.checkpoint!=='string' || !record(output.nodes) || !Array.isArray(output.proposals)
+        || !Array.isArray(output.unavailable) || !Array.isArray(output.feedback)) {
+        throw new ProtocolError('EXTERNAL_FAILURE','Invalid owned workflow graph result');
+      }
+      return output;
+    },
     async invokeDefault(request) {
       if (defaultControllerId === undefined) return orchestrator.invoke(request);
       const output = await dispatch(request,find(defaultControllerId,'controller'));

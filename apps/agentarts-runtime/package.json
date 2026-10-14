@@ -5,8 +5,8 @@
   "type": "module",
   "exports": {".": "./src/server.mjs"},
   "scripts": {
-    "build": "node --check src/server.mjs && node --check src/main.mjs && node --check src/websocket-transport.mjs && node --check src/binding-dispatch.mjs",
-    "typecheck": "node --check src/server.mjs && node --check src/main.mjs && node --check src/websocket-transport.mjs && node --check src/binding-dispatch.mjs",
+    "build": "node --check src/server.mjs && node --check src/main.mjs && node --check src/websocket-transport.mjs && node --check src/binding-dispatch.mjs && node --check src/laya-service.mjs && node --check src/laya-selector.mjs && node --check scripts/laya-assets.mjs && node --check scripts/image-context.mjs",
+    "typecheck": "npm run build",
     "test": "node --test test/*.test.mjs",
     "start": "node src/main.mjs",
     "image:context": "node scripts/image-context.mjs",

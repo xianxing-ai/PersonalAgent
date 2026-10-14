@@ -6,10 +6,10 @@ import {GOAL_PREFIX} from '../dist/input.js';
 const invoke = query => ({query,deadline:new Date(Date.now()+5000).toISOString(),signal:new AbortController().signal,sessionId:'synthetic',requestId:'synthetic-request'});
 const response = value => ({kind:'final',text:JSON.stringify(value)});
 const model = (...values) => new FakeModelProvider(values.map(response));
-function setup(values={}) {
+function setup(values={},selector) {
   const models=Object.fromEntries(['fast','world','plan','review'].map(role=>[role,model(...(values[role]??[]))]));
   const receipts=[];
-  return {models,receipts,agent:new OwnedAgentOrchestrator(models,2048,r=>receipts.push(r))};
+  return {models,receipts,agent:new OwnedAgentOrchestrator(models,2048,r=>receipts.push(r),selector)};
 }
 const tool = {name:'weather.forecast',version:'1.0.0',inputSchema:{type:'object',properties:{city:{type:'string'}},required:['city'],additionalProperties:false}};
 const proposal={kind:'tool_proposal',proposalId:'weather-1',toolName:tool.name,toolVersion:tool.version,arguments:{city:'杭州'}};
@@ -28,6 +28,40 @@ const sourcedQuery=GOAL_PREFIX+JSON.stringify({action:'REVISE',strategy:'最小�
   omittedSources:0,calibrated:false,executed:false});
 const compactWorld={disposition:'REVISE',affected:[planNodeId],reason:'变更',missing_information:[]};
 const compactPlan={disposition:'REVISE',changes:[sourcedChange],missing_information:[]};
+
+test('embedded decision selects the exact validated fast proposal without adding authority',async()=>{
+  const selections=[];
+  const {agent,models}=setup({fast:[proposal]}, {select:async request=>{selections.push(request);return 'proposal';}});
+  const request=invoke(JSON.stringify({goal:'查询杭州天气',availableTools:[tool]}));
+  assert.deepEqual(await agent.invoke(request),proposal);assert.equal(models.fast.requests.length,1);assert.equal(selections.length,1);
+  assert.equal(selections[0].deadline,request.deadline);assert.equal(selections[0].signal,request.signal);
+  assert.deepEqual(selections[0].candidates.map(item=>item.id),['proposal','review']);
+  assert.equal(Object.hasOwn(JSON.parse(selections[0].context).proposal,'verification'),false);
+});
+test('embedded decision can require review of the repair candidate after World Plan Review',async()=>{
+  const selections=[];
+  const {agent,models}=setup({world:[compactWorld],plan:[compactPlan],review:[sourcedCandidate]},
+    {select:async request=>{selections.push(request);return 'review';}});
+  const output=await agent.invoke(invoke(sourcedQuery));assert.equal(output.kind,'text');assert.match(output.text,/RECHECK/);
+  assert.deepEqual(['world','plan','review'].map(role=>models[role].requests.length),[1,1,1]);assert.equal(selections.length,1);
+  assert.deepEqual(JSON.parse(selections[0].context).proposal,sourcedCandidate);assert.equal(Object.hasOwn(output,'verification'),false);
+});
+test('World KEEP and source-insufficient RECHECK still pass the unique final selector',async()=>{
+  for(const world of [{disposition:'KEEP',affected:[],reason:'无相关变更',missing_information:[]},
+    {disposition:'REVISE',affected:['plan'],reason:'来源缺失',missing_information:[]}]) {
+    let choices=0;const {agent,models}=setup({world:[world]}, {select:async()=>{choices++;return 'proposal';}});
+    const output=await agent.invoke(invoke(repairQuery));assert.equal(output.kind,'text');assert.equal(choices,1);
+    assert.equal(models.plan.requests.length,0);assert.equal(models.review.requests.length,0);
+  }
+});
+test('decision failures and stale answers cannot silently restore the unselected proposal',async()=>{
+  for(const selector of [{select:async()=> 'invented-action'},{select:async()=>{throw new Error('synthetic unavailable');}}]) {
+    const {agent}=setup({fast:[proposal]},selector);
+    await assert.rejects(agent.invoke(invoke(JSON.stringify({goal:'查询天气',availableTools:[tool]}))));
+  }
+  const control=new AbortController();const {agent}=setup({fast:[proposal]}, {select:async()=>{control.abort();return 'proposal';}});
+  await assert.rejects(agent.invoke({...invoke(JSON.stringify({goal:'查询天气',availableTools:[tool]})),signal:control.signal}),{code:'CANCELLED'});
+});
 
 test('ordinary tool proposal and confirmed weather answer use fast only and no trust fields',async()=>{
   const {agent,models}=setup({fast:[proposal,{kind:'text',text:'已确认投影：杭州明天小雨，来源与时间见回执。'}]});

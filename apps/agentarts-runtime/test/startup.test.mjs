@@ -23,3 +23,15 @@ test('trusted default controller configuration rejects unknown or workflow ident
     assert.equal(result.stderr.includes('synthetic-secret'),false);
   }
 });
+
+test('AgentArts cannot silently run without its embedded Laya decision service',()=>{
+  for(const mode of [undefined,'legacy-without-laya']) {
+    const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('PA_AGENT_')));
+    Object.assign(env,{PA_AGENT_HOST_MODE:'agentarts',PA_AGENT_MODEL_BASE_URL:'https://synthetic.invalid/v1',
+      PA_AGENT_MODEL:'synthetic',PA_AGENT_MODEL_API_KEY:'synthetic-secret'});
+    if(mode)env.PA_AGENT_LAYA_MODE=mode;
+    const result=spawnSync(process.execPath,[fileURLToPath(new URL('../src/main.mjs',import.meta.url))],{env,encoding:'utf8',timeout:15000});
+    assert.equal(result.status,1);assert.equal(result.stdout,'');assert.equal(result.stderr.includes('synthetic-secret'),false);
+    assert.equal(result.stderr,'Agent runtime startup failed: check trusted mode, model and credential configuration.\n');
+  }
+});

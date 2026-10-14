@@ -2,17 +2,38 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 import gc
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
 import threading
 import unittest
+import tempfile
 
 from fastapi import HTTPException
 
 spec = importlib.util.spec_from_file_location("local_batch_server", Path(__file__).with_name("batch-server.py"))
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
+
+
+class OfflineAssetsTest(unittest.TestCase):
+    def test_offline_manifest_rejects_modified_weight_bytes_without_loading_model(self):
+        with tempfile.TemporaryDirectory() as parent:
+            location = Path(parent)
+            files = []
+            for name in sorted(server.ASSET_FILES):
+                asset = location / name
+                asset.parent.mkdir(parents=True, exist_ok=True)
+                data = b"synthetic offline fixture"
+                asset.write_bytes(data)
+                files.append({"path": name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+            (location / "asset-manifest.json").write_text(json.dumps({"formatVersion": "1.0.0",
+                "model": "multilingual", "files": files}), encoding="utf-8")
+            server.verify_model_assets(location)
+            (location / "model.safetensors").write_bytes(b"modified synthetic bytes")
+            with self.assertRaisesRegex(ValueError, "Offline Laya asset verification failed"):
+                server.verify_model_assets(location)
 
 
 class Request:
