@@ -5,7 +5,9 @@ import {createOwnedLayaSelector} from '../src/laya-selector.mjs';
 const input=()=>({context:'Synthetic candidate data, not authorization',requestId:'synthetic',
   candidates:[{id:'proposal',description:'Use exact validated proposal'},{id:'review',description:'Review insufficient evidence'}],
   deadline:new Date(Date.now()+1000).toISOString(),signal:new AbortController().signal});
-const answer=(overrides={})=>({answers:{decision:{choice:'candidate_0',probabilities:{candidate_0:0.8,candidate_1:0.2},answer_confidence:0.8,confidence:0.7,...overrides}}});
+const completeWindow=()=>({formatVersion:'1.0.0',encoderMaxTokens:8192,maxLength:1024,headMaxLength:256,
+  headerTokens:[39],stateTokens:[60],requiredSequenceTokens:[100],expectedInputTokens:[100],encodedTokens:100,droppedTokens:0,truncated:false});
+const answer=(overrides={})=>({tokenWindow:completeWindow(),answers:{decision:{choice:'candidate_0',probabilities:{candidate_0:0.8,candidate_1:0.2},answer_confidence:0.8,confidence:0.7,...overrides}}});
 test('owned selector uses same typed choice API, original deadline and a loopback bearer only',async()=>{
   let payload;
   const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
@@ -14,7 +16,58 @@ test('owned selector uses same typed choice API, original deadline and a loopbac
   }});
   const original=input();assert.equal(await selector.select(original),'proposal');assert.equal(payload.deadline,original.deadline);
   assert.equal(payload.model,'multilingual');assert.deepEqual(Object.keys(payload.questions.decision.criteria),['candidate_0','candidate_1']);
+  assert.equal(typeof payload.state,'string');assert.ok(payload.state.includes(original.context));
+  assert.ok(payload.state.includes('"criterion":"candidate_0","id":"proposal"'));
   assert.equal(JSON.stringify(payload).includes('synthetic-key'),false);
+});
+test('long JSON context and full descriptions survive as raw state with explicit candidate identities',async()=>{
+  const context=JSON.stringify({source:'public source '.repeat(100),tail:'last evidence must remain'});
+  const description='public supported detail '.repeat(70)+'description tail';let payload,receipt;
+  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipt=value,
+    request:async(_url,options)=>{
+      payload=JSON.parse(options.body);const value=answer();
+      value.tokenWindow={...completeWindow(),maxLength:1500,stateTokens:[1400],headerTokens:[39],
+        requiredSequenceTokens:[1440],expectedInputTokens:[1440],encodedTokens:1440};return Response.json(value);
+    }});
+  assert.equal(await selector.select({...input(),context,candidates:[{id:'proposal',description},{id:'review',description:'Review'}]}),'proposal');
+  assert.ok(payload.state.includes(context),'JSON text is not escaped inside another context JSON string');
+  assert.ok(payload.state.includes(description),'The full description is in state despite SDK short option headers');
+  assert.equal(receipt.tokenWindow.droppedTokens,0);assert.ok(receipt.tokenWindow.encodedTokens>1024);
+  assert.ok(Number.isFinite(receipt.queueWaitMs));
+});
+test('missing or truncated token readback cannot admit a candidate',async()=>{
+  for(const window of [undefined,{...completeWindow(),truncated:true},{...completeWindow(),droppedTokens:1},
+    {...completeWindow(),encodedTokens:99},{...completeWindow(),maxLength:8193},{...completeWindow(),headerTokens:[1]}]) {
+    const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async()=>{
+      const value=answer();value.tokenWindow=window;return Response.json(value);
+    }});
+    await assert.rejects(selector.select(input()),{code:'EXTERNAL_FAILURE'});
+  }
+});
+test('encoder overflow requests scoped evidence and does not fabricate a review selection or retry',async()=>{
+  let calls=0;const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async()=>{
+    calls++;return Response.json({detail:{code:'CONTEXT_WINDOW_EXCEEDED'}},{status:413});
+  }});
+  await assert.rejects(selector.select(input()),{code:'UNSUPPORTED_CAPABILITY'});assert.equal(calls,1);
+});
+test('delay diagnostics distinguish phases and project numeric cgroup fields without source text',async()=>{
+  let receipt;const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipt=value,
+    request:async()=>{
+      const result=answer();result.tokenWindow.privateText='synthetic-private-context';
+      result.inferenceMetrics={formatVersion:'1.0.0',precheckMs:1,forwardMs:2,processCpuMs:3,
+        precheckProcessCpuMs:1,forwardProcessCpuMs:2,forwardScope:'sdk_predict_batch',privateText:'synthetic-private-context',
+        cgroupBefore:{status:'available',cpuStat:{status:'available',values:{usage_usec:10,privateText:'synthetic-private-context'}},
+          cpuMax:{status:'available',quotaUs:200000,periodUs:100000},memoryCurrent:{status:'missing'},memoryMax:{status:'unsupported'}},
+        cgroupAfter:{status:'missing'},cgroupCpuDelta:{status:'available',values:{usage_usec:3}}};
+      return Response.json(result);
+    }});
+  await selector.select(input());assert.equal(receipt.candidateCount,2);assert.equal(receipt.encodedTokens,100);
+  for(const field of ['queueWaitMs','busyWaitMs','internalHttpMs','responseValidationMs','choiceWallMs','endToEndMs']) {
+    assert.ok(Number.isFinite(receipt[field])&&receipt[field]>=0);
+  }
+  assert.equal(receipt.inferenceMetrics.precheckMs,1);assert.equal(receipt.inferenceMetrics.forwardMs,2);
+  assert.deepEqual(receipt.inferenceMetrics.cgroupBefore.memoryCurrent,{status:'missing'});
+  assert.equal(JSON.stringify(receipt).includes('synthetic-private-context'),false);
 });
 test('invalid selection, probability identity or confidence cannot manufacture a candidate',async()=>{
   for(const overrides of [{choice:'execute-anything'},{probabilities:{candidate_0:0.8,candidate_7:0.2}},

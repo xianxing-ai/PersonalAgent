@@ -45,6 +45,23 @@ test('all 28 compiled templates preserve 185 distinct detail nodes, dependencies
   assert.equal(getOwnedWorkflowTemplate('owned-F28').workflowId,'F28');
 });
 
+test('selector receives the current node contract, settled predecessor state and exact candidate values',async()=>{
+  const seen=[];const runtime=engine({receiptVerifier:proofVerifier,selector:{select:async value=>{
+    seen.push(JSON.parse(value.context));return 'candidate';
+  }}});
+  const original=request('F20',{availableTools:tools(['workspace.read_text'])});
+  const first=await runtime.advance(original),source={content:'public contract data',sha256:'a'.repeat(64)};
+  await next(runtime,original,first,{receipts:[receipt(first.proposals[0],'confirmed',{result:source})]});
+  const context=seen.find(value=>value.nodeId==='F20_N02');
+  assert.equal(context.nodeContract.kind,'executor');assert.equal(context.nodeContract.designKind,'execution_model');
+  assert.deepEqual(context.nodeContract.inputFields,['field','docTemplate']);
+  assert.deepEqual(context.nodeContract.outputFields,['docMarkdown']);assert.equal(context.nodeContract.effect,'none');
+  assert.deepEqual(context.predecessorStates,{F20_N01:'completed'});
+  assert.deepEqual(context.predecessors.F20_N01,source);assert.deepEqual(context.input,original.input);
+  assert.deepEqual(context.candidateValues.find(value=>value.id==='candidate').value,{candidateFor:'F20_N02'});
+  assert.equal(context.candidateValues.find(value=>value.id==='recheck').abstain,true);
+});
+
 test('a frontier prepares three independent research branches concurrently; downstream waits for receipts',async()=>{
   let arrivals=0,release;
   const barrier=new Promise(resolve=>{release=resolve;});

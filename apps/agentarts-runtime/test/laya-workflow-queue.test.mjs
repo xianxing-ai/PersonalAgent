@@ -7,9 +7,11 @@ test('F28 prepares independent branches in parallel while the single embedded de
   const template=getOwnedWorkflowTemplate('F28');let inFlight=0,peak=0,arrivals=0,release;
   const barrier=new Promise(resolve=>release=resolve),posted=[];
   const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-loopback-key',request:async(_url,options)=>{
-    const payload=JSON.parse(options.body);posted.push(JSON.parse(payload.state.context).nodeId);
+    const payload=JSON.parse(options.body);posted.push(JSON.parse(payload.state.split('\n')[1]).nodeId);
     inFlight++;peak=Math.max(peak,inFlight);await new Promise(resolve=>setTimeout(resolve,5));inFlight--;
-    return Response.json({answers:{decision:{choice:'candidate_0',probabilities:{candidate_0:0.8,candidate_1:0.2},answer_confidence:0.8,confidence:0.7}}});
+    return Response.json({tokenWindow:{formatVersion:'1.0.0',encoderMaxTokens:8192,maxLength:1024,headMaxLength:256,
+      headerTokens:[39],stateTokens:[60],requiredSequenceTokens:[100],expectedInputTokens:[100],encodedTokens:100,droppedTokens:0,truncated:false},
+      answers:{decision:{choice:'candidate_0',probabilities:{candidate_0:0.8,candidate_1:0.2},answer_confidence:0.8,confidence:0.7}}});
   }});
   const runtime=new OwnedWorkflowEngine({checkpointSecret:'synthetic-fixed-checkpoint-secret-32-chars',selector,
     host:{capabilities:template.nodes.flatMap(node=>node.capabilities.map(cap=>cap.name)),

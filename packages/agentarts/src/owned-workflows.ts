@@ -227,8 +227,12 @@ export class OwnedWorkflowEngine {
       ||candidates.some(item=>!safeId(item.id)||typeof item.description!=='string'||!item.description.trim()
         ||!Object.hasOwn(item,'value'))) throw new ProtocolError('EXTERNAL_FAILURE','Invalid executor candidates');
     const selected=await this.options.selector.select({context:JSON.stringify({workflowId:context.template.workflowId,
-      nodeId:context.node.id,label:context.node.label,input:context.input,predecessors:context.predecessorOutputs,
-      candidateValues:candidates.map(({id,value})=>({id,value})),mode:context.mode}),
+      nodeId:context.node.id,label:context.node.label,
+      nodeContract:{kind:context.node.kind,designKind:context.node.designKind,inputFields:context.node.inputFields,
+        outputFields:context.node.outputFields,effect:context.node.effect,
+        ...(context.node.evidenceRequirement?{evidenceRequirement:context.node.evidenceRequirement}:{})},
+      input:context.input,predecessorStates:context.predecessorStates,predecessors:context.predecessorOutputs,
+      candidateValues:candidates.map(({id,value,branches,abstain})=>({id,value,...(branches?{branches}:{}),...(abstain?{abstain}:{} )})),mode:context.mode}),
       candidates:candidates.map(({id,description})=>({id,description})),deadline:context.deadline,
       signal:context.signal,requestId:context.requestId});
     control(context);

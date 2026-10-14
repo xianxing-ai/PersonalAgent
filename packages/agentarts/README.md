@@ -4,6 +4,8 @@
 
 可选第五参数接 `OwnedWorkflowEngine`；`getOwnedWorkflowCatalog/getOwnedWorkflowTemplate/invokeOwnedWorkflow` 公布并推进 F01–F28 的独立版本图。`prepareOwnedWorkflowCandidates` 复用现有角色 ModelGateway 制备候选数据，然后由相同选择器选择；真实 Host、工具和回执验证仍须独立注入。不新建任务库或公共 task wire，详细行为及缺口见自有工作流模块文档和镜像 README。目录/离线测试不证明真实 28 功能闭环。
 
+选择上下文包含节点种类、输入/输出字段、证据要求、前驱状态与完整实际值、完整候选值及分支/复核属性。候选制备要求语义有差异：单一明确输出只提供一份充分候选，不枚举同义措辞或样例变体；真实不同路线仍保留。此提示不保证真实模型一定消除冗余，须按实际候选与耗时读回；没有新增阈值、删除复核项或授予模型执行权限。
+
 2026-10-12：新增 `getOwnedBindings()`、`invokeWorkflow()`、`invokeController()`，固定8个Workflow与3个Controller。
 World/Plan独立阶段返回 role_report；Review/Controller 返回 application_result；均为 unverified。
 前置报告逐次按当前宿主来源重验，不扩 candidateVersion1.0、授权或执行范围。

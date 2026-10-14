@@ -31,6 +31,14 @@ CPU 前向不能由 HTTP 取消强行中断：请求超时/断连后不交付结
 
 2026-10-14 真实 ARM64 检查后的期限修正：携带显式 deadline 的调用按该期限的实际剩余秒数等待，不再额外截为 30 秒；排队已消耗的时间仍计入同一期限。缺 deadline 的旧兼容调用继续默认 30 秒。已过期请求在提交前返回 408，不启动新前向。测试截获即时 Fake 前向使用的 timeout，验证 90 秒期限没有被截短，无需等待 90 秒；它不是实际模型性能结果。
 
+2026-10-14 完整决策窗口修正：使用已加载 tokenizer 实际计算 state、指令与选项头的 tokens，通过 SDK 原生 `predict_batch(max_len=..., head_max_len=...)` 按本次需求扩展默认 1024 窗口，最高为实际 encoder 配置的 8192 容量。这是模型编码容量，不是新增用户 token 预算；没有修改权重或静默摘要。超容量返回 `413 / CONTEXT_WINDOW_EXCEEDED`，不提交模型前向、不产生选中候选。响应 `tokenWindow` 记录预检计数，并与 SDK `usage.input_tokens` 的真实已编码计数逐字核对；不一致返回 502。`/health.inferenceCalls` 可核对超容量请求没有新前向。
+
+SDK 每条 criterion 的选项头仍采用 48-token 格式。自有 Node selector 在原始文本 state 中额外保留完整描述和 criterion→候选标识映射，避免头部截短隐去候选含义；只有完整 state、`droppedTokens:0` 和 SDK token 读回一致才接受选择。日志仅新增 token 计数、排队/裁决耗时和候选 ID，不包含正文或凭据。更长输入的实际 CPU 延迟、内存与判断质量须由真实 ARM64/云端样本验证，不能用无权重测试替代。
+
+延迟诊断区分 Python tokenizer 预检 `precheckMs`、整个 SDK `predict_batch` 调用 `forwardMs`（包含 SDK 自身编码、模型前向和解码），以及进程 CPU 时间差值 `processCpuMs`；后者不是墙钟耗时。只读自身 cgroup v2 的 `cpu.stat/cpu.max/memory.current/memory.max` 前后值；不存在或不支持时明确 `missing/unsupported`，不补零或断言 CPU 已耗尽。Node 日志区分排队、CPU 忙等待、内部 HTTP 和响应校验，区间相互包含，不能相加当总时长；MaaS 候选制备耗时按相同 requestId 的 RoleReceipt 另读。QEMU 结果不作为原生 ARM64 基准，预热完成后的裁决也不是冷启动耗时。
+
+tokenizer 预检结束后再次核对原等待的 monotonic 期限及取消标记；期限在预检期间届满不会新启 CPU 前向。已开始的 CPU 前向仍不可抢占，保持原 busy/readback 语义。
+
 原增量完成 Python AST 语法检查与 TypeScript/Fake 客户端协议验证；未启动服务或加载权重。真实批处理吞吐、峰值内存及分类质量需另行验收。
 
 ## 无模型的释放回归

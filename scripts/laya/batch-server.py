@@ -8,6 +8,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import threading
+import time
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -15,6 +17,126 @@ MAX_BYTES = 131072
 MAX_STATES = 4
 ASSET_FILES = {"model.safetensors", "rl_agent_config.json", "encoder/config.json",
                "tokenizer/tokenizer_config.json", "tokenizer/tokenizer.json"}
+
+
+class ContextWindowExceeded(Exception):
+    """The loaded encoder cannot see all supplied decision material."""
+
+    def __init__(self, required, maximum):
+        self.required = required
+        self.maximum = maximum
+
+
+class InferenceControlStopped(Exception):
+    """The original waiter expired/cancelled before a new forward."""
+
+
+def cgroup_snapshot(root=Path("/sys/fs/cgroup"), membership=Path("/proc/self/cgroup")):
+    """Read only this process's cgroup v2; omit unavailable measurements."""
+    try:
+        location = next(line[3:] for line in membership.read_text().splitlines() if line.startswith("0::"))
+        relative = Path(location.lstrip("/"))
+        if ".." in relative.parts:
+            return {"status": "unsupported"}
+        directory = root / relative
+        if not directory.is_dir():
+            return {"status": "missing"}
+    except (OSError, StopIteration):
+        return {"status": "unsupported"}
+
+    def read(name, parse):
+        try:
+            return {"status": "available", **parse((directory / name).read_text().strip())}
+        except FileNotFoundError:
+            return {"status": "missing"}
+        except (OSError, ValueError, IndexError):
+            return {"status": "unsupported"}
+
+    def cpu_stat(text):
+        allowed = {"usage_usec", "user_usec", "system_usec", "nr_periods", "nr_throttled", "throttled_usec"}
+        values = {key: int(value) for key, value in (line.split() for line in text.splitlines()) if key in allowed}
+        if not values or any(value < 0 for value in values.values()):
+            raise ValueError()
+        return {"values": values}
+
+    def cpu_max(text):
+        quota, period = text.split()
+        period = int(period)
+        if period <= 0 or quota != "max" and int(quota) <= 0:
+            raise ValueError()
+        return {"periodUs": period, "unlimited": quota == "max", **({} if quota == "max" else {"quotaUs": int(quota)})}
+
+    def memory(text):
+        if text == "max":
+            return {"unlimited": True}
+        value = int(text)
+        if value < 0:
+            raise ValueError()
+        return {"bytes": value}
+
+    return {"status": "available", "cpuStat": read("cpu.stat", cpu_stat), "cpuMax": read("cpu.max", cpu_max),
+            "memoryCurrent": read("memory.current", memory), "memoryMax": read("memory.max", memory)}
+
+
+def cgroup_delta(before, after):
+    left, right = before.get("cpuStat", {}), after.get("cpuStat", {})
+    if left.get("status") != "available" or right.get("status") != "available":
+        return {"status": "missing"}
+    values = {key: value - left["values"][key] for key, value in right["values"].items() if key in left["values"]}
+    if any(value < 0 for value in values.values()):
+        return {"status": "counter_reset"}
+    return {"status": "available", "values": values}
+
+
+def complete_token_window(agent, states, questions):
+    """Size the SDK's public max_len/head_max_len without discarding state.
+
+    Choice option labels retain the SDK's 48-token header format. The Node
+    selector also supplies their full descriptions and identity mapping in
+    state, so this header cap cannot conceal the candidate's meaning.
+    """
+    tokenizer = agent.tok
+    maximum = agent.model.encoder.config.max_position_embeddings
+    baseline = agent.cfg.get("max_len", 512)
+    baseline_head = agent.cfg.get("head_max_len", 192)
+    if any(not isinstance(value, int) or isinstance(value, bool) or value < 1
+           for value in [maximum, baseline, baseline_head]) or baseline > maximum:
+        raise ValueError("Loaded encoder window is unavailable")
+
+    def tokens(text, option=False):
+        kwargs = {"add_special_tokens": False}
+        if option:
+            kwargs.update(truncation=True, max_length=48)
+        return tokenizer(text.replace(tokenizer.mask_token, " "), **kwargs)["input_ids"]
+
+    headers = []
+    for question in questions.values():
+        instructions = question["instructions"]
+        if not isinstance(instructions, str):
+            instructions = json.dumps(instructions, ensure_ascii=False)
+        option_count = 0
+        for key, value in question["criteria"].items():
+            if value is None or value == "":
+                rendered = key
+            else:
+                description = value if isinstance(value, str) else json.dumps(
+                    value, ensure_ascii=False, separators=(", ", ": "), default=str)
+                rendered = "%s: %s" % (key, description)
+            option_count += 1 + len(tokens(" " + rendered, option=True))  # [MASK]
+        headers.append(len(tokens("choice question: " + instructions)) + option_count)
+    state_tokens = [len(tokens(state if isinstance(state, str) else json.dumps(state, ensure_ascii=False)))
+                    for state in states]
+    # [CLS], two header [SEP] tokens and the final state [SEP].
+    required = [4 + max(headers) + count for count in state_tokens]
+    expected = [sum(4 + header + count for header in headers) for count in state_tokens]
+    longest = max(required)
+    if longest > maximum:
+        raise ContextWindowExceeded(longest, maximum)
+    return {"formatVersion": "1.0.0", "encoderMaxTokens": maximum,
+            "maxLength": max(baseline, longest), "headMaxLength": max(baseline_head, max(headers)),
+            "headerTokens": [header + 3 for header in headers], "stateTokens": state_tokens,
+            "requiredSequenceTokens": required, "expectedInputTokens": expected,
+            "droppedTokens": 0, "truncated": False, "criterionHeaderMaxTokens": 48}
 
 
 def verify_model_assets(location):
@@ -46,6 +168,7 @@ def create_app(agent, api_key, warmed=False):
     expected = ("Bearer " + api_key).encode("utf-8")
     pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="laya-local-batch")
     gate = asyncio.Lock()
+    inference_calls = 0
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -83,6 +206,8 @@ def create_app(agent, api_key, warmed=False):
             criteria = question.get("criteria")
             if not isinstance(criteria, dict) or not 2 <= len(criteria) <= 16:
                 raise HTTPException(400, "Invalid category whitelist")
+            if "instructions" not in question:
+                raise HTTPException(400, "Choice instructions are required")
         return value
 
     def remaining(value):
@@ -107,18 +232,61 @@ def create_app(agent, api_key, warmed=False):
             raise HTTPException(429, "Local inference busy")
         await gate.acquire()
         future = None
+        stopped = threading.Event()
+        expires_at = time.monotonic() + seconds
         try:
             if await request.is_disconnected():
                 raise HTTPException(408, "Request disconnected")
             # One SDK call handles several independent states in one bounded forward batch.
+            def predict_complete():
+                nonlocal inference_calls
+                before = cgroup_snapshot()
+                cpu_started = time.process_time_ns()
+                precheck_started = time.perf_counter_ns()
+                window = complete_token_window(agent, states, questions)
+                precheck_ms = (time.perf_counter_ns() - precheck_started) / 1_000_000
+                precheck_cpu_ms = (time.process_time_ns() - cpu_started) / 1_000_000
+                # The HTTP timeout can finish while tokenization is still running.
+                # Do not start a new CPU forward after that original waiter ends.
+                if stopped.is_set() or time.monotonic() >= expires_at:
+                    raise InferenceControlStopped()
+                inference_calls += 1
+                forward_started = time.perf_counter_ns()
+                forward_cpu_started = time.process_time_ns()
+                results = agent.predict_batch(states, questions, batch_size=MAX_STATES,
+                                              max_len=window["maxLength"], head_max_len=window["headMaxLength"])
+                forward_ms = (time.perf_counter_ns() - forward_started) / 1_000_000
+                forward_cpu_ms = (time.process_time_ns() - forward_cpu_started) / 1_000_000
+                cpu_ms = (time.process_time_ns() - cpu_started) / 1_000_000
+                after = cgroup_snapshot()
+                metrics = {"formatVersion": "1.0.0", "precheckMs": precheck_ms, "forwardMs": forward_ms,
+                           "forwardScope": "sdk_predict_batch", "processCpuMs": cpu_ms,
+                           "precheckProcessCpuMs": precheck_cpu_ms, "forwardProcessCpuMs": forward_cpu_ms,
+                           "cgroupBefore": before, "cgroupAfter": after, "cgroupCpuDelta": cgroup_delta(before, after)}
+                return results, window, metrics
+
             future = asyncio.get_running_loop().run_in_executor(
-                pool, lambda: agent.predict_batch(states, questions, batch_size=MAX_STATES))
-            results = await asyncio.wait_for(asyncio.shield(future), timeout=seconds)
-            if not isinstance(results, list) or len(results) != len(states):
+                pool, predict_complete)
+            results, window, metrics = await asyncio.wait_for(asyncio.shield(future), timeout=seconds)
+            if not isinstance(results, list) or len(results) != len(states) or any(not isinstance(item, dict) for item in results):
                 raise HTTPException(502, "Model result count mismatch")
             if await request.is_disconnected():
                 raise HTTPException(408, "Request disconnected")
-            return results
+            if any(not isinstance(item.get("usage"), dict)
+                   or type(item["usage"].get("input_tokens")) is not int
+                   or item["usage"]["input_tokens"] != window["expectedInputTokens"][index]
+                   for index, item in enumerate(results)):
+                raise HTTPException(502, "Model token window mismatch")
+            return [{**item, "inferenceMetrics": metrics, "tokenWindow": {**window, "stateTokens": [window["stateTokens"][index]],
+                        "requiredSequenceTokens": [window["requiredSequenceTokens"][index]],
+                        "expectedInputTokens": [window["expectedInputTokens"][index]],
+                        "encodedTokens": item["usage"]["input_tokens"]}}
+                    for index, item in enumerate(results)]
+        except ContextWindowExceeded as error:
+            raise HTTPException(413, {"code": "CONTEXT_WINDOW_EXCEEDED", "requiredTokens": error.required,
+                                      "encoderMaxTokens": error.maximum}) from None
+        except InferenceControlStopped:
+            raise HTTPException(408, "Inference deadline exceeded") from None
         except asyncio.TimeoutError:
             raise HTTPException(408, "Inference deadline exceeded") from None
         except HTTPException:
@@ -126,6 +294,7 @@ def create_app(agent, api_key, warmed=False):
         except Exception:
             raise HTTPException(503, "Local inference unavailable") from None
         finally:
+            stopped.set()
             # A CPU forward cannot be preempted. Keep admission closed until it
             # ends, even when the client deadline/disconnect cancels its waiter.
             def release_completed(completed):
@@ -148,7 +317,7 @@ def create_app(agent, api_key, warmed=False):
     async def health(request: Request):
         authorize(request)
         return {"status": "ok", "model": "multilingual", "capabilities": ["multi_state"], "maxStates": MAX_STATES,
-                "warmed": warmed, "inferenceBusy": gate.locked()}
+                "warmed": warmed, "inferenceBusy": gate.locked(), "inferenceCalls": inference_calls}
 
     @app.post("/v1/systemone/batch")
     async def batch(request: Request):

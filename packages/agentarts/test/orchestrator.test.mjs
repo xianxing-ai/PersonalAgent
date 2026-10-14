@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {OwnedAgentOrchestrator,parseAgentInput} from '../dist/index.js';
+import {OwnedAgentOrchestrator,parseAgentInput,getOwnedWorkflowTemplate} from '../dist/index.js';
 import {FakeModelProvider} from '@personal-agent/models';
 import {GOAL_PREFIX} from '../dist/input.js';
 const invoke = query => ({query,deadline:new Date(Date.now()+5000).toISOString(),signal:new AbortController().signal,sessionId:'synthetic',requestId:'synthetic-request'});
@@ -37,6 +37,19 @@ test('embedded decision selects the exact validated fast proposal without adding
   assert.equal(selections[0].deadline,request.deadline);assert.equal(selections[0].signal,request.signal);
   assert.deepEqual(selections[0].candidates.map(item=>item.id),['proposal','review']);
   assert.equal(Object.hasOwn(JSON.parse(selections[0].context).proposal,'verification'),false);
+});
+test('workflow preparation preserves node output contract and predecessor state on the existing model role',async()=>{
+  const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N02');
+  const alternative={id:'public-doc',description:'Public schema-backed document',value:{docMarkdown:'public document'}};
+  const {agent,models}=setup({plan:[{candidates:[alternative]}]});const request=invoke('public source');
+  const prepared=await agent.prepareOwnedWorkflowCandidates({template,node,input:{field:'language',docTemplate:'public template'},
+    predecessorOutputs:{F20_N01:{content:'public contract'}},predecessorStates:{F20_N01:'completed'},
+    availableTools:[],mode:'main',namespace:'synthetic',...request});
+  assert.deepEqual(prepared[0],alternative);assert.equal(prepared[1].id,'owned-review');assert.equal(prepared[1].abstain,true);
+  assert.equal(models.plan.requests.length,1);assert.equal(models.fast.requests.length,0);
+  const data=JSON.parse(models.plan.requests[0].messages[1].content);
+  assert.deepEqual(data.node.outputFields,['docMarkdown']);assert.deepEqual(data.predecessorStates,{F20_N01:'completed'});
+  assert.deepEqual(data.predecessorOutputs,{F20_N01:{content:'public contract'}});
 });
 test('embedded decision can require review of the repair candidate after World Plan Review',async()=>{
   const selections=[];
@@ -95,6 +108,11 @@ test('repair executes World Plan Review once, checks fixed revision/dependencies
   assert.deepEqual(['world','plan','review'].map(r=>models[r].requests.length),[1,1,1]);
   assert.deepEqual(receipts.map(r=>r.role),['world','world','plan','plan','review','review']);
   assert.equal(JSON.stringify(receipts).includes('16点'),false);
+  for(const receipt of receipts.filter(value=>value.status==='completed')) {
+    assert.ok(Number.isFinite(receipt.durationMs)&&receipt.durationMs>=0);
+    assert.equal(receipt.durationScope,'model_gateway_complete');
+  }
+  assert.ok(receipts.filter(value=>value.status==='started').every(value=>value.durationMs===undefined));
 });
 test('source-less continuation stops before Plan and Review',async()=>{
   const {agent,models}=setup({world:[{disposition:'REVISE',affected:['plan'],reason:'变更',missing_information:[]}],
