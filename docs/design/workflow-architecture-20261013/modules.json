@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-13",
+  "version": "2026-10-14",
   "profile": "huawei_ict_agentarts",
   "baseline": "3275aa91",
   "scope": "目标责任映射，不是完成度或生产能力声明",
@@ -369,7 +369,8 @@
       "name": "持续认知与唯一决策消费",
       "owner": "zemeng5208",
       "codePaths": [
-        "packages/cognition"
+        "packages/cognition",
+        "scripts/laya"
       ],
       "workflows": [
         "F01",

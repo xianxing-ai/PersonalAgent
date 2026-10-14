@@ -1,7 +1,8 @@
 # 协作者使用 GHCR 预览镜像
 
 <!-- current-design-20261013 -->
-> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一语义决策默认国内MaaS，责任图/并行/后台影子按当前设计；旧Laya默认和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一全局语义决策为自有ARM64镜像内Laya，国内MaaS为执行候选，责任图/并行/后台影子按当前设计；旧DeepSeek全局决策、Laya本机部署和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 
 2026-10-09。代码、接口和设计已提交 [PR #317](https://github.com/zemeng5208/PersonalAgent/pull/317)；最新 WSS 预览源码为 `97aa51a6f32e0dffcca6436fba0d3b51d1851d8f`，AMD64/ARM64 镜像已发布 GHCR，见 [精确标签/摘要/下载/验证记录](OWNED_IMAGE_WSS_RELEASE_20261009.md)。匿名拉取已验证，两架构镜像分别通过容器测试 21/21 与生产入口合成 TLS 9 次请求；预览发布不合并 main，也不表示公网 WSS 或华为云已验收。两位协作者使用自己的运行配置，不共享凭据。
 

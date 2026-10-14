@@ -1,7 +1,7 @@
 # PersonalAgent 开发 Agent 工作规范
 
 <!-- current-design-20261013 -->
-> 当前目标与协作规则（2026-10-13）：[完整主架构](docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通总图](docs/design/workflow-architecture-20261013/index.html) · [协作规则](CONTRIBUTING.md)。唯一语义决策、责任图、真实依赖并行与后台影子；默认国内MaaS，沿用现有Runtime/Policy，不新增限制。设计不等于实现，每个PR仍须一位合资格非作者对当前提交有效批准及检查/冲突/意见门槛。
+> 当前目标与协作规则（2026-10-14）：[完整主架构](docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通总图](docs/design/workflow-architecture-20261013/index.html) · [协作规则](CONTRIBUTING.md)。Laya服务和权重迁入自有ARM64镜像，唯一全局语义选择；国内MaaS为执行候选，责任图、真依赖并行与按需后台影子沿用现有Runtime/Policy，不新增限制。平台网关、知识、日志/Trace和离线评估按[实施交接](docs/modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)接线。设计不等于实现，每个PR仍须一位合资格非作者对当前提交有效批准及检查/冲突/意见门槛。
 
 本文件约束在本仓库工作的开发 Agent，不是产品运行时的 Skill 或授权来源。默认用中文沟通。
 这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。
@@ -68,11 +68,11 @@
 - Renderer 只提交请求、接收事件并展示状态，通过安全 Preload/IPC 和 Client 接入；不直接导入 Runtime、Provider、数据库、Node/Shell 或连接器。
 - Desktop 主进程负责可信配置、凭据适配、IPC 和窗口生命周期。任务提交后的分派、Agent/Model 编排、审批恢复归 `apps/runtime/src/application/`，不在 Desktop 复制执行循环或直接调用 `runTask`。
 - TaskRuntime 是任务状态、事件、检查点和持久执行记录的事实来源。UI 和连接器不能自行改变任务终态。
-- 模型调用统一经过 ModelGateway。Agent 只生成回答或提出工具请求，通过端口调用工具；不得自己签发授权。
+- 通用执行模型调用统一经过 ModelGateway；唯一全局决策Laya通过现有LayaInferencePort调用镜像内typed-choice服务，从宿主校验过的有限候选中选择。开放式理解、规划、摘要和补丁由执行模型/模板生成候选，执行者可在受派范围使用既有subagent-host局部探索；不得自己签发授权或写主任务终态。
 - 工具统一经过 Runtime/ToolGateway，并在执行前通过 Policy。需要审批时先等待用户决定，再校验授权和参数；Connector Host 按契约注入受限凭据，连接器不负责授权决定。
 - `packages` 不反向依赖 `apps`；contracts 不依赖其他内部包。Agent 不导入具体 Runtime，Runtime 核心不导入 Electron 或具体业务连接器。
 - 目标边界为 Runtime 注入 CoordinationPort；Agent 只消费 ModelPort、MemoryQueryPort、FactChangeFeed 和 ToolExecutionPort。当前端口未交付时保持 unavailable，不能私设 DTO。
-- Competition Profile 经 CloudAgentPort 调用 AgentArts，并让 AgentArts 真实承担构建、Agent/Workflow 编排、评估与部署。Local Agent 仅为可选 profile；正式比赛运行不得在 AgentArts 失败后静默回退。
+- Competition Profile 经 CloudAgentPort 调用AgentArts高代码Runtime，全部28业务编排及Laya权重/服务在自有镜像；平台真实承担镜像托管/版本、Inference/MCP网关、知识检索、日志Trace和后台离线评估。通过平台部署和实际运行证明构建/编排/调试/评估价值。Local仅保留既有可选profile；正式比赛运行不得在AgentArts失败后静默回退。
 - 具体 Provider/Connector 在明确的组合入口注入。跨包只使用公开 package exports，不通过相对路径或私有深层路径访问其他模块；生产依赖不得成环。
 - 新代码保持边界，存量边界问题按独立工作包迁移；目录和 TypeScript 接口本身不构成运行时安全沙箱。
 

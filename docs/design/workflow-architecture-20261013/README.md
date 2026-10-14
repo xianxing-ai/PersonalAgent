@@ -56,7 +56,7 @@ npm start
 ## 本轮设计修订
 
 查看器初版核对基线为main b03af83e；本次全项目文档重写核对基线为已合并#347的main 3275aa91。接口状态依据docs/interfaces/CURRENT_INTERFACE_CATALOG.md；本图不提高任何冻结或验证等级。
-1. 唯一全局语义决策配置默认DeepSeek-V4.1-Flash，通过华为云国内MaaS。参与责任、记忆检索、上下文、分派、恢复、完成建议与影子选路。独立判断可并发，已有分派建议可复用。
+1. 最新确认采用Laya multilingual作为唯一全局语义裁决，Python服务和权重移入自有ARM64镜像，通过镜像内回环调用。国内MaaS通用模型生成理解、计划、参数和摘要候选；Laya从有限候选中选择，参与责任、记忆排序、上下文、分派、恢复、完成建议与影子选路。独立判断可合批；不把Laya称为长文生成模型。
 2. 可信用户原句/有效授权是责任来源。保存版本、否定、条件和对象/参数关系；`includes`只证明字符出现，事实`rule_ref`不自动提供动作授权。明确已授权责任直接生效，不增加每条新责任首次确认。
 3. 先召回再联合判断；按时间、地点、人物、资源宽松检索，未知项保留。缺证据按需扩充，不固定一跳、1–2轮或新增预算上限；相同检索无新信息时停止重复，沿用真实期限/取消/用户配置。
 4. F03计划修订保留已发生效果。补偿绑定具体原operation/effect ID、读回、变更原因及修正因果链；不能凭REVISE、同对象历史写入或模型自报operation_kind分类。未知原写入先核实；现有授权覆盖补偿则自动执行，缺决定才补问。
@@ -69,7 +69,7 @@ npm start
 11. 全部业务编排与影子逻辑迁入自有镜像，AgentArts提供实际被调用的平台组件。复用ModelGateway、ToolGateway与现有MCP宿主，补推理Target连接配置和远程HTTPS/SSE MCP客户端，平台来源直连AgentArts MCP网关。
 12. 保留本地知识实现，补KnowledgePort的云端提供者及来源映射；保留JSON角色回执、事件和Evidence，补平台日志采集与OTel Trace上报；复用现有用例、本地评分及历史平台评测集，补真实结果导出、任务与报告适配。上述平台接入尚未实现/验收，不新建第二套网关、任务库或评分系统。
 
-默认国内服务，不新增模型封锁、角色禁用或审批门槛。执行候选包括DeepSeek、GLM、Qwen、openPangu，入口可配置；角色匹配和思考深度的效果需要相同任务实测。
+Laya按用户本次确认随镜像部署；运行时从预装权重加载，不依赖海外模型下载。通用执行服务默认国内，候选包括DeepSeek、GLM、Qwen、openPangu，入口可配置；角色匹配和原生思考深度的效果需要相同任务实测，不给Laya虚设通用思考档位。
 
 ## 现有代码与证据边界
 
@@ -109,7 +109,7 @@ npm run dev
 
 重新构建并更新交付页面（在source目录执行）：
 
-文档重写验证：28功能154节点、39工程模块、PA-001—031均有映射；生成正文一致，301份变更Markdown无新增失效相对链接，未改变生产代码/公共Schema/根依赖；审查规则7项回归通过。脚本入口：
+上一版文档重写检查记录为28功能154节点、39工程模块和PA-001—031映射。本次更新以28功能185详细节点、12共享节点、130关系为准，生成一致性、链接与审查检查结果由当前PR重新记录。脚本入口：
 
     node scripts/docs/rewrite-architecture-docs.mjs --check
     node scripts/docs/check-workflow-documentation.mjs
@@ -153,4 +153,4 @@ Copy-Item -LiteralPath ./dist/architecture.html -Destination ../index.html -Forc
 - [大陆区模型公告](https://support.huaweicloud.com/bulletin-maas/bulletin-maas-0001.html)
 - [原生思考参数](https://support.huaweicloud.com/model-call-maas/model-call-019.html)
 
-本轮不宣称新增机制已获Astra再次批准。PR请求goo122、Potatos498实质审核，按项目现行要求取得当前提交至少一位合资格非作者有效Approve；不会自动合并。本页修订独立于仍在审查的文档重写PR #349。
+本轮不宣称新增机制已获Astra再次批准。PR请求goo122、Potatos498实质审核，按项目现行要求取得当前提交至少一位合资格非作者有效Approve；不会自动合并。查看器修订同步入文档重写PR #349，生产镜像实现独立交付。

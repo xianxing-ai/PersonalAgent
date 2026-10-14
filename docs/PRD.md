@@ -1,14 +1,14 @@
 # PersonalAgent 产品需求
 
-版本：2026-10-13 · profile：huawei_ict_agentarts · 主架构依据：已合并#347及用户确认。历史PA编号保留；本次重写需求表达，不宣布产品重构完成。
+版本：2026-10-14 · profile：huawei_ict_agentarts · 主架构依据：已合并#347及用户确认。历史PA编号保留；本次重写需求表达，不宣布产品重构完成。
 
 ## 1. 产品目标
 
 Windows常驻个人助手。用户通过主对话和语音提出目标，系统在预先授权责任内自行选路、并行分派、执行、核实和跟进。界面简洁，日常只展示目标、结果和必要的问题，模型/图/Scope在高级详情中。电脑运行时承担本机责任，不承诺关机后操作本机。
 
-唯一语义决策配置参与目标、记忆、上下文、分派、路由、恢复与影子比较，默认华为国内MaaS DeepSeek-V4.1-Flash；执行候选优先国产模型。配置入口保留，不新增模型封锁、角色白名单或审批限制。模型提供语义建议，代码负责版本、权限、锁和终态。
+唯一语义决策配置参与目标、记忆、上下文、分派、路由、恢复与影子比较，唯一决策采用自有ARM64镜像内Laya服务/权重；执行候选优先国产MaaS模型。配置入口保留，不新增模型封锁、角色白名单或审批限制。模型提供语义建议，代码负责版本、权限、锁和终态。
 
-[DESIGN](design/workflow-architecture-20261013/DESIGN.md)定义架构，[WORKFLOWS](design/workflow-architecture-20261013/WORKFLOWS.md)覆盖28功能154节点，[总图](design/workflow-architecture-20261013/index.html)连接全部流程。F功能和MOD工程模块不互相替代。
+[DESIGN](design/workflow-architecture-20261013/DESIGN.md)定义架构，[WORKFLOWS](design/workflow-architecture-20261013/WORKFLOWS.md)覆盖28功能185详情节点，12共享节点组成40节点总览、130条关系，全部展开225节点，[总图](design/workflow-architecture-20261013/index.html)连接全部流程。F功能和MOD工程模块不互相替代。
 
 ## 2. 功能需求与验收
 
@@ -69,7 +69,7 @@ F01主对话、F02语音、F03世界状态、F04 Wiki记忆、F05检索、F06待
 | 面 | 设计与验收 |
 | --- | --- |
 | 延迟 | 本地受理/直接停止不等待云；合批独立判断、真依赖并行、影子后台；量首响/P50/P95/队列，不保留模拟500ms |
-| 资源 | 默认云API，不强制本机加载权重；事件去重和有效决定复用；按用户预算与实际平台能力 |
+| 资源 | Laya权重置于云端镜像，本机不加载；执行调用国内MaaS；事件去重和有效决定复用；按用户预算与实际平台能力 |
 | 国内执行 | 镜像拉取、模型、语音和连接器分别国内读回；无CDN查看器不证明全产品网络可达 |
 | 可靠性 | 稳定操作身份、版本/取消/未知结果核实，重启不重复写入 |
 | 可观测性 | 目标、配置、来源、模型/工具、trace与Evidence关联，不依赖隐藏推理日志 |
@@ -82,4 +82,19 @@ F01主对话、F02语音、F03世界状态、F04 Wiki记忆、F05检索、F06待
 
 main 3275aa91为文档核对基线，已有局部Runtime/云/业务/Wiki/Skill/语音/Windows资产；完整责任、统一决策、影子及28功能验收未完成。Local/已授权DEV-WORKFLOWS留存，不作为比赛失败静默回退。PA-018按2026-09-17用户修订排除，不集成TraceGuard。
 
-2026-10-13采用唯一国内决策、责任图和后台影子，旧Laya/盘古单默认与双人本机阅读不是当前要求。比赛外部通知/日期不由本次文档重新确认；账号/设备/真实数据/端点验证另行记录。本次只重写文档并提交PR，实施顺序见IMPLEMENTATION和ROADMAP。
+2026-10-14用户确认Laya服务和权重移入自有镜像，保留责任图与后台影子；旧DeepSeek全局决策选型和双人本机阅读门槛不再适用。比赛外部通知/日期不由本次文档重新确认；账号/设备/真实数据/端点验证另行记录。本PR重写文档；用户已授权分工分发并开始镜像实现，代码进度及真实证据分别记录于IMPLEMENTATION和ROADMAP。
+
+## AgentArts最小真实接入
+
+全部28业务Workflow的分支、分派、恢复与影子仍在自有镜像；平台高代码Runtime托管该镜像。平台通过四个真实能力参与，不另建业务编排或复制本地状态库：
+
+| 能力 | 复用与增量 | 完成依据 |
+| --- | --- | --- |
+| 推理与MCP网关 | 现有ModelGateway/OpenAI-compatible Provider接国内Inference Target；现有MCP host加远程HTTPS/SSE与协商/发现，直连平台MCP网关，仍经既有ToolGateway/Policy | 目标/版本读回、真实模型请求、tools/list与tools/call及目标读回；平台网关不是本地Runtime入站WSS网关 |
+| 原生知识库 | 现有KnowledgePort增加AgentArts Provider，与本地Wiki/Obsidian、自有及第三方知识源并存；平台片段映射现有来源引用，由Laya比较/排序，执行模型组织引用回答 | 实际检索片段、文档身份/版本/位置及回答引用；未完成source映射前不虚造vaultId/path/revision |
+| 日志与Trace | 复用镜像JSON stdout、Runtime事件与Evidence、现有ShowOpsTrace读回；先验证Runtime/LTS采集，再加模型/知识/工具/恢复Span及异步OTel出口 | 平台可查看关联task/session/request/operation/version的调用链与失败；Trace不是成功证据，不另建日志库 |
+| 后台离线评估 | 复用已有真实结果/参考/检索片段、配对评测和已发布平台评测集；填实际输出、提交平台任务并读回评分，再与配置版本比较 | 平台任务ID、输入与实际输出、评分报告与版本；评测集发布或本地分数不算平台评测完成 |
+
+知识、MCP与Skills均保留平台、本地、自有、GitHub/Gitee及社区来源。仓库URL是代码/资产来源，MCP需部署为真实endpoint或本地进程；Skill需经现有安装/版本/宿主接线。当前本地SKILL.md转发不等于脚本与资源完整执行。无第二套工具注册或Skill宿主，不强制本地工具绕平台。
+
+当前四项为待接线/待真实验收。平台原生在线评估适用范围随版本与账号而变，先交付明确的离线结果集评测，不假设自有Runtime所有在线配置都可用。详见[三方实施交接](modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)。

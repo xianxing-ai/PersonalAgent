@@ -7,7 +7,7 @@
 | [当前设计与状态](CURRENT_DESIGN_CONTEXT.md) | 方向、代码基线和未完成事项 |
 | [PRD](PRD.md) | 用户能力、需求编号与验收 |
 | [主架构](design/workflow-architecture-20261013/DESIGN.md) | 唯一决策、并行图、语音、记忆、影子与云/本地边界 |
-| [工作流](design/workflow-architecture-20261013/WORKFLOWS.md) | 28功能全部154个详细节点和条件/恢复边 |
+| [工作流](design/workflow-architecture-20261013/WORKFLOWS.md) | 28功能全部185个详细节点和条件/恢复边；总图另有12个共享节点，40个总览节点、130条关系，展开为225个节点 |
 | [总图](design/workflow-architecture-20261013/index.html) | 全部功能在一张图上的连接 |
 | [架构契约](ARCHITECTURE.md) | 工程模块、依赖与事实来源 |
 | [公共协议](DEVELOPMENT_PROTOCOL.md) | 已发布Schema和待适配设计的关系 |
@@ -20,4 +20,4 @@
 | [ADR](adr/README.md) | 长期决定和替代关系 |
 | [协作规则](../CONTRIBUTING.md) | 审查、交付与合并 |
 
-[文档清单](design/workflow-architecture-20261013/DOCUMENTATION_INVENTORY.md)覆盖当前规范、模块API说明、历史设计与验收。历史事实不改写成新方案的成功证据；旧设计入口已明确归档，当前规范不再使用Laya默认决策或双人本机阅读门槛。
+[文档清单](design/workflow-architecture-20261013/DOCUMENTATION_INVENTORY.md)覆盖当前规范、模块API说明、历史设计与验收。历史事实不改写成新方案的成功证据；旧设计入口已明确归档，当前规范统一为Laya镜像内决策，不沿用旧DeepSeek全局决策选型或双人本机阅读门槛。

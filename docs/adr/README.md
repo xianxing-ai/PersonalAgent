@@ -1,6 +1,6 @@
 # 架构决策记录
 
-当前主架构采用[ADR-0024](0024-unified-decision-workflow-architecture.md)。它替代旧Laya默认与旧设计入口，保留模块化单体、Runtime权限、Wiki来源、WSS及既有恢复语义。ADR的accepted是决定状态，不表示实现/真实验收已完成。
+当前主架构采用[ADR-0024](0024-unified-decision-workflow-architecture.md)。它采用Laya镜像内决策并替代旧DeepSeek全局决策和旧设计入口，保留模块化单体、Runtime权限、Wiki来源、WSS及既有恢复语义。ADR的accepted是决定状态，不表示实现/真实验收已完成。
 
 历史ADR保留原日期、内容与状态。后续替代由新ADR说明，不能覆盖旧作者或验收。协作按CONTRIBUTING，一位合资格非作者对当前head有效Approve及检查/冲突/意见门槛，不恢复旧双人本机阅读规则。
 

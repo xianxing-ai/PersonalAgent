@@ -1,6 +1,6 @@
 # 模块分工与交付边界
 
-版本：2026-10-13 · profile：huawei_ict_agentarts。本次保持长期负责人，按新架构重写职责，不转移他人的代码所有权。
+版本：2026-10-14 · profile：huawei_ict_agentarts。本次保持长期负责人，按新架构重写职责，不转移他人的代码所有权。
 
 goo122负责存储/协议/Runtime/ModelGateway/Policy/工具宿主/知识记忆，以及MOD-33/36/37；zemeng5208负责核心认知、云架构、AgentArts、桌面/语音/Windows和编码工具；Potatos498负责MOD-20—26业务与接线、MOD-34/35/38。每人交付必要端口、实现、消费接线、验证与文档，不将日常验收集中交给一人。
 
@@ -38,7 +38,7 @@ F编号是产品工作流，MOD编号是工程责任。详细接线说明见[MOD
 | MOD-25 | 天气 | Potatos498 | `packages/connectors/weather` | F11 |
 | MOD-26 | 可选社交能力 | Potatos498 | 未建立生产目录 | F09、F12、F21 |
 | MOD-27 | 目标与依赖图 | zemeng5208 | `packages/goals` | F01、F03 |
-| MOD-28 | 持续认知与唯一决策消费 | zemeng5208 | `packages/cognition` | F01、F02、F03、F04、F05、F06、F07、F08、F09、F10、F11、F12、F13、F14、F15、F16、F17、F18、F19、F20、F21、F22、F23、F24、F25、F26、F27、F28 |
+| MOD-28 | 持续认知与唯一决策消费 | zemeng5208 | `packages/cognition`、`scripts/laya` | F01、F02、F03、F04、F05、F06、F07、F08、F09、F10、F11、F12、F13、F14、F15、F16、F17、F18、F19、F20、F21、F22、F23、F24、F25、F26、F27、F28 |
 | MOD-29 | AgentArts镜像与云基础 | zemeng5208 | `packages/agentarts`、`apps/agentarts-runtime` | F26、F28 |
 | MOD-30 | 云Workflow与工具提案 | zemeng5208 | `packages/agentarts` | F01、F02、F03、F04、F05、F06、F07、F08、F09、F10、F11、F12、F13、F14、F15、F16、F17、F18、F19、F20、F21、F22、F23、F24、F25、F26、F27、F28 |
 | MOD-31 | 执行模型协作与评估 | zemeng5208 | `packages/agentarts`、`apps/runtime/src/application/subagent-host.ts` | F22、F23、F28 |
@@ -63,3 +63,9 @@ MOD-34/35/38的coding-tools/dev-workflows、test-locate和cognition/dev-workflow
 状态以ROADMAP登记，接口状态以CURRENT_INTERFACE_CATALOG登记。一个工作包一个负责人/PR，声明profile、拥有文件、依赖、兼容/迁移、验收与剩余问题。当前非作者一人有效Approve即可满足人数要求；按用户要求可同时请求两位审核，不将旧“双人本机阅读”规则恢复为门槛。三人跨PR均衡承担审查与合并，禁止管理员绕过。
 
 Local仅保留既有代码及已经授权的DEV-WORKFLOWS增量，不扩展为第二套默认产品路径。MOD-19发布和MOD-26具体平台开工按已确认范围，不因为本次文档重写自动启动。
+
+
+<!-- implementation-handoff-20261014 -->
+## 2026-10-14镜像实施分发
+
+用户已授权按现有所有权开始镜像实现。三个工作包为IMAGE-CORE（zemeng5208，Laya镜像/28编排/平台发布）、PLATFORM-PORTS（goo122，Inference/MCP/Knowledge/Skills与公开端口）、BUSINESS-CONSUMERS（Potatos498，业务/开发流程消费与实际读回）。详见[实施交接](modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)。文档工作包仍review，IMAGE-CORE为in_progress；其余ready需记录正式委派/接收，不能虚写已经开工。#350模型思考/#351上下文进行中，复用原PR；MOD-19暂停。

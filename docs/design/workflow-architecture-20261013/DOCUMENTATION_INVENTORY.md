@@ -1,10 +1,10 @@
 # 全项目架构文档清单
 
-2026-10-13以已合并#347和当前主架构重写规范。下表覆盖受版本控制的规范、模块README、接口、技术说明、设计、ADR及工作包；示例Vault/夹具/SKILL正文不属于架构规范，保持原样。未提交的用户旧设计草稿不纳入PR。
+2026-10-14按最新Laya镜像决策、平台四接入与28功能主架构重写规范。下表覆盖受版本控制的规范、模块README、接口、技术说明、设计、ADR及工作包；示例Vault/夹具/SKILL正文不属于架构规范，保持原样。未提交的用户旧设计草稿不纳入PR。
 
 核心当前文档重写正文；模块当前架构职责重写并保留可用API/运行说明；历史验收与ADR保留原作者、日期和结果，仅替代导航/标记关系。此区分防止把目标设计写成过去已经实现。
 
-旧核心正文可用git show 3275aa91:文件路径读取；当前Laya默认、两人本机阅读及旧“未合入main”描述不作现行结论。公开wire与数据迁移不由文档修改。
+旧核心正文可用git show 3275aa91:文件路径读取；旧DeepSeek全局决策、Laya本机部署、两人本机阅读及旧“未合入main”描述不作现行结论。公开wire与数据迁移不由文档修改。
 
 | 文档 | 本次处理与阅读规则 |
 | --- | --- |
@@ -108,6 +108,7 @@
 | [docs/design/workflow-architecture-20261013/MODULES.md](MODULES.md) | 当前主架构：完整正文/生成流程/查看器 |
 | [docs/design/workflow-architecture-20261013/README.md](README.md) | 当前主架构：完整正文/生成流程/查看器 |
 | [docs/design/workflow-architecture-20261013/WORKFLOWS.md](WORKFLOWS.md) | 当前主架构：完整正文/生成流程/查看器 |
+| [docs/design/workflow-architecture-20261013/source/README.md](source/README.md) | 当前主架构：完整正文/生成流程/查看器 |
 | [docs/interfaces/COMPETITION_PUBLIC_ENUMS.md](../../interfaces/COMPETITION_PUBLIC_ENUMS.md) | 接口/技术/阶段参考：当前设计导航统一 |
 | [docs/interfaces/CURRENT_INTERFACE_CATALOG.md](../../interfaces/CURRENT_INTERFACE_CATALOG.md) | 当前规范：正文重写/同步 |
 | [docs/interfaces/P1-CALENDAR-P5-PROJECTION.md](../../interfaces/P1-CALENDAR-P5-PROJECTION.md) | 接口/技术/阶段参考：当前设计导航统一 |
@@ -117,6 +118,7 @@
 | [docs/modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md](../../modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md) | 工作包/验收记录：保留原日期、作者与结果 |
 | [docs/modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md](../../modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md) | 工作包/验收记录：保留原日期、作者与结果 |
 | [docs/modules/AGENTARTS-OWNED-IMAGE-PARITY.md](../../modules/AGENTARTS-OWNED-IMAGE-PARITY.md) | 工作包/验收记录：保留原日期、作者与结果 |
+| [docs/modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md](../../modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md) | 工作包/验收记录：保留原日期、作者与结果 |
 | [docs/modules/COMPETITION-CONTINUATION-BOUNDS-01.md](../../modules/COMPETITION-CONTINUATION-BOUNDS-01.md) | 工作包/验收记录：保留原日期、作者与结果 |
 | [docs/modules/COMPETITION-PORTS-01.md](../../modules/COMPETITION-PORTS-01.md) | 工作包/验收记录：保留原日期、作者与结果 |
 | [docs/modules/COMPETITION-TOOL-LOOP-01.md](../../modules/COMPETITION-TOOL-LOOP-01.md) | 工作包/验收记录：保留原日期、作者与结果 |
@@ -292,7 +294,6 @@
 | [packages/voice/README.md](../../../packages/voice/README.md) | 模块架构已重写；API/验收参考保留 |
 | [packages/windows-client/ACCEPTANCE-20261013.md](../../../packages/windows-client/ACCEPTANCE-20261013.md) | 接口/技术/阶段参考：当前设计导航统一 |
 | [packages/windows-client/README.md](../../../packages/windows-client/README.md) | 模块架构已重写；API/验收参考保留 |
-| [scripts/laya/README.md](../../../scripts/laya/README.md) | 接口/技术/阶段参考：当前设计导航统一 |
 | [tests/README.md](../../../tests/README.md) | 接口/技术/阶段参考：当前设计导航统一 |
 | [tests/manual/agentarts/MVP-ACCEPTANCE.md](../../../tests/manual/agentarts/MVP-ACCEPTANCE.md) | 接口/技术/阶段参考：当前设计导航统一 |
 | [tests/manual/agentarts/MVP-CLOUD-LATENCY-20260930.md](../../../tests/manual/agentarts/MVP-CLOUD-LATENCY-20260930.md) | 接口/技术/阶段参考：当前设计导航统一 |

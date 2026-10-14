@@ -5,7 +5,7 @@ export interface PlatformIntegration {
  code:string[];sources:{label:string;url:string}[];
 }
 export const PLATFORM_BASELINE = '2026-10-14 核对：当前网页分支的生产代码与 origin/main 3275aa91 相同；远程 main 已核实。代码存在、历史真实记录与本轮拟议接入分别标注。';
-export const PLATFORM_SCOPE = '全部28项业务工作流的控制、分支、模型分派、恢复与影子逻辑迁入自有镜像，部署在AgentArts Runtime。平台提供被调用的网关、知识、日志/观测与评估能力；TaskRuntime、Policy、ToolGateway、Evidence继续沿用现有入口。';
+export const PLATFORM_SCOPE = '全部28项业务工作流和Laya multilingual服务/权重迁入自有镜像，部署在AgentArts Runtime。Laya在镜像内裁决，国内MaaS执行模型经平台网关调用；平台知识、日志/观测和评估真实接入。TaskRuntime、Policy、ToolGateway、Evidence继续沿用现有入口。';
 export const RESOURCE_ROUTES = [
  {name:'知识库：本地与云端并存',sources:['本地Wiki/Obsidian/自建资料库','AgentArts原生知识库','配置的其他云端知识服务'],route:'同一检索工作流选择或并行查询提供者 → 按来源/版本合并片段 → 唯一决策配置重排 → 上下文与引用。',existing:'本地KnowledgePort、Wiki和引用已有；平台/其他云提供者、多来源汇合和云引用适配待接线。'},
  {name:'MCP：平台、自有与社区',sources:['AgentArts平台MCP网关','自有本地stdio服务','自有或第三方远程HTTPS/MCP服务','GitHub/Gitee/其他人项目部署出的服务'],route:'选择服务来源 → 现有宿主发现目录 → 映射RegisteredTool → 原ToolGateway调用 → 实际结果与Evidence。平台来源由远程MCP客户端直连平台网关。',existing:'固定本地stdio子集已有；远程传输、平台直连、通用来源配置与目录适配待接线。仓库地址是代码来源，实际连接目标是服务端点或本地进程。'},

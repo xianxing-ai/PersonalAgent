@@ -10,6 +10,7 @@ const {modules}=JSON.parse(read(design+'/modules.json'));
 const policy=JSON.parse(read('scripts/review/design-policy.json'));
 const issues=[];
 assert.equal(features.length,28);
+assert.equal(features.reduce((sum,feature)=>sum+feature.nodes.length,0),185,'final workflow detail node count');
 assert.equal(modules.length,39);
 assert.equal(new Set(modules.map(m=>m.id)).size,39);
 assert.equal(policy.designDirectory,design);
@@ -47,14 +48,17 @@ function missingLinks(file,body) {
  }
  return [...new Set(missing)];
 }
-const files=execFileSync('git',['diff','--name-only','--cached','--','*.md'],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(Boolean);
+const working=process.argv.includes('--working-tree');
+const changed=execFileSync('git',working?['diff','origin/main','--name-only','--','*.md']:['diff','--name-only','--cached','--','*.md'],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(Boolean);
+const untracked=working?execFileSync('git',['ls-files','--others','--exclude-standard','--','*.md'],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(Boolean):[];
+const files=[...new Set([...changed,...untracked])];
 for(const file of files) {
  const now=missingLinks(file,read(file));if(!now.length)continue;
  let previous='';try{previous=execFileSync('git',['show','origin/main:'+file],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']});}catch{}
  const before=new Set(missingLinks(file,previous));
  for(const target of now)if(!before.has(target)||core.includes(file)||file.startsWith(design+'/'))issues.push({file,target});
 }
-const protectedFiles=execFileSync('git',['diff','--name-only','--cached','--','packages/contracts/schema','package.json','package-lock.json','apps/runtime/src','packages/cognition/src','packages/models/src'],{cwd:root,encoding:'utf8'}).trim();
+const protectedFiles=execFileSync('git',['diff',...(working?['origin/main']:['--cached']),'--name-only','--','packages/contracts/schema','package.json','package-lock.json','apps/runtime/src','packages/cognition/src','packages/models/src'],{cwd:root,encoding:'utf8'}).trim();
 assert.equal(protectedFiles,'','documentation migration changed production contracts/code/dependencies');
 assert.equal(issues.length,0,JSON.stringify(issues,null,2));
 process.stdout.write(JSON.stringify({changedMarkdown:files.length,features:features.length,nodes:features.reduce((s,f)=>s+f.nodes.length,0),modules:modules.length,requirements:requirements.length,newBrokenLinks:issues.length,productionCodeChanged:false})+'\n');

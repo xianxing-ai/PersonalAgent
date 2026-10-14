@@ -1,8 +1,8 @@
 # 协作开发规范
 
-版本：0.8 · 更新：2026-10-13 · 状态：按[当前主架构](docs/design/workflow-architecture-20261013/DESIGN.md)独立交付与分层接口冻结
+版本：0.9 · 更新：2026-10-14 · 状态：按[当前主架构](docs/design/workflow-architecture-20261013/DESIGN.md)独立交付与分层接口冻结
 
-当前设计统一为28功能责任图、唯一语义决策、真实依赖并行和后台影子，详细节点见[WORKFLOWS](docs/design/workflow-architecture-20261013/WORKFLOWS.md)，39工程模块仍按MODULE_ASSIGNMENTS负责。新设计不新增模型封锁或审批门槛；旧Laya默认与双人本机阅读规则不作当前依据。代码、设计、检查、真实验收和发布分别记录。
+当前设计统一为28功能责任图、镜像内Laya唯一全局语义选择、真依赖并行和按需后台影子，国内MaaS执行模型生成候选并可在受派边界局部探索；详细185节点见[WORKFLOWS](docs/design/workflow-architecture-20261013/WORKFLOWS.md)，39工程模块仍按MODULE_ASSIGNMENTS负责。新设计不新增模型封锁或审批门槛；旧DeepSeek全局决策、Laya本机部署与双人本机阅读规则不作当前依据。代码、设计、检查、真实验收和发布分别记录，平台实际接入按[三方实施交接](docs/modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)推进。
 
 ## 1. 决策与职责
 

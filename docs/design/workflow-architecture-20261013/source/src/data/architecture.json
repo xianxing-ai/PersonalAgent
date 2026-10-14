@@ -72,8 +72,8 @@
           "就绪或需扩充建议"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       },
@@ -351,8 +351,8 @@
         "inputFields": [],
         "outputFields": [],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "有歧义时的意图解释"
         }
       },
@@ -632,8 +632,8 @@
           "可能补偿的原效果"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       },
@@ -931,8 +931,8 @@
           "冲突解释"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       },
@@ -1132,8 +1132,8 @@
           "扩充建议或可回答建议"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       },
@@ -1192,8 +1192,8 @@
           "需补查或未知"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         },
         "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。"
@@ -1341,8 +1341,8 @@
           "actionPlan"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "调度规划"
         }
       },
@@ -1514,8 +1514,8 @@
           "rationale"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "偏好排序"
         }
       },
@@ -1642,8 +1642,8 @@
           "责任来源引用"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       },
@@ -1717,8 +1717,8 @@
           "责任来源关联"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       },
@@ -2041,8 +2041,8 @@
           "forwardToFeature"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "信号初筛与路由"
         }
       },
@@ -2239,8 +2239,8 @@
           "recommendation"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "最终决策汇总"
         }
       }
@@ -2370,8 +2370,8 @@
           "requiresVoiceConfirm"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "出行决策分析"
         }
       },
@@ -2537,8 +2537,8 @@
           "digestReadyTime"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "打扰度控制决策"
         }
       },
@@ -2690,8 +2690,8 @@
           "isSafeAndReversible"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "系统根因分析"
         }
       },
@@ -2833,8 +2833,8 @@
           "mustHaltForVoice"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "操作影响度裁决"
         }
       },
@@ -2982,8 +2982,8 @@
           "forbiddenActions"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "修复边界圈定"
         }
       },
@@ -3169,8 +3169,8 @@
           "legitimateFix"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "CI失效研判"
         }
       },
@@ -3324,8 +3324,8 @@
           "evidence"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "失败聚类与同源裁定"
         }
       },
@@ -3471,8 +3471,8 @@
           "nonBlockingCount"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "审查意见分级"
         }
       },
@@ -3605,8 +3605,8 @@
           "triageCategory"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "工单分诊与查重"
         }
       },
@@ -3799,8 +3799,8 @@
           "synchronized"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       }
@@ -3944,8 +3944,8 @@
           "availableInWorkflow"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "工具可用性审查"
         },
         "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。"
@@ -4041,8 +4041,8 @@
         "inputFields": [],
         "outputFields": [],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       },
@@ -4319,8 +4319,8 @@
           "rationale"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "晋升质量裁决"
         }
       },
@@ -4813,8 +4813,8 @@
           "bannedCategories"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "隐私合规审计"
         }
       },
@@ -4982,8 +4982,8 @@
           "evidenceVerified"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "云端决策闭环验证"
         },
         "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。"
@@ -5104,8 +5104,8 @@
           "扩充/恢复请求"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "唯一全局语义决策配置"
         }
       },
@@ -5292,7 +5292,7 @@
       },
       {
         "id": "F28_N02",
-        "label": "唯一国产决策模型分配角色与上下文",
+        "label": "Laya从候选中选择模型分工与上下文",
         "kind": "semantic_decision",
         "dependencies": [
           "F28_N01"
@@ -5307,8 +5307,8 @@
           "原生参数/验证强度候选"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "语义决策"
         },
         "condition": "缺少有效分派建议，或新证据需要重判"
@@ -5463,8 +5463,8 @@
           "recommendation"
         ],
         "modelAssignment": {
-          "vendor": "深度求索",
-          "model": "deepseek-v4.1-flash",
+          "vendor": "Laya",
+          "model": "laya-multilingual",
           "role": "语义完成判断"
         }
       },

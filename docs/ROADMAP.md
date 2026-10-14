@@ -7,7 +7,7 @@
 | 工作包 | 目标 | 状态 | 负责人/依赖 |
 | --- | --- | --- | --- |
 | DOC-ARCH-20261013 | 当前架构/需求/协议/目录/分工/模块导航统一及全部流程说明 | review | zemeng5208；PR #349，goo122/Potatos498审核 |
-| ARCH-D01 | 唯一国内决策配置与Laya/云角色兼容迁移 | todo | zemeng5208+goo122公开端口；新配置与真实模型验收 |
+| ARCH-D01 | Laya权重/服务迁入ARM64镜像并接统一建议端口 | in_progress | zemeng5208+goo122公开端口；Laya镜像加载、状态/取消及真实推理验收 |
 | ARCH-D02 | 持续责任编译、版本快照与局部计划修复 | todo | zemeng5208；Runtime/Policy/Goal/Memory |
 | ARCH-D03 | F28多模型与原生思考映射、F27上下文恢复/缓存 | todo | 各端口负责人按MODULE_ASSIGNMENTS；D01 |
 | ARCH-D04 | 主动语音询问及当前问题/参数/revision确认 | todo | zemeng5208；既有Voice/授权，责任内不重复询问 |
@@ -15,16 +15,15 @@
 | ARCH-D06 | 三模式后台影子、配置比较及回滚 | todo | zemeng5208+既有learning端口；独立宿主未交付 |
 | ARCH-D07 | 国内端点与28功能集成/延迟/Competition评估 | todo | 三人各自验收所负责路径，不集中代验 |
 
-“todo”是新重构工作包状态，不否认已有模块实现。拆分与验收详见[IMPLEMENTATION](design/workflow-architecture-20261013/IMPLEMENTATION.md)，接口状态见[目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。新工作包只按明确授权实施；本次只交付文档与PR。
+“todo”是新重构工作包状态，不否认已有模块实现。拆分与验收详见[IMPLEMENTATION](design/workflow-architecture-20261013/IMPLEMENTATION.md)，接口状态见[目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。用户已授权按本分工分发并开始镜像实现；本PR交付文档，代码/部署/真实验收由独立实现工作包记录。
 
 当前main已包含Wiki/Skill #320、Windows/补丁 #332及查看器#347。历史固定Huawei WSS读取有真实证据，完整责任/语音/影子及新默认决策未验收。实际延迟未知，不提高旧完成率或整MOD状态。
 
 ## 历史执行台账（原日期/作者/证据保留）
 
-以下是此前工作包的记录，旧阶段“未合并”、Laya默认、双人本机阅读和百分比不作为当前架构/协作结论。当前协作以AGENTS/CONTRIBUTING的一位合资格非作者有效Approve、检查、无冲突与意见处理为准。
+以下是此前工作包的记录，旧阶段“未合并”、Laya运行位置、DeepSeek唯一决策选型、双人本机阅读和百分比不作为当前架构/协作结论。当前协作以AGENTS/CONTRIBUTING的一位合资格非作者有效Approve、检查、无冲突与意见处理为准。
 
 <!-- historical-roadmap-body -->
-
 ### 2026-10-13：Wiki/Skill 已进入 main
 
 [组合工作包](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 已通过 #346→#320 集成至 main `31b0ce5c`；#320 的 `f9f3f390` 经 zemeng5208 有效非作者批准、完整 Foundation 和设计门禁后，由 zemeng5208 合并。main 与该 head 的代码树一致，合并后主线 CI 另行读回。重复 #318 经用户授权关闭，分支和评审记录保留。已交付安装/启停/使用/卸载、Wiki 来源监视、应用备份协调、索引、只读插件和受信配对；真人原生流程、真实云消费、跨库派生副本与完整 LLM Wiki 仍待对应验收。MOD-06/07/08/09 保持 in_progress、接口 provisional，不把本组合完成等同完整模块 done。下文旧阶段记录保留为历史快照。
@@ -453,3 +452,9 @@ DEV-WORKFLOWS 历史真实验收：MOD-36 已取得只读模型预审回执；MO
 - 外观证据：恢复后的原版与产品待机球体在原稿 132px 画布下逐像素一致，170 点。恢复覆盖 10 个设计源码/说明文件，修改前内容另留备份。
 - 环境：Windows，Node 26.3.0 / npm 11.16.0；与底座声明的 Node 24.15.x 不同，目标 Node 版本待集成环境验证。
 - 继续入口：[桌面模块说明](../apps/desktop/README.md)。真实 Runtime、语音、模型、账号配置、物理多屏/DPI、系统背景模糊及分发仍待接入/验收；fake 仅在显式联调模式使用。
+
+
+<!-- implementation-handoff-20261014 -->
+## 2026-10-14镜像实施分发
+
+用户已授权按现有所有权开始镜像实现。三个工作包为IMAGE-CORE（zemeng5208，Laya镜像/28编排/平台发布）、PLATFORM-PORTS（goo122，Inference/MCP/Knowledge/Skills与公开端口）、BUSINESS-CONSUMERS（Potatos498，业务/开发流程消费与实际读回）。详见[实施交接](modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)。文档工作包仍review，IMAGE-CORE为in_progress；其余ready需记录正式委派/接收，不能虚写已经开工。#350模型思考/#351上下文进行中，复用原PR；MOD-19暂停。
