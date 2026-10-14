@@ -938,7 +938,7 @@ set('docs/modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md',`# AgentArts镜像与�
 
 ## 3. PLATFORM-PORTS：goo122
 
-状态：ready（待正式委派接收）；#350模型思考和#351上下文进行中，沿用既有PR，不重复新建模型入口。
+状态：ready（已通过[Issue #353](https://github.com/zemeng5208/PersonalAgent/issues/353)正式委派，待本人接收）；#350模型思考和#351上下文进行中，沿用既有PR，不重复新建模型入口。
 
 拥有：packages/models、mcp、skills、knowledge、memory、policy、tool-gateway及Runtime底座/公共契约/根composition中所需兼容增量；MOD33/36/37保持原分工。
 
@@ -953,7 +953,7 @@ set('docs/modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md',`# AgentArts镜像与�
 
 ## 4. BUSINESS-CONSUMERS：Potatos498
 
-状态：ready（待正式委派接收）。
+状态：ready（已通过[Issue #354](https://github.com/zemeng5208/PersonalAgent/issues/354)正式委派，待本人接收）。
 拥有：MOD20—26业务连接器与消费；MOD34/35/38 CI修复、测试定位、Issue流程；保留goo122 MOD33/36/37及zemeng核心cognition。
 
 交付：为日历/邮件/订阅/通知/研究/天气和现有开发流程公布真实ToolDescriptor、Provider配置、输入输出/事件版本、执行结果读回、幂等/取消/结果未知核实；给镜像模板提供可消费端口，不将云端模型直接接入账号写入。既有可配置Provider继续保留，实际国内端点可达分别验证。
