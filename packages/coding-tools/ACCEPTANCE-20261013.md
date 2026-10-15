@@ -84,8 +84,8 @@ MOD-18 保持 in_progress，独立验收增量进入 review；正常合并仍需
 - 仅通过现有 `resumeConfirmedTask` 接回原循环，Runtime 返回已确认缓存，不重新 apply 或消费授权。
   pending 提案采用自己的 step/run，不能误用上一步读取的 run；云端最终返回前不标记任务成功。
 - 只有独立读回与旧文件摘要相符的 `not_applied` 才使原任务失败。未知、仍运行、缺 marker、
-  回执不完整及冲突不触发重做。取消后的 `applied` 保留 `waiting_reconciliation` 和 marker：
-  当前核心完成 API 不支持安全结束这一取消分支，本增量不将其错误标成 succeeded。
+  回执不完整及冲突不触发重做。初版将取消后的 `applied` 保留在等待状态；
+  2026-10-15 的取消收尾增量见下文，已取消工作流不会据补丁成功被标成 succeeded。
 - 原 deadline、云调用 unknown/inflight、出云许可撤销仍阻止续云；出云前校验失败时保留已确认写入与等待状态。
 
 必要验证：coding-tools 与 Runtime TypeScript 构建通过；旧宿主恢复及生产文件核实测试 22/22，
@@ -96,3 +96,21 @@ MOD-18 保持 in_progress，独立验收增量进入 review；正常合并仍需
 
 修改范围为 Runtime Application 的原调用/核实接缝、coding-tools 稳定读回及专项测试；
 没有修改 TaskRuntime 核心、contracts Schema、锁文件、传输代码或凭据。
+
+## Competition 取消后的已写入补丁收尾（2026-10-15）
+
+用户取消不撤销已经发生的文件写入。旧适配器在 `cancelRequested + applied` 时直接返回，
+原任务和 marker 因而一直等待；核心 `deferTaskCompletion` 对取消任务还会走工具成功即任务成功的分支。
+此增量让该选项始终保留等待状态，由工作流所有者完成正常结果持久化、回读及 marker 确认后，
+通过既有 `confirmCancellation` 结束原任务为 `cancelled`。原工具执行仍是 `confirmed/applied`，
+写入和 Evidence 保留，不续云、不重放工具或授权，也不回滚文件。
+
+缺 marker、摘要不符、未知、缺 byteLength 或仍有未知工具/云调用时继续等待；
+取消在读回过程中改变 revision 仍拒绝本轮投影。取消在 marker 确认期间到达则在确认落盘后收尾。
+缓存落盘或 marker 确认失败保留等待，重启后只完成原结果和确认；重复恢复不查询后来产生的 marker。
+
+验证：修前新增取消专项失败；修后 Runtime TypeScript 构建通过，Competition 与宿主恢复两文件
+40/40、0 跳过；共享 `deferTaskCompletion` 的 DEV-WORKFLOWS 已有正常 applied 恢复路径另行定向通过。
+首次 Runtime 构建遇主线新增 Wiki/Memory 声明的旧构建产物，补建 knowledge、memory 后通过，无依赖变更。
+测试使用真实文件、Runtime/Policy/SQLite 和明确 Fake 云/补丁 helper；未进行真实 AgentArts、Windows UIA/F9 或用户项目验收。
+变更仅涉及 Runtime 核心既有选项的任务状态语义、原补丁恢复接缝、专项测试和本记录；无公共 wire/Schema、迁移、凭据或权限扩展。
