@@ -17,6 +17,8 @@ export interface ModelCapabilities {
   vision: boolean;
   contextLimit?: number;
   rateLimit?: {requestsPerMinute?: number; tokensPerMinute?: number};
+  /** Trusted endpoint declaration; not proof of real native support. */
+  nativeReasoning?: NativeReasoningConfiguration;
 }
 
 export interface ModelDeployment {
@@ -48,7 +50,14 @@ export interface ModelUsage {
   totalTokens?: number;
 }
 
-export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high';
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export interface NativeReasoningConfiguration {
+  thinking: 'enabled' | 'disabled';
+  effort?: ReasoningEffort;
+  supportedEfforts: readonly ReasoningEffort[];
+  outputTokenParameter: 'max_tokens' | 'max_completion_tokens';
+}
 
 export interface ModelRequest {
   messages: readonly ModelMessage[];
@@ -94,8 +103,8 @@ function validateRequest(request: ModelRequest): void {
   if (request.maxOutputTokens !== undefined && (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens < 1)) {
     throw new ProtocolError('INVALID_ARGUMENT', 'maxOutputTokens must be a positive integer');
   }
-  if (request.reasoningEffort !== undefined && !['none', 'low', 'medium', 'high'].includes(request.reasoningEffort)) {
-    throw new ProtocolError('INVALID_ARGUMENT', 'reasoningEffort must be one of none, low, medium, high');
+  if (request.reasoningEffort !== undefined && !['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(request.reasoningEffort)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'reasoningEffort is invalid');
   }
   if (request.thinkingBudget !== undefined && (!Number.isSafeInteger(request.thinkingBudget) || request.thinkingBudget < 0)) {
     throw new ProtocolError('INVALID_ARGUMENT', 'thinkingBudget must be a non-negative integer');

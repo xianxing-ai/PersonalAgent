@@ -27,6 +27,7 @@ import {
   StructuredToolProvider,
   OpenAICompatibleModelProvider,
   type ModelProvider,
+  type NativeReasoningConfiguration,
 } from '@personal-agent/models';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {isDeepStrictEqual} from 'node:util';
@@ -41,6 +42,7 @@ export interface ConfiguredSubagentModelOptions {
   model: string;
   deployment: string;
   apiKey: () => string | Promise<string>;
+  nativeReasoning?: NativeReasoningConfiguration;
 }
 
 /** Runtime composition only; Desktop injects credentials, never imports providers. */
@@ -53,6 +55,9 @@ export function createConfiguredSubagentModelGateway(
   }
   if (config.provider !== 'pangu' && config.provider !== 'openai-compatible') {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Subagent model provider is unavailable');
+  }
+  if (config.nativeReasoning !== undefined && config.provider !== 'openai-compatible') {
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Native reasoning configuration requires the OpenAI-compatible auxiliary provider');
   }
   const Provider = config.provider === 'pangu' ? PanguModelProvider : OpenAICompatibleModelProvider;
   const provider = new StructuredToolProvider(new Provider(config));
@@ -156,24 +161,33 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
       `子任务无法执行：${modelLabel} 未配置或不受支持。请在受信设置中配置模型后重试`);
   }
   const identity = {provider: model.deployment.provider, deployment: model.deployment.deployment, model: model.deployment.model,
-    configurationRef:options.getModelConfigurationRef?.(subtask.model,childWorker.taskId)??null};
+    configurationRef:options.getModelConfigurationRef?.(subtask.model,childWorker.taskId)??null,
+    ...(model.deployment.capabilities.nativeReasoning === undefined ? {} : {
+      nativeReasoning: structuredClone(model.deployment.capabilities.nativeReasoning)})};
   const previousIdentity = childWorker.loadCheckpoint('subtask-model-binding') as typeof identity | undefined;
   const pendingLoop = childWorker.loadCheckpoint('agent-loop') as {pending?: import('@personal-agent/models').ModelResult} | undefined;
   const expected = previousIdentity ?? pendingLoop?.pending?.deployment;
   if (expected && (expected.provider !== identity.provider || expected.deployment !== identity.deployment || expected.model !== identity.model
-    || (previousIdentity && previousIdentity.configurationRef!==identity.configurationRef))) {
+    || (previousIdentity && (previousIdentity.configurationRef!==identity.configurationRef
+      || !isDeepStrictEqual(previousIdentity.nativeReasoning, identity.nativeReasoning))))) {
     throw new ProtocolError('REVISION_CONFLICT', 'Subagent model configuration changed; the prior proposal cannot be resumed');
   }
   if (!previousIdentity) childWorker.saveCheckpoint('subtask-model-binding', identity);
-  const effortLevels: ReasoningEffort[] = ['none', 'low', 'low', 'medium', 'high', 'high'];
+  const effortLevels = ['none', 'low', 'low', 'medium', 'high', 'high'] as const;
   const requestedEffort = subtask.thinkingDepth === undefined ? undefined : effortLevels[subtask.thinkingDepth];
   const reasoningEffort = requestedEffort !== undefined
+    && identity.nativeReasoning === undefined
     && options.getModelReasoningEfforts?.(subtask.model).includes(requestedEffort) ? requestedEffort : undefined;
   childWorker.saveCheckpoint('subtask-thinking-binding', {depth: subtask.thinkingDepth ?? null,
-    stepBudget: {maxSteps}, modelReasoning: {requestedEffort: requestedEffort ?? null,
-      effort: reasoningEffort ?? null, supported: reasoningEffort !== undefined,
+    stepBudget: {maxSteps}, modelReasoning: {requestedEffort: identity.nativeReasoning === undefined
+      ? requestedEffort ?? null : identity.nativeReasoning.effort ?? null,
+      effort: identity.nativeReasoning?.effort ?? reasoningEffort ?? null,
+      supported: identity.nativeReasoning !== undefined || reasoningEffort !== undefined,
+      ...(identity.nativeReasoning === undefined ? {} : {thinking: identity.nativeReasoning.thinking,
+        outputTokenParameter: identity.nativeReasoning.outputTokenParameter}),
       verification: 'conditional', thinkingBudgetSupported: false,
-      reason: reasoningEffort !== undefined ? 'Trusted host explicitly configured this reasoning_effort'
+      reason: identity.nativeReasoning !== undefined ? 'Version-bound native configuration is independent of the step budget'
+        : reasoningEffort !== undefined ? 'Trusted host explicitly configured this reasoning_effort'
         : requestedEffort === undefined ? 'No native reasoning effort selected' : 'Selected effort is not configured for this model'}});
   const rolePrompt: ModelMessage = {role: 'system',
     content: `你是专业次级智能体，当前承担职责为【${roleLabel}】(${subtask.role})。请聚焦于此职责，独立执行指派的目标。`};
