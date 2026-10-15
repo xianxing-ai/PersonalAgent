@@ -1,5 +1,8 @@
 // Manual, read-only observation entry. Importing this module performs no I/O.
 // This origin is published for cn-southwest-2; other regions are not inferred.
+import {buildRunLogPath, projectRunLogObservation, projectTraceObservation, validateInvocationIdentity}
+  from '@personal-agent/agentarts/observability';
+import {createHash} from 'node:crypto';
 const ORIGIN = 'https://agentarts.cn-southwest-2.myhuaweicloud.com';
 const MAX_BYTES = 1024 * 1024;
 const OWN_ERRORS = new WeakSet();
@@ -24,19 +27,22 @@ function dataFields(value) {
   return copy;
 }
 
-function inputs(options) {
+function inputs(options, surface) {
   try {
     const copy = dataFields(options);
-    if (Object.keys(copy).some(key => !['traceId', 'deadline', 'signal', 'authorize', 'fetchImpl'].includes(key))) throw 0;
+    const extra = surface === 'log' ? ['query'] : surface === 'correlated_trace' ? ['traceId', 'invocation'] : ['traceId'];
+    if (Object.keys(copy).some(key => ![...extra, 'deadline', 'signal', 'authorize', 'fetchImpl'].includes(key))) throw 0;
     const {traceId, deadline, signal, authorize, fetchImpl = globalThis.fetch} = copy;
     // The manual entry accepts the safe identifier subset used by platform traces.
-    if (typeof traceId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(traceId)
+    if ((surface !== 'log' && (typeof traceId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(traceId)))
       || typeof deadline !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(deadline)
       || !(signal instanceof AbortSignal) || typeof authorize !== 'function' || typeof fetchImpl !== 'function') throw 0;
     const expiresAt = Date.parse(deadline);
     if (!Number.isFinite(expiresAt) || deadline.replace(/\.000Z$/, 'Z') !== new Date(expiresAt).toISOString().replace(/\.000Z$/, 'Z')
       || expiresAt <= Date.now() || expiresAt - Date.now() > 2_147_483_647) throw 0;
-    return {traceId, deadline, signal, authorize, fetchImpl, expiresAt};
+    const path = surface === 'log' ? buildRunLogPath(copy.query) : `/v1/ops/observation/traces/${traceId}`;
+    const invocation = copy.invocation === undefined ? undefined : validateInvocationIdentity(copy.invocation);
+    return {traceId, deadline, signal, authorize, fetchImpl, expiresAt, path, invocation};
   } catch { throw failure('INVALID_ARGUMENT'); }
 }
 
@@ -88,7 +94,21 @@ function summarize(body, traceId) {
  * raw trace output, persistence, invocation join or cloud writes are provided.
  */
 export async function readAgentArtsTrace(options) {
-  const {traceId, deadline, signal, authorize, fetchImpl, expiresAt} = inputs(options);
+  return readObservation(options, 'trace');
+}
+
+/** Opt-in ID comparison using the trusted host's actual InvokeRuntime identity. */
+export async function readAgentArtsTraceObservation(options) {
+  return readObservation(options, 'correlated_trace');
+}
+
+/** One explicitly scoped platform log page; never starts an agent run or retries. */
+export async function readAgentArtsRunLogs(options) {
+  return readObservation(options, 'log');
+}
+
+async function readObservation(options, surface) {
+  const {traceId, deadline, signal, authorize, fetchImpl, expiresAt, path, invocation} = inputs(options, surface);
   const controller = new AbortController();
   let stopCode;
   let reader;
@@ -120,7 +140,7 @@ export async function readAgentArtsTrace(options) {
   const timer = setTimeout(() => stop('TIMEOUT'), Math.max(0, expiresAt - Date.now()));
   try {
     check();
-    const url = `${ORIGIN}/v1/ops/observation/traces/${encodeURIComponent(traceId)}`;
+    const url = `${ORIGIN}${path}`;
     const unsigned = Object.freeze({'Host': new URL(ORIGIN).host, 'Content-Type': 'application/json', 'Accept': 'application/json'});
     const request = Object.freeze({url, method: 'GET', body: '', headers: unsigned, deadline, signal: controller.signal});
     const headers = signedHeaders(await wait(() => authorize(request)), unsigned);
@@ -151,7 +171,11 @@ export async function readAgentArtsTrace(options) {
     const all = new Uint8Array(bytes);
     let offset = 0;
     for (const chunk of chunks) { all.set(chunk, offset); offset += chunk.byteLength; }
-    const result = summarize(JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(all)), traceId);
+    const body = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(all));
+    const projection = surface === 'log' ? projectRunLogObservation(body)
+      : surface === 'correlated_trace' ? projectTraceObservation(body, traceId, invocation) : summarize(body, traceId);
+    const result = surface === 'trace' ? projection : Object.freeze({...projection, httpStatus:200,
+      querySha256:createHash('sha256').update(url, 'utf8').digest('hex'), observedAt:new Date().toISOString()});
     check();
     return result;
   } catch (error) {
