@@ -21,7 +21,7 @@ const world = {reportVersion: '1.1', revision: 7, observed_facts: [
 affected_items: [{kind: 'plan_step', node: ref(planId), impact: 'direct', reason: '目标时间变化'}],
 missing_information: [], recommended_disposition: 'REVISE', summary: '只改准备时间'};
 const plan = {reportVersion: '1.1', base_revision: 7, disposition: 'REVISE',
-  preserved_steps: [], rechecked_steps: [],
+  preserved_steps: [{node: ref(otherId), reason: '独立计划不受本次目标时间变化影响'}], rechecked_steps: [],
   revised_steps: [{node: ref(planId), replacement: '16点准备', reason: '目标时间变化'}], removed_steps: [],
   dependency_updates: [{node: ref(planId), dependencies: [ref(goalId, 2)], reason: '使用新目标版本'}],
   evidence_required: ['本地Policy、CAS及执行读回'], missing_information: [], local_next_actions: []};
@@ -138,9 +138,89 @@ test('repair fixture changes one plan and preserves unrelated context', () => {
   const payload = JSON.parse(REPAIR_QUERY.slice(REPAIR_QUERY.indexOf('{')));
   assert.deepEqual(payload.repairContext.targets, [
     {node: ref(planId), summary: '14点准备', requestedDependencies: [ref(goalId, 2)]},
+    {node: ref(otherId), summary: '其他工作', requestedDependencies: []},
   ]);
   assert.ok(payload.nodes.some(item => item.id === otherId && item.kind === 'plan'
     && item.summary === '其他工作'));
+});
+
+test('two-target scenario passes the actual orchestrator and records only fixed comparison fields', async () => {
+  const h = fake();
+  const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({bindings: [CASES[9].id]})});
+  const row = result.cases[0];
+  assert.equal(row.status, 'passed');
+  assert.equal(row.applicationKind, 'repair_candidate');
+  assert.deepEqual(row.repairScenario, {scenario: 'minimal_repair', status: 'matched', changeCount: 1,
+    graphRevisionMatches: true, targetMatches: true, nodeRevisionMatches: true, summaryMatches: true,
+    dependenciesMatch: true, unrelatedTargetChanged: false});
+  assert.equal(h.port.requests.length, 1);
+  assert.equal(JSON.parse(h.envelopes[0].query.slice(h.envelopes[0].query.indexOf('{'))).repairContext.targets.length, 2);
+  for (const secret of [goalId, planId, otherId, '16点准备', '其他工作', '目标时间变化']) {
+    assert.equal(JSON.stringify(result).includes(secret), false);
+  }
+});
+
+test('schema-valid minimal repair mismatches fail without losing application or transport observations', async () => {
+  const scenarios = [
+    [value => {value.expectedGraphRevision = 8;}, 'graphRevisionMatches', false],
+    [value => {value.changes[0].node.id = otherId;}, 'targetMatches', false],
+    [value => {value.changes.push({node: ref(otherId), summary: '其他工作', reason: 'private-unrelated', dependencies: []});}, 'changeCount', 2],
+    [value => {value.changes[0].node.revision = 2;}, 'nodeRevisionMatches', false],
+    [value => {value.changes[0].summary = 'private-summary-containing-16';}, 'summaryMatches', false],
+    [value => {value.changes[0].dependencies = [ref(goalId)];}, 'dependenciesMatch', false],
+  ];
+  for (const [change, field, expected] of scenarios) {
+    const h = fake({mutate: value => {change(value.result.value.candidate); return value;}});
+    const caseDiagnostics = createCaseDiagnostics(), invoke = h.port.invoke.bind(h.port);
+    h.port.invoke = request => {
+      caseDiagnostics.onTerminal(request, {requestId: '10000000-0000-4000-8000-000000000001'});
+      return invoke(request);
+    };
+    const result = await runAcceptance({...h, caseDiagnostics, deadline: deadline(),
+      selection: selectCases({bindings: [CASES[9].id]})});
+    const row = result.cases[0];
+    assert.equal(row.status, 'failed', field); assert.equal(row.errorCode, 'EXPECTED_REPAIR_CANDIDATE');
+    assert.equal(row.applicationKind, 'repair_candidate'); assert.equal(row.terminal, true);
+    assert.equal(row.dispatch, false); assert.equal(row.accepted, false);
+    assert.equal(row.repairScenario.status, 'mismatch'); assert.equal(row.repairScenario[field], expected);
+    if (field === 'targetMatches' || field === 'changeCount') assert.equal(row.repairScenario.unrelatedTargetChanged, true);
+    assert.equal(h.port.requests.length, 1); assert.equal(result.retries, 0);
+    assert.equal(JSON.stringify(result).includes('private-'), false);
+    for (const id of [goalId, planId, otherId]) assert.equal(JSON.stringify(result).includes(id), false);
+  }
+});
+
+test('noncandidate applications and invalid candidate schemas are distinct from a matching repair', async () => {
+  for (const schemaInvalid of [false, true]) {
+    const h = fake({mutate: value => {
+      if (schemaInvalid) value.result.value.candidate.changes = [];
+      else value.result.value = {kind: 'text', text: 'private-noncandidate'};
+      return value;
+    }});
+    const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({bindings: [CASES[9].id]})});
+    const row = result.cases[0];
+    assert.equal(row.status, 'failed'); assert.equal(h.port.requests.length, 1);
+    if (schemaInvalid) {
+      assert.equal(row.applicationKind, undefined); assert.equal(row.repairScenario, undefined);
+    } else {
+      assert.equal(row.applicationKind, 'text'); assert.equal(row.repairScenario.status, 'not_repair_candidate');
+      assert.equal(row.repairScenario.changeCount, 0);
+    }
+    assert.equal(JSON.stringify(result).includes('private-'), false);
+  }
+});
+
+test('review core rejection retains only the schema-parsed comparison and never the raw candidate', async () => {
+  const h = fake({mutate: (value, input) => {
+    if (input.id === CASES[5].id) value.result.value.candidate.changes[0].summary = 'private-review-16';
+    return value;
+  }});
+  const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({bindings: [CASES[5].id]})});
+  const row = result.cases.at(-1);
+  assert.equal(row.status, 'failed'); assert.equal(row.applicationKind, 'repair_candidate');
+  assert.equal(row.repairScenario.summaryMatches, false);
+  assert.equal(row.repairScenario.status, 'mismatch'); assert.equal(h.port.requests.length, 3);
+  assert.equal(JSON.stringify(result).includes('private-review-16'), false);
 });
 
 test('selection is exact, ordered and explicitly includes review prerequisites', () => {
