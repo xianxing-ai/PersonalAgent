@@ -2,9 +2,13 @@
 
 ## 2026-10-15：请求身份比较与有界平台日志读取
 
-Owner：zemeng。Profile：`huawei_ict_agentarts`。本工作包状态 `in_progress`；可审查源码增量已具备，真实平台观测验收未完成。
-隔离工作树登记：`D:/PersonalAgent/.worktrees/mod32-observability`，分支 `codex/mod32-observability`，
-基线 `81dc72b60240d761070c39515ce112032b6b22ca`；Git worktree 已登记。未提交、推送、发布或合并。
+Owner：zemeng。Profile：`huawei_ict_agentarts`。本离线工作包状态 `review`；MOD-32 仍为 `in_progress`，真实平台观测验收未完成。
+隔离工作树登记：`.worktrees/mod32-observability`，分支 `codex/mod32-observability`。
+开发基线为 `81dc72b60240d761070c39515ce112032b6b22ca`；交付时仅迁移本包到
+`main@3275aa9116769386a93453d9370c0b17f828a834`，未带入 Laya 分支提交。
+代码提交 `97777403fcc2a9c27df5f5ed689acd002d82245d` 已普通推送，独立
+[PR #361](https://github.com/zemeng5208/PersonalAgent/pull/361) 的 base 为 `main`，共 12 个文件。
+已完成自审及只读代理审查，没有 GitHub Approve；未等待 CI、合并或发布。
 
 公开模块 `@personal-agent/agentarts/observability` 提供无 I/O 的 trace/log 投影、实际 HTTP invocation
 身份校验和受限日志查询构造。该 package 新增指向 `dist/observability/index.mjs` 的子路径 export，
@@ -77,6 +81,10 @@ node --test packages/agentarts/test/observability.test.mjs packages/agentarts/te
 测试消费预先生成的产物，不在测试中修复缺产物；标准模块 build 已接线到同一复制步骤。
 该检查证明产物布局和 Node 公开导入；不替代 Docker 构建、镜像发布或平台运行验收。
 收尾只读审查未发现阻断问题；没有运行全仓重检查或 Docker。
+交付迁移前后 12 个文件的 Git blobs 一致，3 个复用测试文件的基线也相同；checkout 的
+CRLF 规范化改变了源码原始字节，因此重新执行 `build:observability` 和产物布局测试，
+后者 1/1 通过。整个 AgentArts package build/typecheck 未运行，定向 dist 声明检查不代表
+完整包构建。后续合并 Laya 或其他模块增量时须同时保留各自 package exports/scripts。
 
 当前进程无相关凭据环境变量；现有 saved-config host 的所需本地文件在检查范围内也不存在。
 未读取真实 AK/SK、未发平台观测请求。历史回执仍缺该次调用的平台原生 trace/version，
