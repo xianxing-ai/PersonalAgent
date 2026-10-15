@@ -2,7 +2,41 @@
 
 目标 Profile：`huawei_ict_agentarts`。对应设计 PR #349、设计页 PR #352；本文件随实现 PR 交付。
 
-## 本次发布实测状态（2026-10-14）
+## 当前开发增量（2026-10-15，尚未发布）
+
+当前开发源码为 `e4c87c1d25514422880f370f939a0a41a8962725`，模板版本为 `2026.10.15.1`。
+它没有发布到 SWR 或 AgentArts；下节 `fe886677` 的历史镜像、平台调用与公共 Evidence 保留原样。
+完整开发证据及缺项见[2026-10-15 开发记录](OWNED_LAYA_DEVELOPMENT_20261015.md)。
+
+28 个功能、185 个详情节点的范围保留，以设计页 PR #352 已评审的数据同步生成来源与投影。
+F20 的四节点职责已修正：N01 读取代码/契约来源，结果为 `sourceReadback`；N02 基于实际来源比对，
+生成 `diffFields`、`docMarkdown` 和 `exampleArguments`；N03 请求原受控命令，由真实 `tsc --noEmit`
+与固定公开 fixture 差异检查共同验证，必须 `sourceDifferenceMatched=true`；N04 根据真实来源及检查回执
+复核候选，保持 `synchronized:false`，不表示已经外部发布。
+
+模板版本与摘要变化会拒绝旧模板 checkpoint。这里没有自动跨模板迁移：原版本保留在途任务，
+不得把旧检查点或未知操作换成新模板重新执行。相同模板内的受信 revision 迁移，只新增一项恢复：
+受影响、无 proposal、因 `Unique selector requested recheck; no operation proposal emitted` 进入 `unknown` 的 tool 节点可回到 pending。
+相同 revision 不重新选候选；已有 operation 的原身份、参数、回执与效果记录均保留，迁移证明不授予执行权限。
+
+实际 tokenizer 预检动态设置完整 SDK 窗口，最高受已加载编码器的 8192 token 限制，核对实际 usage 与预期序列，
+不截断源材料；超限在 forward 前拒绝。tokenizer 预检后、启动 forward 前重新检查原 deadline，
+父 worker 未启动时也不会等待不存在的 finally。当前节点职责、候选所处阶段和准确发布的工具 Schema
+同时提供给 MaaS 候选制备和 Laya；这些修复没有改变唯一 Laya 的决策位置或移除 review。
+
+| 2026-10-15 验证表面 | 实际结果 |
+| --- | --- |
+| 原生 Windows 真实调用 `live-wmFfjy` | 实际 MaaS 与真实 Laya；N01 选择 `owned-review`，父任务 failed，工具/Evidence 均为 0；完整 F20 未跑通 |
+| 本次时间与 token | 提案 HTTP 4,699 ms；MaaS 2,747.0691 ms；Laya SDK `predict_batch` 1,917.7058 ms；selector 1,943.6092 ms；1,007 tokens、dropped=0、未截断 |
+| 固定 6 探针 | 两种固定提问 × 合法路径/错误路径/缺 Schema，真实权重均选择 review；输入为手写公开 fixture，无 MaaS，不作为准确率或泛化结论 |
+| 受影响测试 | 75 项通过：图 18、orchestrator 20、selector 14、manual/exporter 23；这些测试各自的替身与真实编译器范围不变 |
+| 全量检查 | 本轮 `e4c87c1d` 的 `npm run check` exit 0：3,111 项，3,093 通过、18 跳过、0 失败；`388a7e5` 历史 3,108 项单独保留，不累加 |
+| ARM64 增量镜像 | 独立实际验收尚未完成；不以本地 Windows、旧短样本或增量镜像准备状态填充通过 |
+
+上述 Windows 时间不是华为原生 ARM64 延迟，也不是纯神经网络 forward 基准或稳定 SLA。
+目前源码仍是唯一 Laya 决策、国内 MaaS 生成执行候选；改为一个国内 MaaS 决策中枢仍属建议，尚未获替换实施授权。
+
+## 历史发布实测状态（2026-10-14）
 
 本版是可供协作者继续开发的预览。SWR 镜像和 AgentArts 新版本已分别读回；真实云调用已完成一次公开文件读取、来源回执入图及持久读回，平台日志已关联本次两次 Laya 选择。后续模型节点由唯一选择器请求复核，整图为 `unknown`；这是语义复核，不是网络断流或工具 `RESULT_UNKNOWN`，不得报告完整业务成功。
 
@@ -172,10 +206,10 @@ SWR 上传读回、AgentArts 新版本读回、云请求关联、原本地工具
 
 原始 live `receipt.json` 包含本机绝对 `runDirectory`，连同 `state.json`、SQLite、sealed checkpoint 和原始日志均为内部验收材料。先通过白名单 Evidence exporter 投影，再审查其最终输出用于 PR/公开材料；不能直接公开原始回执，即使它没有明文密钥。
 
-当前已通过的本地检查：根 `npm run check` 为 3096 项（3073 通过、23 跳过、0 失败）；
+2026-10-14 阶段的历史本地检查：根 `npm run check` 为 3096 项（3073 通过、23 跳过、0 失败）；
 随后恢复修复的定向图 15 项和真实 SQLite/Policy/ToolGateway 桥 1 项均通过。
 这些本地测试中的模型/选择器是明确替身，不能冒充 Laya/MaaS/AgentArts 实测。
-实际发布与调用结果在同目录的发布 Evidence 记录中补充，以实际结果为准。
+这些历史计数不覆盖本页 2026-10-15 开发增量。实际发布与调用结果在对应日期的 Evidence 中分别记录。
 
 真实镜像离线验收：`tests/manual/agentarts/owned-laya-image.mjs`，必须在 Linux ARM64 镜像内
 以 `--network none` 挂载执行；一个真实 Laya 实例，无 MaaS、工具或账号调用。
@@ -223,6 +257,9 @@ $liveInput = @{
 $liveInput | ConvertTo-Json -Depth 8 -Compress |
   node tests/manual/agentarts/owned-workflow-live.mjs
 ```
+
+以上目标是 2026-10-14 已发布的历史版本，用于对照调用形状。当前 CLI 的完整 F20 验收需与对应源码和模板的
+实际运行对象匹配；新源码仍未发布，不能把这里的 `fe886677` 目标或旧 partial 当作新版本已完成的验收。
 
 独立回执 key 环境可按 CLI schema 加 `receiptSecret`，仅在内存传入；`runtimeLogFile` 仅指向真实平台导出的日志，并由 CLI 筛选此次 requestId。输入不写入文件、Git、命令行参数或聊天。脚本生成的原本地任务、操作身份与 sealed checkpoint 保留在 `.cache/owned-workflow-live/live-*`；本次为 `live-CisyZG`，其内部回执记录上述 partial。
 

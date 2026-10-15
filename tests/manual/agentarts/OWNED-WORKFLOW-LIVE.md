@@ -1,17 +1,34 @@
 # 自有镜像 28 图目录与公开 F20 完整流程验收
 
 入口：`tests/manual/agentarts/owned-workflow-live.mjs`。目标 profile：`huawei_ict_agentarts`。
-此 CLI 使用真实 AgentArts HTTPS / SSE 及镜像里的真实模型配置，不提供 Fake selector/model 或 Local 回退。
-F20 模式验收固定公开合成 API 的全部四个节点：读取源代码/契约、真实模型生成并选择文档候选、实际 TypeScript 编译、最终来源复核和候选文件交付。
+此 CLI 对显式选择的 AgentArts HTTPS / SSE、本地镜像或原生 Runtime 发起真实调用，不提供 Fake selector/model 或 Local 回退。
+F20 模式验收固定公开合成 API 的全部四个节点：读取源代码/契约、真实模型比对来源并生成差异/文档/示例候选、实际 TypeScript 编译与差异校验、最终来源复核和候选文件交付。
 F15 保留首个公开读取与模型续图模式，不把它当作完整 F15。
 两种模式都不代表 28 个真实业务全部完成；历史 117 字节说明文件的 partial 回执保持原样，不转写成 F20 完整验收。
+
+## 当前开发状态（2026-10-15）
+
+当前开发源码 `e4c87c1d25514422880f370f939a0a41a8962725`、模板 `2026.10.15.1` 尚未发布到 SWR/AgentArts。
+28 功能、185 节点保留，生成来源与投影同步设计页 PR #352 的已评审数据；
+本节与[2026-10-15 开发证据](../../../docs/competition/OWNED_LAYA_DEVELOPMENT_20261015.md)共同记录实际状态。
+下表的 passed 状态是完整成功时的输出契约，不是当前实测结果。
+
+最新原生 Windows 实测 `live-wmFfjy` 使用实际 MaaS 和真实 Laya，N01 选择 `owned-review`，
+父任务 failed，工具/Evidence 均为 0；本轮完整 F20 未跑通。实际提案 4,699 ms，MaaS 2,747.0691 ms，
+Laya SDK `predict_batch` 1,917.7058 ms、selector 1,943.6092 ms，1,007 tokens、dropped=0、未截断。
+该结果不是华为 ARM64 调用，也不覆盖后续四节点验收。旧 `fe886677` 云端首读取通过而后续复核的 partial 单独保留。
+
+真实权重的另一组固定 6 探针为两种提问 × 合法路径/错误路径/缺 Schema，均选择 review。
+这些探针使用手写公开 fixture，无 MaaS，不构成领域准确率或泛化结论；当前源码仍使用唯一 Laya，未获授权实施模型替换。
+独立 ARM64 增量镜像实际验收尚未完成。
 
 ## 前置条件
 
 1. 使用仓库要求的 Node 24.15.x / npm 11.12.x；依赖和相关 Runtime/Client/coding-tools/agentarts 已构建。
    全新 checkout 按根构建脚本准备一次；该 CLI 不安装依赖、不构建、不部署镜像。
    F20 还使用仓库实际安装的 `typescript/bin/tsc`，不会以模型自报“通过”替代编译器。
-2. 华为端确实部署带 Laya 和本版 `workflowVersion: 1.0.0` 的 ARM64 镜像，模型和宿主凭据已注入。
+2. `live` 模式要求华为端确实部署带 Laya 和本版 `workflowVersion: 1.0.0` 的 ARM64 镜像，模型和宿主凭据已注入；
+   本地模式则需要集成人显式准备对应的镜像或原生 Runtime。所选实际模板应与本次验收源码匹配。
    原镜像只有 8 Workflow / 3 Controller 时，CLI 会拒绝目录，不能以老版本通过替代本轮证据。
 3. 从受信本地凭据存储读取平台入站 Authorization 与镜像独立 WSS/宿主 Authorization。
    通过 stdin JSON 提供；CLI 不读取私人 `.env`、不要求密钥出现在命令行、不把密钥写入回执。
@@ -22,7 +39,7 @@ F15 保留首个公开读取与模型续图模式，不把它当作完整 F15。
 比赛镜像的开发验收还支持两个独立入口，复用下面的完整 F20、真实 MaaS/Laya 和原 Runtime/Policy/工具链。
 这是调用者明确选择的开发表面；`live` 失败不会自动切到这些入口，也没有新增 Local 产品 profile。
 
-| operation | 调用对象 | providers.cloud | 完整结果状态 |
+| operation | 调用对象 | providers.cloud | 仅完整成功后写入的状态 |
 | --- | --- | --- | --- |
 | `live` | 真实 AgentArts HTTPS Runtime | `real_agentarts_https` | `passed_public_f20_documentation_workflow` |
 | `image-live` | 已运行的本地自有镜像容器 | `real_owned_image_http` | `passed_local_image_f20_documentation_workflow` |
@@ -112,20 +129,24 @@ CLI 标准输出只有脱敏实测 JSON。`failed_or_unknown` 或语义复核的
 5. 生产 ToolGateway 与实际文件读取必须只执行 1 次；核对 Policy allow、原工具执行记录、Evidence
    和独立文件读回 SHA。宿主桥仅从该真实 confirmed HostToolTaskReadback 产生来源签名。
 6. 把原 sealed checkpoint 和该回执提交同一云图；F20_N01 必须为 completed，并保留原 Evidence。
-   F20_N02 由真实执行模型准备 `docMarkdown` 与 `exampleArguments`，由 Laya 选择；把实际选出的值保存到固定候选文件。
+   N01 的职责是读取实际来源并提供 `sourceReadback`。F20_N02 根据来源里的契约、实现与旧文档实际比对，
+   准备 `diffFields`、`docMarkdown` 与 `exampleArguments`，由 Laya 选择；把实际选出的值保存到固定候选文件。
    来源、实际候选和候选 Markdown 分别记录 SHA256，不用预写文档或固定示例替代模型结果。
 7. 下一轮仅接受 F20_N03 的既有命令工具及唯一 recipe。命令必须先进入 waiting_approval，审批前执行次数为 0。
    用已有 Client 对该固定公开编译命令提交一次 allow_once 后，生产 ToolGateway 才运行子进程。
    子进程核对源文件和候选的实际摘要，用 JSON 字面量安全生成 TypeScript 示例，并真正编译接口、实现和示例：`tsc --noEmit`。
-   多余参数、字段类型不匹配或摘要变化均失败。`noPhantomFields` 只证明示例参数与接口一致，不自动证明整个 Markdown。
+   同时用本 fixture 的实际 Schema 字段与旧 documentedFields 算出应补的差异，并核对候选 `diffFields`，
+   记录 `sourceDifferenceMatched`；多余参数、字段类型不匹配、差异错误或摘要变化均失败。
+   这项差异检查限于该固定 fixture，不是通用 API 语义验证。`noPhantomFields` 只证明示例参数与接口一致，不自动证明整个 Markdown。
 8. 编译 stdout 提交完整相关源对象、实际文档候选/示例、摘要、真实编译器版本/退出码和检查事实。
    只从真实 confirmed 命令任务产生第二条来源签名；F20_N03 接纳回执后，F20_N04 才有真实来源与编译依据。
    N04 输出实际源版本 `docVersion`、`synchronized:false`、精确的已检查 `docMarkdown` 和源/检查材料引用。
    `false` 表示文档尚未外部发布，属于本次候选交付的正确状态。
-9. 必须四节点都 completed、图 settled、两个原工具 Evidence 都保留、源/候选/编译材料摘要对应，才交付 `owned-api-final-doc.md`。
+9. 必须四节点都 completed、图 settled、两个原工具 Evidence 都保留、`sourceDifferenceMatched=true`、源/候选/编译材料摘要对应，才交付 `owned-api-final-doc.md`。
    CLI 真实写入并读回该公开缓存候选文件，核对摘要、来源引用和字段；它不声称写了仓库或平台文档。
    验证通过后 worker 返回汇总与原 Evidence，由 Runtime 合法进入 verifying → succeeded；云图不能直接签发本地终态。
-10. 显式等待原父 worker 收尾后关闭 Application，避免 Runtime deadline 先返回而异步 worker 仍写检查点。
+10. 原父 worker 确实启动后，显式等待其 finally 收尾再关闭 Application，避免 Runtime deadline 先返回而异步 worker 仍写检查点；
+    deadline 在 worker 启动前已经过期时，不等待一个不会发生的收尾。
     重开同一 SQLite，只读回父任务、两个工具任务和 Evidence；完整 F20 的父任务必须 succeeded，新增网络/工具执行为 0。
 
 F20 的读取和编译工具分别真实执行一次；各自的 Policy 审批、签名回执和 Evidence 独立。
@@ -164,9 +185,23 @@ F15 的 `passed_public_read_and_graph_resume` 仍只表示首读取和模型续�
 恢复目录必须是该仓库 `.cache/owned-workflow-live` 下的实际本次目录。
 云端未知发送如何核实仍使用原平台 requestId/日志/状态路径，CLI 不擅自重发。
 
+新模板版本/摘要会拒绝旧模板 checkpoint，没有自动跨模板迁移；保留原版本处理其在途任务和原操作核实。
+同一模板内，只有合法受信 revision 迁移明确失效受影响节点时，无 proposal、`unknown` 且原因为
+`Unique selector requested recheck; no operation proposal emitted` 的 tool 节点才可重新选候选。
+同 revision 不重跑；缺/伪迁移和未失效该节点的迁移不恢复；已有 proposal/operation 的身份、回执和效果记录不重建。
+
+当前 Laya 同时收到当前节点职责、候选阶段及准确工具 Schema。实际 tokenizer 动态选择完整 SDK 窗口，
+不超过已加载编码器 8192 token，实际 usage 必须匹配预期且无截断；超限在 forward 前拒绝。
+tokenizer 预检结束后还会检查原 deadline，不通过追加期限来继续已过期推理。
+
 ## 本次脚本验证
 
 已执行 Node 语法检查及定向测试：公开 API 输入、四节点完成门槛、真实 TypeScript 正负示例、摘要篡改、
 原 local_write Policy/ToolGateway/Evidence/合法父任务完成、deadline 收尾、消息/SSE/null 元数据与索引去重/冲突拒绝。
 本地测试不调用云或替换 selector/model，不计为真实华为验收。
 真实云端调用由集成人用已授权的可信配置运行并另行保存实测回执。
+
+2026-10-15 受影响测试共 75 项通过：18 个图、20 个 orchestrator、14 个 selector、23 个 manual/exporter；
+本轮 `e4c87c1d` 的完整 `npm run check` exit 0：3,111 项、3,093 通过、18 跳过、0 失败。
+历史 `388a7e5` 全量检查为 3,108 项、3,090 通过、18 跳过，分别保留，不与本轮或 75 项定向结果累加。
+这些检查不把上述失败的真实本地 F20、尚未完成的 ARM64 验收或历史云 partial 升级为成功。

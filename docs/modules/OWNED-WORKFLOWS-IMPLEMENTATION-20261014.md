@@ -1,11 +1,15 @@
 # 自有镜像 F01—F28 图内核与接线边界
 
-日期：2026-10-14。目标 profile：`huawei_ict_agentarts`。接口状态：**provisional**。
+起始日期：2026-10-14；开发增量更新：2026-10-15。目标 profile：`huawei_ict_agentarts`。接口状态：**provisional**。
 
 本增量把设计页的 **28 个不同工作流、185 个详情节点**编译为镜像内的可执行图模板，
 并交付依赖/条件/分支汇合与原操作回执驱动的图内核。它不是把 28 个名称指向同一个 fast 模型。
 实际业务能力是否可运行仍取决于宿主已注册的工具及公开端口；缺项明确返回 unavailable。
 图计算、模型候选、工具提案、本地执行、可信读回和比赛平台部署是分别验收的事实。
+
+当前开发源码 `e4c87c1d25514422880f370f939a0a41a8962725` 尚未发布；
+完整记录见[2026-10-15 开发证据](../competition/OWNED_LAYA_DEVELOPMENT_20261015.md)。
+下文的 2026-10-14 发布记录仍只对应原 `fe886677` 镜像，不证明新源码已经部署。
 
 ## 文件与兼容性
 
@@ -18,10 +22,14 @@
 - `packages/agentarts/test/owned-workflow.test.mjs`：结构、并行、条件汇合、取消、签名、未知结果等测试。
 
 旧 `bindingVersion: "1.0.0"` 的 8 个 Workflow / 3 个 Controller 保留其身份和行为。
-新增的 28 图目录使用 **独立** `workflowVersion: "1.0.0"`，模板版本 `2026.10.14.1`。
+新增的 28 图目录使用 **独立** `workflowVersion: "1.0.0"`，当前开发模板版本 `2026.10.15.1`；
+`2026.10.14.1` 是历史发布模板。当前生成来源与投影同步设计页 PR #352 已评审的 28 功能、185 节点，范围不变。
 不增加本地 wire operation、数据库迁移或第二个任务/授权/工具注册体系。
 图结果为 `verification: "unverified"`；图的 `settled` 只表示本轮图节点已收敛，
 不是本地 TaskRuntime 的 `succeeded`，不授予执行权限。
+
+模板版本或摘要不同会拒绝旧 checkpoint，受信 control revision 迁移不能跨 template 自动恢复。
+原版本应保留在途任务和原操作核实入口，不将其转交新模板重新提交。
 
 ## 开发调用
 
@@ -83,6 +91,9 @@ HMAC key 由可信启动配置管理，同版本/同 key 重启可继续。轮�
 设计里的检索反馈/新用户指令回边保留为 `requires_host_revision`：当前图不会在原 revision 下
 自行重开已有实际效果的节点。合法变更使用受信宿主签发的 `migration`，绑定前后 task/session/
 workflow/template/input/catalog/controlRevision 和明确失效节点。递增版本后失效受影响的纯计算节点及无提案的只读宿主观察/检查；
+对 tool 节点，仅当它无 proposal、为 `unknown` 且原因为
+`Unique selector requested recheck; no operation proposal emitted` 时，才允许受影响的该节点回到 pending。
+同 revision 的继续请求、缺失/伪造迁移或未失效该节点的迁移都不重选；不会笼统重开所有 unknown 工具节点。
 保留所有曾提出或已经确认、失败、未知的原工具/宿主操作及原参数、操作 ID、回执。
 新目录不得删除原操作的工具或偷换同版本 Schema。禁止丢弃旧检查点后重新运行写操作。
 仅有云端提案不证明本地已经提交。迁移后的旧 waiting_receipt 转为 unknown 并只保留原记录，
@@ -136,7 +147,7 @@ workflow/template/input/catalog/controlRevision 和明确失效节点。递增�
 | F17 测试定位 | 4 | 固定日志、归因、最小复现提案与报告 | workspace.run_allowed_command、原证据报告接线 |
 | F18 PR 审查/合并 | 5 | 固定 head、审查、阻断项、当前真人批准/CI 门禁 | GitHub 当前 head/批准/冲突与注册合并工具 |
 | F19 Issue 修复 | 5 | 来源/查重、子任务、独立回归与关闭候选 | GitHub Issue/合并读回、原 Runtime 与注册关闭工具 |
-| F20 API 文档 | 4 | 原契约比对、文档候选、可执行示例与来源检查 | workspace.read_text/run_allowed_command |
+| F20 API 文档 | 4 | 读取来源 → 比对并生成差异/文档/示例 → 真实检查 → 来源复核候选 | workspace.read_text/run_allowed_command；本轮不进行外部同步 |
 | F21 MCP/Skills | 5 | 来源、安装注册、握手、隔离探针与启用候选 | 统一 MCP/Skills 安装/运行宿主，平台/本地/自制来源 |
 | F22 影子实验 | 9 | 固定快照、选模式、已选分支汇合与改进候选 | 时序快照/轨迹/真实隔离端口；缺反事实保持 unknown |
 | F23 评估/晋升 | 5 | 数据切分、泄漏检查、真实输出评分与晋升候选 | 平台评测集/任务、现有评分和发布条件 |
@@ -164,7 +175,7 @@ workflow/template/input/catalog/controlRevision 和明确失效节点。递增�
 只证明图控制与边界，不证明 Laya 权重装载、MaaS、真实账号、平台 MCP/知识/日志/评估或完整产品可用。
 构建、测试、镜像与真实 Huawei 调用证据由集成工作包分别补充到本记录。
 
-已执行 `node --test --test-isolation=none packages/agentarts/test/owned-workflow.test.mjs`：
+2026-10-14 阶段已执行的历史定向测试 `node --test --test-isolation=none packages/agentarts/test/owned-workflow.test.mjs`：
 **15/15 通过**。覆盖真正三分支并行、选中/跳过分支汇合、唯一候选选择及弃权、缺能力、
 未知写原操作身份、拒绝 client claimed success、签名与版本失效、受信版本迁移保留原效果、
 大结果恢复、语义繁忙、影子与取消，以及旧未提交/仅 intent 提案不在新 revision 首次执行、
@@ -173,6 +184,33 @@ workflow/template/input/catalog/controlRevision 和明确失效节点。递增�
 `apps/runtime/test/owned-workflow-host-bridge.test.mjs` 已执行 **1/1 通过**；与上面图用例合计 **16/16**。
 该用例确实读取新建公开合成文件、等待现有一次性 Policy、产生原执行 Evidence、来源签名续图，
 重开后仅读回而执行次数仍为 1；模型选择器仍为明确替身，不能作为华为/Laya/MaaS 实测验收。
+
+### 2026-10-15 开发增量与当前验证
+
+F20_N01 现在只读取代码/契约来源，输出 `sourceReadback`，不将读取自报为差异计算。
+F20_N02 根据实际来源比对，输出 `diffFields/docMarkdown/exampleArguments`；N03 沿原 Policy/ToolGateway
+调用固定编译命令，以真实 TypeScript 编译和固定 fixture 的 `sourceDifferenceMatched` 检查实际候选。
+N04 使用原来源与真实检查回执复核精确文档，交付 `synchronized:false` 的候选，不声明外部发布。
+
+MaaS 和 Laya 现在接收同一当前节点边界与准确工具 Schema。Laya tokenizer 按实际序列动态申请完整 SDK 窗口，
+受编码器 8192 token 上限约束，要求实际 usage、header/state/分隔符计数一致且 dropped=0；超限在推理前拒绝。
+tokenizer 预检耗时后会重查原 deadline，父 worker 未启动的超时路径也不再等待不存在的收尾。
+这些是已落地的源码修复，不能代替实际 ARM64 完整窗口验收；该增量镜像的独立实测尚未完成。
+
+新源码受影响测试共 **75 项通过**：图 18、orchestrator 20、selector 14、manual/exporter 23。
+其中图用例覆盖语义 review 后的合法 revision 恢复及已有写 operation 四种状态不重做；真实编译器用例
+覆盖候选差异与实际 fixture 不符的拒绝。历史 `388a7e5` 全量检查为 3,108 项、3,090 通过、18 跳过；
+本轮 `e4c87c1d` 的完整 `npm run check` 已 exit 0：3,111 项、3,093 通过、18 跳过、0 失败；
+与上述历史计数分别记录，不累加。日志 SHA256 见[本轮开发 Evidence](../competition/evidence/OWNED_LAYA_DEVELOPMENT_20261015.json)。
+
+原生 Windows 的真实 MaaS/Laya 样本 `live-wmFfjy` 在 N01 选择 `owned-review`，父任务 failed，
+工具和 Evidence 均为 0，完整 F20 尚未跑通。提案 4,699 ms，MaaS 2,747.0691 ms，Laya SDK
+`predict_batch` 1,917.7058 ms、selector 1,943.6092 ms；实际 1,007 tokens、dropped=0、未截断。
+这是本地开发调用，不是华为调用或原生 ARM64 性能结论。
+
+另有真实权重的固定 6 探针：两种提问 × 合法路径/错误路径/缺 Schema，全部选择 review；
+它们使用手写公开 fixture、未调用 MaaS，不是领域准确率或泛化评估。
+当前仍保留唯一 Laya；换为一个国内 MaaS 决策中枢只是建议，未经确认不替换实现。
 
 下一步消费接线仍按原分工：goo122 负责现有 Runtime/ModelGateway/Policy/ToolGateway/
 MCP/Skills/Knowledge 的公开 provider；Potatos498 负责业务工具与业务侧回执/显示；
