@@ -153,3 +153,11 @@ provisional。现有 `CoordinationResult` 只提供最终 text/tool proposal/rep
 验证等级，SSE 的可选 `workflow_id`/`workflow_name` 仅用于事件配对，不向结果暴露嵌套
 角色映射。因此本包不从现有最终结果构造角色记录；在看到真实平台嵌套 trace 字段之前，
 不修改评分器去猜新格式，也不把旧六事件假设用于这些新分支。
+
+## 2026-10-15 owned workflow 实际产物评估增量
+
+新增 [MOD-31-OWNED-WORKFLOW-EVALUATION-03](MOD-31-OWNED-WORKFLOW-EVALUATION-03.md)：
+复用既有发布 Evidence 的读取/编译/续答/持久读回校验，补固定 F20 输入摘要、实际文档与
+独立回答/引用评审、配对一致性和缺失项处理。旧真实云端 partial Evidence 只进入历史
+未评分观察区；F01–F28 覆盖全部保留，不把模板数或合成测试算业务成功。
+本地评估器不是 AgentArts 原生 evaluation，也不改变本文原三标签 trace 评分语义。
