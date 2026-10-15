@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-15 最终可见请求格式（provisional）
+
+可信 Competition 宿主显式选择的 requestFormat 在 Provider 序列化/计量之前完成既有 MaaS 思考开关转换，并参与模型、预算与子任务恢复绑定；镜像 fetch 不再改写正文。无新 wire operation、迁移或冻结项。完整官方模板、生产真实计量与 MaaS 匹配仍未验收，见 [工作包](../modules/MOD-04A-FINAL-REQUEST-BUDGET-20261015.md)。
+
 ## 2026-10-15 Competition 预算展示（provisional）
 
 [预算展示工作包](../modules/MOD-04A-BUDGET-DISPLAY-20261014.md) 沿既有 modelApi.state / Admin snapshot 展示经过宿主校验的 Provider 计量元数据，保持原 IPC 和 wire Schema；不持久化新增采样、正文或凭据。默认 meter 未配置则未计量，隐藏上下文未知。固定官方词表的 Windows 原始文本核验不等于完整模板/MaaS 验收，生产不自动启用实验 meter。无新增 capability、迁移、产品依赖或冻结范围变化；原生 Electron/IPC 烟测通过，云调用 0。

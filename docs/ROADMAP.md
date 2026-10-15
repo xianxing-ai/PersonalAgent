@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+### 2026-10-15：最终可见请求预算边界（in_progress）
+
+G04 首个纵片将镜像现有 MaaS 思考转换前移至 Provider 序列化/计量之前，预算与传输共用正文；请求格式纳入 Runtime 审批恢复身份。完整模板与生产真实计量仍未验收，云调用 0，详见 [工作包](modules/MOD-04A-FINAL-REQUEST-BUDGET-20261015.md)。
+
 ## 2026-10-15 预算展示与 tokenizer 离线核验（in_progress）
 
 goo122 从 #357 `e60d45e3` 开始 [预算展示工作包](modules/MOD-04A-BUDGET-DISPLAY-20261014.md)：共享 Provider 的预算元数据已沿可信模型宿主接到现有 Admin，支持并发迟到保护、撤销清除和预算单独刷新保留草稿。定向 16/16、实际原生设置烟测通过；固定官方词表 Windows 原始文本核验 4/4，通过 SHA 校验并明确不适合作为完整请求 meter。完整门禁结果按工作包记录补录；真实模型/tokenizer 模板匹配、MaaS 与镜像生产打包仍未完成，云调用 0、原 Vault 不读写、接口及完整模块状态不提升。#357 当前 head Foundation 已成功，尚无非作者批准。
