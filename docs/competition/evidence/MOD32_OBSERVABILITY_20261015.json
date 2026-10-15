@@ -1,0 +1,71 @@
+{
+  "formatVersion": "1.0.0",
+  "module": "MOD-32",
+  "profile": "huawei_ict_agentarts",
+  "date": "2026-10-15",
+  "owner": "zemeng",
+  "branch": "codex/mod32-observability",
+  "baseCommit": "81dc72b60240d761070c39515ce112032b6b22ca",
+  "status": "uncommitted_reviewable_increment",
+  "implementation": {
+    "publicEntry": "@personal-agent/agentarts/observability",
+    "implementationExport": "./dist/observability/index.mjs",
+    "typesExport": "./dist/observability/index.d.mts",
+    "standardBuildIntegration": "tsc succeeds then npm run build:observability copies implementation and declaration to dist",
+    "surfaces": ["ShowOpsTrace", "ListOpsAgentRunLog"],
+    "networkMethod": "GET",
+    "region": "cn-southwest-2",
+    "attemptsPerRead": 1,
+    "responseByteLimit": 1048576,
+    "automaticPagination": false,
+    "automaticCredentialDiscovery": false,
+    "requestIdentityBasis": ["actual_HTTP_X-Request-Id", "session_id", "application_resource_id"],
+    "identitySnapshotTrust": "caller_supplied",
+    "exactMatchScope": "returned_spans",
+    "deploymentVersion": "unavailable",
+    "cost": "unavailable"
+  },
+  "validation": {
+    "kind": "synthetic_offline",
+    "testsPassed": 43,
+    "testsFailed": 0,
+    "testsSkipped": 0,
+    "syntaxCheck": "passed",
+    "declarationTypecheck": "passed",
+    "diffCheck": "passed",
+    "targetedArtifactBuild": "passed",
+    "distOnlyPublicImport": "passed_without_src",
+    "artifactSourceByteEquality": "passed",
+    "dockerBuild": "not_run",
+    "fullRepositoryChecks": "not_run_per_bounded_scope",
+    "officialSdk": {
+      "version": "2.0.6",
+      "source": "https://obs.cn-north-1.myhuaweicloud.com/apig-sdk/APIGW-javascript-sdk.zip",
+      "archiveSha256": "12b931918d9dfb3012e4a1aeef6171ffbca625f0b132298c4f62a8aaee3767e6",
+      "credentials": "synthetic_only",
+      "transport": "explicit_fake",
+      "realAuthenticationVerified": false
+    },
+    "initialFixtureFailure": "Expected INVALID_ARGUMENT from injected signer, but reader intentionally sanitizes callback errors to EXTERNAL_FAILURE; fixture corrected, boundary unchanged.",
+    "reviewFix": "Public projection now copies own data fields and dense array entries, rejects inherited invocation identities and sanitizes unexpected exceptions. Regression fixture passed."
+  },
+  "platformEvidence": {
+    "newPlatformRequests": 0,
+    "credentialsReadyInCheckedSources": false,
+    "requestTraceJoinVerified": false,
+    "platformLogsReadBackThisRun": false,
+    "requestDeploymentVersionVerified": false,
+    "billingVerified": false,
+    "historicalEvidenceReusedAsCurrent": false
+  },
+  "cloudWrites": 0,
+  "modelInvocations": 0,
+  "imagesPublished": 0,
+  "publicApiReferences": [
+    "https://support.huaweicloud.com/api-agentarts/InvokeRuntime.html",
+    "https://support.huaweicloud.com/api-agentarts/ShowOpsTrace.html",
+    "https://support.huaweicloud.com/api-agentarts/ListOpsAgentRunLog.html",
+    "https://support.huaweicloud.com/api-agentarts/agentarts_07_0005.html",
+    "https://support.huaweicloud.com/devg-apisign/api-sign-sdk-nodejs.html"
+  ]
+}
