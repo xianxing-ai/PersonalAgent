@@ -363,10 +363,11 @@ export function mountAdmin(root, invoke, escape) {
     }
     agentArtsControls?.show(showAgentArts);
     if (section === 'models' && data.modelApi) modelApiControls ??= mountModelApiControls(root.querySelector('.main'),invoke);
-    const nextModelApiSignature = JSON.stringify(data.modelApi);
+    const nextModelApiSignature = JSON.stringify(data.modelApi,(key,value)=>key==='requestBudget'?undefined:value);
     if (modelApiControls && modelApiSignature !== nextModelApiSignature) {
       modelApiControls.render(data.modelApi);modelApiSignature=nextModelApiSignature;
     }
+    else if (modelApiControls && data.modelApi) modelApiControls.updateBudget(data.modelApi);
     modelApiControls?.showSettings(section === 'models');
     root.querySelector('.main').dataset.cloudConfig=String(section==='models' && data.model?.provider==='agentarts');
     const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', shortcuts: 'shortcuts'};

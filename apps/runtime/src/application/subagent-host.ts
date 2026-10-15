@@ -28,6 +28,7 @@ import {
   OpenAICompatibleModelProvider,
   type ModelProvider,
   type NativeReasoningConfiguration,
+  type VisibleRequestTokenBudget,
 } from '@personal-agent/models';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {isDeepStrictEqual} from 'node:util';
@@ -43,6 +44,8 @@ export interface ConfiguredSubagentModelOptions {
   deployment: string;
   apiKey: () => string | Promise<string>;
   nativeReasoning?: NativeReasoningConfiguration;
+  contextLimitTokens?: number;
+  requestTokenBudget?: VisibleRequestTokenBudget;
 }
 
 /** Runtime composition only; Desktop injects credentials, never imports providers. */
@@ -58,6 +61,9 @@ export function createConfiguredSubagentModelGateway(
   }
   if (config.nativeReasoning !== undefined && config.provider !== 'openai-compatible') {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Native reasoning configuration requires the OpenAI-compatible auxiliary provider');
+  }
+  if (config.requestTokenBudget !== undefined && config.provider !== 'openai-compatible') {
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Visible request budgets require the OpenAI-compatible auxiliary provider');
   }
   const Provider = config.provider === 'pangu' ? PanguModelProvider : OpenAICompatibleModelProvider;
   const provider = new StructuredToolProvider(new Provider(config));
@@ -163,13 +169,16 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
   const identity = {provider: model.deployment.provider, deployment: model.deployment.deployment, model: model.deployment.model,
     configurationRef:options.getModelConfigurationRef?.(subtask.model,childWorker.taskId)??null,
     ...(model.deployment.capabilities.nativeReasoning === undefined ? {} : {
-      nativeReasoning: structuredClone(model.deployment.capabilities.nativeReasoning)})};
+      nativeReasoning: structuredClone(model.deployment.capabilities.nativeReasoning)}),
+    ...(model.deployment.capabilities.requestTokenBudget === undefined ? {} : {
+      requestTokenBudget: structuredClone(model.deployment.capabilities.requestTokenBudget)})};
   const previousIdentity = childWorker.loadCheckpoint('subtask-model-binding') as typeof identity | undefined;
   const pendingLoop = childWorker.loadCheckpoint('agent-loop') as {pending?: import('@personal-agent/models').ModelResult} | undefined;
   const expected = previousIdentity ?? pendingLoop?.pending?.deployment;
   if (expected && (expected.provider !== identity.provider || expected.deployment !== identity.deployment || expected.model !== identity.model
     || (previousIdentity && (previousIdentity.configurationRef!==identity.configurationRef
-      || !isDeepStrictEqual(previousIdentity.nativeReasoning, identity.nativeReasoning))))) {
+      || !isDeepStrictEqual(previousIdentity.nativeReasoning, identity.nativeReasoning)
+      || !isDeepStrictEqual(previousIdentity.requestTokenBudget, identity.requestTokenBudget))))) {
     throw new ProtocolError('REVISION_CONFLICT', 'Subagent model configuration changed; the prior proposal cannot be resumed');
   }
   if (!previousIdentity) childWorker.saveCheckpoint('subtask-model-binding', identity);
