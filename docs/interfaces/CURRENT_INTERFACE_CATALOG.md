@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-15 Competition 预算展示（provisional）
+
+[预算展示工作包](../modules/MOD-04A-BUDGET-DISPLAY-20261014.md) 沿既有 modelApi.state / Admin snapshot 展示经过宿主校验的 Provider 计量元数据，保持原 IPC 和 wire Schema；不持久化新增采样、正文或凭据。默认 meter 未配置则未计量，隐藏上下文未知。固定官方词表的 Windows 原始文本核验不等于完整模板/MaaS 验收，生产不自动启用实验 meter。无新增 capability、迁移、产品依赖或冻结范围变化；原生 Electron/IPC 烟测通过，云调用 0。
+
 ## 2026-10-14 Competition 可见模型请求预算（provisional）
 
 [F27 Provider 工作包](../modules/MOD-04A-VISIBLE-REQUEST-BUDGET-20261014.md) 增加 host-only `VisibleRequestTokenBudget`、`ModelCapabilities.requestTokenBudget` 和 `ModelResult.requestBudget`，沿 OpenAI compatible 序列化与 Competition 子任务工厂接线。明确模型/tokenizer/configuration 版本及显式窗口，计量工具提示包装之后的完整 Provider 请求；输出预留映射实际输出字段，凭据前/后校验，SQLite 恢复绑定预算描述。无计量器明确 unmeasured；hiddenContext 为 unknown，不能据此保证平台完整上下文窗。无新 wire capability、Schema、迁移、依赖或 frozen 范围变化；真实模型/tokenizer、自有镜像及 Desktop 展示仍待验收。见 [ADR-0026](../adr/0026-visible-model-request-budget.md)。
