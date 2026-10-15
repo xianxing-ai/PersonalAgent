@@ -34,14 +34,15 @@ export function ownedWorkflowFixtureInput(workflowId) {
   if(workflowId!=='F20')return {goal:`Read exactly the public synthetic file ${FIXTURE_NAME} with workspace.read_text. `
     +'Prepare its first candidate from the supplied published inputSchema using only supported fields. '
     +'After the actual source receipt, use the public result for the next candidate. Do not claim a tool already ran.'};
-  return {goal:`F20 API docs: read ${FIXTURE_NAME}. N02 returns {docMarkdown,exampleArguments}; cite that file. `
+  return {goal:`F20 API docs: first request the source read of ${FIXTURE_NAME}; the read result is source text, not a comparison. `
+    +'N02 compares the actual contract, implementation and old documentation, and returns {diffFields,docMarkdown,exampleArguments}; cite that file. '
     +`N03 requests recipe ${PUBLIC_RECIPE_ID}. From actual source and validation receipts, N04 returns {docVersion,synchronized:false,docMarkdown,sourceRefs}; `
     +'use the source API version, the exact checked document, and sourceRefs for the source file and owned-api-check-result.json. '
     +'Do not claim it was written, published or synchronized externally.',
     schemaFile:FIXTURE_NAME,codeFile:FIXTURE_NAME,field:API_FIXTURE.field,docTemplate:FIXTURE_NAME+'#docTemplate',
     targetDoc:PUBLIC_FINAL_DOC_NAME,
     fixtureLayout:{schema:'jsonSchema',contract:'contractTypeScript',code:'implementationTypeScript'},
-    expectedOutputFields:['docMarkdown','exampleArguments']};
+    expectedOutputFields:['diffFields','docMarkdown','exampleArguments']};
 }
 const SHA=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
@@ -64,6 +65,8 @@ const fixtureMode=operation=>operation==='image-live'
 /** Validated data from the actual selected MaaS/Laya candidate; no prewritten substitute document. */
 export function ownedApiDocCandidate(value) {
   if(!plain(value)||typeof value.docMarkdown!=='string'||!value.docMarkdown.trim()
+    ||!Array.isArray(value.diffFields)||!value.diffFields.every(field=>typeof field==='string'&&field.length>0)
+    ||new Set(value.diffFields).size!==value.diffFields.length
     ||!plain(value.exampleArguments)||Buffer.byteLength(JSON.stringify(value))>MAX_RESPONSE_BYTES) {
     fail('INVALID_PUBLIC_DOC_CANDIDATE','candidate');
   }
@@ -86,7 +89,7 @@ export function ownedApiDocCompletion(graph,{sourceSha256,candidateSha256,docSha
     ||!nodes.every(node=>graph.nodes[node]?.state==='completed')
     ||graph.proposals?.length!==0||graph.unavailable?.length!==0)fail('PUBLIC_F20_NOT_COMPLETE','completion');
   if(check?.state!=='passed'||check.compiler?.exitCode!==0||check.checks?.typeCheckPassed!==true
-    ||check.checks?.noPhantomFields!==true||check.source?.sha256!==sourceSha256
+    ||check.checks?.noPhantomFields!==true||check.checks?.sourceDifferenceMatched!==true||check.source?.sha256!==sourceSha256
     ||check.candidate?.sha256!==candidateSha256||check.candidate?.docSha256!==docSha256)fail('PUBLIC_CHECK_BINDING_MISMATCH','completion');
   if(!Array.isArray(sourceEvidenceRefs)||!sourceEvidenceRefs.length||!Array.isArray(checkEvidenceRefs)||!checkEvidenceRefs.length
     ||!sourceEvidenceRefs.every(ref=>graph.nodes.F20_N01.evidenceRefs?.includes(ref))
@@ -125,15 +128,18 @@ export async function checkOwnedPublicApiDocs(directory,compilerPath,deadline) {
     {cwd:root,env:{},shell:false,windowsHide:true,encoding:'utf8',timeout:Math.min(2_147_483_647,Math.max(1,Date.parse(deadline)-Date.now()))});
   const packageInfo=JSON.parse(await readFile(resolve(actualCompiler,'../../package.json'),'utf8'));
   const noPhantomFields=Object.keys(candidate.exampleArguments).every(field=>Object.hasOwn(source.jsonSchema.properties,field));
-  const passed=compilation.error===undefined&&compilation.status===0&&noPhantomFields;
+  const sourceDifference=Object.keys(source.jsonSchema.properties).filter(field=>!source.documentedFields.includes(field)).sort();
+  const sourceDifferenceMatched=JSON.stringify([...candidate.diffFields].sort())===JSON.stringify(sourceDifference);
+  const passed=compilation.error===undefined&&compilation.status===0&&noPhantomFields&&sourceDifferenceMatched;
   return {schemaVersion:1,kind:'public_api_doc_validation',state:passed?'passed':'failed',
     source:{name:FIXTURE_NAME,sha256:binding.sourceSha256,api:source.api,documentedFields:source.documentedFields,
       expectedDifference:source.expectedDifference,contractTypeScript:source.contractTypeScript,
       implementationTypeScript:source.implementationTypeScript,jsonSchema:source.jsonSchema,docTemplate:source.docTemplate,field:source.field},
-    candidate:{sha256:binding.candidateSha256,docSha256:binding.docSha256,docMarkdown:candidate.docMarkdown,exampleArguments:candidate.exampleArguments},
+    candidate:{sha256:binding.candidateSha256,docSha256:binding.docSha256,diffFields:candidate.diffFields,docMarkdown:candidate.docMarkdown,exampleArguments:candidate.exampleArguments},
     compiler:{name:'TypeScript',version:packageInfo.version,exitCode:Number.isInteger(compilation.status)?compilation.status:null,
       diagnosticsSha256:SHA((compilation.stdout??'')+(compilation.stderr??'')),started:compilation.error?.code!=='ENOENT'},
-    checks:{typeCheckPassed:compilation.error===undefined&&compilation.status===0,noPhantomFields,
+    checks:{typeCheckPassed:compilation.error===undefined&&compilation.status===0,noPhantomFields,sourceDifferenceMatched,
+      sourceDifferenceScope:'Schema fields absent from the fixed public fixture documentedFields; not an implementation-equivalence proof',
       noPhantomFieldsScope:'exampleArguments checked against the API schema and TypeScript interface; not the whole Markdown',sourceBinding:true,candidateBinding:true},
     sampleSha256:SHA(sample),diagnostics:passed?null:String(compilation.stdout??compilation.error?.code??'COMPILER_FAILED').slice(0,4096)};
 }
@@ -482,6 +488,7 @@ async function execute(config) {
           report.validation.checkArtifactSha256=SHA(await readFile(join(runDirectory,'owned-api-check-result.json'),'utf8'));
           if(checkReceipt.result.exitCode!==0||check.kind!=='public_api_doc_validation'||check.state!=='passed'
             ||check.compiler?.exitCode!==0||check.checks?.typeCheckPassed!==true||check.checks?.noPhantomFields!==true
+            ||check.checks?.sourceDifferenceMatched!==true
             ||check.source?.sha256!==candidateBinding.sourceSha256||check.candidate?.sha256!==candidateBinding.candidateSha256
             ||check.candidate?.docSha256!==candidateBinding.docSha256)fail('REAL_PUBLIC_TYPECHECK_FAILED','validation');
           checkEvidenceRefs=[...checkReceipt.evidenceRefs];

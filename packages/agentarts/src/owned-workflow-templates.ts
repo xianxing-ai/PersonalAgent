@@ -3,7 +3,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {OWNED_WORKFLOW_SOURCE} from './owned-workflow-data.js';
 
 export const OWNED_WORKFLOW_VERSION = '1.0.0' as const;
-export const OWNED_TEMPLATE_VERSION = '2026.10.14.1' as const;
+export const OWNED_TEMPLATE_VERSION = '2026.10.15.1' as const;
 export type WorkflowStepKind = 'input' | 'assemble' | 'decision' | 'executor' | 'tool' | 'host';
 export interface WorkflowCapability {
   /** Tool names are existing published names; host ports are explicit missing composition contracts. */

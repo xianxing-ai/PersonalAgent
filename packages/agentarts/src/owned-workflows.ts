@@ -177,9 +177,11 @@ export class OwnedWorkflowEngine {
             step.state='unknown';step.reason='Original revision changed; host must reconcile whether the original operation was submitted';
           }
           // Pure calculations and read-only host observations must see the new input/source version.
+          // A tool's semantic review before any proposal can be reconsidered only by this trusted affected migration.
           // Original actual/proposed operations, including unknown and failed effects, stay bound to their original IDs.
           if(affected.has(node.id)&&!step.proposal&&(['input','assemble','decision','executor'].includes(node.kind)
-            ||node.kind==='host'&&node.effect!=='write')) {
+            ||node.kind==='host'&&node.effect!=='write'
+            ||node.kind==='tool'&&step.state==='unknown'&&step.reason==='Unique selector requested recheck; no operation proposal emitted')) {
             state.nodes[node.id]={state:'pending'};
           }
         }

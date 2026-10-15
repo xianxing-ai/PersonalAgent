@@ -40,7 +40,7 @@ test('embedded decision selects the exact validated fast proposal without adding
 });
 test('workflow preparation preserves node output contract and predecessor state on the existing model role',async()=>{
   const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N02');
-  const alternative={id:'public-doc',description:'Public schema-backed document',value:{docMarkdown:'public document'}};
+  const alternative={id:'public-doc',description:'Public schema-backed document',value:{diffFields:['language'],docMarkdown:'public document',exampleArguments:{language:'zh-CN'}}};
   const {agent,models}=setup({plan:[{candidates:[alternative]}]});const request=invoke('public source');
   const prepared=await agent.prepareOwnedWorkflowCandidates({template,node,input:{field:'language',docTemplate:'public template'},
     predecessorOutputs:{F20_N01:{content:'public contract'}},predecessorStates:{F20_N01:'completed'},
@@ -48,7 +48,7 @@ test('workflow preparation preserves node output contract and predecessor state 
   assert.deepEqual(prepared[0],alternative);assert.equal(prepared[1].id,'owned-review');assert.equal(prepared[1].abstain,true);
   assert.equal(models.plan.requests.length,1);assert.equal(models.fast.requests.length,0);
   const data=JSON.parse(models.plan.requests[0].messages[1].content);
-  assert.deepEqual(data.node.outputFields,['docMarkdown']);assert.deepEqual(data.predecessorStates,{F20_N01:'completed'});
+  assert.deepEqual(data.node.outputFields,['diffFields','docMarkdown','exampleArguments']);assert.deepEqual(data.predecessorStates,{F20_N01:'completed'});
   assert.deepEqual(data.predecessorOutputs,{F20_N01:{content:'public contract'}});
 });
 test('current tool request boundary preserves global downstream requirements without fabricating their outputs',async()=>{
@@ -61,7 +61,7 @@ test('current tool request boundary preserves global downstream requirements wit
     availableTools:[{name:'workspace.read_text',version:'1.0.0',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path']}}],
     mode:'main',namespace:'synthetic',...invoke('public source')});
   const data=JSON.parse(models.fast.requests[0].messages[1].content);
-  assert.deepEqual(data.input,input);assert.deepEqual(data.node.outputFields,['diffFields']);
+  assert.deepEqual(data.input,input);assert.deepEqual(data.node.outputFields,['sourceReadback']);
   assert.deepEqual(data.currentCandidateBoundary,{kind:'unexecuted_tool_request',nodeOutputStage:'after_actual_host_receipt',
     selectionBasis:'published_schema_and_task_arguments',resultEvidenceStage:'after_actual_execution'});
   assert.deepEqual(data.publishedTools,data.availableTools);

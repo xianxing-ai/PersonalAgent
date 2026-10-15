@@ -29,18 +29,18 @@ test('F20 public fixture contains source, contract/schema and a real documentati
   assert.deepEqual(Object.keys(source.exampleArguments).sort(),['language','name']);
   assert.equal(input.schemaFile,fixture.name);assert.equal(input.codeFile,fixture.name);assert.equal(input.field,'language');
   assert.equal(input.targetDoc,'owned-api-final-doc.md');
-  assert.equal(input.docTemplate,fixture.name+'#docTemplate');assert.deepEqual(input.expectedOutputFields,['docMarkdown','exampleArguments']);
+  assert.equal(input.docTemplate,fixture.name+'#docTemplate');assert.deepEqual(input.expectedOutputFields,['diffFields','docMarkdown','exampleArguments']);
   assert.match(input.goal,/actual source and validation receipts/);
   assert.match(input.goal,/Do not claim it was written, published or synchronized externally/);
   assert.match(ownedWorkflowPublicFixture('F15').content,/synthetic/);
 });
 
 test('completion requires every F20 node, both original tool evidences and the exact source-supported candidate document',()=>{
-  const candidate={docMarkdown:publicDoc,exampleArguments:{name:'Public fixture',language:'zh-CN'}};
+  const candidate={diffFields:['language'],docMarkdown:publicDoc,exampleArguments:{name:'Public fixture',language:'zh-CN'}};
   assert.deepEqual(ownedApiDocCandidate(candidate),candidate);
   assert.throws(()=>ownedApiDocCandidate({docMarkdown:'',exampleArguments:{}}));
   const binding={sourceSha256:'1'.repeat(64),candidateSha256:'2'.repeat(64),docSha256:hash(publicDoc)};
-  const check={state:'passed',compiler:{exitCode:0},checks:{typeCheckPassed:true,noPhantomFields:true},
+  const check={state:'passed',compiler:{exitCode:0},checks:{typeCheckPassed:true,noPhantomFields:true,sourceDifferenceMatched:true},
     source:{sha256:binding.sourceSha256},candidate:{sha256:binding.candidateSha256,docSha256:binding.docSha256}};
   const graph={workflowId:'F20',state:'settled',proposals:[],unavailable:[],nodes:{
     F20_N01:{state:'completed',evidenceRefs:['original-read']},F20_N02:{state:'completed',value:candidate},
@@ -54,6 +54,7 @@ test('completion requires every F20 node, both original tool evidences and the e
   assert.throws(()=>ownedApiDocCompletion({...graph,state:'progress'},options));
   assert.throws(()=>ownedApiDocCompletion(graph,{...options,checkEvidenceRefs:['invented-check']}));
   assert.throws(()=>ownedApiDocCompletion(graph,{...options,check:{...check,source:{sha256:'wrong'}}}));
+  assert.throws(()=>ownedApiDocCompletion(graph,{...options,check:{...check,checks:{...check.checks,sourceDifferenceMatched:false}}}));
   assert.throws(()=>ownedApiDocCompletion({...graph,nodes:{...graph.nodes,F20_N04:{state:'completed',value:{docMarkdown:publicDoc,written:true}}}},options));
   assert.throws(()=>ownedApiDocCompletion({...graph,nodes:{...graph.nodes,F20_N04:{state:'completed',value:{docMarkdown:publicDoc+'changed'}}}},options));
   assert.throws(()=>ownedApiDocCompletion({...graph,nodes:{...graph.nodes,F20_N04:{state:'completed',value:{...graph.nodes.F20_N04.value,synchronized:true}}}},options));
@@ -63,7 +64,7 @@ test('fixed public checker runs the installed real TypeScript compiler and rejec
   const cache=fileURLToPath(new URL('../../../.cache/owned-workflow-live/',import.meta.url));await mkdir(cache,{recursive:true});
   const directory=await mkdtemp(join(cache,'checker-test-')),fixture=ownedWorkflowPublicFixture('F20');
   await writeFile(join(directory,fixture.name),fixture.content);
-  const candidate={docMarkdown:publicDoc,exampleArguments:{name:'Public fixture',language:'zh-CN'}};
+  const candidate={diffFields:['language'],docMarkdown:publicDoc,exampleArguments:{name:'Public fixture',language:'zh-CN'}};
   const stage=async(value)=>{const encoded=JSON.stringify(value,null,2)+'\n';await writeFile(join(directory,'owned-api-selected-candidate.json'),encoded);
     await writeFile(join(directory,'owned-api-validation-binding.json'),JSON.stringify({sourceSha256:hash(fixture.content),
       candidateSha256:hash(encoded),docSha256:hash(value.docMarkdown)}));};
@@ -73,10 +74,14 @@ test('fixed public checker runs the installed real TypeScript compiler and rejec
   assert.equal(valid.state,'passed');assert.equal(valid.compiler.exitCode,0);assert.equal(valid.checks.typeCheckPassed,true);
   assert.equal(valid.checks.noPhantomFields,true);assert.equal(valid.source.sha256,hash(fixture.content));
   assert.equal(valid.candidate.docMarkdown,publicDoc);assert.match(valid.compiler.version,/^\d+\.\d+\.\d+$/);
+  assert.equal(valid.checks.sourceDifferenceMatched,true);assert.deepEqual(valid.candidate.diffFields,['language']);
   assert.match(await readFile(join(directory,'owned-api-example.ts'),'utf8'),/buildGreeting\(example\)/);
   await stage({...candidate,exampleArguments:{...candidate.exampleArguments,phantom:true}});
   const invalid=await checkOwnedPublicApiDocs(directory,compiler,deadline);
   assert.equal(invalid.state,'failed');assert.notEqual(invalid.compiler.exitCode,0);assert.equal(invalid.checks.noPhantomFields,false);
+  await stage({...candidate,diffFields:[]});
+  const missed=await checkOwnedPublicApiDocs(directory,compiler,deadline);
+  assert.equal(missed.compiler.exitCode,0);assert.equal(missed.state,'failed');assert.equal(missed.checks.sourceDifferenceMatched,false);
   await writeFile(join(directory,'owned-api-selected-candidate.json'),JSON.stringify(candidate));
   await assert.rejects(checkOwnedPublicApiDocs(directory,compiler,deadline),{code:'PUBLIC_ARTIFACT_BINDING_MISMATCH'});
   await assert.rejects(checkOwnedPublicApiDocs(directory,compiler,new Date(0).toISOString()),{code:'TIMEOUT'});
@@ -84,7 +89,7 @@ test('fixed public checker runs the installed real TypeScript compiler and rejec
 
 test('real public compiler recipe keeps local_write Policy approval, actual ToolGateway Evidence and legal parent Runtime completion',async()=>{
   const cache=fileURLToPath(new URL('../../../.cache/owned-workflow-live/',import.meta.url));await mkdir(cache,{recursive:true});
-  const directory=await mkdtemp(join(cache,'policy-check-test-')),fixture=ownedWorkflowPublicFixture('F20'),candidate={docMarkdown:publicDoc,
+  const directory=await mkdtemp(join(cache,'policy-check-test-')),fixture=ownedWorkflowPublicFixture('F20'),candidate={diffFields:['language'],docMarkdown:publicDoc,
     exampleArguments:{name:'Public fixture',language:'en-US'}},candidateText=JSON.stringify(candidate,null,2)+'\n';
   await writeFile(join(directory,fixture.name),fixture.content);
   await writeFile(join(directory,'owned-api-selected-candidate.json'),candidateText);

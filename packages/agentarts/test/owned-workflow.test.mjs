@@ -54,13 +54,16 @@ test('selector receives the current node contract, settled predecessor state and
   await next(runtime,original,first,{receipts:[receipt(first.proposals[0],'confirmed',{result:source})]});
   const context=seen.find(value=>value.nodeId==='F20_N02');
   assert.equal(context.nodeContract.kind,'executor');assert.equal(context.nodeContract.designKind,'execution_model');
-  assert.deepEqual(context.nodeContract.inputFields,['field','docTemplate']);
-  assert.deepEqual(context.nodeContract.outputFields,['docMarkdown']);assert.equal(context.nodeContract.effect,'none');
+  assert.equal(context.label,'执行模型比对来源并生成文档补丁与示例');
+  assert.deepEqual(context.nodeContract.inputFields,['sourceReadback','field','docTemplate']);
+  assert.deepEqual(context.nodeContract.outputFields,['diffFields','docMarkdown','exampleArguments']);assert.equal(context.nodeContract.effect,'none');
   assert.deepEqual(context.predecessorStates,{F20_N01:'completed'});
   assert.deepEqual(context.predecessors.F20_N01,source);assert.deepEqual(context.input,original.input);
   assert.deepEqual(context.candidateValues.find(value=>value.id==='candidate').value,{candidateFor:'F20_N02'});
   assert.equal(context.candidateValues.find(value=>value.id==='recheck').abstain,true);
   const firstContext=seen.find(value=>value.nodeId==='F20_N01');
+  assert.equal(firstContext.label,'读取待比对的代码与契约来源');assert.equal(firstContext.nodeContract.kind,'tool');
+  assert.deepEqual(firstContext.nodeContract.outputFields,['sourceReadback'],'A source read does not claim computed differences');
   assert.equal(firstContext.currentCandidateBoundary.kind,'unexecuted_tool_request');
   assert.equal(firstContext.currentCandidateBoundary.selectionBasis,'published_schema_and_task_arguments');
   assert.equal(firstContext.currentCandidateBoundary.resultEvidenceStage,'after_actual_execution');
@@ -181,6 +184,72 @@ test('temporarily busy semantic selection remains resumable without restarting t
   const original=request('F17');let last=await runtime.advance(original);last=await next(runtime,original,last);
   assert.equal(last.nodes.F17_N02.state,'pending');assert.match(last.nodes.F17_N02.reason,/DECISION_BUSY/);
   last=await next(runtime,original,last);assert.equal(last.nodes.F17_N02.state,'completed');assert.equal(calls,2);
+});
+
+test('a reviewed tool without an operation resumes only after trusted affected revision migration',async()=>{
+  const receiptSecret='synthetic-reviewed-tool-migration-key-32-chars';
+  const bridge=new OwnedWorkflowHostBridge({receiptSecret,
+    host:{submitHostToolTask:()=>{throw Error('No diagnostic tool submission');},readHostToolTask:()=>{throw Error('No prior operation');}},
+    checkpoints:{read:()=>undefined,writeOnce:()=>{throw Error('No operation checkpoint');}},assertActive:()=>{}});
+  let prepared=0,selected=0;
+  const runtime=engine({receiptVerifier:createOwnedWorkflowReceiptVerifier({secret:receiptSecret}),
+    prepareCandidates:async context=>{prepared++;return candidates(context);},
+    selector:{select:async value=>{selected++;return JSON.parse(value.context).input.sourceRevision?'candidate':'recheck';}}});
+  const original=request('F20',{availableTools:tools(['workspace.read_text'])});
+  const reviewed=await runtime.advance(original);
+  assert.equal(reviewed.nodes.F20_N01.state,'unknown');assert.equal(reviewed.nodes.F20_N01.proposal,undefined);
+  assert.equal(prepared,1);assert.equal(selected,1);assert.deepEqual(reviewed.proposals,[]);
+  let held=await next(runtime,original,reviewed);held=await next(runtime,original,held);
+  assert.equal(held.nodes.F20_N01.state,'unknown');assert.equal(prepared,1);assert.equal(selected,1);
+  const changed={...original,controlRevision:2,input:{...original.input,sourceRevision:'public-source-v2'}};
+  const sha=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const identity=value=>({taskId:value.taskId,sessionId:value.sessionId,workflowId:value.workflowId,
+    templateDigest:getOwnedWorkflowTemplate(value.workflowId).templateDigest,controlRevision:value.controlRevision,
+    inputDigest:sha(value.input),catalogDigest:sha(value.availableTools)});
+  const migration=bridge.migration(identity(original),identity(changed),['F20_N01']);
+  await assert.rejects(next(runtime,changed,held),{code:'INVALID_ARGUMENT'});
+  await assert.rejects(next(runtime,changed,held,{migration:{...migration,proof:{...migration.proof,signature:'forged'}}}),{code:'INVALID_ARGUMENT'});
+  await assert.rejects(next(engine(),changed,held,{migration}),{code:'INVALID_ARGUMENT'});
+  await assert.rejects(next(runtime,original,held,{migration}),{code:'INVALID_ARGUMENT'});
+  assert.equal(prepared,1);assert.equal(selected,1,'Rejected migrations cannot rerun semantic selection');
+  const unaffected=await next(runtime,changed,held,{migration:bridge.migration(identity(original),identity(changed),['F20_N02'])});
+  assert.equal(unaffected.nodes.F20_N01.state,'unknown');assert.equal(prepared,1);assert.equal(selected,1);
+  const resumed=await next(runtime,changed,held,{migration});
+  assert.equal(resumed.nodes.F20_N01.state,'waiting_receipt');assert.equal(resumed.proposals.length,1);
+  assert.equal(resumed.proposals[0].originControlRevision,2);assert.equal(prepared,2);assert.equal(selected,2);
+  await next(runtime,changed,resumed);assert.equal(prepared,2);assert.equal(selected,2,'Pending operation does not repeat candidate selection');
+});
+
+test('affected tool migration preserves every existing write proposal and never prepares a replacement',async()=>{
+  for(const receiptState of ['waiting_receipt','unknown','failed','confirmed']) {
+    const receiptSecret='synthetic-original-write-migration-key-32-chars';
+    const bridge=new OwnedWorkflowHostBridge({receiptSecret,
+      host:{submitHostToolTask:()=>{throw Error('No write submission');},readHostToolTask:()=>{throw Error('No write readback');}},
+      checkpoints:{read:()=>undefined,writeOnce:()=>{throw Error('No submission checkpoint');}},assertActive:()=>{}});
+    const migrationVerifier=createOwnedWorkflowReceiptVerifier({secret:receiptSecret});
+    let toolPreparations=0;
+    const runtime=engine({receiptVerifier:{...proofVerifier,verifyMigration:migrationVerifier.verifyMigration},
+      host:{capabilities:['github.bound_ci_failure'],read:async()=>({state:'completed',value:{sha:'public-commit-v1'}})},
+      prepareCandidates:async context=>{if(context.node.id==='F16_N03')toolPreparations++;return candidates(context);}});
+    const original=request('F16',{availableTools:tools(['workspace.apply_text_patch'])});
+    let last=await runtime.advance(original);last=await next(runtime,original,last);last=await next(runtime,original,last);
+    const proposal=last.proposals[0];assert.equal(proposal.nodeId,'F16_N03');assert.equal(proposal.effect,'write');
+    if(receiptState!=='waiting_receipt')last=await next(runtime,original,last,{receipts:[receipt(proposal,receiptState)]});
+    const originalStep=structuredClone(last.nodes.F16_N03);
+    const changed={...original,controlRevision:2,input:{...original.input,sourceRevision:'public-commit-v2'}};
+    const sha=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+    const identity=value=>({taskId:value.taskId,sessionId:value.sessionId,workflowId:value.workflowId,
+      templateDigest:getOwnedWorkflowTemplate(value.workflowId).templateDigest,controlRevision:value.controlRevision,
+      inputDigest:sha(value.input),catalogDigest:sha(value.availableTools)});
+    last=await next(runtime,changed,last,{migration:bridge.migration(identity(original),identity(changed),['F16_N03'])});
+    for(let i=0;i<2;i++)last=await next(runtime,changed,last);
+    const retained=last.nodes.F16_N03;
+    assert.deepEqual(retained.proposal,proposal,receiptState);assert.equal(retained.proposal.originControlRevision,1);
+    assert.equal(retained.state,receiptState==='waiting_receipt'?'unknown':originalStep.state,receiptState);
+    assert.deepEqual(retained.value,originalStep.value);assert.deepEqual(retained.evidenceRefs,originalStep.evidenceRefs);
+    assert.equal(last.proposals.length,0,receiptState);assert.equal(toolPreparations,1,receiptState);
+    assert.throws(()=>bridge.submit(changed,proposal),{code:'REVISION_CONFLICT'});
+  }
 });
 
 test('trusted revision migration preserves unknown operation/arguments and original receipt binding',async()=>{

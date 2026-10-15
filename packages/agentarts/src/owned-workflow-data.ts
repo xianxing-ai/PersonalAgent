@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 7e7838192aea3be3ce5a19c961149d4c92f102a10a5ee8acf5c7a2028c012ff6
+// Source projection sha256: 5519f9fd71790035a342830e78163530a1526ed220ee56969fb066bc90b5d360
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -3115,7 +3115,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     "nodes": [
       {
         "id": "F20_N01",
-        "label": "比对后端代码与契约文件",
+        "label": "读取待比对的代码与契约来源",
         "kind": "input",
         "dependencies": [],
         "required": true,
@@ -3128,12 +3128,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "codeFile"
         ],
         "outputFields": [
-          "diffFields"
+          "sourceReadback"
         ]
       },
       {
         "id": "F20_N02",
-        "label": "执行模型生成文档补丁与示例",
+        "label": "执行模型比对来源并生成文档补丁与示例",
         "kind": "execution_model",
         "dependencies": [
           "F20_N01"
@@ -3142,11 +3142,14 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
+          "sourceReadback",
           "field",
           "docTemplate"
         ],
         "outputFields": [
-          "docMarkdown"
+          "diffFields",
+          "docMarkdown",
+          "exampleArguments"
         ]
       },
       {
