@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-15 远程 MCP 首个只读纵片（in_progress）
+
+goo122 从 main `8c395f5f` 开始 [MOD-06 / G10](modules/MOD-06-REMOTE-READONLY-20261015.md)：现有 SDK 上增加固定身份、单只读绑定的 HTTPS Streamable HTTP host，仍经原 Policy/ToolGateway。定向本机 HTTP fixture 7/7 通过，完整 check 3147 通过、36 跳过、0 失败；无模型/AgentArts 调用、生产接线或真实远端验收。远程鉴权、任意写工具与持久恢复尚待后续工作包，完整 MOD 保持 in_progress；方案见 [ADR-0029](adr/0029-remote-mcp-readonly-transport.md)。
+
 ## 2026-10-13 PR #347 首批架构落地（in_progress）
 
 goo122 从 main `3275aa91` 开始 [MOD-04A 原生思考配置](modules/MOD-04A-NATIVE-REASONING-20261013.md)：先更新 F04/F05/F21/F24/F27/F28 与当前代码的对应关系，再沿 Competition 辅助模型路径接通原生开关、强度、输出预算和恢复绑定。采用 [ADR-0024](adr/0024-competition-native-reasoning.md)；无 wire Schema、数据库迁移或新增依赖。真实云调用 0，非作者评审和集成待完成；完整模块状态不提升。

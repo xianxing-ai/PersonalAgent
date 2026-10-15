@@ -5,7 +5,7 @@
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
-目标 `huawei_ict_agentarts` / PA-005 / MOD-06，`provisional`。复用官方 TypeScript SDK `1.31.0` 和官方 filesystem reference server `2026.8.31`，只支持可信固定 stdio 服务。未实现任意 server、远程 MCP、动态 shell 或写工具。
+目标 `huawei_ict_agentarts` / PA-005 / MOD-06，`provisional`。复用官方 TypeScript SDK `1.31.0` 和官方 filesystem reference server `2026.8.31`，保留可信固定 stdio 服务；新增受信配置的远程 HTTPS Streamable HTTP 只读纵片，见下文。未实现任意 server 自动注册、动态 shell 或写工具。
 
 ## 公开入口
 
@@ -27,6 +27,30 @@ await mcp.dispose();
 stop/dispose 先撤销在途、移除连接，在 Windows 用已持有的参考服务 PID 回收其进程树后关闭 SDK；非 Windows 复用 SDK 的 EOF/TERM/KILL。固定官方服务不创建子 worker；不承诺任意第三方服务的 OS 沙箱。重新启用只改变 configured/disabled 状态，须再次显式 await start。
 
 ## 验证与来源
+
+### 远程只读 Streamable HTTP（G10）
+
+`createRemoteReadonlyMcpHost(options)` 是新增的受信宿主入口；现有 `createReadonlyMcpHost` 和 stdio 行为不变。配置包括 HTTPS `endpoint`、固定 `server:{name,version}`、一个 `tool:{remoteName,descriptor}`、可选 `enabled` 与受信 `fetch` 端口。descriptor 只接收 `name/version/inputSchema/outputSchema/requiredScopes`，host 固定 `sideEffect:'read'` 与 `recoverySupport:false`。输入/输出必须为 object schema；配置和工具声明均不签发权限。
+
+```ts
+import {createRemoteReadonlyMcpHost} from '@personal-agent/mcp';
+const mcp = createRemoteReadonlyMcpHost(trustedConfiguration); // 默认停用
+mcp.register(existingToolGateway); // 或 RuntimeApplicationOptions.tools
+await mcp.setEnabled(true);
+await mcp.start({signal, deadline});
+// Runtime 经现有 Policy/ToolGateway 调用唯一宿主绑定的工具。
+await mcp.dispose();
+```
+
+初始化必须协商 `2025-11-25` 并匹配服务器 name/version、tools capability 和精确输入/输出 schema；拒绝分页目录。只暴露宿主固定工具名，忽略远端 annotations 的授权含义。工具通过现有 `RegisteredTool` 注册，未给 Policy grant 不会发起 `tools/call`。远端返回必须具有 `structuredContent` 并匹配宿主 schema，不导出任意 text/image/resource blocks。
+
+首包只支持无认证公开服务：URL 禁止用户名/密码、query、fragment；禁重定向、cookies、OAuth 自动发现和自动重试/重连。无配置为 unavailable，默认 disabled；401/403 明确拒绝，不使用环境中的凭据。请求和单条 HTTP 响应流各限 1 MiB，操作最长 30 秒且不超过调用 deadline；同连接串行执行，GET 通知流随 stop/dispose 关闭。目录变化通知立即撤销连接，重新连接需显式 start。
+
+同 task/run 绑定输入，只重放当前会话已确认的结果；失败、取消、断连或换连接后的旧 run 均不自动调用，须由 Runtime 核实或按新 run 提交新任务。会话 map 不替代 Runtime 的持久授权/执行记录。`health()` 仅返回状态、固定工具名、计数、协商版本和脱敏错误码，不暴露 endpoint、session ID 或远端诊断。
+
+`node --test packages/mcp/test/remote-http.test.mjs` 使用真实本机 HTTP 监听与显式 synthetic MCP fixture，经受信 fetch 端口将固定测试 HTTPS 地址映射到 loopback。覆盖 JSON 与 Streamable HTTP 的 SSE 响应、Policy 一次性授权、身份/schema/目录漂移、认证失败、重定向、大小限制、取消/超时、断连、重连与释放。它不是第三方服务、远程 TLS、OAuth 或真实 Competition/AgentArts 验收。生产 Desktop/Competition composition 尚未注入此 host；持久配置、鉴权引用、写工具及未知写入恢复属 G11/G14。
+
+SDK `1.31.0` 的 StreamableHTTP class declaration 与项目 exact optional 检查冲突，采用其公开 runtime export 的窄传输端口，不修改 node_modules、不放宽编译选项。方案与兼容边界见 [ADR-0029](../../docs/adr/0029-remote-mcp-readonly-transport.md) 和[本包记录](../../docs/modules/MOD-06-REMOTE-READONLY-20261015.md)。
 
 ### 公开参考结果出机
 
