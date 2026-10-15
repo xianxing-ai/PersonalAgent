@@ -329,6 +329,121 @@ class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
             loop.set_exception_handler(previous_handler)
 
 
+class LegacyDisconnectTest(unittest.IsolatedAsyncioTestCase):
+    async def test_disconnect_during_precheck_never_starts_forward(self):
+        for path in ("/v1/systemone", "/v1/systemone/batch"):
+            entered, release = threading.Event(), threading.Event()
+            disconnected = False
+            calls = []
+
+            class Tokenizer(SyntheticTokenizer):
+                def __call__(self, *args, **kwargs):
+                    entered.set()
+                    release.wait(3)
+                    return super().__call__(*args, **kwargs)
+
+            class Agent(SyntheticAgent):
+                tok = Tokenizer()
+
+                def predict_batch(self, *args, **kwargs):
+                    calls.append(True)
+                    return super().predict_batch(*args, **kwargs)
+
+            request = Request()
+            request.value["state"] = "synthetic legacy state"
+
+            async def is_disconnected():
+                return disconnected
+
+            request.is_disconnected = is_disconnected
+            app = server.create_app(Agent(), "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == path)
+            health = next(route.endpoint for route in app.routes if route.path == "/health")
+            task = None
+            try:
+                async with app.router.lifespan_context(app):
+                    task = asyncio.create_task(endpoint(request))
+                    while not entered.is_set():
+                        await asyncio.sleep(0.001)
+                    disconnected = True
+                    await asyncio.sleep(0.03)
+                    release.set()
+                    with self.assertRaises(HTTPException) as stopped:
+                        await task
+                    self.assertEqual(stopped.exception.status_code, 408)
+                    for _ in range(100):
+                        if not (await health(Request()))["inferenceBusy"]:
+                            break
+                        await asyncio.sleep(0.005)
+                    self.assertEqual(calls, [], "A disconnected waiter cannot admit a new CPU forward")
+                    self.assertEqual((await health(Request()))["inferenceCalls"], 0)
+            finally:
+                release.set()
+                if task is not None:
+                    await asyncio.gather(task, return_exceptions=True)
+
+    async def test_disconnect_during_forward_keeps_gate_and_consumes_late_errors(self):
+        for path in ("/v1/systemone", "/v1/systemone/batch"):
+            entered, release = threading.Event(), threading.Event()
+            disconnected = False
+            calls = []
+            unhandled = []
+            loop = asyncio.get_running_loop()
+            previous = loop.get_exception_handler()
+            loop.set_exception_handler(lambda _loop, context: unhandled.append(context))
+
+            class Agent(SyntheticAgent):
+                def predict_batch(self, *args, **kwargs):
+                    calls.append(True)
+                    if len(calls) == 1:
+                        entered.set()
+                        release.wait(3)
+                        raise RuntimeError("synthetic-private-late-provider-error")
+                    return super().predict_batch(*args, **kwargs)
+
+            request = Request()
+            request.value["state"] = "synthetic legacy state"
+
+            async def is_disconnected():
+                return disconnected
+
+            request.is_disconnected = is_disconnected
+            app = server.create_app(Agent(), "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == path)
+            health = next(route.endpoint for route in app.routes if route.path == "/health")
+            try:
+                async with app.router.lifespan_context(app):
+                    task = asyncio.create_task(endpoint(request))
+                    while not entered.is_set():
+                        await asyncio.sleep(0.001)
+                    disconnected = True
+                    with self.assertRaises(HTTPException) as stopped:
+                        await asyncio.wait_for(task, timeout=0.5)
+                    self.assertEqual(stopped.exception.status_code, 408)
+                    self.assertTrue((await health(Request()))["inferenceBusy"])
+                    with self.assertRaises(HTTPException) as busy:
+                        await endpoint(Request())
+                    self.assertEqual(busy.exception.status_code, 429)
+                    self.assertEqual(len(calls), 1)
+                    release.set()
+                    for _ in range(100):
+                        if not (await health(Request()))["inferenceBusy"]:
+                            break
+                        await asyncio.sleep(0.005)
+                    for _ in range(3):
+                        await asyncio.sleep(0)
+                        gc.collect()
+                    self.assertEqual(unhandled, [])
+                    self.assertFalse((await health(Request()))["inferenceBusy"])
+                    fresh = Request()
+                    fresh.value["state"] = "fresh synthetic state"
+                    await endpoint(fresh)
+                    self.assertEqual(len(calls), 2)
+            finally:
+                release.set()
+                loop.set_exception_handler(previous)
+
+
 class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
     async def test_distinct_state_questions_use_exactly_one_real_sdk_collation_forward_and_correct_offsets(self):
         agent = heterogeneous_agent()
