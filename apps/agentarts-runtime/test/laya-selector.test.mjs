@@ -20,6 +20,17 @@ test('owned selector uses same typed choice API, original deadline and a loopbac
   assert.ok(payload.state.includes('"criterion":"candidate_0","id":"proposal"'));
   assert.equal(JSON.stringify(payload).includes('synthetic-key'),false);
 });
+test('shared selector retains legacy input/proposal without inventing a current workflow node',async()=>{
+  let payload;const context=JSON.stringify({input:{goal:'Check a public proposal'},proposal:{kind:'text',text:'public source-supported candidate'}});
+  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
+    payload=JSON.parse(options.body);return Response.json(answer());
+  }});
+  assert.equal(await selector.select({...input(),context}),'proposal');
+  assert.ok(payload.state.includes(context));assert.equal(payload.state.includes('"nodeContract"'),false);
+  assert.equal(payload.state.includes('"currentCandidateBoundary"'),false);
+  assert.match(payload.questions.decision.instructions,/When a current-node contract and candidate boundary are supplied/);
+  assert.match(payload.questions.decision.instructions,/Otherwise assess the supplied proposal/);
+});
 test('long JSON context and full descriptions survive as raw state with explicit candidate identities',async()=>{
   const context=JSON.stringify({source:'public source '.repeat(100),tail:'last evidence must remain'});
   const description='public supported detail '.repeat(70)+'description tail';let payload,receipt;
