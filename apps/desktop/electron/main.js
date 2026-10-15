@@ -39,7 +39,7 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
-import {createWorkspacePatchRecoveryHost} from './workspace-patch-recovery-host.js';
+import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
@@ -2041,6 +2041,11 @@ function cancelKnowledgeTasks() {
   }
 }
 
+const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
+  getApplication: () => runtimeApplication, getAdmin: () => admin,
+  isEnabled: () => competitionMode && !syntheticMvp, publish,
+});
+
 async function action(event, name, payload) {
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
@@ -2174,13 +2179,7 @@ async function action(event, name, payload) {
     publish(); return result;
   }
   if (name === 'coding.reconcile') {
-    const application = runtimeApplication;
-    const authorized = () => sender === admin && !sender.isDestroyed()
-      && sender.webContents === event.sender && event.senderFrame === sender.webContents.mainFrame
-      && application === runtimeApplication && competitionMode && !syntheticMvp;
-    const recovery = createWorkspacePatchRecoveryHost({application, isAuthorized: authorized});
-    const result = await recovery.reconcile(payload);
-    publish(); return result;
+    return recoverWorkspacePatch(event, payload);
   }
   if (['coding.select','coding.selectNode','coding.selectNpmCli','coding.selectCheckFile','coding.authorize','coding.revoke'].includes(name)) {
     if ((sender !== admin && sender !== workspace) || !competitionMode || syntheticMvp || !codingWorkspace) throw Error('请从正式应用设置配置编程工作区');
