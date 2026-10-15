@@ -35,6 +35,31 @@ test('loaded but unwarmed or wrong-model health never becomes ready and child is
     assert.deepEqual(f.exits,['SIGTERM']);
   }
 });
+test('warm health at or after the startup deadline stops the original child before timer dispatch',async t=>{
+  let now=1000;
+  t.mock.method(Date,'now',()=>now);
+  for(const elapsed of [1000,1001]) {
+    now=1000;
+    const f=fixture();let service, healthCalls=0, abortedAtReadback;
+    const pending=startLayaService({modelPath,spawnProcess:f.spawnProcess,startupTimeoutMs:1000,
+      request:async(url,options)=>{
+        healthCalls++;
+        const response=Response.json(warmHealth()), read=response.json.bind(response);
+        response.json=async()=>{
+          const value=await read();
+          now+=elapsed;
+          abortedAtReadback=options.signal.aborted;
+          return value;
+        };
+        return response;
+      }}).then(value=>{service=value;return value;});
+    try {
+      await assert.rejects(pending,/Owned Laya startup unavailable/);
+      assert.equal(abortedAtReadback,false);assert.equal(healthCalls,1);
+      assert.equal(f.calls.length,1);assert.deepEqual(f.exits,['SIGTERM']);
+    } finally { await service?.stop(); }
+  }
+});
 test('unexpected Python exit invalidates readiness and notifies the host exactly once',async()=>{
   const f=fixture();let unavailable=0;
   const service=await startLayaService({modelPath,spawnProcess:f.spawnProcess,onUnavailable:()=>unavailable++,

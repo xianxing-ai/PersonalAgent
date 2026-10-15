@@ -254,16 +254,16 @@ class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
         class Agent(SyntheticAgent):
             pass
 
-        original_wait_for = asyncio.wait_for
+        original_wait = asyncio.wait
 
-        async def observe_wait_for(awaitable, timeout):
+        async def observe_wait(awaitables, *, timeout, return_when):
             captured.append(timeout)
-            return await original_wait_for(awaitable, timeout=timeout)
+            return await original_wait(awaitables, timeout=timeout, return_when=return_when)
 
         app = server.create_app(Agent(), "synthetic-test-key")
         endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/batch")
         async with app.router.lifespan_context(app):
-            with patch.object(server.asyncio, "wait_for", observe_wait_for):
+            with patch.object(server.asyncio, "wait", observe_wait):
                 await endpoint(Request(seconds=90))
                 legacy = Request()
                 del legacy.value["deadline"]
@@ -274,7 +274,8 @@ class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(captured), 2, "Expired requests never submit inference")
             self.assertGreater(captured[0], 80, "An explicit 90-second deadline must not become 30 seconds")
             self.assertLessEqual(captured[0], 90)
-            self.assertEqual(captured[1], 30.0, "Only the no-deadline compatibility endpoint defaults to 30 seconds")
+            self.assertGreater(captured[1], 29, "The no-deadline compatibility endpoint retains its 30-second window")
+            self.assertLessEqual(captured[1], 30)
 
     async def test_late_inference_failure_is_consumed_without_logging_private_error(self):
         release = threading.Event()
@@ -330,6 +331,15 @@ class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
 
 
 class LegacyDisconnectTest(unittest.IsolatedAsyncioTestCase):
+    async def wait_for_event(self, event):
+        self.assertTrue(await asyncio.to_thread(event.wait, 10), "Worker did not reach the controlled barrier")
+
+    async def wait_until_idle(self, health):
+        async def idle():
+            while (await health(Request()))["inferenceBusy"]:
+                await asyncio.sleep(0.005)
+        await asyncio.wait_for(idle(), timeout=5)
+
     async def test_disconnect_during_precheck_never_starts_forward(self):
         for path in ("/v1/systemone", "/v1/systemone/batch"):
             entered, release = threading.Event(), threading.Event()
@@ -339,7 +349,8 @@ class LegacyDisconnectTest(unittest.IsolatedAsyncioTestCase):
             class Tokenizer(SyntheticTokenizer):
                 def __call__(self, *args, **kwargs):
                     entered.set()
-                    release.wait(3)
+                    if not release.wait(10):
+                        raise RuntimeError("synthetic tokenizer barrier release timeout")
                     return super().__call__(*args, **kwargs)
 
             class Agent(SyntheticAgent):
@@ -349,7 +360,7 @@ class LegacyDisconnectTest(unittest.IsolatedAsyncioTestCase):
                     calls.append(True)
                     return super().predict_batch(*args, **kwargs)
 
-            request = Request()
+            request = Request(seconds=30)
             request.value["state"] = "synthetic legacy state"
 
             async def is_disconnected():
@@ -360,27 +371,27 @@ class LegacyDisconnectTest(unittest.IsolatedAsyncioTestCase):
             endpoint = next(route.endpoint for route in app.routes if route.path == path)
             health = next(route.endpoint for route in app.routes if route.path == "/health")
             task = None
-            try:
-                async with app.router.lifespan_context(app):
+            async with app.router.lifespan_context(app):
+                try:
                     task = asyncio.create_task(endpoint(request))
-                    while not entered.is_set():
-                        await asyncio.sleep(0.001)
+                    await self.wait_for_event(entered)
                     disconnected = True
-                    await asyncio.sleep(0.03)
+                    done, _ = await asyncio.wait([task], timeout=0.5)
+                    self.assertTrue((await health(Request()))["inferenceBusy"], "Tokenization still owns admission")
                     release.set()
                     with self.assertRaises(HTTPException) as stopped:
-                        await task
+                        await asyncio.wait_for(asyncio.shield(task), timeout=5)
                     self.assertEqual(stopped.exception.status_code, 408)
-                    for _ in range(100):
-                        if not (await health(Request()))["inferenceBusy"]:
-                            break
-                        await asyncio.sleep(0.005)
+                    await self.wait_until_idle(health)
                     self.assertEqual(calls, [], "A disconnected waiter cannot admit a new CPU forward")
                     self.assertEqual((await health(Request()))["inferenceCalls"], 0)
-            finally:
-                release.set()
-                if task is not None:
-                    await asyncio.gather(task, return_exceptions=True)
+                    self.assertIn(task, done, "Disconnect must finish the waiter while tokenization is paused")
+                finally:
+                    if task is not None and not task.done():
+                        task.cancel()
+                    release.set()
+                    if task is not None:
+                        await asyncio.gather(task, return_exceptions=True)
 
     async def test_disconnect_during_forward_keeps_gate_and_consumes_late_errors(self):
         for path in ("/v1/systemone", "/v1/systemone/batch"):
@@ -397,11 +408,12 @@ class LegacyDisconnectTest(unittest.IsolatedAsyncioTestCase):
                     calls.append(True)
                     if len(calls) == 1:
                         entered.set()
-                        release.wait(3)
+                        if not release.wait(10):
+                            raise RuntimeError("synthetic forward barrier release timeout")
                         raise RuntimeError("synthetic-private-late-provider-error")
                     return super().predict_batch(*args, **kwargs)
 
-            request = Request()
+            request = Request(seconds=30)
             request.value["state"] = "synthetic legacy state"
 
             async def is_disconnected():
@@ -411,34 +423,122 @@ class LegacyDisconnectTest(unittest.IsolatedAsyncioTestCase):
             app = server.create_app(Agent(), "synthetic-test-key")
             endpoint = next(route.endpoint for route in app.routes if route.path == path)
             health = next(route.endpoint for route in app.routes if route.path == "/health")
+            task = None
             try:
                 async with app.router.lifespan_context(app):
-                    task = asyncio.create_task(endpoint(request))
-                    while not entered.is_set():
-                        await asyncio.sleep(0.001)
-                    disconnected = True
-                    with self.assertRaises(HTTPException) as stopped:
-                        await asyncio.wait_for(task, timeout=0.5)
-                    self.assertEqual(stopped.exception.status_code, 408)
-                    self.assertTrue((await health(Request()))["inferenceBusy"])
-                    with self.assertRaises(HTTPException) as busy:
-                        await endpoint(Request())
-                    self.assertEqual(busy.exception.status_code, 429)
-                    self.assertEqual(len(calls), 1)
-                    release.set()
-                    for _ in range(100):
-                        if not (await health(Request()))["inferenceBusy"]:
-                            break
-                        await asyncio.sleep(0.005)
-                    for _ in range(3):
-                        await asyncio.sleep(0)
-                        gc.collect()
-                    self.assertEqual(unhandled, [])
-                    self.assertFalse((await health(Request()))["inferenceBusy"])
-                    fresh = Request()
-                    fresh.value["state"] = "fresh synthetic state"
-                    await endpoint(fresh)
-                    self.assertEqual(len(calls), 2)
+                    try:
+                        task = asyncio.create_task(endpoint(request))
+                        await self.wait_for_event(entered)
+                        disconnected = True
+                        done, _ = await asyncio.wait([task], timeout=0.5)
+                        self.assertIn(task, done, "Disconnect must finish the waiter while CPU forward is paused")
+                        with self.assertRaises(HTTPException) as stopped:
+                            task.result()
+                        self.assertEqual(stopped.exception.status_code, 408)
+                        self.assertTrue((await health(Request()))["inferenceBusy"])
+                        competing = Request()
+                        competing.value["state"] = "competing synthetic state"
+                        with self.assertRaises(HTTPException) as busy:
+                            await endpoint(competing)
+                        self.assertEqual(busy.exception.status_code, 429)
+                        self.assertEqual(len(calls), 1)
+                        release.set()
+                        await self.wait_until_idle(health)
+                        for _ in range(3):
+                            await asyncio.sleep(0)
+                            gc.collect()
+                        self.assertEqual(unhandled, [])
+                        self.assertFalse((await health(Request()))["inferenceBusy"])
+                        fresh = Request()
+                        fresh.value["state"] = "fresh synthetic state"
+                        await endpoint(fresh)
+                        self.assertEqual(len(calls), 2)
+                    finally:
+                        if task is not None and not task.done():
+                            task.cancel()
+                        release.set()
+                        if task is not None:
+                            await asyncio.gather(task, return_exceptions=True)
+            finally:
+                release.set()
+                loop.set_exception_handler(previous)
+
+    async def test_cancellation_during_watcher_cleanup_cannot_strand_cpu_admission(self):
+        for path in ("/v1/systemone", "/v1/systemone/batch"):
+            entered, release = threading.Event(), threading.Event()
+            probe_entered, cleanup_entered, cleanup_release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+            calls, unhandled = [], []
+            loop = asyncio.get_running_loop()
+            previous = loop.get_exception_handler()
+            loop.set_exception_handler(lambda _loop, context: unhandled.append(context))
+
+            class Agent(SyntheticAgent):
+                def predict_batch(self, *args, **kwargs):
+                    calls.append(True)
+                    if len(calls) == 1:
+                        entered.set()
+                        if not release.wait(10):
+                            raise RuntimeError("synthetic forward barrier release timeout")
+                        raise RuntimeError("synthetic-private-late-provider-error")
+                    return super().predict_batch(*args, **kwargs)
+
+            request = Request(seconds=30)
+            request.value["state"] = "synthetic legacy state"
+            probes = 0
+
+            async def is_disconnected():
+                nonlocal probes
+                probes += 1
+                if probes == 1:
+                    return False
+                probe_entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cleanup_entered.set()
+                    await cleanup_release.wait()
+
+            request.is_disconnected = is_disconnected
+            app = server.create_app(Agent(), "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == path)
+            health = next(route.endpoint for route in app.routes if route.path == "/health")
+            task = None
+            try:
+                async with app.router.lifespan_context(app):
+                    try:
+                        task = asyncio.create_task(endpoint(request))
+                        await self.wait_for_event(entered)
+                        await asyncio.wait_for(probe_entered.wait(), timeout=5)
+                        task.cancel()
+                        await asyncio.wait_for(cleanup_entered.wait(), timeout=5)
+                        self.assertFalse(task.done(), "Endpoint must be paused in watcher cleanup")
+                        task.cancel()
+                        with self.assertRaises(asyncio.CancelledError):
+                            await task
+                        self.assertTrue((await health(Request()))["inferenceBusy"])
+                        competing = Request()
+                        competing.value["state"] = "competing synthetic state"
+                        with self.assertRaises(HTTPException) as busy:
+                            await endpoint(competing)
+                        self.assertEqual(busy.exception.status_code, 429)
+                        self.assertEqual(len(calls), 1)
+                        release.set()
+                        await self.wait_until_idle(health)
+                        for _ in range(3):
+                            await asyncio.sleep(0)
+                            gc.collect()
+                        self.assertEqual(unhandled, [], "Late CPU errors must still be consumed after cleanup cancellation")
+                        fresh = Request()
+                        fresh.value["state"] = "fresh synthetic state"
+                        await endpoint(fresh)
+                        self.assertEqual(len(calls), 2)
+                    finally:
+                        release.set()
+                        cleanup_release.set()
+                        if task is not None:
+                            if not task.done():
+                                task.cancel()
+                            await asyncio.gather(task, return_exceptions=True)
             finally:
                 release.set()
                 loop.set_exception_handler(previous)

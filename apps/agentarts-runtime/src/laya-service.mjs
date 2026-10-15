@@ -63,7 +63,7 @@ export async function startLayaService({modelPath, python = '/opt/laya/venv/bin/
             && Array.isArray(result.capabilities) && result.capabilities.includes('multi_state')
             && result.capabilities.includes('independent_items')
             && result.executionPolicy === cpuExecutionPolicy && result.inferenceMode === 'inference_mode') {
-            if (ended || signal.aborted) break;
+            if (ended || signal.aborted || Date.now() >= deadline) break;
             ready = true;
             return {port, key, cpuExecutionPolicy, isReady: () => ready && !ended && !stopping,
               stop: async () => { signal.removeEventListener('abort', cancel); await stop(); }};

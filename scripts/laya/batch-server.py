@@ -263,6 +263,7 @@ def create_app(agent, api_key, warmed=False, cpu_execution_policy="sequential"):
             raise HTTPException(429, "Local inference busy")
         await gate.acquire()
         future = None
+        watcher = None
         stopped = threading.Event()
         expires_at = time.monotonic() + seconds
         try:
@@ -302,11 +303,28 @@ def create_app(agent, api_key, warmed=False, cpu_execution_policy="sequential"):
 
             future = asyncio.get_running_loop().run_in_executor(
                 pool, predict_complete)
-            results, window, metrics = await asyncio.wait_for(asyncio.shield(future), timeout=seconds)
+
+            async def disconnected():
+                while True:
+                    if await request.is_disconnected():
+                        stopped.set()
+                        return
+                    await asyncio.sleep(0.01)
+
+            watcher = asyncio.create_task(disconnected())
+            done, _ = await asyncio.wait([future, watcher], timeout=max(0, expires_at - time.monotonic()),
+                                         return_when=asyncio.FIRST_COMPLETED)
+            if watcher in done:
+                raise HTTPException(408, "Request disconnected")
+            if future not in done or time.monotonic() >= expires_at:
+                raise HTTPException(408, "Inference deadline exceeded")
+            results, window, metrics = future.result()
             if not isinstance(results, list) or len(results) != len(states) or any(not isinstance(item, dict) for item in results):
                 raise HTTPException(502, "Model result count mismatch")
             if await request.is_disconnected():
                 raise HTTPException(408, "Request disconnected")
+            if time.monotonic() >= expires_at:
+                raise HTTPException(408, "Inference deadline exceeded")
             if any(not isinstance(item.get("usage"), dict)
                    or type(item["usage"].get("input_tokens")) is not int
                    or item["usage"]["input_tokens"] != window["expectedInputTokens"][index]
@@ -347,6 +365,11 @@ def create_app(agent, api_key, warmed=False, cpu_execution_policy="sequential"):
                 release_completed(future)
             else:
                 future.add_done_callback(release_completed)
+            # Register CPU completion before awaiting cleanup: another cancel
+            # during watcher teardown must not strand admission or late errors.
+            if watcher is not None:
+                watcher.cancel()
+                await asyncio.gather(watcher, return_exceptions=True)
 
     async def infer_independent(items, request, batch_id):
         if gate.locked():
