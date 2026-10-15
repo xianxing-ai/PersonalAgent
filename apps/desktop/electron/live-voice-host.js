@@ -1,4 +1,5 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {pcmLevel} from './audio-level.js';
 import {createLiveVoiceHistory} from './live-voice-history.js';
 
 const SESSION_MS = 120 * 60_000;
@@ -23,7 +24,7 @@ function deferred() {
 /** Device/session host only: business work is delegated through the public Runtime consumer. */
 export function createLiveVoiceHost({getPanel, config, microphoneHost, createSource, createGateway,
   createConsumer, client, readContext, onTaskSubmitted,
-  onTranscript = () => {throw Error('Live 历史保存端口不可用');}, onUpdate = () => {},
+  onTranscript = () => {throw Error('Live 历史保存端口不可用');}, onUpdate = () => {}, onLevel = () => {},
   historyStore, historyQueue,
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
@@ -124,7 +125,11 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           if (event.type === 'error') {fail(event.message); return;}
           if (event.type === 'speech_started') record.userSpeaking = true;
           if (event.type === 'speech_stopped') record.userSpeaking = false;
-          if (event.type === 'audio') {record.phase = 'speaking'; command(record, {type: 'audio', data: event.data});}
+          if (event.type === 'audio') {
+            record.phase = 'speaking';
+            command(record, {type: 'audio', data: event.data});
+            try { onLevel(pcmLevel(event.data)); } catch { /* Loudness is visual and must not stop playback. */ }
+          }
           if (event.type === 'interrupted') {record.phase = 'listening'; command(record, {type: 'clear'});}
           if (event.type === 'turn_complete') command(record, {type: 'drain'});
           if (event.type === 'transcript') {
