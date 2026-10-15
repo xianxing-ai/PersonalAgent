@@ -177,5 +177,17 @@
     "checkpointsCommitted": false,
     "credentialsCommitted": false,
     "privateSourceContentCommitted": false
+  },
+  "ownerDecision": {
+    "recordedDate": "2026-10-15",
+    "soleSemanticSelector": "Laya multilingual",
+    "preferredPlacement": "AgentArts owned container image",
+    "firstAction": "Request higher CPU and memory capacity through Huawei support",
+    "fallbackConsideration": "Assess local placement of the same Laya only if AgentArts capacity is unavailable",
+    "discussedButNotAdopted": [ "Bailian decision-model-preview", "Kev" ],
+    "huaweiSupportRequest": "being_handled_by_coordinator; submission_receipt_not_yet_recorded",
+    "capacityUpgrade": "being_requested; approval_or_completion_receipt_not_yet_recorded",
+    "runtimePlacementChanged": false,
+    "replacementSelectorAdopted": false
   }
 }
