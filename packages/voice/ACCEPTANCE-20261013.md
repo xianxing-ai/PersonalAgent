@@ -201,6 +201,20 @@ node --test --test-isolation=none apps/desktop/test/voice-input-core.test.mjs ap
   用户显式提交一条约定的低风险工作；在同一任务核对 Runtime 状态、Policy/工具结果和目标系统读回，
   再用语音查询进度。既有文字/云端成功不能代替此项；只记录时间、状态和脱敏回执，不新增私人音频附件。
 
+### Desktop 释放失败后的输入源切换（2026-10-15）
+
+ASR 释放失败后，Desktop core 原先清除活动记录，导致 `hasActive()` 返回 false；
+重新按键录音会先重新授权/订阅，再被 VoiceSessionManager 的释放失败守卫拒绝。
+同一空闲判断也用于 Wake 与 Live 入口。现锁存释放未确认状态，清除记录后仍保持忙状态，
+在新授权/订阅前拒绝启动；重复停止返回固定的释放未确认错误，必须重启应用后再启用。
+正常释放仍允许手动录音、Wake 与 Live 切换。未修改 main.js 或 Runtime 任务语义。
+
+先运行两个新增对照，失败释放场景复现失败、正常释放场景通过；修复后直接运行
+`voice-input-core.test.mjs`、`live-release-ownership.test.mjs`、
+`panel-voice-lifecycle.test.mjs`，共 **35/35** 通过。voice TypeScript 编译、core 语法检查及
+diff check 通过。Live 开关使用从实际 main.js 提取的原函数，设备、权限和 ASR 回执为 Fake；
+无真实录音、云端调用或桌面 UI 验收。无 Schema、迁移或依赖变化。
+
 ## 交付与恢复
 
 本地实现、必要验证及自审完成后提交独立 PR；提交/PR/CI 的最终状态以 Git/GitHub 为准。

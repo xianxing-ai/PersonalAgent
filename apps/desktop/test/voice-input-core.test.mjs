@@ -332,13 +332,16 @@ test('shared capture rejects expired or extended leases, missing authorization a
   }
 });
 
-test('a terminal ASR state with a failed stop retains the lease release failure after active capture clears', async () => {
+test('a terminal ASR state with a failed stop retains busy ownership after active capture clears', async () => {
   const f = sharedFixture({recognitionPending: true, recognitionStopFailure: true}), parent = new AbortController();
   await f.input.beginSharedCapture(9, {signal: parent.signal, deadline: new Date(Date.now() + 2000).toISOString()});
   f.feed();const finishing = f.input.finishCapture(9), rejected = assert.rejects(finishing, /释放未确认/);
   await new Promise(resolve => setImmediate(resolve));parent.abort();
   await assert.rejects(f.input.cancelSharedCapture(parent.signal), /释放未确认/);await rejected;
-  assert.equal(f.input.hasActive(), false);assert.equal(f.draft, undefined);
+  assert.equal(f.input.hasActive(), true);assert.equal(f.draft, undefined);
+  await assert.rejects(f.input.cancelCapture(9), /释放未确认/);
+  await assert.rejects(f.input.beginCapture(9), /释放未确认/);
+  assert.equal(f.grants, 0);assert.equal(f.subscriptions, 1);
   await assert.rejects(f.input.cancelSharedCapture(parent.signal), /释放未确认/);
   await assert.rejects(f.input.beginSharedCapture(9, {signal: parent.signal,
     deadline: new Date(Date.now() + 2000).toISOString()}), /释放未确认/);
