@@ -12,7 +12,7 @@ export function memoryLearningControlsHtml({status = {}, refs = [], version = nu
     <div class="setting-control"><button class="btn btn-sm" data-ml-use="${index}" data-conversation="desktop-panel">用于主对话</button>
     <button class="btn btn-sm" data-ml-use="${index}" data-conversation="desktop-workspace">用于工作区</button>
     <button class="btn btn-sm" data-ml-withdraw="${index}">撤回消费</button>
-    <button class="btn btn-sm" data-ml-delete="${index}">删除历史</button></div></div>`).join('');
+    <button class="btn btn-sm btn-danger" data-ml-delete="${index}">删除历史</button></div></div>`).join('');
   return `<section class="card memory-learning-panel" aria-label="私人记忆与流程学习">
     <h3>私人记忆</h3><p>${status.writeEnabled ? '确认写入已接通' : '写入未接通'} · 当前应用库删除保障</p>
     <p class="muted">撤回立即停止消费；删除保留 Vault 原文件。外部副本由用户自行管理。</p>
@@ -35,7 +35,7 @@ export function memoryLearningControlsHtml({status = {}, refs = [], version = nu
       <button class="btn btn-sm" data-ml-action="activate" ${version?.validation === 'passed' ? '' : 'disabled'}>确认启用此版本</button>
       <button class="btn btn-sm" data-ml-action="run" ${active ? '' : 'disabled'}>运行已启用版本</button>
       <button class="btn btn-sm" data-ml-action="stop" ${runningTask ? '' : 'disabled'}>停止或核实此任务</button>
-      <button class="btn btn-sm" data-ml-action="erase" ${version ? '' : 'disabled'}>删除流程</button>
+      <button class="btn btn-sm btn-danger" data-ml-action="erase" ${version ? '' : 'disabled'}>删除流程</button>
     </div><p class="muted">${status.learningAvailable ? '学习宿主已配置' : '学习宿主未配置'}</p>
     <p role="status" aria-live="polite">${escape(message)}</p></section>`;
 }
