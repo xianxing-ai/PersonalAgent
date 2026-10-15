@@ -6,7 +6,11 @@
 
 Node 生成仅本进程使用的随机内部 Bearer，启动 Python 回环服务；SHA 清单验证、权重加载及一次真实 synthetic 前向均通过后才开始监听 8080。Python 异常退出会关闭入站服务并使宿主失败，缺权重或 Laya 配置不会静默用旧 Agent。两个进程的受控停止复用原取消链；CPU 前向不可强制 HTTP 抢占，结束前服务保持忙状态。Python stdout/stderr 不公开，凭据与源正文不进入日志；公开 JSON 日志只记录 `laya_ready`、`laya_choice` 的请求、候选及耗时。
 
-所有工作流与旧编排器共享同一 typed-choice FIFO。候选生成与无关工具可并行，Laya 前向串行，不增加固定排队上限；原 deadline 与取消覆盖等待。客户端超时后下一项先读回 `/health.inferenceBusy`，只对明确未受理的 429 等待空闲后重新提交，已受理的模型调用不重放。这个机制不改变未知工具写入必须先核实的规则。
+所有工作流与旧编排器共享同一 typed-choice 队列。候选生成与无关工具可并行；同一事件循环内已就绪的独立判断经 `setImmediate` 收集，最多按现有服务能力合为 4 项异构微批，没有另设固定等待窗。每项保留自己的完整 state、questions、候选及原 deadline；一个预热实例将独立编码行放入一次 SDK forward，分别解码。只有一项时继续走原单项接口，不把依赖节点强行并行。批与批之间仍串行，不增加第二权重实例或固定排队上限。
+
+原 deadline 与取消覆盖等待。客户端超时后下一批先读回 `/health.inferenceBusy`，只对明确未受理的 429 等待空闲后重新提交，已受理的模型调用不重放。这个机制不改变未知工具写入必须先核实的规则。日志的 `batchId` 标识共享 forward；`batchSize` 为实际进入 forward 的有效项数，`submittedBatchSize` 为 HTTP 提交项数，`batchItemId` 是内部随机身份。多 question 项可能编码为更多行，项数不冒充编码行数。`sharedForwardScope=sdk_heterogeneous_forward` 的时间在每项回执重复出现，不能相加为多次独立前向。
+
+该主流程微批属于尚未部署的源码增量。协议、单实例及实测入口见 [2026-10-15 批处理记录](../../docs/competition/OWNED_LAYA_BATCHING_20261015.md)。微批只合并同时就绪的判断，不能跳过实际工具回执、MaaS 候选制备或用户问题依赖，也不保证固定提速或修复语义 review。
 
 Python 服务遵循调用方的显式原 deadline，不另行截为 30 秒；仅旧无 deadline 兼容入口保留 30 秒默认值。实际模型耗时需要 ARM64 运行记录，不能由该期限修正推断。
 

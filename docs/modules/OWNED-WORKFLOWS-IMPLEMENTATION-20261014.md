@@ -7,9 +7,10 @@
 实际业务能力是否可运行仍取决于宿主已注册的工具及公开端口；缺项明确返回 unavailable。
 图计算、模型候选、工具提案、本地执行、可信读回和比赛平台部署是分别验收的事实。
 
-当前开发源码 `e4c87c1d25514422880f370f939a0a41a8962725` 尚未发布；
+上一轮开发源码 `e4c87c1d25514422880f370f939a0a41a8962725` 尚未发布；
 完整记录见[2026-10-15 开发证据](../competition/OWNED_LAYA_DEVELOPMENT_20261015.md)。
 下文的 2026-10-14 发布记录仍只对应原 `fe886677` 镜像，不证明新源码已经部署。
+后续主流程微批实现、当前源码检查及真实 CPU 对照见[批处理记录](../competition/OWNED_LAYA_BATCHING_20261015.md)。
 
 ## 文件与兼容性
 
@@ -103,6 +104,20 @@ workflow/template/input/catalog/controlRevision 和明确失效节点。递增�
 不会因迁移授权再次执行。需要新动作时使用现有 Runtime 的新版本/原效果核实和 Policy 路径，
 不把版本迁移证明当成动作授权。
 暂时的语义选择繁忙保持 pending，可按实际 deadline/取消恢复；实际未知操作仍等待读回。
+
+### 2026-10-15 同 frontier 的 Laya 微批增量
+
+图内核原有的 `Promise.all` ready frontier 保持不变，selector 将同轮已就绪的独立判断合成最多 4 项微批。
+每项仍有自己的上下文、问题、候选和原 deadline；一个模型实例把独立编码行做一次 forward 后分别解码，
+不拼正文、不增加第二决策模型。单项继续兼容原接口，依赖真实工具回执的步骤仍按依赖推进。
+
+F28 集成回归针对同时准备的 N06/N07，使用不同候选数量与不同选中位置，并将批响应倒序，检查内部 itemId
+仍把答案归还各自节点；N08 在这轮仍 pending。该 fixture 只验证图/selector 组合，真实 forward 计数与延迟须另验。
+批身份、实际有效项数及提交数以 `batchId/batchSize/submittedBatchSize` 分开记录，共享 forward 时间不按项累加。
+源码尚未部署，结果与限制见[本轮批处理记录](../competition/OWNED_LAYA_BATCHING_20261015.md)；
+前述 e4c 全量检查属于微批前版本，不冒充本轮新代码的验证。
+独立公开实测已验证 2→1、4→1 的 forward 数和六个对照的选项一致性；本次 Windows CPU 两线程样本中，
+两项持平、四项墙钟慢 22.69%，未证明时延改善。具体数字和哈希见[批处理 Evidence](../competition/evidence/OWNED_LAYA_BATCHING_20261015.json)。
 
 ### 最小真实宿主桥
 

@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import hmac
 import hashlib
+from importlib.metadata import version
+import inspect
 import json
 import os
 from pathlib import Path
@@ -29,6 +31,29 @@ class ContextWindowExceeded(Exception):
 
 class InferenceControlStopped(Exception):
     """The original waiter expired/cancelled before a new forward."""
+
+
+def heterogeneous_sdk(agent):
+    """Use only the pinned SDK's existing encoding/decoding and one CPU forward.
+
+    This deliberately fails closed on SDK drift instead of changing SDK methods
+    or silently looping over public predict_batch calls.
+    """
+    methods = {"_check_question": ("qid", "qdef"), "_to_internal": ("qdef",),
+               "_encode_state": ("state", "ids", "internal", "max_len", "head_max_len"),
+               "_forward": ("b",), "_decode_answers": ("logits", "act", "items", "ids", "internal", "offset", "lang")}
+    if version("laya") != "0.3.20" or getattr(getattr(agent, "device", None), "type", None) != "cpu" \
+            or getattr(agent.model, "training", None) is not False or getattr(agent, "hooks", ()) \
+            or any(not callable(getattr(agent, name, None)) for name in
+                   methods) or any(tuple(inspect.signature(getattr(agent, name)).parameters) != parameters
+                                   for name, parameters in methods.items()):
+        raise ValueError("Unsupported heterogeneous Laya adapter")
+    from laya.common import collate_items
+    from laya.hooks import default_hooks
+    import torch
+    if default_hooks():
+        raise ValueError("Unsupported heterogeneous Laya hooks")
+    return collate_items, torch.no_grad
 
 
 def cgroup_snapshot(root=Path("/sys/fs/cgroup"), membership=Path("/proc/self/cgroup")):
@@ -184,7 +209,19 @@ def create_app(agent, api_key, warmed=False):
         if not hmac.compare_digest(supplied, expected):
             raise HTTPException(401, "Invalid local authorization")
 
-    async def body(request):
+    def validate_questions(questions):
+        if not isinstance(questions, dict) or not 1 <= len(questions) <= 32:
+            raise HTTPException(400, "Invalid questions")
+        for question in questions.values():
+            if not isinstance(question, dict) or question.get("type") != "choice":
+                raise HTTPException(400, "Only bounded choice questions are supported")
+            criteria = question.get("criteria")
+            if not isinstance(criteria, dict) or not 2 <= len(criteria) <= 16:
+                raise HTTPException(400, "Invalid category whitelist")
+            if "instructions" not in question:
+                raise HTTPException(400, "Choice instructions are required")
+
+    async def body(request, independent=False):
         authorize(request)
         data = bytearray()
         async for chunk in request.stream():
@@ -197,17 +234,8 @@ def create_app(agent, api_key, warmed=False):
             raise HTTPException(400, "Invalid JSON") from None
         if not isinstance(value, dict) or value.get("model") != "multilingual":
             raise HTTPException(400, "Only the explicitly loaded multilingual model is available")
-        questions = value.get("questions")
-        if not isinstance(questions, dict) or not 1 <= len(questions) <= 32:
-            raise HTTPException(400, "Invalid questions")
-        for question in questions.values():
-            if not isinstance(question, dict) or question.get("type") != "choice":
-                raise HTTPException(400, "Only bounded choice questions are supported")
-            criteria = question.get("criteria")
-            if not isinstance(criteria, dict) or not 2 <= len(criteria) <= 16:
-                raise HTTPException(400, "Invalid category whitelist")
-            if "instructions" not in question:
-                raise HTTPException(400, "Choice instructions are required")
+        if not independent:
+            validate_questions(value.get("questions"))
         return value
 
     def remaining(value):
@@ -313,11 +341,195 @@ def create_app(agent, api_key, warmed=False):
             else:
                 future.add_done_callback(release_completed)
 
+    async def infer_independent(items, request, batch_id):
+        if gate.locked():
+            raise HTTPException(429, "Local inference busy")
+        await gate.acquire()
+        future = None
+        watcher = None
+        stopped = threading.Event()
+
+        def failure(item_id, status, code, **metadata):
+            return {"itemId": item_id, "error": {"status": status, "code": code, **metadata}}
+
+        try:
+            if await request.is_disconnected():
+                raise HTTPException(408, "Request disconnected")
+
+            def predict_independent():
+                nonlocal inference_calls
+                collate_items, no_grad = heterogeneous_sdk(agent)
+                before = cgroup_snapshot()
+                cpu_started = time.process_time_ns()
+                precheck_started = time.perf_counter_ns()
+                prepared, outcomes = [], {}
+                for item in items:
+                    item_id = item["itemId"]
+                    if item["expiresAt"] <= time.monotonic():
+                        outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
+                        continue
+                    try:
+                        questions = item["questions"]
+                        for qid, definition in questions.items():
+                            agent._check_question(qid, definition)
+                        window = complete_token_window(agent, [item["state"]], questions)
+                        ids = list(questions)
+                        internal = {qid: agent._to_internal(questions[qid]) for qid in ids}
+                        rows = agent._encode_state(item["state"], ids, internal,
+                                                   max_len=window["maxLength"], head_max_len=window["headMaxLength"])
+                        if len(rows) != len(ids) or sum(len(row["ids"]) for row in rows) != window["expectedInputTokens"][0] \
+                                or any(len(row["ids"]) != window["stateTokens"][0] + window["headerTokens"][i] + 1
+                                       for i, row in enumerate(rows)):
+                            outcomes[item_id] = failure(item_id, 502, "TOKEN_WINDOW_MISMATCH")
+                            continue
+                        prepared.append((item, window, ids, internal, rows))
+                    except ContextWindowExceeded as error:
+                        outcomes[item_id] = failure(item_id, 413, "CONTEXT_WINDOW_EXCEEDED",
+                                                    requiredTokens=error.required, encoderMaxTokens=error.maximum)
+                    except (ValueError, TypeError, KeyError, AttributeError):
+                        outcomes[item_id] = failure(item_id, 400, "INVALID_ARGUMENT")
+                # Tokenization can consume a short item's entire deadline. Keep
+                # its original deadline and remove it before admitting a forward.
+                live = []
+                for entry in prepared:
+                    if entry[0]["expiresAt"] <= time.monotonic():
+                        item_id = entry[0]["itemId"]
+                        outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
+                    else:
+                        live.append(entry)
+                if stopped.is_set():
+                    raise InferenceControlStopped()
+                precheck_ms = (time.perf_counter_ns() - precheck_started) / 1_000_000
+                precheck_cpu_ms = (time.process_time_ns() - cpu_started) / 1_000_000
+                if live:
+                    # collate_items expects one list of question rows per item.
+                    # If collation consumes an item's deadline, remove its rows
+                    # and collate the remaining items again without truncation.
+                    while live:
+                        collated = collate_items([entry[4] for entry in live], agent.tok.pad_token_id)
+                        expired = [entry for entry in live if entry[0]["expiresAt"] <= time.monotonic()]
+                        if stopped.is_set():
+                            raise InferenceControlStopped()
+                        if not expired:
+                            break
+                        for entry in expired:
+                            item_id = entry[0]["itemId"]
+                            outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
+                        live = [entry for entry in live if entry not in expired]
+                    if live:
+                        inference_calls += 1
+                        forward_started = time.perf_counter_ns()
+                        forward_cpu_started = time.process_time_ns()
+                        with no_grad():
+                            logits, act = agent._forward(collated)
+                        expected_rows = sum(len(entry[4]) for entry in live)
+                        if len(logits) != expected_rows or len(act) != expected_rows:
+                            raise ValueError("Heterogeneous forward row mismatch")
+                        forward_ms = (time.perf_counter_ns() - forward_started) / 1_000_000
+                        forward_cpu_ms = (time.process_time_ns() - forward_cpu_started) / 1_000_000
+                        after = cgroup_snapshot()
+                        metrics = {"formatVersion": "1.0.0", "precheckMs": precheck_ms,
+                                   "forwardMs": forward_ms, "forwardScope": "sdk_heterogeneous_forward",
+                                   "processCpuMs": (time.process_time_ns() - cpu_started) / 1_000_000,
+                                   "precheckProcessCpuMs": precheck_cpu_ms, "forwardProcessCpuMs": forward_cpu_ms,
+                                   "cgroupBefore": before, "cgroupAfter": after, "cgroupCpuDelta": cgroup_delta(before, after)}
+                        offset = 0
+                        for item, window, ids, internal, encoded in live:
+                            item_id = item["itemId"]
+                            if item["expiresAt"] <= time.monotonic():
+                                outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
+                            else:
+                                count = sum(len(row["ids"]) for row in encoded)
+                                if int(collated["attention_mask"][offset:offset + len(encoded)].sum()) != count:
+                                    outcomes[item_id] = failure(item_id, 502, "TOKEN_WINDOW_MISMATCH")
+                                else:
+                                    try:
+                                        answers = agent._decode_answers(logits, act, encoded, ids, internal, offset)
+                                        outcomes[item_id] = {"itemId": item_id, "result": {"answers": answers,
+                                            "usage": {"input_tokens": count, "output_tokens": 0}, "inferenceMetrics": metrics,
+                                            "tokenWindow": {**window, "encodedTokens": count},
+                                            "sharedForward": {"batchId": batch_id, "batchSize": len(live)}}}
+                                    except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+                                        outcomes[item_id] = failure(item_id, 502, "INVALID_MODEL_RESULT")
+                            offset += len(encoded)
+                return [outcomes[item["itemId"]] for item in items]
+
+            future = asyncio.get_running_loop().run_in_executor(pool, predict_independent)
+
+            async def disconnected():
+                while True:
+                    if await request.is_disconnected():
+                        return
+                    await asyncio.sleep(0.01)
+
+            watcher = asyncio.create_task(disconnected())
+            seconds = max(item["expiresAt"] for item in items) - time.monotonic()
+            done, _ = await asyncio.wait([future, watcher], timeout=max(0, seconds), return_when=asyncio.FIRST_COMPLETED)
+            if watcher in done or future not in done:
+                raise HTTPException(408, "Inference deadline exceeded")
+            return future.result()
+        except InferenceControlStopped:
+            raise HTTPException(408, "Inference deadline exceeded") from None
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(503, "Local inference unavailable") from None
+        finally:
+            stopped.set()
+            if watcher is not None:
+                watcher.cancel()
+                await asyncio.gather(watcher, return_exceptions=True)
+
+            def release_completed(completed):
+                try:
+                    if not completed.cancelled():
+                        completed.exception()
+                finally:
+                    gate.release()
+
+            if future is None:
+                gate.release()
+            elif future.done():
+                release_completed(future)
+            else:
+                future.add_done_callback(release_completed)
+
     @app.get("/health")
     async def health(request: Request):
         authorize(request)
-        return {"status": "ok", "model": "multilingual", "capabilities": ["multi_state"], "maxStates": MAX_STATES,
+        return {"status": "ok", "model": "multilingual", "capabilities": ["multi_state", "independent_items"], "maxStates": MAX_STATES,
                 "warmed": warmed, "inferenceBusy": gate.locked(), "inferenceCalls": inference_calls}
+
+    @app.post("/v1/systemone/independent-batch")
+    async def independent(request: Request):
+        value = await body(request, independent=True)
+        items = value.get("items")
+        batch_id = value.get("batchId")
+        if not isinstance(batch_id, str) or not 1 <= len(batch_id) <= 128 \
+                or not isinstance(items, list) or not 1 <= len(items) <= MAX_STATES:
+            raise HTTPException(400, "Invalid independent batch")
+        ids, valid, errors = set(), [], {}
+        for item in items:
+            if not isinstance(item, dict) or set(item) != {"itemId", "state", "questions", "deadline"} \
+                    or not isinstance(item.get("itemId"), str) or not 1 <= len(item["itemId"]) <= 128 \
+                    or item["itemId"] in ids:
+                raise HTTPException(400, "Invalid independent item identity")
+            ids.add(item["itemId"])
+            try:
+                validate_questions(item["questions"])
+                if not isinstance(item["deadline"], str):
+                    raise HTTPException(400, "An explicit independent deadline is required")
+                if len(json.dumps(item["state"], ensure_ascii=False)) > 50000:
+                    raise HTTPException(413, "State too large")
+                valid.append({**item, "expiresAt": time.monotonic() + remaining(item)})
+            except HTTPException as error:
+                errors[item["itemId"]] = {"itemId": item["itemId"], "error": {"status": error.status_code,
+                    "code": "TIMEOUT" if error.status_code == 408 else "INVALID_ARGUMENT"}}
+        results = await infer_independent(valid, request, batch_id) if valid else []
+        results = {entry["itemId"]: entry for entry in results}
+        results.update(errors)
+        return {"batching": "independent_items", "batchId": batch_id,
+                "items": [results[item["itemId"]] for item in items]}
 
     @app.post("/v1/systemone/batch")
     async def batch(request: Request):

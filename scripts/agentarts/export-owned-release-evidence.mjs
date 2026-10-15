@@ -24,6 +24,19 @@ export function projectOwnedLayaTokenTelemetry(record) {
   const telemetry={};
   if(number(record?.queueWaitMs)!==null)telemetry.queueWaitMs=record.queueWaitMs;
   if(record?.fullCriterionDescriptions==='included_in_selector_state')telemetry.fullCriterionDescriptions=record.fullCriterionDescriptions;
+  // Trace identity only. batchSize is the actual admitted item count, distinct
+  // from submittedBatchSize. Never sum one shared timing once per row.
+  if(typeof record?.batchId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(record.batchId)
+    &&Number.isSafeInteger(record.batchSize)&&record.batchSize>=1&&record.batchSize<=4
+    &&(record.submittedBatchSize===undefined||Number.isSafeInteger(record.submittedBatchSize)
+      &&record.submittedBatchSize>=record.batchSize&&record.submittedBatchSize<=4)) {
+    telemetry.batchId=record.batchId;telemetry.batchSize=record.batchSize;
+    if(record.submittedBatchSize!==undefined)telemetry.submittedBatchSize=record.submittedBatchSize;
+    if(typeof record.batchItemId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(record.batchItemId)) {
+      telemetry.batchItemId=record.batchItemId;
+    }
+    if(record.sharedForwardScope==='sdk_heterogeneous_forward')telemetry.sharedForwardScope=record.sharedForwardScope;
+  }
   if(record?.tokenWindow===undefined)return {...telemetry,tokenWindowStatus:'not_recorded'};
   const window=record.tokenWindow,one=value=>Array.isArray(value)&&value.length===1&&Number.isSafeInteger(value[0])&&value[0]>=0;
   const valid=plain(window)&&window.formatVersion==='1.0.0'&&window.truncated===false&&window.droppedTokens===0

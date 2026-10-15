@@ -5,6 +5,26 @@ import {projectOwnedReleaseEvidence,projectOwnedLayaTokenTelemetry} from './expo
 const tokenWindow={formatVersion:'1.0.0',truncated:false,droppedTokens:0,encoderMaxTokens:8192,maxLength:2001,headMaxLength:512,
   stateTokens:[1890],requiredSequenceTokens:[2001],expectedInputTokens:[2001],headerTokens:[110],encodedTokens:2001};
 
+test('batch telemetry preserves validated shared identity without exporting or summing repeated forward timing',()=>{
+  const batchId='11111111-2222-4333-8444-555555555555';
+  const records=[0,1].map(index=>projectOwnedLayaTokenTelemetry({batchId,batchSize:2,submittedBatchSize:2,
+    batchItemId:`11111111-2222-4333-8444-55555555555${index}`,sharedForwardScope:'sdk_heterogeneous_forward',
+    tokenWindow,queueWaitMs:index,inferenceMetrics:{forwardMs:25},privateCandidate:'never export this'}));
+  assert.ok(records.every(item=>item.batchId===batchId&&item.batchSize===2&&item.sharedForwardScope==='sdk_heterogeneous_forward'));
+  assert.equal(new Set(records.map(item=>item.batchId)).size,1);
+  assert.equal(new Set(records.map(item=>item.batchItemId)).size,2);assert.ok(records.every(item=>item.submittedBatchSize===2));
+  assert.equal(JSON.stringify(records).includes('forwardMs'),false);assert.equal(JSON.stringify(records).includes('never export'),false);
+  const single=projectOwnedLayaTokenTelemetry({batchId,batchSize:1});
+  assert.equal(single.batchSize,1);assert.equal(Object.hasOwn(single,'sharedForwardScope'),false);
+  const partial=projectOwnedLayaTokenTelemetry({batchId,batchSize:1,submittedBatchSize:2,sharedForwardScope:'sdk_heterogeneous_forward'});
+  assert.equal(partial.batchSize,1);assert.equal(partial.submittedBatchSize,2);
+  for(const invalid of [{batchId:'private arbitrary text',batchSize:2},{batchId,batchSize:5},{batchId,batchSize:0},
+    {batchId,batchSize:2,submittedBatchSize:1}]) {
+    const value=projectOwnedLayaTokenTelemetry(invalid);assert.equal(Object.hasOwn(value,'batchId'),false);assert.equal(Object.hasOwn(value,'batchSize'),false);
+  }
+  assert.equal(Object.hasOwn(projectOwnedLayaTokenTelemetry({batchId,batchSize:2,sharedForwardScope:'private text'}),'sharedForwardScope'),false);
+});
+
 test('new Laya window telemetry preserves exact counts and queue wait; old missing fields stay absent and invalid accounting is rejected',()=>{
   const value=projectOwnedLayaTokenTelemetry({queueWaitMs:17,fullCriterionDescriptions:'included_in_selector_state',tokenWindow,
     privateCandidateDescriptions:'never export this'});

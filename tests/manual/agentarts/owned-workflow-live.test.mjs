@@ -213,6 +213,22 @@ test('explicit owned-image log projection keeps real token accounting without fi
   assert.equal(JSON.stringify(value).includes('must not leave'),false);
 });
 
+test('workflow log projection retains one shared batch identity across independently correlated request rows',async()=>{
+  const cache=fileURLToPath(new URL('../../../.cache/owned-workflow-live/',import.meta.url));await mkdir(cache,{recursive:true});
+  const directory=await mkdtemp(join(cache,'batch-log-test-')),path=join(directory,'public-events.jsonl');
+  const batchId='11111111-2222-4333-8444-555555555555';
+  await writeFile(path,['public-first','public-second'].map((requestId,index)=>JSON.stringify({event:'laya_choice',model:'multilingual',
+    requestId,candidateId:'candidate-'+index,durationMs:30+index,batchId,batchSize:2,submittedBatchSize:2,
+    batchItemId:`11111111-2222-4333-8444-55555555555${index}`,sharedForwardScope:'sdk_heterogeneous_forward',
+    inferenceMetrics:{forwardScope:'sdk_heterogeneous_forward',forwardMs:25},privateState:'never export batch state'})).join('\n'));
+  const value=await ownedWorkflowLayaLogs(path,['public-first','public-second'],'local_owned_source_runtime');
+  assert.equal(value.status,'correlated_supplied_runtime_log');assert.equal(value.records.length,2);
+  assert.ok(value.records.every(item=>item.batchId===batchId&&item.batchSize===2&&item.sharedForwardScope==='sdk_heterogeneous_forward'));
+  assert.equal(new Set(value.records.map(item=>item.batchId)).size,1);
+  assert.equal(new Set(value.records.map(item=>item.batchItemId)).size,2);assert.ok(value.records.every(item=>item.submittedBatchSize===2));
+  assert.equal(JSON.stringify(value).includes('forwardMs'),false);assert.equal(JSON.stringify(value).includes('never export'),false);
+});
+
 test('manual live parser accepts native owned-image JSON message/task_end/end without invoking anything',()=>{
   assert.deepEqual(parseOwnedWorkflowInvocationBody(JSON.stringify(events),'application/json; charset=utf-8'),graph);
 });

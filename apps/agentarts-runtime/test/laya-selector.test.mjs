@@ -160,3 +160,153 @@ test('after an accepted timeout the next choice checks CPU admission instead of 
   await assert.rejects(selector.select(input()),error=>error.code==='TIMEOUT');
   assert.equal(await selector.select(input()),'proposal');assert.equal(posts,2);assert.equal(healthReads,2);
 });
+
+const independentMetrics=()=>({formatVersion:'1.0.0',precheckMs:1,forwardMs:2,processCpuMs:3,
+  precheckProcessCpuMs:1,forwardProcessCpuMs:2,forwardScope:'sdk_heterogeneous_forward'});
+const independentResult=(payload,result=answer(),size=payload.items.length)=>({...result,
+  sharedForward:{batchId:payload.batchId,batchSize:size},inferenceMetrics:independentMetrics()});
+const independentReply=(payload,edit=items=>items)=>({batching:'independent_items',batchId:payload.batchId,
+  items:edit(payload.items.map(item=>({itemId:item.itemId,result:independentResult(payload)})))});
+const decisionFor=(keys,index)=>answer({choice:keys[index],probabilities:Object.fromEntries(keys.map((key,i)=>[key,i===index?0.8:0.2/(keys.length-1)]))});
+
+test('same-turn independent contexts and criteria use one batch and opaque identities despite repeated requestId',async()=>{
+  let payload,posts=0;const receipts=[];
+  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
+    request:async(url,options)=>{
+      posts++;assert.ok(url.endsWith('/v1/systemone/independent-batch'));payload=JSON.parse(options.body);
+      assert.notEqual(payload.items[0].itemId,payload.items[1].itemId);
+      assert.equal(payload.items[0].state.includes('first private-to-item context'),true);
+      assert.equal(payload.items[1].state.includes('first private-to-item context'),false);
+      assert.deepEqual(Object.keys(payload.items[1].questions.decision.criteria),['candidate_0','candidate_1','candidate_2']);
+      return Response.json(independentReply(payload,rows=>[
+        {...rows[1],result:independentResult(payload,decisionFor(['candidate_0','candidate_1','candidate_2'],2))},
+        {...rows[0],result:independentResult(payload,decisionFor(['candidate_0','candidate_1'],1))}]));
+    }});
+  const a=input(),b={...input(),context:'second distinct context',candidates:[{id:'second-A',description:'A'},
+    {id:'second-B',description:'B'},{id:'second-C',description:'C'}]};a.context='first private-to-item context';
+  const promises=[selector.select(a),selector.select(b)];b.candidates[2].description='MUTATED AFTER SNAPSHOT';
+  assert.deepEqual(await Promise.all(promises),['review','second-C']);assert.equal(posts,1);
+  assert.equal(JSON.stringify(payload).includes('MUTATED AFTER SNAPSHOT'),false);
+  assert.equal(payload.items[0].deadline,a.deadline);assert.equal(payload.items[1].deadline,b.deadline);
+  assert.equal(receipts.length,2);assert.equal(receipts[0].batchId,receipts[1].batchId);
+  assert.equal(receipts[0].batchSize,2);assert.equal(receipts[0].sharedForwardScope,'sdk_heterogeneous_forward');
+});
+
+test('five same-turn requests preserve FIFO and cap the first batch at four',async()=>{
+  const groups=[];const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
+    const payload=JSON.parse(options.body);groups.push(payload.items?.map(item=>item.state)??[payload.state]);
+    return Response.json(payload.items?independentReply(payload):answer());
+  }});
+  assert.deepEqual(await Promise.all(Array.from({length:5},(_,index)=>selector.select({...input(),context:'FIFO-'+index}))),Array(5).fill('proposal'));
+  assert.deepEqual(groups.map(group=>group.length),[4,1]);
+  groups.flat().forEach((state,index)=>assert.ok(state.includes('FIFO-'+index)));
+});
+
+test('cancelling one admitted batch item leaves its sibling HTTP and result alive',async()=>{
+  let release,entered,transportSignal;const started=new Promise(resolve=>entered=resolve),blocked=new Promise(resolve=>release=resolve),receipts=[];
+  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
+    request:async(_url,options)=>{transportSignal=options.signal;const payload=JSON.parse(options.body);entered();await blocked;return Response.json(independentReply(payload));}});
+  const cancellation=new AbortController(),a=selector.select({...input(),signal:cancellation.signal}),b=selector.select({...input(),requestId:'survivor'});
+  const rejected=assert.rejects(a,{code:'CANCELLED'});await started;cancellation.abort();await rejected;
+  assert.equal(transportSignal.aborted,false);release();assert.equal(await b,'proposal');
+  assert.deepEqual(receipts.map(receipt=>receipt.requestId),['survivor']);
+});
+
+test('one original deadline expiring in a batch cannot shorten another item deadline or revive late result',async()=>{
+  let transportSignal;const receipts=[];
+  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),request:async(_url,options)=>{
+    transportSignal=options.signal;const payload=JSON.parse(options.body);await new Promise(resolve=>setTimeout(resolve,70));
+    assert.equal(transportSignal.aborted,false);return Response.json(independentReply(payload));
+  }});
+  const a=selector.select({...input(),deadline:new Date(Date.now()+25).toISOString(),requestId:'expired'}),b=selector.select({...input(),requestId:'live'});
+  await assert.rejects(a,{code:'TIMEOUT'});assert.equal(await b,'proposal');assert.deepEqual(receipts.map(item=>item.requestId),['live']);
+});
+
+test('all abandoned batch items abort HTTP but next batch waits for non-preemptible CPU admission',async()=>{
+  let entered,healthEntered,releaseCpu,posts=0,healthReads=0,cpuBusy=true;
+  const started=new Promise(resolve=>entered=resolve),healthStarted=new Promise(resolve=>healthEntered=resolve);
+  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
+    if(url.endsWith('/health')){healthReads++;healthEntered();return Response.json({status:'ok',model:'multilingual',warmed:true,inferenceBusy:cpuBusy});}
+    posts++;if(posts===1){entered();return new Promise((resolve,reject)=>{
+      options.signal.addEventListener('abort',()=>reject(new Error('synthetic HTTP waiter ended')),{once:true});releaseCpu=()=>{cpuBusy=false;};
+    });}return Response.json(answer());
+  }});
+  const ca=new AbortController(),cb=new AbortController();
+  const a=selector.select({...input(),signal:ca.signal}),b=selector.select({...input(),signal:cb.signal});
+  const rejected=Promise.all([assert.rejects(a,{code:'CANCELLED'}),assert.rejects(b,{code:'CANCELLED'})]);
+  await started;ca.abort();cb.abort();await rejected;
+  const c=selector.select(input());await healthStarted;assert.equal(posts,1);releaseCpu();
+  assert.equal(await c,'proposal');assert.equal(posts,2);assert.ok(healthReads>=2);
+});
+
+test('batch identity corruption is rejected before any candidate is delivered',async()=>{
+  for(const corrupt of [value=>({...value,batchId:'other-batch'}),value=>({...value,items:value.items.slice(1)}),
+    value=>({...value,items:[value.items[0],value.items[0]]}),
+    value=>({...value,items:[value.items[0],{...value.items[1],itemId:'unknown-item'}]}),
+    value=>({...value,items:[value.items[0],{...value.items[1],error:{status:400,code:'INVALID_ARGUMENT'}}]})]) {
+    const receipts=[];let posts=0;
+    const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),request:async(_url,options)=>{
+      posts++;return Response.json(corrupt(independentReply(JSON.parse(options.body))));
+    }});
+    const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
+    assert.equal(result.every(item=>item.status==='rejected'&&item.reason.code==='EXTERNAL_FAILURE'),true);
+    assert.equal(receipts.length,0);assert.equal(posts,1);
+  }
+});
+
+test('one invalid result or explicit context overflow cannot contaminate a good independent item',async()=>{
+  for(const bad of [{result:answer({choice:'not-a-candidate'})},{error:{status:413,code:'CONTEXT_WINDOW_EXCEEDED',requiredTokens:9000,encoderMaxTokens:8192}}]) {
+    let posts=0;const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
+      posts++;const payload=JSON.parse(options.body);return Response.json(independentReply(payload,rows=>[{itemId:rows[0].itemId,...bad},rows[1]]));
+    }});
+    const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
+    assert.equal(result[0].status,'rejected');assert.equal(result[0].reason.code,bad.error?'UNSUPPORTED_CAPABILITY':'EXTERNAL_FAILURE');
+    assert.deepEqual(result[1],{status:'fulfilled',value:'proposal'});assert.equal(posts,1);
+  }
+});
+
+test('precise UTF-8 admission splits large items and rejects an oversized item without blocking a sibling',async()=>{
+  let posts=0;const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
+    posts++;assert.ok(url.endsWith('/v1/systemone'));assert.ok(Buffer.byteLength(options.body,'utf8')<=131072);return Response.json(answer());
+  }});
+  const large={...input(),candidates:[{id:'proposal',description:'中文'.repeat(4000)},{id:'review',description:'中文'.repeat(4000)}]};
+  assert.deepEqual(await Promise.all([selector.select(large),selector.select(large)]),['proposal','proposal']);assert.equal(posts,2);
+  const oversized=selector.select({...input(),context:'x'.repeat(50001)}),good=selector.select(input());
+  await assert.rejects(oversized,{code:'UNSUPPORTED_CAPABILITY'});assert.equal(await good,'proposal');assert.equal(posts,3);
+});
+
+test('shared forward provenance is checked and actual forward size is distinct from submitted size',async()=>{
+  for(const corrupt of [value=>{delete value.sharedForward;},value=>{value.sharedForward.batchId='wrong';},
+    value=>{value.sharedForward.batchSize=3;},value=>{value.inferenceMetrics.forwardScope='sdk_predict_batch';}]) {
+    const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
+      const payload=JSON.parse(options.body),value=independentReply(payload);corrupt(value.items[0].result);return Response.json(value);
+    }});
+    const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
+    assert.equal(result[0].status,'rejected');assert.equal(result[0].reason.code,'EXTERNAL_FAILURE');
+    assert.deepEqual(result[1],{status:'fulfilled',value:'proposal'});
+  }
+  const receipts=[];const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
+    request:async(_url,options)=>{
+      const payload=JSON.parse(options.body);return Response.json(independentReply(payload,rows=>[
+        {itemId:rows[0].itemId,error:{status:413,code:'INVALID_ARGUMENT'}},
+        {itemId:rows[1].itemId,result:independentResult(payload,answer(),1)}]));
+    }});
+  const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
+  assert.equal(result[0].reason.code,'UNSUPPORTED_CAPABILITY');assert.equal(result[1].value,'proposal');
+  const choice=receipts.find(value=>value.event==='laya_choice'),rejected=receipts.find(value=>value.event==='laya_rejected');
+  assert.equal(choice.submittedBatchSize,2);assert.equal(choice.batchSize,1);
+  assert.equal(rejected.stage,'bound_rejection');assert.equal(rejected.errorCode,'HTTP_413');
+  assert.notEqual(choice.batchItemId,rejected.batchItemId);
+});
+
+test('only explicitly rejected batch admission is retried after authenticated idle readback',async()=>{
+  let posts=0,reads=0,firstPayload;
+  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
+    if(url.endsWith('/health')){reads++;return Response.json({status:'ok',model:'multilingual',warmed:true,inferenceBusy:false});}
+    const payload=JSON.parse(options.body);posts++;
+    if(posts===1){firstPayload=payload;return new Response('',{status:429});}
+    assert.deepEqual(payload,firstPayload);return Response.json(independentReply(payload));
+  }});
+  assert.deepEqual(await Promise.all([selector.select(input()),selector.select(input())]),['proposal','proposal']);
+  assert.equal(posts,2);assert.equal(reads,1);
+});

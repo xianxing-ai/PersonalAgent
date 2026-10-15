@@ -7,6 +7,7 @@ import importlib.util
 import json
 from pathlib import Path
 import threading
+import time
 import unittest
 import tempfile
 from types import SimpleNamespace
@@ -74,6 +75,10 @@ class Request:
 class SyntheticTokenizer:
     """Character tokens exercise admission/window control, not model quality."""
     mask_token = "<mask>"
+    mask_token_id = 3
+    cls_token_id = 1
+    sep_token_id = 2
+    pad_token_id = 0
 
     def __call__(self, text, add_special_tokens=False, truncation=False, max_length=None):
         values = list(range(len(text)))
@@ -88,6 +93,67 @@ class SyntheticAgent:
     def predict_batch(self, states, questions, batch_size, max_len, head_max_len):
         plan = server.complete_token_window(self, states, questions)
         return [{"usage": {"input_tokens": count, "output_tokens": 0}} for count in plan["expectedInputTokens"]]
+
+
+def heterogeneous_agent():
+    """Real pinned SDK encode/collate/decode, synthetic forward; no weights."""
+    import numpy as np
+    import torch
+    from laya.agent import Agent
+
+    class AgentFixture(SyntheticAgent):
+        device = torch.device("cpu")
+        hooks = []
+        temperature = [1, 1, 1]
+        temperature_by_options = {}
+        lang_temperatures = {}
+        _check_question = staticmethod(Agent._check_question)
+        _to_internal = staticmethod(Agent._to_internal)
+
+        def __init__(self):
+            self.model = SimpleNamespace(training=False, encoder=SimpleNamespace(config=SimpleNamespace(max_position_embeddings=8192)))
+            self.encoded = []
+            self.offsets = []
+            self.forwards = []
+            self.before_encode = None
+            self.before_forward = None
+
+        def _encode_state(self, state, ids, internal, max_len=None, head_max_len=None):
+            if self.before_encode:
+                self.before_encode(state)
+            self.encoded.append((state, ids, internal))
+            return Agent._encode_state(self, state, ids, internal, max_len=max_len, head_max_len=head_max_len)
+
+        def _forward(self, b):
+            self.forwards.append(b)
+            if self.before_forward:
+                self.before_forward()
+            assert not torch.is_grad_enabled()
+            count, width = b["marker_pos"].shape
+            logits = np.full((count, width), -5.0)
+            for row in range(count):
+                options = int(b["marker_mask"][row].sum())
+                logits[row, row % options] = 5.0
+            return logits, np.full((count, 2), 0.5)
+
+        def _decode_answers(self, logits, act, items, ids, internal, offset, lang=None):
+            self.offsets.append(offset)
+            return Agent._decode_answers(self, logits, act, items, ids, internal, offset, lang)
+
+    return AgentFixture()
+
+
+def independent_request(seconds=5):
+    request = Request(seconds)
+    request.value = {"model": "multilingual", "batchId": "synthetic-independent-batch", "items": [
+        {"itemId": "first-opaque", "state": "first distinct state", "questions": {
+            "first_question": {"type": "choice", "instructions": "First question.", "criteria": {"first-A": "Alpha", "first-B": "Beta"}},
+            "second_question": {"type": "choice", "instructions": "Second question.", "criteria": {"first-X": "X", "first-Y": "Y", "first-Z": "Z"}}},
+         "deadline": (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()},
+        {"itemId": "second-opaque", "state": "second separate state " * 70, "questions": {
+            "other_question": {"type": "choice", "instructions": "Different question.", "criteria": {"other-A": "Other A", "other-B": "Other B"}}},
+         "deadline": (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()}]}
+    return request
 
 
 class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
@@ -260,6 +326,237 @@ class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
         finally:
             release.set()
             loop.set_exception_handler(previous_handler)
+
+
+class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
+    async def test_distinct_state_questions_use_exactly_one_real_sdk_collation_forward_and_correct_offsets(self):
+        agent = heterogeneous_agent()
+        app = server.create_app(agent, "synthetic-test-key", warmed=True)
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        health = next(route.endpoint for route in app.routes if route.path == "/health")
+        request = independent_request()
+        async with app.router.lifespan_context(app):
+            response = await endpoint(request)
+            self.assertEqual((await health(Request()))["inferenceCalls"], 1)
+        self.assertEqual(len(agent.forwards), 1)
+        self.assertEqual(agent.forwards[0]["input_ids"].shape[0], 3, "Question rows, not item count, define the tensor batch")
+        self.assertEqual(agent.offsets, [0, 2])
+        self.assertEqual([entry[0] for entry in agent.encoded], [item["state"] for item in request.value["items"]])
+        self.assertEqual(agent.encoded[0][2]["first_question"]["crit"], request.value["items"][0]["questions"]["first_question"]["criteria"])
+        self.assertEqual(response["batchId"], request.value["batchId"])
+        first, second = [item["result"] for item in response["items"]]
+        self.assertEqual(first["answers"]["first_question"]["choice"], "first-A")
+        self.assertEqual(first["answers"]["second_question"]["choice"], "first-Y")
+        self.assertEqual(second["answers"]["other_question"]["choice"], "other-A")
+        self.assertGreater(second["tokenWindow"]["encodedTokens"], 1024)
+        for result in (first, second):
+            self.assertEqual(result["usage"]["input_tokens"], result["tokenWindow"]["expectedInputTokens"][0])
+            self.assertEqual(result["inferenceMetrics"]["forwardScope"], "sdk_heterogeneous_forward")
+            self.assertEqual(result["sharedForward"], {"batchId": request.value["batchId"], "batchSize": 2})
+            self.assertFalse(result["tokenWindow"]["truncated"])
+            self.assertEqual(result["tokenWindow"]["droppedTokens"], 0)
+        self.assertEqual(first["inferenceMetrics"], second["inferenceMetrics"], "One forward timing is shared, not two independent forwards")
+
+    async def test_invalid_questions_overflow_and_expired_item_are_isolated_from_a_good_item(self):
+        for bad in ("questions", "overflow", "expired"):
+            agent = heterogeneous_agent()
+            app = server.create_app(agent, "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+            request = independent_request()
+            if bad == "questions":
+                request.value["items"][0]["questions"] = {"bad": {"type": "score"}}
+            elif bad == "overflow":
+                request.value["items"][0]["state"] = "x" * 8192
+            else:
+                request.value["items"][0]["deadline"] = "2020-01-01T00:00:00Z"
+            async with app.router.lifespan_context(app):
+                response = await endpoint(request)
+            self.assertEqual(response["items"][0]["error"]["status"], {"questions": 400, "overflow": 413, "expired": 408}[bad])
+            self.assertIn("result", response["items"][1])
+            self.assertEqual(len(agent.forwards), 1)
+            self.assertEqual(agent.forwards[0]["input_ids"].shape[0], 1)
+
+    async def test_expiry_while_encoding_other_item_is_removed_before_forward_and_offsets_recomputed(self):
+        agent = heterogeneous_agent()
+        request = independent_request()
+        request.value["items"][0]["deadline"] = (datetime.now(timezone.utc) + timedelta(seconds=0.1)).isoformat()
+        agent.before_encode = lambda state: time.sleep(0.15) if state.startswith("second") else None
+        app = server.create_app(agent, "synthetic-test-key")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        async with app.router.lifespan_context(app):
+            response = await endpoint(request)
+        self.assertEqual(response["items"][0]["error"]["code"], "TIMEOUT")
+        self.assertIn("result", response["items"][1])
+        self.assertEqual(agent.forwards[0]["input_ids"].shape[0], 1)
+        self.assertEqual(agent.offsets, [0])
+
+    async def test_all_items_expire_during_encoding_without_starting_forward(self):
+        agent = heterogeneous_agent()
+        agent.before_encode = lambda _state: time.sleep(0.08)
+        app = server.create_app(agent, "synthetic-test-key")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        health = next(route.endpoint for route in app.routes if route.path == "/health")
+        async with app.router.lifespan_context(app):
+            with self.assertRaises(HTTPException) as expired:
+                await endpoint(independent_request(0.04))
+            self.assertEqual(expired.exception.status_code, 408)
+            for _ in range(100):
+                if not (await health(Request()))["inferenceBusy"]:
+                    break
+                await asyncio.sleep(0.005)
+            self.assertEqual((await health(Request()))["inferenceCalls"], 0)
+        self.assertEqual(agent.forwards, [])
+
+    async def test_collation_expiry_rebuilds_only_live_rows_and_token_mismatch_is_independent(self):
+        from laya.common import collate_items
+        for boundary in ("collation", "token_mismatch"):
+            agent = heterogeneous_agent()
+            request = independent_request()
+            if boundary == "collation":
+                request.value["items"][0]["deadline"] = (datetime.now(timezone.utc) + timedelta(seconds=0.06)).isoformat()
+            else:
+                original = agent._encode_state
+
+                def altered(state, ids, internal, max_len=None, head_max_len=None):
+                    rows = original(state, ids, internal, max_len, head_max_len)
+                    if state.startswith("first"):
+                        rows[0]["ids"] = rows[0]["ids"][:-1]
+                    return rows
+
+                agent._encode_state = altered
+            calls = []
+
+            def collate(groups, pad):
+                calls.append(len(groups))
+                if boundary == "collation" and len(calls) == 1:
+                    time.sleep(0.1)
+                return collate_items(groups, pad)
+
+            app = server.create_app(agent, "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+            async with app.router.lifespan_context(app):
+                with patch("laya.common.collate_items", side_effect=collate):
+                    response = await endpoint(request)
+            self.assertEqual(response["items"][0]["error"]["code"], "TIMEOUT" if boundary == "collation" else "TOKEN_WINDOW_MISMATCH")
+            self.assertIn("result", response["items"][1])
+            self.assertEqual(agent.forwards[0]["input_ids"].shape[0], 1)
+            self.assertEqual(agent.offsets, [0])
+            self.assertEqual(calls, [2, 1] if boundary == "collation" else [1])
+
+    async def test_one_item_expires_during_non_preemptible_forward_but_other_result_survives(self):
+        agent = heterogeneous_agent()
+        agent.before_forward = lambda: time.sleep(0.15)
+        request = independent_request()
+        request.value["items"][0]["deadline"] = (datetime.now(timezone.utc) + timedelta(seconds=0.07)).isoformat()
+        app = server.create_app(agent, "synthetic-test-key")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        async with app.router.lifespan_context(app):
+            response = await endpoint(request)
+        self.assertEqual(len(agent.forwards), 1)
+        self.assertEqual(response["items"][0]["error"]["code"], "TIMEOUT")
+        self.assertIn("result", response["items"][1])
+
+    async def test_cancellation_or_disconnect_keeps_admission_busy_until_cpu_finishes(self):
+        for stop_kind in ("cancel", "disconnect"):
+            agent = heterogeneous_agent()
+            entered, release = threading.Event(), threading.Event()
+            agent.before_forward = lambda: (entered.set(), release.wait(3))
+            request = independent_request()
+            disconnected = False
+
+            async def is_disconnected():
+                return disconnected
+
+            request.is_disconnected = is_disconnected
+            app = server.create_app(agent, "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+            health = next(route.endpoint for route in app.routes if route.path == "/health")
+            try:
+                async with app.router.lifespan_context(app):
+                    task = asyncio.create_task(endpoint(request))
+                    while not entered.is_set():
+                        await asyncio.sleep(0.001)
+                    if stop_kind == "cancel":
+                        task.cancel()
+                        with self.assertRaises(asyncio.CancelledError):
+                            await task
+                    else:
+                        disconnected = True
+                        with self.assertRaises(HTTPException) as stopped:
+                            await task
+                        self.assertEqual(stopped.exception.status_code, 408)
+                    self.assertTrue((await health(Request()))["inferenceBusy"])
+                    with self.assertRaises(HTTPException) as busy:
+                        await endpoint(independent_request())
+                    self.assertEqual(busy.exception.status_code, 429)
+                    self.assertEqual(len(agent.forwards), 1)
+                    release.set()
+                    for _ in range(100):
+                        if not (await health(Request()))["inferenceBusy"]:
+                            break
+                        await asyncio.sleep(0.005)
+                    self.assertFalse((await health(Request()))["inferenceBusy"])
+                    await endpoint(independent_request())
+                    self.assertEqual(len(agent.forwards), 2)
+            finally:
+                release.set()
+
+    async def test_unsupported_sdk_hooks_training_or_device_never_silently_loop_single_predictions(self):
+        for incompatible in ("version", "hooks", "global_hooks", "training", "device", "signature"):
+            agent = heterogeneous_agent()
+            if incompatible == "hooks":
+                agent.hooks = [object()]
+            elif incompatible == "training":
+                agent.model.training = True
+            elif incompatible == "device":
+                agent.device = SimpleNamespace(type="cuda")
+            elif incompatible == "signature":
+                agent._forward = lambda changed_argument: None
+            app = server.create_app(agent, "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+            async with app.router.lifespan_context(app):
+                with patch.object(server, "version", return_value="0.0.0" if incompatible == "version" else "0.3.20"), \
+                        patch("laya.hooks.default_hooks", return_value=[object()] if incompatible == "global_hooks" else []):
+                    with self.assertRaises(HTTPException) as rejected:
+                        await endpoint(independent_request())
+            self.assertEqual(rejected.exception.status_code, 503)
+            self.assertEqual(agent.forwards, [])
+
+    async def test_duplicate_item_identity_oversized_batch_and_auth_fail_before_forward(self):
+        for invalid in ("duplicate", "size", "auth"):
+            agent = heterogeneous_agent()
+            request = independent_request()
+            if invalid == "duplicate":
+                request.value["items"][1]["itemId"] = request.value["items"][0]["itemId"]
+            elif invalid == "size":
+                request.value["items"] *= 3
+            else:
+                request.headers = {"authorization": "Bearer wrong-key"}
+            app = server.create_app(agent, "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+            async with app.router.lifespan_context(app):
+                with self.assertRaises(HTTPException) as rejected:
+                    await endpoint(request)
+            self.assertEqual(rejected.exception.status_code, 401 if invalid == "auth" else 400)
+            self.assertEqual(agent.forwards, [])
+
+    async def test_new_endpoint_requires_each_deadline_while_single_compatibility_still_accepts_omission(self):
+        agent = heterogeneous_agent()
+        app = server.create_app(agent, "synthetic-test-key")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        single = next(route.endpoint for route in app.routes if route.path == "/v1/systemone")
+        async with app.router.lifespan_context(app):
+            for invalid in (None, 123, "not-an-instant"):
+                request = independent_request()
+                request.value["items"][0]["deadline"] = invalid
+                result = await endpoint(request)
+                self.assertEqual(result["items"][0]["error"]["status"], 400)
+                self.assertIn("result", result["items"][1])
+            request = Request()
+            request.value["state"] = "single compatibility state"
+            del request.value["deadline"]
+            result = await single(request)
+            self.assertIn("tokenWindow", result)
 
 
 if __name__ == "__main__":

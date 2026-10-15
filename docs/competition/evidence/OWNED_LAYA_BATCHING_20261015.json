@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "owned-laya-batching-public-observations",
+  "observedDate": "2026-10-15",
+  "profile": "huawei_ict_agentarts",
+  "artifactName": "laya-batching-validation-20261015.json",
+  "artifactSha256": "48c4514ee49b8106537e6bc882e21de7ea5f20d346ee73fc0adf8669a05c7c08",
+  "startedAt": "2026-10-15T04:00:07.182Z",
+  "finishedAt": "2026-10-15T04:00:12.896Z",
+  "status": "passed_transport_and_forward_count_checks",
+  "sourceBinding": "working-tree-validation-not-an-immutable-release",
+  "repositoryBase": "e467f3262d56c510a62178103dd61fa1d213f97a",
+  "testedSourceHashes": {
+    "apps/agentarts-runtime/src/laya-selector.mjs": "d5f81bd68b53befe7f74be9b57e8c722c212db3e1f4c0fb975731255e91a330b",
+    "scripts/laya/batch-server.py": "bd1413192854b613146fa081662af6f152e93924426678efac58add318c2d374",
+    "tests/manual/agentarts/owned-laya-batching.mjs": "1911b4f30517dbca9a4b3114015cba9be1e752645a8164ae36e15c00f7214eef"
+  },
+  "manualClarificationAfterRun": {
+    "updatedFileSha256": "d8b8f8cc01f2b2b4c43af449fe02e353e1f2f72330af08d043d683a512b308b3",
+    "change": "Only an output limitation string clarified that batchSize counts actual items admitted to forward; multi-question items may encode more rows",
+    "publicPayloadChanged": false,
+    "modelRerunForThisTextChange": false
+  },
+  "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "environment": {
+    "platform": "win32",
+    "architecture": "x64",
+    "torchThreads": 2,
+    "modelServiceInstances": 1,
+    "huaweiContainer": false,
+    "networkSurface": "loopback-only",
+    "cpuAffinityOrQuotaMeasured": false
+  },
+  "measurementForwardCount": 8,
+  "startupWarmupIncludedInForwardCount": false,
+  "maasCalls": 0,
+  "toolExecutions": 0,
+  "offMachineRequests": 0,
+  "groups": [
+    {
+      "size": 2,
+      "sequentialWallMs": 889.0216,
+      "batchWallMs": 889.4944000000032,
+      "sequentialForwardCount": 2,
+      "batchForwardCount": 1,
+      "sequentialHttpSubmissions": 2,
+      "batchHttpSubmissions": 1,
+      "sequentialSdkForwardMs": [394.623, 461.1343],
+      "sharedSdkForwardMs": 880.1406,
+      "sharedForwardMeasurementCount": 1,
+      "batchId": "d2b778eb-5f47-40f8-9afd-8f7478a6f7ef",
+      "actualItemsAdmittedToForward": 2,
+      "submittedItems": 2,
+      "samePublicPayloads": true,
+      "payloadSha256": [
+        "699244393eec8384fd6adda7f138b0d9853c45086f3d8e036715ac40d05d03e0",
+        "8ab71f814f39e93030fcfa5df412a00c4b77cb825cea3fbcb96df9437a82c7a3"
+      ],
+      "encodedTokensPerItem": [274, 320],
+      "droppedTokensPerItem": [0, 0],
+      "truncated": false,
+      "choiceAgreement": [
+        {"probeId": "public-alpha", "sequential": "alpha-observe", "batch": "alpha-observe", "equal": true},
+        {"probeId": "public-beta", "sequential": "beta-keep", "batch": "beta-keep", "equal": true}
+      ]
+    },
+    {
+      "size": 4,
+      "sequentialWallMs": 1761.4832000000024,
+      "batchWallMs": 2161.216999999997,
+      "sequentialForwardCount": 4,
+      "batchForwardCount": 1,
+      "sequentialHttpSubmissions": 4,
+      "batchHttpSubmissions": 1,
+      "sequentialSdkForwardMs": [384.5223, 455.8288, 390.6165, 518.4862],
+      "sharedSdkForwardMs": 2151.8997,
+      "sharedForwardMeasurementCount": 1,
+      "batchId": "224654a7-b3e0-44e9-8ed9-d6c9774a8802",
+      "actualItemsAdmittedToForward": 4,
+      "submittedItems": 4,
+      "samePublicPayloads": true,
+      "payloadSha256": [
+        "699244393eec8384fd6adda7f138b0d9853c45086f3d8e036715ac40d05d03e0",
+        "8ab71f814f39e93030fcfa5df412a00c4b77cb825cea3fbcb96df9437a82c7a3",
+        "3ffbcb97ffc06c084faf6e0ae751cd66134951106f5e31894fce40f04d2ced6c",
+        "0efba116728dd4d0816f2b7ddcffe9fc8c0dbeca3691ea22e68e922a4398e340"
+      ],
+      "encodedTokensPerItem": [274, 320, 275, 347],
+      "droppedTokensPerItem": [0, 0, 0, 0],
+      "truncated": false,
+      "choiceAgreement": [
+        {"probeId": "public-alpha", "sequential": "alpha-observe", "batch": "alpha-observe", "equal": true},
+        {"probeId": "public-beta", "sequential": "beta-keep", "batch": "beta-keep", "equal": true},
+        {"probeId": "public-gamma", "sequential": "gamma-review", "batch": "gamma-review", "equal": true},
+        {"probeId": "public-delta", "sequential": "delta-different", "batch": "delta-different", "equal": true}
+      ]
+    }
+  ],
+  "identityChecks": {
+    "batchEnvelopeMatched": true,
+    "eachItemIdMatchedItsRequest": true,
+    "selectedIdBelongedToOwnCandidateSet": true,
+    "completePublicPayloadHashesMatched": true
+  },
+  "checks": {
+    "boundedNodeTests": {"passed": 17, "f28Integration": 2, "manualFixture": 3, "exporter": 11, "workflowLogProjection": 1},
+    "selectorNodeTests": {"passed": 24, "failed": 0},
+    "pythonServerTests": {"passed": 18, "failed": 0, "weightsLoaded": false},
+    "fullCheck": {
+      "command": "npm run check",
+      "exitCode": 0,
+      "tests": 3122,
+      "passed": 3104,
+      "skipped": 18,
+      "failed": 0,
+      "reportGroups": 37,
+      "logSha256": "f4532ec4313d7f681d3bc6ec7eee27ade006260337299cc2a9b2aa1a4252e8f9",
+      "scope": "Current working-tree source including Node selector/integration tests; Python and standalone manual/exporter checks are recorded separately, not added to this total"
+    }
+  },
+  "productionVerified": false,
+  "completeF20Verified": false,
+  "newImagePublished": false,
+  "newAgentartsDeployment": false,
+  "semanticCorrectnessVerified": false,
+  "latencyImprovementEstablished": false,
+  "limitations": [
+    "One sample per size and mode; not p50, p95 or an SLA",
+    "Two-item wall time was approximately unchanged; four-item batch was slower in this sample",
+    "Choice agreement is diagnostic and is not domain accuracy or calibration evidence",
+    "Windows CPU with two Torch threads is not a Huawei two-vCPU ARM64 benchmark",
+    "Shared SDK forward time is recorded once per batch, never summed across repeated item receipts",
+    "Measurement forward count excludes service startup warmup",
+    "These short public probes do not verify long-input, full F20, all business workflows, or new platform deployment"
+  ],
+  "privacy": {"projection": "fixed public measurements, probe choices, counts and hashes", "credentialsCommitted": false, "privatePathsCommitted": false}
+}

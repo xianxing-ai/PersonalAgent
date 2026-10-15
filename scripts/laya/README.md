@@ -6,6 +6,34 @@
 
 镜像导出信任根、revision、国内构建源、实际平台验证边界见 [镜像 README](../../apps/agentarts-runtime/README.md)。以下较早的本地使用说明和验证记录保留为历史；新设计不是要求每台用户电脑常驻 Laya。
 
+## 2026-10-15 主流程独立项微批（尚未部署）
+
+原 `POST /v1/systemone` 单 state 接口及 `/v1/systemone/batch` 共享 questions 的 multi_state 接口保留。
+新增 `/v1/systemone/independent-batch`，用于主流程同时就绪、各自具有独立 state/questions 的判断：
+
+```text
+request: {model, batchId, items:[{itemId, state, questions, deadline}]}
+response: {batching:"independent_items", batchId, items:[{itemId, result}|{itemId, error}]}
+```
+
+`batchId/itemId` 是内部随机 UUID，不沿用业务 requestId。每项完整编码，保留自己的问题、选项、期限和解码映射；
+把独立编码行拼成张量批做一次 SDK forward，不把多个正文或问题拼成一个判断。
+同一实例仍只有一个 forward，最多使用既有 4-state 容量；health 新增 `independent_items` capability，
+`inferenceCalls` 仍只计实际 forward，不能用回执条数替代。
+
+每项继续校验完整 token 窗口及实际编码量，预检后重查原 deadline；超限/过期不伪造选中结果。
+CPU 已开始时仍不可由 HTTP 抢占，保持 busy 和原取消链。结果必须绑定原 batch/item 身份，
+按各自 questions 解码；缺失、重复或替换身份不能被当作另一个节点的答案。
+
+异构结果的 `inferenceMetrics.forwardScope` 为 `sdk_heterogeneous_forward`；
+`sharedForward` 绑定本批 `batchId` 和实际有效项数。宿主日志另记 HTTP 提交数 `submittedBatchSize`，
+实际有效项数为 `batchSize`，过期项被排除时两者可能不同；多 question 项可能编码为更多行。
+共享指标重复出现在项回执中，计算总量时按 `batchId` 只计一次。
+
+现有单实例服务的公开 2/4 项顺序与合批诊断入口为
+[`owned-laya-batching.mjs`](../../tests/manual/agentarts/owned-laya-batching.mjs)，它不启动模型或出机联网。
+机制、兼容和本轮验证结果见[批处理记录](../../docs/competition/OWNED_LAYA_BATCHING_20261015.md)。
+
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
