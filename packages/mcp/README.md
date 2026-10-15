@@ -52,6 +52,29 @@ await mcp.dispose();
 
 SDK `1.31.0` 的 StreamableHTTP class declaration 与项目 exact optional 检查冲突，采用其公开 runtime export 的窄传输端口，不修改 node_modules、不放宽编译选项。方案与兼容边界见 [ADR-0029](../../docs/adr/0029-remote-mcp-readonly-transport.md) 和[本包记录](../../docs/modules/MOD-06-REMOTE-READONLY-20261015.md)。
 
+### 配置/目录绑定与凭据引用（G11 / G14 子集）
+
+新增 `createBoundRemoteReadonlyMcpHost` 包装原 G10 host，复用原传输、RegisteredTool、Policy 和 ToolGateway。`binding` 为受信配置快照 `{configurationRef,revision,directoryDigest,credential?}`；可选 credential 仅含 `{secretRef,revision,resource,expiresAt}`，没有令牌。`readCurrentBinding()` 必须同步返回当前受信快照或 undefined，`revocationSignal` 负责即时撤销；轮换凭据/配置时必须原子更新相应 revision 和快照，并撤销旧配置。目录摘要可对原 SDK 验证的有序 tools/list 数组调用 `remoteMcpDirectoryDigest(tools)` 得到；目录顺序或内容变化都会拒绝。
+
+凭据读取复用 `@personal-agent/connector-host` 的 `SecretStorePort` 类型（已有内部包，无新增第三方依赖）。只支持已签发给确切 endpoint/resource 的 Bearer access token；宿主负责可信 resource/expiry 元数据与版本，服务端仍须验证 audience。每次 HTTP 请求在异步读取前后重验当前快照、expiry、取消和撤销；不缓存、不记录令牌。POST 受原操作 deadline 约束，额外凭据读取上限 30 秒；原 GET 流随 host stop/dispose 关闭。401/403、缺凭据、非法 token 和 resource 不匹配都拒绝，不使用环境凭据或跟随认证发现。无 OAuth 登录/刷新实现，不声称完整 MCP OAuth 已验收。
+
+绑定入口的工具参数为 **`{bindingRef,arguments}`**；`bindingRef` 绑定 endpoint、服务身份、工具/schema、配置/目录和凭据元数据。宿主应为新 envelope 使用新的工具版本；旧 G10 plain-arguments API 保持原样。只有业务 `arguments` 进入远端 tools/call。Policy 参数摘要覆盖整个 envelope，旧配置 grant 不能覆盖新配置；不改公共授权算法或 wire Schema。
+
+```ts
+import {createBoundRemoteReadonlyMcpHost} from '@personal-agent/mcp';
+const mcp = createBoundRemoteReadonlyMcpHost(trustedBoundConfiguration);
+mcp.register(existingToolGateway);
+await mcp.setEnabled(true);
+await mcp.start({signal, deadline});
+const bindingRef = mcp.currentConfigurationRef(); // 仅 connected 且当前配置有效时返回
+// Runtime 提交 {bindingRef, arguments: approvedBusinessArguments}，沿原 Policy 审批。
+await mcp.dispose();
+```
+
+原 host 的 `expectedDirectoryDigest` 是可选增量：初始化及每次新调用前重读 tools/list，发现静默变化时在 tools/call 前拒绝。绑定 host 将目录变化、当前配置变化或撤销视为永久失效，须以新受信快照重新组装，不能重新 start 恢复旧许可。普通 stop/setEnabled 仍是连接管理，不替代 Policy 撤销；配置管理方必须更新 revision/撤销 signal。会话缓存和 `recoverySupport:false` 不变，不承诺跨重启未知结果恢复。
+
+验证使用本机 HTTP fixture、合成 Bearer token 和合成 SecretStore：授权参数绑定、同名工具旧 grant、目录静默漂移、取凭据期间配置变化/过期/取消/超时/撤销、401/403/重定向、凭据拒绝和脱敏。未接真实安全存储/配置管理、原生设置、Production Competition、OAuth 或实际平台 endpoint。方案见 [ADR-0030](../../docs/adr/0030-remote-mcp-bound-credentials.md)，实际结果见[本包记录](../../docs/modules/MOD-06-BOUND-CREDENTIALS-20261015.md)。
+
 ### 公开参考结果出机
 
 `createPublicReferenceExport`（MCP，policy `3.0.0`）与 `createWorkspaceReferenceExport`（workspace，policy `workspace-reference-3.0.0`）复用现有 trusted `CompetitionToolExport.accepts/project`。无配置默认拒绝。保留原 MCP / `WorkspaceReadResult` schema，workspace 支持安全相对 `.js` 等路径和精确 `maxBytes` 参数，不冒 MCP。

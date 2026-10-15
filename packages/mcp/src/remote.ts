@@ -3,7 +3,7 @@ import {createRequire} from 'node:module';
 import {ProtocolError,validateContract,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext,ToolDescriptor,ToolHost} from '@personal-agent/contracts';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {CallToolResultSchema,ToolListChangedNotificationSchema} from '@modelcontextprotocol/sdk/types.js';
+import {CallToolResultSchema,ListToolsResultSchema,ToolListChangedNotificationSchema} from '@modelcontextprotocol/sdk/types.js';
 import type {FetchLike,Transport} from '@modelcontextprotocol/sdk/shared/transport.js';
 import type {McpHealth} from './index.js';
 
@@ -22,12 +22,17 @@ export interface RemoteReadonlyMcpOptions {
   tool:{remoteName:string;descriptor:Pick<ToolDescriptor,'name'|'version'|'inputSchema'|'outputSchema'|'requiredScopes'>};
   enabled?:boolean;
   fetch?:FetchLike;
+  expectedDirectoryDigest?:string;
 }
 const MAX_BYTES=1024*1024;
-const canonical=(value:unknown):string=>value!==null && typeof value==='object'
+export const canonical=(value:unknown):string=>value!==null && typeof value==='object'
   ? Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : `{${Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>`${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`
   : JSON.stringify(value);
 function fail(code:string):never{throw new ProtocolError(code,'Remote MCP request was rejected or has no confirmed result');}
+export function remoteMcpDirectoryDigest(tools:readonly unknown[]):string{
+  try{return createHash('sha256').update(canonical(ListToolsResultSchema.parse({tools}).tools)).digest('hex');}
+  catch{fail('PROTOCOL_MISMATCH');}
+}
 function check(signal:AbortSignal,deadline:string){
   if(!Number.isFinite(Date.parse(deadline)) || Date.parse(deadline)<=Date.now())fail('TIMEOUT');
   if(signal.aborted)fail('CANCELLED');
@@ -43,6 +48,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       endpoint=new URL(options.endpoint);
       if(endpoint.protocol!=='https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !options.server.name || !options.server.version || !options.tool.remoteName || !descriptor?.requiredScopes.length || descriptor.inputSchema.type!=='object' || descriptor.outputSchema.type!=='object')fail('INVALID_ARGUMENT');
       validateContract('tool',descriptor);
+      if(options.expectedDirectoryDigest!==undefined && !/^[a-f0-9]{64}$/.test(options.expectedDirectoryDigest))fail('INVALID_ARGUMENT');
     }catch{fail('INVALID_ARGUMENT');}
   }
   let enabled=options?.enabled ?? false,disposed=false,busy=false,starting=false,generation=0;
@@ -119,6 +125,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       if(server?.name!==configured.server.name || server.version!==configured.server.version || nextTransport.protocolVersion!=='2025-11-25' || !next.getServerCapabilities()?.tools)fail('PROTOCOL_MISMATCH');
       const listed=await next.listTools(undefined,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
       if(listed.nextCursor)fail('PROTOCOL_MISMATCH');
+      if(configured.expectedDirectoryDigest && remoteMcpDirectoryDigest(listed.tools)!==configured.expectedDirectoryDigest)fail('REVISION_CONFLICT');
       const selected=listed.tools.filter(tool=>tool.name===configured.tool.remoteName);
       if(selected.length!==1 || canonical(selected[0]!.inputSchema)!==canonical(descriptor!.inputSchema) || canonical(selected[0]!.outputSchema)!==canonical(descriptor!.outputSchema))fail('PROTOCOL_MISMATCH');
       check(operation!,context.deadline);if(epoch!==generation)fail('CANCELLED');
@@ -145,6 +152,11 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
     const epoch=generation,active=client!;
     return scoped(context,async()=>{
       const run={binding,generation:epoch,confirmed:false,result:undefined as unknown};runs.set(key,run);
+      if(options!.expectedDirectoryDigest){
+        const listed=await active.listTools(undefined,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
+        if(listed.nextCursor || remoteMcpDirectoryDigest(listed.tools)!==options!.expectedDirectoryDigest){invalidate('REVISION_CONFLICT',epoch);fail('REVISION_CONFLICT');}
+        check(operation!,context.deadline);
+      }
       const result=await active.callTool({name:options!.tool.remoteName,arguments:args},CallToolResultSchema,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
       check(operation!,context.deadline);
       if(epoch!==generation || state!=='connected')fail('CANCELLED');
