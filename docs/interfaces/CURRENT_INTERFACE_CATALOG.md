@@ -32,6 +32,17 @@ ToolGateway 和签名 HostBridge 回执。catalog 新增 designCoverage 和 adap
 旧模板或嵌入式 checkpoint 不在新配置下重放；未知写入继续在原版本核实。
 本机 ARM64 目录验证通过，但 Laya 正反质量和鹈鹕主／影子完整修复仍未通过，镜像未发布。
 接口、148 个绑定及真实失败证据见 [接线说明](../competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
+## 2026-10-15 main 已合入增量（逐项保持原验证边界）
+
+合入基线 `origin/main@8c395f5f` 已包含以下三个工作包；下文历史的“待评审/未集成”是当时记录，不能覆盖本节已合入事实。这里登记公开实现与主线状态，不新增 Core wire capability、数据库或冻结范围。
+
+- **#350 原生 thinking**（`2009d4c1`）：沿现有 ModelGateway、Runtime 辅助子任务工厂及 Desktop 加密配置提供 host-only `nativeReasoning`，开关、支持列表、固定强度、输出预算和恢复身份绑定仍按原契约消费。已合入不证明所有真实模型端点支持；模型/工具链继续 provisional。
+- **#361 请求级观测**（`fef57f61`）：公开 `@personal-agent/agentarts/observability` 的 `validateInvocationIdentity`、`projectTraceObservation`、`projectRunLogObservation`、`buildRunLogPath`，以及现有手工 reader 的 `readAgentArtsTraceObservation`/`readAgentArtsRunLogs`。读取有绝对 deadline、取消、大小上限、单次 GET、禁重定向和脱敏约束；实际 invocation 身份来自受信调用记录。平台日志关联回执不等于完整 trace、命中版本、成本、效果评估或原生知识已验证，缺字段/权限/adapter 仍明确 unknown/unavailable。见 [MOD-32](../modules/MOD-32-AGENTARTS-OBSERVABILITY.md)。
+- **#359 取消后的补丁核实收口**（`8c395f5f`）：现有 `WorkspacePatchReconciliationAdapter.reconcile` 与 `TaskRuntime.reconcileToolExecution` 在 Competition 已申请取消时仍先保存原 applied 结果、普通工具结果与 marker 确认；仅无 started/unknown 工具和云端 inflight/unknown 后确认取消。未知写不重做，已发生副作用保留，补丁成功不等于任务成功；取消受理仍不等于执行已停止。见 [补丁恢复验收](../../packages/coding-tools/ACCEPTANCE-20261013.md)。
+
+## 2026-10-13 Competition 辅助模型原生思考配置（provisional）
+
+[MOD-04A 首批架构落地](../modules/MOD-04A-NATIVE-REASONING-20261013.md) 沿现有 Runtime 工厂、ModelGateway 和 Desktop 加密配置增加 host-only `nativeReasoning`（开关、支持列表、固定强度、输出预算字段）。原生配置与步骤预算独立，恢复绑定配置版本与声明；参数拒绝先于凭据/网络。无新增 wire capability、Schema、数据库迁移或依赖，Core Runtime Profile 1 冻结范围不变。该原始交付阶段真实云调用 0，配置和离线测试不证明真实端点支持；后续已由 #350 合入 main，见上节。边界见 [ADR-0024](../adr/0024-competition-native-reasoning.md)。
 
 ## 2026-10-12 新版真实云场景登记（不提升冻结范围）
 

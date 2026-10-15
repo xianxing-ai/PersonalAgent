@@ -119,10 +119,13 @@ let tray;
 let poll;
 let pinned = false;
 let dragging = false;
+let orbDragRevision = 0;
 let dragOffset;
 let panelDragOrigin;
 let away = 0;
 let audioLevel = 0;
+let levelDecay;
+let lastVoiceLevelPublish = 0;
 let orbStateOverride = null;
 let connectionLabel = '未连接 Runtime';
 let runtimeError = '';
@@ -544,6 +547,28 @@ function snapshot(surface) {
   };
 }
 
+function smoothAudioLevel(raw) {
+  const next = Math.max(0, Math.min(1, Number(raw) || 0));
+  audioLevel = next > audioLevel ? audioLevel + (next - audioLevel) * 0.75 : audioLevel * 0.55 + next * 0.45;
+}
+function armLevelDecay() {
+  clearTimeout(levelDecay);
+  levelDecay = setTimeout(function decay() {
+    audioLevel *= 0.75;
+    if (audioLevel < 0.02) { audioLevel = 0; publish(); return; }
+    publish();
+    levelDecay = setTimeout(decay, 120);
+  }, 180);
+  levelDecay?.unref?.();
+}
+function noteMicLevel(value) { smoothAudioLevel(value); armLevelDecay(); }
+function noteVoiceLevel(value) {
+  smoothAudioLevel(value);
+  armLevelDecay();
+  const nowMs = Date.now();
+  if (nowMs - lastVoiceLevelPublish > 80) { lastVoiceLevelPublish = nowMs; publish(); }
+}
+
 function publish() {
   if (runtimeClosed) return;
   for (const win of [orb, panel, admin, workspace]) {
@@ -568,6 +593,17 @@ function windowFor(mode, bounds, options = {}) {
     });
     win.webContents.on('render-process-gone', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
     win.webContents.on('destroyed', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
+  }
+  if (mode === 'orb') {
+    const invalidateDrag = () => {
+      if (win !== orb) return;
+      orbDragRevision++;
+      if (dragging === true) dragging = false;
+    };
+    win.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => {if (mainFrame) invalidateDrag();});
+    win.webContents.on('render-process-gone', invalidateDrag);
+    win.webContents.on('destroyed', invalidateDrag);
+    win.on('closed', invalidateDrag);
   }
   let presented = false;
   const present = () => {
@@ -2086,13 +2122,16 @@ async function action(event, name, payload) {
   if (name === 'panel.hide' && sender === panel) { await hidePanel(); return; }
   if (name === 'orb.open' && sender === orb) { pinned = true; openPanel(true); publish(); return; }
   if (name === 'orb.dragStart' && sender === orb) {
+    const revision = ++orbDragRevision, dragWindow = orb;
     await hidePanel();
+    if (revision !== orbDragRevision || orb !== dragWindow || dragWindow.isDestroyed()) return;
     dragging = true; const point = screen.getCursorScreenPoint(); const bounds = orb.getBounds();
     dragOffset = {x: point.x - bounds.x, y: point.y - bounds.y}; return;
   }
-  if (name === 'orb.dragEnd' && sender === orb) { dragging = false; desktopHost.snap(orb); away = Date.now() + 400; return; }
+  if (name === 'orb.dragEnd' && sender === orb) { orbDragRevision++; if (dragging === 'panel') return; dragging = false; desktopHost.snap(orb); away = Date.now() + 400; return; }
   if (name === 'panel.dragStart' && sender === panel) {
     if (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)) throw Error('拖动坐标无效');
+    orbDragRevision++;
     dragging = 'panel';
     panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getBounds()};
     return;
@@ -2102,7 +2141,7 @@ async function action(event, name, payload) {
     movePanelGroup(payload);
     return;
   }
-  if (name === 'panel.dragEnd' && sender === panel) { dragging = false; panelDragOrigin = undefined; away = Date.now() + 400; return; }
+  if (name === 'panel.dragEnd' && sender === panel) { orbDragRevision++; dragging = false; panelDragOrigin = undefined; away = Date.now() + 400; return; }
   if (name === 'app.quit') { app.quit(); return; }
   if (name === 'agentarts.configure') {
     if (sender!==admin || !competitionMode || runtimeApplication?.activeTaskCount || liveVoice?.hasActive()
@@ -2680,6 +2719,7 @@ async function action(event, name, payload) {
     runtime.advance(payload); await pumpEvents(); return refresh(payload);
   }
   if (name === 'test.orbLevel' && fakeMode) {
+    clearTimeout(levelDecay); levelDecay = undefined;
     audioLevel = Math.max(0, Math.min(1, Number(payload) || 0)); publish(); return audioLevel;
   }
   if (name === 'test.orbState' && fakeMode) {
@@ -2855,6 +2895,7 @@ async function initializeLiveVoice() {
     createGateway: config => runtimeApplication.createLiveVoiceModel(config),
     createConsumer: createRuntimeClientTranscriptConsumer, client, onUpdate: publish,
     historyStore:createLiveHistoryFileStore(path.join(app.getPath('userData'),'live-history-recovery.json')),
+    onLevel: noteVoiceLevel,
     onTranscript: message => conversations.addLiveMessage(message),
     onTaskSubmitted: ({taskId, goal}) => {taskGoals.set(taskId, goal);conversations.add(taskId, 'panel', goal);},
     readContext: () => JSON.stringify({profile: 'huawei_ict_agentarts',
@@ -2890,7 +2931,7 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler(microphonePermissionGate.request);
   session.defaultSession.setPermissionCheckHandler(microphonePermissionGate.check);
   microphoneCaptureHost = createMicrophoneCaptureHost({permissionGate: microphonePermissionGate,
-    getPanel: () => panel});
+    getPanel: () => panel, onLevel: noteMicLevel});
   ipcMain.on('desktop:microphone-event', (event, message) => {
     if (microphoneCaptureHost.receive(event, message)) publish();
   });

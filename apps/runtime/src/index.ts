@@ -1046,7 +1046,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       this.db.prepare('UPDATE tool_execution_records SET record_json = ? WHERE evidence_id = ? AND task_id = ?')
         .run(JSON.stringify(nextRecord), evidenceId, taskId);
       if (outcome === 'applied') {
-        if (options.deferTaskCompletion && !task.cancelRequested) {
+        if (options.deferTaskCompletion) {
+          // The workflow owner must finish result/marker persistence before either
+          // continuing or confirming cancellation. A tool write is not task success.
           return this.updateTask(taskId, 'waiting_reconciliation', {
             resultSummary: record.toolName + ' reconciliation confirmed; workflow continuation is pending',
             error: null,

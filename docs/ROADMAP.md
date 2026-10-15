@@ -27,6 +27,22 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 [owned-release](competition/evidence/test-image-v3-20261015/owned-release.json)、[平台日志读回](competition/evidence/test-image-v3-20261015/platform-log-readback.json)。
 此前阶段的“未发布/AgentArts未验”不再概括本轮发布与API；完整业务/长期常驻/资源机会策略仍需独立证据。
 
+## 2026-10-15 main 已合入的独立增量
+
+本次合入基线为 `origin/main@8c395f5f`。保留以下独立 PR 的实际 Git 记录，不将源码合入等同真实模型、平台或全部28业务验收：
+
+- #350：Competition 原生思考配置，`2009d4c1`，2026-10-15 18:05:57 +08:00。
+- #361：有界请求 trace 与日志观测，`fef57f61`，2026-10-15 03:37:00 -07:00。
+- #359：取消后的 Competition patch 恢复修复，`8c395f5f`，2026-10-15 03:56:56 -07:00。
+
+上述为提交记录时间，原作者、评审与验证记录保留在对应 PR 和模块文档；本轮合入后的集成检查另记。下列10-13/14记录保留当时状态，其“待集成”不再概括以上已合入增量。
+
+## 2026-10-13 PR #347 首批架构落地（in_progress）
+
+goo122 从 main `3275aa91` 开始 [MOD-04A 原生思考配置](modules/MOD-04A-NATIVE-REASONING-20261013.md)：先更新 F04/F05/F21/F24/F27/F28 与当前代码的对应关系，再沿 Competition 辅助模型路径接通原生开关、强度、输出预算和恢复绑定。采用 [ADR-0024](adr/0024-competition-native-reasoning.md)；无 wire Schema、数据库迁移或新增依赖。真实云调用 0，非作者评审和集成待完成；完整模块状态不提升。
+
+10-14：本包本地实现验证完成；完整 check 累计 3032 通过、31 跳过、0 失败，原生设置烟测、既有 Desktop 两项烟测与三项 Foundation 演示通过。旧 Runtime 时间夹具保持生产期限/步骤/审批断言，使用明确任务预算或 Date 假时钟；跨夜停顿失败日志保留。21 文件进入独立 PR 交付，当前 head/CI/评审以 GitHub 为准；下一包为 F27 版本化上下文与新应用副本删除覆盖。
+
 ### 2026-10-13：Wiki/Skill 已进入 main
 
 [组合工作包](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 已通过 #346→#320 集成至 main `31b0ce5c`；#320 的 `f9f3f390` 经 zemeng5208 有效非作者批准、完整 Foundation 和设计门禁后，由 zemeng5208 合并。main 与该 head 的代码树一致，合并后主线 CI 另行读回。重复 #318 经用户授权关闭，分支和评审记录保留。已交付安装/启停/使用/卸载、Wiki 来源监视、应用备份协调、索引、只读插件和受信配对；真人原生流程、真实云消费、跨库派生副本与完整 LLM Wiki 仍待对应验收。MOD-06/07/08/09 保持 in_progress、接口 provisional，不把本组合完成等同完整模块 done。下文旧阶段记录保留为历史快照。

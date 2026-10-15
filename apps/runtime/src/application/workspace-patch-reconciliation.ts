@@ -292,6 +292,7 @@ export class WorkspacePatchReconciliationAdapter {
       if (priorResult) {
         this.persistCompetitionResult(taskId, intent, priorResult);
         await this.acknowledge(intent, runId, priorResult);
+        this.finishCompetitionCancellation(taskId, intent);
         return {taskId, runId, result: priorResult, task: this.runtime.getTask(taskId),
           evidence: this.runtime.readEvidence(taskId)};
       }
@@ -322,6 +323,7 @@ export class WorkspacePatchReconciliationAdapter {
           this.readIntent(taskId, runId);
           this.persistCompetitionResult(taskId, intent, concurrentResult);
           await this.acknowledge(intent, runId, concurrentResult);
+          this.finishCompetitionCancellation(taskId, intent);
           return {taskId, runId, result: concurrentResult, task: this.runtime.getTask(taskId),
             evidence: this.runtime.readEvidence(taskId)};
         }
@@ -342,13 +344,12 @@ export class WorkspacePatchReconciliationAdapter {
         if (result.currentSha256 !== (result.outcome === 'applied' ? result.afterSha256 : result.beforeSha256)) {
           throw new ProtocolError('RESULT_UNKNOWN', 'Patch outcome does not match the independently read source hash');
         }
-        if (result.outcome === 'applied' && (task.cancelRequested || result.byteLength === undefined)) {
-          // The core completion API cannot project a cancelled applied workflow without
-          // completing it. Keep the marker and original task until that can be proved safely.
+        if (result.outcome === 'applied' && result.byteLength === undefined) {
+          // Do not invent the ordinary tool result needed for durable acknowledgement.
           return {taskId, runId, result, task: this.runtime.getTask(taskId), evidence: this.runtime.readEvidence(taskId)};
         }
       }
-      const nextTask = this.runtime.reconcileToolExecution(taskId, runId, result.outcome, result, [],
+      this.runtime.reconcileToolExecution(taskId, runId, result.outcome, result, [],
         intent.competition && result.outcome === 'applied' ? {deferTaskCompletion: true} : {});
       const persistedRecord = this.runtime.readToolExecutions(taskId).find(item => item.evidenceId === runId);
       const persisted = persistedRecord && savedResult(this.runtime, taskId, runId, intent, persistedRecord);
@@ -357,10 +358,21 @@ export class WorkspacePatchReconciliationAdapter {
       }
       this.persistCompetitionResult(taskId, intent, persisted);
       await this.acknowledge(intent, runId, persisted);
-      return {taskId, runId, result: persisted, task: nextTask, evidence: this.runtime.readEvidence(taskId)};
+      this.finishCompetitionCancellation(taskId, intent);
+      return {taskId, runId, result: persisted, task: this.runtime.getTask(taskId), evidence: this.runtime.readEvidence(taskId)};
     }).finally(() => this.active.delete(taskId));
     this.active.set(taskId, execution);
     return execution;
+  }
+
+  private finishCompetitionCancellation(taskId: string, intent: PatchIntent): void {
+    const task = this.runtime.getTask(taskId);
+    if (!intent.competition || task.state !== 'waiting_reconciliation' || !task.cancelRequested) return;
+    this.assertConfirmedCompetitionResult(taskId, intent.runId);
+    if (this.runtime.readToolExecutions(taskId).some(record => record.state === 'started' || record.state === 'unknown')
+      || this.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown')
+      || this.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) return;
+    this.runtime.confirmCancellation(taskId);
   }
 
   private persistCompetitionResult(taskId: string, intent: PatchIntent, result: WorkspacePatchReconciliationResult): void {
