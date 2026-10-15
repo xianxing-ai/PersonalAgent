@@ -1,5 +1,11 @@
 # 协作开发规范
 
+## 当前各 MOD 自主接线交付（2026-10-15）
+
+每个 MOD 的负责人自己完成实现、公开契约、实际调用方接线、必要消费测试、Evidence 和文档，再交付可审查变更。根 composition 负责协调共享配置/依赖/边界，不接收“只有端口，中央统一代接代验”的完成声明。可在协调共享文件后随模块补所需注册、配置、UI及宿主消费；保留单一 Runtime/Policy/ToolGateway/Evidence/Scheduler。
+
+新的十项具体分工见 [接线包](docs/competition/COLLABORATOR_WIRING_PACKAGE.md)，全 MOD 输入输出、入口、命令与缺项见 [交付清单](docs/modules/CURRENT_MOD_WIRING_HANDOFF.md)。每包交回源码SHA/公开版本/调用方、UTC/wall/exit/logSHA、实际任务run/Evidence或目标读回、未验项；fixture/realHost/realAccount/physicalDevice分开。
+
 版本：0.7 · 更新：2026-10-12 · 状态：只实施 Competition Profile 的多人独立开发与分层接口冻结基线
 
 ## 1. 决策与职责

@@ -1,5 +1,38 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-15 当前真实证据与各MOD消费责任（不扩冻结）
+
+[完整实测汇总](../competition/evidence/test-image-v3-20261015/full-workflow-results.json) 与 [发布回执](../competition/evidence/test-image-v3-20261015/owned-release.json) 证明新ARM64 SWR/云精确版本目录、真实AgentArts新代理及同版镜像本机Docker+本机Runtime/Laya两条公共编码主影子/CAS，共41条Evidence。两条全链不在远端Runtime跑；各分支父succeeded，协调锚点created。Laya全链输入182–618ms未达150ms，未校准站点真实升级DeepSeek。首轮鹈鹕partial失败保留。
+
+所有新增工作流、签名host、平台服务和主动接口保持provisional；缺真实provider/账号/授权的具体能力仍unavailable。28图185节点保留且串行，不能当全部真实业务完成；日常影子收益机会开关尚未验。本节覆盖后续下文“未发布/主影子未通过”等早期时间状态，但不覆盖原始失败，也不新增wire冻结。
+
+每个MOD负责人自己接实际调用方、跑必要消费测试并交Evidence/文档，具体唯一责任与公开依赖见 [十项接线包](../competition/COLLABORATOR_WIRING_PACKAGE.md)、[全MOD交接](../modules/CURRENT_MOD_WIRING_HANDOFF.md)。平台MCP、原生知识、trace与效果评估应逐面绑定受信adapter并独立读回；本机Wiki/本地MCP或模型代理均不能代替相应平台验收。
+
+
+## 2026-10-15 V3 主动责任与通知接线（provisional）
+
+新增接口复用原 Runtime SQLite、ConnectorHost、Policy/ToolGateway、Evidence 和 Scheduler：
+`createRuntimeProactiveConnectorHost`、`createRuntimeNotificationHost`、`createProactiveWorkflowSession`
+由 `@personal-agent/runtime/application` 导出，`createRuntimeAtomicStatePort` 由 Runtime 公开入口导出。
+镜像 `proactiveVersion:1` describe/advance 继续走原 `/invocations`，输入与结果签名绑定原
+task/session/controlRevision/deadline；签名不授予工具权限。主动来源先持久化事件批次再推进 cursor，
+未知操作读回原执行；无人值守/归来不续期限、不重发通知。静默 feed、用户打扰配额和多渠道同轮计数
+使用同一原子状态，旧通道预占在实际发送前按最新策略复查。
+完整形状、端口所有权和缺口见 [协作者接口](../competition/PROACTIVE_COLLABORATOR_INTERFACES.md)，
+实现与验证记录见 [V3 测试说明](../competition/TEST_IMAGE_V3.md)。这些增量没有冻结新的 Core wire
+operation，没有新增数据库迁移；离线真实 HTTP/SQLite 集成和容器目录检查不等于账号、设备、平台部署
+或全部 28 条业务链验收。下节是早期全图增量的历史状态，不覆盖后续独立回执。
+
+## 2026-10-15 本机 Laya／镜像全图增量（provisional）
+
+Owner 指定本机 Laya，28 项工作流及 185 节点仍由自有镜像编排，单图串行推进。
+`decision.choose_candidate` 与逐节点 `workflow.host.*` / `workflow.guard.*` 复用现有 Runtime、Policy、
+ToolGateway 和签名 HostBridge 回执。catalog 新增 designCoverage 和 adapterRequirements；模板 `2026.10.15.2`
+保留原图决策要点、模型分工、汇合及验收语义，提供逐图摘要。没有新增本地 wire 字段、数据库迁移或冻结能力。
+旧模板或嵌入式 checkpoint 不在新配置下重放；未知写入继续在原版本核实。
+本机 ARM64 目录验证通过，但 Laya 正反质量和鹈鹕主／影子完整修复仍未通过，镜像未发布。
+接口、148 个绑定及真实失败证据见 [接线说明](../competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
+
 ## 2026-10-12 新版真实云场景登记（不提升冻结范围）
 
 自有 ARM64 镜像源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 的未合并分支已取得真实 Huawei WSS → MaaS → 本地 Policy / 生产 workspace.read_text → Evidence → 云端续答证据，任务 succeeded，执行 1 次，Evidence 1 条，HTTPS 应用调用 0。重开 Runtime Application 后仅持久读回通过，不重放工具；真实云端 `/invocations/bindings?endpoint=Latest` 发现 8 Workflow / 3 Controller。详见 [验收记录](../modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
@@ -24,7 +57,7 @@ WSS主通道、显式HTTPS备用、同会话复用、发送前持久身份与未
 知识受控写入和固定 MCP/Skills已有受限增量，以当前公开源码/README为准；本文较旧历史矩阵不能抹去这些增量，也不能据存在代码冻结整个模块。合并确认是开发规则，不成为产品运行时授权或接口冻结证据。
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
 
 2026-10-11 [MOD-08O](../modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md) 在 PR #322 上继续：
 peer 可选 readCitation、桥接版本 2（PA2，旧 PA1 仅检索）与 Runtime `wikiSource.acquireWiki`。

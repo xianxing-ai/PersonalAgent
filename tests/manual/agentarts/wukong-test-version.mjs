@@ -246,11 +246,11 @@ export async function runWukongTestVersion(config) {
     const generationClient=new Client(generationApp);await generationClient.connect();
     const generationTask=generationApp.runtime.submitTask({goal:'Generate Wukong riding the white dragon horse from an empty drawing scaffold',conversationId:'generation',idempotencyKey:randomUUID()});
     await timed('phase','initial_generation',()=>generationApp.runtime.runTask(generationTask.taskId,async worker=>{const outcome=await runAgent(worker,{
-      goal:'Read wukong.html and replace MODEL_GENERATION_ANCHOR with your ORIGINAL complete detailed SVG artwork of 孙悟空骑白龙马 (Sun Wukong riding the white dragon horse). Create the actual drawing; no existing drawing is supplied. '+ 
-        'Preserve the HTML scaffold. Use only inline SVG and CSS; no script, event handlers, external resources, foreignObject or network access. '+ 
-        'SVG must have visible groups with ids wukong and white-dragon-horse, containing the actual rider and horse artwork. '+ 
-        'Put each group inside its own animated parent group with id rider-motion and horse-motion. Use animateTransform children with begin="0s", repeatCount="indefinite", dur between 0.5s and 4s and nonconstant translate values. '+ 
-        'Give these animation elements ids rider-bob and horse-gallop respectively. Include SVG title identifying 孙悟空骑白龙马. '+ 
+      goal:'Read wukong.html and replace MODEL_GENERATION_ANCHOR with your ORIGINAL complete detailed SVG artwork of 孙悟空骑白龙马 (Sun Wukong riding the white dragon horse). Create the actual drawing; no existing drawing is supplied. '+
+        'Preserve the HTML scaffold. Use only inline SVG and CSS; no script, event handlers, external resources, foreignObject or network access. '+
+        'SVG must have visible groups with ids wukong and white-dragon-horse, containing the actual rider and horse artwork. '+
+        'Put each group inside its own animated parent group with id rider-motion and horse-motion. Use animateTransform children with begin="0s", repeatCount="indefinite", dur between 0.5s and 4s and nonconstant translate values. '+
+        'Give these animation elements ids rider-bob and horse-gallop respectively. Include SVG title identifying 孙悟空骑白龙马. '+
         'Use workspace.preview_text_patch then workspace.apply_text_patch with the actual SHA and exact original anchor. Finish only after the write tool confirms.',
       initialMessages:[{role:'system',content:'Tool proposal contains exactly toolName,toolVersion,arguments. Do not claim success without the actual tool receipt.'}],
       model:executor,tools:{list:()=>generationTools.map(t=>t.descriptor),invoke:req=>invoke(generationApp,generationClient,req)},
@@ -429,5 +429,3 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const report=await runWukongTestVersion(JSON.parse(Buffer.concat(chunks).toString('utf8')));
   console.log(JSON.stringify({status:report.status,directory:report.directory,summary:report.summary,failure:report.failure},null,2));
 }
-
-

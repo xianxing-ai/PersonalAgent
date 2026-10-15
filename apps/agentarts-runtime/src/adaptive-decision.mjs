@@ -102,4 +102,3 @@ export function createAdaptiveWorkflowSelector({laya,teacher,store,modelRevision
         throw new ProtocolError('REVISION_CONFLICT','Verified experience already bound');
     }};
 }
-

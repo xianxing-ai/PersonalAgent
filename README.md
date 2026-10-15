@@ -1,13 +1,35 @@
 # PersonalAgent
 
-## 2026-10-09 当前交付与目标设计
+<!-- current-design-alignment-20261015 -->
+## 当前设计、实现与验收入口（2026-10-15）
+
+当前工作包按[详细设计](docs/design/CURRENT_DESIGN_20261015.md)推进：本机 Laya、全部28图/185节点的自有 ARM64 镜像串行编排，
+未合格判断升级 DeepSeek，DeepSeek 经 AgentArts 模型代理，语音复用百炼既有端口。架构尚未最终定型。
+主动来源跟踪用户责任/关注，贯穿原文、Goal、记忆与上下文；无人值守继续已有授权工作，归来汇总有效变化；
+静默保留 feed，用户控制打扰次数/窗口/渠道，语音最终确认由可信宿主验证。
+高级影子开关并入已有判断，主任务优先，按实际机会资源/收益选择；只有明确双方案比较任务等双方，
+其他任务可先交付已验证主结果。这是当前设计，真实机会并行/主优先资源调度尚未验收。
+
+SWR `local-laya-v3-244ca434` 已发布；云指定版本 `arm64-local-v3-244ca434` 目录和关联日志已验。
+两案例的完整执行表面为本机同版镜像、本机 Runtime/Policy/工具/Laya 与远端 AgentArts 模型代理；
+Wukong flow167.432s、Pelican第二轮81.611s，41条持久工具Evidence，首轮Pelican partial保留。
+分支父任务成功、协调锚点仍created；28目录不等于28业务通过。6次本机判断182–618ms未达150ms，
+各案例3裁决均升级DeepSeek，未证明减少高级模型调用或训练。
+
+查看[逐图状态](docs/design/WORKFLOW_STATUS_20261015.md)、[运行指南](docs/competition/TEST_IMAGE_V3_RUN.md)、
+[最新真实汇总](docs/competition/evidence/test-image-v3-20261015/full-workflow-results.json)、
+[新分工与接线包](docs/competition/COLLABORATOR_WIRING_PACKAGE.md)及[所有历史设计导航](docs/design/README.md)。
+以下带日期的旧设计、发布和测试保持原始适用范围，冲突口径不作为当前要求；PR/合并状态另按实际Git回执记录。
+
+> 2026-10-15 当前工作流实现入口：[本机 Laya + 镜像内全部工作流与协作者接线](docs/competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
+> 早期10-15部署修订已由上述当前设计和实际SWR发布回执更新；原本机Laya/串行边界保留。
+
+## 历史交付与目标设计（2026-10-09）
 
 当前工作包同时提交自有 AgentArts 镜像源码、公开接口与必要接线，完整常驻自主设计和 Wiki 记忆交接。`97aa51a6` 预览镜像已发布到 GHCR，提供 `/ws` 与受保护状态查询；当前源码已接线 WSS 客户端与显式 HTTPS 备用、本地 Runtime 的审批/工具/证据和未知结果防重发。已发布 AMD64/ARM64 镜像分别通过容器测试 21/21 与生产入口合成 TLS 9 次请求；公网 Upgrade、真实华为验收、自动 status 协调、持久云端恢复、Wiki 自动接入和完整常驻监管仍待完成。详细实现见 [接口说明](docs/competition/OWNED_IMAGE_INTERFACES.md)，固定来源、digest 与下载见 [新版发布记录](docs/competition/OWNED_IMAGE_WSS_RELEASE_20261009.md) 和 [GitHub 预发布页](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-97aa51a6)；GHCR 发布、PR 合并与真实华为验收分别记录。
 
 使用入口：[当前设计与状态](docs/CURRENT_DESIGN_CONTEXT.md)、[镜像接口](docs/competition/OWNED_IMAGE_INTERFACES.md)、[GHCR 分享](docs/competition/OWNED_IMAGE_SHARING.md)。Wiki 由 goo122 实施；两位协作者必须在自己的电脑阅读当前设计并确认/审批，禁止强制合并或管理员绕过。下文 2026-10-07 的提交和验收记录是历史基线。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 面向 Windows 的持续型私人 Agent 助理：以动态悬浮球为入口，结合版本化个人世界状态、AgentArts 云端编排、平台连接器与受控电脑操作，提供主动提示和有限自动执行。
 
@@ -26,7 +48,7 @@
 - [华为 ICT AgentArts Competition Profile](docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)：参赛主路径、比赛与可选 Local 边界、实施顺序和验收矩阵。
 - [产品需求 PRD](docs/PRD.md)：产品范围、需求编号、优先级和验收条件。
 - [架构设计](docs/ARCHITECTURE.md)：模块、进程、协议、数据与技术验证项。
-- [模块分工](docs/MODULE_ASSIGNMENTS.md)：主模块、DEV-WORKFLOWS 及独占工作面；三人各自负责完整交付，当前合并须 goo122 与 Potatos498 两人完成本机阅读确认及审批，禁止强制合并或管理员绕过。
+- [模块分工](docs/MODULE_ASSIGNMENTS.md)：主模块、DEV-WORKFLOWS 及独占工作面；三人各自负责完整交付，当前合并须三名登记协作者中至少一位非作者对当前提交有效批准，并满足 CONTRIBUTING 的检查门槛，禁止强制合并或管理员绕过。
 - [公共开发协议](docs/DEVELOPMENT_PROTOCOL.md)：`goo122` 维护的任务、事件、工具、连接器契约与联调交付要求。
 - [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)：逐接口冻结状态、生产可用性、证据和未提供能力。
 - [协作开发规范](CONTRIBUTING.md)：任务分配、分支、PR、评审和完成标准。

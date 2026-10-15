@@ -1,0 +1,580 @@
+{
+  "schemaVersion": 1,
+  "kind": "v3_existing_evidence_checkpoint",
+  "sourceScope": "Historical snapshots preserved; final frozen production source passed prebuild repository gate. Documentation-only changes after gate do not claim image or live model acceptance.",
+  "finalRepositoryGateAfterLaterChanges": "passed",
+  "integrationExecutedInRecordedPassingFullGate": true,
+  "sourceShaAtRecordedGate": null,
+  "sourceShaCapture": "not recorded here; do not substitute current working tree",
+  "runs": [
+    {
+      "stage": "v3.full_repository_check",
+      "startedAtUtc": "2026-10-15T12:48:30.4107481Z",
+      "finishedAtUtc": "2026-10-15T12:54:04.9195223Z",
+      "wallMs": 334489.757,
+      "exitCode": 1,
+      "command": "npm run check",
+      "commandCapture": "repository_script",
+      "log": ".cache/test-image-v3-check.log",
+      "logBase": "repository_root",
+      "logSha256": "8821764d462c6dd7f72cc387d3eb51e5cf69a470f758901e5a7b686e07bf3c4a",
+      "summary": {
+        "tests": 3266,
+        "runners": 36,
+        "pass": 3247,
+        "fail": 1,
+        "skipped": 18,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "v3.desktop_failure_targeted_reproduction",
+      "startedAtUtc": "2026-10-15T12:54:29.1112121Z",
+      "finishedAtUtc": "2026-10-15T12:54:29.5590355Z",
+      "wallMs": 438.7984,
+      "exitCode": 0,
+      "command": null,
+      "commandCapture": "exact_command_not_in_phase_record",
+      "log": ".cache/test-image-v3-desktop-retest.log",
+      "logBase": "repository_root",
+      "logSha256": "7821be6c0faac0d75561786c187744cd4eebfc33d4b9ecb7ff04d541d9cf5c32",
+      "summary": {
+        "tests": 3,
+        "runners": 1,
+        "pass": 3,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "desktop-settings-render-ipc-target",
+      "startedAtUtc": "2026-10-15T13:11:45.3768196Z",
+      "finishedAtUtc": "2026-10-15T13:11:49.3042387Z",
+      "wallMs": 3915.6369,
+      "exitCode": 1,
+      "command": null,
+      "commandCapture": "exact_command_not_in_phase_record",
+      "log": ".cache/desktop-settings-target.log",
+      "logBase": "repository_root",
+      "logSha256": "a2eab35ba5332cfff6a6adb2183f1085f32f786114e34220969355fc23b38868",
+      "summary": {
+        "tests": 27,
+        "runners": 1,
+        "pass": 26,
+        "fail": 1,
+        "skipped": 0,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "desktop-settings-render-ipc-target-fixed",
+      "startedAtUtc": "2026-10-15T13:12:21.9172671Z",
+      "finishedAtUtc": "2026-10-15T13:12:24.4683893Z",
+      "wallMs": 2540.7172,
+      "exitCode": 0,
+      "command": null,
+      "commandCapture": "exact_command_not_in_phase_record",
+      "log": "desktop-settings-target-fixed.log",
+      "logBase": "this_evidence_directory",
+      "logSha256": "67023d26fa26c349e1b459de82c7fb9016044f0fa823acd156879a9b52dc9e62",
+      "summary": {
+        "tests": 27,
+        "runners": 1,
+        "pass": 27,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "v3.final_source_check",
+      "startedAtUtc": "2026-10-15T13:14:59.2384397Z",
+      "finishedAtUtc": "2026-10-15T13:20:32.034183Z",
+      "wallMs": 332778.0177,
+      "exitCode": 1,
+      "command": "npm run check",
+      "commandCapture": "repository_script",
+      "log": ".cache/test-image-v3-final-source-check.log",
+      "logBase": "repository_root",
+      "logSha256": "627cad16e43ff2e01844a468a5e2aa706ac55b33e7e8cb66e3d43ad9bc126a8e",
+      "summary": {
+        "tests": 3274,
+        "runners": 36,
+        "pass": 3252,
+        "fail": 3,
+        "skipped": 19,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "desktop-quit-and-sis-config-consumer-regression",
+      "startedAtUtc": "2026-10-15T13:21:34.5803917Z",
+      "finishedAtUtc": "2026-10-15T13:21:34.9910358Z",
+      "wallMs": 401.2502,
+      "exitCode": 0,
+      "command": null,
+      "commandCapture": "exact_command_not_in_phase_record",
+      "log": "desktop-quit-sis-consumer-target.log",
+      "logBase": "this_evidence_directory",
+      "logSha256": "5de12cc3a2de8f51e3fd57dfbab9e84ba80ee999cba5476a67390f2e2352a234",
+      "summary": {
+        "tests": 21,
+        "runners": 1,
+        "pass": 21,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "v3.reasoning-protocol-targets",
+      "startedAtUtc": "2026-10-15T13:22:14.9080028Z",
+      "finishedAtUtc": "2026-10-15T13:22:18.0692047Z",
+      "wallMs": 3152.7336,
+      "exitCode": 0,
+      "command": null,
+      "commandCapture": "exact_command_not_in_phase_record",
+      "log": ".cache/v3-reasoning-protocol-targets.log",
+      "logBase": "repository_root",
+      "logSha256": "ea2fca7ac48433cd2d775a11b03aa7bcbbd95ec83186cfe369947e88ee63d6c3",
+      "summary": {
+        "tests": 25,
+        "runners": 1,
+        "pass": 25,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "v3.final_check_after_consumer_fix",
+      "startedAtUtc": "2026-10-15T13:22:28.0579997Z",
+      "finishedAtUtc": "2026-10-15T13:28:09.3527356Z",
+      "wallMs": 341279.292,
+      "exitCode": 0,
+      "command": "npm run check",
+      "commandCapture": "repository_script",
+      "log": ".cache/test-image-v3-final-check-fixed.log",
+      "logBase": "repository_root",
+      "logSha256": "38e82681aef7894228b236bf8872ec1583cf00571151d6a78c836ad0c9d7d586",
+      "summary": {
+        "tests": 3320,
+        "runners": 37,
+        "pass": 3301,
+        "fail": 0,
+        "skipped": 19,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "full_gate_at_execution_snapshot_before_later_proxy_and_timing_changes"
+    },
+    {
+      "stage": "v3.proxy-bearer-startup-regression",
+      "startedAtUtc": "2026-10-15T13:38:01.8168448Z",
+      "finishedAtUtc": "2026-10-15T13:38:04.8211404Z",
+      "wallMs": 2992.9145,
+      "exitCode": 0,
+      "command": null,
+      "commandCapture": "exact_command_not_in_phase_record",
+      "log": "v3-proxy-bearer-startup-regression.log",
+      "logBase": "this_evidence_directory",
+      "logSha256": "8f178a05fd30519c56c3e9a0dd703a556bb490d2ee91a5ad424850e988eca996",
+      "summary": {
+        "tests": 13,
+        "runners": 1,
+        "pass": 13,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "v3.durable-timing-and-proxy-targets",
+      "startedAtUtc": "2026-10-15T13:40:34.4688879Z",
+      "finishedAtUtc": "2026-10-15T13:40:37.6712634Z",
+      "wallMs": 3193.4592,
+      "exitCode": 0,
+      "command": null,
+      "commandCapture": "exact_command_not_in_phase_record",
+      "log": "v3-durable-timing-and-proxy-targets.log",
+      "logBase": "this_evidence_directory",
+      "logSha256": "2c2368e45055d6efd6d7c91f1847e8ee5488af819caf950ec8d964b914f98855",
+      "summary": {
+        "tests": 15,
+        "runners": 1,
+        "pass": 15,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "historical_run_at_its_own_source_snapshot"
+    },
+    {
+      "stage": "v3.pre_final_build_full_check",
+      "startedAtUtc": "2026-10-15T13:43:24.2365036Z",
+      "finishedAtUtc": "2026-10-15T13:48:59.0410310Z",
+      "wallMs": 334790.382,
+      "exitCode": 0,
+      "command": "npm run check",
+      "commandCapture": "repository_script",
+      "log": "test-image-v3-prebuild-final-check.log",
+      "logBase": "this_evidence_directory",
+      "logSha256": "fe4047fe8ba56bfff1f37acd06abbeb55ddafb2b87b0461226ec8445a458cf53",
+      "summary": {
+        "tests": 3321,
+        "runners": 37,
+        "pass": 3302,
+        "fail": 0,
+        "skipped": 19,
+        "cancelled": 0,
+        "suites": 0
+      },
+      "scope": "frozen_production_source_gate_before_final_image_build"
+    }
+  ],
+  "earlierDesktopFailuresPreserved": true,
+  "realDeepSeek": "waiting_for_AgentArts_permission_propagation_no_success_claim",
+  "realWukong": "pending",
+  "published": false,
+  "finalArtifact": "pending",
+  "voiceHandshake": {
+    "kind": "real_bailian_native_realtime_handshake",
+    "startedAtUtc": "2026-10-15T13:03:19.497Z",
+    "finishedAtUtc": "2026-10-15T13:03:20.335Z",
+    "wallMs": 837.6694000000001,
+    "httpStatus": 101,
+    "status": "session_configured",
+    "events": [
+      {
+        "type": "session.created",
+        "observedAtUtc": "2026-10-15T13:03:20.057Z",
+        "wallMs": 559.8278
+      },
+      {
+        "type": "session.updated",
+        "observedAtUtc": "2026-10-15T13:03:20.258Z",
+        "wallMs": 761.1293999999999
+      }
+    ],
+    "microphoneOpened": false,
+    "audioSent": false,
+    "devicePlayback": false,
+    "responseProduced": false,
+    "usage": null,
+    "sourceReportSha256": "db53d84dfc1c11c70598c466d430d4caad1f6396c276191d87d423000e50c7fb",
+    "scope": "HTTP101/session configuration only; no microphone, audio, output or end-to-end voice acceptance"
+  },
+  "nativeLayaHistory": [
+    {
+      "stage": "v3.native_cuda_laya_serial_packed",
+      "startedAtUtc": "2026-10-15T13:30:02.6165453Z",
+      "finishedAtUtc": "2026-10-15T13:30:03.2431028Z",
+      "wallMs": 614.8824,
+      "exitCode": -1073740791,
+      "log": ".cache/test-image-v3-native-laya.log",
+      "logBase": "repository_root",
+      "logSha256": "7393ba4f11e19a5f6bee10ed995b0d959a52c4470855f6d68d4d1e34e26cb70f",
+      "rootCause": "unconfirmed",
+      "status": "process_abnormal_exit"
+    },
+    {
+      "stage": "v3.native_cuda_laya_serial_packed_pipe",
+      "startedAtUtc": "2026-10-15T13:32:27.3174387Z",
+      "finishedAtUtc": "2026-10-15T13:32:48.9981418Z",
+      "wallMs": 21677.4522,
+      "exitCode": -1073740791,
+      "log": ".cache/test-image-v3-native-laya-pipe.log",
+      "logBase": "repository_root",
+      "logSha256": "576e185c943353a0fb1cf432a3961775e920c81b394eb461961b12e3f7c243e7",
+      "rootCause": "unconfirmed",
+      "status": "process_abnormal_exit"
+    },
+    {
+      "stage": "v3.native_cuda_laya_serial_packed_traced",
+      "startedAtUtc": "2026-10-15T13:38:24.6915879Z",
+      "finishedAtUtc": "2026-10-15T13:38:56.0512185Z",
+      "wallMs": 31356.8089,
+      "exitCode": 0,
+      "log": ".cache/test-image-v3-native-laya-traced.log",
+      "logBase": "repository_root",
+      "logSha256": "0b912df4ac6e42f2a78a38a79a79519168a2cb39956173f98a5d5ff1c2fcebd3",
+      "rootCause": null,
+      "status": "completed_not_quality_acceptance"
+    },
+    {
+      "stage": "v3.native_cuda_laya_serial_packed_final",
+      "startedAtUtc": "2026-10-15T13:42:02.3581933Z",
+      "finishedAtUtc": "2026-10-15T13:42:32.4083679Z",
+      "wallMs": 30046.9602,
+      "exitCode": 0,
+      "log": ".cache/test-image-v3-native-laya-final.log",
+      "logBase": "repository_root",
+      "logSha256": "2dea128bab4f5f32a7273a0e33cf91ebbdbec831ce74f36f939c5e9d00e3d2e2",
+      "rootCause": null,
+      "status": "completed_not_quality_acceptance"
+    }
+  ],
+  "nativeLaya": {
+    "evidence": "local-laya-native-comparison.json",
+    "sha256": "cb9ab6eea7dd29ee62b6b0ec917d9bd22cb0ca0ef8e3d6de848beddff1e434c2",
+    "scope": "Native Windows actual hardware, no CPU/memory quota; warm selector + loopback HTTP + complete model inference; startup excluded",
+    "qualityVerified": false,
+    "device": "cuda",
+    "modelInstancesAtOnce": 1,
+    "modelManifestSha256": "ecf84fda3ac53aba0f1cdc8705c9ddc70f8910d4086e304707e0883eb9145e20",
+    "arms": [
+      {
+        "threads": 1,
+        "policy": "sequential",
+        "precision": {
+          "autocastEnabled": true,
+          "autocastDtype": "torch.bfloat16"
+        },
+        "summary": {
+          "serial": {
+            "samples": 20,
+            "p50Ms": 23.257799999999406,
+            "p95Ms": 25.7507999999998,
+            "maximumMs": 26.94670000000042,
+            "allBelow150Ms": true
+          },
+          "parallelRequests": {
+            "samples": 20,
+            "p50Ms": 63.240999999999985,
+            "p95Ms": 89.22220000000016,
+            "maximumMs": 99.73099999999977,
+            "allBelow150Ms": true
+          }
+        },
+        "choicesStable": true,
+        "groups": [
+          {
+            "round": 0,
+            "mode": "serial",
+            "totalMs": 101.76419999999962
+          },
+          {
+            "round": 0,
+            "mode": "parallel_requests",
+            "totalMs": 100.51260000000002
+          },
+          {
+            "round": 1,
+            "mode": "serial",
+            "totalMs": 93.92339999999967
+          },
+          {
+            "round": 1,
+            "mode": "parallel_requests",
+            "totalMs": 89.56970000000001
+          },
+          {
+            "round": 2,
+            "mode": "serial",
+            "totalMs": 92.55199999999968
+          },
+          {
+            "round": 2,
+            "mode": "parallel_requests",
+            "totalMs": 85.34519999999975
+          },
+          {
+            "round": 3,
+            "mode": "serial",
+            "totalMs": 91.57870000000003
+          },
+          {
+            "round": 3,
+            "mode": "parallel_requests",
+            "totalMs": 89.50720000000001
+          },
+          {
+            "round": 4,
+            "mode": "serial",
+            "totalMs": 84.49879999999939
+          },
+          {
+            "round": 4,
+            "mode": "parallel_requests",
+            "totalMs": 86.01100000000042
+          }
+        ],
+        "inputBindings": [
+          {
+            "input": "public-alpha",
+            "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+            "encodedTokens": 274
+          },
+          {
+            "input": "public-beta",
+            "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+            "encodedTokens": 320
+          },
+          {
+            "input": "public-gamma",
+            "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+            "encodedTokens": 275
+          },
+          {
+            "input": "public-delta",
+            "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+            "encodedTokens": 347
+          }
+        ]
+      },
+      {
+        "threads": 1,
+        "policy": "packed",
+        "precision": {
+          "autocastEnabled": true,
+          "autocastDtype": "torch.bfloat16"
+        },
+        "summary": {
+          "serial": {
+            "samples": 20,
+            "p50Ms": 20.59049999999843,
+            "p95Ms": 23.403700000002573,
+            "maximumMs": 28.42739999999685,
+            "allBelow150Ms": true
+          },
+          "parallelRequests": {
+            "samples": 20,
+            "p50Ms": 54.133999999998196,
+            "p95Ms": 79.18500000000131,
+            "maximumMs": 79.25040000000081,
+            "allBelow150Ms": true
+          }
+        },
+        "choicesStable": false,
+        "groups": [
+          {
+            "round": 0,
+            "mode": "serial",
+            "totalMs": 85.35230000000229
+          },
+          {
+            "round": 0,
+            "mode": "parallel_requests",
+            "totalMs": 79.28180000000066
+          },
+          {
+            "round": 1,
+            "mode": "serial",
+            "totalMs": 81.96630000000005
+          },
+          {
+            "round": 1,
+            "mode": "parallel_requests",
+            "totalMs": 53.8724000000002
+          },
+          {
+            "round": 2,
+            "mode": "serial",
+            "totalMs": 86.76740000000063
+          },
+          {
+            "round": 2,
+            "mode": "parallel_requests",
+            "totalMs": 52.46240000000034
+          },
+          {
+            "round": 3,
+            "mode": "serial",
+            "totalMs": 82.71199999999953
+          },
+          {
+            "round": 3,
+            "mode": "parallel_requests",
+            "totalMs": 54.22580000000016
+          },
+          {
+            "round": 4,
+            "mode": "serial",
+            "totalMs": 82.0012999999999
+          },
+          {
+            "round": 4,
+            "mode": "parallel_requests",
+            "totalMs": 54.80589999999938
+          }
+        ],
+        "inputBindings": [
+          {
+            "input": "public-alpha",
+            "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+            "encodedTokens": 274
+          },
+          {
+            "input": "public-beta",
+            "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+            "encodedTokens": 320
+          },
+          {
+            "input": "public-gamma",
+            "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+            "encodedTokens": 275
+          },
+          {
+            "input": "public-delta",
+            "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+            "encodedTokens": 347
+          }
+        ]
+      }
+    ],
+    "limitations": [
+      "Native hardware without CPU or memory quota",
+      "Warm selector plus loopback HTTP plus complete inference; startup excluded",
+      "Public short inputs only; no latency promise for other contexts",
+      "Single graph remains sequential; packed batches independent requests",
+      "Packed selections differ for public-delta; not approved for quality",
+      "No claim of Codex equivalent resources"
+    ]
+  },
+  "finalRepositoryGateReceipt": {
+    "stage": "v3.pre_final_build_full_check",
+    "log": "test-image-v3-prebuild-final-check.log",
+    "logSha256": "fe4047fe8ba56bfff1f37acd06abbeb55ddafb2b87b0461226ec8445a458cf53"
+  },
+  "latestRealTestCheckpoint": {
+    "file": "live-test-checkpoint.json",
+    "sha256": "2db41ec23155d28f00c0e9d8c1be52259279540aaefc58ad78d91c9eb4f4117a",
+    "rawLocalReportSha256": "096170456af2fea3f12e75381d2d82204f1fedd385f1871f3c6eddbacfe4dd36",
+    "architectureFinalized": false,
+    "realModelAvailable": false,
+    "finalImageBuilt": false,
+    "published": false
+  },
+  "latestReleaseCheckpoint": {
+    "file": "owned-release.json",
+    "sha256": "f85f276b181511075b8de77d6b150778334e586633e5157a717885e185532a62",
+    "swrPublished": true,
+    "cloudExactVersionCatalogVerified": true,
+    "modelProxyHttp200": true,
+    "fullWorkflows": "public_fixture_main_shadow_delivery_verified"
+  },
+  "latestFullWorkflowResults": {
+    "file": "full-workflow-results.json",
+    "sha256": "69c0fc469125d4db1f25dd0f5b420dac6fd51424d4d48ec39a07d5e5db2608ec",
+    "firstPelicanFailureRetained": true,
+    "laya150msMet": false
+  }
+}

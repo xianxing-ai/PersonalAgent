@@ -1,15 +1,36 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
+<!-- current-design-alignment-20261015 -->
+## 当前口径与历史适用性（2026-10-15）
+
+当前以[详细设计](../design/CURRENT_DESIGN_20261015.md)区分设计意图、已有代码、待接线与真实验收；架构仍未最终定型。
+本机Laya、全部28图/185节点镜像串行编排，未合格判断升级经AgentArts代理的DeepSeek；语音百炼既有端口，SIS平台不可用。
+SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1`，
+云指定版本 `arm64-local-v3-244ca434` 目录与关联日志已验，见[发布回执](evidence/test-image-v3-20261015/owned-release.json)。
+两案例完整执行表面为本机同版镜像+本机Runtime/Policy/工具/Laya+远端AgentArts模型代理，
+见[真实执行汇总](evidence/test-image-v3-20261015/full-workflow-results.json)：Wukong167.432s、Pelican第二轮81.611s，41工具Evidence；首轮partial保留。
+分支父成功、协调锚点created；28目录不等于28业务验收。6次判断182–618ms未达150ms，各案例3裁决均升级DeepSeek，未证高级调用减少或训练。
+主动责任、无人值守、归来摘要、用户可调打扰/静默feed与语音确认复用原端口。
+高级影子与已有判断合并、主任务优先、按机会资源/收益决定；真实runner目前顺序await主/影，机会并行与普通任务先交主结果仍待接线。
+以下带日期的嵌入式、直连MaaS、未发布与旧未验记录均保留原版本范围，冲突部署/完成状态已superseded，不作为当前启动参数。
+当前启动只用 `PA_AGENT_LAYA_MODE=local`，镜像不含模型权重、Python或PyTorch；不直连提供商fallback。
+旧协作门槛以当前CONTRIBUTING/AGENTS为准，文档或receipt不授予权限。
+
+## 2026-10-15 当前开发边界
+
+Owner 选择本机 Laya，28 工作流编排仍由 AgentArts 自有镜像承担，不新增通用 Local Profile 或
+AgentArts 失败后静默回退。本地决策和宿主适配经既有工具/回执接口接线，见
+[ADR-0025](../adr/0025-local-laya-serial-image-workflows.md) 和 [调用说明](LOCAL_LAYA_WORKFLOW_WIRING.md)。
+早期“本版镜像尚未发布”记录已由上述SWR回执取代；本机工具闭环、云目录/日志和平台原生评估仍分别记录。
+
 ## 2026-10-09 常驻目标与镜像分享增量
 
 当前比赛 profile 与本地 Runtime/Policy/工具/读回边界继续有效。面向开发者的常驻助手在电脑运行时负责世界变化、增量计划修复与执行/监管委派；不提供独立云电脑。
 
 目标通道 WSS 主、HTTPS 备用，同一 AgentArts 部署且降级可见；本分支已有HTTP/WS服务、本地/桌面接线与发送前持久防重发，公开WSS网关和真实云闭环仍待验收，自动status协调尚未交付。Wiki长期记忆由goo122在MOD-08/09接入，Laya与Goal/Cognition通过公开端口消费。详细图与缺口见完整设计和ADR-0013/0014。
 
-代码/接口随 PR 提交，GHCR 分享是预览产物；华为平台部署通常需按实际拉取能力和镜像导入方式继续处理，不能用 GHCR 上传代替 SWR/AgentArts 验收。合并要求两人本机阅读确认和审批，禁止强制合并；镜像预览发布不触发 main 合并。
+代码/接口随 PR 提交，GHCR 分享是预览产物；华为平台部署通常需按实际拉取能力和镜像导入方式继续处理，不能用 GHCR 上传代替 SWR/AgentArts 验收。合并要求登记协作者中至少一位非作者对当前提交有效批准及必要检查，禁止强制合并；镜像预览发布不触发 main 合并。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

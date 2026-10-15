@@ -1,8 +1,28 @@
 # Laya 主流程微批与验证（2026-10-15）
 
+<!-- current-design-alignment-20261015 -->
+## 当前口径与历史适用性（2026-10-15）
+
+当前以[详细设计](../design/CURRENT_DESIGN_20261015.md)区分设计意图、已有代码、待接线与真实验收；架构仍未最终定型。
+本机Laya、全部28图/185节点镜像串行编排，未合格判断升级经AgentArts代理的DeepSeek；语音百炼既有端口，SIS平台不可用。
+SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1`，
+云指定版本 `arm64-local-v3-244ca434` 目录与关联日志已验，见[发布回执](evidence/test-image-v3-20261015/owned-release.json)。
+两案例完整执行表面为本机同版镜像+本机Runtime/Policy/工具/Laya+远端AgentArts模型代理，
+见[真实执行汇总](evidence/test-image-v3-20261015/full-workflow-results.json)：Wukong167.432s、Pelican第二轮81.611s，41工具Evidence；首轮partial保留。
+分支父成功、协调锚点created；28目录不等于28业务验收。6次判断182–618ms未达150ms，各案例3裁决均升级DeepSeek，未证高级调用减少或训练。
+主动责任、无人值守、归来摘要、用户可调打扰/静默feed与语音确认复用原端口。
+高级影子与已有判断合并、主任务优先、按机会资源/收益决定；真实runner目前顺序await主/影，机会并行与普通任务先交主结果仍待接线。
+以下带日期的嵌入式、直连MaaS、未发布与旧未验记录均保留原版本范围，冲突部署/完成状态已superseded，不作为当前启动参数。
+当前启动只用 `PA_AGENT_LAYA_MODE=local`，镜像不含模型权重、Python或PyTorch；不直连提供商fallback。
+旧协作门槛以当前CONTRIBUTING/AGENTS为准，文档或receipt不授予权限。
+
+> 后续 Owner 已改为本机 Laya、串行工作流；本页是此前微批方案及其测试历史。
+> 当前主图不再使用下文的 Promise.all frontier；本机独立判断并发/合批仅作为基准对照，
+> 以 [当前接线文档](LOCAL_LAYA_WORKFLOW_WIRING.md) 和真实新回执为准。
+
 目标 Profile：`huawei_ict_agentarts`。这是 Owner 授权的源码增量，保留唯一 Laya 和原 Runtime/Policy/ToolGateway，尚未部署到 SWR 或 AgentArts。华为升配申请与本地源码优化分别记录。
 
-## 当前 CPU 执行策略
+## 历史 CPU 执行策略（不代表当前默认主图并行）
 
 主图原有 ready frontier 继续使用 `Promise.all` 并行准备独立候选。下文保留的真实短样本没有显示 CPU 合批时延收益，因此后续源码把默认策略收敛为 `sequential`：selector 立即提交一个旧单项请求，同一权重实例按项前向，首项可先返回；候选准备仍可并行。主入口将同一个可信 `cpuExecutionPolicy` 同时传给 selector 和服务，避免两端对执行方式理解不一致。
 

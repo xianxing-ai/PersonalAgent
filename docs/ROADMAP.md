@@ -1,5 +1,32 @@
 # 开发计划与进度
 
+<!-- current-design-alignment-20261015 -->
+## 2026-10-15 当前组合工作包（review，非全模块done）
+
+[当前详细设计](design/CURRENT_DESIGN_20261015.md)与[28图状态](design/WORKFLOW_STATUS_20261015.md)
+取代冲突的历史默认模型/发布口径；保留原日期、作者、PR与失败记录，当前架构未定型。
+具体新增工作包的唯一owner、独占文件、公开依赖、实际调用方、验收/Evidence和下一任务见
+[协作者新分工矩阵](competition/COLLABORATOR_WIRING_PACKAGE.md)，沿既有三人归属，不在此维护另一套所有权。
+
+CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实际只读闭环及平台四面；
+03真实来源责任；04公开Vault更正/撤回到主动引用失效；05实际enter/return及cloud port；
+06日常机会影子收益；07真实parent-child主控报告；08逐来源cursor闭环；09真实渠道ack；10物理final到当前approval。
+每包负责人、文件和接线/Evidence以矩阵及[全部MOD交接](modules/CURRENT_MOD_WIRING_HANDOFF.md)为准，不将专项fixture通过提升为整MOD done。
+
+| 工作面 | 当前状态 | 下一验收 |
+| --- | --- | --- |
+| ARM64镜像/SWR与指定云版本目录/关联日志 | 本轮范围已有真实回执；PR集成另记 | 不把目录当平台原生评估或28业务闭环 |
+| Wukong/Pelican公开隔离fixture | 两套主/影子+单CAS通过；41工具Evidence | 保留Pelican首轮partial；分支父成功不冒称协调锚点终态成功 |
+| 本机Laya原模型/质量资格 | in_progress，6判断182–618ms未达150ms，站点未合格 | 独立领域/holdout校准；不凭短延迟或自报置信直接抑制 |
+| 主动责任/ConnectorHost/session/通知原子策略 | provisional，端口与离线组合已有 | 按矩阵各owner完成真实来源/调用方/渠道/恢复消费 |
+| 语音主动询问/确认与上下文记忆 | provisional，百炼既有端口，SIS平台不可用 | 原文、Goal、Memory与真实最终命令串入同一任务，不以握手当完整听说 |
+| 高级影子开关/主任务优先/机会收益资源 | 当前设计，尚未真实机会并行验收 | 并入已有判断；双方案比较等双方，其余可先交已验主结果，未知交DeepSeek |
+| 最小修复/依赖重规划算法 | 设计交接保留，暂停/未定 | 等用户后续定稿，不由文档对齐自动恢复实现 |
+
+真实发布/案例范围见[full-workflow-results](competition/evidence/test-image-v3-20261015/full-workflow-results.json)、
+[owned-release](competition/evidence/test-image-v3-20261015/owned-release.json)、[平台日志读回](competition/evidence/test-image-v3-20261015/platform-log-readback.json)。
+此前阶段的“未发布/AgentArts未验”不再概括本轮发布与API；完整业务/长期常驻/资源机会策略仍需独立证据。
+
 ### 2026-10-13：Wiki/Skill 已进入 main
 
 [组合工作包](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 已通过 #346→#320 集成至 main `31b0ce5c`；#320 的 `f9f3f390` 经 zemeng5208 有效非作者批准、完整 Foundation 和设计门禁后，由 zemeng5208 合并。main 与该 head 的代码树一致，合并后主线 CI 另行读回。重复 #318 经用户授权关闭，分支和评审记录保留。已交付安装/启停/使用/卸载、Wiki 来源监视、应用备份协调、索引、只读插件和受信配对；真人原生流程、真实云消费、跨库派生副本与完整 LLM Wiki 仍待对应验收。MOD-06/07/08/09 保持 in_progress、接口 provisional，不把本组合完成等同完整模块 done。下文旧阶段记录保留为历史快照。
@@ -15,7 +42,7 @@ CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查�
 
 #317 的镜像源码固定为 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6`，已发布 GHCR、导入 SWR，Latest 为 `arm64-194799c6`。实际 MaaS 模型提出工具请求，经本地 Runtime / Policy 一次性审批、生产文件读取和 Evidence 回传，任务 succeeded；读取 1 次、Evidence 1 条、HTTPS 应用调用 0。持久读回不重放任务且关闭退出 0；云端目录发现 8 Workflow / 3 Controller。只验证固定公开合成文件，详见 [真实华为证据与限制](modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
 
-本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。双人当前 head 阅读确认与审批仍必需。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
+本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。该记录中的双人门槛已由当前 CONTRIBUTING 的至少一位登记非作者有效批准规则替代。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
 
 ## 2026-10-12 镜像全部可承载绑定（in_progress）
 
@@ -25,7 +52,7 @@ CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查�
 接口、逐项清单和阶段验证见 [绑定说明](competition/OWNED_IMAGE_BINDINGS.md) 与
 [工作包](modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)。整仓check、镜像构建/发布和真实云验收分开记录。
 本轮根check已成功（2878项/2860通过/18跳过/0失败），包括11绑定真实核心HTTP分派和中文阶段报告兼容。
-两人当前head阅读确认/审批门槛保持；本轮不强制合并，不把预览镜像当作main集成。
+该历史双人门槛已由当前 CONTRIBUTING 的至少一位登记非作者有效批准规则替代；本轮不强制合并，不把预览镜像当作main集成。
 
 ## 2026-10-09 当前工作包与合并规则
 
@@ -37,8 +64,6 @@ CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查�
 
 模块表维持原工作包事实；当前设计估算和历史台账 done 的口径不同。新镜像不是独立云电脑，公开发布也不等于华为部署/验收。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 ### 2026-10-12 goo122 Wiki 来源离线变更与恢复验收（review）
 
