@@ -51,13 +51,17 @@ try {
     transportToken:process.env.PA_AGENT_WSS_AUTH_TOKEN,
     checkpointKey:process.env.PA_AGENT_WORKFLOW_CHECKPOINT_KEY,receiptSecret:process.env.PA_WORKFLOW_RECEIPT_SECRET}) : undefined;
   if (layaMode === 'embedded') {
+    const cpuExecutionPolicy=process.env.PA_LAYA_CPU_EXECUTION_POLICY ?? 'sequential';
+    if(!['sequential','packed'].includes(cpuExecutionPolicy))throw new Error('Invalid trusted Laya CPU execution policy');
     ownedLaya = await startLayaService({modelPath:process.env.LAYA_MODEL_PATH,
+      cpuExecutionPolicy,
       python:process.env.PA_LAYA_PYTHON ?? '/opt/laya/venv/bin/python', port:integer('LAYA_PORT',8000),
       startupTimeoutMs:integer('PA_LAYA_STARTUP_TIMEOUT_MS',120_000), signal:lifecycle.signal,
       onUnavailable:() => {process.exitCode=1; void stop();}});
     selector = createOwnedLayaSelector({port:ownedLaya.port,getApiKey:() => ownedLaya.key,isReady:ownedLaya.isReady,
+      cpuExecutionPolicy:ownedLaya.cpuExecutionPolicy,
       onDecision:receipt => process.stdout.write(JSON.stringify(receipt)+'\n')});
-    process.stdout.write(JSON.stringify({event:'laya_ready',model:'multilingual',service:'embedded',warmed:true})+'\n');
+    process.stdout.write(JSON.stringify({event:'laya_ready',model:'multilingual',service:'embedded',warmed:true,executionPolicy:cpuExecutionPolicy,inferenceMode:'inference_mode'})+'\n');
   }
   let orchestrator;
   const receiptSecret = workflowKeys?.receiptSecret;

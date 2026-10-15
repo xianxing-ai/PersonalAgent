@@ -8,6 +8,8 @@
 
 ## 2026-10-15 主流程独立项微批（尚未部署）
 
+CPU 执行策略现由受信启动配置确定：主入口 `PA_LAYA_CPU_EXECUTION_POLICY` 默认为 `sequential`，Node 以 `cpuExecutionPolicy` 同时配置 selector 和 Python（内部环境 `LAYA_CPU_EXECUTION_POLICY`），并核对 health 读回；只接受 `sequential/packed`。默认 selector 立即按 FIFO 派发单项，不等待合批 timer，首项不被兄弟项拖延。显式 `packed` 才同轮收集最多 4 项。策略不由请求正文决定，不在运行中试跑、校准或重放真实推理。
+
 原 `POST /v1/systemone` 单 state 接口及 `/v1/systemone/batch` 共享 questions 的 multi_state 接口保留。
 新增 `/v1/systemone/independent-batch`，用于主流程同时就绪、各自具有独立 state/questions 的判断：
 
@@ -17,18 +19,19 @@ response: {batching:"independent_items", batchId, items:[{itemId, result}|{itemI
 ```
 
 `batchId/itemId` 是内部随机 UUID，不沿用业务 requestId。每项完整编码，保留自己的问题、选项、期限和解码映射；
-把独立编码行拼成张量批做一次 SDK forward，不把多个正文或问题拼成一个判断。
-同一实例仍只有一个 forward，最多使用既有 4-state 容量；health 新增 `independent_items` capability，
+默认 `sequential` 每个独立项单独 collate/forward，避免不同项之间的 padding；显式 `packed` 才把独立编码行拼成张量批做一次 SDK forward，不把多个正文或问题拼成一个判断。
+同一实例同一时刻仍只有一个 forward，协议最多使用既有 4-state 容量；health 新增 `independent_items` capability，
 `inferenceCalls` 仍只计实际 forward，不能用回执条数替代。
 
 每项继续校验完整 token 窗口及实际编码量，预检后重查原 deadline；超限/过期不伪造选中结果。
 CPU 已开始时仍不可由 HTTP 抢占，保持 busy 和原取消链。结果必须绑定原 batch/item 身份，
 按各自 questions 解码；缺失、重复或替换身份不能被当作另一个节点的答案。
 
-异构结果的 `inferenceMetrics.forwardScope` 为 `sdk_heterogeneous_forward`；
-`sharedForward` 绑定本批 `batchId` 和实际有效项数。宿主日志另记 HTTP 提交数 `submittedBatchSize`，
-实际有效项数为 `batchSize`，过期项被排除时两者可能不同；多 question 项可能编码为更多行。
-共享指标重复出现在项回执中，计算总量时按 `batchId` 只计一次。
+独立批顶层 `execution:{policy,forwardCount}` 返回真实前向次数；每个成功项的 `forward` 绑定随机 `forwardId`、`index`、实际 `itemCount`、`scope` 和 HTTP `batchId`。默认 scope 为 `sdk_independent_sequential_forward`；`packed` 为 `sdk_heterogeneous_forward` 并保留原 `sharedForward`。宿主日志另记 HTTP 提交数 `submittedBatchSize`，实际进入该 forward 的项数为 `batchSize`，多 question 项可能编码为更多行。前向指标按 `forwardId` 去重，不能再把同一 HTTP 当成一次前向。
+
+请求级完整窗口预检和编码单列为 `preparationMetrics:{wallMs,processCpuMs}`，receipt 白名单投影补 `scope:http_batch_preparation` 和 `batchId`，按 `batchId` 只计一次。独立项 `inferenceMetrics.precheckScope=forward_group_collation` 仅描述本 forward 组的 collation；旧 single/shared 的 `context_window_preflight` 仍指完整窗口预检。两种准备成本不能混称或重复相加。
+
+服务在执行 worker 线程内进入 `torch.inference_mode()`，仍保留 CPU 两线程、原权重/精度/上下文及 native MHA 设置。启动后的 `health.executionPolicy` 和 `inferenceMode` 可读回。仅完成无权重回归；新的真实权重性能和峰值内存留待用户稍后实测，不以此宣称提速或云端验收。
 
 现有单实例服务的公开 2/4 项顺序与合批诊断入口为
 [`owned-laya-batching.mjs`](../../tests/manual/agentarts/owned-laya-batching.mjs)，它不启动模型或出机联网。
@@ -48,7 +51,7 @@ CPU 已开始时仍不可由 HTTP 抢占，保持 busy 和原取消链。结果�
 
 使用已有虚拟环境 Python 执行此脚本。固定绑定 `127.0.0.1`、CPU、两个 Torch 线程，强制 Hugging Face / Transformers 离线模式；缓存缺失即失败，不下载。不要在内存不足时启动，且不同时运行旧 Laya 服务造成重复权重加载。
 
-`GET /health` 同样要求 Bearer，返回 `capabilities: ['multi_state']` 与 `maxStates: 4`。仅在宿主明确配置此能力后，使用 `LocalLayaBatchHttpTransport` 和 `LayaTriageService(..., {batching: 'multi_state'})`。
+`GET /health` 同样要求 Bearer，返回 `capabilities: ['multi_state','independent_items']`、`maxStates: 4` 及受信执行策略。仅在宿主明确配置共享 questions 能力后，使用 `LocalLayaBatchHttpTransport` 和 `LayaTriageService(..., {batching: 'multi_state'})`。旧 shared 接口仍按原 SDK `predict_batch` 执行，不把新的 independent CPU 策略宣称为该历史接口的性能优化。
 
 `POST /v1/systemone/batch` 输入 `{model:'multilingual', items:[{requestId,state}], questions, deadline}`。
 每批 1–4 个独立 state，共享 questions；服务调用一次 `Agent.predict_batch(states, questions, batch_size=4)`，按原序把结果与 requestId 配对。客户端再次核验身份，不因响应重排错配邮件。结果 `{batching:'multi_state',items:[{requestId,result}]}`。旧 `POST /v1/systemone` 单 state、多 question 入口保留。

@@ -23,9 +23,15 @@ const forbidden=new Set(['authorization','inboundauthorization','innerauthorizat
 export function projectOwnedLayaTokenTelemetry(record) {
   const telemetry={};
   if(number(record?.queueWaitMs)!==null)telemetry.queueWaitMs=record.queueWaitMs;
+  if(['forward_group_collation','context_window_preflight'].includes(record?.inferenceMetrics?.precheckScope)) {
+    telemetry.precheckScope=record.inferenceMetrics.precheckScope;
+  }
+  if(['sdk_predict_batch','sdk_heterogeneous_forward','sdk_independent_sequential_forward'].includes(record?.inferenceMetrics?.forwardScope)) {
+    telemetry.forwardScope=record.inferenceMetrics.forwardScope;
+  }
   if(record?.fullCriterionDescriptions==='included_in_selector_state')telemetry.fullCriterionDescriptions=record.fullCriterionDescriptions;
-  // Trace identity only. batchSize is the actual admitted item count, distinct
-  // from submittedBatchSize. Never sum one shared timing once per row.
+  // batchId identifies HTTP submission, not necessarily a single forward.
+  // Forward timings must be deduplicated by validated forwardId, never by row.
   if(typeof record?.batchId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(record.batchId)
     &&Number.isSafeInteger(record.batchSize)&&record.batchSize>=1&&record.batchSize<=4
     &&(record.submittedBatchSize===undefined||Number.isSafeInteger(record.submittedBatchSize)
@@ -35,7 +41,24 @@ export function projectOwnedLayaTokenTelemetry(record) {
     if(typeof record.batchItemId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(record.batchItemId)) {
       telemetry.batchItemId=record.batchItemId;
     }
-    if(record.sharedForwardScope==='sdk_heterogeneous_forward')telemetry.sharedForwardScope=record.sharedForwardScope;
+    if(record.sharedForwardScope==='sdk_heterogeneous_forward'
+      &&(record.executionPolicy===undefined||record.executionPolicy==='packed'&&record.batchSize>1)) {
+      telemetry.sharedForwardScope=record.sharedForwardScope;
+    }
+    if(['sequential','packed'].includes(record.executionPolicy)
+      &&typeof record.forwardId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(record.forwardId)
+      &&Number.isSafeInteger(record.forwardIndex)&&Number.isSafeInteger(record.forwardCount)
+      &&record.forwardIndex>=1&&record.forwardIndex<=record.forwardCount
+      &&record.forwardCount<=record.submittedBatchSize
+      &&(record.executionPolicy==='packed'?record.forwardCount===1:record.batchSize===1)) {
+      Object.assign(telemetry,{executionPolicy:record.executionPolicy,forwardId:record.forwardId,
+        forwardIndex:record.forwardIndex,forwardCount:record.forwardCount});
+    }
+    const prep=record.preparationMetrics;
+    if(plain(prep)&&prep.scope==='http_batch_preparation'&&prep.batchId===record.batchId
+      &&number(prep.wallMs)!==null&&number(prep.processCpuMs)!==null) {
+      telemetry.preparationMetrics={scope:prep.scope,batchId:prep.batchId,wallMs:prep.wallMs,processCpuMs:prep.processCpuMs};
+    }
   }
   if(record?.tokenWindow===undefined)return {...telemetry,tokenWindowStatus:'not_recorded'};
   const window=record.tokenWindow,one=value=>Array.isArray(value)&&value.length===1&&Number.isSafeInteger(value[0])&&value[0]>=0;

@@ -18,7 +18,7 @@ const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}
 test('F28 parallel frontier submits one independent batch and binds different candidate sets to their own nodes',async()=>{
   const template=getOwnedWorkflowTemplate('F28');let inFlight=0,peak=0,arrivals=0,release,fakeForwardCalls=0;
   const barrier=new Promise(resolve=>release=resolve),posted=[],decisions=[];
-  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-loopback-key',
+  const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-loopback-key',
     onDecision:receipt=>decisions.push(receipt),request:async(url,options)=>{
       const payload=JSON.parse(options.body),pathname=new URL(url).pathname;posted.push({pathname,payload});
       inFlight++;peak=Math.max(peak,inFlight);fakeForwardCalls++;

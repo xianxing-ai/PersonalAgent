@@ -229,6 +229,22 @@ test('workflow log projection retains one shared batch identity across independe
   assert.equal(JSON.stringify(value).includes('forwardMs'),false);assert.equal(JSON.stringify(value).includes('never export'),false);
 });
 
+test('workflow log projection keeps separate sequential forwards under one HTTP identity without leaking inference bodies',async()=>{
+  const cache=fileURLToPath(new URL('../../../.cache/owned-workflow-live/',import.meta.url));await mkdir(cache,{recursive:true});
+  const directory=await mkdtemp(join(cache,'sequential-log-test-')),path=join(directory,'public-events.jsonl');
+  const batchId='11111111-2222-4333-8444-555555555555';
+  await writeFile(path,['public-first','public-second'].map((requestId,index)=>JSON.stringify({event:'laya_choice',model:'multilingual',
+    requestId,candidateId:'candidate-'+index,durationMs:20+index,batchId,batchSize:1,submittedBatchSize:2,
+    executionPolicy:'sequential',forwardId:`11111111-2222-4333-8444-55555555555${index}`,
+    forwardIndex:index+1,forwardCount:2,inferenceMetrics:{forwardMs:20},privateState:'never export sequential state'})).join('\n'));
+  const value=await ownedWorkflowLayaLogs(path,['public-first','public-second'],'local_owned_source_runtime');
+  assert.equal(value.records.length,2);assert.equal(new Set(value.records.map(item=>item.batchId)).size,1);
+  assert.equal(new Set(value.records.map(item=>item.forwardId)).size,2);
+  assert.deepEqual(value.records.map(item=>item.forwardIndex),[1,2]);
+  assert.ok(value.records.every(item=>item.executionPolicy==='sequential'&&item.forwardCount===2));
+  assert.equal(JSON.stringify(value).includes('forwardMs'),false);assert.equal(JSON.stringify(value).includes('never export'),false);
+});
+
 test('manual live parser accepts native owned-image JSON message/task_end/end without invoking anything',()=>{
   assert.deepEqual(parseOwnedWorkflowInvocationBody(JSON.stringify(events),'application/json; charset=utf-8'),graph);
 });

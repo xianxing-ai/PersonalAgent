@@ -26,7 +26,7 @@ const probes=[
 
 /** Only explicit fixed public probes. The caller owns the existing service/key/model binding. */
 export async function runOwnedLayaBatching({port,apiKey,deadline,sizes=[2,4],
-  signal=new AbortController().signal,request=fetch}={}) {
+  cpuExecutionPolicy='sequential',signal=new AbortController().signal,request=fetch}={}) {
   const report={schemaVersion:1,kind:'public_laya_independent_batch_diagnostic',startedAt:new Date().toISOString(),
     platform:process.platform,architecture:process.arch,serviceStartedByManual:false,weightsLoadedByManual:false,
     maasCalls:0,toolExecutions:0,offMachineRequests:0,semanticCorrectnessVerified:false,groups:[]};
@@ -36,6 +36,7 @@ export async function runOwnedLayaBatching({port,apiKey,deadline,sizes=[2,4],
     assert.ok(typeof apiKey==='string'&&apiKey&&!/[\r\n]/.test(apiKey));
     assert.ok(typeof deadline==='string'&&Number.isFinite(Date.parse(deadline))&&Date.parse(deadline)>Date.now());
     assert.ok(signal instanceof AbortSignal);assert.equal(typeof request,'function');
+    assert.ok(['sequential','packed'].includes(cpuExecutionPolicy));
     assert.ok(Array.isArray(sizes)&&sizes.length>0&&new Set(sizes).size===sizes.length&&sizes.every(size=>[2,4].includes(size)));
     const origin=`http://127.0.0.1:${port}`;
     const local=async(url,options)=>{
@@ -50,14 +51,16 @@ export async function runOwnedLayaBatching({port,apiKey,deadline,sizes=[2,4],
       assert.equal(response.status,200);const value=await response.json();
       assert.equal(value.status,'ok');assert.equal(value.model,'multilingual');assert.equal(value.warmed,true);
       assert.equal(value.inferenceBusy,false);assert.ok(Number.isSafeInteger(value.inferenceCalls)&&value.inferenceCalls>=0);
+      assert.equal(value.executionPolicy,cpuExecutionPolicy,'Caller policy must match the independently started service');
       assert.ok(value.capabilities?.includes('independent_items'));assert.ok(value.maxStates>=Math.max(...sizes));return value;
     };
     const initial=await health();
     report.service={model:initial.model,warmed:initial.warmed,transport:'127.0.0.1 only',maxStates:initial.maxStates,
+      executionPolicy:initial.executionPolicy,inferenceMode:initial.inferenceMode,
       modelSourceBinding:'Provided independently by the caller that owns this already-running service'};
     const runPhase=async(size,mode)=>{
       const before=await health(),posts=[],receipts=[];
-      const selector=createOwnedLayaSelector({port,getApiKey:()=>apiKey,
+      const selector=createOwnedLayaSelector({port,getApiKey:()=>apiKey,cpuExecutionPolicy,
         request:async(url,options)=>{
           if(new URL(url).pathname!=='/health') {
             const body=JSON.parse(options.body),batch=new URL(url).pathname.endsWith('/independent-batch');
@@ -75,20 +78,31 @@ export async function runOwnedLayaBatching({port,apiKey,deadline,sizes=[2,4],
         assert.ok(receipt);assert.equal(receipt.tokenWindow?.truncated,false);assert.equal(receipt.tokenWindow?.droppedTokens,0);
         assert.equal(receipt.tokenWindow?.encodedTokens,receipt.tokenWindow?.expectedInputTokens?.[0]);
         assert.equal(receipt.inferenceMetrics?.status,'available');assert.ok(numeric(receipt.inferenceMetrics.forwardMs));
+        assert.equal(receipt.executionPolicy,cpuExecutionPolicy);assert.match(receipt.forwardId,UUID);
+        assert.ok(Number.isSafeInteger(receipt.forwardIndex)&&receipt.forwardIndex>=1);
+        assert.ok(Number.isSafeInteger(receipt.forwardCount)&&receipt.forwardCount>=receipt.forwardIndex);
         return {probeId:probe.id,selected,wallMs:performance.now()-started,queueWaitMs:receipt.queueWaitMs,
           selectorMs:receipt.choiceWallMs,encodedTokens:receipt.tokenWindow.encodedTokens,
           droppedTokens:receipt.tokenWindow.droppedTokens,truncated:receipt.tokenWindow.truncated,
           batchId:receipt.batchId,batchItemId:receipt.batchItemId,batchSize:receipt.batchSize,
           submittedBatchSize:receipt.submittedBatchSize,sharedForwardScope:receipt.sharedForwardScope,
+          executionPolicy:receipt.executionPolicy,forwardId:receipt.forwardId,forwardIndex:receipt.forwardIndex,
+          forwardCount:receipt.forwardCount,completedAfterMs:performance.now()-phaseStarted,
+          preparationMetrics:receipt.preparationMetrics,precheckScope:receipt.inferenceMetrics.precheckScope,
+          reportedPrecheckMs:receipt.inferenceMetrics.precheckMs,
           forwardScope:receipt.inferenceMetrics.forwardScope,reportedForwardMs:receipt.inferenceMetrics.forwardMs};
       };
-      const started=performance.now(),selected=[];
+      const phaseStarted=performance.now(),selected=[];
       if(mode==='sequential')for(const [index,probe] of probes.slice(0,size).entries())selected.push(await one(probe,index));
       else selected.push(...await Promise.all(probes.slice(0,size).map(one)));
-      const wallMs=performance.now()-started,after=await health(),forwardDelta=after.inferenceCalls-before.inferenceCalls;
-      assert.equal(forwardDelta,mode==='sequential'?size:1);
-      assert.equal(posts.length,mode==='sequential'?size:1);
-      if(mode==='sequential')assert.ok(posts.every(post=>post.kind==='single'&&post.items.length===1));
+      const wallMs=performance.now()-phaseStarted,after=await health(),forwardDelta=after.inferenceCalls-before.inferenceCalls;
+      const packed=mode!=='sequential'&&cpuExecutionPolicy==='packed',expectedForwards=packed?1:size;
+      assert.equal(forwardDelta,expectedForwards);assert.equal(posts.length,expectedForwards);
+      if(!packed) {
+        assert.ok(posts.every(post=>post.kind==='single'&&post.items.length===1));
+        assert.ok(selected.every(item=>item.batchSize===1&&item.submittedBatchSize===1&&item.forwardCount===1
+          &&item.forwardScope==='sdk_predict_batch'&&item.sharedForwardScope===undefined));
+      }
       else {
         assert.equal(posts[0].kind,'independent_items');assert.equal(posts[0].items.length,size);assert.match(posts[0].batchId,UUID);
         assert.equal(new Set(posts[0].items.map(item=>item.itemId)).size,size);
@@ -98,18 +112,34 @@ export async function runOwnedLayaBatching({port,apiKey,deadline,sizes=[2,4],
           &&item.sharedForwardScope==='sdk_heterogeneous_forward'&&item.forwardScope==='sdk_heterogeneous_forward'));
         assert.equal(new Set(selected.map(item=>item.reportedForwardMs)).size,1,'A shared forward must not become independent per-item forward timings');
       }
-      return {mode,wallMs,inferenceCallsBefore:before.inferenceCalls,inferenceCallsAfter:after.inferenceCalls,
+      const measurements=new Map(),preparations=new Map();
+      for(const item of selected) {
+        const value={forwardId:item.forwardId,scope:item.forwardScope,ms:item.reportedForwardMs,
+          precheckScope:item.precheckScope,precheckMs:item.reportedPrecheckMs,itemCount:item.batchSize,measurementCount:1};
+        if(measurements.has(item.forwardId))assert.deepEqual(measurements.get(item.forwardId),value);
+        else measurements.set(item.forwardId,value);
+        if(item.preparationMetrics!==undefined) {
+          const prep=item.preparationMetrics;assert.equal(prep.scope,'http_batch_preparation');assert.equal(prep.batchId,item.batchId);
+          assert.ok(numeric(prep.wallMs)&&numeric(prep.processCpuMs));
+          if(preparations.has(prep.batchId))assert.deepEqual(preparations.get(prep.batchId),prep);
+          else preparations.set(prep.batchId,prep);
+        }
+      }
+      if(packed)assert.equal(preparations.size,1);
+      assert.equal(measurements.size,forwardDelta,'Deduplicate by actual forward identity, not HTTP batchId');
+      return {mode,executionPolicy:cpuExecutionPolicy,wallMs,
+        firstItemCompleteMs:Math.min(...selected.map(item=>item.completedAfterMs)),
+        lastItemCompleteMs:Math.max(...selected.map(item=>item.completedAfterMs)),
+        inferenceCallsBefore:before.inferenceCalls,inferenceCallsAfter:after.inferenceCalls,
         actualForwardCount:forwardDelta,httpSubmissions:posts.length,
         payloads:posts.flatMap(post=>post.items),selections:selected,
-        forwardMeasurements:mode==='sequential'?selected.map(item=>({scope:item.forwardScope,ms:item.reportedForwardMs}))
-          :[{batchId:posts[0].batchId,scope:'sdk_heterogeneous_forward',ms:selected[0].reportedForwardMs,
-            transportItemCount:size,measurementCount:1}],
-        forwardTimingInterpretation:mode==='sequential'?'One actual SDK forward measurement per sequential call'
-          :'One shared SDK forward measurement repeated in row receipts; recorded once, never summed across rows'};
+        forwardMeasurements:[...measurements.values()],
+        preparationMeasurements:[...preparations.values()],
+        forwardTimingInterpretation:'One measurement per forwardId, preparation once per HTTP batchId; preserve reported scopes and do not combine different legacy/new precheck scopes'};
     };
     for(const size of sizes) {
       const group={size};report.groups.push(group);stage=`sequential_${size}`;group.sequential=await runPhase(size,'sequential');
-      stage=`independent_batch_${size}`;group.batch=await runPhase(size,'batch');
+      stage=`concurrent_${size}`;group.batch=await runPhase(size,'concurrent');
       const singleHashes=group.sequential.payloads.map(item=>item.payloadSha256),batchHashes=group.batch.payloads.map(item=>item.payloadSha256);
       assert.deepEqual(batchHashes,singleHashes,'Same complete public state/questions/deadline must be used in both modes');
       group.samePublicPayloads=true;
@@ -122,6 +152,7 @@ export async function runOwnedLayaBatching({port,apiKey,deadline,sizes=[2,4],
     report.limitations=['One sample per mode/size, not p50/p95 or an SLA; no guaranteed speedup or semantic correctness.',
       'Native Windows CPU service uses its configured two Torch threads; this is not a Huawei two-vCPU ARM64 container benchmark.',
       'The caller must retain independent source/model/service binding; loopback health is not deployment provenance.',
+      'Default sequential dispatch submits independent single HTTP requests; only explicitly packed selector and matching service exercise a shared forward. Separate service policies require separate sequential runs, never simultaneous model instances.',
       'All items remain independent; batchSize counts actual items admitted to forward, while submittedBatchSize counts HTTP items; multi-question items may encode more rows.'];
   } catch(error) {report.status='failed';report.failure={stage,code:safeError(error),rawErrorSuppressed:true};}
   report.finishedAt=new Date().toISOString();return report;
@@ -132,7 +163,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   try {
     const sizes=(process.env.PA_LAYA_BATCHING_SIZES??'2,4').split(',').map(Number);
     const report=await runOwnedLayaBatching({port:Number(process.env.LAYA_PORT??8000),apiKey:process.env.LAYA_API_KEY,
-      deadline:process.env.PA_LAYA_BATCHING_DEADLINE,sizes,signal:controller.signal});
+      deadline:process.env.PA_LAYA_BATCHING_DEADLINE,sizes,cpuExecutionPolicy:process.env.PA_LAYA_CPU_EXECUTION_POLICY??'sequential',signal:controller.signal});
     process.stdout.write(JSON.stringify(report,null,2)+'\n');if(report.status!=='passed_transport_and_forward_count_checks')process.exitCode=1;
   }finally{process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);}
 }

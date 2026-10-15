@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import threading
 import time
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -53,7 +54,7 @@ def heterogeneous_sdk(agent):
     import torch
     if default_hooks():
         raise ValueError("Unsupported heterogeneous Laya hooks")
-    return collate_items, torch.no_grad
+    return collate_items, torch.inference_mode
 
 
 def cgroup_snapshot(root=Path("/sys/fs/cgroup"), membership=Path("/proc/self/cgroup")):
@@ -187,9 +188,11 @@ def verify_model_assets(location):
         raise ValueError("Offline Laya asset verification failed") from None
 
 
-def create_app(agent, api_key, warmed=False):
+def create_app(agent, api_key, warmed=False, cpu_execution_policy="sequential"):
     if not isinstance(api_key, str) or not api_key or "\n" in api_key or "\r" in api_key:
         raise ValueError("An explicit local API key is required")
+    if cpu_execution_policy not in ("sequential", "packed"):
+        raise ValueError("Invalid trusted CPU execution policy")
     expected = ("Bearer " + api_key).encode("utf-8")
     pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="laya-local-batch")
     gate = asyncio.Lock()
@@ -268,6 +271,7 @@ def create_app(agent, api_key, warmed=False):
             # One SDK call handles several independent states in one bounded forward batch.
             def predict_complete():
                 nonlocal inference_calls
+                import torch
                 before = cgroup_snapshot()
                 cpu_started = time.process_time_ns()
                 precheck_started = time.perf_counter_ns()
@@ -278,16 +282,19 @@ def create_app(agent, api_key, warmed=False):
                 # Do not start a new CPU forward after that original waiter ends.
                 if stopped.is_set() or time.monotonic() >= expires_at:
                     raise InferenceControlStopped()
-                inference_calls += 1
-                forward_started = time.perf_counter_ns()
-                forward_cpu_started = time.process_time_ns()
-                results = agent.predict_batch(states, questions, batch_size=MAX_STATES,
-                                              max_len=window["maxLength"], head_max_len=window["headMaxLength"])
+                with torch.inference_mode():
+                    if stopped.is_set() or time.monotonic() >= expires_at:
+                        raise InferenceControlStopped()
+                    inference_calls += 1
+                    forward_started = time.perf_counter_ns()
+                    forward_cpu_started = time.process_time_ns()
+                    results = agent.predict_batch(states, questions, batch_size=MAX_STATES,
+                                                  max_len=window["maxLength"], head_max_len=window["headMaxLength"])
                 forward_ms = (time.perf_counter_ns() - forward_started) / 1_000_000
                 forward_cpu_ms = (time.process_time_ns() - forward_cpu_started) / 1_000_000
                 cpu_ms = (time.process_time_ns() - cpu_started) / 1_000_000
                 after = cgroup_snapshot()
-                metrics = {"formatVersion": "1.0.0", "precheckMs": precheck_ms, "forwardMs": forward_ms,
+                metrics = {"formatVersion": "1.0.0", "precheckMs": precheck_ms, "precheckScope": "context_window_preflight", "forwardMs": forward_ms,
                            "forwardScope": "sdk_predict_batch", "processCpuMs": cpu_ms,
                            "precheckProcessCpuMs": precheck_cpu_ms, "forwardProcessCpuMs": forward_cpu_ms,
                            "cgroupBefore": before, "cgroupAfter": after, "cgroupCpuDelta": cgroup_delta(before, after)}
@@ -358,10 +365,9 @@ def create_app(agent, api_key, warmed=False):
 
             def predict_independent():
                 nonlocal inference_calls
-                collate_items, no_grad = heterogeneous_sdk(agent)
-                before = cgroup_snapshot()
-                cpu_started = time.process_time_ns()
-                precheck_started = time.perf_counter_ns()
+                collate_items, inference_mode = heterogeneous_sdk(agent)
+                preparation_started = time.perf_counter_ns()
+                preparation_cpu_started = time.process_time_ns()
                 prepared, outcomes = [], {}
                 for item in items:
                     item_id = item["itemId"]
@@ -388,71 +394,107 @@ def create_app(agent, api_key, warmed=False):
                                                     requiredTokens=error.required, encoderMaxTokens=error.maximum)
                     except (ValueError, TypeError, KeyError, AttributeError):
                         outcomes[item_id] = failure(item_id, 400, "INVALID_ARGUMENT")
-                # Tokenization can consume a short item's entire deadline. Keep
-                # its original deadline and remove it before admitting a forward.
-                live = []
-                for entry in prepared:
-                    if entry[0]["expiresAt"] <= time.monotonic():
-                        item_id = entry[0]["itemId"]
-                        outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
-                    else:
-                        live.append(entry)
-                if stopped.is_set():
-                    raise InferenceControlStopped()
-                precheck_ms = (time.perf_counter_ns() - precheck_started) / 1_000_000
-                precheck_cpu_ms = (time.process_time_ns() - cpu_started) / 1_000_000
-                if live:
-                    # collate_items expects one list of question rows per item.
-                    # If collation consumes an item's deadline, remove its rows
-                    # and collate the remaining items again without truncation.
-                    while live:
-                        collated = collate_items([entry[4] for entry in live], agent.tok.pad_token_id)
-                        expired = [entry for entry in live if entry[0]["expiresAt"] <= time.monotonic()]
-                        if stopped.is_set():
-                            raise InferenceControlStopped()
-                        if not expired:
-                            break
-                        for entry in expired:
+                preparation = {"wallMs": (time.perf_counter_ns() - preparation_started) / 1_000_000,
+                               "processCpuMs": (time.process_time_ns() - preparation_cpu_started) / 1_000_000}
+                # The conservative CPU default never pads one item's rows to a
+                # different item's length. Packed is an explicit startup policy,
+                # not a request flag or an online calibration/retry.
+                groups = [prepared] if cpu_execution_policy == "packed" else [[entry] for entry in prepared]
+                forward_count = 0
+                for group in groups:
+                    if stopped.is_set():
+                        raise InferenceControlStopped()
+                    before = cgroup_snapshot()
+                    group_cpu_started = time.process_time_ns()
+                    precheck_started = time.perf_counter_ns()
+                    live = []
+                    for entry in group:
+                        if entry[0]["expiresAt"] <= time.monotonic():
                             item_id = entry[0]["itemId"]
                             outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
-                        live = [entry for entry in live if entry not in expired]
-                    if live:
+                        else:
+                            live.append(entry)
+                    # Recheck after collation, including between every
+                    # sequential forward. No original deadline is renewed.
+                    while live:
+                        collated = collate_items([entry[4] for entry in live], agent.tok.pad_token_id)
+                        expired_ids = {entry[0]["itemId"] for entry in live if entry[0]["expiresAt"] <= time.monotonic()}
+                        if stopped.is_set():
+                            raise InferenceControlStopped()
+                        if not expired_ids:
+                            break
+                        for item_id in expired_ids:
+                            outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
+                        live = [entry for entry in live if entry[0]["itemId"] not in expired_ids]
+                    if not live:
+                        continue
+                    precheck_ms = (time.perf_counter_ns() - precheck_started) / 1_000_000
+                    precheck_cpu_ms = (time.process_time_ns() - group_cpu_started) / 1_000_000
+                    scope = "sdk_heterogeneous_forward" if cpu_execution_policy == "packed" else "sdk_independent_sequential_forward"
+                    forward_id = str(uuid4())
+                    # This context must be entered in the executor thread;
+                    # inference_mode is thread-local, as is no_grad.
+                    with inference_mode():
+                        if stopped.is_set():
+                            raise InferenceControlStopped()
+                        # Context construction/entry can consume a deadline.
+                        # Re-collate only surviving rows; an expired sibling
+                        # must not turn a still-live item's result into timeout.
+                        while live:
+                            expired_ids = {entry[0]["itemId"] for entry in live if entry[0]["expiresAt"] <= time.monotonic()}
+                            if not expired_ids:
+                                break
+                            for item_id in expired_ids:
+                                outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
+                            live = [entry for entry in live if entry[0]["itemId"] not in expired_ids]
+                            if live:
+                                collated = collate_items([entry[4] for entry in live], agent.tok.pad_token_id)
+                            if stopped.is_set():
+                                raise InferenceControlStopped()
+                        if not live:
+                            continue
+                        precheck_ms = (time.perf_counter_ns() - precheck_started) / 1_000_000
+                        precheck_cpu_ms = (time.process_time_ns() - group_cpu_started) / 1_000_000
                         inference_calls += 1
+                        forward_count += 1
+                        forward = {"forwardId": forward_id, "index": forward_count, "itemCount": len(live),
+                                   "scope": scope, "batchId": batch_id}
                         forward_started = time.perf_counter_ns()
                         forward_cpu_started = time.process_time_ns()
-                        with no_grad():
-                            logits, act = agent._forward(collated)
-                        expected_rows = sum(len(entry[4]) for entry in live)
-                        if len(logits) != expected_rows or len(act) != expected_rows:
-                            raise ValueError("Heterogeneous forward row mismatch")
-                        forward_ms = (time.perf_counter_ns() - forward_started) / 1_000_000
-                        forward_cpu_ms = (time.process_time_ns() - forward_cpu_started) / 1_000_000
-                        after = cgroup_snapshot()
-                        metrics = {"formatVersion": "1.0.0", "precheckMs": precheck_ms,
-                                   "forwardMs": forward_ms, "forwardScope": "sdk_heterogeneous_forward",
-                                   "processCpuMs": (time.process_time_ns() - cpu_started) / 1_000_000,
-                                   "precheckProcessCpuMs": precheck_cpu_ms, "forwardProcessCpuMs": forward_cpu_ms,
-                                   "cgroupBefore": before, "cgroupAfter": after, "cgroupCpuDelta": cgroup_delta(before, after)}
-                        offset = 0
-                        for item, window, ids, internal, encoded in live:
-                            item_id = item["itemId"]
-                            if item["expiresAt"] <= time.monotonic():
-                                outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
+                        logits, act = agent._forward(collated)
+                    expected_rows = sum(len(entry[4]) for entry in live)
+                    if len(logits) != expected_rows or len(act) != expected_rows:
+                        raise ValueError("Independent forward row mismatch")
+                    forward_ms = (time.perf_counter_ns() - forward_started) / 1_000_000
+                    forward_cpu_ms = (time.process_time_ns() - forward_cpu_started) / 1_000_000
+                    after = cgroup_snapshot()
+                    metrics = {"formatVersion": "1.0.0", "precheckMs": precheck_ms,
+                               "precheckScope": "forward_group_collation", "forwardMs": forward_ms, "forwardScope": scope,
+                               "processCpuMs": (time.process_time_ns() - group_cpu_started) / 1_000_000,
+                               "precheckProcessCpuMs": precheck_cpu_ms, "forwardProcessCpuMs": forward_cpu_ms,
+                               "cgroupBefore": before, "cgroupAfter": after, "cgroupCpuDelta": cgroup_delta(before, after)}
+                    offset = 0
+                    for item, window, ids, internal, encoded in live:
+                        item_id = item["itemId"]
+                        if item["expiresAt"] <= time.monotonic():
+                            outcomes[item_id] = failure(item_id, 408, "TIMEOUT")
+                        else:
+                            count = sum(len(row["ids"]) for row in encoded)
+                            if int(collated["attention_mask"][offset:offset + len(encoded)].sum()) != count:
+                                outcomes[item_id] = failure(item_id, 502, "TOKEN_WINDOW_MISMATCH")
                             else:
-                                count = sum(len(row["ids"]) for row in encoded)
-                                if int(collated["attention_mask"][offset:offset + len(encoded)].sum()) != count:
-                                    outcomes[item_id] = failure(item_id, 502, "TOKEN_WINDOW_MISMATCH")
-                                else:
-                                    try:
-                                        answers = agent._decode_answers(logits, act, encoded, ids, internal, offset)
-                                        outcomes[item_id] = {"itemId": item_id, "result": {"answers": answers,
-                                            "usage": {"input_tokens": count, "output_tokens": 0}, "inferenceMetrics": metrics,
-                                            "tokenWindow": {**window, "encodedTokens": count},
-                                            "sharedForward": {"batchId": batch_id, "batchSize": len(live)}}}
-                                    except (ValueError, TypeError, KeyError, IndexError, AttributeError):
-                                        outcomes[item_id] = failure(item_id, 502, "INVALID_MODEL_RESULT")
-                            offset += len(encoded)
-                return [outcomes[item["itemId"]] for item in items]
+                                try:
+                                    answers = agent._decode_answers(logits, act, encoded, ids, internal, offset)
+                                    result = {"answers": answers, "usage": {"input_tokens": count, "output_tokens": 0},
+                                              "inferenceMetrics": metrics, "tokenWindow": {**window, "encodedTokens": count},
+                                              "forward": forward}
+                                    if cpu_execution_policy == "packed":
+                                        result["sharedForward"] = {"batchId": batch_id, "batchSize": len(live)}
+                                    outcomes[item_id] = {"itemId": item_id, "result": result}
+                                except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+                                    outcomes[item_id] = failure(item_id, 502, "INVALID_MODEL_RESULT")
+                        offset += len(encoded)
+                return [outcomes[item["itemId"]] for item in items], forward_count, preparation
 
             future = asyncio.get_running_loop().run_in_executor(pool, predict_independent)
 
@@ -498,6 +540,7 @@ def create_app(agent, api_key, warmed=False):
     async def health(request: Request):
         authorize(request)
         return {"status": "ok", "model": "multilingual", "capabilities": ["multi_state", "independent_items"], "maxStates": MAX_STATES,
+                "executionPolicy": cpu_execution_policy, "inferenceMode": "inference_mode",
                 "warmed": warmed, "inferenceBusy": gate.locked(), "inferenceCalls": inference_calls}
 
     @app.post("/v1/systemone/independent-batch")
@@ -525,10 +568,12 @@ def create_app(agent, api_key, warmed=False):
             except HTTPException as error:
                 errors[item["itemId"]] = {"itemId": item["itemId"], "error": {"status": error.status_code,
                     "code": "TIMEOUT" if error.status_code == 408 else "INVALID_ARGUMENT"}}
-        results = await infer_independent(valid, request, batch_id) if valid else []
+        results, forward_count, preparation = await infer_independent(valid, request, batch_id) if valid else ([], 0, {"wallMs": 0, "processCpuMs": 0})
         results = {entry["itemId"]: entry for entry in results}
         results.update(errors)
         return {"batching": "independent_items", "batchId": batch_id,
+                "execution": {"policy": cpu_execution_policy, "forwardCount": forward_count},
+                "preparationMetrics": preparation,
                 "items": [results[item["itemId"]] for item in items]}
 
     @app.post("/v1/systemone/batch")
@@ -572,6 +617,9 @@ def main():
     port = int(os.environ.get("LAYA_PORT", "8000"))
     if not 1024 <= port <= 65535:
         raise SystemExit("Invalid local port")
+    cpu_execution_policy = os.environ.get("LAYA_CPU_EXECUTION_POLICY", "sequential")
+    if cpu_execution_policy not in ("sequential", "packed"):
+        raise SystemExit("Invalid trusted CPU execution policy")
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     import torch
@@ -587,7 +635,7 @@ def main():
         batch_size=1)
     if not isinstance(warm, list) or len(warm) != 1 or not isinstance(warm[0], dict) or "answers" not in warm[0]:
         raise SystemExit("Laya warmup did not return a typed choice")
-    uvicorn.run(create_app(agent, key, warmed=True), host="127.0.0.1", port=port, access_log=False,
+    uvicorn.run(create_app(agent, key, warmed=True, cpu_execution_policy=cpu_execution_policy), host="127.0.0.1", port=port, access_log=False,
                 log_level="critical")
 
 

@@ -6,12 +6,14 @@ import path from 'node:path';
 /** One Python/CPU instance in the owned image. No model, token or path reaches logs. */
 export async function startLayaService({modelPath, python = '/opt/laya/venv/bin/python',
   port = 8000, startupTimeoutMs = 120_000, shutdownTimeoutMs = 10_000,
+  cpuExecutionPolicy = 'sequential',
   signal = new AbortController().signal, onUnavailable = () => {},
   spawnProcess = spawn, request = fetch} = {}) {
   if (typeof modelPath !== 'string' || !path.isAbsolute(modelPath)
     || !Number.isSafeInteger(port) || port < 1024 || port > 65535
     || !Number.isSafeInteger(startupTimeoutMs) || startupTimeoutMs < 1
     || !Number.isSafeInteger(shutdownTimeoutMs) || shutdownTimeoutMs < 1
+    || !['sequential','packed'].includes(cpuExecutionPolicy)
     || !(signal instanceof AbortSignal)) throw new Error('Invalid Laya startup configuration');
   signal.throwIfAborted();
   const key = randomBytes(32).toString('hex');
@@ -22,6 +24,7 @@ export async function startLayaService({modelPath, python = '/opt/laya/venv/bin/
     ...environment, PYTHONUNBUFFERED: '1', HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1',
     LAYA_MODEL_PATH: modelPath, LAYA_PORT: String(port), LAYA_API_KEY: key,
     LAYA_VERIFY_MANIFEST: '1',
+    LAYA_CPU_EXECUTION_POLICY: cpuExecutionPolicy,
   }});
   let ready = false, stopping = false, ended = false;
   const closed = new Promise(resolve => {
@@ -57,10 +60,12 @@ export async function startLayaService({modelPath, python = '/opt/laya/venv/bin/
         if (response.ok) {
           const result = await response.json();
           if (result?.status === 'ok' && result.model === 'multilingual' && result.warmed === true
-            && Array.isArray(result.capabilities) && result.capabilities.includes('multi_state')) {
+            && Array.isArray(result.capabilities) && result.capabilities.includes('multi_state')
+            && result.capabilities.includes('independent_items')
+            && result.executionPolicy === cpuExecutionPolicy && result.inferenceMode === 'inference_mode') {
             if (ended || signal.aborted) break;
             ready = true;
-            return {port, key, isReady: () => ready && !ended && !stopping,
+            return {port, key, cpuExecutionPolicy, isReady: () => ready && !ended && !stopping,
               stop: async () => { signal.removeEventListener('abort', cancel); await stop(); }};
           }
         } else await response.body?.cancel();
