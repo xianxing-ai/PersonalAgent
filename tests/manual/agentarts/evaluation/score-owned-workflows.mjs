@@ -63,9 +63,35 @@ function fields(value, required, optional = []) {
 }
 const verdict = value => value === true ? 'passed' : value === false ? 'failed' : 'unknown';
 
+function assertPreCatalogFailure(record, inputIntegrity) {
+  const {receipt, catalogDispatch} = record;
+  // Supplied by the trusted host from its saved dispatch, never inferred from
+  // a model's error, a filename or an absent catalog. The receipt digest above
+  // and task/request associations below bind the attempted run without replay.
+  fields(catalogDispatch, ['workflowId', 'taskId', 'requestId', 'querySha256']);
+  if (inputIntegrity !== 'passed' || Object.hasOwn(receipt, 'catalog')
+    || catalogDispatch.workflowId !== 'F20' || !id(catalogDispatch.taskId) || !id(catalogDispatch.requestId)
+    || catalogDispatch.querySha256 !== hash(JSON.stringify({workflowVersion: '1.0.0', operation: 'catalog', workflowId: 'F20'}))
+    || receipt.parentTask?.taskId !== catalogDispatch.taskId
+    || !['failed', 'cancelled', 'waiting_reconciliation'].includes(receipt.parentTask?.state)
+    || receipt.status !== 'failed_or_unknown' || !plain(receipt.failure)
+    || !['catalog', 'response', 'execution'].includes(receipt.failure.stage)
+    || typeof receipt.failure.code !== 'string' || !/^[A-Z][A-Z0-9_]{0,127}$/.test(receipt.failure.code)
+    || receipt.scope?.contentSha256 !== FIXED_WORKFLOW_CASE.sourceSha256
+    || ['tool', 'validationTool', 'validation', 'candidate', 'continuation', 'workflowCompletion']
+      .some(key => Object.hasOwn(receipt, key))) bad();
+  const requests = [];
+  for (const key of ['network', 'unknown']) {
+    if (!Array.isArray(receipt[key]) || receipt[key].length > 1) bad();
+    requests.push(...receipt[key]);
+  }
+  if (!requests.length || requests.some(item => !plain(item) || item.stage !== 'catalog'
+    || item.requestId !== catalogDispatch.requestId)) bad();
+}
+
 function scoreRecord(record) {
   fields(record, ['caseId', 'variant', 'runIndex', 'surface', 'executionKind', 'receipt', 'releaseMetadata'],
-    ['input', 'configuration', 'binding', 'artifacts', 'review']);
+    ['input', 'configuration', 'binding', 'artifacts', 'review', 'catalogDispatch']);
   if (record.caseId !== FIXED_WORKFLOW_CASE.caseId || !['candidate', 'baseline'].includes(record.variant)
     || !Number.isSafeInteger(record.runIndex) || record.runIndex < 1 || record.runIndex > 1000
     || !Object.hasOwn(SURFACES, record.surface)
@@ -74,7 +100,7 @@ function scoreRecord(record) {
   const [argument, phase] = SURFACES[record.surface];
   // Reuse the existing read/compile/resume/persistence checks, not a second scorer.
   const projected = projectOwnedReleaseEvidence({metadata: record.releaseMetadata, [argument]: record.receipt}).phases[phase];
-  if (projected.selectedWorkflow !== 'F20') bad();
+  const preCatalogFailure = projected.selectedWorkflow !== 'F20';
   let inputIntegrity = 'unknown', configurationSha256 = null;
   if (record.configuration !== undefined) {
     fields(record.configuration, ['executionModel', 'selectorModel', 'modelSettingsSha256', 'environmentId']);
@@ -92,6 +118,8 @@ function scoreRecord(record) {
       && record.binding.receiptSha256 === receiptSha256
       && record.binding.configurationSha256 === configurationSha256);
   }
+  if (preCatalogFailure) assertPreCatalogFailure(record, inputIntegrity);
+  else if (Object.hasOwn(record, 'catalogDispatch')) bad();
   const completion = projected.workflowCompletion;
   let artifactIntegrity = 'unknown', answer = 'unknown', citations = 'unknown';
   let documentSha256 = null;
@@ -124,7 +152,7 @@ function scoreRecord(record) {
       citations = verdict(record.review.citationsSupported);
     }
   }
-  const workflow = record.receipt.parentTask?.state === 'failed' || record.receipt.failure ? 'failed'
+  const workflow = preCatalogFailure || record.receipt.parentTask?.state === 'failed' || record.receipt.failure ? 'failed'
     : record.receipt.unknown?.length ? 'unknown' : projected.workflowVerified ? 'passed' : 'unknown';
   const toolReadback = projected.publicReadVerified && projected.publicValidationVerified ? 'passed' : 'unknown';
   const reviewSelected = projected.laya.records.some(item => item.candidateId === 'owned-review');
@@ -135,6 +163,7 @@ function scoreRecord(record) {
     : Object.values(checks).every(value => value === 'passed') ? 'passed' : 'unknown';
   return {caseId: record.caseId, workflowId: 'F20', variant: record.variant, runIndex: record.runIndex,
     surface: record.surface, executionKind: record.executionKind, receiptSha256, configurationSha256,
+    ...(preCatalogFailure ? {observationStage: 'before_catalog_readback'} : {}),
     status, checks, retrieval: 'not_applicable_direct_source_fixture', recovery: 'unknown',
     abstention: reviewSelected ? 'review_observed' : 'unknown',
     abstentionCorrectness: 'unknown', durationMs, durationScope: 'recorded_harness_wall_time',
