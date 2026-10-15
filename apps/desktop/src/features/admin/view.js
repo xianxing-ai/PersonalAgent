@@ -1,6 +1,7 @@
 import {stateNames} from '../conversation/state.js';
 import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
+import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
@@ -135,7 +136,7 @@ export function mountAdmin(root, invoke, escape) {
   localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let installedSkillsControls;
+  let installedSkillsControls,sisControls;
   let modelApiSignature;
 
   function capabilityTable(data) {
@@ -204,7 +205,7 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('任务取消', '只显示 Runtime 回读后的最终状态', '<span class="value-pill">严格确认</span>') +
         settingRow('默认终端', '终端连接器尚未提供选择接口', '<span class="status-note">待接入</span>', 'is-unavailable')],
       voice: ['语音', '听写、原生实时对话和加密凭据',
-        settingRow('麦克风听写', '华为 SIS 转写填入输入框；你确认发送后用文字回答', `<span class="value-pill">${data.voice?.configuration?.configured ? '已配置' : '未配置'}</span>`) +
+        settingRow('麦克风听写', '本地 SIS 适配仅填草稿；经 AgentArts 的 SIS 适配当前不可用', `<span class="value-pill">${data.voice?.configuration?.configured ? '配置已保存' : '未配置'}</span>`) +
         settingRow('Live 实时语音', data.live?.reason ?? '在下方配置百炼北京业务空间和 API Key', `<span class="value-pill">${data.live?.active ? '通话中' : data.live?.configured ? '已配置' : '未配置'}</span>`) +
         settingRow('语音播报', '停止播报与任务取消保持独立', '<span class="value-pill">安全隔离</span>')],
       notifications: ['通知', '任务状态与需要用户处理的提醒',
@@ -314,8 +315,9 @@ export function mountAdmin(root, invoke, escape) {
     }
     if (root.querySelector('#profile-dialog')?.open) return;
     root.querySelector('.main').dataset.section = section;
-    if (section==='voice') liveControls ??= mountLiveVoiceControls(root,invoke);
+    if (section==='voice') {liveControls ??= mountLiveVoiceControls(root,invoke);sisControls ??= mountSisVoiceSettings(root,invoke);}
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
+    sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
     if (section==='computer') proactiveControls ??= mountProactiveControls(root.querySelector('.main'),invoke,{settings:true});
     proactiveControls?.render(data.proactive);proactiveControls?.show(section==='computer');
     if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);

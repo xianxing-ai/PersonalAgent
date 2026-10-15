@@ -4,10 +4,12 @@ const source=process.argv[2];
 if(!source) throw Error('Pass the reviewed architecture.json path');
 const features=JSON.parse(await readFile(source,'utf8'));
 if(!Array.isArray(features)||features.length!==28||features.reduce((n,f)=>n+f.nodes.length,0)!==185) throw Error('Unexpected design catalog');
-const data=features.map(({id,name,nodes,edges,recovery})=>({id,name,nodes:nodes.map(node=>{
-  const {id,label,kind,dependencies,required,resourceKeys,effectType,inputFields,outputFields,condition,evidenceRequirement}=node;
+const data=features.map(({id,name,category,summary,decisionPoints=[],designNotes=[],acceptance=[],nodes,edges,recovery})=>({
+  id,name,category,summary,decisionPoints,designNotes,acceptance,nodes:nodes.map(node=>{
+  const {id,label,kind,dependencies,required,resourceKeys,effectType,inputFields,outputFields,condition,evidenceRequirement,modelAssignment,joinMode}=node;
   return {id,label,kind,dependencies,required,resourceKeys,effectType,inputFields,outputFields,
-    ...(condition?{condition}:{}),...(evidenceRequirement?{evidenceRequirement}:{})};
+    ...(condition?{condition}:{}),...(evidenceRequirement?{evidenceRequirement}:{}),
+    ...(modelAssignment?{modelAssignment}:{}),...(joinMode?{joinMode}:{})};
 }),edges:edges.map(({source,target,required,condition})=>({source,target,required,...(condition?{condition}:{})})),recovery}));
 const serialized=JSON.stringify(data);
 const output='// Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.\n'

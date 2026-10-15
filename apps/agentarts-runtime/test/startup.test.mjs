@@ -24,8 +24,8 @@ test('trusted default controller configuration rejects unknown or workflow ident
   }
 });
 
-test('AgentArts cannot silently run without its embedded Laya decision service',()=>{
-  for(const mode of [undefined,'legacy-without-laya']) {
+test('AgentArts requires explicit local decisions and rejects the superseded embedded mode',()=>{
+  for(const mode of [undefined,'legacy-without-laya','embedded']) {
     const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('PA_AGENT_')));
     Object.assign(env,{PA_AGENT_HOST_MODE:'agentarts',PA_AGENT_MODEL_BASE_URL:'https://synthetic.invalid/v1',
       PA_AGENT_MODEL:'synthetic',PA_AGENT_MODEL_API_KEY:'synthetic-secret'});

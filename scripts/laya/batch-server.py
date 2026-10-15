@@ -43,7 +43,7 @@ def heterogeneous_sdk(agent):
     methods = {"_check_question": ("qid", "qdef"), "_to_internal": ("qdef",),
                "_encode_state": ("state", "ids", "internal", "max_len", "head_max_len"),
                "_forward": ("b",), "_decode_answers": ("logits", "act", "items", "ids", "internal", "offset", "lang")}
-    if version("laya") != "0.3.20" or getattr(getattr(agent, "device", None), "type", None) != "cpu" \
+    if version("laya") != "0.3.20" or getattr(getattr(agent, "device", None), "type", None) not in ("cpu", "cuda") \
             or getattr(agent.model, "training", None) is not False or getattr(agent, "hooks", ()) \
             or any(not callable(getattr(agent, name, None)) for name in
                    methods) or any(tuple(inspect.signature(getattr(agent, name)).parameters) != parameters
@@ -562,8 +562,20 @@ def create_app(agent, api_key, warmed=False, cpu_execution_policy="sequential"):
     @app.get("/health")
     async def health(request: Request):
         authorize(request)
+        accelerator = {}
+        if getattr(getattr(agent, 'device', None), 'type', None) == 'cuda':
+            import torch
+            accelerator = {'allocatorAllocatedBytes': torch.cuda.memory_allocated(),
+                           'allocatorReservedBytes': torch.cuda.memory_reserved(),
+                           'allocatorPeakAllocatedBytes': torch.cuda.max_memory_allocated(),
+                           'scope': 'Torch allocator only; driver/context memory excluded'}
         return {"status": "ok", "model": "multilingual", "capabilities": ["multi_state", "independent_items"], "maxStates": MAX_STATES,
                 "executionPolicy": cpu_execution_policy, "inferenceMode": "inference_mode",
+                "device": getattr(getattr(agent, 'device', None), 'type', 'unknown'),
+                "precision": {"autocastEnabled": bool(getattr(agent, 'amp_enabled', False)),
+                              "autocastDtype": str(getattr(agent, 'dtype', 'unknown'))},
+                "processId": os.getpid(),
+                "accelerator": accelerator,
                 "warmed": warmed, "inferenceBusy": gate.locked(), "inferenceCalls": inference_calls}
 
     @app.post("/v1/systemone/independent-batch")
@@ -648,8 +660,17 @@ def main():
     import torch
     from laya.agent import Agent
     import uvicorn
-    torch.set_num_threads(2)
-    agent = Agent(str(location), device="cpu")
+    torch_threads = int(os.environ.get('LAYA_TORCH_THREADS', '2'))
+    if not 1 <= torch_threads <= (os.cpu_count() or 1):
+        raise SystemExit('Invalid local Torch thread count')
+    torch.set_num_threads(torch_threads)
+    torch.set_num_interop_threads(1)
+    device = os.environ.get('LAYA_DEVICE', 'cpu')
+    if device not in ('cpu', 'cuda') or device == 'cuda' and not torch.cuda.is_available():
+        raise SystemExit('Requested local accelerator unavailable')
+    if device == 'cuda':
+        torch.backends.cuda.matmul.allow_tf32 = False
+    agent = Agent(str(location), device=device)
     # Bind only after weights/tokenizer loading and one real, public synthetic forward.
     # Readiness is not a quality score or a promise that a business task succeeded.
     warm = agent.predict_batch([{"context": "Synthetic startup readiness check"}], {

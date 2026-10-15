@@ -1,8 +1,32 @@
 # 自有 AgentArts Runtime 镜像
 
-## 2026-10-14 镜像内 Laya 增量
+<!-- current-design-alignment-20261015 -->
+## 当前口径与历史适用性（2026-10-15）
 
-正式入口现在要求 `PA_AGENT_LAYA_MODE=embedded`：`laya[serve]==0.3.20` multilingual 的权重、encoder 配置、tokenizer 与 Python CPU 服务随自有 ARM64 镜像一起交付。它不是把 MaaS 模型改名 Laya，也不会把 Windows venv 或 wheels 拷入 Linux。通用国内 MaaS 经现有 ModelGateway 生成候选；一个镜像内 Laya 实例在有限候选中选择。TaskRuntime、Policy、ToolGateway、实际工具、终态与 Evidence 仍在可信本地。
+当前以[详细设计](../../docs/design/CURRENT_DESIGN_20261015.md)区分设计意图、已有代码、待接线与真实验收；架构仍未最终定型。
+本机Laya、全部28图/185节点镜像串行编排，未合格判断升级经AgentArts代理的DeepSeek；语音百炼既有端口，SIS平台不可用。
+SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1`，
+云指定版本 `arm64-local-v3-244ca434` 目录与关联日志已验，见[发布回执](../../docs/competition/evidence/test-image-v3-20261015/owned-release.json)。
+两案例完整执行表面为本机同版镜像+本机Runtime/Policy/工具/Laya+远端AgentArts模型代理，
+见[真实执行汇总](../../docs/competition/evidence/test-image-v3-20261015/full-workflow-results.json)：Wukong167.432s、Pelican第二轮81.611s，41工具Evidence；首轮partial保留。
+分支父成功、协调锚点created；28目录不等于28业务验收。6次判断182–618ms未达150ms，各案例3裁决均升级DeepSeek，未证高级调用减少或训练。
+主动责任、无人值守、归来摘要、用户可调打扰/静默feed与语音确认复用原端口。
+高级影子与已有判断合并、主任务优先、按机会资源/收益决定；真实runner目前顺序await主/影，机会并行与普通任务先交主结果仍待接线。
+以下带日期的嵌入式、直连MaaS、未发布与旧未验记录均保留原版本范围，冲突部署/完成状态已superseded，不作为当前启动参数。
+当前启动只用 `PA_AGENT_LAYA_MODE=local`，镜像不含模型权重、Python或PyTorch；不直连提供商fallback。
+旧协作门槛以当前CONTRIBUTING/AGENTS为准，文档或receipt不授予权限。
+
+## 2026-10-15 当前开发入口：本机 Laya + 镜像串行工作流
+
+Owner 已明确改为本机 Laya。当前生产入口使用 `PA_AGENT_LAYA_MODE=local`；28 项流程的编排留在镜像，
+判断通过 `decision.choose_candidate` 和原 HostBridge 回执完成。镜像不再包含 Python、PyTorch 和权重。
+工作流串行推进，主流程和隔离影子分别接真实宿主；缺适配器明确 unavailable。
+完整配置、所有接线清单、主/影子及鹈鹕增量修复验收见[当前调用文档](../../docs/competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
+本版SWR发布与指定云目录/日志已按上述回执读回；以下带日期记录保留当时事实，不是当前启动要求。
+
+## 2026-10-14 镜像内 Laya 增量（历史版本）
+
+当时的历史入口要求 `PA_AGENT_LAYA_MODE=embedded`：`laya[serve]==0.3.20` multilingual 的权重、encoder 配置、tokenizer 与 Python CPU 服务随自有 ARM64 镜像一起交付。它不是把 MaaS 模型改名 Laya，也不会把 Windows venv 或 wheels 拷入 Linux。通用国内 MaaS 经现有 ModelGateway 生成候选；一个镜像内 Laya 实例在有限候选中选择。TaskRuntime、Policy、ToolGateway、实际工具、终态与 Evidence 仍在可信本地。
 
 Node 生成仅本进程使用的随机内部 Bearer，启动 Python 回环服务；SHA 清单验证、权重加载及一次真实 synthetic 前向均通过后才开始监听 8080。Python 异常退出会关闭入站服务并使宿主失败，缺权重或 Laya 配置不会静默用旧 Agent。两个进程的受控停止复用原取消链；CPU 前向不可强制 HTTP 抢占，结束前服务保持忙状态。Python stdout/stderr 不公开，凭据与源正文不进入日志；公开 JSON 日志只记录 `laya_ready`、`laya_choice` 的请求、候选及耗时。
 

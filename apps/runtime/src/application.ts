@@ -90,3 +90,6 @@ export {createWorkflowLearningApplication,createBoundPublicFactErasureApplicatio
 export type {WorkflowLearningOptions,LearningTaskBinding,LearningSkillManifest} from './application/memory-learning.js';
 export {KnowledgeWriteReconciliationAdapter} from './application/knowledge-write-reconciliation.js';
 export type {KnowledgeWriteReconciliationPort} from './application/knowledge-write-reconciliation.js';
+export * from './application/proactive-connector-host.js';
+export * from './application/notification-host.js';
+export * from './application/proactive-workflow-session.js';

@@ -53,7 +53,7 @@ test('workflow preparation preserves node output contract and predecessor state 
 });
 test('current tool request boundary preserves global downstream requirements without fabricating their outputs',async()=>{
   const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N01');
-  const input={goal:'Read the task-supplied public file before producing API docs',schemaFile:'public-api.json',codeFile:'public-api.json',
+  const input={goal:'Read public-api.json before producing API docs; the path must be extracted from this sentence',codeFile:'public-api.json',
     expectedOutputFields:['docMarkdown','exampleArguments']};
   const value={toolName:'workspace.read_text',toolVersion:'1.0.0',arguments:{path:'public-api.json'}};
   const {agent,models,receipts}=setup({fast:[{candidates:[{id:'source-read',description:'Read public source before comparison',value}]}]});
@@ -70,6 +70,18 @@ test('current tool request boundary preserves global downstream requirements wit
   assert.equal(diagnostic.stage,'candidate_response');assert.equal(diagnostic.nodeId,'F20_N01');assert.equal(diagnostic.candidateCount,1);
   assert.match(diagnostic.candidateArrayDigest,/^[a-f0-9]{64}$/);
   assert.equal(JSON.stringify(diagnostic).includes('public-api.json'),false);
+});
+test('an explicit source path binds the published reader without a redundant generative model call',async()=>{
+  const template=getOwnedWorkflowTemplate('F15'),node=template.nodes.find(value=>value.id==='F15_N01');
+  const {agent,models,receipts}=setup();
+  const prepared=await agent.prepareOwnedWorkflowCandidates({template,node,input:{goal:'Repair the SVG',targetFile:'pelican.svg'},
+    predecessorOutputs:{},predecessorStates:{},availableTools:[{name:'workspace.read_text',version:'1.0.0',
+      inputSchema:{type:'object',properties:{path:{const:'pelican.svg'}},required:['path'],additionalProperties:false}}],
+    mode:'main',namespace:'synthetic',...invoke('explicit path')});
+  assert.equal(models.fast.requests.length,0);assert.deepEqual(prepared[0].value,
+    {toolName:'workspace.read_text',toolVersion:'1.0.0',arguments:{path:'pelican.svg'}});
+  assert.equal(prepared[1].abstain,true);assert.equal(receipts[0].candidatePreparation,'deterministic_binding');
+  assert.equal(JSON.stringify(receipts).includes('pelican.svg'),false);
 });
 test('empty actual candidate array is separately diagnosed before any selector invocation',async()=>{
   const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N01');let selections=0;

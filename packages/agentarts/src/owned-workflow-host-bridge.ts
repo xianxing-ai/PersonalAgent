@@ -1,7 +1,7 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {OwnedWorkflowAdvanceRequest,WorkflowProposal,WorkflowReceipt,WorkflowReceiptVerifier,
-  WorkflowRevisionIdentity,WorkflowRevisionMigration} from './owned-workflows.js';
+  WorkflowRevisionIdentity,WorkflowRevisionMigration,WorkflowControlCommand} from './owned-workflows.js';
 
 const canonical=(value:unknown):string=>{
   if(value===null||typeof value!=='object') return JSON.stringify(value);
@@ -34,6 +34,7 @@ export function createOwnedWorkflowReceiptVerifier(options:{secret:string}):Work
         ||proof.workflowId!==request.workflowId&&`owned-${proof.workflowId}`!==request.workflowId
         ||proof.originControlRevision!==expected.originControlRevision||proof.nodeId!==expected.nodeId
         ||proof.operationId!==expected.operationId||proof.proposalId!==expected.proposalId
+        ||proof.proposalDigest!==hash(expected)
         ||proof.inputDigest!==expected.inputDigest||proof.toolName!==expected.toolName||proof.toolVersion!==expected.toolVersion
         ||proof.argumentsDigest!==hash(expected.arguments)||proof.state!==receipt.state
         ||proof.resultDigest!==hash(receipt.result)||proof.evidenceDigest!==hash(receipt.evidenceRefs)
@@ -46,6 +47,13 @@ export function createOwnedWorkflowReceiptVerifier(options:{secret:string}):Work
         &&proof.previousDigest===hash(previous)&&proof.nextDigest===hash(next)
         &&proof.invalidatedDigest===hash(migration.invalidatedNodeIds);
     },
+    async verifyControl(command,request) {
+      const proof=command.proof;
+      return authentic(proof,sign)&&proof.proofVersion==='1.0.0'&&proof.kind==='host_control'
+        &&proof.taskId===request.taskId&&proof.sessionId===request.sessionId&&proof.workflowId===request.workflowId
+        &&proof.controlRevision===request.controlRevision&&proof.checkpointDigest===hash(request.checkpoint)
+        &&proof.commandDigest===hash({commandId:command.commandId,action:command.action,...(command.reason===undefined?{}:{reason:command.reason})});
+    },
   };
 }
 
@@ -53,7 +61,7 @@ export function createOwnedWorkflowReceiptVerifier(options:{secret:string}):Work
 export interface WorkflowHostTaskPort {
   submitHostToolTask(request:{commandId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>;deadline:string}):{
     commandId:string;toolName:string;toolVersion:string;task:{taskId:string;state:string}};
-  readHostToolTask(taskId:string):{commandId:string;toolName:string;toolVersion:string;task:{taskId:string;state:string};
+  readHostToolTask(taskId:string):{commandId:string;toolName:string;toolVersion:string;task:{taskId:string;state:string;error?:unknown;evidenceRefs?:readonly string[]};
     confirmed?:{runId:string;result:unknown;evidenceRefs:string[]}};
 }
 export interface WorkflowCheckpointPort {
@@ -69,12 +77,20 @@ export class OwnedWorkflowHostBridge {
   private readonly sign:(value:unknown)=>string;
   constructor(private readonly options:{host:WorkflowHostTaskPort;checkpoints:WorkflowCheckpointPort;receiptSecret:string;
     /** Existing local control/TaskRuntime source must reject stale, cancelled or terminal work. */
-    assertActive:(taskId:string,controlRevision:number)=>void}) {
+    assertActive:(taskId:string,controlRevision:number)=>void;
+    /** Host verifies this task is actually bound to separate roots, credentials and state. A namespace string is insufficient. */
+    assertIsolation?:(taskId:string,isolation:{namespace:string;snapshotDigest:string})=>void;
+    /** Independent trusted adapter attests that this failed read has no external effect to replay. Default denies. */
+    canRetryReadFailure?:(proposal:Extract<WorkflowProposal,{kind:'tool_proposal'}>,readback:ReturnType<WorkflowHostTaskPort['readHostToolTask']>)=>boolean}) {
     this.sign=signer(options.receiptSecret);
   }
   submit(request:Pick<OwnedWorkflowAdvanceRequest,'taskId'|'sessionId'|'workflowId'|'controlRevision'|'deadline'>,
     proposal:WorkflowProposal):{localTaskId:string;state:string} {
     if(proposal.kind!=='tool_proposal') throw new ProtocolError('UNSUPPORTED_CAPABILITY','Host operation needs its actual public adapter');
+    if(proposal.isolation) {
+      if(!this.options.assertIsolation) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Isolated execution host is not configured');
+      this.options.assertIsolation(request.taskId,proposal.isolation);
+    }
     const key='owned-workflow:operation:'+proposal.operationId;
     const saved=this.options.checkpoints.read(request.taskId,key);
     if(saved!==undefined) {
@@ -111,6 +127,10 @@ export class OwnedWorkflowHostBridge {
   readReceipt(request:Pick<OwnedWorkflowAdvanceRequest,'taskId'|'sessionId'|'workflowId'|'controlRevision'>,
     proposal:WorkflowProposal):WorkflowReceipt|undefined {
     if(proposal.kind!=='tool_proposal') throw new ProtocolError('UNSUPPORTED_CAPABILITY','No generic host-operation success signer');
+    if(proposal.isolation) {
+      if(!this.options.assertIsolation) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Isolated readback host is not configured');
+      this.options.assertIsolation(request.taskId,proposal.isolation);
+    }
     const saved=this.options.checkpoints.read(request.taskId,'owned-workflow:operation:'+proposal.operationId) as HostBinding|undefined;
     if(!saved||hash(saved.proposal)!==hash(proposal)||saved.taskId!==request.taskId
       ||saved.sessionId!==request.sessionId||saved.workflowId!==request.workflowId) invalid('Original host tool binding not found');
@@ -125,12 +145,19 @@ export class OwnedWorkflowHostBridge {
         invalid('Host result has no matching actual execution evidence');
       }
       state='confirmed';result=structuredClone(readback.confirmed.result);evidenceRefs=[...readback.confirmed.evidenceRefs];
-    } else if(readback.task.state==='waiting_reconciliation') {state='unknown';result={localState:readback.task.state};evidenceRefs=[];}
-    else if(readback.task.state==='failed') {state='failed';result={localState:readback.task.state};evidenceRefs=[];}
+    } else if(readback.task.state==='waiting_reconciliation') {
+      state='unknown';result={localState:readback.task.state,...(readback.task.error===undefined?{}:{error:structuredClone(readback.task.error)})};
+      evidenceRefs=[...(readback.confirmed?.evidenceRefs??readback.task.evidenceRefs??[])];
+    }
+    else if(readback.task.state==='failed') {
+      state='failed';evidenceRefs=[...(readback.confirmed?.evidenceRefs??readback.task.evidenceRefs??[])];
+      result={localState:readback.task.state,failure:{...(readback.task.error===undefined?{}:{error:structuredClone(readback.task.error)}),
+        retrySafe:proposal.effect==='read'&&!readback.confirmed&&this.options.canRetryReadFailure?.(proposal,readback)===true}};
+    }
     else return undefined;
     const body={proofVersion:'1.0.0',kind:'tool_receipt',taskId:binding.taskId,sessionId:binding.sessionId,
       workflowId:binding.workflowId,originControlRevision:proposal.originControlRevision,nodeId:proposal.nodeId,
-      proposalId:proposal.proposalId,operationId:proposal.operationId,inputDigest:proposal.inputDigest,
+      proposalId:proposal.proposalId,operationId:proposal.operationId,inputDigest:proposal.inputDigest,proposalDigest:hash(proposal),
       toolName:proposal.toolName,toolVersion:proposal.toolVersion,argumentsDigest:hash(proposal.arguments),
       localTaskId:binding.localTaskId,runId:`host-tool-${binding.localTaskId}`,state,resultDigest:hash(result),evidenceDigest:hash(evidenceRefs)};
     return {nodeId:proposal.nodeId,proposalId:proposal.proposalId,operationId:proposal.operationId,inputDigest:proposal.inputDigest,
@@ -142,5 +169,14 @@ export class OwnedWorkflowHostBridge {
       ||previous.templateDigest!==next.templateDigest||next.controlRevision<=previous.controlRevision) invalid('Invalid host revision migration');
     const body={proofVersion:'1.0.0',kind:'revision_migration',previousDigest:hash(previous),nextDigest:hash(next),invalidatedDigest:hash(invalidatedNodeIds)};
     return {invalidatedNodeIds:[...invalidatedNodeIds],proof:{...body,signature:this.sign(body)}};
+  }
+  /** Trusted local control only. Signing a resume is not a user/Policy permission grant. */
+  control(request:Pick<OwnedWorkflowAdvanceRequest,'taskId'|'sessionId'|'workflowId'|'controlRevision'|'checkpoint'>,
+    command:Omit<WorkflowControlCommand,'proof'>):WorkflowControlCommand {
+    this.options.assertActive(request.taskId,request.controlRevision);
+    if(!request.checkpoint)invalid('Workflow control requires its original checkpoint');
+    const body={proofVersion:'1.0.0',kind:'host_control',taskId:request.taskId,sessionId:request.sessionId,
+      workflowId:request.workflowId,controlRevision:request.controlRevision,checkpointDigest:hash(request.checkpoint),commandDigest:hash(command)};
+    return {...structuredClone(command),proof:{...body,signature:this.sign(body)}};
   }
 }

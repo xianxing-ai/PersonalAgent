@@ -725,7 +725,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
             elif incompatible == "training":
                 agent.model.training = True
             elif incompatible == "device":
-                agent.device = SimpleNamespace(type="cuda")
+                agent.device = SimpleNamespace(type="unsupported_accelerator")
             elif incompatible == "signature":
                 agent._forward = lambda changed_argument: None
             app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")

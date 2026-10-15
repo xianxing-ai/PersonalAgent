@@ -131,6 +131,20 @@ function proposalError(error: unknown): ProtocolError {
   return new ProtocolError('INVALID_ARGUMENT', error instanceof Error ? error.message : 'Invalid model tool proposal');
 }
 
+/** Exact producer errors only: provider authentication/policy/transport failures are not proposals. */
+function isModelProposalValidationError(error: unknown): error is ProtocolError {
+  if (!(error instanceof ProtocolError)) return false;
+  if (error.code === 'UNAUTHORIZED') return error.message === 'Tool proposal contains fields outside the tool contract';
+  if (error.code === 'UNSUPPORTED_CAPABILITY') return error.message === 'Model proposed an unavailable tool';
+  return error.code === 'INVALID_ARGUMENT' && [
+    'Model returned invalid proposal JSON', 'Model response must be an object',
+    'Model returned an invalid structured response', 'Model response must be a final answer or tool proposal',
+    'Tool proposal must be an object', 'Tool proposal has invalid fields',
+    'toolName must not be empty', 'toolVersion must not be empty',
+    'Message does not match the public schema',
+  ].includes(error.message);
+}
+
 function withModelMetadata(deployment: ModelResult['deployment'], usage: ModelResult['usage'], text: string): string {
   const tokens = usage?.totalTokens === undefined ? 'unknown' : String(usage.totalTokens);
   return `${text} [model=${deployment.provider}/${deployment.deployment}/${deployment.model}; verification=${deployment.verification}; tokens=${tokens}]`;
@@ -161,10 +175,32 @@ export async function runAgent(context: AgentWorkerContext, options: AgentRunOpt
   let evidenceRefs: string[] = saved?.evidenceRefs ?? [];
   let pending = saved?.pending;
 
+  const repairProposal = (error: unknown, step: number, response?: ModelResult['response']): void => {
+    repairs++;
+    if (repairs > (options.maxRepairAttempts ?? 1)) throw proposalError(error);
+    messages = [...messages,
+      ...(response === undefined ? [] : [{role: 'assistant' as const, content: JSON.stringify(response)}]),
+      {role: 'user', content: `The previous tool proposal was rejected: ${proposalError(error).message}. Return only one complete JSON object for a corrected proposal or final answer, without surrounding prose. A proposal must use exactly toolName, toolVersion and arguments.`},
+    ];
+    // Failed provider parsing supplies no trusted raw reply or usage: do not invent either.
+    context.saveCheckpoint('agent-loop', {messages, usedTokens, repairs, evidenceRefs, step: step + 1});
+  };
+
   for (let step = saved?.step ?? 1; step <= options.maxSteps; step++) {
     context.reportProgress({stepId: `agent-${step}`, label: 'model planning', completedUnits: step - 1, totalUnits: options.maxSteps});
     if (!pending && options.maxTokens !== undefined && usedTokens >= options.maxTokens) throw new ProtocolError('TIMEOUT', 'Agent token budget exhausted');
-    const result = pending ?? await complete(context, options, messages, options.maxTokens === undefined ? undefined : options.maxTokens - usedTokens);
+    let result: ModelResult;
+    try {
+      result = pending ?? await complete(context, options, messages, options.maxTokens === undefined ? undefined : options.maxTokens - usedTokens);
+    } catch (error) {
+      if (!isModelProposalValidationError(error)) throw error;
+      // Parsing failed after provider generation, but its usage is unavailable here.
+      // An explicit token budget cannot safely fund another call with unknown spend.
+      if (options.maxTokens !== undefined) throw error;
+      checkRuntime(context);
+      repairProposal(error, step);
+      continue;
+    }
     if (!pending) usedTokens += estimateTokens(result);
     pending = undefined;
     if (options.maxTokens !== undefined && usedTokens > options.maxTokens) throw new ProtocolError('TIMEOUT', 'Agent token budget exhausted');
@@ -186,9 +222,7 @@ export async function runAgent(context: AgentWorkerContext, options: AgentRunOpt
       if (descriptor.version !== proposal.toolVersion) throw new ProtocolError('PROTOCOL_MISMATCH', `Tool ${proposal.toolName} version ${proposal.toolVersion} is not available`);
       validateToolArguments(descriptor, proposal.arguments);
     } catch (error) {
-      repairs++;
-      if (repairs > (options.maxRepairAttempts ?? 1)) throw proposalError(error);
-      messages = [...messages, {role: 'assistant', content: JSON.stringify(result.response)}, {role: 'user', content: `The previous tool proposal was rejected: ${proposalError(error).message}. Return a corrected proposal or a final answer.`}];
+      repairProposal(error, step, result.response);
       continue;
     }
 

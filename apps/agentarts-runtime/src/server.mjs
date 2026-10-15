@@ -4,6 +4,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {attachAgentWebSocketTransport, equalInboundToken} from './websocket-transport.mjs';
 import {createBindingDispatcher} from './binding-dispatch.mjs';
 import {ownedRequestPath} from './request-path.mjs';
+import {createStageTimeline} from './stage-timeline.mjs';
 
 const MAX_BYTES = 1_200_000;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -24,7 +25,7 @@ function parsePayload(payload, workflowGoalInput) {
 }
 /** Both modes serve the same code. Only trusted startup selects mode/authentication. */
 export function createAgentServer({orchestrator, mode, authToken, wssAuthToken = authToken, workflowGoalInput,
-  getBindings, defaultControllerId, timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
+  getBindings, defaultControllerId, testVersionController, serviceControllers = {}, onStageRecord, timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
   if (!['agentarts','standalone-validation'].includes(mode)
     || !orchestrator || typeof orchestrator.invoke !== 'function'
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647
@@ -33,6 +34,9 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     throw new ProtocolError('INVALID_ARGUMENT','Invalid server configuration');
   }
   const bindings = createBindingDispatcher({orchestrator,getBindings,defaultControllerId});
+  if (!serviceControllers || typeof serviceControllers !== 'object' || Array.isArray(serviceControllers)
+    || Object.keys(serviceControllers).some(key=>!['shadowVersion','platformVersion','proactiveVersion'].includes(key)
+      || typeof serviceControllers[key]!=='function')) throw new ProtocolError('INVALID_ARGUMENT','Invalid service controller configuration');
   let active = 0;
   let closing = false;
   const httpControllers = new Set();
@@ -53,18 +57,38 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   };
   const release = () => {active--;};
   const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false,channel='http'}) => {
+    const timeline=createStageTimeline({onRecord:onStageRecord});
+    return timeline.run('invocation.dispatch',async()=>{
     const query = parsePayload(payload,workflowGoalInput);
     signal.throwIfAborted();
-    const binding = bindings.parse(query);
+    let testValue;
+    let serviceValue,serviceName;
+    try {
+      const parsed=JSON.parse(query);
+      if(parsed && typeof parsed==='object' && !Array.isArray(parsed)) {
+        const names=['shadowVersion','platformVersion','proactiveVersion','testVersion'].filter(key=>Object.hasOwn(parsed,key));
+        if(names.length>1) throw new ProtocolError('INVALID_ARGUMENT','Multiple service protocols');
+        if(names[0]==='testVersion')testValue=parsed;
+        else if(names.length){serviceName=names[0];serviceValue=parsed;}
+      }
+    }catch(error){if(error instanceof ProtocolError)throw error;}
+    const binding = testValue||serviceValue?undefined:bindings.parse(query);
+    if(testValue&&(!testVersionController||!bindingAuthorized))
+      throw new ProtocolError(testVersionController?'UNAUTHORIZED':'UNSUPPORTED_CAPABILITY','Test version requires explicit host configuration and credential');
     if (binding && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Owned binding credential required');
+    if (serviceValue && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Service host credential required');
+    if (serviceValue && !serviceControllers[serviceName]) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Service controller unavailable');
     const invocation = {query,deadline,signal,sessionId,requestId};
-    const result = binding ? await bindings.invoke(invocation,binding) : await bindings.invokeDefault(invocation);
+    const result = serviceValue ? await serviceControllers[serviceName]({...invocation,value:serviceValue})
+      : testValue ? await testVersionController({...invocation,value:testValue})
+      : binding ? await bindings.invoke(invocation,binding) : await bindings.invokeDefault(invocation);
     signal.throwIfAborted();
     if (Date.now() >= Date.parse(deadline)) throw new ProtocolError('TIMEOUT','Invocation deadline expired');
     const text = JSON.stringify(result);
-    const outputLimit = binding?.workflow && channel==='http' ? 1_100_000 : 64_000;
+    const outputLimit = (binding?.workflow || serviceValue) && channel==='http' ? 1_100_000 : 64_000;
     if (Buffer.byteLength(text)>outputLimit) throw new ProtocolError('EXTERNAL_FAILURE','Agent output exceeds limit');
     return [{event:'message',data:{text}},{event:'task_end'},{event:'end'}];
+    },{sessionId,requestId,channel});
   };
   let transport;
   const server = createServer(async (request,response) => {

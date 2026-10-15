@@ -1,4 +1,5 @@
-export function mountLiveVoiceControls(root, invoke) {
+export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
+  if (compact) return mountCompactLiveVoiceControls(root, invoke);
   const settings = document.createElement('details');
   settings.className = 'sis-settings';
   settings.innerHTML = '<summary>Live 实时语音设置</summary><div class="sis-fields"><p class="notice">千问负责实时听说；工作由同一个 AgentArts 主智能体执行。使用百炼北京业务空间。</p><label>业务空间 ID<input id="live-workspace" autocomplete="off" maxlength="128"></label><label>百炼 API Key<input id="live-key" type="password" autocomplete="off" maxlength="4096" placeholder="仅在本机加密保存"></label><label>启停快捷键<select id="live-hotkey">'+Array.from({length:24},(_,i)=>`<option value="F${i+1}"${i===7?' selected':''}>F${i+1}</option>`).join('')+'</select></label><label><input id="live-consent" type="checkbox">开启 Live 时将麦克风音频和对话上下文发送到阿里云，用于实时对话</label><button id="live-save" type="button">保存 Live 配置</button><p class="notice" id="live-config-result" role="status"></p></div>';
@@ -59,6 +60,34 @@ export function mountLiveVoiceControls(root, invoke) {
       status.textContent = `Live：${names[live.status] ?? '未配置'} · ${live.shortcut?.key ?? 'F8'} 开启 / 关闭`;
       if (live.status === 'error' || !live.configured) status.textContent += ` · ${live.reason ?? '请先配置'}`;
       if (live.shortcut?.reason) status.textContent += ` · ${live.shortcut.reason}`;
+    },
+  };
+}
+
+function mountCompactLiveVoiceControls(root, invoke) {
+  const controls=document.createElement('div');controls.className='voice-runtime-controls';
+  controls.innerHTML='<p class="notice" role="status" id="live-runtime-status"></p><button type="button" class="btn btn-sm" id="live-open-settings">语音设置</button>';
+  root.querySelector('#error').before(controls);
+  const status=controls.querySelector('#live-runtime-status');
+  let liveActive=false,pendingToggle,toggleRevision=0;
+  controls.querySelector('#live-open-settings').onclick=()=>invoke('admin.open',{page:'voice'}).catch(error=>{status.textContent=error.message;});
+  return {
+    showSettings(){},
+    async toggle(){
+      const action=liveActive?'stop':'start';
+      if(pendingToggle&&!(pendingToggle==='start'&&action==='stop'))return;
+      pendingToggle=action;const revision=++toggleRevision;
+      try{await invoke('live.toggle');}
+      catch(error){if(revision===toggleRevision)status.textContent=error.message;}
+      finally{if(revision===toggleRevision)pendingToggle=undefined;}
+    },
+    render(live={}){
+      liveActive=live.active===true;
+      const names={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'主智能体正在处理任务',stopping:'正在关闭',
+        idle:live.configured?'配置已保存，未开启麦克风':'未配置',error:'连接失败'};
+      status.textContent=`Live：${names[live.status]??'状态未报告'} · ${live.shortcut?.key??live.hotkey??'F8'} 开启 / 关闭`;
+      if(live.status==='error'||!live.configured)status.textContent+=` · ${live.reason??'请到语音设置配置'}`;
+      if(live.shortcut?.reason)status.textContent+=` · ${live.shortcut.reason}`;
     },
   };
 }

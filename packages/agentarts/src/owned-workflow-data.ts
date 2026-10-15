@@ -1,9 +1,28 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 5519f9fd71790035a342830e78163530a1526ed220ee56969fb066bc90b5d360
+// Source projection sha256: f21b8ef7169176ade020faee377080554a2f2ed4297043d7c0dbcca08d349716
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
     "name": "主对话与责任理解",
+    "category": "交互与输入",
+    "summary": "从可信用户指令或既有授权建立责任，先召回再由唯一主决策配置联合理解、选路与分派；缺信息按需补查，清楚且已授权的责任直接生效。",
+    "decisionPoints": [
+      "区分单次任务、持久责任与任务变更，保持否定、条件、对象和参数关系。",
+      "联合排序责任、事实、模板与模型能力；有新证据需求才扩充上下文。",
+      "提出任务图与各执行模型/原生思考深度；既有判断可被F28消费。",
+      "区分已授权动作、事实引用、推断建议与真正缺失的用户决定。"
+    ],
+    "designNotes": [
+      "DecisionReady / NeedContextExpansion 是拟议内部状态概念，不是新发布的wire DTO。",
+      "宿主校验来源身份、版本和授权记录；语义相容性由模型提出并保留不确定性，不声称代码能普遍证明中文逻辑等价。",
+      "rule_ref可以支持事实或用户规则；只有对应有效动作授权才允许执行。模型推断不会静默扩权。",
+      "检索不设固定一跳；相同检索没有新信息时停止重复，并沿用实际截止时间、取消和用户配置。"
+    ],
+    "acceptance": [
+      "清楚的已授权新责任无需额外首轮确认；歧义才进入补问。",
+      "否定、条件、省略及多对象输入保持原文关联；不能只用includes判断同意或授权。",
+      "检索扩充能恢复遗漏依据，也能在无新增信息时退出；记录调用轮数与用户打扰分布。"
+    ],
     "nodes": [
       {
         "id": "F01_N01",
@@ -63,7 +82,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "任务图候选",
           "模型/思考配置候选",
           "就绪或需扩充建议"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F01_N04",
@@ -240,6 +264,24 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F02",
     "name": "语音交互与确认",
+    "category": "交互与输入",
+    "summary": "仅在真正缺少决定时主动补问；语音与文字回答同样绑定当前问题、操作和版本。清楚的既有授权直接执行，拒绝与本地直接停止不等待云模型。",
+    "decisionPoints": [
+      "从最终转写中提取用户真实意图（同意、拒绝、修改金额、附加条件）",
+      "识别否定语义（如“我绝不同意”，防止被误判为同意）",
+      "提取修改指令中的新参数值（如“改成三百元”）"
+    ],
+    "designNotes": [
+      "确认记录关联可信用户回答，不称为密码学用户签名。",
+      "含“同意”子串不等于同意；“我绝不同意”按拒绝处理，附条件回答先处理条件。",
+      "直接停止入口不等ASR；口头停止仍取决于真实识别链，随后进入F24四种执行结果。",
+      "版本变化后旧回答失效；新参数已被既有授权覆盖时，不新增一律二次确认。"
+    ],
+    "acceptance": [
+      "同意、拒绝、修改、条件、旧版本、回声与中途转写分别核对。",
+      "主动播报与文字共用同一待决问题；无需专门点击弹窗。",
+      "取消受理与当前操作已停止分开显示，未知结果转读回。"
+    ],
     "nodes": [
       {
         "id": "F02_N01",
@@ -298,7 +340,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "有歧义时的意图解释"
+        }
       },
       {
         "id": "F02_N05",
@@ -312,7 +359,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "effectType": "读取",
         "inputFields": [],
         "outputFields": [],
-        "condition": "明确回答或经过语义解释的回答；中途转写、回声、沉默不消费授权"
+        "condition": "明确回答或经过语义解释的回答；中途转写、回声、沉默不消费授权",
+        "joinMode": "selected"
       },
       {
         "id": "F02_N06",
@@ -475,6 +523,23 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F03",
     "name": "世界状态、目标与局部重规划",
+    "category": "规划与记忆",
+    "summary": "按时间、地点、人物和资源宽松召回潜在依赖，由唯一主模型判断受影响子图。计划修订保留已发生操作；需要修正外部结果时另建可追溯补偿候选。",
+    "decisionPoints": [
+      "关联重叠时间、邻近地点、出行和共享资源；保留未知项与不确定性。",
+      "判断哪些结果仍有效、哪些尚未执行节点失效、哪些真实外部效果需要修正。",
+      "提出局部重规划或补偿候选，不能把修改计划当成外部回滚。"
+    ],
+    "designNotes": [
+      "图更新和外部补偿是两种操作；不能靠换revision撤销已发生副作用。",
+      "原操作ID与效果ID在恢复、模型切换和重规划间保持稳定。",
+      "补偿分类由宿主结合实际图节点来源、原效果引用、前驱与证据绑定；同一收件人有历史发信不能把以后所有发信都归为补偿。"
+    ],
+    "acceptance": [
+      "同一对象的新正向动作、原动作重试与更正动作能分别追溯，不误分类。",
+      "原结果未知时不盲重试、不直接补偿；核实后保留原结果。",
+      "对比完整重规划与局部重规划时使用同样授权、幂等和读回能力。"
+    ],
     "nodes": [
       {
         "id": "F03_N01",
@@ -526,7 +591,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "失效项",
           "依赖假设及依据",
           "可能补偿的原效果"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F03_N03",
@@ -731,6 +801,21 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F04",
     "name": "Wiki 与作用域记忆管理",
+    "category": "规划与记忆",
+    "summary": "保存有来源、作用域和版本的事实/偏好，区分相容更新、冲突与失效。主模型参与关联与纠错，事实记忆不会自动变成执行授权。",
+    "decisionPoints": [
+      "判断候选是事实、偏好、责任条款还是推断，分别留来源。",
+      "关联适用范围与已有版本，识别冲突及受影响上下文。",
+      "提出暂停使用、纠正或遗忘方式；使用现有授权和公开写入能力。"
+    ],
+    "designNotes": [
+      "Wiki与索引能力按现有接口目录接入；图不证明真实Wiki已写入。",
+      "每次回忆记录用了哪个版本及影响了哪项判断，能恢复原文核实。"
+    ],
+    "acceptance": [
+      "冲突候选不会覆盖已有确定事实；过期索引不用于新授权决定。",
+      "撤销与更正能传播到F05/F27及关联计划。"
+    ],
     "nodes": [
       {
         "id": "F04_N01",
@@ -778,7 +863,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "版本关联候选",
           "适用范围",
           "冲突解释"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F04_N06",
@@ -845,7 +935,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "失效传播事件",
           "可恢复来源引用"
-        ]
+        ],
+        "joinMode": "selected"
       }
     ],
     "edges": [
@@ -896,6 +987,21 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F05",
     "name": "记忆搜索与来源回答",
+    "category": "规划与记忆",
+    "summary": "代码先过滤有效来源与数据范围，多路召回后由唯一主模型排序并决定是否需要扩充。回答带来源，不支持的内容明确保留为未知。",
+    "decisionPoints": [
+      "识别主题、对象、时间/地点/人物/资源及证据缺口。",
+      "排序有效片段，区分事实、授权和推断；需要新依据时提出扩充请求。",
+      "检查答案支持关系与反例；决定补查、改写或保留未知。"
+    ],
+    "designNotes": [
+      "不固定检索跳数或Top-K；在实际上下文能力和配置内保留可能关联的未知项。",
+      "相同检索没有新增信息时停止重复；引用不足时回答未知，不伪造反事实结果。"
+    ],
+    "acceptance": [
+      "统计宽松召回漏检与误召回；测已知/未知属性以及来源过期。",
+      "对照相同模型、数据和范围，记录实际轮数/延迟/Token及答案支持率。"
+    ],
     "nodes": [
       {
         "id": "F05_N01",
@@ -943,7 +1049,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "选用片段",
           "支持关系",
           "扩充建议或可回答建议"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F05_N06",
@@ -977,7 +1088,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "回答候选",
           "引用映射"
         ],
-        "condition": "已有依据足以回答或明确声明未知"
+        "condition": "已有依据足以回答或明确声明未知",
+        "modelAssignment": {
+          "vendor": "通义千问",
+          "model": "qwen3-32b",
+          "role": "来源回答候选"
+        }
       },
       {
         "id": "F05_N05",
@@ -994,7 +1110,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "支持/未支持项",
           "需补查或未知"
         ],
-        "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。"
+        "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。",
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F05_N07",
@@ -1068,6 +1189,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F06",
     "name": "待办、提醒与跟进",
+    "category": "个人助理与调度",
+    "summary": "管理具有时间约束的待办、提醒和跟进，使用实际时钟及当前责任版本；写入保留稳定操作标识，未知时先核实。",
+    "decisionPoints": [
+      "拆解主任务截止时间、前置检查提醒与完成判定条件",
+      "解析“下午”等模糊时间，必要时主动澄清或按偏好设定",
+      "检测是否与现有待办重复，决定更新或新建"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F06_N01",
@@ -1105,7 +1235,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "isDuplicate",
           "actionPlan"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "调度规划"
+        }
       },
       {
         "id": "F06_N03",
@@ -1199,6 +1334,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F07",
     "name": "日历安排与冲突处理",
+    "category": "个人助理与调度",
+    "summary": "协调日程、排除冲突，严格遵循午休保护偏好；涉及外部邀约时坚持版本复查与询问。",
+    "decisionPoints": [
+      "识别参会人、所需时长、时段倾向与午休约束",
+      "从代码计算出的空闲时段中，排序最符合用户人际与工作习惯的候选",
+      "外部发送前核验是否符合当前责任授权"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F07_N01",
@@ -1258,7 +1402,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "recommendedSlot",
           "rationale"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "偏好排序"
+        }
       },
       {
         "id": "F07_N04",
@@ -1334,6 +1483,22 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F08",
     "name": "邮件分类、草稿与发送",
+    "category": "个人助理与调度",
+    "summary": "邮件事件匹配已授权责任，独立分类、资料查询与草稿生成并行。现有授权覆盖时直接执行；缺少关键决定时主动语音补问。发送结果未知先读回，变更转F03局部修订与补偿。",
+    "decisionPoints": [
+      "并行匹配各邮件线程责任、主题、时效和用户范围。",
+      "结合证据检查收件人、条件与承诺，提出可执行动作或真正缺失的决定。",
+      "变化发生时区分尚未发送草稿与已发送效果，保留原操作记录。"
+    ],
+    "designNotes": [
+      "授权明确时不串入语音确认；被拒绝/待核实线程不阻塞无依赖线程。",
+      "草稿候选与实际邮箱写入分开；写草稿也经既有工具/Policy。",
+      "普通核实过程用状态徽章；重要副作用、截止冲击或真正需用户决定时主动通知。"
+    ],
+    "acceptance": [
+      "首条真实闭环：邮件事件→责任→资料/分类并行→草稿→仅必要语音修改→执行→读回→局部修订→失败轨迹回放。",
+      "测自动执行与补问比例、取消四种结果、未知发送不重复及补偿关联准确性。"
+    ],
     "nodes": [
       {
         "id": "F08_N01",
@@ -1366,7 +1531,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "分类/归档候选",
           "责任来源引用"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F08_N09",
@@ -1414,7 +1584,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "inputFields": [],
         "outputFields": [
           "收件人/正文/附件候选"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4-flash",
+          "role": "回复草稿生成"
+        }
       },
       {
         "id": "F08_N05",
@@ -1431,7 +1606,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "修改建议",
           "需澄清项",
           "责任来源关联"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F08_N10",
@@ -1481,7 +1661,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "原发送operation/effect ID",
           "工具实际状态"
         ],
-        "condition": "已有授权直接通过，或待决问题得到有效决定"
+        "condition": "已有授权直接通过，或待决问题得到有效决定",
+        "joinMode": "selected"
       },
       {
         "id": "F08_N11",
@@ -1532,7 +1713,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "已核实结果",
           "待核实/待决定事项"
-        ]
+        ],
+        "joinMode": "selected"
       },
       {
         "id": "F08_N13",
@@ -1646,6 +1828,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F09",
     "name": "订阅、信号发现与筛选",
+    "category": "个人助理与调度",
+    "summary": "汇聚外部多源订阅事件，去重、评分与可信度筛查；高价值进入 F10，低信噪比丢弃或保留观察。",
+    "decisionPoints": [
+      "判断推文与技术动态是否与当前项目技术栈（如决策模型轻量Agent）真正相关",
+      "识别高可信线索 vs 营销水文，决定是否进入深度调研队列",
+      "标记彼此冲突的外部动态并保留矛盾"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F09_N01",
@@ -1701,7 +1892,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "highValueSignal",
           "discardedJunk",
           "forwardToFeature"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "信号初筛与路由"
+        }
       },
       {
         "id": "F09_N04",
@@ -1749,6 +1945,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F10",
     "name": "深度研究与证据汇总",
+    "category": "开发与工程",
+    "summary": "拆解多分支并行调研，指派多厂商模型执行，独立审查分支寻找反例，最终生成对比表。",
+    "decisionPoints": [
+      "拆解技术约束、架构选型与适用场景的对比维度",
+      "协调 F28 为资料调研、架构批判与表格整合分配模型",
+      "审查是否存留未支持的主张并要求补查或标为未知"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F10_N01",
@@ -1785,7 +1990,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "pros",
           "cons"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "通义千问",
+          "model": "qwen3-235b-a22b",
+          "role": "长文档调研"
+        }
       },
       {
         "id": "F10_N03",
@@ -1803,7 +2013,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "pros",
           "cons"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "智谱",
+          "model": "glm-5.2",
+          "role": "架构优缺点剖析"
+        }
       },
       {
         "id": "F10_N04",
@@ -1821,7 +2036,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "pros",
           "cons"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4-flash",
+          "role": "方案梳理"
+        }
       },
       {
         "id": "F10_N05",
@@ -1841,7 +2061,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "correctionsApplied"
         ],
-        "evidenceRequirement": "未验证数据一律标为未知，不可把模型猜测当基准数据"
+        "evidenceRequirement": "未验证数据一律标为未知，不可把模型猜测当基准数据",
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4-pro",
+          "role": "严谨性反例审查"
+        }
       },
       {
         "id": "F10_N06",
@@ -1861,7 +2086,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "summaryTableReady",
           "recommendation"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "最终决策汇总"
+        }
       }
     ],
     "edges": [
@@ -1910,6 +2140,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F11",
     "name": "天气、出行及计划影响",
+    "category": "个人助理与调度",
+    "summary": "感知极端天气或交通延误，研判对线下日程的冲击，主动提醒并语音征询是否调整。",
+    "decisionPoints": [
+      "判断突发恶劣天气是否波及用户的既定线下行程",
+      "在日历中排查备选线上会议窗口或延期方案",
+      "决定何时发起语音提示，并在用户确认前不得擅自退票"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F11_N01",
@@ -1968,7 +2207,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "risk",
           "recommendedAlternative",
           "requiresVoiceConfirm"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "出行决策分析"
+        }
       },
       {
         "id": "F11_N04",
@@ -2011,7 +2255,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "calendarUpdated",
           "oldTrafficAlarmVoided"
         ],
-        "condition": "已授权直接执行或补问得到有效回答"
+        "condition": "已授权直接执行或补问得到有效回答",
+        "joinMode": "selected"
       }
     ],
     "edges": [
@@ -2050,6 +2295,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F12",
     "name": "通知、安静时段与主动服务",
+    "category": "个人助理与调度",
+    "summary": "多任务并发完成时的通知收敛器：非紧急信息在安静时段打包摘要，紧急事项依规穿透。",
+    "decisionPoints": [
+      "研判多条并发通知的紧急度与可行动性（Actionability）",
+      "识别当前是否处于用户预设的免打扰安静时段",
+      "对低优先级信息生成单条合并摘要，避免轰炸用户"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F12_N01",
@@ -2112,7 +2366,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "urgentBypass",
           "queuedForDigest",
           "digestReadyTime"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "打扰度控制决策"
+        }
       },
       {
         "id": "F12_N04",
@@ -2184,6 +2443,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F13",
     "name": "系统检查与故障诊断",
+    "category": "扩展与系统",
+    "summary": "针对“任务为何卡死”展开根因排查，验证网络、环境锁与配置，提出可逆修复，不盲目死循环重试。",
+    "decisionPoints": [
+      "根据错误现象生成原因候选树（锁未释放、模型配额、网络断开）",
+      "选择最具信息价值与最低破坏性的下一步诊断工具",
+      "生成可逆修复建议并确认执行授权"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F13_N01",
@@ -2245,7 +2513,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "rootCause",
           "remediation",
           "isSafeAndReversible"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "系统根因分析"
+        }
       },
       {
         "id": "F13_N04",
@@ -2295,6 +2568,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F14",
     "name": "浏览器与桌面操作",
+    "category": "开发与工程",
+    "summary": "安全浏览器页面元素识别与表单录入，鼠标键盘按资源锁串行化；提交前严苛核准，未知时核查。",
+    "decisionPoints": [
+      "从 DOM 树与候选动作中选择下一步可执行操作（聚焦、输入、单选）",
+      "在触发表单 Final Submit 动作前判定必须生成参数摘要并主动询问",
+      "在页面布局发生突发重绘或按钮失效时重新进行目标识别"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F14_N01",
@@ -2370,7 +2652,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "summary",
           "mustHaltForVoice"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "操作影响度裁决"
+        }
       },
       {
         "id": "F14_N05",
@@ -2413,7 +2700,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "lockReleased"
         ],
         "condition": "有效授权与参数通过宿主检查",
-        "evidenceRequirement": "动作后核对页面/目标身份；结果未知先观察读回，不盲目重复点击。"
+        "evidenceRequirement": "动作后核对页面/目标身份；结果未知先观察读回，不盲目重复点击。",
+        "joinMode": "selected"
       }
     ],
     "edges": [
@@ -2457,6 +2745,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F15",
     "name": "代码修改、补丁与命令执行",
+    "category": "开发与工程",
+    "summary": "沙箱内最小化补丁生成与单元测试执行，展示真实代码 Diff；冲突时暂停冲突部分，禁止隐蔽越界。",
+    "decisionPoints": [
+      "圈定修复文件范围，排除无关文件的过度重构",
+      "调用 F28 为生成补丁与独立审查指派合适编码模型（如 GLM-5.2）",
+      "评估独立审查提出的接口破坏与破坏性越界告警"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F15_N01",
@@ -2494,7 +2791,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "scope",
           "forbiddenActions"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "修复边界圈定"
+        }
       },
       {
         "id": "F15_N03",
@@ -2511,7 +2813,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "patchDiff"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "智谱",
+          "model": "glm-5.2",
+          "role": "补丁代码编写"
+        }
       },
       {
         "id": "F15_N04",
@@ -2531,7 +2838,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "noUnrelatedFormatting",
           "approved"
         ],
-        "evidenceRequirement": "审查实际补丁、目标范围与行为影响，不能按改动行数宣布无风险。"
+        "evidenceRequirement": "审查实际补丁、目标范围与行为影响，不能按改动行数宣布无风险。",
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4-pro",
+          "role": "补丁红线审查"
+        }
       },
       {
         "id": "F15_N05",
@@ -2612,6 +2924,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F16",
     "name": "CI 检查与修复",
+    "category": "开发与工程",
+    "summary": "分析 CI 挂掉的流水线，区分代码缺陷 vs 环境偶发；杜绝以删测试或放宽断言制造假通过。",
+    "decisionPoints": [
+      "研判失败是代码逻辑问题、第三方服务网络抖动还是测试用例过期",
+      "审查候选修复方案，强力拦截“删除测试”或“放宽断言”等作弊行为",
+      "决定是走自动修复补丁还是标记环境偶发建议重跑"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F16_N01",
@@ -2649,7 +2970,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "rootCause",
           "legitimateFix"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "CI失效研判"
+        }
       },
       {
         "id": "F16_N03",
@@ -2668,7 +2994,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "patchApplied"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "智谱",
+          "model": "glm-5.2",
+          "role": "补丁应用"
+        }
       },
       {
         "id": "F16_N04",
@@ -2741,6 +3072,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F17",
     "name": "测试失败定位",
+    "category": "开发与工程",
+    "summary": "多项测试并发失败时的同源聚类，快速定位最小复现路径；偶发失败诚实标为未确认。",
+    "decisionPoints": [
+      "分析6个报错的堆栈，判断是否源于同一个底层依赖缺失或数据源异常（同源合并）",
+      "按信息收益最高原则设计最小复现用例",
+      "区分必然复现缺陷 vs 环境偶发 Flaky 假失败"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F17_N01",
@@ -2779,7 +3119,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "clusterCount",
           "sharedRootCause",
           "evidence"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "失败聚类与同源裁定"
+        }
       },
       {
         "id": "F17_N03",
@@ -2845,6 +3190,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F18",
     "name": "PR 审查、批准条件与合并",
+    "category": "开发与工程",
+    "summary": "多模型协同审查 PR，决策模型区分阻塞问题与优化建议；确定性门禁卡死真实非作者批准，严禁AI越权合并。",
+    "decisionPoints": [
+      "整合执行模型提出的架构缺陷、边界漏洞与测试覆盖率建议",
+      "区分阻断性问题 (Blocking Issues) 与非阻断建议 (Nitpicks)",
+      "核验当前提交是否因新 Commit 使得历史审查意见全部作废"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F18_N01",
@@ -2882,7 +3236,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "suggestions"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "智谱",
+          "model": "glm-5.2",
+          "role": "架构边界审查"
+        }
       },
       {
         "id": "F18_N03",
@@ -2903,7 +3262,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "hasBlockingBugs",
           "blockingCount",
           "nonBlockingCount"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "审查意见分级"
+        }
       },
       {
         "id": "F18_N04",
@@ -2979,6 +3343,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F19",
     "name": "Issue 分诊与关联修复",
+    "category": "开发与工程",
+    "summary": "多用户问题查重分诊；信息不足发起追问，确凿缺陷关联修复；PR合并后真实验证根因而非敷衍关单。",
+    "decisionPoints": [
+      "对新提交的多个 Issue 进行语义查重并合并为单一根因工单",
+      "判断信息是否充分（如缺少环境和日志时自动生成有针对性的追问模板）",
+      "在关联 PR 合并后，独立验证用户最初的 Bug 是否真正被解决"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F19_N01",
@@ -3017,7 +3390,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "canonicalIssueId",
           "duplicateMarkedId",
           "triageCategory"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "工单分诊与查重"
+        }
       },
       {
         "id": "F19_N03",
@@ -3112,6 +3490,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F20",
     "name": "API 文档与一致性检查",
+    "category": "开发与工程",
+    "summary": "比对 OpenAPI 契约、代码实现与调用示例，查漏补缺；严防文档虚夸未落地的虚假能力。",
+    "decisionPoints": [
+      "对比契约定义与实际后端路由参数，识别描述缺失与类型模糊",
+      "检查示例代码是否与真实签名严格吻合",
+      "将缺乏后端实现支持的文档能力标注为“拟新增/未验证”，严禁冒充生产可用"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F20_N01",
@@ -3150,7 +3537,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "diffFields",
           "docMarkdown",
           "exampleArguments"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4-flash",
+          "role": "文档草案编写"
+        }
       },
       {
         "id": "F20_N03",
@@ -3189,7 +3581,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "docVersion",
           "synchronized"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       }
     ],
     "edges": [
@@ -3218,6 +3615,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F21",
     "name": "MCP、Skills 和连接器接入",
+    "category": "扩展与系统",
+    "summary": "规范化接入新工具；能力声明不等于自动授权；注册、连接成功与真实验证三段式分开展示。",
+    "decisionPoints": [
+      "分析工具声明的 capability，评估其与已有内置工具的重合度与替代方案",
+      "判断接入该连接器对现有安全与数据隔离边界的影响",
+      "在连接器断开或权限回收时，级联取消所有等待该工具的就绪节点"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F21_N01",
@@ -3317,7 +3723,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "availableInWorkflow"
         ],
-        "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。"
+        "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。",
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "工具可用性审查"
+        }
       }
     ],
     "edges": [
@@ -3351,6 +3762,22 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F22",
     "name": "工作流调试与影子实验",
+    "category": "影子与校准",
+    "summary": "由失败、配置变化、异常、用户调试或实际配置采样按需触发。决策影子、历史回放和受支持隔离执行保留各自证据边界，后台提出改进候选。",
+    "decisionPoints": [
+      "研判该次运行适合决策影子、轨迹回放还是隔离执行模式",
+      "对比新旧两套 Prompt 或微调版本下的语义推理分歧点",
+      "审查影子结果中哪些属于“可比较”、哪些由于缺少反事实工具结果属于“未知”"
+    ],
+    "designNotes": [
+      "影子不读未来数据，不写主任务/主记忆，不消费主授权。",
+      "隔离执行只覆盖已支持的测试工作区和服务；不承诺复制Outlook、微信等真实账号环境。",
+      "比较标记：完全可比、部分可比、缺少证据、不可比。没有反事实工具结果就标未知。"
+    ],
+    "acceptance": [
+      "无触发正常请求不新增影子调用；触发场景记录额外调用与后台排队。",
+      "验证主库、主账号与主授权没有被影子写入/消费；隔离失败不得声称物理安全已证明。"
+    ],
     "nodes": [
       {
         "id": "F22_N09",
@@ -3393,7 +3820,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F22_N03",
@@ -3464,7 +3896,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "effectType": "读取",
         "inputFields": [],
         "outputFields": [],
-        "condition": "只汇合已选择的实验模式；其他分支跳过"
+        "condition": "只汇合已选择的实验模式；其他分支跳过",
+        "joinMode": "selected"
       },
       {
         "id": "F22_N08",
@@ -3546,6 +3979,22 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F23",
     "name": "决策配置、评估与版本晋升",
+    "category": "影子与校准",
+    "summary": "对提示、图、调用配置与可用模型版本做时序隔离对比。唯一主模型提出质量建议，宿主使用既有验收/发布规则；MaaS不直接调整远端权重。",
+    "decisionPoints": [
+      "对决策记录切分训练、验证与保留测试集（按时间与任务来源切分）",
+      "比对新旧版本在复杂长链推理、责任越界拦截与误报率方面的多维表现",
+      "在出现指标偏科（如准确率微升但误打扰率飙升20%）时给出拒绝晋升研判"
+    ],
+    "designNotes": [
+      "用户项目补丁、提示/流程配置和受信宿主自身升级分别走已有测试、版本和发布流程，不默认热修可信Runtime。",
+      "AgentArts Evaluation作为拟议承载选项；实际项目、评估作业和结果需单独读回，截图不是接通证明。",
+      "对照组采用同一模型/数据/授权/幂等/读回，单独改变被测机制。"
+    ],
+    "acceptance": [
+      "记录正常放行和注入拒绝两方面，避免只追求拦截而阻止合法任务。",
+      "测调用轮数、首响/P50/P95、Token、用户打扰、召回与重规划成本；无数据时不填成绩。"
+    ],
     "nodes": [
       {
         "id": "F23_N01",
@@ -3626,7 +4075,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "gateVerdict",
           "rationale"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "晋升质量裁决"
+        }
       },
       {
         "id": "F23_N05",
@@ -3681,6 +4135,21 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F24",
     "name": "调度、并发、取消与恢复",
+    "category": "个人助理与调度",
+    "summary": "TaskRuntime按真实依赖调度，独立模型/只读任务并行，同资源写入协调。稳定操作身份和检查点贯穿恢复；停止请求分成未开始、停止中、结果待核实、已发生四种结果。",
+    "decisionPoints": [
+      "主模型建议优先级、失败归因与受影响子图，确定性调度和状态迁移归宿主。",
+      "根据已读回副作用建议继续、补查或转F03补偿；未知结果不能自报成功。"
+    ],
+    "designNotes": [
+      "四种结果描述当前操作及外部副作用，不是新增公共task wire终态。",
+      "恢复不能重置稳定操作ID或重复未知写入；迟到云结果保留审计，不能覆盖新控制revision。",
+      "取消受理不是停止证明；当前操作未开始也不表示任务此前没有副作用。"
+    ],
+    "acceptance": [
+      "在提交前、在途、超时未知和已确认发生四个阶段取消，核对UI与执行/读回记录一致。",
+      "恢复保留已发生效果且不重复写入；无依赖分支不会被别的等待决定阻塞。"
+    ],
     "nodes": [
       {
         "id": "F24_N01",
@@ -3831,7 +4300,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "继续核实或明确结果"
         ],
         "condition": "外部结果未知",
-        "evidenceRequirement": "一次缺失读回不是未执行证明；使用支持的查询/回查及实际期限。"
+        "evidenceRequirement": "一次缺失读回不是未执行证明；使用支持的查询/回查及实际期限。",
+        "joinMode": "selected"
       },
       {
         "id": "F24_N10",
@@ -3849,7 +4319,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "原效果证据",
           "F03补偿候选"
         ],
-        "condition": "已有实际发生证据"
+        "condition": "已有实际发生证据",
+        "joinMode": "selected"
       },
       {
         "id": "F24_N11",
@@ -3886,7 +4357,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "完成/停止中/待核实/已发生",
           "需要用户决定的事项"
         ],
-        "evidenceRequirement": "正常等待可静默；重要效果、截止冲击和必须决定的事项主动通知，不能一律隐藏。"
+        "evidenceRequirement": "正常等待可静默；重要效果、截止冲击和必须决定的事项主动通知，不能一律隐藏。",
+        "joinMode": "selected"
       }
     ],
     "edges": [
@@ -3999,6 +4471,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F25",
     "name": "配置、账户、凭据和数据范围",
+    "category": "扩展与系统",
+    "summary": "多账户与数据范围严格隔离，私人笔记严禁上传云端；展示配置/连接/验证三态，不保存真实密钥。",
+    "decisionPoints": [
+      "解释配置变更的影响边界（哪些数据属于工作、哪些属于私人）",
+      "在发送云端前对请求载荷进行脱敏与私人关键词前置过滤",
+      "当许可撤销时级联清除相关未执行的临时上下文与缓存引用"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F25_N01",
@@ -4036,7 +4517,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "allowedCategories",
           "bannedCategories"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "隐私合规审计"
+        }
       },
       {
         "id": "F25_N03",
@@ -4106,6 +4592,15 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F26",
     "name": "镜像、部署与比赛验收",
+    "category": "扩展与系统",
+    "summary": "云端决策模型 与 AgentArts 工作流部署；完整展现云端提案->本地Policy->工具->证据全流程。",
+    "decisionPoints": [
+      "检查镜像入口点架构与显存/算力配置依赖",
+      "进行端到端语义决策闭环推理（提案生成与工具读回评判）",
+      "在外部 AgentArts 网关不可用时坚决报错等待，严禁静默偷换为无鉴权的本地逻辑"
+    ],
+    "designNotes": [],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F26_N01",
@@ -4188,7 +4683,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "toolExecution",
           "evidenceVerified"
         ],
-        "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。"
+        "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。",
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "云端决策闭环验证"
+        }
       },
       {
         "id": "F26_N05",
@@ -4242,6 +4742,21 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F27",
     "name": "上下文预算、压缩与恢复",
+    "category": "模型与上下文",
+    "summary": "根据实际模型上下文容量和用户配置分块、排序、摘要与恢复。唯一主模型判断相关性与证据缺口；代码保存关键指令、授权引用、原文版本和压缩映射。",
+    "decisionPoints": [
+      "在主指令、当前责任、事实、工具证据和长日志中挑选当前需要内容。",
+      "决定是否压缩、补充检索或恢复被摘要片段，不把摘要当原始证据。",
+      "新来源/任务版本出现时让旧上下文映射失效，并反馈给F28模型适配。"
+    ],
+    "designNotes": [
+      "不固定扩充一跳；无新信息时不重复同一检索，沿用实际取消和期限。",
+      "本地存储不等于数据不出机：仅把当前已授权上下文送到明确配置的国内服务。"
+    ],
+    "acceptance": [
+      "压缩后能定位原文，事实撤销/修订会让旧映射失效。",
+      "比较不同上下文策略的依据保留、实际Token与延迟，不仅比较摘要长度。"
+    ],
     "nodes": [
       {
         "id": "F27_N01",
@@ -4289,7 +4804,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "保留片段",
           "压缩建议",
           "扩充/恢复请求"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "唯一全局语义决策配置"
+        }
       },
       {
         "id": "F27_N03",
@@ -4306,7 +4826,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "摘要",
           "原文区段映射"
         ],
-        "condition": "确需压缩且原文可恢复"
+        "condition": "确需压缩且原文可恢复",
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4-flash",
+          "role": "结构化摘要候选"
+        }
       },
       {
         "id": "F27_N06",
@@ -4343,7 +4868,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "保留/压缩原因"
         ],
         "condition": "直接选取或摘要候选已就绪",
-        "evidenceRequirement": "关键指令与有效授权绑定不可被摘要替换；实际容量不足时明确报告。"
+        "evidenceRequirement": "关键指令与有效授权绑定不可被摘要替换；实际容量不足时明确报告。",
+        "joinMode": "selected"
       },
       {
         "id": "F27_N07",
@@ -4418,6 +4944,24 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F28",
     "name": "多厂商模型、思考深度与主对话分配",
+    "category": "模型与上下文",
+    "summary": "主对话使用唯一全局决策配置分配不同厂商执行模型、实际支持的原生思考参数与验证强度。执行者在受派范围内可选工具和探索，任务终态与授权仍归宿主。",
+    "decisionPoints": [
+      "将复合指令拆解为资料调研、深度分析、代码实现三类子任务",
+      "匹配各模型专长（Qwen长文搜集、DeepSeek深入推导、GLM编码）",
+      "核定思考深度偏好（快速/标准/深入），检查厂商适配器兼容性"
+    ],
+    "designNotes": [
+      "只有一个全局语义决策配置；不同执行模型的局部思考/工具选择不成为第二个全局决策层。",
+      "相同主判断已经包含分工时复用；新工具结果改变问题后再调用同一配置。",
+      "同一决策配置可以并发处理独立判断；执行者不能改变全局责任、签发授权或决定TaskRuntime终态。",
+      "模型厂商与深度配置入口保留，不新设封锁名单。默认国内MaaS，执行候选的角色优劣须实测。"
+    ],
+    "acceptance": [
+      "研究和现有上下文分析并行；依赖研究结果的编码必须等待真实前置结果。",
+      "主对话分派记录模型、原生参数映射和任务范围；不支持深度档位不会假装生效。",
+      "执行者的受限工具循环与真实工具/Policy接线分开记录可用性。"
+    ],
     "nodes": [
       {
         "id": "F28_N01",
@@ -4450,7 +4994,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "能力匹配的模型候选",
           "原生参数/验证强度候选"
         ],
-        "condition": "缺少有效分派建议，或新证据需要重判"
+        "condition": "缺少有效分派建议，或新证据需要重判",
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "语义决策"
+        }
       },
       {
         "id": "F28_N03",
@@ -4472,7 +5021,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "coder"
         ],
         "condition": "复用有效已有分派建议，或本轮主模型分派完成",
-        "evidenceRequirement": "按实际MaaS/Provider能力映射；不支持的参数明确报告，步骤预算不冒充原生思考深度。"
+        "evidenceRequirement": "按实际MaaS/Provider能力映射；不支持的参数明确报告，步骤预算不冒充原生思考深度。",
+        "joinMode": "selected"
       },
       {
         "id": "F28_N04",
@@ -4500,7 +5050,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "inputFields": [],
         "outputFields": [
           "sources"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "通义千问",
+          "model": "qwen3-32b",
+          "role": "研究候选",
+          "thinkingLevel": "fast"
+        }
       },
       {
         "id": "F28_N07",
@@ -4517,7 +5073,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "analysis"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "深度求索",
+          "model": "deepseek-v4-pro",
+          "role": "分析候选",
+          "thinkingLevel": "deep"
+        }
       },
       {
         "id": "F28_N08",
@@ -4534,7 +5096,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "patch"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "智谱",
+          "model": "glm-5.2",
+          "role": "编码候选",
+          "thinkingLevel": "standard"
+        }
       },
       {
         "id": "F28_N09",
@@ -4581,7 +5149,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "inputFields": [],
         "outputFields": [
           "recommendation"
-        ]
+        ],
+        "modelAssignment": {
+          "vendor": "Laya",
+          "model": "laya-multilingual",
+          "role": "语义完成判断"
+        }
       },
       {
         "id": "F28_N11",

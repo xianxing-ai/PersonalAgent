@@ -11,7 +11,7 @@ const SHA=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex'
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const numeric=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0;
 const safeError=error=>/^[A-Z_0-9]{1,64}$/.test(error?.code??'')?error.code:'SANITIZED_FAILURE';
-const probes=[
+export const probes=[
   {id:'public-alpha',context:'Public synthetic alpha observation: source revision alpha-1 is present. Select an observation only; no tool is authorized.',
     candidates:[{id:'alpha-observe',description:'Keep the supplied alpha observation.'},{id:'alpha-review',description:'The alpha observation needs review.'}]},
   {id:'public-beta',context:'Public synthetic beta observation: a scoped memory fact applies only to project beta. Select one observation without writing memory.',

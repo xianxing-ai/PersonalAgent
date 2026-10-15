@@ -12,6 +12,8 @@ import {bindFactProjectionStore} from './fact-projection-store.js';
 import type {FactProjectionStore} from './fact-projection-store.js';
 import {bindHostStateStore} from './host-state-store.js';
 export type {TrustedHostStateStore} from './host-state-store.js';
+export {createRuntimeAtomicStatePort} from './atomic-host-state.js';
+export type {RuntimeAtomicStatePort} from './atomic-host-state.js';
 
 export {FactProjectionError} from './fact-projection-store.js';
 export type {

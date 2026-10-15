@@ -2418,7 +2418,7 @@ async function action(event, name, payload) {
     return wakeVoice.enable(sender.webContents.id);
   }
   if (name === 'voice.configure' || name === 'voice.login') {
-    if (sender !== panel || !competitionMode) throw Error('SIS 配置只能从 Competition 可信面板提交');
+    if (sender !== admin || !competitionMode) throw Error('SIS 配置只能从 Competition 可信设置页提交');
     if (voiceConfigurationPending) throw Error('语音配置正在更新，请稍候');
     if (!voiceInput && sisPlaybackHost) throw Error('旧语音播放资源释放未确认，无法重新装配');
     voiceConfigurationPending = true;

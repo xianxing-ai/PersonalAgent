@@ -8,7 +8,9 @@ import {Client} from '@personal-agent/client';
 import {TaskRuntime} from '@personal-agent/runtime';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createWorkspaceReadTool,createWorkspaceCommandTool} from '@personal-agent/coding-tools';
-import {OwnedWorkflowHostBridge,deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
+import {OwnedWorkflowHostBridge,deriveOwnedWorkflowKeys,createWorkflowDecisionTool,WORKFLOW_DECISION_TOOL_NAME} from '@personal-agent/agentarts';
+import {startLayaService} from '../../../apps/agentarts-runtime/src/laya-service.mjs';
+import {createOwnedLayaSelector} from '../../../apps/agentarts-runtime/src/laya-selector.mjs';
 import {projectOwnedLayaTokenTelemetry} from '../../../scripts/agentarts/export-owned-release-evidence.mjs';
 
 const ROOT=fileURLToPath(new URL('../../../',import.meta.url));
@@ -224,7 +226,7 @@ export function ownedWorkflowLiveConfiguration(value) {
     return {operation:'readback',runDirectory:path};
   }
   const allowed=['operation','gatewayUrl','invocationUrl','runtimeId','runtimeName','version','inboundAuthorization',
-    'innerAuthorization','receiptSecret','deadline','workflowId','runtimeLogFile','expectedSourceRevision','invokeMode'];
+    'innerAuthorization','receiptSecret','deadline','workflowId','runtimeLogFile','expectedSourceRevision','invokeMode','localLaya'];
   if(Object.keys(value).some(key=>!allowed.includes(key))||value.operation!==undefined&&!['live','image-live','runtime-live'].includes(value.operation))fail('UNKNOWN_CONFIG_FIELD','configuration');
   const operation=value.operation??'live';
   const identity=value.runtimeId??value.runtimeName;
@@ -263,10 +265,14 @@ export function ownedWorkflowLiveConfiguration(value) {
   const invokeMode=value.invokeMode??'published';if(!['published','debug'].includes(invokeMode))fail('INVALID_INVOKE_MODE','configuration');
   const keys=deriveOwnedWorkflowKeys({transportToken:innerAuthorization.slice(7),
     ...(value.receiptSecret===undefined?{}:{receiptSecret:value.receiptSecret})});
+  if(value.localLaya!==undefined&&(!plain(value.localLaya)||Object.keys(value.localLaya).some(key=>!['modelPath','python','port','startupTimeoutMs','torchThreads','device','pythonModulePath'].includes(key))
+    ||!isAbsolute(value.localLaya.modelPath??'')||!isAbsolute(value.localLaya.python??'')
+    ||!Number.isSafeInteger(value.localLaya.port)||value.localLaya.port<1024||value.localLaya.port>65535))fail('INVALID_LOCAL_LAYA_CONFIG','configuration');
   return {operation,url:endpoint.toString(),runtime:identity,version:value.version,
     deadline:value.deadline,workflowId:value.workflowId??'F20',inboundAuthorization,innerAuthorization,
     receiptSecret:keys.receiptSecret,receiptKeyMode:value.receiptSecret===undefined?'trusted-development-shared-bearer':'independent-host-key',
-    runtimeLogFile:value.runtimeLogFile,expectedSourceRevision:value.expectedSourceRevision,invokeMode};
+    runtimeLogFile:value.runtimeLogFile,expectedSourceRevision:value.expectedSourceRevision,invokeMode,
+    ...(value.localLaya?{localLaya:structuredClone(value.localLaya)}:{})};
 }
 
 async function input() {
@@ -317,16 +323,17 @@ export async function ownedWorkflowLayaLogs(path,requestIds,surface='agentarts_c
         ?'supplied source runtime stdout; provenance requires independent source/model binding':'must_be_proven_by_platform_log_export',requestIds,records};
 }
 
-async function execute(config) {
+async function execute(config,localSelector,decisionRecords=[]) {
   const mode=fixtureMode(config.operation);
   await mkdir(CACHE,{recursive:true});const runDirectory=await mkdtemp(join(CACHE,'live-'));
   const fixture=ownedWorkflowPublicFixture(config.workflowId),fixtureContent=fixture.content;
   await writeFile(join(runDirectory,FIXTURE_NAME),fixtureContent);
   const readTool=createWorkspaceReadTool({rootPath:runDirectory});
+  const decisionTool=localSelector?createWorkflowDecisionTool({selector:localSelector}):undefined;
   const commandTool=config.workflowId==='F20'?createWorkspaceCommandTool({rootPath:runDirectory,recipes:[{id:PUBLIC_RECIPE_ID,
     executable:process.execPath,args:[fileURLToPath(import.meta.url),'--check-public-api-docs',require.resolve('typescript/bin/tsc'),config.deadline]}]}):undefined;
   let reads=0,commands=0,app=createRuntimeApplication({path:join(runDirectory,'runtime.sqlite'),profile:'huawei_ict_agentarts',
-    hostUserNamespace:'owned-public-live-harness',tools:[{descriptor:readTool.descriptor,execute:async(...arguments_)=>{reads++;return readTool.execute(...arguments_);}},
+    hostUserNamespace:'owned-public-live-harness',tools:[...(decisionTool?[decisionTool]:[]),{descriptor:readTool.descriptor,execute:async(...arguments_)=>{reads++;return readTool.execute(...arguments_);}},
       ...(commandTool?[{descriptor:commandTool.descriptor,execute:async(...arguments_)=>{commands++;return commandTool.execute(...arguments_);}}]:[])]});
   const report={schemaVersion:1,profile:'huawei_ict_agentarts',status:'in_progress',startedAt:new Date().toISOString(),runDirectory,
     target:ownedWorkflowInvocationTarget(config),
@@ -335,7 +342,8 @@ async function execute(config) {
     credentialHandling:{via:'stdin',exported:false,receiptKeyMode:config.receiptKeyMode},
     scope:{fixture:FIXTURE_NAME,contentSha256:SHA(fixtureContent),actor:'authorized-public-fixture-acceptance-harness',
       manualDesktopApproval:false,voiceConfirmation:false},network:[],unknown:[],unavailable:[]};
-  const confirmedEvidenceRefs=new Set();
+  const confirmedEvidenceRefs=new Set();let bridge,hostRequest,client;
+  if(localSelector)report.localDecision={provider:'real_local_laya',location:'Windows loopback',execution:'sequential',records:decisionRecords,operations:[]};
   const controller=new AbortController(),expiresAt=Date.parse(config.deadline);
   const timer=setTimeout(()=>controller.abort(),Math.min(2_147_483_647,Math.max(1,expiresAt-Date.now())));
   const onStop=()=>controller.abort();process.once('SIGINT',onStop);process.once('SIGTERM',onStop);
@@ -367,7 +375,29 @@ async function execute(config) {
       surface.durationMs=Date.now()-started;dispatch.state='response_validated';
       app.runtime.saveCheckpoint(originalTask.taskId,'owned-live:response:'+requestId,{workflowVersion:value.workflowVersion,
         ...(value.checkpoint?{checkpoint:value.checkpoint}:{})});
-      await JSON_WRITE(join(runDirectory,'state.json'),state);return value;
+      await JSON_WRITE(join(runDirectory,'state.json'),state);
+      const decisions=value.proposals?.filter(proposal=>proposal.kind==='tool_proposal'&&proposal.toolName===WORKFLOW_DECISION_TOOL_NAME)??[];
+      if(decisions.length) {
+        if(decisions.length!==1||!bridge||!hostRequest||!client||!localSelector)fail('LOCAL_DECISION_HOST_UNAVAILABLE','decision');
+        const proposal=decisions[0],local=bridge.submit(hostRequest,proposal);
+        let task;
+        while(Date.now()<expiresAt&&!controller.signal.aborted) {
+          task=app.runtime.getTask(local.localTaskId);
+          if(task.state==='waiting_approval') {
+            const approval=app.readHostToolTask(local.localTaskId).approval;
+            if(!approval||approval.state!=='pending')fail('MISSING_DECISION_APPROVAL','decision');
+            await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+          } else if(['succeeded','failed','waiting_reconciliation'].includes(task.state)) break;
+          await new Promise(resolve=>setTimeout(resolve,10));
+        }
+        const receipt=bridge.readReceipt(hostRequest,proposal);
+        if(task?.state!=='succeeded'||!receipt||receipt.state!=='confirmed')fail('LOCAL_DECISION_NOT_CONFIRMED','decision');
+        report.localDecision.operations.push({nodeId:proposal.nodeId,operationId:proposal.operationId,localTaskId:local.localTaskId,
+          state:task.state,selectedId:receipt.result.selectedId,evidenceRefs:receipt.evidenceRefs});
+        for(const ref of receipt.evidenceRefs)confirmedEvidenceRefs.add(ref);
+        return invocation('local_decision_resume',{...query,checkpoint:value.checkpoint,receipts:[receipt]});
+      }
+      return value;
     }catch(error){report.unknown.push({stage,requestId,code:/^[A-Z_0-9]+$/.test(error.code??'')?error.code:'TRANSPORT_OR_RESPONSE_UNKNOWN'});throw error;}
   };
   try {
@@ -376,6 +406,12 @@ async function execute(config) {
     const assertActive=()=>{const current=app.runtime.getTask(originalTask.taskId);
       if(worker.signal.aborted||controller.signal.aborted||Date.now()>=expiresAt||current.cancelRequested||current.state!=='running')fail('TIMEOUT','completion');};
     try {
+    client=new Client(app);await client.connect();
+    bridge=new OwnedWorkflowHostBridge({receiptSecret:config.receiptSecret,host:app,
+      checkpoints:{read:(task,key)=>app.runtime.loadCheckpoint(task,key),writeOnce:(task,key,value)=>app.runtime.saveCheckpointOnce(task,key,value)},
+      assertActive:(task,revision)=>{const current=app.runtime.getTask(task);if(task!==originalTask.taskId||revision!==1
+        ||current.cancelRequested||current.state!=='running')fail('STALE_LOCAL_CONTROL','host');}});
+    hostRequest={taskId:originalTask.taskId,workflowId:config.workflowId,sessionId,controlRevision:1,deadline:config.deadline};
     const catalog=await invocation('catalog',{workflowVersion:'1.0.0',operation:'catalog',workflowId:config.workflowId});
     if(!Array.isArray(catalog.workflowBindings)||catalog.workflowBindings.length!==28
       ||new Set(catalog.workflowBindings.map(binding=>binding.workflowId)).size!==28
@@ -386,7 +422,7 @@ async function execute(config) {
       selectedWorkflow:config.workflowId,selectedNodeCount:catalog.template.nodes.length};
     const common={workflowVersion:'1.0.0',operation:'advance',workflowId:config.workflowId,taskId:originalTask.taskId,controlRevision:1,
       input:ownedWorkflowFixtureInput(config.workflowId),
-      availableTools:[readTool,...(commandTool?[commandTool]:[])].map(({descriptor})=>({name:descriptor.name,version:descriptor.version,inputSchema:descriptor.inputSchema}))};
+      availableTools:[readTool,...(commandTool?[commandTool]:[]),...(decisionTool?[decisionTool]:[])].map(({descriptor})=>({name:descriptor.name,version:descriptor.version,inputSchema:descriptor.inputSchema}))};
     const first=await invocation('proposal',common),nodeId=config.workflowId+'_N01';
     if(!plain(first.nodes)||!Array.isArray(first.proposals)||!first.checkpoint||first.workflowId!==config.workflowId)fail('INVALID_FIRST_GRAPH','proposal');
     report.firstGraph={state:first.state,targetNodeState:first.nodes[nodeId]?.state};
@@ -399,11 +435,6 @@ async function execute(config) {
       ||Object.keys(proposal.arguments).some(key=>!['path','maxBytes'].includes(key)))fail('PROPOSAL_OUTSIDE_PUBLIC_READ_SCOPE','proposal');
     state.operationId=proposal.operationId;await JSON_WRITE(join(runDirectory,'state.json'),state);
     app.runtime.saveCheckpoint(originalTask.taskId,'owned-live:graph-checkpoint',first.checkpoint);
-    const bridge=new OwnedWorkflowHostBridge({receiptSecret:config.receiptSecret,host:app,
-      checkpoints:{read:(task,key)=>app.runtime.loadCheckpoint(task,key),writeOnce:(task,key,value)=>app.runtime.saveCheckpointOnce(task,key,value)},
-      assertActive:(task,revision)=>{const current=app.runtime.getTask(task);if(task!==originalTask.taskId||revision!==1
-        ||current.cancelRequested||current.state!=='running')fail('STALE_LOCAL_CONTROL','host');}});
-    const hostRequest={...common,sessionId,deadline:config.deadline};
     const local=bridge.submit(hostRequest,proposal);state.localTaskId=local.localTaskId;await JSON_WRITE(join(runDirectory,'state.json'),state);
     const waitFor=async(states,localTaskId=local.localTaskId)=>{
       while(Date.now()<expiresAt&&!controller.signal.aborted){const task=app.runtime.getTask(localTaskId);if(states.includes(task.state))return task;await new Promise(resolve=>setTimeout(resolve,10));}
@@ -413,7 +444,6 @@ async function execute(config) {
     if(waiting.state!=='waiting_approval'||reads!==0)fail('EXPECTED_EXISTING_POLICY_WAIT','host');
     const pending=app.readHostToolTask(local.localTaskId),approval=pending.approval;
     if(!approval||approval.state!=='pending')fail('MISSING_ORIGINAL_APPROVAL','host');
-    const client=new Client(app);await client.connect();
     await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
     const completed=await waitFor(['succeeded','failed','waiting_reconciliation']);
     if(completed.state!=='succeeded')fail('LOCAL_READ_NOT_CONFIRMED','host');
@@ -578,10 +608,18 @@ async function execute(config) {
 }
 
 export async function main() {
-  try{const config=await input();const result=config.operation==='readback'?await readback(config.runDirectory):await execute(config);
+  let service;
+  try{const config=await input();let selector;const decisionRecords=[];
+    if(config.localLaya) {
+      service=await startLayaService({...config.localLaya,cpuExecutionPolicy:'sequential'});
+      selector=createOwnedLayaSelector({port:service.port,getApiKey:()=>service.key,isReady:service.isReady,
+        cpuExecutionPolicy:'sequential',onDecision:record=>decisionRecords.push(record)});
+    }
+    const result=config.operation==='readback'?await readback(config.runDirectory):await execute(config,selector,decisionRecords);
     process.stdout.write(JSON.stringify(result,null,2)+'\n');if(result.status==='failed_or_unknown'||result.status.startsWith('partial'))process.exitCode=1;
   }catch(error){process.stdout.write(JSON.stringify({schemaVersion:1,status:'not_executed_or_failed',failure:{stage:error.stage??'startup',
     code:/^[A-Z_0-9]+$/.test(error.code??'')?error.code:'SANITIZED_FAILURE'},credentialsExported:false})+'\n');process.exitCode=1;}
+  finally{await service?.stop();}
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   if(process.argv[2]==='--check-public-api-docs') {

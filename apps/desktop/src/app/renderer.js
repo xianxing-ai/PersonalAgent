@@ -60,7 +60,7 @@ else {
   const setFeedback=value=>{errorFeedbackRevision++;root.querySelector('#error').textContent=value;};
   const report=e=>setFeedback(typeof e==='string'?e:e.message);
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
-  const liveControls=mountLiveVoiceControls(root,invoke);
+  const liveControls=mountLiveVoiceControls(root,invoke,{compact:true});
   const proactiveControls=mountProactiveControls(root.querySelector('.thread'),invoke);
   const wakeControls=document.createElement('div');
   wakeControls.className='wake-controls';
@@ -109,41 +109,8 @@ else {
     input.focus();input.setSelectionRange(input.value.length,input.value.length);
   });
   window.addEventListener('unload',()=>{wakeClosed=true;clearTimeout(approvalExpiryTimer);approvalExpiryTimer=undefined;removeDictation?.();});
-  const sisSettings=document.createElement('details');
-  sisSettings.className='sis-settings';
-  sisSettings.innerHTML='<summary>华为云语音设置</summary><div class="sis-fields"><label>区域<select id="sis-region"><option value="cn-north-4">华北-北京四</option><option value="cn-east-3">华东-上海一</option></select></label><label>华为云账号名<input id="sis-domain" autocomplete="off" maxlength="128" placeholder="IAM 用户所属的账号名"></label><label>IAM 用户名<input id="sis-username" autocomplete="off" maxlength="128" value="personalagent-sis"></label><label>IAM 用户密码<input id="sis-password" type="password" autocomplete="off" maxlength="1024"></label><button type="button" id="sis-login">连接华为云语音</button><p class="notice">密码仅用于向华为 IAM 登录，不保存；项目令牌在本机加密保存。录音仅在你开启后发送到华为 SIS。</p><details><summary>已有 IAM Token：手动配置</summary><label>项目 ID<input id="sis-project" autocomplete="off" maxlength="128"></label><label>独立 IAM Token<input id="sis-token" type="password" autocomplete="off" maxlength="16384"></label><label>Token 到期时间（UTC，可选）<input id="sis-expiry" autocomplete="off" placeholder="YYYY-MM-DDTHH:mm:ssZ"></label><button type="button" id="sis-save">保存 SIS 配置</button></details><p class="notice" id="sis-reason"></p></div>';
-  root.querySelector('#error').before(sisSettings);
-  const sisRegion=sisSettings.querySelector('#sis-region');
-  const sisProject=sisSettings.querySelector('#sis-project');
-  const sisToken=sisSettings.querySelector('#sis-token');
-  const sisExpiry=sisSettings.querySelector('#sis-expiry');
-  const sisLoginStatus=document.createElement('p');
-  sisLoginStatus.className='notice';sisLoginStatus.setAttribute('role','status');
-  sisSettings.querySelector('#sis-login').after(sisLoginStatus);
-  let sisPending=false;
-  const setSisPending=value=>{sisPending=value;for(const control of sisSettings.querySelectorAll('input,select,button'))control.disabled=value;};
-  sisSettings.querySelector('#sis-login').onclick=async()=>{
-    if(sisPending)return;
-    setSisPending(true);
-    const password=sisSettings.querySelector('#sis-password');
-    const request={region:sisRegion.value,domainName:sisSettings.querySelector('#sis-domain').value.trim(),
-      username:sisSettings.querySelector('#sis-username').value.trim(),password:password.value};
-    password.value='';sisLoginStatus.textContent='正在连接华为 IAM…';
-    try{const result=await invoke('voice.login',request);
-      sisLoginStatus.textContent=result.connected?'已连接华为云语音，可以开始录音':'凭据已保存，等待任务引擎就绪';
-      if(result.connected)sisSettings.open=false;}
-    catch(err){sisLoginStatus.textContent=err instanceof Error?err.message:'连接失败，请重试';}
-    finally{request.password='';setSisPending(false);}
-  };
-  sisSettings.querySelector('#sis-save').onclick=async()=>{
-    if(sisPending)return;
-    setSisPending(true);
-    try { const result=await invoke('voice.configure',{region:sisRegion.value,projectId:sisProject.value.trim(),
-      iamToken:sisToken.value,tokenExpiresAt:sisExpiry.value.trim()});
-      sisToken.value='';sisSettings.open=false;setFeedback(result.connected?'':'SIS 配置已保存；等待 Competition Runtime 接通后启用语音'); }
-    catch(err){sisToken.value='';report(err);}
-    finally{setSisPending(false);}
-  };
+  const sisStatus=document.createElement('p');sisStatus.className='notice';sisStatus.setAttribute('role','status');
+  root.querySelector('#error').before(sisStatus);
   const goalControl=createGoalControl(invoke,()=>input.value);
   root.querySelector('.composer-bar .spacer').before(goalControl.button);
   root.querySelector('.panel').append(goalControl.dialog);
@@ -248,14 +215,8 @@ else {
       bellMenu.innerHTML='<div class="notice">暂无新通知</div>';
       bellBtn.title='通知';bellBtn.setAttribute('aria-label','通知');
     }
-    sisSettings.hidden=data.model?.provider!=='agentarts';
     const sisConfiguration=data.voice?.configuration;
-    sisSettings.querySelector('summary').textContent=sisConfiguration?.configured?'华为云语音设置 · 已配置':'华为云语音设置';
-    sisSettings.querySelector('#sis-reason').textContent=sisConfiguration?.reason??'SIS 尚未配置';
-    sisToken.placeholder=sisConfiguration?.configured?'已安全保存；仅更换令牌时填写':'填写独立 IAM Token';
-    sisSettings.querySelector('#sis-password').placeholder=sisConfiguration?.configured?'已连接，无需重新填写密码':'填写 IAM 用户密码';
-    if(!sisSettings.open){sisRegion.value=sisConfiguration?.region??'cn-north-4';sisProject.value=sisConfiguration?.projectId??'';
-      sisExpiry.value=sisConfiguration?.tokenExpiresAt||'';}
+    sisStatus.textContent=`SIS 听写：${data.voice?.experimental?'宿主可用，设备与云端按实际回执确认':sisConfiguration?.configured?'配置已保存，宿主尚未就绪':'未配置'} · ${sisConfiguration?.reason??data.voice?.reason??'在语音设置中管理'}；经 AgentArts 暂不可用。`;
     const voiceFailure=data.voice?.status==='error'?data.voice.failure:null;
     const voiceFailureStage=voiceFailureStages[voiceFailure?.stage]??'处理';
     const voiceError=data.voice?.status==='error'?`语音${voiceFailureStage}失败：${voiceFailure?.message??data.voice.reason??'语音处理失败'}`:'';

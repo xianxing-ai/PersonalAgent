@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHash} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {ProtocolError} from '@personal-agent/contracts';
 import {OwnedWorkflowEngine} from '../dist/owned-workflows.js';
 import {OwnedWorkflowHostBridge,createOwnedWorkflowReceiptVerifier} from '../dist/owned-workflow-host-bridge.js';
-import {getOwnedWorkflowTemplates,getOwnedWorkflowTemplate,getOwnedWorkflowBindings} from '../dist/owned-workflow-templates.js';
+import {getOwnedWorkflowTemplates,getOwnedWorkflowTemplate,getOwnedWorkflowBindings,getOwnedWorkflowDesignCoverage} from '../dist/owned-workflow-templates.js';
 
 const secret='synthetic-workflow-checkpoint-secret-32-chars';
 const emptySchema={type:'object',properties:{},required:[],additionalProperties:false};
@@ -45,6 +46,22 @@ test('all 28 compiled templates preserve 185 distinct detail nodes, dependencies
   assert.equal(getOwnedWorkflowTemplate('owned-F28').workflowId,'F28');
 });
 
+test('image workflow catalog retains every design requirement, model assignment and selected-branch join',async()=>{
+  const source=JSON.parse(await readFile(new URL('../../../docs/design/workflow-architecture-20261013/source/src/data/architecture.json',import.meta.url),'utf8'));
+  for(const feature of source) {
+    const template=getOwnedWorkflowTemplate(feature.id);assert.ok(template);
+    for(const field of ['category','summary','decisionPoints','designNotes','acceptance'])
+      assert.deepEqual(template[field],feature[field]??[],feature.id+' '+field);
+    for(const node of feature.nodes) {
+      const compiled=template.nodes.find(item=>item.id===node.id);assert.ok(compiled);
+      assert.deepEqual(compiled.modelAssignment,node.modelAssignment,node.id+' model assignment');
+      assert.equal(compiled.joinMode,node.joinMode,node.id+' join mode');
+    }
+  }
+  const coverage=getOwnedWorkflowDesignCoverage();assert.equal(coverage.workflowCount,28);assert.equal(coverage.nodeCount,185);
+  assert.equal(coverage.workflows.length,source.length);assert.match(coverage.projectionSha256,/^[a-f0-9]{64}$/);
+});
+
 test('selector receives the current node contract, settled predecessor state and exact candidate values',async()=>{
   const seen=[];const runtime=engine({receiptVerifier:proofVerifier,selector:{select:async value=>{
     seen.push(JSON.parse(value.context));return 'candidate';
@@ -72,21 +89,19 @@ test('selector receives the current node contract, settled predecessor state and
   assert.deepEqual(context.publishedTools,[],'Only the current node precise tool capabilities are supplied');
 });
 
-test('a frontier prepares three independent research branches concurrently; downstream waits for receipts',async()=>{
-  let arrivals=0,release;
-  const barrier=new Promise(resolve=>{release=resolve;});
+test('research branches run serially and the next branch waits for the original tool receipt',async()=>{
+  let arrivals=0,active=0;
   const seen=[];
   const runtime=engine({prepareCandidates:async context=>{
-    seen.push(context.node.id);arrivals++;if(arrivals===3)release();await barrier;return candidates(context);
-  }});
+    assert.equal(active++,0);seen.push(context.node.id);arrivals++;await new Promise(resolve=>setImmediate(resolve));active--;return candidates(context);
+  },receiptVerifier:proofVerifier});
   const original=request('F10',{availableTools:tools(['research.search','knowledge.search'])});
   const first=await runtime.advance(original);assert.equal(first.nodes.F10_N01.state,'completed');assert.deepEqual(seen,[]);
   const second=await next(runtime,original,first);
-  assert.deepEqual(new Set(seen),new Set(['F10_N02','F10_N03','F10_N04']));
-  assert.equal(second.proposals.length,3);assert.equal(second.nodes.F10_N05.state,'pending');
-  assert.equal(new Set(second.proposals.map(proposal=>proposal.operationId)).size,3);
-  const third=await next(runtime,original,second);assert.equal(third.proposals.length,3);
-  assert.equal(arrivals,3,'Continuing without a receipt does not replay proposals or models');
+  assert.deepEqual(seen,['F10_N02']);assert.equal(second.proposals.length,1);assert.equal(second.nodes.F10_N05.state,'pending');
+  const held=await next(runtime,original,second);assert.equal(held.proposals.length,1);assert.equal(arrivals,1);
+  const third=await next(runtime,original,held,{receipts:[receipt(held.proposals[0])]});
+  assert.deepEqual(seen,['F10_N02','F10_N03']);assert.equal(third.proposals.length,1);assert.equal(third.nodes.F10_N04.state,'pending');
 });
 
 test('Laya alone selects prepared candidates and abstention emits no execution or false completion',async()=>{

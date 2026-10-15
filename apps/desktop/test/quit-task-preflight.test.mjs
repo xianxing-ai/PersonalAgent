@@ -138,14 +138,14 @@ test('unknown SIS release stays blocked and does not repeat permanent disposal',
 
 // Original initialization/config/record functions; replace only dynamic imports with explicit Fake factories.
 function reconfigurationFixture() {
-  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, webContents: {id: 9}};
+  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, webContents: {id: 9}}, admin = {};
   const oldDispose = f.voiceInput.dispose;
   let oldDisposed = false;
   f.voiceInput.dispose = async () => {if (oldDisposed) return;oldDisposed = true;
     await oldDispose();f.context.runtimeApplication.activeTaskCount = 1;};
   f.wakeVoice.disable = async () => {};
   let configuration = {region: 'cn-north-4', projectId: 'synthetic-old'}, failInitialization = false;
-  Object.assign(f.context, {panel, competitionMode: true, client: {}, voiceConfigurationPending: false,
+  Object.assign(f.context, {panel, admin, competitionMode: true, client: {}, voiceConfigurationPending: false,
     voicePcmSource: undefined, sisPlaybackHost: undefined, panelHiding: false, voiceInitializationFailure: null,
     sisConfigHost: {snapshot: () => ({configured: true}), current: () => configuration,
       configure(value) {configuration = value;f.calls.push('configure');}},
@@ -181,7 +181,7 @@ function reconfigurationFixture() {
   find(ast);assert.ok(configure && record);
   const action = vm.runInContext(`(async function(sender,name,payload){${configure}\n${record}})`, f.context);
   return {...f, get exited() {return f.exited;}, inputs, asr,
-    invoke: (name, payload) => action(panel, name, payload),
+    invoke: (name, payload) => action(['voice.configure','voice.login'].includes(name) ? admin : panel, name, payload),
     fail(value) {failInitialization = value;},
     async refuseLateQuit() {
       f.app.quit();await tick();await tick();await tick();

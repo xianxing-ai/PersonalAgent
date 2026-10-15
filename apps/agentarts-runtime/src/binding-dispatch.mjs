@@ -53,7 +53,7 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
       if (!graphAvailable) unsupported();
       const allowed=value.operation==='catalog' ? ['workflowVersion','operation','workflowId']
         : ['workflowVersion','operation','workflowId','taskId','controlRevision','input','availableTools',
-          'checkpoint','receipts','mode','snapshot','migration','resolvedValues'];
+          'checkpoint','receipts','mode','snapshot','migration','resolvedValues','hostControl','taskDeadline'];
       if (Object.keys(value).some(key=>!allowed.includes(key))) invalid();
       if (value.operation==='advance' && (!['workflowVersion','operation','workflowId','taskId','controlRevision','input','availableTools']
         .every(key=>Object.hasOwn(value,key)) || !Number.isSafeInteger(value.controlRevision) || value.controlRevision<0
@@ -115,7 +115,9 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
       if (!available) unsupported();
       return {bindingVersion:VERSION,verification:'unverified',bindings:bindings.map(binding=>({...binding,
         roles:[...binding.roles],requirements:[...binding.requirements]})),
-        ...(graphAvailable?{workflowVersion:WORKFLOW_VERSION,workflowBindings:structuredClone(workflowBindings)}:{})};
+        ...(graphAvailable?{workflowVersion:WORKFLOW_VERSION,workflowBindings:structuredClone(workflowBindings),
+          controls:{version:WORKFLOW_VERSION,actions:['pause','resume','continue','notify_controller','request_controller','request_user'],
+            originalDeadline:'taskDeadline',authority:'trusted_host_signature',repairAlgorithm:'awaiting_owner_design'}}:{})};
     },
     async invoke(request,parsed) {
       if (!parsed.workflow) return dispatch(request,parsed.binding,parsed.envelope);
@@ -124,6 +126,10 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
         const template=value.workflowId===undefined?undefined:orchestrator.getOwnedWorkflowTemplate(value.workflowId);
         if (value.workflowId!==undefined&&!template) unsupported();
         return {workflowVersion:WORKFLOW_VERSION,verification:'unverified',workflowBindings:structuredClone(workflowBindings),
+          ...(typeof orchestrator.getOwnedWorkflowDesignCoverage==='function'
+            ?{designCoverage:orchestrator.getOwnedWorkflowDesignCoverage()}:{}),
+          ...(typeof orchestrator.getOwnedWorkflowAdapterRequirements==='function'
+            ?{adapterRequirements:orchestrator.getOwnedWorkflowAdapterRequirements().filter(item=>!template||item.workflowId===template.workflowId)}:{}),
           ...(template?{template}:{})};
       }
       const {workflowVersion:_version,operation:_operation,...payload}=value;
@@ -132,7 +138,7 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
       const identity=workflowBindings.find(item=>item.workflowId===output?.workflowId);
       if (!record(output) || output.workflowVersion!==WORKFLOW_VERSION || output.verification!=='unverified'
         || !identity || output.templateVersion!==identity.templateVersion || output.templateDigest!==identity.templateDigest
-        || !['progress','awaiting_host','unavailable','failed','unknown','cancelled','settled'].includes(output.state)
+        || !['progress','awaiting_host','unavailable','failed','unknown','cancelled','settled','paused','awaiting_controller','awaiting_user'].includes(output.state)
         || typeof output.checkpoint!=='string' || !record(output.nodes) || !Array.isArray(output.proposals)
         || !Array.isArray(output.unavailable) || !Array.isArray(output.feedback)) {
         throw new ProtocolError('EXTERNAL_FAILURE','Invalid owned workflow graph result');
