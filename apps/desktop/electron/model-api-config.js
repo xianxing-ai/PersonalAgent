@@ -46,12 +46,25 @@ function validateRecord(value) {
     ...(native === undefined ? {} : {nativeReasoning: native})};
 }
 
+function publicRequestBudget(value, binding, configurationRef) {
+  const unknown = {state:'unmeasured',scope:'provider-body',hiddenContext:'unknown',configurationRef};
+  if (value?.state !== 'measured' || value.scope !== 'provider-body' || value.hiddenContext !== 'unknown'
+    || !binding || ['scope','model','tokenizerRef','configurationRef','contextTokens'].some(key=>value[key]!==binding[key])
+    || ![value.inputTokens,value.contextTokens,value.reservedOutputTokens,binding.reservedOutputTokens].every(Number.isSafeInteger)
+    || value.inputTokens < 0 || value.reservedOutputTokens < 1
+    || value.reservedOutputTokens > binding.reservedOutputTokens
+    || value.inputTokens > value.contextTokens-value.reservedOutputTokens) return unknown;
+  return {state:'measured',scope:'provider-body',hiddenContext:'unknown',configurationRef,
+    inputTokens:value.inputTokens,contextTokens:value.contextTokens,reservedOutputTokens:value.reservedOutputTokens};
+}
+
 /** Trusted main process only. Snapshot is safe for IPC; no endpoint is contacted while saving. */
 export function createModelApiConfig({userData, safeStorage, createGateway, isDefaultExecutionAvailable, profile = 'huawei_ict_agentarts'}) {
   const target = path.join(userData, 'model-api-config.json');
   let entries = new Map(), defaultId, restoreFailed = false, disposed = false;
   const gateways = new Map();
   const controllers = new Map();
+  const requestBudgets = new Map();
   if (existsSync(target)) {
     try {
       if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -72,7 +85,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
   const active = () => {if (disposed) fail('模型配置宿主已释放');};
   const revoke = id => {
     for (const controller of controllers.get(id) ?? []) controller.abort('Model configuration revoked');
-    controllers.delete(id); gateways.delete(id);
+    controllers.delete(id); gateways.delete(id); requestBudgets.delete(id);
   };
   const persist = (next, selected) => {
     if (!safeStorage.isEncryptionAvailable()) fail('本机安全存储不可用，未保存模型配置');
@@ -134,6 +147,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
       reasoningEfforts: [...reasoningEfforts], nativeReasoningVerified: false,
       ...(native === undefined ? {} : {nativeReasoning: structuredClone(native)}),
       reasoningVerification: 'conditional', reasoningSource: 'explicit-configuration',
+      requestBudget: structuredClone(requestBudgets.get(id) ?? {state:'unmeasured',scope:'provider-body',hiddenContext:'unknown',configurationRef:bindingId}),
     })),
     };
   };
@@ -151,12 +165,15 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
       ...(entry.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(entry.nativeReasoning)}),
       apiKey: () => {assertCurrent(); return entry.apiKey;}});
     if (!modelGateway || typeof modelGateway.complete !== 'function') fail('受信模型网关不可用');
+    let latestRequest = 0;
     const gateway = {deployment: modelGateway.deployment, async complete(request) {
       assertCurrent();
       if (request.reasoningEffort !== undefined && !(entry.nativeReasoning?.supportedEfforts ?? entry.reasoningEfforts).includes(request.reasoningEffort)) {
         fail('此模型配置未声明支持所请求的 reasoning_effort');
       }
       if (request.thinkingBudget !== undefined) fail('当前模型配置不支持 thinkingBudget 参数');
+      const sequence = ++latestRequest;
+      requestBudgets.delete(id);
       const controller = new AbortController();
       const abort = () => controller.abort(request.signal.reason);
       const pending = controllers.get(id) ?? new Set();
@@ -166,6 +183,8 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
       try {
         const result = await modelGateway.complete({...request, signal: controller.signal});
         assertCurrent();
+        if (sequence === latestRequest && !controller.signal.aborted) requestBudgets.set(id,publicRequestBudget(result.requestBudget,
+          modelGateway.deployment?.capabilities?.requestTokenBudget,entry.bindingId));
         return result;
       } finally {
         request.signal.removeEventListener('abort', abort); pending.delete(controller);
