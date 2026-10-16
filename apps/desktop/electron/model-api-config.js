@@ -20,11 +20,30 @@ function supportedEfforts(value = []) {
     || value.some(item => !efforts.includes(item))) fail('原生推理支持列表无效');
   return efforts.filter(item => value.includes(item));
 }
+function nativeReasoning(value, provider) {
+  if (value === undefined) return undefined;
+  const levels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+  if (provider !== 'openai-compatible' || !value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).some(key => !['thinking','effort','supportedEfforts','outputTokenParameter'].includes(key))
+    || !['enabled','disabled'].includes(value.thinking)
+    || !['max_tokens','max_completion_tokens'].includes(value.outputTokenParameter)
+    || !Array.isArray(value.supportedEfforts) || new Set(value.supportedEfforts).size !== value.supportedEfforts.length
+    || value.supportedEfforts.some(item => !levels.includes(item))
+    || (value.effort !== undefined && !value.supportedEfforts.includes(value.effort))
+    || (value.thinking === 'disabled' && (value.effort !== undefined || value.supportedEfforts.length))) fail('原生思考配置无效');
+  return {thinking: value.thinking, outputTokenParameter: value.outputTokenParameter,
+    supportedEfforts: levels.filter(item => value.supportedEfforts.includes(item)),
+    ...(value.effort === undefined ? {} : {effort: value.effort})};
+}
 function validateRecord(value) {
   if (!value || !providers.has(value.provider) || typeof value.enabled !== 'boolean') fail('模型配置无效');
+  const native = nativeReasoning(value.nativeReasoning, value.provider);
+  const reasoningEfforts = supportedEfforts(value.reasoningEfforts);
+  if (native && reasoningEfforts.length) fail('原生思考与旧推理档位不能同时配置');
   return {id: text(value.id, 100), provider: value.provider, baseUrl: endpoint(value.baseUrl),
     model: text(value.model, 200), displayName: text(value.displayName, 200), apiKey: text(value.apiKey, 8192),
-    bindingId: text(value.bindingId, 100), reasoningEfforts: supportedEfforts(value.reasoningEfforts)};
+    bindingId: text(value.bindingId, 100), reasoningEfforts,
+    ...(native === undefined ? {} : {nativeReasoning: native})};
 }
 
 /** Trusted main process only. Snapshot is safe for IPC; no endpoint is contacted while saving. */
@@ -73,16 +92,19 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
       && (expectedConfigurationRef === undefined || expectedConfigurationRef === entry.bindingId) ? entry : undefined;
   };
   const getModelReasoningEfforts = (modelName, expectedConfigurationRef) =>
-    [...(selectedEntry(modelName, expectedConfigurationRef)?.reasoningEfforts ?? [])];
+    [...(selectedEntry(modelName, expectedConfigurationRef)?.nativeReasoning?.supportedEfforts
+      ?? selectedEntry(modelName, expectedConfigurationRef)?.reasoningEfforts ?? [])];
   const getModelReasoningState = (modelName, expectedConfigurationRef) => {
     const entry = selectedEntry(modelName, expectedConfigurationRef);
     return {available: Boolean(entry), modelId: entry?.id ?? '', configurationRef: entry?.bindingId ?? '',
-      reasoningEfforts: [...(entry?.reasoningEfforts ?? [])],
-      nativeReasoningConfigured: Boolean(entry?.reasoningEfforts.length), nativeReasoningVerified: false,
-      parameter: 'reasoning_effort', verification: 'conditional', source: 'explicit-configuration',
+      reasoningEfforts: getModelReasoningEfforts(modelName, expectedConfigurationRef),
+      ...(entry?.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(entry.nativeReasoning)}),
+      nativeReasoningConfigured: Boolean(entry?.nativeReasoning || entry?.reasoningEfforts.length), nativeReasoningVerified: false,
+      parameter: entry?.nativeReasoning ? 'thinking/reasoning_effort' : 'reasoning_effort', verification: 'conditional', source: 'explicit-configuration',
       thinkingBudgetSupported: false,
       reason: !entry ? '模型、配置版本或当前 profile 不可用'
-        : entry.reasoningEfforts.length ? '已声明此配置支持的 reasoning_effort；真实端点尚未验证'
+        : entry.nativeReasoning ? '原生思考配置独立于步骤预算；真实端点尚未验证'
+          : entry.reasoningEfforts.length ? '已声明此配置支持的 reasoning_effort；真实端点尚未验证'
           : '未声明原生推理参数支持，仅可使用执行步骤预算'};
   };
   const defaultAvailable = () => {
@@ -103,13 +125,14 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
     reason: disposed ? '模型配置宿主已释放' : restoreFailed ? '模型加密配置无法读取，请重新保存'
       : profile !== 'huawei_ict_agentarts' ? '当前模型配置只服务 AgentArts Competition Profile'
       : '用于 AgentArts 委派的辅助子任务；保存不代表真实连接已验证',
-    models: [...entries.values()].map(({id, provider, baseUrl, model, displayName, enabled, bindingId, reasoningEfforts}) => ({
+    models: [...entries.values()].map(({id, provider, baseUrl, model, displayName, enabled, bindingId, reasoningEfforts, nativeReasoning: native}) => ({
       id, provider, baseUrl, model, displayName, enabled, configurationRef: bindingId,
       available: !disposed && enabled && available(entries.get(id)),
       verification: 'conditional', keyConfigured: true,
       capabilities: {text: true, tools: 'structured-json', nativeToolCalling: false,
-        nativeReasoning: Boolean(selectedEntry(id)?.reasoningEfforts.length), thinkingBudget: false},
+        nativeReasoning: Boolean(selectedEntry(id)?.nativeReasoning || selectedEntry(id)?.reasoningEfforts.length), thinkingBudget: false},
       reasoningEfforts: [...reasoningEfforts], nativeReasoningVerified: false,
+      ...(native === undefined ? {} : {nativeReasoning: structuredClone(native)}),
       reasoningVerification: 'conditional', reasoningSource: 'explicit-configuration',
     })),
     };
@@ -125,11 +148,12 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
     };
     const modelGateway = createGateway({profile, provider: entry.provider, baseUrl: entry.baseUrl,
       model: entry.model, deployment: `${entry.id}@${entry.bindingId}`,
+      ...(entry.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(entry.nativeReasoning)}),
       apiKey: () => {assertCurrent(); return entry.apiKey;}});
     if (!modelGateway || typeof modelGateway.complete !== 'function') fail('受信模型网关不可用');
     const gateway = {deployment: modelGateway.deployment, async complete(request) {
       assertCurrent();
-      if (request.reasoningEffort !== undefined && !entry.reasoningEfforts.includes(request.reasoningEffort)) {
+      if (request.reasoningEffort !== undefined && !(entry.nativeReasoning?.supportedEfforts ?? entry.reasoningEfforts).includes(request.reasoningEffort)) {
         fail('此模型配置未声明支持所请求的 reasoning_effort');
       }
       if (request.thinkingBudget !== undefined) fail('当前模型配置不支持 thinkingBudget 参数');
@@ -156,7 +180,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
       active();
       if (profile !== 'huawei_ict_agentarts') fail('当前模型配置只服务 AgentArts Competition Profile');
       if (!input || Object.keys(input).some(key => !['id', 'provider', 'baseUrl', 'model', 'displayName', 'apiKey', 'enabled', 'makeDefault',
-        'reasoningEfforts', 'reasoningSupportConfirmed', 'expectedConfigurationRef'].includes(key))
+        'reasoningEfforts', 'reasoningSupportConfirmed', 'expectedConfigurationRef', 'nativeReasoning'].includes(key))
         || (input.makeDefault !== undefined && typeof input.makeDefault !== 'boolean')
         || (input.enabled !== undefined && typeof input.enabled !== 'boolean')
         || (input.apiKey !== undefined && typeof input.apiKey !== 'string')
@@ -168,7 +192,8 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
         fail('模型配置版本已变更，请刷新后重新保存');
       }
       const reasoningEfforts = supportedEfforts(input.reasoningEfforts);
-      if (reasoningEfforts.length && (input.reasoningSupportConfirmed !== true
+      const native = nativeReasoning(input.nativeReasoning, input.provider);
+      if ((reasoningEfforts.length || native !== undefined) && (input.reasoningSupportConfirmed !== true
         || (previous && input.expectedConfigurationRef !== previous.bindingId))) {
         fail('请明确确认当前供应商、Endpoint、模型与配置版本支持这些原生推理参数');
       }

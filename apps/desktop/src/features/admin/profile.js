@@ -15,10 +15,16 @@ export function profilePage(data, escape) {
 
 export function bindProfile(root, escape) {
   const dialog = root.querySelector('#profile-dialog');
-  root.querySelector('#profile-edit').onclick = () => dialog.showModal();
-  root.querySelector('#profile-cancel').onclick = () => dialog.close();
+  let revision = 0;
+  const invalidate = () => { revision++; };
+  const isCurrent = request => request === revision && dialog.isConnected && dialog.open;
+  root.querySelector('#profile-edit').onclick = () => { invalidate(); window.addEventListener('unload', invalidate, {once: true}); dialog.showModal(); };
+  root.querySelector('#profile-cancel').onclick = () => { invalidate(); dialog.close(); };
+  dialog.addEventListener('cancel', invalidate);
+  dialog.addEventListener('close', () => { if (!dialog.open) { invalidate(); window.removeEventListener('unload', invalidate); } });
   root.querySelector('#profile-form').onsubmit = async event => {
     event.preventDefault();
+    const request = ++revision;
     try {
       const next = {...readProfile(), name: root.querySelector('#profile-name-input').value.trim(), bio: root.querySelector('#profile-bio-input').value.trim()};
       if (!next.name) throw Error('请输入显示名称');
@@ -27,11 +33,12 @@ export function bindProfile(root, escape) {
         if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) throw Error('请选择 2MB 以内的 PNG、JPEG 或 WebP 图片');
         next.avatar = await new Promise((resolve,reject)=>{const reader = new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('无法读取图片'));reader.readAsDataURL(file);});
       }
+      if (!isCurrent(request)) return;
       localStorage.setItem('pa-profile', JSON.stringify(next));
       root.querySelector('#profile-name').textContent = next.name;
       root.querySelector('#profile-bio').textContent = next.bio || '仅在此设备保存的个人资料';
       if (next.avatar) root.querySelector('#profile-avatar').innerHTML = `<img src="${escape(next.avatar)}" alt="个人头像">`;
       dialog.close();
-    } catch (error) { root.querySelector('#profile-edit-error').textContent = error.message; }
+    } catch (error) { if (isCurrent(request)) root.querySelector('#profile-edit-error').textContent = error.message; }
   };
 }

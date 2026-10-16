@@ -70,6 +70,9 @@ function exactArray(value: unknown, maximum: number): readonly unknown[] {
 /** Treat even an injected DecisionPort's output as advisory data, not a trusted binding. */
 function validatedSuggestions(value: unknown, events: readonly DecisionEvent[]): readonly DecisionSuggestion[] {
   const rawSuggestions = exactArray(value, events.length);
+  // Every submitted event needs one answer; the identity checks below reject
+  // duplicates and replacements, so a partial batch cannot look complete.
+  if (rawSuggestions.length !== events.length) invalidResult();
   const expected = new Map(events.map(event => [event.eventId, event]));
   const seen = new Set<string>();
   return rawSuggestions.map(raw => {

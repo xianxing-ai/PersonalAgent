@@ -35,6 +35,63 @@ function provider(fetchImpl, options = {}) {
   });
 }
 
+test('trusted native reasoning maps thinking, max effort and a single total output budget', async () => {
+  let body;
+  const nativeReasoning = {thinking: 'enabled', effort: 'max', supportedEfforts: ['low', 'high', 'max'],
+    outputTokenParameter: 'max_completion_tokens'};
+  const p = provider(async (_url, init) => {
+    body = JSON.parse(init.body);
+    return jsonResponse({choices: [{message: {content: 'Synthetic answer'}}]});
+  }, {nativeReasoning});
+  // Configuration is copied; callers cannot silently mutate the trusted binding.
+  nativeReasoning.effort = 'low';
+  const gateway = new ModelGateway(new StructuredToolProvider(p));
+  await gateway.complete(request({maxOutputTokens: 128}));
+  assert.deepEqual(body.thinking, {type: 'enabled'});
+  assert.equal(body.reasoning_effort, 'max');
+  assert.equal(body.max_completion_tokens, 128);
+  assert.equal(Object.hasOwn(body, 'max_tokens'), false);
+  assert.equal(gateway.deployment.capabilities.nativeReasoning.effort, 'max');
+  assert.equal(gateway.deployment.verification, 'conditional');
+  await gateway.complete(request({reasoningEffort: 'low'}));
+  assert.equal(body.reasoning_effort, 'low');
+  assert.equal(Object.hasOwn(body, 'max_completion_tokens'), false);
+});
+
+test('native unsupported controls fail before credentials or transport; disabled thinking sends no effort', async () => {
+  let credentials = 0, calls = 0, body;
+  const p = provider(async (_url, init) => {
+    calls++; body = JSON.parse(init.body);
+    return jsonResponse({choices: [{message: {content: 'Synthetic answer'}}]});
+  }, {apiKey: () => {credentials++; return 'synthetic';}, nativeReasoning: {
+    thinking: 'enabled', supportedEfforts: ['low', 'max'], outputTokenParameter: 'max_completion_tokens',
+  }});
+  for (const overrides of [{reasoningEffort: 'medium'}, {thinkingBudget: 100}, {reasoningEffort: 'unknown'}]) {
+    await assert.rejects(new ModelGateway(p).complete(request(overrides)), error =>
+      ['UNSUPPORTED_CAPABILITY', 'INVALID_ARGUMENT'].includes(error.code));
+  }
+  assert.equal(credentials, 0); assert.equal(calls, 0);
+  const disabled = provider(async (_url, init) => {
+    body = JSON.parse(init.body); return jsonResponse({choices: [{message: {content: 'Synthetic answer'}}]});
+  }, {nativeReasoning: {thinking: 'disabled', supportedEfforts: [], outputTokenParameter: 'max_tokens'}});
+  await assert.rejects(disabled.complete(request({reasoningEffort: 'none'})), {code: 'UNSUPPORTED_CAPABILITY'});
+  await disabled.complete(request({maxOutputTokens: 32}));
+  assert.deepEqual(body.thinking, {type: 'disabled'});
+  assert.equal(Object.hasOwn(body, 'reasoning_effort'), false);
+  assert.equal(body.max_tokens, 32);
+  assert.equal(Object.hasOwn(body, 'max_completion_tokens'), false);
+});
+
+test('native reasoning declarations reject malformed, conflicting and unlisted defaults', () => {
+  const valid = {thinking: 'enabled', supportedEfforts: ['high', 'max'], outputTokenParameter: 'max_completion_tokens'};
+  for (const nativeReasoning of [null, {...valid, thinking: 'auto'}, {...valid, extra: true},
+    {...valid, supportedEfforts: ['high', 'high']}, {...valid, effort: 'low'},
+    {...valid, outputTokenParameter: 'budget'}, {...valid, thinking: 'disabled', effort: 'high'},
+    {...valid, thinking: 'disabled'}]) {
+    assert.throws(() => provider(() => {throw Error('must not call');}, {nativeReasoning}), {code: 'INVALID_ARGUMENT'});
+  }
+});
+
 test('maps a chat completion to a final text result with usage and stop reason', async () => {
   let seenUrl = '';
   let seenAuth = '';
