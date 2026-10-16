@@ -69,3 +69,14 @@ SQLite 审批恢复后已确认的一次工具结果仍保留，进入原 `waiti
 ### 交付与剩余
 
 本包独立开发，未改变 #351/#367/#368 当前 head 或已有评审；2026-10-16 已获用户对应授权，可提交、普通推送并创建基于 #368 的独立 PR，实际状态以 Git/GitHub 为准。非作者评审与合并分别核对；原依赖链仍等待当前提交的有效非作者批准，真实云消费继续暂停。检索/摘要选择、跨库派生副本及完整生产 tokenizer/MaaS 匹配仍待后续工作包，整个 MOD-09 保持 in_progress。
+
+## 2026-10-16：当前 main 集成准备
+
+- 负责人 goo122；Profile `huawei_ict_agentarts`，状态仍 `in_progress`。原本地工作树落后远端且需保留，改在 `.worktrees/goo122-context-main-sync-20261016` / `codex/goo122-context-main-sync-20261016` 从当前 #351 `a05e91ea` 准备同步 main `6d70734c`。
+- 唯一手工冲突为 ROADMAP 顶部新增记录，保留双方全部内容并补本记录；其余来源保持 Git 自动合并。已与虚拟合并树比较，未额外修改生产源码、Schema、迁移或依赖。另同步同一 ToolGateway 测试时钟修复，见下条。
+- 167 个外部依赖版本/resolved/integrity 均与已有包缓存一致；复制到本工作树独立缓存，按原锁文件离线 ci（ignore-scripts）安装 201 个包。根构建、架构检查、自动合并后的 Admin JS 语法检查通过；预算展示/上下文绑定/对话上下文三文件定向 28/28、0 失败。日志 `.cache-context-sync-install.log`、`.cache-context-sync-build.log`、`.cache-context-sync-architecture.log`、`.cache-context-sync-focused.log`；本次仅验证必要受影响行为，不沿用旧完整 check 作为新提交的结果。
+- #368 已实际合入 #367 新头 `eb36dcea`，二者完整 tree 相同；未合入 main。#375 恢复 hooks 加固仍在独立 PR，下一次 Git 交付时应把其基线接到已包含 #368 的 #367 并核对差异。真实云消费继续暂停，未读取用户 Vault 或记忆。
+- 用户已授权本轮提交、普通推送更新现有 PR 及依赖链同步；实际提交、批准、CI 和冲突状态以远端当前 head 为准，不合并 main 或提升整个 MOD 状态。
+- MCP 组合门禁发现现有 ToolGateway 在途超时测试可能在 20ms 真实期限内未进入工具，随后读取未赋值 signal；本树同步完全相同的显式 Date/setTimeout 假时钟修复，保持 20ms、TIMEOUT/中止断言并新增进入工具断言，专项 7/7，日志 `.cache-context-sync-gateway.log`。不改变生产计时，未把本树专项结果或下游组合完整结果冒充 #351 新 head 的完整 Foundation。
+
+本轮已按授权同步 #367（包含已合入它的 #368）及 main `eb92311f`，#375 基线改接 #367。上述 #368 基线与独立交付描述为历史记录；当前实际依赖、提交及 CI 以 GitHub 为准，恢复 guard 的生产语义保持不变。
