@@ -921,8 +921,10 @@ async function initializeModelFromEnvironment() {
   }
 }
 
-async function refresh(taskId) {
+async function refresh(taskId, isCurrent = () => true) {
+  if (!isCurrent()) throw Error('Task refresh session changed');
   const task = await client.call('task.get', {taskId});
+  if (!isCurrent()) throw Error('Task refresh session changed');
   const current = tasks.get(taskId);
   if (current?.taskId === task.taskId && current.revision > task.revision) return current;
   tasks.set(taskId, task);
@@ -2043,7 +2045,7 @@ function cancelKnowledgeTasks() {
 
 const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
   getApplication: () => runtimeApplication, getAdmin: () => admin,
-  isEnabled: () => competitionMode && !syntheticMvp, publish,
+  isEnabled: () => competitionMode && !syntheticMvp, refresh,
 });
 
 async function action(event, name, payload) {
