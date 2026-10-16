@@ -80,3 +80,5 @@ SQLite 审批恢复后已确认的一次工具结果仍保留，进入原 `waiti
 - MCP 组合门禁发现现有 ToolGateway 在途超时测试可能在 20ms 真实期限内未进入工具，随后读取未赋值 signal；本树同步完全相同的显式 Date/setTimeout 假时钟修复，保持 20ms、TIMEOUT/中止断言并新增进入工具断言，专项 7/7，日志 `.cache-context-sync-gateway.log`。不改变生产计时，未把本树专项结果或下游组合完整结果冒充 #351 新 head 的完整 Foundation。
 
 本轮已按授权同步 #367（包含已合入它的 #368）及 main `eb92311f`，#375 基线改接 #367。上述 #368 基线与独立交付描述为历史记录；当前实际依赖、提交及 CI 以 GitHub 为准，恢复 guard 的生产语义保持不变。
+
+依赖同步后 Runtime 构建通过；上下文绑定、对话上下文、私人记忆与删除四文件定向 32/32、0 跳过、0 失败，日志 `.cache-publish-context-build.log`、`.cache-publish-context-tests.log`。这是本次必要定向复核，不沿用原独立开发时的完整 check 数量作为同步后结果；真实云消费仍暂停。
