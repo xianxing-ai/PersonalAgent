@@ -52,6 +52,9 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
   let errorCode:string|undefined,discoveredTools=0;
   let client:Client|undefined,transport:HttpTransport|undefined;
   let session=new AbortController(),operation:AbortSignal|undefined;
+  type RequestScope={signal:AbortSignal;deadline:string;active:boolean};
+  let operationScope:RequestScope|undefined;
+  const sending=new Map<string,RequestScope>();
   const registrations=new Set<()=>void>();
   const runs=new Map<string,{binding:string;generation:number;result?:unknown;confirmed:boolean}>();
   const health=():McpHealth=>({configured:!!options,enabled,state,connected:state==='connected',discoveredTools,
@@ -75,6 +78,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
     const timer=new AbortController();
     const timeout=setTimeout(()=>timer.abort(),Math.min(Date.parse(context.deadline)-Date.now(),30000));
     operation=AbortSignal.any([context.signal,session.signal,timer.signal]);
+    const scope:RequestScope={signal:operation,deadline:context.deadline,active:true};operationScope=scope;
     try{return await action();}
     catch(error){
       if(timer.signal.aborted || Date.parse(context.deadline)<=Date.now())fail('TIMEOUT');
@@ -82,7 +86,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       if(state==='error' && errorCode)fail(errorCode);
       if(error instanceof ProtocolError)throw error;
       fail(session.signal.aborted?'CANCELLED':'EXTERNAL_FAILURE');
-    }finally{clearTimeout(timeout);operation=undefined;busy=false;}
+    }finally{scope.active=false;clearTimeout(timeout);operationScope=undefined;operation=undefined;busy=false;}
   }
   async function start(context:{signal:AbortSignal;deadline:string}){
     check(context.signal,context.deadline);
@@ -101,7 +105,12 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       const guardedFetch:FetchLike=async(url,init)=>{
         if(epoch!==generation || connectionSession.signal.aborted)fail('CANCELLED');
         if(String(url)!==endpoint!.href || typeof init?.body==='string' && Buffer.byteLength(init.body)>MAX_BYTES)fail('INVALID_ARGUMENT');
-        const signal=AbortSignal.any([connectionSession.signal,...(init?.signal?[init.signal]:[]),...(init?.method==='GET'?[]:operation?[operation]:[])]);
+        const scope=typeof init?.body==='string'?sending.get(init.body):undefined;
+        if(init?.method!=='GET'){
+          if(!scope?.active)fail('CANCELLED');
+          check(scope.signal,scope.deadline);
+        }
+        const signal=AbortSignal.any([connectionSession.signal,...(init?.signal?[init.signal]:[]),...(scope?[scope.signal]:[])]);
         const response=await (configured.fetch ?? fetch)(url,{...init,signal,redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
         if(response.status>=300 && response.status<400 || response.redirected){await response.body?.cancel();fail('EXTERNAL_FAILURE');}
         if(response.status===401 || response.status===403){await response.body?.cancel();fail('UNAUTHORIZED');}
@@ -112,6 +121,15 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
         return new Response(body,{status:response.status,statusText:response.statusText,headers:response.headers});
       };
       const nextTransport=new StreamableHTTPClientTransport(endpoint!,{fetch:guardedFetch,reconnectionOptions:{maxRetries:0,initialReconnectionDelay:0,maxReconnectionDelay:0,reconnectionDelayGrowFactor:1}});
+      // The SDK awaits headers before fetch. Bind each send before that await;
+      // a later operation must never lend its signal to an earlier queued send.
+      const send=nextTransport.send.bind(nextTransport);
+      nextTransport.send=async(message,sendOptions)=>{
+        const scope=operationScope;if(!scope?.active)fail('CANCELLED');
+        const body=JSON.stringify(message);sending.set(body,scope);
+        try{await send(message,sendOptions);}
+        finally{if(sending.get(body)===scope)sending.delete(body);}
+      };
       const next=new Client({name:'personal-agent-remote-readonly-host',version:'1.0.0'},{capabilities:{}});
       client=next;transport=nextTransport;
       next.onclose=()=>invalidate('EXTERNAL_FAILURE',epoch);
