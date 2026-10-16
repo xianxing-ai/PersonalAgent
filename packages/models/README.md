@@ -25,6 +25,14 @@ Provider 支持盘古原生 `/api/v2/chat/completions` 和 ModelArts MaaS 的 Op
 
 `maxOutputTokens` 是可选的本地请求预算。未配置时 Pangu 请求不发送 `max_tokens`，由实际模型服务执行其自身的上下文窗、输出上限和账户限流；显式配置时网关仍校验为正整数并传给 Provider。
 
+## Competition 辅助模型的原生思考配置
+
+PR #347/F28 的首批落地复用 Runtime `createConfiguredSubagentModelGateway`。受信宿主可为 OpenAI compatible 辅助模型传入 `nativeReasoning`：`thinking`（enabled/disabled）、显式 `supportedEfforts`、可选固定 `effort` 和 `outputTokenParameter`（max_tokens/max_completion_tokens）。仅支持声明范围内的 effort；关闭思考时不能同时声明 effort。配置先校验，再读凭据或发送网络请求，不按品牌或模型名猜支持。
+
+配置存在时 Provider 发 `thinking.type`，按声明发 `reasoning_effort`；`maxOutputTokens` 只映射一个输出字段。`max_completion_tokens` 含思考输出，不是单独 `thinkingBudget`。本路径拒绝 thinkingBudget。无配置时保留旧请求字段；Pangu 历史路径不新增原生控制。
+
+能力中的 `nativeReasoning` 是条件性配置说明，经过 StructuredToolProvider 保留；不证明真实原生工具调用、原生思考支持或端点可用。Competition 子任务的步骤档位不覆盖固定原生配置，配置版本与原生说明参与持久绑定。见 [ADR-0024](../../docs/adr/0024-competition-native-reasoning.md) 和 [本包验收](../../docs/modules/MOD-04A-NATIVE-REASONING-20261013.md)。Local Profile 不新增执行入口，真实云验收仍待授权。
+
 ## 原生 Live 响应生命周期
 
 `QwenRealtimeModelGateway` 保持现有公开请求/会话/事件形状。工具请求关联当前 `response_id`，同一 `call_id` 只执行和回传一次；当前 response 完成且本轮所有工具已回传后才发送一次续答。旧/重复完成事件不能清空新 response 或重复 drain，取消的 response 不被记作完成。

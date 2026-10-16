@@ -1,5 +1,5 @@
 import {ProtocolError} from '@personal-agent/contracts';
-import type {ModelCapabilities, ModelDeployment, ModelMessage, ModelProvider, ModelRequest, ModelResult, ModelUsage} from './index.js';
+import type {ModelCapabilities, ModelDeployment, ModelMessage, ModelProvider, ModelRequest, ModelResult, ModelUsage, NativeReasoningConfiguration} from './index.js';
 
 /**
  * OpenAI 兼容文本 Provider（POST {baseUrl}/chat/completions）。POTATOS-MVP §9.3「约定供应者」：
@@ -19,6 +19,23 @@ export interface OpenAICompatibleModelProviderOptions {
   timeoutMs?: number;
   /** 端点上下文窗口（进 capabilities.contextLimit）；缺省 32k 保守值，按端点如实配置。 */
   contextLimitTokens?: number;
+  /** Explicit Competition auxiliary-model configuration, supplied by the trusted host. */
+  nativeReasoning?: NativeReasoningConfiguration;
+}
+
+function nativeReasoningConfiguration(value: NativeReasoningConfiguration): NativeReasoningConfiguration {
+  const efforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).some(key => !['thinking', 'effort', 'supportedEfforts', 'outputTokenParameter'].includes(key))
+    || !['enabled', 'disabled'].includes(value.thinking)
+    || !['max_tokens', 'max_completion_tokens'].includes(value.outputTokenParameter)
+    || !Array.isArray(value.supportedEfforts) || new Set(value.supportedEfforts).size !== value.supportedEfforts.length
+    || value.supportedEfforts.some(effort => !efforts.includes(effort))
+    || (value.effort !== undefined && !value.supportedEfforts.includes(value.effort))
+    || (value.thinking === 'disabled' && (value.effort !== undefined || value.supportedEfforts.length > 0))) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Native reasoning configuration is invalid');
+  }
+  return structuredClone(value);
 }
 
 function openAiCompatibleCapabilities(contextLimitTokens: number): ModelCapabilities {
@@ -32,8 +49,10 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   private readonly model: string;
   private readonly apiKey: () => string | Promise<string>;
   private readonly timeoutMs: number;
+  private readonly nativeReasoning: NativeReasoningConfiguration | undefined;
 
   constructor(options: OpenAICompatibleModelProviderOptions) {
+    this.nativeReasoning = options.nativeReasoning === undefined ? undefined : nativeReasoningConfiguration(options.nativeReasoning);
     const base = options.baseUrl.trim().replace(/\/+$/, '');
     if (!/^https?:\/\//u.test(base)) {
       throw new ProtocolError('INVALID_ARGUMENT', 'baseUrl must be an absolute http(s) URL including the version segment (e.g. https://api.deepseek.com/v1)');
@@ -58,13 +77,25 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       deployment: typeof options.deployment === 'string' && options.deployment.trim() ? options.deployment.trim() : this.model,
       model: this.model,
       verification: 'conditional',
-      capabilities: openAiCompatibleCapabilities(contextLimitTokens),
+      capabilities: {...openAiCompatibleCapabilities(contextLimitTokens),
+        ...(this.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(this.nativeReasoning)})},
     };
   }
 
   async complete(request: ModelRequest): Promise<ModelResult> {
     if (!request || !(request.signal instanceof AbortSignal) || !Number.isFinite(Date.parse(request.deadline))) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Model request is invalid');
+    }
+    const native = this.nativeReasoning;
+    const effort = request.reasoningEffort ?? native?.effort;
+    if (native && effort !== undefined && (native.thinking !== 'enabled' || !native.supportedEfforts.includes(effort))) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Native reasoning effort is not declared for this configuration');
+    }
+    if (request.thinkingBudget !== undefined) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'This provider does not support thinkingBudget');
+    }
+    if (request.maxOutputTokens !== undefined && (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens < 1)) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'maxOutputTokens must be a positive integer');
     }
     if (request.tools.length > 0 || request.requiredCapabilities?.some(capability => capability !== 'text')) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY',
@@ -97,8 +128,9 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
         body: JSON.stringify({
           model: this.model,
           messages,
-          ...(request.maxOutputTokens === undefined ? {} : {max_tokens: request.maxOutputTokens}),
-          ...(request.reasoningEffort !== undefined ? {reasoning_effort: request.reasoningEffort} : {}),
+          ...(native === undefined ? {} : {thinking: {type: native.thinking}}),
+          ...(request.maxOutputTokens === undefined ? {} : {[native?.outputTokenParameter ?? 'max_tokens']: request.maxOutputTokens}),
+          ...(effort === undefined ? {} : {reasoning_effort: effort}),
           stream: false,
         }),
         signal: controller.signal,
