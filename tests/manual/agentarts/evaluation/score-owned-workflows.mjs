@@ -152,8 +152,8 @@ function scoreRecord(record) {
       citations = verdict(record.review.citationsSupported);
     }
   }
-  const workflow = preCatalogFailure || record.receipt.parentTask?.state === 'failed' || record.receipt.failure ? 'failed'
-    : record.receipt.unknown?.length ? 'unknown' : projected.workflowVerified ? 'passed' : 'unknown';
+  const workflow = (preCatalogFailure || record.receipt.parentTask?.state === 'failed') ? 'failed'
+    : record.receipt.unknown?.length ? 'unknown' : record.receipt.failure ? 'failed' : projected.workflowVerified ? 'passed' : 'unknown';
   const toolReadback = projected.publicReadVerified && projected.publicValidationVerified ? 'passed' : 'unknown';
   const reviewSelected = projected.laya.records.some(item => item.candidateId === 'owned-review');
   const duration = Date.parse(record.receipt.finishedAt) - Date.parse(record.receipt.startedAt);
