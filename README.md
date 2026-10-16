@@ -3,6 +3,8 @@
 <!-- current-design-alignment-20261015 -->
 ## 当前设计、实现与验收入口（2026-10-15）
 
+[原 Node.js 连通架构图（10-16更新）](docs/design/workflow-architecture-20261013/index.html) · [运行/编辑说明](docs/design/workflow-architecture-20261013/README.md)。
+
 当前工作包按[详细设计](docs/design/CURRENT_DESIGN_20261015.md)推进：本机 Laya、全部28图/185节点的自有 ARM64 镜像串行编排，
 未合格判断升级 DeepSeek，DeepSeek 经 AgentArts 模型代理，语音复用百炼既有端口。架构尚未最终定型。
 主动来源跟踪用户责任/关注，贯穿原文、Goal、记忆与上下文；无人值守继续已有授权工作，归来汇总有效变化；
