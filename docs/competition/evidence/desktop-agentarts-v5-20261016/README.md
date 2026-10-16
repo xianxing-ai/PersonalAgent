@@ -2,7 +2,19 @@
 
 Profile 为 `huawei_ict_agentarts`，分支为 `codex/laya-owned-runtime`。本记录补充 V4 的历史证据，不将 28 张模板图升级为全部业务验收。
 
-## 发布对象
+## 后续授权的新镜像发布
+
+Owner 随后要求将当前全部改动提交新 PR #376，并将有变化的镜像立即发布，覆盖此前“镜像先不发布”的阶段要求。新镜像源码为 `4aa8f93fd708ad2c780e7cd3c6142d6398c659b6`；其产品代码与完整检查通过的 `618612a1` 相同，之间仅文档/Evidence 提交。相对旧镜像核出9份运行产物变化，沿原 allowlist 导出，102份实际镜像运行文件哈希全部匹配，未包含凭据或 Laya 权重。
+
+- SWR：`workflow-v5-4aa8f93f`，索引摘要 `sha256:5168bda799e9cda660b6c9f67b0e718fad446c74149f5d8b6d77a0d520f7321d`，实际 ARM64 manifest `sha256:3a9b3ae236c0017ace23e89879bbdd37a8488cc2418059bb69bf5f0b4c2d3eae`。
+- AgentArts：同一运行时的新版本 `arm64-v5-4aa8f93f-r1`，Latest 已映射，旧 r3 保留。2CPU/8GiB、8080、委托、认证、日志与生命周期均由页面独立读回；环境从原表单继承，仅更新非秘密 `PA_AGENT_DEPLOYMENT_VERSION` 标签，测试开关与凭据未手改，未声称逐值独立比较。见 `image-release-4aa8f93f.json`、`deployment-4aa8f93f.json`。
+- 新精确版本文字：实际 Runtime/Client 任务 `succeeded`，目录绑定 DeepSeek-V4.1-Flash / low，WSS101、HTTP任务回退0；9.120秒。见 `cloud-text-4aa8f93f-receipt.json`。
+- 新精确版本实时语音：实际 Runtime 工厂及原公开 PCM runner，WSS101，输入/输出最终转写、输出音频、轮次结束和关闭均齐备，10.126秒；没有录音/播放/工具调用。包括按音频时长发送的输入，不是纯模型回复延迟。见 `cloud-voice-4aa8f93f-receipt.json`。
+- 新版目录：实际177项，见 `cloud-catalog-4aa8f93f-receipt.json`。SIS生产端口直连证据不改称 AgentArts→SIS。
+
+本次新版本冒烟不操作正在运行的 Desktop，也不改其固定版本配置，不把它升级为新版 Desktop 整图、主子委派或28条业务图验收。下文原 r3、旧任务和检查生成时“未发布”的历史状态分别保留。新 PR 自审已记录并尝试普通合并；GitHub 因缺少当前提交非作者 CODEOWNER 批准拒绝，未修改保护或伪造批准。
+
+## 前次发布对象（r3，保留历史）
 
 - AgentArts 运行时 `pa-owned-bindings-0dae0ff5-api`，精确版本 `arm64-v5-d92a17a4-r3`；刷新控制台后，Latest 也指向该版本。
 - 自有 ARM64 镜像 `workflow-v5-d92a17a4`，索引摘要 `sha256:b045e230e0a1bb049f45521a7031c3657fb6951d6ac97b4b17db0a6ea3dcd098`，镜像源码 `d92a17a4c436f37ff7a9bfdc5829044031a89bf7`。

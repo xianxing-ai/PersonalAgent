@@ -2,8 +2,23 @@
   "files": [
     {
       "file": "README.md",
-      "bytes": 12150,
-      "sha256": "e5194d6138f1953e7a399f6500cb08620072b7a10baee21e3a7e40e52b38c3f8"
+      "bytes": 14352,
+      "sha256": "96251614b54469b399932c06df47e93188774d1f8da6cc079e9a154d74cb5072"
+    },
+    {
+      "file": "cloud-catalog-4aa8f93f-receipt.json",
+      "bytes": 483,
+      "sha256": "d7d49d8ab5a98cdd11b032e45b49a0d99d535a81abe071ab80415d0077daaca2"
+    },
+    {
+      "file": "cloud-text-4aa8f93f-receipt.json",
+      "bytes": 943,
+      "sha256": "ed99d545ba9dcaef22a9b11da4839b04c1b68e3b962acfd36fa0fc252fe85ba6"
+    },
+    {
+      "file": "cloud-voice-4aa8f93f-receipt.json",
+      "bytes": 2222,
+      "sha256": "3d8d1c78b6adeee33ea15cb75ab0ca000156ca9b324b40fb19bd22c69946869e"
     },
     {
       "file": "code-checks.json",
@@ -11,9 +26,19 @@
       "sha256": "8e3ace28ac5d818ee577e22663f3a70cef1b160df5ec1c02b7b0a56612eaff54"
     },
     {
+      "file": "deployment-4aa8f93f.json",
+      "bytes": 1859,
+      "sha256": "a64e4cae10e5f8e2975ac39667207c41e69f1ee498eec288090837a3248bb415"
+    },
+    {
       "file": "desktop-receipt.json",
       "bytes": 12051,
       "sha256": "bb7e27cd1ef156863bd85335bb4e69a8546ca45ac45089a338d000b6a87173f9"
+    },
+    {
+      "file": "image-release-4aa8f93f.json",
+      "bytes": 2140,
+      "sha256": "6eb30602a0787b81b529e180c669bf84271b14e4857198043a10c1f3f4c9d344"
     },
     {
       "file": "live-host-receipt.json",
