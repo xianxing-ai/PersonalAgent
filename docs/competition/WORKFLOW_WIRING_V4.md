@@ -53,7 +53,7 @@ const application = createRuntimeApplication({
 
 教师纯选择请求在现有进程内 `CoordinationRequest` 上显式使用 `textOnly:true`，沿用同一部署、认证、取消、期限和发送前权限检查；不导出工具目录、不接受 continuation 或工具/修复提案。旧工具请求仍要求原真实工具目录，不修改外部 wire operation。此可选字段为 provisional 接线能力，未知字段和混用模式仍拒绝。
 
-Desktop 的 `proactive-workflow-host.js` 只负责可信配置、原指令引用及命令适配。worker、事件等待、审批继续和恢复在 Runtime Application；没有 Desktop 第二执行循环。下列 IPC 由已有受信 panel/admin 消费：
+Desktop 的 `proactive-workflow-host.js` 只负责可信配置、原指令引用及命令适配。worker、事件等待、审批继续和恢复在 Runtime Application；没有 Desktop 第二执行循环。下列 IPC 已注册并限制为受信 panel/admin 调用，尚无产品 Renderer 页面触发入口；协作者可沿既有 Client/IPC 接入：
 
 | 操作 | 参数/用途 |
 | --- | --- |
@@ -79,7 +79,7 @@ Desktop 的 `proactive-workflow-host.js` 只负责可信配置、原指令引用
 
 历史 `readContext` 只读取已保存快照；新判断或动作必须走当前版本校验。源更正、撤回、过期与无法确认不能解释为“没有变化”。已发出的未知写只核实原 operation。所有成功声明仍依赖原 ToolGateway Evidence、实际源端和目标读回。
 
-控制版本切换前若提案确实从未建立执行意图且原 Runtime 无 run，记录原控制事件后可作 `failed/not_performed` 核实，再重取新版本上下文。存在 pending/started/unknown 时不适用此规则。恢复原 worker 需要原期限、版本、检查点和已确认工具记录；这不是新授权。
+控制版本切换前若提案确实从未建立执行意图且原 Runtime 无 run，记录原控制事件后可作 `failed/not_performed` 核实，再重取新版本上下文。存在 pending/started/unknown 时不适用此规则。恢复原 worker 需要原期限、版本和检查点，以及原 confirmed 结果缓存，或原 Policy allow、已明确结束、非 timeout/cancel/unknown 且当前同名同版本仍为 read 的失败记录。失败读保持 failed，不补成功缓存或新授权；写失败不因此恢复。
 
 ## 验证与未验证范围
 
