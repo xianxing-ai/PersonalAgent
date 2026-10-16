@@ -1,9 +1,19 @@
 {
   "files": [
     {
+      "file": "README.md",
+      "bytes": 7362,
+      "sha256": "00eea1084999cf4ac8bd1bcc41d014ea65c1766590c157a05c86366628c7f760"
+    },
+    {
       "file": "desktop-receipt.json",
-      "bytes": 8301,
-      "sha256": "55bd74afffe2cd9dbdad36c65aa8a268d83a8653566497b96651fcf2d86b035b"
+      "bytes": 12051,
+      "sha256": "bb7e27cd1ef156863bd85335bb4e69a8546ca45ac45089a338d000b6a87173f9"
+    },
+    {
+      "file": "live-host-receipt.json",
+      "bytes": 2214,
+      "sha256": "70956511294580417d6df79898ffa05d8ac7ee21d1b7feb86031e6b53170f38e"
     },
     {
       "file": "platform-models-before-permission.json",
@@ -17,13 +27,18 @@
     },
     {
       "file": "prior-failures.json",
-      "bytes": 1968,
-      "sha256": "46f9b6f9b28c1ba14b3f4f18c162f1f91e2738a0fe35d14e8cd3a35e48fc9191"
+      "bytes": 2246,
+      "sha256": "9968d22a0aff029f4b5d518fe5b6785a7624e375afed0f7c07aab5510c1477b7"
+    },
+    {
+      "file": "reconciliation-receipt.json",
+      "bytes": 1650,
+      "sha256": "73509a9c37d56577ebe211d102d355c47f376445c9e58ddf31c4fefdf5aafa69"
     },
     {
       "file": "release.json",
       "bytes": 995,
-      "sha256": "cb891a2b0338a7d0fde8247316beada325cdecf8ffe5169f108f95a2c59e3205"
+      "sha256": "23c25dd6d334435259614019931c90d13c5f12bb32686b66d21eea27c6ad9da1"
     },
     {
       "file": "voice-receipt.json",

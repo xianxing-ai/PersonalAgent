@@ -1,3 +1,5 @@
+const liveAudioFailureLabels=Object.freeze({PCM_FRAME_INVALID:'采集音频帧格式无效',CONNECTION_CLOSED:'实时连接已关闭',SEND_BACKPRESSURE:'网络发送阻塞',SEND_FAILED:'音频传输发送失败'});
+export function liveAudioFailureText(live){const code=live?.audioSendFailure?.code;return Object.hasOwn(liveAudioFailureLabels,code)?liveAudioFailureLabels[code]+'（'+code+'）':'';}
 export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
   if (compact) return mountCompactLiveVoiceControls(root, invoke);
   const settings = document.createElement('details');
@@ -59,9 +61,11 @@ export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
       settings.querySelector('summary').textContent=live.configured?'Live 实时语音设置 · 已配置':'Live 实时语音设置';
       key.placeholder=live.configured?'已安全保存；留空保留现有密钥':'仅在本机加密保存';
       if (!editing) {workspace.value = live.workspaceId ?? ''; hotkey.value = live.hotkey ?? 'F8'; consent.checked = live.audioConsent??Boolean(live.configured);}
-      const names = {connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'主智能体正在处理任务',stopping:'正在关闭',idle:live.configured?'已就绪，未开启麦克风':'未配置',error:'连接失败'};
+      const names = {connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'主智能体正在处理任务',stopping:'正在关闭',idle:live.configured?'已就绪，未开启麦克风':'未配置',error:live.audioSendFailure?'音频发送失败':'连接失败'};
       status.textContent = `Live：${names[live.status] ?? '未配置'} · ${live.shortcut?.key ?? 'F8'} 开启 / 关闭`;
       if(live.route)status.textContent+=' · '+live.route;
+      const audioFailure=liveAudioFailureText(live);if(audioFailure)status.textContent+=' · '+audioFailure;
+      if(live.active&&live.conversationTitle)status.textContent+=' · 通话对话：'+live.conversationTitle;
       if (live.status === 'error' || !live.configured) status.textContent += ` · ${live.reason ?? '请先配置'}`;
       if (live.shortcut?.reason) status.textContent += ` · ${live.shortcut.reason}`;
     },
@@ -88,9 +92,11 @@ function mountCompactLiveVoiceControls(root, invoke) {
     render(live={}){
       liveActive=live.active===true;
       const names={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'主智能体正在处理任务',stopping:'正在关闭',
-        idle:live.configured?'配置已保存，未开启麦克风':'未配置',error:'连接失败'};
+        idle:live.configured?'配置已保存，未开启麦克风':'未配置',error:live.audioSendFailure?'音频发送失败':'连接失败'};
       status.textContent=`Live：${names[live.status]??'状态未报告'} · ${live.shortcut?.key??live.hotkey??'F8'} 开启 / 关闭`;
       if(live.route)status.textContent+=' · '+live.route;
+      const audioFailure=liveAudioFailureText(live);if(audioFailure)status.textContent+=' · '+audioFailure;
+      if(live.active&&live.conversationTitle)status.textContent+=' · 通话对话：'+live.conversationTitle;
       if(live.status==='error'||!live.configured)status.textContent+=` · ${live.reason??'请到语音设置配置'}`;
       if(live.shortcut?.reason)status.textContent+=` · ${live.shortcut.reason}`;
     },

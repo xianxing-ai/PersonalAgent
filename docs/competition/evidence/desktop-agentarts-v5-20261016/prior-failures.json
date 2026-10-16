@@ -47,6 +47,15 @@
       "retainedLocally": true
     },
     {
+      "privateReceipt": "desktop-v5-before-received-failure-fix.json",
+      "status": "failed_or_unknown",
+      "taskId": null,
+      "state": null,
+      "code": null,
+      "reason": "Original receipt reconciliation did not pass",
+      "retainedLocally": true
+    },
+    {
       "privateReceipt": "real-voice-before-credential-fix.json",
       "status": "failed",
       "taskId": null,

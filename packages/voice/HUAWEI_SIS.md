@@ -12,6 +12,27 @@ the public `voice.start` / `voice.stop` wire capability.
 
 ## Trusted-host composition
 
+### 2026-10-16 compatible request signing
+
+`HuaweiSisConfig` accepts exactly one of the original `tokenPort` and the new
+`HuaweiSisRequestAuthPort`. The latter receives the exact serialized body,
+fixed regional URL, method, deadline and signal and returns only the permitted
+authorization/date headers. The adapter checks the same deadline again before
+uploading and rejects redirects. Existing Token callers remain compatible.
+
+Desktop's trusted host can use a separately encrypted AK/SK configuration and
+sign each fixed SIS ASR/TTS request. This avoids manually replacing a short-lived
+IAM Token; the access key remains revocable and is not an everlasting Token.
+The old Token/API configuration remains stored independently. No credential or
+signing header is exposed in Renderer snapshots. A successful credential lookup
+or configuration write does not prove a successful SIS invocation, physical
+microphone/playback, or an AgentArts SIS proxy. The current AgentArts image's
+Bailian realtime protocol is a separate path and does not implement SIS forwarding.
+
+The original Token-only composition and acceptance record below describe the
+earlier increment. The current Desktop selects the compatible signing port when
+a trusted encrypted SIS access-key configuration is present.
+
 The public `@personal-agent/voice` entry exports
 `createHuaweiSisRecognitionPort` and `createHuaweiSisOutputPort`. A trusted host
 must explicitly select one of the official supported SIS regions (`cn-north-4`

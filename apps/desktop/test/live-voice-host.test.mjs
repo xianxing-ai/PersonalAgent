@@ -57,7 +57,7 @@ test('Live work shares desktop-panel and stopping audio never cancels an accepte
   await host.start();
   assert.equal(host.snapshot().status,'listening');
   assert.equal(await request.onTool('request_work',{goal:'合成任务'},'call_1'),'真实任务结果');
-  assert.deepEqual(submitted,{taskId:'task-live',goal:'合成任务'});
+  assert.deepEqual(submitted,{taskId:'task-live',goal:'合成任务',conversationId:'desktop-panel'});
   assert.equal(consumed.text,'合成任务');
   assert.ok(frameOptions.signal);
   await host.stop();

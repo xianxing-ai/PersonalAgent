@@ -1,3 +1,6 @@
+import {mountSessionControls} from '../conversation/session-controls.js';
+import {mountNativeReasoning} from '../conversation/native-reasoning.js';
+import {mountWorkspaceComposer} from '../conversation/workspace-composer.js';
 import {Orb} from '../orb/orb.js';
 import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
 import {mountConversationRail} from '../conversation/rail.js';
@@ -29,7 +32,7 @@ export function mountWorkspace(root,invoke,escape){
   const reportPreference=error=>report(error);
   const preferenceRequests={model:0,thinking:0},preferencePending={model:null,thinking:null},preferenceErrors={model:null,thinking:null};
   let preferenceEditing=null;
-  const syncPreferenceBusy=()=>{
+  const syncPreferenceBusy=()=>{nativeReasoning?.setBusy(Boolean(preferencePending.model));
     modelChoice.setAttribute('aria-busy',String(Boolean(preferencePending.model)));
     for(const control of [depth,fast])control.setAttribute('aria-busy',String(Boolean(preferencePending.thinking)));
   };
@@ -42,6 +45,7 @@ export function mountWorkspace(root,invoke,escape){
     syncPreferenceBusy();
   };
   const requestPreference=async(group,name,payload)=>{
+    if(current?.conversationState?.activeId)payload={...payload,conversationId:current.conversationState.activeId};
     const request=++preferenceRequests[group];
     preferencePending[group]=payload;syncPreferenceBusy();
     try{await invoke(name,payload);if(request===preferenceRequests[group]&&preferenceErrors[group]===feedbackRevision)report('');}
@@ -67,6 +71,9 @@ export function mountWorkspace(root,invoke,escape){
     activationTimer=setTimeout(()=>{activationTimer=0;orbButton.setAttribute('aria-pressed','false');},3200);
   };
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
+  const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
+  const sessionRoot=document.createElement('div');root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,composer.input,invoke,report);composer.beforeSubmit=()=>sessionControls.flush();composer.onAccepted=token=>sessionControls.submitted(token);
+  const nativeReasoning=mountNativeReasoning(preferences,invoke,report);
   const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body)return;
@@ -91,10 +98,11 @@ export function mountWorkspace(root,invoke,escape){
   }
   function update(data){
     updateRevision++;
+    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['model','thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;root.querySelector('#conversation-inspector').hidden=true;}
     current=data;current.tasks ||= [];
     children.hidden=!data.subagentTasks?.length;
     children.innerHTML='<h3>子任务派发</h3>'+(data.subagentTasks??[]).map(t=>'<article><strong>'+escape(t.role??'子任务')+'</strong><p>父任务 '+escape(t.parentTaskId)+' · 子任务 '+escape(t.taskId)+'</p><p>'+escape(t.modelId??'未记录模型')+' · '+escape(t.reasoningEffort??'供应商默认')+' · '+escape(stateNames[t.state]??t.state)+'</p><p>'+escape(t.resultSummary??t.error?.message??t.error??'')+'</p><p>Evidence '+escape((t.evidenceRefs??[]).join(', '))+'</p></article>').join('');
-    const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference]);
+    const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference,data.conversationState?.activeId]);
     if(preferenceSignature!==nextPreferenceSignature) {
       modelChoice.replaceChildren(new Option('使用默认主思考模型',''),...(data.modelChoices??[]).map(item=>{
         const option=new Option(item.displayName,item.id);option.disabled=!item.available;return option;
@@ -103,6 +111,7 @@ export function mountWorkspace(root,invoke,escape){
       projectPreferenceControls();
     }
     preferences.querySelector('label').hidden=!data.modelChoices?.length;
+    sessionControls.update(data);nativeReasoning.update(data);composer.update(data);
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
     if(document.hidden)orb.stop();
@@ -117,5 +126,6 @@ export function mountWorkspace(root,invoke,escape){
     }
     const nextCards=JSON.stringify([data.capabilities,data.health,data.notifications,data.todo?.items,data.todo?.available,data.todo?.sessionAllowed,data.feeds?.subscriptions,data.feeds?.available,data.feeds?.sessionAllowed,data.mail?.status,data.mail?.counts,data.mail?.sessionAllowed,data.knowledge?.configured]);if(cardsSignature!==nextCards){cardsSignature=nextCards;root.querySelector('#connector-cards').innerHTML=connectorCards(data,escape);}
   }
+  update.setAudioLevel=level=>orb.setLevel(level);
   return update;
 }

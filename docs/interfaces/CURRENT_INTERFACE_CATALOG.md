@@ -2,6 +2,10 @@
 
 ## 2026-10-16 Desktop WSS／语音／模型目录增量（provisional）
 
+Desktop 多会话、草稿、原生推理强度与音频诊断均复用私有 IPC；任务、审批及听写结果绑定原对话，不新增 Core wire 或执行循环。对话存储 v4 保留 v1–v3 历史及迁移前备份；回退不能直接用旧版读取 v4。
+
+Huawei SIS 增加兼容的 `HuaweiSisRequestAuthPort`，由可信宿主对固定区域、项目的 ASR/TTS 请求签名，与原 `HuaweiSisTokenPort` 二选一。Desktop 长期访问密钥以独立 safeStorage 密文保存；不向 Renderer 返回密钥或签名头。此端口仍 provisional；配置、鉴权探针、实体设备及 AgentArts 转发分别验收，长期凭据不证明已有 AgentArts→SIS 接口。
+
 [V5 接线说明](../competition/DESKTOP_AGENTARTS_MODELS_V5.md)记录固定版本 WSS 主通道、同版原生语音转发、受信模型目录与加密默认选择。
 原 query 增加可选 `executionModel`，原 `subagent.dispatch` 增加可选 `reasoningEffort`；旧输入兼容，原 Core wire、WS 帧和数据库迁移不变。
 主／子模型选择绑定目录 revision 并持久化在原 checkpoint；未知结果不换模型重试。`readSubagentTasks()` 只投影原任务。

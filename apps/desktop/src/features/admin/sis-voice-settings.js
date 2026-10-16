@@ -23,9 +23,10 @@ export function mountSisVoiceSettings(root,invoke){
   };
   return {showSettings(show){settings.hidden=!show;},render(voice={}){
     const config=voice.configuration??{};
-    settings.querySelector('summary').textContent=config.configured?'华为 SIS 听写与播报 · 配置已保存':'华为 SIS 听写与播报设置';
-    field('reason').textContent=config.reason??voice.reason??'SIS 本地适配尚未配置；经 AgentArts 不可用';
-    field('token').placeholder=config.configured?'已安全保存；仅更换时填写':'填写独立 IAM Token';
+    const signed=config.authMode==='ak_sk';
+    settings.querySelector('summary').textContent=signed?'华为 SIS 听写与播报 · 长期签名已配置':config.configured?'华为 SIS 听写与播报 · 配置已保存':'华为 SIS 听写与播报设置';
+    field('reason').textContent=(signed?'当前使用长期访问密钥自动签名，无需手填 Token；原 IAM 配置保留。 ':'')+(config.reason??voice.reason??'SIS 本地适配尚未配置；经 AgentArts 不可用');
+    field('token').placeholder=signed?'当前使用长期签名；这里保留原 Token 设置':config.configured?'已安全保存；仅更换时填写':'填写独立 IAM Token';
     if(!settings.open&&!pending){field('region').value=config.region??'cn-north-4';field('project').value=config.projectId??'';field('expiry').value=config.tokenExpiresAt??'';}
   }};
 }

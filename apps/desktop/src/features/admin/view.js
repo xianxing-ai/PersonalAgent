@@ -139,7 +139,7 @@ export function mountAdmin(root, invoke, escape) {
   root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
   let installedSkillsControls,sisControls,notificationControls;
-  let modelApiSignature,agentArtsModelRoot,modelPageMarkup;
+  let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,modelPageMarkup;
 
   function capabilityTable(data) {
     const status = data.capabilityDirectory ?? {state: 'unavailable', reason: '可信宿主尚未报告能力目录状态'};
@@ -364,11 +364,11 @@ export function mountAdmin(root, invoke, escape) {
     installedSkillsControls?.show(section==='capabilities');
     const showAgentArts=section==='models' && data.model?.provider==='agentarts';
     if (showAgentArts) {
-      agentArtsControls ??= mountAgentArtsControls(root.querySelector('.main'),invoke);
+      if(!agentArtsControls){agentArtsConnectionRoot=document.createElement('div');agentArtsConnectionRoot.dataset.modelSettingsSection='connection';agentArtsControls=mountAgentArtsControls(agentArtsConnectionRoot,invoke);}
       agentArtsControls.render(data.agentArts);
     }
     agentArtsControls?.show(showAgentArts);
-    if (section === 'models' && data.modelApi) {modelApiControls ??= mountModelApiControls(root.querySelector('.main'),invoke);if(!agentArtsModelControls){agentArtsModelRoot=document.createElement('div');agentArtsModelRoot.dataset.agentartsModelMounted='true';agentArtsModelControls=mountAgentArtsModelControls(agentArtsModelRoot,invoke);}}
+    if (section === 'models' && data.modelApi) {if(!modelApiControls){modelApiRoot=document.createElement('div');modelApiRoot.dataset.modelSettingsSection='independent-api';modelApiControls=mountModelApiControls(modelApiRoot,invoke);}if(!agentArtsModelControls){agentArtsModelRoot=document.createElement('div');agentArtsModelRoot.dataset.agentartsModelMounted='true';agentArtsModelRoot.dataset.modelSettingsSection='model-selection';agentArtsModelControls=mountAgentArtsModelControls(agentArtsModelRoot,invoke);}}
     agentArtsModelControls?.update(data.agentArtsModels);
     const nextModelApiSignature = JSON.stringify(data.modelApi);
     if (modelApiControls && modelApiSignature !== nextModelApiSignature) {
@@ -376,6 +376,8 @@ export function mountAdmin(root, invoke, escape) {
     }
     modelApiControls?.showSettings(section === 'models');
     if(agentArtsModelRoot)agentArtsModelRoot.hidden=section!=='models';
+    if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
+    if(modelApiRoot)modelApiRoot.hidden=section!=='models';
     root.querySelector('.main').dataset.cloudConfig=String(section==='models' && data.model?.provider==='agentarts');
     const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
     const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'usage', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
@@ -429,7 +431,7 @@ export function mountAdmin(root, invoke, escape) {
     renderedSection = section; memoryRenderKey = nextMemoryKey;
     if(!preserveModelsContent)root.querySelector('#content').innerHTML = content;
     modelPageMarkup=section==='models'?content:undefined;
-    if(section==='models'&&agentArtsModelRoot){const page=root.querySelector('#content .model-page')??root.querySelector('#content');if(agentArtsModelRoot.parentElement!==page)page.append(agentArtsModelRoot);}
+    if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==page)page.append(card);}
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);
       if (nextExpiry !== undefined) {

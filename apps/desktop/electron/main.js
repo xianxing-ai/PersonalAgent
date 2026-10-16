@@ -1,3 +1,4 @@
+import {handleConversationAction} from './conversation-actions.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
@@ -290,11 +291,16 @@ async function refreshMail() {
 function taskSurface(task) {
   const registered = conversations?.turns.get(task.taskId)?.surface;
   if (registered) return registered;
+  const owner=conversations?.sessions.get(task.conversationId);if(owner)return owner.surface;
   if (task.conversationId === 'desktop-panel') return 'panel';
   if (task.conversationId === 'desktop-workspace') return 'workspace';
   return undefined;
 }
 
+function voiceQuestionForConversation(conversationId){
+  const question=voiceCommandHost?.snapshot();if(!question?.taskId)return question;
+  const task=tasks.get(question.taskId);return task&&conversations?.conversationIdForTask(task)===conversationId?question:null;
+}
 function p5DevicePanelSuggestions() {
   if (!p5DeviceReceiptStore) return [];
   try {
@@ -494,6 +500,7 @@ function agentArtsSnapshot() {
   return value && {...value,effectiveTransport:process.env.PA_AGENTARTS_TRANSPORT??value.transport,transportSource:process.env.PA_AGENTARTS_TRANSPORT!==undefined?'environment':'saved', reason: cloudRequestFailureNotice || cloudTransportNotice || value.reason};
 }
 
+function visibleConversationTask(task,surface){return !surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface);}
 function snapshot(surface) {
   const cloudSettings=agentArtsSnapshot();
   return {
@@ -505,14 +512,16 @@ function snapshot(surface) {
     adminNavigation: {...adminNavigation},
     audioLevel,
     orbStateOverride,
-    subagentTasks:orderedTasks().filter(task=>!surface || taskSurface(task)===surface).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
-    tasks: orderedTasks().filter(task => !surface || taskSurface(task) === surface).map(task => ({...structuredClone(task),
+    subagentTasks:orderedTasks().filter(task=>visibleConversationTask(task,surface)).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
+    tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
       userMessage: taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId),
       // UI summary is derived from trusted readback; TaskRuntime still owns state.
       ...(notepadHost?.projectTask(task) ?? {})})),
-    messages: conversations?.messagesFor(surface) ?? [],
+    messages: conversations?.messagesFor(surface,surface?conversations.activeConversationId(surface):undefined) ?? [],
+    conversationState:surface?conversations?.snapshot(surface):undefined,
+    surfaceBusy:surface?[...tasks.values()].some(task=>visibleConversationTask(task,surface)&&!terminalTaskStates.has(task.state)):false,
     conversation: surface ?? 'all',
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
@@ -521,17 +530,17 @@ function snapshot(surface) {
       vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
-    approvals: [...approvals.values()],
+    approvals: [...approvals.values()].filter(approval=>!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface)),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
-    voiceQuestion: voiceCommandHost?.snapshot(),
+    voiceQuestion: surface?voiceQuestionForConversation(conversations?.activeConversationId(surface)):voiceCommandHost?.snapshot(),
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
     model: structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model),
     agentArtsModels:agentArtsModels?.snapshot(),
     modelApi: surface ? undefined : modelApiHost?.snapshot(),
-    modelChoices: featuredModelChoices(agentArtsModels?.snapshot().catalog?.models,{selectedId:conversations?.preference(`desktop-${surface==='workspace'?'workspace':'panel'}`,thinking)?.modelId??''}),
-    conversationPreference: conversations?.preference(`desktop-${surface === 'workspace' ? 'workspace' : 'panel'}`,thinking),
-    thinking: {...thinking,...(conversations?.preference(`desktop-${surface === 'workspace' ? 'workspace' : 'panel'}`,thinking) ?? {}),
+    modelChoices: featuredModelChoices(agentArtsModels?.snapshot().catalog?.models,{selectedId:conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking)?.modelId??''}),
+    conversationPreference: conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking),
+    thinking: {...thinking,...(conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking) ?? {}),
       reason:'本对话的步骤预算在提交时固定；AgentArts 负责主编排，辅助任务使用当前对话的模型选择。原生思考能力以模型设置和实际参数回执为准。'},
     live: {...(liveVoice?.snapshot() ?? liveConfig?.snapshot()), shortcut: {...liveShortcut}},
     wake: wakeQuitUnknown ? {...wakeVoice?.snapshot(),phase:'release_unconfirmed',verification:'unverified',
@@ -555,8 +564,9 @@ function snapshot(surface) {
     knowledge: (obsidianPairing?.source ?? knowledgeSourceConfig)?.snapshot()??structuredClone(knowledgeStatus),
     knowledgeSource:surface ? undefined : knowledgeSourceConfig ? {...knowledgeSourceConfig.snapshot(),
       monitor:wikiSourceMonitor?.snapshot(),pairing:obsidianPairing?.snapshot()} : undefined,
-    voice: voiceInput ? {...voiceInput.snapshot(), experimental: sisConfigHost?.snapshot().configured,
+    voice: voiceInput ? {...voiceInput.snapshot(), hostReady:true, experimental: sisConfigHost?.snapshot().configured,
       configuration: sisConfigHost?.snapshot()} : {available: false, status: voiceInitializationFailure ? 'error' : 'unconfigured',
+      hostReady:false,
       reason: voiceInitializationFailure?.message ?? sisConfigHost?.snapshot().reason ?? 'SIS 尚未配置',
       failure: voiceInitializationFailure, configuration: sisConfigHost?.snapshot(),
       capture: microphoneCaptureHost?.snapshot() ?? {authorized: false, active: false, busy: false,
@@ -565,27 +575,31 @@ function snapshot(surface) {
 }
 
 function smoothAudioLevel(raw) {
-  const next = Math.max(0, Math.min(1, Number(raw) || 0));
+  const numeric=Number(raw);const next=Number.isFinite(numeric)?Math.max(0,Math.min(1,numeric)):0;
   audioLevel = next > audioLevel ? audioLevel + (next - audioLevel) * 0.75 : audioLevel * 0.55 + next * 0.45;
 }
 function armLevelDecay() {
   clearTimeout(levelDecay);
   levelDecay = setTimeout(function decay() {
     audioLevel *= 0.75;
-    if (audioLevel < 0.02) { audioLevel = 0; publish(); return; }
-    publish();
+    if (audioLevel < 0.02) { audioLevel = 0; publishAudioLevel(); return; }
+    publishAudioLevel();
     levelDecay = setTimeout(decay, 120);
   }, 180);
   levelDecay?.unref?.();
 }
-function noteMicLevel(value) { smoothAudioLevel(value); armLevelDecay(); }
+function noteMicLevel(value) { smoothAudioLevel(value); armLevelDecay(); publishAudioLevel(); }
 function noteVoiceLevel(value) {
   smoothAudioLevel(value);
   armLevelDecay();
-  const nowMs = Date.now();
-  if (nowMs - lastVoiceLevelPublish > 80) { lastVoiceLevelPublish = nowMs; publish(); }
+  publishAudioLevel();
 }
 
+function publishAudioLevel(){
+  if(runtimeClosed)return;const nowMs=Date.now();if(nowMs-lastVoiceLevelPublish<40)return;lastVoiceLevelPublish=nowMs;
+  const level=Number.isFinite(audioLevel)?Math.max(0,Math.min(1,audioLevel)):0;
+  for(const win of [orb,panel,admin,workspace])if(win&&!win.isDestroyed())win.webContents.send('desktop:audio-level',level);
+}
 function publish() {
   if (runtimeClosed) return;
   for (const win of [orb, panel, admin, workspace]) {
@@ -1173,13 +1187,13 @@ async function promptSyntheticRepairCandidate(taskId) {
 }
 
 async function readDesktopConversationContext(scope) {
-  if (!['desktop-panel','desktop-workspace'].includes(scope.conversationId)) {
+  if (!conversations?.containsConversation(scope.conversationId)) {
     if(scope.taskId)coordinationWatchInputs.set(scope.taskId,'[]');return [];
   }
   const task=scope.taskId ? runtimeApplication.runtime.getTask(scope.taskId) : undefined;
   const cutoff=conversations.turns.get(scope.taskId)?.createdAt ?? task?.createdAt ?? task?.updatedAt ?? new Date().toISOString();
-  const surface=scope.conversationId === 'desktop-panel' ? 'panel' : 'workspace';
-  const messages=[...conversations.messagesFor(surface),...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
+  const surface=conversations.session(scope.conversationId).surface;
+  const messages=[...conversations.messagesFor(surface,scope.conversationId),...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
     .filter(message=>Date.parse(message.createdAt)<=Date.parse(cutoff))
     .map(message=>({id:message.id,role:message.role,content:message.text}));
   let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages});
@@ -1200,7 +1214,7 @@ async function initializeInstalledSkills() {
       readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
       validateRunInput:async publicGoal=>{
         const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
-        const context=await readDesktopConversationContext({conversationId:'desktop-workspace',
+        const context=await readDesktopConversationContext({conversationId:conversations.activeConversationId('workspace'),
           deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal});
         compileCoordinationGoal(publicGoal,publicGoal,context);
       },
@@ -1560,7 +1574,7 @@ async function initializeRuntime() {
         }}} : {}),
         coordinationInput:{
           prepareCoordinationGoal:async scope=>{
-            if (!['desktop-panel','desktop-workspace'].includes(scope.conversationId)) return scope.publicGoal;
+            if (!conversations?.containsConversation(scope.conversationId)) return scope.publicGoal;
             installedSkillsHost?.prepareTask(scope);
             if (!privateConsumption) throw Error('私人记忆消费宿主尚未装配');
             return (await privateConsumption.prepare({...scope,goal:scope.publicGoal})).goal;
@@ -1570,7 +1584,7 @@ async function initializeRuntime() {
             cloudRequestFailureNotice = '';
             installedSkillsHost?.assertTask(request.taskId);
             const conversationId=runtimeApplication.runtime.getTask(request.taskId).conversationId;
-            if (!['desktop-panel','desktop-workspace'].includes(conversationId)) return;
+            if (!conversations?.containsConversation(conversationId)) return;
             if (!privateConsumption) throw Error('私人记忆发送门禁尚未装配');
             privateConsumption.assertCloudSend({...request,goal:scope.preparedGoal});
             const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
@@ -1607,7 +1621,7 @@ async function initializeRuntime() {
         readDefaultExecutionModel:role=>agentArtsModels.readExecutionModel(role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
         readConversationPreference: conversationId => {
-          if (!['desktop-panel','desktop-workspace'].includes(conversationId)) return undefined;
+          if (!conversations?.containsConversation(conversationId)) return undefined;
           const preference = conversations.preference(conversationId,{depth:thinking.depth,fast:thinking.fast});
           const models=modelApiHost?.snapshot();
           const modelId=preference.modelId || undefined;
@@ -2151,7 +2165,7 @@ async function action(event, name, payload) {
     if (sender !== admin) throw Error('Untrusted sender');
     admin.close(); return;
   }
-  if (name === 'panel.pin' && sender === panel) { pinned = Boolean(payload); publish(); return; }
+  if (name === 'panel.pin' && sender === panel) { const next=Boolean(payload);if(next===pinned)return;pinned=next;publish();return; }
   if (name === 'panel.hide' && sender === panel) { await hidePanel(); return; }
   if (name === 'orb.open' && sender === orb) { pinned = true; openPanel(true); publish(); return; }
   if (name === 'orb.dragStart' && sender === orb) {
@@ -2659,7 +2673,7 @@ async function action(event, name, payload) {
     if (name === 'memory.listSaved') return privateMemoryController().listSaved(payload);
     if (name === 'memory.selectForConversation') {
       if (!privateConsumption || !payload || Object.keys(payload).some(key=>!['conversationId','ref'].includes(key))
-        || !['desktop-panel','desktop-workspace'].includes(payload.conversationId)) throw Error('请选择原对话与精确记忆版本');
+        || !conversations?.containsConversation(payload.conversationId)) throw Error('请选择原对话与精确记忆版本');
       return privateConsumption.select(payload);
     }
     if(['memory.delete','memory.withdraw','memory.save','memory.previewSave','memory.boundErase'].includes(name)) {
@@ -2668,23 +2682,29 @@ async function action(event, name, payload) {
     }
     throw Error('不支持的私人记忆操作');
   }
+  if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft'].includes(name)){
+    if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
+    return handleConversationAction({name,payload,surface:sender===workspace?'workspace':'panel',conversations,tasks,taskSurface,submitting,publish});
+  }
   if (name === 'thinking.update') {
     if (sender !== panel && sender !== admin && sender !== workspace) throw Error('思考设置来源不受信任');
     if (!competitionMode) return updateThinking(payload);
-    const conversationId = sender === workspace ? 'desktop-workspace' : 'desktop-panel';
+    const conversationId = conversations.activeConversationId(sender===workspace?'workspace':'panel');
+    if(payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新操作');
     const previous = conversations.preference(conversationId,{depth:thinking.depth,fast:thinking.fast});
     const value = conversations.setPreference(conversationId,{...previous,depth:payload?.depth,fast:payload?.fast});
     publish();return value;
   }
   if (name === 'conversation.model') {
     if (sender !== panel && sender !== workspace) throw Error('请从当前对话选择主思考模型');
-    if (!competitionMode || !payload || Object.keys(payload).some(key=>!['modelId','executionModel'].includes(key))) throw Error('模型选择无效');
+    if (!competitionMode || !payload || Object.keys(payload).some(key=>!['modelId','executionModel','conversationId'].includes(key))) throw Error('模型选择无效');
     const executionModel=payload.executionModel?agentArtsModels.resolveExecutionModel(payload.executionModel):payload.modelId?agentArtsModels.resolveExecutionModel({modelId:payload.modelId}):undefined;
     const id = executionModel?.modelId ?? payload.modelId;
     if (typeof id !== 'string' || (id && !executionModel && !agentArtsModels?.snapshot().catalog?.models.some(item=>item.id===id && item.available!==false))) {
       throw Error('所选主模型未配置或不可用');
     }
-    const conversationId = sender === workspace ? 'desktop-workspace' : 'desktop-panel';
+    const conversationId = conversations.activeConversationId(sender===workspace?'workspace':'panel');
+    if(payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新操作');
     const value = conversations.setPreference(conversationId,{...conversations.preference(conversationId),modelId:id,executionModel});
     publish();return value;
   }
@@ -2711,7 +2731,7 @@ async function action(event, name, payload) {
         if (ownsDesktopReferenceSkillTask(runtimeApplication, namespace, task)) return true;
         const turn = conversations?.turns.get(task.taskId);
         if (turn && ['panel', 'workspace'].includes(turn.surface)
-          && task.conversationId === `desktop-${turn.surface}`) return true;
+          && task.conversationId === (turn.conversationId??`desktop-${turn.surface}`)) return true;
         if (goalHost && task.conversationId === `host-tool:${namespace}`) {
           try { goalHost.readTask(task.taskId); return true; } catch { return false; }
         }
@@ -2741,24 +2761,28 @@ async function action(event, name, payload) {
   if (name === 'task.submit' || name==='skill.run') {
     const skillRun=name==='skill.run';
     if(skillRun ? sender!==admin || !competitionMode || !installedSkillsHost : sender !== panel && sender !== workspace) throw Error('请从可信界面提交任务');
-    if (!skillRun && (typeof payload !== 'string' || !payload.trim())) throw Error('请输入有效任务');
+    const text=typeof payload==='string'?payload:payload?.text;
+    if(!skillRun&&payload&&typeof payload==='object'&&Object.keys(payload).some(k=>!['text','conversationId'].includes(k)))throw Error('任务提交格式无效');
+    if (!skillRun && (typeof text !== 'string' || !text.trim())) throw Error('请输入有效任务');
     if (competitionMode && !agentArtsConfig.snapshot().configured) throw Error('请先在设置 → 模型中保存 AgentArts Authorization；Live 语音配置无需重新填写');
     if (!fakeMode && model.enabled === false) throw Error('模型已停用，请先在模型设置中启用');
     const surface = skillRun || sender === workspace ? 'workspace' : 'panel';
-    if (submitting.has(surface) || [...tasks.values()].some(task => taskSurface(task) === surface && !terminalTaskStates.has(task.state))) throw Error('请等待当前回答完成，或先停止当前任务');
-    submitting.add(surface);
+    const conversationId=conversations.activeConversationId(surface);
+    if(!skillRun&&payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新发送');
+    if (submitting.has(conversationId) || [...tasks.values()].some(task => conversations.conversationIdForTask(task)===conversationId && taskSurface(task) === surface && !terminalTaskStates.has(task.state))) throw Error('请等待当前回答完成，或先停止当前任务');
+    submitting.add(conversationId);
     try {
     const prepared=skillRun?await installedSkillsHost.prepareRun(payload):undefined;
     if(prepared?.cancelled) return {cancelled:true};
-    const goal = skillRun?prepared.publicGoal:payload.trim();
-    const result = await submitConversationTask(client, {goal, conversationId: `desktop-${surface}`}, {competition: competitionMode});
+    const goal = skillRun?prepared.publicGoal:text.trim();
+    const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode});
     const userGoal=skillRun?prepared.userGoal:goal;
-    conversations.add(result.taskId, surface, userGoal);
+    conversations.add(result.taskId, surface, userGoal,conversationId);
     taskGoals.set(result.taskId, userGoal);
     if (sender === panel) pinned = true;
     const task = await refresh(result.taskId);
     return task;
-    } finally { submitting.delete(surface); }
+    } finally { submitting.delete(conversationId); }
   }
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,application:runtimeApplication,refresh,publish});
   if (name === 'task.cancel') {
@@ -2780,6 +2804,7 @@ async function action(event, name, payload) {
   if (name === 'settings.update') return client.call('settings.update', payload);
   if (name === 'authorization.respond') {
     if (!payload || typeof payload.approvalId !== 'string' || !['allow_once', 'deny'].includes(payload.decision) || !Number.isSafeInteger(payload.expectedRevision)) throw Error('授权决定格式无效');
+    if(sender!==admin){const approval=approvals.get(payload.approvalId),surface=sender===workspace?'workspace':'panel';if(sender!==panel&&sender!==workspace||!approval||approval.taskId!==payload.taskId||!tasks.has(approval.taskId)||!visibleConversationTask(tasks.get(approval.taskId),surface))throw Error('审批不属于当前对话');}
     const result = await client.call('authorization.respond', {approvalId: payload.approvalId, decision: payload.decision, expectedRevision: payload.expectedRevision});
     approvals.delete(payload.approvalId);
     if (payload.taskId && tasks.has(payload.taskId)) await refresh(payload.taskId);
@@ -2810,7 +2835,8 @@ async function initializeSisVoice() {
   if (!competitionMode || !client || voiceInput) return;
   if (sisPlaybackHost) throw Error('旧语音播放资源释放未确认');
   if (!sisConfigHost.snapshot().configured) return;
-  const selectedConfig = sisConfigHost.current();
+  const accessKeyConfig = sisConfigHost.currentAccessKey();
+  const selectedConfig = accessKeyConfig ?? sisConfigHost.current();
   if (!selectedConfig) return;
   const {region, projectId} = selectedConfig;
   const {createVoicePcmFrameSourcePort, createHuaweiSisRecognitionPort,
@@ -2825,7 +2851,9 @@ async function initializeSisVoice() {
     }
     return selected.token;
   }};
-  const speechConfig = {region, projectId, tokenPort};
+  const speechConfig = accessKeyConfig
+    ? {region, projectId, requestAuthPort:(await import('./huawei-sis-auth.js')).createHuaweiSisRequestAuth(accessKeyConfig)}
+    : {region, projectId, tokenPort};
   const playback = createDesktopSisPlaybackHost({getPanel: () => panel,
     onDiagnostic: phase => desktopHost.logVoicePlayback(phase)});
   let source;
@@ -2839,10 +2867,12 @@ async function initializeSisVoice() {
     source = createVoicePcmFrameSourcePort(microphoneCaptureHost.binding);
     input = createDesktopVoiceInput({source, microphoneHost: microphoneCaptureHost,
       client, onUpdate: publish, enabled: true, inputMode: 'dictation', speechPorts,
-      onTranscript: ({senderId, text}) => {
-        if (panel && !panel.isDestroyed() && panel.isVisible() && !panel.webContents.isDestroyed()
+      readConversationId:()=>conversations.activeConversationId('panel'),
+      onTranscript: ({senderId, text,conversationId,dictationId}) => {
+        if(!conversations?.containsConversation(conversationId)||conversations.session(conversationId).surface!=='panel')throw Error('原听写会话不存在');
+        if (panel && !panel.isDestroyed() && !panel.webContents.isDestroyed()
           && panel.webContents.id === senderId) {
-          panel.webContents.send('desktop:dictation-result', {text});
+          panel.webContents.send('desktop:dictation-result', {text,conversationId,dictationId});
         }
       },
       onTaskSubmitted: ({taskId, goal}) => {
@@ -2966,20 +2996,22 @@ async function initializeLiveVoice() {
     createSource: () => createVoicePcmFrameSourcePort(microphoneCaptureHost.binding),
     createGateway: config => runtimeApplication.createLiveVoiceModel(config),
     createConsumer: createRuntimeClientTranscriptConsumer, client, onUpdate: publish,
+    readConversationId:()=>conversations.activeConversationId('panel'),
+    onDiagnostic:value=>console.info('PersonalAgent Live',JSON.stringify(value)),
     historyStore:createLiveHistoryFileStore(path.join(app.getPath('userData'),'live-history-recovery.json')),
     onLevel: noteVoiceLevel,
     onTranscript: message => conversations.addLiveMessage(message),
-    readCurrentQuestion:()=>voiceCommandHost?.snapshot(),
+    readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
     onFinalUserCommand:receipt=>voiceCommandHost?.consumeFinal(receipt),
-    onTaskSubmitted: ({taskId, goal}) => {taskGoals.set(taskId, goal);conversations.add(taskId, 'panel', goal);},
-    readContext: () => JSON.stringify({profile: 'huawei_ict_agentarts',
-      currentUserQuestion:voiceCommandHost?.snapshot(),
+    onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {taskGoals.set(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
+    readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
+      currentUserQuestion:voiceQuestionForConversation(conversationId),
       agentArts:{configured:agentArtsConfig.snapshot().configured,reason:agentArtsSnapshot().reason},
-      tasks: orderedTasks().filter(task => taskSurface(task) === 'panel').slice(-10)
+      tasks: orderedTasks().filter(task => taskSurface(task) === 'panel'&&conversations.conversationIdForTask(task)===conversationId).slice(-10)
         .map(task => ({taskId: task.taskId, goal: (taskGoals.get(task.taskId) ?? conversations.goal(task.taskId) ?? '').slice(0, 800),
           state: task.state, failureReason: task.error?.message, result: resultText(task.resultSummary,taskResultMetadata(task)).slice(0, 1600),
           createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt})),
-      messages: conversations.messagesFor('panel').slice(-20).map(({id,role, text, createdAt}) => ({id,role, text: text.slice(0, 1600), createdAt})),
+      messages: conversations.messagesFor('panel',conversationId).slice(-20).map(({id,role, text, createdAt}) => ({id,role, text: text.slice(0, 1600), createdAt})),
       capabilities: capabilities.map(item => ({name: item.name ?? item.id, version: item.version})),
       tools: (competitionToolAvailabilityList.length ? competitionToolAvailabilityList : [
         ...(codingWorkspace?.competitionToolAvailability ?? []),
@@ -3008,7 +3040,7 @@ app.whenReady().then(async () => {
   microphoneCaptureHost = createMicrophoneCaptureHost({permissionGate: microphonePermissionGate,
     getPanel: () => panel, onLevel: noteMicLevel});
   ipcMain.on('desktop:microphone-event', (event, message) => {
-    if (microphoneCaptureHost.receive(event, message)) publish();
+    if (microphoneCaptureHost.receive(event, message) && message.type!=='frame') publish();
   });
   sisConfigHost = createDesktopSisConfigHost({userData: app.getPath('userData'), safeStorage});
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
