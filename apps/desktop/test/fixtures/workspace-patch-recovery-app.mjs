@@ -63,8 +63,14 @@ function createApplication() {
 const snapshot=()=>({connection:'真实 Runtime / SQLite · 显式 Fake Cloud 与写入助手',tasks:[cachedTask],
   health:[],capabilities:[],approvals:[],adminNavigation:{page:'tasks',revision:1}});
 const publish=()=>admin.webContents.send('desktop:update',snapshot());
-const refresh=async id=>{cachedTask=await client.call('task.get',{taskId:id});publish();};
-const recover=createWorkspacePatchRecoveryAction({getApplication:()=>application,getAdmin:()=>admin,isEnabled:()=>true,publish,refresh});
+const refresh=async(id,isCurrent=()=>true)=>{
+  if(!isCurrent())throw Error('Task refresh session changed');
+  const task=await client.call('task.get',{taskId:id});
+  if(!isCurrent())throw Error('Task refresh session changed');
+  if(cachedTask?.taskId===task.taskId&&cachedTask.revision>task.revision)return cachedTask;
+  cachedTask=task;publish();return task;
+};
+const recover=createWorkspacePatchRecoveryAction({getApplication:()=>application,getAdmin:()=>admin,isEnabled:()=>true,refresh});
 
 await app.whenReady();
 await mkdir(rootPath,{recursive:true});await mkdir(recoveryRootPath,{recursive:true});await writeFile(source,before);
