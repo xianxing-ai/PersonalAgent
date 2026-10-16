@@ -7,6 +7,8 @@
 主／子模型选择绑定目录 revision 并持久化在原 checkpoint；未知结果不换模型重试。`readSubagentTasks()` 只投影原任务。
 目录可见不等于模型授权或真实推理通过；原 API 配置保留。新增接线保持 provisional，真实云端、设备与模型能力分别验收，不扩大冻结范围。
 
+本机 `task.reconcile.finish` 是私有 Desktop IPC，只能由原面板/工作区对已取消或过期的 confirmed subagent export-withheld 任务发起。原回执、所有子任务绑定及完整读集 CAS 通过后，原任务才进入 cancelled/failed；已收到的历史失败回执在同事务留下失败消费审计，不重发云请求或工具。未来 WSS 明确终态错误与应用解析失败分别处理，unknown 仍保留 hold。没有新增 Core wire 或数据库迁移；实现与真实验证分开见 V5 说明。
+
 ## 2026-10-16 V4 生产消费接口（provisional）
 
 [V4 接线](../competition/WORKFLOW_WIRING_V4.md)新增 Runtime Application 的主动 host/原任务生命周期、

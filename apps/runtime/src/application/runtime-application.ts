@@ -1979,10 +1979,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         validateToolValue(tool.inputSchema,proposal.arguments);
         const definitions=proposal.arguments.subtasks as SubtaskDefinition[];
         const children=this.runtime.listTasks({conversationId:`desktop-subtask:${taskId}`,limit:100}).items;
+        const failureReceipts=children.flatMap(child=>{
+          const binding=this.runtime.readReceivedCloudFailureBinding(child.taskId,true);
+          return binding===undefined?[]:[{taskId:child.taskId,binding}];
+        });
         const ids=new Set(definitions.map(item=>item.subtaskId));
         if(ids.size!==definitions.length || children.length!==definitions.length || children.some(child=>
           !['succeeded','failed','cancelled'].includes(child.state) || this.activeTextTasks.has(child.taskId)
-          || this.runtime.loadCheckpoint(child.taskId,'competition-cloud-inflight') || this.runtime.loadCheckpoint(child.taskId,'competition-cloud-unknown'))
+          || (this.runtime.loadCheckpoint(child.taskId,'competition-cloud-inflight') && !failureReceipts.some(item=>item.taskId===child.taskId))
+          || this.runtime.loadCheckpoint(child.taskId,'competition-cloud-unknown'))
           || definitions.some(definition=>!children.some(child=>this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${taskId}-${definition.subtaskId}`)?.taskId===child.taskId)))
           throw new ProtocolError('RESULT_UNKNOWN','Original child tasks are not a complete terminal dispatch');
         for(const child of children) {
@@ -1998,7 +2003,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const summary=readRuntimeSubagentSummary(this.runtime,taskId,definitions);
         const toolSnapshots=[taskId,...children.map(child=>child.taskId)].map(id=>{
           const items=this.runtime.readToolExecutions(id);
-          const keys=[...items.map(item=>'tool-result-'+item.evidenceId),...(id===taskId?
+          const keys=[...items.map(item=>'tool-result-'+item.evidenceId),'competition-cloud-inflight','competition-cloud-received','competition-cloud-unknown','competition-cloud-terminal-error',...(id===taskId?
             ['competition-loop','subtask-progress-records','competition-export-withheld','application-deadline']:['subtask-parent'])];
           return {taskId:id,recordsJson:JSON.stringify(items),caches:keys.map(key=>{
             return {key,valueJson:JSON.stringify(this.runtime.loadCheckpoint(id,key))};
@@ -2008,7 +2013,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!isDeepStrictEqual(cache.result,summary))throw new ProtocolError('UNAUTHORIZED','Original cached dispatch result does not match its children');
         const binding=this.competitionToolExports.find(item=>item.toolName===proposal.toolName && item.toolVersion===proposal.toolVersion);
         if(!binding)throw new ProtocolError('UNAUTHORIZED','Original subagent projection binding is unavailable');
-        return {task,deadline,loop,proposal,runId,records,cache,children,binding,toolSnapshots};
+        return {task,deadline,loop,proposal,runId,records,cache,children,binding,toolSnapshots,failureReceipts};
       };
       const original=read(),signal=new AbortController().signal;
       if(original.binding.accepts({taskId,proposalId:original.proposal.proposalId,arguments:structuredClone(original.proposal.arguments),phase:'preflight',signal})!==true)
@@ -2023,12 +2028,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const current=read();
       if(original.task.revision!==current.task.revision || !isDeepStrictEqual(original.loop,current.loop)
         || !isDeepStrictEqual(original.toolSnapshots,current.toolSnapshots)
+        || !isDeepStrictEqual(original.failureReceipts,current.failureReceipts)
         || !isDeepStrictEqual(original.cache,current.cache) || !isDeepStrictEqual(original.records,current.records)
         || !isDeepStrictEqual(original.children.map(item=>[item.taskId,item.revision]),current.children.map(item=>[item.taskId,item.revision])))
         throw new ProtocolError('REVISION_CONFLICT','Original confirmed subagent receipt changed during projection');
       return this.runtime.finishConfirmedSubagentTermination(taskId,original.task.revision,{runId:original.runId,
         cacheJson:JSON.stringify(original.cache),recordsJson:JSON.stringify(original.records),loopJson:JSON.stringify(original.loop),children:original.children.map(item=>({taskId:item.taskId,revision:item.revision})),
         toolSnapshots:original.toolSnapshots,
+        failureReceipts:original.failureReceipts,
         projectionDigest:createHash('sha256').update(JSON.stringify(projected)).digest('hex'),deadline:original.deadline});
     } finally {this.subagentTerminationLocks.delete(taskId);}
   }

@@ -492,3 +492,13 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
   .admin .main[data-section="models"] .model-copy {flex:1 1 160px}
   .admin .main[data-section="models"] .page-lead {align-items:flex-start;flex-direction:column;gap:12px}
 }
+
+/* Native model settings use the model page's scroll area and bounded columns. */
+.admin .main[data-section="models"] [data-agentarts-model-mounted] {width:100%;min-width:0;box-sizing:border-box;margin-top:16px}
+.admin .main[data-section="models"] .agentarts-model-settings {width:100%;min-width:0;box-sizing:border-box;margin:0;padding:18px 20px}
+.admin .main[data-section="models"] .agentarts-model-settings .sis-fields {display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;margin-top:16px}
+.admin .agentarts-model-settings .sis-fields label {display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px}
+.admin .agentarts-model-settings .sis-fields select {width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:38px;text-overflow:ellipsis}
+.admin .agentarts-model-settings .form-actions {display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
+.admin .agentarts-model-settings .notice {overflow-wrap:anywhere}
+@media(max-width:760px){.admin .main[data-section="models"] .agentarts-model-settings .sis-fields {grid-template-columns:minmax(0,1fr)}}

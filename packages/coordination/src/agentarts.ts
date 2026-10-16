@@ -4,7 +4,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult,parseExecutionModelSelection} from './index.js';
 import type {ExecutionModelSelection} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
-import {AgentArtsResultUnknownError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt} from './agentarts-websocket.js';
+import {AgentArtsResultUnknownError,AgentArtsTerminalError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt} from './agentarts-websocket.js';
 import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -1269,6 +1269,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           throw new AgentArtsResultUnknownError(fallbackReceipt);
         }
         if (error instanceof AgentArtsResultUnknownError) throw error;
+        if (error instanceof AgentArtsTerminalError) throw error;
         if (error instanceof ProtocolError && (error.code === 'UNAUTHORIZED'
           || error.code === 'UNSUPPORTED_CAPABILITY')) throw error;
         throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts request failed', this.websocket === undefined);

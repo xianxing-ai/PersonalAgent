@@ -93,7 +93,7 @@ export interface CloudAgentPort {
 }
 
 export {AgentArtsCloudAgentPort} from './agentarts.js';
-export {AgentArtsResultUnknownError} from './agentarts-websocket.js';
+export {AgentArtsResultUnknownError,AgentArtsTerminalError} from './agentarts-websocket.js';
 export type {AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocket,
   AgentArtsWebSocketFactory, AgentArtsWebSocketConnectOptions} from './agentarts-websocket.js';
 export type {
