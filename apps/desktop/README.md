@@ -1,5 +1,24 @@
 # PersonalAgent Desktop
 
+## 2026-10-16 远程 MCP 加密配置与宿主装配（provisional）
+
+`electron/remote-mcp-config.js` 的 `createRemoteMcpConfig({userData,safeStorage})` 仅供受信主进程调用。严格保存固定 HTTPS endpoint、服务/工具/schema、目录摘要与可选已签发 token/expiry；全量配置通过现有 Electron safeStorage 加密并原子替换。`snapshot()` 不返回地址、凭据或引用；`hostConfiguration()/binding()/secretStore/revocationSignal()` 是 host-only 端口，不能暴露为 Renderer 通用 IPC。
+
+保存不联网、不连接、不授权工具。每次成功轮换递增 revision、更换 secretRef 并撤销旧 host；保存失败保留旧文件与旧状态。每次加载生成独立会话 nonce，重启默认断开，旧 envelope/许可不能恢复执行。`revoke()` 立即禁用内存访问并尝试清除本机加密文件，删除失败报告 `revoke_pending`、保留原文件；不声称已撤销服务端 token。单 userData 由一个主进程拥有，不支持并行配置写入。
+
+`createDesktopRemoteMcpHost({config,confirmConnection,fetch?})` 复用原 bound host，默认拒绝连接。受信原生确认回调只看到 endpoint、服务/工具标识、目录摘要与是否有凭据；异步确认后重验配置/取消/期限，断开或关闭能阻止迟到确认。连接后 `arguments(businessArguments)` 提供当前 envelope，`tools` 经既有 RuntimeApplicationOptions.tools 接入原 Policy/ToolGateway。原生连接确认不授予工具执行许可，配置改变后必须重装配，不能热换已注册 schema。
+
+本包未新增 Renderer 页面/IPC，也未默认注入生产 main。确认回调单测为显式合成替身；真实远端、OAuth 与原生管理页面未验收。Competition 的本机 HTTP + SQLite Runtime 审批/重启测试与真实 Electron safeStorage 双进程测试分开记录；既有 Local 窗口回归不能替代比赛验收。
+
+构建依赖后执行：
+
+```powershell
+node --test apps/desktop/test/remote-mcp-config.test.mjs tests/integration/remote-mcp-host-runtime.test.mjs
+npm run test:remote-mcp-storage-smoke --workspace=@personal-agent/desktop
+```
+
+真实 safeStorage 烟测用两个隔离 Electron 进程和公开合成 token，正常 `app.quit()` 关闭并读回忽略目录的 receipt；没有工具或模型调用。首次加密后立即强制终止可能使 Chromium 加密状态未落盘，恢复将为 unavailable、保留原密文；本包不承诺首次保存后的崩溃恢复。详见 [ADR-0031](../../docs/adr/0031-remote-mcp-host-configuration.md) 与[验收记录](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
+
 ## 2026-10-09 自有镜像 WSS 消费增量
 
 Competition可信主进程已消费WSS传输及连接状态，此接入仍为 **provisional**。启用`PA_AGENTARTS_TRANSPORT=wss`时，必须显式提供`PA_AGENTARTS_WSS_URL`，没有自动推导的公网地址，也不会依次试探不同路径。地址限定同一 HTTPS 网关 origin 与运行时名称，只接受`/runtimes/{runtimeName}/ws`或`/runtimes/{runtimeName}/invocations/ws`这两个精确路径；明文、跨源、URL认证信息、查询参数与其他路径均拒绝。

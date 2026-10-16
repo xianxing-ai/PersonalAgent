@@ -22,6 +22,7 @@ ADR 记录已经采纳且会长期影响多个模块的决定。编号递增，�
 - [ADR-0024：Competition 辅助模型原生思考配置（proposed）](0024-competition-native-reasoning.md)
 - [ADR-0029：远程 MCP 的首个只读传输纵片（proposed）](0029-remote-mcp-readonly-transport.md)
 - [ADR-0030：远程只读 MCP 的授权绑定与凭据引用（proposed）](0030-remote-mcp-bound-credentials.md)
+- [ADR-0031：远程 MCP 的加密宿主配置与会话恢复（proposed）](0031-remote-mcp-host-configuration.md)
 - [ADR-0012：自有 AgentArts 镜像](0012-owned-agentarts-image.md)
 - [ADR-0013：常驻助手、Wiki 与双通道](0013-resident-agent-wiki-wss.md)
 - [ADR-0014：AgentArts WSS 主通道](0014-agentarts-wss-transport.md)
