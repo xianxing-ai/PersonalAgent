@@ -98,7 +98,7 @@ function OverviewBody(){
  const featureLinks=(ids:string[])=><div className="architecture-feature-links">{ids.map(id=><button key={id} onClick={()=>openFeature(id)}>{id} {FEATURE_MAP.get(id)?.name}</button>)}</div>;
  return <section className="overview-shell" aria-label="全部28个功能连通总图">
   <div className="overview-toolbar">
-   <div><h1>全部工作流 · 一张连通图</h1><p>28 个功能 · {TEMPLATE_COUNT} 个详细节点 · 全部业务工作流在镜像 / 平台MCP直连与日志 / 按需影子</p></div>
+   <div><h1>全部工作流 · 一张连通图</h1><p>28 个功能 · {TEMPLATE_COUNT} 个详细节点 · AgentArts主链编排 / 本地授权执行与Evidence / 按需评估</p></div>
    <div className="overview-actions">
     {(['all','realtime','background'] as const).map(mode=><button key={mode} aria-pressed={pathMode===mode} onClick={()=>setPathMode(mode)}>{mode==='all'?'全部路径':mode==='realtime'?'实时路径':'后台路径'}</button>)}
     <button aria-pressed={panel==='mechanism'} onClick={()=>togglePanel('mechanism')}>核心机制</button>
@@ -114,7 +114,7 @@ function OverviewBody(){
    <span>六大板块</span>{ARCHITECTURE_AREAS.map(item=><button key={item.id} aria-pressed={panel==='area'&&areaId===item.id} onClick={()=>{setAreaId(item.id);setPanel('area');setSelected(undefined);}}>{item.name}</button>)}
    <select aria-label="快速查看功能" value={f?.id||''} onChange={e=>{if(e.target.value)openFeature(e.target.value);}}><option value="">快速查看 F01–F28</option>{ALL_FEATURES.map(item=><option key={item.id} value={item.id}>{item.id} {item.name}</option>)}</select>
   </nav>
-  <div className="overview-caption">当前架构实验（未定型）：ARM64镜像串行推进模板，本机Laya资格不足升级受信teacher，国内执行模型经AgentArts调用。图示并行只表示逻辑独立性；模板数量不等于业务验收。点击查看代码、接线与真实证据缺口。</div>
+  <div className="overview-caption">当前架构实验（未定型）：Competition Agent/Workflow由AgentArts构建、编排、评估和部署；本地Runtime负责授权工具执行与Evidence。Local Laya不在此比赛路径内。图示关系不等于真实接线或业务验收。</div>
   {showLatency&&<div className="architecture-latency"><strong>{FINAL_DESIGN_STATUS}</strong><ul>{LATENCY_DESIGN.map((line,i)=><li key={i}>{line}</li>)}</ul></div>}
   <div className="overview-body">
    <div className="overview-canvas">
@@ -183,7 +183,7 @@ function OverviewBody(){
     </>}
    </aside>}
   </div>
-  <div className="overview-legend"><span><i style={{background:COLORS.flow}}/>功能调用 / 条件分支</span><span><i style={{background:COLORS.decision}}/>本机判断与受信teacher升级（虚线）</span><span><i style={{background:COLORS.evidence}}/>效果证据 / 读回</span><span><i style={{background:COLORS.shadow}}/>按需影子 / 改进（虚线）</span><span><i style={{background:COLORS.platform}}/>AgentArts接入（待接线）</span><span>国内MaaS · 平台/自有/第三方资源</span></div>
+  <div className="overview-legend"><span><i style={{background:COLORS.flow}}/>AgentArts工作流 / 条件分支</span><span><i style={{background:COLORS.decision}}/>平台Agent/Workflow决策（虚线）</span><span><i style={{background:COLORS.evidence}}/>本地授权执行 / Evidence读回</span><span><i style={{background:COLORS.shadow}}/>按需平台评估（虚线）</span><span><i style={{background:COLORS.platform}}/>AgentArts接入（待接线）</span><span>国内MaaS · 平台/自有/第三方资源</span></div>
   <div className="overview-sources">模型文档依据：{MODEL_SOURCES.map(s=><a key={s.url} href={s.url} target="_blank" rel="noreferrer">{s.label}</a>)}<span>本地打包静态查看页，无模型调用、账号连接或执行循环。</span></div>
  </section>;
 }

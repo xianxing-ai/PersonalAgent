@@ -4,8 +4,8 @@ export interface PlatformIntegration {
  existing:string[];increment:string[];steps:string[];reuse:string[];proof:string;status:string;
  code:string[];sources:{label:string;url:string}[];
 }
-export const PLATFORM_BASELINE = '2026-10-14 核对：当前网页分支的生产代码与 origin/main 3275aa91 相同；远程 main 已核实。代码存在、历史真实记录与本轮拟议接入分别标注。';
-export const PLATFORM_SCOPE = '28项模板及依赖/条件/串行推进逻辑由AgentArts Runtime自有ARM64镜像承载；图数量不等于业务验收。Laya服务和权重留在本机，只有通过独立任务资格验证的站点可直接决定；资格不足、不确定或复杂问题升级受信teacher。国内执行模型经AgentArts调用；平台知识、日志/观测和评估真实接入。TaskRuntime、Policy、ToolGateway、Evidence继续沿用现有入口。';
+export const PLATFORM_BASELINE = '2026-10-16 核对：查看器数据与 origin/main eb92311f 同步；生产代码、历史真实记录与本轮拟议接入分别标注。';
+export const PLATFORM_SCOPE = 'Competition Profile由AgentArts实际构建Agent/Workflow、编排流程、执行评估并部署；本地Runtime经CloudAgentPort消费平台结果，再由TaskRuntime/Policy/ToolGateway执行获准工具并保留Evidence。Local Laya不属于本比赛路径；AgentArts故障不静默回退。图数量不等于业务验收。';
 export const RESOURCE_ROUTES = [
  {name:'知识库：本地与云端并存',sources:['本地Wiki/Obsidian/自建资料库','AgentArts原生知识库','配置的其他云端知识服务'],route:'同一检索工作流选择或并行查询提供者 → 按来源/版本合并片段 → 原受信判断链重排 → 上下文与引用。',existing:'本地KnowledgePort、Wiki和引用已有；平台/其他云提供者、多来源汇合和云引用适配待接线。'},
  {name:'MCP：平台、自有与社区',sources:['AgentArts平台MCP网关','自有本地stdio服务','自有或第三方远程HTTPS/MCP服务','GitHub/Gitee/其他人项目部署出的服务'],route:'选择服务来源 → 现有宿主发现目录 → 映射RegisteredTool → 原ToolGateway调用 → 实际结果与Evidence。平台来源由远程MCP客户端直连平台网关。',existing:'固定本地stdio子集已有；远程传输、平台直连、通用来源配置与目录适配待接线。仓库地址是代码来源，实际连接目标是服务端点或本地进程。'},
@@ -16,7 +16,7 @@ export const PLATFORM_INTEGRATIONS:PlatformIntegration[] = [
   id:'gateway',nodeId:'AA_GATEWAY',name:'模型与MCP网关',subtitle:'推理Target · MCP客户端直连 · 待接线',features:['F21','F25','F26','F28'],shared:['DECISION','MODELS','POLICY','TOOL'],
   existing:['ModelGateway、OpenAI兼容Provider与镜像模型配置已有；已有受限场景的MaaS真实调用记录。','ToolGateway已有注册、目录、参数与Policy入口；MCP宿主已有固定本地stdio读取实现。','AgentArts Runtime的入站网关/WSS已用过；它与本次推理/MCP工具网关是不同入口。'],
   increment:['配置AgentArts Inference Target的地址、认证与实际模型参数兼容，复用现有Provider。','在现有MCP宿主补远程HTTPS/SSE传输、协议协商、tools/list与tools/call结果适配，直连平台MCP网关。','按平台支持的工具目录映射现有RegisteredTool；沿用宿主凭据、deadline、取消和既有授权。'],
-  steps:['主对话由原受信判断链选择执行模型、范围和实际支持的思考参数，工作流控制仍在镜像。','现有ModelGateway调用平台Inference Target，由网关转发国内MaaS；只替换Provider连接配置与必要适配。','执行者提出工具请求，原TaskRuntime/Policy/ToolGateway核对既有授权和参数。','涉及平台工具的调用由MCP客户端直连AgentArts MCP网关，平台完成发现、路由及协议转换。','目标服务返回结果，现有执行记录/Evidence保留真实结果，镜像继续；本机工具继续使用原宿主。','不支持的协议/目录、鉴权失败或断线按真实状态恢复；已发送结果未知的写入先读回，不另造执行循环。'],
+steps:['AgentArts项目内的Agent/Workflow负责比赛主链的构建、编排和模型分派；本地Runtime通过CloudAgentPort调用，不复制执行循环。','AgentArts按实际配置运行受支持的执行模型并返回结构化提案；Local Laya不参与Competition决策。','本地TaskRuntime/Policy核对任务绑定和授权，再由ToolGateway执行已批准的工具操作。','平台工具按已验证的AgentArts接口调用；能力或协议未验证时明确失败。','本地Runtime记录真实工具结果与Evidence并返回AgentArts工作流；任务终态仍由TaskRuntime管理。','AgentArts故障、断线或写入结果未知时保留原状态并先核实，不静默转Local或盲目重发。'],
   reuse:['保留一个ModelGateway与一个ToolGateway，不新增模型路由器或授权器。','本地stdio MCP与平台远程MCP共用现有宿主职责；新增的是传输与平台目录适配。','模型选择仍归原受信判断链，平台网关负责连接和转发。'],
   proof:'平台Target配置与版本、实际模型/工具请求、tools/list与tools/call响应、原Policy/执行读回记录；Runtime入站WSS不能替代MCP工具网关调用证据。',
   status:'底座已有；平台推理Target、远程MCP客户端与目录映射尚未在所查生产代码中实现或验收。',
@@ -58,5 +58,5 @@ export const PLATFORM_INTEGRATIONS:PlatformIntegration[] = [
  },
 ];
 export const PLATFORM_NODES = PLATFORM_INTEGRATIONS.map(item=>({id:item.nodeId,label:item.name,subtitle:item.subtitle,kind:'platform'}));
-export const PLATFORM_GOLDEN_PATH = ['公开项目资料进入平台知识库，保存可核对的来源/版本','镜像分派资料检索与已有上下文分析，按真实依赖并行','实际知识检索通过提供者/MCP Target返回带来源片段','受派模型经平台推理网关形成结果，原工具宿主保留执行证据','让日志与Trace在平台呈现角色、工具、检索和一次实际失败/恢复','复用本地用例与实际回执形成平台评测集，完成一次真实评估','候选配置变化后以同条件比较，保存部署、Trace、评测任务和本地读回的关联'];
-export const PLATFORM_BOUNDARIES = ['这是当前架构实验（未定型）与实现核对，不是平台能力已上线的声明；不提升公共接口冻结或真实验证等级。','四类平台适配由全部工作流共享，仍保留28功能、独立逻辑分支（当前串行推进）、主动语音、本机Laya与受信teacher判断链与按需影子。','区域、账号权限、MCP协议/SSE、知识API、日志/OTel格式、评估对象/字段均需实际验证。','所有业务编排是镜像内自有实现，答辩说明为AgentArts高代码托管及平台能力组合，不冒称Studio原生图已经使用。'];
+export const PLATFORM_GOLDEN_PATH = ['在AgentArts创建或更新Competition Agent/Workflow并绑定版本','由AgentArts构建流程并核对构建回执','由AgentArts执行工作流评估并读回真实报告','由AgentArts部署指定版本并核对deployment状态','本地Runtime经CloudAgentPort调用已部署工作流，不静默回退Local','本地Policy/ToolGateway执行获准操作并记录实际Evidence','分别核对AgentArts部署/trace与本地任务终态和工具读回'];
+export const PLATFORM_BOUNDARIES = ['这是当前架构实验（未定型）与实现核对，不是平台能力已上线的声明；不提升公共接口冻结或真实验证等级。','Competition Profile由AgentArts构建、编排、评估与部署；本地Runtime负责授权、ToolGateway、Evidence和TaskRuntime终态。','本机Laya仅属于既有可选Local路径，不进入本Competition图，也不新增或扩展Local能力。','区域、账号权限、平台API/日志/评估与部署状态仍需真实读回；Competition失败不得静默回退Local。'];

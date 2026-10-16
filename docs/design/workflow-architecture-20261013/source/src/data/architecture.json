@@ -72,9 +72,9 @@
           "就绪或需扩充建议"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       },
       {
@@ -351,8 +351,8 @@
         "inputFields": [],
         "outputFields": [],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "有歧义时的意图解释"
         }
       },
@@ -632,9 +632,9 @@
           "可能补偿的原效果"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       },
       {
@@ -931,9 +931,9 @@
           "冲突解释"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       },
       {
@@ -1132,9 +1132,9 @@
           "扩充建议或可回答建议"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       },
       {
@@ -1192,9 +1192,9 @@
           "需补查或未知"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         },
         "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。"
       },
@@ -1341,8 +1341,8 @@
           "actionPlan"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "调度规划"
         }
       },
@@ -1514,8 +1514,8 @@
           "rationale"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "偏好排序"
         }
       },
@@ -1642,9 +1642,9 @@
           "责任来源引用"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       },
       {
@@ -1717,9 +1717,9 @@
           "责任来源关联"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       },
       {
@@ -2041,8 +2041,8 @@
           "forwardToFeature"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "信号初筛与路由"
         }
       },
@@ -2239,8 +2239,8 @@
           "recommendation"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "最终决策汇总"
         }
       }
@@ -2370,8 +2370,8 @@
           "requiresVoiceConfirm"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "出行决策分析"
         }
       },
@@ -2537,8 +2537,8 @@
           "digestReadyTime"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "打扰度控制决策"
         }
       },
@@ -2690,8 +2690,8 @@
           "isSafeAndReversible"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "系统根因分析"
         }
       },
@@ -2833,8 +2833,8 @@
           "mustHaltForVoice"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "操作影响度裁决"
         }
       },
@@ -2982,8 +2982,8 @@
           "forbiddenActions"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "修复边界圈定"
         }
       },
@@ -3169,8 +3169,8 @@
           "legitimateFix"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "CI失效研判"
         }
       },
@@ -3324,8 +3324,8 @@
           "evidence"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "失败聚类与同源裁定"
         }
       },
@@ -3471,8 +3471,8 @@
           "nonBlockingCount"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "审查意见分级"
         }
       },
@@ -3605,8 +3605,8 @@
           "triageCategory"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "工单分诊与查重"
         }
       },
@@ -3799,9 +3799,9 @@
           "synchronized"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       }
     ],
@@ -3944,8 +3944,8 @@
           "availableInWorkflow"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "工具可用性审查"
         },
         "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。"
@@ -4041,9 +4041,9 @@
         "inputFields": [],
         "outputFields": [],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       },
       {
@@ -4319,8 +4319,8 @@
           "rationale"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "晋升质量裁决"
         }
       },
@@ -4813,8 +4813,8 @@
           "bannedCategories"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "隐私合规审计"
         }
       },
@@ -4893,16 +4893,16 @@
     "code": "F26",
     "name": "镜像、部署与比赛验收",
     "category": "扩展与系统",
-    "summary": "云端决策模型 与 AgentArts 工作流部署；完整展现云端提案->本地Policy->工具->证据全流程。",
+    "summary": "AgentArts负责工作流构建、Agent/Workflow编排、评估与部署；本地Runtime消费云端提案，经Policy/ToolGateway形成可信Evidence。",
     "decisionPoints": [
-      "检查镜像入口点架构与显存/算力配置依赖",
-      "进行端到端语义决策闭环推理（提案生成与工具读回评判）",
+      "核对AgentArts项目、Agent/Workflow、评估配置和部署版本",
+      "进行端到端工作流调用与本地工具Evidence读回验证",
       "在外部 AgentArts 网关不可用时坚决报错等待，严禁静默偷换为无鉴权的本地逻辑"
     ],
     "nodes": [
       {
         "id": "F26_N01",
-        "label": "固定代码、镜像与模型调用配置版本",
+        "label": "固定AgentArts项目、工作流与部署版本",
         "kind": "input",
         "dependencies": [],
         "required": true,
@@ -4921,7 +4921,7 @@
       },
       {
         "id": "F26_N02",
-        "label": "[阶段1/4] 构建镜像并检查产物",
+        "label": "[阶段1/4] 由AgentArts构建Agent/Workflow并检查产物",
         "kind": "tool_exec",
         "dependencies": [
           "F26_N01"
@@ -4941,7 +4941,7 @@
       },
       {
         "id": "F26_N03",
-        "label": "[阶段2/4] 部署上线并就绪探针",
+        "label": "[阶段2/4] 由AgentArts部署并核对服务状态",
         "kind": "deterministic_check",
         "dependencies": [
           "F26_N02"
@@ -4962,7 +4962,7 @@
       },
       {
         "id": "F26_N04",
-        "label": "[阶段3/4] 真实语义闭环评测：云端提案->本地Policy->工具->证据",
+        "label": "[阶段3/4] AgentArts工作流评估与本地Policy/工具Evidence读回",
         "kind": "verification",
         "dependencies": [
           "F26_N03"
@@ -4982,8 +4982,8 @@
           "evidenceVerified"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "云端决策闭环验证"
         },
         "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。"
@@ -5104,9 +5104,9 @@
           "扩充/恢复请求"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
-          "role": "本机Laya与受信teacher判断链"
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
+          "role": "AgentArts Agent/Workflow；宿主负责授权"
         }
       },
       {
@@ -5268,7 +5268,7 @@
     "code": "F28",
     "name": "多厂商模型、思考深度与主对话分配",
     "category": "模型与上下文",
-    "summary": "主对话使用本机Laya与受信teacher判断链分配不同厂商执行模型、实际支持的原生思考参数与验证强度。执行者在受派范围内可选工具和探索，任务终态与授权仍归宿主。",
+    "summary": "Competition Profile由AgentArts Agent/Workflow编排任务并选择受支持的执行模型与验证步骤；本地Runtime仅通过CloudAgentPort消费提案、执行Policy/ToolGateway并保留Evidence与任务终态。",
     "decisionPoints": [
       "将复合指令拆解为资料调研、深度分析、代码实现三类子任务",
       "匹配各模型专长（Qwen长文搜集、DeepSeek深入推导、GLM编码）",
@@ -5292,7 +5292,7 @@
       },
       {
         "id": "F28_N02",
-        "label": "Laya从候选中选择模型分工与上下文",
+        "label": "AgentArts Agent/Workflow编排模型分工与上下文",
         "kind": "semantic_decision",
         "dependencies": [
           "F28_N01"
@@ -5307,8 +5307,8 @@
           "原生参数/验证强度候选"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "语义决策"
         },
         "condition": "缺少有效分派建议，或新证据需要重判"
@@ -5463,8 +5463,8 @@
           "recommendation"
         ],
         "modelAssignment": {
-          "vendor": "Laya",
-          "model": "laya-multilingual",
+          "vendor": "AgentArts",
+          "model": "AgentArts Agent/Workflow",
           "role": "语义完成判断"
         }
       },

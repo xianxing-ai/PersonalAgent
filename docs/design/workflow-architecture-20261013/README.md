@@ -2,9 +2,9 @@
 
 目标 profile：`huawei_ict_agentarts`。这是一份可离线查看的架构页面，包含全部28个功能、185个详细节点、12个共享节点和130条跨流程关系。展开全部后共225个图节点。
 
-当前实验由自有ARM64镜像按依赖与条件串行推进模板；图中的并行边表示逻辑独立性，不是实际并发验收。Laya服务与权重在本机，只有独立任务资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，模型建议不改变本机Runtime/Policy/ToolGateway/Evidence权限。目录数量、发布和有限真实调用不能替代28项业务验收。
+Competition Profile由AgentArts构建Agent/Workflow、编排主流程、评估并部署；本地Runtime通过CloudAgentPort消费提案，负责Policy、ToolGateway、Evidence和TaskRuntime终态。Local Laya不进入比赛主链。图中的并行边只表示逻辑关系，不是实际并发验收；目录数量和有限真实调用不等于28项业务验收。
 
-当前架构实验（未定型）保留全部业务工作流在自有镜像，并明确AgentArts平台MCP直连、原生知识、日志/Trace及效果评估的接入。沿用2026-10-13经Astra复评的主方向；本次新增内容仍需当前PR审核和生产接线验证。此页不连接真实模型、邮箱、麦克风或账号，没有模拟执行、聊天剧本和演示成绩。
+当前架构实验（未定型）按仓库Competition边界展示AgentArts对Agent/Workflow构建、编排、评估和部署的责任，并标明本地Runtime与平台的证据分工。平台适配与真实接线仍需验证；本页不连接真实模型、邮箱、麦克风或账号，没有模拟执行、聊天剧本和演示成绩。
 
 ## 直接打开，不需要Node.js
 
@@ -54,7 +54,7 @@ npm start
 
 ## 本轮设计修订
 
-1. 当前实验采用本机Laya multilingual有限候选判断，Python服务和权重不进入ARM64镜像；资格不足、不确定或复杂问题升级原受信teacher。架构未最终定型。经AgentArts的国内执行模型生成理解、计划、参数和摘要候选；Laya从有限候选中选择，参与责任、记忆排序、上下文、分派、恢复、完成建议与影子选路。独立判断可合批，不把Laya称为长文生成模型。
+1. Competition全局责任、Agent/Workflow编排与模型分派由AgentArts承担。本地Runtime消费平台提案并校验任务绑定、Policy授权、工具参数与实际读回；Laya不参与此比赛主链。既有Local runAgent保持现状，本工作不扩展Local能力。
 2. 可信用户原句/有效授权是责任来源。保存版本、否定、条件和对象/参数关系；`includes`只证明字符出现，事实`rule_ref`不自动提供动作授权。明确已授权责任直接生效，不增加每条新责任首次确认。
 3. 先召回再联合判断；按时间、地点、人物、资源宽松检索，未知项保留。缺证据按需扩充，不固定一跳、1–2轮或新增预算上限；相同检索无新信息时停止重复，沿用真实期限/取消/用户配置。
 4. F03计划修订保留已发生效果。补偿绑定具体原operation/effect ID、读回、变更原因及修正因果链；不能凭REVISE、同对象历史写入或模型自报operation_kind分类。未知原写入先核实；现有授权覆盖补偿则自动执行，缺决定才补问。
@@ -64,10 +64,10 @@ npm start
 8. F22仅在失败、配置变化、异常、用户调试或配置采样时触发，不默认每请求双跑。决策影子比较判断，回放不读未来、缺反事实标未知；隔离只覆盖已支持的环境，不写主任务/记忆或消费主授权。
 9. F23提示/图/调用配置、用户项目补丁、可信宿主升级分别走原有测试、版本与发布。MaaS不能直接调整远端权重；AgentArts Evaluation接入仍为拟议，须真实作业读回。
 10. F08授权覆盖直接执行，真正缺决定才语音补问；资料检索、分类与独立线程并行。静默徽章承载普通等待，重要副作用、截止冲击或需要决定时主动通知。
-11. 全部业务编排与影子逻辑迁入自有镜像，AgentArts提供实际被调用的平台组件。复用ModelGateway、ToolGateway与现有MCP宿主，补推理Target连接配置和远程HTTPS/SSE MCP客户端，平台来源直连AgentArts MCP网关。
+11. Competition Agent/Workflow由AgentArts构建、编排、评估与部署；本地Runtime只保留授权工具执行和可信Evidence。平台工具、知识、日志/Trace和评估适配分别接线并读回，未验证能力明确失败。
 12. 保留本地知识实现，补KnowledgePort的云端提供者及来源映射；保留JSON角色回执、事件和Evidence，补平台日志采集与OTel Trace上报；复用现有用例、本地评分及历史平台评测集，补真实结果导出、任务与报告适配。上述平台接入尚未实现/验收，不新建第二套网关、任务库或评分系统。
 
-Laya在本机通过受信宿主加载固定权重；镜像不包含Laya权重、Python或PyTorch。通用执行模型经AgentArts接入国内服务，候选包括DeepSeek、GLM、Qwen、openPangu，入口可配置；原生思考深度的实际支持和效果需实测，不给Laya虚设通用思考档位。
+Competition执行模型由AgentArts Agent/Workflow按平台实际部署和能力配置选择。本机Runtime负责来源绑定、Policy授权、工具执行与Evidence读回；本机Laya仅属于既有Local路径，不作为Competition模型或编排回退。
 
 ## 现有代码与证据边界
 
@@ -77,7 +77,7 @@ Laya在本机通过受信宿主加载固定权重；镜像不包含Laya权重、
 
 责任来源映射、DecisionReady/NeedContextExpansion、隐含依赖召回、效果因果关联、完整语音/影子/上下文适配都是设计内容或拟议内部记录。图中的字段不发布新wire DTO；TypeScript接口不是安全沙箱。
 
-自有镜像在AgentArts Runtime内承载云端业务编排，本地Runtime保有状态/控制/终态。Runtime入站WSS与本次MCP工具网关是不同入口。分别留存构建、部署、平台日志/trace、本地实际工具、读回和评估证据。平台截图或固定合成文件读取场景不能证明整链可用；Competition不静默回退Local。
+AgentArts负责Competition Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用已部署版本，并保有任务状态/终态、Policy、ToolGateway、Evidence和工具读回。平台部署/日志/Trace/评估与本地证据分开核对；截图或固定合成文件不能证明整链可用，Competition不静默回退Local。
 
 本地保存不等于没有数据出机；生产模型只接收当前获授权的必要上下文。离线桌面无法执行本地动作；未来云订阅/事件收件箱须另接线。此页不提升任何能力冻结或真实验证等级。
 
