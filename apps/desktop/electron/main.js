@@ -10,7 +10,7 @@ import path from 'node:path';
 import {existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
-import {panelBounds, clampOrb, draggedGroupBounds} from './placement.js';
+import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
 import {desktopDataPaths} from './data-paths.js';
@@ -135,6 +135,7 @@ let pinned = false;
 let dragging = false;
 let orbDragRevision = 0;
 let dragOffset;
+let orbDragPoll;
 let panelDragOrigin;
 let away = 0;
 let audioLevel = 0;
@@ -635,7 +636,7 @@ function windowFor(mode, bounds, options = {}) {
     const invalidateDrag = () => {
       if (win !== orb) return;
       orbDragRevision++;
-      if (dragging === true) dragging = false;
+      if (dragging === true) { dragging = false; stopOrbDrag(); }
     };
     win.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => {if (mainFrame) invalidateDrag();});
     win.webContents.on('render-process-gone', invalidateDrag);
@@ -646,6 +647,7 @@ function windowFor(mode, bounds, options = {}) {
   const present = () => {
     if (presented || win.isDestroyed()) return;
     presented = true;
+    if (mode === 'orb') placeOrb(win, win.getBounds());
     if (['panel','admin','workspace'].includes(mode)) applyShape(win, mode === 'panel' ? 20 : 12);
     if (mode !== 'panel') win.show();
     publish();
@@ -700,14 +702,23 @@ function openPanel(focus = false) {
   away = 0;
 }
 
+function stopOrbDrag() {
+  clearInterval(orbDragPoll);
+  orbDragPoll = undefined;
+}
+
+function moveOrbDrag() {
+  if (dragging !== true || !orb || orb.isDestroyed()) return;
+  const point = screen.getCursorScreenPoint(), bounds = orb.getContentBounds();
+  const next = clampOrb({...bounds, x: point.x - dragOffset.x, y: point.y - dragOffset.y}, screen.getDisplayNearestPoint(point).workArea);
+  if (next.x !== bounds.x || next.y !== bounds.y) placeOrb(orb, next);
+}
+
 function movePanelGroup(point) {
   if (!panelDragOrigin || !orb || !panel) return;
   const area = screen.getDisplayNearestPoint(point).workArea;
   const next = draggedGroupBounds(panelDragOrigin.orb, panelDragOrigin.pointer, point, area);
-  // On Windows, setBounds() can expand a frameless non-resizable window to the
-  // native minimum tracking size, leaving an invisible click-blocking area.
-  // Dragging the orb must only change its position and preserve 112x112.
-  orb.setPosition(next.orb.x, next.orb.y);
+  placeOrb(orb, next.orb);
   placePanel(next.panel);
   applyShape(panel, 20);
 }
@@ -2191,17 +2202,24 @@ async function action(event, name, payload) {
   if (name === 'orb.open' && sender === orb) { pinned = true; openPanel(true); publish(); return; }
   if (name === 'orb.dragStart' && sender === orb) {
     const revision = ++orbDragRevision, dragWindow = orb;
+    const point = screen.getCursorScreenPoint(), bounds = dragWindow.getBounds();
+    if (payload !== undefined && (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)
+      || payload.x < 0 || payload.y < 0 || payload.x > bounds.width || payload.y > bounds.height)) throw Error('拖动坐标无效');
+    // Keep the pointer-down offset in window-local DIPs, before asynchronous panel cleanup.
+    const offset = payload === undefined ? {x: point.x - bounds.x, y: point.y - bounds.y} : {x: payload.x, y: payload.y};
     await hidePanel();
     if (revision !== orbDragRevision || orb !== dragWindow || dragWindow.isDestroyed()) return;
-    dragging = true; const point = screen.getCursorScreenPoint(); const bounds = orb.getBounds();
-    dragOffset = {x: point.x - bounds.x, y: point.y - bounds.y}; return;
+    dragging = true; dragOffset = offset;
+    stopOrbDrag(); moveOrbDrag();
+    orbDragPoll = setInterval(moveOrbDrag, 16); return;
   }
-  if (name === 'orb.dragEnd' && sender === orb) { orbDragRevision++; if (dragging === 'panel') return; dragging = false; desktopHost.snap(orb); away = Date.now() + 400; return; }
+  if (name === 'orb.dragEnd' && sender === orb) { orbDragRevision++; if (dragging === 'panel') return; moveOrbDrag(); dragging = false; stopOrbDrag(); desktopHost.snap(orb); away = Date.now() + 400; return; }
   if (name === 'panel.dragStart' && sender === panel) {
     if (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)) throw Error('拖动坐标无效');
     orbDragRevision++;
+    stopOrbDrag();
     dragging = 'panel';
-    panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getBounds()};
+    panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getContentBounds()};
     return;
   }
   if (name === 'panel.dragMove' && sender === panel && dragging === 'panel') {
@@ -2209,7 +2227,7 @@ async function action(event, name, payload) {
     movePanelGroup(payload);
     return;
   }
-  if (name === 'panel.dragEnd' && sender === panel) { orbDragRevision++; dragging = false; panelDragOrigin = undefined; away = Date.now() + 400; return; }
+  if (name === 'panel.dragEnd' && sender === panel) { orbDragRevision++; dragging = false; stopOrbDrag(); panelDragOrigin = undefined; away = Date.now() + 400; return; }
   if (name === 'app.quit') { app.quit(); return; }
   if (name === 'agentarts.configure') {
     if (sender!==admin || !competitionMode || runtimeApplication?.activeTaskCount || liveVoice?.hasActive()
@@ -3139,22 +3157,17 @@ app.whenReady().then(async () => {
   if (competitionMode && !agentArtsConfig.snapshot().configured) openAdmin('models');
 
   function reposition() {
-    const bounds = orb.getBounds();
+    const bounds = orb.getContentBounds();
     const next = clampOrb(bounds, screen.getDisplayMatching(bounds).workArea);
-    orb.setPosition(next.x, next.y);
+    placeOrb(orb, next);
     if (panel.isVisible()) openPanel();
   }
   screen.on('display-removed', reposition);
   screen.on('display-metrics-changed', reposition);
   poll = setInterval(() => {
-    if (orb.isDestroyed()) return;
+    if (orb.isDestroyed() || dragging === true) return;
     const point = screen.getCursorScreenPoint();
     const bounds = orb.getBounds();
-    if (dragging === true) {
-      const next = clampOrb({...bounds, x: point.x - dragOffset.x, y: point.y - dragOffset.y}, screen.getDisplayNearestPoint(point).workArea);
-      orb.setPosition(next.x, next.y);
-      return;
-    }
     if (away > Date.now()) return;
     const near = Math.hypot(point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2) <= 90;
     const panelBoundsValue = panel.getBounds();
@@ -3302,6 +3315,7 @@ app.whenReady().then(async () => {
     microphonePermissionGate?.revoke();
     app.isQuitting = true;
     clearInterval(poll);
+    stopOrbDrag();
     clearInterval(eventPoll);
     tray?.destroy();
     runtimeConnection?.dispose?.();
