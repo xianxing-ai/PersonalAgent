@@ -104,7 +104,7 @@ test('late credential completion after config change/cancel/deadline/revocation 
       if(reason==='revoke')s.revoked.abort();
       if(reason==='config')waiting.resolve(token);
       await pending;waiting.resolve(token);await new Promise(resolve=>setTimeout(resolve,20));
-      assert.equal(s.f.requests.length,baseline);assert.equal(s.f.calls().length,0);
+      assert.equal(s.f.requests.length,baseline,JSON.stringify({reason,extra:s.f.requests.slice(baseline).map(item=>({method:item.message?.method,id:item.message?.id,requestId:item.message?.params?.requestId}))}));assert.equal(s.f.calls().length,0);
     }finally{waiting.resolve(token);await s.close();}
   }
 });
