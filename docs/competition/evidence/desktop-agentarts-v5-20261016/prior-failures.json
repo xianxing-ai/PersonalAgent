@@ -1,0 +1,70 @@
+{
+  "version": "1.0",
+  "failures": [
+    {
+      "privateReceipt": "desktop-v5-before-coordinator-fix.json",
+      "status": "failed_or_unknown",
+      "taskId": "db3ac3af-9a78-4116-bc3b-d4aa85ba7c0c",
+      "state": "failed",
+      "code": "EXTERNAL_FAILURE",
+      "reason": "Text smoke did not succeed",
+      "retainedLocally": true
+    },
+    {
+      "privateReceipt": "desktop-v5-before-enum-fix.json",
+      "status": "failed_or_unknown",
+      "taskId": "dae55fd8-bfd2-4cf3-ab3b-bbf02b913026",
+      "state": "failed",
+      "code": "INVALID_ARGUMENT",
+      "reason": null,
+      "retainedLocally": true
+    },
+    {
+      "privateReceipt": "desktop-v5-before-bailian-permission.json",
+      "status": "failed_or_unknown",
+      "taskId": "60a17db9-6277-43a6-b98c-9da5312aa777",
+      "state": "waiting_reconciliation",
+      "code": "UNAUTHORIZED",
+      "reason": null,
+      "retainedLocally": true
+    },
+    {
+      "privateReceipt": "desktop-v5-busy-conversation.json",
+      "status": "failed_or_unknown",
+      "taskId": null,
+      "state": null,
+      "code": null,
+      "reason": "text submission failed",
+      "retainedLocally": true
+    },
+    {
+      "privateReceipt": "desktop-v5-cancellation-not-terminal.json",
+      "status": "failed_or_unknown",
+      "taskId": null,
+      "state": null,
+      "code": null,
+      "reason": "Previous public test stop is not confirmed",
+      "retainedLocally": true
+    },
+    {
+      "privateReceipt": "real-voice-before-credential-fix.json",
+      "status": "failed",
+      "taskId": null,
+      "state": null,
+      "code": null,
+      "reason": "gateway_error",
+      "retainedLocally": true
+    },
+    {
+      "privateReceipt": "real-voice-r2-failure.json",
+      "status": "failed",
+      "taskId": null,
+      "state": null,
+      "code": null,
+      "reason": "gateway_error",
+      "retainedLocally": true
+    }
+  ],
+  "originalFailedTasksReopened": false,
+  "privateLogsNotPublished": true
+}

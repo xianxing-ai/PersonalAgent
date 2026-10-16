@@ -1,0 +1,212 @@
+{
+  "kind": "actual_desktop_v5_main_host_cloud",
+  "startedAtUtc": "2026-10-16T12:26:13.665Z",
+  "fake": false,
+  "microphoneOpened": false,
+  "driver": "Original registered Electron main IPC handler with real BrowserWindow/mainFrame identity; not renderer clicks",
+  "version": "arm64-v5-d92a17a4-r3",
+  "sourceCommit": "d92a17a4c436f37ff7a9bfdc5829044031a89bf7",
+  "appSourceCommit": "2ed95c38a3056d368bc90523bb0bbd8e7465a8c9",
+  "savedConnection": {
+    "transport": "wss",
+    "websocketUrl": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+    "deploymentVersion": "arm64-v5-d92a17a4-r3",
+    "encryptedReadback": true,
+    "httpsFallbackExplicit": true
+  },
+  "voiceSettings": {
+    "route": "agentarts-wss",
+    "legacyApiPreserved": true,
+    "microphoneOpened": false
+  },
+  "sockets": [
+    {
+      "event": "upgrade",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": 101,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T12:26:20.599Z"
+    },
+    {
+      "event": "open",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": null,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T12:26:20.600Z"
+    },
+    {
+      "event": "upgrade",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": 101,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T12:26:32.970Z"
+    },
+    {
+      "event": "open",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": null,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T12:26:32.970Z"
+    },
+    {
+      "event": "upgrade",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": 101,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T12:26:37.705Z"
+    },
+    {
+      "event": "open",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": null,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T12:26:37.705Z"
+    }
+  ],
+  "httpTaskCalls": [],
+  "cloudCalls": [
+    {
+      "taskId": "731d1ed0-fe5f-4d37-958c-bf7162cbfd3b",
+      "startedAtUtc": "2026-10-16T12:26:19.138Z",
+      "selection": {
+        "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "low"
+      },
+      "continuation": false,
+      "transport": "wss",
+      "requestedVersion": "arm64-v5-d92a17a4-r3",
+      "resultKind": "text",
+      "completed": true,
+      "wallMs": 12267.103099999998
+    },
+    {
+      "taskId": "4f4089fa-5bfb-4590-81b3-5b531bd958e8",
+      "startedAtUtc": "2026-10-16T12:26:32.150Z",
+      "selection": {
+        "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "low"
+      },
+      "continuation": false,
+      "transport": "wss",
+      "requestedVersion": "arm64-v5-d92a17a4-r3",
+      "resultKind": "tool_proposal",
+      "publicTestProposal": {
+        "toolName": "subagent.dispatch",
+        "toolVersion": "1.0.0",
+        "arguments": {
+          "subtasks": [
+            {
+              "subtaskId": "calc-7x8",
+              "role": "coder",
+              "roleLabel": "计算子任务",
+              "goal": "计算7乘8，只输出数字",
+              "model": "qwen3.8-flash",
+              "thinkingDepth": 0
+            }
+          ]
+        }
+      },
+      "completed": true,
+      "wallMs": 4013.917700000002
+    },
+    {
+      "taskId": "66677c84-3a40-4d87-a669-dc7cff23dd16",
+      "startedAtUtc": "2026-10-16T12:26:36.439Z",
+      "selection": {
+        "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+        "modelId": "qwen3.8-flash"
+      },
+      "continuation": false,
+      "transport": "wss",
+      "requestedVersion": "arm64-v5-d92a17a4-r3",
+      "resultKind": "text",
+      "completed": true,
+      "wallMs": 5162.1057
+    },
+    {
+      "taskId": "4f4089fa-5bfb-4590-81b3-5b531bd958e8",
+      "startedAtUtc": "2026-10-16T12:26:41.740Z",
+      "selection": {
+        "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "low"
+      },
+      "continuation": true,
+      "transport": "wss",
+      "requestedVersion": "arm64-v5-d92a17a4-r3",
+      "resultKind": "text",
+      "completed": true,
+      "wallMs": 4771.3544
+    }
+  ],
+  "taskSurface": "workspace",
+  "catalog": {
+    "revision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+    "count": 177,
+    "defaultModelId": "deepseek-v4.1-flash"
+  },
+  "preferences": {
+    "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+    "defaultModelId": "deepseek-v4.1-flash",
+    "defaultSubmodelId": "qwen3.8-flash",
+    "reasoningEffort": "low"
+  },
+  "text": {
+    "taskId": "731d1ed0-fe5f-4d37-958c-bf7162cbfd3b",
+    "state": "succeeded",
+    "resultSummary": "WSS文字连接成功\n[profile=huawei_ict_agentarts; verification=unverified]",
+    "error": null,
+    "wallMs": 13189.027600000001,
+    "children": [],
+    "connection": {
+      "configured": true,
+      "runtimeReady": true,
+      "gatewayUrl": "https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com",
+      "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+      "appTokenConfigured": true,
+      "deploymentVersion": "arm64-v5-d92a17a4-r3",
+      "transport": "wss",
+      "websocketUrl": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "allowHttpsFallback": true,
+      "reason": "已配置；真实连通以任务结果为准",
+      "effectiveTransport": "wss",
+      "transportSource": "saved"
+    }
+  },
+  "delegation": {
+    "taskId": "4f4089fa-5bfb-4590-81b3-5b531bd958e8",
+    "state": "succeeded",
+    "resultSummary": "计算子任务 calc-7x8（coder）已返回结果为 56，状态标记 succeeded。需要说明的是：该结果附有 verification=unverified 标记，即未经独立验证，因此 56 这一数值目前仅为子任务报告值，不能视为已核实的最终结论。本次协作共 1 项子任务，成功 1、失败 0、取消 0。除该数值及其未验证状态外，没有可确认的其他信息。\n[profile=huawei_ict_agentarts; verification=unverified]",
+    "error": null,
+    "wallMs": 15520.0229,
+    "children": [
+      {
+        "parentTaskId": "4f4089fa-5bfb-4590-81b3-5b531bd958e8",
+        "taskId": "66677c84-3a40-4d87-a669-dc7cff23dd16",
+        "role": "coder",
+        "modelId": "qwen3.8-flash",
+        "state": "succeeded",
+        "resultSummary": "56\n[profile=huawei_ict_agentarts; verification=unverified]",
+        "evidenceRefs": []
+      }
+    ],
+    "connection": {
+      "configured": true,
+      "runtimeReady": true,
+      "gatewayUrl": "https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com",
+      "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+      "appTokenConfigured": true,
+      "deploymentVersion": "arm64-v5-d92a17a4-r3",
+      "transport": "wss",
+      "websocketUrl": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "allowHttpsFallback": true,
+      "reason": "已配置；真实连通以任务结果为准",
+      "effectiveTransport": "wss",
+      "transportSource": "saved"
+    }
+  },
+  "status": "passed_actual_desktop_main_wss_and_child",
+  "finishedAtUtc": "2026-10-16T12:26:47.408Z"
+}

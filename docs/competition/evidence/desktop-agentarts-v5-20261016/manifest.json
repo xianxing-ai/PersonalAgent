@@ -1,0 +1,34 @@
+{
+  "files": [
+    {
+      "file": "desktop-receipt.json",
+      "bytes": 8301,
+      "sha256": "55bd74afffe2cd9dbdad36c65aa8a268d83a8653566497b96651fcf2d86b035b"
+    },
+    {
+      "file": "platform-models-before-permission.json",
+      "bytes": 3939,
+      "sha256": "1c0cf97b6e413b22ad69c430564560d29c306cd49627e6c0a28ef25931c3442e"
+    },
+    {
+      "file": "platform-models-final.json",
+      "bytes": 4507,
+      "sha256": "2c7e576e3f78411a9c4ec94a791aa0647663f9d8492a978a86e1b4a485623a9d"
+    },
+    {
+      "file": "prior-failures.json",
+      "bytes": 1968,
+      "sha256": "46f9b6f9b28c1ba14b3f4f18c162f1f91e2738a0fe35d14e8cd3a35e48fc9191"
+    },
+    {
+      "file": "release.json",
+      "bytes": 995,
+      "sha256": "cb891a2b0338a7d0fde8247316beada325cdecf8ffe5169f108f95a2c59e3205"
+    },
+    {
+      "file": "voice-receipt.json",
+      "bytes": 2311,
+      "sha256": "79d7b2bf7f5317c671088cdeed080f0b7b587d338325e7c01034d74bed8d1434"
+    }
+  ]
+}

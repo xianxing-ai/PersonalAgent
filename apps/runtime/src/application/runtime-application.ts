@@ -10,7 +10,7 @@ import type {WorkerContext,WorkerResult} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
 import type {QwenRealtimeModelGateway} from '@personal-agent/models';
-import {AgentArtsResultUnknownError, parseCoordinationRepairCandidate} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError, parseCoordinationRepairCandidate,parseCoordinationContinuation} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationRequest, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
@@ -342,6 +342,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private notificationHostOptions: RuntimeNotificationHostOptions | undefined;
   private textApplication: TextApplication;
   private readonly activeTextTasks = new Map<string, Promise<unknown>>();
+  private readonly subagentTerminationLocks=new Set<string>();
   private readonly tools: AgentToolPort | undefined;
   readonly profile: 'local' | 'huawei_ict_agentarts';
   private readonly coordination: CoordinationPort | undefined;
@@ -1939,6 +1940,97 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(this.runtime.getTask(binding.parentTaskId).state==='waiting_reconciliation')this.resumeConfirmedTask(binding.parentTaskId);
       else if(this.runtime.getTask(binding.parentTaskId).state==='waiting_approval')this.resumeTask(binding.parentTaskId);
     }
+  }
+
+  /** Local-only terminal reconciliation of an original confirmed dispatch; never resumes its loop. */
+  async reconcileConfirmedSubagentTermination(taskId:string):Promise<TaskSnapshot> {
+    if(this.subagentTerminationLocks.has(taskId))throw new ProtocolError('REVISION_CONFLICT','Original task reconciliation is active');
+    this.subagentTerminationLocks.add(taskId);
+    try {
+      const read=()=>{
+        const task=this.runtime.getTask(taskId);
+        const withheld=this.runtime.loadCheckpoint(taskId,'competition-export-withheld');
+        if(this.profile!=='huawei_ict_agentarts' || task.state!=='waiting_reconciliation' || !plainObject(withheld) || withheld.withheld!==true
+          || this.activeTextTasks.has(taskId) || this.runtime.loadCheckpoint(taskId,'competition-cloud-inflight')
+          || this.runtime.loadCheckpoint(taskId,'competition-cloud-unknown') || this.runtime.loadCheckpoint(taskId,'private-copy-erasure'))
+          throw new ProtocolError('UNAUTHORIZED','Only an inactive confirmed withheld subagent receipt can be reconciled');
+        const deadline=this.runtime.loadCheckpoint(taskId,'application-deadline');
+        if(typeof deadline!=='string' || !Number.isFinite(Date.parse(deadline))
+          || (!task.cancelRequested && this.now().getTime()<Date.parse(deadline)))
+          throw new ProtocolError('UNAUTHORIZED','Original task must be cancelled or expired');
+        const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {step?:number;pending?:{proposalId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>};
+          continuation?:{proposalId:string};receipts?:{proposal:{proposalId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>};runId?:string}[]}|undefined;
+        const receipt=loop?.receipts?.find(item=>item.proposal.proposalId===loop.continuation?.proposalId);
+        const proposal=loop?.pending??receipt?.proposal;
+        if(!proposal || proposal.toolName!==SUBAGENT_DISPATCH_TOOL_NAME || !Number.isSafeInteger(loop?.step))
+          throw new ProtocolError('UNAUTHORIZED','No original subagent dispatch receipt');
+        const runId=loop?.pending?`competition-tool-${taskId}-${loop.step}`:receipt?.runId;
+        const records=this.runtime.readToolExecutions(taskId);
+        if(!runId || !records.length || records.some(record=>record.state!=='confirmed' || !record.executionStarted || record.policyDecision!=='allow'
+          || !plainObject(this.runtime.loadCheckpoint(taskId,'tool-result-'+record.evidenceId))
+          || !Object.hasOwn(this.runtime.loadCheckpoint(taskId,'tool-result-'+record.evidenceId) as object,'result')))
+          throw new ProtocolError('RESULT_UNKNOWN','Original tool records are not all confirmed with cached results');
+        const record=records.find(item=>item.evidenceId===runId);
+        if(!record || record.toolName!==proposal.toolName || record.toolVersion!==proposal.toolVersion
+          || !this.runtime.matchesToolExecutionInput(record,{arguments:proposal.arguments,scopeRef:runId}))
+          throw new ProtocolError('UNAUTHORIZED','Original dispatch input does not match its confirmed record');
+        const tool=this.tools?.list().find(item=>item.name===proposal.toolName && item.version===proposal.toolVersion);
+        if(!tool || tool.requiresPresence)throw new ProtocolError('UNAUTHORIZED','Original dispatch descriptor is unavailable');
+        validateToolValue(tool.inputSchema,proposal.arguments);
+        const definitions=proposal.arguments.subtasks as SubtaskDefinition[];
+        const children=this.runtime.listTasks({conversationId:`desktop-subtask:${taskId}`,limit:100}).items;
+        const ids=new Set(definitions.map(item=>item.subtaskId));
+        if(ids.size!==definitions.length || children.length!==definitions.length || children.some(child=>
+          !['succeeded','failed','cancelled'].includes(child.state) || this.activeTextTasks.has(child.taskId)
+          || this.runtime.loadCheckpoint(child.taskId,'competition-cloud-inflight') || this.runtime.loadCheckpoint(child.taskId,'competition-cloud-unknown'))
+          || definitions.some(definition=>!children.some(child=>this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${taskId}-${definition.subtaskId}`)?.taskId===child.taskId)))
+          throw new ProtocolError('RESULT_UNKNOWN','Original child tasks are not a complete terminal dispatch');
+        for(const child of children) {
+          const childBinding=this.runtime.loadCheckpoint(child.taskId,'subtask-parent') as {parentTaskId?:string;parentDeadline?:string}|undefined;
+          if(childBinding?.parentTaskId!==taskId || childBinding.parentDeadline!==deadline)
+            throw new ProtocolError('UNAUTHORIZED','Original child deadline binding changed');
+          const childRecords=this.runtime.readToolExecutions(child.taskId);
+          if(childRecords.some(item=>item.state!=='confirmed' || !item.executionStarted || item.policyDecision!=='allow'
+            || !plainObject(this.runtime.loadCheckpoint(child.taskId,'tool-result-'+item.evidenceId))
+            || !Object.hasOwn(this.runtime.loadCheckpoint(child.taskId,'tool-result-'+item.evidenceId) as object,'result')))
+            throw new ProtocolError('RESULT_UNKNOWN','Child tool result is not confirmed');
+        }
+        const summary=readRuntimeSubagentSummary(this.runtime,taskId,definitions);
+        const toolSnapshots=[taskId,...children.map(child=>child.taskId)].map(id=>{
+          const items=this.runtime.readToolExecutions(id);
+          const keys=[...items.map(item=>'tool-result-'+item.evidenceId),...(id===taskId?
+            ['competition-loop','subtask-progress-records','competition-export-withheld','application-deadline']:['subtask-parent'])];
+          return {taskId:id,recordsJson:JSON.stringify(items),caches:keys.map(key=>{
+            return {key,valueJson:JSON.stringify(this.runtime.loadCheckpoint(id,key))};
+          })};
+        });
+        const cache=this.runtime.loadCheckpoint(taskId,'tool-result-'+runId) as {result:unknown};
+        if(!isDeepStrictEqual(cache.result,summary))throw new ProtocolError('UNAUTHORIZED','Original cached dispatch result does not match its children');
+        const binding=this.competitionToolExports.find(item=>item.toolName===proposal.toolName && item.toolVersion===proposal.toolVersion);
+        if(!binding)throw new ProtocolError('UNAUTHORIZED','Original subagent projection binding is unavailable');
+        return {task,deadline,loop,proposal,runId,records,cache,children,binding,toolSnapshots};
+      };
+      const original=read(),signal=new AbortController().signal;
+      if(original.binding.accepts({taskId,proposalId:original.proposal.proposalId,arguments:structuredClone(original.proposal.arguments),phase:'preflight',signal})!==true)
+        throw new ProtocolError('UNAUTHORIZED','Original subagent projection scope denied');
+      let projected:unknown;
+      try {
+        projected=await original.binding.project({taskId,proposalId:original.proposal.proposalId,result:structuredClone(original.cache.result),signal});
+        projected=parseCoordinationContinuation({proposalId:original.proposal.proposalId,state:'confirmed',result:projected}).result;
+        if(original.binding.accepts({taskId,proposalId:original.proposal.proposalId,arguments:structuredClone(original.proposal.arguments),phase:'final',projection:structuredClone(projected),signal})!==true)
+          throw new Error();
+      } catch {throw new ProtocolError('UNAUTHORIZED','Original confirmed subagent projection remains invalid');}
+      const current=read();
+      if(original.task.revision!==current.task.revision || !isDeepStrictEqual(original.loop,current.loop)
+        || !isDeepStrictEqual(original.toolSnapshots,current.toolSnapshots)
+        || !isDeepStrictEqual(original.cache,current.cache) || !isDeepStrictEqual(original.records,current.records)
+        || !isDeepStrictEqual(original.children.map(item=>[item.taskId,item.revision]),current.children.map(item=>[item.taskId,item.revision])))
+        throw new ProtocolError('REVISION_CONFLICT','Original confirmed subagent receipt changed during projection');
+      return this.runtime.finishConfirmedSubagentTermination(taskId,original.task.revision,{runId:original.runId,
+        cacheJson:JSON.stringify(original.cache),recordsJson:JSON.stringify(original.records),loopJson:JSON.stringify(original.loop),children:original.children.map(item=>({taskId:item.taskId,revision:item.revision})),
+        toolSnapshots:original.toolSnapshots,
+        projectionDigest:createHash('sha256').update(JSON.stringify(projected)).digest('hex'),deadline:original.deadline});
+    } finally {this.subagentTerminationLocks.delete(taskId);}
   }
 
   /** Trusted readback consumer, resuming the same loop only after exact original run confirmation. */

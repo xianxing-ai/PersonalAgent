@@ -1127,6 +1127,39 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   transitionTask(taskId: string, state: TaskState, patch: TransitionPatch = {}): TaskSnapshot {
     return structuredClone(this.transaction(() => this.updateTask(requireText(taskId, 'taskId'), state, patch, true)));
   }
+  /** Trusted host final commit after strict local receipt projection; never resumes work. */
+  finishConfirmedSubagentTermination(taskId:string,expectedRevision:number,input:{runId:string;cacheJson:string;recordsJson:string;loopJson:string;
+    toolSnapshots:{taskId:string;recordsJson:string;caches:{key:string;valueJson:string}[]}[];
+    children:{taskId:string;revision:number}[];projectionDigest:string;deadline:string}):TaskSnapshot {
+    return structuredClone(this.transaction(()=>{
+      const task=this.getTask(taskId),now=this.now().getTime();
+      const childIds=this.listTasks({conversationId:`desktop-subtask:${taskId}`,limit:100}).items.map(child=>child.taskId).sort();
+      if(task.revision!==expectedRevision || task.state!=='waiting_reconciliation'
+        || JSON.stringify(childIds)!==JSON.stringify(input.children.map(child=>child.taskId).sort())
+        || this.active.has(taskId)
+        || !this.loadCheckpoint(taskId,'competition-export-withheld')
+        || this.loadCheckpoint(taskId,'competition-cloud-inflight') || this.loadCheckpoint(taskId,'competition-cloud-unknown')
+        || JSON.stringify(this.loadCheckpoint(taskId,'tool-result-'+input.runId))!==input.cacheJson
+        || JSON.stringify(this.readToolExecutions(taskId))!==input.recordsJson
+        || JSON.stringify(this.loadCheckpoint(taskId,'competition-loop'))!==input.loopJson
+        || input.toolSnapshots.some(snapshot=>this.active.has(snapshot.taskId)
+          || this.loadCheckpoint(snapshot.taskId,'competition-cloud-inflight') || this.loadCheckpoint(snapshot.taskId,'competition-cloud-unknown')
+          || JSON.stringify(this.readToolExecutions(snapshot.taskId))!==snapshot.recordsJson
+          || snapshot.caches.some(cache=>JSON.stringify(this.loadCheckpoint(snapshot.taskId,cache.key))!==cache.valueJson))
+        || this.loadCheckpoint(taskId,'application-deadline')!==input.deadline
+        || (!task.cancelRequested && now<Date.parse(input.deadline))
+        || input.children.some(child=>{const current=this.getTask(child.taskId);return this.active.has(child.taskId) || current.revision!==child.revision
+          || !['succeeded','failed','cancelled'].includes(current.state);}))
+        throw new RuntimeError('REVISION_CONFLICT','Original confirmed termination binding changed');
+      const cancelled=task.cancelRequested===true;
+      this.saveCheckpoint(taskId,'subagent-terminal-reconciliation',{version:'1.0',runId:input.runId,
+        projectionDigest:input.projectionDigest,childTaskIds:input.children.map(child=>child.taskId),
+        scope:'local_confirmed_receipt_projection',cloudResent:false,toolReexecuted:false,
+        terminal:cancelled?'cancelled':'failed',reconciledAt:new Date(now).toISOString()});
+      return this.updateTask(taskId,cancelled?'cancelled':'failed',cancelled?{error:null,cancelRequested:true}:
+        {error:{code:'TIMEOUT',message:'Original task deadline expired after confirmed subagent receipt reconciliation',retryable:false}},true);
+    }));
+  }
 
   recordProgress(taskId: string, progress: ProgressInput): TaskSnapshot {
     requireText(progress.stepId, 'stepId');

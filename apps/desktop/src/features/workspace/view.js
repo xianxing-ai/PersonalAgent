@@ -21,8 +21,9 @@ export function mountWorkspace(root,invoke,escape){
   const children=document.createElement('section');children.className='subagent-tasks';children.setAttribute('aria-label','子任务派发');root.querySelector('.workspace-chat').append(children);
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
-  preferences.innerHTML='<label>主思考模型 <select class="conversation-model-choice" aria-label="工作区主思考模型"></select></label><label>执行步骤预算 <input type="range" min="0" max="5" step="1" aria-label="工作区执行步骤预算"></label><label><input type="checkbox">快速模式</label>';
+  preferences.innerHTML='<label>主思考模型 <select class="conversation-model-choice" aria-label="工作区主思考模型"></select></label><label>执行步骤预算 <input type="range" min="0" max="5" step="1" aria-label="工作区执行步骤预算"></label><label><input type="checkbox">快速模式</label><button type="button" class="turn-action" data-more-models>更多模型与默认设置</button>';
   root.querySelector('.workspace-top').after(preferences);
+  preferences.querySelector('[data-more-models]').onclick=()=>invoke('admin.open',{page:'models'}).catch(error=>report(error));
   const modelChoice=preferences.querySelector('select'),depth=preferences.querySelector('[type=range]'),fast=preferences.querySelector('[type=checkbox]');
   let feedbackRevision=0;
   const reportPreference=error=>report(error);
@@ -66,10 +67,10 @@ export function mountWorkspace(root,invoke,escape){
     activationTimer=setTimeout(()=>{activationTimer=0;orbButton.setAttribute('aria-pressed','false');},3200);
   };
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
-  const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.cancel)||current.tasks.some(task=>task.taskId===button.dataset.cancel&&task.state==='cancelling');});
+  const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body)return;
-    const action=['view','copy','cancel'].find(key=>focused.dataset[key]);if(!action)return;
+    const action=['view','copy','cancel','reconcile'].find(key=>focused.dataset[key]);if(!action)return;
     const button=[...conversation.querySelectorAll('button')].find(item=>item.dataset[action]===focused.dataset[action]);
     if(button&&!button.disabled)button.focus({preventScroll:true});
   };
@@ -80,8 +81,8 @@ export function mountWorkspace(root,invoke,escape){
   root.querySelector('#inspector-close').onclick=()=>{inspected=null;root.querySelector('#conversation-inspector').hidden=true;};
   root.querySelector('#connector-cards').onclick=event=>{const card=event.target.closest('[data-connector]');if(!card)return;invoke('admin.open',{page:'connections'}).catch(report);};
   conversation.onclick=async event=>{
-    const button=event.target.closest('[data-cancel],[data-view],[data-copy]');if(!button)return;
-    try{if(button.dataset.view){inspected=button.dataset.view;renderInspector();}else if(button.dataset.copy){await invoke('clipboard.writeText',resultText(current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultSummary,current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultMetadata));button.title='已复制';}else{const id=button.dataset.cancel;if(button.disabled||pendingCancelIds.has(id))return;pendingCancelIds.add(id);syncCancelButtons();try{await invoke('task.cancel',id);}finally{pendingCancelIds.delete(id);syncCancelButtons();}}}catch(error){report(error);syncCancelButtons();}
+    const button=event.target.closest('[data-cancel],[data-reconcile],[data-view],[data-copy]');if(!button)return;
+    try{if(button.dataset.view){inspected=button.dataset.view;renderInspector();}else if(button.dataset.copy){await invoke('clipboard.writeText',resultText(current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultSummary,current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultMetadata));button.title='已复制';}else{const id=button.dataset.cancel??button.dataset.reconcile;if(button.disabled||pendingCancelIds.has(id))return;pendingCancelIds.add(id);syncCancelButtons();try{await invoke(button.dataset.reconcile?'task.reconcile.finish':'task.cancel',id);}finally{pendingCancelIds.delete(id);syncCancelButtons();}}}catch(error){report(error);syncCancelButtons();}
   };
   function renderInspector(){
     const task=current.tasks.find(item=>item.taskId===inspected);if(!task)return;
@@ -110,7 +111,7 @@ export function mountWorkspace(root,invoke,escape){
     if(signature!==lastSignature){
       const focused=conversation.contains(document.activeElement)?document.activeElement:null;
       const atBottom=stage.scrollHeight-stage.scrollTop-stage.clientHeight<90;lastSignature=signature;
-      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div><div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
+      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div><div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">原任务结果待核实，未确认前保留当前状态。核实并结束只检查原记录，不重发操作。</p><button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}">核实并结束</button>`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
       syncCancelButtons();restoreTaskActionFocus(focused);
       requestAnimationFrame(()=>{if(atBottom)stage.scrollTop=stage.scrollHeight;updateRail();});if(inspected)renderInspector();
     }

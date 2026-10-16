@@ -1,3 +1,5 @@
+import {featuredModelChoices} from './featured-model-choices.js';
+import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -527,7 +529,7 @@ function snapshot(surface) {
     model: structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model),
     agentArtsModels:agentArtsModels?.snapshot(),
     modelApi: surface ? undefined : modelApiHost?.snapshot(),
-    modelChoices: agentArtsModels?.snapshot().catalog?.models.filter(m=>m.type==='text').map(m=>({...m,enabled:true,available:m.availability!=='unavailable'})) ?? [],
+    modelChoices: featuredModelChoices(agentArtsModels?.snapshot().catalog?.models,{selectedId:conversations?.preference(`desktop-${surface==='workspace'?'workspace':'panel'}`,thinking)?.modelId??''}),
     conversationPreference: conversations?.preference(`desktop-${surface === 'workspace' ? 'workspace' : 'panel'}`,thinking),
     thinking: {...thinking,...(conversations?.preference(`desktop-${surface === 'workspace' ? 'workspace' : 'panel'}`,thinking) ?? {}),
       reason:'本对话的步骤预算在提交时固定；AgentArts 负责主编排，辅助任务使用当前对话的模型选择。原生思考能力以模型设置和实际参数回执为准。'},
@@ -2758,6 +2760,7 @@ async function action(event, name, payload) {
     return task;
     } finally { submitting.delete(surface); }
   }
+  if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,application:runtimeApplication,refresh,publish});
   if (name === 'task.cancel') {
     if (typeof payload !== 'string' || !tasks.has(payload)) throw Error('Unknown task');
     if (sender !== admin && taskSurface(tasks.get(payload)) !== (sender === workspace ? 'workspace' : 'panel')) throw Error('无法停止其他工作区的任务');

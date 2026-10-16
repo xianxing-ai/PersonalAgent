@@ -30,4 +30,12 @@
 
 真实语音 runner 位于 `tests/manual/agentarts/agentarts-realtime-probe.mjs`，只发送公开合成音频，不录音、不播放。它分别记录 session ready、输入转写、首段音频、输出转写、轮次完成及关闭时间；全部观测齐备才通过。此项不能代替实体麦克风、扬声器、唤醒或用户听感验收。
 
-代码、离线检查、镜像构建、云端固定版本、应用接线与真实音频验收分别记录。新版本真实回执尚未生成时，不能以旧 HTTP 成功或离线 Fake 代替。
+代码、离线检查、镜像构建、云端固定版本、应用接线与真实音频验收分别记录。2026-10-16 已取得 r3 真实 WSS 主子任务、low 参数平台读回与公开 PCM 实时语音回执，见 [V5 实测](evidence/desktop-agentarts-v5-20261016/README.md)；不代表物理设备或全部模型通过。
+
+## 默认页精选与完整设置
+
+默认面板/工作区按厂商显示轻量、快速或经济档及旗舰档，旧版本和其他完整型号放设置 → 模型；主模型派发仍使用完整可用目录，不删除模型能力。已有非精选选择保留并标出当前选择；缺失或不可用型号显示不可选，不替用户换模型。精选是按 2026-10-16 已接入目录和官方型号资料维护的 UI 清单，不通过比较名称数字猜测能力。
+
+GLM 使用 `ZHIPU/GLM-5.3-Flash` 与 `glm-5.3`；Qwen 使用 3.8 Flash/Max；DeepSeek 使用 V4.1 Flash/V4 Pro。Kimi 高速编码版是同模型的高速部署，不称更小参数；MiniMax M2.7 是经济档，不承诺一定更快；阶跃旗舰预览版明确标预览；小米目录只有 Pro 时不编造轻量型号。
+
+型号来源：[百炼文本目录](https://help.aliyun.com/zh/model-studio/model-list-text-generation/)、[官方发布记录](https://help.aliyun.com/zh/model-studio/newly-released-models)、[MiniMax M2.7](https://help.aliyun.com/zh/model-studio/minimax-m2-7)、[MiniMax M3](https://help.aliyun.com/zh/model-studio/minimax-m3)。精选不等于各模型真实推理已验证，也不改变旧目录 revision、原请求身份或恢复语义。
