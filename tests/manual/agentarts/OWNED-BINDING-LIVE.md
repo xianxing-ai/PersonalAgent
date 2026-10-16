@@ -89,9 +89,37 @@ World/Plan/Review 输出复用公开 `OwnedAgentOrchestrator` 的正式校验：
 
 ### 2026-10-13 固定场景夹具校正（待真实复验）
 
-公开合成输入仍保留“其他工作”计划节点，用于检查无关节点不被误改；`repairContext.targets` 只列需要从 14 点改到 16 点的准备计划。Controller 候选仍须恰好一处修订并匹配原节点版本、新摘要与依赖，来源和结构校验未放宽。
+该次修正将“其他工作”保留在 nodes，却从 `repairContext.targets` 移除；这是历史修正，后续两目标的独立性与保留检查以以下增量为准。
 
 旧 [02:54 真实逐绑定记录](../../../docs/modules/AGENTARTS-OWNED-BINDING-LIVE-20261013.md) 仍为 3 通过、4 失败、4 跳过。两个 Controller 的 `EXPECTED_REPAIR_CANDIDATE` 失败发生在旧版“双目标输入/单目标断言”组合上；脱敏回执不足以判断各候选的具体差异，不把失败直接归咎模型。修正后尚未重新执行真实华为 WSS、部署或 11 项验收，新增离线断言也须以实际测试/CI 结果为准；不能把这次源码修改写成云端通过。
+
+### 2026-10-15 固定两目标与最小修复诊断（离线增量）
+
+固定输入与比较抽到 [owned-minimal-repair-scenario.mjs](support/owned-minimal-repair-scenario.mjs)。
+`REPAIR_QUERY` 仍从原 runner 导出，调用方无需迁移；两个目标都列在 targets 中：准备计划绑定新 Goal revision 2，
+“其他工作”为独立计划，`requestedDependencies: []`，不因本次 Goal 时间变化而修订。
+离线 Plan 显式保留该项，World 的 affected_items 与 Review change 只涉及准备计划。
+
+严格验收继续要求 graph revision 7、恰好一项 change、指定准备计划、原 node revision 1、
+新摘要逐字为“16点准备”、依赖精确等于新 Goal revision 2。摘要检查由包含“16”收紧到精确匹配；
+不改生产提示、Laya、continuation、公开传输或公共候选 Schema 来配合夹具。
+
+应用 Schema 通过后，修复路径的回执新增 `repairScenario`：
+
+- 固定 `scenario: minimal_repair`，固定 `status: matched | mismatch | not_repair_candidate`；
+- `changeCount`，以及布尔 `graphRevisionMatches`、`targetMatches`、`nodeRevisionMatches`、
+  `summaryMatches`、`dependenciesMatch`、`unrelatedTargetChanged`。
+
+不写入任何目标 ID、正文、摘要、依赖正文、原候选、reason、凭据或错误文本。非候选应用的 count 为 0，
+由 `not_repair_candidate` 与 `applicationKind` 明确区分；Schema 未通过时不产生上述比较。
+已解析的 `applicationKind` 与比较也在后续正式 Review 校验失败时保留，不把该校验失败改成通过。
+比较 `matched` 仅代表固定字段匹配，仍须通过完整 owned 校验及场景检查才将该 case 的 `passed` 置为 true；
+`terminal` 始终只表示传输终态。角色报告的 REVISE 要求、失败依赖跳过、WSS、单次请求和原绝对 deadline 不变。
+
+本隔离树 contracts/models/coordination/agentarts 定向构建通过；上述同名 runner 定向测试 **24/24** 通过。
+覆盖实际 OwnedAgentOrchestrator + 显式 Fake 模型的两目标输入、正确单项、错误节点/数量/图与节点版本/摘要/依赖，
+Schema 失败与非候选区分、Review 拒绝、脱敏、既有持久化失败和发送后未知结果不重试。
+没有真实模型、云端部署或华为调用；该结果不更新旧真实验收结论，也不代表整个 MOD-30 完成。
 
 ## 回执与证据边界
 
