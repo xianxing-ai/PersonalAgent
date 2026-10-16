@@ -2959,7 +2959,7 @@ app.whenReady().then(async () => {
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
   if(competitionMode) {
     remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
-    remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
+    remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
     remoteMcpManagement=createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner:()=>admin,
       config:remoteMcpConfig,host:remoteMcpHost,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
       namespace:desktopHost.userNamespace,onUpdate:publish});

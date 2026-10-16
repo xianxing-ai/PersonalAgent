@@ -32,6 +32,7 @@ export async function fixture(mode={}){
       }else if(message.method==='tools/call'){
         if(mode.drop){req.socket.destroy();return;}
         if(mode.delay)await new Promise(resolve=>setTimeout(resolve,mode.delay));
+        await mode.beforeToolResult?.();
         result=mode.result??{content:[{type:'text',text:'public synthetic reference'}],structuredContent:{text:'public synthetic reference'}};
       }else {res.writeHead(400).end();return;}
       const reply={jsonrpc:'2.0',id:message.id,result};

@@ -1,15 +1,35 @@
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
-import {createBoundRemoteReadonlyMcpHost} from '@personal-agent/mcp';
+import {createBoundRemoteReadonlyMcpHost,remoteMcpArgumentsDigest} from '@personal-agent/mcp';
 
 function fail(code){throw new ProtocolError(code,'远程 MCP 尚未连接、配置已变更或本次会话未获确认');}
 
 /** Trusted composition only. Configuration/connection consent never grants a tool call. */
-export function createDesktopRemoteMcpHost({config,confirmConnection=async()=>false,fetch}){
+export function createDesktopRemoteMcpHost({config,confirmConnection=async()=>false,fetch,readRuntime}){
   const selected=config.hostConfiguration(),pin=JSON.stringify(config.binding()),lifetime=new AbortController();
   const service=createBoundRemoteReadonlyMcpHost(selected?{
     endpoint:selected.endpoint,server:selected.server,tool:selected.tool,binding:selected.binding,
     readCurrentBinding:config.binding,revocationSignal:config.revocationSignal(),secretStore:config.secretStore,
     enabled:false,...(fetch?{fetch}:{}),
+    ...(readRuntime?{readRunReceipt(query){
+      const runtime=readRuntime();if(!runtime)fail('UNSUPPORTED_CAPABILITY');
+      const record=runtime.readToolExecutions(query.taskId).find(item=>item.evidenceId===query.runId);
+      if(!record)fail('UNAUTHORIZED');
+      const intent=runtime.loadCheckpoint(query.taskId,'host-tool-intent');
+      if(record.toolName!==selected.tool.descriptor.name || record.toolVersion!==selected.tool.descriptor.version
+        || !intent || intent.toolName!==record.toolName || intent.toolVersion!==record.toolVersion
+        || intent.arguments.bindingRef!==service.tools[0].descriptor.inputSchema.properties.bindingRef.const
+        || remoteMcpArgumentsDigest(intent.arguments.arguments)!==query.argumentsDigest
+        || !runtime.matchesToolExecutionInput(record,{arguments:intent.arguments,scopeRef:query.runId}))fail('REVISION_CONFLICT');
+      const argumentsDigest=query.argumentsDigest;
+      if(record.state==='confirmed'){
+        const saved=runtime.loadCheckpoint(query.taskId,'tool-result-'+query.runId);
+        if(!saved || !Object.hasOwn(saved,'result') || !record.executionStarted || record.policyDecision!=='allow')fail('EXTERNAL_FAILURE');
+        return {argumentsDigest,state:'confirmed',result:saved.result};
+      }
+      if(record.state==='failed')return {argumentsDigest,state:'failed'};
+      if(record.state==='started' && record.executionStarted && record.policyDecision==='allow' && runtime.isToolExecutionActive(record))return undefined;
+      return {argumentsDigest,state:'unknown'};
+    }}:{}),
   }:undefined);
   let closed=false,busy=false,consent=new AbortController();
   function current(){
