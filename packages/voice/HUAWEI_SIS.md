@@ -1,11 +1,11 @@
 # Huawei Cloud SIS adapter (MOD-14, Competition Profile)
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前协作规则（2026-10-13）：以 [CONTRIBUTING](../../CONTRIBUTING.md) 为准；当前提交须取得一位非作者有效 Approve，并满足必要检查。禁止管理员绕过或虚构批准。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
-Status: code-only, **unconfigured / untested / not accepted**. This adapter is a
+Status: **offline tested / real service and devices not accepted**. This adapter is a
 thin, opt-in implementation of the existing `SpeechRecognitionPort` and
 `SpeechOutputPort`. It does not change the default Unavailable provider or publish
 the public `voice.start` / `voice.stop` wire capability.
@@ -50,15 +50,28 @@ call `task.cancel`. Provider errors and response bodies are not echoed to the
 user; no audio, transcript, reply, token or full provider response is logged.
 The HTTPS transport rejects redirects so its SIS token is not forwarded to a
 different destination.
+Wall time is rechecked after asynchronous boundaries so a delayed timer cannot
+permit an expired upload, playback or result. A response arriving after transport
+cancellation has its body cancelled even if the injected transport ignored the signal.
+Each playback handle shares one release promise between completion, failure and
+interruption. Audio bytes are cleared after that release settles; a failed release
+remains visible to `VoiceSessionManager`, which prevents another session.
 SIS response `trace_id` is not yet exposed because the current voice ports have
 no safe receipt field for it; changing that shared interface needs separate
 coordination. HTTP success would not by itself prove microphone, playback or
 end-to-end task acceptance.
 
 The factories and their types are exported from the existing package root.
-`package.json` and the root lock file were not changed. Desktop composition is
-owned by MOD-11 and is not changed here. No real SIS request, new recording,
-build, typecheck or test was run in this code-first phase.
+`package.json`, the public contracts and root lock file are unchanged. Desktop's
+existing `initializeSisVoice()` composition consumes these ports; this package
+change needs no new IPC or main-process wiring. Configuration status was not
+inspected and no real SIS request or recording was performed in this increment.
+
+The 2026-10-13 [delivery and device acceptance record](ACCEPTANCE-20261013.md)
+contains the current commands and evidence. `test/huawei-sis.test.mjs` uses only
+generated PCM/WAV, injected token/HTTP/playback fakes, and the real voice manager.
+It covers request bounds, fixed endpoints, no retries, deadline/cancellation,
+error sanitization, ordered Unicode segmentation and confirmed/failed release.
 
 ## Official protocol references
 
