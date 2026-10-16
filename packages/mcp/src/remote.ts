@@ -152,7 +152,9 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       if(saved.confirmed && saved.generation===generation)return structuredClone(saved.result);
       fail('RESULT_UNKNOWN');
     }
-    if(runs.size>=MAX_RUNS)fail('RESULT_UNKNOWN');
+    // No request has been sent for this identity. Do not create a false
+    // reconciliation obligation when only the local retention limit is full.
+    if(runs.size>=MAX_RUNS)fail('EXTERNAL_FAILURE');
     const epoch=generation,active=client!;
     return scoped(context,async()=>{
       const run={binding,generation:epoch,confirmed:false,result:undefined as unknown};runs.set(key,run);

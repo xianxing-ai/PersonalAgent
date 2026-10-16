@@ -434,13 +434,8 @@ export class VoiceSessionManager {
 
     let active: ActiveOperation<SpeechRecognitionResult> | undefined;
     try {
-      let handle: VoiceOperation<SpeechRecognitionResult>;
-      try {
-        handle = this.recognition.recognize(request);
-      } catch (error) {
-        throw providerError('recognition', error);
-      }
-      active = this.attachOperation(record, 'recognition', controller, handle);
+      active = this.startOperation(record, 'recognition', controller,
+        () => this.recognition.recognize(request));
       const raw = await this.waitForOperation(record, active);
       this.assertUsable(record);
       const transcript = parseRecognitionResult(raw, record.locale);
@@ -452,6 +447,7 @@ export class VoiceSessionManager {
       this.transition(record, 'awaiting_consume');
       return {sessionId: record.sessionId, transcriptId, characterCount: transcript.text.length};
     } catch (error) {
+      if (active !== undefined) await this.finishOperation(record, active, 'completed');
       if (this.active === record && !terminalStates.has(record.state)) this.transition(record, 'listening');
       throw error;
     } finally {
@@ -487,13 +483,7 @@ export class VoiceSessionManager {
 
     let active: ActiveOperation<TranscriptConsumptionResult> | undefined;
     try {
-      let handle: VoiceOperation<TranscriptConsumptionResult>;
-      try {
-        handle = consumer.consume(request);
-      } catch (error) {
-        throw providerError('consumption', error);
-      }
-      active = this.attachOperation(record, 'consumption', controller, handle);
+      active = this.startOperation(record, 'consumption', controller, () => consumer.consume(request));
       const raw = await this.waitForOperation(record, active);
       this.assertUsable(record);
       const reply = parseConsumptionResult(raw, transcript.locale);
@@ -505,6 +495,7 @@ export class VoiceSessionManager {
       this.transition(record, 'awaiting_speech');
       return {sessionId: record.sessionId, replyId, characterCount: reply.text.length};
     } catch (error) {
+      if (active !== undefined) await this.finishOperation(record, active, 'completed');
       if (this.active === record && !terminalStates.has(record.state)) this.transition(record, 'listening');
       throw error;
     } finally {
@@ -530,13 +521,8 @@ export class VoiceSessionManager {
 
     let active: ActiveOperation<void> | undefined;
     try {
-      let handle: VoiceOperation<void>;
-      try {
-        handle = this.output.speak(request);
-      } catch (error) {
-        throw providerError('playback', error);
-      }
-      active = this.attachOperation(record, 'playback', controller, handle);
+      active = this.startOperation(record, 'playback', controller, () => this.output.speak(request));
+      this.assertUsable(record);
       this.transition(record, 'speaking');
       await this.waitForOperation(record, active);
       await this.finishOperation(record, active, 'completed');
@@ -548,8 +534,11 @@ export class VoiceSessionManager {
       this.transition(record, 'listening');
       return {sessionId: record.sessionId, completed: true, interrupted: false};
     } catch (error) {
-      if (active?.interruptedByUser === true && this.active === record && !terminalStates.has(record.state)) {
-        if (record.state !== 'listening') this.transition(record, 'listening');
+      const interrupted = active?.interruptedByUser === true
+        && this.active === record && !terminalStates.has(record.state);
+      const released = active === undefined || await this.finishOperation(record, active, 'completed');
+      if (interrupted && released) {
+        if (this.active === record && record.state === 'speaking') this.transition(record, 'listening');
         return {sessionId: record.sessionId, completed: false, interrupted: true};
       }
       if (this.active === record && !terminalStates.has(record.state)) this.transition(record, 'listening');
@@ -579,7 +568,7 @@ export class VoiceSessionManager {
     playback.controller.abort();
     const released = await releasePromise;
     if (!released) await this.terminate(record, 'disposed');
-    if (this.active === record && !terminalStates.has(record.state) && record.state !== 'listening') {
+    if (this.active === record && record.state === 'speaking') {
       this.transition(record, 'listening');
     }
     return {sessionId: record.sessionId, playbackStopped: true, resourcesReleased: released};
@@ -715,6 +704,42 @@ export class VoiceSessionManager {
       record.deadlineTimer = setTimeout(schedule, Math.min(remaining, 2_147_483_647));
     };
     schedule();
+  }
+
+  private startOperation<T>(
+    record: SessionRecord,
+    kind: ActiveOperationKind,
+    controller: AbortController,
+    start: () => VoiceOperation<T>,
+  ): ActiveOperation<T> {
+    let resolveHandle!: (handle: VoiceOperation<T> | undefined) => void;
+    const started = new Promise<VoiceOperation<T> | undefined>(resolve => { resolveHandle = resolve; });
+    // Register ownership before a provider can synchronously reenter stop/start.
+    // Its eventual handle must be released before any stop receipt can succeed.
+    const bridge: VoiceOperation<T> = {
+      result: started.then(handle => {
+        if (!handle) throw providerError(kind, undefined);
+        return handle.result;
+      }),
+      async stop(reason) { await (await started)?.stop(reason); },
+    };
+    void bridge.result.catch(() => {});
+    const active = this.attachOperation(record, kind, controller, bridge);
+    let returned: VoiceOperation<T> | undefined;
+    try {
+      const handle = start();
+      if (!isOperation<T>(handle)) throw providerError(kind, undefined);
+      returned = handle;
+      // A terminal reentrant callback may prevent the usual result wait from starting.
+      void handle.result.catch(() => {});
+      return active;
+    } catch (error) {
+      active.detachRoot();
+      record.operations.delete(active);
+      throw providerError(kind, error);
+    } finally {
+      resolveHandle(returned);
+    }
   }
 
   private attachOperation<T>(
