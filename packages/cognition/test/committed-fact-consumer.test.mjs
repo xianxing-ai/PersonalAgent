@@ -97,6 +97,20 @@ test('durable advice cancellation and later failure never return a partial batch
   }
 });
 
+test('missing advice in the first or last chunk rejects the complete batch without graph changes', async () => {
+  for (const missingChunk of [1, 2]) {
+    const {store, request, processed} = batchFixture();
+    const before = store.read();
+    let calls = 0;
+    await assert.rejects(() => decideDurableFactProjection(store, {async decide(input) {
+      calls++;
+      const suggestions = await decision.decide(input);
+      return calls === missingChunk ? suggestions.slice(0, -1) : suggestions;
+    }}, reader(processed), request), /Invalid projected fact decision result/);
+    assert.equal(calls, missingChunk, 'a missing answer stops the batch before any later call');
+    assert.deepEqual(store.read(), before);
+  }
+});
 test('caller mutation during advice cannot replace the next chunk Fact binding', async () => {
   const {store, request, processed} = batchFixture();
   const calls = [];
