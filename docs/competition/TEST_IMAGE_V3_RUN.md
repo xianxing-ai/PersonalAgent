@@ -12,7 +12,25 @@ ARM64 index 摘要为 `sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7a
 上传与目录调用本身不代表完整业务验收。当前 Wukong、Pelican 的本机镜像全流程证据
 另见 [真实结果](evidence/test-image-v3-20261015/full-workflow-results.json)，不扩大到全部业务。
 
-## 载入与启动
+## 仅查看原 Node.js 设计网页
+
+先解压 `PersonalAgent-source.zip`，进入其中的 `PersonalAgent/`。直接用浏览器打开
+`docs/design/workflow-architecture-20261013/index.html` 即可离线查看，无需模型、Docker 或账号。
+如果要修改源码或用 Node.js 启动网页：
+
+```powershell
+cd docs/design/workflow-architecture-20261013/source
+npm ci
+npm run export:offline
+npm run preview -- --host 127.0.0.1 --port 4173
+```
+
+在 Chrome 打开 `http://127.0.0.1:4173/architecture.html`。
+本轮沿用原 React/React Flow 网页，更新全部 28 工作流、节点详情、机制、平台和协作接线。
+网页检查见其目录的 `viewer-validation-20261016.json`；页面不调用真实模型或工具。
+以下章节用于完整 Agent，需要另行准备宿主与服务配置。
+
+## 载入与启动完整 Agent
 
 在已具备 Docker ARM64 运行能力的机器上，用 PowerShell 7 执行。路径由接收者本机输入；tar 与预期 SHA256
 从最终交付 manifest 获取，当前不预填。`docker load` 只是载入镜像，不会安装本机 Laya 权重。
