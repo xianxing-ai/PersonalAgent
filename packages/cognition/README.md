@@ -5,13 +5,13 @@
 
 目标profile：huawei_ict_agentarts。工程责任：MOD-28（zemeng5208）、MOD-36（goo122）、MOD-38（Potatos498）。产品流程：F01、F02、F03、F04、F05、F06、F07、F08、F09、F10、F11、F12、F13、F14、F15、F16、F17、F18、F19、F20、F21、F22、F23、F24、F25、F26、F27、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
 
-将现有LayaInferencePort、typed_choice与batch-server迁入自有ARM64镜像内服务，统一责任、记忆/上下文、分派、恢复与影子语义建议；不由模型签发权限或写主终态。
+保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主；仅资格验证通过的站点可直接决定，其他升级原受信teacher，消费责任、记忆/上下文、分派、恢复与影子语义建议；不由模型签发权限或写主终态。
 
 复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
 
 复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
 
-统一语义裁决由自有ARM64镜像内Laya承担；国内MaaS为执行模型，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。独立节点按真实依赖并行，影子/历史评估默认后台。
+当前实验由本机Laya提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收，架构未最终定型。
 
 本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
 

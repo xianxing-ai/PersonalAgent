@@ -7,7 +7,7 @@
 | 工作包 | 目标 | 状态 | 负责人/依赖 |
 | --- | --- | --- | --- |
 | DOC-ARCH-20261013 | 当前架构/需求/协议/目录/分工/模块导航统一及全部流程说明 | review | zemeng5208；PR #349，goo122/Potatos498审核 |
-| ARCH-D01 | Laya权重/服务迁入ARM64镜像并接统一建议端口 | in_progress | zemeng5208+goo122公开端口；Laya镜像加载、状态/取消及真实推理验收 |
+| ARCH-D01 | 本机Laya宿主与受信teacher接原建议端口 | in_progress | zemeng5208+goo122公开端口；本机Laya领域资格、生命周期/取消及实际消费验收 |
 | ARCH-D02 | 持续责任编译、版本快照与局部计划修复 | todo | zemeng5208；Runtime/Policy/Goal/Memory |
 | ARCH-D03 | F28多模型与原生思考映射、F27上下文恢复/缓存 | todo | 各端口负责人按MODULE_ASSIGNMENTS；D01 |
 | ARCH-D04 | 主动语音询问及当前问题/参数/revision确认 | todo | zemeng5208；既有Voice/授权，责任内不重复询问 |
@@ -457,4 +457,4 @@ DEV-WORKFLOWS 历史真实验收：MOD-36 已取得只读模型预审回执；MO
 <!-- implementation-handoff-20261014 -->
 ## 2026-10-14镜像实施分发
 
-用户已授权按现有所有权开始镜像实现。三个工作包为IMAGE-CORE（zemeng5208，Laya镜像/28编排/平台发布）、PLATFORM-PORTS（goo122，Inference/MCP/Knowledge/Skills与公开端口）、BUSINESS-CONSUMERS（Potatos498，业务/开发流程消费与实际读回）。详见[实施交接](modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)。文档工作包仍review，IMAGE-CORE为in_progress；其余ready需记录正式委派/接收，不能虚写已经开工。#350模型思考/#351上下文进行中，复用原PR；MOD-19暂停。
+用户已授权按现有所有权开始镜像实现。三个工作包为IMAGE-CORE（zemeng5208，本机Laya宿主/镜像串行编排/平台发布）、PLATFORM-PORTS（goo122，Inference/MCP/Knowledge/Skills与公开端口）、BUSINESS-CONSUMERS（Potatos498，业务/开发流程消费与实际读回）。详见[实施交接](modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)。文档工作包仍review，IMAGE-CORE为in_progress；其余ready需记录正式委派/接收，不能虚写已经开工。#350模型思考/#351上下文进行中，复用原PR；MOD-19暂停。

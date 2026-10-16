@@ -1,15 +1,15 @@
 # AgentArts镜像与平台能力实施交接
 
 <!-- current-design-20261013 -->
-> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。唯一全局语义决策为自有ARM64镜像内Laya，国内MaaS为执行候选，责任图/并行/后台影子按当前设计；旧DeepSeek全局决策、Laya本机部署和双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。当前实验为本机Laya有限候选判断，资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，架构未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
 
 日期：2026-10-14 · profile：huawei_ict_agentarts · [完整设计](../design/workflow-architecture-20261013/DESIGN.md) · [实施顺序](../design/workflow-architecture-20261013/IMPLEMENTATION.md) · [接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
 
 ## 1. 决定与交接边界
 
-全部28业务Workflow迁入自有ARM64镜像，由AgentArts高代码Runtime托管；唯一全局决策采用镜像内Laya multilingual typed-choice服务/权重。现有LayaInferencePort和Python batch-server可复用，但当前只支持有限choice，不能生成任意规划/摘要/参数或冒充Jev Score/Noul。国内MaaS执行者生成候选，局部工具探索沿用既有subagent-host，Laya选择合法候选，Runtime/Policy决定真实权限和终态。
+28功能模板及串行推进逻辑由自有ARM64镜像承载，由AgentArts高代码Runtime托管；当前实验为本机Laya multilingual有限choice，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher，架构未最终定型。现有LayaInferencePort和Python batch-server可复用，但当前只支持有限choice，不能生成任意规划/摘要/参数或冒充Jev Score/Noul。国内MaaS执行者生成候选，局部工具探索沿用既有subagent-host，Laya选择合法候选，Runtime/Policy决定真实权限和终态。
 
-不新增用户确认、角色/来源封锁、固定资源预算或第二套任务库/工具宿主。预授权责任内自动处理；需要决定时主动语音/文字共用当前操作，修改参数/revision作废旧同意。真实依赖并行、局部恢复、未知先读回、按需后台影子保持原设计。
+不新增用户确认、角色/来源封锁、固定资源预算或第二套任务库/工具宿主。预授权责任内自动处理；需要决定时主动语音/文字共用当前操作，修改参数/revision作废旧同意。依赖图串行推进（机会并行另验）、局部恢复、未知先读回、按需后台影子保持原设计。
 
 这是当前正式工作包依据；GitHub委派/接收及进度由实际记录补充，不把本文件存在写成拥有者已接收、云服务已发布或完成比赛验收。
 
@@ -18,11 +18,11 @@
 状态：review（[开发预览 PR #356](https://github.com/zemeng5208/PersonalAgent/pull/356) 已提交；镜像及最小真实工具路径已发布，完整业务及比赛验收仍待补）。
 拥有：apps/agentarts-runtime、packages/agentarts、cognition核心/goals、scripts/laya、tests/manual/agentarts及相关模块文档。MOD-19暂停。
 
-第一交付：Laya服务/权重ARM64镜像生命周期、loopback调用、健康/启动错误、候选Schema/revision校验，保留现有runtime端口。接着映射全部28模板、并行/分支汇合、责任/语音及按需影子；每个业务节点复用实际公开能力，不以模板登记代替真实执行。
+第一交付：本机Laya单实例宿主、原受信teacher、健康/启动错误、候选Schema/revision和领域资格校验，保留原runtime端口。接着映射全部28模板的串行推进/条件汇合、责任/语音及按需影子；每个业务节点复用实际公开能力，不以模板登记代替真实执行。
 
 平台侧负责Runtime/LTS采集验证、OTel出口composition/关联ID、离线评测任务与报告读回、SWR/镜像部署和协作者调用说明。依赖goo122公开Model/Knowledge/MCP/Skill端口、Potatos业务ToolDescriptor与读回；可用明确Fake/Unavailable验证消费，不等外部真实账号才开始代码。
 
-验收：ARM64模型真实加载、choice输出/非法候选/取消/busy/迟到隔离；镜像digest与deployment/version读回；公开任务一次真实调用及本地工具/Evidence/终态；28节点映射/独立依赖/部分失败/未知核实；平台日志/评分实际报告。代码、构建、部署、真实工具及独立测试分别提交。
+验收：本机模型真实加载、领域资格、teacher升级、choice输出/非法候选/取消/busy/迟到隔离；镜像digest与deployment/version读回；公开任务一次真实调用及本地工具/Evidence/终态；28节点映射/独立依赖/部分失败/未知核实；平台日志/评分实际报告。代码、构建、部署、真实工具及独立测试分别提交。
 
 ## 3. PLATFORM-PORTS：goo122
 

@@ -55,8 +55,8 @@ Evidence区分来源/观察/执行及mock、conditional、verified；可信执�
 联调用现有Client/FakeRuntime/ToolHost和明确Unavailable，测试公开契约、分支、修订、取消、未知与恢复。真实模型/账号/设备及平台trace另验收。合并按CONTRIBUTING的一位合资格非作者有效批准和实际检查执行，不以两人本机阅读作为协议冻结门槛。
 
 
-## 镜像内决策与平台适配
+## 本机判断与AgentArts平台适配
 
-Laya通过现有LayaInferencePort接受有限choice问题，候选描述/身份、快照版本、deadline与取消由可信宿主装配；模型不生成任意执行函数、凭据、scopeRef或主任务终态。内服务鉴权只用受信宿主配置，不能进入Renderer/公开Evidence。ModelGateway统一国内MaaS执行调用；不能把Laya端口冒充原生function calling。
+Laya通过现有LayaInferencePort接受有限choice问题，候选描述/身份、快照版本、deadline与取消由可信宿主装配；模型不生成任意执行函数、凭据、scopeRef或主任务终态。内服务鉴权只用受信宿主配置，不能进入Renderer/公开Evidence。ModelGateway经AgentArts统一国内执行模型调用；不能把Laya端口冒充原生function calling。
 
 平台Inference Target、MCP协议协商/目录、Knowledge原文来源、OTel trace及evaluation结果都作为外部输入验证。KnowledgePort当前source形状为vaultId/path/line/revision，云来源需真实映射或版本化契约扩展；不能私造DTO。平台MCP gateway和Runtime入站WSS gateway职责不同，工具仍经既有ToolGateway。Trace是观测，评分是评估，二者不替代实际执行读回/Evidence。

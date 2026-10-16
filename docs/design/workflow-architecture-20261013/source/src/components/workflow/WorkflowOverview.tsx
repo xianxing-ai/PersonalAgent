@@ -14,7 +14,7 @@ type Panel = 'node' | 'area' | 'mechanism' | 'validation' | 'platform' | undefin
 const COLORS:Record<string,string> = {flow:'#64748b',decision:'#a78bfa',evidence:'#34d399',shadow:'#fbbf24',platform:'#22d3ee'};
 const FEATURE_MAP = new Map(ALL_FEATURES.map(f=>[f.id,f]));
 const TEMPLATE_COUNT = ALL_FEATURES.reduce((sum,f)=>sum+f.nodes.length,0);
-const KIND_LABELS:Record<string,string> = {input:'输入/事件',tool_exec:'工具/端口',semantic_decision:'主模型语义建议',execution_model:'执行模型候选',deterministic_check:'宿主检查',checkpoint:'状态/检查点',parallel_split:'并行分支',join:'分支汇合',verification:'结果核验',wait_user:'按需用户决定',complete:'汇合/交付'};
+const KIND_LABELS:Record<string,string> = {input:'输入/事件',tool_exec:'工具/端口',semantic_decision:'主模型语义建议',execution_model:'执行模型候选',deterministic_check:'宿主检查',checkpoint:'状态/检查点',parallel_split:'独立逻辑分支（当前串行推进）',join:'分支汇合',verification:'结果核验',wait_user:'按需用户决定',complete:'汇合/交付'};
 const FlowCard = memo(({data,selected}:NodeProps<Node<GraphData>>)=>(
  <div className={'overview-node '+(data.kind==='platform'?'platform ':'')+(selected?'selected ':'')+(data.focused?'focused':'')} data-feature-code={data.featureId} title={data.label}>
   <Handle type="target" position={Position.Left} id="in"/><Handle type="source" position={Position.Right} id="out"/>
@@ -24,7 +24,7 @@ const FlowCard = memo(({data,selected}:NodeProps<Node<GraphData>>)=>(
 ));
 const nodeTypes:NodeTypes={overview:FlowCard};
 
-// 用声明的前置关系布局；图上的补查/恢复反馈边不充当硬依赖，以免把并行分支排成串行。
+// 用声明的前置关系布局；图上的补查/恢复反馈边不充当硬依赖，以免把独立逻辑分支（当前串行推进）排成串行。
 function ranks(nodes:ArchitectureNode[]) {
  const known=new Set(nodes.map(n=>n.id)), degree=new Map(nodes.map(n=>[n.id,0])), next=new Map(nodes.map(n=>[n.id,[] as string[]]));
  for(const node of nodes)for(const source of node.dependencies)if(known.has(source)){degree.set(node.id,degree.get(node.id)!+1);next.get(source)!.push(node.id);}
@@ -114,7 +114,7 @@ function OverviewBody(){
    <span>六大板块</span>{ARCHITECTURE_AREAS.map(item=><button key={item.id} aria-pressed={panel==='area'&&areaId===item.id} onClick={()=>{setAreaId(item.id);setPanel('area');setSelected(undefined);}}>{item.name}</button>)}
    <select aria-label="快速查看功能" value={f?.id||''} onChange={e=>{if(e.target.value)openFeature(e.target.value);}}><option value="">快速查看 F01–F28</option>{ALL_FEATURES.map(item=><option key={item.id} value={item.id}>{item.id} {item.name}</option>)}</select>
   </nav>
-  <div className="overview-caption">架构定稿：全部业务工作流在自有镜像；蓝色平台节点接网关、知识、日志/Trace与评估。点击查看已有实现和最小增量；生产接线与真实延迟待验证。</div>
+  <div className="overview-caption">当前架构实验（未定型）：ARM64镜像串行推进模板，本机Laya资格不足升级受信teacher，国内执行模型经AgentArts调用。图示并行只表示逻辑独立性；模板数量不等于业务验收。点击查看代码、接线与真实证据缺口。</div>
   {showLatency&&<div className="architecture-latency"><strong>{FINAL_DESIGN_STATUS}</strong><ul>{LATENCY_DESIGN.map((line,i)=><li key={i}>{line}</li>)}</ul></div>}
   <div className="overview-body">
    <div className="overview-canvas">
@@ -125,7 +125,7 @@ function OverviewBody(){
    {panel&&<aside className="overview-detail" aria-label="架构详情">
     <button className="overview-close" onClick={()=>setPanel(undefined)} aria-label="关闭总图详情">×</button>
     {panel==='platform'&&<>
-     <div className="overview-kicker">架构定稿 · 平台适配待实现/验收</div><h2>AgentArts平台接入</h2>
+     <div className="overview-kicker">当前架构实验（未定型） · 平台适配待实现/验收</div><h2>AgentArts平台接入</h2>
      <p>{PLATFORM_SCOPE}</p>
      <nav className="architecture-mechanism-tabs" aria-label="AgentArts接入分类">{PLATFORM_INTEGRATIONS.map(item=><button key={item.id} aria-pressed={item.id===platformId} onClick={()=>{setPlatformId(item.id);setSelected(item.nodeId);}}>{item.name}</button>)}</nav>
      <h3>{platform.name}</h3><div className="platform-status">{platform.status}</div>
@@ -183,7 +183,7 @@ function OverviewBody(){
     </>}
    </aside>}
   </div>
-  <div className="overview-legend"><span><i style={{background:COLORS.flow}}/>功能调用 / 条件分支</span><span><i style={{background:COLORS.decision}}/>唯一全局主决策（虚线）</span><span><i style={{background:COLORS.evidence}}/>效果证据 / 读回</span><span><i style={{background:COLORS.shadow}}/>按需影子 / 改进（虚线）</span><span><i style={{background:COLORS.platform}}/>AgentArts接入（待接线）</span><span>国内MaaS · 平台/自有/第三方资源</span></div>
+  <div className="overview-legend"><span><i style={{background:COLORS.flow}}/>功能调用 / 条件分支</span><span><i style={{background:COLORS.decision}}/>本机判断与受信teacher升级（虚线）</span><span><i style={{background:COLORS.evidence}}/>效果证据 / 读回</span><span><i style={{background:COLORS.shadow}}/>按需影子 / 改进（虚线）</span><span><i style={{background:COLORS.platform}}/>AgentArts接入（待接线）</span><span>国内MaaS · 平台/自有/第三方资源</span></div>
   <div className="overview-sources">模型文档依据：{MODEL_SOURCES.map(s=><a key={s.url} href={s.url} target="_blank" rel="noreferrer">{s.label}</a>)}<span>本地打包静态查看页，无模型调用、账号连接或执行循环。</span></div>
  </section>;
 }

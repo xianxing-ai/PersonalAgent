@@ -4,7 +4,7 @@
     "code": "F01",
     "name": "主对话与责任理解",
     "category": "交互与输入",
-    "summary": "从可信用户指令或既有授权建立责任，先召回再由唯一主决策配置联合理解、选路与分派；缺信息按需补查，清楚且已授权的责任直接生效。",
+    "summary": "从可信用户指令或既有授权建立责任，先召回再由原受信判断链联合理解、选路与分派；缺信息按需补查，清楚且已授权的责任直接生效。",
     "decisionPoints": [
       "区分单次任务、持久责任与任务变更，保持否定、条件、对象和参数关系。",
       "联合排序责任、事实、模板与模型能力；有新证据需求才扩充上下文。",
@@ -52,7 +52,7 @@
       },
       {
         "id": "F01_N03",
-        "label": "唯一主模型联合判断责任、计划与分工",
+        "label": "原受信判断链联合判断责任、计划与分工",
         "kind": "semantic_decision",
         "dependencies": [
           "F01_N02"
@@ -74,7 +74,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       },
       {
@@ -573,7 +573,7 @@
     "code": "F03",
     "name": "世界状态、目标与局部重规划",
     "category": "规划与记忆",
-    "summary": "按时间、地点、人物和资源宽松召回潜在依赖，由唯一主模型判断受影响子图。计划修订保留已发生操作；需要修正外部结果时另建可追溯补偿候选。",
+    "summary": "按时间、地点、人物和资源宽松召回潜在依赖，由原受信判断链判断受影响子图。计划修订保留已发生操作；需要修正外部结果时另建可追溯补偿候选。",
     "decisionPoints": [
       "关联重叠时间、邻近地点、出行和共享资源；保留未知项与不确定性。",
       "判断哪些结果仍有效、哪些尚未执行节点失效、哪些真实外部效果需要修正。",
@@ -634,7 +634,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       },
       {
@@ -933,7 +933,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       },
       {
@@ -1077,7 +1077,7 @@
     "code": "F05",
     "name": "记忆搜索与来源回答",
     "category": "规划与记忆",
-    "summary": "代码先过滤有效来源与数据范围，多路召回后由唯一主模型排序并决定是否需要扩充。回答带来源，不支持的内容明确保留为未知。",
+    "summary": "代码先过滤有效来源与数据范围，多路召回后由原受信判断链排序并决定是否需要扩充。回答带来源，不支持的内容明确保留为未知。",
     "decisionPoints": [
       "识别主题、对象、时间/地点/人物/资源及证据缺口。",
       "排序有效片段，区分事实、授权和推断；需要新依据时提出扩充请求。",
@@ -1134,7 +1134,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       },
       {
@@ -1194,7 +1194,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         },
         "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。"
       },
@@ -1644,7 +1644,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       },
       {
@@ -1719,7 +1719,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       },
       {
@@ -3801,7 +3801,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       }
     ],
@@ -4030,7 +4030,7 @@
       },
       {
         "id": "F22_N02",
-        "label": "唯一决策模型选择可比较的实验方式",
+        "label": "原受信判断链选择可比较的实验方式",
         "kind": "semantic_decision",
         "dependencies": [
           "F22_N01"
@@ -4043,7 +4043,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       },
       {
@@ -4231,7 +4231,7 @@
     "code": "F23",
     "name": "决策配置、评估与版本晋升",
     "category": "影子与校准",
-    "summary": "对提示、图、调用配置与可用模型版本做时序隔离对比。唯一主模型提出质量建议，宿主使用既有验收/发布规则；MaaS不直接调整远端权重。",
+    "summary": "对提示、图、调用配置与可用模型版本做时序隔离对比。原受信判断链提出质量建议，宿主使用既有验收/发布规则；MaaS不直接调整远端权重。",
     "decisionPoints": [
       "对决策记录切分训练、验证与保留测试集（按时间与任务来源切分）",
       "比对新旧版本在复杂长链推理、责任越界拦截与误报率方面的多维表现",
@@ -5049,7 +5049,7 @@
     "code": "F27",
     "name": "上下文预算、压缩与恢复",
     "category": "模型与上下文",
-    "summary": "根据实际模型上下文容量和用户配置分块、排序、摘要与恢复。唯一主模型判断相关性与证据缺口；代码保存关键指令、授权引用、原文版本和压缩映射。",
+    "summary": "根据实际模型上下文容量和用户配置分块、排序、摘要与恢复。原受信判断链判断相关性与证据缺口；代码保存关键指令、授权引用、原文版本和压缩映射。",
     "decisionPoints": [
       "在主指令、当前责任、事实、工具证据和长日志中挑选当前需要内容。",
       "决定是否压缩、补充检索或恢复被摘要片段，不把摘要当原始证据。",
@@ -5106,7 +5106,7 @@
         "modelAssignment": {
           "vendor": "Laya",
           "model": "laya-multilingual",
-          "role": "唯一全局语义决策配置"
+          "role": "本机Laya与受信teacher判断链"
         }
       },
       {
@@ -5268,7 +5268,7 @@
     "code": "F28",
     "name": "多厂商模型、思考深度与主对话分配",
     "category": "模型与上下文",
-    "summary": "主对话使用唯一全局决策配置分配不同厂商执行模型、实际支持的原生思考参数与验证强度。执行者在受派范围内可选工具和探索，任务终态与授权仍归宿主。",
+    "summary": "主对话使用本机Laya与受信teacher判断链分配不同厂商执行模型、实际支持的原生思考参数与验证强度。执行者在受派范围内可选工具和探索，任务终态与授权仍归宿主。",
     "decisionPoints": [
       "将复合指令拆解为资料调研、深度分析、代码实现三类子任务",
       "匹配各模型专长（Qwen长文搜集、DeepSeek深入推导、GLM编码）",
@@ -5450,7 +5450,7 @@
       },
       {
         "id": "F28_N05",
-        "label": "唯一决策模型判断是否需要补查或修订",
+        "label": "原受信判断链判断是否需要补查或修订",
         "kind": "semantic_decision",
         "dependencies": [
           "F28_N10"

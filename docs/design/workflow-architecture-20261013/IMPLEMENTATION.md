@@ -6,7 +6,7 @@
 
 ## 1. 迁移目标与兼容
 
-28功能模板、依赖并行、模型分派、记忆/上下文取舍、恢复和按需影子都由自有ARM64镜像承载。Laya服务/权重从本机迁入镜像；现有LayaInferencePort、typed_choice与batch-server.py保持兼容。国内MaaS为执行候选，不代替Laya最终语义选择。
+28功能模板、依赖串行推进、模型分派、记忆/上下文取舍、恢复和按需影子都由自有ARM64镜像承载。Laya服务/权重留在本机，复用现有LayaInferencePort、typed_choice与batch-server.py；资格不足升级原受信teacher。国内执行模型经AgentArts调用，架构未最终定型。
 
 Laya只对有上下文的有限合法候选做choice；当前没有任意规划/摘要/参数JSON或Score/Noul原生端点。开放式理解、计划、摘要和补丁先由执行模型/代码模板产生候选，宿主校验后交Laya选择。执行者可在受派边界内使用现有subagent-host探索工具，但不得扩责任、签权限或改主终态。
 
@@ -16,19 +16,19 @@ TaskRuntime/Policy/ToolGateway、ModelGateway、Knowledge/Wiki/Memory、Skill安
 
 | 工作包 | 唯一负责人 | 拥有范围 | 复用与输出 | 验收 |
 | --- | --- | --- | --- | --- |
-| IMAGE-CORE-20261014 | zemeng5208 | apps/agentarts-runtime、packages/agentarts、核心cognition/goals、scripts/laya与相关手册 | 内部Laya服务/权重加载、28模板映射、事件/候选图、局部恢复/按需影子、平台日志Trace与离线评测composition、Huawei镜像发布入口 | ARM64加载真实模型、模板/依赖/取消/未知夹具、镜像digest、deployment/version、独立invocation与真实工具/Evidence读回 |
+| IMAGE-CORE-20261014 | zemeng5208 | apps/agentarts-runtime、packages/agentarts、核心cognition/goals、scripts/laya与相关手册 | 本机Laya宿主与原受信teacher、28模板串行映射、事件/候选图、局部恢复/按需影子、平台日志Trace与离线评测composition、Huawei镜像发布入口 | 本机Laya领域资格、镜像模板/依赖/取消/未知夹具、镜像digest、deployment/version、独立invocation与真实工具/Evidence读回 |
 | PLATFORM-PORTS-20261014 | goo122 | models/Runtime底座、MCP、Skills、Knowledge/Memory、公共契约与根composition | Inference Target能力/思考参数、远程MCP直连、多来源知识source映射、Skill资产/脚本宿主、F27模型窗口/上下文端口 | 真实MCP发现调用、知识原文引用、配置/来源失效、已有消费者兼容；保留进行中#350模型思考/#351上下文，不重复建路由器 |
 | BUSINESS-CONSUMERS-20261014 | Potatos498 | MOD20—26连接器/业务消费，MOD34/35/38开发流程 | 公布可信ToolDescriptor、业务输入/读回/幂等与未知核实、28模板具体业务节点消费、云测试用公开合成场景 | 逐连接器真实Provider/国内网络读回、写入未知不重试、业务事件去重、同资源/取消/部分成功、自己的模块独立调用记录 |
 
 每人保留其他协作者修改，独立worktree/数据/端口；共享Schema/exports/composition改动随兼容包交付，避免同文件并行覆盖。三人各验收自己路径，独立审查/合并按协作规则轮换。完整具体handoff见[平台交接](../../modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)。
 
-## 3. 第一阶段：Laya镜像内真实闭环
+## 3. 第一阶段：本机Laya与原受信teacher闭环
 
-1. 固定模型版本和资产摘要，在构建阶段取得权重/配置/tokenizer；确定国内可达资产来源、许可和ARM64依赖，不在启动时下载。
-2. 复用batch-server的loopback接口和LayaInferencePort，镜像入口管理Python子进程生命周期与内部凭据，健康检查区分进程在线、模型加载、可推理；任何一项失败不得报ready。
+1. 在本机受信宿主固定Laya版本与资产摘要，独立管理权重/配置/tokenizer；ARM64工作流镜像不包含Laya权重、Python或PyTorch。
+2. 复用本机batch-server与LayaInferencePort，由原受信宿主管理单实例生命周期与鉴权；进程在线、模型加载、领域资格和可直接决定分别记录，资格不足升级原受信teacher。
 3. 单个公开合成任务由代码/执行模型生成2—16合法候选，绑定目标/来源/操作revision，Laya选择后校验候选身份，复用原ToolGateway闭环，不把Laya选项当授权。
 4. 测批次身份、非法类别/版本、busy、deadline、断开、迟到、启动失败及重启。现有CPU forward不可抢占，取消等待后门锁直到完成才释放；不要假造“立即停止推理”。
-5. ARM64构建与本机Fake/结构检查分别记录，实际模型加载及Huawei调用另记录；不是镜像内安装成功就宣布完成。
+5. ARM64工作流镜像、独立本机Laya、实际AgentArts调用、Desktop消费和业务工具分别记录；模型加载或模板目录不能证明全部业务完成。
 
 ## 4. 第二阶段：全部模板与责任/语音/上下文
 

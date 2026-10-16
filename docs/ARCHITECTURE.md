@@ -4,9 +4,9 @@
 
 ## 1. 架构选择
 
-采用事件驱动责任图、唯一语义决策模型、真实依赖并行执行和后台影子。完整依据见[主架构](design/workflow-architecture-20261013/DESIGN.md)，节点数据见[28工作流](design/workflow-architecture-20261013/WORKFLOWS.md)。
+采用事件驱动责任图、唯一语义决策模型、依赖图串行推进（机会并行另验）和后台影子。完整依据见[主架构](design/workflow-architecture-20261013/DESIGN.md)，节点数据见[28工作流](design/workflow-architecture-20261013/WORKFLOWS.md)。
 
-唯一全局语义决策采用镜像内Laya multilingual typed-choice服务；权重与服务部署在自有ARM64镜像，国内MaaS模型为执行候选。一个生效配置负责所有最终语义取舍，模型池生成候选。代码处理版本、权限、锁、算术和状态，不让每个机械步骤调用云端。模型选择自由配置，不新增限制。
+当前实验为本机Laya multilingual有限choice，只有通过独立任务资格验证的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用；架构未最终定型。代码处理版本、权限、锁、算术和状态，不让每个机械步骤调用云端。模型选择自由配置，不新增限制。
 
 ## 2. 进程与事实来源
 
@@ -43,7 +43,7 @@ F01主对话与事件形成任务；F03找受影响依赖；F27组织上下文�
 
 ## 6. 记忆和上下文
 
-KnowledgePort负责搜索与来源；MemoryQueryPort负责事实版本查询，FactChangeFeed传递变化。唯一模型参与相关性、写入建议、排序、矛盾与摘要取舍；宿主负责访问范围、版本、实际写入、撤回和恢复。
+KnowledgePort负责搜索与来源；MemoryQueryPort负责事实版本查询，FactChangeFeed传递变化。原受信判断链参与相关性、写入建议、排序、矛盾与摘要取舍；宿主负责访问范围、版本、实际写入、撤回和恢复。
 
 上下文按目标、责任、活跃节点、来源和未解决副作用组织。F28反馈真实模型窗口/参数配置；F27生成可恢复摘要和引用。缓存绑定输入及所有相关版本，来源变化使依赖结果失效；授权仍实时核验。
 
@@ -55,11 +55,11 @@ F22三模式默认后台；主运行只读保护、输出命名空间独立、�
 
 huawei_ict_agentarts为当前唯一实施路径，AgentArts真实承担构建/编排/评估/部署。Local及已授权DEV-WORKFLOWS基线保留，不作为云失败的静默回退。WSS为主、HTTPS备用可见，已发送未知不能盲发备用。云回执restartRecovery:false，自动持久恢复不得承诺。
 
-镜像装全部28功能编排代码、Laya服务与固定权重、SDK及执行模型配置引用；Laya在镜像内推理，通用执行模型通过国内MaaS推理，本机不加载Laya权重。国内可执行需分别验证镜像拉取、模型、语音及各连接器真实端点，不能以npm镜像或查看器离线证明全产品网络可用。
+自有ARM64镜像承载28项模板及依赖/条件/串行推进逻辑；Laya服务与固定权重留在本机，镜像不包含Laya权重、Python或PyTorch。国内执行模型经AgentArts调用；模板目录不等于业务验收。国内可执行需分别验证镜像拉取、模型、语音及各连接器真实端点，不能以npm镜像或查看器离线证明全产品网络可用。
 
 ## 9. 迁移与验收
 
-保留公共wire 1.0.0、transport 0.1.0和候选版本的既有语义；新概念字段在实施时映射或经版本化扩展。Laya现有端口与服务为待迁入镜像的实现基础，旧fast/world/plan/review收敛最终裁决入口，具体迁移见[IMPLEMENTATION](design/workflow-architecture-20261013/IMPLEMENTATION.md)。
+保留公共wire 1.0.0、transport 0.1.0和候选版本的既有语义；新概念字段在实施时映射或经版本化扩展。Laya复用现有本机宿主/端口，资格不足升级原受信teacher；旧fast/world/plan/review保留实际候选与校验职责，具体迁移见[IMPLEMENTATION](design/workflow-architecture-20261013/IMPLEMENTATION.md)。
 
 真实延迟尚未实测，关键路径需分别量受理/首响/工具/完整结果/并发排队。已有固定公开文件云闭环是局部证据；28功能、语音、私人来源、写入、影子和配置晋升分别验收。设计采用见[ADR-0024](adr/0024-unified-decision-workflow-architecture.md)，不新增生产包、任务库或执行循环。
 

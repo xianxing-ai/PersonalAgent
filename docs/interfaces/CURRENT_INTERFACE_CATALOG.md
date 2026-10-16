@@ -15,13 +15,13 @@ frozen表示满足单一契约、生产实现、失败夹具、公开消费者�
 | 面 | 实现/公开消费入口 | 成熟度与验证范围 |
 | --- | --- | --- |
 | Runtime/工具 | TaskRuntime、application组合、Policy/ToolGateway、检查点与Evidence | 基础冻结子集如下；工具、持续授权和完整图恢复仍provisional |
-| 模型 | ModelPort是ModelProvider公开别名，ModelGateway、Pangu/OpenAI-compatible/Live适配 | provisional；能力按真实deployment声明；Laya镜像内加载/调用和Inference Target执行接线未验收 |
+| 模型 | ModelPort是ModelProvider公开别名，ModelGateway、Pangu/OpenAI-compatible/Live适配 | provisional；能力按真实deployment声明；本机Laya领域资格和AgentArts执行模型接线分别验收 |
 | 模型分派 | Runtime subagentModels/getModelGateway/getModelConfigurationRef/getModelReasoningEfforts | provisional；完整Competition多模型/原生参数/版本反馈待接线 |
 | 云编排 | CoordinationPort、CloudAgentPort、AgentArts自有镜像、8 Workflow/3 Controller绑定 | provisional；固定公开文件Huawei WSS/MaaS/本地读取闭环有历史真实记录，不提升整链或全部绑定 |
 | 知识 | KnowledgePort.search、Wiki来源/版本/受控写入恢复、本机配对桥及插件 | #320组合已进入main；host-only provisional，无新增公共wire；真实私人完整生命周期/云消费另验收 |
 | 记忆 | MemoryQueryPort、FactChangeFeed、SQLite事实与投影/修订/撤回 | provisional；事实查询不等于向量检索；来源身份/出机许可和完整自动失效传播另验收 |
 | MCP/Skills | 固定只读stdio、安装/启停/使用/卸载及受限Skill | #320组合已集成；provisional，任意脚本/远端写工具与真实云使用未由此证明 |
-| 目标/认知 | 图存储appendBatch、影响/显式修复、持久事实批消费、有限建议适配 | provisional；Laya端口仍在现有消费路径；镜像内唯一决策和完整责任循环待实施 |
+| 目标/认知 | 图存储appendBatch、影响/显式修复、持久事实批消费、有限建议适配 | provisional；Laya端口仍在现有消费路径；本机Laya/teacher领域资格与完整责任循环待验收 |
 | 语音 | Voice/Live/wake代码与宿主工厂 | provisional宿主面；wire voice操作仍未公布，问题绑定和实际设备同意/修改另验收 |
 | Windows/补丁 | Named Pipe、目标读回、可信宿主尝试记录、Competition patch核实 | #332进入main；仅按模块明确场景记录，内部契约provisional，不概括为任意软件/写入可用 |
 | 业务 | productivity、calendar、mail、feeds、notifications、research、weather、GitHub | 各包已存在；真实账号/网络、宿主注册、用户旅程分别核对，不能整体称unavailable或整体verified |
@@ -109,7 +109,7 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | --- | --- | --- |
 | 自然语言责任编译/持久授权匹配 | Goal、Runtime、现有Policy | 完整目标消费unavailable；不得私设责任DTO/Renderer数据库 |
 | 主动语音问题/操作/参数/revision绑定 | Voice宿主、authorization.respond | 新绑定未交付，语音意图不能直接签发授权 |
-| 镜像内Laya唯一决策服务 | LayaInferencePort、typed_choice、batch-server.py、CloudAgentPort | ARM64加载与镜像调用待验证；只记录语义建议，保持旧消费者兼容 |
+| 本机Laya/受信teacher判断链 | LayaInferencePort、typed_choice、batch-server.py、CloudAgentPort | 本机Laya领域资格与宿主消费待验证；只记录语义建议，保持旧消费者兼容 |
 | 完整F28 Competition分派 | subagentModels及云编排 | 原生参数/能力/配置版本映射待接线，不扩ReasoningEffort枚举冒充支持 |
 | F27可恢复摘要与版本缓存 | Memory/Knowledge/ModelPort | 完整宿主待交付；不是新MemoryQuery向量API |
 | F22三模式影子 | 轨迹/评估/显式测试夹具 | 独立宿主与隔离证据未交付，不读写主状态/授权 |

@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {currentArchitectureLanguage} from './current-architecture-language.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const design = 'docs/design/workflow-architecture-20261013';
@@ -986,6 +987,8 @@ set('docs/ROADMAP.md',updates.get('docs/ROADMAP.md')+handoffNote);
 set('docs/MODULE_ASSIGNMENTS.md',updates.get('docs/MODULE_ASSIGNMENTS.md')+handoffNote);
 set('docs/PROJECT_STRUCTURE.md',updates.get('docs/PROJECT_STRUCTURE.md').replace('| apps/agentarts-runtime | 自有AgentArts HTTP/WS部署入口 |','| apps/agentarts-runtime | 自有AgentArts HTTP/WS部署入口、镜像内Laya服务生命周期与28编排composition |').replace('| packages/mcp、skills | 本地扩展接入与受控执行 |','| packages/mcp、skills | 本地stdio、平台/自有远程MCP与多来源Skill安装/执行，统一宿主 |\n| scripts/laya | 既有multilingual choice Python服务及部署资产说明，迁入镜像后保持loopback内部调用 |'));
 set('docs/DEVELOPMENT_PROTOCOL.md',updates.get('docs/DEVELOPMENT_PROTOCOL.md')+'\n\n## 镜像内决策与平台适配\n\nLaya通过现有LayaInferencePort接受有限choice问题，候选描述/身份、快照版本、deadline与取消由可信宿主装配；模型不生成任意执行函数、凭据、scopeRef或主任务终态。内服务鉴权只用受信宿主配置，不能进入Renderer/公开Evidence。ModelGateway统一国内MaaS执行调用；不能把Laya端口冒充原生function calling。\n\n平台Inference Target、MCP协议协商/目录、Knowledge原文来源、OTel trace及evaluation结果都作为外部输入验证。KnowledgePort当前source形状为vaultId/path/line/revision，云来源需真实映射或版本化契约扩展；不能私造DTO。平台MCP gateway和Runtime入站WSS gateway职责不同，工具仍经既有ToolGateway。Trace是观测，评分是评估，二者不替代实际执行读回/Evidence。\n');
+
+for (const [file, text] of updates) updates.set(file, currentArchitectureLanguage(text));
 
 const makePatch = ([file,text]) => {
  const full=path.join(root,file).replace(/\\/g,'/');

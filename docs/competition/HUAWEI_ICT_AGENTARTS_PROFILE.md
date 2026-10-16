@@ -2,17 +2,17 @@
 
 日期：2026-10-14 · 当前唯一实施profile：huawei_ict_agentarts · 公开规则核对：2026—2027第11届华为ICT大赛中国区创新赛题2。
 
-## 1. 比赛与最终技术路线
+## 1. 比赛与当前实验路线
 
 [官方赛题](https://e.huawei.com/cn/talent/#/ict/innovation-details?zoneCode=027425&zoneId=98269700&compId=85132021&divisionName=%E4%B8%AD%E5%9B%BD%E5%8C%BA&type=C002)要求用AgentArts完成构建、编排与部署，展示工具/知识/多Agent/评估的实际价值和可交互成果。公开规则没有要求全部业务必须在Studio拖拽图中实现；[高代码开发](https://support.huaweicloud.com/highcode-agentarts/agentarts_10_001.html)及[自定义镜像](https://support.huaweicloud.com/highcode-agentarts/agentarts_10_029.html)是官方支持路线。
 
-全部28业务Workflow在自有ARM64镜像执行，AgentArts Runtime托管镜像与版本。唯一Laya typed-choice服务和权重也在镜像内；通用执行模型经现有ModelGateway使用国内MaaS。平台推理/MCP网关、知识检索、日志Trace和后台离线评估必须有真实调用依据，不能只用容器部署证明所有平台价值。
+当前28功能模板及依赖/条件由自有ARM64镜像串行推进，模板不等于业务验收，AgentArts Runtime托管镜像与版本。Laya typed-choice服务和权重留在本机，资格不足升级原受信teacher；国内执行模型经AgentArts与现有ModelGateway调用。平台推理/MCP网关、知识检索、日志Trace和后台离线评估必须有真实调用依据，不能只用容器部署证明所有平台价值。
 
 本设计符合公开技术方向；这不是组委会个案认证，也不是当前代码已完成比赛验收。实际账号/区域能力与委员会最终解释分别核对。
 
 ## 2. 云和本地闭环
 
-文字/语音/业务事件 → 本地TaskRuntime受理和版本上下文 → CloudAgentPort → AgentArts Runtime自有镜像 → 执行模型产生计划/参数/摘要候选 → Laya在有限合法候选中选择 → 依赖图并行执行 → 工具提案 → 本地Policy/ToolGateway或已装配远程MCP host → 目标读回/Evidence → 镜像续答/复核 → TaskRuntime确认主任务终态。
+文字/语音/业务事件 → 本地TaskRuntime受理和版本上下文 → CloudAgentPort → AgentArts Runtime自有镜像 → 执行模型产生计划/参数/摘要候选 → Laya在有限合法候选中选择 → 依赖图串行推进 → 工具提案 → 本地Policy/ToolGateway或已装配远程MCP host → 目标读回/Evidence → 镜像续答/复核 → TaskRuntime确认主任务终态。
 
 预先授权责任内自动推进；缺失决定由主动语音或文字询问。用户口头同意/拒绝/修改绑定当前问题、操作和revision。平台输出、Laya选择和模型自报都不能签发本地授权。未知写入先核实；云失败不静默回退Local。
 
@@ -41,11 +41,11 @@
 
 文档核对基线main 3275aa91；固定公开合成文件的历史Huawei WSS→真实MaaS→本地Policy/只读工具/Evidence→续答见[2026-10-12记录](../modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。已有8 Workflow/3 Controller代码/绑定，不能据此宣布28功能均已真实运行。
 
-待验收：Laya ARM64权重加载、镜像内调用、28功能编排消费、国内Inference/MCP直连、原生知识来源映射、Runtime/LTS/OTel完整观测、平台评分读回、私人Wiki许可、口头确认、实际写入/命令、独立影子及P50/P95。保留接口目录原frozen/provisional/unavailable，发布状态与测试状态分开。
+待验收：本机Laya领域资格、Desktop长期驻留与设备休眠恢复、28功能编排消费、国内Inference/MCP直连、原生知识来源映射、Runtime/LTS/OTel完整观测、平台评分读回、私人Wiki许可、口头确认、实际写入/命令、独立影子及P50/P95。保留接口目录原frozen/provisional/unavailable，发布状态与测试状态分开。
 
 ## 6. 发布与测试入口
 
-沿用ARM64、8080、POST /invocations、/ping及可选/ws契约，WSS主、HTTPS备用可见。Laya只监听镜像内部loopback，不暴露未鉴权推理端口。构建阶段取得固定模型资产并验证摘要；运行不依赖联网自动下载。正式发布使用平台实际可拉取的SWR/导入路径，记录镜像digest、部署版本和独立调用读回。
+沿用ARM64、8080、POST /invocations、/ping及可选/ws契约，WSS主、HTTPS备用可见。Laya由本机受信宿主管理，只接受现有鉴权端口；镜像不包含Laya权重、Python或PyTorch。模型资产版本与本机生命周期单独记录。正式发布使用平台实际可拉取的SWR/导入路径，记录镜像digest、部署版本和独立调用读回。
 
 协作者交付deployment/version、客户端配置说明、公开合成数据、实际调用和日志/评估入口；不交付密钥到仓库或公开材料。缺配置明确Unavailable，不静默Fake。仅在完成读回后写“可调用”；代码、镜像构建、部署及独立测试分别登记。
 

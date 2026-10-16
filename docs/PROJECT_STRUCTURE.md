@@ -6,7 +6,7 @@
 | --- | --- |
 | apps/desktop | Electron、可信主进程/Preload和原生页面 |
 | apps/runtime | TaskRuntime及application组合、调度/恢复/宿主接线 |
-| apps/agentarts-runtime | 自有AgentArts HTTP/WS部署入口、镜像内Laya服务生命周期与28编排composition |
+| apps/agentarts-runtime | 自有AgentArts HTTP/WS部署入口、28模板与串行编排composition；Laya宿主生命周期在本机 |
 | apps/windows-host、packages/windows-client | 原生执行/观测和公开客户端 |
 | apps/obsidian-plugin | 只读插件与本机配对 |
 | packages/contracts、client、testkit | 单一Schema/生成类型、消费SDK及显式Fake |
@@ -15,7 +15,7 @@
 | packages/knowledge、memory、learning | 来源正文、事实版本和流程候选 |
 | packages/policy、tool-gateway、connector-host | 原有授权、执行和凭据注入 |
 | packages/mcp、skills | 本地stdio、平台/自有远程MCP与多来源Skill安装/执行，统一宿主 |
-| scripts/laya | 既有multilingual choice Python服务及部署资产说明，迁入镜像后保持loopback内部调用 |
+| scripts/laya | 既有multilingual choice Python服务及部署资产说明，留在本机受信宿主，保留鉴权与生命周期管理 |
 | packages/connectors/* | 邮件/日历/订阅/研究/天气/GitHub等Provider |
 | packages/productivity、notifications、coding-tools | 业务规范化、通知、工作区和开发工具 |
 | docs/design/workflow-architecture-20261013 | 当前主架构、工作流、模块/迁移说明、离线图及独立查看器源码 |
