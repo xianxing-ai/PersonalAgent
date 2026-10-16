@@ -61,3 +61,54 @@ test('Transport notices make fallback and unknown outcomes visible without forwa
   assert.doesNotMatch(agentArtsTransportNotice({state:'result_unknown',requestId:'private'}),/private/);
   assert.equal(agentArtsTransportNotice({state:'wss_ready'}),'');
 });
+
+const invocationUrl=binding.gatewayUrl+'/runtimes/'+binding.runtimeName+'/invocations';
+const requestInit=()=>({method:'POST',redirect:'error',headers:{Authorization:'Bearer public-outer'},body:'{"query":"public fixture"}',signal:new AbortController().signal});
+test('HTTPS attaches current host token and exact version only at its original destination and never serializes credentials',async()=>{
+  let current={appToken:token,deploymentVersion:'arm64-v4-e38ef23d-r2'};const calls=[];
+  const options=createAgentArtsTransportConfig({binding,environment:{},configurationProvider:{read:()=>current},
+    fetchImpl:async(url,init)=>{calls.push({url,init});return {status:200};}});
+  assert.doesNotMatch(JSON.stringify(options),/synthetic-inner|Bearer/);
+  const original=requestInit();await options.fetchImpl(invocationUrl,original);
+  assert.equal(calls[0].url,invocationUrl+'?endpoint=arm64-v4-e38ef23d-r2');assert.equal(calls[0].init.redirect,'error');
+  assert.equal(new Headers(calls[0].init.headers).get('X-PA-Agent-Token'),'Bearer '+token);
+  assert.equal(new Headers(calls[0].init.headers).get('Authorization'),'Bearer public-outer');
+  assert.equal(new Headers(original.headers).has('X-PA-Agent-Token'),false,'caller input is never mutated');
+  current={appToken:token+'-rotated',deploymentVersion:'v4-next'};await options.fetchImpl(invocationUrl,requestInit());
+  assert.equal(calls[1].url,invocationUrl+'?endpoint=v4-next');assert.equal(new Headers(calls[1].init.headers).get('X-PA-Agent-Token'),'Bearer '+token+'-rotated');
+  current={};await options.fetchImpl(invocationUrl,requestInit());
+  assert.equal(calls[2].url,invocationUrl);assert.equal(new Headers(calls[2].init.headers).has('X-PA-Agent-Token'),false);
+});
+test('HTTPS rejects another destination, query, redirect, forged token and cancellation before any network send',async()=>{
+  let reads=0,sends=0;const options=createAgentArtsTransportConfig({binding,environment:{},
+    configurationProvider:{read:()=>{reads++;return {appToken:token,deploymentVersion:'v4'};}},fetchImpl:async()=>{sends++;}});
+  for(const url of [invocationUrl.replace('synthetic.','other.'),invocationUrl.replace('owned-preview','other-runtime'),
+    invocationUrl+'?endpoint=v4',invocationUrl+'#fragment',invocationUrl+'/',invocationUrl.replace('/owned-preview/','/other/../owned-preview/'),
+    invocationUrl.replace('https:','http:'),invocationUrl.replace('https://','https://user:pass@')]) {
+    assert.throws(()=>options.fetchImpl(url,requestInit()),/目的地/);
+  }
+  assert.equal(reads,0);assert.equal(sends,0);
+  for(const init of [{...requestInit(),method:'GET'},{...requestInit(),redirect:'follow'},
+    {...requestInit(),headers:{'x-pa-agent-token':'Bearer forged-public-fixture'}},
+    {...requestInit(),signal:AbortSignal.abort()}])assert.throws(()=>options.fetchImpl(invocationUrl,init));
+  assert.equal(sends,0);
+});
+test('current configuration failure, removal or invalid values stop sending and cannot silently use an old token',async()=>{
+  let current={appToken:token,deploymentVersion:'v4'},failure=false,sends=0;
+  const options=createAgentArtsTransportConfig({binding,environment:{},configurationProvider:{read:()=>{
+    if(failure)throw Error('Current binding revoked');return current;}},fetchImpl:async()=>{sends++;}});
+  await options.fetchImpl(invocationUrl,requestInit());assert.equal(sends,1);
+  failure=true;assert.throws(()=>options.fetchImpl(invocationUrl,requestInit()),/revoked/);assert.equal(sends,1);failure=false;
+  for(const invalid of [null,undefined,{appToken:'short'},{appToken:token+'\n'},{deploymentVersion:'v4?token=x'},Promise.resolve({appToken:token}),{unknown:true}]) {
+    current=invalid;assert.throws(()=>options.fetchImpl(invocationUrl,requestInit()),/无效/);assert.equal(sends,1);
+  }
+});
+test('WSS reads saved token or legacy environment but explicitly rejects any pinned deployment version',async()=>{
+  let current={appToken:token};const environment={PA_AGENTARTS_TRANSPORT:'wss',PA_AGENTARTS_WSS_URL:directUrl};
+  const options=createAgentArtsTransportConfig({binding,environment,configurationProvider:{read:()=>current}});
+  assert.equal(await options.websocketAuthorizationProvider.read(),'Bearer '+token);
+  current={appToken:token,deploymentVersion:'arm64-v4-e38ef23d-r2'};
+  await assert.rejects(options.websocketAuthorizationProvider.read(),/固定部署版本/);
+  assert.throws(()=>createAgentArtsTransportConfig({binding,environment,configurationProvider:{read:()=>current}}),/固定部署版本/);
+  assert.throws(()=>options.fetchImpl(invocationUrl,requestInit()),/固定部署版本/);
+});

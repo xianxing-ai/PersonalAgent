@@ -2,6 +2,8 @@
 
 2026-10-16，Competition Profile。**固定公开鹈鹕动画缺陷的 F15 主图和独立隔离图已真实通过；不代表其余 27 图完成。**
 
+同日另完成 [Desktop 原任务入口到固定镜像版本的连通验收](../desktop-cloud-20261016/README.md)；它验证桌面配置与实际调用，不代替本页 F15 整图验收，也不代表 F15 已从 Desktop UI 接线。
+
 ## 上传与部署
 
 - SWR：`swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v4-e38ef23d`。

@@ -1562,7 +1562,8 @@ async function initializeRuntime() {
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(obsidianPairing.source, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
-      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding});
+      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding,
+        configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(cloudBinding)}});
       cloudTransportNotice = '';
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,

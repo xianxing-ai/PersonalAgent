@@ -1,15 +1,49 @@
 /** Trusted main-process options. Neither credentials nor this provider enter Renderer snapshots. */
-export function createAgentArtsTransportConfig({binding,environment=process.env}) {
+export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch}) {
   const transport=environment.PA_AGENTARTS_TRANSPORT??'https';
   const fallback=environment.PA_AGENTARTS_HTTPS_FALLBACK??'0';
   if (!['https','wss'].includes(transport) || !['0','1'].includes(fallback)) {
     throw Error('AgentArts 传输配置无效：主通道只允许 wss/https，备用开关只允许 0/1');
   }
+  if (configurationProvider!==undefined && typeof configurationProvider?.read!=='function') throw Error('AgentArts 受信配置读取器无效');
+  const currentOptions=()=>{
+    const value=configurationProvider?configurationProvider.read():{};
+    if (!value || typeof value!=='object' || Array.isArray(value) || typeof value.then==='function'
+      || Object.keys(value).some(key=>!['appToken','deploymentVersion'].includes(key))
+      || value.appToken!==undefined && (typeof value.appToken!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(value.appToken))
+      || value.deploymentVersion!==undefined && (typeof value.deploymentVersion!=='string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(value.deploymentVersion))) {
+      throw Error('AgentArts 当前受信传输配置无效');
+    }
+    if (transport==='wss' && value.deploymentVersion!==undefined) throw Error('WSS 暂不支持固定部署版本，请使用 HTTPS');
+    return value;
+  };
+  // Only the existing Runtime HTTP port consumes this closure. No credentials are serializable options.
+  const httpsOptions=()=>{
+    if (!configurationProvider) return {};
+    let gateway;
+    try {gateway=new URL(binding.gatewayUrl);} catch {throw Error('AgentArts HTTPS 目的地无效');}
+    if (gateway.protocol!=='https:' || gateway.username || gateway.password || gateway.search || gateway.hash || gateway.pathname!=='/'
+      || typeof binding.runtimeName!=='string' || !/^[A-Za-z0-9_-]{1,64}$/.test(binding.runtimeName)
+      || typeof fetchImpl!=='function') throw Error('AgentArts HTTPS 目的地无效');
+    const destination=gateway.origin+`/runtimes/${encodeURIComponent(binding.runtimeName)}/invocations`;
+    return {fetchImpl:(url,init)=>{
+      // Compare the original URL too: URL normalization must not accept a different path or query.
+      const input=url instanceof URL?url.href:url;
+      if (input!==destination || init?.method!=='POST' || init.redirect!=='error') throw Error('AgentArts 请求必须使用已绑定目的地，且禁止重定向');
+      if (init.signal?.aborted) throw Error('AgentArts 请求已取消');
+      const headers=new Headers(init.headers);
+      if (headers.has('X-PA-Agent-Token')) throw Error('AgentArts 应用凭据只能来自当前受信配置');
+      const options=currentOptions(),target=new URL(destination);
+      if (options.appToken!==undefined) headers.set('X-PA-Agent-Token',`Bearer ${options.appToken}`);
+      if (options.deploymentVersion!==undefined) target.searchParams.set('endpoint',options.deploymentVersion);
+      return fetchImpl(target.href,{...init,headers:Object.fromEntries(headers),redirect:'error'});
+    }};
+  };
   if (transport==='https') {
     if (fallback==='1' || environment.PA_AGENTARTS_WSS_URL!==undefined) {
       throw Error('AgentArts WSS 地址与 HTTPS 备用开关需要启用 wss 主通道');
     }
-    return {transport};
+    return {transport,...httpsOptions()};
   }
   const supplied=environment.PA_AGENTARTS_WSS_URL;
   if (typeof supplied!=='string' || !supplied) {
@@ -37,14 +71,14 @@ export function createAgentArtsTransportConfig({binding,environment=process.env}
     throw Error('AgentArts WSS 必须使用同一网关与运行时地址');
   }
   const readToken=()=>{
-    const token=environment.PA_AGENTARTS_APP_TOKEN;
+    const token=currentOptions().appToken??environment.PA_AGENTARTS_APP_TOKEN;
     if (typeof token!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(token)) {
       throw Error('请在受信主机环境中配置 AgentArts 自有镜像入站凭据');
     }
     return `Bearer ${token}`;
   };
   readToken();
-  return {transport,websocketUrl:address.href,allowHttpsFallback:fallback==='1',
+  return {transport,websocketUrl:address.href,allowHttpsFallback:fallback==='1',...httpsOptions(),
     websocketAuthorizationProvider:{read:async()=>readToken()}};
 }
 

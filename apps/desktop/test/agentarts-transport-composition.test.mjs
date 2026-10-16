@@ -36,23 +36,23 @@ const setup = ts.isBlock(statements) ? statements.statements.filter(statement =>
     && statement.expression.left.getText(ast) === 'cloudTransportNotice';
 }).map(statement => statement.getText(ast)).join('\n') : '';
 
-function desktopOptions(environment = {}, previousNotice = '') {
+function desktopOptions(environment = {}, previousNotice = '',configuration = {readTransportOptions:()=>({})},fetchImpl,overrideBinding) {
   let published = 0;
-  const binding = {gatewayUrl:'https://agentarts.example.test', runtimeName:'synthetic'};
+  const binding = overrideBinding??{gatewayUrl:'https://agentarts.example.test', runtimeName:'synthetic'};
   const evaluate = new Function('cloudBinding', 'process', 'createAgentArtsTransportConfig',
-    'agentArtsTransportNotice', 'publish', 'previousNotice',
+    'agentArtsTransportNotice', 'publish', 'previousNotice','agentArtsConfig',
     `let cloudTransportNotice = previousNotice; ${setup}\nconst options = {${transportProperties.map(property => property.getText(ast)).join(',\n')}}; return {options, notice: () => cloudTransportNotice};`);
-  const result = evaluate(binding, {env:environment}, input => createAgentArtsTransportConfig({...input, environment}),
-    agentArtsTransportNotice, () => {published++;}, previousNotice);
+  const result = evaluate(binding, {env:environment}, input => createAgentArtsTransportConfig({...input, environment,...(fetchImpl?{fetchImpl}:{})}),
+    agentArtsTransportNotice, () => {published++;}, previousNotice,configuration);
   return {...result, published:() => published};
 }
 const outer = {read:async () => 'Bearer synthetic-outer-no-real-credential'};
 const events = text => [{event:'message',data:{text}},{event:'task_end'},{event:'end'}];
-async function runTask(app) {
+async function runTask(app,idempotencyKey='synthetic-composition') {
   const client = new Client(app);
   await client.connect();
   const {taskId} = await client.call('task.submit', {goal:'Synthetic transport analysis',conversationId:'synthetic-composition'},
-    {idempotencyKey:'synthetic-composition'});
+    {idempotencyKey});
   for (let attempt = 0; attempt < 200; attempt++) {
     const task = app.runtime.getTask(taskId);
     if (['succeeded','failed','waiting_reconciliation'].includes(task.state)) return task;
@@ -80,6 +80,36 @@ for (const environment of [{}, {PA_AGENTARTS_TRANSPORT:'https'}]) {
 const wssEnvironment = {PA_AGENTARTS_TRANSPORT:'wss',
   PA_AGENTARTS_WSS_URL:'wss://agentarts.example.test/runtimes/synthetic/ws',
   PA_AGENTARTS_APP_TOKEN:'synthetic-inner-no-real-credential'};
+
+test('actual Desktop main closure feeds encrypted config token/version refresh into real Runtime HTTPS and blocks revoke',async t=>{
+  const {createAgentArtsConfig}=await import('../electron/agentarts-config.js');
+  const {mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path');
+  const userData=await mkdtemp(join(tmpdir(),'pa-main-cloud-config-'));t.after(()=>rm(userData,{recursive:true,force:true}));
+  const config=createAgentArtsConfig({userData,environment:{},safeStorage:{isEncryptionAvailable:()=>true,
+    encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()}});
+  const destination={gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'synthetic'};
+  const token='explicit-public-desktop-app-token-123456789';
+  config.configure({...destination,authorization:'Bearer explicit-public-desktop-outer',appToken:token,deploymentVersion:'arm64-v4-e38ef23d-r2'});
+  const binding=config.binding(),calls=[];
+  const desktop=desktopOptions({},'',config,async(url,init)=>{
+    calls.push({url,headers:new Headers(init.headers),redirect:init.redirect});
+    return new Response(JSON.stringify(events('Explicit offline fixture through actual Desktop main composition')),
+      {headers:{'content-type':'application/json'}});
+  },binding);
+  const app=createAgentArtsRuntimeApplication({...desktop.options,path:':memory:',authorizationProvider:{read:async()=>config.readAuthorization(binding)}});
+  try {
+    assert.equal((await runTask(app,'versioned-desktop-first')).state,'succeeded');assert.equal(calls.length,1);
+    assert.equal(calls[0].url,destination.gatewayUrl+'/runtimes/synthetic/invocations?endpoint=arm64-v4-e38ef23d-r2');
+    assert.equal(calls[0].headers.get('X-PA-Agent-Token'),'Bearer '+token);assert.equal(calls[0].redirect,'error');
+    config.configure({...destination,appToken:token+'-rotated',deploymentVersion:'v4-next'});
+    assert.equal((await runTask(app,'versioned-desktop-second')).state,'succeeded');assert.equal(calls.length,2);
+    assert.equal(calls[1].url,destination.gatewayUrl+'/runtimes/synthetic/invocations?endpoint=v4-next');
+    assert.equal(calls[1].headers.get('X-PA-Agent-Token'),'Bearer '+token+'-rotated');
+    config.revoke();assert.equal((await runTask(app,'versioned-desktop-revoked')).state,'failed');assert.equal(calls.length,2);
+    assert.doesNotMatch(JSON.stringify(desktop.options),/desktop-app-token|Bearer/);
+  }finally{app.close();}
+});
+
 test('actual Desktop WSS callback projects fixed notices and the real factory consumes Fake socket events', async () => {
   const desktop = desktopOptions(wssEnvironment, 'Previous WSS failure');
   assert.equal(typeof desktop.options.onTransportState,'function');

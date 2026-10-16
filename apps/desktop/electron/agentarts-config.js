@@ -16,10 +16,17 @@ function validate(value) {
   const binding=validateBinding(value);
   if (typeof value.authorization!=='string' || !value.authorization.trim() || value.authorization.length>4096
     || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value.authorization)) throw Error('请填写控制台 API 示例中的完整 Authorization 值');
-  return {...binding,authorization:value.authorization};
+  if (value.appToken!==undefined && (typeof value.appToken!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(value.appToken))) {
+    throw Error('AgentArts 应用入站凭据格式无效');
+  }
+  if (value.deploymentVersion!==undefined && (typeof value.deploymentVersion!=='string'
+    || !/^[A-Za-z0-9_.-]{1,128}$/.test(value.deploymentVersion))) throw Error('AgentArts 部署版本格式无效');
+  return {...binding,authorization:value.authorization,
+    ...(value.appToken===undefined?{}:{appToken:value.appToken}),
+    ...(value.deploymentVersion===undefined?{}:{deploymentVersion:value.deploymentVersion})};
 }
 
-/** Host-only storage; snapshots never return the Authorization value. */
+/** Host-only storage; snapshots never return either credential value. */
 export function createAgentArtsConfig({userData,safeStorage,environment=process.env}) {
   const file=path.join(userData,'agentarts-config.json');
   let saved,failure='';
@@ -38,6 +45,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
   const runtimeBinding=()=>{try{return validateBinding(saved??defaults);}catch{return undefined;}};
   const snapshot=()=>({configured:Boolean(saved),runtimeReady:Boolean(runtimeBinding()),gatewayUrl:saved?.gatewayUrl??defaults.gatewayUrl,
     runtimeName:saved?.runtimeName??defaults.runtimeName,
+    appTokenConfigured:Boolean(saved?.appToken),deploymentVersion:saved?.deploymentVersion??'',
     reason:failure || (saved?'已配置；真实连通以任务结果为准':'请配置 AgentArts 网关、运行时名称和 Authorization')});
   return {snapshot,runtimeBinding,
     binding(){if (!saved) throw Error(snapshot().reason);return {gatewayUrl:saved.gatewayUrl,runtimeName:saved.runtimeName};},
@@ -45,14 +53,24 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       if (!saved || binding.gatewayUrl!==saved.gatewayUrl || binding.runtimeName!==saved.runtimeName) throw Error('AgentArts 配置已改变，请重启应用重新绑定');
       return saved.authorization;
     },
+    readTransportOptions(binding) {
+      if (!saved || binding.gatewayUrl!==saved.gatewayUrl || binding.runtimeName!==saved.runtimeName) throw Error('AgentArts 配置已改变，请重启应用重新绑定');
+      return {...(saved.appToken===undefined?{}:{appToken:saved.appToken}),
+        ...(saved.deploymentVersion===undefined?{}:{deploymentVersion:saved.deploymentVersion})};
+    },
     configure(input) {
-      if (!input || Object.keys(input).some(key=>!['gatewayUrl','runtimeName','authorization'].includes(key))) throw Error('AgentArts 配置格式无效');
+      if (!input || Object.keys(input).some(key=>!['gatewayUrl','runtimeName','authorization','appToken','deploymentVersion'].includes(key))) throw Error('AgentArts 配置格式无效');
       // A credential may be retained only for the same exact destination.
       const binding=validateBinding(input);
+      const sameDestination=binding.gatewayUrl===saved?.gatewayUrl && binding.runtimeName===saved?.runtimeName;
       const authorization=input.authorization===undefined || input.authorization===''
-        ? (binding.gatewayUrl===saved?.gatewayUrl && binding.runtimeName===saved?.runtimeName ? saved.authorization : '')
+        ? (sameDestination ? saved.authorization : '')
         : input.authorization;
-      const value=validate({...binding,authorization});
+      const appToken=input.appToken===undefined || input.appToken===''
+        ? (sameDestination?saved.appToken:undefined) : input.appToken;
+      const deploymentVersion=input.deploymentVersion===undefined
+        ? (sameDestination?saved.deploymentVersion:undefined) : input.deploymentVersion===''?undefined:input.deploymentVersion;
+      const value=validate({...binding,authorization,appToken,deploymentVersion});
       if (!safeStorage.isEncryptionAvailable()) throw Error('本机安全存储不可用，未保存');
       const encrypted=safeStorage.encryptString(JSON.stringify(value)).toString('base64');
       mkdirSync(userData,{recursive:true});
