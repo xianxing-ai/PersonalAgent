@@ -44,3 +44,12 @@
 - 首次完整回归还因短 PATH 遗漏已有 OpenSSL 导致自有镜像的 3 个合成 HTTPS 用例 `spawn openssl ENOENT`；补回 Git 附带的 OpenSSL 后专项 3/3，再独立完整回归通过。未修改相关断言或生产代码；失败日志 `.cache-ci351-check.log`、最终日志 `.cache-ci351-check-final.log` 均保留。
 - 第二阶段减少固定证书脚本的启动依赖：直接输出两个生成的 Base64 JSON 字段，移除 `ConvertTo-Json` 的 Utility 模块加载，不扩大期限、不缓存/复用证书。一次本机脚本对照验证旧脚本加载 Utility、候选不加载，二者字段均为有效 cert/pfx Base64；该对照不是跨机器冷启动性能结论。新增方案无外部输入、字段/协议或依赖变化。
 - 第二阶段知识专项仍 53 通过、1 跳过，完整 check 仍 3052 通过、31 跳过、0 失败。日志 `.cache-ci351-certificate-tests.log`、`.cache-ci351-certificate-check.log`、`.cache-ci351-script-module-comparison.log` 保留。最终修复 head 的远程 Foundation 及首次证书耗时仍待读回；设计门禁和非作者评审分别核对。
+
+## 2026-10-16：当前 main 集成准备
+
+- 负责人 goo122；Profile `huawei_ict_agentarts`，状态仍 `in_progress`。原本地工作树落后远端且需保留，改在 `.worktrees/goo122-context-main-sync-20261016` / `codex/goo122-context-main-sync-20261016` 从当前 #351 `a05e91ea` 准备同步 main `6d70734c`。
+- 唯一手工冲突为 ROADMAP 顶部新增记录，保留双方全部内容并补本记录；其余来源保持 Git 自动合并。已与虚拟合并树比较，未额外修改生产源码、Schema、迁移或依赖。另同步同一 ToolGateway 测试时钟修复，见下条。
+- 167 个外部依赖版本/resolved/integrity 均与已有包缓存一致；复制到本工作树独立缓存，按原锁文件离线 ci（ignore-scripts）安装 201 个包。根构建、架构检查、自动合并后的 Admin JS 语法检查通过；预算展示/上下文绑定/对话上下文三文件定向 28/28、0 失败。日志 `.cache-context-sync-install.log`、`.cache-context-sync-build.log`、`.cache-context-sync-architecture.log`、`.cache-context-sync-focused.log`；本次仅验证必要受影响行为，不沿用旧完整 check 作为新提交的结果。
+- #368 已实际合入 #367 新头 `eb36dcea`，二者完整 tree 相同；未合入 main。#375 恢复 hooks 加固仍在独立 PR，下一次 Git 交付时应把其基线接到已包含 #368 的 #367 并核对差异。真实云消费继续暂停，未读取用户 Vault 或记忆。
+- 用户已授权本轮提交、普通推送更新现有 PR 及依赖链同步；实际提交、批准、CI 和冲突状态以远端当前 head 为准，不合并 main 或提升整个 MOD 状态。
+- MCP 组合门禁发现现有 ToolGateway 在途超时测试可能在 20ms 真实期限内未进入工具，随后读取未赋值 signal；本树同步完全相同的显式 Date/setTimeout 假时钟修复，保持 20ms、TIMEOUT/中止断言并新增进入工具断言，专项 7/7，日志 `.cache-context-sync-gateway.log`。不改变生产计时，未把本树专项结果或下游组合完整结果冒充 #351 新 head 的完整 Foundation。
