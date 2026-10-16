@@ -1,5 +1,17 @@
 # 开发计划与进度
 
+## 2026-10-15 预算展示与 tokenizer 离线核验（in_progress）
+
+goo122 从 #357 `e60d45e3` 开始 [预算展示工作包](modules/MOD-04A-BUDGET-DISPLAY-20261014.md)：共享 Provider 的预算元数据已沿可信模型宿主接到现有 Admin，支持并发迟到保护、撤销清除和预算单独刷新保留草稿。定向 16/16、实际原生设置烟测通过；固定官方词表 Windows 原始文本核验 4/4，通过 SHA 校验并明确不适合作为完整请求 meter。完整门禁结果按工作包记录补录；真实模型/tokenizer 模板匹配、MaaS 与镜像生产打包仍未完成，云调用 0、原 Vault 不读写、接口及完整模块状态不提升。#357 当前 head Foundation 已成功，尚无非作者批准。
+
+## 2026-10-14 可见模型请求预算（in_progress）
+
+goo122 从 #351 `3153e022` 开始 [F27 Provider 工作包](modules/MOD-04A-VISIBLE-REQUEST-BUDGET-20261014.md)。沿现有 Provider/Competition 工厂补完整可见请求计量端口、实际输出字段和预算版本恢复绑定，保留未计量/平台隐藏上下文未知的区别。原逐条私人确认、Skill 许可、逐事实删除及整篇备份 pending 保持有效；未新增正文副本。当前真实云调用 0，模型专用 tokenizer、自有镜像配置、Desktop 展示、非作者评审和集成未完成；完整模块状态不提升。
+
+## 2026-10-14 版本化上下文、预算与删除覆盖（in_progress）
+
+goo122 从 #350 `a378c3df` 开始 [F27 上下文工作包](modules/MOD-09-CONTEXT-BINDING-20261014.md)，沿既有编译/发送门禁增加持久摘要版本比较、可信 goal token 预算端口及新检查点删除覆盖。定向 33/33；完整 check 3050 通过、31 跳过、0 失败。无已验证 tokenizer 时明确 unmeasured，不把 goal 计量当作完整模型上下文窗；原私人确认、Skill 许可及整篇备份 pending 保持有效。真实云调用 0，PR/评审/集成未完成，完整模块状态不提升。
+
 ## 2026-10-13 zemeng 模块继续范围（当前入口）
 
 用户确认继续 MOD-04B、MOD-10～18、MOD-27～32，共 16 个模块；**MOD-19 继续暂停**，不进行安装、升级、卸载或分发验收。Wiki/记忆仍由 goo122 负责，业务连接器及 DEV-WORKFLOWS 原分工保持。暂停的 Gemini/Grok 交付文件不纳入本轮。
