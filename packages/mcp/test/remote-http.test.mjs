@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {createRequire} from 'node:module';
 import {createRemoteReadonlyMcpHost} from '../dist/index.js';
 import {ToolGateway,toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
@@ -10,6 +11,33 @@ const signal=()=>new AbortController().signal;
 const context=runId=>({taskId:'synthetic-remote-task',runId,authorizationRef:runId,signal:signal(),deadline:future(),scopes:descriptor.requiredScopes});
 const invocation=(runId,key='public')=>({...context(runId),toolName:descriptor.name,toolVersion:descriptor.version,arguments:{key}});
 const denied=code=>error=>error.code===code && !/private diagnostic|Bearer|synthetic-session/.test(error.message);
+
+test('SDK sends queued before cancellation cannot issue HTTP after the operation has ended',async()=>{
+  const {StreamableHTTPClientTransport}=createRequire(import.meta.url)('@modelcontextprotocol/sdk/client/streamableHttp.js');
+  const original=StreamableHTTPClientTransport.prototype.send,headers=StreamableHTTPClientTransport.prototype._commonHeaders,queued=[];
+  let paused=false;
+  let release,reached;
+  const gate=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{reached=resolve;});
+  // Explicit fixture delays the SDK's existing asynchronous header boundary.
+  StreamableHTTPClientTransport.prototype._commonHeaders=function(){
+    if(!paused)return headers.call(this);
+    reached();return gate.then(()=>headers.call(this));
+  };
+  StreamableHTTPClientTransport.prototype.send=function(message,options){
+    const waiting=original.call(this,message,options);if(paused)queued.push(waiting);return waiting;
+  };
+  const f=await fixture(),controller=new AbortController();
+  try{
+    await f.host.start({signal:signal(),deadline:future()});
+    const before=f.requests.length;
+    paused=true;
+    const pending=assert.rejects(f.host.tools[0].execute({key:'public'},{...context('queued-after-cancel'),signal:controller.signal}),denied('CANCELLED'));
+    await started;controller.abort();await pending;
+    release();await Promise.allSettled(queued);
+    assert.equal(f.requests.length,before,JSON.stringify(f.requests.slice(before).map(item=>item.message?.method)));
+    assert.equal(f.calls().length,0);
+  }finally{release();StreamableHTTPClientTransport.prototype.send=original;StreamableHTTPClientTransport.prototype._commonHeaders=headers;await f.close();}
+});
 
 test('remote JSON and SSE reads use existing Gateway/Policy; discovery never registers write tools',async()=>{
   for(const sse of [false,true]){
