@@ -27,6 +27,19 @@ test('a supplied workspace digest must exactly bind its current UTF8 bytes and n
   assert.throws(() => projectSyntheticMeetingResult(accessor), /export denied/); assert.equal(reads, 0);
 });
 
+test('synthetic export verifies the production optional digest without exporting it', () => {
+  const sha256 = createHash('sha256').update(content, 'utf8').digest('hex');
+  assert.deepEqual(projectSyntheticMeetingResult({...result(), sha256}), JSON.parse(content));
+  for (const invalid of [undefined, '0'.repeat(64), sha256.toUpperCase(), 'invalid']) {
+    assert.throws(() => projectSyntheticMeetingResult({...result(), sha256: invalid}), /export denied/);
+  }
+  let reads = 0;
+  const accessor = {...result()};
+  Object.defineProperty(accessor, 'sha256', {enumerable: true, get() { reads++; return sha256; }});
+  assert.throws(() => projectSyntheticMeetingResult(accessor), /export denied/);
+  assert.equal(reads, 0);
+});
+
 test('synthetic export rejects arbitrary file results and expanded content with fixed errors', () => {
   for (const invalid of [
     {...result(), path: 'private.txt'}, {...result(), byteLength: 0},
