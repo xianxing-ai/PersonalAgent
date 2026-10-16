@@ -18,8 +18,9 @@ await writeFile(file,JSON.stringify({shadowPolicy:{
  sampling:{base:1,min:0,max:1,adjustmentRate:0.2,minimumVerifiedSamples:1},
  comparison:{qualityWeight:1,wallMsWeight:0,modelCallWeight:0}}}));
 Object.assign(process.env,{PA_AGENT_HOST_MODE:'agentarts',PA_AGENT_LAYA_MODE:'local',
- PA_AGENT_MODEL_BASE_URL:'https://synthetic.invalid/v1',PA_AGENT_MODEL:'synthetic-no-model-call',
- PA_AGENT_MODEL_API_KEY:'synthetic-no-account',PA_AGENT_WSS_AUTH_TOKEN:token,PA_AGENT_SERVICES_CONFIG_FILE:file});
+ PA_AGENT_MODEL_BASE_URL:'https://synthetic.invalid/inference/v1',PA_AGENT_MODEL:'synthetic-no-model-call',
+ PA_AGENT_MODEL_API_KEY:'synthetic-no-account',PA_AGENT_MODEL_ROUTE:'agentarts-proxy',PA_AGENT_MODEL_PROXY_KEY_HEADER:'X-Api-Key',
+ PA_AGENT_WSS_AUTH_TOKEN:token,PA_AGENT_SERVICES_CONFIG_FILE:file});
 const originalFetch=globalThis.fetch;let attemptedExternalCalls=0;
 globalThis.fetch=(input,init)=>{
  const url=String(input);if(!url.startsWith('http://127.0.0.1:8080/')){attemptedExternalCalls++;throw Error('Network forbidden in this smoke');}
