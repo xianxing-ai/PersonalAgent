@@ -1,0 +1,15 @@
+{
+  "platformLogRequestMatch": "pelican-b1169d1a-3c4b-4f88-8f28-fdc53a8c030f",
+  "runtimeVersion": "arm64-v4-e38ef23d-r2",
+  "registryManifestDigest": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "credentialsIncluded": false,
+  "rebuiltDuringUpload": false,
+  "plaintextCredentialsIncluded": false,
+  "kind": "image_and_platform_provenance",
+  "runtimeContainerDigestIntrospection": "unavailable",
+  "uploadCheckoutRevision": "09d369a8b5fad79c1eb8f5f48da7b077bc122d93",
+  "imageBuildSourceRevision": "e38ef23dfc5ac5cd59728bb40299e0784f203cae",
+  "imageReference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v4-e38ef23d",
+  "runtimeId": "9a65747e-05f0-475c-a2dc-f24dd3ed87ae",
+  "platformVersionMapping": "independent console readback"
+}

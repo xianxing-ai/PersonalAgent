@@ -1,5 +1,10 @@
 # F01–F28 当前状态与真实验收索引
 
+> 2026-10-16 独立实物审计：[完整性核查](../competition/WORKFLOW_COMPLETENESS_AUDIT_20261016.md)。
+> 镜像28图/185节点已证，但152个外部节点接口要求尚未全部实际绑定；早期公开编码案例没有走F15整图advance。
+> 后续[云端固定鹈鹕F15主/独立隔离整图](../competition/evidence/cloud-f15-v4-20261016/README.md)已通过；不是通用编码、默认Desktop、CW06/F22或其他27图的验收。
+> 下表底座/待验边界保留，不能将任一整图批量升级done；最新GPU与原CPU记录分开。
+
 日期：2026-10-15。当前 Profile：`huawei_ict_agentarts`，架构未最终定型。
 本表从[实际模板数据](../../packages/agentarts/src/owned-workflow-data.ts)核对28图/185节点，
 配合[当前设计](CURRENT_DESIGN_20261015.md)、[逐接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md)

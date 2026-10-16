@@ -16,7 +16,8 @@ import {createHash} from 'node:crypto';
 import {TaskRuntime} from '@personal-agent/runtime';
 const deployment={provider:'fake',deployment:'offline-image-fixture',model:'fixture',verification:'mock',
   capabilities:{text:true,toolCalling:false,structuredOutput:false,streaming:false,vision:false,audioInput:false,audioOutput:false}};
-const envelope=value=>({ok:true,json:async()=>([{data:{text:JSON.stringify({testVersion:1,...value})}}])});
+const envelope=value=>({ok:true,json:async()=>([{event:'message',data:{text:JSON.stringify({testVersion:1,...value})}},
+  {event:'task_end',data:{}},{event:'end',data:{}}])});
 const deadline=()=>new Date(Date.now()+10000).toISOString();
 test('offline image fixture uses authenticated invocations and structured proposal through ModelGateway',async()=>{
   const calls=[];

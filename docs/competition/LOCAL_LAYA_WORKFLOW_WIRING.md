@@ -1,5 +1,10 @@
 # 本机 Laya 与镜像工作流接线
 
+> 2026-10-16 当前生成清单为152项（111 host、41 guard），旧148为历史数量。
+> [实物完整性审计](WORKFLOW_COMPLETENESS_AUDIT_20261016.md)明确图/引擎、节点接口注册与真实整图三种状态；
+> 早期孙悟空/鹈鹕工具循环不走F15 advance，不能据此宣布所有图完成。
+> 后续已真实上传V4并在AgentArts精确版本完成固定鹈鹕F15主/独立隔离整图，见[云端证据](evidence/cloud-f15-v4-20261016/README.md)；其余27图仍待验，完整输入150ms仍未达。
+
 ## 当前接线与真实边界（2026-10-15）
 
 各MOD负责人自己完成实现、公开契约、实际调用方接线、必要测试、Evidence及文档；新具体分工见 [接线总包](COLLABORATOR_WIRING_PACKAGE.md)，逐MOD输入输出/调用方/命令/缺口见 [全MOD清单](../modules/CURRENT_MOD_WIRING_HANDOFF.md)。根composition协调共享入口，不替全部模块代接代验。

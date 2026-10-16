@@ -1,8 +1,12 @@
 # 工作流生产接线增量 V4
 
+> 2026-10-16 [镜像完整性复核](WORKFLOW_COMPLETENESS_AUDIT_20261016.md)：152项为外部节点接口要求，非152项已注册业务。
+> 早期公开编码双案例走testVersion模型接口和本地runAgent，并非F15整图advance。
+> 后续V4已真实上传SWR并部署精确版本`arm64-v4-e38ef23d-r2`，固定鹈鹕F15主/独立隔离整图通过，见[云端证据](evidence/cloud-f15-v4-20261016/README.md)；其余27图仍待真实验收。
+
 目标为 `huawei_ict_agentarts`。本包延续本机 Laya、镜像内工作流、原 Runtime/Policy/ToolGateway/Evidence；不重新决定模型或架构，不恢复暂停的最小修复算法。当前长期负责人仍以 [MODULE_ASSIGNMENTS](../MODULE_ASSIGNMENTS.md) 为准，CW 分工以 [交付矩阵](COLLABORATOR_WIRING_PACKAGE.md) 为准。
 
-本轮未发布镜像。历史 V3 的 SWR、云版本、41 条真实工具 Evidence 和未达 150ms 的 Laya 结果保持原时间及范围，不能证明本轮新代码已部署。新增入口均 provisional，不新增 Core wire operation 或独立任务库。
+本轮在Owner后续上传授权下发布既有V4镜像，实际构建源e38ef23d；新云端回执与历史 V3 的 SWR、云版本、41 条工具 Evidence 分开。完整上下文Laya选择214—654ms仍未达150ms。新增入口均 provisional，不新增 Core wire operation 或独立任务库；单条F15通过不冻结其余入口。
 
 ## 生产调用链与接口
 
