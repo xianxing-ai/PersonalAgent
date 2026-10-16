@@ -10,6 +10,7 @@
   },
   "release": {
     "publicationStateSource": "Use actual GitHub Release readback; this packaging receipt does not assert remote availability",
+    "readbackEvidence": "handoff-publication.json",
     "tag": "agentarts-preview-local-laya-v3-244ca434",
     "url": "https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-local-laya-v3-244ca434"
   },
