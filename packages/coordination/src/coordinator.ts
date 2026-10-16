@@ -1,5 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
-import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult} from './index.js';
+import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult,parseExecutionModelSelection} from './index.js';
+import type {ExecutionModelSelection} from './index.js';
 import {AgentArtsResultUnknownError} from './agentarts-websocket.js';
 import type {
   CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationPort, CoordinationRequest,
@@ -13,6 +14,7 @@ const textOnlyRequestFields = [...requestFields, 'textOnly'];
 const isoDeadline = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
 interface ValidatedRequest {
+  readonly executionModel?:ExecutionModelSelection;
   readonly taskId: string;
   readonly revision: number;
   readonly goal: string;
@@ -87,6 +89,7 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
   let availableToolsValue: unknown;
   let hasAvailableTools = false;
   let textOnly = false;
+  let executionModel:ExecutionModelSelection|undefined;
   try {
     const hasContinuation = request !== null && typeof request === 'object'
       && Object.prototype.hasOwnProperty.call(request, 'continuation');
@@ -94,10 +97,12 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
       && Object.prototype.hasOwnProperty.call(request, 'availableTools');
     textOnly = request !== null && typeof request === 'object'
       && Object.prototype.hasOwnProperty.call(request, 'textOnly');
+    const hasExecutionModel=request!==null && typeof request==='object' && Object.prototype.hasOwnProperty.call(request,'executionModel');
+    const fields=hasContinuation ? continuationRequestFields
+      : hasAvailableTools ? availableToolsRequestFields : textOnly ? textOnlyRequestFields : requestFields;
     if (request === null || typeof request !== 'object' || Array.isArray(request)
       || (hasContinuation && hasAvailableTools) || (textOnly && (hasContinuation || hasAvailableTools))
-      || !hasExactEnumerableKeys(request, hasContinuation ? continuationRequestFields
-        : hasAvailableTools ? availableToolsRequestFields : textOnly ? textOnlyRequestFields : requestFields)
+      || !hasExactEnumerableKeys(request,hasExecutionModel?[...fields,'executionModel']:fields)
       || (textOnly && request.textOnly !== true)) invalidRequest();
     taskId = request.taskId;
     revision = request.revision;
@@ -106,6 +111,7 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
     signal = request.signal;
     continuationValue = hasContinuation ? request.continuation : undefined;
     availableToolsValue = hasAvailableTools ? request.availableTools : undefined;
+    executionModel=hasExecutionModel?parseExecutionModelSelection(request.executionModel):undefined;
   } catch {
     // Request getters and proxies are untrusted input; never echo their errors.
     throw new ProtocolError('INVALID_ARGUMENT', 'Invalid coordination request');
@@ -124,6 +130,7 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
   const continuation = continuationValue === undefined ? undefined : parseCoordinationContinuation(continuationValue);
   const availableTools = hasAvailableTools ? parseCoordinationAvailableTools(availableToolsValue) : undefined;
   return {taskId, revision, goal, deadline, signal, expiresAt,
+    ...(executionModel===undefined?{}:{executionModel}),
     ...(textOnly ? {textOnly:true as const} : {}),
     ...(continuation === undefined ? {} : {continuation}),
     ...(availableTools === undefined ? {} : {availableTools})};
@@ -202,6 +209,7 @@ export class CompetitionCoordinator implements CoordinationPort {
         signal: controller.signal,
         ...(validated.textOnly ? {textOnly:true as const} : {}),
         ...(validated.continuation === undefined ? {} : {continuation: validated.continuation}),
+        ...(validated.executionModel===undefined?{}:{executionModel:validated.executionModel}),
         ...(validated.availableTools === undefined ? {} : {availableTools: validated.availableTools}),
       });
       const invocation = Promise.resolve().then(() => {

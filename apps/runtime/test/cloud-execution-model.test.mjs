@@ -1,8 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRuntimeApplication,createDesktopSubagentDispatchTool} from '../dist/application.js';
+import {createRuntimeApplication,createAgentArtsRuntimeApplication,createDesktopSubagentDispatchTool} from '../dist/application.js';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {Client} from '@personal-agent/client';
+test('trusted factory carries selected model through the actual coordinator into invocation query',async()=>{
+  const selected={catalogRevision:'a'.repeat(64),modelId:'deepseek-v4.1-flash',reasoningEffort:'low'},queries=[];
+  const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'selected-runtime',
+    readDefaultExecutionModel:()=>selected,authorizationProvider:{read:async()=>'Bearer synthetic'},fetchImpl:async(_url,init)=>{
+      queries.push(JSON.parse(JSON.parse(init.body).query));
+      return new Response(JSON.stringify({event:'message',data:{text:'selected response',index:0}}),{status:200,headers:{'content-type':'application/json'}});
+    }});
+  try {
+    const client=new Client(app,Date.now);await client.connect();
+    const accepted=await client.call('task.submit',{goal:'hello',conversationId:'desktop-workspace'},{idempotencyKey:'factory-selection',timeoutMs:5000});
+    for(let index=0;index<200 && app.runtime.getTask(accepted.taskId).state!=='succeeded';index++) {
+      if(app.runtime.getTask(accepted.taskId).state==='failed')break;
+      await new Promise(resolve=>setTimeout(resolve,5));
+    }
+    assert.equal(app.runtime.getTask(accepted.taskId).state,'succeeded');assert.deepEqual(queries,[{goal:'hello',availableTools:[],executionModel:selected}]);
+  } finally {app.close();}
+});
 test('catalog selection failure after acceptance leaves a failed task and never falls back',async()=>{
   let sends=0;
   const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
