@@ -135,6 +135,27 @@ test('ordinary failures stay in paired quality denominator, absent baseline is n
   assert.equal(report.counts.failed, 1);
   assert.equal(score({records: [record()]}).pairs[0].qualityDelta, null);
 });
+test('an unresolved transport failure stays unknown and cannot enter a quality pair', () => {
+  const candidate = record(), pending = record('baseline');
+  pending.receipt.status = 'failed_or_unknown';
+  pending.receipt.parentTask.state = 'waiting_reconciliation';
+  pending.receipt.persistence.parentState = 'waiting_reconciliation';
+  pending.receipt.unknown = [{stage:'validation_receipt_resume', requestId:'req-3', code:'TRANSPORT_OR_RESPONSE_UNKNOWN'}];
+  pending.receipt.failure = {stage:'validation_receipt_resume', code:'TRANSPORT_OR_RESPONSE_UNKNOWN'};
+  delete pending.receipt.workflowCompletion;
+  delete pending.artifacts;
+  delete pending.review;
+  rebind(pending);
+  const report = score({records:[candidate,pending]});
+  assert.equal(report.records[1].checks.workflow, 'unknown');
+  assert.equal(report.records[1].status, 'unknown');
+  assert.equal(report.counts.unknown, 1);
+  assert.equal(report.counts.failed, 0);
+  assert.equal(report.pairs[0].ready, false);
+  assert.equal(report.pairs[0].reason, 'quality_evidence_incomplete');
+  assert.equal(report.pairs[0].qualityDelta, null);
+});
+
 test('review selection is an observation; no abstention quality or recovery success is invented', () => {
   const item = record(); item.receipt.laya = {records: [{event: 'laya_choice', model: 'multilingual', requestId: 'req-1', candidateId: 'owned-review', durationMs: 2}]};
   item.receipt.parentTask.state = 'failed'; rebind(item);
