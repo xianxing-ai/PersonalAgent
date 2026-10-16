@@ -30,6 +30,13 @@ export function createTimingRecorder(records,now=()=>new Date().toISOString(),cl
 export function timedProvider(provider,stage,records,timed=createTimingRecorder(records)) {
   return {...provider,complete:request=>timed('model',stage,()=>provider.complete(request))};}
 export function assertCurrentDelivery(source,expectedSha256) {assert.equal(sha(source),expectedSha256,'Delivery bytes differ from current verified SHA');}
+/** Data-only selection after the caller independently reads each verified file; never a write grant. */
+export function chooseVerifiedIdenticalDelivery(qualified) {
+  if(!Array.isArray(qualified)||!qualified.length||qualified.some(branch=>branch.status!=='verified'||branch.final?.passed!==true
+    ||typeof branch.planId!=='string'||!branch.planId||!/^[a-f0-9]{64}$/.test(branch.final?.currentSha256??'')))return undefined;
+  if(qualified.length!==1&&!qualified.every(branch=>branch.final.currentSha256===qualified[0].final.currentSha256))return undefined;
+  return {selectedId:qualified[0].planId,decided_by:'code',reason:qualified.length===1?'only_one_actually_qualified_result':'byte_identical_current_verified_results'};
+}
 export function injectPausedAnimations(config,source) {
   const check=spawnSync(config.python,[checker,'--pause-smil','-'],{input:source,encoding:'utf8',shell:false,windowsHide:true,timeout:remaining(config.deadline)});
   assert.ifError(check.error);assert.equal(check.status,0,'Structural fault injection must succeed');
@@ -373,7 +380,8 @@ export async function runWukongTestVersion(config) {
     let finalChoice;
     const comparisonInput={goal:'Choose actual verified result for single CAS delivery',results:qualified.map(b=>({mode:b.mode,planId:b.planId,
       final:b.final,wallMs:b.wallMs,evidenceRefs:b.evidenceRefs}))};
-    if(qualified.length===1)finalChoice={selectedId:qualified[0].planId,decided_by:'code',reason:'only_one_actually_qualified_result'};
+    const identical=chooseVerifiedIdenticalDelivery(qualified);
+    if(identical)finalChoice=identical;
     else finalChoice=await select('wukong.result-comparison',qualified.map(b=>({id:b.planId,description:JSON.stringify({mode:b.mode,
       sha256:b.final.currentSha256,passed:b.final.passed,wallMs:b.wallMs})})),comparisonInput,finalSources);
     report.finalChoice=finalChoice;

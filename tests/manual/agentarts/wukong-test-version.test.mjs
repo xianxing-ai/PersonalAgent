@@ -3,7 +3,19 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {createTimingRecorder,timedProvider,assertCurrentDelivery,browserObservation,injectPausedAnimations} from './wukong-test-version.mjs';
+import {createTimingRecorder,timedProvider,assertCurrentDelivery,browserObservation,injectPausedAnimations,chooseVerifiedIdenticalDelivery} from './wukong-test-version.mjs';
+
+test('only current passing byte-identical artifacts avoid semantic comparison; different or stale results do not',()=>{
+  const branch=(planId,hash='a'.repeat(64))=>({planId,status:'verified',final:{passed:true,currentSha256:hash}});
+  assert.deepEqual(chooseVerifiedIdenticalDelivery([branch('main'),branch('shadow')]),{
+    selectedId:'main',decided_by:'code',reason:'byte_identical_current_verified_results'});
+  assert.equal(chooseVerifiedIdenticalDelivery([branch('main'),branch('shadow','b'.repeat(64))]),undefined);
+  assert.equal(chooseVerifiedIdenticalDelivery([branch('main'),{...branch('shadow'),status:'failed'}]),undefined);
+  assert.equal(chooseVerifiedIdenticalDelivery([{...branch('main'),final:{passed:false,currentSha256:'a'.repeat(64)}}]),undefined);
+  assert.equal(chooseVerifiedIdenticalDelivery([branch('main','forged')]),undefined);
+  assert.equal(chooseVerifiedIdenticalDelivery([]),undefined);
+  assert.equal(chooseVerifiedIdenticalDelivery([branch('only')]).reason,'only_one_actually_qualified_result');
+});
 
 const checker=fileURLToPath(new URL('./check-wukong.py',import.meta.url));
 // Explicit minimal protocol fixture. This is not the real model-generated artwork or visual acceptance.

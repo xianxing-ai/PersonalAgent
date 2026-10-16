@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {appendFileSync} from 'node:fs';
-import {createTimingRecorder,timedProvider} from './wukong-test-version.mjs';
+import {createTimingRecorder,timedProvider,chooseVerifiedIdenticalDelivery} from './wukong-test-version.mjs';
 import {readFile,writeFile,mkdir,mkdtemp,realpath,stat,lstat} from 'node:fs/promises';
 import {join,resolve,isAbsolute,relative} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
@@ -315,7 +315,8 @@ export async function runPelicanTestVersion(config) {
     let finalChoice;
     const comparisonInput={goal:'Choose actual verified result for single CAS delivery',results:qualified.map(b=>({mode:b.mode,planId:b.planId,
       final:b.final,wallMs:b.wallMs,evidenceRefs:b.evidenceRefs}))};
-    if(qualified.length===1)finalChoice={selectedId:qualified[0].planId,decided_by:'code',reason:'only_one_actually_qualified_result'};
+    const identical=chooseVerifiedIdenticalDelivery(qualified);
+    if(identical)finalChoice=identical;
     else finalChoice=await select('pelican.result-comparison',qualified.map(b=>({id:b.planId,description:JSON.stringify({mode:b.mode,
       sha256:b.final.currentSha256,passed:b.final.passed,wallMs:b.wallMs})})),comparisonInput,finalSources);
     report.finalChoice=finalChoice;
