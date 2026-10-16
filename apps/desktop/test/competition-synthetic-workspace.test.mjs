@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 import {mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -11,6 +12,19 @@ const result = () => ({path: 'meeting-update.json', encoding: 'utf-8', byteLengt
 
 test('synthetic export projects only the explicitly approved meeting fields', () => {
   assert.deepEqual(projectSyntheticMeetingResult(result()), JSON.parse(content));
+});
+
+test('synthetic export verifies the production optional digest without exporting it', () => {
+  const sha256 = createHash('sha256').update(content, 'utf8').digest('hex');
+  assert.deepEqual(projectSyntheticMeetingResult({...result(), sha256}), JSON.parse(content));
+  for (const invalid of [undefined, '0'.repeat(64), sha256.toUpperCase(), 'invalid']) {
+    assert.throws(() => projectSyntheticMeetingResult({...result(), sha256: invalid}), /export denied/);
+  }
+  let reads = 0;
+  const accessor = {...result()};
+  Object.defineProperty(accessor, 'sha256', {enumerable: true, get() { reads++; return sha256; }});
+  assert.throws(() => projectSyntheticMeetingResult(accessor), /export denied/);
+  assert.equal(reads, 0);
 });
 
 test('synthetic export rejects arbitrary file results and expanded content with fixed errors', () => {
