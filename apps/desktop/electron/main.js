@@ -39,6 +39,7 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
+import {createWorkspacePatchRecoveryHost} from './workspace-patch-recovery-host.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
@@ -2209,6 +2210,15 @@ async function action(event, name, payload) {
     }
     const result = name === 'feeds.refresh' ? feedsHost.snapshot() : feedsHost[name.slice('feeds.'.length)](payload);
     if (name==='feeds.authorize') await admitNativeFeedInterest?.();
+    publish(); return result;
+  }
+  if (name === 'coding.reconcile') {
+    const application = runtimeApplication;
+    const authorized = () => sender === admin && !sender.isDestroyed()
+      && sender.webContents === event.sender && event.senderFrame === sender.webContents.mainFrame
+      && application === runtimeApplication && competitionMode && !syntheticMvp;
+    const recovery = createWorkspacePatchRecoveryHost({application, isAuthorized: authorized});
+    const result = await recovery.reconcile(payload);
     publish(); return result;
   }
   if (['coding.select','coding.selectNode','coding.selectNpmCli','coding.selectCheckFile','coding.authorize','coding.revoke'].includes(name)) {
