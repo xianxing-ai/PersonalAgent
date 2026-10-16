@@ -2,8 +2,13 @@
   "files": [
     {
       "file": "README.md",
-      "bytes": 7362,
-      "sha256": "00eea1084999cf4ac8bd1bcc41d014ea65c1766590c157a05c86366628c7f760"
+      "bytes": 12150,
+      "sha256": "e5194d6138f1953e7a399f6500cb08620072b7a10baee21e3a7e40e52b38c3f8"
+    },
+    {
+      "file": "code-checks.json",
+      "bytes": 27643,
+      "sha256": "8e3ace28ac5d818ee577e22663f3a70cef1b160df5ec1c02b7b0a56612eaff54"
     },
     {
       "file": "desktop-receipt.json",
@@ -14,6 +19,11 @@
       "file": "live-host-receipt.json",
       "bytes": 2214,
       "sha256": "70956511294580417d6df79898ffa05d8ac7ee21d1b7feb86031e6b53170f38e"
+    },
+    {
+      "file": "normal-startup-receipt.json",
+      "bytes": 2128,
+      "sha256": "e22e3dfa142033776328ed4d5c5136204b012722a85e83daff3f8b61fe452eb7"
     },
     {
       "file": "platform-models-before-permission.json",
@@ -39,6 +49,16 @@
       "file": "release.json",
       "bytes": 995,
       "sha256": "23c25dd6d334435259614019931c90d13c5f12bb32686b66d21eea27c6ad9da1"
+    },
+    {
+      "file": "sis-production-port-receipt.json",
+      "bytes": 2188,
+      "sha256": "09d763ff9e6b0039bc1d75811d651e109d68ced5ddcf7a93445348ab1b21d4a5"
+    },
+    {
+      "file": "sis-receipt.json",
+      "bytes": 2353,
+      "sha256": "21733bce58b711b2f2e3eddbf2fba4e8b934b331fd8bf73d023db1d04eff79ec"
     },
     {
       "file": "voice-receipt.json",

@@ -21,6 +21,9 @@ Profile 为 `huawei_ict_agentarts`，分支为 `codex/laya-owned-runtime`。本�
 | 先前同版平台独立读回 | `platform-models-final.json` | Qwen HTTP200；DeepSeek 主请求与续答 HTTP200，实际请求字段 low；保留此前 Qwen403 作对照。这是同版前一轮的读回，不冒充本次任务 ID 的平台日志 |
 | 原生实时语音 | `voice-receipt.json` | 同版 WSS / `pa.realtime.v1` → 百炼原生实时模型，输入转写、输出转写、音频、轮次结束和关闭全部齐备 |
 | 生产 Live Host 与采集边界 | `live-host-receipt.json` | 实际 broker、PCM source、Live Host 默认指令与 request_work/read_context 声明 → 相同云端；81 帧输入、65,280 字节输出音频、双方最终转写、轮次结束与释放确认齐备。设备事件及播放确认采用合成替身，未打开物理设备；本轮未实际触发工具调用 |
+| SIS 长期签名及实际识别/合成 | `sis-receipt.json` | 本机受信 safeStorage 读取 AK/SK，官方请求签名；TTS HTTP200 / 77,644 字节音频，其公开中文 PCM 再送 ASR HTTP200，结果非空且识别到测试短句。仅诊断直连 SIS，未经过 AgentArts，不开麦、不播放 |
+| 普通启动恢复 | `normal-startup-receipt.json` | 从常规页原 `app.quit` 正常退出，旧进程及窗口已消失；普通 package 入口重开后 Runtime ready，AgentArts/Live/SIS configured 均 true。未使用 bootstrap、环境凭据替代或启动时重写；两份密文摘要保持不变 |
+| SIS 生产端口 | `sis-production-port-receipt.json` | 正式配置只读副本 → 当前 production ASR/TTS port 与签名器，两个请求均 HTTP200、端口成功；ASR 原 `chinese_16k_general` 正确识别公开短句，TTS 的合成播放端口收到77,644字节并释放。无实体设备、无原配置写入，不经 AgentArts |
 
 原任务状态与模型回答中的 `verification=unverified` 保留。简单数学值可独立校验，但本记录不把模型自报提升为业务工具或代码执行 Evidence。子任务没有文件操作，所以其 `evidenceRefs` 为空；父 dispatch 的原执行记录由 Runtime 保存。
 
@@ -37,11 +40,25 @@ Profile 为 `huawei_ict_agentarts`，分支为 `codex/laya-owned-runtime`。本�
 
 失败摘要见 `prior-failures.json`；私人完整日志仍留本机。早先完整根检查曾分别遇到旧夹具错误和一次邮件分类不可用；后者未稳定复现，根因仍 unknown。已有串行 Desktop、Runtime、根集成通过记录不等于最新提交的全量检查，最终检查单独登记。
 
-用户随后在实体录音路径报告“音频发送失败，已停止录音”。合成边界与云端通过不足以确定该故障根因：当前增加安全诊断与明确错误展示，实体麦克风修复结果仍为 unknown。用户停止界面自动操作后，本轮没有再接管其应用、麦克风或扬声器。SIS 本机缺少独立配置，且当前没有经 AgentArts 的 SIS 适配，仍未连接。
+用户随后在实体录音路径报告“音频发送失败，已停止录音”。合成边界与云端通过不足以确定该故障根因：当前增加安全诊断与明确错误展示，实体麦克风修复结果仍为 unknown。用户停止界面自动操作后，本轮没有再接管其应用、麦克风或扬声器；随后单独授权了华为 SIS 页面的开通操作。
+
+排查时 SIS 本机缺少独立配置。后续找到受信加密 AK/SK，改用长期逐请求签名并保留原 Token/API 配置。北京四、上海一项目的最初探针均返回401 / SIS.0004；明确响应为 `not subscribe this service.`。控制台进一步证实旧 `personalagent-sis` 用户两项服务早已开通，当前密钥主体是主账号，不能据主账号失败否定用户过去配置。Owner 明确允许后，仅为本人账号开通北京四的一句话识别与语音合成，保留原用户及 Everyone 状态，不购买资源包、不充值、不改 IAM。随后公开合成音频的 TTS→ASR 两请求通过，历史失败保留；没有经 AgentArts 的 SIS 适配。
+
+该次 SIS 代码路径耗时 1985.4502ms：安全配置读取 6.4614ms；TTS 签名 4.2507ms、HTTP响应 780.9382ms、响应读取/解析 514.803ms；ASR 签名 0.3647ms、HTTP响应 673.707ms、响应读取/解析 1.5165ms。这是一次公开短句探针，含网络与响应体传输，不是稳定延迟、纯模型前向或实体听写听感测量。
+
+普通启动曾显示配置缺失，真实失败已保留。根因为辅助脚本的加密 profile 错配：AgentArts 的辅助启动脚本在异步等待后才设置 profile，实际使用了 Electron 默认 profile 的密钥；SIS helper 则使用独立 profile，却将密文写入正式目录。独立探针和专用驱动此前通过不构成普通启动恢复证明。已备份原密文，仅在受信内存中解密并以正式 profile 重新加密，独立新进程前后读回一致；原 profile 密钥、Live 文件及原 API 设置未改，不重新申请凭据。随后正式 package 入口启动通过，源码为 `618612a156798ca306768ff0b48b5fea7f9bbcd9`；该次启动没有 bootstrap 或配置环境替代，stderr 为0字节。常规页退出按钮也恢复为可见，复用原退出检查，未强杀进程。
+
+该提交普通合入 `origin/main@18ec9efe`，保留协作者的请求预算和版本化上下文实现；模型设置保留独立挂载，预算单独刷新不重绘未保存表单。未注入已验证 tokenizer 时仍显示未计量，不将独立 API 预算展示当作 AgentArts 完整上下文计量。
+
+同一 `618612a1` 又使用正式配置与 Local State 的只读副本，直接调用当前构建的生产 SIS ASR/TTS 端口及真实签名器，排除手写 HTTP 探针与应用请求参数不同的接线缺口。配置读取79.3164ms，ASR端口818.7888ms，TTS端口1255.9395ms，总代码2155.6034ms；回执记录签名、HTTP及端口后处理分段和4份源码/构建产物摘要。TTS 的播放确认仍是合成替身，不能作为扬声器通过证据；原应用和配置未被测试进程修改。
 
 `live-host-receipt.json` 中的镜像来源仅绑定云端版本；本地 Host 在未提交工作树中测试，测试时未记录逐文件摘要，不能把后续提交或其全部 UI 改动当作该次实测对象。多对话、输入优化与原生推理强度控件另以代码及定向回归验证，最终渲染尚待用户重启后复核。
 
 ## 运行与边界
+
+2026-10-16 最终整合检查见 `code-checks.json`，源码为 `618612a156798ca306768ff0b48b5fea7f9bbcd9`。使用 Node24.15.0 / npm11.12.1，完整 `npm run check` 退出码0：架构、契约夹具、生成类型、构建、类型检查、工作区及根集成均通过。37组报告合计3,839项，3,818通过、21跳过、0失败；其中 Runtime659/659，根集成47/47，Desktop1058项中1054通过、4项跳过。跳过不作为成功，所有原断言保留。
+
+此前 `3714188f` 阶段不是一次根命令全绿：首轮在 Windows 嵌套 npm 环境中找不到 Node；精简测试进程 PATH 后补过该阶段。随后缺 OpenSSL/dotnet 与旧测试夹具未注入新会话依赖的失败保留，补回现有工具路径并修复夹具及一处后台任务归属兼容问题后，分阶段复验。先前 Node26 中断的 Desktop 尝试不算通过。本次因整合主线的上下文/预算接线，才对 `618612a1` 完整重跑并取得退出码0。没有修改系统 PATH、安装工具、删断言或把跳过当成功。各轮日志摘要与 SHA256 分开记录；真实云端、设备和视觉状态不由此升级。
 
 按仓库规定版本安装依赖并构建后，在根目录运行 `npm run start:desktop`。设置 → 模型中填写本机安全保存的 AgentArts 连接、精确部署版本、WSS URL，并刷新目录。原独立 API 字段保留；比赛模式语音走 AgentArts，F8 按现有 Live 设置由用户启用，保存配置不打开麦克风。凭据不随源码或交接包分发。
 
