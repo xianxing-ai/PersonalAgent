@@ -20,6 +20,18 @@ export function describeModelThinking(entry, depth) {
 }
 
 /** Renderer-only controls. Invoke must be a restricted trusted-host IPC bridge. */
+export function describeModelRequestBudget(entry) {
+  const value = entry?.requestBudget;
+  if (value?.state !== 'measured' || value.scope !== 'provider-body' || value.hiddenContext !== 'unknown'
+    || value.configurationRef !== entry.configurationRef
+    || ![value.inputTokens,value.contextTokens,value.reservedOutputTokens].every(Number.isSafeInteger)
+    || value.inputTokens < 0 || value.reservedOutputTokens < 1
+    || value.inputTokens > value.contextTokens-value.reservedOutputTokens) {
+    return '可见模型输入尚未计量；平台额外上下文未知，暂不能确认剩余容量。';
+  }
+  return `最近一次可见输入 ${value.inputTokens} Token；窗口 ${value.contextTokens} Token；输出预留 ${value.reservedOutputTokens} Token。仅覆盖此辅助模型的可见输入，平台额外上下文未知。`;
+}
+
 export function mountModelApiControls(root, invoke) {
   const settings = document.createElement('details');
   settings.className = 'sis-settings';
@@ -45,12 +57,13 @@ export function mountModelApiControls(root, invoke) {
       <label><input data-model-api="reasoningConfirmed" type="checkbox">确认此目的地与模型支持所选参数</label>
     </fieldset>
     <p data-model-api="capabilities" class="notice"></p>
+    <p data-model-api="requestBudget" class="notice" role="status"></p>
     <button data-model-api="save" type="button">保存加密配置</button>
     <button data-model-api="remove" type="button">删除并撤销</button>
     <p data-model-api="status" class="notice" role="status"></p></div>`;
   root.append(settings);
   const field = name => settings.querySelector(`[data-model-api="${name}"]`);
-  let state = {}, busy = false, closed = false;
+  let state = {}, busy = false, closed = false, destinationChanged = false;
   const effortInputs = [...settings.querySelectorAll('[data-model-effort]')];
   const buttons = () => {
     settings.setAttribute('aria-busy', String(busy));
@@ -58,6 +71,7 @@ export function mountModelApiControls(root, invoke) {
     field('remove').disabled = busy || !field('saved').value;
   };
   function select() {
+    destinationChanged = false;
     const entry = state.models?.find(item => item.id === field('saved').value);
     for (const name of ['displayName', 'baseUrl', 'model']) field(name).value = entry?.[name] ?? '';
     field('provider').value = entry?.provider ?? 'pangu';
@@ -72,6 +86,7 @@ export function mountModelApiControls(root, invoke) {
     field('capabilities').textContent = entry
       ? `${entry.available ? '已配置，真实连接尚未验证' : '当前不可用或已停用'} · 文本与 JSON 工具提案；原生推理${entry.nativeReasoning ? `已配置 ${entry.nativeReasoning.thinking} / ${entry.nativeReasoning.effort ?? '供应商默认'}` : entry.reasoningEfforts?.length ? `已声明 ${entry.reasoningEfforts.join(' / ')}` : '未声明'}；thinkingBudget 不支持`
       : '执行步骤预算由任务控制；原生推理默认不发送，thinkingBudget 不支持';
+    field('requestBudget').textContent = describeModelRequestBudget(entry);
     buttons();
   }
   function render(value = {}, selectedId = field('saved').value) {
@@ -102,6 +117,8 @@ export function mountModelApiControls(root, invoke) {
   }
   field('saved').onchange = select;
   for (const name of ['provider', 'baseUrl', 'model']) field(name).addEventListener('input', () => {
+    destinationChanged = true;
+    field('requestBudget').textContent = '目的地或模型已更改，需要重新取得预算计量结果。';
     for (const input of effortInputs) input.checked = false;
     field('nativeThinking').value = '';
     field('nativeEffort').value = '';
@@ -132,7 +149,11 @@ export function mountModelApiControls(root, invoke) {
   };
   field('remove').onclick = () => run('modelApi.remove', {id: field('saved').value});
   select();
-  return {render, showSettings(show) {settings.hidden = !show;}, close() {
+  return {render, updateBudget(value) {
+    if (closed) return;
+    state = value;
+    if (!destinationChanged) field('requestBudget').textContent = describeModelRequestBudget(state.models?.find(entry=>entry.id===field('saved').value));
+  }, showSettings(show) {settings.hidden = !show;}, close() {
     closed = true; field('key').value = ''; settings.remove();
   }};
 }

@@ -61,6 +61,18 @@ ToolGateway 和签名 HostBridge 回执。catalog 新增 designCoverage 和 adap
 - **#350 原生 thinking**（`2009d4c1`）：沿现有 ModelGateway、Runtime 辅助子任务工厂及 Desktop 加密配置提供 host-only `nativeReasoning`，开关、支持列表、固定强度、输出预算和恢复身份绑定仍按原契约消费。已合入不证明所有真实模型端点支持；模型/工具链继续 provisional。
 - **#361 请求级观测**（`fef57f61`）：公开 `@personal-agent/agentarts/observability` 的 `validateInvocationIdentity`、`projectTraceObservation`、`projectRunLogObservation`、`buildRunLogPath`，以及现有手工 reader 的 `readAgentArtsTraceObservation`/`readAgentArtsRunLogs`。读取有绝对 deadline、取消、大小上限、单次 GET、禁重定向和脱敏约束；实际 invocation 身份来自受信调用记录。平台日志关联回执不等于完整 trace、命中版本、成本、效果评估或原生知识已验证，缺字段/权限/adapter 仍明确 unknown/unavailable。见 [MOD-32](../modules/MOD-32-AGENTARTS-OBSERVABILITY.md)。
 - **#359 取消后的补丁核实收口**（`8c395f5f`）：现有 `WorkspacePatchReconciliationAdapter.reconcile` 与 `TaskRuntime.reconcileToolExecution` 在 Competition 已申请取消时仍先保存原 applied 结果、普通工具结果与 marker 确认；仅无 started/unknown 工具和云端 inflight/unknown 后确认取消。未知写不重做，已发生副作用保留，补丁成功不等于任务成功；取消受理仍不等于执行已停止。见 [补丁恢复验收](../../packages/coding-tools/ACCEPTANCE-20261013.md)。
+## 2026-10-15 Competition 预算展示（provisional）
+
+[预算展示工作包](../modules/MOD-04A-BUDGET-DISPLAY-20261014.md) 沿既有 modelApi.state / Admin snapshot 展示经过宿主校验的 Provider 计量元数据，保持原 IPC 和 wire Schema；不持久化新增采样、正文或凭据。默认 meter 未配置则未计量，隐藏上下文未知。固定官方词表的 Windows 原始文本核验不等于完整模板/MaaS 验收，生产不自动启用实验 meter。无新增 capability、迁移、产品依赖或冻结范围变化；原生 Electron/IPC 烟测通过，云调用 0。
+
+## 2026-10-14 Competition 可见模型请求预算（provisional）
+
+[F27 Provider 工作包](../modules/MOD-04A-VISIBLE-REQUEST-BUDGET-20261014.md) 增加 host-only `VisibleRequestTokenBudget`、`ModelCapabilities.requestTokenBudget` 和 `ModelResult.requestBudget`，沿 OpenAI compatible 序列化与 Competition 子任务工厂接线。明确模型/tokenizer/configuration 版本及显式窗口，计量工具提示包装之后的完整 Provider 请求；输出预留映射实际输出字段，凭据前/后校验，SQLite 恢复绑定预算描述。无计量器明确 unmeasured；hiddenContext 为 unknown，不能据此保证平台完整上下文窗。无新 wire capability、Schema、迁移、依赖或 frozen 范围变化；真实模型/tokenizer、自有镜像及 Desktop 展示仍待验收。见 [ADR-0026](../adr/0026-visible-model-request-budget.md)。
+
+## 2026-10-14 Competition 编译上下文增量（provisional）
+
+[F27 上下文工作包](../modules/MOD-09-CONTEXT-BINDING-20261014.md) 沿原 `coordinationInput` 与 TaskRuntime 增加 `competition-context:v1` 摘要绑定和 host-only `CoordinationGoalTokenBudget`。可信同步计数只覆盖最终编译 goal，加宿主输出预留；Desktop 未配置已验证 tokenizer 时记为 unmeasured。字符上限仍为 16000 UTF-16 units；发送、凭据等待与恢复比较版本，新检查点由原逐事实父/子任务删除链路清理。无 wire capability、Schema、迁移或冻结范围变更。真实云调用 0，非作者评审及集成待完成；见 [ADR-0025](../adr/0025-competition-context-binding.md)。
+以上三个上下文/预算工作包随 `origin/main@18ec9efe` 合入本分支；原日期、作者记录和验证边界保留。“评审及集成待完成”为当时状态，不覆盖后续 Git 合入事实；不据此增加 frozen 范围或真实服务验收。
 
 ## 2026-10-13 Competition 辅助模型原生思考配置（provisional）
 

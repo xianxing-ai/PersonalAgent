@@ -378,10 +378,11 @@ export function mountAdmin(root, invoke, escape) {
     agentArtsControls?.show(showAgentArts);
     if (section === 'models' && data.modelApi) {if(!modelApiControls){modelApiRoot=document.createElement('div');modelApiRoot.dataset.modelSettingsSection='independent-api';modelApiControls=mountModelApiControls(modelApiRoot,invoke);}if(!agentArtsModelControls){agentArtsModelRoot=document.createElement('div');agentArtsModelRoot.dataset.agentartsModelMounted='true';agentArtsModelRoot.dataset.modelSettingsSection='model-selection';agentArtsModelControls=mountAgentArtsModelControls(agentArtsModelRoot,invoke);}}
     agentArtsModelControls?.update(data.agentArtsModels);
-    const nextModelApiSignature = JSON.stringify(data.modelApi);
+    const nextModelApiSignature = JSON.stringify(data.modelApi,(key,value)=>key==='requestBudget'?undefined:value);
     if (modelApiControls && modelApiSignature !== nextModelApiSignature) {
       modelApiControls.render(data.modelApi);modelApiSignature=nextModelApiSignature;
     }
+    else if (modelApiControls && data.modelApi) modelApiControls.updateBudget(data.modelApi);
     modelApiControls?.showSettings(section === 'models');
     if(agentArtsModelRoot)agentArtsModelRoot.hidden=section!=='models';
     if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;

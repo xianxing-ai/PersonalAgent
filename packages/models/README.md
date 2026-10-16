@@ -33,6 +33,14 @@ PR #347/F28 的首批落地复用 Runtime `createConfiguredSubagentModelGateway`
 
 能力中的 `nativeReasoning` 是条件性配置说明，经过 StructuredToolProvider 保留；不证明真实原生工具调用、原生思考支持或端点可用。Competition 子任务的步骤档位不覆盖固定原生配置，配置版本与原生说明参与持久绑定。见 [ADR-0024](../../docs/adr/0024-competition-native-reasoning.md) 和 [本包验收](../../docs/modules/MOD-04A-NATIVE-REASONING-20261013.md)。Local Profile 不新增执行入口，真实云验收仍待授权。
 
+## Competition 可见请求预算（provisional）
+
+`OpenAICompatibleModelProviderOptions.requestTokenBudget` 是受信宿主的 `VisibleRequestTokenBudget`，包含 model、tokenizerRef、configurationRef、reservedOutputTokens 与同步 countInputTokens(serializedBody)。必须显式提供 contextLimitTokens，且模型身份一致；声明不是已验证 tokenizer。计量器解析完整 Provider JSON，并按实际模型模板计量输入，不能用字符比例或 JSON 字节数冒充精确 token。
+
+计量位于 StructuredToolProvider 包装之后，包含工具目录、可见系统提示、消息和已确认继续回执。每次调用在凭据之前检查 `inputTokens <= contextTokens - 实际输出预留`，等待凭据后复测；漂移拒绝发送。请求体提前生成且不再读取可变消息。未传 maxOutputTokens 时使用宿主预留，传入值只能收窄；原生声明决定唯一输出字段。历史无计量配置保持字段兼容，ModelResult.requestBudget 明确 unmeasured。
+
+ModelCapabilities.requestTokenBudget 只含版本与预算元数据，ModelResult.requestBudget 记录测量结果；scope 为 provider-body，hiddenContext 始终 unknown，不覆盖平台隐藏提示或后续 fetch 改写，也不替代累计 usage。宿主更换模型、tokenizer 或配置时须更换版本并重建网关，Competition 的原子任务恢复比较该声明。没有新增持久正文、wire Schema、迁移或依赖；自有镜像生产配置与 Desktop 展示尚未接入。见 [ADR-0026](../../docs/adr/0026-visible-model-request-budget.md)。
+
 ## 原生 Live 响应生命周期
 
 `QwenRealtimeModelGateway` 保持现有公开请求/会话/事件形状。工具请求关联当前 `response_id`，同一 `call_id` 只执行和回传一次；当前 response 完成且本轮所有工具已回传后才发送一次续答。旧/重复完成事件不能清空新 response 或重复 drain，取消的 response 不被记作完成。
