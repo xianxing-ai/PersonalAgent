@@ -34,6 +34,12 @@ token 只在独立窗口临时输入，提交后清空字段，主进程加密�
 
 证据：工作树忽略日志 `.cache-mcp-management-targeted-with-quit.log`、`.cache-mcp-product-smoke-final.log`、`.cache-desktop-smoke.log`、`.cache-check.log`（首轮失败）、`.cache-check-final.log`（最终门禁），最终产品截图 `.cache/remote-mcp-product/case-NKk7nA/management.png`。公开复现入口为 Desktop 新增 product smoke script；case 名随每次运行变化。最终产品烟测另验证 Runtime 未配置时仍可保存加密配置、试调用保持禁用；真实模型/AgentArts 调用仍为 0。
 
+## 2026-10-16：持久回执消费协作集成
+
+用户已授权提交、普通推送更新现有 PR 与依赖同步，不合入 main。本树普通合并协作者 `62bf69c7`，保留原 Runtime 持久回执、精确活动调用观测和 SDK 迟发请求修复。正常终态可以回收本地槽位，不再交付本轮试验中的容量满后强制重启界面；原未知结果仍不得自动重发。细节与限制见 [容量回执记录](MOD-06-CAPACITY-RECEIPTS-20261016.md)。
+
+协作同步前的试验组合曾完整 check 3243 通过、32 跳过、0 失败，实际 Electron 产品烟测通过；对话框响应及 loopback HTTP 为显式合成，main/Preload/Renderer/safeStorage/SQLite 为实际实现。该结果不冒充新回执消费组合的验证。前两次失败日志、Wiki 未证实原因与 ToolGateway 假时钟修复见 [核心集成记录](MOD-06-REMOTE-READONLY-20261015.md)。新组合以更新后的本地日志与远程当前 head 门禁为准，云调用保持 0。
+
 ## 未完成与交付
 
 真实远程 HTTPS/MCP 服务、OAuth、服务端 token 撤销、任意服务/写工具、云端目录和结果出口、真人确认、跨进程配置并发写与首次系统加密状态未落盘时的强制退出恢复未验收。本界面是固定单个已审查只读定义的管理入口，不是通用市场或任意工具自动授权。

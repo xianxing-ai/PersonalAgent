@@ -153,6 +153,18 @@ test('host lifetime run limit bounds retained results and cannot be reset by rec
   }finally{await f.close();}
 });
 
+test('directory revocation on the final retained run preserves its error and disables the connection',async()=>{
+  const f=await fixture();
+  try{
+    await f.host.start({signal:signal(),deadline:future()});
+    for(let i=0;i<63;i++)await f.host.tools[0].execute({key:'public'},context('revocation-'+i));
+    f.mode.sse=true;f.mode.changed=true;
+    await assert.rejects(f.host.tools[0].execute({key:'public'},context('last-revoked')),denied('REVISION_CONFLICT'));
+    assert.equal(f.host.health().errorCode,'REVISION_CONFLICT');assert.equal(f.host.health().connected,false);
+    assert.equal(f.calls().length,64);
+  }finally{await f.close();}
+});
+
 test('cancellation, deadline and stop abort active HTTP and do not retry',async()=>{
   for(const reason of ['cancel','deadline','stop']){
     const f=await fixture({delay:300});const controller=new AbortController();
