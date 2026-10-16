@@ -44,6 +44,8 @@ const {_electron}=require('playwright');
     const native={thinking:'enabled',effort:'max',supportedEfforts:['max'],outputTokenParameter:'max_completion_tokens'};
     assert.deepEqual(state.models[0].nativeReasoning,native);
     assert.equal(state.models[0].nativeReasoningVerified,false);
+    assert.equal(state.models[0].requestBudget.state,'unmeasured');
+    await admin.waitForFunction(()=>document.querySelector('[data-model-api="requestBudget"]').textContent.includes('尚未计量'));
     assert.equal(await field(admin,'key').inputValue(),'');
     assert.doesNotMatch(JSON.stringify(state),/synthetic-not-a-real-key/);
     assert.doesNotMatch(fs.readFileSync(path.join(userData,'model-api-config.json'),'utf8'),/synthetic-not-a-real-key/);

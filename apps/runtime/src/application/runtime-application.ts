@@ -16,6 +16,9 @@ import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllo
 import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
 import type {LocalRepairHostOptions, SubmitLocalRepairRequest} from './local-repair.js';
 import {isDeepStrictEqual} from 'node:util';
+import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
+  measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
+import type {CoordinationGoalTokenBudget} from './context-binding.js';
 import {RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import type {CompetitionAvailableTool, CompetitionToolAvailability} from './tool-catalog.js';
 import {ScopedEvidenceReader} from './evidence-reader.js';
@@ -297,11 +300,13 @@ export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,me
   const goal=messages.length ? JSON.stringify({publicGoal,
     ...(preparedGoal===publicGoal ? {} : {ephemeralGoal:preparedGoal}),
     conversationContext:{treatment:'untrusted_data',messages}}) : preparedGoal;
-  if(goal.length>16_000)throw new ProtocolError('INVALID_ARGUMENT','任务、Skill 与对话上下文合并后超过 16000 字符限制，请缩短内容或减少对话历史');
+  if(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT)throw new ProtocolError('INVALID_ARGUMENT','任务、Skill 与对话上下文合并后超过 16000 字符限制，请缩短内容或减少对话历史');
   return goal;
 }
 /** All hooks are trusted host composition, never model supplied. Bodies remain process-local. */
 export interface CoordinationInputHooks {
+  /** Optional host meter. Absent means token count is unmeasured, never inferred from characters. */
+  goalTokenBudget?: CoordinationGoalTokenBudget;
   prepareCoordinationGoal?: (scope:CoordinationGoalScope)=>Promise<string>;
   readConversationContext?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>Promise<readonly ConversationContextMessage[]>;
   /** Must be synchronous, and called by the adapter again after credential awaits. */
@@ -326,6 +331,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly windowsHostRecovery: RuntimeApplicationOptions['windowsHostRecovery'];
   private readonly ephemeralSends = new Map<string, CoordinationRequest>();
   private readonly ephemeralGoals = new Map<string,{publicGoal:string;preparedGoal:string}>();
+  private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[]}>();
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
   private readonly competitionToolExports: readonly CompetitionToolExport[];
   private competitionMaxSteps: number;
@@ -608,6 +614,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   async eraseTaskCopies(input:Omit<Parameters<TaskRuntime['eraseTaskCopies']>[0],'externalCopiesPurged'>) {
     this.coordinationInput?.releaseTask?.(input.taskId);
     this.ephemeralSends.delete(input.taskId);this.ephemeralGoals.delete(input.taskId);
+    this.ephemeralContexts.delete(input.taskId);
     this.runtime.eraseTaskCopies({...input,externalCopiesPurged:false});
     let externalCopiesPurged=!this.coordinationInput?.onEphemeralReply;
     if(this.coordinationInput?.eraseEphemeralCopies) {
@@ -664,12 +671,20 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       return !message.withheld && (!message.taskId || !this.isHistoryWithheld(message.taskId));
     }).slice(-CONVERSATION_HISTORY_LIMIT);
     const privateDerived=prepared!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
-    // Context is data, never instructions or an authorization. It is not checkpointed.
+    // Context is data, never instructions or an authorization. Only digests are checkpointed.
     try {
       const goal=compileCoordinationGoal(request.goal,prepared,context);
+      const binding=bindCompiledContext({taskId:task.taskId,conversationId:task.conversationId ?? '',
+        deadline:request.deadline,configurationRef:this.coordinationBinding,publicGoal:request.goal,
+        preparedGoal:prepared,compiledGoal:goal,messages:context,
+        privateBinding:this.readPrivateTaskBinding(task.taskId)},hooks.goalTokenBudget);
+      if(!this.runtime.saveCheckpointOnce(task.taskId,COMPETITION_CONTEXT_CHECKPOINT,binding)) {
+        assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,COMPETITION_CONTEXT_CHECKPOINT),binding);
+      }
       const effective=Object.freeze({...request,goal});
       this.ephemeralSends.set(task.taskId,effective);
       this.ephemeralGoals.set(task.taskId,{publicGoal:request.goal,preparedGoal:prepared});
+      this.ephemeralContexts.set(task.taskId,{binding,historyTaskIds:context.flatMap(message=>message.taskId?[message.taskId]:[])});
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
       this.assertInputActive(request);
@@ -685,6 +700,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     } finally {
       this.ephemeralSends.delete(task.taskId);
       this.ephemeralGoals.delete(task.taskId);
+      this.ephemeralContexts.delete(task.taskId);
       if(privateDerived)hooks.releaseTask?.(task.taskId);
     }
   }
@@ -1406,6 +1422,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           void Promise.resolve(guardResult).catch(()=>undefined);
           throw new Error();
         }
+        const lease=this.ephemeralContexts.get(request.taskId);
+        if(!lease || lease.historyTaskIds.some(taskId=>this.isHistoryWithheld(taskId)))throw new Error();
+        const {binding}=lease;
+        assertCompiledContextUnchanged(this.runtime.loadCheckpoint(request.taskId,COMPETITION_CONTEXT_CHECKPOINT),binding);
+        assertCompiledContextUnchanged(binding.budget,measureCompiledGoal(request.goal,this.coordinationInput.goalTokenBudget));
+        const privateBinding=this.readPrivateTaskBinding(request.taskId);
+        const privateDigest=privateBinding===undefined ? undefined : createHash('sha256').update(JSON.stringify(privateBinding)).digest('hex');
+        if(privateDigest!==binding.privateBindingDigest)throw new Error();
       } catch {
         this.assertInputActive(request);
         throw new ProtocolError('UNAUTHORIZED','Coordination input export denied');
@@ -1472,7 +1496,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(this.activeTextTasks.size || this.activeWindowsRecovery.size || this.workspacePatchReconciliation?.activeCount)throw new ProtocolError('REVISION_CONFLICT','Cannot close while workers or recovery are active');
     this.referenceSkill?.dispose(); this.observationSessions.stopAll(); this.mailReadSessions.stopAll();
     for(const taskId of this.ephemeralSends.keys())this.coordinationInput?.releaseTask?.(taskId);
-    this.ephemeralSends.clear();this.ephemeralGoals.clear();this.runtime.close();
+    this.ephemeralSends.clear();this.ephemeralGoals.clear();this.ephemeralContexts.clear();this.runtime.close();
   }
 
   /** One fixed worker-level Skill. No nested tool execution or model loop. */
