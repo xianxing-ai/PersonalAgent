@@ -48,6 +48,8 @@ await mcp.dispose();
 
 同 task/run 绑定输入，只重放当前会话已确认的结果；失败、取消、断连或换连接后的旧 run 均不自动调用，须由 Runtime 核实或按新 run 提交新任务。会话 map 不替代 Runtime 的持久授权/执行记录。`health()` 仅返回状态、固定工具名、计数、协商版本和脱敏错误码，不暴露 endpoint、session ID 或远端诊断。
 
+单个 host 生命周期最多保留 64 个 run 身份（包含失败/未知结果），每条结果仍受 1 MiB 限制；达到上限时新 run 在网络请求前以 `RESULT_UNKNOWN` 拒绝。stop/断线后重连不重置身份配额，stop 释放结果内容并保留输入绑定，旧 run 不重发。恢复服务需受信宿主重新创建 host，并依赖原 Runtime 持久记录防止跨实例重放；普通重连不能绕过上限。
+
 `node --test packages/mcp/test/remote-http.test.mjs` 使用真实本机 HTTP 监听与显式 synthetic MCP fixture，经受信 fetch 端口将固定测试 HTTPS 地址映射到 loopback。覆盖 JSON 与 Streamable HTTP 的 SSE 响应、Policy 一次性授权、身份/schema/目录漂移、认证失败、重定向、大小限制、取消/超时、断连、重连与释放。它不是第三方服务、远程 TLS、OAuth 或真实 Competition/AgentArts 验收。生产 Desktop/Competition composition 尚未注入此 host；持久配置、鉴权引用、写工具及未知写入恢复属 G11/G14。
 
 SDK `1.31.0` 的 StreamableHTTP class declaration 与项目 exact optional 检查冲突，采用其公开 runtime export 的窄传输端口，不修改 node_modules、不放宽编译选项。方案与兼容边界见 [ADR-0029](../../docs/adr/0029-remote-mcp-readonly-transport.md) 和[本包记录](../../docs/modules/MOD-06-REMOTE-READONLY-20261015.md)。
