@@ -44,12 +44,22 @@ read ack、撤回和轮次预占/投递状态写入均返回 `UNSUPPORTED_CAPABI
 父层静默、quietHours 和每层配额均保留为 `constraints`；局部 normal/null/允许紧急不能绕过全局限制。
 显示用 effective 字段不替代多窗口约束。静态 legacy pause/quiet 在发送前仍执行。
 
+Desktop 注入共享宿主时，原 Todo 已保存的 `quietHours/pauseUntilUtc/digest` 以
+`{kind:'connector',connectorId:'productivity'}` 保留在同一个原子状态中；不会成为其他来源的规则，
+也不要求用户先填写新增 global 额度。原 digest 的窗口、条数和 sources 按原语义继续生效。
+受信 `importLegacyPolicy(scope,policy)` 只首次导入；重启不覆盖已由原 Gateway/CAS 修改的策略。
+原设置页更新使用同一 `notifications.interruption_policy.set` 工具的 `legacyPolicy` 形态，
+与 `patch` 互斥，仍绑定完整 operationId/revision/scope/参数与原用户授权。
+用户明确修改同作用域新策略中的 mode/silentUntilUtc、quietHours 或 digestMode 时，分别替换旧暂停、
+安静或摘要字段；其他旧字段继续保留。新 global 策略不会无声清除 productivity 的旧规则。
+
 ### 新宿主 API
 
 | 方法 | 返回/保证 |
 | --- | --- |
 | `getInterruptionPolicy(scope)` | state、作用域 revision（尚未建为0）、local/effective、全部 constraints、observedAt |
 | `updateInterruptionPolicy({operationId,expectedRevision,scope,patch})` | 策略 revision CAS；同 operation 原样回放，替换参数拒绝；不清空 feed/轮次 |
+| `getLegacyPolicy(scope)` / `updateLegacyPolicy({operationId,expectedRevision,scope,legacyPolicy})` | 原连接器/职责设置的独立 revision；与新策略共享原子 envelope、operation 回执和原 Gateway 授权 |
 | `ingest(items,{scope?,validUntilUtc?,urgent?,supersedes?})` | 原事件入队，同时追加中心展示记录；supersedes 标记旧变化失效 |
 | `notificationFeed({afterCursor?,unreadOnly?,scope?,limit?})` | 稳定递增 cursor、unread、active/withdrawn/expired 与 deliveredAt 分开；纯查询不计打扰 |
 | `acknowledgeRead({operationId,itemIds})` | 已读独立于投递确认；跨重启保留，幂等 |
@@ -74,6 +84,8 @@ ToolGateway 相同 canonical SHA256 的 `argumentsDigest`；operationId/revision
 `verifyUserCommand` 必须读取现宿主的结构化用户命令/最终语音证明，没有默认放行；模型提案不能改设置。
 Runtime `createRuntimeNotificationHost` 同时拒绝 partial、echo、model origin、过期/未来命令，并要求
 final voice 的 utteranceId/transcriptDigest 和调用者注入的可信证明验证；本模块不监听麦克风。
+新旧两种互斥设置都可由当前唯一语音问题自然确认；Desktop 按实际形态生成摘要、读取该策略的
+revision 并绑定完整参数 digest。模型自报 final 或把 legacy 参数替换进已授权 patch 均不放行。
 
 重要状态返回 receivedAt/observedAt/decidedAt/reservedAt/attemptedAt/deliveredAt，并支持
 `onStage({stage,observedAt,details})`，覆盖策略更新、预占、发送前复核、回执、静默入中心、已读和归来摘要。

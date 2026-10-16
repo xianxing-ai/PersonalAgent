@@ -2,14 +2,14 @@ import {randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {ProtocolContracts,ToolContext} from '@personal-agent/contracts';
 import {NotificationService,createNotificationSettingsTool} from '@personal-agent/notifications';
-import type {InterruptionPolicyUpdate,InterruptionReservation,NotificationChannel,NotificationFeedQuery,
+import type {NotificationSettingsUpdate,InterruptionReservation,NotificationChannel,NotificationFeedQuery,
   NotificationIngestContext,NotificationPolicy,NotificationScope,NotificationStage} from '@personal-agent/notifications';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createRuntimeAtomicStatePort} from '../atomic-host-state.js';
 import type {TaskRuntime} from '../index.js';
 
 export interface NotificationUserSettingsCommand {
-  settings:InterruptionPolicyUpdate;source:'structured'|'voice';phase:'final'|'partial';origin:'user'|'echo'|'model';echo:boolean;
+  settings:NotificationSettingsUpdate;source:'structured'|'voice';phase:'final'|'partial';origin:'user'|'echo'|'model';echo:boolean;
   issuedAt:string;expiresAt:string;argumentsDigest:string;
   /** Final voice identity/digest, not raw microphone audio or a model's self-attestation. */
   utteranceId?:string;transcriptDigest?:string;proof:unknown;
@@ -20,7 +20,7 @@ export interface RuntimeNotificationHostOptions {
    * Model fields saying final/user are insufficient. The callback is mandatory and has no default. */
   verifyUserCommand:(command:NotificationUserSettingsCommand,context:ToolContext)=>boolean|Promise<boolean>;
   /** Original host binding lookup for calls through the static ToolGateway tool. */
-  resolveUserCommand?:(settings:InterruptionPolicyUpdate,context:ToolContext)=>NotificationUserSettingsCommand|undefined|Promise<NotificationUserSettingsCommand|undefined>;
+  resolveUserCommand?:(settings:NotificationSettingsUpdate,context:ToolContext)=>NotificationUserSettingsCommand|undefined|Promise<NotificationUserSettingsCommand|undefined>;
   now?:()=>number;idFactory?:()=>string;onStage?:(event:NotificationStage)=>void;
 }
 const utc=(v:unknown):v is string=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(v)&&Number.isFinite(Date.parse(v));
@@ -34,7 +34,7 @@ export function createRuntimeNotificationHost(runtime:Pick<TaskRuntime,'bindTrus
   const now=options.now??Date.now,namespace='device-notifications',atomic=createRuntimeAtomicStatePort(runtime,namespace);
   const service=new NotificationService(atomic.storage,options.policy,{now,idFactory:options.idFactory??randomUUID,atomicState:atomic,
     ...(options.onStage?{onStage:options.onStage}:{})});
-  async function verify(command:NotificationUserSettingsCommand|undefined,input:InterruptionPolicyUpdate,context:ToolContext):Promise<boolean> {
+  async function verify(command:NotificationUserSettingsCommand|undefined,input:NotificationSettingsUpdate,context:ToolContext):Promise<boolean> {
     const time=now();
     if(!command||!['structured','voice'].includes(command.source)||command.phase!=='final'||command.origin!=='user'||command.echo!==false
       ||!utc(command.issuedAt)||!utc(command.expiresAt)||Date.parse(command.issuedAt)>time||Date.parse(command.expiresAt)<=time
@@ -56,7 +56,9 @@ export function createRuntimeNotificationHost(runtime:Pick<TaskRuntime,'bindTrus
       return bound.execute(original.settings,context);
     },
     ingest:(items:readonly ProtocolContracts['connectorItem'][],metadata:NotificationIngestContext={})=>service.ingest(items,metadata),
-    drain:()=>service.drain(),status:()=>service.status(),
+    drain:()=>service.drain(),status:(scope?:NotificationScope)=>service.status(scope),
+    importLegacyPolicy:(scope:NotificationScope,policy:NotificationPolicy)=>service.importLegacyPolicy(scope,policy),
+    getLegacyPolicy:(scope:NotificationScope)=>service.getLegacyPolicy(scope),
     getInterruptionPolicy:(scope:NotificationScope)=>service.getInterruptionPolicy(scope),
     notificationFeed:(query:NotificationFeedQuery={})=>service.notificationFeed(query),
     acknowledgeRead:(input:{operationId:string;itemIds:readonly string[]})=>service.acknowledgeRead(input),

@@ -20,9 +20,9 @@ export interface ProactiveExecutionReadback {
 }
 type SavedInvocation=Omit<AgentToolInvocation,'signal'>;
 interface Operation {
-  proposal:ProactiveSessionProposal;invocation:SavedInvocation;state:'pending'|'settled';readback?:ProactiveExecutionReadback;
+  proposal:ProactiveSessionProposal;invocation:SavedInvocation;state:'pending'|'settled';readback?:ProactiveExecutionReadback;approvalResumed?:true;
 }
-interface SessionState {
+export interface ProactiveSessionState {
   version:1;binding:ProactiveSessionBinding;checkpoint?:string;
   requests:Record<string,{digest:string;state:'pending'|'committed';result?:unknown;input?:unknown;checkpointDigest?:string;
     recovery?:'recompute_after_lost_pure_frontier_response'}>;
@@ -45,6 +45,8 @@ export interface ProactiveWorkflowSessionOptions<I extends ProactiveSessionReque
     resolveInvocation(proposal:R['proposals'][number],context:{signal:AbortSignal;deadline:string}):AgentToolInvocation|Promise<AgentToolInvocation>;
     /** Reads the original Runtime run/Evidence, checks run/task/input binding, never model success claims. */
     readExecution(invocation:SavedInvocation,proposal:R['proposals'][number]):Promise<ProactiveExecutionReadback>;
+    /** Only a never-started original run with its matching live Policy grant may re-enter after approval. */
+    canResumeApprovedInvocation?(invocation:SavedInvocation,proposal:R['proposals'][number]):boolean;
   };
 }
 function digest(value:unknown):string {
@@ -85,7 +87,7 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
     finally{if(timer)clearTimeout(timer);signal.removeEventListener('abort',onAbort);}
   }
   function read(){
-    const saved=options.atomicState.read(key),state=saved?.value as SessionState|undefined;
+    const saved=options.atomicState.read(key),state=saved?.value as ProactiveSessionState|undefined;
     if(state&&(state.version!==1||state.binding.taskId!==binding.taskId||state.binding.sessionId!==binding.sessionId||
       state.binding.taskDeadline!==binding.taskDeadline||state.binding.controlRevision>binding.controlRevision))conflict();
     return {revision:saved?.revision,state:state??{version:1 as const,binding,requests:{},proposals:{},operations:{}}};
@@ -100,7 +102,7 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
     if(signal.aborted)throw new ProtocolError('CANCELLED','Proactive session cancelled');
     if(now()>=Math.min(Date.parse(deadline),Date.parse(binding.taskDeadline)))throw new ProtocolError('TIMEOUT','Original proactive task deadline expired');
   }
-  const commit=(revision:number|undefined,state:SessionState)=>{if(!options.atomicState.compareAndSet(key,revision,state))conflict();};
+  const commit=(revision:number|undefined,state:ProactiveSessionState)=>{if(!options.atomicState.compareAndSet(key,revision,state))conflict();};
   async function computeAndCommit(request:I & {checkpoint?:string},reserved:ReturnType<typeof read>,recovery=false):Promise<R>{
     const prior=reserved.state.requests[request.requestId]!;
     const result=await bounded(()=>options.advancePort(request),request.signal,request.deadline);
@@ -194,7 +196,18 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
         try{await bounded(()=>execution.tools.invoke(invocation!),context.signal,context.deadline);}catch{/* Preserve Runtime error in its original run/Evidence; read it below. */}
         await active(context.signal,context.deadline);
       }
-      const readback=await bounded(()=>execution.readExecution(operation!.invocation,proposal),context.signal,context.deadline);
+      let readback=await bounded(()=>execution.readExecution(operation!.invocation,proposal),context.signal,context.deadline);
+      if(!invocation && !operation.approvalResumed && readback.state==='pending' && !readback.evidenceRefs.length
+        && execution.canResumeApprovedInvocation?.(operation.invocation,proposal)===true) {
+        await active(context.signal,context.deadline);
+        const reserved=structuredClone(snapshot.state);
+        operation={...operation,approvalResumed:true};reserved.operations[proposal.operationId]=operation;
+        commit(snapshot.revision,reserved);snapshot=read();
+        invocation={...operation.invocation,signal:context.signal};
+        try{await bounded(()=>execution.tools.invoke(invocation!),context.signal,context.deadline);}catch{/* Read only the original run below. */}
+        await active(context.signal,context.deadline);
+        readback=await bounded(()=>execution.readExecution(operation!.invocation,proposal),context.signal,context.deadline);
+      }
       if(!['confirmed','failed','unknown','pending'].includes(readback.state)||!Array.isArray(readback.evidenceRefs)||
         (readback.state==='confirmed'||readback.state==='failed')&&(!readback.evidenceRefs.length||readback.evidenceRefs.some(e=>typeof e!=='string'||!e)))
         throw new ProtocolError('UNAUTHORIZED','Original execution Evidence unavailable');

@@ -1,5 +1,12 @@
 # 开发计划与进度
 
+## 2026-10-16 V4 实际接线工作包
+
+[生产接线增量](competition/WORKFLOW_WIRING_V4.md)补原 Runtime 常驻任务、四主动入口、主控报告、
+同次影子 metadata、F23 写入/读回、共享通知与当前语音确认，以及公开上下文版本校验。
+原模块负责人和 CW 分工保持不变；本轮为 `in_progress`，最终测试/PR 状态以本次 Evidence 为准。
+不据离线测试把真实业务、模型资格、设备或平台专项标为 done；新镜像不发布。
+
 <!-- current-design-alignment-20261015 -->
 ## 2026-10-15 当前组合工作包（review，非全模块done）
 

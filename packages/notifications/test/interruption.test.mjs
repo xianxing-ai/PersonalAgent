@@ -26,6 +26,78 @@ function fixture({atomic=true,policy={},initial}={}) {
   return {service,storage,port,options,stages,configure,item,ingest,reserve,restart:()=>new NotificationService(storage,policy,options),
     now:()=>time,advance:ms=>{time+=ms;},cells};
 }
+test('one configured service drains connector and responsibility scopes into independently reservable batches',()=>{
+  const f=fixture();f.configure();
+  const responsibility={kind:'responsibility',connectorId:'mail',responsibilityId:'review'};
+  f.service.ingest([f.item('connector')],{scope:connector});
+  f.service.ingest([f.item('responsibility')],{scope:responsibility});
+  const batches=f.service.drain().batches;
+  assert.equal(batches.length,2);
+  for(const [id,scope] of [['connector',connector],['responsibility',responsibility]]) {
+    const batch=batches.find(b=>b.itemRefs.includes(id));
+    assert.deepEqual(batch.itemRefs,[id]);
+    assert.equal(f.reserve('round-'+id,batch,{scope}).counted,true);
+  }
+});
+
+test('scoped legacy quiet, pause and digest survive restart without a new global policy or restrictions on other sources',()=>{
+  const f=fixture(),todoScope={kind:'connector',connectorId:'productivity'};
+  const legacy={pauseUntilUtc:new Date(f.now()+30*60000).toISOString(),quietHours:{startLocal:'11:00',endLocal:'13:00',timeZone:'UTC'},
+    digest:{windowMs:60000,maxItems:2,sources:['productivity']}};
+  f.service.importLegacyPolicy(todoScope,legacy);
+  f.service.ingest([{...f.item('todo-held'),source:'productivity'}],{scope:todoScope});f.service.ingest([f.item('mail-visible')],{scope:connector});
+  const first=f.service.drain();assert.deepEqual(first.batches.flatMap(batch=>batch.itemRefs),['mail-visible']);
+  assert.equal(f.service.status(todoScope).pausedUntil,legacy.pauseUntilUtc);assert.equal(f.service.status(connector).quietUntil,null);
+  assert.equal(f.service.status(connector).pausedUntil,null);assert.equal(f.service.getInterruptionPolicy(globalScope).state,'unconfigured');
+  const restarted=f.restart();assert.deepEqual(restarted.getLegacyPolicy(todoScope).policy,legacy);
+  restarted.importLegacyPolicy(todoScope,{});assert.deepEqual(restarted.getLegacyPolicy(todoScope).policy,legacy);
+  f.advance(31*60000);assert.equal(restarted.drain().batches.some(batch=>batch.itemRefs.includes('todo-held')),false);
+  f.advance(30*60000);const batch=restarted.drain().batches.find(batch=>batch.itemRefs.includes('todo-held'));
+  assert.equal(batch.kind,'digest');
+  const round=restarted.reserveInterruption({roundId:'legacy-round',batchIds:[batch.id],scope:todoScope,channels:['banner'],expiresAt:new Date(f.now()+60000).toISOString()});
+  assert.equal(round.counted,true);assert.equal(restarted.beginDelivery({roundId:'legacy-round',channel:'banner'}).maySend,true);
+});
+
+test('legacy edits retain digest thresholds and CAS revisions, while explicit new local fields replace only matching old rules',()=>{
+  const f=fixture(),scope={kind:'connector',connectorId:'productivity'};f.service.importLegacyPolicy(scope,{});
+  const legacy={digest:{windowMs:60000,maxItems:2,sources:['productivity']}};
+  const input={operationId:'legacy-edit',expectedRevision:1,scope,legacyPolicy:legacy};
+  assert.equal(f.service.updateLegacyPolicy(input).revision,2);assert.equal(f.service.updateLegacyPolicy(input).revision,2);
+  assert.throws(()=>f.service.updateLegacyPolicy({...input,legacyPolicy:{}}),/parameters changed/);
+  f.service.ingest([{...f.item('one-todo'),source:'productivity'}],{scope});assert.equal(f.service.drain().batches.length,0);
+  f.service.ingest([f.item('mail')],{scope:connector});assert.deepEqual(f.service.drain().batches.flatMap(batch=>batch.itemRefs),['mail']);
+  f.service.ingest([{...f.item('two-todo'),source:'productivity'}],{scope});const batch=f.service.drain().batches.find(batch=>batch.kind==='digest');
+  assert.deepEqual(batch.itemRefs,['one-todo','two-todo']);
+  f.configure(userPolicy());assert.deepEqual(f.service.getLegacyPolicy(scope).policy,legacy);
+  f.service.updateInterruptionPolicy({operationId:'modern-other-field',expectedRevision:0,scope,patch:{maxInterruptions:3}});
+  assert.deepEqual(f.service.getLegacyPolicy(scope).policy,legacy);
+  f.service.updateInterruptionPolicy({operationId:'modern-digest',expectedRevision:1,scope,patch:{digestMode:'on_demand'}});
+  assert.deepEqual(f.service.getLegacyPolicy(scope).policy,{});
+  f.service.updateLegacyPolicy({operationId:'legacy-again',expectedRevision:3,scope,legacyPolicy:legacy});
+  assert.equal(f.service.getInterruptionPolicy(scope).local.digestMode,undefined);
+  assert.equal(f.service.getInterruptionPolicy(scope).local.maxInterruptions,3);
+  assert.deepEqual(f.restart().getLegacyPolicy(scope).policy,legacy);
+});
+
+test('latest scoped legacy edit blocks an unsent old reservation and changing digest cannot flush an old ready batch immediately',()=>{
+  const f=fixture(),scope={kind:'connector',connectorId:'productivity'};f.service.importLegacyPolicy(scope,{});
+  f.service.ingest([{...f.item('old-ready'),source:'productivity'}],{scope});const batch=f.service.drain().batches[0];
+  f.service.reserveInterruption({roundId:'old-ready',batchIds:[batch.id],scope,channels:['banner'],expiresAt:new Date(f.now()+60000).toISOString()});
+  f.service.updateLegacyPolicy({operationId:'pause',expectedRevision:1,scope,legacyPolicy:{pauseUntilUtc:new Date(f.now()+60000).toISOString()}});
+  assert.equal(f.service.beginDelivery({roundId:'old-ready',channel:'banner'}).maySend,false);
+  f.service.updateLegacyPolicy({operationId:'digest',expectedRevision:2,scope,legacyPolicy:{digest:{windowMs:60000,maxItems:2}}});
+  assert.equal(f.service.drain().batches.length,0);f.advance(60001);
+  assert.deepEqual(f.service.drain().batches[0].itemRefs,['old-ready']);
+});
+
+test('late legacy migration cannot resurrect fields already replaced by an explicit new connector policy',()=>{
+  const f=fixture(),scope={kind:'connector',connectorId:'productivity'};f.configure(userPolicy());
+  f.service.updateInterruptionPolicy({operationId:'new-settings',expectedRevision:0,scope,patch:{mode:'normal',silentUntilUtc:null,quietHours:null,digestMode:'on_demand'}});
+  f.service.importLegacyPolicy(scope,{pauseUntilUtc:new Date(f.now()+60000).toISOString(),
+    quietHours:{startLocal:'11:00',endLocal:'13:00',timeZone:'UTC'},digest:{windowMs:60000,maxItems:3}});
+  assert.deepEqual(f.service.getLegacyPolicy(scope).policy,{});
+});
+
 test('no atomic port keeps legacy ingestion but refuses new quota/policy claims',()=>{
   const f=fixture({atomic:false});assert.equal(f.service.status().interruptionQuotaSafety,'unavailable');
   assert.throws(()=>f.configure(),/Atomic/);f.ingest('still-ingested');assert.equal(f.service.notificationFeed().items.length,1);
@@ -176,4 +248,23 @@ test('settings tool requires exact original arguments and trusted explicit user 
   const forbidden=createNotificationSettingsTool(f.service,{requiredScopes:['notifications:settings'],verifyUserCommand:()=>false});
   await assert.rejects(forbidden.execute(input,context),/user settings command/);
   assert.ok(f.stages.some(stage=>stage.stage==='interruption_policy_updated'&&stage.observedAt));
+});
+
+test('legacy and modern settings are mutually exclusive and cannot substitute the original authorized payload',async()=>{
+  const f=fixture(),input={operationId:'typed-binding',expectedRevision:0,scope:globalScope,patch:userPolicy()};
+  const context={taskId:'synthetic-settings',runId:'synthetic-run',signal:new AbortController().signal,deadline:new Date(f.now()+100000000).toISOString(),
+    authorizationRef:'existing-policy-grant',scopes:['notifications:settings'],argumentsDigest:hash(input)};
+  const tool=createNotificationSettingsTool(f.service,{requiredScopes:['notifications:settings'],verifyUserCommand:()=>true});
+  const legacy={operationId:input.operationId,expectedRevision:0,scope:connector,legacyPolicy:{digest:{windowMs:60000,maxItems:2}}};
+  for(const invalid of [{operationId:'neither',expectedRevision:0,scope:connector},{...legacy,patch:{mode:'silent'}}]) {
+    await assert.rejects(tool.execute(invalid,{...context,argumentsDigest:hash(invalid)}));
+  }
+  assert.equal((await tool.execute(input,context)).revision,1);
+  await assert.rejects(tool.execute(legacy,context),/argument\/version binding/);
+  await assert.rejects(tool.execute(legacy,{...context,argumentsDigest:hash(legacy)}),/parameters changed/);
+  assert.equal(f.service.getLegacyPolicy(connector).revision,0);
+  const untrusted=createNotificationSettingsTool(f.service,{requiredScopes:['notifications:settings'],verifyUserCommand:()=>false});
+  const model={...legacy,operationId:'model-self-report'};
+  await assert.rejects(untrusted.execute(model,{...context,argumentsDigest:hash(model)}),/user settings command/);
+  assert.equal(f.service.getLegacyPolicy(connector).policy,null);
 });

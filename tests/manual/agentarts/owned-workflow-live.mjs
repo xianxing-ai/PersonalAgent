@@ -379,7 +379,7 @@ async function execute(config,localSelector,decisionRecords=[]) {
       const decisions=value.proposals?.filter(proposal=>proposal.kind==='tool_proposal'&&proposal.toolName===WORKFLOW_DECISION_TOOL_NAME)??[];
       if(decisions.length) {
         if(decisions.length!==1||!bridge||!hostRequest||!client||!localSelector)fail('LOCAL_DECISION_HOST_UNAVAILABLE','decision');
-        const proposal=decisions[0],local=bridge.submit(hostRequest,proposal);
+        const proposal=decisions[0],local=await bridge.submitWithShadow(hostRequest,proposal);
         let task;
         while(Date.now()<expiresAt&&!controller.signal.aborted) {
           task=app.runtime.getTask(local.localTaskId);
@@ -390,7 +390,7 @@ async function execute(config,localSelector,decisionRecords=[]) {
           } else if(['succeeded','failed','waiting_reconciliation'].includes(task.state)) break;
           await new Promise(resolve=>setTimeout(resolve,10));
         }
-        const receipt=bridge.readReceipt(hostRequest,proposal);
+        const receipt=await bridge.readReceiptWithShadow(hostRequest,proposal);
         if(task?.state!=='succeeded'||!receipt||receipt.state!=='confirmed')fail('LOCAL_DECISION_NOT_CONFIRMED','decision');
         report.localDecision.operations.push({nodeId:proposal.nodeId,operationId:proposal.operationId,localTaskId:local.localTaskId,
           state:task.state,selectedId:receipt.result.selectedId,evidenceRefs:receipt.evidenceRefs});
@@ -407,8 +407,7 @@ async function execute(config,localSelector,decisionRecords=[]) {
       if(worker.signal.aborted||controller.signal.aborted||Date.now()>=expiresAt||current.cancelRequested||current.state!=='running')fail('TIMEOUT','completion');};
     try {
     client=new Client(app);await client.connect();
-    bridge=new OwnedWorkflowHostBridge({receiptSecret:config.receiptSecret,host:app,
-      checkpoints:{read:(task,key)=>app.runtime.loadCheckpoint(task,key),writeOnce:(task,key,value)=>app.runtime.saveCheckpointOnce(task,key,value)},
+    bridge=app.createOwnedWorkflowHost({receiptSecret:config.receiptSecret,
       assertActive:(task,revision)=>{const current=app.runtime.getTask(task);if(task!==originalTask.taskId||revision!==1
         ||current.cancelRequested||current.state!=='running')fail('STALE_LOCAL_CONTROL','host');}});
     hostRequest={taskId:originalTask.taskId,workflowId:config.workflowId,sessionId,controlRevision:1,deadline:config.deadline};
@@ -435,7 +434,7 @@ async function execute(config,localSelector,decisionRecords=[]) {
       ||Object.keys(proposal.arguments).some(key=>!['path','maxBytes'].includes(key)))fail('PROPOSAL_OUTSIDE_PUBLIC_READ_SCOPE','proposal');
     state.operationId=proposal.operationId;await JSON_WRITE(join(runDirectory,'state.json'),state);
     app.runtime.saveCheckpoint(originalTask.taskId,'owned-live:graph-checkpoint',first.checkpoint);
-    const local=bridge.submit(hostRequest,proposal);state.localTaskId=local.localTaskId;await JSON_WRITE(join(runDirectory,'state.json'),state);
+    const local=await bridge.submitWithShadow(hostRequest,proposal);state.localTaskId=local.localTaskId;await JSON_WRITE(join(runDirectory,'state.json'),state);
     const waitFor=async(states,localTaskId=local.localTaskId)=>{
       while(Date.now()<expiresAt&&!controller.signal.aborted){const task=app.runtime.getTask(localTaskId);if(states.includes(task.state))return task;await new Promise(resolve=>setTimeout(resolve,10));}
       fail('LOCAL_TASK_TIMEOUT','host');
@@ -447,7 +446,7 @@ async function execute(config,localSelector,decisionRecords=[]) {
     await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
     const completed=await waitFor(['succeeded','failed','waiting_reconciliation']);
     if(completed.state!=='succeeded')fail('LOCAL_READ_NOT_CONFIRMED','host');
-    const receipt=bridge.readReceipt(hostRequest,proposal),records=app.runtime.readToolExecutions(local.localTaskId),evidence=app.runtime.readEvidence(local.localTaskId);
+    const receipt=await bridge.readReceiptWithShadow(hostRequest,proposal),records=app.runtime.readToolExecutions(local.localTaskId),evidence=app.runtime.readEvidence(local.localTaskId);
     if(!receipt||receipt.state!=='confirmed'||receipt.result?.content!==fixtureContent||reads!==1||records.length!==1
       ||records[0].state!=='confirmed'||records[0].policyDecision!=='allow'||records[0].executionStarted!==true
       ||evidence.length!==1||!receipt.evidenceRefs.includes(records[0].evidenceId))fail('ORIGINAL_EXECUTION_EVIDENCE_MISMATCH','host');
@@ -492,7 +491,7 @@ async function execute(config,localSelector,decisionRecords=[]) {
             ||checkProposal.toolVersion!==commandTool.descriptor.version||checkProposal.originControlRevision!==1
             ||!plain(checkProposal.arguments)||Object.keys(checkProposal.arguments).length!==1
             ||checkProposal.arguments.recipeId!==PUBLIC_RECIPE_ID)fail('PROPOSAL_OUTSIDE_PUBLIC_CHECK_SCOPE','validation');
-          const validationLocal=bridge.submit(hostRequest,checkProposal);state.validationTaskId=validationLocal.localTaskId;
+          const validationLocal=await bridge.submitWithShadow(hostRequest,checkProposal);state.validationTaskId=validationLocal.localTaskId;
           state.validationOperationId=checkProposal.operationId;await JSON_WRITE(join(runDirectory,'state.json'),state);
           const validationWaiting=await waitFor(['waiting_approval','failed','waiting_reconciliation','succeeded'],validationLocal.localTaskId);
           if(validationWaiting.state!=='waiting_approval'||commands!==0)fail('EXPECTED_COMMAND_POLICY_WAIT','validation');
@@ -500,7 +499,7 @@ async function execute(config,localSelector,decisionRecords=[]) {
           if(!checkApproval||checkApproval.state!=='pending')fail('MISSING_CHECK_APPROVAL','validation');
           await client.call('authorization.respond',{approvalId:checkApproval.approvalId,expectedRevision:checkApproval.revision,decision:'allow_once'});
           const validationCompleted=await waitFor(['succeeded','failed','waiting_reconciliation'],validationLocal.localTaskId);
-          const checkReceipt=bridge.readReceipt(hostRequest,checkProposal),checkRecords=app.runtime.readToolExecutions(validationLocal.localTaskId),checkEvidence=app.runtime.readEvidence(validationLocal.localTaskId);
+          const checkReceipt=await bridge.readReceiptWithShadow(hostRequest,checkProposal),checkRecords=app.runtime.readToolExecutions(validationLocal.localTaskId),checkEvidence=app.runtime.readEvidence(validationLocal.localTaskId);
           if(validationCompleted.state!=='succeeded'||!checkReceipt||checkReceipt.state!=='confirmed'||commands!==1
             ||checkRecords.length!==1||checkRecords[0].state!=='confirmed'||checkRecords[0].policyDecision!=='allow'
             ||checkRecords[0].executionStarted!==true||checkEvidence.length!==1||!checkReceipt.evidenceRefs.includes(checkRecords[0].evidenceId))fail('CHECK_EXECUTION_EVIDENCE_MISMATCH','validation');

@@ -286,6 +286,13 @@ export class ProactiveWorkflowEngine {
         }
         delete item.pendingProposalId;
         if(['cancel_requested','cancelled'].includes(state.mode)){item.state='cancelled';continue;}
+        const notPerformed=receipt.result as {kind?:unknown;reason?:unknown}|null;
+        if(receipt.state==='failed'&&notPerformed?.kind==='not_performed'&&notPerformed.reason==='control_revision_changed'
+          &&proposal.originControlRevision<state.controlRevision) {
+          item.stage='retrieve';item.state='ready';item.needsRefresh=true;item.reason='control_withdrew_never_started_operation';
+          delete item.context;delete item.selection;delete item.candidateSelection;delete item.action;delete item.actionResult;delete item.outcome;
+          continue;
+        }
         if(proposal.originControlRevision!==state.controlRevision||item.reason==='source_changed_after_proposal_requires_original_readback'
           ||item.needsRefresh&&proposal.stage!=='retrieve') {item.state='blocked';item.reason='stale_revision_or_source_result_retained';continue;}
         if(receipt.state==='failed') {

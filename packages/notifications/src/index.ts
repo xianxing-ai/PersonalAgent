@@ -5,12 +5,13 @@ import type { DrainReport, StatusReport } from './service.js';
 import { assertPolicyValid } from './policy.js';
 import type { NotificationPolicy } from './policy.js';
 import {notificationDigest} from './interruption.js';
-import type {InterruptionPolicyUpdate,NotificationAtomicStatePort,NotificationStage} from './interruption.js';
+import type {NotificationSettingsUpdate,NotificationAtomicStatePort,NotificationStage} from './interruption.js';
 export type {InterruptionPolicy,InterruptionPolicyPatch,NotificationScope,NotificationAtomicStatePort,NotificationStage,
   InterruptionPolicyUpdate,NotificationFeedEntry,NotificationIngestContext,NotificationFeedQuery,NotificationChannel,
-  InterruptionReservation,InterruptionRound,NotificationDeliveryAttempt,ResolvedInterruptionPolicy} from './interruption.js';
+  InterruptionReservation,InterruptionRound,NotificationDeliveryAttempt,ResolvedInterruptionPolicy,LegacyNotificationPolicyUpdate,NotificationSettingsUpdate} from './interruption.js';
 
 export { NotificationService } from './service.js';
+export {notificationDigest,assertInterruptionPatch,assertLegacyNotificationPolicy} from './interruption.js';
 export type { DrainReport, NotificationBatch, NotificationServiceOptions, PendingItem, StatusReport } from './service.js';
 export { assertPolicyValid, localMinuteOfDay, nextQuietEndMs, quietHoursActive } from './policy.js';
 export type { DigestPolicy, NotificationPolicy, QuietHours } from './policy.js';
@@ -117,20 +118,10 @@ export function register(host: ToolHost, options: NotificationsModuleOptions): (
  * a model proposal or a receipt is not permission to edit settings. ToolGateway still owns Policy.
  */
 export function createNotificationSettingsTool(service:NotificationService,options:{requiredScopes:readonly string[];
-  verifyUserCommand:(input:InterruptionPolicyUpdate,context:ToolContext)=>boolean|Promise<boolean>}):RegisteredTool {
+  verifyUserCommand:(input:NotificationSettingsUpdate,context:ToolContext)=>boolean|Promise<boolean>}):RegisteredTool {
   if(!options?.requiredScopes?.length||options.requiredScopes.some(scope=>typeof scope!=='string'||!scope)
     ||typeof options.verifyUserCommand!=='function')throw new ProtocolError('INVALID_ARGUMENT','Trusted user-command verifier and existing settings scopes required');
-  const descriptor:ToolDescriptor={name:'notifications.interruption_policy.set',version:NOTIFICATIONS_MODULE_VERSION,
-    sideEffect:'local_write',requiredScopes:[...options.requiredScopes],idempotencySupport:true,recoverySupport:true,requiresPresence:false,
-    inputSchema:{type:'object',additionalProperties:false,required:['operationId','expectedRevision','scope','patch'],properties:{
-      operationId:{type:'string',minLength:1},expectedRevision:{type:'integer',minimum:0},scope:{type:'object',additionalProperties:false,
-        required:['kind'],properties:{kind:{type:'string',enum:['global','connector','responsibility']},connectorId:{type:'string',minLength:1},responsibilityId:{type:'string',minLength:1}}},
-      patch:{type:'object',additionalProperties:false,properties:{mode:{type:'string',enum:['normal','silent']},
-        maxInterruptions:{type:['integer','null'],minimum:0},windowMinutes:{type:'number',minimum:0},silentUntilUtc:{type:['string','null']},
-        preferredChannel:{type:'string',enum:['banner','voice','auto']},allowUrgentBreakthrough:{type:'boolean'},
-        digestMode:{type:'string',enum:['on_return','scheduled','on_demand']},quietHours:{type:['object','null']}}}}},
-    outputSchema:{type:'object',required:['operationId','revision','state','decidedAt'],properties:{operationId:{type:'string'},revision:{type:'integer'},
-      state:{type:'string',enum:['configured','unconfigured']},decidedAt:{type:'string'}}}};
+  const descriptor=createNotificationSettingsDescriptor(options.requiredScopes);
   const check=(context:ToolContext)=>{
     if(!context?.authorizationRef||!descriptor.requiredScopes.every(scope=>context.scopes.includes(scope)))throw new ProtocolError('SCOPE_DENIED','Notification settings scope required');
     if(!(context.signal instanceof AbortSignal)||context.signal.aborted)throw new ProtocolError('CANCELLED','Notification settings command cancelled');
@@ -139,8 +130,32 @@ export function createNotificationSettingsTool(service:NotificationService,optio
   return {descriptor,async execute(input,context) {
     check(context);validateToolValue(descriptor.inputSchema,input);
     if(!context.argumentsDigest||context.argumentsDigest!==notificationDigest(input))throw new ProtocolError('UNAUTHORIZED','Original settings argument/version binding required');
-    const command=structuredClone(input) as InterruptionPolicyUpdate;
+    const command=structuredClone(input) as NotificationSettingsUpdate;
     if(await options.verifyUserCommand(structuredClone(command),context)!==true)throw new ProtocolError('UNAUTHORIZED','Explicit trusted user settings command required');
-    check(context);const result=service.updateInterruptionPolicy(command);validateToolValue(descriptor.outputSchema!,result);return result;
+    check(context);const result='legacyPolicy' in command?service.updateLegacyPolicy(command):service.updateInterruptionPolicy(command);
+    validateToolValue(descriptor.outputSchema!,result);return result;
   }};
+}
+
+/** Public descriptor for late-bound application composition; it grants no settings authority. */
+export function createNotificationSettingsDescriptor(requiredScopes:readonly string[]):ToolDescriptor {
+  if(!Array.isArray(requiredScopes)||!requiredScopes.length||requiredScopes.some(scope=>typeof scope!=='string'||!scope))
+    throw new ProtocolError('INVALID_ARGUMENT','Explicit notification settings scopes required');
+  return {name:'notifications.interruption_policy.set',version:NOTIFICATIONS_MODULE_VERSION,
+    sideEffect:'local_write',requiredScopes:[...requiredScopes],idempotencySupport:true,recoverySupport:true,requiresPresence:false,
+    inputSchema:{type:'object',additionalProperties:false,required:['operationId','expectedRevision','scope'],
+      oneOf:[{required:['patch'],not:{required:['legacyPolicy']}},{required:['legacyPolicy'],not:{required:['patch']}}],properties:{
+      operationId:{type:'string',minLength:1},expectedRevision:{type:'integer',minimum:0},scope:{type:'object',additionalProperties:false,
+        required:['kind'],properties:{kind:{type:'string',enum:['global','connector','responsibility']},connectorId:{type:'string',minLength:1},responsibilityId:{type:'string',minLength:1}}},
+      patch:{type:'object',additionalProperties:false,properties:{mode:{type:'string',enum:['normal','silent']},
+        maxInterruptions:{type:['integer','null'],minimum:0},windowMinutes:{type:'number',minimum:0},silentUntilUtc:{type:['string','null']},
+        preferredChannel:{type:'string',enum:['banner','voice','auto']},allowUrgentBreakthrough:{type:'boolean'},
+        digestMode:{type:'string',enum:['on_return','scheduled','on_demand']},quietHours:{type:['object','null']}}},
+      legacyPolicy:{type:'object',additionalProperties:false,properties:{pauseUntilUtc:{type:'string',pattern:UTC_PATTERN_STRING},
+        quietHours:{type:'object',additionalProperties:false,required:['startLocal','endLocal','timeZone'],properties:{
+          startLocal:{type:'string'},endLocal:{type:'string'},timeZone:{type:'string'}}},
+        digest:{type:'object',additionalProperties:false,required:['windowMs','maxItems'],properties:{windowMs:{type:'integer',minimum:60000},
+          maxItems:{type:'integer',minimum:1,maximum:100},sources:{type:'array',items:{type:'string',minLength:1}}}}}}}},
+    outputSchema:{type:'object',required:['operationId','revision','state','decidedAt'],properties:{operationId:{type:'string'},revision:{type:'integer'},
+      state:{type:'string',enum:['configured','unconfigured']},decidedAt:{type:'string'}}}};
 }

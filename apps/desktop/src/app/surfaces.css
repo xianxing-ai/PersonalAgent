@@ -316,6 +316,16 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 }
 .admin .main[data-surface="settings"]:not([data-section="memory"]) .feature-page .sheet > .btn,
 .admin .main[data-surface="settings"]:not([data-section="memory"]) .feature-page .sheet form {align-self:flex-start}
+.admin .main[data-section="notifications"] > .notification-settings {box-sizing:border-box;width:min(860px,calc(100% - 80px));margin:0 40px 32px;padding:20px;border-radius:16px}
+.admin .notification-settings .settings-form {grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.admin .notification-settings .settings-form label {min-width:0}
+.admin .notification-settings .settings-form .notification-check {display:flex;align-items:center;gap:8px;line-height:1.5}
+.admin .main[data-surface="settings"] .notification-settings .notification-check input {width:16px;height:16px;min-height:16px;flex:0 0 16px;margin:0}
+.admin .notification-settings [data-notifications="load"] {grid-column:1/-1;justify-self:start}
+.admin .notification-settings p,.admin .notification-settings li {font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.admin .notification-settings h2,.admin .notification-settings h3 {margin:0 0 12px}
+.admin .notification-settings h3 {margin-top:20px;font-size:14px}
+@media(max-width:900px) {.admin .main[data-section="notifications"] > .notification-settings {width:calc(100% - 32px);margin:0 16px 24px;padding:16px}.admin .notification-settings .settings-form {grid-template-columns:minmax(0,1fr)}}
 .admin .sis-settings {box-sizing:border-box;width:min(760px,calc(100% - 80px));margin:0 40px;border-radius:16px;padding:16px 18px}
 .admin .sis-fields {display:grid;gap:12px}
 .admin .sis-fields label {display:grid;gap:6px;font-size:12px;color:var(--muted)}

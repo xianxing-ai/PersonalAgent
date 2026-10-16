@@ -9,6 +9,7 @@ import type {
 const requestFields = ['taskId', 'revision', 'goal', 'deadline', 'signal'];
 const continuationRequestFields = [...requestFields, 'continuation'];
 const availableToolsRequestFields = [...requestFields, 'availableTools'];
+const textOnlyRequestFields = [...requestFields, 'textOnly'];
 const isoDeadline = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
 interface ValidatedRequest {
@@ -20,6 +21,7 @@ interface ValidatedRequest {
   readonly expiresAt: number;
   readonly continuation?: CoordinationContinuation;
   readonly availableTools?: readonly CoordinationAvailableTool[];
+  readonly textOnly?: true;
 }
 
 function invalidRequest(): never {
@@ -84,15 +86,19 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
   let continuationValue: unknown;
   let availableToolsValue: unknown;
   let hasAvailableTools = false;
+  let textOnly = false;
   try {
     const hasContinuation = request !== null && typeof request === 'object'
       && Object.prototype.hasOwnProperty.call(request, 'continuation');
     hasAvailableTools = request !== null && typeof request === 'object'
       && Object.prototype.hasOwnProperty.call(request, 'availableTools');
+    textOnly = request !== null && typeof request === 'object'
+      && Object.prototype.hasOwnProperty.call(request, 'textOnly');
     if (request === null || typeof request !== 'object' || Array.isArray(request)
-      || (hasContinuation && hasAvailableTools)
+      || (hasContinuation && hasAvailableTools) || (textOnly && (hasContinuation || hasAvailableTools))
       || !hasExactEnumerableKeys(request, hasContinuation ? continuationRequestFields
-        : hasAvailableTools ? availableToolsRequestFields : requestFields)) invalidRequest();
+        : hasAvailableTools ? availableToolsRequestFields : textOnly ? textOnlyRequestFields : requestFields)
+      || (textOnly && request.textOnly !== true)) invalidRequest();
     taskId = request.taskId;
     revision = request.revision;
     goal = request.goal;
@@ -118,6 +124,7 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
   const continuation = continuationValue === undefined ? undefined : parseCoordinationContinuation(continuationValue);
   const availableTools = hasAvailableTools ? parseCoordinationAvailableTools(availableToolsValue) : undefined;
   return {taskId, revision, goal, deadline, signal, expiresAt,
+    ...(textOnly ? {textOnly:true as const} : {}),
     ...(continuation === undefined ? {} : {continuation}),
     ...(availableTools === undefined ? {} : {availableTools})};
 }
@@ -193,6 +200,7 @@ export class CompetitionCoordinator implements CoordinationPort {
         goal: validated.goal,
         deadline: validated.deadline,
         signal: controller.signal,
+        ...(validated.textOnly ? {textOnly:true as const} : {}),
         ...(validated.continuation === undefined ? {} : {continuation: validated.continuation}),
         ...(validated.availableTools === undefined ? {} : {availableTools: validated.availableTools}),
       });
@@ -204,6 +212,9 @@ export class CompetitionCoordinator implements CoordinationPort {
       if (readSignalAborted(validated.signal)) throw new ProtocolError('CANCELLED', 'Coordination cancelled');
       if (validated.expiresAt <= Date.now()) throw new ProtocolError('TIMEOUT', 'Coordination deadline expired');
       const parsed = parseCoordinationResult(result);
+      if (validated.textOnly && parsed.kind !== 'text') {
+        throw new ProtocolError('EXTERNAL_FAILURE', 'Text-only coordination cannot propose tools or repairs');
+      }
       // A result getter may synchronously cancel the caller while it is being parsed.
       if (readSignalAborted(validated.signal)) throw new ProtocolError('CANCELLED', 'Coordination cancelled');
       if (validated.expiresAt <= Date.now()) throw new ProtocolError('TIMEOUT', 'Coordination deadline expired');

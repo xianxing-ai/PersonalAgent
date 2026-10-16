@@ -1,6 +1,6 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
-import {createWorkflowShadowHistory,verifyWorkflowShadowBranches,evaluateWorkflowShadowPolicy} from '@personal-agent/agentarts';
+import {createWorkflowShadowHistory,verifyWorkflowShadowBranches,evaluateWorkflowShadowPolicy,constrainWorkflowShadowPolicy} from '@personal-agent/agentarts';
 import {replayFrozenWorkflowTrace} from './trace-replay.mjs';
 export {workflowTraceDigest,replayFrozenWorkflowTrace} from './trace-replay.mjs';
 
@@ -103,7 +103,8 @@ export function createWorkflowShadowController({receiptSecret,policyConfig}) {
       ||!exact(value.plan,['taskKey','taskClass','mode','tier','isolation','decision'])||value.plan.taskKey!==value.taskId
       ||!['decision_shadow','trace_replay','isolated'].includes(value.plan.tier)
       ||!exact(value.plan.decision,['selectedCandidateId','shadowCandidateId','shadowRequested','uncertain','decisionRef','provenance'])
-      ||!exact(value.resources,['mainPriorityAvailable','shadowAllowed','taskValueEligible'])||!Array.isArray(value.observedBranches))
+      ||!([['mainPriorityAvailable','shadowAllowed','taskValueEligible'],['mainPriorityAvailable','shadowAllowed','taskValueEligible','advancedEnabled']]
+        .some(keys=>exact(value.resources,keys)))||value.resources.advancedEnabled!==undefined&&typeof value.resources.advancedEnabled!=='boolean'||!Array.isArray(value.observedBranches))
       fail('INVALID_ARGUMENT','Invalid signed shadow policy envelope');
     if(!authenticated(value,'request',sign))fail('UNAUTHORIZED','Shadow host signature rejected');
     const provenance=value.plan.decision.provenance;
@@ -146,18 +147,11 @@ export function createWorkflowShadowController({receiptSecret,policyConfig}) {
     const teacherResolved=provenance.decidedBy==='deepseek'&&text(provenance.deepseekProposalRef)&&provenance.uncertaintyResolved;
     const plan={...value.plan,decision:{...value.plan.decision,
       uncertain:(value.plan.decision.uncertain&&!teacherResolved)||(provenance.decidedBy==='laya'&&!provenance.layaQualified)}};
-    const result=evaluateWorkflowShadowPolicy({plan,resources:value.resources,history:verifiedHistory,observedBranches},config);
-    if(value.plan.tier==='isolated'&&result.action==='run'
-      &&(!text(provenance.layaDecisionRef)||!text(provenance.deepseekProposalRef)
-        ||!['deepseek','laya'].includes(provenance.decidedBy))) {
-      result.action='need_teacher';result.reason='advanced_shadow_requires_same_decision_laya_and_teacher_participation';
-    }
-    if(value.plan.tier==='isolated'&&isolation===null&&result.action==='run') {
-      result.action='defer';result.reason='trusted_isolation_snapshot_required';
-    }
-    if(value.plan.tier!=='isolated') {
-      result.comparison={status:'unknown',reason:'no_isolated_counterfactual'};
-      if(value.plan.mode==='compare')result.mayDeliverMain=false;
+    const selectedPlan={...plan,provenance};
+    const result=constrainWorkflowShadowPolicy(evaluateWorkflowShadowPolicy({plan:selectedPlan,resources:value.resources,history:verifiedHistory,observedBranches},config),
+      selectedPlan,{advancedEnabled:value.resources.advancedEnabled===true,isolation});
+    if(value.resources.advancedEnabled===undefined&&result.reason==='trusted_advanced_mode_disabled') {
+      result.action='defer';result.reason='trusted_advanced_setting_unavailable';
     }
     const output={...result,tier:value.plan.tier,actualExecutionVerified:false,authority:'advisory_no_tool_grant',
       decisionProvenance:structuredClone(provenance),originalTaskDeadline:value.taskDeadline,

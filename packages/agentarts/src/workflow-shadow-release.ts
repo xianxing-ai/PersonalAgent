@@ -162,7 +162,7 @@ export function createWorkflowShadowReleaseService(options:{configurationPort?:W
     return {ready:comparison.rules.every(rule=>rule.passed)&&comparison.checks.every(check=>check.state==='passed'),
       reason:'trusted_acceptance_compared',comparison};
   }
-  const base=(request:WorkflowShadowReleaseRequest,state:WorkflowShadowReleaseReceipt['state'],reason:string):WorkflowShadowReleaseReceipt=>
+  const base=(request:Pick<WorkflowShadowReleaseRequest,'operationId'|'configurationId'>,state:WorkflowShadowReleaseReceipt['state'],reason:string):WorkflowShadowReleaseReceipt=>
     ({state,reason,operationId:request.operationId,promotionReady:false,rollbackPointActive:false});
   async function current(id:string,context:ToolContext) {
     const value=await call(context,()=>port!.read(id,context));
@@ -177,7 +177,7 @@ export function createWorkflowShadowReleaseService(options:{configurationPort?:W
       ||!same({...r.next,revision:op.after.revision},op.after)||!Array.isArray(op.evidenceRefs)||!op.evidenceRefs.length||!op.evidenceRefs.every(text))
       throw new ProtocolError('PROTOCOL_MISMATCH','Configuration operation lacks bound before/after execution evidence');
   }
-  async function finish(request:WorkflowShadowReleaseRequest,op:WorkflowShadowConfigurationOperation,digest:string,context:ToolContext):Promise<WorkflowShadowReleaseReceipt> {
+  async function finish(request:Pick<WorkflowShadowReleaseRequest,'operationId'|'configurationId'|'action'>,op:WorkflowShadowConfigurationOperation,digest:string,context:ToolContext):Promise<WorkflowShadowReleaseReceipt> {
     if(op.state==='not_started')return base(request,'unknown','original_operation_not_confirmed_no_retry');
     if(op.requestDigest!==digest)throw new ProtocolError('REVISION_CONFLICT','Release operation ID already binds different parameters');
     if(op.state==='unknown')return {...base(request,'unknown','original_write_requires_reconciliation'),before:structuredClone(op.request.expected)};
@@ -258,15 +258,29 @@ export function createWorkflowShadowReleaseService(options:{configurationPort?:W
     const result=await finish(request,reconciled,write.requestDigest,context);
     return {...result,...(comparison?{comparison}:{}),...(rollbackAnchor?{rollbackAnchor}:{})};
   }
-  return {status,evaluate,execute,read:async(configurationId:string,context:ToolContext)=>{
+  /** Read the immutable original operation. This path never calls compareAndSet or initiates rollback. */
+  async function reconcile(input:{operationId:string;configurationId:string},context:ToolContext):Promise<WorkflowShadowReleaseReceipt> {
+    active(context);
+    if(!input||!text(input.operationId)||!text(input.configurationId))fail('Original release operation identity required');
+    if(status().state==='unavailable')return base(input,'unavailable','configuration_unavailable');
+    const original=await call(context,()=>port!.readOperation(input.operationId,context));
+    if(original.state==='not_started')return base(input,'unknown','original_operation_not_confirmed_no_retry');
+    const request=original.request;
+    if(!request||request.operationId!==input.operationId||request.configurationId!==input.configurationId
+      ||!['promote','rollback'].includes(request.action)||request.requestDigest!==original.requestDigest
+      ||workflowShadowReleaseDigest(requestBody(request))!==original.requestDigest||!snapshot(request.expected))
+      throw new ProtocolError('PROTOCOL_MISMATCH','Original release readback identity or request digest changed');
+    return finish({operationId:input.operationId,configurationId:input.configurationId,action:request.action},original,original.requestDigest,context);
+  }
+  return {status,evaluate,execute,reconcile,read:async(configurationId:string,context:ToolContext)=>{
     active(context);return port?current(configurationId,context):undefined;
   },requiredScopes:[...scopes]};
 }
 export type WorkflowShadowReleaseService=ReturnType<typeof createWorkflowShadowReleaseService>;
-/** Register this existing F23 host adapter with ToolGateway; receipt data cannot grant scopes. */
+/** Register the F23_N04 CAS write adapter with ToolGateway; receipt data cannot grant scopes. */
 export function createWorkflowShadowReleaseAdapter(service:WorkflowShadowReleaseService,options:{sideEffect:'local_write'|'external_write'}) {
   if(!options||!['local_write','external_write'].includes(options.sideEffect))fail('Trusted configuration host must declare its actual write side effect');
-  return createOwnedWorkflowAdapter({nodeId:'F23_N05',kind:'host',sideEffect:options.sideEffect,requiredScopes:[...service.requiredScopes],
+  return createOwnedWorkflowAdapter({nodeId:'F23_N04',kind:'host',sideEffect:options.sideEffect,requiredScopes:[...service.requiredScopes],
     inputSchema:{type:'object',additionalProperties:false,required:['action','operationId','configurationId'],properties:{
       action:{type:'string',enum:['promote','rollback']},operationId:{type:'string',minLength:1},configurationId:{type:'string',minLength:1},
       promotionOperationId:{type:'string',minLength:1},main:{type:'object'},shadow:{type:'object'},testEvidence:{type:'object'},candidateParameters:{type:'object'}}},
@@ -274,4 +288,14 @@ export function createWorkflowShadowReleaseAdapter(service:WorkflowShadowRelease
       state:{type:'string',enum:['unavailable','rejected','unknown','promoted','rolled_back','superseded']},reason:{type:'string'},
       operationId:{type:'string'},promotionReady:{type:'boolean'},rollbackPointActive:{type:'boolean'}}},
     execute:(input,context)=>service.execute(input as WorkflowShadowReleaseRequest,context)});
+}
+/** F23_N05 is independent readback. Any rollback is a separately authorized N04 write. */
+export function createWorkflowShadowReleaseReadbackAdapter(service:WorkflowShadowReleaseService) {
+  return createOwnedWorkflowAdapter({nodeId:'F23_N05',kind:'host',sideEffect:'read',requiredScopes:[...service.requiredScopes],
+    inputSchema:{type:'object',additionalProperties:false,required:['operationId','configurationId'],properties:{
+      operationId:{type:'string',minLength:1},configurationId:{type:'string',minLength:1}}},
+    outputSchema:{type:'object',required:['state','reason','operationId','promotionReady','rollbackPointActive'],properties:{
+      state:{type:'string',enum:['unavailable','rejected','unknown','promoted','rolled_back','superseded']},reason:{type:'string'},
+      operationId:{type:'string'},promotionReady:{type:'boolean'},rollbackPointActive:{type:'boolean'}}},
+    execute:(input,context)=>service.reconcile(input as {operationId:string;configurationId:string},context)});
 }

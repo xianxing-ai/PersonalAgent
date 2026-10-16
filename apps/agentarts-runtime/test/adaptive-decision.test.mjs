@@ -51,6 +51,50 @@ test('only independently qualified site may accept local result',async()=>{
   const f=fixture({qualification:()=>true}),record=await f.selector.decide(f.input);
   assert.equal(record.decided_by,'laya');assert.deepEqual(f.calls(),{localCalls:1,teacherCalls:0});
 });
+
+test('same decision preserves advisory shadow plan and binds actual participation without an extra call',async()=>{
+  const f=fixture();
+  const plan={taskClass:'public-code',mode:'ordinary',tier:'isolated',shadowCandidateId:'a',shadowRequested:true,uncertain:true,
+    provenance:{decidedBy:'deepseek',deepseekProposalRef:'forged',layaDecisionRef:'forged',layaQualified:true,uncertaintyResolved:true}};
+  const input={...f.input,candidates:f.input.candidates.map(candidate=>({...candidate,metadata:{shadowPlan:plan}}))};
+  const record=await f.selector.decide(input),actual=record.metadata.shadowPlan.provenance;
+  assert.equal(actual.decidedBy,'deepseek');assert.equal(actual.layaQualified,false);assert.equal(actual.uncertaintyResolved,true);
+  assert.match(actual.deepseekProposalRef,/^adaptive-teacher:/);assert.match(actual.layaDecisionRef,/^adaptive-laya:/);
+  assert.notEqual(actual.deepseekProposalRef,'forged');assert.deepEqual(f.calls(),{localCalls:1,teacherCalls:1});
+  assert.deepEqual(await f.selector.decide(input),record);assert.deepEqual(f.calls(),{localCalls:1,teacherCalls:1});
+});
+
+test('qualified local-only shadow intent cannot invent teacher participation',async()=>{
+  const f=fixture({qualification:()=>true});
+  const plan={taskClass:'public-code',mode:'ordinary',tier:'isolated',shadowCandidateId:'b',shadowRequested:true,uncertain:false,
+    provenance:{decidedBy:'code',deepseekProposalRef:null,layaDecisionRef:null,layaQualified:false,uncertaintyResolved:false}};
+  const record=await f.selector.decide({...f.input,candidates:f.input.candidates.map(candidate=>({...candidate,metadata:{shadowPlan:plan}}))});
+  assert.equal(record.metadata.shadowPlan.provenance.deepseekProposalRef,null);
+  assert.equal(record.metadata.shadowPlan.provenance.layaQualified,true);assert.deepEqual(f.calls(),{localCalls:1,teacherCalls:0});
+});
+
+test('invalid shadow candidate fails before any local or teacher request',async()=>{
+  const f=fixture(),plan={taskClass:'public-code',mode:'ordinary',tier:'isolated',shadowCandidateId:'invented',shadowRequested:true,uncertain:false,
+    provenance:{decidedBy:'code',deepseekProposalRef:null,layaDecisionRef:null,layaQualified:false,uncertaintyResolved:false}};
+  await assert.rejects(f.selector.decide({...f.input,candidates:f.input.candidates.map(candidate=>({...candidate,metadata:{shadowPlan:plan}}))}));
+  assert.deepEqual(f.calls(),{localCalls:0,teacherCalls:0});
+});
+
+test('cancellation during qualification never starts a teacher request',async()=>{
+  const controller=new AbortController();
+  const f=fixture({qualification:async()=>{controller.abort();return false;}});
+  await assert.rejects(f.selector.decide({...f.input,signal:controller.signal}),{code:'CANCELLED'});
+  assert.deepEqual(f.calls(),{localCalls:1,teacherCalls:0});
+});
+
+test('cancellation during durable prior read cannot return a cached completion',async()=>{
+  const f=fixture(),record=await f.selector.decide(f.input),controller=new AbortController();
+  const selector=createAdaptiveWorkflowSelector({laya:{select:async()=>assert.fail('no second local call')},
+    teacher:{deployment,complete:async()=>assert.fail('no second teacher call')},modelRevision:'test-revision',
+    store:{read:async key=>{controller.abort();return f.data.get(key);},writeOnce:()=>assert.fail('no new write')}});
+  await assert.rejects(selector.decide({...f.input,signal:controller.signal}),{code:'CANCELLED'});
+  assert.equal(record.state,'completed');
+});
 test('owned-review and explicitly tagged abstention always escalate even at qualified sites',async()=>{
   for(const id of ['owned-review','custom-evidence-gap']) {
     const f=fixture({qualification:()=>true,laya:{select:async()=>id}});

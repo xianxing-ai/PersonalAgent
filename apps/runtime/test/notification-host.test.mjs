@@ -116,3 +116,23 @@ test('trusted persisted final transcript ledger rejects older revision, silence,
     assert.equal(host.getInterruptionPolicy(globalScope).effective.mode,'silent');
   } finally {runtime.close();}
 });
+
+test('legacy final settings retain exact host proof and cannot replace a typed command or self-assert final authority',async()=>{
+  const f=fixture(),runtime=new TaskRuntime(f.file);let saved=f.command('typed-question',0,policy());
+  try {
+    const host=createRuntimeNotificationHost(runtime,{...f.options,resolveUserCommand:()=>saved});
+    const legacy={operationId:'legacy-question',expectedRevision:0,scope:{kind:'connector',connectorId:'productivity'},legacyPolicy:{digest:{windowMs:60000,maxItems:2}}};
+    const context=f.context({settings:legacy});
+    await assert.rejects(host.settingsTool.execute(legacy,context),/user settings command/);
+    assert.equal(host.getLegacyPolicy(legacy.scope).revision,0);
+    saved=signed({...saved,settings:legacy,argumentsDigest:digest(legacy),source:'voice',utteranceId:'legacy-current-final',transcriptDigest:digest('同意')});
+    const forged={...saved,proof:'payload-says-final'};
+    await assert.rejects(host.applyUserCommand(forged,context),/user settings command/);
+    assert.equal((await host.applyUserCommand(saved,context)).revision,1);
+    assert.deepEqual(host.getLegacyPolicy(legacy.scope).policy,legacy.legacyPolicy);
+    assert.equal(host.getInterruptionPolicy(globalScope).state,'unconfigured');
+    const substituted=structuredClone(saved);substituted.settings.legacyPolicy.digest.maxItems=1;
+    await assert.rejects(host.applyUserCommand(substituted,context),/argument\/version binding/);
+    assert.equal(host.getLegacyPolicy(legacy.scope).policy.digest.maxItems,2);
+  } finally {runtime.close();}
+});

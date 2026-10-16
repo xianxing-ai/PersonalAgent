@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
 import test from 'node:test';
-import {createWorkflowShadowReleaseService,createWorkflowShadowReleaseAdapter,workflowShadowReleaseDigest as hash} from '../dist/workflow-shadow-release.js';
+import {createWorkflowShadowReleaseService,createWorkflowShadowReleaseAdapter,createWorkflowShadowReleaseReadbackAdapter,workflowShadowReleaseDigest as hash} from '../dist/workflow-shadow-release.js';
 
 // Signed synthetic receipts and an atomic in-memory configuration host: fixture evidence only,
 // not an AgentArts platform evaluation, production configuration store or authorization test.
@@ -59,9 +59,19 @@ test('unbound configuration is unavailable; F23 adapter cannot use a receipt as 
   assert.throws(()=>createWorkflowShadowReleaseAdapter(service),/actual write side effect/);
   assert.throws(()=>createWorkflowShadowReleaseAdapter(service,{sideEffect:'read'}),/actual write side effect/);
   assert.equal(createWorkflowShadowReleaseAdapter(service,{sideEffect:'external_write'}).descriptor.sideEffect,'external_write');
-  assert.equal(adapter.descriptor.name,'workflow.host.f23_n05');assert.equal(adapter.descriptor.sideEffect,'local_write');
+  assert.equal(adapter.descriptor.name,'workflow.host.f23_n04');assert.equal(adapter.descriptor.sideEffect,'local_write');
   assert.equal((await adapter.execute({action:'rollback',operationId:'rollback',configurationId:'x',promotionOperationId:'promotion'},context())).state,'unavailable');
   await assert.rejects(adapter.execute({action:'promote',operationId:'x',configurationId:'x'},{...context(),scopes:[]}),/scope/i);
+});
+test('F23_N05 reads only the original operation and current version; it cannot initiate a promotion or rollback',async()=>{
+  const f=fixture(),adapter=createWorkflowShadowReleaseReadbackAdapter(f.service),request={operationId:f.request.operationId,configurationId:f.request.configurationId};
+  assert.equal(adapter.descriptor.name,'workflow.host.f23_n05');assert.equal(adapter.descriptor.sideEffect,'read');
+  assert.equal((await adapter.execute(request,context())).state,'unknown');assert.equal(f.writes,0);
+  await f.service.execute(f.request,context());const writes=f.writes;
+  const result=await adapter.execute(request,context());assert.equal(result.state,'promoted');assert.equal(result.readbackReceipt.version,'v2');
+  assert.equal(f.writes,writes);
+  await assert.rejects(adapter.execute({...request,action:'rollback'},context()),{code:'INVALID_ARGUMENT'});assert.equal(f.writes,writes);
+  await assert.rejects(adapter.execute(request,{...context(),scopes:[]}),{code:'SCOPE_DENIED'});
 });
 test('public F23 adapter compares each configured metric/test and promotes only after operation plus version readback',async()=>{
   const f=fixture(),adapter=createWorkflowShadowReleaseAdapter(f.service,{sideEffect:'local_write'}),result=await adapter.execute(f.request,context());

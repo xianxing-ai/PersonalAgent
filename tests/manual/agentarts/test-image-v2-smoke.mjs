@@ -66,7 +66,7 @@ for(const tier of ['decision_shadow','trace_replay','isolated']){
    decision:{selectedCandidateId:'main',shadowCandidateId:'shadow',shadowRequested:true,uncertain:true,
     decisionRef:'same-selection-fixture',provenance:{decidedBy:'deepseek',deepseekProposalRef:'fixture-deepseek-receipt',
     layaDecisionRef:'fixture-laya-receipt',layaQualified:false,uncertaintyResolved:true}}},
-  resources:{mainPriorityAvailable:true,shadowAllowed:true,taskValueEligible:true},observedBranches:[],historySnapshot:null}});
+  resources:{mainPriorityAvailable:true,shadowAllowed:true,taskValueEligible:true,advancedEnabled:true},observedBranches:[],historySnapshot:null}});
  const response=await invoke(value);
  const result=verifyWorkflowShadowResponse({receiptSecret:keys.receiptSecret,response,request:value,currentContext:context});
  assert.equal(result.action,'run');assert.equal(result.actualExecutionVerified,false);

@@ -1,5 +1,14 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-16 V4 生产消费接口（provisional）
+
+[V4 接线](../competition/WORKFLOW_WIRING_V4.md)新增 Runtime Application 的主动 host/原任务生命周期、
+真实 HTTP/SSE 镜像签名适配、原决策工具组合、公开 Memory/当前上下文校验和 OwnedWorkflowHostBridge 工厂。
+同次影子意图经原 ToolGateway 回执、可信资源/用户比较设置及 checkpoint 进入 Engine；F23_N04 为写、N05 只读原 operation。
+Desktop 通知/语音当前参数确认及旧 Todo 策略复用同一 NotificationService/原 CAS。
+这些是进程内及现有镜像协议增量；没有新增 Core wire operation、替代数据库、静默模型回退或冻结能力。
+实际模型/账号/设备/平台验收和本轮构建、PR、发布分别记录；旧 V3 云版本不代表本轮已部署。
+
 ## 2026-10-15 当前真实证据与各MOD消费责任（不扩冻结）
 
 [完整实测汇总](../competition/evidence/test-image-v3-20261015/full-workflow-results.json) 与 [发布回执](../competition/evidence/test-image-v3-20261015/owned-release.json) 证明新ARM64 SWR/云精确版本目录、真实AgentArts新代理及同版镜像本机Docker+本机Runtime/Laya两条公共编码主影子/CAS，共41条Evidence。两条全链不在远端Runtime跑；各分支父succeeded，协调锚点created。Laya全链输入182–618ms未达150ms，未校准站点真实升级DeepSeek。首轮鹈鹕partial失败保留。

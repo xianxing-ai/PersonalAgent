@@ -1,6 +1,81 @@
 import {createHash} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 
+export interface WorkflowShadowDecisionProvenance {
+  decidedBy:'code'|'laya'|'deepseek'|'verified_experience';deepseekProposalRef:string|null;layaDecisionRef:string|null;
+  layaQualified:boolean;uncertaintyResolved:boolean;
+}
+/** Optional intent from the existing candidate selection. It is never an authorization. */
+export interface WorkflowShadowSelectionPlan {
+  taskClass:string;mode:'ordinary'|'compare';tier:'decision_shadow'|'trace_replay'|'isolated';
+  shadowCandidateId?:string;shadowRequested:boolean;uncertain:boolean;provenance:WorkflowShadowDecisionProvenance;
+}
+export interface WorkflowSelectionResult {selectedId:string;metadata?:{shadowPlan:WorkflowShadowSelectionPlan}}
+export interface WorkflowShadowTaskContext {taskId:string;sessionId:string;controlRevision:number;taskDeadline:string}
+export interface WorkflowShadowSelectedPlan extends WorkflowShadowPlan {
+  tier:WorkflowShadowSelectionPlan['tier'];provenance:WorkflowShadowDecisionProvenance;
+}
+/** Bound by the existing host-tool receipt signature, independently of the tool's raw result. */
+export interface WorkflowShadowEvaluationReceipt {
+  version:1;nodeId:string;decisionRef:string;selectionDigest:string;context:WorkflowShadowTaskContext;
+  comparisonRequested:boolean;
+  plan:WorkflowShadowSelectedPlan;policy:WorkflowShadowPolicyResult;
+  isolation:{namespace:string;snapshotDigest:string}|null;
+  authority:'advisory_no_tool_grant';actualExecutionVerified:false;
+  proof:unknown;
+}
+export function workflowShadowSelectionDigest(value:unknown):string {
+  const canonical=(item:unknown):string=>item===null||typeof item!=='object'?JSON.stringify(item):Array.isArray(item)
+    ?'['+item.map(canonical).join(',')+']':'{'+Object.keys(item).sort().map(key=>JSON.stringify(key)+':'+canonical((item as Record<string,unknown>)[key])).join(',')+'}';
+  return createHash('sha256').update(canonical(value)).digest('hex');
+}
+
+/** Normalize legacy string selectors and strictly validate the optional same-decision metadata. */
+export function parseWorkflowSelectionResult(value:unknown,candidateIds?:readonly string[]):WorkflowSelectionResult {
+  const plain=(item:unknown):item is Record<string,unknown>=>!!item&&typeof item==='object'&&!Array.isArray(item);
+  const exact=(item:unknown,required:readonly string[],optional:readonly string[]=[])=>plain(item)
+    &&required.every(key=>Object.hasOwn(item,key))&&Object.keys(item).every(key=>[...required,...optional].includes(key));
+  const text=(item:unknown):item is string=>typeof item==='string'&&!!item.trim();
+  const input=typeof value==='string'?{selectedId:value}:value;
+  if(!exact(input,['selectedId'],['metadata'])||!plain(input)||!text(input.selectedId)
+    ||candidateIds&&!candidateIds.includes(input.selectedId))throw new ProtocolError('INVALID_ARGUMENT','Selection must name an original candidate');
+  if(input.metadata===undefined)return {selectedId:input.selectedId};
+  if(!exact(input.metadata,['shadowPlan'])||!plain(input.metadata))throw new ProtocolError('INVALID_ARGUMENT','Invalid same-decision metadata');
+  const plan=input.metadata.shadowPlan;
+  if(!exact(plan,['taskClass','mode','tier','shadowRequested','uncertain','provenance'],['shadowCandidateId'])||!plain(plan)
+    ||!text(plan.taskClass)||!['ordinary','compare'].includes(String(plan.mode))||!['decision_shadow','trace_replay','isolated'].includes(String(plan.tier))
+    ||typeof plan.shadowRequested!=='boolean'||typeof plan.uncertain!=='boolean'
+    ||plan.shadowCandidateId!==undefined&&(!text(plan.shadowCandidateId)||candidateIds&&!candidateIds.includes(plan.shadowCandidateId)))
+    throw new ProtocolError('INVALID_ARGUMENT','Shadow plan must bind the same original candidates');
+  const p=plan.provenance;
+  if(!exact(p,['decidedBy','deepseekProposalRef','layaDecisionRef','layaQualified','uncertaintyResolved'])||!plain(p)
+    ||!['code','laya','deepseek','verified_experience'].includes(String(p.decidedBy))
+    ||![p.deepseekProposalRef,p.layaDecisionRef].every(ref=>ref===null||text(ref))
+    ||typeof p.layaQualified!=='boolean'||typeof p.uncertaintyResolved!=='boolean'
+    ||p.decidedBy==='deepseek'&&!text(p.deepseekProposalRef)||p.decidedBy==='laya'&&!text(p.layaDecisionRef)
+    ||p.uncertaintyResolved&&p.decidedBy!=='deepseek')throw new ProtocolError('INVALID_ARGUMENT','Actual same-decision provenance required');
+  return structuredClone(input) as unknown as WorkflowSelectionResult;
+}
+export function workflowShadowSelectedPlan(taskKey:string,decisionRef:string,selection:WorkflowSelectionResult):WorkflowShadowSelectedPlan|undefined {
+  const intent=selection.metadata?.shadowPlan;if(!intent)return undefined;
+  return {taskKey,taskClass:intent.taskClass,mode:intent.mode,tier:intent.tier,provenance:structuredClone(intent.provenance),
+    decision:{selectedCandidateId:selection.selectedId,...(intent.shadowCandidateId===undefined?{}:{shadowCandidateId:intent.shadowCandidateId}),
+      shadowRequested:intent.shadowRequested,uncertain:(intent.uncertain&&!(intent.provenance.decidedBy==='deepseek'&&intent.provenance.uncertaintyResolved))
+        ||intent.provenance.decidedBy==='laya'&&!intent.provenance.layaQualified,decisionRef}};
+}
+/** Admission is advisory. The original ToolGateway still validates each isolated operation. */
+export function constrainWorkflowShadowPolicy(result:WorkflowShadowPolicyResult,plan:WorkflowShadowSelectedPlan,
+  snapshot:{advancedEnabled:boolean;isolation:{namespace:string;snapshotDigest:string}|null}):WorkflowShadowPolicyResult {
+  const output=structuredClone(result);
+  if(!snapshot.advancedEnabled){output.action='skip';output.reason='trusted_advanced_mode_disabled';}
+  else if(output.action==='run'&&plan.tier==='isolated'
+    &&(!plan.provenance.layaDecisionRef||!plan.provenance.deepseekProposalRef||!['laya','deepseek'].includes(plan.provenance.decidedBy))) {
+    output.action='need_teacher';output.reason='advanced_shadow_requires_same_decision_laya_and_teacher_participation';
+  } else if(output.action==='run'&&plan.tier==='isolated'&&!snapshot.isolation){output.action='defer';output.reason='trusted_isolation_snapshot_required';}
+  if(plan.tier!=='isolated'){output.comparison={status:'unknown',reason:'no_isolated_counterfactual'};if(plan.mode==='compare')output.mayDeliverMain=false;}
+  return output;
+}
+
 export interface WorkflowShadowPlan {
   taskKey:string;taskClass:string;mode:'ordinary'|'compare';
   /** Identity comes from the already-completed selection receipt, not a new model call. */
@@ -65,6 +140,12 @@ function comparable(main:WorkflowShadowBranchReceipt|undefined,shadow:WorkflowSh
   if(!main||!shadow)return 'missing_counterfactual';
   if(main.branch!=='main'||shadow.branch!=='shadow')return 'branch_roles_mismatch';
   if(main.taskKey!==shadow.taskKey||main.taskClass!==shadow.taskClass||main.decisionRef!==shadow.decisionRef)return 'different_task_or_decision';
+  const contextKeys=['taskId','sessionId','controlRevision','taskDeadline'];
+  const a=main.proof as Record<string,unknown>|undefined,b=shadow.proof as Record<string,unknown>|undefined;
+  if(a&&typeof a==='object'&&b&&typeof b==='object'
+    &&contextKeys.some(key=>Object.hasOwn(a,key)||Object.hasOwn(b,key))
+    &&(contextKeys.some(key=>!Object.hasOwn(a,key)||!Object.hasOwn(b,key)||a[key]!==b[key])||a.taskId!==main.taskKey||b.taskId!==shadow.taskKey))
+    return 'different_task_session_revision_or_deadline';
   if(main.baselineSha256!==shadow.baselineSha256)return 'different_baseline';
   if(main.conditionsDigest!==shadow.conditionsDigest||main.qualityMetricId!==shadow.qualityMetricId)return 'different_comparison_conditions';
   if(main.workspaceRef===shadow.workspaceRef||main.receiptId===shadow.receiptId)return 'isolation_not_demonstrated';

@@ -34,7 +34,7 @@ test('local typed decision does not complete a business read, and consumes seale
 
 test('unknown/forged selections and cancelled local calls cannot authorize an operation',async()=>{
   const runtime=engine(),original=request(),first=await runtime.advance(original);
-  await assert.rejects(runtime.advance({...original,checkpoint:first.checkpoint,receipts:[receipt(first.proposals[0],{selectedId:'invented'})]}),/sealed/);
+  await assert.rejects(runtime.advance({...original,checkpoint:first.checkpoint,receipts:[receipt(first.proposals[0],{selectedId:'invented'})]}),{code:'INVALID_ARGUMENT'});
   await assert.rejects(runtime.advance({...original,checkpoint:first.checkpoint,receipts:[{...receipt(first.proposals[0],{selectedId:'candidate'}),proof:'forged'}]}),/verified/);
   await assert.rejects(tool.execute(first.proposals[0].arguments,{...context(),scopes:[]}),/scope/);
   const cancelled=context();const controller=new AbortController();controller.abort();

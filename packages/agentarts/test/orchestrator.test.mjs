@@ -48,7 +48,7 @@ test('workflow preparation preserves node output contract and predecessor state 
   assert.deepEqual(prepared[0],alternative);assert.equal(prepared[1].id,'owned-review');assert.equal(prepared[1].abstain,true);
   assert.equal(models.plan.requests.length,1);assert.equal(models.fast.requests.length,0);
   const data=JSON.parse(models.plan.requests[0].messages[1].content);
-  assert.deepEqual(data.node.outputFields,['diffFields','docMarkdown','exampleArguments']);assert.deepEqual(data.predecessorStates,{F20_N01:'completed'});
+  assert.deepEqual(data.node.outputFields,['docMarkdown']);assert.deepEqual(data.predecessorStates,{F20_N01:'completed'});
   assert.deepEqual(data.predecessorOutputs,{F20_N01:{content:'public contract'}});
 });
 test('current tool request boundary preserves global downstream requirements without fabricating their outputs',async()=>{
@@ -61,7 +61,7 @@ test('current tool request boundary preserves global downstream requirements wit
     availableTools:[{name:'workspace.read_text',version:'1.0.0',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path']}}],
     mode:'main',namespace:'synthetic',...invoke('public source')});
   const data=JSON.parse(models.fast.requests[0].messages[1].content);
-  assert.deepEqual(data.input,input);assert.deepEqual(data.node.outputFields,['sourceReadback']);
+  assert.deepEqual(data.input,input);assert.deepEqual(data.node.outputFields,['diffFields']);
   assert.deepEqual(data.currentCandidateBoundary,{kind:'unexecuted_tool_request',nodeOutputStage:'after_actual_host_receipt',
     selectionBasis:'published_schema_and_task_arguments',resultEvidenceStage:'after_actual_execution'});
   assert.deepEqual(data.publishedTools,data.availableTools);
@@ -91,6 +91,18 @@ test('empty actual candidate array is separately diagnosed before any selector i
   assert.equal(selections,0);const diagnostic=receipts.find(value=>value.event==='workflow_candidates');
   assert.equal(diagnostic.candidateCount,0);assert.equal(diagnostic.status,'failed');assert.equal(diagnostic.errorCode,'UNSUPPORTED_CAPABILITY');
   assert.match(diagnostic.candidateArrayDigest,/^[a-f0-9]{64}$/);
+});
+
+test('existing candidate preparation carries optional shadow intent as advisory data in the same model call',async()=>{
+  const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N02');
+  const shadowIntent={taskClass:'public-doc',mode:'ordinary',tier:'trace_replay',shadowRequested:true,uncertain:false};
+  const {agent,models}=setup({plan:[{candidates:[{id:'doc',description:'source-backed document',value:{docMarkdown:'public'},shadowIntent}]}]});
+  const result=await agent.prepareOwnedWorkflowCandidates({template,node,input:{goal:'public doc'},predecessorOutputs:{},
+    predecessorStates:{},availableTools:[],mode:'main',namespace:'synthetic',...invoke('public')});
+  assert.equal(models.plan.requests.length,1);assert.equal(models.fast.requests.length,0);
+  assert.deepEqual(result[0].metadata.shadowPlan,{...shadowIntent,provenance:{decidedBy:'code',deepseekProposalRef:null,
+    layaDecisionRef:null,layaQualified:false,uncertaintyResolved:false}});
+  assert.equal(result[1].abstain,true);
 });
 test('embedded decision can require review of the repair candidate after World Plan Review',async()=>{
   const selections=[];

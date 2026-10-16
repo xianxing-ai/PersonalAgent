@@ -71,22 +71,45 @@ test('selector receives the current node contract, settled predecessor state and
   await next(runtime,original,first,{receipts:[receipt(first.proposals[0],'confirmed',{result:source})]});
   const context=seen.find(value=>value.nodeId==='F20_N02');
   assert.equal(context.nodeContract.kind,'executor');assert.equal(context.nodeContract.designKind,'execution_model');
-  assert.equal(context.label,'执行模型比对来源并生成文档补丁与示例');
-  assert.deepEqual(context.nodeContract.inputFields,['sourceReadback','field','docTemplate']);
-  assert.deepEqual(context.nodeContract.outputFields,['diffFields','docMarkdown','exampleArguments']);assert.equal(context.nodeContract.effect,'none');
+  assert.equal(context.label,'执行模型生成文档补丁与示例');
+  assert.deepEqual(context.nodeContract.inputFields,['field','docTemplate']);
+  assert.deepEqual(context.nodeContract.outputFields,['docMarkdown']);assert.equal(context.nodeContract.effect,'none');
   assert.deepEqual(context.predecessorStates,{F20_N01:'completed'});
   assert.deepEqual(context.predecessors.F20_N01,source);assert.deepEqual(context.input,original.input);
   assert.deepEqual(context.candidateValues.find(value=>value.id==='candidate').value,{candidateFor:'F20_N02'});
   assert.equal(context.candidateValues.find(value=>value.id==='recheck').abstain,true);
   const firstContext=seen.find(value=>value.nodeId==='F20_N01');
-  assert.equal(firstContext.label,'读取待比对的代码与契约来源');assert.equal(firstContext.nodeContract.kind,'tool');
-  assert.deepEqual(firstContext.nodeContract.outputFields,['sourceReadback'],'A source read does not claim computed differences');
+  assert.equal(firstContext.label,'比对后端代码与契约文件');assert.equal(firstContext.nodeContract.kind,'tool');
+  assert.deepEqual(firstContext.nodeContract.outputFields,['diffFields'],'Reviewed design output fields remain declarations until an actual host result');
   assert.equal(firstContext.currentCandidateBoundary.kind,'unexecuted_tool_request');
   assert.equal(firstContext.currentCandidateBoundary.selectionBasis,'published_schema_and_task_arguments');
   assert.equal(firstContext.currentCandidateBoundary.resultEvidenceStage,'after_actual_execution');
   assert.deepEqual(firstContext.publishedTools,original.availableTools);
   assert.deepEqual(firstContext.nodeContract.capabilities,getOwnedWorkflowTemplate('F20').nodes[0].capabilities);
   assert.deepEqual(context.publishedTools,[],'Only the current node precise tool capabilities are supplied');
+});
+test('F12 observes both optional delivery and query guards before settling silent or query paths',async()=>{
+  const template=getOwnedWorkflowTemplate('F12'),availableTools=template.nodes.flatMap(node=>[
+    ...(node.kind==='host'?[{name:'workflow.host.'+node.id.toLowerCase(),version:'1.0.0',inputSchema:{type:'object'}}]:[]),
+    ...(node.condition?[{name:'workflow.guard.'+node.id.toLowerCase(),version:'1.0.0',inputSchema:{type:'object'}}]:[]),
+  ]);
+  for(const query of [false,true]) {
+    const runtime=engine({externalHost:true,receiptVerifier:proofVerifier}),original=request('F12',{availableTools});
+    let result=await runtime.advance(original);const seen=[];
+    for(let step=0;step<20&&result.state!=='settled';step++) {
+      if(result.nodes.F12_N03.state==='completed'&&result.nodes.F12_N05.state==='pending')assert.notEqual(result.state,'settled');
+      const receipts=result.proposals.map(proposal=>{
+        seen.push(proposal.toolName);
+        const guard=proposal.toolName.startsWith('workflow.guard.');
+        return receipt(proposal,'confirmed',{result:guard?{state:query&&proposal.nodeId==='F12_N05'?'selected':'skipped'}:{readback:true}});
+      });
+      result=await next(runtime,original,result,{receipts});
+    }
+    assert.equal(result.state,'settled');assert.equal(result.nodes.F12_N04.state,'skipped');
+    assert.equal(result.nodes.F12_N05.state,query?'completed':'skipped');
+    assert.ok(seen.includes('workflow.guard.f12_n04'));assert.ok(seen.includes('workflow.guard.f12_n05'));
+    assert.equal(seen.includes('workflow.host.f12_n04'),false);assert.equal(seen.includes('workflow.host.f12_n05'),query);
+  }
 });
 
 test('research branches run serially and the next branch waits for the original tool receipt',async()=>{

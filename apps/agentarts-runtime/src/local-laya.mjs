@@ -19,7 +19,7 @@ export async function createLocalWorkflowDecisionHost({onDecision,adaptive,start
         +'Do not demand future tool results before proposing a tool. Review if none is supported.',
       abstainIds:(context.candidateValues??[]).filter(candidate=>candidate.abstain===true).map(candidate=>candidate.id),
       sources:[{sourceId:'workflow-observation',revision:String(context.controlRevision??1),sha256:decisionDigest(context)}]});
-    return record.selectedId;
+    return record.metadata?{selectedId:record.selectedId,metadata:record.metadata}:record.selectedId;
   }}:local;
   return {tool:createWorkflowDecisionTool({selector}),stop:service.stop,
     ...(decision?{decision}:{}),

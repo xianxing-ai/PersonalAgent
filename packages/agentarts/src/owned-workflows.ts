@@ -4,14 +4,17 @@ import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
 import type {CoordinationAvailableTool} from '@personal-agent/coordination';
 import {getOwnedWorkflowTemplate,OWNED_WORKFLOW_VERSION} from './owned-workflow-templates.js';
 import type {OwnedWorkflowNode,OwnedWorkflowTemplate} from './owned-workflow-templates.js';
+import {parseWorkflowSelectionResult,workflowShadowSelectedPlan,workflowShadowSelectionDigest} from './workflow-shadow-policy.js';
+import type {WorkflowSelectionResult,WorkflowShadowSelectedPlan,WorkflowShadowEvaluationReceipt} from './workflow-shadow-policy.js';
 
 export type OwnedWorkflowMode = 'main' | 'decision_shadow' | 'trace_replay' | 'isolated';
 export interface WorkflowSelector {
-  select(request: {context:string; candidates:readonly {id:string;description:string}[];
-    deadline:string;signal:AbortSignal;requestId:string}):Promise<string>;
+  select(request: {context:string; candidates:readonly {id:string;description:string;metadata?:WorkflowSelectionResult['metadata']}[];
+    deadline:string;signal:AbortSignal;requestId:string}):Promise<string|WorkflowSelectionResult>;
 }
 export interface WorkflowCandidate {
   id:string;description:string;value:unknown;
+  metadata?:WorkflowSelectionResult['metadata'];
   abstain?:true;
   /** Conditional nodes are activated explicitly; missing condition evidence remains unresolved. */
   branches?:readonly {nodeId:string;state:'selected'|'skipped'}[];
@@ -41,11 +44,14 @@ export interface WorkflowReceipt {
   state:'confirmed'|'failed'|'unknown'|'not_started'|'stopping';result:unknown;evidenceRefs:readonly string[];
   /** Opaque host readback/signature, not a model or client's trust label. */
   proof:unknown;
+  /** Separate host policy readback; the raw ToolGateway result is retained unchanged. */
+  shadowEvaluation?:WorkflowShadowEvaluationReceipt;
 }
 export interface WorkflowReceiptVerifier {
   verify(receipt:WorkflowReceipt,expected:WorkflowProposal,request:OwnedWorkflowAdvanceRequest):Promise<boolean>;
   verifyMigration?(migration:WorkflowRevisionMigration,previous:WorkflowRevisionIdentity,next:WorkflowRevisionIdentity):Promise<boolean>;
   verifyControl?(command:WorkflowControlCommand,request:OwnedWorkflowAdvanceRequest):Promise<boolean>;
+  verifyShadowEvaluation?(evaluation:WorkflowShadowEvaluationReceipt,request:OwnedWorkflowAdvanceRequest):Promise<boolean>;
 }
 export type WorkflowControlAction='pause'|'resume'|'continue'|'notify_controller'|'request_controller'|'request_user';
 export interface WorkflowControlCommand {commandId:string;action:WorkflowControlAction;reason?:string;proof:unknown}
@@ -67,6 +73,7 @@ export interface OwnedWorkflowAdvanceRequest {
 type NodeState = 'pending'|'completed'|'skipped'|'waiting_receipt'|'unavailable'|'failed'|'unknown'|'cancelled'|'stopping';
 interface StepState {state:NodeState;value?:unknown;proposal?:WorkflowProposal;evidenceRefs?:readonly string[];reason?:string;
   retrySafe?:true;previousAttempts?:readonly {proposal:WorkflowProposal;state:NodeState;value?:unknown;evidenceRefs:readonly string[]}[];
+  shadow?:{plan:WorkflowShadowSelectedPlan;selectionDigest:string;evaluation?:WorkflowShadowEvaluationReceipt};
   /** Sealed original alternatives; a decision receipt is not a business-tool receipt. */
   pendingSelection?:readonly WorkflowCandidate[];selectedCandidate?:WorkflowCandidate;pendingGuard?:true}
 interface CheckpointState {
@@ -86,6 +93,9 @@ export interface OwnedWorkflowAdvanceResult {
   unavailable:{nodeId:string;capabilities:string[];reason:string}[];
   feedback:{source:string;target:string;state:'requires_host_revision'}[];
   hostControl?:CheckpointState['hostControl'];
+  /** Data for the existing host; never a new tool grant or proof an isolated branch ran. */
+  shadows?:{nodeId:string;plan:WorkflowShadowSelectedPlan;evaluation?:WorkflowShadowEvaluationReceipt}[];
+  delivery?:{waitingForShadow:boolean;mayDeliverMain:boolean;reason:string};
 }
 const plain = (value:unknown):value is Record<string,unknown> => !!value&&typeof value==='object'&&!Array.isArray(value);
 const digest = (value:unknown):string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -264,6 +274,17 @@ export class OwnedWorkflowEngine {
     for(const value of request.receipts??[]) {
       control(request);
       const receipt=copy(value),step=state.nodes[receipt.nodeId];
+      if(step?.shadow&&receipt.shadowEvaluation&&receipt.operationId===step.shadow.plan.decision.decisionRef
+        &&(!step.pendingSelection||step.proposal?.operationId!==receipt.operationId)) {
+        const key='shadow:'+receipt.operationId;
+        if(seen.has(key)||receipt.state!=='confirmed'||workflowShadowSelectionDigest(parseWorkflowSelectionResult(receipt.result))!==step.shadow.selectionDigest
+          ||!this.options.receiptVerifier?.verifyShadowEvaluation
+          ||!await this.options.receiptVerifier.verifyShadowEvaluation(receipt.shadowEvaluation,{...request,taskDeadline:state.originalDeadline}))
+          invalid('Shadow refresh lacks the original signed selection and current policy readback');
+        seen.add(key);control(request);
+        this.validateShadowEvaluation(receipt.shadowEvaluation,step.shadow.plan,step.shadow.selectionDigest,receipt.nodeId,state);
+        step.shadow.plan=copy(receipt.shadowEvaluation.plan);step.shadow.evaluation=copy(receipt.shadowEvaluation);continue;
+      }
       if(!step||!step.proposal) throw new ProtocolError('INVALID_ARGUMENT','Receipt has no original workflow operation');
       const expected=step.proposal;
       if(seen.has(receipt.nodeId)||!['waiting_receipt','unknown','stopping'].includes(step.state)
@@ -290,15 +311,19 @@ export class OwnedWorkflowEngine {
       }
       if(step.pendingSelection&&receipt.state==='confirmed') {
         // The signer proves what the local tool returned, not that arbitrary candidate IDs are valid.
-        const result=receipt.result;
-        if(!plain(result)||typeof result.selectedId!=='string'
-          ||Object.keys(result).some(key=>key!=='selectedId')) return invalid('Invalid local decision result');
+        const result=parseWorkflowSelectionResult(receipt.result,step.pendingSelection.map(candidate=>candidate.id));
         const selectedId=result.selectedId;
         const selected=step.pendingSelection.find(candidate=>candidate.id===selectedId);
         if(!selected) invalid('Local decision does not match the sealed original candidates');
         if(expected.originControlRevision!==state.controlRevision) {
           step.state='unknown';step.reason='Original decision revision changed; stale selection cannot advance business execution';continue;
         }
+        const plan=workflowShadowSelectedPlan(state.taskId,expected.operationId,result),evaluation=receipt.shadowEvaluation;
+        if(evaluation) {
+          if(!plan)invalid('Shadow evaluation has no original selected plan');
+          this.validateShadowEvaluation(evaluation,plan!,workflowShadowSelectionDigest(result),receipt.nodeId,state);
+        }
+        if(plan)step.shadow={plan:evaluation?copy(evaluation.plan):{...plan,mode:'ordinary'},selectionDigest:workflowShadowSelectionDigest(result),...(evaluation?{evaluation:copy(evaluation)}:{})};
         step.state='pending';step.selectedCandidate=copy(selected!);
         step.evidenceRefs=[...(step.evidenceRefs??[]),...receipt.evidenceRefs];
         delete step.proposal;delete step.pendingSelection;delete step.reason;
@@ -315,6 +340,19 @@ export class OwnedWorkflowEngine {
         &&receipt.result.failure.retrySafe===true) step.retrySafe=true;
     }
   }
+  private validateShadowEvaluation(evaluation:WorkflowShadowEvaluationReceipt,plan:WorkflowShadowSelectedPlan,
+    selectionDigest:string,nodeId:string,state:CheckpointState):void {
+    if(evaluation.version!==1||evaluation.authority!=='advisory_no_tool_grant'||evaluation.actualExecutionVerified!==false
+      ||evaluation.nodeId!==nodeId||evaluation.decisionRef!==plan.decision.decisionRef||evaluation.selectionDigest!==selectionDigest
+      ||typeof evaluation.comparisonRequested!=='boolean'
+      ||workflowShadowSelectionDigest(evaluation.plan)!==workflowShadowSelectionDigest({...plan,mode:evaluation.comparisonRequested?'compare':'ordinary'})
+      ||evaluation.context?.taskId!==state.taskId||evaluation.context.sessionId!==state.sessionId
+      ||evaluation.context.controlRevision!==state.controlRevision||evaluation.context.taskDeadline!==state.originalDeadline
+      ||!evaluation.policy||!['run','defer','skip','need_teacher'].includes(evaluation.policy.action)
+      ||typeof evaluation.policy.mayDeliverMain!=='boolean'||typeof evaluation.policy.reason!=='string'
+      ||!evaluation.policy.comparison||!['unknown','comparable'].includes(evaluation.policy.comparison.status))
+      invalid('Shadow policy readback changed the original selected plan or task context');
+  }
   private async candidates(context:WorkflowNodeContext,state:CheckpointState):Promise<WorkflowCandidate|StepState> {
     const saved=state.nodes[context.node.id]!.selectedCandidate;
     if(saved) return this.selectCandidate(context,state,saved);
@@ -326,6 +364,7 @@ export class OwnedWorkflowEngine {
     if(!Array.isArray(candidates)||candidates.length<2||candidates.length>16||new Set(candidates.map(item=>item.id)).size!==candidates.length
       ||candidates.some(item=>!safeId(item.id)||typeof item.description!=='string'||!item.description.trim()
         ||!Object.hasOwn(item,'value'))) throw new ProtocolError('EXTERNAL_FAILURE','Invalid executor candidates');
+    for(const candidate of candidates)if(candidate.metadata)parseWorkflowSelectionResult({selectedId:candidate.id,metadata:candidate.metadata},candidates.map(item=>item.id));
     const selectionRequest={context:JSON.stringify({workflowId:context.template.workflowId,
       nodeId:context.node.id,label:context.node.label,
       nodeContract:{kind:context.node.kind,designKind:context.node.designKind,inputFields:context.node.inputFields,
@@ -333,8 +372,8 @@ export class OwnedWorkflowEngine {
         ...(context.node.evidenceRequirement?{evidenceRequirement:context.node.evidenceRequirement}:{})},
       ...workflowCandidateMetadata(context.node,context.availableTools),
       ...decisionInput(context),predecessorStates:context.predecessorStates,predecessors:context.predecessorOutputs,
-      candidateValues:candidates.map(({id,value,branches,abstain})=>({id,value,...(branches?{branches}:{}),...(abstain?{abstain}:{} )})),mode:context.mode}),
-      candidates:candidates.map(({id,description})=>({id,description})),deadline:context.deadline,
+      candidateValues:candidates.map(({id,value,branches,abstain,metadata})=>({id,value,...(metadata?{metadata}:{}),...(branches?{branches}:{}),...(abstain?{abstain}:{} )})),mode:context.mode}),
+      candidates:candidates.map(({id,description,metadata})=>({id,description,...(metadata?{metadata}:{})})),deadline:context.deadline,
       signal:context.signal,requestId:context.requestId};
     if(this.options.decisionTool) {
       const descriptor=context.availableTools.find(tool=>tool.name===this.options.decisionTool!.name&&tool.version===this.options.decisionTool!.version);
@@ -347,10 +386,13 @@ export class OwnedWorkflowEngine {
         toolName:descriptor.name,toolVersion:descriptor.version,toolSchemaDigest:digest(descriptor.inputSchema),
         arguments:argumentsValue,resourceKeys:['local_laya_cpu'],effect:'read',...this.isolation(state)}};
     }
-    const selected=await this.options.selector!.select(selectionRequest);
+    const result=parseWorkflowSelectionResult(await this.options.selector!.select(selectionRequest),candidates.map(candidate=>candidate.id));
     control(context);
-    const candidate=candidates.find(item=>item.id===selected);
+    const candidate=candidates.find(item=>item.id===result.selectedId);
     if(!candidate) throw new ProtocolError('EXTERNAL_FAILURE','Selector returned an unknown candidate');
+    const decisionRef='wf-decision-'+digest([state.taskId,state.controlRevision,state.workflowId,context.node.id,state.inputDigest,state.mode,state.namespace,candidates]).slice(0,48);
+    const plan=workflowShadowSelectedPlan(state.taskId,decisionRef,result);
+    if(plan)state.nodes[context.node.id]!.shadow={plan:{...plan,mode:'ordinary'},selectionDigest:workflowShadowSelectionDigest(result)};
     return this.selectCandidate(context,state,candidate);
   }
   private selectCandidate(context:WorkflowNodeContext,state:CheckpointState,candidate:WorkflowCandidate):WorkflowCandidate {
@@ -522,6 +564,7 @@ export class OwnedWorkflowEngine {
       };
       const {id,result}=await run();
       state.nodes[id]={...result,...(state.nodes[id]!.evidenceRefs?{evidenceRefs:state.nodes[id]!.evidenceRefs}:{}),
+        ...(state.nodes[id]!.shadow?{shadow:state.nodes[id]!.shadow}:{}),
         ...(state.nodes[id]!.previousAttempts?{previousAttempts:state.nodes[id]!.previousAttempts}:{})};
       // A sequential workflow never starts a second branch while a host effect/decision is unresolved.
       if(result.state==='waiting_receipt'||result.state==='unknown'||result.state==='failed'||result.state==='unavailable') break;
@@ -534,14 +577,23 @@ export class OwnedWorkflowEngine {
       :steps.flatMap(step=>step.state==='waiting_receipt'&&step.proposal?[copy(step.proposal)]:[]);
     const required=template.nodes.filter(node=>node.required||state.selections[node.id]==='selected').map(node=>state.nodes[node.id]!);
     const verifierMissing=steps.some(step=>step.reason==='Host receipt verifier unavailable; original operation is retained');
+    // Optional guards still need an observation. No delivery/summary branch may disappear merely
+    // because the fixed required prefix has completed; the existing frontier must settle it first.
+    const openFrontier=steps.some(step=>['pending','waiting_receipt','unknown','stopping'].includes(step.state));
     const graphState:OwnedWorkflowAdvanceResult['state']=cancelled?'cancelled':state.hostControl&&state.hostControl.status!=='running'?state.hostControl.status:required.some(step=>step.state==='unknown')?'unknown'
       :required.some(step=>step.state==='failed')?'failed':required.some(step=>step.state==='unavailable')?'unavailable'
       :verifierMissing?'unavailable'
       :proposals.length||steps.some(step=>step.state==='stopping')?'awaiting_host'
-      :required.every(step=>['completed','skipped'].includes(step.state))?'settled':'progress';
+      :!openFrontier&&required.every(step=>['completed','skipped'].includes(step.state))?'settled':'progress';
+    const shadows=Object.entries(state.nodes).flatMap(([nodeId,step])=>step.shadow?[{nodeId,...copy(step.shadow)}]:[]);
+    const comparisons=shadows.filter(shadow=>shadow.plan.mode==='compare');
+    const waitingForShadow=comparisons.some(shadow=>shadow.evaluation?.context.controlRevision!==state.controlRevision
+      ||shadow.evaluation.policy.mayDeliverMain!==true||shadow.evaluation.policy.comparison.status!=='comparable');
     const result:OwnedWorkflowAdvanceResult={workflowVersion:OWNED_WORKFLOW_VERSION,workflowId:template.workflowId,templateVersion:template.version,
       templateDigest:template.templateDigest,state:graphState,verification:'unverified',checkpoint:this.seal(state),nodes:copy(state.nodes),proposals,
       ...(state.hostControl?{hostControl:copy(state.hostControl)}:{}),
+      ...(shadows.length?{shadows,delivery:{waitingForShadow,mayDeliverMain:graphState==='settled'&&!waitingForShadow,
+        reason:waitingForShadow?'explicit_comparison_requires_verified_comparable_results':graphState!=='settled'?'main_graph_not_settled':'main_graph_settled_without_shadow_wait'}}:{}),
       unavailable:template.nodes.filter(node=>state.nodes[node.id]!.state==='unavailable'
         ||state.nodes[node.id]!.reason==='Host receipt verifier unavailable; original operation is retained').map(node=>({nodeId:node.id,
         capabilities:node.capabilities.map(cap=>`${cap.kind}:${cap.name}`),reason:state.nodes[node.id]!.reason??'Provider unavailable'})),

@@ -1,5 +1,9 @@
 # 协作者实际接线交付总包（2026-10-15）
 
+> 2026-10-16 实现增量见 [V4 生产接线](WORKFLOW_WIRING_V4.md)。新增实际 Runtime/桌面消费及恢复入口，
+> 不改变下表长期负责人，不把本轮 offline/realHost 测试提升为真实账号、设备或云业务完成。
+> 外部来源、配置 CAS、原生平台知识/MCP/评估仍需相应负责人按公开端口独立接入并交 Evidence。
+
 目标 `huawei_ict_agentarts`。本包登记当前工作包，不重新分配历史作者或 MOD；长期归属唯一来源是 [MODULE_ASSIGNMENTS](../MODULE_ASSIGNMENTS.md)。当前设计与全图状态分别见 [当前设计](../design/CURRENT_DESIGN_20261015.md)、[28 项状态](../design/WORKFLOW_STATUS_20261015.md)。旧模块验收保留日期和范围，不能代替当前调用方读回。
 
 ## 交付责任与事实基线

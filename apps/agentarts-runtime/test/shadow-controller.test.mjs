@@ -11,7 +11,7 @@ function unsigned(ctx=context()) {return {shadowVersion:1,operation:'evaluate',.
   plan:{taskKey:ctx.taskId,taskClass:'coding',mode:'ordinary',tier:'isolated',isolation:isolation(ctx),
     decision:{selectedCandidateId:'main',shadowCandidateId:'shadow',shadowRequested:true,uncertain:false,decisionRef:'original-selection',
       provenance:{decidedBy:'deepseek',deepseekProposalRef:'actual-fixture-teacher-receipt',layaDecisionRef:'actual-fixture-local-receipt',layaQualified:false,uncertaintyResolved:true}}},
-  resources:{mainPriorityAvailable:true,shadowAllowed:true,taskValueEligible:true},observedBranches:[],historySnapshot:null};}
+  resources:{mainPriorityAvailable:true,shadowAllowed:true,taskValueEligible:true,advancedEnabled:true},observedBranches:[],historySnapshot:null};}
 const sign=value=>signWorkflowShadowRequest({receiptSecret,value});
 const invoke=(controller,value,extra={})=>controller({value,deadline:new Date(Date.now()+120000).toISOString(),signal:new AbortController().signal,
   ...contextOf(value),requestId:value.requestId,...extra});
@@ -128,4 +128,13 @@ test('signed replay operation binds the same original context/deadline and is ve
   const stop=new AbortController();stop.abort();await assert.rejects(invoke(controller,value,{signal:stop.signal}),{code:'CANCELLED'});
   const expired=sign({...unsignedReplay,taskDeadline:'2025-01-01T00:00:00.000Z'});await assert.rejects(invoke(controller,expired),{code:'TIMEOUT'});
   await assert.rejects(invoke(controller,sign({...unsignedReplay,config:{}})),{code:'INVALID_ARGUMENT'});
+});
+
+test('explicit trusted advanced setting is separate from available resources',async()=>{
+  const controller=createWorkflowShadowController({receiptSecret,policyConfig:config}),value=unsigned();
+  value.resources.advancedEnabled=false;
+  const disabled=await invoke(controller,sign(value));assert.equal(disabled.result.action,'skip');assert.equal(disabled.result.reason,'trusted_advanced_mode_disabled');
+  delete value.resources.advancedEnabled;
+  const missing=await invoke(controller,sign(value));assert.equal(missing.result.action,'defer');assert.equal(missing.result.reason,'trusted_advanced_setting_unavailable');
+  value.resources.advancedEnabled='model says yes';await assert.rejects(invoke(controller,sign(value)),{code:'INVALID_ARGUMENT'});
 });

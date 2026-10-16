@@ -200,6 +200,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
   taskId: string; revision: number; goal: string; deadline: string;
   deadlineMs: number; signal: AbortSignal; continuation?: CoordinationContinuation;
   availableTools?: readonly CoordinationAvailableTool[];
+  textOnly?: true;
 } {
   let input: Record<string, unknown>;
   try {
@@ -207,11 +208,15 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
     if (!source) invalid('Invalid AgentArts coordination request');
     input = {taskId: source.taskId, revision: source.revision, goal: source.goal,
       deadline: source.deadline, signal: source.signal,
-      continuation: source.continuation, availableTools: source.availableTools};
+      continuation: source.continuation, availableTools: source.availableTools, textOnly:source.textOnly};
   } catch {
     invalid('Invalid AgentArts coordination request');
   }
   // A text-only invocation cannot silently discard a future tool result.
+  if (input.textOnly !== undefined && input.textOnly !== true) invalid('Invalid text-only coordination request');
+  if (input.textOnly && (input.continuation !== undefined || input.availableTools !== undefined)) {
+    invalid('Text-only coordination cannot include tools or continuation');
+  }
   let continuation: CoordinationContinuation | undefined;
   if (input.continuation !== undefined) {
     if (responseMode === 'text') invalid('AgentArts text adapter does not support tool continuation');
@@ -227,7 +232,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
   }
   const availableTools = input.availableTools === undefined ? undefined
     : parseCoordinationAvailableTools(input.availableTools);
-  if (continuation === undefined && initialRequestMode === 'goal-with-tools-json'
+  if (!input.textOnly && continuation === undefined && initialRequestMode === 'goal-with-tools-json'
     && (availableTools === undefined || availableTools.length === 0)) {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts initial tool directory is unavailable');
   }
@@ -273,6 +278,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
   if (aborted) throw abortError('cancelled');
   if (deadlineMs <= Date.now()) throw abortError('deadline');
   return {taskId, revision, goal, deadline, deadlineMs, signal,
+    ...(input.textOnly ? {textOnly:true as const} : {}),
     ...(continuation === undefined ? {} : {continuation}),
     ...(availableTools === undefined ? {} : {availableTools})};
 }
@@ -1075,7 +1081,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
 
   async invoke(request: CoordinationRequest): Promise<CoordinationResult> {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
-    const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, availableTools} =
+    const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, availableTools, textOnly} =
       validateRequest(request, this.responseMode, this.initialRequestMode);
     if (continuation !== undefined && this.beforeSend === undefined) {
       throw new ProtocolError('UNAUTHORIZED', 'AgentArts continuation export guard is unavailable');
@@ -1096,6 +1102,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     const combined = makeCombinedSignal(signal, deadlineMs);
     const sendRequest: CoordinationRequest = Object.freeze({
       taskId, revision, goal, deadline, signal: combined.signal,
+      ...(textOnly ? {textOnly:true as const} : {}),
       ...(continuation === undefined ? {} : {continuation}),
       ...(availableTools === undefined ? {} : {availableTools}),
     });
@@ -1314,6 +1321,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       try {
         const result = this.responseMode === 'tool-proposal-json' ? parseApplicationResult(text, this.repairCandidateVersion)
           : parseCoordinationTextResult({kind: 'text', text, verification: 'unverified'});
+        if (textOnly && result.kind !== 'text') invalid('Text-only coordination cannot propose tools or repairs');
         if (fallbackReceipt !== undefined) { guards.afterTerminal?.(fallbackReceipt); fallbackStarted = false; }
         return result;
       } catch (error) {

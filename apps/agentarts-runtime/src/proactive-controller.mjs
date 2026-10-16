@@ -1,22 +1,8 @@
-import {createHmac,timingSafeEqual} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
-import {ProactiveWorkflowEngine,getProactiveWorkflowDescriptor,getProactiveWorkflowAdapterRequirements,proactiveWorkflowDigest} from '@personal-agent/agentarts';
+import {ProactiveWorkflowEngine,getProactiveWorkflowDescriptor,getProactiveWorkflowAdapterRequirements,createProactiveHostProofs} from '@personal-agent/agentarts';
+export {createProactiveHostProofs} from '@personal-agent/agentarts';
 const plain=v=>v&&typeof v==='object'&&!Array.isArray(v);
 const invalid=()=>{throw new ProtocolError('INVALID_ARGUMENT','Invalid proactive host protocol');};
-const body=value=>{const {proof:_,...rest}=value;return rest;};
-const identity=value=>({taskId:value.taskId,sessionId:value.sessionId,controlRevision:value.controlRevision,taskDeadline:value.taskDeadline});
-/** A provenance signature is not an execution grant. Only the original Runtime/Policy may authorize proposals. */
-export function createProactiveHostProofs(secret) {
-  if(typeof secret!=='string'||Buffer.byteLength(secret)<32)invalid();
-  const digest=(kind,value,binding)=>createHmac('sha256',secret).update('proactive-host-v1:'+proactiveWorkflowDigest({kind,binding:identity(binding),value:body(value)})).digest();
-  return {
-    sign(kind,value,binding){if(!plain(value))invalid();return {...value,proof:digest(kind,value,binding).toString('base64url')};},
-    verify(kind,value,binding){
-      if(!plain(value)||typeof value.proof!=='string')return false;
-      try{const supplied=Buffer.from(value.proof,'base64url'),expected=digest(kind,value,binding);return supplied.length===expected.length&&timingSafeEqual(supplied,expected);}catch{return false;}
-    },
-  };
-}
 export function createProactiveWorkflowController({receiptSecret,checkpointSecret=receiptSecret,decisionContracts=[],onStage}={}) {
   const proofs=createProactiveHostProofs(receiptSecret);
   const engine=new ProactiveWorkflowEngine({checkpointSecret,decisionContracts,onStage,

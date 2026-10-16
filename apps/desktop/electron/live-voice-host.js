@@ -1,6 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {pcmLevel} from './audio-level.js';
 import {createLiveVoiceHistory} from './live-voice-history.js';
+import {notificationDigest} from '@personal-agent/notifications';
 
 const SESSION_MS = 120 * 60_000;
 
@@ -26,6 +27,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   createConsumer, client, readContext, onTaskSubmitted,
   onTranscript = () => {throw Error('Live 历史保存端口不可用');}, onUpdate = () => {}, onLevel = () => {},
   historyStore, historyQueue,
+  readCurrentQuestion = () => null, onFinalUserCommand = async () => ({consumed: false}),
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
   const history = createLiveVoiceHistory({save:onTranscript, readContext, recoveryStore:historyStore, queue:historyQueue});
@@ -42,6 +44,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   }
   const hasActive = () => enabled || Boolean(active) || releaseUnknown;
   const snapshot = () => ({...config.snapshot(), active: hasActive(), status: active?.phase ?? (enabled ? 'reconnecting' : lastError ? 'error' : 'idle'),
+    questionDelivery:active?.questionDelivery??{state:'unavailable'},
     reason: lastError || (history.snapshot().degraded ? (history.snapshot().durable
       ? '对话记录保存异常，已缓存待回补记录'
       : '对话记录保存异常，恢复缓存未确认；内存记录退出可能丢失')
@@ -123,9 +126,21 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
         onEvent(event) {
           if (!isCurrent()) return;
           if (event.type === 'error') {fail(event.message); return;}
-          if (event.type === 'speech_started') record.userSpeaking = true;
-          if (event.type === 'speech_stopped') record.userSpeaking = false;
+          if (event.type === 'speech_started') {
+            const question = readCurrentQuestion();
+            record.userSpeaking = true;
+            record.finalTurn = {utteranceId: event.utteranceId, startedAt: new Date(now()).toISOString(), question,
+              echo: record.phase === 'speaking' || record.outputActive === true,
+              captured: record.lastFrameAt !== undefined && question && record.lastFrameAt >= Date.parse(question.issuedAt)};
+          }
+          if (event.type === 'speech_stopped') {
+            record.userSpeaking = false;
+            if (record.finalTurn?.utteranceId && record.finalTurn.utteranceId === event.utteranceId) record.finalTurn.stopped = true;
+            else if (record.finalTurn) record.finalTurn.echo = true;
+          }
           if (event.type === 'audio') {
+            record.outputActive = true;
+            if (record.finalTurn && !record.finalTurn.stopped) record.finalTurn.echo = true;
             record.phase = 'speaking';
             command(record, {type: 'audio', data: event.data});
             try { onLevel(pcmLevel(event.data)); } catch { /* Loudness is visual and must not stop playback. */ }
@@ -142,6 +157,20 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
               role: event.role, text: trimmed, createdAt: new Date(now()).toISOString()};
             try {history.record(message); flushHistory();}
             catch {fail('Live 历史待保存容量或标识异常，已停止通话；待保存记录保留'); return;}
+            const turn = record.finalTurn, question = turn?.question;
+            if (event.role === 'user' && event.phase === 'final' && event.source === 'input_audio'
+              && event.utteranceId && event.utteranceId === turn?.utteranceId && turn.stopped
+              && turn.captured && !turn.echo && !turn.consumed && question?.state === 'pending') {
+              turn.consumed = true;
+              const receipt = {source: 'live_input_audio', phase: 'final', origin: 'user', echo: false,
+                sessionId: record.id, utteranceId: event.utteranceId, text: trimmed,
+                transcriptDigest: notificationDigest(trimmed), startedAt: turn.startedAt, completedAt: new Date(now()).toISOString(),
+                questionId: question.questionId, questionRevision: question.revision, argumentsDigest: question.argumentsDigest,
+                expiresAt: new Date(Math.min(Date.parse(question.expiresAt), Date.parse(record.deadline))).toISOString(), signal: controller.signal};
+              void Promise.resolve().then(() => {if (isCurrent()) return onFinalUserCommand(receipt);})
+                .then(result => {if (isCurrent() && result?.consumed) {record.confirmationResult = result.state; publish();}})
+                .catch(() => {if (isCurrent()) {record.confirmationResult = 'unknown'; publish();}});
+            }
           }
           if (event.type !== 'audio') publish();
         },
@@ -246,6 +275,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       record.subscription = record.source.subscribe({signal: controller.signal, deadline: record.deadline,
         onFrame(frame) {
           if (!isCurrent()) return;
+          record.lastFrameAt = now();
           try {record.session.sendAudio(frame.data);} catch {fail('Live 音频发送失败，已停止录音');}
         }, onError: () => {if (isCurrent()) fail('Live 麦克风采集失败');}, onEnd: reason => {
           // Release/error feedback may close its own expired record, never a newer one.
@@ -270,7 +300,10 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       || message?.token !== record.id) return false;
     if (message.type === 'ready') record.playReady.resolve();
     if (message.type === 'stopped') record.playStopped.resolve();
-    if (message.type === 'drained' && record.phase === 'speaking') {record.phase = 'listening'; publish();}
+    if (message.type === 'drained') {
+      record.outputActive = false;
+      if (record.phase === 'speaking') {record.phase = 'listening'; publish();}
+    }
     if (message.type === 'error') {record.playReady.reject(Error('Live 播放设备不可用')); fail('Live 播放设备不可用');}
     return true;
   }
@@ -291,6 +324,17 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     return messages;
   }
   return {snapshot, historyMessages, hasActive, start, stop, receive,
+    askCurrentQuestion() {
+      const record=active,question=readCurrentQuestion();
+      if (!record || record.controller.signal.aborted || now()>=Date.parse(record.deadline)
+        || record.phase!=='listening' || question?.state!=='pending' || now()>=Date.parse(question.expiresAt)
+        || typeof record.session?.askUserQuestion!=='function') return {state:'unavailable',accepted:false};
+      try {
+        const result=record.session.askUserQuestion(question.summary);
+        record.questionDelivery={state:result?.accepted===true?'queued':'unavailable',questionId:question.questionId,playbackVerified:false};
+      } catch {record.questionDelivery={state:'unavailable',questionId:question.questionId,playbackVerified:false};}
+      publish();return {...record.questionDelivery};
+    },
     flushHistory() {const result = flushHistory(); publish(); return result;},
     interrupt() {
       if (releaseUnknown) throw Error(lastError);

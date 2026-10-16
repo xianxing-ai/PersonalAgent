@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import {assertPolicyValid,quietHoursActive} from './policy.js';
-import type {QuietHours} from './policy.js';
+import type {QuietHours,NotificationPolicy} from './policy.js';
 
 export type NotificationScope={kind:'global'}|{kind:'connector';connectorId:string}
   |{kind:'responsibility';responsibilityId:string;connectorId?:string};
@@ -19,6 +19,8 @@ export interface NotificationAtomicStatePort {
 }
 export interface NotificationStage {stage:string;observedAt:string;details:Readonly<Record<string,unknown>>}
 export interface InterruptionPolicyUpdate {operationId:string;expectedRevision:number;scope:NotificationScope;patch:InterruptionPolicyPatch}
+export interface LegacyNotificationPolicyUpdate {operationId:string;expectedRevision:number;scope:NotificationScope;legacyPolicy:NotificationPolicy}
+export type NotificationSettingsUpdate=InterruptionPolicyUpdate|LegacyNotificationPolicyUpdate;
 export interface NotificationFeedEntry {
   id:string;cursor:number;source:string;contentRef:string;occurredAt:string;receivedAt:string;scope:NotificationScope;
   validUntilUtc:string|null;urgent:boolean;readAt?:string;deliveredAt?:string;withdrawnAt?:string;
@@ -39,6 +41,8 @@ export interface NotificationInterruptionState {
   version:1;policies:Record<string,{scope:NotificationScope;revision:number;patch:InterruptionPolicyPatch}>;
   operations:Record<string,{inputDigest:string;result:unknown}>;rounds:Record<string,InterruptionRound>;
   feed:NotificationFeedEntry[];nextCursor:number;
+  /** Imported existing connector settings, within this original atomic state. No inferred global budget. */
+  legacyPolicies?:Record<string,{scope:NotificationScope;revision:number;policy:NotificationPolicy}>;
 }
 export interface ResolvedInterruptionPolicy {
   state:'configured'|'unconfigured';scope:NotificationScope;revision:number;local:InterruptionPolicyPatch|null;
@@ -102,8 +106,21 @@ export function assertInterruptionState(s:NotificationInterruptionState):void {
   for(const [key,record] of Object.entries(s.policies)) {
     if(!record||notificationScopeKey(record.scope)!==key||!Number.isSafeInteger(record.revision)||record.revision<1)
       throw new ProtocolError('PROTOCOL_MISMATCH','Notification policy revision is invalid');
-    assertInterruptionPatch(record.patch,key==='global');
+    if(key==='global'||Object.keys(record.patch).length)assertInterruptionPatch(record.patch,key==='global');
   }
+  for(const [key,record] of Object.entries(s.legacyPolicies??{})) {
+    if(!record||key==='global'||notificationScopeKey(record.scope)!==key||!Number.isSafeInteger(record.revision)||record.revision<1)
+      throw new ProtocolError('PROTOCOL_MISMATCH','Legacy notification scope/revision is invalid');
+    assertLegacyNotificationPolicy(record.policy);
+  }
+}
+export function assertLegacyNotificationPolicy(policy:NotificationPolicy):void {
+  if(!policy||typeof policy!=='object'||Array.isArray(policy)||Object.keys(policy).some(key=>!['quietHours','pauseUntilUtc','digest'].includes(key)))
+    fail('Existing notification policy fields required');
+  assertPolicyValid(policy);
+}
+export function scopedLegacyPolicies(state:NotificationInterruptionState,scope:NotificationScope):NotificationPolicy[] {
+  return notificationScopePath(scope).flatMap(key=>state.legacyPolicies?.[key]?[state.legacyPolicies[key]!.policy]:[]);
 }
 export function resolveInterruptionPolicy(state:NotificationInterruptionState,scope:NotificationScope,now:number):ResolvedInterruptionPolicy {
   const key=notificationScopeKey(scope),root=state.policies.global,leaf=state.policies[key];
@@ -127,7 +144,10 @@ export function resolveInterruptionPolicy(state:NotificationInterruptionState,sc
 export const feedEntryActive=(entry:NotificationFeedEntry,now:number):boolean=>!entry.withdrawnAt
   &&(entry.validUntilUtc===null||Date.parse(entry.validUntilUtc)>now);
 export function interruptionBlock(state:NotificationInterruptionState,scope:NotificationScope,now:number,urgent:boolean):string|undefined {
-  const resolved=resolveInterruptionPolicy(state,scope,now);if(!resolved.effective)return 'interruption_policy_unconfigured';
+  const legacy=scopedLegacyPolicies(state,scope);
+  if(legacy.some(policy=>policy.pauseUntilUtc!==undefined&&Date.parse(policy.pauseUntilUtc)>now
+    ||policy.quietHours!==undefined&&quietHoursActive(policy.quietHours,now)))return 'legacy_pause_or_quiet';
+  const resolved=resolveInterruptionPolicy(state,scope,now);if(!resolved.effective)return legacy.length?undefined:'interruption_policy_unconfigured';
   for(const {policy} of resolved.constraints) {
     const silent=policy.mode==='silent'&&policy.silentUntilUtc===null||policy.silentUntilUtc!==null&&Date.parse(policy.silentUntilUtc)>now
       ||policy.quietHours!==null&&quietHoursActive(policy.quietHours,now);
@@ -148,7 +168,31 @@ export function updateNotificationPolicy(state:NotificationInterruptionState,inp
     if(scope!=='global'&&!state.policies.global)fail('Configure the full global user policy first');
     const patch={...prior?.patch,...structuredClone(input.patch)};assertInterruptionPatch(patch,scope==='global');
     state.policies[scope]={scope:structuredClone(input.scope),revision:input.expectedRevision+1,patch};
+    const legacy=state.legacyPolicies?.[scope];
+    if(legacy) {
+      const before=notificationDigest(legacy.policy);
+      if(Object.hasOwn(input.patch,'mode')||Object.hasOwn(input.patch,'silentUntilUtc'))delete legacy.policy.pauseUntilUtc;
+      if(Object.hasOwn(input.patch,'quietHours'))delete legacy.policy.quietHours;
+      if(Object.hasOwn(input.patch,'digestMode'))delete legacy.policy.digest;
+      if(before!==notificationDigest(legacy.policy))legacy.revision++;
+    }
     return {operationId:input.operationId,...resolveInterruptionPolicy(state,input.scope,now),decidedAt:new Date(now).toISOString()};
+  });
+}
+export function updateLegacyNotificationPolicy(state:NotificationInterruptionState,input:LegacyNotificationPolicyUpdate,now:number) {
+  const key=notificationScopeKey(input.scope);assertLegacyNotificationPolicy(input.legacyPolicy);
+  if(key==='global'||!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<0)fail('Existing connector scope and revision required');
+  return notificationOperation(state,input.operationId,{kind:'update_legacy_policy',...input},()=>{
+    const prior=state.legacyPolicies?.[key];
+    if((prior?.revision??0)!==input.expectedRevision)throw new ProtocolError('REVISION_CONFLICT','Existing notification policy changed');
+    state.legacyPolicies??={};state.legacyPolicies[key]={scope:structuredClone(input.scope),revision:input.expectedRevision+1,policy:structuredClone(input.legacyPolicy)};
+    const modern=state.policies[key];
+    if(modern) {
+      const patch={...modern.patch};for(const field of ['mode','silentUntilUtc','quietHours','digestMode'] as const)delete patch[field];
+      if(notificationDigest(patch)!==notificationDigest(modern.patch)){modern.patch=patch;modern.revision++;}
+    }
+    return {operationId:input.operationId,scope:structuredClone(input.scope),revision:input.expectedRevision+1,
+      state:'configured' as const,legacyPolicy:structuredClone(input.legacyPolicy),decidedAt:new Date(now).toISOString()};
   });
 }
 export function queryNotificationFeed(state:NotificationInterruptionState,input:NotificationFeedQuery,now:number) {

@@ -44,6 +44,15 @@ import {KnowledgeWriteReconciliationAdapter} from './knowledge-write-reconciliat
 import type {KnowledgeWriteReconciliationPort} from './knowledge-write-reconciliation.js';
 import type {WindowsHostRecovery, WindowsHostRunIdentity} from './windows-host-adapter.js';
 import {parseWindowsHostFrame} from '@personal-agent/contracts/windows-host';
+import {createRuntimeNotificationHost} from './notification-host.js';
+import type {RuntimeNotificationHost, RuntimeNotificationHostOptions} from './notification-host.js';
+import {createRuntimeProactiveWorkflowHost, createRuntimeProactiveWorkflowTools} from './proactive-workflow-application.js';
+import type {RuntimeProactiveWorkflowHost, RuntimeProactiveWorkflowHostOptions} from './proactive-workflow-application.js';
+import {createRuntimeOwnedWorkflowHost, createRuntimeOwnedWorkflowTools} from './owned-workflow-application.js';
+import type {RuntimeOwnedWorkflowHostOptions, RuntimeWorkflowShadowReleaseOptions} from './owned-workflow-application.js';
+import {createRuntimeProactiveTaskDriver} from './proactive-task-driver.js';
+import type {RuntimeProactiveTaskDriver} from './proactive-task-driver.js';
+import {createRuntimeProactiveDecisionTools} from './proactive-decision-tools.js';
 type SuccessfulResponse = Extract<Response, {outcome: 'ok'}>;
 
 export interface RevokeHostAuthorizationRequest {
@@ -265,6 +274,10 @@ export interface ThinkingState extends ThinkingConfig {
 }
 
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
+  /** Registers only the scoped host adapters; no source, model or device is enabled by this flag. */
+  proactiveWorkflows?: true;
+  proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
+  workflowShadowRelease?: RuntimeWorkflowShadowReleaseOptions;
   thinking?: ThinkingConfig;
   /** Trusted host policy for routine operations inside already enabled module scopes. */
   automaticTools?: readonly {toolName: string; toolVersion: string}[];
@@ -316,6 +329,11 @@ export interface RuntimeApplicationTransport { send(request: Request, signal: Ab
 
 export class RuntimeApplication implements RuntimeApplicationTransport {
   readonly runtime: TaskRuntime;
+  private readonly proactiveHosts = new Map<string, RuntimeProactiveWorkflowHost>();
+  private readonly proactiveDrivers = new Map<string, RuntimeProactiveTaskDriver>();
+  private readonly proactiveHostOptions = new Map<string, RuntimeProactiveWorkflowHostOptions>();
+  private notificationHost: RuntimeNotificationHost | undefined;
+  private notificationHostOptions: RuntimeNotificationHostOptions | undefined;
   private textApplication: TextApplication;
   private readonly activeTextTasks = new Map<string, Promise<unknown>>();
   private readonly tools: AgentToolPort | undefined;
@@ -359,7 +377,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (options.thinking) this.configureThinking(options.thinking);
     else if (options.competitionMaxSteps !== undefined) this.thinkingConfig = {depth: Math.min(5, Math.max(0, Math.floor(options.competitionMaxSteps / 2) - 1)), fast: false};
     if (!['local', 'huawei_ict_agentarts'].includes(this.profile)
-      || (this.profile === 'local' && (options.coordination !== undefined || options.competitionToolExports !== undefined || options.competitionToolAvailability !== undefined || options.repairCandidateVersion !== undefined || options.hostUserNamespace !== undefined))
+      || (this.profile === 'local' && (options.coordination !== undefined || options.competitionToolExports !== undefined || options.competitionToolAvailability !== undefined || options.repairCandidateVersion !== undefined || options.hostUserNamespace !== undefined || options.workflowShadowRelease !== undefined))
       || (options.repairCandidateVersion !== undefined && options.repairCandidateVersion !== '1.0')
       || (options.localRepair !== undefined && options.repairCandidateVersion !== '1.0')
       || (this.profile === 'huawei_ict_agentarts' && options.text !== undefined)) {
@@ -420,10 +438,21 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       exportNames.add(key);
     }
     let gateway: ToolGateway | undefined;
+    const configuredTools = [...(options.tools ?? []), ...createRuntimeOwnedWorkflowTools(
+      options.workflowShadowRelease ? {shadowRelease: options.workflowShadowRelease} : {}),
+      ...(options.proactiveWorkflows ? createRuntimeProactiveDecisionTools({
+        ...(options.proactiveDecision?.localChooser ? {localChooser: options.proactiveDecision.localChooser} : {}),
+        ...(this.coordination ? {teacher: this.coordination} : {}),
+        readContext: (taskId, contextRef, lifetime) => {
+          const host = [...this.proactiveHosts.values()].find(value => value.taskId === taskId);
+          if (!host) throw new ProtocolError('NOT_FOUND', 'Original proactive context host is unavailable');
+          return host.readCurrentContext(contextRef, lifetime);
+        }, getRevision: taskId => this.runtime.getTask(taskId).revision,
+      }) : [])];
     this.runtime = new TaskRuntime(options.path, {
       ...(options.now ? {now: options.now} : {}),
       ...(options.idFactory ? {idFactory: options.idFactory} : {}),
-      ...(options.tools || this.localRepair ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
+      ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
           // Gate even the generic tool.invoke wire path: a persisted sample
           // grant alone cannot survive its process-local consent lease.
@@ -445,7 +474,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
           return policy.authorize(request);
         }}, now: () => (options.now?.() ?? new Date()).getTime()});
-        for (const tool of options.tools ?? []) gateway.register(tool);
+        for (const tool of configuredTools) gateway.register(tool);
+        if (options.proactiveWorkflows) {
+          if (this.profile !== 'huawei_ict_agentarts') throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Proactive workflows require Competition Profile');
+          for (const tool of createRuntimeProactiveWorkflowTools((taskId, sessionId) => this.proactiveHosts.get(JSON.stringify([taskId, sessionId])))) gateway.register(tool);
+        }
         if (this.localRepair) gateway.register(createLocalRepairTool(() => this.runtime, this.localRepair));
         return gateway;
       }} : {}),
@@ -551,6 +584,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const summary = readRuntimeSubagentSummary(this.runtime, invocation.taskId);
         this.runtime.saveCheckpoint(invocation.taskId, 'subagent-current-summary', summary);
         const children = this.runtime.listTasks({conversationId: `desktop-subtask:${invocation.taskId}`, limit: 100}).items;
+        const proactive = [...this.proactiveHosts.values()].find(host => host.taskId === invocation.taskId);
+        if (proactive) for (const child of children) {
+          try {await proactive.ingestSubtaskFeedback({childTaskId: child.taskId, expectedRevision: child.revision},
+            {signal: invocation.signal, deadline: invocation.deadline});}
+          catch (error) {this.runtime.saveCheckpoint(invocation.taskId, 'proactive-child-report:' + child.taskId, {
+            childTaskId: child.taskId, childRevision: child.revision,
+            state: 'pending', errorCode: error instanceof ProtocolError ? error.code : 'EXTERNAL_FAILURE',
+          });}
+        }
         const unresolved = children.filter(child => !['succeeded', 'failed', 'cancelled'].includes(child.state));
         if (unresolved.length) {
           this.runtime.saveCheckpoint(invocation.taskId, 'subagent-parent-wait', {
@@ -803,6 +845,66 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Trusted Runtime-managed subagent dispatch tool. Creates and tracks real child tasks. */
+  createNotificationHost(options: RuntimeNotificationHostOptions): RuntimeNotificationHost {
+    if (this.profile !== 'huawei_ict_agentarts') throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Notification host requires Competition Profile');
+    if (this.notificationHost) {
+      if (!isDeepStrictEqual(options, this.notificationHostOptions)) throw new ProtocolError('REVISION_CONFLICT', 'The Runtime notification host already has a different configuration');
+      return this.notificationHost;
+    }
+    const host = createRuntimeNotificationHost(this.runtime, options);
+    this.notificationHostOptions = {...options, policy: structuredClone(options.policy), settingsScopes: [...options.settingsScopes]};
+    this.notificationHost = host;
+    return host;
+  }
+
+  createOwnedWorkflowHost(options: RuntimeOwnedWorkflowHostOptions) {
+    if (this.profile !== 'huawei_ict_agentarts') throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Owned workflow host requires Competition Profile');
+    return createRuntimeOwnedWorkflowHost(this, options);
+  }
+
+  createProactiveWorkflowHost(options: RuntimeProactiveWorkflowHostOptions): RuntimeProactiveWorkflowHost {
+    if (this.profile !== 'huawei_ict_agentarts' || !this.tools) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Proactive Runtime adapters are unavailable');
+    if (options.notificationHost && options.notificationHost !== this.notificationHost) throw new ProtocolError('UNAUTHORIZED', 'Proactive notifications must use the Runtime singleton host');
+    const key = JSON.stringify([options.taskId, options.sessionId]), existing = this.proactiveHosts.get(key);
+    if (existing) {
+      if (!isDeepStrictEqual(options, this.proactiveHostOptions.get(key))) throw new ProtocolError('REVISION_CONFLICT', 'Original proactive session configuration changed');
+      return existing;
+    }
+    if ([...this.proactiveHosts.values()].some(host => host.taskId === options.taskId)) throw new ProtocolError('REVISION_CONFLICT', 'Original task is already bound to another proactive session');
+    const host = createRuntimeProactiveWorkflowHost(this.runtime, this.tools, options, () => this.now().getTime());
+    this.proactiveHosts.set(key, host); this.proactiveHostOptions.set(key, {...options});
+    return host;
+  }
+
+  startProactiveTask(options: RuntimeProactiveWorkflowHostOptions | string): RuntimeProactiveWorkflowHost {
+    const host = typeof options === 'string' ? [...this.proactiveHosts.values()].find(value => value.taskId === options)
+      : this.createProactiveWorkflowHost(options);
+    if (!host) throw new ProtocolError('NOT_FOUND', 'Original proactive session must be bound before starting');
+    this.resumeProactiveTask(host.taskId);
+    return host;
+  }
+
+  runProactiveTask(taskId: string): Promise<TaskSnapshot> {
+    const host = [...this.proactiveHosts.values()].find(value => value.taskId === taskId);
+    if (!host) throw new ProtocolError('NOT_FOUND', 'Original proactive session is unavailable');
+    let driver = this.proactiveDrivers.get(taskId);
+    if (!driver) {driver = createRuntimeProactiveTaskDriver(this.runtime, host, () => this.now().getTime()); this.proactiveDrivers.set(taskId, driver);}
+    const existing = this.activeTextTasks.get(taskId);
+    if (existing) {
+      if (!driver.active) throw new ProtocolError('REVISION_CONFLICT', 'Original task already has another application worker');
+      return existing as Promise<TaskSnapshot>;
+    }
+    const execution = driver.run().finally(() => this.activeTextTasks.delete(taskId));
+    this.activeTextTasks.set(taskId, execution); return execution;
+  }
+
+  resumeProactiveTask(taskId: string): void {
+    void this.runProactiveTask(taskId).catch(error => {
+      this.runtime.saveCheckpoint(taskId, 'proactive-runtime-worker-error', {code: error instanceof ProtocolError || error && typeof error === 'object' && 'code' in error
+        ? String(error.code) : 'EXTERNAL_FAILURE'});
+    });
+  }
+
   createSubagentDispatchTool(modelGatewayFactory?: (modelName?: string) => import('@personal-agent/models').ModelGateway | undefined): RegisteredTool {
     return createRuntimeSubagentDispatchTool({
       getRuntime: () => this.runtime,
@@ -1684,6 +1786,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   resumeTask(taskId: string): void {
+    if (this.proactiveDrivers.has(taskId)) {this.resumeProactiveTask(taskId); return;}
+    const proactiveHost = [...this.proactiveHosts.values()].find(host => host.taskId === taskId);
+    if (proactiveHost) {proactiveHost.resumeApproved(); return;}
     if (this.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
       throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation before task resume');
     }
@@ -1775,6 +1880,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const binding = this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?: string} | undefined;
     if (typeof binding?.parentTaskId !== 'string') return;
     await this.activeTextTasks.get(binding.parentTaskId);
+    const proactive = [...this.proactiveHosts.values()].find(host => host.taskId === binding.parentTaskId);
+    if (proactive && !this.runtime.getTask(binding.parentTaskId).cancelRequested) {
+      const child = this.runtime.getTask(childTaskId);
+      await proactive.ingestSubtaskFeedback({childTaskId, expectedRevision: child.revision},
+        {signal: new AbortController().signal, deadline: proactive.binding.taskDeadline});
+    }
     if(this.confirmedSubagentWait(binding.parentTaskId)) {
       if(this.runtime.getTask(binding.parentTaskId).state==='waiting_reconciliation')this.resumeConfirmedTask(binding.parentTaskId);
       else if(this.runtime.getTask(binding.parentTaskId).state==='waiting_approval')this.resumeTask(binding.parentTaskId);

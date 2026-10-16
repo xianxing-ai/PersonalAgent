@@ -2,6 +2,7 @@ import {stateNames} from '../conversation/state.js';
 import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
+import {mountNotificationSettings} from './notification-settings.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
@@ -24,14 +25,14 @@ import {agentArtsModelPage} from './agentarts-model.js';
 import {evidencePanelHtml} from './evidence-view.js';
 
 export const sections = {
-  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', configuration: '配置',
+  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接', git: 'Git', environment: '环境', worktrees: 'Worktrees',
   tasks: '任务监控', authorizations: '安全', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
 };
 
 const navGroups = [
-  {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
+  {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'notifications', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
   {label: '集成', items: ['computer', 'capabilities']},
   {label: '编码', items: ['hooks', 'connections', 'git', 'environment', 'worktrees', 'authorizations']},
   {label: '任务', items: ['archive']},
@@ -136,7 +137,7 @@ export function mountAdmin(root, invoke, escape) {
   localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let installedSkillsControls,sisControls;
+  let installedSkillsControls,sisControls,notificationControls;
   let modelApiSignature;
 
   function capabilityTable(data) {
@@ -210,7 +211,7 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('语音播报', '停止播报与任务取消保持独立', '<span class="value-pill">安全隔离</span>')],
       notifications: ['通知', '任务状态与需要用户处理的提醒',
         settingRow('应用内通知', '当前只显示真实 Runtime 状态', '<span class="value-pill">已启用</span>') +
-        settingRow('系统通知', 'Windows 通知宿主尚未接入', '<span class="status-note">待接入</span>', 'is-unavailable') +
+        settingRow('系统通知', '按当前打扰策略投递，系统 show 回执与用户已读分别核实', `<span class="value-pill">${data.notificationCenter?.available?'宿主已装配，设备待验':'等待 Runtime'}</span>`) +
         settingRow('授权提醒', '待处理授权会出现在“授权”页面', '<button class="btn btn-sm" data-jump="authorizations">查看授权</button>')],
       privacy: ['隐私与数据', '敏感数据与本地运行边界',
         (agentArts
@@ -318,6 +319,8 @@ export function mountAdmin(root, invoke, escape) {
     if (section==='voice') {liveControls ??= mountLiveVoiceControls(root,invoke);sisControls ??= mountSisVoiceSettings(root,invoke);}
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
     sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
+    if(section==='notifications') notificationControls??=mountNotificationSettings(root.querySelector('.main'),invoke);
+    notificationControls?.render(data.notificationCenter,data.voiceQuestion,data.approvals??[]);notificationControls?.show(section==='notifications');
     if (section==='computer') proactiveControls ??= mountProactiveControls(root.querySelector('.main'),invoke,{settings:true});
     proactiveControls?.render(data.proactive);proactiveControls?.show(section==='computer');
     if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);
@@ -371,7 +374,7 @@ export function mountAdmin(root, invoke, escape) {
     }
     modelApiControls?.showSettings(section === 'models');
     root.querySelector('.main').dataset.cloudConfig=String(section==='models' && data.model?.provider==='agentarts');
-    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', shortcuts: 'shortcuts'};
+    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
     const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'usage', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
     root.querySelector('.main').dataset.surface = section === 'models' ? 'models' : directSettings[section] || featureSections.includes(section) ? 'settings' : 'standard';
     root.querySelector('#page-title').textContent = sections[section];

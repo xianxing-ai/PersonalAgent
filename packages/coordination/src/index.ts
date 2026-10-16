@@ -42,6 +42,8 @@ export interface CoordinationRequest {
   readonly signal: AbortSignal;
   readonly continuation?: CoordinationContinuation;
   readonly availableTools?: readonly CoordinationAvailableTool[];
+  /** Trusted host selection exchange on the same cloud port; never accepts tools or continuation. */
+  readonly textOnly?: true;
 }
 
 export interface CoordinationTextResult {

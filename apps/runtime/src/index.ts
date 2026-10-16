@@ -1360,7 +1360,35 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     });
   }
 
-  /** Reopen only the worker continuation of a cached, authorized original run. No execution or grant. */
+  /** Reopen only a verified original continuation, including settled failed reads. No execution or grant. */
+  prepareVerifiedContinuation(taskId: string, expectedRevision: number): TaskSnapshot {
+    return this.transaction(() => {
+      const task = this.getTask(taskId);
+      if (!Number.isSafeInteger(expectedRevision) || task.revision !== expectedRevision || task.state !== 'waiting_reconciliation'
+        || this.active.has(taskId)) throw new RuntimeError('REVISION_CONFLICT', 'Original task continuation revision or active worker differs');
+      if (task.cancelRequested || this.loadCheckpoint(taskId, 'private-copy-erasure')) throw new RuntimeError('UNAUTHORIZED', 'Cancelled or withheld task cannot resume');
+      const deadline = this.loadCheckpoint(taskId, 'application-deadline');
+      if (typeof deadline !== 'string' || !Number.isFinite(Date.parse(deadline)) || Date.parse(deadline) <= this.now().getTime())
+        throw new RuntimeError('TIMEOUT', 'Original task deadline cannot be extended for continuation');
+      const descriptors = this.toolGateway?.list() ?? [];
+      const unsettled = this.readToolExecutions(taskId).some(record => {
+        if (!record.executionStarted || record.policyDecision !== 'allow' || record.reconciliationOutcome === 'unknown') return true;
+        if (record.state === 'confirmed') return !Object.hasOwn(this.loadCheckpoint(taskId, 'tool-result-' + record.evidenceId) as object ?? {}, 'result');
+        if (record.state !== 'failed' || !record.finishedAt || !record.errorCode
+          || ['TIMEOUT', 'CANCELLED', 'RESULT_UNKNOWN', 'NOT_CONFIRMED'].includes(record.errorCode.toUpperCase())
+          || !Number.isFinite(Date.parse(record.startedAt)) || !Number.isFinite(Date.parse(record.finishedAt))
+          || Date.parse(record.finishedAt) < Date.parse(record.startedAt) || Date.parse(record.finishedAt) > this.now().getTime()) return true;
+        // Historical records have no independent sideEffect field. Require the trusted current exact-version
+        // read descriptor; absence or drift cannot turn a failed/uncertain write into a resumable read.
+        return !descriptors.some(descriptor => descriptor.name === record.toolName && descriptor.version === record.toolVersion
+          && descriptor.sideEffect === 'read');
+      });
+      if (this.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.loadCheckpoint(taskId, 'competition-cloud-inflight') || unsettled)
+        throw new RuntimeError('UNAUTHORIZED', 'Continuation requires original confirmed execution Evidence or a settled authorized read failure');
+      return this.updateTask(taskId, 'waiting_approval', {error: null}, false);
+    });
+  }
+
   prepareConfirmedReplay(taskId:string,input:{runId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>}):TaskSnapshot {
     return this.transaction(()=> {
       const task=this.getTask(taskId),record=this.readToolExecutions(taskId).find(item=>item.evidenceId===input.runId);
