@@ -24,4 +24,11 @@ test('admin task monitor reads steps and Evidence counts without exposing refs o
   assert.match(html, /&lt;private&gt;/);
   assert.doesNotMatch(html, /secret-ref|<private>/);
   assert.match(html, /此接口未提供任务来源或云端 trace/);
+  const patches = new Map([['task-1', {result:{revision:4,taskState:'cancelled',outcome:'applied'}}]]);
+  const recovered = taskTable({tasks:[{taskId:'task-1',state:'waiting_reconciliation',revision:3}]},escape,new Map(),patches);
+  assert.match(recovered, /<td>已取消<\/td><td>4<\/td>/);
+  assert.match(recovered, /此前修改已写入/);
+  const newer = taskTable({tasks:[{taskId:'task-1',state:'waiting_reconciliation',revision:5}]},escape,new Map(),patches);
+  assert.match(newer, /<td>结果待核实<\/td><td>5<\/td>/);
+  assert.doesNotMatch(newer, /此前修改已写入/);
 });
