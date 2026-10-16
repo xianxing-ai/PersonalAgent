@@ -158,7 +158,7 @@ test('host lifetime run limit bounds retained results and cannot be reset by rec
     assert.equal(f.calls().length,64);
     const before=f.requests.length;
     assert.deepEqual(await tool.execute({key:'public'},context('bounded-0')),{text:'public synthetic reference'});
-    await assert.rejects(tool.execute({key:'public'},context('over-limit')),denied('RESULT_UNKNOWN'));
+    await assert.rejects(tool.execute({key:'public'},context('over-limit')),denied('EXTERNAL_FAILURE'));
     await assert.rejects(tool.execute({key:'changed'},context('bounded-0')),denied('REVISION_CONFLICT'));
     assert.equal(f.requests.length,before,'a full cache must reject before network I/O');
     for(let i=0;i<2;i++){
@@ -166,7 +166,7 @@ test('host lifetime run limit bounds retained results and cannot be reset by rec
       const reconnected=f.requests.length;
       await assert.rejects(tool.execute({key:'public'},context('bounded-0')),denied('RESULT_UNKNOWN'));
       await assert.rejects(tool.execute({key:'public'},context('unknown-at-limit')),denied('RESULT_UNKNOWN'));
-      await assert.rejects(tool.execute({key:'public'},context('over-limit')),denied('RESULT_UNKNOWN'));
+      await assert.rejects(tool.execute({key:'public'},context('over-limit')),denied('EXTERNAL_FAILURE'));
       await assert.rejects(tool.execute({key:'changed'},context('bounded-0')),denied('REVISION_CONFLICT'));
       assert.equal(f.requests.length,reconnected,'reconnect cannot clear the lifetime limit or replay old runs');
     }
