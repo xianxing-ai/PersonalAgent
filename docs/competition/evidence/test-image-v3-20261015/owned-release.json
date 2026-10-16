@@ -557,7 +557,7 @@
   "limitations": [
     "Cloud catalog success is not full business acceptance",
     "Current local Laya synthetic quality remains unqualified",
-    "Full Wukong/Pelican receipts will be recorded separately",
+    "Full Wukong/Pelican scope and actual results are recorded in separate full-workflow-results.json",
     "No new model selection or final architecture decision"
   ]
 }

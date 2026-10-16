@@ -565,7 +565,7 @@
   },
   "latestReleaseCheckpoint": {
     "file": "owned-release.json",
-    "sha256": "f85f276b181511075b8de77d6b150778334e586633e5157a717885e185532a62",
+    "sha256": "21c88874a512e6a413332afbe3aaae287a4051cdb4d0f09ffb93a54b6cf99633",
     "swrPublished": true,
     "cloudExactVersionCatalogVerified": true,
     "modelProxyHttp200": true,
@@ -576,5 +576,18 @@
     "sha256": "69c0fc469125d4db1f25dd0f5b420dac6fd51424d4d48ec39a07d5e5db2608ec",
     "firstPelicanFailureRetained": true,
     "laya150msMet": false
+  },
+  "latestPrMainIntegrationCheck": {
+    "file": "pr-integration-checks.json",
+    "sha256": "5c2035d4614e96dbf91486f40118df9e9cc2b411bb22535de91d6ab63774a68d",
+    "exitCode": 0,
+    "summary": {
+      "runners": 0,
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0
+    }
   }
 }

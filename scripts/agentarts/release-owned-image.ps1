@@ -41,14 +41,20 @@ $paInspect=(& $paDocker image inspect $Image|ConvertFrom-Json)
 if($LASTEXITCODE -or $paInspect.Count -ne 1 -or $paInspect[0].Architecture -ne 'arm64'){throw 'An existing ARM64 image is required'}
 $paImageId=$paInspect[0].Id
 if($ExpectedImageId -and $ExpectedImageId -ne $paImageId){throw 'Image identity mismatch'}
+$paRegistryDigest=$null
 if($Push){
   if(-not $RegistryReference -or $RegistryReference -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._:/-]+$'){throw 'Explicit registry reference required'}
   # Authenticate with docker login beforehand; credentials never enter this script.
   $null=Invoke-PaReleaseDocker 'tag' @('tag',$Image,$RegistryReference)
-  $null=Invoke-PaReleaseDocker 'push' @('push',$RegistryReference)
+  $paPushOutput=Invoke-PaReleaseDocker 'push' @('push',$RegistryReference)
+  $paPublishedMatches=[regex]::Matches($paPushOutput,'digest:\s*(sha256:[a-f0-9]{64})')
+  if(-not $paPublishedMatches.Count){throw 'Docker push did not report its published manifest digest'}
+  $paRegistryDigest=$paPublishedMatches[$paPublishedMatches.Count-1].Groups[1].Value
   $paRemote=Invoke-PaReleaseDocker 'remote-inspect' @('buildx','imagetools','inspect',$RegistryReference)
-  if($paRemote -notmatch [regex]::Escape($paImageId) -or $paRemote -notmatch 'linux/arm64'){throw 'Remote image identity or architecture mismatch'}
+  # Local Id can be a config digest or an index digest depending on the engine.
+  # Compare remote manifest identity with Docker's actual push result, not Id.
+  if($paRemote -notmatch [regex]::Escape($paRegistryDigest) -or $paRemote -notmatch 'linux/arm64'){throw 'Remote image identity or architecture mismatch'}
 }
-$paReceipt=@{schemaVersion=1;image=$Image;imageId=$paImageId;architecture='arm64';sourceRevision=(& git rev-parse HEAD);sourceDirty=[bool](& git status --porcelain);built=$Build.IsPresent;context=$paContext;published=$Push.IsPresent;registryReference=$RegistryReference;remoteReadbackVerified=$Push.IsPresent;runtimeDeploymentVerified=$false;stages=$paStages;recordedAtUtc=[DateTime]::UtcNow.ToString('o')}
+$paReceipt=@{schemaVersion=1;image=$Image;imageId=$paImageId;architecture='arm64';sourceRevision=(& git rev-parse HEAD);sourceDirty=[bool](& git status --porcelain);built=$Build.IsPresent;context=$paContext;published=$Push.IsPresent;registryReference=$RegistryReference;registryManifestDigest=$paRegistryDigest;remoteReadbackVerified=$Push.IsPresent;runtimeDeploymentVerified=$false;stages=$paStages;recordedAtUtc=[DateTime]::UtcNow.ToString('o')}
 $paReceipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $paOutput 'release.json') -Encoding utf8
 $paReceipt|Select-Object image,imageId,architecture,built,published,remoteReadbackVerified,runtimeDeploymentVerified|ConvertTo-Json

@@ -1,7 +1,7 @@
 # PersonalAgent 开发 Agent 工作规范
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-12）：[完整设计](docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛；三人长期均衡承担审查与合并，禁止强制合并/管理员绕过。设计不等于已实现；历史验收与作者记录保留。
+<!-- current-design-20261015 -->
+> 当前设计与协作入口：[当前详细设计](docs/design/CURRENT_DESIGN_20261015.md) · [28项状态](docs/design/WORKFLOW_STATUS_20261015.md) · [历史图文导航](docs/design/README.md) · [具体分工与接线](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) · [协作与评审规则](CONTRIBUTING.md)。当前实验为本机 Laya、镜像串行编排及 AgentArts 模型代理；架构未最终定型。每位 MOD 负责人交付实现、实际调用方接线、测试、Evidence 和文档。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛；三人长期均衡承担审查与合并，禁止强制合并/管理员绕过。设计不等于已实现；历史验收与作者记录保留。
 
 本文件约束在本仓库工作的开发 Agent，不是产品运行时的 Skill 或授权来源。默认用中文沟通。
 这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。
