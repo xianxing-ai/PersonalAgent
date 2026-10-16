@@ -5,8 +5,15 @@
 
 [原 Node.js 连通架构图（10-16更新）](docs/design/workflow-architecture-20261013/index.html) · [运行/编辑说明](docs/design/workflow-architecture-20261013/README.md)。
 
-当前工作包按[详细设计](docs/design/CURRENT_DESIGN_20261015.md)推进：本机 Laya、全部28图/185节点的自有 ARM64 镜像串行编排，
-未合格判断升级 DeepSeek，DeepSeek 经 AgentArts 模型代理，语音复用百炼既有端口。架构尚未最终定型。
+当前工作包面向 `huawei_ict_agentarts` Competition Profile，仍要求 AgentArts 实际承担智能体构建、Agent/Workflow 编排、评估与部署。
+当前接线为 Desktop → 本机 Runtime → `CloudAgentPort` → AgentArts 高代码自有镜像；镜像内 Agent/Workflow 负责图推进、模型编排及宿主请求提案，
+本机 Runtime/Policy/ToolGateway 负责授权、实际工具执行、任务状态与可信 Evidence。模型代理是其中的模型调用能力，不能概括整个 Competition 路径。
+
+本机 Laya 是 Owner 已授权、待独立站点资格验证的宿主组件；具体模型与调度实验见[详细设计](docs/design/CURRENT_DESIGN_20261015.md)及[当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)。
+该组件的存在不表示切换到 Local Profile，也不允许 AgentArts 失败后静默回退；不合格判断按受信配置升级。其比赛边界与资格仍待复核，架构及最终模型选型尚未定稿。
+AgentArts 的平台 MCP/知识库、Trace 与评估能力按[逐项状态](docs/design/WORKFLOW_STATUS_20261015.md)和[真实证据](docs/competition/evidence/desktop-agentarts-v5-20261016/README.md)分别验收；
+已读回的部署、目录、关联日志与有限调用仅证明对应范围，缺少平台能力或端到端证据的项目保持未验证，不将自有镜像部署或28项模板等同全部业务完成。
+
 主动来源跟踪用户责任/关注，贯穿原文、Goal、记忆与上下文；无人值守继续已有授权工作，归来汇总有效变化；
 静默保留 feed，用户控制打扰次数/窗口/渠道，语音最终确认由可信宿主验证。
 高级影子开关并入已有判断，主任务优先，按实际机会资源/收益选择；只有明确双方案比较任务等双方，
@@ -24,7 +31,7 @@ Wukong flow167.432s、Pelican第二轮81.611s，41条持久工具Evidence，首�
 以下带日期的旧设计、发布和测试保持原始适用范围，冲突口径不作为当前要求；PR/合并状态另按实际Git回执记录。
 
 > 2026-10-15 当前工作流实现入口：[本机 Laya + 镜像内全部工作流与协作者接线](docs/competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
-> 早期10-15部署修订已由上述当前设计和实际SWR发布回执更新；原本机Laya/串行边界保留。
+> 早期10-15部署修订已由上述当前设计和实际SWR发布回执更新；具体模型、串行推进与宿主实验以该设计和各项验收记录为准。
 
 ## 历史交付与目标设计（2026-10-09）
 
