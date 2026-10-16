@@ -28,7 +28,12 @@ observer 的同步异常及异步拒绝均隔离；不维护额外 span 缓存�
 3个顶层 Controller 导出，按原有内部职责补充完整 World/Plan 报告；逐项迁移与缺口见
 [迁移矩阵](../../docs/modules/AGENTARTS-OWNED-IMAGE-PARITY.md)。清点不等于全量等价或真实云验收。
 
-`owned-1.2` 提示词支持显式 prepared Goal target 的完整内部 World/Plan `reportVersion: "1.2"`；
+`owned-1.3` 为 World 增加代码从已解析来源生成的输出词表：合法 Fact/Goal 原文、最新连续变化对、
+允许的目标引用及报告类型。词表不预选影响或处置，不修补/放宽模型报告；原始投影仍是数据。
+它修复真实模型把 Plan 放进 observed_facts、编造额外变化对及输出 `kind: plan` 的格式问题；
+模型输出仍须通过原有严格校验。输出契约、候选版本、权限和执行边界均不改变。
+
+`owned-1.2` 起支持显式 prepared Goal target 的完整内部 World/Plan `reportVersion: "1.2"`；
 旧 Decision/Plan target 的完整 `reportVersion: "1.1"` 报告继续兼容。报告校验 graph revision、
 宿主提供的事实/Goal前后版本及原文、最新目标与允许依赖引用。World保留显式/推断观察、
 变化与 direct/transitive 影响标签；推断、缺项和缺少前后版本不能生成修复。
