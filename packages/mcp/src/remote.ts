@@ -24,6 +24,8 @@ export interface RemoteReadonlyMcpOptions {
   fetch?:FetchLike;
 }
 const MAX_BYTES=1024*1024;
+// ponytail: 64 lifetime identities; Runtime owns durable replay. A full host must be replaced, never evict old identities.
+const MAX_RUNS=64;
 const canonical=(value:unknown):string=>value!==null && typeof value==='object'
   ? Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : `{${Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>`${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`
   : JSON.stringify(value);
@@ -61,6 +63,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
   }
   async function stop(){
     generation++;session.abort();
+    for(const run of runs.values()){run.result=undefined;run.confirmed=false;}
     const previous=client;client=undefined;transport=undefined;discoveredTools=0;
     state=disposed?'disposed':!options?'unavailable':enabled?'disconnected':'disabled';
     try{await previous?.close();}catch{/* Remote diagnostics never reach status or errors. */}
@@ -142,6 +145,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       if(saved.confirmed && saved.generation===generation)return structuredClone(saved.result);
       fail('RESULT_UNKNOWN');
     }
+    if(runs.size>=MAX_RUNS)fail('RESULT_UNKNOWN');
     const epoch=generation,active=client!;
     return scoped(context,async()=>{
       const run={binding,generation:epoch,confirmed:false,result:undefined as unknown};runs.set(key,run);
