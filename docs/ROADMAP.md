@@ -20,11 +20,38 @@ goo122 基于 #369 开始 [G11/G14 最小只读子集](modules/MOD-06-BOUND-CRED
 
 goo122 从 main `8c395f5f` 开始 [MOD-06 / G10](modules/MOD-06-REMOTE-READONLY-20261015.md)：现有 SDK 上增加固定身份、单只读绑定的 HTTPS Streamable HTTP host，仍经原 Policy/ToolGateway。定向本机 HTTP fixture 7/7 通过，完整 check 3147 通过、36 跳过、0 失败；无模型/AgentArts 调用、生产接线或真实远端验收。远程鉴权、任意写工具与持久恢复尚待后续工作包，完整 MOD 保持 in_progress；方案见 [ADR-0029](adr/0029-remote-mcp-readonly-transport.md)。
 
+## 2026-10-13 zemeng 模块继续范围（当前入口）
+
+用户确认继续 MOD-04B、MOD-10～18、MOD-27～32，共 16 个模块；**MOD-19 继续暂停**，不进行安装、升级、卸载或分发验收。Wiki/记忆仍由 goo122 负责，业务连接器及 DEV-WORKFLOWS 原分工保持。暂停的 Gemini/Grok 交付文件不纳入本轮。
+
+用户本轮明确的执行顺序：**代码实现 → 绝对必要的关键检验 → 修复 → 下一项任务**。CI 在后台运行，不以等待 CI 阻塞下一项开发；不重复全仓测试、安装或构建。授权、写入、恢复和协议边界的受影响行为保留最小必要验证，尚未验证与尚未合并分别标注；这不授权绕过合并保护。
+
+#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：三名协作者中任意一位非作者对当前提交有效批准，必要检查通过；禁止强制合并、管理员绕过和直接推 main。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
+
+本轮主要工作树为 `.worktrees/zemeng-competition-completion`。两份 Astra Ultra 独立工作包分别在 `.worktrees/zemeng-voice-completion`（MOD-14/15）和 `.worktrees/zemeng-windows-tools-completion`（MOD-16/17/18）；不共享编辑目录或改写他人修改。
+
+| 模块 | 本轮代码与证据 | 完成前仍需核实 |
+| --- | --- | --- |
+| MOD-04B | WSS、受限提案、本地审批与结果回传；本轮补实例身份比较、Runtime 只读 status 消费与分派事实快照 | 自动恢复尚未启用，缺少明确公开来源依据的快照不可恢复；status 不重发原请求，也不自行完成任务 |
+| MOD-10 | 模型训练条件与自有镜像研究已更新，含官方来源、已有实验和成本缺项，可评审 | 当前账号训练/评估/计费读回仍未知；不将提示、记忆或推理称作训练 |
+| MOD-11/12/13 | 本轮补 Desktop WSS 设置、双凭据加密存储和旧配置兼容；45 项定向测试及实际组件合成表单检查通过 | 真实 Desktop/IPC 到云端任务及当前原生桌面合成效果；表单预览不替代实机 |
+| MOD-14/15 | Astra Ultra 独立负责语音/唤醒闭环 | 真实设备、ASR/TTS、打断、噪声与回声、撤销后音轨关闭 |
+| MOD-16/17/18 | Astra Ultra 独立负责 Windows、状态读取和编程工具 | 原生目标选择/F9/UIA、真实授权与读回、云端提案闭环；Artifact 依赖仍按公开端口 |
+| MOD-27/28 | 持久事实批次超过 4 项的校验缺陷已修复并提交 #328；关联测试 25/25 | 云端最小修复候选、本地审批/CAS、持久读回与领域校准；离线修复不等于整模块完成 |
+| MOD-29/30 | 已部署自有 ARM64 Runtime；目录读回 8 Workflow / 3 Controller；正在补逐绑定 WSS 验收 | 每个绑定的真实报告链、知识/MCP/Skill 和本地执行证据分别验证 |
+| MOD-31/32 | 本轮补应用角色 span、时长及宿主版本标识，69 项局部测试通过 | 平台独立 trace/usage/费用、固定评估、发布回退及比赛同批验收；应用日志不能冒充平台 trace |
+
+所有未取得完整验收与实际集成证据的模块维持 `in_progress`。新工作包 PR、检查和真实验收结果分别记录，不凭百分比或历史 done 推导完成。
+
+02:54:28–02:55:10 UTC，已部署 `arm64-7b6b4101` 的最新逐绑定结果为 3 通过、4 失败、4 跳过：World/Router 的 transport 诊断为 `RATE_LIMITED`；两个修复 Controller 返回合法候选，但固定场景断言失败。较早的最小修复已完成审批后一次读取/Evidence，续答仍报 `INVALID_ARGUMENT`，任务保留待核实，完整闭环未通过。后续 `0cbb3f1d` strict continuation 修复及必要检查完成，本地新 ARM64 build 成功；截至 02:57 UTC 尚无新云版本部署/调用读回。完整记录见 [10 月 13 日镜像验收](modules/AGENTARTS-OWNED-BINDING-LIVE-20261013.md)；离线、构建、部署、实际执行及整 MOD 状态分别记录。
+
 ## 2026-10-13 PR #347 首批架构落地（in_progress）
 
 goo122 从 main `3275aa91` 开始 [MOD-04A 原生思考配置](modules/MOD-04A-NATIVE-REASONING-20261013.md)：先更新 F04/F05/F21/F24/F27/F28 与当前代码的对应关系，再沿 Competition 辅助模型路径接通原生开关、强度、输出预算和恢复绑定。采用 [ADR-0024](adr/0024-competition-native-reasoning.md)；无 wire Schema、数据库迁移或新增依赖。真实云调用 0，非作者评审和集成待完成；完整模块状态不提升。
 
 10-14：本包本地实现验证完成；完整 check 累计 3032 通过、31 跳过、0 失败，原生设置烟测、既有 Desktop 两项烟测与三项 Foundation 演示通过。旧 Runtime 时间夹具保持生产期限/步骤/审批断言，使用明确任务预算或 Date 假时钟；跨夜停顿失败日志保留。21 文件进入独立 PR 交付，当前 head/CI/评审以 GitHub 为准；下一包为 F27 版本化上下文与新应用副本删除覆盖。
+
+## 2026-10-13 Wiki/Skill 主线集成
 
 ### 2026-10-13：Wiki/Skill 已进入 main
 
@@ -41,7 +68,7 @@ CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查�
 
 #317 的镜像源码固定为 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6`，已发布 GHCR、导入 SWR，Latest 为 `arm64-194799c6`。实际 MaaS 模型提出工具请求，经本地 Runtime / Policy 一次性审批、生产文件读取和 Evidence 回传，任务 succeeded；读取 1 次、Evidence 1 条、HTTPS 应用调用 0。持久读回不重放任务且关闭退出 0；云端目录发现 8 Workflow / 3 Controller。只验证固定公开合成文件，详见 [真实华为证据与限制](modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
 
-本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。双人当前 head 阅读确认与审批仍必需。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
+本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。当时的双人阅读确认门槛已由现行单人有效批准规则取代。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
 
 ## 2026-10-12 镜像全部可承载绑定（in_progress）
 

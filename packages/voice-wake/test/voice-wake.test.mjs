@@ -71,6 +71,28 @@ test('revocation immediately stops the session and suppresses callbacks', async 
   assert.deepEqual(errors, [{code: 'AUTHORIZATION_REVOKED'}]);
 });
 
+for (const reason of ['revocation', 'caller-cancel']) {
+  test(`an earlier ${reason} observer cannot deliver wake while cancellation is being dispatched`, async () => {
+    const revoked = new AbortController(), caller = new AbortController();
+    const source = new FakeWakeSource();
+    const interrupted = reason === 'revocation' ? revoked : caller;
+    interrupted.signal.addEventListener('abort', () => source.emit({kind: 'wake'}), {once: true});
+    const {controller, wakes, errors} = setup({source, authorization: {check: async () => ({
+      kind: 'allowed', expiresAtMs: 100, revocationSignal: revoked.signal,
+    })}});
+    await controller.enable({deadlineAtMs: 100, signal: caller.signal});
+    source.emit({kind: 'wake'});
+    assert.equal(wakes.length, 1);
+    interrupted.abort();
+    assert.equal(wakes.length, 1);
+    assert.equal(source.activeSubscriptions, 0);
+    assert.equal(source.subscribeCount, 1);
+    assert.equal(controller.snapshot().state, 'disabled');
+    assert.deepEqual(errors, [{code: reason === 'revocation' ? 'AUTHORIZATION_REVOKED' : 'CANCELLED'}]);
+    controller.dispose();
+  });
+}
+
 test('expiry cancels the source and cannot be bypassed by a late event', async () => {
   const {controller, source, clock, wakes, errors} = setup();
   await enable(controller);
@@ -359,6 +381,64 @@ test('revocation and deadline settle pending source readiness and release a late
     assert.equal(context.controller.snapshot().state, 'disabled');
   }
 });
+
+for (const readiness of ['async', 'sync']) {
+  for (const limit of ['caller', 'authorization']) {
+    test(`${readiness} source readiness past the ${limit} deadline releases once before a delayed timer`, async () => {
+      let currentMs = 1_000;
+      const timers = [];
+      const clock = {
+        now: () => currentMs,
+        setTimeout(callback) {
+          const timer = {callback, cancelled: false};
+          timers.push(timer);
+          return {cancel() { timer.cancelled = true; }};
+        },
+      };
+      let resolveSource;
+      let sourceListener;
+      let sourceContext;
+      let releases = 0;
+      const subscription = {unsubscribe() { releases++; }};
+      const source = {
+        subscribe(listener, context) {
+          sourceListener = listener;
+          sourceContext = context;
+          if (readiness === 'async') return new Promise(resolve => { resolveSource = resolve; });
+          currentMs = 1_500;
+          return subscription;
+        },
+      };
+      const {controller, errors, wakes} = setup({
+        source, clock,
+        authorization: new FakeWakeAuthorization({expiresAtMs: limit === 'authorization' ? 1_500 : 5_000}),
+      });
+      const states = [];
+      controller.subscribeLifecycle(snapshot => states.push(snapshot.state));
+      const pending = enable(controller, limit === 'caller' ? 1_500 : 5_000);
+      if (readiness === 'async') {
+        await new Promise(resolve => setImmediate(resolve));
+        currentMs = 2_000;
+        resolveSource(subscription);
+      }
+
+      assert.deepEqual(await pending, {kind: 'not_listening', reason: 'expired'});
+      assert.deepEqual(states, ['disabled']);
+      assert.equal(sourceContext.deadlineAtMs, 1_500);
+      assert.equal(sourceContext.signal.aborted, true);
+      assert.equal(releases, 1);
+      assert.deepEqual(errors, [{code: 'EXPIRED'}]);
+      assert.equal(timers.every(timer => timer.cancelled), true);
+
+      sourceListener({kind: 'wake'});
+      for (const timer of timers) timer.callback();
+      controller.disable();
+      controller.dispose();
+      assert.deepEqual(wakes, []);
+      assert.equal(releases, 1);
+    });
+  }
+}
 
 test('lifecycle subscription reports stable terminal states for every stop path', async () => {
   const scenarios = [
