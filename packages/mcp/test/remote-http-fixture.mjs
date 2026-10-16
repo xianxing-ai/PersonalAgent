@@ -52,5 +52,5 @@ export async function fixture(mode={}){
     return fetch(`http://127.0.0.1:${server.address().port}/mcp`,init);
   };
   const host=createRemoteReadonlyMcpHost({endpoint,server:{name:'synthetic-reference',version:'1.0.0'},tool:{remoteName:'reference',descriptor},enabled:true,fetch:fetchPort});
-  return {host,fetch:fetchPort,requests,mode,calls:()=>requests.filter(r=>r.message?.method==='tools/call'),async close(){await host.dispose();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}};
+  return {host,fetch:fetchPort,loopbackEndpoint:`http://127.0.0.1:${server.address().port}/mcp`,requests,mode,calls:()=>requests.filter(r=>r.message?.method==='tools/call'),async close(){await host.dispose();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}};
 }

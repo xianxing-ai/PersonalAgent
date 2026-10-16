@@ -15,6 +15,7 @@ function connection(value){
     || !exact(value.server,['name','version']) || !text(value.server.name,256) || !text(value.server.version,128)
     || !exact(value.tool,['remoteName','descriptor']) || !text(value.tool.remoteName,256)
     || !exact(value.tool.descriptor,['name','version','inputSchema','outputSchema','requiredScopes'])
+    || !/^mcp\.remote\.[a-z][a-z0-9_.-]*$/.test(value.tool.descriptor.name)
     || !/^[a-f0-9]{64}$/.test(value.directoryDigest))throw Error();
   const endpoint=new URL(value.endpoint);
   if(endpoint.protocol!=='https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash

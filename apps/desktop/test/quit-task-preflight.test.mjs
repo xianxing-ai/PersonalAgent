@@ -33,7 +33,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     calls.push('app-quit');const event = {prevented: false, preventDefault() {this.prevented = true;}};
     beforeQuit(event);if (!event.prevented) exited = true;
   }};
-  const optional = ['referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
+  const optional = ['remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
@@ -48,7 +48,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     liveVoice: liveUnknown ? {hasActive: () => true, async stop() {
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
-    localServicesStopped: false, localServicesStopping: false, referenceClosed: false,
+    localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
@@ -112,6 +112,28 @@ test('Runtime startup guard keeps precedence over active-task preflight', async 
   const f = fixture({count: 1, startup: 'starting'});f.app.quit();await tick();
   assert.equal(f.exited, false);assert.equal(f.context.runtimeError, 'Runtime 正在连接，请稍后退出');
   assert.equal(f.calls.includes('wake-dispose'), false);assert.equal(f.calls.includes('voice-dispose'), false);
+});
+
+test('MCP cleanup waits for active work and releases the connection before Runtime closes',async()=>{
+  const f=fixture({count:1});let release;
+  f.context.remoteMcpManagement={close(){f.calls.push('mcp-window-close');}};
+  f.context.remoteMcpConfig={dispose(){f.calls.push('mcp-config-dispose');}};
+  f.context.remoteMcpHost={dispose(){f.calls.push('mcp-dispose');return new Promise(resolve=>{release=resolve;});}};
+  f.app.quit();await tick();assert.equal(f.calls.includes('mcp-dispose'),false);assert.equal(f.exited,false);
+  f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();
+  assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);assert.equal(f.calls.includes('voice-dispose'),false);
+  release();await tick();await tick();await tick();assert.equal(f.exited,true);
+  assert.equal(f.calls.filter(call=>call==='mcp-dispose').length,1);
+  assert.ok(f.calls.indexOf('mcp-window-close')<f.calls.indexOf('mcp-dispose'));
+  assert.ok(f.calls.indexOf('mcp-config-dispose')<f.calls.indexOf('runtime-close'));
+});
+
+test('failed MCP release blocks quitting without automatically retrying or closing Runtime',async()=>{
+  const f=fixture();f.context.remoteMcpManagement={close(){}};f.context.remoteMcpConfig={dispose(){assert.fail('release not confirmed');}};
+  f.context.remoteMcpHost={async dispose(){f.calls.push('mcp-dispose');throw Error('synthetic release failure');}};
+  f.app.quit();await tick();await tick();assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);
+  assert.equal(f.calls.filter(call=>call==='mcp-dispose').length,1);assert.equal(f.calls.filter(call=>call==='app-quit').length,1);
+  assert.match(f.context.runtimeError,/远程 MCP 关闭未确认/);
 });
 
 test('the original final task guard still catches work that appears during cleanup', async () => {

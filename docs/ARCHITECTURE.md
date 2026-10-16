@@ -138,7 +138,7 @@ SQLite 保存步骤和检查点。外部写操作使用幂等键（服务支持�
 
 ## 8. MCP 与 Skills
 
-目标设计由 Runtime 装配 MCP Host；本地 stdio、远端按所选服务协议支持。当前仓库尚无 MCP package、Host/Client 端口或真实调用，状态为 `unavailable`。未来工具发现后仍须注册，执行前校验 Schema、范围和当前权限；工具自报只读不可当作唯一安全依据。
+目标设计由 Runtime 装配 MCP Host；本地 stdio、远端按所选服务协议支持。main 已有固定只读 stdio；当前 G10/G11/G14 分支增加固定远程只读绑定、加密配置及独立 Desktop 管理/生产装配，详见[管理验收](modules/MOD-06-MANAGEMENT-20261016.md)和[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。远程 HTTP 合成服务、SQLite 与实际 Electron 验证分别记录，不代表真实远程 TLS/OAuth、真人确认或 AgentArts 验收；接口保持 `provisional`。发现不授予执行或云端导出权限，执行前仍校验固定 Schema、范围和当前 Policy；工具自报只读不可当作唯一安全依据。
 
 Skill 目录包含 SKILL.md 和可选脚本、资源、模板；项目扩展清单描述所需工具、数据范围和版本。导入外部 Skill 先检查兼容性与副作用。升级保留版本，旧任务绑定其启动时版本。
 

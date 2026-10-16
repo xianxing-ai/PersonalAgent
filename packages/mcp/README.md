@@ -75,7 +75,7 @@ await mcp.dispose();
 
 验证使用本机 HTTP fixture、合成 Bearer token 和合成 SecretStore：授权参数绑定、同名工具旧 grant、目录静默漂移、取凭据期间配置变化/过期/取消/超时/撤销、401/403/重定向、凭据拒绝和脱敏。未接真实安全存储/配置管理、原生设置、Production Competition、OAuth 或实际平台 endpoint。方案见 [ADR-0030](../../docs/adr/0030-remote-mcp-bound-credentials.md)，实际结果见[本包记录](../../docs/modules/MOD-06-BOUND-CREDENTIALS-20261015.md)。
 
-G14 的 [Desktop 宿主增量](../../apps/desktop/README.md) 已提供 safeStorage 加密配置、会话 nonce、原生确认回调及 bound host 的 Runtime 装配模块；真实双进程 safeStorage 与合成 HTTP/SQLite 审批恢复分级验证。该增量尚未接原生管理页面或默认生产 main，不改变本包的真实平台/OAuth 未验收边界，详见[记录](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
+G14 的 [Desktop 增量](../../apps/desktop/README.md) 已提供 safeStorage、会话 nonce、独立管理窗口与 Competition 生产 Runtime 装配；两次实际 Electron 重启、原 Runtime 单次审批/结果读回/旧许可拒绝/撤销通过。对话框响应显式合成、远端为 loopback HTTP fixture，不改变真实平台/OAuth 未验收边界；详见[管理记录](../../docs/modules/MOD-06-MANAGEMENT-20261016.md)及[宿主首片](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
 
 ### 公开参考结果出机
 

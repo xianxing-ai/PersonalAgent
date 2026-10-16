@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-16 远程 MCP 原生管理与生产装配（in_progress）
+
+goo122 基于 #371 `49c2854d` 完成 [G14 管理工作包](modules/MOD-06-MANAGEMENT-20261016.md)：独立管理窗口、专用 IPC、服务定义导入/加密保存、原生连接与单次任务确认、Competition 默认生产注册、原 SQLite 审批/读回/撤销。配置变化需正常退出重启，不热换 Schema，不自动公布给云端或导出结果。最终定向（含退出回归）25/25，完整 check 3174 通过、31 跳过、0 失败；实际 Electron 产品烟测两次重启、批准前零调用、调用 1 次、旧审批拒绝、删除密文通过，未配置 Runtime 仍可保存且不能试调用。原生对话框响应显式合成，远端为本机 HTTP fixture，模型/AgentArts 调用 0；真实平台/OAuth 和真人原生确认未验收，完整模块保持 in_progress。
+
 ## 2026-10-16 远程 MCP 加密宿主配置与会话恢复（in_progress）
 
 goo122 基于 #370 开始 [G14 宿主工作包](modules/MOD-06-HOST-CONFIG-20261016.md)：safeStorage 加密配置、轮换/撤销、新会话 nonce、确认回调与原 Runtime 接线。定向 8/8，完整 check 3163 通过、36 跳过、0 失败；真实 Electron 44.2.0 双进程 safeStorage 通过。既有 Local 窗口回归单独通过，不替代 Competition；真实模型/AgentArts 调用 0。未接原生管理页面、默认生产 main 或真实 endpoint，完整 MOD/G14 仍 in_progress；方案见 [ADR-0031](adr/0031-remote-mcp-host-configuration.md)。
