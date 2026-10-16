@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+### 2026-10-15：完整官方模板离线检查（in_progress）
+
+G04 后续新增固定官方 recipe/词表的七类合成请求与 Linux 无网络编码检查入口。本机 guard 验证与 Linux 官方编码结果分别记录；未取得 Linux 实际回执前不声明模板通过，生产仍未计量，见 [工作包](modules/MOD-04A-TEMPLATE-PROBE-20261015.md)。
+
 ### 2026-10-15：最终可见请求预算边界（in_progress）
 
 G04 首个纵片将镜像现有 MaaS 思考转换前移至 Provider 序列化/计量之前，预算与传输共用正文；请求格式纳入 Runtime 审批恢复身份。完整模板与生产真实计量仍未验收，云调用 0，详见 [工作包](modules/MOD-04A-FINAL-REQUEST-BUDGET-20261015.md)。
