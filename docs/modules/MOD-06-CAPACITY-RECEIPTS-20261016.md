@@ -4,6 +4,16 @@ Profile `huawei_ict_agentarts`，状态 `review`，接口 `provisional`。修复
 
 ## 行为与边界
 
+### 后续原 PR 栈同步与取消竞态验证
+
+隔离同步工位将 #369 普通合并 main `eb92311f522f62a90e3a921c2efb68004d7f4df1`，ROADMAP 冲突完整保留双方独立记录，再依次普通合并至 #370～#374；容量消费修复在 #372 接入。没有切换原协作者工位或重写历史。
+
+最终组合首先出现 36/37：原 bound 凭据取消断言再次 6 != 4。诊断重跑 37/37，不能据此称问题消失。随后明确 SDK 公开 send 内部异步 headers 边界的迟发漏洞：原 scoped 已结束而 fetch 读取到空的全局 operation。新增确定性夹具使用未修构建产物稳定复现额外 tools/call 与 notifications/cancelled（6 != 4）；修复在 send 入队时捕获原 scope，fetch 前核对 scope 有效、取消及 deadline，不允许旧请求借用新操作。修复落在最早 #369，原 bound 断言只增无敏感 method/ID 诊断，没有放宽断言、超时或重试。
+
+Node 24.15.0/npm 11.12.1，最终组合按锁安装；对 Git 确认源码/manifest 完全相同的依赖复用隔离产物，重建 main 改变的 cognition、MCP 和 Runtime，并检查 Desktop main 语法。最终定向 38/38、0 跳过、退出 0（20.591 秒），含原取消测试、确定性迟发拒绝、实际 SQLite/Policy 130 次正常批准及原在途释放后 131 次 confirmed。未执行全仓 check、实际 Electron/TLS smoke 或真实服务/设备。
+
+完整日志在同步工位忽略目录 `.cache/mcp-stack-sync/`：`tests.log` 保留 36/37，`tests-diagnostic.log` 保留 37/37，`queued-headers-before.log` 保留同一最终回归在旧产物上的稳定失败，`tests-final.log` 为最终 38/38。已确定的迟发漏洞已修；历史 CI 只提供请求总数，没有原额外请求内容，仍不能宣称所有历史 6 != 4 原因已排尽。远端普通更新、每个新 head CI 与非作者批准分别实际读回；不将组合定向测试称为六个头各跑过全仓检查或已合并。
+
 - 第 65 个尚未发送的新 run 在没有可回收槽位时返回 EXTERNAL_FAILURE，不再伪造 RESULT_UNKNOWN；实际 SQLite Runtime 记录 failed，不进入 waiting_reconciliation。
 - MCP 仍最多保留 64 条本地身份/结果。受信同步 readRunReceipt 返回精确参数摘要及原 Runtime confirmed/result、failed 或 unknown；只移除已持久 confirmed/failed 的本地条目。旧 run 先查原回执，因此重连、缓存回收和替换 host 均不重发；unknown 不清除。全部槽位均未核实的 host 继续拒绝新调用，需原 Runtime 对账。
 - Runtime 在原 tool.invoke 已排除旧记录后的唯一首次 Gateway 分派期间，维护当前进程内的精确 task/run/inputDigest 标记，finally 删除。isToolExecutionActive 不授予 Policy 权限、不落库、不从持久 started 记录恢复。
