@@ -39,6 +39,7 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
+import {createWorkspacePatchRecoveryHost} from './workspace-patch-recovery-host.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
 import {createRemoteMcpConfig} from './remote-mcp-config.js';
@@ -2220,6 +2221,15 @@ async function action(event, name, payload) {
     if (name==='feeds.authorize') await admitNativeFeedInterest?.();
     publish(); return result;
   }
+  if (name === 'coding.reconcile') {
+    const application = runtimeApplication;
+    const authorized = () => sender === admin && !sender.isDestroyed()
+      && sender.webContents === event.sender && event.senderFrame === sender.webContents.mainFrame
+      && application === runtimeApplication && competitionMode && !syntheticMvp;
+    const recovery = createWorkspacePatchRecoveryHost({application, isAuthorized: authorized});
+    const result = await recovery.reconcile(payload);
+    publish(); return result;
+  }
   if (['coding.select','coding.selectNode','coding.selectNpmCli','coding.selectCheckFile','coding.authorize','coding.revoke'].includes(name)) {
     if ((sender !== admin && sender !== workspace) || !competitionMode || syntheticMvp || !codingWorkspace) throw Error('请从正式应用设置配置编程工作区');
     if (name !== 'coding.revoke' && runtimeApplication.activeTaskCount > 0) throw Error('请等待当前任务结束后更改工作区');
@@ -2949,7 +2959,7 @@ app.whenReady().then(async () => {
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
   if(competitionMode) {
     remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
-    remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
+    remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
     remoteMcpManagement=createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner:()=>admin,
       config:remoteMcpConfig,host:remoteMcpHost,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
       namespace:desktopHost.userNamespace,onUpdate:publish});

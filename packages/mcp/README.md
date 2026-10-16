@@ -56,7 +56,9 @@ await mcp.dispose();
 
 同 task/run 绑定输入，只重放当前会话已确认的结果；失败、取消、断连或换连接后的旧 run 均不自动调用，须由 Runtime 核实或按新 run 提交新任务。会话 map 不替代 Runtime 的持久授权/执行记录。`health()` 仅返回状态、固定工具名、计数、协商版本和脱敏错误码，不暴露 endpoint、session ID 或远端诊断。
 
-单个 host 生命周期最多保留 64 个 run 身份（包含失败/未知结果），每条结果仍受 1 MiB 限制；达到上限时新 run 在网络请求前以 `RESULT_UNKNOWN` 拒绝。stop/断线后重连不重置身份配额，stop 释放结果内容并保留输入绑定，旧 run 不重发。恢复服务需受信宿主重新创建 host，并依赖原 Runtime 持久记录防止跨实例重放；普通重连不能绕过上限。
+单个 host 生命周期最多保留 64 个 run 身份（包含失败/未知结果），每条结果仍受 1 MiB 限制；达到上限时新 run 在网络请求前以 `EXTERNAL_FAILURE` 拒绝，表示本地容量不足，不产生假的未知执行。stop/断线后重连不重置身份配额，stop 释放结果内容并保留输入绑定，旧 run 不重发。恢复服务需受信宿主重新创建 host，并依赖原 Runtime 持久记录防止跨实例重放；普通重连不能绕过上限。
+
+受信 Runtime 消费者可注入同步 `readRunReceipt({taskId,runId,argumentsDigest})`，返回精确原输入摘要及 confirmed/result、failed 或 unknown；查询异常必须拒绝，不能用“查不到”伪造新尝试。新调用仍只能由原 Policy/ToolGateway 的首次执行入口发起。满缓存仅移除已从原 Runtime 读回 confirmed/failed 的本地条目，unknown 不回收；旧 run 每次先读持久回执，故本地条目移除、断连或替换 host 都不会重发。`remoteMcpArgumentsDigest` 仅用于精确输入绑定，不是授权。Desktop 已消费原 Runtime 的回执与当前执行标记，见 [容量修复记录](../../docs/modules/MOD-06-CAPACITY-RECEIPTS-20261016.md)。无读回端口仍保留上述 64 身份限制；64 个未核实 run 全部占满时仍拒绝新调用，需原 Runtime 对账，不自动清理未知记录。
 
 `node --test packages/mcp/test/remote-http.test.mjs` 使用真实本机 HTTP 监听与显式 synthetic MCP fixture，经受信 fetch 端口将固定测试 HTTPS 地址映射到 loopback。覆盖 JSON 与 Streamable HTTP 的 SSE 响应、Policy 一次性授权、身份/schema/目录漂移、认证失败、重定向、大小限制、取消/超时、断连、重连与释放。它不是第三方服务、远程 TLS、OAuth 或真实 Competition/AgentArts 验收。生产 Desktop/Competition composition 尚未注入此 host；持久配置、鉴权引用、写工具及未知写入恢复属 G11/G14。
 

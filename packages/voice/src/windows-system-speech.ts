@@ -258,6 +258,7 @@ class WindowsSystemSpeechAdapter {
   readonly output: SpeechOutputPort;
   private readonly active = new Set<ActiveOperation>();
   private disposed = false;
+  private disposePromise?: Promise<void>;
 
   constructor(private readonly spawnHost: WindowsSpeechHostSpawner) {
     this.recognition = Object.freeze({
@@ -274,10 +275,13 @@ class WindowsSystemSpeechAdapter {
     });
   }
 
-  async dispose(): Promise<void> {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.disposePromise !== undefined) return this.disposePromise;
     this.disposed = true;
-    await Promise.all([...this.active].map(operation => operation.stop('disposed')));
+    this.disposePromise = Promise.resolve().then(async () => {
+      await Promise.all([...this.active].map(operation => operation.stop('disposed')));
+    });
+    return this.disposePromise;
   }
 
   private invoke<T>(
