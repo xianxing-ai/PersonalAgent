@@ -98,6 +98,33 @@ test('invalid input, scope, cancellation and expired deadlines send no tool requ
   }finally{await f.close();}
 });
 
+test('host lifetime run limit bounds retained results and cannot be reset by reconnecting',async()=>{
+  const f=await fixture();
+  try{
+    await f.host.start({signal:signal(),deadline:future()});const tool=f.host.tools[0];
+    for(let i=0;i<63;i++)await tool.execute({key:'public'},context('bounded-'+i));
+    f.mode.result={content:[],isError:true};
+    await assert.rejects(tool.execute({key:'public'},context('unknown-at-limit')));
+    delete f.mode.result;
+    assert.equal(f.calls().length,64);
+    const before=f.requests.length;
+    assert.deepEqual(await tool.execute({key:'public'},context('bounded-0')),{text:'public synthetic reference'});
+    await assert.rejects(tool.execute({key:'public'},context('over-limit')),denied('RESULT_UNKNOWN'));
+    await assert.rejects(tool.execute({key:'changed'},context('bounded-0')),denied('REVISION_CONFLICT'));
+    assert.equal(f.requests.length,before,'a full cache must reject before network I/O');
+    for(let i=0;i<2;i++){
+      await f.host.stop();await f.host.start({signal:signal(),deadline:future()});
+      const reconnected=f.requests.length;
+      await assert.rejects(tool.execute({key:'public'},context('bounded-0')),denied('RESULT_UNKNOWN'));
+      await assert.rejects(tool.execute({key:'public'},context('unknown-at-limit')),denied('RESULT_UNKNOWN'));
+      await assert.rejects(tool.execute({key:'public'},context('over-limit')),denied('RESULT_UNKNOWN'));
+      await assert.rejects(tool.execute({key:'changed'},context('bounded-0')),denied('REVISION_CONFLICT'));
+      assert.equal(f.requests.length,reconnected,'reconnect cannot clear the lifetime limit or replay old runs');
+    }
+    assert.equal(f.calls().length,64);
+  }finally{await f.close();}
+});
+
 test('cancellation, deadline and stop abort active HTTP and do not retry',async()=>{
   for(const reason of ['cancel','deadline','stop']){
     const f=await fixture({delay:300});const controller=new AbortController();

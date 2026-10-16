@@ -29,6 +29,12 @@
 
 ## 未完成与交付
 
+### 2026-10-16：#369 非作者评审修复
+
+zemeng5208 指出长驻 host 的 run Map 没有上限。新增回归先在旧实现上复现“超过容量仍接受调用”；修复为 host 生命周期最多 64 个 run 身份，失败/未知调用也占配额。达到上限前保留原输入绑定与已确认结果复用，超过上限以 `RESULT_UNKNOWN` 在联网前拒绝；stop 释放结果内容但保留身份与绑定，重连不重置容量，旧 run 不执行。单条结果原有 1 MiB 限制不变，最多保留 64 条结果；恢复服务需受信宿主重建 host，跨实例防重放仍由原 Runtime 持久记录负责。
+
+远程 MCP 回归 8/8，通过重复重连、失败占位、满容量后的确认结果复用/改参拒绝/零新增请求。完整 `npm run check` 退出 0，37 个汇总块共 3184 项：3153 通过、31 跳过、0 失败、0 取消；日志 `.cache-run-limit-check.log`。相对初版记录多 1 条容量回归，另有 5 项已有 WindowsJobProcessHost 测试在当前环境实际执行，未更改跳过条件或断言。初次构建因 Windows PATH 找不到 tsc，使用当前进程精简 PATH 后构建和验证通过。用户已授权本次修复提交、普通推送更新 #369，并逐层同步 #370～#373；本文为交付前记录，实际提交、CI 和请求修改状态以 GitHub 当前 head 为准，非作者评审门禁仍有效。无依赖、Schema 或迁移变更，接口继续 provisional。
+
 无 wire/公共 Schema、数据库迁移、Node 依赖或其他模块 API 变更；新增 MCP package 本地导出仍为 provisional。未注入真实 Desktop/Competition composition；OAuth/鉴权引用、平台实际 endpoint、旧独立 SSE transport、动态任意工具、写工具、持久目录/配置版本与未知写入恢复未完成。生产启用必须后续工作包核实相应授权、凭据生命周期和 Runtime Evidence；本包不完成整个 MOD-06。
 
 用户已授权本工作包提交、普通推送并创建基于 main 的独立 PR；本记录在交付前更新，实际提交、PR 与 CI 状态以 Git/GitHub 为准。未获合并授权，非作者评审和集成待真实完成，完整 MOD 保持 in_progress。
