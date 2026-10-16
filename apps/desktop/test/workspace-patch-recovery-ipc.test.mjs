@@ -5,6 +5,25 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {_electron} from 'playwright';
 
+async function recoveryWindow(electron) {
+  const seen=new Set();let timer,onWindow;
+  try {
+    return await new Promise((resolve,reject)=>{
+      timer=setTimeout(()=>reject(Error('Recovery fixture window did not load')),30000);
+      onWindow=page=>{
+        if(seen.has(page))return;seen.add(page);
+        void page.waitForURL('**/workspace-patch-recovery.html',{timeout:30000})
+          .then(()=>resolve(page),()=>{});
+      };
+      // Listen before taking the snapshot so neither existing nor new windows are missed.
+      electron.on('window',onWindow);
+      for(const page of electron.windows())onWindow(page);
+    });
+  } finally {
+    clearTimeout(timer);electron.off('window',onWindow);
+  }
+}
+
 test('management IPC recovers the original cancelled SQLite task and publishes its fresh state',
   {skip:!process.env.PA_PATCH_RECOVERY_ELECTRON,timeout:60000},async()=>{
   const cache=fileURLToPath(new URL('../../../.cache/',import.meta.url));await mkdir(cache,{recursive:true});
@@ -14,8 +33,7 @@ test('management IPC recovers the original cancelled SQLite task and publishes i
   try {
     electron=await _electron.launch({executablePath:process.env.PA_PATCH_RECOVERY_ELECTRON,
       args:[fileURLToPath(new URL('./fixtures/workspace-patch-recovery-app.mjs',import.meta.url))],env,timeout:25000});
-    await electron.waitForEvent('window',{predicate:p=>p.url().endsWith('workspace-patch-recovery.html')});
-    const page=electron.windows().find(p=>p.url().endsWith('workspace-patch-recovery.html'));
+    const page=await recoveryWindow(electron);
     const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
     assert.match(await page.title(),/Runtime IPC/);
     const input=await electron.evaluate(()=>({taskId:patchFixture.taskId,expectedRevision:patchFixture.initialRevision}));

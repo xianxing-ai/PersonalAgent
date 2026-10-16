@@ -72,7 +72,8 @@ const refresh=async(id,isCurrent=()=>true)=>{
 };
 const recover=createWorkspacePatchRecoveryAction({getApplication:()=>application,getAdmin:()=>admin,isEnabled:()=>true,refresh});
 
-await app.whenReady();
+// Let the ESM entry finish loading before Electron/Playwright releases app readiness.
+void app.whenReady().then(async()=>{
 await mkdir(rootPath,{recursive:true});await mkdir(recoveryRootPath,{recursive:true});await writeFile(source,before);
 application=createApplication();client=new Client(application);await client.connect();
 ({taskId}=await client.call('task.submit',{goal:'Patch the isolated public fixture',conversationId:'ipc-fixture'},
@@ -108,3 +109,4 @@ globalThis.patchFixture={taskId,runId,initialRevision:cachedTask.revision,
 app.on('before-quit',()=>application.close());
 await other.loadURL('data:text/html,<title>Untrusted fixture window</title>');
 await admin.loadFile(fileURLToPath(new URL('./workspace-patch-recovery.html',import.meta.url)));
+}).catch(error=>{console.error(error);app.exit(1);});
