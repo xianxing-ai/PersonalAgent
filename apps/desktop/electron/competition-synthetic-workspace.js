@@ -1,4 +1,5 @@
 import {createWorkspaceReadTool, WORKSPACE_READ_TOOL_NAME, WORKSPACE_READ_TOOL_VERSION} from '@personal-agent/coding-tools';
+import {createHash} from 'node:crypto';
 import {lstatSync, realpathSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -41,11 +42,16 @@ function exactDataObject(value, keys) {
 /** An explicit synthetic-only export gate, never execution authority. */
 export function projectSyntheticMeetingResult(result) {
   const deny = () => { throw Error('Synthetic meeting result export denied'); };
-  if (!exactDataObject(result, ['path', 'encoding', 'byteLength', 'content'])
+  // The 1.0.0 public contract retains four-field historical receipts. Current
+  // reads add a digest of the same bytes; it is checked, never synthesized or exported.
+  const hasDigest = !!result && Object.hasOwn(result, 'sha256');
+  if (!exactDataObject(result, ['path', 'encoding', 'byteLength', 'content', ...(hasDigest ? ['sha256'] : [])])
     || result.path !== SYNTHETIC_MEETING_PATH || result.encoding !== 'utf-8'
     || typeof result.content !== 'string' || !Number.isSafeInteger(result.byteLength)
-    || result.byteLength < 1 || result.byteLength > MAX_BYTES
-    || Buffer.byteLength(result.content, 'utf8') !== result.byteLength) return deny();
+    || result.byteLength < 1 || result.byteLength > MAX_BYTES) return deny();
+  const bytes = Buffer.from(result.content, 'utf8');
+  if (bytes.byteLength !== result.byteLength || hasDigest && (typeof result.sha256 !== 'string'
+    || !/^[a-f0-9]{64}$/.test(result.sha256) || createHash('sha256').update(bytes).digest('hex') !== result.sha256)) return deny();
   let parsed;
   try { parsed = JSON.parse(result.content); } catch { return deny(); }
   if (!exactDataObject(parsed, approvedKeys)

@@ -123,5 +123,6 @@ if __name__ == '__main__':
     target = sys.argv[2] if inject else sys.argv[1]
     raw = sys.stdin.buffer.read() if target == '-' else Path(target).read_bytes()
     result = pause_smil(raw) if inject else check_bytes(raw)
-    print(json.dumps(result, ensure_ascii=False))
+    # The pipe may use a Windows legacy code page; ASCII JSON preserves the exact UTF-8 source bytes after parsing.
+    print(json.dumps(result, ensure_ascii=True))
     sys.exit(0 if inject or result['passed'] else 1)

@@ -34,7 +34,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     beforeQuit(event);if (!event.prevented) exited = true;
   }};
   const optional = ['referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
-    'p5DeviceNotificationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
+    'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray'];
@@ -89,6 +89,23 @@ test('a zero-task quit retains the original cleanup sequence', async () => {
   assert.ok(f.calls.indexOf('voice-dispose') < f.calls.indexOf('runtime-close'));
   assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);
   assert.ok(f.calls.indexOf('installed-skills-close') < f.calls.indexOf('runtime-close'));
+});
+
+test('a bound NotificationHost survives refused quit and disposes once before Runtime on the next allowed quit',async()=>{
+  const f=fixture({count:1});
+  f.context.notificationApplicationHost={dispose(){f.calls.push('notification-dispose');}};
+  f.app.quit();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(f.context.app.isQuitting,false);
+  assert.match(f.context.runtimeError,/Runtime 仍有活动任务/);
+  assert.equal(f.calls.includes('notification-dispose'),false);
+  assert.equal(f.calls.includes('runtime-close'),false);
+  f.context.runtimeApplication.activeTaskCount=0;
+  await tick();assert.equal(f.exited,false);assert.equal(f.calls.includes('notification-dispose'),false);
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.context.runtimeClosed,true);
+  assert.equal(f.calls.filter(call=>call==='notification-dispose').length,1);
+  assert.equal(f.calls.filter(call=>call==='runtime-close').length,1);
+  assert.ok(f.calls.indexOf('notification-dispose')<f.calls.indexOf('runtime-close'));
 });
 
 test('accepted quit closes Wiki, pairing and installed Skills before Runtime; an active task refuses it',async()=>{

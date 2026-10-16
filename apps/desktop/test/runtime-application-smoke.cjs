@@ -81,6 +81,9 @@ async function launchDesktop(userData, diagnostics) {
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: undefined,
+      // This existing local-provider regression uses its own HTTP model fixture, never the Competition route.
+      PA_RUNTIME_PROFILE: 'local',
+      PA_USER_DATA_DIR: undefined,
       PA_DESKTOP_TEST_USER_DATA: userData,
       PA_DESKTOP_EPHEMERAL_MODEL: undefined,
       PA_DESKTOP_MODEL_MODE: undefined,
@@ -105,11 +108,14 @@ async function launchDesktop(userData, diagnostics) {
 }
 
 async function openAdmin(app, panel) {
-  const opening = app.waitForEvent('window');
-  await panel.evaluate(() => window.desktop.invoke('admin.open', {page: 'models'}));
-  const admin = await opening;
+  const opened = await panel.evaluate(() => window.desktop.invoke('admin.open', {page: 'models'}));
+  assert.equal(opened.ok, true, opened.error);
+  const admin = await pageFor(app, 'admin');
   await admin.waitForSelector('[data-page="models"]');
   await admin.waitForFunction(() => document.querySelector('[data-page="models"]')?.getAttribute('aria-current') === 'page');
+  assert.equal(await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()
+    .some(window => window.webContents.getURL().includes('mode=admin') && window.isVisible())), true,
+  'the current settings window must actually be visible');
   return admin;
 }
 
@@ -203,7 +209,7 @@ function scanFiles(root, needle) {
     await orb.evaluate(() => window.desktop.invoke('orb.open'));
     panel = await pageFor(app, 'panel');
     await panel.waitForFunction(expected => document.body.innerText.includes(expected), `本地盘古回答：${reopenGoal}`, {timeout: 10_000});
-    admin = app.windows().find(page => page.url().includes('mode=admin')) ?? await openAdmin(app, panel);
+    admin = await openAdmin(app, panel);
     if (!(await admin.locator('#model-enabled').count())) await admin.locator('[data-page="models"]').click();
     await admin.locator('#model-enabled').uncheck();
     await admin.waitForFunction(async () => (await window.desktop.invoke('snapshot')).value.model.enabled === false);
@@ -282,7 +288,7 @@ function scanFiles(root, needle) {
     const gitSearch = spawnSync('git', ['grep', '-l', '--fixed-strings', secret], {cwd: repoDir, encoding: 'utf8'});
     assert.notEqual(gitSearch.status, 0, gitSearch.stdout);
     assert.ok(server.requests.every(item => item.authorized));
-    console.log(`PASS: Runtime Application desktop acceptance (${server.requests.length} model requests, ${server.aborted} cancelled)`);
+    console.log(`PASS: local Runtime Application desktop acceptance (${server.requests.length} model requests, ${server.aborted} cancelled)`);
   } finally {
     if (session) {
       try { await session.app.close(); } catch {}
