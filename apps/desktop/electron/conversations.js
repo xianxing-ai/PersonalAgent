@@ -81,7 +81,9 @@ export class Conversations {
     this.save(this.turns,this.messages,next);this.preferences=next;
     return {...value};
   }
-  add(taskId, surface, goal, conversationId=this.activeConversationId(surface)) {
+  add(taskId, surface, goal, conversationId=this.turns.get(taskId)?.conversationId??taskSurfaceId(surface)) {
+    const previous=this.turns.get(taskId);
+    if(previous&&(previous.surface!==surface||(previous.conversationId??taskSurfaceId(previous.surface))!==conversationId))throw Error('任务对话归属不可更改');
     this.session(conversationId,surface);
     const turns = new Map(this.turns);
     turns.set(taskId, {taskId, surface, goal, conversationId, createdAt:new Date().toISOString()});

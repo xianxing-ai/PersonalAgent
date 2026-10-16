@@ -164,7 +164,7 @@ function reconfigurationFixture() {
   let configuration = {region: 'cn-north-4', projectId: 'synthetic-old'}, failInitialization = false;
   Object.assign(f.context, {panel, admin, competitionMode: true, client: {}, voiceConfigurationPending: false,
     voicePcmSource: undefined, sisPlaybackHost: undefined, panelHiding: false, voiceInitializationFailure: null,
-    sisConfigHost: {snapshot: () => ({configured: true}), current: () => configuration,
+    sisConfigHost: {snapshot: () => ({configured: true}), currentAccessKey:()=>undefined, current: () => configuration,
       configure(value) {configuration = value;f.calls.push('configure');}},
     desktopHost: {logVoicePlayback() {}}, taskGoals: new Map(), conversations: {add() {assert.fail('No Task');}},
     createDesktopSisPlaybackHost: () => ({async dispose() {f.calls.push('new-playback-dispose');}}),
