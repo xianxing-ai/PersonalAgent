@@ -4,7 +4,8 @@
 
 [生产接线增量](competition/WORKFLOW_WIRING_V4.md)补原 Runtime 常驻任务、四主动入口、主控报告、
 同次影子 metadata、F23 写入/读回、共享通知与当前语音确认，以及公开上下文版本校验。
-原模块负责人和 CW 分工保持不变；本轮为 `in_progress`，最终测试/PR 状态以本次 Evidence 为准。
+原模块负责人和 CW 分工保持不变；本轮代码接线为 `review`，实际主线集成及PR有效审批分别核对。
+[V4实测](competition/evidence/test-image-v4-20261016/README.md)保留整仓、两套真实公共主影子/CAS与原始失败；150ms性能、全部真实业务及设备验收仍未完成。
 不据离线测试把真实业务、模型资格、设备或平台专项标为 done；新镜像不发布。
 
 <!-- current-design-alignment-20261015 -->
