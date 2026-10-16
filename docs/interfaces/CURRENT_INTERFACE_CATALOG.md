@@ -1,5 +1,12 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-16 Desktop WSS／语音／模型目录增量（provisional）
+
+[V5 接线说明](../competition/DESKTOP_AGENTARTS_MODELS_V5.md)记录固定版本 WSS 主通道、同版原生语音转发、受信模型目录与加密默认选择。
+原 query 增加可选 `executionModel`，原 `subagent.dispatch` 增加可选 `reasoningEffort`；旧输入兼容，原 Core wire、WS 帧和数据库迁移不变。
+主／子模型选择绑定目录 revision 并持久化在原 checkpoint；未知结果不换模型重试。`readSubagentTasks()` 只投影原任务。
+目录可见不等于模型授权或真实推理通过；原 API 配置保留。新增接线保持 provisional，真实云端、设备与模型能力分别验收，不扩大冻结范围。
+
 ## 2026-10-16 V4 生产消费接口（provisional）
 
 [V4 接线](../competition/WORKFLOW_WIRING_V4.md)新增 Runtime Application 的主动 host/原任务生命周期、

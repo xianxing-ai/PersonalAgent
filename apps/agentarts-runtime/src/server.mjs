@@ -25,7 +25,7 @@ function parsePayload(payload, workflowGoalInput) {
 }
 /** Both modes serve the same code. Only trusted startup selects mode/authentication. */
 export function createAgentServer({orchestrator, mode, authToken, wssAuthToken = authToken, workflowGoalInput,
-  getBindings, defaultControllerId, testVersionController, serviceControllers = {}, onStageRecord, timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
+  getBindings, defaultControllerId, testVersionController, serviceControllers = {}, realtimeProxy, executionModels, onStageRecord, timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
   if (!['agentarts','standalone-validation'].includes(mode)
     || !orchestrator || typeof orchestrator.invoke !== 'function'
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647
@@ -62,16 +62,24 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     const query = parsePayload(payload,workflowGoalInput);
     signal.throwIfAborted();
     let testValue;
+    let catalogValue;
     let serviceValue,serviceName;
     try {
       const parsed=JSON.parse(query);
       if(parsed && typeof parsed==='object' && !Array.isArray(parsed)) {
+        if(Object.hasOwn(parsed,'modelCatalogVersion'))catalogValue=parsed;
         const names=['shadowVersion','platformVersion','proactiveVersion','testVersion'].filter(key=>Object.hasOwn(parsed,key));
         if(names.length>1) throw new ProtocolError('INVALID_ARGUMENT','Multiple service protocols');
         if(names[0]==='testVersion')testValue=parsed;
         else if(names.length){serviceName=names[0];serviceValue=parsed;}
       }
     }catch(error){if(error instanceof ProtocolError)throw error;}
+    if(catalogValue){
+      if(!bindingAuthorized)throw new ProtocolError('UNAUTHORIZED','Model directory host credential required');
+      if(Object.keys(catalogValue).length!==2||catalogValue.modelCatalogVersion!=='1.0'||catalogValue.action!=='list')throw new ProtocolError('INVALID_ARGUMENT','Invalid model directory query');
+      if(!executionModels)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Model directory unavailable');
+      return [{event:'message',data:{text:JSON.stringify(executionModels.catalog())}},{event:'task_end'},{event:'end'}];
+    }
     const binding = testValue||serviceValue?undefined:bindings.parse(query);
     if(testValue&&(!testVersionController||!bindingAuthorized))
       throw new ProtocolError(testVersionController?'UNAUTHORIZED':'UNSUPPORTED_CAPABILITY','Test version requires explicit host configuration and credential');
@@ -196,7 +204,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   });
   server.requestTimeout = timeoutMs;
   server.headersTimeout = Math.min(timeoutMs,60_000);
-  transport = attachAgentWebSocketTransport(server,{...websocket,authToken:wssAuthToken,
+  transport = attachAgentWebSocketTransport(server,{...websocket,realtimeProxy,authToken:wssAuthToken,
     invoke:value=>invoke({...value,bindingAuthorized:true,channel:'websocket'}),acquire,release,timeoutMs});
   // Node HTTP close does not close upgraded sockets. Stop them before awaiting close.
   const closeHttp = server.close.bind(server);
@@ -206,8 +214,11 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       controller.abort(new ProtocolError('CANCELLED','Agent server closed'));
     }
     for (const [request,response] of httpUploads) endUpload(request,response);
-    transport.close();
+    const realtimeClosed=transport.close();
     for (const socket of httpSockets) endSocket(socket);
+    if (typeof args[0]==='function') {
+      const callback=args[0];return closeHttp(error=>{void realtimeClosed.then(()=>callback(error));});
+    }
     return closeHttp(...args);
   };
   return server;

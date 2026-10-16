@@ -1,5 +1,34 @@
 # 自有 AgentArts Runtime 镜像
 
+## 2026-10-16 AgentArts 实时语音代理
+
+同一 `/ws?endpoint=<version>`（含原 `/invocations/ws` 路由别名）由唯一 upgrade listener 按
+`Sec-WebSocket-Protocol: pa.realtime.v1` 分流；不带该协议的原 invoke/status/cancel 帧、HTTP 和原 API 设置保持兼容。
+客户端保留平台外层 `Authorization`、镜像内层 `X-PA-Agent-Token`、
+`X-Hw-Agentarts-Session-Id`，并传 `x-pa-deadline` 原会话期限。外层凭据仍由 AgentArts 网关验证；
+实时分支必须显式内层头，不借外层凭据放行。URL 只允许已有 `endpoint` 参数，凭据不放 query。
+
+镜像受信启动环境新增两个字段：
+
+| 配置 | 含义 |
+| --- | --- |
+| `PA_AGENT_REALTIME_WORKSPACE_ID` | 北京百炼业务空间 DNS 标识；仅字母、数字、内部连字符，最长 63 字符 |
+| `PA_AGENT_REALTIME_API_KEY` | 由受信宿主注入的百炼凭据；不得写入模型帧、Renderer、日志、文档或镜像层 |
+
+两者均缺省时实时升级返回 503，原文字入口仍可用；部分配置或非法受信配置使启动明确失败且错误脱敏。
+上游固定为 `wss://<workspace>.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen3.8-omni-flash-realtime`，
+不接受调用帧提供端点、凭据或替换模型，不跟随重定向。这里只代理既有 Qwen 原生 JSON（含 Base64 音频）；
+不发送自制 ready/success，首个就绪事实来自上游 session 事件，既有 Qwen parser 继续消费。
+本代理不执行模型工具请求，也不拥有 Runtime 任务终态、Policy 或 ToolGateway 授权。
+
+会话不超过原 deadline 与宿主 120 分钟上限；连接和并发沿用原共享限额。
+每帧及待发送缓冲各限 1,200,000 字节，握手最长 15 秒；连接建立前仅保留有界帧队列。
+截止、断开、服务停止、错误或缓冲超限均关闭两端；并发槽等原上游实际关闭才释放，最多等待 1 秒后强制停止。
+不重连或重放音频，不记录音频、转写、上游错误正文或密钥。
+
+离线行为检查：`node --test --test-isolation=none apps/agentarts-runtime/test/realtime-proxy.test.mjs apps/agentarts-runtime/test/websocket.test.mjs apps/agentarts-runtime/test/server.test.mjs`。
+这些回环/显式替身验证不代表百炼、AgentArts 公网双工、物理麦克风/播放或真实语音审批已经验收。
+
 <!-- current-design-alignment-20261015 -->
 ## 当前口径与历史适用性（2026-10-15）
 
@@ -168,3 +197,13 @@ ping 仅证明进程健康；真实模型、工具、trace、评估及取消须�
 
 原始导出清点：`npm run inventory --workspace=@personal-agent/agentarts-runtime -- <原件绝对路径> <新清单绝对路径>`。
 清单只输出白名单元数据和源片段哈希，保留原件在项目忽略目录；不执行 DSL 或 Python，不输出认证配置。
+
+### Trusted execution model directory
+
+The trusted `PA_AGENT_MODEL_CATALOG_FILE` alternative reads JSON once at startup. It is mutually exclusive with `PA_AGENT_MODEL_CATALOG`; an unreadable/invalid file stops startup with a sanitized error. The shipped metadata file is `src/default-model-catalog.json`; deployment must opt into it explicitly. Directory entries remain unverified until actual model requests pass. Desktop configuration, realtime routing and acceptance boundaries are documented in [the V5 wiring guide](../../docs/competition/DESKTOP_AGENTARTS_MODELS_V5.md).
+
+`PA_AGENT_MODEL_CATALOG` accepts JSON `{version:"1.0",defaultModelId,models:[{id,displayName,reasoningEfforts,requestProfile,route,type?,availability?}]}`. Profiles are `standard`, `deepseek-native-v1`, `bailian-deepseek-v1` or `huawei-openai-v1`; routes are `agentarts-proxy` or `runtime-bailian`. Model entries cannot carry URLs, keys or headers. Omitting the environment variable preserves the existing role providers. The default model must be text and must not be unavailable. Native Bailian DeepSeek depth entries should expose only `none`, `low`, `high`, `max`; compatibility aliases in the legacy proxy do not establish independent native depth values.
+
+The existing authenticated `/invocations` and WSS invocation query `{modelCatalogVersion:"1.0",action:"list"}` returns the directory using the existing message envelope and inner host credential. Its SHA256 revision binds normalized metadata; `executionModel:{catalogRevision,modelId,reasoningEffort?}` pins a selection. Unknown fields, stale revisions, unknown models and unsupported efforts are rejected. Native effort enters `ModelRequest.reasoningEffort`, never the prompt. Non-text/unavailable models remain visible but cannot execute thought requests. An unverified entry may be attempted; directory visibility does not verify inference authorization or native reasoning support.
+
+`agentarts-proxy` retains the trusted AgentArts inference endpoint/authentication. `runtime-bailian` runs inside the owned AgentArts image and calls the fixed Beijing workspace compatible API using `PA_AGENT_REALTIME_WORKSPACE_ID` and its host-held `PA_AGENT_REALTIME_API_KEY`. This is an explicit route, with no error fallback, redirect or unknown-write retry. Response telemetry binds configured/returned model, requested effort, route and status without recording prompts or credentials. It is response evidence, not a platform trace readback.

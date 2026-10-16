@@ -9,9 +9,11 @@ import {TaskRuntime} from '../index.js';
 import type {WorkerContext,WorkerResult} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
-import {QwenRealtimeModelGateway} from '@personal-agent/models';
+import type {QwenRealtimeModelGateway} from '@personal-agent/models';
 import {AgentArtsResultUnknownError, parseCoordinationRepairCandidate} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationRequest, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
+import {parseExecutionModelSelection} from '@personal-agent/coordination';
+import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllowed, type CompetitionToolExport,type CoordinationWorkerCapabilityPort,type PrepareCompetitionToolExport} from './coordination.js';
 import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
 import type {LocalRepairHostOptions, SubmitLocalRepairRequest} from './local-repair.js';
@@ -283,13 +285,17 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   automaticTools?: readonly {toolName: string; toolVersion: string}[];
   /** Opaque identity of trusted Competition configuration, excluding credentials. */
   coordinationBinding?: string;
+  /** Trusted AgentArts realtime composition; legacy API settings do not choose this transport. */
+  competitionRealtimeModel?: Pick<QwenRealtimeModelGateway, 'connect'>;
   /** Trusted current configuration, shared by initial child dispatch and recovery. */
   subagentModels?: {getModelGateway?: (modelName?:string,configurationRef?:string)=>ModelGateway|undefined;
     getModelReasoningEfforts?: (modelName?:string,configurationRef?:string)=>readonly ReasoningEffort[];
     getModelConfigurationRef?: (modelName?:string,taskId?:string)=>string|undefined};
   getToolsForSubtask?: (subtask:SubtaskDefinition,worker:WorkerContext,tools:AgentToolPort)=>AgentToolPort|undefined;
   /** Read once at task acceptance; later conversation changes cannot alter this task. */
-  readConversationPreference?: (conversationId: string) => (ThinkingConfig & {modelId?: string; configurationRef?:string}) | undefined;
+  readConversationPreference?: (conversationId: string) => (ThinkingConfig & {modelId?: string; configurationRef?:string;executionModel?:ExecutionModelSelection}) | undefined;
+  readDefaultExecutionModel?: (role:'primary'|'subagent')=>ExecutionModelSelection|undefined;
+  resolveExecutionModel?: (selection:{modelId:string;reasoningEffort?:ExecutionModelSelection['reasoningEffort']})=>ExecutionModelSelection;
   /** Trusted Desktop-only recovery port; paths and process identity stay in its closure. */
   workspacePatchReconciliation?: WorkspacePatchReconciliationPort;
   knowledgeWriteReconciliation?: KnowledgeWriteReconciliationPort;
@@ -340,6 +346,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   readonly profile: 'local' | 'huawei_ict_agentarts';
   private readonly coordination: CoordinationPort | undefined;
   private readonly coordinationBinding: string;
+  private readonly competitionRealtimeModel: RuntimeApplicationOptions['competitionRealtimeModel'];
   private readonly coordinationInput: CoordinationInputHooks | undefined;
   private readonly windowsHostRecovery: RuntimeApplicationOptions['windowsHostRecovery'];
   private readonly ephemeralSends = new Map<string, CoordinationRequest>();
@@ -353,6 +360,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly subagentModels: RuntimeApplicationOptions['subagentModels'];
   private readonly getToolsForSubtask:RuntimeApplicationOptions['getToolsForSubtask'];
   private readonly readConversationPreference: RuntimeApplicationOptions['readConversationPreference'];
+  private readonly readDefaultExecutionModel: RuntimeApplicationOptions['readDefaultExecutionModel'];
+  private readonly resolveExecutionModel: RuntimeApplicationOptions['resolveExecutionModel'];
   private referenceSkill: ReturnType<typeof createReferenceSummarySkill> | undefined;
   private cloudSkill:CloudSkillRuntimeHostPort|undefined;
   private readonly prepareCompetitionToolExport:PrepareCompetitionToolExport|undefined;
@@ -384,6 +393,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Choose explicit competition coordination or existing local text configuration, not both');
     }
     this.coordinationInput = options.coordinationInput;
+    if (options.competitionRealtimeModel !== undefined
+      && (this.profile !== 'huawei_ict_agentarts' || typeof options.competitionRealtimeModel.connect !== 'function')) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Competition realtime needs a trusted AgentArts connection');
+    }
+    this.competitionRealtimeModel = options.competitionRealtimeModel;
     this.windowsHostRecovery = options.windowsHostRecovery;
     if (options.coordinationInput && typeof options.coordinationInput.beforeCoordinationSend !== 'function') {
       throw new ProtocolError('INVALID_ARGUMENT','Ephemeral input requires a final synchronous send guard');
@@ -398,6 +412,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.prepareCompetitionToolExport=options.prepareCompetitionToolExport;
     this.getToolsForSubtask=options.getToolsForSubtask;
     this.readConversationPreference = options.readConversationPreference;
+    this.readDefaultExecutionModel = options.readDefaultExecutionModel;
+    this.resolveExecutionModel = options.resolveExecutionModel;
     if (options.hostUserNamespace !== undefined && !HOST_ID.test(options.hostUserNamespace)) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Invalid trusted host user namespace');
     }
@@ -678,6 +694,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private async executeCoordination(port:CoordinationPort, request:CoordinationRequest) {
+    const selection=this.runtime.loadCheckpoint(request.taskId,'execution-model');
+    if(selection!==undefined) request=Object.freeze({...request,executionModel:parseExecutionModelSelection(selection)});
     this.assertInputActive(request);
     const hooks=this.coordinationInput;
     if(!hooks) {
@@ -907,6 +925,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   createSubagentDispatchTool(modelGatewayFactory?: (modelName?: string) => import('@personal-agent/models').ModelGateway | undefined): RegisteredTool {
     return createRuntimeSubagentDispatchTool({
+      ...(this.profile==='huawei_ict_agentarts'?{competitionOnly:true as const}:{}),
       getRuntime: () => this.runtime,
       getTools: () => this.tools,
       ...(!modelGatewayFactory && this.isDefaultSubagentAvailable()?{runDefaultWorker:(subtask:SubtaskDefinition,worker:WorkerContext,tools:AgentToolPort)=>this.runDefaultSubagentWorker(subtask,worker,tools)}:{}),
@@ -931,7 +950,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Original Competition worker inside the already running child TaskRuntime lifecycle. */
   async runDefaultSubagentWorker(subtask:SubtaskDefinition,worker:WorkerContext,tools:AgentToolPort):Promise<WorkerResult> {
-    if(!this.isDefaultSubagentAvailable() || subtask.model!==undefined) {
+    if(!this.isDefaultSubagentAvailable()) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Default Competition child is unavailable');
     }
     const binding=this.runtime.loadCheckpoint(worker.taskId,'subtask-parent') as {parentTaskId?:string;parentDeadline?:string;subtaskId?:string;goal?:string;role?:string}|undefined;
@@ -947,6 +966,21 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('CANCELLED','Original parent no longer permits child work');
     }
     const identity={profile:'huawei_ict_agentarts',configurationRef:this.coordinationBinding};
+    if(worker.loadCheckpoint('execution-model')===undefined) {
+      const fallback=subtask.model===undefined?this.readDefaultExecutionModel?.('subagent'):undefined;
+      const selected=subtask.reasoningEffort===undefined && subtask.model===undefined?fallback:
+        this.resolveExecutionModel?.({modelId:subtask.model??fallback?.modelId??'',
+          ...(subtask.reasoningEffort===undefined?{}:{reasoningEffort:subtask.reasoningEffort})});
+      if((subtask.model!==undefined || subtask.reasoningEffort!==undefined) && !selected)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Cloud child model is not in the trusted catalog');
+      if(selected)worker.saveCheckpoint('execution-model',parseExecutionModelSelection(selected));
+    }
+    const selectedModel=worker.loadCheckpoint('execution-model') as ExecutionModelSelection|undefined;
+    const selectedEffort=selectedModel?.reasoningEffort;
+    worker.saveCheckpoint('subtask-thinking-binding',{depth:subtask.thinkingDepth??null,
+      stepBudget:{maxSteps:subtask.thinkingDepth===undefined?6:Math.max(2,(subtask.thinkingDepth+1)*2)},
+      modelReasoning:{requestedEffort:subtask.reasoningEffort??selectedEffort??null,effort:selectedEffort??null,
+        supported:selectedEffort!==undefined,verification:'conditional',thinkingBudgetSupported:false,
+        reason:selectedEffort===undefined?'Provider default; native reasoning control is not selected':'Trusted cloud catalog native effort selection; actual provider execution requires independent evidence'}});
     const previous=worker.loadCheckpoint('subtask-coordination-binding');
     if(previous!==undefined && !isDeepStrictEqual(previous,identity)) {
       throw new ProtocolError('REVISION_CONFLICT','Competition child configuration changed');
@@ -975,12 +1009,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
   }
 
-  createLiveVoiceModel(config: {workspaceId: string; apiKey: string}): Pick<QwenRealtimeModelGateway, 'connect'> {
+  createLiveVoiceModel(_legacyConfig?: {workspaceId: string; apiKey: string}): Pick<QwenRealtimeModelGateway, 'connect'> {
     if (this.profile !== 'huawei_ict_agentarts') {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Live voice requires Competition Profile');
     }
-    const gateway = new QwenRealtimeModelGateway(config);
-    return {connect: request => gateway.connect(request)};
+    const gateway = this.competitionRealtimeModel;
+    return {connect: request => gateway === undefined
+      ? Promise.reject(new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts WSS 实时语音未配置'))
+      : gateway.connect(request)};
   }
 
   async send(request: Request, signal: AbortSignal): Promise<Response> {
@@ -1409,6 +1445,18 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   readEvents(afterSequence = 0): Event[] { return this.runtime.readEvents(afterSequence); }
+  /** Durable child tasks only; model metadata is the original execution binding. */
+  readSubagentTasks(parentTaskId:string): {parentTaskId:string;taskId:string;role:string;modelId:string;reasoningEffort?:NonNullable<ExecutionModelSelection['reasoningEffort']>;state:TaskSnapshot['state'];resultSummary?:string;error?:NonNullable<TaskSnapshot['error']>;evidenceRefs:string[]}[] {
+    this.runtime.getTask(parentTaskId);
+    return this.runtime.listTasks({conversationId:`desktop-subtask:${parentTaskId}`,limit:100}).items.flatMap(task=>{
+      const binding=this.runtime.loadCheckpoint(task.taskId,'subtask-parent') as {parentTaskId?:string;role?:string;model?:string}|undefined;
+      if(binding?.parentTaskId!==parentTaskId || typeof binding.role!=='string')return [];
+      const selected=this.runtime.loadCheckpoint(task.taskId,'execution-model') as ExecutionModelSelection|undefined;
+      return [{parentTaskId,taskId:task.taskId,role:binding.role,modelId:selected?.modelId??binding.model??'legacy-role-default',
+        ...(selected?.reasoningEffort?{reasoningEffort:selected.reasoningEffort}:{}),state:task.state,
+        ...(task.resultSummary?{resultSummary:task.resultSummary}:{}),...(task.error?{error:task.error}:{}),evidenceRefs:[...task.evidenceRefs]}];
+    });
+  }
 
   /** Trusted host only: binds an independently verified public source to durable Fact/Graph projection. */
   createCompetitionFactHost(options: CompetitionFactHostOptions): CompetitionFactHost {
@@ -1803,6 +1851,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const preferred=typeof childBinding.parentTaskId==='string' ? this.runtime.loadCheckpoint(childBinding.parentTaskId,
         'task-model-preference') as {configurationRef?:string}|undefined : undefined;
       const execution = resumeRuntimeSubagentTask({getRuntime: () => this.runtime, getTools: () => this.tools,
+        ...(this.profile==='huawei_ict_agentarts'?{competitionOnly:true as const}:{}),
         runDefaultWorker:(subtask,worker,tools)=>this.runDefaultSubagentWorker(subtask,worker,tools),
         getModelGateway:name=>this.subagentModels?.getModelGateway?.(name,preferred?.configurationRef),
         getModelConfigurationRef:(name,id)=>this.subagentModels?.getModelConfigurationRef?.(name,id),
@@ -2218,7 +2267,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId, 'application-profile', this.profile);
       this.runtime.saveCheckpoint(taskId, 'application-goal', goal);
       this.runtime.saveCheckpoint(taskId, 'application-deadline', request.deadline);
-      const preference = this.readConversationPreference?.(conversationId);
+      let preference:ReturnType<NonNullable<RuntimeApplicationOptions['readConversationPreference']>>;
+      try {
+        preference=this.readConversationPreference?.(conversationId);
+        const selected=preference?.executionModel??this.readDefaultExecutionModel?.('primary');
+        if(selected)this.runtime.saveCheckpoint(taskId,'execution-model',parseExecutionModelSelection(selected));
+      } catch {
+        this.runtime.transitionTask(taskId,'failed',{error:{code:'UNSUPPORTED_CAPABILITY',message:'当前部署模型目录或执行模型不可用，请刷新目录后重新提交',retryable:false}});
+        return;
+      }
       const config = preference ?? this.thinkingConfig;
       if (!Number.isInteger(config.depth) || config.depth < 0 || config.depth > 5 || typeof config.fast !== 'boolean'
         || (preference?.modelId !== undefined && !nonEmptyText(preference.modelId))) {

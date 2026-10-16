@@ -48,6 +48,7 @@ import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
+import {createAgentArtsModelSettings,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
@@ -188,7 +189,9 @@ let sisPlaybackHost;
 let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
+let agentArtsModels;
 let activeCloudBinding;
+let activeCloudTransportSignature;
 const runtimeStartup = createDeferredRuntimeStartup({
   isConfigured: () => !competitionMode || agentArtsConfig?.snapshot().runtimeReady === true,
   initialize: initializeProductServices,
@@ -485,7 +488,7 @@ function taskResultMetadata(task) {
 
 function agentArtsSnapshot() {
   const value = agentArtsConfig?.snapshot();
-  return value && {...value, reason: cloudRequestFailureNotice || cloudTransportNotice || value.reason};
+  return value && {...value,effectiveTransport:process.env.PA_AGENTARTS_TRANSPORT??value.transport,transportSource:process.env.PA_AGENTARTS_TRANSPORT!==undefined?'environment':'saved', reason: cloudRequestFailureNotice || cloudTransportNotice || value.reason};
 }
 
 function snapshot(surface) {
@@ -499,6 +502,7 @@ function snapshot(surface) {
     adminNavigation: {...adminNavigation},
     audioLevel,
     orbStateOverride,
+    subagentTasks:orderedTasks().filter(task=>!surface || taskSurface(task)===surface).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
     tasks: orderedTasks().filter(task => !surface || taskSurface(task) === surface).map(task => ({...structuredClone(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
@@ -520,8 +524,9 @@ function snapshot(surface) {
     voiceQuestion: voiceCommandHost?.snapshot(),
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
     model: structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model),
+    agentArtsModels:agentArtsModels?.snapshot(),
     modelApi: surface ? undefined : modelApiHost?.snapshot(),
-    modelChoices: modelApiHost?.snapshot().models.map(({id,displayName,enabled,available})=>({id,displayName,enabled,available})) ?? [],
+    modelChoices: agentArtsModels?.snapshot().catalog?.models.filter(m=>m.type==='text').map(m=>({...m,enabled:true,available:m.availability!=='unavailable'})) ?? [],
     conversationPreference: conversations?.preference(`desktop-${surface === 'workspace' ? 'workspace' : 'panel'}`,thinking),
     thinking: {...thinking,...(conversations?.preference(`desktop-${surface === 'workspace' ? 'workspace' : 'panel'}`,thinking) ?? {}),
       reason:'本对话的步骤预算在提交时固定；AgentArts 负责主编排，辅助任务使用当前对话的模型选择。原生思考能力以模型设置和实际参数回执为准。'},
@@ -1478,23 +1483,18 @@ async function initializeRuntime() {
         SUBAGENT_DISPATCH_TOOL_VERSION,
       } = runtimeModule;
       const subagentTool = createDesktopSubagentDispatchTool({
+        competitionOnly:true,
         getRuntime: () => runtimeApplication.runtime,
         getTools: () => runtimeApplication.tools,
         runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools),
         fakeModelMode,
-        getModelGateway: modelName => modelApiHost?.getModelGateway(modelName),
-        getModelReasoningEfforts: modelName => modelApiHost?.getModelReasoningEfforts(modelName) ?? [],
       });
       subagentTool.execute = (input, context) => {
-        const preferred = runtimeApplication.runtime.loadCheckpoint(context.taskId,'task-model-preference');
         const taskThinking = runtimeApplication.runtime.loadCheckpoint(context.taskId,'task-thinking');
-        const boundTool=createDesktopSubagentDispatchTool({getRuntime:()=>runtimeApplication.runtime,
+        const boundTool=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>runtimeApplication.runtime,
           getTools:()=>runtimeApplication.tools,fakeModelMode,
-          runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools),
-          getModelGateway:name=>modelApiHost?.getModelGateway(name,preferred?.configurationRef),
-          getModelReasoningEfforts:name=>modelApiHost?.getModelReasoningEfforts(name,preferred?.configurationRef)??[]});
+          runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools)});
         return boundTool.execute({...input,subtasks:input.subtasks.map(subtask=>({...subtask,
-          ...(subtask.model===undefined && preferred?.modelId ? {model:preferred.modelId} : {}),
           ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {}),
         }))},context);
       };
@@ -1562,8 +1562,10 @@ async function initializeRuntime() {
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(obsidianPairing.source, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
-      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding,
+      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding,transportPreferences:agentArtsConfig.readTransportPreferences(),
         configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(cloudBinding)}});
+      void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
+      activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
@@ -1621,16 +1623,15 @@ async function initializeRuntime() {
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'}] : [])],
-        subagentModels: {getModelGateway: (modelName,ref) => modelApiHost?.getModelGateway(modelName,ref),
-          getModelReasoningEfforts: (modelName,ref) => modelApiHost?.getModelReasoningEfforts(modelName,ref) ?? [],
-          getModelConfigurationRef:modelName=>modelApiHost?.getModelReasoningState(modelName)?.configurationRef || undefined},
+        readDefaultExecutionModel:role=>agentArtsModels.readExecutionModel(role),
+        resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
         readConversationPreference: conversationId => {
           if (!['desktop-panel','desktop-workspace'].includes(conversationId)) return undefined;
           const preference = conversations.preference(conversationId,{depth:thinking.depth,fast:thinking.fast});
           const models=modelApiHost?.snapshot();
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
-          return {...preference,modelId,configurationRef:selected?.configurationRef};
+          return {...preference,modelId,executionModel:preference.executionModel?agentArtsModels.resolveExecutionModel(preference.executionModel):modelId?agentArtsModels.resolveExecutionModel({modelId}):agentArtsModels.readExecutionModel(),configurationRef:selected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
           if (!proactiveHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-proactive-goals:')) {
@@ -2130,6 +2131,10 @@ async function action(event, name, payload) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel');
+  if (['agentartsModels.state','agentartsModels.refresh','agentartsModels.configure'].includes(name)) {
+    if(sender!==admin || !competitionMode || !agentArtsModels)throw Error('请从模型设置管理 AgentArts 模型');
+    const result=name==='agentartsModels.state'?agentArtsModels.snapshot():name==='agentartsModels.refresh'?await agentArtsModels.refresh():agentArtsModels.configure(payload);publish();return result;
+  }
   if (['modelApi.state','modelApi.configure','modelApi.remove'].includes(name)) {
     if (sender !== admin || !competitionMode || !modelApiHost) throw Error('请从模型设置管理辅助模型');
     const result = name === 'modelApi.state' ? modelApiHost.snapshot()
@@ -2199,7 +2204,8 @@ async function action(event, name, payload) {
       const startup = await runtimeStartup.start();
       if (liveVoice && !liveShortcut.registered) registerLiveShortcut();
       const requiresRestart = startup.state !== 'ready' || result.gatewayUrl !== activeCloudBinding?.gatewayUrl
-        || result.runtimeName !== activeCloudBinding?.runtimeName;
+        || result.runtimeName !== activeCloudBinding?.runtimeName
+        || activeCloudTransportSignature!==JSON.stringify([agentArtsConfig.readTransportPreferences(),result.deploymentVersion]);
       if (!requiresRestart) await initializeModelFromEnvironment();
       return {...result, requiresRestart, reason: requiresRestart
         ? '配置已加密保存，请重启应用完成连接。'
@@ -2690,14 +2696,15 @@ async function action(event, name, payload) {
     publish();return value;
   }
   if (name === 'conversation.model') {
-    if (sender !== panel && sender !== workspace) throw Error('请从当前对话选择辅助模型');
-    if (!competitionMode || !payload || Object.keys(payload).some(key=>key!=='modelId')) throw Error('模型选择无效');
-    const id = payload.modelId;
-    if (typeof id !== 'string' || (id && !modelApiHost?.snapshot().models.some(item=>item.id===id && item.available))) {
-      throw Error('所选辅助模型未配置或不可用');
+    if (sender !== panel && sender !== workspace) throw Error('请从当前对话选择主思考模型');
+    if (!competitionMode || !payload || Object.keys(payload).some(key=>!['modelId','executionModel'].includes(key))) throw Error('模型选择无效');
+    const executionModel=payload.executionModel?agentArtsModels.resolveExecutionModel(payload.executionModel):payload.modelId?agentArtsModels.resolveExecutionModel({modelId:payload.modelId}):undefined;
+    const id = executionModel?.modelId ?? payload.modelId;
+    if (typeof id !== 'string' || (id && !executionModel && !agentArtsModels?.snapshot().catalog?.models.some(item=>item.id===id && item.available!==false))) {
+      throw Error('所选主模型未配置或不可用');
     }
     const conversationId = sender === workspace ? 'desktop-workspace' : 'desktop-panel';
-    const value = conversations.setPreference(conversationId,{...conversations.preference(conversationId),modelId:id});
+    const value = conversations.setPreference(conversationId,{...conversations.preference(conversationId),modelId:id,executionModel});
     publish();return value;
   }
   if (typeof name==='string' && name.startsWith('skill.') && name!=='skill.run') {
@@ -3022,8 +3029,23 @@ app.whenReady().then(async () => {
     if (microphoneCaptureHost.receive(event, message)) publish();
   });
   sisConfigHost = createDesktopSisConfigHost({userData: app.getPath('userData'), safeStorage});
-  liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage});
+  liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
+    readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  agentArtsModels=createAgentArtsModelSettings({configuration:agentArtsConfig,readCatalog:async({deadline,signal})=>{
+    const binding=agentArtsConfig.binding();
+    const transport=createAgentArtsTransportConfig({binding,environment:{PA_AGENTARTS_TRANSPORT:'https'},configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(binding)}});
+    const response=await transport.fetchImpl(binding.gatewayUrl+'/runtimes/'+encodeURIComponent(binding.runtimeName)+'/invocations',{method:'POST',redirect:'error',signal,headers:{Authorization:agentArtsConfig.readAuthorization(binding),'Content-Type':'application/json','X-Request-Id':randomUUID(),'x-hw-agentarts-session-id':randomUUID(),'X-Invoke-Mode':'published','x-pa-deadline':deadline},body:JSON.stringify({query:JSON.stringify({modelCatalogVersion:'1.0',action:'list'})})});
+    if(!response.ok)throw Error('当前部署模型目录读取失败');
+    let text='';const reader=response.body.getReader();const decoder=new TextDecoder();
+    try{while(true){const chunk=await reader.read();if(chunk.done)break;text+=decoder.decode(chunk.value,{stream:true});if(text.length>1000000 || Date.now()>Date.parse(deadline))throw Error('目录响应超出限制');}}finally{await reader.cancel();}
+    const events=[];
+    if(response.headers.get('content-type')?.includes('text/event-stream')){
+      for(const frame of text.split(/\r?\n\r?\n/)){const lines=frame.split(/\r?\n/);const event=lines.find(l=>l.startsWith('event:'))?.slice(6).trim();const data=lines.filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).join('\n');if(event)events.push({event,data:data?JSON.parse(data):{}});}
+    }else{const value=JSON.parse(text);events.push(...(Array.isArray(value)?value:value.events??[]));}
+    if(events.some(e=>e.event==='error')||!events.some(e=>e.event==='task_end')||events.at(-1)?.event!=='end')throw Error('目录响应未正常结束');
+    const messages=events.filter(e=>e.event==='message'&&typeof e.data?.text==='string');if(messages.length!==1)throw Error('目录响应格式无效');return JSON.parse(messages[0].data.text);
+  }});
   if (competitionMode && !syntheticMvp) {
     const {createConfiguredSubagentModelGateway} = await import('@personal-agent/runtime/application');
     modelApiHost = createModelApiConfig({userData:app.getPath('userData'),safeStorage,

@@ -1,7 +1,7 @@
 import { ProtocolError, PROTOCOL_VERSION } from '@personal-agent/contracts';
 import type { Request, Response, TaskSnapshot, ToolDescriptor, RegisteredTool, ToolContext } from '@personal-agent/contracts';
 import { validateToolArguments, validateToolProposal } from '@personal-agent/models';
-import type { ModelGateway, ModelMessage, ModelResult, ToolProposal } from '@personal-agent/models';
+import type { ModelGateway, ModelMessage, ModelResult, ToolProposal, ReasoningEffort } from '@personal-agent/models';
 
 export interface AgentProgressInput {
   stepId: string;
@@ -271,6 +271,8 @@ export interface SubtaskDefinition {
   roleLabel?: string;
   goal: string;
   model?: string;
+  /** Native provider control, independent of the 0-5 execution step budget. */
+  reasoningEffort?: ReasoningEffort;
   thinkingDepth?: number;
 }
 
@@ -315,6 +317,7 @@ export function computeSubtaskInputDigest(subtask: SubtaskDefinition): string {
     role: subtask.role,
     goal: subtask.goal.trim(),
     ...(subtask.model ? {model: subtask.model.trim()} : {}),
+    ...(subtask.reasoningEffort !== undefined ? {reasoningEffort:subtask.reasoningEffort} : {}),
     ...(subtask.thinkingDepth !== undefined ? {thinkingDepth: subtask.thinkingDepth} : {}),
   });
 }
@@ -521,6 +524,7 @@ export function createSubagentDispatchTool(
                 roleLabel: {type: 'string'},
                 goal: {type: 'string', minLength: 1},
                 model: {type: 'string'},
+                reasoningEffort: {type:'string',enum:['none','minimal','low','medium','high','xhigh','max']},
                 thinkingDepth: {type: 'integer', minimum: 0, maximum: 5},
               },
               required: ['subtaskId', 'role', 'goal'],

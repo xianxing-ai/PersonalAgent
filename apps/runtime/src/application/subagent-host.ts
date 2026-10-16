@@ -65,6 +65,7 @@ export function createConfiguredSubagentModelGateway(
 }
 
 export interface SubagentHostOptions {
+  competitionOnly?:true;
   getRuntime: () => TaskRuntime;
   getTools?: (() => AgentToolPort | undefined) | undefined;
   getModelGateway?: ((modelName?: string) => ModelGateway | undefined) | undefined;
@@ -89,6 +90,7 @@ function childBinding(runtime: TaskRuntime, taskId: string): ChildBinding {
     || (binding.roleLabel !== undefined && typeof binding.roleLabel !== 'string')
     || typeof binding.parentDeadline !== 'string' || !Number.isFinite(Date.parse(binding.parentDeadline))
     || (binding.model !== undefined && (typeof binding.model !== 'string' || !binding.model.trim()))
+    || (binding.reasoningEffort !== undefined && !['none','minimal','low','medium','high','xhigh','max'].includes(binding.reasoningEffort))
     || (binding.thinkingDepth !== undefined && (!Number.isInteger(binding.thinkingDepth)
       || binding.thinkingDepth < 0 || binding.thinkingDepth > 5))) {
     throw new ProtocolError('INVALID_ARGUMENT', 'Invalid persisted subagent binding');
@@ -118,8 +120,9 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
   const roleLabel = subtask.roleLabel?.trim() || DEFAULT_ROLE_LABELS[subtask.role];
   childWorker.reportProgress({stepId: `child-${subtask.subtaskId}`, label: `[${roleLabel}] 正在执行: ${subtask.goal}`});
   const priorExecution = childWorker.loadCheckpoint('subtask-execution-binding') as {kind?:string}|undefined;
-  const kind = priorExecution?.kind ?? (subtask.model === undefined && options.runDefaultWorker ? 'competition' : 'model');
-  if(!['competition','model'].includes(kind) || (kind==='competition' && (subtask.model!==undefined || !options.runDefaultWorker))) {
+  const kind = priorExecution?.kind ?? (options.runDefaultWorker && (options.competitionOnly || subtask.model===undefined) ? 'competition' : 'model');
+  if(!['competition','model'].includes(kind) || (kind==='competition' && !options.runDefaultWorker)
+    || (kind==='model' && options.competitionOnly)) {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original subagent execution strategy is unavailable');
   }
   if (priorExecution !== undefined && !isDeepStrictEqual(priorExecution, {kind})) {
@@ -348,7 +351,8 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
     const seen = new Set<string>();
     for (const subtask of input.subtasks) {
       if (!subtask.subtaskId?.trim() || !subtask.goal?.trim() || seen.has(subtask.subtaskId.trim())
-        || (subtask.model !== undefined && !subtask.model.trim())) {
+        || (subtask.model !== undefined && !subtask.model.trim())
+        || (subtask.reasoningEffort !== undefined && !['none','minimal','low','medium','high','xhigh','max'].includes(subtask.reasoningEffort))) {
         throw new ProtocolError('INVALID_ARGUMENT', 'Subtask identity, goal or explicit model is invalid');
       }
       seen.add(subtask.subtaskId.trim());
@@ -401,6 +405,7 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
         const original=childBinding(runtime,existing.taskId);
         if(original.parentTaskId!==context.taskId || original.subtaskId!==subtask.subtaskId
           || original.goal!==subtask.goal || original.role!==subtask.role || original.model!==subtask.model
+          || original.reasoningEffort!==subtask.reasoningEffort
           || original.thinkingDepth!==subtask.thinkingDepth || original.parentDeadline!==context.deadline
           || (original.roleLabel?.trim()||DEFAULT_ROLE_LABELS[original.role])!==roleLabel) {
           throw new ProtocolError('REVISION_CONFLICT','Existing child is bound to a different dispatch');
@@ -421,6 +426,7 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
             roleLabel,
             goal: subtask.goal,
             model: subtask.model,
+            ...(subtask.reasoningEffort===undefined?{}:{reasoningEffort:subtask.reasoningEffort}),
             thinkingDepth: subtask.thinkingDepth,
             parentDeadline: context.deadline,
           },
@@ -507,6 +513,7 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
 }
 
 export interface DesktopSubagentDispatchToolOptions {
+  competitionOnly?:true;
   getRuntime: () => TaskRuntime;
   getTools?: (() => AgentToolPort | undefined) | undefined;
   fakeModelMode?: boolean;
@@ -531,6 +538,7 @@ export interface DesktopSubagentDispatchToolOptions {
 export function createDesktopSubagentDispatchTool(options: DesktopSubagentDispatchToolOptions): RegisteredTool {
   const {getRuntime, getTools, fakeModelMode, modelConfig, modelRegistry, now, maxRecursionDepth} = options;
   return createRuntimeSubagentDispatchTool({
+    ...(options.competitionOnly?{competitionOnly:true as const}:{}),
     getRuntime,
     getTools,
     now,

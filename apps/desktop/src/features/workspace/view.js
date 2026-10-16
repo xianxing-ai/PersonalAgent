@@ -18,9 +18,10 @@ export function mountWorkspace(root,invoke,escape){
       <aside class="connector-board" aria-label="连接器信息"><header><div><h2>连接器</h2></div><button class="icon-btn" id="connectors-refresh" aria-label="刷新连接器">↻</button></header><div id="connector-cards"></div></aside>
       <aside class="conversation-inspector" id="conversation-inspector" aria-label="对话详情" hidden><header><h2>对话详情</h2><button class="icon-btn" id="inspector-close" aria-label="关闭对话详情">${icon('close')}</button></header><div id="inspector-content"></div></aside></div>
     </main></section>`;
+  const children=document.createElement('section');children.className='subagent-tasks';children.setAttribute('aria-label','子任务派发');root.querySelector('.workspace-chat').append(children);
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
-  preferences.innerHTML='<label>辅助任务模型 <select class="conversation-model-choice" aria-label="工作区辅助任务模型"></select></label><label>思考深度 <input type="range" min="0" max="5" step="1" aria-label="工作区思考深度"></label><label><input type="checkbox">快速模式</label>';
+  preferences.innerHTML='<label>主思考模型 <select class="conversation-model-choice" aria-label="工作区主思考模型"></select></label><label>执行步骤预算 <input type="range" min="0" max="5" step="1" aria-label="工作区执行步骤预算"></label><label><input type="checkbox">快速模式</label>';
   root.querySelector('.workspace-top').after(preferences);
   const modelChoice=preferences.querySelector('select'),depth=preferences.querySelector('[type=range]'),fast=preferences.querySelector('[type=checkbox]');
   let feedbackRevision=0;
@@ -90,9 +91,11 @@ export function mountWorkspace(root,invoke,escape){
   function update(data){
     updateRevision++;
     current=data;current.tasks ||= [];
+    children.hidden=!data.subagentTasks?.length;
+    children.innerHTML='<h3>子任务派发</h3>'+(data.subagentTasks??[]).map(t=>'<article><strong>'+escape(t.role??'子任务')+'</strong><p>父任务 '+escape(t.parentTaskId)+' · 子任务 '+escape(t.taskId)+'</p><p>'+escape(t.modelId??'未记录模型')+' · '+escape(t.reasoningEffort??'供应商默认')+' · '+escape(stateNames[t.state]??t.state)+'</p><p>'+escape(t.resultSummary??t.error?.message??t.error??'')+'</p><p>Evidence '+escape((t.evidenceRefs??[]).join(', '))+'</p></article>').join('');
     const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference]);
     if(preferenceSignature!==nextPreferenceSignature) {
-      modelChoice.replaceChildren(new Option('使用默认辅助模型',''),...(data.modelChoices??[]).map(item=>{
+      modelChoice.replaceChildren(new Option('使用默认主思考模型',''),...(data.modelChoices??[]).map(item=>{
         const option=new Option(item.displayName,item.id);option.disabled=!item.available;return option;
       }));
       preferenceSignature=nextPreferenceSignature;

@@ -9,6 +9,8 @@ import {
   type AgentArtsWebSocketFactory,
 } from '@personal-agent/coordination';
 import {ProtocolError} from '@personal-agent/contracts';
+import {AgentArtsRealtimeModelGateway} from '@personal-agent/models';
+import type {RealtimeSocketConstructor} from '@personal-agent/models';
 import {createHash} from 'node:crypto';
 import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt} from './coordination.js';
 import {
@@ -18,7 +20,7 @@ import {
 } from './runtime-application.js';
 
 export interface AgentArtsRuntimeApplicationOptions
-  extends Omit<RuntimeApplicationOptions, 'profile' | 'coordination' | 'text'> {
+  extends Omit<RuntimeApplicationOptions, 'profile' | 'coordination' | 'text' | 'competitionRealtimeModel'> {
   gatewayUrl: string;
   runtimeName: string;
   invokeMode?: 'debug' | 'published';
@@ -32,6 +34,8 @@ export interface AgentArtsRuntimeApplicationOptions
   allowHttpsFallback?: boolean;
   websocketAuthorizationProvider?: AgentArtsAuthorizationProvider;
   websocketFactory?: AgentArtsWebSocketFactory;
+  /** Offline/native socket injection, independent of the task transport protocol. */
+  realtimeSocket?: RealtimeSocketConstructor;
   onTransportState?: (state: AgentArtsTransportState) => void;
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
@@ -60,6 +64,7 @@ export function createAgentArtsRuntimeApplication(
     allowHttpsFallback,
     websocketAuthorizationProvider,
     websocketFactory,
+    realtimeSocket,
     onTransportState,
     onDiagnostic,
     beforeCompetitionSend,
@@ -123,6 +128,13 @@ export function createAgentArtsRuntimeApplication(
     ...runtimeOptions,
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
+    // Cloud construction above already validated the same gateway/runtime target.
+    // Missing WSS/credentials stays a connect-time error, never a direct API fallback.
+    competitionRealtimeModel: new AgentArtsRealtimeModelGateway({
+      ...(transport === 'wss' && websocketUrl !== undefined ? {websocketUrl} : {}),
+      authorizationProvider,
+      ...(websocketAuthorizationProvider === undefined ? {} : {websocketAuthorizationProvider}),
+    }, realtimeSocket),
     coordinationBinding:createHash('sha256').update(JSON.stringify({gatewayUrl,runtimeName,
       invokeMode:invokeMode??'published',workflowGoalInput:workflowGoalInput??null,
       responseMode:responseMode??'text',initialRequestMode:initialRequestMode??'goal',

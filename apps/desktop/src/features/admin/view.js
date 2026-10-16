@@ -14,6 +14,7 @@ import {mountNotepadControls} from '../../app/notepad-controls.js';
 import {mountTodoControls} from '../../app/todo-controls.js';
 import {mountGoalCloudControls} from '../../app/goal-cloud-controls.js';
 import {mountKnowledgeControls} from '../../app/knowledge-controls.js';
+import {mountAgentArtsModelControls} from '../../app/agentarts-model-controls.js';
 import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
 import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
@@ -136,7 +137,7 @@ export function mountAdmin(root, invoke, escape) {
   localSettingsButton.textContent = '桌面设置与恢复';
   localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
-  let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
   let installedSkillsControls,sisControls,notificationControls;
   let modelApiSignature;
 
@@ -367,12 +368,13 @@ export function mountAdmin(root, invoke, escape) {
       agentArtsControls.render(data.agentArts);
     }
     agentArtsControls?.show(showAgentArts);
-    if (section === 'models' && data.modelApi) modelApiControls ??= mountModelApiControls(root.querySelector('.main'),invoke);
+    if (section === 'models' && data.modelApi) {modelApiControls ??= mountModelApiControls(root.querySelector('.main'),invoke);if(!root.querySelector('[data-agentarts-model-mounted]')){const target=document.createElement('div');target.dataset.agentartsModelMounted='true';root.querySelector('.main').prepend(target);agentArtsModelControls=mountAgentArtsModelControls(target,invoke);}}
     const nextModelApiSignature = JSON.stringify(data.modelApi);
     if (modelApiControls && modelApiSignature !== nextModelApiSignature) {
       modelApiControls.render(data.modelApi);modelApiSignature=nextModelApiSignature;
     }
     modelApiControls?.showSettings(section === 'models');
+    const agentArtsModelRoot=root.querySelector('[data-agentarts-model-mounted]');if(agentArtsModelRoot)agentArtsModelRoot.hidden=section!=='models';
     root.querySelector('.main').dataset.cloudConfig=String(section==='models' && data.model?.provider==='agentarts');
     const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
     const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'usage', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];

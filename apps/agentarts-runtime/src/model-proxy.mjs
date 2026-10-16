@@ -3,9 +3,11 @@ import {createStageTimeline} from './stage-timeline.mjs';
 const bad=()=>{throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted AgentArts model proxy configuration');};
 const deniedHeaders=new Set(['host','content-length','connection','cookie','proxy-authorization','transfer-encoding']);
 /** Reuses the existing text Provider/ModelGateway. Inbound gateway auth replaces backend Bearer auth. */
-export function createAgentArtsModelFetch({endpoint,model,authentication,requestProfile='standard',fetch:request=globalThis.fetch,onRecord}={}) {
+export function createAgentArtsModelFetch({endpoint,model,authentication,requestProfile='standard',fetch:request=globalThis.fetch,onRecord,route='agentarts-proxy'}={}) {
   let base;try{base=new URL(endpoint);}catch{bad();}
-  if(base.protocol!=='https:'||base.username||base.password||base.search||base.hash||base.pathname.replace(/\/$/u,'')!=='/inference/v1'
+  const validEndpoint=route==='agentarts-proxy'?base.pathname.replace(/\/$/u,'')==='/inference/v1'
+    :route==='runtime-bailian'&&/^[a-zA-Z0-9-]+\.cn-beijing\.maas\.aliyuncs\.com$/u.test(base.hostname)&&base.pathname.replace(/\/$/u,'')==='/compatible-mode/v1';
+  if(base.protocol!=='https:'||base.port||base.username||base.password||base.search||base.hash||!validEndpoint
     ||typeof model!=='string'||!model.trim()||!['standard','deepseek-native-v1','bailian-deepseek-v1','huawei-openai-v1'].includes(requestProfile))bad();
   if(!authentication||!['api_key','iam'].includes(authentication.kind))bad();
   if(authentication.kind==='api_key'&&(!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u.test(authentication.headerName??'')
@@ -57,7 +59,7 @@ export function createAgentArtsModelFetch({endpoint,model,authentication,request
       const response=await request(target,{...init,headers,body:encoded,redirect:'error'});
       let responseModel=null;
       if(response.ok){try{const value=await response.clone().json();if(typeof value.model==='string'&&value.model.length<256)responseModel=value.model;}catch{/* Original Provider validates the body. */}}
-      try{onRecord?.({event:'model_proxy_response',observedAtUtc:new Date().toISOString(),route:'agentarts_model_proxy',configuredModel:model,
+      try{onRecord?.({event:'model_proxy_response',observedAtUtc:new Date().toISOString(),route,configuredModel:model,reasoningEffort:JSON.parse(init.body).reasoning_effort??null,
         responseModel,httpStatus:response.status,requestId:response.headers.get('x-request-id')??response.headers.get('x-hw-request-id')??null,
         streaming:false,verification:'response_received_not_platform_trace_readback'});}catch{/* Telemetry is not task state. */}
       return response;

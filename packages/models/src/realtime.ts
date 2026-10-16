@@ -24,26 +24,76 @@ export interface RealtimeRequest {
   onTool(name: string, args: Record<string, unknown>, callId: string): Promise<string>;
 }
 
+export type RealtimeSocket = Pick<WebSocket,
+  'readyState' | 'bufferedAmount' | 'on' | 'send' | 'close' | 'terminate'>;
+export type RealtimeSocketConstructor = typeof WebSocket;
+export interface RealtimePreparedConnection {
+  /** Synchronous creation keeps open/message listeners in the same turn. */
+  createSocket(): RealtimeSocket;
+  readonly failureMessage?: string;
+}
+/** Trusted host transport only; no model- or renderer-supplied endpoint/credentials. */
+export interface RealtimeConnectionPort {
+  prepare(request: Pick<RealtimeRequest, 'signal' | 'deadline'>):
+    RealtimePreparedConnection | Promise<RealtimePreparedConnection>;
+}
+export interface QwenRealtimeDirectConfig {workspaceId: string; apiKey: string;}
+
+async function prepareConnection(port: RealtimeConnectionPort, request: RealtimeRequest,
+  remaining: number): Promise<RealtimePreparedConnection> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort = (): void => {};
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    abort = () => {controller.abort(); reject(Error('Live 连接已取消'));};
+    request.signal.addEventListener('abort', abort, {once: true});
+    timer = setTimeout(() => {controller.abort(); reject(Error('Live 会话已到期，请重新开启'));}, remaining);
+    if (request.signal.aborted) abort();
+  });
+  const prepared = Promise.resolve().then(() => {
+    if (controller.signal.aborted) throw Error('Live 连接已取消');
+    return port.prepare({signal: controller.signal, deadline: request.deadline});
+  });
+  try {return await Promise.race([prepared, cancelled]);}
+  finally {clearTimeout(timer); request.signal.removeEventListener('abort', abort);}
+}
+
 /** The model gateway's native audio entry. No connector, filesystem or Policy authority. */
 export class QwenRealtimeModelGateway {
-  constructor(private readonly config: {workspaceId: string; apiKey: string},
+  private readonly config: QwenRealtimeDirectConfig | undefined;
+  private readonly connection: RealtimeConnectionPort | undefined;
+  constructor(config: QwenRealtimeDirectConfig | RealtimeConnectionPort,
     private readonly Socket: typeof WebSocket = WebSocket) {
-    if (!/^[a-zA-Z0-9-]{1,128}$/.test(config.workspaceId)
+    if (config && 'prepare' in config && typeof config.prepare === 'function') {
+      this.connection = config;
+      return;
+    }
+    if (!config || !('workspaceId' in config) || !('apiKey' in config)) {
+      throw Error('请配置有效的北京业务空间 ID 和百炼 API Key');
+    }
+    if (typeof config.workspaceId !== 'string' || typeof config.apiKey !== 'string'
+      || !/^[a-zA-Z0-9-]{1,128}$/.test(config.workspaceId)
       || !config.apiKey || config.apiKey.length > 4096 || /\s/.test(config.apiKey)) {
       throw Error('请配置有效的北京业务空间 ID 和百炼 API Key');
     }
+    this.config = config as QwenRealtimeDirectConfig;
   }
 
   async connect(request: RealtimeRequest): Promise<RealtimeSession> {
-    const remaining = Date.parse(request.deadline) - Date.now();
+    let remaining = Date.parse(request.deadline) - Date.now();
     // Official service limit is 120 minutes. The host renews before this deadline.
     if (request.signal.aborted || !(remaining > 0) || remaining > 120 * 60_000) throw Error('Live 会话期限无效');
     if (!request.instructions || request.instructions.length > 32000) throw Error('Live 上下文过长');
-    const socket = new this.Socket(
-      `wss://${this.config.workspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen3.8-omni-flash-realtime`,
-      {headers: {Authorization: `Bearer ${this.config.apiKey}`}, handshakeTimeout: 15_000,
-        maxPayload: 2 * 1024 * 1024, followRedirects: false, perMessageDeflate: false},
-    );
+    const prepared = this.connection === undefined ? {
+      createSocket: () => new this.Socket(
+        `wss://${this.config!.workspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen3.8-omni-flash-realtime`,
+        {headers: {Authorization: `Bearer ${this.config!.apiKey}`}, handshakeTimeout: 15_000,
+          maxPayload: 2 * 1024 * 1024, followRedirects: false, perMessageDeflate: false}),
+      failureMessage: 'Live 连接失败，请检查北京业务空间、密钥和网络',
+    } : await prepareConnection(this.connection, request, remaining);
+    remaining = Date.parse(request.deadline) - Date.now();
+    if (request.signal.aborted || !(remaining > 0) || remaining > 120 * 60_000) throw Error('Live 会话期限无效');
+    const socket = prepared.createSocket();
     let ready = false, closing = false, currentResponse = '', responseRequested = false;
     let turn = 0, continuationTurn: number | undefined;
     let resolveReady!: () => void, rejectReady!: (error: Error) => void;
@@ -96,7 +146,7 @@ export class QwenRealtimeModelGateway {
     const startTimer = setTimeout(() => fail('Live 连接或会话配置超时'), 20_000);
     const deadlineTimer = setTimeout(() => fail('Live 会话已到期，请重新开启'), remaining);
     request.signal.addEventListener('abort', abort, {once: true});
-    socket.on('error', () => fail('Live 连接失败，请检查北京业务空间、密钥和网络'));
+    socket.on('error', () => fail(prepared.failureMessage ?? 'Live 连接失败，请检查实时服务配置和网络'));
     socket.on('close', () => {
       if (!closing) fail('Live 连接中断，已停止录音');
       clearTimeout(closeTimer); resolveClosed();

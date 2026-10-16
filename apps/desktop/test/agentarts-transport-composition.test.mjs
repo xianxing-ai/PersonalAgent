@@ -43,7 +43,7 @@ function desktopOptions(environment = {}, previousNotice = '',configuration = {r
     'agentArtsTransportNotice', 'publish', 'previousNotice','agentArtsConfig',
     `let cloudTransportNotice = previousNotice; ${setup}\nconst options = {${transportProperties.map(property => property.getText(ast)).join(',\n')}}; return {options, notice: () => cloudTransportNotice};`);
   const result = evaluate(binding, {env:environment}, input => createAgentArtsTransportConfig({...input, environment,...(fetchImpl?{fetchImpl}:{})}),
-    agentArtsTransportNotice, () => {published++;}, previousNotice,configuration);
+    agentArtsTransportNotice, () => {published++;}, previousNotice,{readTransportPreferences:()=>({}),...configuration});
   return {...result, published:() => published};
 }
 const outer = {read:async () => 'Bearer synthetic-outer-no-real-credential'};
@@ -107,6 +107,29 @@ test('actual Desktop main closure feeds encrypted config token/version refresh i
     assert.equal(calls[1].headers.get('X-PA-Agent-Token'),'Bearer '+token+'-rotated');
     config.revoke();assert.equal((await runTask(app,'versioned-desktop-revoked')).state,'failed');assert.equal(calls.length,2);
     assert.doesNotMatch(JSON.stringify(desktop.options),/desktop-app-token|Bearer/);
+  }finally{app.close();}
+});
+
+test('actual Desktop main pins WSS and original Runtime rejects a changed deployment before any new send',async()=>{
+  let current={appToken:'explicit-public-versioned-wss-token-123456789',deploymentVersion:'arm64-v4-e38ef23d-r2'};
+  const sockets=[],connections=[],http=[];
+  const desktop=desktopOptions(wssEnvironment,'',{readTransportOptions:()=>current},async(url,init)=>{http.push({url,init});throw Error('No HTTP expected');});
+  const app=createAgentArtsRuntimeApplication({...desktop.options,path:':memory:',authorizationProvider:outer,
+    websocketFactory:(url,options)=>{
+      connections.push({url,options});const socket=new SyntheticWebSocket((frame,socket)=>{
+        if(frame.type==='invoke'){socket.accepted(frame);socket.result(frame,'Pinned explicit offline WSS fixture');}
+      });sockets.push(socket);return socket;
+    }});
+  try {
+    assert.equal((await runTask(app,'pinned-wss-first')).state,'succeeded');
+    assert.equal(connections[0].url,wssEnvironment.PA_AGENTARTS_WSS_URL+'?endpoint=arm64-v4-e38ef23d-r2');
+    assert.equal(connections[0].options.headers['X-PA-Agent-Token'],'Bearer '+current.appToken);
+    current={...current,appToken:current.appToken+'-rotated'};
+    assert.equal((await runTask(app,'pinned-wss-refreshed')).state,'succeeded');assert.equal(connections.length,2);
+    assert.equal(connections[1].options.headers['X-PA-Agent-Token'],'Bearer '+current.appToken);
+    current={...current,deploymentVersion:'new-version'};
+    assert.equal((await runTask(app,'pinned-wss-stale')).state,'failed');assert.equal(connections.length,2);assert.equal(http.length,0);
+    assert.equal(sockets.reduce((sum,socket)=>sum+socket.sent.filter(frame=>frame.type==='invoke').length,0),2);
   }finally{app.close();}
 });
 

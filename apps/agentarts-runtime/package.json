@@ -9,7 +9,7 @@
     "./stage-timeline": "./src/stage-timeline.mjs", "./model-proxy": "./src/model-proxy.mjs"},
   "scripts": {
     "build": "node --check src/server.mjs && node --check src/main.mjs && node --check src/websocket-transport.mjs && node --check src/binding-dispatch.mjs && node --check src/laya-service.mjs && node --check src/laya-selector.mjs && node --check src/local-laya.mjs && node --check src/adaptive-decision.mjs && node --check src/test-version-controller.mjs && node --check scripts/laya-assets.mjs && node --check scripts/image-context.mjs && npm run build:services",
-    "build:services": "node --check src/image-services.mjs && node --check src/platform-services.mjs && node --check src/shadow-controller.mjs && node --check src/trace-replay.mjs && node --check src/stage-timeline.mjs && node --check src/proactive-controller.mjs && node --check src/model-proxy.mjs",
+    "build:services": "node --check src/image-services.mjs && node --check src/platform-services.mjs && node --check src/shadow-controller.mjs && node --check src/trace-replay.mjs && node --check src/stage-timeline.mjs && node --check src/proactive-controller.mjs && node --check src/model-proxy.mjs && node --check src/model-catalog.mjs",
     "typecheck": "npm run build",
     "test": "node --test test/*.test.mjs",
     "start": "node src/main.mjs",

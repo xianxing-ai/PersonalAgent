@@ -32,11 +32,12 @@ export class Conversations {
   goal(taskId) { return this.turns.get(taskId)?.goal; }
   validatePreference(conversationId, input) {
     if (typeof conversationId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(conversationId)
-      || !input || Object.keys(input).some(key => !['modelId','depth','fast'].includes(key))
+      || !input || Object.keys(input).some(key => !['modelId','depth','fast','executionModel'].includes(key))
       || !Number.isInteger(input.depth) || input.depth < 0 || input.depth > 5 || typeof input.fast !== 'boolean'
       || (input.modelId !== undefined && (typeof input.modelId !== 'string' || input.modelId.length > 100
         || /[\u0000-\u001f\u007f]/.test(input.modelId)))) throw Error('对话模型或思考偏好无效');
-    return {depth:input.depth,fast:input.fast,...(input.modelId ? {modelId:input.modelId} : {})};
+    if(input.executionModel!==undefined && (!input.executionModel||typeof input.executionModel!=='object'||Array.isArray(input.executionModel)||!/^[a-f0-9]{64}$/.test(input.executionModel.catalogRevision)||typeof input.executionModel.modelId!=='string'||!input.executionModel.modelId||input.executionModel.modelId.length>200||Object.keys(input.executionModel).some(k=>!['catalogRevision','modelId','reasoningEffort'].includes(k))||input.executionModel.reasoningEffort!==undefined&&typeof input.executionModel.reasoningEffort!=='string'))throw Error('对话模型选择无效');
+    return {...(input.executionModel?{executionModel:structuredClone(input.executionModel)}:{}),depth:input.depth,fast:input.fast,...(input.modelId ? {modelId:input.modelId} : {})};
   }
   preference(conversationId, fallback = {depth:1,fast:false}) {
     return {...(this.preferences.get(conversationId) ?? fallback)};

@@ -2,7 +2,7 @@ import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import {createHash} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 import {parseCoordinationResult} from '@personal-agent/coordination';
-import type {CoordinationResult} from '@personal-agent/coordination';
+import type {CoordinationResult,ExecutionModelSelection,ExecutionModelCatalog} from '@personal-agent/coordination';
 import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
@@ -71,7 +71,8 @@ export class OwnedAgentOrchestrator {
   constructor(models: Record<AgentRole, ModelPort>, private readonly maxOutputTokens: number,
     private readonly onReceipt?: (receipt: RoleReceipt) => void,
     private readonly candidateSelector?: OwnedCandidateSelector,
-    private readonly workflowEngine?: OwnedWorkflowEngine) {
+    private readonly workflowEngine?: OwnedWorkflowEngine,
+    private readonly options?: {executionModels:{catalog():ExecutionModelCatalog;resolve(selection?:ExecutionModelSelection):ModelPort}}) {
     if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1) throw new ProtocolError('INVALID_ARGUMENT', 'Invalid model budget');
     this.models = {fast: new ModelGateway(models.fast), world: new ModelGateway(models.world),
       plan: new ModelGateway(models.plan), review: new ModelGateway(models.review)};
@@ -79,6 +80,7 @@ export class OwnedAgentOrchestrator {
   async invoke(request: AgentInvocation): Promise<AgentOutput> {
     return this.runInvocation(request, false);
   }
+  getExecutionModelCatalog():ExecutionModelCatalog|undefined {return this.options?.executionModels.catalog();}
   getOwnedWorkflowCatalog(): ReturnType<typeof getOwnedWorkflowBindings> {
     return this.workflowEngine ? getOwnedWorkflowBindings() : [];
   }
@@ -322,9 +324,22 @@ export class OwnedAgentOrchestrator {
     this.check(request); this.emit(role, request, 'started');
     const started=performance.now();let durationMs:number|undefined;
     try {
-      const result = await this.models[role].complete({messages: [{role: 'system', content: prompt},
-        {role: 'user', content: JSON.stringify(data)}], tools: [], requiredCapabilities: ['text'],
-        maxOutputTokens: this.maxOutputTokens, reasoningEffort: 'none', deadline: request.deadline, signal: request.signal});
+      const selection = request.query === 'owned-workflow-candidates' ? undefined : parseAgentInput(request.query).executionModel;
+      if (selection && !this.options?.executionModels) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Execution model registry unavailable');
+      const gateway = selection ? new ModelGateway(this.options!.executionModels.resolve(selection)) : this.models[role];
+      let modelData=data;
+      if(role==='fast' && prompt.includes(DISPATCH_PROMPT) && this.options?.executionModels) {
+        const input=record(data);
+        if(Array.isArray(input.availableTools) && input.availableTools.some(tool=>tool && typeof tool==='object' && (tool as {name?:unknown}).name==='subagent.dispatch')) {
+          const catalog=this.options.executionModels.catalog();
+          modelData={...input,executionModelCatalog:{revision:catalog.revision,defaultModelId:catalog.defaultModelId,
+            models:catalog.models.filter(model=>model.type==='text' && model.availability!=='unavailable')
+              .map(model=>({id:model.id,reasoningEfforts:model.reasoningEfforts}))}};
+        }
+      }
+      const result = await gateway.complete({messages: [{role: 'system', content: prompt},
+        {role: 'user', content: JSON.stringify(modelData)}], tools: [], requiredCapabilities: ['text'],
+        maxOutputTokens: this.maxOutputTokens, ...(selection?.reasoningEffort?{reasoningEffort:selection.reasoningEffort}:selection?{}:{reasoningEffort:'none' as const}), deadline: request.deadline, signal: request.signal});
       durationMs=performance.now()-started;
       this.check(request);
       if (result.response.kind !== 'final' || result.response.text.length > 16_000) throw new Error();
