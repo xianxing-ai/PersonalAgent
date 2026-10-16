@@ -21,6 +21,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --import ./test/bridge-process-diagnostics.mjs --test --test-concurrency=1 test/*.test.mjs"
   }
 }

@@ -198,6 +198,59 @@ test('native configuration survives SQLite restart; same-identity drift cannot c
     } finally {current.app.close();}
   }
 });
+
+test('visible request budget factory preserves public binding and rejects Pangu before credentials', async () => {
+  let credentials = 0;
+  const config = {provider:'openai-compatible',profile:'huawei_ict_agentarts',baseUrl:'https://synthetic.invalid/v1',
+    model:'synthetic',deployment:'synthetic',apiKey:()=>{credentials++;return '';},contextLimitTokens:100,
+    requestTokenBudget:{model:'synthetic',tokenizerRef:'synthetic-meter:v1',configurationRef:'synthetic-config:v1',
+      reservedOutputTokens:20,countInputTokens:()=>80}};
+  assert.throws(()=>createConfiguredSubagentModelGateway({...config,provider:'pangu'}),{code:'UNSUPPORTED_CAPABILITY'});
+  const gateway = createConfiguredSubagentModelGateway(config);
+  assert.deepEqual(gateway.deployment.capabilities.requestTokenBudget,{scope:'provider-body',model:'synthetic',
+    tokenizerRef:'synthetic-meter:v1',configurationRef:'synthetic-config:v1',contextTokens:100,reservedOutputTokens:20});
+  await assert.rejects(gateway.complete({messages:[{role:'user',content:'synthetic'}],tools:[],
+    signal:new AbortController().signal,deadline:new Date(Date.now()+60_000).toISOString()}),{code:'UNAUTHORIZED'});
+  assert.equal(credentials,1);
+});
+
+test('SQLite child approval survives unchanged budget; version, capacity and reservation drift cannot consume it', async () => {
+  const base = new URL('../../../.cache/visible-budget-runtime/',import.meta.url);
+  mkdirSync(base,{recursive:true});
+  const binding = {scope:'provider-body',model:'budget-synthetic',tokenizerRef:'synthetic-meter:v1',
+    configurationRef:'budget-config:v1',contextTokens:100,reservedOutputTokens:20};
+  for (const changed of ['same','removed','tokenizerRef','configurationRef','contextTokens','reservedOutputTokens']) {
+    const database = path.join(mkdtempSync(base),'tasks.sqlite');
+    let current = fixture(false,database);
+    const gateway = (requestTokenBudget,steps) => {
+      const fake = new FakeModelProvider(steps,{model:'budget-synthetic',deployment:'stable-deployment'});
+      return new ModelGateway(fake,{...fake.deployment,capabilities:{...fake.deployment.capabilities,
+        ...(requestTokenBudget===undefined?{}:{requestTokenBudget})}});
+    };
+    const options = model => ({getRuntime:()=>current.app.runtime,getTools:()=>current.app.tools,
+      getModelGateway:()=>model,getModelConfigurationRef:()=> 'stable-config-ref'});
+    try {
+      const first = gateway(binding,[()=>({kind:'tool_proposal',proposal:{toolName:descriptor.name,
+        toolVersion:descriptor.version,arguments:{value:'budget-restart'}}})]);
+      await createRuntimeSubagentDispatchTool(options(first)).execute({subtasks:[{subtaskId:'budget-restart',
+        role:'researcher',goal:'synthetic read',model:'budget'}]},context(current.parent));
+      const childId = current.app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${current.parent.taskId}-budget-restart`).taskId;
+      assert.equal(current.app.runtime.getTask(childId).state,'waiting_approval');
+      assert.deepEqual(current.app.runtime.loadCheckpoint(childId,'subtask-model-binding').requestTokenBudget,binding);
+      current.app.close();current = fixture(false,database);
+      const approval = current.app.runtime.getApproval(`agent-run-${childId}-1`);
+      current.app.runtime.respondApproval(approval.approvalId,'allow_once',approval.revision);
+      const next = changed==='removed'?undefined:changed==='same'?binding:{...binding,
+        [changed]:typeof binding[changed]==='number'?binding[changed]+1:`${binding[changed]}-changed`};
+      const restored = gateway(next,[()=>({kind:'final',text:'Synthetic restored answer'})]);
+      const result = await resumeRuntimeSubagentTask(options(restored),childId);
+      assert.equal(result.state,changed==='same'?'succeeded':'failed');
+      assert.equal(current.calls.length,changed==='same'?1:0);
+      assert.equal(current.app.runtime.policy.get(approval.approvalId).usesRemaining,changed==='same'?0:1);
+      if (changed!=='same') assert.equal(result.error.code,'REVISION_CONFLICT');
+    } finally {current.app.close();}
+  }
+});
 test('summary without definitions preserves a subtask ID containing surrounding spaces', async () => {
   const {app,parent} = fixture();
   try {

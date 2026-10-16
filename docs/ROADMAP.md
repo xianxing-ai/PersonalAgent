@@ -1,8 +1,26 @@
 # 开发计划与进度
 
+## 2026-10-16 goo122 集成门禁继续入口
+
+#351 已经非作者批准、完整 Foundation 与设计门禁后由协作者合入 main `18ec9efe`；版本化上下文、可见预算和展示已进入主线，完整 MOD-04A/09 仍为 in_progress，真实云消费继续暂停。#367 已改接 main，#375 继续依赖 #367；#368 已合入 #367。#369～#374 本轮普通同步该主线，保留 MCP 容量拒绝、Runtime 持久回执消费和取消 scope 修复。#369/#372 的历史请求修改仍需非作者复审，其他有效批准分别核对；本轮不将 PR 合入 main。
+
+已读回上一轮实际门禁：#367 及 MCP 除 #372 一路外的 Foundation 均通过；#375 PR 路和 #372 push 路的失败为 Windows 证书进程 10 秒超时（SOURCE_UNAVAILABLE），不是上下文或 MCP 断言失败。#375 只重跑一次失败 job 并保留原日志，#372 随本次主线同步由新 head CI 复核；不扩大期限、放宽断言或宣称冷启动已根治。下文阶段性结果与旧待集成说明保留为历史快照。
+
 ## 2026-10-15 远程 MCP 首个只读纵片（in_progress）
 
 goo122 从 main `8c395f5f` 开始 [MOD-06 / G10](modules/MOD-06-REMOTE-READONLY-20261015.md)：现有 SDK 上增加固定身份、单只读绑定的 HTTPS Streamable HTTP host，仍经原 Policy/ToolGateway。定向本机 HTTP fixture 7/7 通过，完整 check 3147 通过、36 跳过、0 失败；无模型/AgentArts 调用、生产接线或真实远端验收。远程鉴权、任意写工具与持久恢复尚待后续工作包，完整 MOD 保持 in_progress；方案见 [ADR-0029](adr/0029-remote-mcp-readonly-transport.md)。
+
+## 2026-10-15 预算展示与 tokenizer 离线核验（in_progress）
+
+goo122 从 #357 `e60d45e3` 开始 [预算展示工作包](modules/MOD-04A-BUDGET-DISPLAY-20261014.md)：共享 Provider 的预算元数据已沿可信模型宿主接到现有 Admin，支持并发迟到保护、撤销清除和预算单独刷新保留草稿。定向 16/16、实际原生设置烟测通过；固定官方词表 Windows 原始文本核验 4/4，通过 SHA 校验并明确不适合作为完整请求 meter。完整门禁结果按工作包记录补录；真实模型/tokenizer 模板匹配、MaaS 与镜像生产打包仍未完成，云调用 0、原 Vault 不读写、接口及完整模块状态不提升。#357 当前 head Foundation 已成功，尚无非作者批准。
+
+## 2026-10-14 可见模型请求预算（in_progress）
+
+goo122 从 #351 `3153e022` 开始 [F27 Provider 工作包](modules/MOD-04A-VISIBLE-REQUEST-BUDGET-20261014.md)。沿现有 Provider/Competition 工厂补完整可见请求计量端口、实际输出字段和预算版本恢复绑定，保留未计量/平台隐藏上下文未知的区别。原逐条私人确认、Skill 许可、逐事实删除及整篇备份 pending 保持有效；未新增正文副本。当前真实云调用 0，模型专用 tokenizer、自有镜像配置、Desktop 展示、非作者评审和集成未完成；完整模块状态不提升。
+
+## 2026-10-14 版本化上下文、预算与删除覆盖（in_progress）
+
+goo122 从 #350 `a378c3df` 开始 [F27 上下文工作包](modules/MOD-09-CONTEXT-BINDING-20261014.md)，沿既有编译/发送门禁增加持久摘要版本比较、可信 goal token 预算端口及新检查点删除覆盖。定向 33/33；完整 check 3050 通过、31 跳过、0 失败。无已验证 tokenizer 时明确 unmeasured，不把 goal 计量当作完整模型上下文窗；原私人确认、Skill 许可及整篇备份 pending 保持有效。真实云调用 0，PR/评审/集成未完成，完整模块状态不提升。
 
 ## 2026-10-13 zemeng 模块继续范围（当前入口）
 

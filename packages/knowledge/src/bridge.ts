@@ -44,10 +44,11 @@ export function parseObsidianBridgeCode(code: unknown): ObsidianBridgeOffer {
 // Fixed script, no external input. No provider key, bundled script or user content is executed.
 async function ephemeralCertificate(signal: AbortSignal): Promise<{pfx: Buffer; certificateSha256: string}> {
   if (process.platform !== 'win32' || signal.aborted) throw unavailable();
+  // Generated Base64 needs no JSON escaping; avoid first-use Utility module loading for ConvertTo-Json.
   const script = `$ErrorActionPreference='Stop';$rsa=[Security.Cryptography.RSACng]::new(2048);
 try {$request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=PersonalAgent local pairing',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1);
 $cert=$request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-1),[DateTimeOffset]::UtcNow.AddMinutes(16));
-try {[Console]::WriteLine((@{pfx=[Convert]::ToBase64String($cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx,''));cert=[Convert]::ToBase64String($cert.RawData)}|ConvertTo-Json -Compress))}
+try {[Console]::WriteLine('{"pfx":"'+[Convert]::ToBase64String($cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx,''))+'","cert":"'+[Convert]::ToBase64String($cert.RawData)+'"}')}
 finally {$cert.Dispose()}} finally {$rsa.Dispose()}`;
   const executable = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   try {
