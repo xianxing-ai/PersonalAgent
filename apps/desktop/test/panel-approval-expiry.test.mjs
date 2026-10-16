@@ -35,7 +35,7 @@ function fixture() {
   const tasksNode={querySelector(selector){assert.equal(selector,'[data-turn="task"]');return article;},
     querySelectorAll(selector){assert.equal(selector,'[data-approval-decision]');return article.buttons;},
     set innerHTML(_value){assert.fail('expiry must not rebuild task DOM');}};
-  const context=vm.createContext({current:{tasks:[task],approvals:[grant(initialTime+100)]},wakeClosed:false,
+  const context=vm.createContext({current:{tasks:[task],approvals:[grant(initialTime+100)]},wakeClosed:false,locateClosed:false,locateFeedback:new Map(),
     tasksNode,approvalDecisions:new Map(),approvalCards,nextApprovalExpiry,CSS:{escape:value=>value},Date:{now:()=>now},
     setTimeout(callback,delay){const id=++nextTimer;timers.set(id,{callback,delay});return id;},
     clearTimeout(id){timers.delete(id);}});
