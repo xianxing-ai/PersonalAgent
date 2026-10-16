@@ -76,7 +76,7 @@ export const OVERVIEW_LINKS: [string, string, string, RelationKind][] = [
   ['F03', 'POLICY', '实际补偿授权；已覆盖则直接执行', 'flow'],
   ['F24', 'F12', '停止中/待核实徽章与必要通知', 'flow'],
   ['F26', 'AA_GATEWAY', '自有镜像接入平台Target', 'platform'],
-  ['DECISION', 'AA_GATEWAY', 'Laya选定执行候选；通用模型经国内MaaS网关', 'platform'],
+  ['DECISION', 'AA_GATEWAY', '本机Laya/teacher建议执行候选；通用模型经AgentArts网关', 'platform'],
   ['MODELS', 'AA_GATEWAY', 'ModelGateway → Inference Target', 'platform'],
   ['TOOL', 'AA_GATEWAY', '既有授权后，MCP客户端直连平台网关', 'platform'],
   ['AA_GATEWAY', 'AA_KNOWLEDGE', '知识检索Target：鉴权/区域待验证', 'platform'],
@@ -117,7 +117,7 @@ export const INTERFACE_NOTES: Record<string, string> = {
 export const SHARED_NODES = [
   {id:'USER',label:'可信用户指令',subtitle:'原句 · 条件 · 版本 · 授权',kind:'flow'},
   {id:'EVENT',label:'外部事件与变化',subtitle:'邮件 · 日程 · 订阅 · CI',kind:'flow'},
-  {id:'DECISION',label:'Laya · 唯一语义裁决',subtitle:'镜像内服务与权重 · typed-choice',kind:'decision'},
+  {id:'DECISION',label:'本机Laya · 资格门禁/teacher升级',subtitle:'本机服务与权重 · 资格不足升级teacher',kind:'decision'},
   {id:'MODELS',label:'受派执行模型',subtitle:'国内候选 · 范围内工具探索',kind:'flow'},
   {id:'POLICY',label:'现有授权与参数检查',subtitle:'沿用 Runtime / Policy；不新增限制',kind:'flow'},
   {id:'TOOL',label:'ToolGateway',subtitle:'执行 · 稳定操作ID · 取消',kind:'flow'},
