@@ -1,5 +1,7 @@
 # MCP — Competition read-only slice
 
+2026-10-16 [Desktop/TLS 组合验收](../../docs/modules/MOD-06-PRODUCT-TLS-20261016.md) 已在实际 Electron/安全存储与默认 HTTPS fetch 上完成成功链路及四类拒绝场景；原生对话框响应仍为合成。#369 评审的 run 缓存上限修复 `bfcb1ab1` 已普通推送并传递至 #373；接口保持 provisional，当前 CI/非作者评审及集成状态以 GitHub 为准。
+
 ## 2026-10-16 默认 fetch 的本机 HTTPS/TLS 验证
 
 新增 `npm run test:mcp-tls-smoke`，见[复现说明](../../tests/manual/mcp/README.md)和[验收记录](../../docs/modules/MOD-06-TLS-20261016.md)。实际 HTTPS 合成服务配合进程专属测试 CA、原 SDK 默认 fetch、SQLite/Policy 验证 5/5：可信证书与单次审批成功；不受信 CA、主机名、目录摘要和重定向拒绝。重启不联网、不重放原结果。无系统信任库修改、证书验证关闭或 HTTPS→HTTP 映射。
@@ -53,6 +55,8 @@ await mcp.dispose();
 首包只支持无认证公开服务：URL 禁止用户名/密码、query、fragment；禁重定向、cookies、OAuth 自动发现和自动重试/重连。无配置为 unavailable，默认 disabled；401/403 明确拒绝，不使用环境中的凭据。请求和单条 HTTP 响应流各限 1 MiB，操作最长 30 秒且不超过调用 deadline；同连接串行执行，GET 通知流随 stop/dispose 关闭。目录变化通知立即撤销连接，重新连接需显式 start。
 
 同 task/run 绑定输入，只重放当前会话已确认的结果；失败、取消、断连或换连接后的旧 run 均不自动调用，须由 Runtime 核实或按新 run 提交新任务。会话 map 不替代 Runtime 的持久授权/执行记录。`health()` 仅返回状态、固定工具名、计数、协商版本和脱敏错误码，不暴露 endpoint、session ID 或远端诊断。
+
+单个 host 生命周期最多保留 64 个 run 身份（包含失败/未知结果），每条结果仍受 1 MiB 限制；达到上限时新 run 在网络请求前以 `RESULT_UNKNOWN` 拒绝。stop/断线后重连不重置身份配额，stop 释放结果内容并保留输入绑定，旧 run 不重发。恢复服务需受信宿主重新创建 host，并依赖原 Runtime 持久记录防止跨实例重放；普通重连不能绕过上限。
 
 `node --test packages/mcp/test/remote-http.test.mjs` 使用真实本机 HTTP 监听与显式 synthetic MCP fixture，经受信 fetch 端口将固定测试 HTTPS 地址映射到 loopback。覆盖 JSON 与 Streamable HTTP 的 SSE 响应、Policy 一次性授权、身份/schema/目录漂移、认证失败、重定向、大小限制、取消/超时、断连、重连与释放。它不是第三方服务、远程 TLS、OAuth 或真实 Competition/AgentArts 验收。生产 Desktop/Competition composition 尚未注入此 host；持久配置、鉴权引用、写工具及未知写入恢复属 G11/G14。
 
