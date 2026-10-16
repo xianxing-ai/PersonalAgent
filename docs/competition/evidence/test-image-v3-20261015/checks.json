@@ -579,14 +579,14 @@
   },
   "latestPrMainIntegrationCheck": {
     "file": "pr-integration-checks.json",
-    "sha256": "5c2035d4614e96dbf91486f40118df9e9cc2b411bb22535de91d6ab63774a68d",
+    "sha256": "f1aa2c0bd6fd1347d1f6d12fdbcdebdb9ac2596583ac1eed62ee52713b705a9b",
     "exitCode": 0,
     "summary": {
-      "runners": 0,
-      "tests": 0,
-      "pass": 0,
+      "runners": 37,
+      "tests": 3437,
+      "pass": 3418,
       "fail": 0,
-      "skipped": 0,
+      "skipped": 19,
       "cancelled": 0
     }
   }

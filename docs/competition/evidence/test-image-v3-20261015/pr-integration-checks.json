@@ -4,7 +4,7 @@
   "profile": "huawei_ict_agentarts",
   "sourceRevision": "585262e0a644b980d6c0c0e6934310ed2fb97154",
   "upstreamMain": "8c395f5fdbc0ea77790174fce657853a357e57fa",
-  "recordedAtUtc": "2026-10-16T04:26:30.806Z",
+  "recordedAtUtc": "2026-10-16T04:27:12.706Z",
   "completedRun": {
     "stage": "v3.pr_main_integration_full_check_after_resume",
     "finishedAtUtc": "2026-10-16T04:25:29.3170394Z",
@@ -17,11 +17,11 @@
     "projectedLogSha256": "ccf97b48143e0d97686f951a0fc7281cea2f53a4c54f379a9a092f877f33e813",
     "projection": "Personal implementation/toolchain path prefixes and trailing whitespace only normalized",
     "summary": {
-      "runners": 0,
-      "tests": 0,
-      "pass": 0,
+      "runners": 37,
+      "tests": 3437,
+      "pass": 3418,
       "fail": 0,
-      "skipped": 0,
+      "skipped": 19,
       "cancelled": 0
     }
   },
