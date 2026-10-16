@@ -3,6 +3,7 @@ import {mkdirSync, appendFileSync, readFileSync, statSync, renameSync} from 'nod
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DesktopState, fitBounds, snapBounds} from './desktop-state.js';
+import {placeOrb} from './placement.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 export function createDesktopHost() {
@@ -162,8 +163,9 @@ export function createDesktopHost() {
   function reposition() {
     for (const {win, mode} of windows.values()) {
       if (mode === 'panel' || win.isDestroyed()) continue;
-      const bounds = fitBounds(win.getNormalBounds(), area(win.getNormalBounds()));
-      if (mode === 'orb') win.setPosition(bounds.x, bounds.y);
+      const current = mode === 'orb' ? win.getContentBounds() : win.getNormalBounds();
+      const bounds = fitBounds(current, area(current));
+      if (mode === 'orb') placeOrb(win, bounds);
       else if (!win.isMaximized()) win.setBounds(bounds);
     }
   }
@@ -178,6 +180,12 @@ export function createDesktopHost() {
     },
     get settings() { return state.value.settings; },
     get userNamespace() { return state.ensureHostUserNamespace(); },
-    snap(win) { if (state.value.settings.snap) { const bounds = snapBounds(win.getBounds(), area(win.getBounds())); win.setPosition(bounds.x, bounds.y); } },
+    snap(win) {
+      if (!state.value.settings.snap) return;
+      const isOrb = windows.get(win.webContents.id)?.mode === 'orb';
+      const current = isOrb ? win.getContentBounds() : win.getBounds();
+      const bounds = snapBounds(current, area(current));
+      if (isOrb) placeOrb(win, bounds); else win.setPosition(bounds.x, bounds.y);
+    },
   };
 }
