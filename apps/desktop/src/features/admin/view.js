@@ -21,6 +21,7 @@ import {profilePage, bindProfile} from './profile.js';
 import {approvalPresentation, authorizationHistoryHtml, authorizationListHtml, nextApprovalExpiry} from './approval-status.js';
 import {agentArtsModelPage} from './agentarts-model.js';
 import {evidencePanelHtml} from './evidence-view.js';
+import {createWorkspacePatchRecoveryControls, workspacePatchRecoveryHtml} from './workspace-patch-recovery-controls.js';
 
 export const sections = {
   settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', configuration: '配置',
@@ -33,7 +34,7 @@ const navGroups = [
   {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
   {label: '集成', items: ['computer', 'capabilities']},
   {label: '编码', items: ['hooks', 'connections', 'git', 'environment', 'worktrees', 'authorizations']},
-  {label: '任务', items: ['archive']},
+  {label: '任务', items: ['tasks', 'archive']},
 ];
 
 const iconPaths = {
@@ -60,8 +61,11 @@ const tone = state => ['ready', 'connected'].includes(state) ? 'ready' : ['unava
 const badge = (label, state) => `<span class="badge" data-tone="${tone(state)}"><span class="badge-dot"></span>${label}</span>`;
 const healthLabels = {ready: 'Runtime 报告就绪', connecting: '连接中', degraded: '降级', reauth_required: '需要重新授权', disconnected: '未连接', unavailable: '不可用'};
 
-export function taskTable(data, escape, evidenceStates = new Map()) {
+export function taskTable(data, escape, evidenceStates = new Map(), patchStates = new Map()) {
   const rows = data.tasks.map(task => {
+    const recovery = patchStates.get(task.taskId)?.result;
+    const displayed = recovery && recovery.revision >= task.revision
+      ? {state: recovery.taskState, revision: recovery.revision} : task;
     const steps = Array.isArray(task.steps) ? task.steps : [];
     const evidenceCount = Array.isArray(task.evidenceRefs) ? task.evidenceRefs.length : 0;
     const summary = task.resultSummary ?? (task.error?.code
@@ -72,7 +76,7 @@ export function taskTable(data, escape, evidenceStates = new Map()) {
     const evidence = evidenceCount
       ? `<button class="btn btn-sm" data-evidence-task="${escape(task.taskId)}">读取执行元数据</button><div data-evidence-panel="${escape(task.taskId)}">${evidencePanelHtml(evidenceStates.get(task.taskId), escape)}</div>`
       : '<span class="muted">尚无 Evidence 引用。</span>';
-    return `<tr><td>${escape(task.taskId)}</td><td>${stateNames[task.state] ?? escape(task.state)}</td><td>${task.revision}</td><td>${escape(summary)}</td><td><details ${evidenceStates.has(task.taskId) ? 'open' : ''}><summary>步骤 ${steps.length} 项 · Evidence 引用 ${evidenceCount} 条</summary>${stepList}${evidence}</details></td></tr>`;
+    return `<tr><td>${escape(task.taskId)}</td><td>${stateNames[displayed.state] ?? escape(displayed.state)}</td><td>${displayed.revision}</td><td>${escape(summary)}</td><td>${workspacePatchRecoveryHtml(task, recovery && recovery.revision < task.revision ? undefined : patchStates.get(task.taskId), escape)}<details ${evidenceStates.has(task.taskId) ? 'open' : ''}><summary>步骤 ${steps.length} 项 · Evidence 引用 ${evidenceCount} 条</summary>${stepList}${evidence}</details></td></tr>`;
   }).join('');
   return `<div class="sheet"><h2>任务记录</h2><p class="muted">只展示 Runtime 任务快照；Evidence 引用数量不代表目标系统已核实。此接口未提供任务来源或云端 trace。</p><div class="table-scroll"><table><thead><tr><th>任务</th><th>状态</th><th>版本</th><th>结果摘要</th><th>步骤与证据</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">还没有任务<br>从悬浮面板开始新的对话</td></tr>'}</tbody></table></div></div>`;
 }
@@ -83,6 +87,8 @@ export function mountAdmin(root, invoke, escape) {
   let modelEditorOpen = false;
   let approvalExpiryTimer;
   let current = {tasks: [], capabilities: [], health: [], approvals: []};
+  const patchRecovery = createWorkspacePatchRecoveryControls({invoke, changed: () => render(current)});
+  window.addEventListener('unload', () => patchRecovery.close(), {once:true});
   const evidenceStates = new Map();
   let evidenceClosed = false;
   window.addEventListener('unload', () => { evidenceClosed = true; evidenceStates.clear(); }, {once: true});
@@ -273,23 +279,23 @@ export function mountAdmin(root, invoke, escape) {
       }
       return value;
     };
-    const hits = memorySearch.hits.map((hit, index) => `<article class="sheet">
-      <p>${escape(hit.excerpt)}</p><small>${escape(hit.source.path)}:${hit.source.line}</small>
-      <label>拟保存的私人记忆<input data-memory-summary="${index}" maxlength="500"
+    const hits = memorySearch.hits.map((hit, index) => `<article class="sheet memory-hit">
+      <p class="memory-excerpt">${escape(hit.excerpt)}</p><small>${escape(hit.source.path)}:${hit.source.line}</small>
+      <label class="memory-field">拟保存的私人记忆<input data-memory-summary="${index}" maxlength="500"
         value="${escape(memorySummaries.get(index) ?? '')}" placeholder="逐条填写并确认摘要"></label>
       <button class="btn btn-sm" data-memory-save="${index}" ${data.privateMemory.writeEnabled ? '' : 'disabled'}>检查并确认</button></article>`).join('');
-    const saved = savedMemory.facts.map((fact, index) => `<article class="sheet">
-      <p>${escape(fact.summary)}</p><small>${escape(citationLabel(fact.sourceRef))}</small>
+    const saved = savedMemory.facts.map((fact, index) => `<article class="sheet memory-hit">
+      <p class="memory-excerpt">${escape(fact.summary)}</p><small>${escape(citationLabel(fact.sourceRef))}</small>
       <p class="muted">版本 ${escape(fact.ref.revision)}${fact.state === 'withdrawn' ? fact.confirmation === 'external_observation' ? ' · 来源已变化，后续任务不可消费' : ' · 已撤回，后续任务不可消费' : ''}</p>
       ${fact.state==='active' ? `<button class="btn btn-sm" data-memory-withdraw="${index}">撤回</button>` : ''}
-      <button class="btn btn-sm" data-memory-delete="${index}">删除所有版本</button></article>`).join('');
+      <button class="btn btn-sm btn-danger" data-memory-delete="${index}">删除所有版本</button></article>`).join('');
     return `<section class="feature-page"><div class="settings-heading"><h2>私人记忆</h2>
       <p>只读检索本机 Vault；每条摘录或更正都需在原生对话框中确认。不会自动发送至云端。</p></div>
-      <div class="sheet"><button class="btn btn-sm" id="memory-select-vault">选择本机 Vault 文件夹</button>
+      <div class="sheet memory-card"><div class="memory-actions"><button class="btn btn-sm" id="memory-select-vault">选择本机 Vault 文件夹</button></div>
       <p class="muted">${data.knowledgeSource?.pairing?.mode==='plugin'
         ? selected ? '使用已配对 Obsidian 的只读摘录；每条记忆仍需确认。' : 'Obsidian 配对已失效，请重新配对；已保存记忆仍可管理。'
         : selected ? '使用已选择的本机知识源；可在知识源设置中停用或撤销。' : '尚未选择可用知识源。'}</p>
-      <form id="memory-search-form"><input id="memory-query" type="search" maxlength="200"
+      <form id="memory-search-form" class="memory-search"><input id="memory-query" type="search" maxlength="200"
         value="${escape(memorySearch.query)}" placeholder="搜索摘录" ${selected ? '' : 'disabled'}>
         <button class="btn btn-sm" ${selected ? '' : 'disabled'}>搜索</button></form>
       <p role="status">${escape(data.privateMemory.writeEnabled ? memorySearch.status
@@ -313,6 +319,7 @@ export function mountAdmin(root, invoke, escape) {
       if (sections[data.adminNavigation.page]) section = data.adminNavigation.page;
     }
     if (root.querySelector('#profile-dialog')?.open) return;
+    patchRecovery.sync(data.tasks, section === 'tasks' || section === 'overview', section);
     root.querySelector('.main').dataset.section = section;
     if (section==='voice') liveControls ??= mountLiveVoiceControls(root,invoke);
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
@@ -388,7 +395,7 @@ export function mountAdmin(root, invoke, escape) {
     const approvalNow = Date.now();
     let content = '';
     if (section === 'overview') {
-      content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>本次会话任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates)}`;
+      content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>本次会话任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates, patchRecovery.entries)}`;
     } else if (section === 'capabilities') {
       content = capabilityTable(data);
     } else if (section === 'models') {
@@ -396,7 +403,7 @@ export function mountAdmin(root, invoke, escape) {
     } else if (section === 'connections') {
       content = healthTable(data);
     } else if (section === 'tasks') {
-      content = taskTable(data, escape, evidenceStates);
+      content = taskTable(data, escape, evidenceStates, patchRecovery.entries);
     } else if (section === 'authorizations') {
       content = authorizationListHtml(data.approvals, escape, approvalNow, {canRevoke: true, revocations})
         + authorizationHistoryHtml(history.items, escape, history, approvalNow, {canRevoke: true, revocations});
@@ -617,6 +624,10 @@ export function mountAdmin(root, invoke, escape) {
   }
 
   root.querySelector('#admin-close').addEventListener('click', () => invoke('admin.close').catch(error => { root.querySelector('#error').textContent = error.message; }));
+  root.querySelector('#content').addEventListener('click', event => {
+    const button = event.target.closest('[data-patch-reconcile]');
+    if (button && root.isConnected !== false) void patchRecovery.reconcile(button.dataset.patchReconcile);
+  });
   root.querySelector('#content').addEventListener('click', async event => {
     const button = event.target.closest('[data-evidence-task], [data-evidence-id], [data-evidence-more], [data-evidence-retry]');
     if (!button || evidenceClosed || root.isConnected === false) return;

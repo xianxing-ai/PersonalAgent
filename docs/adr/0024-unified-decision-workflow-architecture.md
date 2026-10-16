@@ -1,6 +1,8 @@
-# ADR-0024：统一决策、责任图与后台影子架构
+# 历史架构方案（原ADR-0024）：统一决策、责任图与后台影子
 
 状态：superseded（2026-10-16实验修订，架构未最终定型） · 原日期：2026-10-14 · profile：huawei_ict_agentarts。
+
+原路径与编号只用于追溯历史架构讨论；主线现行 [ADR-0024](0024-competition-native-reasoning.md) 是 Competition 辅助模型原生思考配置，两者不能混为同一决定。
 
 ## 背景
 

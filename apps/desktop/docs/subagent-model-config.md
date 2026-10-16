@@ -90,6 +90,14 @@ Desktop 不导入 models/agents。工厂可选第二参数是受信 provider dec
 `configure` 只接受 `id? / provider / baseUrl / model / displayName / apiKey? /
 enabled? / makeDefault? / reasoningEfforts? / reasoningSupportConfirmed? /
 expectedConfigurationRef?`，provider 为 `pangu` 或 `openai-compatible`。
+本包增加可选 `nativeReasoning`，仅用于 Competition 的 OpenAI compatible 辅助模型：
+`{thinking: 'enabled'|'disabled', supportedEfforts: [...], effort?: ..., outputTokenParameter: 'max_tokens'|'max_completion_tokens'}`。
+扩展 effort 取值为 none/minimal/low/medium/high/xhigh/max 的显式子集；没有原生配置时
+旧 `reasoningEfforts` 仍只接受 none/low/medium/high。两种配置不能同时启用。
+原生配置（包括关闭思考）必须明确确认且修改时绑定当前 expectedConfigurationRef；
+省略时重置，不继承旧目的地能力。控件支持开关、固定强度和输出预算字段，修改
+目的地时清空全部声明。步骤档位与原生配置独立；未配置固定强度时由供应商默认，
+不把“默认”标记成已验证强度。
 不导入环境密钥，不发起连接测试。空密钥仅在同一记录、供应商和规范化 Endpoint
 不变时保留；改变目的地须新密钥。整个配置使用 Electron safeStorage 加密，原子写入
 用户数据目录。解密或安全存储失败明确不可用，不回退明文。
@@ -117,6 +125,9 @@ Desktop 不导入或构造 Provider。模型均经已有 ModelGateway 和 Struct
 `expectedConfigurationRef`；版本不匹配拒绝保存。每次保存都换 bindingId；未传列表时
 重置为空，控件在供应商、Endpoint 或模型编辑时清空声明及确认，避免继承旧能力。
 声明绑定供应商、Endpoint、模型和配置版本，始终标记 conditional，真实支持仍未验证。
+`nativeReasoning` 存在时，主进程把该版本的声明交给 Runtime 工厂；子任务记录原生
+配置，恢复拒绝配置漂移。声明进入安全 snapshot，不包含凭据。输出预算只发送一个
+字段；max_completion_tokens 包含思考与回答，不等于 thinkingBudget。
 `thinkingBudget` 及 Anthropic 路径未实现，不提供支持选项，网关拒绝 budget 输入。
 
 安全 snapshot 的 `models[].configurationRef` 是不含凭据的配置版本。

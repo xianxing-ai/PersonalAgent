@@ -13,6 +13,9 @@ const input = () => ({
         currentRevision: 2, reason: 'superseded'}]}]},
   deadline: new Date(Date.now() + 5_000).toISOString(), signal: new AbortController().signal,
 });
+const validSuggestion = event => ({eventId: event.eventId, source: event.source,
+  intervention: 'REMIND', confidence: 0.9, reason: 'model', facts: event.facts,
+  authorizationRevision: event.authorization.revision});
 
 test('committed projection and matching impact reach the safe decision service', async () => {
   let events;
@@ -50,7 +53,9 @@ test('mismatched graph revisions are rejected before model use', async () => {
 test('only the current projected node revision can explain a RECHECK', async () => {
   let calls = 0;
   let currentEvents;
-  const decision = {async decide(request) { calls++; currentEvents = request.events; return []; }};
+  const decision = {async decide(request) {
+    calls++; currentEvents = request.events; return request.events.map(validSuggestion);
+  }};
   const stale = input();
   stale.impact.items[0].causes[0].currentRevision = 3;
   assert.deepEqual(await decideProjectedFactImpact(decision, stale), []);
@@ -105,6 +110,33 @@ test('a DecisionPort cannot replace the projected Fact identity or smuggle extra
   await assert.rejects(() => decideProjectedFactImpact({
     async decide({events}) { return [valid(events[0]), valid(events[0])]; },
   }, input()), /Invalid projected fact decision result/);
+});
+
+test('each affected event needs exactly one bound suggestion while port order is preserved', async () => {
+  const pair = () => {
+    const request = input();
+    request.projection.links.push({eventId: 'synthetic-change-3',
+      fact: {id: 'calendar/time', revision: 2}, node: {id: 'memory-fact:time', revision: 2}});
+    request.impact.items[0].causes.push({reference: {id: 'memory-fact:time', revision: 1},
+      currentRevision: 2, reason: 'superseded'});
+    return request;
+  };
+  for (const make of [
+    () => [],
+    events => [validSuggestion(events[0])],
+    events => [validSuggestion(events[0]), validSuggestion(events[0])],
+  ]) {
+    await assert.rejects(() => decideProjectedFactImpact({
+      async decide({events}) { return make(events); },
+    }, pair()), /Invalid projected fact decision result/);
+  }
+  const result = await decideProjectedFactImpact({
+    async decide({events}) { return events.map(validSuggestion).reverse(); },
+  }, pair());
+  assert.deepEqual(result.map(item => item.eventId), ['synthetic-change-3', 'synthetic-change-2']);
+  const empty = input();
+  empty.projection.links = [];
+  assert.deepEqual(await decideProjectedFactImpact({decide() { throw Error('unexpected advice'); }}, empty), []);
 });
 
 test('an ignored cancellation still prevents a late decision result from being returned', async () => {

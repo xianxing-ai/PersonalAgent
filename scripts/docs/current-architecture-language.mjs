@@ -265,6 +265,7 @@ replacements.push(...[
 ]);
 export function currentArchitectureLanguage(text) {
   for (const [before, after] of replacements) text = text.replaceAll(before, after);
+  text = text.replaceAll('# ADR-0024：统一决策、责任图与后台影子架构', '# 历史架构方案（原ADR-0024）：统一决策、责任图与后台影子');
   text = text.replaceAll('绑定Laya本机Laya/受信teacher判断链', '绑定本机Laya/受信teacher判断链');
   for (const before of ['唯一主决策配置', '唯一主模型', '唯一决策模型']) text = text.replaceAll(before, '原受信判断链');
   text = text.replaceAll('全部28业务Workflow在自有ARM64镜像执行', '当前28功能模板及依赖/条件由自有ARM64镜像串行推进，模板不等于业务验收');

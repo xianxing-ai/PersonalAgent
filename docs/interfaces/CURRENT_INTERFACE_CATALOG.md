@@ -1,6 +1,12 @@
 # 当前接口目录与冻结登记
 
-版本：2026-10-14 · 代码核对基线：main 3275aa91。本文是接口成熟度及能力登记，不把目标设计转换为可调用API。
+文档修订：2026-10-16 · 本轮同步 main eb92311f，历史段落保留原核对基线。本文是接口成熟度及能力登记，不把目标设计转换为可调用API；本轮文案与导航修正不提升任何接口冻结或真实验收等级。
+
+## 2026-10-13 Competition 辅助模型原生思考配置（provisional）
+
+[MOD-04A 首批架构落地](../modules/MOD-04A-NATIVE-REASONING-20261013.md) 沿现有 Runtime 工厂、ModelGateway 和 Desktop 加密配置增加 host-only `nativeReasoning`（开关、支持列表、固定强度、输出预算字段）。原生配置与步骤预算独立，恢复绑定配置版本与声明；参数拒绝先于凭据/网络。无新增 wire capability、Schema、数据库迁移或依赖，Core Runtime Profile 1 冻结范围不变。配置和离线测试不证明真实端点支持；真实云调用 0，尚未非作者评审或主线集成。边界见 [ADR-0024](../adr/0024-competition-native-reasoning.md)。
+
+## 2026-10-12 新版真实云场景登记（不提升冻结范围）
 
 ## 1. 状态与版本
 
