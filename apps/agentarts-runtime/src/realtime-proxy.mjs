@@ -7,10 +7,12 @@ const MAX_FRAME_BYTES = 1_200_000;
 const plain = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const routingKeys = ['url','endpoint','baseUrl','base_url','apiKey','api_key','authorization','headers','workspaceId','workspace_id'];
 const invalid = () => new ProtocolError('INVALID_ARGUMENT','Invalid trusted realtime configuration');
+const networkCodes=new Set(['ENOTFOUND','EAI_AGAIN','ECONNREFUSED','ECONNRESET','ETIMEDOUT','EHOSTUNREACH','ENETUNREACH',
+  'EPROTO','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','ERR_TLS_CERT_ALTNAME_INVALID']);
 
 /** Startup-only configuration. No endpoint, key, audio or transcript enters logs or receipts. */
 export function createAgentRealtimeProxy({workspaceId,apiKey,Socket=WebSocket,
-  maxBufferedBytes=1_200_000,handshakeTimeoutMs=15_000,sessionTimeoutMs=120*60_000,closeTimeoutMs=1000}) {
+  maxBufferedBytes=1_200_000,handshakeTimeoutMs=15_000,sessionTimeoutMs=120*60_000,closeTimeoutMs=1000,onRecord}) {
   if (typeof workspaceId !== 'string' || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(workspaceId)
     || typeof apiKey !== 'string' || !/^[\x21-\x7e]{1,4096}$/.test(apiKey)
     || typeof Socket !== 'function') throw invalid();
@@ -19,6 +21,13 @@ export function createAgentRealtimeProxy({workspaceId,apiKey,Socket=WebSocket,
   }
   if (sessionTimeoutMs > 120*60_000) throw invalid();
   const endpoint = `wss://${workspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=${AGENTARTS_REALTIME_MODEL}`;
+  const diagnostic=(kind,{status,requestId,code}={})=>{
+    const safeRequestId=typeof requestId==='string'&&/^[A-Za-z0-9_-]{1,128}$/u.test(requestId)
+      &&!requestId.includes(apiKey)&&!requestId.includes(workspaceId)?requestId:null;
+    try{onRecord?.({event:'realtime_upstream_diagnostic',kind,
+      httpStatus:Number.isInteger(status)&&status>=100&&status<=599?status:null,requestId:safeRequestId,
+      errorCode:networkCodes.has(code)?code:'unknown'});}catch{/* Diagnostics cannot affect transport. */}
+  };
   const frame = (raw,isBinary,fromClient) => {
     if (isBinary) throw Error('binary');
     const bytes = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
@@ -107,7 +116,12 @@ export function createAgentRealtimeProxy({workspaceId,apiKey,Socket=WebSocket,
         upstream=new Socket(endpoint,{headers:{Authorization:`Bearer ${apiKey}`},
           handshakeTimeout:Math.min(handshakeTimeoutMs,Math.max(1,Date.parse(deadline)-Date.now())),
           maxPayload:MAX_FRAME_BYTES,followRedirects:false,perMessageDeflate:false});
-        upstream.on('error',() => stop(1011,'Realtime upstream unavailable'));
+        upstream.on('error',error => {diagnostic('network_error',{code:error?.code});stop(1011,'Realtime upstream unavailable');});
+        upstream.on('unexpected-response',(_request,response)=>{
+          diagnostic('unexpected_response',{status:response?.statusCode,requestId:response?.headers?.['x-request-id']??response?.headers?.['x-dashscope-request-id']});
+          // ws delegates failed-handshake disposal when this listener is installed.
+          response?.resume();stop(1011,'Realtime upstream unavailable');
+        });
         upstream.once('close',code => {upClosed=true;stop(code===1000?1000:1011,'Realtime upstream closed');finish();});
         upstream.on('open',() => {
           if (!live()) return;
@@ -119,14 +133,14 @@ export function createAgentRealtimeProxy({workspaceId,apiKey,Socket=WebSocket,
           try {send(connection,frame(raw,isBinary,false));}
           catch {stop(1011,'Invalid realtime upstream frame');}
         });
-      } catch {upClosed=true;stop(1011,'Realtime upstream unavailable');}
+      } catch(error) {diagnostic('construction_error',{code:error?.code});upClosed=true;stop(1011,'Realtime upstream unavailable');}
       return {closed,close:() => stop(1001,'Realtime server stopped')};
     },
   };
 }
 
-export function agentRealtimeProxyFromEnvironment(environment) {
+export function agentRealtimeProxyFromEnvironment(environment,{onRecord}={}) {
   const workspaceId=environment.PA_AGENT_REALTIME_WORKSPACE_ID,apiKey=environment.PA_AGENT_REALTIME_API_KEY;
   if (workspaceId===undefined && apiKey===undefined) return undefined;
-  return createAgentRealtimeProxy({workspaceId,apiKey});
+  return createAgentRealtimeProxy({workspaceId,apiKey,onRecord});
 }

@@ -13,6 +13,32 @@ const deadline=()=>new Date(Date.now()+5000).toISOString();
 const headers=()=>({'x-pa-agent-token':`Bearer ${token}`,authorization:'Bearer explicit-synthetic-outer-key',
   'x-hw-agentarts-session-id':'synthetic-realtime-session','x-pa-deadline':deadline()});
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+test('upstream diagnostics retain only bounded status/request id and known codes, never secrets or bodies',async()=>{
+ class FakeSocket extends EventEmitter {
+   static instance;
+   constructor(){super();this.readyState=WebSocket.CONNECTING;this.bufferedAmount=0;FakeSocket.instance=this;}
+   terminate(){this.readyState=WebSocket.CLOSED;this.emit('close',1006);}
+   close(){this.terminate();}
+ }
+ const cases=[{statusCode:401,headers:{'x-request-id':'request-safe_1'}},{statusCode:403,headers:{'x-request-id':key}},
+   {statusCode:500,headers:{'x-request-id':'https://private.invalid/?key='+key}},{statusCode:999,headers:{'x-request-id':'synthetic-workspace'}}];
+ for(const response of cases){
+   const records=[];const down=new FakeSocket();down.readyState=WebSocket.OPEN;
+   const proxy=createAgentRealtimeProxy({workspaceId:'synthetic-workspace',apiKey:key,Socket:FakeSocket,onRecord:value=>records.push(value)});
+   const attached=proxy.attach(down,{deadline:deadline()});let resumed=0;
+   FakeSocket.instance.emit('unexpected-response',{url:'private-url',headers:{authorization:key}},{...response,body:'private-body',resume(){resumed++;}});
+   await attached.closed;assert.equal(resumed,1);assert.equal(records.length,1);
+   assert.deepEqual(records[0],{event:'realtime_upstream_diagnostic',kind:'unexpected_response',httpStatus:response.statusCode===999?null:response.statusCode,
+    requestId:response.statusCode===401?'request-safe_1':null,errorCode:'unknown'});
+   for(const secret of [key,'synthetic-workspace','private-url','private-body'])assert.equal(JSON.stringify(records).includes(secret),false);
+ }
+ for(const code of ['ENOTFOUND','ECONNRESET',key]){
+   const records=[],down=new FakeSocket();down.readyState=WebSocket.OPEN;
+   const proxy=createAgentRealtimeProxy({workspaceId:'synthetic-workspace',apiKey:key,Socket:FakeSocket,onRecord:value=>records.push(value)});
+   const attached=proxy.attach(down,{deadline:deadline()});FakeSocket.instance.emit('error',{code,message:key,url:'private-url'});await attached.closed;
+   assert.equal(records[0].errorCode,code===key?'unknown':code);assert.equal(JSON.stringify(records).includes(key),false);
+ }
+});
 async function until(predicate) {
   for(let i=0;i<200;i++){if(predicate())return;await delay(5);}
   assert.fail('Expected local realtime lifecycle state');

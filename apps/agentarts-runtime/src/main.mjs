@@ -79,7 +79,7 @@ try {
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
   server = createAgentServer({orchestrator,mode,serviceControllers:imageServices.controllers,
     executionModels,
-    realtimeProxy:agentRealtimeProxyFromEnvironment(process.env),
+    realtimeProxy:agentRealtimeProxyFromEnvironment(process.env,{onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')}),
     onStageRecord:record=>process.stdout.write(JSON.stringify(record)+'\n'),...(authToken ? {authToken}:{}),
     ...(process.env.PA_AGENT_TEST_VERSION==='1'?{testVersionController:createTestVersionController({
       models:Object.fromEntries(Object.entries(models).map(([ref,provider])=>[ref,new ModelGateway(provider)])),
