@@ -29,6 +29,10 @@
 
 ## 未完成与交付
 
+### 2026-10-16：取消后的 SDK 迟发请求修复
+
+最终组合树曾复现 bound-remote 计数 6 != 4。确定性夹具在 SDK 已有异步 headers 边界排队请求，证明旧实现会在 scoped finally 清除全局 operation 后，实际发送迟到的 tools/call 与 notifications/cancelled。修复在公开 Transport.send 入队时绑定原操作 scope，并在 fetch 前核对 scope 仍有效、取消和 deadline；结束后的请求不能借用新操作的信号。原取消断言未放宽；同一新增回归使用未修构建产物稳定失败、修复后通过，最终组合 38/38、0 跳过。历史 CI 仅记录计数，不能据此证明所有历史 6 != 4 原因均已排除；已确定的迟发漏洞已修，完整 MOD/真实平台验收不提升。
+
 ### 2026-10-16：未发送容量拒绝的状态更正
 
 基于 #369 精确提交 `bfcb1ab1b66f21d0076218b6ca8036684fca5944`，第 65 个新 run 的本地容量拒绝改为 `EXTERNAL_FAILURE`。此分支在网络请求之前，不能使用 `RESULT_UNKNOWN` 令原 Runtime 生成虚假的 unknown 记录和 waiting_reconciliation。旧 run 的参数绑定、未知记录不重发、64 身份上限及重连不重置均保留。新增实际 SQLite Runtime/ToolGateway 容量回归，并修订原容量测试中对新 run 的错误码预期；验证结果在实际执行后记录。
