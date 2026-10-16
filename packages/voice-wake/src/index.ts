@@ -470,6 +470,8 @@ export class WakeLifecycleController {
           if (!this.isActive(pending.epoch)) release(value);
         },
       );
+      // Source readiness can resume after expiry before the host runs its timer.
+      this.expire(pending.epoch);
       if (sourceResult.kind === 'aborted') {
         return {kind: 'not_listening', reason: this.abortReason(pending)};
       }
@@ -633,7 +635,9 @@ export class WakeLifecycleController {
   }
 
   private isActive(epoch: number): boolean {
-    return !this.disposed && this.active?.epoch === epoch && !this.active.controller.signal.aborted;
+    const active = this.active;
+    return !this.disposed && active?.epoch === epoch && !active.controller.signal.aborted
+      && !active.revocationSignal.aborted && !active.callerSignal?.aborted;
   }
 
   private abortReason(pending: PendingEnable): WakeEnableFailure {
