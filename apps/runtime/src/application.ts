@@ -1,6 +1,7 @@
 export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReevaluator,REFERENCE_SKILL_WORKER_TOOL,compileCoordinationGoal} from './application/runtime-application.js';
 export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult} from './application/runtime-application.js';
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
+export type {CoordinationGoalTokenBudget} from './application/context-binding.js';
 export type {PrepareCompetitionToolExport,CompetitionToolExport,CoordinationWorkerCapabilityPort} from './application/coordination.js';
 export type {StartSystemObservationSessionRequest, SystemObservationSession} from './application/system-observation-session.js';
 export {createSystemObservationTool} from '@personal-agent/windows-client';
