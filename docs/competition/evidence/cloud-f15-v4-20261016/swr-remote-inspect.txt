@@ -1,0 +1,16 @@
+Name:      swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v4-e38ef23d
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d
+           
+Manifests: 
+  Name:        swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v4-e38ef23d@sha256:fa06415b994641d96c89d5c4d062993c51b5ab677b5bd128571c747f7e8a10b0
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/arm64
+               
+  Name:        swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v4-e38ef23d@sha256:b6e149223905dda87337fa82ef3cbfcb6b4dd8d2a704bbf09f28561a37b7ec34
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    unknown/unknown
+  Annotations: 
+    vnd.docker.reference.digest: sha256:fa06415b994641d96c89d5c4d062993c51b5ab677b5bd128571c747f7e8a10b0
+    vnd.docker.reference.type:   attestation-manifest
+

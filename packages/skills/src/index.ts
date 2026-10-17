@@ -3,6 +3,8 @@ import {readFileSync} from 'node:fs';
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {AgentToolInvocation, AgentToolPort, AgentWorkerContext, ToolInvocationResult} from '@personal-agent/agents';
 import {referenceSummary} from './reference-summary.js';
+export {readLocalSkillDirectory,openLocalSkillStore,localSkillInstructions} from './local-installation.js';
+export type {LocalSkillBundle,LocalSkillFile,InstalledSkill} from './local-installation.js';
 export {createCloudSkillSelectionPort, CLOUD_SKILL_CHOICE_SCHEMA, CLOUD_SKILL_TOOL_NAME, CLOUD_SKILL_TOOL_VERSION, CLOUD_SKILL_PUBLIC_ENUM_PATHS} from './cloud-selection.js';
 export type {VersionedSkillWorkerPort, PublicSkillSource, CloudSkillChoice, CloudSkillContext, CloudSkillSelection, CloudSkillReceipt, CloudSkillSelectionOptions} from './cloud-selection.js';
 

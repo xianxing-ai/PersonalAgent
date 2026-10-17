@@ -4,7 +4,7 @@ import * as notifications from '@personal-agent/notifications';
 import {createEncryptedModuleStorage} from './encrypted-module-storage.js';
 
 /** Compose existing MOD-20/23 implementations. No business rules or task loop here. */
-export function createDesktopTodoHost({userData,safeStorage,namespace,createDeliveryHost,
+export function createDesktopTodoHost({userData,safeStorage,namespace,createDeliveryHost,notificationHost,
   now=Date.now,onUpdate=()=>{},onNotification=()=>{}}) {
   const storage=createEncryptedModuleStorage({userData,safeStorage,filename:'productivity-state.json'});
   const conversationId=`desktop-todo-reminders:${namespace}`;
@@ -12,7 +12,9 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
   const savedPolicy=storage.get('desktop-notification-policy') ?? {};
   notifications.assertPolicyValid(savedPolicy);
   const policy={...savedPolicy};
-  let notificationService=new notifications.NotificationService(storage,policy,{now,idFactory:randomUUID});
+  const notificationScope={kind:'connector',connectorId:'productivity'};
+  notificationHost?.restoreLegacySettings(policy);
+  let notificationService=notificationHost ?? new notifications.NotificationService(storage,policy,{now,idFactory:randomUUID});
   let application,delivery,allowed=false,active=true,generation=randomUUID(),failure='',lastTick=-Infinity,busy=false;
   const implementations=[],releases=[];
   const toolHost={register(tool){implementations.push(tool);return ()=>{};}};
@@ -22,7 +24,12 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
     releaseNotifications?.();
     const index=implementations.findIndex(tool=>tool.descriptor.name==='notifications.status');
     if(index>=0) implementations.splice(index,1);
-    releaseNotifications=notifications.register(toolHost,{storage,policy,now,idFactory:randomUUID});
+    if (notificationHost) {
+      releaseNotifications=toolHost.register({descriptor:{name:'notifications.status',version:notifications.NOTIFICATIONS_MODULE_VERSION,
+        inputSchema:{type:'object',additionalProperties:false,properties:{}},outputSchema:{type:'object'},
+        sideEffect:'read',requiredScopes:['notifications:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false},
+        async execute(){return notificationHost.status(notificationScope);}});
+    } else releaseNotifications=notifications.register(toolHost,{storage,policy,now,idFactory:randomUUID});
   }
   registerNotifications();
   const current=()=>active && allowed && Boolean(application);
@@ -39,7 +46,7 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       summary:schedule.goal,occurredAt:new Date(now()).toISOString(),state:'queued'};
     storage.set('desktop-reminder-records',known);
   }
-  function drain() {
+  async function drain() {
     let known=records();
     // This queue is the durable receipt. Re-ingestion is safe across a crash
     // before NotificationService persisted its batch.
@@ -47,16 +54,24 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       source:'productivity',accountRef:'local',externalId:item.notificationId,
       occurredAt:item.occurredAt,fetchedAt:item.occurredAt,contentRef:item.notificationId,
       sensitivity:'private',dedupeKey:item.notificationId,
-    })));
+    })),{scope:{kind:'connector',connectorId:'productivity'}});
     for (const batch of notificationService.drain().batches) {
       known=records();let changed=false;
-      for(const id of batch.itemRefs) if(known[id]?.state==='queued') {known[id].state='visible';changed=true;}
+      if (notificationHost && !batch.itemRefs.every(id=>known[id])) continue;
+      for(const id of batch.itemRefs) if(known[id]?.state==='queued') {known[id].state='visible';known[id].batchId=batch.id;changed=true;}
       if(changed) storage.set('desktop-reminder-records',known);
       // Ack means durably available in the local UI inbox, not seen by a user.
-      notificationService.acknowledge(batch.id);
+      if (!notificationHost) notificationService.acknowledge(batch.id);
     }
     known=records();
     for(const item of Object.values(known)) if(item.state==='visible' && !item.presentationAttempted) {
+      if (notificationHost) {
+        const items=Object.values(known).filter(value=>value.state==='visible' && value.batchId===item.batchId && !value.presentationAttempted);
+        for(const value of items)value.presentationAttempted=true;
+        storage.set('desktop-reminder-records',known);
+        try {await onNotification({batchId:item.batchId,items:structuredClone(items),summary:items.map(value=>value.summary).join('\n')});} catch {}
+        continue;
+      }
       // Native toast delivery is best-effort; persist before showing to avoid
       // duplicates on restart. The durable in-app inbox is never discarded.
       item.presentationAttempted=true;storage.set('desktop-reminder-records',known);
@@ -65,14 +80,14 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
   }
   const snapshot=()=>({available:Boolean(application),sessionAllowed:allowed,
     items:service.list(),notifications:Object.values(records()).filter(item=>item.state==='visible'),
-    notificationStatus:notificationService.status(),policy:structuredClone(policy),
+    notificationStatus:notificationService.status(notificationScope),policy:notificationHost?.legacySettingsSnapshot()?.policy??structuredClone(policy),
     reason:failure || (current()?'已允许本会话在对话中管理待办；提醒在本机持久保存':'允许本会话后，可在主对话管理待办；已保存的提醒继续在本机运行')});
   async function tick(force=false) {
     if(!active || !delivery || busy || (!force && now()-lastTick<1000)) return;
     busy=true;lastTick=now();
     try {
       await delivery.tick(productivity.reminderTriggers(service.list(),conversationId));
-      drain();
+      await drain();
       const dispatches=application.runtime.listSchedules(conversationId).filter(schedule=>
         schedule.status==='skipped' || (schedule.status==='fired' && Boolean(records()[schedule.scheduleId])))
         .map(schedule=>({scheduleId:schedule.scheduleId,status:schedule.status}));
@@ -104,19 +119,24 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       revoke();allowed=true;return snapshot();
     },
     revoke,
-    configureNotifications(input) {
+    async configureNotifications(input) {
       if(!input || typeof input!=='object' || Array.isArray(input)
         || Object.keys(input).some(key=>!['quietHours','pauseUntilUtc','digest'].includes(key))) throw Error('通知设置无效');
       notifications.assertPolicyValid(input);const next=structuredClone(input);
+      if (notificationHost) {
+        const result=await notificationHost.configureLegacySettings(next);
+        if(result.state!=='confirmed')throw Error('原通知设置结果待核实，请读取任务 '+result.taskId+'；不会重新提交');
+      }
       storage.set('desktop-notification-policy',next);
       for(const key of Object.keys(policy)) delete policy[key];Object.assign(policy,next);
-      notificationService=new notifications.NotificationService(storage,policy,{now,idFactory:randomUUID});
+      if (!notificationHost) notificationService=new notifications.NotificationService(storage,policy,{now,idFactory:randomUUID});
       registerNotifications();
       lastTick=-Infinity;return snapshot();
     },
     dismiss(input) {
       if(!input || Object.keys(input).length!==1 || typeof input.id!=='string') throw Error('通知标识无效');
       const known=records();if(!known[input.id]) throw Error('通知不存在');
+      if (notificationHost) notificationHost.acknowledgeRead({operationId:'todo-read-'+input.id,itemIds:[input.id]});
       known[input.id].state='dismissed';storage.set('desktop-reminder-records',known);return snapshot();
     },
     async create(input) {

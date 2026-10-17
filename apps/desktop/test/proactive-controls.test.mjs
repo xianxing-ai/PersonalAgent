@@ -494,6 +494,6 @@ test('long Goal trigger preserves only the focused native summary for the same c
   ui.render([first,second]);assert.equal(document.activeElement,null);
   ui.list.querySelector('summary').focus();ui.render([{...first,trigger:'Short reason'},second]);assert.equal(document.activeElement,null);
   const outside=new Element('button');outside.focus();ui.render([first,second]);assert.equal(document.activeElement,outside);
-  const button=ui.button();button.focus();ui.render([first,second]);assert.equal(document.activeElement,null);
+  const button=ui.button();button.focus();ui.render([first,second]);assert.equal(document.activeElement,button);
   assert.equal(ui.list.querySelectorAll('summary').some(node=>node.lastFocusOptions),false);
 });

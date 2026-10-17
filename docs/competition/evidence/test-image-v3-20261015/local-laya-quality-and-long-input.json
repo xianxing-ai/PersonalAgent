@@ -1,0 +1,4110 @@
+{
+  "schemaVersion": 1,
+  "kind": "real_native_decision_acceptance",
+  "status": "completed",
+  "startedAtUtc": "2026-10-15T14:14:41.207Z",
+  "mode": "quality",
+  "datasetSha256": "5a19f073b632442bd4bd7139af75b12596584b1775001be53f6911d2e00a29af",
+  "datasetFileSha256": "5a19f073b632442bd4bd7139af75b12596584b1775001be53f6911d2e00a29af",
+  "datasetHashScope": "Exact UTF-8 file bytes with CRLF normalized to LF",
+  "datasetVersion": "v3-synthetic-decision-1",
+  "annotation": "Frozen host-authored synthetic expectations; not human gold labels or real account records. Holdout is an independent synthetic split, not proof of generalization.",
+  "splits": [
+    {
+      "id": "case01",
+      "split": "development",
+      "expected": "important",
+      "task": "mail_importance",
+      "length": "short"
+    },
+    {
+      "id": "case02",
+      "split": "development",
+      "expected": "routine",
+      "task": "mail_importance",
+      "length": "short"
+    },
+    {
+      "id": "case03",
+      "split": "development",
+      "expected": "review",
+      "task": "mail_importance",
+      "length": "short"
+    },
+    {
+      "id": "case04",
+      "split": "holdout",
+      "expected": "important",
+      "task": "mail_importance",
+      "length": "long"
+    },
+    {
+      "id": "case05",
+      "split": "holdout",
+      "expected": "routine",
+      "task": "mail_importance",
+      "length": "long"
+    },
+    {
+      "id": "case06",
+      "split": "holdout",
+      "expected": "review",
+      "task": "mail_importance",
+      "length": "short"
+    },
+    {
+      "id": "case07",
+      "split": "development",
+      "expected": "relevant",
+      "task": "goal_relevance",
+      "length": "short"
+    },
+    {
+      "id": "case08",
+      "split": "development",
+      "expected": "irrelevant",
+      "task": "goal_relevance",
+      "length": "short"
+    },
+    {
+      "id": "case09",
+      "split": "development",
+      "expected": "review",
+      "task": "goal_relevance",
+      "length": "short"
+    },
+    {
+      "id": "case10",
+      "split": "holdout",
+      "expected": "relevant",
+      "task": "goal_relevance",
+      "length": "long"
+    },
+    {
+      "id": "case11",
+      "split": "holdout",
+      "expected": "irrelevant",
+      "task": "goal_relevance",
+      "length": "long"
+    },
+    {
+      "id": "case12",
+      "split": "holdout",
+      "expected": "review",
+      "task": "goal_relevance",
+      "length": "short"
+    },
+    {
+      "id": "case13",
+      "split": "development",
+      "expected": "escalate",
+      "task": "notification_disposition",
+      "length": "short"
+    },
+    {
+      "id": "case14",
+      "split": "development",
+      "expected": "notify",
+      "task": "notification_disposition",
+      "length": "short"
+    },
+    {
+      "id": "case15",
+      "split": "development",
+      "expected": "review",
+      "task": "notification_disposition",
+      "length": "short"
+    },
+    {
+      "id": "case16",
+      "split": "holdout",
+      "expected": "escalate",
+      "task": "notification_disposition",
+      "length": "long"
+    },
+    {
+      "id": "case17",
+      "split": "holdout",
+      "expected": "defer",
+      "task": "notification_disposition",
+      "length": "long"
+    },
+    {
+      "id": "case18",
+      "split": "holdout",
+      "expected": "review",
+      "task": "notification_disposition",
+      "length": "short"
+    },
+    {
+      "id": "case19",
+      "split": "development",
+      "expected": "relevant",
+      "task": "memory_relevance",
+      "length": "short"
+    },
+    {
+      "id": "case20",
+      "split": "development",
+      "expected": "irrelevant",
+      "task": "memory_relevance",
+      "length": "short"
+    },
+    {
+      "id": "case21",
+      "split": "development",
+      "expected": "review",
+      "task": "memory_relevance",
+      "length": "short"
+    },
+    {
+      "id": "case22",
+      "split": "holdout",
+      "expected": "relevant",
+      "task": "memory_relevance",
+      "length": "long"
+    },
+    {
+      "id": "case23",
+      "split": "holdout",
+      "expected": "irrelevant",
+      "task": "memory_relevance",
+      "length": "long"
+    },
+    {
+      "id": "case24",
+      "split": "holdout",
+      "expected": "review",
+      "task": "memory_relevance",
+      "length": "short"
+    }
+  ],
+  "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "device": "cuda",
+  "torchThreads": 1,
+  "noCpuMemoryQuota": true,
+  "trainingPerformed": false,
+  "modelInstancesAtOnce": 1,
+  "autonomousSuppressionAuthorized": false,
+  "qualification": "unqualified_report_only_no_automatic_promotion",
+  "trueConcurrentForwards": {
+    "state": "unavailable",
+    "reason": "Existing service single gate; packed groups independent requests, not simultaneous graph forwards"
+  },
+  "coldInference": {
+    "state": "unavailable",
+    "reason": "Existing service performs internal readiness warmup; startup includes load and warmup, first request is not cold inference"
+  },
+  "stages": [
+    {
+      "stage": "manifest_binding",
+      "startedAtUtc": "2026-10-15T14:14:41.213Z",
+      "finishedAtUtc": "2026-10-15T14:14:41.214Z",
+      "wallMs": 1.320099999999968,
+      "outcome": "completed"
+    },
+    {
+      "stage": "local_service_start:sequential",
+      "startedAtUtc": "2026-10-15T14:14:41.285Z",
+      "finishedAtUtc": "2026-10-15T14:15:00.529Z",
+      "wallMs": 19244.3071,
+      "outcome": "completed"
+    },
+    {
+      "stage": "local_service_stop",
+      "startedAtUtc": "2026-10-15T14:15:02.146Z",
+      "finishedAtUtc": "2026-10-15T14:15:02.151Z",
+      "wallMs": 4.828300000001036,
+      "outcome": "completed"
+    },
+    {
+      "stage": "local_service_start:packed",
+      "startedAtUtc": "2026-10-15T14:15:02.162Z",
+      "finishedAtUtc": "2026-10-15T14:15:16.492Z",
+      "wallMs": 14329.746699999996,
+      "outcome": "completed"
+    },
+    {
+      "stage": "local_service_stop",
+      "startedAtUtc": "2026-10-15T14:15:17.060Z",
+      "finishedAtUtc": "2026-10-15T14:15:17.061Z",
+      "wallMs": 0.9945999999981723,
+      "outcome": "completed"
+    }
+  ],
+  "rows": [
+    {
+      "caseId": "case01",
+      "task": "mail_importance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": true,
+      "expected": "important",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "6b1d2a629312aa35a53b0e1938426162f6aecbfef6c092946537cc1220c907e3",
+        "contextBytes": 689,
+        "wallMs": 121.4323000000004,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-7cad9c8a-5200-467e-9039-107f69ee9e3b",
+          "candidateId": "review",
+          "durationMs": 119.3640000000014,
+          "queueWaitMs": 0.4543000000012398,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 118.86330000000089,
+          "responseValidationMs": 0.08770000000004075,
+          "choiceWallMs": 119.3640000000014,
+          "endToEndMs": 119.81830000000264,
+          "batchId": "fe4dbc4d-88d0-48df-9919-67dcda1307a5",
+          "batchItemId": "a944be13-da8a-4324-8229-270369185cb4",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "fe4dbc4d-88d0-48df-9919-67dcda1307a5",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 476,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              199
+            ],
+            "stateTokens": [
+              276
+            ],
+            "requiredSequenceTokens": [
+              476
+            ],
+            "expectedInputTokens": [
+              476
+            ],
+            "encodedTokens": 476,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.8306,
+          "top2Probability": 0.1223,
+          "margin": 0.7083,
+          "entropyConcentration": 0.4947,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.8315,
+            "forwardMs": 82.5366,
+            "processCpuMs": 93.75,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 93.75,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.653Z"
+      }
+    },
+    {
+      "caseId": "case02",
+      "task": "mail_importance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "routine",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "21b713f55ab4b651c0e73cddb95ef5f4ca52b2d30894c3ddb51443d1ba05c97a",
+        "contextBytes": 686,
+        "wallMs": 26.000800000001618,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-6f84c11f-8d05-4585-9497-7f8f2bbae2ef",
+          "candidateId": "review",
+          "durationMs": 25.718799999998737,
+          "queueWaitMs": 0.043300000001181616,
+          "busyWaitMs": 0.0003999999971711077,
+          "internalHttpMs": 25.59230000000025,
+          "responseValidationMs": 0.03900000000066939,
+          "choiceWallMs": 25.718799999998737,
+          "endToEndMs": 25.76209999999992,
+          "batchId": "79f02e49-079d-4bfa-a52c-1a9231d08499",
+          "batchItemId": "2e1ec36f-659c-4056-8dfd-928edb158791",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "79f02e49-079d-4bfa-a52c-1a9231d08499",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 464,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              199
+            ],
+            "stateTokens": [
+              264
+            ],
+            "requiredSequenceTokens": [
+              464
+            ],
+            "expectedInputTokens": [
+              464
+            ],
+            "encodedTokens": 464,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.5587,
+          "top2Probability": 0.3049,
+          "margin": 0.25379999999999997,
+          "entropyConcentration": 0.127,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.142,
+            "forwardMs": 20.3243,
+            "processCpuMs": 15.625,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.681Z"
+      }
+    },
+    {
+      "caseId": "case03",
+      "task": "mail_importance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "review",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "routine",
+        "inputSha256": "301f27b512e4197c3720d1925df18c3c85c0e84d5c920e5bdd82e42a8e58cf77",
+        "contextBytes": 654,
+        "wallMs": 27.679199999998673,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-5add6d1e-2b96-4f88-972c-0a77b0fcf654",
+          "candidateId": "routine",
+          "durationMs": 27.377800000002026,
+          "queueWaitMs": 0.04529999999795109,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 27.20469999999841,
+          "responseValidationMs": 0.14870000000155414,
+          "choiceWallMs": 27.377800000002026,
+          "endToEndMs": 27.423099999999977,
+          "batchId": "c4736e5c-67c1-4cf6-ab32-f0a0b9455935",
+          "batchItemId": "6ccfc4b9-bb0c-445b-8b36-f3c35de3b1fb",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "c4736e5c-67c1-4cf6-ab32-f0a0b9455935",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 456,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              199
+            ],
+            "stateTokens": [
+              256
+            ],
+            "requiredSequenceTokens": [
+              456
+            ],
+            "expectedInputTokens": [
+              456
+            ],
+            "encodedTokens": 456,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.6785,
+          "top2Probability": 0.279,
+          "margin": 0.39949999999999997,
+          "entropyConcentration": 0.3142,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.2108,
+            "forwardMs": 22.8906,
+            "processCpuMs": 15.625,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.709Z"
+      }
+    },
+    {
+      "caseId": "case04",
+      "task": "mail_importance",
+      "split": "holdout",
+      "length": "long",
+      "firstRequestAfterReadiness": false,
+      "expected": "important",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "28945ffdfb7f9ad3f459ad4bf87e113bacdc9e9999d92ea9b43e4aec6e7a6b4f",
+        "contextBytes": 5954,
+        "wallMs": 65.03359999999884,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-801e66f5-ae11-4e55-9c6b-a502fecf7dbc",
+          "candidateId": "review",
+          "durationMs": 64.6867999999995,
+          "queueWaitMs": 0.05830000000059954,
+          "busyWaitMs": 0.0005000000019208528,
+          "internalHttpMs": 64.62719999999536,
+          "responseValidationMs": 0.033000000003085006,
+          "choiceWallMs": 64.6867999999995,
+          "endToEndMs": 64.7451000000001,
+          "batchId": "31addb60-c896-4e29-8648-0fa44ebc238f",
+          "batchItemId": "3fd2a032-effc-4a76-8b7c-b3ec3066e63a",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "31addb60-c896-4e29-8648-0fa44ebc238f",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 1627,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1627,
+            "headMaxLength": 256,
+            "headerTokens": [
+              199
+            ],
+            "stateTokens": [
+              1427
+            ],
+            "requiredSequenceTokens": [
+              1627
+            ],
+            "expectedInputTokens": [
+              1627
+            ],
+            "encodedTokens": 1627,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.9954,
+          "top2Probability": 0.0043,
+          "margin": 0.9911,
+          "entropyConcentration": 0.9723,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 2.4684,
+            "forwardMs": 58.8141,
+            "processCpuMs": 46.875,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 46.875,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.775Z"
+      }
+    },
+    {
+      "caseId": "case05",
+      "task": "mail_importance",
+      "split": "holdout",
+      "length": "long",
+      "firstRequestAfterReadiness": false,
+      "expected": "routine",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "4881d4dad7660197ae7748e7251e50ef4eec7fede23c1007528f9ad89788ddf0",
+        "contextBytes": 5928,
+        "wallMs": 57.73149999999805,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-eda28ce6-6667-41f2-bd09-c4febbc31718",
+          "candidateId": "review",
+          "durationMs": 57.46559999999954,
+          "queueWaitMs": 0.03540000000066357,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 57.41670000000158,
+          "responseValidationMs": 0.02810000000317814,
+          "choiceWallMs": 57.46559999999954,
+          "endToEndMs": 57.501000000000204,
+          "batchId": "1ed96f24-b9a9-4bb5-9d93-2af315024ef1",
+          "batchItemId": "fd418d42-ad8e-4d39-bf0f-877dbad52638",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "1ed96f24-b9a9-4bb5-9d93-2af315024ef1",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 1622,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1622,
+            "headMaxLength": 256,
+            "headerTokens": [
+              199
+            ],
+            "stateTokens": [
+              1422
+            ],
+            "requiredSequenceTokens": [
+              1622
+            ],
+            "expectedInputTokens": [
+              1622
+            ],
+            "encodedTokens": 1622,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.9857,
+          "top2Probability": 0.013,
+          "margin": 0.9727,
+          "entropyConcentration": 0.9279,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.4915,
+            "forwardMs": 52.5477,
+            "processCpuMs": 46.875,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 46.875,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.834Z"
+      }
+    },
+    {
+      "caseId": "case06",
+      "task": "mail_importance",
+      "split": "holdout",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "review",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "e65293788c1694c907e879eed0fd75793d76ced2260743ff16cef95f9d2aba42",
+        "contextBytes": 683,
+        "wallMs": 26.52599999999802,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-00ddb192-f024-4adb-956a-e5cf56e17985",
+          "candidateId": "review",
+          "durationMs": 26.112600000000384,
+          "queueWaitMs": 0.03889999999955762,
+          "busyWaitMs": 0.0003999999971711077,
+          "internalHttpMs": 26.0640999999996,
+          "responseValidationMs": 0.027399999999033753,
+          "choiceWallMs": 26.112600000000384,
+          "endToEndMs": 26.151499999999942,
+          "batchId": "6f96698a-0e7e-44e7-a648-b6c6161468d4",
+          "batchItemId": "517298d2-6650-46d4-9a7d-a53b975d6a0f",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "6f96698a-0e7e-44e7-a648-b6c6161468d4",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 463,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              199
+            ],
+            "stateTokens": [
+              263
+            ],
+            "requiredSequenceTokens": [
+              463
+            ],
+            "expectedInputTokens": [
+              463
+            ],
+            "encodedTokens": 463,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.6704,
+          "top2Probability": 0.2714,
+          "margin": 0.399,
+          "entropyConcentration": 0.2831,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 0.8727,
+            "forwardMs": 22.6066,
+            "processCpuMs": 15.625,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.861Z"
+      }
+    },
+    {
+      "caseId": "case07",
+      "task": "goal_relevance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "relevant",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "3aba5112f874f3d087e695a2afe1ade4b7b8dd5715876f5dcec0acbdc2501d4d",
+        "contextBytes": 639,
+        "wallMs": 26.19210000000021,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-e64bae61-fc1b-45f9-ba05-e9dbe03f534d",
+          "candidateId": "review",
+          "durationMs": 25.89760000000024,
+          "queueWaitMs": 0.06290000000080909,
+          "busyWaitMs": 0.0007000000005064066,
+          "internalHttpMs": 25.837000000003172,
+          "responseValidationMs": 0.032199999997828854,
+          "choiceWallMs": 25.89760000000024,
+          "endToEndMs": 25.960500000001048,
+          "batchId": "71315531-8d91-4773-9e8d-795c4c207631",
+          "batchItemId": "877829b9-6704-4b05-9a11-f76f420adc4d",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "71315531-8d91-4773-9e8d-795c4c207631",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 474,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              201
+            ],
+            "stateTokens": [
+              272
+            ],
+            "requiredSequenceTokens": [
+              474
+            ],
+            "expectedInputTokens": [
+              474
+            ],
+            "encodedTokens": 474,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.9764,
+          "top2Probability": 0.0176,
+          "margin": 0.9588000000000001,
+          "entropyConcentration": 0.8861,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.4137,
+            "forwardMs": 21.3412,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.888Z"
+      }
+    },
+    {
+      "caseId": "case08",
+      "task": "goal_relevance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "irrelevant",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "22400576804423b8cd6e935f16c01494e9b51729f193d539bdf0f2102fa4bb74",
+        "contextBytes": 597,
+        "wallMs": 24.622999999999593,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-e25b6cb5-257e-41a2-84c9-623270bac264",
+          "candidateId": "review",
+          "durationMs": 24.365499999999884,
+          "queueWaitMs": 0.029500000000552973,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 24.30620000000272,
+          "responseValidationMs": 0.03559999999924912,
+          "choiceWallMs": 24.365499999999884,
+          "endToEndMs": 24.395000000000437,
+          "batchId": "928b4c44-6a59-411e-9931-88473fbe5e67",
+          "batchItemId": "ebb84e75-e157-4462-883b-e498b3c12f05",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "928b4c44-6a59-411e-9931-88473fbe5e67",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 456,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              201
+            ],
+            "stateTokens": [
+              254
+            ],
+            "requiredSequenceTokens": [
+              456
+            ],
+            "expectedInputTokens": [
+              456
+            ],
+            "encodedTokens": 456,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.9483,
+          "top2Probability": 0.0361,
+          "margin": 0.9122,
+          "entropyConcentration": 0.7861,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 0.9743,
+            "forwardMs": 20.503,
+            "processCpuMs": 15.625,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.914Z"
+      }
+    },
+    {
+      "caseId": "case09",
+      "task": "goal_relevance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "review",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "1edf755a62c217c66f14e554820166517175164c2cb6c17762aaa0de5c1c693f",
+        "contextBytes": 623,
+        "wallMs": 27.734400000001187,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-557b4661-b6fc-4cd1-b827-e382d361fc5d",
+          "candidateId": "review",
+          "durationMs": 27.455699999998615,
+          "queueWaitMs": 0.042699999998148996,
+          "busyWaitMs": 0.0005000000019208528,
+          "internalHttpMs": 27.373300000002928,
+          "responseValidationMs": 0.05469999999695574,
+          "choiceWallMs": 27.455699999998615,
+          "endToEndMs": 27.498399999996764,
+          "batchId": "132c0236-4326-49c3-95b3-c301ea26ecda",
+          "batchItemId": "f16f79e2-d7e6-4532-87eb-815e1cc5fc44",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "132c0236-4326-49c3-95b3-c301ea26ecda",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 467,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              201
+            ],
+            "stateTokens": [
+              265
+            ],
+            "requiredSequenceTokens": [
+              467
+            ],
+            "expectedInputTokens": [
+              467
+            ],
+            "encodedTokens": 467,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.9841,
+          "top2Probability": 0.0109,
+          "margin": 0.9732,
+          "entropyConcentration": 0.9165,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.0704,
+            "forwardMs": 22.7588,
+            "processCpuMs": 15.625,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.943Z"
+      }
+    },
+    {
+      "caseId": "case10",
+      "task": "goal_relevance",
+      "split": "holdout",
+      "length": "long",
+      "firstRequestAfterReadiness": false,
+      "expected": "relevant",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "44b2b75e9ee800568357c9090586d6e276b1fc407f0c80acb4c2d240cc693afd",
+        "contextBytes": 5921,
+        "wallMs": 55.98540000000139,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-e50ca6f0-237c-49ca-9de2-5881d12012df",
+          "candidateId": "review",
+          "durationMs": 55.648300000000745,
+          "queueWaitMs": 0.0367999999980384,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 55.56949999999779,
+          "responseValidationMs": 0.05229999999937718,
+          "choiceWallMs": 55.648300000000745,
+          "endToEndMs": 55.68509999999878,
+          "batchId": "f8a5eded-a2ad-418a-82e5-3c299b4837c4",
+          "batchItemId": "d144962d-94f4-4129-9b32-4f0806622385",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "f8a5eded-a2ad-418a-82e5-3c299b4837c4",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 1632,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1632,
+            "headMaxLength": 256,
+            "headerTokens": [
+              201
+            ],
+            "stateTokens": [
+              1430
+            ],
+            "requiredSequenceTokens": [
+              1632
+            ],
+            "expectedInputTokens": [
+              1632
+            ],
+            "encodedTokens": 1632,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.9886,
+          "top2Probability": 0.0065,
+          "margin": 0.9821000000000001,
+          "entropyConcentration": 0.9361,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.7297,
+            "forwardMs": 50.941,
+            "processCpuMs": 46.875,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 46.875,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.000Z"
+      }
+    },
+    {
+      "caseId": "case11",
+      "task": "goal_relevance",
+      "split": "holdout",
+      "length": "long",
+      "firstRequestAfterReadiness": false,
+      "expected": "irrelevant",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "a74aec0759f999afbe10f23a45adeaf8a821634d199ef05f8e0ef1dcab6a3e2a",
+        "contextBytes": 5912,
+        "wallMs": 55.946600000002945,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-cbf5db67-fd1e-42b1-a86d-fcaac612b708",
+          "candidateId": "review",
+          "durationMs": 55.659499999997934,
+          "queueWaitMs": 0.04440000000249711,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 55.61999999999898,
+          "responseValidationMs": 0.022200000003067544,
+          "choiceWallMs": 55.659499999997934,
+          "endToEndMs": 55.70390000000043,
+          "batchId": "a6edf575-a906-48ad-83b6-ef0de63e4875",
+          "batchItemId": "5f5998c0-2e9d-407b-941e-5a31f2f84b98",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "a6edf575-a906-48ad-83b6-ef0de63e4875",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 1626,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1626,
+            "headMaxLength": 256,
+            "headerTokens": [
+              201
+            ],
+            "stateTokens": [
+              1424
+            ],
+            "requiredSequenceTokens": [
+              1626
+            ],
+            "expectedInputTokens": [
+              1626
+            ],
+            "encodedTokens": 1626,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.9926,
+          "top2Probability": 0.0043,
+          "margin": 0.9883000000000001,
+          "entropyConcentration": 0.9556,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.634,
+            "forwardMs": 51.0402,
+            "processCpuMs": 62.5,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 62.5,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.058Z"
+      }
+    },
+    {
+      "caseId": "case12",
+      "task": "goal_relevance",
+      "split": "holdout",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "review",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "e382fa340914ece6811cb44f0f04cdf89ebde83d41d4c991b7fcd8a00a5f94e4",
+        "contextBytes": 618,
+        "wallMs": 24.33299999999872,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-6fee061a-96c0-4f56-b285-3fd5c3dcc04b",
+          "candidateId": "review",
+          "durationMs": 24.12960000000021,
+          "queueWaitMs": 0.03320000000167056,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 24.08810000000085,
+          "responseValidationMs": 0.02509999999892898,
+          "choiceWallMs": 24.12960000000021,
+          "endToEndMs": 24.16280000000188,
+          "batchId": "267467c0-aed4-4889-bfe1-0096a0b4fffc",
+          "batchItemId": "8754c68b-768e-4232-b4fe-4688569a52d3",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "267467c0-aed4-4889-bfe1-0096a0b4fffc",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 465,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              201
+            ],
+            "stateTokens": [
+              263
+            ],
+            "requiredSequenceTokens": [
+              465
+            ],
+            "expectedInputTokens": [
+              465
+            ],
+            "encodedTokens": 465,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.9976,
+          "top2Probability": 0.0016,
+          "margin": 0.996,
+          "entropyConcentration": 0.9835,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 0.9675,
+            "forwardMs": 20.7275,
+            "processCpuMs": 15.625,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.083Z"
+      }
+    },
+    {
+      "caseId": "case13",
+      "task": "notification_disposition",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "escalate",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "escalate",
+        "inputSha256": "4338c1c5f7b5e06c7fa8ff6645d05ba01a5fc652154d8b8eb06cd159434a6acf",
+        "contextBytes": 862,
+        "wallMs": 26.398600000000442,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-aff786e2-6585-4d70-9fa9-526fc7467740",
+          "candidateId": "escalate",
+          "durationMs": 26.12800000000061,
+          "queueWaitMs": 0.038799999998445855,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 26.073199999998906,
+          "responseValidationMs": 0.03719999999884749,
+          "choiceWallMs": 26.12800000000061,
+          "endToEndMs": 26.166799999999057,
+          "batchId": "5d2a06bb-ad98-4804-aa09-abca3c2aa518",
+          "batchItemId": "8c9cc16e-ebb0-4d50-b3e9-bfb2179f7cd2",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "5d2a06bb-ad98-4804-aa09-abca3c2aa518",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 4,
+          "encodedTokens": 543,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              215
+            ],
+            "stateTokens": [
+              327
+            ],
+            "requiredSequenceTokens": [
+              543
+            ],
+            "expectedInputTokens": [
+              543
+            ],
+            "encodedTokens": 543,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.4525,
+          "top2Probability": 0.2967,
+          "margin": 0.1558,
+          "entropyConcentration": 0.1295,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 2.002,
+            "forwardMs": 21.5121,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 15.625,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.110Z"
+      }
+    },
+    {
+      "caseId": "case14",
+      "task": "notification_disposition",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "notify",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "62fd7fbbf28464afb391167e6980c0f1a9936b82efae009f385285af6be515fb",
+        "contextBytes": 813,
+        "wallMs": 23.721199999999953,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-430af82a-9dc6-489f-a0f1-a5b282a10c97",
+          "candidateId": "review",
+          "durationMs": 23.528200000000652,
+          "queueWaitMs": 0.026099999999132706,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 23.48869999999806,
+          "responseValidationMs": 0.023499999999330612,
+          "choiceWallMs": 23.528200000000652,
+          "endToEndMs": 23.554299999999785,
+          "batchId": "3120dc86-34d3-4628-8139-f6d9006b0d56",
+          "batchItemId": "4f12b943-ae24-4ee4-b0ea-14af54971250",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "3120dc86-34d3-4628-8139-f6d9006b0d56",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 4,
+          "encodedTokens": 529,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              215
+            ],
+            "stateTokens": [
+              313
+            ],
+            "requiredSequenceTokens": [
+              529
+            ],
+            "expectedInputTokens": [
+              529
+            ],
+            "encodedTokens": 529,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.3406,
+          "top2Probability": 0.3225,
+          "margin": 0.018100000000000005,
+          "entropyConcentration": 0.0927,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 0.9838,
+            "forwardMs": 19.9762,
+            "processCpuMs": 15.625,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.135Z"
+      }
+    },
+    {
+      "caseId": "case15",
+      "task": "notification_disposition",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "review",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "07a51e5bf5291f1fc53df20f20745812efcd778cf7f0478046c11245a967c25f",
+        "contextBytes": 777,
+        "wallMs": 24.15820000000167,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-b837b507-5b6d-4739-89a5-eedae75f530d",
+          "candidateId": "review",
+          "durationMs": 23.957299999998213,
+          "queueWaitMs": 0.029200000000855653,
+          "busyWaitMs": 0.00020000000222353265,
+          "internalHttpMs": 23.922300000001997,
+          "responseValidationMs": 0.021600000000034925,
+          "choiceWallMs": 23.957299999998213,
+          "endToEndMs": 23.98649999999907,
+          "batchId": "05e5f9e7-6c2c-40ec-9b07-3814f4d672d9",
+          "batchItemId": "5f60a670-b1f1-4a3f-ac7d-60968a4e3bdb",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "05e5f9e7-6c2c-40ec-9b07-3814f4d672d9",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 4,
+          "encodedTokens": 522,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              215
+            ],
+            "stateTokens": [
+              306
+            ],
+            "requiredSequenceTokens": [
+              522
+            ],
+            "expectedInputTokens": [
+              522
+            ],
+            "encodedTokens": 522,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.4164,
+          "top2Probability": 0.2731,
+          "margin": 0.14329999999999998,
+          "entropyConcentration": 0.1073,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 0.8959,
+            "forwardMs": 20.6842,
+            "processCpuMs": 15.625,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 15.625,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.160Z"
+      }
+    },
+    {
+      "caseId": "case16",
+      "task": "notification_disposition",
+      "split": "holdout",
+      "length": "long",
+      "firstRequestAfterReadiness": false,
+      "expected": "escalate",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "69fb4f0b1b5f3197cf52151dd4ae8c19c294663c42e9ec937855f484ce19ebd1",
+        "contextBytes": 6056,
+        "wallMs": 55.53049999999712,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-9c6f8878-1460-4657-89ef-cddf5cfce0e9",
+          "candidateId": "review",
+          "durationMs": 55.304299999999785,
+          "queueWaitMs": 0.023199999999633292,
+          "busyWaitMs": 0.00019999999858555384,
+          "internalHttpMs": 55.26620000000548,
+          "responseValidationMs": 0.023699999997916166,
+          "choiceWallMs": 55.304299999999785,
+          "endToEndMs": 55.32749999999942,
+          "batchId": "f2d2fea5-38f9-4458-937f-264208f68b4e",
+          "batchItemId": "45ae64f6-c154-4ea2-bff8-65607813fd94",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "f2d2fea5-38f9-4458-937f-264208f68b4e",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 4,
+          "encodedTokens": 1683,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1683,
+            "headMaxLength": 256,
+            "headerTokens": [
+              215
+            ],
+            "stateTokens": [
+              1467
+            ],
+            "requiredSequenceTokens": [
+              1683
+            ],
+            "expectedInputTokens": [
+              1683
+            ],
+            "encodedTokens": 1683,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.6926,
+          "top2Probability": 0.1981,
+          "margin": 0.4945,
+          "entropyConcentration": 0.3561,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.3775,
+            "forwardMs": 51.6038,
+            "processCpuMs": 62.5,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 62.5,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.216Z"
+      }
+    },
+    {
+      "caseId": "case17",
+      "task": "notification_disposition",
+      "split": "holdout",
+      "length": "long",
+      "firstRequestAfterReadiness": false,
+      "expected": "defer",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "91da09b407c6a59e331014dd10ee9f16fbe2a16cf95192f709cc8d98676489e3",
+        "contextBytes": 6038,
+        "wallMs": 65.84130000000005,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-97fcc2a1-781f-46e9-8a81-acacb4fb55ee",
+          "candidateId": "review",
+          "durationMs": 65.58039999999892,
+          "queueWaitMs": 0.033600000002479646,
+          "busyWaitMs": 0.0005999999993946403,
+          "internalHttpMs": 65.54139999999825,
+          "responseValidationMs": 0.024600000000646105,
+          "choiceWallMs": 65.58039999999892,
+          "endToEndMs": 65.6140000000014,
+          "batchId": "83777808-4bce-45f8-adb6-c14e61e3f8c4",
+          "batchItemId": "6b77cc27-1704-4466-be4e-88ac513c25ef",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "83777808-4bce-45f8-adb6-c14e61e3f8c4",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 4,
+          "encodedTokens": 1679,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1679,
+            "headMaxLength": 256,
+            "headerTokens": [
+              215
+            ],
+            "stateTokens": [
+              1463
+            ],
+            "requiredSequenceTokens": [
+              1679
+            ],
+            "expectedInputTokens": [
+              1679
+            ],
+            "encodedTokens": 1679,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.4794,
+          "top2Probability": 0.3,
+          "margin": 0.1794,
+          "entropyConcentration": 0.1368,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 2.1766,
+            "forwardMs": 60.4802,
+            "processCpuMs": 62.5,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 62.5,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.283Z"
+      }
+    },
+    {
+      "caseId": "case18",
+      "task": "notification_disposition",
+      "split": "holdout",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "review",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "escalate",
+        "inputSha256": "f8019a6fe299d37b732fd9803130ea1d4780d5d07c7eeab851b999fa9fb7df9a",
+        "contextBytes": 796,
+        "wallMs": 29.63420000000042,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-09f78b6e-81e9-4e0b-9853-fbac90eeb51a",
+          "candidateId": "escalate",
+          "durationMs": 29.43210000000181,
+          "queueWaitMs": 0.030099999999947613,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 29.395299999996496,
+          "responseValidationMs": 0.02179999999862048,
+          "choiceWallMs": 29.43210000000181,
+          "endToEndMs": 29.462200000001758,
+          "batchId": "3ec03561-34a0-4927-b2bd-0468c8aacdba",
+          "batchItemId": "84e926f4-8c10-4c95-84e8-ae63dbe3ec92",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "3ec03561-34a0-4927-b2bd-0468c8aacdba",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 4,
+          "encodedTokens": 527,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              215
+            ],
+            "stateTokens": [
+              311
+            ],
+            "requiredSequenceTokens": [
+              527
+            ],
+            "expectedInputTokens": [
+              527
+            ],
+            "encodedTokens": 527,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.5022,
+          "top2Probability": 0.3192,
+          "margin": 0.183,
+          "entropyConcentration": 0.1961,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.2708,
+            "forwardMs": 25.4772,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.313Z"
+      }
+    },
+    {
+      "caseId": "case19",
+      "task": "memory_relevance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "relevant",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "relevant",
+        "inputSha256": "ba3d5631d24ce81f9f9ea039e31a6423ab6147f2d2bfb9452a6bb95c3b8ec96d",
+        "contextBytes": 658,
+        "wallMs": 25.105900000002293,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-ec310630-bcaf-43ae-b656-962a13c45fc8",
+          "candidateId": "relevant",
+          "durationMs": 24.922200000000885,
+          "queueWaitMs": 0.027299999997921987,
+          "busyWaitMs": 0.00019999999858555384,
+          "internalHttpMs": 24.88640000000305,
+          "responseValidationMs": 0.021699999997508712,
+          "choiceWallMs": 24.922200000000885,
+          "endToEndMs": 24.949499999998807,
+          "batchId": "bb358d0a-8200-4bc4-96f9-d0c6fa43a390",
+          "batchItemId": "723d3a21-29e1-4ed5-8707-2bf5650526cd",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "bb358d0a-8200-4bc4-96f9-d0c6fa43a390",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 470,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              202
+            ],
+            "stateTokens": [
+              267
+            ],
+            "requiredSequenceTokens": [
+              470
+            ],
+            "expectedInputTokens": [
+              470
+            ],
+            "encodedTokens": 470,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.4777,
+          "top2Probability": 0.3036,
+          "margin": 0.17410000000000003,
+          "entropyConcentration": 0.0467,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.9496,
+            "forwardMs": 20.7555,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.340Z"
+      }
+    },
+    {
+      "caseId": "case20",
+      "task": "memory_relevance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "irrelevant",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "relevant",
+        "inputSha256": "dd1f380bdb7f1398a4984355aad5b2f34c335755b85e3daecb941851e4607eb8",
+        "contextBytes": 615,
+        "wallMs": 30.74669999999969,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-489df24a-5862-4c01-941a-bf3da2b09ca2",
+          "candidateId": "relevant",
+          "durationMs": 30.30370000000039,
+          "queueWaitMs": 0.04310000000259606,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 30.257300000001123,
+          "responseValidationMs": 0.027900000000954606,
+          "choiceWallMs": 30.30370000000039,
+          "endToEndMs": 30.346800000002986,
+          "batchId": "0a55063d-15dc-457d-b798-b729af35e1f1",
+          "batchItemId": "4a8bd739-7633-4642-ae4f-71c6fd65630b",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "0a55063d-15dc-457d-b798-b729af35e1f1",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 463,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              202
+            ],
+            "stateTokens": [
+              260
+            ],
+            "requiredSequenceTokens": [
+              463
+            ],
+            "expectedInputTokens": [
+              463
+            ],
+            "encodedTokens": 463,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.4058,
+          "top2Probability": 0.3995,
+          "margin": 0.006299999999999972,
+          "entropyConcentration": 0.0432,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 0.8545,
+            "forwardMs": 26.4222,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.371Z"
+      }
+    },
+    {
+      "caseId": "case21",
+      "task": "memory_relevance",
+      "split": "development",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "review",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "fefe94be8eba9e872b3893c13558447262ba8d1b5cfdbb37e2f5854008d69233",
+        "contextBytes": 625,
+        "wallMs": 29.921300000001793,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-2fb5ac3d-836f-4d64-8d90-212fe5851194",
+          "candidateId": "review",
+          "durationMs": 29.679900000002817,
+          "queueWaitMs": 0.054499999998370185,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 29.58980000000156,
+          "responseValidationMs": 0.06959999999889988,
+          "choiceWallMs": 29.679900000002817,
+          "endToEndMs": 29.734400000001187,
+          "batchId": "ed6f95e5-efc4-4cb0-a067-7146f267d0a0",
+          "batchItemId": "9f528c44-09ca-407e-8780-e0c3e6c2a814",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "ed6f95e5-efc4-4cb0-a067-7146f267d0a0",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 465,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              202
+            ],
+            "stateTokens": [
+              262
+            ],
+            "requiredSequenceTokens": [
+              465
+            ],
+            "expectedInputTokens": [
+              465
+            ],
+            "encodedTokens": 465,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.4153,
+          "top2Probability": 0.4089,
+          "margin": 0.006400000000000017,
+          "entropyConcentration": 0.0567,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.5335,
+            "forwardMs": 24.8897,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.402Z"
+      }
+    },
+    {
+      "caseId": "case22",
+      "task": "memory_relevance",
+      "split": "holdout",
+      "length": "long",
+      "firstRequestAfterReadiness": false,
+      "expected": "relevant",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "83c4c3ec0aace0fcd92bae4a263d4ef940a38d71e2339180d1dc5130c479d031",
+        "contextBytes": 5899,
+        "wallMs": 68.92229999999836,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-df5163ef-aeb2-45bd-a3f3-bf8fe5dbb194",
+          "candidateId": "review",
+          "durationMs": 68.64059999999881,
+          "queueWaitMs": 0.026499999999941792,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 68.60450000000128,
+          "responseValidationMs": 0.022100000001955777,
+          "choiceWallMs": 68.64059999999881,
+          "endToEndMs": 68.66709999999875,
+          "batchId": "bbb2380c-2c8b-4331-b3d7-07660a525568",
+          "batchItemId": "6dcb2218-eb9e-45da-abfc-20fa74fe8795",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "bbb2380c-2c8b-4331-b3d7-07660a525568",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 1626,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1626,
+            "headMaxLength": 256,
+            "headerTokens": [
+              202
+            ],
+            "stateTokens": [
+              1423
+            ],
+            "requiredSequenceTokens": [
+              1626
+            ],
+            "expectedInputTokens": [
+              1626
+            ],
+            "encodedTokens": 1626,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.7554,
+          "top2Probability": 0.1634,
+          "margin": 0.592,
+          "entropyConcentration": 0.3522,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.2101,
+            "forwardMs": 65.0589,
+            "processCpuMs": 62.5,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 62.5,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.472Z"
+      }
+    },
+    {
+      "caseId": "case23",
+      "task": "memory_relevance",
+      "split": "holdout",
+      "length": "long",
+      "firstRequestAfterReadiness": false,
+      "expected": "irrelevant",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "review",
+        "inputSha256": "e3424a9a377132bbc9282649d54c06303aedb07933263293d19839bb08bbb79a",
+        "contextBytes": 5933,
+        "wallMs": 69.39440000000104,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-ed2c2493-e632-4cc1-a310-01c1159dd747",
+          "candidateId": "review",
+          "durationMs": 69.04680000000008,
+          "queueWaitMs": 0.12569999999686843,
+          "busyWaitMs": 0.0005000000019208528,
+          "internalHttpMs": 68.98669999999765,
+          "responseValidationMs": 0.040300000000570435,
+          "choiceWallMs": 69.04680000000008,
+          "endToEndMs": 69.17249999999694,
+          "batchId": "5d80bb26-fa82-4e27-b8c4-bf303963b47a",
+          "batchItemId": "addf7680-604d-40c3-a9d8-87c3f025655c",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "5d80bb26-fa82-4e27-b8c4-bf303963b47a",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 1641,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1641,
+            "headMaxLength": 256,
+            "headerTokens": [
+              202
+            ],
+            "stateTokens": [
+              1438
+            ],
+            "requiredSequenceTokens": [
+              1641
+            ],
+            "expectedInputTokens": [
+              1641
+            ],
+            "encodedTokens": 1641,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.5515,
+          "top2Probability": 0.323,
+          "margin": 0.22849999999999998,
+          "entropyConcentration": 0.1319,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.3526,
+            "forwardMs": 64.7055,
+            "processCpuMs": 78.125,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 78.125,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.543Z"
+      }
+    },
+    {
+      "caseId": "case24",
+      "task": "memory_relevance",
+      "split": "holdout",
+      "length": "short",
+      "firstRequestAfterReadiness": false,
+      "expected": "review",
+      "adaptive": {
+        "state": "unavailable",
+        "selectedId": null,
+        "reason": "Teacher explicitly not requested; raw local output is not qualified"
+      },
+      "rawLaya": {
+        "selectedId": "relevant",
+        "inputSha256": "43a6755b33a5be5b517806a973d000aecdae7a684c5b68afa2e4004a88c33b7b",
+        "contextBytes": 631,
+        "wallMs": 28.723699999998644,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-9e117ad4-1291-4a70-83ae-d1e5f34d3db4",
+          "candidateId": "relevant",
+          "durationMs": 28.502199999998993,
+          "queueWaitMs": 0.033699999999953434,
+          "busyWaitMs": 0.0005000000019208528,
+          "internalHttpMs": 28.45969999999579,
+          "responseValidationMs": 0.026200000000244472,
+          "choiceWallMs": 28.502199999998993,
+          "endToEndMs": 28.535899999998946,
+          "batchId": "7ef8e1ea-64ef-436f-b28b-e24e83801d40",
+          "batchItemId": "38b50a83-f788-45f7-b5ca-4e088c6c455c",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "7ef8e1ea-64ef-436f-b28b-e24e83801d40",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 463,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              202
+            ],
+            "stateTokens": [
+              260
+            ],
+            "requiredSequenceTokens": [
+              463
+            ],
+            "expectedInputTokens": [
+              463
+            ],
+            "encodedTokens": 463,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.4888,
+          "top2Probability": 0.2874,
+          "margin": 0.20140000000000002,
+          "entropyConcentration": 0.0504,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 0.8591,
+            "forwardMs": 24.8332,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:01.573Z"
+      }
+    }
+  ],
+  "performance": [
+    {
+      "policy": "sequential",
+      "precision": {
+        "autocastEnabled": true,
+        "autocastDtype": "torch.bfloat16"
+      },
+      "modelManifestSha256": "ecf84fda3ac53aba0f1cdc8705c9ddc70f8910d4086e304707e0883eb9145e20",
+      "serial": [
+        {
+          "caseId": "case04",
+          "selectedId": "review",
+          "inputSha256": "28945ffdfb7f9ad3f459ad4bf87e113bacdc9e9999d92ea9b43e4aec6e7a6b4f",
+          "contextBytes": 5954,
+          "wallMs": 72.33689999999842,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-eb73267a-0a73-44fe-b0eb-c24a023bbee6",
+            "candidateId": "review",
+            "durationMs": 72.0007000000005,
+            "queueWaitMs": 0.027999999998428393,
+            "busyWaitMs": 0.00019999999858555384,
+            "internalHttpMs": 71.95040000000154,
+            "responseValidationMs": 0.030699999999342253,
+            "choiceWallMs": 72.0007000000005,
+            "endToEndMs": 72.02869999999893,
+            "batchId": "7e1afcf3-d71f-47ec-b5b9-6e2f44b019d8",
+            "batchItemId": "423a521e-e3fc-4afb-bd33-936f98c5f467",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "sequential",
+            "forwardId": "7e1afcf3-d71f-47ec-b5b9-6e2f44b019d8",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1627,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1627,
+              "headMaxLength": 256,
+              "headerTokens": [
+                199
+              ],
+              "stateTokens": [
+                1427
+              ],
+              "requiredSequenceTokens": [
+                1627
+              ],
+              "expectedInputTokens": [
+                1627
+              ],
+              "encodedTokens": 1627,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.9954,
+            "top2Probability": 0.0043,
+            "margin": 0.9911,
+            "entropyConcentration": 0.9723,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 1.6051,
+              "forwardMs": 66.9724,
+              "processCpuMs": 62.5,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 62.5,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:01.646Z"
+        },
+        {
+          "caseId": "case10",
+          "selectedId": "review",
+          "inputSha256": "44b2b75e9ee800568357c9090586d6e276b1fc407f0c80acb4c2d240cc693afd",
+          "contextBytes": 5921,
+          "wallMs": 78.71529999999984,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-fbedd395-faac-4ea7-a85e-26f6268e670a",
+            "candidateId": "review",
+            "durationMs": 78.41809999999896,
+            "queueWaitMs": 0.043000000001484295,
+            "busyWaitMs": 0.0003999999971711077,
+            "internalHttpMs": 78.36640000000261,
+            "responseValidationMs": 0.02929999999832944,
+            "choiceWallMs": 78.41809999999896,
+            "endToEndMs": 78.46110000000044,
+            "batchId": "6a582b37-03d6-44ce-87dc-c7c9a9ae3d1e",
+            "batchItemId": "70189578-28e6-4fe7-ab78-16d155a7d7f7",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "sequential",
+            "forwardId": "6a582b37-03d6-44ce-87dc-c7c9a9ae3d1e",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1632,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1632,
+              "headMaxLength": 256,
+              "headerTokens": [
+                201
+              ],
+              "stateTokens": [
+                1430
+              ],
+              "requiredSequenceTokens": [
+                1632
+              ],
+              "expectedInputTokens": [
+                1632
+              ],
+              "encodedTokens": 1632,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.9886,
+            "top2Probability": 0.0065,
+            "margin": 0.9821000000000001,
+            "entropyConcentration": 0.9361,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 2.3215,
+              "forwardMs": 71.6218,
+              "processCpuMs": 62.5,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 62.5,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:01.725Z"
+        },
+        {
+          "caseId": "case16",
+          "selectedId": "review",
+          "inputSha256": "69fb4f0b1b5f3197cf52151dd4ae8c19c294663c42e9ec937855f484ce19ebd1",
+          "contextBytes": 6056,
+          "wallMs": 79.09519999999975,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-8e9c0d6c-a679-4a9f-83f1-5a0e9b592a3d",
+            "candidateId": "review",
+            "durationMs": 78.818299999999,
+            "queueWaitMs": 0.02779999999984284,
+            "busyWaitMs": 0.00029999999969732016,
+            "internalHttpMs": 78.77379999999903,
+            "responseValidationMs": 0.0286999999989348,
+            "choiceWallMs": 78.818299999999,
+            "endToEndMs": 78.84609999999884,
+            "batchId": "add2e1f8-7dc0-436a-aeaa-e056149543d0",
+            "batchItemId": "37de3835-509f-48d8-aa55-3a8af1945feb",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "sequential",
+            "forwardId": "add2e1f8-7dc0-436a-aeaa-e056149543d0",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 4,
+            "encodedTokens": 1683,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1683,
+              "headMaxLength": 256,
+              "headerTokens": [
+                215
+              ],
+              "stateTokens": [
+                1467
+              ],
+              "requiredSequenceTokens": [
+                1683
+              ],
+              "expectedInputTokens": [
+                1683
+              ],
+              "encodedTokens": 1683,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.6926,
+            "top2Probability": 0.1981,
+            "margin": 0.4945,
+            "entropyConcentration": 0.3561,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 1.5658,
+              "forwardMs": 74.6817,
+              "processCpuMs": 62.5,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 62.5,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:01.804Z"
+        },
+        {
+          "caseId": "case22",
+          "selectedId": "review",
+          "inputSha256": "83c4c3ec0aace0fcd92bae4a263d4ef940a38d71e2339180d1dc5130c479d031",
+          "contextBytes": 5899,
+          "wallMs": 79.39500000000044,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-989228da-e838-4f11-ba62-93153fdfd781",
+            "candidateId": "review",
+            "durationMs": 79.16869999999835,
+            "queueWaitMs": 0.023400000001856824,
+            "busyWaitMs": 0.00019999999858555384,
+            "internalHttpMs": 79.13130000000092,
+            "responseValidationMs": 0.022200000003067544,
+            "choiceWallMs": 79.16869999999835,
+            "endToEndMs": 79.19210000000021,
+            "batchId": "a7d201a1-fa23-488d-b155-6eadc68b6ab1",
+            "batchItemId": "172e0f64-97e4-437f-8e98-ca8c75a5ef33",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "sequential",
+            "forwardId": "a7d201a1-fa23-488d-b155-6eadc68b6ab1",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1626,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1626,
+              "headMaxLength": 256,
+              "headerTokens": [
+                202
+              ],
+              "stateTokens": [
+                1423
+              ],
+              "requiredSequenceTokens": [
+                1626
+              ],
+              "expectedInputTokens": [
+                1626
+              ],
+              "encodedTokens": 1626,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.7554,
+            "top2Probability": 0.1634,
+            "margin": 0.592,
+            "entropyConcentration": 0.3522,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 2.0387,
+              "forwardMs": 74.2952,
+              "processCpuMs": 62.5,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 62.5,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:01.884Z"
+        }
+      ],
+      "parallelRequests": [
+        {
+          "caseId": "case04",
+          "selectedId": "review",
+          "inputSha256": "28945ffdfb7f9ad3f459ad4bf87e113bacdc9e9999d92ea9b43e4aec6e7a6b4f",
+          "contextBytes": 5954,
+          "wallMs": 74.31079999999929,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-08ea9e70-d356-4be0-a63f-ff959439acbf",
+            "candidateId": "review",
+            "durationMs": 73.87410000000091,
+            "queueWaitMs": 0.022799999998824205,
+            "busyWaitMs": 0.00029999999969732016,
+            "internalHttpMs": 73.80329999999958,
+            "responseValidationMs": 0.04889999999795691,
+            "choiceWallMs": 73.87410000000091,
+            "endToEndMs": 73.89689999999973,
+            "batchId": "25d5ee6e-0801-42a5-aaaf-b0528b9e1edd",
+            "batchItemId": "090c9d64-3247-4020-9b63-27acc3483dcf",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "sequential",
+            "forwardId": "25d5ee6e-0801-42a5-aaaf-b0528b9e1edd",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1627,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1627,
+              "headMaxLength": 256,
+              "headerTokens": [
+                199
+              ],
+              "stateTokens": [
+                1427
+              ],
+              "requiredSequenceTokens": [
+                1627
+              ],
+              "expectedInputTokens": [
+                1627
+              ],
+              "encodedTokens": 1627,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.9954,
+            "top2Probability": 0.0043,
+            "margin": 0.9911,
+            "entropyConcentration": 0.9723,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 1.39,
+              "forwardMs": 68.5988,
+              "processCpuMs": 46.875,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 46.875,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:01.959Z"
+        },
+        {
+          "caseId": "case10",
+          "selectedId": "review",
+          "inputSha256": "44b2b75e9ee800568357c9090586d6e276b1fc407f0c80acb4c2d240cc693afd",
+          "contextBytes": 5921,
+          "wallMs": 146.86529999999766,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-7c802297-32ba-476e-bfaf-3029f56b165f",
+            "candidateId": "review",
+            "durationMs": 72.61290000000008,
+            "queueWaitMs": 73.92710000000079,
+            "busyWaitMs": 0.0004000000008090865,
+            "internalHttpMs": 72.54790000000139,
+            "responseValidationMs": 0.040600000000267755,
+            "choiceWallMs": 72.61290000000008,
+            "endToEndMs": 146.54000000000087,
+            "batchId": "088f0829-6b88-431c-9b69-5ad566329c4b",
+            "batchItemId": "f9c24d86-706c-474c-a7bb-009e04733c22",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "sequential",
+            "forwardId": "088f0829-6b88-431c-9b69-5ad566329c4b",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1632,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1632,
+              "headMaxLength": 256,
+              "headerTokens": [
+                201
+              ],
+              "stateTokens": [
+                1430
+              ],
+              "requiredSequenceTokens": [
+                1632
+              ],
+              "expectedInputTokens": [
+                1632
+              ],
+              "encodedTokens": 1632,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.9886,
+            "top2Probability": 0.0065,
+            "margin": 0.9821000000000001,
+            "entropyConcentration": 0.9361,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 1.451,
+              "forwardMs": 67.3338,
+              "processCpuMs": 62.5,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 62.5,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:02.032Z"
+        },
+        {
+          "caseId": "case16",
+          "selectedId": "review",
+          "inputSha256": "69fb4f0b1b5f3197cf52151dd4ae8c19c294663c42e9ec937855f484ce19ebd1",
+          "contextBytes": 6056,
+          "wallMs": 204.33959999999934,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-8354ca34-0566-49b1-82d8-ea82c3e53e55",
+            "candidateId": "review",
+            "durationMs": 57.38009999999849,
+            "queueWaitMs": 146.74299999999857,
+            "busyWaitMs": 0.0010000000002037268,
+            "internalHttpMs": 57.33209999999599,
+            "responseValidationMs": 0.02840000000287546,
+            "choiceWallMs": 57.38009999999849,
+            "endToEndMs": 204.12309999999707,
+            "batchId": "68f7bfb5-c7b2-4e3c-93b1-7cc195410f1a",
+            "batchItemId": "47eeadbe-b8f4-4269-a4b9-8206edec119a",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "sequential",
+            "forwardId": "68f7bfb5-c7b2-4e3c-93b1-7cc195410f1a",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 4,
+            "encodedTokens": 1683,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1683,
+              "headMaxLength": 256,
+              "headerTokens": [
+                215
+              ],
+              "stateTokens": [
+                1467
+              ],
+              "requiredSequenceTokens": [
+                1683
+              ],
+              "expectedInputTokens": [
+                1683
+              ],
+              "encodedTokens": 1683,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.6926,
+            "top2Probability": 0.1981,
+            "margin": 0.4945,
+            "entropyConcentration": 0.3561,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 1.5184,
+              "forwardMs": 52.5663,
+              "processCpuMs": 62.5,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 62.5,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:02.090Z"
+        },
+        {
+          "caseId": "case22",
+          "selectedId": "review",
+          "inputSha256": "83c4c3ec0aace0fcd92bae4a263d4ef940a38d71e2339180d1dc5130c479d031",
+          "contextBytes": 5899,
+          "wallMs": 259.53139999999985,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-629a331c-70af-442c-8c5c-6bb5e316f354",
+            "candidateId": "review",
+            "durationMs": 55.13550000000032,
+            "queueWaitMs": 204.20620000000054,
+            "busyWaitMs": 0.0004000000008090865,
+            "internalHttpMs": 55.094099999994796,
+            "responseValidationMs": 0.024299999997310806,
+            "choiceWallMs": 55.13550000000032,
+            "endToEndMs": 259.34170000000086,
+            "batchId": "fdb865c1-80cc-475c-bf04-ddebbcb9824c",
+            "batchItemId": "aa411b2f-849e-46e6-92c3-33dede336f3d",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "sequential",
+            "forwardId": "fdb865c1-80cc-475c-bf04-ddebbcb9824c",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1626,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1626,
+              "headMaxLength": 256,
+              "headerTokens": [
+                202
+              ],
+              "stateTokens": [
+                1423
+              ],
+              "requiredSequenceTokens": [
+                1626
+              ],
+              "expectedInputTokens": [
+                1626
+              ],
+              "encodedTokens": 1626,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.7554,
+            "top2Probability": 0.1634,
+            "margin": 0.592,
+            "entropyConcentration": 0.3522,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 1.4593,
+              "forwardMs": 51.2606,
+              "processCpuMs": 46.875,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 46.875,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:02.145Z"
+        }
+      ],
+      "groups": [
+        {
+          "round": 0,
+          "mode": "serial",
+          "requests": 4,
+          "totalWallMs": 309.8784999999989
+        },
+        {
+          "round": 0,
+          "mode": "parallelRequests",
+          "requests": 4,
+          "totalWallMs": 260.15190000000075
+        }
+      ],
+      "summary": {
+        "serial": {
+          "attempts": 4,
+          "samples": 4,
+          "errors": 0,
+          "p50Ms": 79.09519999999975,
+          "p95Ms": 79.39500000000044,
+          "maximumMs": 79.39500000000044
+        },
+        "parallelRequests": {
+          "attempts": 4,
+          "samples": 4,
+          "errors": 0,
+          "p50Ms": 204.33959999999934,
+          "p95Ms": 259.53139999999985,
+          "maximumMs": 259.53139999999985
+        }
+      },
+      "choicesStable": true
+    },
+    {
+      "policy": "packed",
+      "precision": {
+        "autocastEnabled": true,
+        "autocastDtype": "torch.bfloat16"
+      },
+      "modelManifestSha256": "ecf84fda3ac53aba0f1cdc8705c9ddc70f8910d4086e304707e0883eb9145e20",
+      "serial": [
+        {
+          "caseId": "case04",
+          "selectedId": "review",
+          "inputSha256": "28945ffdfb7f9ad3f459ad4bf87e113bacdc9e9999d92ea9b43e4aec6e7a6b4f",
+          "contextBytes": 5954,
+          "wallMs": 122.98389999999927,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-c2c5c66e-e26c-4ade-bdd3-5bcb69d860a7",
+            "candidateId": "review",
+            "durationMs": 122.76039999999921,
+            "queueWaitMs": 0.036099999997531995,
+            "busyWaitMs": 0.0003999999971711077,
+            "internalHttpMs": 122.72620000000461,
+            "responseValidationMs": 0.020700000000942964,
+            "choiceWallMs": 122.76039999999921,
+            "endToEndMs": 122.79649999999674,
+            "batchId": "6c0eb14e-bc8f-4db7-b526-79d6a19a94d7",
+            "batchItemId": "0eef9184-dee4-4d88-b7a9-98f75e6134fe",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "packed",
+            "forwardId": "6c0eb14e-bc8f-4db7-b526-79d6a19a94d7",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1627,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1627,
+              "headMaxLength": 256,
+              "headerTokens": [
+                199
+              ],
+              "stateTokens": [
+                1427
+              ],
+              "requiredSequenceTokens": [
+                1627
+              ],
+              "expectedInputTokens": [
+                1627
+              ],
+              "encodedTokens": 1627,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.9954,
+            "top2Probability": 0.0043,
+            "margin": 0.9911,
+            "entropyConcentration": 0.9723,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 4.1471,
+              "forwardMs": 92.4256,
+              "processCpuMs": 62.5,
+              "precheckProcessCpuMs": 15.625,
+              "forwardProcessCpuMs": 46.875,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:16.618Z"
+        },
+        {
+          "caseId": "case10",
+          "selectedId": "review",
+          "inputSha256": "44b2b75e9ee800568357c9090586d6e276b1fc407f0c80acb4c2d240cc693afd",
+          "contextBytes": 5921,
+          "wallMs": 53.042600000000675,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-8c6b8807-baf1-49ef-a89e-85db9255974c",
+            "candidateId": "review",
+            "durationMs": 52.766999999999825,
+            "queueWaitMs": 0.0801999999966938,
+            "busyWaitMs": 0.00029999999969732016,
+            "internalHttpMs": 52.72809999999299,
+            "responseValidationMs": 0.020600000003469177,
+            "choiceWallMs": 52.766999999999825,
+            "endToEndMs": 52.84719999999652,
+            "batchId": "5d0516bd-984a-4bcc-8fc3-88991f5d20f1",
+            "batchItemId": "0b241a27-a7c7-4306-bf04-9996049874d9",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "packed",
+            "forwardId": "5d0516bd-984a-4bcc-8fc3-88991f5d20f1",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1632,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1632,
+              "headMaxLength": 256,
+              "headerTokens": [
+                201
+              ],
+              "stateTokens": [
+                1430
+              ],
+              "requiredSequenceTokens": [
+                1632
+              ],
+              "expectedInputTokens": [
+                1632
+              ],
+              "encodedTokens": 1632,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.9886,
+            "top2Probability": 0.0065,
+            "margin": 0.9821000000000001,
+            "entropyConcentration": 0.9361,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 1.9212,
+              "forwardMs": 48.1842,
+              "processCpuMs": 46.875,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 46.875,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:16.671Z"
+        },
+        {
+          "caseId": "case16",
+          "selectedId": "review",
+          "inputSha256": "69fb4f0b1b5f3197cf52151dd4ae8c19c294663c42e9ec937855f484ce19ebd1",
+          "contextBytes": 6056,
+          "wallMs": 58.56470000000263,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-a1fe9bb7-5d44-4e5d-bd9d-7e4e0149b0ec",
+            "candidateId": "review",
+            "durationMs": 58.31489999999758,
+            "queueWaitMs": 0.06840000000374857,
+            "busyWaitMs": 0.00020000000222353265,
+            "internalHttpMs": 58.278400000002875,
+            "responseValidationMs": 0.023099999998521525,
+            "choiceWallMs": 58.31489999999758,
+            "endToEndMs": 58.38330000000133,
+            "batchId": "80e1c533-5da5-42f8-a71d-6854c0dc9448",
+            "batchItemId": "08aeb755-5245-416f-bccb-9a243a24b9f9",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "packed",
+            "forwardId": "80e1c533-5da5-42f8-a71d-6854c0dc9448",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 4,
+            "encodedTokens": 1683,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1683,
+              "headMaxLength": 256,
+              "headerTokens": [
+                215
+              ],
+              "stateTokens": [
+                1467
+              ],
+              "requiredSequenceTokens": [
+                1683
+              ],
+              "expectedInputTokens": [
+                1683
+              ],
+              "encodedTokens": 1683,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.6926,
+            "top2Probability": 0.1981,
+            "margin": 0.4945,
+            "entropyConcentration": 0.3561,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 2.2602,
+              "forwardMs": 53.7882,
+              "processCpuMs": 62.5,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 62.5,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:16.730Z"
+        },
+        {
+          "caseId": "case22",
+          "selectedId": "review",
+          "inputSha256": "83c4c3ec0aace0fcd92bae4a263d4ef940a38d71e2339180d1dc5130c479d031",
+          "contextBytes": 5899,
+          "wallMs": 53.230200000005425,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-d8f41cdc-208d-45f2-9c94-1f3a7484df63",
+            "candidateId": "review",
+            "durationMs": 52.976199999997334,
+            "queueWaitMs": 0.07809999999881256,
+            "busyWaitMs": 0.00029999999969732016,
+            "internalHttpMs": 52.92809999999736,
+            "responseValidationMs": 0.021600000000034925,
+            "choiceWallMs": 52.976199999997334,
+            "endToEndMs": 53.05429999999615,
+            "batchId": "edcca716-9519-4288-a745-c88a7f8fff37",
+            "batchItemId": "f923a015-c0d9-44d2-8404-5eccac26c597",
+            "batchSize": 1,
+            "submittedBatchSize": 1,
+            "executionPolicy": "packed",
+            "forwardId": "edcca716-9519-4288-a745-c88a7f8fff37",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "candidateCount": 3,
+            "encodedTokens": 1626,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1626,
+              "headMaxLength": 256,
+              "headerTokens": [
+                202
+              ],
+              "stateTokens": [
+                1423
+              ],
+              "requiredSequenceTokens": [
+                1626
+              ],
+              "expectedInputTokens": [
+                1626
+              ],
+              "encodedTokens": 1626,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.7554,
+            "top2Probability": 0.1634,
+            "margin": 0.592,
+            "entropyConcentration": 0.3522,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_predict_batch",
+              "precheckScope": "context_window_preflight",
+              "precheckMs": 1.6396,
+              "forwardMs": 48.9799,
+              "processCpuMs": 46.875,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 46.875,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:16.783Z"
+        }
+      ],
+      "parallelRequests": [
+        {
+          "caseId": "case04",
+          "selectedId": "review",
+          "inputSha256": "28945ffdfb7f9ad3f459ad4bf87e113bacdc9e9999d92ea9b43e4aec6e7a6b4f",
+          "contextBytes": 5954,
+          "wallMs": 274.35310000000027,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-028b85d8-7be8-47dc-82cf-bc141ab991b7",
+            "candidateId": "review",
+            "durationMs": 273.65690000000177,
+            "queueWaitMs": 0.3971000000019558,
+            "busyWaitMs": 0.00029999999969732016,
+            "internalHttpMs": 273.36810000000696,
+            "responseValidationMs": 0.04869999999937136,
+            "choiceWallMs": 273.65690000000177,
+            "endToEndMs": 274.0540000000037,
+            "batchId": "9bbe8044-d0ab-44dd-87d5-84cfd04e0f84",
+            "batchItemId": "eceac24d-ff35-48fa-b2cb-9e40f61e79ba",
+            "batchSize": 4,
+            "submittedBatchSize": 4,
+            "executionPolicy": "packed",
+            "forwardId": "d75955f9-1179-45c7-b6d3-08d2ba338981",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "preparationMetrics": {
+              "scope": "http_batch_preparation",
+              "batchId": "9bbe8044-d0ab-44dd-87d5-84cfd04e0f84",
+              "wallMs": 8.6514,
+              "processCpuMs": 15.625
+            },
+            "sharedForwardScope": "sdk_heterogeneous_forward",
+            "candidateCount": 3,
+            "encodedTokens": 1627,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1627,
+              "headMaxLength": 256,
+              "headerTokens": [
+                199
+              ],
+              "stateTokens": [
+                1427
+              ],
+              "requiredSequenceTokens": [
+                1627
+              ],
+              "expectedInputTokens": [
+                1627
+              ],
+              "encodedTokens": 1627,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.9955,
+            "top2Probability": 0.0042,
+            "margin": 0.9913000000000001,
+            "entropyConcentration": 0.973,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_heterogeneous_forward",
+              "precheckScope": "forward_group_collation",
+              "precheckMs": 0.8449,
+              "forwardMs": 258.5113,
+              "processCpuMs": 265.625,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 265.625,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:17.059Z"
+        },
+        {
+          "caseId": "case10",
+          "selectedId": "review",
+          "inputSha256": "44b2b75e9ee800568357c9090586d6e276b1fc407f0c80acb4c2d240cc693afd",
+          "contextBytes": 5921,
+          "wallMs": 274.26750000000175,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-acef872a-e072-4676-b22d-b0e161395858",
+            "candidateId": "review",
+            "durationMs": 273.75130000000354,
+            "queueWaitMs": 0.3148000000001048,
+            "busyWaitMs": 0.00029999999969732016,
+            "internalHttpMs": 273.36810000000696,
+            "responseValidationMs": 0.012499999997089617,
+            "choiceWallMs": 273.75130000000354,
+            "endToEndMs": 274.06610000000364,
+            "batchId": "9bbe8044-d0ab-44dd-87d5-84cfd04e0f84",
+            "batchItemId": "64d5c930-47ef-4a8c-a442-138bc850971f",
+            "batchSize": 4,
+            "submittedBatchSize": 4,
+            "executionPolicy": "packed",
+            "forwardId": "d75955f9-1179-45c7-b6d3-08d2ba338981",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "preparationMetrics": {
+              "scope": "http_batch_preparation",
+              "batchId": "9bbe8044-d0ab-44dd-87d5-84cfd04e0f84",
+              "wallMs": 8.6514,
+              "processCpuMs": 15.625
+            },
+            "sharedForwardScope": "sdk_heterogeneous_forward",
+            "candidateCount": 3,
+            "encodedTokens": 1632,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1632,
+              "headMaxLength": 256,
+              "headerTokens": [
+                201
+              ],
+              "stateTokens": [
+                1430
+              ],
+              "requiredSequenceTokens": [
+                1632
+              ],
+              "expectedInputTokens": [
+                1632
+              ],
+              "encodedTokens": 1632,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.9885,
+            "top2Probability": 0.0065,
+            "margin": 0.9820000000000001,
+            "entropyConcentration": 0.9358,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_heterogeneous_forward",
+              "precheckScope": "forward_group_collation",
+              "precheckMs": 0.8449,
+              "forwardMs": 258.5113,
+              "processCpuMs": 265.625,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 265.625,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:17.059Z"
+        },
+        {
+          "caseId": "case16",
+          "selectedId": "review",
+          "inputSha256": "69fb4f0b1b5f3197cf52151dd4ae8c19c294663c42e9ec937855f484ce19ebd1",
+          "contextBytes": 6056,
+          "wallMs": 274.2337999999945,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-334757df-738d-4d28-959c-88a1a15eb6d4",
+            "candidateId": "review",
+            "durationMs": 273.8006999999998,
+            "queueWaitMs": 0.25830000000132713,
+            "busyWaitMs": 0.00029999999969732016,
+            "internalHttpMs": 273.36810000000696,
+            "responseValidationMs": 0.00990000000456348,
+            "choiceWallMs": 273.8006999999998,
+            "endToEndMs": 274.0590000000011,
+            "batchId": "9bbe8044-d0ab-44dd-87d5-84cfd04e0f84",
+            "batchItemId": "341f528d-580d-49e9-8b6f-b37de5b15ef6",
+            "batchSize": 4,
+            "submittedBatchSize": 4,
+            "executionPolicy": "packed",
+            "forwardId": "d75955f9-1179-45c7-b6d3-08d2ba338981",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "preparationMetrics": {
+              "scope": "http_batch_preparation",
+              "batchId": "9bbe8044-d0ab-44dd-87d5-84cfd04e0f84",
+              "wallMs": 8.6514,
+              "processCpuMs": 15.625
+            },
+            "sharedForwardScope": "sdk_heterogeneous_forward",
+            "candidateCount": 4,
+            "encodedTokens": 1683,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1683,
+              "headMaxLength": 256,
+              "headerTokens": [
+                215
+              ],
+              "stateTokens": [
+                1467
+              ],
+              "requiredSequenceTokens": [
+                1683
+              ],
+              "expectedInputTokens": [
+                1683
+              ],
+              "encodedTokens": 1683,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.6978,
+            "top2Probability": 0.1904,
+            "margin": 0.5074,
+            "entropyConcentration": 0.3585,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_heterogeneous_forward",
+              "precheckScope": "forward_group_collation",
+              "precheckMs": 0.8449,
+              "forwardMs": 258.5113,
+              "processCpuMs": 265.625,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 265.625,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:17.059Z"
+        },
+        {
+          "caseId": "case22",
+          "selectedId": "review",
+          "inputSha256": "83c4c3ec0aace0fcd92bae4a263d4ef940a38d71e2339180d1dc5130c479d031",
+          "contextBytes": 5899,
+          "wallMs": 274.19750000000204,
+          "receipt": {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "perf-8a7aae56-25a7-42ed-96ac-9cf86d2cad42",
+            "candidateId": "review",
+            "durationMs": 273.82680000000255,
+            "queueWaitMs": 0.2084000000031665,
+            "busyWaitMs": 0.00029999999969732016,
+            "internalHttpMs": 273.36810000000696,
+            "responseValidationMs": 0.007299999997485429,
+            "choiceWallMs": 273.82680000000255,
+            "endToEndMs": 274.0352000000057,
+            "batchId": "9bbe8044-d0ab-44dd-87d5-84cfd04e0f84",
+            "batchItemId": "dc21bdd4-123b-4533-ac5e-a212238a4dc5",
+            "batchSize": 4,
+            "submittedBatchSize": 4,
+            "executionPolicy": "packed",
+            "forwardId": "d75955f9-1179-45c7-b6d3-08d2ba338981",
+            "forwardIndex": 1,
+            "forwardCount": 1,
+            "preparationMetrics": {
+              "scope": "http_batch_preparation",
+              "batchId": "9bbe8044-d0ab-44dd-87d5-84cfd04e0f84",
+              "wallMs": 8.6514,
+              "processCpuMs": 15.625
+            },
+            "sharedForwardScope": "sdk_heterogeneous_forward",
+            "candidateCount": 3,
+            "encodedTokens": 1626,
+            "tokenWindow": {
+              "formatVersion": "1.0.0",
+              "encoderMaxTokens": 8192,
+              "maxLength": 1626,
+              "headMaxLength": 256,
+              "headerTokens": [
+                202
+              ],
+              "stateTokens": [
+                1423
+              ],
+              "requiredSequenceTokens": [
+                1626
+              ],
+              "expectedInputTokens": [
+                1626
+              ],
+              "encodedTokens": 1626,
+              "droppedTokens": 0,
+              "truncated": false,
+              "criterionHeaderMaxTokens": 48
+            },
+            "questionProfile": "workflow_choice_v1",
+            "top1Probability": 0.7561,
+            "top2Probability": 0.1604,
+            "margin": 0.5957,
+            "entropyConcentration": 0.3517,
+            "calibrated": false,
+            "inferenceMetrics": {
+              "status": "available",
+              "formatVersion": "1.0.0",
+              "forwardScope": "sdk_heterogeneous_forward",
+              "precheckScope": "forward_group_collation",
+              "precheckMs": 0.8449,
+              "forwardMs": 258.5113,
+              "processCpuMs": 265.625,
+              "precheckProcessCpuMs": 0,
+              "forwardProcessCpuMs": 265.625,
+              "cgroupBefore": {
+                "status": "unsupported"
+              },
+              "cgroupAfter": {
+                "status": "unsupported"
+              },
+              "cgroupCpuDelta": {
+                "status": "missing"
+              }
+            },
+            "fullCriterionDescriptions": "included_in_selector_state"
+          },
+          "observedAtUtc": "2026-10-15T14:15:17.059Z"
+        }
+      ],
+      "groups": [
+        {
+          "round": 0,
+          "mode": "serial",
+          "requests": 4,
+          "totalWallMs": 288.0806999999986
+        },
+        {
+          "round": 0,
+          "mode": "parallelRequests",
+          "requests": 4,
+          "totalWallMs": 274.4881000000023
+        }
+      ],
+      "summary": {
+        "serial": {
+          "attempts": 4,
+          "samples": 4,
+          "errors": 0,
+          "p50Ms": 58.56470000000263,
+          "p95Ms": 122.98389999999927,
+          "maximumMs": 122.98389999999927
+        },
+        "parallelRequests": {
+          "attempts": 4,
+          "samples": 4,
+          "errors": 0,
+          "p50Ms": 274.26750000000175,
+          "p95Ms": 274.35310000000027,
+          "maximumMs": 274.35310000000027
+        }
+      },
+      "choicesStable": true
+    }
+  ],
+  "cleanupErrors": [],
+  "teacherCalls": 0,
+  "localSelectionRequests": 40,
+  "resourceMetrics": {
+    "gpuMemory": "unavailable_in_existing_receipt",
+    "processRss": "unavailable_in_existing_receipt",
+    "externalSampling": "host_may_sample_actual_processes_separately"
+  },
+  "modelManifestSha256": "ecf84fda3ac53aba0f1cdc8705c9ddc70f8910d4086e304707e0883eb9145e20",
+  "precision": {
+    "autocastEnabled": true,
+    "autocastDtype": "torch.bfloat16"
+  },
+  "serviceWarmup": "internal_startup_readiness_forward",
+  "scores": {
+    "rawLaya": {
+      "development:mail_importance": {
+        "total": 3,
+        "correct": 0,
+        "wrong": 3,
+        "abstained": 2,
+        "rejected": 0,
+        "errors": 0,
+        "notAttempted": 0,
+        "TP": 0,
+        "FP": 0,
+        "TN": 0,
+        "FN": 0,
+        "unresolvedPositive": 1,
+        "confusionScope": "Only non-review host labels and non-review valid model choices; rejection/error/review reported separately",
+        "accuracy": 0,
+        "precision": null,
+        "recall": null
+      },
+      "development:goal_relevance": {
+        "total": 3,
+        "correct": 1,
+        "wrong": 2,
+        "abstained": 3,
+        "rejected": 0,
+        "errors": 0,
+        "notAttempted": 0,
+        "TP": 0,
+        "FP": 0,
+        "TN": 0,
+        "FN": 0,
+        "unresolvedPositive": 1,
+        "confusionScope": "Only non-review host labels and non-review valid model choices; rejection/error/review reported separately",
+        "accuracy": 0.3333333333333333,
+        "precision": null,
+        "recall": null
+      },
+      "development:notification_disposition": {
+        "total": 3,
+        "correct": 2,
+        "wrong": 1,
+        "abstained": 2,
+        "rejected": 0,
+        "errors": 0,
+        "notAttempted": 0,
+        "TP": 1,
+        "FP": 0,
+        "TN": 0,
+        "FN": 0,
+        "unresolvedPositive": 0,
+        "confusionScope": "Only non-review host labels and non-review valid model choices; rejection/error/review reported separately",
+        "accuracy": 0.6666666666666666,
+        "precision": 1,
+        "recall": 1
+      },
+      "development:memory_relevance": {
+        "total": 3,
+        "correct": 2,
+        "wrong": 1,
+        "abstained": 1,
+        "rejected": 0,
+        "errors": 0,
+        "notAttempted": 0,
+        "TP": 1,
+        "FP": 1,
+        "TN": 0,
+        "FN": 0,
+        "unresolvedPositive": 0,
+        "confusionScope": "Only non-review host labels and non-review valid model choices; rejection/error/review reported separately",
+        "accuracy": 0.6666666666666666,
+        "precision": 0.5,
+        "recall": 1
+      },
+      "holdout:mail_importance": {
+        "total": 3,
+        "correct": 1,
+        "wrong": 2,
+        "abstained": 3,
+        "rejected": 0,
+        "errors": 0,
+        "notAttempted": 0,
+        "TP": 0,
+        "FP": 0,
+        "TN": 0,
+        "FN": 0,
+        "unresolvedPositive": 1,
+        "confusionScope": "Only non-review host labels and non-review valid model choices; rejection/error/review reported separately",
+        "accuracy": 0.3333333333333333,
+        "precision": null,
+        "recall": null
+      },
+      "holdout:goal_relevance": {
+        "total": 3,
+        "correct": 1,
+        "wrong": 2,
+        "abstained": 3,
+        "rejected": 0,
+        "errors": 0,
+        "notAttempted": 0,
+        "TP": 0,
+        "FP": 0,
+        "TN": 0,
+        "FN": 0,
+        "unresolvedPositive": 1,
+        "confusionScope": "Only non-review host labels and non-review valid model choices; rejection/error/review reported separately",
+        "accuracy": 0.3333333333333333,
+        "precision": null,
+        "recall": null
+      },
+      "holdout:notification_disposition": {
+        "total": 3,
+        "correct": 0,
+        "wrong": 3,
+        "abstained": 2,
+        "rejected": 0,
+        "errors": 0,
+        "notAttempted": 0,
+        "TP": 0,
+        "FP": 0,
+        "TN": 0,
+        "FN": 0,
+        "unresolvedPositive": 1,
+        "confusionScope": "Only non-review host labels and non-review valid model choices; rejection/error/review reported separately",
+        "accuracy": 0,
+        "precision": null,
+        "recall": null
+      },
+      "holdout:memory_relevance": {
+        "total": 3,
+        "correct": 0,
+        "wrong": 3,
+        "abstained": 2,
+        "rejected": 0,
+        "errors": 0,
+        "notAttempted": 0,
+        "TP": 0,
+        "FP": 0,
+        "TN": 0,
+        "FN": 0,
+        "unresolvedPositive": 1,
+        "confusionScope": "Only non-review host labels and non-review valid model choices; rejection/error/review reported separately",
+        "accuracy": 0,
+        "precision": null,
+        "recall": null
+      }
+    },
+    "adaptive": null
+  },
+  "qualityLatency": {
+    "scope": "Mixed quality cases, not repeated old short benchmark; startup and first post-readiness request separate",
+    "firstPostReadiness": {
+      "selectedId": "review",
+      "inputSha256": "6b1d2a629312aa35a53b0e1938426162f6aecbfef6c092946537cc1220c907e3",
+      "contextBytes": 689,
+      "wallMs": 121.4323000000004,
+      "receipt": {
+        "event": "laya_choice",
+        "model": "multilingual",
+        "requestId": "quality-7cad9c8a-5200-467e-9039-107f69ee9e3b",
+        "candidateId": "review",
+        "durationMs": 119.3640000000014,
+        "queueWaitMs": 0.4543000000012398,
+        "busyWaitMs": 0.0004000000008090865,
+        "internalHttpMs": 118.86330000000089,
+        "responseValidationMs": 0.08770000000004075,
+        "choiceWallMs": 119.3640000000014,
+        "endToEndMs": 119.81830000000264,
+        "batchId": "fe4dbc4d-88d0-48df-9919-67dcda1307a5",
+        "batchItemId": "a944be13-da8a-4324-8229-270369185cb4",
+        "batchSize": 1,
+        "submittedBatchSize": 1,
+        "executionPolicy": "sequential",
+        "forwardId": "fe4dbc4d-88d0-48df-9919-67dcda1307a5",
+        "forwardIndex": 1,
+        "forwardCount": 1,
+        "candidateCount": 3,
+        "encodedTokens": 476,
+        "tokenWindow": {
+          "formatVersion": "1.0.0",
+          "encoderMaxTokens": 8192,
+          "maxLength": 1024,
+          "headMaxLength": 256,
+          "headerTokens": [
+            199
+          ],
+          "stateTokens": [
+            276
+          ],
+          "requiredSequenceTokens": [
+            476
+          ],
+          "expectedInputTokens": [
+            476
+          ],
+          "encodedTokens": 476,
+          "droppedTokens": 0,
+          "truncated": false,
+          "criterionHeaderMaxTokens": 48
+        },
+        "questionProfile": "workflow_choice_v1",
+        "top1Probability": 0.8306,
+        "top2Probability": 0.1223,
+        "margin": 0.7083,
+        "entropyConcentration": 0.4947,
+        "calibrated": false,
+        "inferenceMetrics": {
+          "status": "available",
+          "formatVersion": "1.0.0",
+          "forwardScope": "sdk_predict_batch",
+          "precheckScope": "context_window_preflight",
+          "precheckMs": 1.8315,
+          "forwardMs": 82.5366,
+          "processCpuMs": 93.75,
+          "precheckProcessCpuMs": 0,
+          "forwardProcessCpuMs": 93.75,
+          "cgroupBefore": {
+            "status": "unsupported"
+          },
+          "cgroupAfter": {
+            "status": "unsupported"
+          },
+          "cgroupCpuDelta": {
+            "status": "missing"
+          }
+        },
+        "fullCriterionDescriptions": "included_in_selector_state"
+      },
+      "observedAtUtc": "2026-10-15T14:15:00.653Z"
+    },
+    "steadyByLength": {
+      "short": {
+        "attempts": 15,
+        "samples": 15,
+        "errors": 0,
+        "p50Ms": 26.398600000000442,
+        "p95Ms": 30.74669999999969,
+        "maximumMs": 30.74669999999969
+      },
+      "long": {
+        "attempts": 8,
+        "samples": 8,
+        "errors": 0,
+        "p50Ms": 65.03359999999884,
+        "p95Ms": 69.39440000000104,
+        "maximumMs": 69.39440000000104
+      }
+    }
+  },
+  "finishedAtUtc": "2026-10-15T14:15:17.077Z",
+  "wallMs": 35864.19869999999
+}

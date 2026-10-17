@@ -1,0 +1,15 @@
+# Linux ARM64 image dependencies, not Windows venv or copied site-packages.
+# ARM64 wheel availability must be checked by the actual image build.
+laya[serve]==0.3.20
+# Explicit CPU build; the PyPI 2.14.0 ARM64 wheel has Linux CUDA dependencies.
+# Supply the verified cp311/aarch64 CPU wheel in PA_LAYA_WHEELHOUSE.
+torch==2.14.0+cpu
+transformers==5.17.0
+# bookworm Python 3.11 ARM64 wheel verified in the Huawei index; Windows venv
+# retains its existing 2.5.3 and is never copied or upgraded by this image build.
+numpy==2.4.6
+tokenizers==0.23.2
+safetensors==0.8.0
+huggingface-hub==1.33.0
+fastapi==0.141.1
+uvicorn==0.53.0

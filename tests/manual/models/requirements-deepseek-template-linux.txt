@@ -1,0 +1,2 @@
+# Test-only official Linux x86_64 wheel. MIT; no production or Node dependency.
+deepseek-recipe==0.1.1 --hash=sha256:7818802935becc76ac9b81af6b4a1e5390ec65355cecefd1fd4790f51845c1c5

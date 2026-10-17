@@ -1,0 +1,437 @@
+{
+  "schemaVersion": 1,
+  "kind": "redacted_specific_chain_live_test",
+  "profile": "huawei_ict_agentarts",
+  "architectureFinalized": false,
+  "published": false,
+  "platformDeployment": false,
+  "realMaaSSpecificChainVerified": true,
+  "all28BusinessWorkflowsVerified": false,
+  "realLocalLayaInvoked": true,
+  "layaAutonomousDecisionQualityVerified": false,
+  "laya150msTargetPassed": false,
+  "trainingPerformed": false,
+  "image": {
+    "archiveSha256": "60eb752ba1b3c91e00edc416867c19706bf33fac9754b8a9631db6940969a549",
+    "id": "sha256:e8aa319df4f93da61543a4100c51aeee973fabd392c0179b8142562e9d009889",
+    "rebuiltForHostOnlyFixes": false,
+    "archiveBytes": 80805376,
+    "tag": "personal-agent:test-v1-local-laya",
+    "archive": ".cache/agentarts-image/test-v1-local-laya.tar"
+  },
+  "sources": [
+    {
+      "sha256": "90536cce85978980478558b08685dc6f32d25877278df587d0ca4027f0615330",
+      "path": ".cache/pelican-test-version-5WrrrR/report.json"
+    },
+    {
+      "sha256": "517c36271b3df67322f7b1599a8fd8864dfb92a1a8a271408ae0c55fc22a5cfb",
+      "path": ".cache/test-image-live-20261015-110040/launch.json"
+    },
+    {
+      "sha256": "82077282bd2d151161e14e81fa12b8883a83c358168724581a7364ffb0d50d49",
+      "path": ".cache/test-image-live-20261015-110040/resources.json"
+    }
+  ],
+  "testedSourceHashes": {
+    "packages/agents/src/index.ts": "d005908ed4feaf440867f9290a872ae68948b79095a3779a224ef3b4ed02b875",
+    "packages/agents/dist/index.js": "676b0d8eab86296097de57eb4d84800419f4249525864d9b67f59d034717b97b",
+    "tests/manual/agentarts/pelican-test-version.mjs": "66256307bf8d47b03842d546cff6ddf70d1b60a0d7c9fd0f08a6c268e4654a15",
+    "tests/manual/agentarts/test-image-model-provider.mjs": "9f33bbf3bff4a262def05053ca8a5f305ef365ee491b5de049712ecbd74acd9c"
+  },
+  "snapshotBoundary": "Live run completed before later maxTokens budget guard. This run did not pass maxTokens. Later offline/root checks do not constitute a real-model rerun of the final source hash.",
+  "run": {
+    "delivery": {
+      "state": "confirmed",
+      "result": {
+        "path": "pelican.svg",
+        "beforeSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+        "afterSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+        "byteLength": 2509,
+        "changed": true,
+        "applied": true
+      },
+      "evidenceRefs": [
+        "host-tool-f4e9b91a-c34f-42ae-a40d-af2304967949"
+      ],
+      "singleWriteback": true,
+      "userBaselinePreserved": true,
+      "selectedSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+    },
+    "startedAt": "2026-10-15T11:00:46.367Z",
+    "status": "verified_main_shadow_and_delivery",
+    "resourceQuota": false,
+    "selectedSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+    "selectedMode": "shadow",
+    "formatRepairActuallyObserved": "First branch execution text omitted kind and was rejected; the next model reply supplied kind=tool_proposal and the same main branch subsequently verified.",
+    "branches": [
+      {
+        "browser": {
+          "screenshot": ".cache/pelican-test-version-5WrrrR/main-host-tool-881b7f74-d490-41f6-8f66-be67a86ea42a.png",
+          "engine": "installed Edge via Playwright, headless fresh profile",
+          "errors": [],
+          "moving": [
+            {
+              "id": "wheel-back",
+              "changed": true
+            },
+            {
+              "id": "wheel-front",
+              "changed": true
+            },
+            {
+              "id": "pedal",
+              "changed": true
+            }
+          ]
+        },
+        "finalEvidenceRefs": [
+          "host-tool-881b7f74-d490-41f6-8f66-be67a86ea42a"
+        ],
+        "finalPassed": true,
+        "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+        "taskId": "aaeaf45a-cd17-4a31-a57e-3951b0407879",
+        "initialPassed": false,
+        "mode": "main",
+        "initialEvidenceRefs": [
+          "host-tool-51e16d6c-5748-4e5a-868f-f37f45fd8041"
+        ],
+        "geometryPreserved": true,
+        "finalSha256": "896057c6207798deef11fa836778bccf1d817b4b03cbcedf169d5c37b2e70a03",
+        "state": "succeeded",
+        "wallMs": 49250.6866
+      },
+      {
+        "browser": {
+          "screenshot": ".cache/pelican-test-version-5WrrrR/shadow-host-tool-203ebf9d-d3b9-40ca-8862-09047ae2107b.png",
+          "engine": "installed Edge via Playwright, headless fresh profile",
+          "errors": [],
+          "moving": [
+            {
+              "id": "wheel-back",
+              "changed": true
+            },
+            {
+              "id": "wheel-front",
+              "changed": true
+            },
+            {
+              "id": "pedal",
+              "changed": true
+            }
+          ]
+        },
+        "finalEvidenceRefs": [
+          "host-tool-203ebf9d-d3b9-40ca-8862-09047ae2107b"
+        ],
+        "finalPassed": true,
+        "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+        "taskId": "e4d1e106-d7e6-4955-a15d-ed42a7b025e3",
+        "initialPassed": false,
+        "mode": "shadow",
+        "initialEvidenceRefs": [
+          "host-tool-5bc131f6-7ab0-46c8-b8cd-40540446e5f4"
+        ],
+        "geometryPreserved": true,
+        "finalSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+        "state": "succeeded",
+        "wallMs": 37056.80130000001
+      }
+    ],
+    "toolExecutionCounts": [
+      {
+        "confirmed": 6,
+        "tool": "pelican.verify"
+      },
+      {
+        "confirmed": 3,
+        "tool": "workspace.apply_text_patch"
+      },
+      {
+        "confirmed": 2,
+        "tool": "workspace.preview_text_patch"
+      },
+      {
+        "confirmed": 2,
+        "tool": "workspace.read_text"
+      }
+    ],
+    "finishedAt": "2026-10-15T11:03:34.254Z",
+    "wallMs": 167885.7186
+  },
+  "maas": {
+    "promptTokens": 49580,
+    "stages": [
+      {
+        "stage": "branch_execution",
+        "completionTokens": 4451.0,
+        "promptTokens": 43020.0,
+        "totalTokens": 47471.0,
+        "completedCalls": 11
+      },
+      {
+        "stage": "candidate_planning",
+        "completionTokens": 1433.0,
+        "promptTokens": 1266.0,
+        "totalTokens": 2699.0,
+        "completedCalls": 1
+      },
+      {
+        "stage": "escalated_decision",
+        "completionTokens": 2522.0,
+        "promptTokens": 5294.0,
+        "totalTokens": 7816.0,
+        "completedCalls": 3
+      }
+    ],
+    "transport": "local ARM64 image /invocations -> configured plan role -> real MaaS",
+    "provider": "openai-compatible",
+    "model": "deepseek-v4-flash",
+    "completedCalls": 15,
+    "billingAmountVerified": false,
+    "completedCallsWallMs": 143406.35439999998,
+    "totalTokens": 57986,
+    "completionTokens": 8406
+  },
+  "decisions": [
+    {
+      "site": "pelican.main-plan",
+      "decided_by": "deepseek",
+      "reason": "unvalidated_decision_site",
+      "selectedId": "fix-begin-0s"
+    },
+    {
+      "site": "pelican.shadow-plan",
+      "decided_by": "deepseek",
+      "reason": "unvalidated_decision_site",
+      "selectedId": "remove-begin"
+    },
+    {
+      "site": "pelican.result-comparison",
+      "decided_by": "deepseek",
+      "reason": "unvalidated_decision_site",
+      "selectedId": "remove-begin"
+    },
+    {
+      "site": "pelican.result-comparison",
+      "decided_by": "verified_experience",
+      "reason": "exact_verified_case",
+      "selectedId": "remove-begin"
+    }
+  ],
+  "laya": {
+    "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "torchThreads": 1,
+    "experienceReuseIsTraining": false,
+    "allNewSitesEscalated": true,
+    "exactVerifiedExperienceReuses": 1,
+    "precision": {
+      "autocastEnabled": true,
+      "autocastDtype": "torch.bfloat16"
+    },
+    "device": "cuda",
+    "calls": [
+      {
+        "event": "laya_choice",
+        "encodedTokens": 2315,
+        "endToEndMs": 305.80479999999807,
+        "queueWaitMs": 0.42040000000270084,
+        "candidateCount": 3,
+        "calibrated": false
+      },
+      {
+        "event": "laya_choice",
+        "encodedTokens": 2262,
+        "endToEndMs": 163.46199999999953,
+        "queueWaitMs": 0.057200000002922025,
+        "candidateCount": 2,
+        "calibrated": false
+      },
+      {
+        "event": "laya_choice",
+        "encodedTokens": 1840,
+        "endToEndMs": 223.84350000001723,
+        "queueWaitMs": 0.11910000001080334,
+        "candidateCount": 2,
+        "calibrated": false
+      }
+    ]
+  },
+  "resources": {
+    "gpuMemoryMeasured": false,
+    "method": "launcher process-tree Get-Process sampling; observed PID-only counters",
+    "codexFairBaselineAvailable": false,
+    "interpretation": "OS thread counts are not Torch intraop threads. CPU deltas cover sampled intervals, not process lifetime; no speed/cost comparison to Codex or other models.",
+    "processes": [
+      {
+        "maxOsThreads": 18.0,
+        "pid": 29188,
+        "sampledCpuDeltaMs": 4718.75,
+        "name": "node",
+        "firstAt": "2026-10-15T11:00:48.8685591Z",
+        "lastAt": "2026-10-15T11:03:31.8513783Z",
+        "maxSampledRssBytes": 350326784.0,
+        "maxObservedProcessPeakRssBytes": 352006144.0
+      },
+      {
+        "maxOsThreads": 12.0,
+        "pid": 38820,
+        "sampledCpuDeltaMs": 10156.25,
+        "name": "python",
+        "firstAt": "2026-10-15T11:00:48.8787185Z",
+        "lastAt": "2026-10-15T11:03:31.8558473Z",
+        "maxSampledRssBytes": 1744351232.0,
+        "maxObservedProcessPeakRssBytes": 2788319232.0
+      },
+      {
+        "maxOsThreads": 3.0,
+        "pid": 39900,
+        "sampledCpuDeltaMs": 0.0,
+        "name": "python",
+        "firstAt": "2026-10-15T11:00:48.8787849Z",
+        "lastAt": "2026-10-15T11:03:31.8558943Z",
+        "maxSampledRssBytes": 4325376.0,
+        "maxObservedProcessPeakRssBytes": 4325376.0
+      }
+    ]
+  },
+  "authorizationAndRecovery": {
+    "recoveryBinding": "canonical root/recovery/pwsh identities + protected current-user ACL + public reconcileWorkspacePatchApply",
+    "publicFixtureAuthorizationOnly": true,
+    "crashRecoveryAllPathsVerified": false,
+    "hostToolApproval": "allow_once for explicitly authorized isolated public fixture",
+    "unknownWritesNotBlindlyRetried": true
+  },
+  "priorAttempts": [
+    {
+      "branches": [
+        {
+          "mode": "main",
+          "status": "failed",
+          "taskState": "failed",
+          "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'failed'\n- 'succeeded'\n"
+        },
+        {
+          "mode": "shadow",
+          "status": "failed",
+          "taskState": "failed",
+          "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'failed'\n- 'succeeded'\n"
+        }
+      ],
+      "report": ".cache/pelican-test-version-s6w6zY/report.json",
+      "singleWriteback": null,
+      "status": "failed"
+    },
+    {
+      "branches": [
+        {
+          "mode": "main",
+          "status": "failed",
+          "taskState": "failed",
+          "error": "Tool proposal contains fields outside the tool contract"
+        },
+        {
+          "mode": "shadow",
+          "status": "failed",
+          "taskState": "failed",
+          "error": "Tool task failed: workspace.preview_text_patch"
+        }
+      ],
+      "report": ".cache/pelican-test-version-IJrmdT/report.json",
+      "singleWriteback": null,
+      "status": "failed"
+    },
+    {
+      "branches": [
+        {
+          "mode": "main",
+          "status": "failed",
+          "taskState": "failed",
+          "error": "Workspace patch recovery is not bound to a trusted workspace"
+        },
+        {
+          "mode": "shadow",
+          "status": "failed",
+          "taskState": "failed",
+          "error": "Workspace patch recovery is not bound to a trusted workspace"
+        }
+      ],
+      "report": ".cache/pelican-test-version-TLWsdA/report.json",
+      "singleWriteback": null,
+      "status": "failed"
+    },
+    {
+      "branches": [
+        {
+          "mode": "main",
+          "status": "failed",
+          "taskState": "failed",
+          "error": "Model returned invalid proposal JSON"
+        },
+        {
+          "mode": "shadow",
+          "status": "verified",
+          "taskState": "succeeded",
+          "error": null
+        }
+      ],
+      "report": ".cache/pelican-test-version-fp0OVx/report.json",
+      "singleWriteback": true,
+      "status": "partial_one_branch_failed"
+    }
+  ],
+  "postLiveChecks": {
+    "manualBundle": {
+      "skipped": 0,
+      "failed": 0,
+      "log": ".cache/test-version-final-manual-check.log",
+      "tests": 22,
+      "sha256": "cab382ba4d621f675187968b41e215092c7812585645a8b4bef6055ff6e4cace",
+      "actualComponents": [
+        "Runtime",
+        "Policy",
+        "ToolGateway",
+        "Evidence",
+        "SQLite",
+        "filesystem",
+        "HTTP",
+        "Windows pwsh patch approval/apply"
+      ],
+      "passed": 22,
+      "model": "explicit Fake where model required",
+      "groups": {
+        "pelican": 11,
+        "business": 4,
+        "delegation": 7
+      },
+      "snapshot": "final source after maxTokens budget guard",
+      "realModelCalls": 0
+    },
+    "rootCheck": {
+      "skipped": 18,
+      "failed": 0,
+      "tapSummaries": 37,
+      "log": ".cache/test-version-final-check.log",
+      "tests": 3166,
+      "sha256": "57ac0b767372faa97a4466c5963d47be9022ec30182648c4979b6f595d05fd00",
+      "cancelled": 0,
+      "passed": 3148,
+      "exitCode": 0,
+      "snapshot": "final source after maxTokens budget guard; not a real-model rerun of final agents hashes"
+    },
+    "finalSourceHashes": {
+      "tests/manual/agentarts/test-image-model-provider.mjs": "9f33bbf3bff4a262def05053ca8a5f305ef365ee491b5de049712ecbd74acd9c",
+      "packages/agents/dist/index.js": "6d4aa128461b058ec288fe8804d02a7a92af06b707ddb7a5824fd10cc18eb7b5",
+      "packages/agents/src/index.ts": "7266ddf8f4685e4cfe231fe87fd13ddcf89fc94ec00e90f1affdf030d275660b",
+      "tests/manual/agentarts/pelican-test-version.mjs": "66256307bf8d47b03842d546cff6ddf70d1b60a0d7c9fd0f08a6c268e4654a15"
+    },
+    "sourceZip": "awaiting coordinator immediate source ZIP refresh",
+    "budgetRegressionSubset": {
+      "relation": "affected subset, not additive",
+      "passed": 25,
+      "tests": 25
+    },
+    "realModelRerunAfterBudgetGuard": false
+  },
+  "redaction": "No credentials, raw prompts, raw model responses, absolute machine paths, or API URLs copied into this summary."
+}

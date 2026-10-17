@@ -1,7 +1,76 @@
 # @personal-agent/knowledge — provisional Vault ports
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
+## 本机会话配对端口（MOD-08M）
+
+`@personal-agent/knowledge/pairing` 公开严格版本化 `ObsidianPairingDescriptor`、
+`ObsidianPairingPeer`、描述解析、物理 Vault 身份摘要和只读 peer 工厂。
+身份以规范路径及文件系统标识计算，不使用可碰撞的 Vault 显示名。描述不携带绝对路径、
+凭据或正文，且不构成授权。插件连接撤销和卸载中止 peer；Runtime 验证结果 Schema 与
+相对文件夹范围。仅供可信 composition；跨进程公开桥接见下一节。
+兼容与验收见 [ADR-0019](../../docs/adr/0019-obsidian-runtime-pairing.md) 和
+[MOD-08M](../../docs/modules/MOD-08M-UNICODE-PAIRING-01.md)。
+
+## 本机认证桥接（MOD-08N）
+
+`@personal-agent/knowledge/bridge` 提供 `createObsidianBridgeOffer(peer)`、
+`parseObsidianBridgeCode(code)` 和 `connectObsidianBridge(code,context)`。
+插件显式生成一次性 32 字节随机密钥，监听 127.0.0.1 随机端口，TLS 1.3 加密。
+Windows 原生 API 在内存生成临时证书，Desktop 先固定证书指纹，再发送密钥认证。
+配对码 2 分钟有效；一个成功连接后停止监听，拒绝重用、描述替换与证书认证回退。
+最多一个在途只读检索，每帧 128 KiB、每次读取 30 秒、会话 15 分钟。
+取消、断连、非法消息和卸载关闭会话；无自动重试、写入、云端发送或持久凭据。
+协议版本与严格字段见 [ADR-0020](../../docs/adr/0020-obsidian-authenticated-bridge.md)，
+状态仍 provisional；配对码及结果均不能签发 Policy grant。
+
+MOD-08O 使用 PA2/版本 2 帧增加 peer 的可选 `readCitation`：四字段 KnowledgeSource，
+严格 Vault/文件夹/版本校验，返回最多 4000 字单行摘录或固定错误码；没有任意文件 RPC。
+新客户端兼容 PA1 的搜索，但 PA1 不提供引用能力；旧客户端拒绝 PA2，需同时升级插件和
+Desktop。Runtime 的 `wikiSource.acquireWiki` 结合本机稳定页身份与插件摘录重新验证，
+使用既有 WikiSource 和逐条确认，不以临时任务 sourceId 标识长期事实。缺少任一侧证据即
+unavailable；详见 [ADR-0021](../../docs/adr/0021-paired-citation-memory.md)。
+
+## Wiki 第一包：只读来源身份与版本（MOD-08G）
+
+`@personal-agent/knowledge/wiki` 提供 provisional 的 `WikiPort`：
+`scanPages` 返回页面清单，`search` 返回带绑定信息的引用，`readCitation` 核对当前
+页面身份和正文 revision 后返回所引用的一行。受信宿主选择已授权的整个根目录，
+显式绑定 sourceId/namespace/configRevision/dataLevel/validUntil，并通过 `isCurrent()` 在每次
+异步读取前后检查捕获的配置与读取许可；模型、Renderer 和正文不能提供此回调。
+不授予写入、长期记忆确认或出机权限。
+
+```js
+import {openReadOnlyWiki} from '@personal-agent/knowledge/wiki';
+const wiki = await openReadOnlyWiki({
+  vaultId: source.vaultId, rootPath: source.rootPath,
+  sourceId: source.sourceId, namespace: source.namespace,
+  configRevision: source.configRevision, dataLevel: source.dataLevel, validUntil: readLease.validUntil,
+  isCurrent: () => host.hasCurrentReadLease(source.sourceId, source.configRevision)
+});
+const pages = await wiki.scanPages({deadline, signal});
+```
+
+示例的 `source/host/readLease/deadline/signal` 由受信调用方提供，不能从模型请求自动产生。
+Desktop 私人记忆已通过受信知识源配置装配此入口；不新增 Runtime capability。既有 `KnowledgePort` 消费方
+保持原接口，不能将 Wiki 引用直接塞进旧工具的 wire 输出。
+
+页面 ID 基于根目录和文件的原生身份（bigint dev/ino/birthtimeNs），正文 SHA-256
+作为 revision；同内容的不同文件不会合并。同卷 rename 保持 ID，重新打开同一来源
+也保持 ID；复制、跨卷移动、编辑器替换保存视为新页面。根目录替换或硬链接明确拒绝。
+旧位置缺失/不可读返回 SOURCE_UNAVAILABLE，身份/版本不符返回 SOURCE_CHANGED。
+扫描复用既有上限，不是全库原子快照；空清单或失败不授权删除事实、索引或原文件。
+读取到来源变化时拒绝结果；没有 watcher、持久索引或自动确认。
+
+`formatWikiCitationReference/parseWikiCitationReference` 生成/读取稳定的 `wiki-v1:` 证据引用，
+不保存短时许可的有效期；`readReference` 只能在当前可信 lease 中核实该证据。
+Desktop 的逐条确认及按需来源失效投影见 [MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)。
+
+显式测试可用 `@personal-agent/knowledge/testing` 的 `createFakeWikiPort`，其路径派生
+ID 仅用于固定夹具。`createUnavailableWikiPort` 明确报不可用，不回退 Fake。
+完整边界与验收见 [MOD-08G](../../docs/modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)
+及 [ADR-0022](../../docs/adr/0022-wiki-source-identity.md)。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
@@ -91,7 +160,9 @@ P8 只有核对该 finalized 元数据回执后才能在原执行记录上完成
 准确限制：现有底层是锁内原地写入，**不是崩溃原子的文件替换**；应用/主机中断可能留下
 部分结果，必须通过保留备份和 unknown 读回处理。路径/身份检查不是对恶意并发操作者的
 OS 沙箱。本片不把该实现宣称为完整原子写入验收，也不扩展 coding-tools 原源。
-Vault 的自动索引、LLM Wiki 和可安装 Obsidian 插件仍未交付。
+本地 MOD-08K 增量提供每次查询重新验证来源的临时全文行索引（总正文上限 8 MiB），
+以及 `apps/obsidian-plugin` 的可安装只读插件包；尚未评审集成或完成真实 Obsidian 宿主验收。
+持久全文索引、插件 Runtime 配对和完整 LLM Wiki 仍未交付。
 
 私人结果不得因为截短就默认发送给 AgentArts。Competition availability/export 默认拒 private；
 公开资料还需本会话 native 确认出机、精确查询 allowlist、同一任务/来源/配置版本。

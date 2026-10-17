@@ -1,7 +1,10 @@
 # 设计提案：语音优先、主动介入的本地决策 + AgentArts 协同架构
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+<!-- current-design-alignment-20261015 -->
+> **历史/待适配设计，非当前完成声明。** 原日期、作者、目标和验收记录保留；与最新部署、模型、影子交付条件、发布及旧协作门槛冲突的部分已superseded。
+> 当前请读[2026-10-15详细设计](CURRENT_DESIGN_20261015.md)与[所有设计导航](README.md)，其中逐项区分已实现、待接线和待真实验收；架构仍未最终定型。
+> 本页旧“未发布/未接通/已定”文字只适用于其当时对象，不否定新的SWR/云目录/实际API，也不自动完成全部业务。
+
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

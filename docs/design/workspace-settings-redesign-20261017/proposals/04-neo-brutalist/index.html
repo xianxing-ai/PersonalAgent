@@ -1,0 +1,1793 @@
+<!doctype html>
+<html lang="zh-CN" data-proposal="04-neo-brutalist">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PersonalAgent · 野拓 · 新粗野</title>
+<style>
+/* ============ 野拓 · 新粗野 · Token ============ */
+:root{
+  --paper:#F6F2E7; --paper-2:#EFE9D8; --ink:#111111; --card:#ffffff;
+  --lemon:#FFD400; --green:#00E176; --ver:#FF4D2E;
+  --lemon-soft:#FFF3B0; --green-soft:#D2FBE9; --ver-soft:#FFDCD2; --ink-soft:#E4E0D4;
+  --bw:3px; --bw2:2px;
+  --sh-s:3px 3px 0 var(--ink); --sh-m:6px 6px 0 var(--ink); --sh-l:10px 10px 0 var(--ink);
+  --r-0:0px; --r-s:4px; --r-m:8px; --r-pill:999px;
+  --font-display:"Arial Black","Segoe UI Black","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif;
+  --font-ui:"Microsoft YaHei","PingFang SC","Noto Sans SC","Segoe UI",system-ui,sans-serif;
+  --font-mono:"Cascadia Mono","Consolas","JetBrains Mono",Consolas,monospace;
+  --font-hand:"楷体","KaiTi","STKaiti","Kaiti SC","DFKai-SB",cursive;
+  --t-fast:90ms; --t-mid:140ms; --t-slow:220ms;
+  --ease:cubic-bezier(.2,0,0,1);
+  --sp-1:2px; --sp-2:4px; --sp-3:8px; --sp-4:12px; --sp-5:16px; --sp-6:24px; --sp-7:32px; --sp-8:48px;
+  --fs-12:12px; --fs-14:14px; --fs-16:16px; --fs-20:20px; --fs-24:24px; --fs-32:32px; --fs-44:44px; --fs-56:56px;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--paper);
+  background-image:linear-gradient(rgba(17,17,17,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(17,17,17,.05) 1px,transparent 1px);
+  background-size:28px 28px;
+  color:var(--ink); font:var(--fs-14)/1.6 var(--font-ui); overflow-x:hidden;
+}
+img,svg{display:block}
+a{color:inherit}
+h1,h2,h3,h4{font-family:var(--font-display); font-weight:900; line-height:1.15; border-radius:0}
+:focus-visible{outline:3px solid var(--ink); outline-offset:2px}
+::selection{background:var(--lemon); color:var(--ink)}
+.skip{position:absolute; left:-9999px; top:0; background:var(--lemon); border:var(--bw) solid var(--ink); padding:8px 14px; font-weight:800; z-index:99}
+.skip:focus{left:8px; top:8px}
+.ul{display:inline-block; text-transform:uppercase; letter-spacing:.18em; font-weight:800; font-size:11px; font-family:var(--font-mono)}
+[hidden]{display:none !important}
+
+/* ============ 顶导航 ============ */
+.sitebar{position:sticky; top:0; z-index:50; background:var(--paper); border-bottom:var(--bw) solid var(--ink); padding:10px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap}
+.brandblock{display:inline-block; background:var(--lemon); border:var(--bw) solid var(--ink); box-shadow:var(--sh-s); font:900 20px/1.1 var(--font-display); padding:8px 14px; letter-spacing:.02em}
+.brandtag{display:inline-block; transform:rotate(-2deg); background:var(--ver); border:var(--bw2) solid var(--ink); box-shadow:2px 2px 0 var(--ink); font-weight:900; font-size:12px; padding:4px 10px}
+.brandsub{font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; opacity:.75}
+.viewnav{margin-left:auto; display:flex; gap:10px; flex-wrap:wrap}
+
+/* ============ 按钮 · 按压位移 ============ */
+.btn{display:inline-flex; align-items:center; gap:8px; justify-content:center; background:var(--card); color:var(--ink); border:var(--bw) solid var(--ink); box-shadow:4px 4px 0 var(--ink); padding:9px 16px; font:800 var(--fs-14)/1.2 var(--font-ui); cursor:pointer; transition:transform var(--t-fast) linear,box-shadow var(--t-fast) linear; border-radius:0; text-decoration:none}
+.btn:hover{transform:translate(-1px,-1px); box-shadow:6px 6px 0 var(--ink)}
+.btn:active{transform:translate(3px,3px); box-shadow:1px 1px 0 var(--ink)}
+.btn:focus-visible{outline:3px solid var(--ink); outline-offset:3px}
+.btn--lemon{background:var(--lemon)} .btn--green{background:var(--green)} .btn--ver{background:var(--ver)} .btn--ink{background:var(--ink); color:var(--paper)}
+.btn--big{font-size:17px; padding:12px 22px; font-weight:900}
+.btn--sm{padding:5px 10px; font-size:12px; box-shadow:3px 3px 0 var(--ink); border-width:var(--bw2); font-weight:800}
+.btn--sm:hover{box-shadow:4px 4px 0 var(--ink)} .btn--sm:active{box-shadow:1px 1px 0 var(--ink); transform:translate(2px,2px)}
+.btn[disabled]{opacity:.45; cursor:not-allowed; transform:none; box-shadow:2px 2px 0 var(--ink)}
+.btn[aria-current="page"]{background:var(--lemon); transform:translate(1px,1px); box-shadow:2px 2px 0 var(--ink)}
+.linkbtn{background:none; border:none; border-bottom:var(--bw2) solid var(--ink); padding:0 0 1px; font:800 var(--fs-14)/1.5 var(--font-ui); color:var(--ink); cursor:pointer}
+.linkbtn:hover{background:var(--lemon)}
+
+/* ============ 状态块 / 徽章 / 贴纸 ============ */
+.st{display:inline-block; border:var(--bw2) solid var(--ink); padding:2px 9px; font-weight:900; font-size:11px; letter-spacing:.06em; white-space:nowrap}
+.st--run{background:var(--lemon)} .st--queue{background:var(--card)} .st--apv{background:var(--ver)} .st--done{background:var(--green)} .st--fail{background:var(--ink); color:var(--paper)}
+.st--warn{background:var(--lemon)} .st--ok{background:var(--green)} .st--err{background:var(--ver)} .st--off{background:var(--card)} .st--dim{background:var(--ink-soft)}
+.ev{display:inline-block; font:700 10px/1.4 var(--font-mono); letter-spacing:.1em; border:var(--bw2) solid var(--ink); background:var(--card); padding:1px 7px; text-transform:lowercase}
+.ev--verified{background:var(--green)} .ev--conditional{background:var(--lemon)} .ev--mock{border-style:dashed}
+.led{display:inline-block; width:10px; height:10px; border:var(--bw2) solid var(--ink); background:var(--green)}
+.led--on{animation:pa-blink 1.1s steps(1,end) infinite}
+.led--warn{background:var(--lemon); animation:pa-blink .7s steps(1,end) infinite}
+.led--err{background:var(--ver)}
+.led--off{background:var(--card)}
+.led--fill{border-radius:var(--r-pill)}
+@keyframes pa-blink{0%,54%{opacity:1}55%,100%{opacity:.12}}
+.tag{display:inline-block; border:var(--bw2) solid var(--ink); background:var(--card); box-shadow:2px 2px 0 var(--ink); padding:3px 9px; font-weight:800; font-size:12px}
+.tag--rot{transform:rotate(-2deg)} .tag--rot2{transform:rotate(1.6deg)} .tag--lemon{background:var(--lemon)} .tag--green{background:var(--green)} .tag--ver{background:var(--ver)} .tag--ink{background:var(--ink); color:var(--paper)}
+.note{position:relative; display:inline-block; background:#FFF9C4; border:var(--bw2) solid var(--ink); box-shadow:4px 4px 0 var(--ink); transform:rotate(-1deg); font:700 15px/1.7 var(--font-hand); padding:12px 16px 12px 30px; max-width:300px}
+.note::before{content:""; position:absolute; left:12px; top:12px; width:8px; height:8px; background:var(--ver); border:var(--bw2) solid var(--ink)}
+.note small{display:block; font-size:12px; font-weight:700; opacity:.8}
+.kbd{display:inline-block; font:700 12px/1 var(--font-mono); background:var(--card); border:var(--bw2) solid var(--ink); box-shadow:0 3px 0 var(--ink); padding:4px 8px; margin:0 2px}
+.valpill{display:inline-block; font:700 12px/1.5 var(--font-mono); background:var(--paper-2); border:var(--bw2) dashed var(--ink); color:var(--ink); padding:3px 10px}
+
+/* ============ 块与告示牌标题 ============ */
+.wrap{max-width:1460px; margin:0 auto; padding:26px 22px 90px}
+.view[hidden]{display:none}
+.sign{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:34px 0 16px}
+.sign__tab{display:inline-block; background:var(--lemon); border:var(--bw) solid var(--ink); box-shadow:var(--sh-s); font:900 24px/1.2 var(--font-display); padding:8px 16px}
+.sign__tab--green{background:var(--green)} .sign__tab--ver{background:var(--ver)} .sign__tab--white{background:var(--card)}
+.sign__en{font-family:var(--font-mono); font-weight:700; font-size:11px; letter-spacing:.22em; text-transform:uppercase; opacity:.72}
+.card{background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); padding:18px; border-radius:0}
+.c-lemon{background:var(--lemon)} .c-green{background:var(--green)} .c-ver{background:var(--ver)} .c-white{background:var(--card)}
+.h-display{font-size:clamp(44px,4.6vw,64px); font-weight:900; letter-spacing:-.01em}
+.pill{display:inline-flex; align-items:center; gap:8px; border:var(--bw) solid var(--ink); background:var(--card); box-shadow:var(--sh-s); padding:6px 14px; border-radius:var(--r-pill); font-weight:800; font-size:13px}
+.hr{height:0; border:none; border-top:var(--bw) solid var(--ink)}
+
+/* ============ 表单原语 ============ */
+.sw{position:relative; display:inline-block; width:54px; height:28px; border:var(--bw) solid var(--ink); background:var(--card); box-shadow:var(--sh-s); cursor:pointer; flex:none; vertical-align:middle}
+.sw::after{content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:var(--r-pill); border:var(--bw) solid var(--ink); background:var(--card); transition:transform var(--t-fast) linear}
+.swish input{position:absolute; opacity:0; width:0; height:0}
+.swish input:checked + .sw{background:var(--green)}
+.swish input:checked + .sw::after{transform:translateX(24px)}
+.swish input:focus-visible + .sw{outline:3px solid var(--ink); outline-offset:3px}
+.swish:hover .sw{transform:translate(-1px,-1px); box-shadow:5px 5px 0 var(--ink)}
+@media (prefers-reduced-motion:reduce){ .sw::after{transition:none} }
+.cb{appearance:none; width:22px; height:22px; border:var(--bw) solid var(--ink); background:var(--card); cursor:pointer; flex:none; position:relative; vertical-align:middle}
+.cb:hover{box-shadow:2px 2px 0 var(--ink)}
+.cb:checked{background:var(--lemon)}
+.cb:checked::after{content:""; position:absolute; inset:3px; background:var(--ink)}
+.cb:focus-visible{outline:3px solid var(--ink); outline-offset:3px}
+.selwrap{position:relative; display:inline-block}
+.selwrap::after{content:"▾"; position:absolute; right:10px; top:50%; transform:translateY(-52%); pointer-events:none; font-weight:900}
+select,input[type=text],input[type=password],input[type=number],input[type=date],input[type=datetime-local],input[type=search],textarea{font:600 var(--fs-14)/1.4 var(--font-ui); color:var(--ink); background:var(--card); border:var(--bw) solid var(--ink); padding:8px 12px; border-radius:0; max-width:100%}
+select{padding-right:30px; cursor:pointer}
+textarea{width:100%; resize:vertical}
+select:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--ink); outline-offset:2px}
+input[type=range]{appearance:none; width:180px; height:16px; border:var(--bw) solid var(--ink); background:var(--card); box-shadow:var(--sh-s); vertical-align:middle; cursor:pointer}
+input[type=range]::-webkit-slider-thumb{appearance:none; width:20px; height:20px; border:var(--bw) solid var(--ink); background:var(--lemon)}
+input[type=range]::-moz-range-thumb{width:16px; height:16px; border:var(--bw) solid var(--ink); background:var(--lemon); border-radius:0}
+input[type=range]:focus-visible{outline:3px solid var(--ink); outline-offset:3px}
+.seg{display:inline-flex; border:var(--bw) solid var(--ink); box-shadow:var(--sh-s); background:var(--card)}
+.seg button{border:none; border-right:var(--bw2) solid var(--ink); background:transparent; font:800 13px/1.3 var(--font-ui); padding:8px 13px; cursor:pointer}
+.seg button:last-child{border-right:none}
+.seg button:hover{background:var(--lemon-soft)}
+.seg button[aria-pressed="true"],.seg button.seg-on{background:var(--ink); color:var(--paper)}
+.seg button:focus-visible{outline:3px solid var(--ver); outline-offset:-5px}
+
+/* ============ 设置行（左右分栏实心框） ============ */
+.row{display:flex; justify-content:space-between; align-items:flex-start; gap:18px; background:var(--card); border:var(--bw) solid var(--ink); padding:14px 18px; box-shadow:var(--sh-s)}
+.row + .row{margin-top:12px}
+.row__t{font-weight:900; font-size:15px}
+.row__d{display:block; font-size:12.5px; opacity:.8; margin-top:3px; max-width:56ch}
+.row__r{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; flex:none}
+.row__r .selwrap{min-width:170px}
+.mono{font-family:var(--font-mono)}
+.dim{opacity:.72}
+.grout{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px}
+
+/* ============ Toast ============ */
+.toasts{position:fixed; right:18px; bottom:18px; z-index:120; display:flex; flex-direction:column; gap:10px; max-width:min(420px,90vw)}
+.toast{background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); padding:11px 15px; font-weight:800; font-size:13px; display:flex; gap:10px; align-items:flex-start; animation:pa-pop var(--t-mid) linear}
+.toast::before{content:""; width:10px; height:10px; background:var(--green); border:var(--bw2) solid var(--ink); flex:none; margin-top:4px}
+.toast--warn::before{background:var(--lemon)} .toast--err::before{background:var(--ver)}
+@keyframes pa-pop{from{transform:translate(6px,6px)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){ .toast{animation:none} .led--on,.led--warn{animation:none} }
+</style>
+<style>
+/* ============ 工作区 · 窗口壳（告示板框架） ============ */
+.winframe{background:var(--paper); border:var(--bw) solid var(--ink); box-shadow:var(--sh-l); margin-top:24px}
+.wintitle{display:flex; align-items:center; gap:14px; height:42px; background:var(--ink); color:var(--paper); padding:0 12px}
+.wintitle__name{font:900 15px/1 var(--font-display); letter-spacing:.02em}
+.wintitle__cap{font:600 10.5px/1 var(--font-mono); letter-spacing:.16em; text-transform:uppercase; opacity:.55}
+.wintitle__btns{margin-left:auto; display:flex}
+.wintitle__btns .btn{background:var(--paper); color:var(--ink); border-width:var(--bw2); width:34px; height:26px; padding:0; box-shadow:none}
+.wintitle__btns .btn:hover{background:var(--lemon)} .wintitle__btns .btn:active{transform:translate(2px,2px); box-shadow:none}
+.wintitle__btns .wincls:hover{background:var(--ver)}
+.wintop{display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:10px 16px; border-bottom:var(--bw) solid var(--ink); background:var(--paper-2)}
+.wintop__label{font-weight:900; font-size:15px}
+.wintop__tools{margin-left:auto; display:flex; gap:10px; flex-wrap:wrap}
+.prefs{display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:9px 16px; border-bottom:var(--bw) solid var(--ink); background:var(--card)}
+.prefs b{font-size:13px}
+.prefs .out{font:800 12px var(--font-mono)}
+
+/* ============ 工作区 · 网格板块 ============ */
+.board{padding:8px 20px 26px}
+.wband{display:grid; gap:20px}
+.wband--hero{grid-template-columns:2fr 1fr; margin-top:18px}
+.wband--duo{grid-template-columns:3fr 2fr; margin-top:6px}
+.wband--conn{grid-template-columns:3fr 2fr; margin-top:6px}
+.hero{background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); padding:26px}
+.hero__sub{font-size:16px; font-weight:700; margin-top:6px}
+.composer{display:flex; gap:12px; margin-top:18px; max-width:640px}
+.composer input{flex:1; background:var(--card); font-size:15px; font-weight:600}
+.hero__quick{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap}
+.orbslot{background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); padding:20px; display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center}
+.orbring{width:100px; height:100px; border:var(--bw) dashed var(--ink); border-radius:var(--r-pill); display:grid; place-items:center; font:800 11px var(--font-mono); letter-spacing:.1em}
+.orbslot__t{font-weight:900; font-size:14px}
+.orbslot__d{font-size:11.5px; opacity:.75; max-width:30ch}
+.chipsbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:12px 0 14px}
+
+/* 目标卡 */
+.goals{display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:18px}
+.goal{position:relative; border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); padding:16px; display:flex; flex-direction:column; gap:10px}
+.goal:nth-child(2){transform:rotate(.5deg)} .goal:nth-child(3){transform:rotate(-.6deg)}
+.goal:hover{transform:translate(-2px,-2px)}
+.goal__name{font:900 17px/1.3 var(--font-display)}
+.goal__meta{display:flex; gap:8px; flex-wrap:wrap}
+.mile{display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700}
+.mile .box{width:12px; height:12px; border:var(--bw2) solid var(--ink); background:var(--card); flex:none}
+.mile--done .box{background:var(--green)}
+.goal__time{font:700 11px var(--font-mono); letter-spacing:.08em; text-transform:uppercase; opacity:.8}
+.bar{position:relative; height:16px; border:var(--bw) solid var(--ink); background:var(--card); box-shadow:var(--sh-s)}
+.bar__fill{position:absolute; inset:0 auto 0 0; width:0%; background:var(--green); border-right:var(--bw) solid var(--ink); min-width:0}
+.bar__fill--lemon{background:var(--lemon)}
+.bar__pct{position:absolute; right:6px; top:50%; transform:translateY(-50%); font:800 10px var(--font-mono)}
+.gdialog{margin-top:18px; border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); background:var(--card)}
+.gdialog__hd{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 18px; border-bottom:var(--bw) solid var(--ink); background:var(--lemon)}
+.gdialog__hd h3{font-size:20px}
+.gdialog__bd{display:grid; grid-template-columns:1fr 1.4fr; gap:0}
+.gdialog__list{padding:16px; border-right:var(--bw) solid var(--ink); display:flex; flex-direction:column; gap:10px}
+.gsaverow{display:flex; align-items:center; gap:10px; border:var(--bw2) solid var(--ink); background:var(--paper-2); padding:9px 12px; box-shadow:var(--sh-s)}
+.gsaverow__s{font-weight:800; font-size:13px}
+.gsaverow__m{margin-left:auto; display:flex; gap:8px; align-items:center}
+.gdialog__form{padding:16px}
+.gform{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+.gform label{display:flex; flex-direction:column; gap:5px; font-weight:800; font-size:12.5px}
+.gform .full{grid-column:1/-1}
+.gform input,.gform select,.gform textarea{border-width:var(--bw2); box-shadow:2px 2px 0 var(--ink)}
+.gdialog__ft{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 18px; border-top:var(--bw) solid var(--ink); background:var(--paper-2)}
+.gstatus{font:700 12.5px var(--font-mono); min-height:1.4em}
+.gstatus--busy{color:var(--ink)}
+
+/* 任务贴纸阵列 */
+.taskmeta{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.searchwrap input{min-width:min(300px,100%)}
+.tgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px}
+.tcard{position:relative; background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); padding:14px; display:flex; flex-direction:column; gap:9px; cursor:pointer; text-align:left; font:inherit; color:inherit; width:100%}
+.tgrid>.tcard:nth-child(odd){transform:rotate(-.4deg)} .tgrid>.tcard:nth-child(even){transform:rotate(.35deg)}
+.tcard:hover{transform:translate(-2px,-2px) rotate(0); box-shadow:8px 8px 0 var(--ink)}
+.tcard:active{transform:translate(2px,2px); box-shadow:2px 2px 0 var(--ink)}
+.tcard:focus-visible{outline:3px solid var(--ver); outline-offset:3px}
+.tcard__name{font-weight:900; font-size:15px; padding-right:8px}
+.tcard__top{display:flex; align-items:flex-start; gap:8px; justify-content:space-between}
+.tcard__meta{display:flex; gap:6px; flex-wrap:wrap; font-size:11.5px; font-weight:700}
+.tcard__foot{display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:auto}
+.tempty{border:var(--bw) dashed var(--ink); background:var(--card); padding:22px; text-align:center; font-weight:800}
+
+/* 审批警报牌 */
+.apv{border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); background:var(--card)}
+.apv+.apv{margin-top:18px}
+.apv__stripe{height:16px; background:repeating-linear-gradient(-45deg,var(--lemon) 0 14px,var(--ink) 14px 28px); border-bottom:var(--bw) solid var(--ink)}
+.apv__bd{padding:16px 18px; display:flex; flex-direction:column; gap:9px}
+.apv__t{font:900 19px/1.3 var(--font-display)}
+.apv__op{font-weight:800; font-size:14px; background:var(--paper-2); border:var(--bw2) solid var(--ink); padding:8px 12px}
+.apv__perm{font:800 12px var(--font-mono)}
+.apv__hint{font-size:12px; opacity:.75}
+.apv__acts{display:flex; gap:12px; flex-wrap:wrap; margin-top:4px}
+.apv__res{display:flex; align-items:center; gap:14px}
+.stamp{display:inline-block; border:var(--bw) solid var(--ink); transform:rotate(-6deg); font:900 16px var(--font-display); padding:6px 16px}
+.stamp--ok{background:var(--green)} .stamp--no{background:var(--ver)} .stamp--exp{background:var(--card)}
+.apv--dead .apv__bd{opacity:.92}
+
+/* 连接器 · 行块信号板 */
+.crow{display:grid; grid-template-columns:200px 1fr 190px; gap:14px; align-items:center; background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-s); padding:12px 14px; cursor:pointer; text-align:left; font:inherit; color:inherit; width:100%}
+.crow + .crow{margin-top:12px}
+.crow:hover{transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink)}
+.crow:focus-visible{outline:3px solid var(--ver); outline-offset:3px}
+.crow__tag{display:flex; align-items:center; gap:9px; font:900 15px/1.2 var(--font-display)}
+.crow__ic{width:30px; height:30px; border:var(--bw2) solid var(--ink); display:grid; place-items:center; flex:none; background:var(--card)}
+.crow__body{font-size:12.5px; font-weight:600; min-width:0}
+.crow__main{font-weight:800; font-size:13.5px}
+.crow__foot{font:600 11.5px var(--font-mono); opacity:.85; margin-top:2px}
+.crow__st{display:flex; flex-direction:column; align-items:flex-end; gap:6px}
+.crow__ev{font:600 10.5px var(--font-mono); opacity:.72; letter-spacing:.06em}
+.wtemp{font:900 26px/1 var(--font-display)}
+.wlist{list-style:none; display:flex; flex-direction:column; gap:3px}
+.wlist li{display:flex; gap:8px; font-size:12.5px; font-weight:700}
+.wlist .tm{font-family:var(--font-mono); font-weight:700; flex:none}
+
+/* 证据条 */
+.evstrip{display:grid; grid-template-columns:repeat(3,1fr); gap:14px}
+.evcard{border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); padding:14px; display:flex; flex-direction:column; gap:8px}
+.evcard b{font:900 14px var(--font-mono); text-transform:lowercase; letter-spacing:.08em}
+.evcard p{font-size:12.5px}
+.oncapsule{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:16px}
+
+/* 对话时间线 */
+.tlwrap{display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start}
+.rail{display:flex; flex-direction:column; gap:12px; align-items:center; border:var(--bw2) solid var(--ink); background:var(--card); box-shadow:var(--sh-s); padding:12px 6px; height:max-content}
+.rail i{width:14px; height:2px; background:var(--ink); display:block}
+.rail i:hover{width:20px; background:var(--ver)}
+.rail b{font:700 9px var(--font-mono); letter-spacing:.14em; writing-mode:vertical-rl; text-transform:uppercase; opacity:.7}
+.turns{max-width:860px; display:flex; flex-direction:column; gap:18px}
+.bub{position:relative; width:fit-content; max-width:88%; border:var(--bw) solid var(--ink); box-shadow:var(--sh-s); padding:12px 16px; font-size:13.5px; font-weight:600; line-height:1.65}
+.bub--user{align-self:flex-end; background:var(--lemon)}
+.bub--ai{align-self:flex-start; background:var(--card)}
+.bub--user::before{content:""; position:absolute; right:16px; bottom:-3px; width:18px; height:3px; background:var(--lemon)}
+.bub--user::after{content:""; position:absolute; right:16px; bottom:-17px; width:18px; height:14px; background:var(--lemon); border:var(--bw) solid var(--ink); border-top:none}
+.bub--ai::before{content:""; position:absolute; left:16px; bottom:-3px; width:18px; height:3px; background:var(--card)}
+.bub--ai::after{content:""; position:absolute; left:16px; bottom:-17px; width:18px; height:14px; background:var(--card); border:var(--bw) solid var(--ink); border-top:none}
+.bub__who{display:block; font:800 10.5px var(--font-mono); letter-spacing:.18em; text-transform:uppercase; opacity:.7; margin-bottom:5px}
+.bubacts{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+/* 详情抽屉 */
+.drawer{position:fixed; top:70px; right:18px; width:min(430px,94vw); max-height:calc(100vh - 90px); overflow:auto; z-index:80; background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-l)}
+.drawer__hd{display:flex; align-items:flex-start; gap:10px; padding:14px 16px; border-bottom:var(--bw) solid var(--ink); background:var(--lemon)}
+.drawer__hd h3{font-size:17px}
+.drawer__bd{padding:14px 16px; display:flex; flex-direction:column; gap:14px}
+.drawer__sec b{display:block; font:900 12px var(--font-mono); letter-spacing:.16em; text-transform:uppercase; margin-bottom:6px; border-bottom:var(--bw2) solid var(--ink); padding-bottom:4px}
+.drawer__sec p{font-size:13px; font-weight:600}
+.steps{list-style:none; display:flex; flex-direction:column; gap:8px; margin-top:6px}
+.steps li{display:flex; gap:10px; align-items:flex-start; font-size:12.5px; font-weight:700}
+.steps .sq{width:12px; height:12px; border:var(--bw2) solid var(--ink); background:var(--green); flex:none; margin-top:2px}
+.steps .sq--off{background:var(--card)} .steps .sq--warn{background:var(--lemon)} .steps .sq--err{background:var(--ver)}
+.steps .tm{font:700 10.5px var(--font-mono); flex:none; opacity:.8; margin-top:2px}
+
+/* ============ 设置页 · 班签登记 ============ */
+.settings{display:grid; grid-template-columns:270px 1fr; gap:24px; align-items:start; margin-top:24px}
+.sidenav{position:sticky; top:74px; border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); background:var(--card); padding:14px}
+.sidenav__search{margin-bottom:12px}
+.sidenav__search input{width:100%}
+.sngroup{margin-bottom:10px}
+.sngroup__t{display:block; background:var(--lemon); border:var(--bw2) solid var(--ink); box-shadow:2px 2px 0 var(--ink); font:900 12px/1.3 var(--font-display); padding:5px 9px; margin:8px 0 6px; letter-spacing:.06em}
+.sngroup--green .sngroup__t{background:var(--green)} .sngroup--ver .sngroup__t{background:var(--ver)} .sngroup--ink .sngroup__t{background:var(--ink); color:var(--paper)}
+.snitem{display:block; width:100%; text-align:left; background:none; border:none; border-bottom:var(--bw2) solid transparent; font:700 13.5px var(--font-ui); padding:6px 8px; cursor:pointer; color:var(--ink)}
+.snitem:hover{background:var(--lemon-soft)}
+.snitem[aria-current="true"]{background:var(--lemon); border:var(--bw2) solid var(--ink); box-shadow:2px 2px 0 var(--ink); font-weight:900}
+.snfoot{font-size:11px; opacity:.75; margin-top:12px; border-top:var(--bw2) solid var(--ink); padding-top:10px}
+.pane{border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); background:var(--card); padding:22px}
+.pane__hd{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+.pane__block{display:inline-block; border:var(--bw) solid var(--ink); box-shadow:var(--sh-s); font:900 18px/1.2 var(--font-display); padding:7px 14px}
+.pane__en{font-family:var(--font-mono); font-weight:700; font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; opacity:.7}
+.pane__sub{font-size:13px; opacity:.85; margin:-6px 0 16px}
+.grprow{display:flex; gap:10px; align-items:flex-start; background:var(--paper-2); border:var(--bw2) solid var(--ink); padding:10px 14px; margin-bottom:10px}
+.grprow__l{font-weight:900; font-size:13.5px; flex:none}
+.grprow__d{font-size:12.5px; opacity:.85}
+.grprow .row__r{margin-left:auto}
+.skillc{border:var(--bw) solid var(--ink); box-shadow:var(--sh-s); background:var(--card); padding:14px; display:flex; flex-direction:column; gap:9px}
+.skillc__n{font:900 15px var(--font-display)}
+.dtable{width:100%; border-collapse:collapse; background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-s)}
+.dtable th{background:var(--ink); color:var(--paper); font:800 11px var(--font-mono); letter-spacing:.14em; text-transform:uppercase; text-align:left; padding:8px 12px; border:2px solid var(--ink)}
+.dtable td{border:2px solid var(--ink); padding:9px 12px; font-size:13px; font-weight:600; vertical-align:top}
+.dtable tr:nth-child(even) td{background:var(--paper-2)}
+.logpre{font:600 11.5px/1.7 var(--font-mono); background:var(--ink); color:var(--paper); border:var(--bw) solid var(--ink); box-shadow:var(--sh-s); padding:12px 14px; max-height:200px; overflow:auto; white-space:pre-wrap}
+.warnrow{background:var(--lemon-soft); border:var(--bw2) solid var(--ink); padding:8px 12px; font-weight:800; font-size:12.5px}
+
+/* ============ 设计规范 ============ */
+.specgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; align-items:start}
+.swgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px}
+.swb{border:var(--bw) solid var(--ink); box-shadow:4px 4px 0 var(--ink); padding:12px; text-align:left; cursor:pointer; font:inherit; color:var(--ink); width:100%}
+.swb:hover{transform:translate(-1px,-1px); box-shadow:6px 6px 0 var(--ink)}
+.swb:active{transform:translate(3px,3px); box-shadow:1px 1px 0 var(--ink)}
+.swb__hex{font:800 13px var(--font-mono)}
+.swb__cap{font:700 10px var(--font-mono); letter-spacing:.1em; text-transform:uppercase; opacity:.75; display:block; margin-top:2px}
+.fsladder{display:flex; flex-direction:column; gap:8px}
+.fsladder .fsline{display:flex; align-items:baseline; gap:14px; border-bottom:var(--bw2) solid var(--ink); padding-bottom:6px}
+.fsladder .fsline span:first-child{font:800 11px var(--font-mono); flex:none; opacity:.7}
+.spgrid,.rdgrid{display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap}
+.spbar{border:var(--bw) solid var(--ink); background:var(--card); box-shadow:var(--sh-s); width:26px; display:flex; flex-direction:column}
+.spbar i{display:block; background:var(--ink); width:100%}
+.spgrid .spbar,.rdgrid .spbox,.shgrid .spbox{position:relative}
+.rdb{border:var(--bw) solid var(--ink); background:var(--lemon); box-shadow:var(--sh-s); display:inline-block}
+.spbox{border:var(--bw) solid var(--ink); background:var(--lemon); box-shadow:var(--sh-s)}
+.mobox{border:var(--bw) solid var(--ink); background:var(--card); box-shadow:var(--sh-s); padding:12px; font-weight:800; font-size:12px}
+.tk89{letter-spacing:.02em}
+.wmbar{height:16px; border:var(--bw) solid var(--ink); background:repeating-linear-gradient(-45deg,var(--lemon) 0 14px,var(--ink) 14px 28px)}
+.a11ylist{display:flex; flex-direction:column; gap:10px}
+.a11ylist li{list-style:none; border-left:6px solid var(--ink); background:var(--card); border:var(--bw2) solid var(--ink); border-left:8px solid var(--green); padding:10px 14px; font-size:13px; font-weight:600}
+.a11ylist li:nth-child(2){border-left-color:var(--lemon)} .a11ylist li:nth-child(3){border-left-color:var(--ver)} .a11ylist li:nth-child(4){border-left-color:var(--ink)}
+.pressbp{transition:transform var(--t-fast) linear,box-shadow var(--t-fast) linear; transform:translate(0,0)}
+.specdemo:hover .pressbp{transform:translate(3px,3px); box-shadow:1px 1px 0 var(--ink)}
+
+/* ============ 对比现行 ============ */
+.cmpwrap{overflow-x:auto}
+.cmp{width:100%; min-width:860px; border-collapse:collapse; background:var(--card); border:var(--bw) solid var(--ink); box-shadow:var(--sh-m)}
+.cmp th{background:var(--ink); color:var(--paper); font:900 13px var(--font-display); padding:11px 14px; border:2px solid var(--ink); text-align:left}
+.cmp td{border:2px solid var(--ink); padding:11px 14px; font-size:13px; vertical-align:top}
+.cmp td:first-child{background:var(--lemon); font-weight:900; white-space:nowrap}
+.cmp td:nth-child(2){background:var(--paper-2)}
+.cmpnote{margin-top:16px; border:var(--bw) solid var(--ink); box-shadow:var(--sh-m); background:var(--card); padding:18px}
+.cmpnote b{font:900 15px var(--font-display)}
+.cmpnote p{font-size:13.5px; margin-top:6px}
+
+/* ============ 响应式 ============ */
+@media (max-width:1024px){
+  .wband--hero,.wband--duo,.wband--conn{grid-template-columns:1fr}
+  .tlwrap{grid-template-columns:1fr}
+  .rail{flex-direction:row; width:max-content}
+  .evstrip{grid-template-columns:1fr}
+}
+@media (max-width:768px){
+  .settings{grid-template-columns:1fr}
+  .sidenav{position:static}
+  .sngroup{display:inline-block; vertical-align:top; margin-right:10px}
+  .gdialog__bd{grid-template-columns:1fr}
+  .gdialog__list{border-right:none; border-bottom:var(--bw) solid var(--ink)}
+  .drawer{left:10px; right:10px; width:auto; top:auto; bottom:10px; max-height:70vh}
+  .crow{grid-template-columns:1fr; gap:8px}
+  .crow__st{flex-direction:row; align-items:center}
+  .composer{flex-direction:column}
+  .dtable{font-size:12px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important; transition:none !important}
+}
+</style>
+</head>
+<body data-current-view="workspace" data-reduced="off">
+<a class="skip" href="#main">跳到主内容</a>
+<svg style="display:none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M4 17h16" fill="none" stroke="currentColor" stroke-width="3"/></symbol>
+  <symbol id="i-max" viewBox="0 0 24 24"><path d="M5 5h14v14H5z" fill="none" stroke="currentColor" stroke-width="3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19" fill="none" stroke="currentColor" stroke-width="3"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M4 4h8v8H4zM12 12l7 7" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 3v10M8 13h8l-2-9h-4zM12 13v8" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 6l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><path d="M4 5h16v15H4zM4 9h16M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-rss" viewBox="0 0 24 24"><path d="M5 12a7 7 0 017 7M5 5a14 14 0 0114 14M4 19h.01" fill="none" stroke="currentColor" stroke-width="2.8"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h7v16H4zM13 4h7v16h-7zM11 8h2M11 16h2" fill="none" stroke="currentColor" stroke-width="2.4"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M4 4h13l3 3v13H4zM8 9h9M8 13h9" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16h12l-2-4V8a4 4 0 00-8 0v4zM10 19h4" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 17h10a4 4 0 10-.8-7.9A5 5 0 007 17z" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M5 5h5v5H5zM14 14h5v5h-5zM8 8l8 8M16 8l-8 8" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 13l5 5L20 6" fill="none" stroke="currentColor" stroke-width="3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M3 12h18M6 7h12v10H6z" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h11v11H9zM4 4h11v3" fill="none" stroke="currentColor" stroke-width="2.6"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z" fill="currentColor" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M3 12h16M13 6l7 6-7 6" fill="none" stroke="currentColor" stroke-width="3"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><path d="M7 7h10v10H7zM4 10h3M4 14h3M17 10h3M17 14h3M10 4v3M14 4v3M10 17v3M14 17v3" fill="none" stroke="currentColor" stroke-width="2.4"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6" fill="none" stroke="currentColor" stroke-width="2.8"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M6 6h12v12H6z" fill="none" stroke="currentColor" stroke-width="2.4"/></symbol>
+</svg>
+<header class="sitebar">
+  <div class="sitebar__brand">
+    <span class="brandblock">PersonalAgent</span>
+    <span class="brandtag">野拓 · 新粗野</span>
+    <span class="brandsub">Neo-Brutalism · Hard Edge / Hard Shadow</span>
+  </div>
+  <nav class="viewnav" aria-label="视图切换">
+    <button class="btn" data-go="workspace" aria-current="page">大工作区</button>
+    <button class="btn" data-go="settings">设置页</button>
+    <button class="btn" data-go="spec">设计规范</button>
+    <button class="btn" data-go="compare">对比现行</button>
+  </nav>
+</header>
+<main id="main" class="wrap">
+<!-- ================= 视图 A · 大工作区 ================= -->
+<section class="view" data-view="workspace" aria-label="大工作区视图">
+<div class="winframe">
+  <div class="wintitle">
+    <span class="wintitle__name">PersonalAgent</span>
+    <span class="wintitle__cap">Workspace · 40px titlebar · 整窗可拖动（主进程 IPC 接管）</span>
+    <div class="wintitle__btns">
+      <button class="btn" data-demo="workspace.minimize" aria-label="最小化" title="最小化"><svg width="16" height="16"><use href="#i-min"/></svg></button>
+      <button class="btn" data-demo="workspace.maximize" aria-label="最大化或还原" title="最大化或还原"><svg width="16" height="16"><use href="#i-max"/></svg></button>
+      <button class="btn wincls" data-demo="workspace.close" aria-label="关闭工作区" title="关闭工作区"><svg width="16" height="16"><use href="#i-x"/></svg></button>
+    </div>
+  </div>
+  <div class="wintop">
+    <span class="wintop__label">悬浮球对话</span>
+    <span class="pill" title="持续目标 · 已保存的目标 · 版本 7"><svg width="16" height="16" aria-hidden="true"><use href="#i-target"/></svg>目标 · 本季度完成产品设计系统落地</span>
+    <span class="st st--run"><span class="led led--on"></span> 进行中 2</span>
+    <span class="st st--apv">等待审批 2</span>
+    <span style="display:inline-flex;gap:8px;align-items:center">
+      <svg width="17" height="17" aria-hidden="true"><use href="#i-search"/></svg>
+      <input type="search" id="taskSearch" placeholder="搜索任务、工具或连接器…" aria-label="快捷搜索 · 过滤今日任务流" style="width:min(270px,36vw)">
+    </span>
+    <span class="tag tag--rot tag--green" style="transform:rotate(-1deg)">面板以球为锚点展开 · 球体不改动</span>
+    <div class="wintop__tools">
+      <button class="btn btn--sm" id="boardToggle" aria-expanded="true" aria-controls="connector-board">显示或隐藏连接器</button>
+      <button class="btn btn--sm" data-go="settings">打开设置</button>
+    </div>
+  </div>
+  <div class="prefs" aria-label="对话偏好">
+    <b>对话偏好条</b>
+    <span><label class="ul" for="auxModel" style="display:block;margin-bottom:3px">辅助任务模型</label>
+      <span class="selwrap"><select id="auxModel" data-persist="aux-model">
+        <option>使用默认辅助模型</option>
+        <option>盘古大模型 2.0</option>
+        <option disabled>Fake Model · 离线测试</option>
+        <option>AgentArts · Competition Profile</option>
+      </select></span></span>
+    <span style="display:inline-flex;align-items:center;gap:8px"><label class="ul" for="depthBar">思考深度</label>
+      <input id="depthBar" type="range" min="0" max="5" value="2" data-persist="pref-depth"><output class="out" aria-live="polite">平衡</output></span>
+    <span style="display:inline-flex;align-items:center;gap:8px"><span class="ul" id="qmLabel">快速模式</span><label class="swish" style="margin:0"><input type="checkbox" id="quickMode" data-persist="pref-quick" aria-labelledby="qmLabel" style="position:absolute;opacity:0;width:0;height:0"><span class="sw" aria-hidden="true"></span></label></span>
+    <span class="dim" style="margin-left:auto;font-size:12px">偏好条 → IPC thinking.update / conversation.model</span>
+  </div>
+
+  <div class="board">
+    <!-- 首屏 · 欢迎 + 球体占位 -->
+    <div class="wband wband--hero">
+      <div class="hero">
+        <h1 class="h-display">从一个想法开始</h1>
+        <p class="hero__sub">把注意力留给重要的事。</p>
+        <div class="composer">
+          <input type="text" id="composerInput" placeholder="说要做什么…" aria-label="说要做什么">
+          <button class="btn btn--lemon btn--big" id="composerSend"><svg width="18" height="18"><use href="#i-send"/></svg>发送</button>
+        </div>
+        <div class="hero__quick">
+          <span class="pill"><span class="led led--on"></span>在线 · 已连接桌面宿主</span>
+          <button class="btn btn--sm" data-demo="invoke('snapshot')">读取 Runtime 快照</button>
+        </div>
+      </div>
+      <div class="orbslot">
+        <div class="orbring" role="img" aria-label="球体占位">ORB</div>
+        <span class="orbslot__t">球体区域 · 现行设计保持不变</span>
+        <span class="orbslot__d">黑核、白色规则点阵、球体模糊关闭；112 逻辑尺寸，hover ≤90px 展开由主进程判定。本提案零改动。</span>
+        <span class="note" style="max-width:230px">这页看完把它钉到目标上<small>———— 野拓站务手记 · 不许撕</small></span>
+      </div>
+    </div>
+
+    <!-- 目标总览 -->
+    <h2 class="sign"><span class="sign__tab">目标总览</span><span class="sign__en">Goals · Bulletin</span>
+      <span class="tag tag--rot2 tag--ver" style="margin-left:auto">持续目标 · 受理不等于完成</span></h2>
+    <div class="goals">
+      <div class="goal c-lemon">
+        <span class="tag tag--rot tag--ink">持续目标 · 版本 7</span>
+        <span class="goal__name">完成本季度产品设计系统落地</span>
+        <div class="bar"><i class="bar__fill" style="width:72%"></i><span class="bar__pct">72%</span></div>
+        <div class="mile mile--done"><span class="box"></span>组件库验收 · 10/14 已读回</div>
+        <div class="mile"><span class="box"></span>规范评审 · 预计 11/02</div>
+        <span class="goal__time">开始 10/08 → 截止 12/20</span>
+      </div>
+      <div class="goal c-green">
+        <span class="tag tag--rot2">持续目标 · 版本 3</span>
+        <span class="goal__name">建立每周邮件回顾流程</span>
+        <div class="bar"><i class="bar__fill bar__fill--lemon" style="width:45%"></i><span class="bar__pct">45%</span></div>
+        <div class="mile"><span class="box"></span>IMAP 逐次审批策略 · 待授权</div>
+        <span class="goal__time">开始 09/30 → 截止 12/31</span>
+      </div>
+      <div class="goal c-white">
+        <span class="tag tag--rot tag--lemon">持续目标 · 版本 2</span>
+        <span class="goal__name">搭好本地知识库自动整理</span>
+        <div class="bar"><i class="bar__fill" style="width:30%"></i><span class="bar__pct">30%</span></div>
+        <div class="mile"><span class="box"></span>Obsidian 配对 · 10/28 前</div>
+        <span class="goal__time">开始 10/15 → 截止 11/30</span>
+      </div>
+    </div>
+
+    <!-- 持续目标对话框 -->
+    <div class="gdialog" role="group" aria-label="持续目标">
+      <div class="gdialog__hd">
+        <h3>持续目标</h3>
+        <span class="ul">Saved Goals · 已保存的目标</span>
+        <span class="tag tag--rot2 tag--green" style="margin-left:auto">受理不等于完成</span>
+      </div>
+      <div class="gdialog__bd">
+        <div class="gdialog__list">
+          <b style="font:900 13px var(--font-mono);letter-spacing:.14em;text-transform:uppercase">已保存的目标</b>
+          <div class="gsaverow"><span class="gsaverow__s">产品设计系统落地 · 进行中</span><span class="valpill">版本 7</span><button class="btn btn--sm" data-gact="revise">修订</button></div>
+          <div class="gsaverow"><span class="gsaverow__s">每周邮件回顾 · 进行中</span><span class="valpill">版本 3</span><button class="btn btn--sm" data-gact="revise">修订</button></div>
+          <div class="gsaverow"><span class="gsaverow__s">知识库自动整理 · 进行中</span><span class="valpill">版本 2</span><button class="btn btn--sm" data-gact="revise">修订</button></div>
+        </div>
+        <div class="gdialog__form">
+          <form class="gform" id="goalForm">
+            <label>目标 ID <input type="text" value="GOAL-2026Q4-014" data-goal-field="id"></label>
+            <label>敏感级别
+              <span class="seg" role="group" aria-label="敏感级别">
+                <button type="button" data-seg="敏感级别" value="私有" aria-pressed="false">私有</button>
+                <button type="button" data-seg="敏感级别" value="受限" aria-pressed="true">受限</button>
+                <button type="button" data-seg="敏感级别" value="公开" aria-pressed="false">公开</button>
+              </span></label>
+            <label class="full">目标内容 <textarea rows="2" data-goal-field="content" placeholder="一句话说清目标要到达哪里…">本季度完成产品设计系统落地并通过组件库验收</textarea></label>
+            <label>创建或修订原因 <input type="text" data-goal-field="reason" placeholder="例如：验收范围调整"></label>
+            <label>状态
+              <span class="selwrap"><select data-goal-field="state"><option>进行中</option><option>已撤回</option></select></span></label>
+            <label>开始时间 <input type="date" value="2026-10-08" data-goal-field="start"></label>
+            <label>截止时间 <input type="date" value="2026-12-20" data-goal-field="end"></label>
+          </form>
+        </div>
+      </div>
+      <div class="gdialog__ft">
+        <button class="btn btn--green btn--big" data-gact="save">保存目标</button>
+        <button class="btn" data-gact="new">新建目标</button>
+        <button class="btn" data-gact="refresh">刷新目标</button>
+        <button class="btn" data-gact="tasks">刷新任务状态</button>
+        <button class="btn btn--ver" data-gact="cancel">取消目标任务</button>
+        <button class="btn btn--sm" data-gact="approve">批准一次</button>
+        <button class="btn btn--sm" data-gact="deny">拒绝</button>
+      </div>
+      <div class="apv__bd" style="border-top:var(--bw) solid var(--ink);background:var(--paper-2)">
+        <output class="gstatus" id="goalStatus" role="status">目标已确认并读回：版本 6 → 7，图版本 12</output>
+      </div>
+    </div>
+
+    <!-- 今日任务流 -->
+    <h2 class="sign"><span class="sign__tab">今日任务流</span><span class="sign__en">Task Bulletin · 告示贴纸阵列</span>
+      <output class="tag tag--rot tag--ink" id="taskCount" style="margin-left:auto">共 10 条 · 显示 10</output></h2>
+    <div class="chipsbar">
+      <button class="btn btn--sm" data-f="all" aria-pressed="true">全部</button>
+      <button class="btn btn--sm" data-f="run" aria-pressed="false">进行中</button>
+      <button class="btn btn--sm" data-f="apv" aria-pressed="false">等待审批</button>
+      <button class="btn btn--sm" data-f="queue" aria-pressed="false">排队</button>
+      <button class="btn btn--sm" data-f="done" aria-pressed="false">已完成</button>
+      <button class="btn btn--sm" data-f="fail" aria-pressed="false">失败</button>
+      <span class="ul">单击行打开右侧详情抽屉 · Esc 关闭</span>
+    </div>
+    <div class="tgrid" id="taskGrid">
+      <button class="tcard" data-task="t1" data-group="done" data-search="整理今日计划 本地待办 已完成 todo">
+        <span class="tcard__top"><span class="tcard__name">整理今日计划</span><span class="st st--done">已完成</span></span>
+        <span class="tcard__meta"><span class="tag tag--lemon">本地待办</span><span class="mono">08:41 · 今日</span></span>
+        <span class="tcard__foot"><span class="ev ev--verified">verified ×2</span><span class="tag tag--rot2" style="font-size:10px">3 项待办已创建</span></span>
+      </button>
+      <button class="tcard" data-task="t2" data-group="run" data-search="项目进度同步 日程 邮件 进行中 执行中">
+        <span class="tcard__top"><span class="tcard__name">项目进度同步</span><span class="st st--run"><span class="led led--on"></span> 进行中</span></span>
+        <div class="bar" style="box-shadow:2px 2px 0 var(--ink)"><i class="bar__fill bar__fill--lemon" data-live style="width:62%"></i><span class="bar__pct" data-pct>62%</span></div>
+        <span class="tcard__meta"><span class="tag tag--green">日程 + 邮件</span><span class="mono">09:00 · 已用时 37 分钟</span></span>
+        <span class="tcard__foot"><span class="ev ev--conditional">conditional ×1</span></span>
+      </button>
+      <button class="tcard" data-task="t3" data-group="queue" data-search="汇总未读邮件要点 QQ 邮箱 IMAP 排队">
+        <span class="tcard__top"><span class="tcard__name">汇总未读邮件要点</span><span class="st st--queue">排队</span></span>
+        <span class="tcard__meta"><span class="tag tag--lemon">QQ 邮箱 IMAP</span><span class="mono">排队中 · 前方 1 项</span></span>
+        <span class="tcard__foot"><span class="ev ev--mock">mock ×0</span><span class="dim">只读取信头，不读正文</span></span>
+      </button>
+      <button class="tcard" data-task="t4" data-group="queue" data-search="生成周报草稿 知识库 项目规划 Obsidian 排队">
+        <span class="tcard__top"><span class="tcard__name">生成周报草稿并写入知识库「项目规划」</span><span class="st st--queue">排队</span></span>
+        <span class="tcard__meta"><span class="tag">知识库与笔记</span><span class="mono">预计 10:20</span></span>
+        <span class="tcard__foot"><span class="ev ev--mock">mock ×0</span></span>
+      </button>
+      <button class="tcard" data-task="t5" data-group="apv" data-search="订阅源新文章 RSS Atom 摘要 等待审批">
+        <span class="tcard__top"><span class="tcard__name">抓取订阅源新文章并生成摘要</span><span class="st st--apv"><span class="led led--warn"></span> 等待审批</span></span>
+        <span class="tcard__meta"><span class="tag tag--lemon">RSS / Atom</span><span class="mono">tools.request 读 4 个源</span></span>
+        <span class="tcard__foot"><span class="ev ev--conditional">conditional ×1</span><span class="tag tag--rot" style="font-size:10px;background:var(--ver)">越权需批准</span></span>
+      </button>
+      <button class="tcard" data-task="t6" data-group="apv" data-search="记事本写入 提醒便签 电脑操控 等待审批 F9">
+        <span class="tcard__top"><span class="tcard__name">记事本写入：新建提醒便签</span><span class="st st--apv"><span class="led led--warn"></span> 等待审批</span></span>
+        <span class="tcard__meta"><span class="tag tag--ver">电脑操控</span><span class="mono">批准后前台按 F9 确认</span></span>
+        <span class="tcard__foot"><span class="ev ev--conditional">conditional ×1</span></span>
+      </button>
+      <button class="tcard" data-task="t7" data-group="run" data-search="北京今日天气区间 天气 进行中">
+        <span class="tcard__top"><span class="tcard__name">北京今日天气区间查询</span><span class="st st--run"><span class="led led--on"></span> 进行中</span></span>
+        <div class="bar" style="box-shadow:2px 2px 0 var(--ink)"><i class="bar__fill" data-live style="width:34%"></i><span class="bar__pct" data-pct>34%</span></div>
+        <span class="tcard__meta"><span class="tag tag--green">天气</span><span class="mono">09:12 · 快取命中</span></span>
+        <span class="tcard__foot"><span class="ev ev--verified">verified ×1</span></span>
+      </button>
+      <button class="tcard" data-task="t8" data-group="fail" data-search="收件箱分类 本机 Laya 邮件 失败">
+        <span class="tcard__top"><span class="tcard__name">收件箱分类（本机 Laya · 6 类）</span><span class="st st--fail">失败</span></span>
+        <span class="tcard__meta"><span class="tag">邮件</span><span class="mono">08:57 · 连接中断（ECONNRESET）</span></span>
+        <span class="tcard__foot"><span class="ev ev--conditional">conditional ×1</span><span class="btn btn--sm" role="button" tabindex="0" data-demo="dialog 重试">重试一次</span></span>
+      </button>
+      <button class="tcard" data-task="t9" data-group="done" data-search="流程学习 生成候选步骤 reference-review 记忆 已完成">
+        <span class="tcard__top"><span class="tcard__name">流程学习：生成候选步骤（reference-review）</span><span class="st st--done">已完成</span></span>
+        <span class="tcard__meta"><span class="tag tag--green">记忆 · 流程</span><span class="mono">09:05 · 读回验证通过</span></span>
+        <span class="tcard__foot"><span class="ev ev--verified">verified ×3</span></span>
+      </button>
+      <button class="tcard" data-task="t10" data-group="done" data-search="语音听写草稿 Live 实时语音 已完成">
+        <span class="tcard__top"><span class="tcard__name">语音听写转草稿（Live 实时语音）</span><span class="st st--done">已完成</span></span>
+        <span class="tcard__meta"><span class="tag tag--lemon">Live · F8</span><span class="mono">08:22 · 4 分 18 秒</span></span>
+        <span class="tcard__foot"><span class="ev ev--verified">verified ×1</span><span class="dim">仅填草稿，已手动发送</span></span>
+      </button>
+    </div>
+    <div class="tempty" id="taskEmpty" hidden>没有匹配的任务。换个词，或清除筛选——告示板随时恢复原样。</div>
+
+    <!-- 审批中心 -->
+    <h2 class="sign"><span class="sign__tab sign__tab--ver">审批中心</span><span class="sign__en">Approvals · 警报牌</span>
+      <span class="tag tag--rot tag--ink" style="margin-left:auto">2 张待办批牌 · 决定即进入状态机</span></h2>
+    <div class="wband wband--conn">
+      <div>
+        <div class="apv" data-apv="a1">
+          <div class="apv__stripe" aria-hidden="true"></div>
+          <div class="apv__bd">
+            <span class="apv__t">需要你确认这次操作</span>
+            <div class="apv__op">tool.request · RSS/Atom 抓取「人工智能行业动态」等 4 个源，并生成本周摘要 → 写入订阅连接器</div>
+            <div class="apv__perm">权限：feeds.read、feeds.fetch</div>
+            <p class="apv__hint">批准后继续当前任务，无需再发一条消息。</p>
+            <div class="apv__acts">
+              <button class="btn btn--green btn--big" data-approval-decision="allow_once">批准并继续</button>
+              <button class="btn btn--ver btn--big" data-approval-decision="deny">拒绝</button>
+            </div>
+          </div>
+        </div>
+        <div class="apv" data-apv="a2">
+          <div class="apv__stripe" aria-hidden="true"></div>
+          <div class="apv__bd">
+            <span class="apv__t">需要你确认这次操作</span>
+            <div class="apv__op">电脑操控 · 向前台「记事本」写入提醒便签（≤4096 字符），写入完成后需按 F9 核实执行结果</div>
+            <div class="apv__perm">权限：computer.clipboard、computer.focus · 越权需批准</div>
+            <p class="apv__hint">批准后继续当前任务，无需再发一条消息。</p>
+            <div class="apv__acts">
+              <button class="btn btn--green btn--big" data-approval-decision="allow_once">批准并继续</button>
+              <button class="btn btn--ver btn--big" data-approval-decision="deny">拒绝</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="apv apv--dead" aria-label="已过期示例">
+          <div class="apv__stripe" style="opacity:.35" aria-hidden="true"></div>
+          <div class="apv__bd">
+            <span class="apv__t">需要你确认这次操作</span>
+            <div class="apv__op">tool.request · CalDAV 单条 UID 读取（已超时）</div>
+            <div class="apv__res"><span class="stamp stamp--exp">已过期</span>
+              <span class="apv__perm" style="color:var(--ink)">此授权已过期，请停止任务后重新发起。</span></div>
+          </div>
+        </div>
+        <div class="note" style="margin-top:18px">批准过的牌不摘——历史都进「设置 · 安全 · 授权状态表」<small>———— 决定由 Runtime 校验，界面不直接授予权限</small></div>
+      </div>
+    </div>
+
+    <!-- 对话时间线 -->
+    <h2 class="sign"><span class="sign__tab sign__tab--white">对话时间线</span><span class="sign__en">Conversation · 硬边气泡</span></h2>
+    <div class="tlwrap">
+      <div class="rail" aria-label="对话定位导航">
+        <b>轮次</b>
+        <a href="#turn1" title="第 1 轮对话 · 用户发起任务" aria-label="第 1 轮对话"><i style="display:block"></i></a>
+        <a href="#turn2" title="第 2 轮对话 · 助手回复并附证据" aria-label="第 2 轮对话"><i style="display:block"></i></a>
+        <a href="#turn3" title="第 3 轮对话 · 追加目标修订" aria-label="第 3 轮对话"><i style="display:block"></i></a>
+        <a href="#turn4" title="第 4 轮对话 · 待续（正在回答）" aria-label="第 4 轮对话"><i style="display:block"></i></a>
+      </div>
+      <div class="turns">
+        <div class="bub bub--user" id="turn1"><span class="bub__who">user · 第 1 轮对话</span>同步一下项目进度，把未读邮件里的更新整理成要点，我先看重排的日程。</div>
+        <div class="bub bub--ai" id="turn2"><span class="bub__who">assistant · 第 2 轮对话</span>
+          已挂上 QQ 邮箱 IMAP：只读取收件箱信头，在本机 Laya 分类；不读取正文，不发送、移动或删除邮件。要点草稿生成中，日程与待办卡片已就绪。
+          <span class="bubacts">
+            <button class="btn btn--sm" data-demo="对话详情">查看</button>
+            <button class="btn btn--sm" data-copy-bubble="已挂上 QQ 邮箱 IMAP…要点草稿生成中。" title="复制回答">复制回答</button>
+            <button class="btn btn--sm" data-demo="thinking.cancel">停止</button>
+          </span>
+        </div>
+        <div class="bub bub--user" id="turn3"><span class="bub__who">user · 第 3 轮对话</span>把「规范评审」里程碑改到 11/02，作为修订写进持续目标。</div>
+        <div class="bub bub--ai" id="turn4"><span class="bub__who">assistant · 第 4 轮对话 · 思考中</span>
+          目标写入任务正在提交；受理不等于完成。
+          <span class="bubacts"><span class="st st--run"><span class="led led--on"></span> 等待结果核实</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 连接器板 + 证据 -->
+    <div id="connector-board" aria-label="连接器板">
+    <h2 class="sign"><span class="sign__tab sign__tab--green">连接器</span><span class="sign__en">Connector Board · 行块信号灯</span>
+      <button class="btn btn--sm" data-demo="capability.list" style="margin-left:auto">刷新连接器</button></h2>
+    <div class="wband wband--conn">
+      <div>
+        <button class="crow" data-conn="weather">
+          <span class="crow__tag c-lemon" style="padding:8px;border:var(--bw) solid var(--ink)"><span class="crow__ic"><svg width="18" height="18"><use href="#i-cloud"/></svg></span>天气</span>
+          <span class="crow__body"><span class="crow__main"><span class="wtemp">18°</span> 多云 · 北京 · 今日（区间 预览）</span>
+            <span class="crow__foot">footer：已连接 · 实时天气数据</span></span>
+          <span class="crow__st"><span class="st st--ok"><span class="led led--on"></span> 已连接</span><span class="crow__ev">最近事件 · 09:10</span></span>
+        </button>
+        <button class="crow" data-conn="calendar">
+          <span class="crow__tag c-green" style="padding:8px;border:var(--bw) solid var(--ink)"><span class="crow__ic"><svg width="18" height="18"><use href="#i-cal"/></svg></span>日程与待办</span>
+          <span class="crow__body"><ul class="wlist">
+            <li><span class="tm">09:30</span>整理今日计划 <span class="st st--warn">待完成</span></li>
+            <li><span class="tm">14:00</span>项目进度同步 <span class="st st--warn">待完成</span></li>
+            <li><span class="tm">18:00</span>周报评审旧例 <span class="st st--ok">已完成</span></li>
+          </ul><span class="crow__foot">footer：本地待办 · 3 项</span></span>
+          <span class="crow__st"><span class="st st--ok"><span class="led led--on"></span> 已连接</span><span class="crow__ev">最近事件 · 今天·14:00</span></span>
+        </button>
+        <button class="crow" data-conn="mail">
+          <span class="crow__tag c-white" style="padding:8px;border:var(--bw) solid var(--ink)"><span class="crow__ic"><svg width="18" height="18"><use href="#i-mail"/></svg></span>邮件</span>
+          <span class="crow__body"><span class="crow__main"><b style="border:var(--bw2) solid var(--ink);padding:1px 7px;background:var(--lemon-soft)">林</b> 林晓 · 09:12 项目进度已更新</span>
+            <span class="crow__foot" style="margin-top:6px">footer：已授权本会话 · 5 封未读</span></span>
+          <span class="crow__st"><span class="st st--warn"><span class="led led--warn"></span> 需要授权</span><span class="crow__ev">最近事件 · 09:12</span></span>
+        </button>
+        <button class="crow" data-conn="feeds">
+          <span class="crow__tag c-green" style="padding:8px;border:var(--bw) solid var(--ink)"><span class="crow__ic"><svg width="18" height="18"><use href="#i-rss"/></svg></span>订阅</span>
+          <span class="crow__body"><span class="crow__main">已订阅 4 个源 · 最新文章「人工智能行业动态」</span>
+            <span class="crow__foot">以及 2 等 · footer：已授权本会话</span></span>
+          <span class="crow__st"><span class="st st--ok"><span class="led led--on"></span> 已连接</span><span class="crow__ev">最近事件 · 08:30</span></span>
+        </button>
+      </div>
+      <div>
+        <button class="crow" data-conn="notes">
+          <span class="crow__tag c-lemon" style="padding:8px;border:var(--bw) solid var(--ink)"><span class="crow__ic"><svg width="18" height="18"><use href="#i-book"/></svg></span>知识库与笔记</span>
+          <span class="crow__body"><span class="crow__main">本地知识库 · 最近笔记「项目规划」</span>
+            <span class="crow__foot">footer：本地知识库已挂载</span></span>
+          <span class="crow__st"><span class="st st--ok"><span class="led led--on"></span> 已连接</span><span class="crow__ev">最近事件 · 昨天·22:40</span></span>
+        </button>
+        <button class="crow" data-conn="notify">
+          <span class="crow__tag c-white" style="padding:8px;border:var(--bw) solid var(--ink)"><span class="crow__ic"><svg width="18" height="18"><use href="#i-bell"/></svg></span>通知</span>
+          <span class="crow__body"><ul class="wlist">
+            <li><span class="tm">今天·14:00</span>日程提醒 · 项目进度同步</li>
+            <li><span class="tm">今天·09:30</span>待办提醒 · 整理今日计划</li>
+            <li><span class="tm">昨天·18:05</span>周报评审记录归档</li>
+          </ul><span class="crow__foot">徽标：5 条 / 预览 / 读取失败（各态示例）</span></span>
+          <span class="crow__st"><span class="st st--err">读取失败</span><span class="crow__ev">最近事件 · 09:00</span></span>
+        </button>
+        <button class="crow" data-conn="voice">
+          <span class="crow__tag c-ver" style="padding:8px;border:var(--bw) solid var(--ink)"><span class="crow__ic"><svg width="18" height="18"><use href="#i-gear"/></svg></span>语音 · Live</span>
+          <span class="crow__body"><span class="crow__main">语音转文字（华为 SIS）· 快捷键 F8</span>
+            <span class="crow__foot">唤醒词：你好小派 · 语音能力状态</span></span>
+          <span class="crow__st"><span class="st st--queue"><span class="led led--off"></span> 未接入</span><span class="crow__ev">最近事件 · —</span></span>
+        </button>
+        <div class="note" style="margin-top:14px">打了红旗的行先别点开——「未连接的能力会保持明确的不可用状态。」<small>———— 健康词库：已连接 / 连接中 / 需要授权 / 连接异常 / 未连接 / 未接入</small></div>
+      </div>
+    </div>
+    </div>
+
+    <!-- 证据与状态 -->
+    <h2 class="sign"><span class="sign__tab">证据与状态</span><span class="sign__en">Evidence &amp; Status</span></h2>
+    <div class="evstrip">
+      <div class="evcard c-white"><b>mock</b><p>本地草稿与演示数据；不来自 Runtime，任何管线都不得当作事实引用。</p></div>
+      <div class="evcard c-lemon"><b>conditional</b><p>已执行、待核实：等待外部结果或等待结果核实的中间态证据。</p></div>
+      <div class="evcard c-green"><b>verified</b><p>来源 Runtime 快照并已读回；图版本与任务版本可追溯。</p></div>
+    </div>
+    <div class="oncapsule">
+      <span class="pill"><span class="led led--on"></span>在线 · 桌面宿主与 Runtime 正常</span>
+      <span class="pill"><span class="led led--err"></span>离线 · 未连接的能力会保持明确的不可用状态。</span>
+      <span class="valpill">只展示 Runtime 任务快照；Evidence 引用数量不代表目标系统已核实。</span>
+    </div>
+  </div>
+</div>
+
+<!-- 任务详情抽屉 -->
+<aside class="drawer" id="drawer" role="dialog" aria-label="任务详情" aria-hidden="true" hidden>
+  <div class="drawer__hd">
+    <h3 id="drawerTitle">任务详情</h3>
+    <span id="drawerChip" class="st st--run" style="margin-left:auto;flex:none">执行中</span>
+    <button class="btn btn--sm" id="drawerClose" aria-label="关闭抽屉">关闭 Esc✕</button>
+  </div>
+  <div class="drawer__bd">
+    <div class="drawer__sec"><b>你的消息</b><p id="drMsg">—</p></div>
+    <div class="drawer__sec"><b>回答</b><p id="drAns">—</p>
+      <div class="bubacts"><button class="btn btn--sm" data-copy-bubble="DYN" id="drCopy" title="复制回答">复制回答</button><button class="btn btn--sm" id="drStop">停止</button></div>
+    </div>
+    <div class="drawer__sec"><b>模型与验证</b><p id="drModel">—</p></div>
+    <div class="drawer__sec"><b>执行状态 · 步骤时间线</b><ul class="steps" id="drSteps"></ul></div>
+    <div class="drawer__sec"><b>证据徽章</b><div id="drEv"></div></div>
+  </div>
+</aside>
+</section>
+
+<!-- ================= 视图 B · 设置页 ================= -->
+<section class="view" data-view="settings" aria-label="设置页视图" hidden>
+<h2 class="sign"><span class="sign__tab">设置页</span><span class="sign__en">Settings · 班签 / 登记表</span>
+  <span class="tag tag--rot tag--lemon" style="margin-left:auto">分组色块大标 · 黄 / 绿 / 红轮换</span></h2>
+<div class="settings">
+  <aside class="sidenav" aria-label="设置分组导航">
+    <div class="sidenav__search"><input type="search" id="snSearch" placeholder="搜索设置…" aria-label="搜索设置"></div>
+    <nav>
+      <div class="sngroup"><span class="sngroup__t">个人</span>
+        <button class="snitem" data-pane="general" aria-current="true">常规</button>
+        <button class="snitem" data-pane="j-ph">个人资料</button>
+        <button class="snitem" data-pane="appearance">外观</button>
+        <button class="snitem" data-pane="voice">语音</button>
+        <button class="snitem" data-pane="j-config">配置</button>
+        <button class="snitem" data-pane="j-persona">个性化</button>
+        <button class="snitem" data-pane="j-pet">桌面宠物</button>
+        <button class="snitem" data-pane="shortcuts">键盘快捷键</button>
+        <button class="snitem" data-pane="j-analytics">分析</button>
+        <button class="snitem" data-pane="model">模型</button>
+        <button class="snitem" data-pane="memory">记忆</button>
+      </div>
+      <div class="sngroup sngroup--green"><span class="sngroup__t">集成</span>
+        <button class="snitem" data-pane="computer">电脑操控</button>
+        <button class="snitem" data-pane="plugins">插件</button>
+      </div>
+      <div class="sngroup sngroup--ver"><span class="sngroup__t">编码</span>
+        <button class="snitem" data-pane="hooks">钩子</button>
+        <button class="snitem" data-pane="connections">连接</button>
+        <button class="snitem" data-pane="git">Git</button>
+        <button class="snitem" data-pane="env">环境</button>
+        <button class="snitem" data-pane="worktrees">Worktrees</button>
+        <button class="snitem" data-pane="security">安全</button>
+      </div>
+      <div class="sngroup sngroup--green"><span class="sngroup__t">任务</span>
+        <button class="snitem" data-pane="tasks">任务监控</button>
+        <button class="snitem" data-pane="j-arch">已归档任务</button>
+      </div>
+      <div class="sngroup sngroup--ink"><span class="sngroup__t">其他 · 未入导航标题</span>
+        <button class="snitem" data-pane="j-import">导入</button>
+        <button class="snitem" data-pane="overview">概览</button>
+        <button class="snitem" data-pane="j-account">账户</button>
+        <button class="snitem" data-pane="j-browser">浏览器</button>
+        <button class="snitem" data-pane="j-usage">使用情况和计费</button>
+      </div>
+      <div class="sngroup sngroup--ver"><span class="sngroup__t">桌面</span>
+        <button class="snitem" data-pane="desktop">桌面设置（B 层窗口）</button>
+      </div>
+    </nav>
+    <p class="snfoot">私人助理 · Windows / 野拓黑黄 / 硬边实面<br>（改写自「私人助理 · Windows / 冷光青 / 标准毛玻璃」）</p>
+    <span class="note" style="margin-top:12px;transform:rotate(-1.4deg)">按过的开关刷新也不丢<small>———— 本地记忆 · key 前缀 pa-prop-04-neo-brutalist-</small></span>
+  </aside>
+  <div class="panes" id="panes">
+
+  <article class="pane" id="pane-general" style="display:block">
+    <div class="pane__hd"><span class="pane__block c-lemon">常规</span><span class="pane__en">General</span></div>
+    <p class="pane__sub">普通设置页（直达 pane） · 四行即全部主张。</p>
+    <div class="row"><div><span class="row__t">界面语言</span><span class="row__d">锁定为简体中文；新文案需备好中英词典（desktop-shell.js 强制对照）。</span></div>
+      <div class="row__r"><span class="valpill">简体中文 · 只读</span></div></div>
+    <div class="row"><div><span class="row__t">模型与 API</span><span class="row__d">跳转至模型页管理 Endpoint / 部署名称 / API Key。</span></div>
+      <div class="row__r"><a class="btn btn--lemon" href="#pane-model" data-link-pane="model">打开模型</a></div></div>
+    <div class="row"><div><span class="row__t">开机启动</span><span class="row__d">宿主能力尚未接入（待接入）。</span></div>
+      <div class="row__r"><span class="valpill">待接入</span></div></div>
+    <div class="row"><div><span class="row__t">后台驻留</span><span class="row__d">关闭面板后托盘仍保持运行。</span></div>
+      <div class="row__r"><span class="st st--ok">已启用</span></div></div>
+  </article>
+
+  <article class="pane" id="pane-appearance" hidden>
+    <div class="pane__hd"><span class="pane__block c-green">外观</span><span class="pane__en">Appearance</span></div>
+    <div class="row"><div><span class="row__t">界面主题</span><span class="row__d">跟随系统 / 深色 / 浅色 → localStorage pa-theme 跨窗口同步。</span></div>
+      <div class="row__r"><span class="selwrap"><select id="apTheme" data-persist="appearance-theme"><option>跟随系统</option><option>深色</option><option>浅色</option></select></span></div></div>
+    <div class="row"><div><span class="row__t">降低动效</span><span class="row__d">即 pa-calm：动画停 + 全部过渡 ≤150ms；与系统 prefers-reduced-motion 同向。</span></div>
+      <div class="row__r"><label class="swish"><input type="checkbox" data-persist="appearance-calm" data-role="calm"><span class="sw" aria-hidden="true"></span></label><span class="ul">switch</span></div></div>
+    <div class="row"><div><span class="row__t">玻璃材质</span><span class="row__d">现行读值「标准毛玻璃（由当前设计方案锁定）」。裁决提案：野拓落地后该行改叙为 zero-blur 硬边实面。</span></div>
+      <div class="row__r"><span class="valpill">硬边实面（提案裁决 · 由野拓锁定）</span></div></div>
+    <div class="row"><div><span class="row__t">ORB-02</span><span class="row__d">黑核、白色规则点阵、球体模糊关闭。球面上任何像素都不在本提案变更范围。</span></div>
+      <div class="row__r"><span class="valpill">现行设计保持不变</span></div></div>
+  </article>
+
+  <article class="pane" id="pane-voice" hidden>
+    <div class="pane__hd"><span class="pane__block c-ver">语音</span><span class="pane__en">Voice</span></div>
+    <div class="row"><div><span class="row__t">麦克风听写</span><span class="row__d">状态由设备能力位给出，不伪装接通。</span></div>
+      <div class="row__r"><span class="st st--ok">已配置</span></div></div>
+    <div class="row"><div><span class="row__t">Live 实时语音</span><span class="row__d">通话中 / 已配置 / 未配置 三态；快捷键 F1–F24 默认 F8，可被 reason 覆盖。</span></div>
+      <div class="row__r"><span class="st st--ok">已配置</span></div></div>
+    <div class="row"><div><span class="row__t">Live 连接表单</span><span class="row__d">业务空间 ID、百炼 API Key、快捷键、音频邮件 consent。本次最多 10 分钟；关闭面板停止。唤醒后语音发送到华为 SIS 转文字，仅填草稿，需手动发送。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <label class="ul" for="liveSpace" style="margin-bottom:3px">业务空间 ID</label>
+        <input type="text" id="liveSpace" value="PA-LIVE-SJC-01" style="min-width:220px">
+        <label class="ul" for="liveKey" style="margin:8px 0 3px">百炼 API Key</label>
+        <input type="password" id="liveKey" placeholder="已由 Windows 安全存储加密" style="min-width:220px">
+        <span style="display:flex;gap:8px;align-items:center;margin:8px 0 0"><span class="ul">快捷键 F1–F24</span>
+          <span class="selwrap"><select data-persist="live-fkey" id="liveFkey"><option>F8</option><option>F1 … F24</option></select></span></span>
+        <label class="swish" style="margin-top:8px"><input type="checkbox" data-persist="live-mail-consent" data-role="liveconsent"><span class="sw" aria-hidden="true"></span><span class="ul" style="margin-left:10px">音频邮件 consent</span></label>
+        <button class="btn btn--green" style="margin-top:10px" data-demo="live.save">保存</button>
+      </div></div>
+    <div class="row"><div><span class="row__t">语音播报</span><span class="row__d">安全隔离：停止播报与任务取消是两条独立通道。</span></div>
+      <div class="row__r"><span class="valpill">安全隔离（停止播报与任务取消独立）</span></div></div>
+  </article>
+
+  <article class="pane" id="pane-shortcuts" hidden>
+    <div class="pane__hd"><span class="pane__block c-lemon">键盘快捷键</span><span class="pane__en"> Shortcuts</span></div>
+    <div class="row"><div><span class="row__t">发送消息</span><span class="row__d">对话面板 composer 回车即发送。</span></div>
+      <div class="row__r"><span class="kbd">Enter</span></div></div>
+    <div class="row"><div><span class="row__t">换行</span><span class="row__d">多行输入用组合键，不触发发送。</span></div>
+      <div class="row__r"><span class="kbd">Shift</span><span class="ul">＋</span><span class="kbd">Enter</span></div></div>
+    <div class="row"><div><span class="row__t">收起面板</span><span class="row__d">面板 header 的收起按钮（非全局快捷键）；Esc 也可以隐藏面板。</span></div>
+      <div class="row__r"><span class="st st--queue">面板收起按钮</span></div></div>
+    <div class="row"><div><span class="row__t">Live 开启 / 关闭</span><span class="row__d">F8 默认，可被 reason 覆盖；提示「本次最多 10 分钟；关闭面板停止。」</span></div>
+      <div class="row__r"><span class="kbd">F8</span></div></div>
+    <div class="row"><div><span class="row__t">设备级绑定（只读备忘）</span><span class="row__d">F9＝记事本写入确认 · F8＝Live · Ctrl＋Shift＋Space＝显示球。</span></div>
+      <div class="row__r"><span class="kbd">F9</span><span class="kbd">F8</span><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">Space</span></div></div>
+  </article>
+
+  <article class="pane" id="pane-model" hidden>
+    <div class="pane__hd"><span class="pane__block c-green">模型</span><span class="pane__en">Models</span></div>
+    <div class="grout" style="margin-bottom:16px">
+      <div class="skillc"><span class="skillc__n">盘古大模型 2.0</span>
+        <div class="grprow"><span class="st st--ok">连接正常</span><span class="grprow__d">Endpoints 已生效 · model pangu-nlp-n1-32k</span></div>
+        <div style="display:flex;gap:10px;align-items:center"><label class="swish"><input type="checkbox" checked data-persist="model-1-on" data-role="m1"><span class="sw" aria-hidden="true"></span></label><span class="ul">启停</span><button class="btn btn--sm" style="margin-left:auto" data-demo="model.edit">编辑</button></div>
+      </div>
+      <div class="skillc"><span class="skillc__n">Fake Model · 离线测试</span>
+        <div class="grprow"><span class="st st--warn">等待测试</span><span class="grprow__d">回放验证用；不上业务流量</span></div>
+        <div style="display:flex;gap:10px;align-items:center"><label class="swish"><input type="checkbox" data-persist="model-2-on"><span class="sw" aria-hidden="true"></span></label><span class="ul">启停</span><button class="btn btn--sm" style="margin-left:auto" data-demo="model.edit">编辑</button></div>
+      </div>
+      <div class="skillc"><span class="skillc__n">AgentArts · Competition Profile</span>
+        <div class="grprow"><span class="st st--err">连接失败</span><span class="grprow__d">网关不可达；排障后重连</span></div>
+        <div style="display:flex;gap:10px;align-items:center"><label class="swish"><input type="checkbox" data-persist="model-3-on"><span class="sw" aria-hidden="true"></span></label><span class="ul">启停</span><button class="btn btn--sm" style="margin-left:auto" data-demo="model.edit">编辑</button></div>
+      </div>
+    </div>
+    <div class="row"><div><span class="row__t">编辑表单（Endpoint / 部署）</span><span class="row__d">API Key 仅进入主进程，并由 Windows 安全存储加密；列表不会显示密钥内容。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <input type="text" placeholder="Endpoint" style="min-width:240px">
+        <input type="text" value="pangu-nlp-n1-32k" style="min-width:240px;margin-top:8px" aria-label="模型名称">
+        <input type="text" placeholder="部署名称" style="min-width:240px;margin-top:8px">
+        <input type="password" placeholder="API Key（不回显）" style="min-width:240px;margin-top:8px">
+        <span style="display:flex;gap:10px;margin-top:10px"><button class="btn btn--green" data-demo="model.save">保存</button><button class="btn" data-demo="model.test">测试连接</button></span>
+      </div></div>
+    <div class="row"><div><span class="row__t">推理偏好</span><span class="row__d">思考深度 0–5（分段＝quick selects + 滑杆联动），快速模式开关联动 composer。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <span class="seg" role="group" aria-label="思考深度">
+          <button type="button" data-seg="深度" value="0" aria-pressed="false">最低</button><button type="button" data-seg="深度" value="1" aria-pressed="false">低</button><button type="button" data-seg="深度" value="2" aria-pressed="true">平衡</button><button type="button" data-seg="深度" value="3" aria-pressed="false">深入</button><button type="button" data-seg="深度" value="4" aria-pressed="false">高</button><button type="button" data-seg="深度" value="5" aria-pressed="false">最高</button>
+        </span>
+        <span style="display:flex;gap:8px;align-items:center;margin-top:10px"><span class="ul">滑杆 · 思考深度</span><input type="range" min="0" max="5" value="2" id="depthBar2"><output class="out">平衡</output></span>
+      </div></div>
+    <div class="row"><div><span class="row__t">AgentArts 主智能体</span><span class="row__d">网关地址 / 运行时实例名称 / Authorization。</span></div>
+      <div class="row__r">
+        <input type="text" placeholder="网关地址" style="min-width:180px">
+        <input type="text" placeholder="运行时实例名称" style="min-width:180px">
+        <input type="password" placeholder="Authorization" style="min-width:160px">
+        <button class="btn btn--green btn--sm" data-demo="agentar.save">保存</button>
+        <button class="btn btn--ver btn--sm" data-demo="agentar.revoke">清除并撤销凭据</button>
+      </div></div>
+    <div class="row"><div><span class="row__t">辅助子任务模型</span><span class="row__d">modelApi.configure 大表单（reasoning_effort 声明）。</span></div>
+      <div class="row__r"><button class="btn" data-demo="modelApi.configure">打开表单</button></div></div>
+  </article>
+
+  <article class="pane" id="pane-memory" hidden>
+    <div class="pane__hd"><span class="pane__block c-ver">记忆</span><span class="pane__en">Memory</span></div>
+    <div class="row"><div><span class="row__t">私人记忆 vault</span><span class="row__d">选择本机 Vault 文件夹 → 搜索摘录 → 确认保存；与已保存记忆分页。</span></div>
+      <div class="row__r">
+        <button class="btn" data-demo="vault.pick">选择本机 Vault 文件夹</button>
+        <input type="text" placeholder="搜索摘录…" style="min-width:160px">
+        <button class="btn btn--green btn--sm" data-demo="vault.save">确认保存</button>
+        <span class="ul" style="margin:0 4px">已保存记忆</span>
+        <button class="btn btn--sm" data-demo="vault.page">‹ 上一页</button><span class="valpill">第 1 / 3 页</span><button class="btn btn--sm" data-demo="vault.page">下一页 ›</button>
+      </div></div>
+    <div class="row"><div><span class="row__t">撤回与删除</span><span class="row__d">撤销只撤一个版本；删除所有版本为终局操作，需逐次审批。</span></div>
+      <div class="row__r"><button class="btn btn--sm" data-demo="vault.revoke">撤回</button><button class="btn btn--ver btn--sm" data-demo="vault.delete">删除所有版本</button></div></div>
+    <div class="row"><div><span class="row__t">知识库与笔记</span><span class="row__d">目录检索、关注事项卡、待确认提醒。</span></div>
+      <div class="row__r"><button class="btn btn--sm" data-demo="kb.search">目录检索</button><span class="st st--warn">1 条待确认提醒</span></div></div>
+    <div class="row"><div><span class="row__t">知识源与笔记整理</span><span class="row__d">选择知识库 / 数据范围 / 允许本会话整理 / 公开查询 / 撤销；Obsidian 配对。</span></div>
+      <div class="row__r">
+        <span class="selwrap"><select data-persist="kb-src"><option>知识库 · 项目规划</option><option>知识库 · 全部</option></select></span>
+        <span class="selwrap"><select data-persist="kb-scope"><option>数据范围 · 当前工作区</option><option>数据范围 · 仅本机</option></select></span>
+        <label class="swish"><input type="checkbox" checked data-persist="kb-organize" data-role="kb1"><span class="sw" aria-hidden="true"></span></label><span class="ul">允许本会话整理</span>
+        <label class="swish"><input type="checkbox" data-persist="kb-public" data-role="kb2"><span class="sw" aria-hidden="true"></span></label><span class="ul">公开查询</span>
+        <button class="btn btn--green btn--sm" data-demo="kb.save">保存所选权限</button>
+        <button class="btn btn--sm" data-demo="kb.revoke">撤销</button>
+        <button class="btn btn--sm" data-demo="obsidian.pair">Obsidian 配对</button>
+      </div></div>
+    <div class="row"><div><span class="row__t">本地 Laya</span><span class="row__d">本地模型常驻本机；云端分析关闭时完全不外发。</span></div>
+      <div class="row__r"><button class="btn btn--sm" data-demo="laya.start">启动本地模型</button><button class="btn btn--ver btn--sm" data-demo="laya.stop">停止并释放</button></div></div>
+    <div class="row"><div><span class="row__t">私人记忆与流程学习</span><span class="row__d">流程 reference-review 全链路：读取版本 → 生成候选 → 提交验证任务 → 读回验证 → 确认启用 → 运行 / 停止或核实 → 删除流程。</span></div>
+      <div class="row__r">
+        <button class="btn btn--sm" data-demo="flow.read">读取版本</button><button class="btn btn--sm" data-demo="flow.candidate">生成候选</button>
+        <button class="btn btn--sm" data-demo="flow.submit">提交验证任务</button><button class="btn btn--sm" data-demo="flow.readback">读回验证</button>
+        <button class="btn btn--green btn--sm" data-demo="flow.enable">确认启用</button><button class="btn btn--sm" data-demo="flow.run">运行</button>
+        <button class="btn btn--sm" data-demo="flow.stop">停止或核实</button><button class="btn btn--ver btn--sm" data-demo="flow.delete">删除流程</button>
+      </div></div>
+  </article>
+
+  <article class="pane" id="pane-connections" hidden>
+    <div class="pane__hd"><span class="pane__block c-lemon">连接</span><span class="pane__en">Connections</span></div>
+    <div style="overflow-x:auto">
+    <table class="dtable"><caption class="ul" style="text-align:left;padding:4px 0 8px;caption-side:top">连接健康表（能力 / 状态 / 说明）</caption>
+      <thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>天气</td><td><span class="st st--ok">已连接</span></td><td>实时天气数据 · 区间预览</td></tr>
+        <tr><td>QQ 邮箱 IMAP</td><td><span class="st st--warn">需要授权</span></td><td>只读取收件箱信头，在本机 Laya 分类；不读取正文，不发送、移动或删除邮件。</td></tr>
+        <tr><td>CalDAV</td><td><span class="st st--warn">需要授权</span></td><td>单条 UID 读取逐次审批</td></tr>
+        <tr><td>RSS / Atom</td><td><span class="st st--ok">已连接</span></td><td>已订阅 4 个源</td></tr>
+        <tr><td>本地待办</td><td><span class="st st--ok">已连接</span></td><td>本地待办 · 3 项</td></tr>
+      </tbody></table></div>
+    <div class="row" style="margin-top:16px"><div><span class="row__t">QQ 邮箱 IMAP</span><span class="row__d">密码仅用于向华为 IAM 登录，不保存；本机 Laya 分类 6 类；云端分析默认关。</span></div>
+      <div class="row__r">
+        <label class="swish"><input type="checkbox" checked data-persist="imap-session" data-role="imap"><span class="sw" aria-hidden="true"></span></label><span class="ul">允许本会话</span>
+        <button class="btn btn--ver btn--sm" data-demo="imap.revoke">关闭并撤销</button>
+        <label class="swish"><input type="checkbox" data-persist="imap-cloud" data-role="imapc"><span class="sw" aria-hidden="true"></span></label><span class="ul">云端分析</span>
+      </div></div>
+    <div class="row"><div><span class="row__t">CalDAV</span><span class="row__d">名称 / HTTPS 集合地址 / 账号 / 应用密码；单条 UID 读取逐次审批。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <input type="text" placeholder="名称" style="min-width:220px"><input type="text" placeholder="HTTPS 集合地址" style="min-width:220px;margin-top:8px">
+        <input type="text" placeholder="账号" style="min-width:220px;margin-top:8px"><input type="password" placeholder="应用密码" style="min-width:220px;margin-top:8px">
+        <span class="warnrow" style="margin-top:8px">应用密码仅进入主进程并加密保存；逐次审批不因设备而放宽。</span>
+      </div></div>
+    <div class="row"><div><span class="row__t">RSS / Atom 订阅</span><span class="row__d">名称 + 地址；公开 / 私人敏感级；来源与跟踪许可。</span></div>
+      <div class="row__r">
+        <input type="text" placeholder="订阅名称" style="min-width:150px"><input type="text" placeholder="地址" style="min-width:180px">
+        <span class="selwrap"><select data-persist="rss-level"><option>私人</option><option>公开</option><option>敏感级</option></select></span>
+        <label class="swish"><input type="checkbox" checked data-persist="rss-track" data-role="rss"><span class="sw" aria-hidden="true"></span></label><span class="ul">来源与跟踪许可</span>
+        <button class="btn btn--ver btn--sm" data-demo="rss.remove">移除</button>
+      </div></div>
+    <div class="row"><div><span class="row__t">待办与提醒</span><span class="row__d">新建待办 / 标为完成 / 重新打开 / 暂停提醒至指定时间；云 consent。</span></div>
+      <div class="row__r">
+        <button class="btn btn--sm" data-demo="todo.new">新建待办</button><button class="btn btn--sm" data-demo="todo.done">标为完成</button>
+        <button class="btn btn--sm" data-demo="todo.reopen">重新打开</button>
+        <input type="datetime-local" value="2026-10-17T14:00" aria-label="暂停提醒至" data-persist="todo-snooze">
+        <label class="swish"><input type="checkbox" data-persist="todo-cloud" data-role="todo"><span class="sw" aria-hidden="true"></span></label><span class="ul">云 consent</span>
+      </div></div>
+    <div class="row"><div><span class="row__t">主智能体目标管理</span><span class="row__d">consent + 开启 / 撤销。</span></div>
+      <div class="row__r">
+        <label class="swish"><input type="checkbox" checked data-persist="goal-consent" data-role="goalc"><span class="sw" aria-hidden="true"></span></label><span class="ul">consent</span>
+        <button class="btn btn--green btn--sm" data-demo="goal.on">开启</button><button class="btn btn--ver btn--sm" data-demo="goal.off">撤销</button>
+      </div></div>
+  </article>
+
+  <article class="pane" id="pane-security" hidden>
+    <div class="pane__hd"><span class="pane__block c-ver">安全</span><span class="pane__en">Authorizations</span></div>
+    <div style="overflow-x:auto">
+    <table class="dtable"><thead><tr><th>授权 ID</th><th>任务</th><th>工具与范围</th><th>状态与期限</th><th>决定</th></tr></thead>
+      <tbody id="authRows">
+        <tr data-auth="pending"><td class="mono">AZ-3F91</td><td>抓取订阅源新文章</td><td>feeds.read / feeds.fetch</td><td>待处理 · 本次会话内</td>
+          <td><button class="btn btn--green btn--sm" data-authdec="allow" data-authrow="AZ-3F91">允许一次</button> <button class="btn btn--ver btn--sm" data-authdec="deny" data-authrow="AZ-3F91">拒绝</button></td></tr>
+        <tr data-auth="pending"><td class="mono">AZ-5C27</td><td>记事本写入</td><td>computer.clipboard / focus</td><td>待处理 · 至 10:30</td>
+          <td><button class="btn btn--green btn--sm" data-authdec="allow" data-authrow="AZ-5C27">允许一次</button> <button class="btn btn--ver btn--sm" data-authdec="deny" data-authrow="AZ-5C27">拒绝</button></td></tr>
+        <tr data-auth="ok"><td class="mono">AZ-1D88</td><td>天气区间查询</td><td>weather.query（只读）</td><td>已允许 · 今日内有效</td>
+          <td><button class="btn btn--sm" data-demo="auth.recheck">核验并撤销</button></td></tr>
+      </tbody></table></div>
+    <div class="row" style="margin-top:14px"><div><span class="row__t">授权历史</span><span class="row__d">全部决定按页读回，供复核。</span></div>
+      <div class="row__r"><button class="btn btn--sm" data-demo="auth.page">‹ 上一页</button><span class="valpill">第 1 / 4 页</span><button class="btn btn--sm" data-demo="auth.page">下一页 ›</button></div></div>
+    <div class="warnrow" id="authEmpty" hidden style="margin-top:12px">没有待处理授权。授权决定由 Runtime 校验，界面不直接授予权限。</div>
+  </article>
+
+  <article class="pane" id="pane-tasks" hidden>
+    <div class="pane__hd"><span class="pane__block c-lemon">任务监控</span><span class="pane__en">Task Monitor</span></div>
+    <div style="overflow-x:auto">
+    <table class="dtable"><thead><tr><th>任务 ID</th><th>状态</th><th>版本</th><th>结果摘要</th><th>细节</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">TASK-1017-002</td><td><span class="st st--run">执行中</span></td><td class="mono">v4</td><td>日程与邮件要点合并进行中</td>
+          <td><details><summary class="linkbtn" style="display:inline-block">步骤与 Evidence</summary>
+            <ul class="steps"><li><span class="tm">09:00</span><span class="sq"></span>执行中 · 检索日程</li><li><span class="tm">09:12</span><span class="sq sq--warn"></span>等待外部结果 · IMAP</li></ul>
+            <div style="margin-top:6px"><span class="ev ev--conditional">conditional ×1</span></div></details></td></tr>
+        <tr><td class="mono">TASK-1017-005</td><td><span class="st st--apv">等待授权</span></td><td class="mono">v2</td><td class="dim">Runtime 未提供结果摘要</td>
+          <td><details><summary class="linkbtn" style="display:inline-block">步骤与 Evidence</summary>
+            <ul class="steps"><li><span class="tm">09:03</span><span class="sq"></span>执行中 · 调用策略网关</li><li><span class="tm">09:03</span><span class="sq sq--warn"></span>等待授权 · 越权需批准</li></ul>
+            <div style="margin-top:6px"><span class="ev ev--mock">mock ×1</span></div></details></td></tr>
+        <tr><td class="mono">TASK-1017-008</td><td><span class="st st--fail">失败</span></td><td class="mono">v1</td><td>连接中断（ECONNRESET）· 已保留断点</td>
+          <td><button class="btn btn--sm" style="margin-top:4px" data-demo="meta.read">读取执行元数据</button></td></tr>
+      </tbody></table></div>
+    <div class="row" style="margin-top:16px"><div><span class="row__t">工作区补丁恢复</span><span class="row__d">任务中断后按快照恢复工作区补丁。</span></div>
+      <div class="row__r"><button class="btn" data-demo="patch.restore">恢复补丁</button></div></div>
+  </article>
+
+  <article class="pane" id="pane-overview" hidden>
+    <div class="pane__hd"><span class="pane__block c-white">概览</span><span class="pane__en">Overview</span></div>
+    <p class="pane__sub">任务概览与任务监控共用同一快照；数字读回自图版本。</p>
+    <div class="grout">
+      <div class="skillc"><span class="skillc__n">今日完成 3 / 10</span><div class="bar"><i class="bar__fill" style="width:30%"></i><span class="bar__pct">30%</span></div><span class="dim">只统计 Runtime 终态任务</span></div>
+      <div class="skillc"><span class="skillc__n">等待审批 2</span><span class="st st--apv">警报牌挂 2 张</span><button class="btn btn--sm" style="margin-top:6px" data-autolink="approve">去审批中心</button></div>
+      <div class="skillc"><span class="skillc__n">失败 1 · 可重试</span><span class="st st--fail">收件箱分类</span><button class="btn btn--sm" style="margin-top:6px" data-autolink="tasks">打开任务监控</button></div>
+    </div>
+  </article>
+
+  <article class="pane" id="pane-plugins" hidden>
+    <div class="pane__hd"><span class="pane__block c-green">插件</span><span class="pane__en">Skills</span></div>
+    <div class="row"><div><span class="row__t">本机 Skills</span><span class="row__d">安装 SKILL.md 文件夹；技能卡：名称·版本 / 描述 / 已启用 / 文件数 / SHA256。</span></div>
+      <div class="row__r"><button class="btn btn--green" data-demo="skill.install">安装 SKILL.md 文件夹</button></div></div>
+    <div class="grout" style="margin-top:14px">
+      <div class="skillc"><span class="skillc__n">项目周报 Skill · v1.2</span>
+        <p class="grprow__d">汇总本周任务与 IMAP 信头要点，产出周报草稿文件。</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="st st--ok">已启用</span><span class="valpill">12 个文件</span><span class="valpill mono">SHA256 a3f1…9c4d</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn--sm" data-demo="skill.view">查看说明</button><span style="display:inline-flex;gap:6px;align-items:center"><label class="swish"><input type="checkbox" checked data-persist="skill-1-on" data-role="sk1"><span class="sw" aria-hidden="true"></span></label><span class="ul">启停</span></span><button class="btn btn--green btn--sm" data-demo="skill.use">使用此 Skill</button><button class="btn btn--ver btn--sm" data-demo="skill.uninstall">卸载</button></div>
+      </div>
+      <div class="skillc"><span class="skillc__n">收件箱分类 Skill · v0.7</span>
+        <p class="grprow__d">对只读信头执行本机 Laya 6 类分箱，不触碰正文。</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="st st--warn">已停用</span><span class="valpill">6 个文件</span><span class="valpill mono">SHA256 77b0…1e2a</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn--sm" data-demo="skill.view">查看说明</button><span style="display:inline-flex;gap:6px;align-items:center"><label class="swish"><input type="checkbox" data-persist="skill-2-on" data-role="sk2"><span class="sw" aria-hidden="true"></span></label><span class="ul">启停</span></span><button class="btn btn--green btn--sm" data-demo="skill.use">使用此 Skill</button><button class="btn btn--ver btn--sm" data-demo="skill.uninstall">卸载</button></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px"><div><span class="row__t">「本次任务」输入区</span><span class="row__d">描述与约束（≤4096 字符）；仅本地使用、不自动执行。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:stretch;min-width:280px">
+        <textarea rows="2" maxlength="4096" placeholder="例：只用信头数据，输出不超过 3 条要点…"></textarea>
+        <span class="dim" style="font-size:11.5px">仅本地、不自动执行。</span>
+      </div></div>
+    <div class="row"><div><span class="row__t">工作区参考工具</span><span class="row__d">连接只读服务 / 参考摘要生成。</span></div>
+      <div class="row__r"><button class="btn btn--sm" data-demo="ref.connect">连接只读服务</button><button class="btn btn--sm" data-demo="ref.summary">参考摘要生成</button></div></div>
+  </article>
+
+  <article class="pane" id="pane-computer" hidden>
+    <div class="pane__hd"><span class="pane__block c-ver">电脑操控</span><span class="pane__en">Computer Control</span></div>
+    <div class="row"><div><span class="row__t">写入新记事本</span><span class="row__d">≤4096 字符 → 新建并准备写入 → 前台按 F9 确认执行结果。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:stretch;min-width:280px">
+        <textarea rows="2" maxlength="4096" placeholder="要写进记事本的提醒正文…"></textarea>
+        <span class="dim" style="font-size:11.5px"><span class="kbd">F9</span> 记事本写入确认 · 设备级绑定</span>
+        <span style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap"><button class="btn btn--green" data-demo="notepad.prepare">新建并准备写入</button>
+        <button class="btn btn--ver" data-demo="notepad.stop">停止本次操作</button><button class="btn btn--sm" data-demo="notepad.verify">核实执行结果</button></span>
+      </div></div>
+    <div class="row"><div><span class="row__t">主动变化提醒</span><span class="row__d">开启电脑状态监控；CPU/内存压力触发自动分析默认关；目标变化分析。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <span style="display:inline-flex;gap:8px;align-items:center"><label class="swish"><input type="checkbox" checked data-persist="cc-monitor" data-role="cc1"><span class="sw" aria-hidden="true"></span></label><span class="ul">开启电脑状态监控</span></span>
+        <span style="display:inline-flex;gap:8px;align-items:center"><label class="swish"><input type="checkbox" data-persist="cc-cpu" data-role="cc2"><span class="sw" aria-hidden="true"></span></label><span class="ul">CPU / 内存压力触发自动分析（默认关）</span>
+        <input type="number" min="1" max="100" value="80" aria-label="CPU 压力阈值" data-persist="cc-cpu-threshold" style="width:90px"><span class="ul">阈值 %</span></span>
+        <span style="display:inline-flex;gap:8px;align-items:center"><label class="swish"><input type="checkbox" data-persist="cc-goal" data-role="cc3"><span class="sw" aria-hidden="true"></span></label><span class="ul">目标变化分析</span></span>
+        <button class="btn btn--green" style="margin-top:8px" data-demo="cc.save">保存主动提醒设置</button>
+      </div></div>
+    <div class="row"><div><span class="row__t">建议 / 方案审阅卡</span><span class="row__d">云端编排文本上限 16000 字符；审阅决定 KEEP / 提交云端编排。</span></div>
+      <div class="row__r"><span class="tag tag--green">KEEP</span><button class="btn btn--green" data-demo="cc.keep">保留建议</button><button class="btn" data-demo="cc.cloud">提交云端编排</button><span class="valpill mono">16 000 字符上限</span></div></div>
+  </article>
+
+  <article class="pane" id="pane-hooks" hidden>
+    <div class="pane__hd"><span class="pane__block c-lemon">钩子</span><span class="pane__en">Hooks</span></div>
+    <div class="row"><div><span class="row__t">任务开始</span><span class="row__d">宿主能力尚未接入。</span></div>
+      <div class="row__r"><span class="valpill">待接入</span></div></div>
+    <div class="row"><div><span class="row__t">工具调用前</span><span class="row__d">策略网关始终先于外部执行。</span></div>
+      <div class="row__r"><span class="st st--ok">策略网关</span></div></div>
+    <div class="row"><div><span class="row__t">任务完成</span><span class="row__d">只根据 Runtime 最终状态触发。</span></div>
+      <div class="row__r"><span class="st st--queue">Runtime 最终状态</span></div></div>
+  </article>
+
+  <article class="pane" id="pane-git" hidden>
+    <div class="pane__hd"><span class="pane__block c-ver">Git</span><span class="pane__en">Git</span></div>
+    <div class="row"><div><span class="row__t">连接状态</span><span class="row__d">前端不直接运行 git 命令，一律由宿主执行。</span></div>
+      <div class="row__r"><span class="st st--fail">未连接</span></div></div>
+    <div class="row"><div><span class="row__t">默认分支策略</span><span class="row__d">安全优先：不允许跨工作区漫游改动。</span></div>
+      <div class="row__r"><span class="valpill">安全</span></div></div>
+    <div class="row"><div><span class="row__t">凭据</span><span class="row__d">不在前端保存。</span></div>
+      <div class="row__r"><span class="valpill">不在前端保存</span></div></div>
+  </article>
+
+  <article class="pane" id="pane-env" hidden>
+    <div class="pane__hd"><span class="pane__block c-lemon">环境</span><span class="pane__en">Environment</span></div>
+    <div class="row"><div><span class="row__t">编程工作区</span><span class="row__d">选择工作区 / 选择本机 Node / 选择 JS 语法检查文件 / 选择 npm。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <button class="btn btn--sm" data-demo="env.pick">选择工作区</button>
+        <button class="btn btn--sm" data-demo="env.pick">选择本机 Node</button>
+        <button class="btn btn--sm" data-demo="env.pick">选择 JS 语法检查文件</button>
+        <button class="btn btn--sm" data-demo="env.pick">选择 npm</button>
+      </div></div>
+    <div class="row"><div><span class="row__t">四个开关</span><span class="row__d">发送 AgentArts / 允许写入 / 受限命令 / 项目构建测试。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <label class="swish"><input type="checkbox" checked data-persist="env-arts" data-role="e1"><span class="sw" aria-hidden="true"></span><span class="ul" style="margin-left:10px">发送 AgentArts</span></label>
+        <label class="swish" style="margin-top:8px"><input type="checkbox" checked data-persist="env-write" data-role="e2"><span class="sw" aria-hidden="true"></span><span class="ul" style="margin-left:10px">允许写入</span></label>
+        <label class="swish" style="margin-top:8px"><input type="checkbox" data-persist="env-restricted" data-role="e3"><span class="sw" aria-hidden="true"></span><span class="ul" style="margin-left:10px">受限命令</span></label>
+        <label class="swish" style="margin-top:8px"><input type="checkbox" checked data-persist="env-build" data-role="e4"><span class="sw" aria-hidden="true"></span><span class="ul" style="margin-left:10px">项目构建测试</span></label>
+      </div></div>
+    <div class="row"><div><span class="row__t">本地读取授权</span><span class="row__d">授权本地读取及所选权限；撤销立即失效。</span></div>
+      <div class="row__r"><button class="btn btn--green" data-demo="env.grant">授权本地读取及所选权限</button><button class="btn btn--ver" data-demo="env.revoke">撤销</button></div></div>
+  </article>
+
+  <article class="pane" id="pane-worktrees" hidden>
+    <div class="pane__hd"><span class="pane__block c-green">Worktrees</span><span class="pane__en">Worktrees</span></div>
+    <div class="row"><div><span class="row__t">当前工作区</span><span class="row__d">与「环境」共用同一编程工作区表单。</span></div>
+      <div class="row__r"><span class="valpill mono">main · 主工作区</span><button class="btn btn--sm" data-demo="env.pick">选择工作区</button></div></div>
+    <div class="row"><div><span class="row__t">工作树列表</span><span class="row__d">挂载只读；切换不改主工作区。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <div class="gsaverow" style="width:100%"><span class="gsaverow__s">main</span><span class="valpill">主工作区</span></div>
+        <div class="gsaverow" style="width:100%;margin-top:8px"><span class="gsaverow__s">workspace-settings-redesign-20261017</span><span class="valpill">设计提案工作树 · 只读</span></div>
+      </div></div>
+  </article>
+
+  <article class="pane" id="pane-desktop" hidden>
+    <div class="pane__hd"><span class="pane__block c-ver">桌面设置</span><span class="pane__en">Desktop Settings · B 层窗口</span></div>
+    <p class="pane__sub">独立「桌面设置」窗口的 8 项 + 窗口与恢复 + 本机诊断，控件类型照搬到登记表。</p>
+    <div class="row"><div><span class="row__t">语言</span><span class="row__d">select：System / 简体中文 / English。</span></div>
+      <div class="row__r"><span class="selwrap"><select data-persist="ds-lang"><option>System / 跟随系统</option><option>简体中文</option><option>English</option></select></span></div></div>
+    <div class="row"><div><span class="row__t">主题</span><span class="row__d">select：跟随系统 / 浅色 / 深色。</span></div>
+      <div class="row__r"><span class="selwrap"><select data-persist="ds-theme"><option>跟随系统</option><option>浅色</option><option>深色</option></select></span></div></div>
+    <div class="row"><div><span class="row__t">设置页字体大小</span><span class="row__d">运行时改写为「后台与大工作区字体缩放」；90–130%。</span></div>
+      <div class="row__r"><span class="selwrap"><select data-persist="ds-font" id="dsFont"><option>90%</option><option selected>100%</option><option>110%</option><option>120%</option><option>130%</option></select></span></div></div>
+    <div class="row"><div><span class="row__t">减少设置页动效</span><span class="row__d">checkbox，默认关。</span></div>
+      <div class="row__r"><label class="swish"><input type="checkbox" data-persist="ds-calm" data-role="ds1"><span class="sw" aria-hidden="true"></span></label></div></div>
+    <div class="row"><div><span class="row__t">悬浮入口始终置顶</span><span class="row__d">checkbox，默认开。</span></div>
+      <div class="row__r"><label class="swish"><input type="checkbox" checked data-persist="ds-top" data-role="ds2"><span class="sw" aria-hidden="true"></span></label></div></div>
+    <div class="row"><div><span class="row__t">拖动结束后贴近边缘吸附</span><span class="row__d">checkbox，默认开；吸附在分数 DPI 下需 1×~2× 复测。</span></div>
+      <div class="row__r"><label class="swish"><input type="checkbox" checked data-persist="ds-snap" data-role="ds3"><span class="sw" aria-hidden="true"></span></label></div></div>
+    <div class="row"><div><span class="row__t">靠近悬浮球展开面板</span><span class="row__d">checkbox，默认开；判定由主进程完成（hover ≤90px）。</span></div>
+      <div class="row__r"><label class="swish"><input type="checkbox" checked data-persist="ds-hover" data-role="ds4"><span class="sw" aria-hidden="true"></span></label></div></div>
+    <div class="row"><div><span class="row__t">Ctrl+Shift+Space 显示悬浮球</span><span class="row__d">checkbox，默认关；设备级绑定。</span></div>
+      <div class="row__r"><label class="swish"><input type="checkbox" data-persist="ds-shortcut" data-role="ds5"><span class="sw" aria-hidden="true"></span></label><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">Space</span></div></div>
+    <div class="row"><div><span class="row__t">提交</span><span class="row__d">保存按钮 + 状态 output（role=status）。</span></div>
+      <div class="row__r"><button class="btn btn--green btn--big" id="dsSave">保存</button><span class="gstatus" id="dsStatus" role="status" style="min-width:120px">尚未保存</span></div></div>
+    <div class="row" style="margin-top:16px"><div><span class="row__t">窗口与恢复</span><span class="row__d">orb / panel / admin / workspace 每窗一行：显示 / 重新加载 / 最小化 / 最大化恢复。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:stretch">
+        <span class="warnrow">重新加载会丢失该窗口未提交的输入。请先保存输入。</span>
+        <div style="overflow-x:auto;margin-top:8px"><table class="dtable"><thead><tr><th>窗口</th><th>操作</th></tr></thead><tbody>
+          <tr><td>orb</td><td><button class="btn btn--sm" data-win="orb 显示">显示</button> <button class="btn btn--sm" data-win="orb 重新加载">重新加载</button> <button class="btn btn--sm" data-win="orb 最小化">最小化</button> <button class="btn btn--sm" data-win="orb 最大化恢复">最大化恢复</button></td></tr>
+          <tr><td>panel</td><td><button class="btn btn--sm" data-win="panel 显示">显示</button> <button class="btn btn--sm" data-win="panel 重新加载">重新加载</button> <button class="btn btn--sm" data-win="panel 最小化">最小化</button> <button class="btn btn--sm" data-win="panel 最大化恢复">最大化恢复</button></td></tr>
+          <tr><td>admin</td><td><button class="btn btn--sm" data-win="admin 显示">显示</button> <button class="btn btn--sm" data-win="admin 重新加载">重新加载</button> <button class="btn btn--sm" data-win="admin 最小化">最小化</button> <button class="btn btn--sm" data-win="admin 最大化恢复">最大化恢复</button></td></tr>
+          <tr><td>workspace</td><td><button class="btn btn--sm" data-win="workspace 显示">显示</button> <button class="btn btn--sm" data-win="workspace 重新加载">重新加载</button> <button class="btn btn--sm" data-win="workspace 最小化">最小化</button> <button class="btn btn--sm" data-win="workspace 最大化恢复">最大化恢复</button></td></tr>
+        </tbody></table></div>
+      </div></div>
+    <div class="row"><div><span class="row__t">本机诊断</span><span class="row__d">版本串 + 刷新 + 打开日志文件夹 + 日志区。</span></div>
+      <div class="row__r" style="flex-direction:column;align-items:flex-end">
+        <span class="valpill mono" id="dsInfo">PersonalAgent v1.4.0 · Electron 33 · win32 x64 · 显示器 2560×1440 @1.25</span>
+        <span style="display:flex;gap:10px;margin-top:8px"><button class="btn btn--sm" id="dsRefresh">刷新</button><button class="btn btn--sm" data-demo="logs.open">打开日志文件夹</button></span>
+        <pre class="logpre" id="dsLog" style="margin-top:10px;min-width:min(420px,80vw)">09:02:14 [workspace] desktop:update snapshot 已渲染（图版本 12）
+09:03:41 [panel] thinking.update 深度=2 quick=false
+09:04:02 [auth] AZ-3F91 待处理创建（策略网关拦截 feeds.read）
+09:12:33 [workspace] approval a1 allow_once → 状态机流转
+</pre>
+      </div></div>
+    <p class="dim" style="margin-top:14px;font-size:12px">私人助理 · Windows / 野拓黑黄 / 硬边实面</p>
+  </article>
+  </div><!-- /panes -->
+</div>
+<!-- 占位页（未入导航标题 / 单行登记模式的页面）由脚本按金标准的「标题｜说明｜状态」行渲染 -->
+
+<!-- ================= 视图 C · 设计规范 ================= -->
+<section class="view" data-view="spec" data-color-heading="spec" aria-label="设计规范视图" hidden>
+<h2 class="sign"><span class="sign__tab spec-tab">设计规范</span><span class="sign__en">Design Spec · Design Tokens</span>
+  <span class="tag tag--rot tag--green" style="margin-left:auto">点击色板复制 hex</span></h2>
+
+<div class="specgrid">
+  <div class="card">
+    <h3>主色板 · 点击复制</h3>
+    <div class="swgrid">
+      <button class="swb" data-copy="#F6F2E7" style="background:#F6F2E7"><span class="swb__hex">#F6F2E7</span><span class="swb__cap">paper 纸底</span></button>
+      <button class="swb" data-copy="#111111" style="background:#111111;color:#F6F2E7"><span class="swb__hex">#111111</span><span class="swb__cap">ink 纯黑</span></button>
+      <button class="swb" data-copy="#FFFFFF" style="background:#FFFFFF"><span class="swb__hex">#FFFFFF</span><span class="swb__cap">card 卡白</span></button>
+      <button class="swb" data-copy="#FFD400" style="background:#FFD400"><span class="swb__hex">#FFD400</span><span class="swb__cap">lemon 柠檬黄</span></button>
+      <button class="swb" data-copy="#00E176" style="background:#00E176"><span class="swb__hex">#00E176</span><span class="swb__cap">green 信号绿</span></button>
+      <button class="swb" data-copy="#FF4D2E" style="background:#FF4D2E"><span class="swb__hex">#FF4D2E</span><span class="swb__cap">vermilion 番红</span></button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>语义色（不引入第四色相）</h3>
+    <div class="fsladder">
+      <div class="fsline" style="border-bottom:none"><span class="st st--ok">success</span><b style="font:800 13px var(--font-mono)">#00E176</b><span class="dim">已完成 / 已连接 / verified</span></div>
+      <div class="fsline" style="border-bottom:none"><span class="st st--warn">warn</span><b style="font:800 13px var(--font-mono)">#FFD400</b><span class="dim">进行中 / 需要授权 / conditional</span></div>
+      <div class="fsline" style="border-bottom:none"><span class="st st--err">danger</span><b style="font:800 13px var(--font-mono)">#FF4D2E</b><span class="dim">失败 / 连接异常 / 拒绝</span></div>
+      <div class="fsline" style="border-bottom:none"><span class="st st--fail">info</span><b style="font:800 13px var(--font-mono)">#111111</b><span class="dim">黑块反白作信息位，避免第四色相；mock 用虚线白块</span></div>
+    </div>
+    <p class="dim" style="margin-top:10px;font-size:12.5px">证据徽章词汇保留英文小写：mock / conditional / verified。</p>
+  </div>
+  <div class="card">
+    <h3>字号阶梯</h3>
+    <div class="fsladder">
+      <div class="fsline"><span>12</span><span style="font-size:12px">辅助任务模型 · 上限小标签</span></div>
+      <div class="fsline"><span>14</span><span style="font-size:14px">正文行 · 登记表默认字号</span></div>
+      <div class="fsline"><span>16</span><span style="font-size:16px">气泡正文 · 15–16px 舒适区</span></div>
+      <div class="fsline"><span>20</span><span style="font-size:20px;font-weight:900">分组大标（pane__block）</span></div>
+      <div class="fsline"><span>24</span><span style="font-size:24px;font-weight:900">告示牌 tab（sign__tab）</span></div>
+      <div class="fsline"><span>32</span><span style="font-size:32px;font-weight:900">分区大字</span></div>
+      <div class="fsline"><span>44</span><span style="font-size:44px;font-weight:900">展示级下限</span></div>
+      <div class="fsline" style="border-bottom:none"><span>56</span><span style="font-size:56px;font-weight:900">野·拓</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>间距阶（2 起，8 的倍数为主）</h3>
+    <div class="spgrid" style="gap:14px">
+      <span class="spbar"><i style="height:2px"></i></span><span class="mono" style="font-size:11px">2</span>
+      <span class="spbar"><i style="height:4px"></i></span><span class="mono" style="font-size:11px">4</span>
+      <span class="spbar"><i style="height:8px"></i></span><span class="mono" style="font-size:11px">8</span>
+      <span class="spbar"><i style="height:12px"></i></span><span class="mono" style="font-size:11px">12</span>
+      <span class="spbar"><i style="height:16px"></i></span><span class="mono" style="font-size:11px">16</span>
+      <span class="spbar"><i style="height:24px"></i></span><span class="mono" style="font-size:11px">24</span>
+      <span class="spbar"><i style="height:32px"></i></span><span class="mono" style="font-size:11px">32</span>
+      <span class="spbar"><i style="height:48px"></i></span><span class="mono" style="font-size:11px">48</span>
+    </div>
+    <h3 style="margin-top:18px">圆角阶</h3>
+    <div class="rdgrid">
+      <span class="spbox rdb" style="width:60px;height:34px;border-radius:0"></span><span class="mono" style="font-size:11px">0（默认 · 直角）</span>
+      <span class="rdb" style="width:60px;height:34px;border-radius:4px"></span><span class="mono" style="font-size:11px">4</span>
+      <span class="rdb" style="width:60px;height:34px;border-radius:8px"></span><span class="mono" style="font-size:11px">8</span>
+      <span class="rdb" style="width:34px;height:34px;border-radius:999px"></span><span class="mono" style="font-size:11px">999（胶囊 / 把手）</span>
+    </div>
+  </div>
+  <div class="card specdemo">
+    <h3>阴影阶 · 全部 0 blur</h3>
+    <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:center;margin-top:6px">
+      <span class="pressbp spbox" style="box-shadow:3px 3px 0 var(--ink);padding:10px 16px;cursor:pointer">shadow-s 3px</span>
+      <span class="pressbp spbox" style="box-shadow:6px 6px 0 var(--ink);padding:10px 16px;cursor:pointer">shadow-m 6px</span>
+      <span class="pressbp spbox" style="box-shadow:10px 10px 0 var(--ink);padding:10px 16px;cursor:pointer">shadow-l 10px</span>
+    </div>
+    <p class="dim" style="margin-top:12px;font-size:12.5px">按压位移：active 时 translate(3px,3px)、阴影缩到 1px——阴影「被按扁」，hover 移出 1px。把鼠标放上来试试。</p>
+    <div class="wmbar" style="margin-top:12px" title="黄黑斜纹 = 警示条"></div>
+  </div>
+  <div class="card">
+    <h3>动效时长与缓动</h3>
+    <div class="fsladder">
+      <div class="fsline" style="border-bottom:none"><b class="mono">90ms</b><span>按压位移 · linear（无缓动尾巴，落点干脆）</span></div>
+      <div class="fsline" style="border-bottom:none"><b class="mono">140ms</b><span>toast 弹入 · cubic-bezier(.2,0,0,1)</span></div>
+      <div class="fsline" style="border-bottom:none"><b class="mono">1.1s steps(1)</b><span>状态闪点 blink（硬切不淡入）</span></div>
+    </div>
+    <p class="dim" style="margin-top:10px;font-size:12.5px">不设 400ms 级别的形变；一切运动 ≤1 屏内完成。prefers-reduced-motion 时全部动画与过渡停止，进度条改为静态值。</p>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px">
+  <h3>无障碍清单</h3>
+  <ul class="a11ylist" style="margin-top:6px">
+    <li><b>对比度</b>：纯黑 #111 对 柠檬黄 ≈ 12.9:1，对 信号绿 ≈ 10.7:1，对 番红 ≈ 5.7:1；三色块一律配黑字，全部满足 WCAG AA 正文 ≥4.5:1。纸底 #F6F2E7 对 #111 ≈ 15.6:1。</li>
+    <li><b>focus 可见</b>：所有可交互元素 :focus-visible 3px 实线 outline + 2px offset；忽略 ：focus-only 的鼠标态。分段控件焦点环用 ver 红内描边区分。</li>
+    <li><b>reduced-motion</b>：粒子呼吸 / blink / 位移全部停止（本页 JS 检测 media query 并停掉 2s 进度 ticker）；仍可读到完整静态信息。</li>
+    <li><b>键盘与读屏</b>：任务行是真实 button、抽屉 Esc 可关、toast 走 aria-live polite、开关是原生 checkbox 语义、无 alert/confirm。</li>
+  </ul>
+</div>
+
+<div class="wband wband--conn" style="margin-top:20px">
+  <div class="card">
+    <h3>设计理念</h3>
+    <p style="margin-top:8px;font-size:13.5px;line-height:1.9">野拓把工作区当作一块城市告示板：所有 Runtime 状态都不许藏在毛玻璃后面，一律钉在纸面上。3px 纯黑描边与无模糊硬影构成唯一的「材质」——没有渐变、没有 blur、也没有装饰性圆角，视觉成本全部让给信息本身。柠檬黄承担「进行」，信号绿承担「完成」，番红承担「警报」，三块高饱和色在纸底上划分出任务、审批与连接器三个街区；44px 以上的 900 字重标题是街区的路牌，加宽字距的小写标签是门牌。设置页回到「班签与登记表」的组织方式：一行一件事、左右分栏、按过就记住。部件的个性来自按压与贴纸：按钮按下时真的沉到阴影里，标注像便签一样斜钉在版面边缘，状态点用硬切闪动代替呼吸灯。</p>
+  </div>
+  <div class="card">
+    <h3>参考体系与借鉴点</h3>
+    <ul style="margin-top:8px;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:13px">
+      <li class="grprow"><span class="grprow__l">neobrutalism.dev</span><span class="grprow__d">无库纯 CSS 流派范式：3px 边 + 硬影 + 按压位移的公认写法，本站直接沿用其成色约束。</span></li>
+      <li class="grprow"><span class="grprow__l">Gumroad 早期改版</span><span class="grprow__d">商业级 neo-brutal 案例：撞色块承担语义而非纯装饰，标签贴纸化。</span></li>
+      <li class="grprow"><span class="grprow__l">瑞士海报构成</span><span class="grprow__d">栅格裸露 + 超大字重标题 + uppercase 小标签的排版骨架。</span></li>
+      <li class="grprow"><span class="grprow__l">城市告示板 / 公文批示</span><span class="grprow__d">任务贴纸、警报牌、班签登记的隐喻来源：状态是「钉上去」的，不是「浮起来」的。</span></li>
+      <li class="grprow"><span class="grprow__l">现行墨核说明书</span><span class="grprow__d">继承其状态词库 / 证据文化 / 快照驱动模型，只换皮不通骨（见对比现行）。</span></li>
+    </ul>
+    <span class="note" style="margin-top:12px">影子永远是方的<small>———— 3px 黑边 + 6px 硬影，绝不模糊</small></span>
+  </div>
+</div>
+</section>
+
+<!-- ================= 视图 D · 对比现行 ================= -->
+<section class="view" data-view="compare" aria-label="对比现行视图" hidden>
+<h2 class="sign"><span class="sign__tab sign__tab--ver">对比现行</span><span class="sign__en">Compare · 墨核冷光玻璃 vs 野拓硬边实面</span></h2>
+<div class="cmpwrap">
+<table class="cmp">
+  <thead><tr><th>维度</th><th>现行 · 墨核冷光（玻璃）</th><th>本方案 · 野拓（新粗野）</th></tr></thead>
+  <tbody>
+    <tr><td>明暗</td><td>深色为默认（bg #0b0d10），单主题家族少量变色（琥珀/赤铜/石绿/浅色）。</td><td>整站日间纸白 #F6F2E7 高明度对比；黑 #111 是边框与文字的同一支笔，不再分「表面色」与「文字色」。</td></tr>
+    <tr><td>材质</td><td>玻璃三层：rgba(23,26,31,.66) + blur(42px) + saturate(1.8) + 内高光；admin/workspace 侧被降级为实心 surface，「黑白纯面 vs 冷光玻璃」两套叙事并存。</td><td>零 blur、零渐变。材质＝3px 黑边 + 6px 无偏移阴影（offset 无 blur）；提案同时裁决：旧玻璃叙事整体退役，admin/workspace 与面板统一实面。</td></tr>
+    <tr><td>色板焦点</td><td>单一冷光青 accent #52c7bd + 语义四色（success/warn/danger/info 各自独立）。</td><td>三高饱和撞色（柠檬黄 #FFD400 / 信号绿 #00E176 / 番红 #FF4D2E）+ 黑白；语义色从撞色中复用，info 反转黑块，不添第四色相。</td></tr>
+    <tr><td>字体</td><td>Segoe UI Variable Text + 微软雅黑；标题 600、−0.01em；数字用 Cascadia Mono。</td><td>展示标题 Arial Black 栈、font-weight 900、≥44px；正文雅黑 700 起步；全部小标签 uppercase + .18em 字距（等宽字体只用于时间与版本号）。</td></tr>
+    <tr><td>密度</td><td>高密度：11px 表头、faint 大写表列、640px 断点降到极密。</td><td>块状告示密度：任务贴纸 280px 最小档、连接器整行横排；密度换可扫读，行长与留白放大。</td></tr>
+    <tr><td>导航形态</td><td>左侧 196/228px 侧栏 + bar40 窗口栏；四窗各自 12–20px 圆角无边框透明窗。</td><td>班签式色块分组导航（黄/绿/红轮换）+ 顶部四视图黑边按钮；窗口栏改成黑条白字，窗口阴影从「发光浮起」改为「钉在纸上」。</td></tr>
+    <tr><td>交互中心</td><td>对话面板 composer 为第一入口（「说要做什么…」），任务快照流其次。</td><td>composer 保留在首屏原位置；交互重心加上了「审批警报牌 + 任务贴纸墙」，任何越权操作在看板上有实体牌位，不必发现于滚动流。</td></tr>
+    <tr><td>动效基调</td><td>80/150/240/400ms + 柔和缓动 cubic-bezier(.2,0,0,1)；data-calm 降级（≤150ms）。</td><td>90ms 位移 + steps(1) 硬切闪点；按压是「位移到阴影里」的物理隐喻；reduced-motion 全停，且 ticker 由 JS 复次校验。</td></tr>
+    <tr><td>桌面协同</td><td>orb/panel/admin/workspace 四窗共享 desktop:update 快照；语言主题经 desktop:preferences 同步。</td><td>快照模型、四窗拓扑、断点（960/900/720/640）全部不动；只是连接器面板改「行块信号板」，点击行为仍指向 admin 连接页。</td></tr>
+    <tr><td>风险与取舍</td><td>语义成熟、障碍小；但毛玻璃在分数 DPI 与低端 GPU 上有性能成本，双色叙事互相干扰。</td><td>强对比与 900 字重长时间注视有压迫感，需备「纸 2 号」的降饱和衍生档（黑边不动、只压色）；3px 边框在 640px 断点占宽度，已在贴纸档位预留缓冲。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="wband wband--conn" style="margin-top:22px">
+  <div class="cmpnote">
+    <b>悬浮球承接说明</b>
+    <p>球体不动：canvas 粒子球 / 呼吸动画 / 112 逻辑尺寸 / hover ≤90px 展开判定 / 右下角放置（placeOrb）全部保持现行设计，本站未写任何修饰性代码。面板承接关系：面板仍以球为锚点展开——球在右下角时，面板停靠球左侧 +8px（右缘空间不足则切到球的左缘，再不行才走屏幕左侧优先），拖动时球与面板成组。野拓落地变化只作用于面板层：面板窗的外框由 r-glass 20 圆角玻璃改为直角黑边实面（3px 边 + 6px 硬影），停靠判定与尺寸逻辑继续留在主进程 placement.js，UI 不参与几何计算。</p>
+    <span class="note" style="margin-top:10px">球没动，动的是沿着它展开的板子<small>———— 悬浮球红线 · 全提案遵守</small></span>
+  </div>
+  <div class="cmpnote">
+    <b>落地建议（Renderer/CSS 宏观位置，不含实现）</b>
+    <p style="margin-top:6px">1) ui/tokens.css：引入黑边与硬影 token 层级（边宽 / 偏移 / 无 blur），新增第四主题档，保留 data-theme / data-glass / data-calm 三属性约定与冷光叙述共存以备降档。2) app/surfaces.css 与 style.css：把玻璃底、内高光、r-glass 20 的面板层统一替换为实面直角 + 黑边方案，处理黑白纯面覆盖层的历史冲突（本次提案即裁决）。3) features/workspace 视图层：按「目标 / 任务 / 审批 / 连接器 / 证据」五块告示化重排，主列断点维持现有 960/900/720/640。4) features/admin 视图层：分组导航班签化，设置行左右分栏登记表化，占位页保持「标题｜说明｜状态」。5) desktop-settings 三件套：B 层 8 项按登记者表重排，窗口与恢复 / 本机诊断保持行为不变。6) 控件几何契约（渲染签名比对 + busy/disabled 矩阵）在换皮后需全量复测；dock / 吸附变更按 placeOrb 注释做 1×~2× 复测。</p>
+  </div>
+</div>
+</section>
+<script>
+
+(function(){
+"use strict";
+/* ---------- 连接器板显隐 ---------- */
+var boardToggle=$("#boardToggle"),board=$("#connector-board");
+function toggleBoard(){
+  if(!board)return;
+  var hide=board.hidden;
+  board.hidden=!hide;
+  boardToggle.setAttribute("aria-expanded",hide?"true":"false");
+}
+
+/* ---------- 设置页 · 分组导航 / panes ---------- */
+function switchPane(id){
+  var target=document.getElementById("pane-"+id);
+  if(!target)return false;
+  $$("#panes .pane").forEach(function(p){p.hidden=(p!==target)});
+  $$(".snitem").forEach(function(b){
+    if(b.getAttribute("data-pane")===id)b.setAttribute("aria-current","true");
+    else b.removeAttribute("aria-current");
+  });
+  return true;
+}
+
+var PLACE=[
+ {id:"j-ph",block:"c-lemon",en:"Profile",title:"个人资料",rows:[["本机档案字段","由身份配置统一提供，不在本机散存。","受控","warn"]]},
+ {id:"j-config",block:"c-green",en:"Profiles",title:"配置",rows:[["配置文件与 API Key","托管于本机加密区；列表不回显密钥。","受控","warn"]]},
+ {id:"j-persona",block:"c-ver",en:"Persona",title:"个性化",rows:[["主题名称与问候语","由现有渲染管线只读提供。","固定","dim"]]},
+ {id:"j-pet",block:"c-lemon",en:"Pet",title:"桌面宠物",rows:[["ORB-02","球面区域属现行设计，保持不变。","固定","dim"]]},
+ {id:"j-analytics",block:"c-green",en:"Analytics",rows:null,title:"分析",},
+ {id:"j-arch",block:"c-ver",en:"Archived",title:"已归档任务",rows:[["归档查询","已归任务按快照读回；恢复需走任务监控。","待接入","off"],["恢复任务快照","从图版本重建执行现场。","待接入","off"]]},
+ {id:"j-import",block:"c-lemon",en:"Import",title:"导入",rows:[["从旧版本导入","偏好与连接器配置一键导入。","待接入","off"]]},
+ {id:"j-account",block:"c-green",en:"Account",title:"账户",rows:[["账户信息","由身份配置提供。","受控","warn"]]},
+ {id:"j-browser",block:"c-ver",en:"Browser",title:"浏览器",rows:[["桌面浏览器挂载","作为连接器管理，配置在「连接」页。","不可用","err"]]},
+ {id:"j-usage",block:"c-lemon",en:"Usage",title:"使用情况和计费",rows:[["用量统计","配额与用量读回自宿主。","待接入","off"]]}
+];
+(function buildPlaceholders(){
+  var host=$("#panes");if(!host)return;
+  PLACE.forEach(function(p){
+    var rows=p.rows||[["本页","统计读回自宿主，未接通前保持占位。","待接入","off"]];
+    var a=document.createElement("article");
+    a.className="pane";a.id="pane-"+p.id;a.hidden=true;
+    a.innerHTML='<div class="pane__hd"><span class="pane__block '+p.block+'">'+p.title+'</span><span class="pane__en">'+p.en+'</span></div>'
+      +'<p class="pane__sub">占位页模式：一行＝标题｜说明｜右侧状态。</p>'
+      +rows.map(function(r){return '<div class="row"><div><span class="row__t">'+r[0]+'</span><span class="row__d">'+r[1]+'</span></div><div class="row__r"><span class="st st--'+r[3]+'">'+r[2]+'</span></div></div>'}).join("");
+    host.appendChild(a);
+  });
+})();
+
+/* ---------- 设置侧导航搜索（空白恢复） ---------- */
+var snSearch=$("#snSearch");
+if(snSearch){snSearch.addEventListener("input",function(){
+  var q=this.value.trim().toLowerCase();
+  $$(".snitem").forEach(function(b){
+    b.hidden=!!q&&b.textContent.toLowerCase().indexOf(q)<0;
+  });
+  $$(".sngroup").forEach(function(g){
+    var items=$$(".snitem",g);
+    g.hidden=items.length>0&&items.every(function(b){return b.hidden});
+  });
+  var any=$$(".snitem").filter(function(b){return !b.hidden}).length;
+  if(!any)toast("没有匹配的设置，清空搜索框恢复全部。","warn");
+});}
+
+/* ---------- 偏好持久化（file:// 下 try/catch） ---------- */
+function restorePersist(){
+  $$("[data-persist]").forEach(function(el){
+    var k=el.getAttribute("data-persist"),v=lsGet(k);
+    if(v===null)return;
+    if(el.type==="checkbox")el.checked=v==="1";
+    else if(el.tagName==="SELECT"){
+      for(var i=0;i<el.options.length;i++){if(el.options[i].text===v||el.options[i].value===v){el.selectedIndex=i;break}}
+    }else el.value=v;
+  });
+  $$("[data-seg]").forEach(function(b){
+    var k="seg-"+b.getAttribute("data-seg"),v=lsGet(k);
+    if(v===null)return;
+    b.setAttribute("aria-pressed",b.value===v?"true":"false");
+  });
+  syncOutputs();
+}
+function cssesc(s){return s}
+function syncOutputs(){
+  $$("#depthBar,#depthBar2").forEach(function(r){
+    var v=parseInt(r.value,10)||0;
+    r.value=v;
+    var out=r.parentNode.querySelector("output");
+    if(out)out.textContent=DEPTHWORDS[v]||v;
+    lsSet(r.id==="depthBar"?"pref-depth":"model-depth",v);
+  });
+}
+function persistChange(e){
+  var el=e.target,k=el.getAttribute&&el.getAttribute("data-persist");
+  if(!k)return;
+  if(el.type==="checkbox")lsSet(k,el.checked?"1":"0");
+  else lsSet(k,el.value);
+}
+
+/* ---------- 分段控件 ---------- */
+function segClick(btn){
+  var name=btn.getAttribute("data-seg");
+  $$("[data-seg='"+name+"']").forEach(function(x){
+    x.setAttribute("aria-pressed",(x===btn)?"true":"false");
+  });
+  lsSet("seg-"+name,btn.value);
+}
+
+/* ---------- 目标对话框状态机 ---------- */
+var goalBusy=false;
+function goalAct(act,btn){
+  var st=$("#goalStatus");if(!st)return;
+  if(act==="save"){
+    if(goalBusy){st.textContent="目标版本冲突，当前图版本 13";toast("写入结果待核实，请勿重复提交。","warn");return}
+    goalBusy=true;
+    st.textContent="目标写入任务正在提交；受理不等于完成。";
+    btn.disabled=true;
+    setTimeout(function(){
+      goalBusy=false;btn.disabled=false;
+      st.textContent="目标已确认并读回：版本 7 → 8，图版本 13";
+      toast("目标已读回：版本 7 → 8（受理不等于完成）","ok");
+    },1400);
+  }else if(act==="new"){
+    $$('.gform input, .gform textarea').forEach(function(i){if(i.type==="text"||i.tagName==="TEXTAREA")i.value=""});
+    var c=$('[data-goal-field="content"]');if(c)c.focus();
+    st.textContent="新目标待填写；创建或修订原因必填。";
+  }else if(act==="refresh"){st.textContent="目标快照已刷新（演示：invoke('snapshot')）；当前图版本 13"}
+  else if(act==="tasks"){st.textContent="任务状态已按图版本 13 读回。"}
+  else if(act==="cancel"){toast("已请求取消目标相关任务；受理不等于完成。","warn")}
+  else if(act==="approve"){toast("目标阶段授权走审批中心同一状态机（演示）。","ok")}
+  else if(act==="deny"){toast("已拒绝目标阶段授权（演示）。","err")}
+  else if(act==="revise"){var f=$('[data-goal-field="reason"]');if(f){f.focus()}st.textContent="修订模式：填写原因后保存目标。"}
+}
+
+/* ---------- 授权状态表（安全页） ---------- */
+function authDecide(btn,dec){
+  var row=btn.closest("tr");if(!row)return;
+  var cell=btn.parentNode;
+  cell.innerHTML=dec==="allow"
+    ?'<span class="st st--ok">已允许（一次）</span> <button class="btn btn--sm" data-demo="auth.recheck">核验并撤销</button>'
+    :'<span class="st st--err">已拒绝</span>';
+  row.setAttribute("data-auth","resolved");
+  var pend=$$('#authRows tr[data-auth="pending"]').length;
+  if(pend===0){var e=$("#authEmpty");if(e)e.hidden=false}
+  toast(dec==="allow"?"授权 AZ · 已允许一次，由 Runtime 校验执行范围。":"授权 "+btn.getAttribute("data-authrow")+" 已拒绝。",dec==="allow"?"ok":"err");
+}
+
+/* ---------- 主事件委托 ---------- */
+document.addEventListener("click",function(e){
+  var t=e.target;
+  var n;
+  if((n=t.closest("[data-go]"))){switchView(n.getAttribute("data-go"));return}
+  if(t.closest("#drawerClose")){closeDrawer();return}
+  if((n=t.closest("[data-copy]"))){copyText(n.getAttribute("data-copy"),"已复制 "+n.getAttribute("data-copy"));return}
+  if((n=t.closest("[data-copy-bubble]"))){
+    var txt=n.getAttribute("data-copy-bubble");
+    copyText(txt==="DYN"?currentAns:txt,txt==="DYN"?"已复制":("已复制 · "+txt.slice(0,18)+"…"));
+    return;
+  }
+  if((n=t.closest("[data-approval-decision]"))){decideApproval(n,n.getAttribute("data-approval-decision"));return}
+  if((n=t.closest("[data-gact]"))){goalAct(n.getAttribute("data-gact"),n);return}
+  if((n=t.closest("[data-authdec]"))){authDecide(n,n.getAttribute("data-authdec"));return}
+  if((n=t.closest("[data-demo]"))){toast("提案演示 · 即将触发 IPC / 行为： "+n.getAttribute("data-demo"),"warn");return}
+  if((n=t.closest("[data-win]"))){toast("窗口操作（主进程接管，演示）： "+n.getAttribute("data-win"));return}
+  if((n=t.closest("[data-autolink]"))){
+    if(n.getAttribute("data-autolink")==="approve"){switchView("workspace");var a=$('[data-apv="a1"]');if(a)a.scrollIntoView({block:"center"})}
+    else switchPane("tasks");
+    return;
+  }
+  if(t.closest("#boardToggle")){toggleBoard();return}
+  if((n=t.closest(".crow[data-conn]"))){
+    var name=$(".crow__tag",n).textContent.trim().split("\n")[0]||"";
+    switchView("settings");switchPane("connections");
+    toast("连接器详情 → 设置 · 连接页（IPC admin.open {page:'connections'}）");
+    return;
+  }
+  if((n=t.closest(".tcard"))){openTask(n);return}
+  if((n=t.closest("[data-f]"))){
+    curFilter=n.getAttribute("data-f");
+    $$("[data-f]").forEach(function(b){b.setAttribute("aria-pressed",(b===n)?"true":"false")});
+    applyFilter();return;
+  }
+  if((n=t.closest("[data-seg]"))){segClick(n);return}
+  if((n=t.closest(".snitem"))){switchPane(n.getAttribute("data-pane"));return}
+  if((n=t.closest("a[data-link-pane]"))){
+    e.preventDefault();
+    if(switchPane(n.getAttribute("data-link-pane")))toast("已在「模型」页接续设置。","ok");
+    return;
+  }
+  if(t.closest("#composerSend")){sendComposer();return}
+  if(t.closest("#drStop")){stopTask();return}
+  if(t.closest("#dsSave")){var o=$("#dsStatus");if(o)o.textContent="已保存（演示）· 状态回读 OK";toast("桌面设置已保存（演示；真实窗口由宿主落地）。","ok");return}
+  if(t.closest("#dsRefresh")){var i=$("#dsInfo");if(i)i.textContent="PersonalAgent v1.4.1 · Electron 33 · win32 x64 · 显示器 2560×1440 @1.25（已刷新）";toast("本机诊断已刷新。","ok");return}
+});
+
+document.addEventListener("change",function(e){persistChange(e)});
+document.addEventListener("input",function(e){
+  if(e.target.matches&&(e.target.id==="depthBar"||e.target.id==="depthBar2")){
+    var v=parseInt(e.target.value,10)||0;
+    var out=e.target.parentNode.querySelector("output");
+    if(out)out.textContent=DEPTHWORDS[v]||v;
+  }
+  persistChange(e);
+});
+document.addEventListener("keydown",function(e){
+  if(e.key==="Enter"||e.key===" "){
+    var rb=(e.target.closest&&e.target.getAttribute&&e.target.getAttribute("role")==="button")?e.target:(e.target.closest?e.target.closest('[role="button"]'):null);
+    if(rb&&!rb.disabled){e.preventDefault();rb.click();return}
+  }
+  if(e.key==="Escape"){closeDrawer();return}
+  if(e.key==="Enter"&&e.target&&e.target.id==="composerInput"){e.preventDefault();sendComposer()}
+});
+
+/* ---------- composer（说要做什么…） ---------- */
+function sendComposer(){
+  var inp=$("#composerInput");if(!inp)return;
+  var txt=inp.value.trim();
+  if(!txt){toast("先说要做什么…（输入为空）","warn");return}
+  var turns=$(".turns");
+  var u=document.createElement("div");u.className="bub bub--user";
+  u.innerHTML='<span class="bub__who">user · 新一轮对话</span>';
+  u.appendChild(document.createTextNode(txt));
+  var a=document.createElement("div");a.className="bub bub--ai";
+  a.innerHTML='<span class="bub__who">assistant · 回答</span>已受理（提案演示）。真实链路：desktop:update 快照回放；批准类操作会经策略网关生成警报牌。';
+  turns.appendChild(u);turns.appendChild(a);
+  inp.value="";
+  a.scrollIntoView({block:"nearest"});
+  toast("已发送（提案演示：新增一轮对话）","");
+}
+function stopTask(){
+  var sp=$("#drStop");
+  if(sp.disabled)return;
+  sp.textContent="正在停止";sp.disabled=true;
+  toast("停止请求已受理：停止播报与任务取消互相独立。","warn");
+}
+/* ---------- 初始化见脚本末尾 ---------- */
+function $(s,el){return (el||document).querySelector(s)}
+function $$(s,el){return Array.prototype.slice.call((el||document).querySelectorAll(s))}
+var STORE="pa-prop-04-neo-brutalist-";
+var reduced=(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)||false;
+document.body.dataset.reduced=reduced?"on":"off";
+function lsGet(k){try{return localStorage.getItem(STORE+k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(STORE+k,String(v))}catch(e){}}
+var DEPTHWORDS=["最低","低","平衡","深入","高","最高"];
+
+/* ---------- Toast（无 alert/confirm） ---------- */
+function toast(msg,tone){
+  var box=$(".toasts");
+  if(!box){box=document.createElement("div");box.className="toasts";box.setAttribute("aria-live","polite");document.body.appendChild(box);}
+  var t=document.createElement("output");
+  t.className="toast"+(tone?" toast--"+tone:"");
+  t.textContent=msg;
+  box.appendChild(t);
+  while(box.children.length>4){box.removeChild(box.firstChild)}
+  setTimeout(function(){t.remove()},3600);
+}
+
+/* ---------- 复制到剪贴板（file:// 稳妥回退） ---------- */
+function copyText(txt,okMsg){
+  function fallback(){
+    try{
+      var ta=document.createElement("textarea");
+      ta.value=txt; ta.style.position="fixed"; ta.style.left="-9999px";
+      document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); ta.remove();
+      toast(okMsg||("已复制 · "+txt),"ok");
+    }catch(e){toast("复制失败，请手动选择文本","err")}
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){toast(okMsg||("已复制 · "+txt),"ok")},fallback);
+  }else fallback();
+}
+
+/* ---------- 视图切换 ---------- */
+var VIEWS=["workspace","settings","spec","compare"];
+function switchView(v){
+  if(VIEWS.indexOf(v)<0)return;
+  $$(".view").forEach(function(s){s.hidden=(s.getAttribute("data-view")!==v)});
+  document.body.setAttribute("data-current-view",v);
+  $$("[data-go]").forEach(function(b){
+    if(b.getAttribute("data-go")===v)b.setAttribute("aria-current","page");
+    else b.removeAttribute("aria-current");
+  });
+  try{window.scrollTo({top:0,behavior:reduced?"auto":"smooth"})}catch(e){window.scrollTo(0,0)}
+  if(v==="workspace")closeDrawer();
+}
+
+/* ---------- 任务详情数据（文案取自盘点词库） ---------- */
+var STATUS_CLASS={"进行中":"st--run","执行中":"st--run","等待审批":"st--apv","等待授权":"st--apv","排队":"st--queue","已完成":"st--done","失败":"st--fail","已取消":"st--dim","正在取消":"st--dim"};
+var DETAILS={
+  t1:{msg:"把今天的日程排一下，顺手建三条待办。",ans:"已创建 3 条本地待办：09:30 整理今日计划、14:00 项目进度同步、18:00 收件箱清零。",model:"主智能体 盘古大模型 2.0 · 辅助任务模型：使用默认辅助模型",steps:[["08:39","已创建","--off"],["08:40","思考中","--warn"],["08:41","执行中",""],["08:48","验证中","--warn"],["08:49","已完成",""]],ev:[["verified",2]],term:true},
+  t2:{msg:"同步一下项目进度。",ans:"日程与邮件信头要点正在合并；已读回 IMAP 会话授权。",model:"主智能体 盘古大模型 2.0 · 部署 pangu-nlp-n1-32k",steps:[["09:00","已创建","--off"],["09:00","思考中","--warn"],["09:02","执行中",""],["09:12","等待外部结果","--warn"]],ev:[["conditional",1]],term:false},
+  t3:{msg:"汇总未读邮件要点。",ans:"排队中：预约在 IMAP 会话授予后执行，只读取信头。",model:"调度由 Runtime 决定 · 快照占位",steps:[["09:10","已创建","--off"],["09:10","思考中","--warn"]],ev:[["mock",0]],term:false},
+  t4:{msg:"把本周要点写成周报草稿。",ans:"草稿将写入知识库「项目规划」；等待前序任务完成。",model:"辅助任务模型 待定 · 排队",steps:[["09:11","已创建","--off"]],ev:[["mock",0]],term:false},
+  t5:{msg:"抓一下订阅源的新文章。",ans:"已拦截：读取 4 个源需批准（策略网关始终先于外部执行）。",model:"主智能体 盘古大模型 2.0 · 策略网关",steps:[["09:03","已创建","--off"],["09:03","执行中",""],["09:03","等待授权","--warn"]],ev:[["conditional",1]],term:false},
+  t6:{msg:"在桌面提醒里加一条便签。",ans:"电脑操控动作已准备，等待授权；批准后前台按 F9 确认。",model:"主智能体 盘古大模型 2.0",steps:[["09:06","已创建","--off"],["09:06","执行中",""],["09:06","等待授权","--warn"]],ev:[["conditional",1]],term:false},
+  t7:{msg:"北京今天天气怎么样？",ans:"18° 多云 · 区间查询进行中，实时数据。",model:"主智能体 盘古大模型 2.0 · 天气连接器",steps:[["09:12","已创建","--off"],["09:12","执行中",""]],ev:[["verified",1]],term:false},
+  t8:{msg:"把收件箱分个类。",ans:"连接中断（ECONNRESET），已保留断点，可重试一次。",model:"本机 Laya · 6 类",steps:[["08:55","已创建","--off"],["08:56","执行中",""],["08:57","失败","--err"]],ev:[["conditional",1]],term:false},
+  t9:{msg:"把整理流程学下来。",ans:"候选步骤已生成并读回验证；确认启用后进入流程库。",model:"私人记忆与流程学习 · reference-review",steps:[["09:00","已创建","--off"],["09:01","思考中","--warn"],["09:02","执行中",""],["09:04","验证中","--warn"],["09:05","已完成",""]],ev:[["verified",3]],term:true},
+  t10:{msg:"（语音）记一下会议要点。",ans:"草稿已生成并手动发送；语音仅在你开启后发送到华为 SIS。",model:"Live · 华为 SIS 转文字",steps:[["08:18","已创建","--off"],["08:22","已完成",""]],ev:[["verified",1]],term:true}
+};
+
+/* ---------- 详情抽屉 ---------- */
+var drawer=$("#drawer"),lastFocus=null,currentAns="";
+function openTask(card){
+  var d=DETAILS[card.getAttribute("data-task")];
+  if(!d)return;
+  var chip=$(".st",card)||$(".tcard__top .st",card);
+  $("#drawerTitle").textContent=$(".tcard__name",card).textContent;
+  var word=chip.textContent.trim().replace(/^\s*[●•·]\s*/,"");
+  var dc=$("#drawerChip");dc.className="st "+(STATUS_CLASS[word]||"st--run");dc.textContent=word;
+  $("#drMsg").textContent=d.msg;
+  $("#drAns").textContent=d.ans;currentAns=d.ans;
+  $("#drModel").textContent=d.model;
+  var st=$("#drSteps");st.innerHTML="";
+  d.steps.forEach(function(s){
+    var li=document.createElement("li");
+    li.innerHTML='<span class="tm">'+s[0]+'</span><span class="sq sq'+s[2]+'"></span><span>'+s[1]+"</span>";
+    st.appendChild(li);
+  });
+  var ev=$("#drEv");ev.innerHTML="";
+  d.ev.forEach(function(e){
+    var s=document.createElement("span");
+    s.className="ev "+(e[0]==="verified"?"ev--verified":e[0]==="conditional"?"ev--conditional":"ev--mock");
+    s.textContent=e[0]+" ×"+e[1];
+    ev.appendChild(s);ev.appendChild(document.createTextNode(" "));
+  });
+  var sp=$("#drStop");
+  sp.disabled=!!d.term;
+  sp.textContent=d.term?"终态 · 无停止":"停止";
+  drawer.hidden=false;drawer.setAttribute("aria-hidden","false");
+  lastFocus=document.activeElement;
+  $("#drawerClose").focus();
+}
+function closeDrawer(){
+  if(!drawer||drawer.hidden)return;
+  drawer.hidden=true;drawer.setAttribute("aria-hidden","true");
+  if(lastFocus&&lastFocus.focus)try{lastFocus.focus()}catch(e){}
+}
+
+/* ---------- 任务搜索 / 筛选（单选 chip；空白恢复） ---------- */
+var curFilter="all";
+function applyFilter(){
+  var q=($("#taskSearch").value||"").trim().toLowerCase();
+  var shown=0;
+  $$("#taskGrid .tcard").forEach(function(c){
+    var okF=(curFilter==="all")||(c.getAttribute("data-group")===curFilter);
+    var hay=(c.getAttribute("data-search")+" "+c.textContent).toLowerCase();
+    var okQ=!q||hay.indexOf(q)>=0;
+    var ok=okF&&okQ;
+    c.hidden=!ok; if(ok)shown++;
+  });
+  $("#taskEmpty").hidden=shown!==0;
+  var total=$$("#taskGrid .tcard").length;
+  $("#taskCount").textContent="共 "+total+" 条 · 显示 "+shown;
+}
+
+/* ---------- 实时进度 ticker（2s；reduced-motion / 隐藏页时挂起） ---------- */
+var liveTimer=null;
+function tick(){
+  if(document.hidden)return;
+  var sec=$('[data-view="workspace"]');
+  if(!sec||sec.hidden)return;
+  $$("#taskGrid [data-live]").forEach(function(f){
+    var card=f.closest(".tcard");if(!card||card.hidden)return;
+    var cur=parseFloat(f.style.width)||0;
+    if(cur>=100){finishLive(f);return}
+    cur=Math.min(100,cur+1+Math.round(Math.random()*3));
+    f.style.width=cur+"%";
+    var pc=$("[data-pct]",f.parentNode);if(pc)pc.textContent=cur+"%";
+    if(cur>=100)finishLive(f);
+  });
+}
+function finishLive(f){
+  f.removeAttribute("data-live");
+  var card=f.closest(".tcard");
+  var chip=$(".st",card);
+  chip.className="st st--done";chip.textContent="已完成";
+  card.setAttribute("data-group","done");
+  card.setAttribute("data-search",(card.getAttribute("data-search")||"").replace(/进行中|执行中/g,"已完成"));
+  var pc=$("[data-pct]",f.parentNode);if(pc)pc.textContent="100%";
+  toast("任务完成（模拟快照）："+$(".tcard__name",card).textContent,"ok");
+  applyFilter();
+}
+if(!reduced){liveTimer=setInterval(tick,2000)}
+
+/* ---------- 审批状态机 ---------- */
+function decideApproval(btn,decision){
+  var card=btn.closest("[data-apv]");if(!card)return;
+  var acts=btn.parentNode;
+  acts.innerHTML="";
+  var res=document.createElement("div");res.className="apv__res";
+  if(decision==="allow_once"){
+    res.innerHTML='<span class="stamp stamp--ok">已批准</span><span class="apv__perm">授权已记录 · allow_once · 批准后继续当前任务</span>';
+    toast("已批准并继续：无需再发一条消息。","ok");
+  }else{
+    res.innerHTML='<span class="stamp stamp--no">已拒绝</span><span class="apv__perm">任务停止 · 可重新发起</span>';
+    toast("已拒绝：该任务已停止，等待新的指示。","err");
+  }
+  card.appendChild(res);
+  res.setAttribute("role","status");
+}
+
+/* ---------- 初始化 ---------- */
+restorePersist();
+applyFilter();
+})();
+</script>
+
+
+
+</section>
+
+
+
+
+
+
+</main>
+</body>
+</html>

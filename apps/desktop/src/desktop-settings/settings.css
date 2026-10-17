@@ -21,3 +21,13 @@ html,body {width:100%;overflow-x:hidden}main,header,form,section {min-width:0;wi
 .window-row strong {flex:1 0 100%;min-width:0}
 .window-row button {margin:0}
 #refresh {margin-right:8px}
+form#settings {display:flex;flex-direction:column;padding:6px 22px 22px}
+form#settings label {min-height:52px;padding:14px 2px}
+form#settings > button {align-self:flex-end;min-width:108px;margin-top:18px;border-radius:10px;font-weight:600}
+section {padding:22px}
+section h2 {margin:0 0 8px}
+#windows,#info {margin-top:4px}
+@media(max-width:500px) {
+  form#settings,section {padding:14px}
+  form#settings > button {align-self:stretch}
+}

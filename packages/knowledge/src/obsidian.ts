@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {KnowledgeError} from './index.js';
-import type {KnowledgeHit, KnowledgePort, KnowledgeSearchRequest, KnowledgeSource} from './index.js';
+import {createTextIndex} from './text-index.js';
+import type {KnowledgePort, KnowledgeSearchRequest, KnowledgeSource} from './index.js';
 
 const MAX_FILES = 1000;
 const MAX_FILE_BYTES = 512 * 1024;
@@ -18,6 +19,7 @@ export interface ObsidianVaultReader<TFile extends ObsidianMarkdownFile> {
 }
 
 export interface ObsidianReadOnlyPort extends KnowledgePort {
+  clearIndex(): void;
   readCitation(request: {
     readonly source: KnowledgeSource;
     readonly deadline: string;
@@ -66,6 +68,7 @@ export function createObsidianVaultPort<TFile extends ObsidianMarkdownFile>(opti
     || typeof options.vault.read !== 'function') fail('INVALID_ARGUMENT');
 
   const {vault, vaultId} = options;
+  const index = createTextIndex(vaultId);
   const prefix = options.allowedFolder === '/' ? '' : options.allowedFolder + '/';
   const inScope = (path: string): boolean => !prefix || path.startsWith(prefix);
 
@@ -117,6 +120,7 @@ export function createObsidianVaultPort<TFile extends ObsidianMarkdownFile>(opti
   }
 
   return Object.freeze({
+    clearIndex: () => index.clear(),
     search: async (request: KnowledgeSearchRequest) => {
       const deadline = context(request);
       if (typeof request.query !== 'string' || !request.query.trim() || request.query.length > 128
@@ -124,26 +128,18 @@ export function createObsidianVaultPort<TFile extends ObsidianMarkdownFile>(opti
         fail('INVALID_ARGUMENT');
       }
       const query = request.query.trim().toLowerCase();
-      const hits: KnowledgeHit[] = [];
-      let truncated = false;
-      for (const {file, path} of files()) {
-        active(request.signal, deadline);
-        const {content, revision} = await readNote(file, path, request.signal, deadline);
-        for (const [index, line] of content.split(/\r?\n/).entries()) {
+      const pages: {path: string; content: string; revision: string}[] = [];
+      let bytes = 0;
+      try {
+        for (const {file, path} of files()) {
           active(request.signal, deadline);
-          const offset = line.toLowerCase().indexOf(query);
-          if (offset < 0) continue;
-          if (hits.length === request.limit) {
-            truncated = true;
-            continue;
-          }
-          hits.push({
-            source: {vaultId, path, line: index + 1, revision},
-            excerpt: line.slice(Math.max(0, offset - 80), Math.max(0, offset - 80) + 320)
-          });
+          const {content, revision} = await readNote(file, path, request.signal, deadline);
+          bytes += Buffer.byteLength(content, 'utf8');
+          if (bytes > 8 * 1024 * 1024) fail('LIMIT_EXCEEDED');
+          pages.push({path, content, revision});
         }
-      }
-      return {hits, truncated};
+        return index.search(pages, query, request.limit, () => active(request.signal, deadline));
+      } catch (error) {index.clear(); throw error;}
     },
     readCitation: async (request: {source: KnowledgeSource; deadline: string; signal: AbortSignal}) => {
       const deadline = context(request);

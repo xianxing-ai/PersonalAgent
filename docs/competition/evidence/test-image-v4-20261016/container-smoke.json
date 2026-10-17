@@ -1,0 +1,74 @@
+{
+  "kind": "test_image_v2_services_smoke",
+  "image": "personal-agent:test-v4-workflow-wiring",
+  "imageId": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "sizeBytes": 389559402,
+  "result": {
+    "architecture": "arm64",
+    "uid": 1000,
+    "ping": 200,
+    "workflowCount": 28,
+    "nodeCount": 185,
+    "controls": [
+      {
+        "action": "pause",
+        "state": "paused"
+      },
+      {
+        "action": "notify_controller",
+        "state": "paused"
+      },
+      {
+        "action": "resume",
+        "state": "unavailable"
+      },
+      {
+        "action": "request_controller",
+        "state": "awaiting_controller"
+      },
+      {
+        "action": "continue",
+        "state": "unavailable"
+      },
+      {
+        "action": "request_user",
+        "state": "awaiting_user"
+      }
+    ],
+    "tiers": [
+      {
+        "tier": "decision_shadow",
+        "action": "run",
+        "comparison": "unknown",
+        "actualExecutionVerified": false
+      },
+      {
+        "tier": "trace_replay",
+        "action": "run",
+        "comparison": "unknown",
+        "actualExecutionVerified": false
+      },
+      {
+        "tier": "isolated",
+        "action": "run",
+        "comparison": "unknown",
+        "actualExecutionVerified": false
+      }
+    ],
+    "replay": {
+      "states": [
+        "reused_historical_read",
+        "counterfactual_unknown"
+      ],
+      "actualToolCalls": 0,
+      "authority": "data_only_no_tool_grant"
+    },
+    "missingPlatformPortsExplicit": true,
+    "syntheticModelDecisionReceipts": true,
+    "attemptedExternalCalls": 0,
+    "realModelCalls": 0,
+    "advancedExecutionVerified": false,
+    "platformConnected": false,
+    "published": false
+  }
+}

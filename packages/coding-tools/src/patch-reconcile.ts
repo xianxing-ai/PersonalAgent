@@ -45,7 +45,8 @@ export type WorkspacePatchReconciliationResult =
   | {path: string; state: 'in_progress'; runId: string; argumentsDigest: string;
     pid: number; beforeSha256: string; afterSha256: string}
   | {path: string; state: 'reconciled'; runId: string; argumentsDigest: string;
-    outcome: 'applied' | 'not_applied' | 'unknown'; beforeSha256: string; afterSha256: string; currentSha256: string};
+    outcome: 'applied' | 'not_applied' | 'unknown'; beforeSha256: string; afterSha256: string; currentSha256: string;
+    byteLength?: number};
 
 interface InFlightMarker {
   runId: string;
@@ -271,7 +272,7 @@ async function inspectWorkspacePatchProcess(
   return 'running';
 }
 
-async function readCurrentSource(root: string, path: string): Promise<{sha256: string; identity: FileIdentity}> {
+async function readCurrentSource(root: string, path: string): Promise<{sha256: string; byteLength: number; identity: FileIdentity}> {
   let before: Awaited<ReturnType<typeof checkedSource>>;
   try { before = await checkedSource(root, path); }
   catch (error) { if (error instanceof ProtocolError) throw error; unknown('Workspace patch source could not be checked'); }
@@ -291,7 +292,7 @@ async function readCurrentSource(root: string, path: string): Promise<{sha256: s
   if (!sameFile(beforeIdentity, afterIdentity) || bytes.length !== after.size) {
     unknown('Workspace patch source changed during reconciliation');
   }
-  return {sha256: createHash('sha256').update(bytes).digest('hex'), identity: afterIdentity};
+  return {sha256: createHash('sha256').update(bytes).digest('hex'), byteLength: bytes.length, identity: afterIdentity};
 }
 
 /**
@@ -352,7 +353,7 @@ export async function reconcileWorkspacePatchApply(
     : current.sha256 === marker.beforeSha256 ? 'not_applied' : 'unknown') as 'applied' | 'not_applied' | 'unknown';
   const reconciled = {path, state: 'reconciled' as const, runId: marker.runId,
     argumentsDigest: marker.argumentsDigest, outcome, beforeSha256: marker.beforeSha256,
-    afterSha256: marker.afterSha256, currentSha256: current.sha256};
+    afterSha256: marker.afterSha256, currentSha256: current.sha256, byteLength: current.byteLength};
   let currentMarker: Awaited<ReturnType<typeof lstat>>;
   try { currentMarker = await lstat(markerPath); }
   catch (error) {

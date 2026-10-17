@@ -66,6 +66,7 @@ export type {
   HuaweiSisOutputConfig,
   HuaweiSisRegion,
   HuaweiSisTokenPort,
+  HuaweiSisRequestAuthPort,
   HuaweiSisWavPlaybackPort,
 } from './huawei-sis.js';
 export type {

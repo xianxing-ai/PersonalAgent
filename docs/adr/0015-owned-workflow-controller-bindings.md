@@ -1,5 +1,10 @@
 # ADR-0015：自有镜像的 Workflow 与 Controller 可执行绑定
 
+<!-- current-design-alignment-20261015 -->
+> 2026-10-15适用性：本页保留原日期、作者与accepted/proposed决定；仍适用的Runtime/权限/依赖边界不被撤销。
+> 冲突的部署、默认模型、发布、完成事实及旧协作门槛已由[当前设计](../design/CURRENT_DESIGN_20261015.md)更新（superseded），
+> 不把历史未验状态套到当前，也不把ADR存在当当前验收。[全部设计导航](../design/README.md)；当前接口另见[目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+
 日期：2026-10-12。状态：proposed；在 `codex/agentarts-owned-image` 实施，真实平台验收与合并分别记录。
 Profile：`huawei_ict_agentarts`。补充 ADR-0012、ADR-0014，不替代本地 Runtime/Policy 边界。
 

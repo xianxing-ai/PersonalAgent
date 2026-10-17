@@ -12,6 +12,8 @@ import {bindFactProjectionStore} from './fact-projection-store.js';
 import type {FactProjectionStore} from './fact-projection-store.js';
 import {bindHostStateStore} from './host-state-store.js';
 export type {TrustedHostStateStore} from './host-state-store.js';
+export {createRuntimeAtomicStatePort} from './atomic-host-state.js';
+export type {RuntimeAtomicStatePort} from './atomic-host-state.js';
 
 export {FactProjectionError} from './fact-projection-store.js';
 export type {
@@ -358,6 +360,13 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly toolGateway: RuntimeToolGateway | undefined;
   private readonly sessionRef = 'runtime-' + randomUUID();
   private readonly active = new Map<string, AbortController>();
+  private readonly activeToolExecutions = new Map<string,string>();
+
+  /** Trusted host handoff observation only; Policy remains the authorization source. */
+  isToolExecutionActive(record:Pick<ToolExecutionRecord,'taskId'|'evidenceId'|'inputDigest'>):boolean {
+    const current=this.activeToolExecutions.get(JSON.stringify([record.taskId,record.evidenceId]));
+    return current!==undefined && current===record.inputDigest;
+  }
 
   constructor(path: string, options: RuntimeOptions = {}) {
     this.db = openStorage(path, RUNTIME_MIGRATIONS);
@@ -485,17 +494,17 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     return {items: page.map(({value}) => ({approvalId: value.approvalId, taskId: value.taskId, revision: value.revision, action: value.toolName, scopes: [...value.scopes], expiresAt: value.expiresAt, state: value.state, argumentsDigest: value.argumentsDigest, argumentSummary: 'redacted' as const})), snapshotSequence: this.snapshotSequence(), ...(more ? {nextBeforeRowId: page.at(-1)!.rowId} : {})};
   }
 
-  readConversationHistory(conversationId: string, beforeTaskId: string, limit = 20): ConversationTurn[] {
+  readConversationHistory(conversationId: string, beforeTaskId: string | undefined, limit = 20): ConversationTurn[] {
     const normalizedConversationId = requireText(conversationId, 'conversationId');
-    const normalizedTaskId = requireText(beforeTaskId, 'beforeTaskId');
+    const normalizedTaskId = beforeTaskId === undefined ? undefined : requireText(beforeTaskId, 'beforeTaskId');
     if (!Number.isInteger(limit) || limit <= 0) throw new Error('limit must be a positive integer');
 
-    this.getTask(normalizedTaskId);
-    const currentEvent = this.db.prepare(
+    if(normalizedTaskId)this.getTask(normalizedTaskId);
+    const currentEvent = normalizedTaskId ? this.db.prepare(
       `SELECT sequence FROM task_events
        WHERE task_id = ? AND type = 'task.created'
        ORDER BY sequence ASC LIMIT 1`,
-    ).get(normalizedTaskId) as {sequence?: number} | undefined;
+    ).get(normalizedTaskId) as {sequence?: number} | undefined : {sequence:this.snapshotSequence()+1};
     if (!currentEvent || typeof currentEvent.sequence !== 'number') return [];
 
     const rows = this.db.prepare(
@@ -805,6 +814,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
             startedAt: this.timestamp(), state: 'started',
           };
           this.saveToolExecution(record);
+          const activeIdentity=JSON.stringify([request.taskId,runId]);
+          this.activeToolExecutions.set(activeIdentity,inputDigest);
           try {
             const result = await this.toolGateway.invoke({
               toolName: request.payload.toolName,
@@ -833,6 +844,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
               break;
             }
             throw error;
+          } finally {
+            this.activeToolExecutions.delete(activeIdentity);
           }
           break;
         }
@@ -1044,7 +1057,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       this.db.prepare('UPDATE tool_execution_records SET record_json = ? WHERE evidence_id = ? AND task_id = ?')
         .run(JSON.stringify(nextRecord), evidenceId, taskId);
       if (outcome === 'applied') {
-        if (options.deferTaskCompletion && !task.cancelRequested) {
+        if (options.deferTaskCompletion) {
+          // The workflow owner must finish result/marker persistence before either
+          // continuing or confirming cancellation. A tool write is not task success.
           return this.updateTask(taskId, 'waiting_reconciliation', {
             resultSummary: record.toolName + ' reconciliation confirmed; workflow continuation is pending',
             error: null,
@@ -1122,6 +1137,77 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
 
   transitionTask(taskId: string, state: TaskState, patch: TransitionPatch = {}): TaskSnapshot {
     return structuredClone(this.transaction(() => this.updateTask(requireText(taskId, 'taskId'), state, patch, true)));
+  }
+  /** Read-only exact binding of a durable local failure and its received transport identity. */
+  readReceivedCloudFailureBinding(taskId:string,allowHistorical=false):string|undefined {
+    const task=this.getTask(taskId),inflight=this.loadCheckpoint(taskId,'competition-cloud-inflight'),received=this.loadCheckpoint(taskId,'competition-cloud-received');
+    if(task.state!=='failed' || !task.error || this.active.has(taskId) || this.loadCheckpoint(taskId,'competition-cloud-unknown')
+      || !inflight || !received || typeof inflight!=='object' || typeof received!=='object')return undefined;
+    const left=inflight as Record<string,unknown>,right=received as Record<string,unknown>;
+    const fields=['sessionId','requestId','idempotencyKey','payloadDigest','accepted'];
+    if(fields.some(key=>left[key]!==right[key]) || Object.keys(left).some(key=>!fields.includes(key)) || Object.keys(right).some(key=>!fields.includes(key))
+      || ['sessionId','requestId','idempotencyKey'].some(key=>typeof left[key]!=='string' || !(left[key] as string).length)
+      || typeof left.payloadDigest!=='string' || !/^[a-f0-9]{64}$/.test(left.payloadDigest)
+      || typeof left.accepted!=='boolean')return undefined;
+    const loop=this.loadCheckpoint(taskId,'competition-loop') as {pending?:unknown}|undefined;
+    const marker=this.loadCheckpoint(taskId,'competition-cloud-terminal-error') as {version?:string;kind?:string;receipt?:unknown}|undefined;
+    const matchedTerminalMarker=marker?.version==='1.0' && marker.kind==='wss_terminal_error'
+      && JSON.stringify(marker.receipt)===JSON.stringify(received);
+    if(marker!==undefined && !matchedTerminalMarker || !allowHistorical && !matchedTerminalMarker)return undefined;
+    if(loop?.pending!==undefined)return undefined;
+    const records=this.readToolExecutions(taskId),caches=records.map(record=>this.loadCheckpoint(taskId,'tool-result-'+record.evidenceId));
+    if(records.some((record,index)=>record.state!=='confirmed' || !record.executionStarted || record.policyDecision!=='allow'
+      || !caches[index] || typeof caches[index]!=='object' || !Object.hasOwn(caches[index] as object,'result')))return undefined;
+    return JSON.stringify({taskRevision:task.revision,error:task.error,inflight,received,loop,records,caches,marker,
+      classification:matchedTerminalMarker?'transport_terminal_error':'historical_durable_local_failure'});
+  }
+  private consumeReceivedCloudFailure(taskId:string,binding:string,allowHistorical=false):void {
+    if(this.readReceivedCloudFailureBinding(taskId,allowHistorical)!==binding)throw new RuntimeError('REVISION_CONFLICT','Original received failure binding changed');
+    const original=JSON.parse(binding) as {taskRevision:number;error:{code:string};received:unknown;classification:string};
+    this.saveCheckpoint(taskId,'competition-cloud-received-failure',{version:'1.0',consumedAs:'durable_local_failure',
+      taskRevision:original.taskRevision,errorCode:original.error.code,receipt:original.received,
+      classification:original.classification,
+      cloudBusinessSuccess:false,cloudResent:false,consumedAt:this.timestamp()});
+    this.saveCheckpoint(taskId,'competition-cloud-inflight',null);
+    this.saveCheckpoint(taskId,'competition-cloud-received',null);
+  }
+  /** Trusted host final commit after strict local receipt projection; never resumes work. */
+  finishConfirmedSubagentTermination(taskId:string,expectedRevision:number,input:{runId:string;cacheJson:string;recordsJson:string;loopJson:string;
+    failureReceipts:{taskId:string;binding:string}[];
+    toolSnapshots:{taskId:string;recordsJson:string;caches:{key:string;valueJson:string}[]}[];
+    children:{taskId:string;revision:number}[];projectionDigest:string;deadline:string}):TaskSnapshot {
+    return structuredClone(this.transaction(()=>{
+      const task=this.getTask(taskId),now=this.now().getTime();
+      const childIds=this.listTasks({conversationId:`desktop-subtask:${taskId}`,limit:100}).items.map(child=>child.taskId).sort();
+      if(task.revision!==expectedRevision || task.state!=='waiting_reconciliation'
+        || JSON.stringify(childIds)!==JSON.stringify(input.children.map(child=>child.taskId).sort())
+        || this.active.has(taskId)
+        || !this.loadCheckpoint(taskId,'competition-export-withheld')
+        || this.loadCheckpoint(taskId,'competition-cloud-inflight') || this.loadCheckpoint(taskId,'competition-cloud-unknown')
+        || JSON.stringify(this.loadCheckpoint(taskId,'tool-result-'+input.runId))!==input.cacheJson
+        || JSON.stringify(this.readToolExecutions(taskId))!==input.recordsJson
+        || JSON.stringify(this.loadCheckpoint(taskId,'competition-loop'))!==input.loopJson
+        || input.toolSnapshots.some(snapshot=>this.active.has(snapshot.taskId)
+          || (this.loadCheckpoint(snapshot.taskId,'competition-cloud-inflight') && !input.failureReceipts.some(item=>item.taskId===snapshot.taskId))
+          || this.loadCheckpoint(snapshot.taskId,'competition-cloud-unknown')
+          || JSON.stringify(this.readToolExecutions(snapshot.taskId))!==snapshot.recordsJson
+          || snapshot.caches.some(cache=>JSON.stringify(this.loadCheckpoint(snapshot.taskId,cache.key))!==cache.valueJson))
+        || this.loadCheckpoint(taskId,'application-deadline')!==input.deadline
+        || (!task.cancelRequested && now<Date.parse(input.deadline))
+        || input.children.some(child=>{const current=this.getTask(child.taskId);return this.active.has(child.taskId) || current.revision!==child.revision
+          || !['succeeded','failed','cancelled'].includes(current.state);}))
+        throw new RuntimeError('REVISION_CONFLICT','Original confirmed termination binding changed');
+      if(input.failureReceipts.some(item=>!input.children.some(child=>child.taskId===item.taskId)
+        || this.readReceivedCloudFailureBinding(item.taskId,true)!==item.binding))throw new RuntimeError('REVISION_CONFLICT','Original child received failure changed');
+      for(const item of input.failureReceipts)this.consumeReceivedCloudFailure(item.taskId,item.binding,true);
+      const cancelled=task.cancelRequested===true;
+      this.saveCheckpoint(taskId,'subagent-terminal-reconciliation',{version:'1.0',runId:input.runId,
+        projectionDigest:input.projectionDigest,childTaskIds:input.children.map(child=>child.taskId),
+        scope:'local_confirmed_receipt_projection',cloudResent:false,toolReexecuted:false,
+        terminal:cancelled?'cancelled':'failed',reconciledAt:new Date(now).toISOString()});
+      return this.updateTask(taskId,cancelled?'cancelled':'failed',cancelled?{error:null,cancelRequested:true}:
+        {error:{code:'TIMEOUT',message:'Original task deadline expired after confirmed subagent receipt reconciliation',retryable:false}},true);
+    }));
   }
 
   recordProgress(taskId: string, progress: ProgressInput): TaskSnapshot {
@@ -1324,6 +1410,12 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     } finally {
       if (timer) clearTimeout(timer);
       this.active.delete(taskId);
+      // A durable local failure consumes a matched received response as failure,
+      // never as cloud business success. Unknown/unconfirmed writes retain holds.
+      try {
+        const binding=this.readReceivedCloudFailureBinding(taskId);
+        if(binding!==undefined)this.transaction(()=>this.consumeReceivedCloudFailure(taskId,binding));
+      } catch { /* Failure to prove consumption must preserve the original hold. */ }
     }
   }
 
@@ -1356,7 +1448,35 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     });
   }
 
-  /** Reopen only the worker continuation of a cached, authorized original run. No execution or grant. */
+  /** Reopen only a verified original continuation, including settled failed reads. No execution or grant. */
+  prepareVerifiedContinuation(taskId: string, expectedRevision: number): TaskSnapshot {
+    return this.transaction(() => {
+      const task = this.getTask(taskId);
+      if (!Number.isSafeInteger(expectedRevision) || task.revision !== expectedRevision || task.state !== 'waiting_reconciliation'
+        || this.active.has(taskId)) throw new RuntimeError('REVISION_CONFLICT', 'Original task continuation revision or active worker differs');
+      if (task.cancelRequested || this.loadCheckpoint(taskId, 'private-copy-erasure')) throw new RuntimeError('UNAUTHORIZED', 'Cancelled or withheld task cannot resume');
+      const deadline = this.loadCheckpoint(taskId, 'application-deadline');
+      if (typeof deadline !== 'string' || !Number.isFinite(Date.parse(deadline)) || Date.parse(deadline) <= this.now().getTime())
+        throw new RuntimeError('TIMEOUT', 'Original task deadline cannot be extended for continuation');
+      const descriptors = this.toolGateway?.list() ?? [];
+      const unsettled = this.readToolExecutions(taskId).some(record => {
+        if (!record.executionStarted || record.policyDecision !== 'allow' || record.reconciliationOutcome === 'unknown') return true;
+        if (record.state === 'confirmed') return !Object.hasOwn(this.loadCheckpoint(taskId, 'tool-result-' + record.evidenceId) as object ?? {}, 'result');
+        if (record.state !== 'failed' || !record.finishedAt || !record.errorCode
+          || ['TIMEOUT', 'CANCELLED', 'RESULT_UNKNOWN', 'NOT_CONFIRMED'].includes(record.errorCode.toUpperCase())
+          || !Number.isFinite(Date.parse(record.startedAt)) || !Number.isFinite(Date.parse(record.finishedAt))
+          || Date.parse(record.finishedAt) < Date.parse(record.startedAt) || Date.parse(record.finishedAt) > this.now().getTime()) return true;
+        // Historical records have no independent sideEffect field. Require the trusted current exact-version
+        // read descriptor; absence or drift cannot turn a failed/uncertain write into a resumable read.
+        return !descriptors.some(descriptor => descriptor.name === record.toolName && descriptor.version === record.toolVersion
+          && descriptor.sideEffect === 'read');
+      });
+      if (this.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.loadCheckpoint(taskId, 'competition-cloud-inflight') || unsettled)
+        throw new RuntimeError('UNAUTHORIZED', 'Continuation requires original confirmed execution Evidence or a settled authorized read failure');
+      return this.updateTask(taskId, 'waiting_approval', {error: null}, false);
+    });
+  }
+
   prepareConfirmedReplay(taskId:string,input:{runId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>}):TaskSnapshot {
     return this.transaction(()=> {
       const task=this.getTask(taskId),record=this.readToolExecutions(taskId).find(item=>item.evidenceId===input.runId);
