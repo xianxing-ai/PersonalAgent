@@ -114,3 +114,21 @@ test('cancelled and expired requests do not read credentials or run the meter', 
   await assert.rejects(f.provider.complete(request({deadline:new Date(0).toISOString()})),{code:'TIMEOUT'});
   assert.equal(measured,0);assert.equal(f.credentials(),0);assert.equal(f.calls.length,0);
 });
+
+test('request format is explicit and fixed; other efforts and unconfigured endpoints retain their body', async () => {
+  assert.throws(()=>fixture({requestFormat:'guessed-format'}),{code:'INVALID_ARGUMENT'});
+  const plain=fixture({baseUrl:'https://api.modelarts-maas.com/openai/v1',model:'deepseek-v4-flash',requestTokenBudget:undefined});
+  await plain.provider.complete(request({reasoningEffort:'none'}));
+  assert.equal(plain.bodies[0].reasoning_effort,'none');
+  assert.equal(plain.bodies[0].chat_template_kwargs,undefined);
+  const seen=[];
+  const formatted=fixture({requestFormat:'huawei-maas-deepseek-thinking-v1',
+    requestTokenBudget:budget({countInputTokens:body=>{seen.push(body);return 80;}})});
+  await formatted.provider.complete(request({reasoningEffort:'none'}));
+  await formatted.provider.complete(request({reasoningEffort:'high',messages:[...request().messages,{role:'assistant',content:'previous reply'},{role:'user',content:'continue'}]}));
+  assert.deepEqual(formatted.bodies[0].chat_template_kwargs,{thinking:false});
+  assert.equal(formatted.bodies[0].reasoning_effort,undefined);
+  assert.equal(formatted.bodies[1].reasoning_effort,'high');assert.equal(formatted.bodies[1].chat_template_kwargs,undefined);
+  assert.deepEqual(seen,[formatted.calls[0].body,formatted.calls[0].body,formatted.calls[1].body,formatted.calls[1].body]);
+  assert.equal(formatted.provider.deployment.capabilities.requestFormat,'huawei-maas-deepseek-thinking-v1');
+});

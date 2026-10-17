@@ -1,5 +1,13 @@
 # MCP — Competition read-only slice
 
+2026-10-16 [Desktop/TLS 组合验收](../../docs/modules/MOD-06-PRODUCT-TLS-20261016.md) 已在实际 Electron/安全存储与默认 HTTPS fetch 上完成成功链路及四类拒绝场景；原生对话框响应仍为合成。#369 评审的 run 缓存上限修复 `bfcb1ab1` 已普通推送并传递至 #373；接口保持 provisional，当前 CI/非作者评审及集成状态以 GitHub 为准。
+
+## 2026-10-16 默认 fetch 的本机 HTTPS/TLS 验证
+
+新增 `npm run test:mcp-tls-smoke`，见[复现说明](../../tests/manual/mcp/README.md)和[验收记录](../../docs/modules/MOD-06-TLS-20261016.md)。实际 HTTPS 合成服务配合进程专属测试 CA、原 SDK 默认 fetch、SQLite/Policy 验证 5/5：可信证书与单次审批成功；不受信 CA、主机名、目录摘要和重定向拒绝。重启不联网、不重放原结果。无系统信任库修改、证书验证关闭或 HTTPS→HTTP 映射。
+
+服务/凭据/原生确认仍为合成，worker 的配置安全存储为显式 Fake；Evidence 保持 conditional。第三方服务身份、OAuth/令牌签发、真人确认与云端出口仍未验收。本增量只新增验证入口和测试夹具，不改变生产 Host/Runtime 或其 provisional 状态。
+
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
