@@ -35,6 +35,8 @@ test('AgentArts new UI offers explicit WSS and clears both secrets after save an
   let captured,fail=false;
   const ui=harness(t,async(action,input)=>{captured=input?{...input}:undefined;if(fail)throw Error('private');return {configured:true};});
   assert.equal(ui.fields.transport.value,'wss');assert.equal(ui.wss.hidden,false);
+  assert.match(ui.section.className,/agentarts-settings/);
+  assert.match(ui.section.innerHTML,/本机加密记录为准/);
   assert.equal(ui.fields.allowHttpsFallback.checked,false);
   ui.edit('websocketUrl','wss://example.huaweicloud-agentarts.com/runtimes/synthetic-runtime/invocations/ws');
   ui.edit('authorization','Bearer synthetic-outer');ui.edit('appToken','synthetic-inner-at-least-32-characters');
