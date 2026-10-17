@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,rm,symlink} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,symlink,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
@@ -68,13 +68,13 @@ test('cancelled real command retains unknown until stopped confirmation and cann
 });
 
 test('package source/config changes invalidate its production consumers; root lock and unknown DAG invalidate all',async t=>{
-  const f=await fixture(t);
+  const f=await fixture(t),root=await realpath(f.user);
   for(const name of ['a','b','c']){await mkdir(path.join(f.user,'packages',name),{recursive:true});await writeFile(path.join(f.user,'packages',name,'package.json'),JSON.stringify({name:'@fixture/'+name,...(name==='b'?{dependencies:{'@fixture/a':'1.0.0'}}:{})}));await writeFile(path.join(f.user,'packages',name,'index.js'),'export const value=1;\n');}
-  const before=await captureCodingRepairSnapshot(f.user);await writeFile(path.join(f.user,'packages','a','index.js'),'export const value=2;\n');
+  const before=await captureCodingRepairSnapshot(root);await writeFile(path.join(f.user,'packages','a','index.js'),'export const value=2;\n');
   assert.equal(affectedCodingRepairPackages(before.snapshot,before.snapshot,false).size,0,'unchanged exact input remains covered even when dependency analysis is unavailable');
-  const after=await captureCodingRepairSnapshot(f.user);
+  const after=await captureCodingRepairSnapshot(root);
   assert.deepEqual([...affectedCodingRepairPackages(before.snapshot,after.snapshot,true)].sort(),['pkg:packages/a','pkg:packages/b']);
-  await writeFile(path.join(f.user,'package-lock.json'),'{}');const lock=await captureCodingRepairSnapshot(f.user);
+  await writeFile(path.join(f.user,'package-lock.json'),'{}');const lock=await captureCodingRepairSnapshot(root);
   assert.equal(affectedCodingRepairPackages(after.snapshot,lock.snapshot,true).size,4);
   assert.equal(affectedCodingRepairPackages(before.snapshot,after.snapshot,false).size,4);
 });
