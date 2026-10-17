@@ -22,4 +22,4 @@
 
 建议重要决策记录以下内容：背景、候选方案、最终决定、取舍和后续影响。
 
-所有模块文档必须声明适用 profile。Competition Profile 是当前唯一新增能力和验收路径；Local Profile 仅留存现有本地 Agent、模型网关、Provider 和既有测试，当前不新增、不扩展，也不因参赛架构被删除。
+所有模块文档必须声明适用 profile。Competition Profile 是当前比赛新增能力与验收主路径；通用 Local Profile 保留既有 Agent、模型网关、Provider 和测试，不因参赛架构删除。已明确授权的 DEV-WORKFLOWS Local 增量按 MODULE_ASSIGNMENTS 保留其范围，其他新增 Local 能力须有对应明确授权。
