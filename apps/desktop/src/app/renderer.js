@@ -9,6 +9,7 @@ import {mountConversationRail} from '../features/conversation/rail.js';
 import {resultText} from '../features/conversation/result-text.js';
 import {createGoalControl} from '../features/conversation/goal-view.js';
 import {mountDesktopShell} from '../ui/desktop-shell.js';
+import {mountWindowControls} from '../ui/window-controls.js';
 import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {mountProactiveControls} from './proactive-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
@@ -402,6 +403,11 @@ else {
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();setSendMode(Boolean(input.value.trim()));
     if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(wasAtBottom)thread.scrollTop=thread.scrollHeight;});}};
+}
+if(bridge&&['admin','workspace'].includes(mode)) {
+  mountWindowControls(root,invoke,mode,error=>{
+    root.querySelector(mode==='admin'?'#error':'#workspace-error').textContent=error.message;
+  });
 }
 if(bridge){
   let receivedUpdate=false,closed=false;

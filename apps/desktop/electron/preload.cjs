@@ -5,6 +5,12 @@ for (const type of ['error', 'unhandledrejection']) window.addEventListener(type
 contextBridge.exposeInMainWorld('desktop', Object.freeze({
   openSettings: () => ipcRenderer.invoke('desktop-local', 'open'),
   preferences: () => ipcRenderer.invoke('desktop-local', 'preferences'),
+  windowState: () => ipcRenderer.invoke('desktop-local', 'window-state'),
+  subscribeWindowState: listener => {
+    const receive = (_event, value) => listener(value);
+    ipcRenderer.on('desktop:window-state', receive);
+    return () => ipcRenderer.removeListener('desktop:window-state', receive);
+  },
   subscribePreferences: listener => {
     const receive = (_event, value) => listener(value);
     ipcRenderer.on('desktop:preferences', receive);

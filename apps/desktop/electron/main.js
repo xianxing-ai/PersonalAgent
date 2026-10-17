@@ -579,6 +579,7 @@ function publish() {
 }
 
 function windowFor(mode, bounds, options = {}) {
+  const centerOnPresent = mode === 'workspace' && !desktopHost.hasSavedBounds(mode);
   const win = new BrowserWindow({...desktopHost.restore(mode, bounds), show: false, backgroundColor: '#00000000',
     webPreferences: {preload: path.join(dir, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true,
       ...(mode === 'panel' ? {autoplayPolicy: 'no-user-gesture-required'} : {})}, ...options});
@@ -612,6 +613,7 @@ function windowFor(mode, bounds, options = {}) {
     if (presented || win.isDestroyed()) return;
     presented = true;
     if (mode === 'orb') placeOrb(win, win.getBounds());
+    if (centerOnPresent) win.center();
     if (['panel','admin','workspace'].includes(mode)) applyShape(win, mode === 'panel' ? 20 : 12);
     if (mode !== 'panel') win.show();
     publish();
@@ -694,9 +696,11 @@ function openAdmin(page) {
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   admin = windowFor('admin', {width: Math.min(1120, area.width), height: Math.min(760, area.height)},
-    {title: 'PersonalAgent · 管理后台', frame: false, transparent: true, backgroundMaterial: 'none', roundedCorners: true, minWidth: 600, minHeight: 400});
+    // Resizable windows use native maximize/restore state; transparent Windows
+    // windows only resize to the work area without reliably entering that state.
+    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, minWidth: 600, minHeight: 400});
   admin.once('ready-to-show', () => applyShape(admin, 12));
-  admin.on('resize', () => applyShape(admin, 12));
+  admin.on('resize', () => applyShape(admin, admin.isMaximized() ? 0 : 12));
   admin.on('closed', () => { admin = undefined; });
 }
 
@@ -900,7 +904,7 @@ async function openWorkspace() {
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
-    {title: 'PersonalAgent · 工作区', frame: false, transparent: true, backgroundMaterial: 'none', roundedCorners: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+    {title: 'PersonalAgent · 工作区', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
   workspace.once('ready-to-show', () => { applyShape(workspace, 12); workspace.focus(); });
   workspace.on('resize', () => applyShape(workspace, workspace.isMaximized() ? 0 : 12));
   workspace.on('closed', () => { workspace = undefined; });
@@ -2126,6 +2130,12 @@ async function action(event, name, payload) {
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
   if (name === 'workspace.minimize' && sender === workspace) { workspace.minimize(); return; }
   if (name === 'workspace.maximize' && sender === workspace) { if(workspace.isMaximized()) workspace.unmaximize(); else workspace.maximize(); return; }
+  if (name === 'admin.minimize' || name === 'admin.maximize') {
+    if (sender !== admin) throw Error('Untrusted sender');
+    if (name === 'admin.minimize') admin.minimize();
+    else if (admin.isMaximized()) admin.unmaximize(); else admin.maximize();
+    return;
+  }
   if (name === 'admin.close') {
     if (sender !== admin) throw Error('Untrusted sender');
     admin.close(); return;

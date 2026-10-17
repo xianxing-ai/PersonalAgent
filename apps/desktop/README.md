@@ -1,5 +1,9 @@
 # PersonalAgent Desktop
 
+## 2026-10-17 窗口控件与布局修复
+
+管理后台和大工作区统一原生最小化、最大化/还原及关闭操作；桌面偏好入口移至常规设置。窄窗口导航、短窗口空间和表单控件尺寸一并修正。实现边界、原生缩放矩阵和测试命令见[本次验证记录](docs/FRONTEND_LAYOUT_20261017.md)；`npm run test:frontend-layout --workspace=@personal-agent/desktop` 使用独立 Fake 配置检查实际窗口。
+
 ## 2026-10-09 自有镜像 WSS 消费增量
 
 Competition可信主进程已消费WSS传输及连接状态，此接入仍为 **provisional**。启用`PA_AGENTARTS_TRANSPORT=wss`时，必须显式提供`PA_AGENTARTS_WSS_URL`，没有自动推导的公网地址，也不会依次试探不同路径。地址限定同一 HTTPS 网关 origin 与运行时名称，只接受`/runtimes/{runtimeName}/ws`或`/runtimes/{runtimeName}/invocations/ws`这两个精确路径；明文、跨源、URL认证信息、查询参数与其他路径均拒绝。

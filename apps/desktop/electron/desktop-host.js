@@ -84,6 +84,14 @@ export function createDesktopHost() {
   function attach(win, mode) {
     const contentsId = win.webContents.id;
     windows.set(contentsId, {win, mode});
+    const publishWindowState = () => {
+      if (['admin','workspace'].includes(mode) && !win.isDestroyed()) {
+        win.webContents.send('desktop:window-state', {maximized:win.isMaximized()});
+      }
+    };
+    win.on('maximize', publishWindowState);
+    win.on('unmaximize', publishWindowState);
+    win.on('restore', publishWindowState);
     let saveTimer;
     const save = () => {
       if (mode === 'panel' || win.isDestroyed() || win.isMinimized()) return;
@@ -100,6 +108,7 @@ export function createDesktopHost() {
         win.webContents.setZoomFactor(fontScale);
       }
       log('loaded', mode);
+      publishWindowState();
     });
     win.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => { if (mainFrame) log('load-failed', mode, String(code)); });
     win.webContents.on('render-process-gone', (_event, details) => {
@@ -126,6 +135,10 @@ export function createDesktopHost() {
     if (!owner || event.senderFrame !== owner.win.webContents.mainFrame) throw Error('Untrusted desktop sender');
     if (name === 'open') { openSettings(); return; }
     if (name === 'preferences') return {settings: state.value.settings, locale: app.getLocale()};
+    if (name === 'window-state') {
+      if (!['admin','workspace'].includes(owner.mode)) throw Error('Window controls unavailable for this window');
+      return {maximized:owner.win.isMaximized()};
+    }
     if (name === 'renderer-error') { log('renderer-error', owner.mode, ['error','unhandledrejection'].includes(payload) ? payload : 'unknown'); return; }
     if (owner.mode !== 'desktop-settings') throw Error('Desktop settings window required');
     if (name === 'read') {
@@ -173,6 +186,7 @@ export function createDesktopHost() {
   screen.on('display-metrics-changed', reposition);
   try { shortcut(state.value.settings.shortcut); } catch { state.update({shortcut:false}); log('shortcut-unavailable','desktop-settings'); }
   return {attach, restore, openSettings, logAgentArtsFailure,
+    hasSavedBounds: mode => Boolean(state.value.windows[mode]),
     logVoicePlayback(phase) {
       if (['dispatched','decoding','resuming','started','completed','stopped','error','release_failed'].includes(phase)) {
         log('voice-playback', 'panel', phase);
