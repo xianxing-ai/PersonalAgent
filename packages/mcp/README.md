@@ -60,6 +60,8 @@ SDK `1.31.0` 的 StreamableHTTP class declaration 与项目 exact optional 检�
 
 目录预检成功后、`tools/call` 前才保留 run 身份。预检失败时没有发出工具调用，受信调用方可再次提交同一身份；原串行锁仍拒绝预检期间的并发调用。工具调用一旦可能发出，未知结果仍不得重发。这不恢复已消费的 Policy 授权，也不重开 Runtime 的失败终态或引入自动重试。
 
+本地忙碌或 run 输入冲突只拒绝当前调用，不撤销配置或取消另一项执行；只有原宿主核实的目录失效、当前配置变化及显式撤销使绑定永久失效。
+
 新增 `createBoundRemoteReadonlyMcpHost` 包装原 G10 host，复用原传输、RegisteredTool、Policy 和 ToolGateway。`binding` 为受信配置快照 `{configurationRef,revision,directoryDigest,credential?}`；可选 credential 仅含 `{secretRef,revision,resource,expiresAt}`，没有令牌。`readCurrentBinding()` 必须同步返回当前受信快照或 undefined，`revocationSignal` 负责即时撤销；轮换凭据/配置时必须原子更新相应 revision 和快照，并撤销旧配置。目录摘要可对原 SDK 验证的有序 tools/list 数组调用 `remoteMcpDirectoryDigest(tools)` 得到；目录顺序或内容变化都会拒绝。
 
 凭据读取复用 `@personal-agent/connector-host` 的 `SecretStorePort` 类型（已有内部包，无新增第三方依赖）。只支持已签发给确切 endpoint/resource 的 Bearer access token；宿主负责可信 resource/expiry 元数据与版本，服务端仍须验证 audience。每次 HTTP 请求在异步读取前后重验当前快照、expiry、取消和撤销；不缓存、不记录令牌。POST 受原操作 deadline 约束，额外凭据读取上限 30 秒；原 GET 流随 host stop/dispose 关闭。401/403、缺凭据、非法 token 和 resource 不匹配都拒绝，不使用环境凭据或跟随认证发现。无 OAuth 登录/刷新实现，不声称完整 MCP OAuth 已验收。
