@@ -43,6 +43,8 @@ function fixture() {
   return {
     run:() => action({sender:webContents, senderFrame:webContents.mainFrame},
       {taskId:'task-1', expectedRevision:4}),
+    runFrom:senderFrame => action({sender:webContents, senderFrame},
+      {taskId:'task-1', expectedRevision:4}),
     entered:entered.promise, resolve:response.resolve, reject:response.reject,
     setCached(value) { cached = {...value}; },
     revoke(kind) {
@@ -56,6 +58,13 @@ function fixture() {
 }
 
 const refreshed = {taskId:'task-1', state:'cancelled', revision:5};
+
+test('recovery rejects a child frame before reconciling or refreshing', async () => {
+  const f = fixture();
+  await assert.rejects(f.runFrom({}), /无法核实原补丁任务/);
+  assert.equal(f.state().reconcileCalls, 0);
+  assert.equal(f.state().getCalls, 0);
+});
 
 test('recovery refreshes the task before its only publication', async () => {
   const f = fixture(), pending = f.run();
