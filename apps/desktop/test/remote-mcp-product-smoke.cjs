@@ -66,7 +66,12 @@ const {_electron}=require('playwright');
     await app.evaluate(({dialog})=>{dialog.showMessageBox=async(_window,options)=>{globalThis.lastMcpDialog=options;return {response:1};};});
     await page.locator('#connect').click();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));assert.equal(f.calls().length,0);
     assert.equal((await app.evaluate(()=>globalThis.lastMcpDialog.detail)).includes(token),false);
-    await page.locator('#arguments').fill(JSON.stringify({key:'public'}));await page.locator('#submit').click();
+    await page.locator('#arguments').fill(JSON.stringify({key:'public'}));
+    try{await page.locator('#submit').click();}
+    catch(error){
+      const runtime=await admin.evaluate(async()=>{const response=await window.desktop.invoke('snapshot'),value=response.value??response;return {connection:value.connection,error:value.connectionError};});
+      throw new Error('MCP Runtime unavailable: '+JSON.stringify(runtime),{cause:error});
+    }
     await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('waiting_approval'));const first=await page.locator('#task-id').inputValue();
     assert.equal(f.calls().length,0);
     await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:0});});
