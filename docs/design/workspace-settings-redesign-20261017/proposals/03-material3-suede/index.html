@@ -1337,7 +1337,6 @@ var GOALS=[
  {id:'tgt-write-1020',sum:'写作节奏：每周三更，双周回顾。',st:'进行中',ver:2},
  {id:'tmp-survey-0912',sum:'临时调研：双云编排（已撤回保留）。',st:'已撤回',ver:2}
 ];
-function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');} /* 审查跟进：目标 id/内容统一转义后再进 DOM（用户输入回防） */
 function renderGoals(){
   var box=$('#goalList');if(!box)return;
   box.innerHTML=GOALS.map(function(g,i){
@@ -1547,7 +1546,7 @@ function toggleMon(i){
 
 
 /* ================= 设置页：渲染器 ================= */
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');} /* 唯一实现（第三轮去重）：目标 id/内容/状态与页内其他调用方统一走此处，覆盖 & < > " ' 与 null */
 function pill(cls,txt){return '<span class="pill '+cls+'">'+txt+'</span>';}
 function ictl(c){
   if(!c)return '';
