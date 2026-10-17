@@ -3,7 +3,7 @@ import {OwnedAgentOrchestrator, OwnedWorkflowEngine, createOwnedWorkflowReceiptV
   WORKFLOW_DECISION_TOOL_NAME,WORKFLOW_DECISION_TOOL_VERSION} from '@personal-agent/agentarts';
 import {OpenAICompatibleModelProvider,ModelGateway} from '@personal-agent/models';
 import {createAgentServer} from './server.mjs';
-import {createOwnedModelFetch} from './model-fetch.mjs';
+import {createOwnedModelFetch,ownedModelRequestFormat} from './model-fetch.mjs';
 import {createAgentArtsModelFetch} from './model-proxy.mjs';
 import {createTestVersionController} from './test-version-controller.mjs';
 import {createImageServices,loadImageServiceConfiguration} from './image-services.mjs';
@@ -36,7 +36,7 @@ function model(role,entry) {
     requestProfile:entry?.requestProfile??process.env.PA_AGENT_MODEL_REQUEST_PROFILE??'standard',onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')})
     :createOwnedModelFetch({endpoint,model:name});
   return new OpenAICompatibleModelProvider({baseUrl:endpoint,model:name,
-    fetch,apiKey:readSecret,
+    requestFormat:ownedModelRequestFormat({endpoint,model:name}),fetch,apiKey:readSecret,
     timeoutMs:integer('PA_AGENT_TIMEOUT_MS',60_000)});
 }
 let server;
