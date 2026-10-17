@@ -2,7 +2,7 @@
 
 - 状态：proposed；日期：2026-10-16。
 - Profile：`huawei_ict_agentarts`；MOD-06 / G14；负责人 goo122。
-- 基线：PR #370 / [ADR-0030](0030-remote-mcp-bound-credentials.md)。
+- 基线：PR #370 / [ADR-0032](0032-remote-mcp-bound-credentials.md)。
 
 ## 背景与决定
 
