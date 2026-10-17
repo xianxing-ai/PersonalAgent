@@ -2,6 +2,7 @@ import {timingSafeEqual, randomUUID} from 'node:crypto';
 import {WebSocketServer, WebSocket} from 'ws';
 import {ProtocolError} from '@personal-agent/contracts';
 import {ownedRequestPath} from './request-path.mjs';
+import {AGENTARTS_REALTIME_PROTOCOL} from './realtime-proxy.mjs';
 import {
   AGENTARTS_TRANSPORT_VERSION,
   parseAgentArtsTransportFrame,
@@ -28,7 +29,7 @@ export function equalInboundToken(headers, token) {
 
 /** Bounded transport receipts only. Runtime remains the durable task/evidence authority. */
 export function attachAgentWebSocketTransport(server, {
-  authToken, invoke, acquire, release, timeoutMs,
+  authToken, invoke, acquire, release, timeoutMs, realtimeProxy,
   maxConnections = 64, receiptLimit = 256, receiptTtlMs = 300_000, heartbeatMs = 15_000,
 }) {
   for (const value of [maxConnections,receiptLimit,receiptTtlMs,heartbeatMs]) {
@@ -39,11 +40,17 @@ export function attachAgentWebSocketTransport(server, {
   if (authToken !== undefined && (typeof authToken !== 'string' || authToken.length < 32)) {
     throw new ProtocolError('INVALID_ARGUMENT','Invalid WebSocket credential configuration');
   }
+  if (realtimeProxy !== undefined && (realtimeProxy.protocol!==AGENTARTS_REALTIME_PROTOCOL
+    || typeof realtimeProxy.deadline!=='function' || typeof realtimeProxy.attach!=='function')) {
+    throw new ProtocolError('INVALID_ARGUMENT','Invalid realtime transport configuration');
+  }
   const serverInstanceId = randomUUID();
   const records = new Map();
   const connections = new Set();
+  const realtimeHandles = new Set();
   const wss = new WebSocketServer({noServer:true, maxPayload:MAX_FRAME_BYTES, perMessageDeflate:false});
   let closed = false;
+  let closedRealtime = Promise.resolve();
   const removeExpired = () => {
     const cutoff = Date.now() - receiptTtlMs;
     for (const [key, record] of records) {
@@ -200,7 +207,34 @@ export function attachAgentWebSocketTransport(server, {
     if (!equalInboundToken(request.headers,authToken)) return rejectUpgrade(socket,401,'Unauthorized');
     if (!safeId(request.headers['x-hw-agentarts-session-id'])) return rejectUpgrade(socket,400,'Bad Request');
     if (connections.size >= maxConnections) return rejectUpgrade(socket,429,'Too Many Requests');
-    wss.handleUpgrade(request,socket,head,connection => wss.emit('connection',connection,request));
+    const protocols=typeof request.headers['sec-websocket-protocol']==='string'
+      ? request.headers['sec-websocket-protocol'].split(',').map(value=>value.trim()) : [];
+    const realtime=protocols.includes(AGENTARTS_REALTIME_PROTOCOL);
+    if (!realtime) return wss.handleUpgrade(request,socket,head,connection => wss.emit('connection',connection,request));
+    if (protocols.length!==1) return rejectUpgrade(socket,400,'Bad Request');
+    if (typeof request.headers['x-pa-agent-token']!=='string') return rejectUpgrade(socket,401,'Unauthorized');
+    if (!realtimeProxy) return rejectUpgrade(socket,503,'Service Unavailable');
+    let deadline;
+    try {deadline=realtimeProxy.deadline(request.headers);}
+    catch (error) {return rejectUpgrade(socket,error?.code==='TIMEOUT'?408:400,'Invalid Realtime Deadline');}
+    if (!acquire()) return rejectUpgrade(socket,429,'Too Many Requests');
+    let upgraded=false,released=false;
+    const releaseSlot=()=>{if (!released) {released=true;release();}};
+    const failedUpgrade=()=>{if (!upgraded) releaseSlot();};
+    socket.once('close',failedUpgrade);
+    try {
+      wss.handleUpgrade(request,socket,head,connection => {
+        upgraded=true;socket.removeListener('close',failedUpgrade);
+        connection.alive=true;connections.add(connection);
+        connection.on('pong',()=>{connection.alive=true;});
+        connection.on('error',()=>{});
+        connection.once('close',()=>connections.delete(connection));
+        try {
+          const handle=realtimeProxy.attach(connection,{deadline});realtimeHandles.add(handle);
+          void handle.closed.then(()=>{realtimeHandles.delete(handle);releaseSlot();});
+        } catch {connection.terminate();releaseSlot();}
+      });
+    } catch {releaseSlot();rejectUpgrade(socket,400,'Bad Request');}
   };
   server.on('upgrade',upgrade);
   const heartbeat = setInterval(() => {
@@ -213,13 +247,16 @@ export function attachAgentWebSocketTransport(server, {
   },heartbeatMs);
   heartbeat.unref();
   const close = () => {
-    if (closed) return;
+    if (closed) return closedRealtime;
     closed = true;
     clearInterval(heartbeat);
     for (const record of records.values()) cancelRecord(record);
+    for (const handle of realtimeHandles) handle.close();
+    closedRealtime=Promise.all([...realtimeHandles].map(handle=>handle.closed)).then(()=>{});
     for (const connection of connections) connection.terminate();
     wss.close();
     server.removeListener('upgrade',upgrade);
+    return closedRealtime;
   };
   server.once('close',close);
   return {

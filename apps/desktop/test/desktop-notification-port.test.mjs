@@ -131,5 +131,6 @@ test('a persistence failure or an OS rejection never reports delivery', async t 
   const rejected = await rejecting.sendAdvisoryNotification({id: 'n-6', title: '系统拒绝', body: 'x'});
   assert.equal(rejected.delivered, false);
   assert.match(rejected.error, /系统通知展示失败/);
-  assert.equal(rejecting.list()[0].state, 'failed');
+  assert.equal(rejecting.list()[0].state, 'persisted');
+  assert.equal(rejecting.readDeliveryOutcome(rejecting.list()[0].id).deliveryState, 'unknown');
 });

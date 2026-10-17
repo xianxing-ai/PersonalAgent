@@ -1,0 +1,2473 @@
+{
+  "version": 1,
+  "kind": "experimental_real_model_test_version",
+  "startedAt": "2026-10-15T14:56:26.244Z",
+  "directory": "<implementation>\\.cache\\pelican-test-version-p65QFZ",
+  "architectureStatus": "experimental_not_final",
+  "imagePublished": false,
+  "resourceQuota": false,
+  "fixture": "Explicit controlled animation-start fault; not an invented model mistake",
+  "calls": [
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "candidate_planning",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:56:41.750Z",
+      "requestSummary": {
+        "messageCount": 2,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 1460,
+        "completionTokens": 277,
+        "totalTokens": 1737
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"plans\":[{\"id\":\"remove-begin-one-at-a-time\",\"description\":\"Remove begin=\\\"indefinite\\\" from each of the three animateTransform elements in three separate sequential patches, verifying after each; SVG default begin is 0s so animations start automatically.\",\"goal\":\"Patch back-spin first (remove begin attribute only), preview, apply, verify; then front-spin; then pedal-spin; each edit preserves all other attributes, ids, dur and rotate targets.\"},{\"id\":\"remove-begin-batched-single-patch\",\"description\":\"Remove begin=\\\"indefinite\\\" from all three animateTransform elements in one batched patch, then preview and verify once.\",\"goal\":\"Apply a single patch deleting the begin attribute from back-spin, front-spin, and pedal-spin together; confirm element tree, ids, dur, from/to rotate centers unchanged and all three animations start via default 0s begin.\"},{\"id\":\"remove-begin-reversed-order\",\"description\":\"Remove begin=\\\"indefinite\\\" starting with pedal-spin, then front-spin, then back-spin, verifying after each edit.\",\"goal\":\"Patch pedal-spin begin removal, preview, apply, verify; then front-spin; then back-spin; each step only deletes begin so default 0s triggers animation while preserving geometry and targets.\"}]}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:56:45.616Z",
+      "wallMs": 3866.5380000000005
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "escalated_decision",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:56:45.809Z",
+      "requestSummary": {
+        "messageCount": 2,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 2152,
+        "completionTokens": 90,
+        "totalTokens": 2242
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"selectedId\":\"remove-begin-one-at-a-time\",\"rationale\":\"All three candidates satisfy the stated contract by only removing begin=\\\"indefinite\\\" from the three existing animateTransform elements, so they are equally compliant in scope. The one-at-a-time strategy is best supported because it allows verification after each isolated change, minimizing risk of an undetected contract violation; no tool receipt is supplied, so no execution success is claimed.\"}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:56:47.791Z",
+      "wallMs": 1982.9019000000008
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "escalated_decision",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:56:48.037Z",
+      "requestSummary": {
+        "messageCount": 2,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 2105,
+        "completionTokens": 79,
+        "totalTokens": 2184
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"selectedId\":\"remove-begin-batched-single-patch\",\"rationale\":\"Both candidates satisfy the contract by only removing begin=\\\"indefinite\\\" from the three existing animateTransform elements, but the batched single-patch strategy is more efficient and less error-prone for an identical, uniform edit; no tool execution or verification receipts are supplied, so neither candidate has demonstrated success.\"}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:56:50.891Z",
+      "wallMs": 2853.8600000000006
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:56:52.621Z",
+      "requestSummary": {
+        "messageCount": 4,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 2073,
+        "completionTokens": 37,
+        "totalTokens": 2110
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.read_text\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\"}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:56:53.909Z",
+      "wallMs": 1287.9421000000002
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:56:54.056Z",
+      "requestSummary": {
+        "messageCount": 6,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 3271,
+        "completionTokens": 32,
+        "totalTokens": 3303
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"pelican.verify\",\"toolVersion\":\"1.0.0\",\"arguments\":{}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:56:57.574Z",
+      "wallMs": 3518.478299999999
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:56:58.364Z",
+      "requestSummary": {
+        "messageCount": 8,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 3701,
+        "completionTokens": 160,
+        "totalTokens": 3861
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.preview_text_patch\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\",\"expectedSha256\":\"2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8\",\"edits\":[{\"oldText\":\"from=\\\"0 250 400\\\" to=\\\"360 250 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 250 400\\\" to=\\\"360 250 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"}]}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:00.247Z",
+      "wallMs": 1882.8919000000024
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:00.424Z",
+      "requestSummary": {
+        "messageCount": 10,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 5058,
+        "completionTokens": 159,
+        "totalTokens": 5217
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.apply_text_patch\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\",\"expectedSha256\":\"2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8\",\"edits\":[{\"oldText\":\"from=\\\"0 250 400\\\" to=\\\"360 250 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 250 400\\\" to=\\\"360 250 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"}]}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:03.611Z",
+      "wallMs": 3186.8415000000023
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:05.128Z",
+      "requestSummary": {
+        "messageCount": 12,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 5349,
+        "completionTokens": 32,
+        "totalTokens": 5381
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"pelican.verify\",\"toolVersion\":\"1.0.0\",\"arguments\":{}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:06.859Z",
+      "wallMs": 1731.0904999999984
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:07.418Z",
+      "requestSummary": {
+        "messageCount": 14,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 5781,
+        "completionTokens": 163,
+        "totalTokens": 5944
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.preview_text_patch\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\",\"expectedSha256\":\"f1e3d31e679202aaf39211b8db1502ff6467980d0d5ae36007bb8df1c5e6a357\",\"edits\":[{\"oldText\":\"from=\\\"0 550 400\\\" to=\\\"360 550 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 550 400\\\" to=\\\"360 550 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"}]}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:09.622Z",
+      "wallMs": 2204.1275000000023
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:09.780Z",
+      "requestSummary": {
+        "messageCount": 16,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 7135,
+        "completionTokens": 162,
+        "totalTokens": 7297
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.apply_text_patch\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\",\"expectedSha256\":\"f1e3d31e679202aaf39211b8db1502ff6467980d0d5ae36007bb8df1c5e6a357\",\"edits\":[{\"oldText\":\"from=\\\"0 550 400\\\" to=\\\"360 550 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 550 400\\\" to=\\\"360 550 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"}]}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:11.721Z",
+      "wallMs": 1941.3438000000024
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:12.615Z",
+      "requestSummary": {
+        "messageCount": 18,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 7429,
+        "completionTokens": 32,
+        "totalTokens": 7461
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"pelican.verify\",\"toolVersion\":\"1.0.0\",\"arguments\":{}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:14.259Z",
+      "wallMs": 1643.5331000000006
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:14.892Z",
+      "requestSummary": {
+        "messageCount": 20,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 7865,
+        "completionTokens": 160,
+        "totalTokens": 8025
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.preview_text_patch\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\",\"expectedSha256\":\"ab09adb7650c7eaf0a771f70e65602864767a7364fae3ea955cec6b0c26550fd\",\"edits\":[{\"oldText\":\"from=\\\"0 398 400\\\" to=\\\"360 398 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 398 400\\\" to=\\\"360 398 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"}]}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:16.987Z",
+      "wallMs": 2094.4308999999994
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:17.213Z",
+      "requestSummary": {
+        "messageCount": 22,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 9205,
+        "completionTokens": 159,
+        "totalTokens": 9364
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.apply_text_patch\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\",\"expectedSha256\":\"ab09adb7650c7eaf0a771f70e65602864767a7364fae3ea955cec6b0c26550fd\",\"edits\":[{\"oldText\":\"from=\\\"0 398 400\\\" to=\\\"360 398 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 398 400\\\" to=\\\"360 398 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"}]}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:19.137Z",
+      "wallMs": 1923.5259000000005
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:20.020Z",
+      "requestSummary": {
+        "messageCount": 24,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 9491,
+        "completionTokens": 32,
+        "totalTokens": 9523
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"pelican.verify\",\"toolVersion\":\"1.0.0\",\"arguments\":{}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:21.598Z",
+      "wallMs": 1577.9931999999972
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:22.169Z",
+      "requestSummary": {
+        "messageCount": 26,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 9927,
+        "completionTokens": 275,
+        "totalTokens": 10202
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"final\",\"text\":\"Done. The fault was that all three animateTransform elements had begin=\\\"indefinite\\\", which prevented automatic start. I removed only that attribute from each element, one at a time, previewing and applying each minimal exact-text patch against the observed current sha256 and re-running pelican.verify after every write.\\n\\nSequence and evidence:\\n- Initial verify: passed=false, activeAnimations=[], failure pelican_animation_not_started.\\n- Removed begin from back-spin (sha 2cb6272b... → f1e3d31e...): activeAnimations=[\\\"back-spin\\\"], wheel-back moving.\\n- Removed begin from front-spin (f1e3d31e... → ab09adb7...): activeAnimations=[\\\"back-spin\\\",\\\"front-spin\\\"], wheel-front moving.\\n- Removed begin from pedal-spin (ab09adb7... → 60459cf2...): final verify reports passed=true, activeAnimations=[\\\"back-spin\\\",\\\"front-spin\\\",\\\"pedal-spin\\\"], all three groups moving, geometryPreserved=true, no errors/warnings.\\n\\nOnly the begin attributes changed; ids, dur, from/to rotate targets, and every geometric element are preserved.\"}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:24.937Z",
+      "wallMs": 2767.8677000000025
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:26.929Z",
+      "requestSummary": {
+        "messageCount": 4,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 2067,
+        "completionTokens": 37,
+        "totalTokens": 2104
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.read_text\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\"}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:28.650Z",
+      "wallMs": 1721.4193000000014
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:28.813Z",
+      "requestSummary": {
+        "messageCount": 6,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 3265,
+        "completionTokens": 32,
+        "totalTokens": 3297
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"pelican.verify\",\"toolVersion\":\"1.0.0\",\"arguments\":{}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:30.187Z",
+      "wallMs": 1374.6373000000021
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:30.742Z",
+      "requestSummary": {
+        "messageCount": 8,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 3696,
+        "completionTokens": 310,
+        "totalTokens": 4006
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.preview_text_patch\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\",\"expectedSha256\":\"2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8\",\"edits\":[{\"oldText\":\"from=\\\"0 250 400\\\" to=\\\"360 250 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 250 400\\\" to=\\\"360 250 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"},{\"oldText\":\"from=\\\"0 550 400\\\" to=\\\"360 550 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 550 400\\\" to=\\\"360 550 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"},{\"oldText\":\"from=\\\"0 398 400\\\" to=\\\"360 398 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 398 400\\\" to=\\\"360 398 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"}]}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:33.236Z",
+      "wallMs": 2494.834600000002
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:33.421Z",
+      "requestSummary": {
+        "messageCount": 10,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 5186,
+        "completionTokens": 309,
+        "totalTokens": 5495
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"workspace.apply_text_patch\",\"toolVersion\":\"1.0.0\",\"arguments\":{\"path\":\"pelican.svg\",\"expectedSha256\":\"2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8\",\"edits\":[{\"oldText\":\"from=\\\"0 250 400\\\" to=\\\"360 250 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 250 400\\\" to=\\\"360 250 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"},{\"oldText\":\"from=\\\"0 550 400\\\" to=\\\"360 550 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 550 400\\\" to=\\\"360 550 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"},{\"oldText\":\"from=\\\"0 398 400\\\" to=\\\"360 398 400\\\" dur=\\\"1.6s\\\" begin=\\\"indefinite\\\" repeatCount=\\\"indefinite\\\"\",\"newText\":\"from=\\\"0 398 400\\\" to=\\\"360 398 400\\\" dur=\\\"1.6s\\\" repeatCount=\\\"indefinite\\\"\"}]}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:37.131Z",
+      "wallMs": 3710.2217999999993
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:38.281Z",
+      "requestSummary": {
+        "messageCount": 12,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 5622,
+        "completionTokens": 32,
+        "totalTokens": 5654
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"tool_proposal\",\"proposal\":{\"toolName\":\"pelican.verify\",\"toolVersion\":\"1.0.0\",\"arguments\":{}}}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:39.921Z",
+      "wallMs": 1640.626700000008
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "branch_execution",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:40.540Z",
+      "requestSummary": {
+        "messageCount": 14,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 6059,
+        "completionTokens": 210,
+        "totalTokens": 6269
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"kind\":\"final\",\"text\":\"Done. The fault was that all three animateTransform elements had begin=\\\"indefinite\\\", so they never auto-started (activeAnimations was empty).\\n\\nFix: one patch removed only the begin attribute from back-spin, front-spin, and pedal-spin, letting each use the SVG default begin of 0s. Nothing else changed — element tree, ids, dur=1.6s, from/to rotate centers (250 400, 550 400, 398 400), attributeName/type/repeatCount, and all artwork remain identical (geometryPreserved=true).\\n\\nVerification: after the write, pelican.verify reported passed=true with activeAnimations=[back-spin, front-spin, pedal-spin] and moving wheel-back, wheel-front, pedal all changed=true. File sha256 went 2cb627…→60459c…, byteLength 2566→2509 (removing the three begin attributes).\"}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:43.033Z",
+      "wallMs": 2493.4053999999887
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "escalated_decision",
+      "status": "succeeded",
+      "startedAt": "2026-10-15T14:57:44.080Z",
+      "requestSummary": {
+        "messageCount": 2,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 1792,
+        "completionTokens": 92,
+        "totalTokens": 1884
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"selectedId\":\"remove-begin-batched-single-patch\",\"rationale\":\"Both candidates produced the identical passing SHA-256 60459cf2..., preserved geometry, and reported all three expected animations moving with no browser errors or warnings. The batched single-patch strategy is best supported as the feasible incremental choice because it achieved the same verified result in substantially less wall time (18143.5 ms vs 34646.3 ms).\"}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-15T14:57:45.719Z",
+      "wallMs": 1639.0491000000038
+    }
+  ],
+  "decisions": [
+    {
+      "inputDigest": "166e2e39e37b8d27ffc179ed7d308d18d40db3a88f994597d6c33ea483596318",
+      "requestId": "061a7786-ab39-40f1-a1e7-071162030106",
+      "site": "pelican.main-plan",
+      "state": "completed",
+      "selectedId": "remove-begin-one-at-a-time",
+      "decided_by": "deepseek",
+      "reason": "unvalidated_decision_site",
+      "layaCandidate": "remove-begin-reversed-order",
+      "layaError": null,
+      "rationale": "All three candidates satisfy the stated contract by only removing begin=\"indefinite\" from the three existing animateTransform elements, so they are equally compliant in scope. The one-at-a-time strategy is best supported because it allows verification after each isolated change, minimizing risk of an undetected contract violation; no tool receipt is supplied, so no execution success is claimed.",
+      "sources": [
+        {
+          "sourceId": "pelican.svg",
+          "revision": "baseline",
+          "sha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8"
+        }
+      ],
+      "criteriaVersion": "pelican-v1",
+      "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+      "teacher": {
+        "provider": "openai-compatible",
+        "deployment": "deepseek-v4.1-flash",
+        "model": "deepseek-v4.1-flash",
+        "verification": "conditional",
+        "capabilities": {
+          "text": true,
+          "streaming": false,
+          "toolCalling": false,
+          "structuredOutput": false,
+          "vision": false,
+          "contextLimit": 32000
+        }
+      },
+      "teacherCalls": 1,
+      "usage": {
+        "promptTokens": 2152,
+        "completionTokens": 90,
+        "totalTokens": 2242
+      },
+      "layaMs": 182.97999999999956,
+      "teacherMs": 1851,
+      "wallMs": 2166.4228000000003,
+      "trainingPerformed": false
+    },
+    {
+      "inputDigest": "e60be71bda1bdf1bd51254be3e5b1524b858b5a6a0cae6724afee358f3b4bcdb",
+      "requestId": "a51d6477-b1f8-42ea-b1d9-8676a3bd9468",
+      "site": "pelican.shadow-plan",
+      "state": "completed",
+      "selectedId": "remove-begin-batched-single-patch",
+      "decided_by": "deepseek",
+      "reason": "unvalidated_decision_site",
+      "layaCandidate": "remove-begin-reversed-order",
+      "layaError": null,
+      "rationale": "Both candidates satisfy the contract by only removing begin=\"indefinite\" from the three existing animateTransform elements, but the batched single-patch strategy is more efficient and less error-prone for an identical, uniform edit; no tool execution or verification receipts are supplied, so neither candidate has demonstrated success.",
+      "sources": [
+        {
+          "sourceId": "pelican.svg",
+          "revision": "baseline",
+          "sha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8"
+        }
+      ],
+      "criteriaVersion": "pelican-v1",
+      "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+      "teacher": {
+        "provider": "openai-compatible",
+        "deployment": "deepseek-v4.1-flash",
+        "model": "deepseek-v4.1-flash",
+        "verification": "conditional",
+        "capabilities": {
+          "text": true,
+          "streaming": false,
+          "toolCalling": false,
+          "structuredOutput": false,
+          "vision": false,
+          "contextLimit": 32000
+        }
+      },
+      "teacherCalls": 1,
+      "usage": {
+        "promptTokens": 2105,
+        "completionTokens": 79,
+        "totalTokens": 2184
+      },
+      "layaMs": 224.73689999999988,
+      "teacherMs": 2836,
+      "wallMs": 3079.1329000000005,
+      "trainingPerformed": false
+    },
+    {
+      "inputDigest": "872944743ae2d181b39478061dd2c649052f045319042ecd753ea1108488a194",
+      "requestId": "deb8f98e-c631-4daa-8e71-4754359538b2",
+      "site": "pelican.result-comparison",
+      "state": "completed",
+      "selectedId": "remove-begin-batched-single-patch",
+      "decided_by": "deepseek",
+      "reason": "unvalidated_decision_site",
+      "layaCandidate": "remove-begin-batched-single-patch",
+      "layaError": null,
+      "rationale": "Both candidates produced the identical passing SHA-256 60459cf2..., preserved geometry, and reported all three expected animations moving with no browser errors or warnings. The batched single-patch strategy is best supported as the feasible incremental choice because it achieved the same verified result in substantially less wall time (18143.5 ms vs 34646.3 ms).",
+      "sources": [
+        {
+          "sourceId": "main",
+          "revision": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+          "sha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+        },
+        {
+          "sourceId": "shadow",
+          "revision": "12368bab-5a70-4081-8626-2d9478a7490e",
+          "sha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+        }
+      ],
+      "criteriaVersion": "pelican-v1",
+      "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+      "teacher": {
+        "provider": "openai-compatible",
+        "deployment": "deepseek-v4.1-flash",
+        "model": "deepseek-v4.1-flash",
+        "verification": "conditional",
+        "capabilities": {
+          "text": true,
+          "streaming": false,
+          "toolCalling": false,
+          "structuredOutput": false,
+          "vision": false,
+          "contextLimit": 32000
+        }
+      },
+      "teacherCalls": 1,
+      "usage": {
+        "promptTokens": 1792,
+        "completionTokens": 92,
+        "totalTokens": 1884
+      },
+      "layaMs": 382.04580000000715,
+      "teacherMs": 1629,
+      "wallMs": 2021.8750999999902,
+      "trainingPerformed": false
+    },
+    {
+      "inputDigest": "872944743ae2d181b39478061dd2c649052f045319042ecd753ea1108488a194",
+      "requestId": "ff3d560e-f3c4-45c5-917c-9fbed266258e",
+      "site": "pelican.result-comparison",
+      "state": "completed",
+      "selectedId": "remove-begin-batched-single-patch",
+      "decided_by": "verified_experience",
+      "reason": "exact_verified_case",
+      "evidenceRefs": [
+        "host-tool-08cb6703-7ec9-4b32-9e00-efc3125be486"
+      ],
+      "sources": [
+        {
+          "sourceId": "main",
+          "revision": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+          "sha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+        },
+        {
+          "sourceId": "shadow",
+          "revision": "12368bab-5a70-4081-8626-2d9478a7490e",
+          "sha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+        }
+      ],
+      "criteriaVersion": "pelican-v1",
+      "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+      "teacherCalls": 0,
+      "wallMs": 1.9637000000075204,
+      "trainingPerformed": false
+    }
+  ],
+  "laya": [
+    {
+      "event": "laya_choice",
+      "model": "multilingual",
+      "requestId": "061a7786-ab39-40f1-a1e7-071162030106",
+      "candidateId": "remove-begin-reversed-order",
+      "durationMs": 181.5692999999992,
+      "queueWaitMs": 0.46670000000085565,
+      "busyWaitMs": 0.0004000000008090865,
+      "internalHttpMs": 181.10869999999704,
+      "responseValidationMs": 0.07229999999981374,
+      "choiceWallMs": 181.5692999999992,
+      "endToEndMs": 182.03600000000006,
+      "batchId": "b51425b7-aa24-45c5-8be6-88011c96ca3d",
+      "batchItemId": "292d52e9-51b6-4363-9684-7d9801a0ebbf",
+      "batchSize": 1,
+      "submittedBatchSize": 1,
+      "executionPolicy": "sequential",
+      "forwardId": "b51425b7-aa24-45c5-8be6-88011c96ca3d",
+      "forwardIndex": 1,
+      "forwardCount": 1,
+      "candidateCount": 3,
+      "encodedTokens": 2612,
+      "tokenWindow": {
+        "formatVersion": "1.0.0",
+        "encoderMaxTokens": 8192,
+        "maxLength": 2612,
+        "headMaxLength": 262,
+        "headerTokens": [
+          265
+        ],
+        "stateTokens": [
+          2346
+        ],
+        "requiredSequenceTokens": [
+          2612
+        ],
+        "expectedInputTokens": [
+          2612
+        ],
+        "encodedTokens": 2612,
+        "droppedTokens": 0,
+        "truncated": false,
+        "criterionHeaderMaxTokens": 48
+      },
+      "questionProfile": "workflow_choice_v1",
+      "top1Probability": 0.7002,
+      "top2Probability": 0.2135,
+      "margin": 0.4867,
+      "entropyConcentration": 0.2803,
+      "calibrated": false,
+      "inferenceMetrics": {
+        "status": "available",
+        "formatVersion": "1.0.0",
+        "forwardScope": "sdk_predict_batch",
+        "precheckScope": "context_window_preflight",
+        "precheckMs": 3.5906,
+        "forwardMs": 151.4269,
+        "processCpuMs": 156.25,
+        "precheckProcessCpuMs": 0,
+        "forwardProcessCpuMs": 156.25,
+        "cgroupBefore": {
+          "status": "unsupported"
+        },
+        "cgroupAfter": {
+          "status": "unsupported"
+        },
+        "cgroupCpuDelta": {
+          "status": "missing"
+        }
+      },
+      "fullCriterionDescriptions": "included_in_selector_state"
+    },
+    {
+      "event": "laya_choice",
+      "model": "multilingual",
+      "requestId": "a51d6477-b1f8-42ea-b1d9-8676a3bd9468",
+      "candidateId": "remove-begin-reversed-order",
+      "durationMs": 224.44830000000002,
+      "queueWaitMs": 0.06120000000009895,
+      "busyWaitMs": 0.0005000000019208528,
+      "internalHttpMs": 224.33870000000024,
+      "responseValidationMs": 0.03740000000107102,
+      "choiceWallMs": 224.44830000000002,
+      "endToEndMs": 224.50950000000012,
+      "batchId": "7c1274f5-7cf1-46c9-ac8b-fcc39978f7db",
+      "batchItemId": "ae3ca0ba-8163-460e-af05-9329e9fbda12",
+      "batchSize": 1,
+      "submittedBatchSize": 1,
+      "executionPolicy": "sequential",
+      "forwardId": "7c1274f5-7cf1-46c9-ac8b-fcc39978f7db",
+      "forwardIndex": 1,
+      "forwardCount": 1,
+      "candidateCount": 2,
+      "encodedTokens": 2512,
+      "tokenWindow": {
+        "formatVersion": "1.0.0",
+        "encoderMaxTokens": 8192,
+        "maxLength": 2512,
+        "headMaxLength": 256,
+        "headerTokens": [
+          224
+        ],
+        "stateTokens": [
+          2287
+        ],
+        "requiredSequenceTokens": [
+          2512
+        ],
+        "expectedInputTokens": [
+          2512
+        ],
+        "encodedTokens": 2512,
+        "droppedTokens": 0,
+        "truncated": false,
+        "criterionHeaderMaxTokens": 48
+      },
+      "questionProfile": "workflow_choice_v1",
+      "top1Probability": 0.7853,
+      "top2Probability": 0.2147,
+      "margin": 0.5706,
+      "entropyConcentration": 0.2496,
+      "calibrated": false,
+      "inferenceMetrics": {
+        "status": "available",
+        "formatVersion": "1.0.0",
+        "forwardScope": "sdk_predict_batch",
+        "precheckScope": "context_window_preflight",
+        "precheckMs": 2.3215,
+        "forwardMs": 219.2636,
+        "processCpuMs": 218.75,
+        "precheckProcessCpuMs": 0,
+        "forwardProcessCpuMs": 218.75,
+        "cgroupBefore": {
+          "status": "unsupported"
+        },
+        "cgroupAfter": {
+          "status": "unsupported"
+        },
+        "cgroupCpuDelta": {
+          "status": "missing"
+        }
+      },
+      "fullCriterionDescriptions": "included_in_selector_state"
+    },
+    {
+      "event": "laya_choice",
+      "model": "multilingual",
+      "requestId": "deb8f98e-c631-4daa-8e71-4754359538b2",
+      "candidateId": "remove-begin-batched-single-patch",
+      "durationMs": 381.21809999999823,
+      "queueWaitMs": 0.12279999999736901,
+      "busyWaitMs": 0.0004999999946448952,
+      "internalHttpMs": 380.7649000000092,
+      "responseValidationMs": 0.06850000000849832,
+      "choiceWallMs": 381.21809999999823,
+      "endToEndMs": 381.3408999999956,
+      "batchId": "fd5e3a67-048c-485d-abcd-52644208a9d3",
+      "batchItemId": "e9a0bfdd-746d-459e-b933-c0f76ddfda45",
+      "batchSize": 1,
+      "submittedBatchSize": 1,
+      "executionPolicy": "sequential",
+      "forwardId": "fd5e3a67-048c-485d-abcd-52644208a9d3",
+      "forwardIndex": 1,
+      "forwardCount": 1,
+      "candidateCount": 2,
+      "encodedTokens": 2037,
+      "tokenWindow": {
+        "formatVersion": "1.0.0",
+        "encoderMaxTokens": 8192,
+        "maxLength": 2037,
+        "headMaxLength": 258,
+        "headerTokens": [
+          261
+        ],
+        "stateTokens": [
+          1775
+        ],
+        "requiredSequenceTokens": [
+          2037
+        ],
+        "expectedInputTokens": [
+          2037
+        ],
+        "encodedTokens": 2037,
+        "droppedTokens": 0,
+        "truncated": false,
+        "criterionHeaderMaxTokens": 48
+      },
+      "questionProfile": "workflow_choice_v1",
+      "top1Probability": 0.9781,
+      "top2Probability": 0.0219,
+      "margin": 0.9561999999999999,
+      "entropyConcentration": 0.8482,
+      "calibrated": false,
+      "inferenceMetrics": {
+        "status": "available",
+        "formatVersion": "1.0.0",
+        "forwardScope": "sdk_predict_batch",
+        "precheckScope": "context_window_preflight",
+        "precheckMs": 4.5278,
+        "forwardMs": 371.6746,
+        "processCpuMs": 375,
+        "precheckProcessCpuMs": 0,
+        "forwardProcessCpuMs": 375,
+        "cgroupBefore": {
+          "status": "unsupported"
+        },
+        "cgroupAfter": {
+          "status": "unsupported"
+        },
+        "cgroupCpuDelta": {
+          "status": "missing"
+        }
+      },
+      "fullCriterionDescriptions": "included_in_selector_state"
+    }
+  ],
+  "branches": [
+    {
+      "mode": "main",
+      "planId": "remove-begin-one-at-a-time",
+      "directory": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main",
+      "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+      "verifications": [
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": false,
+          "failure": "pelican_animation_not_started",
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/main/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": false
+              },
+              {
+                "id": "wheel-front",
+                "changed": false
+              },
+              {
+                "id": "pedal",
+                "changed": false
+              }
+            ],
+            "elapsedSvgSeconds": 0.24999001622200012,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main-host-tool-2317e1fe-87a2-4f02-a3b6-2ce1ffdafc9c.png"
+          },
+          "verifiedAt": "2026-10-15T14:56:52.588Z"
+        },
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": false,
+          "failure": "pelican_animation_not_started",
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/main/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": false
+              },
+              {
+                "id": "wheel-front",
+                "changed": false
+              },
+              {
+                "id": "pedal",
+                "changed": false
+              }
+            ],
+            "elapsedSvgSeconds": 0.2666559973731637,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main-host-tool-c14e2da4-076b-47df-b0c4-0538c39cd72e.png"
+          },
+          "verifiedAt": "2026-10-15T14:56:58.316Z"
+        },
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "f1e3d31e679202aaf39211b8db1502ff6467980d0d5ae36007bb8df1c5e6a357",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [
+            "back-spin"
+          ],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": false,
+          "failure": "pelican_animation_not_started",
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/main/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": true
+              },
+              {
+                "id": "wheel-front",
+                "changed": false
+              },
+              {
+                "id": "pedal",
+                "changed": false
+              }
+            ],
+            "elapsedSvgSeconds": 0.250200005248189,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main-host-tool-6121be56-5287-4802-a678-965cf682bb7e.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:07.373Z"
+        },
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "ab09adb7650c7eaf0a771f70e65602864767a7364fae3ea955cec6b0c26550fd",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [
+            "back-spin",
+            "front-spin"
+          ],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": false,
+          "failure": "pelican_animation_not_started",
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/main/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": true
+              },
+              {
+                "id": "wheel-front",
+                "changed": true
+              },
+              {
+                "id": "pedal",
+                "changed": false
+              }
+            ],
+            "elapsedSvgSeconds": 0.2505999989807606,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main-host-tool-5c61310e-d73b-45df-bcca-e4309e0d160c.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:14.802Z"
+        },
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": true,
+          "failure": null,
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/main/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": true
+              },
+              {
+                "id": "wheel-front",
+                "changed": true
+              },
+              {
+                "id": "pedal",
+                "changed": true
+              }
+            ],
+            "elapsedSvgSeconds": 0.2504999917000532,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main-host-tool-0e9aa846-65ec-45b0-8c81-0fc888ff8e47.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:22.134Z"
+        },
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": true,
+          "failure": null,
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/main/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": true
+              },
+              {
+                "id": "wheel-front",
+                "changed": true
+              },
+              {
+                "id": "pedal",
+                "changed": true
+              }
+            ],
+            "elapsedSvgSeconds": 0.2501999866217375,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main-host-tool-4da711f9-92c5-454a-861c-dccefa067eda.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:25.471Z"
+        }
+      ],
+      "status": "verified",
+      "initial": {
+        "result": {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": false,
+          "failure": "pelican_animation_not_started",
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/main/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": false
+              },
+              {
+                "id": "wheel-front",
+                "changed": false
+              },
+              {
+                "id": "pedal",
+                "changed": false
+              }
+            ],
+            "elapsedSvgSeconds": 0.24999001622200012,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main-host-tool-2317e1fe-87a2-4f02-a3b6-2ce1ffdafc9c.png"
+          },
+          "verifiedAt": "2026-10-15T14:56:52.588Z"
+        },
+        "evidenceRefs": [
+          "host-tool-2317e1fe-87a2-4f02-a3b6-2ce1ffdafc9c"
+        ]
+      },
+      "final": {
+        "kind": "pelican_animation_incremental_repair",
+        "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+        "currentSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+        "scope": "fixed fixture structural/animation semantics; browser playback separate",
+        "geometryPreserved": true,
+        "activeAnimations": [
+          "back-spin",
+          "front-spin",
+          "pedal-spin"
+        ],
+        "expectedAnimations": [
+          "back-spin",
+          "front-spin",
+          "pedal-spin"
+        ],
+        "passed": true,
+        "failure": null,
+        "browser": {
+          "browser": "headless installed Edge, fresh profile",
+          "automation": "isolated benchmark browser; external requests blocked",
+          "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/main/pelican.svg",
+          "nonBlank": true,
+          "errors": [],
+          "warnings": [],
+          "moving": [
+            {
+              "id": "wheel-back",
+              "changed": true
+            },
+            {
+              "id": "wheel-front",
+              "changed": true
+            },
+            {
+              "id": "pedal",
+              "changed": true
+            }
+          ],
+          "elapsedSvgSeconds": 0.2501999866217375,
+          "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\main-host-tool-4da711f9-92c5-454a-861c-dccefa067eda.png"
+        },
+        "verifiedAt": "2026-10-15T14:57:25.471Z"
+      },
+      "evidenceRefs": [
+        "host-tool-4da711f9-92c5-454a-861c-dccefa067eda"
+      ],
+      "taskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "taskState": "succeeded",
+      "wallMs": 34646.3148
+    },
+    {
+      "mode": "shadow",
+      "planId": "remove-begin-batched-single-patch",
+      "directory": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\shadow",
+      "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+      "verifications": [
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": false,
+          "failure": "pelican_animation_not_started",
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/shadow/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": false
+              },
+              {
+                "id": "wheel-front",
+                "changed": false
+              },
+              {
+                "id": "pedal",
+                "changed": false
+              }
+            ],
+            "elapsedSvgSeconds": 0.24999001249670982,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\shadow-host-tool-ae27fd6e-d639-416d-a35a-d45d085ceb03.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:26.890Z"
+        },
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": false,
+          "failure": "pelican_animation_not_started",
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/shadow/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": false
+              },
+              {
+                "id": "wheel-front",
+                "changed": false
+              },
+              {
+                "id": "pedal",
+                "changed": false
+              }
+            ],
+            "elapsedSvgSeconds": 0.24998999945819378,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\shadow-host-tool-c9fe3c46-6956-49c0-8eed-8a1b48258927.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:30.710Z"
+        },
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": true,
+          "failure": null,
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/shadow/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": true
+              },
+              {
+                "id": "wheel-front",
+                "changed": true
+              },
+              {
+                "id": "pedal",
+                "changed": true
+              }
+            ],
+            "elapsedSvgSeconds": 0.2664000140503049,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\shadow-host-tool-45ec0b8a-25b2-4d78-ac90-76db8afe8d98.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:40.506Z"
+        },
+        {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": true,
+          "failure": null,
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/shadow/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": true
+              },
+              {
+                "id": "wheel-front",
+                "changed": true
+              },
+              {
+                "id": "pedal",
+                "changed": true
+              }
+            ],
+            "elapsedSvgSeconds": 0.25040000304579735,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\shadow-host-tool-4eb8946d-86e0-4d0b-8ea5-eb31d921d1ce.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:43.578Z"
+        }
+      ],
+      "status": "verified",
+      "initial": {
+        "result": {
+          "kind": "pelican_animation_incremental_repair",
+          "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "currentSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+          "scope": "fixed fixture structural/animation semantics; browser playback separate",
+          "geometryPreserved": true,
+          "activeAnimations": [],
+          "expectedAnimations": [
+            "back-spin",
+            "front-spin",
+            "pedal-spin"
+          ],
+          "passed": false,
+          "failure": "pelican_animation_not_started",
+          "browser": {
+            "browser": "headless installed Edge, fresh profile",
+            "automation": "isolated benchmark browser; external requests blocked",
+            "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/shadow/pelican.svg",
+            "nonBlank": true,
+            "errors": [],
+            "warnings": [],
+            "moving": [
+              {
+                "id": "wheel-back",
+                "changed": false
+              },
+              {
+                "id": "wheel-front",
+                "changed": false
+              },
+              {
+                "id": "pedal",
+                "changed": false
+              }
+            ],
+            "elapsedSvgSeconds": 0.24999001249670982,
+            "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\shadow-host-tool-ae27fd6e-d639-416d-a35a-d45d085ceb03.png"
+          },
+          "verifiedAt": "2026-10-15T14:57:26.890Z"
+        },
+        "evidenceRefs": [
+          "host-tool-ae27fd6e-d639-416d-a35a-d45d085ceb03"
+        ]
+      },
+      "final": {
+        "kind": "pelican_animation_incremental_repair",
+        "baselineSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+        "currentSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+        "scope": "fixed fixture structural/animation semantics; browser playback separate",
+        "geometryPreserved": true,
+        "activeAnimations": [
+          "back-spin",
+          "front-spin",
+          "pedal-spin"
+        ],
+        "expectedAnimations": [
+          "back-spin",
+          "front-spin",
+          "pedal-spin"
+        ],
+        "passed": true,
+        "failure": null,
+        "browser": {
+          "browser": "headless installed Edge, fresh profile",
+          "automation": "isolated benchmark browser; external requests blocked",
+          "url": "file:///<implementation>/.cache/pelican-test-version-p65QFZ/shadow/pelican.svg",
+          "nonBlank": true,
+          "errors": [],
+          "warnings": [],
+          "moving": [
+            {
+              "id": "wheel-back",
+              "changed": true
+            },
+            {
+              "id": "wheel-front",
+              "changed": true
+            },
+            {
+              "id": "pedal",
+              "changed": true
+            }
+          ],
+          "elapsedSvgSeconds": 0.25040000304579735,
+          "screenshot": "<implementation>\\.cache\\pelican-test-version-p65QFZ\\shadow-host-tool-4eb8946d-86e0-4d0b-8ea5-eb31d921d1ce.png"
+        },
+        "verifiedAt": "2026-10-15T14:57:43.578Z"
+      },
+      "evidenceRefs": [
+        "host-tool-4eb8946d-86e0-4d0b-8ea5-eb31d921d1ce"
+      ],
+      "taskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "taskState": "succeeded",
+      "wallMs": 18143.5072
+    }
+  ],
+  "status": "verified_main_shadow_and_delivery",
+  "timings": [
+    {
+      "kind": "startup",
+      "label": "browser",
+      "startedAt": "2026-10-15T14:56:26.508Z",
+      "endedAt": "2026-10-15T14:56:26.990Z",
+      "wallMs": 481.8401,
+      "outcome": "completed"
+    },
+    {
+      "kind": "startup",
+      "label": "image_model_binding",
+      "startedAt": "2026-10-15T14:56:26.991Z",
+      "endedAt": "2026-10-15T14:56:27.067Z",
+      "wallMs": 75.69229999999993,
+      "outcome": "completed"
+    },
+    {
+      "kind": "startup",
+      "label": "local_laya",
+      "startedAt": "2026-10-15T14:56:27.084Z",
+      "endedAt": "2026-10-15T14:56:41.748Z",
+      "wallMs": 14663.2551,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:56:41.750Z",
+      "endedAt": "2026-10-15T14:56:45.616Z",
+      "wallMs": 3865.810900000002,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:56:45.809Z",
+      "endedAt": "2026-10-15T14:56:47.791Z",
+      "wallMs": 1982.1453999999976,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:56:48.038Z",
+      "endedAt": "2026-10-15T14:56:50.891Z",
+      "wallMs": 2852.838100000001,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "main:structure",
+      "startedAt": "2026-10-15T14:56:52.055Z",
+      "endedAt": "2026-10-15T14:56:52.159Z",
+      "wallMs": 103.96210000000065,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "main",
+      "startedAt": "2026-10-15T14:56:52.159Z",
+      "endedAt": "2026-10-15T14:56:52.587Z",
+      "wallMs": 428.22699999999895,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:56:51.941Z",
+      "endedAt": "2026-10-15T14:56:52.617Z",
+      "wallMs": 675.7133000000031,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:56:52.622Z",
+      "endedAt": "2026-10-15T14:56:53.909Z",
+      "wallMs": 1287.1423000000032,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.read_text",
+      "startedAt": "2026-10-15T14:56:53.918Z",
+      "endedAt": "2026-10-15T14:56:54.045Z",
+      "wallMs": 127.04839999999967,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:56:54.056Z",
+      "endedAt": "2026-10-15T14:56:57.574Z",
+      "wallMs": 3517.609800000002,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "main:structure",
+      "startedAt": "2026-10-15T14:56:57.780Z",
+      "endedAt": "2026-10-15T14:56:57.947Z",
+      "wallMs": 166.85320000000138,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "main",
+      "startedAt": "2026-10-15T14:56:57.948Z",
+      "endedAt": "2026-10-15T14:56:58.315Z",
+      "wallMs": 367.40940000000046,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:56:57.591Z",
+      "endedAt": "2026-10-15T14:56:58.355Z",
+      "wallMs": 763.8254999999954,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:56:58.364Z",
+      "endedAt": "2026-10-15T14:57:00.246Z",
+      "wallMs": 1882.0463999999993,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.preview_text_patch",
+      "startedAt": "2026-10-15T14:57:00.277Z",
+      "endedAt": "2026-10-15T14:57:00.417Z",
+      "wallMs": 139.9542999999976,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:00.424Z",
+      "endedAt": "2026-10-15T14:57:03.610Z",
+      "wallMs": 3186.0624000000025,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.apply_text_patch",
+      "startedAt": "2026-10-15T14:57:03.627Z",
+      "endedAt": "2026-10-15T14:57:05.115Z",
+      "wallMs": 1487.7811999999976,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:05.129Z",
+      "endedAt": "2026-10-15T14:57:06.859Z",
+      "wallMs": 1730.3292000000001,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "main:structure",
+      "startedAt": "2026-10-15T14:57:06.952Z",
+      "endedAt": "2026-10-15T14:57:07.044Z",
+      "wallMs": 91.47709999999643,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "main",
+      "startedAt": "2026-10-15T14:57:07.044Z",
+      "endedAt": "2026-10-15T14:57:07.372Z",
+      "wallMs": 328.2916000000041,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:57:06.866Z",
+      "endedAt": "2026-10-15T14:57:07.412Z",
+      "wallMs": 546.3989000000001,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:07.418Z",
+      "endedAt": "2026-10-15T14:57:09.622Z",
+      "wallMs": 2203.396400000005,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.preview_text_patch",
+      "startedAt": "2026-10-15T14:57:09.656Z",
+      "endedAt": "2026-10-15T14:57:09.774Z",
+      "wallMs": 117.72159999999712,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:09.780Z",
+      "endedAt": "2026-10-15T14:57:11.720Z",
+      "wallMs": 1940.5769,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.apply_text_patch",
+      "startedAt": "2026-10-15T14:57:11.730Z",
+      "endedAt": "2026-10-15T14:57:12.609Z",
+      "wallMs": 879.8905000000013,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:12.615Z",
+      "endedAt": "2026-10-15T14:57:14.258Z",
+      "wallMs": 1642.8162000000011,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "main:structure",
+      "startedAt": "2026-10-15T14:57:14.389Z",
+      "endedAt": "2026-10-15T14:57:14.475Z",
+      "wallMs": 86.69170000000304,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "main",
+      "startedAt": "2026-10-15T14:57:14.476Z",
+      "endedAt": "2026-10-15T14:57:14.801Z",
+      "wallMs": 324.9005000000034,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:57:14.297Z",
+      "endedAt": "2026-10-15T14:57:14.886Z",
+      "wallMs": 588.5264999999999,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:14.893Z",
+      "endedAt": "2026-10-15T14:57:16.986Z",
+      "wallMs": 2093.6870000000054,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.preview_text_patch",
+      "startedAt": "2026-10-15T14:57:17.046Z",
+      "endedAt": "2026-10-15T14:57:17.207Z",
+      "wallMs": 161.0532000000021,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:17.214Z",
+      "endedAt": "2026-10-15T14:57:19.136Z",
+      "wallMs": 1922.5527000000002,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.apply_text_patch",
+      "startedAt": "2026-10-15T14:57:19.152Z",
+      "endedAt": "2026-10-15T14:57:20.014Z",
+      "wallMs": 861.7495999999956,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:20.020Z",
+      "endedAt": "2026-10-15T14:57:21.597Z",
+      "wallMs": 1577.145000000004,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "main:structure",
+      "startedAt": "2026-10-15T14:57:21.721Z",
+      "endedAt": "2026-10-15T14:57:21.804Z",
+      "wallMs": 82.89869999999792,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "main",
+      "startedAt": "2026-10-15T14:57:21.805Z",
+      "endedAt": "2026-10-15T14:57:22.133Z",
+      "wallMs": 328.4429000000018,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:57:21.624Z",
+      "endedAt": "2026-10-15T14:57:22.162Z",
+      "wallMs": 537.8821000000025,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:22.169Z",
+      "endedAt": "2026-10-15T14:57:24.936Z",
+      "wallMs": 2766.681300000004,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "main:structure",
+      "startedAt": "2026-10-15T14:57:25.035Z",
+      "endedAt": "2026-10-15T14:57:25.121Z",
+      "wallMs": 85.33610000000044,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "main",
+      "startedAt": "2026-10-15T14:57:25.121Z",
+      "endedAt": "2026-10-15T14:57:25.470Z",
+      "wallMs": 348.55369999999675,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:57:24.941Z",
+      "endedAt": "2026-10-15T14:57:25.497Z",
+      "wallMs": 555.1914000000033,
+      "outcome": "completed"
+    },
+    {
+      "kind": "phase",
+      "label": "main",
+      "startedAt": "2026-10-15T14:56:50.898Z",
+      "endedAt": "2026-10-15T14:57:25.546Z",
+      "wallMs": 34647.7181,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "shadow:structure",
+      "startedAt": "2026-10-15T14:57:26.474Z",
+      "endedAt": "2026-10-15T14:57:26.577Z",
+      "wallMs": 102.74799999999959,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "shadow",
+      "startedAt": "2026-10-15T14:57:26.577Z",
+      "endedAt": "2026-10-15T14:57:26.889Z",
+      "wallMs": 311.8156999999992,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:57:26.378Z",
+      "endedAt": "2026-10-15T14:57:26.924Z",
+      "wallMs": 546.5922999999966,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:26.929Z",
+      "endedAt": "2026-10-15T14:57:28.650Z",
+      "wallMs": 1720.5054000000018,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.read_text",
+      "startedAt": "2026-10-15T14:57:28.675Z",
+      "endedAt": "2026-10-15T14:57:28.806Z",
+      "wallMs": 130.7693999999974,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:28.813Z",
+      "endedAt": "2026-10-15T14:57:30.187Z",
+      "wallMs": 1373.8524000000034,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "shadow:structure",
+      "startedAt": "2026-10-15T14:57:30.300Z",
+      "endedAt": "2026-10-15T14:57:30.386Z",
+      "wallMs": 85.99690000000555,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "shadow",
+      "startedAt": "2026-10-15T14:57:30.386Z",
+      "endedAt": "2026-10-15T14:57:30.709Z",
+      "wallMs": 322.79119999999966,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:57:30.195Z",
+      "endedAt": "2026-10-15T14:57:30.735Z",
+      "wallMs": 539.7540999999983,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:30.742Z",
+      "endedAt": "2026-10-15T14:57:33.236Z",
+      "wallMs": 2494.082300000002,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.preview_text_patch",
+      "startedAt": "2026-10-15T14:57:33.278Z",
+      "endedAt": "2026-10-15T14:57:33.415Z",
+      "wallMs": 137.6183999999921,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:33.421Z",
+      "endedAt": "2026-10-15T14:57:37.130Z",
+      "wallMs": 3709.475600000005,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.apply_text_patch",
+      "startedAt": "2026-10-15T14:57:37.152Z",
+      "endedAt": "2026-10-15T14:57:38.264Z",
+      "wallMs": 1111.689200000008,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:38.281Z",
+      "endedAt": "2026-10-15T14:57:39.921Z",
+      "wallMs": 1639.860799999995,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "shadow:structure",
+      "startedAt": "2026-10-15T14:57:40.069Z",
+      "endedAt": "2026-10-15T14:57:40.162Z",
+      "wallMs": 92.82429999999295,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "shadow",
+      "startedAt": "2026-10-15T14:57:40.162Z",
+      "endedAt": "2026-10-15T14:57:40.505Z",
+      "wallMs": 343.54920000000857,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:57:39.947Z",
+      "endedAt": "2026-10-15T14:57:40.532Z",
+      "wallMs": 585.247199999998,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:40.540Z",
+      "endedAt": "2026-10-15T14:57:43.033Z",
+      "wallMs": 2492.69739999999,
+      "outcome": "completed"
+    },
+    {
+      "kind": "verification",
+      "label": "shadow:structure",
+      "startedAt": "2026-10-15T14:57:43.156Z",
+      "endedAt": "2026-10-15T14:57:43.257Z",
+      "wallMs": 100.90060000000813,
+      "outcome": "completed"
+    },
+    {
+      "kind": "browser",
+      "label": "shadow",
+      "startedAt": "2026-10-15T14:57:43.258Z",
+      "endedAt": "2026-10-15T14:57:43.577Z",
+      "wallMs": 319.3353999999963,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "pelican.verify",
+      "startedAt": "2026-10-15T14:57:43.061Z",
+      "endedAt": "2026-10-15T14:57:43.648Z",
+      "wallMs": 587.1742999999988,
+      "outcome": "completed"
+    },
+    {
+      "kind": "phase",
+      "label": "shadow",
+      "startedAt": "2026-10-15T14:57:25.546Z",
+      "endedAt": "2026-10-15T14:57:43.692Z",
+      "wallMs": 18144.46319999999,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-15T14:57:44.080Z",
+      "endedAt": "2026-10-15T14:57:45.718Z",
+      "wallMs": 1638.0276000000013,
+      "outcome": "completed"
+    },
+    {
+      "kind": "tool",
+      "label": "workspace.apply_text_patch",
+      "startedAt": "2026-10-15T14:57:46.317Z",
+      "endedAt": "2026-10-15T14:57:47.506Z",
+      "wallMs": 1189.7217999999993,
+      "outcome": "completed"
+    }
+  ],
+  "business": [
+    {
+      "module": "MOD-21",
+      "state": "unavailable",
+      "reason": "No explicitly supplied account provider"
+    },
+    {
+      "module": "MOD-24",
+      "state": "unavailable",
+      "reason": "No explicitly supplied research provider"
+    },
+    {
+      "module": "MOD-23",
+      "state": "unavailable",
+      "reason": "No explicitly supplied notification storage and policy"
+    }
+  ],
+  "localModel": {
+    "device": "cuda",
+    "torchThreads": 1,
+    "precision": {
+      "autocastEnabled": true,
+      "autocastDtype": "torch.bfloat16"
+    },
+    "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851"
+  },
+  "toolExecutions": [
+    {
+      "taskId": "2317e1fe-87a2-4f02-a3b6-2ce1ffdafc9c",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-2317e1fe-87a2-4f02-a3b6-2ce1ffdafc9c"
+      ]
+    },
+    {
+      "taskId": "3c9f4bd2-44eb-4881-bfc3-d47a56fe5d2c",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "workspace.read_text",
+      "argumentsDigest": "b075d63f89708ef05a2154c689f1710fdb927f4b9257e927a844a10f95d3f4e3",
+      "evidenceRefs": [
+        "host-tool-3c9f4bd2-44eb-4881-bfc3-d47a56fe5d2c"
+      ]
+    },
+    {
+      "taskId": "c14e2da4-076b-47df-b0c4-0538c39cd72e",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-c14e2da4-076b-47df-b0c4-0538c39cd72e"
+      ]
+    },
+    {
+      "taskId": "02f81d90-3186-4ca5-9bf3-30d6851a80f0",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "workspace.preview_text_patch",
+      "argumentsDigest": "45546ced7f7ab24bd825e5121be4fd84049cbf1172e17b487345416c98f10d15",
+      "evidenceRefs": [
+        "host-tool-02f81d90-3186-4ca5-9bf3-30d6851a80f0"
+      ]
+    },
+    {
+      "taskId": "cc4b8642-980e-4833-a046-9df632f6185e",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "workspace.apply_text_patch",
+      "argumentsDigest": "45546ced7f7ab24bd825e5121be4fd84049cbf1172e17b487345416c98f10d15",
+      "evidenceRefs": [
+        "host-tool-cc4b8642-980e-4833-a046-9df632f6185e"
+      ]
+    },
+    {
+      "taskId": "6121be56-5287-4802-a678-965cf682bb7e",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-6121be56-5287-4802-a678-965cf682bb7e"
+      ]
+    },
+    {
+      "taskId": "f6d9bdf8-c89c-4a3f-9116-908d6536ca73",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "workspace.preview_text_patch",
+      "argumentsDigest": "07cc53468a7340b75f2e8f8dc5475923547376be5f873befcab67ed120f27ea6",
+      "evidenceRefs": [
+        "host-tool-f6d9bdf8-c89c-4a3f-9116-908d6536ca73"
+      ]
+    },
+    {
+      "taskId": "06317722-8930-4b42-ad69-763c3e79605e",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "workspace.apply_text_patch",
+      "argumentsDigest": "07cc53468a7340b75f2e8f8dc5475923547376be5f873befcab67ed120f27ea6",
+      "evidenceRefs": [
+        "host-tool-06317722-8930-4b42-ad69-763c3e79605e"
+      ]
+    },
+    {
+      "taskId": "5c61310e-d73b-45df-bcca-e4309e0d160c",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-5c61310e-d73b-45df-bcca-e4309e0d160c"
+      ]
+    },
+    {
+      "taskId": "c383a957-4ff3-4813-aaf3-cdc2346ae622",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "workspace.preview_text_patch",
+      "argumentsDigest": "6e3f1c31d02ea6e22bad5291c75c2afff4df815e7e85d25cbbbeefc937c196b8",
+      "evidenceRefs": [
+        "host-tool-c383a957-4ff3-4813-aaf3-cdc2346ae622"
+      ]
+    },
+    {
+      "taskId": "b41b775e-06a6-4252-ae3e-ba116455f379",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "workspace.apply_text_patch",
+      "argumentsDigest": "6e3f1c31d02ea6e22bad5291c75c2afff4df815e7e85d25cbbbeefc937c196b8",
+      "evidenceRefs": [
+        "host-tool-b41b775e-06a6-4252-ae3e-ba116455f379"
+      ]
+    },
+    {
+      "taskId": "0e9aa846-65ec-45b0-8c81-0fc888ff8e47",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-0e9aa846-65ec-45b0-8c81-0fc888ff8e47"
+      ]
+    },
+    {
+      "taskId": "4da711f9-92c5-454a-861c-dccefa067eda",
+      "parentTaskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-4da711f9-92c5-454a-861c-dccefa067eda"
+      ]
+    },
+    {
+      "taskId": "ae27fd6e-d639-416d-a35a-d45d085ceb03",
+      "parentTaskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-ae27fd6e-d639-416d-a35a-d45d085ceb03"
+      ]
+    },
+    {
+      "taskId": "5d30c3b3-bb68-4e24-85e6-b246bbc21ab7",
+      "parentTaskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "tool": "workspace.read_text",
+      "argumentsDigest": "b075d63f89708ef05a2154c689f1710fdb927f4b9257e927a844a10f95d3f4e3",
+      "evidenceRefs": [
+        "host-tool-5d30c3b3-bb68-4e24-85e6-b246bbc21ab7"
+      ]
+    },
+    {
+      "taskId": "c9fe3c46-6956-49c0-8eed-8a1b48258927",
+      "parentTaskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-c9fe3c46-6956-49c0-8eed-8a1b48258927"
+      ]
+    },
+    {
+      "taskId": "3434eb6b-3a84-4804-9a2f-9d126e40c8e4",
+      "parentTaskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "tool": "workspace.preview_text_patch",
+      "argumentsDigest": "e9ef1225c70c42354682804bd9910549a371c6cf2281a99c2ed531255667ab53",
+      "evidenceRefs": [
+        "host-tool-3434eb6b-3a84-4804-9a2f-9d126e40c8e4"
+      ]
+    },
+    {
+      "taskId": "109cf58e-3dc1-4a9f-8a85-d81c788432bc",
+      "parentTaskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "tool": "workspace.apply_text_patch",
+      "argumentsDigest": "e9ef1225c70c42354682804bd9910549a371c6cf2281a99c2ed531255667ab53",
+      "evidenceRefs": [
+        "host-tool-109cf58e-3dc1-4a9f-8a85-d81c788432bc"
+      ]
+    },
+    {
+      "taskId": "45ec0b8a-25b2-4d78-ac90-76db8afe8d98",
+      "parentTaskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-45ec0b8a-25b2-4d78-ac90-76db8afe8d98"
+      ]
+    },
+    {
+      "taskId": "4eb8946d-86e0-4d0b-8ea5-eb31d921d1ce",
+      "parentTaskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "tool": "pelican.verify",
+      "argumentsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "evidenceRefs": [
+        "host-tool-4eb8946d-86e0-4d0b-8ea5-eb31d921d1ce"
+      ]
+    },
+    {
+      "taskId": "08cb6703-7ec9-4b32-9e00-efc3125be486",
+      "parentTaskId": "a00e2171-f4dc-4353-bed4-a7fcd67f0c6a",
+      "tool": "workspace.apply_text_patch",
+      "argumentsDigest": "d5b7d0a38b4b4d6a8b16cde120ff45b6a45fe84a8a9fa28b411ef4a8043c28c7",
+      "evidenceRefs": [
+        "host-tool-08cb6703-7ec9-4b32-9e00-efc3125be486"
+      ]
+    }
+  ],
+  "toolFailures": [],
+  "plans": [
+    {
+      "id": "remove-begin-one-at-a-time",
+      "description": "Remove begin=\"indefinite\" from each of the three animateTransform elements in three separate sequential patches, verifying after each; SVG default begin is 0s so animations start automatically.",
+      "goal": "Patch back-spin first (remove begin attribute only), preview, apply, verify; then front-spin; then pedal-spin; each edit preserves all other attributes, ids, dur and rotate targets."
+    },
+    {
+      "id": "remove-begin-batched-single-patch",
+      "description": "Remove begin=\"indefinite\" from all three animateTransform elements in one batched patch, then preview and verify once.",
+      "goal": "Apply a single patch deleting the begin attribute from back-spin, front-spin, and pedal-spin together; confirm element tree, ids, dur, from/to rotate centers unchanged and all three animations start via default 0s begin."
+    },
+    {
+      "id": "remove-begin-reversed-order",
+      "description": "Remove begin=\"indefinite\" starting with pedal-spin, then front-spin, then back-spin, verifying after each edit.",
+      "goal": "Patch pedal-spin begin removal, preview, apply, verify; then front-spin; then back-spin; each step only deletes begin so default 0s triggers animation while preserving geometry and targets."
+    }
+  ],
+  "finalChoice": {
+    "inputDigest": "872944743ae2d181b39478061dd2c649052f045319042ecd753ea1108488a194",
+    "requestId": "deb8f98e-c631-4daa-8e71-4754359538b2",
+    "site": "pelican.result-comparison",
+    "state": "completed",
+    "selectedId": "remove-begin-batched-single-patch",
+    "decided_by": "deepseek",
+    "reason": "unvalidated_decision_site",
+    "layaCandidate": "remove-begin-batched-single-patch",
+    "layaError": null,
+    "rationale": "Both candidates produced the identical passing SHA-256 60459cf2..., preserved geometry, and reported all three expected animations moving with no browser errors or warnings. The batched single-patch strategy is best supported as the feasible incremental choice because it achieved the same verified result in substantially less wall time (18143.5 ms vs 34646.3 ms).",
+    "sources": [
+      {
+        "sourceId": "main",
+        "revision": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+        "sha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+      },
+      {
+        "sourceId": "shadow",
+        "revision": "12368bab-5a70-4081-8626-2d9478a7490e",
+        "sha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+      }
+    ],
+    "criteriaVersion": "pelican-v1",
+    "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "teacher": {
+      "provider": "openai-compatible",
+      "deployment": "deepseek-v4.1-flash",
+      "model": "deepseek-v4.1-flash",
+      "verification": "conditional",
+      "capabilities": {
+        "text": true,
+        "streaming": false,
+        "toolCalling": false,
+        "structuredOutput": false,
+        "vision": false,
+        "contextLimit": 32000
+      }
+    },
+    "teacherCalls": 1,
+    "usage": {
+      "promptTokens": 1792,
+      "completionTokens": 92,
+      "totalTokens": 1884
+    },
+    "layaMs": 382.04580000000715,
+    "teacherMs": 1629,
+    "wallMs": 2021.8750999999902,
+    "trainingPerformed": false
+  },
+  "delivery": {
+    "state": "confirmed",
+    "result": {
+      "path": "pelican.svg",
+      "beforeSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+      "afterSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+      "byteLength": 2509,
+      "changed": true,
+      "applied": true
+    },
+    "evidenceRefs": [
+      "host-tool-08cb6703-7ec9-4b32-9e00-efc3125be486"
+    ],
+    "singleWriteback": true,
+    "userBaselinePreserved": true,
+    "selectedSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+  },
+  "exactCaseReuse": {
+    "inputDigest": "872944743ae2d181b39478061dd2c649052f045319042ecd753ea1108488a194",
+    "requestId": "ff3d560e-f3c4-45c5-917c-9fbed266258e",
+    "site": "pelican.result-comparison",
+    "state": "completed",
+    "selectedId": "remove-begin-batched-single-patch",
+    "decided_by": "verified_experience",
+    "reason": "exact_verified_case",
+    "evidenceRefs": [
+      "host-tool-08cb6703-7ec9-4b32-9e00-efc3125be486"
+    ],
+    "sources": [
+      {
+        "sourceId": "main",
+        "revision": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+        "sha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+      },
+      {
+        "sourceId": "shadow",
+        "revision": "12368bab-5a70-4081-8626-2d9478a7490e",
+        "sha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+      }
+    ],
+    "criteriaVersion": "pelican-v1",
+    "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "teacherCalls": 0,
+    "wallMs": 1.9637000000075204,
+    "trainingPerformed": false
+  },
+  "wallMs": 81611.22480000001,
+  "finishedAt": "2026-10-15T14:57:47.857Z",
+  "summary": {
+    "modelCalls": 22,
+    "modelCallOutcomes": {
+      "attempted": 22,
+      "succeeded": 22,
+      "failed": 0,
+      "pending": 0,
+      "attemptedWallMs": 49537.560500000014,
+      "succeededWallMs": 49537.560500000014,
+      "failedWallMs": 0
+    },
+    "modelCallsByStage": {
+      "candidate_planning": {
+        "attempted": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 3866.5380000000005,
+        "succeededWallMs": 3866.5380000000005,
+        "failedWallMs": 0
+      },
+      "escalated_decision": {
+        "attempted": 3,
+        "succeeded": 3,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 6475.811000000005,
+        "succeededWallMs": 6475.811000000005,
+        "failedWallMs": 0
+      },
+      "branch_execution": {
+        "attempted": 18,
+        "succeeded": 18,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 39195.211500000005,
+        "succeededWallMs": 39195.211500000005,
+        "failedWallMs": 0
+      }
+    },
+    "candidatePlanningCalls": 1,
+    "escalatedDecisionCalls": 3,
+    "branchExecutionCalls": 18,
+    "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+    "layaSuccessfulChoiceCalls": 3,
+    "layaRejectedCalls": 0,
+    "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+    "actualDecisionMakers": [
+      "deepseek",
+      "deepseek",
+      "deepseek",
+      "verified_experience"
+    ],
+    "trainingPerformed": false
+  }
+}

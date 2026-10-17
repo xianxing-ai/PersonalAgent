@@ -1,5 +1,8 @@
 # AgentArts WSS 镜像预览发布记录
 
+> 历史适用范围（2026-10-15 补注）：下文保留原日期、固定版本及当时的测试/失败记录。后续当前模型、本机 Laya、镜像发布与有限验收以 [当前详细设计](../design/CURRENT_DESIGN_20261015.md)、[V3 实测](TEST_IMAGE_V3.md) 及 [协作者接线](COLLABORATOR_WIRING_PACKAGE.md) 为准；历史“当前/未发布/未验/双人批准”等表述不覆盖后续事实或现行协作规则。
+
+
 2026-10-09，Competition Profile `huawei_ict_agentarts`。本次 WSS 镜像、两架构离线包和完整离线设计已实际发布；[PR #317](https://github.com/zemeng5208/PersonalAgent/pull/317) 保持未合并，真实华为运行时及公网 WSS 尚未验收。旧 [157d5769 HTTP 发布记录](OWNED_IMAGE_RELEASE_20261009.md) 保留历史事实。
 
 ## 协作者获取

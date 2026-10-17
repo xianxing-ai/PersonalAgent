@@ -5,7 +5,7 @@
 <rect x="0" y="0" width="2800" height="2540" rx="0" fill="#f3f6fa" stroke="none"/>
 <text x="50" y="72" font-size="40" class="strong" text-anchor="start">自主闭环 · 每一步的输入、决策、权限与完成证据</text>
 <text x="50" y="119" font-size="23" class="muted" text-anchor="start">事件驱动；仅修受影响节点；无变化时安静；任何不确定结果均保留待核实状态</text>
-<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<a href="../CURRENT_DESIGN_20261015.md" id="history-design-notice-20261015"><text x="50" y="158" font-size="21" class="muted" text-anchor="start">历史目标快照 · 原估算日期保留 · 当前设计见 2026-10-15入口，架构未最终定型</text></a>
 <rect x="40" y="198" width="380" height="1810" rx="14" fill="#fff" stroke="#d5dfe8"/>
 <rect x="40" y="198" width="380" height="85" rx="14" fill="#ddeaf5" stroke="#d5dfe8"/>
 <text x="55" y="232" font-size="26" class="strong" text-anchor="start">世界与来源</text>

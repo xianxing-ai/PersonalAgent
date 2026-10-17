@@ -377,6 +377,36 @@ def reader(text):
     page=template.replace('__PICTURES__',''.join(pictures)).replace('__CARDS__',''.join(cards)).replace('__NAV__',nav).replace('__CONTENT__',content)
     (HERE/'index.html').write_text(page,encoding='utf-8')
 
+def annotate_history():
+    """Label existing historical artifacts without rebuilding their dated contents/archives."""
+    pages = [(HERE / 'index.html', '../CURRENT_DESIGN_20261015.md', '../README.md'),
+             (HERE.parent / 'workflow-architecture-20261013/index.html', '../CURRENT_DESIGN_20261015.md', '../README.md'),
+             (HERE.parent / 'desktop-ui-draft.html', 'CURRENT_DESIGN_20261015.md', 'README.md')]
+    for path, current, navigation in pages:
+        text = path.read_text(encoding='utf-8')
+        if 'id="history-design-notice-20261015"' in text:
+            continue
+        notice = ('<aside id="history-design-notice-20261015" role="note" '
+                  'style="position:relative;z-index:1000;padding:14px 24px;background:#fff4db;color:#302314;border-bottom:2px solid #94702a;font:16px/1.6 sans-serif">'
+                  '<strong>历史设计快照，非当前实现/完成声明。</strong>原日期与内容保留；部署、模型、影子交付、发布及旧协作门槛已按后续事实修订。'
+                  f'<a href="{current}" style="color:#174b83">当前详细设计（2026-10-15，架构未最终定型）</a> · '
+                  f'<a href="{navigation}" style="color:#174b83">所有设计与证据导航</a></aside>')
+        text, count = re.subn(r'<body\b[^>]*>', lambda match: match.group(0) + notice, text, count=1, flags=re.I)
+        assert count == 1, path
+        path.write_text(text, encoding='utf-8')
+    for name in ('architecture-overview.svg', 'autonomy-lifecycle.svg', 'trust-and-transport.svg', 'wiki-memory.svg'):
+        path = HERE / name
+        text = path.read_text(encoding='utf-8')
+        if 'history-design-notice-20261015' not in text:
+            status = '历史目标快照 · 原估算日期保留 · 当前设计见 2026-10-15入口，架构未最终定型'
+            text, count = re.subn(r'(<text\b[^>]*\by="158"[^>]*>).*?(</text>)',
+                                  lambda match: '<a href="../CURRENT_DESIGN_20261015.md" id="history-design-notice-20261015">' + match.group(1) + esc(status) + match.group(2) + '</a>', text, count=1)
+            assert count == 1, path
+            ET.fromstring(text)
+            path.write_text(text, encoding='utf-8')
+    print('Annotated three historical HTML readers and four SVG status lines; no archive or product rebuild.')
+
+
 def validate():
     expected={'MOD-'+str(i).zfill(2) for i in range(1,39) if i!=4}|{'MOD-04A','MOD-04B'}
     assert len(MODS)==39 and {m['id'] for m in MODS}==expected
@@ -406,6 +436,9 @@ def archive():
 
 if __name__=='__main__':
     import sys
+    if '--annotate-history' in sys.argv:
+        annotate_history()
+        raise SystemExit(0)
     if '--archive-only' in sys.argv:
         archive()
         raise SystemExit(0)
@@ -414,4 +447,5 @@ if __name__=='__main__':
     trust_transport()
     wiki_memory()
     reader(module_table())
+    annotate_history()
     validate()

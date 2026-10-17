@@ -1,6 +1,8 @@
 import {stateNames} from '../conversation/state.js';
 import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
+import {mountSisVoiceSettings} from './sis-voice-settings.js';
+import {mountNotificationSettings} from './notification-settings.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
@@ -12,6 +14,7 @@ import {mountNotepadControls} from '../../app/notepad-controls.js';
 import {mountTodoControls} from '../../app/todo-controls.js';
 import {mountGoalCloudControls} from '../../app/goal-cloud-controls.js';
 import {mountKnowledgeControls} from '../../app/knowledge-controls.js';
+import {mountAgentArtsModelControls} from '../../app/agentarts-model-controls.js';
 import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
 import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
@@ -24,14 +27,14 @@ import {evidencePanelHtml} from './evidence-view.js';
 import {createWorkspacePatchRecoveryControls, workspacePatchRecoveryHtml} from './workspace-patch-recovery-controls.js';
 
 export const sections = {
-  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', configuration: '配置',
+  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接', git: 'Git', environment: '环境', worktrees: 'Worktrees',
   tasks: '任务监控', authorizations: '安全', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
 };
 
 const navGroups = [
-  {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
+  {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'notifications', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
   {label: '集成', items: ['computer', 'capabilities']},
   {label: '编码', items: ['hooks', 'connections', 'git', 'environment', 'worktrees', 'authorizations']},
   {label: '任务', items: ['tasks', 'archive']},
@@ -140,9 +143,9 @@ export function mountAdmin(root, invoke, escape) {
   localSettingsButton.textContent = '桌面设置与恢复';
   localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
-  let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let installedSkillsControls;
-  let modelApiSignature;
+  let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let installedSkillsControls,sisControls,notificationControls;
+  let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,modelPageMarkup;
 
   function capabilityTable(data) {
     const status = data.capabilityDirectory ?? {state: 'unavailable', reason: '可信宿主尚未报告能力目录状态'};
@@ -198,7 +201,8 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('界面语言', '当前版本提供简体中文', '<span class="value-pill">简体中文</span>') +
         settingRow('模型与 API', agentArts ? '在模型页面管理 AgentArts 运行时和本机加密凭据' : '模型、Endpoint 和密钥在独立页面管理', '<button class="btn btn-sm" data-jump="models">打开模型</button>') +
         settingRow('开机启动', '宿主能力尚未接入', '<span class="status-note">待接入</span>', 'is-unavailable') +
-        settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>')],
+        settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>') +
+        settingRow('退出应用', '结束托盘、ORB 与所有桌面窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>')],
       appearance: ['外观', '延续 ORB-02 冷光青与标准毛玻璃设计',
         settingRow('界面主题', '所有窗口统一使用黑白主题，支持跟随系统自动切换', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
         settingRow('降低动效', '暂停轨道脉冲并缩短界面过渡', '<label class="switch-control"><input id="pref-calm" type="checkbox"><span></span></label>') +
@@ -210,12 +214,12 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('任务取消', '只显示 Runtime 回读后的最终状态', '<span class="value-pill">严格确认</span>') +
         settingRow('默认终端', '终端连接器尚未提供选择接口', '<span class="status-note">待接入</span>', 'is-unavailable')],
       voice: ['语音', '听写、原生实时对话和加密凭据',
-        settingRow('麦克风听写', '华为 SIS 转写填入输入框；你确认发送后用文字回答', `<span class="value-pill">${data.voice?.configuration?.configured ? '已配置' : '未配置'}</span>`) +
+        settingRow('麦克风听写', '本地 SIS 适配仅填草稿；经 AgentArts 的 SIS 适配当前不可用', `<span class="value-pill">${data.voice?.configuration?.configured ? '配置已保存' : '未配置'}</span>`) +
         settingRow('Live 实时语音', data.live?.reason ?? '在下方配置百炼北京业务空间和 API Key', `<span class="value-pill">${data.live?.active ? '通话中' : data.live?.configured ? '已配置' : '未配置'}</span>`) +
         settingRow('语音播报', '停止播报与任务取消保持独立', '<span class="value-pill">安全隔离</span>')],
       notifications: ['通知', '任务状态与需要用户处理的提醒',
         settingRow('应用内通知', '当前只显示真实 Runtime 状态', '<span class="value-pill">已启用</span>') +
-        settingRow('系统通知', 'Windows 通知宿主尚未接入', '<span class="status-note">待接入</span>', 'is-unavailable') +
+        settingRow('系统通知', '按当前打扰策略投递，系统 show 回执与用户已读分别核实', `<span class="value-pill">${data.notificationCenter?.available?'宿主已装配，设备待验':'等待 Runtime'}</span>`) +
         settingRow('授权提醒', '待处理授权会出现在“授权”页面', '<button class="btn btn-sm" data-jump="authorizations">查看授权</button>')],
       privacy: ['隐私与数据', '敏感数据与本地运行边界',
         (agentArts
@@ -321,8 +325,11 @@ export function mountAdmin(root, invoke, escape) {
     if (root.querySelector('#profile-dialog')?.open) return;
     patchRecovery.sync(data.tasks, section === 'tasks' || section === 'overview', section);
     root.querySelector('.main').dataset.section = section;
-    if (section==='voice') liveControls ??= mountLiveVoiceControls(root,invoke);
+    if (section==='voice') {liveControls ??= mountLiveVoiceControls(root,invoke);sisControls ??= mountSisVoiceSettings(root,invoke);}
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
+    sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
+    if(section==='notifications') notificationControls??=mountNotificationSettings(root.querySelector('.main'),invoke);
+    notificationControls?.render(data.notificationCenter,data.voiceQuestion,data.approvals??[]);notificationControls?.show(section==='notifications');
     if (section==='computer') proactiveControls ??= mountProactiveControls(root.querySelector('.main'),invoke,{settings:true});
     proactiveControls?.render(data.proactive);proactiveControls?.show(section==='computer');
     if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);
@@ -365,19 +372,23 @@ export function mountAdmin(root, invoke, escape) {
     installedSkillsControls?.show(section==='capabilities');
     const showAgentArts=section==='models' && data.model?.provider==='agentarts';
     if (showAgentArts) {
-      agentArtsControls ??= mountAgentArtsControls(root.querySelector('.main'),invoke);
+      if(!agentArtsControls){agentArtsConnectionRoot=document.createElement('div');agentArtsConnectionRoot.dataset.modelSettingsSection='connection';agentArtsControls=mountAgentArtsControls(agentArtsConnectionRoot,invoke);}
       agentArtsControls.render(data.agentArts);
     }
     agentArtsControls?.show(showAgentArts);
-    if (section === 'models' && data.modelApi) modelApiControls ??= mountModelApiControls(root.querySelector('.main'),invoke);
+    if (section === 'models' && data.modelApi) {if(!modelApiControls){modelApiRoot=document.createElement('div');modelApiRoot.dataset.modelSettingsSection='independent-api';modelApiControls=mountModelApiControls(modelApiRoot,invoke);}if(!agentArtsModelControls){agentArtsModelRoot=document.createElement('div');agentArtsModelRoot.dataset.agentartsModelMounted='true';agentArtsModelRoot.dataset.modelSettingsSection='model-selection';agentArtsModelControls=mountAgentArtsModelControls(agentArtsModelRoot,invoke);}}
+    agentArtsModelControls?.update(data.agentArtsModels);
     const nextModelApiSignature = JSON.stringify(data.modelApi,(key,value)=>key==='requestBudget'?undefined:value);
     if (modelApiControls && modelApiSignature !== nextModelApiSignature) {
       modelApiControls.render(data.modelApi);modelApiSignature=nextModelApiSignature;
     }
     else if (modelApiControls && data.modelApi) modelApiControls.updateBudget(data.modelApi);
     modelApiControls?.showSettings(section === 'models');
+    if(agentArtsModelRoot)agentArtsModelRoot.hidden=section!=='models';
+    if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
+    if(modelApiRoot)modelApiRoot.hidden=section!=='models';
     root.querySelector('.main').dataset.cloudConfig=String(section==='models' && data.model?.provider==='agentarts');
-    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', shortcuts: 'shortcuts'};
+    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
     const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'usage', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
     root.querySelector('.main').dataset.surface = section === 'models' ? 'models' : directSettings[section] || featureSections.includes(section) ? 'settings' : 'standard';
     root.querySelector('#page-title').textContent = sections[section];
@@ -425,8 +436,11 @@ export function mountAdmin(root, invoke, escape) {
       ? JSON.stringify({state: data.privateMemory, search: memorySearch, saved: savedMemory}) : undefined;
     if (section === 'memory' && data.privateMemory?.available && renderedSection === section
       && !refreshMemory && nextMemoryKey === memoryRenderKey) return;
+    const preserveModelsContent=section==='models'&&renderedSection===section&&modelPageMarkup===content;
     renderedSection = section; memoryRenderKey = nextMemoryKey;
-    root.querySelector('#content').innerHTML = content;
+    if(!preserveModelsContent)root.querySelector('#content').innerHTML = content;
+    modelPageMarkup=section==='models'?content:undefined;
+    if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==page)page.append(card);}
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);
       if (nextExpiry !== undefined) {

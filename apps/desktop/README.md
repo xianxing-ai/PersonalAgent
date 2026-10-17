@@ -18,6 +18,11 @@ npm run test:remote-mcp-storage-smoke --workspace=@personal-agent/desktop
 ```
 
 真实 safeStorage 烟测用两个隔离 Electron 进程和公开合成 token，正常 `app.quit()` 关闭并读回忽略目录的 receipt；没有工具或模型调用。首次加密后立即强制终止可能使 Chromium 加密状态未落盘，恢复将为 unavailable、保留原密文；本包不承诺首次保存后的崩溃恢复。详见 [ADR-0031](../../docs/adr/0031-remote-mcp-host-configuration.md) 与[验收记录](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
+## 2026-10-16 V5 当前验收状态
+
+本次 r3 真实验收已取得 AgentArts 公网 WSS Upgrade HTTP 101，并通过文字任务的原生推理强度 low 调用。实时语音 runner 使用公开 PCM 完成整轮，结果为 passed；这不代表已通过实际麦克风、扬声器或设备交互验收。Qwen 完整子任务派发仍在复测，当前不宣称通过。
+
+当前主通道、模型选择、持久化配置及验收边界见 [Desktop AgentArts Models V5](../../docs/competition/DESKTOP_AGENTARTS_MODELS_V5.md)；本轮原始回执与结果入口见 [V5 验收证据](../../docs/competition/evidence/desktop-agentarts-v5-20261016/README.md)。下方 2026-10-09 WSS 说明保留为历史记录，其中“公网 Upgrade 尚未证实”等结论仅描述当时状态。
 
 ## 2026-10-09 自有镜像 WSS 消费增量
 

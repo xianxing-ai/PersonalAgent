@@ -3,8 +3,10 @@
   "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
-  "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}, "./observability": {"types": "./dist/observability/index.d.mts", "import": "./dist/observability/index.mjs"}},
+  "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"},
+    "./observability": {"types": "./dist/observability/index.d.mts", "import": "./dist/observability/index.mjs"}},
   "scripts": {
+    "check:workflows": "node scripts/import-owned-workflows.mjs ../../docs/design/workflow-architecture-20261013/source/src/data/architecture.json --check",
     "build": "tsc -p tsconfig.json && npm run build:observability",
     "build:observability": "node scripts/build-observability.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",

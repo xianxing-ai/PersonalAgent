@@ -1,0 +1,1614 @@
+{
+  "version": "1.0",
+  "defaultModelId": "deepseek-v4.1-flash",
+  "models": [
+    {
+      "id": "MiniMax-M2.5",
+      "displayName": "MiniMax-M2.5",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "MiniMax/MiniMax-M2.1",
+      "displayName": "MiniMax/MiniMax-M2.1",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "MiniMax/MiniMax-M2.5",
+      "displayName": "MiniMax/MiniMax-M2.5",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "MiniMax/MiniMax-M2.7",
+      "displayName": "MiniMax/MiniMax-M2.7",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "MiniMax/MiniMax-M3",
+      "displayName": "MiniMax/MiniMax-M3",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "MiniMax/speech-02-hd",
+      "displayName": "MiniMax/speech-02-hd",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "MiniMax/speech-02-turbo",
+      "displayName": "MiniMax/speech-02-turbo",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "MiniMax/speech-2.8-hd",
+      "displayName": "MiniMax/speech-2.8-hd",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "MiniMax/speech-2.8-turbo",
+      "displayName": "MiniMax/speech-2.8-turbo",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "ZHIPU/GLM-5",
+      "displayName": "ZHIPU/GLM-5",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "ZHIPU/GLM-5.1",
+      "displayName": "ZHIPU/GLM-5.1",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "ZHIPU/GLM-5.2",
+      "displayName": "ZHIPU/GLM-5.2",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "ZHIPU/GLM-5.3",
+      "displayName": "ZHIPU/GLM-5.3",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "ZHIPU/GLM-5.3-Flash",
+      "displayName": "ZHIPU/GLM-5.3-Flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "ZHIPU/GLM-5.3-FlashX",
+      "displayName": "ZHIPU/GLM-5.3-FlashX",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "cmaas-qwen3.8-flash",
+      "displayName": "cmaas-qwen3.8-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "deepseek-r1-distill-llama-70b",
+      "displayName": "deepseek-r1-distill-llama-70b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-1.5b",
+      "displayName": "deepseek-r1-distill-qwen-1.5b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "displayName": "deepseek-v4-flash",
+      "reasoningEfforts": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "requestProfile": "huawei-openai-v1",
+      "route": "agentarts-proxy",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "displayName": "deepseek-v4-flash-0731",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "displayName": "deepseek-v4-pro",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "displayName": "deepseek-v4-pro-0813",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "displayName": "deepseek-v4.1-flash",
+      "reasoningEfforts": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "requestProfile": "huawei-openai-v1",
+      "route": "agentarts-proxy",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "fun-asr-flash-2026-06-15",
+      "displayName": "fun-asr-flash-2026-06-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "glm-5",
+      "displayName": "glm-5",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "glm-5.1",
+      "displayName": "glm-5.1",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "glm-5.2",
+      "displayName": "glm-5.2",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "glm-5.2-fast-preview",
+      "displayName": "glm-5.2-fast-preview",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "glm-5.3",
+      "displayName": "glm-5.3",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "glm-5.3-prime",
+      "displayName": "glm-5.3-prime",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "gui-plus",
+      "displayName": "gui-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi-k2.5",
+      "displayName": "kimi-k2.5",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi-k2.6",
+      "displayName": "kimi-k2.6",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "displayName": "kimi-k2.7-code",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi-k3",
+      "displayName": "kimi-k3",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi/kimi-k2.6",
+      "displayName": "kimi/kimi-k2.6",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi/kimi-k2.7-code",
+      "displayName": "kimi/kimi-k2.7-code",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi/kimi-k2.7-code-highspeed",
+      "displayName": "kimi/kimi-k2.7-code-highspeed",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi/kimi-k2.8-preview",
+      "displayName": "kimi/kimi-k2.8-preview",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "kimi/kimi-k3",
+      "displayName": "kimi/kimi-k3",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-1.8b-chat",
+      "displayName": "qwen-1.8b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-1.8b-longcontext-chat",
+      "displayName": "qwen-1.8b-longcontext-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-14b-chat",
+      "displayName": "qwen-14b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-72b-chat",
+      "displayName": "qwen-72b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-7b-chat",
+      "displayName": "qwen-7b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-audio-3.0-asr-flash",
+      "displayName": "qwen-audio-3.0-asr-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-audio-3.0-realtime-flash",
+      "displayName": "qwen-audio-3.0-realtime-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-audio-3.0-realtime-plus",
+      "displayName": "qwen-audio-3.0-realtime-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-audio-3.1-realtime-plus",
+      "displayName": "qwen-audio-3.1-realtime-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-coder-plus-1106",
+      "displayName": "qwen-coder-plus-1106",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-deep-research-2025-12-15",
+      "displayName": "qwen-deep-research-2025-12-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-deep-search-planning",
+      "displayName": "qwen-deep-search-planning",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-flash",
+      "displayName": "qwen-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-flash-character",
+      "displayName": "qwen-flash-character",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-flash-character-2026-02-26",
+      "displayName": "qwen-flash-character-2026-02-26",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-2.0",
+      "displayName": "qwen-image-2.0",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-2.0-2026-03-03",
+      "displayName": "qwen-image-2.0-2026-03-03",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-2.0-pro",
+      "displayName": "qwen-image-2.0-pro",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-2.0-pro-2026-03-03",
+      "displayName": "qwen-image-2.0-pro-2026-03-03",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-2.0-pro-2026-04-22",
+      "displayName": "qwen-image-2.0-pro-2026-04-22",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-2.0-pro-2026-06-22",
+      "displayName": "qwen-image-2.0-pro-2026-06-22",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-2.1-pro",
+      "displayName": "qwen-image-2.1-pro",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-3.0",
+      "displayName": "qwen-image-3.0",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-image-3.0-pro",
+      "displayName": "qwen-image-3.0-pro",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-long",
+      "displayName": "qwen-long",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-max",
+      "displayName": "qwen-max",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-max-0107",
+      "displayName": "qwen-max-0107",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-max-1201",
+      "displayName": "qwen-max-1201",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-max-longcontext",
+      "displayName": "qwen-max-longcontext",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-mt-flash",
+      "displayName": "qwen-mt-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-mt-lite",
+      "displayName": "qwen-mt-lite",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-mt-plus",
+      "displayName": "qwen-mt-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-mt-uni",
+      "displayName": "qwen-mt-uni",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-plus",
+      "displayName": "qwen-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-plus-2025-01-25",
+      "displayName": "qwen-plus-2025-01-25",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-plus-2025-04-28",
+      "displayName": "qwen-plus-2025-04-28",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-plus-2025-07-14",
+      "displayName": "qwen-plus-2025-07-14",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-plus-2025-11-05",
+      "displayName": "qwen-plus-2025-11-05",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-plus-2025-12-01",
+      "displayName": "qwen-plus-2025-12-01",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-plus-latest",
+      "displayName": "qwen-plus-latest",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-turbo-0919",
+      "displayName": "qwen-turbo-0919",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-turbo-2024-11-01",
+      "displayName": "qwen-turbo-2024-11-01",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-vl-ocr",
+      "displayName": "qwen-vl-ocr",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen-vl-ocr-2025-11-20",
+      "displayName": "qwen-vl-ocr-2025-11-20",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen1.5-0.5b-chat",
+      "displayName": "qwen1.5-0.5b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen1.5-1.8b-chat",
+      "displayName": "qwen1.5-1.8b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen1.5-110b-chat",
+      "displayName": "qwen1.5-110b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen1.5-14b-chat",
+      "displayName": "qwen1.5-14b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen1.5-32b-chat",
+      "displayName": "qwen1.5-32b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen1.5-72b-chat",
+      "displayName": "qwen1.5-72b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen1.5-7b-chat",
+      "displayName": "qwen1.5-7b-chat",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen2-0.5b-instruct",
+      "displayName": "qwen2-0.5b-instruct",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen2-1.5b-instruct",
+      "displayName": "qwen2-1.5b-instruct",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen2-57b-a14b-instruct",
+      "displayName": "qwen2-57b-a14b-instruct",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen2-7b-instruct",
+      "displayName": "qwen2-7b-instruct",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen2.5-0.5b-instruct",
+      "displayName": "qwen2.5-0.5b-instruct",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen2.5-1.5b-instruct",
+      "displayName": "qwen2.5-1.5b-instruct",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen2.5-math-1.5b-instruct",
+      "displayName": "qwen2.5-math-1.5b-instruct",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-asr-flash-realtime",
+      "displayName": "qwen3-asr-flash-realtime",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-coder-flash",
+      "displayName": "qwen3-coder-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-livetranslate-flash",
+      "displayName": "qwen3-livetranslate-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-livetranslate-flash-2025-12-01",
+      "displayName": "qwen3-livetranslate-flash-2025-12-01",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-omni-flash",
+      "displayName": "qwen3-omni-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-omni-flash-realtime-2025-09-15",
+      "displayName": "qwen3-omni-flash-realtime-2025-09-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-s2s-flash-realtime-2025-09-22",
+      "displayName": "qwen3-s2s-flash-realtime-2025-09-22",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-tts-flash",
+      "displayName": "qwen3-tts-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-tts-flash-realtime",
+      "displayName": "qwen3-tts-flash-realtime",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3-vl-plus",
+      "displayName": "qwen3-vl-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-122b-a10b",
+      "displayName": "qwen3.5-122b-a10b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-27b",
+      "displayName": "qwen3.5-27b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-35b-a3b",
+      "displayName": "qwen3.5-35b-a3b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-397b-a17b",
+      "displayName": "qwen3.5-397b-a17b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-flash",
+      "displayName": "qwen3.5-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-flash-2026-02-23",
+      "displayName": "qwen3.5-flash-2026-02-23",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-livetranslate-flash-realtime",
+      "displayName": "qwen3.5-livetranslate-flash-realtime",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-livetranslate-flash-realtime-2026-05-19",
+      "displayName": "qwen3.5-livetranslate-flash-realtime-2026-05-19",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-ocr",
+      "displayName": "qwen3.5-ocr",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-omni-flash",
+      "displayName": "qwen3.5-omni-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-omni-flash-2026-03-15",
+      "displayName": "qwen3.5-omni-flash-2026-03-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-omni-flash-realtime",
+      "displayName": "qwen3.5-omni-flash-realtime",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-omni-flash-realtime-2026-03-15",
+      "displayName": "qwen3.5-omni-flash-realtime-2026-03-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-omni-plus",
+      "displayName": "qwen3.5-omni-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-omni-plus-2026-03-15",
+      "displayName": "qwen3.5-omni-plus-2026-03-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-omni-plus-realtime",
+      "displayName": "qwen3.5-omni-plus-realtime",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-omni-plus-realtime-2026-03-15",
+      "displayName": "qwen3.5-omni-plus-realtime-2026-03-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-plus",
+      "displayName": "qwen3.5-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-plus-2026-02-15",
+      "displayName": "qwen3.5-plus-2026-02-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.5-plus-2026-04-20",
+      "displayName": "qwen3.5-plus-2026-04-20",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.6-27b",
+      "displayName": "qwen3.6-27b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.6-35b-a3b",
+      "displayName": "qwen3.6-35b-a3b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.6-flash",
+      "displayName": "qwen3.6-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.6-flash-2026-04-16",
+      "displayName": "qwen3.6-flash-2026-04-16",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.6-plus",
+      "displayName": "qwen3.6-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.6-plus-2026-04-02",
+      "displayName": "qwen3.6-plus-2026-04-02",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-flash",
+      "displayName": "qwen3.7-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-flash-2026-07-15",
+      "displayName": "qwen3.7-flash-2026-07-15",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-max",
+      "displayName": "qwen3.7-max",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-max-2026-05-17",
+      "displayName": "qwen3.7-max-2026-05-17",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-max-2026-05-20",
+      "displayName": "qwen3.7-max-2026-05-20",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-max-2026-06-08",
+      "displayName": "qwen3.7-max-2026-06-08",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-max-preview",
+      "displayName": "qwen3.7-max-preview",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-plus",
+      "displayName": "qwen3.7-plus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-plus-2026-05-26",
+      "displayName": "qwen3.7-plus-2026-05-26",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-text-embedding",
+      "displayName": "qwen3.7-text-embedding",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "embedding",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-text-embedding-flash",
+      "displayName": "qwen3.7-text-embedding-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "embedding",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.7-text-rerank",
+      "displayName": "qwen3.7-text-rerank",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "embedding",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.8-2.4t-a95b",
+      "displayName": "qwen3.8-2.4t-a95b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.8-27b",
+      "displayName": "qwen3.8-27b",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "displayName": "qwen3.8-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.8-livetranslate-flash-realtime",
+      "displayName": "qwen3.8-livetranslate-flash-realtime",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.8-max",
+      "displayName": "qwen3.8-max",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.8-max-0902",
+      "displayName": "qwen3.8-max-0902",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.8-omni-flash",
+      "displayName": "qwen3.8-omni-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "qwen3.8-omni-flash-realtime",
+      "displayName": "qwen3.8-omni-flash-realtime",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "siliconflow/deepseek-r1-0528",
+      "displayName": "siliconflow/deepseek-r1-0528",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "siliconflow/deepseek-v3-0324",
+      "displayName": "siliconflow/deepseek-v3-0324",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "siliconflow/deepseek-v3.1-terminus",
+      "displayName": "siliconflow/deepseek-v3.1-terminus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "siliconflow/deepseek-v3.2",
+      "displayName": "siliconflow/deepseek-v3.2",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "sre-gpu-auto-handle",
+      "displayName": "sre-gpu-auto-handle",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "unknown",
+      "availability": "unverified"
+    },
+    {
+      "id": "stepfun/step-3.7-flash",
+      "displayName": "stepfun/step-3.7-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "stepfun/step-5-preview",
+      "displayName": "stepfun/step-5-preview",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "test-sre-gpu-auto-handle",
+      "displayName": "test-sre-gpu-auto-handle",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "unknown",
+      "availability": "unverified"
+    },
+    {
+      "id": "tongyi-xiaomi-analysis-flash",
+      "displayName": "tongyi-xiaomi-analysis-flash",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "unknown",
+      "availability": "unverified"
+    },
+    {
+      "id": "tongyi-xiaomi-analysis-pro",
+      "displayName": "tongyi-xiaomi-analysis-pro",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "unknown",
+      "availability": "unverified"
+    },
+    {
+      "id": "unisound/unisound-u2",
+      "displayName": "unisound/unisound-u2",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "audio",
+      "availability": "unverified"
+    },
+    {
+      "id": "vanchin/deepseek-ocr",
+      "displayName": "vanchin/deepseek-ocr",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "vanchin/deepseek-r1",
+      "displayName": "vanchin/deepseek-r1",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "vanchin/deepseek-v3",
+      "displayName": "vanchin/deepseek-v3",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "vanchin/deepseek-v3.1-terminus",
+      "displayName": "vanchin/deepseek-v3.1-terminus",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "vanchin/deepseek-v3.2-think",
+      "displayName": "vanchin/deepseek-v3.2-think",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "vanchin/deepseek-v4-pro",
+      "displayName": "vanchin/deepseek-v4-pro",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "vanchin/deepseek-v4-pro-0813",
+      "displayName": "vanchin/deepseek-v4-pro-0813",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "vanchin/deepseek-v4.1-flash",
+      "displayName": "vanchin/deepseek-v4.1-flash",
+      "reasoningEfforts": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "requestProfile": "bailian-deepseek-v1",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "wan2.7-image",
+      "displayName": "wan2.7-image",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "wan2.7-image-pro",
+      "displayName": "wan2.7-image-pro",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    },
+    {
+      "id": "xiaomi/mimo-v2.5-pro",
+      "displayName": "xiaomi/mimo-v2.5-pro",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "text",
+      "availability": "unverified"
+    },
+    {
+      "id": "z-image-turbo",
+      "displayName": "z-image-turbo",
+      "reasoningEfforts": [],
+      "requestProfile": "standard",
+      "route": "runtime-bailian",
+      "type": "image",
+      "availability": "unverified"
+    }
+  ]
+}
