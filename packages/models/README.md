@@ -48,7 +48,9 @@ PR #347/F28 的首批落地复用 Runtime `createConfiguredSubagentModelGateway`
 
 计量位于 StructuredToolProvider 包装之后，包含工具目录、可见系统提示、消息和已确认继续回执。每次调用在凭据之前检查 `inputTokens <= contextTokens - 实际输出预留`，等待凭据后复测；漂移拒绝发送。请求体提前生成且不再读取可变消息。未传 maxOutputTokens 时使用宿主预留，传入值只能收窄；原生声明决定唯一输出字段。历史无计量配置保持字段兼容，ModelResult.requestBudget 明确 unmeasured。
 
-ModelCapabilities.requestTokenBudget 只含版本与预算元数据，ModelResult.requestBudget 记录测量结果；scope 为 provider-body，hiddenContext 始终 unknown，不覆盖平台隐藏提示或后续 fetch 改写，也不替代累计 usage。宿主更换模型、tokenizer 或配置时须更换版本并重建网关，Competition 的原子任务恢复比较该声明。没有新增持久正文、wire Schema、迁移或依赖；自有镜像生产配置与 Desktop 展示尚未接入。见 [ADR-0026](../../docs/adr/0026-visible-model-request-budget.md)。
+ModelCapabilities.requestTokenBudget 只含版本与预算元数据，ModelResult.requestBudget 记录测量结果；scope 为 provider-body，hiddenContext 始终 unknown，不覆盖平台隐藏提示，也不替代累计 usage。宿主更换模型、tokenizer 或配置时须更换版本并重建网关，Competition 的原子任务恢复比较该声明。没有新增持久正文、wire Schema、迁移或依赖；生产真实计量器尚未注入，Desktop 仅展示绑定一致的最近观测，无观测或重启仍显示未计量。见 [ADR-0026](../../docs/adr/0026-visible-model-request-budget.md)。
+
+Competition 可信宿主可显式选择 `requestFormat:'huawei-maas-deepseek-thinking-v1'`，将既有 MaaS DeepSeek 的 `reasoning_effort:none` 转为 `chat_template_kwargs.thinking:false`，再序列化、计量与发送。Provider 不按域名或模型名推断支持；未声明时保持原行为。格式进入能力、预算和恢复绑定，格式增加/移除使旧提案恢复拒绝。注入 fetch 必须原样传输已计量正文；镜像包装器只拒绝重定向。此兼容转换不证明完整模板或 MaaS tokenizer 匹配，见 [ADR-0028](../../docs/adr/0028-final-visible-request-body.md)。
 
 ## 原生 Live 响应生命周期
 
