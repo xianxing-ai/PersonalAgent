@@ -7,9 +7,12 @@
     ".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"},
     "./filesystem": {"types": "./dist/filesystem.d.ts", "import": "./dist/filesystem.js"},
     "./obsidian": {"types": "./dist/obsidian.d.ts", "import": "./dist/obsidian.js"},
+    "./pairing": {"types": "./dist/pairing.d.ts", "import": "./dist/pairing.js"},
+    "./bridge": {"types": "./dist/bridge.d.ts", "import": "./dist/bridge.js"},
     "./tool": {"types": "./dist/tool.d.ts", "import": "./dist/tool.js"},
     "./testing": {"types": "./dist/testing.d.ts", "import": "./dist/testing.js"},
-    "./write": {"types": "./dist/write.d.ts", "import": "./dist/write.js"}
+    "./write": {"types": "./dist/write.d.ts", "import": "./dist/write.js"},
+    "./wiki": {"types": "./dist/wiki.d.ts", "import": "./dist/wiki.js"}
   },
   "dependencies": {
     "@personal-agent/contracts": "0.1.0-alpha.1",
@@ -18,6 +21,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --import ./test/bridge-process-diagnostics.mjs --test --test-concurrency=1 test/*.test.mjs"
   }
 }

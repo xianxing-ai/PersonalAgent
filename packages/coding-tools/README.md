@@ -1,5 +1,7 @@
 # 编程工具：可信工作区能力（MOD-18）
 
+2026-10-13：已更新 [真实补丁/固定命令与恢复验收](ACCEPTANCE-20261013.md)，修复旧 P6 runner 缺少生产恢复绑定的问题，并验证真实 marker 的派发前退出与写后清理失败恢复。当前合并规则以根 AGENTS/CONTRIBUTING 的一位非作者有效批准为准，覆盖下方历史双人门槛。
+
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 

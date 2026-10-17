@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PersonalAgent 大工作区 × 设置页 · 交互式设计提案（2026-10-17）</title>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #191d24; --line: rgba(255,255,255,.09);
+    --fg: #eef2f6; --fg-2: #c2cad3; --muted: #8d97a2; --faint: #6a737e;
+    --accent: #52c7bd; --accent-ink: #06201e; --ok: #4fbf7a; --warn: #e6b955;
+    --fs-h1: 30px; --fs-h2: 20px; --fs-14: 14px; --fs-12: 12px;
+    --r: 12px; --mono: "Cascadia Mono", Consolas, "Microsoft YaHei", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: var(--fs-14)/1.6 "Segoe UI Variable Text", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+  a { color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--line); }
+  a:hover { color: var(--accent); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 24px 64px; }
+  header.top { display: flex; align-items: baseline; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: var(--fs-h1); margin: 0; letter-spacing: -.02em; }
+  .tag { font-family: var(--mono); font-size: var(--fs-12); color: var(--muted); }
+  .notice { margin: 18px 0; padding: 12px 14px; border: 1px dashed rgba(230,185,85,.45); border-radius: var(--r); color: var(--warn); font-size: var(--fs-12); }
+  .notice b { color: var(--fg); }
+  h2 { font-size: var(--fs-h2); margin: 34px 0 10px; }
+  h2 small { font-size: var(--fs-12); color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .card .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; color: var(--faint); }
+  .card h3 { margin: 0; font-size: 17px; }
+  .card p { margin: 0; color: var(--fg-2); font-size: var(--fs-12); }
+  .meta { color: var(--muted); font-size: var(--fs-12); }
+  .ref { font-family: var(--mono); font-size: 11px; color: var(--faint); border-top: 1px solid var(--line); padding-top: 8px; }
+  .links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+  .btn { display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); font-size: var(--fs-12); border-bottom-width: 1px; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  table.matrix { width: 100%; border-collapse: collapse; font-size: var(--fs-12); background: var(--panel); border-radius: var(--r); overflow: hidden; }
+  table.matrix th, table.matrix td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; color: var(--fg-2); }
+  table.matrix th { color: var(--muted); font-weight: 600; background: var(--panel-2); white-space: nowrap; }
+  table.matrix td:first-child { color: var(--fg); white-space: nowrap; font-weight: 600; }
+  .ok-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(79,191,122,.4); color: var(--ok); font-family: var(--mono); font-size: 11px; }
+  code { font-family: var(--mono); background: var(--panel-2); padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+  footer { margin-top: 48px; color: var(--faint); font-size: var(--fs-12); border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <h1>大工作区 × 设置页 · 交互式设计提案</h1>
+    <span class="tag">PersonalAgent · docs/design/workspace-settings-redesign-20261017</span>
+  </header>
+
+  <div class="notice">
+    <b>悬浮球零改动原则：</b>全部方案只作用于<b>面板层（大工作区与设置页）</b>的布局、样式与交互；
+    桌面悬浮球的形态、动画、拖拽逻辑（<code>apps/desktop</code> orb 相关实现）不在此提案范围内，也不允许因采纳任一方案被改动。
+    每份方案内含「悬浮球承接说明」解释面板改版后球与面板的衔接方式。
+  </div>
+
+  <h2>六套方案 <small>≥5 为任务要求，第 6 套为预留补充；内容结构一致，风格完全不同</small></h2>
+  <div class="grid" id="cards"></div>
+
+  <h2>对比矩阵</h2>
+  <table class="matrix">
+    <thead>
+      <tr><th>维度</th><th>1 晨白 · 编辑部</th><th>2 工控 · 磷光</th><th>3 雪绒 · M3</th><th>4 野拓 · 新粗野</th><th>5 雾霭 · 软陶</th><th>6 仲夏 · Fluent</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>明暗基调</td><td>纸白高对比浅色</td><td>纯黑磷光暗色</td><td>柔白 tonal 浅色</td><td>高饱和撞色（可明暗）</td><td>pastel 渐变浅色</td><td>Mica 浅色原生</td></tr>
+      <tr><td>字体策略</td><td>衬线大标题 + 黑体正文</td><td>全等宽终端字</td><td>GPF Sans/雅黑 圆润</td><td>超高字重无衬线</td><td>圆润无衬线</td><td>Segoe UI 栈</td></tr>
+      <tr><td>信息密度</td><td>中（阅读舒适）</td><td>极高（控制台）</td><td>中（磁贴网格）</td><td>中高（块面拼贴）</td><td>低中（呼吸感）</td><td>中高（原生表格）</td></tr>
+      <tr><td>形/边/影</td><td>1px 细线、无阴影直角</td><td>切角直角、辉光描边</td><td>超大圆角、tonal 面</td><td>3px 黑边 + 硬影</td><td>软影双层、极圆</td><td>浅边框 + reveal 高光</td></tr>
+      <tr><td>交互中心</td><td>目录式任务列表 + 关键字搜索</td><td>命令面板 Ctrl+K</td><td>磁贴与状态一览</td><td>贴纸标签 + 大按钮</td><td>语音陪伴气泡</td><td>原生设置窗 + 快捷键</td></tr>
+      <tr><td>适合人群/场景</td><td>长时间阅读汇报、写纳新</td><td>高级操作者、键盘流</td><td>初见用户、演示</td><td>青年团队、评审现场</td><td>陪伴型日用、情感化</td><td>Windows 办公整合</td></tr>
+      <tr><td>主要风险</td><td>灰色依赖强，需好屏</td><td>长期阅读疲劳</td><td>业务密度受限</td><td>反严肃，正式场合弱</td><td>操作效率低于列表</td><td>与 Win11 深度协同更佳</td></tr>
+    </tbody>
+  </table>
+
+  <h2>悬浮球承接说明 <small>所有方案共用</small></h2>
+  <div class="card" style="max-width:none">
+    <p style="font-size:13px">
+      现行桌面由悬浮球（固定 112×112 逻辑尺寸）+ 可展开面板构成。面板无论采用哪套风格，均满足：
+      1) 球体不进入提案修改范围，其渲染、动画、拖拽与位置策略保持现状（<code>codex/fix-orb-drag</code> 修复基线）；
+      2) 面板展开/收起仅为窗口形态变化，球不换形态、不加新动画；
+      3) 每套方案在「对比现行」视图中给出面板以球为锚点展开时的视觉锚定方案（右上角停靠、留出球投影空间）。
+    </p>
+  </div>
+
+  <h2>本地运行</h2>
+  <div class="card" style="max-width:none">
+    <p><code>node docs/design/workspace-settings-redesign-20261017/server.mjs</code> → <a href="/">http://127.0.0.1:4173</a>（即本页）· 自检：<code>node server.mjs --selftest</code></p>
+  </div>
+
+  <footer id="footerStatus">
+    生成于 2026-10-17 · 分支 <span class="ok-chip">codex/workspace-settings-redesign-20261017</span> ·
+    状态：<span class="ok-chip">验收通过</span>（server --selftest 13 路由 0 失败 · 6/6 页结构契约 · 内联脚本 VM 编译 0 错误 · 红线 diff 仅 docs/design/*）· 详细记录见 README「验收记录」
+  </footer>
+</main>
+<script>
+  const PROPOSALS = [
+    { id: 1, slug: "01-editorial-light", title: "晨白 · 编辑部", style: "纸白高对比杂志式编辑部风格", ref: "Untitled UI / Vercel Geist / IBM Carbon 浅色排版传统", focus: "文字层级、留白与细线；适合阅读密集的中文学案场景" },
+    { id: 2, slug: "02-crt-terminal", title: "工控 · 磷光", style: "CRT 航天控制台 / 终端磷光", ref: "IBM Carbon 密度哲学 + 终端复古文化", focus: "命令面板为中心、密度极高、切角直角与扫描线质感" },
+    { id: 3, slug: "03-material3-suede", title: "雪绒 · M3", style: "Material 3 动态色彩 / 大圆角磁贴", ref: "Google Material Design 3", focus: "tonal 色阶、超大圆角、磁贴网格；亲和明快" },
+    { id: 4, slug: "04-neo-brutalist", title: "野拓 · 新粗野", style: "Neo-Brutalism 硬边硬影", ref: "neobrutalism.dev 流派（无库纯 CSS）", focus: "3px 黑边、硬阴影、高饱和色块、直给大字" },
+    { id: 5, slug: "05-soft-clay", title: "雾霭 · 软陶", style: "Claymorphism / 柔和渐变", ref: "HeroUI（原 NextUI，50k+ star）柔性视觉", focus: "pastel 渐变、双层软影、情感化陪伴感" },
+    { id: 6, slug: "06-fluent-light", title: "仲夏 · Fluent", style: "Windows Fluent 2 浅色原生", ref: "Microsoft Fluent 2 Web", focus: "Mica 质感、Segoe 层级、reveal 高光" },
+  ];
+  const el = document.getElementById("cards");
+  el.innerHTML = PROPOSALS.map((p) => `
+    <article class="card">
+      <div class="eyebrow">PROPOSAL ${String(p.id).padStart(2, "0")}</div>
+      <h3>${p.title}</h3>
+      <p><b>${p.style}</b></p>
+      <p class="meta">${p.focus}</p>
+      <div class="links">
+        <a class="btn" href="proposals/${p.slug}/index.html?view=workspace">打开方案</a>
+        <a class="btn" href="proposals/${p.slug}/index.html?view=workspace">大工作区</a>
+        <a class="btn" href="proposals/${p.slug}/index.html?view=settings">设置页</a>
+        <a class="btn" href="proposals/${p.slug}/index.html?view=spec">设计规范</a>
+      </div>
+      <div class="ref">参考来源：${p.ref}</div>
+    </article>`).join("");
+</script>
+</body>
+</html>

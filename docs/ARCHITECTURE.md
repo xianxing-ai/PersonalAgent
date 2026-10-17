@@ -1,5 +1,31 @@
 # 架构设计与技术契约
 
+<!-- current-design-alignment-20261015 -->
+## 当前组合与设计差额（2026-10-15）
+
+以[详细设计](design/CURRENT_DESIGN_20261015.md)与[28图状态](design/WORKFLOW_STATUS_20261015.md)为本轮入口。
+本机Laya单实例/常驻生命周期目标；自有ARM64镜像保留全部28图185节点的依赖与串行编排，
+DeepSeek只经AgentArts新代理，底层平台MaaS来源如实记录；百炼语音复用原端口，SIS平台不冒称接通。
+未合格站点、复杂/不确定/重要抑制升级DeepSeek，Laya没有全局已合格决策地位。
+
+事件来源→原文/Goal/记忆上下文→已有判断→原宿主动作→实际回执→原事项/原Scheduler，复用TaskRuntime、
+ConnectorHost、Policy/ToolGateway、SQLite CAS、Evidence、NotificationService，不建立第二任务库/调度器。
+无人值守与归来沿原任务权限/期限，静默只改变用户打扰，feed与工作继续；语音最终命令由可信宿主绑定参数。
+高级影子与原判断合并，主任务优先，机会资源/收益决定；双方案比较才等双方，其他任务可先交已验主结果。
+当前真实runner顺序await main→shadow，机会并行/主优先调度和普通任务早交付是设计差额，不是已验功能。
+
+已发布SWR244ca434及指定云目录/日志，与两案例本机同版镜像+本机Runtime/工具/Laya+远端代理闭环分别记账。
+41工具Evidence、分支父成功、协调锚点created；无训练、无减少高级调用证据，6次Laya182–618ms未达150ms。
+不因本轮接线确认最终架构；下文旧日期的缺组件/未发布/模型默认描述仅保留其当时范围，具体能力以新回执和接口目录为准。
+
+## 2026-10-15 当前 Laya 部署修订
+
+Owner 确认本机 Laya，所有 28 工作流编排在自有镜像内串行推进；决策提案、本地真实工具、条件观察、
+宿主能力均通过既有 Runtime/Policy/ToolGateway/Evidence 回执边界连接。
+镜像不带 Laya/Python 权重依赖；主流程和隔离影子有不同宿主根目录与命名空间。
+具体实现、兼容和验证边界见 [ADR-0030](adr/0030-local-laya-serial-image-workflows.md) 与
+[当前接线说明](competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。旧日期的架构叙述不作为本版部署声明。
+
 ## 2026-10-09 目标架构补充
 
 当前目标为本地常驻自主开发者助手，详见 ADR-0013 和完整设计。Electron/原生 HTML 的主进程内 Runtime 装配边界继续有效，不假定已有独立 Windows 服务。
@@ -10,8 +36,6 @@ MOD-04B/29 的通信采用 WSS 主、HTTPS 备用，同部署/任务/幂等/授�
 
 39 个模块的位置、所有权、估算及缺口以完整设计和 MODULE_ASSIGNMENTS 为依据。图的箭头是目标职责，不允许 packages 反向导入 apps 或绕过 ToolGateway。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
@@ -138,7 +162,7 @@ SQLite 保存步骤和检查点。外部写操作使用幂等键（服务支持�
 
 ## 8. MCP 与 Skills
 
-目标设计由 Runtime 装配 MCP Host；本地 stdio、远端按所选服务协议支持。当前仓库尚无 MCP package、Host/Client 端口或真实调用，状态为 `unavailable`。未来工具发现后仍须注册，执行前校验 Schema、范围和当前权限；工具自报只读不可当作唯一安全依据。
+目标设计由 Runtime 装配 MCP Host；本地 stdio、远端按所选服务协议支持。main 已有固定只读 stdio；当前 G10/G11/G14 分支增加固定远程只读绑定、加密配置及独立 Desktop 管理/生产装配，详见[管理验收](modules/MOD-06-MANAGEMENT-20261016.md)和[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。远程 HTTP 合成服务、SQLite 与实际 Electron 验证分别记录，不代表真实远程 TLS/OAuth、真人确认或 AgentArts 验收；接口保持 `provisional`。发现不授予执行或云端导出权限，执行前仍校验固定 Schema、范围和当前 Policy；工具自报只读不可当作唯一安全依据。
 
 Skill 目录包含 SKILL.md 和可选脚本、资源、模板；项目扩展清单描述所需工具、数据范围和版本。导入外部 Skill 先检查兼容性与副作用。升级保留版本，旧任务绑定其启动时版本。
 

@@ -4,11 +4,11 @@ import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {createDesktopCodingToolHost, listPendingCodingHelpers} from '../electron/coding-tool-host.js';
+import {createDesktopCodingToolHost, listPendingCodingHelpers, verifyWindowsRecoveryAcl} from '../electron/coding-tool-host.js';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
 
 function fixture(t) {
-  const base = mkdtempSync(path.join(tmpdir(), 'desktop-coding-host-'));
+  const base = mkdtempSync(path.join(tmpdir(), "desktop-coding-host-中文 ' 👋-"));
   const workspaceRoot = path.join(base, 'workspace');
   const recoveryRootPath = path.join(base, 'recovery');
   mkdirSync(workspaceRoot);
@@ -70,6 +70,11 @@ test('repository-root Desktop host accepts only an external byte-identical bundl
     workspace=createWorkspaceConfigHost({...configOptions,patchHelperScriptPath:helperScriptPath});
     try {
       assert.equal(workspace.tools.some(tool=>tool.descriptor.name==='workspace.apply_text_patch'),true);
+      const recovery=path.join(configOptions.userData,'coding-recovery');
+      const {readdirSync}=await import('node:fs');
+      verifyWindowsRecoveryAcl(path.join(recovery,readdirSync(recovery)[0]),powerShellPath);
+      assert.throws(()=>verifyWindowsRecoveryAcl(paths.recoveryRootPath,powerShellPath),/ACL/,
+        'Unicode path support must still reject an inherited ACL');
       assert.equal(workspace.snapshot().writeAvailable,false,'helper configuration does not restore consent');
       workspace.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:false});
       assert.equal(workspace.snapshot().writeAvailable,true);

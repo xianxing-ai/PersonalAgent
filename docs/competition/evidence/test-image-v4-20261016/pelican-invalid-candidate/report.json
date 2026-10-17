@@ -1,0 +1,275 @@
+{
+  "version": 1,
+  "kind": "experimental_real_model_test_version",
+  "startedAt": "2026-10-16T07:07:10.257Z",
+  "directory": "<implementation>\\.cache\\pelican-test-version-4zjhPA",
+  "architectureStatus": "experimental_not_final",
+  "imagePublished": false,
+  "resourceQuota": false,
+  "fixture": "Explicit controlled animation-start fault; not an invented model mistake",
+  "calls": [
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "candidate_planning",
+      "status": "succeeded",
+      "startedAt": "2026-10-16T07:07:19.859Z",
+      "requestSummary": {
+        "messageCount": 2,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 1460,
+        "completionTokens": 311,
+        "totalTokens": 1771
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"plans\":[{\"id\":\"batch-remove-begin-all-three\",\"description\":\"Remove the begin=\\\"indefinite\\\" attribute from all three animateTransform elements in a single batched patch, letting each default to begin=0s so all animations start together on load.\",\"goal\":\"Apply one exact-text patch that deletes ' begin=\\\"indefinite\\\"' from back-spin, front-spin, and pedal-spin simultaneously, then run pelican.verify to confirm the three animations start and all other attributes, ids, dur, and targets are unchanged.\"},{\"id\":\"individual-remove-begin-sequential\",\"description\":\"Remove begin=\\\"indefinite\\\" from each animateTransform one at a time in separate patches, verifying after each so failures are isolated to a single element.\",\"goal\":\"Patch back-spin first and verify; patch front-spin next and verify; patch pedal-spin last and verify, ensuring each edit only removes the begin attribute and preserves every other attribute, id, dur, and rotation target.\"},{\"id\":\"replace-begin-with-zero\",\"description\":\"Replace begin=\\\"indefinite\\\" with begin=\\\"0s\\\" on each animateTransform, keeping an explicit begin attribute while making the animations auto-start.\",\"goal\":\"Apply exact-text patches changing begin=\\\"indefinite\\\" to begin=\\\"0s\\\" for back-spin, front-spin, and pedal-spin, then run pelican.verify to confirm all three start and that no other attribute, id, dur, or target changed.\"}]}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-16T07:07:30.789Z",
+      "wallMs": 10930.459800000002
+    },
+    {
+      "provider": "openai-compatible",
+      "model": "deepseek-v4.1-flash",
+      "stage": "escalated_decision",
+      "status": "succeeded",
+      "startedAt": "2026-10-16T07:07:46.390Z",
+      "requestSummary": {
+        "messageCount": 2,
+        "toolCount": 0
+      },
+      "usage": {
+        "promptTokens": 2157,
+        "completionTokens": 21,
+        "totalTokens": 2178
+      },
+      "response": {
+        "kind": "final",
+        "text": "{\"selectedId\":\"batch-remove-begin-begin-all-three\",\"rationale\":\"Invalid id\"}"
+      },
+      "stopReason": "stop",
+      "endedAt": "2026-10-16T07:08:08.790Z",
+      "wallMs": 22399.544
+    }
+  ],
+  "decisions": [],
+  "laya": [
+    {
+      "event": "laya_choice",
+      "model": "multilingual",
+      "requestId": "e2e04eca-c5b3-4628-ba8c-5baa29043770",
+      "candidateId": "replace-begin-with-zero",
+      "durationMs": 15591.820199999998,
+      "queueWaitMs": 0.43439999999827705,
+      "busyWaitMs": 0.00029999999969732016,
+      "internalHttpMs": 15591.304199999999,
+      "responseValidationMs": 0.07440000000497093,
+      "choiceWallMs": 15591.820199999998,
+      "endToEndMs": 15592.254599999997,
+      "batchId": "2b07a3f3-7cb0-4b31-910d-2bd8af580096",
+      "batchItemId": "a71a1357-977b-4789-a8bf-3880f3400cd9",
+      "batchSize": 1,
+      "submittedBatchSize": 1,
+      "executionPolicy": "sequential",
+      "forwardId": "2b07a3f3-7cb0-4b31-910d-2bd8af580096",
+      "forwardIndex": 1,
+      "forwardCount": 1,
+      "candidateCount": 3,
+      "encodedTokens": 2627,
+      "tokenWindow": {
+        "formatVersion": "1.0.0",
+        "encoderMaxTokens": 8192,
+        "maxLength": 2627,
+        "headMaxLength": 272,
+        "headerTokens": [
+          275
+        ],
+        "stateTokens": [
+          2351
+        ],
+        "requiredSequenceTokens": [
+          2627
+        ],
+        "expectedInputTokens": [
+          2627
+        ],
+        "encodedTokens": 2627,
+        "droppedTokens": 0,
+        "truncated": false,
+        "criterionHeaderMaxTokens": 48
+      },
+      "questionProfile": "workflow_choice_v1",
+      "top1Probability": 0.6295,
+      "top2Probability": 0.2188,
+      "margin": 0.41069999999999995,
+      "entropyConcentration": 0.1718,
+      "calibrated": false,
+      "inferenceMetrics": {
+        "status": "available",
+        "formatVersion": "1.0.0",
+        "forwardScope": "sdk_predict_batch",
+        "precheckScope": "context_window_preflight",
+        "precheckMs": 3.0703,
+        "forwardMs": 15565.2706,
+        "processCpuMs": 15437.5,
+        "precheckProcessCpuMs": 15.625,
+        "forwardProcessCpuMs": 15421.875,
+        "cgroupBefore": {
+          "status": "unsupported"
+        },
+        "cgroupAfter": {
+          "status": "unsupported"
+        },
+        "cgroupCpuDelta": {
+          "status": "missing"
+        }
+      },
+      "fullCriterionDescriptions": "included_in_selector_state"
+    }
+  ],
+  "branches": [],
+  "status": "failed",
+  "timings": [
+    {
+      "kind": "startup",
+      "label": "browser",
+      "startedAt": "2026-10-16T07:07:10.460Z",
+      "endedAt": "2026-10-16T07:07:10.684Z",
+      "wallMs": 224.22090000000003,
+      "outcome": "completed"
+    },
+    {
+      "kind": "startup",
+      "label": "image_model_binding",
+      "startedAt": "2026-10-16T07:07:10.684Z",
+      "endedAt": "2026-10-16T07:07:10.744Z",
+      "wallMs": 59.53989999999999,
+      "outcome": "completed"
+    },
+    {
+      "kind": "startup",
+      "label": "local_laya",
+      "startedAt": "2026-10-16T07:07:10.760Z",
+      "endedAt": "2026-10-16T07:07:19.857Z",
+      "wallMs": 9097.736299999999,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-16T07:07:19.859Z",
+      "endedAt": "2026-10-16T07:07:30.789Z",
+      "wallMs": 10929.4935,
+      "outcome": "completed"
+    },
+    {
+      "kind": "model",
+      "label": "model_turn",
+      "startedAt": "2026-10-16T07:07:46.391Z",
+      "endedAt": "2026-10-16T07:08:08.789Z",
+      "wallMs": 22398.660499999998,
+      "outcome": "completed"
+    }
+  ],
+  "business": [
+    {
+      "module": "MOD-21",
+      "state": "unavailable",
+      "reason": "No explicitly supplied account provider"
+    },
+    {
+      "module": "MOD-24",
+      "state": "unavailable",
+      "reason": "No explicitly supplied research provider"
+    },
+    {
+      "module": "MOD-23",
+      "state": "unavailable",
+      "reason": "No explicitly supplied notification storage and policy"
+    }
+  ],
+  "localModel": {
+    "device": "cpu",
+    "torchThreads": 1,
+    "precision": {
+      "autocastEnabled": false,
+      "autocastDtype": "torch.float32"
+    },
+    "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851"
+  },
+  "toolExecutions": [],
+  "toolFailures": [],
+  "plans": [
+    {
+      "id": "batch-remove-begin-all-three",
+      "description": "Remove the begin=\"indefinite\" attribute from all three animateTransform elements in a single batched patch, letting each default to begin=0s so all animations start together on load.",
+      "goal": "Apply one exact-text patch that deletes ' begin=\"indefinite\"' from back-spin, front-spin, and pedal-spin simultaneously, then run pelican.verify to confirm the three animations start and all other attributes, ids, dur, and targets are unchanged."
+    },
+    {
+      "id": "individual-remove-begin-sequential",
+      "description": "Remove begin=\"indefinite\" from each animateTransform one at a time in separate patches, verifying after each so failures are isolated to a single element.",
+      "goal": "Patch back-spin first and verify; patch front-spin next and verify; patch pedal-spin last and verify, ensuring each edit only removes the begin attribute and preserves every other attribute, id, dur, and rotation target."
+    },
+    {
+      "id": "replace-begin-with-zero",
+      "description": "Replace begin=\"indefinite\" with begin=\"0s\" on each animateTransform, keeping an explicit begin attribute while making the animations auto-start.",
+      "goal": "Apply exact-text patches changing begin=\"indefinite\" to begin=\"0s\" for back-spin, front-spin, and pedal-spin, then run pelican.verify to confirm all three start and that no other attribute, id, dur, or target changed."
+    }
+  ],
+  "failure": "Teacher must choose an original candidate",
+  "wallMs": 58604.4597,
+  "finishedAt": "2026-10-16T07:08:08.863Z",
+  "summary": {
+    "modelCalls": 2,
+    "modelCallOutcomes": {
+      "attempted": 2,
+      "succeeded": 2,
+      "failed": 0,
+      "pending": 0,
+      "attemptedWallMs": 33330.003800000006,
+      "succeededWallMs": 33330.003800000006,
+      "failedWallMs": 0
+    },
+    "modelCallsByStage": {
+      "candidate_planning": {
+        "attempted": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 10930.459800000002,
+        "succeededWallMs": 10930.459800000002,
+        "failedWallMs": 0
+      },
+      "escalated_decision": {
+        "attempted": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 22399.544,
+        "succeededWallMs": 22399.544,
+        "failedWallMs": 0
+      },
+      "branch_execution": {
+        "attempted": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 0,
+        "succeededWallMs": 0,
+        "failedWallMs": 0
+      }
+    },
+    "candidatePlanningCalls": 1,
+    "escalatedDecisionCalls": 1,
+    "branchExecutionCalls": 0,
+    "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+    "layaSuccessfulChoiceCalls": 1,
+    "layaRejectedCalls": 0,
+    "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+    "actualDecisionMakers": [],
+    "trainingPerformed": false
+  }
+}

@@ -41,7 +41,7 @@ test('confirmed synthetic read produces exact graph-bound candidate, separate ap
   let host;
   let app;
   let decisionCalls = 0;
-  let decisionSuggestions;
+  let expectedSuggestions;
   t.after(() => {
     try { app?.close(); } finally { host?.close(); rmSync(directory, {recursive: true, force: true}); }
   });
@@ -70,12 +70,15 @@ test('confirmed synthetic read produces exact graph-bound candidate, separate ap
     host = createSyntheticRepairHost(memoryPath, {decision: {async decide(request) {
       decisionCalls += 1;
       assert.equal(request.events.length, 1);
+      assert.equal(request.events[0].source, 'memory-projection:mvp-synthetic-meeting');
       assert.deepEqual(request.events[0].facts, [{id: 'meeting/time', revision: 2}]);
       assert.deepEqual(request.events[0].authorization, {state: 'none', revision: 0});
-      decisionSuggestions = request.events.map(event => ({eventId: event.eventId, source: event.source,
-        intervention: 'ESCALATE_AGENTARTS', confidence: null, reason: 'model_unavailable',
-        facts: event.facts, authorizationRevision: event.authorization.revision}));
-      return decisionSuggestions;
+      // Explicit advisory fixture: every submitted event has one bound answer,
+      // with no execution authority or automatic graph repair.
+      expectedSuggestions = request.events.map(event => ({eventId: event.eventId, source: event.source,
+        intervention: 'DEFER', confidence: null, reason: 'low_confidence',
+        facts: event.facts.map(fact => ({...fact})), authorizationRevision: event.authorization.revision}));
+      return structuredClone(expectedSuggestions);
     }}});
     app = createRuntimeApplication({path: runtimePath, profile: 'huawei_ict_agentarts',
       coordination: cloud, repairCandidateVersion: '1.0', localRepair: host.localRepair,
@@ -97,8 +100,9 @@ test('confirmed synthetic read produces exact graph-bound candidate, separate ap
     && app.runtime.loadCheckpoint(taskId, 'mvp-local-impact-advice')?.status !== 'ready'; attempt++)
     await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(decisionCalls, 1);
+  assert.equal(expectedSuggestions.length, 1);
   assert.deepEqual(app.runtime.loadCheckpoint(taskId, 'mvp-local-impact-advice'),
-    {graphRevision: 6, status: 'ready', suggestions: decisionSuggestions});
+    {graphRevision: 6, status: 'ready', suggestions: expectedSuggestions});
   if (process.env.PA_MVP_CONTEXT_OUTPUT) {
     const original = host.readBinding(taskId).binding;
     const context = projectSyntheticRepairContext(host.readGraph(), {graphRevision: original.graphRevision,

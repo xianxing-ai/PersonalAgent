@@ -9,6 +9,42 @@ const deferred = () => {
 };
 const turn = () => new Promise(resolve => setImmediate(resolve));
 
+for (const failureAt of ['start', 'release']) {
+  test(`unconfirmed PCM ${failureAt} prevents another attachment on the same source`, async () => {
+    let starts = 0;
+    const options = () => ({signal: new AbortController().signal,
+      deadline: new Date(Date.now() + 10_000).toISOString(), onFrame() {}, onEnd() {}});
+    const port = createVoicePcmFrameSourcePort({start() {
+      starts++;
+      if (failureAt === 'start') throw Error('private partial capture failure');
+      return {async release() {throw Error('private release failure');}};
+    }});
+    const sub = port.subscribe(options());
+    if (failureAt === 'start') await assert.rejects(sub.ready, {code: 'EXTERNAL_FAILURE'});
+    else {await sub.ready; sub.unsubscribe();}
+    await assert.rejects(sub.closed, {code: 'EXTERNAL_FAILURE'});
+    assert.throws(() => port.subscribe(options()), {
+      code: 'EXTERNAL_FAILURE', message: 'Voice PCM capture release failed',
+    });
+    assert.equal(starts, 1);
+    await assert.rejects(port.dispose(), {code: 'EXTERNAL_FAILURE'});
+  });
+}
+
+test('confirmed PCM release permits a new attachment before source disposal', async () => {
+  let starts = 0;
+  const port = createVoicePcmFrameSourcePort({start() {starts++; return {async release() {}};}});
+  for (let i = 0; i < 2; i++) {
+    const sub = port.subscribe({signal: new AbortController().signal,
+      deadline: new Date(Date.now() + 10_000).toISOString(), onFrame() {}, onEnd() {}});
+    await sub.ready;
+    sub.unsubscribe();
+    await sub.closed;
+  }
+  assert.equal(starts, 2);
+  await port.dispose();
+});
+
 for (const boundary of ['ready', 'incoming', 'queued']) {
   test(`expired PCM ${boundary} cannot pass before the deadline timer runs`, async t => {
     let now = Date.now();

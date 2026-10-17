@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mountLiveVoiceControls} from '../src/app/live-voice-controls.js';
+import {mountLiveVoiceControls,liveAudioFailureText} from '../src/app/live-voice-controls.js';
 
 function deferred() {
   let resolve, reject;
@@ -224,3 +224,7 @@ test('an older successful start cannot clear the current stop error', async t =>
   assert.equal(f.fields['live-config-result'].textContent, 'current stop failure');
   assert.equal(f.settings.open, true);
 });
+
+test('current audio-send failure shows its existing safe cause/code instead of only generic connection failure',t=>{const f=fixture(t,async()=>({}));for(const code of ['PCM_FRAME_INVALID','CONNECTION_CLOSED','SEND_BACKPRESSURE','SEND_FAILED']){f.controls.render({configured:true,status:'error',reason:'音频发送失败，已停止录音',audioSendFailure:{code}});assert.match(f.status.textContent,/音频发送失败/);assert.ok(f.status.textContent.includes(code));}assert.equal(liveAudioFailureText({audioSendFailure:{code:'private raw secret'}}),'');});
+
+test('compact render exposes safe audio failure and fixed Live conversation',t=>{const previous=globalThis.document;t.after(()=>{globalThis.document=previous;});const status={},button={};globalThis.document={createElement:()=>({querySelector:selector=>selector==='#live-runtime-status'?status:button})};const control=mountLiveVoiceControls({querySelector:()=>({before(){}})},async()=>{},{compact:true});for(const code of ['PCM_FRAME_INVALID','SEND_BACKPRESSURE']){control.render({configured:true,active:true,status:'error',reason:'音频发送失败，已停止录音',conversationTitle:'原对话',audioSendFailure:{code}});assert.ok(status.textContent.includes(code));assert.ok(status.textContent.includes('原对话'));}control.render({configured:true,status:'error',audioSendFailure:{code:'private-raw-secret'}});assert.equal(status.textContent.includes('private-raw-secret'),false);});

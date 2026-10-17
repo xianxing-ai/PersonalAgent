@@ -1,6 +1,7 @@
 // Optional manual adapter: importing/factory construction performs no I/O.
 // The caller supplies the trusted official APIG SDK and authorizes credentials
 // for this exact request. It does not replace the reader's deadline/abort race.
+import {buildRunLogPath} from '@personal-agent/agentarts/observability';
 const HOST = 'agentarts.cn-southwest-2.myhuaweicloud.com';
 const PREFIX = `https://${HOST}/v1/ops/observation/traces/`;
 const UNSIGNED = Object.freeze({Host: HOST, 'Content-Type': 'application/json', Accept: 'application/json'});
@@ -35,10 +36,9 @@ function check(request) {
   if (Date.now() >= Date.parse(request.deadline)) throw failure('TIMEOUT');
 }
 
-function requestInput(value) {
+function requestInput(value, allowLogs) {
   const request = fields(value, ['url', 'method', 'body', 'headers', 'deadline', 'signal']);
-  if (typeof request.url !== 'string' || !request.url.startsWith(PREFIX)
-    || !/^[A-Za-z0-9_-]{1,64}$/.test(request.url.slice(PREFIX.length))
+  if (typeof request.url !== 'string' || !allowedUrl(request.url, allowLogs)
     || request.method !== 'GET' || request.body !== '' || !(request.signal instanceof AbortSignal)
     || typeof request.deadline !== 'string'
     || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(request.deadline)) throw failure('INVALID_ARGUMENT');
@@ -52,6 +52,19 @@ function requestInput(value) {
   const copy = Object.freeze({...request, headers: Object.freeze(headers)});
   check(copy);
   return copy;
+}
+
+function allowedUrl(url, allowLogs) {
+  if (url.startsWith(PREFIX) && /^[A-Za-z0-9_-]{1,64}$/.test(url.slice(PREFIX.length))) return true;
+  if (!allowLogs) return false;
+  try {
+    const parsed = new URL(url), match = parsed.pathname.match(/^\/v1\/ops\/observation\/agent-run\/([A-Za-z0-9_-]{1,64})\/log$/);
+    if (!match) return false;
+    const query = parsed.searchParams;
+    const path = buildRunLogPath({agentRunId:match[1], startTime:query.get('start_time'),
+      endTime:query.get('end_time'), limit:Number(query.get('limit'))});
+    return url === `https://${HOST}${path}`;
+  } catch { return false; }
 }
 
 function resultHeaders(value, token) {
@@ -74,8 +87,11 @@ function resultHeaders(value, token) {
 }
 
 function sdkScope(request, path) {
-  if (request.host !== HOST || request.uri !== path || request.method !== 'GET'
-    || request.body !== '' || Object.keys(fields(request.query)).length !== 0) throw failure('EXTERNAL_FAILURE');
+  const parsed = new URL(`https://${HOST}${path}`), expected = Object.fromEntries(parsed.searchParams);
+  const query = fields(request.query);
+  if (request.host !== HOST || request.uri !== parsed.pathname || request.method !== 'GET'
+    || request.body !== '' || Object.keys(query).length !== Object.keys(expected).length
+    || Object.entries(expected).some(([key, value]) => !Array.isArray(query[key]) || query[key].length !== 1 || query[key][0] !== value)) throw failure('EXTERNAL_FAILURE');
 }
 
 /**
@@ -88,6 +104,15 @@ function sdkScope(request, path) {
  * exactly the reader's URL. No query/filter or region scope is added here.
  */
 export function createAgentArtsTraceAuthorizer(options) {
+  return createAuthorizer(options, false);
+}
+
+/** Explicitly opt in to the restricted trace + agent-run log GET scopes. */
+export function createAgentArtsObservationAuthorizer(options) {
+  return createAuthorizer(options, true);
+}
+
+function createAuthorizer(options, allowLogs) {
   let HttpRequest, Signer, readCredentials;
   try {
     const input = fields(options, ['sdk', 'readCredentials']);
@@ -103,7 +128,7 @@ export function createAgentArtsTraceAuthorizer(options) {
     let request;
     let signer;
     try {
-      request = requestInput(value);
+      request = requestInput(value, allowLogs);
       const supplied = await readCredentials(request);
       check(request);
       if (supplied === undefined || supplied === null) throw failure('UNAUTHORIZED');

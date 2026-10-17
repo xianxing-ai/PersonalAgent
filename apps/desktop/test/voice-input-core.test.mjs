@@ -222,10 +222,13 @@ test('automatic deadline reports an empty PCM buffer without invoking ASR', asyn
 });
 
 function sharedFixture({recognitionPending = false, recognitionStopFailure = false, managerClosed,
-  mode = 'dictation', authorized = true, clockNow = Date.now} = {}) {
+  mode = 'dictation', authorized = true, clockNow = Date.now, subscriberCount = 1, revokeGate} = {}) {
   let sink, draft, request, recognitionStops = 0, grants = 0, revokes = 0;
+  let subscriptions = 0, sessionStarts = 0;
   const recognition = deferred();
+  const revokeEntered = deferred();
   class ClosingManager extends VoiceSessionManager {
+    async start(...args) {sessionStarts++; return super.start(...args);}
     async stop(...args) {
       const receipt = await super.stop(...args);
       await managerClosed?.promise;
@@ -233,8 +236,12 @@ function sharedFixture({recognitionPending = false, recognitionStopFailure = fal
     }
   }
   const source = createVoicePcmFrameSourcePort({async start(value) {sink = value;return {async release() {}};}});
-  const input = createDesktopVoiceInputCore({source,
-    microphoneHost: {authorize() {grants++;}, snapshot: () => ({authorized, subscriberCount: 1}), async revoke() {revokes++;}},
+  const input = createDesktopVoiceInputCore({source: {
+    subscribe(options) {subscriptions++; return source.subscribe(options);}, dispose: () => source.dispose(),
+  },
+    microphoneHost: {authorize() {grants++;}, snapshot: () => ({authorized, subscriberCount}), async revoke() {
+      revokes++; revokeEntered.resolve(); await revokeGate?.promise;
+    }},
     client: {call: () => assert.fail('shared dictation cannot submit Runtime tasks')},
     createConsumer: () => ({consume: () => assert.fail('shared dictation cannot consume through Runtime')}),
     createBuffer: createVoicePcmBuffer, VoiceSessionManager: ClosingManager,
@@ -246,8 +253,9 @@ function sharedFixture({recognitionPending = false, recognitionStopFailure = fal
       output: {speak: () => assert.fail('shared dictation cannot speak')}, dispose: async () => {},
     }), enabled: true, inputMode: mode, now: clockNow, onTranscript: value => {draft = value;},
   });
-  return {input, recognition, feed: () => sink.onFrame(new Uint8Array(3200)),
+  return {input, recognition, revokeEntered, feed: () => sink.onFrame(new Uint8Array(3200)),
     get draft() {return draft;}, get request() {return request;},
+    get subscriptions() {return subscriptions;}, get sessionStarts() {return sessionStarts;},
     get recognitionStops() {return recognitionStops;},get grants() {return grants;},get revokes() {return revokes;}};
 }
 
@@ -262,6 +270,37 @@ test('shared dictation uses the existing lease, bounds ASR, and delivers only an
   assert.equal(f.revokes, 0);assert.equal(f.input.hasActive(), false);
   await f.input.dispose();
 });
+
+for (const interruption of ['none', 'dispose', 'cancel', 'unrelated-cancel']) {
+  test(`shared restart after old cleanup respects ${interruption} before requesting capture`, async t => {
+    const f = sharedFixture(), parent = new AbortController();
+    t.after(() => f.input.dispose());
+    const lease = {signal: parent.signal, deadline: new Date(Date.now() + 5000).toISOString()};
+    await f.input.beginSharedCapture(9, lease);
+    await f.input.cancelSharedCapture(parent.signal);
+    assert.equal(f.input.hasActive(), false);
+    const restarting = f.input.beginSharedCapture(9, lease);
+    let stopping;
+    if (interruption === 'dispose') stopping = f.input.dispose();
+    if (interruption === 'cancel') stopping = f.input.cancelSharedCapture(parent.signal);
+    if (interruption === 'unrelated-cancel') stopping = f.input.cancelSharedCapture(new AbortController().signal);
+    if (['dispose', 'cancel'].includes(interruption)) {
+      await assert.rejects(restarting, interruption === 'dispose' ? /不可用/ : /取消/);
+      const result = await stopping;
+      if (interruption === 'cancel') assert.deepEqual(result, {cancelled: true});
+      assert.equal(f.subscriptions, 1);
+      assert.equal(f.sessionStarts, 1);
+      assert.equal(f.input.hasActive(), false);
+    } else {
+      assert.equal((await restarting).status, 'listening');
+      if (stopping) assert.deepEqual(await stopping, {cancelled: false});
+      assert.equal(f.subscriptions, 2);
+      assert.equal(f.sessionStarts, 2);
+      await f.input.cancelSharedCapture(parent.signal);
+    }
+    assert.equal(parent.signal.aborted, false);
+  });
+}
 
 test('lease revocation terminates in-flight ASR, prevents a late draft, and preserves unrelated cancellation scope', async () => {
   const f = sharedFixture({recognitionPending: true}), parent = new AbortController();
@@ -293,13 +332,16 @@ test('shared capture rejects expired or extended leases, missing authorization a
   }
 });
 
-test('a terminal ASR state with a failed stop retains the lease release failure after active capture clears', async () => {
+test('a terminal ASR state with a failed stop retains busy ownership after active capture clears', async () => {
   const f = sharedFixture({recognitionPending: true, recognitionStopFailure: true}), parent = new AbortController();
   await f.input.beginSharedCapture(9, {signal: parent.signal, deadline: new Date(Date.now() + 2000).toISOString()});
   f.feed();const finishing = f.input.finishCapture(9), rejected = assert.rejects(finishing, /释放未确认/);
   await new Promise(resolve => setImmediate(resolve));parent.abort();
   await assert.rejects(f.input.cancelSharedCapture(parent.signal), /释放未确认/);await rejected;
-  assert.equal(f.input.hasActive(), false);assert.equal(f.draft, undefined);
+  assert.equal(f.input.hasActive(), true);assert.equal(f.draft, undefined);
+  await assert.rejects(f.input.cancelCapture(9), /释放未确认/);
+  await assert.rejects(f.input.beginCapture(9), /释放未确认/);
+  assert.equal(f.grants, 0);assert.equal(f.subscriptions, 1);
   await assert.rejects(f.input.cancelSharedCapture(parent.signal), /释放未确认/);
   await assert.rejects(f.input.beginSharedCapture(9, {signal: parent.signal,
     deadline: new Date(Date.now() + 2000).toISOString()}), /释放未确认/);
@@ -330,3 +372,51 @@ test('lease deadline reached during a delayed final closed receipt prevents a la
   assert.equal(parent.signal.aborted, false);assert.equal(f.draft, undefined);
   await f.input.dispose();
 });
+
+for (const action of ['complete', 'cancel', 'dispose', 'deadline']) {
+  test(`manual dictation ${action} during delayed revoke delivers only a still-valid draft`, async t => {
+    let clock = Date.now();
+    const revokeGate = deferred();
+    const f = sharedFixture({subscriberCount: 0, revokeGate, clockNow: () => clock});
+    t.after(async () => { revokeGate.resolve(); await f.input.dispose(); });
+    await f.input.beginCapture(9); f.feed();
+    const finishing = f.input.finishCapture(9);
+    const rejected = action === 'complete' ? undefined : assert.rejects(finishing, /取消/);
+    await f.revokeEntered.promise;
+    assert.equal(f.draft, undefined);
+    let stopping;
+    if (action === 'cancel') stopping = f.input.cancelCapture(9);
+    if (action === 'dispose') stopping = f.input.dispose();
+    if (action === 'deadline') clock += 10 * 60_000;
+    revokeGate.resolve();
+    if (action === 'complete') {
+      assert.equal((await finishing).text, '下一条草稿');
+      assert.deepEqual(f.draft, {senderId: 9, text: '下一条草稿'});
+    } else {
+      await rejected;
+      await stopping;
+      assert.equal(f.draft, undefined);
+    }
+    assert.equal(f.revokes, 1);
+    assert.equal(f.recognitionStops, 1);
+    assert.equal(f.input.hasActive(), false);
+  });
+}
+
+test('explicit shared cancellation during final cleanup discards a draft without requiring parent abort', async t => {
+  const closed = deferred(), f = sharedFixture({managerClosed: closed}), parent = new AbortController();
+  t.after(async () => { closed.resolve(); await f.input.dispose(); });
+  await f.input.beginSharedCapture(9, {signal: parent.signal, deadline: new Date(Date.now() + 2000).toISOString()});
+  f.feed(); const finishing = f.input.finishCapture(9), rejected = assert.rejects(finishing, /取消/);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(await f.input.cancelSharedCapture(new AbortController().signal), {cancelled: false});
+  const cancelling = f.input.cancelSharedCapture(parent.signal);
+  closed.resolve();
+  assert.deepEqual(await cancelling, {cancelled: true});
+  await rejected;
+  assert.equal(parent.signal.aborted, false);
+  assert.equal(f.draft, undefined);
+  assert.equal(f.input.hasActive(), false);
+});
+
+for(const shared of [false,true])test('delayed '+(shared?'shared wake':'manual')+' dictation retains capture conversation',async()=>{let subscribed,owner='conversation-a',draft;const closed=deferred(),recognized=deferred(),started=deferred();const input=createDesktopVoiceInputCore({source:{subscribe(options){subscribed=options;return {ready:Promise.resolve(),closed:closed.promise,unsubscribe:()=>closed.resolve()};}},microphoneHost:{authorize(){},snapshot:()=>({authorized:true,subscriberCount:shared?1:0}),revoke:async()=>{}},client:{call:()=>assert.fail('no Runtime task')},createConsumer:()=>({consume:()=>assert.fail('no consumer')}),createBuffer:createVoicePcmBuffer,VoiceSessionManager,createSpeechPorts:()=>({recognition:{recognize:()=>{started.resolve();return {result:recognized.promise,stop:async()=>{}};}},output:{speak:()=>assert.fail('no speech')},dispose:async()=>{}}),enabled:true,inputMode:'dictation',readConversationId:()=>owner,onTranscript:result=>{draft=result;}});if(shared)await input.beginSharedCapture(9,{signal:new AbortController().signal,deadline:new Date(Date.now()+5000)});else await input.beginCapture(9);subscribed.onFrame({data:new Uint8Array(3200)});const finishing=input.finishCapture(9);await started.promise;owner='conversation-b';recognized.resolve({text:'原对话听写',locale:'zh-CN'});await finishing;assert.equal(draft.conversationId,'conversation-a');assert.equal(draft.senderId,9);assert.ok(draft.dictationId);assert.equal(input.hasActive(),false);await input.dispose();});

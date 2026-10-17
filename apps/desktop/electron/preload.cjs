@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     return () => ipcRenderer.removeListener('desktop:preferences', receive);
   },
   invoke: (action, payload) => ipcRenderer.invoke('desktop:action', action, payload),
+  onAudioLevel: listener => {
+    if(typeof listener!=='function')throw Error('Audio level listener required');
+    const receive=(_event,value)=>{if(typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=1)listener(value);};
+    ipcRenderer.on('desktop:audio-level',receive);
+    return ()=>ipcRenderer.removeListener('desktop:audio-level',receive);
+  },
   onDictation: listener => {
     const receive = (_event, result) => listener(result);
     ipcRenderer.on('desktop:dictation-result', receive);
