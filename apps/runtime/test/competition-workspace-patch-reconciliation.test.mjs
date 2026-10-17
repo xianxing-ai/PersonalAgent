@@ -149,14 +149,13 @@ test('read then unknown patch survives restart, resumes the same loop and never 
   assert.deepEqual(await readFile(f.source), Buffer.from(after));
 });
 
-test('unproven, incomplete and cancelled applied readbacks keep the original task waiting', async t => {
-  for (const mode of ['unknown', 'missing-marker', 'missing-length', 'cancelled', 'in-progress', 'false-not-applied']) {
+test('unproven and incomplete applied readbacks keep the original task waiting', async t => {
+  for (const mode of ['unknown', 'missing-marker', 'missing-length', 'in-progress', 'false-not-applied']) {
     await t.test(mode, async t => {
       const f = await fixture(t); await f.start();
       if (mode === 'unknown') await writeFile(f.source, 'a later user edit');
       if (mode === 'missing-marker') f.config.marker = false;
       if (mode === 'missing-length') f.config.length = false;
-      if (mode === 'cancelled') f.app.runtime.requestCancel(f.taskId);
       if (mode === 'in-progress') f.config.overrideResult = {state: 'in_progress', pid: 1234};
       if (mode === 'false-not-applied') f.config.overrideResult = {outcome: 'not_applied'};
       if (['missing-marker', 'false-not-applied'].includes(mode)) await assert.rejects(f.app.reconcileWorkspacePatchTask(f.taskId));
@@ -165,6 +164,67 @@ test('unproven, incomplete and cancelled applied readbacks keep the original tas
       assert.equal(f.app.runtime.readToolExecutions(f.taskId).find(item => item.evidenceId === f.runId).state, 'unknown');
       assert.equal(f.calls.patch, 1); assert.equal(f.calls.cloud.length, 2);
       if (mode !== 'missing-marker') assert.equal(f.config.marker, true);
+    });
+  }
+});
+
+test('cancelled applied patch finishes cancellation only after durable readback and acknowledgement', async t => {
+  for (const mode of ['before-recovery', 'during-acknowledgement', 'acknowledgement-failure', 'cache-failure']) {
+    await t.test(mode, async t => {
+      const f = await fixture(t); await f.start();
+      const original = f.app.runtime.readToolExecutions(f.taskId).find(item => item.evidenceId === f.runId);
+      if (mode !== 'during-acknowledgement') f.app.runtime.requestCancel(f.taskId);
+      f.config.onAcknowledge = () => {
+        assert.equal(f.app.runtime.getTask(f.taskId).state, 'waiting_reconciliation');
+        if (mode === 'during-acknowledgement') f.app.runtime.requestCancel(f.taskId);
+        if (mode === 'acknowledgement-failure') throw Error('injected cancelled acknowledgement failure');
+      };
+      if (mode === 'cache-failure') {
+        const save = f.app.runtime.saveCheckpoint.bind(f.app.runtime);
+        f.app.runtime.saveCheckpoint = (taskId, key, value) => {
+          if (key === 'tool-result-' + f.runId) throw Error('injected cancelled cache failure');
+          return save(taskId, key, value);
+        };
+      }
+      if (['acknowledgement-failure', 'cache-failure'].includes(mode)) {
+        await assert.rejects(f.app.reconcileWorkspacePatchTask(f.taskId), /cancelled .* failure/);
+        assert.equal(f.app.runtime.getTask(f.taskId).state, 'waiting_reconciliation');
+        assert.equal(f.config.marker, true);
+        f.restart(); f.config.onAcknowledge = undefined;
+      }
+      const result = await f.app.reconcileWorkspacePatchTask(f.taskId);
+      assert.equal(result.task.state, 'cancelled');
+      assert.equal(result.task.cancelRequested, true);
+      assert.equal(f.config.marker, false);
+      const record = f.app.runtime.readToolExecutions(f.taskId).find(item => item.evidenceId === f.runId);
+      assert.equal(record.state, 'confirmed'); assert.equal(record.reconciliationOutcome, 'applied');
+      assert.equal(record.inputDigest, original.inputDigest);
+      assert.deepEqual(f.app.runtime.loadCheckpoint(f.taskId, 'tool-result-' + f.runId).result, expectedOutput);
+      assert.equal(f.app.runtime.policy.get(f.runId).usesRemaining, 0);
+      const probes = f.calls.reconciliation.length;
+      f.restart();
+      assert.equal((await f.app.reconcileWorkspacePatchTask(f.taskId)).task.state, 'cancelled');
+      assert.equal(f.calls.reconciliation.length, probes);
+      assert.equal(f.calls.patch, 1); assert.equal(f.calls.cloud.length, 2);
+      assert.deepEqual(await readFile(f.source), Buffer.from(after));
+    });
+  }
+});
+
+test('cancellation does not discard incomplete patch or outstanding cloud outcomes', async t => {
+  for (const mode of ['unknown', 'missing-length', 'missing-marker', 'cloud-unknown', 'cloud-inflight']) {
+    await t.test(mode, async t => {
+      const f = await fixture(t); await f.start(); f.app.runtime.requestCancel(f.taskId);
+      if (mode === 'unknown') await writeFile(f.source, 'a later user edit');
+      if (mode === 'missing-length') f.config.length = false;
+      if (mode === 'missing-marker') f.config.marker = false;
+      if (mode === 'cloud-unknown') f.app.runtime.saveCheckpoint(f.taskId, 'competition-cloud-unknown', {unknown: true});
+      if (mode === 'cloud-inflight') f.app.runtime.saveCheckpoint(f.taskId, 'competition-cloud-inflight', {pending: true});
+      if (mode === 'missing-marker') await assert.rejects(f.app.reconcileWorkspacePatchTask(f.taskId));
+      else await f.app.reconcileWorkspacePatchTask(f.taskId);
+      assert.equal(f.app.runtime.getTask(f.taskId).state, 'waiting_reconciliation');
+      assert.equal(f.calls.patch, 1); assert.equal(f.calls.cloud.length, 2);
+      if (['unknown', 'missing-length'].includes(mode)) assert.equal(f.config.marker, true);
     });
   }
 });

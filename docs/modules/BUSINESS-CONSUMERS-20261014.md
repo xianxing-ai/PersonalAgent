@@ -1,6 +1,6 @@
 # BUSINESS-CONSUMERS-20261014：业务工具消费接线（Potatos498）
 
-工作包依据：[Issue #354](https://github.com/zemeng5208/PersonalAgent/issues/354) 与 [平台交接](AGENTARTS-PLATFORM-HANDOFF-20261014.md) §4。状态：`in_progress`（2026-10-14 已接收）。基线 main `3275aa91`，工作树 `.worktrees/business-consumers-20261014`，分支 `business-consumers/tool-descriptors-20261014`。
+工作包依据：[Issue #354](https://github.com/zemeng5208/PersonalAgent/issues/354) 与 [当时的平台交接（固定提交的历史来源）](https://github.com/zemeng5208/PersonalAgent/blob/a1803ce4504641b6447894d7f52c5282007d2cc3/docs/modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md) §4。状态：`in_progress`（2026-10-14 已接收）。基线 main `3275aa91`，工作树 `.worktrees/business-consumers-20261014`，分支 `business-consumers/tool-descriptors-20261014`。
 
 本文记录首个增量：现有业务工具描述符审计 + 缺口清单 + 实施顺序。设计不等于已实现；每个缺口以自身 PR 交付并验收，不把登记当可用。
 

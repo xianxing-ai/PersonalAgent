@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {mkdirSync,mkdtempSync} from 'node:fs';
+import path from 'node:path';
 import {validateToolValue} from '@personal-agent/contracts';
 import {createRuntimeApplication, createDesktopSubagentDispatchTool} from '../dist/application.js';
 import {ModelGateway, FakeModelProvider} from '@personal-agent/models';
@@ -12,11 +14,12 @@ const descriptor = {name:'fixture.child-read', version:'1.0.0',
   sideEffect:'read',requiredScopes:['fixture:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false};
 const context = parent => ({taskId:parent.taskId,runId:'dispatch',authorizationRef:'parent-ref',scopes:['agent:delegate'],
   signal:new AbortController().signal,deadline:new Date(Date.now()+60_000).toISOString()});
-function fixture(automatic = true) {
+function fixture(automatic = true, database = ':memory:', local = false) {
   const calls = [];
   const tool = {descriptor,execute:async (input,ctx) => {calls.push(ctx); return input;}};
-  const app = createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',tools:[tool],
-    coordination:new FakeCoordinationPort(() => ({kind:'text',text:'unused',verification:'mock'})),
+  // API recovery remains a Local fixture; Competition selects models on its cloud port.
+  const app = createRuntimeApplication({path:database,profile:local?'local':'huawei_ict_agentarts',tools:[tool],
+    ...(local?{}:{coordination:new FakeCoordinationPort(() => ({kind:'text',text:'unused',verification:'mock'}))}),
     ...(automatic ? {automaticTools:[{toolName:descriptor.name,toolVersion:descriptor.version}]} : {})});
   const parent = app.runtime.submitTask({goal:'delegate',conversationId:'competition',idempotencyKey:'parent'});
   return {app,parent,calls};
@@ -24,6 +27,9 @@ function fixture(automatic = true) {
 test('Runtime model factory composes each public provider and denies revoked credentials before network', async () => {
   assert.throws(()=>createConfiguredSubagentModelGateway({profile:'local',provider:'openai-compatible',
     baseUrl:'https://synthetic.invalid/v1',model:'synthetic',deployment:'synthetic',apiKey:()=>''}),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.throws(()=>createConfiguredSubagentModelGateway({profile:'huawei_ict_agentarts',provider:'pangu',
+    baseUrl:'https://synthetic.invalid/v1',model:'synthetic',deployment:'synthetic',apiKey:()=>'',
+    nativeReasoning:{thinking:'enabled',supportedEfforts:[],outputTokenParameter:'max_tokens'}}),{code:'UNSUPPORTED_CAPABILITY'});
   for (const provider of ['pangu','openai-compatible']) {
     let decorated = false;
     const gateway = createConfiguredSubagentModelGateway({provider,baseUrl:'https://synthetic.invalid/v1',
@@ -81,7 +87,7 @@ test('unknown selected model stays failed without falling back to legacy Pangu c
   } finally {app.close();}
 });
 test('a child waiting for actual approval cannot be aggregated as succeeded', async () => {
-  const {app,parent,calls} = fixture(false);
+  const {app,parent,calls} = fixture(false,':memory:',true);
   try {
     const gateway = new ModelGateway(new FakeModelProvider([()=>({kind:'tool_proposal',
       proposal:{toolName:descriptor.name,toolVersion:descriptor.version,arguments:{value:'pending'}}})]));
@@ -98,7 +104,7 @@ test('a child waiting for actual approval cannot be aggregated as succeeded', as
   } finally {app.close();}
 });
 test('approved child resumes the same invocation once and readback replaces pending aggregation', async () => {
-  const {app,parent,calls} = fixture(false);
+  const {app,parent,calls} = fixture(false,':memory:',true);
   try {
     const gateway = new ModelGateway(new FakeModelProvider([
       ()=>({kind:'tool_proposal',proposal:{toolName:descriptor.name,toolVersion:descriptor.version,arguments:{value:'approved'}}}),
@@ -133,7 +139,7 @@ test('approved child resumes the same invocation once and readback replaces pend
   } finally {app.close();}
 });
 test('changing the selected deployment while waiting cannot execute an old approved proposal', async () => {
-  const {app,parent,calls} = fixture(false);
+  const {app,parent,calls} = fixture(false,':memory:',true);
   try {
     const proposal = {kind:'tool_proposal',proposal:{toolName:descriptor.name,toolVersion:descriptor.version,arguments:{value:'old-binding'}}};
     let gateway = new ModelGateway(new FakeModelProvider([()=>proposal],{deployment:'config-before'}));
@@ -150,8 +156,104 @@ test('changing the selected deployment while waiting cannot execute an old appro
     assert.equal(app.runtime.policy.get(approval.approvalId).usesRemaining,1);
   } finally {app.close();}
 });
+
+test('native configuration survives SQLite restart; same-identity drift cannot consume child approval', async () => {
+  const base = new URL('../../../.cache/native-reasoning-runtime/',import.meta.url);
+  mkdirSync(base,{recursive:true});
+  for (const changed of [false,true]) {
+    const database = path.join(mkdtempSync(base),'tasks.sqlite');
+    let current = fixture(false,database);
+    const native = {thinking:'enabled',effort:'max',supportedEfforts:['max'],outputTokenParameter:'max_completion_tokens'};
+    const gateway = (nativeReasoning,steps) => {
+      const fake = new FakeModelProvider(steps,{model:'native-synthetic',deployment:'stable-deployment'});
+      return new ModelGateway(fake,{...fake.deployment,capabilities:{...fake.deployment.capabilities,nativeReasoning}});
+    };
+    const options = model => ({getRuntime:()=>current.app.runtime,getTools:()=>current.app.tools,
+      getModelGateway:()=>model,getModelConfigurationRef:()=> 'stable-config-ref'});
+    try {
+      const first = gateway(native,[()=>({kind:'tool_proposal',proposal:{toolName:descriptor.name,
+        toolVersion:descriptor.version,arguments:{value:'native-restart'}}})]);
+      await createRuntimeSubagentDispatchTool(options(first)).execute({subtasks:[{subtaskId:'native-restart',
+        role:'researcher',goal:'synthetic read',model:'native',thinkingDepth:0}]},context(current.parent));
+      const childId = current.app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${current.parent.taskId}-native-restart`).taskId;
+      assert.equal(current.app.runtime.getTask(childId).state,'waiting_approval');
+      assert.deepEqual(current.app.runtime.loadCheckpoint(childId,'subtask-model-binding').nativeReasoning,native);
+      current.app.close();
+      current = fixture(false,database);
+      const approval = current.app.runtime.getApproval(`agent-run-${childId}-1`);
+      current.app.runtime.respondApproval(approval.approvalId,'allow_once',approval.revision);
+      const restored = gateway(changed?{...native,effort:undefined,thinking:'disabled',supportedEfforts:[]}:native,
+        [()=>({kind:'final',text:'Synthetic restored answer'})]);
+      const result = await resumeRuntimeSubagentTask(options(restored),childId);
+      assert.equal(result.state,changed?'failed':'succeeded');
+      assert.equal(current.calls.length,changed?0:1);
+      if (changed) {
+        assert.equal(result.error.code,'REVISION_CONFLICT');
+        assert.equal(current.app.runtime.policy.get(approval.approvalId).usesRemaining,1);
+      } else {
+        assert.equal(current.app.runtime.policy.get(approval.approvalId).usesRemaining,0);
+        assert.equal(current.app.runtime.loadCheckpoint(childId,'subtask-thinking-binding').modelReasoning.effort,'max');
+        assert.equal(current.app.runtime.loadCheckpoint(childId,'subtask-thinking-binding').modelReasoning.requestedEffort,'max');
+        assert.equal(current.app.runtime.loadCheckpoint(childId,'subtask-thinking-binding').stepBudget.maxSteps,2);
+      }
+    } finally {current.app.close();}
+  }
+});
+
+test('visible request budget factory preserves public binding and rejects Pangu before credentials', async () => {
+  let credentials = 0;
+  const config = {provider:'openai-compatible',profile:'huawei_ict_agentarts',baseUrl:'https://synthetic.invalid/v1',
+    model:'synthetic',deployment:'synthetic',apiKey:()=>{credentials++;return '';},contextLimitTokens:100,
+    requestTokenBudget:{model:'synthetic',tokenizerRef:'synthetic-meter:v1',configurationRef:'synthetic-config:v1',
+      reservedOutputTokens:20,countInputTokens:()=>80}};
+  assert.throws(()=>createConfiguredSubagentModelGateway({...config,provider:'pangu'}),{code:'UNSUPPORTED_CAPABILITY'});
+  const gateway = createConfiguredSubagentModelGateway(config);
+  assert.deepEqual(gateway.deployment.capabilities.requestTokenBudget,{scope:'provider-body',model:'synthetic',
+    tokenizerRef:'synthetic-meter:v1',configurationRef:'synthetic-config:v1',contextTokens:100,reservedOutputTokens:20});
+  await assert.rejects(gateway.complete({messages:[{role:'user',content:'synthetic'}],tools:[],
+    signal:new AbortController().signal,deadline:new Date(Date.now()+60_000).toISOString()}),{code:'UNAUTHORIZED'});
+  assert.equal(credentials,1);
+});
+
+test('SQLite child approval survives unchanged budget; version, capacity and reservation drift cannot consume it', async () => {
+  const base = new URL('../../../.cache/visible-budget-runtime/',import.meta.url);
+  mkdirSync(base,{recursive:true});
+  const binding = {scope:'provider-body',model:'budget-synthetic',tokenizerRef:'synthetic-meter:v1',
+    configurationRef:'budget-config:v1',contextTokens:100,reservedOutputTokens:20};
+  for (const changed of ['same','removed','tokenizerRef','configurationRef','contextTokens','reservedOutputTokens']) {
+    const database = path.join(mkdtempSync(base),'tasks.sqlite');
+    let current = fixture(false,database);
+    const gateway = (requestTokenBudget,steps) => {
+      const fake = new FakeModelProvider(steps,{model:'budget-synthetic',deployment:'stable-deployment'});
+      return new ModelGateway(fake,{...fake.deployment,capabilities:{...fake.deployment.capabilities,
+        ...(requestTokenBudget===undefined?{}:{requestTokenBudget})}});
+    };
+    const options = model => ({getRuntime:()=>current.app.runtime,getTools:()=>current.app.tools,
+      getModelGateway:()=>model,getModelConfigurationRef:()=> 'stable-config-ref'});
+    try {
+      const first = gateway(binding,[()=>({kind:'tool_proposal',proposal:{toolName:descriptor.name,
+        toolVersion:descriptor.version,arguments:{value:'budget-restart'}}})]);
+      await createRuntimeSubagentDispatchTool(options(first)).execute({subtasks:[{subtaskId:'budget-restart',
+        role:'researcher',goal:'synthetic read',model:'budget'}]},context(current.parent));
+      const childId = current.app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${current.parent.taskId}-budget-restart`).taskId;
+      assert.equal(current.app.runtime.getTask(childId).state,'waiting_approval');
+      assert.deepEqual(current.app.runtime.loadCheckpoint(childId,'subtask-model-binding').requestTokenBudget,binding);
+      current.app.close();current = fixture(false,database);
+      const approval = current.app.runtime.getApproval(`agent-run-${childId}-1`);
+      current.app.runtime.respondApproval(approval.approvalId,'allow_once',approval.revision);
+      const next = changed==='removed'?undefined:changed==='same'?binding:{...binding,
+        [changed]:typeof binding[changed]==='number'?binding[changed]+1:`${binding[changed]}-changed`};
+      const restored = gateway(next,[()=>({kind:'final',text:'Synthetic restored answer'})]);
+      const result = await resumeRuntimeSubagentTask(options(restored),childId);
+      assert.equal(result.state,changed==='same'?'succeeded':'failed');
+      assert.equal(current.calls.length,changed==='same'?1:0);
+      assert.equal(current.app.runtime.policy.get(approval.approvalId).usesRemaining,changed==='same'?0:1);
+      if (changed!=='same') assert.equal(result.error.code,'REVISION_CONFLICT');
+    } finally {current.app.close();}
+  }
+});
 test('summary without definitions preserves a subtask ID containing surrounding spaces', async () => {
-  const {app,parent} = fixture();
+  const {app,parent} = fixture(false,':memory:',true);
   try {
     const provider = new FakeModelProvider([()=>({kind:'final',text:'spaced ID result'})]);
     const gateway = new ModelGateway(provider);

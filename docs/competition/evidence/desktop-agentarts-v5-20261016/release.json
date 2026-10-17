@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "observedAtUtc": "2026-10-16T13:34:17.114Z",
+  "profile": "huawei_ict_agentarts",
+  "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+  "deploymentVersion": "arm64-v5-d92a17a4-r3",
+  "image": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v5-d92a17a4",
+  "imageDigest": "sha256:b045e230e0a1bb049f45521a7031c3657fb6951d6ac97b4b17db0a6ea3dcd098",
+  "imageSourceCommit": "d92a17a4c436f37ff7a9bfdc5829044031a89bf7",
+  "desktopSourceCommit": "8057cf189e054bc500e2d58e475bad6f91ed4bee",
+  "architecture": "linux/arm64",
+  "port": 8080,
+  "layaPlacement": "local_unchanged",
+  "latestAliasReadback": "arm64-v5-d92a17a4-r3",
+  "latestAliasReadbackSurface": "AgentArts console refreshed basic page 2026-10-16",
+  "catalog": {
+    "count": 177,
+    "revision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+    "allEntriesInferenceVerified": false
+  },
+  "microphoneVerified": false,
+  "speakerVerified": false
+}

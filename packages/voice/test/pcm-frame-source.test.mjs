@@ -419,8 +419,11 @@ test('multi-subscription release failure waits for all pending releases and sync
   assert.ok(elapsed >= 35, `Expected >= 35ms, took ${elapsed}ms`);
 
   let syncEndReason;
+  let immediateResubscribeError;
+  let startCalls = 0;
   const failingBinding = {
     start() {
+      startCalls += 1;
       throw new Error('Immediate hardware failure');
     },
   };
@@ -431,10 +434,22 @@ test('multi-subscription release failure waits for all pending releases and sync
     onFrame: () => {},
     onEnd: reason => {
       syncEndReason = reason;
+      try {
+        failPort.subscribe({
+          signal: new AbortController().signal,
+          deadline: futureDeadline(),
+          onFrame: () => {},
+          onEnd: () => {},
+        });
+      } catch (error) {
+        immediateResubscribeError = error;
+      }
     },
   });
 
   assert.equal(syncEndReason, 'device_unavailable');
+  assert.equal(immediateResubscribeError.code, 'EXTERNAL_FAILURE');
+  assert.equal(startCalls, 1);
   await assert.rejects(
     failSub.ready,
     error => {
@@ -453,6 +468,16 @@ test('multi-subscription release failure waits for all pending releases and sync
       return true;
     },
   );
+  assert.throws(
+    () => failPort.subscribe({
+      signal: new AbortController().signal,
+      deadline: futureDeadline(),
+      onFrame: () => {},
+      onEnd: () => {},
+    }),
+    error => error.code === 'EXTERNAL_FAILURE',
+  );
+  assert.equal(startCalls, 1);
 });
 
 test('concurrent subscriptions coexist on shared binding and closing one does not stop the other', async () => {

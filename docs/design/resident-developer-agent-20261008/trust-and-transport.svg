@@ -5,7 +5,7 @@
 <rect x="0" y="0" width="2800" height="2040" rx="0" fill="#f3f6fa" stroke="none"/>
 <text x="50" y="72" font-size="40" class="strong" text-anchor="start">信任与连接 · 双通道恢复 · 发布与验收</text>
 <text x="50" y="119" font-size="23" class="muted" text-anchor="start">WSS 是主通道；HTTPS 是同一 AgentArts 的备用；切换传输不增加权限</text>
-<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<a href="../CURRENT_DESIGN_20261015.md" id="history-design-notice-20261015"><text x="50" y="158" font-size="21" class="muted" text-anchor="start">历史目标快照 · 原估算日期保留 · 当前设计见 2026-10-15入口，架构未最终定型</text></a>
 <rect x="40" y="210" width="870" height="580" rx="14" fill="#fff" stroke="#d5dfe8"/>
 <text x="60" y="253" font-size="28" class="strong" text-anchor="start">A. 用户与本地可信边界</text>
 <rect x="940" y="210" width="870" height="580" rx="14" fill="#fff" stroke="#d5dfe8"/>

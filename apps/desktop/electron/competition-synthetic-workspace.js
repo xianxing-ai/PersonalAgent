@@ -1,4 +1,5 @@
 import {createWorkspaceReadTool, WORKSPACE_READ_TOOL_NAME, WORKSPACE_READ_TOOL_VERSION} from '@personal-agent/coding-tools';
+import {createHash} from 'node:crypto';
 import {lstatSync, realpathSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -41,11 +42,18 @@ function exactDataObject(value, keys) {
 /** An explicit synthetic-only export gate, never execution authority. */
 export function projectSyntheticMeetingResult(result) {
   const deny = () => { throw Error('Synthetic meeting result export denied'); };
-  if (!exactDataObject(result, ['path', 'encoding', 'byteLength', 'content'])
+  const fields = ['path', 'encoding', 'byteLength', 'content'];
+  const hasDigest = result !== null && typeof result === 'object' && Object.hasOwn(result, 'sha256');
+  if (hasDigest) fields.push('sha256');
+  if (!exactDataObject(result, fields)
     || result.path !== SYNTHETIC_MEETING_PATH || result.encoding !== 'utf-8'
     || typeof result.content !== 'string' || !Number.isSafeInteger(result.byteLength)
     || result.byteLength < 1 || result.byteLength > MAX_BYTES
     || Buffer.byteLength(result.content, 'utf8') !== result.byteLength) return deny();
+  // The production read tool includes this optional field. Verify it locally;
+  // the public meeting projection still exports only the approved four fields.
+  if (hasDigest && (typeof result.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(result.sha256)
+    || createHash('sha256').update(result.content, 'utf8').digest('hex') !== result.sha256)) return deny();
   let parsed;
   try { parsed = JSON.parse(result.content); } catch { return deny(); }
   if (!exactDataObject(parsed, approvedKeys)

@@ -1,0 +1,50 @@
+UTC started 2026-10-16T09:38:07.4677986Z
+▶ AgentArts runtime name must be a string before encryption or persistence
+  ✔ missing (2.201ms)
+  ✔ undefined (0.8034ms)
+  ✔ null (0.6206ms)
+  ✔ number (0.5983ms)
+  ✔ array (0.6434ms)
+  ✔ object (0.5871ms)
+✔ AgentArts runtime name must be a string before encryption or persistence (6.8611ms)
+▶ AgentArts stored non-string runtime name remains unavailable without rewriting the file
+  ✔ missing (4.0714ms)
+  ✔ undefined (2.0823ms)
+  ✔ null (2.1689ms)
+  ✔ number (1.7774ms)
+  ✔ array (1.7967ms)
+  ✔ object (1.7963ms)
+✔ AgentArts stored non-string runtime name remains unavailable without rewriting the file (14.7888ms)
+✔ AgentArts revoke reports a failed disk deletion and can be retried after repair (5.0913ms)
+✔ AgentArts credential persists through host storage without snapshot disclosure or destination reuse (2.9274ms)
+✔ AgentArts blank credential reuse compares canonical destinations and preserves rejects (6.7217ms)
+✔ known AgentArts destination permits Runtime and Live construction without inventing or overwriting a credential (85.5202ms)
+✔ optional inner credential and exact deployment version persist encrypted, refresh, and never enter snapshots (6.0744ms)
+✔ invalid optional credentials and version pins never encrypt, persist or replace current configuration (3.5852ms)
+✔ legacy encrypted version 1 three-field records remain valid without inventing an inner credential or version (2.1654ms)
+✔ actual Desktop default configuration runs the public HTTPS factory (72.3098ms)
+✔ actual Desktop https configuration runs the public HTTPS factory (64.1273ms)
+✔ actual Desktop main closure feeds encrypted config token/version refresh into real Runtime HTTPS and blocks revoke (177.3684ms)
+✔ actual Desktop WSS callback projects fixed notices and the real factory consumes Fake socket events (75.5453ms)
+✔ HTTPS fallback remains explicit and cannot bypass the final host send guard (53.8443ms)
+✔ an actual accepted WSS disconnect retains its unknown notice and original Runtime reconciliation hold (61.2605ms)
+✔ an actual auth_required handshake retains its diagnostic through socket close (51.5329ms)
+✔ an actual unsupported handshake retains its diagnostic through socket close (54.7624ms)
+✔ WSS host credentials remain separate, re-readable and absent from serialized options (0.3895ms)
+✔ Legacy configuration is retained, while WSS fallback needs explicit opt-in and destination binding (0.5331ms)
+✔ WSS requires an explicit URL and never derives or probes a public gateway address (0.2841ms)
+✔ both exact runtime-bound paths are supported only when explicitly configured (0.171ms)
+✔ Transport notices make fallback and unknown outcomes visible without forwarding frame data (0.0839ms)
+✔ HTTPS attaches current host token and exact version only at its original destination and never serializes credentials (0.7238ms)
+✔ HTTPS rejects another destination, query, redirect, forged token and cancellation before any network send (0.3417ms)
+✔ current configuration failure, removal or invalid values stop sending and cannot silently use an old token (0.5185ms)
+✔ WSS reads saved token or legacy environment but explicitly rejects any pinned deployment version (0.2576ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1526.2461
+UTC finished 2026-10-16T09:38:09.0943211Z exit=0

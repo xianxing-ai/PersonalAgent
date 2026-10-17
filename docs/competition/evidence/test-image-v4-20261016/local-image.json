@@ -1,0 +1,26 @@
+{
+  "context": "<implementation>\\.cache\\agentarts-image\\context-l57B9u",
+  "imageId": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "schemaVersion": 1,
+  "architecture": "arm64",
+  "registryManifestDigest": null,
+  "remoteReadbackVerified": false,
+  "registryReference": "",
+  "stages": [
+    {
+      "finishedAtUtc": "2026-10-16T06:50:42.7049213Z",
+      "startedAtUtc": "2026-10-16T06:50:33.6115863Z",
+      "wallMs": 9084.2478,
+      "stage": "build",
+      "exitCode": 0,
+      "logSha256": "8f3e49d2fef6f50fd55c0b24df483bded1a754535f97b10f11e2dce73354fbc4"
+    }
+  ],
+  "image": "personal-agent:test-v4-workflow-wiring",
+  "built": true,
+  "sourceDirty": false,
+  "published": false,
+  "sourceRevision": "e38ef23dfc5ac5cd59728bb40299e0784f203cae",
+  "recordedAtUtc": "2026-10-16T06:50:43.0211100Z",
+  "runtimeDeploymentVerified": false
+}

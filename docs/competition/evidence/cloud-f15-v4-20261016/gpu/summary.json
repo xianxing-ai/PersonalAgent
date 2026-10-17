@@ -1,0 +1,567 @@
+{
+  "schemaVersion": 1,
+  "kind": "bounded_gpu_evidence_summary",
+  "generatedAtUtc": "2026-10-16T09:11:00.7742208Z",
+  "profile": "huawei_ict_agentarts",
+  "status": "partial_measurements_only",
+  "scope": "Read-only extraction of existing V5 phase/comparison/case receipts; this summary performs no model call, test, build, deployment, or qualification.",
+  "sources": [
+    {
+      "path": ".cache/v5-cuda-wukong-phase.json",
+      "sha256": "f12055cfaaa354bf63b2cda34ddd227d39f770377a1283d792525e05ecc0cb85"
+    },
+    {
+      "path": ".cache/v5-cuda-pelican-phase.json",
+      "sha256": "fa62acee7342e8befd7351211b6bfa42645a23d5295a8d15a868f6af1bb2333f"
+    },
+    {
+      "path": ".cache/v5-benchmark-cpu-phase.json",
+      "sha256": "bef462959ea540a7297f9d379afffaa2a35cc13901bc24ca9d4a2da67244e0d2"
+    },
+    {
+      "path": ".cache/v5-benchmark-cuda-phase.json",
+      "sha256": "e0ae45c0bc4d9354db056ef10edce2c694850cedeb5aaadd11191f487363bf42"
+    },
+    {
+      "path": ".cache/local-laya-benchmark/comparison-1792139585579.json",
+      "sha256": "29b08d9e885e7e9c97d34676efe502068467de1b4b9df51b802c798e1f4f70c3"
+    },
+    {
+      "path": ".cache/local-laya-benchmark/comparison-1792139672436.json",
+      "sha256": "2be5301be251f436b69c33835ea0e479ed48f021275ccdcd185572d013c6dd6a"
+    },
+    {
+      "path": ".cache/wukong-test-version-yT61CM/report.json",
+      "sha256": "04a8591edb0952a64d19bcc28d92fea37c1ad4900c2e6ac088ac01a962e22d0e"
+    },
+    {
+      "path": ".cache/pelican-test-version-wlHMlN/report.json",
+      "sha256": "bfc4b8bdf2610b7da71658a09bda8491b2cdb00b5ef01fd26c1b9df2f8e5c788"
+    }
+  ],
+  "overall": {
+    "allScenariosPassed": false,
+    "cudaShortInput150Ms": "passed_for_recorded_warm_sequential_arm_only",
+    "cudaLongInput150Ms": "not_met_in_both_recorded_cases",
+    "cudaPacked": "native_process_exit_before_packed_ready_or_inference_receipt",
+    "modelQualification": "not_established",
+    "f15AdvanceAcceptance": "not_run_in_these_case_receipts",
+    "defaultDesktopIntegration": "not_established_by_these_manual_harness_receipts"
+  },
+  "benchmark": {
+    "targetMs": 150,
+    "measurementScope": "Native Windows actual hardware, no CPU/memory quota; warm selector + loopback HTTP + complete model inference; startup excluded",
+    "hardware": {
+      "architecture": "x64",
+      "logicalProcessors": 20
+    },
+    "modelManifestSha256": "ecf84fda3ac53aba0f1cdc8705c9ddc70f8910d4086e304707e0883eb9145e20",
+    "sameModelManifest": true,
+    "sameShortInputHashes": true,
+    "inputIdentities": [
+      {
+        "input": "public-alpha",
+        "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+        "encodedTokens": 274
+      },
+      {
+        "input": "public-beta",
+        "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+        "encodedTokens": 320
+      },
+      {
+        "input": "public-gamma",
+        "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+        "encodedTokens": 275
+      },
+      {
+        "input": "public-delta",
+        "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+        "encodedTokens": 347
+      }
+    ],
+    "comparisonInterpretation": {
+      "singleVariableHardwareComparison": false,
+      "changedFactors": [
+        "device: CPU versus CUDA",
+        "precision: CPU FP32 versus SDK CUDA BF16 autocast"
+      ],
+      "qualificationVerified": false,
+      "note": "Same input hashes and model manifest do not isolate hardware from precision, establish semantic correctness, or qualify Laya. CPU and CUDA choose different public-delta candidates."
+    },
+    "cpu": {
+      "phase": {
+        "finishedAtUtc": "2026-10-16T08:34:32.1867951Z",
+        "wallMs": 86857.2276,
+        "startedAtUtc": "2026-10-16T08:33:05.3247394Z",
+        "device": "cpu",
+        "exitCode": 0
+      },
+      "originalReportStatus": "completed",
+      "startedAt": "2026-10-16T08:33:05.578Z",
+      "finishedAt": "2026-10-16T08:34:32.155Z",
+      "precision": "torch.float32; autocast disabled",
+      "arms": [
+        {
+          "threads": 1,
+          "policy": "sequential",
+          "precision": {
+            "autocastEnabled": false,
+            "autocastDtype": "torch.float32"
+          },
+          "startupMs": 14099.3391,
+          "summary": {
+            "serial": {
+              "samples": 12,
+              "p50Ms": 1119.8200999999972,
+              "p95Ms": 1589.7897999999986,
+              "maximumMs": 1589.7897999999986,
+              "allBelow150Ms": false
+            },
+            "parallelRequests": {
+              "samples": 12,
+              "p50Ms": 3049.346400000002,
+              "p95Ms": 5742.809099999999,
+              "maximumMs": 5742.809099999999,
+              "allBelow150Ms": false
+            }
+          },
+          "choicesStable": true
+        },
+        {
+          "threads": 1,
+          "policy": "packed",
+          "precision": {
+            "autocastEnabled": false,
+            "autocastDtype": "torch.float32"
+          },
+          "startupMs": 13867.884700000002,
+          "summary": {
+            "serial": {
+              "samples": 12,
+              "p50Ms": 822.1667000000016,
+              "p95Ms": 948.6931999999942,
+              "maximumMs": 948.6931999999942,
+              "allBelow150Ms": false
+            },
+            "parallelRequests": {
+              "samples": 12,
+              "p50Ms": 3763.2896000000037,
+              "p95Ms": 3842.8524000000034,
+              "maximumMs": 3842.8524000000034,
+              "allBelow150Ms": false
+            }
+          },
+          "choicesStable": true
+        }
+      ],
+      "qualityVerified": false
+    },
+    "cuda": {
+      "phase": {
+        "finishedAtUtc": "2026-10-16T08:34:47.2114862Z",
+        "wallMs": 15004.4095,
+        "startedAtUtc": "2026-10-16T08:34:32.2070122Z",
+        "device": "cuda",
+        "exitCode": -1073740791
+      },
+      "originalReportStatus": "running",
+      "startedAt": "2026-10-16T08:34:32.433Z",
+      "finishedAt": null,
+      "recordedArms": [
+        {
+          "threads": 1,
+          "policy": "sequential",
+          "precision": {
+            "autocastEnabled": true,
+            "autocastDtype": "torch.bfloat16"
+          },
+          "startupMs": 13212.5041,
+          "summary": {
+            "serial": {
+              "samples": 12,
+              "p50Ms": 28.847999999999956,
+              "p95Ms": 41.61519999999837,
+              "maximumMs": 41.61519999999837,
+              "allBelow150Ms": true
+            },
+            "parallelRequests": {
+              "samples": 12,
+              "p50Ms": 63.13669999999911,
+              "p95Ms": 120.79269999999997,
+              "maximumMs": 120.79269999999997,
+              "allBelow150Ms": true
+            }
+          },
+          "choicesStable": true
+        }
+      ],
+      "shortInput": {
+        "policy": "sequential",
+        "precision": {
+          "autocastEnabled": true,
+          "autocastDtype": "torch.bfloat16"
+        },
+        "encodedTokensMinimum": 274.0,
+        "encodedTokensMaximum": 347.0,
+        "samples": 24,
+        "allBelow150Ms": true,
+        "serial": {
+          "samples": 12,
+          "p50Ms": 28.847999999999956,
+          "p95Ms": 41.61519999999837,
+          "maximumMs": 41.61519999999837,
+          "allBelow150Ms": true
+        },
+        "parallelRequests": {
+          "samples": 12,
+          "p50Ms": 63.13669999999911,
+          "p95Ms": 120.79269999999997,
+          "maximumMs": 120.79269999999997,
+          "allBelow150Ms": true
+        },
+        "note": "parallelRequests are concurrent callers serialized by the sequential service; they are not packed inference. Latency excludes startup."
+      },
+      "packed": {
+        "status": "native_process_exit",
+        "exitCode": -1073740791,
+        "lastRecordedStage": {
+          "stage": "service.starting",
+          "observedAtUtc": "2026-10-16T08:34:46.583Z",
+          "threadCount": 1,
+          "policy": "packed"
+        },
+        "readyRecorded": false,
+        "completedArmRecorded": false,
+        "rootCause": "unknown; exit code alone does not establish OOM or a specific component fault"
+      },
+      "qualityVerified": false,
+      "maasCalls": 0,
+      "toolExecutions": 0,
+      "offMachineRequests": 0,
+      "cachedChoices": false
+    }
+  },
+  "cases": [
+    {
+      "scenario": "wukong",
+      "sourceReceipt": ".cache/wukong-test-version-yT61CM/report.json",
+      "phase": {
+        "device": "cuda",
+        "wallMs": 190503.7247,
+        "startedAtUtc": "2026-10-16T08:25:30.0194816Z",
+        "finishedAtUtc": "2026-10-16T08:28:40.5258924Z",
+        "scenario": "wukong",
+        "exitCode": 1
+      },
+      "kind": "experimental_real_model_test_version",
+      "architectureStatus": "experimental_not_final",
+      "recordedStatus": "partial_one_branch_failed",
+      "startedAt": "2026-10-16T08:25:37.514Z",
+      "finishedAt": "2026-10-16T08:28:39.548Z",
+      "runnerWallMs": 181974.5685,
+      "imagePublishedInReceipt": false,
+      "validationSurface": "Experimental real-model manual testVersion/model_turn harness plus local Runtime/Policy/ToolGateway/tool readback; not F15 workflowVersion/advance",
+      "f15AdvanceVerified": false,
+      "localModel": {
+        "device": "cuda",
+        "torchThreads": 1,
+        "precision": {
+          "autocastEnabled": true,
+          "autocastDtype": "torch.bfloat16"
+        },
+        "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851"
+      },
+      "longInputChoices": [
+        {
+          "event": "laya_choice",
+          "requestId": "b4ff479c-88e5-4cd4-b8be-947ab72dc32a",
+          "encodedTokens": 5151,
+          "choiceWallMs": 483.6958000000013,
+          "endToEndMs": 484.125,
+          "executionPolicy": "sequential",
+          "calibrated": false
+        },
+        {
+          "event": "laya_choice",
+          "requestId": "38f8e049-8dfa-467b-afe9-17d5f546aa68",
+          "encodedTokens": 5033,
+          "choiceWallMs": 411.8088999999891,
+          "endToEndMs": 411.8826999999874,
+          "executionPolicy": "sequential",
+          "calibrated": false
+        }
+      ],
+      "longInputAllBelow150Ms": false,
+      "decisions": [
+        {
+          "requestId": "b4ff479c-88e5-4cd4-b8be-947ab72dc32a",
+          "site": "wukong.main-plan",
+          "decided_by": "deepseek",
+          "reason": "unvalidated_decision_site",
+          "layaMs": 485.63430000000517,
+          "teacherCalls": 1
+        },
+        {
+          "requestId": "38f8e049-8dfa-467b-afe9-17d5f546aa68",
+          "site": "wukong.shadow-plan",
+          "decided_by": "deepseek",
+          "reason": "unvalidated_decision_site",
+          "layaMs": 413.0769999999902,
+          "teacherCalls": 1
+        }
+      ],
+      "modelCallSummary": {
+        "modelCalls": 19,
+        "modelCallOutcomes": {
+          "attempted": 19,
+          "succeeded": 19,
+          "failed": 0,
+          "pending": 0,
+          "attemptedWallMs": 151397.239,
+          "succeededWallMs": 151397.239,
+          "failedWallMs": 0
+        },
+        "modelCallsByStage": {
+          "candidate_planning": {
+            "attempted": 1,
+            "succeeded": 1,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 6031.100599999991,
+            "succeededWallMs": 6031.100599999991,
+            "failedWallMs": 0
+          },
+          "escalated_decision": {
+            "attempted": 2,
+            "succeeded": 2,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 26676.722100000014,
+            "succeededWallMs": 26676.722100000014,
+            "failedWallMs": 0
+          },
+          "branch_execution": {
+            "attempted": 16,
+            "succeeded": 16,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 118689.4163,
+            "succeededWallMs": 118689.4163,
+            "failedWallMs": 0
+          }
+        },
+        "candidatePlanningCalls": 1,
+        "escalatedDecisionCalls": 2,
+        "branchExecutionCalls": 16,
+        "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+        "layaSuccessfulChoiceCalls": 2,
+        "layaRejectedCalls": 0,
+        "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+        "actualDecisionMakers": [
+          "deepseek",
+          "deepseek"
+        ],
+        "trainingPerformed": false
+      },
+      "branches": [
+        {
+          "mode": "main",
+          "status": "failed",
+          "taskId": "166679f7-9352-4312-b240-c897bc8489f4",
+          "taskState": "failed",
+          "taskError": {
+            "code": "INVALID_ARGUMENT",
+            "message": "Model returned invalid proposal JSON",
+            "retryable": false
+          },
+          "error": "Model returned invalid proposal JSON",
+          "wallMs": 32565.454099999988
+        },
+        {
+          "mode": "shadow",
+          "status": "verified",
+          "taskId": "5f100728-79f4-494e-8bba-c06821e27d9a",
+          "taskState": "succeeded",
+          "taskError": null,
+          "error": null,
+          "wallMs": 23095.8364
+        }
+      ],
+      "toolExecutionCount": 16,
+      "toolFailureCount": 0,
+      "delivery": {
+        "state": "confirmed",
+        "evidenceRefs": [
+          "host-tool-9fe2872c-e321-488a-8daa-e7af59be2ae1"
+        ],
+        "singleWriteback": true,
+        "userBaselinePreserved": true,
+        "selectedSha256": "5b783ec811c6a50425765e9c90fb5f711050777f4a4372afcc6beb7bb6a825bc"
+      },
+      "modelQualified": false
+    },
+    {
+      "scenario": "pelican",
+      "sourceReceipt": ".cache/pelican-test-version-wlHMlN/report.json",
+      "phase": {
+        "scenario": "pelican",
+        "device": "cuda",
+        "exitCode": 0,
+        "finishedAtUtc": "2026-10-16T08:32:40.2451399Z",
+        "startedAtUtc": "2026-10-16T08:30:11.2465743Z",
+        "wallMs": 148995.8304
+      },
+      "kind": "experimental_real_model_test_version",
+      "architectureStatus": "experimental_not_final",
+      "recordedStatus": "verified_main_shadow_and_delivery",
+      "startedAt": "2026-10-16T08:30:18.939Z",
+      "finishedAt": "2026-10-16T08:32:39.287Z",
+      "runnerWallMs": 140343.1607,
+      "imagePublishedInReceipt": false,
+      "validationSurface": "Experimental real-model manual testVersion/model_turn harness plus local Runtime/Policy/ToolGateway/tool readback; not F15 workflowVersion/advance",
+      "f15AdvanceVerified": false,
+      "localModel": {
+        "device": "cuda",
+        "torchThreads": 1,
+        "precision": {
+          "autocastEnabled": true,
+          "autocastDtype": "torch.bfloat16"
+        },
+        "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851"
+      },
+      "longInputChoices": [
+        {
+          "event": "laya_choice",
+          "requestId": "d54ee91a-705f-4461-a047-455a89ba5cb0",
+          "encodedTokens": 2645,
+          "choiceWallMs": 484.3235999999997,
+          "endToEndMs": 484.7528999999995,
+          "executionPolicy": "sequential",
+          "calibrated": false
+        },
+        {
+          "event": "laya_choice",
+          "requestId": "05f93fe7-cc34-41b9-923a-06e81a1044d2",
+          "encodedTokens": 2538,
+          "choiceWallMs": 273.80079999999725,
+          "endToEndMs": 273.8590000000004,
+          "executionPolicy": "sequential",
+          "calibrated": false
+        }
+      ],
+      "longInputAllBelow150Ms": false,
+      "decisions": [
+        {
+          "requestId": "d54ee91a-705f-4461-a047-455a89ba5cb0",
+          "site": "pelican.main-plan",
+          "decided_by": "deepseek",
+          "reason": "unvalidated_decision_site",
+          "layaMs": 485.601200000001,
+          "teacherCalls": 1
+        },
+        {
+          "requestId": "05f93fe7-cc34-41b9-923a-06e81a1044d2",
+          "site": "pelican.shadow-plan",
+          "decided_by": "deepseek",
+          "reason": "unvalidated_decision_site",
+          "layaMs": 274.05739999999787,
+          "teacherCalls": 1
+        }
+      ],
+      "modelCallSummary": {
+        "modelCalls": 22,
+        "modelCallOutcomes": {
+          "attempted": 22,
+          "succeeded": 22,
+          "failed": 0,
+          "pending": 0,
+          "attemptedWallMs": 109505.22799999997,
+          "succeededWallMs": 109505.22799999997,
+          "failedWallMs": 0
+        },
+        "modelCallsByStage": {
+          "candidate_planning": {
+            "attempted": 1,
+            "succeeded": 1,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 10436.1487,
+            "succeededWallMs": 10436.1487,
+            "failedWallMs": 0
+          },
+          "escalated_decision": {
+            "attempted": 2,
+            "succeeded": 2,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 5144.162900000003,
+            "succeededWallMs": 5144.162900000003,
+            "failedWallMs": 0
+          },
+          "branch_execution": {
+            "attempted": 19,
+            "succeeded": 19,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 93924.91639999997,
+            "succeededWallMs": 93924.91639999997,
+            "failedWallMs": 0
+          }
+        },
+        "candidatePlanningCalls": 1,
+        "escalatedDecisionCalls": 2,
+        "branchExecutionCalls": 19,
+        "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+        "layaSuccessfulChoiceCalls": 2,
+        "layaRejectedCalls": 0,
+        "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+        "actualDecisionMakers": [
+          "deepseek",
+          "deepseek"
+        ],
+        "trainingPerformed": false
+      },
+      "branches": [
+        {
+          "mode": "main",
+          "status": "verified",
+          "taskId": "789c6eb8-8146-4b58-8da4-58285888428c",
+          "taskState": "succeeded",
+          "taskError": null,
+          "error": null,
+          "wallMs": 55789.78569999999
+        },
+        {
+          "mode": "shadow",
+          "status": "verified",
+          "taskId": "3a1f648a-7972-4f64-919a-369aa97d47e7",
+          "taskState": "succeeded",
+          "taskError": null,
+          "error": null,
+          "wallMs": 53569.93099999998
+        }
+      ],
+      "toolExecutionCount": 21,
+      "toolFailureCount": 0,
+      "delivery": {
+        "state": "confirmed",
+        "evidenceRefs": [
+          "host-tool-bb5a5291-4cc7-48cb-830b-923c8c0143af"
+        ],
+        "singleWriteback": true,
+        "userBaselinePreserved": true,
+        "selectedSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+      },
+      "modelQualified": false
+    }
+  ],
+  "limitations": [
+    "GPU short-input latency passed only for the recorded warm sequential arm; the CUDA benchmark as a whole did not complete.",
+    "The four long-input case choices exceed 150ms and remain uncalibrated; both cases upgraded two decisions to the teacher.",
+    "CPU FP32 and SDK CUDA BF16 differ in both device and precision, so these records are not a single-variable CPU/GPU experiment.",
+    "Wukong main failed while shadow and delivery succeeded; do not report that both branches passed.",
+    "These experimental testVersion/model_turn case receipts are not workflowVersion/advance, six-node F15 graph acceptance, cloud deployment/version readback, or default Desktop integration evidence.",
+    "No model quality qualification, training, complete-suite pass, or production readiness is claimed."
+  ]
+}

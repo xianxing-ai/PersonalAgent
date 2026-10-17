@@ -1,7 +1,9 @@
 # MOD-28-LAYA-DECISION-01：本地主动介入判断首片
 
+> 公开脱敏投影：历史命令中的机器专属路径已改为接收者可配置占位或仓库相对路径；日期、数值、失败与原哈希保留。占位不是可直接执行的配置，运行前使用本机受信Node/npm、工作树及运行环境路径。
+
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
@@ -20,9 +22,9 @@ PR #92 的[设计文档](https://github.com/zemeng5208/PersonalAgent/pull/92)标
 
 ## Laya 身份与部署准备
 
-官方 [模型卡](https://huggingface.co/convaiinnovations/laya)说明 Laya 是 Convai Innovations 的 Apache-2.0 非自回归 typed-decision 模型。中文优先只加载 `convaiinnovations/laya` 的 `multilingual` 子目录（mmBERT-base，322M 参数，权重约 647 MB）；其 Python SDK 和 `laya[serve]` 提供 `POST /v1/systemone`。官方给出的约 32.8ms 单问题延迟来自 Tesla T4，不能当成本机指标。安装前项目与 `D:\MODELS` 均未发现 Laya 权重或运行入口。
+官方 [模型卡](https://huggingface.co/convaiinnovations/laya)说明 Laya 是 Convai Innovations 的 Apache-2.0 非自回归 typed-decision 模型。中文优先只加载 `convaiinnovations/laya` 的 `multilingual` 子目录（mmBERT-base，322M 参数，权重约 647 MB）；其 Python SDK 和 `laya[serve]` 提供 `POST /v1/systemone`。官方给出的约 32.8ms 单问题延迟来自 Tesla T4，不能当成本机指标。安装前项目与 `<local-models>` 均未发现 Laya 权重或运行入口。
 
-按用户要求，Python 3.12 隔离虚拟环境、Hugging Face 权重和 pip 缓存已放在被 Git 忽略的 `D:\PersonalAgent\.cache\laya\` 下。官方 CPU wheel 索引与 pip dry-run 后安装 `laya[serve]==0.3.20`、`torch==2.14.0+cpu` 和 `transformers==5.17.0`，无 CUDA 依赖。实测磁盘：venv 863,158,424 字节、单 multilingual 权重缓存 678,214,360 字节、pip 缓存 185,935,914 字节，合计约 1.73 GB。服务使用 `LAYA_HOST=127.0.0.1`、`LAYA_MODELS=multilingual`、`LAYA_DEVICE=cpu` 和一次性进程环境 `LAYA_API_KEY`；官方默认 `0.0.0.0` 且无鉴权，不直接采用。HTTP 客户端拒绝重定向，避免 307/308 把摘要和引用转发到其他主机。密钥未写入仓库、提示、日志或测试夹具。
+按用户要求，Python 3.12 隔离虚拟环境、Hugging Face 权重和 pip 缓存已放在被 Git 忽略的 `<local-runtime>/laya/` 下。官方 CPU wheel 索引与 pip dry-run 后安装 `laya[serve]==0.3.20`、`torch==2.14.0+cpu` 和 `transformers==5.17.0`，无 CUDA 依赖。实测磁盘：venv 863,158,424 字节、单 multilingual 权重缓存 678,214,360 字节、pip 缓存 185,935,914 字节，合计约 1.73 GB。服务使用 `LAYA_HOST=127.0.0.1`、`LAYA_MODELS=multilingual`、`LAYA_DEVICE=cpu` 和一次性进程环境 `LAYA_API_KEY`；官方默认 `0.0.0.0` 且无鉴权，不直接采用。HTTP 客户端拒绝重定向，避免 307/308 把摘要和引用转发到其他主机。密钥未写入仓库、提示、日志或测试夹具。
 
 单服务预加载这一 checkpoint，避免逐事件冷启动；请求最多四项，保留 deadline/取消。一次合成样本实调：首次含下载和 CPU 预加载到 `/health` 就绪为 52.5 秒，缓存模型再次启动为 12.2 秒；`/health` 读回 `loaded=["multilingual"]`、`device=cpu`。首个真实 `POST /v1/systemone` 经本地适配耗时 437.4 ms，随后两次为 221.2 ms、200.1 ms；模型原始输出 `MERGE`、confidence 0.1446，服务按低置信度升级为 `ESCALATE_AGENTARTS`，没有触发动作。实际 Python worker PID 38360 的加载后 RSS 为 1652.9 MiB；测量后 launcher PID 36380 与 worker 均已停止，回环端口读回不可达。数字仅对应本机单次启动与三次合成调用，不能证明稳态 P95 或决策质量。正式启用前仍需独立标注集测准确度、漏报、误提醒和校准。
 

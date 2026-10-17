@@ -70,6 +70,23 @@ export function mountProactiveControls(container, invoke, {settings = false} = {
   // Keep identified acceptance or uncertainty when a redraw replaces the action's DOM nodes.
   const cognitionOutcomes = new Map();
   const triggerExpansion = new Map();
+  let renderedReviewsBinding, renderedReviewsHTML;
+  const reviewBinding = value => {
+    const seen = new Set();
+    const encode = item => {
+      if (item === null || typeof item === 'undefined' || typeof item === 'string' || typeof item === 'boolean') return [typeof item, item ?? null];
+      if (typeof item === 'number' && Number.isFinite(item)) return ['number', item];
+      if (typeof item !== 'object' || seen.has(item)) throw Error('Unserializable review binding');
+      seen.add(item);
+      if (!Array.isArray(item) && Object.getPrototypeOf(item) !== Object.prototype) throw Error('Unserializable review binding');
+      if (Reflect.ownKeys(item).some(key => typeof key !== 'string' || Object.getOwnPropertyDescriptor(item, key).get)) throw Error('Unserializable review binding');
+      if (Array.isArray(item) && Object.keys(item).some(key => !/^(0|[1-9]\d*)$/.test(key))) throw Error('Unserializable review binding');
+      const encoded = Array.isArray(item) ? ['array', item.map(encode)] : ['object', Object.keys(item).sort().map(key => [key, encode(item[key])])];
+      seen.delete(item);
+      return encoded;
+    };
+    try {return JSON.stringify(encode(value));} catch {return undefined;}
+  };
   const handoffPermissionFeedback = () => current?.cognition?.enabled === false
     ? {message:'目标分析已关闭，请先在设置中开启',label:'交给主智能体处理',locked:true}
     : current?.cognition?.cloudAllowed === false
@@ -93,6 +110,7 @@ export function mountProactiveControls(container, invoke, {settings = false} = {
     return retained.locked ? retained : sourceOutdatedFeedback(item) ?? localKeepFeedback(item) ?? handoffPermissionFeedback() ?? retained;
   }
   function syncReview(id, completed) {
+    renderedReviewsBinding = undefined;
     const item = current?.cognition?.reviews?.find(review => review.reviewTaskId === id);
     const latest = item ? reviewFeedback(item) : null;
     const feedback = latest?.locked ? latest
@@ -236,14 +254,18 @@ export function mountProactiveControls(container, invoke, {settings = false} = {
     if (reviewsList) {
       // Capture the native state before replacing nodes; periodic snapshots must not close a reader's disclosure.
       let focusedTriggerReview;
+      const focusedAction=reviewsList.contains(document.activeElement)&&document.activeElement.matches('button[data-action="apply-cognition"],button[data-action="retain-local-cognition"]')?document.activeElement:null;
+      const actionIdentity=button=>JSON.stringify(Object.entries(button.dataset).sort(([a],[b])=>a.localeCompare(b)));
+      const focusedActionIdentity=focusedAction&&!focusedAction.disabled?actionIdentity(focusedAction):null;
       for(const details of reviewsList.querySelectorAll('details[data-trigger-review]')) {
         triggerExpansion.set(details.dataset.triggerReview,details.open);
         if(details.querySelector('summary')===document.activeElement)focusedTriggerReview=details.dataset.triggerReview;
       }
       const reviewIds=new Set(cognitionReviews.map(item=>item.reviewTaskId));
       for(const id of triggerExpansion.keys()) if(!reviewIds.has(id)) triggerExpansion.delete(id);
+      let reviewsHTML = '';
       if (cognitionReviews.length > 0) {
-        reviewsList.innerHTML = '<h3 class="cognition-review-title">目标与计划决策</h3>' + cognitionReviews.map(r => {
+        reviewsHTML = '<h3 class="cognition-review-title">目标与计划决策</h3>' + cognitionReviews.map(r => {
           const feedback = reviewFeedback(r);
           return `
           <article class="task cognition-review-card" data-review-id="${escape(r.reviewTaskId || '')}">
@@ -262,13 +284,19 @@ export function mountProactiveControls(container, invoke, {settings = false} = {
           </article>
         `;
         }).join('');
-      } else {
-        reviewsList.innerHTML = '';
       }
+      const binding = reviewBinding({reviews:cognitionReviews,cognition:snapshot?.cognition,pending:[...cognitionPending],saving,localSaving});
+      if (binding === undefined || binding !== renderedReviewsBinding || reviewsHTML !== renderedReviewsHTML) reviewsList.innerHTML = reviewsHTML;
+      renderedReviewsBinding = binding;
+      renderedReviewsHTML = reviewsHTML;
       if(focusedTriggerReview!==undefined) {
         for(const details of reviewsList.querySelectorAll('details[data-trigger-review]')) {
           if(details.dataset.triggerReview===focusedTriggerReview) {details.querySelector('summary').focus({preventScroll:true});break;}
         }
+      }
+      if(focusedActionIdentity!==null&&document.activeElement===document.body) {
+        const button=[...reviewsList.querySelectorAll('button[data-action]')].find(item=>{const review=cognitionReviews.find(review=>review.reviewTaskId===item.dataset.reviewId);return review&&!item.disabled&&!['expired','succeeded','failed','cancelled','applied'].includes(review.status??review.state)&&actionIdentity(item)===focusedActionIdentity;});
+        if(button)button.focus({preventScroll:true});
       }
     }
   }

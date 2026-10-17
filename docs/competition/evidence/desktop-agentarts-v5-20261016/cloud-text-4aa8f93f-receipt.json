@@ -1,0 +1,29 @@
+{
+  "version": "arm64-v5-4aa8f93f-r1",
+  "sourceCommit": "4aa8f93fd708ad2c780e7cd3c6142d6398c659b6",
+  "imageDigest": "sha256:5168bda799e9cda660b6c9f67b0e718fad446c74149f5d8b6d77a0d520f7321d",
+  "taskId": "d9dade62-92c7-4c7f-bdd9-65cc8c77123d",
+  "state": "succeeded",
+  "revision": 6,
+  "resultSummary": "{\"kind\":\"text\",\"text\":\"新版本WSS文字连接成功\"}\n[profile=huawei_ict_agentarts; verification=unverified]",
+  "errorCode": null,
+  "executionModel": {
+    "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+    "modelId": "deepseek-v4.1-flash",
+    "reasoningEffort": "low"
+  },
+  "wallMs": 9120.0262,
+  "wss101": true,
+  "httpTaskFallbackRequests": 0,
+  "passed": true,
+  "socketEvidence": [
+    {
+      "channel": "text",
+      "event": "upgrade",
+      "httpStatus": 101,
+      "protocol": null,
+      "elapsedMs": 5525.6356
+    }
+  ],
+  "deploymentVersion": "arm64-v5-4aa8f93f-r1"
+}

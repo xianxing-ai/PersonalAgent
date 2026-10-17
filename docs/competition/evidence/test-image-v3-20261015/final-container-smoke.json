@@ -1,0 +1,244 @@
+{
+  "kind": "test_image_v3_services_smoke",
+  "image": "personal-agent:test-v3-final-local-laya",
+  "imageId": "sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1",
+  "sizeBytes": 87036259,
+  "network": "none",
+  "startedAtUtc": "2026-10-15T14:31:36.737Z",
+  "finishedAtUtc": "2026-10-15T14:31:58.320Z",
+  "wallMs": 21574.2473,
+  "startupRejections": [
+    {
+      "variant": "missing_proxy_header",
+      "exitCode": 1,
+      "wallMs": 6461.9829,
+      "rejected": true
+    },
+    {
+      "variant": "direct_route_forbidden",
+      "exitCode": 1,
+      "wallMs": 6128.382100000001,
+      "rejected": true
+    }
+  ],
+  "result": {
+    "architecture": "arm64",
+    "uid": 1000,
+    "ping": 200,
+    "workflowCount": 28,
+    "nodeCount": 185,
+    "proactive": {
+      "descriptor": "proactive.responsibility.v1",
+      "entries": [
+        "connector",
+        "user_instruction",
+        "subtask_feedback",
+        "wake"
+      ],
+      "frontierStages": [
+        "retrieve",
+        "laya",
+        "teacher"
+      ],
+      "mode": "attended",
+      "returnSummary": {
+        "done": [],
+        "changed": [],
+        "pending": [
+          "item-58a59ff2eb2ceb81229e3ca7b5a61ee8f549e8ed1bea39b4be5a9826a5daaabb"
+        ],
+        "blocked": [],
+        "newEvidenceOperationIds": [
+          "proactive-3f893d550498f9bcd2a4cff187438dae5f548c85331a3dfeb3f53013f619b027",
+          "proactive-0c35f9afc8358fe2b4fb4e53db03b324b01ff1a28955235361fdc13af54ce293"
+        ],
+        "replayedNotifications": 0
+      },
+      "verification": "unverified",
+      "timeline": [
+        {
+          "stage": "proposal:retrieve",
+          "requestId": "v3-advance-1",
+          "itemIds": [
+            "item-58a59ff2eb2ceb81229e3ca7b5a61ee8f549e8ed1bea39b4be5a9826a5daaabb"
+          ],
+          "startedAtUtc": "2026-10-15T14:31:57.603Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.604Z",
+          "wallMs": 1
+        },
+        {
+          "stage": "advance",
+          "requestId": "v3-advance-1",
+          "itemIds": [],
+          "startedAtUtc": "2026-10-15T14:31:57.572Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.606Z",
+          "wallMs": 34
+        },
+        {
+          "stage": "receipt:retrieve:confirmed",
+          "requestId": "v3-advance-2",
+          "itemIds": [
+            "item-58a59ff2eb2ceb81229e3ca7b5a61ee8f549e8ed1bea39b4be5a9826a5daaabb"
+          ],
+          "startedAtUtc": "2026-10-15T14:31:57.603Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.718Z",
+          "wallMs": 115
+        },
+        {
+          "stage": "proposal:laya",
+          "requestId": "v3-advance-2",
+          "itemIds": [
+            "item-58a59ff2eb2ceb81229e3ca7b5a61ee8f549e8ed1bea39b4be5a9826a5daaabb"
+          ],
+          "startedAtUtc": "2026-10-15T14:31:57.723Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.723Z",
+          "wallMs": 0
+        },
+        {
+          "stage": "advance",
+          "requestId": "v3-advance-2",
+          "itemIds": [],
+          "startedAtUtc": "2026-10-15T14:31:57.706Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.723Z",
+          "wallMs": 17
+        },
+        {
+          "stage": "receipt:laya:confirmed",
+          "requestId": "v3-advance-3",
+          "itemIds": [
+            "item-58a59ff2eb2ceb81229e3ca7b5a61ee8f549e8ed1bea39b4be5a9826a5daaabb"
+          ],
+          "startedAtUtc": "2026-10-15T14:31:57.723Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.832Z",
+          "wallMs": 109
+        },
+        {
+          "stage": "proposal:teacher",
+          "requestId": "v3-advance-3",
+          "itemIds": [
+            "item-58a59ff2eb2ceb81229e3ca7b5a61ee8f549e8ed1bea39b4be5a9826a5daaabb"
+          ],
+          "startedAtUtc": "2026-10-15T14:31:57.841Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.841Z",
+          "wallMs": 0
+        },
+        {
+          "stage": "advance",
+          "requestId": "v3-advance-3",
+          "itemIds": [],
+          "startedAtUtc": "2026-10-15T14:31:57.829Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.842Z",
+          "wallMs": 13
+        },
+        {
+          "stage": "control:enter_unattended",
+          "requestId": "v3-advance-4",
+          "itemIds": [],
+          "startedAtUtc": "2026-10-15T14:31:57.914Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.922Z",
+          "wallMs": 8
+        },
+        {
+          "stage": "advance",
+          "requestId": "v3-advance-4",
+          "itemIds": [],
+          "startedAtUtc": "2026-10-15T14:31:57.914Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.923Z",
+          "wallMs": 9
+        },
+        {
+          "stage": "control:return",
+          "requestId": "v3-advance-5",
+          "itemIds": [],
+          "startedAtUtc": "2026-10-15T14:31:57.990Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.995Z",
+          "wallMs": 5
+        },
+        {
+          "stage": "advance",
+          "requestId": "v3-advance-5",
+          "itemIds": [],
+          "startedAtUtc": "2026-10-15T14:31:57.990Z",
+          "finishedAtUtc": "2026-10-15T14:31:57.997Z",
+          "wallMs": 7
+        }
+      ]
+    },
+    "timings": [
+      {
+        "stage": "owned.catalog",
+        "startedAtUtc": "2026-10-15T14:31:56.689Z",
+        "finishedAtUtc": "2026-10-15T14:31:57.128Z",
+        "wallMs": 436.15518000000066,
+        "httpStatus": 200
+      },
+      {
+        "stage": "platform.status",
+        "startedAtUtc": "2026-10-15T14:31:57.133Z",
+        "finishedAtUtc": "2026-10-15T14:31:57.208Z",
+        "wallMs": 74.88019700000041,
+        "httpStatus": 200
+      },
+      {
+        "stage": "proactive.describe",
+        "startedAtUtc": "2026-10-15T14:31:57.209Z",
+        "finishedAtUtc": "2026-10-15T14:31:57.406Z",
+        "wallMs": 196.9113729999999,
+        "httpStatus": 200
+      },
+      {
+        "stage": "proactive.source_frontier",
+        "startedAtUtc": "2026-10-15T14:31:57.465Z",
+        "finishedAtUtc": "2026-10-15T14:31:57.633Z",
+        "wallMs": 166.8590009999998,
+        "httpStatus": 200
+      },
+      {
+        "stage": "proactive.context_receipt",
+        "startedAtUtc": "2026-10-15T14:31:57.640Z",
+        "finishedAtUtc": "2026-10-15T14:31:57.763Z",
+        "wallMs": 123.47860700000001,
+        "httpStatus": 200
+      },
+      {
+        "stage": "proactive.laya_fixture_receipt",
+        "startedAtUtc": "2026-10-15T14:31:57.773Z",
+        "finishedAtUtc": "2026-10-15T14:31:57.875Z",
+        "wallMs": 102.21039100000053,
+        "httpStatus": 200
+      },
+      {
+        "stage": "proactive.unattended",
+        "startedAtUtc": "2026-10-15T14:31:57.884Z",
+        "finishedAtUtc": "2026-10-15T14:31:57.947Z",
+        "wallMs": 62.65727500000048,
+        "httpStatus": 200
+      },
+      {
+        "stage": "proactive.return",
+        "startedAtUtc": "2026-10-15T14:31:57.950Z",
+        "finishedAtUtc": "2026-10-15T14:31:58.029Z",
+        "wallMs": 78.42204200000015,
+        "httpStatus": 200
+      },
+      {
+        "stage": "proactive.reject_tampered_frame",
+        "startedAtUtc": "2026-10-15T14:31:58.031Z",
+        "finishedAtUtc": "2026-10-15T14:31:58.116Z",
+        "wallMs": 84.84860200000003,
+        "httpStatus": 401
+      }
+    ],
+    "productionModelRoute": "agentarts-proxy",
+    "syntheticEndpoint": "https://proxy.synthetic.invalid/inference/v1",
+    "syntheticKeyHeader": "x-test-key",
+    "missingPlatformPortsExplicit": true,
+    "attemptedExternalCalls": 0,
+    "realModelCalls": 0,
+    "actualConnectorCalls": 0,
+    "actualDeviceCalls": 0,
+    "syntheticDecisionReceipts": true,
+    "platformConnected": false,
+    "published": false
+  }
+}
