@@ -3,6 +3,10 @@
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
+Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。本机 Laya 在本机运行并参与 Competition 产品路径；本地 Runtime/Policy/ToolGateway/Evidence 保留授权与执行事实。具体 Laya 调用范围、外部比赛资格和端到端验收仍按实际 Evidence 核实。
+
+2026-10-16 [Desktop/TLS 组合验收](../../docs/modules/MOD-06-PRODUCT-TLS-20261016.md) 已在实际 Electron/安全存储与默认 HTTPS fetch 上完成成功链路及四类拒绝场景；原生对话框响应仍为合成。#369 评审的 run 缓存上限修复 `bfcb1ab1` 已普通推送并传递至 #373；接口保持 provisional，当前 CI/非作者评审及集成状态以 GitHub 为准。
+
 ## 2026-10-16 默认 fetch 的本机 HTTPS/TLS 验证
 
 新增 `npm run test:mcp-tls-smoke`，见[复现说明](../../tests/manual/mcp/README.md)和[验收记录](../../docs/modules/MOD-06-TLS-20261016.md)。实际 HTTPS 合成服务配合进程专属测试 CA、原 SDK 默认 fetch、SQLite/Policy 验证 5/5：可信证书与单次审批成功；不受信 CA、主机名、目录摘要和重定向拒绝。重启不联网、不重放原结果。无系统信任库修改、证书验证关闭或 HTTPS→HTTP 映射。
