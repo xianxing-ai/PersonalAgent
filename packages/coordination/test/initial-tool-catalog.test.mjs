@@ -79,3 +79,17 @@ test('legacy initial request remains raw goal and rejects supplied directory', a
   await assert.rejects(cloud.invoke(request({availableTools})), {code: 'INVALID_ARGUMENT'});
   assert.equal(calls.length, 1);
 });
+
+test('trusted text-only selection preserves the same export guard and denies mixed request modes',async()=>{
+  let sends=0,guards=0;
+  const cloud=new AgentArtsCloudAgentPort(config,{read:async()=> 'Bearer synthetic'},async(_url,init)=>{
+    sends++;assert.deepEqual(JSON.parse(init.body),{query:'Read synthetic item'});return response();
+  },selected=>{guards++;assert.equal(selected.textOnly,true);});
+  const coordinator=new CompetitionCoordinator(cloud);
+  assert.equal((await coordinator.execute(request({textOnly:true}))).kind,'text');
+  for(const extra of [{textOnly:false},{textOnly:true,availableTools:[]},{textOnly:true,continuation:{proposalId:'p',state:'confirmed',result:{}}}]) {
+    await assert.rejects(coordinator.execute(request(extra)),{code:'INVALID_ARGUMENT'});
+    await assert.rejects(cloud.invoke(request(extra)),{code:'INVALID_ARGUMENT'});
+  }
+  assert.equal(sends,1);assert.equal(guards,1);cloud.close();
+});

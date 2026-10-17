@@ -1,6 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
-import {AgentArtsResultUnknownError, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
+import {AgentArtsResultUnknownError,AgentArtsTerminalError, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
   type CoordinationResult, type CoordinationToolProposalResult, type AgentArtsUnknownReceipt} from '@personal-agent/coordination';
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
@@ -56,6 +56,98 @@ export function recordCompetitionCloudAcceptance(runtime: TaskRuntime, taskId: s
   }
   runtime.saveCheckpoint(taskId, 'competition-cloud-inflight', {...receipt});
 }
+
+/** Durably bound, platform observation identity produced by a workflow run. */
+export interface CompetitionCloudRequestIdentityRecord {
+  readonly revision: number;
+  readonly sessionId: string;
+  readonly requestId: string;
+  readonly payloadDigest: string;
+  /** First-send wall clock; attempts counts identical later sends of the same binding. */
+  readonly recordedAt: string;
+  readonly attempts: number;
+}
+
+export interface CompetitionCloudRequestIdentities {
+  /** The recorded request identity itself never claims an observed platform join. */
+  readonly formatVersion: '1.0.0';
+  readonly requests: readonly CompetitionCloudRequestIdentityRecord[];
+  /** Request identifiers observed with two different payloads; correlation must not trust these. */
+  readonly conflicts: readonly string[];
+}
+
+const MAX_RECORDED_IDENTITIES = 32;
+const SAFE_IDENTITY_VALUE = /^[A-Za-z0-9_-]+$/;
+const PAYLOAD_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+
+function identityRecord(value: unknown, revision: number, recordedAt: string): CompetitionCloudRequestIdentityRecord {
+  const receipt = value as AgentArtsUnknownReceipt;
+  if (!Number.isSafeInteger(revision) || revision < 0
+    || typeof receipt?.sessionId !== 'string' || typeof receipt?.requestId !== 'string'
+    || typeof receipt?.payloadDigest !== 'string'
+    || !SAFE_IDENTITY_VALUE.test(receipt.sessionId) || receipt.sessionId.length > 64
+    || !SAFE_IDENTITY_VALUE.test(receipt.requestId) || receipt.requestId.length > 64
+    || !PAYLOAD_DIGEST_PATTERN.test(receipt.payloadDigest)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Competition cloud request identity is invalid');
+  }
+  return {revision, sessionId: receipt.sessionId, requestId: receipt.requestId,
+    payloadDigest: receipt.payloadDigest, recordedAt, attempts: 1};
+}
+
+/** Records the actual outgoing request identity of one send attempt, before transport failure.
+ * Observation-only bookkeeping next to the transport receipts: it never changes task states,
+ * is cleared by private-copy erasure like other non-allowlisted checkpoints, and keeps the
+ * newest bounded history so later platform trace/log reads can bind to the original request.
+ */
+export function recordCompetitionCloudRequestIdentity(runtime: TaskRuntime, taskId: string, revision: number,
+  receipt: AgentArtsUnknownReceipt): void {
+  runtime.getTask(taskId);
+  const stored = (runtime.loadCheckpoint(taskId, 'competition-cloud-request-identity')
+    ?? {formatVersion: '1.0.0', requests: [], conflicts: []}) as CompetitionCloudRequestIdentities;
+  const requests = [...(Array.isArray(stored.requests) ? stored.requests : [])];
+  const conflicts = new Set<string>(Array.isArray(stored.conflicts) ? stored.conflicts : []);
+  const entry = identityRecord(receipt, revision, new Date().toISOString());
+  // One request identifier binding two different payloads is a conflict signal, not a replace operation.
+  if (requests.some(existing => existing.requestId === entry.requestId
+    && existing.payloadDigest !== entry.payloadDigest)) conflicts.add(entry.requestId);
+  const sameBinding = requests.find(existing => existing.requestId === entry.requestId
+    && existing.sessionId === entry.sessionId && existing.payloadDigest === entry.payloadDigest
+    && existing.revision === entry.revision);
+  if (sameBinding) {
+    requests.splice(requests.indexOf(sameBinding), 1,
+      {...sameBinding, attempts: Math.min(sameBinding.attempts + 1, Number.MAX_SAFE_INTEGER)});
+  } else {
+    requests.push(entry);
+    // Bounded history keeps the newest send attempts; private-copy erasure also removes the whole record.
+    requests.splice(0, Math.max(0, requests.length - MAX_RECORDED_IDENTITIES));
+  }
+  runtime.saveCheckpoint(taskId, 'competition-cloud-request-identity',
+    {formatVersion: '1.0.0', requests: [...requests], conflicts: [...conflicts]});
+}
+
+/** Selection over durably recorded send identities; `bound` stays undefined without a recorded match. */
+export interface CompetitionCloudIdentitySelection {
+  readonly identities: CompetitionCloudRequestIdentities;
+  readonly availability: 'bound' | 'unknown_request';
+  readonly bound?: CompetitionCloudRequestIdentityRecord;
+}
+
+/** Loads the recorded send identity for binding a platform read, never synthesizing one. */
+export function readCompetitionCloudRequestIdentity(runtime: TaskRuntime, taskId: string,
+  input: {revision?: number} = {}): CompetitionCloudIdentitySelection {
+  runtime.getTask(taskId);
+  const stored = runtime.loadCheckpoint(taskId,
+    'competition-cloud-request-identity') as CompetitionCloudRequestIdentities | undefined;
+  const identities: CompetitionCloudRequestIdentities = stored && Array.isArray(stored.requests)
+    ? {formatVersion: '1.0.0', requests: [...stored.requests], conflicts: [...(Array.isArray(stored.conflicts) ? stored.conflicts : [])]}
+    : {formatVersion: '1.0.0', requests: [], conflicts: []};
+  if (identities.requests.length === 0) return {identities, availability: 'unknown_request'};
+  const candidates = input.revision === undefined ? [...identities.requests].reverse()
+    : identities.requests.filter(item => item.revision === input.revision).reverse();
+  const [bound] = candidates;
+  return {identities, availability: bound ? 'bound' : 'unknown_request', ...(bound ? {bound} : {})};
+}
+
 
 /** Call only after the corresponding parsed loop state or task success is durable. */
 function consumeCompetitionCloudReceipt(runtime: TaskRuntime, taskId: string): void {
@@ -221,6 +313,13 @@ async function exchange(
           ...(availableTools === undefined ? {} : {availableTools: structuredClone(availableTools)}),
           }));
         } catch (error) {
+          if(error instanceof AgentArtsTerminalError) {
+            const inflight=runtime.loadCheckpoint(taskId,'competition-cloud-inflight') as AgentArtsUnknownReceipt|undefined;
+            const received=runtime.loadCheckpoint(taskId,'competition-cloud-received') as AgentArtsUnknownReceipt|undefined;
+            if(sameCloudInvocation(inflight,error.receipt) && sameCloudInvocation(received,error.receipt)
+              && inflight?.accepted===error.receipt.accepted && received?.accepted===error.receipt.accepted)
+              runtime.saveCheckpoint(taskId,'competition-cloud-terminal-error',{version:'1.0',kind:'wss_terminal_error',receipt:{...error.receipt}});
+          }
           if (error instanceof AgentArtsResultUnknownError) {
             // Identity/digest only: never persist a cloud payload, credential or
             // model response. The same loop cannot automatically resend it.
@@ -248,7 +347,23 @@ export function startCoordinationTask(
   deadline: string,
   options: {resume?: boolean; toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<TaskSnapshot> {
-  const execution = runtime.runTask(taskId, context => runCoordinationWorker(runtime,port,tools,taskId,goal,context,options),
+  const execution = runtime.runTask(taskId, async context => {
+    try { return await runCoordinationWorker(runtime,port,tools,taskId,goal,context,options); }
+    catch (error) {
+      const loop = context.loadCheckpoint('competition-loop') as CompetitionCheckpoint | undefined;
+      const replay = context.loadCheckpoint('competition-confirmed-replay') as {runId?: string; inputDigest?: string} | undefined;
+      // A confirmed write whose continuation permission changed must remain recoverable.
+      // This does not turn an unknown execution into a confirmed result or replay the tool.
+      if (loop?.pending?.toolName === 'workspace.apply_text_patch'
+        && replay?.runId === `competition-tool-${taskId}-${loop.step}`
+        && runtime.readToolExecutions(taskId).some(record => record.evidenceId === replay.runId
+          && record.inputDigest === replay.inputDigest && record.state === 'confirmed'
+          && record.executionStarted && record.policyDecision === 'allow')) {
+        withholdConfirmedExport(runtime, taskId);
+      }
+      throw error;
+    }
+  },
     {deadline,sideEffect:options.toolCatalog?.sideEffect??'read',...(options.resume?{resume:true}:{})});
   // No adapter can dispatch an intent when the port is unavailable. Preserve
   // that existing immediate-failure lifecycle without a consumption callback.

@@ -1,0 +1,59 @@
+wukong test started: <implementation>\.cache\wukong-launch-20261016-065754
+{
+  "status": "failed",
+  "directory": "<implementation>\\.cache\\wukong-test-version-bjUfKp",
+  "summary": {
+    "modelCalls": 27,
+    "modelCallOutcomes": {
+      "attempted": 27,
+      "succeeded": 26,
+      "failed": 1,
+      "pending": 0,
+      "attemptedWallMs": 298688.68390000006,
+      "succeededWallMs": 238665.4832,
+      "failedWallMs": 60023.200700000045
+    },
+    "modelCallsByStage": {
+      "candidate_planning": {
+        "attempted": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 5552.039399999994,
+        "succeededWallMs": 5552.039399999994,
+        "failedWallMs": 0
+      },
+      "escalated_decision": {
+        "attempted": 3,
+        "succeeded": 2,
+        "failed": 1,
+        "pending": 0,
+        "attemptedWallMs": 66494.82120000006,
+        "succeededWallMs": 6471.620500000019,
+        "failedWallMs": 60023.200700000045
+      },
+      "branch_execution": {
+        "attempted": 23,
+        "succeeded": 23,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 226641.82329999996,
+        "succeededWallMs": 226641.82329999996,
+        "failedWallMs": 0
+      }
+    },
+    "candidatePlanningCalls": 1,
+    "escalatedDecisionCalls": 3,
+    "branchExecutionCalls": 23,
+    "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+    "layaSuccessfulChoiceCalls": 1,
+    "layaRejectedCalls": 2,
+    "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+    "actualDecisionMakers": [
+      "deepseek",
+      "deepseek"
+    ],
+    "trainingPerformed": false
+  },
+  "failure": "Image model HTTP 504"
+}

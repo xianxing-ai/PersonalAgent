@@ -389,19 +389,20 @@ test('export scope denial before dispatch leaves a durable handoff for same-comm
   }
 });
 
-test('expired saved handoff is reported without blocking a review or dispatching', async () => {
+test('expired saved handoff is reported without blocking a review or dispatching', async t => {
+  t.mock.timers.enable({apis:['Date'],now:Date.now()});
   const paths = await workspace();
   const calls = state({failDispatchOnce: true});
   const binding = open(paths, calls);
   try {
-    await assert.rejects(factChain(binding, context(1_000)), /interruption/);
+    await assert.rejects(factChain(binding, context()), /interruption/);
     const review = binding.application.runtime.listTasks({conversationId:
       `proactive-cognition:${graphNamespace}`}).items.find(task =>
       binding.application.runtime.loadCheckpoint(task.taskId, 'proactive-cognition-handoff-v1'));
     assert.ok(review);
     const intent = binding.application.runtime.loadCheckpoint(review.taskId,
       'proactive-cognition-handoff-v1');
-    await new Promise(resolve => setTimeout(resolve, Math.max(1, Date.parse(intent.deadline) - Date.now() + 5)));
+    t.mock.timers.setTime(Date.parse(intent.deadline)+5);
     const replay = await binding.host.handoffReview(review.taskId, context());
     assert.equal(replay.review.selectedOption.id, 'revise');
     assert.deepEqual(replay.handoff, {state: 'expired'});

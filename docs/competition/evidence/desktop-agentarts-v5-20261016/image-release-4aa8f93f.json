@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-16T15:30:56.260Z",
+  "sourceCommit": "4aa8f93fd708ad2c780e7cd3c6142d6398c659b6",
+  "image": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v5-4aa8f93f",
+  "indexDigest": "sha256:5168bda799e9cda660b6c9f67b0e718fad446c74149f5d8b6d77a0d520f7321d",
+  "arm64ManifestDigest": "sha256:3a9b3ae236c0017ace23e89879bbdd37a8488cc2418059bb69bf5f0b4c2d3eae",
+  "architecture": "arm64",
+  "os": "linux",
+  "port": 8080,
+  "layaMode": "local",
+  "user": "node",
+  "sourceLabelMatches": true,
+  "contextFileCount": 109,
+  "allRuntimeFilesMatch": true,
+  "comparedRuntimeFileCount": 102,
+  "credentialSourcesIncluded": false,
+  "weightsIncluded": false,
+  "built": true,
+  "pushed": true,
+  "remoteReadbackVerified": true,
+  "runtimeDeploymentVerified": false,
+  "stages": [
+    {
+      "stage": "build",
+      "startedAtUtc": "2026-10-16T15:28:31.8195764Z",
+      "finishedAtUtc": "2026-10-16T15:28:38.1505829Z",
+      "wallMs": 6319.153,
+      "exitCode": 0,
+      "logSha256": "f2e2c1c77819afdcea4a4400fa8992951800626edaed1767172bab61390a5889"
+    },
+    {
+      "stage": "login",
+      "startedAtUtc": "2026-10-16T15:29:47.3599165Z",
+      "finishedAtUtc": "2026-10-16T15:29:48.8212396Z",
+      "wallMs": 1454.5335,
+      "exitCode": 0,
+      "logSha256": "e31f3024e05a14d487704f97650585510c41d4196caecbf0f1b1fc715ddbeeb9"
+    },
+    {
+      "stage": "push",
+      "startedAtUtc": "2026-10-16T15:29:48.8737655Z",
+      "finishedAtUtc": "2026-10-16T15:29:52.3073103Z",
+      "wallMs": 3433.3719,
+      "exitCode": 0,
+      "logSha256": "d076196d46e2dfd174c7b2d61c767805bd5336a73c4ad724d0c56ee6e323334f"
+    },
+    {
+      "stage": "remote-inspect",
+      "startedAtUtc": "2026-10-16T15:29:52.3230881Z",
+      "finishedAtUtc": "2026-10-16T15:29:53.6466100Z",
+      "wallMs": 1323.2028,
+      "exitCode": 0,
+      "logSha256": "3a351687657b123d00f230ba9b2f4f77da593865a06ced024a02270a9c028899"
+    },
+    {
+      "stage": "local-arm64-content-readback",
+      "startedAtUtc": "2026-10-16T15:30:54.896Z",
+      "wallMs": 1364,
+      "exitCode": 0
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import {ProtocolError} from '@personal-agent/contracts';
-import type {ModelCapabilities, ModelDeployment, ModelMessage, ModelProvider, ModelRequest, ModelResult, ModelUsage} from './index.js';
+import type {ModelCapabilities, ModelDeployment, ModelMessage, ModelProvider, ModelRequest, ModelResult, ModelUsage, NativeReasoningConfiguration, VisibleRequestTokenBudget, RequestTokenBudgetBinding, ModelRequestBudget, OpenAICompatibleRequestFormat} from './index.js';
 
 /**
  * OpenAI 兼容文本 Provider（POST {baseUrl}/chat/completions）。POTATOS-MVP §9.3「约定供应者」：
@@ -19,6 +19,27 @@ export interface OpenAICompatibleModelProviderOptions {
   timeoutMs?: number;
   /** 端点上下文窗口（进 capabilities.contextLimit）；缺省 32k 保守值，按端点如实配置。 */
   contextLimitTokens?: number;
+  /** Explicit Competition auxiliary-model configuration, supplied by the trusted host. */
+  nativeReasoning?: NativeReasoningConfiguration;
+  /** Trusted Competition input meter; requires explicit contextLimitTokens. */
+  requestTokenBudget?: VisibleRequestTokenBudget;
+  /** Competition host selection; no endpoint/model-name inference in the Provider. */
+  requestFormat?: OpenAICompatibleRequestFormat;
+}
+
+function nativeReasoningConfiguration(value: NativeReasoningConfiguration): NativeReasoningConfiguration {
+  const efforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).some(key => !['thinking', 'effort', 'supportedEfforts', 'outputTokenParameter'].includes(key))
+    || !['enabled', 'disabled'].includes(value.thinking)
+    || !['max_tokens', 'max_completion_tokens'].includes(value.outputTokenParameter)
+    || !Array.isArray(value.supportedEfforts) || new Set(value.supportedEfforts).size !== value.supportedEfforts.length
+    || value.supportedEfforts.some(effort => !efforts.includes(effort))
+    || (value.effort !== undefined && !value.supportedEfforts.includes(value.effort))
+    || (value.thinking === 'disabled' && (value.effort !== undefined || value.supportedEfforts.length > 0))) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Native reasoning configuration is invalid');
+  }
+  return structuredClone(value);
 }
 
 function openAiCompatibleCapabilities(contextLimitTokens: number): ModelCapabilities {
@@ -32,8 +53,16 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   private readonly model: string;
   private readonly apiKey: () => string | Promise<string>;
   private readonly timeoutMs: number;
+  private readonly nativeReasoning: NativeReasoningConfiguration | undefined;
+  private readonly requestFormat: OpenAICompatibleRequestFormat | undefined;
+  private readonly tokenBudget: (RequestTokenBudgetBinding & {countInputTokens: VisibleRequestTokenBudget['countInputTokens']}) | undefined;
 
   constructor(options: OpenAICompatibleModelProviderOptions) {
+    if (options.requestFormat !== undefined && options.requestFormat !== 'huawei-maas-deepseek-thinking-v1') {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Model request format is unsupported');
+    }
+    this.requestFormat = options.requestFormat;
+    this.nativeReasoning = options.nativeReasoning === undefined ? undefined : nativeReasoningConfiguration(options.nativeReasoning);
     const base = options.baseUrl.trim().replace(/\/+$/, '');
     if (!/^https?:\/\//u.test(base)) {
       throw new ProtocolError('INVALID_ARGUMENT', 'baseUrl must be an absolute http(s) URL including the version segment (e.g. https://api.deepseek.com/v1)');
@@ -53,18 +82,69 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
     if (!Number.isSafeInteger(contextLimitTokens) || contextLimitTokens < 1) {
       throw new ProtocolError('INVALID_ARGUMENT', 'contextLimitTokens must be a positive integer');
     }
+    const budget = options.requestTokenBudget;
+    if (budget !== undefined) {
+      if (!budget || budget.model !== this.model || options.contextLimitTokens === undefined
+        || typeof budget.tokenizerRef !== 'string' || typeof budget.configurationRef !== 'string'
+        || !/^[a-zA-Z0-9._:/-]{1,256}$/.test(budget.tokenizerRef)
+        || !/^[a-zA-Z0-9._:/-]{1,256}$/.test(budget.configurationRef)
+        || !Number.isSafeInteger(budget.reservedOutputTokens) || budget.reservedOutputTokens < 1
+        || budget.reservedOutputTokens > contextLimitTokens || typeof budget.countInputTokens !== 'function') {
+        throw new ProtocolError('INVALID_ARGUMENT', 'Visible model request budget is invalid');
+      }
+      this.tokenBudget = {scope: 'provider-body', model: this.model, tokenizerRef: budget.tokenizerRef,
+        configurationRef: budget.configurationRef, contextTokens: contextLimitTokens,
+        ...(this.requestFormat === undefined ? {} : {requestFormat: this.requestFormat}),
+        reservedOutputTokens: budget.reservedOutputTokens, countInputTokens: budget.countInputTokens};
+    }
     this.deployment = {
       provider: 'openai-compatible',
       deployment: typeof options.deployment === 'string' && options.deployment.trim() ? options.deployment.trim() : this.model,
       model: this.model,
       verification: 'conditional',
-      capabilities: openAiCompatibleCapabilities(contextLimitTokens),
+      capabilities: {...openAiCompatibleCapabilities(contextLimitTokens),
+        ...(this.requestFormat === undefined ? {} : {requestFormat: this.requestFormat}),
+        ...(this.tokenBudget === undefined ? {} : {requestTokenBudget: this.budgetBinding()}),
+        ...(this.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(this.nativeReasoning)})},
     };
+  }
+
+  private budgetBinding(): RequestTokenBudgetBinding {
+    const {countInputTokens: _count, ...binding} = this.tokenBudget!;
+    return binding;
+  }
+
+  private measureBudget(body: string, outputTokens: number | undefined): ModelRequestBudget {
+    if (!this.tokenBudget) return {state: 'unmeasured', scope: 'provider-body', hiddenContext: 'unknown'};
+    let count: unknown;
+    const meter = this.tokenBudget.countInputTokens;
+    try {count = meter(body);}
+    catch {throw new ProtocolError('INVALID_ARGUMENT', 'Visible model request measurement failed');}
+    if (count instanceof Promise) void count.catch(() => {});
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Visible model request meter must return a synchronous non-negative integer');
+    }
+    if (outputTokens! > this.tokenBudget.reservedOutputTokens
+      || count > this.tokenBudget.contextTokens - outputTokens!) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Visible model input and output reservation exceed the budget');
+    }
+    return {...this.budgetBinding(), reservedOutputTokens: outputTokens!, state: 'measured', inputTokens: count, hiddenContext: 'unknown'};
   }
 
   async complete(request: ModelRequest): Promise<ModelResult> {
     if (!request || !(request.signal instanceof AbortSignal) || !Number.isFinite(Date.parse(request.deadline))) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Model request is invalid');
+    }
+    const native = this.nativeReasoning;
+    const effort = request.reasoningEffort ?? native?.effort;
+    if (native && effort !== undefined && (native.thinking !== 'enabled' || !native.supportedEfforts.includes(effort))) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Native reasoning effort is not declared for this configuration');
+    }
+    if (request.thinkingBudget !== undefined) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'This provider does not support thinkingBudget');
+    }
+    if (request.maxOutputTokens !== undefined && (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens < 1)) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'maxOutputTokens must be a positive integer');
     }
     if (request.tools.length > 0 || request.requiredCapabilities?.some(capability => capability !== 'text')) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY',
@@ -79,11 +159,26 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       if (!content.trim()) throw new ProtocolError('INVALID_ARGUMENT', 'Model message content must not be empty');
       messages.push({role: message.role, content});
     }
+    if (request.signal.aborted) throw new ProtocolError('CANCELLED', 'Model request was cancelled');
+    if (Date.parse(request.deadline) <= Date.now()) throw new ProtocolError('TIMEOUT', 'Model request deadline has expired', true);
+    const outputTokens = request.maxOutputTokens ?? this.tokenBudget?.reservedOutputTokens;
+    const serializedBody = JSON.stringify({
+      model: this.model, messages,
+      ...(native === undefined ? {} : {thinking: {type: native.thinking}}),
+      ...(outputTokens === undefined ? {} : {[native?.outputTokenParameter ?? 'max_tokens']: outputTokens}),
+      ...(this.requestFormat === 'huawei-maas-deepseek-thinking-v1' && effort === 'none'
+        ? {chat_template_kwargs: {thinking: false}}
+        : effort === undefined ? {} : {reasoning_effort: effort}), stream: false,
+    });
+    const requestBudget = this.measureBudget(serializedBody, outputTokens);
     const key = await this.apiKey();
     if (request.signal.aborted) throw new ProtocolError('CANCELLED', 'Model request was cancelled');
     if (!key || !key.trim()) throw new ProtocolError('UNAUTHORIZED', 'Model API key is not configured');
     const deadlineMs = Date.parse(request.deadline) - Date.now();
     if (deadlineMs <= 0) throw new ProtocolError('TIMEOUT', 'Model request deadline has expired', true);
+    if (JSON.stringify(this.measureBudget(serializedBody, outputTokens)) !== JSON.stringify(requestBudget)) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Visible model request measurement changed during credential acquisition');
+    }
     const controller = new AbortController();
     const abort = () => controller.abort(request.signal.reason);
     let timedOut = false;
@@ -94,13 +189,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       const response = await this.request(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {'content-type': 'application/json', authorization: `Bearer ${key}`},
-        body: JSON.stringify({
-          model: this.model,
-          messages,
-          ...(request.maxOutputTokens === undefined ? {} : {max_tokens: request.maxOutputTokens}),
-          ...(request.reasoningEffort !== undefined ? {reasoning_effort: request.reasoningEffort} : {}),
-          stream: false,
-        }),
+        body: serializedBody,
         signal: controller.signal,
       });
       if (!response.ok) throw openAiError(response.status, response.headers.get('retry-after'));
@@ -137,6 +226,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
         ...(Object.keys(parsedUsage).length === 0 ? {} : {usage: parsedUsage}),
         latencyMs: Date.now() - started,
         stopReason: typeof choice.finish_reason === 'string' ? choice.finish_reason : 'stop',
+        requestBudget,
       };
     } catch (error) {
       if (error instanceof ProtocolError) throw error;

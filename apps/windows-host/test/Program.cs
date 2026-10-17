@@ -30,4 +30,30 @@ permitted = NotepadAction.PrewriteStable(tick, expected,
 if (permitted || readCount != 2)
     throw new Exception("Programmatic target change must refuse mutation");
 
-Console.WriteLine("PASS: prewrite user input and programmatic edit rejected");
+// The window can disappear while slow process metadata remains valid. No user
+// input or cancellation is needed, so those later guards cannot catch this case.
+foreach (var change in new[] { "closed window", "foreground", "window owner" })
+{
+    var window = (Exists: true, Foreground: (nint)123, Owner: 456);
+    var original = window;
+    var accepted = NotepadAction.TargetIdentityCurrent(() => window == original, () =>
+    {
+        window = change switch
+        {
+            "closed window" => window with { Exists = false },
+            "foreground" => window with { Foreground = 0 },
+            _ => window with { Owner = 789 },
+        };
+        return true; // Same live process and start time throughout the query.
+    });
+    if (accepted) throw new Exception($"Slow process lookup accepted {change}");
+}
+if (!NotepadAction.TargetIdentityCurrent(() => true, () => true))
+    throw new Exception("Stable window and process identity must remain usable");
+var processQueries = 0;
+if (NotepadAction.TargetIdentityCurrent(() => false, () => { processQueries++; return true; }) || processQueries != 0)
+    throw new Exception("Already stale window must not query process metadata");
+if (NotepadAction.TargetIdentityCurrent(() => true, () => false))
+    throw new Exception("Exited or restarted process must not confirm a target");
+
+Console.WriteLine("PASS: prewrite input and target identity changes rejected");

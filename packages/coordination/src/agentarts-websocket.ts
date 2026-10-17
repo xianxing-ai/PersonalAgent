@@ -106,6 +106,15 @@ export class AgentArtsWebSocketUpgradeError extends ProtocolError {
   }
 }
 
+/** Only a validated, correlated terminal error frame creates this local classification. */
+export class AgentArtsTerminalError extends AgentArtsRemoteInvocationError {
+  readonly receipt:AgentArtsUnknownReceipt;
+  constructor(receipt:AgentArtsUnknownReceipt, remoteCode:Extract<AgentArtsTransportFrame,{type:'error'}>['code']='EXTERNAL_FAILURE') {
+    super(remoteCode);
+    this.receipt=Object.freeze({...receipt});
+  }
+}
+
 /** An invoke frame has never been handed to the socket. This is the only automatic fallback condition. */
 class BeforeInvokeConnectionError extends ProtocolError {
   constructor() { super('EXTERNAL_FAILURE', 'AgentArts WebSocket connection is unavailable', false); }
@@ -357,7 +366,7 @@ export class AgentArtsWebSocketTransport {
           if (!pending.sent || frame.accepted !== pending.accepted) throw failProtocol();
           pending.afterTerminal({...pending.receipt, accepted: pending.accepted});
           this.dropPending(connection, frame.requestId);
-          pending.reject(new AgentArtsRemoteInvocationError(frame.code));
+          pending.reject(new AgentArtsTerminalError({...pending.receipt,accepted:pending.accepted}, frame.code));
           return;
         }
         throw failProtocol();

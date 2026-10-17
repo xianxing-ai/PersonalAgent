@@ -46,7 +46,7 @@ await new Promise(resolve=>reservation.listen(0,'127.0.0.1',resolve));
 const port=reservation.address().port;
 await new Promise(resolve=>reservation.close(resolve));
 const env=Object.fromEntries(Object.entries(process.env).filter(([name])=>!name.startsWith('PA_AGENT_')&&!name.startsWith('PA_TEST_')&&name!=='NODE_TLS_REJECT_UNAUTHORIZED'));
-Object.assign(env,{PA_AGENT_HOST_MODE:'agentarts',PA_AGENT_MODEL_BASE_URL:`https://127.0.0.1:${endpoint.address().port}/v1`,
+Object.assign(env,{PA_AGENT_HOST_MODE:'standalone-validation',PA_AGENT_LAYA_MODE:'legacy-without-laya',PA_AGENT_MODEL_BASE_URL:`https://127.0.0.1:${endpoint.address().port}/v1`,
   PA_AGENT_MODEL:'synthetic-model',PA_AGENT_MODEL_API_KEY:modelKey,PA_AGENT_INBOUND_TOKEN:inboundToken,
   PA_AGENT_TIMEOUT_MS:'5000',PORT:String(port),NODE_EXTRA_CA_CERTS:`${fixture}/cert.pem`});
 const child=spawn(process.execPath,[fileURLToPath(new URL('../src/main.mjs',import.meta.url))],{env,stdio:['ignore','pipe','pipe']});

@@ -1,0 +1,36 @@
+{
+  "kind": "real_platform_runtime_log_readback",
+  "observedAtUtc": "2026-10-15T15:00:38.7851566Z",
+  "consoleUrl": "https://console.huaweicloud.com/agentarts/?region=cn-southwest-2#/home/runtime/detail?id=9a65747e-05f0-475c-a2dc-f24dd3ed87ae&tab=log",
+  "runtimeId": "9a65747e-05f0-475c-a2dc-f24dd3ed87ae",
+  "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+  "queriedWindow": "last_one_hour",
+  "logGroup": "AgentArts",
+  "logStream": "AgentArts",
+  "requestId": "82b7da2b-c9df-45aa-afda-069c89b374fe",
+  "traceId": "b05bc8be-2506-440b-8a6d-fdc595ab051b",
+  "spanId": "b304fc6a-e8b4-448c-97f1-47ea987bffa3",
+  "sessionId": "owned-current-catalog-f4cc4a3a-3fc7-46c1-aff8-d7c82f328e72",
+  "event": "stage_timing",
+  "stage": "invocation.dispatch",
+  "statuses": [
+    "started",
+    "completed"
+  ],
+  "startedAtUtc": "2026-10-15T14:46:44.996Z",
+  "finishedAtUtc": "2026-10-15T14:46:44.999Z",
+  "wallMs": 3.6174100000062026,
+  "displayedLogTime": "2026-10-15T22:46:58+08:00",
+  "channel": "http",
+  "otherSafeEvent": {
+    "mode": "agentarts",
+    "event": "listening",
+    "port": 8080
+  },
+  "versionFieldInLogs": false,
+  "correlatedVersion": "arm64-local-v3-244ca434",
+  "versionAssociationBasis": "same requestId as root exact-version catalog invocation and saved Runtime version binding",
+  "clockBoundary": "container event UTC is after root HTTP finish14:46:43.862; timestamps preserved without assuming synchronized clocks",
+  "newModelOrRuntimeRequests": 0,
+  "configMutations": 0
+}
