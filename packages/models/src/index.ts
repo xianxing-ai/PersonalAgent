@@ -2,7 +2,10 @@ import { ProtocolError, validateToolValue } from '@personal-agent/contracts';
 import type { ToolDescriptor } from '@personal-agent/contracts';
 export {StructuredToolProvider} from './structured-tools.js';
 export {QwenRealtimeModelGateway} from './realtime.js';
-export type {RealtimeEvent, RealtimeRequest, RealtimeSession} from './realtime.js';
+export type {RealtimeEvent, RealtimeRequest, RealtimeSession, RealtimeSocket,
+  RealtimeSocketConstructor, RealtimeConnectionPort, RealtimePreparedConnection, QwenRealtimeDirectConfig} from './realtime.js';
+export {AgentArtsRealtimeModelGateway, createAgentArtsRealtimeConnection} from './agentarts-realtime.js';
+export type {AgentArtsRealtimeModelGatewayOptions, RealtimeAuthorizationProvider} from './agentarts-realtime.js';
 export {OpenAICompatibleModelProvider} from './openai-compatible.js';
 export type {OpenAICompatibleModelProviderOptions} from './openai-compatible.js';
 

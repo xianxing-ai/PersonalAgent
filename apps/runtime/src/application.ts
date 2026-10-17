@@ -91,3 +91,17 @@ export {createWorkflowLearningApplication,createBoundPublicFactErasureApplicatio
 export type {WorkflowLearningOptions,LearningTaskBinding,LearningSkillManifest} from './application/memory-learning.js';
 export {KnowledgeWriteReconciliationAdapter} from './application/knowledge-write-reconciliation.js';
 export type {KnowledgeWriteReconciliationPort} from './application/knowledge-write-reconciliation.js';
+export * from './application/proactive-connector-host.js';
+export * from './application/notification-host.js';
+export * from './application/proactive-workflow-session.js';
+export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';
+export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions} from './application/owned-workflow-application.js';
+export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';
+export {createRuntimeProactiveDecisionTools,RUNTIME_PROACTIVE_DECISION_TOOLS} from './application/proactive-decision-tools.js';
+export type {RuntimeProactiveDecisionToolOptions} from './application/proactive-decision-tools.js';
+export type {RuntimeProactiveImageAdapterOptions,RuntimeProactiveImageResult,RuntimeProactiveImageContext,
+  RuntimeProactiveImageDescription} from './application/proactive-image-adapter.js';
+export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,RUNTIME_PROACTIVE_TOOLS,
+  RUNTIME_PROACTIVE_TOOL_VERSION} from './application/proactive-workflow-application.js';
+export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
+  RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';

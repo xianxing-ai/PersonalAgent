@@ -1,0 +1,23 @@
+[
+  {
+    "finishedAtUtc": "2026-10-16T07:10:39.3689553Z",
+    "wallMs": 413.0577,
+    "status": "completed",
+    "startedAtUtc": "2026-10-16T07:10:38.9552097Z",
+    "stage": "container.start"
+  },
+  {
+    "finishedAtUtc": "2026-10-16T07:10:44.8492562Z",
+    "wallMs": 5477.632,
+    "status": "completed",
+    "startedAtUtc": "2026-10-16T07:10:39.3715885Z",
+    "stage": "container.health"
+  },
+  {
+    "finishedAtUtc": "2026-10-16T07:16:09.8670564Z",
+    "wallMs": 527.0837,
+    "status": "completed",
+    "startedAtUtc": "2026-10-16T07:16:09.3399442Z",
+    "stage": "container.stop"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "surface": "AgentArts Runtime console log readback",
+  "readbackAtUtc": "2026-10-16T09:09:17.998Z",
+  "runtimeId": "9a65747e-05f0-475c-a2dc-f24dd3ed87ae",
+  "requestedVersion": "arm64-v4-e38ef23d-r2",
+  "rows": [
+    "2026/10/16 17:08:13 GMT+08:00\nINFO\n{\"event\":\"stage_timing\",\"traceId\":\"a9147a79-01cd-477a-a5b8-262383f0570e\",\"spanId\":\"b3f38c6d-6da1-4322-9973-97100aa94d03\",\"stage\":\"invocation.dispatch\",\"status\":\"completed\",\"startedAtUtc\":\"2026-10-16T09:08:13.064Z\",\"finishedAtUtc\":\"2026-10-16T09:08:13.065Z\",\"wallMs\":1.2057400000048801,\"sessionId\":\"pelican-e062d211-c182-4faf-b80e-d3a4c3e250ad\",\"requestId\":\"pelican-b1169d1a-3c4b-4f88-8f28-fdc53a8c030f\",\"channel\":\"http\"}",
+    "2026/10/16 17:08:13 GMT+08:00\nINFO\n{\"event\":\"stage_timing\",\"traceId\":\"a9147a79-01cd-477a-a5b8-262383f0570e\",\"spanId\":\"b3f38c6d-6da1-4322-9973-97100aa94d03\",\"stage\":\"invocation.dispatch\",\"status\":\"started\",\"startedAtUtc\":\"2026-10-16T09:08:13.064Z\",\"sessionId\":\"pelican-e062d211-c182-4faf-b80e-d3a4c3e250ad\",\"requestId\":\"pelican-b1169d1a-3c4b-4f88-8f28-fdc53a8c030f\",\"channel\":\"http\"}"
+  ]
+}

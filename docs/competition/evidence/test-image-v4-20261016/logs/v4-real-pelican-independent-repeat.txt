@@ -1,0 +1,58 @@
+pelican test started: <implementation>\.cache\pelican-launch-20261016-071706
+{
+  "status": "verified_main_shadow_and_delivery",
+  "directory": "<implementation>\\.cache\\pelican-test-version-g40lPn",
+  "summary": {
+    "modelCalls": 22,
+    "modelCallOutcomes": {
+      "attempted": 22,
+      "succeeded": 22,
+      "failed": 0,
+      "pending": 0,
+      "attemptedWallMs": 135111.27320000005,
+      "succeededWallMs": 135111.27320000005,
+      "failedWallMs": 0
+    },
+    "modelCallsByStage": {
+      "candidate_planning": {
+        "attempted": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 4942.5785,
+        "succeededWallMs": 4942.5785,
+        "failedWallMs": 0
+      },
+      "escalated_decision": {
+        "attempted": 2,
+        "succeeded": 2,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 17353.7797,
+        "succeededWallMs": 17353.7797,
+        "failedWallMs": 0
+      },
+      "branch_execution": {
+        "attempted": 19,
+        "succeeded": 19,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 112814.91500000005,
+        "succeededWallMs": 112814.91500000005,
+        "failedWallMs": 0
+      }
+    },
+    "candidatePlanningCalls": 1,
+    "escalatedDecisionCalls": 2,
+    "branchExecutionCalls": 19,
+    "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+    "layaSuccessfulChoiceCalls": 2,
+    "layaRejectedCalls": 0,
+    "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+    "actualDecisionMakers": [
+      "deepseek",
+      "deepseek"
+    ],
+    "trainingPerformed": false
+  }
+}

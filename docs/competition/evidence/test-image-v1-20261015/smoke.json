@@ -1,0 +1,32 @@
+{
+  "kind": "test_image_v1_isolated_smoke",
+  "image": "personal-agent:test-v1-local-laya",
+  "imageId": "sha256:e8aa319df4f93da61543a4100c51aeee973fabd392c0179b8142562e9d009889",
+  "sizeBytes": 80782348,
+  "modes": [
+    {
+      "testVersionEnabled": false,
+      "pingStatus": 200,
+      "architecture": "arm64",
+      "uid": 1000,
+      "workflowCount": 28,
+      "nodeCount": 185,
+      "mockProviderCalls": 0,
+      "maasCalls": 0,
+      "realInferenceTested": false,
+      "published": false
+    },
+    {
+      "testVersionEnabled": true,
+      "pingStatus": 200,
+      "architecture": "arm64",
+      "uid": 1000,
+      "workflowCount": 28,
+      "nodeCount": 185,
+      "mockProviderCalls": 1,
+      "maasCalls": 0,
+      "realInferenceTested": false,
+      "published": false
+    }
+  ]
+}

@@ -12,6 +12,18 @@ const request = (overrides = {}) => ({
   signal: new AbortController().signal,
   ...overrides,
 });
+test('coordinator validates and preserves selected model on initial and continuation cloud handoffs',async()=>{
+  const selection={catalogRevision:'a'.repeat(64),modelId:'deepseek-v4.1-flash',reasoningEffort:'low'};
+  const calls=[];
+  const coordinator=new CompetitionCoordinator({invoke:async input=>{calls.push(input);return {kind:'text',text:'selected',verification:'unverified'};}});
+  for(const envelope of [{availableTools:[]},{continuation:{proposalId:'p1',state:'confirmed',result:{ok:true}}}]) {
+    await coordinator.execute(request({...envelope,executionModel:selection}));
+    assert.deepEqual(calls.at(-1).executionModel,selection);assert.notEqual(calls.at(-1).executionModel,selection);
+  }
+  await assert.rejects(coordinator.execute(request({executionModel:{...selection,catalogRevision:'stale'}})),{code:'INVALID_ARGUMENT'});
+  await assert.rejects(coordinator.execute(request({executionModel:{...selection,credential:'forbidden'}})),{code:'INVALID_ARGUMENT'});
+  assert.equal(calls.length,2);
+});
 
 test('coordinator consumes the existing cloud Fake and returns the unchanged text contract', async () => {
   const cloud = new FakeCloudAgentPort(input => input.goal);
