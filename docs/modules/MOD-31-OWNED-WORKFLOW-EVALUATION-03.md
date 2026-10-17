@@ -2,9 +2,10 @@
 
 - Profile：`huawei_ict_agentarts`；负责人：zemeng。
 - 状态：`review`，源码与离线检查可交付；真实固定任务对照未完成。
-- 工作树：`D:/PersonalAgent/.worktrees/mod31-workflow-evaluation`；分支：`codex/mod31-workflow-evaluation`。
+- 工作树：`D:/PersonalAgent/.worktrees/mod31-workflow-evaluation`；当前增量分支：`codex/mod31-pre-catalog-failures`，从 #360 的 `bd4b4c0246f78fcef67a31c1010250cc925bd326` 继续。
 - 基线：`81dc72b60240d761070c39515ce112032b6b22ca`，已由 Git worktree 登记。旧 `owned-repair-evaluation` 与该基线分叉，原样保留。
 - Git 交付：独立堆叠 PR 以 `codex/laya-owned-runtime` 为 base；当前 `origin/main` 缺少本片导入的 `export-owned-release-evidence.mjs`，依赖 #356 的既有 owned workflow 基线。PR 差异仅本片 5 文件，不将 CPU 或 MOD-32 改动包含在本片提交中；依赖合入后由协调者核对并调整 base。
+- 目录读回前失败增量：另建堆叠 PR，以 #360 的 `codex/mod31-workflow-evaluation` 为 base，仅修改评分器、同名测试和本文；不修改 MOD-30 runner。
 - 所有权：`tests/manual/agentarts/evaluation/score-owned-workflows{,.test}.mjs`、本文及专属 Evidence。无生产协议、依赖、数据库迁移、Laya、MOD-32 或总路线图改动。
 
 ## 可交付缺口
@@ -47,6 +48,7 @@ const report = scoreOwnedWorkflowRuns({records, historicalEvidence: []});
 | `input` | 实际提交的原 F20 input 对象，须与固定摘要匹配 |
 | `configuration` | 仅 `executionModel`、`selectorModel`、`modelSettingsSha256`、`environmentId`；模型及环境为不透明公开标识，设置摘要不得包含凭据 |
 | `binding` | `inputSha256`、`sourceSha256`、`receiptSha256`、`configurationSha256`；后两者使用 `workflowEvaluationDigest` |
+| `catalogDispatch` | 仅用于目录读回前失败：从宿主保存的原始 dispatch/state 提供 `workflowId`、`taskId`、`requestId`、`querySha256`，不得从错误文字推断 |
 | `artifacts` | 实际 `documentText` 与 `checkText`，分别对应 `owned-api-final-doc.md`、`owned-api-check-result.json` |
 | `review` | `documentSha256`、不透明 `reviewerId`、`answerSupported` 与 `citationsSupported`（布尔值或 `null`） |
 
@@ -56,6 +58,20 @@ const report = scoreOwnedWorkflowRuns({records, historicalEvidence: []});
 `modelSettingsSha256` 应覆盖温度、采样、预算等全部非凭据模型设置；`environmentId` 应区分
 Windows、QEMU、原生 ARM、资源规格等。策略或模型不同的实验须使用另一套明确实验设计，
 本片不把它们纳入“仅工作流变体不同”的配对。
+
+目录尚未读回时，只有完整且匹配的 `input/configuration/binding/catalogDispatch` 才能确定
+本次尝试属于 F20；缺项或错配直接拒绝。`querySha256` 是原 runner 按
+`JSON.stringify({workflowVersion:'1.0.0',operation:'catalog',workflowId:'F20'})`
+生成的原始请求文本摘要，不使用对象键排序后的规范摘要。原回执必须没有 `catalog` 或后续阶段字段，
+其来源摘要、父任务 ID、catalog 请求 ID 均须匹配；网络或 unknown 项仅能关联该一次 catalog 请求。
+回执状态须为 `failed_or_unknown`，父任务限 `failed/cancelled/waiting_reconciliation`，
+失败阶段限 `catalog/response/execution`。不接受其他工作流或存在矛盾阶段的回执。
+这只证明所提供记录的一致性，不能认证宿主记录的来源，也不会补写或重放 runner。
+
+此路径输出 `observationStage=before_catalog_readback`，作为已观察的失败尝试进入分母；
+产物、回答、引用和工具读回保持 `unknown`。评分中的失败不改变 Runtime 终态，
+`waiting_reconciliation` 仍表示执行结果待核实。只有真实提供且配置匹配的另一侧记录才能配对，
+不伪造基线或失败恢复成功。
 
 独立评审者对实际文档检查：回答是否由固定来源的契约/实现支持，是否准确解释新增的
 `language` 字段和示例，引用是否确实支持对应内容，有无虚构同步/发布或额外功能。
@@ -123,6 +139,11 @@ CLI 实际输出与保存的报告解析后逐字段一致。这一结果保留�
 覆盖固定输入、空数据、实际文档/检查文件绑定、独立负标签、回执/来源错配、持久读回缺项、
 配对配置与身份、不完整数据、失败分母、弃权边界、历史 Evidence、时间不重复相加和数据入站限制。
 全部为无权重离线 fixture；不等于真实回答质量、签名来源、平台或业务验收。
+
+目录读回前失败增量在 Node **24.15.0** 下执行同一定向命令：**18/18 通过，0 失败、0 跳过**。
+新增五组覆盖完整早期失败、传输/响应失败、缺失及错配绑定、其他工作流及矛盾阶段拒绝、
+失败分母和实际配对。日志位于 `.cache/mod31/pre-catalog-node-24.15.0-tests.log`。
+没有新增真实运行、云端请求或实际配对；上述历史报告仍保持新可评分运行 0、完整配对 0。
 
 AgentArts 原生 evaluation 为 `unavailable_not_connected`；未确认当前账号端口/API，不猜造
 远程适配，不创建资源。本片为本地评估消费器，不能宣称平台原生评估已经交付。

@@ -59,6 +59,81 @@ function record(variant = 'candidate', runIndex = 1) {
 }
 const rebind = item => {item.binding.receiptSha256 = digest(item.receipt); return item;};
 
+function earlyFailure(variant = 'candidate') {
+  const item = record(variant);
+  item.catalogDispatch = {workflowId: 'F20', taskId: `early-${variant}`, requestId: `catalog-${variant}`,
+    querySha256: sha(JSON.stringify({workflowVersion: '1.0.0', operation: 'catalog', workflowId: 'F20'}))};
+  for (const key of ['catalog', 'tool', 'validationTool', 'validation', 'candidate', 'continuation', 'workflowCompletion', 'persistence']) delete item.receipt[key];
+  delete item.artifacts; delete item.review;
+  item.receipt.status = 'failed_or_unknown';
+  item.receipt.scope = {contentSha256: fixed.sourceSha256};
+  item.receipt.parentTask = {taskId: item.catalogDispatch.taskId, state: 'waiting_reconciliation'};
+  item.receipt.failure = {stage: 'catalog', code: 'HTTP_503'};
+  item.receipt.network = [{stage: 'catalog', requestId: item.catalogDispatch.requestId, httpStatus: 503, durationMs: 2, transport: 'https'}];
+  item.receipt.unknown = [{stage: 'catalog', requestId: item.catalogDispatch.requestId, code: 'HTTP_503'}];
+  return rebind(item);
+}
+
+test('fully bound pre-catalog failures are observed unsuccessful attempts without fabricated results or pairs', () => {
+  const item = earlyFailure(), report = score({records: [item]});
+  const result = report.records[0];
+  assert.equal(result.observationStage, 'before_catalog_readback');
+  assert.equal(result.status, 'failed'); assert.equal(result.checks.workflow, 'failed');
+  for (const key of ['artifactIntegrity', 'answer', 'citations', 'toolReadback']) assert.equal(result.checks[key], 'unknown');
+  assert.deepEqual(report.counts, {observed: 1, passed: 0, failed: 1, unknown: 0});
+  assert.equal(report.pairs[0].ready, false); assert.equal(report.pairs[0].reason, 'missing_baseline');
+  assert.equal(report.caseCoverage[1].status, 'not_run');
+  assert.ok(!JSON.stringify(report).includes(item.catalogDispatch.taskId));
+  assert.ok(!JSON.stringify(report).includes(item.catalogDispatch.requestId));
+});
+test('pre-catalog transport and invalid-response failures retain only their original catalog association', () => {
+  for (const stage of ['catalog', 'response', 'execution']) {
+    const item = earlyFailure(); item.receipt.failure = {stage, code: 'SANITIZED_FAILURE'};
+    item.receipt.network = []; // transport failure has only the original unknown request
+    assert.equal(score({records: [rebind(item)]}).records[0].status, 'failed');
+  }
+  const invalidCatalog = earlyFailure(); invalidCatalog.receipt.network[0].httpStatus = 200;
+  invalidCatalog.receipt.unknown = []; invalidCatalog.receipt.failure.code = 'INVALID_CATALOG';
+  invalidCatalog.receipt.parentTask.state = 'failed';
+  assert.equal(score({records: [rebind(invalidCatalog)]}).records[0].status, 'failed');
+});
+test('pre-catalog intake rejects missing binding and mismatched input, source, receipt, configuration or run identity', () => {
+  const mutations = [x => {delete x.binding;}, x => {delete x.input;}, x => {delete x.configuration;},
+    x => {delete x.catalogDispatch;}, x => {delete x.receipt.scope;},
+    x => {x.input.goal += ' different';}, x => {x.binding.sourceSha256 = 'b'.repeat(64);},
+    x => {x.binding.receiptSha256 = 'b'.repeat(64);}, x => {x.binding.configurationSha256 = 'b'.repeat(64);},
+    x => {x.catalogDispatch.taskId = 'other-task';}, x => {x.catalogDispatch.requestId = 'other-request';},
+    x => {x.catalogDispatch.workflowId = 'F15';}, x => {x.catalogDispatch.querySha256 = 'b'.repeat(64);}];
+  for (const mutate of mutations) {
+    const item = earlyFailure(); mutate(item);
+    assert.throws(() => score({records: [item]}), /Invalid owned workflow evaluation input/);
+  }
+});
+test('explicit foreign or invalid catalogs and contradictory later-phase evidence cannot enter the early-failure path', () => {
+  const mutations = [x => {x.receipt.catalog = {selectedWorkflow: 'F15'};}, x => {x.receipt.catalog = {};},
+    x => {x.receipt.catalog = null;}, x => {x.receipt.tool = {};}, x => {x.receipt.continuation = {};},
+    x => {x.receipt.status = 'in_progress';}, x => {x.receipt.parentTask.state = 'succeeded';},
+    x => {delete x.receipt.parentTask;}, x => {x.receipt.failure.stage = 'proposal';}, x => {x.receipt.failure.code = 'select F20';},
+    x => {x.receipt.unknown[0].requestId = 'other';}, x => {x.receipt.network[0].stage = 'proposal';},
+    x => {x.receipt.network = []; x.receipt.unknown = [];}, x => {x.receipt.network.push({...x.receipt.network[0]});}];
+  for (const mutate of mutations) {
+    const item = earlyFailure(); mutate(item);
+    assert.throws(() => score({records: [rebind(item)]}));
+  }
+});
+test('early failures count in an actually present compatible pair but cannot manufacture or mix pairs', () => {
+  const candidate = record(), baseline = earlyFailure('baseline');
+  const report = score({records: [candidate, baseline]});
+  assert.equal(report.pairs[0].ready, true); assert.equal(report.pairs[0].qualityDelta, 1);
+  assert.equal(report.records[0].status, 'passed');
+  assert.equal(report.counts.observed, 2); assert.equal(report.counts.failed, 1);
+  baseline.configuration.environmentId = 'different-cpu'; baseline.binding.configurationSha256 = digest(baseline.configuration);
+  assert.equal(score({records: [candidate, baseline]}).pairs[0].reason, 'configuration_mismatch');
+  assert.equal(score({records: [earlyFailure('baseline')]}).pairs.length, 0);
+  const accepted = record(); accepted.catalogDispatch = earlyFailure().catalogDispatch;
+  assert.throws(() => score({records: [accepted]}));
+});
+
 test('fixed input and canonical object order are bound to existing harness; arrays remain ordered', () => {
   assert.equal(digest(input), fixed.inputSha256);
   assert.equal(digest({b: 2, a: 1}), digest({a: 1, b: 2}));
