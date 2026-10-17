@@ -25,7 +25,7 @@ export function createRoleReceiptWriter({deploymentVersion, write = line => proc
           requestId:safeLabel(receipt.requestId,256) ? receipt.requestId : 'unknown',
           promptVersion:safeLabel(receipt.promptVersion,64) ? receipt.promptVersion : 'unknown',
           deploymentVersion:version,deploymentVersionSource:source};
-        if (/^F(?:0[1-9]|1[0-9]|2[0-8])_N\d{2}$/.test(receipt.nodeId)) output.nodeId = receipt.nodeId;
+        if (typeof receipt.nodeId === 'string' && /^F(?:0[1-9]|1[0-9]|2[0-8])_N\d{2}$/.test(receipt.nodeId)) output.nodeId = receipt.nodeId;
         if (receipt.candidatePreparation === 'model_gateway' || receipt.candidatePreparation === 'deterministic_binding')
           output.candidatePreparation = receipt.candidatePreparation;
         if (Number.isSafeInteger(receipt.candidateCount) && receipt.candidateCount >= 0)
