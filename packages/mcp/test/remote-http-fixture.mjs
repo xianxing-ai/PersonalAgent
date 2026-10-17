@@ -32,6 +32,7 @@ export async function fixture(mode={}){
       }else if(message.method==='tools/call'){
         if(mode.drop){req.socket.destroy();return;}
         if(mode.delay)await new Promise(resolve=>setTimeout(resolve,mode.delay));
+        await mode.beforeToolResult?.();
         result=mode.result??{content:[{type:'text',text:'public synthetic reference'}],structuredContent:{text:'public synthetic reference'}};
       }else {res.writeHead(400).end();return;}
       const reply={jsonrpc:'2.0',id:message.id,result};
@@ -52,5 +53,5 @@ export async function fixture(mode={}){
     return fetch(`http://127.0.0.1:${server.address().port}/mcp`,init);
   };
   const host=createRemoteReadonlyMcpHost({endpoint,server:{name:'synthetic-reference',version:'1.0.0'},tool:{remoteName:'reference',descriptor},enabled:true,fetch:fetchPort});
-  return {host,fetch:fetchPort,requests,mode,calls:()=>requests.filter(r=>r.message?.method==='tools/call'),async close(){await host.dispose();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}};
+  return {host,fetch:fetchPort,loopbackEndpoint:`http://127.0.0.1:${server.address().port}/mcp`,requests,mode,calls:()=>requests.filter(r=>r.message?.method==='tools/call'),async close(){await host.dispose();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}};
 }
