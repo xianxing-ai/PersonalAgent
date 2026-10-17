@@ -116,6 +116,34 @@ test('parent cancellation and stop kill the exact child and wait for its close',
   await ports.dispose();
 });
 
+test('every concurrent dispose waits for all active host processes to close', async () => {
+  const {ports, calls} = factory(() => {});
+  const recognition = ports.recognition.recognize(recognitionRequest());
+  const speaking = ports.output.speak(speechRequest());
+  const rejected = [recognition, speaking].map(operation =>
+    assert.rejects(operation.result, error => error.code === 'CANCELLED'));
+  let kills = 0;
+  for (const {process} of calls) process.kill = () => { kills++; return true; };
+  const first = ports.dispose();
+  const second = ports.dispose();
+  assert.equal(first, second);
+  let released = false;
+  void second.then(() => { released = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(kills, 2);
+  assert.equal(released, false);
+  await assert.rejects(ports.output.speak(speechRequest()).result, {code: 'INVALID_STATE'});
+  assert.equal(calls.length, 2);
+  calls[0].process.close(null, 'SIGTERM');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(released, false);
+  calls[1].process.close(null, 'SIGTERM');
+  await Promise.all([first, second, ...rejected]);
+  assert.equal(released, true);
+  assert.equal(ports.dispose(), first);
+  assert.equal(kills, 2);
+});
+
 test('invalid requests and malformed or oversized host responses fail locally without leaked text or retry', async () => {
   const {ports, calls} = factory(process => process.respond('private malformed response'));
   assert.throws(

@@ -1,0 +1,21 @@
+{
+  "status": "passed_real_main_and_shadow",
+  "directory": "C:\\Users\\24035\\.codex\\worktrees\\laya-owned-runtime\\PersonalAgent\\.cache\\pelican-live-EbGgnO",
+  "mainAndShadowWallMs": 175436.89539999998,
+  "runs": [
+    {
+      "mode": "main",
+      "status": "passed_real_workflow",
+      "wallMs": 91136.3371,
+      "parentState": "succeeded"
+    },
+    {
+      "mode": "isolated",
+      "status": "passed_real_workflow",
+      "wallMs": 84287.91940000001,
+      "parentState": "succeeded"
+    }
+  ],
+  "layaDecisions": 12
+}
+

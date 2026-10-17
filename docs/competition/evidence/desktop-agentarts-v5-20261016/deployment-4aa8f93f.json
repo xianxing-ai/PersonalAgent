@@ -1,0 +1,46 @@
+{
+  "operation": "publish_agentarts_runtime_version",
+  "evidenceSource": "authenticated_official_console_readback",
+  "region": "cn-southwest-2",
+  "runtimeId": "9a65747e-05f0-475c-a2dc-f24dd3ed87ae",
+  "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+  "sourceCommitShort": "4aa8f93f",
+  "publishedVersion": "arm64-v5-4aa8f93f-r1",
+  "createdAt": "2026-10-16T23:31:59+08:00",
+  "runtimeStatus": "normal",
+  "latestEndpointVersion": "arm64-v5-4aa8f93f-r1",
+  "image": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v5-4aa8f93f",
+  "imageIndexDigestFromIndependentPushReadback": "sha256:5168bda799e9cda660b6c9f67b0e718fad446c74149f5d8b6d77a0d520f7321d",
+  "arm64ManifestDigestFromIndependentPushReadback": "sha256:3a9b3ae236c0017ace23e89879bbdd37a8488cc2418059bb69bf5f0b4c2d3eae",
+  "previousVersionRetained": "arm64-v5-d92a17a4-r3",
+  "visibleVersionCount": 12,
+  "configurationReadback": {
+    "cpuMilli": 2000,
+    "memoryMiB": 8192,
+    "port": 8080,
+    "agency": "DefaultAgentArtsRuntimeAgency",
+    "inboundGateway": "defaultgw",
+    "inboundAuthentication": "API_Key",
+    "loggingEnabled": true,
+    "idleSessionMinutes": 15,
+    "maximumLifetimeHours": 24,
+    "network": "public",
+    "routing": "prefix",
+    "fileTransferEnabled": false
+  },
+  "environmentHandling": {
+    "inheritedFromPreviousVersionForm": true,
+    "changedKeys": [
+      "PA_AGENT_DEPLOYMENT_VERSION"
+    ],
+    "deploymentVersionLabel": "arm64-v5-4aa8f93f-r1",
+    "testSwitchManuallyChanged": false,
+    "credentialFieldsManuallyChanged": false,
+    "independentEnvironmentValueComparison": "not_run"
+  },
+  "newPermissionsCreated": false,
+  "desktopProcessOperated": false,
+  "productionSourceModifiedByDeploymentAgent": false,
+  "privateScreenshotRetained": true,
+  "actualTextAndVoiceEvidence": "separate smoke receipts"
+}

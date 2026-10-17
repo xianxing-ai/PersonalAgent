@@ -134,6 +134,7 @@ class SubscriptionSession {
     private readonly startUpstream: (
       sink: VoicePcmCaptureSink,
     ) => Promise<VoicePcmCaptureSubscription> | VoicePcmCaptureSubscription,
+    private readonly onReleaseFailure: () => void,
   ) {
     this.ready = new Promise<void>((resolve, reject) => {
       this.resolveReady = resolve;
@@ -214,6 +215,7 @@ class SubscriptionSession {
     try {
       startResult = this.startUpstream(sink);
     } catch {
+      this.onReleaseFailure();
       this.rejectUpstreamSub(
         new VoiceSessionError('EXTERNAL_FAILURE', 'Voice PCM capture release failed'),
       );
@@ -229,6 +231,7 @@ class SubscriptionSession {
           this.resolveReady();
         }
       } else {
+        this.onReleaseFailure();
         this.rejectUpstreamSub(
           new VoiceSessionError('EXTERNAL_FAILURE', 'Voice PCM capture release failed'),
         );
@@ -242,6 +245,7 @@ class SubscriptionSession {
           handleSub(sub);
         })
         .catch(() => {
+          this.onReleaseFailure();
           this.rejectUpstreamSub(
             new VoiceSessionError('EXTERNAL_FAILURE', 'Voice PCM capture release failed'),
           );
@@ -362,6 +366,7 @@ class SubscriptionSession {
         this.resolveClosed();
       },
       () => {
+        this.onReleaseFailure();
         this.rejectClosed(
           new VoiceSessionError('EXTERNAL_FAILURE', 'Voice PCM capture release failed'),
         );
@@ -413,6 +418,9 @@ export function createVoicePcmFrameSourcePort(
       if (disposed) {
         throw new VoiceSessionError('INVALID_STATE', 'Voice PCM frame source port is disposed');
       }
+      if (hasReleaseFailure) {
+        throw new VoiceSessionError('EXTERNAL_FAILURE', 'Voice PCM capture release failed');
+      }
       if (!options || typeof options !== 'object' || Array.isArray(options)) {
         invalid('Invalid voice PCM subscription options');
       }
@@ -432,6 +440,9 @@ export function createVoicePcmFrameSourcePort(
         options,
         deadlineMs,
         sink => binding.start(sink),
+        () => {
+          hasReleaseFailure = true;
+        },
       );
 
       activeSubscriptions.add(session);

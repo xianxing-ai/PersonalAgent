@@ -129,6 +129,7 @@ def heterogeneous_agent():
             if self.before_forward:
                 self.before_forward()
             assert not torch.is_grad_enabled()
+            assert torch.is_inference_mode_enabled(), "The context must be entered in the worker thread"
             count, width = b["marker_pos"].shape
             logits = np.full((count, width), -5.0)
             for row in range(count):
@@ -253,16 +254,16 @@ class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
         class Agent(SyntheticAgent):
             pass
 
-        original_wait_for = asyncio.wait_for
+        original_wait = asyncio.wait
 
-        async def observe_wait_for(awaitable, timeout):
+        async def observe_wait(awaitables, *, timeout, return_when):
             captured.append(timeout)
-            return await original_wait_for(awaitable, timeout=timeout)
+            return await original_wait(awaitables, timeout=timeout, return_when=return_when)
 
         app = server.create_app(Agent(), "synthetic-test-key")
         endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/batch")
         async with app.router.lifespan_context(app):
-            with patch.object(server.asyncio, "wait_for", observe_wait_for):
+            with patch.object(server.asyncio, "wait", observe_wait):
                 await endpoint(Request(seconds=90))
                 legacy = Request()
                 del legacy.value["deadline"]
@@ -273,7 +274,8 @@ class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(captured), 2, "Expired requests never submit inference")
             self.assertGreater(captured[0], 80, "An explicit 90-second deadline must not become 30 seconds")
             self.assertLessEqual(captured[0], 90)
-            self.assertEqual(captured[1], 30.0, "Only the no-deadline compatibility endpoint defaults to 30 seconds")
+            self.assertGreater(captured[1], 29, "The no-deadline compatibility endpoint retains its 30-second window")
+            self.assertLessEqual(captured[1], 30)
 
     async def test_late_inference_failure_is_consumed_without_logging_private_error(self):
         release = threading.Event()
@@ -328,10 +330,224 @@ class BatchServerReleaseTest(unittest.IsolatedAsyncioTestCase):
             loop.set_exception_handler(previous_handler)
 
 
+class LegacyDisconnectTest(unittest.IsolatedAsyncioTestCase):
+    async def wait_for_event(self, event):
+        self.assertTrue(await asyncio.to_thread(event.wait, 10), "Worker did not reach the controlled barrier")
+
+    async def wait_until_idle(self, health):
+        async def idle():
+            while (await health(Request()))["inferenceBusy"]:
+                await asyncio.sleep(0.005)
+        await asyncio.wait_for(idle(), timeout=5)
+
+    async def test_disconnect_during_precheck_never_starts_forward(self):
+        for path in ("/v1/systemone", "/v1/systemone/batch"):
+            entered, release = threading.Event(), threading.Event()
+            disconnected = False
+            calls = []
+
+            class Tokenizer(SyntheticTokenizer):
+                def __call__(self, *args, **kwargs):
+                    entered.set()
+                    if not release.wait(10):
+                        raise RuntimeError("synthetic tokenizer barrier release timeout")
+                    return super().__call__(*args, **kwargs)
+
+            class Agent(SyntheticAgent):
+                tok = Tokenizer()
+
+                def predict_batch(self, *args, **kwargs):
+                    calls.append(True)
+                    return super().predict_batch(*args, **kwargs)
+
+            request = Request(seconds=30)
+            request.value["state"] = "synthetic legacy state"
+
+            async def is_disconnected():
+                return disconnected
+
+            request.is_disconnected = is_disconnected
+            app = server.create_app(Agent(), "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == path)
+            health = next(route.endpoint for route in app.routes if route.path == "/health")
+            task = None
+            async with app.router.lifespan_context(app):
+                try:
+                    task = asyncio.create_task(endpoint(request))
+                    await self.wait_for_event(entered)
+                    disconnected = True
+                    done, _ = await asyncio.wait([task], timeout=0.5)
+                    self.assertTrue((await health(Request()))["inferenceBusy"], "Tokenization still owns admission")
+                    release.set()
+                    with self.assertRaises(HTTPException) as stopped:
+                        await asyncio.wait_for(asyncio.shield(task), timeout=5)
+                    self.assertEqual(stopped.exception.status_code, 408)
+                    await self.wait_until_idle(health)
+                    self.assertEqual(calls, [], "A disconnected waiter cannot admit a new CPU forward")
+                    self.assertEqual((await health(Request()))["inferenceCalls"], 0)
+                    self.assertIn(task, done, "Disconnect must finish the waiter while tokenization is paused")
+                finally:
+                    if task is not None and not task.done():
+                        task.cancel()
+                    release.set()
+                    if task is not None:
+                        await asyncio.gather(task, return_exceptions=True)
+
+    async def test_disconnect_during_forward_keeps_gate_and_consumes_late_errors(self):
+        for path in ("/v1/systemone", "/v1/systemone/batch"):
+            entered, release = threading.Event(), threading.Event()
+            disconnected = False
+            calls = []
+            unhandled = []
+            loop = asyncio.get_running_loop()
+            previous = loop.get_exception_handler()
+            loop.set_exception_handler(lambda _loop, context: unhandled.append(context))
+
+            class Agent(SyntheticAgent):
+                def predict_batch(self, *args, **kwargs):
+                    calls.append(True)
+                    if len(calls) == 1:
+                        entered.set()
+                        if not release.wait(10):
+                            raise RuntimeError("synthetic forward barrier release timeout")
+                        raise RuntimeError("synthetic-private-late-provider-error")
+                    return super().predict_batch(*args, **kwargs)
+
+            request = Request(seconds=30)
+            request.value["state"] = "synthetic legacy state"
+
+            async def is_disconnected():
+                return disconnected
+
+            request.is_disconnected = is_disconnected
+            app = server.create_app(Agent(), "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == path)
+            health = next(route.endpoint for route in app.routes if route.path == "/health")
+            task = None
+            try:
+                async with app.router.lifespan_context(app):
+                    try:
+                        task = asyncio.create_task(endpoint(request))
+                        await self.wait_for_event(entered)
+                        disconnected = True
+                        done, _ = await asyncio.wait([task], timeout=0.5)
+                        self.assertIn(task, done, "Disconnect must finish the waiter while CPU forward is paused")
+                        with self.assertRaises(HTTPException) as stopped:
+                            task.result()
+                        self.assertEqual(stopped.exception.status_code, 408)
+                        self.assertTrue((await health(Request()))["inferenceBusy"])
+                        competing = Request()
+                        competing.value["state"] = "competing synthetic state"
+                        with self.assertRaises(HTTPException) as busy:
+                            await endpoint(competing)
+                        self.assertEqual(busy.exception.status_code, 429)
+                        self.assertEqual(len(calls), 1)
+                        release.set()
+                        await self.wait_until_idle(health)
+                        for _ in range(3):
+                            await asyncio.sleep(0)
+                            gc.collect()
+                        self.assertEqual(unhandled, [])
+                        self.assertFalse((await health(Request()))["inferenceBusy"])
+                        fresh = Request()
+                        fresh.value["state"] = "fresh synthetic state"
+                        await endpoint(fresh)
+                        self.assertEqual(len(calls), 2)
+                    finally:
+                        if task is not None and not task.done():
+                            task.cancel()
+                        release.set()
+                        if task is not None:
+                            await asyncio.gather(task, return_exceptions=True)
+            finally:
+                release.set()
+                loop.set_exception_handler(previous)
+
+    async def test_cancellation_during_watcher_cleanup_cannot_strand_cpu_admission(self):
+        for path in ("/v1/systemone", "/v1/systemone/batch"):
+            entered, release = threading.Event(), threading.Event()
+            probe_entered, cleanup_entered, cleanup_release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+            calls, unhandled = [], []
+            loop = asyncio.get_running_loop()
+            previous = loop.get_exception_handler()
+            loop.set_exception_handler(lambda _loop, context: unhandled.append(context))
+
+            class Agent(SyntheticAgent):
+                def predict_batch(self, *args, **kwargs):
+                    calls.append(True)
+                    if len(calls) == 1:
+                        entered.set()
+                        if not release.wait(10):
+                            raise RuntimeError("synthetic forward barrier release timeout")
+                        raise RuntimeError("synthetic-private-late-provider-error")
+                    return super().predict_batch(*args, **kwargs)
+
+            request = Request(seconds=30)
+            request.value["state"] = "synthetic legacy state"
+            probes = 0
+
+            async def is_disconnected():
+                nonlocal probes
+                probes += 1
+                if probes == 1:
+                    return False
+                probe_entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cleanup_entered.set()
+                    await cleanup_release.wait()
+
+            request.is_disconnected = is_disconnected
+            app = server.create_app(Agent(), "synthetic-test-key")
+            endpoint = next(route.endpoint for route in app.routes if route.path == path)
+            health = next(route.endpoint for route in app.routes if route.path == "/health")
+            task = None
+            try:
+                async with app.router.lifespan_context(app):
+                    try:
+                        task = asyncio.create_task(endpoint(request))
+                        await self.wait_for_event(entered)
+                        await asyncio.wait_for(probe_entered.wait(), timeout=5)
+                        task.cancel()
+                        await asyncio.wait_for(cleanup_entered.wait(), timeout=5)
+                        self.assertFalse(task.done(), "Endpoint must be paused in watcher cleanup")
+                        task.cancel()
+                        with self.assertRaises(asyncio.CancelledError):
+                            await task
+                        self.assertTrue((await health(Request()))["inferenceBusy"])
+                        competing = Request()
+                        competing.value["state"] = "competing synthetic state"
+                        with self.assertRaises(HTTPException) as busy:
+                            await endpoint(competing)
+                        self.assertEqual(busy.exception.status_code, 429)
+                        self.assertEqual(len(calls), 1)
+                        release.set()
+                        await self.wait_until_idle(health)
+                        for _ in range(3):
+                            await asyncio.sleep(0)
+                            gc.collect()
+                        self.assertEqual(unhandled, [], "Late CPU errors must still be consumed after cleanup cancellation")
+                        fresh = Request()
+                        fresh.value["state"] = "fresh synthetic state"
+                        await endpoint(fresh)
+                        self.assertEqual(len(calls), 2)
+                    finally:
+                        release.set()
+                        cleanup_release.set()
+                        if task is not None:
+                            if not task.done():
+                                task.cancel()
+                            await asyncio.gather(task, return_exceptions=True)
+            finally:
+                release.set()
+                loop.set_exception_handler(previous)
+
+
 class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
     async def test_distinct_state_questions_use_exactly_one_real_sdk_collation_forward_and_correct_offsets(self):
         agent = heterogeneous_agent()
-        app = server.create_app(agent, "synthetic-test-key", warmed=True)
+        app = server.create_app(agent, "synthetic-test-key", warmed=True, cpu_execution_policy="packed")
         endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
         health = next(route.endpoint for route in app.routes if route.path == "/health")
         request = independent_request()
@@ -360,7 +576,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_questions_overflow_and_expired_item_are_isolated_from_a_good_item(self):
         for bad in ("questions", "overflow", "expired"):
             agent = heterogeneous_agent()
-            app = server.create_app(agent, "synthetic-test-key")
+            app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
             endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
             request = independent_request()
             if bad == "questions":
@@ -381,7 +597,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
         request = independent_request()
         request.value["items"][0]["deadline"] = (datetime.now(timezone.utc) + timedelta(seconds=0.1)).isoformat()
         agent.before_encode = lambda state: time.sleep(0.15) if state.startswith("second") else None
-        app = server.create_app(agent, "synthetic-test-key")
+        app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
         endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
         async with app.router.lifespan_context(app):
             response = await endpoint(request)
@@ -393,7 +609,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
     async def test_all_items_expire_during_encoding_without_starting_forward(self):
         agent = heterogeneous_agent()
         agent.before_encode = lambda _state: time.sleep(0.08)
-        app = server.create_app(agent, "synthetic-test-key")
+        app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
         endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
         health = next(route.endpoint for route in app.routes if route.path == "/health")
         async with app.router.lifespan_context(app):
@@ -432,7 +648,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
                     time.sleep(0.1)
                 return collate_items(groups, pad)
 
-            app = server.create_app(agent, "synthetic-test-key")
+            app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
             endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
             async with app.router.lifespan_context(app):
                 with patch("laya.common.collate_items", side_effect=collate):
@@ -448,7 +664,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
         agent.before_forward = lambda: time.sleep(0.15)
         request = independent_request()
         request.value["items"][0]["deadline"] = (datetime.now(timezone.utc) + timedelta(seconds=0.07)).isoformat()
-        app = server.create_app(agent, "synthetic-test-key")
+        app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
         endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
         async with app.router.lifespan_context(app):
             response = await endpoint(request)
@@ -468,7 +684,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
                 return disconnected
 
             request.is_disconnected = is_disconnected
-            app = server.create_app(agent, "synthetic-test-key")
+            app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
             endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
             health = next(route.endpoint for route in app.routes if route.path == "/health")
             try:
@@ -509,10 +725,10 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
             elif incompatible == "training":
                 agent.model.training = True
             elif incompatible == "device":
-                agent.device = SimpleNamespace(type="cuda")
+                agent.device = SimpleNamespace(type="unsupported_accelerator")
             elif incompatible == "signature":
                 agent._forward = lambda changed_argument: None
-            app = server.create_app(agent, "synthetic-test-key")
+            app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
             endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
             async with app.router.lifespan_context(app):
                 with patch.object(server, "version", return_value="0.0.0" if incompatible == "version" else "0.3.20"), \
@@ -532,7 +748,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
                 request.value["items"] *= 3
             else:
                 request.headers = {"authorization": "Bearer wrong-key"}
-            app = server.create_app(agent, "synthetic-test-key")
+            app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
             endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
             async with app.router.lifespan_context(app):
                 with self.assertRaises(HTTPException) as rejected:
@@ -542,7 +758,7 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_new_endpoint_requires_each_deadline_while_single_compatibility_still_accepts_omission(self):
         agent = heterogeneous_agent()
-        app = server.create_app(agent, "synthetic-test-key")
+        app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
         endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
         single = next(route.endpoint for route in app.routes if route.path == "/v1/systemone")
         async with app.router.lifespan_context(app):
@@ -557,6 +773,187 @@ class IndependentBatchTest(unittest.IsolatedAsyncioTestCase):
             del request.value["deadline"]
             result = await single(request)
             self.assertIn("tokenWindow", result)
+
+
+class InferenceContextDeadlineTest(unittest.IsolatedAsyncioTestCase):
+    async def test_packed_context_entry_expiry_removes_only_expired_rows_before_forward(self):
+        import torch
+        real_mode = torch.inference_mode
+
+        class DelayedMode:
+            def __enter__(self):
+                time.sleep(0.1)
+                self.context = real_mode()
+                return self.context.__enter__()
+
+            def __exit__(self, *args):
+                return self.context.__exit__(*args)
+
+        agent = heterogeneous_agent()
+        app = server.create_app(agent, "synthetic-test-key", cpu_execution_policy="packed")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        request = independent_request()
+        request.value["items"][0]["deadline"] = (datetime.now(timezone.utc) + timedelta(seconds=0.06)).isoformat()
+        async with app.router.lifespan_context(app):
+            with patch.object(torch, "inference_mode", return_value=DelayedMode()):
+                response = await endpoint(request)
+        self.assertEqual(response["items"][0]["error"]["code"], "TIMEOUT")
+        self.assertIn("result", response["items"][1])
+        self.assertEqual(len(agent.forwards), 1)
+        self.assertEqual(agent.forwards[0]["input_ids"].shape[0], 1)
+        self.assertEqual(agent.offsets, [0])
+        self.assertEqual(response["execution"]["forwardCount"], 1)
+
+    async def test_context_creation_and_entry_expiry_do_not_start_or_count_legacy_or_independent_forward(self):
+        import torch
+        real_mode = torch.inference_mode
+        for path in ("/v1/systemone/batch", "/v1/systemone/independent-batch"):
+            for boundary in ("creation", "entry"):
+                entered, release = threading.Event(), threading.Event()
+                calls = []
+
+                class Agent(SyntheticAgent):
+                    def predict_batch(self, *args, **kwargs):
+                        calls.append(True)
+                        return super().predict_batch(*args, **kwargs)
+
+                agent = heterogeneous_agent() if path.endswith("independent-batch") else Agent()
+
+                class DelayedMode:
+                    def __enter__(self):
+                        if boundary == "entry":
+                            entered.set()
+                            release.wait(3)
+                        self.context = real_mode()
+                        return self.context.__enter__()
+
+                    def __exit__(self, *args):
+                        return self.context.__exit__(*args)
+
+                def mode():
+                    if boundary == "creation":
+                        entered.set()
+                        release.wait(3)
+                    return DelayedMode()
+
+                app = server.create_app(agent, "synthetic-test-key")
+                endpoint = next(route.endpoint for route in app.routes if route.path == path)
+                health = next(route.endpoint for route in app.routes if route.path == "/health")
+                try:
+                    async with app.router.lifespan_context(app):
+                        with patch.object(torch, "inference_mode", side_effect=mode):
+                            request = independent_request(0.06) if path.endswith("independent-batch") else Request(0.06)
+                            task = asyncio.create_task(endpoint(request))
+                            for _ in range(400):
+                                if entered.is_set():
+                                    break
+                                await asyncio.sleep(0.001)
+                            self.assertTrue(entered.is_set())
+                            with self.assertRaises(HTTPException) as expired:
+                                await task
+                            self.assertEqual(expired.exception.status_code, 408)
+                            self.assertTrue((await health(Request()))["inferenceBusy"])
+                            release.set()
+                            for _ in range(100):
+                                if not (await health(Request()))["inferenceBusy"]:
+                                    break
+                                await asyncio.sleep(0.005)
+                        self.assertEqual((await health(Request()))["inferenceCalls"], 0)
+                        self.assertEqual(calls, [])
+                        if path.endswith("independent-batch"):
+                            self.assertEqual(agent.forwards, [])
+                finally:
+                    release.set()
+
+
+class SequentialExecutionTest(unittest.IsolatedAsyncioTestCase):
+    async def test_default_uses_distinct_forwards_without_cross_item_padding_and_reports_real_ids(self):
+        agent = heterogeneous_agent()
+        app = server.create_app(agent, "synthetic-test-key", warmed=True)
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        health = next(route.endpoint for route in app.routes if route.path == "/health")
+        request = independent_request()
+        request.value["executionPolicy"] = "packed"  # Untrusted request data cannot change startup policy.
+        async with app.router.lifespan_context(app):
+            response = await endpoint(request)
+            value = await health(Request())
+        self.assertEqual(value["executionPolicy"], "sequential")
+        self.assertEqual(value["inferenceMode"], "inference_mode")
+        self.assertEqual(value["inferenceCalls"], 2)
+        self.assertEqual(response["execution"], {"policy": "sequential", "forwardCount": 2})
+        self.assertEqual(len(agent.forwards), 2)
+        self.assertEqual([batch["input_ids"].shape[0] for batch in agent.forwards], [2, 1])
+        self.assertNotEqual(agent.forwards[0]["input_ids"].shape[1], agent.forwards[1]["input_ids"].shape[1])
+        self.assertEqual(agent.offsets, [0, 0], "Offsets restart inside every actual forward")
+        results = [item["result"] for item in response["items"]]
+        self.assertNotEqual(results[0]["forward"]["forwardId"], results[1]["forward"]["forwardId"])
+        self.assertEqual([result["forward"]["index"] for result in results], [1, 2])
+        for result in results:
+            self.assertEqual(result["forward"]["scope"], "sdk_independent_sequential_forward")
+            self.assertEqual(result["forward"]["itemCount"], 1)
+            self.assertNotIn("sharedForward", result)
+            self.assertEqual(result["usage"]["input_tokens"], result["tokenWindow"]["expectedInputTokens"][0])
+            self.assertEqual(result["tokenWindow"]["droppedTokens"], 0)
+            self.assertEqual(result["inferenceMetrics"]["precheckScope"], "forward_group_collation")
+
+    async def test_item_expiring_during_previous_forward_is_not_started_or_retried(self):
+        agent = heterogeneous_agent()
+        agent.before_forward = lambda: time.sleep(0.1)
+        request = independent_request()
+        request.value["items"][1]["deadline"] = (datetime.now(timezone.utc) + timedelta(seconds=0.06)).isoformat()
+        app = server.create_app(agent, "synthetic-test-key")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        async with app.router.lifespan_context(app):
+            response = await endpoint(request)
+        self.assertEqual(len(agent.forwards), 1)
+        self.assertIn("result", response["items"][0])
+        self.assertEqual(response["items"][1]["error"]["code"], "TIMEOUT")
+        self.assertEqual(response["execution"]["forwardCount"], 1)
+
+    async def test_expired_first_result_does_not_prevent_second_forward_or_renew_either_deadline(self):
+        agent = heterogeneous_agent()
+        agent.before_forward = lambda: time.sleep(0.1)
+        request = independent_request()
+        request.value["items"][0]["deadline"] = (datetime.now(timezone.utc) + timedelta(seconds=0.06)).isoformat()
+        app = server.create_app(agent, "synthetic-test-key")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        async with app.router.lifespan_context(app):
+            response = await endpoint(request)
+        self.assertEqual(len(agent.forwards), 2)
+        self.assertEqual(response["items"][0]["error"]["code"], "TIMEOUT")
+        self.assertIn("result", response["items"][1])
+        self.assertEqual(response["items"][1]["result"]["forward"]["index"], 2)
+        self.assertEqual(response["execution"]["forwardCount"], 2)
+
+    async def test_all_cancelled_waiters_cannot_start_later_sequential_forward(self):
+        agent = heterogeneous_agent()
+        entered, release = threading.Event(), threading.Event()
+        agent.before_forward = lambda: (entered.set(), release.wait(3))
+        app = server.create_app(agent, "synthetic-test-key")
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/systemone/independent-batch")
+        health = next(route.endpoint for route in app.routes if route.path == "/health")
+        try:
+            async with app.router.lifespan_context(app):
+                task = asyncio.create_task(endpoint(independent_request()))
+                while not entered.is_set():
+                    await asyncio.sleep(0.001)
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+                self.assertTrue((await health(Request()))["inferenceBusy"])
+                release.set()
+                for _ in range(100):
+                    if not (await health(Request()))["inferenceBusy"]:
+                        break
+                    await asyncio.sleep(0.005)
+                self.assertEqual(len(agent.forwards), 1)
+                self.assertEqual((await health(Request()))["inferenceCalls"], 1)
+        finally:
+            release.set()
+
+    def test_unknown_policy_rejected_before_any_inference(self):
+        with self.assertRaisesRegex(ValueError, "CPU execution policy"):
+            server.create_app(SyntheticAgent(), "synthetic-test-key", cpu_execution_policy="online-autotune")
 
 
 if __name__ == "__main__":

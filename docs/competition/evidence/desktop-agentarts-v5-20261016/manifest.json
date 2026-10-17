@@ -1,0 +1,94 @@
+{
+  "files": [
+    {
+      "file": "README.md",
+      "bytes": 14352,
+      "sha256": "96251614b54469b399932c06df47e93188774d1f8da6cc079e9a154d74cb5072"
+    },
+    {
+      "file": "cloud-catalog-4aa8f93f-receipt.json",
+      "bytes": 483,
+      "sha256": "d7d49d8ab5a98cdd11b032e45b49a0d99d535a81abe071ab80415d0077daaca2"
+    },
+    {
+      "file": "cloud-text-4aa8f93f-receipt.json",
+      "bytes": 943,
+      "sha256": "ed99d545ba9dcaef22a9b11da4839b04c1b68e3b962acfd36fa0fc252fe85ba6"
+    },
+    {
+      "file": "cloud-voice-4aa8f93f-receipt.json",
+      "bytes": 2222,
+      "sha256": "3d8d1c78b6adeee33ea15cb75ab0ca000156ca9b324b40fb19bd22c69946869e"
+    },
+    {
+      "file": "code-checks.json",
+      "bytes": 27643,
+      "sha256": "8e3ace28ac5d818ee577e22663f3a70cef1b160df5ec1c02b7b0a56612eaff54"
+    },
+    {
+      "file": "deployment-4aa8f93f.json",
+      "bytes": 1859,
+      "sha256": "a64e4cae10e5f8e2975ac39667207c41e69f1ee498eec288090837a3248bb415"
+    },
+    {
+      "file": "desktop-receipt.json",
+      "bytes": 12051,
+      "sha256": "bb7e27cd1ef156863bd85335bb4e69a8546ca45ac45089a338d000b6a87173f9"
+    },
+    {
+      "file": "image-release-4aa8f93f.json",
+      "bytes": 2140,
+      "sha256": "6eb30602a0787b81b529e180c669bf84271b14e4857198043a10c1f3f4c9d344"
+    },
+    {
+      "file": "live-host-receipt.json",
+      "bytes": 2214,
+      "sha256": "70956511294580417d6df79898ffa05d8ac7ee21d1b7feb86031e6b53170f38e"
+    },
+    {
+      "file": "normal-startup-receipt.json",
+      "bytes": 2128,
+      "sha256": "e22e3dfa142033776328ed4d5c5136204b012722a85e83daff3f8b61fe452eb7"
+    },
+    {
+      "file": "platform-models-before-permission.json",
+      "bytes": 3939,
+      "sha256": "1c0cf97b6e413b22ad69c430564560d29c306cd49627e6c0a28ef25931c3442e"
+    },
+    {
+      "file": "platform-models-final.json",
+      "bytes": 4507,
+      "sha256": "2c7e576e3f78411a9c4ec94a791aa0647663f9d8492a978a86e1b4a485623a9d"
+    },
+    {
+      "file": "prior-failures.json",
+      "bytes": 2246,
+      "sha256": "9968d22a0aff029f4b5d518fe5b6785a7624e375afed0f7c07aab5510c1477b7"
+    },
+    {
+      "file": "reconciliation-receipt.json",
+      "bytes": 1650,
+      "sha256": "73509a9c37d56577ebe211d102d355c47f376445c9e58ddf31c4fefdf5aafa69"
+    },
+    {
+      "file": "release.json",
+      "bytes": 995,
+      "sha256": "23c25dd6d334435259614019931c90d13c5f12bb32686b66d21eea27c6ad9da1"
+    },
+    {
+      "file": "sis-production-port-receipt.json",
+      "bytes": 2188,
+      "sha256": "09d763ff9e6b0039bc1d75811d651e109d68ced5ddcf7a93445348ab1b21d4a5"
+    },
+    {
+      "file": "sis-receipt.json",
+      "bytes": 2353,
+      "sha256": "21733bce58b711b2f2e3eddbf2fba4e8b934b331fd8bf73d023db1d04eff79ec"
+    },
+    {
+      "file": "voice-receipt.json",
+      "bytes": 2311,
+      "sha256": "79d7b2bf7f5317c671088cdeed080f0b7b587d338325e7c01034d74bed8d1434"
+    }
+  ]
+}

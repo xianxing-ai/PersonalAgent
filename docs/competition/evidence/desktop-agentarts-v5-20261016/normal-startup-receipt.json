@@ -1,0 +1,69 @@
+{
+  "status": "passed_ordinary_entry_configuration_restore",
+  "sourceCommit": "618612a156798ca306768ff0b48b5fea7f9bbcd9",
+  "startedAtUtc": "2026-10-16T15:13:19.8228944Z",
+  "entry": "apps/desktop package entry",
+  "profile": "huawei_ict_agentarts",
+  "normalQuit": {
+    "method": "visible_general_settings_existing_app.quit",
+    "oldProcessExited": true,
+    "windowInventoryEmptyAfterQuit": true,
+    "forceTerminated": false
+  },
+  "bootstrapUsed": false,
+  "credentialsRewrittenAtLaunch": false,
+  "configurationEnvironmentOverride": false,
+  "restored": {
+    "runtime": "ready",
+    "agentArtsConfigured": true,
+    "liveConfigured": true,
+    "liveReady": true,
+    "liveShortcutRegistered": true,
+    "sisConfigured": true,
+    "sisReady": true
+  },
+  "encryptedConfiguration": [
+    {
+      "kind": "agentArts",
+      "encryptedFileUnchangedAfterNormalStartup": true,
+      "backupVerified": true,
+      "independentReadbackVerified": true
+    },
+    {
+      "kind": "sis",
+      "encryptedFileUnchangedAfterNormalStartup": true,
+      "backupVerified": true,
+      "independentReadbackVerified": true
+    }
+  ],
+  "migration": {
+    "status": "migrated_and_independently_verified",
+    "backupVerified": true,
+    "plaintextWrittenToDisk": false,
+    "officialProfileKeyUnchanged": true,
+    "liveConfigurationUnchanged": true,
+    "independentApiSettingsUnchanged": true
+  },
+  "initialFailure": {
+    "status": "configuration_required",
+    "agentArtsConfigured": false,
+    "liveConfigured": false,
+    "sisConfigured": false,
+    "cause": "test_helpers_encrypted_with_different_Electron_profiles",
+    "originalFailureLogRetained": true
+  },
+  "physicalMicrophoneVerified": false,
+  "physicalPlaybackVerified": false,
+  "microphoneStartedByThisWorkflow": false,
+  "playbackStartedByThisWorkflow": false,
+  "agentArtsSisProxy": "unavailable",
+  "newImagePublished": false,
+  "startupLog": {
+    "bytes": 177,
+    "sha256": "963ee734a0ae1159af7276ff03e75fb84a70c4805d9e595a4fbd471402fa1ee4"
+  },
+  "stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

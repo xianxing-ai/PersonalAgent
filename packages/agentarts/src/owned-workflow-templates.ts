@@ -3,7 +3,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {OWNED_WORKFLOW_SOURCE} from './owned-workflow-data.js';
 
 export const OWNED_WORKFLOW_VERSION = '1.0.0' as const;
-export const OWNED_TEMPLATE_VERSION = '2026.10.15.1' as const;
+export const OWNED_TEMPLATE_VERSION = '2026.10.15.2' as const;
 export type WorkflowStepKind = 'input' | 'assemble' | 'decision' | 'executor' | 'tool' | 'host';
 export interface WorkflowCapability {
   /** Tool names are existing published names; host ports are explicit missing composition contracts. */
@@ -15,17 +15,23 @@ export interface OwnedWorkflowNode {
   required: boolean; condition?: string; hostGuard?: true; resourceKeys: readonly string[];
   effect: 'none' | 'read' | 'write'; capabilities: readonly WorkflowCapability[];
   inputFields: readonly string[]; outputFields: readonly string[]; evidenceRequirement?: string;
+  /** Design intent only; the trusted ModelGateway catalog determines actual availability. */
+  modelAssignment?: Readonly<{vendor:string;model:string;role:string}>;
+  joinMode?: 'selected'|'all'|'any';
 }
 export interface OwnedWorkflowTemplate {
   workflowId: string; bindingId: string; name: string; version: typeof OWNED_TEMPLATE_VERSION;
   templateDigest: string; nodes: readonly OwnedWorkflowNode[];
   transitions: readonly {source: string; target: string; required: boolean; condition?: string; feedback: boolean}[];
   recovery: readonly string[];
+  category:string;summary:string;decisionPoints:readonly string[];designNotes:readonly string[];acceptance:readonly string[];
 }
 
 type SourceNode = {id: string; label: string; kind: string; dependencies: string[]; required: boolean;
-  resourceKeys: string[]; effectType: string; condition?: string; inputFields: string[]; outputFields: string[]; evidenceRequirement?: string};
+  resourceKeys: string[]; effectType: string; condition?: string; inputFields: string[]; outputFields: string[]; evidenceRequirement?: string;
+  modelAssignment?:{vendor:string;model:string;role:string};joinMode?:'selected'|'all'|'any'};
 type SourceFeature = {id: string; name: string; nodes: SourceNode[];
+  category:string;summary:string;decisionPoints:string[];designNotes:string[];acceptance:string[];
   edges: {source: string; target: string; required: boolean; condition?: string}[]; recovery: string[]};
 const host = (name: string, boundary: 'local' | 'platform' = 'local'): WorkflowCapability => ({kind:'host',name,boundary});
 const tool = (name: string): WorkflowCapability => ({kind:'tool',name,boundary:'local'});
@@ -71,7 +77,8 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F22_N03:[host('shadow.decision_snapshot')],F22_N04:[host('shadow.historical_trace')],F22_N05:[host('shadow.isolated_capabilities')],
   F22_N06:[host('shadow.counterfactual_evidence')],F23_N01:[host('evaluation.dataset_snapshot','platform')],
   F23_N02:[host('evaluation.temporal_leakage_check')],F23_N03:[host('evaluation.actual_result_dataset','platform')],
-  F23_N05:[host('configuration.promote_with_rollback')],F24_N01:[host('runtime.persist_graph')],F24_N03:[host('policy.operation_scope_check')],
+  F23_N04:[host('configuration.promote_with_rollback')],F23_N05:[host('configuration.operation_readback')],
+  F24_N01:[host('runtime.persist_graph')],F24_N03:[host('policy.operation_scope_check')],
   F24_N04:[host('runtime.execute_published_operation')],F24_N05:[host('runtime.selected_branch_evidence')],F24_N06:[host('runtime.local_stop_observation')],
   F24_N07:[host('runtime.stop_not_started')],F24_N08:[host('runtime.stop_in_flight')],F24_N09:[host('runtime.reconcile_original_effect')],
   F24_N10:[host('runtime.keep_confirmed_effect')],F24_N11:[host('runtime.recover_checkpoint')],F24_N12:[host('runtime.publish_actual_status')],
@@ -117,12 +124,14 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
             'F24_N07','F24_N08','F24_N10','F24_N11','F25_N04'].includes(node.id) ? 'write':'read',
       capabilities:mapped.map(item=>({...item})),
       inputFields:[...node.inputFields],outputFields:[...node.outputFields],
-      ...(node.evidenceRequirement?{evidenceRequirement:node.evidenceRequirement}:{})};
+      ...(node.evidenceRequirement?{evidenceRequirement:node.evidenceRequirement}:{}),
+      ...(node.modelAssignment?{modelAssignment:{...node.modelAssignment}}:{}),...(node.joinMode?{joinMode:node.joinMode}:{})};
   });
   const transitions = feature.edges.map(edge=>({source:edge.source,target:edge.target,required:edge.required,
     ...(edge.condition?{condition:edge.condition}:{}),feedback:reaches(edge.source,edge.target)}));
   const value = {workflowId:feature.id,bindingId:`owned-${feature.id}`,name:feature.name,version:OWNED_TEMPLATE_VERSION,
-    nodes,transitions,recovery:[...feature.recovery]};
+    nodes,transitions,recovery:[...feature.recovery],category:feature.category,summary:feature.summary,
+    decisionPoints:[...feature.decisionPoints],designNotes:[...feature.designNotes],acceptance:[...feature.acceptance]};
   return {...value,templateDigest:createHash('sha256').update(JSON.stringify(value)).digest('hex')};
 }
 const templates = (OWNED_WORKFLOW_SOURCE as SourceFeature[]).map(compile);
@@ -131,6 +140,14 @@ if (templates.length!==28 || templates.reduce((sum,item)=>sum+item.nodes.length,
 }
 /** Detached public data. It contains no endpoints, secrets, mutable task state, or execution authority. */
 export function getOwnedWorkflowTemplates(): OwnedWorkflowTemplate[] { return structuredClone(templates); }
+/** Generated-design provenance, not a claim that external business services passed acceptance. */
+export function getOwnedWorkflowDesignCoverage() {
+  return {source:'docs/design/workflow-architecture-20261013/source/src/data/architecture.json',
+    projectionSha256:createHash('sha256').update(JSON.stringify(OWNED_WORKFLOW_SOURCE)).digest('hex'),
+    templateVersion:OWNED_TEMPLATE_VERSION,workflowCount:templates.length,nodeCount:templates.reduce((sum,item)=>sum+item.nodes.length,0),
+    workflows:templates.map(({workflowId,templateDigest,nodes})=>({workflowId,templateDigest,nodeCount:nodes.length})),
+    meaning:'Design coverage only; actual provider wiring and business verification are separate'};
+}
 export function getOwnedWorkflowTemplate(id: string): OwnedWorkflowTemplate | undefined {
   const template=templates.find(item=>item.workflowId===id||item.bindingId===id);
   return template&&structuredClone(template);

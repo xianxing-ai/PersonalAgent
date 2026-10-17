@@ -21,6 +21,13 @@ export interface HuaweiSisTokenPort {
     readonly signal: AbortSignal}): Promise<string>;
 }
 
+/** Trusted host signs only this adapter's fixed regional SIS request. */
+export interface HuaweiSisRequestAuthPort {
+  getSisRequestHeaders(request: {readonly url: string; readonly method: 'POST';
+    readonly body: string; readonly deadline: string; readonly signal: AbortSignal}):
+    Promise<Readonly<Record<string, string>>>;
+}
+
 /** Host-owned local playback; this adapter does not open an output device. */
 export interface HuaweiSisWavPlaybackPort {
   playWav(request: {readonly audio: Uint8Array; readonly deadline: string;
@@ -30,7 +37,8 @@ export interface HuaweiSisWavPlaybackPort {
 export interface HuaweiSisConfig {
   readonly region: HuaweiSisRegion;
   readonly projectId: string;
-  readonly tokenPort: HuaweiSisTokenPort;
+  readonly tokenPort?: HuaweiSisTokenPort;
+  readonly requestAuthPort?: HuaweiSisRequestAuthPort;
   readonly fetchImpl?: typeof fetch;
 }
 
@@ -55,7 +63,8 @@ interface ReadyConfig {
   readonly region: HuaweiSisRegion;
   readonly baseUrl: string;
   readonly projectId: string;
-  readonly tokenPort: HuaweiSisTokenPort;
+  readonly tokenPort?: HuaweiSisTokenPort;
+  readonly requestAuthPort?: HuaweiSisRequestAuthPort;
   readonly fetchImpl: typeof fetch;
 }
 
@@ -74,7 +83,8 @@ function readyConfig(config: HuaweiSisConfig): ReadyConfig {
   if (typeof config.projectId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(config.projectId)) {
     throw invalid('Huawei SIS project ID is invalid');
   }
-  if (typeof config.tokenPort?.getSisToken !== 'function') {
+  if ((typeof config.tokenPort?.getSisToken === 'function') ===
+    (typeof config.requestAuthPort?.getSisRequestHeaders === 'function')) {
     throw new VoiceSessionError('UNSUPPORTED_CAPABILITY', 'Huawei SIS credentials are unavailable');
   }
   const fetchImpl = config.fetchImpl ?? globalThis.fetch;
@@ -82,7 +92,8 @@ function readyConfig(config: HuaweiSisConfig): ReadyConfig {
     throw new VoiceSessionError('UNSUPPORTED_CAPABILITY', 'Huawei SIS transport is unavailable');
   }
   return {region: config.region, baseUrl: ENDPOINTS[config.region], projectId: config.projectId,
-    tokenPort: config.tokenPort, fetchImpl};
+    ...(config.tokenPort ? {tokenPort: config.tokenPort} : {}),
+    ...(config.requestAuthPort ? {requestAuthPort: config.requestAuthPort} : {}), fetchImpl};
 }
 
 function deadlineMs(deadline: string): number {
@@ -94,7 +105,11 @@ function deadlineMs(deadline: string): number {
 }
 
 function abortable<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(new Error('aborted'));
+  if (signal.aborted) {
+    // A host can synchronously revoke while returning a rejected promise.
+    void task.catch(() => {});
+    return Promise.reject(new Error('aborted'));
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => { signal.removeEventListener('abort', onAbort); reject(new Error('aborted')); };
     signal.addEventListener('abort', onAbort, {once: true});
@@ -106,7 +121,8 @@ function abortable<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 function operation<T>(request: {readonly deadline: string; readonly signal: AbortSignal},
-  run: (signal: AbortSignal, setChild: (child: VoiceOperation<void> | undefined) => void) => Promise<T>): VoiceOperation<T> {
+  run: (signal: AbortSignal, checkActive: () => void,
+    setChild: (child: VoiceOperation<void> | undefined) => void) => Promise<T>): VoiceOperation<T> {
   const expiresAt = deadlineMs(request.deadline);
   const controller = new AbortController();
   let abortCode: 'CANCELLED' | 'TIMEOUT' | undefined;
@@ -127,11 +143,19 @@ function operation<T>(request: {readonly deadline: string; readonly signal: Abor
     else timer = setTimeout(scheduleDeadline, Math.min(MAX_TIMER_MS, remaining));
   };
   scheduleDeadline();
-  const result = Promise.resolve().then(() => {
+  const checkActive = (): void => {
+    // Timer delivery can lag behind wall time after sleep or a busy event loop.
+    if (Date.now() >= expiresAt) abort('TIMEOUT');
     if (controller.signal.aborted) throw new Error('aborted');
-    return run(controller.signal, next => {
+  };
+  const result = Promise.resolve().then(() => {
+    checkActive();
+    return run(controller.signal, checkActive, next => {
       child = next;
     });
+  }).then(value => {
+    checkActive();
+    return value;
   }).catch((error: unknown) => {
     if (abortCode) throw new VoiceSessionError(abortCode,
       abortCode === 'TIMEOUT' ? 'Voice deadline expired' : 'Voice operation cancelled');
@@ -145,9 +169,17 @@ function operation<T>(request: {readonly deadline: string; readonly signal: Abor
     if (!stopPromise) {
       abort(reason === 'deadline' ? 'TIMEOUT' : 'CANCELLED');
       stopPromise = (async () => {
-        try { await child?.stop(reason); }
-        catch { throw new VoiceSessionError('EXTERNAL_FAILURE', 'Voice playback release failed'); }
-        finally { await result.catch(() => {}); }
+        let releaseFailed = false;
+        const stoppingChild = child;
+        try { await stoppingChild?.stop(reason); }
+        catch { releaseFailed = true; }
+        await result.catch(() => {});
+        // A reentrant host may have returned its handle after stop began.
+        if (child && child !== stoppingChild) {
+          try { await child.stop(reason); }
+          catch { releaseFailed = true; }
+        }
+        if (releaseFailed) throw new VoiceSessionError('EXTERNAL_FAILURE', 'Voice playback release failed');
       })();
     }
     return stopPromise;
@@ -159,14 +191,17 @@ function record(value: unknown): Record<string, unknown> | undefined {
     ? value as Record<string, unknown> : undefined;
 }
 
-async function boundedJson(response: Response, limit: number, signal: AbortSignal): Promise<unknown> {
+async function boundedJson(response: Response, limit: number, signal: AbortSignal,
+  checkActive: () => void): Promise<unknown> {
   const reader = response.body?.getReader();
   if (!reader) throw external();
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {
     while (true) {
+      checkActive();
       const part = await abortable(reader.read(), signal);
+      checkActive();
       if (part.done) break;
       size += part.value.byteLength;
       if (size > limit) throw external();
@@ -182,23 +217,52 @@ async function boundedJson(response: Response, limit: number, signal: AbortSigna
 }
 
 async function callSis(config: ReadyConfig, path: string, body: unknown, deadline: string,
-  signal: AbortSignal, responseLimit: number): Promise<unknown> {
-  if (signal.aborted) throw new Error('aborted');
-  const token = await abortable(Promise.resolve(config.tokenPort.getSisToken({region: config.region,
-    deadline, signal})), signal);
-  if (typeof token !== 'string' || token.length === 0 || token.length > 16_384
-    || token.trim() !== token || /[\r\n]/.test(token)) {
-    throw new VoiceSessionError('UNSUPPORTED_CAPABILITY', 'Huawei SIS credentials are unavailable');
+  signal: AbortSignal, responseLimit: number, checkActive: () => void): Promise<unknown> {
+  checkActive();
+  const url = `${config.baseUrl}/v1/${config.projectId}/${path}`;
+  const serialized = JSON.stringify(body);
+  let headers: Record<string, string>;
+  try {
+    if (config.requestAuthPort) {
+      const signed = await abortable(Promise.resolve(config.requestAuthPort.getSisRequestHeaders({
+        url, method: 'POST', body: serialized, deadline, signal})), signal);
+      if (!signed || typeof signed !== 'object' || Array.isArray(signed)
+        || Object.keys(signed).length !== 3
+        || Object.keys(signed).some(key => !['Authorization', 'X-Sdk-Date', 'X-Project-Id'].includes(key))
+        || signed['X-Project-Id'] !== config.projectId
+        || !/^SDK-HMAC-SHA256 Access=[A-Za-z0-9]+, SignedHeaders=content-type;host;x-project-id;x-sdk-date, Signature=[a-f0-9]{64}$/.test(signed.Authorization ?? '')
+        || !/^\d{8}T\d{6}Z$/.test(signed['X-Sdk-Date'] ?? '')) throw external();
+      headers = {...signed};
+    } else {
+      const token = await abortable(Promise.resolve(config.tokenPort!.getSisToken({region: config.region,
+        deadline, signal})), signal);
+      if (typeof token !== 'string' || token.length === 0 || token.length > 16_384
+        || token.trim() !== token || /[\r\n]/.test(token))
+        throw new VoiceSessionError('UNSUPPORTED_CAPABILITY', 'Huawei SIS credentials are unavailable');
+      headers = {'X-Auth-Token': token};
+    }
+  } catch (error) {
+    if (error instanceof VoiceSessionError && error.code === 'UNSUPPORTED_CAPABILITY') throw error;
+    throw external();
   }
-  if (signal.aborted) throw new Error('aborted');
-  const response = await abortable(config.fetchImpl(`${config.baseUrl}/v1/${config.projectId}/${path}`,
-    {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Auth-Token': token},
-      body: JSON.stringify(body), signal, redirect: 'error'}), signal);
+  checkActive();
+  let response: Response;
+  try {
+    response = await abortable(config.fetchImpl(url,
+      {method: 'POST', headers: {'Content-Type': 'application/json', ...headers},
+        body: serialized, signal, redirect: 'error'}).then(incoming => {
+      // A non-cooperative transport can return after abortable has already settled.
+      if (signal.aborted) void incoming.body?.cancel().catch(() => {});
+      return incoming;
+    }), signal);
+  } catch { throw external(); }
+  try { checkActive(); }
+  catch (error) { void response.body?.cancel().catch(() => {}); throw error; }
   if (!response.ok) {
     void response.body?.cancel().catch(() => {});
     throw external();
   }
-  return boundedJson(response, responseLimit, signal);
+  return boundedJson(response, responseLimit, signal, checkActive);
 }
 
 function validateChineseLocale(locale: string): void {
@@ -230,9 +294,10 @@ export function createHuaweiSisRecognitionPort(options: HuaweiSisConfig): Speech
   const config = readyConfig(options);
   return {recognize(request) {
     const body = asrBody(request);
-    return operation(request, async signal => {
+    return operation(request, async (signal, checkActive) => {
       const payload = record(await callSis(config, 'asr/short-audio', body, request.deadline,
-        signal, MAX_ASR_RESPONSE_BYTES));
+        signal, MAX_ASR_RESPONSE_BYTES, checkActive));
+      checkActive();
       const result = record(payload?.result);
       if (typeof result?.text !== 'string' || !result.text.trim()
         || result.text.length > MAX_TRANSCRIPT_CHARACTERS) throw external();
@@ -243,7 +308,15 @@ export function createHuaweiSisRecognitionPort(options: HuaweiSisConfig): Speech
 
 function decodeWav(value: unknown): Uint8Array {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_TTS_RESPONSE_BYTES
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    || value.length % 4 !== 0) {
+    throw external();
+  }
+  const contentLength = value.length - (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0);
+  // Scan once without a repeated regex group that can exhaust the stack on large WAVs.
+  for (let index = 0; index < contentLength; index++) {
+    const code = value.charCodeAt(index);
+    if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+      || (code >= 48 && code <= 57) || code === 43 || code === 47) continue;
     throw external();
   }
   const audio = Buffer.from(value, 'base64');
@@ -271,6 +344,17 @@ function ttsSegments(text: string): string[] {
   return segments;
 }
 
+function playbackHandle(handle: VoiceOperation<void>): VoiceOperation<void> {
+  let release: Promise<void> | undefined;
+  return {result: handle.result, stop(reason) {
+    // Completion, interruption and parent abort all share the first release receipt.
+    release ??= Promise.resolve().then(() => handle.stop(reason)).catch(() => {
+      throw new VoiceSessionError('EXTERNAL_FAILURE', 'Voice playback release failed');
+    });
+    return release;
+  }};
+}
+
 /** SIS TTS creates WAV bytes; only the injected trusted host may play them locally. */
 export function createHuaweiSisOutputPort(options: HuaweiSisOutputConfig): SpeechOutputPort {
   const config = readyConfig(options);
@@ -288,24 +372,28 @@ export function createHuaweiSisOutputPort(options: HuaweiSisOutputConfig): Speec
       throw invalid('Huawei SIS TTS text length is invalid');
     }
     const segments = ttsSegments(request.text);
-    return operation(request, async (signal, setChild) => {
+    return operation(request, async (signal, checkActive, setChild) => {
       for (const segment of segments) {
-        if (signal.aborted) throw new Error('aborted');
+        checkActive();
         const payload = record(await callSis(config, 'tts',
           {text: segment, config: {audio_format: 'wav', sample_rate: '16000', property}},
-          request.deadline, signal, MAX_TTS_RESPONSE_BYTES));
+          request.deadline, signal, MAX_TTS_RESPONSE_BYTES, checkActive));
         const result = record(payload?.result);
         const audio = decodeWav(result?.data);
         let playback: VoiceOperation<void> | undefined;
         try {
-          if (signal.aborted) throw new Error('aborted');
-          playback = options.playback.playWav({audio, deadline: request.deadline, signal});
+          checkActive();
+          try { playback = playbackHandle(options.playback.playWav({audio, deadline: request.deadline, signal})); }
+          catch { throw external(); }
           setChild(playback);
-          await abortable(playback.result, signal);
-          await playback.stop('completed');
-          setChild(undefined);
+          try { await abortable(playback.result, signal); }
+          catch { throw external(); }
+          checkActive();
         } finally {
-          try { if (signal.aborted && playback) await playback.stop('cancelled'); }
+          try {
+            if (playback) await playback.stop(signal.aborted ? 'cancelled' : 'completed');
+            setChild(undefined);
+          }
           finally { audio.fill(0); }
         }
       }

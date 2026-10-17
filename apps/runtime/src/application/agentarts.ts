@@ -9,6 +9,8 @@ import {
   type AgentArtsWebSocketFactory,
 } from '@personal-agent/coordination';
 import {ProtocolError} from '@personal-agent/contracts';
+import {AgentArtsRealtimeModelGateway} from '@personal-agent/models';
+import type {RealtimeSocketConstructor} from '@personal-agent/models';
 import {createHash} from 'node:crypto';
 import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt} from './coordination.js';
 import {
@@ -18,9 +20,13 @@ import {
 } from './runtime-application.js';
 
 export interface AgentArtsRuntimeApplicationOptions
-  extends Omit<RuntimeApplicationOptions, 'profile' | 'coordination' | 'text'> {
+  extends Omit<RuntimeApplicationOptions, 'profile' | 'coordination' | 'text' | 'competitionRealtimeModel'> {
   gatewayUrl: string;
   runtimeName: string;
+  /** Non-secret fixed deployment identity; credentials remain re-readable. */
+  deploymentVersion?: string;
+  /** Trusted synchronous check of the current host's fixed deployment. */
+  assertDeploymentBinding?: () => void;
   invokeMode?: 'debug' | 'published';
   workflowGoalInput?: string;
   responseMode?: 'text' | 'tool-proposal-json';
@@ -32,6 +38,8 @@ export interface AgentArtsRuntimeApplicationOptions
   allowHttpsFallback?: boolean;
   websocketAuthorizationProvider?: AgentArtsAuthorizationProvider;
   websocketFactory?: AgentArtsWebSocketFactory;
+  /** Offline/native socket injection, independent of the task transport protocol. */
+  realtimeSocket?: RealtimeSocketConstructor;
   onTransportState?: (state: AgentArtsTransportState) => void;
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
@@ -48,6 +56,8 @@ export function createAgentArtsRuntimeApplication(
   const {
     gatewayUrl,
     runtimeName,
+    deploymentVersion,
+    assertDeploymentBinding,
     invokeMode,
     workflowGoalInput,
     responseMode,
@@ -60,11 +70,15 @@ export function createAgentArtsRuntimeApplication(
     allowHttpsFallback,
     websocketAuthorizationProvider,
     websocketFactory,
+    realtimeSocket,
     onTransportState,
     onDiagnostic,
     beforeCompetitionSend,
     ...runtimeOptions
   } = options;
+  if (deploymentVersion !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(deploymentVersion)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Invalid fixed AgentArts deployment version');
+  }
   if (initialRequestMode === 'goal-with-tools-json'
     && (responseMode !== 'tool-proposal-json'
       || !runtimeOptions.competitionToolAvailability?.length
@@ -123,7 +137,16 @@ export function createAgentArtsRuntimeApplication(
     ...runtimeOptions,
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
+    ...(assertDeploymentBinding === undefined ? {} : {assertCoordinationBinding: assertDeploymentBinding}),
+    // Cloud construction above already validated the same gateway/runtime target.
+    // Missing WSS/credentials stays a connect-time error, never a direct API fallback.
+    competitionRealtimeModel: new AgentArtsRealtimeModelGateway({
+      ...(transport === 'wss' && websocketUrl !== undefined ? {websocketUrl} : {}),
+      authorizationProvider,
+      ...(websocketAuthorizationProvider === undefined ? {} : {websocketAuthorizationProvider}),
+    }, realtimeSocket),
     coordinationBinding:createHash('sha256').update(JSON.stringify({gatewayUrl,runtimeName,
+      ...(deploymentVersion === undefined ? {} : {deploymentVersion}),
       invokeMode:invokeMode??'published',workflowGoalInput:workflowGoalInput??null,
       responseMode:responseMode??'text',initialRequestMode:initialRequestMode??'goal',
       ...(transport === 'wss' ? {transport,websocketUrl,allowHttpsFallback:allowHttpsFallback??false} : {}),

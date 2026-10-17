@@ -1,14 +1,69 @@
 # 自有 AgentArts Runtime 镜像
 
-## 2026-10-14 镜像内 Laya 增量
+## 2026-10-16 AgentArts 实时语音代理
 
-正式入口现在要求 `PA_AGENT_LAYA_MODE=embedded`：`laya[serve]==0.3.20` multilingual 的权重、encoder 配置、tokenizer 与 Python CPU 服务随自有 ARM64 镜像一起交付。它不是把 MaaS 模型改名 Laya，也不会把 Windows venv 或 wheels 拷入 Linux。通用国内 MaaS 经现有 ModelGateway 生成候选；一个镜像内 Laya 实例在有限候选中选择。TaskRuntime、Policy、ToolGateway、实际工具、终态与 Evidence 仍在可信本地。
+同一 `/ws?endpoint=<version>`（含原 `/invocations/ws` 路由别名）由唯一 upgrade listener 按
+`Sec-WebSocket-Protocol: pa.realtime.v1` 分流；不带该协议的原 invoke/status/cancel 帧、HTTP 和原 API 设置保持兼容。
+客户端保留平台外层 `Authorization`、镜像内层 `X-PA-Agent-Token`、
+`X-Hw-Agentarts-Session-Id`，并传 `x-pa-deadline` 原会话期限。外层凭据仍由 AgentArts 网关验证；
+实时分支必须显式内层头，不借外层凭据放行。URL 只允许已有 `endpoint` 参数，凭据不放 query。
+
+镜像受信启动环境新增两个字段：
+
+| 配置 | 含义 |
+| --- | --- |
+| `PA_AGENT_REALTIME_WORKSPACE_ID` | 北京百炼业务空间 DNS 标识；仅字母、数字、内部连字符，最长 63 字符 |
+| `PA_AGENT_REALTIME_API_KEY` | 由受信宿主注入的百炼凭据；不得写入模型帧、Renderer、日志、文档或镜像层 |
+
+两者均缺省时实时升级返回 503，原文字入口仍可用；部分配置或非法受信配置使启动明确失败且错误脱敏。
+上游固定为 `wss://<workspace>.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen3.8-omni-flash-realtime`，
+不接受调用帧提供端点、凭据或替换模型，不跟随重定向。这里只代理既有 Qwen 原生 JSON（含 Base64 音频）；
+不发送自制 ready/success，首个就绪事实来自上游 session 事件，既有 Qwen parser 继续消费。
+本代理不执行模型工具请求，也不拥有 Runtime 任务终态、Policy 或 ToolGateway 授权。
+
+会话不超过原 deadline 与宿主 120 分钟上限；连接和并发沿用原共享限额。
+每帧及待发送缓冲各限 1,200,000 字节，握手最长 15 秒；连接建立前仅保留有界帧队列。
+截止、断开、服务停止、错误或缓冲超限均关闭两端；并发槽等原上游实际关闭才释放，最多等待 1 秒后强制停止。
+不重连或重放音频，不记录音频、转写、上游错误正文或密钥。
+
+离线行为检查：`node --test --test-isolation=none apps/agentarts-runtime/test/realtime-proxy.test.mjs apps/agentarts-runtime/test/websocket.test.mjs apps/agentarts-runtime/test/server.test.mjs`。
+这些回环/显式替身验证不代表百炼、AgentArts 公网双工、物理麦克风/播放或真实语音审批已经验收。
+
+<!-- current-design-alignment-20261015 -->
+## 当前口径与历史适用性（2026-10-15）
+
+当前以[详细设计](../../docs/design/CURRENT_DESIGN_20261015.md)区分设计意图、已有代码、待接线与真实验收；架构仍未最终定型。
+本机Laya、全部28图/185节点镜像串行编排，未合格判断升级经AgentArts代理的DeepSeek；语音百炼既有端口，SIS平台不可用。
+SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1`，
+云指定版本 `arm64-local-v3-244ca434` 目录与关联日志已验，见[发布回执](../../docs/competition/evidence/test-image-v3-20261015/owned-release.json)。
+两案例完整执行表面为本机同版镜像+本机Runtime/Policy/工具/Laya+远端AgentArts模型代理，
+见[真实执行汇总](../../docs/competition/evidence/test-image-v3-20261015/full-workflow-results.json)：Wukong167.432s、Pelican第二轮81.611s，41工具Evidence；首轮partial保留。
+分支父成功、协调锚点created；28目录不等于28业务验收。6次判断182–618ms未达150ms，各案例3裁决均升级DeepSeek，未证高级调用减少或训练。
+主动责任、无人值守、归来摘要、用户可调打扰/静默feed与语音确认复用原端口。
+高级影子与已有判断合并、主任务优先、按机会资源/收益决定；真实runner目前顺序await主/影，机会并行与普通任务先交主结果仍待接线。
+以下带日期的嵌入式、直连MaaS、未发布与旧未验记录均保留原版本范围，冲突部署/完成状态已superseded，不作为当前启动参数。
+当前启动只用 `PA_AGENT_LAYA_MODE=local`，镜像不含模型权重、Python或PyTorch；不直连提供商fallback。
+旧协作门槛以当前CONTRIBUTING/AGENTS为准，文档或receipt不授予权限。
+
+## 2026-10-15 当前开发入口：本机 Laya + 镜像串行工作流
+
+Owner 已明确改为本机 Laya。当前生产入口使用 `PA_AGENT_LAYA_MODE=local`；28 项流程的编排留在镜像，
+判断通过 `decision.choose_candidate` 和原 HostBridge 回执完成。镜像不再包含 Python、PyTorch 和权重。
+工作流串行推进，主流程和隔离影子分别接真实宿主；缺适配器明确 unavailable。
+完整配置、所有接线清单、主/影子及鹈鹕增量修复验收见[当前调用文档](../../docs/competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
+本版SWR发布与指定云目录/日志已按上述回执读回；以下带日期记录保留当时事实，不是当前启动要求。
+
+## 2026-10-14 镜像内 Laya 增量（历史版本）
+
+当时的历史入口要求 `PA_AGENT_LAYA_MODE=embedded`：`laya[serve]==0.3.20` multilingual 的权重、encoder 配置、tokenizer 与 Python CPU 服务随自有 ARM64 镜像一起交付。它不是把 MaaS 模型改名 Laya，也不会把 Windows venv 或 wheels 拷入 Linux。通用国内 MaaS 经现有 ModelGateway 生成候选；一个镜像内 Laya 实例在有限候选中选择。TaskRuntime、Policy、ToolGateway、实际工具、终态与 Evidence 仍在可信本地。
 
 Node 生成仅本进程使用的随机内部 Bearer，启动 Python 回环服务；SHA 清单验证、权重加载及一次真实 synthetic 前向均通过后才开始监听 8080。Python 异常退出会关闭入站服务并使宿主失败，缺权重或 Laya 配置不会静默用旧 Agent。两个进程的受控停止复用原取消链；CPU 前向不可强制 HTTP 抢占，结束前服务保持忙状态。Python stdout/stderr 不公开，凭据与源正文不进入日志；公开 JSON 日志只记录 `laya_ready`、`laya_choice` 的请求、候选及耗时。
 
-所有工作流与旧编排器共享同一 typed-choice 队列。候选生成与无关工具可并行；同一事件循环内已就绪的独立判断经 `setImmediate` 收集，最多按现有服务能力合为 4 项异构微批，没有另设固定等待窗。每项保留自己的完整 state、questions、候选及原 deadline；一个预热实例将独立编码行放入一次 SDK forward，分别解码。只有一项时继续走原单项接口，不把依赖节点强行并行。批与批之间仍串行，不增加第二权重实例或固定排队上限。
+所有工作流与旧编排器共享同一 typed-choice 队列。候选生成与无关工具可并行。CPU 默认使用受信启动策略 `PA_LAYA_CPU_EXECUTION_POLICY=sequential`：selector 立即派发一个单项请求，保持 FIFO，首项完成即可交付，不等待无关兄弟，也不为组批增加 timer。显式 `packed` 才用 `setImmediate` 收集同时就绪的判断，最多沿用既有 4 项协议容量。每项保留完整 state、questions、候选及原 deadline；不增加权重实例、不拼接正文，也不把依赖节点强行并行。四项 dense 合批的历史样本更慢，因此不再作为默认 CPU 策略；这不等于已实测出新的提速结果。
 
-原 deadline 与取消覆盖等待。客户端超时后下一批先读回 `/health.inferenceBusy`，只对明确未受理的 429 等待空闲后重新提交，已受理的模型调用不重放。这个机制不改变未知工具写入必须先核实的规则。日志的 `batchId` 标识共享 forward；`batchSize` 为实际进入 forward 的有效项数，`submittedBatchSize` 为 HTTP 提交项数，`batchItemId` 是内部随机身份。多 question 项可能编码为更多行，项数不冒充编码行数。`sharedForwardScope=sdk_heterogeneous_forward` 的时间在每项回执重复出现，不能相加为多次独立前向。
+原 deadline 与取消覆盖等待。客户端超时后先读回 `/health.inferenceBusy`，只对明确未受理的 429 等待空闲后重新提交，已受理的模型调用不重放。这个机制不改变未知工具写入必须先核实的规则。独立批接口也遵循启动策略：`sequential` 在一次 HTTP 内逐项执行实际 forward；`packed` 才跨项拼张量。响应 `execution.forwardCount` 和每项 `forwardId/forwardIndex` 区分真实前向；日志 `batchId` 仅关联 HTTP，不再等同一次前向。forward 耗时按 `forwardId` 去重，HTTP 编码准备 `preparationMetrics` 按 `batchId` 去重；`precheckScope` 区分完整窗口预检与 forward 组 collation，不能把重复回执相加。
+
+Node 将同一个受信策略同时交给 selector 和 Python，并核对 `/health.executionPolicy`、`inferenceMode=inference_mode` 后才就绪；请求正文不能改变策略。推理模式在 worker 线程内进入，仍固定 CPU 两线程、原精度及原 native MHA 设置。此模式只完成无权重回归，新代码的真实权重、时延及峰值内存待用户稍后实测，未发布镜像。
 
 该主流程微批属于尚未部署的源码增量。协议、单实例及实测入口见 [2026-10-15 批处理记录](../../docs/competition/OWNED_LAYA_BATCHING_20261015.md)。微批只合并同时就绪的判断，不能跳过实际工具回执、MaaS 候选制备或用户问题依赖，也不保证固定提速或修复语义 review。
 
@@ -45,8 +100,6 @@ Docker 使用独立 Linux venv 与 `scripts/laya/requirements-image.txt`，apt/n
 World/Plan角色报告保持独立，不作为旧公共候选执行；原空MVP标记新owned绑定。
 详见 [资源绑定与调用](../../docs/competition/OWNED_IMAGE_BINDINGS.md)。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [当前设计审查门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。任意一位符合条件的非作者在当前 head 实际阅读并有效批准后，才可按授权合并；三人平等分担审查与合并责任，不得推卸，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 目标为 `huawei_ict_agentarts`；同一核心代码支持显式 `standalone-validation` 验证。
 本入口提供标准 8080 `/invocations`、`/ping`、同端口 `/ws` 和只读 `/invocation-status`，无需把现有 TS 改写为 Python。
@@ -144,3 +197,13 @@ ping 仅证明进程健康；真实模型、工具、trace、评估及取消须�
 
 原始导出清点：`npm run inventory --workspace=@personal-agent/agentarts-runtime -- <原件绝对路径> <新清单绝对路径>`。
 清单只输出白名单元数据和源片段哈希，保留原件在项目忽略目录；不执行 DSL 或 Python，不输出认证配置。
+
+### Trusted execution model directory
+
+The trusted `PA_AGENT_MODEL_CATALOG_FILE` alternative reads JSON once at startup. It is mutually exclusive with `PA_AGENT_MODEL_CATALOG`; an unreadable/invalid file stops startup with a sanitized error. The shipped metadata file is `src/default-model-catalog.json`; deployment must opt into it explicitly. Directory entries remain unverified until actual model requests pass. Desktop configuration, realtime routing and acceptance boundaries are documented in [the V5 wiring guide](../../docs/competition/DESKTOP_AGENTARTS_MODELS_V5.md).
+
+`PA_AGENT_MODEL_CATALOG` accepts JSON `{version:"1.0",defaultModelId,models:[{id,displayName,reasoningEfforts,requestProfile,route,type?,availability?}]}`. Profiles are `standard`, `deepseek-native-v1`, `bailian-deepseek-v1` or `huawei-openai-v1`; routes are `agentarts-proxy` or `runtime-bailian`. Model entries cannot carry URLs, keys or headers. Omitting the environment variable preserves the existing role providers. The default model must be text and must not be unavailable. Native Bailian DeepSeek depth entries should expose only `none`, `low`, `high`, `max`; compatibility aliases in the legacy proxy do not establish independent native depth values.
+
+The existing authenticated `/invocations` and WSS invocation query `{modelCatalogVersion:"1.0",action:"list"}` returns the directory using the existing message envelope and inner host credential. Its SHA256 revision binds normalized metadata; `executionModel:{catalogRevision,modelId,reasoningEffort?}` pins a selection. Unknown fields, stale revisions, unknown models and unsupported efforts are rejected. Native effort enters `ModelRequest.reasoningEffort`, never the prompt. Non-text/unavailable models remain visible but cannot execute thought requests. An unverified entry may be attempted; directory visibility does not verify inference authorization or native reasoning support.
+
+`agentarts-proxy` retains the trusted AgentArts inference endpoint/authentication. `runtime-bailian` runs inside the owned AgentArts image and calls the fixed Beijing workspace compatible API using `PA_AGENT_REALTIME_WORKSPACE_ID` and its host-held `PA_AGENT_REALTIME_API_KEY`. This is an explicit route, with no error fallback, redirect or unknown-write retry. Response telemetry binds configured/returned model, requested effort, route and status without recording prompts or credentials. It is response evidence, not a platform trace readback.

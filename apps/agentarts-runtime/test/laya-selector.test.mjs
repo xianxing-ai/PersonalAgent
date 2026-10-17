@@ -171,7 +171,7 @@ const decisionFor=(keys,index)=>answer({choice:keys[index],probabilities:Object.
 
 test('same-turn independent contexts and criteria use one batch and opaque identities despite repeated requestId',async()=>{
   let payload,posts=0;const receipts=[];
-  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
+  const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
     request:async(url,options)=>{
       posts++;assert.ok(url.endsWith('/v1/systemone/independent-batch'));payload=JSON.parse(options.body);
       assert.notEqual(payload.items[0].itemId,payload.items[1].itemId);
@@ -193,7 +193,7 @@ test('same-turn independent contexts and criteria use one batch and opaque ident
 });
 
 test('five same-turn requests preserve FIFO and cap the first batch at four',async()=>{
-  const groups=[];const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
+  const groups=[];const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
     const payload=JSON.parse(options.body);groups.push(payload.items?.map(item=>item.state)??[payload.state]);
     return Response.json(payload.items?independentReply(payload):answer());
   }});
@@ -204,7 +204,7 @@ test('five same-turn requests preserve FIFO and cap the first batch at four',asy
 
 test('cancelling one admitted batch item leaves its sibling HTTP and result alive',async()=>{
   let release,entered,transportSignal;const started=new Promise(resolve=>entered=resolve),blocked=new Promise(resolve=>release=resolve),receipts=[];
-  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
+  const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
     request:async(_url,options)=>{transportSignal=options.signal;const payload=JSON.parse(options.body);entered();await blocked;return Response.json(independentReply(payload));}});
   const cancellation=new AbortController(),a=selector.select({...input(),signal:cancellation.signal}),b=selector.select({...input(),requestId:'survivor'});
   const rejected=assert.rejects(a,{code:'CANCELLED'});await started;cancellation.abort();await rejected;
@@ -214,7 +214,7 @@ test('cancelling one admitted batch item leaves its sibling HTTP and result aliv
 
 test('one original deadline expiring in a batch cannot shorten another item deadline or revive late result',async()=>{
   let transportSignal;const receipts=[];
-  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),request:async(_url,options)=>{
+  const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),request:async(_url,options)=>{
     transportSignal=options.signal;const payload=JSON.parse(options.body);await new Promise(resolve=>setTimeout(resolve,70));
     assert.equal(transportSignal.aborted,false);return Response.json(independentReply(payload));
   }});
@@ -225,7 +225,7 @@ test('one original deadline expiring in a batch cannot shorten another item dead
 test('all abandoned batch items abort HTTP but next batch waits for non-preemptible CPU admission',async()=>{
   let entered,healthEntered,releaseCpu,posts=0,healthReads=0,cpuBusy=true;
   const started=new Promise(resolve=>entered=resolve),healthStarted=new Promise(resolve=>healthEntered=resolve);
-  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
+  const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
     if(url.endsWith('/health')){healthReads++;healthEntered();return Response.json({status:'ok',model:'multilingual',warmed:true,inferenceBusy:cpuBusy});}
     posts++;if(posts===1){entered();return new Promise((resolve,reject)=>{
       options.signal.addEventListener('abort',()=>reject(new Error('synthetic HTTP waiter ended')),{once:true});releaseCpu=()=>{cpuBusy=false;};
@@ -245,7 +245,7 @@ test('batch identity corruption is rejected before any candidate is delivered',a
     value=>({...value,items:[value.items[0],{...value.items[1],itemId:'unknown-item'}]}),
     value=>({...value,items:[value.items[0],{...value.items[1],error:{status:400,code:'INVALID_ARGUMENT'}}]})]) {
     const receipts=[];let posts=0;
-    const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),request:async(_url,options)=>{
+    const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),request:async(_url,options)=>{
       posts++;return Response.json(corrupt(independentReply(JSON.parse(options.body))));
     }});
     const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
@@ -256,7 +256,7 @@ test('batch identity corruption is rejected before any candidate is delivered',a
 
 test('one invalid result or explicit context overflow cannot contaminate a good independent item',async()=>{
   for(const bad of [{result:answer({choice:'not-a-candidate'})},{error:{status:413,code:'CONTEXT_WINDOW_EXCEEDED',requiredTokens:9000,encoderMaxTokens:8192}}]) {
-    let posts=0;const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
+    let posts=0;const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
       posts++;const payload=JSON.parse(options.body);return Response.json(independentReply(payload,rows=>[{itemId:rows[0].itemId,...bad},rows[1]]));
     }});
     const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
@@ -266,7 +266,7 @@ test('one invalid result or explicit context overflow cannot contaminate a good 
 });
 
 test('precise UTF-8 admission splits large items and rejects an oversized item without blocking a sibling',async()=>{
-  let posts=0;const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
+  let posts=0;const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
     posts++;assert.ok(url.endsWith('/v1/systemone'));assert.ok(Buffer.byteLength(options.body,'utf8')<=131072);return Response.json(answer());
   }});
   const large={...input(),candidates:[{id:'proposal',description:'中文'.repeat(4000)},{id:'review',description:'中文'.repeat(4000)}]};
@@ -278,14 +278,14 @@ test('precise UTF-8 admission splits large items and rejects an oversized item w
 test('shared forward provenance is checked and actual forward size is distinct from submitted size',async()=>{
   for(const corrupt of [value=>{delete value.sharedForward;},value=>{value.sharedForward.batchId='wrong';},
     value=>{value.sharedForward.batchSize=3;},value=>{value.inferenceMetrics.forwardScope='sdk_predict_batch';}]) {
-    const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
+    const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
       const payload=JSON.parse(options.body),value=independentReply(payload);corrupt(value.items[0].result);return Response.json(value);
     }});
     const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
     assert.equal(result[0].status,'rejected');assert.equal(result[0].reason.code,'EXTERNAL_FAILURE');
     assert.deepEqual(result[1],{status:'fulfilled',value:'proposal'});
   }
-  const receipts=[];const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
+  const receipts=[];const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
     request:async(_url,options)=>{
       const payload=JSON.parse(options.body);return Response.json(independentReply(payload,rows=>[
         {itemId:rows[0].itemId,error:{status:413,code:'INVALID_ARGUMENT'}},
@@ -301,7 +301,7 @@ test('shared forward provenance is checked and actual forward size is distinct f
 
 test('only explicitly rejected batch admission is retried after authenticated idle readback',async()=>{
   let posts=0,reads=0,firstPayload;
-  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
+  const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',request:async(url,options)=>{
     if(url.endsWith('/health')){reads++;return Response.json({status:'ok',model:'multilingual',warmed:true,inferenceBusy:false});}
     const payload=JSON.parse(options.body);posts++;
     if(posts===1){firstPayload=payload;return new Response('',{status:429});}
@@ -309,4 +309,54 @@ test('only explicitly rejected batch admission is retried after authenticated id
   }});
   assert.deepEqual(await Promise.all([selector.select(input()),selector.select(input())]),['proposal','proposal']);
   assert.equal(posts,2);assert.equal(reads,1);
+});
+
+test('default CPU strategy dispatches one item immediately and delivers it before a queued sibling',async()=>{
+  let releaseFirst,releaseSecond,posts=0;const receipts=[];
+  const first=new Promise(resolve=>releaseFirst=resolve),second=new Promise(resolve=>releaseSecond=resolve);
+  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),request:async(url,options)=>{
+    posts++;assert.ok(url.endsWith('/v1/systemone'));assert.equal(JSON.parse(options.body).items,undefined);
+    if(posts===1)await first;else await second;return Response.json(answer());
+  }});
+  const a=selector.select({...input(),requestId:'first'});assert.equal(posts,1,'No batching timer delays the first CPU item');
+  let bDone=false;const b=selector.select({...input(),requestId:'second'}).then(value=>{bDone=true;return value;});
+  assert.equal(posts,1);releaseFirst();assert.equal(await a,'proposal');assert.equal(bDone,false);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,2);releaseSecond();assert.equal(await b,'proposal');
+  assert.equal(receipts.length,2);assert.notEqual(receipts[0].forwardId,receipts[1].forwardId);
+  for(const receipt of receipts){assert.equal(receipt.executionPolicy,'sequential');assert.equal(receipt.forwardCount,1);assert.equal(receipt.batchSize,1);assert.equal(receipt.sharedForwardScope,undefined);}
+});
+
+test('unknown CPU policy cannot silently select packed execution',()=>{
+  assert.throws(()=>createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-key',cpuExecutionPolicy:'online-autotune'}),{code:'INVALID_ARGUMENT'});
+});
+
+test('new packed execution metadata binds an actual forward and rejects a mismatched trusted policy',async()=>{
+  for(const mismatch of [false,true]) {
+    const receipts=[];const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',onDecision:value=>receipts.push(value),
+      request:async(_url,options)=>{
+        const payload=JSON.parse(options.body),data=independentReply(payload);
+        data.execution={policy:mismatch?'sequential':'packed',forwardCount:1};
+        data.preparationMetrics={wallMs:5,processCpuMs:3,privateText:'never exported'};
+        for(const row of data.items){row.result.forward={forwardId:'aa000000-0000-4000-8000-000000000000',index:1,itemCount:2,
+          scope:'sdk_heterogeneous_forward',batchId:payload.batchId};row.result.inferenceMetrics.precheckScope='forward_group_collation';}
+        return Response.json(data);
+      }});
+    const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
+    if(mismatch){assert.equal(result.every(item=>item.status==='rejected'),true);assert.equal(receipts.length,0);}
+    else {assert.equal(result.every(item=>item.status==='fulfilled'),true);assert.equal(receipts[0].forwardId,receipts[1].forwardId);assert.equal(receipts[0].forwardCount,1);
+      assert.deepEqual(receipts[0].preparationMetrics,{scope:'http_batch_preparation',batchId:receipts[0].batchId,wallMs:5,processCpuMs:3});
+      assert.deepEqual(receipts[0].preparationMetrics,receipts[1].preparationMetrics);
+      assert.equal(receipts[0].inferenceMetrics.precheckScope,'forward_group_collation');assert.equal(JSON.stringify(receipts).includes('never exported'),false);}
+  }
+});
+
+test('new execution receipts cannot hide missing or invalid HTTP preparation cost',async()=>{
+  for(const preparationMetrics of [undefined,{wallMs:-1,processCpuMs:0},{wallMs:1,processCpuMs:null}]) {
+    const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-key',request:async(_url,options)=>{
+      const payload=JSON.parse(options.body),data=independentReply(payload);data.execution={policy:'packed',forwardCount:1};
+      data.preparationMetrics=preparationMetrics;return Response.json(data);
+    }});
+    const result=await Promise.allSettled([selector.select(input()),selector.select(input())]);
+    assert.equal(result.every(item=>item.status==='rejected'&&item.reason.code==='EXTERNAL_FAILURE'),true);
+  }
 });
