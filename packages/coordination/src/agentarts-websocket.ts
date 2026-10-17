@@ -93,6 +93,28 @@ export class AgentArtsRemoteInvocationError extends ProtocolError {
   }
 }
 
+/** Internal marker created only from an HTTP response to the invoke socket Upgrade. */
+export class AgentArtsWebSocketUpgradeError extends ProtocolError {
+  readonly httpStatus?: number;
+  constructor(status: unknown) {
+    const denied = status === 401 || status === 403;
+    super(denied ? 'UNAUTHORIZED' : 'UNSUPPORTED_CAPABILITY', denied
+      ? 'AgentArts WebSocket authorization denied' : 'AgentArts WebSocket upgrade is unavailable', false);
+    if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) {
+      this.httpStatus = status;
+    }
+  }
+}
+
+/** Only a validated, correlated terminal error frame creates this local classification. */
+export class AgentArtsTerminalError extends AgentArtsRemoteInvocationError {
+  readonly receipt:AgentArtsUnknownReceipt;
+  constructor(receipt:AgentArtsUnknownReceipt, remoteCode:Extract<AgentArtsTransportFrame,{type:'error'}>['code']='EXTERNAL_FAILURE') {
+    super(remoteCode);
+    this.receipt=Object.freeze({...receipt});
+  }
+}
+
 /** An invoke frame has never been handed to the socket. This is the only automatic fallback condition. */
 class BeforeInvokeConnectionError extends ProtocolError {
   constructor() { super('EXTERNAL_FAILURE', 'AgentArts WebSocket connection is unavailable', false); }
@@ -293,11 +315,10 @@ export class AgentArtsWebSocketTransport {
       try { response?.resume?.(); } catch { /* Do not parse an external failure body. */ }
       if (status === 401 || status === 403) {
         this.report({state: 'auth_required', sessionId});
-        this.breakConnection(connection, new ProtocolError('UNAUTHORIZED', 'AgentArts WebSocket authorization denied'));
       } else {
         this.report({state: 'unsupported', sessionId});
-        this.breakConnection(connection, new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts WebSocket upgrade is unavailable'));
       }
+      this.breakConnection(connection, new AgentArtsWebSocketUpgradeError(status));
     });
     socket.on('error', () => this.breakConnection(connection,
       connection.opened ? failProtocol() : new BeforeInvokeConnectionError()));
@@ -345,7 +366,7 @@ export class AgentArtsWebSocketTransport {
           if (!pending.sent || frame.accepted !== pending.accepted) throw failProtocol();
           pending.afterTerminal({...pending.receipt, accepted: pending.accepted});
           this.dropPending(connection, frame.requestId);
-          pending.reject(new AgentArtsRemoteInvocationError(frame.code));
+          pending.reject(new AgentArtsTerminalError({...pending.receipt,accepted:pending.accepted}, frame.code));
           return;
         }
         throw failProtocol();

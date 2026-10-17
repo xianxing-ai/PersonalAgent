@@ -25,6 +25,24 @@ Provider 支持盘古原生 `/api/v2/chat/completions` 和 ModelArts MaaS 的 Op
 
 `maxOutputTokens` 是可选的本地请求预算。未配置时 Pangu 请求不发送 `max_tokens`，由实际模型服务执行其自身的上下文窗、输出上限和账户限流；显式配置时网关仍校验为正整数并传给 Provider。
 
+## Competition 辅助模型的原生思考配置
+
+PR #347/F28 的首批落地复用 Runtime `createConfiguredSubagentModelGateway`。受信宿主可为 OpenAI compatible 辅助模型传入 `nativeReasoning`：`thinking`（enabled/disabled）、显式 `supportedEfforts`、可选固定 `effort` 和 `outputTokenParameter`（max_tokens/max_completion_tokens）。仅支持声明范围内的 effort；关闭思考时不能同时声明 effort。配置先校验，再读凭据或发送网络请求，不按品牌或模型名猜支持。
+
+配置存在时 Provider 发 `thinking.type`，按声明发 `reasoning_effort`；`maxOutputTokens` 只映射一个输出字段。`max_completion_tokens` 含思考输出，不是单独 `thinkingBudget`。本路径拒绝 thinkingBudget。无配置时保留旧请求字段；Pangu 历史路径不新增原生控制。
+
+能力中的 `nativeReasoning` 是条件性配置说明，经过 StructuredToolProvider 保留；不证明真实原生工具调用、原生思考支持或端点可用。Competition 子任务的步骤档位不覆盖固定原生配置，配置版本与原生说明参与持久绑定。见 [ADR-0024](../../docs/adr/0024-competition-native-reasoning.md) 和 [本包验收](../../docs/modules/MOD-04A-NATIVE-REASONING-20261013.md)。Local Profile 不新增执行入口，真实云验收仍待授权。
+
+## Competition 可见请求预算（provisional）
+
+`OpenAICompatibleModelProviderOptions.requestTokenBudget` 是受信宿主的 `VisibleRequestTokenBudget`，包含 model、tokenizerRef、configurationRef、reservedOutputTokens 与同步 countInputTokens(serializedBody)。必须显式提供 contextLimitTokens，且模型身份一致；声明不是已验证 tokenizer。计量器解析完整 Provider JSON，并按实际模型模板计量输入，不能用字符比例或 JSON 字节数冒充精确 token。
+
+计量位于 StructuredToolProvider 包装之后，包含工具目录、可见系统提示、消息和已确认继续回执。每次调用在凭据之前检查 `inputTokens <= contextTokens - 实际输出预留`，等待凭据后复测；漂移拒绝发送。请求体提前生成且不再读取可变消息。未传 maxOutputTokens 时使用宿主预留，传入值只能收窄；原生声明决定唯一输出字段。历史无计量配置保持字段兼容，ModelResult.requestBudget 明确 unmeasured。
+
+ModelCapabilities.requestTokenBudget 只含版本与预算元数据，ModelResult.requestBudget 记录测量结果；scope 为 provider-body，hiddenContext 始终 unknown，不覆盖平台隐藏提示，也不替代累计 usage。宿主更换模型、tokenizer 或配置时须更换版本并重建网关，Competition 的原子任务恢复比较该声明。没有新增持久正文、wire Schema、迁移或依赖；生产真实计量器尚未注入，Desktop 仅展示绑定一致的最近观测，无观测或重启仍显示未计量。见 [ADR-0026](../../docs/adr/0026-visible-model-request-budget.md)。
+
+Competition 可信宿主可显式选择 `requestFormat:'huawei-maas-deepseek-thinking-v1'`，将既有 MaaS DeepSeek 的 `reasoning_effort:none` 转为 `chat_template_kwargs.thinking:false`，再序列化、计量与发送。Provider 不按域名或模型名推断支持；未声明时保持原行为。格式进入能力、预算和恢复绑定，格式增加/移除使旧提案恢复拒绝。注入 fetch 必须原样传输已计量正文；镜像包装器只拒绝重定向。此兼容转换不证明完整模板或 MaaS tokenizer 匹配，见 [ADR-0028](../../docs/adr/0028-final-visible-request-body.md)。
+
 ## 原生 Live 响应生命周期
 
 `QwenRealtimeModelGateway` 保持现有公开请求/会话/事件形状。工具请求关联当前 `response_id`，同一 `call_id` 只执行和回传一次；当前 response 完成且本轮所有工具已回传后才发送一次续答。旧/重复完成事件不能清空新 response 或重复 drain，取消的 response 不被记作完成。

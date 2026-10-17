@@ -1,5 +1,97 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-16 远程 MCP 有界缓存与原 Runtime 回执（provisional）
+
+`RemoteReadonlyMcpOptions.readRunReceipt` 为受信宿主同步只读查询，绑定 task/run 与原参数摘要；只回收持久 confirmed/failed 的本地缓存，unknown 保留。`TaskRuntime.isToolExecutionActive` 只观察当前进程首次 Gateway 分派的精确输入标记，不授予执行权限、不从 SQLite 恢复；Desktop 消费原执行记录、原结果 checkpoint 和该标记。无 wire、Schema、迁移或新依赖；接口继续 provisional，真实平台/真人及完整 MOD-06 验收未由合成容量回归完成。见 [修复与验证](../modules/MOD-06-CAPACITY-RECEIPTS-20261016.md)。
+
+## 2026-10-17 审批恢复与 WSS 结果预算修复（provisional）
+
+AgentArts Runtime 工厂增加仅可信组合可注入的非秘密 `deploymentVersion` 与同步 `assertDeploymentBinding`，复用原 `coordinationBinding` 和任务 checkpoint；HTTPS/WSS 固定版本，同版凭据可刷新。Competition 任务在批准写入前、直接恢复前及云端发送前核对原配置；缺失或失配返回 `REVISION_CONFLICT`，不重新绑定旧任务，不先消费授权。显式模型子任务也按原父派发、原选择及执行种类恢复。
+
+`OwnedWorkflowAdvanceRequest.resultFits` 仅由可信传输组合注入，workflow JSON 白名单仍拒绝该字段。WSS 对完整事件数组执行现有 64,000 字节预算；输入摘要只还原同绑定原输入，工具结果引用保留原操作摘要和 Evidence。不可交付的新节点明确 unavailable 并保留可续检查点，unknown 不重放；HTTP 原容量与小结果形状保留。未增加 Core wire、数据库迁移、第二任务库或协议容量，也未扩大冻结范围。具体行为与验证边界见 [V5 接线](../competition/DESKTOP_AGENTARTS_MODELS_V5.md)。
+
+## 2026-10-16 Desktop WSS／语音／模型目录增量（provisional）
+
+Desktop 多会话、草稿、原生推理强度与音频诊断均复用私有 IPC；任务、审批及听写结果绑定原对话，不新增 Core wire 或执行循环。对话存储 v4 保留 v1–v3 历史及迁移前备份；回退不能直接用旧版读取 v4。
+
+Huawei SIS 增加兼容的 `HuaweiSisRequestAuthPort`，由可信宿主对固定区域、项目的 ASR/TTS 请求签名，与原 `HuaweiSisTokenPort` 二选一。Desktop 长期访问密钥以独立 safeStorage 密文保存；不向 Renderer 返回密钥或签名头。此端口仍 provisional；配置、鉴权探针、实体设备及 AgentArts 转发分别验收，长期凭据不证明已有 AgentArts→SIS 接口。
+
+[V5 接线说明](../competition/DESKTOP_AGENTARTS_MODELS_V5.md)记录固定版本 WSS 主通道、同版原生语音转发、受信模型目录与加密默认选择。
+原 query 增加可选 `executionModel`，原 `subagent.dispatch` 增加可选 `reasoningEffort`；旧输入兼容，原 Core wire、WS 帧和数据库迁移不变。
+主／子模型选择绑定目录 revision 并持久化在原 checkpoint；未知结果不换模型重试。`readSubagentTasks()` 只投影原任务。
+目录可见不等于模型授权或真实推理通过；原 API 配置保留。新增接线保持 provisional，真实云端、设备与模型能力分别验收，不扩大冻结范围。
+
+本机 `task.reconcile.finish` 是私有 Desktop IPC，只能由原面板/工作区对已取消或过期的 confirmed subagent export-withheld 任务发起。原回执、所有子任务绑定及完整读集 CAS 通过后，原任务才进入 cancelled/failed；已收到的历史失败回执在同事务留下失败消费审计，不重发云请求或工具。未来 WSS 明确终态错误与应用解析失败分别处理，unknown 仍保留 hold。没有新增 Core wire 或数据库迁移；实现与真实验证分开见 V5 说明。
+
+## 2026-10-16 V4 生产消费接口（provisional）
+
+[V4 接线](../competition/WORKFLOW_WIRING_V4.md)新增 Runtime Application 的主动 host/原任务生命周期、
+真实 HTTP/SSE 镜像签名适配、原决策工具组合、公开 Memory/当前上下文校验和 OwnedWorkflowHostBridge 工厂。
+同次影子意图经原 ToolGateway 回执、可信资源/用户比较设置及 checkpoint 进入 Engine；F23_N04 为写、N05 只读原 operation。
+Desktop 通知/语音当前参数确认及旧 Todo 策略复用同一 NotificationService/原 CAS。
+这些是进程内及现有镜像协议增量；没有新增 Core wire operation、替代数据库、静默模型回退或冻结能力。
+实际模型/账号/设备/平台验收和本轮构建、PR、发布分别记录；旧 V3 云版本不代表本轮已部署。
+
+## 2026-10-15 当前真实证据与各MOD消费责任（不扩冻结）
+
+[完整实测汇总](../competition/evidence/test-image-v3-20261015/full-workflow-results.json) 与 [发布回执](../competition/evidence/test-image-v3-20261015/owned-release.json) 证明新ARM64 SWR/云精确版本目录、真实AgentArts新代理及同版镜像本机Docker+本机Runtime/Laya两条公共编码主影子/CAS，共41条Evidence。两条全链不在远端Runtime跑；各分支父succeeded，协调锚点created。Laya全链输入182–618ms未达150ms，未校准站点真实升级DeepSeek。首轮鹈鹕partial失败保留。
+
+所有新增工作流、签名host、平台服务和主动接口保持provisional；缺真实provider/账号/授权的具体能力仍unavailable。28图185节点保留且串行，不能当全部真实业务完成；日常影子收益机会开关尚未验。本节覆盖后续下文“未发布/主影子未通过”等早期时间状态，但不覆盖原始失败，也不新增wire冻结。
+
+每个MOD负责人自己接实际调用方、跑必要消费测试并交Evidence/文档，具体唯一责任与公开依赖见 [十项接线包](../competition/COLLABORATOR_WIRING_PACKAGE.md)、[全MOD交接](../modules/CURRENT_MOD_WIRING_HANDOFF.md)。平台MCP、原生知识、trace与效果评估应逐面绑定受信adapter并独立读回；本机Wiki/本地MCP或模型代理均不能代替相应平台验收。
+
+
+## 2026-10-15 V3 主动责任与通知接线（provisional）
+
+新增接口复用原 Runtime SQLite、ConnectorHost、Policy/ToolGateway、Evidence 和 Scheduler：
+`createRuntimeProactiveConnectorHost`、`createRuntimeNotificationHost`、`createProactiveWorkflowSession`
+由 `@personal-agent/runtime/application` 导出，`createRuntimeAtomicStatePort` 由 Runtime 公开入口导出。
+镜像 `proactiveVersion:1` describe/advance 继续走原 `/invocations`，输入与结果签名绑定原
+task/session/controlRevision/deadline；签名不授予工具权限。主动来源先持久化事件批次再推进 cursor，
+未知操作读回原执行；无人值守/归来不续期限、不重发通知。静默 feed、用户打扰配额和多渠道同轮计数
+使用同一原子状态，旧通道预占在实际发送前按最新策略复查。
+完整形状、端口所有权和缺口见 [协作者接口](../competition/PROACTIVE_COLLABORATOR_INTERFACES.md)，
+实现与验证记录见 [V3 测试说明](../competition/TEST_IMAGE_V3.md)。这些增量没有冻结新的 Core wire
+operation，没有新增数据库迁移；离线真实 HTTP/SQLite 集成和容器目录检查不等于账号、设备、平台部署
+或全部 28 条业务链验收。下节是早期全图增量的历史状态，不覆盖后续独立回执。
+
+## 2026-10-15 本机 Laya／镜像全图增量（provisional）
+
+Owner 指定本机 Laya，28 项工作流及 185 节点仍由自有镜像编排，单图串行推进。
+`decision.choose_candidate` 与逐节点 `workflow.host.*` / `workflow.guard.*` 复用现有 Runtime、Policy、
+ToolGateway 和签名 HostBridge 回执。catalog 新增 designCoverage 和 adapterRequirements；模板 `2026.10.15.2`
+保留原图决策要点、模型分工、汇合及验收语义，提供逐图摘要。没有新增本地 wire 字段、数据库迁移或冻结能力。
+旧模板或嵌入式 checkpoint 不在新配置下重放；未知写入继续在原版本核实。
+本机 ARM64 目录验证通过，但 Laya 正反质量和鹈鹕主／影子完整修复仍未通过，镜像未发布。
+接口、148 个绑定及真实失败证据见 [接线说明](../competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
+## 2026-10-15 main 已合入增量（逐项保持原验证边界）
+
+合入基线 `origin/main@8c395f5f` 已包含以下三个工作包；下文历史的“待评审/未集成”是当时记录，不能覆盖本节已合入事实。这里登记公开实现与主线状态，不新增 Core wire capability、数据库或冻结范围。
+
+- **#350 原生 thinking**（`2009d4c1`）：沿现有 ModelGateway、Runtime 辅助子任务工厂及 Desktop 加密配置提供 host-only `nativeReasoning`，开关、支持列表、固定强度、输出预算和恢复身份绑定仍按原契约消费。已合入不证明所有真实模型端点支持；模型/工具链继续 provisional。
+- **#361 请求级观测**（`fef57f61`）：公开 `@personal-agent/agentarts/observability` 的 `validateInvocationIdentity`、`projectTraceObservation`、`projectRunLogObservation`、`buildRunLogPath`，以及现有手工 reader 的 `readAgentArtsTraceObservation`/`readAgentArtsRunLogs`。读取有绝对 deadline、取消、大小上限、单次 GET、禁重定向和脱敏约束；实际 invocation 身份来自受信调用记录。平台日志关联回执不等于完整 trace、命中版本、成本、效果评估或原生知识已验证，缺字段/权限/adapter 仍明确 unknown/unavailable。见 [MOD-32](../modules/MOD-32-AGENTARTS-OBSERVABILITY.md)。
+- **#359 取消后的补丁核实收口**（`8c395f5f`）：现有 `WorkspacePatchReconciliationAdapter.reconcile` 与 `TaskRuntime.reconcileToolExecution` 在 Competition 已申请取消时仍先保存原 applied 结果、普通工具结果与 marker 确认；仅无 started/unknown 工具和云端 inflight/unknown 后确认取消。未知写不重做，已发生副作用保留，补丁成功不等于任务成功；取消受理仍不等于执行已停止。见 [补丁恢复验收](../../packages/coding-tools/ACCEPTANCE-20261013.md)。
+## 2026-10-15 最终可见请求格式（provisional）
+
+可信 Competition 宿主显式选择的 requestFormat 在 Provider 序列化/计量之前完成既有 MaaS 思考开关转换，并参与模型、预算与子任务恢复绑定；镜像 fetch 不再改写正文。无新 wire operation、迁移或冻结项。完整官方模板、生产真实计量与 MaaS 匹配仍未验收，见 [工作包](../modules/MOD-04A-FINAL-REQUEST-BUDGET-20261015.md)。
+
+## 2026-10-15 Competition 预算展示（provisional）
+
+[预算展示工作包](../modules/MOD-04A-BUDGET-DISPLAY-20261014.md) 沿既有 modelApi.state / Admin snapshot 展示经过宿主校验的 Provider 计量元数据，保持原 IPC 和 wire Schema；不持久化新增采样、正文或凭据。默认 meter 未配置则未计量，隐藏上下文未知。固定官方词表的 Windows 原始文本核验不等于完整模板/MaaS 验收，生产不自动启用实验 meter。无新增 capability、迁移、产品依赖或冻结范围变化；原生 Electron/IPC 烟测通过，云调用 0。
+
+## 2026-10-14 Competition 可见模型请求预算（provisional）
+
+[F27 Provider 工作包](../modules/MOD-04A-VISIBLE-REQUEST-BUDGET-20261014.md) 增加 host-only `VisibleRequestTokenBudget`、`ModelCapabilities.requestTokenBudget` 和 `ModelResult.requestBudget`，沿 OpenAI compatible 序列化与 Competition 子任务工厂接线。明确模型/tokenizer/configuration 版本及显式窗口，计量工具提示包装之后的完整 Provider 请求；输出预留映射实际输出字段，凭据前/后校验，SQLite 恢复绑定预算描述。无计量器明确 unmeasured；hiddenContext 为 unknown，不能据此保证平台完整上下文窗。无新 wire capability、Schema、迁移、依赖或 frozen 范围变化；真实模型/tokenizer、自有镜像及 Desktop 展示仍待验收。见 [ADR-0026](../adr/0026-visible-model-request-budget.md)。
+
+## 2026-10-14 Competition 编译上下文增量（provisional）
+
+[F27 上下文工作包](../modules/MOD-09-CONTEXT-BINDING-20261014.md) 沿原 `coordinationInput` 与 TaskRuntime 增加 `competition-context:v1` 摘要绑定和 host-only `CoordinationGoalTokenBudget`。可信同步计数只覆盖最终编译 goal，加宿主输出预留；Desktop 未配置已验证 tokenizer 时记为 unmeasured。字符上限仍为 16000 UTF-16 units；发送、凭据等待与恢复比较版本，新检查点由原逐事实父/子任务删除链路清理。无 wire capability、Schema、迁移或冻结范围变更。真实云调用 0，非作者评审及集成待完成；见 [ADR-0025](../adr/0025-competition-context-binding.md)。
+以上三个上下文/预算工作包随 `origin/main@18ec9efe` 合入本分支；原日期、作者记录和验证边界保留。“评审及集成待完成”为当时状态，不覆盖后续 Git 合入事实；不据此增加 frozen 范围或真实服务验收。
+
+## 2026-10-13 Competition 辅助模型原生思考配置（provisional）
+
+[MOD-04A 首批架构落地](../modules/MOD-04A-NATIVE-REASONING-20261013.md) 沿现有 Runtime 工厂、ModelGateway 和 Desktop 加密配置增加 host-only `nativeReasoning`（开关、支持列表、固定强度、输出预算字段）。原生配置与步骤预算独立，恢复绑定配置版本与声明；参数拒绝先于凭据/网络。无新增 wire capability、Schema、数据库迁移或依赖，Core Runtime Profile 1 冻结范围不变。该原始交付阶段真实云调用 0，配置和离线测试不证明真实端点支持；后续已由 #350 合入 main，见上节。边界见 [ADR-0024](../adr/0024-competition-native-reasoning.md)。
+
 ## 2026-10-12 新版真实云场景登记（不提升冻结范围）
 
 自有 ARM64 镜像源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 的未合并分支已取得真实 Huawei WSS → MaaS → 本地 Policy / 生产 workspace.read_text → Evidence → 云端续答证据，任务 succeeded，执行 1 次，Evidence 1 条，HTTPS 应用调用 0。重开 Runtime Application 后仅持久读回通过，不重放工具；真实云端 `/invocations/bindings?endpoint=Latest` 发现 8 Workflow / 3 Controller。详见 [验收记录](../modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
@@ -24,7 +116,24 @@ WSS主通道、显式HTTPS备用、同会话复用、发送前持久身份与未
 知识受控写入和固定 MCP/Skills已有受限增量，以当前公开源码/README为准；本文较旧历史矩阵不能抹去这些增量，也不能据存在代码冻结整个模块。合并确认是开发规则，不成为产品运行时授权或接口冻结证据。
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+2026-10-11 [MOD-08O](../modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md) 在 PR #322 上继续：
+peer 可选 readCitation、桥接版本 2（PA2，旧 PA1 仅检索）与 Runtime `wikiSource.acquireWiki`。
+TrustedKnowledgeSource 的读取租约可选提供既有 ReadOnlyPageVaultPort.readPage；缺少稳定页
+身份或引用能力时记忆来源 unavailable。接入原 WikiSource/逐条确认，不增加 task wire
+capability、迁移或依赖。接口保持 provisional，未完成真实用户/云端或主线集成验收；
+方案见 [ADR-0021](../adr/0021-paired-citation-memory.md)。
+
+2026-10-11 [PR #322](https://github.com/zemeng5208/PersonalAgent/pull/322) 已交付、待非作者评审/集成：[MOD-08M](../modules/MOD-08M-UNICODE-PAIRING-01.md)
+新增 `@personal-agent/knowledge/pairing` 与 Runtime Application `createObsidianPairingHost`。
+它们是 **host-only provisional** 组合端口，复用既有 KnowledgePort 和工具/Policy 链，
+不新增 task wire operation、数据库迁移或云 capability。后续本地增量
+[MOD-08N](../modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md) 增加公开
+`@personal-agent/knowledge/bridge` 的版本 1 回环 TLS 指纹/一次性密钥消息协议及原生配对窗口，
+仅私人只读检索，仍 **provisional**；下方知识模块的完整可用性不提升为 frozen。方案见
+[ADR-0020](../adr/0020-obsidian-authenticated-bridge.md) 与
+[ADR-0019](../adr/0019-obsidian-runtime-pairing.md)。
 
 版本：1.3 · 日期：2026-09-27 · 基线提交：`9c40a0853b8db9e05e91c978e35d8e1a40788b39`
 
@@ -227,10 +336,10 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | 凭据 | SecretStore save/replace/delete/status 与迁移 | 只有 ConnectorHost 私有 read 端口；无公共管理面或 Windows 适配 | MOD-05 `goo122`、MOD-16 `zemeng` |
 | 通知 | Runtime 列表/恢复、已读/隐藏、策略配置与 Desktop 展示 | NotificationService 已集成但尚未接 wire 或 Desktop；`notification.created` 仍无生产发布链 | MOD-23 `Potatos498`、MOD-13 `zemeng` |
 | 语音 | `voice.start` / `voice.stop`、ASR/TTS 流和设备适配 | session/wake/transcript consumer 仍在冲突的堆叠分支，main 无生产提供者；真实供应商、流协议和设备验收未提供 | MOD-14/15 `zemeng` |
-| 知识 | `KnowledgePort`、Obsidian/LLM Wiki | PR #93～#95、#97、#98 已合并：provisional `KnowledgePort`、脱机及 Obsidian 只读适配器、显式 `knowledge.search` ToolGateway/Policy 接线、公开演示资料的 Fake Competition 审批链已完成离线验收。真实 Vault 授权/验收、生产 Runtime 注册、可安装插件、私人结果云端发送控制和 LLM Wiki 仍 unavailable | MOD-08 `goo122` |
+| 知识 | `KnowledgePort`、Obsidian/LLM Wiki | PR #93～#95、#97、#98 已合并：provisional KnowledgePort、只读 Vault、Policy 检索工具及公开资料 Fake Competition 链。[MOD-08G](../modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)/[08H](../modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)/[08I](../modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md) 在 [PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 提供 WikiPort、稳定来源引用、revalidateWikiFact 与 host-only 写回投影恢复；本机完整 check 通过，尚未评审/集成。[MOD-08J](../modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md) 新增 host-only createWikiSourceMonitor、状态和批量 revalidateSources，沿用现有 tick 驱动只读来源检查；专项及真实合成 Electron 后台链路通过，完整门禁见工作包，已在 [PR #321](https://github.com/zemeng5208/PersonalAgent/pull/321) 堆叠交付，待评审/集成。仍 provisional，无新 wire capability。[MOD-08K](../modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 通过 PR #321 提供应用 SQLite 备份协调、clearIndex 和临时全文索引及只读插件包；host-only provisional。[MOD-08L](../modules/MOD-08L-OBSIDIAN-INSTALLATION-01.md) 修复真实宿主相对 require，补齐显式安装/卸载，Obsidian 1.12.7 合成 Vault 验收通过；仍无新 wire 端口。整篇笔记备份保留并报告 pending；持久索引、插件 Runtime 配对、跨库投影、真实云消费与完整 LLM Wiki 仍 unavailable | MOD-08/09 `goo122` |
 | 记忆 | 生产 `MemoryQueryPort` / `FactChangeFeed` 提供者、确认消费、修正/删除 | PR #89、#90、#91 已合并 provisional 端口、Fake、SQLite 恢复与确认后原子激活投影；DEP02 仅新增可信组合和显式撤回版本，生产 Runtime capability、自动触发、真实来源及撤回证明仍未提供 | MOD-09 `goo122` |
-| MCP | 本地 MCP Host/Client 端口 | 对应 package、注册适配和真实调用未提供 | MOD-06 `goo122` |
-| Skills | 本地 Skill 加载/版本/执行端口 | 对应 package 和闭环未提供 | MOD-07 `goo122` |
+| MCP | 任意服务自动注册、OAuth、写工具及真实平台/真人完整验收 | main 已有固定官方只读 stdio；G10/G11/G14 分支有固定远程绑定、safeStorage、独立管理/生产注册和原 Runtime 审批读回；实际 Electron 验证与原生合成响应分开记录。独立 TLS 检查 5/5；新增 [Desktop/TLS 组合](../modules/MOD-06-PRODUCT-TLS-20261016.md) 用默认 fetch、进程专属 CA、实际 Electron/安全存储/SQLite，成功链路及四类证书/主机/目录/重定向拒绝通过。长驻 run 身份上限 64、重连不重置，修复已随 #369 普通推送并传递至 #373；服务/凭据仍合成，未验证第三方身份、OAuth/云出口，均 provisional，未宣称进入 main | MOD-06 `goo122` |
+| Skills | 任意脚本引擎及真实云端使用 | main 已有 packages/skills 固定参考摘要；本机 SKILL.md 安装、资源本地预览和 Competition 使用增量在未合并 [PR #318](https://github.com/zemeng5208/PersonalAgent/pull/318)，见 [安装记录](../modules/MOD-07-LOCAL-INSTALLATION-20261009.md)，不冻结；原生完整安装、任意脚本与真实云验收未提供 | MOD-07 `goo122` |
 | 决策 | 目标/事实/决策图谱的生产集成 | main 已有版本图及 SQLite/Fake 原子 `appendBatch`；自动事实投影、真实事实来源与生产消费未完成 | MOD-27 `zemeng`，存储 `goo122` |
 | 认知 | 事件驱动的完整计划修复 | main 已有离线影响分析与显式修复预览/提交，并通过原子 `appendBatch` 写入；事实变化流、自动投影和真实 Evidence 未完成 | MOD-28 `zemeng` |
 | AgentArts | Competition Profile 的真实身份、Agent/Workflow、MaaS/模型、知识、MCP/Skill、工具提案与多 Agent | main 已有 provisional adapter 和离线工具循环；Workflow 输入仍在堆叠分支，没有成功 deployment/API/trace 与真实 MCP/Skill 读回 | MOD-29～31 `zemeng` |
