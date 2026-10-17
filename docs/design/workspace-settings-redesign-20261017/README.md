@@ -84,6 +84,10 @@ Google **Material Design 3**（token/动态色）、**Microsoft Fluent 2**（Win
 
 > 第二轮改动范围：`server.mjs`（自检语义 + decode 容错）与 `proposals/03`、`proposals/05`（用户输入回防转义）；未触碰其余四页与任何生产代码。对应 PR #378 审查者（zemeng5208）提出的两条非阻断建议。
 
+| 9 | **审查跟进（2026-10-17 第三轮，PR #380 合并后落实其审查者两条非阻断清理点）**：① `proposals/03` 双 `esc()` 声明去重——删除 L1340 被遮蔽的强实现，原唯一实现（原 L1549，弱版仅 `& < "`）升级为强版（`& < > " '` + null 容错），页内所有调用方（目标卡/胶囊/图标控制等）统一走唯一入口；② `server.mjs` guard 分支响应体辨识化（`404 not found (traversal rejected)`），自检对全部段内编码用例断言拒绝通道响应体，并对回退语义用例断言精确 `"404 not found"`（allowlist 精确匹配下纯状态码断言无法区分两通道——已取实跑基线证据） | ✅ 通过（selftest 19 路由 0 失败、body 全部 ok；6 页结构 0 问题；VM 语法 6/6；esc-e2e 16/16 PASS——含「esc 恰一处 + 强版特征」新断言；重验收 OK=88 PROBLEMS=0） |
+
+> 第三轮改动范围：`server.mjs`（辨识化断言）与 `proposals/03`（esc 去重升级）。方法论澄清：第二轮验证中「03 无 esc 助手」的早期工具断言系正则过度转义假阴性，运行时实际生效的一直是原弱实现（注入仍被中和，`<` 已覆盖）；本轮以「唯一实现 + 强版语义」收拢，修正第二轮对 03 转义覆盖表述过宽之处。
+
 复核补充：方案 3 在验收时发现缺少「等待结果核实/正在取消/已取消」三个状态词，已补齐（2 条演示任务 + 3 枚筛选 chip + 状态映射）。
 证据原始文件（不入库）：`.cache/workspace-redesign-qa/acceptance-receipt.json`、`server-selftest.txt`、`page-*.json`、`site-acceptance.txt`。
 
