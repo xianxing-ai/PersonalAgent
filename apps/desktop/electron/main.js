@@ -1564,7 +1564,6 @@ async function initializeRuntime() {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
       const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
-        
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
