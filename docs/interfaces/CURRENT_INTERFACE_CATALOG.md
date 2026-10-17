@@ -163,7 +163,7 @@ capability、迁移或依赖。接口保持 provisional，未完成真实用户/
 
 | 部署 profile | 优先级 | 当前能力 | 接口规则 |
 | --- | --- | --- | --- |
-| `huawei_ict_agentarts` | 当前唯一优先实现与比赛验收路径 | 架构 accepted；接口 `provisional`；main 已包含 #317 的固定版本真实 WSS 文件读取、一次性审批续答与 Evidence 闭环；其余业务场景和实体设备仍分别验收 | 只在明确已部署配置中使用已验证场景；不静默回退，不扩大冻结集合 |
+| `huawei_ict_agentarts` | 当前唯一优先实现与比赛验收路径 | 架构 accepted；接口 `provisional`；main 已合入 #317 的受限 WSS 读取与审批实现；2026-10-12 真实读取/Evidence 回执绑定独立固定版本镜像，并非 main HEAD 实测；其余业务场景和实体设备仍分别验收 | 只在明确已部署配置中使用已验证场景；不静默回退，不扩大冻结集合 |
 | `local` | 可选保留 | 现有 Agent/Model 部分实现为 `provisional` | 不删除既有代码；新增 Local 能力不阻塞 Competition，也不计入比赛验收 |
 
 ## 2. 状态定义与冻结门槛
@@ -354,7 +354,7 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 
 ### 6.1 Competition 执行面（provisional）
 
-PR #36、#49、#72、#80 均已进入 main：文字 Coordination/CloudAgent、Workflow 输入、总载荷边界与 Runtime 审批工具循环已有源码/测试。#317 固定版本真实 Huawei 主 WSS 的一次文件读取、一次性审批续答、Evidence 及 deployment/version 读回已有独立记录；这不等于全部 11 个绑定逐项调用、平台 trace/评估、原生知识/MCP/Skill、真实写入或实体设备均已验收。
+PR #36、#49、#72、#80 与 #317 的相关实现已进入 main：文字 Coordination/CloudAgent、Workflow 输入、总载荷边界与 Runtime 审批工具循环已有源码/测试。2026-10-12 独立固定版本镜像源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 的真实 Huawei 主 WSS 一次文件读取、一次性审批续答、Evidence 及 deployment/version 读回已有记录；该源码不是当前 main 的祖先，回执不构成 main HEAD 实测，也不等于全部 11 个绑定逐项调用、平台 trace/评估、原生知识/MCP/Skill、真实写入或实体设备均已验收。
 
 ### 6.2 世界状态与认知面（provisional）
 
