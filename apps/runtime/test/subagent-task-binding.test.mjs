@@ -14,11 +14,12 @@ const descriptor = {name:'fixture.child-read', version:'1.0.0',
   sideEffect:'read',requiredScopes:['fixture:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false};
 const context = parent => ({taskId:parent.taskId,runId:'dispatch',authorizationRef:'parent-ref',scopes:['agent:delegate'],
   signal:new AbortController().signal,deadline:new Date(Date.now()+60_000).toISOString()});
-function fixture(automatic = true, database = ':memory:') {
+function fixture(automatic = true, database = ':memory:', local = false) {
   const calls = [];
   const tool = {descriptor,execute:async (input,ctx) => {calls.push(ctx); return input;}};
-  const app = createRuntimeApplication({path:database,profile:'huawei_ict_agentarts',tools:[tool],
-    coordination:new FakeCoordinationPort(() => ({kind:'text',text:'unused',verification:'mock'})),
+  // API recovery remains a Local fixture; Competition selects models on its cloud port.
+  const app = createRuntimeApplication({path:database,profile:local?'local':'huawei_ict_agentarts',tools:[tool],
+    ...(local?{}:{coordination:new FakeCoordinationPort(() => ({kind:'text',text:'unused',verification:'mock'}))}),
     ...(automatic ? {automaticTools:[{toolName:descriptor.name,toolVersion:descriptor.version}]} : {})});
   const parent = app.runtime.submitTask({goal:'delegate',conversationId:'competition',idempotencyKey:'parent'});
   return {app,parent,calls};
@@ -86,7 +87,7 @@ test('unknown selected model stays failed without falling back to legacy Pangu c
   } finally {app.close();}
 });
 test('a child waiting for actual approval cannot be aggregated as succeeded', async () => {
-  const {app,parent,calls} = fixture(false);
+  const {app,parent,calls} = fixture(false,':memory:',true);
   try {
     const gateway = new ModelGateway(new FakeModelProvider([()=>({kind:'tool_proposal',
       proposal:{toolName:descriptor.name,toolVersion:descriptor.version,arguments:{value:'pending'}}})]));
@@ -103,7 +104,7 @@ test('a child waiting for actual approval cannot be aggregated as succeeded', as
   } finally {app.close();}
 });
 test('approved child resumes the same invocation once and readback replaces pending aggregation', async () => {
-  const {app,parent,calls} = fixture(false);
+  const {app,parent,calls} = fixture(false,':memory:',true);
   try {
     const gateway = new ModelGateway(new FakeModelProvider([
       ()=>({kind:'tool_proposal',proposal:{toolName:descriptor.name,toolVersion:descriptor.version,arguments:{value:'approved'}}}),
@@ -138,7 +139,7 @@ test('approved child resumes the same invocation once and readback replaces pend
   } finally {app.close();}
 });
 test('changing the selected deployment while waiting cannot execute an old approved proposal', async () => {
-  const {app,parent,calls} = fixture(false);
+  const {app,parent,calls} = fixture(false,':memory:',true);
   try {
     const proposal = {kind:'tool_proposal',proposal:{toolName:descriptor.name,toolVersion:descriptor.version,arguments:{value:'old-binding'}}};
     let gateway = new ModelGateway(new FakeModelProvider([()=>proposal],{deployment:'config-before'}));
@@ -252,7 +253,7 @@ test('SQLite child approval survives unchanged budget; version, capacity and res
   }
 });
 test('summary without definitions preserves a subtask ID containing surrounding spaces', async () => {
-  const {app,parent} = fixture();
+  const {app,parent} = fixture(false,':memory:',true);
   try {
     const provider = new FakeModelProvider([()=>({kind:'final',text:'spaced ID result'})]);
     const gateway = new ModelGateway(provider);

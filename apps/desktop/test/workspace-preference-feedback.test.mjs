@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {stateNames} from '../src/features/conversation/state.js';
 
 const source = await readFile(new URL('../src/features/workspace/view.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('view.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -33,7 +34,9 @@ function fixture() {
   // Actual handlers/snapshot prefix. Controls, bridge and option DOM are explicit Fake.
   const control = value => ({value, checked: false, attrs: {}, setAttribute(name, value) {this.attrs[name] = value;}, replaceChildren(...options) {this.options = options;}});
   const modelChoice = control(''), depth = control(''), fast = control(''), error = {textContent: ''}, label = {}, calls = [];
-  const context = vm.createContext({current: {tasks: []}, updateRevision: 0, preferenceSignature: undefined,
+  const children={hidden:true,innerHTML:''};
+  const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const context = vm.createContext({sessionControls:{update(){}},nativeReasoning:{update(){},setBusy(){}},composer:{update(){}},children,escape,stateNames,current: {tasks: []}, updateRevision: 0, preferenceSignature: undefined,
     modelChoice, depth, fast, preferences: {querySelector: () => label}, root: {querySelector: () => error},
     Option: function(text, value) {this.text = text; this.value = value;},
     invoke: (name, payload) => new Promise((resolve, reject) => calls.push({name, payload, resolve, reject})),
@@ -41,7 +44,7 @@ function fixture() {
   vm.runInContext(declarations.join('\n'), context);
   const update = vm.runInContext(`data=>{${projection}}`, context);
   update(observed());
-  return {context, modelChoice, depth, fast, error, calls, update, report: vm.runInContext('report', context)};
+  return {context,children,modelChoice, depth, fast, error, calls, update, report: vm.runInContext('report', context)};
 }
 const pair = f => [f.depth.value, f.fast.checked];
 
@@ -150,3 +153,5 @@ test('previous preference rejection cannot discard newer native range input befo
     assert.deepEqual(pair(f), ['4', false]);
   }
 });
+
+test('real child projection renders independently while a preference request is pending',async()=>{const f=fixture();assert.equal(f.children.hidden,true);f.modelChoice.value='fake-B';const pending=f.modelChoice.onchange();f.update({...observed(),subagentTasks:[{parentTaskId:'parent-1',taskId:'child-1',role:'<worker>',modelId:'cloud-child',reasoningEffort:'high',state:'running',resultSummary:'<untrusted>',evidenceRefs:['evidence-1']}]});assert.equal(f.children.hidden,false);assert.match(f.children.innerHTML,/parent-1/);assert.match(f.children.innerHTML,/child-1/);assert.match(f.children.innerHTML,/cloud-child/);assert.match(f.children.innerHTML,/&lt;worker&gt;/);assert.match(f.children.innerHTML,/&lt;untrusted&gt;/);assert.match(f.children.innerHTML,/evidence-1/);assert.equal(f.modelChoice.value,'fake-B');assert.equal(f.modelChoice.attrs['aria-busy'],'true');assert.equal(f.calls.length,1);f.calls[0].reject(Error('Current persistence failure'));await pending;assert.equal(f.modelChoice.value,'fake-A');f.update(observed());assert.equal(f.children.hidden,true);assert.equal(f.calls.length,1);});

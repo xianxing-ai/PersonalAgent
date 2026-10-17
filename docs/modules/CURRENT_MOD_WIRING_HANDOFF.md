@@ -1,0 +1,60 @@
+# 当前全 MOD 接线交付清单（2026-10-15）
+
+长期负责人以 [分工](../MODULE_ASSIGNMENTS.md) 为准，新十项工作包及真实基线见 [接线总包](../competition/COLLABORATOR_WIRING_PACKAGE.md)。下表覆盖 MOD-01～38（04分A/B），是每个负责人的交付入口，不是新的完成率、接口冻结或集中验收队列。
+
+每行由该负责人自己补真实调用方接线、消费测试、Evidence和文档；根composition协调共享入口。表内命令是实际存在的workspace测试脚本，可能包含构建；只选受影响文件时用其test目录中现有fixture。这里没有重新执行这些测试。需要构建时使用仓库Node/npm和依赖顺序，不把测试命令存在解释为通过。未列完整真实配置/账号的能力保持原目录provisional/unavailable。
+
+| MOD / 负责人 | 公开输入 → 输出 | 接入位置与实际消费方 | 现有测试入口 | 当前缺项/下一独立任务 | 历史记录 / 当前Evidence要求 |
+| --- | --- | --- | --- | --- | --- |
+| MOD-01 / goo122 | StoragePort/迁移输入 → 持久存储/事务 | packages/storage → 原Runtime/连接器持久层 | `npm run test --workspace=@personal-agent/storage` | 现有数据迁移与重启读回随调用方交付 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-02 / goo122 | wire1.0.0 Schema/Client请求 → 校验响应/事件 | packages/contracts/client/testkit → preload、Runtime与所有消费方 | `npm run test --workspace=@personal-agent/contracts` | 不扩冻结集合；新增接口先消费契约验证 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-03 / goo122 | 原task/run/deadline → 状态/事件/checkpoint/Scheduler | apps/runtime → application与各业务宿主 | `npm run test --workspace=@personal-agent/runtime` | 协调锚点created与分支succeeded必须分开；不得新建调度器 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-04A / goo122 | ModelRequest → ModelResult/失败与usage | packages/models → 现ModelGateway及AA可信模型组合 | `npm run test --workspace=@personal-agent/models` | 本地兼容不是Competition fallback；真实Provider逐项验 | [原模块记录](MOD-04A-LIVE-RESPONSE-RECOVERY-20261008.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-04B / zemeng5208 | CoordinationPort/ModelPort/ToolExecutionPort → 提案/最终答复 | packages/coordination、agents → Runtime application原执行循环 | `npm run test --workspace=@personal-agent/agents` | 真实委派/主控升级未整链；CW-07消费Runtime公开派发工具 | [原模块记录](MOD-04B-COMPETITION-TEXT.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-05 / goo122 | 工具descriptor/原授权/参数 → 执行记录/Evidence | packages/policy/tool-gateway/connector-host → 原Runtime各宿主 | `npm run test --workspace=@personal-agent/tool-gateway` | 各MOD自己注入实际工具，签名/模型/语音均不能授权 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-06 / goo122 | MCP目录/版本/身份 → 工具发现/受控回执 | packages/mcp → Runtime MCP工具入口；平台走受信ToolExecutionPort | `npm run test --workspace=@personal-agent/mcp` | 本地真实MCP与AgentArts网关分别验；平台未连不静默替身 | [原模块记录](MOD-06-07-MVP.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-07 / goo122 | Skill manifest/version → 有权限约束的执行请求 | packages/skills → Runtime reference skill/工具目录 | `npm run test --workspace=@personal-agent/skills` | 平台Skill与自有Skill分别声明；不能由Skill授予scope | [原模块记录](MOD-07-LOCAL-INSTALLATION-20261009.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-08 / goo122 | source/config/version/citation → KnowledgePort/Wiki引用/写后读回 | packages/knowledge、plugins/obsidian → Runtime trusted tools及CW-04 retrieve | `npm run test --workspace=@personal-agent/knowledge` | 当前主动引用链与平台原生knowledge各自补证 | [原模块记录](MOD-08A-KNOWLEDGE-PORT-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-09 / goo122 | 事实版本/撤回/经验receipt → MemoryQueryPort/FactChangeFeed | packages/memory/learning → Goal与主动retrieve/学习application | `npm run test --workspace=@personal-agent/memory` | 经验不是训练；真实来源撤回及当前消费回归 CW-04 | [原模块记录](MOD-09-COMPETITION-CONTEXT-20261008.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-10 / zemeng5208 | 官方资料/实测数据 → 条件结论/模型接入建议 | docs/research → 受信模型配置与Competition设计 | `npm run test --workspace=@personal-agent/agentarts` | 不以论文/演示代替当前模型质量，Laya150ms未过 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-11 / zemeng5208 | Client/受限IPC → Electron窗口/状态 | apps/desktop/electron、src/app → 原Runtime application | `npm run test --workspace=@personal-agent/desktop` | 真实桌面合成/桥接与headless fixture分开 | [原模块记录](MOD-11-CANCEL-ACCEPTANCE-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-12 / zemeng5208 | 任务事件/取消请求 → 小工作区/悬浮球状态 | Desktop orb/conversation → Client与现IPC | `npm run test --workspace=@personal-agent/desktop` | 不在小工作区放provider/key；当前执行模型选择保留 | [原模块记录](MOD-12-RESULT-INTEGRITY-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-13 / zemeng5208 | 当前配置/审批revision → 设置与受限批准请求 | Desktop admin/ui → 原IPC/Runtime approval | `npm run test --workspace=@personal-agent/desktop` | 设置集中已测；语音当前参数批准需CW-10实机 | [原模块记录](MOD-13-AGENTARTS-READONLY-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-14 / zemeng5208 | 原PCM/final transcript → ASR/TTS/会话回执 | packages/voice → Desktop语音控件/原Client | `npm run test --workspace=@personal-agent/voice` | 百炼握手≠音频；SIS本机适配≠经AA流桥 | [原模块记录](MOD-14-VOICE-PCM-BUFFER-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-15 / zemeng5208 | 授权音频/关键词 → wake/live start/stop | packages/voice-wake → 原voice生命周期和Desktop开关 | `npm run test --workspace=@personal-agent/voice-wake` | physicalDevice回声/静音/释放实机待验 | [原模块记录](MOD-15-WAKE-LIFECYCLE-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-16 / zemeng5208 | 原确认目标/参数/凭据 → 受限Windows执行/读回 | apps/windows-host、packages/windows-client → Runtime adapter/Desktop入口 | `npm run test --workspace=@personal-agent/windows-client` | Host为.NET非npm包；UIA现场验收不能用fixture替代 | [原模块记录](MOD-16-GEMINI-MVP-WINDOWS-EXECUTION.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-17 / zemeng5208 | 只读范围/目标 → 电脑状态和不可观测声明 | 同一windows-client/Host → Runtime观测工具 | `npm run test --workspace=@personal-agent/windows-client` | 不新增TraceGuard；权限与现场真实状态另验 | [原模块记录](MOD-17-COMPUTER-STATUS-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-18 / zemeng5208 | 可信workspace/SHA/命令recipe → read/preview/apply/reconcile | packages/coding-tools → Runtime trustedWorkspace与工具目录 | `npm run test --workspace=@personal-agent/coding-tools` | 公共夹具真实CAS已验，真实用户workspace另需授权 | [原模块记录](MOD-18-COMMAND-ALLOWLIST-01.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐 |
+| MOD-19 / zemeng5208 | 产物/安装范围 → 分发及发布回执 | Desktop现打包脚本 → Windows安装消费方 | `npm run test --workspace=@personal-agent/desktop` | Windows安装包/安装流程暂停；不是本轮镜像完成项 | [原模块记录](MOD-19-PACKAGED-DATA-PATHS-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-20 / Potatos498 | 待办/日历请求与来源版本 → 实体/提醒/读回 | packages/productivity、connectors/calendar → Runtime工具/UI/原Scheduler | `npm run test --workspace=@personal-agent/productivity` | 当前真实日历提供者/待办提醒逐动作验，CW-08 | [原模块记录](mod-20.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-21 / Potatos498 | 账号/folder/cursor → 邮件页/草稿/核实 | packages/connectors/mail → Runtime工具/分类consumer/设置 | `npm run test --workspace=@personal-agent/mail` | 真实账号/出站分动作授权；register无mail.send不得承诺 | [原模块记录](mod-21.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-22 / Potatos498 | feed来源/cursor → 去重项目/持久事件 | packages/connectors/feeds → ConnectorHost sink/CW-03 | `npm run test --workspace=@personal-agent/feeds` | 未订阅重要事件不能直接丢弃；当前真实来源增量待验 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-23 / Potatos498 | 当前policy/revision/事件 → 静默feed/额度/投递回执 | packages/notifications → Runtime notification-host/桌面渠道/原Scheduler | `npm run test --workspace=@personal-agent/notifications` | CW-09；fixture≠物理通知，unknown原读回不重发 | [原模块记录](mod-23.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-24 / Potatos498 | 查询/来源/时间范围 → research结果/引用/新鲜度 | packages/connectors/research → Runtime工具/主动research分支 | `npm run test --workspace=@personal-agent/research` | OpenAlex不等于通用网页正文；真实来源各自验 | [原模块记录](mod-24.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-25 / Potatos498 | 明确地点/时间 → weather forecast/cache状态 | packages/connectors/weather → Runtime weather/业务显示 | `npm run test --workspace=@personal-agent/weather` | 历史provider读回不保证当前；地点不能静默猜测 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-26 / Potatos498 | 已选平台/账号/动作 → 受限社交工具回执 | 选定provider → MOD05注册及业务UI | 无可宣称的已实现专属fixture；先登记最小工作包 | 未选平台保持unavailable；先确认首版平台，不生成空实现 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-27 / zemeng5208 | 原话/Goal/Fact版本 → 图谱引用/依赖/冲突 | packages/goals → Runtime goal命令与主动responsibility | `npm run test --workspace=@personal-agent/goals` | CW-03/CW-04；引用版本和工具scope分开 | [原模块记录](MOD-27-28-INTEGRATION-HANDOFF.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-28 / zemeng5208 | 事实变化/独立候选/实际状态 → 判断/局部proposal | packages/cognition、proactive-workflows → 原Runtime application/镜像 | `npm run test --workspace=@personal-agent/cognition` | 最小修复算法继续暂停，勿借本包另设计；CW-01/03/05 | [原模块记录](MOD-28-FACT-CHANGE-FEED-01.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐 |
+| MOD-29 / zemeng5208 | 受信AA配置/身份 → CloudAgentPort/部署/模型回执 | agentarts-runtime main/model-proxy → 原Runtime AA客户端 | `npm run test --workspace=@personal-agent/agentarts-runtime` | CW-02；云版本目录/代理已验，远端业务全链未验 | [原模块记录](MOD-29-31-AGENTARTS-MULTI-AGENT-BUILD.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐 |
+| MOD-30 / zemeng5208 | 28模板/checkpoint/host receipts → 节点proposal/汇合 | OwnedWorkflowEngine/HostBridge → 镜像bindings与原Runtime | `npm run test --workspace=@personal-agent/agentarts` | CW-01/03/05/06；185节点目录不等于业务已验 | [原模块记录](MOD-30-COMPETITION-EXPORT-01.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐 |
+| MOD-31 / zemeng5208 | 子任务/影子/评估集 → 交接/比较/评估回执 | 原subagent工具、shadow服务、evaluation port → 主任务消费方 | `npm run test --workspace=@personal-agent/agentarts` | CW-06/07；反事实缺失unknown，平台效果评估待adapter | [原模块记录](MOD-31-FIXED-EVALUATION-01.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐 |
+| MOD-32 / zemeng5208 | 部署版本/实际请求 → API/trace/成本与验收 | agentarts observability、manual → 平台readback与证据投影 | `npm run test --workspace=@personal-agent/agentarts-runtime` | 平台trace需真实traceId与受信签名；本地日志非平台trace | [原模块记录](MOD-32-AGENTARTS-OBSERVABILITY.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐 |
+| MOD-33 / goo122 | GitHub请求/受限凭据 → 版本化资源/日志 | packages/connectors/github → dev-workflows Runtime调用方 | `npm run test --workspace=@personal-agent/github` | DEV原归属保留，真实账号只按授权只读/写入分别验 | [原模块记录](MOD-33-GITHUB-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-34 / Potatos498 | 真实CI失败/原workspace → 受控补丁/Git回执 | coding-tools ci-fix/git-tools → Runtime dev-workflows及MOD35输入 | `npm run test --workspace=@personal-agent/coding-tools` | 本人接线/验证；未知Git写读回，不交中央代验 | [原模块记录](MOD-34-CI-FIX-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-35 / Potatos498 | 测试日志/失败定位输入 → 结构化定位报告 | coding-tools/test-locate → MOD34/Runtime消费者 | `npm run test --workspace=@personal-agent/coding-tools` | 解析fixture≠真实CI修复闭环，下一步接一份实际失败日志 | [原模块记录](MOD-35-TEST-LOCATE-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-36 / goo122 | diff/来源/模型预审 → 锚定意见/受控发表 | cognition code-review → Runtime dev-workflows/GitHub公开port | `npm run test --workspace=@personal-agent/cognition` | 模型预审不是非作者Approve；真实发表另授权 | [原模块记录](MOD-36-CODE-REVIEW-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+| MOD-37 / goo122 | 公共exports/Schema差异 → API文档更新候选 | API文档维护待开工工作包 → 原DEV消费方 | 无可宣称的已实现专属fixture；先登记最小工作包 | 仍ready待开工；先明确一个公开接口差异与消费验证，不宣称实现 | 尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐 |
+| MOD-38 / Potatos498 | Issue来源/原授权 → 分类/标签/修复PR提案 | cognition issue-triage → Runtime dev-workflows/GitHub | `npm run test --workspace=@personal-agent/cognition` | 按动作授权；fixture分类不等于真实PR发表 | [原模块记录](MOD-38-ISSUE-TRIAGE-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐 |
+
+## 按层交回，不覆盖历史
+
+- 输入/输出以当前package exports与Schema为准，类型接口不构成runtime沙箱；新字段必须做运行时校验。04B/CW-07的派发工具实际从 `@personal-agent/runtime/application` 导出，Agent包只消费端口。
+- MOD-16额外公开Host时序fixture：`dotnet run --project apps/windows-host/test/WindowsHost.Timing.csproj`；这是受控竞态回归，不是自动打开用户应用的指令，不代替实际目标UIA/授权链验收。
+- MOD-20日历另用 `npm run test --workspace=@personal-agent/calendar`；MOD-05补 `@personal-agent/policy`、`@personal-agent/connector-host` 相应受影响测试；MOD-09学习补 `@personal-agent/learning`；MOD-04B协调补 `@personal-agent/coordination`。实际命令以各package.json为准。
+- DEV-WORKFLOWS六项保留 goo122=33/36/37、Potatos498=34/35/38；现有共同消费入口 `npm run test:dev-workflows` 可按变更择用，不能因此把各包验收全部交给一个人。
+- 每行Evidence必须写源码SHA、profile、实际调用方/工具run、UTC起止/wall/exit/logSHA、目标系统读回、未知/取消/恢复与未验项。fixture/realHost/realAccount/physicalDevice分开；历史模块文件保留原作者/日期/真实范围，当前差异以本清单和接口目录说明。
+- 公共编码链41条Evidence只覆盖两条专项夹具，不提升MOD20–26、SIS经AA、平台知识/MCP/trace/评估或关机后云持续运行。主影子收益开关仍需CW-06真实机会统计，不是看到两个成功分支就完成。
+
+## 当前接线状态登记模板
+
+每个负责人在原模块验收记录追加当前小节：`工作包/MOD/负责人；输入输出版本；生产调用方；受信配置键；必要命令/源码SHA/UTC/wall/exit/logSHA；Evidence/readback；fixture/realHost/realAccount/physicalDevice；当前状态和缺项；下一任务`。不得删除原失败，不能只写“已提供端口，等root接入”。提交和PR由对应工作包实际授权执行；本文不代表已提交或已合并。

@@ -1,0 +1,17 @@
+✔ explicit fixture: checker rejects inactive animation and external active content without treating labels as visual proof (480.5557ms)
+✔ phase and model failure endpoints are synchronously durable before the caller receives failure (13.4864ms)
+✔ self-contained gradient URLs accept only validated existing page IDs, including normal quotes and whitespace (734.4382ms)
+✔ timing recorder captures UTC endpoints, wall time and failed model calls without fabricating usage (0.4332ms)
+✔ explicit fixture requires artwork beneath the corresponding animated ancestor and stable required ids (199.8387ms)
+✔ structural fault injection handles equivalent begin syntax and changes only the two animation attributes (1288.3005ms)
+✔ browser observation measures artwork matrices, so moving empty groups cannot qualify static artwork (0.6361ms)
+✔ delivery requires exact bytes matching the latest verified SHA (0.7802ms)
+✔ explicit browser fixture cannot pass with invisible art even when transform matrices move (0.3206ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3390.2021

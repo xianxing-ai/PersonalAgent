@@ -1,0 +1,767 @@
+{
+  "kind": "test_image_v1_final_dirty_source_snapshot",
+  "createdAt": "2026-10-15T10:03:47.2287931Z",
+  "worktree": "C:\\Users\\24035\\.codex\\worktrees\\laya-owned-runtime\\PersonalAgent",
+  "branch": "codex/laya-owned-runtime",
+  "head": "1105a3291ad9098d1d966e82accbff2ef83b67d0",
+  "gitStatus": [
+    " M README.md",
+    " M apps/agentarts-runtime/Dockerfile",
+    " M apps/agentarts-runtime/README.md",
+    " M apps/agentarts-runtime/package.json",
+    " M apps/agentarts-runtime/scripts/image-context.mjs",
+    " M apps/agentarts-runtime/src/binding-dispatch.mjs",
+    " M apps/agentarts-runtime/src/laya-selector.mjs",
+    " M apps/agentarts-runtime/src/laya-service.mjs",
+    " M apps/agentarts-runtime/src/main.mjs",
+    " M apps/agentarts-runtime/src/server.mjs",
+    " M apps/agentarts-runtime/test/image-context.test.mjs",
+    " M apps/agentarts-runtime/test/laya-workflow-queue.test.mjs",
+    " M apps/agentarts-runtime/test/startup.test.mjs",
+    " M docs/ARCHITECTURE.md",
+    " M docs/CURRENT_DESIGN_CONTEXT.md",
+    " M docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md",
+    " M docs/competition/OWNED_LAYA_BATCHING_20261015.md",
+    " M docs/competition/OWNED_LAYA_RELEASE_AND_CALLS.md",
+    " M docs/design/workflow-architecture-20261013/README.md",
+    " M docs/interfaces/CURRENT_INTERFACE_CATALOG.md",
+    " M packages/agentarts/package.json",
+    " M packages/agentarts/scripts/import-owned-workflows.mjs",
+    " M packages/agentarts/src/index.ts",
+    " M packages/agentarts/src/owned-workflow-data.ts",
+    " M packages/agentarts/src/owned-workflow-host-bridge.ts",
+    " M packages/agentarts/src/owned-workflow-templates.ts",
+    " M packages/agentarts/src/owned-workflows.ts",
+    " M packages/agentarts/test/orchestrator.test.mjs",
+    " M packages/agentarts/test/owned-workflow.test.mjs",
+    " M scripts/laya/batch-server.py",
+    " M scripts/laya/test_batch_server.py",
+    " M tests/manual/agentarts/owned-laya-batching.mjs",
+    " M tests/manual/agentarts/owned-workflow-live.mjs",
+    "?? apps/agentarts-runtime/src/adaptive-decision.mjs",
+    "?? apps/agentarts-runtime/src/local-laya.mjs",
+    "?? apps/agentarts-runtime/src/test-version-controller.mjs",
+    "?? apps/agentarts-runtime/test/adaptive-decision.test.mjs",
+    "?? apps/agentarts-runtime/test/local-decision-init.test.mjs",
+    "?? apps/agentarts-runtime/test/test-version-controller.test.mjs",
+    "?? docs/adr/0025-local-laya-serial-image-workflows.md",
+    "?? docs/competition/LOCAL_LAYA_WORKFLOW_WIRING.md",
+    "?? docs/competition/TEST_IMAGE_V1.md",
+    "?? docs/competition/TEST_VERSION_LOCAL_WIRING.md",
+    "?? docs/competition/evidence/local-laya-workflows-20261015.json",
+    "?? docs/competition/evidence/test-image-v1-20261015/",
+    "?? docs/competition/workflow-wiring.json",
+    "?? packages/agentarts/src/workflow-adapters.ts",
+    "?? packages/agentarts/src/workflow-dataflow.ts",
+    "?? packages/agentarts/src/workflow-decision-tool.ts",
+    "?? packages/agentarts/test/local-workflow-decision.test.mjs",
+    "?? scripts/agentarts/export-workflow-wiring.mjs",
+    "?? tests/manual/agentarts/check-pelican.py",
+    "?? tests/manual/agentarts/fixtures/pelican-animation-bug.svg",
+    "?? tests/manual/agentarts/fixtures/pelican-source-read-decision.json",
+    "?? tests/manual/agentarts/local-image-catalog-smoke.mjs",
+    "?? tests/manual/agentarts/local-laya-benchmark.mjs",
+    "?? tests/manual/agentarts/pelican-browser-selftest.mjs",
+    "?? tests/manual/agentarts/pelican-laya-probes.mjs",
+    "?? tests/manual/agentarts/pelican-repair-live.mjs",
+    "?? tests/manual/agentarts/pelican-repair.test.mjs",
+    "?? tests/manual/agentarts/pelican-sdk-sanity.py",
+    "?? tests/manual/agentarts/pelican-test-version.mjs",
+    "?? tests/manual/agentarts/pelican-test-version.test.mjs",
+    "?? tests/manual/agentarts/run-pelican-test-version.ps1",
+    "?? tests/manual/agentarts/test-image-model-provider.mjs",
+    "?? tests/manual/agentarts/test-image-smoke.mjs",
+    "?? tests/manual/agentarts/test-version-business.test.mjs",
+    "?? tests/manual/agentarts/test-version-delegation.mjs",
+    "?? tests/manual/agentarts/test-version-delegation.test.mjs",
+    "?? tests/manual/agentarts/test-version-tools.mjs"
+  ],
+  "baselineNote": "Contains uncommitted changes; HEAD alone does not identify this image. Internal local-adapter fixes follow the full root check; affected 18 tests were rerun by coordinator.",
+  "context": "C:\\Users\\24035\\.codex\\worktrees\\laya-owned-runtime\\PersonalAgent\\.cache\\agentarts-image\\context-azpd0S",
+  "supersededContext": "C:\\Users\\24035\\.codex\\worktrees\\laya-owned-runtime\\PersonalAgent\\.cache\\agentarts-image\\context-5q1QiG",
+  "sourceFiles": [
+    {
+      "path": "apps/agentarts-runtime/Dockerfile",
+      "bytes": 1077,
+      "sha256": "398f5b9b3bdd226f85480fe48777668e059b2942c617f9bfa1b47dfbd6299dfa"
+    },
+    {
+      "path": "apps/agentarts-runtime/package.json",
+      "bytes": 1137,
+      "sha256": "dbc1ed41ab185d9c5879365f12d2ed996eab2f3f20433742ac339d4eddd5ffd5"
+    },
+    {
+      "path": "apps/agentarts-runtime/scripts/image-context.mjs",
+      "bytes": 6469,
+      "sha256": "e3d39ee3f73ee6567e34127fd954ebfb627a7d282631858a90e85b3366df26b1"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/adaptive-decision.mjs",
+      "bytes": 8116,
+      "sha256": "d5470d611116d0b92d0a08b7183d3ed6002278b0b4ef17ac3d4f171e060f4aec"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/binding-dispatch.mjs",
+      "bytes": 10776,
+      "sha256": "d8873147e8043daa0b62eaef3dec6ee3e18f3e70db6e95d8efa0d76cc92296c9"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/laya-selector.mjs",
+      "bytes": 24452,
+      "sha256": "31fb0ba2048a29a8c41ecd59910eb4c2baee484807574b3545d6c4d120af61f2"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/laya-service.mjs",
+      "bytes": 5383,
+      "sha256": "03f8cf42f0d0d0123e835bb011832490702b6070f0b0e166d63b262409de8323"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/local-laya.mjs",
+      "bytes": 2235,
+      "sha256": "eed5abac5a58f5cdc342223da9e339b1285350e8a22c2af507da1b9d18a24560"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/main.mjs",
+      "bytes": 5142,
+      "sha256": "1fc6e5343c5ddb320096de941a030bfe340713e80be08775dc1762797ca0c166"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/model-fetch.mjs",
+      "bytes": 878,
+      "sha256": "8e60b55b1eea855dfa3ee3a670d504da91b772d6bd78f649e798cbf6219d072b"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/request-path.mjs",
+      "bytes": 896,
+      "sha256": "adccb22c401db594904be5673cd32e988dc58c2c48ab0ef6bc5489298cb3b076"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/server.mjs",
+      "bytes": 11906,
+      "sha256": "383e1fafb0cd66c4dd0b4c632d6458e49c5e8c27902e8df7e08c554b7c82e11a"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/test-version-controller.mjs",
+      "bytes": 2227,
+      "sha256": "42a6e5dee41e42111dc1218eb02abc07d7463c89a83eb927499286892fe151d7"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/websocket-transport.mjs",
+      "bytes": 12059,
+      "sha256": "e057b50c0e737c5e2f38c2560a3d9c60891dc4c9fdf0b4b81d2ff1754ffbb7b6"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 92330,
+      "sha256": "f1aa97b604d49afd025444fcbb78a6170ebf74f5bb271d2692dc0478adf7394b"
+    },
+    {
+      "path": "packages/agentarts/package.json",
+      "bytes": 690,
+      "sha256": "b61145a2be17e3b2eac48a5ccfb74fb795758ce3ef9eda501121cce97617d17e"
+    },
+    {
+      "path": "packages/agentarts/src/bindings.ts",
+      "bytes": 3428,
+      "sha256": "9dbadd1c4c11f0e6278c1239903790130afcaa5b0316a22589285d7e2e79a3b8"
+    },
+    {
+      "path": "packages/agentarts/src/index.ts",
+      "bytes": 43263,
+      "sha256": "ad51c5cc250638c36689135b02ff66f2d76ee097078dd99d377dc28b9bb1930d"
+    },
+    {
+      "path": "packages/agentarts/src/input.ts",
+      "bytes": 11287,
+      "sha256": "27ec77b7398d5622ced33e330ab3e9d170b3603dd4f4fe9358b40940745b7685"
+    },
+    {
+      "path": "packages/agentarts/src/owned-workflow-data.ts",
+      "bytes": 150962,
+      "sha256": "ec466a7fd2ecf45b34f0c18cbd9afc623ee2d158dc0e23ed58e452e65704f105"
+    },
+    {
+      "path": "packages/agentarts/src/owned-workflow-host-bridge.ts",
+      "bytes": 11817,
+      "sha256": "0476ef4e3ec06143473e382df91cb76bfecb2b6b5a42823d57d0576a656aa0b8"
+    },
+    {
+      "path": "packages/agentarts/src/owned-workflow-templates.ts",
+      "bytes": 13833,
+      "sha256": "b7c41dbabea1e1b07da4f0d0fcb5e167676c9e5fca9211327b0f8c2711cd4ec0"
+    },
+    {
+      "path": "packages/agentarts/src/owned-workflows.ts",
+      "bytes": 39512,
+      "sha256": "31402dd40c579a531264d9f2ca68e83c9db14883de4421921a9e64458fcba493"
+    },
+    {
+      "path": "packages/agentarts/src/prompts.ts",
+      "bytes": 6996,
+      "sha256": "895d9dd05aa088db58466dc589a6a7930f92b55a2e6013a167c8b5917a0e8ad5"
+    },
+    {
+      "path": "packages/agentarts/src/workflow-adapters.ts",
+      "bytes": 3301,
+      "sha256": "91e8930f7667d0f5d837e4050c2f7312fb2ffe1c77f9be35ada304a514450cb8"
+    },
+    {
+      "path": "packages/agentarts/src/workflow-dataflow.ts",
+      "bytes": 1175,
+      "sha256": "0e8a05fc2c503dbec526410ace6251f2f9929f89ab379860780686a5f4ef79a6"
+    },
+    {
+      "path": "packages/agentarts/src/workflow-decision-tool.ts",
+      "bytes": 2679,
+      "sha256": "d3a199f4676faa37c6dff55e948fc6e428166f63c05d723e6437972447021e15"
+    },
+    {
+      "path": "packages/agentarts/src/workflow-keys.ts",
+      "bytes": 1271,
+      "sha256": "413ab7c56f7bbc11b1e50941a1c2ed4699170ae66835d9b2587078c484c85aba"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "bytes": 1048,
+      "sha256": "7c1d30f03006209ca0423b35176fa50f02343cb9f05a6ebc47f00947aef5e9e6"
+    },
+    {
+      "path": "packages/contracts/src/agentarts-transport.generated.ts",
+      "bytes": 6193,
+      "sha256": "e38b2355e72ec262f487b023a187ba3caba6b74e273ddb935ee143f23c60a579"
+    },
+    {
+      "path": "packages/contracts/src/agentarts-transport.ts",
+      "bytes": 2408,
+      "sha256": "d42a5a1a01e5f1979dd9f905c4973ea1f907ad7a6d9601cf84c0e5b542566861"
+    },
+    {
+      "path": "packages/contracts/src/generated.ts",
+      "bytes": 14388,
+      "sha256": "91a5a34fb7552cdaec4247a7e3f4ce4c4cd7a4b2850832d7f95dbe7454767a87"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "bytes": 4872,
+      "sha256": "b1333511109b48311c31d848446a872019ec1a4388980a963f1a73b601a59fb9"
+    },
+    {
+      "path": "packages/contracts/src/ports.ts",
+      "bytes": 1884,
+      "sha256": "f7b3105ada9ae54eaf399f73de9de2619e15bd27c0b8633e2282ea0f97a8db66"
+    },
+    {
+      "path": "packages/contracts/src/schema.ts",
+      "bytes": 30700,
+      "sha256": "c3ed0bbb98e1a6dbeadd57cf6085f31b3c84fb4be02a9d00de30b2e83a1570d9"
+    },
+    {
+      "path": "packages/contracts/src/windows-host.ts",
+      "bytes": 9083,
+      "sha256": "9666aef461325f170b7ab352537894e6eafe06a5e0776736dcbc80ce64902b39"
+    },
+    {
+      "path": "packages/coordination/package.json",
+      "bytes": 579,
+      "sha256": "98cef0cd51b51580a36a9508feb2b5416c0591872c2c9b4c60e1a466b2cd5882"
+    },
+    {
+      "path": "packages/coordination/src/agentarts-websocket.ts",
+      "bytes": 17176,
+      "sha256": "7821066c8aad2f4bafdfff19823e4abc6a2933f86084fbb04379a43f9debed0b"
+    },
+    {
+      "path": "packages/coordination/src/agentarts.ts",
+      "bytes": 63871,
+      "sha256": "ae3c81782745104ded51a7f2f42161ec118d87925832e232b0a71cbeb27245f9"
+    },
+    {
+      "path": "packages/coordination/src/coordinator.ts",
+      "bytes": 10210,
+      "sha256": "43f73bde639e4206d8d8ac97c34684a154f0aff73149f254a0f7784a694558ee"
+    },
+    {
+      "path": "packages/coordination/src/index.ts",
+      "bytes": 13781,
+      "sha256": "1d8d2d731b47de49002027e03b9b9707bf3e2414bcd0feae3c6d053165ced023"
+    },
+    {
+      "path": "packages/coordination/src/repair-candidate.ts",
+      "bytes": 3364,
+      "sha256": "a821641b1f902070adbe042d3725d5d316109a6a60944eeddbf70d3238513fc4"
+    },
+    {
+      "path": "packages/coordination/src/testing.ts",
+      "bytes": 1293,
+      "sha256": "0b0d38ce8d6f6e42054d82a1ce302beecfef9b08419b8fb9440e7b9cd2f9f24f"
+    },
+    {
+      "path": "packages/models/package.json",
+      "bytes": 536,
+      "sha256": "23024f418ad939a8cedd48a7dca2afbccb7154c5cbb6f0c32475ad69a7a7e613"
+    },
+    {
+      "path": "packages/models/src/index.ts",
+      "bytes": 20447,
+      "sha256": "11a839086d7abe480089edb343b88cb1a488e08bf653e209317e143b930faf35"
+    },
+    {
+      "path": "packages/models/src/openai-compatible.ts",
+      "bytes": 9758,
+      "sha256": "e6f7d95d5d6ba51ffa74f5d4e006332d19794b97db379c0f525b63b9e786711f"
+    },
+    {
+      "path": "packages/models/src/realtime.ts",
+      "bytes": 12675,
+      "sha256": "93731f0ab43832a9ab787a5877c518f3498aa2ca208f714698993b3277990872"
+    },
+    {
+      "path": "packages/models/src/structured-tools.ts",
+      "bytes": 3717,
+      "sha256": "15dff90cb379baba25f4eb39a5de94db9f63d7e7e5588aa7b48a483c76c93241"
+    }
+  ],
+  "contextFiles": [
+    {
+      "path": ".dockerignore",
+      "bytes": 33,
+      "sha256": "860a0df6dd8c1743295523974f74004f932fc977792d814e035cc7e6618a3c19"
+    },
+    {
+      "path": "apps/agentarts-runtime/package.json",
+      "bytes": 460,
+      "sha256": "e5c8657e921b514e62e015f8641184edc908331d0c162094d58160e1b0c94679"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/adaptive-decision.mjs",
+      "bytes": 8116,
+      "sha256": "d5470d611116d0b92d0a08b7183d3ed6002278b0b4ef17ac3d4f171e060f4aec"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/binding-dispatch.mjs",
+      "bytes": 10776,
+      "sha256": "d8873147e8043daa0b62eaef3dec6ee3e18f3e70db6e95d8efa0d76cc92296c9"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/laya-selector.mjs",
+      "bytes": 24452,
+      "sha256": "31fb0ba2048a29a8c41ecd59910eb4c2baee484807574b3545d6c4d120af61f2"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/laya-service.mjs",
+      "bytes": 5383,
+      "sha256": "03f8cf42f0d0d0123e835bb011832490702b6070f0b0e166d63b262409de8323"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/local-laya.mjs",
+      "bytes": 2235,
+      "sha256": "eed5abac5a58f5cdc342223da9e339b1285350e8a22c2af507da1b9d18a24560"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/main.mjs",
+      "bytes": 5142,
+      "sha256": "1fc6e5343c5ddb320096de941a030bfe340713e80be08775dc1762797ca0c166"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/model-fetch.mjs",
+      "bytes": 878,
+      "sha256": "8e60b55b1eea855dfa3ee3a670d504da91b772d6bd78f649e798cbf6219d072b"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/request-path.mjs",
+      "bytes": 896,
+      "sha256": "adccb22c401db594904be5673cd32e988dc58c2c48ab0ef6bc5489298cb3b076"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/server.mjs",
+      "bytes": 11906,
+      "sha256": "383e1fafb0cd66c4dd0b4c632d6458e49c5e8c27902e8df7e08c554b7c82e11a"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/test-version-controller.mjs",
+      "bytes": 2227,
+      "sha256": "42a6e5dee41e42111dc1218eb02abc07d7463c89a83eb927499286892fe151d7"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/websocket-transport.mjs",
+      "bytes": 12059,
+      "sha256": "e057b50c0e737c5e2f38c2560a3d9c60891dc4c9fdf0b4b81d2ff1754ffbb7b6"
+    },
+    {
+      "path": "context-manifest.json",
+      "bytes": 4640,
+      "sha256": "d303544a83794823b1395bd285f76d3dc77fcda9ef9d1aadcd1f44843a15610b"
+    },
+    {
+      "path": "dependency-manifests/apps/agentarts-runtime/package.json",
+      "bytes": 460,
+      "sha256": "e5c8657e921b514e62e015f8641184edc908331d0c162094d58160e1b0c94679"
+    },
+    {
+      "path": "dependency-manifests/packages/agentarts/package.json",
+      "bytes": 392,
+      "sha256": "62fdfc2982f26126c1ae5880e749b9addf3270c68cb43a1ede24481e39916d3f"
+    },
+    {
+      "path": "dependency-manifests/packages/contracts/package.json",
+      "bytes": 688,
+      "sha256": "5c8c2816a3e44122c1499d80b94a784326a82a9ee81d7154ccf98852092dc7a5"
+    },
+    {
+      "path": "dependency-manifests/packages/coordination/package.json",
+      "bytes": 415,
+      "sha256": "10576a13d0337cdd295b1fc936ac64a40eebf6c7becf09ddd6918fb280c3eb49"
+    },
+    {
+      "path": "dependency-manifests/packages/models/package.json",
+      "bytes": 309,
+      "sha256": "99de78a3bb7d6d73a4c104d24ceba666961396a2a116de7c32d73dfaf0df1412"
+    },
+    {
+      "path": "Dockerfile",
+      "bytes": 1077,
+      "sha256": "398f5b9b3bdd226f85480fe48777668e059b2942c617f9bfa1b47dfbd6299dfa"
+    },
+    {
+      "path": "npm-registry.json",
+      "bytes": 162,
+      "sha256": "5b66ca6f20bfaed93ac7ebd568aac3443cea8527170c7deb44b1f2e55d9cde36"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 5022,
+      "sha256": "8c5470d3c8f9330fe33db9ac2c8d72a8b8870764a5f87421cb914a5175e01241"
+    },
+    {
+      "path": "package.json",
+      "bytes": 260,
+      "sha256": "edbe6b9efa64b5576e1fe50c1d4700e80971ec04f9ec2d7a7275b1ffb653c4a8"
+    },
+    {
+      "path": "packages/agentarts/dist/bindings.d.ts",
+      "bytes": 657,
+      "sha256": "4b6c532ef3dc2284934ac1ce4546ab1c1cc722db17c229d63d60488fc077aeef"
+    },
+    {
+      "path": "packages/agentarts/dist/bindings.js",
+      "bytes": 3023,
+      "sha256": "996a6026a2ac47736f6233d8f2152bbf7ee36a1b0dd4db8135f9c7f6c4be2ef7"
+    },
+    {
+      "path": "packages/agentarts/dist/index.d.ts",
+      "bytes": 6157,
+      "sha256": "c7224b3833f680f75cd23c4a13ece8cf7993d69ff9bf3fec45914085bf533965"
+    },
+    {
+      "path": "packages/agentarts/dist/index.js",
+      "bytes": 41346,
+      "sha256": "ddc02905620f9583c6bd7fda7558d531a40ea55aad98464efa8e5b61c4e14987"
+    },
+    {
+      "path": "packages/agentarts/dist/input.d.ts",
+      "bytes": 2404,
+      "sha256": "d09b7ac68ff0e7ef8111b87acb093e4954104031df545a0fdba097c0e19bb327"
+    },
+    {
+      "path": "packages/agentarts/dist/input.js",
+      "bytes": 10366,
+      "sha256": "1116a9dfc4dab8d3d860dcdf56a357cc57719b1ac4ab87a8a80a2680e5b0658a"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-data.d.ts",
+      "bytes": 53,
+      "sha256": "8981c2967403f6b8ab95bf8e79763df6129f90558edb17787ea17c417125099c"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-data.js",
+      "bytes": 190901,
+      "sha256": "2916caa0dc1bee815056548875f7a5716e35d69d39c007e5ff73e87461fbbeec"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-host-bridge.d.ts",
+      "bytes": 2866,
+      "sha256": "0bc0adb2e818362438ba2d595acab24fae69de6d411ba97d101ef1b9fa0f8168"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-host-bridge.js",
+      "bytes": 10748,
+      "sha256": "2f7e52e23bed531f4423bd688241abb41e34c4a611eb3e9ee27e5d4f5b0df996"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-templates.d.ts",
+      "bytes": 2742,
+      "sha256": "751634e0eb9477d62d36ba8138dbff22bbb90bea13f35f731ac0fcc1612d1e47"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-templates.js",
+      "bytes": 12345,
+      "sha256": "cc748900ea1c602ed03321efb277877addf53ff8b4c120d1aa9676cf4f8d7264"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflows.d.ts",
+      "bytes": 7286,
+      "sha256": "6332abd35ed08e75a83655bb47bbfcb67ba298b3fa6497b2c0924b02b64579a3"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflows.js",
+      "bytes": 38651,
+      "sha256": "54b84fcb15c334b49e36efe8d92652aed2e04ab586fd5abc2fe743f91538e9ef"
+    },
+    {
+      "path": "packages/agentarts/dist/prompts.d.ts",
+      "bytes": 1116,
+      "sha256": "07dd039234f274b1a49a8c10794ec176ddcc3da1506e125cacaa0969b14ad9e0"
+    },
+    {
+      "path": "packages/agentarts/dist/prompts.js",
+      "bytes": 6988,
+      "sha256": "04711160808b6d0e02066748ab4a50fd6619133f527b61e18fc3a479f2c9fb25"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-adapters.d.ts",
+      "bytes": 1372,
+      "sha256": "eec588ee36156636e9fcd1bd2e6fe981019743967f40aaa94248e66a6d82b5b3"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-adapters.js",
+      "bytes": 3359,
+      "sha256": "f2c998f3d0e9159ddc01afc4ff898399dac7d3a7b01b43e8919dba67eacad5dc"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-dataflow.d.ts",
+      "bytes": 317,
+      "sha256": "2a156aef37c31c84df060d243b9b260014f8d0a4de1897ba175b516faa4a6c62"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-dataflow.js",
+      "bytes": 1118,
+      "sha256": "da0af7fb0672cec9609954429d5659aacbc480ea2187653fc160f7dbf8a9cb22"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-decision-tool.d.ts",
+      "bytes": 564,
+      "sha256": "7e2893b1226cfad69e9e8c9b1585bc33af11476701033b0124dff3bd98fe1d13"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-decision-tool.js",
+      "bytes": 2816,
+      "sha256": "41a588cfd97244fb0bd6437146f42646b462e82b381321737f6da810d617ac54"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-keys.d.ts",
+      "bytes": 305,
+      "sha256": "68710988631b9925f5c79a0263f491d6335f1563fc85d4b9b9f3eef7ad641527"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-keys.js",
+      "bytes": 1200,
+      "sha256": "429b8da68d3c5e99345dbf811f23061be1fa84dfe9c0c385de3415f5e04ff38c"
+    },
+    {
+      "path": "packages/agentarts/package.json",
+      "bytes": 392,
+      "sha256": "62fdfc2982f26126c1ae5880e749b9addf3270c68cb43a1ede24481e39916d3f"
+    },
+    {
+      "path": "packages/contracts/dist/agentarts-transport.d.ts",
+      "bytes": 883,
+      "sha256": "5bd237afa89f344198dd96aa831a772d54ef98e41a9fb1823d1665926804971a"
+    },
+    {
+      "path": "packages/contracts/dist/agentarts-transport.generated.d.ts",
+      "bytes": 4901,
+      "sha256": "f62fccff3fe350634a6e3ad80c6d2d443b7e0b1c7d7a9a558569c1a2de3d17c2"
+    },
+    {
+      "path": "packages/contracts/dist/agentarts-transport.generated.js",
+      "bytes": 75,
+      "sha256": "8f2014c65b389531b3602e65ae85b4814ee42436e8f4330eac2fcce8d6f14e33"
+    },
+    {
+      "path": "packages/contracts/dist/agentarts-transport.js",
+      "bytes": 2051,
+      "sha256": "cfa508afc7df3cfb9845a82e05ed3335c85bbfe4be3e65bf9ff8bd129e547701"
+    },
+    {
+      "path": "packages/contracts/dist/generated.d.ts",
+      "bytes": 14233,
+      "sha256": "e30ec2eabdea86322e679581ac925c3dfc5590b9a1e1eaddd60016143d3a7028"
+    },
+    {
+      "path": "packages/contracts/dist/generated.js",
+      "bytes": 64,
+      "sha256": "ac0523a65c894775845b18bba62761369925b28e2e9b6a1bd9d8911fc92ce013"
+    },
+    {
+      "path": "packages/contracts/dist/index.d.ts",
+      "bytes": 1811,
+      "sha256": "afc411c3fd2fb06e8ddae8b7270b2af623b0c9ddf749ea6c3b2c07c8ab645af9"
+    },
+    {
+      "path": "packages/contracts/dist/index.js",
+      "bytes": 3969,
+      "sha256": "764f21e6039b47b2c36810272e5ca0a9e6c4b436754394de5b51710819c6ec77"
+    },
+    {
+      "path": "packages/contracts/dist/ports.d.ts",
+      "bytes": 2144,
+      "sha256": "ed72918614bad08df2473884ae2c5e188b434439da3d7c69f0aabbec237294c8"
+    },
+    {
+      "path": "packages/contracts/dist/ports.js",
+      "bytes": 11,
+      "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+    },
+    {
+      "path": "packages/contracts/dist/schema.d.ts",
+      "bytes": 89019,
+      "sha256": "827d5b3c2ac09d6cdf63a92ccc3dda282f7b447ffc014cafc3fe38da9030d2e5"
+    },
+    {
+      "path": "packages/contracts/dist/schema.js",
+      "bytes": 34532,
+      "sha256": "4dbbc743115fe92744519ca535f072cf22ccafa9a76239f2ead8b3b182bb9656"
+    },
+    {
+      "path": "packages/contracts/dist/windows-host.d.ts",
+      "bytes": 4664,
+      "sha256": "cbacde6b837d21f6a9da8d1175a04442de427593842ffb60f3f5fe10ec94f1ad"
+    },
+    {
+      "path": "packages/contracts/dist/windows-host.js",
+      "bytes": 6016,
+      "sha256": "2006cf55e6b41e02f273789a95bde16f7dcfa4ed9bd56634fc890023fc0ff945"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "bytes": 688,
+      "sha256": "5c8c2816a3e44122c1499d80b94a784326a82a9ee81d7154ccf98852092dc7a5"
+    },
+    {
+      "path": "packages/contracts/schema/agentarts-transport.json",
+      "bytes": 18158,
+      "sha256": "1c6a4a80fa93ac63f29695d4a6bfc16e06437a4b376f6ed1ece706bf9e17821f"
+    },
+    {
+      "path": "packages/contracts/schema/protocol.json",
+      "bytes": 69759,
+      "sha256": "85c0d60f6d5e14b18c1560b279dbfecad0c380efdbc76be063996d25cc183ae7"
+    },
+    {
+      "path": "packages/contracts/schema/windows-host.json",
+      "bytes": 9229,
+      "sha256": "b6e9ee0e488b64f4f18f8fd349a1a3d751da9ec55dea1ca0b0ace533471d8dbf"
+    },
+    {
+      "path": "packages/coordination/dist/agentarts-websocket.d.ts",
+      "bytes": 2888,
+      "sha256": "9d4fd9a88bc7a225877fbb0ddec128ce17582c91a30d59d39d8de92f6d8e7441"
+    },
+    {
+      "path": "packages/coordination/dist/agentarts-websocket.js",
+      "bytes": 15997,
+      "sha256": "7a010a88ad6f87c5ad641c104175536e9da983e43cf04e74ab95544e26794247"
+    },
+    {
+      "path": "packages/coordination/dist/agentarts.d.ts",
+      "bytes": 6015,
+      "sha256": "e7dd82016f6ce9ec7fe0a08b91e150d768ffc1d1d169a5d6cf25b6a767efc537"
+    },
+    {
+      "path": "packages/coordination/dist/agentarts.js",
+      "bytes": 59855,
+      "sha256": "c9c616d0370ea5f532f18f0d7ba6b4abd018a985f189abce201cd9c6da2b6369"
+    },
+    {
+      "path": "packages/coordination/dist/coordinator.d.ts",
+      "bytes": 654,
+      "sha256": "e57a0cead3731c8f2e0bd7589cdef12cdbeab544d0e818284e9f434948bff909"
+    },
+    {
+      "path": "packages/coordination/dist/coordinator.js",
+      "bytes": 9836,
+      "sha256": "bfc34388b1acf56854e2e6e7a9d83ba427f6b0c71e0e0b5375c631d4475d115e"
+    },
+    {
+      "path": "packages/coordination/dist/index.d.ts",
+      "bytes": 3163,
+      "sha256": "2ff74c18058bfd45c1ee10d0c668beb9c61ceaf76047a2550ab634fde97867e8"
+    },
+    {
+      "path": "packages/coordination/dist/index.js",
+      "bytes": 11284,
+      "sha256": "c4f6308351f6bf898fd9e3bcf79a653d6e440047b64168e35f3a8a2eaf0ecb96"
+    },
+    {
+      "path": "packages/coordination/dist/repair-candidate.d.ts",
+      "bytes": 787,
+      "sha256": "c137132b4509a482cb5243bd20b6837d2eea10cdaf484bce0d433f8309b11596"
+    },
+    {
+      "path": "packages/coordination/dist/repair-candidate.js",
+      "bytes": 2751,
+      "sha256": "168737920ac20dd3ca55c11153e5fc26c80a4451333daec9ea22cb97a2d403da"
+    },
+    {
+      "path": "packages/coordination/dist/testing.d.ts",
+      "bytes": 821,
+      "sha256": "fa9d502df0b8cfcb23155ef121fc64a9b8ad0000d63c60cb64f0ed915a04f920"
+    },
+    {
+      "path": "packages/coordination/dist/testing.js",
+      "bytes": 908,
+      "sha256": "67c1e3bf39ccf111e46e94b01ecf4ebf23615863dfc267db6e35cee03dfd69b0"
+    },
+    {
+      "path": "packages/coordination/package.json",
+      "bytes": 415,
+      "sha256": "10576a13d0337cdd295b1fc936ac64a40eebf6c7becf09ddd6918fb280c3eb49"
+    },
+    {
+      "path": "packages/models/dist/index.d.ts",
+      "bytes": 4832,
+      "sha256": "766e4af2532dc884d8e2f25d1e987260b2516cc6cf3bf0723579b8dcaecc9d8c"
+    },
+    {
+      "path": "packages/models/dist/index.js",
+      "bytes": 17586,
+      "sha256": "9ca0b3e3f715df4135b5f97542651cd995c4876339966780655fa2231b24f90a"
+    },
+    {
+      "path": "packages/models/dist/openai-compatible.d.ts",
+      "bytes": 1579,
+      "sha256": "d8de9ffcbdfceed3034a0309aba23be8adc7e0c8f69c07ee165fd3352d05b18d"
+    },
+    {
+      "path": "packages/models/dist/openai-compatible.js",
+      "bytes": 8798,
+      "sha256": "fceea6be74c398bb5572a60f2601c94c69a5575cf978954c65cea27981196f85"
+    },
+    {
+      "path": "packages/models/dist/realtime.d.ts",
+      "bytes": 1229,
+      "sha256": "f7a24402a03615f75681c21caa2b1453e8ec6ef21485c889c5558131839c1d0c"
+    },
+    {
+      "path": "packages/models/dist/realtime.js",
+      "bytes": 14498,
+      "sha256": "8de904b93c9bdae5cd5602c7da83d48f5909c6077d3c11034c1009262a0f3ff5"
+    },
+    {
+      "path": "packages/models/dist/structured-tools.d.ts",
+      "bytes": 332,
+      "sha256": "94139190ea73d85a0b128ba3dc4af3605ee4cc3e6884c34a7573de32ceb0face"
+    },
+    {
+      "path": "packages/models/dist/structured-tools.js",
+      "bytes": 3720,
+      "sha256": "ad95651bf615adfa862d079d77ac6da5bf8806bb9ec13929c2379ebf4c8d88dc"
+    },
+    {
+      "path": "packages/models/package.json",
+      "bytes": 309,
+      "sha256": "99de78a3bb7d6d73a4c104d24ceba666961396a2a116de7c32d73dfaf0df1412"
+    }
+  ],
+  "published": false
+}

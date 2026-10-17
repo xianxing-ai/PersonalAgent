@@ -17,13 +17,17 @@ async function until(predicate) {
 
 test('child approval resumes the original child and confirmed parent dispatch, then continues the cloud once',async t=>{
   let app,calls=0;
-  const gateway=new ModelGateway(new FakeModelProvider([
-    ()=>({kind:'tool_proposal',proposal:{toolName:descriptor.name,toolVersion:descriptor.version,arguments:{value:'approved'}}}),
-    ()=>({kind:'final',text:'confirmed child answer'}),
-  ],{deployment:'fixed-model-binding'}));
-  const selection={getModelGateway:()=>gateway};
-  const dispatch=createDesktopSubagentDispatchTool({getRuntime:()=>app.runtime,getTools:()=>app.tools,...selection});
+  // Competition children retain the original cloud invocation, including approval recovery.
+  const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
+    runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools),
+    getModelGateway:()=>{throw Error('Competition approval must not use an independent API');}});
   const port=new FakeCoordinationPort(request=>{
+    if(app.runtime.getTask(request.taskId).conversationId.startsWith('desktop-subtask:')) {
+      if(!request.continuation)return {kind:'tool_proposal',proposalId:'approved-child-read',toolName:descriptor.name,
+        toolVersion:descriptor.version,arguments:{value:'approved'},verification:'mock'};
+      assert.deepEqual(request.continuation.result,{value:'approved'});
+      return {kind:'text',text:'confirmed child answer',verification:'mock'};
+    }
     if(!request.continuation) return {kind:'tool_proposal',proposalId:'dispatch-one',
       toolName:SUBAGENT_DISPATCH_TOOL_NAME,toolVersion:SUBAGENT_DISPATCH_TOOL_VERSION,
       arguments:{subtasks:[{subtaskId:'child',role:'researcher',goal:'Read approved synthetic value'}]},verification:'mock'};
@@ -34,7 +38,7 @@ test('child approval resumes the original child and confirmed parent dispatch, t
     return {kind:'text',text:'parent confirmed refreshed child answer',verification:'mock'};
   });
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',coordination:port,
-    subagentModels:selection,tools:[dispatch,{descriptor,execute:async input=>{calls++;return input;}}],
+    tools:[dispatch,{descriptor,execute:async input=>{calls++;return input;}}],
     automaticTools:[{toolName:SUBAGENT_DISPATCH_TOOL_NAME,toolVersion:SUBAGENT_DISPATCH_TOOL_VERSION}]});
   t.after(()=>app.close());
   const client=new Client(app,Date.now);await client.connect();
@@ -42,16 +46,16 @@ test('child approval resumes the original child and confirmed parent dispatch, t
     {idempotencyKey:'parent-child-recovery'});
   await until(()=>app.runtime.getTask(parent.taskId).state==='waiting_approval'&&app.activeTaskCount===0);
   const child=app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-child`);
-  assert.equal(child.state,'waiting_approval');assert.equal(calls,0);assert.equal(port.requests.length,1);
+  assert.equal(child.state,'waiting_approval');assert.equal(calls,0);assert.equal(port.requests.length,2);
   const parentRecord=app.runtime.readToolExecutions(parent.taskId);
   assert.equal(parentRecord.length,1);assert.equal(parentRecord[0].state,'confirmed');
-  const approval=app.runtime.getApproval(`agent-run-${child.taskId}-1`);
+  const approval=app.runtime.getApproval(`competition-tool-${child.taskId}-1`);
   await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
   await until(()=>['succeeded','failed'].includes(app.runtime.getTask(parent.taskId).state)&&app.activeTaskCount===0);
   const result=app.runtime.getTask(parent.taskId);
   assert.equal(result.state,'succeeded',JSON.stringify(result.error));
   assert.equal(app.runtime.getTask(child.taskId).state,'succeeded');assert.equal(calls,1);
-  assert.equal(port.requests.length,2);
+  assert.equal(port.requests.length,4);
   assert.equal(app.runtime.readToolExecutions(parent.taskId).length,1);
   assert.equal(app.runtime.readToolExecutions(child.taskId).length,1);
   assert.ok(result.evidenceRefs.includes(approval.approvalId));

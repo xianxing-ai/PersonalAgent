@@ -1,0 +1,14 @@
+{
+  "mainEqualsIsolatedSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+  "url": "loopback exact main SVG bytes",
+  "animationIDs": [
+    "back-spin",
+    "front-spin",
+    "pedal-spin"
+  ],
+  "underlyingReportBrowserField": "not_yet_observed is historical at report closure; this independent readback occurred later",
+  "scope": "Observed motion; not exhaustive animation correctness or visual design quality",
+  "kind": "browser_playback_observation",
+  "observed": "Wheel spokes and pedal angles differ between the two screenshots; initial stuck begin attributes removed",
+  "method": "Two real Chrome screenshots plus DOM attribute readback"
+}

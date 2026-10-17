@@ -3,6 +3,7 @@ import test from 'node:test';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {Conversations} from '../electron/conversations.js';
 import {createDesktopVoiceInput} from '../electron/voice-input.js';
 import {createLiveVoiceHost} from '../electron/live-voice-host.js';
 import {createMicrophoneCaptureHost} from '../electron/microphone-capture-host.js';
@@ -30,7 +31,8 @@ function fixture({stopFails = false, revokeGate} = {}) {
   const drafts = [], calls = [];
   const contents = {id: 42, isDestroyed: () => false, send: (channel, payload) => drafts.push({channel, ...payload})};
   const panel = {isVisible: () => visible, isDestroyed: () => false, webContents: contents};
-  const context = {panel, wakeQuitUnknown: false, wakeVoice: undefined, Promise, Error,
+  const conversations=new Conversations();
+  const context = {panel, conversations, wakeQuitUnknown: false, wakeVoice: undefined, Promise, Error,
     publish: () => calls.push('publish'),
     liveVoice: {stop: async () => calls.push('live-stop'), hasActive: () => false},
     sisPlaybackHost: {stop: async () => calls.push('playback-stop')},
@@ -45,7 +47,7 @@ function fixture({stopFails = false, revokeGate} = {}) {
       revokes++; revokeEntered.resolve(); await revokeGate?.promise;
     }},
     client: {call() { assert.fail('panel voice lifecycle cannot submit or cancel a Runtime task'); }},
-    enabled: true, inputMode: 'dictation', onTranscript: deliver,
+    enabled: true, inputMode: 'dictation', readConversationId:()=>conversations.activeConversationId('panel'), onTranscript: deliver,
     speechPorts: {recognition: {recognize(value) {
       recognitionRequest = value; entered.resolve();
       return {result: recognition.promise, async stop() {

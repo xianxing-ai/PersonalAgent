@@ -693,7 +693,7 @@ async function originalGoalTaskSurface() {
     if(ts.isCallExpression(n)&&n.expression.getText(ast)==='createDesktopProactiveHost') {
       notify=n.arguments[0].properties.find(p=>p.name?.getText(ast)==='onAnalysisTask').initializer.getText(ast);
     }
-    if(ts.isPropertyAssignment(n)&&n.name.getText(ast)==='tasks'&&n.initializer.getText(ast).startsWith('orderedTasks().filter(')) {
+    if(ts.isPropertyAssignment(n)&&n.name.getText(ast)==='tasks'&&n.initializer.getText(ast).startsWith('orderedTasks().filter(')&&n.initializer.getText(ast).includes('visibleConversationTask(task,surface)')) {
       filter=n.initializer.expression.expression.getText(ast);
     }
     ts.forEachChild(n,visit);
@@ -701,7 +701,7 @@ async function originalGoalTaskSurface() {
   visit(ast);assert.ok(notify&&filter);
   const conversations=new Conversations(undefined),taskGoals=new Map(),tasks=new Map();
   const context=vm.createContext({conversations,taskGoals,tasks,Date});
-  vm.runInContext(declaration('orderedTasks')+'\n'+declaration('taskSurface'),context);
+  vm.runInContext(declaration('orderedTasks')+'\n'+declaration('taskSurface')+'\n'+declaration('visibleConversationTask'),context);
   return {conversations,taskGoals,tasks,notify:vm.runInContext('('+notify+')',context),
     panelTasks:()=>{context.surface='panel';return vm.runInContext(filter,context);},
     adminTasks:()=>{context.surface=undefined;return vm.runInContext(filter,context);}};
@@ -887,3 +887,5 @@ test('complete oversized Goal projection stays local without a handoff journal o
   const restored=f.restart();assert.equal(restored.snapshot().enabled,false);assert.equal(restored.snapshot().cloudAllowed,false);
   assert.equal(restored.snapshot().reviews.find(item=>item.reviewTaskId===card.reviewTaskId).taskId,undefined);
 });
+
+test('background Goal metadata retains legacy ownership and existing explicit ownership after chat switches',async()=>{const ui=await originalGoalTaskSurface();const fresh=ui.conversations.create('panel','new active chat');ui.tasks.set('background',{taskId:'background',conversationId:'desktop-proactive-goals:trusted',state:'running'});ui.notify({taskId:'background',goal:'background analysis'});assert.equal(ui.conversations.conversationIdForTask(ui.tasks.get('background')),'desktop-panel');assert.equal(ui.panelTasks().length,0);ui.conversations.switch('panel','desktop-panel');assert.equal(ui.panelTasks()[0].taskId,'background');ui.conversations.add('existing','panel','original',fresh.id);ui.tasks.set('existing',{taskId:'existing',state:'running'});ui.notify({taskId:'existing',goal:'repeated registration'});assert.equal(ui.conversations.conversationIdForTask(ui.tasks.get('existing')),fresh.id);ui.tasks.set('foreign',{taskId:'foreign',conversationId:'foreign-conversation',state:'created'});assert.equal(ui.panelTasks().some(task=>task.taskId==='foreign'),false);});

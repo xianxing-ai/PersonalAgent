@@ -1,0 +1,325 @@
+{
+  "status": "verified_main_shadow_and_delivery",
+  "sourceReportSha256": "8a47d1ab6577f27bcba080fb2efacf573e793937a74b46a8a5a13eb06181ad7c",
+  "projectedReport": "pelican/report.json",
+  "projection": "Only implementation path prefixes are replaced; original report SHA refers to private raw bytes",
+  "startedAtUtc": "2026-10-15T14:56:26.244Z",
+  "finishedAtUtc": "2026-10-15T14:57:47.857Z",
+  "flowWallMs": 81611.22480000001,
+  "outerLaunch": {
+    "log": "<implementation>/.cache/v3-real-pelican-contract-aligned.log",
+    "logSha256": "429cf1c28ac60ad5f10d6efeb29dab99ae68e161e322e078ba9c4ee1bea63f30",
+    "finishedAtUtc": "2026-10-15T14:57:48.7773352Z",
+    "startedAtUtc": "2026-10-15T14:56:19.0318093Z",
+    "stage": "v3.real_pelican_contract_aligned",
+    "wallMs": 89734.7791,
+    "exitCode": 0
+  },
+  "fixture": "Explicit controlled animation-start fault; not an invented model mistake",
+  "phases": [
+    {
+      "kind": "startup",
+      "label": "browser",
+      "startedAt": "2026-10-15T14:56:26.508Z",
+      "endedAt": "2026-10-15T14:56:26.990Z",
+      "wallMs": 481.8401,
+      "outcome": "completed"
+    },
+    {
+      "kind": "startup",
+      "label": "image_model_binding",
+      "startedAt": "2026-10-15T14:56:26.991Z",
+      "endedAt": "2026-10-15T14:56:27.067Z",
+      "wallMs": 75.69229999999993,
+      "outcome": "completed"
+    },
+    {
+      "kind": "startup",
+      "label": "local_laya",
+      "startedAt": "2026-10-15T14:56:27.084Z",
+      "endedAt": "2026-10-15T14:56:41.748Z",
+      "wallMs": 14663.2551,
+      "outcome": "completed"
+    },
+    {
+      "kind": "phase",
+      "label": "main",
+      "startedAt": "2026-10-15T14:56:50.898Z",
+      "endedAt": "2026-10-15T14:57:25.546Z",
+      "wallMs": 34647.7181,
+      "outcome": "completed"
+    },
+    {
+      "kind": "phase",
+      "label": "shadow",
+      "startedAt": "2026-10-15T14:57:25.546Z",
+      "endedAt": "2026-10-15T14:57:43.692Z",
+      "wallMs": 18144.46319999999,
+      "outcome": "completed"
+    }
+  ],
+  "timingCount": 68,
+  "model": {
+    "attempted": 22,
+    "succeeded": 22,
+    "failed": 0,
+    "pending": 0,
+    "attemptedWallMs": 49537.560500000014,
+    "succeededWallMs": 49537.560500000014,
+    "failedWallMs": 0
+  },
+  "modelCallsByStage": {
+    "candidate_planning": {
+      "attempted": 1,
+      "succeeded": 1,
+      "failed": 0,
+      "pending": 0,
+      "attemptedWallMs": 3866.5380000000005,
+      "succeededWallMs": 3866.5380000000005,
+      "failedWallMs": 0
+    },
+    "escalated_decision": {
+      "attempted": 3,
+      "succeeded": 3,
+      "failed": 0,
+      "pending": 0,
+      "attemptedWallMs": 6475.811000000005,
+      "succeededWallMs": 6475.811000000005,
+      "failedWallMs": 0
+    },
+    "branch_execution": {
+      "attempted": 18,
+      "succeeded": 18,
+      "failed": 0,
+      "pending": 0,
+      "attemptedWallMs": 39195.211500000005,
+      "succeededWallMs": 39195.211500000005,
+      "failedWallMs": 0
+    }
+  },
+  "modelHttp200": 22,
+  "actualModel": "deepseek-v4.1-flash",
+  "actualDecisionMakers": [
+    "deepseek",
+    "deepseek",
+    "deepseek",
+    "verified_experience"
+  ],
+  "usage": {
+    "promptTokens": 109689,
+    "completionTokens": 2871
+  },
+  "localLaya": [
+    {
+      "event": "laya_choice",
+      "endToEndMs": 182.03600000000006,
+      "forwardMs": 151.4269,
+      "queueWaitMs": 0.46670000000085565,
+      "encodedTokens": 2612,
+      "calibrated": false
+    },
+    {
+      "event": "laya_choice",
+      "endToEndMs": 224.50950000000012,
+      "forwardMs": 219.2636,
+      "queueWaitMs": 0.06120000000009895,
+      "encodedTokens": 2512,
+      "calibrated": false
+    },
+    {
+      "event": "laya_choice",
+      "endToEndMs": 381.3408999999956,
+      "forwardMs": 371.6746,
+      "queueWaitMs": 0.12279999999736901,
+      "encodedTokens": 2037,
+      "calibrated": false
+    }
+  ],
+  "sqliteEvidenceCount": 21,
+  "sqlite": [
+    {
+      "file": "controller.sqlite",
+      "evidenceCount": 0,
+      "tasks": [
+        {
+          "task_id": "a00e2171-f4dc-4353-bed4-a7fcd67f0c6a",
+          "state": "created"
+        }
+      ]
+    },
+    {
+      "file": "delivery.sqlite",
+      "evidenceCount": 1,
+      "tasks": [
+        {
+          "task_id": "08cb6703-7ec9-4b32-9e00-efc3125be486",
+          "state": "succeeded"
+        }
+      ]
+    },
+    {
+      "file": "main/runtime.sqlite",
+      "evidenceCount": 13,
+      "tasks": [
+        {
+          "task_id": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "2317e1fe-87a2-4f02-a3b6-2ce1ffdafc9c",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "3c9f4bd2-44eb-4881-bfc3-d47a56fe5d2c",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "c14e2da4-076b-47df-b0c4-0538c39cd72e",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "02f81d90-3186-4ca5-9bf3-30d6851a80f0",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "cc4b8642-980e-4833-a046-9df632f6185e",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "6121be56-5287-4802-a678-965cf682bb7e",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "f6d9bdf8-c89c-4a3f-9116-908d6536ca73",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "06317722-8930-4b42-ad69-763c3e79605e",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "5c61310e-d73b-45df-bcca-e4309e0d160c",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "c383a957-4ff3-4813-aaf3-cdc2346ae622",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "b41b775e-06a6-4252-ae3e-ba116455f379",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "0e9aa846-65ec-45b0-8c81-0fc888ff8e47",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "4da711f9-92c5-454a-861c-dccefa067eda",
+          "state": "succeeded"
+        }
+      ]
+    },
+    {
+      "file": "shadow/runtime.sqlite",
+      "evidenceCount": 7,
+      "tasks": [
+        {
+          "task_id": "12368bab-5a70-4081-8626-2d9478a7490e",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "ae27fd6e-d639-416d-a35a-d45d085ceb03",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "5d30c3b3-bb68-4e24-85e6-b246bbc21ab7",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "c9fe3c46-6956-49c0-8eed-8a1b48258927",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "3434eb6b-3a84-4804-9a2f-9d126e40c8e4",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "109cf58e-3dc1-4a9f-8a85-d81c788432bc",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "45ec0b8a-25b2-4d78-ac90-76db8afe8d98",
+          "state": "succeeded"
+        },
+        {
+          "task_id": "4eb8946d-86e0-4d0b-8ea5-eb31d921d1ce",
+          "state": "succeeded"
+        }
+      ]
+    }
+  ],
+  "parentTaskStates": [
+    {
+      "mode": "main",
+      "taskId": "e39ab124-f1b1-4528-bb0c-a9ffeba12177",
+      "state": "succeeded"
+    },
+    {
+      "mode": "shadow",
+      "taskId": "12368bab-5a70-4081-8626-2d9478a7490e",
+      "state": "succeeded"
+    }
+  ],
+  "controllerAnchorState": "created",
+  "controllerAnchorIsCompletedParent": false,
+  "deliveredFile": "pelican/pelican.svg",
+  "deliveredSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+  "delivery": {
+    "state": "confirmed",
+    "result": {
+      "path": "pelican.svg",
+      "beforeSha256": "2cb6272bb47cb86f93e74ba0033409644d4890eb060a7a90ffd28af0447d80d8",
+      "afterSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+      "byteLength": 2509,
+      "changed": true,
+      "applied": true
+    },
+    "evidenceRefs": [
+      "host-tool-08cb6703-7ec9-4b32-9e00-efc3125be486"
+    ],
+    "singleWriteback": true,
+    "userBaselinePreserved": true,
+    "selectedSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147"
+  },
+  "branchArtifacts": [
+    {
+      "mode": "main",
+      "currentSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+      "screenshot": "main.png",
+      "screenshotSha256": "8b34b13c80c4666678de073ac01d5e193d9cd2b365f528534b2f6026884e7a25"
+    },
+    {
+      "mode": "shadow",
+      "currentSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+      "screenshot": "shadow.png",
+      "screenshotSha256": "6a37f0cbfafe135a7b38cf454c6fbcd8d978a56ae40502f34d8a358b584f0599"
+    }
+  ],
+  "imageBinding": {
+    "imageId": "sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1",
+    "sourceOverlays": [],
+    "publication": "Use owned-release.json; runner imagePublished=false is a legacy hardcoded field, not registry truth"
+  },
+  "executionSurface": "Same released ARM64 image in local Docker plus real local Runtime/Policy/tools/Laya and real remote AgentArts inference proxy; exact-version cloud Runtime catalog separately verified",
+  "assistantVisualInspection": {
+    "performed": true,
+    "type": "Assistant directly viewed actual final PNGs; not human approval",
+    "recognizableSubject": "Pelican on bicycle",
+    "motionProof": "Actual browser matrix observations, not PNG alone"
+  },
+  "limitations": [
+    "Coordinator checkpoint anchor remains created; do not claim whole coordinator parent succeeded",
+    "No full workflow execution against remote Runtime endpoint in this harness",
+    "Synthetic public workspace; not all 28 account/device business chains"
+  ]
+}

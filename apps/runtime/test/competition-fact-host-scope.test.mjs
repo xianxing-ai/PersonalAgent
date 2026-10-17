@@ -4,9 +4,53 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createRuntimeApplication} from '../dist/application.js';
+import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 
 const context = () => ({deadline: new Date(Date.now() + 60_000).toISOString(),
   signal: new AbortController().signal});
+
+test('fixed public Memory port excludes private/other namespaces and denies withdrawn history and closed reads', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'personal-agent-public-memory-port-'));
+  let app, host, writer;
+  try {
+    app = createRuntimeApplication({path: join(directory, 'runtime.sqlite'), profile: 'huawei_ict_agentarts'});
+    const options = {memoryPath: join(directory, 'memory.sqlite'), memoryNamespace: 'public-port',
+      graphNamespace: 'public-port-graph', consumerKey: 'public-port-consumer'};
+    host = app.createCompetitionFactHost(options);
+    const source = {vaultId: 'fixture-vault', path: 'source.md', factId: 'public-one', sourceRevision: 'a'.repeat(64),
+      line: 1, summary: 'Public source', observedAt: new Date().toISOString(), validFrom: '2026-01-01T00:00:00.000Z',
+      validUntil: '2027-01-01T00:00:00.000Z', expectedFactRevision: null};
+    host.recordPublicSource(source, context());
+    writer = openSqliteMemoryHost(options.memoryPath);
+    writer.createUserFact(options.memoryNamespace, {factId: 'private-one', operationId: 'fixture-private-create',
+      summary: 'Private content must not enter public context', sourceRef: 'fixture:private',
+      observedAt: source.observedAt, validFrom: source.validFrom, validUntil: source.validUntil, ...context()});
+    writer.provision('other-public-port');
+    writer.appendPublicSource('other-public-port', {...source, factId: 'other-public', ...context()});
+    options.memoryNamespace = 'other-public-port';
+    const query = host.publicMemory;
+    assert.equal(Object.isFrozen(query), true);
+    const readAt = new Date().toISOString();
+    const page = await query.listCurrent({at: readAt, limit: 10, ...context()});
+    assert.deepEqual(page.facts.map(fact => fact.ref.id), ['public-one']);
+    await assert.rejects(query.getVersion({fact: {id: 'private-one', revision: 1}, ...context()}), {code: 'SCOPE_DENIED'});
+    await assert.rejects(query.getVersion({fact: {id: 'other-public', revision: 1}, ...context()}), {code: 'SCOPE_DENIED'});
+    await assert.rejects(query.listCurrent({at: new Date().toISOString(), limit: 10, namespace: 'other-public-port', ...context()}), {code: 'INVALID_ARGUMENT'});
+    host.recordPublicSource({...source, sourceRevision: 'b'.repeat(64), summary: 'Corrected public source', expectedFactRevision: 1}, context());
+    assert.equal((await query.listCurrent({factId: source.factId, at: new Date().toISOString(), limit: 1, ...context()})).facts[0].ref.revision, 2);
+    host.withdrawPublicSource({vaultId: source.vaultId, path: source.path, factId: source.factId,
+      withdrawalId: 'public-port-withdraw', expectedFactRevision: 2, observedAt: new Date().toISOString()}, context());
+    assert.deepEqual((await query.listCurrent({factId: source.factId, at: new Date().toISOString(), limit: 1, ...context()})).facts, []);
+    assert.deepEqual((await query.listCurrent({at: readAt, limit: 10,
+      snapshot: page.snapshot, ...context()})).facts, [], 'an old public snapshot cannot replay corrected/withdrawn content');
+    await assert.rejects(query.getVersion({fact: {id: source.factId, revision: 1}, ...context()}), {code: 'SCOPE_DENIED'});
+    await assert.rejects(query.listHistory({factId: source.factId, limit: 10, ...context()}), {code: 'SCOPE_DENIED'});
+    host.close();
+    await assert.rejects(query.listCurrent({at: new Date().toISOString(), limit: 10, ...context()}), {code: 'UNSUPPORTED_CAPABILITY'});
+  } finally {
+    writer?.close(); host?.close(); app?.close(); await rm(directory, {recursive: true, force: true});
+  }
+});
 
 test('mutable caller inputs cannot redirect a bound Competition Fact host', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'personal-agent-fact-scope-'));
