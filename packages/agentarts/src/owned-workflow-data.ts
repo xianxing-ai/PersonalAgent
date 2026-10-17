@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 088f7f00dfb3a7ab5ff4f1c38ca8fc80dd41ef25f36d4d019e2e0ec7e2ab341f
+// Source projection sha256: 7f278c3dbbd59ef02f07387877ef28f714ed1acc4b4858152f5ffe54512b28fc
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -14,8 +14,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "DecisionReady / NeedContextExpansion 是拟议内部状态概念，不是新发布的wire DTO。",
       "宿主校验来源身份、版本和授权记录；语义相容性由模型提出并保留不确定性，不声称代码能普遍证明中文逻辑等价。",
       "rule_ref可以支持事实或用户规则；只有对应有效动作授权才允许执行。模型推断不会静默扩权。",
@@ -89,9 +90,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -282,8 +283,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "确认记录关联可信用户回答，不称为密码学用户签名。",
       "含“同意”子串不等于同意；“我绝不同意”按拒绝处理，附条件回答先处理条件。",
       "直接停止入口不等ASR；口头停止仍取决于真实识别链，随后进入F24四种执行结果。",
@@ -358,9 +360,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [],
         "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -555,8 +557,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "图更新和外部补偿是两种操作；不能靠换revision撤销已发生副作用。",
       "原操作ID与效果ID在恢复、模型切换和重规划间保持稳定。",
       "补偿分类由宿主结合实际图节点来源、原效果引用、前驱与证据绑定；同一收件人有历史发信不能把以后所有发信都归为补偿。"
@@ -621,9 +624,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -842,8 +845,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "Wiki与索引能力按现有接口目录接入；图不证明真实Wiki已写入。",
       "每次回忆记录用了哪个版本及影响了哪项判断，能恢复原文核实。"
     ],
@@ -903,9 +907,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -1037,8 +1041,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "不固定检索跳数或Top-K；在实际上下文能力和配置内保留可能关联的未知项。",
       "相同检索没有新增信息时停止重复；引用不足时回答未知，不伪造反事实结果。"
     ],
@@ -1097,9 +1102,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -1139,7 +1144,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "来源回答候选",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -1162,7 +1167,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。 检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "有限候选选择，领域资格不足必须升级；非授权边界",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -1249,8 +1254,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -1294,9 +1300,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -1403,8 +1409,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -1470,9 +1477,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -1559,8 +1566,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "授权明确时不串入语音确认；被拒绝/待核实线程不阻塞无依赖线程。",
       "草稿候选与实际邮箱写入分开；写草稿也经既有工具/Policy。",
       "普通核实过程用状态徽章；重要副作用、截止冲击或真正需用户决定时主动通知。"
@@ -1604,9 +1612,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -1661,7 +1669,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "回复草稿生成",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -1684,9 +1692,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -1916,8 +1924,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -1980,9 +1989,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -2041,8 +2050,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -2086,7 +2096,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "长文档调研",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -2111,7 +2121,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "架构优缺点剖析",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -2136,7 +2146,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "方案梳理",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -2162,7 +2172,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "未验证数据一律标为未知，不可把模型猜测当基准数据 模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "严谨性反例审查",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -2189,7 +2199,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "有限候选选择，领域资格不足必须升级；非授权边界",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -2250,8 +2260,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板已有；真实服务、时效与行程影响闭环未由28目录证明",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -2317,9 +2328,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -2414,8 +2425,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -2486,9 +2498,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -2581,8 +2593,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -2650,9 +2663,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -2712,8 +2725,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -2796,9 +2810,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -2897,8 +2911,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -2942,9 +2957,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -2966,7 +2981,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "补丁代码编写",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -2992,7 +3007,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "审查实际补丁、目标范围与行为影响，不能按改动行数宣布无风险。 Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "补丁红线审查",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -3086,8 +3101,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -3131,9 +3147,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -3157,7 +3173,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "补丁应用",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -3243,8 +3259,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -3289,9 +3306,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -3369,8 +3386,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -3415,7 +3433,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "架构边界审查",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -3442,9 +3460,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -3531,8 +3549,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板可发现；账号事件到真实修复/状态更新需本图Evidence",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -3577,9 +3596,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -3686,8 +3705,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：模板及来源校验端口可接；真实文档站点/版本差异与写回未全验",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -3730,7 +3750,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "文档草案编写",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -3775,9 +3795,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       }
     ],
@@ -3816,8 +3836,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -3924,7 +3945,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。 代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "有限候选选择，领域资格不足必须升级；非授权边界",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -3970,8 +3991,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "影子不读未来数据，不写主任务/主记忆，不消费主授权。",
       "隔离执行只覆盖已支持的测试工作区和服务；不承诺复制Outlook、微信等真实账号环境。",
       "比较标记：完全可比、部分可比、缺少证据、不可比。没有反事实工具结果就标未知。"
@@ -4041,9 +4063,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -4261,8 +4283,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "用户项目补丁、提示/流程配置和受信宿主自身升级分别走已有测试、版本和发布流程，不默认热修可信Runtime。",
       "AgentArts Evaluation作为拟议承载选项；实际项目、评估作业和结果需单独读回，截图不是接通证明。",
       "对照组采用同一模型/数据/授权/幂等/读回，单独改变被测机制。"
@@ -4420,8 +4443,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "四种结果描述当前操作及外部副作用，不是新增公共task wire终态。",
       "恢复不能重置稳定操作ID或重复未知写入；迟到云结果保留审计，不能覆盖新控制revision。",
       "取消受理不是停止证明；当前操作未开始也不表示任务此前没有副作用。"
@@ -4766,8 +4790,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -4811,9 +4836,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -4894,8 +4919,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收",
-      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。"
     ],
     "acceptance": [],
     "nodes": [
@@ -4985,7 +5011,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。 local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "有限候选选择，领域资格不足必须升级；非授权边界",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -5052,8 +5078,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "不固定扩充一跳；无新信息时不重复同一检索，沿用实际取消和期限。",
       "本地存储不等于数据不出机：仅把当前已授权上下文送到明确配置的国内服务。"
     ],
@@ -5112,9 +5139,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -5136,7 +5163,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "结构化摘要候选",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -5263,8 +5290,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填",
+      "Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。",
+      "本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
-      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
       "只有一个全局语义决策配置；不同执行模型的局部思考/工具选择不成为第二个全局决策层。",
       "相同主判断已经包含分工时复用；新工具结果改变问题后再调用同一配置。",
       "同一决策配置可提出独立判断；真实串行/合批能力分别验收；执行者不能改变全局责任、签发授权或决定TaskRuntime终态。",
@@ -5294,7 +5322,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F28_N02",
-        "label": "合格Laya/未合格配置执行模型选择模型分工与上下文",
+        "label": "AgentArts Agent/Workflow编排模型分工与上下文",
         "kind": "semantic_decision",
         "dependencies": [
           "F28_N01"
@@ -5311,9 +5339,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "condition": "缺少有效分派建议，或新证据需要重判",
         "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
@@ -5370,7 +5398,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "研究候选",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -5394,7 +5422,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "分析候选",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -5418,7 +5446,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
           "vendor": "可信ModelGateway配置",
-          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "model": "经AgentArts部署工作流调用；实际模型按平台读回记录",
           "role": "编码候选",
           "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
         }
@@ -5472,9 +5500,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "modelAssignment": {
-          "vendor": "受信候选选择",
-          "model": "本机Laya / 未合格DeepSeek经AgentArts",
-          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+          "vendor": "本机Laya",
+          "model": "Laya multilingual（本机）",
+          "role": "本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验"
         }
       },
       {
