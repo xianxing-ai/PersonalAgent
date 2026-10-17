@@ -69,7 +69,7 @@ export class ScopedEvidenceReader {
     this.authorize = options.authorize;
   }
 
-  private async records(): Promise<ToolExecutionRecord[]> {
+  private async entries(): Promise<Evidence[]> {
     let allowed = false;
     try {
       allowed = await this.authorize(this.scope) === true;
@@ -77,16 +77,26 @@ export class ScopedEvidenceReader {
       // Do not expose host authorization internals or task existence to the caller.
     }
     if (!allowed) throw new ProtocolError('UNAUTHORIZED', 'Evidence access denied');
+    let executions: ToolExecutionRecord[];
+    let readback: Evidence[];
     try {
       const task = this.runtime.getTask(this.scope.taskId);
       if (task.conversationId !== this.scope.conversationId) {
         throw new ProtocolError('UNAUTHORIZED', 'Evidence access denied');
       }
-      return this.runtime.readToolExecutions(this.scope.taskId);
+      executions = this.runtime.readToolExecutions(this.scope.taskId);
+      // Trusted read-back evidence (e.g. platform observation) is read-only
+      // host metadata: ids go out, tool input/output checkpoints never do.
+      const seen = new Set(executions.map(record => record.evidenceId));
+      readback = this.runtime.readEvidence(this.scope.taskId)
+        .filter(item => !seen.has(item.evidenceId));
     } catch (error) {
       if (error instanceof ProtocolError && error.code === 'UNAUTHORIZED') throw error;
       throw new ProtocolError('UNAUTHORIZED', 'Evidence access denied');
     }
+    // Newest-first executions keep the existing cursor arithmetic; trusted
+    // read-back evidence is appended after them without duplicating any id.
+    return [...executions.map(project).reverse(), ...readback];
   }
 
   async list(input: {limit?: number; beforeEvidenceId?: string} = {}): Promise<EvidencePage> {
@@ -95,12 +105,12 @@ export class ScopedEvidenceReader {
       throw new ProtocolError('INVALID_ARGUMENT', `Evidence limit must be 1..${MAX_PAGE_SIZE}`);
     }
     const before = input.beforeEvidenceId === undefined ? undefined : requiredId(input.beforeEvidenceId, 'beforeEvidenceId');
-    const records = (await this.records()).reverse();
+    const records = await this.entries();
     const start = before === undefined ? 0 : records.findIndex(record => record.evidenceId === before) + 1;
     if (start === 0 && before !== undefined) throw new ProtocolError('NOT_FOUND', 'Evidence cursor not found');
     const page = records.slice(start, start + limit);
     return {
-      items: page.map(project),
+      items: page,
       ...(start + limit < records.length && page.length > 0
         ? {nextBeforeEvidenceId: page.at(-1)!.evidenceId}
         : {})
@@ -109,8 +119,8 @@ export class ScopedEvidenceReader {
 
   async get(evidenceId: string): Promise<Evidence> {
     const id = requiredId(evidenceId, 'evidenceId');
-    const record = (await this.records()).find(item => item.evidenceId === id);
+    const record = (await this.entries()).find(item => item.evidenceId === id);
     if (!record) throw new ProtocolError('NOT_FOUND', 'Evidence not found');
-    return project(record);
+    return record;
   }
 }
