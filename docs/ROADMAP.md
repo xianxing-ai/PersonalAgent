@@ -3,6 +3,9 @@
 ## 2026-10-17 编码最小修复算法与 F15 多轮链（in_progress）
 
 Owner 本轮解除这部分暂停，要求算法与工作流进入自有镜像。[ADR-0033](adr/0033-coding-minimal-repair-workflow.md)记录复用 jsdiff/TypeScript、原 F15 多轮、任务隔离目录、包级验证失效、主/影子与 CAS 交付。根协调承担依赖/文档/集成，云图、编码工具、Runtime/Desktop 按现有模块归属交付实际接线。新工作包不混入固定 head 的 PR #376 审查；中间镜像暂不发，完整增量测试后统一构建。代码、真实模型、镜像与平台逐面验收，尚未标 done。
+## 2026-10-16 MCP 长驻缓存评审修复与 Desktop TLS 组合（in_progress）
+
+goo122 基于 #373 `14f34b40` 推进[组合验收](modules/MOD-06-PRODUCT-TLS-20261016.md)，交付基线为同步修复后的 #373 `3aa04eb6`：实际 Electron 管理窗口/安全存储、默认 fetch、loopback HTTPS 与原 SQLite/Policy 完成审批、一次调用、断连、拒绝、两次正常重启读回、旧许可拒绝和撤销；四类证书/目录/重定向负例零工具调用。原生对话框响应与服务内容仍为合成，云调用 0。#369 缓存无界增长评审已修复为每 host 最多 64 个 run，重连不能清空身份配额；`bfcb1ab1` 已普通推送，并逐层同步 #370～#373。基础修复完整 check 3153 通过、31 跳过、0 失败；组合包最终完整 check 3175 通过、31 跳过、0 失败，MCP 20/20。首轮未修改的知识库写回出现 RESULT_UNKNOWN，独立复现及一次串行完整复核通过，初次底层原因仍未定位并保留日志。当前 CI/非作者评审和集成以 GitHub 为准。真实平台/OAuth/真人确认仍待验收，整个 MOD-06 保持 in_progress、provisional。
 
 ## 2026-10-16 远程 MCP 默认 HTTPS/TLS 验证（in_progress）
 
