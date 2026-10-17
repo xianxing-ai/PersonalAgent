@@ -1,0 +1,53 @@
+name: DeepSeek template offline
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/deepseek-template.yml'
+      - 'tests/manual/models/deepseek_template_probe.py'
+      - 'tests/manual/models/test_deepseek_template_probe.py'
+      - 'tests/manual/models/requirements-deepseek-template-linux.txt'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deepseek-template.yml'
+      - 'tests/manual/models/deepseek_template_probe.py'
+      - 'tests/manual/models/test_deepseek_template_probe.py'
+      - 'tests/manual/models/requirements-deepseek-template-linux.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  template:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Acquire pinned test assets
+        run: |
+          python -m venv .cache/template-venv
+          .cache/template-venv/bin/python -m pip install --only-binary=:all: --no-deps --require-hashes -r tests/manual/models/requirements-deepseek-template-linux.txt
+          curl --fail --location --retry 2 --output .cache/tokenizer-v41.json https://raw.githubusercontent.com/deepseek-ai/deepseek-recipe/8cadfede7063c896b944e7bae05daa3549ae97ea/static/tokenizers/v41/tokenizer.json
+      - name: Run guard tests
+        run: .cache/template-venv/bin/python -m unittest discover -s tests/manual/models -p test_deepseek_template_probe.py -v
+      - name: Run actual official template without network
+        run: |
+          probe_status=0
+          sudo unshare --net -- env "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}" "$PWD/.cache/template-venv/bin/python" tests/manual/models/deepseek_template_probe.py --tokenizer .cache/tokenizer-v41.json > .cache/deepseek-template-report.json || probe_status=$?
+          cat .cache/deepseek-template-report.json
+          exit "$probe_status"
+      - name: Keep public fixture receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deepseek-template-receipt
+          path: .cache/deepseek-template-report.json
+          if-no-files-found: ignore
+          retention-days: 7
