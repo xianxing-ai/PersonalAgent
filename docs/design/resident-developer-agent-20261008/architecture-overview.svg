@@ -5,7 +5,7 @@
 <rect x="0" y="0" width="2800" height="2900" rx="0" fill="#f3f6fa" stroke="none"/>
 <text x="50" y="72" font-size="40" class="strong" text-anchor="start">PersonalAgent · 常驻自主开发者助手：完整模块架构</text>
 <text x="50" y="119" font-size="23" class="muted" text-anchor="start">电脑运行时无人监管：观察变化 → 可信决策 → 局部修复 → 委派执行与监管 → 实际读回</text>
-<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<a href="../CURRENT_DESIGN_20261015.md" id="history-design-notice-20261015"><text x="50" y="158" font-size="21" class="muted" text-anchor="start">历史目标快照 · 原估算日期保留 · 当前设计见 2026-10-15入口，架构未最终定型</text></a>
 <rect x="40" y="190" width="1780" height="2230" rx="14" fill="#fff" stroke="#d5dfe8"/>
 <rect x="1870" y="190" width="890" height="2230" rx="14" fill="#fff" stroke="#d5dfe8"/>
 <text x="60" y="237" font-size="29" class="strong" text-anchor="start">本地电脑：可信宿主 + Runtime + 受限工具</text>

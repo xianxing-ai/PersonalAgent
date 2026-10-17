@@ -1,0 +1,56 @@
+wukong test started: <implementation>\.cache\wukong-launch-20261016-065256
+{
+  "status": "failed",
+  "directory": "<implementation>\\.cache\\wukong-test-version-ztRkWo",
+  "summary": {
+    "modelCalls": 0,
+    "modelCallOutcomes": {
+      "attempted": 0,
+      "succeeded": 0,
+      "failed": 0,
+      "pending": 0,
+      "attemptedWallMs": 0,
+      "succeededWallMs": 0,
+      "failedWallMs": 0
+    },
+    "modelCallsByStage": {
+      "candidate_planning": {
+        "attempted": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 0,
+        "succeededWallMs": 0,
+        "failedWallMs": 0
+      },
+      "escalated_decision": {
+        "attempted": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 0,
+        "succeededWallMs": 0,
+        "failedWallMs": 0
+      },
+      "branch_execution": {
+        "attempted": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "pending": 0,
+        "attemptedWallMs": 0,
+        "succeededWallMs": 0,
+        "failedWallMs": 0
+      }
+    },
+    "candidatePlanningCalls": 0,
+    "escalatedDecisionCalls": 0,
+    "branchExecutionCalls": 0,
+    "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+    "layaSuccessfulChoiceCalls": 0,
+    "layaRejectedCalls": 0,
+    "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+    "actualDecisionMakers": [],
+    "trainingPerformed": false
+  },
+  "failure": "Owned Laya startup unavailable"
+}

@@ -45,7 +45,7 @@ async function fixture(t){
   await new Promise(resolve=>reservation.close(resolve));
   const env=Object.fromEntries(Object.entries(process.env).filter(([name])=>!name.startsWith('PA_AGENT_')
     &&name!=='NODE_TLS_REJECT_UNAUTHORIZED'&&name!=='NODE_EXTRA_CA_CERTS'));
-  Object.assign(env,{PA_AGENT_HOST_MODE:'agentarts',PA_AGENT_MODEL_BASE_URL:`https://127.0.0.1:${source.address().port}/v1`,
+  Object.assign(env,{PA_AGENT_HOST_MODE:'standalone-validation',PA_AGENT_LAYA_MODE:'legacy-without-laya',PA_AGENT_MODEL_BASE_URL:`https://127.0.0.1:${source.address().port}/v1`,
     PA_AGENT_MODEL:'synthetic',PA_AGENT_MODEL_API_KEY:'synthetic-model-secret',
     PA_AGENT_INBOUND_TOKEN:'synthetic-inbound-token-at-least-32-chars',PA_AGENT_TIMEOUT_MS:'3000',
     PORT:String(port),NODE_EXTRA_CA_CERTS:path.join(directory,'cert.pem')});

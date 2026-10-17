@@ -24,7 +24,7 @@ for(const [surface,path,assignment] of [
       return {dataset,disabled:false,focus(options){this.focusOptions=options;document.activeElement=this;}};
     }
     let buttons=[button()];const container={querySelectorAll:()=>buttons};
-    const context=vm.createContext({document,conversation:container,tasksNode:container,current:{tasks:[{taskId:'task-1',state:'running'}]},report:error=>errors.push(error.message),invoke:()=>new Promise((resolve,reject)=>calls.push({resolve,reject}))});
+    const context=vm.createContext({document,conversation:container,tasksNode:container,current:{tasks:[{taskId:'task-1',state:'running'}]},report:error=>errors.push(error.message),invoke:(name,payload)=>new Promise((resolve,reject)=>calls.push({name,payload,resolve,reject}))});
     for(const declaration of declarations.values())vm.runInContext(`const ${declaration};`,context);
     const click=vm.runInContext(`(${handler})`,context);
     return {calls,errors,document,context,button,get buttons(){return buttons;},replace(next){buttons=next;vm.runInContext('syncCancelButtons()',context);},click:target=>click({target:{closest:()=>target}}),restore:target=>{context.focused=target;vm.runInContext('restoreTaskActionFocus(focused)',context);}};
@@ -48,6 +48,14 @@ for(const [surface,path,assignment] of [
   test(`${surface}: different task or action and approval controls never receive restored focus`,()=>{
     const f=fixture(),old=f.button();f.replace([f.button('copy'),f.button('cancel','task-2')]);f.restore(old);assert.equal(f.document.activeElement,f.document.body);
     if(surface==='panel'){old.dataset.approvalDecision='allow_once';f.replace([f.button()]);f.restore(old);assert.equal(f.document.activeElement,f.document.body);}
+  });
+  test(`${surface}: explicit reconciliation keeps original id, prevents duplicate and preserves failure`,async()=>{
+    const f=fixture();f.context.current.tasks=[{taskId:'task-1',state:'waiting_reconciliation'}];
+    const recovery=()=>{const b=f.button();b.dataset=surface==='panel'?{action:'task.reconcile.finish',id:'task-1'}:{reconcile:'task-1'};return b;};
+    const first=recovery();f.replace([first]);const pending=f.click(first);assert.equal(f.calls[0].name,'task.reconcile.finish');assert.equal(f.calls[0].payload,'task-1');
+    const replacement=recovery();f.replace([replacement]);await f.click(replacement);assert.equal(f.calls.length,1);f.calls[0].reject(Error('原结果仍待核实'));await pending;
+    assert.deepEqual(f.errors,['原结果仍待核实']);assert.equal(replacement.disabled,false);assert.equal(f.context.current.tasks[0].state,'waiting_reconciliation');
+    const retry=f.click(replacement);assert.equal(f.calls.length,2);f.replace([]);f.calls[1].resolve({taskId:'task-1',state:'cancelled'});await retry;assert.equal(f.buttons.length,0);
   });
   if(surface==='panel')test('panel: failure location actions retain their specific task identity',()=>{
     const f=fixture(),first=f.button('locate'),second=f.button('locate');

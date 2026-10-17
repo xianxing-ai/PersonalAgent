@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-17T03:40:11.203Z",
+  "profile": "huawei_ict_agentarts",
+  "baseCommit": "791c6dd70a8a47cc323d7843455db1375cf46666",
+  "sourceFiles": [
+    {
+      "file": "apps/runtime/src/application/subagent-host.ts",
+      "sha256": "20e223aaf363b51262a32c2c2d94d41dfbe598981c6664c0ca526ce0a4bb8382"
+    },
+    {
+      "file": "apps/runtime/src/application/agentarts.ts",
+      "sha256": "211597c6d437dbb102e7838414aaf898dce1c4dc42b2748835ae3abded930011"
+    },
+    {
+      "file": "apps/runtime/src/application/runtime-application.ts",
+      "sha256": "7a35c617aa9fa8d6912fc3f41847f4e75b67fddf7c3454d52d8c41fa68ce0d78"
+    },
+    {
+      "file": "apps/runtime/test/subagent-explicit-competition-resume.test.mjs",
+      "sha256": "28739c98e506207761564a78ffedb991ff84994a332ad8df5d832e4a0c156442"
+    },
+    {
+      "file": "apps/runtime/test/default-coordination-subagents.test.mjs",
+      "sha256": "b297f7f091950508ba47f3e6e823453196543854701c3d1a64a7fdb09de4f09c"
+    },
+    {
+      "file": "apps/desktop/electron/agentarts-transport-config.js",
+      "sha256": "7b6fff40a6539b9468a9046319ed6467f583409d2f80ce33099232f34019fb27"
+    },
+    {
+      "file": "apps/desktop/electron/live-history-file-store.js",
+      "sha256": "7d109021cd2484a11232da7b73d007d1f0e5ff193ec60c740d67b3a7cb5a7114"
+    },
+    {
+      "file": "apps/desktop/test/agentarts-deployment-approval-binding.test.mjs",
+      "sha256": "9cc9e310fa8af633a03539bd37afe50de8399c97027cacbebb4bd2141e2885d6"
+    },
+    {
+      "file": "apps/desktop/test/agentarts-transport-config.test.mjs",
+      "sha256": "bf0efda2d27fedfdb116a579eaf327c2b268652a656c131d6ebca5b461a424a2"
+    },
+    {
+      "file": "apps/desktop/test/agentarts-transport-composition.test.mjs",
+      "sha256": "4b4a0d647accbf5e0f0904939b099b7e7a65580746d8a589ec749c07297cf267"
+    },
+    {
+      "file": "apps/desktop/test/live-history-file-store.test.mjs",
+      "sha256": "670436dd7a1563bdb198ce18152405dca3838cfec74cc8aeddd042feaddc38df"
+    },
+    {
+      "file": "packages/agentarts/src/owned-workflows.ts",
+      "sha256": "46da19c0e176bb3137a4b3904f1c9ed586509647b2714499689062e5de4c51c4"
+    },
+    {
+      "file": "apps/agentarts-runtime/src/server.mjs",
+      "sha256": "de4759079721de89185c9f215b666730fd16e5c8757ffe00aa0f43364ef17bb9"
+    },
+    {
+      "file": "apps/agentarts-runtime/src/binding-dispatch.mjs",
+      "sha256": "aaa64877252210c9b927da973f190156889fd5779070f91496712aeb0a631261"
+    },
+    {
+      "file": "apps/agentarts-runtime/test/workflow-wss-budget.test.mjs",
+      "sha256": "c6fdb249eec5f4e20baf82d85f311fbcc14d08e5210aa746f2b8d820c857c549"
+    }
+  ],
+  "firstFullCheck": {
+    "file": "pr376-three-p2-full-check.log",
+    "exitCode": 1,
+    "logSha256": "9b683577d4b576c3194bc66dee740c5086c4cc92f04187eb7b584237239910fd",
+    "reportCount": 36,
+    "totals": {
+      "tests": 3829,
+      "pass": 3807,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 21,
+      "todo": 0
+    },
+    "startedAtUtc": "2026-10-17T03:28:06.9696923Z",
+    "finishedAtUtc": "2026-10-17T03:34:19.1281282Z",
+    "failure": "live-voice-boot-history: failed sink expected an identical committed cache to remain durable",
+    "originalIoRootCause": "unknown",
+    "integrationNotRunByThisFailedCommand": true
+  },
+  "targeted": [
+    {
+      "file": "p2-deployment-regression-20261017-r2.log",
+      "exitCode": 0,
+      "logSha256": "6942ed1e40427e346671008e7abcf303c6a555f92c1f04aeccd23021743262cc",
+      "reportCount": 1,
+      "totals": {
+        "tests": 99,
+        "pass": 99,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "file": "wss-workflow-p2-regression.log",
+      "exitCode": 0,
+      "logSha256": "76f34761f2247c748861502998a9bc2145170ddc9549c222fb61b84aaebd6d38",
+      "reportCount": 1,
+      "totals": {
+        "tests": 9,
+        "pass": 9,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "file": "wss-workflow-p2-compatibility.log",
+      "exitCode": 0,
+      "logSha256": "9df2ebbf827ce4a3e5e01520c311de0addfd9184856bcd05bacb320f2739da00",
+      "reportCount": 1,
+      "totals": {
+        "tests": 108,
+        "pass": 108,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "file": "pr376-live-history-targeted.log",
+      "exitCode": 0,
+      "logSha256": "ce3a281f5d56103d4b565aef4935ba0a4948f7af5511c8e927142f33f1229270",
+      "reportCount": 1,
+      "totals": {
+        "tests": 19,
+        "pass": 19,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "file": "pr376-p2-root-integration.log",
+      "exitCode": 0,
+      "logSha256": "354e6acd192a43c752bd03aa0ff95f25bacea4cfac1b1dac2c123056d371db3d",
+      "reportCount": 1,
+      "totals": {
+        "tests": 48,
+        "pass": 48,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    }
+  ],
+  "boundary": {
+    "externalModelAndVerifier": "explicit Fake for code regressions",
+    "realLocalRuntimeAndSqlite": true,
+    "realLocalWebsocketAndHttp": true,
+    "realCloudThisReceipt": false,
+    "physicalMicrophone": false,
+    "physicalPlayback": false,
+    "all28BusinessGraphsVerified": false,
+    "firstFullCommandPassed": false,
+    "latestHeadCi": "must be read independently on GitHub before merge",
+    "architectureFinalized": false
+  }
+}

@@ -22,7 +22,7 @@ const observed=(modelId='fake-A',depth=1,fast=false)=>({conversationPreference:{
 function fixture(){
   const control=value=>({value,attrs:{},handlers:{},style:{setProperty(name,value){this[name]=value;}},setAttribute(name,value){this.attrs[name]=value;},getAttribute(name){return this.attrs[name];},addEventListener(name,handler){this.handlers[name]=handler;},replaceChildren(...options){this.options=options;}});
   const modelChoice=control(''),slider=control('1'),fastBtn=control(''),depthLabel={},classes=new Map(),calls=[];
-  const context=vm.createContext({modelChoice,slider,fastBtn,depthLabel,modelMenu:{classList:{toggle(name,value){classes.set(name,value);}}},current:observed(),modelChoiceSignature:undefined,errorFeedbackRevision:0,hostFeedback:'',hostFeedbackRevision:-1,
+  const context=vm.createContext({nativeReasoning:{setBusy(){}},modelChoice,slider,fastBtn,depthLabel,modelMenu:{classList:{toggle(name,value){classes.set(name,value);}}},current:observed(),modelChoiceSignature:undefined,errorFeedbackRevision:0,hostFeedback:'',hostFeedbackRevision:-1,
     Option:function(text,value){this.text=text;this.value=value;},invoke:(name,payload)=>new Promise((resolve,reject)=>calls.push({name,payload,resolve,reject}))});
   vm.runInContext("let feedback='';const setFeedback=value=>{errorFeedbackRevision++;feedback=value;};const report=error=>setFeedback(typeof error==='string'?error:error.message);",context);
   vm.runInContext(declarations.join('\n'),context);

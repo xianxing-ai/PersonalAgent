@@ -77,7 +77,7 @@ await mcp.dispose();
 
 原 host 的 `expectedDirectoryDigest` 是可选增量：初始化及每次新调用前重读 tools/list，发现静默变化时在 tools/call 前拒绝。绑定 host 将目录变化、当前配置变化或撤销视为永久失效，须以新受信快照重新组装，不能重新 start 恢复旧许可。普通 stop/setEnabled 仍是连接管理，不替代 Policy 撤销；配置管理方必须更新 revision/撤销 signal。会话缓存和 `recoverySupport:false` 不变，不承诺跨重启未知结果恢复。
 
-验证使用本机 HTTP fixture、合成 Bearer token 和合成 SecretStore：授权参数绑定、同名工具旧 grant、目录静默漂移、取凭据期间配置变化/过期/取消/超时/撤销、401/403/重定向、凭据拒绝和脱敏。未接真实安全存储/配置管理、原生设置、Production Competition、OAuth 或实际平台 endpoint。方案见 [ADR-0030](../../docs/adr/0030-remote-mcp-bound-credentials.md)，实际结果见[本包记录](../../docs/modules/MOD-06-BOUND-CREDENTIALS-20261015.md)。
+验证使用本机 HTTP fixture、合成 Bearer token 和合成 SecretStore：授权参数绑定、同名工具旧 grant、目录静默漂移、取凭据期间配置变化/过期/取消/超时/撤销、401/403/重定向、凭据拒绝和脱敏。未接真实安全存储/配置管理、原生设置、Production Competition、OAuth 或实际平台 endpoint。方案见 [ADR-0032](../../docs/adr/0032-remote-mcp-bound-credentials.md)，实际结果见[本包记录](../../docs/modules/MOD-06-BOUND-CREDENTIALS-20261015.md)。
 
 ### 公开参考结果出机
 
