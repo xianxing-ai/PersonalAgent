@@ -1,6 +1,6 @@
 import {createWorkspaceReadTool, WORKSPACE_READ_TOOL_NAME, WORKSPACE_READ_TOOL_VERSION} from '@personal-agent/coding-tools';
-import {lstatSync, realpathSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {lstatSync, realpathSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {SYNTHETIC_REPAIR_EXPORT_POLICY} from './competition-repair-context.js';

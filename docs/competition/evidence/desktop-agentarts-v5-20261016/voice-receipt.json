@@ -1,0 +1,75 @@
+{
+  "kind": "real_agentarts_runtime_native_voice",
+  "observedAtUtc": "2026-10-16T12:03:14.542Z",
+  "deploymentVersion": "arm64-v5-d92a17a4-r3",
+  "sourceCommit": "d92a17a4c436f37ff7a9bfdc5829044031a89bf7",
+  "route": "Desktop-compatible Runtime factory -> AgentArts fixed-version WSS -> owned image -> Bailian native realtime",
+  "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+  "deviceMicrophone": false,
+  "devicePlayback": false,
+  "fixture": "public-speech.wav",
+  "fixtureText": "你好。这是公开的语音连接测试。请只回答连接成功。",
+  "socketEvidence": [
+    {
+      "stage": "upgrade",
+      "httpStatus": 101,
+      "negotiatedProtocol": "pa.realtime.v1",
+      "wallMs": 2128.546,
+      "requestId": null
+    },
+    {
+      "stage": "session.created",
+      "model": "qwen3.8-omni-flash-realtime",
+      "wallMs": 2376.0532
+    },
+    {
+      "stage": "session.updated",
+      "model": "qwen3.8-omni-flash-realtime",
+      "wallMs": 2495.0157999999997
+    },
+    {
+      "stage": "close",
+      "code": 1000,
+      "reason": "other_or_empty"
+    }
+  ],
+  "version": "1.0",
+  "status": "passed",
+  "reason": "turn_complete",
+  "checks": {
+    "sessionReady": true,
+    "inputFinalTranscript": true,
+    "outputTranscript": true,
+    "outputAudio": true,
+    "turnComplete": true,
+    "closed": true
+  },
+  "timings": {
+    "sessionReadyMs": 878.837,
+    "inputFinalTranscriptMs": 2504.992,
+    "outputTranscriptMs": 2819.352,
+    "outputAudioMs": 6365.288,
+    "turnCompleteMs": 9494.599,
+    "inputSentMs": 9593.817,
+    "closedMs": 9706.362,
+    "closeDurationMs": 112.513
+  },
+  "failures": [],
+  "transcripts": {
+    "input": [
+      "你好。",
+      "这是公开的语音连接测试。",
+      "请只回答连接成功。"
+    ],
+    "output": [
+      "你好，有什么可以帮你的吗？",
+      "明白，这是语音连通测试。我这边能正常接收和回应你的声音。",
+      "连接成功"
+    ]
+  },
+  "inputAudioBytes": 256320,
+  "outputAudioBytes": 80640,
+  "outputAudioSha256": "11ef607faa752e846c28c9ff3e38e2b10fd7486bf12cb35948fe33adb51f0c3b",
+  "verification": "gateway_events_only_no_playback_or_platform_trace",
+  "elapsedMs": 9706.537
+}

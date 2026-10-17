@@ -37,13 +37,14 @@ async function harness(t, invoke) {
     get: () => html,
     set(value) {
       html = value;
+      if(value.includes('id="quit"'))nodes.set('#quit',element());else nodes.delete('#quit');
       revokeButtons = [...value.matchAll(/data-revoke="([^"]+)" data-task="([^"]+)" data-revision="([^"]+)"/g)]
         .map(([, revoke, task, revision]) => ({...element(), dataset: {revoke, task, revision}}));
     },
   });
   const render = mountAdmin(root, invoke, escape);
   const base = {tasks: [], approvals: [], capabilities: [], health: [], connection: 'fixture'};
-  return {render, base, root, html: () => html, content: nodes.get('#content'), buttons: () => revokeButtons,
+  return {render, base, root, html: () => html, content: nodes.get('#content'), buttons: () => revokeButtons, quitButton:()=>nodes.get('#quit'),
     unload: () => {for (const listener of windowListeners.get('unload') ?? []) listener();}};
 }
 
@@ -232,4 +233,14 @@ test('allowed approval history reaches revoke and shows only persisted readback'
     authorizationRef: 'history-1', expectedApprovalRevision: 2}]);
   assert.match(ui.html(), /已撤销（授权存储读回）/);
   assert.doesNotMatch(ui.html(), /data-revoke=/);
+});
+
+test('visible general settings exposes the existing normal app quit action',async t=>{
+  const calls=[],ui=await harness(t,async(...args)=>{calls.push(args);});
+  ui.render({...ui.base,adminNavigation:{page:'settings',revision:1}});
+  assert.ok(ui.html().includes('<h2>常规</h2>'));assert.ok(ui.html().includes('id="quit">退出应用</button>'));
+  assert.deepEqual(calls,[],'rendering must not quit the application');
+  await ui.quitButton().listeners.get('click')();assert.deepEqual(calls,[['app.quit']]);
+  ui.render({...ui.base,adminNavigation:{page:'settings',revision:2}});
+  await ui.quitButton().listeners.get('click')();assert.deepEqual(calls,[['app.quit'],['app.quit']],'one click invokes the existing action once after refresh');
 });

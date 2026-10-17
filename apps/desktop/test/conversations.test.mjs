@@ -38,7 +38,7 @@ test('Live messages survive restart with legacy tasks, deduplicate and remain pa
     const tasks=[{taskId:'old',state:'succeeded',resultSummary:'旧回答'},{taskId:'next',state:'running'},{taskId:'workspace',state:'running'}];
     assert.deepEqual(reloaded.history(tasks,'next'),[{role:'user',content:'旧文字'},{role:'assistant',content:'旧回答'},{role:'user',content:'修订后的问题'},{role:'assistant',content:'语音回答'}]);
     assert.deepEqual(reloaded.history(tasks,'workspace'),[]);
-    assert.equal(JSON.parse(readFileSync(file,'utf8')).version,3);
+    assert.equal(JSON.parse(readFileSync(file,'utf8')).version,4);
     assert.deepEqual(conversationTimeline([{taskId:'old',createdAt:'2026-01-01T00:00:00Z'},{taskId:'next',createdAt:'2026-01-01T00:00:03Z'}],reloaded.messagesFor('panel')).map(entry=>entry.value.id??entry.value.taskId),['old','voice-user','voice-answer','next','future']);
     // A failed atomic replacement must not add a phantom in-memory record.
     const blocked=path.join(folder,'directory');mkdirSync(blocked);reloaded.file=blocked;

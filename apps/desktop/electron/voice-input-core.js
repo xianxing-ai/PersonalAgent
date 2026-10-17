@@ -13,9 +13,10 @@ function safeFailure(error) {
 /** Host-only explicit capture → ASR → Runtime consumer → playback workflow. */
 export function createDesktopVoiceInputCore({source, microphoneHost, client, createBuffer,
   VoiceSessionManager, createConsumer, createSpeechPorts, onUpdate = () => {},
-  enabled = false, autoPlay = false, inputMode = 'conversation', onTranscript = () => {},
+  enabled = false, autoPlay = false, inputMode = 'conversation', onTranscript = () => {}, readConversationId,
   onTaskSubmitted = () => {}, now = Date.now}) {
   if (!['conversation', 'dictation'].includes(inputMode)) throw Error('无效的语音输入模式');
+  if(readConversationId!==undefined&&typeof readConversationId!=='function')throw Error('语音会话归属读取器无效');
   const ports = createSpeechPorts();
   const manager = new VoiceSessionManager({recognition: ports.recognition, output: ports.output});
   const voiceClient = {async call(operation, payload, options) {
@@ -116,11 +117,12 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       || sharedDeadline > now() + SESSION_MS || !lease.signal || lease.signal.aborted
       || typeof lease.signal.addEventListener !== 'function' || typeof lease.signal.removeEventListener !== 'function'
       || !microphoneHost.snapshot().authorized)) throw Error('共享麦克风租约无效');
+    const conversationId=readConversationId?.();
     if (!lease) microphoneHost.authorize();
     const controller = new AbortController();
     const captureDeadline = new Date(Math.min(now() + CAPTURE_MS, sharedDeadline)).toISOString();
     const sessionDeadline = new Date(sharedDeadline).toISOString();
-    const record = {senderId, controller, captureDeadline, sessionDeadline, phase: 'acquiring', subscription: undefined,
+    const record = {senderId, conversationId,controller, captureDeadline, sessionDeadline, phase: 'acquiring', subscription: undefined,
       buffer: createBuffer({signal: controller.signal, deadline: sessionDeadline, maxDurationMs: CAPTURE_MS}),
       sessionId: undefined, replyId: undefined, parentSignal: lease?.signal, cancelRequested: false};
     active = record;
@@ -230,7 +232,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
           || now() >= Date.parse(record.sessionDeadline)) {
           throw Object.assign(Error('语音输入已取消'), {code: 'CANCELLED'});
         }
-        onTranscript({senderId, text});
+        onTranscript({senderId, text,...(record.conversationId===undefined?{}:{conversationId:record.conversationId,dictationId:record.sessionId+':'+transcript.transcriptId})});
         return {text, voice: snapshot()};
       }
       record.phase = 'consuming';

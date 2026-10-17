@@ -1,0 +1,18 @@
+{
+  "kind": "architecture_viewer_validation",
+  "designSourceSha": "abb70879d5eb8c41451b89570978e2f454d4b93f",
+  "designDate": "2026-10-15",
+  "viewerRevisionDate": "2026-10-16",
+  "surface": "original_node_react_vite_architecture_viewer",
+  "build": {"typescript": "passed", "vite": "passed", "offlineExport": "passed", "architectureCheck": "passed", "warning": "main_chunk_over_500_kB"},
+  "sourceCoverage": {"workflows": 28, "catalogDetailedNodes": 185, "workPackages": 10, "modules": 39},
+  "renderedGraph": {"compactNodes": 40, "expandedNodes": 225, "compactRelations": 133, "expandedEdges": 355, "detailEdges": 191, "featureEntryEdges": 31, "sharedNodes": 12},
+  "browser": {"name": "Google Chrome", "visible": true, "httpStatus": 200, "route": "/architecture.html", "title": "PersonalAgent 当前设计 | 本机Laya与AgentArts · 2026-10-16", "automation": "existing_Playwright_system_Chrome_isolated_profile", "fallbackReason": "CUA_Chrome_provider_unavailable", "existingUserProfileModified": false},
+  "interactions": {"featureSelectionAndDetails": 28, "notificationNodeFields": "passed", "mechanismPanels": 9, "platformPanels": 4, "workPackageRows": 10, "expandedModuleRows": 39, "expandAll": "passed", "collapseAndFit": "passed"},
+  "regressions": {"releaseDetailHasNoObsoleteTrainingContract": "passed", "replayCompleteAndMissingBothReachJoin": "passed", "casReleaseKeepsOperationId": "passed"},
+  "consoleErrors": [],
+  "failedNetworkResources": [],
+  "previousIssue": {"resource": "/favicon.ico", "status": 404, "resolution": "inline_data_favicon_and_fresh_Chrome_recheck"},
+  "offlineHtml": {"file": "dist/architecture.html", "bytes": 686222, "sha256": "dfe9e80f3908ee8cc9cc77f07dc0e764f06646fca7bb9b8eb2c68556f9e4dcf5", "externalScriptOrStylesheetTags": 0},
+  "boundaries": ["Viewer_build_and_interactions_only", "No_model_cloud_account_or_device_call", "Not_acceptance_of_28_real_business_workflows", "No_product_runtime_or_architecture_change", "CUA_plugin_repair_not_performed", "Mobile_viewport_not_tested"]
+}

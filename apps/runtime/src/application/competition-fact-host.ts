@@ -1,5 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
-import type {FactVersion, MemoryReadContext} from '@personal-agent/memory';
+import {MemoryQueryError} from '@personal-agent/memory';
+import type {FactVersion, MemoryQueryPort, MemoryReadContext} from '@personal-agent/memory';
 import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {isAbsolute} from 'node:path';
 import type {RuntimeApplication} from './runtime-application.js';
@@ -39,6 +40,8 @@ export interface TrustedPublicWithdrawal extends PublicSourceKey {
 }
 
 export interface CompetitionFactHost extends SqliteFactProjectionHost {
+  /** Fixed host namespace and public scope. Withdrawn/erased facts cannot be read through history. */
+  readonly publicMemory: MemoryQueryPort;
   createPublicFactErasureApplication(options:{confirm:(ref:{id:string;revision:number})=>Promise<boolean>}): ReturnType<typeof createBoundPublicFactErasureApplication>;
   /** Host-only first phase after an independently authorized deletion decision. */
   beginFactErasure(request: MemoryReadContext & {readonly factId: string;
@@ -70,9 +73,49 @@ export function createCompetitionFactHost(
   };
   try {
     memory.provision(memoryNamespace);
+    const query = memory.bind(memoryNamespace, {allowedSensitivities: ['public']});
+    const readableHead = async (factId: string, context: MemoryReadContext) => {
+      active();
+      const page = await query.listCurrent({factId, at: new Date().toISOString(), limit: 1,
+        deadline: context.deadline, signal: context.signal});
+      active();
+      const head = page.facts.find(fact => fact.ref.id === factId && fact.state === 'active' && fact.sensitivity === 'public');
+      if (!head) throw new MemoryQueryError('SCOPE_DENIED');
+      return head;
+    };
+    const publicMemory: MemoryQueryPort = Object.freeze({
+      listCurrent: async (request: Parameters<MemoryQueryPort['listCurrent']>[0]) => {
+        active(); const page = await query.listCurrent(request); active();
+        const facts: FactVersion[] = [];
+        for (const fact of page.facts) {
+          try {
+            // An old pagination snapshot cannot retain a corrected, withdrawn or erased public source.
+            const head = await readableHead(fact.ref.id, request);
+            if (head.ref.revision === fact.ref.revision) facts.push(fact);
+          } catch (error) {
+            if (!(error instanceof MemoryQueryError) || error.code !== 'SCOPE_DENIED') throw error;
+          }
+        }
+        active(); return {...page, facts};
+      },
+      listHistory: async (request: Parameters<MemoryQueryPort['listHistory']>[0]) => {
+        await readableHead(request.factId, request);
+        const page = await query.listHistory(request); active();
+        await readableHead(request.factId, request);
+        return {...page, facts: page.facts.filter(fact => fact.sensitivity === 'public' && fact.state === 'active')};
+      },
+      getVersion: async (request: Parameters<MemoryQueryPort['getVersion']>[0]) => {
+        await readableHead(request.fact.id, request);
+        const fact = await query.getVersion(request); active();
+        await readableHead(request.fact.id, request);
+        if (fact.sensitivity !== 'public' || fact.state !== 'active') throw new MemoryQueryError('SCOPE_DENIED');
+        return fact;
+      },
+    });
     const projection = createSqliteFactProjectionHost({memory, runtime: application.runtime,
       memoryNamespace, graphNamespace, consumerKey});
     return Object.freeze({
+      publicMemory,
       createPublicFactErasureApplication:({confirm}:{confirm:(ref:{id:string;revision:number})=>Promise<boolean>})=>{
         active();
         const erasure=createBoundPublicFactErasureApplication({profile:'huawei_ict_agentarts',memory,
