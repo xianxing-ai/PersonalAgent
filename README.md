@@ -1,5 +1,7 @@
 # PersonalAgent
 
+> 2026-10-17 新增：[镜像内最小修复与 F15 V6 接线](docs/competition/CODING_MINIMAL_REPAIR_V6.md)。正常主Agent分派、隔离编码、真实检查失败后的增量修复、主/影子与原Evidence均有明确接口；源码、完整检查及真实云发布分别登记。#376 已合并，新编码增量不冒充旧镜像已具备。
+
 <!-- current-design-alignment-20261015 -->
 ## 当前设计、实现与验收入口（2026-10-15）
 

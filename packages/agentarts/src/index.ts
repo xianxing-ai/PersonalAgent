@@ -1,7 +1,7 @@
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import {createHash} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
-import {parseCoordinationResult} from '@personal-agent/coordination';
+import {parseCoordinationResult,parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {CoordinationResult,ExecutionModelSelection,ExecutionModelCatalog} from '@personal-agent/coordination';
 import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
@@ -16,7 +16,9 @@ import {workflowCandidateMetadata} from './owned-workflows.js';
 import {getOwnedWorkflowAdapterRequirements} from './workflow-adapters.js';
 import {boundSourceReadCandidates} from './workflow-dataflow.js';
 import {parseWorkflowSelectionResult} from './workflow-shadow-policy.js';
+import {rankCodingRepairCandidates} from './coding-repair.js';
 export {OwnedWorkflowEngine,workflowJoinReady} from './owned-workflows.js';
+export * from './coding-repair.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
 export {createProactiveHostProofs} from './proactive-host-proofs.js';
@@ -40,7 +42,7 @@ export type {OwnedBinding} from './bindings.js';
 export type {AgentInput};
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
-export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string}
+export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string;executionModel?:ExecutionModelSelection}
 /** Process-local finite-choice port; distinct from ModelPort and every authorization boundary. */
 export interface OwnedCandidateSelector {
   select(request: {context: string; candidates: readonly {id: string; description: string}[];
@@ -100,7 +102,9 @@ export class OwnedAgentOrchestrator {
   /** Existing MaaS/ModelGateway generates data candidates; Laya chooses one later. */
   async prepareOwnedWorkflowCandidates(context: WorkflowNodeContext): Promise<readonly WorkflowCandidate[]> {
     const request: AgentInvocation = {query:'owned-workflow-candidates', sessionId:context.namespace,
-      requestId:context.requestId, deadline:context.deadline, signal:context.signal};
+      requestId:context.requestId, deadline:context.deadline, signal:context.signal,
+      ...(context.input&&typeof context.input==='object'&&!Array.isArray(context.input)&&Object.hasOwn(context.input,'executionModel')
+        ?{executionModel:parseExecutionModelSelection((context.input as Record<string,unknown>).executionModel)}:{})};
     this.control(request);
     const bound=boundSourceReadCandidates(context);
     if(bound) {
@@ -118,13 +122,19 @@ export class OwnedAgentOrchestrator {
           designNotes:context.template.designNotes,acceptance:context.template.acceptance},
         ...workflowCandidateMetadata(context.node,context.availableTools),
         predecessorOutputs:context.predecessorOutputs,predecessorStates:context.predecessorStates,availableTools:context.availableTools,
+        ...(context.codingRepair?{codingRepair:context.codingRepair,codingRepairContract:{version:1,
+          currentRound:context.codingRepair.round,rule:'Use the current SHA-bound snapshot and actual verification diagnostics; preserve working code and unrelated files. Patch the smallest causally supported scope. Do not remove tests or assertions merely to make checks pass. JS/TS AST analysis describes syntax/declaration ranges only; other languages require the published validation recipes.',
+          nodeOutput:context.node.id==='F15_N03'?{diagnosis:'explain actual failure evidence',patches:[{path:'current relative file',expectedSha256:'exact current SHA256',edits:[{oldText:'unique exact current bytes',newText:'incremental replacement'}]}]}
+            :{scope:['current affected relative file path'],forbiddenActions:'changes outside the task and source evidence'},
+          newFiles:'Only a host-authorized absent file may use {path,expectedSha256:null,edits:[],createText:string}. A requested new file does not authorize writing it.',
+          resultShape:'For F15_N03 output the diagnosis/patches object directly, not patchDiff or a unified diff.'}}:{}),
         conditionalNodes:context.template.nodes.filter(node => node.condition).map(({id,condition}) => ({id,condition})),
         mode:context.mode}, request));
     if (Object.keys(raw).length !== 1 || !Array.isArray(raw.candidates) || raw.candidates.length > 15) {
       this.emitCandidateReceipt(context,request,Array.isArray(raw.candidates)?raw.candidates:undefined,'EXTERNAL_FAILURE');
       throw new ProtocolError('EXTERNAL_FAILURE', 'Invalid workflow candidate response');
     }
-    const candidates = raw.candidates.map(value => {
+    let candidates = raw.candidates.map(value => {
       const item = record(value);
       if (Object.keys(item).some(key => !['id','description','value','branches','shadowIntent'].includes(key))
         || item.id === 'owned-review' || typeof item.id !== 'string' || typeof item.description !== 'string'
@@ -140,6 +150,8 @@ export class OwnedAgentOrchestrator {
       }
       return candidate as unknown as WorkflowCandidate;
     });
+    if(context.codingRepair&&context.node.id==='F15_N03'&&context.node.kind==='executor')
+      candidates=rankCodingRepairCandidates(context.codingRepair,context.codingRepair.snapshot,candidates);
     this.emitCandidateReceipt(context,request,raw.candidates,candidates.length?undefined:'UNSUPPORTED_CAPABILITY');
     if (!candidates.length) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'No evidence-supported workflow candidate');
     return [...candidates, {id:'owned-review', description:'Available evidence does not support these proposals. Continue review without granting authorization, executing a tool or changing task state.',value:null,abstain:true}];
@@ -324,7 +336,7 @@ export class OwnedAgentOrchestrator {
     this.check(request); this.emit(role, request, 'started');
     const started=performance.now();let durationMs:number|undefined;
     try {
-      const selection = request.query === 'owned-workflow-candidates' ? undefined : parseAgentInput(request.query).executionModel;
+      const selection = request.executionModel??(request.query === 'owned-workflow-candidates' ? undefined : parseAgentInput(request.query).executionModel);
       if (selection && !this.options?.executionModels) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Execution model registry unavailable');
       const gateway = selection ? new ModelGateway(this.options!.executionModels.resolve(selection)) : this.models[role];
       let modelData=data;

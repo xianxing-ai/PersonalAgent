@@ -92,8 +92,8 @@ export interface CloudAgentPort {
   invoke(request: CoordinationRequest): Promise<CoordinationResult>;
 }
 
-export {AgentArtsCloudAgentPort} from './agentarts.js';
-export {AgentArtsResultUnknownError,AgentArtsTerminalError} from './agentarts-websocket.js';
+export {AgentArtsCloudAgentPort, parseAgentArtsResponseText} from './agentarts.js';
+export {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsWebSocketTransport} from './agentarts-websocket.js';
 export type {AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocket,
   AgentArtsWebSocketFactory, AgentArtsWebSocketConnectOptions} from './agentarts-websocket.js';
 export type {
@@ -103,6 +103,7 @@ export type {
   AgentArtsFetchInit,
   AgentArtsFailureDiagnostic,
   AgentArtsResponse,
+  AgentArtsResponseTextOptions,
   AgentArtsRuntimeConfig,
   AgentArtsSchemaCategory,
   AgentArtsWebSocketOptions,

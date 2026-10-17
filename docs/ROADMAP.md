@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-17 编码最小修复算法与 F15 多轮链（in_progress）
+
+Owner 本轮解除这部分暂停，要求算法与工作流进入自有镜像。[ADR-0031](adr/0031-coding-minimal-repair-workflow.md)记录复用 jsdiff/TypeScript、原 F15 多轮、任务隔离目录、包级验证失效、主/影子与 CAS 交付。根协调承担依赖/文档/集成，云图、编码工具、Runtime/Desktop 按现有模块归属交付实际接线。新工作包不混入固定 head 的 PR #376 审查；中间镜像暂不发，完整增量测试后统一构建。代码、真实模型、镜像与平台逐面验收，尚未标 done。
+
 ## 2026-10-16 V5 Desktop WSS、语音与主子模型（review）
 
 [V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya 架构或资格结论。
@@ -35,7 +39,8 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 | 主动责任/ConnectorHost/session/通知原子策略 | provisional，端口与离线组合已有 | 按矩阵各owner完成真实来源/调用方/渠道/恢复消费 |
 | 语音主动询问/确认与上下文记忆 | provisional，百炼既有端口，SIS平台不可用 | 原文、Goal、Memory与真实最终命令串入同一任务，不以握手当完整听说 |
 | 高级影子开关/主任务优先/机会收益资源 | 当前设计，尚未真实机会并行验收 | 并入已有判断；双方案比较等双方，其余可先交已验主结果，未知交DeepSeek |
-| 最小修复/依赖重规划算法 | 设计交接保留，暂停/未定 | 等用户后续定稿，不由文档对齐自动恢复实现 |
+| 编码最小修复 | 本轮明确授权实施，in_progress | 镜像原F15多轮、隔离宿主和正常主Agent接线；分项与完整图通过，云发布单独验收 |
+| 其他依赖/计划重规划算法 | 原设计交接保留，未定 | 不由本轮编码修复授权自动恢复其他算法 |
 
 真实发布/案例范围见[full-workflow-results](competition/evidence/test-image-v3-20261015/full-workflow-results.json)、
 [owned-release](competition/evidence/test-image-v3-20261015/owned-release.json)、[平台日志读回](competition/evidence/test-image-v3-20261015/platform-log-readback.json)。

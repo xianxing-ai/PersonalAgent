@@ -1,5 +1,11 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-17 镜像 F15 编码最小修复（provisional）
+
+[V6 接线](../competition/CODING_MINIMAL_REPAIR_V6.md)说明原 F15 的多轮失败修复、原子任务入口 `coding.repair.workflow`、独立编码宿主与包级验证指纹。新增 `@personal-agent/contracts/coding-repair` v1 是进程/工具数据，不增加 Core wire 或数据库迁移。镜像实际消费 jsdiff 与 TypeScript Compiler API；原本机 Runtime/Policy/ToolGateway/Evidence 继续负责授权和可信执行。
+
+主分支交付需当前 required 验证 VALID、相关用户基线 CAS 及逐文件读回；isolated 影子只产出验证 artifact、不发布主目录。固定版 AgentArts WSS/HTTPS、原生精确源码与元数据出机门禁继续保留。实现、分项测试、完整图和真实云发布分别登记，不扩大冻结范围，不据此宣称28条全部业务已验。
+
 ## 2026-10-17 审批恢复与 WSS 结果预算修复（provisional）
 
 AgentArts Runtime 工厂增加仅可信组合可注入的非秘密 `deploymentVersion` 与同步 `assertDeploymentBinding`，复用原 `coordinationBinding` 和任务 checkpoint；HTTPS/WSS 固定版本，同版凭据可刷新。Competition 任务在批准写入前、直接恢复前及云端发送前核对原配置；缺失或失配返回 `REVISION_CONFLICT`，不重新绑定旧任务，不先消费授权。显式模型子任务也按原父派发、原选择及执行种类恢复。

@@ -519,10 +519,10 @@ function createSha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-function appendResponseChunk(chunks: Uint8Array[], value: Uint8Array, total: {value: number}): void {
+function appendResponseChunk(chunks: Uint8Array[], value: Uint8Array, total: {value: number}, maxBytes = MAX_RESPONSE_BYTES): void {
   if (!(value instanceof Uint8Array)) external('AgentArts response body is malformed');
   total.value += value.byteLength;
-  if (total.value > MAX_RESPONSE_BYTES) external('AgentArts response exceeds the byte limit');
+  if (total.value > maxBytes) external('AgentArts response exceeds the byte limit');
   // A transport may reuse its buffer for the next read. Preserve received bytes
   // before advancing it, after enforcing the aggregate allocation limit.
   chunks.push(new Uint8Array(value));
@@ -554,7 +554,7 @@ function discardUnreadResponse(response: AgentArtsResponse): void {
   } catch { /* Even a malformed transport may expose throwing body accessors. */ }
 }
 
-async function readResponseText(response: AgentArtsResponse, combined: CombinedSignal): Promise<string> {
+async function readResponseText(response: AgentArtsResponse, combined: CombinedSignal, maxBytes = MAX_RESPONSE_BYTES): Promise<string> {
   const chunks: Uint8Array[] = [];
   const total = {value: 0};
   const body = response.body;
@@ -573,7 +573,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
             break;
           }
           if (result.value === undefined) external('AgentArts response body is malformed');
-          appendResponseChunk(chunks, result.value, total);
+          appendResponseChunk(chunks, result.value, total, maxBytes);
         }
       } finally {
         if (!consumed) closeWithoutWaiting(() => reader.cancel?.());
@@ -594,7 +594,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
             if (result.value !== undefined) external('AgentArts response body is malformed');
             break;
           }
-          appendResponseChunk(chunks, result.value, total);
+          appendResponseChunk(chunks, result.value, total, maxBytes);
         }
       } finally {
         if (typeof iterator.return === 'function') {
@@ -609,7 +609,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
   } else if (typeof response.arrayBuffer === 'function') {
     const buffer = await callWithAbort(() => response.arrayBuffer!(), combined);
     if (!(buffer instanceof ArrayBuffer)) external('AgentArts response body is malformed');
-    appendResponseChunk(chunks, new Uint8Array(buffer), total);
+    appendResponseChunk(chunks, new Uint8Array(buffer), total, maxBytes);
   } else if (typeof response.text === 'function') {
     const value = await callWithAbort(() => response.text!(), combined);
     if (typeof value !== 'string') external('AgentArts response body is malformed');
@@ -625,7 +625,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
       external('AgentArts response is not valid UTF-8');
     }
     if (roundTrip !== value) external('AgentArts response is not valid UTF-8');
-    appendResponseChunk(chunks, encoded, total);
+    appendResponseChunk(chunks, encoded, total, maxBytes);
   } else {
     external('AgentArts response body is unavailable');
   }
@@ -671,7 +671,8 @@ class TextCollector {
   private finalWorkflowAnswer: string | undefined;
   private terminalPhase: 'open' | 'task-ended' | 'ended' | 'invalid' = 'open';
 
-  constructor(private readonly strictCompletion = false, private readonly diagnostic?: TerminalDiagnosticState) {}
+  constructor(private readonly strictCompletion = false, private readonly diagnostic?: TerminalDiagnosticState,
+    private readonly maxTextChars = MAX_TEXT_CHARS) {}
 
   add(text: string, index: number | undefined): void {
     if (this.strictCompletion && this.terminalPhase !== 'open') {
@@ -687,7 +688,7 @@ class TextCollector {
       this.unindexed.push(text);
     }
     this.messageLength += text.length;
-    if (this.messageLength > MAX_TEXT_CHARS) external('AgentArts response exceeds the text limit');
+    if (this.messageLength > this.maxTextChars) external('AgentArts response exceeds the text limit');
   }
 
   startWorkflow(identity: WorkflowIdentity): void {
@@ -714,7 +715,7 @@ class TextCollector {
       this.finalWorkflowAnswer = undefined;
       return;
     }
-    if (answer.length > MAX_TEXT_CHARS) external('AgentArts response exceeds the text limit');
+    if (answer.length > this.maxTextChars) external('AgentArts response exceeds the text limit');
     this.finalWorkflowAnswer = answer;
   }
 
@@ -901,8 +902,9 @@ function parseSseStandard(payload: string, collector: TextCollector, strictCompl
 
 function parseSseWithoutSeparators(
   payload: string, strictCompletion: boolean, diagnostic?: TerminalDiagnosticState,
+  maxTextChars = MAX_TEXT_CHARS,
 ): TextCollector {
-  const collector = new TextCollector(strictCompletion, diagnostic);
+  const collector = new TextCollector(strictCompletion, diagnostic, maxTextChars);
   const lines = payload.split(/\r\n|\r|\n/);
   let done = false;
   for (const line of lines) {
@@ -933,8 +935,9 @@ function parseSseWithoutSeparators(
 
 function parseSsePayload(
   payload: string, strictCompletion: boolean, diagnostic?: TerminalDiagnosticState,
+  maxTextChars = MAX_TEXT_CHARS,
 ): TextCollector {
-  const standard = new TextCollector(strictCompletion, diagnostic);
+  const standard = new TextCollector(strictCompletion, diagnostic, maxTextChars);
   try {
     parseSseStandard(payload, standard, strictCompletion);
     return standard;
@@ -949,24 +952,66 @@ function parseSsePayload(
       diagnostic.providerFailureToken = undefined;
       diagnostic.providerErrorCode = undefined;
     }
-    return parseSseWithoutSeparators(payload, strictCompletion, diagnostic);
+    return parseSseWithoutSeparators(payload, strictCompletion, diagnostic, maxTextChars);
   }
 }
 
 function parseResponsePayload(
   payload: string, contentType: string | undefined, strictCompletion = false,
   diagnostic?: TerminalDiagnosticState,
+  maxTextChars = MAX_TEXT_CHARS, strictJsonCompletion = false,
 ): string {
   const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
   if (mediaType === 'text/event-stream') {
-    return parseSsePayload(payload, strictCompletion, diagnostic).finish(strictCompletion);
+    return parseSsePayload(payload, strictCompletion, diagnostic, maxTextChars).finish(strictCompletion);
   }
   if (mediaType === 'application/json') {
-    const collector = new TextCollector(strictCompletion, diagnostic);
+    const collector = new TextCollector(strictCompletion, diagnostic, maxTextChars);
     parseJsonPayload(payload, collector);
-    return collector.finish();
+    return collector.finish(strictJsonCompletion && strictCompletion);
   }
   external('AgentArts response content type is unsupported');
+}
+
+/** Host-selected envelope limits; they do not change the normal coordination adapter. */
+export interface AgentArtsResponseTextOptions {
+  readonly signal: AbortSignal;
+  readonly deadline: string;
+  readonly strictCompletion?: boolean;
+  readonly maxResponseBytes?: number;
+  readonly maxTextChars?: number;
+}
+
+/** Reuse the transport's UTF-8, cancellation, event ordering and failure checks for owned image protocols.
+ * Returned text is untrusted data: callers must still parse and bind their application-specific result.
+ */
+export async function parseAgentArtsResponseText(response: AgentArtsResponse,
+  options: AgentArtsResponseTextOptions): Promise<string> {
+  const maxBytes = options.maxResponseBytes ?? MAX_RESPONSE_BYTES;
+  const maxChars = options.maxTextChars ?? MAX_TEXT_CHARS;
+  const deadlineMs = typeof options.deadline === 'string' && ISO_DEADLINE.test(options.deadline)
+    ? Date.parse(options.deadline) : NaN;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isSafeInteger(maxChars) || maxChars <= 0
+    || !Number.isFinite(deadlineMs)
+    || (options.strictCompletion !== undefined && typeof options.strictCompletion !== 'boolean')) {
+    discardUnreadResponse(response);
+    invalid('Invalid AgentArts response parser options');
+  }
+  const combined = makeCombinedSignal(options.signal, deadlineMs);
+  try {
+    const aborted = currentAbortError(combined);
+    if (aborted) {discardUnreadResponse(response); throw aborted;}
+    if (!Number.isInteger(response.status) || response.status < 200 || response.status >= 300) {
+      discardUnreadResponse(response);
+      external('AgentArts invocation failed');
+    }
+    const payload = await readResponseText(response, combined, maxBytes);
+    const contentType = response.headers?.get('content-type') ?? undefined;
+    const parsed = parseResponsePayload(payload, contentType, options.strictCompletion ?? true, undefined, maxChars, true);
+    const lateAbort = currentAbortError(combined);
+    if (lateAbort) throw lateAbort;
+    return parsed;
+  } finally {combined.dispose();}
 }
 
 function defaultFetch(url: string, init: AgentArtsFetchInit): Promise<AgentArtsResponse> {

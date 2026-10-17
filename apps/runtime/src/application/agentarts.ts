@@ -12,6 +12,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {AgentArtsRealtimeModelGateway} from '@personal-agent/models';
 import type {RealtimeSocketConstructor} from '@personal-agent/models';
 import {createHash} from 'node:crypto';
+import {createRuntimeOwnedWorkflowImageAdapter} from './owned-workflow-image-adapter.js';
 import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt} from './coordination.js';
 import {
   createRuntimeApplication,
@@ -44,6 +45,9 @@ export interface AgentArtsRuntimeApplicationOptions
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
+  /** Explicit host-only key source for an image configured with a receipt-key override. */
+  readOwnedWorkflowReceiptSecret?: (signal:AbortSignal)=>Promise<string>;
+  fetchHandlesHostAuthorization?:true;
 }
 
 /**
@@ -74,6 +78,8 @@ export function createAgentArtsRuntimeApplication(
     onTransportState,
     onDiagnostic,
     beforeCompetitionSend,
+    readOwnedWorkflowReceiptSecret,
+    fetchHandlesHostAuthorization,
     ...runtimeOptions
   } = options;
   if (deploymentVersion !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(deploymentVersion)) {
@@ -133,10 +139,19 @@ export function createAgentArtsRuntimeApplication(
         },
       },
   );
+  const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
+    ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,
+      ...(fetchHandlesHostAuthorization?{fetchHandlesHostAuthorization}:{}),
+      ...(transport===undefined?{}:{transport}),...(websocketUrl===undefined?{}:{websocketUrl}),
+      ...(allowHttpsFallback===undefined?{}:{allowHttpsFallback}),...(websocketAuthorizationProvider?{websocketAuthorizationProvider}:{}),
+      ...(websocketFactory?{websocketFactory}:{}),...(fetchImpl?{fetchImpl}:{}),...(invokeMode?{invokeMode}:{}),
+      ...(workflowGoalInput?{workflowGoalInput}:{}),...(assertDeploymentBinding?{assertDeploymentBinding}:{}),
+      ...(onTransportState?{onTransportState}:{}),...(readOwnedWorkflowReceiptSecret?{readReceiptSecret:readOwnedWorkflowReceiptSecret}:{})}):undefined;
   application = createRuntimeApplication({
     ...runtimeOptions,
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
+    ...(runtimeOptions.codingRepair?{}:ownedImage?{codingRepair:{image:ownedImage}}:{}),
     ...(assertDeploymentBinding === undefined ? {} : {assertCoordinationBinding: assertDeploymentBinding}),
     // Cloud construction above already validated the same gateway/runtime target.
     // Missing WSS/credentials stays a connect-time error, never a direct API fallback.
@@ -154,6 +169,6 @@ export function createAgentArtsRuntimeApplication(
     coordination: new CompetitionCoordinator(cloud),
   });
   const closeRuntime = application.close.bind(application);
-  application.close = () => { closeRuntime(); cloud.close(); };
+  application.close = () => { closeRuntime(); cloud.close(); ownedImage?.close(); };
   return application;
 }
