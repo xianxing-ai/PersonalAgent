@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {pcmLevel} from './audio-level.js';
 
 const START_TIMEOUT_MS = 10_000;
 const STOP_TIMEOUT_MS = 5_000;
@@ -13,7 +14,7 @@ function deferred() {
 }
 
 /** One renderer-owned physical microphone, shared by all trusted Voice sinks. */
-export function createMicrophoneCaptureHost({permissionGate, getPanel, now = Date.now}) {
+export function createMicrophoneCaptureHost({permissionGate, getPanel, now = Date.now, onLevel} = {}) {
   let authorization;
   let capture;
   let releaseUnknown = false;
@@ -153,6 +154,7 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, now = Dat
       const data = message.data;
       if (!(data instanceof Uint8Array) || !data.byteLength || data.byteLength % 2
         || data.byteLength > MAX_FRAME_BYTES) { void stop(session, 'device_unavailable'); return false; }
+      try { onLevel?.(pcmLevel(data)); } catch { /* Loudness is visual and must not affect capture. */ }
       for (const {sink} of session.sinks) {
         try { sink.onFrame(data); } catch { void stop(session, 'device_unavailable'); }
       }

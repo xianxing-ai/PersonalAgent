@@ -2,7 +2,7 @@
 const ORB_STATES = {
   idle: { zh: "待机", shape: "sphere" },
   listening: { zh: "倾听", shape: "sphere" },
-  thinking: { zh: "思考", shape: "ring" },
+  thinking: { zh: "思考", shape: "sphere" },
   executing: { zh: "执行", shape: "sphere" },
   waiting: { zh: "等待", shape: "tight" },
   error: { zh: "失败", shape: "scatter" },
@@ -80,6 +80,40 @@ const SHAPES = {
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = (t) => 1 - Math.pow(1 - t, 3);
+const EARTH_TILT = 23.44 * Math.PI / 180;
+/* 一个周期：靠近、变远、再靠近、再靠近。亮度和半径一起走。 */
+const BREATH_KEYS = [
+  { t: 0, r: 1, b: 0.7 },
+  { t: 0.18, r: 0.7, b: 1 },
+  { t: 0.42, r: 1.38, b: 0.32 },
+  { t: 0.66, r: 0.8, b: 0.88 },
+  { t: 0.86, r: 0.54, b: 1 },
+  { t: 1, r: 1, b: 0.7 },
+];
+
+function smoothstep(value) {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
+}
+
+export function breathSample(phase) {
+  const t = ((phase % 1) + 1) % 1;
+  let index = 1;
+  while (index < BREATH_KEYS.length - 1 && BREATH_KEYS[index].t < t) index++;
+  const from = BREATH_KEYS[index - 1];
+  const to = BREATH_KEYS[index];
+  const span = to.t - from.t || 1;
+  const mix = smoothstep((t - from.t) / span);
+  return { radius: lerp(from.r, to.r, mix), bright: lerp(from.b, to.b, mix) };
+}
+
+export function orbMotionKind({ state = "idle", breathActive = false } = {}) {
+  if (state === "error") return "collapse";
+  if (breathActive) return "breath";
+  if (state === "thinking" || state === "executing") return "breath";
+  if (state === "listening") return "voice";
+  return "earth";
+}
 
 export class Orb {
   constructor(canvas, options = {}) {
@@ -99,6 +133,8 @@ export class Orb {
     this.shapeFrom = "sphere";
     this.shapeTo = "sphere";
     this.level = 0;
+    this.breathOrigin = 0;
+    this.breathUntil = null;
     this.progress = null;
     this.angle = 0;
     this.angle2 = 0;
@@ -156,6 +192,20 @@ export class Orb {
   }
 
   setLevel(v) { this.level = Math.max(0, Math.min(1, v)); }
+  /* 大工作区点击与思考、执行共用同一段呼吸。 */
+  playBreath(seconds = 3.2) {
+    if (this.calm) { this.breathUntil = null; return; }
+    const span = Math.max(0.6, Number(seconds) || 3.2);
+    this.breathOrigin = this.time;
+    this.breathUntil = this.time + span;
+    if (!this.running) this.start();
+  }
+  _kind() {
+    return orbMotionKind({
+      state: this.state,
+      breathActive: this.breathUntil != null && this.time < this.breathUntil,
+    });
+  }
   setProgress(p) { this.progress = p; }
   /* 呼吸态：cohesion=1 紧致、0 分散；null 表示跟随呼吸周期自动摆动 */
   setCohesion(v) {
@@ -199,7 +249,7 @@ export class Orb {
   }
   setCalm(calm) {
     this.calm = calm;
-    if (calm) { this.mix = 1; this.stop(); this._draw(); }
+    if (calm) { this.breathUntil = null; this.mix = 1; this.stop(); this._draw(); }
     else this.start();
   }
 
@@ -217,11 +267,15 @@ export class Orb {
       const dt = Math.min((t - (this._last ?? t)) / 1000, 0.05);
       this._last = t;
       this.time += dt;
-      this.mix = Math.min(1, this.mix + dt / 0.36);
+      this.mix = Math.min(1, this.mix + dt / (this.state === "error" ? 0.9 : 0.36));
       const p = this._params();
-      const boost = this.state === "listening" ? this.level * 0.6 : 0;
-      this.angle += dt * (p.spin + boost) * Math.PI;
-      this.angle2 += dt * (p.spin + boost) * Math.PI * 1.6;
+      const kind = this._kind();
+      const rate = kind === "earth" ? (this.state === "waiting" ? 0.065 : 0.15)
+        : kind === "voice" ? 0.08 + this.level * 0.72
+        : kind === "breath" ? 0.4
+        : 0.2 + (1 - ease(this.mix)) * 1.15;
+      this.angle += dt * rate * Math.PI;
+      this.angle2 += dt * rate * Math.PI * 1.6;
       this._draw();
       this._raf = requestAnimationFrame(loop);
     };
@@ -230,6 +284,7 @@ export class Orb {
 
   stop() {
     this.running = false;
+    this.breathUntil = null;
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = null;
   }
@@ -252,14 +307,28 @@ export class Orb {
     return { cx: this.w / 2, cy: this.h / 2, R, big: this.w > 140 };
   }
 
-  _project(pt, R, cx, cy, tilt, spin) {
+  _view(pt, tilt, spin) {
     const ca = Math.cos(spin), sa = Math.sin(spin);
-    const X = pt[0] * ca - pt[2] * sa;
-    let Z = pt[0] * sa + pt[2] * ca;
+    const x = pt[0] * ca - pt[2] * sa;
+    let z = pt[0] * sa + pt[2] * ca;
     const ct = Math.cos(tilt), st = Math.sin(tilt);
-    const Y = pt[1] * ct - Z * st;
-    Z = pt[1] * st + Z * ct;
-    return { sx: cx + X * R, sy: cy + Y * R, z: Z, front: Z > 0 };
+    const y = pt[1] * ct - z * st;
+    z = pt[1] * st + z * ct;
+    return { x, y, z };
+  }
+
+  _project(pt, R, cx, cy, tilt, spin) {
+    const v = this._view(pt, tilt, spin);
+    return { sx: cx + v.x * R, sy: cy + v.y * R, z: v.z, front: v.z > 0 };
+  }
+
+  _place(pt, radius, cx, cy, tilt, spin) {
+    const v = this._view(pt, tilt, spin);
+    return { sx: cx + v.x * radius, sy: cy + v.y * radius, z: v.z, front: v.z > 0, x: v.x, y: v.y };
+  }
+
+  _shellRadius() {
+    return (Math.min(this.w, this.h) / 2) * 0.5;
   }
 
   _core(ctx, cx, cy, r, t) {
@@ -380,31 +449,114 @@ export class Orb {
     ctx.globalAlpha = 1;
   }
 
-  /* 形态 2：规则点阵 */
+  /* 形态 2：粒子包住整颗黑球。待机自转，语音跟音量，思考和执行呼吸。 */
   _drawMatrix(ctx, g, p, t) {
-    const { cx, cy, R, big } = g;
-    const coreR = R * 0.6;
-    if (this.state === "error") this._errorHorizon(ctx, cx, cy, coreR);
-    else this._core(ctx, cx, cy, coreR, t);
-    const tilt = p.tilt + 0.18;
-    const shape = this.mix >= 0.5 ? (SHAPES[this.shapeTo] ?? SHAPES.sphere) : SHAPES.sphere;
-    const fade = this._errorFade();
-    if (fade > 0.02) {
-      const flash = this._flash();
-      ctx.save();
-      if (this.state === "executing") {
-        ctx.shadowColor = `rgba(255,255,255,${(0.18 + flash * 0.62).toFixed(3)})`;
-        ctx.shadowBlur = 1 + flash * 5;
-      }
-      for (const pt of this.points) {
-        const c = shape(pt);
-        const d = this._project(c, R * 1.02 * this._spread(pt) * (0.55 + 0.45 * fade), cx, cy, tilt, this.angle);
-        // 正面粒子满亮，背面按深度衰减，读出 3D 球体体积
-        const depth = Math.max(0, Math.min(1, (d.z + 1.3) / 2.3));
-        this._dot(ctx, d.sx, d.sy, (big ? 1.5 : 1.1) * (0.7 + 0.5 * depth), "#ffffff", flash * fade * (0.4 + 0.6 * depth));
-      }
-      ctx.restore();
+    const { cx, cy, big } = g;
+    const R = this._shellRadius();
+    const kind = this._kind();
+    const coreR = R * 0.64;
+    if (kind === "collapse") {
+      this._drawCollapse(ctx, { cx, cy, R, big }, coreR);
+      return;
     }
+    this._core(ctx, cx, cy, coreR, t);
+    const tilt = kind === "earth" ? EARTH_TILT : kind === "breath" ? 0.5 : 0.28;
+    const gestured = this.breathUntil != null && this.time < this.breathUntil;
+    const breathPhase = gestured ? (this.time - this.breathOrigin) / 3.2 : this.time / 3.2;
+    const dots = [];
+    for (const pt of this.points) {
+      let x = pt.x;
+      let y = pt.y;
+      let z = pt.z;
+      let radial = 1.04;
+      let gain = 1;
+      if (kind === "voice") {
+        const amp = this.level;
+        const wobble = Math.sin(this.time * (2.6 + amp * 8.5) + pt.seed * 29);
+        const sway = amp * 0.2 * Math.sin(this.time * (1.8 + amp * 4.2) + pt.u * 13);
+        x += z * sway;
+        z -= pt.x * sway;
+        y += x * sway * 0.28;
+        const len = Math.hypot(x, y, z) || 1;
+        x /= len; y /= len; z /= len;
+        radial *= 1 + amp * (0.08 + 0.5 * (0.5 + 0.5 * wobble));
+        gain = 0.88 + 0.12 * amp * (0.5 + 0.5 * wobble);
+      } else if (kind === "breath") {
+        const sample = breathSample(breathPhase + pt.seed * 0.03);
+        radial *= sample.radius;
+        gain = 0.74 + 0.26 * sample.bright;
+      }
+      const placed = this._place([x, y, z], R * radial, cx, cy, tilt, this.angle);
+      const depth = Math.max(0, Math.min(1, (placed.z + 1.15) / 2.15));
+      let light = 0.78 + 0.22 * depth;
+      if (kind === "earth") {
+        const sun = placed.x * 0.62 + placed.z * 0.72 + placed.y * 0.18;
+        light = 0.74 + 0.26 * Math.max(0, Math.min(1, sun * 0.5 + 0.5));
+      }
+      dots.push({ ...placed, seed: pt.seed, alpha: Math.max(0, Math.min(1, gain * light)) });
+    }
+    dots.sort((a, b) => a.z - b.z);
+    for (const dot of dots) {
+      const depth = Math.max(0, Math.min(1, (dot.z + 1.15) / 2.15));
+      const size = (big ? 1.6 : 1.2) * (0.82 + 0.38 * depth);
+      this._dot(ctx, dot.sx, dot.sy, size, "#ffffff", dot.alpha);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* 失败：粒子旋进黑核，留下包住黑球的光滑白粒子光圈。 */
+  _drawCollapse(ctx, g, coreR) {
+    const { cx, cy, R, big } = g;
+    const fall = this.calm ? 1 : ease(this.mix);
+    if (fall < 0.985) {
+      const falling = [];
+      for (const pt of this.points) {
+        const radius = R * lerp(1.04, 0.16, fall);
+        falling.push(this._place([pt.x, pt.y, pt.z], radius, cx, cy, EARTH_TILT, this.angle + fall * 6));
+      }
+      falling.sort((a, b) => a.z - b.z);
+      for (const dot of falling) {
+        const depth = Math.max(0, (dot.z + 1.1) / 2.1);
+        this._dot(ctx, dot.sx, dot.sy, big ? 1.45 : 1.15, "#ffffff", (1 - fall) * (0.55 + 0.45 * depth));
+      }
+    }
+    const hole = coreR * (1 + 0.16 * fall);
+    const body = ctx.createRadialGradient(cx - hole * 0.2, cy - hole * 0.24, hole * 0.05, cx, cy, hole);
+    body.addColorStop(0, "#161b22");
+    body.addColorStop(0.55, "#05070a");
+    body.addColorStop(1, "#000000");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(cx, cy, hole, 0, Math.PI * 2);
+    ctx.fill();
+
+    const haloR = hole * 1.18;
+    const count = 84;
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const halo = [];
+    for (let i = 0; i < count; i++) {
+      const y = 1 - (i / (count - 1)) * 2;
+      const ring = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = golden * i;
+      halo.push(this._place(
+        [Math.cos(theta) * ring, y, Math.sin(theta) * ring],
+        haloR, cx, cy, 0.46, this.angle * 0.45,
+      ));
+    }
+    halo.sort((a, b) => a.z - b.z);
+    for (const dot of halo) {
+      const depth = Math.max(0, Math.min(1, (dot.z + 1) / 2));
+      this._dot(ctx, dot.sx, dot.sy, (big ? 1.9 : 1.45) * (0.92 + 0.2 * depth), "#ffffff", fall * (0.62 + 0.38 * depth));
+    }
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,255,255,${(0.42 * fall).toFixed(3)})`;
+    ctx.shadowColor = "rgba(255,255,255,0.75)";
+    ctx.shadowBlur = big ? 10 : 6;
+    ctx.lineWidth = big ? 1.6 : 1.15;
+    ctx.beginPath();
+    ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
     ctx.globalAlpha = 1;
   }
 

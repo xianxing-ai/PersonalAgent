@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {mkdir, mkdtemp, readFile, rename, rm, writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {Readable} from 'node:stream';
+import {fileURLToPath} from 'node:url';
 import {ProtocolError} from '@personal-agent/contracts';
 import {getOwnedBindings, OwnedAgentOrchestrator} from '@personal-agent/agentarts';
 import {FakeModelProvider} from '@personal-agent/models';
 import {FakeCloudAgentPort} from '@personal-agent/coordination/testing';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
-import {CASES, createCaseDiagnostics, createLiveTransport, normalizeDeadline, parseOptions, runAcceptance, selectCases, validateCatalog,
+import {CASES, REPAIR_QUERY, createCaseDiagnostics, createLiveTransport, createReceiptWriter, main, normalizeDeadline, parseOptions, runAcceptance, selectCases, validateCatalog,
   validateConfiguration} from './owned-binding-live.mjs';
 
 const goalId = 'b'.repeat(64), planId = 'a'.repeat(64), otherId = 'c'.repeat(64);
@@ -17,7 +21,7 @@ const world = {reportVersion: '1.1', revision: 7, observed_facts: [
 affected_items: [{kind: 'plan_step', node: ref(planId), impact: 'direct', reason: '目标时间变化'}],
 missing_information: [], recommended_disposition: 'REVISE', summary: '只改准备时间'};
 const plan = {reportVersion: '1.1', base_revision: 7, disposition: 'REVISE',
-  preserved_steps: [{node: ref(otherId), reason: '其他工作不受影响'}], rechecked_steps: [],
+  preserved_steps: [{node: ref(otherId), reason: '独立计划不受本次目标时间变化影响'}], rechecked_steps: [],
   revised_steps: [{node: ref(planId), replacement: '16点准备', reason: '目标时间变化'}], removed_steps: [],
   dependency_updates: [{node: ref(planId), dependencies: [ref(goalId, 2)], reason: '使用新目标版本'}],
   evidence_required: ['本地Policy、CAS及执行读回'], missing_information: [], local_next_actions: []};
@@ -47,6 +51,178 @@ function fake({mutate = value => value, discover = async () => catalog()} = {}) 
   port.close = () => closed++;
   return {port, discover, envelopes, get closed() { return closed; }};
 }
+async function offlineCli(t, transport, fs, group = 'ordinary') {
+  const root = fileURLToPath(new URL('../../../.cache/owned-binding-live-tests/', import.meta.url));
+  await mkdir(root, {recursive: true});
+  const directory = await mkdtemp(path.join(root, 'receipt-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  let text = '', exitCode, receiptPath;
+  await main(['--live', '--group', group, '--deadline', deadline(), '--out', directory],
+    Readable.from([JSON.stringify(config)]), {transportFactory: () => transport,
+      receiptWriterFactory: file => { receiptPath = file; return createReceiptWriter(file, fs); },
+      output: {write(value) { text += value; }}, setExitCode(value) { exitCode = value; }});
+  return {receipt: JSON.parse(text), text, exitCode, receiptPath};
+}
+
+test('final rename failure preserves tmp and prints the terminal receipt without replay or a saved claim', async t => {
+  for (const discoveryFailed of [false, true]) {
+    const h = fake(discoveryFailed ? {discover: async () => { throw new Error('synthetic discovery failure'); }} : {});
+    let writes = 0, renames = 0;
+    const actual = await offlineCli(t, h, {
+      writeFileImpl: async (...args) => { writes++; return writeFile(...args); },
+      renameImpl: async (from, to) => {
+        renames++;
+        const value = JSON.parse(await readFile(from, 'utf8'));
+        if (value.status !== 'running') throw Object.assign(new Error(config.wssToken),
+          {code: 'EPERM', path: 'synthetic-private-path', dest: config.inboundAuthorization});
+        return rename(from, to);
+      },
+    }, discoveryFailed ? 'all' : 'ordinary');
+    assert.equal(actual.exitCode, 1); assert.equal(actual.receipt.status, 'failed');
+    assert.equal(actual.receipt.evidence, 'mock');
+    assert.equal(actual.receipt.cases.length, discoveryFailed ? 11 : 2);
+    assert.equal(actual.receipt.cases.every(row => row.status === (discoveryFailed ? 'skipped' : 'passed')), true);
+    assert.ok(Number.isFinite(Date.parse(actual.receipt.finishedAt)));
+    assert.deepEqual(actual.receipt.persistence, {status: 'failed', stage: 'rename', errno: 'EPERM'});
+    assert.equal(h.port.requests.length, discoveryFailed ? 0 : 2);
+    assert.equal(writes, discoveryFailed ? 13 : 4); assert.equal(renames, writes);
+    const disk = JSON.parse(await readFile(actual.receiptPath, 'utf8'));
+    const tmp = JSON.parse(await readFile(actual.receiptPath + '.tmp', 'utf8'));
+    assert.equal(disk.status, 'running');
+    assert.equal(tmp.status, discoveryFailed ? 'failed' : 'passed');
+    assert.deepEqual(tmp.cases, actual.receipt.cases);
+    for (const secret of [config.wssToken, config.inboundAuthorization, 'synthetic-private-path', actual.receiptPath, 'saved']) {
+      assert.equal(actual.text.includes(secret), false);
+    }
+  }
+});
+
+test('a partial write failure stops remaining bindings and preserves the partial tmp with content-free diagnostics', async t => {
+  const h = fake(); let writes = 0, renames = 0;
+  const actual = await offlineCli(t, h, {
+    writeFileImpl: async (file, value) => {
+      writes++;
+      if (writes === 2) {
+        await writeFile(file, 'synthetic-partial-body');
+        throw Object.assign(new Error('synthetic-private-write-path'), {code: 'ENOSPC'});
+      }
+      return writeFile(file, value);
+    },
+    renameImpl: async (...args) => { renames++; return rename(...args); },
+  });
+  assert.equal(actual.exitCode, 1); assert.equal(actual.receipt.status, 'failed');
+  assert.deepEqual(actual.receipt.persistence, {status: 'failed', stage: 'write', errno: 'ENOSPC'});
+  assert.equal(h.port.requests.length, 1); assert.equal(writes, 2); assert.equal(renames, 1);
+  assert.equal(actual.receipt.cases[0].status, 'passed');
+  assert.equal((JSON.parse(await readFile(actual.receiptPath, 'utf8'))).cases.length, 0);
+  assert.equal(await readFile(actual.receiptPath + '.tmp', 'utf8'), 'synthetic-partial-body');
+  assert.equal(actual.text.includes('synthetic-partial-body'), false);
+  assert.equal(actual.text.includes('synthetic-private-write-path'), false);
+});
+
+test('unrecognized filesystem codes are UNKNOWN and an initial write failure invokes no binding', async () => {
+  const h = fake(); let writes = 0, renames = 0;
+  const writer = createReceiptWriter('unused-synthetic-path', {
+    writeFileImpl: async () => { writes++; throw Object.assign(Error(config.wssToken), {code: config.inboundAuthorization}); },
+    renameImpl: async () => { renames++; },
+  });
+  const result = await runAcceptance({...h, deadline: deadline(), onProgress: writer});
+  assert.equal(result.status, 'failed');
+  assert.deepEqual(result.persistence, {status: 'failed', stage: 'write', errno: 'UNKNOWN'});
+  assert.equal(h.port.requests.length, 0); assert.equal(writes, 1); assert.equal(renames, 0);
+  assert.equal(JSON.stringify(result).includes(config.wssToken), false);
+  assert.equal(JSON.stringify(result).includes(config.inboundAuthorization), false);
+});
+
+test('repair fixture changes one plan and preserves unrelated context', () => {
+  const payload = JSON.parse(REPAIR_QUERY.slice(REPAIR_QUERY.indexOf('{')));
+  assert.deepEqual(payload.repairContext.targets, [
+    {node: ref(planId), summary: '14点准备', requestedDependencies: [ref(goalId, 2)]},
+    {node: ref(otherId), summary: '其他工作', requestedDependencies: []},
+  ]);
+  assert.ok(payload.nodes.some(item => item.id === otherId && item.kind === 'plan'
+    && item.summary === '其他工作'));
+});
+
+test('two-target scenario passes the actual orchestrator and records only fixed comparison fields', async () => {
+  const h = fake();
+  const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({bindings: [CASES[9].id]})});
+  const row = result.cases[0];
+  assert.equal(row.status, 'passed');
+  assert.equal(row.applicationKind, 'repair_candidate');
+  assert.deepEqual(row.repairScenario, {scenario: 'minimal_repair', status: 'matched', changeCount: 1,
+    graphRevisionMatches: true, targetMatches: true, nodeRevisionMatches: true, summaryMatches: true,
+    dependenciesMatch: true, unrelatedTargetChanged: false});
+  assert.equal(h.port.requests.length, 1);
+  assert.equal(JSON.parse(h.envelopes[0].query.slice(h.envelopes[0].query.indexOf('{'))).repairContext.targets.length, 2);
+  for (const secret of [goalId, planId, otherId, '16点准备', '其他工作', '目标时间变化']) {
+    assert.equal(JSON.stringify(result).includes(secret), false);
+  }
+});
+
+test('schema-valid minimal repair mismatches fail without losing application or transport observations', async () => {
+  const scenarios = [
+    [value => {value.expectedGraphRevision = 8;}, 'graphRevisionMatches', false],
+    [value => {value.changes[0].node.id = otherId;}, 'targetMatches', false],
+    [value => {value.changes.push({node: ref(otherId), summary: '其他工作', reason: 'private-unrelated', dependencies: []});}, 'changeCount', 2],
+    [value => {value.changes[0].node.revision = 2;}, 'nodeRevisionMatches', false],
+    [value => {value.changes[0].summary = 'private-summary-containing-16';}, 'summaryMatches', false],
+    [value => {value.changes[0].dependencies = [ref(goalId)];}, 'dependenciesMatch', false],
+  ];
+  for (const [change, field, expected] of scenarios) {
+    const h = fake({mutate: value => {change(value.result.value.candidate); return value;}});
+    const caseDiagnostics = createCaseDiagnostics(), invoke = h.port.invoke.bind(h.port);
+    h.port.invoke = request => {
+      caseDiagnostics.onTerminal(request, {requestId: '10000000-0000-4000-8000-000000000001'});
+      return invoke(request);
+    };
+    const result = await runAcceptance({...h, caseDiagnostics, deadline: deadline(),
+      selection: selectCases({bindings: [CASES[9].id]})});
+    const row = result.cases[0];
+    assert.equal(row.status, 'failed', field); assert.equal(row.errorCode, 'EXPECTED_REPAIR_CANDIDATE');
+    assert.equal(row.applicationKind, 'repair_candidate'); assert.equal(row.terminal, true);
+    assert.equal(row.dispatch, false); assert.equal(row.accepted, false);
+    assert.equal(row.repairScenario.status, 'mismatch'); assert.equal(row.repairScenario[field], expected);
+    if (field === 'targetMatches' || field === 'changeCount') assert.equal(row.repairScenario.unrelatedTargetChanged, true);
+    assert.equal(h.port.requests.length, 1); assert.equal(result.retries, 0);
+    assert.equal(JSON.stringify(result).includes('private-'), false);
+    for (const id of [goalId, planId, otherId]) assert.equal(JSON.stringify(result).includes(id), false);
+  }
+});
+
+test('noncandidate applications and invalid candidate schemas are distinct from a matching repair', async () => {
+  for (const schemaInvalid of [false, true]) {
+    const h = fake({mutate: value => {
+      if (schemaInvalid) value.result.value.candidate.changes = [];
+      else value.result.value = {kind: 'text', text: 'private-noncandidate'};
+      return value;
+    }});
+    const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({bindings: [CASES[9].id]})});
+    const row = result.cases[0];
+    assert.equal(row.status, 'failed'); assert.equal(h.port.requests.length, 1);
+    if (schemaInvalid) {
+      assert.equal(row.applicationKind, undefined); assert.equal(row.repairScenario, undefined);
+    } else {
+      assert.equal(row.applicationKind, 'text'); assert.equal(row.repairScenario.status, 'not_repair_candidate');
+      assert.equal(row.repairScenario.changeCount, 0);
+    }
+    assert.equal(JSON.stringify(result).includes('private-'), false);
+  }
+});
+
+test('review core rejection retains only the schema-parsed comparison and never the raw candidate', async () => {
+  const h = fake({mutate: (value, input) => {
+    if (input.id === CASES[5].id) value.result.value.candidate.changes[0].summary = 'private-review-16';
+    return value;
+  }});
+  const result = await runAcceptance({...h, deadline: deadline(), selection: selectCases({bindings: [CASES[5].id]})});
+  const row = result.cases.at(-1);
+  assert.equal(row.status, 'failed'); assert.equal(row.applicationKind, 'repair_candidate');
+  assert.equal(row.repairScenario.summaryMatches, false);
+  assert.equal(row.repairScenario.status, 'mismatch'); assert.equal(h.port.requests.length, 3);
+  assert.equal(JSON.stringify(result).includes('private-review-16'), false);
+});
+
 test('selection is exact, ordered and explicitly includes review prerequisites', () => {
   assert.deepEqual(selectCases({bindings: [CASES[6].id]}).map(item => [item.key, item.prerequisite]),
     [['world', true], ['plan_1', true], ['review_1', false]]);
@@ -72,6 +248,19 @@ test('all 11 bindings pass actual core with Fake transport; reports are passed e
   assert.equal(result.cases.find(item => item.case === 'deterministic').applicationKind, 'text');
   assert.equal(JSON.stringify(snapshots).includes(answer.text), false);
   assert.equal(JSON.stringify(snapshots).includes(goalId), false);
+});
+test('cancelled binding discovery is recorded as CANCELLED and invokes no bindings', async () => {
+  const controller = new AbortController();
+  const h = fake({discover: async signal => {
+    assert.equal(signal, controller.signal);
+    controller.abort();
+    throw Object.assign(new Error('synthetic cancelled request'), {code: 'ECONNRESET'});
+  }});
+  const result = await runAcceptance({...h, deadline: deadline(), signal: controller.signal});
+  assert.deepEqual(result.discovery, {status: 'failed', errorCode: 'CANCELLED'});
+  assert.equal(result.cases.every(row => row.status === 'skipped'), true);
+  assert.equal(h.port.requests.length, 0);
+  assert.equal(h.closed, 1);
 });
 test('catalog identity, duplicate or requirements drift stops every invocation', async () => {
   for (const change of [value => value.bindings.pop(), value => value.bindings[0].id = value.bindings[1].id,
@@ -140,6 +329,47 @@ test('configuration rejects header injection and credential redirects before net
     assert.throws(() => validateConfiguration({...config, ...changes}), {code: 'INVALID_ARGUMENT'});
   }
 });
+test('discovery diagnoses network, HTTP, body and JSON failures without retry or sensitive output', async () => {
+  const sensitive = config.wssToken + config.inboundAuthorization + config.gatewayUrl;
+  const scenarios = [
+    [async () => { throw Object.assign(Error(sensitive), {cause: {code: 'UND_ERR_CONNECT_TIMEOUT', message: sensitive}}); },
+      {phase: 'network', errno: 'UND_ERR_CONNECT_TIMEOUT'}],
+    [async () => { throw Object.assign(Error(sensitive), {code: sensitive, cause: {code: sensitive}}); }, {phase: 'network'}],
+    [async () => ({status: 403, body: {cancel: async () => { throw Error(sensitive); }}}),
+      {phase: 'http', httpStatus: 403}, 'UNAUTHORIZED'],
+    [async () => new Response(sensitive, {status: 503}), {phase: 'http', httpStatus: 503}],
+    [async () => ({status: sensitive}), {phase: 'http'}],
+    [async () => new Response(new ReadableStream({start(controller) {
+      controller.error(Object.assign(Error(sensitive), {code: 'ECONNRESET'}));
+    }})), {phase: 'body', httpStatus: 200, errno: 'ECONNRESET'}],
+    [async () => new Response('x'.repeat(64_001)), {phase: 'body', httpStatus: 200}, 'INVALID_ARGUMENT'],
+    [async () => new Response(sensitive), {phase: 'json', httpStatus: 200}],
+  ];
+  for (const [fetchImpl, diagnostic, errorCode = 'EXTERNAL_FAILURE'] of scenarios) {
+    let gets = 0, sockets = 0;
+    const transport = createLiveTransport(config, new AbortController().signal, {
+      fetchImpl: async (...args) => { gets++; return fetchImpl(...args); },
+      socketFactory: () => { sockets++; throw Error('unexpected invoke'); },
+    });
+    const receipt = await runAcceptance({...transport, deadline: deadline()});
+    assert.deepEqual(receipt.discovery, {status: 'failed', errorCode, ...diagnostic});
+    assert.equal(receipt.status, 'failed'); assert.equal(receipt.cases.every(row => row.status === 'skipped'), true);
+    assert.equal(gets, 1); assert.equal(sockets, 0); assert.equal(receipt.retries, 0);
+    for (const secret of [config.wssToken, config.inboundAuthorization, config.gatewayUrl]) {
+      assert.equal(JSON.stringify(receipt).includes(secret), false);
+    }
+  }
+});
+
+test('generic injected discovery errors cannot supply receipt diagnostics', async () => {
+  const h = fake({discover: async () => { throw Object.assign(Error(config.wssToken),
+    {code: 'EXTERNAL_FAILURE', diagnostic: {phase: 'network', errno: 'ECONNRESET', httpStatus: 503},
+      phase: config.wssToken, httpStatus: 200, errno: config.inboundAuthorization}); }});
+  const receipt = await runAcceptance({...h, deadline: deadline()});
+  assert.deepEqual(receipt.discovery, {status: 'failed', errorCode: 'EXTERNAL_FAILURE'});
+  assert.equal(h.port.requests.length, 0);
+});
+
 test('real public WSS adapter consumes binding wrappers over existing FakeSocket; GET is discovery only', async () => {
   const sockets = [], calls = [], responses = fake();
   const transport = createLiveTransport(config, new AbortController().signal, {

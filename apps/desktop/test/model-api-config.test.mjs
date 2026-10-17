@@ -2,8 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,readFileSync} from 'node:fs';
 import path from 'node:path';
-import * as models from '@personal-agent/models';
-import {createRuntimeApplication, createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
+import {createRuntimeApplication, createDesktopSubagentDispatchTool, createConfiguredSubagentModelGateway} from '@personal-agent/runtime/application';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {createModelApiConfig} from '../electron/model-api-config.js';
 import {describeModelThinking} from '../src/app/model-api-controls.js';
@@ -17,16 +16,65 @@ function fixture(fetch) {
   const base = new URL('../../../.cache/model-api-config-tests/',import.meta.url);
   mkdirSync(base,{recursive:true});
   const userData = mkdtempSync(base);
-  const createGateway = ({provider,baseUrl,model,deployment,apiKey}) => {
-    const Provider = provider === 'pangu' ? models.PanguModelProvider : models.OpenAICompatibleModelProvider;
-    return new models.ModelGateway(new models.StructuredToolProvider(new Provider({
-      baseUrl,model,deployment,apiKey,fetch,
-    })));
-  };
+  const createGateway = config => createConfiguredSubagentModelGateway({...config,fetch});
   const options = {userData,safeStorage,createGateway};
   return {options,host:createModelApiConfig(options)};
 }
 const answer = () => new Response(JSON.stringify({choices:[{message:{content:'Synthetic answer'}}]}));
+
+test('version-bound native settings traverse actual Competition child serialization independently of depth', async () => {
+  const bodies = [];
+  const {host,options} = fixture(async (_url,init)=>{bodies.push(JSON.parse(init.body));return answer();});
+  const native = {thinking:'enabled',effort:'max',supportedEfforts:['low','high','max'],outputTokenParameter:'max_completion_tokens'};
+  let restored, app;
+  try {
+    assert.throws(()=>host.configure({...input,id:'native',nativeReasoning:native}),/确认/);
+    assert.throws(()=>host.configure({...input,id:'native',provider:'pangu',nativeReasoning:native,reasoningSupportConfirmed:true}),/无效/);
+    assert.throws(()=>host.configure({...input,id:'native',nativeReasoning:{...native,extra:'unknown'},reasoningSupportConfirmed:true}),/无效/);
+    const state = host.configure({...input,id:'native',nativeReasoning:native,reasoningSupportConfirmed:true});
+    const ref = state.models[0].configurationRef;
+    assert.equal(bodies.length,0);
+    assert.doesNotMatch(JSON.stringify(state),/synthetic-secret|apiKey/);
+    state.models[0].nativeReasoning.effort = 'low';
+    restored = createModelApiConfig(options);
+    assert.equal(restored.snapshot().models[0].nativeReasoning.effort,'max');
+    assert.deepEqual(restored.getModelReasoningEfforts('native',ref),['low','high','max']);
+    assert.equal(restored.getModelReasoningState('native',ref).nativeReasoningVerified,false);
+    const described = describeModelThinking(restored.snapshot().models[0],0);
+    assert.equal(described.stepBudget.maxSteps,2);
+    assert.equal(described.modelReasoning.effort,'max');
+    assert.equal(described.modelReasoning.requestedEffort,'max');
+    const old = restored.getModelGateway('native',ref);
+    await assert.rejects(old.complete({...request(),reasoningEffort:'medium'}),/未声明/);
+    await assert.rejects(old.complete({...request(),thinkingBudget:99}),/thinkingBudget/);
+    assert.equal(bodies.length,0);
+    app = createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+      coordination:new FakeCoordinationPort(()=>({kind:'text',text:'unused',verification:'mock'}))});
+    const parent = app.runtime.submitTask({goal:'native configuration fixture',conversationId:'native',idempotencyKey:'native-parent'});
+    const dispatch = createDesktopSubagentDispatchTool({getRuntime:()=>app.runtime,
+      getModelGateway:id=>restored.getModelGateway(id,ref),getModelConfigurationRef:()=>ref,
+      getModelReasoningEfforts:id=>restored.getModelReasoningEfforts(id,ref)});
+    const result = await dispatch.execute({subtasks:[{subtaskId:'native',role:'researcher',goal:'Synthetic answer',model:'native',thinkingDepth:0}]},
+      {taskId:parent.taskId,runId:'native-dispatch',scopes:['agent:delegate'],authorizationRef:'synthetic-parent',
+        signal:new AbortController().signal,deadline:request().deadline});
+    assert.equal(result.succeeded,1);
+    assert.equal(bodies.length,1);
+    assert.deepEqual(bodies[0].thinking,{type:'enabled'});
+    assert.equal(bodies[0].reasoning_effort,'max');
+    assert.equal(Object.hasOwn(bodies[0],'max_tokens'),false);
+    const child = app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-native`);
+    const binding = app.runtime.loadCheckpoint(child.taskId,'subtask-model-binding');
+    assert.equal(binding.configurationRef,ref);assert.deepEqual(binding.nativeReasoning,native);
+    assert.equal(app.runtime.loadCheckpoint(child.taskId,'subtask-thinking-binding').stepBudget.maxSteps,2);
+    assert.equal(app.runtime.loadCheckpoint(child.taskId,'subtask-thinking-binding').modelReasoning.effort,'max');
+    const changed = restored.configure({...input,id:'native',apiKey:'',expectedConfigurationRef:ref,
+      nativeReasoning:{thinking:'disabled',supportedEfforts:[],outputTokenParameter:'max_tokens'},reasoningSupportConfirmed:true});
+    assert.notEqual(changed.models[0].configurationRef,ref);
+    assert.equal(restored.getModelGateway('native',ref),undefined);
+    await assert.rejects(old.complete(request()),/撤销/);
+    assert.equal(bodies.length,1);
+  } finally {app?.close();restored?.dispose();host.dispose();}
+});
 test('encrypted model config restores, masks keys, preserves only same-destination keys and selects exact model', async () => {
   const calls = [];
   const {host,options} = fixture(async (url,init)=>{calls.push({url,init});return answer();});

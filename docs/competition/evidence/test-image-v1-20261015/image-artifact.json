@@ -1,0 +1,8 @@
+{
+  "image": "personal-agent:test-v1-local-laya",
+  "imageId": "sha256:e8aa319df4f93da61543a4100c51aeee973fabd392c0179b8142562e9d009889",
+  "archive": "C:\\Users\\24035\\.codex\\worktrees\\laya-owned-runtime\\PersonalAgent\\.cache\\agentarts-image\\test-v1-local-laya.tar",
+  "archiveBytes": 80805376,
+  "archiveSha256": "60eb752ba1b3c91e00edc416867c19706bf33fac9754b8a9631db6940969a549",
+  "published": false
+}

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Obsidian 本机配对</title><link rel="stylesheet" href="pairing.css"></head>
+<body><h1>连接 Obsidian</h1>
+<p>在 Obsidian 运行“配对 Desktop Runtime”，将一次性配对码粘贴到这里。随后会核对同一个 Vault 并请求原生确认。</p>
+<form><label for="code">一次性配对码</label><input id="code" type="password" autocomplete="off" maxlength="4096" required autofocus>
+<button type="submit">连接并核对</button><button type="button" id="cancel">取消</button></form>
+<p id="status" role="status">仅本机只读；请勿将配对码发送到聊天或云端。</p><script src="pairing.js"></script></body></html>

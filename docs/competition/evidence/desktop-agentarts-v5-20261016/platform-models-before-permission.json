@@ -1,0 +1,114 @@
+{
+  "observedAtUtc": "2026-10-16T12:12:04.493Z",
+  "surface": "AgentArts runtime log page",
+  "records": [
+    {
+      "event": "stage_timing",
+      "traceId": "6e2d1d88-671e-4fc3-acf9-dcdd445a8469",
+      "spanId": "9a45b9ec-9091-4660-9dbd-0c1248915b4c",
+      "stage": "invocation.dispatch",
+      "status": "failed",
+      "startedAtUtc": "2026-10-16T12:09:52.533Z",
+      "finishedAtUtc": "2026-10-16T12:09:52.729Z",
+      "wallMs": 196.0256500000005,
+      "sessionId": "pa-931d553ab063ecdeab99ee629d84fbb6",
+      "requestId": "03eb1177-e056-4eef-8e33-64f96289c96c",
+      "channel": "websocket",
+      "errorCode": "UNAUTHORIZED"
+    },
+    {
+      "event": "stage_timing",
+      "traceId": "2d8c2777-0fd4-4c89-86d7-04732e1ab065",
+      "spanId": "e5ef0c4b-3584-482d-90bb-d05d4ce9882c",
+      "stage": "invocation.dispatch",
+      "status": "completed",
+      "startedAtUtc": "2026-10-16T12:09:41.051Z",
+      "finishedAtUtc": "2026-10-16T12:09:44.239Z",
+      "wallMs": 3188.22588,
+      "sessionId": "pa-fec947478584e4b92c3e62e613880a2d",
+      "requestId": "5db6896d-6a88-4109-a92d-dd18bd1b83d2",
+      "channel": "websocket"
+    },
+    {
+      "role": "fast",
+      "requestId": "03eb1177-e056-4eef-8e33-64f96289c96c",
+      "promptVersion": "owned-1.2",
+      "status": "failed",
+      "durationMs": 193.50993000000017,
+      "durationScope": "model_gateway_complete"
+    },
+    {
+      "role": "fast",
+      "requestId": "5db6896d-6a88-4109-a92d-dd18bd1b83d2",
+      "promptVersion": "owned-1.2",
+      "status": "completed",
+      "totalTokens": 5576,
+      "durationMs": 3185.3081300000003,
+      "durationScope": "model_gateway_complete"
+    },
+    {
+      "event": "stage_timing",
+      "traceId": "e69c4194-b46d-4b1b-b55a-c5fdb55cf4a7",
+      "spanId": "9ae03116-125c-41bf-9cf9-85d00e5ec9b7",
+      "stage": "model.agentarts_proxy",
+      "status": "completed",
+      "startedAtUtc": "2026-10-16T12:09:52.538Z",
+      "finishedAtUtc": "2026-10-16T12:09:52.728Z",
+      "wallMs": 190.89469999999983,
+      "modelRef": "qwen3.8-flash"
+    },
+    {
+      "event": "stage_timing",
+      "traceId": "dad2ff41-eef3-4abc-8ccd-5620bf40fe25",
+      "spanId": "9a7dd050-d222-4e44-9037-6937fde9285d",
+      "stage": "model.agentarts_proxy",
+      "status": "completed",
+      "startedAtUtc": "2026-10-16T12:09:41.056Z",
+      "finishedAtUtc": "2026-10-16T12:09:44.238Z",
+      "wallMs": 3181.94762,
+      "modelRef": "deepseek-v4.1-flash"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:09:52.728Z",
+      "route": "runtime-bailian",
+      "configuredModel": "qwen3.8-flash",
+      "reasoningEffort": null,
+      "responseModel": null,
+      "httpStatus": 403,
+      "requestId": "dc72385a-a67f-98ac-9e0c-9c8bd522f84e",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:09:44.238Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": "low",
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "dedd1ba6cf0ced469a73f0cf3a6a0735",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "stage_timing",
+      "traceId": "e69c4194-b46d-4b1b-b55a-c5fdb55cf4a7",
+      "spanId": "9ae03116-125c-41bf-9cf9-85d00e5ec9b7",
+      "stage": "model.agentarts_proxy",
+      "status": "started",
+      "startedAtUtc": "2026-10-16T12:09:52.538Z",
+      "modelRef": "qwen3.8-flash"
+    },
+    {
+      "event": "stage_timing",
+      "traceId": "dad2ff41-eef3-4abc-8ccd-5620bf40fe25",
+      "spanId": "9a7dd050-d222-4e44-9037-6937fde9285d",
+      "stage": "model.agentarts_proxy",
+      "status": "started",
+      "startedAtUtc": "2026-10-16T12:09:41.056Z",
+      "modelRef": "deepseek-v4.1-flash"
+    }
+  ]
+}

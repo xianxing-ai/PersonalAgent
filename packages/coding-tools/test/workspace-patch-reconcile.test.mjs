@@ -55,7 +55,7 @@ test('dead helper with after hash is reconciled as applied', async t => {
   await marker(f.markerPath, {pid: 1234, beforeSha256: sha('before\n'), afterSha256: sha('after\n')});
   const result = await reconcileWorkspacePatchApply({...f, isProcessAlive: () => 'exited'});
   assert.deepEqual(result, {path: f.relativePath, state: 'reconciled', runId, argumentsDigest, outcome: 'applied',
-    beforeSha256: sha('before\n'), afterSha256: sha('after\n'), currentSha256: sha('after\n')});
+    beforeSha256: sha('before\n'), afterSha256: sha('after\n'), currentSha256: sha('after\n'), byteLength: Buffer.byteLength('after\n')});
   await assert.rejects(readFile(f.markerPath), {code: 'ENOENT'});
 });
 

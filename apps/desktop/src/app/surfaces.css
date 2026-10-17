@@ -15,6 +15,7 @@
 :root[data-theme="light"] .workspace-orb canvas {filter:invert(1)}
 .workspace {background-clip:padding-box;clip-path:inset(0 round 12px);isolation:isolate}
 :focus-visible {outline-color:var(--focus-ring)}
+.orb-button:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-4px;border-radius:50%}
 .composer textarea:focus,.composer textarea:focus-visible {outline:none;box-shadow:none}
 .composer:focus-within {border-color:var(--focus-ring)}
 .settings-form input:focus {border-color:var(--focus-ring);box-shadow:0 0 0 1px var(--focus-ring)}
@@ -61,7 +62,7 @@
 .workspace-account {display:flex;align-items:center;gap:10px;flex-shrink:0;height:50px;border:0;border-top:1px solid var(--glass-hairline);background:none;color:var(--fg);font-size:13px;text-align:left}.workspace-avatar {display:grid;place-items:center;width:25px;height:25px;background:var(--surface-3);border-radius:50%}
 .workspace-main {display:flex;flex-direction:column;min-width:0;min-height:0;border-top:1px solid var(--glass-hairline);border-top-left-radius:14px;background:var(--glass-tint)}.workspace-top {height:44px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 16px;font-size:13px;color:var(--muted)}#workspace-task-title {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .workspace-stage {flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;scrollbar-width:thin}.workspace-welcome {margin:auto;display:grid;justify-items:center;gap:20px;padding:18px 32px 55px;text-align:center}.workspace-welcome h1 {font-size:clamp(22px,2.3vw,30px);font-weight:500;line-height:1.6}.workspace-welcome h1 span {text-decoration:underline;text-decoration-color:var(--glass-border);text-underline-offset:6px}
-.workspace-orb {width:100px;height:100px;position:relative;background:transparent;border:0;border-radius:50%;padding:0;transition:transform .3s,filter .3s;filter:brightness(.85)}.workspace-orb canvas {width:100%;height:100%;--orb-particle:#fff;--orb-core-1:#05070a;--orb-core-2:#10151c}.workspace-orb[aria-pressed="true"] {transform:scale(1.3);filter:brightness(1.45) drop-shadow(0 0 10px rgba(255,255,255,.15))}
+.workspace-orb {width:100px;height:100px;position:relative;background:transparent;border:0;border-radius:50%;padding:0;transition:transform .3s,filter .3s;filter:brightness(.85)}.workspace-orb::before {content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 50% 45%,rgba(5,7,10,.92),rgba(5,7,10,.6) 66%,transparent 72%);pointer-events:none}.workspace-orb canvas {position:relative;z-index:1;width:100%;height:100%;--orb-particle:#fff;--orb-core-1:#05070a;--orb-core-2:#10151c}.workspace-orb[aria-pressed="true"] {transform:scale(1.3);filter:brightness(1.45) drop-shadow(0 0 10px rgba(255,255,255,.15))}
 .workspace-notice {font-size:12px;color:var(--muted);margin:0 15px 12px}.workspace-notice:empty,.workspace-error:empty {display:none}.workspace-error {font-size:12px;color:var(--danger);margin:8px 14px 0}.workspace-conversation {width:min(820px,calc(100% - 56px));margin:24px auto}.workspace-turn {display:flex;flex-direction:column;gap:26px;align-items:flex-start}.workspace-turn .assistant-message {font-size:15px;line-height:1.9}.workspace-turn .user-message {font-size:15px}
 #workspace-search {padding:8px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);color:var(--fg);margin-bottom:8px;width:100%;font-size:12px}.workspace.sidebar-collapsed {grid-template-columns:0 minmax(0,1fr)}.workspace.sidebar-collapsed .workspace-sidebar {visibility:hidden;padding:0;overflow:hidden}
 @media(max-width:900px){.workspace{grid-template-columns:210px minmax(0,1fr)}.workspace-brand strong{font-size:15px}.workspace-conversation{width:calc(100% - 32px)}.workspace-welcome{padding:16px 24px 30px}.profile-stats span{font-size:11px}.profile-toolbar{gap:10px}.profile-toolbar>div{gap:8px}.profile-action{font-size:11px}}
@@ -73,7 +74,7 @@
 :root:not([data-theme="light"]) .activity-grid span {background:#1c3c66}
 .panel .composer {margin:0 12px 12px;padding:8px 12px;border-radius:17px}
 .panel .composer textarea {min-height:38px;font-size:14px;padding:4px 4px 0}
-.panel .composer-bar {margin-top:2px;min-width:0}
+.panel .composer-bar {position:relative;margin-top:2px;min-width:0}
 .panel .composer-bar>.icon-btn,.panel .composer-bar>.send-btn {width:32px;height:32px;flex:0 0 32px}
 .panel .model-box {flex:0 1 148px;min-width:0;max-width:148px}
 .panel .model-select {display:flex;width:100%;min-width:0;max-width:100%;overflow:hidden;font-size:12px;padding:4px 5px;white-space:nowrap}
@@ -149,7 +150,7 @@
 
 .panel .composer textarea {box-sizing:border-box;min-width:0;field-sizing:content;max-height:min(160px,28vh);overflow-y:auto}
 .panel .model-box {position:static}
-.panel .model-menu {right:14px;bottom:80px;width:252px;max-width:calc(100% - 28px);max-height:calc(100vh - 104px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.panel .model-menu {right:0;bottom:calc(100% + 8px);width:252px;max-width:calc(100% - 28px);max-height:calc(100vh - 104px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .panel .model-menu .mm-model {min-width:0;align-items:flex-start}
 .panel .model-menu #mm-model-label {min-width:0;flex:1;overflow-wrap:anywhere}
 .panel .model-menu .model-tag {flex:0 0 auto}
@@ -195,6 +196,9 @@
 .knowledge-source-settings .setting-row select,
 .knowledge-source-settings .setting-row textarea {box-sizing:border-box;flex:0 1 360px;width:100%;min-width:0;max-width:360px;border:1px solid var(--glass-border);border-radius:9px;padding:8px 10px;background:var(--surface-2);color:var(--fg);font:inherit}
 .knowledge-source-settings .setting-row textarea {flex:1 1 420px;max-width:520px;min-height:64px;max-height:180px;overflow:auto;resize:vertical}
+.installed-skills-settings .field {box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--glass-border);border-radius:9px;padding:8px 10px;background:var(--surface-2);color:var(--fg);font:inherit}
+.installed-skills-settings textarea {min-height:96px;resize:vertical}
+.installed-skills-settings pre {max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 .knowledge-source-settings .setting-row input[type="checkbox"],.knowledge-source-settings .setting-row input[type="radio"] {flex:0 0 auto;margin:0;accent-color:var(--accent)}
 .knowledge-source-settings .setting-row:has(input[type="checkbox"]),.knowledge-source-settings .setting-row:has(input[type="radio"]) {justify-content:flex-start;gap:8px}
 .knowledge-source-settings h3 {margin:18px 0 8px;font-size:14px}
@@ -258,3 +262,262 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
     box-sizing:border-box;width:100%;flex:0 1 45%;min-height:140px;max-height:45%;
   }
 }
+
+/* Settings: left navigation, one content column, controls lined up on the right. */
+@media(min-width:821px) {
+  .admin {grid-template-columns:228px minmax(0,1fr)}
+}
+.admin .side {padding:16px 12px 14px;gap:8px}
+.admin .side-home {gap:2px;padding:4px 8px 8px}
+.admin .side .brand {padding:0;font-size:15px;line-height:1.3}
+.admin .side-home > span:last-child {color:var(--muted);font-size:12px}
+.admin .admin-search {min-height:36px;margin:2px 2px 6px;border-radius:10px;padding:0 10px}
+.admin .admin-search:focus-within {outline:2px solid var(--focus-ring);outline-offset:2px}
+.admin .nav-group {margin:0 0 6px}
+.admin .nav-group h2 {margin:12px 10px 4px;font-size:11px;letter-spacing:.08em}
+.admin .side nav button {min-height:36px;padding:7px 10px;border-radius:10px;font-size:13px}
+.admin .side nav button[aria-current="page"] {font-weight:600;box-shadow:inset 0 0 0 1px var(--glass-border)}
+.admin .main[data-surface="settings"]:not([data-section="memory"]) :is(.settings-content.settings-single,.feature-page) {
+  box-sizing:border-box;width:min(760px,100%);margin:0;padding:36px 40px 72px;
+}
+.admin .main[data-surface="settings"] :is(.settings-heading,.settings-list) {max-width:none;margin-left:0;margin-right:0}
+.admin .settings-heading {margin:0 0 18px}
+.admin .settings-heading h2 {font-size:26px;font-weight:600;letter-spacing:-.03em}
+.admin .settings-heading p {margin-top:8px;font-size:13px;line-height:1.5;max-width:58ch}
+.admin .settings-list {border-radius:16px}
+.admin .settings-list .setting-row {align-items:center;gap:24px;min-height:76px;padding:16px 18px}
+.admin .settings-list .setting-row > span:first-child {gap:5px}
+.admin .settings-list .setting-row b {font-size:14px;font-weight:600}
+.admin .settings-list .setting-row small {font-size:12px;line-height:1.45}
+.admin .settings-list .setting-control {flex:0 0 auto;min-width:108px;max-width:240px;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.admin .settings-list :is(.setting-control .btn,.value-pill,.status-note,.setting-control select) {
+  box-sizing:border-box;min-height:32px;min-width:92px;justify-content:center;border-radius:8px;font-size:12px;
+}
+.admin .settings-list .setting-control .btn {
+  padding:6px 12px;background:var(--surface-2);border:1px solid var(--border-strong);color:var(--fg);font-weight:550;
+}
+.admin .settings-list .setting-control .btn:hover:not(:disabled):not([aria-disabled="true"]) {background:var(--surface-3)}
+.admin .settings-list .setting-control .btn-danger {
+  background:transparent;color:var(--danger);border-color:color-mix(in srgb,var(--danger) 55%,var(--border-strong));
+}
+.admin .settings-list .setting-control .btn-danger:hover:not(:disabled) {background:var(--accent-soft)}
+.admin .settings-list .value-pill {padding:0 10px;background:var(--accent-soft);color:var(--fg-2)}
+.admin .settings-list .setting-control select {max-width:100%;padding:6px 28px 6px 10px;background:var(--surface-2);color:var(--fg)}
+.admin .settings-list kbd {display:inline-flex;align-items:center;min-height:28px}
+.admin .main .btn-primary,.admin .page-lead .btn-primary {min-height:36px;padding:8px 16px;border-radius:9px;font-weight:600}
+.admin .main[data-surface="settings"]:not([data-section="memory"]) :is(.form-actions,.btn-group) {justify-content:flex-end;margin-top:4px}
+.admin .main[data-surface="settings"]:not([data-section="memory"]) .settings-form {gap:14px}
+.admin .main[data-surface="settings"]:not([data-section="memory"]) .settings-form label {font-size:12px}
+.admin .main[data-surface="settings"]:not([data-section="memory"]) .settings-form :is(input,select,textarea) {
+  min-height:36px;border-radius:9px;border:1px solid var(--glass-border);background:var(--surface-2);color:var(--fg);font-size:13px;
+}
+.admin .main[data-surface="settings"]:not([data-section="memory"]) .feature-page .sheet {
+  display:flex;flex-direction:column;align-items:stretch;gap:12px;margin-top:14px;border-radius:16px;
+}
+.admin .main[data-surface="settings"]:not([data-section="memory"]) .feature-page .sheet > .btn,
+.admin .main[data-surface="settings"]:not([data-section="memory"]) .feature-page .sheet form {align-self:flex-start}
+.admin .main[data-section="notifications"] > .notification-settings {box-sizing:border-box;width:min(860px,calc(100% - 80px));margin:0 40px 32px;padding:20px;border-radius:16px}
+.admin .notification-settings .settings-form {grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.admin .notification-settings .settings-form label {min-width:0}
+.admin .notification-settings .settings-form .notification-check {display:flex;align-items:center;gap:8px;line-height:1.5}
+.admin .main[data-surface="settings"] .notification-settings .notification-check input {width:16px;height:16px;min-height:16px;flex:0 0 16px;margin:0}
+.admin .notification-settings [data-notifications="load"] {grid-column:1/-1;justify-self:start}
+.admin .notification-settings p,.admin .notification-settings li {font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.admin .notification-settings h2,.admin .notification-settings h3 {margin:0 0 12px}
+.admin .notification-settings h3 {margin-top:20px;font-size:14px}
+@media(max-width:900px) {.admin .main[data-section="notifications"] > .notification-settings {width:calc(100% - 32px);margin:0 16px 24px;padding:16px}.admin .notification-settings .settings-form {grid-template-columns:minmax(0,1fr)}}
+.admin .sis-settings {box-sizing:border-box;width:min(760px,calc(100% - 80px));margin:0 40px;border-radius:16px;padding:16px 18px}
+.admin .sis-fields {display:grid;gap:12px}
+.admin .sis-fields label {display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.admin .sis-fields :is(input,select) {
+  min-height:36px;border:1px solid var(--glass-border);border-radius:9px;background:var(--surface-2);color:var(--fg);padding:8px 10px;font:inherit;font-size:13px;
+}
+.admin .sis-fields > button {justify-self:start;min-height:36px;padding:8px 14px;border-radius:9px;font-weight:600}
+@media(max-width:640px) {
+  .admin .side {padding-inline:8px}
+  .admin .side-home {padding-inline:0}
+  .admin .side .brand {font-size:13px}
+  .admin .admin-search {padding-inline:6px;gap:4px}
+  .admin .main[data-surface="settings"]:not([data-section="memory"]) :is(.settings-content.settings-single,.feature-page) {padding:22px 16px 48px}
+  .admin .settings-list .setting-row {align-items:flex-start;flex-direction:column;gap:10px}
+  .admin .settings-list .setting-control {max-width:none;justify-content:flex-start}
+  .admin .sis-settings {width:auto;margin:12px 16px 0}
+}
+
+/* Models and memory are their own pages: one column of cards, actions on the left. */
+.admin .main:is([data-section="models"],[data-section="memory"]) {
+  display:flex;flex-direction:column;align-items:flex-start;gap:16px;
+  box-sizing:border-box;padding:32px 40px 72px;overflow:auto;
+}
+.admin .main:is([data-section="models"],[data-section="memory"]) > .error:empty {display:none}
+.admin .main[data-section="memory"] .feature-page .settings-heading ~ .settings-heading h2 {font-size:18px}
+.admin .main[data-section="memory"] > .sheet > h2 {font-size:16px;font-weight:620}
+.admin .main[data-section="models"] > :is(#content,.sheet,.sis-settings),
+.admin .main[data-section="memory"] > :is(#content,.feature-page,.sheet,.memory-learning-settings) {
+  width:min(920px,100%);margin:0;box-sizing:border-box;
+}
+.admin .main:is([data-section="models"],[data-section="memory"]) .settings-heading {margin:2px 0 0}
+.admin .main:is([data-section="models"],[data-section="memory"]) :is(.page-lead h2,.settings-heading h2) {
+  font-size:28px;font-weight:640;letter-spacing:-.03em;
+}
+.admin .main:is([data-section="models"],[data-section="memory"]) :is(.page-lead p,.settings-heading p) {
+  margin-top:6px;font-size:13px;line-height:1.5;max-width:62ch;
+}
+.admin .main[data-section="models"] .model-page {max-width:none;width:100%;margin:0;padding:0}
+.admin .main[data-section="models"] .page-lead {align-items:center;width:100%;margin:0 0 2px;gap:24px}
+.admin .main[data-section="models"] .model-list {border-radius:18px}
+.admin .main[data-section="models"] .model-item {min-height:92px;gap:16px;padding:16px 18px}
+.admin .main[data-section="models"] .provider-mark {width:44px;height:44px;border-radius:14px;font-size:16px}
+.admin .main[data-section="models"] .model-copy {gap:5px}
+.admin .main[data-section="models"] .model-copy b {font-size:15px;font-weight:620}
+.admin .main[data-section="models"] .model-copy small {font-size:12px}
+.admin .main[data-section="models"] .model-state {display:inline-flex;flex:0 0 auto}
+.admin .main[data-section="models"] .model-more {
+  flex:0 0 auto;letter-spacing:0;font-size:13px;padding:6px 14px;
+}
+.admin .main[data-section="models"] .model-footnote {margin:2px 2px 0;max-width:68ch;font-size:12px;line-height:1.55}
+.admin .main[data-section="models"] .model-editor {width:100%;margin-top:2px}
+.admin .main[data-section="models"] .model-editor-head h2 {font-size:16px}
+.admin .main[data-section="models"] .model-editor-head p {font-size:12px}
+.admin .main[data-section="models"] .settings-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:0}
+.admin .main[data-section="models"] .model-page .sheet,
+.admin .main[data-section="models"] .coding-workspace {
+  display:block;margin:0;border-radius:18px;padding:18px 20px 20px;
+}
+.admin .main[data-section="models"] .model-page > .sheet h3 {margin:0 0 10px;font-size:15px}
+.admin .main[data-section="models"] .model-page > .sheet p {margin:0 0 6px;font-size:13px;line-height:1.5}
+.admin .main[data-section="models"] .settings-form,
+.admin .main[data-section="models"] .coding-workspace .settings-form {display:grid;gap:14px}
+.admin .main[data-section="models"] .settings-form label,
+.admin .main[data-section="models"] .coding-workspace .settings-form label {font-size:12px}
+.admin .main[data-section="models"] .settings-form :is(input,select,textarea),
+.admin .main[data-section="models"] .coding-workspace .settings-form :is(input,select,textarea) {
+  width:100%;box-sizing:border-box;min-height:38px;border:1px solid var(--glass-border);border-radius:10px;
+  padding:8px 12px;background:var(--surface-2);color:var(--fg);font:inherit;font-size:13px;
+}
+.admin .main[data-section="models"] :is(.form-actions,.btn-group) {justify-content:flex-start;margin-top:4px}
+.admin .main[data-section="models"] .coding-workspace > h2 {margin:0 0 8px;font-size:16px}
+.admin .main[data-section="models"] .sis-settings {
+  width:100%;margin:0;border-radius:18px;padding:8px 20px 18px;
+}
+.admin .main[data-section="models"] .sis-fields {display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px}
+.admin .main[data-section="models"] .sis-fields > :not(button) {flex:1 0 100%}
+.admin .main[data-section="models"] .sis-fields > button {flex:0 0 auto;width:auto}
+
+.admin .main[data-section="memory"] .feature-page {
+  width:100%;max-width:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px;
+}
+.admin .main[data-section="memory"] .memory-learning-settings {
+  padding:0;background:transparent;border:0;box-shadow:none;
+}
+.admin .main[data-section="memory"] .settings-list {border-radius:18px}
+.admin .main[data-section="memory"] .feature-page .settings-list .setting-row {min-height:52px;padding:12px 16px;gap:16px}
+.admin .main[data-section="memory"] .settings-list .setting-row strong,
+.admin .main[data-section="memory"] .settings-list .setting-row code {
+  margin-left:auto;text-align:right;font-size:13px;font-weight:560;color:var(--fg);
+}
+.admin .main[data-section="memory"] .settings-list .setting-row code {
+  font-weight:450;font-size:12px;color:var(--fg-2);max-width:62%;overflow-wrap:anywhere;
+}
+.admin .main[data-section="memory"] .memory-card,
+.admin .main[data-section="memory"] .memory-hit,
+.admin .main[data-section="memory"] .memory-learning-panel {
+  border-radius:18px;padding:18px 20px;
+}
+.admin .main[data-section="memory"] .memory-card {
+  display:flex;flex-direction:column;align-items:stretch;gap:12px;margin:0;
+}
+.admin .main[data-section="memory"] .memory-actions {display:flex;flex-wrap:wrap;gap:8px}
+.admin .main[data-section="memory"] .memory-search {display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%}
+.admin .main[data-section="memory"] .memory-search input {
+  flex:1 1 220px;min-width:0;min-height:38px;box-sizing:border-box;border:1px solid var(--glass-border);
+  border-radius:10px;padding:8px 12px;background:var(--surface-2);color:var(--fg);font:inherit;font-size:13px;
+}
+.admin .main[data-section="memory"] .memory-search .btn {flex:0 0 auto}
+.admin .main[data-section="memory"] .memory-hit {
+  display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:var(--surface-2);
+}
+.admin .main[data-section="memory"] .memory-card > .memory-hit {width:100%;box-sizing:border-box}
+.admin .main[data-section="memory"] .memory-excerpt {margin:0;font-size:14px;line-height:1.55}
+.admin .main[data-section="memory"] .memory-field {display:grid;gap:6px;width:100%;color:var(--muted);font-size:12px}
+.admin .main[data-section="memory"] .memory-field input {
+  min-height:38px;box-sizing:border-box;width:100%;border:1px solid var(--glass-border);border-radius:10px;
+  padding:8px 12px;background:var(--surface);color:var(--fg);font:inherit;font-size:13px;
+}
+.admin .main[data-section="memory"] > .sheet {
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 8px;border-radius:18px;padding:18px 20px;
+}
+.admin .main[data-section="memory"] > .sheet > :is(h2,h3,p,label,pre,.settings-form) {flex:1 0 100%;min-width:0;margin-left:0;margin-right:0}
+.admin .main[data-section="memory"] > .sheet > :is(h2,h3) {margin:0}
+.admin .main[data-section="memory"] > .sheet > .btn {flex:0 0 auto;width:auto}
+.admin .main[data-section="memory"] .memory-subhead {margin:6px 0 0;font-size:14px;font-weight:600}
+.admin .main[data-section="memory"] .watch-card {
+  margin:0 0 10px;padding:14px 16px;border:1px solid var(--glass-border);border-radius:14px;background:var(--surface-2);
+}
+.admin .main[data-section="memory"] .watch-card-head,
+.admin .main[data-section="memory"] .watch-actions {display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.admin .main[data-section="memory"] .watch-actions {margin-top:8px}
+.admin .main[data-section="memory"] .watch-badge {
+  margin-left:auto;padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:var(--fg-2);font-size:12px;
+}
+.admin .main[data-section="memory"] .watch-meta,
+.admin .main[data-section="memory"] .source-cite {margin:6px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+.admin .main[data-section="memory"] .source-excerpt {margin:6px 0 0;white-space:pre-wrap;color:var(--fg-2);font-size:13px;line-height:1.5}
+.admin .main[data-section="memory"] .source-item {margin:8px 0}
+.admin .main[data-section="memory"] .watch-alert {
+  margin:8px 0;padding:8px 10px;border-radius:10px;background:var(--accent-soft);font-size:12px;line-height:1.5;
+}
+.admin .main[data-section="memory"] .memory-learning-panel h3 {margin:0 0 6px;font-size:16px}
+.admin .main[data-section="memory"] .memory-learning-panel h3 + p {margin:0 0 8px}
+.admin .main[data-section="memory"] .memory-learning-panel .settings-form {
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0;
+}
+.admin .main[data-section="memory"] .memory-learning-panel .settings-form label {display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.admin .main[data-section="memory"] .memory-learning-panel .settings-form input {
+  width:100%;box-sizing:border-box;min-height:38px;border:1px solid var(--glass-border);border-radius:10px;
+  padding:8px 12px;background:var(--surface-2);color:var(--fg);font:inherit;font-size:13px;
+}
+.admin .main[data-section="memory"] .memory-learning-panel .form-actions {justify-content:flex-start;margin-top:8px}
+.admin .main[data-section="memory"] .memory-learning-panel .setting-row {align-items:flex-start;min-height:0;gap:12px}
+.admin .main[data-section="memory"] .memory-learning-panel .setting-control {
+  flex:1 1 280px;flex-wrap:wrap;justify-content:flex-start;max-width:none;
+}
+@media(max-width:820px) {
+  .admin .main[data-section="models"] .settings-grid,
+  .admin .main[data-section="memory"] .memory-learning-panel .settings-form {grid-template-columns:1fr}
+}
+@media(max-width:720px) {
+  .admin .main:is([data-section="models"],[data-section="memory"]) {padding:20px 16px 48px}
+  .admin .main[data-section="models"] .model-item {flex-wrap:wrap;padding:14px}
+  .admin .main[data-section="models"] .model-copy {flex:1 1 160px}
+  .admin .main[data-section="models"] .page-lead {align-items:flex-start;flex-direction:column;gap:12px}
+}
+
+/* Native model settings use the model page's scroll area and bounded columns. */
+.admin .main[data-section="models"] [data-agentarts-model-mounted] {width:100%;min-width:0;box-sizing:border-box;margin-top:16px}
+.admin .main[data-section="models"] .agentarts-model-settings {width:100%;min-width:0;box-sizing:border-box;margin:0;padding:18px 20px}
+.admin .main[data-section="models"] .agentarts-model-settings .sis-fields {display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;margin-top:16px}
+.admin .agentarts-model-settings .sis-fields label {display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px}
+.admin .agentarts-model-settings .sis-fields select {width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:38px;text-overflow:ellipsis}
+.admin .agentarts-model-settings .form-actions {display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
+.admin .agentarts-model-settings .notice {overflow-wrap:anywhere}
+@media(max-width:760px){.admin .main[data-section="models"] .agentarts-model-settings .sis-fields {grid-template-columns:minmax(0,1fr)}}
+
+/* Keep all model configuration cards in a single nonshrinking scroll flow. */
+.admin .main[data-section="models"] > #content {flex:0 0 auto;min-width:0;width:100%;height:auto;overflow:visible}
+.admin .main[data-section="models"] .model-page {display:flex;flex-direction:column;gap:16px;min-width:0}
+.admin .main[data-section="models"] [data-model-settings-section] {position:static;flex:0 0 auto;min-width:0;width:100%;box-sizing:border-box;margin:0}
+.admin .main[data-section="models"] [data-model-settings-section] > :is(.sheet,.sis-settings) {position:static;flex:0 0 auto;max-width:none;width:100%;min-width:0;margin:0;box-sizing:border-box}
+
+/* Conversation management, native effort and the workspace use existing task IPC. */
+.conversation-sessions {display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 14px;border-bottom:1px solid var(--glass-hairline);font-size:11px;flex:0 0 auto;min-width:0}
+.conversation-sessions label {display:flex;align-items:center;gap:6px;min-width:0}
+.conversation-sessions select,.conversation-sessions input {box-sizing:border-box;min-width:0;max-width:180px;width:130px;border:1px solid var(--glass-border);border-radius:6px;background:var(--surface-2);color:var(--fg);padding:5px 7px;font:inherit}
+.conversation-sessions button {border:1px solid var(--glass-border);border-radius:6px;padding:5px 8px;background:var(--surface-2);color:var(--fg);font:inherit}
+.conversation-sessions .notice:empty {display:none}.conversation-sessions details {position:relative}.conversation-sessions details>div {display:flex;flex-wrap:wrap;gap:6px}
+.native-reasoning-control {display:flex;align-items:center;gap:8px;font-size:11px;min-width:0}.native-reasoning-control select {min-width:0;max-width:160px;padding:6px 8px;border:1px solid var(--glass-border);border-radius:6px;background:var(--surface-2);color:var(--fg);font:inherit}
+.workspace-composer {flex:0 0 auto;padding:12px 24px 16px;border-top:1px solid var(--glass-hairline)}.workspace-composer label {display:block;font-size:11px;color:var(--muted)}
+.workspace-composer textarea {box-sizing:border-box;display:block;width:100%;min-height:72px;max-height:180px;resize:vertical;margin-top:6px;padding:10px 12px;border:1px solid var(--glass-border);border-radius:10px;background:var(--surface-2);color:var(--fg);font:inherit;line-height:1.6}
+.workspace-composer-actions {display:flex;align-items:center;gap:12px;margin-top:8px}.workspace-composer-actions .notice {flex:1;margin:0}.workspace-composer-actions button {padding:7px 14px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);color:var(--fg)}.workspace-composer-actions button:disabled {opacity:.45}
+.workspace-chat>.subagent-tasks {flex:0 0 auto;max-height:150px;overflow:auto;padding-inline:24px;font-size:11px}.workspace-chat>.workspace-error {position:static;margin:0;padding:4px 24px;text-align:left;flex:0 0 auto}
+.panel>.conversation-sessions,.panel>div:has(>.conversation-sessions) {flex:0 0 auto}

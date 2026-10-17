@@ -4,20 +4,20 @@ const safeCitation = value => {
   catch { return null; }
 };
 const citationHtml = value => safeCitation(value)
-  ? `<a href="${escape(safeCitation(value))}" target="_blank" rel="noopener noreferrer" style="color:var(--link-color,#63b3ed)">${escape(value)}</a>`
+  ? `<a href="${escape(safeCitation(value))}" target="_blank" rel="noopener noreferrer">${escape(value)}</a>`
   : `<code>${escape(value)}</code>`;
 
 // Keep citations tied to source items.
 export function knowledgeFeedCitationHtml(answer = {}) {
   if (Array.isArray(answer.items) && answer.items.length) {
-    return answer.items.map(item => `<div data-source-item="${escape(item.itemKey)}" style="margin:6px 0">
+    return answer.items.map(item => `<div class="source-item" data-source-item="${escape(item.itemKey)}">
       <strong>${escape(item.title)}</strong>
-      <p style="margin:3px 0;white-space:pre-wrap">${escape(item.excerpt)}</p>
-      <p style="font-size:12px;margin:3px 0">引用：${citationHtml(item.citation)} · 来源版本：<code>${escape(item.sourceRevision)}</code></p>
+      <p class="source-excerpt">${escape(item.excerpt)}</p>
+      <p class="source-cite">引用：${citationHtml(item.citation)} · 来源版本：<code>${escape(item.sourceRevision)}</code></p>
     </div>`).join('');
   }
   return answer.citation && !String(answer.citation).startsWith('knowledge-feed-citations:')
-    ? `<p style="font-size:12px;margin:4px 0">引用：${citationHtml(answer.citation)}</p>` : '';
+    ? `<p class="source-cite">引用：${citationHtml(answer.citation)}</p>` : '';
 }
 
 export function mountKnowledgeControls(container, invoke) {
@@ -25,51 +25,43 @@ export function mountKnowledgeControls(container, invoke) {
   section.className = 'feature-page';
   section.setAttribute('aria-label', '知识库与关注监控');
   section.innerHTML = `
-    <h2>本地知识库与笔记</h2>
-    <p class="notice">知识检索只读；笔记内容不会自动外发。</p>
-    <div class="settings-list" style="margin-bottom:16px">
+    <header class="settings-heading"><h2>本地知识库与笔记</h2><p>知识检索只读；笔记内容不会自动外发。</p></header>
+    <div class="settings-list">
       <div class="setting-row">
         <span>知识库状态</span>
         <strong data-vault-status>检测中…</strong>
       </div>
       <div class="setting-row">
         <span>目录路径</span>
-        <code data-vault-path style="font-size:12px;word-break:break-all"></code>
+        <code data-vault-path></code>
       </div>
     </div>
-    <form class="knowledge-search-form" style="display:flex;gap:8px;margin-bottom:12px">
-      <input type="text" name="query" placeholder="输入关键词检索本地笔记…" style="flex:1;padding:6px 10px;border-radius:4px;border:1px solid var(--border-color,#444);background:var(--input-bg,#222);color:inherit" required>
-      <button class="btn btn-sm" type="submit">检索笔记</button>
+    <form class="knowledge-search-form memory-search">
+      <input type="text" name="query" placeholder="输入关键词检索本地笔记…" required>
+      <button class="btn" type="submit">检索笔记</button>
     </form>
     <p class="notice" data-search-status role="status"></p>
     <div class="knowledge-results" data-results></div>
-
-    <hr style="border:0;border-top:1px solid var(--border-color,#333);margin:24px 0" />
-
-    <h2>知识关注与增量更新</h2>
-    <p class="notice">只使用已绑定的当前事实。</p>
-    <div class="settings-list" style="margin-bottom:16px">
+    <header class="settings-heading"><h2>知识关注与增量更新</h2><p>只使用已绑定的当前事实。</p></header>
+    <div class="settings-list">
       <div class="setting-row">
         <span>关注宿主状态</span>
         <strong data-watch-status>未装配</strong>
       </div>
       <div class="setting-row">
         <span>关注命名空间</span>
-        <code data-watch-namespace style="font-size:12px">未配置</code>
+        <code data-watch-namespace>未配置</code>
       </div>
     </div>
-
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button class="btn btn-sm" data-action-refresh-watch type="button">检查关注更新</button>
+    <div class="memory-actions">
+      <button class="btn" data-action-refresh-watch type="button">检查关注更新</button>
     </div>
-    <p class="notice" data-watch-op-status role="status" style="margin-bottom:12px"></p>
-
-    <h3 style="font-size:14px;margin-bottom:8px">已跟踪关注事项与事实状态</h3>
-    <div data-watch-list class="knowledge-results" style="margin-bottom:16px">
+    <p class="notice" data-watch-op-status role="status"></p>
+    <h3 class="memory-subhead">已跟踪关注事项与事实状态</h3>
+    <div data-watch-list class="knowledge-results">
       <p class="notice">暂无跟踪中的关注事项。</p>
     </div>
-
-    <h3 style="font-size:14px;margin-bottom:8px">待确认提醒与投递回执</h3>
+    <h3 class="memory-subhead">待确认提醒与投递回执</h3>
     <div data-notice-list class="knowledge-results">
       <p class="notice">暂无待确认提醒。</p>
     </div>
@@ -116,9 +108,9 @@ export function mountKnowledgeControls(container, invoke) {
       } else {
         searchStatus.textContent = `检索到 ${hits.length} 条相关结果${res.truncated ? '（已截断展示）' : ''}：`;
         resultsContainer.innerHTML = hits.map(hit => `
-          <article class="task" style="margin-bottom:8px">
-            <p><strong>${escape(hit.source?.path || '未知文件')}</strong> <span class="notice">第 ${Number(hit.source?.line || 1)} 行</span></p>
-            <p class="assistant-message" style="margin-top:4px;white-space:pre-wrap;font-size:13px">${escape(hit.excerpt || '')}</p>
+          <article class="task watch-card">
+            <p class="watch-meta"><strong>${escape(hit.source?.path || '未知文件')}</strong> <span class="notice">第 ${Number(hit.source?.line || 1)} 行</span></p>
+            <p class="source-excerpt">${escape(hit.excerpt || '')}</p>
           </article>
         `).join('');
       }
@@ -267,41 +259,33 @@ export function mountKnowledgeControls(container, invoke) {
         renderedTopics.add(item.topicId);
         const ans = item.answer || {};
         let kindLabel = '未就绪';
-        let badgeColor = '#888';
-        if (ans.kind === 'current_fact') {
-          kindLabel = '已确认当前事实';
-          badgeColor = '#38a169';
-        } else if (ans.kind === 'latest_observation') {
-          kindLabel = '最新观察待重评';
-          badgeColor = '#d69e2e';
-        } else if (ans.kind === 'withheld') {
-          kindLabel = `已扣留/待重评 (${ans.reason || 'withheld'})`;
-          badgeColor = '#e53e3e';
-        }
+        if (ans.kind === 'current_fact') kindLabel = '已确认当前事实';
+        else if (ans.kind === 'latest_observation') kindLabel = '最新观察待重评';
+        else if (ans.kind === 'withheld') kindLabel = `已扣留/待重评 (${ans.reason || 'withheld'})`;
 
         cards.push(`
-          <article class="task" style="margin-bottom:10px;padding:10px;border-radius:6px;border:1px solid var(--border-color,#333);background:var(--surface-bg,#1a1a1a)">
-            <div style="display:flex;justify-content:space-between;align-items:center">
+          <article class="task watch-card">
+            <div class="watch-card-head">
               <strong>${escape(item.topicId)}</strong>
-              <span style="font-size:12px;padding:2px 6px;border-radius:4px;background:${badgeColor};color:#fff">${escape(kindLabel)}</span>
+              <span class="watch-badge" data-kind="${escape(ans.kind || '')}">${escape(kindLabel)}</span>
             </div>
-            <p style="font-size:12px;color:var(--text-muted,#aaa);margin:4px 0">
-              当前绑定版本：<code>${escape(item.boundSource?.revision || '无')}</code> | 
+            <p class="watch-meta">
+              当前绑定版本：<code>${escape(item.boundSource?.revision || '无')}</code> |
               当前事实可用性：<strong>${item.usableAsCurrentFact ? '可用' : '不可作为当前事实'}</strong>
             </p>
             ${knowledgeFeedCitationHtml(ans)}
             ${ans.kind === 'latest_observation' ? `
-              <div style="margin:8px 0;padding:6px;background:rgba(214,158,46,0.1);border-left:3px solid #d69e2e;font-size:12px">
+              <div class="watch-alert">
                 <p>已观察到来源新版本：<code>${escape(ans.sourceRevision || '最新')}</code>。需经本地 Runtime 重评任务确认方可接受。</p>
-                <div style="margin-top:6px;display:flex;gap:6px">
+                <div class="watch-actions">
                   <button class="btn btn-sm" data-bind-topic="${escape(item.topicId)}" type="button" ${!item.binding?.ready ? 'disabled' : ''}>绑定已重评的新版本</button>
                 </div>
                 <p>重评状态：${escape(item.binding?.reason || 'reevaluation_unavailable')}${item.binding?.taskState ? `（${escape(item.binding.taskState)}）` : ''}</p>
               </div>
             ` : ''}
-            <div style="margin-top:6px;display:flex;justify-content:flex-end">
+            <div class="watch-actions">
               ${['tracked', 'paused'].includes(item.state) ? `<button class="btn btn-sm" data-track-topic="${escape(item.topicId)}" data-track-action="${item.state === 'paused' ? 'resume' : 'pause'}" type="button">${item.state === 'paused' ? '恢复关注' : '暂停关注'}</button>` : ''}
-              <button class="btn btn-sm" style="color:#e53e3e" data-revoke-topic="${escape(item.topicId)}" type="button">撤销关注</button>
+              <button class="btn btn-sm btn-danger" data-revoke-topic="${escape(item.topicId)}" type="button">撤销关注</button>
             </div>
           </article>
         `);
@@ -310,14 +294,14 @@ export function mountKnowledgeControls(container, invoke) {
       for (const watch of watches) {
         if (renderedTopics.has(watch.topicId)) continue;
         cards.push(`
-          <article class="task" style="margin-bottom:10px;padding:10px;border-radius:6px;border:1px solid var(--border-color,#333);background:var(--surface-bg,#1a1a1a)">
-            <div style="display:flex;justify-content:space-between;align-items:center">
+          <article class="task watch-card">
+            <div class="watch-card-head">
               <strong>${escape(watch.topicId)}</strong>
-              <span style="font-size:12px;padding:2px 6px;border-radius:4px;background:#888;color:#fff">${escape(watch.state)}</span>
+              <span class="watch-badge">${escape(watch.state)}</span>
             </div>
-            <p style="font-size:12px;color:var(--text-muted,#aaa);margin:4px 0">状态：${escape(watch.reason || '无')} | 版本：${Number(watch.revision || 1)}</p>
-            <div style="margin-top:6px;display:flex;justify-content:flex-end">
-              <button class="btn btn-sm" style="color:#e53e3e" data-revoke-topic="${escape(watch.topicId)}" type="button">撤销关注</button>
+            <p class="watch-meta">状态：${escape(watch.reason || '无')} | 版本：${Number(watch.revision || 1)}</p>
+            <div class="watch-actions">
+              <button class="btn btn-sm btn-danger" data-revoke-topic="${escape(watch.topicId)}" type="button">撤销关注</button>
             </div>
           </article>
         `);
@@ -331,14 +315,14 @@ export function mountKnowledgeControls(container, invoke) {
       noticeList.innerHTML = '<p class="notice">暂无待确认提醒。</p>';
     } else {
       noticeList.innerHTML = notices.map(notice => `
-        <article class="task" style="margin-bottom:8px;padding:8px;border-radius:4px;border:1px solid var(--border-color,#333)">
-          <div style="display:flex;justify-content:space-between;align-items:center">
+        <article class="task watch-card">
+          <div class="watch-card-head">
             <strong>提醒 ID: ${escape(notice.id?.slice(0, 12))}…</strong>
-            <span style="font-size:12px;color:${notice.delivered ? '#38a169' : '#e53e3e'}">${notice.delivered ? '系统已投递' : '系统投递未确认'} · ${notice.readAt ? '用户已读' : '用户未读'}</span>
+            <span class="watch-badge">${notice.delivered ? '系统已投递' : '系统投递未确认'} · ${notice.readAt ? '用户已读' : '用户未读'}</span>
           </div>
-          <p style="font-size:12px;margin:4px 0">${escape(notice.text || notice.summary || '关注来源更新提醒')}</p>
+          <p class="watch-meta">${escape(notice.text || notice.summary || '关注来源更新提醒')}</p>
           ${!notice.readAt ? `
-            <div style="margin-top:6px">
+            <div class="watch-actions">
               <button class="btn btn-sm" data-read-notice="${escape(notice.id)}" type="button">标记已读</button>
             </div>
           ` : ''}

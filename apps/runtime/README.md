@@ -1,7 +1,32 @@
 # Runtime task core
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
+Obsidian 本机桥接沿用 `createObsidianPairingHost` 与 `createTrustedKnowledgeTools`。
+Desktop 根组合用公开 `@personal-agent/knowledge/bridge` 进行 TLS 证书指纹固定/一次性
+密钥认证，再请求原生确认；检索任务仍由 Runtime/Policy/ToolGateway 决定。配对恒为
+private、readonly，断连后 selected source 为 unavailable；旧任务不复用新 sourceId。
+MOD-08O 将逐条记忆确认接入配对引用，文件源监视在插件模式暂停，不新增云能力或授权。
+见 [MOD-08N](../../docs/modules/MOD-08N-AUTHENTICATED-BRIDGE-01.md) 与
+[MOD-08O](../../docs/modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md)，接口 provisional。
+
+Wiki 来源增量提供可信 Application 入口 `revalidateWikiFact`：使用当前宿主 lease 精确读回
+既有确认事实的来源，已知版本变化或读回证明的同卷移动追加观察撤回；临时缺失与扫描失败
+保留历史并返回 source_unavailable。新事实仍通过 `ingestConfirmedPrivateCitation` 逐条确认，
+持久来源引用不授予文件访问或云发送权限。Feed/Goal 复用既有投影应用；参见
+[MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)，接口 provisional。
+
+`createTrustedKnowledgeTools(source, projectionPort?)` 可在原 TaskRuntime 检查点中分别记录
+正文结果与投影进度。`recoverProjection` 只重校验已知回执的来源；unknown 必须先通过
+原 `reconcileKnowledgeWriteTask` 真实读回及 finalize。投影失败保留待恢复记录，已知成功
+回执按原输入匹配检查点，配置变化不阻断原 Runtime 结果确认；旧投影绑定不变。
+原任务确认后调用 `recoverProjection`，仍检查当前配置/租约，不隐式重新绑定或授权。
+已知写入不被重做。参见 [MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)。
+
+`createWikiSourceMonitor` 由现有宿主 tick 驱动只读来源检查，30 秒节流；首次/重启检查
+既有确认事实，之后仅重校验变化路径。扫描/投影失败保留上次快照，不推导删除或自动
+确认新事实；关闭取消在途检查。参见 [MOD-08J](../../docs/modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md)。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
@@ -242,6 +267,27 @@ commit, push, draft PR and backlink still require their original Policy approval
 unknown cause and the complete real repair chain remain unverified.
 
 ## Limits
+
+### Obsidian pairing composition (MOD-08M)
+
+`@personal-agent/runtime/application` exposes `createObsidianPairingHost({source, vaultIdentity,
+confirmPairing})`. The trusted host supplies the existing native-selected Knowledge source, its
+physical Vault identity, and an explicit native confirmation callback. `pair(peer, {deadline,
+signal})` validates the public `@personal-agent/knowledge/pairing` descriptor and returns a fresh
+private, read-only session. Pass the host's `source` to the existing `createTrustedKnowledgeTools`.
+Pairing does not grant Policy permission; grants and task checkpoints remain required.
+
+Confirmation is bounded to 30 seconds; sessions expire after 15 minutes. Source changes, peer
+unload, cancellation, revocation and host shutdown invalidate leases. No state or credential is
+persisted. The port remains provisional. MOD-08N adds authenticated loopback TLS and native pairing
+UI; MOD-08O exposes `wikiSource.acquireWiki` for explicitly confirmed private citations. This lease
+uses the original durable source identity and optional trusted `readPage`, while session task grants
+retain fresh IDs. Only paired-folder hits are read; both local page versions and plugin excerpts must
+agree. Missing metadata/citation support is unavailable, with no filesystem search or scan fallback.
+Plugin change claims alone cannot withdraw facts. See [ADR-0019](../../docs/adr/0019-obsidian-runtime-pairing.md)
+and [ADR-0021](../../docs/adr/0021-paired-citation-memory.md).
+
+### Existing core limitations
 
 - This is an in-process Runtime core, not a daemon or IPC server.
 - Schedules are one-shot; recurring rules, wake timers and sleep detection are not implemented.

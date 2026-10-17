@@ -1,0 +1,17 @@
+{
+  "image": "personal-agent:test-v4-workflow-wiring",
+  "torchThreads": 1,
+  "requestedReasoningEffort": "none",
+  "deadline": "2026-10-16T07:30:44.850Z",
+  "container": "pa-wukong-v3-071038",
+  "imageId": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "pid": 26880,
+  "startedAtUtc": "2026-10-16T07:10:44.8831569Z",
+  "maxSteps": 24,
+  "modelRoute": "agentarts-proxy",
+  "localDevice": "cpu",
+  "publication": "See registry release evidence; this launcher does not publish",
+  "resourceQuota": false,
+  "sourceOverlays": [],
+  "modelSource": "AgentArts enabled DeepSeek; platform backend recorded separately"
+}

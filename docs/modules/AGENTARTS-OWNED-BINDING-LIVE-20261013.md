@@ -10,7 +10,56 @@ Profile：`huawei_ict_agentarts`；负责人：zemeng；本工作包为 `in_prog
 - 修复合成会议宿主与生产 `workspace.read_text` 新增可选摘要字段的兼容：存在时严格核验内容一致性；公开投影仍只包含原批准的四项会议字段。其他字段和不匹配摘要仍拒绝。
 - CLI 接收 PowerShell 高精度 ISO 时间时规范化为协议接受的 UTC 毫秒时间，不续期。
 
-## 本次实际云端结果
+## 新镜像部署与增量验收（02:28 UTC 起）
+
+`owned-1.3` ARM64 镜像已由 GitHub 发布工作流发布，并导入华为 SWR；既有 Runtime 的 Latest
+已更新为 `arm64-7b6b4101`。控制台读回正常，保留原凭据、入站身份和权限，增加内容无关的部署版本标识。
+[预览镜像与验收附件](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-7b6b4101)。
+
+- 02:30:00–02:30:13 UTC：新镜像 World 绑定真实 WSS 调用通过，返回通过严格来源/结构校验的 `role_report/REVISE`；目录 8 Workflow / 3 Controller 一致。
+- 随后的全绑定运行在目录发现阶段遇到 `EXTERNAL_FAILURE`，所有 invoke 均未发送；不能算成 11 个模型调用失败。02:34 与 02:37 的只读诊断再次读回 HTTP 200/11 个绑定和 WSS ready，未发 invoke。
+- 02:33 的修复尝试在本地结果导出门禁拒绝：云端提案使用公开 Schema 已允许的 `maxBytes`，合成宿主却仅接受 `path`。现已允许固定夹具路径及可选的整数 `maxBytes=1..2048`；未知字段、其他路径与非法字节上限仍拒绝。
+- 02:39 的新尝试证明审批前零读，合成验收宿主批准后读取 1 次并记录 Evidence 1 条、图修订到 6。随后云端续答返回 `INVALID_ARGUMENT`，原任务保持 `waiting_reconciliation`，尚未取得修复候选、CAS 提交或完整闭环成功。
+
+上述审批来自明确标识的已授权合成验收宿主，不是用户本人点击；输入、文件与隔离数据库均是固定公开夹具。
+原始失败数据库保持原状，不通过清除挂起或重做未知写入掩盖问题。最新回执保存在忽略目录，公开文档仅记录脱敏结果。
+
+## 02:54 UTC 最新逐绑定结果与后续源码
+
+02:54:28.014–02:55:10.039 UTC 的真实 WSS 回执整体为 `failed`：目录精确 8 Workflow / 3 Controller，
+**3 项通过、4 项失败、4 项跳过**。该轮仍对应已确认部署的 `arm64-7b6b4101`。
+
+| 场景 | 实际结果 | 证据边界 |
+| --- | --- | --- |
+| Fast、Deterministic、Controller MVP | 通过，`application_result/text` | 仅这三项的当前真实答复 |
+| World、Router | 顶层 `EXTERNAL_FAILURE`，`transport` 诊断为 `RATE_LIMITED` | 已发送、受理并收到终态；未取得可用报告，不把所有失败归因于限流 |
+| Controller Repair、Controller Router | 合法 `application_result/repair_candidate`，场景断言 `EXPECTED_REPAIR_CANDIDATE` 失败 | 通过结构解析不等于符合固定最小修复场景，更不等于本地 CAS 或执行通过 |
+| Plan、Plan_1、Review、Review_1 | `DEPENDENCY_FAILED`，跳过 | World 前置失败，未伪造报告继续 |
+
+该 runner 工具执行为 0、`executionAuthorized=false`，不能作为完整最小修复闭环成功证据。
+原 02:39 任务及其 `waiting_reconciliation` 状态仍保留。
+
+后续源码 `0cbb3f1d` 已修复 strict continuation 的已确认来源传递，并完成相应必要检查。
+截至 02:57 UTC，本地 `linux/arm64` 镜像已构建成功；导出、推送和新云端部署由后续流程继续，
+尚无该版本的云端独立读回或真实 continuation 成功证据。构建成功不能替代部署及调用验收。
+[PR #343](https://github.com/zemeng5208/PersonalAgent/pull/343) 已交付 WSS upgrade 脱敏诊断，
+[PR #344](https://github.com/zemeng5208/PersonalAgent/pull/344) 已交付落盘失败及目录阶段诊断，
+后者 18 项离线测试通过；这些代码交付不提升本次云端失败或整 MOD 状态。
+
+## 收尾交付（2026-10-13）
+
+`0cbb3f1d` 源码已推送；strict continuation 的七文件修复已提交为
+[Draft PR #345](https://github.com/zemeng5208/PersonalAgent/pull/345)，依赖 #336，尚未合并。
+本地 ARM64 构建及镜像内 parser import 通过。
+[新预览 Release](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-0cbb3f1d)
+已读回：ARM64 tar（93,313,024 字节）与脱敏 `VERIFICATION.json` 均为 `uploaded`；归档上传完成于北京时间 11:12:37。没有额外 SHA256 附件。
+
+GHCR 工作流已触发，但未等待 CI 或核实其发布结果。SWR 上传完成状态与新 Runtime 部署未核实；最后已确认的云版本仍为 `arm64-7b6b4101`，新版本真实闭环仍未验证。
+两个 Controller 的旧场景失败已定位在协议解析后的内容比较；夹具公布两个修复目标，而断言要求仅修改第一个，现有脱敏回执不足以判定具体不符项。没有放宽断言或据此归因于模型。
+
+用户要求现有成果提交 PR 后停止；本次仅收尾，无新增真实模型调用、部署、合并或测试。MOD-19 保持暂停。
+
+## 旧镜像当日较早的实际结果
 
 2026-10-13 01:31:53–01:32:16 UTC 的逐项运行：
 

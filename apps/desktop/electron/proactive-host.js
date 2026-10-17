@@ -109,6 +109,8 @@ export function createDesktopProactiveHost({application, client, userData, names
     composition.stop(); status = 'disabled'; reason = '已停止观察';
   }
   return {snapshot, configure, analyze, tick, stop,
+    /** Host-only fixed public namespace; never exported through Renderer snapshots. */
+    get publicMemory() {return factHost.publicMemory;},
     createPublicFactErasureApplication: options=>factHost.createPublicFactErasureApplication(options),
     readRepairBinding: taskId=>cognition?.readRepairBinding(taskId),
     readPreparedRepair: taskId=>cognition?.readPreparedRepair(taskId),

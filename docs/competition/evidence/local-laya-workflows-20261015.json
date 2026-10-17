@@ -1,0 +1,2235 @@
+{
+  "schemaVersion": "1.0.0",
+  "date": "2026-10-15",
+  "profile": "huawei_ict_agentarts",
+  "architectureStatus": "Experimental implementation only. Owner requests tests before deciding architecture.",
+  "status": "local_image_design_coverage_verified_semantic_acceptance_blocked",
+  "deployment": {
+    "published": false,
+    "agentartsUpdated": false
+  },
+  "image": {
+    "kind": "local_arm64_image_discovery_smoke",
+    "pingStatus": 200,
+    "os": "linux",
+    "architecture": "arm64",
+    "user": 1000,
+    "workflowCount": 28,
+    "nodeCount": 185,
+    "adapterCount": 148,
+    "modelAssignments": 45,
+    "selectedJoins": 12,
+    "observed": [
+      {
+        "workflowId": "F01",
+        "templateDigest": "9f825a3c1822743f5385e9a714ef3490a059005307a8342ec15ab7605f7b5830",
+        "nodeCount": 9
+      },
+      {
+        "workflowId": "F02",
+        "templateDigest": "ba07033e537356901a26f74d90b16a588f7edb8421a9096bcfea2f987bf17fa8",
+        "nodeCount": 11
+      },
+      {
+        "workflowId": "F03",
+        "templateDigest": "27d9cdde8ab34631120643793b99d0b63fb357eef7a282edde7e5f42642f48d5",
+        "nodeCount": 10
+      },
+      {
+        "workflowId": "F04",
+        "templateDigest": "f8c95de277f80202a00601b200478de0fe75946919f768da5353cb515cf04a30",
+        "nodeCount": 7
+      },
+      {
+        "workflowId": "F05",
+        "templateDigest": "53af88767f0dcaac1595d57bc757572428aa14286a14c050773e87cdcfa2bf1b",
+        "nodeCount": 7
+      },
+      {
+        "workflowId": "F06",
+        "templateDigest": "a75fb81eaca65230e23f656bd7e41dac8e867f880273b0394f9cabdfd8e5e453",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F07",
+        "templateDigest": "cd6d54f6bb447313b9fea8c4916b37e60ea4bef24857f1ef5bd6741f10f75fd6",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F08",
+        "templateDigest": "12ba3f68ca4e789b4ca02c87b88764dd3064c89e7816b2e7adbc34d8056e859a",
+        "nodeCount": 13
+      },
+      {
+        "workflowId": "F09",
+        "templateDigest": "71e2fa0f65fd70abad264ae1c33ffd1419edad21298e772460e946905e2c7c34",
+        "nodeCount": 4
+      },
+      {
+        "workflowId": "F10",
+        "templateDigest": "5a4c96e7895ed93dec2adef7efd2385a7962bba487aadcc40baeaa913adbe0dc",
+        "nodeCount": 6
+      },
+      {
+        "workflowId": "F11",
+        "templateDigest": "9acd5b4d2de7b07d8ed7c536f06b6b2d4d963245a097824fe70aa05bf4325403",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F12",
+        "templateDigest": "08330ae833af01ec5ccf892ff7ee4c60fc37fda8eab15960fb2840a6a49ec336",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F13",
+        "templateDigest": "b2861d19a8aa34a29a5ee23c375368c29b4f2ffab280f578be0c9a33f9b2f68e",
+        "nodeCount": 4
+      },
+      {
+        "workflowId": "F14",
+        "templateDigest": "1cd2950d25444172c07b7bd66054716a3ff432f93c4bd258ca434a1e714ef6dc",
+        "nodeCount": 6
+      },
+      {
+        "workflowId": "F15",
+        "templateDigest": "64b441f5889e9d80d2911e1f89826241bba558978504d52298821fd7d4badd26",
+        "nodeCount": 6
+      },
+      {
+        "workflowId": "F16",
+        "templateDigest": "1e1c3c83e8015ca2874e539aaed3f7ed4f18d13375f4ed4ad362ea74cbe48131",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F17",
+        "templateDigest": "a72cbc5470ed609f1eec8a85088568d22e65fc43bbc4b6b19516c5b04dddecdb",
+        "nodeCount": 4
+      },
+      {
+        "workflowId": "F18",
+        "templateDigest": "68b85b963b909c48c18379dac892cdd3a025f85f40d99b49bc310d39257aca16",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F19",
+        "templateDigest": "edfbc61a8092f47573ea60b7a8d12cc9c51ab15ca39414ce8b8dcecb88adb5f9",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F20",
+        "templateDigest": "70bd48723c948740ddded9413396fd877c0594e82dc775e1ea1da214fe7fbadd",
+        "nodeCount": 4
+      },
+      {
+        "workflowId": "F21",
+        "templateDigest": "989e97a0e5c9b6d982b242ad64444cd1d87e30d19d951a2a9ef0b22d0eace941",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F22",
+        "templateDigest": "58917e9958fc85b3f113d22da4638f7d07541a23421d5db0e4f484869e9971d5",
+        "nodeCount": 9
+      },
+      {
+        "workflowId": "F23",
+        "templateDigest": "742cef32fd88d9cee0ab4b1f9110ed866461cc8dd42e298b1d33619d1b166fdc",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F24",
+        "templateDigest": "8d83a84d260caf8383b24e6f1804b7c3533be70c4067efd76553b89592847b43",
+        "nodeCount": 12
+      },
+      {
+        "workflowId": "F25",
+        "templateDigest": "c1fb4bc5728f09b0a4733b4fb5fab954f8d140d76d78af2b8b326c7763371bdb",
+        "nodeCount": 4
+      },
+      {
+        "workflowId": "F26",
+        "templateDigest": "0fe1f3a8c6d4a3782a4c7a6ca62882e9eb8c1b43dc7b68275a7c27b7d06db2bd",
+        "nodeCount": 5
+      },
+      {
+        "workflowId": "F27",
+        "templateDigest": "a868524fc8c259ad610ab9c8402d193cabda65092dd05966f68f31d646a10fdd",
+        "nodeCount": 7
+      },
+      {
+        "workflowId": "F28",
+        "templateDigest": "954915149adedac48a557331fe007c848f0678c31db31f46847ee19ed96bc4a2",
+        "nodeCount": 12
+      }
+    ],
+    "designCoverage": {
+      "source": "docs/design/workflow-architecture-20261013/source/src/data/architecture.json",
+      "projectionSha256": "f21b8ef7169176ade020faee377080554a2f2ed4297043d7c0dbcca08d349716",
+      "templateVersion": "2026.10.15.2",
+      "workflowCount": 28,
+      "nodeCount": 185,
+      "workflows": [
+        {
+          "workflowId": "F01",
+          "templateDigest": "9f825a3c1822743f5385e9a714ef3490a059005307a8342ec15ab7605f7b5830",
+          "nodeCount": 9
+        },
+        {
+          "workflowId": "F02",
+          "templateDigest": "ba07033e537356901a26f74d90b16a588f7edb8421a9096bcfea2f987bf17fa8",
+          "nodeCount": 11
+        },
+        {
+          "workflowId": "F03",
+          "templateDigest": "27d9cdde8ab34631120643793b99d0b63fb357eef7a282edde7e5f42642f48d5",
+          "nodeCount": 10
+        },
+        {
+          "workflowId": "F04",
+          "templateDigest": "f8c95de277f80202a00601b200478de0fe75946919f768da5353cb515cf04a30",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F05",
+          "templateDigest": "53af88767f0dcaac1595d57bc757572428aa14286a14c050773e87cdcfa2bf1b",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F06",
+          "templateDigest": "a75fb81eaca65230e23f656bd7e41dac8e867f880273b0394f9cabdfd8e5e453",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F07",
+          "templateDigest": "cd6d54f6bb447313b9fea8c4916b37e60ea4bef24857f1ef5bd6741f10f75fd6",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F08",
+          "templateDigest": "12ba3f68ca4e789b4ca02c87b88764dd3064c89e7816b2e7adbc34d8056e859a",
+          "nodeCount": 13
+        },
+        {
+          "workflowId": "F09",
+          "templateDigest": "71e2fa0f65fd70abad264ae1c33ffd1419edad21298e772460e946905e2c7c34",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F10",
+          "templateDigest": "5a4c96e7895ed93dec2adef7efd2385a7962bba487aadcc40baeaa913adbe0dc",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F11",
+          "templateDigest": "9acd5b4d2de7b07d8ed7c536f06b6b2d4d963245a097824fe70aa05bf4325403",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F12",
+          "templateDigest": "08330ae833af01ec5ccf892ff7ee4c60fc37fda8eab15960fb2840a6a49ec336",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F13",
+          "templateDigest": "b2861d19a8aa34a29a5ee23c375368c29b4f2ffab280f578be0c9a33f9b2f68e",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F14",
+          "templateDigest": "1cd2950d25444172c07b7bd66054716a3ff432f93c4bd258ca434a1e714ef6dc",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F15",
+          "templateDigest": "64b441f5889e9d80d2911e1f89826241bba558978504d52298821fd7d4badd26",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F16",
+          "templateDigest": "1e1c3c83e8015ca2874e539aaed3f7ed4f18d13375f4ed4ad362ea74cbe48131",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F17",
+          "templateDigest": "a72cbc5470ed609f1eec8a85088568d22e65fc43bbc4b6b19516c5b04dddecdb",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F18",
+          "templateDigest": "68b85b963b909c48c18379dac892cdd3a025f85f40d99b49bc310d39257aca16",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F19",
+          "templateDigest": "edfbc61a8092f47573ea60b7a8d12cc9c51ab15ca39414ce8b8dcecb88adb5f9",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F20",
+          "templateDigest": "70bd48723c948740ddded9413396fd877c0594e82dc775e1ea1da214fe7fbadd",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F21",
+          "templateDigest": "989e97a0e5c9b6d982b242ad64444cd1d87e30d19d951a2a9ef0b22d0eace941",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F22",
+          "templateDigest": "58917e9958fc85b3f113d22da4638f7d07541a23421d5db0e4f484869e9971d5",
+          "nodeCount": 9
+        },
+        {
+          "workflowId": "F23",
+          "templateDigest": "742cef32fd88d9cee0ab4b1f9110ed866461cc8dd42e298b1d33619d1b166fdc",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F24",
+          "templateDigest": "8d83a84d260caf8383b24e6f1804b7c3533be70c4067efd76553b89592847b43",
+          "nodeCount": 12
+        },
+        {
+          "workflowId": "F25",
+          "templateDigest": "c1fb4bc5728f09b0a4733b4fb5fab954f8d140d76d78af2b8b326c7763371bdb",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F26",
+          "templateDigest": "0fe1f3a8c6d4a3782a4c7a6ca62882e9eb8c1b43dc7b68275a7c27b7d06db2bd",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F27",
+          "templateDigest": "a868524fc8c259ad610ab9c8402d193cabda65092dd05966f68f31d646a10fdd",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F28",
+          "templateDigest": "954915149adedac48a557331fe007c848f0678c31db31f46847ee19ed96bc4a2",
+          "nodeCount": 12
+        }
+      ],
+      "meaning": "Design coverage only; actual provider wiring and business verification are separate"
+    },
+    "embeddedLayaPathPresent": false,
+    "maasCalls": 0,
+    "realInferenceTested": false,
+    "published": false,
+    "imageId": "sha256:5fc5d2249a7450ec0c04c7f2e4428d21e7ef958de35d650be858109942d98816",
+    "sizeBytes": 80778832,
+    "sizeScope": "Docker image inspect Size; not a transfer or RSS measurement"
+  },
+  "sameInputLocalComparison": {
+    "sourceDecisionSha256": "5d11f42ebfbf68f1bca2b5132385c769cd1be5cfe03e7997f1f70200d1e78aa7",
+    "modelManifestSha256": "ecf84fda3ac53aba0f1cdc8705c9ddc70f8910d4086e304707e0883eb9145e20",
+    "publicInput": "tests/manual/agentarts/fixtures/pelican-source-read-decision.json",
+    "scope": "Same recorded pelican source-read context, questions, alternatives and order in both arms; native machine, no CPU/memory quota",
+    "qualification": "Actual default SDK configurations: CPU FP32 versus CUDA BF16 autocast. Not an isolated hardware-only comparison.",
+    "cpuTwoThreads": {
+      "localRuntime": {
+        "device": "cpu",
+        "torchThreads": 2,
+        "precision": {
+          "autocastEnabled": false,
+          "autocastDtype": "torch.float32"
+        },
+        "startupMs": 10214.2508
+      },
+      "caseCount": 8,
+      "distinctScenarios": 4,
+      "correct": 4,
+      "percentileMethod": "nearest-rank; only eight samples, not a latency SLA",
+      "p50Ms": 2658.8382,
+      "p95Ms": 2801.8255999999983,
+      "minimumMs": 2588.0970000000016,
+      "maximumMs": 2801.8255999999983,
+      "meanMs": 2663.4525125,
+      "cases": [
+        {
+          "round": 0,
+          "negative": false,
+          "reversed": false,
+          "expected": "bound-source-read",
+          "selected": "owned-review",
+          "correct": false,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-c61e4e8f-64d3-4031-b0e8-dbde3d480a67",
+          "candidateId": "owned-review",
+          "durationMs": 2801.4361999999983,
+          "queueWaitMs": 0.3894000000000233,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 2801.0264000000006,
+          "responseValidationMs": 0.09540000000015425,
+          "choiceWallMs": 2801.4361999999983,
+          "endToEndMs": 2801.8255999999983,
+          "batchId": "0d9a83cb-82c2-45e2-ae86-64428ac39269",
+          "batchItemId": "f66f30dc-9599-4419-a9c9-1d9afe531a46",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "0d9a83cb-82c2-45e2-ae86-64428ac39269",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1177,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1177,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1035
+            ],
+            "requiredSequenceTokens": [
+              1177
+            ],
+            "expectedInputTokens": [
+              1177
+            ],
+            "encodedTokens": 1177,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.7971,
+          "top2Probability": 0.2029,
+          "margin": 0.5942000000000001,
+          "entropyConcentration": 0.2722,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.9845,
+            "forwardMs": 2774.5811,
+            "processCpuMs": 5609.375,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 5609.375,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 0,
+          "negative": false,
+          "reversed": true,
+          "expected": "bound-source-read",
+          "selected": "bound-source-read",
+          "correct": true,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-f79e1722-0fe8-4b6d-a85b-f67441e7d6c1",
+          "candidateId": "bound-source-read",
+          "durationMs": 2658.792299999999,
+          "queueWaitMs": 0.04590000000098371,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 2658.6948999999986,
+          "responseValidationMs": 0.029699999999138527,
+          "choiceWallMs": 2658.792299999999,
+          "endToEndMs": 2658.8382,
+          "batchId": "778773f6-2c04-4e31-aeff-1363cb34166e",
+          "batchItemId": "6bc2caa5-b183-404e-881b-8ae0f0a9e609",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "778773f6-2c04-4e31-aeff-1363cb34166e",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1177,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1177,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1035
+            ],
+            "requiredSequenceTokens": [
+              1177
+            ],
+            "expectedInputTokens": [
+              1177
+            ],
+            "encodedTokens": 1177,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.5468,
+          "top2Probability": 0.4532,
+          "margin": 0.09359999999999996,
+          "entropyConcentration": 0.0063,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.4112,
+            "forwardMs": 2654.3658,
+            "processCpuMs": 5234.375,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 5234.375,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 0,
+          "negative": true,
+          "reversed": false,
+          "expected": "owned-review",
+          "selected": "owned-review",
+          "correct": true,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-fe388fc2-850b-4d9c-8539-a053f6904f02",
+          "candidateId": "owned-review",
+          "durationMs": 2620.2418,
+          "queueWaitMs": 0.03780000000006112,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 2620.1801000000014,
+          "responseValidationMs": 0.043900000000576256,
+          "choiceWallMs": 2620.2418,
+          "endToEndMs": 2620.2796,
+          "batchId": "baceaa61-e2c8-44b3-b104-49e2e8c22eb8",
+          "batchItemId": "89e5669d-620e-45e8-bb72-934a246eca2b",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "baceaa61-e2c8-44b3-b104-49e2e8c22eb8",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1180,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1180,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1038
+            ],
+            "requiredSequenceTokens": [
+              1180
+            ],
+            "expectedInputTokens": [
+              1180
+            ],
+            "encodedTokens": 1180,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.9563,
+          "top2Probability": 0.0437,
+          "margin": 0.9126000000000001,
+          "entropyConcentration": 0.7411,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.5723,
+            "forwardMs": 2616.1321,
+            "processCpuMs": 5125,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 5125,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 0,
+          "negative": true,
+          "reversed": true,
+          "expected": "owned-review",
+          "selected": "bound-source-read",
+          "correct": false,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-6493f9df-5002-4147-bde6-866fc598a8fe",
+          "candidateId": "bound-source-read",
+          "durationMs": 2687.8215999999993,
+          "queueWaitMs": 0.026499999999941792,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 2687.776399999999,
+          "responseValidationMs": 0.027900000000954606,
+          "choiceWallMs": 2687.8215999999993,
+          "endToEndMs": 2687.8480999999992,
+          "batchId": "066d5c58-3fe5-4efd-a9c2-69a994fb4577",
+          "batchItemId": "9098a8ee-cb7d-4699-a84c-40857b48f549",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "066d5c58-3fe5-4efd-a9c2-69a994fb4577",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1180,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1180,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1038
+            ],
+            "requiredSequenceTokens": [
+              1180
+            ],
+            "expectedInputTokens": [
+              1180
+            ],
+            "encodedTokens": 1180,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.6167,
+          "top2Probability": 0.3833,
+          "margin": 0.23340000000000005,
+          "entropyConcentration": 0.0397,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.3356,
+            "forwardMs": 2684.0674,
+            "processCpuMs": 5312.5,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 5312.5,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 1,
+          "negative": false,
+          "reversed": false,
+          "expected": "bound-source-read",
+          "selected": "owned-review",
+          "correct": false,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-5c1a8695-7f0b-42d3-b961-32133c595178",
+          "candidateId": "owned-review",
+          "durationMs": 2588.070599999999,
+          "queueWaitMs": 0.026400000002468005,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 2588.0254000000023,
+          "responseValidationMs": 0.027000000001862645,
+          "choiceWallMs": 2588.070599999999,
+          "endToEndMs": 2588.0970000000016,
+          "batchId": "bead2f4a-d3d0-40f7-afce-ae42aed1dd2f",
+          "batchItemId": "e1f56d02-aada-4848-8d71-81ff20462756",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "bead2f4a-d3d0-40f7-afce-ae42aed1dd2f",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1177,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1177,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1035
+            ],
+            "requiredSequenceTokens": [
+              1177
+            ],
+            "expectedInputTokens": [
+              1177
+            ],
+            "encodedTokens": 1177,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.7971,
+          "top2Probability": 0.2029,
+          "margin": 0.5942000000000001,
+          "entropyConcentration": 0.2722,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.539,
+            "forwardMs": 2584.0597,
+            "processCpuMs": 5156.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 5156.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 1,
+          "negative": false,
+          "reversed": true,
+          "expected": "bound-source-read",
+          "selected": "bound-source-read",
+          "correct": true,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-5b501f8b-fb92-400b-970d-15e4e49965fc",
+          "candidateId": "bound-source-read",
+          "durationMs": 2624.074199999999,
+          "queueWaitMs": 0.02960000000166474,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 2624.025300000001,
+          "responseValidationMs": 0.02809999999954016,
+          "choiceWallMs": 2624.074199999999,
+          "endToEndMs": 2624.103800000001,
+          "batchId": "5737fd33-0267-44b2-93aa-33c72c996936",
+          "batchItemId": "81a08479-8f61-4112-87bf-f35801902327",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "5737fd33-0267-44b2-93aa-33c72c996936",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1177,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1177,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1035
+            ],
+            "requiredSequenceTokens": [
+              1177
+            ],
+            "expectedInputTokens": [
+              1177
+            ],
+            "encodedTokens": 1177,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.5468,
+          "top2Probability": 0.4532,
+          "margin": 0.09359999999999996,
+          "entropyConcentration": 0.0063,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.31,
+            "forwardMs": 2620.2558,
+            "processCpuMs": 5156.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 5156.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 1,
+          "negative": true,
+          "reversed": false,
+          "expected": "owned-review",
+          "selected": "owned-review",
+          "correct": true,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-5f40155b-f54a-4c98-b850-af42c16bfe23",
+          "candidateId": "owned-review",
+          "durationMs": 2664.4637000000002,
+          "queueWaitMs": 0.026699999998527346,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 2664.395700000001,
+          "responseValidationMs": 0.02989999999772408,
+          "choiceWallMs": 2664.4637000000002,
+          "endToEndMs": 2664.4903999999988,
+          "batchId": "20d3bdbb-f37d-46c7-ae2c-891f28429453",
+          "batchItemId": "1db4b8d5-dac5-43f8-8db5-d5478e692be9",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "20d3bdbb-f37d-46c7-ae2c-891f28429453",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1180,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1180,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1038
+            ],
+            "requiredSequenceTokens": [
+              1180
+            ],
+            "expectedInputTokens": [
+              1180
+            ],
+            "encodedTokens": 1180,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.9563,
+          "top2Probability": 0.0437,
+          "margin": 0.9126000000000001,
+          "entropyConcentration": 0.7411,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.414,
+            "forwardMs": 2660.4621,
+            "processCpuMs": 5312.5,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 5312.5,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 1,
+          "negative": true,
+          "reversed": true,
+          "expected": "owned-review",
+          "selected": "bound-source-read",
+          "correct": false,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-4766c0b7-e7bf-41d9-9cdb-88aa171add8a",
+          "candidateId": "bound-source-read",
+          "durationMs": 2662.110099999998,
+          "queueWaitMs": 0.027300000001559965,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 2662.053500000002,
+          "responseValidationMs": 0.03289999999833526,
+          "choiceWallMs": 2662.110099999998,
+          "endToEndMs": 2662.1373999999996,
+          "batchId": "1129eeb7-1555-4bde-944f-e7e1edcd1878",
+          "batchItemId": "99fb32bf-4a8a-49df-9147-d2ec6f1dc7d9",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "1129eeb7-1555-4bde-944f-e7e1edcd1878",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1180,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1180,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1038
+            ],
+            "requiredSequenceTokens": [
+              1180
+            ],
+            "expectedInputTokens": [
+              1180
+            ],
+            "encodedTokens": 1180,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.6167,
+          "top2Probability": 0.3833,
+          "margin": 0.23340000000000005,
+          "entropyConcentration": 0.0397,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.4182,
+            "forwardMs": 2658.2017,
+            "processCpuMs": 5296.875,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 5296.875,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        }
+      ]
+    },
+    "gpuOneCpuThread": {
+      "localRuntime": {
+        "device": "cuda",
+        "torchThreads": 1,
+        "precision": {
+          "autocastEnabled": true,
+          "autocastDtype": "torch.bfloat16"
+        },
+        "startupMs": 12616.802000000001
+      },
+      "caseCount": 8,
+      "distinctScenarios": 4,
+      "correct": 4,
+      "percentileMethod": "nearest-rank; only eight samples, not a latency SLA",
+      "p50Ms": 44.977999999999156,
+      "p95Ms": 115.39930000000095,
+      "minimumMs": 41.13470000000052,
+      "maximumMs": 115.39930000000095,
+      "meanMs": 53.551537499999995,
+      "cases": [
+        {
+          "round": 0,
+          "negative": false,
+          "reversed": false,
+          "expected": "bound-source-read",
+          "selected": "owned-review",
+          "correct": false,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-d3f3faed-6399-4d8f-99e7-593974376be4",
+          "candidateId": "owned-review",
+          "durationMs": 115.02670000000035,
+          "queueWaitMs": 0.37260000000060245,
+          "busyWaitMs": 0.0005000000001018634,
+          "internalHttpMs": 114.60709999999926,
+          "responseValidationMs": 0.08269999999902211,
+          "choiceWallMs": 115.02670000000035,
+          "endToEndMs": 115.39930000000095,
+          "batchId": "5462b940-b6d3-414f-a6b7-7ab2dbf5c6a4",
+          "batchItemId": "c3b7d7ab-4864-4a00-b733-deedcb7283ec",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "5462b940-b6d3-414f-a6b7-7ab2dbf5c6a4",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1177,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1177,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1035
+            ],
+            "requiredSequenceTokens": [
+              1177
+            ],
+            "expectedInputTokens": [
+              1177
+            ],
+            "encodedTokens": 1177,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.7905,
+          "top2Probability": 0.2095,
+          "margin": 0.581,
+          "entropyConcentration": 0.2595,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 3.1097,
+            "forwardMs": 84.4751,
+            "processCpuMs": 93.75,
+            "precheckProcessCpuMs": 15.625,
+            "forwardProcessCpuMs": 78.125,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 0,
+          "negative": false,
+          "reversed": true,
+          "expected": "bound-source-read",
+          "selected": "bound-source-read",
+          "correct": true,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-da64a325-acd6-4f6a-bdc7-ee5dac716ceb",
+          "candidateId": "bound-source-read",
+          "durationMs": 48.46230000000105,
+          "queueWaitMs": 0.05169999999998254,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 48.35729999999967,
+          "responseValidationMs": 0.03950000000077125,
+          "choiceWallMs": 48.46230000000105,
+          "endToEndMs": 48.51400000000103,
+          "batchId": "c092029a-1d10-441f-a49e-20bf4e5e80df",
+          "batchItemId": "3c4a3ed7-bb31-4ac3-b513-b4ebdfe70bdc",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "c092029a-1d10-441f-a49e-20bf4e5e80df",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1177,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1177,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1035
+            ],
+            "requiredSequenceTokens": [
+              1177
+            ],
+            "expectedInputTokens": [
+              1177
+            ],
+            "encodedTokens": 1177,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.5487,
+          "top2Probability": 0.4513,
+          "margin": 0.09739999999999999,
+          "entropyConcentration": 0.0068,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.5548,
+            "forwardMs": 43.7289,
+            "processCpuMs": 46.875,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 46.875,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 0,
+          "negative": true,
+          "reversed": false,
+          "expected": "owned-review",
+          "selected": "owned-review",
+          "correct": true,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-04e3ecbc-f376-4602-86ba-6b4dd8b717c7",
+          "candidateId": "owned-review",
+          "durationMs": 47.73199999999997,
+          "queueWaitMs": 0.040300000000570435,
+          "busyWaitMs": 0.00019999999858555384,
+          "internalHttpMs": 47.683899999999994,
+          "responseValidationMs": 0.030899999999746797,
+          "choiceWallMs": 47.73199999999997,
+          "endToEndMs": 47.77230000000054,
+          "batchId": "3371b427-f781-4fea-9707-4f8af685cd68",
+          "batchItemId": "8188a965-af2a-4100-94e3-b626339b27d2",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "3371b427-f781-4fea-9707-4f8af685cd68",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1180,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1180,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1038
+            ],
+            "requiredSequenceTokens": [
+              1180
+            ],
+            "expectedInputTokens": [
+              1180
+            ],
+            "encodedTokens": 1180,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.9557,
+          "top2Probability": 0.0443,
+          "margin": 0.9114,
+          "entropyConcentration": 0.7381,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.5225,
+            "forwardMs": 43.734,
+            "processCpuMs": 46.875,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 0,
+          "negative": true,
+          "reversed": true,
+          "expected": "owned-review",
+          "selected": "bound-source-read",
+          "correct": false,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-f21c97ec-c9eb-4afe-9d24-ecd507fcb5c1",
+          "candidateId": "bound-source-read",
+          "durationMs": 44.943600000000515,
+          "queueWaitMs": 0.03439999999864085,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 44.896600000000035,
+          "responseValidationMs": 0.02839999999923748,
+          "choiceWallMs": 44.943600000000515,
+          "endToEndMs": 44.977999999999156,
+          "batchId": "faae55a3-2c65-4ef7-a80b-208929cb975d",
+          "batchItemId": "f6dedc7b-7af6-48e9-9599-15600f03171e",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "faae55a3-2c65-4ef7-a80b-208929cb975d",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1180,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1180,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1038
+            ],
+            "requiredSequenceTokens": [
+              1180
+            ],
+            "expectedInputTokens": [
+              1180
+            ],
+            "encodedTokens": 1180,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.5964,
+          "top2Probability": 0.4036,
+          "margin": 0.19280000000000003,
+          "entropyConcentration": 0.027,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.5345,
+            "forwardMs": 40.0141,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 1,
+          "negative": false,
+          "reversed": false,
+          "expected": "bound-source-read",
+          "selected": "owned-review",
+          "correct": false,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-1365d0fe-8471-49d6-9400-f39b36a66935",
+          "candidateId": "owned-review",
+          "durationMs": 41.10330000000067,
+          "queueWaitMs": 0.03139999999984866,
+          "busyWaitMs": 0.00029999999969732016,
+          "internalHttpMs": 41.05709999999999,
+          "responseValidationMs": 0.027400000000852742,
+          "choiceWallMs": 41.10330000000067,
+          "endToEndMs": 41.13470000000052,
+          "batchId": "a53002fe-49fe-4d98-8ad2-82efcf713769",
+          "batchItemId": "5befa4e3-675c-4925-ba70-6a1df31ad910",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "a53002fe-49fe-4d98-8ad2-82efcf713769",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1177,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1177,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1035
+            ],
+            "requiredSequenceTokens": [
+              1177
+            ],
+            "expectedInputTokens": [
+              1177
+            ],
+            "encodedTokens": 1177,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.7905,
+          "top2Probability": 0.2095,
+          "margin": 0.581,
+          "entropyConcentration": 0.2595,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.1947,
+            "forwardMs": 37.0489,
+            "processCpuMs": 46.875,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 46.875,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 1,
+          "negative": false,
+          "reversed": true,
+          "expected": "bound-source-read",
+          "selected": "bound-source-read",
+          "correct": true,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-34ac1c76-e6ed-4625-bc54-b47fc525a8e5",
+          "candidateId": "bound-source-read",
+          "durationMs": 43.01459999999861,
+          "queueWaitMs": 0.02870000000075379,
+          "busyWaitMs": 0.00020000000040454324,
+          "internalHttpMs": 42.968400000001566,
+          "responseValidationMs": 0.030099999999947613,
+          "choiceWallMs": 43.01459999999861,
+          "endToEndMs": 43.04329999999936,
+          "batchId": "caead377-f5c2-458b-b35a-c86f93d64913",
+          "batchItemId": "12a5342f-0105-47a0-9f80-8f1755fcd6ad",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "caead377-f5c2-458b-b35a-c86f93d64913",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1177,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1177,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1035
+            ],
+            "requiredSequenceTokens": [
+              1177
+            ],
+            "expectedInputTokens": [
+              1177
+            ],
+            "encodedTokens": 1177,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.5487,
+          "top2Probability": 0.4513,
+          "margin": 0.09739999999999999,
+          "entropyConcentration": 0.0068,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.1729,
+            "forwardMs": 39.3929,
+            "processCpuMs": 46.875,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 46.875,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 1,
+          "negative": true,
+          "reversed": false,
+          "expected": "owned-review",
+          "selected": "owned-review",
+          "correct": true,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-03f73588-03cc-469f-83b9-24d7b1e5dc5f",
+          "candidateId": "owned-review",
+          "durationMs": 41.40020000000004,
+          "queueWaitMs": 0.028899999999339343,
+          "busyWaitMs": 0.00020000000040454324,
+          "internalHttpMs": 41.35409999999865,
+          "responseValidationMs": 0.026399999998830026,
+          "choiceWallMs": 41.40020000000004,
+          "endToEndMs": 41.42909999999938,
+          "batchId": "39bafb9f-0d2c-4b46-bf1b-4e0fb71c63df",
+          "batchItemId": "caf07852-047e-4b65-b3d3-344db4cdd02e",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "39bafb9f-0d2c-4b46-bf1b-4e0fb71c63df",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1180,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1180,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1038
+            ],
+            "requiredSequenceTokens": [
+              1180
+            ],
+            "expectedInputTokens": [
+              1180
+            ],
+            "encodedTokens": 1180,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.9557,
+          "top2Probability": 0.0443,
+          "margin": 0.9114,
+          "entropyConcentration": 0.7381,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.193,
+            "forwardMs": 37.8917,
+            "processCpuMs": 31.25,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        {
+          "round": 1,
+          "negative": true,
+          "reversed": true,
+          "expected": "owned-review",
+          "selected": "bound-source-read",
+          "correct": false,
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "pelican-probe-27840551-a11a-44f5-ab92-cccdebc1be12",
+          "candidateId": "bound-source-read",
+          "durationMs": 46.11709999999948,
+          "queueWaitMs": 0.02449999999953434,
+          "busyWaitMs": 0.00020000000040454324,
+          "internalHttpMs": 46.06340000000091,
+          "responseValidationMs": 0.03210000000035507,
+          "choiceWallMs": 46.11709999999948,
+          "endToEndMs": 46.141599999999016,
+          "batchId": "bf14e6da-2ad1-4b6d-9572-7b818e5b1259",
+          "batchItemId": "f6b78c39-e8f3-41ef-85bf-946bb2ebcc9d",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "bf14e6da-2ad1-4b6d-9572-7b818e5b1259",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 2,
+          "encodedTokens": 1180,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1180,
+            "headMaxLength": 256,
+            "headerTokens": [
+              141
+            ],
+            "stateTokens": [
+              1038
+            ],
+            "requiredSequenceTokens": [
+              1180
+            ],
+            "expectedInputTokens": [
+              1180
+            ],
+            "encodedTokens": 1180,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "source_read_choice_v1",
+          "top1Probability": 0.5964,
+          "top2Probability": 0.4036,
+          "margin": 0.19280000000000003,
+          "entropyConcentration": 0.027,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.9206,
+            "forwardMs": 41.8822,
+            "processCpuMs": 46.875,
+            "precheckProcessCpuMs": 15.625,
+            "forwardProcessCpuMs": 31.25,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        }
+      ]
+    }
+  },
+  "pelican": {
+    "initialBug": "three animateTransform begin=indefinite; no animation starts",
+    "originalGeometry": "preserved; no business patch was applied",
+    "fullMainAndShadowPassed": false,
+    "browserPlaybackObserved": false,
+    "detailedInput": {
+      "status": "failed_or_partial",
+      "scope": "Failed at F15_N01; not full repair completion latency",
+      "mainAndShadowWallMs": 6494.710700000001,
+      "startupMs": 10892.516300000001,
+      "device": "cuda",
+      "torchComputeThreads": 1,
+      "comparison": {
+        "sameBaseline": true,
+        "rootsSeparate": true,
+        "bothPassed": false,
+        "mainSourceUnaffectedByShadow": true
+      },
+      "resourcesBefore": {
+        "process": {
+          "osThreads": 11,
+          "peakRssBytes": 2790248448,
+          "rssBytes": 1515454464,
+          "cpuMs": 9468.75
+        },
+        "accelerator": {
+          "allocatorAllocatedBytes": 1316344320,
+          "allocatorReservedBytes": 1587544064,
+          "allocatorPeakAllocatedBytes": 1578133504,
+          "scope": "Torch allocator only; driver/context memory excluded"
+        }
+      },
+      "resourcesAfter": {
+        "process": {
+          "peakRssBytes": 2790248448,
+          "osThreads": 12,
+          "cpuMs": 9937.5,
+          "rssBytes": 1578004480
+        },
+        "accelerator": {
+          "allocatorAllocatedBytes": 1324864000,
+          "allocatorReservedBytes": 1717567488,
+          "allocatorPeakAllocatedBytes": 1578133504,
+          "scope": "Torch allocator only; driver/context memory excluded"
+        }
+      },
+      "decisions": [
+        {
+          "candidateId": "owned-review",
+          "endToEndMs": 210.88580000000002,
+          "queueWaitMs": 0.4434000000001106,
+          "encodedTokens": 2793,
+          "top1Probability": 0.9417,
+          "margin": 0.8834,
+          "calibrated": false,
+          "forwardMs": 183.1549
+        },
+        {
+          "candidateId": "owned-review",
+          "endToEndMs": 285.91769999999815,
+          "queueWaitMs": 0.036100000001169974,
+          "encodedTokens": 2769,
+          "top1Probability": 0.8758,
+          "margin": 0.7516,
+          "calibrated": false,
+          "forwardMs": 280.2699
+        }
+      ],
+      "persisted": [
+        {
+          "mode": "main",
+          "parentState": "failed",
+          "evidenceCount": 1,
+          "readbackOnly": true
+        },
+        {
+          "mode": "isolated",
+          "parentState": "failed",
+          "evidenceCount": 1,
+          "readbackOnly": true
+        }
+      ]
+    },
+    "scopedInput": {
+      "status": "failed_or_partial",
+      "scope": "Failed at F15_N01; not full repair completion latency",
+      "mainAndShadowWallMs": 774.0388000000003,
+      "startupMs": 10989.150300000001,
+      "device": "cuda",
+      "torchComputeThreads": 1,
+      "comparison": {
+        "sameBaseline": true,
+        "rootsSeparate": true,
+        "bothPassed": false,
+        "mainSourceUnaffectedByShadow": true
+      },
+      "resourcesBefore": {
+        "process": {
+          "rssBytes": 1683456000,
+          "peakRssBytes": 2792800256,
+          "osThreads": 11,
+          "cpuMs": 9859.375
+        },
+        "accelerator": {
+          "allocatorAllocatedBytes": 1316344320,
+          "allocatorReservedBytes": 1587544064,
+          "allocatorPeakAllocatedBytes": 1578133504,
+          "scope": "Torch allocator only; driver/context memory excluded"
+        }
+      },
+      "resourcesAfter": {
+        "process": {
+          "rssBytes": 1745252352,
+          "peakRssBytes": 2792800256,
+          "cpuMs": 10062.5,
+          "osThreads": 12
+        },
+        "accelerator": {
+          "allocatorAllocatedBytes": 1324864000,
+          "allocatorReservedBytes": 1587544064,
+          "allocatorPeakAllocatedBytes": 1578133504,
+          "scope": "Torch allocator only; driver/context memory excluded"
+        }
+      },
+      "decisions": [
+        {
+          "candidateId": "owned-review",
+          "endToEndMs": 145.94590000000062,
+          "queueWaitMs": 0.3644000000003871,
+          "encodedTokens": 1266,
+          "top1Probability": 0.8697,
+          "margin": 0.7394000000000001,
+          "calibrated": false,
+          "forwardMs": 101.0526
+        },
+        {
+          "candidateId": "owned-review",
+          "endToEndMs": 108.07300000000032,
+          "queueWaitMs": 10.638999999999214,
+          "encodedTokens": 1266,
+          "top1Probability": 0.8981,
+          "margin": 0.7962,
+          "calibrated": false,
+          "forwardMs": 58.8243
+        }
+      ],
+      "persisted": [
+        {
+          "mode": "main",
+          "parentState": "failed",
+          "evidenceCount": 1,
+          "readbackOnly": true
+        },
+        {
+          "mode": "isolated",
+          "parentState": "failed",
+          "evidenceCount": 1,
+          "readbackOnly": true
+        }
+      ]
+    }
+  },
+  "quality": {
+    "productionSourceQuestion": {
+      "correct": 4,
+      "total": 8,
+      "scope": "One known source-read stage; not all-workflow accuracy",
+      "cases": [
+        {
+          "negative": false,
+          "reversed": false,
+          "expected": "bound-source-read",
+          "selected": "owned-review",
+          "correct": false,
+          "endToEndMs": 92.31049999999959
+        },
+        {
+          "negative": false,
+          "reversed": true,
+          "expected": "bound-source-read",
+          "selected": "bound-source-read",
+          "correct": true,
+          "endToEndMs": 44.981800000001385
+        },
+        {
+          "negative": true,
+          "reversed": false,
+          "expected": "owned-review",
+          "selected": "owned-review",
+          "correct": true,
+          "endToEndMs": 44.91990000000078
+        },
+        {
+          "negative": true,
+          "reversed": true,
+          "expected": "owned-review",
+          "selected": "bound-source-read",
+          "correct": false,
+          "endToEndMs": 43.372300000000905
+        },
+        {
+          "negative": false,
+          "reversed": false,
+          "expected": "bound-source-read",
+          "selected": "owned-review",
+          "correct": false,
+          "endToEndMs": 44.12049999999908
+        },
+        {
+          "negative": false,
+          "reversed": true,
+          "expected": "bound-source-read",
+          "selected": "bound-source-read",
+          "correct": true,
+          "endToEndMs": 45.04440000000068
+        },
+        {
+          "negative": true,
+          "reversed": false,
+          "expected": "owned-review",
+          "selected": "owned-review",
+          "correct": true,
+          "endToEndMs": 42.622699999999895
+        },
+        {
+          "negative": true,
+          "reversed": true,
+          "expected": "owned-review",
+          "selected": "bound-source-read",
+          "correct": false,
+          "endToEndMs": 40.910900000000765
+        }
+      ]
+    },
+    "compactReadFactsQuestion": {
+      "correct": 4,
+      "total": 8,
+      "scope": "One known source-read stage; not all-workflow accuracy",
+      "cases": [
+        {
+          "negative": false,
+          "reversed": false,
+          "expected": "bound-source-read",
+          "selected": "owned-review",
+          "correct": false,
+          "endToEndMs": 71.72110000000066
+        },
+        {
+          "negative": false,
+          "reversed": true,
+          "expected": "bound-source-read",
+          "selected": "bound-source-read",
+          "correct": true,
+          "endToEndMs": 23.330299999999625
+        },
+        {
+          "negative": true,
+          "reversed": false,
+          "expected": "owned-review",
+          "selected": "owned-review",
+          "correct": true,
+          "endToEndMs": 28.028299999999945
+        },
+        {
+          "negative": true,
+          "reversed": true,
+          "expected": "owned-review",
+          "selected": "bound-source-read",
+          "correct": false,
+          "endToEndMs": 18.879899999999907
+        },
+        {
+          "negative": false,
+          "reversed": false,
+          "expected": "bound-source-read",
+          "selected": "owned-review",
+          "correct": false,
+          "endToEndMs": 36.649499999999534
+        },
+        {
+          "negative": false,
+          "reversed": true,
+          "expected": "bound-source-read",
+          "selected": "bound-source-read",
+          "correct": true,
+          "endToEndMs": 19.887800000000425
+        },
+        {
+          "negative": true,
+          "reversed": false,
+          "expected": "owned-review",
+          "selected": "owned-review",
+          "correct": true,
+          "endToEndMs": 19.475500000000466
+        },
+        {
+          "negative": true,
+          "reversed": true,
+          "expected": "owned-review",
+          "selected": "bound-source-read",
+          "correct": false,
+          "endToEndMs": 19.559400000000096
+        }
+      ]
+    },
+    "directUnmodifiedSdk": {
+      "kind": "pelican_direct_sdk_precision_diagnostic",
+      "sdkModified": false,
+      "maasCalls": 0,
+      "businessToolExecutions": 0,
+      "cases": [
+        {
+          "precision": "stock_autocast",
+          "mismatch": false,
+          "reversed": false,
+          "expected": "read",
+          "selected": "read",
+          "correct": true,
+          "wallMs": 393.55299999988347,
+          "answer": {
+            "type": "choice",
+            "choice": "read",
+            "probabilities": {
+              "read": 0.9669,
+              "review": 0.0331
+            },
+            "confidence": 0.7904,
+            "answer_confidence": 0.9669,
+            "action": {
+              "act_probability": 1
+            }
+          },
+          "encodedTokens": 69,
+          "markerPositions": [
+            27,
+            35
+          ]
+        },
+        {
+          "precision": "stock_autocast",
+          "mismatch": false,
+          "reversed": true,
+          "expected": "read",
+          "selected": "read",
+          "correct": true,
+          "wallMs": 22.29080000142858,
+          "answer": {
+            "type": "choice",
+            "choice": "read",
+            "probabilities": {
+              "review": 0.0237,
+              "read": 0.9763
+            },
+            "confidence": 0.8383,
+            "answer_confidence": 0.9763,
+            "action": {
+              "act_probability": 1
+            }
+          },
+          "encodedTokens": 69,
+          "markerPositions": [
+            27,
+            38
+          ]
+        },
+        {
+          "precision": "stock_autocast",
+          "mismatch": true,
+          "reversed": false,
+          "expected": "review",
+          "selected": "read",
+          "correct": false,
+          "wallMs": 20.612600001186365,
+          "answer": {
+            "type": "choice",
+            "choice": "read",
+            "probabilities": {
+              "read": 0.8568,
+              "review": 0.1432
+            },
+            "confidence": 0.4075,
+            "answer_confidence": 0.8568,
+            "action": {
+              "act_probability": 1
+            }
+          },
+          "encodedTokens": 69,
+          "markerPositions": [
+            27,
+            35
+          ]
+        },
+        {
+          "precision": "stock_autocast",
+          "mismatch": true,
+          "reversed": true,
+          "expected": "review",
+          "selected": "read",
+          "correct": false,
+          "wallMs": 19.835999999486376,
+          "answer": {
+            "type": "choice",
+            "choice": "read",
+            "probabilities": {
+              "review": 0.1339,
+              "read": 0.8661
+            },
+            "confidence": 0.432,
+            "answer_confidence": 0.8661,
+            "action": {
+              "act_probability": 1
+            }
+          },
+          "encodedTokens": 69,
+          "markerPositions": [
+            27,
+            38
+          ]
+        },
+        {
+          "precision": "float32",
+          "mismatch": false,
+          "reversed": false,
+          "expected": "read",
+          "selected": "read",
+          "correct": true,
+          "wallMs": 71.28490000104648,
+          "answer": {
+            "type": "choice",
+            "choice": "read",
+            "probabilities": {
+              "read": 0.9676,
+              "review": 0.0324
+            },
+            "confidence": 0.7936,
+            "answer_confidence": 0.9676,
+            "action": {
+              "act_probability": 1
+            }
+          },
+          "encodedTokens": 69,
+          "markerPositions": [
+            27,
+            35
+          ]
+        },
+        {
+          "precision": "float32",
+          "mismatch": false,
+          "reversed": true,
+          "expected": "read",
+          "selected": "read",
+          "correct": true,
+          "wallMs": 15.97099999889906,
+          "answer": {
+            "type": "choice",
+            "choice": "read",
+            "probabilities": {
+              "review": 0.0243,
+              "read": 0.9757
+            },
+            "confidence": 0.8351,
+            "answer_confidence": 0.9757,
+            "action": {
+              "act_probability": 1
+            }
+          },
+          "encodedTokens": 69,
+          "markerPositions": [
+            27,
+            38
+          ]
+        },
+        {
+          "precision": "float32",
+          "mismatch": true,
+          "reversed": false,
+          "expected": "review",
+          "selected": "read",
+          "correct": false,
+          "wallMs": 15.688299999965238,
+          "answer": {
+            "type": "choice",
+            "choice": "read",
+            "probabilities": {
+              "read": 0.8562,
+              "review": 0.1438
+            },
+            "confidence": 0.4058,
+            "answer_confidence": 0.8562,
+            "action": {
+              "act_probability": 1
+            }
+          },
+          "encodedTokens": 69,
+          "markerPositions": [
+            27,
+            35
+          ]
+        },
+        {
+          "precision": "float32",
+          "mismatch": true,
+          "reversed": true,
+          "expected": "review",
+          "selected": "read",
+          "correct": false,
+          "wallMs": 15.703000000939937,
+          "answer": {
+            "type": "choice",
+            "choice": "read",
+            "probabilities": {
+              "review": 0.1294,
+              "read": 0.8706
+            },
+            "confidence": 0.4441,
+            "answer_confidence": 0.8706,
+            "action": {
+              "act_probability": 1
+            }
+          },
+          "encodedTokens": 69,
+          "markerPositions": [
+            27,
+            38
+          ]
+        }
+      ],
+      "device": "cuda",
+      "torchComputeThreads": 1,
+      "stockAutocast": true,
+      "stockDtype": "torch.bfloat16",
+      "scope": "Read-proposal fixture only; not general accuracy",
+      "correct": 4,
+      "total": 8
+    },
+    "conclusion": "Both source-read projections scored 4/8 and chose the second opaque option. Direct SDK changes choice with meaningful labels but still misses the mismatched-path counterexample under both stock BF16 autocast and FP32. No universal model accuracy or root-cause claim."
+  },
+  "precision": {
+    "weights": "unchanged official multilingual checkpoint",
+    "cudaInference": "SDK default BF16 autocast; not FP32 arithmetic",
+    "fp32Diagnostic": "Separately measured in direct SDK diagnostic; did not fix the mismatch error"
+  },
+  "codexResourceComparison": "Not performed; cannot claim equal CPU/RAM/GPU use",
+  "codeChecks": {
+    "npmRunCheck": {
+      "exitCode": 0,
+      "tests": 3137,
+      "pass": 3119,
+      "skipped": 18,
+      "fail": 0
+    },
+    "pythonBatchServer": {
+      "initial": {
+        "tests": 28,
+        "failures": 2,
+        "conditions": "Ran alongside full repository checks; 408 instead of 413 and boundary entry not observed"
+      },
+      "isolatedRerun": {
+        "tests": 28,
+        "pass": 28,
+        "failures": 0,
+        "durationSeconds": 4.503,
+        "assertionsChanged": false
+      },
+      "conclusion": "Timing-sensitive failures occurred under concurrent load; isolated rerun passes. This is not proof of robustness under load."
+    }
+  },
+  "sourceArtifacts": [
+    {
+      "file": ".cache/local-laya-image-smoke-final.json",
+      "sha256": "6cfb355b3493a77437602ccfbcaaa1c7ef4e34d19cf1f39054b4a0ed65da3961"
+    },
+    {
+      "file": ".cache/pelican-live-xWbZSk/receipt.json",
+      "sha256": "1da9d284e99eeb78dbada525c77e94376114b061ee74e7ac52c05f158eace4c6"
+    },
+    {
+      "file": ".cache/pelican-live-BWno44/receipt.json",
+      "sha256": "c4c6b94b87d1b86b0f7a580bd4d198d77f9deada28396911171e8de1736869f3"
+    },
+    {
+      "file": ".cache/pelican-source-choice-probes-1792051655503.json",
+      "sha256": "8697216554dbd8c76af86adb490441bb90ae397af2d28fa1d85b2904340a5db2"
+    },
+    {
+      "file": ".cache/pelican-source-choice-probes-1792052082775.json",
+      "sha256": "0ae041a418ecd532d524e5223d0a600c4cc56ad2439a29d32bab4554f4c65ba3"
+    },
+    {
+      "file": ".cache/pelican-sdk-sanity.json",
+      "sha256": "cbcff47ec366d95fa7a373d9e1c002993c74c3cf76c65007160788d2301d80e1"
+    },
+    {
+      "file": ".cache/local-laya-final-full-check.log",
+      "sha256": "b3ab14d27e17e19d95bbde4053d34dec0bfe050dea997ed38cf33d455b54c4a0"
+    },
+    {
+      "file": ".cache/local-laya-final-python-tests.log",
+      "sha256": "fd4af139bd3d89f50ceddca5e727226ceb091645b7ea23119e4d0ff63d0a8a3c"
+    },
+    {
+      "file": ".cache/local-laya-python-isolated-rerun.log",
+      "sha256": "e1fbb885e3a737d1b641c7f421496539a050d3e750467eedac4428d08eb05720"
+    },
+    {
+      "file": ".cache/pelican-source-choice-probes-1792053179315.json",
+      "sha256": "3d62e89073f9432e6afc48de52ef4210c0faee4f5783175a3cc89e5d5be6abd3"
+    },
+    {
+      "file": ".cache/pelican-source-choice-probes-1792053221138.json",
+      "sha256": "6bf9a81f0b83993572640c56c2ddf4a6e2bc7b5276dfecf65810f64f83228a03"
+    }
+  ]
+}

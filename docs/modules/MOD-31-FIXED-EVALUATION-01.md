@@ -1,7 +1,7 @@
-# MOD-31：固定合成分类评估首片
+# MOD-31：固定合成分类与最小修复评估
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 设计参考（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [设计阅读记录](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。设计不等于已实现；本文历史验收与作者记录保留，协作、审批与合并条件以当前 AGENTS.md、CONTRIBUTING 和本次明确授权为准。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
@@ -11,7 +11,7 @@
 - 目标 Profile：`huawei_ict_agentarts`。
 - GitHub 负责人：`zemeng`。
 - 评审者：待非作者评审。
-- 独占目录：`tests/manual/agentarts/support/fixed-synthetic-batch.mjs`、对应测试和本文档。
+- 当前增量所有权：`tests/manual/agentarts/support/fixed-synthetic-repair-{batch,score}.mjs`、`paired-synthetic-repair-batch.mjs`、上述直接测试和本文档；分类 runner 保留原行为，两个 `owned-*-live` 入口不在本增量范围。
 - 当前状态：`review`。
 - 消费基线：`72cc76b1f07d74ecbf431f1b31bcb62d1e403449` 的 provisional `CoordinationPort.execute` 与 `CompetitionCoordinator`。
 
@@ -136,3 +136,61 @@ trace 或费用；少量重复不证明统计显著性、真实平台质量或�
 新增组合测试 8/8 通过、零跳过，覆盖两侧不同语义错误、普通错误分母、交替顺序、
 18 请求上限、取消后的不完整配对及共享期限耗尽。没有重复运行原单端或分类测试，
 没有真实云调用。
+
+### 最小修复分项评分与本地读回入口（2026-10-13）
+
+本增量基于 `dd639d42f908365cdcccc9b3323ea372a63ba402`，工作树登记名为
+`owned-repair-evaluation`，分支 `codex/owned-repair-evaluation`。只扩展手动评估支持脚本、
+直接测试与本文档；不改生产 Coordinator、Runtime、Desktop、公共 wire Schema、依赖或锁文件。
+原有评分已经拒绝无关变化和漏修，本次将失败原因拆成可比较的计数，并接入显式本地读回。
+
+[评分器](../../tests/manual/agentarts/support/fixed-synthetic-repair-score.mjs) 保留六项原检查，
+新增 `noUnrelatedChanges`、`targetCoverage`、`repairCompleteness`。`scope` 分别计数：
+期望目标 `required`、提议目标 `proposed`、命中目标 `targetHits`、无关目标 `unrelated`、
+遗漏目标 `missed`、正确修复目标 `correctlyRepaired`、未正确修复目标 `unrepaired`。
+目标 ID 命中不代表修复正确；节点引用、摘要和依赖身份/版本都匹配独立期望才计入正确修复。
+图基线和依赖应用顺序另由布尔检查判定，不能从范围计数推断整体通过。
+
+`precision = targetHits / proposed`，`recall = targetHits / required`；汇总额外给出
+`repairRecall = correctlyRepaired / required`。零分母为 `null`。`scopeSummary.scoredCases`
+明确计数有可评分提案的案例；端口错误和非修复结果不虚构目标计数，仍保留在原准确率分母中。
+`counts`、`accuracy`、每例顶层 `status` 和 `pairedRepairQuality` 继续只表示提案评分。
+`pairedScopeQuality` 分别汇总两侧范围指标，仅纳入原规则下的完整配对。
+
+默认 `evaluationMode: proposal-only`，每例 `readback.status: not_requested`。调用者可以显式提供：
+
+```javascript
+runFixedSyntheticRepairBatch(port, {deadline, signal, readback: {read}});
+runPairedSyntheticRepairBatch({candidate, baseline}, {
+  deadline, signal, readbacks: {candidate: {read: readCandidate}, baseline: {read: readBaseline}},
+});
+```
+
+`read` 由受信宿主提供，只接收 `{taskId, caseId, runIndex, deadline, signal}`，返回
+`{taskId, before, after}`。`before`/`after` 为同一实际任务在应用前后采集的本地图快照；
+宿主负责从模型响应之外保存和关联它们。评估器不将期望或候选交给 reader，也不替宿主执行修复。
+reader 受原绝对 deadline 和取消信号约束，晚到结果不会计为通过，取消/超时停止后续案例。
+配对模式必须显式提供两侧 reader；它们的原方法在开始时捕获。
+
+读回边界先通过已有公开 parser 作有界、防 getter 的复制和图校验，再检查 task ID 关联、
+应用前快照、namespace、完整历史、无擦除、图和节点版本增量、不可变属性、独立正确答案，
+以及实际追加内容与候选的一致性。`reason` 不按固定答案措辞评分，但读回内容须保留实际候选的 reason。
+结构与内容校验不能证明 reader 的来源可信；宿主接线及真实读回仍须另行验收。
+
+显式 reader 启用 `evaluationMode: local-readback`。读回状态为 `passed`、`failed`、`error`
+或未获得修复候选时的 `not_run`，分别汇总到 `readbackCounts` 和 `readbackScopeSummary`；
+配对结果另存于 `pairedReadbackQuality`。这些计数只覆盖已尝试案例，未开始案例仍见 `counts.notRun`。
+例如正确提案配上未发生变化的读回，提案仍通过，读回失败且未修复数保留，不能作为实际修复成功。
+错误只返回固定错误码，报告不输出图谱、候选正文、task ID、来源引用或 reader 错误内容。
+
+本次验证：本工作树 contracts、coordination、goals 定向构建通过；新增评分器测试 **11/11**
+通过；固定与配对 runner 首轮 **27 项全部通过**（首次运行 26 项通过，子进程导入检查在沙箱内无法启动，
+获准后单独重跑该项通过）。配对 reader 捕获调整后，其定向测试 **11/11** 通过。
+审查另补校验结束后的取消/期限复查和对应回归，固定 runner 六项读回定向测试 **6/6** 通过。
+覆盖范围计数、历史/版本/不可变属性、恶意输入与脱敏、
+独立读回结果、reader 捕获、取消及晚到期限。没有整仓重测、CI 轮询或真实模型调用。
+定向入口为三个同名 `.test.mjs`；固定 runner 的导入测试需要正常的本机子进程权限。
+
+报告 Schema 仍为本地评估格式 `1.0`，新字段为增量，原评分含义保留；严格枚举报告字段的消费者须同步接受。
+`verification` 继续固定为 `unverified`。上述测试使用合成图和显式端口，未验证持久库读回、AgentArts
+deployment/version/trace、真实修复质量或工具执行，不冻结任何能力，不完成整个 MOD-31。

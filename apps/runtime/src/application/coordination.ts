@@ -1,6 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
-import {AgentArtsResultUnknownError, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
+import {AgentArtsResultUnknownError,AgentArtsTerminalError, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
   type CoordinationResult, type CoordinationToolProposalResult, type AgentArtsUnknownReceipt} from '@personal-agent/coordination';
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
@@ -217,6 +217,13 @@ async function exchange(
           ...(availableTools === undefined ? {} : {availableTools: structuredClone(availableTools)}),
           }));
         } catch (error) {
+          if(error instanceof AgentArtsTerminalError) {
+            const inflight=runtime.loadCheckpoint(taskId,'competition-cloud-inflight') as AgentArtsUnknownReceipt|undefined;
+            const received=runtime.loadCheckpoint(taskId,'competition-cloud-received') as AgentArtsUnknownReceipt|undefined;
+            if(sameCloudInvocation(inflight,error.receipt) && sameCloudInvocation(received,error.receipt)
+              && inflight?.accepted===error.receipt.accepted && received?.accepted===error.receipt.accepted)
+              runtime.saveCheckpoint(taskId,'competition-cloud-terminal-error',{version:'1.0',kind:'wss_terminal_error',receipt:{...error.receipt}});
+          }
           if (error instanceof AgentArtsResultUnknownError) {
             // Identity/digest only: never persist a cloud payload, credential or
             // model response. The same loop cannot automatically resend it.
@@ -244,7 +251,23 @@ export function startCoordinationTask(
   deadline: string,
   options: {resume?: boolean; toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<TaskSnapshot> {
-  const execution = runtime.runTask(taskId, context => runCoordinationWorker(runtime,port,tools,taskId,goal,context,options),
+  const execution = runtime.runTask(taskId, async context => {
+    try { return await runCoordinationWorker(runtime,port,tools,taskId,goal,context,options); }
+    catch (error) {
+      const loop = context.loadCheckpoint('competition-loop') as CompetitionCheckpoint | undefined;
+      const replay = context.loadCheckpoint('competition-confirmed-replay') as {runId?: string; inputDigest?: string} | undefined;
+      // A confirmed write whose continuation permission changed must remain recoverable.
+      // This does not turn an unknown execution into a confirmed result or replay the tool.
+      if (loop?.pending?.toolName === 'workspace.apply_text_patch'
+        && replay?.runId === `competition-tool-${taskId}-${loop.step}`
+        && runtime.readToolExecutions(taskId).some(record => record.evidenceId === replay.runId
+          && record.inputDigest === replay.inputDigest && record.state === 'confirmed'
+          && record.executionStarted && record.policyDecision === 'allow')) {
+        withholdConfirmedExport(runtime, taskId);
+      }
+      throw error;
+    }
+  },
     {deadline,sideEffect:options.toolCatalog?.sideEffect??'read',...(options.resume?{resume:true}:{})});
   // No adapter can dispatch an intent when the port is unavailable. Preserve
   // that existing immediate-failure lifecycle without a consumption callback.

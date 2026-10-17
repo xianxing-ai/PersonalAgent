@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
+import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {currentNodes} from '@personal-agent/goals';
 import {analyzeImpact} from '@personal-agent/cognition';
 import {createAgentArtsRuntimeApplication, createRuntimeApplication} from '@personal-agent/runtime/application';
@@ -68,7 +69,7 @@ export async function runOwnedRepairLoop({mode, configuration, coordination, dea
   deadline = new Date(deadline).toISOString();
   const config = mode === 'live' ? validateRepairConfiguration(configuration) : undefined;
   if ((mode === 'live' && coordination !== undefined) || (mode === 'fake'
-    && (configuration !== undefined || typeof coordination?.execute !== 'function'))) fail('INVALID_ARGUMENT');
+    && (configuration !== undefined || !(coordination instanceof FakeCoordinationPort)))) fail('INVALID_ARGUMENT');
   if (mode === 'live' && process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') fail('INVALID_ARGUMENT');
   const active = () => {if (signal.aborted) fail('CANCELLED'); if (Date.now() >= Date.parse(deadline)) fail('TIMEOUT');};
   active();
@@ -252,7 +253,12 @@ export async function runOwnedRepairLoop({mode, configuration, coordination, dea
       } catch {receipt.cleanupErrorCode = 'CLEANUP_NOT_CONFIRMED';}
     } else {host?.close(); host = undefined;}
     receipt.finishedAt = new Date().toISOString();
-    await save();
+    try {await save();}
+    catch {
+      receipt.status = 'failed';
+      receipt.verification = mode === 'fake' ? 'mock' : 'unverified';
+      receipt.receiptWriteErrorCode = 'RECEIPT_WRITE_NOT_CONFIRMED';
+    }
   }
   return {receipt, directory};
 }
@@ -272,7 +278,7 @@ export async function main(args = process.argv.slice(2), input = process.stdin) 
   try {
     const {receipt, directory} = await runOwnedRepairLoop({mode: 'live', configuration,
       deadline: args[3], signal: controller.signal, approveSyntheticFixture: true});
-    process.stdout.write(JSON.stringify({receiptPath: path.join(directory, 'receipt.json'), ...receipt}, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({receiptPath: receipt.receiptWriteErrorCode ? null : path.join(directory, 'receipt.json'), ...receipt}, null, 2) + '\n');
     process.exitCode = receipt.status === 'passed' ? 0 : 1;
   } finally {process.removeListener('SIGINT', abort); process.removeListener('SIGTERM', abort);}
 }

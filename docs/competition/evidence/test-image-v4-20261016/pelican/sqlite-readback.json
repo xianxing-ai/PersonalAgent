@@ -1,0 +1,466 @@
+{
+  "readOnly": true,
+  "databases": [
+    {
+      "database": "main/runtime.sqlite",
+      "tasks": [
+        {
+          "task_id": "3223816c-1680-46fb-ab4d-98f3908d0201",
+          "state": "succeeded",
+          "revision": 29
+        },
+        {
+          "task_id": "8d114d89-fa0d-4fc9-bf39-5c7969ed3ba2",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "edbb8090-4947-4924-a1d3-c82d84bab5fd",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "6ed65129-747c-4f06-978f-45680217ff57",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "ce06e71a-f300-4f96-8a28-dbff60177a9c",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "01b01944-f536-488d-a8c6-af648df1617c",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "6d82ce0e-a921-4746-bf9a-503c75bdb2f8",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "d5edbc5c-a117-4943-8752-aba13b14b0eb",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "26f1a46a-f47d-4d9f-8d79-3d64e652eba2",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "f863bf84-3382-4ebf-ad4b-a9c0d6ef7d26",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "c430b5d5-35cd-4834-aa41-bbb363e9da6d",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "80f1d0ef-02a2-414e-ac65-c1fd9891da36",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "7c8d3e21-7d47-4e8e-a786-7d506e1fc915",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "f6239c62-19de-40e2-9ae4-c7085da73422",
+          "state": "succeeded",
+          "revision": 10
+        }
+      ],
+      "records": [
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "436bc35de0c074713889f3bf5f86078160629821733c55b47bd21bac6832fae6",
+          "evidenceId": "host-tool-8d114d89-fa0d-4fc9-bf39-5c7969ed3ba2",
+          "requestId": "agent-tool-request-1",
+          "taskId": "8d114d89-fa0d-4fc9-bf39-5c7969ed3ba2",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:18:19.118Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:18:19.536Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "b000badd91eb3bfc84f6d0baab964e607352940c69bd30e71f05429e4f6ea88d",
+          "evidenceId": "host-tool-edbb8090-4947-4924-a1d3-c82d84bab5fd",
+          "requestId": "agent-tool-request-2",
+          "taskId": "edbb8090-4947-4924-a1d3-c82d84bab5fd",
+          "toolName": "workspace.read_text",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:18:21.633Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:18:21.647Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "d25c95af87677a2a658e833714fa99eb1d0829b2492de888cd9d20c9f2f08c8f",
+          "evidenceId": "host-tool-6ed65129-747c-4f06-978f-45680217ff57",
+          "requestId": "agent-tool-request-3",
+          "taskId": "6ed65129-747c-4f06-978f-45680217ff57",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:18:29.913Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:18:30.309Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "dd7d828e5b3229ba99e0eefab321aed5988bbfa597d999ea8463b507b8f1a909",
+          "evidenceId": "host-tool-ce06e71a-f300-4f96-8a28-dbff60177a9c",
+          "requestId": "agent-tool-request-4",
+          "taskId": "ce06e71a-f300-4f96-8a28-dbff60177a9c",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:18:54.174Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:18:54.184Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "d46ee7a7fa45d12f838d28e53bc2ca13340101163784c14863f64ac871f73e0b",
+          "evidenceId": "host-tool-01b01944-f536-488d-a8c6-af648df1617c",
+          "requestId": "agent-tool-request-5",
+          "taskId": "01b01944-f536-488d-a8c6-af648df1617c",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:06.374Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:07.359Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "26d47f6f9459310fa68e223b3adf1753f3e7d3dbd91b97cf56676949caab4d92",
+          "evidenceId": "host-tool-6d82ce0e-a921-4746-bf9a-503c75bdb2f8",
+          "requestId": "agent-tool-request-6",
+          "taskId": "6d82ce0e-a921-4746-bf9a-503c75bdb2f8",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:09.895Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:10.304Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "2da452444bf096fd3303db03a0dfafbce0f75796b1509e0d91a6be81c378de41",
+          "evidenceId": "host-tool-d5edbc5c-a117-4943-8752-aba13b14b0eb",
+          "requestId": "agent-tool-request-7",
+          "taskId": "d5edbc5c-a117-4943-8752-aba13b14b0eb",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:14.187Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:14.200Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "af1a8549fa8884c6d7edb2a06d5a8043f1ed3f44e5ae0d3a2a63aa17721357a4",
+          "evidenceId": "host-tool-26f1a46a-f47d-4d9f-8d79-3d64e652eba2",
+          "requestId": "agent-tool-request-8",
+          "taskId": "26f1a46a-f47d-4d9f-8d79-3d64e652eba2",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:17.902Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:18.660Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "6e81f4fab354eb61200422afea3bac8d5eb7fc037055e2e05b7608af22c35a02",
+          "evidenceId": "host-tool-f863bf84-3382-4ebf-ad4b-a9c0d6ef7d26",
+          "requestId": "agent-tool-request-9",
+          "taskId": "f863bf84-3382-4ebf-ad4b-a9c0d6ef7d26",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:20.761Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:21.164Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "ec778133d11cfe652db43ecef13745f1418338dc3075e1fdb1546112f02c2cd3",
+          "evidenceId": "host-tool-c430b5d5-35cd-4834-aa41-bbb363e9da6d",
+          "requestId": "agent-tool-request-10",
+          "taskId": "c430b5d5-35cd-4834-aa41-bbb363e9da6d",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:26.669Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:26.678Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "cf8cf2a296c9cf1152bd1068e2f121d54093e4c8c80047d787a4390f26807e4c",
+          "evidenceId": "host-tool-80f1d0ef-02a2-414e-ac65-c1fd9891da36",
+          "requestId": "agent-tool-request-11",
+          "taskId": "80f1d0ef-02a2-414e-ac65-c1fd9891da36",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:29.064Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:29.799Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "7c69ae4462b5521d5057e10b04531f00a5fc0928ce8b1ef157190d766358c5b3",
+          "evidenceId": "host-tool-7c8d3e21-7d47-4e8e-a786-7d506e1fc915",
+          "requestId": "agent-tool-request-12",
+          "taskId": "7c8d3e21-7d47-4e8e-a786-7d506e1fc915",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:31.663Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:32.070Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "b385a918e4e889a3ea9e13158ce380bb4d4e1b12a39f903fe1951724d38a2015",
+          "evidenceId": "host-tool-f6239c62-19de-40e2-9ae4-c7085da73422",
+          "requestId": "agent-tool-request-13",
+          "taskId": "f6239c62-19de-40e2-9ae4-c7085da73422",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:35.211Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:35.611Z"
+        }
+      ]
+    },
+    {
+      "database": "shadow/runtime.sqlite",
+      "tasks": [
+        {
+          "task_id": "74043fd2-7da6-44a4-8089-717b0898a7a2",
+          "state": "succeeded",
+          "revision": 19
+        },
+        {
+          "task_id": "fc5868a4-53c1-4d87-b131-f568a1bf542b",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "d5ef150f-d23f-4d03-832a-a6cdd0a66ac8",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "ea668fa9-0182-40be-90e0-789b89a670b9",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "b134f5ee-367a-4bef-b81a-26f52eb45b50",
+          "state": "failed",
+          "revision": 9
+        },
+        {
+          "task_id": "d53c10a4-b985-41f4-8e4d-d2f044a671a7",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "8aad2194-6049-4cb8-9000-68ada417e221",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "29f009ea-df0f-4043-a51a-c2e5796ed1fe",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "d178b0fb-0385-4bc2-a2f1-b82f78890089",
+          "state": "succeeded",
+          "revision": 10
+        }
+      ],
+      "records": [
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "4801e32e7cb4aa5445e759ead6c85bc554b8cc6241a00ffa74e96dd20a4799bc",
+          "evidenceId": "host-tool-fc5868a4-53c1-4d87-b131-f568a1bf542b",
+          "requestId": "agent-tool-request-14",
+          "taskId": "fc5868a4-53c1-4d87-b131-f568a1bf542b",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:36.651Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:37.059Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "48e8ce843bd2c8884ce7271aaf9bba715e0b2b96efaa5bf52881228d61417812",
+          "evidenceId": "host-tool-d5ef150f-d23f-4d03-832a-a6cdd0a66ac8",
+          "requestId": "agent-tool-request-15",
+          "taskId": "d5ef150f-d23f-4d03-832a-a6cdd0a66ac8",
+          "toolName": "workspace.read_text",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:38.958Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:38.971Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "1badf8979beba45f368d9618f89684bfd06485a3079f4125affca10001951e63",
+          "evidenceId": "host-tool-ea668fa9-0182-40be-90e0-789b89a670b9",
+          "requestId": "agent-tool-request-16",
+          "taskId": "ea668fa9-0182-40be-90e0-789b89a670b9",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:40.962Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:41.357Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "326eca31ec70c8979cf65fa3818a14a6043905caebf1b4c519e9a6b427222bd8",
+          "evidenceId": "host-tool-b134f5ee-367a-4bef-b81a-26f52eb45b50",
+          "requestId": "agent-tool-request-17",
+          "taskId": "b134f5ee-367a-4bef-b81a-26f52eb45b50",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:44.884Z",
+          "state": "failed",
+          "errorCode": "INVALID_ARGUMENT",
+          "finishedAt": "2026-10-16T07:19:44.898Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "b51f801fa413245dc024565468c8a44c19b7eb6b278e10f573c50b97f0fee483",
+          "evidenceId": "host-tool-d53c10a4-b985-41f4-8e4d-d2f044a671a7",
+          "requestId": "agent-tool-request-18",
+          "taskId": "d53c10a4-b985-41f4-8e4d-d2f044a671a7",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:49.654Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:49.668Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "7fab3af7a7f069f54c286c61687b3538e60b5ed5acc05f7e3f754b409d377ffc",
+          "evidenceId": "host-tool-8aad2194-6049-4cb8-9000-68ada417e221",
+          "requestId": "agent-tool-request-19",
+          "taskId": "8aad2194-6049-4cb8-9000-68ada417e221",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:19:53.262Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:19:54.195Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "e33be53c403b21a536b45fc77b5b2f9b77c1bc68eb8c9e5e72ff6c5668fce3c2",
+          "evidenceId": "host-tool-29f009ea-df0f-4043-a51a-c2e5796ed1fe",
+          "requestId": "agent-tool-request-20",
+          "taskId": "29f009ea-df0f-4043-a51a-c2e5796ed1fe",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:20:13.126Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:20:13.531Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "2841dda0cb9b12fe99fa5effdde5e61a31efc8145a220479e122031174f9dab5",
+          "evidenceId": "host-tool-d178b0fb-0385-4bc2-a2f1-b82f78890089",
+          "requestId": "agent-tool-request-21",
+          "taskId": "d178b0fb-0385-4bc2-a2f1-b82f78890089",
+          "toolName": "pelican.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:20:22.679Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:20:23.113Z"
+        }
+      ]
+    },
+    {
+      "database": "delivery.sqlite",
+      "tasks": [
+        {
+          "task_id": "6ee8e732-53f7-43ff-8e12-db67acb897dd",
+          "state": "succeeded",
+          "revision": 10
+        }
+      ],
+      "records": [
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "3d61092a27c038025376bdc0702031ee1bc5976e164c97aa4688da0cad33570c",
+          "evidenceId": "host-tool-6ee8e732-53f7-43ff-8e12-db67acb897dd",
+          "requestId": "agent-tool-request-22",
+          "taskId": "6ee8e732-53f7-43ff-8e12-db67acb897dd",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:20:24.722Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:20:25.650Z"
+        }
+      ]
+    },
+    {
+      "database": "controller.sqlite",
+      "tasks": [
+        {
+          "task_id": "f5376f5b-82dd-42d2-8fef-7b1240f0a41a",
+          "state": "created",
+          "revision": 1
+        }
+      ],
+      "records": []
+    }
+  ]
+}

@@ -31,6 +31,9 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
+    "@personal-agent/agentarts": "0.1.0-alpha.1",
+    "@personal-agent/connector-host": "0.1.0-alpha.1",
+    "@personal-agent/notifications": "0.1.0-alpha.1",
     "@personal-agent/github": "0.1.0-alpha.1",
     "@personal-agent/coding-tools": "0.1.0-alpha.1",
     "@personal-agent/mcp": "0.1.0-alpha.1",

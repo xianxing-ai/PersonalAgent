@@ -1,0 +1,25 @@
+{
+  "image": "personal-agent:test-v4-workflow-wiring",
+  "imageId": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "architecture": "arm64",
+  "built": true,
+  "published": false,
+  "remoteReadbackVerified": false,
+  "runtimeDeploymentVerified": false
+}
+npm notice run personal-agent@0.0.0 build:owned-agent
+npm notice run npm run build --workspace=@personal-agent/contracts && npm run build --workspace=@personal-agent/models && npm run build --workspace=@personal-agent/coordination && npm run build --workspace=@personal-agent/agentarts && npm run build --workspace=@personal-agent/agentarts-runtime
+npm notice run @personal-agent/contracts@0.1.0-alpha.1 build
+npm notice run tsc -p tsconfig.json
+npm notice run @personal-agent/models@0.1.0-alpha.1 build
+npm notice run tsc -p tsconfig.json
+npm notice run @personal-agent/coordination@0.1.0-alpha.1 build
+npm notice run tsc -p tsconfig.json
+npm notice run @personal-agent/agentarts@0.1.0-alpha.1 build
+npm notice run tsc -p tsconfig.json && npm run build:observability
+npm notice run @personal-agent/agentarts@0.1.0-alpha.1 build:observability
+npm notice run node scripts/build-observability.mjs
+npm notice run @personal-agent/agentarts-runtime@0.1.0-alpha.1 build
+npm notice run node --check src/server.mjs && node --check src/main.mjs && node --check src/websocket-transport.mjs && node --check src/binding-dispatch.mjs && node --check src/laya-service.mjs && node --check src/laya-selector.mjs && node --check src/local-laya.mjs && node --check src/adaptive-decision.mjs && node --check src/test-version-controller.mjs && node --check scripts/laya-assets.mjs && node --check scripts/image-context.mjs && npm run build:services
+npm notice run @personal-agent/agentarts-runtime@0.1.0-alpha.1 build:services
+npm notice run node --check src/image-services.mjs && node --check src/platform-services.mjs && node --check src/shadow-controller.mjs && node --check src/trace-replay.mjs && node --check src/stage-timeline.mjs && node --check src/proactive-controller.mjs && node --check src/model-proxy.mjs

@@ -3,6 +3,8 @@ import {createHash, randomUUID} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {openReadOnlyVault} from '@personal-agent/knowledge/filesystem';
+import {createWikiPort} from '@personal-agent/knowledge/wiki';
+import {localVaultPairingIdentity} from '@personal-agent/knowledge/pairing';
 import {openControlledVaultWriter} from '@personal-agent/knowledge/write';
 import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 
@@ -62,7 +64,7 @@ function prepareRecovery(userData, sourceId, powerShellPath) {
   if (!existsSync(target)) {
     mkdirSync(target, {recursive: true});
     const script = String.raw`$ErrorActionPreference='Stop'
-$target=[Console]::In.ReadToEnd()
+$target=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(target,'utf8').toString('base64')}'))
 $self=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
 $acl=[System.Security.AccessControl.DirectorySecurity]::new()
 $acl.SetOwner($self)
@@ -71,7 +73,7 @@ $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($se
 Set-Acl -LiteralPath $target -AclObject $acl`;
     execFileSync(powerShellPath, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
       Buffer.from(script, 'utf16le').toString('base64')],
-    {input: target, encoding: 'utf8', timeout: 10000, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']});
+    {encoding: 'utf8', timeout: 10000, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']});
   }
   verifyWindowsRecoveryAcl(target, powerShellPath);
   return directory(target);
@@ -92,6 +94,7 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   const inflight = new Set();
   const invalidate = () => {
     for (const controller of inflight) controller.abort();
+    vault?.clearIndex();
     vault = undefined; writer = undefined; writeAllowed = false; cloudExportAllowed = false; publicQueries = [];
   };
   const current = () => {
@@ -159,6 +162,10 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   };
   return {
     snapshot,
+    clearIndex() {
+      for (const controller of inflight) controller.abort();
+      vault?.clearIndex();
+    },
     async select() {return mutate(async () => {
       const selected = await selectDirectory(); if (!selected) return snapshot();
       const rootPath = directory(selected), revision = (saved?.configRevision ?? 0) + 1;
@@ -204,16 +211,30 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
       failure = '知识源已撤销，请重新选择'; return snapshot();
     });},
     /** Trusted local admin consumers use this same binding as the Runtime tool factory. */
+    pairingIdentity() {return current() ? localVaultPairingIdentity(saved.rootPath) : undefined;},
     acquire(expected, signal) {
       checkBinding(expected);
       const controller = new AbortController(); inflight.add(controller);
+      let released = false;
       const binding = snapshot(), selectedVault = vault, selectedWriter = writer;
       return {binding, read: selectedVault, write: writeAllowed ? selectedWriter : undefined,
         reconcileWrite: selectedWriter ? (input, context) => selectedWriter.reconcile(input, context) : undefined,
         finalizeWrite: selectedWriter ? (accepted, context) => selectedWriter.finalize(accepted, context) : undefined,
         signal: AbortSignal.any([signal, controller.signal]),
-        assertCurrent() {checkBinding(expected); if (controller.signal.aborted) throw Error('知识源调用已撤销');},
-        release() {inflight.delete(controller);}};
+        assertCurrent() {checkBinding(expected); if (released || controller.signal.aborted) throw Error('知识源调用已撤销');},
+        release() {released = true; inflight.delete(controller);}};
+    },
+    /** Host-only Wiki lease, using the exact same root/configuration as Knowledge tools. */
+    acquireWiki(expected, context) {
+      const lease = this.acquire({...expected}, context?.signal);
+      try {
+        const wiki = createWikiPort({reader: lease.read, vaultId: lease.binding.sourceId,
+          sourceId: lease.binding.sourceId, namespace: lease.binding.namespace,
+          configRevision: lease.binding.configRevision, dataLevel: lease.binding.dataLevel,
+          validUntil: context.deadline,
+          isCurrent: () => {lease.assertCurrent(); return !lease.signal.aborted;}});
+        return {...lease, wiki};
+      } catch (error) {lease.release(); throw error;}
     },
     async readSelectedNote(input) {
       if (!input || Object.keys(input).some(key => !['sourceId', 'configRevision', 'path'].includes(key))) throw Error('无效的笔记请求');

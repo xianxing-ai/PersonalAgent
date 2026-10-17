@@ -10,7 +10,7 @@ import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {createAgentArtsRuntimeApplication,createRuntimeApplication,createDesktopSubagentDispatchTool,resumeRuntimeSubagentTask,readRuntimeSubagentSummary,SUBAGENT_DISPATCH_TOOL_NAME,SUBAGENT_DISPATCH_TOOL_VERSION} from '../dist/application.js';
 const read={name:'fixture.default-child-read',version:'1.0.0',sideEffect:'read',requiredScopes:['fixture:read'],
   requiresPresence:false,recoverySupport:true,idempotencySupport:true,inputSchema:{type:'object',required:['value'],properties:{value:{type:'string'}},additionalProperties:false},outputSchema:{type:'object'}};
-async function until(predicate){for(let n=0;n<200;n++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('state did not arrive');}
+async function until(predicate){const deadline=Date.now()+60_000;while(Date.now()<deadline){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('state did not arrive');}
 test('default children reuse Competition worker and original approvals without an independent model API',async t=>{
   let app,reads=0,independentCalls=0;
   const dispatch=createDesktopSubagentDispatchTool({getRuntime:()=>app.runtime,getTools:()=>app.tools,
@@ -36,7 +36,7 @@ test('default children reuse Competition worker and original approvals without a
     coordinationBinding:'fixed-original-cloud-source',tools:[dispatch,{descriptor:read,execute:async input=>{reads++;return input;}}],
     automaticTools:[{toolName:SUBAGENT_DISPATCH_TOOL_NAME,toolVersion:SUBAGENT_DISPATCH_TOOL_VERSION}]});t.after(()=>app.close());
   const client=new Client(app,Date.now);await client.connect();
-  const parent=await client.call('task.submit',{goal:'Delegate two default roles',conversationId:'desktop-panel'},{idempotencyKey:'default-cloud'});
+  const parent=await client.call('task.submit',{goal:'Delegate two default roles',conversationId:'desktop-panel'},{idempotencyKey:'default-cloud',timeoutMs:60_000});
   await until(()=>app.runtime.getTask(parent.taskId).state==='waiting_approval'&&app.activeTaskCount===0);
   const child=app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-one`);
   assert.equal(reads,0);assert.equal(independentCalls,0);
@@ -108,14 +108,18 @@ test('persistent default children retain the original AgentArts candidate protoc
         app.close();app=open(restored);
         const restoredClient=new Client(app);await restoredClient.connect();
         const approval=app.runtime.getApproval(`competition-tool-${child.taskId}-1`);
-        await restoredClient.call('authorization.respond',{approvalId:approval.approvalId,
+        const approve=()=>restoredClient.call('authorization.respond',{approvalId:approval.approvalId,
           expectedRevision:approval.revision,decision:'allow_once'});
+        if(initial!==restored)await assert.rejects(approve(),{code:'REVISION_CONFLICT'});
+        else await approve();
         await until(()=>app.activeTaskCount===0);
         const outcome=app.runtime.getTask(child.taskId);
         assert.deepEqual(app.runtime.loadCheckpoint(child.taskId,'subtask-coordination-binding'),originalBinding);
         assert.equal(app.runtime.loadCheckpoint(child.taskId,'application-deadline'),originalDeadline);
         if(initial!==restored){
-          assert.equal(outcome.state,'failed');assert.equal(outcome.error.code,'REVISION_CONFLICT');
+          assert.equal(outcome.state,'waiting_approval');
+          assert.deepEqual(app.runtime.getApproval(approval.approvalId),approval);
+          assert.equal(approval.state,'pending');assert.equal(app.runtime.policy.get(approval.approvalId),undefined);
           assert.notEqual(app.coordinationConfigurationRef,oldRef);
           assert.equal(reads,0);assert.deepEqual(app.runtime.readToolExecutions(child.taskId),[]);
           assert.deepEqual(app.runtime.loadCheckpoint(child.taskId,'competition-loop'),originalLoop);

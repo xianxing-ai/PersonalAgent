@@ -34,8 +34,8 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     beforeQuit(event);if (!event.prevented) exited = true;
   }};
   const optional = ['referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
-    'p5DeviceNotificationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','modelApiHost',
-    'privateConsumption','privateMemory','learningStore','knowledgeSourceConfig','goalCloudHost','calendarMeetingHost',
+    'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
+    'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
@@ -81,11 +81,48 @@ test('a task finishing does not resume a refused quit; the next explicit quit cl
 });
 
 test('a zero-task quit retains the original cleanup sequence', async () => {
-  const f = fixture();f.app.quit();await tick();await tick();await tick();
+  const f = fixture();f.context.installedSkillsHost={close(){f.calls.push('installed-skills-close');}};
+  f.app.quit();await tick();await tick();await tick();
   assert.equal(f.exited, true);assert.equal(f.context.voiceDisposed, true);
   assert.equal(f.context.wakeQuitHandled, true);assert.equal(f.context.runtimeClosed, true);
   assert.ok(f.calls.indexOf('wake-dispose') < f.calls.indexOf('voice-dispose'));
   assert.ok(f.calls.indexOf('voice-dispose') < f.calls.indexOf('runtime-close'));
+  assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);
+  assert.ok(f.calls.indexOf('installed-skills-close') < f.calls.indexOf('runtime-close'));
+});
+
+test('a bound NotificationHost survives refused quit and disposes once before Runtime on the next allowed quit',async()=>{
+  const f=fixture({count:1});
+  f.context.notificationApplicationHost={dispose(){f.calls.push('notification-dispose');}};
+  f.app.quit();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(f.context.app.isQuitting,false);
+  assert.match(f.context.runtimeError,/Runtime 仍有活动任务/);
+  assert.equal(f.calls.includes('notification-dispose'),false);
+  assert.equal(f.calls.includes('runtime-close'),false);
+  f.context.runtimeApplication.activeTaskCount=0;
+  await tick();assert.equal(f.exited,false);assert.equal(f.calls.includes('notification-dispose'),false);
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.context.runtimeClosed,true);
+  assert.equal(f.calls.filter(call=>call==='notification-dispose').length,1);
+  assert.equal(f.calls.filter(call=>call==='runtime-close').length,1);
+  assert.ok(f.calls.indexOf('notification-dispose')<f.calls.indexOf('runtime-close'));
+});
+
+test('accepted quit closes Wiki, pairing and installed Skills before Runtime; an active task refuses it',async()=>{
+  const f=fixture({count:1});f.context.wikiSourceMonitor={close(){f.calls.push('wiki-monitor-close');}};
+  f.context.obsidianPairing={close(){f.calls.push('obsidian-pairing-close');}};
+  f.context.installedSkillsHost={close(){f.calls.push('installed-skills-close');}};
+  f.app.quit();await tick();assert.equal(f.calls.includes('wiki-monitor-close'),false);
+  assert.equal(f.calls.includes('obsidian-pairing-close'),false);
+  assert.equal(f.calls.includes('installed-skills-close'),false);
+  f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.calls.filter(call=>call==='wiki-monitor-close').length,1);
+  assert.ok(f.calls.indexOf('wiki-monitor-close')<f.calls.indexOf('runtime-close'));
+  assert.equal(f.calls.filter(call=>call==='obsidian-pairing-close').length,1);
+  assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);
+  assert.ok(f.calls.indexOf('installed-skills-close')<f.calls.indexOf('runtime-close'));
+  assert.ok(f.calls.indexOf('wiki-monitor-close')<f.calls.indexOf('obsidian-pairing-close'));
+  assert.ok(f.calls.indexOf('obsidian-pairing-close')<f.calls.indexOf('runtime-close'));
 });
 
 test('Runtime startup guard keeps precedence over active-task preflight', async () => {
@@ -118,16 +155,16 @@ test('unknown SIS release stays blocked and does not repeat permanent disposal',
 
 // Original initialization/config/record functions; replace only dynamic imports with explicit Fake factories.
 function reconfigurationFixture() {
-  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, webContents: {id: 9}};
+  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, webContents: {id: 9}}, admin = {};
   const oldDispose = f.voiceInput.dispose;
   let oldDisposed = false;
   f.voiceInput.dispose = async () => {if (oldDisposed) return;oldDisposed = true;
     await oldDispose();f.context.runtimeApplication.activeTaskCount = 1;};
   f.wakeVoice.disable = async () => {};
   let configuration = {region: 'cn-north-4', projectId: 'synthetic-old'}, failInitialization = false;
-  Object.assign(f.context, {panel, competitionMode: true, client: {}, voiceConfigurationPending: false,
+  Object.assign(f.context, {panel, admin, competitionMode: true, client: {}, voiceConfigurationPending: false,
     voicePcmSource: undefined, sisPlaybackHost: undefined, panelHiding: false, voiceInitializationFailure: null,
-    sisConfigHost: {snapshot: () => ({configured: true}), current: () => configuration,
+    sisConfigHost: {snapshot: () => ({configured: true}), currentAccessKey:()=>undefined, current: () => configuration,
       configure(value) {configuration = value;f.calls.push('configure');}},
     desktopHost: {logVoicePlayback() {}}, taskGoals: new Map(), conversations: {add() {assert.fail('No Task');}},
     createDesktopSisPlaybackHost: () => ({async dispose() {f.calls.push('new-playback-dispose');}}),
@@ -161,7 +198,7 @@ function reconfigurationFixture() {
   find(ast);assert.ok(configure && record);
   const action = vm.runInContext(`(async function(sender,name,payload){${configure}\n${record}})`, f.context);
   return {...f, get exited() {return f.exited;}, inputs, asr,
-    invoke: (name, payload) => action(panel, name, payload),
+    invoke: (name, payload) => action(['voice.configure','voice.login'].includes(name) ? admin : panel, name, payload),
     fail(value) {failInitialization = value;},
     async refuseLateQuit() {
       f.app.quit();await tick();await tick();await tick();
