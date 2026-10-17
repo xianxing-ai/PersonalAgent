@@ -9,12 +9,16 @@
 
 执行模型协作与候选评估；不创建第二个最终语义裁决模型，建立独立影子宿主的能力与证据。
 
-当前实验由本机Laya提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收，架构未最终定型。
+本机Laya已确定为本地运行方案，提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收；外部比赛资格及真实 AgentArts 端到端验收另行核证。
 
 本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
 
 ## 现有API、运行说明与历史验证参考
 <!-- /architecture-scope-20261013 -->
+Competition 任务一旦保存 `competition-context:v1`，恢复和最终发送门禁都要求受信宿主继续装配 `coordinationInput`；缺失时拒绝发送，不降为原公开 goal。已确认工具回执保留，进入既有待核实路径，不重做工具。没有该检查点的旧任务仍允许沿原无 hooks 路径恢复。此为 host-only、provisional 加固，无新 wire/迁移；见 [F27 恢复加固记录](../../docs/modules/MOD-09-CONTEXT-BINDING-20261014.md#2026-10-16恢复-hooks-缺失加固)。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-17）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前提交有效批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
 
 Obsidian 本机桥接沿用 `createObsidianPairingHost` 与 `createTrustedKnowledgeTools`。
 Desktop 根组合用公开 `@personal-agent/knowledge/bridge` 进行 TLS 证书指纹固定/一次性
