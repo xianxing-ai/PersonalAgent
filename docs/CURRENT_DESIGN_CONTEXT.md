@@ -24,7 +24,7 @@ Laya6判断182–618ms未达150ms、各案例3裁决升级DeepSeek；无高级�
 采用 **本机 Laya + 自有镜像内 28 工作流 + 串行推进**，协作者经现有 Runtime/Policy/ToolGateway
 接本地工具、宿主观察和条件检查。主流程与隔离影子均纳入鹈鹕动画故障的增量修复实测。
 本机低 CPU 占用与 150 ms 判断为验收目标，未通过实测前不声明达标。
-当前实现与接口见 [ADR-0025](adr/0025-local-laya-serial-image-workflows.md)、
+当前实现与接口见 [ADR-0030](adr/0030-local-laya-serial-image-workflows.md)、
 [接线文档](competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。当时“镜像先不发布”已被新授权与SWR实际发布取代，main/PR集成仍单独确认。
 下文 10-09 和 10-14 嵌入式部署说明作为历史依据保留，不覆盖本次明确决定。
 

@@ -20,7 +20,7 @@ SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98
 
 Owner 选择本机 Laya，28 工作流编排仍由 AgentArts 自有镜像承担，不新增通用 Local Profile 或
 AgentArts 失败后静默回退。本地决策和宿主适配经既有工具/回执接口接线，见
-[ADR-0025](../adr/0025-local-laya-serial-image-workflows.md) 和 [调用说明](LOCAL_LAYA_WORKFLOW_WIRING.md)。
+[ADR-0030](../adr/0030-local-laya-serial-image-workflows.md) 和 [调用说明](LOCAL_LAYA_WORKFLOW_WIRING.md)。
 早期“本版镜像尚未发布”记录已由上述SWR回执取代；本机工具闭环、云目录/日志和平台原生评估仍分别记录。
 
 ## 2026-10-09 常驻目标与镜像分享增量

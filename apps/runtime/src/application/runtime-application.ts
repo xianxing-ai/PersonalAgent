@@ -288,6 +288,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   automaticTools?: readonly {toolName: string; toolVersion: string}[];
   /** Opaque identity of trusted Competition configuration, excluding credentials. */
   coordinationBinding?: string;
+  /** Trusted synchronous final check; never exposes credentials or changes task identity. */
+  assertCoordinationBinding?: () => void;
   /** Trusted AgentArts realtime composition; legacy API settings do not choose this transport. */
   competitionRealtimeModel?: Pick<QwenRealtimeModelGateway, 'connect'>;
   /** Trusted current configuration, shared by initial child dispatch and recovery. */
@@ -352,6 +354,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   readonly profile: 'local' | 'huawei_ict_agentarts';
   private readonly coordination: CoordinationPort | undefined;
   private readonly coordinationBinding: string;
+  private readonly assertCoordinationBinding?: () => void;
   private readonly competitionRealtimeModel: RuntimeApplicationOptions['competitionRealtimeModel'];
   private readonly coordinationInput: CoordinationInputHooks | undefined;
   private readonly windowsHostRecovery: RuntimeApplicationOptions['windowsHostRecovery'];
@@ -411,6 +414,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
     this.coordination = options.coordination ? {execute: request => this.executeCoordination(options.coordination!, request)} : undefined;
     this.coordinationBinding=options.coordinationBinding??'runtime-configured-coordination';
+    if(options.assertCoordinationBinding!==undefined)this.assertCoordinationBinding=options.assertCoordinationBinding;
     this.now = options.now ?? (() => new Date());
     this.repairCandidateVersion = options.repairCandidateVersion;
     this.localRepair = options.localRepair;
@@ -701,7 +705,27 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
   }
 
+  private assertCompetitionTaskConfiguration(taskId:string, initialize=false):void {
+    try {
+      const result:unknown=this.assertCoordinationBinding?.();
+      if(result!==undefined) {
+        void Promise.resolve(result).catch(()=>undefined);
+        throw new Error();
+      }
+    } catch {
+      throw new ProtocolError('REVISION_CONFLICT','Original Competition deployment changed; restore its configuration before continuing');
+    }
+    const key='competition-configuration-binding';
+    const original=this.runtime.loadCheckpoint(taskId,key);
+    if(original===undefined && initialize && this.runtime.saveCheckpointOnce(taskId,key,this.coordinationBinding))return;
+    if(original!==this.coordinationBinding) {
+      throw new ProtocolError('REVISION_CONFLICT','Original Competition configuration is missing or changed; task cannot resume');
+    }
+  }
+
   private async executeCoordination(port:CoordinationPort, request:CoordinationRequest) {
+    this.assertCompetitionTaskConfiguration(request.taskId,
+      this.runtime.loadCheckpoint(request.taskId,'competition-loop')===undefined);
     const selection=this.runtime.loadCheckpoint(request.taskId,'execution-model');
     if(selection!==undefined) request=Object.freeze({...request,executionModel:parseExecutionModelSelection(selection)});
     this.assertInputActive(request);
@@ -1037,6 +1061,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   async send(request: Request, signal: AbortSignal): Promise<Response> {
+    // Approval state and one-shot grants must remain untouched when an original
+    // Competition task cannot continue against its original trusted deployment.
+    if (request.operation === 'authorization.respond' && request.payload.decision === 'allow_once'
+      && this.profile === 'huawei_ict_agentarts') {
+      const approval=this.runtime.getApproval(request.payload.approvalId);
+      if(this.runtime.loadCheckpoint(approval.taskId,'application-profile')==='huawei_ict_agentarts'
+        || this.runtime.loadCheckpoint(approval.taskId,'competition-loop')!==undefined) {
+        this.assertCompetitionTaskConfiguration(approval.taskId);
+      }
+    }
     const response = await this.runtime.send(request, signal);
     if (request.operation === 'task.submit' && response.outcome === 'ok') this.dispatchSubmittedTextTask(request, response);
     if (request.operation === 'task.cancel' && response.outcome === 'ok') {
@@ -1560,6 +1594,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Host-only real-adapter guard; never exposed as a wire or Renderer operation. */
   assertCompetitionExportAllowed(request: CoordinationRequest): void {
+    this.assertCompetitionTaskConfiguration(request.taskId);
     this.assertInputActive(request);
     if(this.coordinationInput) {
       const effective=this.ephemeralSends.get(request.taskId);
@@ -1859,6 +1894,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   resumeTask(taskId: string): void {
+    if(this.profile==='huawei_ict_agentarts'
+      && (this.runtime.loadCheckpoint(taskId,'application-profile')==='huawei_ict_agentarts'
+        || this.runtime.loadCheckpoint(taskId,'competition-loop')!==undefined)) {
+      this.assertCompetitionTaskConfiguration(taskId);
+    }
     if (this.proactiveDrivers.has(taskId)) {this.resumeProactiveTask(taskId); return;}
     const proactiveHost = [...this.proactiveHosts.values()].find(host => host.taskId === taskId);
     if (proactiveHost) {proactiveHost.resumeApproved(); return;}
@@ -2388,6 +2428,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (this.runtime.getTask(taskId).state !== 'created') return;
     if (this.profile === 'huawei_ict_agentarts') {
       this.runtime.saveCheckpoint(taskId, 'application-profile', this.profile);
+      this.runtime.saveCheckpoint(taskId, 'competition-configuration-binding', this.coordinationBinding);
       this.runtime.saveCheckpoint(taskId, 'application-goal', goal);
       this.runtime.saveCheckpoint(taskId, 'application-deadline', request.deadline);
       let preference:ReturnType<NonNullable<RuntimeApplicationOptions['readConversationPreference']>>;

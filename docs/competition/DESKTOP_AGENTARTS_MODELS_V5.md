@@ -2,6 +2,16 @@
 
 目标 profile 为 `huawei_ict_agentarts`。本工作包保留本机 Runtime、Policy、ToolGateway、任务状态与 Evidence；不改变本机 Laya 的选型或质量结论。
 
+## 2026-10-17 审查修复与恢复兼容
+
+指定模型的 Competition 子任务在原审批后继续同一次调用，SQLite 重启后也使用原模型和原生推理强度；必须匹配父派发摘要、执行种类、原参数及授权。不能借恢复切换模型、部署或独立 API。
+
+Runtime 工厂的 `deploymentVersion` 只绑定可信身份，不会单独改写调用 URL；直接 API 消费者须同时提供实际固定版本的 transport。Desktop 的可信组合已将身份与实际 HTTPS/WSS 目的地绑定。
+
+HTTPS 与 WSS 都在可信传输创建时固定部署版本；同版凭据可刷新。原任务的非秘密配置摘要保存在现有 checkpoint，批准写入前、直接恢复前和云端发送前核对。版本失配返回 `REVISION_CONFLICT`，保留 pending 审批，不先授予或消费权限。切换新版本需重新绑定后提交新任务；恢复原版本可续原任务。缺少原绑定的旧待批任务不能在新配置下补绑，须留在原环境核实，不盲重发未知操作。
+
+镜像工作流 WSS 结果按完整事件数组计算 UTF-8 和 JSON 转义后的 64,000 字节预算。大输入可在已签检查点中用摘要引用，下一轮只从同摘要原输入还原；已执行工具值沿现有可信结果引用保留原操作和 Evidence。新节点无法交付时返回带前序检查点的明确 unavailable，不发不可交付的提案。HTTP 原容量不变，不自动改通道，也不重做 unknown 操作。此修复的本机生产 WS/HTTP 与 Fake 外部端口回归不等于新云版本或 28 项业务验收。
+
 ## 调用路径
 
 - 文字主任务、子任务：Desktop → 原 Runtime → 固定版本 AgentArts WSS → 自有镜像原 Orchestrator/ModelGateway。HTTPS 只作为显式启用的备用，结果未知不重新发送。

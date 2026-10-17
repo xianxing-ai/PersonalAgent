@@ -23,7 +23,7 @@ ConnectorHost、Policy/ToolGateway、SQLite CAS、Evidence、NotificationService
 Owner 确认本机 Laya，所有 28 工作流编排在自有镜像内串行推进；决策提案、本地真实工具、条件观察、
 宿主能力均通过既有 Runtime/Policy/ToolGateway/Evidence 回执边界连接。
 镜像不带 Laya/Python 权重依赖；主流程和隔离影子有不同宿主根目录与命名空间。
-具体实现、兼容和验证边界见 [ADR-0025](adr/0025-local-laya-serial-image-workflows.md) 与
+具体实现、兼容和验证边界见 [ADR-0030](adr/0030-local-laya-serial-image-workflows.md) 与
 [当前接线说明](competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。旧日期的架构叙述不作为本版部署声明。
 
 ## 2026-10-09 目标架构补充

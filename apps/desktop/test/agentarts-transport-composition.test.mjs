@@ -101,10 +101,12 @@ test('actual Desktop main closure feeds encrypted config token/version refresh i
     assert.equal((await runTask(app,'versioned-desktop-first')).state,'succeeded');assert.equal(calls.length,1);
     assert.equal(calls[0].url,destination.gatewayUrl+'/runtimes/synthetic/invocations?endpoint=arm64-v4-e38ef23d-r2');
     assert.equal(calls[0].headers.get('X-PA-Agent-Token'),'Bearer '+token);assert.equal(calls[0].redirect,'error');
-    config.configure({...destination,appToken:token+'-rotated',deploymentVersion:'v4-next'});
+    config.configure({...destination,appToken:token+'-rotated',deploymentVersion:'arm64-v4-e38ef23d-r2'});
     assert.equal((await runTask(app,'versioned-desktop-second')).state,'succeeded');assert.equal(calls.length,2);
-    assert.equal(calls[1].url,destination.gatewayUrl+'/runtimes/synthetic/invocations?endpoint=v4-next');
+    assert.equal(calls[1].url,destination.gatewayUrl+'/runtimes/synthetic/invocations?endpoint=arm64-v4-e38ef23d-r2');
     assert.equal(calls[1].headers.get('X-PA-Agent-Token'),'Bearer '+token+'-rotated');
+    config.configure({...destination,appToken:token+'-rotated',deploymentVersion:'v4-next'});
+    assert.equal((await runTask(app,'versioned-desktop-changed')).state,'failed');assert.equal(calls.length,2);
     config.revoke();assert.equal((await runTask(app,'versioned-desktop-revoked')).state,'failed');assert.equal(calls.length,2);
     assert.doesNotMatch(JSON.stringify(desktop.options),/desktop-app-token|Bearer/);
   }finally{app.close();}

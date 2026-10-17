@@ -134,7 +134,8 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
       }
       const {workflowVersion:_version,operation:_operation,...payload}=value;
       const output=await orchestrator.invokeOwnedWorkflow({...payload,deadline:request.deadline,signal:request.signal,
-        sessionId:request.sessionId,requestId:request.requestId});
+        sessionId:request.sessionId,requestId:request.requestId,
+        ...(request.resultFits?{resultFits:request.resultFits}:{})});
       const identity=workflowBindings.find(item=>item.workflowId===output?.workflowId);
       if (!record(output) || output.workflowVersion!==WORKFLOW_VERSION || output.verification!=='unverified'
         || !identity || output.templateVersion!==identity.templateVersion || output.templateDigest!==identity.templateDigest

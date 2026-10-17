@@ -1,6 +1,7 @@
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
+import {MAX_AGENTARTS_RESULT_BYTES} from '@personal-agent/contracts/agentarts-transport';
 import {attachAgentWebSocketTransport, equalInboundToken} from './websocket-transport.mjs';
 import {createBindingDispatcher} from './binding-dispatch.mjs';
 import {ownedRequestPath} from './request-path.mjs';
@@ -8,6 +9,7 @@ import {createStageTimeline} from './stage-timeline.mjs';
 
 const MAX_BYTES = 1_200_000;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+const resultEvents = result => [{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}];
 const json = (response, status, data) => {
   response.writeHead(status, {'content-type':'application/json; charset=utf-8', 'cache-control':'no-store'});
   response.end(JSON.stringify(data));
@@ -86,7 +88,8 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     if (binding && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Owned binding credential required');
     if (serviceValue && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Service host credential required');
     if (serviceValue && !serviceControllers[serviceName]) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Service controller unavailable');
-    const invocation = {query,deadline,signal,sessionId,requestId};
+    const invocation = {query,deadline,signal,sessionId,requestId,
+      ...(binding?.workflow&&channel==='websocket'?{resultFits:result=>Buffer.byteLength(JSON.stringify(resultEvents(result)))<=MAX_AGENTARTS_RESULT_BYTES}:{})};
     const result = serviceValue ? await serviceControllers[serviceName]({...invocation,value:serviceValue})
       : testValue ? await testVersionController({...invocation,value:testValue})
       : binding ? await bindings.invoke(invocation,binding) : await bindings.invokeDefault(invocation);
@@ -94,8 +97,10 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     if (Date.now() >= Date.parse(deadline)) throw new ProtocolError('TIMEOUT','Invocation deadline expired');
     const text = JSON.stringify(result);
     const outputLimit = (binding?.workflow || serviceValue) && channel==='http' ? 1_100_000 : 64_000;
-    if (Buffer.byteLength(text)>outputLimit) throw new ProtocolError('EXTERNAL_FAILURE','Agent output exceeds limit');
-    return [{event:'message',data:{text}},{event:'task_end'},{event:'end'}];
+    const events=resultEvents(result);
+    if (Buffer.byteLength(text)>outputLimit||channel==='websocket'&&Buffer.byteLength(JSON.stringify(events))>MAX_AGENTARTS_RESULT_BYTES)
+      throw new ProtocolError('EXTERNAL_FAILURE','Agent output exceeds limit');
+    return events;
     },{sessionId,requestId,channel});
   };
   let transport;

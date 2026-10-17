@@ -74,10 +74,12 @@ test('HTTPS attaches current host token and exact version only at its original d
   assert.equal(new Headers(calls[0].init.headers).get('X-PA-Agent-Token'),'Bearer '+token);
   assert.equal(new Headers(calls[0].init.headers).get('Authorization'),'Bearer public-outer');
   assert.equal(new Headers(original.headers).has('X-PA-Agent-Token'),false,'caller input is never mutated');
-  current={appToken:token+'-rotated',deploymentVersion:'v4-next'};await options.fetchImpl(invocationUrl,requestInit());
-  assert.equal(calls[1].url,invocationUrl+'?endpoint=v4-next');assert.equal(new Headers(calls[1].init.headers).get('X-PA-Agent-Token'),'Bearer '+token+'-rotated');
-  current={};await options.fetchImpl(invocationUrl,requestInit());
-  assert.equal(calls[2].url,invocationUrl);assert.equal(new Headers(calls[2].init.headers).has('X-PA-Agent-Token'),false);
+  current={appToken:token+'-rotated',deploymentVersion:'arm64-v4-e38ef23d-r2'};await options.fetchImpl(invocationUrl,requestInit());
+  assert.equal(calls[1].url,invocationUrl+'?endpoint=arm64-v4-e38ef23d-r2');assert.equal(new Headers(calls[1].init.headers).get('X-PA-Agent-Token'),'Bearer '+token+'-rotated');
+  current={appToken:token,deploymentVersion:'v4-next'};
+  assert.throws(()=>options.fetchImpl(invocationUrl,requestInit()),/固定部署版本/);
+  current={};assert.throws(()=>options.fetchImpl(invocationUrl,requestInit()),/固定部署版本/);
+  assert.equal(calls.length,2);
 });
 test('HTTPS rejects another destination, query, redirect, forged token and cancellation before any network send',async()=>{
   let reads=0,sends=0;const options=createAgentArtsTransportConfig({binding,environment:{},
@@ -87,7 +89,7 @@ test('HTTPS rejects another destination, query, redirect, forged token and cance
     invocationUrl.replace('https:','http:'),invocationUrl.replace('https://','https://user:pass@')]) {
     assert.throws(()=>options.fetchImpl(url,requestInit()),/目的地/);
   }
-  assert.equal(reads,0);assert.equal(sends,0);
+  assert.equal(reads,1,'only construction reads the fixed version');assert.equal(sends,0);
   for(const init of [{...requestInit(),method:'GET'},{...requestInit(),redirect:'follow'},
     {...requestInit(),headers:{'x-pa-agent-token':'Bearer forged-public-fixture'}},
     {...requestInit(),signal:AbortSignal.abort()}])assert.throws(()=>options.fetchImpl(invocationUrl,init));

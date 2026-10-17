@@ -23,6 +23,10 @@ export interface AgentArtsRuntimeApplicationOptions
   extends Omit<RuntimeApplicationOptions, 'profile' | 'coordination' | 'text' | 'competitionRealtimeModel'> {
   gatewayUrl: string;
   runtimeName: string;
+  /** Non-secret fixed deployment identity; credentials remain re-readable. */
+  deploymentVersion?: string;
+  /** Trusted synchronous check of the current host's fixed deployment. */
+  assertDeploymentBinding?: () => void;
   invokeMode?: 'debug' | 'published';
   workflowGoalInput?: string;
   responseMode?: 'text' | 'tool-proposal-json';
@@ -52,6 +56,8 @@ export function createAgentArtsRuntimeApplication(
   const {
     gatewayUrl,
     runtimeName,
+    deploymentVersion,
+    assertDeploymentBinding,
     invokeMode,
     workflowGoalInput,
     responseMode,
@@ -70,6 +76,9 @@ export function createAgentArtsRuntimeApplication(
     beforeCompetitionSend,
     ...runtimeOptions
   } = options;
+  if (deploymentVersion !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(deploymentVersion)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Invalid fixed AgentArts deployment version');
+  }
   if (initialRequestMode === 'goal-with-tools-json'
     && (responseMode !== 'tool-proposal-json'
       || !runtimeOptions.competitionToolAvailability?.length
@@ -128,6 +137,7 @@ export function createAgentArtsRuntimeApplication(
     ...runtimeOptions,
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
+    ...(assertDeploymentBinding === undefined ? {} : {assertCoordinationBinding: assertDeploymentBinding}),
     // Cloud construction above already validated the same gateway/runtime target.
     // Missing WSS/credentials stays a connect-time error, never a direct API fallback.
     competitionRealtimeModel: new AgentArtsRealtimeModelGateway({
@@ -136,6 +146,7 @@ export function createAgentArtsRuntimeApplication(
       ...(websocketAuthorizationProvider === undefined ? {} : {websocketAuthorizationProvider}),
     }, realtimeSocket),
     coordinationBinding:createHash('sha256').update(JSON.stringify({gatewayUrl,runtimeName,
+      ...(deploymentVersion === undefined ? {} : {deploymentVersion}),
       invokeMode:invokeMode??'published',workflowGoalInput:workflowGoalInput??null,
       responseMode:responseMode??'text',initialRequestMode:initialRequestMode??'goal',
       ...(transport === 'wss' ? {transport,websocketUrl,allowHttpsFallback:allowHttpsFallback??false} : {}),

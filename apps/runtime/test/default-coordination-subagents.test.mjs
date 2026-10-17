@@ -108,14 +108,18 @@ test('persistent default children retain the original AgentArts candidate protoc
         app.close();app=open(restored);
         const restoredClient=new Client(app);await restoredClient.connect();
         const approval=app.runtime.getApproval(`competition-tool-${child.taskId}-1`);
-        await restoredClient.call('authorization.respond',{approvalId:approval.approvalId,
+        const approve=()=>restoredClient.call('authorization.respond',{approvalId:approval.approvalId,
           expectedRevision:approval.revision,decision:'allow_once'});
+        if(initial!==restored)await assert.rejects(approve(),{code:'REVISION_CONFLICT'});
+        else await approve();
         await until(()=>app.activeTaskCount===0);
         const outcome=app.runtime.getTask(child.taskId);
         assert.deepEqual(app.runtime.loadCheckpoint(child.taskId,'subtask-coordination-binding'),originalBinding);
         assert.equal(app.runtime.loadCheckpoint(child.taskId,'application-deadline'),originalDeadline);
         if(initial!==restored){
-          assert.equal(outcome.state,'failed');assert.equal(outcome.error.code,'REVISION_CONFLICT');
+          assert.equal(outcome.state,'waiting_approval');
+          assert.deepEqual(app.runtime.getApproval(approval.approvalId),approval);
+          assert.equal(approval.state,'pending');assert.equal(app.runtime.policy.get(approval.approvalId),undefined);
           assert.notEqual(app.coordinationConfigurationRef,oldRef);
           assert.equal(reads,0);assert.deepEqual(app.runtime.readToolExecutions(child.taskId),[]);
           assert.deepEqual(app.runtime.loadCheckpoint(child.taskId,'competition-loop'),originalLoop);

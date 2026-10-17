@@ -6,7 +6,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     throw Error('AgentArts 传输配置无效：主通道只允许 wss/https，备用开关只允许 0/1');
   }
   if (configurationProvider!==undefined && typeof configurationProvider?.read!=='function') throw Error('AgentArts 受信配置读取器无效');
-  let websocketBound=false,websocketDeploymentVersion;
+  let deploymentBound=false,boundDeploymentVersion;
   const currentOptions=()=>{
     const value=configurationProvider?configurationProvider.read():{};
     if (!value || typeof value!=='object' || Array.isArray(value) || typeof value.then==='function'
@@ -15,11 +15,17 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
       || value.deploymentVersion!==undefined && (typeof value.deploymentVersion!=='string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(value.deploymentVersion))) {
       throw Error('AgentArts 当前受信传输配置无效');
     }
-    if (transport==='wss' && websocketBound && value.deploymentVersion!==websocketDeploymentVersion) {
-      throw Error('AgentArts WSS 固定部署版本已改变，请重新绑定连接');
+    if (deploymentBound && value.deploymentVersion!==boundDeploymentVersion) {
+      throw Error('AgentArts 固定部署版本已改变，请重新绑定连接');
     }
     return value;
   };
+  boundDeploymentVersion=currentOptions().deploymentVersion;
+  deploymentBound=true;
+  const deploymentBinding=configurationProvider?{
+    ...(boundDeploymentVersion===undefined?{}:{deploymentVersion:boundDeploymentVersion}),
+    assertDeploymentBinding:()=>{currentOptions();},
+  }:{};
   // Only the existing Runtime HTTP port consumes this closure. No credentials are serializable options.
   const httpsOptions=()=>{
     if (!configurationProvider) return {};
@@ -32,8 +38,8 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     return {fetchImpl:(url,init)=>{
       // Compare the original URL too: URL normalization must not accept a different path or query.
       const input=url instanceof URL?url.href:url;
-      const fallbackTarget=transport==='wss' && fallback==='1' && websocketDeploymentVersion!==undefined
-        ?destination+'?endpoint='+websocketDeploymentVersion:undefined;
+      const fallbackTarget=transport==='wss' && fallback==='1' && boundDeploymentVersion!==undefined
+        ?destination+'?endpoint='+boundDeploymentVersion:undefined;
       if (typeof input!=='string' || (input!==destination && input!==fallbackTarget) || init?.method!=='POST' || init.redirect!=='error') throw Error('AgentArts 请求必须使用已绑定目的地，且禁止重定向');
       if (init.signal?.aborted) throw Error('AgentArts 请求已取消');
       const headers=new Headers(init.headers);
@@ -54,7 +60,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     if (fallback==='1' || environment.PA_AGENTARTS_WSS_URL!==undefined) {
       throw Error('AgentArts WSS 地址与 HTTPS 备用开关需要启用 wss 主通道');
     }
-    return {transport,...httpsOptions()};
+    return {transport,...deploymentBinding,...httpsOptions()};
   }
   const supplied=environment.PA_AGENTARTS_WSS_URL??transportPreferences.websocketUrl;
   if (typeof supplied!=='string' || !supplied) {
@@ -83,12 +89,10 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     || rawQuery!=='' && !/^\?endpoint=[A-Za-z0-9_.-]{1,128}$/.test(rawQuery)) {
     throw Error('AgentArts WSS 必须使用同一网关与运行时地址');
   }
-  websocketDeploymentVersion=currentOptions().deploymentVersion;
-  if (rawQuery!=='' && (websocketDeploymentVersion===undefined || rawQuery!=='?endpoint='+websocketDeploymentVersion)) {
+  if (rawQuery!=='' && (boundDeploymentVersion===undefined || rawQuery!=='?endpoint='+boundDeploymentVersion)) {
     throw Error('AgentArts WSS 地址版本必须与当前受信部署版本完全一致');
   }
-  if (websocketDeploymentVersion!==undefined) address.searchParams.set('endpoint',websocketDeploymentVersion);
-  websocketBound=true;
+  if (boundDeploymentVersion!==undefined) address.searchParams.set('endpoint',boundDeploymentVersion);
   const readToken=()=>{
     const token=currentOptions().appToken??environment.PA_AGENTARTS_APP_TOKEN;
     if (typeof token!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(token)) {
@@ -97,7 +101,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     return `Bearer ${token}`;
   };
   readToken();
-  return {transport,websocketUrl:address.href,allowHttpsFallback:fallback==='1',...httpsOptions(),
+  return {transport,...deploymentBinding,websocketUrl:address.href,allowHttpsFallback:fallback==='1',...httpsOptions(),
     websocketAuthorizationProvider:{read:async()=>readToken()}};
 }
 

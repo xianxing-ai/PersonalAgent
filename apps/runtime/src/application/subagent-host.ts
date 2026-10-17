@@ -16,6 +16,7 @@ import {
 } from '@personal-agent/agents';
 import {runAgent} from '@personal-agent/agents';
 import {CLOUD_SKILL_TOOL_NAME} from '@personal-agent/skills';
+import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import {
   ModelGateway,
   FakeModelProvider,
@@ -246,6 +247,23 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
   };
   const execution = runtime.loadCheckpoint(childTaskId, 'subtask-execution-binding') as {kind?: string} | undefined;
   const defaultChild = execution?.kind === 'competition' || runtime.loadCheckpoint(childTaskId, 'subtask-coordination-binding') !== undefined;
+  const selectedModel = runtime.loadCheckpoint(childTaskId, 'execution-model');
+  if (defaultChild && (binding.model !== undefined || selectedModel !== undefined)) {
+    const records = runtime.loadCheckpoint(binding.parentTaskId, 'subtask-progress-records') as Record<string, SubtaskProgressRecord> | undefined;
+    const record = records && Object.hasOwn(records, binding.subtaskId) ? records[binding.subtaskId] : undefined;
+    if (!isDeepStrictEqual(execution, {kind: 'competition'}) || !record
+      || record.parentTaskId !== binding.parentTaskId || record.subtaskId !== binding.subtaskId
+      || record.inputDigest !== computeSubtaskInputDigest(binding)) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Competition child selection no longer matches its original dispatch');
+    }
+    let selection;
+    try {selection = parseExecutionModelSelection(selectedModel);}
+    catch {throw new ProtocolError('REVISION_CONFLICT', 'Competition child has no valid original model selection');}
+    if ((binding.model !== undefined && selection.modelId !== binding.model.trim())
+      || (binding.reasoningEffort !== undefined && selection.reasoningEffort !== binding.reasoningEffort)) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Competition child model selection changed');
+    }
+  }
   const competition=runtime.loadCheckpoint(childTaskId,'competition-loop') as {pending?:unknown;continuation?:unknown}|undefined;
   const replay=runtime.loadCheckpoint(childTaskId,'competition-confirmed-replay') as {runId:string;inputDigest:string}|undefined;
   if(defaultChild && !competition?.pending && competition?.continuation && replay
@@ -256,7 +274,7 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
   let runId: string, toolName: string, argumentsValue: Record<string, unknown>;
   if (defaultChild) {
     const loop = runtime.loadCheckpoint(childTaskId, 'competition-loop') as {step?: number; pending?: {toolName?: string; arguments?: Record<string, unknown>}} | undefined;
-    if (binding.model !== undefined || !options.runDefaultWorker || !Number.isSafeInteger(loop?.step) || (loop?.step ?? 0) < 1
+    if (!options.runDefaultWorker || !Number.isSafeInteger(loop?.step) || (loop?.step ?? 0) < 1
       || typeof loop?.pending?.toolName !== 'string' || !loop.pending.arguments || Array.isArray(loop.pending.arguments)) {
       throw new ProtocolError('NOT_FOUND', 'Default child has no original pending Competition invocation');
     }

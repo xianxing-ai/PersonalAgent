@@ -68,10 +68,14 @@ export interface OwnedWorkflowAdvanceRequest {
   hostControl?:WorkflowControlCommand;
   /** Original full tool results are retained by TaskRuntime; restoration must match the sealed digest. */
   resolvedValues?:Readonly<Record<string,unknown>>;
+  /** Trusted transport composition only; never accepted from the workflow JSON envelope. */
+  resultFits?:(result:OwnedWorkflowAdvanceResult)=>boolean;
   snapshot?:{namespace:string;asOf:string;sourceVersions:Readonly<Record<string,string>>};
 }
 type NodeState = 'pending'|'completed'|'skipped'|'waiting_receipt'|'unavailable'|'failed'|'unknown'|'cancelled'|'stopping';
 interface StepState {state:NodeState;value?:unknown;proposal?:WorkflowProposal;evidenceRefs?:readonly string[];reason?:string;
+  /** Engine-owned marker: a user value which resembles a reference remains ordinary input data. */
+  inputReference?:true;
   retrySafe?:true;previousAttempts?:readonly {proposal:WorkflowProposal;state:NodeState;value?:unknown;evidenceRefs:readonly string[]}[];
   shadow?:{plan:WorkflowShadowSelectedPlan;selectionDigest:string;evaluation?:WorkflowShadowEvaluationReceipt};
   /** Sealed original alternatives; a decision receipt is not a business-tool receipt. */
@@ -112,6 +116,8 @@ const copy = <T>(value:T):T => {
 };
 const referenced=(value:unknown):value is {kind:'trusted_tool_result_reference';valueDigest:string;bytes:number;evidenceRefs:readonly string[]} =>
   plain(value)&&value.kind==='trusted_tool_result_reference'&&typeof value.valueDigest==='string';
+const inputReferenced=(value:unknown):value is {kind:'workflow_input_reference';valueDigest:string} =>
+  plain(value)&&value.kind==='workflow_input_reference'&&typeof value.valueDigest==='string';
 const NODE_OUTPUT_BYTES=(template:OwnedWorkflowTemplate):number=>Math.floor((1_100_000-65_536)/(4*template.nodes.length));
 function decisionInput(context:WorkflowNodeContext):Record<string,unknown> {
   if(!['F15_N01','F20_N01'].includes(context.node.id)||!plain(context.input)) return {input:context.input};
@@ -258,6 +264,11 @@ export class OwnedWorkflowEngine {
     return {template:copy(template),node:copy(node),input:copy(request.input),
       predecessorOutputs:copy(Object.fromEntries(node.dependencies.map(dep=>{
         const value=state.nodes[dep.nodeId]?.value;
+        if(state.nodes[dep.nodeId]?.inputReference) {
+          if(!inputReferenced(value)||template.nodes.find(item=>item.id===dep.nodeId)?.kind!=='input'||value.valueDigest!==state.inputDigest
+            ||digest(request.input)!==value.valueDigest) invalid('Workflow input reference does not match its sealed original input');
+          return [dep.nodeId,request.input];
+        }
         if(referenced(value)&&Object.hasOwn(request.resolvedValues??{},dep.nodeId)) {
           const restored=request.resolvedValues![dep.nodeId];
           if(digest(restored)!==value.valueDigest) invalid('Restored result does not match the original signed checkpoint');
@@ -479,20 +490,27 @@ export class OwnedWorkflowEngine {
     return state.mode==='isolated'?{isolation:{namespace:state.namespace,snapshotDigest:state.snapshotDigest}}:{};
   }
   async advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult> {
+    if(request.resultFits!==undefined&&typeof request.resultFits!=='function')invalid('Invalid trusted workflow result bound');
     if(!Number.isFinite(Date.parse(request.deadline)))invalid('Invalid invocation deadline');
     if(request.taskDeadline!==undefined&&!Number.isFinite(Date.parse(request.taskDeadline)))invalid('Invalid original task deadline');
     const template=getOwnedWorkflowTemplate(request.workflowId);
     if(!template) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Unknown owned workflow');
     const tools=parseCoordinationAvailableTools(request.availableTools);
     const state=await this.initialize(request,template,tools);
+    // Reject an incompatible existing checkpoint before consuming receipts or preparing any new node.
+    // The caller retains the original checkpoint and trusted host receipts for a larger transport.
+    if(!this.deliverable(template,state,request)) invalid('Existing workflow checkpoint requires a larger result transport');
     // A new HTTP invocation window may move forward, but never renews the sealed task lifetime.
     request={...request,deadline:new Date(Math.min(Date.parse(request.deadline),Date.parse(state.originalDeadline))).toISOString()};
     const abort=():void=>{for(const step of Object.values(state.nodes)) {
       if(step.state==='pending') step.state='cancelled';
       else if(step.state==='waiting_receipt') {step.state='unknown';step.reason='Cancellation has no host stop/readback receipt';}
     }};
-    if(request.signal.aborted) {abort();return this.result(template,state,true);}
+    if(request.signal.aborted) {abort();return this.delivery(template,state,request,true);}
     control(request);await this.admitReceipts(request,state,template);
+    // Original tool executions remain in the host. Large confirmed values are represented by
+    // their existing trusted host reference, never replaced with a new execution or an empty result.
+    if(!this.deliverable(template,state,request)) invalid('Workflow receipts require a larger result transport; original host receipts remain authoritative');
     const command=request.hostControl;
     if(command) {
       if(!request.checkpoint||!safeId(command.commandId)||!['pause','resume','continue','notify_controller','request_controller','request_user'].includes(command.action)
@@ -501,7 +519,7 @@ export class OwnedWorkflowEngine {
       const commandDigest=digest(command),prior=hostControl.commands[command.commandId];
       if(prior!==undefined) {
         if(prior!==commandDigest) invalid('Workflow control command identity changed');
-        return this.result(template,state);
+        return this.delivery(template,state,request);
       }
       if(!this.options.receiptVerifier?.verifyControl||!await this.options.receiptVerifier.verifyControl(copy(command),request)) invalid('Workflow control proof is not verified');
       control(request);
@@ -512,10 +530,10 @@ export class OwnedWorkflowEngine {
       else if(command.action==='request_user')hostControl.status='awaiting_user';
       else if(command.action==='resume'||command.action==='continue')hostControl.status='running';
       // Notify is an observable host request, not proof that a controller received it.
-      return this.result(template,state);
+      return this.delivery(template,state,request);
     }
-    if(state.hostControl&&state.hostControl.status!=='running')return this.result(template,state);
-    if(Object.values(state.nodes).some(step=>step.state==='waiting_receipt'||step.state==='stopping')) return this.result(template,state);
+    if(state.hostControl&&state.hostControl.status!=='running')return this.delivery(template,state,request);
+    if(Object.values(state.nodes).some(step=>step.state==='waiting_receipt'||step.state==='stopping')) return this.delivery(template,state,request);
     const ready:OwnedWorkflowNode[]=[];
     for(const node of template.nodes) {
       const step=state.nodes[node.id]!;if(step.state!=='pending') continue;
@@ -543,6 +561,12 @@ export class OwnedWorkflowEngine {
     }
     // Serial frontier execution: no competing model preparation or local CPU requests.
     for(const node of ready) {
+      const before=copy(state),unavailable={state:'unavailable' as const,
+        reason:'Node output requires the existing host Artifact/reference adapter before transport'};
+      const rejected=copy(before);rejected.nodes[node.id]={...before.nodes[node.id],...unavailable};
+      // Reserve the actual sealed failure continuation, not a guessed per-node byte quota.
+      // No model preparation or host read starts if even this continuation cannot be delivered.
+      if(!this.deliverable(template,rejected,request)) invalid('Workflow continuation requires a larger result transport');
       const context=this.context(request,template,node,state,tools);
       const run=async()=>{try {
         control(request);const result=await this.runNode(context,state);control(request);
@@ -566,11 +590,48 @@ export class OwnedWorkflowEngine {
       state.nodes[id]={...result,...(state.nodes[id]!.evidenceRefs?{evidenceRefs:state.nodes[id]!.evidenceRefs}:{}),
         ...(state.nodes[id]!.shadow?{shadow:state.nodes[id]!.shadow}:{}),
         ...(state.nodes[id]!.previousAttempts?{previousAttempts:state.nodes[id]!.previousAttempts}:{})};
+      if(!this.deliverable(template,state,request)) {
+        // The cloud has not executed a business operation. Do not expose an undeliverable
+        // proposal or retain branch choices selected by a candidate which was never emitted.
+        state.nodes=rejected.nodes;state.selections=rejected.selections;
+        return this.delivery(template,state,request);
+      }
       // A sequential workflow never starts a second branch while a host effect/decision is unresolved.
       if(result.state==='waiting_receipt'||result.state==='unknown'||result.state==='failed'||result.state==='unavailable') break;
     }
     if(request.signal.aborted) abort();
-    return this.result(template,state,request.signal.aborted);
+    return this.delivery(template,state,request,request.signal.aborted);
+  }
+  private deliverable(template:OwnedWorkflowTemplate,state:CheckpointState,request:OwnedWorkflowAdvanceRequest,cancelled=false):OwnedWorkflowAdvanceResult|undefined {
+    const fits=():OwnedWorkflowAdvanceResult|undefined=>{
+      let result:OwnedWorkflowAdvanceResult;
+      try {result=this.result(template,state,cancelled);}
+      catch(error) {if(error instanceof ProtocolError&&error.code==='EXTERNAL_FAILURE')return undefined;throw error;}
+      return !request.resultFits||request.resultFits(result)?result:undefined;
+    };
+    const original=fits();if(original||!request.resultFits)return original;
+    // The original input is already resent and digest-bound on every advance. Avoid storing
+    // a second full copy in nodes and a third base64 copy in the checkpoint on narrow transports.
+    for(const node of template.nodes) {
+      const step=state.nodes[node.id]!;
+      if(node.kind==='input'&&step.state==='completed'&&Object.hasOwn(step,'value')&&!step.inputReference) {
+        if(digest(step.value)!==state.inputDigest)invalid('Workflow input value changed before transport');
+        step.value={kind:'workflow_input_reference',valueDigest:state.inputDigest};
+        step.inputReference=true;
+      } else if(step.proposal
+        &&Object.hasOwn(step,'value')&&!referenced(step.value)) {
+        const value=step.value;
+        step.value={kind:'trusted_tool_result_reference',valueDigest:digest(value),bytes:Buffer.byteLength(JSON.stringify(value)),
+          evidenceRefs:[...(step.evidenceRefs??[])],operationId:step.proposal.operationId,inputDigest:step.proposal.inputDigest};
+      } else continue;
+      const result=fits();if(result)return result;
+    }
+    return undefined;
+  }
+  private delivery(template:OwnedWorkflowTemplate,state:CheckpointState,request:OwnedWorkflowAdvanceRequest,cancelled=false):OwnedWorkflowAdvanceResult {
+    const result=this.deliverable(template,state,request,cancelled);
+    if(!result)invalid('Workflow continuation requires a larger result transport');
+    return result!;
   }
   private result(template:OwnedWorkflowTemplate,state:CheckpointState,cancelled=false):OwnedWorkflowAdvanceResult {
     const steps=Object.values(state.nodes),proposals=state.hostControl&&state.hostControl.status!=='running'?[]

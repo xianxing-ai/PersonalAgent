@@ -1,5 +1,11 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-17 审批恢复与 WSS 结果预算修复（provisional）
+
+AgentArts Runtime 工厂增加仅可信组合可注入的非秘密 `deploymentVersion` 与同步 `assertDeploymentBinding`，复用原 `coordinationBinding` 和任务 checkpoint；HTTPS/WSS 固定版本，同版凭据可刷新。Competition 任务在批准写入前、直接恢复前及云端发送前核对原配置；缺失或失配返回 `REVISION_CONFLICT`，不重新绑定旧任务，不先消费授权。显式模型子任务也按原父派发、原选择及执行种类恢复。
+
+`OwnedWorkflowAdvanceRequest.resultFits` 仅由可信传输组合注入，workflow JSON 白名单仍拒绝该字段。WSS 对完整事件数组执行现有 64,000 字节预算；输入摘要只还原同绑定原输入，工具结果引用保留原操作摘要和 Evidence。不可交付的新节点明确 unavailable 并保留可续检查点，unknown 不重放；HTTP 原容量与小结果形状保留。未增加 Core wire、数据库迁移、第二任务库或协议容量，也未扩大冻结范围。具体行为与验证边界见 [V5 接线](../competition/DESKTOP_AGENTARTS_MODELS_V5.md)。
+
 ## 2026-10-16 Desktop WSS／语音／模型目录增量（provisional）
 
 Desktop 多会话、草稿、原生推理强度与音频诊断均复用私有 IPC；任务、审批及听写结果绑定原对话，不新增 Core wire 或执行循环。对话存储 v4 保留 v1–v3 历史及迁移前备份；回退不能直接用旧版读取 v4。
