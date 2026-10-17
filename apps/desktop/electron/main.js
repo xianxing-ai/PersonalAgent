@@ -51,6 +51,9 @@ import {createWorkspaceConfigHost} from './workspace-config-host.js';
 import {createWorkspacePatchRecoveryHost} from './workspace-patch-recovery-host.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
+import {createRemoteMcpConfig} from './remote-mcp-config.js';
+import {createDesktopRemoteMcpHost} from './remote-mcp-host.js';
+import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
@@ -187,6 +190,7 @@ let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 let installedSkillsHost;
+let remoteMcpConfig,remoteMcpHost,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
 let voicePcmSource;
 let voiceInput;
@@ -531,6 +535,7 @@ function snapshot(surface) {
       vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
+    remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     approvals: [...approvals.values()].filter(approval=>!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface)),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
@@ -1642,7 +1647,7 @@ async function initializeRuntime() {
           }
           mailAnalysisHost?.assertCloudSend(request);
         },
-        tools: [...(syntheticMvp ? syntheticTools.tools : codingWorkspace.tools.length ? codingWorkspace.tools : competitionCatalog ? [competitionCatalog.tool] : []), ...(goalCloudHost?.tools ?? goalHost.tools), ...productTools.tools, ...(mailHost?.tools ?? []), ...(calendarMeetingHost?.tools ?? []), ...(feedsHost?.tools ?? []), ...(notepadHost?.tools ?? []), ...(todoHost?.tools ?? []), ...(notificationApplicationHost?.tools ?? []), ...(subagentTool ? [subagentTool] : []), ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[])],
+        tools: [...(syntheticMvp ? syntheticTools.tools : codingWorkspace.tools.length ? codingWorkspace.tools : competitionCatalog ? [competitionCatalog.tool] : []), ...(goalCloudHost?.tools ?? goalHost.tools), ...productTools.tools, ...(mailHost?.tools ?? []), ...(calendarMeetingHost?.tools ?? []), ...(feedsHost?.tools ?? []), ...(notepadHost?.tools ?? []), ...(todoHost?.tools ?? []), ...(notificationApplicationHost?.tools ?? []), ...(subagentTool ? [subagentTool] : []), ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[])],
         prepareCompetitionToolExport:async ({phase,taskId,proposal,deadline,signal})=>{
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;
           if (!publicReferenceConsent || !['preflight','projection'].includes(phase)) throw Error('原生公开资料许可入口不可用');
@@ -2129,6 +2134,10 @@ async function action(event, name, payload) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel');
+  if(name==='remoteMcp.open') {
+    if(sender!==admin || !competitionMode || !remoteMcpManagement || payload!==undefined)throw Error('请从正式管理后台打开远程 MCP 管理');
+    remoteMcpManagement.open();return;
+  }
   if (['agentartsModels.state','agentartsModels.refresh','agentartsModels.configure'].includes(name)) {
     if(sender!==admin || !competitionMode || !agentArtsModels)throw Error('请从模型设置管理 AgentArts 模型');
     const result=name==='agentartsModels.state'?agentArtsModels.snapshot():name==='agentartsModels.refresh'?await agentArtsModels.refresh():agentArtsModels.configure(payload);publish();return result;
@@ -3058,6 +3067,13 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  if(competitionMode) {
+    remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
+    remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
+    remoteMcpManagement=createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner:()=>admin,
+      config:remoteMcpConfig,host:remoteMcpHost,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
+      namespace:desktopHost.userNamespace,onUpdate:publish});
+  }
   agentArtsModels=createAgentArtsModelSettings({configuration:agentArtsConfig,readCatalog:async({deadline,signal})=>{
     const binding=agentArtsConfig.binding();
     const transport=createAgentArtsTransportConfig({binding,environment:{PA_AGENTARTS_TRANSPORT:'https'},configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(binding)}});
@@ -3152,6 +3168,15 @@ app.whenReady().then(async () => {
       app.isQuitting = false;
       runtimeError = 'Runtime 仍有活动任务；请先等待完成或停止任务后再退出';
       publish();
+      return;
+    }
+    if(remoteMcpHost && !remoteMcpClosed) {
+      event.preventDefault();
+      if(!remoteMcpClosing) {
+        remoteMcpManagement.close();
+        remoteMcpClosing=remoteMcpHost.dispose().then(()=>{remoteMcpConfig.dispose();remoteMcpClosed=true;app.quit();})
+          .catch(()=>{remoteMcpClosing=undefined;runtimeError='远程 MCP 关闭未确认，请先断开连接后再退出';publish();});
+      }
       return;
     }
     if (wakeVoice && !wakeQuitHandled) {
