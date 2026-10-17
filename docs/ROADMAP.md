@@ -1,5 +1,6 @@
 # 开发计划与进度
 
+<<<<<<< HEAD
 ## 2026-10-16 MCP 长驻缓存评审修复与 Desktop TLS 组合（in_progress）
 
 goo122 基于 #373 `14f34b40` 推进[组合验收](modules/MOD-06-PRODUCT-TLS-20261016.md)，交付基线为同步修复后的 #373 `3aa04eb6`：实际 Electron 管理窗口/安全存储、默认 fetch、loopback HTTPS 与原 SQLite/Policy 完成审批、一次调用、断连、拒绝、两次正常重启读回、旧许可拒绝和撤销；四类证书/目录/重定向负例零工具调用。原生对话框响应与服务内容仍为合成，云调用 0。#369 缓存无界增长评审已修复为每 host 最多 64 个 run，重连不能清空身份配额；`bfcb1ab1` 已普通推送，并逐层同步 #370～#373。基础修复完整 check 3153 通过、31 跳过、0 失败；组合包最终完整 check 3175 通过、31 跳过、0 失败，MCP 20/20。首轮未修改的知识库写回出现 RESULT_UNKNOWN，独立复现及一次串行完整复核通过，初次底层原因仍未定位并保留日志。当前 CI/非作者评审和集成以 GitHub 为准。真实平台/OAuth/真人确认仍待验收，整个 MOD-06 保持 in_progress、provisional。
@@ -8,6 +9,8 @@ goo122 基于 #373 `14f34b40` 推进[组合验收](modules/MOD-06-PRODUCT-TLS-20
 
 goo122 基于 #372 `1b1ee4cb` 增加[本机 TLS 验收](modules/MOD-06-TLS-20261016.md)：原 SDK 默认 fetch、进程专属合成 CA、真实 loopback HTTPS 与 SQLite/Policy，五类证书/目录/重定向及审批/重启断开检查 5/5。MCP 工作区 19/19、宿主/管理/Runtime 回归 12/12、架构 3/3。无生产代码、Schema、迁移或依赖变化；没有修改系统信任或关闭 TLS 验证，模型/AgentArts 调用 0；不等同第三方平台/OAuth 验收，完整 MOD-06 保持 in_progress。
 
+=======
+>>>>>>> origin/main
 ## 2026-10-16 远程 MCP 原生管理与生产装配（in_progress）
 
 goo122 基于 #371 `49c2854d` 完成 [G14 管理工作包](modules/MOD-06-MANAGEMENT-20261016.md)：独立管理窗口、专用 IPC、服务定义导入/加密保存、原生连接与单次任务确认、Competition 默认生产注册、原 SQLite 审批/读回/撤销。配置变化需正常退出重启，不热换 Schema，不自动公布给云端或导出结果。最终定向（含退出回归）25/25，完整 check 3174 通过、31 跳过、0 失败；实际 Electron 产品烟测两次重启、批准前零调用、调用 1 次、旧审批拒绝、删除密文通过，未配置 Runtime 仍可保存且不能试调用。原生对话框响应显式合成，远端为本机 HTTP fixture，模型/AgentArts 调用 0；真实平台/OAuth 和真人原生确认未验收，完整模块保持 in_progress。

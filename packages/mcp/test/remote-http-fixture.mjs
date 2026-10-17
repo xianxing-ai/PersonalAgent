@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
+<<<<<<< HEAD
 import {createServer as createTlsServer} from 'node:https';
+=======
+>>>>>>> origin/main
 import {once} from 'node:events';
 import {createRemoteReadonlyMcpHost} from '../dist/index.js';
 
@@ -16,15 +19,23 @@ export const directory=(mode={})=>[
 // Explicit synthetic MCP service over real loopback HTTP; not remote TLS.
 export async function fixture(mode={}){
   const requests=[];
+<<<<<<< HEAD
   const serve=mode.tls?handler=>createTlsServer(mode.tls,handler):createServer;
   const server=serve(async(req,res)=>{
+=======
+  const server=createServer(async(req,res)=>{
+>>>>>>> origin/main
     try{
       const body=await Array.fromAsync(req).then(chunks=>Buffer.concat(chunks).toString());
       const message=body?JSON.parse(body):undefined;
       requests.push({method:req.method,headers:req.headers,message});
       if(mode.requiredAuthorization && req.headers.authorization!==mode.requiredAuthorization){res.writeHead(401).end('synthetic authorization refused');return;}
       if(req.method==='GET'){res.writeHead(405).end();return;}
+<<<<<<< HEAD
       if(mode.status){res.writeHead(mode.status,{location:mode.location??'https://unapproved.example/elsewhere'}).end('private diagnostic Bearer fixture');return;}
+=======
+      if(mode.status){res.writeHead(mode.status,{location:'https://unapproved.example/elsewhere'}).end('private diagnostic Bearer fixture');return;}
+>>>>>>> origin/main
       if(message.id===undefined){res.writeHead(202).end();return;}
       let result;
       if(message.method==='initialize'){
@@ -55,7 +66,11 @@ export async function fixture(mode={}){
     return fetch(`http://127.0.0.1:${server.address().port}/mcp`,init);
   };
   const host=createRemoteReadonlyMcpHost({endpoint,server:{name:'synthetic-reference',version:'1.0.0'},tool:{remoteName:'reference',descriptor},enabled:true,fetch:fetchPort});
+<<<<<<< HEAD
   return {host,fetch:fetchPort,loopbackEndpoint:`http://127.0.0.1:${server.address().port}/mcp`,
     ...(mode.tls?{secureEndpoint:`https://127.0.0.1:${server.address().port}/mcp`}:{}),
     requests,mode,calls:()=>requests.filter(r=>r.message?.method==='tools/call'),async close(){await host.dispose();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}};
+=======
+  return {host,fetch:fetchPort,loopbackEndpoint:`http://127.0.0.1:${server.address().port}/mcp`,requests,mode,calls:()=>requests.filter(r=>r.message?.method==='tools/call'),async close(){await host.dispose();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}};
+>>>>>>> origin/main
 }
