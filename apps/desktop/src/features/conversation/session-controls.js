@@ -1,10 +1,17 @@
 /** Metadata controls and debounced per-conversation drafts; no execution loop. */
-export function mountSessionControls(root,input,invoke,report){
+export function mountSessionControls(root,input,invoke,report,{flushBeforeClose}={}){
   const box=document.createElement('section');box.className='conversation-sessions';
   box.innerHTML='<label>对话<select data-session-list aria-label="当前对话"></select></label><button type="button" data-session-new>新对话</button><label>名称<input data-session-title maxlength="100" aria-label="对话名称"></label><button type="button" data-session-rename>保存名称</button><button type="button" data-session-archive>归档</button><details><summary>已归档</summary><div data-session-archived></div></details><p class="notice" data-session-status role="status"></p>';
   root.append(box);const select=box.querySelector('[data-session-list]'),title=box.querySelector('[data-session-title]'),status=box.querySelector('[data-session-status]'),archived=box.querySelector('[data-session-archived]');
   let active,state,busy=false,timer,titleDirty=false,titleRevision=0,signature='',closed=false,composing=false;
   const drafts=new Map(),versions=new Map(),dictations=new Set(),dictationQueues=new Map(),compositionWaiters=[];
+  window.addEventListener('beforeunload',event=>{
+    if(!active||!flushBeforeClose)return;
+    // A readonly archive may have newer late dictation in the cache.
+    if(!input.readOnly)drafts.set(active,input.value);
+    try{flushBeforeClose([...drafts].map(([conversationId,text])=>({conversationId,text})));}
+    catch(error){event.preventDefault();event.returnValue='';report(error);}
+  });
   async function saveDraft(id=active){if(!id||!drafts.has(id))return;await invoke('conversation.draft',{conversationId:id,text:drafts.get(id)});}
   input.addEventListener('input',()=>{if(!active)return;drafts.set(active,input.value);versions.set(active,(versions.get(active)??0)+1);clearTimeout(timer);const id=active;timer=setTimeout(()=>{timer=undefined;void saveDraft(id).catch(report);},800);});
   input.addEventListener('blur',()=>{clearTimeout(timer);timer=undefined;void saveDraft().catch(report);});

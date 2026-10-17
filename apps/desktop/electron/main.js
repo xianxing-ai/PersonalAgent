@@ -1,4 +1,5 @@
 import {handleConversationAction} from './conversation-actions.js';
+import {flushConversationDrafts} from './conversation-draft-close.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
@@ -513,7 +514,7 @@ function snapshot(surface) {
     adminNavigation: {...adminNavigation},
     audioLevel,
     orbStateOverride,
-    subagentTasks:orderedTasks().filter(task=>visibleConversationTask(task,surface)).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
+    subagentTasks:fakeMode?[]:orderedTasks().filter(task=>visibleConversationTask(task,surface)).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
     tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
@@ -1817,7 +1818,9 @@ async function initializeRuntime() {
         const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
           contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
         if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
-        return {contractRef,adapter:{config:binding,receiptSecret,
+        const transport=createAgentArtsTransportConfig({binding,transportPreferences:agentArtsConfig.readTransportPreferences(),configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(binding)}});
+        return {contractRef,adapter:{config:{...binding,...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{}),...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{})},receiptSecret,
+          assertDeploymentBinding:transport.assertDeploymentBinding,
           authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding)},
           hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},invokeMode:agentArtsInvokeMode}};
       }});
@@ -3056,6 +3059,10 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  ipcMain.on('desktop:draft-close',(event,entries)=>{
+    try{flushConversationDrafts(event,entries,{panel,workspace,conversations});event.returnValue={ok:true};}
+    catch{event.returnValue={ok:false,error:'关闭前草稿保存未确认，请保持窗口打开并重试'};}
+  });
   agentArtsModels=createAgentArtsModelSettings({configuration:agentArtsConfig,readCatalog:async({deadline,signal})=>{
     const binding=agentArtsConfig.binding();
     const transport=createAgentArtsTransportConfig({binding,environment:{PA_AGENTARTS_TRANSPORT:'https'},configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(binding)}});

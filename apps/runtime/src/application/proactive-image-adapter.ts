@@ -5,7 +5,9 @@ import type {AgentArtsRuntimeConfig,AgentArtsAuthorizationProvider,AgentArtsFetc
 
 export interface RuntimeProactiveImageAdapterOptions {
   /** Original trusted AgentArts transport configuration; never read from a model/event/Renderer request. */
-  config?:AgentArtsRuntimeConfig;
+  config?:AgentArtsRuntimeConfig & {deploymentVersion?:string};
+  /** Trusted composition rejects configuration changes before any credentials/send. */
+  assertDeploymentBinding?:()=>void;
   /** Explicit startup endpoint, mutually exclusive with config. HTTP is restricted to loopback fixtures. */
   endpoint?:string;
   authorizationProvider:AgentArtsAuthorizationProvider;
@@ -34,13 +36,28 @@ function endpointOf(options:RuntimeProactiveImageAdapterOptions):string {
     if(gateway.protocol!=='https:'||gateway.username||gateway.password||gateway.search||gateway.hash||!['','/'].includes(gateway.pathname)
       ||!/^[A-Za-z0-9_-]{1,64}$/u.test(config.runtimeName))fail('INVALID_ARGUMENT','Invalid trusted AgentArts gateway/runtime');
     value=gateway.origin+'/runtimes/'+encodeURIComponent(config.runtimeName)+'/invocations';
+    let version=config.deploymentVersion;
+    if(config.websocketUrl!==undefined){
+      let websocket:URL;try{websocket=new URL(config.websocketUrl);}catch{return fail('INVALID_ARGUMENT','Invalid bound proactive WSS endpoint');}
+      if(websocket.protocol!=='wss:'||websocket.username||websocket.password||websocket.hash
+        ||websocket.origin.replace(/^wss:/u,'https:')!==gateway.origin
+        ||![`/runtimes/${config.runtimeName}/ws`,`/runtimes/${config.runtimeName}/invocations/ws`].includes(websocket.pathname)
+        ||websocket.search&&!/^\?endpoint=[A-Za-z0-9_.-]{1,128}$/u.test(websocket.search))fail('INVALID_ARGUMENT','Invalid bound proactive WSS endpoint');
+      const selected=websocket.searchParams.get('endpoint')??undefined;
+      if(version!==undefined&&selected!==undefined&&version!==selected)fail('INVALID_ARGUMENT','Proactive deployment version mismatch');
+      version??=selected;
+    }
+    if(version!==undefined){
+      if(typeof version!=='string'||!/^[A-Za-z0-9_.-]{1,128}$/u.test(version))fail('INVALID_ARGUMENT','Invalid proactive deployment version');
+      value+='?endpoint='+version;
+    }
   }
   let url:URL;
   try {url=new URL(value!);}catch {return fail('INVALID_ARGUMENT','Invalid trusted proactive endpoint');}
   if(value!==value?.trim()||/[\s\\]/u.test(value!)||url.username||url.password||url.hash
     ||url.protocol!=='https:'&&!(url.protocol==='http:'&&['127.0.0.1','[::1]','localhost'].includes(url.hostname))
     ||!/^\/(?:runtimes\/[A-Za-z0-9_-]{1,64}\/)?invocations$/u.test(url.pathname)
-    ||url.search&&([...url.searchParams].length!==1||!url.searchParams.has('endpoint')||!/^[A-Za-z0-9_-]{1,64}$/u.test(url.searchParams.get('endpoint')!)))
+    ||url.search&&([...url.searchParams].length!==1||!url.searchParams.has('endpoint')||!/^[A-Za-z0-9_.-]{1,128}$/u.test(url.searchParams.get('endpoint')!)))
     fail('INVALID_ARGUMENT','Invalid trusted proactive endpoint');
   return url.href;
 }
@@ -142,6 +159,8 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
       &&typeof item.id==='string'&&!!item.id&&typeof item.version==='string'&&!!item.version&&typeof item.qualifiedForMain==='boolean')
     &&new Set(value.contracts.map(item=>(item as {id:string}).id)).size===value.contracts.length;
   async function invoke(input:RuntimeProactiveImageContext,describeOnly:boolean):Promise<RuntimeProactiveImageResult|RuntimeProactiveImageDescription> {
+    const assertBinding=()=>{try{options.assertDeploymentBinding?.();}catch{fail('REVISION_CONFLICT','Original proactive image deployment changed');}};
+    assertBinding();
     validContext(input);if(!describeOnly)validInput(input as ProactiveAdvanceRequest);
     else if(!exact(input,['taskId','sessionId','controlRevision','taskDeadline','requestId','deadline','signal']))fail('INVALID_ARGUMENT','Unexpected proactive description context');
     const originalSignal=input.signal;
@@ -176,6 +195,7 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
           hostAvailability:request.hostAvailability,availableCapabilities:request.availableCapabilities},input)};
       proactiveWorkflowDigest(value);const query=JSON.stringify(value),payload=workflowGoalInput===undefined?{query}:{inputs:{[workflowGoalInput]:query}};
       const body=JSON.stringify(payload);if(Buffer.byteLength(body)>MAX_BYTES)fail('INVALID_ARGUMENT','Proactive image request exceeds existing transport limit');
+      assertBinding();
       response=await bounded(()=>fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
         'x-hw-agentarts-session-id':input.sessionId,'X-Request-Id':input.requestId,'X-Invoke-Mode':invokeMode,'X-PA-Deadline':new Date(limit).toISOString(),
         ...(hostAuth===undefined?{}:{'X-PA-Agent-Token':hostAuth})},body,signal,redirect:'error'}));

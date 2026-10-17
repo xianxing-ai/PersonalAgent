@@ -61,6 +61,17 @@ export class Conversations {
     this.saveSessions(sessions,active);return {...value};
   }
   setDraft(surface,id,draft){const value=this.validateSession({...this.session(id,surface),draft});if(this.sessions.get(id).draft===draft)return;const sessions=new Map(this.sessions);sessions.set(id,value);this.saveSessions(sessions);}
+  flushDrafts(surface,entries){
+    this.activeConversationId(surface);
+    if(!Array.isArray(entries)||entries.length>this.sessions.size)throw Error('关闭草稿格式无效');
+    const sessions=new Map(this.sessions),ids=new Set();let changed=false;
+    for(const entry of entries){
+      if(!entry||Object.keys(entry).length!==2||!Object.hasOwn(entry,'conversationId')||!Object.hasOwn(entry,'text')||ids.has(entry.conversationId))throw Error('关闭草稿格式无效');
+      const prior=this.session(entry.conversationId,surface),value=this.validateSession({...prior,draft:entry.text});
+      ids.add(entry.conversationId);sessions.set(value.id,value);changed||=prior.draft!==value.draft;
+    }
+    if(changed)this.saveSessions(sessions);
+  }
   surface(taskId) { return this.turns.get(taskId)?.surface ?? 'panel'; }
   goal(taskId) { return this.turns.get(taskId)?.goal; }
   validatePreference(conversationId, input) {

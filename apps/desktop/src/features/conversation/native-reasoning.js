@@ -2,9 +2,10 @@
 export function nativeReasoningState(snapshot){
   const catalog=snapshot?.agentArtsModels?.catalog,preference=snapshot?.conversationPreference;
   const defaults=snapshot?.agentArtsModels?.preferences;
-  const modelId=preference?.executionModel?.modelId??preference?.modelId??(defaults?.catalogRevision===catalog?.revision?defaults.defaultModelId:catalog?.defaultModelId);
+  const currentDefaults=Boolean(catalog?.revision&&defaults&&defaults.catalogRevision===catalog.revision);
+  const modelId=preference?.executionModel?.modelId??preference?.modelId??(currentDefaults?defaults.defaultModelId:catalog?.defaultModelId);
   const model=catalog?.models.find(m=>m.id===modelId&&m.type==='text'&&m.availability!=='unavailable');
-  const effort=preference?.executionModel?.reasoningEffort??(!preference?.modelId&&defaults?.catalogRevision===catalog?.revision?defaults.reasoningEffort:undefined);
+  const effort=preference?.executionModel?.reasoningEffort??(!preference?.modelId&&currentDefaults?defaults.reasoningEffort:undefined);
   return {catalogRevision:catalog?.revision,modelId,efforts:model?.reasoningEfforts??[],reasoningEffort:effort,available:Boolean(model)};
 }
 export function mountNativeReasoning(root,invoke,report){
