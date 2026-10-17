@@ -1,0 +1,73 @@
+{
+  "status": "passed_public_synthetic_asr_tts",
+  "runAt": "2026-10-16T14:40:15.605Z",
+  "route": "diagnostic_direct_sis_not_competition",
+  "region": "cn-north-4",
+  "credentialSubject": "current_owner",
+  "historicalServiceUserPreserved": true,
+  "devicesOpened": false,
+  "physicalMicrophone": false,
+  "physicalPlayback": false,
+  "agentArtsSisProxy": "unavailable",
+  "configurationReadWallMs": 6.461400000000026,
+  "totalCodeWallMs": 1985.4501999999998,
+  "authMode": "ak_sk",
+  "encryptedConfigurationPresent": true,
+  "serviceOpenReadback": {
+    "source": "official_SIS_console",
+    "asrCurrentOwnerOpenedAt": "2026-10-16T22:37:11+08:00",
+    "ttsCurrentOwnerOpenedAt": "2026-10-16T22:38:33+08:00",
+    "everyoneOpened": false,
+    "historicalUserPreserved": true
+  },
+  "stages": [
+    {
+      "operation": "tts",
+      "httpStatus": 200,
+      "providerErrorCode": null,
+      "providerMessage": "",
+      "signingPreparationWallMs": 4.250699999999995,
+      "httpResponseWallMs": 780.9382,
+      "resultParsingWallMs": 514.8029999999999,
+      "totalWallMs": 1299.9919,
+      "audioBytes": 77644,
+      "audioNonEmpty": true,
+      "publicTestTextCharacters": 12
+    },
+    {
+      "operation": "asr",
+      "httpStatus": 200,
+      "providerErrorCode": null,
+      "providerMessage": "",
+      "signingPreparationWallMs": 0.364699999999857,
+      "httpResponseWallMs": 673.7070000000001,
+      "resultParsingWallMs": 1.5165000000001783,
+      "totalWallMs": 675.5882000000001,
+      "inputAudioBytes": 77600,
+      "inputSource": "public_synthetic_tts_output",
+      "resultPresent": true,
+      "transcriptNonEmpty": true,
+      "publicPhraseRecognized": true
+    }
+  ],
+  "previousFailures": [
+    {
+      "route": "diagnostic_direct_sis_not_competition",
+      "region": "cn-north-4",
+      "httpStatus": 401,
+      "providerErrorCode": "SIS.0004",
+      "providerMessage": "not subscribe this service.",
+      "credentialSubject": "current_owner_before_service_activation",
+      "retainedLocally": true
+    },
+    {
+      "route": "diagnostic_direct_sis_not_competition",
+      "region": "cn-east-3",
+      "httpStatus": 401,
+      "providerErrorCode": "SIS.0004",
+      "providerMessage": "not subscribe this service.",
+      "credentialSubject": "current_owner_before_service_activation",
+      "retainedLocally": true
+    }
+  ]
+}

@@ -1,5 +1,15 @@
 # 自有 AgentArts 编排包
 
+2026-10-14 增量：生产镜像注入公开进程内 `OwnedCandidateSelector`，普通结果、World/Plan KEEP/RECHECK 及修复终审候选由唯一镜像内 Laya 最后选取 `proposal` 或 `review`。候选先经过既有严格来源/Schema 校验，Laya 只返回有限标识，不产生长文、权限、Evidence 或任务终态。既有构造器前三参数保持兼容；不注入选择器的历史调用不是新的嵌入 Laya 比赛配置。
+
+可选第五参数接 `OwnedWorkflowEngine`；`getOwnedWorkflowCatalog/getOwnedWorkflowTemplate/invokeOwnedWorkflow` 公布并推进 F01–F28 的独立版本图。`prepareOwnedWorkflowCandidates` 复用现有角色 ModelGateway 制备候选数据，然后由相同选择器选择；真实 Host、工具和回执验证仍须独立注入。不新建任务库或公共 task wire，详细行为及缺口见自有工作流模块文档和镜像 README。目录/离线测试不证明真实 28 功能闭环。
+
+选择上下文包含节点种类、输入/输出字段、证据要求、前驱状态与完整实际值、完整候选值及分支/复核属性。候选制备要求语义有差异：单一明确输出只提供一份充分候选，不枚举同义措辞或样例变体；真实不同路线仍保留。此提示不保证真实模型一定消除冗余，须按实际候选与耗时读回；没有新增阈值、删除复核项或授予模型执行权限。
+
+当前节点边界与整图目标明确分开：tool 候选只是尚未执行的 `{toolName,toolVersion,arguments}`，不要求在首个读取提案前拿到读取结果、后续比对产物或用户授权；执行仍由本地 Runtime/Policy 控制。完整用户输入及下游要求保留，适用于当前生成节点的额外合规字段也保留。运行日志用固定 `workflow_candidates/candidate_response`、nodeId、实际候选数量与错误码区分制备空结果和选择器失败。候选数组 SHA 只用于运行日志关联，不是模型质量、执行或授权证据，不记录候选正文、scope/path 或任意错误信息。
+
+候选制备与 Laya 选择共用同一当前节点边界；两处均可见该节点精确已公布工具目录及 inputSchema。选择问题评估“该阶段的候选是否受任务、参数、Schema 或实际来源支持”：尚未执行的请求不要求未来执行结果，生成事实/文档仍要求实际来源。此接线补足判断材料，不保证 Laya 必须接受任何候选，不改变复核项或本地 Policy。
+
 2026-10-12：新增 `getOwnedBindings()`、`invokeWorkflow()`、`invokeController()`，固定8个Workflow与3个Controller。
 World/Plan独立阶段返回 role_report；Review/Controller 返回 application_result；均为 unverified。
 前置报告逐次按当前宿主来源重验，不扩 candidateVersion1.0、授权或执行范围。

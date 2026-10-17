@@ -1,10 +1,12 @@
 import {createHash} from 'node:crypto';
 import {constants, lstatSync, realpathSync} from 'node:fs';
 import type {Stats} from 'node:fs';
+import type {BigIntStats} from 'node:fs';
 import {lstat, open, readdir, realpath} from 'node:fs/promises';
 import {isAbsolute, join, relative, sep, win32} from 'node:path';
 import {KnowledgeError} from './index.js';
-import type {KnowledgeHit, KnowledgePort, KnowledgeSearchRequest, KnowledgeSource} from './index.js';
+import {createTextIndex} from './text-index.js';
+import type {KnowledgePort, KnowledgeSearchRequest, KnowledgeSource} from './index.js';
 
 const MAX_FILES = 1000;
 const MAX_DIRECTORIES = 1000;
@@ -12,6 +14,8 @@ const MAX_DEPTH = 16;
 const MAX_FILE_BYTES = 512 * 1024;
 
 export interface ReadOnlyVaultPort extends KnowledgePort {
+  /** Drop volatile excerpts on source revocation or explicit index clearing. */
+  clearIndex(): void;
   /** Host-only selected-note view. No write or cloud-export permission is implied. */
   readNote(request: {readonly path: string; readonly deadline: string; readonly signal: AbortSignal}):
     Promise<{content: string; revision: string}>;
@@ -20,6 +24,19 @@ export interface ReadOnlyVaultPort extends KnowledgePort {
     readonly deadline: string;
     readonly signal: AbortSignal;
   }): Promise<string>;
+}
+
+export interface ReadOnlyPageVaultPort extends ReadOnlyVaultPort {
+  /** Host-only inventory. A missing entry is not proof of deletion. */
+  scanPages(request: {readonly deadline: string; readonly signal: AbortSignal}): Promise<readonly VaultPage[]>;
+  readPage(request: {readonly path: string; readonly deadline: string; readonly signal: AbortSignal}):
+    Promise<VaultPage & {readonly content: string}>;
+}
+
+export interface VaultPage {
+  readonly path: string;
+  readonly pageId: string;
+  readonly revision: string;
 }
 
 function fail(code: KnowledgeError['code']): never {
@@ -66,6 +83,11 @@ function sameIdentity(left: {dev: number; ino: number}, right: {dev: number; ino
   return left.dev === right.dev && left.ino === right.ino;
 }
 
+function fileKey(info: BigIntStats): string {
+  if (info.ino === 0n) fail('SOURCE_UNAVAILABLE');
+  return [info.dev, info.ino, info.birthtimeNs].map(String).join(':');
+}
+
 function unchanged(
   left: {dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number},
   right: {dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number}
@@ -80,28 +102,44 @@ function safeError(error: unknown): never {
 }
 
 /** Detached, read-only filesystem path. A trusted host must explicitly bind the Vault root. */
-export async function openReadOnlyVault(options: {vaultId: string; rootPath: string}): Promise<ReadOnlyVaultPort> {
+export async function openReadOnlyVault(options: {vaultId: string; rootPath: string}): Promise<ReadOnlyPageVaultPort> {
   if (!options || typeof options.vaultId !== 'string' || !options.vaultId.trim()
     || options.vaultId.length > 128 || typeof options.rootPath !== 'string'
     || !isAbsolute(options.rootPath) || options.rootPath.startsWith('\\\\')) fail('INVALID_ARGUMENT');
   let root: string;
+  let rootIdentity: Stats;
+  let rootKey: string;
   try {
     const info = lstatSync(options.rootPath);
     if (info.isSymbolicLink()) fail('SCOPE_DENIED');
     if (!info.isDirectory()) fail('INVALID_ARGUMENT');
     root = realpathSync.native(options.rootPath);
+    rootIdentity = lstatSync(root);
+    if (!sameIdentity(info, rootIdentity)) fail('SOURCE_CHANGED');
+    rootKey = fileKey(lstatSync(root, {bigint: true}));
   } catch (error) {
     safeError(error);
   }
   const vaultId = options.vaultId;
+  const index = createTextIndex(vaultId);
 
-  async function readNote(path: string, signal: AbortSignal, deadline: number): Promise<{content: string; revision: string}> {
+  async function checkRoot(): Promise<void> {
+    const current = await lstat(root);
+    if (current.isSymbolicLink() || !current.isDirectory()
+      || !sameIdentity(rootIdentity, current) || current.birthtimeMs !== rootIdentity.birthtimeMs) {
+      fail('SCOPE_DENIED');
+    }
+    if (fileKey(await lstat(root, {bigint: true})) !== rootKey) fail('SCOPE_DENIED');
+  }
+
+  async function readNote(path: string, signal: AbortSignal, deadline: number): Promise<VaultPage & {content: string}> {
     const parts = checkRelativePath(path);
     const candidate = join(root, ...parts);
     if (!within(root, candidate)) fail('SCOPE_DENIED');
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     let expectedFile: Stats | undefined;
     try {
+      await checkRoot();
       for (let count = 1; count <= parts.length; count++) {
         checkActive(signal, deadline);
         const info = await lstat(join(root, ...parts.slice(0, count)));
@@ -115,7 +153,9 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
       const flags = process.platform === 'win32' ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
       handle = await open(beforePath, flags);
       const before = await handle.stat();
+      const identity = fileKey(await handle.stat({bigint: true}));
       if (!before.isFile() || !unchanged(expectedFile!, before)) fail('SCOPE_DENIED');
+      if (before.nlink !== 1) fail('SCOPE_DENIED');
       if (before.size > MAX_FILE_BYTES) fail('LIMIT_EXCEEDED');
       const buffer = Buffer.allocUnsafe(before.size);
       let offset = 0;
@@ -132,6 +172,10 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
       if (pathAfter.isSymbolicLink() || !samePath(beforePath, afterPath)
         || !sameIdentity(before, pathAfter)) fail('SCOPE_DENIED');
       if (!unchanged(before, after)) fail('SOURCE_CHANGED');
+      if (after.nlink !== 1 || pathAfter.nlink !== 1) fail('SCOPE_DENIED');
+      if (fileKey(await lstat(candidate, {bigint: true})) !== identity) fail('SOURCE_CHANGED');
+      await checkRoot();
+      checkActive(signal, deadline);
       let content: string;
       try {
         content = new TextDecoder('utf-8', {fatal: true}).decode(buffer);
@@ -139,7 +183,10 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
         fail('SOURCE_UNAVAILABLE');
       }
       if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(content)) fail('SOURCE_UNAVAILABLE');
-      return {content, revision: createHash('sha256').update(buffer).digest('hex')};
+      const pageId = createHash('sha256').update(JSON.stringify([
+        vaultId, rootKey, identity
+      ])).digest('hex');
+      return {path, pageId, content, revision: createHash('sha256').update(buffer).digest('hex')};
     } catch (error) {
       return safeError(error);
     } finally {
@@ -147,66 +194,73 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
     }
   }
 
+  async function scan(signal: AbortSignal, deadline: number,
+    consume: (page: VaultPage & {content: string}) => void): Promise<void> {
+    let files = 0;
+    let directories = 0;
+    async function visit(parts: string[]): Promise<void> {
+      checkActive(signal, deadline);
+      if (++directories > MAX_DIRECTORIES || parts.length > MAX_DEPTH) fail('LIMIT_EXCEEDED');
+      const directory = join(root, ...parts);
+      try {
+        await checkRoot();
+        const before = await lstat(directory);
+        const resolved = await realpath(directory);
+        if (before.isSymbolicLink() || !within(root, resolved) || !samePath(directory, resolved)) fail('SCOPE_DENIED');
+        if (!before.isDirectory()) fail('SOURCE_UNAVAILABLE');
+        const entries = await readdir(directory, {withFileTypes: true});
+        entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+        for (const entry of entries) {
+          checkActive(signal, deadline);
+          if (entry.name.startsWith('.')) continue;
+          if (entry.isSymbolicLink()) fail('SCOPE_DENIED');
+          if (entry.isDirectory()) await visit([...parts, entry.name]);
+          else if (entry.isFile() && /\.md$/i.test(entry.name)) {
+            if (++files > MAX_FILES) fail('LIMIT_EXCEEDED');
+            consume(await readNote([...parts, entry.name].join('/'), signal, deadline));
+          }
+        }
+        const after = await lstat(directory);
+        if (!unchanged(before, after)) fail('SOURCE_CHANGED');
+        await checkRoot();
+        checkActive(signal, deadline);
+      } catch (error) { safeError(error); }
+    }
+    await visit([]);
+  }
+
   return Object.freeze({
-    readNote: async (request: {path: string; deadline: string; signal: AbortSignal}) => {
+    clearIndex: () => index.clear(),
+    scanPages: async (request: {deadline: string; signal: AbortSignal}) => {
+      const deadline = checkContext(request);
+      const pages: VaultPage[] = [];
+      await scan(request.signal, deadline, ({path, pageId, revision}) => { pages.push({path, pageId, revision}); });
+      return pages;
+    },
+    readPage: async (request: {path: string; deadline: string; signal: AbortSignal}) => {
       const deadline = checkContext(request);
       return readNote(request.path, request.signal, deadline);
+    },
+    readNote: async (request: {path: string; deadline: string; signal: AbortSignal}) => {
+      const deadline = checkContext(request);
+      const {content, revision} = await readNote(request.path, request.signal, deadline);
+      return {content, revision};
     },
     search: async (request: KnowledgeSearchRequest) => {
       const deadline = checkContext(request);
       if (typeof request.query !== 'string' || !request.query.trim() || request.query.length > 128
         || !Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 20) fail('INVALID_ARGUMENT');
       const query = request.query.trim().toLowerCase();
-      const hits: KnowledgeHit[] = [];
-      let truncated = false;
-      let files = 0;
-      let directories = 0;
-
-      // ponytail: bounded rescan keeps citations fresh; add an index only when real Vault size exceeds these limits.
-      async function visit(parts: string[]): Promise<void> {
-        checkActive(request.signal, deadline);
-        if (++directories > MAX_DIRECTORIES || parts.length > MAX_DEPTH) fail('LIMIT_EXCEEDED');
-        const directory = join(root, ...parts);
-        try {
-          const before = await lstat(directory);
-          const resolved = await realpath(directory);
-          if (before.isSymbolicLink() || !within(root, resolved) || !samePath(directory, resolved)) fail('SCOPE_DENIED');
-          if (!before.isDirectory()) fail('SOURCE_UNAVAILABLE');
-          const entries = await readdir(directory, {withFileTypes: true});
-          entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-          for (const entry of entries) {
-            checkActive(request.signal, deadline);
-            if (entry.name.startsWith('.')) continue;
-            if (entry.isSymbolicLink()) fail('SCOPE_DENIED');
-            if (entry.isDirectory()) {
-              await visit([...parts, entry.name]);
-            } else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-              if (++files > MAX_FILES) fail('LIMIT_EXCEEDED');
-              const path = [...parts, entry.name].join('/');
-              const {content, revision} = await readNote(path, request.signal, deadline);
-              for (const [index, line] of content.split(/\r?\n/).entries()) {
-                checkActive(request.signal, deadline);
-                const offset = line.toLowerCase().indexOf(query);
-                if (offset < 0) continue;
-                if (hits.length === request.limit) {
-                  truncated = true;
-                  continue;
-                }
-                hits.push({
-                  source: {vaultId, path, line: index + 1, revision},
-                  excerpt: line.slice(Math.max(0, offset - 80), Math.max(0, offset - 80) + 320)
-                });
-              }
-            }
-          }
-          const after = await lstat(directory);
-          if (!unchanged(before, after)) fail('SOURCE_CHANGED');
-        } catch (error) {
-          safeError(error);
-        }
-      }
-      await visit([]);
-      return {hits, truncated};
+      const pages: (VaultPage & {content: string})[] = [];
+      let bytes = 0;
+      try {
+        await scan(request.signal, deadline, page => {
+          bytes += Buffer.byteLength(page.content, 'utf8');
+          if (bytes > 8 * 1024 * 1024) fail('LIMIT_EXCEEDED');
+          pages.push(page);
+        });
+        return index.search(pages, query, request.limit, () => checkActive(request.signal, deadline));
+      } catch (error) {index.clear(); throw error;}
     },
     readCitation: async (request: {source: KnowledgeSource; deadline: string; signal: AbortSignal}) => {
       const deadline = checkContext(request);

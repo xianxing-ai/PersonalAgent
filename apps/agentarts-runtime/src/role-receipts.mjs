@@ -54,4 +54,3 @@ export function createRoleReceiptWriter({deploymentVersion, write = line => proc
     } catch { /* A failed observability sink cannot change model orchestration. */ }
   };
 }
-

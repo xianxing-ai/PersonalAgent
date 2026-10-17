@@ -6,7 +6,6 @@ import path from 'node:path';
 const ACL_CHECK = String.raw`
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 required' }
-$root = [Console]::In.ReadToEnd().Trim()
 $acl = Get-Acl -LiteralPath $root
 $self = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $owner = ([System.Security.Principal.NTAccount]$acl.Owner).Translate([System.Security.Principal.SecurityIdentifier]).Value
@@ -57,9 +56,12 @@ function sameIdentity(left, right) {
 /** The recovery directory must be pre-created with a protected, current-user ACL. */
 export function verifyWindowsRecoveryAcl(recoveryRootPath, powerShellPath) {
   if (process.platform !== 'win32') throw Error('Windows recovery ACL inspection is unavailable');
+  // Redirected Console.In may use the Windows code page, even with Node's UTF-8 input.
+  // Carry the path as data inside the UTF-16 EncodedCommand instead.
+  const script = `$root=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(recoveryRootPath, 'utf8').toString('base64')}'))\n${ACL_CHECK}`;
   const output = execFileSync(powerShellPath,
-    ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(ACL_CHECK, 'utf16le').toString('base64')],
-    {input: recoveryRootPath, encoding: 'utf8', timeout: 10_000, maxBuffer: 4096, windowsHide: true});
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+    {encoding: 'utf8', timeout: 10_000, maxBuffer: 4096, windowsHide: true});
   if (output !== 'secure') throw Error('Recovery directory ACL is not restricted to the current user');
 }
 

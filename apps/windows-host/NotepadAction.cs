@@ -146,18 +146,27 @@ public static class NotepadAction
 
     private static bool IsSameForegroundTarget(ConfirmedNotepadTarget target)
     {
-        if (GetForegroundWindow() != target.WindowHandle ||
-            GetWindowThreadProcessId(target.WindowHandle, out var pid) == 0 || pid != target.ProcessId)
-            return false;
         try
         {
-            using var process = Process.GetProcessById(target.ProcessId);
-            return IsTrustedNotepadProcess(process) && process.StartTime.ToUniversalTime() == target.ProcessStartUtc;
+            return TargetIdentityCurrent(
+                () => GetForegroundWindow() == target.WindowHandle &&
+                    GetWindowThreadProcessId(target.WindowHandle, out var pid) != 0 && pid == target.ProcessId,
+                () =>
+                {
+                    using var process = Process.GetProcessById(target.ProcessId);
+                    return IsTrustedNotepadProcess(process) && process.StartTime.ToUniversalTime() == target.ProcessStartUtc
+                        && !process.HasExited;
+                });
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
                                    System.ComponentModel.Win32Exception)
         { return false; }
     }
+
+    internal static bool TargetIdentityCurrent(Func<bool> windowMatches, Func<bool> processMatches) =>
+        // Process metadata may block after the window was checked. The same live
+        // process can outlast a closed or replaced HWND, so check the window last.
+        windowMatches() && processMatches() && windowMatches();
 
     internal static bool IsTrustedNotepadProcess(Process process)
     {

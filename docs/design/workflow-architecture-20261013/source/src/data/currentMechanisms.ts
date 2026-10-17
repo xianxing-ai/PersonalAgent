@@ -1,0 +1,28 @@
+import type {ArchitectureArea,ArchitectureMechanism} from './architectureRevisions';
+export const ARCHITECTURE_AREAS:ArchitectureArea[]=[
+ {id:'interaction',name:'交互与主动服务',description:'原话、final语音、责任与静默feed；设备渠道待独立验。',features:['F01','F02','F06','F12'],shared:['USER','EVENT']},
+ {id:'runtime',name:'本机Runtime与责任图',description:'原TaskRuntime/Policy/ToolGateway/Evidence保持事实与授权来源；不新增调度或任务库。',features:['F03','F24'],shared:['POLICY','VERIFY']},
+ {id:'cloud',name:'镜像编排与模型',description:'镜像28图185节点默认串行；Laya在本机；DeepSeek经AgentArts代理。',features:['F25','F26','F28'],shared:['DECISION','MODELS','AA_GATEWAY','AA_OBSERVE']},
+ {id:'tools',name:'工具与业务来源',description:'连接器按实际push/watch/poll/manual能力；真实账号/业务工具逐项验证。',features:['F07','F08','F09','F10','F11','F13','F14','F15','F16','F17','F18','F19','F20','F21'],shared:['TOOL','EVENT']},
+ {id:'knowledge',name:'Wiki、记忆与上下文',description:'原文/source/revision/scope与Memory投影；更正撤回不丢失，平台knowledge需显式port。',features:['F04','F05','F27'],shared:['AA_KNOWLEDGE']},
+ {id:'evaluation',name:'影子、证据与评估',description:'主优先/机会资源为目标；当前真实两案例是main后shadow串行，平台评估未全验。',features:['F22','F23'],shared:['EVIDENCE','AA_EVALUATE']},
+];
+const mechanism=(id:string,name:string,summary:string,features:string[],shared:string[],steps:string[],status:string,exceptions:string[]=[]):ArchitectureMechanism=>({id,name,summary,features,shared,steps,status,exceptions});
+export const ARCHITECTURE_MECHANISMS:ArchitectureMechanism[]=[
+ mechanism('responsibility','主动四入口与持续责任','外部变化与明确指令都保留来源；未订阅不等于无关。',['F01','F03','F08','F09'],['EVENT','USER','DECISION'],['connector/user_instruction/subtask_feedback/wake进入原主动协议。','保存事件身份、sourceVersion、原话SHA、Goal/责任与引用，区分explicit instruction和inferred interest。','Connector先pending→持久sink按batchId确认→cursor CAS；丢失ack恢复同批次。','retrieve_context检索原文/Wiki/Memory/经验和scope。','local_decision_batch→资格不足teacher_decision→proposal；原Policy工具执行→receipt→update_item/原Scheduler wake。'],'公开Host/SQLite组合fixture已有；真实业务账号→持久责任→实际分派仍需验收。'),
+ mechanism('dynamic','一般新任务与候选图','保留通用任务设计，不把注册28模板当支持任意任务。',['F01','F03','F24','F28'],['DECISION','MODELS','POLICY'],['读当前能力、上下文记忆与有效授权。','通用模型提出临时图/计划候选。','代码校验路径/版本/schema/依赖与预算。','合格Laya选择；未合格/复杂未知由AA DeepSeek接管。','原Runtime执行观察，根据真实反馈更新；最小修复/依赖重规划仍暂停。'],'任意任务动态生产闭环未由28模板目录或两个动画案例证明。'),
+ mechanism('retrieval','原文、记忆与上下文','检索按需扩展，摘要不是原文，经验不是训练。',['F04','F05','F27'],['AA_KNOWLEDGE','DECISION'],['按scope读取Goal/事实/source/revision。','恢复相关原文片段与引用；本地和平台KnowledgePort分别注册。','联合判断冲突/缺口，需要新证据时扩展，无新增证据不重复查。','更正/删除/retract使旧引用失效，按原版本重新核实。'],'公开端口存在；平台native knowledge/完整业务压缩保真及成本收益待验。'),
+ mechanism('unattended','无人值守与归来','沿原任务授权、期限及checkpoint继续，离线不虚构可执行。',['F06','F12','F24'],['TOOL','EVIDENCE'],['enter/return/pause/resume/cancel绑定原task/session/control revision。','session先intent→签名advance→checkpoint CAS后释放proposal。','本机设备离线waiting_device；只有真实cloud_persistent端口可继续独立分支。','归来汇总仍有效done/changed/pending/blocked及新Evidence，不补弹旧通知。'],'持久session/恢复fixture已有；长期设备/云持续宿主未验。'),
+ mechanism('notification','静默、用户打扰预算与语音','静默继续工作/feed，计次与投递/已读分开。',['F02','F12'],['USER','POLICY'],['global→connector→responsibility继承mode/maxInterruptions/windowMinutes/silentUntilUtc/preferredChannel/allowUrgentBreakthrough/digestMode/quietHours。','同round原子reserve，跨渠道重试只计一次；发送前复检最新策略与preferredChannel。','sending持久化→渠道receipt→独立read ack；unknown不退款换轮重发。','主动询问只采可信final；参数改变旧指纹失效，echo/partial/旧录音不授权。'],'NotificationService/RuntimeHost/CAS fixture已有；真实banner/语音/final→设置审批组合待验。'),
+ mechanism('cancellation','取消与未知结果','原deadline不续期，受理与停止证明分开。',['F02','F24'],['TOOL','EVIDENCE'],['本机取消传播control revision。','未开始阻止提交；在途等待实际结果。','unknown保留原operation读回，不能换ID重试。','已发生效果保留审计；迟到响应不能覆盖新revision。'],'原控制/checkpoint可复用；长期真实设备取消恢复需专项证据。'),
+ mechanism('delegation','主控分派与原生思考','复用原ModelGateway/受限执行循环，不造第二决策架构。',['F01','F27','F28'],['MODELS','POLICY','DECISION'],['主控按目标、能力、scope和上下文提出子任务候选。','工具派发保持父子绑定、当前SHA和原期限。','实际Provider原生thinking/effort与steps/tokens分别记录。','执行者在范围内选工具；回执返回原主控，不自授权限或判终态。'],'真实AA DeepSeek已验；多厂商质量、真实主控委派及减少高级调用待验。'),
+ mechanism('shadow','高级影子与主任务优先','开关融入已有判断，按风险/价值/可信机会资源；不每节点加模型调用。',['F22','F23'],['DECISION','EVIDENCE','VERIFY'],['同次候选value携带shadow意图，绑定task/session/revision/deadline与实际资源。','主优先，隔离namespace/基线/权限；普通任务先交已验主结果，明确双方案才等双方。','decision_shadow/trace_replay/isolated各有边界；历史write仅timeline，缺反事实unknown。','可信verifyComparable/sideEffect与原Policy校验，configuration port经CAS晋升/回读/回滚。'],'策略/签名/replay/release已有；两案例实际await main再await shadow，机会并行/主抢占/日常收益未验。'),
+ mechanism('cloud','AgentArts与本机可信宿主','平台托管与代理不替代本机执行事实。',['F21','F25','F26'],['AA_GATEWAY','AA_OBSERVE','AA_EVALUATE'],['ARM64自有镜像28图185节点；本机Laya权重不入镜像。','DeepSeek经AA /inference/v1；真实SDK MCP执行仍交原ToolGateway。','knowledge local/platform需显式port；观测复用MOD32只读HTTP与可信签名回调。','云精确版本目录/关联日志已验；平台评估readResult未配置unavailable。'],'SWR/云目录与代理实测已有；远端完整工具链、四类平台能力及全部28业务未全验。'),
+];
+export const DESIGN_GOALS=[
+ {name:'完整责任与低打扰',mechanism:'来源/Goal/记忆→可信候选→原工具回执',metrics:'漏掉有效任务、错误抑制、用户介入、打扰/等待与来源完整性'},
+ {name:'可信执行与可恢复',mechanism:'原Policy/ToolGateway/Evidence/checkpoint CAS',metrics:'unknown不重放、版本冲突、取消/原期限、读回与重启幂等'},
+ {name:'真实资源收益',mechanism:'合格选择/教师接管/按需影子',metrics:'每正确任务调用/tokens/成本/延迟/重试/资源；冷启动和稳态分别测'},
+];
+export const ACCEPTANCE_MATRIX=[['四入口/来源','事件/撤回/丢ack/重启/未订阅','原批次durable后cursor，无漏事件'],['通知/语音','静默/同round并发/unknown/旧final','0打扰feed与额度一致；不授新权限'],['无人值守','pause/return/offline/cancel','原checkpoint/deadline，waiting_device明确'],['一般新任务','临时图/schema/能力缺口','未绑定unavailable；不是模板目录即任意任务'],['影子/晋升','普通/显式比较/缺反事实/config缺port','同条件可比/原授权/CAS读回，主优先目标与实测分开']] as const;
+export const GOLDEN_PATH=['已验：Wukong从scaffold生成+故障注入+main后shadow修复','已验：Pelican第二轮固定故障+main后shadow+单CAS','41工具Evidence；首轮partial保留','未验：真实邮件/通知/无人值守全链，按各CW包继续'];

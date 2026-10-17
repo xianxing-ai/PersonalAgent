@@ -3,6 +3,7 @@ import test from 'node:test';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {Conversations} from '../electron/conversations.js';
 import {createDesktopVoiceInput} from '../electron/voice-input.js';
 import {createLiveVoiceHost} from '../electron/live-voice-host.js';
 import {createMicrophoneCaptureHost} from '../electron/microphone-capture-host.js';
@@ -24,13 +25,14 @@ const deferred = () => {
   return {promise, resolve};
 };
 
-function fixture({stopFails = false} = {}) {
-  const recognition = deferred(), entered = deferred();
+function fixture({stopFails = false, revokeGate} = {}) {
+  const recognition = deferred(), entered = deferred(), revokeEntered = deferred();
   let visible = true, sink, recognitionRequest, recognitionStops = 0, revokes = 0;
   const drafts = [], calls = [];
   const contents = {id: 42, isDestroyed: () => false, send: (channel, payload) => drafts.push({channel, ...payload})};
   const panel = {isVisible: () => visible, isDestroyed: () => false, webContents: contents};
-  const context = {panel, wakeQuitUnknown: false, wakeVoice: undefined, Promise, Error,
+  const conversations=new Conversations();
+  const context = {panel, conversations, wakeQuitUnknown: false, wakeVoice: undefined, Promise, Error,
     publish: () => calls.push('publish'),
     liveVoice: {stop: async () => calls.push('live-stop'), hasActive: () => false},
     sisPlaybackHost: {stop: async () => calls.push('playback-stop')},
@@ -41,9 +43,11 @@ function fixture({stopFails = false} = {}) {
   const deliver = vm.runInContext('(' + transcriptCallback + ')', context);
   const source = createVoicePcmFrameSourcePort({async start(value) { sink = value; return {async release() {}}; }});
   const input = createDesktopVoiceInput({source,
-    microphoneHost: {authorize() {}, snapshot: () => ({subscriberCount: 0}), revoke: async () => { revokes++; }},
+    microphoneHost: {authorize() {}, snapshot: () => ({subscriberCount: 0}), revoke: async () => {
+      revokes++; revokeEntered.resolve(); await revokeGate?.promise;
+    }},
     client: {call() { assert.fail('panel voice lifecycle cannot submit or cancel a Runtime task'); }},
-    enabled: true, inputMode: 'dictation', onTranscript: deliver,
+    enabled: true, inputMode: 'dictation', readConversationId:()=>conversations.activeConversationId('panel'), onTranscript: deliver,
     speechPorts: {recognition: {recognize(value) {
       recognitionRequest = value; entered.resolve();
       return {result: recognition.promise, async stop() {
@@ -53,7 +57,7 @@ function fixture({stopFails = false} = {}) {
     }}, output: {speak() { assert.fail('dictation does not speak'); }}, dispose: async () => {}},
   });
   context.voiceInput = input;
-  return {input, recognition, entered, drafts, calls, context,
+  return {input, recognition, entered, revokeEntered, drafts, calls, context,
     setVisible(value) { visible = value; },
     async begin() { await input.beginCapture(42); sink.onFrame(new Uint8Array(3200)); },
     stopPanel: () => context.stopPanelVoice(),
@@ -93,6 +97,30 @@ test('hiding during manual SIS recognition cancels ASR and reopening cannot rece
   assert.equal(f.drafts.length, 0);
   assert.ok(f.calls.includes('live-stop') && f.calls.includes('playback-stop') && f.calls.includes('panel-revoke'));
   await f.input.dispose();
+});
+
+test('hiding after recognition during delayed revoke prevents draft delivery after reopening', async t => {
+  const revokeGate = deferred(), f = fixture({revokeGate});
+  t.after(async () => { revokeGate.resolve(); await f.input.dispose(); });
+  await f.begin();
+  const finishing = f.input.finishCapture(42), rejected = assert.rejects(finishing, /取消/);
+  await f.entered.promise;
+  f.recognition.resolve({text: '取消后的旧草稿', locale: 'zh-CN'});
+  await f.revokeEntered.promise;
+  assert.equal(f.drafts.length, 0);
+  f.setVisible(false);
+  const stopping = f.stopPanel();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.input.snapshot().status, 'cancelling');
+  f.setVisible(true);
+  revokeGate.resolve();
+  await Promise.all([stopping, rejected]);
+  assert.equal(f.drafts.length, 0);
+  assert.equal(f.input.hasActive(), false);
+  assert.equal(f.stops, 1);
+  await f.begin();
+  assert.equal(f.input.snapshot().status, 'listening');
+  assert.equal(f.drafts.length, 0);
 });
 
 test('hiding while still recording cancels the manual capture without attempting ASR', async () => {
