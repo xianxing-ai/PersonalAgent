@@ -35,8 +35,8 @@ export function describeModelRequestBudget(entry) {
 export function mountModelApiControls(root, invoke) {
   const settings = document.createElement('details');
   settings.className = 'sis-settings';
-  settings.innerHTML = `<summary>辅助子任务模型</summary><div class="sis-fields">
-    <p class="notice">由主智能体委派时使用；保存配置不会发起模型调用。</p>
+  settings.innerHTML = `<summary>独立 API 设置</summary><div class="sis-fields">
+    <p class="notice">保留独立 API 凭据与原生参数设置；比赛任务的主模型与子模型由 AgentArts 目录选择。保存配置不会发起模型调用。</p>
     <p data-model-api="defaultExecution" class="notice"></p>
     <label>已保存模型<select data-model-api="saved"><option value="">添加模型</option></select></label>
     <label>供应商<select data-model-api="provider"><option value="pangu">盘古</option><option value="openai-compatible">OpenAI 兼容</option></select></label>

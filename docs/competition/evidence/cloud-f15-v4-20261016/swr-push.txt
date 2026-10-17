@@ -1,0 +1,49 @@
+The push refers to repository [swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned]
+f400d36d7784: Waiting
+6972a42ad330: Waiting
+10c63fb2a201: Waiting
+44136fa355b3: Waiting
+f400d36d7784: Waiting
+6972a42ad330: Waiting
+10c63fb2a201: Waiting
+44136fa355b3: Waiting
+10c63fb2a201: Waiting
+44136fa355b3: Waiting
+f400d36d7784: Waiting
+6972a42ad330: Waiting
+10c63fb2a201: Waiting
+44136fa355b3: Waiting
+f400d36d7784: Waiting
+6972a42ad330: Waiting
+10c63fb2a201: Waiting
+44136fa355b3: Waiting
+f400d36d7784: Waiting
+6972a42ad330: Waiting
+10c63fb2a201: Layer already exists
+44136fa355b3: Waiting
+f400d36d7784: Waiting
+6972a42ad330: Waiting
+a86139c8545f: Waiting
+f400d36d7784: Layer already exists
+6972a42ad330: Waiting
+a86139c8545f: Waiting
+fc03b5e40b38: Waiting
+51809ea1719c: Waiting
+44136fa355b3: Already exists
+d7d4d021de20: Waiting
+a86139c8545f: Layer already exists
+fc03b5e40b38: Layer already exists
+03fb039350ff: Waiting
+51809ea1719c: Layer already exists
+1832ca917e2a: Waiting
+725895cd2ef2: Waiting
+03fb039350ff: Layer already exists
+409888d9aa24: Layer already exists
+1832ca917e2a: Layer already exists
+d7d4d021de20: Layer already exists
+061bdb029efa: Waiting
+6972a42ad330: Pushed
+725895cd2ef2: Pushed
+061bdb029efa: Pushed
+workflow-v4-e38ef23d: digest: sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d size: 856
+

@@ -1,10 +1,12 @@
 # 自有 AgentArts 镜像迁移工作包
 
+> 公开脱敏投影：历史命令中的机器专属路径已改为接收者可配置占位或仓库相对路径；日期、数值、失败与原哈希保留。占位不是可直接执行的配置，运行前使用本机受信Node/npm、工作树及运行环境路径。
+
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
 
 初始日期：2026-10-08；当前更新：2026-10-12；状态：`in_progress`；负责人：zemeng。
-目标：`huawei_ict_agentarts`。工作树：`D:\PersonalAgent\.worktrees\agentarts-owned-image`，
+目标：`huawei_ict_agentarts`。工作树：`<implementation>/agentarts-owned-image`，
 分支 `codex/agentarts-owned-image`，基线 `origin/main@e86bac53`。
 本包涉及 MOD-29/30/31 的云编排与既有 Coordination 消费接线。
 
@@ -150,7 +152,7 @@ Plan 内部报告另含 preserved/rechecked/revised/removed_steps、dependency_u
 - 根 `npm run check` 的架构、契约夹具、生成类型、全工作区构建/类型检查和测试阶段通过；首次集成阶段因新增测试夹具配置名错误失败，已按公开契约修正并补全关闭清理。随后完整 `npm run test:integration` 24/24 通过，没有重复已通过的无关工作区测试。
 - 新增两项集成验证使用 Fake 语义模型、真实本地 HTTP、SQLite Runtime 和真实合成文件：审批前读取次数为0，allow_once后读取一次并保存confirmed执行/Evidence；续答错误保留回执并进入 waiting_reconciliation，不重做工具或伪造成功。
 - 基础镜像索引 digest 已读回并固定为 `sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d`，含 linux/arm64/v8。
-- Docker Desktop 4.94.0 已安装到 `D:\Docker\Desktop`，数据位置指定 `D:\Docker\wsl`；官方包 SHA256 与 WinGet 一致，签名 Docker Inc 有效；CLI 29.8.2、Buildx 0.37.2 可执行。
+- Docker Desktop 4.94.0 已安装到 `<docker-install>`，数据位置指定 `<docker-data>`；官方包 SHA256 与 WinGet 一致，签名 Docker Inc 有效；CLI 29.8.2、Buildx 0.37.2 可执行。
 - 用户重启后已实测 WSL 3.0.1.0、HypervisorPresent、Docker Linux Server 29.8.2 正常，D 盘 WSL 数据目录已创建。
 - 应用镜像 `personal-agent-owned:20261008` 已实际构建并载入本机 Docker，读回 `linux/arm64`、运行用户 `node`、大小 93,263,449 bytes。索引 digest：`sha256:d126119af47c23445280d831e0f4b04c49c92403902d8d751340739962eb96e5`；ARM64 manifest：`sha256:68ced787fd9288427a13812720682d742671771f301b33fca67c7b524db173ad`。本地构建日志、元数据与上下文在 `.cache/agentarts-image/`，不等于远端 registry 已发布。
 - 实际 ARM64 镜像在 `--network none` 下运行 HTTP/编排/缺配置启动测试 16/16 通过，测试目录只读挂载；缺少配置时生产入口退出 1，没有 Fake 回退。
@@ -183,7 +185,7 @@ main 远端已设置两次审批、最新推送后的批准、过期审批作废
 
 ## 2026-10-12 无版本报告修复与源码传输验证
 
-工作树 `D:\PersonalAgent\.worktrees\agentarts-report-version`，分支 `codex/agentarts-report-version`，
+工作树 `<implementation>/agentarts-report-version`，分支 `codex/agentarts-report-version`，
 HEAD `c5e9222f8c24032a41f6c697ae29745292c739c5`。修复尚未提交。绑定入口拒绝调用方提交的无
 `reportVersion` World/Plan 报告。直接 `invoke()` 在 sources 为空时先判断 World 处置：紧凑 KEEP
 返回「KEEP：世界状态分析无需修复。」；紧凑 REVISE/RECHECK 返回 RECHECK。无事实或 Goal 来源的版本化
@@ -222,8 +224,8 @@ Windows 上 `[null, 'SIGTERM']` 的关闭失败、以及上文 9 次请求的历
 构建时未提交补丁为 7 个文件，+308 / -51，HEAD 仍是
 `c5e9222f8c24032a41f6c697ae29745292c739c5`。本节是容器跑完后追加的文档，不在镜像 allowlist 中。
 
-- 编译与上下文：`D:\nodejs\npm.cmd run build --workspace=@personal-agent/agentarts`，
-  然后 `D:\nodejs\npm.cmd run image:context --workspace=@personal-agent/agentarts-runtime`。
+- 编译与上下文：`npm run build --workspace=@personal-agent/agentarts`，
+  然后 `npm run image:context --workspace=@personal-agent/agentarts-runtime`。
   上下文为 `.cache/agentarts-image/context-PpsvcR`，58 个 allowlist 文件。
   `packages/agentarts/dist/index.js` 的 SHA256 为
   `9e455ecf4cc82ba2e5c89d41c6c2124926f016a3a9e7795908ae3f5bc5560a6f`，工作树与上下文一致，

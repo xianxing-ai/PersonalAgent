@@ -1,0 +1,104 @@
+{
+  "kind": "first_test_image_local_test_kit",
+  "createdAt": "2026-10-15T10:09:56.0019011Z",
+  "image": "personal-agent:test-v1-local-laya",
+  "imageId": "sha256:e8aa319df4f93da61543a4100c51aeee973fabd392c0179b8142562e9d009889",
+  "sourceZip": {
+    "bytes": 5188040,
+    "sha256": "f3f1bd14356c4f0a14ccd58417478cd06b5a3eef397f551eb44fcb197d5bb165",
+    "path": ".cache/agentarts-image/test-v1-source-20261015.zip"
+  },
+  "checks": {
+    "manualBundle": {
+      "skipped": 0,
+      "failed": 0,
+      "log": ".cache/test-version-final-manual-check.log",
+      "tests": 22,
+      "sha256": "cab382ba4d621f675187968b41e215092c7812585645a8b4bef6055ff6e4cace",
+      "actualComponents": [
+        "Runtime",
+        "Policy",
+        "ToolGateway",
+        "Evidence",
+        "SQLite",
+        "filesystem",
+        "HTTP",
+        "Windows pwsh patch approval/apply"
+      ],
+      "passed": 22,
+      "model": "explicit Fake where model required",
+      "groups": {
+        "pelican": 11,
+        "business": 4,
+        "delegation": 7
+      },
+      "snapshot": "final source after maxTokens budget guard",
+      "realModelCalls": 0
+    },
+    "postFixRegression": {
+      "scope": "adaptive/local init/HTTP",
+      "tests": 18,
+      "realModelCalls": 0,
+      "passed": 18
+    },
+    "browserVerifier": {
+      "agentRepair": false,
+      "realModelCalls": 0,
+      "passed": 2,
+      "fixtures": 2,
+      "actualBrowser": "installed Edge through existing Playwright",
+      "report": ".cache/pelican-browser-check-1ZQDPL/report.json"
+    },
+    "preLiveRootCheck": {
+      "log": ".cache/test-version-check.log",
+      "exitCode": 0,
+      "tests": 3145,
+      "skipped": 18,
+      "snapshot": "before the two local adapter fixes"
+    },
+    "rootCheck": {
+      "skipped": 18,
+      "failed": 0,
+      "tapSummaries": 37,
+      "log": ".cache/test-version-final-check.log",
+      "tests": 3166,
+      "sha256": "57ac0b767372faa97a4466c5963d47be9022ec30182648c4979b6f595d05fd00",
+      "cancelled": 0,
+      "passed": 3148,
+      "exitCode": 0,
+      "snapshot": "final source after maxTokens budget guard; not a real-model rerun of final agents hashes"
+    },
+    "postLiveManualRegression": {
+      "realModelCalls": 0,
+      "relation": "subset; do not add to rootCheck/manualBundle totals",
+      "scope": "maxTokens guard affected subset",
+      "passed": 25,
+      "tests": 25
+    }
+  },
+  "published": false,
+  "architectureFinalized": false,
+  "realMaasE2EVerified": true,
+  "realMaaSSpecificChainVerified": true,
+  "layaAutonomousDecisionQualityVerified": false,
+  "updatedAt": "2026-10-15T11:13:25.8710209Z",
+  "realMaasE2EDefinition": "Only the controlled pelican main/shadow repair chain through local image and real MaaS, not all workflows or platform deployment",
+  "platformDeployment": false,
+  "realLocalLayaInvoked": true,
+  "sourceZipRefreshStatus": "current source archive after final root and manual checks; self-referential test-kit.json intentionally excluded",
+  "liveEvidence": "docs/competition/evidence/test-image-v1-20261015/live-test-results.json",
+  "laya150msTargetPassed": false,
+  "all28BusinessWorkflowsVerified": false,
+  "trainingPerformed": false,
+  "finalSourceHashes": {
+    "tests/manual/agentarts/test-image-model-provider.mjs": "9f33bbf3bff4a262def05053ca8a5f305ef365ee491b5de049712ecbd74acd9c",
+    "packages/agents/dist/index.js": "6d4aa128461b058ec288fe8804d02a7a92af06b707ddb7a5824fd10cc18eb7b5",
+    "packages/agents/src/index.ts": "7266ddf8f4685e4cfe231fe87fd13ddcf89fc94ec00e90f1affdf030d275660b",
+    "tests/manual/agentarts/pelican-test-version.mjs": "66256307bf8d47b03842d546cff6ddf70d1b60a0d7c9fd0f08a6c268e4654a15"
+  },
+  "previousSourceZip": {
+    "bytes": 5171396,
+    "sha256": "b50d62967aafa030b1175e2d983f698a16a8d9e616a16db9ac5439e967a4b569",
+    "path": ".cache/agentarts-image/test-v1-source-previous-111322.zip"
+  }
+}

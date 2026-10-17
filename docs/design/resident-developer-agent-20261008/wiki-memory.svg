@@ -5,7 +5,7 @@
 <rect x="0" y="0" width="2800" height="1830" rx="0" fill="#f3f6fa" stroke="none"/>
 <text x="50" y="72" font-size="40" class="strong" text-anchor="start">Wiki ↔ 长期记忆 · 来源、版本、写回与增量修复</text>
 <text x="50" y="119" font-size="23" class="muted" text-anchor="start">实施负责人 goo122：MOD-08/09；zemeng 通过公开端口消费；不把执行状态或授权写成 Wiki 台账</text>
-<text x="50" y="158" font-size="21" class="muted" text-anchor="start">2026-10-09 Wiki / WSS / 完整报告增量 · provisional 本地实现 · 完成度估算基线仍为 2026-10-08</text>
+<a href="../CURRENT_DESIGN_20261015.md" id="history-design-notice-20261015"><text x="50" y="158" font-size="21" class="muted" text-anchor="start">历史目标快照 · 原估算日期保留 · 当前设计见 2026-10-15入口，架构未最终定型</text></a>
 <rect x="50" y="230" width="720" height="430" rx="14" fill="#eef4fa" stroke="#d5dfe8"/>
 <text x="72" y="273" font-size="28" class="strong" text-anchor="start">① 原始来源 / 用户编辑</text>
 <text x="72" y="322" font-size="25" class="muted" text-anchor="start">项目资料、确认偏好、排障经验；保留原来源与观察时间。用</text>

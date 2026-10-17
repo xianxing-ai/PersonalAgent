@@ -1,0 +1,66 @@
+{
+  "site": "PersonalAgent 大工作区 × 设置页 · 交互式设计提案",
+  "updated": "2026-10-17",
+  "container": "docs/design/workspace-settings-redesign-20261017",
+  "guardrails": [
+    "悬浮球（apps/desktop features/orb 与 electron orb 相关文件）的设计、动画与交互零改动；本站所有方案仅在面板层工作。",
+    "沿用现有功能清单与信息架构，不新增/不删除业务能力。",
+    "仅产出设计提案与本地预览站，不改生产 Renderer/IPC/Runtime 代码。"
+  ],
+  "proposals": [
+    {
+      "id": 1,
+      "slug": "01-editorial-light",
+      "title": "晨白 · 编辑部",
+      "style": "纸白高对比杂志式编辑部风格",
+      "reference": "Untitled UI / Vercel Geist / IBM Carbon 的浅色编辑排版传统",
+      "focus": "文字层级、留白与细线；适合阅读密集的中文学案场景"
+    },
+    {
+      "id": 2,
+      "slug": "02-crt-terminal",
+      "title": "工控 · 磷光",
+      "style": "CRT 航天控制台 / 终端磷光",
+      "reference": "IBM Carbon 密度哲学 + 终端复古（Cascadia/等宽文化）",
+      "focus": "命令面板为中心、信息密度极高、直角切角与扫描线质感"
+    },
+    {
+      "id": 3,
+      "slug": "03-material3-suede",
+      "title": "雪绒 · M3",
+      "style": "Material 3 动态色彩 / 大圆角磁贴",
+      "reference": "Google Material Design 3（最新一代 token + 动态色）",
+      "focus": "tonal 色阶、超圆角、磁贴网格；亲和明快"
+    },
+    {
+      "id": 4,
+      "slug": "04-neo-brutalist",
+      "title": "野拓 · 新粗野",
+      "style": "Neo-Brutalism 硬边硬影",
+      "reference": "高 star 开源 gitstar 常客 neobrutalism.dev（无库纯 CSS 流派）",
+      "focus": "3px 黑边、硬阴影、高饱和色块、直给的大字结构"
+    },
+    {
+      "id": 5,
+      "slug": "05-soft-clay",
+      "title": "雾霭 · 软陶",
+      "style": "Claymorphism / 柔和渐变",
+      "reference": "HeroUI（原 NextUI，50k+ star）柔和友好视觉系",
+      "focus": "pastel 渐变、双层软影、圆润拟物；情感化陪伴感"
+    },
+    {
+      "id": 6,
+      "slug": "06-fluent-light",
+      "title": "仲夏 · Fluent",
+      "style": "Windows Fluent 2 浅色原生",
+      "reference": "Microsoft Fluent 2 Web（微软原生 UI 家族）",
+      "focus": "Mica 质感、Segoe 层级、reveal 高光；与 Windows 桌面无缝"
+    }
+  ],
+  "views": [
+    { "key": "workspace", "label": "大工作区", "sections": "目标总览 / 今日任务 / 对话时间线 / 审批中心 / 连接器 / 证据与状态" },
+    { "key": "settings", "label": "设置页", "sections": "按现有 desktop-settings 全量分组映射" },
+    { "key": "spec", "label": "设计规范", "sections": "色板 / 字阶 / 间距 / 圆角 / 阴影 / 动效 / 无障碍" },
+    { "key": "compare", "label": "对比现行", "sections": "与墨核玻璃方案逐维对比 + 悬浮球承接说明" }
+  ]
+}

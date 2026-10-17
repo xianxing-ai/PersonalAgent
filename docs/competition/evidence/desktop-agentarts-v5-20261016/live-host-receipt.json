@@ -1,0 +1,92 @@
+{
+  "kind": "real_live_host_synthetic_device_boundary",
+  "startedAtUtc": "2026-10-16T13:57:29.724Z",
+  "physicalMicrophone": false,
+  "physicalPlayback": false,
+  "userAppTouched": false,
+  "privateHistoryRead": false,
+  "inputFixture": "public-speech.wav",
+  "diagnostics": [
+    {
+      "stage": "playback",
+      "status": "starting",
+      "elapsedMs": 0
+    },
+    {
+      "stage": "playback",
+      "status": "ready",
+      "elapsedMs": 1
+    },
+    {
+      "stage": "cloud",
+      "status": "connecting",
+      "elapsedMs": 1
+    },
+    {
+      "stage": "cloud",
+      "status": "connected",
+      "elapsedMs": 1424
+    },
+    {
+      "stage": "microphone",
+      "status": "acquiring",
+      "elapsedMs": 1424
+    },
+    {
+      "stage": "microphone",
+      "status": "ready",
+      "elapsedMs": 1425
+    }
+  ],
+  "socketEvents": [
+    {
+      "stage": "upgrade",
+      "httpStatus": 101,
+      "subprotocol": "pa.realtime.v1"
+    },
+    {
+      "stage": "session.created"
+    },
+    {
+      "stage": "session.updated"
+    },
+    {
+      "stage": "close",
+      "code": 1000
+    }
+  ],
+  "inputFrames": 81,
+  "inputBytes": 259200,
+  "outputAudioBytes": 65280,
+  "userFinalTranscripts": 3,
+  "assistantFinalTranscripts": 3,
+  "turns": 1,
+  "toolCalls": [],
+  "playbackAcknowledgement": "synthetic_renderer_only",
+  "maxBufferedAmount": 4379,
+  "status": "passed",
+  "deploymentVersion": "arm64-v5-d92a17a4-r3",
+  "fixtureBytes": 237120,
+  "fixtureSha256": "4ee73e73cf3853a6e583865bc542505931a126feacb11c901eeccfcea76f8102",
+  "hostInstructionsChars": 339,
+  "hostTools": [
+    "request_work",
+    "read_context"
+  ],
+  "finishReason": "turn_complete",
+  "localReleaseConfirmed": true,
+  "finalHostStatus": "idle",
+  "finalDiagnostic": {
+    "stage": "microphone",
+    "status": "ready",
+    "elapsedMs": 1425
+  },
+  "completedAtUtc": "2026-10-16T13:57:48.924Z",
+  "imageSourceCommit": "d92a17a4c436f37ff7a9bfdc5829044031a89bf7",
+  "localHostBaseCommit": "8057cf189e054bc500e2d58e475bad6f91ed4bee",
+  "localHostWorkingTreeUncommitted": true,
+  "localHostTestedFileDigests": "not_recorded",
+  "subsequentDesktopUiVerifiedByThisRun": false,
+  "physicalMicrophoneFailure": "unknown",
+  "sisConnected": false
+}

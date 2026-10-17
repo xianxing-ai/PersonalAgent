@@ -1,0 +1,1026 @@
+{
+  "status": "passed_full_root_check_after_main_integration",
+  "profile": "huawei_ict_agentarts",
+  "sourceCommit": "618612a156798ca306768ff0b48b5fea7f9bbcd9",
+  "integratedMain": "18ec9efee56667a2118567b87609c555ce4bcea2",
+  "node": "v24.15.0",
+  "npm": "11.12.1",
+  "command": "npm run check",
+  "exitCode": 0,
+  "processOnlyPath": true,
+  "systemPathModified": false,
+  "toolInstallation": false,
+  "reportedTestTotals": {
+    "tests": 3839,
+    "pass": 3818,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 21,
+    "todo": 0
+  },
+  "summaries": [
+    {
+      "command": "personal-agent check:architecture",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "personal-agent test:contract-fixtures",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/agentarts test",
+      "tests": 183,
+      "pass": 183,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/agents test",
+      "tests": 32,
+      "pass": 32,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/client test",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/coding-tools test",
+      "tests": 248,
+      "pass": 248,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/goals build",
+      "tests": 339,
+      "pass": 339,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/connector-host test",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/contracts test",
+      "tests": 17,
+      "pass": 17,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/coordination test",
+      "tests": 154,
+      "pass": 154,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/goals build",
+      "tests": 19,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/knowledge test",
+      "tests": 54,
+      "pass": 54,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/learning test",
+      "tests": 11,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/mcp test",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/memory test",
+      "tests": 45,
+      "pass": 45,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/models test",
+      "tests": 77,
+      "pass": 77,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/notifications test",
+      "tests": 46,
+      "pass": 46,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/policy test",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/productivity test",
+      "tests": 19,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/skills test",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/storage test",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/testkit test",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/tool-gateway test",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/voice build",
+      "tests": 126,
+      "pass": 126,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/voice-wake test",
+      "tests": 41,
+      "pass": 41,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/windows-client test",
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/calendar test",
+      "tests": 49,
+      "pass": 46,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 3,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/feeds test",
+      "tests": 85,
+      "pass": 84,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/github test",
+      "tests": 109,
+      "pass": 109,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/mail test",
+      "tests": 50,
+      "pass": 48,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/research test",
+      "tests": 17,
+      "pass": 16,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/weather test",
+      "tests": 71,
+      "pass": 67,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 4,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/agentarts-runtime test",
+      "tests": 191,
+      "pass": 185,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 6,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/desktop test",
+      "tests": 1058,
+      "pass": 1054,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 4,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/obsidian-plugin build",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "@personal-agent/runtime test",
+      "tests": 659,
+      "pass": 659,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "personal-agent test:integration",
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    }
+  ],
+  "privateFullLog": {
+    "file": "root-check-v5-final-main-20261016.log",
+    "bytes": 413649,
+    "sha256": "a50c0453bfbfb1b18699df90d1c9d506c55ebc6139cfc8034341f61a91ef22c8"
+  },
+  "priorVerification": {
+    "sourceCommit": "3714188ffac4d0a3c49e1f750dbc85847b44eff9",
+    "status": "required_check_phases_verified_after_targeted_repairs",
+    "originalRootCommand": {
+      "command": "npm run check",
+      "exitCode": 1,
+      "failedPhase": "agentarts-runtime nested typecheck build could not locate node",
+      "originalLogRetained": true
+    },
+    "repairs": {
+      "systemPathModified": false,
+      "processOnlyToolPaths": [
+        "Node24",
+        "PowerShell7",
+        "existing Git OpenSSL",
+        "existing dotnet"
+      ],
+      "productionCompatibility": "legacy/background task registration retains original conversation owner",
+      "fixtures": "inject existing session controls, conversation journal and SIS config interface without removing original assertions",
+      "earlierNode26PartialAccepted": false
+    },
+    "privateLogHashes": [
+      {
+        "file": "root-check-v5-conversations-20261016.log",
+        "bytes": 28001,
+        "sha256": "90b466763ea039c9a4ee247693bf8944c243834ff885278379846c14cba0aa71",
+        "summaries": [
+          {
+            "tests": 3,
+            "pass": 3,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 4,
+            "pass": 4,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          }
+        ]
+      },
+      {
+        "file": "root-check-v5-resume-20261016.log",
+        "bytes": 387453,
+        "sha256": "e12a08375f92424ffa620a81da8f9110ae0fe7934161ba63b1afc2c05cce1004",
+        "summaries": [
+          {
+            "tests": 183,
+            "pass": 183,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 32,
+            "pass": 32,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 5,
+            "pass": 5,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 248,
+            "pass": 248,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 339,
+            "pass": 339,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 14,
+            "pass": 14,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 17,
+            "pass": 17,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 154,
+            "pass": 154,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 19,
+            "pass": 19,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 52,
+            "pass": 52,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 11,
+            "pass": 11,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 4,
+            "pass": 4,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 45,
+            "pass": 45,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 70,
+            "pass": 70,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 46,
+            "pass": 46,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 3,
+            "pass": 3,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 19,
+            "pass": 19,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 15,
+            "pass": 15,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 4,
+            "pass": 4,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 14,
+            "pass": 14,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 7,
+            "pass": 7,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 126,
+            "pass": 126,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 41,
+            "pass": 41,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 12,
+            "pass": 12,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 49,
+            "pass": 46,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 3,
+            "todo": 0
+          },
+          {
+            "tests": 85,
+            "pass": 84,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 1,
+            "todo": 0
+          },
+          {
+            "tests": 109,
+            "pass": 109,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 50,
+            "pass": 48,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 2,
+            "todo": 0
+          },
+          {
+            "tests": 17,
+            "pass": 16,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 1,
+            "todo": 0
+          },
+          {
+            "tests": 71,
+            "pass": 67,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 4,
+            "todo": 0
+          },
+          {
+            "tests": 191,
+            "pass": 182,
+            "fail": 3,
+            "cancelled": 0,
+            "skipped": 6,
+            "todo": 0
+          },
+          {
+            "tests": 1052,
+            "pass": 1035,
+            "fail": 13,
+            "cancelled": 0,
+            "skipped": 4,
+            "todo": 0
+          },
+          {
+            "tests": 7,
+            "pass": 7,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          {
+            "tests": 639,
+            "pass": 639,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          }
+        ]
+      },
+      {
+        "file": "root-check-v5-redirect-20261016.log",
+        "bytes": 664,
+        "sha256": "42b46316527093de7437aa0e24dbd2379e9472e44828fdd9a61dbc77bd8a5426",
+        "summaries": [
+          {
+            "tests": 3,
+            "pass": 3,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          }
+        ]
+      },
+      {
+        "file": "root-check-v5-integration-20261016.log",
+        "bytes": 15575,
+        "sha256": "eb81c527342aed9edfe298d580220dece68c2b74f3739ddaf50ce1d0fd3b0055",
+        "summaries": [
+          {
+            "tests": 47,
+            "pass": 47,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          }
+        ]
+      },
+      {
+        "file": "desktop-tests-v5-resume-node24-final-20261016.log",
+        "bytes": 106473,
+        "sha256": "353ad5e84638f9ca145434c583493ef698722be9dc91e3431b331b55c179b749",
+        "summaries": [
+          {
+            "tests": 1054,
+            "pass": 1050,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 4,
+            "todo": 0
+          }
+        ]
+      }
+    ]
+  },
+  "checkedFiles": [
+    {
+      "file": "apps/desktop/electron/competition-synthetic-workspace.js",
+      "sha256": "8af28220373da3ad48715b097c6903a86951c58a38c90e2172ae6771cf94b973"
+    },
+    {
+      "file": "apps/desktop/electron/conversation-actions.js",
+      "sha256": "e3151ead12ac274c7c2c831a3e4a2284a1eca91bc78bf55528afa12ace91c668"
+    },
+    {
+      "file": "apps/desktop/electron/conversations.js",
+      "sha256": "3b0756a3bd50d589d2295f3201b9b2a6ceb37f87c467969d79acfbfcadd38a85"
+    },
+    {
+      "file": "apps/desktop/electron/huawei-sis-auth.js",
+      "sha256": "30f9bd2135f261909717194898c2f2582911cc819cbd6c28b6fc613e99d5fa1f"
+    },
+    {
+      "file": "apps/desktop/electron/huawei-sis-config.js",
+      "sha256": "5d7a6b755ac245e3b3de2f5498817d11854958348543f687d62ca8305d55c550"
+    },
+    {
+      "file": "apps/desktop/electron/live-history-queue.js",
+      "sha256": "8c9c87397150e9b846e0be5a1fa25731819ed57be6e170e61d32a9e56b18c596"
+    },
+    {
+      "file": "apps/desktop/electron/live-voice-history.js",
+      "sha256": "202e0fe2f8bef212b5d13c1259f18916b4d01f027c333fe203ee594e68e81d45"
+    },
+    {
+      "file": "apps/desktop/electron/live-voice-host.js",
+      "sha256": "047bd312211de224d95a71caf7a3f965db1168074a54ddf5b224e06bf6d6149b"
+    },
+    {
+      "file": "apps/desktop/electron/main.js",
+      "sha256": "c1bb9bf27fe4f3d34caf71658e84fa9b801e812b4cbde9f6490b8172997588cc"
+    },
+    {
+      "file": "apps/desktop/electron/model-api-config.js",
+      "sha256": "ab8bd71d31d920308310d559624270fb2b52ab58126db490a84cef4cab6477f1"
+    },
+    {
+      "file": "apps/desktop/electron/preload.cjs",
+      "sha256": "1e4fbfb44db346df1393ad40596ce4e2aeca670b112ca7b7c437feb8b9a58a57"
+    },
+    {
+      "file": "apps/desktop/electron/voice-input-core.js",
+      "sha256": "63e92231dd9e6ae7f6fb9d2ee49aec55bc3af00d80d475d598f9c9c7e5396b0c"
+    },
+    {
+      "file": "apps/desktop/electron/workspace-patch-recovery-host.js",
+      "sha256": "6c3f8ce6947f8f839f9f76b895a89cac9ba6c7a6a6646ef4cfa5aba81f33803e"
+    },
+    {
+      "file": "apps/desktop/src/app/input-pin.js",
+      "sha256": "ba7f4101c09587dd8ea57e7353d544e6add50eb4d10018ab3d9af4df18fe6223"
+    },
+    {
+      "file": "apps/desktop/src/app/live-voice-controls.js",
+      "sha256": "558c246c4b380cdb06136e2177004dd776c1307b46b4b80363dabd4cdf37d5db"
+    },
+    {
+      "file": "apps/desktop/src/app/model-api-controls.js",
+      "sha256": "570952c2f4772ef598211540b0571b6ca9108ad64bb9a4397aa18d63ebe6c814"
+    },
+    {
+      "file": "apps/desktop/src/app/renderer.js",
+      "sha256": "796a3a8b969a16fee880ebe7fdce125d20c188850471746d769e3c60138000f1"
+    },
+    {
+      "file": "apps/desktop/src/app/surfaces.css",
+      "sha256": "ef72986fc2a96efdc5287fbd00e0e349f1fd61bc6442f5459ab58fe566b75242"
+    },
+    {
+      "file": "apps/desktop/src/features/admin/sis-voice-settings.js",
+      "sha256": "90c238fa1908da0562ac201ef4c46b656cbe2248e53734379ddc2da8a37240e8"
+    },
+    {
+      "file": "apps/desktop/src/features/admin/view.js",
+      "sha256": "2a2356235593b44101c39e0340d50e7d65a13f8195d0a6c9c078da0fae924188"
+    },
+    {
+      "file": "apps/desktop/src/features/admin/workspace-patch-recovery-controls.js",
+      "sha256": "fb25919126658745db5d6e7b7d0f6257e29909e73ff50ded369c310ca97802d7"
+    },
+    {
+      "file": "apps/desktop/src/features/conversation/native-reasoning.js",
+      "sha256": "5fc9b15d0f90b89fd18d8bef58309e2dbdf0e5a93c4c7c11c5fd3a53e016b914"
+    },
+    {
+      "file": "apps/desktop/src/features/conversation/session-controls.js",
+      "sha256": "6c01f398cd023925ef3e8579fb7a230aeadd48499b3c5616cc25dace54f07824"
+    },
+    {
+      "file": "apps/desktop/src/features/conversation/workspace-composer.js",
+      "sha256": "ed9d1544603633f6514b7d1193e9fca3884e82d76d3a7fc3b4db8e37335d7c93"
+    },
+    {
+      "file": "apps/desktop/src/features/workspace/view.js",
+      "sha256": "a729d09a9e292a5c818ac498401e0e17f7742f6ac0622c30a7bb16a7881a7541"
+    },
+    {
+      "file": "apps/desktop/test/admin-evidence-revocation.test.mjs",
+      "sha256": "55bb639010d3ebc12b1fcd208c0cdd68f6fcf444777902cfc44a1fcb9fe0675a"
+    },
+    {
+      "file": "apps/desktop/test/agentarts-model-controls.test.mjs",
+      "sha256": "63342f0e0e6452f2d2091a9aaf441f7ea36451183120892ac7c9fe76132b763f"
+    },
+    {
+      "file": "apps/desktop/test/audio-level-publish.test.mjs",
+      "sha256": "6fc254d62cc525e32869d3b34e122dc696b5098fd9d7115ad37e909de6d02a61"
+    },
+    {
+      "file": "apps/desktop/test/competition-synthetic-workspace.test.mjs",
+      "sha256": "da710fdeede4ce1273a364c3f7d98b2a938b6808ee3a1c2422a6b550409d79db"
+    },
+    {
+      "file": "apps/desktop/test/conversation-main-actions.test.mjs",
+      "sha256": "aca97a71699331cb187d43399c56febae2e4b9dff61c769446b0eb7dd22f9f87"
+    },
+    {
+      "file": "apps/desktop/test/conversation-sessions.test.mjs",
+      "sha256": "89bc9a4ffd1a475546d87c3758b620a1bf6667df804c6edea22bde1289e066f0"
+    },
+    {
+      "file": "apps/desktop/test/conversation-ui.test.mjs",
+      "sha256": "78b0328f27fd816f1d0951a74349730b2a8864f05c221c9353eac7f4d548091a"
+    },
+    {
+      "file": "apps/desktop/test/conversations.test.mjs",
+      "sha256": "4b9713bb4f184463050617f68963e7f482235d4b4c2a6511d9c9092645d655f1"
+    },
+    {
+      "file": "apps/desktop/test/featured-model-choices.test.mjs",
+      "sha256": "c4fb95dc4ba3101b55a5b5c256cbc33f495fb7337a65dd4a5c6b1461141fd2c3"
+    },
+    {
+      "file": "apps/desktop/test/goal-cognition-host.test.mjs",
+      "sha256": "bf87bfac12624f0f57f92dd4a4f75b9bd58fc0752e8a4a51cf8e1f1fe931145b"
+    },
+    {
+      "file": "apps/desktop/test/huawei-sis-auth.test.mjs",
+      "sha256": "f1625af7fd98229c1d1134c72283a9cca360e5940d3b85c0a74472bf49c62d3d"
+    },
+    {
+      "file": "apps/desktop/test/input-pin.test.mjs",
+      "sha256": "15c84a9f95c3f509d412125e18553c17fccd1aed8b1f5ce88db68ff51aba0ade"
+    },
+    {
+      "file": "apps/desktop/test/live-device-gateway-boundary.test.mjs",
+      "sha256": "6bfc91c1f0a666ff7722ef6799813a2640d299d13f465168f5f23b14c341a29a"
+    },
+    {
+      "file": "apps/desktop/test/live-voice-controls.test.mjs",
+      "sha256": "5762fbd2fb8df52e5b7b5d86559ff58b6393ab9ee15af495635592a6d2f1f1af"
+    },
+    {
+      "file": "apps/desktop/test/live-voice-host.test.mjs",
+      "sha256": "4892b1e1e3f1b85e73b79f839b625dcaa8c7f3b5a1f4694e3b7b81af7ec1e889"
+    },
+    {
+      "file": "apps/desktop/test/model-api-controls.test.mjs",
+      "sha256": "52ed049a308e7945adbd6bdc6fd381213c1428e7512890d02714c7e3923fb25e"
+    },
+    {
+      "file": "apps/desktop/test/model-budget-display.test.mjs",
+      "sha256": "a1733316c7a29782f5dcd57e9e02dc0d7b6bc811df541c6a09ef42ba9b258ef1"
+    },
+    {
+      "file": "apps/desktop/test/native-reasoning-product-smoke.cjs",
+      "sha256": "f9b4ccb447114f6a513d137551750e7c9dedd289ccb6f5f18f500426b895b373"
+    },
+    {
+      "file": "apps/desktop/test/panel-preference-feedback.test.mjs",
+      "sha256": "4ff14e8b1f04cd72279ad84e06ee72e31f16a227b88990e7c2497a57f2e0584a"
+    },
+    {
+      "file": "apps/desktop/test/panel-task-feedback-order.test.mjs",
+      "sha256": "63a27dd272f818cf01636d11c6c98712c75244e0d0b2f1ba8f7b38e91d7fdc66"
+    },
+    {
+      "file": "apps/desktop/test/panel-voice-lifecycle.test.mjs",
+      "sha256": "30da302dfd2471b8e6b9978444d6a97b49bfe12a157e101fb66c514585a67bc1"
+    },
+    {
+      "file": "apps/desktop/test/quit-task-preflight.test.mjs",
+      "sha256": "57404b78c7a1214de2bbbe9bddb3a525188b6c7585877ff5fd4ccd2590b02e5c"
+    },
+    {
+      "file": "apps/desktop/test/task-monitor.test.mjs",
+      "sha256": "7e91be4485b725c3dc665ea8e6226bd64857e8cf7bebbe097a37420e0e67ed10"
+    },
+    {
+      "file": "apps/desktop/test/voice-input-core.test.mjs",
+      "sha256": "9b27abdb2d6599ebb6b6628c4fec6713f4e39753abc55dd1a0cb082d1892cc9c"
+    },
+    {
+      "file": "apps/desktop/test/voice-session-conversation.test.mjs",
+      "sha256": "bf8d99189b833591ee39c9fd44b263e8296304a53cf69a9b9a43d37e74328a9d"
+    },
+    {
+      "file": "apps/desktop/test/workspace-patch-recovery-controls.test.mjs",
+      "sha256": "a7a6e221e2480a3abb48249178371babc01a4359628526637c41ccd28b7672de"
+    },
+    {
+      "file": "apps/desktop/test/workspace-patch-recovery-host.test.mjs",
+      "sha256": "4d19ba48f85d032ce70bcf07f6151d46f99f40ce7d9bbd9905b9b8297f20da23"
+    },
+    {
+      "file": "apps/desktop/test/workspace-patch-recovery-render.test.mjs",
+      "sha256": "f3957a2c1d493d9bb6e3b01f46119e9199cfc86f081c9937c703c106213b4242"
+    },
+    {
+      "file": "apps/desktop/test/workspace-preference-feedback.test.mjs",
+      "sha256": "23a16ea3de9e80f0b3801648d55a48fda98e53a308d8b7ff6c7ced3f62f81ab7"
+    },
+    {
+      "file": "apps/runtime/src/application.ts",
+      "sha256": "5ec78cd36bba81ba2d9fabcf4e921ee5abacfb41720a85a2373c09fd3ea8b6b2"
+    },
+    {
+      "file": "apps/runtime/src/application/context-binding.ts",
+      "sha256": "0dc3758297329b99f912a79f8c438a089311190310ee792c4eda1847641f8a4c"
+    },
+    {
+      "file": "apps/runtime/src/application/runtime-application.ts",
+      "sha256": "c67a3409e1e978a23b5acd8191926aff24c10cef9ce4ac1710d35cdbd4b5138d"
+    },
+    {
+      "file": "apps/runtime/src/application/subagent-host.ts",
+      "sha256": "aaf6f214304f0a8d2a709ac7336dcbd6cba70c16e2fdd990a17d215b5ffae7db"
+    },
+    {
+      "file": "apps/runtime/test/competition-context-binding.test.mjs",
+      "sha256": "25663d0fc56f6abcc3965426c3ac43884dd18ff11d6f9aaf18af58841e28532e"
+    },
+    {
+      "file": "apps/runtime/test/subagent-task-binding.test.mjs",
+      "sha256": "0716744b6b5b1c647ff5c4921c2bb49200fa502a34f2fe8b98b8f82210bab067"
+    },
+    {
+      "file": "packages/knowledge/package.json",
+      "sha256": "89ed9afb18d2545c1380398abc3e4e80bd7e66ffd5c4a6b8237576c725d80072"
+    },
+    {
+      "file": "packages/knowledge/src/bridge.ts",
+      "sha256": "2ae2f64b7bebe5f119906a0de6a7532911a06787035508aa1cb178d515e5f8da"
+    },
+    {
+      "file": "packages/knowledge/test/bridge-process-diagnostics.mjs",
+      "sha256": "769a17f482b7d23e8dccd0bc000afe4031c19617d1dfb07df3dbb215f8590e13"
+    },
+    {
+      "file": "packages/knowledge/test/bridge-process-diagnostics.test.mjs",
+      "sha256": "bba73b1b207ff9577d36fe2c65caf7fd363be4e6ff6ae004df14c606505b0904"
+    },
+    {
+      "file": "packages/models/src/index.ts",
+      "sha256": "c76ddc06a695cd4a899086e3e61ec7a42781e3622ea42f1575d79bb379e362a9"
+    },
+    {
+      "file": "packages/models/src/openai-compatible.ts",
+      "sha256": "5c7ba60e9a642bd365ea697a4234b04fa211834a0d33b17438bb230ffc257d47"
+    },
+    {
+      "file": "packages/models/test/visible-request-budget.test.mjs",
+      "sha256": "1cbd49aa18fd1d8042142ec81de3df62035b6c7bb4fdc6072f8a7b9d00e3af0b"
+    },
+    {
+      "file": "packages/tool-gateway/test/tool-gateway.test.mjs",
+      "sha256": "ea9ac930ca874efbd730467b84f7e9c9b782d6399781c6ee3840cd399da166dc"
+    },
+    {
+      "file": "packages/voice/src/huawei-sis.ts",
+      "sha256": "08d817890b56b5231273c2b2a6659b436c6b33d19843977324d8775d94819a1b"
+    },
+    {
+      "file": "packages/voice/src/index.ts",
+      "sha256": "b7fd386d959a87478959b34d97dae10c2d0fbdfc7a72930d2990373aaf5e6c03"
+    },
+    {
+      "file": "packages/voice/test/huawei-sis.test.mjs",
+      "sha256": "1f982c41a975e1658ed5a168195784e05f52007a566aecf646065cd2de37d891"
+    }
+  ],
+  "evidenceBoundaries": {
+    "ordinaryConfigurationRestore": "normal-startup-receipt.json",
+    "physicalMicrophone": false,
+    "physicalPlayback": false,
+    "all28BusinessWorkflowsAccepted": false,
+    "newImagePublished": false,
+    "githubCiResult": "separate current-head readback"
+  }
+}
