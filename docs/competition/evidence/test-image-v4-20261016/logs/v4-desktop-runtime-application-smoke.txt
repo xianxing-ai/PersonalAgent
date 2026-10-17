@@ -1,0 +1,12 @@
+<implementation>\node_modules\playwright-core\lib\coreBundle.js:44106
+  const failError = new Error("Process failed to launch!");
+                    ^
+
+Error: Process failed to launch!
+    at waitForLine (<implementation>\node_modules\playwright-core\lib\coreBundle.js:44106:21)
+    at Electron.launch (<implementation>\node_modules\playwright-core\lib\coreBundle.js:44316:36)
+    at async ElectronDispatcher.launch (<implementation>\node_modules\playwright-core\lib\coreBundle.js:55551:37)
+    at async _ProgressController.run (<implementation>\node_modules\playwright-core\lib\coreBundle.js:12374:27)
+    at async DispatcherConnection.dispatch (<implementation>\node_modules\playwright-core\lib\coreBundle.js:19135:27)
+
+Node.js v24.15.0

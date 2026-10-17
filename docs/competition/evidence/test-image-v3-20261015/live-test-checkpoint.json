@@ -1,0 +1,335 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-10-15T14:19:40.192Z",
+  "kind": "v3_live_test_checkpoint",
+  "architectureFinalized": false,
+  "imagePublished": false,
+  "localDecision": {
+    "state": "executed_quality_unqualified",
+    "startedAtUtc": "2026-10-15T14:14:41.207Z",
+    "finishedAtUtc": "2026-10-15T14:15:17.077Z",
+    "wallMs": 35864.19869999999,
+    "launchWallMs": 36329.9816,
+    "sourceReport": "local-laya-quality-and-long-input.json",
+    "reportSha256": "096170456af2fea3f12e75381d2d82204f1fedd385f1871f3c6eddbacfe4dd36",
+    "datasetSha256": "5a19f073b632442bd4bd7139af75b12596584b1775001be53f6911d2e00a29af",
+    "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "modelManifestSha256": "ecf84fda3ac53aba0f1cdc8705c9ddc70f8910d4086e304707e0883eb9145e20",
+    "device": "cuda",
+    "precision": {
+      "autocastEnabled": true,
+      "autocastDtype": "torch.bfloat16"
+    },
+    "torchThreads": 1,
+    "noCpuMemoryQuota": true,
+    "localSelectionRequests": 40,
+    "teacherCalls": 0,
+    "qualityScores": {
+      "development": {
+        "total": 12,
+        "correct": 5,
+        "correctReview": 3,
+        "correctExplicitBusinessLabel": 2,
+        "modelSelectedReview": 8,
+        "selectorRejected": 0,
+        "errors": 0
+      },
+      "holdout": {
+        "total": 12,
+        "correct": 2,
+        "correctReview": 2,
+        "correctExplicitBusinessLabel": 0,
+        "modelSelectedReview": 10,
+        "selectorRejected": 0,
+        "errors": 0
+      },
+      "all": {
+        "total": 24,
+        "correct": 7,
+        "correctReview": 5,
+        "correctExplicitBusinessLabel": 2,
+        "modelSelectedReview": 18,
+        "selectorRejected": 0,
+        "errors": 0
+      }
+    },
+    "latency": {
+      "scope": "Mixed quality cases, not repeated old short benchmark; startup and first post-readiness request separate",
+      "firstPostReadiness": {
+        "selectedId": "review",
+        "inputSha256": "6b1d2a629312aa35a53b0e1938426162f6aecbfef6c092946537cc1220c907e3",
+        "contextBytes": 689,
+        "wallMs": 121.4323000000004,
+        "receipt": {
+          "event": "laya_choice",
+          "model": "multilingual",
+          "requestId": "quality-7cad9c8a-5200-467e-9039-107f69ee9e3b",
+          "candidateId": "review",
+          "durationMs": 119.3640000000014,
+          "queueWaitMs": 0.4543000000012398,
+          "busyWaitMs": 0.0004000000008090865,
+          "internalHttpMs": 118.86330000000089,
+          "responseValidationMs": 0.08770000000004075,
+          "choiceWallMs": 119.3640000000014,
+          "endToEndMs": 119.81830000000264,
+          "batchId": "fe4dbc4d-88d0-48df-9919-67dcda1307a5",
+          "batchItemId": "a944be13-da8a-4324-8229-270369185cb4",
+          "batchSize": 1,
+          "submittedBatchSize": 1,
+          "executionPolicy": "sequential",
+          "forwardId": "fe4dbc4d-88d0-48df-9919-67dcda1307a5",
+          "forwardIndex": 1,
+          "forwardCount": 1,
+          "candidateCount": 3,
+          "encodedTokens": 476,
+          "tokenWindow": {
+            "formatVersion": "1.0.0",
+            "encoderMaxTokens": 8192,
+            "maxLength": 1024,
+            "headMaxLength": 256,
+            "headerTokens": [
+              199
+            ],
+            "stateTokens": [
+              276
+            ],
+            "requiredSequenceTokens": [
+              476
+            ],
+            "expectedInputTokens": [
+              476
+            ],
+            "encodedTokens": 476,
+            "droppedTokens": 0,
+            "truncated": false,
+            "criterionHeaderMaxTokens": 48
+          },
+          "questionProfile": "workflow_choice_v1",
+          "top1Probability": 0.8306,
+          "top2Probability": 0.1223,
+          "margin": 0.7083,
+          "entropyConcentration": 0.4947,
+          "calibrated": false,
+          "inferenceMetrics": {
+            "status": "available",
+            "formatVersion": "1.0.0",
+            "forwardScope": "sdk_predict_batch",
+            "precheckScope": "context_window_preflight",
+            "precheckMs": 1.8315,
+            "forwardMs": 82.5366,
+            "processCpuMs": 93.75,
+            "precheckProcessCpuMs": 0,
+            "forwardProcessCpuMs": 93.75,
+            "cgroupBefore": {
+              "status": "unsupported"
+            },
+            "cgroupAfter": {
+              "status": "unsupported"
+            },
+            "cgroupCpuDelta": {
+              "status": "missing"
+            }
+          },
+          "fullCriterionDescriptions": "included_in_selector_state"
+        },
+        "observedAtUtc": "2026-10-15T14:15:00.653Z"
+      },
+      "steadyByLength": {
+        "short": {
+          "attempts": 15,
+          "samples": 15,
+          "errors": 0,
+          "p50Ms": 26.398600000000442,
+          "p95Ms": 30.74669999999969,
+          "maximumMs": 30.74669999999969
+        },
+        "long": {
+          "attempts": 8,
+          "samples": 8,
+          "errors": 0,
+          "p50Ms": 65.03359999999884,
+          "p95Ms": 69.39440000000104,
+          "maximumMs": 69.39440000000104
+        }
+      }
+    },
+    "performance": [
+      {
+        "policy": "sequential",
+        "summary": {
+          "serial": {
+            "attempts": 4,
+            "samples": 4,
+            "errors": 0,
+            "p50Ms": 79.09519999999975,
+            "p95Ms": 79.39500000000044,
+            "maximumMs": 79.39500000000044
+          },
+          "parallelRequests": {
+            "attempts": 4,
+            "samples": 4,
+            "errors": 0,
+            "p50Ms": 204.33959999999934,
+            "p95Ms": 259.53139999999985,
+            "maximumMs": 259.53139999999985
+          }
+        },
+        "groups": [
+          {
+            "round": 0,
+            "mode": "serial",
+            "requests": 4,
+            "totalWallMs": 309.8784999999989
+          },
+          {
+            "round": 0,
+            "mode": "parallelRequests",
+            "requests": 4,
+            "totalWallMs": 260.15190000000075
+          }
+        ],
+        "choicesStable": true,
+        "encodedTokenCounts": [
+          1627,
+          1632,
+          1683,
+          1626
+        ]
+      },
+      {
+        "policy": "packed",
+        "summary": {
+          "serial": {
+            "attempts": 4,
+            "samples": 4,
+            "errors": 0,
+            "p50Ms": 58.56470000000263,
+            "p95Ms": 122.98389999999927,
+            "maximumMs": 122.98389999999927
+          },
+          "parallelRequests": {
+            "attempts": 4,
+            "samples": 4,
+            "errors": 0,
+            "p50Ms": 274.26750000000175,
+            "p95Ms": 274.35310000000027,
+            "maximumMs": 274.35310000000027
+          }
+        },
+        "groups": [
+          {
+            "round": 0,
+            "mode": "serial",
+            "requests": 4,
+            "totalWallMs": 288.0806999999986
+          },
+          {
+            "round": 0,
+            "mode": "parallelRequests",
+            "requests": 4,
+            "totalWallMs": 274.4881000000023
+          }
+        ],
+        "choicesStable": true,
+        "encodedTokenCounts": [
+          1627,
+          1632,
+          1683,
+          1626
+        ]
+      }
+    ],
+    "resources": {
+      "samplingMs": 500,
+      "processes": [
+        {
+          "processLabel": "node-1",
+          "sampleCount": 69,
+          "maxObservedRssBytes": 100761600,
+          "peakRssBytes": 101130240,
+          "maximumCumulativeProcessCpuMs": 1140.625,
+          "maximumObservedOsThreads": 18
+        },
+        {
+          "processLabel": "python-2",
+          "sampleCount": 40,
+          "maxObservedRssBytes": 4292608,
+          "peakRssBytes": 4292608,
+          "maximumCumulativeProcessCpuMs": 0,
+          "maximumObservedOsThreads": 3
+        },
+        {
+          "processLabel": "python-3",
+          "sampleCount": 41,
+          "maxObservedRssBytes": 2401652736,
+          "peakRssBytes": 2401759232,
+          "maximumCumulativeProcessCpuMs": 15687.5,
+          "maximumObservedOsThreads": 12
+        },
+        {
+          "processLabel": "python-4",
+          "sampleCount": 29,
+          "maxObservedRssBytes": 2219917312,
+          "peakRssBytes": 2436837376,
+          "maximumCumulativeProcessCpuMs": 10875,
+          "maximumObservedOsThreads": 12
+        },
+        {
+          "processLabel": "python-5",
+          "sampleCount": 29,
+          "maxObservedRssBytes": 4292608,
+          "peakRssBytes": 4292608,
+          "maximumCumulativeProcessCpuMs": 15.625,
+          "maximumObservedOsThreads": 3
+        }
+      ],
+      "gpuMemory": "not_captured",
+      "codexResourceParity": "not_tested",
+      "scope": "Process RSS and cumulative CPU include model loading/readiness; OS threads include driver/runtime threads and are not PyTorch compute thread count"
+    },
+    "limitations": [
+      "Only 24 host-authored synthetic labels, not independently annotated production data",
+      "All eight long quality cases are in holdout; input length and split are confounded",
+      "Five correct labels are review and only two are explicit business labels; abstention is not a true negative",
+      "Observed model-selected review does not distinguish input packaging, label design and weight effects",
+      "First request is post internal readiness warmup, not true cold inference",
+      "Each long performance arm has four requests and one round, not a robust tail estimate",
+      "External 500ms sampling ends before service stop; full-run memory peaks and GPU usage unavailable",
+      "No teacher or real task/model qualification",
+      "Packed may change choices in earlier short-input evidence; no policy promotion"
+    ]
+  },
+  "agentartsModel": {
+    "state": "blocked_sandbox_registration",
+    "startedAtUtc": "2026-10-15T14:05:09.100Z",
+    "finishedAtUtc": "2026-10-15T14:08:10.399Z",
+    "wallMs": 181298.71659999999,
+    "httpStatus": 500,
+    "inboundAuthentication": "success",
+    "policyMatch": "success",
+    "error": "Failed to create sandbox: Timeout waiting for registration",
+    "exactPermissionsConfigured": true,
+    "csmsKmsActualRead": "not_proven_by_sandbox_error",
+    "modelResponseReceived": false,
+    "usageReceived": false,
+    "directMaasFallback": false,
+    "privateOriginalReceiptSha256": "43b7c424c17ce9e4b9635ca3a83c595bfa6ef7c09ae5d599df61fe8c82be272d"
+  },
+  "realWukong": {
+    "state": "blocked_on_real_model_response",
+    "executed": false
+  },
+  "realPelicanCurrentRoute": {
+    "state": "blocked_on_real_model_response",
+    "executed": false
+  },
+  "bailianVoice": {
+    "state": "websocket_session_configured_only",
+    "microphoneTested": false,
+    "speechGenerationTested": false
+  },
+  "finalImage": {
+    "state": "not_built_pending_required_real_tests",
+    "published": false
+  }
+}

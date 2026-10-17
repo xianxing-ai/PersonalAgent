@@ -1,0 +1,17 @@
+{
+  "maxSteps": 24,
+  "imageId": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "modelSource": "AgentArts enabled DeepSeek; platform backend recorded separately",
+  "image": "personal-agent:test-v4-workflow-wiring",
+  "publication": "See registry release evidence; this launcher does not publish",
+  "requestedReasoningEffort": "none",
+  "torchThreads": 1,
+  "container": "pa-pelican-v3-071706",
+  "localDevice": "cpu",
+  "modelRoute": "agentarts-proxy",
+  "pid": 1912,
+  "resourceQuota": false,
+  "startedAtUtc": "2026-10-16T07:17:12.3843454Z",
+  "deadline": "2026-10-16T07:37:12.347Z",
+  "sourceOverlays": []
+}

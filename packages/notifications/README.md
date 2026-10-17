@@ -1,5 +1,99 @@
 # @personal-agent/notifications
 
+## 2026-10-15：用户打扰策略、通知中心与原子轮次
+
+Competition Profile 增量在原 `NotificationService` 上扩展。既有 `ingest/drain/acknowledge/status/planSchedules`
+继续保留；下方历史“运行期只读/不提供写工具”说明由本节的受信宿主设置入口补充。
+通知静默仅控制打扰，不关闭连接器 ingest、不停止工作。`drain()` 仍只是待投递数据，不是投递证明。
+
+`NotificationServiceOptions.atomicState` 注入同步 `NotificationAtomicStatePort`：
+
+```ts
+read(key: string): {revision: number; value: unknown} | undefined;
+compareAndSet(key: string, expectedRevision: number | undefined, nextValue: unknown): boolean;
+```
+
+端口必须由原持久宿主实现跨进程原子 CAS（成功只递增一次 envelope revision）。全部新旧方法共享
+`notifications:state`，保留原 `pending/batches/delivered`，追加 `interruption` 内的策略、操作回执、轮次和
+feed 展示历史；没有第二套待裁队列或数据库。Runtime 组合使用原 SQLite 的
+`createRuntimeAtomicStatePort(runtime,'device-notifications')`；旧未封装值可读为 revision 0。
+CAS 冲突明确拒绝，不自动重复写入；写结果未知时先按原 operationId/roundId 读回。
+所有同命名空间写入方必须采用相同 CAS 适配，不能让旧无 CAS 写入方同时覆盖新 envelope。
+
+无原子端口时保留旧行为，但 `status().interruptionQuotaSafety` 为 `unavailable`，新策略写入、
+read ack、撤回和轮次预占/投递状态写入均返回 `UNSUPPORTED_CAPABILITY`。
+普通 `StoragePort.set` 的一次写入不被宣称为跨进程配额安全。
+
+### 显式用户字段与继承
+
+作用域为 `{kind:'global'}`、`{kind:'connector',connectorId}`、
+`{kind:'responsibility',responsibilityId,connectorId?}`。顺序为 global → connector → responsibility。
+首次创建 global 策略必须完整提供以下字段，局部/后续更新可用 patch；没有默认“每小时两次”等预算。
+
+| 字段 | 含义 |
+| --- | --- |
+| `mode: normal \| silent` | silent 且 `silentUntilUtc=null` 为持续静默；有期限则期满重新裁定 |
+| `maxInterruptions: 非负整数 \| null` | 0 不允许打扰；null 无数值上限 |
+| `windowMinutes: 正有限数` | 用户明确选择的滚动窗口，每层不同窗口独立执行 |
+| `silentUntilUtc: UTC \| null` | 到该时刻前静默；不重置其他策略、游标、未读或已占用轮次 |
+| `preferredChannel: banner \| voice \| auto` | 明确通道要求 round 采用该通道；auto 可由可信宿主选择多通道 |
+| `allowUrgentBreakthrough: boolean` | 仅允许可信 urgent 事件突破该层静默/quietHours；不突破配额 |
+| `digestMode: on_return \| scheduled \| on_demand` | 仅选择摘要触发方式，scheduled 由原 Runtime 调度，不隐设周期 |
+| `quietHours: QuietHours \| null` | 复用现 DST 安全墙钟窗口 |
+
+父层静默、quietHours 和每层配额均保留为 `constraints`；局部 normal/null/允许紧急不能绕过全局限制。
+显示用 effective 字段不替代多窗口约束。静态 legacy pause/quiet 在发送前仍执行。
+
+Desktop 注入共享宿主时，原 Todo 已保存的 `quietHours/pauseUntilUtc/digest` 以
+`{kind:'connector',connectorId:'productivity'}` 保留在同一个原子状态中；不会成为其他来源的规则，
+也不要求用户先填写新增 global 额度。原 digest 的窗口、条数和 sources 按原语义继续生效。
+受信 `importLegacyPolicy(scope,policy)` 只首次导入；重启不覆盖已由原 Gateway/CAS 修改的策略。
+原设置页更新使用同一 `notifications.interruption_policy.set` 工具的 `legacyPolicy` 形态，
+与 `patch` 互斥，仍绑定完整 operationId/revision/scope/参数与原用户授权。
+用户明确修改同作用域新策略中的 mode/silentUntilUtc、quietHours 或 digestMode 时，分别替换旧暂停、
+安静或摘要字段；其他旧字段继续保留。新 global 策略不会无声清除 productivity 的旧规则。
+
+### 新宿主 API
+
+| 方法 | 返回/保证 |
+| --- | --- |
+| `getInterruptionPolicy(scope)` | state、作用域 revision（尚未建为0）、local/effective、全部 constraints、observedAt |
+| `updateInterruptionPolicy({operationId,expectedRevision,scope,patch})` | 策略 revision CAS；同 operation 原样回放，替换参数拒绝；不清空 feed/轮次 |
+| `getLegacyPolicy(scope)` / `updateLegacyPolicy({operationId,expectedRevision,scope,legacyPolicy})` | 原连接器/职责设置的独立 revision；与新策略共享原子 envelope、operation 回执和原 Gateway 授权 |
+| `ingest(items,{scope?,validUntilUtc?,urgent?,supersedes?})` | 原事件入队，同时追加中心展示记录；supersedes 标记旧变化失效 |
+| `notificationFeed({afterCursor?,unreadOnly?,scope?,limit?})` | 稳定递增 cursor、unread、active/withdrawn/expired 与 deliveredAt 分开；纯查询不计打扰 |
+| `acknowledgeRead({operationId,itemIds})` | 已读独立于投递确认；跨重启保留，幂等 |
+| `withdrawNotifications({operationId,itemIds})` | 保留原历史并标记撤回，不在归来摘要重复旧变化 |
+| `getDigest({trigger,scope?})` | 仅仍有效且未读变化；on_return/scheduled 按用户配置筛选，on_demand 为用户查询；不计打扰 |
+| `reserveInterruption({roundId,batchIds,scope,channels,expiresAt,urgent?})` | 原子预占一个通知轮次。channels 显式 banner/voice 数组；期限采用原宿主任务期限，无固定新上限 |
+| `beginDelivery({roundId,channel})` | 发送前读最新策略/首选通道/配额/有效性，并先持久化 sending；仅 `maySend=true` 才能交原授权通道执行 |
+| `completeDelivery({roundId,channel,state,evidenceRefs})` | 记录 delivered/unknown/failed；delivered 必须有可信通道 Evidence，仍不自动已读 |
+| `getInterruptionRound(roundId)` | 原预占、发送、未知结果与各通道时间的读回，不重发 |
+
+同轮多通道仅占一次配额，每通道只能开始一次；sending/unknown 阻止同通道或替代通道盲重发。
+更换 roundId 不能绕过同一通知已存在的预占/发送/终态回执。未开始发送时新静默可释放预占；
+一旦已开始发送，未知或失败均不退款。unknown 可以通过独立原操作读回补为 delivered/failed，不能重新 begin。
+`acknowledge` 保留原批次投递确认 API，不能代替新 proactive 通道发送前的配额门禁。
+
+旧 pending 含原内容，可保真迁移 feed。旧 ready 批次只存 itemRefs 时不编造来源内容；
+收到实际源 ConnectorItem 重放后补展示记录，仍计 duplicate，不新增批次。缺原来源的批次不能凭空晋升为新配额投递。
+
+`createNotificationSettingsTool(service,{requiredScopes,verifyUserCommand})` 提供原 RegisteredTool 形态
+`notifications.interruption_policy.set`。原 ToolContext 必须有 scope、授权引用、期限、取消信号和与
+ToolGateway 相同 canonical SHA256 的 `argumentsDigest`；operationId/revision/scope/patch 全部绑定。
+`verifyUserCommand` 必须读取现宿主的结构化用户命令/最终语音证明，没有默认放行；模型提案不能改设置。
+Runtime `createRuntimeNotificationHost` 同时拒绝 partial、echo、model origin、过期/未来命令，并要求
+final voice 的 utteranceId/transcriptDigest 和调用者注入的可信证明验证；本模块不监听麦克风。
+新旧两种互斥设置都可由当前唯一语音问题自然确认；Desktop 按实际形态生成摘要、读取该策略的
+revision 并绑定完整参数 digest。模型自报 final 或把 legacy 参数替换进已授权 patch 均不放行。
+
+重要状态返回 receivedAt/observedAt/decidedAt/reservedAt/attemptedAt/deliveredAt，并支持
+`onStage({stage,observedAt,details})`，覆盖策略更新、预占、发送前复核、回执、静默入中心、已读和归来摘要。
+遥测回调失败不会改变已持久化结果；回调不含语音正文/证明或通知正文。
+
+2026-10-15 本模块离线检查：构建通过，发送前首选通道复检回归纳入模块定向测试；Runtime SQLite 组合夹具另行记录。
+这些结果不是真实横幅、语音播放、麦克风、账号或生产平台验收。
+
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 

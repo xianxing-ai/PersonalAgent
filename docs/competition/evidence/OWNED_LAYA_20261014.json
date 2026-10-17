@@ -1,0 +1,455 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "personal-agent-owned-release-public",
+  "profile": "huawei_ict_agentarts",
+  "releaseStatus": "development_preview",
+  "productionVerified": false,
+  "provenance": "projection of explicitly supplied public artifacts; no independent network or credential access",
+  "source": {
+    "revision": "fe886677d72a6f7a3312e054c68ef4d74a804fc4"
+  },
+  "build": {
+    "sourceRevision": "fe886677d72a6f7a3312e054c68ef4d74a804fc4",
+    "indexDigest": "sha256:8dd561e49b45e5f352e08be30bd001c330f8592ff8f49b10ea3e3a691a7c4b2a",
+    "arm64Digest": "sha256:8120ad11915c5de9c6daa61b492d3228872978ccfbc0f9a79acf59432f42366c",
+    "imageReference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:laya-fe886677",
+    "cpuTorchVersion": "2.14.0+cpu",
+    "layaModelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "layout": "single-arm64-manifest",
+    "imageValidationEnvironment": "local-qemu-arm64",
+    "sourceRevisionBasis": {
+      "kind": "buildx_provenance_vcs_revision",
+      "artifactName": "laya-arm64-release-fe886677.json",
+      "artifactSha256": "d318538e99e3928131acbb73d94e771c409496ebe4a07f854c9068683b2b9bd1",
+      "field": "buildx.build.provenance.invocation.parameters.root.request.args.vcs:revision",
+      "directContainerReadback": false,
+      "consoleFullRevisionObserved": false
+    },
+    "buildStatus": "metadata_recorded",
+    "registry": {
+      "status": "manifest_readback_matched",
+      "readbackManifestDigest": "sha256:8120ad11915c5de9c6daa61b492d3228872978ccfbc0f9a79acf59432f42366c",
+      "verified": true
+    }
+  },
+  "phases": {
+    "imageAcceptance": {
+      "status": "real_embedded_laya_passed",
+      "verified": true,
+      "sourceBinding": "not_embedded_in_receipt",
+      "manifestBinding": "not_embedded_in_receipt",
+      "platform": "linux/arm64",
+      "cpuTorchVersion": "2.14.0+cpu",
+      "modelRevision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+      "executionEnvironment": "local-qemu-arm64",
+      "laya": {
+        "status": "actual_embedded_forward_observed",
+        "warmed": true,
+        "typedChoiceValidated": true,
+        "calibrated": false,
+        "instances": 1,
+        "measurements": {
+          "cpuProbeMs": 11631,
+          "startupMs": 74294,
+          "choiceMs": 58697,
+          "shutdownMs": 201
+        },
+        "latencyScope": "local QEMU measurements; not native cloud latency"
+      },
+      "workflowCatalog": {
+        "templates": 28,
+        "detailNodes": 185,
+        "boundAcceptanceVerified": false,
+        "businessExecutionVerified": false
+      },
+      "maasCalls": 0,
+      "toolExecutions": 0,
+      "externalEffects": 0
+    },
+    "registryPublication": {
+      "status": "manifest_readback_matched",
+      "readbackManifestDigest": "sha256:8120ad11915c5de9c6daa61b492d3228872978ccfbc0f9a79acf59432f42366c",
+      "verified": true
+    },
+    "platformDeployment": {
+      "status": "published_deployment_readback_matched",
+      "verified": false,
+      "deploymentReadbackVerified": true,
+      "published": true,
+      "runtimeId": "9a65747e-05f0-475c-a2dc-f24dd3ed87ae",
+      "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+      "version": "arm64-laya-fe886677",
+      "requestedVersion": "Latest",
+      "requestedToReadback": "alias_readback_matched",
+      "invocationBinding": {
+        "verified": false,
+        "runtimeMatch": "matched",
+        "versionMatch": "alias_readback_matched",
+        "invokeMode": "not_recorded"
+      },
+      "sourceRevision": "fe886677d72a6f7a3312e054c68ef4d74a804fc4",
+      "imageDigest": "sha256:8120ad11915c5de9c6daa61b492d3228872978ccfbc0f9a79acf59432f42366c",
+      "sourceMatched": true,
+      "digestMatched": true,
+      "sourceRevisionBasis": "build_provenance_and_registry_digest",
+      "imageDigestBasis": "registry_manifest_for_configured_reference",
+      "sourceEvidenceBound": true,
+      "digestEvidenceBound": true,
+      "consoleFullRevisionObserved": false,
+      "logging": {
+        "enabled": true,
+        "saved": true
+      },
+      "imageReference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:laya-fe886677"
+    },
+    "cloudPublicFixture": {
+      "status": "partial_receipt_admitted_model_recheck",
+      "verified": false,
+      "scope": "one fixed public workspace.read_text fixture; not all business workflows",
+      "runtime": "pa-owned-bindings-0dae0ff5-api",
+      "invokeMode": "not_recorded",
+      "requestedVersion": "Latest",
+      "requestedVersionVerified": false,
+      "publicReadVerified": true,
+      "postReceiptModelVerified": false,
+      "selectedWorkflow": "F20",
+      "templateVersion": "2026.10.14.1",
+      "templateDigest": "39f80fd250858c00454c1cbcc48785d54710af632030e0af6592ceb80ff6df94",
+      "catalogCount": 28,
+      "realProviders": true,
+      "network": [
+        {
+          "stage": "catalog",
+          "requestId": "owned-fe4cc7f4-7f69-4e66-bf17-5f93f1258697",
+          "httpStatus": 200,
+          "durationMs": 879,
+          "transport": "https"
+        },
+        {
+          "stage": "proposal",
+          "requestId": "owned-2810ad87-81ab-4d59-bf71-04aab8495632",
+          "httpStatus": 200,
+          "durationMs": 2726,
+          "transport": "https"
+        },
+        {
+          "stage": "receipt_resume",
+          "requestId": "owned-21a88893-6c0a-4cbb-9782-ccfe28d408cd",
+          "httpStatus": 200,
+          "durationMs": 3997,
+          "transport": "https"
+        }
+      ],
+      "tool": {
+        "operationId": "wf-d093b5e02ec18f93545c40594d8cf4838df53be03b0d1240",
+        "proposalId": "wf-d093b5e02ec18f93545c40594d8cf4838df53be03b0d1240",
+        "originControlRevision": 1,
+        "toolName": "workspace.read_text",
+        "toolVersion": "1.0.0",
+        "runId": "host-tool-376dbb98-9525-4e1a-8db7-a23bfcf8d37d",
+        "localState": "succeeded",
+        "executionCount": 1,
+        "policyDecision": "allow",
+        "evidence": [
+          {
+            "evidenceId": "host-tool-376dbb98-9525-4e1a-8db7-a23bfcf8d37d",
+            "verification": "conditional"
+          }
+        ],
+        "signedReceipt": true,
+        "contentSha256": "80dccd48c24f3673f836cb61477ee83fb8d340f17f8c57f31ed0b7b91ea6681c"
+      },
+      "resume": {
+        "receiptAccepted": true,
+        "originalToolNodeState": "completed",
+        "graphState": "unknown",
+        "completedPostReceiptModelNodes": []
+      },
+      "persistence": {
+        "reopened": true,
+        "toolRecordCount": 1,
+        "evidenceCount": 1,
+        "additionalNetworkCalls": 0,
+        "additionalToolExecutions": 0
+      },
+      "laya": {
+        "status": "correlated_platform_console_readback",
+        "sourceAuthenticity": "authenticated_platform_console_readback_reported",
+        "observationMethod": "Runtime console DOM readback; not an official log file export",
+        "sourceFileSha256": "c9d8f04083d8884c73e4fd8751e51a9e1c783acebebc5d6826c146fff00ba6d9",
+        "records": [
+          {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "owned-21a88893-6c0a-4cbb-9782-ccfe28d408cd",
+            "candidateId": "owned-review",
+            "durationMs": 1477
+          },
+          {
+            "event": "laya_choice",
+            "model": "multilingual",
+            "requestId": "owned-2810ad87-81ab-4d59-bf71-04aab8495632",
+            "candidateId": "candidate-001",
+            "durationMs": 881
+          },
+          {
+            "event": "laya_ready",
+            "model": "multilingual",
+            "service": "embedded",
+            "warmed": true
+          }
+        ]
+      },
+      "unavailable": [],
+      "unknown": []
+    }
+  },
+  "businessMatrix": [
+    {
+      "featureId": "F01",
+      "name": "主对话与责任理解",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F02",
+      "name": "语音交互与确认",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F03",
+      "name": "世界状态与局部重规划",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F04",
+      "name": "Wiki与作用域记忆",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F05",
+      "name": "记忆搜索与来源回答",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F06",
+      "name": "待办提醒",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F07",
+      "name": "日历安排",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F08",
+      "name": "邮件",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F09",
+      "name": "订阅信号",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F10",
+      "name": "深度研究",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F11",
+      "name": "天气出行",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F12",
+      "name": "主动通知",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F13",
+      "name": "故障诊断",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F14",
+      "name": "浏览器桌面",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F15",
+      "name": "编码与命令",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F16",
+      "name": "CI修复",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F17",
+      "name": "测试定位",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F18",
+      "name": "PR审查合并",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F19",
+      "name": "Issue修复",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F20",
+      "name": "API文档",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "partial_public_read_step_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F21",
+      "name": "MCP与Skills",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F22",
+      "name": "影子实验",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F23",
+      "name": "评估晋升",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F24",
+      "name": "调度取消恢复",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F25",
+      "name": "账户与数据范围",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F26",
+      "name": "镜像部署",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F27",
+      "name": "上下文管理",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    },
+    {
+      "featureId": "F28",
+      "name": "模型与思考分配",
+      "graphTemplate": "catalog_count_observed_unbound",
+      "businessStatus": "not_verified",
+      "fullyVerified": false,
+      "unavailable": []
+    }
+  ],
+  "nativePlatformCapabilities": {
+    "inferenceGateway": "not_verified_by_these_artifacts",
+    "mcpGateway": "not_verified_by_these_artifacts",
+    "knowledgeBase": "not_verified_by_these_artifacts",
+    "trace": "not_verified_by_these_artifacts",
+    "evaluation": "not_verified_by_these_artifacts"
+  },
+  "limitations": [
+    "Local QEMU startup/choice measurements are not native cloud latency.",
+    "requestedVersion is distinct from actual platform deployment/version readback.",
+    "Runtime identity, a read-back version/alias and recorded published invoke mode must match before linking a cloud invocation to deployment.",
+    "An image catalog count without the acceptance receipt source/manifest binding is not a verified release template.",
+    "Missing platform/cloud/Laya log evidence stays missing; container acceptance alone does not verify cloud publication.",
+    "One real public tool/receipt/resume fixture does not complete all 28 business workflows.",
+    "A source receipt signature is not a Policy grant or independently verified external effect."
+  ],
+  "publicInputSha256": {
+    "metadata": "58faef3dc1b72ca0842c9f60de95de5c436f2012c52341da48e11347fbd8fece",
+    "imageAcceptance": "20f719797b4edb20cb4a12d7fb90f8767cfced40baf8276a2033d72962e9fc9c",
+    "cloudReceipt": "1d3921528e340e8123fd23658d61a24d6bea9e75edc71230420fcb32ff0dafd7",
+    "platformReadback": "0218edf203c37cd01898ad634a85a36ec7b12b80e361749b84be4c7c9c824772"
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "sourceCommit": "4aa8f93fd708ad2c780e7cd3c6142d6398c659b6",
+  "imageDigest": "sha256:5168bda799e9cda660b6c9f67b0e718fad446c74149f5d8b6d77a0d520f7321d",
+  "status": "passed",
+  "reason": "turn_complete",
+  "checks": {
+    "sessionReady": true,
+    "inputFinalTranscript": true,
+    "outputTranscript": true,
+    "outputAudio": true,
+    "turnComplete": true,
+    "closed": true
+  },
+  "timings": {
+    "sessionReadyMs": 970.586,
+    "inputFinalTranscriptMs": 2729.832,
+    "outputTranscriptMs": 2952.623,
+    "outputAudioMs": 6371.379,
+    "turnCompleteMs": 9874.619,
+    "inputSentMs": 9963.553,
+    "closedMs": 10125.492,
+    "closeDurationMs": 161.916
+  },
+  "failures": [],
+  "transcripts": {
+    "input": [
+      "你好。",
+      "这是公开的语音连接测试。",
+      "请只回答连接成功。"
+    ],
+    "output": [
+      "你好",
+      "收到，语音连接正常。",
+      "连接成功"
+    ]
+  },
+  "inputAudioBytes": 265920,
+  "outputAudioBytes": 111360,
+  "outputAudioSha256": "e5e4f603dc51d5f2386f0ee4e4ca0bd499f31db5fa76219dc681da1d3923e6df",
+  "verification": "gateway_events_only_no_playback_or_platform_trace",
+  "elapsedMs": 10125.686,
+  "fixture": "public-speech.wav",
+  "fixtureSha256": "0939bbb86860d67d6f861a1a550e3c063d3b5707cba2aad1a39d56b0d9052241",
+  "fixtureText": "你好。这是公开的语音连接测试。请只回答连接成功。",
+  "tools": [],
+  "deviceMicrophone": false,
+  "devicePlayback": false,
+  "wallMs": 10144.573400000001,
+  "wss101": true,
+  "httpTaskFallbackRequests": 0,
+  "socketEvidence": [
+    {
+      "channel": "voice",
+      "event": "upgrade",
+      "httpStatus": 101,
+      "protocol": "pa.realtime.v1",
+      "elapsedMs": 11794.6892
+    },
+    {
+      "channel": "voice",
+      "event": "session.created",
+      "model": "qwen3.8-omni-flash-realtime",
+      "elapsedMs": 12047.3849
+    },
+    {
+      "channel": "voice",
+      "event": "session.updated",
+      "model": "qwen3.8-omni-flash-realtime",
+      "elapsedMs": 12205.3968
+    },
+    {
+      "channel": "voice",
+      "event": "close",
+      "code": 1000,
+      "elapsedMs": 21360.422300000002
+    }
+  ],
+  "deploymentVersion": "arm64-v5-4aa8f93f-r1",
+  "probeSchemaVersion": "1.0"
+}

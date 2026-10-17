@@ -1,0 +1,94 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Wukong scaffold</title></head><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="svg-title">
+  <title id="svg-title">孙悟空骑白龙马</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#bfe3ff"/>
+      <stop offset="100%" stop-color="#eaf6ff"/>
+    </linearGradient>
+    <linearGradient id="horseBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#d6e2ee"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffe066"/>
+      <stop offset="100%" stop-color="#e0a800"/>
+    </linearGradient>
+    <radialGradient id="cloud" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="800" height="600" fill="url(#sky)"/>
+  <ellipse cx="150" cy="120" rx="120" ry="60" fill="url(#cloud)"/>
+  <ellipse cx="650" cy="90" rx="140" ry="70" fill="url(#cloud)"/>
+  <ellipse cx="400" cy="180" rx="160" ry="60" fill="url(#cloud)"/>
+
+  <g id="ground">
+    <path d="M0 520 Q200 470 400 500 T800 490 L800 600 L0 600 Z" fill="#8fbf6f"/>
+    <path d="M0 560 Q250 520 500 550 T800 540 L800 600 L0 600 Z" fill="#6fa34f"/>
+  </g>
+
+  <g id="horse-motion">
+    <animateTransform id="horse-gallop" attributeName="transform" type="translate" values="0 0; 0 -14; 0 0; 0 -8; 0 0" keyTimes="0;0.25;0.5;0.75;1" dur="0.9s" begin="0s" repeatCount="indefinite"/>
+    <g id="white-dragon-horse">
+      <ellipse cx="400" cy="470" rx="150" ry="18" fill="#00000022"/>
+      <path d="M300 400 Q330 350 400 350 Q470 350 500 400 L500 460 Q470 480 400 480 Q330 480 300 460 Z" fill="url(#horseBody)" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M300 410 Q250 380 230 340 Q260 350 290 380" fill="none" stroke="#c8d6e2" stroke-width="10" stroke-linecap="round"/>
+      <path d="M240 345 Q220 320 215 295 Q235 305 250 330" fill="#ffffff" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M215 295 Q205 280 210 265 Q225 275 228 292" fill="#ffffff" stroke="#9fb0c0" stroke-width="3"/>
+      <circle cx="222" cy="300" r="4" fill="#222"/>
+      <path d="M228 270 Q240 250 258 245 Q250 262 246 278" fill="#ffffff" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M258 245 Q268 235 280 238 Q272 250 260 258" fill="#ffffff" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M300 400 Q290 380 300 360" fill="none" stroke="#c8d6e2" stroke-width="8" stroke-linecap="round"/>
+      <path d="M500 400 Q520 380 530 350" fill="none" stroke="#c8d6e2" stroke-width="8" stroke-linecap="round"/>
+      <path d="M330 470 L320 540 L345 540 L355 480 Z" fill="#e8eef4" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M450 470 L460 540 L485 540 L470 480 Z" fill="#e8eef4" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M360 470 L355 545 L378 545 L382 480 Z" fill="#dbe6f0" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M420 470 L425 545 L448 545 L440 480 Z" fill="#dbe6f0" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M500 420 Q560 410 600 380 Q590 400 560 430 Q530 450 505 450 Z" fill="#ffffff" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M600 380 Q620 370 640 378 Q625 392 605 396" fill="#ffffff" stroke="#9fb0c0" stroke-width="3"/>
+      <path d="M300 430 Q270 440 250 470 Q280 460 305 455" fill="#ffffff" stroke="#9fb0c0" stroke-width="3"/>
+    </g>
+  </g>
+
+  <g id="rider-motion">
+    <animateTransform id="rider-bob" attributeName="transform" type="translate" values="0 0; 0 -10; 0 0; 0 -6; 0 0" keyTimes="0;0.25;0.5;0.75;1" dur="0.9s" begin="0s" repeatCount="indefinite"/>
+    <g id="wukong">
+      <path d="M400 300 Q360 320 350 380 Q370 400 400 400 Q430 400 450 380 Q440 320 400 300 Z" fill="#c0392b" stroke="#7b241c" stroke-width="3"/>
+      <path d="M350 380 Q340 420 355 460 L375 460 Q365 420 370 385 Z" fill="#c0392b" stroke="#7b241c" stroke-width="3"/>
+      <path d="M450 380 Q460 420 445 460 L425 460 Q435 420 430 385 Z" fill="#c0392b" stroke="#7b241c" stroke-width="3"/>
+      <path d="M375 460 Q370 490 365 510 L385 510 Q388 490 390 465 Z" fill="#f1c40f" stroke="#b7950b" stroke-width="3"/>
+      <path d="M425 460 Q430 490 435 510 L415 510 Q412 490 410 465 Z" fill="#f1c40f" stroke="#b7950b" stroke-width="3"/>
+      <path d="M365 510 Q355 520 350 535 L390 535 Q385 520 385 510 Z" fill="#2c3e50"/>
+      <path d="M435 510 Q445 520 450 535 L410 535 Q415 520 415 510 Z" fill="#2c3e50"/>
+      <path d="M400 300 Q380 280 385 255 Q400 240 415 255 Q420 280 400 300 Z" fill="#f5cba7" stroke="#c98a5b" stroke-width="2"/>
+      <path d="M385 255 Q370 240 365 220 Q385 225 395 245 Z" fill="#8e44ad"/>
+      <path d="M415 255 Q430 240 435 220 Q415 225 405 245 Z" fill="#8e44ad"/>
+      <path d="M370 245 Q350 235 340 215 Q360 220 378 240 Z" fill="#8e44ad"/>
+      <path d="M430 245 Q450 235 460 215 Q440 220 422 240 Z" fill="#8e44ad"/>
+      <circle cx="390" cy="262" r="3" fill="#222"/>
+      <circle cx="410" cy="262" r="3" fill="#222"/>
+      <path d="M392 275 Q400 282 408 275" fill="none" stroke="#a04000" stroke-width="2"/>
+      <path d="M400 240 Q395 220 400 200 Q405 220 400 240 Z" fill="url(#gold)" stroke="#b7950b" stroke-width="2"/>
+      <path d="M385 235 Q370 220 360 205 Q380 210 392 230 Z" fill="url(#gold)" stroke="#b7950b" stroke-width="2"/>
+      <path d="M415 235 Q430 220 440 205 Q420 210 408 230 Z" fill="url(#gold)" stroke="#b7950b" stroke-width="2"/>
+      <path d="M350 340 Q310 330 280 300 Q300 320 340 335 Z" fill="#f5cba7" stroke="#c98a5b" stroke-width="2"/>
+      <path d="M450 340 Q490 330 520 300 Q500 320 460 335 Z" fill="#f5cba7" stroke="#c98a5b" stroke-width="2"/>
+      <path d="M280 300 Q260 280 255 250 Q275 270 290 295 Z" fill="#f5cba7" stroke="#c98a5b" stroke-width="2"/>
+      <path d="M255 250 Q250 230 260 215 Q268 235 265 252 Z" fill="#f5cba7" stroke="#c98a5b" stroke-width="2"/>
+      <path d="M520 300 Q540 280 545 250 Q525 270 510 295 Z" fill="#f5cba7" stroke="#c98a5b" stroke-width="2"/>
+      <path d="M545 250 Q550 230 540 215 Q532 235 535 252 Z" fill="#f5cba7" stroke="#c98a5b" stroke-width="2"/>
+      <rect x="250" y="200" width="10" height="300" rx="5" fill="url(#gold)" stroke="#b7950b" stroke-width="2"/>
+      <rect x="240" y="195" width="30" height="12" rx="6" fill="#e74c3c" stroke="#922b21" stroke-width="2"/>
+      <rect x="240" y="495" width="30" height="12" rx="6" fill="#e74c3c" stroke="#922b21" stroke-width="2"/>
+      <path d="M255 210 Q240 210 235 200 Q250 200 255 210 Z" fill="#e74c3c"/>
+      <path d="M255 490 Q240 490 235 500 Q250 500 255 490 Z" fill="#e74c3c"/>
+      <path d="M400 300 Q400 290 400 280" fill="none" stroke="#7b241c" stroke-width="2"/>
+      <path d="M350 380 Q340 360 350 340" fill="none" stroke="#7b241c" stroke-width="2"/>
+      <path d="M450 380 Q460 360 450 340" fill="none" stroke="#7b241c" stroke-width="2"/>
+      <path d="M355 460 Q350 470 355 480" fill="none" stroke="#b7950b" stroke-width="2"/>
+      <path d="M445 460 Q450 470 445 480" fill="none" stroke="#b7950b" stroke-width="2"/>
+    </g>
+  </g>
+</svg></body></html>

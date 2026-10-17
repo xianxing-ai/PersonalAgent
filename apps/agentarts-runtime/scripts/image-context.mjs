@@ -54,15 +54,30 @@ for (let index=0;index<queue.length;index++) {
   }
 }
 lock.packages = Object.fromEntries(Object.entries(lock.packages).filter(([key]) => selected.has(key)));
+const registryUrl=new URL(process.env.PA_IMAGE_NPM_REGISTRY??'https://repo.huaweicloud.com/repository/npm/');
+if(registryUrl.protocol!=='https:'||registryUrl.username||registryUrl.password||registryUrl.search||registryUrl.hash) throw Error('Invalid explicit image npm registry');
+if(!registryUrl.pathname.endsWith('/'))registryUrl.pathname+='/';
+const registry=registryUrl.href;let rewrittenTarballs=0;
+// Keep source lock/integrities intact; this generated image context uses the
+// mainland mirror for npm tarballs instead of a runtime overseas dependency.
+for (const entry of Object.values(lock.packages)) {
+  if (typeof entry.resolved === 'string' && entry.resolved.startsWith('https://registry.npmjs.org/')) {
+    entry.resolved=entry.resolved.replace('https://registry.npmjs.org/',registry);rewrittenTarballs++;
+  }
+}
 const manifest = {name:'personal-agent-owned-image',version:'0.0.0',private:true,type:'module',workspaces:workspacePaths};
 lock.name=manifest.name;
 lock.packages['']={name:manifest.name,version:manifest.version,workspaces:workspacePaths};
 await mkdir(output,{recursive:true});
 await writeFile(path.join(output,'package.json'),JSON.stringify(manifest,null,2)+'\n');
 await writeFile(path.join(output,'package-lock.json'),JSON.stringify(lock,null,2)+'\n');
+await writeFile(path.join(output,'npm-registry.json'),JSON.stringify({registry,rewrittenTarballs,
+  sourceLockModified:false,versionAndIntegrityPreserved:true},null,2)+'\n');
 for (const relative of workspacePaths) {
   const destination = path.join(output,relative); await mkdir(destination,{recursive:true});
   await writeFile(path.join(destination,'package.json'),JSON.stringify(manifests.get(relative),null,2)+'\n');
+  const dependencyDirectory=path.join(output,'dependency-manifests',relative);await mkdir(dependencyDirectory,{recursive:true});
+  await writeFile(path.join(dependencyDirectory,'package.json'),JSON.stringify(manifests.get(relative),null,2)+'\n');
   const directory = relative.startsWith('apps/') ? 'src' : 'dist';
   await cp(path.join(root,relative,directory),path.join(destination,directory),{recursive:true,filter:regularSource});
   // Contracts uses its source-controlled protocol schema at runtime.
@@ -81,6 +96,7 @@ async function visit(directory){
   } else throw Error('Non-regular owned image context entry');
 }}
 await visit(output);
-await writeFile(path.join(output,'context-manifest.json'),JSON.stringify({workspacePaths,files},null,2)+'\n');
+await writeFile(path.join(output,'context-manifest.json'),JSON.stringify({workspacePaths,files,npmRegistry:{registry,rewrittenTarballs},
+  decision:{location:'local_runtime',tool:'decision.choose_candidate',execution:'sequential'},pythonDependencies:[]},null,2)+'\n');
 await chmod(path.join(output,'context-manifest.json'),0o644);
-console.log(JSON.stringify({context:output,workspaces:workspacePaths,files:files.length}));
+console.log(JSON.stringify({context:output,workspaces:workspacePaths,files:files.length,decisionLocation:'local_runtime'}));
