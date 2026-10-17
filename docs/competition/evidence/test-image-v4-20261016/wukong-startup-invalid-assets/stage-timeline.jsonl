@@ -1,0 +1,6 @@
+{"event":"stage_started","kind":"startup","label":"browser","startedAt":"2026-10-16T06:53:03.196Z"}
+{"event":"stage_finished","kind":"startup","label":"browser","startedAt":"2026-10-16T06:53:03.196Z","endedAt":"2026-10-16T06:53:03.455Z","wallMs":259.6101,"outcome":"completed"}
+{"event":"stage_started","kind":"startup","label":"image_model_binding","startedAt":"2026-10-16T06:53:03.456Z"}
+{"event":"stage_finished","kind":"startup","label":"image_model_binding","startedAt":"2026-10-16T06:53:03.456Z","endedAt":"2026-10-16T06:53:03.517Z","wallMs":61.3764000000001,"outcome":"completed"}
+{"event":"stage_started","kind":"startup","label":"local_laya","startedAt":"2026-10-16T06:53:03.534Z"}
+{"event":"stage_finished","kind":"startup","label":"local_laya","startedAt":"2026-10-16T06:53:03.534Z","endedAt":"2026-10-16T06:53:04.636Z","wallMs":1101.6626,"outcome":"failed"}

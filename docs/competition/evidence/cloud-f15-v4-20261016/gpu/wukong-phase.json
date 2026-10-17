@@ -1,0 +1,8 @@
+{
+  "device": "cuda",
+  "wallMs": 190503.7247,
+  "startedAtUtc": "2026-10-16T08:25:30.0194816Z",
+  "finishedAtUtc": "2026-10-16T08:28:40.5258924Z",
+  "scenario": "wukong",
+  "exitCode": 1
+}

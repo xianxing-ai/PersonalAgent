@@ -1,0 +1,545 @@
+{
+  "workspacePaths": [
+    "packages/contracts",
+    "packages/coordination",
+    "packages/models",
+    "packages/agentarts",
+    "apps/agentarts-runtime"
+  ],
+  "files": [
+    ".dockerignore",
+    "apps/agentarts-runtime/package.json",
+    "apps/agentarts-runtime/src/adaptive-decision.mjs",
+    "apps/agentarts-runtime/src/binding-dispatch.mjs",
+    "apps/agentarts-runtime/src/image-services.mjs",
+    "apps/agentarts-runtime/src/laya-selector.mjs",
+    "apps/agentarts-runtime/src/laya-service.mjs",
+    "apps/agentarts-runtime/src/local-laya.mjs",
+    "apps/agentarts-runtime/src/main.mjs",
+    "apps/agentarts-runtime/src/model-fetch.mjs",
+    "apps/agentarts-runtime/src/model-proxy.mjs",
+    "apps/agentarts-runtime/src/platform-services.mjs",
+    "apps/agentarts-runtime/src/proactive-controller.mjs",
+    "apps/agentarts-runtime/src/request-path.mjs",
+    "apps/agentarts-runtime/src/server.mjs",
+    "apps/agentarts-runtime/src/shadow-controller.mjs",
+    "apps/agentarts-runtime/src/stage-timeline.mjs",
+    "apps/agentarts-runtime/src/test-version-controller.mjs",
+    "apps/agentarts-runtime/src/trace-replay.mjs",
+    "apps/agentarts-runtime/src/websocket-transport.mjs",
+    "dependency-manifests/apps/agentarts-runtime/package.json",
+    "dependency-manifests/packages/agentarts/package.json",
+    "dependency-manifests/packages/contracts/package.json",
+    "dependency-manifests/packages/coordination/package.json",
+    "dependency-manifests/packages/models/package.json",
+    "Dockerfile",
+    "npm-registry.json",
+    "package-lock.json",
+    "package.json",
+    "packages/agentarts/dist/bindings.d.ts",
+    "packages/agentarts/dist/bindings.js",
+    "packages/agentarts/dist/index.d.ts",
+    "packages/agentarts/dist/index.js",
+    "packages/agentarts/dist/input.d.ts",
+    "packages/agentarts/dist/input.js",
+    "packages/agentarts/dist/observability/index.d.mts",
+    "packages/agentarts/dist/observability/index.mjs",
+    "packages/agentarts/dist/owned-workflow-data.d.ts",
+    "packages/agentarts/dist/owned-workflow-data.js",
+    "packages/agentarts/dist/owned-workflow-host-bridge.d.ts",
+    "packages/agentarts/dist/owned-workflow-host-bridge.js",
+    "packages/agentarts/dist/owned-workflow-templates.d.ts",
+    "packages/agentarts/dist/owned-workflow-templates.js",
+    "packages/agentarts/dist/owned-workflows.d.ts",
+    "packages/agentarts/dist/owned-workflows.js",
+    "packages/agentarts/dist/proactive-host-proofs.d.ts",
+    "packages/agentarts/dist/proactive-host-proofs.js",
+    "packages/agentarts/dist/proactive-workflows.d.ts",
+    "packages/agentarts/dist/proactive-workflows.js",
+    "packages/agentarts/dist/prompts.d.ts",
+    "packages/agentarts/dist/prompts.js",
+    "packages/agentarts/dist/workflow-adapters.d.ts",
+    "packages/agentarts/dist/workflow-adapters.js",
+    "packages/agentarts/dist/workflow-dataflow.d.ts",
+    "packages/agentarts/dist/workflow-dataflow.js",
+    "packages/agentarts/dist/workflow-decision-tool.d.ts",
+    "packages/agentarts/dist/workflow-decision-tool.js",
+    "packages/agentarts/dist/workflow-keys.d.ts",
+    "packages/agentarts/dist/workflow-keys.js",
+    "packages/agentarts/dist/workflow-shadow-policy.d.ts",
+    "packages/agentarts/dist/workflow-shadow-policy.js",
+    "packages/agentarts/dist/workflow-shadow-release.d.ts",
+    "packages/agentarts/dist/workflow-shadow-release.js",
+    "packages/agentarts/package.json",
+    "packages/contracts/dist/agentarts-transport.d.ts",
+    "packages/contracts/dist/agentarts-transport.generated.d.ts",
+    "packages/contracts/dist/agentarts-transport.generated.js",
+    "packages/contracts/dist/agentarts-transport.js",
+    "packages/contracts/dist/generated.d.ts",
+    "packages/contracts/dist/generated.js",
+    "packages/contracts/dist/index.d.ts",
+    "packages/contracts/dist/index.js",
+    "packages/contracts/dist/ports.d.ts",
+    "packages/contracts/dist/ports.js",
+    "packages/contracts/dist/schema.d.ts",
+    "packages/contracts/dist/schema.js",
+    "packages/contracts/dist/windows-host.d.ts",
+    "packages/contracts/dist/windows-host.js",
+    "packages/contracts/package.json",
+    "packages/contracts/schema/agentarts-transport.json",
+    "packages/contracts/schema/protocol.json",
+    "packages/contracts/schema/windows-host.json",
+    "packages/coordination/dist/agentarts-websocket.d.ts",
+    "packages/coordination/dist/agentarts-websocket.js",
+    "packages/coordination/dist/agentarts.d.ts",
+    "packages/coordination/dist/agentarts.js",
+    "packages/coordination/dist/coordinator.d.ts",
+    "packages/coordination/dist/coordinator.js",
+    "packages/coordination/dist/index.d.ts",
+    "packages/coordination/dist/index.js",
+    "packages/coordination/dist/repair-candidate.d.ts",
+    "packages/coordination/dist/repair-candidate.js",
+    "packages/coordination/dist/testing.d.ts",
+    "packages/coordination/dist/testing.js",
+    "packages/coordination/package.json",
+    "packages/models/dist/index.d.ts",
+    "packages/models/dist/index.js",
+    "packages/models/dist/openai-compatible.d.ts",
+    "packages/models/dist/openai-compatible.js",
+    "packages/models/dist/realtime.d.ts",
+    "packages/models/dist/realtime.js",
+    "packages/models/dist/structured-tools.d.ts",
+    "packages/models/dist/structured-tools.js",
+    "packages/models/package.json"
+  ],
+  "npmRegistry": {
+    "registry": "https://repo.huaweicloud.com/repository/npm/",
+    "rewrittenTarballs": 95
+  },
+  "decision": {
+    "location": "local_runtime",
+    "tool": "decision.choose_candidate",
+    "execution": "sequential"
+  },
+  "pythonDependencies": [],
+  "sourceRevision": "e38ef23dfc5ac5cd59728bb40299e0784f203cae",
+  "contentTreeSha256": "cae7fbdaa40979d50ba7607d86fc7c5e671a2261cc3d89e66c3c16524fd4b04d",
+  "sourceFiles": [
+    {
+      "path": ".dockerignore",
+      "sha256": "860a0df6dd8c1743295523974f74004f932fc977792d814e035cc7e6618a3c19"
+    },
+    {
+      "path": "apps/agentarts-runtime/package.json",
+      "sha256": "7eef4de54e8e53dde9d069d1617ec04159ba9b0a046d05d6ce303d77bf010ac1"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/adaptive-decision.mjs",
+      "sha256": "9af204291c2c9cdb84445630ec3ee729ca8a21b985bda22706d160d744f747b1"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/binding-dispatch.mjs",
+      "sha256": "944f1daa32b242507b571f79ec49517c8463b27cafa09c1e95eb28620f2834af"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/image-services.mjs",
+      "sha256": "ac718d8bdc6e0eca48b7b8d9aeaf8b2f0704111ce322685b6ce8c5ca533db4ab"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/laya-selector.mjs",
+      "sha256": "31fb0ba2048a29a8c41ecd59910eb4c2baee484807574b3545d6c4d120af61f2"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/laya-service.mjs",
+      "sha256": "03f8cf42f0d0d0123e835bb011832490702b6070f0b0e166d63b262409de8323"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/local-laya.mjs",
+      "sha256": "66acafa7e01edc6916c9cdf00e6340e0a960856648b487ae0ea39be1d0766ac1"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/main.mjs",
+      "sha256": "b58f411b1ca920998b41d4b29912ba8e84ff3ca19cd1a79ac09e2f37b42857a9"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/model-fetch.mjs",
+      "sha256": "8e60b55b1eea855dfa3ee3a670d504da91b772d6bd78f649e798cbf6219d072b"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/model-proxy.mjs",
+      "sha256": "e0ee39f51b9aeec5b5e603aaeb2950d6ece901b2be65b6959202806811b60b40"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/platform-services.mjs",
+      "sha256": "940ddd605d73e0881599e0ff2bff1d032d894b5b66109a906591b9bc40f176ce"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/proactive-controller.mjs",
+      "sha256": "b4816f7d58d326809557d5c81d99d019656784ac066f2af1a72ac10397409ee9"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/request-path.mjs",
+      "sha256": "adccb22c401db594904be5673cd32e988dc58c2c48ab0ef6bc5489298cb3b076"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/server.mjs",
+      "sha256": "05ec93c731b0ec6d3a9abcaa944b8eaf26d134cd56ccd4529304a5d995f3cec8"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/shadow-controller.mjs",
+      "sha256": "126ce185ef09cee906d8c93bcf2db64135654073b841e517cd1d7bb29e6150ae"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/stage-timeline.mjs",
+      "sha256": "42329bafbda918a030c3d01cf928959b5742869e67540d3d7a67c9e5e66892e9"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/test-version-controller.mjs",
+      "sha256": "22a31efb1e413e30d08f411fc545953c3506e88be939213cddbcaa632aee7b47"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/trace-replay.mjs",
+      "sha256": "f9cabbf5ac8fc44783890861d4ce2ec25d358419d153f4185be639c16d25b89a"
+    },
+    {
+      "path": "apps/agentarts-runtime/src/websocket-transport.mjs",
+      "sha256": "e057b50c0e737c5e2f38c2560a3d9c60891dc4c9fdf0b4b81d2ff1754ffbb7b6"
+    },
+    {
+      "path": "dependency-manifests/apps/agentarts-runtime/package.json",
+      "sha256": "7eef4de54e8e53dde9d069d1617ec04159ba9b0a046d05d6ce303d77bf010ac1"
+    },
+    {
+      "path": "dependency-manifests/packages/agentarts/package.json",
+      "sha256": "3f8af479cd09be1348ba516abd9a4ec96ac81a32d5c76f898df651a7d25f55cb"
+    },
+    {
+      "path": "dependency-manifests/packages/contracts/package.json",
+      "sha256": "5c8c2816a3e44122c1499d80b94a784326a82a9ee81d7154ccf98852092dc7a5"
+    },
+    {
+      "path": "dependency-manifests/packages/coordination/package.json",
+      "sha256": "10576a13d0337cdd295b1fc936ac64a40eebf6c7becf09ddd6918fb280c3eb49"
+    },
+    {
+      "path": "dependency-manifests/packages/models/package.json",
+      "sha256": "99de78a3bb7d6d73a4c104d24ceba666961396a2a116de7c32d73dfaf0df1412"
+    },
+    {
+      "path": "Dockerfile",
+      "sha256": "398f5b9b3bdd226f85480fe48777668e059b2942c617f9bfa1b47dfbd6299dfa"
+    },
+    {
+      "path": "npm-registry.json",
+      "sha256": "821fa79d6cf6622dd1a77eaee7627b7627c2fa71ff400f18729d1ec908c360f3"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "45b699ae2a3a58526b673b992390362d9138ecedb7118bae9212fb6a1304f8cd"
+    },
+    {
+      "path": "package.json",
+      "sha256": "edbe6b9efa64b5576e1fe50c1d4700e80971ec04f9ec2d7a7275b1ffb653c4a8"
+    },
+    {
+      "path": "packages/agentarts/dist/bindings.d.ts",
+      "sha256": "4b6c532ef3dc2284934ac1ce4546ab1c1cc722db17c229d63d60488fc077aeef"
+    },
+    {
+      "path": "packages/agentarts/dist/bindings.js",
+      "sha256": "996a6026a2ac47736f6233d8f2152bbf7ee36a1b0dd4db8135f9c7f6c4be2ef7"
+    },
+    {
+      "path": "packages/agentarts/dist/index.d.ts",
+      "sha256": "ef20bffbd1c13afe27faf2019231d2eb83de8cfe94e405b9f66a11a3e04afe27"
+    },
+    {
+      "path": "packages/agentarts/dist/index.js",
+      "sha256": "f03afa4fc3f838efd12fc29216c8e6530a926fe93d68a3192a0865d87ee3cf40"
+    },
+    {
+      "path": "packages/agentarts/dist/input.d.ts",
+      "sha256": "d09b7ac68ff0e7ef8111b87acb093e4954104031df545a0fdba097c0e19bb327"
+    },
+    {
+      "path": "packages/agentarts/dist/input.js",
+      "sha256": "1116a9dfc4dab8d3d860dcdf56a357cc57719b1ac4ab87a8a80a2680e5b0658a"
+    },
+    {
+      "path": "packages/agentarts/dist/observability/index.d.mts",
+      "sha256": "a967e3b9fdd87527ddd513ceac59af52d00a1190dc770cfa021d335c86ec1165"
+    },
+    {
+      "path": "packages/agentarts/dist/observability/index.mjs",
+      "sha256": "7880ccaa9582d48d69491de453a4cb2ebd8084df42ccc21bc4df85d19ae6d56a"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-data.d.ts",
+      "sha256": "8981c2967403f6b8ab95bf8e79763df6129f90558edb17787ea17c417125099c"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-data.js",
+      "sha256": "3c17c46c703cca737342f818639548186739bf471af988c9309b33cae11a32df"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-host-bridge.d.ts",
+      "sha256": "6abe7b1cd56d2b7af05097930d43f2e63557e2697a4937e84b8666f37a465edc"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-host-bridge.js",
+      "sha256": "0a8f3af0c68538233976e8543c0944034250a38cbf2d6b20748691522ff9ba4a"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-templates.d.ts",
+      "sha256": "4b9ca5949237d770299f1d34a15a49614f0a258e19d7022a9d1e6556a51b6a21"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflow-templates.js",
+      "sha256": "0c2a948dfd91a161a7af908d9272ff41de9442180ddb4dceac28be28cbc977e5"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflows.d.ts",
+      "sha256": "05cdaaafb6ab2125d27eba3147846141bc7c5be095a0f299e513e7b45261d938"
+    },
+    {
+      "path": "packages/agentarts/dist/owned-workflows.js",
+      "sha256": "d9469b4eb059e2ae67929ffeb667c31cb86f5942feaedf50b23f81a9db75b028"
+    },
+    {
+      "path": "packages/agentarts/dist/proactive-host-proofs.d.ts",
+      "sha256": "25858833c50b38ac76c24cb1c97db1e9bf4c3c611da05068b54e41a27f6e992c"
+    },
+    {
+      "path": "packages/agentarts/dist/proactive-host-proofs.js",
+      "sha256": "92f84921a7786097d1d7ec76939cd2fb63e16bcdb274b417bbdb2f439c6f2ec5"
+    },
+    {
+      "path": "packages/agentarts/dist/proactive-workflows.d.ts",
+      "sha256": "89260c0a5f6ed20acc6ed000c0ce79738394abd11f76b041ba423216fcb29b73"
+    },
+    {
+      "path": "packages/agentarts/dist/proactive-workflows.js",
+      "sha256": "1773706116b6bc8ab6e4c70d6f8595475f4c8c8c7dd84efa37be4c5ad17f1ce1"
+    },
+    {
+      "path": "packages/agentarts/dist/prompts.d.ts",
+      "sha256": "07dd039234f274b1a49a8c10794ec176ddcc3da1506e125cacaa0969b14ad9e0"
+    },
+    {
+      "path": "packages/agentarts/dist/prompts.js",
+      "sha256": "04711160808b6d0e02066748ab4a50fd6619133f527b61e18fc3a479f2c9fb25"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-adapters.d.ts",
+      "sha256": "eec588ee36156636e9fcd1bd2e6fe981019743967f40aaa94248e66a6d82b5b3"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-adapters.js",
+      "sha256": "f2c998f3d0e9159ddc01afc4ff898399dac7d3a7b01b43e8919dba67eacad5dc"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-dataflow.d.ts",
+      "sha256": "2a156aef37c31c84df060d243b9b260014f8d0a4de1897ba175b516faa4a6c62"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-dataflow.js",
+      "sha256": "da0af7fb0672cec9609954429d5659aacbc480ea2187653fc160f7dbf8a9cb22"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-decision-tool.d.ts",
+      "sha256": "7e2893b1226cfad69e9e8c9b1585bc33af11476701033b0124dff3bd98fe1d13"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-decision-tool.js",
+      "sha256": "e2b252dab3cb20db6f823d4f26eb1495367991a780be87927b4ba608bf3736de"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-keys.d.ts",
+      "sha256": "68710988631b9925f5c79a0263f491d6335f1563fc85d4b9b9f3eef7ad641527"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-keys.js",
+      "sha256": "429b8da68d3c5e99345dbf811f23061be1fa84dfe9c0c385de3415f5e04ff38c"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-shadow-policy.d.ts",
+      "sha256": "76cd5288e3c9a5e2d696725455c057f15eb15c8aaca7cf79eedae0dd4332851a"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-shadow-policy.js",
+      "sha256": "d5b09c7981eff45f72dcb21418fe1b9b2205cc25f5adc8faa4081f73109b07d4"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-shadow-release.d.ts",
+      "sha256": "09f1a5399115146cfb59b2e541681ac18a189926edf2a64363d1919f5021c741"
+    },
+    {
+      "path": "packages/agentarts/dist/workflow-shadow-release.js",
+      "sha256": "b7c9b7a49e72e0a2a0eb47c700be6fac0af1ef99ed9e078129666aab23bd8327"
+    },
+    {
+      "path": "packages/agentarts/package.json",
+      "sha256": "3f8af479cd09be1348ba516abd9a4ec96ac81a32d5c76f898df651a7d25f55cb"
+    },
+    {
+      "path": "packages/contracts/dist/agentarts-transport.d.ts",
+      "sha256": "5bd237afa89f344198dd96aa831a772d54ef98e41a9fb1823d1665926804971a"
+    },
+    {
+      "path": "packages/contracts/dist/agentarts-transport.generated.d.ts",
+      "sha256": "f62fccff3fe350634a6e3ad80c6d2d443b7e0b1c7d7a9a558569c1a2de3d17c2"
+    },
+    {
+      "path": "packages/contracts/dist/agentarts-transport.generated.js",
+      "sha256": "8f2014c65b389531b3602e65ae85b4814ee42436e8f4330eac2fcce8d6f14e33"
+    },
+    {
+      "path": "packages/contracts/dist/agentarts-transport.js",
+      "sha256": "cfa508afc7df3cfb9845a82e05ed3335c85bbfe4be3e65bf9ff8bd129e547701"
+    },
+    {
+      "path": "packages/contracts/dist/generated.d.ts",
+      "sha256": "e30ec2eabdea86322e679581ac925c3dfc5590b9a1e1eaddd60016143d3a7028"
+    },
+    {
+      "path": "packages/contracts/dist/generated.js",
+      "sha256": "ac0523a65c894775845b18bba62761369925b28e2e9b6a1bd9d8911fc92ce013"
+    },
+    {
+      "path": "packages/contracts/dist/index.d.ts",
+      "sha256": "afc411c3fd2fb06e8ddae8b7270b2af623b0c9ddf749ea6c3b2c07c8ab645af9"
+    },
+    {
+      "path": "packages/contracts/dist/index.js",
+      "sha256": "764f21e6039b47b2c36810272e5ca0a9e6c4b436754394de5b51710819c6ec77"
+    },
+    {
+      "path": "packages/contracts/dist/ports.d.ts",
+      "sha256": "ed72918614bad08df2473884ae2c5e188b434439da3d7c69f0aabbec237294c8"
+    },
+    {
+      "path": "packages/contracts/dist/ports.js",
+      "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+    },
+    {
+      "path": "packages/contracts/dist/schema.d.ts",
+      "sha256": "827d5b3c2ac09d6cdf63a92ccc3dda282f7b447ffc014cafc3fe38da9030d2e5"
+    },
+    {
+      "path": "packages/contracts/dist/schema.js",
+      "sha256": "4dbbc743115fe92744519ca535f072cf22ccafa9a76239f2ead8b3b182bb9656"
+    },
+    {
+      "path": "packages/contracts/dist/windows-host.d.ts",
+      "sha256": "cbacde6b837d21f6a9da8d1175a04442de427593842ffb60f3f5fe10ec94f1ad"
+    },
+    {
+      "path": "packages/contracts/dist/windows-host.js",
+      "sha256": "2006cf55e6b41e02f273789a95bde16f7dcfa4ed9bd56634fc890023fc0ff945"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "5c8c2816a3e44122c1499d80b94a784326a82a9ee81d7154ccf98852092dc7a5"
+    },
+    {
+      "path": "packages/contracts/schema/agentarts-transport.json",
+      "sha256": "1c6a4a80fa93ac63f29695d4a6bfc16e06437a4b376f6ed1ece706bf9e17821f"
+    },
+    {
+      "path": "packages/contracts/schema/protocol.json",
+      "sha256": "85c0d60f6d5e14b18c1560b279dbfecad0c380efdbc76be063996d25cc183ae7"
+    },
+    {
+      "path": "packages/contracts/schema/windows-host.json",
+      "sha256": "b6e9ee0e488b64f4f18f8fd349a1a3d751da9ec55dea1ca0b0ace533471d8dbf"
+    },
+    {
+      "path": "packages/coordination/dist/agentarts-websocket.d.ts",
+      "sha256": "9d4fd9a88bc7a225877fbb0ddec128ce17582c91a30d59d39d8de92f6d8e7441"
+    },
+    {
+      "path": "packages/coordination/dist/agentarts-websocket.js",
+      "sha256": "7a010a88ad6f87c5ad641c104175536e9da983e43cf04e74ab95544e26794247"
+    },
+    {
+      "path": "packages/coordination/dist/agentarts.d.ts",
+      "sha256": "e7dd82016f6ce9ec7fe0a08b91e150d768ffc1d1d169a5d6cf25b6a767efc537"
+    },
+    {
+      "path": "packages/coordination/dist/agentarts.js",
+      "sha256": "405f7b8ee2c95480d1f2eea52364b231759626830236cfe8fb0dfdc91ef6f35b"
+    },
+    {
+      "path": "packages/coordination/dist/coordinator.d.ts",
+      "sha256": "e57a0cead3731c8f2e0bd7589cdef12cdbeab544d0e818284e9f434948bff909"
+    },
+    {
+      "path": "packages/coordination/dist/coordinator.js",
+      "sha256": "c1212d89ad4aaf74802ee3f1eed1fa9c1326193c3e852f672c176d6cf1f4f942"
+    },
+    {
+      "path": "packages/coordination/dist/index.d.ts",
+      "sha256": "90c2fd21adb794032e09753124e94218d52580a0ed7f61d0f28e9a77f490a80f"
+    },
+    {
+      "path": "packages/coordination/dist/index.js",
+      "sha256": "c4f6308351f6bf898fd9e3bcf79a653d6e440047b64168e35f3a8a2eaf0ecb96"
+    },
+    {
+      "path": "packages/coordination/dist/repair-candidate.d.ts",
+      "sha256": "c137132b4509a482cb5243bd20b6837d2eea10cdaf484bce0d433f8309b11596"
+    },
+    {
+      "path": "packages/coordination/dist/repair-candidate.js",
+      "sha256": "168737920ac20dd3ca55c11153e5fc26c80a4451333daec9ea22cb97a2d403da"
+    },
+    {
+      "path": "packages/coordination/dist/testing.d.ts",
+      "sha256": "fa9d502df0b8cfcb23155ef121fc64a9b8ad0000d63c60cb64f0ed915a04f920"
+    },
+    {
+      "path": "packages/coordination/dist/testing.js",
+      "sha256": "67c1e3bf39ccf111e46e94b01ecf4ebf23615863dfc267db6e35cee03dfd69b0"
+    },
+    {
+      "path": "packages/coordination/package.json",
+      "sha256": "10576a13d0337cdd295b1fc936ac64a40eebf6c7becf09ddd6918fb280c3eb49"
+    },
+    {
+      "path": "packages/models/dist/index.d.ts",
+      "sha256": "0bdfd518d7c1830d8d564a756c4b80f2c2d2817575d089de2776a9e2b89cc229"
+    },
+    {
+      "path": "packages/models/dist/index.js",
+      "sha256": "ce3210a3fa14843fde8d504cfa508a787fd4ec0574b0d23782de8343fb1d58b9"
+    },
+    {
+      "path": "packages/models/dist/openai-compatible.d.ts",
+      "sha256": "933ee9ae76089a2923a9399692b1bab4628a4a0331868eb31fbe84e14e21951b"
+    },
+    {
+      "path": "packages/models/dist/openai-compatible.js",
+      "sha256": "69a1f72daaf60221ff74ec4367a840eae13672ee50b9cb5b7312a0ccd5d40dbe"
+    },
+    {
+      "path": "packages/models/dist/realtime.d.ts",
+      "sha256": "f0ce6b05062800ce69a4c4d779a195c49ce0e164969db287e0502f086c307340"
+    },
+    {
+      "path": "packages/models/dist/realtime.js",
+      "sha256": "b7babbb74f58bfa158ebb66974e19fec8f298ff6fab4ae4862307772c57ee8b5"
+    },
+    {
+      "path": "packages/models/dist/structured-tools.d.ts",
+      "sha256": "94139190ea73d85a0b128ba3dc4af3605ee4cc3e6884c34a7573de32ceb0face"
+    },
+    {
+      "path": "packages/models/dist/structured-tools.js",
+      "sha256": "ad95651bf615adfa862d079d77ac6da5bf8806bb9ec13929c2379ebf4c8d88dc"
+    },
+    {
+      "path": "packages/models/package.json",
+      "sha256": "99de78a3bb7d6d73a4c104d24ceba666961396a2a116de7c32d73dfaf0df1412"
+    }
+  ]
+}

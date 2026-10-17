@@ -1,0 +1,665 @@
+{
+  "scope": "proactive responsibility/unattended/notifications/voice provenance boundary regression audit",
+  "productionSnapshotsAtAudit": [
+    {
+      "sha256": "438e4c6c967403b0a9b3aaa11a0fd82f119133d2821acc72963264d20da5a031",
+      "path": "packages/agentarts/src/proactive-workflows.ts"
+    },
+    {
+      "sha256": "45f6cb68f3d87cc22a809cefb959d05e79db0400b7e445a807329de831c8ed71",
+      "path": "packages/agentarts/dist/proactive-workflows.js"
+    },
+    {
+      "sha256": "a98c0c3dba6ad2c456c01801df28ef3e3568532eca0037e8621cf4ce2a86a16e",
+      "path": "apps/runtime/src/application/proactive-workflow-session.ts"
+    },
+    {
+      "sha256": "cbbb3d4487321f267da6888913159695b3cc989d9704d5cbcc3c1fbd775136b3",
+      "path": "apps/runtime/dist/application/proactive-workflow-session.js"
+    },
+    {
+      "sha256": "02495fc6f6cfaeb052e88a8282355292a5fb0d2876db51e335551c8036552379",
+      "path": "apps/runtime/src/application/notification-host.ts"
+    },
+    {
+      "sha256": "5cca0dd19a1722a635eeb8380d4dd25808627be9a99ac8733299586823128af2",
+      "path": "packages/notifications/src/interruption.ts"
+    },
+    {
+      "sha256": "0709a0b9e85b0bdf62f5de6a9046ff020c694c41c69d5813f19172f127a97c32",
+      "path": "packages/connector-host/src/proactive.ts"
+    },
+    {
+      "sha256": "6d2e18ce8f3a6bc79c9203be82c8c9b33f1fa9c983c15a6ed62f10c16b61c226",
+      "path": "apps/agentarts-runtime/src/proactive-controller.mjs"
+    }
+  ],
+  "supplementalTarget": {
+    "skipped": 0,
+    "cancelled": 0,
+    "wallMs": 2536.4124,
+    "sha256": "28bc9cc7ed17e047d2eb1433910187670f83621ec14abcf76f3810d0461b6eff",
+    "finishedAtUtc": "2026-10-15T14:04:08.2164295Z",
+    "passed": 24,
+    "path": ".cache/v3-proactive-notification-coverage-target.log",
+    "newCases": 4,
+    "realAccountCalls": 0,
+    "realModelCalls": 0,
+    "tests": 24,
+    "failed": 0,
+    "exitCode": 0,
+    "startedAtUtc": "2026-10-15T14:04:05.6659284Z",
+    "physicalDeviceCalls": 0
+  },
+  "generatedAtUtc": "2026-10-15T14:06:26.7318918Z",
+  "reusedFullCheck": {
+    "sha256": "fe4047fe8ba56bfff1f37acd06abbeb55ddafb2b87b0461226ec8445a458cf53",
+    "note": "Previously passed log reused, no full workspace or Desktop suite rerun; source hashes in test entries are current audit snapshots.",
+    "startedAtUtc": "2026-10-15T13:43:24.2365036Z",
+    "path": ".cache/test-image-v3-prebuild-final-check.log",
+    "exitCode": 0,
+    "wallMs": 334790.382,
+    "finishedAtUtc": "2026-10-15T13:48:59.0410310Z"
+  },
+  "coverage": [
+    {
+      "testRefs": [
+        "sqlite-sources",
+        "parallel-sources",
+        "feedback"
+      ],
+      "status": "covered_offline",
+      "requirement": "multi_connectors_and_child_feedback"
+    },
+    {
+      "testRefs": [
+        "entries",
+        "corrected-feed",
+        "feedback"
+      ],
+      "status": "covered_offline",
+      "requirement": "duplicate_correction_retraction_and_original_versions"
+    },
+    {
+      "testRefs": [
+        "entries",
+        "important"
+      ],
+      "status": "covered_offline",
+      "requirement": "unsubscribed_important_events_not_silently_dropped"
+    },
+    {
+      "testRefs": [
+        "feedback",
+        "cancel"
+      ],
+      "status": "covered_offline",
+      "requirement": "waiting_user_independence_and_due_expiry_wake"
+    },
+    {
+      "testRefs": [
+        "return",
+        "http-host-chain",
+        "corrected-feed"
+      ],
+      "status": "covered_offline",
+      "requirement": "leave_return_no_old_notifications"
+    },
+    {
+      "testRefs": [
+        "independent",
+        "feedback",
+        "sqlite-sources"
+      ],
+      "status": "covered_offline",
+      "requirement": "blocked_branch_does_not_stall_independent_work"
+    },
+    {
+      "testRefs": [
+        "cursor-gap",
+        "cursor-recover",
+        "cursor-cas",
+        "sqlite-sources",
+        "device",
+        "http-host-chain"
+      ],
+      "status": "covered_offline",
+      "requirement": "disconnect_restart_cursor_unknown_device_waiting"
+    },
+    {
+      "testRefs": [
+        "session-cas",
+        "pure-cas"
+      ],
+      "status": "covered_offline",
+      "requirement": "checkpoint_commit_before_proposal_release"
+    },
+    {
+      "testRefs": [
+        "session-write",
+        "session-late-read",
+        "independent"
+      ],
+      "status": "covered_offline",
+      "requirement": "unknown_write_not_reexecuted_after_restart_or_control_change"
+    },
+    {
+      "limit": "Pure signed frontier only; generic port may not retry. Not historical response replay.",
+      "testRefs": [
+        "pure-recover",
+        "pure-cas"
+      ],
+      "status": "covered_offline",
+      "requirement": "pure_frontier_recompute_with_original_deadline"
+    },
+    {
+      "testRefs": [
+        "quota",
+        "window",
+        "sqlite-quota"
+      ],
+      "status": "covered_offline",
+      "requirement": "user_window_concurrent_quota_and_restart"
+    },
+    {
+      "testRefs": [
+        "quota",
+        "channel",
+        "unknown-channel"
+      ],
+      "status": "covered_offline",
+      "requirement": "same_round_cross_channel_one_charge"
+    },
+    {
+      "limit": "No actual native send count measured on hardware: service forbids delivery and reserves no round in the fixture.",
+      "testRefs": [
+        "silent",
+        "sqlite-quota",
+        "http-host-chain"
+      ],
+      "status": "covered_offline",
+      "requirement": "silent_zero_send_feed_unread_separate"
+    },
+    {
+      "testRefs": [
+        "silent",
+        "corrected-feed",
+        "host-validity",
+        "http-host-chain"
+      ],
+      "status": "covered_offline",
+      "requirement": "return_digest_no_catchup_popup"
+    },
+    {
+      "testRefs": [
+        "latest-policy",
+        "channel",
+        "sqlite-quota"
+      ],
+      "status": "covered_offline",
+      "requirement": "settings_take_effect_immediately_and_latest_channel"
+    },
+    {
+      "testRefs": [
+        "latest-policy",
+        "unknown-channel",
+        "sqlite-quota"
+      ],
+      "status": "covered_offline",
+      "requirement": "unknown_delivery_never_blindly_resent_or_refunded"
+    },
+    {
+      "productionASRRevisionBindingVerified": false,
+      "testRefs": [
+        "voice-origin",
+        "voice-revision",
+        "voice-empty",
+        "voice-generation"
+      ],
+      "status": "covered_at_trusted_port_fixture_only",
+      "requirement": "voice_final_revision_partial_echo_silence_old_rejected"
+    }
+  ],
+  "profile": "huawei_ict_agentarts",
+  "architectureFinalized": false,
+  "published": false,
+  "testCatalog": [
+    {
+        "testName": "two SQLite connections share policy/quota, unknown receipt and unread feed across full restart",
+        "result": "passed",
+        "logRef": "target",
+        "sourceSha256": "719fb1b493e3cae2834360240a06a66f5046467e1d67ca964371e6a91c66d0f2",
+        "layers": [
+          "fixture",
+          "realHost"
+        ],
+        "file": "apps/runtime/test/notification-host.test.mjs",
+        "boundary": "Actual two Runtime SQLite connections and restart; signed user commands synthetic.",
+        "id": "sqlite-quota"
+      },
+      {
+        "testName": "signed partial/echo/model/expired voice commands are rejected and final user payload is digest-bound",
+        "result": "passed",
+        "logRef": "target",
+        "sourceSha256": "719fb1b493e3cae2834360240a06a66f5046467e1d67ca964371e6a91c66d0f2",
+        "layers": [
+          "fixture",
+          "realHost"
+        ],
+        "file": "apps/runtime/test/notification-host.test.mjs",
+        "boundary": "Synthetic voice provenance only; no ASR or physical source.",
+        "id": "voice-origin"
+      },
+      {
+        "testName": "trusted persisted final transcript ledger rejects older revision, silence, partial and echo without changing policy",
+        "result": "passed",
+        "logRef": "target",
+        "sourceSha256": "719fb1b493e3cae2834360240a06a66f5046467e1d67ca964371e6a91c66d0f2",
+        "layers": [
+          "fixture",
+          "realHost"
+        ],
+        "file": "apps/runtime/test/notification-host.test.mjs",
+        "boundary": "Explicit injected final-ledger verifier; not a production microphone/ASR revision binding implementation.",
+        "id": "voice-revision"
+      },
+      {
+        "testName": "registered settings tool resolves original host proof, keeps lease live and excludes withdrawn or expired return changes",
+        "result": "passed",
+        "logRef": "target",
+        "sourceSha256": "719fb1b493e3cae2834360240a06a66f5046467e1d67ca964371e6a91c66d0f2",
+        "layers": [
+          "fixture",
+          "realHost"
+        ],
+        "file": "apps/runtime/test/notification-host.test.mjs",
+        "boundary": "Actual SQLite host; source validity and user proof fixtures.",
+        "id": "host-validity"
+      },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "entries",
+      "testName": "four entrances are retained even with no subscriptions; duplicate versions merge and independent questions batch Laya-first",
+      "logRef": "baseline",
+      "boundary": "Synthetic source/decision proofs; real SQLite checkpoint fixture.",
+      "result": "passed",
+      "sourceSha256": "5969085148e78eadb035a3f45f030d5834fa871fa2fcde30ba435cd09f62d1cc",
+      "file": "packages/agentarts/test/proactive-workflows.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "important",
+      "testName": "mature contract handles ordinary events without a permanent second model; important suppression still escalates",
+      "logRef": "baseline",
+      "boundary": "No real Laya/DeepSeek classification quality claim.",
+      "result": "passed",
+      "sourceSha256": "5969085148e78eadb035a3f45f030d5834fa871fa2fcde30ba435cd09f62d1cc",
+      "file": "packages/agentarts/test/proactive-workflows.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "return",
+      "testName": "actual branch receipts update existing SQLite state and reasoned wake uses the original Scheduler; return never replays notification",
+      "logRef": "baseline",
+      "boundary": "Actual SQLite/Scheduler; notification host receipt synthetic.",
+      "result": "passed",
+      "sourceSha256": "5969085148e78eadb035a3f45f030d5834fa871fa2fcde30ba435cd09f62d1cc",
+      "file": "packages/agentarts/test/proactive-workflows.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "independent",
+      "testName": "unknown write is not resubmitted while another independent branch progresses; original readback can settle it",
+      "logRef": "baseline",
+      "boundary": "Synthetic tool results; original operation identity retained.",
+      "result": "passed",
+      "sourceSha256": "5969085148e78eadb035a3f45f030d5834fa871fa2fcde30ba435cd09f62d1cc",
+      "file": "packages/agentarts/test/proactive-workflows.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "device",
+      "testName": "offline local device waits without actual cloud persistent host; configured cloud takeover does not pretend Laya ran",
+      "logRef": "baseline",
+      "boundary": "Availability is a fixture snapshot, not a physically powered-off device/cloud persistence test.",
+      "result": "passed",
+      "sourceSha256": "5969085148e78eadb035a3f45f030d5834fa871fa2fcde30ba435cd09f62d1cc",
+      "file": "packages/agentarts/test/proactive-workflows.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "cancel",
+      "testName": "pause/cancel and original deadline/revision are enforced; cancelled writes require actual readback",
+      "logRef": "baseline",
+      "boundary": "No actual device process cancellation claim.",
+      "result": "passed",
+      "sourceSha256": "5969085148e78eadb035a3f45f030d5834fa871fa2fcde30ba435cd09f62d1cc",
+      "file": "packages/agentarts/test/proactive-workflows.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "parallel-sources",
+      "testName": "same-source read is not reentrant; independent sources can run in parallel",
+      "logRef": "baseline",
+      "boundary": "Explicit fake source adapters and in-memory checkpoint ports.",
+      "result": "passed",
+      "sourceSha256": "c711b36ba516a3ccedb034013702b9610fd53f4dbefb92c6a795db5514c8e2fa",
+      "file": "packages/connector-host/test/proactive.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "cursor-gap",
+      "testName": "read disconnection, authorization expiry, invalid cursor and cancellation never report no changes",
+      "logRef": "baseline",
+      "boundary": "Provider/network failures injected; no actual account lease revoked.",
+      "result": "passed",
+      "sourceSha256": "c711b36ba516a3ccedb034013702b9610fd53f4dbefb92c6a795db5514c8e2fa",
+      "file": "packages/connector-host/test/proactive.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "cursor-recover",
+      "testName": "sink failure retains pending and original cursor; restarted host replays identical durable batch before refetch",
+      "logRef": "baseline",
+      "boundary": "Generic host uses explicit fake checkpoint/sink ports; real SQLite equivalent in integration.",
+      "result": "passed",
+      "sourceSha256": "c711b36ba516a3ccedb034013702b9610fd53f4dbefb92c6a795db5514c8e2fa",
+      "file": "packages/connector-host/test/proactive.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "cursor-cas",
+      "testName": "cursor CAS failure after durable event commit restores pending without refetch or event loss",
+      "logRef": "baseline",
+      "boundary": "CAS conflict injected at public checkpoint port.",
+      "result": "passed",
+      "sourceSha256": "c711b36ba516a3ccedb034013702b9610fd53f4dbefb92c6a795db5514c8e2fa",
+      "file": "packages/connector-host/test/proactive.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "sqlite-sources",
+      "testName": "multiple sources persist independently in actual SQLite when one disconnects; changed peer cursor survives restart",
+      "logRef": "target",
+      "boundary": "Actual TaskRuntime SQLite and ConnectorHost; two providers are explicit fakes, no accounts.",
+      "result": "passed",
+      "sourceSha256": "a077a72d31022ea436292e40bcab877f987c5bce0cb2d2216e326ba57750cac0",
+      "file": "apps/runtime/test/proactive-connector-host.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "session-cas",
+      "testName": "CAS loser never releases image proposals; interrupted image intent is durable and never blindly retried",
+      "logRef": "baseline",
+      "boundary": "Actual SQLite; generic image port fake. Generic unknown requests are not retried.",
+      "result": "passed",
+      "sourceSha256": "7c8430d9c667c77dae22fbbeb7fee818833b953d3ad7235560d347b7830b3a74",
+      "file": "apps/runtime/test/proactive-workflow-session.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "session-write",
+      "testName": "execution persists intent before invocation; unknown only reads original Evidence, confirmed result is cached",
+      "logRef": "baseline",
+      "boundary": "Actual durable intent; tool and Evidence reader explicit fixture.",
+      "result": "passed",
+      "sourceSha256": "7c8430d9c667c77dae22fbbeb7fee818833b953d3ad7235560d347b7830b3a74",
+      "file": "apps/runtime/test/proactive-workflow-session.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "session-late-read",
+      "testName": "cancelled/expired revision can reconcile original unknown write without resolving authority or invoking again",
+      "logRef": "baseline",
+      "boundary": "Original execution is read only, not a renewed authorization.",
+      "result": "passed",
+      "sourceSha256": "7c8430d9c667c77dae22fbbeb7fee818833b953d3ad7235560d347b7830b3a74",
+      "file": "apps/runtime/test/proactive-workflow-session.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "pure-recover",
+      "testName": "pure frontier recovery recomputes a lost signed response from frozen intent after real freshness changes and SQLite restart",
+      "logRef": "baseline",
+      "boundary": "Actual ProactiveWorkflowEngine/SQLite with synthetic signed results; recomputation, not historical byte replay.",
+      "result": "passed",
+      "sourceSha256": "7c8430d9c667c77dae22fbbeb7fee818833b953d3ad7235560d347b7830b3a74",
+      "file": "apps/runtime/test/proactive-workflow-session.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "pure-cas",
+      "testName": "concurrent pure recomputations share one pending CAS slot; winning operation executes once",
+      "logRef": "baseline",
+      "boundary": "Explicit pure port and tool fixtures; actual CAS single winner.",
+      "result": "passed",
+      "sourceSha256": "7c8430d9c667c77dae22fbbeb7fee818833b953d3ad7235560d347b7830b3a74",
+      "file": "apps/runtime/test/proactive-workflow-session.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "quota",
+      "testName": "concurrent rounds share a global cap and channel retries cannot double charge",
+      "logRef": "target",
+      "boundary": "Actual NotificationService; in-memory atomic storage and no native sends.",
+      "result": "passed",
+      "sourceSha256": "342d5f3605def099c709288ff8c525c127abc887c2905dc20417538d091d003f",
+      "file": "packages/notifications/test/interruption.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "silent",
+      "testName": "silent mode ingests continuously, returns valid feed/digest only and never grants an interruption",
+      "logRef": "target",
+      "boundary": "Read state independent from delivery; no microphone or native channel.",
+      "result": "passed",
+      "sourceSha256": "342d5f3605def099c709288ff8c525c127abc887c2905dc20417538d091d003f",
+      "file": "packages/notifications/test/interruption.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "latest-policy",
+      "testName": "latest policy blocks old queued rounds; unsent reservation releases but unknown delivery never refunds or resends",
+      "logRef": "target",
+      "boundary": "Actual policy code with injected clock/storage.",
+      "result": "passed",
+      "sourceSha256": "342d5f3605def099c709288ff8c525c127abc887c2905dc20417538d091d003f",
+      "file": "packages/notifications/test/interruption.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "window",
+      "testName": "timed silence ends without resetting feed or policy revision, rolling quotas survive restart",
+      "logRef": "target",
+      "boundary": "User policy fixture supplies window, no new product defaults.",
+      "result": "passed",
+      "sourceSha256": "342d5f3605def099c709288ff8c525c127abc887c2905dc20417538d091d003f",
+      "file": "packages/notifications/test/interruption.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "channel",
+      "testName": "sending rechecks latest preferred channel after auto/voice/banner changes and releases only unattempted quota",
+      "logRef": "target",
+      "boundary": "Public service state transitions; native banner/voice not invoked.",
+      "result": "passed",
+      "sourceSha256": "342d5f3605def099c709288ff8c525c127abc887c2905dc20417538d091d003f",
+      "file": "packages/notifications/test/interruption.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "unknown-channel",
+      "testName": "a new round cannot bypass an unknown delivery for the same notification",
+      "logRef": "target",
+      "boundary": "No new round retries an unknown original delivery.",
+      "result": "passed",
+      "sourceSha256": "342d5f3605def099c709288ff8c525c127abc887c2905dc20417538d091d003f",
+      "file": "packages/notifications/test/interruption.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "corrected-feed",
+      "testName": "duplicate corrected and withdrawn silent feed entries preserve history but never replay a return popup",
+      "logRef": "target",
+      "boundary": "Synthetic sources; actual service supersedes/withdraw/return logic.",
+      "result": "passed",
+      "sourceSha256": "342d5f3605def099c709288ff8c525c127abc887c2905dc20417538d091d003f",
+      "file": "packages/notifications/test/interruption.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "http-host-chain",
+      "testName": "durable connector -> signed image -> Laya candidate -> teacher -> silent notification -> item update -> original Scheduler; restart/return do not replay",
+      "logRef": "target",
+      "boundary": "Actual loopback HTTP, HMAC, Runtime/Policy/ToolGateway/Evidence/NotificationHost/Scheduler. Both models and source account explicit fakes.",
+      "result": "passed",
+      "sourceSha256": "f27de3829e5be9d6b31d3d97d50dc8d05aeb329a18a4bc1bb8379d1ace42839a",
+      "file": "tests/integration/proactive-image-host.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture",
+        "realHost"
+      ],
+      "id": "feedback",
+      "testName": "waiting reply remains independent of actual child feedback and due wake; correction and retraction retain pending source versions",
+      "logRef": "target",
+      "boundary": "Actual child TaskRuntime state/parent checkpoint and Scheduler; decision/action receipts synthetic, direct signed controller port (HTTP independently covered).",
+      "result": "passed",
+      "sourceSha256": "f27de3829e5be9d6b31d3d97d50dc8d05aeb329a18a4bc1bb8379d1ace42839a",
+      "file": "tests/integration/proactive-image-host.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "voice-empty",
+      "testName": "empty transcript is ignored and persistence failure degrades gracefully without dropping audio",
+      "logRef": "baseline",
+      "boundary": "Explicit fake realtime/audio ports, no actual microphone.",
+      "result": "passed",
+      "sourceSha256": "ddb03285752af3aef89c595787a0775a6dca62562fe356e00a2daa4181b51652",
+      "file": "apps/desktop/test/live-voice-host.test.mjs"
+    },
+    {
+      "layers": [
+        "fixture"
+      ],
+      "id": "voice-generation",
+      "testName": "P2 old generation cannot replay a completed request after the next Live starts",
+      "logRef": "baseline",
+      "boundary": "Explicit fake realtime session generation; no real provider connection.",
+      "result": "passed",
+      "sourceSha256": "29565e3016b797eb0bc02ae85e37b355d9a13bce7b34a26b99cb5605ed313da5",
+      "file": "apps/desktop/test/live-voice-recovery.test.mjs"
+    }
+  ],
+  "verification": {
+    "realModel": false,
+    "realAccount": false,
+    "realHost": true,
+    "physicalDevice": false,
+    "fixture": true
+  },
+  "changes": {
+    "testFilesChanged": [
+      "apps/runtime/test/proactive-connector-host.test.mjs",
+      "apps/runtime/test/notification-host.test.mjs",
+      "packages/notifications/test/interruption.test.mjs",
+      "tests/integration/proactive-image-host.test.mjs"
+    ],
+    "newSchedulers": 0,
+    "newStores": 0,
+    "productionFilesChanged": [],
+    "newPaidCalls": 0
+  },
+  "unavailable": [
+    {
+      "kind": "realAccount",
+      "status": "not_verified",
+      "reason": "No real mail/calendar/git/CI account or account-token revocation exercised; all source adapters/providers in this audit are explicit fixtures."
+    },
+    {
+      "kind": "physicalDevice",
+      "status": "not_verified",
+      "reason": "No microphone, speaker, native banner, powered-off/resumed machine or real device resource release exercised."
+    },
+    {
+      "kind": "voiceProductionBinding",
+      "status": "not_verified",
+      "reason": "NotificationHost requires a trusted verifier. The new persisted final-ledger verifier is a test fixture; no production ASR-final revision-to-settings bridge is proved."
+    },
+    {
+      "kind": "realModel",
+      "status": "outside_this_audit",
+      "reason": "Root owns real model/GPU acceptance. Fake Laya/DeepSeek decisions do not validate model quality or service availability."
+    },
+    {
+      "kind": "continuousCloudHost",
+      "status": "not_verified",
+      "reason": "Availability snapshots do not prove a cloud persistent host exists or that work continues 24/7 while the local computer is off."
+    }
+  ],
+  "schemaVersion": 1
+}

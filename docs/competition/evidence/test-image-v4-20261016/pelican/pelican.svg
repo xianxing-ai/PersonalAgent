@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="A pelican riding a bicycle">
+  <rect id="background" width="800" height="600" fill="#eef5ef"/>
+  <path id="road" d="M60 482H740" stroke="#9db5a1" stroke-width="4"/>
+  <g id="wheel-back" stroke="#31483b" fill="none" stroke-width="6">
+    <circle id="back-tyre" cx="250" cy="400" r="78"/>
+    <path id="back-spokes" d="M250 322V478M172 400H328M195 345L305 455M195 455L305 345" stroke-width="2"/>
+    <animateTransform id="back-spin" attributeName="transform" type="rotate" from="0 250 400" to="360 250 400" dur="1.6s" repeatCount="indefinite"/>
+  </g>
+  <g id="wheel-front" stroke="#31483b" fill="none" stroke-width="6">
+    <circle id="front-tyre" cx="550" cy="400" r="78"/>
+    <path id="front-spokes" d="M550 322V478M472 400H628M495 345L605 455M495 455L605 345" stroke-width="2"/>
+    <animateTransform id="front-spin" attributeName="transform" type="rotate" from="0 550 400" to="360 550 400" dur="1.6s" repeatCount="indefinite"/>
+  </g>
+  <path id="bicycle-frame" d="M250 400L335 279L398 400ZM335 279L498 279L398 400M498 279L550 400M498 279L482 238L530 228" fill="none" stroke="#ce6950" stroke-width="12" stroke-linejoin="round"/>
+  <path id="seat" d="M313 269H365" stroke="#31483b" stroke-width="12" stroke-linecap="round"/>
+  <g id="pedal" fill="none" stroke="#31483b" stroke-width="6">
+    <circle id="crank" cx="398" cy="400" r="17"/>
+    <path id="pedal-arm" d="M372 381L424 419M361 381H382M414 419H435"/>
+    <animateTransform id="pedal-spin" attributeName="transform" type="rotate" from="0 398 400" to="360 398 400" dur="1.6s" repeatCount="indefinite"/>
+  </g>
+  <path id="pelican-leg" d="M374 279L372 334L409 378M407 279L443 326L409 405" fill="none" stroke="#df9d47" stroke-width="10" stroke-linecap="round"/>
+  <ellipse id="pelican-body" cx="365" cy="233" rx="94" ry="52" fill="#fffdf5" stroke="#31483b" stroke-width="3"/>
+  <path id="pelican-wing" d="M295 224Q347 267 410 223Q377 282 319 256" fill="#dae5d9" stroke="#31483b" stroke-width="2"/>
+  <path id="pelican-neck" d="M417 239Q482 217 468 161Q455 133 479 121Q510 119 510 149Q511 217 448 258" fill="#fffdf5" stroke="#31483b" stroke-width="3"/>
+  <path id="pelican-beak" d="M502 145L645 164L510 178Z" fill="#e7b64d" stroke="#31483b" stroke-width="3"/>
+  <path id="pelican-pouch" d="M510 178Q550 213 607 171" fill="#f0cf7c" stroke="#31483b" stroke-width="2"/>
+  <circle id="pelican-eye" cx="491" cy="141" r="5" fill="#31483b"/>
+</svg>

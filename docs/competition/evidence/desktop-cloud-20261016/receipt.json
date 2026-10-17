@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "actual_desktop_main_host_route_cloud_smoke",
+  "startedAt": "2026-10-16T09:38:49.989Z",
+  "requestedVersion": "arm64-v4-e38ef23d-r2",
+  "driver": "Manual trusted-host driver invokes the actual registered main IPC handler with its real window/mainFrame identity; no renderer click or microphone is simulated",
+  "fake": false,
+  "encryptedConfiguration": {
+    "verified": true,
+    "configured": true,
+    "appTokenConfigured": true,
+    "deploymentVersion": "arm64-v4-e38ef23d-r2",
+    "plaintextPersisted": false
+  },
+  "network": [
+    {
+      "surface": "actual_desktop_cloud_fetch",
+      "startedAt": "2026-10-16T09:38:52.774Z",
+      "path": "/runtimes/pa-owned-bindings-0dae0ff5-api/invocations",
+      "requestedVersion": "arm64-v4-e38ef23d-r2",
+      "requestId": "7a9596d3-368a-4cca-8077-ab291e286889",
+      "sessionId": "pa-2bcaced43811214fbc1883de6f5d6726",
+      "httpStatus": 200,
+      "wallMs": 23842.9774,
+      "finishedAt": "2026-10-16T09:39:16.617Z"
+    }
+  ],
+  "startup": {
+    "connection": "本地 Runtime · AgentArts Competition",
+    "connectionError": "",
+    "configured": true,
+    "fake": false,
+    "fakeModel": false,
+    "deploymentVersion": "arm64-v4-e38ef23d-r2"
+  },
+  "submittedAt": "2026-10-16T09:38:52.566Z",
+  "taskId": "f9501f62-d93f-4509-a2bf-176f9b9337b1",
+  "task": {
+    "taskId": "f9501f62-d93f-4509-a2bf-176f9b9337b1",
+    "state": "succeeded",
+    "resultSummary": "桌面应用已连接云端镜像\n[profile=huawei_ict_agentarts; verification=unverified]",
+    "error": null,
+    "wallMs": 24163.3727
+  },
+  "status": "passed_actual_desktop_main_route",
+  "finishedAt": "2026-10-16T09:39:16.729Z"
+}

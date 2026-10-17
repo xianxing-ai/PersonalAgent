@@ -1,0 +1,126 @@
+{
+  "observedAtUtc": "2026-10-16T12:34:03.063Z",
+  "surface": "AgentArts runtime log page; model_proxy_response content filter",
+  "records": [
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:26:46.573Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": "low",
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "d1b95947acdb84f517f2a1d4eabc4b9e",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:26:36.262Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": "low",
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "7c24767aa90d86ebc641c425ef51c6c0",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:26:41.588Z",
+      "route": "runtime-bailian",
+      "configuredModel": "qwen3.8-flash",
+      "reasoningEffort": null,
+      "responseModel": "qwen3.8-flash",
+      "httpStatus": 200,
+      "requestId": "b2db2a54-69f4-9d0b-bd32-9bf6adc772ba",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:26:30.790Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": "low",
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "e8b9adb9936a11e90d0477b118c86b1f",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:09:52.728Z",
+      "route": "runtime-bailian",
+      "configuredModel": "qwen3.8-flash",
+      "reasoningEffort": null,
+      "responseModel": null,
+      "httpStatus": 403,
+      "requestId": "dc72385a-a67f-98ac-9e0c-9c8bd522f84e",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:09:44.238Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": "low",
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "dedd1ba6cf0ced469a73f0cf3a6a0735",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T12:09:48.690Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": "low",
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "5df17c73eecf7a794f9784c71eeb948b",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T11:55:27.074Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": null,
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "1160a163e310984667d44ec88cb8a0ec",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T11:49:38.552Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": null,
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "8e0e0d9a5645a77adca5b88100032893",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    },
+    {
+      "event": "model_proxy_response",
+      "observedAtUtc": "2026-10-16T11:46:40.028Z",
+      "route": "agentarts-proxy",
+      "configuredModel": "deepseek-v4.1-flash",
+      "reasoningEffort": null,
+      "responseModel": "deepseek-v4.1-flash",
+      "httpStatus": 200,
+      "requestId": "caad139f22f12aae5c0f3ecfcd9c6176",
+      "streaming": false,
+      "verification": "response_received_not_platform_trace_readback"
+    }
+  ]
+}
