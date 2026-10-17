@@ -6,7 +6,7 @@
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 - Profile：`huawei_ict_agentarts`。
-- 负责人：`zemeng` / P8；非作者评审：`goo122` 或 `Potatos498`。
+- 原工作包负责人：`zemeng` / P8；当时拟请 `goo122` 或 `Potatos498` 评审。当前 PR 的有效审批按上方协作规则和 GitHub 当前提交的实际审查记录判断。
 - 需求：PA-013；范围：MOD-11/13 的主进程配置、设置输入与安全状态。
 - 状态：review；不表示日历连接、读取、P5 改期消费或真实账号验收完成。
 - 基线：P8 #236 `72453af`；独立分支 `codex/zemeng/p8-calendar-config`。
