@@ -593,7 +593,7 @@ export class NotificationService {
 function trimBatches(batches: NotificationBatch[]): NotificationBatch[] {
   const unacknowledged = batches.filter(batch => batch.state === 'ready_for_delivery');
   const delivered = batches.filter(batch => batch.state === 'delivered');
-  return [...unacknowledged, ...delivered.slice(0, DELIVERED_BATCH_LIMIT)];
+  return [...unacknowledged, ...delivered.slice(-DELIVERED_BATCH_LIMIT)];
 }
 
 /** 被摘要批次的条目键同样进 delivered 窗口（批次已创建即视为已裁）。 */
