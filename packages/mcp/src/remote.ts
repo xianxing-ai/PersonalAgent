@@ -202,12 +202,12 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
     if(runs.size>=MAX_RUNS)fail('EXTERNAL_FAILURE');
     const epoch=generation,active=client!;
     return scoped(context,async()=>{
-      const run={taskId:context.taskId,runId:context.runId,binding,generation:epoch,confirmed:false,result:undefined as unknown};runs.set(key,run);
       if(options!.expectedDirectoryDigest){
         const listed=await active.listTools(undefined,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
         if(listed.nextCursor || remoteMcpDirectoryDigest(listed.tools)!==options!.expectedDirectoryDigest){invalidate('REVISION_CONFLICT',epoch);fail('REVISION_CONFLICT');}
         check(operation!,context.deadline);
       }
+      const run={taskId:context.taskId,runId:context.runId,binding,generation:epoch,confirmed:false,result:undefined as unknown};runs.set(key,run);
       const result=await active.callTool({name:options!.tool.remoteName,arguments:args},CallToolResultSchema,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
       check(operation!,context.deadline);
       if(epoch!==generation || state!=='connected')fail('CANCELLED');
