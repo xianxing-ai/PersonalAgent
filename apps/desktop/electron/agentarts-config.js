@@ -43,7 +43,7 @@ function validate(value) {
 }
 
 /** Host-only storage; snapshots never return either credential value. */
-export function createAgentArtsConfig({userData,safeStorage,environment=process.env}) {
+export function createAgentArtsConfig({userData,safeStorage,environment=process.env,fetchImpl=globalThis.fetch}) {
   const file=path.join(userData,'agentarts-config.json');
   let saved,failure='';
   const defaults={gatewayUrl:environment.PA_AGENTARTS_GATEWAY_URL??'',runtimeName:environment.PA_AGENTARTS_RUNTIME_NAME??''};
@@ -84,15 +84,15 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       ...(!saved&&!environment.PA_AGENTARTS_TRANSPORT&&!environment.PA_AGENTARTS_AUTHORIZATION?{transport:'wss'}:{}),
       websocketUrl:transport?.websocketUrl??saved?.websocketUrl??environment.PA_AGENTARTS_WSS_URL??'',
       allowHttpsFallback:transport?.allowHttpsFallback??preferences.allowHttpsFallback,
-      effectiveTransport:environment.PA_AGENTARTS_TRANSPORT??saved?.transport??'https',
-      transportSource:environment.PA_AGENTARTS_TRANSPORT!==undefined?'environment':saved?.transport?'saved':'default',
+      effectiveTransport:saved?.transport??environment.PA_AGENTARTS_TRANSPORT??'https',
+      transportSource:saved?.transport!==undefined?'saved':environment.PA_AGENTARTS_TRANSPORT!==undefined?'environment':'default',
       reason:failure||transportFailure||(saved?'已配置；真实连通以任务结果为准':'请配置 AgentArts 网关、运行时名称和 Authorization')};
   };
   return {snapshot,runtimeBinding,isTransportCurrent,
     transportConfig(binding) {
       const initial=currentTransport();
-      if(initial.transport==='https'&&!Object.keys(readTransportOptions(binding)).length)return {transport:'https'};
-      return createAgentArtsTransportConfig({binding,environment:effectiveEnvironment(),transportPreferences:readTransportPreferences(),
+      // Keep the HTTPS destination guard even without WSS options.
+      return createAgentArtsTransportConfig({binding,fetchImpl,environment:effectiveEnvironment(),transportPreferences:readTransportPreferences(),
         configurationProvider:{read:()=>readTransportOptions(binding)},readAppToken:()=>{
           assertBinding(binding,initial);
           return readTransportOptions(binding).appToken??effectiveEnvironment().PA_AGENTARTS_APP_TOKEN;
