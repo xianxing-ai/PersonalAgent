@@ -57,14 +57,14 @@ Wukong flow167.432s、Pelican第二轮81.611s，41条持久工具Evidence，首�
 - [华为 ICT AgentArts Competition Profile](docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)：参赛主路径、比赛与可选 Local 边界、实施顺序和验收矩阵。
 - [产品需求 PRD](docs/PRD.md)：产品范围、需求编号、优先级和验收条件。
 - [架构设计](docs/ARCHITECTURE.md)：模块、进程、协议、数据与技术验证项。
-- [模块分工](docs/MODULE_ASSIGNMENTS.md)：主模块、DEV-WORKFLOWS 及独占工作面；三人各自负责完整交付，常规 PR 须由三名登记协作者中至少一位非作者对当前提交有效批准；Owner 对具体 PR 的审核例外须记录。拥有合并权限者（包括作者）可在必要技术 CI、主线更新和冲突处理满足后合并。
+- [模块分工](docs/MODULE_ASSIGNMENTS.md)：主模块、DEV-WORKFLOWS 及独占工作面；各 MOD 负责人按既定分工独立完成交付，常规 PR 须由四位登记协作者中至少一位非作者对当前提交有效批准；Owner 对具体 PR 的审核例外须记录。拥有合并权限者（包括作者）可在必要技术 CI、主线更新和冲突处理满足后合并。
 - [公共开发协议](docs/DEVELOPMENT_PROTOCOL.md)：`goo122` 维护的任务、事件、工具、连接器契约与联调交付要求。
 - [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)：逐接口冻结状态、生产可用性、证据和未提供能力。
 - [协作开发规范](CONTRIBUTING.md)：任务分配、分支、PR、评审和完成标准。
 - [开发计划与进度](docs/ROADMAP.md)：阶段门槛、首批工作包和当前状态。
 - [Agent 协作规则](AGENTS.md)：在本仓库工作的自动化开发者必须遵循的约束。
 
-阅读顺序：Competition Profile → PRD → 模块分工 → 当前接口目录 → 公共开发协议 → 架构 → 协作规范 → 开发计划。`goo122` 与 `zemeng` 从同一冻结接口提交使用 Fake 独立开发；Potatos 独立交付业务连接器与业务接线，三人可按公开契约自行补齐 Fake 和必要集成。当前新增实现只面向 `huawei_ict_agentarts`；Local Profile 仅留存现有代码，除非产品负责人以后明确启用，否则不新增、不扩展、不作为当前验收对象。任何实现变更必须关联需求编号、profile 和验收证据。
+阅读顺序：Competition Profile → PRD → 模块分工 → 当前接口目录 → 公共开发协议 → 架构 → 协作规范 → 开发计划。`goo122` 与 `zemeng` 从同一冻结接口提交使用 Fake 独立开发；Potatos 独立交付业务连接器与业务接线；第四位协作者 2511375597-lab 参与审查与合并，具体 MOD 归属以模块分工为准。四位协作者可按公开契约自行补齐 Fake 和必要集成。当前新增实现只面向 `huawei_ict_agentarts`；Local Profile 仅留存现有代码，除非产品负责人以后明确启用，否则不新增、不扩展、不作为当前验收对象。任何实现变更必须关联需求编号、profile 和验收证据。
 
 ## 开发入口
 
