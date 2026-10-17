@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {OwnedAgentOrchestrator,parseAgentInput} from '../dist/index.js';
+import {OwnedAgentOrchestrator,parseAgentInput,getOwnedWorkflowTemplate} from '../dist/index.js';
 import {FakeModelProvider} from '@personal-agent/models';
 import {GOAL_PREFIX} from '../dist/input.js';
 const invoke = query => ({query,deadline:new Date(Date.now()+5000).toISOString(),signal:new AbortController().signal,sessionId:'synthetic',requestId:'synthetic-request'});
 const response = value => ({kind:'final',text:JSON.stringify(value)});
 const model = (...values) => new FakeModelProvider(values.map(response));
-function setup(values={}) {
+function setup(values={},selector) {
   const models=Object.fromEntries(['fast','world','plan','review'].map(role=>[role,model(...(values[role]??[]))]));
   const receipts=[];
-  return {models,receipts,agent:new OwnedAgentOrchestrator(models,2048,r=>receipts.push(r))};
+  return {models,receipts,agent:new OwnedAgentOrchestrator(models,2048,r=>receipts.push(r),selector)};
 }
 const tool = {name:'weather.forecast',version:'1.0.0',inputSchema:{type:'object',properties:{city:{type:'string'}},required:['city'],additionalProperties:false}};
 const proposal={kind:'tool_proposal',proposalId:'weather-1',toolName:tool.name,toolVersion:tool.version,arguments:{city:'杭州'}};
@@ -28,6 +28,106 @@ const sourcedQuery=GOAL_PREFIX+JSON.stringify({action:'REVISE',strategy:'最小�
   omittedSources:0,calibrated:false,executed:false});
 const compactWorld={disposition:'REVISE',affected:[planNodeId],reason:'变更',missing_information:[]};
 const compactPlan={disposition:'REVISE',changes:[sourcedChange],missing_information:[]};
+
+test('embedded decision selects the exact validated fast proposal without adding authority',async()=>{
+  const selections=[];
+  const {agent,models}=setup({fast:[proposal]}, {select:async request=>{selections.push(request);return 'proposal';}});
+  const request=invoke(JSON.stringify({goal:'查询杭州天气',availableTools:[tool]}));
+  assert.deepEqual(await agent.invoke(request),proposal);assert.equal(models.fast.requests.length,1);assert.equal(selections.length,1);
+  assert.equal(selections[0].deadline,request.deadline);assert.equal(selections[0].signal,request.signal);
+  assert.deepEqual(selections[0].candidates.map(item=>item.id),['proposal','review']);
+  assert.equal(Object.hasOwn(JSON.parse(selections[0].context).proposal,'verification'),false);
+});
+test('workflow preparation preserves node output contract and predecessor state on the existing model role',async()=>{
+  const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N02');
+  const alternative={id:'public-doc',description:'Public schema-backed document',value:{diffFields:['language'],docMarkdown:'public document',exampleArguments:{language:'zh-CN'}}};
+  const {agent,models}=setup({plan:[{candidates:[alternative]}]});const request=invoke('public source');
+  const prepared=await agent.prepareOwnedWorkflowCandidates({template,node,input:{field:'language',docTemplate:'public template'},
+    predecessorOutputs:{F20_N01:{content:'public contract'}},predecessorStates:{F20_N01:'completed'},
+    availableTools:[],mode:'main',namespace:'synthetic',...request});
+  assert.deepEqual(prepared[0],alternative);assert.equal(prepared[1].id,'owned-review');assert.equal(prepared[1].abstain,true);
+  assert.equal(models.plan.requests.length,1);assert.equal(models.fast.requests.length,0);
+  const data=JSON.parse(models.plan.requests[0].messages[1].content);
+  assert.deepEqual(data.node.outputFields,['docMarkdown']);assert.deepEqual(data.predecessorStates,{F20_N01:'completed'});
+  assert.deepEqual(data.predecessorOutputs,{F20_N01:{content:'public contract'}});
+});
+test('current tool request boundary preserves global downstream requirements without fabricating their outputs',async()=>{
+  const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N01');
+  const input={goal:'Read public-api.json before producing API docs; the path must be extracted from this sentence',codeFile:'public-api.json',
+    expectedOutputFields:['docMarkdown','exampleArguments']};
+  const value={toolName:'workspace.read_text',toolVersion:'1.0.0',arguments:{path:'public-api.json'}};
+  const {agent,models,receipts}=setup({fast:[{candidates:[{id:'source-read',description:'Read public source before comparison',value}]}]});
+  const prepared=await agent.prepareOwnedWorkflowCandidates({template,node,input,predecessorOutputs:{},predecessorStates:{},
+    availableTools:[{name:'workspace.read_text',version:'1.0.0',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path']}}],
+    mode:'main',namespace:'synthetic',...invoke('public source')});
+  const data=JSON.parse(models.fast.requests[0].messages[1].content);
+  assert.deepEqual(data.input,input);assert.deepEqual(data.node.outputFields,['diffFields']);
+  assert.deepEqual(data.currentCandidateBoundary,{kind:'unexecuted_tool_request',nodeOutputStage:'after_actual_host_receipt',
+    selectionBasis:'published_schema_and_task_arguments',resultEvidenceStage:'after_actual_execution'});
+  assert.deepEqual(data.publishedTools,data.availableTools);
+  assert.deepEqual(prepared[0].value,value);assert.equal(prepared[1].abstain,true);
+  const diagnostic=receipts.find(value=>value.event==='workflow_candidates');
+  assert.equal(diagnostic.stage,'candidate_response');assert.equal(diagnostic.nodeId,'F20_N01');assert.equal(diagnostic.candidateCount,1);
+  assert.match(diagnostic.candidateArrayDigest,/^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(diagnostic).includes('public-api.json'),false);
+});
+test('an explicit source path binds the published reader without a redundant generative model call',async()=>{
+  const template=getOwnedWorkflowTemplate('F15'),node=template.nodes.find(value=>value.id==='F15_N01');
+  const {agent,models,receipts}=setup();
+  const prepared=await agent.prepareOwnedWorkflowCandidates({template,node,input:{goal:'Repair the SVG',targetFile:'pelican.svg'},
+    predecessorOutputs:{},predecessorStates:{},availableTools:[{name:'workspace.read_text',version:'1.0.0',
+      inputSchema:{type:'object',properties:{path:{const:'pelican.svg'}},required:['path'],additionalProperties:false}}],
+    mode:'main',namespace:'synthetic',...invoke('explicit path')});
+  assert.equal(models.fast.requests.length,0);assert.deepEqual(prepared[0].value,
+    {toolName:'workspace.read_text',toolVersion:'1.0.0',arguments:{path:'pelican.svg'}});
+  assert.equal(prepared[1].abstain,true);assert.equal(receipts[0].candidatePreparation,'deterministic_binding');
+  assert.equal(JSON.stringify(receipts).includes('pelican.svg'),false);
+});
+test('empty actual candidate array is separately diagnosed before any selector invocation',async()=>{
+  const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N01');let selections=0;
+  const {agent,receipts}=setup({fast:[{candidates:[]}]},{select:async()=>{selections++;return 'proposal';}});
+  await assert.rejects(agent.prepareOwnedWorkflowCandidates({template,node,input:{goal:'public source'},predecessorOutputs:{},
+    predecessorStates:{},availableTools:[],mode:'main',namespace:'synthetic',...invoke('public source')}),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(selections,0);const diagnostic=receipts.find(value=>value.event==='workflow_candidates');
+  assert.equal(diagnostic.candidateCount,0);assert.equal(diagnostic.status,'failed');assert.equal(diagnostic.errorCode,'UNSUPPORTED_CAPABILITY');
+  assert.match(diagnostic.candidateArrayDigest,/^[a-f0-9]{64}$/);
+});
+
+test('existing candidate preparation carries optional shadow intent as advisory data in the same model call',async()=>{
+  const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N02');
+  const shadowIntent={taskClass:'public-doc',mode:'ordinary',tier:'trace_replay',shadowRequested:true,uncertain:false};
+  const {agent,models}=setup({plan:[{candidates:[{id:'doc',description:'source-backed document',value:{docMarkdown:'public'},shadowIntent}]}]});
+  const result=await agent.prepareOwnedWorkflowCandidates({template,node,input:{goal:'public doc'},predecessorOutputs:{},
+    predecessorStates:{},availableTools:[],mode:'main',namespace:'synthetic',...invoke('public')});
+  assert.equal(models.plan.requests.length,1);assert.equal(models.fast.requests.length,0);
+  assert.deepEqual(result[0].metadata.shadowPlan,{...shadowIntent,provenance:{decidedBy:'code',deepseekProposalRef:null,
+    layaDecisionRef:null,layaQualified:false,uncertaintyResolved:false}});
+  assert.equal(result[1].abstain,true);
+});
+test('embedded decision can require review of the repair candidate after World Plan Review',async()=>{
+  const selections=[];
+  const {agent,models}=setup({world:[compactWorld],plan:[compactPlan],review:[sourcedCandidate]},
+    {select:async request=>{selections.push(request);return 'review';}});
+  const output=await agent.invoke(invoke(sourcedQuery));assert.equal(output.kind,'text');assert.match(output.text,/RECHECK/);
+  assert.deepEqual(['world','plan','review'].map(role=>models[role].requests.length),[1,1,1]);assert.equal(selections.length,1);
+  assert.deepEqual(JSON.parse(selections[0].context).proposal,sourcedCandidate);assert.equal(Object.hasOwn(output,'verification'),false);
+});
+test('World KEEP and source-insufficient RECHECK still pass the unique final selector',async()=>{
+  for(const world of [{disposition:'KEEP',affected:[],reason:'无相关变更',missing_information:[]},
+    {disposition:'REVISE',affected:['plan'],reason:'来源缺失',missing_information:[]}]) {
+    let choices=0;const {agent,models}=setup({world:[world]}, {select:async()=>{choices++;return 'proposal';}});
+    const output=await agent.invoke(invoke(repairQuery));assert.equal(output.kind,'text');assert.equal(choices,1);
+    assert.equal(models.plan.requests.length,0);assert.equal(models.review.requests.length,0);
+  }
+});
+test('decision failures and stale answers cannot silently restore the unselected proposal',async()=>{
+  for(const selector of [{select:async()=> 'invented-action'},{select:async()=>{throw new Error('synthetic unavailable');}}]) {
+    const {agent}=setup({fast:[proposal]},selector);
+    await assert.rejects(agent.invoke(invoke(JSON.stringify({goal:'查询天气',availableTools:[tool]}))));
+  }
+  const control=new AbortController();const {agent}=setup({fast:[proposal]}, {select:async()=>{control.abort();return 'proposal';}});
+  await assert.rejects(agent.invoke({...invoke(JSON.stringify({goal:'查询天气',availableTools:[tool]})),signal:control.signal}),{code:'CANCELLED'});
+});
 
 test('ordinary tool proposal and confirmed weather answer use fast only and no trust fields',async()=>{
   const {agent,models}=setup({fast:[proposal,{kind:'text',text:'已确认投影：杭州明天小雨，来源与时间见回执。'}]});
@@ -61,6 +161,11 @@ test('repair executes World Plan Review once, checks fixed revision/dependencies
   assert.deepEqual(['world','plan','review'].map(r=>models[r].requests.length),[1,1,1]);
   assert.deepEqual(receipts.map(r=>r.role),['world','world','plan','plan','review','review']);
   assert.equal(JSON.stringify(receipts).includes('16点'),false);
+  for(const receipt of receipts.filter(value=>value.status==='completed')) {
+    assert.ok(Number.isFinite(receipt.durationMs)&&receipt.durationMs>=0);
+    assert.equal(receipt.durationScope,'model_gateway_complete');
+  }
+  assert.ok(receipts.filter(value=>value.status==='started').every(value=>value.durationMs===undefined));
 });
 test('source-less continuation stops before Plan and Review',async()=>{
   const {agent,models}=setup({world:[{disposition:'REVISE',affected:['plan'],reason:'变更',missing_information:[]}],

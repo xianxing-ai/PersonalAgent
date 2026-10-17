@@ -1,0 +1,331 @@
+{
+  "kind": "actual_desktop_v5_main_host_cloud",
+  "startedAtUtc": "2026-10-16T13:29:22.571Z",
+  "fake": false,
+  "microphoneOpened": false,
+  "driver": "Original registered Electron main IPC handler with real BrowserWindow/mainFrame identity; not renderer clicks",
+  "version": "arm64-v5-d92a17a4-r3",
+  "sourceCommit": "d92a17a4c436f37ff7a9bfdc5829044031a89bf7",
+  "appSourceCommit": "8057cf189e054bc500e2d58e475bad6f91ed4bee",
+  "savedConnection": {
+    "transport": "wss",
+    "websocketUrl": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+    "deploymentVersion": "arm64-v5-d92a17a4-r3",
+    "encryptedReadback": true,
+    "httpsFallbackExplicit": true
+  },
+  "voiceSettings": {
+    "route": "agentarts-wss",
+    "legacyApiPreserved": true,
+    "microphoneOpened": false
+  },
+  "sockets": [
+    {
+      "event": "upgrade",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": 101,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T13:29:32.134Z"
+    },
+    {
+      "event": "open",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": null,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T13:29:32.135Z"
+    },
+    {
+      "event": "upgrade",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": 101,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T13:29:37.403Z"
+    },
+    {
+      "event": "open",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": null,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T13:29:37.403Z"
+    },
+    {
+      "event": "upgrade",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": 101,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T13:30:17.152Z"
+    },
+    {
+      "event": "open",
+      "url": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "httpStatus": null,
+      "protocol": "",
+      "observedAtUtc": "2026-10-16T13:30:17.153Z"
+    }
+  ],
+  "httpTaskCalls": [],
+  "cloudCalls": [
+    {
+      "taskId": "7223e0e5-f624-4693-a81b-f6bba1315f43",
+      "startedAtUtc": "2026-10-16T13:29:29.583Z",
+      "selection": {
+        "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "low"
+      },
+      "continuation": false,
+      "transport": "wss",
+      "requestedVersion": "arm64-v5-d92a17a4-r3",
+      "resultKind": "text",
+      "completed": true,
+      "wallMs": 5811.206700000001
+    },
+    {
+      "taskId": "5afa8ab1-66f3-4685-8c64-7151261047a6",
+      "startedAtUtc": "2026-10-16T13:29:36.283Z",
+      "selection": {
+        "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "low"
+      },
+      "continuation": false,
+      "transport": "wss",
+      "requestedVersion": "arm64-v5-d92a17a4-r3",
+      "resultKind": "tool_proposal",
+      "publicTestProposal": {
+        "toolName": "subagent.dispatch",
+        "toolVersion": "1.0.0",
+        "arguments": {
+          "subtasks": [
+            {
+              "subtaskId": "calc-7x8",
+              "role": "coder",
+              "goal": "计算7乘8，只输出数字",
+              "model": "qwen3.8-flash",
+              "thinkingDepth": 0
+            }
+          ]
+        }
+      },
+      "completed": true,
+      "wallMs": 38081.211
+    },
+    {
+      "taskId": "ade7b078-2dd1-4848-9c8c-0dd1d1b0ed21",
+      "startedAtUtc": "2026-10-16T13:30:14.683Z",
+      "selection": {
+        "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+        "modelId": "qwen3.8-flash"
+      },
+      "continuation": false,
+      "transport": "wss",
+      "requestedVersion": "arm64-v5-d92a17a4-r3",
+      "resultKind": "text",
+      "completed": true,
+      "wallMs": 5377.353299999995
+    },
+    {
+      "taskId": "5afa8ab1-66f3-4685-8c64-7151261047a6",
+      "startedAtUtc": "2026-10-16T13:30:20.267Z",
+      "selection": {
+        "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "low"
+      },
+      "continuation": true,
+      "transport": "wss",
+      "requestedVersion": "arm64-v5-d92a17a4-r3",
+      "resultKind": "text",
+      "completed": true,
+      "wallMs": 3843.560700000002
+    }
+  ],
+  "reconciliation": {
+    "taskId": "60a17db9-6277-43a6-b98c-9da5312aa777",
+    "beforeState": "waiting_reconciliation",
+    "ok": true,
+    "afterState": "cancelled",
+    "error": null,
+    "before": {
+      "recordCount": 1,
+      "recordDigest": "e3e37848e11036e7f62b81772e9bcb872b604b53c5b83ddc637d9155aab6d78f",
+      "originalCheckpointDigest": "a557c35924f824b54a69cd1d217b8e6c4cc7c97b80228d52fb66723eb0a5564f",
+      "child": {
+        "task_id": "8e94ef78-3984-462c-b5f3-90bb4193a191",
+        "state": "failed",
+        "revision": 6
+      }
+    },
+    "after": {
+      "recordCount": 1,
+      "recordDigest": "e3e37848e11036e7f62b81772e9bcb872b604b53c5b83ddc637d9155aab6d78f",
+      "originalCheckpointDigest": "a557c35924f824b54a69cd1d217b8e6c4cc7c97b80228d52fb66723eb0a5564f",
+      "child": {
+        "task_id": "8e94ef78-3984-462c-b5f3-90bb4193a191",
+        "state": "failed",
+        "revision": 6
+      }
+    },
+    "cloudCallsAdded": 0,
+    "httpTaskCallsAdded": 0,
+    "recordsPreserved": true,
+    "originalCheckpointsPreserved": true,
+    "childUnchanged": true,
+    "childFailureConsumption": {
+      "version": "1.0",
+      "consumedAs": "durable_local_failure",
+      "taskRevision": 6,
+      "errorCode": "EXTERNAL_FAILURE",
+      "receipt": {
+        "sessionId": "pa-931d553ab063ecdeab99ee629d84fbb6",
+        "requestId": "03eb1177-e056-4eef-8e33-64f96289c96c",
+        "idempotencyKey": "03eb1177-e056-4eef-8e33-64f96289c96c",
+        "payloadDigest": "79677b38b15132fff9f5c6cccea56b511e581042665980f76ac9fcc6d858e130",
+        "accepted": true
+      },
+      "classification": "historical_durable_local_failure",
+      "cloudBusinessSuccess": false,
+      "cloudResent": false,
+      "consumedAt": "2026-10-16T13:29:27.817Z"
+    }
+  },
+  "taskSurface": "panel",
+  "catalog": {
+    "revision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+    "count": 177,
+    "defaultModelId": "deepseek-v4.1-flash"
+  },
+  "featuredMenu": {
+    "count": 13,
+    "models": [
+      {
+        "id": "qwen3.8-flash",
+        "displayName": "千问 · 快速 · qwen3.8-flash",
+        "availability": "unverified"
+      },
+      {
+        "id": "qwen3.8-max",
+        "displayName": "千问 · 旗舰 · qwen3.8-max",
+        "availability": "unverified"
+      },
+      {
+        "id": "deepseek-v4.1-flash",
+        "displayName": "DeepSeek · 快速 · deepseek-v4.1-flash",
+        "availability": "unverified"
+      },
+      {
+        "id": "deepseek-v4-pro",
+        "displayName": "DeepSeek · 旗舰 · deepseek-v4-pro",
+        "availability": "unverified"
+      },
+      {
+        "id": "ZHIPU/GLM-5.3-Flash",
+        "displayName": "智谱 · 快速 · ZHIPU/GLM-5.3-Flash",
+        "availability": "unverified"
+      },
+      {
+        "id": "glm-5.3",
+        "displayName": "智谱 · 旗舰 · glm-5.3",
+        "availability": "unverified"
+      },
+      {
+        "id": "kimi/kimi-k2.7-code-highspeed",
+        "displayName": "Kimi · 高速部署 · kimi/kimi-k2.7-code-highspeed",
+        "availability": "unverified"
+      },
+      {
+        "id": "kimi-k3",
+        "displayName": "Kimi · 旗舰 · kimi-k3",
+        "availability": "unverified"
+      },
+      {
+        "id": "MiniMax/MiniMax-M2.7",
+        "displayName": "MiniMax · 经济 · MiniMax/MiniMax-M2.7",
+        "availability": "unverified"
+      },
+      {
+        "id": "MiniMax/MiniMax-M3",
+        "displayName": "MiniMax · 旗舰 · MiniMax/MiniMax-M3",
+        "availability": "unverified"
+      },
+      {
+        "id": "stepfun/step-3.7-flash",
+        "displayName": "阶跃 · 快速 · stepfun/step-3.7-flash",
+        "availability": "unverified"
+      },
+      {
+        "id": "stepfun/step-5-preview",
+        "displayName": "阶跃 · 旗舰（预览） · stepfun/step-5-preview",
+        "availability": "unverified"
+      },
+      {
+        "id": "xiaomi/mimo-v2.5-pro",
+        "displayName": "小米 · 旗舰 · xiaomi/mimo-v2.5-pro",
+        "availability": "unverified"
+      }
+    ],
+    "settingsCatalogCount": 177
+  },
+  "preferences": {
+    "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+    "defaultModelId": "deepseek-v4.1-flash",
+    "defaultSubmodelId": "qwen3.8-flash",
+    "reasoningEffort": "low"
+  },
+  "text": {
+    "taskId": "7223e0e5-f624-4693-a81b-f6bba1315f43",
+    "state": "succeeded",
+    "resultSummary": "WSS文字连接成功\n[profile=huawei_ict_agentarts; verification=unverified]",
+    "error": null,
+    "wallMs": 6610.989100000001,
+    "children": [],
+    "connection": {
+      "configured": true,
+      "runtimeReady": true,
+      "gatewayUrl": "https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com",
+      "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+      "appTokenConfigured": true,
+      "deploymentVersion": "arm64-v5-d92a17a4-r3",
+      "transport": "wss",
+      "websocketUrl": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "allowHttpsFallback": true,
+      "reason": "已配置；真实连通以任务结果为准",
+      "effectiveTransport": "wss",
+      "transportSource": "saved"
+    }
+  },
+  "delegation": {
+    "taskId": "5afa8ab1-66f3-4685-8c64-7151261047a6",
+    "state": "succeeded",
+    "resultSummary": "已确认的延续结果：共 1 项子任务，成功 1 项，失败 0 项，取消 0 项，未完成 0 项。子任务 calc-7x8（代码与工程实现，coder）状态为成功，返回结果为“56”，标注配置为 huawei_ict_agentarts，并标记为未独立复核。除上述信息外，没有更多可确认内容。\n\n[profile=huawei_ict_agentarts; verification=unverified]",
+    "error": null,
+    "wallMs": 49338.5444,
+    "children": [
+      {
+        "parentTaskId": "5afa8ab1-66f3-4685-8c64-7151261047a6",
+        "taskId": "ade7b078-2dd1-4848-9c8c-0dd1d1b0ed21",
+        "role": "coder",
+        "modelId": "qwen3.8-flash",
+        "state": "succeeded",
+        "resultSummary": "56\n[profile=huawei_ict_agentarts; verification=unverified]",
+        "evidenceRefs": []
+      }
+    ],
+    "connection": {
+      "configured": true,
+      "runtimeReady": true,
+      "gatewayUrl": "https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com",
+      "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+      "appTokenConfigured": true,
+      "deploymentVersion": "arm64-v5-d92a17a4-r3",
+      "transport": "wss",
+      "websocketUrl": "wss://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ws?endpoint=arm64-v5-d92a17a4-r3",
+      "allowHttpsFallback": true,
+      "reason": "已配置；真实连通以任务结果为准",
+      "effectiveTransport": "wss",
+      "transportSource": "saved"
+    }
+  },
+  "status": "passed_actual_desktop_main_wss_and_child",
+  "finishedAtUtc": "2026-10-16T13:30:25.291Z"
+}

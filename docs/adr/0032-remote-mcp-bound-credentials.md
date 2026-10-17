@@ -1,4 +1,4 @@
-# ADR-0030：远程只读 MCP 的授权绑定与凭据引用
+# ADR-0032：远程只读 MCP 的授权绑定与凭据引用
 
 - 状态：proposed；日期：2026-10-15。
 - Profile：`huawei_ict_agentarts`；MOD-06 / G11、G14 最小子集；负责人 goo122。

@@ -193,6 +193,45 @@ test('invalid WSS targets fail before any credentials or connection', () => {
   }
 });
 
+test('trusted WSS endpoint pin reaches the exact socket URL and only the same pinned HTTPS fallback',async()=>{
+  for(const suffix of ['/ws','/invocations/ws'])for(const version of ['arm64-v4-e38ef23d-r2','valid._-'+('x'.repeat(120))]) {
+    const websocketUrl='wss://agentarts.example.test/runtimes/synthetic'+suffix+'?endpoint='+version;
+    const h=harness({config:{websocketUrl}});
+    try {
+      assert.equal((await h.port.invoke(request())).text,'Synthetic answer');assert.equal(h.connects[0].url,websocketUrl);
+      assert.equal(h.connects[0].options.followRedirects,false);assert.equal(h.http.length,0);
+    }finally{h.port.close();}
+  }
+  const h=harness({autoReady:false,config:{websocketUrl:config.websocketUrl+'?endpoint=bound-version',allowHttpsFallback:true}});
+  try {
+    const pending=h.port.invoke(request());while(!h.sockets.length)await new Promise(resolve=>setImmediate(resolve));
+    h.sockets[0].emit('error',Error('Explicit fixture failure before invoke'));
+    assert.equal((await pending).text,'HTTPS answer');assert.equal(h.http.length,1);
+    assert.equal(h.http[0].url,'https://agentarts.example.test/runtimes/synthetic/invocations?endpoint=bound-version');
+  }finally{h.port.close();}
+});
+test('WSS accepts only a single canonical endpoint query before credential reads or socket construction',()=>{
+  let reads=0,connections=0;
+  for(const query of ['?','?endpoint=','?endpoint=v4&endpoint=v4','?endpoint=v4&token=private','?endpoint=v4&',
+    '?endPoint=v4','?%65ndpoint=v4','?endpoint=v4%2Ev1','?endpoint='+('x'.repeat(129)),'?endpoint=v4#']) {
+    assert.throws(()=>new AgentArtsCloudAgentPort({...config,websocketUrl:config.websocketUrl+query},
+      {read:async()=>{reads++;return 'Bearer unused';}},undefined,undefined,undefined,undefined,
+      {factory:()=>{connections++;throw Error('Must not connect');}}),{code:'INVALID_ARGUMENT'});
+  }
+  assert.equal(reads,0);assert.equal(connections,0);
+});
+test('a pinned accepted WSS disconnect remains unknown and never invokes same-version HTTPS automatically',async()=>{
+  const websocketUrl=config.websocketUrl+'?endpoint=bound-version';
+  const h=harness({config:{websocketUrl,allowHttpsFallback:true},respond:(frame,socket)=>{
+    if(frame.type==='invoke'){socket.accepted(frame);socket.disconnect();}
+  }});
+  try {
+    await assert.rejects(h.port.invoke(request()),AgentArtsResultUnknownError);
+    assert.equal(h.connects[0].url,websocketUrl);assert.equal(h.sockets[0].sent.filter(frame=>frame.type==='invoke').length,1);
+    assert.equal(h.http.length,0);
+  }finally{h.port.close();}
+});
+
 test('an explicitly configured PREFIX_MATCH candidate uses that exact WSS path without guessing another', async () => {
   const websocketUrl = 'wss://agentarts.example.test/runtimes/synthetic/invocations/ws';
   const h = harness({config: {websocketUrl}});

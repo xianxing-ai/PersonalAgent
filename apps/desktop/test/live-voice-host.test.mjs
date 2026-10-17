@@ -2,6 +2,40 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLiveVoiceHost} from '../electron/live-voice-host.js';
 
+test('trusted final consumer binds the captured speech item and current question; missing metadata, echo and old items never authorize',async()=>{
+  let host,request,frames,token;
+  const receipts=[],asked=[],time=Date.now();
+  const question={questionId:'current-question',revision:4,state:'pending',summary:'是否确认当前参数？',argumentsDigest:'a'.repeat(64),
+    issuedAt:new Date(time).toISOString(),expiresAt:new Date(time+30_000).toISOString()};
+  const contents={mainFrame:{},isDestroyed:()=>false,send(_channel,message){token=message.token;
+    if(['start','stop'].includes(message.type))queueMicrotask(()=>host.receive({sender:contents,senderFrame:contents.mainFrame},
+      {token:message.token,type:message.type==='start'?'ready':'stopped'}));}};
+  host=createLiveVoiceHost({getPanel:()=>({webContents:contents,isDestroyed:()=>false,isVisible:()=>true}),now:()=>time,
+    config:{snapshot:()=>({configured:true}),current:()=>({})},microphoneHost:{authorize(){},revoke:async()=>{}},
+    createSource:()=>({subscribe(options){frames=options;return {ready:Promise.resolve(),closed:Promise.resolve(),unsubscribe(){}};},dispose:async()=>{}}),
+    createGateway:()=>({async connect(value){request=value;return {sendAudio(){},interrupt(){},close:async()=>{},askUserQuestion(text){asked.push(text);return {accepted:true};}};}}),
+    createConsumer:()=>({}),client:{},readContext:()=>'',onTranscript(){},readCurrentQuestion:()=>question,
+    onFinalUserCommand:async receipt=>{receipts.push(receipt);return {consumed:true,state:'confirmed'};}});
+  assert.equal(host.askCurrentQuestion().state,'unavailable');
+  await host.start();
+  assert.equal(host.askCurrentQuestion().state,'queued');assert.equal(asked.length,1);
+  assert.equal(host.snapshot().questionDelivery.playbackVerified,false);
+  frames.onFrame({data:Uint8Array.of(0,0)});
+  const speech=id=>{request.onEvent({type:'speech_started',utteranceId:id});request.onEvent({type:'speech_stopped',utteranceId:id});};
+  const final=(id,extra={})=>request.onEvent({type:'transcript',id,utteranceId:id,role:'user',text:'同意',phase:'final',source:'input_audio',...extra});
+  speech('current');final('old-item');final('current',{phase:'partial'});final('current',{source:undefined});
+  await new Promise(setImmediate);assert.equal(receipts.length,0);
+  final('current');await new Promise(setImmediate);assert.equal(receipts.length,1);
+  assert.equal(receipts[0].utteranceId,'current');assert.equal(receipts[0].questionRevision,4);assert.equal(receipts[0].source,'live_input_audio');
+  final('current');await new Promise(setImmediate);assert.equal(receipts.length,1);
+  request.onEvent({type:'audio',responseId:'assistant-output',data:Uint8Array.of(0,0)});
+  speech('echo');final('echo');await new Promise(setImmediate);assert.equal(receipts.length,1);
+  host.receive({sender:contents,senderFrame:contents.mainFrame},{token,type:'drained'});
+  speech('fresh');request.onEvent({type:'speech_stopped',utteranceId:'wrong-item'});final('fresh');
+  await new Promise(setImmediate);assert.equal(receipts.length,1);
+  await host.stop();final('fresh');await new Promise(setImmediate);assert.equal(receipts.length,1);
+});
+
 test('Live work shares desktop-panel and stopping audio never cancels an accepted Runtime task', async () => {
   let host, request, frameOptions, consumed, submitted, revoked=false, closed=false;
   const calls=[];
@@ -23,7 +57,7 @@ test('Live work shares desktop-panel and stopping audio never cancels an accepte
   await host.start();
   assert.equal(host.snapshot().status,'listening');
   assert.equal(await request.onTool('request_work',{goal:'合成任务'},'call_1'),'真实任务结果');
-  assert.deepEqual(submitted,{taskId:'task-live',goal:'合成任务'});
+  assert.deepEqual(submitted,{taskId:'task-live',goal:'合成任务',conversationId:'desktop-panel'});
   assert.equal(consumed.text,'合成任务');
   assert.ok(frameOptions.signal);
   await host.stop();

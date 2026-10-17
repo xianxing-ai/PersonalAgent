@@ -1,0 +1,45 @@
+✔ F20 public fixture contains source, contract/schema and a real documentation difference instead of a read-only banner (1.3765ms)
+✔ completion requires every F20 node, both original tool evidences and the exact source-supported candidate document (1.4194ms)
+✔ fixed public checker runs the installed real TypeScript compiler and rejects phantom parameters and changed artifact binding (2247.7986ms)
+✔ real public compiler recipe keeps local_write Policy approval, actual ToolGateway Evidence and legal parent Runtime completion (1193.0535ms)
+✔ parent deadline does not close Runtime while the original worker is still settling or convert late results to success (84.1425ms)
+✔ already expired parent deadline returns without waiting for a worker that Runtime never started (31.3915ms)
+✔ manual live receipt target preserves actual configured invoke mode without exporting credentials (0.256ms)
+✔ image-live is explicitly admitted only for one strict loopback HTTP invocation endpoint and never replaces cloud mode (1.8679ms)
+✔ explicit owned-image log projection keeps real token accounting without filling missing historical telemetry (8.4346ms)
+✔ workflow log projection retains one shared batch identity across independently correlated request rows (13.059ms)
+✔ workflow log projection keeps separate sequential forwards under one HTTP identity without leaking inference bodies (3.3089ms)
+✔ manual live parser accepts native owned-image JSON message/task_end/end without invoking anything (0.449ms)
+✔ manual live parser accepts native data-event SSE and event-named SSE with CRLF framing (0.2616ms)
+✔ manual live parser respects current native null metadata and indexed-message deduplication (0.2339ms)
+✔ manual live parser rejects incomplete, reordered, provider-failed and wrong application envelopes (0.5786ms)
+✔ pelican oracle fails the actual initial animation bug, accepts its narrow fix and rejects geometry replacement (340.1859ms)
+✔ explicit configuration only; duplicate supplied tools rejected; disposal is idempotent (1.14ms)
+✔ mock mail public tools preserve multi-account paging, dedupe identity and UIDVALIDITY failure (1.1738ms)
+✔ mock research keeps DOI, publication/fetch time and disclosed stale failure; status is read-only (1.1118ms)
+✔ explicit fixture draft capability preserves scope and unknown result; cancelled write never reaches provider (0.3815ms)
+✔ explicit Fake models drive existing child loop through real state/file/Evidence, notify and controller advice (691.9131ms)
+✔ terminal parent rejects new report before decision/controller call (207.3457ms)
+✔ cancelled parent rejects new report before decision/controller call (178.1408ms)
+✔ state revision change during actual observation rejects stale evidence without decision retry (194.0646ms)
+✔ failed notification is persisted accurately, does not replay advice, and leaves other child unchanged (235.5177ms)
+✔ unregistered controller tool is rejected without granting permissions or stopping child (144.5422ms)
+✔ new delegation site escalates an unqualified local choice to explicit Fake teacher once (1.1553ms)
+✔ only current passing byte-identical artifacts avoid semantic comparison; different or stale results do not (0.2135ms)
+✔ explicit fixture: checker rejects inactive animation and external active content without treating labels as visual proof (538.2887ms)
+✔ phase and model failure endpoints are synchronously durable before the caller receives failure (13.0997ms)
+✔ self-contained gradient URLs accept only validated existing page IDs, including normal quotes and whitespace (789.9991ms)
+✔ timing recorder captures UTC endpoints, wall time and failed model calls without fabricating usage (0.3655ms)
+✔ explicit fixture requires artwork beneath the corresponding animated ancestor and stable required ids (221.3697ms)
+✔ structural fault injection handles equivalent begin syntax and changes only the two animation attributes (1344.463ms)
+✔ browser observation measures artwork matrices, so moving empty groups cannot qualify static artwork (0.7995ms)
+✔ delivery requires exact bytes matching the latest verified SHA (1.134ms)
+✔ explicit browser fixture cannot pass with invisible art even when transform matrices move (0.1907ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9165.0933

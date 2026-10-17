@@ -1,0 +1,42 @@
+{
+  "registryReference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v4-e38ef23d",
+  "registryManifestDigest": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "runtimeDeploymentVerified": false,
+  "built": false,
+  "sourceRevision": "09d369a8b5fad79c1eb8f5f48da7b077bc122d93",
+  "stages": [
+    {
+      "stage": "tag",
+      "wallMs": 180.463,
+      "exitCode": 0,
+      "startedAtUtc": "2026-10-16T09:02:14.2753650Z",
+      "finishedAtUtc": "2026-10-16T09:02:14.4617144Z",
+      "logSha256": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6"
+    },
+    {
+      "stage": "push",
+      "wallMs": 2813.2791,
+      "exitCode": 0,
+      "startedAtUtc": "2026-10-16T09:02:14.4692054Z",
+      "finishedAtUtc": "2026-10-16T09:02:17.2852231Z",
+      "logSha256": "fc6bb28fafb7e9ffc56f03a78dc6abbd0a28e1bb8da2a719ccb96e908e4e4b58"
+    },
+    {
+      "stage": "remote-inspect",
+      "wallMs": 1119.6846,
+      "exitCode": 0,
+      "startedAtUtc": "2026-10-16T09:02:17.3058911Z",
+      "finishedAtUtc": "2026-10-16T09:02:18.4269897Z",
+      "logSha256": "6d5be13ea0b114f80bc313c72fe092149b291dc87b44045808dc309f87901439"
+    }
+  ],
+  "architecture": "arm64",
+  "image": "personal-agent:test-v4-workflow-wiring",
+  "published": true,
+  "remoteReadbackVerified": true,
+  "sourceDirty": true,
+  "context": null,
+  "imageId": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-16T09:02:18.5289343Z"
+}

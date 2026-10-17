@@ -1,0 +1,30 @@
+{
+  "kind": "agentarts_collaboration_access_readonly_review",
+  "observedAtUtc": "2026-10-15T15:36:06Z",
+  "profile": "huawei_ict_agentarts",
+  "region": "cn-southwest-2",
+  "collaborators": [
+    {"alias":"collaborator-A","accountType":"not_verified_from_name","presentInCurrentTenantIam":false,"invitationSent":false,"accessVerified":false},
+    {"alias":"collaborator-B","accountType":"not_verified_from_name","presentInCurrentTenantIam":false,"invitationSent":false,"accessVerified":false}
+  ],
+  "iam": {"legacyDirectoryCount":2,"currentDirectoryCount":2,"directoryContainsOnly":"current_administrator_mapping_and_existing_service_user","currentDirectoryRoute":"/iam5/#/users"},
+  "memberPermit": {"route":"/home/members-manage","displayedMemberQuantity":2,"displayedQuantityMeaning":"not_verified_as_quota_or_existing_users","actualAvailableSeats":"not_verified","seatPricing":"not_verified","licensed":1,"waitingForLicense":0,"banned":0,"visibleMemberRows":1,"currentMemberType":"IAM_user","externalAccountInviteControlVisible":false},
+  "developerSurface": {"route":"/home/agent-center/single","visibleKinds":["single_agent","workflow","multi_agent"],"teamSpaceInviteControlVisible":false},
+  "equalPermissionsFollowup": {"humanRequestedEqualPermissions":true,"clarifiedScope":"PersonalAgent_AgentArts_and_bound_resources_only","allowedActivities":["view","edit","deploy","invoke","debug","logs","evaluation_management"],"excludedScope":["other_projects","account_management","IAM_management"],"currentOperatorGroup":"admin","groupMemberCount":1,"operatorMembershipVerified":true,"authorizationRecord":"preinstalled_administrator_group_all_operations","riskLabel":"high_risk","currentOperatorGroupExceedsRequestedScope":true,"permissionsGrantedToCollaborators":false,"identityClaimingStillRequired":true},
+  "resourceScopeAssessment": {"runtimeId":"9a65747e-05f0-475c-a2dc-f24dd3ed87ae","runtimeVersion":"arm64-local-v3-244ca434","runtimeResourceTypedActionsDocumented":true,"fullAccessExampleIsNotLeastResourcePolicy":true,"sharedGatewayAndLogStreamRequireSeparateScopeReview":true,"completeCustomPolicyValidated":false,"resourceUrnsAndListEvaluationLogIsolation":"pending_verification","dataPlaneAccessIndependentOfControlPlaneGrant":true},
+  "sources": [
+    "https://support.huaweicloud.com/resources-members-agentarts/agentarts_15_0002.html",
+    "https://support.huaweicloud.com/resources-members-agentarts/agentarts_15_0003.html",
+    "https://support.huaweicloud.com/resources-members-agentarts/agentarts_15_0004.html",
+    "https://support.huaweicloud.com/usermanual-agentarts0/agentarts_05_0216.html",
+    "https://support.huaweicloud.com/api-agentarts/Permission2.html",
+    "https://support.huaweicloud.com/api-agentarts/UpdateCoreRuntime.html",
+    "https://support.huaweicloud.com/api-agentarts/InvokeRuntime.html"
+  ],
+  "nextRequired": ["verify_recipient_owned_current_tenant_IAM_identity_or_complete_formal_identity_claiming","validate_custom_policy_for_PersonalAgent_bound_resources_without_global_admin","verify_available_seats_before_any_paid_change","collaborator_login_and_actual_access_readback"],
+  "cloudMutations":0,
+  "credentialOperations":0,
+  "paidActions":0,
+  "invitationOperations":0,
+  "verification": "verified_readonly_control_plane_observation_only"
+}
