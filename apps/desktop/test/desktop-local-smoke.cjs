@@ -55,7 +55,7 @@ const {_electron} = require('playwright');
     assert.ok(crashed.logs.includes('renderer-gone'));
     await page.evaluate(id=>window.localDesktop.call('window',{id,action:'reload'}),adminId);
     await admin.waitForSelector('#desktop-local-settings');
-    assert.equal(await admin.locator('#desktop-local-settings').innerText(),'Desktop settings and recovery');
+    assert.equal(await admin.locator('#desktop-local-settings').innerText(),'Desktop preferences');
     await page.evaluate(id=>window.localDesktop.call('window',{id,action:'minimize'}),adminId);
     assert.equal(await app.evaluate(({BrowserWindow},id)=>BrowserWindow.getAllWindows().find(w=>w.webContents.id===id).isMinimized(),adminId),true);
     await page.evaluate(id=>window.localDesktop.call('window',{id,action:'show'}),adminId);

@@ -25,6 +25,7 @@ import {approvalPresentation, authorizationHistoryHtml, authorizationListHtml, n
 import {agentArtsModelPage} from './agentarts-model.js';
 import {evidencePanelHtml} from './evidence-view.js';
 import {createWorkspacePatchRecoveryControls, workspacePatchRecoveryHtml} from './workspace-patch-recovery-controls.js';
+import {windowControlsHtml} from '../../ui/window-controls.js';
 
 export const sections = {
   settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
@@ -134,19 +135,19 @@ export function mountAdmin(root, invoke, escape) {
     approvalExpiryTimer = undefined;
   };
   window.addEventListener('unload', clearApprovalExpiryTimer, {once: true});
-  root.innerHTML = `<div class="admin"><header class="admin-bar"><span class="admin-title">PersonalAgent · 设置</span><span class="spacer"></span><button class="icon-btn hdr-btn" id="admin-close" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg></button></header><aside class="side"><div class="side-home"><span class="brand">PersonalAgent</span><span>设置与管理</span></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><nav aria-label="设置导航">${navGroups.map(group => `<section class="nav-group"><h2>${group.label}</h2>${group.items.map(id => `<button data-page="${id}">${icon(id)}<span>${sections[id]}</span></button>`).join('')}</section>`).join('')}</nav><footer>私人助理 · Windows<br>冷光青 / 标准毛玻璃</footer></aside><section class="main"><div class="eyebrow">PERSONAL WORKSPACE</div><h1 id="page-title"></h1><div class="banner" id="connection"></div><div id="content"></div><p class="error" role="alert" id="error"></p></section></div>`;
-
-  const localSettingsButton = document.createElement('button');
-  localSettingsButton.type = 'button';
-  localSettingsButton.id = 'desktop-local-settings';
-  localSettingsButton.className = 'btn btn-sm';
-  localSettingsButton.textContent = '桌面设置与恢复';
-  localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
-  root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
+  root.innerHTML = `<div class="admin"><header class="admin-bar"><span class="admin-title">PersonalAgent · 设置</span><span class="spacer"></span>${windowControlsHtml('admin')}</header><aside class="side"><div class="side-home"><span class="brand">PersonalAgent</span><span>设置与管理</span></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><nav aria-label="设置导航">${navGroups.map(group => `<section class="nav-group"><h2>${group.label}</h2>${group.items.map(id => `<button data-page="${id}" title="${sections[id]}">${icon(id)}<span>${sections[id]}</span></button>`).join('')}</section>`).join('')}</nav><footer>私人助理 · Windows<br>冷光青 / 标准毛玻璃</footer></aside><section class="main"><div class="eyebrow">PERSONAL WORKSPACE</div><h1 id="page-title"></h1><div class="banner" id="connection"></div><div id="content"></div><p class="error" role="alert" id="error"></p></section></div>`;
+  root.querySelector('#content').addEventListener('click', async event => {
+    const button = event.target.closest('#desktop-local-settings');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try { await window.desktop.openSettings(); }
+    catch (error) { root.querySelector('#error').textContent = error.message; }
+    finally { button.disabled = false; }
+  });
   const remoteMcpButton=document.createElement('button');remoteMcpButton.type='button';remoteMcpButton.id='remote-mcp-manage';remoteMcpButton.className='btn btn-sm';remoteMcpButton.hidden=true;
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
-  root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('#admin-close'));
+  root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
   let installedSkillsControls,sisControls,notificationControls;
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,modelPageMarkup;
@@ -202,7 +203,7 @@ export function mountAdmin(root, invoke, escape) {
       : data.model?.status === 'ready' ? '已测试并连接' : data.model?.configured ? '已配置，等待测试' : '未配置';
     const panes = {
       general: ['常规', '管理应用的基础行为与入口',
-        settingRow('界面语言', '当前版本提供简体中文', '<span class="value-pill">简体中文</span>') +
+        settingRow('桌面与窗口', '调整语言、字体缩放和悬浮球行为，或查看窗口诊断', '<button type="button" class="btn btn-sm" id="desktop-local-settings">桌面偏好</button>') +
         settingRow('模型与 API', agentArts ? '在模型页面管理 AgentArts 运行时和本机加密凭据' : '模型、Endpoint 和密钥在独立页面管理', '<button class="btn btn-sm" data-jump="models">打开模型</button>') +
         settingRow('开机启动', '宿主能力尚未接入', '<span class="status-note">待接入</span>', 'is-unavailable') +
         settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>') +
@@ -643,7 +644,6 @@ export function mountAdmin(root, invoke, escape) {
     }
   }
 
-  root.querySelector('#admin-close').addEventListener('click', () => invoke('admin.close').catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('#content').addEventListener('click', event => {
     const button = event.target.closest('[data-patch-reconcile]');
     if (button && root.isConnected !== false) void patchRecovery.reconcile(button.dataset.patchReconcile);

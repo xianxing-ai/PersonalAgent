@@ -521,3 +521,31 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .workspace-composer-actions {display:flex;align-items:center;gap:12px;margin-top:8px}.workspace-composer-actions .notice {flex:1;margin:0}.workspace-composer-actions button {padding:7px 14px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);color:var(--fg)}.workspace-composer-actions button:disabled {opacity:.45}
 .workspace-chat>.subagent-tasks {flex:0 0 auto;max-height:150px;overflow:auto;padding-inline:24px;font-size:11px}.workspace-chat>.workspace-error {position:static;margin:0;padding:4px 24px;text-align:left;flex:0 0 auto}
 .panel>.conversation-sessions,.panel>div:has(>.conversation-sessions) {flex:0 0 auto}
+/* Native window controls remain separate from the draggable title area. */
+.admin {grid-template-rows:40px minmax(0,1fr)}
+.admin,.workspace {background-color:var(--bg)}
+.admin>.main {min-width:0;min-height:0}
+.admin-bar,.workspace-titlebar {min-width:0;padding:0 0 0 12px;gap:8px}
+.admin-title,.workspace-app-title {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.admin-title {padding-left:0}
+.window-controls {display:flex;flex:0 0 auto;align-self:stretch;margin-left:8px;-webkit-app-region:no-drag}
+.admin-bar button,.workspace-titlebar button {-webkit-app-region:no-drag}
+.window-controls .window-button {flex:0 0 44px;width:44px;min-width:44px;height:100%;margin:0;padding:0;border-radius:0}
+.window-controls .window-button:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-4px}
+:root[data-window-maximized="true"] :is(.admin,.workspace) {border-radius:0;clip-path:none}
+.admin .side nav {overflow-x:hidden;scrollbar-gutter:stable}
+.admin .side nav button span {flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;text-align:left}
+.admin .main .btn {white-space:normal;overflow-wrap:anywhere;text-align:center;gap:6px}
+.admin .main[data-section] :is(.settings-form,.sis-fields) input:is([type="checkbox"],[type="radio"]) {
+  flex:0 0 16px;width:16px;min-width:16px;height:16px;min-height:16px;padding:0;vertical-align:middle;accent-color:var(--accent);
+}
+.admin .main[data-section] :is(.settings-form,.sis-fields) input[type="range"] {min-height:24px;height:24px;padding:0}
+@media(max-width:640px) {
+  .admin {grid-template-columns:140px minmax(0,1fr)}
+  .admin .side nav button {gap:8px;padding-inline:8px}
+}
+@media(max-height:520px) {
+  .admin .side {padding-top:8px;gap:6px}
+  .admin .side-home>span:last-child,.admin .side footer {display:none}
+  .admin .side-home {padding-bottom:2px}
+}
