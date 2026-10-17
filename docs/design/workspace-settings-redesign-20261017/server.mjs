@@ -89,7 +89,14 @@ function createHandler() {
 
   return async function handler(req, res) {
     const url = new URL(req.url, "http://127.0.0.1");
-    let pathname = decodeURIComponent(url.pathname);
+    let pathname;
+    try {
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      // 畸形百分号编码（如 /%zz）：直接 400，不得把 URIError 变成未处理异常
+      res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }).end("400 bad request");
+      return;
+    }
     if (pathname === "/") pathname = "/index.html";
     if (pathname === "/api/health") {
       sendJson(res, 200, { ok: true, site: "workspace-settings-redesign-20261017" });
@@ -110,7 +117,8 @@ function createHandler() {
       return;
     }
     if (pathname.includes("..")) {
-      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("404 not found");
+      // 辨识性响应体：遍历拒绝与 allowlist 未命中在此可区分（第三轮：审查者建议的可辨识断言）
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("404 not found (traversal rejected)");
       return;
     }
 
@@ -166,16 +174,33 @@ async function selftest() {
     }
   }
 
-  // 404 与路径遍历防护
+  // 404 与路径遍历防护（审查跟进 2026-10-17：fetch/URL 解析会先做规范化——
+  // 纯 "/../.." 与完整 "%2e" 点段都会被客户端归一化，不能冒充“服务端拒绝遍历”的断言；
+  // 真正命中拒绝路径必须用“段内编码斜杠”形态：服务端 decode 后出现 .. → includes('..') 拒绝。
+  // 第三轮（审查者复核建议）：guard 分支响应体含 "traversal rejected"，与 allowlist 未命中
+  // （精确匹配下同样 404）可区分——assertBody 断言拒绝通道本身生效，移除 guard 即断言失败）
   const mustFail = [
-    { route: "/no-such-file.xyz", expect: 404 },
-    { route: "/../../package.json", expect: 404 },
+    { route: "/no-such-file.xyz", expect: 404, note: "普通缺失文件 404", assertBody: "404 not found" },
+    { route: "/../../package.json", expect: 404, note: "fetch 先归一化为 /package.json → allowlist 未命中（回退语义）", assertBody: "404 not found" },
+    { route: "/deep/%2e%2e/%2e%2e/package.json", expect: 404, note: "%2e 完整点段被 URL 解析器归一化 → allowlist 未命中（回退语义）", assertBody: "404 not found" },
+    { route: "/..%2fpackage.json", expect: 404, note: "段内编码：decode 出 /../package.json → guard 拒绝（可辨识通道）", assertBody: "traversal rejected" },
+    { route: "/deep/%2e%2e%2f..%2fpackage.json", expect: 404, note: "段内编码变体：decode 出 /deep/../package.json → guard 拒绝", assertBody: "traversal rejected" },
+    { route: "/..%2findex.html", expect: 404, note: "段内编码指向存在文件 index.html：仅 guard 生效才可能 404", assertBody: "traversal rejected" },
+    { route: "/..%2fnonexistent.html", expect: 404, note: "段内编码指向不存在文件：guard 拒绝（非 allowlist 未命中）", assertBody: "traversal rejected" },
+    { route: "/%zz", expect: 400, note: "畸形百分号编码 → 400（decode 容错）", assertBody: "400 bad request" },
   ];
   for (const item of mustFail) {
     try {
       const res = await fetch(base + item.route, { redirect: "manual" });
-      results.push({ route: item.route, status: res.status, expect: item.expect });
+      const text = await res.text();
+      results.push({
+        route: item.route,
+        status: res.status,
+        expect: item.expect,
+        bodyCheck: item.assertBody ? (text.includes(item.assertBody) ? "ok" : "MISMATCH") : undefined,
+      });
       if (res.status !== item.expect) failures += 1;
+      if (item.assertBody && !text.includes(item.assertBody)) failures += 1;
     } catch (error) {
       results.push({ route: item.route, error: error.message });
       failures += 1;

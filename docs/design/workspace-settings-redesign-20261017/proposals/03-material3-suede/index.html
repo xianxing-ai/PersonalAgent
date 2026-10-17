@@ -1341,9 +1341,9 @@ function renderGoals(){
   var box=$('#goalList');if(!box)return;
   box.innerHTML=GOALS.map(function(g,i){
     return '<li style="display:block"><div style="display:flex;align-items:center;gap:10px;padding:12px 2px;gap:10px">'+
-      '<div style="flex:1;min-width:0"><div class="t-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+g.sum+'</div>'+
-      '<div class="t-body-s mono muted num">'+g.id+' · 版本 '+g.ver+'</div></div>'+
-      '<span class="pill '+(g.st==='进行中'?'p-p':'p-n')+'">'+g.st+'</span>'+
+      '<div style="flex:1;min-width:0"><div class="t-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(g.sum)+'</div>'+
+      '<div class="t-body-s mono muted num">'+esc(g.id)+' · 版本 '+esc(g.ver)+'</div></div>'+
+      '<span class="pill '+(g.st==='进行中'?'p-p':'p-n')+'">'+esc(g.st)+'</span>'+
       '<button type="button" class="btn tonal sm" data-grevise="'+i+'"><svg><use href="#i-edit"></use></svg>修订</button></div></li>';
   }).join('');
 }
@@ -1546,7 +1546,7 @@ function toggleMon(i){
 
 
 /* ================= 设置页：渲染器 ================= */
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');} /* 唯一实现（第三轮去重）：目标 id/内容/状态与页内其他调用方统一走此处，覆盖 & < > " ' 与 null */
 function pill(cls,txt){return '<span class="pill '+cls+'">'+txt+'</span>';}
 function ictl(c){
   if(!c)return '';

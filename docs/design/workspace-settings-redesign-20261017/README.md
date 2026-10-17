@@ -80,6 +80,13 @@ Google **Material Design 3**（token/动态色）、**Microsoft Fluent 2**（Win
 | 5 | 分支 diff 不含 `apps/`、`packages/` 任何文件（悬浮球红线可审计） | ✅ 通过（`git diff --name-only origin/main...HEAD` 仅 docs/design/*） |
 | 6 | 门户/方案页在 1280×800 与 1920×1080 下无横向溢出 | ✅ 通过（响应式断点 + 抽屉/目录降密；1 处既存降级说明见下） |
 | 7 | 每页内联脚本 VM 语法编译 | ✅ 通过（6/6 单脚本编译零错误） |
+| 8 | **审查跟进（2026-10-17 第二轮）**：`server.mjs --selftest` v2 —— 遍历断言改用段内编码形态真实命中服务端拒绝（`/..%2fpackage.json`、`/deep/%2e%2e%2f..%2fpackage.json` → 404），两处 URL 归一化回退语义如实标注；`/%zz` 畸形百分号编码 → **400**（decode 容错，不再可能 500）；方案 03 目标 id/内容/状态经 `esc()` 转义后进 DOM；方案 05 rail 预览改为先截断后全量转义（`& < > " '`） | ✅ 通过（selftest 17 路由 0 失败；6 页结构+语法复检全绿；重验收 OK=88 PROBLEMS=0） |
+
+> 第二轮改动范围：`server.mjs`（自检语义 + decode 容错）与 `proposals/03`、`proposals/05`（用户输入回防转义）；未触碰其余四页与任何生产代码。对应 PR #378 审查者（zemeng5208）提出的两条非阻断建议。
+
+| 9 | **审查跟进（2026-10-17 第三轮，PR #380 合并后落实其审查者两条非阻断清理点）**：① `proposals/03` 双 `esc()` 声明去重——删除 L1340 被遮蔽的强实现，原唯一实现（原 L1549，弱版仅 `& < "`）升级为强版（`& < > " '` + null 容错），页内所有调用方（目标卡/胶囊/图标控制等）统一走唯一入口；② `server.mjs` guard 分支响应体辨识化（`404 not found (traversal rejected)`），自检对全部段内编码用例断言拒绝通道响应体，并对回退语义用例断言精确 `"404 not found"`（allowlist 精确匹配下纯状态码断言无法区分两通道——已取实跑基线证据） | ✅ 通过（selftest 19 路由 0 失败、body 全部 ok；6 页结构 0 问题；VM 语法 6/6；esc-e2e 16/16 PASS——含「esc 恰一处 + 强版特征」新断言；重验收 OK=88 PROBLEMS=0） |
+
+> 第三轮改动范围：`server.mjs`（辨识化断言）与 `proposals/03`（esc 去重升级）。方法论澄清：第二轮验证中「03 无 esc 助手」的早期工具断言系正则过度转义假阴性，运行时实际生效的一直是原弱实现（注入仍被中和，`<` 已覆盖）；本轮以「唯一实现 + 强版语义」收拢，修正第二轮对 03 转义覆盖表述过宽之处。
 
 复核补充：方案 3 在验收时发现缺少「等待结果核实/正在取消/已取消」三个状态词，已补齐（2 条演示任务 + 3 枚筛选 chip + 状态映射）。
 证据原始文件（不入库）：`.cache/workspace-redesign-qa/acceptance-receipt.json`、`server-selftest.txt`、`page-*.json`、`site-acceptance.txt`。
