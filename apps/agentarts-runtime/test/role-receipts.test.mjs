@@ -55,3 +55,38 @@ test('sync and async sink failures are isolated',async()=>{
   }
   await new Promise(resolve=>setImmediate(resolve));
 });
+
+
+test('candidate receipts retain safe workflow diagnostics without claiming a model call',()=>{
+  const lines=[],write=createRoleReceiptWriter({deploymentVersion:'arm64-194799c6',write:line=>lines.push(line)});
+  write({event:'workflow_candidates',stage:'candidate_response',role:'plan',status:'completed',
+    requestId:'request-2',promptVersion:'owned-1.0',nodeId:'F01_N04',
+    candidatePreparation:'deterministic_binding',candidateCount:2,candidateArrayDigest:'a'.repeat(64),
+    prompt:'private-prompt',candidatePayload:'private-candidate',error:'private-error',apiKey:'private-key'});
+  assert.equal(lines.length,1);
+  assert.deepEqual(JSON.parse(lines[0]),{event:'workflow_candidates',stage:'candidate_response',
+    role:'plan',status:'completed',requestId:'request-2',promptVersion:'owned-1.0',
+    deploymentVersion:'arm64-194799c6',deploymentVersionSource:'host_configuration',
+    nodeId:'F01_N04',candidatePreparation:'deterministic_binding',
+    candidateCount:2,candidateArrayDigest:'a'.repeat(64)});
+  assert.equal(lines[0].includes('private-'),false);
+  assert.equal(lines[0].includes('model_call'),false);
+});
+
+test('candidate failure receipts redact malformed fields and reject invalid stages',()=>{
+  const lines=[],write=createRoleReceiptWriter({write:line=>lines.push(line)});
+  const candidate={event:'workflow_candidates',stage:'candidate_response',role:'fast',status:'failed',
+    requestId:'request-3',promptVersion:'owned-1.0',errorCode:'EXTERNAL_FAILURE'};
+  write({...candidate,nodeId:'private/node',candidateCount:-1,candidateArrayDigest:'private-digest',
+    candidatePreparation:'private-mode',privateData:'private-value'});
+  assert.equal(lines.length,1);
+  const result=JSON.parse(lines[0]);
+  assert.equal(result.event,'workflow_candidates');
+  assert.equal(result.stage,'candidate_response');
+  assert.equal(result.errorCode,'EXTERNAL_FAILURE');
+  for(const key of ['scope','nodeId','candidateCount','candidateArrayDigest','candidatePreparation','privateData'])
+    assert.equal(Object.hasOwn(result,key),false);
+  assert.equal(lines[0].includes('private-'),false);
+  write({...candidate,stage:'private-stage'});
+  assert.equal(lines.length,1);
+});
