@@ -4,13 +4,14 @@
   "profile": "huawei_ict_agentarts",
   "date": "2026-10-17",
   "owner": "zemeng",
-  "branch": "codex/mod32-observability",
-  "deliveryBaseCommit": "3275aa9116769386a93453d9370c0b17f828a834",
-  "priorCodeCommit": "97777403fcc2a9c27df5f5ed689acd002d82245d",
-  "priorEvidenceMergeCommit": "a6be7f93 (docs) and 87a011ff (merge main into branch)",
+  "branch": "codex/mod32-observation-wiring",
+  "mainBaseCommit": "90fd2138 (merged PR #376; PR #361 offline observability merged earlier as fef57f61)",
+  "lineageCommit": "4387b142 (cherry-pick of worktree commit 27dd5e3b from codex/mod32-observability)",
+  "priorWorktreeBranch": "codex/mod32-observability",
   "status": "review",
   "moduleStatus": "in_progress",
-  "pullRequest": "https://github.com/zemeng5208/PersonalAgent/pull/361",
+  "pullRequest": "https://github.com/zemeng5208/PersonalAgent/pull/383",
+  "priorPullRequest": "https://github.com/zemeng5208/PersonalAgent/pull/361 (merged 2026-10-15, fef57f61)",
   "pullRequestBase": "main",
   "deliveryKind": "production_wiring",
   "priorOfflineEvidence": "MOD32_OBSERVABILITY_20261015.json kept as historical record",
@@ -53,11 +54,13 @@
   },
   "validation": {
     "kind": "synthetic_offline_with_real_composition",
+    "worktreeSequence": "validated first on codex/mod32-observability (runtime 518/coordination 149/agentarts 67), then rebuilt and fully revalidated on the cherry-picked main lineage",
     "newObservationTests": {"passed": 13, "failed": 0, "file": "apps/runtime/test/agentarts-observation.test.mjs"},
-    "runtimeWorkspace": {"passed": 518, "failed": 0},
-    "coordinationWorkspace": {"passed": 149, "failed": 0},
-    "agentartsWorkspace": {"passed": 67, "failed": 0},
+    "runtimeWorkspace": {"passed": 686, "failed": 0},
+    "coordinationWorkspace": {"passed": 154, "failed": 0},
+    "agentartsWorkspace": {"passed": 183, "failed": 0},
     "architectureGate": {"passed": 3, "failed": 0},
+    "build": "contract/coordination/agentarts workspaces then full-root npm run build re-run on main lineage",
     "manualReaderRegressions": {
       "readPlatformTrace": "passed",
       "readPlatformTraceConsumer": "passed",
@@ -66,7 +69,7 @@
       "sdkTraceAuthorizerOfficial": "passed_with_existing_environment_gate_skip"
     },
     "desktopMainSyntax": "node --check passed",
-    "build": "workspaces contracts/coordination/agentarts/runtime built; loop-root npm run build re-run after fixes"
+    "packageJsonConflict": "exports formatting conflict in packages/agentarts/package.json resolved to main's line-wrapped style plus the new ./observability/reader entry; JSON.parse checked"
   },
   "testLayers": {
     "fakeHost": "all 13 new tests plus workspace regressions use synthetic transport/signatures; no credentials",

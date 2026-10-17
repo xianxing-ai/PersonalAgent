@@ -4,8 +4,10 @@
 
 继续保持 2026-10-15 的离线观测包语义不变；本节把"生产路径发送请求 → 记录实际身份 → 受信读回
 平台 trace/log → 绑定任务进入既有 Evidence/查询路径"闭环接线完成，仍然只做观测记录，
-不改变任务执行结果、不用部署成功推断业务成功。分支 `codex/mod32-observability`
-（PR #361 之上的同一 PR 分支，已把 main 合入为 `87a011ff`）。
+不改变任务执行结果、不用部署成功推断业务成功。2026-10-15 的离线观测包（PR #361）已合入
+main（merge commit `fef57f61`）；本节交付在分支 `codex/mod32-observation-wiring` 上，
+自 main `90fd2138` 起 cherry-pick 接线提交（工作树提交 `27dd5e3b`），
+[PR #383](https://github.com/zemeng5208/PersonalAgent/pull/383)。
 
 生产改动（全部走仓库既有装配与导出）：
 
@@ -67,10 +69,11 @@ Desktop 装配（`apps/desktop/electron/main.js`）保持默认不传观测授�
   身份冲突拒读；log 面窗口/scope 与脱敏证据；平台 401 → `UNAUTHORIZED` 无证据无重试；
   deadline/取消/越界 deadline；默认组合无观测面；identity 记录去重/attempts/conflicts/32 条上限；
   WSS 双次发送逐帧记录，证据页顺序 execution→observation。
-- 回归：`@personal-agent/runtime` 518/518、`@personal-agent/coordination` 149/149、
-  `@personal-agent/agentarts` 67/67、架构门禁 3/3、手动 reader 与 apply-auth 既有测试通过
-  （1 个既有环境门 skip）。测试分层：如上 Fake 合成宿主；真实宿主（WSS SyntheticWebSocket +
-  组合入口，behavior 与生产一致的瞬态 socket）覆盖在本套件内；真实云端读回未执行。
+- 回归（ cherry-pick 到 `main@90fd2138` 后重新构建再跑）：`@personal-agent/runtime` 686/686、
+  `@personal-agent/coordination` 154/154、`@personal-agent/agentarts` 183/183、架构门禁 3/3、
+  手动 reader 与 apply-auth 既有测试通过（1 个既有环境门 skip）。测试分层：如上 Fake 合成宿主；
+  真实宿主（WSS SyntheticWebSocket + 组合入口，行为与生产一致的瞬态 socket）覆盖在本套件内；
+  真实云端读回未执行。
 - `node --check apps/desktop/electron/main.js` 语法通过。
 
 真实平台读回仍未验证（未授权、本机无 AK/SK）；`MOD32_OBSERVABILITY_20261015.json` 的历史
