@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "verification": "unverified",
+  "fixedCases": [
+    {
+      "caseId": "f20-public-api-docs-v1",
+      "workflowId": "F20",
+      "harnessRevision": "81dc72b60240d761070c39515ce112032b6b22ca",
+      "inputSha256": "d4dc22dd4cb6f5ac1be70a49dcea2f5c1ef4b01eee2ea2f1f923336084fbe16a",
+      "sourceSha256": "147a6469e4cd47c6730cd9fee51d1d2c4c216f64e935f10f924449a01341fbfb"
+    }
+  ],
+  "records": [],
+  "pairs": [],
+  "historicalObservations": [
+    {
+      "artifactSha256": "e60cb9d6cf6683423f83abc17717bdd4f47c7183a06f795cf62c0a213f7be655",
+      "workflowId": "F20",
+      "status": "unknown",
+      "reason": "fixed_input_actual_answer_and_independent_review_not_bound",
+      "surfaces": [
+        {
+          "surface": "agentarts_cloud",
+          "recordedRead": true,
+          "recordedCompletion": false,
+          "actualAnswer": "unknown",
+          "fixedInputIntegrity": "unknown",
+          "recovery": "unknown",
+          "durationMs": null
+        }
+      ]
+    }
+  ],
+  "countScope": "supplied_fixture_records_not_business_successes",
+  "counts": {
+    "observed": 0,
+    "passed": 0,
+    "failed": 0,
+    "unknown": 0
+  },
+  "caseCoverage": [
+    {
+      "caseId": "f20-public-api-docs-v1",
+      "variant": "candidate",
+      "status": "not_run"
+    },
+    {
+      "caseId": "f20-public-api-docs-v1",
+      "variant": "baseline",
+      "status": "not_run"
+    }
+  ],
+  "coverage": [
+    {
+      "workflowId": "F01",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F02",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F03",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F04",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F05",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F06",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F07",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F08",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F09",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F10",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F11",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F12",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F13",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F14",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F15",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F16",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F17",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F18",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F19",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F20",
+      "status": "historical_unscored",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F21",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F22",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F23",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F24",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F25",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F26",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F27",
+      "status": "not_run",
+      "fullyVerified": false
+    },
+    {
+      "workflowId": "F28",
+      "status": "not_run",
+      "fullyVerified": false
+    }
+  ],
+  "nativePlatformEvaluation": "unavailable_not_connected",
+  "limitations": [
+    "Hashes establish supplied artifact consistency, not provenance or execution authenticity.",
+    "Independent answer/citation labels are required; hashes and template counts are not semantic scores.",
+    "Recovery and abstention correctness require separate labeled failure cases; this fixture cannot establish them.",
+    "Partial and missing observations are not successes. No multi-agent benefit or statistical significance is inferred.",
+    "Public fixture results do not complete any of the 28 business workflows or verify a deployment."
+  ]
+}
