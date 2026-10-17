@@ -592,7 +592,9 @@ export class NotificationService {
 /** 已确认批次保留最近 DELIVERED_BATCH_LIMIT 条作幂等记录；未确认批次永不淘汰。 */
 function trimBatches(batches: NotificationBatch[]): NotificationBatch[] {
   const unacknowledged = batches.filter(batch => batch.state === 'ready_for_delivery');
-  const delivered = batches.filter(batch => batch.state === 'delivered');
+  const delivered = batches.filter(batch => batch.state === 'delivered').sort((left, right) =>
+    left.decidedAt < right.decidedAt ? -1 : left.decidedAt > right.decidedAt ? 1
+      : left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
   return [...unacknowledged, ...delivered.slice(-DELIVERED_BATCH_LIMIT)];
 }
 
