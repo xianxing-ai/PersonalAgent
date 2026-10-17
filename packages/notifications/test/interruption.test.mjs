@@ -238,8 +238,9 @@ test('duplicate corrected and withdrawn silent feed entries preserve history but
   assert.equal(resumed.notificationFeed().items.length,2,'history is not delivery or read acknowledgement');
 });
 
-test('settings tool requires exact original arguments and trusted explicit user command; timestamps are exposed',async()=>{
+test('settings tool requires exact original arguments and trusted explicit user command; timestamps are exposed',async(t)=>{
   const f=fixture(),input={operationId:'user-setting',expectedRevision:0,scope:globalScope,patch:userPolicy()};
+  t.mock.timers.enable({apis:['Date'],now:f.now()});
   const context={taskId:'synthetic-settings',runId:'synthetic-run',signal:new AbortController().signal,deadline:new Date(f.now()+100000000).toISOString(),
     authorizationRef:'existing-policy-grant',scopes:['notifications:settings'],argumentsDigest:hash(input)};
   const tool=createNotificationSettingsTool(f.service,{requiredScopes:['notifications:settings'],verifyUserCommand:()=>true});
@@ -250,8 +251,9 @@ test('settings tool requires exact original arguments and trusted explicit user 
   assert.ok(f.stages.some(stage=>stage.stage==='interruption_policy_updated'&&stage.observedAt));
 });
 
-test('legacy and modern settings are mutually exclusive and cannot substitute the original authorized payload',async()=>{
+test('legacy and modern settings are mutually exclusive and cannot substitute the original authorized payload',async(t)=>{
   const f=fixture(),input={operationId:'typed-binding',expectedRevision:0,scope:globalScope,patch:userPolicy()};
+  t.mock.timers.enable({apis:['Date'],now:f.now()});
   const context={taskId:'synthetic-settings',runId:'synthetic-run',signal:new AbortController().signal,deadline:new Date(f.now()+100000000).toISOString(),
     authorizationRef:'existing-policy-grant',scopes:['notifications:settings'],argumentsDigest:hash(input)};
   const tool=createNotificationSettingsTool(f.service,{requiredScopes:['notifications:settings'],verifyUserCommand:()=>true});
