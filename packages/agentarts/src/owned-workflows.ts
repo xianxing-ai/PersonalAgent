@@ -732,7 +732,8 @@ export class OwnedWorkflowEngine {
   }
   private deliverable(template:OwnedWorkflowTemplate,state:CheckpointState,request:OwnedWorkflowAdvanceRequest,cancelled=false):OwnedWorkflowAdvanceResult|undefined {
     const fits=():OwnedWorkflowAdvanceResult|undefined=>{
-      for(const compressed of request.resultFits?[false,true]:[false]) {
+      // F15 explicitly enables compressed coding checkpoints; other graphs retain their reference/capacity contract.
+      for(const compressed of request.resultFits&&state.codingRepair?[false,true]:[false]) {
         let result:OwnedWorkflowAdvanceResult;
         try {result=this.result(template,state,cancelled,compressed);}
         catch(error) {if(error instanceof ProtocolError&&error.code==='EXTERNAL_FAILURE')continue;throw error;}
