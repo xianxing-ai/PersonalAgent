@@ -90,3 +90,16 @@ test('candidate failure receipts redact malformed fields and reject invalid stag
   write({...candidate,stage:'private-stage'});
   assert.equal(lines.length,1);
 });
+
+
+test('candidate node ID objects cannot smuggle private fields through string coercion',()=>{
+  const lines=[],write=createRoleReceiptWriter({write:line=>lines.push(line)});
+  const nodeId={private:'secret-node-data',toString(){return 'F01_N04';}};
+  write({event:'workflow_candidates',stage:'candidate_response',role:'fast',status:'completed',
+    requestId:'request-4',promptVersion:'owned-1.0',nodeId});
+  assert.equal(lines.length,1);
+  const result=JSON.parse(lines[0]);
+  assert.equal(result.event,'workflow_candidates');
+  assert.equal(Object.hasOwn(result,'nodeId'),false);
+  assert.equal(lines[0].includes('secret-node-data'),false);
+});
