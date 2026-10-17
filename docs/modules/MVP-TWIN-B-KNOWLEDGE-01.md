@@ -6,7 +6,7 @@
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 - Profile：`huawei_ict_agentarts`；MOD-28，消费 MOD-27 的 `NodeRef`。
-- 负责人：zemeng；状态：`review`；非作者评审由 goo122 完成后才可合并。
+- 原工作包负责人：zemeng；当时状态：`review`；当时约定由 goo122 复核。当前 PR 的审批以 GitHub 当前提交的实际审查记录和上方协作规则为准。
 - 所有权：`packages/cognition/**` 和本文件。真实来源、知识库、Runtime checkpoint 与 Desktop 接线由原模块负责人维护。
 
 现有 `decideKnowledgeFreshness` 能说明缓存是否仍可使用，但未提供可去重的依赖重评工作项。
