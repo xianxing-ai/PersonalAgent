@@ -175,18 +175,18 @@ Desktop `live-voice-boot-history.test.mjs:83` 的 failed boot history sink 用�
 ### 后续已有门禁与定向回归
 
 [checks.json](evidence/test-image-v3-20261015/checks.json) 从现有 phase journal/raw log 汇总，
-不含账户、凭据、配置路径或平台原始 secret 错误。未记录执行时源码 SHA 的地方保持 null，不能以当前工作树代填。
+不含账户、凭据、配置路径或平台原始 secret 错误。未记录执行时源码 SHA 的地方保持 null，不能以当前工作树代填。下述五处原始 `.log` 文件未收入仓库，改链到 checks.json 对应结构化回执；原日志名、UTC、结果与 SHA256 仍按当时记录保留。
 
 后续 `.cache/test-image-v3-final-source-check.log` 曾 exit 1，UTC 13:14:59.2384397Z–13:20:32.0341830Z，
 wall 332778.0177ms；36 个 runner 汇总 3274 tests / 3252 pass / 19 skip / 3 fail。
 失败是 Desktop `quit-task-preflight.test.mjs:194/207/223` 的三个消费 fixture；原 SHA256
 `627cad16e43ff2e01844a468a5e2aa706ac55b33e7e8cb66e3d43ad9bc126a8e` 保留。
 消费 fixture 修正后单独回归 **21/21 pass**，UTC 13:21:34.5803917Z–13:21:34.9910358Z，
-wall 401.2502ms；[日志](evidence/test-image-v3-20261015/desktop-quit-sis-consumer-target.log) SHA256
+wall 401.2502ms；[结构化回执](evidence/test-image-v3-20261015/checks.json#L121-L130) SHA256
 `5de12cc3a2de8f51e3fd57dfbab9e84ba80ee999cba5476a67390f2e2352a234`。
 另一个 settings 渲染目标先 26/27 pass、1 fail，修正后 **27/27 pass**；后者 UTC
 13:12:21.9172671Z–13:12:24.4683893Z，wall 2540.7172ms，
-[日志](evidence/test-image-v3-20261015/desktop-settings-target-fixed.log) SHA256
+[结构化回执](evidence/test-image-v3-20261015/checks.json#L77-L86) SHA256
 `67023d26fa26c349e1b459de82c7fb9016044f0fa823acd156879a9b52dc9e62`，不能与 21/21 混为同一目标。
 
 之后 `npm run check` **exit 0**，UTC **13:22:28.0579997Z–13:28:09.3527356Z**，wall **341279.292ms**；
@@ -197,13 +197,13 @@ wall 401.2502ms；[日志](evidence/test-image-v3-20261015/desktop-quit-sis-cons
 
 | 后续目标 | 已有回执 | 安全日志与 SHA256 |
 | --- | --- | --- |
-| proxy Bearer/startup | 13/13 pass，0 fail/skip；UTC 13:38:01.8168448Z–13:38:04.8211404Z，wall 2992.9145ms | [log](evidence/test-image-v3-20261015/v3-proxy-bearer-startup-regression.log)，`8f178a05fd30519c56c3e9a0dd703a556bb490d2ee91a5ad424850e988eca996` |
-| durable timing + proxy/Wukong | 15/15 pass，0 fail/skip；UTC 13:40:34.4688879Z–13:40:37.6712634Z，wall 3193.4592ms | [log](evidence/test-image-v3-20261015/v3-durable-timing-and-proxy-targets.log)，`2c2368e45055d6efd6d7c91f1847e8ee5488af819caf950ec8d964b914f98855` |
+| proxy Bearer/startup | 13/13 pass，0 fail/skip；UTC 13:38:01.8168448Z–13:38:04.8211404Z，wall 2992.9145ms | [结构化回执](evidence/test-image-v3-20261015/checks.json#L187-L196)，`8f178a05fd30519c56c3e9a0dd703a556bb490d2ee91a5ad424850e988eca996` |
+| durable timing + proxy/Wukong | 15/15 pass，0 fail/skip；UTC 13:40:34.4688879Z–13:40:37.6712634Z，wall 3193.4592ms | [结构化回执](evidence/test-image-v3-20261015/checks.json#L209-L218)，`2c2368e45055d6efd6d7c91f1847e8ee5488af819caf950ec8d964b914f98855` |
 
 这些为受影响目标回归，不能反写成旧快照覆盖。收敛后已独立运行最后一次源码门禁 `npm run check`，
 **exit 0**：UTC **13:43:24.2365036Z–13:48:59.0410310Z**，wall **334790.382ms**。
 从原日志 37 个 runner 的 summary 实际合计 **3321 tests / 3302 pass / 19 skip / 0 fail / 0 cancelled**，
-包含根 integration。[完整安全日志](evidence/test-image-v3-20261015/test-image-v3-prebuild-final-check.log)
+包含根 integration。[完整检查的结构化回执](evidence/test-image-v3-20261015/checks.json#L231-L240)
 SHA256 **`fe4047fe8ba56bfff1f37acd06abbeb55ddafb2b87b0461226ec8445a458cf53`**。
 checks.json 的 `finalRepositoryGateAfterLaterChanges` 现为 passed，并引用该独立回执；旧失败及旧快照仍保留。
 此门禁对应协调侧已冻结的生产源码，后续仅文档更新不重复测试；不能据此声称最终镜像或真实模型验收完成。
