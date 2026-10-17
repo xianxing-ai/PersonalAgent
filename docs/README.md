@@ -20,4 +20,4 @@
 | [ADR](adr/README.md) | 长期决定和替代关系 |
 | [协作规则](../CONTRIBUTING.md) | 审查、交付与合并 |
 
-[文档清单](design/workflow-architecture-20261013/DOCUMENTATION_INVENTORY.md)覆盖当前规范、模块API说明、历史设计与验收。历史事实不改写成新方案的成功证据；旧设计入口已明确归档，当前规范统一为Laya镜像内决策，不沿用旧DeepSeek全局决策选型或双人本机阅读门槛。
+[文档清单](design/workflow-architecture-20261013/DOCUMENTATION_INVENTORY.md)覆盖当前规范、模块API说明、历史设计与验收。Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 编排、评估与部署；Local Profile 仅保留现有能力，不作为比赛失败后的回退。历史实验与验收仍按原范围记录，不代表当前比赛路径已完成。

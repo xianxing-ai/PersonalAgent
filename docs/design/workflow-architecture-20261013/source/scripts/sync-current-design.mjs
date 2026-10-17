@@ -17,11 +17,11 @@ const modules=rows(docs.modules).filter(r=>/^MOD-/.test(r[0])).map(r=>({title:r[
 if(workflows.length!==28||workPackages.length!==10||modules.length!==39)throw Error(`Unexpected committed source coverage ${workflows.length}/${workPackages.length}/${modules.length}`);
 fs.writeFileSync(path.join(root,'src/data/currentDesign.generated.json'),JSON.stringify({sha,date:'2026-10-15',sourcePaths,workflows,workPackages,modules},null,2)+'\n');
 const replacements=[
- ['全部业务工作流和Laya multilingual服务/权重迁入自有镜像','28图/185节点编排在自有镜像；Laya在本机，镜像无权重/Python/PyTorch'],
- ['Laya在镜像内裁决','合格站点由本机Laya选择，未合格/复杂未知升级AgentArts DeepSeek'],
- ['唯一全局语义决策配置','本机Laya候选选择；站点未合格则AgentArts DeepSeek'],
- ['唯一主决策配置','既有候选选择（合格本机Laya/未合格DeepSeek）'],
- ['唯一主模型','既有候选选择'],['主模型','候选判断'],
+ ['全部业务工作流和Laya multilingual服务/权重迁入自有镜像','Competition由AgentArts构建与编排Agent/Workflow；本机Laya在本机运行并参与产品路径'],
+ ['Laya在镜像内裁决','Competition Workflow由AgentArts编排；本机Laya参与本机候选判断'],
+ ['唯一全局语义决策配置','本机Laya参与Competition本地判断；AgentArts承担Workflow编排'],
+ ['唯一主决策配置','本机Laya判断与AgentArts Workflow编排'],
+ ['唯一主模型','本机Laya与AgentArts Workflow'],['主模型','Competition Agent/Workflow'],
  ['独立分支并行','独立依赖分支（当前Engine默认串行；机会并行待验）'],
  ['独立分类、资料查询与草稿生成并行','独立分类、资料查询与草稿依赖；当前Engine串行推进'],
  ['线程A：','分支A：'],['线程B：','分支B：'],
@@ -35,14 +35,14 @@ const architecture=clean(JSON.parse(fs.readFileSync(path.join(root,'src/data/arc
 for(const f of architecture){
  const current=workflows.find(w=>w.id===f.id); if(!current)throw Error(f.id);
  f.summary=current.design;
- f.designNotes=[`当前实现/实测边界：${current.status}`,'该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。','本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。',...(f.designNotes||[]).filter(n=>!n.startsWith('当前实现/实测边界：')&&!n.startsWith('该图默认串行；')&&!n.startsWith('本机Laya仍为实验候选、'))];
+ f.designNotes=[`当前实现/实测边界：${current.status}`,'Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。','本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。','该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。',...(f.designNotes||[]).filter(n=>!n.startsWith('当前实现/实测边界：')&&!n.startsWith('Competition目标由AgentArts')&&!n.startsWith('本机Laya已确认为本机运行方案')&&!n.startsWith('本机Laya/自有镜像结果是历史实测')&&!n.startsWith('本机Laya仍为实验候选')&&!n.startsWith('该图默认串行；'))];
  f.recovery=['沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。','结果未知的写入保留原operation先读回，不换ID重放。','最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。'];
  for(const n of f.nodes){
   if(n.modelAssignment){
-   n.modelAssignment=(n.kind==='semantic_decision'||n.modelAssignment.vendor==='Laya'||n.modelAssignment.vendor==='受信候选选择')?{vendor:'受信候选选择',model:'本机Laya / 未合格DeepSeek经AgentArts',role:'有限候选选择，领域资格不足必须升级；非授权边界'}:{vendor:'可信ModelGateway配置',model:'当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验',role:n.modelAssignment.role,thinkingLevel:'原生参数按provider实际支持；预算不等于思考深度'};
+   n.modelAssignment=(n.kind==='semantic_decision'||n.modelAssignment.vendor==='Laya'||n.modelAssignment.vendor==='受信候选选择')?{vendor:'本机Laya',model:'Laya multilingual（本机）',role:'本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验'}:{vendor:'可信ModelGateway配置',model:'经AgentArts部署工作流调用；实际模型按平台读回记录',role:n.modelAssignment.role,thinkingLevel:'原生参数按provider实际支持；预算不等于思考深度'};
    n.label=n.label.replace(/Qwen|GLM|DeepSeek/g,'配置执行模型');
   }
-  n.label=n.label.replaceAll('并行启动','依赖就绪后串行推进').replaceAll('并行派发','依赖派发（当前串行）').replaceAll('就绪节点并行','就绪节点默认串行').replaceAll('并行','独立依赖（默认串行）').replaceAll('Laya从候选中选择','合格Laya/未合格DeepSeek选择').replaceAll('唯一决策模型','既有候选判断');
+  n.label=n.label.replaceAll('并行启动','依赖就绪后串行推进').replaceAll('并行派发','依赖派发（当前串行）').replaceAll('就绪节点并行','就绪节点默认串行').replaceAll('并行','独立依赖（默认串行）').replaceAll('Laya从候选中选择','本机Laya有限候选选择').replaceAll('合格Laya/未合格配置执行模型选择','本机Laya及teacher候选判断').replaceAll('Laya选择','本机Laya有限候选选择').replaceAll('唯一决策模型','本机Laya候选判断');
   const suffix='节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。';
   if(!n.evidenceRequirement?.includes(suffix))n.evidenceRequirement=[n.evidenceRequirement||'',current.status,suffix].filter(Boolean).join(' ');
  }

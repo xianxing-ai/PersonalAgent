@@ -1,8 +1,8 @@
-# 镜像实现顺序与可验证交接
+# 历史镜像实现计划与交接（已被当前 Competition 边界取代）
 
-日期：2026-10-14 · profile：huawei_ict_agentarts · [主架构](DESIGN.md) · [28工作流](WORKFLOWS.md) · [分工](../../MODULE_ASSIGNMENTS.md) · [接口状态](../../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+日期：2026-10-14 · profile：huawei_ict_agentarts · 历史计划，非当前实施授权 · [当前主架构](DESIGN.md) · [28工作流模板](WORKFLOWS.md) · [分工](../../MODULE_ASSIGNMENTS.md) · [接口状态](../../interfaces/CURRENT_INTERFACE_CATALOG.md)。
 
-用户已授权先阅读相关PR并更新所有架构文档、提交，再按分工实现自有镜像/工作流并发布Huawei，让协作者调用测试开发。本PR负责文档；实际代码/构建/部署分开记录。此顺序不自动授权合并、不恢复暂停的Windows打包MOD-19。
+本节保留2026-10-14的历史实施计划。后续架构修订明确 Competition 的 Agent/Workflow 构建、编排、评估与部署由 AgentArts 承担；本地 Runtime 经 CloudAgentPort 消费已部署工作流，并保留 TaskRuntime、Policy、ToolGateway 与可信 Evidence。Local Profile 仅保留既有能力，不用于比赛或故障回退。下述 IMAGE-CORE 与自有镜像编排安排均为历史记录，不代表当前目标、实现或授权。本 PR 负责文档；实际代码/构建/部署分开记录。
 
 ## 1. 迁移目标与兼容
 

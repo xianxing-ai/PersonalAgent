@@ -14,11 +14,11 @@ type Panel = 'node' | 'area' | 'mechanism' | 'validation' | 'platform' | 'wiring
 const COLORS:Record<string,string> = {flow:'#64748b',decision:'#a78bfa',evidence:'#34d399',shadow:'#fbbf24',platform:'#22d3ee'};
 const FEATURE_MAP = new Map(ALL_FEATURES.map(f=>[f.id,f]));
 const TEMPLATE_COUNT = ALL_FEATURES.reduce((sum,f)=>sum+f.nodes.length,0);
-const KIND_LABELS:Record<string,string> = {input:'输入/事件',tool_exec:'工具/端口',semantic_decision:'合格Laya/未合格教师',execution_model:'配置执行模型候选',deterministic_check:'宿主检查',checkpoint:'状态/检查点',parallel_split:'独立依赖分支（当前串行）',join:'条件分支汇合',verification:'结果核验',wait_user:'按需用户决定',complete:'汇合/交付'};
+const KIND_LABELS:Record<string,string> = {input:'输入/事件',tool_exec:'工具/端口',semantic_decision:'本机 Laya / AgentArts Workflow',execution_model:'配置执行模型候选',deterministic_check:'宿主检查',checkpoint:'状态/检查点',parallel_split:'独立依赖分支（当前串行）',join:'条件分支汇合',verification:'结果核验',wait_user:'按需用户决定',complete:'汇合/交付'};
 const FlowCard = memo(({data,selected}:NodeProps<Node<GraphData>>)=>(
  <div className={'overview-node '+(data.kind==='platform'?'platform ':'')+(selected?'selected ':'')+(data.focused?'focused':'')} data-feature-code={data.featureId} title={data.label}>
   <Handle type="target" position={Position.Left} id="in"/><Handle type="source" position={Position.Right} id="out"/>
-  <div className="overview-node-meta">{data.featureId || (data.kind==='decision'?'本机/教师':data.kind==='platform'?'AgentArts接入':'共用路径')}<span>{data.kind==='platform'?'分项状态':data.detail?'设计节点':data.count!==undefined?data.count+' 节点':'设计'}</span></div>
+  <div className="overview-node-meta">{data.featureId || (data.kind==='decision'?'AgentArts编排':data.kind==='platform'?'AgentArts接入':'共用路径')}<span>{data.kind==='platform'?'分项状态':data.detail?'设计节点':data.count!==undefined?data.count+' 节点':'设计'}</span></div>
   <div className="overview-node-title">{data.label}</div><div className="overview-node-subtitle">{data.subtitle}</div>
  </div>
 ));
@@ -98,7 +98,7 @@ function OverviewBody(){
  const featureLinks=(ids:string[])=><div className="architecture-feature-links">{ids.map(id=><button key={id} onClick={()=>openFeature(id)}>{id} {FEATURE_MAP.get(id)?.name}</button>)}</div>;
  return <section className="overview-shell" aria-label="全部28个功能连通总图">
   <div className="overview-toolbar">
-   <div><h1>全部工作流 · 一张连通图</h1><p>28图 · {TEMPLATE_COUNT}节点默认串行 · 本机Laya实验/未合格DeepSeek · 实测与目标分开</p></div>
+   <div><h1>全部工作流 · 一张连通图</h1><p>28图 · {TEMPLATE_COUNT}节点默认串行 · AgentArts负责Competition编排 · 本机Laya参与产品路径 · 实测与目标分开</p></div>
    <div className="overview-actions">
     {(['all','realtime','background'] as const).map(mode=><button key={mode} aria-pressed={pathMode===mode} onClick={()=>setPathMode(mode)}>{mode==='all'?'全部路径':mode==='realtime'?'实时路径':'后台路径'}</button>)}
     <button aria-pressed={panel==='mechanism'} onClick={()=>togglePanel('mechanism')}>核心机制</button>
@@ -115,7 +115,7 @@ function OverviewBody(){
    <span>六大板块</span>{ARCHITECTURE_AREAS.map(item=><button key={item.id} aria-pressed={panel==='area'&&areaId===item.id} onClick={()=>{setAreaId(item.id);setPanel('area');setSelected(undefined);}}>{item.name}</button>)}
    <select aria-label="快速查看功能" value={f?.id||''} onChange={e=>{if(e.target.value)openFeature(e.target.value);}}><option value="">快速查看 F01–F28</option>{ALL_FEATURES.map(item=><option key={item.id} value={item.id}>{item.id} {item.name}</option>)}</select>
   </nav>
-  <div className="overview-caption">当前设计 abb70879：本机Laya与Runtime为可信宿主，ARM64镜像无权重/Python/PyTorch。DeepSeek经AA代理；28图目录≠28业务全验。高级影子主优先是目标，真实两案例main后shadow串行；架构未最终定型。</div>
+  <div className="overview-caption">Competition目标由AgentArts负责构建、编排、评估和部署；本机Laya在本机运行并参与产品路径，本地Runtime经CloudAgentPort调用部署版本并负责授权执行与Evidence。历史实测记录与目标分别展示；AgentArts失败不得静默回退到Local Profile。</div>
   {showLatency&&<div className="architecture-latency"><strong>{FINAL_DESIGN_STATUS}</strong><ul>{LATENCY_DESIGN.map((line,i)=><li key={i}>{line}</li>)}</ul></div>}
   <div className="overview-body">
    <div className="overview-canvas">
@@ -168,7 +168,7 @@ function OverviewBody(){
      <h3>真实证据与下一业务验收</h3><ol>{GOLDEN_PATH.map((step,i)=><li key={i}>{step}</li>)}</ol>{featureLinks(['F15','F22','F08','F12','F24'])}
      <h3>公平对照条件</h3><p>相同模型、数据、授权、幂等与读回能力；仅改变被测机制。完整重规划对照也能复用幂等，不故意做弱对照。</p>
      <h3>验收矩阵</h3><div className="architecture-matrix">{ACCEPTANCE_MATRIX.map(([ids,fixture,expected])=><article key={ids}><strong>{ids}</strong><p>{fixture}</p><small>{expected}</small></article>)}</div>
-     <div className="overview-adapter">Wukong167.432s/外层183.618s/20条；Pelican第二轮81.611s/外层89.735s/21条。首轮partial保留；6次Laya182–618ms且各3站点全部升级教师，未达150ms。云目录/关联日志≠远端完整工具链。网页构建/截图只验证查看器。</div>
+     <div className="overview-adapter">历史实测：Wukong167.432s/外层183.618s/20条；Pelican第二轮81.611s/外层89.735s/21条，首轮partial保留；6次本机Laya判断182–618ms，历史案例中的站点均升级DeepSeek，未达150ms。这些本机/镜像数据、云目录与关联日志只证明对应固定场景，不证明AgentArts平台工作流闭环、外部比赛资格或真实端到端。网页构建/截图只验证查看器。</div>
     </>}
     {panel==='node'&&selectedNode&&<>
      <div className="overview-kicker">{f?.id||'共用路径'} · 设计 / 逐项接线验证</div><h2>{selectedNode.data.label}</h2>
@@ -190,7 +190,7 @@ function OverviewBody(){
     </>}
    </aside>}
   </div>
-  <div className="overview-legend"><span><i style={{background:COLORS.flow}}/>依赖 / 条件（默认串行）</span><span><i style={{background:COLORS.decision}}/>合格Laya / 未合格AA教师</span><span><i style={{background:COLORS.evidence}}/>原Evidence / 读回</span><span><i style={{background:COLORS.shadow}}/>按需影子 · 当前实测串行</span><span><i style={{background:COLORS.platform}}/>AA已验与缺项分开</span></div>
+  <div className="overview-legend"><span><i style={{background:COLORS.flow}}/>依赖 / 条件（默认串行）</span><span><i style={{background:COLORS.decision}}/>本机 Laya / AgentArts Workflow</span><span><i style={{background:COLORS.evidence}}/>本地Runtime Evidence / 读回</span><span><i style={{background:COLORS.shadow}}/>按需影子 · 历史实测串行</span><span><i style={{background:COLORS.platform}}/>AgentArts已验与缺项分开</span></div>
   <div className="overview-sources">模型文档依据：{MODEL_SOURCES.map(s=><a key={s.url} href={s.url} target="_blank" rel="noreferrer">{s.label}</a>)}<span>本地打包静态查看页，无模型调用、账号连接或执行循环。</span></div>
  </section>;
 }

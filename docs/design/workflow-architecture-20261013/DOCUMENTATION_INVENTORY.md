@@ -1,15 +1,15 @@
 # 全项目架构文档清单
 
-2026-10-14按最新Laya镜像决策、平台四接入与28功能主架构重写规范。下表覆盖受版本控制的规范、模块README、接口、技术说明、设计、ADR及工作包；示例Vault/夹具/SKILL正文不属于架构规范，保持原样。未提交的用户旧设计草稿不纳入PR。
+2026-10-17按当前Competition架构决定、本机Laya运行位置及AgentArts Workflow编排边界核对规范。下表覆盖受版本控制的规范、模块README、接口、技术说明、设计、ADR及工作包；示例Vault/夹具/SKILL正文不属于架构规范，保持原样。未提交的用户旧设计草稿不纳入PR。
 
 核心当前文档重写正文；模块当前架构职责重写并保留可用API/运行说明；历史验收与ADR保留原作者、日期和结果，仅替代导航/标记关系。此区分防止把目标设计写成过去已经实现。
 
-旧核心正文可用git show 3275aa91:文件路径读取；旧DeepSeek全局决策、Laya本机部署、两人本机阅读及旧“未合入main”描述不作现行结论。公开wire与数据迁移不由文档修改。
+旧核心正文可用git show 3275aa91:文件路径读取；2026-10-15历史记录保留当时的Laya与镜像实测范围。本机Laya现已确认在本机运行并参与Competition产品路径，AgentArts继续承担Agent/Workflow构建、编排、评估与部署；既有回执不证明外部比赛资格或真实端到端。公开wire与数据迁移不由文档修改。
 
 | 文档 | 本次处理与阅读规则 |
 | --- | --- |
 | [.github/pull_request_template.md](../../../.github/pull_request_template.md) | 接口/技术/阶段参考：当前设计导航统一 |
-| [AGENTS.md](../../../AGENTS.md) | 当前规范：正文重写/同步 |
+| [AGENTS.md](../../../AGENTS.md) | 一般协作规则参考；当前架构决定以最新Competition Profile与架构修订为准 |
 | [CONTRIBUTING.md](../../../CONTRIBUTING.md) | 当前规范：正文重写/同步 |
 | [README.md](../../../README.md) | 当前规范：正文重写/同步 |
 | [apps/agentarts-runtime/README.md](../../../apps/agentarts-runtime/README.md) | 模块架构已重写；API/验收参考保留 |

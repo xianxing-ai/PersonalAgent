@@ -1,7 +1,7 @@
 // 文档配置候选，无模型调用、模拟时延、价格或账户可用性声明。
 export const DEFAULT_DECISION_MODEL = 'laya-multilingual';
 export const MODEL_CATALOG = [
- {id:'laya-multilingual',vendor:'Laya',name:'Laya multilingual',role:'唯一全局语义裁决；服务与权重移入自有镜像',native:'现有typed-choice接口；不适用通用模型原生思考档位，ARM64推理待验收'},
+ {id:'laya-multilingual',vendor:'Laya',name:'Laya multilingual',role:'已确认的本机运行方案，参与Competition产品路径；有限候选选择与领域资格按Evidence核验，不替代AgentArts Workflow编排',native:'现有typed-choice接口；不适用通用模型原生思考档位，ARM64推理待验收'},
  {id:'deepseek-v4.1-flash',vendor:'深度求索',name:'DeepSeek-V4.1-Flash',role:'执行候选',native:'思考开关及low/high/max；接口接受待实测'},
  {id:'deepseek-v4-flash',vendor:'深度求索',name:'DeepSeek-V4-Flash',role:'执行候选',native:'思考开关及high/max；接口接受待实测'},
  {id:'deepseek-v4-pro',vendor:'深度求索',name:'DeepSeek-V4-Pro',role:'执行候选',native:'思考开关及high/max；接口接受待实测'},
