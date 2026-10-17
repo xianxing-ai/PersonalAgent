@@ -201,11 +201,11 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
               ['npm-test','workspace.npm_test','test']]) {
               const fixed=recipe.recipes.find(item=>item.id===id);
               if(!fixed) continue;
+              const npmArgs=['--cwd',boundRoot,'--exe',savedNode,'--',savedNpmCli,'run',script];
+              const nodeTestArgs=['--cwd',boundRoot,'--exe',savedNode,'--','--test'];
               if(fixed.executable!==helper || !Array.isArray(fixed.args)
-                || fixed.args.length!==8 || fixed.args[0]!=='--cwd' || fixed.args[1]!==boundRoot
-                || fixed.args[2]!=='--exe' || fixed.args[3]!==savedNode
-                || fixed.args[4]!=='--' || fixed.args[5]!==savedNpmCli
-                || fixed.args[6]!=='run' || fixed.args[7]!==script) throw Error();
+                || !isDeepStrictEqual(fixed.args,npmArgs)
+                  && !(script==='test' && isDeepStrictEqual(fixed.args,nodeTestArgs))) throw Error();
               commandImplementations.push({descriptor:{...recipe.tool.descriptor,name,
                 inputSchema:{type:'object',properties:{},additionalProperties:false}},
                 execute:(_input,context)=>recipe.tool.execute({recipeId:id},context)});
