@@ -67,9 +67,10 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       return saved.authorization;
     },
     readTransportOptions(binding) {
-      if (!saved || binding.gatewayUrl!==saved.gatewayUrl || binding.runtimeName!==saved.runtimeName) throw Error('AgentArts 配置已改变，请重启应用重新绑定');
-      return {...(saved.appToken===undefined?{}:{appToken:saved.appToken}),
-        ...(saved.deploymentVersion===undefined?{}:{deploymentVersion:saved.deploymentVersion})};
+      const current=runtimeBinding();
+      if (!current || binding.gatewayUrl!==current.gatewayUrl || binding.runtimeName!==current.runtimeName) throw Error('AgentArts 配置已改变，请重启应用重新绑定');
+      return {...(saved?.appToken===undefined?{}:{appToken:saved.appToken}),
+        ...(saved?.deploymentVersion===undefined?{}:{deploymentVersion:saved.deploymentVersion})};
     },
     configure(input) {
       if (!input || Object.keys(input).some(key=>!['gatewayUrl','runtimeName','authorization','appToken','deploymentVersion','transport','websocketUrl','allowHttpsFallback'].includes(key))) throw Error('AgentArts 配置格式无效');

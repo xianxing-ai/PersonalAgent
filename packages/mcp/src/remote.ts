@@ -23,14 +23,19 @@ export interface RemoteReadonlyMcpOptions {
   enabled?:boolean;
   fetch?:FetchLike;
   expectedDirectoryDigest?:string;
+  /** Trusted Runtime receipt lookup; never grants execution or invents an absent run. */
+  readRunReceipt?:(query:RemoteMcpRunQuery)=>RemoteMcpRunReceipt|undefined;
 }
+export interface RemoteMcpRunQuery {taskId:string;runId:string;argumentsDigest:string}
+export type RemoteMcpRunReceipt={argumentsDigest:string} & ({state:'confirmed';result:unknown}|{state:'failed'}|{state:'unknown'});
 const MAX_BYTES=1024*1024;
-// ponytail: 64 lifetime identities; Runtime owns durable replay. A full host must be replaced, never evict old identities.
+// Only exact persisted terminal receipts can retire a local identity.
 const MAX_RUNS=64;
 export const canonical=(value:unknown):string=>value!==null && typeof value==='object'
   ? Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : `{${Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>`${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`
   : JSON.stringify(value);
 function fail(code:string):never{throw new ProtocolError(code,'Remote MCP request was rejected or has no confirmed result');}
+export function remoteMcpArgumentsDigest(value:unknown):string{return createHash('sha256').update(canonical(value)).digest('hex');}
 export function remoteMcpDirectoryDigest(tools:readonly unknown[]):string{
   try{return createHash('sha256').update(canonical(ListToolsResultSchema.parse({tools}).tools)).digest('hex');}
   catch{fail('PROTOCOL_MISMATCH');}
@@ -62,7 +67,15 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
   let operationScope:RequestScope|undefined;
   const sending=new Map<string,RequestScope>();
   const registrations=new Set<()=>void>();
-  const runs=new Map<string,{binding:string;generation:number;result?:unknown;confirmed:boolean}>();
+  const runs=new Map<string,{taskId:string;runId:string;binding:string;generation:number;result?:unknown;confirmed:boolean}>();
+  function receipt(query:RemoteMcpRunQuery){
+    let value:RemoteMcpRunReceipt|undefined;
+    try{value=options?.readRunReceipt?.(query);}catch(error){fail(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE');}
+    if(!value)return undefined;
+    if(value.argumentsDigest!==query.argumentsDigest)fail('REVISION_CONFLICT');
+    if(!['confirmed','failed','unknown'].includes(value.state))fail('EXTERNAL_FAILURE');
+    return value;
+  }
   const health=():McpHealth=>({configured:!!options,enabled,state,connected:state==='connected',discoveredTools,
     ...(errorCode?{errorCode}:{}),...(state==='connected' && transport?.protocolVersion?{protocolVersion:transport.protocolVersion}:{}),
     exposedTools:state==='connected'?[descriptor!.name]:[]});
@@ -163,12 +176,26 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
     if(!descriptor!.requiredScopes.every(scope=>context.scopes.includes(scope)))fail('UNAUTHORIZED');
     const args=structuredClone(value) as Record<string,unknown>;
     const key=canonical([context.taskId,context.runId]);
-    const binding=createHash('sha256').update(canonical(args)).digest('hex');
+    const binding=remoteMcpArgumentsDigest(args);
+    const persisted=receipt({taskId:context.taskId,runId:context.runId,argumentsDigest:binding});
+    if(persisted){
+      if(persisted.state==='unknown')fail('RESULT_UNKNOWN');
+      if(persisted.state==='failed')fail('EXTERNAL_FAILURE');
+      validateToolValue(descriptor!.outputSchema,persisted.result);
+      if(Buffer.byteLength(JSON.stringify(persisted.result))>MAX_BYTES)fail('EXTERNAL_FAILURE');
+      check(context.signal,context.deadline);return structuredClone(persisted.result);
+    }
     const saved=runs.get(key);
     if(saved){
       if(saved.binding!==binding)fail('REVISION_CONFLICT');
       if(saved.confirmed && saved.generation===generation)return structuredClone(saved.result);
       fail('RESULT_UNKNOWN');
+    }
+    if(runs.size>=MAX_RUNS && options!.readRunReceipt){
+      for(const [identity,run] of runs){
+        const saved=receipt({taskId:run.taskId,runId:run.runId,argumentsDigest:run.binding});
+        if(saved?.state==='confirmed' || saved?.state==='failed')runs.delete(identity);
+      }
     }
     // No request has been sent for this identity. Do not create a false
     // reconciliation obligation when only the local retention limit is full.
@@ -180,7 +207,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
         if(listed.nextCursor || remoteMcpDirectoryDigest(listed.tools)!==options!.expectedDirectoryDigest){invalidate('REVISION_CONFLICT',epoch);fail('REVISION_CONFLICT');}
         check(operation!,context.deadline);
       }
-      const run={binding,generation:epoch,confirmed:false,result:undefined as unknown};runs.set(key,run);
+      const run={taskId:context.taskId,runId:context.runId,binding,generation:epoch,confirmed:false,result:undefined as unknown};runs.set(key,run);
       const result=await active.callTool({name:options!.tool.remoteName,arguments:args},CallToolResultSchema,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
       check(operation!,context.deadline);
       if(epoch!==generation || state!=='connected')fail('CANCELLED');
