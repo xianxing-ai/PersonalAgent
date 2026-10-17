@@ -360,6 +360,13 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly toolGateway: RuntimeToolGateway | undefined;
   private readonly sessionRef = 'runtime-' + randomUUID();
   private readonly active = new Map<string, AbortController>();
+  private readonly activeToolExecutions = new Map<string,string>();
+
+  /** Trusted host handoff observation only; Policy remains the authorization source. */
+  isToolExecutionActive(record:Pick<ToolExecutionRecord,'taskId'|'evidenceId'|'inputDigest'>):boolean {
+    const current=this.activeToolExecutions.get(JSON.stringify([record.taskId,record.evidenceId]));
+    return current!==undefined && current===record.inputDigest;
+  }
 
   constructor(path: string, options: RuntimeOptions = {}) {
     this.db = openStorage(path, RUNTIME_MIGRATIONS);
@@ -807,6 +814,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
             startedAt: this.timestamp(), state: 'started',
           };
           this.saveToolExecution(record);
+          const activeIdentity=JSON.stringify([request.taskId,runId]);
+          this.activeToolExecutions.set(activeIdentity,inputDigest);
           try {
             const result = await this.toolGateway.invoke({
               toolName: request.payload.toolName,
@@ -835,6 +844,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
               break;
             }
             throw error;
+          } finally {
+            this.activeToolExecutions.delete(activeIdentity);
           }
           break;
         }

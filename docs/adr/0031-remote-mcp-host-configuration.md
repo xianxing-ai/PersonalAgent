@@ -22,4 +22,10 @@ bound host 已有配置/目录/凭据版本校验，但尚无受信持久配置�
 
 ## 替代方案与复审
 
-不复制授权库、不实现通用 OAuth，也不直接把配置文件交给 Renderer。原生设置界面、生产 main 装配、真实平台和跨进程配置修改协调留待后续；本包仅单主进程拥有配置，禁止多个 config 实例并发写同一 userData。生产接线时复审原生确认、配置更新与 Runtime 重装配时序。完整 MOD-06 保持 in_progress，接口 provisional。
+### G14 原生管理与生产装配增量（2026-10-16）
+
+在 Competition 主进程创建唯一配置/host，启动时注册固定 `mcp.remote.*` 工具，不加入 automaticTools 或云端导出。后台只提供打开管理窗口的操作和脱敏状态；独立 sandbox/contextIsolation 窗口通过专用 Preload/IPC 管理。服务定义由原生文件选择读取，拒绝内嵌凭据；短期 token 仅在独立窗口临时输入并交受信主进程加密，不进入普通 Renderer、持久页面状态或日志。
+
+保存前原生确认固定服务、工具和目录摘要；新定义/凭据使旧 host 撤销，重启后重新装配，禁止热替换 Runtime Schema。连接每次需原生确认且关闭窗口即取消待确认连接。只读试调用由现有 `submitHostToolTask` 创建原任务，参数/当前会话绑定核对后用原 `authorization.respond` 审批和 SQLite 执行/Evidence；无新增执行或授权库。结果仅在管理窗口以文本读回，不自动向 AgentArts 发送。没有云凭据时仍可保存配置；未初始化原 Runtime 时明确禁用试调用。
+
+不复制授权库、不实现通用 OAuth，也不直接把配置文件交给普通 Renderer。宿主首片未含界面/生产 main，后续增量见上节；真实平台和跨进程配置修改协调仍待后续。仅单主进程拥有配置，禁止多个 config 实例并发写同一 userData；生产接线保持原生确认、配置更新和重启重装配时序。完整 MOD-06 保持 in_progress，接口 provisional。
