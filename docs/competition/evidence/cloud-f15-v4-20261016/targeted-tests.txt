@@ -1,0 +1,41 @@
+UTC started 2026-10-16T08:57:55.6550180Z
+
+Hash                                                             Path
+----                                                             ----
+A750C6C89C70D24027B5CB275503A58338C85CBEDDA742B11D416B6D4D9C07F2 C:\Users\24035\.codex\worktrees\laya-owned-runtime\PersonalAgent\tests\manual\agentarts\pelican-repair-live.mjs
+6D763F89A810407BA4A6B17DA187AAB687F67F6DD2F197D113C6FAD8FC9BB70A C:\Users\24035\.codex\worktrees\laya-owned-runtime\PersonalAgent\tests\manual\agentarts\test-image-model-provider.mjs
+E3FA9E0AAADB1EF693CDC8E7882B42F3A664C17C655D8DBBC9C53A9F2E42C518 C:\Users\24035\.codex\worktrees\laya-owned-runtime\PersonalAgent\tests\manual\agentarts\f15-graph-acceptance.test.mjs
+1FB08316B07D523917B6D7CDA578C9C202EFE9999AC70D6610708E74800BDE5E C:\Users\24035\.codex\worktrees\laya-owned-runtime\PersonalAgent\tests\manual\agentarts\pelican-test-version.test.mjs
+
+
+✔ F15 gate requires actual advance records, all six required nodes, settled state and original node Evidence (8.8338ms)
+✔ a single graph, pending isolated parent or failed persistence cannot pass the two-branch gate (0.7958ms)
+✔ begin-only scope check rejects unrelated formatting even when XML geometry would be equivalent (4.5324ms)
+✔ unqualified Laya upgrades to the existing teacher and completed checkpoint replay never calls a model again (17.7025ms)
+✔ invalid teacher choice is rejected and its original pending intent prevents a retry (10.2811ms)
+✔ trusted versioned cloud teacher adapter uses exact endpoint, two auth layers, original deadline and separate request metadata (4.7491ms)
+✔ teacher envelope, cancellation and declared tools fail closed without promoting model text to graph evidence (1.0971ms)
+✔ launcher aliases retain trusted endpoint validation and explicit F15 version without exposing credentials (2.3338ms)
+✔ actual Runtime Policy/ToolGateway receipt survives SQLite reopen and rejects absent cache or Evidence (186.7476ms)
+✔ offline image fixture uses authenticated invocations and structured proposal through ModelGateway (1.1706ms)
+✔ both runners persist attempted and failed model outcomes without treating failure as returned usage (1.3011ms)
+✔ disabled or missing image role fails closed (0.2789ms)
+✔ transport and malformed envelopes never echo response secrets (0.4532ms)
+✔ expired deadline and non-loopback plaintext fail before network (0.2123ms)
+✔ delivery edit preserves unchanged surroundings and supports exact CAS text patch (0.1576ms)
+✔ real HTTP server authenticates inner Bearer token and returns event arrays to image provider (30.1583ms)
+✔ raw rejected model proposal and actual Runtime error survive branch failure reporting (27.4778ms)
+✔ fixed host stages separate planning, escalation and structured branch execution with explicit Laya rejection counts (0.5353ms)
+✔ actual ambiguous read-only preview failure reaches existing agent loop and permits a unique new preview (214.7172ms)
+✔ failed apply and unknown read results cannot become successful agent feedback (0.1929ms)
+✔ Windows actual host patch task awaits approval then writes once with real recovery binding and Evidence (1492.1486ms)
+✔ planner, selection context and executor inputs carry the identical begin-only acceptance contract (0.5565ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2583.8209
+UTC finished 2026-10-16T08:57:58.4587992Z exit=0

@@ -21,6 +21,13 @@ export interface HuaweiSisTokenPort {
     readonly signal: AbortSignal}): Promise<string>;
 }
 
+/** Trusted host signs only this adapter's fixed regional SIS request. */
+export interface HuaweiSisRequestAuthPort {
+  getSisRequestHeaders(request: {readonly url: string; readonly method: 'POST';
+    readonly body: string; readonly deadline: string; readonly signal: AbortSignal}):
+    Promise<Readonly<Record<string, string>>>;
+}
+
 /** Host-owned local playback; this adapter does not open an output device. */
 export interface HuaweiSisWavPlaybackPort {
   playWav(request: {readonly audio: Uint8Array; readonly deadline: string;
@@ -30,7 +37,8 @@ export interface HuaweiSisWavPlaybackPort {
 export interface HuaweiSisConfig {
   readonly region: HuaweiSisRegion;
   readonly projectId: string;
-  readonly tokenPort: HuaweiSisTokenPort;
+  readonly tokenPort?: HuaweiSisTokenPort;
+  readonly requestAuthPort?: HuaweiSisRequestAuthPort;
   readonly fetchImpl?: typeof fetch;
 }
 
@@ -55,7 +63,8 @@ interface ReadyConfig {
   readonly region: HuaweiSisRegion;
   readonly baseUrl: string;
   readonly projectId: string;
-  readonly tokenPort: HuaweiSisTokenPort;
+  readonly tokenPort?: HuaweiSisTokenPort;
+  readonly requestAuthPort?: HuaweiSisRequestAuthPort;
   readonly fetchImpl: typeof fetch;
 }
 
@@ -74,7 +83,8 @@ function readyConfig(config: HuaweiSisConfig): ReadyConfig {
   if (typeof config.projectId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(config.projectId)) {
     throw invalid('Huawei SIS project ID is invalid');
   }
-  if (typeof config.tokenPort?.getSisToken !== 'function') {
+  if ((typeof config.tokenPort?.getSisToken === 'function') ===
+    (typeof config.requestAuthPort?.getSisRequestHeaders === 'function')) {
     throw new VoiceSessionError('UNSUPPORTED_CAPABILITY', 'Huawei SIS credentials are unavailable');
   }
   const fetchImpl = config.fetchImpl ?? globalThis.fetch;
@@ -82,7 +92,8 @@ function readyConfig(config: HuaweiSisConfig): ReadyConfig {
     throw new VoiceSessionError('UNSUPPORTED_CAPABILITY', 'Huawei SIS transport is unavailable');
   }
   return {region: config.region, baseUrl: ENDPOINTS[config.region], projectId: config.projectId,
-    tokenPort: config.tokenPort, fetchImpl};
+    ...(config.tokenPort ? {tokenPort: config.tokenPort} : {}),
+    ...(config.requestAuthPort ? {requestAuthPort: config.requestAuthPort} : {}), fetchImpl};
 }
 
 function deadlineMs(deadline: string): number {
@@ -208,21 +219,38 @@ async function boundedJson(response: Response, limit: number, signal: AbortSigna
 async function callSis(config: ReadyConfig, path: string, body: unknown, deadline: string,
   signal: AbortSignal, responseLimit: number, checkActive: () => void): Promise<unknown> {
   checkActive();
-  let token: string;
+  const url = `${config.baseUrl}/v1/${config.projectId}/${path}`;
+  const serialized = JSON.stringify(body);
+  let headers: Record<string, string>;
   try {
-    token = await abortable(Promise.resolve(config.tokenPort.getSisToken({region: config.region,
-      deadline, signal})), signal);
-  } catch { throw external(); }
-  checkActive();
-  if (typeof token !== 'string' || token.length === 0 || token.length > 16_384
-    || token.trim() !== token || /[\r\n]/.test(token)) {
-    throw new VoiceSessionError('UNSUPPORTED_CAPABILITY', 'Huawei SIS credentials are unavailable');
+    if (config.requestAuthPort) {
+      const signed = await abortable(Promise.resolve(config.requestAuthPort.getSisRequestHeaders({
+        url, method: 'POST', body: serialized, deadline, signal})), signal);
+      if (!signed || typeof signed !== 'object' || Array.isArray(signed)
+        || Object.keys(signed).length !== 3
+        || Object.keys(signed).some(key => !['Authorization', 'X-Sdk-Date', 'X-Project-Id'].includes(key))
+        || signed['X-Project-Id'] !== config.projectId
+        || !/^SDK-HMAC-SHA256 Access=[A-Za-z0-9]+, SignedHeaders=content-type;host;x-project-id;x-sdk-date, Signature=[a-f0-9]{64}$/.test(signed.Authorization ?? '')
+        || !/^\d{8}T\d{6}Z$/.test(signed['X-Sdk-Date'] ?? '')) throw external();
+      headers = {...signed};
+    } else {
+      const token = await abortable(Promise.resolve(config.tokenPort!.getSisToken({region: config.region,
+        deadline, signal})), signal);
+      if (typeof token !== 'string' || token.length === 0 || token.length > 16_384
+        || token.trim() !== token || /[\r\n]/.test(token))
+        throw new VoiceSessionError('UNSUPPORTED_CAPABILITY', 'Huawei SIS credentials are unavailable');
+      headers = {'X-Auth-Token': token};
+    }
+  } catch (error) {
+    if (error instanceof VoiceSessionError && error.code === 'UNSUPPORTED_CAPABILITY') throw error;
+    throw external();
   }
+  checkActive();
   let response: Response;
   try {
-    response = await abortable(config.fetchImpl(`${config.baseUrl}/v1/${config.projectId}/${path}`,
-      {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Auth-Token': token},
-        body: JSON.stringify(body), signal, redirect: 'error'}).then(incoming => {
+    response = await abortable(config.fetchImpl(url,
+      {method: 'POST', headers: {'Content-Type': 'application/json', ...headers},
+        body: serialized, signal, redirect: 'error'}).then(incoming => {
       // A non-cooperative transport can return after abortable has already settled.
       if (signal.aborted) void incoming.body?.cancel().catch(() => {});
       return incoming;

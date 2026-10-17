@@ -30,6 +30,24 @@ const ttsResponse = () => Response.json({result: {data: wav().toString('base64')
 const failed = error => error.code === 'EXTERNAL_FAILURE'
   && !error.message.includes('private');
 
+test('SIS signed auth binds serialized request and rejects ambiguous or injected headers', async () => {
+  const auth={Authorization:'SDK-HMAC-SHA256 Access=SYNTHETICKEY, SignedHeaders=content-type;host;x-project-id;x-sdk-date, Signature='+ 'a'.repeat(64),'X-Sdk-Date':'20261016T000000Z','X-Project-Id':'synthetic-project'};
+  let received;
+  const requestAuthPort={async getSisRequestHeaders(request){received=request;return auth;}};
+  assert.throws(()=>createHuaweiSisRecognitionPort(config({requestAuthPort})),{code:'UNSUPPORTED_CAPABILITY'});
+  const port=createHuaweiSisRecognitionPort(config({tokenPort:undefined,requestAuthPort,
+    fetchImpl:async(url,init)=>{assert.equal(url,received.url);assert.equal(init.body,received.body);
+      assert.equal(init.headers.Authorization,auth.Authorization);assert.equal(init.headers['X-Auth-Token'],undefined);
+      return Response.json({result:{text:'签名测试'}});}}));
+  assert.equal((await port.recognize(recognitionRequest()).result).text,'签名测试');
+  let sent=false;
+  const bad=createHuaweiSisRecognitionPort(config({tokenPort:undefined,
+    requestAuthPort:{async getSisRequestHeaders(){return {...auth,Host:'example.com'};}},
+    fetchImpl:async()=>{sent=true;throw Error();}}));
+  await assert.rejects(bad.recognize(recognitionRequest()).result,{code:'EXTERNAL_FAILURE'});
+  assert.equal(sent,false);
+});
+
 test('SIS ASR copies bounded PCM and uses only the fixed authenticated regional endpoint', async () => {
   const calls = [];
   const port = createHuaweiSisRecognitionPort(config({fetchImpl: async (url, init) => {

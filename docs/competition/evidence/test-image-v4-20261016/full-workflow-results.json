@@ -1,0 +1,1346 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-16T07:22:34.981Z",
+  "architectureFinalized": false,
+  "imagePublished": false,
+  "imageId": "sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d",
+  "actualSurface": "Current ARM64 image in local Docker, local Runtime/Policy/ToolGateway/Laya, remote AgentArts DeepSeek proxy; not remote Runtime full chains",
+  "resourceQuota": false,
+  "torchThreads": 1,
+  "caseResults": [
+    {
+      "name": "wukong",
+      "status": "verified_main_shadow_and_delivery",
+      "flowWallMs": 323399.8004,
+      "summary": {
+        "modelCalls": 24,
+        "modelCallOutcomes": {
+          "attempted": 24,
+          "succeeded": 24,
+          "failed": 0,
+          "pending": 0,
+          "attemptedWallMs": 169284.39169999995,
+          "succeededWallMs": 169284.39169999995,
+          "failedWallMs": 0
+        },
+        "modelCallsByStage": {
+          "candidate_planning": {
+            "attempted": 1,
+            "succeeded": 1,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 9200.589999999997,
+            "succeededWallMs": 9200.589999999997,
+            "failedWallMs": 0
+          },
+          "escalated_decision": {
+            "attempted": 2,
+            "succeeded": 2,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 7058.649899999989,
+            "succeededWallMs": 7058.649899999989,
+            "failedWallMs": 0
+          },
+          "branch_execution": {
+            "attempted": 21,
+            "succeeded": 21,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 153025.15179999996,
+            "succeededWallMs": 153025.15179999996,
+            "failedWallMs": 0
+          }
+        },
+        "candidatePlanningCalls": 1,
+        "escalatedDecisionCalls": 2,
+        "branchExecutionCalls": 21,
+        "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+        "layaSuccessfulChoiceCalls": 2,
+        "layaRejectedCalls": 0,
+        "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+        "actualDecisionMakers": [
+          "deepseek",
+          "deepseek"
+        ],
+        "trainingPerformed": false
+      },
+      "phases": [
+        {
+          "kind": "startup",
+          "label": "browser",
+          "startedAt": "2026-10-16T07:10:45.816Z",
+          "endedAt": "2026-10-16T07:10:45.981Z",
+          "wallMs": 165.7201,
+          "outcome": "completed"
+        },
+        {
+          "kind": "startup",
+          "label": "image_model_binding",
+          "startedAt": "2026-10-16T07:10:45.982Z",
+          "endedAt": "2026-10-16T07:10:46.040Z",
+          "wallMs": 58.35789999999997,
+          "outcome": "completed"
+        },
+        {
+          "kind": "startup",
+          "label": "local_laya",
+          "startedAt": "2026-10-16T07:10:46.057Z",
+          "endedAt": "2026-10-16T07:10:55.080Z",
+          "wallMs": 9023.9586,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:10:56.028Z",
+          "endedAt": "2026-10-16T07:11:10.544Z",
+          "wallMs": 14515.8474,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.read_text",
+          "startedAt": "2026-10-16T07:11:10.556Z",
+          "endedAt": "2026-10-16T07:11:10.704Z",
+          "wallMs": 148.73070000000007,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:11:10.712Z",
+          "endedAt": "2026-10-16T07:11:37.650Z",
+          "wallMs": 26937.7785,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:11:37.661Z",
+          "endedAt": "2026-10-16T07:11:37.792Z",
+          "wallMs": 131.20539999999892,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:11:37.802Z",
+          "endedAt": "2026-10-16T07:12:01.436Z",
+          "wallMs": 23634.1907,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:12:01.452Z",
+          "endedAt": "2026-10-16T07:12:02.532Z",
+          "wallMs": 1080.2867000000115,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:12:02.539Z",
+          "endedAt": "2026-10-16T07:12:09.079Z",
+          "wallMs": 6539.135200000004,
+          "outcome": "completed"
+        },
+        {
+          "kind": "phase",
+          "label": "initial_generation",
+          "startedAt": "2026-10-16T07:10:56.003Z",
+          "endedAt": "2026-10-16T07:12:09.096Z",
+          "wallMs": 73093.6504,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "generated_structure",
+          "startedAt": "2026-10-16T07:12:09.100Z",
+          "endedAt": "2026-10-16T07:12:09.182Z",
+          "wallMs": 82.52370000000519,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "generated",
+          "startedAt": "2026-10-16T07:12:09.292Z",
+          "endedAt": "2026-10-16T07:12:09.610Z",
+          "wallMs": 318.46020000000135,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:12:09.698Z",
+          "endedAt": "2026-10-16T07:12:10.532Z",
+          "wallMs": 833.4725999999937,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "injected_structure",
+          "startedAt": "2026-10-16T07:12:10.532Z",
+          "endedAt": "2026-10-16T07:12:10.605Z",
+          "wallMs": 73.10719999999856,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "injected",
+          "startedAt": "2026-10-16T07:12:10.683Z",
+          "endedAt": "2026-10-16T07:12:10.996Z",
+          "wallMs": 313.0804999999964,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "candidate_planning",
+          "startedAt": "2026-10-16T07:12:11.003Z",
+          "endedAt": "2026-10-16T07:12:20.202Z",
+          "wallMs": 9199.74609999999,
+          "outcome": "completed"
+        },
+        {
+          "kind": "laya",
+          "label": "select",
+          "startedAt": "2026-10-16T07:12:20.212Z",
+          "endedAt": "2026-10-16T07:13:25.131Z",
+          "wallMs": 64920.1704,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "teacher",
+          "startedAt": "2026-10-16T07:13:25.132Z",
+          "endedAt": "2026-10-16T07:13:29.257Z",
+          "wallMs": 4124.877800000017,
+          "outcome": "completed"
+        },
+        {
+          "kind": "laya",
+          "label": "select",
+          "startedAt": "2026-10-16T07:13:29.269Z",
+          "endedAt": "2026-10-16T07:14:30.904Z",
+          "wallMs": 61634.5974,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "teacher",
+          "startedAt": "2026-10-16T07:14:30.905Z",
+          "endedAt": "2026-10-16T07:14:33.838Z",
+          "wallMs": 2932.358600000007,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:14:34.899Z",
+          "endedAt": "2026-10-16T07:14:34.995Z",
+          "wallMs": 96.49319999999716,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:14:34.995Z",
+          "endedAt": "2026-10-16T07:14:35.342Z",
+          "wallMs": 346.7165999999852,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "wukong.verify",
+          "startedAt": "2026-10-16T07:14:34.789Z",
+          "endedAt": "2026-10-16T07:14:35.372Z",
+          "wallMs": 582.7049000000115,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:14:35.376Z",
+          "endedAt": "2026-10-16T07:14:39.894Z",
+          "wallMs": 4518.115700000024,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.read_text",
+          "startedAt": "2026-10-16T07:14:39.906Z",
+          "endedAt": "2026-10-16T07:14:40.034Z",
+          "wallMs": 127.83229999998002,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:14:40.041Z",
+          "endedAt": "2026-10-16T07:14:45.797Z",
+          "wallMs": 5755.261100000003,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:14:45.809Z",
+          "endedAt": "2026-10-16T07:14:45.946Z",
+          "wallMs": 137.02540000001318,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:14:45.954Z",
+          "endedAt": "2026-10-16T07:14:48.850Z",
+          "wallMs": 2896.0634000000136,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:14:48.860Z",
+          "endedAt": "2026-10-16T07:14:50.183Z",
+          "wallMs": 1322.5551000000269,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:14:50.189Z",
+          "endedAt": "2026-10-16T07:14:54.337Z",
+          "wallMs": 4148.099500000011,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:14:54.442Z",
+          "endedAt": "2026-10-16T07:14:54.523Z",
+          "wallMs": 81.4655999999959,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:14:54.524Z",
+          "endedAt": "2026-10-16T07:14:54.857Z",
+          "wallMs": 333.13320000001113,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "wukong.verify",
+          "startedAt": "2026-10-16T07:14:54.345Z",
+          "endedAt": "2026-10-16T07:14:54.884Z",
+          "wallMs": 539.6287000000011,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:14:54.891Z",
+          "endedAt": "2026-10-16T07:15:00.938Z",
+          "wallMs": 6046.995999999985,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:15:01.038Z",
+          "endedAt": "2026-10-16T07:15:01.127Z",
+          "wallMs": 89.15849999999045,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:15:01.128Z",
+          "endedAt": "2026-10-16T07:15:01.455Z",
+          "wallMs": 327.03329999998095,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "wukong.verify",
+          "startedAt": "2026-10-16T07:15:00.944Z",
+          "endedAt": "2026-10-16T07:15:01.484Z",
+          "wallMs": 540.5497000000032,
+          "outcome": "completed"
+        },
+        {
+          "kind": "phase",
+          "label": "main",
+          "startedAt": "2026-10-16T07:14:33.845Z",
+          "endedAt": "2026-10-16T07:15:01.510Z",
+          "wallMs": 27664.419000000024,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:15:02.499Z",
+          "endedAt": "2026-10-16T07:15:02.575Z",
+          "wallMs": 76.25190000000293,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:15:02.576Z",
+          "endedAt": "2026-10-16T07:15:02.905Z",
+          "wallMs": 329.32260000001406,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "wukong.verify",
+          "startedAt": "2026-10-16T07:15:02.398Z",
+          "endedAt": "2026-10-16T07:15:02.931Z",
+          "wallMs": 533.0256999999983,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:02.936Z",
+          "endedAt": "2026-10-16T07:15:05.203Z",
+          "wallMs": 2267.751799999998,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.read_text",
+          "startedAt": "2026-10-16T07:15:05.216Z",
+          "endedAt": "2026-10-16T07:15:05.484Z",
+          "wallMs": 268.4579000000085,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:05.499Z",
+          "endedAt": "2026-10-16T07:15:17.007Z",
+          "wallMs": 11507.956099999981,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:15:17.017Z",
+          "endedAt": "2026-10-16T07:15:17.134Z",
+          "wallMs": 117.7615999999689,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:17.141Z",
+          "endedAt": "2026-10-16T07:15:22.941Z",
+          "wallMs": 5799.744099999953,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:15:22.951Z",
+          "endedAt": "2026-10-16T07:15:24.037Z",
+          "wallMs": 1085.7079999999842,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:24.044Z",
+          "endedAt": "2026-10-16T07:15:26.306Z",
+          "wallMs": 2261.9182000000146,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:15:26.405Z",
+          "endedAt": "2026-10-16T07:15:26.484Z",
+          "wallMs": 79.32799999997951,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:15:26.484Z",
+          "endedAt": "2026-10-16T07:15:26.813Z",
+          "wallMs": 328.74280000000726,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "wukong.verify",
+          "startedAt": "2026-10-16T07:15:26.313Z",
+          "endedAt": "2026-10-16T07:15:26.839Z",
+          "wallMs": 525.5989000000409,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:26.845Z",
+          "endedAt": "2026-10-16T07:15:29.429Z",
+          "wallMs": 2584.221499999985,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.read_text",
+          "startedAt": "2026-10-16T07:15:29.439Z",
+          "endedAt": "2026-10-16T07:15:29.571Z",
+          "wallMs": 131.83110000001034,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:29.586Z",
+          "endedAt": "2026-10-16T07:15:35.224Z",
+          "wallMs": 5637.8994999999995,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:15:35.234Z",
+          "endedAt": "2026-10-16T07:15:35.350Z",
+          "wallMs": 116.31470000004629,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:35.363Z",
+          "endedAt": "2026-10-16T07:15:40.502Z",
+          "wallMs": 5139.21120000002,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:15:40.510Z",
+          "endedAt": "2026-10-16T07:15:41.375Z",
+          "wallMs": 864.568900000013,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:41.382Z",
+          "endedAt": "2026-10-16T07:15:43.532Z",
+          "wallMs": 2150.3773999999976,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:15:43.638Z",
+          "endedAt": "2026-10-16T07:15:43.718Z",
+          "wallMs": 79.79279999999562,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:15:43.718Z",
+          "endedAt": "2026-10-16T07:15:44.033Z",
+          "wallMs": 314.6716000000015,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "wukong.verify",
+          "startedAt": "2026-10-16T07:15:43.540Z",
+          "endedAt": "2026-10-16T07:15:44.065Z",
+          "wallMs": 525.2562000000034,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:44.074Z",
+          "endedAt": "2026-10-16T07:15:46.781Z",
+          "wallMs": 2707.462300000014,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:15:46.791Z",
+          "endedAt": "2026-10-16T07:15:46.919Z",
+          "wallMs": 128.53220000001602,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:46.927Z",
+          "endedAt": "2026-10-16T07:15:52.893Z",
+          "wallMs": 5966.599400000006,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:15:52.904Z",
+          "endedAt": "2026-10-16T07:15:53.854Z",
+          "wallMs": 949.969299999997,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:53.861Z",
+          "endedAt": "2026-10-16T07:15:57.826Z",
+          "wallMs": 3964.5507000000216,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:15:57.931Z",
+          "endedAt": "2026-10-16T07:15:58.015Z",
+          "wallMs": 83.8927000000258,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:15:58.016Z",
+          "endedAt": "2026-10-16T07:15:58.346Z",
+          "wallMs": 330.2699999999604,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "wukong.verify",
+          "startedAt": "2026-10-16T07:15:57.834Z",
+          "endedAt": "2026-10-16T07:15:58.373Z",
+          "wallMs": 539.1166000000085,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "branch_execution",
+          "startedAt": "2026-10-16T07:15:58.382Z",
+          "endedAt": "2026-10-16T07:16:06.412Z",
+          "wallMs": 8029.230500000005,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:16:06.522Z",
+          "endedAt": "2026-10-16T07:16:06.608Z",
+          "wallMs": 86.46570000000065,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:16:06.609Z",
+          "endedAt": "2026-10-16T07:16:06.934Z",
+          "wallMs": 324.9257000000216,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "wukong.verify",
+          "startedAt": "2026-10-16T07:16:06.417Z",
+          "endedAt": "2026-10-16T07:16:06.960Z",
+          "wallMs": 542.5268999999971,
+          "outcome": "completed"
+        },
+        {
+          "kind": "phase",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:15:01.510Z",
+          "endedAt": "2026-10-16T07:16:06.987Z",
+          "wallMs": 65477.02249999996,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:16:07.826Z",
+          "endedAt": "2026-10-16T07:16:08.854Z",
+          "wallMs": 1027.7823999999673,
+          "outcome": "completed"
+        }
+      ],
+      "sourceReportSha256": "c8fcb5cf31d7c92c63b7fa4d00dd867118afd815ca0fdcab6a070b020f8cea26",
+      "modelHttpStatusCounts": {
+        "200": 24
+      },
+      "resourceSamplingScope": "Launcher samples runner Node and all newly observed Python processes; no PPID binding, not proof of exact model allocation",
+      "sqliteEvidenceCount": 24,
+      "sqliteStateCounts": {
+        "confirmed": 24
+      },
+      "finalFileSha256": "b9fdfc17e047fd427489625664fb6f751412f4c1fe1f3873ff3d883a5e07f9a6",
+      "userBaselinePreserved": true
+    },
+    {
+      "name": "pelican",
+      "status": "verified_main_shadow_and_delivery",
+      "flowWallMs": 192497.6295,
+      "summary": {
+        "modelCalls": 22,
+        "modelCallOutcomes": {
+          "attempted": 22,
+          "succeeded": 22,
+          "failed": 0,
+          "pending": 0,
+          "attemptedWallMs": 135111.27320000005,
+          "succeededWallMs": 135111.27320000005,
+          "failedWallMs": 0
+        },
+        "modelCallsByStage": {
+          "candidate_planning": {
+            "attempted": 1,
+            "succeeded": 1,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 4942.5785,
+            "succeededWallMs": 4942.5785,
+            "failedWallMs": 0
+          },
+          "escalated_decision": {
+            "attempted": 2,
+            "succeeded": 2,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 17353.7797,
+            "succeededWallMs": 17353.7797,
+            "failedWallMs": 0
+          },
+          "branch_execution": {
+            "attempted": 19,
+            "succeeded": 19,
+            "failed": 0,
+            "pending": 0,
+            "attemptedWallMs": 112814.91500000005,
+            "succeededWallMs": 112814.91500000005,
+            "failedWallMs": 0
+          }
+        },
+        "candidatePlanningCalls": 1,
+        "escalatedDecisionCalls": 2,
+        "branchExecutionCalls": 19,
+        "callDefinition": "Provider attempts by fixed host stage including failures; succeeded means provider returned, not task success. Failed spend and pricing remain unknown",
+        "layaSuccessfulChoiceCalls": 2,
+        "layaRejectedCalls": 0,
+        "layaFailureCoverage": "Successful choices and explicit rejection records only; absence of a record does not prove no attempted call",
+        "actualDecisionMakers": [
+          "deepseek",
+          "deepseek"
+        ],
+        "trainingPerformed": false
+      },
+      "phases": [
+        {
+          "kind": "startup",
+          "label": "browser",
+          "startedAt": "2026-10-16T07:17:13.502Z",
+          "endedAt": "2026-10-16T07:17:13.737Z",
+          "wallMs": 234.81240000000003,
+          "outcome": "completed"
+        },
+        {
+          "kind": "startup",
+          "label": "image_model_binding",
+          "startedAt": "2026-10-16T07:17:13.738Z",
+          "endedAt": "2026-10-16T07:17:13.795Z",
+          "wallMs": 56.69629999999984,
+          "outcome": "completed"
+        },
+        {
+          "kind": "startup",
+          "label": "local_laya",
+          "startedAt": "2026-10-16T07:17:13.812Z",
+          "endedAt": "2026-10-16T07:17:23.810Z",
+          "wallMs": 9997.624500000002,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:17:23.811Z",
+          "endedAt": "2026-10-16T07:17:28.753Z",
+          "wallMs": 4941.795,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:17:44.342Z",
+          "endedAt": "2026-10-16T07:17:46.524Z",
+          "wallMs": 2181.661799999998,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:18:01.281Z",
+          "endedAt": "2026-10-16T07:18:16.452Z",
+          "wallMs": 15170.433899999996,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:18:19.126Z",
+          "endedAt": "2026-10-16T07:18:19.211Z",
+          "wallMs": 85.48389999999199,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:18:19.212Z",
+          "endedAt": "2026-10-16T07:18:19.535Z",
+          "wallMs": 323.0933999999979,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:18:19.010Z",
+          "endedAt": "2026-10-16T07:18:19.564Z",
+          "wallMs": 553.7381000000023,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:18:19.568Z",
+          "endedAt": "2026-10-16T07:18:21.525Z",
+          "wallMs": 1956.7638000000006,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.read_text",
+          "startedAt": "2026-10-16T07:18:21.534Z",
+          "endedAt": "2026-10-16T07:18:21.682Z",
+          "wallMs": 147.67099999998754,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:18:21.688Z",
+          "endedAt": "2026-10-16T07:18:29.786Z",
+          "wallMs": 8097.967000000004,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:18:29.922Z",
+          "endedAt": "2026-10-16T07:18:30.000Z",
+          "wallMs": 78.20329999999376,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:18:30.001Z",
+          "endedAt": "2026-10-16T07:18:30.308Z",
+          "wallMs": 307.18859999999404,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:18:29.797Z",
+          "endedAt": "2026-10-16T07:18:30.337Z",
+          "wallMs": 539.8830000000016,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:18:30.344Z",
+          "endedAt": "2026-10-16T07:18:54.047Z",
+          "wallMs": 23703.26849999999,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:18:54.063Z",
+          "endedAt": "2026-10-16T07:18:54.213Z",
+          "wallMs": 149.47479999999632,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:18:54.220Z",
+          "endedAt": "2026-10-16T07:19:06.262Z",
+          "wallMs": 12042.3934,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:19:06.276Z",
+          "endedAt": "2026-10-16T07:19:07.387Z",
+          "wallMs": 1110.6419999999925,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:07.393Z",
+          "endedAt": "2026-10-16T07:19:09.800Z",
+          "wallMs": 2406.6454000000085,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:19:09.903Z",
+          "endedAt": "2026-10-16T07:19:09.982Z",
+          "wallMs": 79.41030000000319,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:19:09.983Z",
+          "endedAt": "2026-10-16T07:19:10.304Z",
+          "wallMs": 321.13150000000314,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:19:09.809Z",
+          "endedAt": "2026-10-16T07:19:10.334Z",
+          "wallMs": 525.6014999999898,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:10.341Z",
+          "endedAt": "2026-10-16T07:19:14.082Z",
+          "wallMs": 3740.9060000000027,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:19:14.094Z",
+          "endedAt": "2026-10-16T07:19:14.227Z",
+          "wallMs": 133.01770000001125,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:14.234Z",
+          "endedAt": "2026-10-16T07:19:17.800Z",
+          "wallMs": 3565.6159999999945,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:19:17.808Z",
+          "endedAt": "2026-10-16T07:19:18.686Z",
+          "wallMs": 878.079700000002,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:18.693Z",
+          "endedAt": "2026-10-16T07:19:20.655Z",
+          "wallMs": 1961.7836000000098,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:19:20.768Z",
+          "endedAt": "2026-10-16T07:19:20.854Z",
+          "wallMs": 86.09100000000035,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:19:20.854Z",
+          "endedAt": "2026-10-16T07:19:21.163Z",
+          "wallMs": 308.6692999999941,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:19:20.667Z",
+          "endedAt": "2026-10-16T07:19:21.194Z",
+          "wallMs": 526.8775999999925,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:21.201Z",
+          "endedAt": "2026-10-16T07:19:26.567Z",
+          "wallMs": 5366.089799999987,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:19:26.578Z",
+          "endedAt": "2026-10-16T07:19:26.710Z",
+          "wallMs": 131.7453000000096,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:26.719Z",
+          "endedAt": "2026-10-16T07:19:28.966Z",
+          "wallMs": 2246.815399999992,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:19:28.975Z",
+          "endedAt": "2026-10-16T07:19:29.823Z",
+          "wallMs": 848.2503999999899,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:29.830Z",
+          "endedAt": "2026-10-16T07:19:31.564Z",
+          "wallMs": 1733.2569999999832,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:19:31.670Z",
+          "endedAt": "2026-10-16T07:19:31.753Z",
+          "wallMs": 83.88910000000033,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:19:31.754Z",
+          "endedAt": "2026-10-16T07:19:32.069Z",
+          "wallMs": 315.3630000000121,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:19:31.571Z",
+          "endedAt": "2026-10-16T07:19:32.095Z",
+          "wallMs": 524.111899999989,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:32.102Z",
+          "endedAt": "2026-10-16T07:19:35.116Z",
+          "wallMs": 3013.689000000013,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "main:structure",
+          "startedAt": "2026-10-16T07:19:35.218Z",
+          "endedAt": "2026-10-16T07:19:35.299Z",
+          "wallMs": 81.33729999998468,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "main",
+          "startedAt": "2026-10-16T07:19:35.300Z",
+          "endedAt": "2026-10-16T07:19:35.610Z",
+          "wallMs": 310.4265000000014,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:19:35.122Z",
+          "endedAt": "2026-10-16T07:19:35.636Z",
+          "wallMs": 514.2939999999944,
+          "outcome": "completed"
+        },
+        {
+          "kind": "phase",
+          "label": "main",
+          "startedAt": "2026-10-16T07:18:16.459Z",
+          "endedAt": "2026-10-16T07:19:35.670Z",
+          "wallMs": 79210.62720000002,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:19:36.657Z",
+          "endedAt": "2026-10-16T07:19:36.746Z",
+          "wallMs": 88.58370000001742,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:19:36.746Z",
+          "endedAt": "2026-10-16T07:19:37.058Z",
+          "wallMs": 312.304300000018,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:19:36.553Z",
+          "endedAt": "2026-10-16T07:19:37.085Z",
+          "wallMs": 532.4349999999977,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:37.089Z",
+          "endedAt": "2026-10-16T07:19:38.867Z",
+          "wallMs": 1777.608499999973,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.read_text",
+          "startedAt": "2026-10-16T07:19:38.875Z",
+          "endedAt": "2026-10-16T07:19:38.994Z",
+          "wallMs": 118.82310000000871,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:39.000Z",
+          "endedAt": "2026-10-16T07:19:40.868Z",
+          "wallMs": 1868.4311999999918,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:19:40.969Z",
+          "endedAt": "2026-10-16T07:19:41.047Z",
+          "wallMs": 78.20930000001681,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:19:41.047Z",
+          "endedAt": "2026-10-16T07:19:41.356Z",
+          "wallMs": 308.69879999998375,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:19:40.878Z",
+          "endedAt": "2026-10-16T07:19:41.382Z",
+          "wallMs": 504.4502999999968,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:41.388Z",
+          "endedAt": "2026-10-16T07:19:44.778Z",
+          "wallMs": 3389.8417999999947,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:19:44.788Z",
+          "endedAt": "2026-10-16T07:19:44.918Z",
+          "wallMs": 129.97589999999036,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:44.925Z",
+          "endedAt": "2026-10-16T07:19:49.563Z",
+          "wallMs": 4638.165899999993,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.preview_text_patch",
+          "startedAt": "2026-10-16T07:19:49.573Z",
+          "endedAt": "2026-10-16T07:19:49.691Z",
+          "wallMs": 117.68100000001141,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:49.697Z",
+          "endedAt": "2026-10-16T07:19:53.158Z",
+          "wallMs": 3460.4572000000044,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:19:53.167Z",
+          "endedAt": "2026-10-16T07:19:54.218Z",
+          "wallMs": 1050.200600000011,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:19:54.224Z",
+          "endedAt": "2026-10-16T07:20:13.037Z",
+          "wallMs": 18812.64539999998,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:20:13.138Z",
+          "endedAt": "2026-10-16T07:20:13.215Z",
+          "wallMs": 76.80139999999665,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:20:13.215Z",
+          "endedAt": "2026-10-16T07:20:13.530Z",
+          "wallMs": 314.3142999999982,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:20:13.045Z",
+          "endedAt": "2026-10-16T07:20:13.557Z",
+          "wallMs": 511.7460999999894,
+          "outcome": "completed"
+        },
+        {
+          "kind": "model",
+          "label": "model_turn",
+          "startedAt": "2026-10-16T07:20:13.564Z",
+          "endedAt": "2026-10-16T07:20:22.582Z",
+          "wallMs": 9017.64009999999,
+          "outcome": "completed"
+        },
+        {
+          "kind": "verification",
+          "label": "shadow:structure",
+          "startedAt": "2026-10-16T07:20:22.693Z",
+          "endedAt": "2026-10-16T07:20:22.781Z",
+          "wallMs": 88.33350000000792,
+          "outcome": "completed"
+        },
+        {
+          "kind": "browser",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:20:22.782Z",
+          "endedAt": "2026-10-16T07:20:23.113Z",
+          "wallMs": 331.1122000000032,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "pelican.verify",
+          "startedAt": "2026-10-16T07:20:22.588Z",
+          "endedAt": "2026-10-16T07:20:23.140Z",
+          "wallMs": 551.9280999999901,
+          "outcome": "completed"
+        },
+        {
+          "kind": "phase",
+          "label": "shadow",
+          "startedAt": "2026-10-16T07:19:35.670Z",
+          "endedAt": "2026-10-16T07:20:23.168Z",
+          "wallMs": 47497.86859999999,
+          "outcome": "completed"
+        },
+        {
+          "kind": "tool",
+          "label": "workspace.apply_text_patch",
+          "startedAt": "2026-10-16T07:20:24.658Z",
+          "endedAt": "2026-10-16T07:20:25.675Z",
+          "wallMs": 1017.4162999999826,
+          "outcome": "completed"
+        }
+      ],
+      "sourceReportSha256": "2fe0d5a1a6bb10a7b7504070fe6bfa69f1dfcbd0c69f0cb7dfc68ae2484cbfcf",
+      "modelHttpStatusCounts": {
+        "200": 22
+      },
+      "resourceSamplingScope": "Launcher samples runner Node and all newly observed Python processes; no PPID binding, not proof of exact model allocation",
+      "sqliteEvidenceCount": 22,
+      "sqliteStateCounts": {
+        "confirmed": 21,
+        "failed": 1
+      },
+      "finalFileSha256": "60459cf294de2bfda7a3bc6676cbf25e626af7aef5ff43cd990e1be065530147",
+      "userBaselinePreserved": true
+    }
+  ],
+  "realSourceAccountAcceptance": false,
+  "all28BusinessChainsVerified": false,
+  "earlierFailures": [
+    {
+      "kind": "invalid_model_asset_path",
+      "modelCalls": 0,
+      "report": "wukong-startup-invalid-assets/report.json"
+    },
+    {
+      "kind": "runner_native_exit_during_local_startup",
+      "exitCode": -1073740791,
+      "observedModelAttempts": 0,
+      "modelCalls": null,
+      "completedReport": false,
+      "cause": "unknown; isolated same-model CPU1 startup subsequently succeeded"
+    },
+    {
+      "kind": "final_teacher_comparison_504",
+      "report": "wukong-comparison-504/report.json",
+      "bothBranchesVerified": true,
+      "byteIdentical": true,
+      "deliveryPerformed": false,
+      "change": "Manual case now selects byte-identical current verified output in code; differing artifacts still use original selection. No budget, checker, authorization or image source changes."
+    },
+    {
+      "kind": "teacher_returned_non_candidate",
+      "report": "pelican-invalid-candidate/report.json",
+      "toolCallsBeforeRejection": 0,
+      "action": "Strict original candidate validation retained; no fuzzy mapping, no forced local choice, no checker or budget change"
+    }
+  ]
+}

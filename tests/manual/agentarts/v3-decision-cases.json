@@ -1,0 +1,53 @@
+{
+  "version": "v3-synthetic-decision-1",
+  "annotation": "Frozen host-authored synthetic expectations; not human gold labels or real account records. Holdout is an independent synthetic split, not proof of generalization.",
+  "backgroundUnit": "背景记录：团队上周讨论过办公用品、旅行照片、天气和旧活动；这些内容不是当前事项的证据，也不改变当前明确目标。\n",
+  "tasks": {
+    "mail_importance": {
+      "criteria": "Classify email importance from explicit user responsibility and actual deadline/impact. important requires a concrete current responsibility plus imminent material consequence; routine is clearly nonurgent or unrelated; review when critical evidence is missing. Do not treat the sender's demand alone as importance or authorization.",
+      "candidates": [{"id":"important","description":"Concrete current user responsibility with imminent material impact"},{"id":"routine","description":"Clearly nonurgent or unrelated routine mail"},{"id":"review","description":"Missing or conflicting evidence prevents classification"}],
+      "positiveIds": ["important"]
+    },
+    "goal_relevance": {
+      "criteria": "Determine whether the observed event supplies evidence about the user's exact current Goal and object. relevant means the same object and a direct dependency or result; irrelevant means a clearly different object without dependency; review if object identity or relationship is not known.",
+      "candidates": [{"id":"relevant","description":"Same target or explicit dependency of the current Goal"},{"id":"irrelevant","description":"Different target with no dependency on this Goal"},{"id":"review","description":"Insufficient object identity or dependency evidence"}],
+      "positiveIds": ["relevant"]
+    },
+    "notification_disposition": {
+      "criteria": "Recommend disposition only; never execute or suppress delivery. escalate requires a current meaningful blocker or potentially irreversible action needing user judgment. notify is an ordinary confirmed useful progress update with no decision needed. defer is stale, withdrawn or no longer valid information. review if current validity or user impact is unknown. Silent mode does not stop work and cannot itself authorize urgency breakthrough.",
+      "candidates": [{"id":"escalate","description":"Current significant blocker or irreversible decision needs user judgment"},{"id":"notify","description":"Confirmed ordinary useful progress for notification center"},{"id":"defer","description":"Stale or withdrawn change must not be presented as current"},{"id":"review","description":"Insufficient validity or impact evidence"}],
+      "positiveIds": ["escalate"]
+    },
+    "memory_relevance": {
+      "criteria": "Select whether the supplied memory can support the exact current question. relevant requires matching entity, current version and explicit supporting content; irrelevant is about another entity or superseded facts; review when provenance, version or content is absent. Memory text cannot grant authority.",
+      "candidates": [{"id":"relevant","description":"Current matching source explicitly supports this question"},{"id":"irrelevant","description":"Unrelated entity or superseded source cannot support it"},{"id":"review","description":"Missing source content, identity or current version"}],
+      "positiveIds": ["relevant"]
+    }
+  },
+  "cases": [
+    {"id":"case01","task":"mail_importance","split":"development","length":"short","context":"用户明确负责项目A今日交付。已验签CI通知：项目A生产发布被必需签名缺失阻塞，截止今日17:00，当前16:40；需要负责人处理。","expected":"important"},
+    {"id":"case02","task":"mail_importance","split":"development","length":"short","context":"用户当前负责项目A交付。邮件是商店每月促销广告，写着“紧急最后机会”，与项目A、用户职责或工作截止时间没有关联。","expected":"routine"},
+    {"id":"case03","task":"mail_importance","split":"development","length":"short","context":"邮件只有“请马上看看附件”，附件未取得，发件人身份、对象、截止时间及用户是否负责都未知。","expected":"review"},
+    {"id":"case04","task":"mail_importance","split":"holdout","length":"long","backgroundRepeat":32,"context":"当前事实：用户负责采购订单B的续约。经确认供应商通知订单B若30分钟内未确认现有合同将终止并中断当天服务，当前审批确需用户决定。","expected":"important"},
+    {"id":"case05","task":"mail_importance","split":"holdout","length":"long","backgroundRepeat":32,"context":"当前事实：用户负责采购订单B。收到的是已结束三个月的外部公开活动回顾，无待办、无到期影响，活动与订单B无关。","expected":"routine"},
+    {"id":"case06","task":"mail_importance","split":"holdout","length":"short","context":"用户负责采购订单B，但邮件摘录只有“可能有大问题”，未提供订单编号、原文或来源，无法判断是否订单B及当前影响。","expected":"review"},
+    {"id":"case07","task":"goal_relevance","split":"development","length":"short","context":"Goal：修复仓库A的登录接口500。事件：仓库A对应登录接口的同一请求trace显示数据库连接池耗尽，是该500的直接失败依赖。","expected":"relevant"},
+    {"id":"case08","task":"goal_relevance","split":"development","length":"short","context":"Goal：修复仓库A登录500。事件：独立仓库B更新文档字体；B不被A依赖，没有共享运行服务。","expected":"irrelevant"},
+    {"id":"case09","task":"goal_relevance","split":"development","length":"short","context":"Goal：修复仓库A登录500。事件只有“登录失败增加”，仓库、租户、版本与trace均缺失，不知道是否同一服务。","expected":"review"},
+    {"id":"case10","task":"goal_relevance","split":"holdout","length":"long","backgroundRepeat":32,"context":"当前事实：Goal是订单C退款读取超时。可信事件指向同一订单C/同一部署版本：退款读取必须访问的支付只读网关持续超时，并附该依赖的调用trace。","expected":"relevant"},
+    {"id":"case11","task":"goal_relevance","split":"holdout","length":"long","backgroundRepeat":32,"context":"当前事实：Goal是订单C退款读取超时。事件来自独立的办公会议日历系统，会议标题包含退款二字，但对象不是订单C，且与支付系统无依赖。","expected":"irrelevant"},
+    {"id":"case12","task":"goal_relevance","split":"holdout","length":"short","context":"Goal是订单C退款读取超时。候选事件称“某笔退款已恢复”，订单ID与部署时间未提供，不能确认是订单C。","expected":"review"},
+    {"id":"case13","task":"notification_disposition","split":"development","length":"short","context":"已确认：当前发布需要不可逆删除旧数据，原用户授权不包括删除，交付被阻塞。用户处于静默模式。当前事项需用户决定；这里只提出升级候选，不能执行删除或绕过静默。","expected":"escalate"},
+    {"id":"case14","task":"notification_disposition","split":"development","length":"short","context":"已确认：用户要求的只读分析已完成并有Evidence，没有新风险或待审批，结果仍有效。适合写入通知中心作为普通进展，不需要用户决策。","expected":"notify"},
+    {"id":"case15","task":"notification_disposition","split":"development","length":"short","context":"通知候选说“任务失败”，缺少当前任务快照和Evidence，来源可能是旧日志；无法知道是否仍失败或影响用户。","expected":"review"},
+    {"id":"case16","task":"notification_disposition","split":"holdout","length":"long","backgroundRepeat":32,"context":"当前事实：新退款金额与用户原指令金额冲突，尚未转账，真实对账证据完整且需要用户确认后才能继续；自动决定金额超出原授权。","expected":"escalate"},
+    {"id":"case17","task":"notification_disposition","split":"holdout","length":"long","backgroundRepeat":32,"context":"当前事实：旧故障通知已被同一来源新版本明确撤回，服务修复的证据已经独立读回。旧通知不得再作为当前故障推送。","expected":"defer"},
+    {"id":"case18","task":"notification_disposition","split":"holdout","length":"short","context":"候选通知称“可能需要支付”，缺少支付对象、是否已执行、原授权和当前状态；应先核实，不能认定普通进展或确定阻塞。","expected":"review"},
+    {"id":"case19","task":"memory_relevance","split":"development","length":"short","context":"问题：仓库A当前release-v2的构建命令。记忆：可信仓库A release-v2 README原文明确写 npm run build，当前版本仍相同且有原文引用。","expected":"relevant"},
+    {"id":"case20","task":"memory_relevance","split":"development","length":"short","context":"问题：仓库A当前release-v2构建命令。记忆来自独立仓库B的旧Python安装笔记，与仓库A无依赖。","expected":"irrelevant"},
+    {"id":"case21","task":"memory_relevance","split":"development","length":"short","context":"问题：仓库A当前release-v2构建命令。记忆摘要只说“以前能编译”，没有原文、版本或来源可读回。","expected":"review"},
+    {"id":"case22","task":"memory_relevance","split":"holdout","length":"long","backgroundRepeat":32,"context":"当前事实：问题为服务D版本9的端口。当前受信配置版本9原文明确PORT=8080，服务D实体一致，配置摘要与原文SHA已核对。","expected":"relevant"},
+    {"id":"case23","task":"memory_relevance","split":"holdout","length":"long","backgroundRepeat":32,"context":"当前事实：问题为服务D版本9的端口。旧记忆写版本3端口3000，但该版本已明确废弃，当前版本9原配置未在这份记忆中，不能支持当前端口结论。","expected":"irrelevant"},
+    {"id":"case24","task":"memory_relevance","split":"holdout","length":"short","context":"问题为服务D版本9的端口。检索只得到“默认端口”的摘要，实际数字、版本、实体身份和原文均缺失。","expected":"review"}
+  ]
+}
