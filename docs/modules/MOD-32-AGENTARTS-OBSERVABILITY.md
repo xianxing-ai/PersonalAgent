@@ -1,7 +1,182 @@
 # MOD-32：AgentArts 请求级观测与恢复边界
 
+## 2026-10-17：观测消费的生产接线（请求身份记录 + 可审查读回）
+
+继续保持 2026-10-15 的离线观测包语义不变；本节把"生产路径发送请求 → 记录实际身份 → 受信读回
+平台 trace/log → 绑定任务进入既有 Evidence/查询路径"闭环接线完成，仍然只做观测记录，
+不改变任务执行结果、不用部署成功推断业务成功。2026-10-15 的离线观测包（PR #361）已合入
+main（merge commit `fef57f61`）；本节交付在分支 `codex/mod32-observation-wiring` 上，
+自 main `90fd2138` 起 cherry-pick 接线提交（工作树提交 `27dd5e3b`），
+[PR #383](https://github.com/zemeng5208/PersonalAgent/pull/383)。
+
+生产改动（全部走仓库既有装配与导出）：
+
+- `@personal-agent/agentarts/observability/reader` 新增子路径 export：把 2026-10-15 有界 GET
+  阅读器从 `tests/manual/agentarts/support/read-platform-trace.mjs` 整体提升为
+  `src/observability/reader.mjs`（+ `reader.d.mts` 声明，build 经 `build-observability.mjs`
+  复制到 dist）。手动支持文件改为薄 re-export，三个既有 reader 测试文件与两份
+  `sdk-trace-authorizer*.test.mjs` 原样通过（唯一 skip 仍是 `PA_MOD32_SIGNER_PATH` 环境门）。
+- `@personal-agent/coordination` 的 `AgentArtsCloudAgentPort` 第八个构造参数
+  `identityObserver?`：宿主在每次实际发送时收到一次 `(receipt, request)`。触发点：
+  HTTPS 主路径在 `beforeSend` 之后、fetch 之前 `createAgentArtsUnknownReceipt(init)` 一次；
+  WSS/HTTPS-fallback 在 `guards.beforeSend` 内 receipt===非 undefined、导出守卫通过后，
+  `stage='transport'` 前一次。参数校验失败在构造期即失败；观测记录自身失败被宿主吞掉。
+- `apps/runtime/src/application/coordination.ts` 新增
+  `recordCompetitionCloudRequestIdentity` / `readCompetitionCloudRequestIdentity`：
+  checkpoint key `competition-cloud-request-identity`，格式
+  `{formatVersion:'1.0.0',requests:[{revision,sessionId,requestId,payloadDigest,recordedAt,attempts}],conflicts:[requestId]}`；
+  同 requestId 不同 payloadDigest 记 conflict（拒作对比依据），同一三元组重复发送累加 attempts，
+  历史保留最新 32 条。该 key 不在 private-copy erasure 保留名单，擦拭后读回即显式 unknown，
+  符合数据最小化既有语义。
+- `apps/runtime/src/application/agentarts-observation.ts` 新增
+  `createAgentArtsObservationHost`，经 `@personal-agent/agentarts/observability/reader` 读回：
+  - trace 面默认用记录的 requestId 作 traceId（InvokeRuntime 官方定义 `X-Request-Id` 为
+    本次调用链 ID）；配置了 `observationApplicationId`（应用 resource_id）时传
+    `invocation` 做 exact join，未配置时不冒名代替，correlation 保持 `not_checked`。
+  - `agent_run_log` 面要求显式 `agentRunId`（来自平台运行记录，不可用 runtimeId/sessionId/
+    traceId 猜造）与 13 位毫秒窗 + limit 1..1000，缺失时显式 unknown，不发起请求。
+  - 缺 `observationAuthorization` → 显式 `unavailable`（`observation_authorization_unavailable`），
+    绝不把 invoke 用 Bearer 降级为观测签名；身份缺失/修订不存在 → `unknown_request`
+    （`missing_request_identity` / `missing_revision_identity`），身份冲突时拒读
+    （`identity_conflict`）。`deploymentVersion` 恒为官方事实 `unavailable`。
+  - 成功读回写 metadata 证据 `trusted-readback-evidence:agentarts-observation-{trace|log}-<32hex>`
+    （kind `observation`、verification `conditional`、summary 只含状态/计数），并落快照
+    checkpoint `agentarts-observation-readback:<surface>`（querySha256、observedAt、binding
+    与 shaRef 化的身份）。读回不改任务状态、不写任务结果。
+- `apps/runtime/src/application/evidence-reader.ts`：`ScopedEvidenceReader` 将 trusted-readback
+  证据按 evidenceId 去重后追加在执行记录之后；admin evidence.list 页面可读，工具输入输出
+  checkpoint 仍不可读，既有分页/断言行为不变。
+- 组合入口 `createAgentArtsRuntimeApplication` 返回 `AgentArtsObservationApplication`
+  （`readTaskPlatformObservation` 方法），options 新增 `observationAuthorization /
+  observationFetchImpl / observationApplicationId`；默认（local profile）
+  `createRuntimeApplication` 无观测面。apps/runtime 增加
+  `@personal-agent/agentarts` 依赖（apps→packages，架构门禁通过）。
+
+Desktop 装配（`apps/desktop/electron/main.js`）保持默认不传观测授权：观测读回显式
+`unavailable`，属如实呈现的缺口而非静默降级。生产读回需要：
+
+1. **AK/SK 观测签名宿主**（官方 SDK + 逐请求凭据授权，见 2026-10-15 适配器）注入
+   `observationAuthorization`——本地无 AK/SK 凭据，未取得授权前不能接线；
+2. **平台 applicationId（resource_id）配置**，保证 exact join 可核对；
+3. **agentRunId 来源**（平台运行记录），log 面才能执行。
+
+验证记录（Fake 层，全部当日实跑）：
+
+- 新增 `apps/runtime/test/agentarts-observation.test.mjs` 13/13：HTTPS 生产链路提交真实任务
+  → fetch init 的 `X-Request-Id`/session 与 identity checkpoint 一致 → trace 读回
+  `exact_id_match` 并进入证据路径；无 applicationId → `not_checked`；无授权 → `unavailable`
+  且零请求；擦除身份 → `missing_request_identity`；记录失败不影响任务成功；修订绑定/缺修订；
+  身份冲突拒读；log 面窗口/scope 与脱敏证据；平台 401 → `UNAUTHORIZED` 无证据无重试；
+  deadline/取消/越界 deadline；默认组合无观测面；identity 记录去重/attempts/conflicts/32 条上限；
+  WSS 双次发送逐帧记录，证据页顺序 execution→observation。
+- 回归（ cherry-pick 到 `main@90fd2138` 后重新构建再跑）：`@personal-agent/runtime` 686/686、
+  `@personal-agent/coordination` 154/154、`@personal-agent/agentarts` 183/183、架构门禁 3/3、
+  手动 reader 与 apply-auth 既有测试通过（1 个既有环境门 skip）。测试分层：如上 Fake 合成宿主；
+  真实宿主（WSS SyntheticWebSocket + 组合入口，行为与生产一致的瞬态 socket）覆盖在本套件内；
+  真实云端读回未执行。
+- `node --check apps/desktop/electron/main.js` 语法通过。
+
+真实平台读回仍未验证（未授权、本机无 AK/SK）；`MOD32_OBSERVABILITY_20261015.json` 的历史
+结论继续保留，当日交付记录见
+[MOD32_OBSERVABILITY_PRODUCTION_WIRING_20261017.json](../competition/evidence/MOD32_OBSERVABILITY_PRODUCTION_WIRING_20261017.json)。
+剩余最小现场验收：受信宿主提供同次 HTTP request/session/application 身份与 AK/SK 签名后，
+对本节入口显式只读执行并保存脱敏结果；版本绑定、费用与回滚继续独立验收。
+
+## 2026-10-15：请求身份比较与有界平台日志读取
+
+Owner：zemeng。Profile：`huawei_ict_agentarts`。本离线工作包状态 `review`；MOD-32 仍为 `in_progress`，真实平台观测验收未完成。
+隔离工作树登记：`.worktrees/mod32-observability`，分支 `codex/mod32-observability`。
+开发基线为 `81dc72b60240d761070c39515ce112032b6b22ca`；交付时仅迁移本包到
+`main@3275aa9116769386a93453d9370c0b17f828a834`，未带入 Laya 分支提交。
+代码提交 `97777403fcc2a9c27df5f5ed689acd002d82245d` 已普通推送，独立
+[PR #361](https://github.com/zemeng5208/PersonalAgent/pull/361) 的 base 为 `main`，共 12 个文件。
+已完成自审及只读代理审查，没有 GitHub Approve；未等待 CI、合并或发布。
+
+公开模块 `@personal-agent/agentarts/observability` 提供无 I/O 的 trace/log 投影、实际 HTTP invocation
+身份校验和受限日志查询构造。该 package 新增指向 `dist/observability/index.mjs` 的子路径 export，
+类型指向 `dist/observability/index.d.mts`。标准 build 在 tsc 成功后调用 `build:observability`，
+将现有 ESM 实现及声明复制到 dist；不另加编译器或依赖。模块使用 Node 内置库，
+不改根 Schema、锁文件、Runtime 装配或数据库，不增加生产实验 API。
+手动 reader 经 package export 消费它；原 `readAgentArtsTrace` 返回结构和
+`createAgentArtsTraceAuthorizer` 的仅 trace 签名范围保持兼容。
+
+新增 `readAgentArtsTraceObservation` 与 `readAgentArtsRunLogs`，共用原 reader 的 1 MiB 上限、
+绝对 deadline、取消竞速、单次 GET、禁重定向、无重试和脱敏错误。两者返回
+`observedAt` 与实际查询 URL 的 `querySha256`，不保存原响应。
+
+当天核对的官方依据：
+
+- [InvokeRuntime](https://support.huaweicloud.com/api-agentarts/InvokeRuntime.html) 将实际发送的 `X-Request-Id` 定义为调用链 ID。
+- [ShowOpsTrace](https://support.huaweicloud.com/api-agentarts/ShowOpsTrace.html) 公布 `trace_id/session_id/resource_id`、span 身份和逐 span 指标，没有请求命中 runtime version 字段。
+- [ListOpsAgentRunLog](https://support.huaweicloud.com/api-agentarts/ListOpsAgentRunLog.html) 是独立的 agentRun 日志 GET，需要日志权限及 LTS 查询依赖权限。
+- [认证分类](https://support.huaweicloud.com/api-agentarts/agentarts_07_0005.html)和[官方 JavaScript 签名 SDK](https://support.huaweicloud.com/devg-apisign/api-sign-sdk-nodejs.html)继续作为观测签名依据。
+
+`invocation` 必须由受信宿主从**实际 HTTP 调用记录**取得 `{requestId, sessionId, resourceId}`；
+resourceId 是应用 ID，不能填 runtime 名称、部署 ID 或版本。仅当查询到非空 spans，所有已返回
+span 的 session/application 与快照相等，且 trace_id 与该请求的 X-Request-Id 相等，才返回
+`exact_id_match`。结果注明 `scope=returned_spans`、`snapshotTrust=caller_supplied`，不认证调用者
+提供的快照；仅配置了 header、时间接近、输入相似、同一 session 或 API 200 均不充分。
+空结果或缺身份返回 `unknown`，身份冲突返回 `mismatch`，未提供快照则 `not_checked`。
+该规则不适用于直接拿 WSS frame.requestId 充当 HTTP X-Request-Id。
+
+trace/span/parent/session/application 仅返回 SHA256 引用。缺指标保持 null；重复 span、异 trace、
+非法数字或少于已返回条数的 total 拒绝。`coverage` 根据 total/returnedSpanCount 区分完整与局部；
+不合计父子 span 的 token，部署版本与费用一直 `unavailable`。SHA 引用是可关联指纹，不是匿名化保证。
+
+日志范围由 `query={agentRunId,startTime,endTime,limit}` 明确指定，时间为 13 位毫秒时间戳，
+limit 为 1～1000；固定 log_type=agent，一次只读一页。agentRunId 必须来自平台运行记录，
+不可猜成 runtimeId、sessionId 或 traceId。结果仅含 count/returnedLogCount、queryComplete、
+hasContinuation 和逐行 contentSha256/contentBytes/lineRef/labelCount；正文、标签值、原行号及
+游标不输出。官方示例 count=10 只列一条，故两种数量保留，不自动补齐或分页；有游标或未完成标记
+不等于读到全部日志。日志查询范围本身不证明请求、trace 或部署关联，仍为 `not_checked/unavailable`。
+
+使用受信宿主已授权的 `sdk/readCredentials`，在仓库根的 Node 顶层 await 环境中显式调用：
+
+```js
+const {createAgentArtsObservationAuthorizer} = await import('./tests/manual/agentarts/support/sdk-trace-authorizer.mjs');
+const {readAgentArtsTraceObservation, readAgentArtsRunLogs} = await import('./tests/manual/agentarts/support/read-platform-trace.mjs');
+const authorize = createAgentArtsObservationAuthorizer({sdk, readCredentials});
+const trace = await readAgentArtsTraceObservation({traceId, invocation, deadline, signal, authorize});
+const logs = await readAgentArtsRunLogs({query: {agentRunId, startTime, endTime, limit:100}, deadline, signal, authorize});
+```
+
+新签名工厂显式支持上述两种受限 GET；旧工厂拒绝日志 URL。签名前后校验官方 SDK 的 path/query
+及 headers，原 URL 与 SDK 返回路径完全相等。没有自动发现凭据、下载 SDK、启动服务或云写入。
+
+定向验证命令（工作树依赖就绪后，无需全仓构建）：
+
+```powershell
+npm run build:observability --workspace=@personal-agent/agentarts
+node --test packages/agentarts/test/observability.test.mjs packages/agentarts/test/observability-package.test.mjs tests/manual/agentarts/support/read-platform-trace.test.mjs tests/manual/agentarts/support/read-platform-trace-consumer.test.mjs tests/manual/agentarts/support/read-platform-trace-observation.test.mjs tests/manual/agentarts/support/sdk-trace-authorizer.test.mjs tests/manual/agentarts/support/sdk-trace-authorizer-official.test.mjs
+```
+
+最后一个测试仅在显式设置 `PA_MOD32_SIGNER_PATH` 指向受信官方 CommonJS `signer.js` 时执行，
+否则明确 skipped。本次使用官方链接下载的 2.0.6、合成 AK/SK/token 与 Fake transport 实际运行，
+43/43 通过；无依赖安装。复制构建、源码/产物语法检查、dist 声明类型检查与 diff whitespace 检查通过。
+一次新增 fixture 最初误期望 reader 原样透传 signer 的 INVALID_ARGUMENT，实际 reader 按原契约
+将回调异常净化为 EXTERNAL_FAILURE；修正 fixture 后通过，未改变这条生产错误边界。
+只读同行审查发现公开投影直接消费进程内对象时可能读取继承 getter 或自定义数组 map；
+现改为 own-data 副本和新数组，并固定净化异常，增加回归 fixture 后通过。
+初版 source export 无法随 dist-only 镜像导出，现已修复为上述 dist 公开入口。
+轻量布局测试仅复制 package.json 与 dist 到当前工作树 `.cache` 隔离目录，确认没有 src，
+验证实现/声明与当前源码字节相同，并在独立 Node 进程通过包公开子路径导入和执行。
+测试消费预先生成的产物，不在测试中修复缺产物；标准模块 build 已接线到同一复制步骤。
+该检查证明产物布局和 Node 公开导入；不替代 Docker 构建、镜像发布或平台运行验收。
+收尾只读审查未发现阻断问题；没有运行全仓重检查或 Docker。
+交付迁移前后 12 个文件的 Git blobs 一致，3 个复用测试文件的基线也相同；checkout 的
+CRLF 规范化改变了源码原始字节，因此重新执行 `build:observability` 和产物布局测试，
+后者 1/1 通过。整个 AgentArts package build/typecheck 未运行，定向 dist 声明检查不代表
+完整包构建。后续合并 Laya 或其他模块增量时须同时保留各自 package exports/scripts。
+
+当前进程无相关凭据环境变量；现有 saved-config host 的所需本地文件在检查范围内也不存在。
+未读取真实 AK/SK、未发平台观测请求。历史回执仍缺该次调用的平台原生 trace/version，
+现有控制台 stdout 读回不升级为 ShowOpsTrace 或本轮日志实测。
+专属记录见 [MOD32_OBSERVABILITY_20261015.json](../competition/evidence/MOD32_OBSERVABILITY_20261015.json)。
+后续最小现场验收：受信宿主提供同次 HTTP request/session/application 和原生 trace 或 agentRun 身份，
+显式只读执行上述入口并保存脱敏结果；版本绑定、费用和回滚继续独立验收。
+
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
 
 ## 2026-10-07：显式只读 Trace helper
 

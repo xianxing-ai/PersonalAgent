@@ -75,6 +75,10 @@ const {_electron}=require('playwright');
    await panel.waitForTimeout(100);
    const panelThinking=await panel.evaluate(()=>window.desktop.invoke('snapshot'));
    assert.equal(panelThinking.value.thinking.depth,3);
+   assert.equal(await panel.locator('#model').evaluate(button=>{
+     const bounds=button.getBoundingClientRect();
+     return document.elementFromPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)?.closest('#model')===button;
+   }),true,'expanded model menu must leave its toggle reachable after status text updates');
    await panel.locator('#model').click();
    await panel.locator('textarea[aria-label="任务内容"]').fill('测试原版桌面方案接入');await panel.locator('#send').click();
    await panel.waitForSelector('[data-action="task.cancel"]');

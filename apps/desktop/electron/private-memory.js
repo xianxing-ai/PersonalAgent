@@ -2,8 +2,9 @@ import {createHash, randomUUID} from 'node:crypto';
 import {existsSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {openReadOnlyVault} from '@personal-agent/knowledge/filesystem';
+import {formatWikiCitationReference, parseWikiCitationReference} from '@personal-agent/knowledge/wiki';
 import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
-import {ingestConfirmedPrivateCitation} from '@personal-agent/runtime/application';
+import {ingestConfirmedPrivateCitation, revalidateWikiFact} from '@personal-agent/runtime/application';
 
 const namespace = 'desktop-private';
 const validUntil = '9999-12-31T23:59:59.999Z';
@@ -13,7 +14,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 
 /** Local admin-only memory; the caller must present a native confirmation dialog. */
 export function createPrivateMemoryController(databasePath, confirm, confirmDelete = async () => false,
-  {confirmWithdraw = async () => false, authorizeConsumption = async () => false} = {}) {
+  {confirmWithdraw = async () => false, authorizeConsumption = async () => false, knowledgeSource} = {}) {
   let memory;
   let maintenanceNeeded = true;
   const memoryHost = () => {
@@ -34,6 +35,33 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
   let configurationRevision = 0;
   const controllerId = randomUUID();
   let closed = false;
+  const lifetime = new AbortController();
+  const sourceSnapshot = () => knowledgeSource?.()?.snapshot();
+  const generation = () => knowledgeSource ? sourceSnapshot()?.configRevision ?? 0 : configurationRevision;
+  const selected = () => !closed && (knowledgeSource ? sourceSnapshot()?.available === true : Boolean(vault));
+  const sourceRef = source => 'pageId' in source ? formatWikiCitationReference(source)
+    : `${source.vaultId}/${source.path}#L${source.line}@${source.revision}`;
+  const sourceFactId = source => `private-${hash('pageId' in source
+    ? `${source.sourceId}/${source.pageId}#L${source.line}` : `${source.vaultId}/${source.path}#L${source.line}`)}`;
+  function acquireRead(source, request = context()) {
+    if (closed) throw Error('私人记忆控制器已关闭');
+    const revision = generation();
+    const scope = {...request};
+    const remaining = Date.parse(scope.deadline) - Date.now();
+    if (!Number.isFinite(remaining) || remaining <= 0) throw Error('私人来源读取已过期');
+    scope.signal = AbortSignal.any([scope.signal, lifetime.signal, AbortSignal.timeout(remaining)]);
+    const lease = knowledgeSource ? knowledgeSource()?.acquireWiki(source ?? sourceSnapshot(), scope) : undefined;
+    const reader = lease?.wiki ?? (knowledgeSource ? undefined : vault);
+    if (!reader) throw Error(knowledgeSource ? '请先选择受信知识库' : '请先选择本机 Vault');
+    if (lease) scope.signal = lease.signal;
+    const stable = () => {
+      if (closed) throw Error('私人记忆控制器已关闭');
+      if (revision !== generation()) throw Error('来源配置已变化，请重新检索');
+      lease?.assertCurrent();
+      if (scope.signal.aborted) throw Error('私人来源读取已取消');
+    };
+    return {reader, scope, revision, stable, release: () => lease?.release()};
+  }
   const head = ref => {
     if (!ref || typeof ref !== 'object' || typeof ref.id !== 'string'
       || !Number.isSafeInteger(ref.revision) || ref.revision < 1) throw Error('无效的记忆版本');
@@ -42,17 +70,24 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
     return current;
   };
   const consumptionBinding = ref => {
-    if (closed || !vault) throw Error('私人来源配置不可用');
+    if (!selected()) throw Error('私人来源配置不可用');
     const fact = head(ref);
+    let sourceId = '';
+    if (knowledgeSource) {
+      const source = parseWikiCitationReference(fact.sourceRef), binding = sourceSnapshot();
+      if (!source || source.sourceId !== binding.sourceId || source.configRevision !== binding.configRevision
+        || source.namespace !== binding.namespace || source.dataLevel !== binding.dataLevel) throw Error('私人记忆来源配置已变化，请重新确认');
+      sourceId = binding.sourceId;
+    }
     const now = Date.now();
     if (fact.state !== 'active' || fact.confirmation !== 'user_confirmed'
       || Date.parse(fact.validFrom) > now || Date.parse(fact.validUntil) <= now) throw Error('私人记忆已撤回或失效');
-    return {ref: structuredClone(fact.ref), configurationRef: `private-vault:${controllerId}:${configurationRevision}`,
+    return {ref: structuredClone(fact.ref), configurationRef: `private-vault:${controllerId}:${generation()}${sourceId ? ':' + sourceId : ''}`,
       sourceDigest: hash(fact.sourceRef), summaryDigest: hash(fact.summary)};
   };
   return Object.freeze({
-    get selected() { return Boolean(vault); },
-    get configurationRevision() { return configurationRevision; },
+    get selected() { return selected(); },
+    get configurationRevision() { return generation(); },
     /** Content-free host binding. Neither source paths nor summaries cross this port. */
     readConsumptionBinding(ref) { return consumptionBinding(ref); },
     assertConsumption(binding) {
@@ -72,6 +107,7 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
     },
     async selectVault(rootPath) {
       if (closed) throw Error('私人记忆控制器已关闭');
+      if (knowledgeSource) throw Error('请使用统一知识源选择器');
       const canonical = await realpath(rootPath);
       const selected = await openReadOnlyVault({vaultId: hash(process.platform === 'win32'
         ? canonical.toLowerCase() : canonical), rootPath});
@@ -80,70 +116,124 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
       configurationRevision += 1;
     },
     search(query) {
-      if (closed) throw Error('私人记忆控制器已关闭');
-      if (!vault) throw Error('请先选择本机 Vault');
-      return vault.search({query, limit: 5, ...context()}).then(result => {
-        if (closed) throw Error('私人记忆控制器已关闭');
-        return result;
-      });
+      const read = acquireRead();
+      return (async () => {
+        try {
+          return await read.reader.search({query, limit: 5, ...read.scope});
+        } finally {
+          try {read.stable();} finally {read.release();}
+        }
+      })();
     },
     async previewSave(source) {
-      if (!vault || closed) throw Error('请先选择本机 Vault');
-      const selected = vault;
-      const generation = configurationRevision;
       const citation = structuredClone(source);
-      await selected.readCitation({source: citation, ...context()});
-      if (generation !== configurationRevision || closed) throw Error('来源配置已变化，请重新检索');
-      const factId = `private-${hash(`${citation.vaultId}/${citation.path}#L${citation.line}`)}`;
-      const current = memoryHost().readUserFactHead(namespace, factId);
-      return {configurationRevision: generation, expectedRevision: current?.ref.revision ?? null};
+      const read = acquireRead(citation);
+      try {
+        const excerpt = await read.reader.readCitation({source: citation, ...read.scope});
+        read.stable();
+        const current = memoryHost().readUserFactHead(namespace, sourceFactId(citation));
+        return {configurationRevision: read.revision, expectedRevision: current?.ref.revision ?? null, citation: excerpt};
+      } finally {read.release();}
     },
     async listSaved({at, snapshot, cursor} = {}) {
       const queryAt = at ?? new Date().toISOString();
       if (!memory && !existsSync(databasePath)) return {facts: [], at: queryAt};
-      const page = await memoryHost().listUserFactHeads(namespace, {at: queryAt, limit: 20,
+      let page = await memoryHost().listUserFactHeads(namespace, {at: queryAt, limit: 20,
           ...(snapshot === undefined ? {} : {snapshot}),
           ...(cursor === undefined ? {} : {cursor}), ...context()});
+      // A paginated snapshot stays frozen. Only a fresh first page refreshes source evidence.
+      if (knowledgeSource && selected() && snapshot === undefined && cursor === undefined) {
+        let changed = false;
+        for (const fact of page.facts) {
+          if (fact.state === 'active' && parseWikiCitationReference(fact.sourceRef)) {
+            changed = (await this.revalidate(fact.ref)).appended || changed;
+          }
+        }
+        if (changed) page = await memoryHost().listUserFactHeads(namespace, {at: queryAt, limit: 20, ...context()});
+      }
       return {...page, at: queryAt};
     },
+    /** Explicit local validation, also used immediately before task consumption. No missing-page deletion. */
+    async revalidate(ref, request = context()) {
+      if (!knowledgeSource) return {state: 'current', fact: head(ref), appended: false};
+      const read = acquireRead(undefined, request);
+      try {
+        return await revalidateWikiFact({wiki: read.reader, memory: memoryHost(), namespace,
+          fact: structuredClone(ref), assertCurrent: read.stable}, read.scope);
+      } finally {read.release();}
+    },
+    /** Trusted successful write recovery: refresh only projections of this exact source/path. */
+    async revalidateSource(input, request = context()) {
+      return this.revalidateSources({...input, paths: [input.path]}, request);
+    },
+    /** Resident source checks share the write-recovery projection without storing new private facts. */
+    async revalidateSources(input, request = context()) {
+      if (!memory && !existsSync(databasePath)) return;
+      const read = acquireRead(input, request);
+      try {
+        const at = new Date().toISOString();
+        let snapshot, cursor;
+        do {
+          read.stable();
+          const page = await memoryHost().listUserFactHeads(namespace, {at, limit: 100, ...read.scope,
+            ...(snapshot === undefined ? {} : {snapshot}), ...(cursor === undefined ? {} : {cursor})});
+          snapshot = page.snapshot; cursor = page.nextCursor;
+          for (const fact of page.facts) {
+            const source = parseWikiCitationReference(fact.sourceRef);
+            if (fact.state !== 'active' || !source || source.sourceId !== input.sourceId
+              || source.configRevision !== input.configRevision
+              || input.paths !== undefined && !input.paths.includes(source.path)) continue;
+            // Another validation may have appended a withdrawal since this frozen page was created.
+            const current = memoryHost().readUserFactHead(namespace, fact.ref.id);
+            if (!current || current.state !== 'active' || current.sourceRef !== fact.sourceRef) continue;
+            const result = await revalidateWikiFact({wiki: read.reader, memory: memoryHost(), namespace,
+              fact: current.ref, assertCurrent: read.stable}, read.scope);
+            if (result.state === 'source_unavailable') throw Error('写回后的 Wiki 来源尚不可核实');
+          }
+        } while (cursor !== undefined);
+        read.stable();
+      } finally {read.release();}
+    },
     async save(source, summary, baseline) {
-      if (!vault) throw Error('请先选择本机 Vault');
-      const generation = configurationRevision;
-      const selectedVault = vault;
       const selectedSource = structuredClone(source);
-      if (baseline && baseline.configurationRevision !== generation) throw Error('来源配置已变化，请重新检索');
       if (typeof summary !== 'string' || !summary || summary !== summary.trim()
         || summary.length > 500 || /[\u0000-\u001f\u007f]/.test(summary)) {
         throw Error('记忆摘要必须是 1～500 字的单行文本');
       }
       if (!source || typeof source !== 'object') throw Error('无效的来源引文');
-      const store = memoryHost();
-      const now = new Date().toISOString();
-      const factId = `private-${hash(`${selectedSource.vaultId}/${selectedSource.path}#L${selectedSource.line}`)}`;
-      const sourceRef = `${selectedSource.vaultId}/${selectedSource.path}#L${selectedSource.line}@${selectedSource.revision}`;
-      const current = store.readUserFactHead(namespace, factId);
-      if (baseline && baseline.expectedRevision !== (current?.ref.revision ?? null)) throw Error('记忆版本已变化，请刷新列表');
-      const stable = () => {
-        if (closed || configurationRevision !== generation) throw Error('来源配置已变化，请重新检索');
-      };
-      const readCitation = async request => { stable(); const value = await selectedVault.readCitation(request); stable(); return value; };
-      if (current?.state === 'active' && current.summary === summary && current.sourceRef === sourceRef) {
-        await readCitation({source: selectedSource, ...context()});
-        return {state: 'unchanged', revision: current.ref.revision};
-      }
-      const saved = await ingestConfirmedPrivateCitation({
-        vault: {readCitation}, memory: store, namespace, factId, expectedRevision: current?.ref.revision ?? null,
-        source: selectedSource, observedAt: now, validFrom: now, validUntil,
-        confirm: async citation => {
-          if (citation.length > 4000) throw Error('摘录过长，无法完整展示确认');
-          const allowed = await confirm({citation, summary, source: selectedSource,
-            configurationRevision: generation, expectedRevision: current?.ref.revision ?? null,
-            previous: current?.summary});
-          stable();
-          return allowed ? {operationId: randomUUID(), summary} : null;
-        },
-      }, context());
-      return saved ? {state: 'saved', revision: saved.fact.ref.revision} : {state: 'declined'};
+      const read = acquireRead(selectedSource);
+      try {
+        const generation = read.revision;
+        if (baseline && baseline.configurationRevision !== generation) throw Error('来源配置已变化，请重新检索');
+        const store = memoryHost();
+        const now = new Date().toISOString();
+        const factId = sourceFactId(selectedSource);
+        const reference = sourceRef(selectedSource);
+        const current = store.readUserFactHead(namespace, factId);
+        if (baseline && baseline.expectedRevision !== (current?.ref.revision ?? null)) throw Error('记忆版本已变化，请刷新列表');
+        const stable = read.stable;
+        const readCitation = async request => {
+          stable(); try { return await read.reader.readCitation(request); } finally { stable(); }
+        };
+        if (current?.state === 'active' && current.summary === summary && current.sourceRef === reference) {
+          await readCitation({source: selectedSource, ...read.scope});
+          return {state: 'unchanged', revision: current.ref.revision};
+        }
+        const saved = await ingestConfirmedPrivateCitation({
+          vault: {readCitation}, memory: store, namespace, factId, expectedRevision: current?.ref.revision ?? null,
+          source: selectedSource, observedAt: now, validFrom: now, validUntil,
+          confirm: async citation => {
+            if (citation.length > 4000) throw Error('摘录过长，无法完整展示确认');
+            const allowed = await confirm({citation, summary, source: selectedSource,
+              signal: read.scope.signal,
+              configurationRevision: generation, expectedRevision: current?.ref.revision ?? null,
+              previous: current?.summary});
+            stable();
+            return allowed ? {operationId: randomUUID(), summary} : null;
+          },
+        }, read.scope);
+        return saved ? {state: 'saved', revision: saved.fact.ref.revision} : {state: 'declined'};
+      } finally {read.release();}
     },
     async withdraw(ref) {
       const target = structuredClone(ref);
@@ -168,6 +258,12 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
         throw Error('无效的私人记忆消费范围');
       }
       const selected = structuredClone(refs);
+      if (knowledgeSource) {
+        for (const ref of selected) {
+          const checked = await this.revalidate(ref, {deadline, signal});
+          if (checked.state !== 'current') throw Error('私人记忆来源已变化或暂不可用，请重新检索确认');
+        }
+      }
       const bindings = selected.map(consumptionBinding);
       if (new Set(selected.map(ref => ref.id)).size !== selected.length) throw Error('重复的私人记忆引用');
       const check = () => {
@@ -188,6 +284,14 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
         bindings: structuredClone(bindings), facts: structuredClone(facts), deadline}) !== true) {
         return {state: 'declined', facts: []};
       }
+      if (knowledgeSource) {
+        check();
+        for (const ref of selected) {
+          if ((await this.revalidate(ref, {deadline, signal})).state !== 'current') {
+            throw Error('私人记忆来源已变化或暂不可用，请重新检索确认');
+          }
+        }
+      }
       return {state: 'authorized', taskId, destination, facts: check(),
         bindings, treatment: 'user_confirmed_data'};
     },
@@ -202,8 +306,10 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
       if (!await confirmDelete(current)) return {state: 'declined'};
       head(target);
       maintenanceNeeded = true;
-      store.eraseUnboundFact(namespace, {factId: target.id, expectedRevision: target.revision,
-        operationId: `desktop-private-${hash(`${target.id}@${target.revision}`)}`, ...context()});
+      try {
+        store.eraseUnboundFact(namespace, {factId: target.id, expectedRevision: target.revision,
+          operationId: `desktop-private-${hash(`${target.id}@${target.revision}`)}`, ...context()});
+      } finally {knowledgeSource?.()?.clearIndex?.(); vault?.clearIndex();}
       maintenanceNeeded = false;
       const [visible, history] = await Promise.all([
         query.listCurrent({factId: target.id, at: new Date().toISOString(), limit: 1, ...context()}),
@@ -226,6 +332,6 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
         afterFactId = markers.at(-1).factId;
       }
     },
-    close() { if (!closed) memory?.close(); closed = true; vault = undefined; },
+    close() { if (!closed) memory?.close(); closed = true; lifetime.abort(); vault = undefined; },
   });
 }

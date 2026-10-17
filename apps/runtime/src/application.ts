@@ -1,7 +1,10 @@
-export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReevaluator,REFERENCE_SKILL_WORKER_TOOL} from './application/runtime-application.js';
+export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReevaluator,REFERENCE_SKILL_WORKER_TOOL,compileCoordinationGoal} from './application/runtime-application.js';
 export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult} from './application/runtime-application.js';
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
+export type {CoordinationGoalTokenBudget} from './application/context-binding.js';
 export type {PrepareCompetitionToolExport,CompetitionToolExport,CoordinationWorkerCapabilityPort} from './application/coordination.js';
+export type {CompetitionCloudRequestIdentityRecord, CompetitionCloudRequestIdentities,
+  CompetitionCloudIdentitySelection} from './application/coordination.js';
 export type {StartSystemObservationSessionRequest, SystemObservationSession} from './application/system-observation-session.js';
 export {createSystemObservationTool} from '@personal-agent/windows-client';
 export type {RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostToolTaskRequest,
@@ -12,9 +15,14 @@ export type {RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostT
 export type {LocalRepairHostOptions, LocalRepairBinding, SubmitLocalRepairRequest} from './application/local-repair.js';
 export type {CompetitionAvailableTool, CompetitionToolAvailability} from './application/tool-catalog.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
+export type {AgentArtsObservationApplication} from './application/agentarts.js';
 export {createCalendarEventReadTool, CALENDAR_EVENT_READ_TOOL, CALENDAR_EVENT_READ_VERSION} from './application/calendar-read.js';
 export type {CalendarReadBinding, CalendarEventReadOptions} from './application/calendar-read.js';
 export type {AgentArtsRuntimeApplicationOptions} from './application/agentarts.js';
+export type {AgentArtsObservationRequestDescription, AgentArtsObservationAuthorization, AgentArtsObservationFetch,
+  AgentArtsObservationSurface, AgentArtsObservationInput, AgentArtsObservationBinding,
+  AgentArtsObservationAvailability, AgentArtsPlatformObservationRecord,
+  AgentArtsObservationHostOptions} from './application/agentarts-observation.js';
 export {createMemoryProjectionApplication, createPendingImpactApplication} from './application/memory.js';
 export {createSqliteFactProjectionHost} from './application/sqlite-fact-projection.js';
 export type {SqliteFactProjectionHost, SqliteFactProjectionHostOptions} from './application/sqlite-fact-projection.js';
@@ -24,6 +32,8 @@ export type {FactImpactReceipt, FactProjectionReceipt, CompletedFactImpact} from
 export {ingestPublicSource} from './application/public-source.js';
 export {ingestConfirmedPrivateCitation} from './application/private-source.js';
 export type {ConfirmedPrivateFact} from './application/private-source.js';
+export {revalidateWikiFact} from './application/wiki-source.js';
+export type {WikiFactValidation} from './application/wiki-source.js';
 export {createWindowsHostBridgeTransport, createWindowsHostNotepadAdapter} from './application/windows-host-adapter.js';
 export {createRuntimeWindowsHostAttemptStore} from './application/windows-host-attempt-store.js';
 export type {WindowsHostTransport, VerifiedWindowsHostConnection, WindowsHostAttemptStore,
@@ -79,7 +89,26 @@ export type {SkillManifest, SkillOutcome, ReferenceSummaryInput, ReferenceSummar
   SkillReadReconciliationPort, SkillReadReconciliationQuery} from '@personal-agent/skills';
 export {createTrustedKnowledgeTools} from './application/knowledge-tools.js';
 export type {TrustedKnowledgeSource,TrustedKnowledgeBinding,KnowledgeToolTaskBindings} from './application/knowledge-tools.js';
+export type {KnowledgeWriteProjectionPort} from './application/knowledge-write-projection.js';
+export {createWikiSourceMonitor} from './application/wiki-source-monitor.js';
+export {createObsidianPairingHost} from './application/obsidian-pairing.js';
+export type {ObsidianPairingOptions} from './application/obsidian-pairing.js';
+export type {WikiSourceMonitorOptions, WikiSourceMonitorStatus} from './application/wiki-source-monitor.js';
 export {createWorkflowLearningApplication,createBoundPublicFactErasureApplication,LEARNING_BINDING_CHECKPOINT} from './application/memory-learning.js';
 export type {WorkflowLearningOptions,LearningTaskBinding,LearningSkillManifest} from './application/memory-learning.js';
 export {KnowledgeWriteReconciliationAdapter} from './application/knowledge-write-reconciliation.js';
 export type {KnowledgeWriteReconciliationPort} from './application/knowledge-write-reconciliation.js';
+export * from './application/proactive-connector-host.js';
+export * from './application/notification-host.js';
+export * from './application/proactive-workflow-session.js';
+export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';
+export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions} from './application/owned-workflow-application.js';
+export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';
+export {createRuntimeProactiveDecisionTools,RUNTIME_PROACTIVE_DECISION_TOOLS} from './application/proactive-decision-tools.js';
+export type {RuntimeProactiveDecisionToolOptions} from './application/proactive-decision-tools.js';
+export type {RuntimeProactiveImageAdapterOptions,RuntimeProactiveImageResult,RuntimeProactiveImageContext,
+  RuntimeProactiveImageDescription} from './application/proactive-image-adapter.js';
+export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,RUNTIME_PROACTIVE_TOOLS,
+  RUNTIME_PROACTIVE_TOOL_VERSION} from './application/proactive-workflow-application.js';
+export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
+  RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';

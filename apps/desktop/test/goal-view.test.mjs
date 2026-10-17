@@ -315,7 +315,7 @@ test('accepted write after reopen keeps the real task and prevents duplicate sub
   assert.equal(ui.button('保存修订').disabled, true);
   await ui.submit();
   assert.equal(ui.calls.filter(call => call.name === 'goal.revise').length, 1);
-  ui.button('查看已受理目标任务：等待授权').onclick();
+  ui.button('查看已受理目标任务：等待授权 · 目标写入 accepted-A').onclick();
   await settle();
   assert.equal(ui.calls.filter(call => call.name === 'goal.readTask').at(-1).payload, accepted.taskId);
   ui.button('关闭').onclick();

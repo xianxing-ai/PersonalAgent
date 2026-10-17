@@ -1,0 +1,15 @@
+{
+  "deploymentVersion": "arm64-v5-4aa8f93f-r1",
+  "revision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+  "count": 177,
+  "metadataHttpRequests": 1,
+  "wallMs": 705.7350000000001,
+  "selected": {
+    "catalogRevision": "80f44b06a2b2b24a529d9b6daec7264eafc91337baa8028aee743a9fdda65f09",
+    "modelId": "deepseek-v4.1-flash",
+    "reasoningEffort": "low",
+    "type": "text",
+    "availability": "unverified",
+    "requestProfile": "huawei-openai-v1"
+  }
+}

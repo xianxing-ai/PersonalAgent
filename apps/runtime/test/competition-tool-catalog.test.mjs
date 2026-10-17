@@ -41,10 +41,11 @@ test('trusted step budget supports four tools plus answer and is not reset by ap
     try {
       const client=new Client(app,Date.now);await client.connect();
       const {taskId}=await client.call('task.submit',{goal:'Four dependent operations',conversationId:'budget'},
-        {idempotencyKey:`budget-${budget??'default'}`});
+        {idempotencyKey:`budget-${budget??'default'}`,timeoutMs:60_000});
       const approved=new Set();
       let terminal;
-      for (let attempt=0;attempt<200;attempt++) {
+      const deadline=Date.now()+60_000;
+      while (Date.now()<deadline) {
         const task=app.runtime.getTask(taskId);
         if (['succeeded','failed'].includes(task.state)) {terminal=task;break;}
         for (const approval of (await client.call('approval.list',{taskId})).items) {

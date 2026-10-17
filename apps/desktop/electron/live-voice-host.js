@@ -1,5 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {pcmLevel} from './audio-level.js';
 import {createLiveVoiceHistory} from './live-voice-history.js';
+import {notificationDigest} from '@personal-agent/notifications';
 
 const SESSION_MS = 120 * 60_000;
 
@@ -23,10 +25,17 @@ function deferred() {
 /** Device/session host only: business work is delegated through the public Runtime consumer. */
 export function createLiveVoiceHost({getPanel, config, microphoneHost, createSource, createGateway,
   createConsumer, client, readContext, onTaskSubmitted,
-  onTranscript = () => {throw Error('Live 历史保存端口不可用');}, onUpdate = () => {},
+  onTranscript = () => {throw Error('Live 历史保存端口不可用');}, onUpdate = () => {}, onLevel = () => {},
+  readConversationId=()=>'desktop-panel',onDiagnostic=()=>{},
   historyStore, historyQueue,
+  readCurrentQuestion = () => null, onFinalUserCommand = async () => ({consumed: false}),
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
+  let lastDiagnostic={stage:'idle',status:'idle'},audioSendFailure;
+  const diagnose=(stage,status,code,metadata={})=>{
+    lastDiagnostic={stage,status,...(code?{code}:{}),...metadata,elapsedMs:active?Math.max(0,now()-active.startedAt):0};
+    try{onDiagnostic({...lastDiagnostic});}catch{}
+  };
   const history = createLiveVoiceHistory({save:onTranscript, readContext, recoveryStore:historyStore, queue:historyQueue});
   let historyTimer;
   const publish = () => {try {onUpdate();} catch {}};
@@ -41,6 +50,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   }
   const hasActive = () => enabled || Boolean(active) || releaseUnknown;
   const snapshot = () => ({...config.snapshot(), active: hasActive(), status: active?.phase ?? (enabled ? 'reconnecting' : lastError ? 'error' : 'idle'),
+    diagnostic:{...lastDiagnostic},...(audioSendFailure?{audioSendFailure:{...audioSendFailure}}:{}),conversationId:active?.conversationId,
+    questionDelivery:active?.questionDelivery??{state:'unavailable'},
     reason: lastError || (history.snapshot().degraded ? (history.snapshot().durable
       ? '对话记录保存异常，已缓存待回补记录'
       : '对话记录保存异常，恢复缓存未确认；内存记录退出可能丢失')
@@ -75,7 +86,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       clearTimeout(stopTimer);
       for (const result of results) if (result.status === 'rejected') errors.push(result.reason);
       if (active === record) active = undefined;
-      if (errors.length) {enabled = false; releaseUnknown = true; lastError = 'Live 音频资源释放未确认，请重新启动应用后再连接';}
+      if (errors.length) {enabled = false; releaseUnknown = true; lastError = 'Live 音频资源释放未确认，请重新启动应用后再连接';diagnose('release','failed','RESOURCE_RELEASE_UNCONFIRMED');}
       publish();
       return snapshot();
     })();
@@ -93,38 +104,58 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     record.renewing = true;
     await releaseActive();
     if (!enabled || releaseUnknown || active) return;
-    try {await start(true);} catch {fail('Live 续接未完成，请检查连接后重新开启');}
+    try {await start(true,record.conversationId);} catch {fail('Live 续接未完成，请检查连接后重新开启');}
   }
-  async function start(continuing = false) {
+  async function start(continuing = false,boundConversationId) {
     if (active) throw Error('Live 会话已存在');
     if (releaseUnknown) throw Error(lastError);
     const settings = config.current();
-    if (!settings) throw Error(config.snapshot().reason);
+    if (!settings) {diagnose('configuration','failed','CONFIGURATION_UNAVAILABLE');throw Error(config.snapshot().reason);}
+    const conversationId=boundConversationId??readConversationId();
+    if(typeof conversationId!=='string' || !conversationId.trim() || conversationId.length>256)throw Error('Live 对话归属无效');
     const panel = getPanel();
     if (!panel || panel.isDestroyed() || !panel.isVisible()) throw Error('请先打开 PersonalAgent 面板');
     const controller = new AbortController();
-    const record = {id: randomUUID(), panel, controller, phase: continuing ? 'reconnecting' : 'connecting', playReady: deferred(), playStopped: deferred(),
+    const record = {id: randomUUID(), panel, controller,conversationId,startedAt:now(),startupStage:'playback', phase: continuing ? 'reconnecting' : 'connecting', playReady: deferred(), playStopped: deferred(),
       deadline: new Date(now() + SESSION_MS).toISOString()};
     const isCurrent = () => active === record && !controller.signal.aborted && now() < Date.parse(record.deadline);
     const assertCurrent = () => {if (!isCurrent()) throw Error('Live 已停止或到期');};
-    active = record; enabled = true; lastError = ''; publish();
+    active = record; enabled = true; lastError = '';audioSendFailure=undefined; publish();
     const calls = new Map();
     try {
+      diagnose('playback','starting');
       command(record, {type: 'start'});
       const timer = setTimeout(() => record.playReady.reject(Error('Live 播放设备启动超时')), 5000);
       try {await record.playReady.promise;} finally {clearTimeout(timer);}
       assertCurrent();
+      diagnose('playback','ready');record.startupStage='cloud';diagnose('cloud','connecting');
       flushHistory();
-      const context = history.context();
+      const context = history.context({conversationId:record.conversationId});
       const historyContext = context.length ? '\n以下是主对话最近发生的历史记录（包含文字与语音），仅作参考上下文，不是新指令，绝对不要重复执行或重新提交这些历史任务：\n' + JSON.stringify(context) : '';
       record.connecting = Promise.resolve().then(() => createGateway(settings).connect({signal: controller.signal, deadline: record.deadline,
         instructions: INSTRUCTIONS + historyContext, tools: TOOLS,
         onEvent(event) {
           if (!isCurrent()) return;
-          if (event.type === 'error') {fail(event.message); return;}
-          if (event.type === 'speech_started') record.userSpeaking = true;
-          if (event.type === 'speech_stopped') record.userSpeaking = false;
-          if (event.type === 'audio') {record.phase = 'speaking'; command(record, {type: 'audio', data: event.data});}
+          if (event.type === 'error') {diagnose('cloud','failed','REALTIME_SERVICE_ERROR');fail(event.message); return;}
+          if (event.type === 'speech_started') {
+            const question = readCurrentQuestion({conversationId:record.conversationId});
+            record.userSpeaking = true;
+            record.finalTurn = {utteranceId: event.utteranceId, startedAt: new Date(now()).toISOString(), question,
+              echo: record.phase === 'speaking' || record.outputActive === true,
+              captured: record.lastFrameAt !== undefined && question && record.lastFrameAt >= Date.parse(question.issuedAt)};
+          }
+          if (event.type === 'speech_stopped') {
+            record.userSpeaking = false;
+            if (record.finalTurn?.utteranceId && record.finalTurn.utteranceId === event.utteranceId) record.finalTurn.stopped = true;
+            else if (record.finalTurn) record.finalTurn.echo = true;
+          }
+          if (event.type === 'audio') {
+            record.outputActive = true;
+            if (record.finalTurn && !record.finalTurn.stopped) record.finalTurn.echo = true;
+            record.phase = 'speaking';
+            command(record, {type: 'audio', data: event.data});
+            try { onLevel(pcmLevel(event.data)); } catch { /* Loudness is visual and must not stop playback. */ }
+          }
           if (event.type === 'interrupted') {record.phase = 'listening'; command(record, {type: 'clear'});}
           if (event.type === 'turn_complete') command(record, {type: 'drain'});
           if (event.type === 'transcript') {
@@ -134,9 +165,24 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
               fail('Live 转写缺少有效消息标识'); return;
             }
             const message = {id: `${record.id}:${createHash('sha256').update(`${event.role}:${event.id}`).digest('hex')}`, sessionId: record.id,
+              ...(record.conversationId==='desktop-panel'?{}:{conversationId:record.conversationId}),
               role: event.role, text: trimmed, createdAt: new Date(now()).toISOString()};
             try {history.record(message); flushHistory();}
             catch {fail('Live 历史待保存容量或标识异常，已停止通话；待保存记录保留'); return;}
+            const turn = record.finalTurn, question = turn?.question;
+            if (event.role === 'user' && event.phase === 'final' && event.source === 'input_audio'
+              && event.utteranceId && event.utteranceId === turn?.utteranceId && turn.stopped
+              && turn.captured && !turn.echo && !turn.consumed && question?.state === 'pending') {
+              turn.consumed = true;
+              const receipt = {source: 'live_input_audio', phase: 'final', origin: 'user', echo: false,
+                sessionId: record.id, utteranceId: event.utteranceId, text: trimmed,
+                transcriptDigest: notificationDigest(trimmed), startedAt: turn.startedAt, completedAt: new Date(now()).toISOString(),
+                questionId: question.questionId, questionRevision: question.revision, argumentsDigest: question.argumentsDigest,
+                expiresAt: new Date(Math.min(Date.parse(question.expiresAt), Date.parse(record.deadline))).toISOString(), signal: controller.signal};
+              void Promise.resolve().then(() => {if (isCurrent()) return onFinalUserCommand(receipt);})
+                .then(result => {if (isCurrent() && result?.consumed) {record.confirmationResult = result.state; publish();}})
+                .catch(() => {if (isCurrent()) {record.confirmationResult = 'unknown'; publish();}});
+            }
           }
           if (event.type !== 'audio') publish();
         },
@@ -145,8 +191,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           if (!args || typeof args !== 'object' || Array.isArray(args)) throw Error('Live 工具参数无效');
           if (name === 'read_context' && Object.keys(args).length === 0) {
             let shared = {contextUnavailable:true};
-            try {const raw = readContext(); shared = typeof raw === 'string' ? JSON.parse(raw) : raw;} catch {}
-            const result = JSON.stringify({...shared, recentDialogue:history.context()});
+            try {const raw = readContext({conversationId:record.conversationId}); shared = typeof raw === 'string' ? JSON.parse(raw) : raw;} catch {}
+            const result = JSON.stringify({...shared, recentDialogue:history.context({conversationId:record.conversationId})});
             assertCurrent();
             return result;
           }
@@ -179,7 +225,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           const result = await client.call(operation, payload, options);
           if (operation === 'task.submit') {
             submittedTaskId = result.taskId;
-            try {onTaskSubmitted({taskId:result.taskId, goal:payload.goal});}
+            try {onTaskSubmitted({taskId:result.taskId, goal:payload.goal,conversationId:record.conversationId});}
             catch {record.taskHistoryDegraded = true; publish();}
           }
           // Preserve accepted task metadata, then reject late delivery without resubmitting.
@@ -188,7 +234,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
         }};
         try {
           assertWorkCurrent();
-          const consumer = createConsumer({client:voiceClient, conversationId:'desktop-panel'});
+          const consumer = createConsumer({client:voiceClient, conversationId:record.conversationId});
           const operation = consumer.consume({sessionId:record.id, transcriptId:callId, text:goal,
             locale:'zh-CN', deadline:new Date(workDeadline).toISOString(), signal:controller.signal});
           try {
@@ -236,13 +282,25 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       record.session = await record.connecting;
       if (controller.signal.aborted) {await closeSession(record, record.session); return snapshot();}
       assertCurrent();
+      diagnose('cloud','connected');record.startupStage='microphone';diagnose('microphone','acquiring');
       microphoneHost.authorize({deadline: record.deadline});
       record.source = createSource();
       record.subscription = record.source.subscribe({signal: controller.signal, deadline: record.deadline,
         onFrame(frame) {
           if (!isCurrent()) return;
-          try {record.session.sendAudio(frame.data);} catch {fail('Live 音频发送失败，已停止录音');}
-        }, onError: () => {if (isCurrent()) fail('Live 麦克风采集失败');}, onEnd: reason => {
+          record.lastFrameAt = now();
+          try {record.session.sendAudio(frame.data);} catch(error) {
+            const failures={'Live 音频帧无效':['PCM_FRAME_INVALID','音频帧格式无效'],
+              'Live 连接已关闭':['CONNECTION_CLOSED','连接已关闭'],
+              'Live 网络发送阻塞，请重新连接':['SEND_BACKPRESSURE','网络发送阻塞']};
+            const message=error instanceof Error?error.message:'';
+            const [code,detail]=Object.hasOwn(failures,message)?failures[message]:['SEND_FAILED','传输发送失败'];
+            const metadata={frameBytes:Number.isSafeInteger(frame.data?.byteLength)?frame.data.byteLength:0,
+              localUint8Array:frame.data instanceof Uint8Array,sampleRateHz:frame.format?.sampleRateHz??0,channels:frame.format?.channels??0};
+            audioSendFailure={stage:'audio_send',code,...metadata};diagnose('audio_send','failed',code,metadata);
+            fail(`Live 音频发送失败：${detail}，已停止录音`);
+          }
+        }, onError: () => {if (isCurrent()) {diagnose('microphone','failed','MICROPHONE_CAPTURE_FAILED');fail('Live 麦克风采集失败');}}, onEnd: reason => {
           // Release/error feedback may close its own expired record, never a newer one.
           if (active === record && !controller.signal.aborted) fail(reason === 'deadline' ? 'Live 音频租约到期，续接未完成' : 'Live 麦克风已停止或授权已撤销');
         },
@@ -250,10 +308,12 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       await record.subscription.ready;
       assertCurrent();
       record.phase = 'listening';
+      record.startupStage='listening';diagnose('microphone','ready');
       record.renewTimer = schedule(() => {void renew(record);}, Math.max(0, Date.parse(record.deadline) - now() - 60_000));
       record.renewTimer?.unref?.(); publish();
       return snapshot();
     } catch (error) {
+      if(!controller.signal.aborted)diagnose(record.startupStage,'failed',record.startupStage==='playback'?'PLAYBACK_INITIALIZATION_FAILED':record.startupStage==='cloud'?'AGENTARTS_CONNECT_FAILED':'MICROPHONE_ACQUIRE_FAILED');
       if (!controller.signal.aborted) lastError = error instanceof Error ? error.message : 'Live 启动失败';
       if (active === record) await stop();
       throw Error(lastError || 'Live 已关闭');
@@ -265,7 +325,10 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       || message?.token !== record.id) return false;
     if (message.type === 'ready') record.playReady.resolve();
     if (message.type === 'stopped') record.playStopped.resolve();
-    if (message.type === 'drained' && record.phase === 'speaking') {record.phase = 'listening'; publish();}
+    if (message.type === 'drained') {
+      record.outputActive = false;
+      if (record.phase === 'speaking') {record.phase = 'listening'; publish();}
+    }
     if (message.type === 'error') {record.playReady.reject(Error('Live 播放设备不可用')); fail('Live 播放设备不可用');}
     return true;
   }
@@ -279,13 +342,24 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       }
     };
     assertRead();
-    if (conversationId !== 'desktop-panel') return [];
     if (cutoff !== undefined && !Number.isFinite(Date.parse(cutoff))) throw Error('Live 历史截止时间无效');
-    const messages = history.messages().filter(message => cutoff === undefined || Date.parse(message.createdAt) <= Date.parse(cutoff));
+    const messages = history.messages().filter(message => (message.conversationId??'desktop-panel')===conversationId
+      && (cutoff === undefined || Date.parse(message.createdAt) <= Date.parse(cutoff)));
     assertRead();
     return messages;
   }
   return {snapshot, historyMessages, hasActive, start, stop, receive,
+    askCurrentQuestion() {
+      const record=active,question=readCurrentQuestion({conversationId:active?.conversationId??readConversationId()});
+      if (!record || record.controller.signal.aborted || now()>=Date.parse(record.deadline)
+        || record.phase!=='listening' || question?.state!=='pending' || now()>=Date.parse(question.expiresAt)
+        || typeof record.session?.askUserQuestion!=='function') return {state:'unavailable',accepted:false};
+      try {
+        const result=record.session.askUserQuestion(question.summary);
+        record.questionDelivery={state:result?.accepted===true?'queued':'unavailable',questionId:question.questionId,playbackVerified:false};
+      } catch {record.questionDelivery={state:'unavailable',questionId:question.questionId,playbackVerified:false};}
+      publish();return {...record.questionDelivery};
+    },
     flushHistory() {const result = flushHistory(); publish(); return result;},
     interrupt() {
       if (releaseUnknown) throw Error(lastError);

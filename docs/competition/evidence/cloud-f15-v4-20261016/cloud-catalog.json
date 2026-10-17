@@ -1,0 +1,3974 @@
+{
+  "kind": "real_agentarts_workflow_catalog_readback",
+  "requestedVersion": "arm64-v4-e38ef23d-r2",
+  "runtimeName": "pa-owned-bindings-0dae0ff5-api",
+  "requestId": "catalog-v4-22182e1e-0b80-40db-ad86-dee71a7095c3",
+  "sessionId": "catalog-3a8ef6e3-f892-4116-b07d-ab3dd0b7bfe6",
+  "startedAt": "2026-10-16T09:10:46.381Z",
+  "finishedAt": "2026-10-16T09:10:46.937Z",
+  "wallMs": 555.2922000000001,
+  "httpStatus": 200,
+  "catalog": {
+    "workflowVersion": "1.0.0",
+    "verification": "unverified",
+    "workflowBindings": [
+      {
+        "id": "owned-F01",
+        "workflowId": "F01",
+        "name": "主对话与责任理解",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "bbeec83a0161b95a8dbef9e48ab0fa31563b5aed35db46320e784bd5a7c03679",
+        "nodeCount": 9,
+        "requirements": [
+          "host:memory.query",
+          "host:responsibility.snapshot",
+          "host:model.capabilities",
+          "host:policy.scope_check",
+          "host:model.native_config_check",
+          "host:runtime.commit_task_graph",
+          "tool:knowledge.search",
+          "host:voice.ask_question",
+          "host:runtime.commit_responsibility"
+        ]
+      },
+      {
+        "id": "owned-F02",
+        "workflowId": "F02",
+        "name": "语音交互与确认",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "54450a6f35bd158611bebea107f3c8ae5389ac63936c97880128608769b3ecc3",
+        "nodeCount": 11,
+        "requirements": [
+          "host:policy.pending_question",
+          "host:voice.speak_question",
+          "host:voice.final_transcript",
+          "host:policy.confirmation_check",
+          "host:policy.resume_original_operation",
+          "host:runtime.invalidate_question",
+          "host:runtime.reject_operation",
+          "host:runtime.local_stop_observation",
+          "host:voice.local_fallback",
+          "host:runtime.read_original_effect"
+        ]
+      },
+      {
+        "id": "owned-F03",
+        "workflowId": "F03",
+        "name": "世界状态、目标与局部重规划",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "5cb26bf5c9b556b78774fde30d0c0708ff4bdaa1244d932d6916f46a001491b7",
+        "nodeCount": 10,
+        "requirements": [
+          "host:memory.query",
+          "host:runtime.invalidate_affected_subgraph",
+          "host:runtime.original_effect_binding",
+          "host:runtime.reconcile_original_effect",
+          "host:policy.compensation_check",
+          "host:runtime.submit_bound_compensation",
+          "host:voice.ask_question",
+          "host:runtime.schedule_graph"
+        ]
+      },
+      {
+        "id": "owned-F04",
+        "workflowId": "F04",
+        "name": "Wiki 与作用域记忆管理",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "8f751aff1112532d59ff9d533bf3ae62c8c75b9bdadd82895ba0647ac3e5cb58",
+        "nodeCount": 7,
+        "requirements": [
+          "host:memory.query",
+          "host:knowledge.source_and_write_check",
+          "tool:knowledge.apply_note_patch",
+          "host:memory.quarantine_candidate",
+          "host:memory.invalidate_projection"
+        ]
+      },
+      {
+        "id": "owned-F05",
+        "workflowId": "F05",
+        "name": "记忆搜索与来源回答",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "c72e8637c6bc6410917da06283e99f205b934847a9890b01334c08f2165855ac",
+        "nodeCount": 7,
+        "requirements": [
+          "tool:knowledge.search",
+          "host:memory.query",
+          "host:knowledge.citation_revision_check",
+          "host:runtime.publish_sourced_answer"
+        ]
+      },
+      {
+        "id": "owned-F06",
+        "workflowId": "F06",
+        "name": "待办、提醒与跟进",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "de78d7359ddd35a94211361278412370cd499c93af5a91c464bf2a6624da2f9a",
+        "nodeCount": 5,
+        "requirements": [
+          "host:todo.registered_write",
+          "host:reminder.current_clock_and_revision",
+          "host:notification.deliver"
+        ]
+      },
+      {
+        "id": "owned-F07",
+        "workflowId": "F07",
+        "name": "日历安排与冲突处理",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "6dd3145f4962c39bd9ab1c322b29704e3d45b74085c4aa1212d7ad58f2ca02ed",
+        "nodeCount": 5,
+        "requirements": [
+          "tool:calendar.events",
+          "host:calendar.freshness_check",
+          "host:calendar.registered_write"
+        ]
+      },
+      {
+        "id": "owned-F08",
+        "workflowId": "F08",
+        "name": "邮件分类、草稿与发送",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "e1df1ca4b10591e7fc9e14d97eb504e6b4b5209337f35be14903b94d7d576739",
+        "nodeCount": 13,
+        "requirements": [
+          "tool:mail.inbox",
+          "tool:knowledge.search",
+          "host:mail.registered_archive",
+          "host:policy.operation_scope_check",
+          "host:voice.ask_question",
+          "host:mail.registered_send",
+          "tool:mail.reconcile_send",
+          "host:runtime.wait_reconciliation",
+          "host:runtime.versioned_replan"
+        ]
+      },
+      {
+        "id": "owned-F09",
+        "workflowId": "F09",
+        "name": "订阅、信号发现与筛选",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "7af1f2a4920add14c4f5aa3a68302330949187738f5894bb6dfc28d1b581e854",
+        "nodeCount": 4,
+        "requirements": [
+          "tool:feeds.collect",
+          "host:feeds.validate_and_deduplicate",
+          "host:runtime.enqueue_research"
+        ]
+      },
+      {
+        "id": "owned-F10",
+        "workflowId": "F10",
+        "name": "深度研究与证据汇总",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "6d98c8b8fc41a15dd41c89c75de8a8b4db38c79aab87b84aeaf9d5c458030cf3",
+        "nodeCount": 6,
+        "requirements": [
+          "tool:research.search",
+          "tool:knowledge.search",
+          "host:knowledge.check_supported_claims"
+        ]
+      },
+      {
+        "id": "owned-F11",
+        "workflowId": "F11",
+        "name": "天气、出行及计划影响",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "7324b55415e4d68181cb7cdac1f2ebeefe85177fcb5bfe415ab674f4c4c41394",
+        "nodeCount": 5,
+        "requirements": [
+          "tool:calendar.events",
+          "host:voice.ask_question",
+          "host:calendar.update_and_invalidate_reminder"
+        ]
+      },
+      {
+        "id": "owned-F12",
+        "workflowId": "F12",
+        "name": "通知、安静时段与主动服务",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "7c8bbed2f796a5db066f8aa7cffbba6e78005e77c69b796dc4be7853d2f9abca",
+        "nodeCount": 5,
+        "requirements": [
+          "host:policy.quiet_hours",
+          "host:notification.deliver",
+          "host:notification.deliver_when_due"
+        ]
+      },
+      {
+        "id": "owned-F13",
+        "workflowId": "F13",
+        "name": "系统检查与故障诊断",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "de9fd0ae48bae17d59e63e05e5bfe9753f069e21162e880362b493269ebea312",
+        "nodeCount": 4,
+        "requirements": [
+          "host:system.registered_probe",
+          "host:runtime.confirmed_recovery"
+        ]
+      },
+      {
+        "id": "owned-F14",
+        "workflowId": "F14",
+        "name": "浏览器与桌面操作",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "cb961924a31778db8eb5a99c5408ec69245262d44c71f5e0779723fdbacf309b",
+        "nodeCount": 6,
+        "requirements": [
+          "host:desktop.current_observation",
+          "host:runtime.desktop_input_lock",
+          "host:desktop.registered_input",
+          "host:voice.ask_question",
+          "host:desktop.registered_submit"
+        ]
+      },
+      {
+        "id": "owned-F15",
+        "workflowId": "F15",
+        "name": "代码修改、补丁与命令执行",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "cbc53e499a644f43c2ab3d19116d747289a32d08b4d52eca51753584737ac517",
+        "nodeCount": 6,
+        "requirements": [
+          "tool:workspace.read_text",
+          "host:workspace.patch_scope_check",
+          "host:runtime.patch_and_required_checks",
+          "host:runtime.deliver_patch_evidence"
+        ]
+      },
+      {
+        "id": "owned-F16",
+        "workflowId": "F16",
+        "name": "CI 检查与修复",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "87e958947324860f7884318035b03b81ffd840ca48587087d570ffea02fc173d",
+        "nodeCount": 5,
+        "requirements": [
+          "host:github.bound_ci_failure",
+          "tool:workspace.apply_text_patch",
+          "host:workspace.test_intent_check",
+          "tool:workspace.run_allowed_command"
+        ]
+      },
+      {
+        "id": "owned-F17",
+        "workflowId": "F17",
+        "name": "测试失败定位",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "15c315300162962d1138d177f621670f43cb1c3ba610f04188367ea225cf05d5",
+        "nodeCount": 4,
+        "requirements": [
+          "tool:workspace.run_allowed_command",
+          "host:runtime.deliver_failure_report"
+        ]
+      },
+      {
+        "id": "owned-F18",
+        "workflowId": "F18",
+        "name": "PR 审查、批准条件与合并",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "6dd78b6d9ae86fe9e6072d8efc7b23786f84596d75dcbf900f96ce1752beef0b",
+        "nodeCount": 5,
+        "requirements": [
+          "host:github.bound_pr_diff",
+          "host:github.current_head_merge_gate",
+          "host:github.registered_merge"
+        ]
+      },
+      {
+        "id": "owned-F19",
+        "workflowId": "F19",
+        "name": "Issue 分诊与关联修复",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "bc5ceb41e80b6d1e94c28b0f9cfe936f4b480794dae206190b8e3daa17cc1c9c",
+        "nodeCount": 5,
+        "requirements": [
+          "host:github.issue_snapshot",
+          "host:runtime.enqueue_issue_repair",
+          "host:github.merged_repair_readback",
+          "host:github.registered_close_issue"
+        ]
+      },
+      {
+        "id": "owned-F20",
+        "workflowId": "F20",
+        "name": "API 文档与一致性检查",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "531c53f8ac38a405231533698bd4fa2e25f514b84bec6b3f9531e78a3e4fd768",
+        "nodeCount": 4,
+        "requirements": [
+          "tool:workspace.read_text",
+          "tool:workspace.run_allowed_command"
+        ]
+      },
+      {
+        "id": "owned-F21",
+        "workflowId": "F21",
+        "name": "MCP、Skills 和连接器接入",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "4981eb86848b92be1009df3779a3b7235b4de44e565b5ac32616c1b61959b674",
+        "nodeCount": 5,
+        "requirements": [
+          "host:mcp_skill.source_manifest",
+          "host:mcp_skill.install_registry",
+          "host:mcp_skill.protocol_health",
+          "host:mcp_skill.isolated_probe",
+          "host:mcp_skill.enable_authorized"
+        ]
+      },
+      {
+        "id": "owned-F22",
+        "workflowId": "F22",
+        "name": "工作流调试与影子实验",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "e02e670d73b6e475dbdbdfcfee8206357d398b5f2825cd02179a31674a5d1254",
+        "nodeCount": 9,
+        "requirements": [
+          "host:shadow.trigger_snapshot",
+          "host:shadow.versioned_snapshot",
+          "host:shadow.decision_snapshot",
+          "host:shadow.historical_trace",
+          "host:shadow.isolated_capabilities",
+          "host:shadow.counterfactual_evidence"
+        ]
+      },
+      {
+        "id": "owned-F23",
+        "workflowId": "F23",
+        "name": "决策配置、评估与版本晋升",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "0fb7978a6847d314f8ad5f1a779262cb2fef894a6930a206226765b8841dc6ad",
+        "nodeCount": 5,
+        "requirements": [
+          "host:evaluation.dataset_snapshot",
+          "host:evaluation.temporal_leakage_check",
+          "host:evaluation.actual_result_dataset",
+          "host:configuration.promote_with_rollback",
+          "host:configuration.operation_readback"
+        ]
+      },
+      {
+        "id": "owned-F24",
+        "workflowId": "F24",
+        "name": "调度、并发、取消与恢复",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "718dee19c2b5ec0f87ffb9511764612d1d9613d8c29addcfb5ee6fa0c9af9992",
+        "nodeCount": 12,
+        "requirements": [
+          "host:runtime.persist_graph",
+          "host:policy.operation_scope_check",
+          "host:runtime.execute_published_operation",
+          "host:runtime.selected_branch_evidence",
+          "host:runtime.local_stop_observation",
+          "host:runtime.stop_not_started",
+          "host:runtime.stop_in_flight",
+          "host:runtime.reconcile_original_effect",
+          "host:runtime.keep_confirmed_effect",
+          "host:runtime.recover_checkpoint",
+          "host:runtime.publish_actual_status"
+        ]
+      },
+      {
+        "id": "owned-F25",
+        "workflowId": "F25",
+        "name": "配置、账户、凭据和数据范围",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "5e16c5a14eb3f4d473742169ac870785cdc4ca19d3ea3bbb658a026f79521afd",
+        "nodeCount": 4,
+        "requirements": [
+          "host:policy.outbound_context_check",
+          "host:configuration.save_credential_reference"
+        ]
+      },
+      {
+        "id": "owned-F26",
+        "workflowId": "F26",
+        "name": "镜像、部署与比赛验收",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "9bb06a8e83e6f71310676c42bc3b3f2b8d4d04031bdf6e9c56e7eeacf75ffc94",
+        "nodeCount": 5,
+        "requirements": [
+          "host:deployment.build_arm64_image",
+          "host:deployment.runtime_readback",
+          "host:deployment.real_tool_evidence",
+          "host:deployment.publish_verified_coverage"
+        ]
+      },
+      {
+        "id": "owned-F27",
+        "workflowId": "F27",
+        "name": "上下文预算、压缩与恢复",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "da0b4e0921df65286ea7e0e3b54e040d110d3f215bcd65458f649294113790b6",
+        "nodeCount": 7,
+        "requirements": [
+          "host:model.capabilities",
+          "host:memory.query",
+          "tool:knowledge.search",
+          "host:model.context_source_map_check",
+          "host:runtime.invalidate_context_mapping"
+        ]
+      },
+      {
+        "id": "owned-F28",
+        "workflowId": "F28",
+        "name": "多厂商模型、思考深度与主对话分配",
+        "workflowVersion": "1.0.0",
+        "templateVersion": "2026.10.15.2",
+        "templateDigest": "db1461266577801597feea68dd45057e5a4bb73ac53bc6e2ee70cb736de97813",
+        "nodeCount": 12,
+        "requirements": [
+          "host:model.native_config_check",
+          "host:workspace.source_and_test_check",
+          "host:runtime.completion_check",
+          "host:executor.scoped_tool_loop"
+        ]
+      }
+    ],
+    "designCoverage": {
+      "source": "docs/design/workflow-architecture-20261013/source/src/data/architecture.json",
+      "projectionSha256": "088f7f00dfb3a7ab5ff4f1c38ca8fc80dd41ef25f36d4d019e2e0ec7e2ab341f",
+      "templateVersion": "2026.10.15.2",
+      "workflowCount": 28,
+      "nodeCount": 185,
+      "workflows": [
+        {
+          "workflowId": "F01",
+          "templateDigest": "bbeec83a0161b95a8dbef9e48ab0fa31563b5aed35db46320e784bd5a7c03679",
+          "nodeCount": 9
+        },
+        {
+          "workflowId": "F02",
+          "templateDigest": "54450a6f35bd158611bebea107f3c8ae5389ac63936c97880128608769b3ecc3",
+          "nodeCount": 11
+        },
+        {
+          "workflowId": "F03",
+          "templateDigest": "5cb26bf5c9b556b78774fde30d0c0708ff4bdaa1244d932d6916f46a001491b7",
+          "nodeCount": 10
+        },
+        {
+          "workflowId": "F04",
+          "templateDigest": "8f751aff1112532d59ff9d533bf3ae62c8c75b9bdadd82895ba0647ac3e5cb58",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F05",
+          "templateDigest": "c72e8637c6bc6410917da06283e99f205b934847a9890b01334c08f2165855ac",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F06",
+          "templateDigest": "de78d7359ddd35a94211361278412370cd499c93af5a91c464bf2a6624da2f9a",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F07",
+          "templateDigest": "6dd3145f4962c39bd9ab1c322b29704e3d45b74085c4aa1212d7ad58f2ca02ed",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F08",
+          "templateDigest": "e1df1ca4b10591e7fc9e14d97eb504e6b4b5209337f35be14903b94d7d576739",
+          "nodeCount": 13
+        },
+        {
+          "workflowId": "F09",
+          "templateDigest": "7af1f2a4920add14c4f5aa3a68302330949187738f5894bb6dfc28d1b581e854",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F10",
+          "templateDigest": "6d98c8b8fc41a15dd41c89c75de8a8b4db38c79aab87b84aeaf9d5c458030cf3",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F11",
+          "templateDigest": "7324b55415e4d68181cb7cdac1f2ebeefe85177fcb5bfe415ab674f4c4c41394",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F12",
+          "templateDigest": "7c8bbed2f796a5db066f8aa7cffbba6e78005e77c69b796dc4be7853d2f9abca",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F13",
+          "templateDigest": "de9fd0ae48bae17d59e63e05e5bfe9753f069e21162e880362b493269ebea312",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F14",
+          "templateDigest": "cb961924a31778db8eb5a99c5408ec69245262d44c71f5e0779723fdbacf309b",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F15",
+          "templateDigest": "cbc53e499a644f43c2ab3d19116d747289a32d08b4d52eca51753584737ac517",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F16",
+          "templateDigest": "87e958947324860f7884318035b03b81ffd840ca48587087d570ffea02fc173d",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F17",
+          "templateDigest": "15c315300162962d1138d177f621670f43cb1c3ba610f04188367ea225cf05d5",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F18",
+          "templateDigest": "6dd78b6d9ae86fe9e6072d8efc7b23786f84596d75dcbf900f96ce1752beef0b",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F19",
+          "templateDigest": "bc5ceb41e80b6d1e94c28b0f9cfe936f4b480794dae206190b8e3daa17cc1c9c",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F20",
+          "templateDigest": "531c53f8ac38a405231533698bd4fa2e25f514b84bec6b3f9531e78a3e4fd768",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F21",
+          "templateDigest": "4981eb86848b92be1009df3779a3b7235b4de44e565b5ac32616c1b61959b674",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F22",
+          "templateDigest": "e02e670d73b6e475dbdbdfcfee8206357d398b5f2825cd02179a31674a5d1254",
+          "nodeCount": 9
+        },
+        {
+          "workflowId": "F23",
+          "templateDigest": "0fb7978a6847d314f8ad5f1a779262cb2fef894a6930a206226765b8841dc6ad",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F24",
+          "templateDigest": "718dee19c2b5ec0f87ffb9511764612d1d9613d8c29addcfb5ee6fa0c9af9992",
+          "nodeCount": 12
+        },
+        {
+          "workflowId": "F25",
+          "templateDigest": "5e16c5a14eb3f4d473742169ac870785cdc4ca19d3ea3bbb658a026f79521afd",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F26",
+          "templateDigest": "9bb06a8e83e6f71310676c42bc3b3f2b8d4d04031bdf6e9c56e7eeacf75ffc94",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F27",
+          "templateDigest": "da0b4e0921df65286ea7e0e3b54e040d110d3f215bcd65458f649294113790b6",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F28",
+          "templateDigest": "db1461266577801597feea68dd45057e5a4bb73ac53bc6e2ee70cb736de97813",
+          "nodeCount": 12
+        }
+      ],
+      "meaning": "Design coverage only; actual provider wiring and business verification are separate"
+    },
+    "adapterRequirements": [
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f01_n02",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "独立依赖（默认串行）召回有效责任、上下文与能力",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "memory.query",
+            "boundary": "local"
+          },
+          {
+            "kind": "host",
+            "name": "responsibility.snapshot",
+            "boundary": "local"
+          },
+          {
+            "kind": "host",
+            "name": "model.capabilities",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "事件元数据或已知查询对象",
+          "现有数据范围"
+        ],
+        "outputFields": [
+          "责任版本",
+          "事实片段",
+          "模板/模型能力"
+        ]
+      },
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f01_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "宿主检查引用、适用范围与现有授权",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.scope_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "来源定位",
+          "指令revision",
+          "现有授权记录",
+          "动作对象及参数"
+        ],
+        "outputFields": [
+          "可采用候选或待澄清项"
+        ]
+      },
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f01_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "F28适配执行模型与实际支持参数",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "model.native_config_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "已校验分工候选",
+          "原生能力目录"
+        ],
+        "outputFields": [
+          "子任务配置"
+        ]
+      },
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f01_n06",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "TaskRuntime建立责任关联任务图",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.commit_task_graph",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "任务revision",
+          "依赖边",
+          "责任来源引用"
+        ]
+      },
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N07",
+        "kind": "guard",
+        "toolName": "workflow.guard.f01_n07",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "缺信息：在既有数据范围扩充检索",
+        "capabilities": [
+          {
+            "kind": "tool",
+            "name": "knowledge.search",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N08",
+        "kind": "host",
+        "toolName": "workflow.host.f01_n08",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "真正歧义：主动语音或文字补问",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "绑定当前问题的回答"
+        ]
+      },
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N08",
+        "kind": "guard",
+        "toolName": "workflow.guard.f01_n08",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "真正歧义：主动语音或文字补问",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N09",
+        "kind": "host",
+        "toolName": "workflow.host.f01_n09",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "明确已授权责任直接激活并留来源",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.commit_responsibility",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "有效责任版本",
+          "适用范围",
+          "撤销/变更关联"
+        ]
+      },
+      {
+        "workflowId": "F01",
+        "nodeId": "F01_N09",
+        "kind": "guard",
+        "toolName": "workflow.guard.f01_n09",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "明确已授权责任直接激活并留来源",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.commit_responsibility",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "可信操作摘要：对象、参数、问题ID与revision",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.pending_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "可信任务及操作",
+          "审批revision",
+          "参数指纹"
+        ],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N01",
+        "kind": "guard",
+        "toolName": "workflow.guard.f02_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "可信操作摘要：对象、参数、问题ID与revision",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.pending_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "可信任务及操作",
+          "审批revision",
+          "参数指纹"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n02",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "主动询问：本地播报与文字同步",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.speak_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "可信语音会话的最终转写；中途与回声不作确认",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.final_transcript",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "ASR最终text",
+          "宿主语音会话引用",
+          "当前问题记录"
+        ],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "检查当前问题、revision、参数指纹与一次消费",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.confirmation_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N05",
+        "kind": "guard",
+        "toolName": "workflow.guard.f02_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "检查当前问题、revision、参数指纹与一次消费",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.confirmation_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n06",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "明确同意：交回既有Policy，执行后核实",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.resume_original_operation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N07",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n07",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "修改或条件：旧确认失效，再核对已有授权",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.invalidate_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "新候选revision",
+          "是否仍需要新决定"
+        ]
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N08",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n08",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "拒绝：本地停止当前动作，独立分支继续",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.reject_operation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N09",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n09",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "本地直接停止入口：不等待ASR或云模型",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.local_stop_observation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N09",
+        "kind": "guard",
+        "toolName": "workflow.guard.f02_n09",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "本地直接停止入口：不等待ASR或云模型",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.local_stop_observation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N10",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n10",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "ASR / 云端不可用：显示本地操作入口",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.local_fallback",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F02",
+        "nodeId": "F02_N11",
+        "kind": "host",
+        "toolName": "workflow.host.f02_n11",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "核实操作结果并反馈",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.read_original_effect",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": []
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f03_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "独立依赖（默认串行）宽松召回时间、地点、人物、资源",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "memory.query",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "重叠/邻近/出行候选",
+          "未知属性项",
+          "来源版本"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f03_n03",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "保留有效成果；仅使过时计划节点失效",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.invalidate_affected_subgraph",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "保留检查点",
+          "计划新revision"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f03_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "宿主绑定原操作、效果与变更因果链",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.original_effect_binding",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "稳定operation/effect ID",
+          "实际执行/读回记录",
+          "候选的原效果引用"
+        ],
+        "outputFields": [
+          "已绑定的正向/重试/补偿上下文"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N07",
+        "kind": "host",
+        "toolName": "workflow.host.f03_n07",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "未知原写入：先读回核实",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.reconcile_original_effect",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "已发生/未发生/仍未知及证据"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N07",
+        "kind": "guard",
+        "toolName": "workflow.guard.f03_n07",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "未知原写入：先读回核实",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.reconcile_original_effect",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N08",
+        "kind": "host",
+        "toolName": "workflow.host.f03_n08",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "现有Policy核对实际补偿授权",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.compensation_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "原效果因果链",
+          "补偿对象/参数",
+          "现有授权"
+        ],
+        "outputFields": [
+          "已覆盖或需决定"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N08",
+        "kind": "guard",
+        "toolName": "workflow.guard.f03_n08",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "现有Policy核对实际补偿授权",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.compensation_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "原效果因果链",
+          "补偿对象/参数",
+          "现有授权"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N09",
+        "kind": "host",
+        "toolName": "workflow.host.f03_n09",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "覆盖授权：执行补偿并读回",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.submit_bound_compensation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "独立补偿操作ID",
+          "补偿结果与读回"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N09",
+        "kind": "guard",
+        "toolName": "workflow.guard.f03_n09",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "覆盖授权：执行补偿并读回",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.submit_bound_compensation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N10",
+        "kind": "host",
+        "toolName": "workflow.host.f03_n10",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "缺决定：保留补偿草稿并语音补问",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "草稿",
+          "待决问题引用"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N10",
+        "kind": "guard",
+        "toolName": "workflow.guard.f03_n10",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "缺决定：保留补偿草稿并语音补问",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F03",
+        "nodeId": "F03_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f03_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "F24按新依赖调度；独立分支继续",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.schedule_graph",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "可继续节点",
+          "等待核实/决定项"
+        ]
+      },
+      {
+        "workflowId": "F04",
+        "nodeId": "F04_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f04_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "独立依赖（默认串行）检索已有版本与有效授权引用",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "memory.query",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "事实版本链",
+          "冲突候选",
+          "授权引用（独立）"
+        ]
+      },
+      {
+        "workflowId": "F04",
+        "nodeId": "F04_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f04_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "宿主核对来源与公开写入能力",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "knowledge.source_and_write_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "可写候选或Unavailable"
+        ]
+      },
+      {
+        "workflowId": "F04",
+        "nodeId": "F04_N03",
+        "kind": "guard",
+        "toolName": "workflow.guard.f04_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "相容：写新版本并保留旧版来源",
+        "capabilities": [
+          {
+            "kind": "tool",
+            "name": "knowledge.apply_note_patch",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F04",
+        "nodeId": "F04_N07",
+        "kind": "host",
+        "toolName": "workflow.host.f04_n07",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "冲突：隔离候选，按需澄清",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "memory.quarantine_candidate",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "隔离标记",
+          "尚未解决事项"
+        ]
+      },
+      {
+        "workflowId": "F04",
+        "nodeId": "F04_N07",
+        "kind": "guard",
+        "toolName": "workflow.guard.f04_n07",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "冲突：隔离候选，按需澄清",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "memory.quarantine_candidate",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F04",
+        "nodeId": "F04_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f04_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "通知受影响索引与上下文失效",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "memory.invalidate_projection",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "失效传播事件",
+          "可恢复来源引用"
+        ]
+      },
+      {
+        "workflowId": "F05",
+        "nodeId": "F05_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f05_n02",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "范围/版本初筛后独立依赖（默认串行）多路召回",
+        "capabilities": [
+          {
+            "kind": "tool",
+            "name": "knowledge.search",
+            "boundary": "local"
+          },
+          {
+            "kind": "host",
+            "name": "memory.query",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "文本/事实/语义候选",
+          "来源与版本"
+        ]
+      },
+      {
+        "workflowId": "F05",
+        "nodeId": "F05_N06",
+        "kind": "guard",
+        "toolName": "workflow.guard.f05_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "按需扩充已授权数据范围的检索",
+        "capabilities": [
+          {
+            "kind": "tool",
+            "name": "knowledge.search",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F05",
+        "nodeId": "F05_N04",
+        "kind": "guard",
+        "toolName": "workflow.guard.f05_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "执行模型生成带来源候选回答",
+        "capabilities": [],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F05",
+        "nodeId": "F05_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f05_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "候选判断检查支持关系；代码核对引用版本",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "knowledge.citation_revision_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "支持/未支持项",
+          "需补查或未知"
+        ]
+      },
+      {
+        "workflowId": "F05",
+        "nodeId": "F05_N07",
+        "kind": "host",
+        "toolName": "workflow.host.f05_n07",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "发布有据回答并记录引用影响",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.publish_sourced_answer",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "答案",
+          "来源清单",
+          "未解决项"
+        ]
+      },
+      {
+        "workflowId": "F06",
+        "nodeId": "F06_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f06_n03",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "写入待办系统 (带幂等键)",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "todo.registered_write",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "todoTitle",
+          "due"
+        ],
+        "outputFields": [
+          "todoId",
+          "opKey"
+        ]
+      },
+      {
+        "workflowId": "F06",
+        "nodeId": "F06_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f06_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "按实际时钟与当前提醒版本检查到期",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "reminder.current_clock_and_revision",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "advanceTo"
+        ],
+        "outputFields": [
+          "isTaskAlreadyFinished",
+          "shouldFireAlarm"
+        ]
+      },
+      {
+        "workflowId": "F06",
+        "nodeId": "F06_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f06_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "播发提醒通知",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "notification.deliver",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "notification"
+        ],
+        "outputFields": [
+          "delivered"
+        ]
+      },
+      {
+        "workflowId": "F07",
+        "nodeId": "F07_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f07_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "写入前日历版本新鲜度校验",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "calendar.freshness_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "calendarVersionAtRead",
+          "calendarVersionNow"
+        ],
+        "outputFields": [
+          "versionConsistent"
+        ]
+      },
+      {
+        "workflowId": "F07",
+        "nodeId": "F07_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f07_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "创建本地预留日程",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "calendar.registered_write",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "title",
+          "slot"
+        ],
+        "outputFields": [
+          "eventCreated",
+          "externalInviteHeld"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f08_n03",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "分支A：现有Policy核验后归档并读回",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "mail.registered_archive",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "归档操作ID",
+          "实际结果"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N10",
+        "kind": "host",
+        "toolName": "workflow.host.f08_n10",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "宿主核对具体参数、revision与现有授权",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.operation_scope_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "可直接执行或待决问题"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f08_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "仅缺决定：调用F02主动语音/文字补问",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "当前问题及revision的回答"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N06",
+        "kind": "guard",
+        "toolName": "workflow.guard.f08_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "仅缺决定：调用F02主动语音/文字补问",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N07",
+        "kind": "host",
+        "toolName": "workflow.host.f08_n07",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "授权通过：稳定操作ID发送",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "mail.registered_send",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "原发送operation/effect ID",
+          "工具实际状态"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N07",
+        "kind": "guard",
+        "toolName": "workflow.guard.f08_n07",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "授权通过：稳定操作ID发送",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "mail.registered_send",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N12",
+        "kind": "host",
+        "toolName": "workflow.host.f08_n12",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "结果未知：后台核实，禁止盲目重发",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.wait_reconciliation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "待核实状态",
+          "原发送身份"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N12",
+        "kind": "guard",
+        "toolName": "workflow.guard.f08_n12",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "结果未知：后台核实，禁止盲目重发",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.wait_reconciliation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N13",
+        "kind": "host",
+        "toolName": "workflow.host.f08_n13",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "输入变化：转F03保留原效果并局部修订",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.versioned_replan",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "变更原因",
+          "原效果因果链"
+        ]
+      },
+      {
+        "workflowId": "F08",
+        "nodeId": "F08_N13",
+        "kind": "guard",
+        "toolName": "workflow.guard.f08_n13",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "输入变化：转F03保留原效果并局部修订",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.versioned_replan",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F09",
+        "nodeId": "F09_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f09_n02",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "确定性哈希去重与格式校验",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "feeds.validate_and_deduplicate",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "events"
+        ],
+        "outputFields": [
+          "uniqueCount",
+          "duplicateDiscarded"
+        ]
+      },
+      {
+        "workflowId": "F09",
+        "nodeId": "F09_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f09_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "转入 F10 深度研究队列",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.enqueue_research",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "signalPayload"
+        ],
+        "outputFields": [
+          "researchTaskSpawned"
+        ]
+      },
+      {
+        "workflowId": "F10",
+        "nodeId": "F10_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f10_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "独立红蓝对抗审查 (寻找未支持主张与反例)",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "knowledge.check_supported_claims",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "rawFindings"
+        ],
+        "outputFields": [
+          "correctionsApplied"
+        ]
+      },
+      {
+        "workflowId": "F11",
+        "nodeId": "F11_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f11_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "仅真正缺决定时主动语音补问",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "question"
+        ],
+        "outputFields": [
+          "userConfirmed"
+        ]
+      },
+      {
+        "workflowId": "F11",
+        "nodeId": "F11_N04",
+        "kind": "guard",
+        "toolName": "workflow.guard.f11_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "仅真正缺决定时主动语音补问",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "question"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F11",
+        "nodeId": "F11_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f11_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "更新日程属性并作废旧出行闹铃",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "calendar.update_and_invalidate_reminder",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "eventId",
+          "newType"
+        ],
+        "outputFields": [
+          "calendarUpdated",
+          "oldTrafficAlarmVoided"
+        ]
+      },
+      {
+        "workflowId": "F11",
+        "nodeId": "F11_N05",
+        "kind": "guard",
+        "toolName": "workflow.guard.f11_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "更新日程属性并作废旧出行闹铃",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "calendar.update_and_invalidate_reminder",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "eventId",
+          "newType"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F12",
+        "nodeId": "F12_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f12_n02",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "读取global→connector→responsibility当前策略",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.quiet_hours",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "scopeRefs",
+          "policyRevision"
+        ],
+        "outputFields": [
+          "mode",
+          "maxInterruptions",
+          "windowMinutes",
+          "silentUntilUtc",
+          "preferredChannel",
+          "allowUrgentBreakthrough",
+          "digestMode",
+          "quietHours"
+        ]
+      },
+      {
+        "workflowId": "F12",
+        "nodeId": "F12_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f12_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "原子reserve同round→最新策略复检→实际渠道receipt",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "notification.deliver",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "itemId",
+          "roundId",
+          "policyRevision",
+          "currentChannel",
+          "原授权"
+        ],
+        "outputFields": [
+          "reservationRef",
+          "sending / confirmed / unknown",
+          "receiptRef"
+        ]
+      },
+      {
+        "workflowId": "F12",
+        "nodeId": "F12_N04",
+        "kind": "guard",
+        "toolName": "workflow.guard.f12_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "原子reserve同round→最新策略复检→实际渠道receipt",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "notification.deliver",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "itemId",
+          "roundId",
+          "policyRevision",
+          "currentChannel",
+          "原授权"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F12",
+        "nodeId": "F12_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f12_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "静默feed/独立read ack与有效return digest",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "notification.deliver_when_due",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "itemId",
+          "unread",
+          "deliveredAt",
+          "readAck",
+          "仍有效变化"
+        ],
+        "outputFields": [
+          "done / changed / pending / blocked",
+          "digestRef"
+        ]
+      },
+      {
+        "workflowId": "F12",
+        "nodeId": "F12_N05",
+        "kind": "guard",
+        "toolName": "workflow.guard.f12_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "静默feed/独立read ack与有效return digest",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "notification.deliver_when_due",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "itemId",
+          "unread",
+          "deliveredAt",
+          "readAck",
+          "仍有效变化"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F13",
+        "nodeId": "F13_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f13_n02",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "独立依赖（默认串行）运行确定性探针诊断",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "system.registered_probe",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "checks"
+        ],
+        "outputFields": [
+          "cloudAlive",
+          "quotaNormal",
+          "staleLockFound"
+        ]
+      },
+      {
+        "workflowId": "F13",
+        "nodeId": "F13_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f13_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "核实执行宿主与未知效果后恢复资源",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.confirmed_recovery",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "targetLock"
+        ],
+        "outputFields": [
+          "lockReleased",
+          "taskResumed"
+        ]
+      },
+      {
+        "workflowId": "F14",
+        "nodeId": "F14_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f14_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "加载浏览器页面并解析可操作 DOM",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "desktop.current_observation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "url"
+        ],
+        "outputFields": [
+          "elementsFound"
+        ]
+      },
+      {
+        "workflowId": "F14",
+        "nodeId": "F14_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f14_n02",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "申请桌面/浏览器输入互斥锁",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.desktop_input_lock",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "lockKey"
+        ],
+        "outputFields": [
+          "lockAcquired"
+        ]
+      },
+      {
+        "workflowId": "F14",
+        "nodeId": "F14_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f14_n03",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "串行键盘填充字段",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "desktop.registered_input",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "values"
+        ],
+        "outputFields": [
+          "fieldsPopulated"
+        ]
+      },
+      {
+        "workflowId": "F14",
+        "nodeId": "F14_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f14_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "缺少决定时主动语音/文字确认",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "question"
+        ],
+        "outputFields": [
+          "confirmed"
+        ]
+      },
+      {
+        "workflowId": "F14",
+        "nodeId": "F14_N05",
+        "kind": "guard",
+        "toolName": "workflow.guard.f14_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "缺少决定时主动语音/文字确认",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "voice.ask_question",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "question"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F14",
+        "nodeId": "F14_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f14_n06",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "点击提交并释放输入锁",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "desktop.registered_submit",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "clickTarget"
+        ],
+        "outputFields": [
+          "receiptId",
+          "lockReleased"
+        ]
+      },
+      {
+        "workflowId": "F14",
+        "nodeId": "F14_N06",
+        "kind": "guard",
+        "toolName": "workflow.guard.f14_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "点击提交并释放输入锁",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "desktop.registered_submit",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "clickTarget"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F15",
+        "nodeId": "F15_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f15_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "独立红线审查 (防越界与隐蔽变更)",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "workspace.patch_scope_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "patch"
+        ],
+        "outputFields": [
+          "noBreakingApi",
+          "noUnrelatedFormatting",
+          "approved"
+        ]
+      },
+      {
+        "workflowId": "F15",
+        "nodeId": "F15_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f15_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "在支持的测试工作区应用补丁并运行必要检查",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.patch_and_required_checks",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "testCommand"
+        ],
+        "outputFields": [
+          "passedTests",
+          "failedTests",
+          "testDurationMs"
+        ]
+      },
+      {
+        "workflowId": "F15",
+        "nodeId": "F15_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f15_n06",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "交付补丁及检查凭证，按既有发布条件处理",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.deliver_patch_evidence",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "diff"
+        ],
+        "outputFields": [
+          "patchReadyForReview",
+          "autoPushBlocked"
+        ]
+      },
+      {
+        "workflowId": "F16",
+        "nodeId": "F16_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f16_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "绑定提交版本与失败日志",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "github.bound_ci_failure",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "commitSha",
+          "logSnippet"
+        ],
+        "outputFields": [
+          "errorClass"
+        ]
+      },
+      {
+        "workflowId": "F16",
+        "nodeId": "F16_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f16_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "审查修复是否保留真实验收意图",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "workspace.test_intent_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "testFileModified",
+          "assertionCount"
+        ],
+        "outputFields": [
+          "noCheatingDetected"
+        ]
+      },
+      {
+        "workflowId": "F17",
+        "nodeId": "F17_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f17_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "交付根因证据清单与针对性修复",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.deliver_failure_report",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "fix"
+        ],
+        "outputFields": [
+          "all6PassResolved"
+        ]
+      },
+      {
+        "workflowId": "F18",
+        "nodeId": "F18_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f18_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "固定 PR 当前提交 SHA 与 Diff",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "github.bound_pr_diff",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "prNumber",
+          "base",
+          "headSha"
+        ],
+        "outputFields": [
+          "filesChanged",
+          "additions",
+          "deletions"
+        ]
+      },
+      {
+        "workflowId": "F18",
+        "nodeId": "F18_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f18_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "确定性门禁检查 (真人批准、CI、冲突)",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "github.current_head_merge_gate",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "humanApprovals",
+          "ciCheckStatus",
+          "unresolvedThreads"
+        ],
+        "outputFields": [
+          "mergeRequirementsSatisfied"
+        ]
+      },
+      {
+        "workflowId": "F18",
+        "nodeId": "F18_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f18_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "执行受控合并并更新主干版本",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "github.registered_merge",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "mergeMethod"
+        ],
+        "outputFields": [
+          "mergedSha",
+          "prClosed"
+        ]
+      },
+      {
+        "workflowId": "F19",
+        "nodeId": "F19_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f19_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "接收新用户报告并检索已有 Issue 库",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "github.issue_snapshot",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "incomingTitles"
+        ],
+        "outputFields": [
+          "count"
+        ]
+      },
+      {
+        "workflowId": "F19",
+        "nodeId": "F19_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f19_n03",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "创建关联修复子任务 (进入 F15)",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.enqueue_issue_repair",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "canonicalId",
+          "linkedPrId"
+        ],
+        "outputFields": [
+          "fixSubtaskSpawned"
+        ]
+      },
+      {
+        "workflowId": "F19",
+        "nodeId": "F19_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f19_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "PR 合并后独立回归复验",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "github.merged_repair_readback",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "touchTestScenario"
+        ],
+        "outputFields": [
+          "originalBugGone",
+          "verifiedPassed"
+        ]
+      },
+      {
+        "workflowId": "F19",
+        "nodeId": "F19_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f19_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "核实解决后安全关闭 Issue",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "github.registered_close_issue",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "issueId",
+          "comment"
+        ],
+        "outputFields": [
+          "closedSuccess"
+        ]
+      },
+      {
+        "workflowId": "F21",
+        "nodeId": "F21_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f21_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "读取工具能力声明与权限清单",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "mcp_skill.source_manifest",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "manifest",
+          "permissions"
+        ],
+        "outputFields": [
+          "toolId",
+          "transport"
+        ]
+      },
+      {
+        "workflowId": "F21",
+        "nodeId": "F21_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f21_n02",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "注册协议与能力元数据",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "mcp_skill.install_registry",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "registerTool"
+        ],
+        "outputFields": [
+          "registered"
+        ]
+      },
+      {
+        "workflowId": "F21",
+        "nodeId": "F21_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f21_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "核对通信握手与健康状态",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "mcp_skill.protocol_health",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "ping"
+        ],
+        "outputFields": [
+          "connectionAlive",
+          "latencyMs"
+        ]
+      },
+      {
+        "workflowId": "F21",
+        "nodeId": "F21_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f21_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "在支持的隔离环境验证具体能力",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "mcp_skill.isolated_probe",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "testCall"
+        ],
+        "outputFields": [
+          "filesReturned",
+          "noSandboxEscape"
+        ]
+      },
+      {
+        "workflowId": "F21",
+        "nodeId": "F21_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f21_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "候选判断匹配工具候选；宿主按现有授权启用",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "mcp_skill.enable_authorized",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "verifiedToolId"
+        ],
+        "outputFields": [
+          "availableInWorkflow"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N09",
+        "kind": "host",
+        "toolName": "workflow.host.f22_n09",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "高级开关/风险价值/可信机会资源；主任务优先",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.trigger_snapshot",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "trustedSettings",
+          "resources",
+          "taskIdentity"
+        ],
+        "outputFields": [
+          "eligible / defer / skip / need_teacher"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f22_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "冻结同基线snapshot/asOf/sourceVersions与原验收",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.versioned_snapshot",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "task/session/revision/deadline",
+          "snapshot",
+          "asOf",
+          "sourceVersions"
+        ],
+        "outputFields": [
+          "frozenComparisonInput"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f22_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "decision_shadow仅比较选择，不实际执行工具",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.decision_snapshot",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "sealedCandidates",
+          "decisionRef"
+        ],
+        "outputFields": [
+          "shadowDecision",
+          "comparisonRefs"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N03",
+        "kind": "guard",
+        "toolName": "workflow.guard.f22_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "decision_shadow仅比较选择，不实际执行工具",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.decision_snapshot",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "sealedCandidates",
+          "decisionRef"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f22_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "trace_replay只读历史；write仅timeline不重放",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.historical_trace",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "frozenSnapshot",
+          "historicalRecords",
+          "requestedActions",
+          "sourceVersions"
+        ],
+        "outputFields": [
+          "replay_result",
+          "timeline",
+          "historical failed / unknown"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N04",
+        "kind": "guard",
+        "toolName": "workflow.guard.f22_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "trace_replay只读历史；write仅timeline不重放",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.historical_trace",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "frozenSnapshot",
+          "historicalRecords",
+          "requestedActions",
+          "sourceVersions"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f22_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "isolated同基线/namespace/权限执行并独立验证",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.isolated_capabilities",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "baselineSHA",
+          "isolationProof",
+          "验收合同",
+          "隔离授权"
+        ],
+        "outputFields": [
+          "branchReceipt",
+          "EvidenceRefs",
+          "currentSHA"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N05",
+        "kind": "guard",
+        "toolName": "workflow.guard.f22_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "isolated同基线/namespace/权限执行并独立验证",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.isolated_capabilities",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "baselineSHA",
+          "isolationProof",
+          "验收合同",
+          "隔离授权"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f22_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "核对replay可比性，缺反事实/failed/unknown保留原态",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.counterfactual_evidence",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "replay_result",
+          "历史完整性/来源版本"
+        ],
+        "outputFields": [
+          "comparable / partial / unknown / not_comparable",
+          "reasonRefs"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N06",
+        "kind": "guard",
+        "toolName": "workflow.guard.f22_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "核对replay可比性，缺反事实/failed/unknown保留原态",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "shadow.counterfactual_evidence",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "replay_result",
+          "历史完整性/来源版本"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F22",
+        "nodeId": "F22_N07",
+        "kind": "guard",
+        "toolName": "workflow.guard.f22_n07",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "按已选模式汇合可比结果；显式比较才等双方",
+        "capabilities": [],
+        "inputFields": [
+          "selectedMode",
+          "mainReceipt",
+          "shadowReceipt",
+          "验收配置"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F23",
+        "nodeId": "F23_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f23_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "可信验收配置/同task-session-revision-deadline比较",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "evaluation.dataset_snapshot",
+            "boundary": "platform"
+          }
+        ],
+        "inputFields": [
+          "mainReceipt",
+          "shadowReceipt",
+          "task/session/revision/deadline",
+          "acceptanceConfig"
+        ],
+        "outputFields": [
+          "candidatePair",
+          "comparisonContext"
+        ]
+      },
+      {
+        "workflowId": "F23",
+        "nodeId": "F23_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f23_n02",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "验签与verifyComparable完整上下文；不是授权",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "evaluation.temporal_leakage_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "candidatePair",
+          "comparisonContext",
+          "trustedVerifier"
+        ],
+        "outputFields": [
+          "verifiedComparable / rejected",
+          "reasonRefs"
+        ]
+      },
+      {
+        "workflowId": "F23",
+        "nodeId": "F23_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f23_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "原Policy/ToolGateway授权configuration port",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "evaluation.actual_result_dataset",
+            "boundary": "platform"
+          }
+        ],
+        "inputFields": [
+          "verifiedComparable",
+          "configurationPort",
+          "expectedRevision",
+          "argumentsDigest",
+          "授权scope"
+        ],
+        "outputFields": [
+          "authorizedReleaseRequest / unavailable"
+        ]
+      },
+      {
+        "workflowId": "F23",
+        "nodeId": "F23_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f23_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "revision CAS晋升并保留原operation",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "configuration.promote_with_rollback",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "authorizedReleaseRequest",
+          "expectedRevision",
+          "candidateVersion",
+          "sideEffect声明"
+        ],
+        "outputFields": [
+          "operationId",
+          "applied / conflict / unknown"
+        ]
+      },
+      {
+        "workflowId": "F23",
+        "nodeId": "F23_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f23_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "真实回读；必要回滚仍核原版本与授权",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "configuration.operation_readback",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "operationId",
+          "actualConfigurationRevision",
+          "readbackPort",
+          "原回滚授权"
+        ],
+        "outputFields": [
+          "verifiedReadback / waiting_reconciliation / conflict",
+          "rollbackAnchor原版本/参数digest",
+          "rollbackReceipt"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n01",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "持久化任务图、revision与完成条件",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.persist_graph",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "稳定节点/操作身份",
+          "required/optional与条件分支"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "执行前核对Policy、版本与操作身份",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.operation_scope_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "获准的具体操作",
+          "当前控制revision"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "经ModelGateway/ToolGateway执行并存检查点",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.execute_published_operation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "执行记录",
+          "实际效果/未知状态"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "证据就绪：汇合已选择的必需分支",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.selected_branch_evidence",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "完成条件证据",
+          "未完成项"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N06",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "本地取消/停止：先更新控制revision",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.local_stop_observation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "直接停止或已识别语音停止"
+        ],
+        "outputFields": [
+          "取消已受理",
+          "停止信号"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N06",
+        "kind": "guard",
+        "toolName": "workflow.guard.f24_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "本地取消/停止：先更新控制revision",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.local_stop_observation",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "直接停止或已识别语音停止"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N07",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n07",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "未开始：阻止当前操作并保留此前效果",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.stop_not_started",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "当前操作未开始",
+          "之前已发生效果"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N07",
+        "kind": "guard",
+        "toolName": "workflow.guard.f24_n07",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "未开始：阻止当前操作并保留此前效果",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.stop_not_started",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N08",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n08",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "已提交/在途：显示正在停止",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.stop_in_flight",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "停止中",
+          "在途请求身份"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N08",
+        "kind": "guard",
+        "toolName": "workflow.guard.f24_n08",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "已提交/在途：显示正在停止",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.stop_in_flight",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N09",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n09",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "结果未知：等待对账与外部读回",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.reconcile_original_effect",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "原状态及读回依据",
+          "继续核实或明确结果"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N09",
+        "kind": "guard",
+        "toolName": "workflow.guard.f24_n09",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "结果未知：等待对账与外部读回",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.reconcile_original_effect",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N10",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n10",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "已确认发生：保留结果，按需转补偿",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.keep_confirmed_effect",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "原效果证据",
+          "F03补偿候选"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N10",
+        "kind": "guard",
+        "toolName": "workflow.guard.f24_n10",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "已确认发生：保留结果，按需转补偿",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.keep_confirmed_effect",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N11",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n11",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "恢复：读检查点及原操作结果再调度",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.recover_checkpoint",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "已确认结果复用",
+          "未知项先核实",
+          "可恢复节点"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N11",
+        "kind": "guard",
+        "toolName": "workflow.guard.f24_n11",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "恢复：读检查点及原操作结果再调度",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.recover_checkpoint",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F24",
+        "nodeId": "F24_N12",
+        "kind": "host",
+        "toolName": "workflow.host.f24_n12",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "状态徽章与必要主动通知",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.publish_actual_status",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "完成/停止中/待核实/已发生",
+          "需要用户决定的事项"
+        ]
+      },
+      {
+        "workflowId": "F25",
+        "nodeId": "F25_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f25_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "宿主依据实际授权组装出站上下文",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "policy.outbound_context_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "testPayloadContainsPrivate"
+        ],
+        "outputFields": [
+          "filteredOut",
+          "cleanPayloadReady"
+        ]
+      },
+      {
+        "workflowId": "F25",
+        "nodeId": "F25_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f25_n04",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "保存安全配置引用 (三态独立验证)",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "configuration.save_credential_reference",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "saved",
+          "pingConnected",
+          "capabilityTested"
+        ],
+        "outputFields": [
+          "accountActive",
+          "privateDataBlocked"
+        ]
+      },
+      {
+        "workflowId": "F26",
+        "nodeId": "F26_N02",
+        "kind": "host",
+        "toolName": "workflow.host.f26_n02",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "[阶段1/4] 构建镜像并检查产物",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "deployment.build_arm64_image",
+            "boundary": "platform"
+          }
+        ],
+        "inputFields": [
+          "buildCommand"
+        ],
+        "outputFields": [
+          "imageSizeMb",
+          "buildDurationSeconds"
+        ]
+      },
+      {
+        "workflowId": "F26",
+        "nodeId": "F26_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f26_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "[阶段2/4] 部署上线并就绪探针",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "deployment.runtime_readback",
+            "boundary": "platform"
+          }
+        ],
+        "inputFields": [
+          "healthzPort"
+        ],
+        "outputFields": [
+          "podRunning",
+          "readinessProbe"
+        ]
+      },
+      {
+        "workflowId": "F26",
+        "nodeId": "F26_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f26_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "[阶段3/4] 真实语义闭环评测：云端提案->本地Policy->工具->证据",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "deployment.real_tool_evidence",
+            "boundary": "platform"
+          }
+        ],
+        "inputFields": [
+          "testTask"
+        ],
+        "outputFields": [
+          "cloudProposal",
+          "localPolicyVerdict",
+          "toolExecution",
+          "evidenceVerified"
+        ]
+      },
+      {
+        "workflowId": "F26",
+        "nodeId": "F26_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f26_n05",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "记录验收覆盖与剩余问题；按既有发布条件上线",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "deployment.publish_verified_coverage",
+            "boundary": "platform"
+          }
+        ],
+        "inputFields": [
+          "verificationEvidence"
+        ],
+        "outputFields": [
+          "activeServiceVersion",
+          "status"
+        ]
+      },
+      {
+        "workflowId": "F27",
+        "nodeId": "F27_N01",
+        "kind": "host",
+        "toolName": "workflow.host.f27_n01",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "读取模型实际容量、配置与版本",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "model.capabilities",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "可用上下文容量",
+          "当前任务/事实版本"
+        ]
+      },
+      {
+        "workflowId": "F27",
+        "nodeId": "F27_N05",
+        "kind": "host",
+        "toolName": "workflow.host.f27_n05",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "独立依赖（默认串行）召回当前责任、事实与必要工具证据",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "memory.query",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "原文片段与引用",
+          "未知/缺失项"
+        ]
+      },
+      {
+        "workflowId": "F27",
+        "nodeId": "F27_N03",
+        "kind": "guard",
+        "toolName": "workflow.guard.f27_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "长日志按需由执行模型摘要",
+        "capabilities": [],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F27",
+        "nodeId": "F27_N06",
+        "kind": "guard",
+        "toolName": "workflow.guard.f27_n06",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "需要原证据时恢复引用或扩充检索",
+        "capabilities": [
+          {
+            "kind": "tool",
+            "name": "knowledge.search",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F27",
+        "nodeId": "F27_N04",
+        "kind": "host",
+        "toolName": "workflow.host.f27_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "宿主组装关键指令/授权/版本映射",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "model.context_source_map_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "上下文包",
+          "引用版本",
+          "保留/压缩原因"
+        ]
+      },
+      {
+        "workflowId": "F27",
+        "nodeId": "F27_N04",
+        "kind": "guard",
+        "toolName": "workflow.guard.f27_n04",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "宿主组装关键指令/授权/版本映射",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "model.context_source_map_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F27",
+        "nodeId": "F27_N07",
+        "kind": "host",
+        "toolName": "workflow.host.f27_n07",
+        "toolVersion": "1.0.0",
+        "effect": "write",
+        "label": "变化使旧映射失效并反馈F28",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.invalidate_context_mapping",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "上下文版本",
+          "模型能力反馈",
+          "可复用片段"
+        ]
+      },
+      {
+        "workflowId": "F28",
+        "nodeId": "F28_N02",
+        "kind": "guard",
+        "toolName": "workflow.guard.f28_n02",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "合格Laya/未合格配置执行模型选择模型分工与上下文",
+        "capabilities": [],
+        "inputFields": [],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F28",
+        "nodeId": "F28_N03",
+        "kind": "host",
+        "toolName": "workflow.host.f28_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "区分原生思考、步骤预算与验证强度",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "model.native_config_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "check"
+        ],
+        "outputFields": [
+          "research",
+          "analysis",
+          "coder"
+        ]
+      },
+      {
+        "workflowId": "F28",
+        "nodeId": "F28_N03",
+        "kind": "guard",
+        "toolName": "workflow.guard.f28_n03",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "区分原生思考、步骤预算与验证强度",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "model.native_config_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "check"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      },
+      {
+        "workflowId": "F28",
+        "nodeId": "F28_N10",
+        "kind": "host",
+        "toolName": "workflow.host.f28_n10",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "独立检查来源、补丁与行为测试",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "workspace.source_and_test_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "sourcesSupported",
+          "tests"
+        ]
+      },
+      {
+        "workflowId": "F28",
+        "nodeId": "F28_N11",
+        "kind": "host",
+        "toolName": "workflow.host.f28_n11",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "Runtime 完成条件通过后汇总",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "runtime.completion_check",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [],
+        "outputFields": [
+          "result"
+        ]
+      },
+      {
+        "workflowId": "F28",
+        "nodeId": "F28_N12",
+        "kind": "host",
+        "toolName": "workflow.host.f28_n12",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "执行者在派定范围内自主选工具与探索",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "executor.scoped_tool_loop",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "受派子任务",
+          "已公布工具能力",
+          "实际取消/期限/预算配置"
+        ],
+        "outputFields": [
+          "经ToolGateway的请求",
+          "局部观察与候选"
+        ]
+      },
+      {
+        "workflowId": "F28",
+        "nodeId": "F28_N12",
+        "kind": "guard",
+        "toolName": "workflow.guard.f28_n12",
+        "toolVersion": "1.0.0",
+        "effect": "read",
+        "label": "执行者在派定范围内自主选工具与探索",
+        "capabilities": [
+          {
+            "kind": "host",
+            "name": "executor.scoped_tool_loop",
+            "boundary": "local"
+          }
+        ],
+        "inputFields": [
+          "受派子任务",
+          "已公布工具能力",
+          "实际取消/期限/预算配置"
+        ],
+        "outputFields": [
+          "state"
+        ]
+      }
+    ]
+  },
+  "acceptanceBoundary": "Catalog is not business workflow completion or installed host adapter evidence"
+}

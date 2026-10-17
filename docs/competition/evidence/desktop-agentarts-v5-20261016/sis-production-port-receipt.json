@@ -1,0 +1,56 @@
+{
+  "runAt": "2026-10-16T15:18:31.229Z",
+  "route": "diagnostic_direct_sis_not_competition",
+  "credentialSubject": "current_owner",
+  "sourceCommit": "618612a156798ca306768ff0b48b5fea7f9bbcd9",
+  "region": "cn-north-4",
+  "configurationReadWallMs": 79.31640000000002,
+  "profile": "readonly_copy_of_formal_profile_LocalState_and_SIS_configuration",
+  "originalConfigurationWritten": false,
+  "devicesOpened": false,
+  "playback": "synthetic_port_only",
+  "agentArtsSisProxy": "unavailable",
+  "stages": [
+    {
+      "operation": "production_recognition_port",
+      "signingWallMs": 0.8226999999999975,
+      "property": "chinese_16k_general",
+      "httpStatus": 200,
+      "httpResponseWallMs": 812.7636,
+      "providerErrorCode": null,
+      "receiptCloneParseWallMs": 3.6633000000000493,
+      "portSucceeded": true,
+      "transcriptNonEmpty": true,
+      "publicPhraseRecognized": true,
+      "portWallMs": 818.7888,
+      "portResultAfterResponseWallMs": 3.496499999999969
+    },
+    {
+      "operation": "production_output_port",
+      "syntheticPlaybackCalls": 1,
+      "syntheticPlaybackBytes": 77644,
+      "syntheticReleaseCalls": 1,
+      "signingWallMs": 0.6859999999999218,
+      "property": "chinese_xiaoyu_common",
+      "httpStatus": 200,
+      "httpResponseWallMs": 782.5278999999999,
+      "providerErrorCode": null,
+      "receiptCloneParseWallMs": 471.2421999999999,
+      "portSucceeded": true,
+      "portWallMs": 1255.9395,
+      "portResultAfterResponseWallMs": 472.3731
+    }
+  ],
+  "fileHashes": {
+    "packages/voice/dist/huawei-sis.js": "8b72a2a98413dfe61ea941ed981cd112a629b5f131e6566a60837780bbf376a0",
+    "packages/voice/dist/index.js": "52ad16bbad88ce1decd0711bc814502cc5c431c74524fdf1141ba9b7c66b73e8",
+    "apps/desktop/electron/huawei-sis-auth.js": "30f9bd2135f261909717194898c2f2582911cc819cbd6c28b6fc613e99d5fa1f",
+    "apps/desktop/electron/huawei-sis-config.js": "5d7a6b755ac245e3b3de2f5498817d11854958348543f687d62ca8305d55c550"
+  },
+  "publicInput": {
+    "source": "previous_public_synthetic_tts",
+    "pcmBytes": 77600,
+    "sha256": "e2f25ae2fb3c0237f638c9d04a2d6bf841dcbfb8b73c016157e32e4165e34cae"
+  },
+  "totalCodeWallMs": 2155.6034
+}

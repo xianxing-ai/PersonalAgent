@@ -1,0 +1,1833 @@
+<!doctype html>
+<html lang="zh-CN" data-proposal="01-editorial-light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PersonalAgent · 晨白 · 编辑部</title>
+<style>
+/* ========== tokens ========== */
+:root{
+  --paper:#FAF9F6; --paper-2:#F5F3ED; --wash:#F1EEE6; --wash-2:#EAE6DC;
+  --ink:#141414; --ink-2:#3f3c35; --muted:#6f6a5e; --faint:#9a937f;
+  --line:#ddd8cb; --line-strong:#bdb7a6;
+  --accent:#1f4ed8; --accent-2:#173a9e; --on-accent:#FDFCF9;
+  --ok:#2e6f4e; --warn:#8a5f00; --bad:#b3271e; --info:#1f4ed8;
+  --serif:Georgia,"Noto Serif SC","Source Han Serif SC","SimSun",serif;
+  --ui:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif;
+  --mono:"Cascadia Mono",Consolas,"JetBrains Mono",ui-monospace,monospace;
+  --ease:cubic-bezier(.2,0,0,1);
+  --d1:120ms; --d2:200ms; --d3:320ms;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} *{transition-duration:0ms !important; animation:none !important} }
+body{background:var(--paper);color:var(--ink);font:15px/1.7 var(--ui);padding:0 clamp(16px,4vw,56px) 80px;max-width:1440px;margin:0 auto;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--serif);font-weight:700;letter-spacing:-.01em;line-height:1.22}
+button{font-family:var(--ui)}
+[hidden]{display:none !important}
+::selection{background:var(--ink);color:var(--paper)}
+a{color:var(--accent)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:-9999px;top:0;background:var(--accent);color:#fff;padding:10px 16px;z-index:99}
+.skip:focus-visible{left:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono)}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.eyebrow .sq{display:inline-block;width:7px;height:7px;background:var(--accent);margin-right:8px;vertical-align:1px}
+.mini{font-size:12px;color:var(--muted)}
+/* ========== masthead ========== */
+.masthead{padding-top:30px}
+.masttop{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;border-bottom:3px solid var(--ink);padding-bottom:12px;flex-wrap:wrap}
+.views{display:flex;gap:6px;align-items:center}
+.views b{font-size:11px;font-weight:600;letter-spacing:.2em;color:var(--faint);margin-right:6px}
+.nv{background:none;border:none;border-bottom:2px solid transparent;font:600 13.5px var(--ui);color:var(--ink-2);padding:7px 10px;cursor:pointer}
+.nv:hover{color:var(--ink);background:var(--wash)}
+.nv[aria-current="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.masth1{font-size:clamp(46px,6.4vw,84px);line-height:1.02;margin:22px 0 6px}
+.masth1 em{font-style:italic;font-weight:400;color:var(--accent)}
+.mastsub{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;border-bottom:1px solid var(--ink);padding:0 0 14px;align-items:baseline}
+.volrow{font:600 12.5px var(--mono);letter-spacing:.14em;color:var(--ink)}
+.orb-note{font-size:12px;color:var(--muted);max-width:640px;line-height:1.6}
+.orb-note b{color:var(--ink)}
+.mastline{border-bottom:1px solid var(--line);margin-top:6px}
+/* ========== view sections ========== */
+main section[data-view]{padding:34px 0 8px}
+/* ========== window chrome (workspace) ========== */
+.chrome{border:1px solid var(--line-strong);background:var(--paper-2)}
+.chrome-tb{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line-strong);background:var(--paper)}
+.tb-brand{font:600 12.5px var(--ui);letter-spacing:.06em}
+.tb-note{font-size:11.5px;color:var(--faint)}
+.tb-sp{flex:1}
+.win{width:30px;height:26px;border:1px solid transparent;background:none;color:var(--ink-2);cursor:pointer;border-radius:2px;display:grid;place-items:center}
+.win:hover{border-color:var(--line-strong);background:var(--wash)}
+.win svg{display:block}
+.chrome-top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.ct-left{display:flex;flex-direction:column;gap:3px;min-width:280px;flex:1}
+.goalline{font-family:var(--serif);font-size:17px;font-weight:700}
+.ct-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.searchbox{display:flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--paper);padding:6px 10px;border-radius:2px}
+.searchbox:focus-within{border-color:var(--accent)}
+.searchbox svg{flex:0 0 auto;color:var(--faint)}
+.searchbox input{border:none;outline:none;background:none;font:13px var(--ui);color:var(--ink);width:200px}
+.searchbox kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:2px;padding:1px 5px;color:var(--faint)}
+/* ========== buttons / controls ========== */
+.btn{font:600 12.5px/1 var(--ui);letter-spacing:.02em;padding:9px 14px;border:1px solid var(--ink);border-radius:2px;background:transparent;color:var(--ink);cursor:pointer;transition:background var(--d1) var(--ease),border-color var(--d1) var(--ease),color var(--d1) var(--ease)}
+.btn:hover{background:var(--wash)}
+.btn:active{background:var(--wash-2)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.sm{padding:6px 10px;font-size:11.5px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.pri:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.danger:hover{background:#b3271e14}
+.btn.ghost{border-color:var(--line-strong);color:var(--ink-2)}
+.linkish{background:none;border:none;color:var(--accent);font:600 12.5px var(--ui);cursor:pointer;text-decoration:underline;text-underline-offset:3px;padding:2px}
+.linkish:hover{color:var(--accent-2)}
+.badge{display:inline-block;font:600 11px var(--ui);letter-spacing:.08em;padding:3px 9px;border:1px solid var(--line-strong);border-radius:2px;color:var(--ink-2);background:var(--paper)}
+.badge.pill{border-radius:999px}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.warn{color:var(--warn);border-color:var(--warn)}
+.badge.bad{color:var(--bad);border-color:var(--bad)}
+.badge.info{color:var(--info);border-color:var(--info)}
+.badge.pending{color:var(--warn);border-color:var(--warn)}
+.badge.static{color:var(--muted);border-style:dashed}
+.sw{position:relative;width:38px;height:20px;flex:0 0 auto;border:1px solid var(--line-strong);border-radius:2px;background:var(--paper);cursor:pointer;transition:border-color var(--d1) var(--ease)}
+.sw::before{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:1px;background:var(--line-strong);transition:left var(--d1) var(--ease),background var(--d1) var(--ease)}
+.sw:hover{border-color:var(--ink)}
+.sw[aria-checked="true"]{border-color:var(--accent)}
+.sw[aria-checked="true"]::before{left:21px;background:var(--accent)}
+.sw:disabled{opacity:.4;cursor:not-allowed}
+.selwrap{position:relative;display:inline-block}
+.selwrap select{appearance:none;-webkit-appearance:none;font:13px var(--ui);color:var(--ink);background:var(--paper);border:1px solid var(--line-strong);border-radius:2px;padding:7px 30px 7px 10px;cursor:pointer;transition:border-color var(--d1) var(--ease)}
+.selwrap::after{content:"";position:absolute;right:11px;top:50%;width:7px;height:7px;border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);transform:translateY(-70%) rotate(45deg);pointer-events:none}
+.selwrap select:hover{border-color:var(--ink)}
+.inp{font:13px var(--ui);color:var(--ink);background:var(--paper);border:1px solid var(--line-strong);border-radius:2px;padding:7px 10px;transition:border-color var(--d1) var(--ease)}
+.inp:hover{border-color:var(--ink)}
+.inp:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+textarea.inp{width:100%;resize:vertical;font:13px/1.7 var(--ui)}
+textarea.inp::placeholder,input.inp::placeholder{color:var(--faint)}
+.seg{display:inline-flex;border:1px solid var(--ink);border-radius:2px;overflow:hidden}
+.seg label{position:relative;display:block}
+.seg input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.seg span{display:block;font:600 12.5px var(--ui);padding:8px 14px;color:var(--ink-2);cursor:pointer;transition:background var(--d1) var(--ease),color var(--d1) var(--ease)}
+.seg label + label span{border-left:1px solid var(--ink)}
+.seg input:checked + span{background:var(--ink);color:var(--paper)}
+.seg input:focus-visible + span{outline:2px solid var(--accent);outline-offset:-2px}
+.range{display:flex;align-items:center;gap:14px}
+.range input[type=range]{appearance:none;-webkit-appearance:none;width:220px;height:18px;background:transparent;cursor:pointer}
+.range input[type=range]::-webkit-slider-runnable-track{height:1px;background:var(--line-strong)}
+.range input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:13px;height:13px;margin-top:-6px;background:var(--accent);border:1px solid var(--accent-2);border-radius:1px}
+.range input[type=range]::-moz-range-track{height:1px;background:var(--line-strong)}
+.range input[type=range]::-moz-range-thumb{width:13px;height:13px;background:var(--accent);border:1px solid var(--accent-2);border-radius:1px}
+.range output{font:600 12.5px var(--mono);color:var(--accent);min-width:88px}
+.kbd{font:11.5px var(--mono);border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:2px;padding:1px 7px;background:var(--paper)}
+/* ========== magazine layout ========== */
+.mag{display:grid;grid-template-columns:214px minmax(0,1fr);gap:clamp(28px,4vw,64px);padding-top:30px}
+.mag-toc{position:sticky;top:14px;align-self:start;max-height:calc(100vh - 30px);overflow:auto;padding-right:8px}
+.mag-toc .eyebrow{border-bottom:1px solid var(--ink);padding-bottom:10px;margin-bottom:8px}
+.toc a,.toc button{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;padding:7px 8px;border:none;border-left:1px solid var(--line);background:none;text-decoration:none;color:var(--ink-2);font:13px var(--ui);cursor:pointer;transition:background var(--d1) var(--ease),border-color var(--d1) var(--ease),color var(--d1) var(--ease)}
+.toc a:hover,.toc button:hover{background:var(--wash);border-left-color:var(--ink)}
+.toc .no{font:600 11.5px var(--mono);color:var(--faint);min-width:22px;text-align:right}
+.toc a.on,.toc button.on{color:var(--accent);border-left-color:var(--accent)}
+.toc-note{font-size:11px;color:var(--faint);margin-top:14px;line-height:1.6;border-top:1px solid var(--line);padding-top:10px}
+.jsec{margin-bottom:56px;scroll-margin-top:16px}
+.jhead{display:flex;align-items:baseline;gap:18px;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:4px}
+.jno{font-family:var(--serif);font-style:italic;font-weight:400;font-size:34px;color:var(--faint)}
+.jhead h2{font-size:clamp(24px,2.6vw,32px)}
+.jhead .jfill{flex:1}
+.jhead .jh-en{font-size:11px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase;white-space:nowrap}
+/* ========== goals ========== */
+.goals{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:18px}
+.goal{border:1px solid var(--line-strong);border-radius:2px;background:var(--paper-2);padding:16px 16px 14px;transition:background var(--d1) var(--ease)}
+.goal:hover{background:var(--wash)}
+.goal .g-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+.goal h3{font-size:18px;margin:2px 0 8px}
+.g-meta{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted);margin-bottom:10px}
+.g-meta i{font-style:normal;color:var(--line-strong)}
+.prog{display:flex;align-items:center;gap:10px;margin:6px 0 4px}
+.prog-track{flex:1;height:4px;background:var(--wash-2);position:relative}
+.prog-fill{position:absolute;inset:0 auto 0 0;background:var(--accent);transition:width var(--d2) var(--ease)}
+.prog .pnum{font:600 11.5px var(--mono);color:var(--muted);min-width:36px;text-align:right}
+.g-ms{font-size:12px;color:var(--muted);border-top:1px dotted var(--line-strong);margin-top:10px;padding-top:8px}
+.g-act{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+.goal-form{border-top:1px dashed var(--line-strong);margin-top:12px;padding-top:12px;display:grid;gap:8px;max-width:520px}
+.goal-form label{display:grid;gap:3px;font-size:12px;color:var(--muted)}
+.goal-hist{margin-top:14px;font-size:12px;color:var(--muted)}
+/* ========== task list ========== */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 4px}
+.chip{border:1px solid var(--line-strong);background:var(--paper);border-radius:2px;font:600 12px var(--ui);color:var(--ink-2);padding:6px 12px;cursor:pointer;transition:background var(--d1) var(--ease),color var(--d1) var(--ease),border-color var(--d1) var(--ease)}
+.chip:hover{background:var(--wash);border-color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.chip .cno{font-family:var(--mono);opacity:.7;margin-left:4px}
+.task-row{display:flex;width:100%;align-items:baseline;gap:12px;padding:13px 6px;border:none;border-bottom:1px solid var(--line);background:none;text-align:left;cursor:pointer;font-family:var(--ui);color:var(--ink);transition:background var(--d1) var(--ease)}
+.task-row:hover{background:var(--wash)}
+.task-row .tno{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--muted);min-width:26px}
+.task-row .tmain{display:flex;flex-direction:column;gap:3px;min-width:0}
+.task-row .tname{font-weight:600;font-size:14.5px}
+.task-row .tmeta{font-size:11.5px;color:var(--muted);letter-spacing:.01em}
+.task-row .lead{flex:1 1 auto;min-width:28px;border-bottom:1px dotted var(--line-strong);transform:translateY(-5px)}
+.task-row .tstat{flex:0 0 auto;font:600 12px var(--mono);letter-spacing:.04em;color:var(--muted);white-space:nowrap}
+.task-row[data-state="running"] .tstat{color:var(--accent)}
+.task-row[data-state="approve"] .tstat{color:var(--warn)}
+.task-row[data-state="queued"] .tstat{color:var(--muted)}
+.task-row[data-state="done"] .tstat{color:var(--ok)}
+.task-row[data-state="failed"] .tstat{color:var(--bad)}
+.task-row .trun{min-width:210px}
+.bar-mini{display:block;height:3px;background:var(--wash-2);margin-top:6px}
+.bar-mini i{display:block;height:100%;background:var(--accent);transition:width var(--d2) var(--ease)}
+.task-empty{padding:26px 4px;color:var(--muted);font-size:13px;border-bottom:1px solid var(--line)}
+/* ========== thread ========== */
+.welcome{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:32px;align-items:center;padding:26px 0 10px}
+.welcome h3.wtitle{font-size:clamp(28px,3vw,40px);font-weight:700}
+.welcome .wsub{font-size:14px;color:var(--muted);margin-top:6px}
+.orb-ph{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.orb-ring{width:100px;height:100px;border:1px dashed var(--line-strong);border-radius:999px;display:grid;place-items:center;color:var(--faint);font:600 11px var(--mono);letter-spacing:.14em;background:var(--paper-2)}
+.orb-ph small{font-size:10.5px;color:var(--faint);line-height:1.6;max-width:180px}
+.prefs{display:flex;gap:18px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0;margin:16px 0 8px;font-size:12px;color:var(--muted)}
+.prefs label{display:flex;align-items:center;gap:8px}
+.comp{display:flex;gap:0;border:1px solid var(--ink);border-radius:2px;background:var(--paper);align-items:flex-end;margin-top:12px}
+.comp textarea{flex:1;border:none;outline:none;background:transparent;padding:12px 14px;font:14px/1.6 var(--ui);color:var(--ink);min-height:44px;resize:none}
+.comp textarea::placeholder{color:var(--faint)}
+.comp .send{margin:6px 8px}
+.turn{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:20px 0;border-bottom:1px solid var(--line)}
+.turn .t-side{display:flex;gap:10px;align-items:baseline;font-size:11px;color:var(--faint)}
+.turn .t-side .who{font:600 11px var(--ui);letter-spacing:.16em;color:var(--muted)}
+.uquote{font-family:var(--serif);font-size:16.5px;line-height:1.6;border-left:2px solid var(--accent);padding:2px 0 2px 14px;margin-left:2px}
+.ans{font-size:14px;color:var(--ink-2);max-width:72ch}
+.ans p + p{margin-top:8px}
+.turn-act{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap}
+.tact{background:none;border:none;font:600 12px var(--ui);color:var(--accent);cursor:pointer;padding:2px;text-decoration:underline;text-underline-offset:3px}
+.tact:hover{color:var(--accent-2)}
+.tact[disabled]{color:var(--faint);cursor:not-allowed;text-decoration:none}
+.rail{position:absolute;right:-6px;top:0;display:flex;flex-direction:column;gap:8px}
+.line-thread{position:relative}
+.rail button{width:22px;height:3px;border:none;background:var(--line-strong);cursor:pointer;padding:0;border-radius:0}
+.rail button:hover,.rail button.on{background:var(--accent)}
+/* ========== approvals ========== */
+.apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-top:18px}
+.approval-card{position:relative;border:1px dashed var(--warn);border-radius:2px;background:var(--paper-2);padding:18px 18px 16px}
+.approval-card:hover{background:var(--wash)}
+.approval-card[data-state="approved"]{border-color:var(--ok)}
+.approval-card[data-state="denied"]{border-color:var(--line-strong)}
+.stamp{position:absolute;top:12px;right:14px;transform:rotate(-5deg);font:700 12px var(--serif);letter-spacing:.3em;color:var(--bad);border:1px solid currentColor;border-radius:2px;padding:3px 10px 3px 12px;background:transparent}
+.approval-card[data-state="approved"] .stamp{color:var(--ok)}
+.approval-card[data-state="denied"] .stamp{color:var(--muted)}
+.approval-card h3{font-size:17px;margin:6px 0 8px;padding-right:70px}
+.approval-card .a-body{font-size:13.5px;color:var(--ink-2);max-width:52ch}
+.approval-card .a-perm{display:flex;gap:8px;align-items:baseline;margin-top:10px;font-size:12px;color:var(--warn)}
+.approval-card .a-perm b{font-weight:600}
+.approval-card .a-hint{font-size:11.5px;color:var(--faint);margin-top:10px}
+.approval-card .a-status{font:600 12.5px var(--ui);color:var(--ok);margin-top:12px}
+.approval-card[data-state="denied"] .a-status{color:var(--muted)}
+.approval-card .a-act{display:flex;gap:10px;margin-top:12px}
+/* ========== connectors ========== */
+.conns{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:18px}
+.conn{border:1px solid var(--line-strong);border-radius:2px;background:var(--paper-2);padding:14px;cursor:pointer;transition:background var(--d1) var(--ease)}
+.conn:hover{background:var(--wash)}
+.conn .c-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:10px}
+.conn h3{font-size:15.5px}
+.conn .c-body{font-size:13px;color:var(--ink-2);min-height:58px}
+.conn .c-body .big{font-family:var(--serif);font-size:26px;font-weight:700}
+.conn .c-body .sub{color:var(--muted);font-size:12px;margin-top:2px}
+.conn ul{list-style:none;display:grid;gap:5px;font-size:12.5px}
+.conn ul b{font-weight:600}
+.conn ul .st{color:var(--ok)}
+.conn .c-foot{border-top:1px solid var(--line);margin-top:12px;padding-top:8px;font-size:11.5px;color:var(--muted)}
+/* ========== evidence strip ========== */
+.evi{display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;border:1px solid var(--line);border-radius:2px;background:var(--paper-2);padding:14px 16px;margin-top:18px}
+.evi .e-item{flex:1;min-width:200px}
+.evi .e-item b{font:600 12px var(--mono);letter-spacing:.1em}
+.evi .e-item p{font-size:12px;color:var(--muted);margin-top:4px}
+.evi .e-b{width:1px;background:var(--line)}
+.statusline{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--muted)}
+.capsule{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line-strong);border-radius:999px;padding:5px 14px;font:600 12px var(--ui);color:var(--ink-2)}
+.dot{width:8px;height:8px;border-radius:999px;background:var(--ok)}
+.capsule[data-off] .dot{background:var(--bad)}
+/* ========== drawer ========== */
+.scrim{position:fixed;inset:0;background:#14141429;z-index:40}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,92vw);background:var(--paper);border-left:1px solid var(--ink);z-index:41;overflow:auto;padding:22px 26px 40px}
+.drawer .d-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:14px}
+.drawer h2{font-size:22px}
+.drawer .d-state{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 2px}
+.steps{list-style:none;margin:14px 0;border-left:1px solid var(--line-strong)}
+.steps li{position:relative;padding:10px 0 10px 20px;border-bottom:1px dotted var(--line-strong)}
+.steps li:last-child{border-bottom:none}
+.steps li::before{content:"";position:absolute;left:-4.5px;top:16px;width:8px;height:8px;background:var(--line-strong);border-radius:999px}
+.steps li.act::before{background:var(--accent)}
+.steps li.ok::before{background:var(--ok)}
+.steps li.fail::before{background:var(--bad)}
+.steps .st-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.steps .st-top b{font-size:13.5px}
+.steps .st-top time{font:11px var(--mono);color:var(--faint)}
+.steps p{font-size:12px;color:var(--muted);margin-top:3px}
+.d-meta{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:12.5px;border-top:1px solid var(--line);padding-top:12px}
+.d-meta dt{color:var(--faint)}
+.d-meta dd{color:var(--ink-2)}
+/* ========== settings ========== */
+.s-pane{padding:26px 0 6px;scroll-margin-top:20px}
+.s-pane .pane-no{font:600 12px var(--mono);letter-spacing:.14em;color:var(--faint)}
+.s-pane h2{font-size:clamp(22px,2.4vw,28px);margin-top:4px}
+.s-pane .s-desc{font-size:12.5px;color:var(--muted);margin-top:4px;max-width:72ch}
+.srows{margin-top:14px;border-top:1px solid var(--line)}
+.s-row{display:flex;justify-content:space-between;align-items:center;gap:22px;padding:13px 2px;border-bottom:1px solid var(--line)}
+.s-row:hover{background:var(--wash)}
+.s-row .s-main{min-width:0}
+.s-row .s-main b{font-weight:600;font-size:14px}
+.s-row .s-main small{display:block;color:var(--muted);font-size:12px;margin-top:2px;line-height:1.55}
+.s-side{display:flex;align-items:center;gap:12px;flex:0 0 auto;max-width:56%;flex-wrap:wrap;justify-content:flex-end}
+.s-val{font:11.5px var(--mono);color:var(--muted);text-align:right;min-width:0}
+.ro{font:12.5px var(--ui);color:var(--muted);border-bottom:1px dotted var(--line-strong);padding-bottom:1px}
+.spl{margin-top:12px;border:1px dashed var(--line-strong);border-radius:2px;background:var(--paper-2);padding:14px;display:grid;gap:10px}
+.spl .spl-t{font:600 11px var(--ui);letter-spacing:.16em;color:var(--muted)}
+.spl label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.fine{font-size:11px;color:var(--faint);line-height:1.7;margin-top:10px}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:12px}
+.tbl th{font:600 10.5px var(--ui);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);text-align:left;border-bottom:1px solid var(--ink);padding:7px 8px;white-space:nowrap}
+.tbl td{border-bottom:1px solid var(--line);padding:9px 8px;vertical-align:top;color:var(--ink-2)}
+.tbl td b{font-weight:600;color:var(--ink)}
+.tbl tr:hover td{background:var(--wash)}
+.mcards{display:grid;gap:12px;margin-top:14px}
+.mcard{display:flex;justify-content:space-between;gap:16px;align-items:center;border:1px solid var(--line-strong);border-radius:2px;background:var(--paper-2);padding:12px 14px;flex-wrap:wrap}
+.mcard:hover{background:var(--wash)}
+.mcard .m-id b{font-size:14px}
+.mcard .m-id small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.mcard .m-act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* ========== spec ========== */
+.spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-top:18px}
+.spec-card{border:1px solid var(--line);border-radius:2px;padding:16px;background:var(--paper-2)}
+.spec-card h3{font-size:16px;margin-bottom:12px}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.swatch{border:none;background:none;text-align:left;cursor:pointer;padding:0;font-family:var(--ui)}
+.swatch .sw-chip{height:52px;border:1px solid var(--line-strong);border-radius:2px}
+.swatch:hover .sw-chip{border-color:var(--ink)}
+.swatch .sw-name{font:600 11.5px var(--ui);margin-top:6px}
+.swatch .sw-hex{font:11px var(--mono);color:var(--muted)}
+.semrow{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.semrow:last-child{border-bottom:none}
+.semrow .scode{font:11px var(--mono);color:var(--faint);margin-left:auto}
+.typescale .trow{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid var(--line);padding:9px 0}
+.typescale .trow:last-child{border-bottom:none}
+.typescale .ttag{font:11px var(--mono);color:var(--faint);min-width:96px;flex:0 0 auto}
+.spacerow{display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+.spacerow i{display:block;height:12px;background:var(--accent);opacity:.85}
+.radiusr .rr{border:1px solid var(--ink);width:56px;height:36px;background:var(--paper)}
+.motrow{display:flex;gap:.6em;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.motrow:last-child{border-bottom:none}
+/* ========== compare ========== */
+.cmp-tbl{width:100%;border-collapse:collapse;margin-top:18px;font-size:13px}
+.cmp-tbl th{font:600 11px var(--ui);letter-spacing:.14em;text-transform:uppercase;text-align:left;padding:10px 12px;border-bottom:2px solid var(--ink);color:var(--muted)}
+.cmp-tbl td{border-bottom:1px solid var(--line);padding:12px;vertical-align:top;color:var(--ink-2);line-height:1.65}
+.cmp-tbl td:first-child{font-weight:600;color:var(--ink);white-space:nowrap}
+.cmp-tbl td.now{background:var(--wash);width:36%}
+.cmp-tbl td.mine{background:var(--paper-2);width:42%}
+.prose{max-width:76ch;font-size:13.5px;line-height:1.85;color:var(--ink-2)}
+.prose b{color:var(--ink)}
+.prose p + p{margin-top:10px}
+.reflist{margin:10px 0 0 1.2em}
+.reflist li{margin-bottom:8px}
+/* ========== colophon ========== */
+.colophon{border-top:3px double var(--ink);margin-top:24px;padding-top:16px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.chk{display:inline-flex;align-items:center;gap:7px;font:12.5px var(--ui);color:var(--ink-2);cursor:pointer}
+.chk input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+.pg-hr{border-top:2px solid var(--ink)}
+/* ========== toast ========== */
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--paper);font:600 13px var(--ui);padding:11px 18px;border-radius:2px;z-index:60;opacity:0;pointer-events:none;transition:opacity var(--d2) var(--ease),transform var(--d2) var(--ease);max-width:min(92vw,560px)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ========== responsive ========== */
+@media (max-width:900px){
+  .mag{grid-template-columns:1fr}
+  .mag-toc{position:static;max-height:none;display:flex;gap:6px;overflow-x:auto;padding-bottom:8px}
+  .mag-toc .eyebrow{display:none}
+  .mag-toc .toc{display:flex;gap:4px}
+  .toc a,.toc button{border-left:none;border-bottom:2px solid transparent;white-space:nowrap;width:auto}
+  .toc a.on,.toc button.on{border-bottom-color:var(--accent)}
+  .toc-note{display:none}
+  .welcome{grid-template-columns:1fr}
+  .orb-ph{flex-direction:row;justify-content:flex-start}
+  .orb-ph small{max-width:none;text-align:left}
+  .rail{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .toast{transition:none}
+  .prog-fill,.bar-mini i,.sw::before{transition:none}
+}
+</style>
+</head>
+<body data-current-view="workspace">
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="masthead">
+  <div class="masttop">
+    <div>
+      <p class="eyebrow"><span class="sq"></span>PERSONALAGENT · 大工作区 × 设置页 · 交互式设计提案</p>
+      <p class="mini" style="margin-top:4px">纸白高对比杂志式编辑部风格 · 第 01 号方案（共 06 期）</p>
+    </div>
+    <nav class="views" aria-label="提案视图切换">
+      <b>VIEWS</b>
+      <button class="nv" data-nav="workspace" aria-current="true">大工作区</button>
+      <button class="nv" data-nav="settings">设置页</button>
+      <button class="nv" data-nav="spec">设计规范</button>
+      <button class="nv" data-nav="compare">对比现行</button>
+    </nav>
+  </div>
+  <h1 class="masth1">晨白 <em>·</em> 编辑部</h1>
+  <div class="mastsub">
+    <span class="volrow mono">VOL. 01 · 2026-10-17 · 设计提案</span>
+    <p class="orb-note"><b>悬浮球零改动：</b>球体视觉、呼吸动画、112 逻辑尺寸与 hover≤90px 展开判定均为现行设计。本提案仅在面板、工作区与设置窗口层工作，头版位置以占位环说明。</p>
+  </div>
+  <div class="mastline"></div>
+</header>
+<main id="main">
+<section data-view="workspace" id="view-workspace">
+  <div class="chrome" aria-label="大工作区窗口框架示意">
+    <div class="chrome-tb">
+      <span class="tb-brand">PersonalAgent</span>
+      <span class="tb-note">大工作区 · titlebar 40px · 可拖动整窗</span>
+      <span class="tb-sp"></span>
+      <button class="win" data-toast="演示窗口框架：真实实现走 IPC workspace.minimize。" aria-label="最小化"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.5 5.5h8"/></svg></button>
+      <button class="win" data-toast="演示窗口框架：真实实现走 IPC workspace.maximize。" aria-label="最大化或还原"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="1.5" width="8" height="8"/></svg></button>
+      <button class="win" data-toast="演示窗口框架：真实实现走 IPC workspace.close。" aria-label="关闭工作区"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8"/></svg></button>
+    </div>
+    <div class="chrome-top">
+      <div class="ct-left">
+        <span class="eyebrow">悬浮球对话 · ORB CONVERSATION</span>
+        <strong class="goalline">今日主线：完成项目进度同步，并把周报草稿收进知识库。</strong>
+      </div>
+      <div class="ct-right">
+        <span class="badge info" id="badgeRunning">在办 6 · 待批 2</span>
+        <label class="searchbox"><svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="5.5" cy="5.5" r="4"/><path d="M8.6 8.6L12 12"/></svg><input id="taskSearch" type="search" placeholder="搜今日任务（按名称过滤）" aria-label="搜索今日任务"><kbd>/</kbd></label>
+        <button class="btn ghost" id="btnConnectors" aria-pressed="false">显示或隐藏连接器</button>
+        <button class="btn ghost" data-goto="settings">打开设置</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mag">
+    <nav class="mag-toc" aria-label="工作区目录">
+      <p class="eyebrow">本期刊目 · CONTENTS</p>
+      <div class="toc" id="wsToc">
+        <a href="#ws-00"><span class="no">00</span>头版 · 从一个想法开始</a>
+        <a href="#ws-01"><span class="no">01</span>目标总览</a>
+        <a href="#ws-02"><span class="no">02</span>今日任务流</a>
+        <a href="#ws-03"><span class="no">03</span>对话时间线</a>
+        <a href="#ws-04"><span class="no">04</span>审批中心</a>
+        <a href="#ws-05"><span class="no">05</span>连接器</a>
+        <a href="#ws-06"><span class="no">06</span>证据与状态</a>
+      </div>
+      <p class="toc-note">目录为锚点导航；「/」聚到任务搜索，状态 chips 单选切换。Esc 关闭右侧任务详情。</p>
+    </nav>
+
+    <div class="mag-body">
+      <article class="jsec" id="ws-00">
+        <div class="welcome">
+          <div>
+            <p class="eyebrow" style="margin-bottom:10px"><span class="sq"></span>头版 · FRONT PAGE</p>
+            <h3 class="wtitle">从一个想法开始</h3>
+            <p class="wsub">把注意力留给重要的事。</p>
+            <div class="comp">
+              <textarea id="composerInput" rows="1" placeholder="说要做什么…" aria-label="输入任务或问题"></textarea>
+              <button class="btn sm pri send" id="composerSend">发送 ⏎</button>
+            </div>
+            <p class="mini" style="margin-top:10px">Enter 发送 · Shift+Enter 换行 · 面板左下角可携带「持续目标」一起提交（该 chip 现行保留）。</p>
+          </div>
+          <div class="orb-ph">
+            <div class="orb-ring" aria-hidden="true">ORB-02</div>
+            <small><b>球体区域 · 现行设计保持不变</b>。此处现行是一枚 100px canvas 粒子球（欢迎块）/ 112px 逻辑尺寸悬浮球，本提案不做任何外观与动画改动。</small>
+          </div>
+        </div>
+      </article>
+
+      <article class="jsec" id="ws-01">
+        <div class="jhead"><span class="jno">01</span><h2>目标总览 · 持续目标</h2><span class="jfill"></span><span class="jh-en">STANDING GOALS</span></div>
+        <p class="mini">目标写入任务正在提交；受理不等于完成。以下为快照中的已保存目标（演示）。</p>
+        <div class="goals">
+          <div class="goal" data-goal="g-01">
+            <div class="g-top"><span class="eyebrow">GOAL-2026-10-01</span><span class="s-val mono" data-v="ver">版本 v3 · 图版本 128</span></div>
+            <h3>项目进度同步与周报归档</h3>
+            <div class="g-meta"><span>持续目标</span><i>·</i><span>开始 10-13</span><i>·</i><span>截止 10-19</span><i>·</i><span>敏感级别 受限</span><i>·</i><span class="badge ok">进行中</span></div>
+            <div class="prog"><div class="prog-track" aria-hidden="true"><div class="prog-fill" data-p="46" style="width:46%"></div></div><span class="pnum" data-pnum>46%</span></div>
+            <p class="g-ms">里程碑 M2 · 周报草稿入知识库 — 预计 10-18 之前完成</p>
+            <div class="g-act">
+              <button class="btn sm" data-goal-edit aria-expanded="false">修订</button>
+              <span class="s-val">修订原因将写入：创建或修订原因（必填）</span>
+            </div>
+            <form class="goal-form" data-goal-form hidden>
+              <label>目标内容<textarea class="inp" rows="2">完成项目进度同步与周报归档，里程碑 M2 入知识库。</textarea></label>
+              <label>创建或修订原因<textarea class="inp" rows="2" required placeholder="为什么修订这次目标…"></textarea></label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="submit" class="btn sm pri">保存目标</button>
+                <button type="button" class="btn sm ghost" data-goal-cancel>取消</button>
+              </div>
+              <p class="fine">保存后按「目标已确认并读回：版本 prev → rev，图版本 N」口径回执。</p>
+            </form>
+          </div>
+          <div class="goal" data-goal="g-02">
+            <div class="g-top"><span class="eyebrow">GOAL-2026-10-02</span><span class="s-val mono" data-v="ver">版本 v2 · 图版本 122</span></div>
+            <h3>今日计划整理与提醒闭环</h3>
+            <div class="g-meta"><span>持续目标</span><i>·</i><span>开始 10-17</span><i>·</i><span>截止 10-17 当日</span><i>·</i><span>敏感级别 私有</span><i>·</i><span class="badge ok">进行中</span></div>
+            <div class="prog"><div class="prog-track" aria-hidden="true"><div class="prog-fill" data-p="72" style="width:72%"></div></div><span class="pnum" data-pnum>72%</span></div>
+            <p class="g-ms">里程碑 M1 · 3 项待办落位 — 已完成；M2 · 14:00 提醒闭环等待结果核实</p>
+            <div class="g-act"><button class="btn sm" data-goal-edit aria-expanded="false">修订</button></div>
+            <form class="goal-form" data-goal-form hidden>
+              <label>目标内容<textarea class="inp" rows="2">整理今日计划并完成 14:00 提醒闭环。</textarea></label>
+              <label>创建或修订原因<textarea class="inp" rows="2" required placeholder="为什么修订这次目标…"></textarea></label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="submit" class="btn sm pri">保存目标</button>
+                <button type="button" class="btn sm ghost" data-goal-cancel>取消</button>
+              </div>
+            </form>
+          </div>
+          <div class="goal" data-goal="g-03">
+            <div class="g-top"><span class="eyebrow">GOAL-2026-10-03</span><span class="s-val mono" data-v="ver">版本 v1 · 图版本 118</span></div>
+            <h3>订阅源知识脉络周更</h3>
+            <div class="g-meta"><span>持续目标</span><i>·</i><span>开始 10-06</span><i>·</i><span>截止每周日</span><i>·</i><span>敏感级别 公开</span><i>·</i><span class="badge ok">进行中</span></div>
+            <div class="prog"><div class="prog-track" aria-hidden="true"><div class="prog-fill" data-p="35" style="width:35%"></div></div><span class="pnum" data-pnum>35%</span></div>
+            <p class="g-ms">里程碑 M1 · 本周「人工智能行业动态」摘入知识库 — 进行中（等待外部结果）</p>
+            <div class="g-act"><button class="btn sm" data-goal-edit aria-expanded="false">修订</button></div>
+            <form class="goal-form" data-goal-form hidden>
+              <label>目标内容<textarea class="inp" rows="2">每周全量梳理订阅源并摘入知识库。</textarea></label>
+              <label>创建或修订原因<textarea class="inp" rows="2" required placeholder="为什么修订这次目标…"></textarea></label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="submit" class="btn sm pri">保存目标</button>
+                <button type="button" class="btn sm ghost" data-goal-cancel>取消</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <p class="goal-hist">回收架 · <span class="mono">g-009「旧版周报线索」— 已撤回 · 版本 v2</span>（撤回目标在快照中保留为只读记录。）</p>
+      </article>
+
+      <article class="jsec" id="ws-02">
+        <div class="jhead"><span class="jno">02</span><h2>今日任务流</h2><span class="jfill"></span><span class="jh-en">TODAY AT A GLANCE</span></div>
+        <div class="chips" id="taskChips" role="group" aria-label="按状态筛选任务">
+          <button class="chip" data-chip="all" aria-pressed="true">全部<span class="cno" data-count="all">11</span></button>
+          <button class="chip" data-chip="running" aria-pressed="false">进行中<span class="cno" data-count="running">4</span></button>
+          <button class="chip" data-chip="approve" aria-pressed="false">等待审批<span class="cno" data-count="approve">2</span></button>
+          <button class="chip" data-chip="queued" aria-pressed="false">排队<span class="cno" data-count="queued">2</span></button>
+          <button class="chip" data-chip="done" aria-pressed="false">已完成<span class="cno" data-count="done">2</span></button>
+          <button class="chip" data-chip="failed" aria-pressed="false">失败<span class="cno" data-count="failed">1</span></button>
+        </div>
+        <div id="taskList">
+          <button class="task-row" data-task="t-01" data-state="running" data-search="整理今日计划 本地待办 3 项 日程与待办">
+            <span class="tno">01</span>
+            <span class="tmain"><span class="tname">整理今日计划</span><span class="tmeta">持续目标 g-02 · 连接器：日程与待办 · 10:02 进入</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">执行中 · verified</span>
+            <span class="trun"><span class="bar-mini" aria-hidden="true"><i data-p="62" style="width:62%"></i></span><span class="s-val mono" data-pnum>62%</span></span>
+          </button>
+          <button class="task-row" data-task="t-02" data-state="approve" data-search="项目进度同步 日历写入与提醒 日程 日历">
+            <span class="tno">02</span>
+            <span class="tmain"><span class="tname">项目进度同步 · 日历写入与提醒</span><span class="tmeta">持续目标 g-01 · 连接器：日程与待办 · 10:08 进入</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">等待授权 · conditional</span>
+          </button>
+          <button class="task-row" data-task="t-03" data-state="done" data-search="查询北京今日天气 天气 实时">
+            <span class="tno">03</span>
+            <span class="tmain"><span class="tname">查询北京今日天气</span><span class="tmeta">连接器：天气 · 09:41 发起</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">已完成 · verified</span>
+          </button>
+          <button class="task-row" data-task="t-04" data-state="running" data-search="汇总未读邮件摘要 5 封 邮件 本机 laya">
+            <span class="tno">04</span>
+            <span class="tmain"><span class="tname">汇总未读邮件摘要 · 5 封</span><span class="tmeta">持续目标 g-01 · 连接器：邮件 · 09:36 进入</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">验证中 · conditional</span>
+            <span class="trun"><span class="bar-mini" aria-hidden="true"><i data-p="34" style="width:34%"></i></span><span class="s-val mono" data-pnum>34%</span></span>
+          </button>
+          <button class="task-row" data-task="t-05" data-state="done" data-search="知识库检索 项目规划 obsidian 笔记">
+            <span class="tno">05</span>
+            <span class="tmain"><span class="tname">知识库检索 · 项目规划</span><span class="tmeta">持续目标 g-01 · 连接器：知识库与笔记 · 09:30 发起</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">已完成 · verified</span>
+          </button>
+          <button class="task-row" data-task="t-06" data-state="queued" data-search="抓取订阅源最新文章 人工智能行业动态 订阅">
+            <span class="tno">06</span>
+            <span class="tmain"><span class="tname">抓取订阅源最新文章 · 人工智能行业动态</span><span class="tmeta">持续目标 g-03 · 连接器：订阅 · 10:12 入队</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">已创建 · mock</span>
+          </button>
+          <button class="task-row" data-task="t-07" data-state="failed" data-search="生成会议纪要 写入 obsidian 会议知识库">
+            <span class="tno">07</span>
+            <span class="tmain"><span class="tname">生成会议纪要 · 写入知识库</span><span class="tmeta">持续目标 g-03 · 连接器：知识库与笔记 · 09:52 重试 2 次</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">失败 · conditional</span>
+          </button>
+          <button class="task-row" data-task="t-08" data-state="running" data-search="分类收件箱信头 本机 laya 6 类 邮件">
+            <span class="tno">08</span>
+            <span class="tmain"><span class="tname">分类收件箱信头 · 本机 Laya</span><span class="tmeta">连接页 · QQ 邮箱 IMAP · 09:28 进入</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">等待外部结果 · conditional</span>
+            <span class="trun"><span class="bar-mini" aria-hidden="true"><i data-p="21" style="width:21%"></i></span><span class="s-val mono" data-pnum>21%</span></span>
+          </button>
+          <button class="task-row" data-task="t-09" data-state="queued" data-search="待办提醒 14:00 项目进度同步">
+            <span class="tno">09</span>
+            <span class="tmain"><span class="tname">待办提醒 · 14:00 项目进度同步</span><span class="tmeta">持续目标 g-02 · 连接器：通知 · 10:05 入队</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">已创建 · mock</span>
+          </button>
+          <button class="task-row" data-task="t-10" data-state="running" data-search="归档上周任务 清理缓存 任务监控">
+            <span class="tno">10</span>
+            <span class="tmain"><span class="tname">归档上周任务 · 清理缓存</span><span class="tmeta">设置/任务·已归档任务 · 10:15 发起取消</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">正在取消 · mock</span>
+          </button>
+          <button class="task-row" data-task="t-11" data-state="approve" data-search="记事本写入 会议纪要草稿 电脑操控 f9">
+            <span class="tno">11</span>
+            <span class="tmain"><span class="tname">记事本写入 · 会议纪要草稿</span><span class="tmeta">电脑操控页 · 前台 F9 确认 · 10:18 进入</span></span>
+            <span class="lead" aria-hidden="true"></span>
+            <span class="tstat">等待授权 · conditional</span>
+          </button>
+        </div>
+        <p class="task-empty" id="taskEmpty" hidden>没有匹配的条目。清空搜索框或点回「全部」即可恢复全部任务 —— 未连接的能力会保持明确的不可用状态，不会混入列表。</p>
+        <p class="mini" style="margin-top:10px">条目像期刊目录：编号行 · 标点分隔元信息 · 右对齐页码式状态。点击任意条目查看右侧详情（步骤时间线 + Evidence 徽章）。</p>
+      </article>
+
+      <article class="jsec" id="ws-03">
+        <div class="jhead"><span class="jno">03</span><h2>对话时间线</h2><span class="jfill"></span><span class="jh-en">CONVERSATION · ANNOTATED</span></div>
+        <p class="mini">像文集批注：你的话以引文条排布，主智能体的回答作正文段。≥2 轮对话时右缘出现对话定位导航（现行 2px 短横线行为）。</p>
+        <div class="line-thread" style="position:relative">
+          <div class="rail" id="convRail" aria-label="对话定位导航"></div>
+          <div id="turns">
+            <div class="turn">
+              <div class="t-side"><span class="who">你</span><span class="mono">10:02</span><span>第 1 轮对话</span></div>
+              <blockquote class="uquote">整理今日计划，并同步项目进度；把 14:00 的会议提醒也安排上。</blockquote>
+              <div class="ans"><p>已从「日程与待办」读取本地待办 3 项，生成任务 01 并排序；14:00 写入提醒前需要你在审批中心确认一次日历权限。回答基于知识库「项目规划」2 条引用（conditional）。</p></div>
+              <div class="turn-act"><button class="tact" data-task-open="t-01">查看</button><button class="tact" data-copy>复制回答</button></div>
+            </div>
+            <div class="turn">
+              <div class="t-side"><span class="who">主智能体</span><span class="mono">10:08</span><span>第 2 轮对话</span></div>
+              <blockquote class="uquote">同步今天的日程和 14:00 的会议。</blockquote>
+              <div class="ans"><p>项目进度同步任务已受理（版本 v3，图版本 128）；日历写入属越权操作，卡片在「审批中心」待批。批准后继续当前任务，无需再发一条消息。</p></div>
+              <div class="turn-act"><button class="tact" data-task-open="t-02">查看</button><button class="tact" data-copy>复制回答</button></div>
+            </div>
+            <div class="turn">
+              <div class="t-side"><span class="who">主智能体</span><span class="mono">09:52</span><span>第 3 轮对话</span></div>
+              <blockquote class="uquote">会议纪要怎么还没进知识库？</blockquote>
+              <div class="ans"><p>任务 07 在「写入知识库」一步失败且重试 2 次未恢复，当前状态「失败」；建议检查知识库挂载后重新发起。此授权如已过期：此授权已过期，请停止任务后重新发起。</p></div>
+              <div class="turn-act"><button class="tact" data-task-open="t-07">查看</button><button class="tact" data-copy>复制回答</button></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="jsec" id="ws-04">
+        <div class="jhead"><span class="jno">04</span><h2>审批中心</h2><span class="jfill"></span><span class="jh-en">APPROVALS · SLIP NOTES</span></div>
+        <p class="mini">工具调用类授权以便笺形式贴在工作区：虚线边框 + 印章式角标。决定由 Runtime 校验，界面不直接授予权限。</p>
+        <div class="apps">
+          <div class="approval-card" data-state="pending" data-task="t-02" aria-label="操作授权">
+            <span class="stamp">待批</span>
+            <p class="eyebrow"><span class="sq"></span>工具授权 · 日历写入</p>
+            <h3>需要你确认这次操作</h3>
+            <p class="a-body">项目进度同步：在日历写入 14:00「项目进度同步」提醒，并读取今日日程块用于核对。</p>
+            <p class="a-perm"><b>权限：</b>日历：读取日程、写入提醒</p>
+            <p class="a-hint">批准后继续当前任务，无需再发一条消息。</p>
+            <div class="a-act">
+              <button class="btn sm pri" data-approval-decision="allow_once">批准并继续</button>
+              <button class="btn sm" data-approval-decision="deny">拒绝</button>
+            </div>
+            <p class="a-status" data-astatus hidden></p>
+          </div>
+          <div class="approval-card" data-state="pending" data-task="t-11" aria-label="操作授权">
+            <span class="stamp">待批</span>
+            <p class="eyebrow"><span class="sq"></span>工具授权 · 电脑操控</p>
+            <h3>需要你确认这次操作</h3>
+            <p class="a-body">向记事本写入会议纪要草稿（≤4096 字符）；写入就绪后需要你在前台按 F9 逐次确认，属越权需批准的操作。</p>
+            <p class="a-perm"><b>权限：</b>电脑操控：写入文本、前台按键确认</p>
+            <p class="a-hint">批准后继续当前任务，无需再发一条消息。</p>
+            <div class="a-act">
+              <button class="btn sm pri" data-approval-decision="allow_once">批准并继续</button>
+              <button class="btn sm" data-approval-decision="deny">拒绝</button>
+            </div>
+            <p class="a-status" data-astatus hidden></p>
+          </div>
+        </div>
+        <p class="mini" style="margin-top:10px"><button class="linkish" id="resetApprovals">重置审批演示</button>　·　此授权已过期，请停止任务后重新发起。（过期态文案，现行保留）</p>
+      </article>
+
+      <article class="jsec" id="ws-05">
+        <div class="jhead"><span class="jno">05</span><h2>连接器</h2><span class="jfill"></span><button class="btn sm ghost" id="refreshConns">刷新连接器</button><span class="jh-en">CONNECTORS</span></div>
+        <p class="mini">卡片点击可跳到设置 / 集成·连接 分组（演示中弹提示）。健康词库：已连接 / 连接中 / 需要授权 / 连接异常 / 未连接 / 未接入。</p>
+        <div class="conns">
+          <div class="conn" data-chip-conn="weather" role="button" tabindex="0">
+            <div class="c-top"><h3>天气</h3><span class="badge info">实时</span></div>
+            <div class="c-body"><span class="big">18°</span> 多云<div class="sub">北京 · 今日</div></div>
+            <div class="c-foot">已连接 · 实时天气数据</div>
+          </div>
+          <div class="conn" data-chip-conn="calendar" role="button" tabindex="0">
+            <div class="c-top"><h3>日程与待办</h3><span class="badge ok">已就绪</span></div>
+            <div class="c-body"><ul>
+              <li><b>09:30</b> 整理今日计划 <span class="st">待完成</span></li>
+              <li><b>14:00</b> 项目进度同步</li>
+            </ul></div>
+            <div class="c-foot">本地待办 · 3 项</div>
+          </div>
+          <div class="conn" data-chip-conn="mail" role="button" tabindex="0">
+            <div class="c-top"><h3>邮件</h3><span class="badge ok">已授权本会话</span></div>
+            <div class="c-body"><ul>
+              <li><b>林晓 · 09:12</b> 项目进度已更新</li>
+              <li class="st">5 封未读 · 摘要汇总执行中</li>
+            </ul></div>
+            <div class="c-foot">已授权本会话 · 5 封未读</div>
+          </div>
+          <div class="conn" data-chip-conn="obsidian" role="button" tabindex="0">
+            <div class="c-top"><h3>知识库与笔记</h3><span class="badge ok">已连接</span></div>
+            <div class="c-body"><ul><li>最近笔记 <b>项目规划</b></li></ul></div>
+            <div class="c-foot">本地知识库已挂载</div>
+          </div>
+          <div class="conn" data-chip-conn="feeds" role="button" tabindex="0">
+            <div class="c-top"><h3>订阅</h3><span class="badge ok">已授权本会话</span></div>
+            <div class="c-body"><ul><li>已订阅 4 个源</li><li>最新文章 <b>人工智能行业动态</b></li><li class="st">以及 2 等</li></ul></div>
+            <div class="c-foot">已授权本会话</div>
+          </div>
+          <div class="conn" data-chip-conn="notify" role="button" tabindex="0">
+            <div class="c-top"><h3>通知</h3><span class="badge warn">预览</span></div>
+            <div class="c-body"><ul>
+              <li><b>日程提醒</b> 今天 · 14:00</li>
+              <li><b>授权提醒</b> 今天 · 10:08</li>
+            </ul></div>
+            <div class="c-foot">5 条</div>
+          </div>
+        </div>
+      </article>
+
+      <article class="jsec" id="ws-06">
+        <div class="jhead"><span class="jno">06</span><h2>证据与状态</h2><span class="jfill"></span><span class="jh-en">EVIDENCE &amp; STATUS</span></div>
+        <div class="evi">
+          <div class="e-item"><b class="mono" style="color:var(--faint)">mock</b><p>演示数据：未连接真实执行，仅示意界面形态。对应「已创建 / 排队」等未产生证据的条目。</p></div>
+          <div class="e-b" aria-hidden="true"></div>
+          <div class="e-item"><b class="mono" style="color:var(--warn)">conditional</b><p>条件核实：引用了待验证证据（如本机摘录、最近一次信头分类）。对应「思考中 / 验证中 / 等待外部结果」。</p></div>
+          <div class="e-b" aria-hidden="true"></div>
+          <div class="e-item"><b class="mono" style="color:var(--ok)">verified</b><p>已核实：经 Runtime 确认的证据链。对应「已完成 / 执行中」等可读回的结果。</p></div>
+        </div>
+        <p class="fine" style="margin-top:10px">只展示 Runtime 任务快照；Evidence 引用数量不代表目标系统已核实。</p>
+        <div class="statusline">
+          <span class="capsule" id="netCapsule"><span class="dot" aria-hidden="true"></span>在线 · 快照更新于 <span class="mono" id="snapTs">--:--:--</span></span>
+          <span class="capsule" data-off><span class="dot" aria-hidden="true"></span>电脑操控 · 未接入</span>
+          <span>Live 状态词现行保留：正在连接 / 正在续接 / 正在聆听 / 正在回答 / 主智能体正在处理任务 / 正在关闭 / 连接失败。</span>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+<div class="scrim" id="drawerScrim" hidden></div>
+<aside class="drawer" id="taskDrawer" role="dialog" aria-label="任务详情" hidden>
+  <div class="d-head">
+    <div>
+      <p class="eyebrow"><span class="sq"></span>任务详情 · SNAPSHOT</p>
+      <h2 id="dTitle">—</h2>
+      <div class="d-state" id="dState"></div>
+    </div>
+    <button class="btn sm ghost" id="drawerClose">关闭 Esc</button>
+  </div>
+  <p class="mini" id="dGoal"></p>
+  <ol class="steps" id="dSteps"></ol>
+  <p class="mini" style="margin:6px 0 2px">Evidence 徽章（按仓库证据文化保留英文小写）</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap" id="dBages"></div>
+  <dl class="d-meta" id="dMeta"></dl>
+</aside>
+<!--SETTINGS-->
+<section data-view="settings" id="view-settings" hidden>
+  <div class="mag" style="padding-top:6px">
+    <nav class="mag-toc" aria-label="设置目录">
+      <p class="eyebrow">设置目录 · INDEX</p>
+      <div style="margin:10px 0 6px">
+        <label class="searchbox" style="display:flex"><svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="5.5" cy="5.5" r="4"/><path d="M8.6 8.6L12 12"/></svg><input id="settingsSearch" type="search" placeholder="搜索设置…" aria-label="搜索设置" style="width:100%"></label>
+      </div>
+      <div class="toc" id="setToc">
+        <p class="pgroup" style="margin:14px 0 4px" data-group>个人 · PERSONAL</p>
+        <a href="#ap-01"><span class="no">01</span>常规</a>
+        <a href="#ap-02"><span class="no">02</span>个人资料</a>
+        <a href="#ap-03"><span class="no">03</span>外观</a>
+        <a href="#ap-04"><span class="no">04</span>语音</a>
+        <a href="#ap-05"><span class="no">05</span>配置</a>
+        <a href="#ap-06"><span class="no">06</span>个性化</a>
+        <a href="#ap-07"><span class="no">07</span>桌面宠物</a>
+        <a href="#ap-08"><span class="no">08</span>键盘快捷键</a>
+        <a href="#ap-09"><span class="no">09</span>分析</a>
+        <a href="#ap-10"><span class="no">10</span>模型</a>
+        <a href="#ap-11"><span class="no">11</span>记忆</a>
+        <p class="pgroup" style="margin:14px 0 4px" data-group>集成 · INTEGRATION</p>
+        <a href="#ap-12"><span class="no">12</span>电脑操控</a>
+        <a href="#ap-13"><span class="no">13</span>插件</a>
+        <p class="pgroup" style="margin:14px 0 4px" data-group>编码 · CODING</p>
+        <a href="#ap-14"><span class="no">14</span>钩子</a>
+        <a href="#ap-15"><span class="no">15</span>连接</a>
+        <a href="#ap-16"><span class="no">16</span>Git</a>
+        <a href="#ap-17"><span class="no">17</span>环境</a>
+        <a href="#ap-18"><span class="no">18</span>Worktrees</a>
+        <a href="#ap-19"><span class="no">19</span>安全</a>
+        <p class="pgroup" style="margin:14px 0 4px" data-group>任务 · TASKS</p>
+        <a href="#ap-20"><span class="no">20</span>任务监控</a>
+        <a href="#ap-21"><span class="no">21</span>已归档任务</a>
+        <p class="pgroup" style="margin:14px 0 4px" data-group>未入导航 · MISC</p>
+        <a href="#ap-22"><span class="no">22</span>导入</a>
+        <a href="#ap-23"><span class="no">23</span>概览</a>
+        <a href="#ap-24"><span class="no">24</span>账户</a>
+        <a href="#ap-25"><span class="no">25</span>浏览器</a>
+        <a href="#ap-26"><span class="no">26</span>使用情况和计费</a>
+        <p class="pgroup" style="margin:14px 0 4px" data-group>桌面层 · DESKTOP（独立窗口）</p>
+        <a href="#ap-27"><span class="no">27</span>桌面设置</a>
+        <a href="#ap-28"><span class="no">28</span>窗口与恢复</a>
+        <a href="#ap-29"><span class="no">29</span>本机诊断</a>
+      </div>
+      <p class="toc-note" id="setCount">29 个条目 · 与现行盘点一一对应；条目页按「标题｜说明｜状态」占位模式收录未展开页。</p>
+    </nav>
+
+    <div class="mag-body" id="setBody">
+      <p class="eyebrow" style="border-top:2px solid var(--ink);padding-top:10px">个人 · PERSONAL</p>
+
+      <section class="s-pane" id="ap-01">
+        <p class="pane-no">P·01 / 个人</p>
+        <h2>常规</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>界面语言</b><small>由 desktop-shell.js 词典做中英对照；新增文案需备好词典词条。</small></div><div class="s-side"><span class="ro">简体中文</span><span class="s-val" data-val>readonly · 简体中文</span></div></div>
+          <div class="s-row"><div class="s-main"><b>模型与 API</b><small>模型列表、凭据与推理偏好的统一入口。</small></div><div class="s-side"><a class="linkish" href="#ap-10" data-jump>打开模型</a><span class="s-val" data-val>→ P·10</span></div></div>
+          <div class="s-row"><div class="s-main"><b>开机启动</b><small>桌面宿主的登录自启能力。</small></div><div class="s-side"><span class="badge static">待接入</span><span class="s-val" data-val>宿主能力尚未接入（待接入）</span></div></div>
+          <div class="s-row"><div class="s-main"><b>后台驻留</b><small>关闭面板后托盘仍保持运行。</small></div><div class="s-side"><button class="sw" role="switch" data-key="resident" data-on="已启用" data-off="已停用" aria-label="后台驻留" aria-checked="true"></button><span class="s-val" data-val>已启用</span></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-02">
+        <p class="pane-no">P·02 / 个人</p>
+        <h2>个人资料</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>名称</b><small>演示值取自邮件账户「林晓」。</small></div><div class="s-side"><input class="inp" value="林晓" aria-label="名称" style="width:160px"></div></div>
+          <div class="s-row"><div class="s-main"><b>头像</b><small>以首字母徽标代替远程图片。</small></div><div class="s-side"><svg width="34" height="34" viewBox="0 0 34 34" aria-label="头像 林晓"><rect width="34" height="34" fill="#141414"/><text x="17" y="22" fill="#FAF9F6" font-family="Georgia,serif" font-size="15" text-anchor="middle">林</text></svg></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-03">
+        <p class="pane-no">P·03 / 个人</p>
+        <h2>外观</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>界面主题</b><small>跟随系统/深色/浅色，经 pa-theme 跨窗口同步；提案页固定纸白演示，值继续保存。</small></div><div class="s-side"><span class="selwrap"><select data-key="a-theme" aria-label="界面主题"><option value="system" selected>跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select></span><span class="s-val" data-val>跟随系统</span></div></div>
+          <div class="s-row"><div class="s-main"><b>降低动效</b><small>开启后本提案页所有即时推进与过渡一并停用（等效 pa-calm 降级）。</small></div><div class="s-side"><button class="sw" role="switch" data-key="calm" data-on="已开启" data-off="关闭" aria-label="降低动效" aria-checked="false" id="swCalm"></button><span class="s-val" data-val>关闭</span></div></div>
+          <div class="s-row"><div class="s-main"><b>玻璃材质</b><small>现行由设计方案锁定。</small></div><div class="s-side"><span class="ro">标准毛玻璃</span><span class="s-val" data-val>标准毛玻璃（由当前设计方案锁定）</span></div></div>
+          <div class="s-row"><div class="s-main"><b>ORB-02</b><small>悬浮球零改动承诺的落点。</small></div><div class="s-side"><span class="ro">黑核、白色规则点阵、球体模糊关闭</span><span class="s-val" data-val>现行设计保持不变</span></div></div>
+        </div>
+      </section>
+
+      <div class="s-pane" id="ap-04">
+        <p class="pane-no">P·04 / 个人</p>
+        <h2>语音</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>麦克风听写</b><small>按输入设备检测。</small></div><div class="s-side"><span class="badge ok">已配置</span><span class="s-val" data-val>已配置</span></div></div>
+          <div class="s-row"><div class="s-main"><b>Live 实时语音</b><small>通话中 / 已配置 / 未配置；F8 为设备级绑定（本项目不动）。</small></div><div class="s-side"><span class="badge warn">已配置</span><span class="s-val" data-val>已配置 · F8</span></div></div>
+        </div>
+        <div class="spl">
+          <p class="spl-t">LIVE-VOICE-CONTROLS · 现行挂在此卡下方</p>
+          <label>业务空间 ID<input class="inp" value="PA-SIS-SPACE-01" style="max-width:280px"></label>
+          <label>百炼 API Key<input class="inp" type="password" value="" placeholder="•••••••••" style="max-width:280px"></label>
+          <label>Live 快捷键<span class="selwrap"><select data-key="livekey" aria-label="Live 快捷键 F1–F24"><option>F8</option><option>F1</option><option>F2</option><option>F3</option><option>F4</option><option>F5</option><option>F6</option><option>F7</option><option>F9</option><option>F10</option><option>F11</option><option>F12</option></select></span></label>
+          <label style="display:flex;align-items:center;gap:10px">音频邮件 consent<button class="sw" role="switch" data-key="avmail" data-on="已同意" data-off="未同意" aria-label="音频邮件 consent" aria-checked="false"></button><span class="s-val" data-val>未同意</span></label>
+          <div><button class="btn sm pri" data-toast="Live 语音配置已保存（演示）。">保存</button></div>
+          <p class="fine">本次最多 10 分钟；关闭面板停止。唤醒后语音发送到华为 SIS 转文字，仅填草稿，需手动发送。录音仅在你开启后发送到华为 SIS。</p>
+        </div>
+        <div class="srows" style="margin-top:14px;border-top:1px solid var(--line)">
+          <div class="s-row"><div class="s-main"><b>语音播报</b><small>安全隔离：停止播报与任务取消相互独立（现行保留）。</small></div><div class="s-side"><span class="s-val" data-val>安全隔离（停止播报与任务取消独立）</span></div></div>
+        </div>
+      </div>
+
+      <section class="s-pane" id="ap-05">
+        <p class="pane-no">P·05 / 个人</p>
+        <h2>配置</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>运行配置入口</b><small>盘点未展开该页，按占位页模式呈现。</small></div><div class="s-side"><span class="badge static">受控</span><span class="s-val" data-val>受控</span></div></div>
+        </div>
+      </section>
+      <section class="s-pane" id="ap-06">
+        <p class="pane-no">P·06 / 个人</p>
+        <h2>个性化</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>面板个性化选择</b><small>占位页模式：标题｜说明｜状态。</small></div><div class="s-side"><span class="badge static">待接入</span><span class="s-val" data-val>待接入</span></div></div>
+        </div>
+      </section>
+      <section class="s-pane" id="ap-07">
+        <p class="pane-no">P·07 / 个人</p>
+        <h2>桌面宠物</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>桌面陪伴元素</b><small>占位页模式；不涉及悬浮球本体设计。</small></div><div class="s-side"><span class="badge static">固定</span><span class="s-val" data-val>固定</span></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-08">
+        <p class="pane-no">P·08 / 个人</p>
+        <h2>键盘快捷键</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>发送消息</b></div><div class="s-side"><span class="kbd">Enter</span></div></div>
+          <div class="s-row"><div class="s-main"><b>换行</b></div><div class="s-side"><span class="kbd">Shift</span><span class="mini">＋</span><span class="kbd">Enter</span></div></div>
+          <div class="s-row"><div class="s-main"><b>收起面板</b></div><div class="s-side"><span class="kbd">按钮</span></div></div>
+          <div class="s-row"><div class="s-main"><b>Live 开启 / 关闭</b><small>设备级绑定 F8；可被 reason 覆盖。</small></div><div class="s-side"><span class="kbd">F8</span></div></div>
+        </div>
+      </section>
+      <section class="s-pane" id="ap-09">
+        <p class="pane-no">P·09 / 个人</p>
+        <h2>分析</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>使用分析</b><small>占位页模式：标题｜说明｜状态。</small></div><div class="s-side"><span class="badge ok">已启用</span><span class="s-val" data-val>已启用</span></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-10">
+        <p class="pane-no">P·10 / 个人</p>
+        <h2>模型</h2>
+        <div class="mcards">
+          <div class="mcard"><div class="m-id"><b>盘古大模型 2.0</b><small>默认 pangu-nlp-n1-32k · 连接正常</small></div><div class="m-act"><span class="badge ok">连接正常</span><button class="sw" role="switch" data-key="m-pangu" data-on="已启用" data-off="已停用" aria-label="启用 盘古大模型 2.0" aria-checked="true"></button><button class="btn sm" data-mfill="pangu">编辑</button></div></div>
+          <div class="mcard"><div class="m-id"><b>Fake Model · 离线测试</b><small>本地桩模型 · 等待测试</small></div><div class="m-act"><span class="badge warn">等待测试</span><button class="sw" role="switch" data-key="m-fake" data-on="已启用" data-off="已停用" aria-label="启用 Fake Model" aria-checked="false"></button><button class="btn sm" data-mfill="fake">编辑</button></div></div>
+          <div class="mcard"><div class="m-id"><b>AgentArts · Competition Profile</b><small>主智能体运行时 · 连接失败</small></div><div class="m-act"><span class="badge bad">连接失败</span><button class="sw" role="switch" data-key="m-arts" data-on="已启用" data-off="已停用" aria-label="启用 AgentArts" aria-checked="false"></button><button class="btn sm" data-mfill="arts">编辑</button></div></div>
+        </div>
+        <div class="spl" id="modelForm">
+          <p class="spl-t">模型编辑表单</p>
+          <label>Endpoint<input class="inp" id="mfEndpoint" value="https://nlp-models.example/v1" style="max-width:420px"></label>
+          <label>模型名称<input class="inp" id="mfModel" value="pangu-nlp-n1-32k" style="max-width:280px"></label>
+          <label>部署名称<input class="inp" id="mfDeploy" value="pangu-nlp-n1-32k-01" style="max-width:280px"></label>
+          <label>API Key<input class="inp" id="mfKey" type="password" value="" placeholder="•••••••••" style="max-width:280px"></label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn sm pri" data-toast="模型配置已保存（演示）。">保存</button>
+            <button class="btn sm" data-toast="测试连接：演示模式，未发送网络请求。">测试连接</button>
+          </div>
+          <p class="fine">API Key 仅进入主进程，并由 Windows 安全存储加密；列表不会显示密钥内容。</p>
+        </div>
+        <div class="spl">
+          <p class="spl-t">推理偏好（现行 sheet）</p>
+          <label style="grid-template-columns:auto 1fr auto;display:flex;align-items:center;gap:14px;color:var(--ink-2)">思考深度
+            <div class="range"><input type="range" id="effortRange" min="0" max="5" step="1" value="2" data-key="depth" aria-label="思考深度 0–5"><output id="effortOut" aria-live="polite">2 · 平衡</output></div>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px">快速模式<button class="sw" role="switch" data-key="fastmode" data-on="已开启" data-off="关闭" aria-label="快速模式" aria-checked="false"></button><span class="s-val" data-val>关闭</span></label>
+          <p class="fine">档位标签：最低 / 低 / 平衡 / 深入 / 高 / 最高。</p>
+        </div>
+        <div class="spl">
+          <p class="spl-t">AGENTARTS · 主智能体</p>
+          <label>网关地址<input class="inp" value="https://gateway.example/arts" style="max-width:420px"></label>
+          <label>运行时实例名称<input class="inp" value="competition-profile" style="max-width:280px"></label>
+          <label>Authorization<input class="inp" type="password" value="" placeholder="•••••••••" style="max-width:280px"></label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn sm pri" data-toast="主智能体配置已保存（演示）。">保存</button>
+            <button class="btn sm danger" data-toast="已清除凭据并撤销授权（演示）。">清除并撤销凭据</button>
+          </div>
+        </div>
+        <div class="srows" style="margin-top:14px;border-top:1px solid var(--line)">
+          <div class="s-row"><div class="s-main"><b>辅助任务模型</b><small>不可用项保持 disabled；reasoning_effort 随主表单声明。</small></div><div class="s-side"><span class="selwrap"><select data-key="auxmodel" aria-label="辅助任务模型"><option selected>使用默认辅助模型</option><option>盘古大模型 2.0</option><option disabled>Fake Model · 离线测试（不可用）</option><option disabled>AgentArts · Competition Profile（不可用）</option></select></span><span class="s-val" data-val>使用默认辅助模型</span></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-11">
+        <p class="pane-no">P·11 / 个人</p>
+        <h2>记忆</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>私人记忆 vault</b><small>本机保存，含版本历史；撤回与删除均逐版本可查。</small></div><div class="s-side"><input class="inp" value="%USERPROFILE%\.pa-vault" aria-label="Vault 路径" style="width:220px" readonly></div></div>
+          <div class="s-row"><div class="s-main"><b>搜索摘录</b></div><div class="s-side"><input class="inp" type="search" value="" placeholder="搜索已保存记忆…" style="width:200px"></div></div>
+          <div class="s-row"><div class="s-main"><b>已保存记忆分页</b><small>每页 12 条。</small></div><div class="s-side"><button class="btn sm ghost" aria-label="上一页">‹</button><span class="s-val mono">1 / 3</span><button class="btn sm ghost" aria-label="下一页">›</button></div></div>
+          <div class="s-row"><div class="s-main"><b>版本动作</b><small>撤回单条，或删除所有版本（二次确认）。</small></div><div class="s-side"><button class="btn sm" data-toast="已撤回最近一条记忆版本（演示）。">撤回</button><button class="btn sm danger" data-toast="删除所有版本：需二次确认，演示不执行。">删除所有版本</button></div></div>
+          <div class="s-row"><div class="s-main"><b>知识库与笔记</b><small>目录检索与关注事项。</small></div><div class="s-side"><button class="btn sm ghost" data-toast="目录检索窗口（演示）。">目录检索</button><span class="badge warn">2 项待确认提醒</span></div></div>
+          <div class="s-row"><div class="s-main"><b>选择知识库</b><small>知识源与笔记整理的整理对象。</small></div><div class="s-side"><span class="selwrap"><select data-key="kb" aria-label="选择知识库"><option selected>项目规划</option><option>会议纪要</option><option>全部已挂载知识库</option></select></span><span class="s-val" data-val>项目规划</span></div></div>
+          <div class="s-row"><div class="s-main"><b>数据范围</b></div><div class="s-side"><span class="selwrap"><select data-key="kb-scope" aria-label="数据范围"><option selected>标题与摘要</option><option>仅标题</option><option>全文</option></select></span><span class="s-val" data-val>标题与摘要</span></div></div>
+          <div class="s-row"><div class="s-main"><b>允许本会话整理</b><small>会话级授权，撤销立即生效。</small></div><div class="s-side"><button class="sw" role="switch" data-key="kb-intake" data-on="允许" data-off="不允许" aria-label="允许本会话整理" aria-checked="true"></button><span class="s-val" data-val>允许</span></div></div>
+          <div class="s-row"><div class="s-main"><b>公开查询</b><small>整理结果是否进入公开查询面。</small></div><div class="s-side"><button class="sw" role="switch" data-key="kb-public" data-on="开启" data-off="关闭" aria-label="公开查询" aria-checked="false"></button><span class="s-val" data-val>关闭</span></div></div>
+          <div class="s-row"><div class="s-main"><b>权限动作</b></div><div class="s-side"><button class="btn sm pri" data-toast="保存所选权限（演示）。">保存所选权限</button><button class="btn sm ghost" data-toast="已撤销（演示）。">撤销</button></div></div>
+          <div class="s-row"><div class="s-main"><b>Obsidian 配对</b></div><div class="s-side"><span class="badge ok">已挂载</span><span class="s-val" data-val>本地知识库已挂载</span></div></div>
+          <div class="s-row"><div class="s-main"><b>本地 Laya</b><small>本机推理，断网可用。</small></div><div class="s-side"><button class="btn sm" data-toast="本地模型启动任务已提交（演示）。">启动本地模型</button><button class="btn sm ghost" data-toast="已停止并释放（演示）。">停止并释放</button></div></div>
+          <div class="s-row"><div class="s-main"><b>私人记忆与流程学习</b><small>reference-review 流程：读取版本 → 生成候选 → 提交验证任务 → 读回验证。</small></div><div class="s-side"><button class="btn sm ghost" data-toast="读取版本：v2（演示）。">读取版本</button><button class="btn sm ghost" data-toast="候选已生成，待确认启用（演示）。">生成候选</button><button class="btn sm" data-toast="验证任务已提交；读回验证后运行。">提交验证任务</button></div></div>
+        </div>
+      </section>
+
+      <p class="eyebrow" style="border-top:2px solid var(--ink);padding-top:10px;margin-top:44px">集成 · INTEGRATION</p>
+      <section class="s-pane" id="ap-12">
+        <p class="pane-no">P·12 / 集成</p>
+        <h2>电脑操控</h2>
+        <div class="spl">
+          <p class="spl-t">写入新记事本 · 设备级绑定 F9</p>
+          <label>草稿（≤4096 字符）<textarea class="inp" rows="3" maxlength="4096" placeholder="要写入记事本的正文…" id="pcText"></textarea></label>
+          <p class="fine"><span id="pcCount">0</span> / 4096 · 新建并准备写入后，需到前台按 <span class="kbd">F9</span> 逐次确认。</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn sm pri" data-toast="草稿已就绪：请到记事本窗口按 F9 确认写入。">新建并准备写入</button>
+            <button class="btn sm" data-toast="已停止本次操作。">停止本次操作</button>
+            <button class="btn sm ghost" data-toast="执行结果已核实（演示）。">核实执行结果</button>
+          </div>
+        </div>
+        <div class="srows" style="margin-top:14px;border-top:1px solid var(--line)">
+          <div class="s-row"><div class="s-main"><b>开启电脑状态监控</b><small>主动变化提醒总开关，默认关。</small></div><div class="s-side"><button class="sw" role="switch" data-key="pc-watch" data-on="已开启" data-off="关闭" aria-label="开启电脑状态监控" aria-checked="false"></button><span class="s-val" data-val>关闭</span></div></div>
+          <div class="s-row"><div class="s-main"><b>CPU / 内存压力触发自动分析</b><small>默认关。</small></div><div class="s-side"><button class="sw" role="switch" data-key="pc-cpu" data-on="已开启" data-off="关闭" aria-label="CPU 内存压力自动分析" aria-checked="false"></button><span class="s-val" data-val>关闭</span></div></div>
+          <div class="s-row"><div class="s-main"><b>目标变化分析</b></div><div class="s-side"><button class="sw" role="switch" data-key="pc-goal" data-on="已开启" data-off="关闭" aria-label="目标变化分析" aria-checked="false"></button><span class="s-val" data-val>关闭</span></div></div>
+          <div class="s-row"><div class="s-main"><b>保存主动提醒设置</b></div><div class="s-side"><button class="btn sm pri" data-toast="主动提醒设置已保存（演示）。">保存主动提醒设置</button></div></div>
+          <div class="s-row"><div class="s-main"><b>建议 / 方案审阅卡</b><small>提交云端编排上限 16000 字符。</small></div><div class="s-side"><button class="btn sm" data-toast="已保留该建议（KEEP）。">KEEP</button><button class="btn sm pri" data-toast="已提交云端编排任务（演示）。">提交云端编排</button></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-13">
+        <p class="pane-no">P·13 / 集成</p>
+        <h2>插件</h2>
+        <div class="mcards">
+          <div class="mcard"><div class="m-id"><b>daily-standup · v0.4</b><small>站会纪要草稿生成 · 文件数 3 · SHA256 a44f…c2</small></div><div class="m-act"><button class="sw" role="switch" data-key="pk-du" data-on="已启用" data-off="已停用" aria-label="启用 daily-standup" aria-checked="true"></button><button class="btn sm ghost" data-toast="已打开 SKILL.md 说明（演示）。">查看说明</button><button class="btn sm" data-toast="本次任务已指定该 Skill；仅本地、不自动执行。">使用此 Skill</button><button class="btn sm danger" data-toast="卸载：需二次确认，演示不执行。">卸载</button></div></div>
+        </div>
+        <div class="spl">
+          <p class="spl-t">安装与本次任务</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-toast="已选择 SKILL.md 所在文件夹（演示）。">安装 SKILL.md 文件夹</button></div>
+          <label>本次任务<textarea class="inp" rows="2" placeholder="描述使用该 Skill 要完成的任务…"></textarea></label>
+          <p class="fine">技能执行仅本地、不自动执行；工作区参考工具：连接只读服务、参考摘要生成。</p>
+        </div>
+      </section>
+
+      <p class="eyebrow" style="border-top:2px solid var(--ink);padding-top:10px;margin-top:44px">编码 · CODING</p>
+      <section class="s-pane" id="ap-14">
+        <p class="pane-no">P·14 / 编码</p>
+        <h2>钩子</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>任务开始</b></div><div class="s-side"><span class="badge static">待接入</span><span class="s-val" data-val>待接入</span></div></div>
+          <div class="s-row"><div class="s-main"><b>工具调用前</b><small>策略网关始终先于外部执行。</small></div><div class="s-side"><span class="badge static">固定</span><span class="s-val" data-val>策略网关始终先于外部执行</span></div></div>
+          <div class="s-row"><div class="s-main"><b>任务完成</b><small>只根据 Runtime 最终状态触发。</small></div><div class="s-side"><span class="badge ok">已启用</span><span class="s-val" data-val>只根据 Runtime 最终状态触发</span></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-15">
+        <p class="pane-no">P·15 / 编码</p>
+        <h2>连接</h2>
+        <table class="tbl"><caption class="sr">连接健康表</caption>
+          <thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><b>天气</b></td><td><span class="badge ok">已连接</span></td><td>实时天气数据</td></tr>
+            <tr><td><b>邮件</b></td><td><span class="badge ok">已连接</span></td><td>已授权本会话 · 5 封未读</td></tr>
+            <tr><td><b>日程与待办</b></td><td><span class="badge ok">已连接</span></td><td>本地待办 · 3 项</td></tr>
+            <tr><td><b>知识库与笔记</b></td><td><span class="badge ok">已连接</span></td><td>本地知识库已挂载</td></tr>
+            <tr><td><b>订阅</b></td><td><span class="badge ok">已连接</span></td><td>已订阅 4 个源</td></tr>
+            <tr><td><b>通知</b></td><td><span class="badge warn">预览</span></td><td>预览态 · 当前 5 条</td></tr>
+          </tbody>
+        </table>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>QQ 邮箱 IMAP</b><small>只读取收件箱信头，在本机 Laya 分类 6 类；不读取正文，不发送、移动或删除邮件。</small></div><div class="s-side"><button class="sw" role="switch" data-key="imap-session" data-on="允许本会话" data-off="已关闭" aria-label="允许本会话读取信头" aria-checked="true"></button><button class="btn sm ghost" data-toast="已关闭会话并撤销（演示）。">关闭并撤销</button></div></div>
+          <div class="s-row"><div class="s-main"><b>云端分析</b><small>对已分类信头的云端整理开关。</small></div><div class="s-side"><button class="sw" role="switch" data-key="imap-cloud" data-on="已开启" data-off="关闭" aria-label="云端分析" aria-checked="false"></button><span class="s-val" data-val>关闭</span></div></div>
+        </div>
+        <div class="spl">
+          <p class="spl-t">CALDAV · 订阅日历</p>
+          <label>名称<input class="inp" value="团队日历" style="max-width:240px"></label>
+          <label>HTTPS 集合地址<input class="inp" value="https://caldav.example/calendars/team" style="max-width:420px"></label>
+          <label>账号<input class="inp" value="team@pa.local" style="max-width:280px"></label>
+          <label>应用密码<input class="inp" type="password" value="" placeholder="•••••••••" style="max-width:280px"></label>
+          <p class="fine">单条 UID 读取逐次审批，逐条拉取不走批量。</p>
+        </div>
+        <div class="spl">
+          <p class="spl-t">RSS / ATOM 订阅</p>
+          <label>名称<input class="inp" value="行业动态" style="max-width:240px"></label>
+          <label>地址<input class="inp" value="https://feeds.example/industry.xml" style="max-width:420px"></label>
+          <label style="display:flex;align-items:center;gap:10px">敏感级<div class="seg" role="radiogroup" aria-label="RSS 敏感级" data-segkey="rss-level"><label><input type="radio" name="rsslevel" value="公开" data-key="rss-level" checked><span>公开</span></label><label><input type="radio" name="rsslevel" value="私人" data-key="rss-level"><span>私人</span></label></div></label>
+          <label style="display:flex;align-items:center;gap:10px">来源与跟踪许可<button class="sw" role="switch" data-key="rss-track" data-on="许可" data-off="不许可" aria-label="来源与跟踪许可" aria-checked="true"></button><span class="s-val" data-val>许可</span></label>
+          <label style="display:flex;align-items:center;gap:10px;max-width:320px">刷新间隔（分钟）<input class="inp" type="number" min="5" max="240" step="5" value="30" data-key="rss-interval" aria-label="刷新间隔分钟"></label>
+          <div><button class="btn sm danger" data-toast="已移除该订阅源（演示）。">移除</button></div>
+        </div>
+        <div class="srows" style="margin-top:14px;border-top:1px solid var(--line)">
+          <div class="s-row"><div class="s-main"><b>待办与提醒</b><small>本地待办可新建 / 标为完成 / 重新打开；提醒可暂停至指定时间。</small></div><div class="s-side"><button class="btn sm" data-toast="已新建待办（演示）。">新建待办</button><button class="btn sm ghost" data-toast="已标为完成（演示）。">标为完成</button><button class="btn sm ghost" data-toast="已重新打开（演示）。">重新打开</button><input class="inp" type="datetime-local" value="2026-10-17T14:00" aria-label="暂停提醒至" style="width:190px"></div></div>
+          <div class="s-row"><div class="s-main"><b>待办与提醒 · 云 consent</b><small>云端提醒服务合规开关。</small></div><div class="s-side"><button class="sw" role="switch" data-key="todo-cloud" data-on="已同意" data-off="未同意" aria-label="待办云 consent" aria-checked="false"></button><span class="s-val" data-val>未同意</span></div></div>
+          <div class="s-row"><div class="s-main"><b>主智能体目标管理</b><small>consent 下允许主智能体读取与编排持续目标。</small></div><div class="s-side"><button class="sw" role="switch" data-key="goal-consent" data-on="已开启" data-off="未开启" aria-label="主智能体目标 consent" aria-checked="true"></button><button class="btn sm ghost" data-toast="已撤销目标管理授权（演示）。">撤销</button></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-16">
+        <p class="pane-no">P·16 / 编码</p>
+        <h2>Git</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>Git 状态</b></div><div class="s-side"><span class="badge static">未连接</span><span class="s-val" data-val>未连接</span></div></div>
+          <div class="s-row"><div class="s-main"><b>默认分支策略</b></div><div class="s-side"><span class="ro">安全</span><span class="s-val" data-val>安全</span></div></div>
+          <div class="s-row"><div class="s-main"><b>凭据</b><small>凭据保存在安全存储。</small></div><div class="s-side"><span class="s-val" data-val>不在前端保存</span></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-17">
+        <p class="pane-no">P·17 / 编码</p>
+        <h2>环境</h2>
+        <div class="spl">
+          <p class="spl-t">编程工作区</p>
+          <div class="srows" style="border:none;margin:0">
+            <div class="s-row"><div class="s-main"><b>选择工作区</b></div><div class="s-side"><input class="inp" value="D:\Code\pa-app" style="width:220px" readonly></div></div>
+            <div class="s-row"><div class="s-main"><b>选择本机 Node</b></div><div class="s-side"><span class="selwrap"><select aria-label="Node 版本"><option>v22.x</option><option>v20.x</option><option>v18.x</option></select></span></div></div>
+            <div class="s-row"><div class="s-main"><b>选择 JS 语法检查文件</b></div><div class="s-side"><input class="inp" value="eslint.config.mjs" style="width:220px"></div></div>
+            <div class="s-row"><div class="s-main"><b>选择 npm</b></div><div class="s-side"><input class="inp" value="pnpm · 9.x" style="width:220px"></div></div>
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2)">
+            <label class="chk"><input type="checkbox" data-key="env-arts">发送 AgentArts</label>
+            <label class="chk"><input type="checkbox" data-key="env-write">允许写入</label>
+            <label class="chk"><input type="checkbox" data-key="env-limited">受限命令</label>
+            <label class="chk"><input type="checkbox" data-key="env-build" checked>项目构建测试</label>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn sm pri" data-toast="已授权本地读取及所选权限（演示）。">授权本地读取及所选权限</button>
+            <button class="btn sm ghost" data-toast="已撤销（演示）。">撤销</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-18">
+        <p class="pane-no">P·18 / 编码</p>
+        <h2>Worktrees</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>workspace-settings-redesign-20261017</b><small>本次提案工作树 · 只读展示。</small></div><div class="s-side"><span class="badge static">受控</span><span class="s-val" data-val>只读</span></div></div>
+        </div>
+      </section>
+
+      <section class="s-pane" id="ap-19">
+        <p class="pane-no">P·19 / 编码</p>
+        <h2>安全 · authorizations</h2>
+        <table class="tbl"><caption class="sr">授权状态表</caption>
+          <thead><tr><th>授权 ID</th><th>任务</th><th>工具与范围</th><th>状态与期限</th><th>决定</th></tr></thead>
+          <tbody>
+            <tr data-az="0218"><td class="mono">az-0218</td><td>项目进度同步</td><td>日历：读取日程、写入提醒</td><td><span class="badge warn">待处理</span> · 10:24 起 10 分钟</td><td><button class="btn sm pri" data-az="allow">允许一次</button> <button class="btn sm" data-az="deny">拒绝</button></td></tr>
+            <tr data-az="0217"><td class="mono">az-0217</td><td>记事本写入</td><td>电脑操控：写入文本、前台按键</td><td><span class="badge ok">已允许</span> · 至 18:00</td><td><button class="btn sm" data-az="revoke">核验并撤销</button></td></tr>
+          </tbody>
+        </table>
+        <p class="fine" style="margin-top:10px">没有待处理授权。授权决定由 Runtime 校验，界面不直接授予权限。　·　授权历史分页：‹ 1 / 2 ›</p>
+      </section>
+
+      <p class="eyebrow" style="border-top:2px solid var(--ink);padding-top:10px;margin-top:44px">任务 · TASKS</p>
+      <section class="s-pane" id="ap-20">
+        <p class="pane-no">P·20 / 任务</p>
+        <h2>任务监控</h2>
+        <table class="tbl"><caption class="sr">任务表</caption>
+          <thead><tr><th>任务 ID</th><th>状态</th><th>版本</th><th>结果摘要</th><th>证据</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">t-05</td><td><span class="badge ok">已完成</span></td><td class="mono">v5</td><td>已返回 2 条知识库引用。</td><td><span class="badge ok">verified</span></td></tr>
+            <tr><td class="mono">t-04</td><td><span class="badge info">验证中</span></td><td class="mono">v3</td><td>3 / 5 封已汇总，等待结果核实。</td><td><span class="badge warn">conditional</span></td></tr>
+            <tr><td class="mono">t-07</td><td><span class="badge bad">失败</span></td><td class="mono">v2</td><td>写入知识库失败 · 重试 2 次。</td><td><span class="badge warn">conditional</span></td></tr>
+          </tbody>
+        </table>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>步骤与 Evidence details</b><small>在表行内展开步骤与证据引用。</small></div><div class="s-side"><button class="btn sm" data-toast="已展开步骤与证据详情（演示）。">展开</button><button class="btn sm ghost" data-toast="已读取执行元数据（演示）。">读取执行元数据</button></div></div>
+          <div class="s-row"><div class="s-main"><b>工作区补丁恢复</b><small>从任务记录恢复工作区补丁。</small></div><div class="s-side"><button class="btn sm" data-toast="补丁恢复任务已提交（演示）。">恢复补丁</button></div></div>
+        </div>
+      </section>
+      <section class="s-pane" id="ap-21">
+        <p class="pane-no">P·21 / 任务</p>
+        <h2>已归档任务</h2>
+        <table class="tbl"><caption class="sr">已归档任务</caption>
+          <thead><tr><th>任务 ID</th><th>归档时间</th><th>结果摘要</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">a-1421</td><td class="mono">10-16 18:22</td><td>周报数据汇总完成。</td></tr>
+            <tr><td class="mono">a-1420</td><td class="mono">10-16 11:05</td><td>订阅源清点，无新增。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <p class="eyebrow" style="border-top:2px solid var(--ink);padding-top:10px;margin-top:44px">未入导航 · MISC（占位页模式）</p>
+      <section class="s-pane" id="ap-22">
+        <p class="pane-no">P·22 / 未入导航</p><h2>导入</h2>
+        <div class="srows"><div class="s-row"><div class="s-main"><b>从旧版本导入</b></div><div class="s-side"><span class="badge static">待接入</span><span class="s-val" data-val>待接入</span></div></div></div>
+      </section>
+      <section class="s-pane" id="ap-23">
+        <p class="pane-no">P·23 / 未入导航</p><h2>概览</h2>
+        <div class="srows"><div class="s-row"><div class="s-main"><b>设置中心总览</b></div><div class="s-side"><span class="badge ok">已启用</span><span class="s-val" data-val>已启用</span></div></div></div>
+      </section>
+      <section class="s-pane" id="ap-24">
+        <p class="pane-no">P·24 / 未入导航</p><h2>账户</h2>
+        <div class="srows"><div class="s-row"><div class="s-main"><b>账户与能力状态</b></div><div class="s-side"><span class="badge ok">已启用</span><span class="s-val" data-val>已启用</span></div></div></div>
+      </section>
+      <section class="s-pane" id="ap-25">
+        <p class="pane-no">P·25 / 未入导航</p><h2>浏览器</h2>
+        <div class="srows"><div class="s-row"><div class="s-main"><b>浏览器集成入口</b></div><div class="s-side"><span class="badge static">不可用</span><span class="s-val" data-val>不可用</span></div></div></div>
+      </section>
+      <section class="s-pane" id="ap-26">
+        <p class="pane-no">P·26 / 未入导航</p><h2>使用情况和计费</h2>
+        <div class="srows"><div class="s-row"><div class="s-main"><b>用量与计费信息</b></div><div class="s-side"><span class="badge static">待接入</span><span class="s-val" data-val>待接入</span></div></div></div>
+      </section>
+
+      <p class="eyebrow" style="border-top:2px solid var(--ink);padding-top:10px;margin-top:44px">桌面层 · DESKTOP（独立「桌面设置」窗口 · B 层）</p>
+      <section class="s-pane" id="ap-27">
+        <p class="pane-no">P·27 / 桌面层</p>
+        <h2>桌面设置</h2>
+        <p class="s-desc">独立桌面设置窗口的 8 项表单；运行时其中「主题 / 字体大小」被改写为「后台与大工作区字体缩放」语境。</p>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>语言</b></div><div class="s-side"><span class="selwrap"><select data-key="dt-lang" aria-label="语言"><option selected>System / 跟随系统</option><option>简体中文</option><option>English</option></select></span><span class="s-val" data-val>System / 跟随系统</span></div></div>
+          <div class="s-row"><div class="s-main"><b>主题</b><small>运行时语境：后台与大工作区字体缩放。</small></div><div class="s-side"><span class="selwrap"><select data-key="dt-theme" aria-label="主题"><option selected>跟随系统</option><option>浅色</option><option>深色</option></select></span><span class="s-val" data-val>跟随系统</span></div></div>
+          <div class="s-row"><div class="s-main"><b>设置页字体大小</b><small>运行时改写为「后台与大工作区字体缩放」。</small></div><div class="s-side"><span class="selwrap"><select data-key="dt-font" aria-label="设置页字体大小"><option>90%</option><option selected>100%</option><option>110%</option><option>120%</option><option>130%</option></select></span><span class="s-val" data-val>100%</span></div></div>
+          <div class="s-row"><div class="s-main"><b>减少设置页动效</b></div><div class="s-side"><button class="sw" role="switch" data-key="dt-calm" data-on="已勾选" data-off="未勾选" aria-label="减少设置页动效" aria-checked="false"></button><span class="s-val" data-val>未勾选</span></div></div>
+          <div class="s-row"><div class="s-main"><b>悬浮入口始终置顶</b></div><div class="s-side"><button class="sw" role="switch" data-key="dt-top" data-on="已勾选" data-off="未勾选" aria-label="悬浮入口始终置顶" aria-checked="true"></button><span class="s-val" data-val>已勾选</span></div></div>
+          <div class="s-row"><div class="s-main"><b>拖动结束后贴近边缘吸附</b></div><div class="s-side"><button class="sw" role="switch" data-key="dt-snap" data-on="已勾选" data-off="未勾选" aria-label="拖动结束后贴近边缘吸附" aria-checked="true"></button><span class="s-val" data-val>已勾选</span></div></div>
+          <div class="s-row"><div class="s-main"><b>靠近悬浮球展开面板</b><small>hover ≤90px 展开判定在主进程计算（球体零改动）。</small></div><div class="s-side"><button class="sw" role="switch" data-key="dt-hover" data-on="已勾选" data-off="未勾选" aria-label="靠近悬浮球展开面板" aria-checked="true"></button><span class="s-val" data-val>已勾选</span></div></div>
+          <div class="s-row"><div class="s-main"><b>Ctrl+Shift+Space 显示悬浮球</b></div><div class="s-side"><button class="sw" role="switch" data-key="dt-hotkey" data-on="已勾选" data-off="未勾选" aria-label="Ctrl Shift Space 显示悬浮球" aria-checked="false"></button><span class="s-val" data-val>未勾选</span></div></div>
+          <div class="s-row"><div class="s-main"><b>提交</b></div><div class="s-side"><button class="btn sm pri" id="dtSave">保存</button><span class="s-val" data-val id="dtStatus" aria-live="polite">—</span></div></div>
+        </div>
+      </section>
+      <section class="s-pane" id="ap-28">
+        <p class="pane-no">P·28 / 桌面层</p>
+        <h2>窗口与恢复</h2>
+        <p class="fine" style="margin-bottom:8px">重新加载会丢失该窗口未提交的输入。请先保存输入。</p>
+        <table class="tbl"><caption class="sr">窗口与恢复</caption>
+          <thead><tr><th>窗口</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><b>orb</b>（悬浮球）</td><td><button class="btn sm ghost" data-toast="演示：orb 窗恢复 IPC。">显示</button> <button class="btn sm ghost" data-toast="演示：orb 窗重新加载 IPC。重新加载会丢失该窗口未提交的输入。请先保存输入。">重新加载</button> <button class="btn sm ghost" data-toast="演示：orb 窗最小化 IPC。">最小化</button> <button class="btn sm ghost" data-toast="演示：orb 窗最大化恢复 IPC。">最大化恢复</button></td></tr>
+            <tr><td><b>panel</b>（对话面板）</td><td><button class="btn sm ghost" data-toast="演示：panel 窗恢复 IPC。">显示</button> <button class="btn sm ghost" data-toast="演示：panel 窗重新加载 IPC。重新加载会丢失该窗口未提交的输入。请先保存输入。">重新加载</button> <button class="btn sm ghost" data-toast="演示：panel 窗最小化 IPC。">最小化</button> <button class="btn sm ghost" data-toast="演示：panel 窗最大化恢复 IPC。">最大化恢复</button></td></tr>
+            <tr><td><b>admin</b>（设置中心）</td><td><button class="btn sm ghost" data-toast="演示：admin 窗恢复 IPC。">显示</button> <button class="btn sm ghost" data-toast="演示：admin 窗重新加载 IPC。重新加载会丢失该窗口未提交的输入。请先保存输入。">重新加载</button> <button class="btn sm ghost" data-toast="演示：admin 窗最小化 IPC。">最小化</button> <button class="btn sm ghost" data-toast="演示：admin 窗最大化恢复 IPC。">最大化恢复</button></td></tr>
+            <tr><td><b>workspace</b>（大工作区）</td><td><button class="btn sm ghost" data-toast="演示：workspace 窗恢复 IPC。">显示</button> <button class="btn sm ghost" data-toast="演示：workspace 窗重新加载 IPC。重新加载会丢失该窗口未提交的输入。请先保存输入。">重新加载</button> <button class="btn sm ghost" data-toast="演示：workspace 窗最小化 IPC。">最小化</button> <button class="btn sm ghost" data-toast="演示：workspace 窗最大化恢复 IPC。">最大化恢复</button></td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="s-pane" id="ap-29">
+        <p class="pane-no">P·29 / 桌面层</p>
+        <h2>本机诊断</h2>
+        <div class="srows">
+          <div class="s-row"><div class="s-main"><b>版本串</b></div><div class="s-side"><span class="s-val mono" data-val id="diagInfo">PersonalAgent v · Electron · win32 x64 · 2560×1440@1.25</span></div></div>
+          <div class="s-row"><div class="s-main"><b>诊断动作</b></div><div class="s-side"><button class="btn sm" id="diagRefresh">刷新</button><button class="btn sm ghost" data-toast="已打开日志文件夹（演示）。">打开日志文件夹</button></div></div>
+          <div class="s-row"><div class="s-main"><b>日志区</b><small>现行桌面设置窗口以 pre 展示最近日志。</small></div></div>
+        </div>
+        <pre id="diagLog" style="font:11.5px/1.8 var(--mono);background:var(--paper-2);border:1px solid var(--line);padding:12px;margin-top:10px;overflow:auto;max-height:140px">10:24:31 desktop:update orb/panel/admin/workspace 四窗一致
+10:24:36 snapshot ack 12ms · tasks 11 · approvals 2</pre>
+      </section>
+    </div>
+  </div>
+</section>
+<!--SPEC-->
+<section data-view="spec" id="view-spec" hidden>
+  <div class="mag-body" style="max-width:1080px">
+    <article class="jsec" id="sp-idea">
+      <div class="jhead"><span class="jno">S·1</span><h2>设计理念</h2><span class="jfill"></span><span class="jh-en">DESIGN STATEMENT</span></div>
+      <div class="prose">
+        <p>报纸的版面语言比图形界面更早解决「信息过载」：白纸、墨字、细线和编号。晨白 · 编辑部把大工作区当成一期期刊来排——目标总览是「头条」，任务流排成目录条，审批是贴在版边的便笺，证据词汇像刊名一样小写保留。它只做三件决定：其一，全页仅一道<strong>国际蓝 #1f4ed8</strong>，其余交给墨与纸，让状态词成为唯一允许的色彩事件；其二，取消全部阴影与玻璃，分层交给 1px 阴线、dotted 引线与两层留白，hover 只允许一层微弱纸灰；其三，悬浮球区域原样封存。衬线标题负责气质，Segoe 负责德性——让阅读密集的中文案卷先舒服，再谈好看。</p>
+      </div>
+    </article>
+
+    <article class="jsec" id="sp-color">
+      <div class="jhead"><span class="jno">S·2</span><h2>主色板</h2><span class="jfill"></span><span class="jh-en">PALETTE · CLICK TO COPY</span></div>
+      <p class="mini">点击色样复制 hex（演示：navigator.clipboard / execCommand 兜底）。</p>
+      <div class="spec-grid">
+        <div class="spec-card">
+          <h3>纸与墨</h3>
+          <div class="swatches">
+            <button class="swatch" data-hex="#FAF9F6"><span class="sw-chip" style="background:#FAF9F6"></span><span class="sw-name">纸白 paper</span><span class="sw-hex">#FAF9F6</span></button>
+            <button class="swatch" data-hex="#141414"><span class="sw-chip" style="background:#141414"></span><span class="sw-name">墨黑 ink</span><span class="sw-hex">#141414</span></button>
+            <button class="swatch" data-hex="#F1EEE6"><span class="sw-chip" style="background:#F1EEE6"></span><span class="sw-name">纸灰 wash</span><span class="sw-hex">#F1EEE6</span></button>
+            <button class="swatch" data-hex="#6F6A5E"><span class="sw-chip" style="background:#6F6A5E"></span><span class="sw-name">灰目 muted</span><span class="sw-hex">#6F6A5E</span></button>
+            <button class="swatch" data-hex="#DDD8CB"><span class="sw-chip" style="background:#DDD8CB"></span><span class="sw-name">阴线 hairline</span><span class="sw-hex">#DDD8CB</span></button>
+          </div>
+        </div>
+        <div class="spec-card">
+          <h3>唯一强调色</h3>
+          <div class="swatches">
+            <button class="swatch" data-hex="#1F4ED8"><span class="sw-chip" style="background:#1F4ED8"></span><span class="sw-name">国际蓝 accent</span><span class="sw-hex">#1F4ED8</span></button>
+            <button class="swatch" data-hex="#173A9E"><span class="sw-chip" style="background:#173A9E"></span><span class="sw-name">国际蓝·按下</span><span class="sw-hex">#173A9E</span></button>
+            <button class="swatch" data-hex="#FDFCF9"><span class="sw-chip" style="background:#FDFCF9;border-color:#BDB7A6"></span><span class="sw-name">蓝上文字</span><span class="sw-hex">#FDFCF9</span></button>
+          </div>
+          <p class="fine" style="margin-top:12px">trace 位置：链接 / 选中 chip / 进度条 / focus ring / 「待批」印章也可降级为蓝（本稿印泥色仅用于警示语义）。</p>
+        </div>
+        <div class="spec-card">
+          <h3>语义色（只用于状态词）</h3>
+          <div class="semrow"><span class="badge ok">成功 ok</span><span>已完成 / 已连接</span><span class="scode">#2E6F4E</span></div>
+          <div class="semrow"><span class="badge warn">警示 warn</span><span>等待审批 / 待处理</span><span class="scode">#8A5F00</span></div>
+          <div class="semrow"><span class="badge bad">危险 danger</span><span>失败 / 拒绝</span><span class="scode">#B3271E</span></div>
+          <div class="semrow"><span class="badge info">信息 info</span><span>与强调色同源</span><span class="scode">#1F4ED8</span></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="jsec" id="sp-type">
+      <div class="jhead"><span class="jno">S·3</span><h2>字号阶梯</h2><span class="jfill"></span><span class="jh-en">TYPE SCALE</span></div>
+      <div class="spec-card typescale">
+        <div class="trow"><span class="ttag">display 64</span><span style="font-family:var(--serif);font-size:64px;line-height:1.02">从一个想法开始</span></div>
+        <div class="trow"><span class="ttag">headline 40</span><span style="font-family:var(--serif);font-size:40px">今日任务流</span></div>
+        <div class="trow"><span class="ttag">section 32</span><span style="font-family:var(--serif);font-size:32px">目标总览 · 持续目标</span></div>
+        <div class="trow"><span class="ttag">card-title 20</span><span style="font-family:var(--serif);font-size:20px">项目进度同步与周报归档</span></div>
+        <div class="trow"><span class="ttag">quote 17</span><span style="font-family:var(--serif);font-size:17px;border-left:2px solid var(--accent);padding-left:10px">同步今天的日程和 14:00 的会议。</span></div>
+        <div class="trow"><span class="ttag">body 15</span><span style="font-size:15px">批准后继续当前任务，无需再发一条消息。</span></div>
+        <div class="trow"><span class="ttag">body-s 14</span><span style="font-size:14px">内置 Segoe UI Variable Text ＋ 雅黑回退，行高 1.7。</span></div>
+        <div class="trow"><span class="ttag">caption 12</span><span style="font-size:12px;color:var(--muted)">只展示 Runtime 任务快照；Evidence 引用数量不代表目标系统已核实。</span></div>
+        <div class="trow"><span class="ttag">eyebrow 11</span><span class="eyebrow"><span class="sq"></span>VOL. 01 · EYEBROW 用小字母距标签（.18em）</span></div>
+        <div class="trow"><span class="ttag">mono 页码 12</span><span class="mono" style="font-size:12px">01 · 执行中 · conditional · VOL. 01</span></div>
+      </div>
+      <p class="fine" style="margin-top:10px">字体栈：标题 Georgia, "Noto Serif SC", "Source Han Serif SC", SimSun, serif；正文与控件 "Segoe UI Variable Text", Segoe UI, Microsoft YaHei UI, PingFang SC, Noto Sans SC；数字与页码 Cascadia Mono / Consolas。</p>
+    </article>
+
+    <article class="jsec" id="sp-space">
+      <div class="jhead"><span class="jno">S·4</span><h2>间距阶 · 圆角阶 · 阴影阶</h2><span class="jfill"></span><span class="jh-en">SPACING / RADIUS / SHADOWS</span></div>
+      <div class="spec-grid">
+        <div class="spec-card">
+          <h3>间距 2/4/8/…</h3>
+          <div class="spacerow"><i style="width:2px"></i>2 · 紧贴</div>
+          <div class="spacerow"><i style="width:4px"></i>4 · 行内</div>
+          <div class="spacerow"><i style="width:8px"></i>8 · 控件间隙</div>
+          <div class="spacerow"><i style="width:12px"></i>12 · 条目内</div>
+          <div class="spacerow"><i style="width:16px"></i>16 · 卡片内边距</div>
+          <div class="spacerow"><i style="width:24px"></i>24 · 分条目</div>
+          <div class="spacerow"><i style="width:36px"></i>36 · 栏间隙</div>
+          <div class="spacerow"><i style="width:48px"></i>48 · 章节间（severe 留白）</div>
+          <div class="spacerow"><i style="width:64px"></i>64 · 版面外边</div>
+        </div>
+        <div class="spec-card radiusr">
+          <h3>圆角阶</h3>
+          <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div><div class="rr" style="border-radius:0"></div><p class="mini" style="text-align:center;margin-top:4px">0 · 直角（默认）</p></div>
+            <div><div class="rr" style="border-radius:2px"></div><p class="mini" style="text-align:center;margin-top:4px">2 · 仅输入/按钮</p></div>
+            <div><div class="rr" style="border-radius:6px"></div><p class="mini" style="text-align:center;margin-top:4px">6 · 大卡（少用）</p></div>
+            <div><div class="rr" style="width:36px;height:36px;border-radius:999px"></div><p class="mini" style="text-align:center;margin-top:4px">999 · 仅状态点</p></div>
+          </div>
+          <h3 style="margin-top:16px">阴影阶</h3>
+          <p class="prose" style="font-size:12.5px"><b>none。</b>本方案禁用阴影（含玻璃内高光）。分层依赖：1px 阴线 --line、强阴线 --line-strong、dotted 引线与背景阶（paper → paper-2 → wash）。最大「层」就是一层纸灰 hover。</p>
+        </div>
+        <div class="spec-card">
+          <h3>动效时长与缓动</h3>
+          <div class="motrow"><span class="mono" style="color:var(--accent)">120ms</span><span>hover 底色、开关滑块（一次性状态变化）</span></div>
+          <div class="motrow"><span class="mono" style="color:var(--accent)">200ms</span><span>进度条推进、toast 出入</span></div>
+          <div class="motrow"><span class="mono" style="color:var(--accent)">320ms</span><span>抽屉开合（位移大，多 120ms 余量）</span></div>
+          <div class="motrow"><span class="mono">cubic-bezier(.2,0,0,1)</span><span>与现行一致，沿用 data-calm 口径</span></div>
+          <div class="motrow"><span class="mono" style="color:var(--bad)">0ms</span><span>prefers-reduced-motion:reduce —— 全部动画与过渡即停；「降低动效」开关等效降级。模拟实时更新（2s tick）同步停用。</span></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="jsec" id="sp-a11y">
+      <div class="jhead"><span class="jno">S·5</span><h2>无障碍</h2><span class="jfill"></span><span class="jh-en">ACCESSIBILITY</span></div>
+      <div class="spec-card">
+        <div class="semrow"><b>对比度</b><span>墨黑/纸白 17.5:1；灰目正文 5.1:1；国际蓝文字 6.3:1；蓝底白字 6.7:1 —— 均达 AA，正文达 AAA。</span></div>
+        <div class="semrow"><b>focus 可见性</b><span>:focus-visible = 2px 国际蓝描边 + 2px offset；开关、分段、滑杆均由真实 button / input 承载，键盘可达。</span></div>
+        <div class="semrow"><b>reduced-motion</b><span>媒体查询与「降低动效」双通道降级：动画停、过渡 ≤0，2s tick 停止，快照时间保持静态。</span></div>
+        <div class="semrow"><b>语义</b><span>状态用 role=status 的 toast 与 aria-live 播报；chip 用 aria-pressed；开关用 role=switch + aria-checked；抽屉 role=dialog + Esc 关闭。</span></div>
+      </div>
+    </article>
+
+    <article class="jsec" id="sp-ref">
+      <div class="jhead"><span class="jno">S·6</span><h2>参考体系与借鉴点</h2><span class="jfill"></span><span class="jh-en">REFERENCES</span></div>
+      <ul class="reflist prose">
+        <li><b>Untitled UI（浅色编辑排版传统）</b>——借鉴其「eyebrow 小标签 + 大标题 + 细线分节」的层级骨架与克制的强调色法则。</li>
+        <li><b>Vercel Geist</b>——借鉴其黑白极简下的 hairline 阴线体系与直角容器；色板收敛到「纸、墨、一道蓝」。</li>
+        <li><b>IBM Carbon 密度哲学</b>——借鉴其网格规约与目录式高密度列表（本稿任务流/设置条目的对齐方式）。</li>
+        <li><b>中文报纸版式（宋体标题 / 码号页码）</b>——借鉴衬线大标题、编号与 dotted 引线的期刊目录手法。</li>
+      </ul>
+      <p class="fine">借鉴仅限排版语法与 token 策略；业务功能与信息架构以盘点金标准为准，不做增删。</p>
+    </article>
+  </div>
+</section>
+<!--COMPARE-->
+<section data-view="compare" id="view-compare" hidden>
+  <div class="mag-body" style="max-width:1080px">
+    <article class="jsec" id="cp-tbl">
+      <div class="jhead"><span class="jno">C·1</span><h2>对比现行「墨核」玻璃方案</h2><span class="jfill"></span><span class="jh-en">VS. INK-CORE GLASS</span></div>
+      <table class="cmp-tbl">
+        <thead><tr><th>维度</th><th>现行墨核（冷光青玻璃）</th><th>晨白 · 编辑部</th></tr></thead>
+        <tbody>
+          <tr><td>明暗</td><td class="now">深色为主：bg #0b0d10 / #0e1116；admin/workspace 实心表面；另有一层历史黑白纯面覆盖并存。</td><td class="mine">纸白 #FAF9F6 暖白全天候；墨黑 #141414 正文，对比 17.5:1。深色对偶保留为后续工作（不剥夺 data-theme）。</td></tr>
+          <tr><td>材质</td><td class="now">玻璃：blur(42px) saturate(1.8) + 内高光 + 三档阴影；但 admin/workspace 已降级为实心 surface。</td><td class="mine">无玻璃、无阴影：纸面直角卡片，分层靠 1px 阴线 / dotted 引线 / 背景阶；hover 仅一层 #F1EEE6 纸灰。</td></tr>
+          <tr><td>色板焦点</td><td class="now">冷光青 accent #52c7bd（hover #6bd6cd）+ success/warn/danger/info 四语义；主题另有 amber/vermilion/lime 变体。</td><td class="mine">单一国际蓝 #1f4ed8 贯穿链接、选中态、进度条与 focus ring；语义色只染色「状态词」，不参与版式结构。</td></tr>
+          <tr><td>字体</td><td class="now">Segoe UI Variable Text + 雅黑全责；标题 600、−0.01em；数字 Cascadia Mono。</td><td class="mine">衬线栈（Georgia / 思源宋体 / 宋体）承担报头与章节标题；正文控件仍 Segoe UI Variable Text + 雅黑；页码与期号 Cascadia Mono。</td></tr>
+          <tr><td>密度</td><td class="now">中密度；卡片圆角 14–18px；workspace 断点 960/900/720/640 降密。</td><td class="mine">目录式高读密度：期刊条目行 1px 阴线分隔、无卡片框；卡片页反而更大留白（severe 留白）。</td></tr>
+          <tr><td>导航形态</td><td class="now">左侧 196/228px 导航 + admin 搜索；workspace 顶栏工具按钮。</td><td class="mine">报头 + 目录式双栏：左「期刊目」编号 00–06（工作区）/ P·01–29（设置），右正文栏；设置页同构，搜索框在目录头。</td></tr>
+          <tr><td>交互中心</td><td class="now">对话面板 composer 与球体为中心，workspace 是扩展视图。</td><td class="mine">版面成为工作台：任务条目 + 审批便笺是主角；球体区域原样占位声明，composer 仍保留现行文案。</td></tr>
+          <tr><td>动效基调</td><td class="now">80/150/240/400ms + cubic-bezier(.2,0,0,1)；data-calm 降级（动画停、过渡 ≤150ms）。</td><td class="mine">同一缓动家族，时长收敛 120/200/320ms；prefers-reduced-motion 与「降低动效」双通道即停，2s 实时 tick 一并停用。</td></tr>
+          <tr><td>桌面协同</td><td class="now">一次 desktop:update 广播四窗；F8/F9/Ctrl+Shift+Space 设备级绑定；语言经词典中英对照。</td><td class="mine">不改窗口形态、IPC、绑定与词典机制；把新增文案按「中文为主 + 英文词典词条」整理进 desktop-shell 词典。</td></tr>
+          <tr><td>风险与取舍</td><td class="now">玻璃在低配/高分屏的性能损耗；「冷光青玻璃 vs 黑白纯面」两套叙事并存造成 admin 观感漂移。</td><td class="mine">代价：失去毛玻璃情绪质感；衬线小字在 1× 低分屏发虚、纸白夜间偏亮 —— 需要保留深色对偶与 1.25×+ 缩放复测。</td></tr>
+        </tbody>
+      </table>
+      <p class="fine" style="margin-top:10px">两套主题叙事的裁决：本稿建议以「纸面编辑部」统一黑白纯面叙事，把玻璃叙事收敛到 panel/orb 等悬浮窗口；tokens.css 的 data-theme / data-glass / data-calm 约定全部保留。</p>
+    </article>
+
+    <article class="jsec" id="cp-orb">
+      <div class="jhead"><span class="jno">C·2</span><h2>悬浮球承接说明</h2><span class="jfill"></span><span class="jh-en">ORB · UNCHANGED</span></div>
+      <div class="prose">
+        <p><b>球体不动。</b>canvas 粒子球、呼吸动画、112×112 固定窗口、右下默认位、hover ≤90px 触发展开（主进程 placeOrb 计算）全部保持现行设计。本稿在欢迎块以 100px 中性占位环注明「球体区域 · 现行设计保持不变」，不提供任何替换视觉。</p>
+        <p><b>面板以球为锚点展开</b>：420×640 对话面板仍停靠球旁（右缘 +8 优先，放不下落左侧），拖动时球与面板成组。晨白在此只做纸面皮肤：面板成为一页「白纸便签」——报头一行状态词、正文字流、admin 以 anchor 锚定后第一章即「今日任务流」，面板与工作区的 t 区块编号一致（互为页码引用）。停靠方向、断点与分数 DPI（1×–2×）行为按 placement.js 不变，仅换肤不改锚定。</p>
+      </div>
+    </article>
+
+    <article class="jsec" id="cp-land">
+      <div class="jhead"><span class="jno">C·3</span><h2>落地建议</h2><span class="jfill"></span><span class="jh-en">ROLL-OUT NOTES</span></div>
+      <div class="prose">
+        <p><b>Renderer/CSS 宏观位置</b>（只谈位置，不写实现代码）：</p>
+        <p>其一，<strong>tokens.css</strong>：以纸白/墨黑/国际蓝为默认值注入浅色套，深色对偶挂 data-theme="dark" 条件下继续使用现行墨核值；data-glass 在 workspace/admin 上置为实体，panel/orb 保留玻璃变量。其二，<strong>style.css / surfaces.css</strong>：把按卡片圆角与阴影的规则收敛到「hairline + 背景阶」两个 mixin 位；按钮、chip、开关与表格在大工作区与 admin 两处共享一套新基类。其三，<strong>features/admin/view.js 与 desktop-settings 三件套</strong>：导航结构不动，仅替换类名层与文案词典；新增文案补齐中英对照后按一次 desktop:update 广播全窗口。其四，<strong>控件矩阵与断言</strong>：switch/segmented/range 的渲染签名与防重复提交断言需在提案落地时登记新结构签名（一按钮一 IPC 语义不变）。其五，字迹验证：宋体栈在 1× 低分屏 + 90% 字体缩放的组合要做一次人工复测，必要时回退到思源宋体优先。</p>
+      </div>
+    </article>
+  </div>
+</section>
+</main>
+<footer class="colophon">
+  <span>晨白 · 编辑部 — PersonalAgent 设计提案 · VOL. 01 · 2026-10-17</span>
+  <span>静态交互稿 · 不含真实 IPC 与网络请求 · 偏好仅写入本页 localStorage（pa-prop-01-editorial-light-*）</span>
+</footer>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script>
+(function(){
+'use strict';
+var $=function(s,r){return (r||document).querySelector(s)};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var REDUCED=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var PRE='pa-prop-01-editorial-light-';
+function lsGet(k,d){try{var v=localStorage.getItem(PRE+k);return v==null?d:v}catch(e){return d}}
+function lsSet(k,v){try{localStorage.setItem(PRE+k,String(v))}catch(e){}}
+function pad(n){return (n<10?'0':'')+n}
+function nowStr(){var d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())}
+
+/* ---------- toast ---------- */
+var toastEl=$('#toast'),toastT=null;
+function toast(m){if(!toastEl)return;toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(function(){toastEl.classList.remove('show')},2600)}
+
+/* ---------- views ---------- */
+var SECTIONS=$$('main section[data-view]');
+function setView(v){
+  document.body.dataset.currentView=v;
+  SECTIONS.forEach(function(s){s.hidden=(s.dataset.view!==v)});
+  $$('header .nv').forEach(function(b){
+    if(b.dataset.nav===v){b.setAttribute('aria-current','true')}else{b.removeAttribute('aria-current')}
+  });
+  closeDrawer();
+  window.scrollTo(0,0);
+  if(v==='workspace'){setTimeout(function(){var i=$('#taskSearch');if(i&&document.activeElement!==i){}},0)}
+}
+$$('header .nv').forEach(function(b){b.addEventListener('click',function(){setView(b.dataset.nav)})});
+
+/* ---------- clipboard ---------- */
+function copyText(txt,label){
+  var done=function(){toast('已复制'+(label||'')+'。')};
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done,function(){fallback()});return}
+  }catch(e){}
+  fallback();
+  function fallback(){
+    try{
+      var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');
+      ta.style.position='fixed';ta.style.left='-9999px';document.body.appendChild(ta);ta.select();
+      document.execCommand('copy');document.body.removeChild(ta);done();
+    }catch(e){toast('复制失败：请手动选择文本复制。')}
+  }
+}
+
+/* ---------- task data ---------- */
+var TASKS={
+  't-01':{t:'整理今日计划',st:'执行中',grp:'running',ev:'verified',g:'持续目标 g-02 · 连接器：日程与待办',
+    steps:[['09:30','已创建','ok','读取本地待办 3 项，生成今日排序。'],['09:31','思考中','act','合并重复提醒并排优先级。'],['10:02','执行中','act','推送排序结果到「日程与待办」连接卡。'],['—','验证中','pending','与待办标注比对，等待结果核实。']],
+    meta:[['状态','执行中'],['版本','v4'],['Evidence 引用','知识库 2 条（verified）'],['结果摘要','3 项待办已排序，M2 预计 10-18。']]},
+  't-02':{t:'项目进度同步 · 日历写入与提醒',st:'等待授权',grp:'approve',ev:'conditional',g:'持续目标 g-01 · 连接器：日程与待办',
+    steps:[['09:36','已创建','ok'],['10:08','执行中','act','读取今日日程块完成。'],['10:08','等待授权','warn','需要你确认这次操作：见审批中心（14:00 写入提醒）。']],
+    meta:[['状态','等待授权'],['版本','v3 · 图版本 128'],['Evidence 引用','日程块 1 条（conditional）'],['结果摘要','Runtime 未提供结果摘要']]},
+  't-03':{t:'查询北京今日天气',st:'已完成',grp:'done',ev:'verified',g:'连接器：天气',
+    steps:[['09:41','已创建','ok'],['09:41','执行中','act'],['09:41','已完成','ok','返回 18° 多云 · 北京今日。']],
+    meta:[['状态','已完成'],['版本','v1'],['Evidence 引用','实时数据 1 条（verified）'],['结果摘要','18° 多云 · 北京今日']]},
+  't-04':{t:'汇总未读邮件摘要 · 5 封',st:'验证中',grp:'running',ev:'conditional',g:'持续目标 g-01 · 连接器：邮件',
+    steps:[['09:28','已创建','ok'],['09:36','执行中','act','3 / 5 封已读信头并分类。'],['10:11','验证中','act','摘要待结果核实。']],
+    meta:[['状态','验证中'],['版本','v3'],['Evidence 引用','信头 3 条（conditional）'],['结果摘要','3 / 5 封已汇总，继续排队剩余 2 封。']]},
+  't-05':{t:'知识库检索 · 项目规划',st:'已完成',grp:'done',ev:'verified',g:'持续目标 g-01 · 连接器：知识库与笔记',
+    steps:[['09:30','已创建','ok'],['09:30','执行中','act'],['09:30','已完成','ok','返回 2 条引用。']],
+    meta:[['状态','已完成'],['版本','v5'],['Evidence 引用','知识库 2 条（verified）'],['结果摘要','已返回 2 条项目节奏引用。']]},
+  't-06':{t:'抓取订阅源最新文章 · 人工智能行业动态',st:'已创建',grp:'queued',ev:'mock',g:'持续目标 g-03 · 连接器：订阅',
+    steps:[['10:12','已创建','act','入队等待编排。'],['—','等待外部结果','pending','订阅源按 30 分钟间隔刷新。']],
+    meta:[['状态','已创建'],['版本','v1'],['Evidence 引用','—（mock）'],['结果摘要','Runtime 未提供结果摘要']]},
+  't-07':{t:'生成会议纪要 · 写入知识库',st:'失败',grp:'failed',ev:'conditional',g:'持续目标 g-03 · 连接器：知识库与笔记',
+    steps:[['09:50','已创建','ok'],['09:52','执行中','act'],['09:52','失败','fail','写入知识库失败，重试 2 次未恢复。'],['—','恢复建议','pending','检查知识库挂载后重新发起。']],
+    meta:[['状态','失败'],['版本','v2'],['Evidence 引用','摘录 1 条（conditional）'],['结果摘要','写入失败 · 建议检查本地知识库挂载']]},
+  't-08':{t:'分类收件箱信头 · 本机 Laya',st:'等待外部结果',grp:'running',ev:'conditional',g:'连接页 · QQ 邮箱 IMAP（只读信头）',
+    steps:[['09:28','已创建','ok'],['09:28','执行中','act','6 类分类完成 4 / 6。'],['10:14','等待外部结果','act','外部分类扩展批次返回中。']],
+    meta:[['状态','等待外部结果'],['版本','v2'],['Evidence 引用','信头 5 条（conditional）'],['结果摘要','不读取正文，不发送、移动或删除邮件。']]},
+  't-09':{t:'待办提醒 · 14:00 项目进度同步',st:'已创建',grp:'queued',ev:'mock',g:'持续目标 g-02 · 连接器：通知',
+    steps:[['10:05','已创建','act','入队，等待 14:00 提醒窗口。'],['—','等待结果核实','pending']],
+    meta:[['状态','已创建'],['版本','v1'],['Evidence 引用','—（mock）'],['结果摘要','Runtime 未提供结果摘要']]},
+  't-10':{t:'归档上周任务 · 清理缓存',st:'正在取消',grp:'running',ev:'mock',g:'设置 · 任务 / 已归档任务',
+    steps:[['10:15','已创建','ok'],['10:15','执行中','act'],['10:18','正在取消','warn','收到取消请求，正在等待最后一步退出。']],
+    meta:[['状态','正在取消'],['版本','v2'],['Evidence 引用','—（mock）'],['结果摘要','Runtime 未提供结果摘要']]},
+  't-11':{t:'记事本写入 · 会议纪要草稿',st:'等待授权',grp:'approve',ev:'conditional',g:'设置 · 集成 / 电脑操控',
+    steps:[['10:16','已创建','ok'],['10:18','新建并准备写入','act'],['10:18','等待授权','warn','需要你确认这次操作；写入就绪后按 F9 前台逐次确认。']],
+    meta:[['状态','等待授权'],['版本','v1'],['Evidence 引用','—'],['结果摘要','草稿 ≤4096 字符 · F9 设备级绑定不变']]}
+};
+
+/* ---------- drawer ---------- */
+var drawer=$('#taskDrawer'),scrim=$('#drawerScrim'),lastFocus=null;
+var EVCLS={mock:'',conditional:'warn',verified:'ok'};
+function openDrawer(id){
+  var d=TASKS[id];if(!d||!drawer)return;
+  lastFocus=document.activeElement;
+  $('#dTitle').textContent=d.t;
+  $('#dGoal').textContent=d.g||'';
+  var st=$('#dState');st.innerHTML='';
+  var sb=document.createElement('span');sb.className='badge '+(d.grp==='approve'?'warn':d.grp==='done'?'ok':d.grp==='failed'?'bad':d.grp==='queued'?'static':'info');
+  sb.textContent=d.st;st.appendChild(sb);
+  var eb=document.createElement('span');eb.className='badge static mono';eb.textContent=d.ev;st.appendChild(eb);
+  var ol=$('#dSteps');ol.innerHTML='';
+  (d.steps||[]).forEach(function(s){
+    var li=document.createElement('li');li.className=s[2]||'';
+    var top=document.createElement('div');top.className='st-top';
+    var b=document.createElement('b');b.textContent=s[1];top.appendChild(b);
+    var tm=document.createElement('time');tm.textContent=s[0];top.appendChild(tm);
+    li.appendChild(top);
+    if(s[3]){var p=document.createElement('p');p.textContent=s[3];li.appendChild(p)}
+    ol.appendChild(li);
+  });
+  var bx=$('#dBages');bx.innerHTML='';
+  ['mock','conditional','verified'].forEach(function(ev){
+    var s=document.createElement('span');s.className='badge mono '+(EVCLS[ev]||'');s.textContent=ev+(ev===d.ev?'（本任务）':'');bx.appendChild(s);
+  });
+  var dl=$('#dMeta');dl.innerHTML='';
+  (d.meta||[]).forEach(function(m){
+    var dt=document.createElement('dt');dt.textContent=m[0];var dd=document.createElement('dd');dd.textContent=m[1];dl.appendChild(dt);dl.appendChild(dd);
+  });
+  drawer.hidden=false;scrim.hidden=false;
+  var c=$('#drawerClose');if(c){c.focus()}
+}
+function closeDrawer(){
+  if(!drawer||drawer.hidden)return;
+  drawer.hidden=true;scrim.hidden=true;
+  if(lastFocus&&lastFocus.focus){try{lastFocus.focus()}catch(e){}}
+  lastFocus=null;
+}
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){closeDrawer()}
+  if(e.key==='/'&&document.body.dataset.currentView==='workspace'){
+    var a=e.target;var typing=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable);
+    if(!typing){e.preventDefault();var i=$('#taskSearch');if(i){i.focus()}}
+  }
+});
+if(scrim){scrim.addEventListener('click',closeDrawer)}
+var dc=$('#drawerClose');if(dc){dc.addEventListener('click',closeDrawer)}
+
+/* ---------- realtime tick ---------- */
+var calm=(function(){return REDUCED||lsGet('calm','0')==='1'})();
+function applyCalm(){calm=REDUCED||lsGet('calm','0')==='1';document.body.classList.toggle('is-calm',calm);setPulse(!calm)}
+var pulseT=null;
+function tick(){
+  $$('#view-workspace [data-p]').forEach(function(el){
+    var v=parseInt(el.dataset.p,10)||0;if(v>=97)return;
+    var nv=Math.min(97,v+2+Math.floor(Math.random()*5));el.dataset.p=nv;el.style.width=nv+'%';
+    var box=el.closest('.prog')||el.closest('.trun');
+    if(box){var n=box.querySelector('[data-pnum]');if(n){n.textContent=nv+'%'}}
+  });
+  var ts=$('#snapTs');if(ts){ts.textContent=nowStr()}
+}
+function setPulse(on){clearInterval(pulseT);pulseT=null;if(on){tick();pulseT=setInterval(tick,2000)}}
+document.body.classList.toggle('is-calm',calm);
+if(!calm){setPulse(true)}else{$$('#view-workspace #snapTs').forEach(function(t){t.textContent=t.textContent||'10:24:36'})}
+var tsInit=$('#snapTs');if(tsInit&&calm){tsInit.textContent='10:24:36'}
+
+/* ---------- counting ---------- */
+function recount(){
+  var rows=$$('#taskList .task-row');
+  var c={all:rows.length,running:0,approve:0,queued:0,done:0,failed:0};
+  rows.forEach(function(r){if(c[r.dataset.state]!=null)c[r.dataset.state]++});
+  $$('[data-count]').forEach(function(s){s.textContent=c[s.dataset.count]});
+  var b=$('#badgeRunning');
+  if(b){b.textContent='在办 '+(c.running+c.queued)+' · 待批 '+c.approve}
+}
+
+/* ---------- filter ---------- */
+var curChip='all',searchInput=$('#taskSearch');
+function applyTaskFilter(){
+  var q=(searchInput&&searchInput.value||'').trim().toLowerCase();var vis=0;
+  $$('#taskList .task-row').forEach(function(r){
+    var hay=((r.dataset.search||'')+'\u0001'+(r.textContent||'')).toLowerCase();
+    var okQ=!q||hay.indexOf(q)>-1;var okS=curChip==='all'||r.dataset.state===curChip;
+    var show=okQ&&okS;r.hidden=!show;if(show)vis++;
+  });
+  var em=$('#taskEmpty');if(em)em.hidden=vis>0;
+}
+if(searchInput){
+  searchInput.addEventListener('input',applyTaskFilter);
+  searchInput.addEventListener('keydown',function(e){if(e.key==='Escape'){searchInput.value='';applyTaskFilter()}});
+}
+$$('#taskChips .chip').forEach(function(ch){
+  ch.addEventListener('click',function(){
+    var key=ch.dataset.chip;
+    curChip=(key===curChip&&key!=='all')?'all':key;
+    $$('#taskChips .chip').forEach(function(x){x.setAttribute('aria-pressed',x.dataset.chip===curChip?'true':'false')});
+    applyTaskFilter();
+  });
+});
+
+/* ---------- conversation ---------- */
+var turnSeq=1;
+function buildRail(){
+  var rail=$('#convRail');if(!rail)return;
+  var turns=$$('#turns > .turn');rail.innerHTML='';
+  turns.forEach(function(t,i){
+    var b=document.createElement('button');
+    b.title='第 '+(i+1)+' 轮对话';
+    b.setAttribute('aria-label','定位到第 '+(i+1)+' 轮对话');
+    b.addEventListener('click',function(){t.scrollIntoView({block:'center',behavior:REDUCED?'auto':'smooth'})});
+    rail.appendChild(b);
+  });
+}
+function addTaskToFlow(title){
+  turnSeq++;
+  var id='t-'+String($$('#taskList .task-row').length+1).padStart(2,'0');
+  TASKS[id]={t:title,st:'已创建',grp:'queued',ev:'mock',g:'来自对话输入（演示快照）',
+    steps:[[nowStr(),'已创建','act','入队等待编排。'],['—','等待结果核实','pending']],
+    meta:[['状态','已创建'],['版本','v1'],['Evidence 引用','—（mock）'],['结果摘要','Runtime 未提供结果摘要']]};
+  var b=document.createElement('button');
+  b.className='task-row';b.dataset.task=id;b.dataset.state='queued';
+  b.dataset.search=(title).toLowerCase();
+  b.innerHTML='<span class="tno">'+String($$('#taskList .task-row').length).padStart(2,'0')+'</span>'+
+    '<span class="tmain"><span class="tname"></span><span class="tmeta">对话输入 · '+nowStr()+' 入队</span></span>'+
+    '<span class="lead" aria-hidden="true"></span><span class="tstat">已创建 · mock</span>';
+  b.querySelector('.tname').textContent=title;
+  var list=$('#taskList');list.appendChild(b);
+  recount();applyTaskFilter();
+  return id;
+}
+var ta=$('#composerInput');
+function sendMsg(){
+  if(!ta)return;var v=ta.value.trim();if(!v)return;
+  var turns=$('#turns');var n=turns.children.length+1;
+  var id=addTaskToFlow(v);
+  var div=document.createElement('div');div.className='turn';
+  div.innerHTML='<div class="t-side"><span class="who">你</span><span class="mono">'+nowStr()+'</span><span>第 '+n+' 轮对话</span></div>'+
+    '<blockquote class="uquote"></blockquote>';
+  div.querySelector('.uquote').textContent=v;
+  turns.appendChild(div);
+  ta.value='';
+  buildRail();
+  setTimeout(function(){
+    if(div.isConnected){
+      var ans=document.createElement('div');ans.className='ans';
+      ans.innerHTML='<p>已受理：任务 <b>'+id+'</b> 已创建（排队），可在「今日任务流」查看；编排与执行以 Runtime 快照为准。</p>';
+      var act=document.createElement('div');act.className='turn-act';
+      var btn=document.createElement('button');btn.className='tact';btn.textContent='查看';btn.dataset.taskOpen=id;
+      var cp=document.createElement('button');cp.className='tact';cp.textContent='复制回答';cp.dataset.copy='';cp.title='';
+      var stop=document.createElement('button');stop.className='tact';stop.textContent='停止';
+      stop.addEventListener('click',function(){stop.disabled=true;stop.textContent='正在停止';setTimeout(function(){if(stop.isConnected){stop.textContent='已请求停止'}},900)});
+      act.appendChild(btn);act.appendChild(cp);act.appendChild(stop);
+      ans.appendChild(act);div.appendChild(ans);
+      toast('已加入今日任务流（排队 · 已创建）。');
+    }
+  },650);
+}
+if(ta){
+  ta.addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}
+  });
+}
+var sendBtn=$('#composerSend');if(sendBtn){sendBtn.addEventListener('click',sendMsg)}
+
+/* ---------- goals ---------- */
+$$('[data-goal-edit]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var card=b.closest('.goal');var f=card&&card.querySelector('[data-goal-form]');
+    if(!f)return;var open=f.hidden;f.hidden=!open;b.setAttribute('aria-expanded',open?'true':'false');
+    if(open){var t=f.querySelector('textarea[required]');if(t){t.focus()}}
+  });
+});
+$$('[data-goal-cancel]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var f=b.closest('[data-goal-form]');if(f){f.hidden=true}
+    var card=b.closest('.goal');var e=card&&card.querySelector('[data-goal-edit]');if(e){e.setAttribute('aria-expanded','false')}
+  });
+});
+$$('[data-goal-form]').forEach(function(f){
+  f.addEventListener('submit',function(ev){
+    ev.preventDefault();
+    var btn=f.querySelector('button[type=submit]');if(btn){btn.disabled=true;btn.textContent='提交中…'}
+    toast('目标写入任务正在提交；受理不等于完成。');
+    setTimeout(function(){
+      if(btn){btn.disabled=false;btn.textContent='保存目标'}
+      f.hidden=true;
+      var card=f.closest('.goal');var e=card&&card.querySelector('[data-goal-edit]');if(e){e.setAttribute('aria-expanded','false')}
+      var ver=card&&card.querySelector('[data-v]');if(ver){ver.textContent=ver.textContent.replace(/v(\d+)/,function(m,n){return 'v'+(parseInt(n,10)+1)})}
+      toast('目标已确认并读回：版本 prev → rev，图版本 129。');
+    },1400);
+  });
+});
+
+/* ---------- approvals ---------- */
+function setTaskState(id,word,grp,ev){
+  var row=$('#taskList .task-row[data-task="'+id+'"]');if(!row)return;
+  row.dataset.state=grp;
+  var s=row.querySelector('.tstat');if(s){s.textContent=word+' · '+ev}
+  TASKS[id]&&(TASKS[id].st=word,TASKS[id].grp=grp,TASKS[id].ev=ev);
+  recount();applyTaskFilter();
+}
+$$('[data-approval-decision]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var card=b.closest('.approval-card');if(!card||card.dataset.state!=='pending')return;
+    var yes=b.dataset.approvalDecision==='allow_once';
+    card.dataset.state=yes?'approved':'denied';
+    var st=card.querySelector('.stamp');if(st){st.textContent=yes?'已批':'已拒'}
+    $$('[data-approval-decision]',card).forEach(function(x){x.disabled=true});
+    var line=card.querySelector('[data-astatus]');
+    if(line){line.hidden=false;line.textContent=yes?'已批准 · 无需再发一条消息，任务继续执行。':'已拒绝 · 操作已停止，如需继续请重新发起。'}
+    if(card.dataset.task){setTaskState(card.dataset.task,yes?'执行中':'已取消',yes?'running':'queued',yes?'conditional':'mock')}
+    toast(yes?'已批准：批准后继续当前任务，无需再发一条消息。':'已拒绝：此操作已停止。');
+  });
+});
+var ra=$('#resetApprovals');
+if(ra){ra.addEventListener('click',function(){
+  $$('.approval-card').forEach(function(card){
+    card.dataset.state='pending';
+    var st=card.querySelector('.stamp');if(st){st.textContent='待批'}
+    $$('[data-approval-decision]',card).forEach(function(x){x.disabled=false});
+    var line=card.querySelector('[data-astatus]');if(line){line.hidden=true}
+  });
+  setTaskState('t-02','等待授权','approve','conditional');
+  setTaskState('t-11','等待授权','approve','conditional');
+  applyTaskFilter();recount();
+  toast('审批演示已重置。');
+})}
+
+/* ---------- delegated clicks ---------- */
+document.addEventListener('click',function(e){
+  var t;
+  if(t=e.target.closest('[data-nav]')){setView(t.dataset.nav);return}
+  if(t=e.target.closest('[data-goto]')){setView(t.dataset.goto);return}
+  if(t=e.target.closest('[data-toast]')){toast(t.getAttribute('data-toast'));return}
+  if(t=e.target.closest('.sw[data-key]')){
+    var on=t.getAttribute('aria-checked')==='true';
+    t.setAttribute('aria-checked',on?'false':'true');
+    var k=t.dataset.key;lsSet(k,on?'0':'1');
+    var side=t.closest('.s-side'),lab=t.closest('label');
+    var box=(side&&side.querySelector('[data-val]'))||(lab&&lab.querySelector('[data-val]'));
+    if(box){box.textContent=on?(t.dataset.off||'已停用'):(t.dataset.on||'已启用')}
+    if(k==='calm'){applyCalm()}
+    return;
+  }
+  if(t=e.target.closest('[data-task-open]')){openDrawer(t.dataset.taskOpen);return}
+  if(t=e.target.closest('.task-row')){openDrawer(t.dataset.task);return}
+  if(t=e.target.closest('[data-copy]')){
+    var turn=t.closest('.turn');var ans=turn&&turn.querySelector('.ans');var txt=(ans?ans.textContent:t.textContent||'')||'';
+    t.title='已复制';copyText(txt,'回答');return;
+  }
+  if(t=e.target.closest('.swatch[data-hex]')){copyText(t.dataset.hex,'色值 '+t.dataset.hex);return}
+  if(t=e.target.closest('[data-mfill]')){fillModel(t.dataset.mfill);return}
+  if(t=e.target.closest('[data-az]')){
+    var tr=t.closest('tr');if(!tr)return;var badge=tr.querySelector('.badge');
+    if(t.dataset.az==='allow'){if(badge){badge.className='badge ok';badge.textContent='已允许'}toast('已记录决定（演示）：允许一次。');}
+    else if(t.dataset.az==='deny'){if(badge){badge.className='badge bad';badge.textContent='已拒绝'}toast('已记录决定（演示）：拒绝。');}
+    else if(t.dataset.az==='revoke'){if(badge){badge.className='badge static';badge.textContent='已撤销'}toast('已核验并撤销（演示）。');}
+    $$('[data-az]',tr).forEach(function(x){x.disabled=true});
+    return;
+  }
+  if(t=e.target.closest('.conn')){
+    var pid=t.dataset.chipConn;
+    setView('settings');
+    setTimeout(function(){var p=$('#ap-15');if(p){p.scrollIntoView({behavior:REDUCED?'auto':'smooth'})}},60);
+    toast('连接器详情 → 设置 · 集成 / 连接（连接器：'+pid+'）。');
+    return;
+  }
+});
+$$('.conn').forEach(function(c){c.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();c.click()}})});
+
+function fillModel(kind){
+  var ep=$('#mfEndpoint'),mn=$('#mfModel'),dp=$('#mfDeploy');
+  if(!ep)return;
+  if(kind==='pangu'){ep.value='https://nlp-models.example/v1';mn.value='pangu-nlp-n1-32k';dp.value='pangu-nlp-n1-32k-01'}
+  else if(kind==='fake'){ep.value='local://fake-model';mn.value='fake-model-offline';dp.value='offline-test'}
+  else{ep.value='https://gateway.example/arts';mn.value='agentarts-competition';dp.value='competition-profile'}
+  toast('已载入该模型的编辑表单（演示）。');
+}
+
+/* ---------- workspace tools ---------- */
+var bc=$('#btnConnectors');
+if(bc){bc.addEventListener('click',function(){
+  var art=$('#ws-05');var show=art.hidden;
+  art.hidden=!show;bc.setAttribute('aria-pressed',show?'true':'false');
+  toast(show?'连接器板已显示（现行同名按钮行为）。':'连接器板已隐藏。');
+})}
+var rc=$('#refreshConns');
+if(rc){rc.addEventListener('click',function(){toast('已向 Runtime 请求最新能力快照（能力清单）。');var ts=$('#snapTs');if(ts){ts.textContent=nowStr()}})}
+
+/* ---------- settings ---------- */
+var DI=/^\d{2}$/;
+function initSwitches(){
+  $$('.sw[data-key]').forEach(function(sw){
+    var k=sw.dataset.key;var stored=lsGet(k,null);
+    var on=stored==null?(sw.getAttribute('aria-checked')==='true'):stored==='1';
+    sw.setAttribute('aria-checked',on?'true':'false');
+    var side=sw.closest('.s-side'),lab=sw.closest('label');
+    var box=(side&&side.querySelector('[data-val]'))||(lab&&lab.querySelector('[data-val]'));
+    if(box){box.textContent=on?(sw.dataset.on||'已启用'):(sw.dataset.off||'已停用')}
+  });
+  $$('select[data-key]').forEach(function(sel){
+    var k=sel.dataset.key;var stored=lsGet(k,null);
+    if(stored!=null){$$('option',sel).forEach(function(o){if(o.value===stored){sel.value=stored}})}
+    updateSelVal(sel);
+  });
+  $$('input[type=checkbox][data-key]').forEach(function(cb){
+    var stored=lsGet(cb.dataset.key,null);if(stored!=null){cb.checked=stored==='1'}
+  });
+  $$('input[type=radio][data-key]').forEach(function(rd){
+    var stored=lsGet(rd.dataset.key,null);
+    if(stored===rd.value){rd.checked=true}
+  });
+  $$('input[type=number][data-key]').forEach(function(nb){
+    var stored=lsGet(nb.dataset.key,null);if(stored!=null&&!isNaN(parseFloat(stored))){nb.value=stored}
+  });
+  var rg=$('#effortRange');if(rg){var s=lsGet('depth',rg.value);rg.value=s;updateEffort(rg.value)}
+}
+function updateSelVal(sel){
+  var row=sel.closest('.s-row');if(!row)return;var box=row.querySelector('[data-val]');
+  if(box){box.textContent=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].textContent:''}
+}
+var EF=['最低','低','平衡','深入','高','最高'];
+var eOut=$('#effortOut');
+function updateEffort(v){
+  v=parseInt(v,10)||0;
+  if(eOut){eOut.textContent=v+' · '+EF[v]}
+  var rng=$('#effortRange');if(rng){var lab=rng.closest('label');var box=lab&&lab.querySelector('[data-val]');if(box){box.textContent=v+' · '+EF[v]}}
+}
+var rgInit=$('#effortRange');
+if(rgInit){rgInit.addEventListener('input',function(){updateEffort(rgInit.value);lsSet('depth',rgInit.value)})}
+document.addEventListener('change',function(e){
+  var el=e.target;
+  if(el.matches('select[data-key]')){lsSet(el.dataset.key,el.value);updateSelVal(el);return}
+  if(el.matches('input[type=checkbox][data-key]')){lsSet(el.dataset.key,el.checked?'1':'0');return}
+  if(el.matches('input[type=radio][data-key]')){lsSet(el.dataset.key,el.value);
+    var seg=el.closest('.s-row');var box=seg&&seg.querySelector('[data-val]');if(box){box.textContent=el.value}
+    return}
+  if(el.matches('input[type=number][data-key]')){lsSet(el.dataset.key,el.value)}
+});
+var dtSave=$('#dtSave');
+if(dtSave){dtSave.addEventListener('click',function(){
+  var s=$('#dtStatus');if(s){s.textContent='已保存（演示写回本页 localStorage）'}toast('桌面设置已保存（演示：真实实现为 IPC preferences.update）。');
+})}
+var dr=$('#diagRefresh');
+if(dr){dr.addEventListener('click',function(){
+  var i=$('#diagInfo');if(i){i.textContent='PersonalAgent v · Electron · win32 x64 · 2560×1440@1.25 · 刷新于 '+nowStr()}
+  var lg=$('#diagLog');if(lg){lg.textContent=nowStr()+' snapshot requested · ack 11ms\n'+lg.textContent}
+  toast('已刷新诊断信息（演示）。');
+})}
+var pct=$('#pcText');
+if(pct){pct.addEventListener('input',function(){var c=$('#pcCount');if(c){c.textContent=pct.value.length}})}
+
+/* settings search + toc */
+var setSear=$('#settingsSearch');
+var SETDEF='29 个条目 · 与现行盘点一一对应；条目页按「标题｜说明｜状态」占位模式收录未展开页。';
+function applySetFilter(){
+  var q=(setSear.value||'').trim().toLowerCase();
+  var links=$$('#setToc a');var n=0;
+  links.forEach(function(a){
+    var pane=$(a.getAttribute('href'));
+    var hay=((a.textContent||'')+'\u0001'+((pane&&pane.textContent)||'')).toLowerCase();
+    var hit=!q||hay.indexOf(q)>-1;a.style.display=hit?'':'none';if(hit)n++;
+  });
+  var heads=$$('#setToc [data-group]');var idx=[];
+  $$('#setToc > *').forEach(function(el){idx.push(el)});
+  heads.forEach(function(h){
+    var start=idx.indexOf(h);var end=-1;
+    for(var i=start+1;i<idx.length;i++){if(idx[i].dataset&&idx[i].dataset.group){end=i;break}}
+    var any=false;for(var j=start+1;j<(end<0?idx.length:end);j++){if(idx[j].tagName==='A'&&idx[j].style.display!=='none'){any=true;break}}
+    h.style.display=any?'':'none';
+  });
+  var cnt=$('#setCount');
+  if(cnt){cnt.textContent=q?(n?n+' 个条目匹配。清空搜索框恢复全部。':'没有匹配的设置项。清空搜索框恢复全部。'):SETDEF}
+}
+if(setSear){setSear.addEventListener('input',applySetFilter);setSear.addEventListener('keydown',function(e){if(e.key==='Escape'){setSear.value='';applySetFilter()}})}
+$$('#setToc a').forEach(function(a){a.addEventListener('click',function(){
+  $$('#setToc a').forEach(function(x){x.classList.remove('on')});a.classList.add('on');
+})});
+$$('#wsToc a').forEach(function(a){a.addEventListener('click',function(){
+  $$('#wsToc a').forEach(function(x){x.classList.remove('on')});a.classList.add('on');
+})});
+if('IntersectionObserver' in window){
+  var so=new IntersectionObserver(function(es){
+    es.forEach(function(en){
+      if(en.isIntersecting&&document.body.dataset.currentView==='settings'){
+        var id=en.target.id;
+        $$('#setToc a').forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+id)});
+      }
+    });
+  },{rootMargin:'-15% 0px -70% 0px',threshold:0});
+  $$('.s-pane').forEach(function(p){so.observe(p)});
+  var wo=new IntersectionObserver(function(es){
+    es.forEach(function(en){
+      if(en.isIntersecting&&document.body.dataset.currentView==='workspace'){
+        var id=en.target.id;
+        $$('#wsToc a').forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+id)});
+      }
+    });
+  },{rootMargin:'-15% 0px -70% 0px',threshold:0});
+  $$('.jsec',document.getElementById('view-workspace')).forEach(function(p){wo.observe(p)});
+}
+
+/* ---------- init ---------- */
+initSwitches();
+recount();
+buildRail();
+applyTaskFilter();
+})();
+</script>
+</body>
+</html>
