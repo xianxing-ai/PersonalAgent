@@ -109,7 +109,10 @@ function parseInput(value: unknown): AgentArtsObservationInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new ProtocolError('INVALID_ARGUMENT', 'Observation input must be an object');
   }
-  const input = value as AgentArtsObservationInput;
+  // Keep one invocation's task, scope and cancellation binding across all awaited stages.
+  // The caller still owns the input object and may reuse or edit it while the read is pending.
+  const input = {...value as AgentArtsObservationInput};
+  if (input.window !== undefined) input.window = {...input.window};
   const fields = new Set(['taskId', 'surface', 'revision', 'traceId', 'agentRunId', 'window', 'deadline', 'signal']);
   if (Object.keys(input).some(key => !fields.has(key)) || !boundedText(input.taskId, 256)
     || !(input.signal instanceof AbortSignal) || !boundedTimestamp(input.deadline)
@@ -191,6 +194,50 @@ export function createAgentArtsObservationHost(options: AgentArtsObservationHost
     throw new ProtocolError('INVALID_ARGUMENT', 'Observation host application id is invalid');
   }
 
+  function assertReadCurrent(input: AgentArtsObservationInput, binding?: AgentArtsObservationBinding): void {
+    if (input.signal.aborted) throw new ProtocolError('CANCELLED', 'Observation read cancelled');
+    if (Date.now() >= Date.parse(input.deadline)) throw new ProtocolError('TIMEOUT', 'Observation read expired');
+    if (runtime.loadCheckpoint(input.taskId, 'private-copy-erasure') !== undefined) {
+      throw new ProtocolError('UNAUTHORIZED', 'Observation task copies are withheld');
+    }
+    if (binding === undefined) return;
+    const current = readCompetitionCloudRequestIdentity(runtime, input.taskId).identities;
+    if (current.conflicts.includes(binding.requestId) || !current.requests.some(record =>
+      record.revision === binding.revision && record.requestId === binding.requestId
+      && record.sessionId === binding.sessionId && record.payloadDigest === binding.payloadDigest
+      && record.recordedAt === binding.recordedAt)) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Observation request identity changed');
+    }
+  }
+
+  async function guardedRead<T>(input: AgentArtsObservationInput,
+    binding: AgentArtsObservationBinding | undefined,
+    read: (options: {authorize: AgentArtsObservationAuthorization['authorize'];
+      fetchImpl: AgentArtsObservationFetch}) => Promise<T>): Promise<T> {
+    assertReadCurrent(input, binding);
+    try {
+      return await read({
+        authorize: async request => {
+          assertReadCurrent(input, binding);
+          if (authorization === undefined) throw new ProtocolError('UNAUTHORIZED', 'Observation authorization is unavailable');
+          const headers = await authorization.authorize(request);
+          assertReadCurrent(input, binding);
+          return headers;
+        },
+        fetchImpl: (url, init) => {
+          // Signers and the reader await between stages; check again on the actual send stack.
+          assertReadCurrent(input, binding);
+          return (fetchImpl ?? globalThis.fetch)(url, init);
+        },
+      });
+    } catch (error) {
+      // The bounded reader redacts foreign exceptions. Preserve our current binding failure
+      // without exposing signer/provider errors when an awaited stage invalidated the read.
+      assertReadCurrent(input, binding);
+      throw error;
+    }
+  }
+
   async function read(original: unknown): Promise<AgentArtsPlatformObservationRecord> {
     const input = parseInput(original);
     runtime.getTask(input.taskId);
@@ -199,6 +246,7 @@ export function createAgentArtsObservationHost(options: AgentArtsObservationHost
     if (authorization === undefined) {
       return {...base, availability: 'unavailable' as const, reason: 'observation_authorization_unavailable'};
     }
+    assertReadCurrent(input);
     if (input.surface === 'agent_run_log') {
       // A scoped log query needs a platform agent-run identity and window; both stay unknown, never guessed.
       if (input.agentRunId === undefined) {
@@ -207,12 +255,12 @@ export function createAgentArtsObservationHost(options: AgentArtsObservationHost
       if (input.window === undefined) {
         return {...base, availability: 'unknown_request' as const, reason: 'missing_observation_window'};
       }
-      const observation = await readAgentArtsRunLogs({
-        deadline: input.deadline, signal: input.signal, authorize: authorization.authorize,
-        ...(fetchImpl === undefined ? {} : {fetchImpl}),
-        query: {agentRunId: input.agentRunId, startTime: String(input.window.startMs),
-          endTime: String(input.window.endMs), limit: input.window.limit},
-      });
+      const {agentRunId, window} = input;
+      const observation = await guardedRead(input, undefined, options => readAgentArtsRunLogs({
+        deadline: input.deadline, signal: input.signal, ...options,
+        query: {agentRunId, startTime: String(window.startMs),
+          endTime: String(window.endMs), limit: window.limit},
+      }));
       return completeRead({
         input, observation,
         runRef: input.agentRunId,
@@ -234,21 +282,19 @@ export function createAgentArtsObservationHost(options: AgentArtsObservationHost
     if (applicationId === undefined) {
       // Without the platform application id the exact join cannot be checked; the read proceeds
       // and stays `not_checked` instead of fabricating a request correlation.
-      const observation = await readAgentArtsTraceObservation({
-        deadline: input.deadline, signal: input.signal, authorize: authorization.authorize,
-        ...(fetchImpl === undefined ? {} : {fetchImpl}),
+      const observation = await guardedRead(input, binding, options => readAgentArtsTraceObservation({
+        deadline: input.deadline, signal: input.signal, ...options,
         traceId: input.traceId ?? binding.requestId,
-      });
+      }));
       return completeRead({input, observation, binding,
         runRef: binding.requestId, sourceRef: TRACE_SOURCE_REF,
         snapshot: {traceRef: shaRef(input.traceId ?? binding.requestId)}});
     }
-    const observation = await readAgentArtsTraceObservation({
-      deadline: input.deadline, signal: input.signal, authorize: authorization.authorize,
-      ...(fetchImpl === undefined ? {} : {fetchImpl}),
+    const observation = await guardedRead(input, binding, options => readAgentArtsTraceObservation({
+      deadline: input.deadline, signal: input.signal, ...options,
       traceId: input.traceId ?? binding.requestId,
       invocation: {requestId: binding.requestId, sessionId: binding.sessionId, resourceId: applicationId},
-    });
+    }));
     return completeRead({input, observation, binding,
       runRef: binding.requestId, sourceRef: TRACE_SOURCE_REF,
       snapshot: {traceRef: shaRef(input.traceId ?? binding.requestId)}});
@@ -270,6 +316,9 @@ export function createAgentArtsObservationHost(options: AgentArtsObservationHost
       verification: 'conditional', sensitivity: 'internal',
     };
     validateContract('evidence', evidence);
+    // Recheck after the asynchronous read, before either synchronous checkpoint write.
+    // In particular, never restore an identity removed by private-copy erasure.
+    assertReadCurrent(input, binding);
     // The deterministic evidence id overwrites the same binding re-read; platform observations
     // update the record instead of stacking unrepeatable rows onto a task.
     runtime.saveCheckpoint(input.taskId, `trusted-readback-evidence:${evidenceRef}`, evidence);

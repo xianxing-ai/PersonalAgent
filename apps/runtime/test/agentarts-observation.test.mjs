@@ -6,6 +6,7 @@ import {createAgentArtsRuntimeApplication, createRuntimeApplication} from '../di
 import {recordCompetitionCloudRequestIdentity,
   readCompetitionCloudRequestIdentity} from '../dist/application/coordination.js';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
+import {createHash} from 'node:crypto';
 
 const event = text => ({event: 'message', data: {text, index: 0}});
 const fakeDeadline = () => new Date(Date.now() + 10_000).toISOString();
@@ -305,6 +306,91 @@ test('an identity conflict refuses the trace read without fabricating success', 
   }
 });
 
+test('observation reads reject erased or changed bindings across asynchronous stages', async t => {
+  for (const surface of ['trace', 'trace_without_application', 'agent_run_log']) {
+    for (const stage of ['before', 'signer', 'readback']) {
+      const mutations = stage === 'before' || surface === 'agent_run_log'
+        ? ['erase'] : ['erase', 'conflict', 'forget'];
+      for (const mutation of mutations) {
+        await t.test(`${surface}: ${mutation} during ${stage}`, async () => {
+          const {directory, path} = await staging('observation-race');
+          const hash = value => createHash('sha256').update(value).digest('hex');
+          let reached, release, app, sent, signatures = 0;
+          const started = new Promise(resolve => { reached = resolve; });
+          const blocked = new Promise(resolve => { release = resolve; });
+          const trace = surface !== 'agent_run_log';
+          const observation = observationExtras({
+            signature: async request => {
+              signatures += 1;
+              if (stage === 'signer') { reached(); await blocked; }
+              return syntheticSigner(request);
+            },
+            onRead: async () => {
+              if (stage === 'readback') { reached(); await blocked; }
+              const body = trace ? {total: 1, span_list: [{trace_id: sent.requestId,
+                span_id: 'race-span', session_id: sent.sessionId, resource_id: SYNTHETIC_APPLICATION_ID}]}
+                : {count: 1, is_query_complete: true, logs: [{content: 'synthetic', line_num: '1', labels: {}}]};
+              return new Response(JSON.stringify(body), {headers: {'content-type': 'application/json'}});
+            },
+          });
+          ({app} = httpsComposition(path, {
+            ...(surface === 'trace' ? {observationApplicationId: SYNTHETIC_APPLICATION_ID} : {}),
+            ...observation.options,
+            coordinationInput: {beforeCoordinationSend() {}, prepareCoordinationGoal: async scope => {
+              app.writePrivateTaskBinding(scope.taskId, {taskId: scope.taskId,
+                conversationId: scope.conversationId, destination: 'agentarts',
+                configurationRef: app.coordinationConfigurationRef, deadline: scope.deadline,
+                userGoalDigest: hash(scope.publicGoal), fact: {ref: {id: 'race-fact', revision: 1},
+                  summaryDigest: hash('synthetic summary'), sourceDigest: hash('synthetic source'),
+                  configurationRef: 'race-v1'}});
+              return scope.publicGoal;
+            }},
+          }));
+          try {
+            const client = new Client(app);
+            await client.connect();
+            const {taskId} = await client.call('task.submit',
+              {goal: 'synthetic private observation', conversationId: 'competition'},
+              {idempotencyKey: 'observation-race'});
+            assert.equal((await terminal(app, taskId)).state, 'succeeded');
+            sent = readCompetitionCloudRequestIdentity(app.runtime, taskId).bound;
+            const change = async () => {
+              if (mutation === 'erase') {
+                const {binding} = app.listBindings().items.find(item => item.taskId === taskId);
+                assert.equal((await app.eraseTaskCopies({taskId, factId: 'race-fact',
+                  bindingDigest: hash(JSON.stringify(binding)), deadline: fakeDeadline(),
+                  signal: new AbortController().signal})).state, 'purged');
+              } else if (mutation === 'conflict') {
+                recordCompetitionCloudRequestIdentity(app.runtime, taskId, sent.revision,
+                  {...sent, payloadDigest: 'f'.repeat(64)});
+              } else {
+                app.runtime.saveCheckpoint(taskId, 'competition-cloud-request-identity', null);
+              }
+            };
+            if (stage === 'before') await change();
+            const reading = app.readTaskPlatformObservation({taskId,
+              surface: trace ? 'trace' : 'agent_run_log',
+              ...(trace ? {} : {agentRunId: 'synthetic-platform-run',
+                window: {startMs: 1792000000000, endMs: 1792000060000, limit: 1}}),
+              deadline: fakeDeadline(), signal: new AbortController().signal});
+            if (stage !== 'before') { await started; await change(); release(); }
+            await assert.rejects(reading, {code: mutation === 'erase' ? 'UNAUTHORIZED' : 'REVISION_CONFLICT'});
+            assert.equal(signatures, stage === 'before' ? 0 : 1);
+            assert.equal(observation.reads.length, stage === 'readback' ? 1 : 0);
+            assert.equal(app.runtime.readEvidence(taskId).filter(item => item.kind === 'observation').length, 0);
+            assert.equal(app.runtime.loadCheckpoint(taskId,
+              `agentarts-observation-readback:${trace ? 'trace' : 'agent_run_log'}`), undefined);
+          } finally {
+            release();
+            app.close();
+            await rm(directory, {recursive: true, force: true});
+          }
+        });
+      }
+    }
+  }
+});
+
 test('agent-run log reads are scoped by an explicit platform run identity and window', async () => {
   const {directory, path} = await staging('https-log');
   const observation = observationExtras({body: {count: 2, is_query_complete: true,
@@ -349,6 +435,81 @@ test('agent-run log reads are scoped by an explicit platform run identity and wi
   } finally {
     app.close();
     await rm(directory, {recursive: true, force: true});
+  }
+});
+
+test('an observation keeps its original task, window, deadline and cancellation signal', async t => {
+  for (const stage of ['signer', 'readback']) {
+    for (const mutation of ['scope', 'replacement_controls', 'original_cancel']) {
+      await t.test(`${stage}: ${mutation}`, async () => {
+        const {directory, path} = await staging('observation-input-snapshot');
+        let reached, release;
+        const started = new Promise(resolve => { reached = resolve; });
+        const blocked = new Promise(resolve => { release = resolve; });
+        const observation = observationExtras({
+          signature: async request => {
+            if (stage === 'signer') { reached(); await blocked; }
+            return syntheticSigner(request);
+          },
+          onRead: async () => {
+            if (stage === 'readback') { reached(); await blocked; }
+            return new Response(JSON.stringify({count: 0, is_query_complete: true, logs: []}),
+              {headers: {'content-type': 'application/json'}});
+          },
+        });
+        const {app} = httpsComposition(path, observation.options);
+        try {
+          const client = new Client(app);
+          await client.connect();
+          const taskIds = [];
+          for (const idempotencyKey of ['original', 'unrelated']) {
+            const {taskId} = await client.call('task.submit',
+              {goal: 'synthetic observation snapshot', conversationId: 'competition'}, {idempotencyKey});
+            await terminal(app, taskId);
+            taskIds.push(taskId);
+          }
+          const [taskId, unrelatedTaskId] = taskIds;
+          const controller = new AbortController();
+          const replacement = new AbortController();
+          const window = {startMs: 1792000000000, endMs: 1792000060000, limit: 7};
+          const input = {taskId, surface: 'agent_run_log', agentRunId: 'original-platform-run',
+            window, deadline: fakeDeadline(), signal: controller.signal};
+          const reading = app.readTaskPlatformObservation(input);
+          await started;
+          input.taskId = unrelatedTaskId;
+          input.agentRunId = 'unrelated-platform-run';
+          window.limit = 999;
+          input.window = {startMs: 1792000100000, endMs: 1792000160000, limit: 10};
+          if (mutation !== 'scope') {
+            input.deadline = '2000-01-01T00:00:00Z';
+            input.signal = replacement.signal;
+            if (mutation === 'original_cancel') controller.abort();
+            else replacement.abort();
+          }
+          release();
+          if (mutation === 'original_cancel') {
+            await assert.rejects(reading, {code: 'CANCELLED'});
+            assert.equal(app.runtime.readEvidence(taskId).length, 0);
+          } else {
+            const result = await reading;
+            assert.equal(result.taskId, taskId);
+            assert.equal(result.availability, 'observed');
+            const snapshot = app.runtime.loadCheckpoint(taskId, 'agentarts-observation-readback:agent_run_log');
+            assert.deepEqual(snapshot.windowMs, {start: 1792000000000, end: 1792000060000, limit: 7});
+            assert.equal(snapshot.agentRunRef,
+              createHash('sha256').update('original-platform-run').digest('hex'));
+            assert.match(observation.reads[0].url,
+              /original-platform-run\/log\?end_time=1792000060000&limit=7&log_type=agent&start_time=1792000000000$/);
+          }
+          assert.equal(app.runtime.readEvidence(unrelatedTaskId).length, 0);
+          assert.equal(app.runtime.loadCheckpoint(unrelatedTaskId, 'agentarts-observation-readback:agent_run_log'), undefined);
+        } finally {
+          release();
+          app.close();
+          await rm(directory, {recursive: true, force: true});
+        }
+      });
+    }
   }
 });
 
