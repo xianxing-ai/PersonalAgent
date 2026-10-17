@@ -39,8 +39,8 @@ function fixture(t, {disableUnknown = false, disposeUnknown = false} = {}) {
     async enable() {if (disposed || phase === 'unknown') throw Error('Cannot reopen');phase = 'listening';return {phase};},
     snapshot: () => ({phase}),
   };
-  const panel = {};
-  const context = vm.createContext({Object, Promise, Error, panel, competitionMode: true,
+  const panel = {},admin={};
+  const context = vm.createContext({Object, Promise, Error, panel, admin, competitionMode: true,
     voiceConfigurationPending: false, wakeQuitUnknown: false, wakeVoice: wake,
     voiceInput: {hasActive: () => false, async dispose() {calls.push('voice-dispose');}},
     liveVoice: undefined, sisPlaybackHost: {}, voicePcmSource: {}, voiceInitializationFailure: null,
@@ -51,8 +51,17 @@ function fixture(t, {disableUnknown = false, disposeUnknown = false} = {}) {
   vm.runInContext(stopWake, context);
   const action = vm.runInContext(`(async function(sender,name,payload){${route}})`, context);
   return {context, calls, wake, config, oldBytes, configFile, userData,
-    setSecure(value) {secure = value;}, run: (payload, name = 'voice.configure') => action(panel, name, payload)};
+    setSecure(value) {secure = value;}, run: (payload, name = 'voice.configure', sender = admin) => action(sender, name, payload)};
 }
+
+for(const action of ['voice.configure','voice.login'])test(`${action} accepts only original Competition admin sender and rejects panel/other renderers`,async t=>{
+  const f=fixture(t);
+  await assert.rejects(f.run(initial,action,f.context.panel),/可信设置页/);
+  await assert.rejects(f.run(initial,action,{}),/可信设置页/);
+  assert.deepEqual(f.calls,[]);assert.deepEqual(readFileSync(f.configFile),f.oldBytes);
+  f.context.competitionMode=false;await assert.rejects(f.run(initial,action),/可信设置页/);
+  f.context.competitionMode=true;assert.equal((await f.run(initial,action)).connected,true);
+});
 
 for (const [name, invalid] of [['invalid fields', {...initial, region: 'invalid'}],
   ['expired token', {...initial, tokenExpiresAt: '2000-01-01T00:00:00.000Z'}]]) {

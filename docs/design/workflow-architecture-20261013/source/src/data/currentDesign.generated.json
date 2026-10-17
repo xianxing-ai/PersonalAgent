@@ -1,0 +1,556 @@
+{
+  "sha": "abb70879d5eb8c41451b89570978e2f454d4b93f",
+  "date": "2026-10-15",
+  "sourcePaths": {
+    "design": "docs/design/CURRENT_DESIGN_20261015.md",
+    "workflows": "docs/design/WORKFLOW_STATUS_20261015.md",
+    "wiring": "docs/competition/COLLABORATOR_WIRING_PACKAGE.md",
+    "modules": "docs/modules/CURRENT_MOD_WIRING_HANDOFF.md"
+  },
+  "workflows": [
+    {
+      "id": "F01",
+      "title": "F01 主对话与责任理解 / 9",
+      "design": "原话/来源版本、上下文与目标责任、理解/选路、必要补问",
+      "status": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收"
+    },
+    {
+      "id": "F02",
+      "title": "F02 语音交互与确认 / 11",
+      "design": "百炼既有语音端口、主动询问、最终用户确认、echo/partial过滤",
+      "status": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用"
+    },
+    {
+      "id": "F03",
+      "title": "F03 世界状态、目标与局部重规划 / 10",
+      "design": "来源变化、Goal依赖、影响判断、原图更新与后续观察",
+      "status": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收"
+    },
+    {
+      "id": "F04",
+      "title": "F04 Wiki 与作用域记忆管理 / 7",
+      "design": "Wiki正文、来源版本、作用域、Memory投影、删除/更正恢复",
+      "status": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收"
+    },
+    {
+      "id": "F05",
+      "title": "F05 记忆搜索与来源回答 / 7",
+      "design": "受权检索、上下文扩展、原文引用、来源冲突及版本核对",
+      "status": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量"
+    },
+    {
+      "id": "F06",
+      "title": "F06 待办、提醒与跟进 / 5",
+      "design": "用户责任、原Scheduler、提醒状态、幂等跟进与归来摘要",
+      "status": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收"
+    },
+    {
+      "id": "F07",
+      "title": "F07 日历安排与冲突处理 / 5",
+      "design": "原日历连接器、时区/冲突、审批、写入与独立读回",
+      "status": "模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明"
+    },
+    {
+      "id": "F08",
+      "title": "F08 邮件分类、草稿与发送 / 13",
+      "design": "原邮件ConnectorHost、来源游标、重要性、草稿/发送、授权与结果核实",
+      "status": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture"
+    },
+    {
+      "id": "F09",
+      "title": "F09 订阅、信号发现与筛选 / 4",
+      "design": "持续来源/授权、与责任关系、去重/版本、订阅外相关事件",
+      "status": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验"
+    },
+    {
+      "id": "F10",
+      "title": "F10 深度研究与证据汇总 / 6",
+      "design": "可信检索接口、来源/版本、必要扩展、引用与结论读回",
+      "status": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据"
+    },
+    {
+      "id": "F11",
+      "title": "F11 天气、出行及计划影响 / 5",
+      "design": "原天气/日历工具、有效时间、行程影响与用户偏好",
+      "status": "模板已有；真实服务、时效与行程影响闭环未由28目录证明"
+    },
+    {
+      "id": "F12",
+      "title": "F12 通知、安静时段与主动服务 / 5",
+      "design": "同一NotificationService、层级静默/额度、feed、投递/已读、有效归来摘要",
+      "status": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收"
+    },
+    {
+      "id": "F13",
+      "title": "F13 系统检查与故障诊断 / 4",
+      "design": "受限本机观察、资源/进程归因、补查与明确未知",
+      "status": "模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额"
+    },
+    {
+      "id": "F14",
+      "title": "F14 浏览器与桌面操作 / 6",
+      "design": "已授权窗口/浏览器观察、动作串行、scope与实际回执",
+      "status": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收"
+    },
+    {
+      "id": "F15",
+      "title": "F15 代码修改、补丁与命令执行 / 6",
+      "design": "精确源SHA、preview/apply、原Policy授权、测试与结果读回",
+      "status": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收"
+    },
+    {
+      "id": "F16",
+      "title": "F16 CI 检查与修复 / 5",
+      "design": "原CI连接器、明确失败日志、修复候选、再验与版本绑定",
+      "status": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验"
+    },
+    {
+      "id": "F17",
+      "title": "F17 测试失败定位 / 4",
+      "design": "实际失败反馈、当前源码/测试条件、局部修复与回归",
+      "status": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明"
+    },
+    {
+      "id": "F18",
+      "title": "F18 PR 审查、批准条件与合并 / 5",
+      "design": "原GitHub工具、非作者有效批准、checks/冲突/意见门槛、授权操作",
+      "status": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收"
+    },
+    {
+      "id": "F19",
+      "title": "F19 Issue 分诊与关联修复 / 5",
+      "design": "原Issue来源、实体/版本、任务关联、修改与回读",
+      "status": "模板可发现；账号事件到真实修复/状态更新需本图Evidence"
+    },
+    {
+      "id": "F20",
+      "title": "F20 API 文档与一致性检查 / 4",
+      "design": "原文/API版本、公开schema、独立比较、更新与读回",
+      "status": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验"
+    },
+    {
+      "id": "F21",
+      "title": "F21 MCP、Skills 和连接器接入 / 5",
+      "design": "现有注册宿主、发现/schema/授权、可信安装与调用",
+      "status": "代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证"
+    },
+    {
+      "id": "F22",
+      "title": "F22 工作流调试与影子实验 / 9",
+      "design": "高级开关并入既有判断、同基线隔离、机会资源/收益、主优先与择优",
+      "status": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线"
+    },
+    {
+      "id": "F23",
+      "title": "F23 决策配置、评估与版本晋升 / 5",
+      "design": "可信验收配置、同上下文可比结果、revision CAS、版本回读/回滚",
+      "status": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable"
+    },
+    {
+      "id": "F24",
+      "title": "F24 调度、并发、取消与恢复 / 12",
+      "design": "原Scheduler、session持久intent/CAS、deadline、取消、未知写readback",
+      "status": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收"
+    },
+    {
+      "id": "F25",
+      "title": "F25 配置、账户、凭据和数据范围 / 4",
+      "design": "受信设置、加密凭据、作用域、参数/版本绑定与公开脱敏",
+      "status": "已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通"
+    },
+    {
+      "id": "F26",
+      "title": "F26 镜像、部署与比赛验收 / 5",
+      "design": "ARM64自有镜像、SWR、精确版本目录/日志、真实API与案例证据",
+      "status": "local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收"
+    },
+    {
+      "id": "F27",
+      "title": "F27 上下文预算、压缩与恢复 / 7",
+      "design": "当前任务真实输入、来源slice、版本化摘要/检查点、无截断或明确拒识",
+      "status": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验"
+    },
+    {
+      "id": "F28",
+      "title": "F28 多厂商模型、思考深度与主对话分配 / 12",
+      "design": "既有主控理解/分派、原生参数、资格判断、未知升级及模型实际来源",
+      "status": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填"
+    }
+  ],
+  "workPackages": [
+    {
+      "title": "CW-01 本机 Laya 可信回执桥；zemeng5208；28/30",
+      "ports": "`packages/agentarts/src/workflow-decision-tool.ts`、`owned-workflow-host-bridge.ts`；`apps/agentarts-runtime/src/local-laya.mjs`、`laya-selector.mjs`、`adaptive-decision.mjs`；封存候选/原 task+revision+deadline → 选择/Evidence/可信回执",
+      "consumer": "把公开 `createWorkflowDecisionTool` 注册原 Runtime Application，`OwnedWorkflowHostBridge` 回传原镜像 checkpoint；依赖 goo 的 TaskRuntime/Policy/ToolGateway，不在模型里签授权",
+      "status": "in_progress；公共编码夹具真实模型链已验，资格/150ms未过；下一步为一个实际业务站点收集正反样本与可信 outcome，未合格仍升级 DeepSeek"
+    },
+    {
+      "title": "CW-02 AgentArts 镜像、代理与平台；zemeng5208；29/30/32",
+      "ports": "`apps/agentarts-runtime/`、`packages/agentarts/`、`tests/manual/agentarts/`；受信配置/CloudAgentPort 请求 → 版本/模型/trace/评估读回",
+      "consumer": "本人接 main/server/image-services 到原 CloudAgentPort 与 Runtime，平台 MCP 调用仍交原 ToolExecutionPort；依赖 MOD05/06/08 的公开能力",
+      "status": "in_progress；SWR/云目录与代理已验，远端两条全链和平台知识/MCP/trace/评估各自仍缺专项证据；下一步在精确云版本执行一个已授权公开只读工具，记录平台请求与本地 Evidence 关联"
+    },
+    {
+      "title": "CW-03 主动事件与持续责任；zemeng5208；27/28/30",
+      "ports": "`packages/agentarts/src/proactive-workflows.ts`、Runtime `proactive-cognition-host.ts`/`proactive-workflow-session.ts`、镜像 `proactive-controller.mjs`；四入口 eventRefs/原话/Goal → retrieve/classify/teacher/action proposal",
+      "consumer": "本人把 ConnectorHost 持久 eventId、用户指令、子任务回执、原 Scheduler wake 接入签名 advance；依赖 goo 记忆/Runtime、Potatos 业务来源，不直读私库",
+      "status": "in_progress；真实 HTTP/SQLite fixture 已验，真实账号责任闭环未验；下一步选一个来源和一条明确用户责任接四入口，保留未订阅重要事件，Laya-first 未验分类必须 teacher"
+    },
+    {
+      "title": "CW-04 上下文、知识与记忆；goo122；08/09",
+      "ports": "`packages/knowledge/`、`memory/`、`learning/`、`plugins/obsidian/`、Runtime `knowledge-*`/`memory-*`；带权限 source/version/citation → 当前事实/历史/引用/受控写回",
+      "consumer": "本人向主动 retrieve、Goal 和 Competition 提供 `KnowledgePort`/`MemoryQueryPort`/`FactChangeFeed` 适配及消费测试；本地 Wiki 与平台 knowledge provider 分开注册",
+      "status": "in_progress；本地历史验收可复用但当前主动真实引用/平台原生知识未验；下一步用公开非私人测试 Vault 串 source correction/retract → 主动引用失效 → 重取，平台缺适配保持 unavailable"
+    },
+    {
+      "title": "CW-05 无人值守及归来摘要；zemeng5208；28/30",
+      "ports": "`proactive-workflows.ts`、Runtime `proactive-workflow-session.ts`、现 Desktop 控制消费方；enter/return/pause/cancel/实际设备状态 → done/changed/pending/blocked",
+      "consumer": "本人把会话控制接原 TaskRuntime checkpoint/atomic CAS 与 Scheduler；通知仅消费 Potatos 公开 host；本机离线 waiting_device，仅有真实 cloud_persistent port 才继续",
+      "status": "in_progress；重启、独立分支、return fixture 已验，关机后云持续执行未验；下一步接实际用户离开/回来命令，验证同 batch 重启无重复、归来不补弹，保持原 deadline"
+    },
+    {
+      "title": "CW-06 主影子选择与收益记录；zemeng5208；30/31",
+      "ports": "`workflow-shadow-policy.ts`、`workflow-shadow-release.ts`、镜像 `shadow-controller.mjs`/`trace-replay.mjs`；同次选择 metadata/可信资源/历史 receipt → run/defer/skip/need_teacher、比较、签名结果",
+      "consumer": "本人把所选候选 shadowPlan 接原 Engine/HostBridge 与原 checkpoint 历史；高级隔离需同次 DeepSeek+Laya 参与 refs 与可信隔离证明；不额外起模型判断或调度器",
+      "status": "in_progress；专项串行双跑已验，日常 sampling/真实收益机会开关未验；下一步接一个非专项任务，记录同基线隔离及真实资源/质量，缺反事实明确 unknown，不把 run 当已执行"
+    },
+    {
+      "title": "CW-07 任务分配与主控升级；zemeng5208；04B/31",
+      "ports": "`packages/agents/`、`packages/agentarts/`、Runtime 公开子任务派发消费方；子任务绑定/实际状态/Evidence → continue/summary/notify_controller/request_controller",
+      "consumer": "本人复用 `createRuntimeSubagentDispatchTool` 与原 runAgent/ModelGateway；父子持久绑定、报告引用和 task.progress 通知接主任务等待端；测试 helper 不代替生产装配",
+      "status": "in_progress；delegation 离线边界已验，完整真实模型委派未验；下一步把已绑定 child 的报告读回接一个实际主控，旧版本冲突拒绝，teacher建议不新增权限"
+    },
+    {
+      "title": "CW-08 业务连接器及来源持久性；Potatos498；20–26",
+      "ports": "`packages/productivity/`、`packages/connectors/{calendar,mail,feeds,research,weather}/`、业务设置/展示；受限凭据/源变化/cursor → 规范事件/工具结果/读回",
+      "consumer": "本人经 `register`/ConnectorHost 接原 Runtime tools、主动 event sink、业务 UI 和原 Scheduler；MOD05主动host公开端口由 goo维护，业务 source/provider/sink 接线仍由本人交付",
+      "status": "in_progress；各历史读回与当前 mock 分开，未选社交平台不自动开工；下一步逐来源交一个真实配置的增量批次→持久sink→cursor确认，断连/撤权/过期不能伪 no_changes"
+    },
+    {
+      "title": "CW-09 通知静默与频次；Potatos498；23",
+      "ports": "`packages/notifications/`、Runtime `notification-host.ts` 及实际通知渠道消费方；当前用户 policy/revision/source → feed/额度预占/真实渠道回执",
+      "consumer": "本人把 `NotificationService`/`createRuntimeNotificationHost` 接主动 notify、用户设置、现 Scheduler 和桌面 delivery/ack；不只交 status 工具",
+      "status": "in_progress；静默0send、跨channel并发quota、重启/unknown/归来 fixture 已验；实际系统横幅/音频与真实账号未验；下一步接一条实际设备通知及回执，设置立即生效，unknown先核实不重发"
+    },
+    {
+      "title": "CW-10 语音询问与当前参数确认；zemeng5208；13/14/15",
+      "ports": "`packages/voice/`、`voice-wake/`、Desktop voice/admin/preload及原 Runtime approval消费方；final transcript+revision+当前待确认参数 → 用户命令/原审批回执",
+      "consumer": "本人经既有 IPC/Client 接原审批 revision/参数摘要与通知设置；partial/echo/silence/old final 不消费授权；provider/key只设置页，密钥不回Renderer",
+      "status": "in_progress；百炼无mic握手、UI/IPC fixture已有证据，物理音频与生产final→通知设置桥未验；下一步在用户授权设备窗口验证一次当前参数询问→最终语音→原审批，SIS经AA缺流桥保持 unavailable"
+    }
+  ],
+  "modules": [
+    {
+      "title": "MOD-01 / goo122",
+      "ports": "StoragePort/迁移输入 → 持久存储/事务",
+      "consumer": "packages/storage → 原Runtime/连接器持久层",
+      "tests": "`npm run test --workspace=@personal-agent/storage`",
+      "status": "现有数据迁移与重启读回随调用方交付",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-02 / goo122",
+      "ports": "wire1.0.0 Schema/Client请求 → 校验响应/事件",
+      "consumer": "packages/contracts/client/testkit → preload、Runtime与所有消费方",
+      "tests": "`npm run test --workspace=@personal-agent/contracts`",
+      "status": "不扩冻结集合；新增接口先消费契约验证",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-03 / goo122",
+      "ports": "原task/run/deadline → 状态/事件/checkpoint/Scheduler",
+      "consumer": "apps/runtime → application与各业务宿主",
+      "tests": "`npm run test --workspace=@personal-agent/runtime`",
+      "status": "协调锚点created与分支succeeded必须分开；不得新建调度器",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-04A / goo122",
+      "ports": "ModelRequest → ModelResult/失败与usage",
+      "consumer": "packages/models → 现ModelGateway及AA可信模型组合",
+      "tests": "`npm run test --workspace=@personal-agent/models`",
+      "status": "本地兼容不是Competition fallback；真实Provider逐项验",
+      "evidence": "[原模块记录](MOD-04A-LIVE-RESPONSE-RECOVERY-20261008.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-04B / zemeng5208",
+      "ports": "CoordinationPort/ModelPort/ToolExecutionPort → 提案/最终答复",
+      "consumer": "packages/coordination、agents → Runtime application原执行循环",
+      "tests": "`npm run test --workspace=@personal-agent/agents`",
+      "status": "真实委派/主控升级未整链；CW-07消费Runtime公开派发工具",
+      "evidence": "[原模块记录](MOD-04B-COMPETITION-TEXT.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-05 / goo122",
+      "ports": "工具descriptor/原授权/参数 → 执行记录/Evidence",
+      "consumer": "packages/policy/tool-gateway/connector-host → 原Runtime各宿主",
+      "tests": "`npm run test --workspace=@personal-agent/tool-gateway`",
+      "status": "各MOD自己注入实际工具，签名/模型/语音均不能授权",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-06 / goo122",
+      "ports": "MCP目录/版本/身份 → 工具发现/受控回执",
+      "consumer": "packages/mcp → Runtime MCP工具入口；平台走受信ToolExecutionPort",
+      "tests": "`npm run test --workspace=@personal-agent/mcp`",
+      "status": "本地真实MCP与AgentArts网关分别验；平台未连不静默替身",
+      "evidence": "[原模块记录](MOD-06-07-MVP.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-07 / goo122",
+      "ports": "Skill manifest/version → 有权限约束的执行请求",
+      "consumer": "packages/skills → Runtime reference skill/工具目录",
+      "tests": "`npm run test --workspace=@personal-agent/skills`",
+      "status": "平台Skill与自有Skill分别声明；不能由Skill授予scope",
+      "evidence": "[原模块记录](MOD-07-LOCAL-INSTALLATION-20261009.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-08 / goo122",
+      "ports": "source/config/version/citation → KnowledgePort/Wiki引用/写后读回",
+      "consumer": "packages/knowledge、plugins/obsidian → Runtime trusted tools及CW-04 retrieve",
+      "tests": "`npm run test --workspace=@personal-agent/knowledge`",
+      "status": "当前主动引用链与平台原生knowledge各自补证",
+      "evidence": "[原模块记录](MOD-08A-KNOWLEDGE-PORT-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-09 / goo122",
+      "ports": "事实版本/撤回/经验receipt → MemoryQueryPort/FactChangeFeed",
+      "consumer": "packages/memory/learning → Goal与主动retrieve/学习application",
+      "tests": "`npm run test --workspace=@personal-agent/memory`",
+      "status": "经验不是训练；真实来源撤回及当前消费回归 CW-04",
+      "evidence": "[原模块记录](MOD-09-COMPETITION-CONTEXT-20261008.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-10 / zemeng5208",
+      "ports": "官方资料/实测数据 → 条件结论/模型接入建议",
+      "consumer": "docs/research → 受信模型配置与Competition设计",
+      "tests": "`npm run test --workspace=@personal-agent/agentarts`",
+      "status": "不以论文/演示代替当前模型质量，Laya150ms未过",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-11 / zemeng5208",
+      "ports": "Client/受限IPC → Electron窗口/状态",
+      "consumer": "apps/desktop/electron、src/app → 原Runtime application",
+      "tests": "`npm run test --workspace=@personal-agent/desktop`",
+      "status": "真实桌面合成/桥接与headless fixture分开",
+      "evidence": "[原模块记录](MOD-11-CANCEL-ACCEPTANCE-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-12 / zemeng5208",
+      "ports": "任务事件/取消请求 → 小工作区/悬浮球状态",
+      "consumer": "Desktop orb/conversation → Client与现IPC",
+      "tests": "`npm run test --workspace=@personal-agent/desktop`",
+      "status": "不在小工作区放provider/key；当前执行模型选择保留",
+      "evidence": "[原模块记录](MOD-12-RESULT-INTEGRITY-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-13 / zemeng5208",
+      "ports": "当前配置/审批revision → 设置与受限批准请求",
+      "consumer": "Desktop admin/ui → 原IPC/Runtime approval",
+      "tests": "`npm run test --workspace=@personal-agent/desktop`",
+      "status": "设置集中已测；语音当前参数批准需CW-10实机",
+      "evidence": "[原模块记录](MOD-13-AGENTARTS-READONLY-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-14 / zemeng5208",
+      "ports": "原PCM/final transcript → ASR/TTS/会话回执",
+      "consumer": "packages/voice → Desktop语音控件/原Client",
+      "tests": "`npm run test --workspace=@personal-agent/voice`",
+      "status": "百炼握手≠音频；SIS本机适配≠经AA流桥",
+      "evidence": "[原模块记录](MOD-14-VOICE-PCM-BUFFER-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-15 / zemeng5208",
+      "ports": "授权音频/关键词 → wake/live start/stop",
+      "consumer": "packages/voice-wake → 原voice生命周期和Desktop开关",
+      "tests": "`npm run test --workspace=@personal-agent/voice-wake`",
+      "status": "physicalDevice回声/静音/释放实机待验",
+      "evidence": "[原模块记录](MOD-15-WAKE-LIFECYCLE-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-16 / zemeng5208",
+      "ports": "原确认目标/参数/凭据 → 受限Windows执行/读回",
+      "consumer": "apps/windows-host、packages/windows-client → Runtime adapter/Desktop入口",
+      "tests": "`npm run test --workspace=@personal-agent/windows-client`",
+      "status": "Host为.NET非npm包；UIA现场验收不能用fixture替代",
+      "evidence": "[原模块记录](MOD-16-GEMINI-MVP-WINDOWS-EXECUTION.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-17 / zemeng5208",
+      "ports": "只读范围/目标 → 电脑状态和不可观测声明",
+      "consumer": "同一windows-client/Host → Runtime观测工具",
+      "tests": "`npm run test --workspace=@personal-agent/windows-client`",
+      "status": "不新增TraceGuard；权限与现场真实状态另验",
+      "evidence": "[原模块记录](MOD-17-COMPUTER-STATUS-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-18 / zemeng5208",
+      "ports": "可信workspace/SHA/命令recipe → read/preview/apply/reconcile",
+      "consumer": "packages/coding-tools → Runtime trustedWorkspace与工具目录",
+      "tests": "`npm run test --workspace=@personal-agent/coding-tools`",
+      "status": "公共夹具真实CAS已验，真实用户workspace另需授权",
+      "evidence": "[原模块记录](MOD-18-COMMAND-ALLOWLIST-01.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐"
+    },
+    {
+      "title": "MOD-19 / zemeng5208",
+      "ports": "产物/安装范围 → 分发及发布回执",
+      "consumer": "Desktop现打包脚本 → Windows安装消费方",
+      "tests": "`npm run test --workspace=@personal-agent/desktop`",
+      "status": "Windows安装包/安装流程暂停；不是本轮镜像完成项",
+      "evidence": "[原模块记录](MOD-19-PACKAGED-DATA-PATHS-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-20 / Potatos498",
+      "ports": "待办/日历请求与来源版本 → 实体/提醒/读回",
+      "consumer": "packages/productivity、connectors/calendar → Runtime工具/UI/原Scheduler",
+      "tests": "`npm run test --workspace=@personal-agent/productivity`",
+      "status": "当前真实日历提供者/待办提醒逐动作验，CW-08",
+      "evidence": "[原模块记录](mod-20.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-21 / Potatos498",
+      "ports": "账号/folder/cursor → 邮件页/草稿/核实",
+      "consumer": "packages/connectors/mail → Runtime工具/分类consumer/设置",
+      "tests": "`npm run test --workspace=@personal-agent/mail`",
+      "status": "真实账号/出站分动作授权；register无mail.send不得承诺",
+      "evidence": "[原模块记录](mod-21.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-22 / Potatos498",
+      "ports": "feed来源/cursor → 去重项目/持久事件",
+      "consumer": "packages/connectors/feeds → ConnectorHost sink/CW-03",
+      "tests": "`npm run test --workspace=@personal-agent/feeds`",
+      "status": "未订阅重要事件不能直接丢弃；当前真实来源增量待验",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-23 / Potatos498",
+      "ports": "当前policy/revision/事件 → 静默feed/额度/投递回执",
+      "consumer": "packages/notifications → Runtime notification-host/桌面渠道/原Scheduler",
+      "tests": "`npm run test --workspace=@personal-agent/notifications`",
+      "status": "CW-09；fixture≠物理通知，unknown原读回不重发",
+      "evidence": "[原模块记录](mod-23.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-24 / Potatos498",
+      "ports": "查询/来源/时间范围 → research结果/引用/新鲜度",
+      "consumer": "packages/connectors/research → Runtime工具/主动research分支",
+      "tests": "`npm run test --workspace=@personal-agent/research`",
+      "status": "OpenAlex不等于通用网页正文；真实来源各自验",
+      "evidence": "[原模块记录](mod-24.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-25 / Potatos498",
+      "ports": "明确地点/时间 → weather forecast/cache状态",
+      "consumer": "packages/connectors/weather → Runtime weather/业务显示",
+      "tests": "`npm run test --workspace=@personal-agent/weather`",
+      "status": "历史provider读回不保证当前；地点不能静默猜测",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-26 / Potatos498",
+      "ports": "已选平台/账号/动作 → 受限社交工具回执",
+      "consumer": "选定provider → MOD05注册及业务UI",
+      "tests": "无可宣称的已实现专属fixture；先登记最小工作包",
+      "status": "未选平台保持unavailable；先确认首版平台，不生成空实现",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-27 / zemeng5208",
+      "ports": "原话/Goal/Fact版本 → 图谱引用/依赖/冲突",
+      "consumer": "packages/goals → Runtime goal命令与主动responsibility",
+      "tests": "`npm run test --workspace=@personal-agent/goals`",
+      "status": "CW-03/CW-04；引用版本和工具scope分开",
+      "evidence": "[原模块记录](MOD-27-28-INTEGRATION-HANDOFF.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-28 / zemeng5208",
+      "ports": "事实变化/独立候选/实际状态 → 判断/局部proposal",
+      "consumer": "packages/cognition、proactive-workflows → 原Runtime application/镜像",
+      "tests": "`npm run test --workspace=@personal-agent/cognition`",
+      "status": "最小修复算法继续暂停，勿借本包另设计；CW-01/03/05",
+      "evidence": "[原模块记录](MOD-28-FACT-CHANGE-FEED-01.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐"
+    },
+    {
+      "title": "MOD-29 / zemeng5208",
+      "ports": "受信AA配置/身份 → CloudAgentPort/部署/模型回执",
+      "consumer": "agentarts-runtime main/model-proxy → 原Runtime AA客户端",
+      "tests": "`npm run test --workspace=@personal-agent/agentarts-runtime`",
+      "status": "CW-02；云版本目录/代理已验，远端业务全链未验",
+      "evidence": "[原模块记录](MOD-29-31-AGENTARTS-MULTI-AGENT-BUILD.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐"
+    },
+    {
+      "title": "MOD-30 / zemeng5208",
+      "ports": "28模板/checkpoint/host receipts → 节点proposal/汇合",
+      "consumer": "OwnedWorkflowEngine/HostBridge → 镜像bindings与原Runtime",
+      "tests": "`npm run test --workspace=@personal-agent/agentarts`",
+      "status": "CW-01/03/05/06；185节点目录不等于业务已验",
+      "evidence": "[原模块记录](MOD-30-COMPETITION-EXPORT-01.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐"
+    },
+    {
+      "title": "MOD-31 / zemeng5208",
+      "ports": "子任务/影子/评估集 → 交接/比较/评估回执",
+      "consumer": "原subagent工具、shadow服务、evaluation port → 主任务消费方",
+      "tests": "`npm run test --workspace=@personal-agent/agentarts`",
+      "status": "CW-06/07；反事实缺失unknown，平台效果评估待adapter",
+      "evidence": "[原模块记录](MOD-31-FIXED-EVALUATION-01.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐"
+    },
+    {
+      "title": "MOD-32 / zemeng5208",
+      "ports": "部署版本/实际请求 → API/trace/成本与验收",
+      "consumer": "agentarts observability、manual → 平台readback与证据投影",
+      "tests": "`npm run test --workspace=@personal-agent/agentarts-runtime`",
+      "status": "平台trace需真实traceId与受信签名；本地日志非平台trace",
+      "evidence": "[原模块记录](MOD-32-AGENTARTS-OBSERVABILITY.md)（原日期范围）；[V3专项回执](../competition/evidence/test-image-v3-20261015/full-workflow-results.json)仅覆盖所述表面，业务缺项仍待本人补齐"
+    },
+    {
+      "title": "MOD-33 / goo122",
+      "ports": "GitHub请求/受限凭据 → 版本化资源/日志",
+      "consumer": "packages/connectors/github → dev-workflows Runtime调用方",
+      "tests": "`npm run test --workspace=@personal-agent/github`",
+      "status": "DEV原归属保留，真实账号只按授权只读/写入分别验",
+      "evidence": "[原模块记录](MOD-33-GITHUB-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-34 / Potatos498",
+      "ports": "真实CI失败/原workspace → 受控补丁/Git回执",
+      "consumer": "coding-tools ci-fix/git-tools → Runtime dev-workflows及MOD35输入",
+      "tests": "`npm run test --workspace=@personal-agent/coding-tools`",
+      "status": "本人接线/验证；未知Git写读回，不交中央代验",
+      "evidence": "[原模块记录](MOD-34-CI-FIX-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-35 / Potatos498",
+      "ports": "测试日志/失败定位输入 → 结构化定位报告",
+      "consumer": "coding-tools/test-locate → MOD34/Runtime消费者",
+      "tests": "`npm run test --workspace=@personal-agent/coding-tools`",
+      "status": "解析fixture≠真实CI修复闭环，下一步接一份实际失败日志",
+      "evidence": "[原模块记录](MOD-35-TEST-LOCATE-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-36 / goo122",
+      "ports": "diff/来源/模型预审 → 锚定意见/受控发表",
+      "consumer": "cognition code-review → Runtime dev-workflows/GitHub公开port",
+      "tests": "`npm run test --workspace=@personal-agent/cognition`",
+      "status": "模型预审不是非作者Approve；真实发表另授权",
+      "evidence": "[原模块记录](MOD-36-CODE-REVIEW-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-37 / goo122",
+      "ports": "公共exports/Schema差异 → API文档更新候选",
+      "consumer": "API文档维护待开工工作包 → 原DEV消费方",
+      "tests": "无可宣称的已实现专属fixture；先登记最小工作包",
+      "status": "仍ready待开工；先明确一个公开接口差异与消费验证，不宣称实现",
+      "evidence": "尚无该编号专属验收记录；当前任务/run/目标读回由本人补齐"
+    },
+    {
+      "title": "MOD-38 / Potatos498",
+      "ports": "Issue来源/原授权 → 分类/标签/修复PR提案",
+      "consumer": "cognition issue-triage → Runtime dev-workflows/GitHub",
+      "tests": "`npm run test --workspace=@personal-agent/cognition`",
+      "status": "按动作授权；fixture分类不等于真实PR发表",
+      "evidence": "[原模块记录](MOD-38-ISSUE-TRIAGE-01.md)（原日期范围）；当前任务/run/目标读回由本人补齐"
+    }
+  ]
+}

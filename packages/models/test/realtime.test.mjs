@@ -23,6 +23,32 @@ async function connected(onTool = async () => 'ok') {
   return {session,socket:Socket.current,events,controller};
 }
 
+test('provider completed input carries final speech item metadata, while legacy missing ids retain history only',async()=>{
+  const f=await connected();
+  f.socket.receive({type:'input_audio_buffer.speech_started',item_id:'input_1'});
+  f.socket.receive({type:'input_audio_buffer.speech_stopped',item_id:'input_1'});
+  f.socket.receive({type:'conversation.item.input_audio_transcription.completed',item_id:'input_1',transcript:'同意'});
+  assert.ok(f.events.some(e=>e.type==='speech_started'&&e.utteranceId==='input_1'));
+  assert.ok(f.events.some(e=>e.type==='speech_stopped'&&e.utteranceId==='input_1'));
+  const final=f.events.find(e=>e.type==='transcript');
+  assert.equal(final.phase,'final');assert.equal(final.source,'input_audio');assert.equal(final.utteranceId,'input_1');
+  f.socket.receive({type:'conversation.item.input_audio_transcription.completed',event_id:'legacy_1',transcript:'旧提供方转写'});
+  const legacy=f.events.filter(e=>e.type==='transcript').at(-1);
+  assert.equal(legacy.phase,undefined);assert.equal(legacy.utteranceId,undefined);
+  await f.session.close();
+});
+
+test('host questions use only the existing active session and acceptance is not playback proof',async()=>{
+  const f=await connected();
+  assert.deepEqual(f.session.askUserQuestion('是否确认当前通知参数？'),{accepted:true});
+  const message=f.socket.sent.find(e=>e.type==='conversation.item.create'&&e.item.type==='message');
+  assert.match(message.item.content[0].text,/不要执行/);assert.match(message.item.content[0].text,/是否确认/);
+  assert.equal(f.socket.sent.at(-1).type,'response.create');
+  assert.throws(()=>f.session.askUserQuestion('重复'),/正在处理/);
+  assert.equal(f.events.some(e=>e.type==='audio'),false);
+  await f.session.close();assert.throws(()=>f.session.askUserQuestion('旧会话'),/正在处理/);
+});
+
 test('native PCM uses the fixed endpoint and interruption drops stale response audio', async () => {
   const f = await connected();
   assert.equal(new URL(f.socket.url).hostname, 'test-space.cn-beijing.maas.aliyuncs.com');

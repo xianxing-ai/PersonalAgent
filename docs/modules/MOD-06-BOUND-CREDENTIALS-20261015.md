@@ -4,7 +4,7 @@
 - 状态：`in_progress`，接口 `provisional`；不完成整个 MOD-06 或完整 G11/G14。
 - 基线：PR #369 `c39b7342d4211f72a55d2cf0aceea9216aeeb5bb`。
 - 工作树：`.worktrees/goo122-mcp-binding-20261015`；分支 `codex/goo122-mcp-binding-20261015`。
-- 方案：[ADR-0030](../adr/0030-remote-mcp-bound-credentials.md)；[接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+- 方案：[ADR-0032](../adr/0032-remote-mcp-bound-credentials.md)；[接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
 
 ## 实现
 

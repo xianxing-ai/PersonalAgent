@@ -1,5 +1,10 @@
 # ADR-0017：Wiki 只读来源监视
 
+<!-- current-design-alignment-20261015 -->
+> 2026-10-15适用性：本页保留原日期、作者与accepted/proposed决定；仍适用的Runtime/权限/依赖边界不被撤销。
+> 冲突的部署、默认模型、发布、完成事实及旧协作门槛已由[当前设计](../design/CURRENT_DESIGN_20261015.md)更新（superseded），
+> 不把历史未验状态套到当前，也不把ADR存在当当前验收。[全部设计导航](../design/README.md)；当前接口另见[目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+
 - 状态：proposed；日期：2026-10-11；负责人：goo122
 - Profile：`huawei_ict_agentarts`；关联：MOD-08J、ADR-0015/0016
 
