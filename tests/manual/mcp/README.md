@@ -1,5 +1,7 @@
 # 远程 MCP 本机 TLS 验证
 
+真实只读服务与原生界面的后续验收按 [操作清单与记录模板](LIVE-READONLY-ACCEPTANCE.md) 执行；该清单目前未执行，不代表真实平台已通过。
+
 目标 `huawei_ict_agentarts` / MOD-06 / PA-005。此入口只访问自建 `127.0.0.1` HTTPS 合成服务，不是第三方平台或云端验收。
 
 先按锁文件安装、构建工作区依赖，并确保 OpenSSL 可用：
@@ -16,3 +18,7 @@ OpenSSL 仅在项目忽略目录生成一天有效的自签名合成证书。测
 配置安全存储在此 worker 中为显式 Fake，原生确认是合成回调；不作为加密存储或真人界面证据。真实 Electron 管理和 safeStorage 证据沿用 [G14 管理工作包](../../../docs/modules/MOD-06-MANAGEMENT-20261016.md)，分级记录。工具结果是合成数据，Evidence 保持 conditional；真实服务身份、OAuth/令牌签发、平台目标数据及云端结果发送仍未验收。
 
 回执与一天有效的合成证书留在 `.cache/mcp-tls/case-*/`；没有生产密钥或真实数据，不自动清理其他目录。
+
+## 实际 Desktop 与默认 TLS 组合
+
+同锁定版本 Electron 安装后运行 `npm run test:remote-mcp-product-smoke --workspace=@personal-agent/desktop`，同样要求 OpenSSL；可用 `PA_MCP_SMOKE_ELECTRON` 指向已安装的同版本二进制。既有产品烟测现在直接连接实际 loopback HTTPS，使用默认 fetch 和实际 safeStorage，不再映射为 HTTP。覆盖完整管理/审批、拒绝、断连、重启与撤销，加四类 TLS/目录/重定向拒绝场景。CA 只传给派生进程，原生对话框回答仍为显式合成；详见[组合记录](../../../docs/modules/MOD-06-PRODUCT-TLS-20261016.md)。回执、截图及合成密钥仅留 `.cache/remote-mcp-product/case-*/`。
