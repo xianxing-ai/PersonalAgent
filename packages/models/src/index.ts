@@ -11,6 +11,7 @@ export type {OpenAICompatibleModelProviderOptions} from './openai-compatible.js'
 
 export type ModelCapability = 'text' | 'streaming' | 'toolCalling' | 'structuredOutput' | 'vision';
 export type Verification = 'mock' | 'verified' | 'conditional';
+export type OpenAICompatibleRequestFormat = 'huawei-maas-deepseek-thinking-v1';
 
 export interface ModelCapabilities {
   text: boolean;
@@ -24,6 +25,8 @@ export interface ModelCapabilities {
   nativeReasoning?: NativeReasoningConfiguration;
   /** Trusted visible-request budget binding; not a verified tokenizer declaration. */
   requestTokenBudget?: RequestTokenBudgetBinding;
+  /** Explicit trusted-host wire format, applied before visible-request measurement. */
+  requestFormat?: OpenAICompatibleRequestFormat;
 }
 
 export interface ModelDeployment {
@@ -71,6 +74,7 @@ export interface RequestTokenBudgetBinding {
   configurationRef: string;
   contextTokens: number;
   reservedOutputTokens: number;
+  requestFormat?: OpenAICompatibleRequestFormat;
 }
 
 export interface VisibleRequestTokenBudget {

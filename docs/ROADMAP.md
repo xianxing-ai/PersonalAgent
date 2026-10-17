@@ -79,6 +79,13 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 ## 2026-10-15 远程 MCP 首个只读纵片（in_progress）
 
 goo122 从 main `8c395f5f` 开始 [MOD-06 / G10](modules/MOD-06-REMOTE-READONLY-20261015.md)：现有 SDK 上增加固定身份、单只读绑定的 HTTPS Streamable HTTP host，仍经原 Policy/ToolGateway。定向本机 HTTP fixture 7/7 通过，完整 check 3147 通过、36 跳过、0 失败；无模型/AgentArts 调用、生产接线或真实远端验收。远程鉴权、任意写工具与持久恢复尚待后续工作包，完整 MOD 保持 in_progress；方案见 [ADR-0029](adr/0029-remote-mcp-readonly-transport.md)。
+### 2026-10-15：完整官方模板离线检查（in_progress）
+
+G04 后续新增固定官方 recipe/词表的七类合成请求与 Linux 无网络编码检查入口。本机 guard 验证与 Linux 官方编码结果分别记录；未取得 Linux 实际回执前不声明模板通过，生产仍未计量，见 [工作包](modules/MOD-04A-TEMPLATE-PROBE-20261015.md)。
+
+### 2026-10-15：最终可见请求预算边界（in_progress）
+
+G04 首个纵片将镜像现有 MaaS 思考转换前移至 Provider 序列化/计量之前，预算与传输共用正文；请求格式纳入 Runtime 审批恢复身份。完整模板与生产真实计量仍未验收，云调用 0，详见 [工作包](modules/MOD-04A-FINAL-REQUEST-BUDGET-20261015.md)。
 
 ## 2026-10-15 预算展示与 tokenizer 离线核验（in_progress）
 
