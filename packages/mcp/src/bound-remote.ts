@@ -87,7 +87,7 @@ export function createBoundRemoteReadonlyMcpHost(input?:BoundRemoteReadonlyMcpOp
   async function guarded<T>(signal:AbortSignal,action:()=>Promise<T>):Promise<T>{
     try{assertCurrent(signal);const result=await action();assertCurrent(signal);return result;}
     catch(error){
-      if(error instanceof ProtocolError && error.code==='REVISION_CONFLICT')revoke('REVISION_CONFLICT');
+      if(base.health().state==='error' && base.health().errorCode==='REVISION_CONFLICT')revoke('REVISION_CONFLICT');
       fail(revokedCode??(signal.aborted?'CANCELLED':error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE'));
     }
   }
