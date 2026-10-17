@@ -13,12 +13,25 @@ import {AgentArtsRealtimeModelGateway} from '@personal-agent/models';
 import type {RealtimeSocketConstructor} from '@personal-agent/models';
 import {createHash} from 'node:crypto';
 import {createRuntimeOwnedWorkflowImageAdapter} from './owned-workflow-image-adapter.js';
-import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt} from './coordination.js';
+import {
+  createAgentArtsObservationHost,
+  type AgentArtsObservationAuthorization,
+  type AgentArtsObservationFetch,
+  type AgentArtsObservationInput,
+  type AgentArtsPlatformObservationRecord,
+} from './agentarts-observation.js';
+import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt,
+  recordCompetitionCloudRequestIdentity} from './coordination.js';
 import {
   createRuntimeApplication,
   type RuntimeApplication,
   type RuntimeApplicationOptions,
 } from './runtime-application.js';
+
+/** RuntimeApplication with the Competition platform observation consumer attached. */
+export interface AgentArtsObservationApplication extends RuntimeApplication {
+  readTaskPlatformObservation(input: AgentArtsObservationInput): Promise<AgentArtsPlatformObservationRecord>;
+}
 
 export interface AgentArtsRuntimeApplicationOptions
   extends Omit<RuntimeApplicationOptions, 'profile' | 'coordination' | 'text' | 'competitionRealtimeModel'> {
@@ -48,6 +61,14 @@ export interface AgentArtsRuntimeApplicationOptions
   /** Explicit host-only key source for an image configured with a receipt-key override. */
   readOwnedWorkflowReceiptSecret?: (signal:AbortSignal)=>Promise<string>;
   fetchHandlesHostAuthorization?:true;
+  /** Trusted observation read-back authorization; real reads need an AK/SK signer,
+   * and an absent provider leaves observation explicitly unavailable. */
+  observationAuthorization?: AgentArtsObservationAuthorization;
+  /** Optional injected observation transport; defaults to globalThis.fetch. */
+  observationFetchImpl?: AgentArtsObservationFetch;
+  /** Platform application id (resource_id) enabling exact request-correlation.
+   * A configured runtime name is never substituted; without it, correlation stays not_checked. */
+  observationApplicationId?: string;
 }
 
 /**
@@ -56,7 +77,7 @@ export interface AgentArtsRuntimeApplicationOptions
  */
 export function createAgentArtsRuntimeApplication(
   options: AgentArtsRuntimeApplicationOptions
-): RuntimeApplication {
+): AgentArtsObservationApplication {
   const {
     gatewayUrl,
     runtimeName,
@@ -80,6 +101,9 @@ export function createAgentArtsRuntimeApplication(
     beforeCompetitionSend,
     readOwnedWorkflowReceiptSecret,
     fetchHandlesHostAuthorization,
+    observationAuthorization,
+    observationFetchImpl,
+    observationApplicationId,
     ...runtimeOptions
   } = options;
   if (deploymentVersion !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(deploymentVersion)) {
@@ -138,6 +162,15 @@ export function createAgentArtsRuntimeApplication(
           recordCompetitionCloudReceipt(application.runtime, request.taskId, receipt);
         },
       },
+    // Observation-only bookkeeping of the actual outgoing X-Request-Id. A recording
+    // failure (e.g. a storage error) never changes the invocation outcome.
+    (receipt, request) => {
+      try {
+        recordCompetitionCloudRequestIdentity(application.runtime, request.taskId, request.revision, receipt);
+      } catch {
+        // Without the durable identity a later observation read reports unknown_request.
+      }
+    },
   );
   const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
     ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,
@@ -170,5 +203,16 @@ export function createAgentArtsRuntimeApplication(
   });
   const closeRuntime = application.close.bind(application);
   application.close = () => { closeRuntime(); cloud.close(); ownedImage?.close(); };
-  return application;
+  // The platform observation consumer lives only on the Competition composition; the
+  // default (local) application keeps no observation surface at all.
+  const observationHost = createAgentArtsObservationHost({
+    runtime: application.runtime,
+    runtimeName,
+    ...(observationAuthorization === undefined ? {} : {authorization: observationAuthorization}),
+    ...(observationFetchImpl === undefined ? {} : {fetchImpl: observationFetchImpl}),
+    ...(observationApplicationId === undefined ? {} : {applicationId: observationApplicationId}),
+  });
+  return Object.assign(application, {
+    readTaskPlatformObservation: (input: AgentArtsObservationInput) => observationHost.read(input),
+  }) as AgentArtsObservationApplication;
 }

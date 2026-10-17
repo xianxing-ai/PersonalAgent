@@ -7,6 +7,18 @@ import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation
 import {AgentArtsResultUnknownError,AgentArtsTerminalError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt} from './agentarts-websocket.js';
 import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
 
+/** Trusted host observer of the actual request identity about to be sent.
+ * Fired once per send attempt for HTTPS and WSS transports, synchronously
+ * after the export guard passes and before the transport send begins.
+ * The observer must not delay, retry or gate the invocation; persistence is
+ * the observer's concern and throwing aborts the invocation like any guard.
+ */
+export type AgentArtsRequestIdentityObserver = (
+  receipt: AgentArtsUnknownReceipt,
+  request: CoordinationRequest,
+) => void;
+
+
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_HTTP_DIAGNOSTIC_MS = 1_000;
 const MAX_TEXT_CHARS = 16_000;
@@ -1070,6 +1082,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly onWebSocketDispatch: AgentArtsWebSocketOptions['onDispatch'];
   private readonly onWebSocketAccepted: AgentArtsWebSocketOptions['onAccepted'];
   private readonly onWebSocketTerminal: AgentArtsWebSocketOptions['onTerminal'];
+  private readonly identityObserver: AgentArtsRequestIdentityObserver | undefined;
   private closed = false;
 
   constructor(
@@ -1080,6 +1093,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     beforeInitialToolCatalogSend?: (request: CoordinationRequest) => Promise<void>,
     onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void,
     websocketOptions?: AgentArtsWebSocketOptions,
+    identityObserver?: AgentArtsRequestIdentityObserver,
   ) {
     const validated = validateRuntimeConfig(config);
     if (!authorizationProvider || typeof authorizationProvider.read !== 'function') {
@@ -1109,6 +1123,9 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     for (const callback of [websocketOptions?.onDispatch, websocketOptions?.onAccepted, websocketOptions?.onTerminal]) {
       if (callback !== undefined && typeof callback !== 'function') invalid('AgentArts WebSocket persistence callback is invalid');
     }
+    if (identityObserver !== undefined && typeof identityObserver !== 'function') {
+      invalid('AgentArts request identity observer is invalid');
+    }
     this.gatewayOrigin = validated.gatewayOrigin;
     this.runtimeName = validated.runtimeName;
     this.invokeMode = validated.invokeMode;
@@ -1128,6 +1145,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     this.onWebSocketDispatch = websocketOptions?.onDispatch;
     this.onWebSocketAccepted = websocketOptions?.onAccepted;
     this.onWebSocketTerminal = websocketOptions?.onTerminal;
+    this.identityObserver = identityObserver;
     this.websocket = validated.websocketUrl === undefined ? undefined
       : new AgentArtsWebSocketTransport(validated.websocketUrl, websocketOptions?.factory, websocketOptions?.onState);
   }
@@ -1264,6 +1282,8 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           throw new ProtocolError('UNAUTHORIZED', 'AgentArts send intent must be persisted synchronously');
         }
       }
+      // WSS frames and HTTPS fallback carry a transport receipt right here.
+      if (receipt !== undefined) this.identityObserver?.(receipt, sendRequest);
       stage = 'transport';
       },
       afterAccepted: receipt => {
@@ -1285,6 +1305,8 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         await guards.beforeCatalog?.();
         const receipt = fallback ? createAgentArtsUnknownReceipt(init) : undefined;
         guards.beforeSend(receipt);
+        // The plain HTTPS send created no receipt earlier; observe the actual request identity now.
+        if (receipt === undefined) this.identityObserver?.(createAgentArtsUnknownReceipt(init), sendRequest);
         // The final synchronous guard and fetch share one uninterrupted stack.
         if (receipt !== undefined) { fallbackReceipt = receipt; fallbackStarted = true; }
         return this.fetchImpl(url, init);

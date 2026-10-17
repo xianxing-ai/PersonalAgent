@@ -3,6 +3,8 @@ export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckRes
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
 export type {CoordinationGoalTokenBudget} from './application/context-binding.js';
 export type {PrepareCompetitionToolExport,CompetitionToolExport,CoordinationWorkerCapabilityPort} from './application/coordination.js';
+export type {CompetitionCloudRequestIdentityRecord, CompetitionCloudRequestIdentities,
+  CompetitionCloudIdentitySelection} from './application/coordination.js';
 export type {StartSystemObservationSessionRequest, SystemObservationSession} from './application/system-observation-session.js';
 export {createSystemObservationTool} from '@personal-agent/windows-client';
 export type {RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostToolTaskRequest,
@@ -13,9 +15,14 @@ export type {RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostT
 export type {LocalRepairHostOptions, LocalRepairBinding, SubmitLocalRepairRequest} from './application/local-repair.js';
 export type {CompetitionAvailableTool, CompetitionToolAvailability} from './application/tool-catalog.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
+export type {AgentArtsObservationApplication} from './application/agentarts.js';
 export {createCalendarEventReadTool, CALENDAR_EVENT_READ_TOOL, CALENDAR_EVENT_READ_VERSION} from './application/calendar-read.js';
 export type {CalendarReadBinding, CalendarEventReadOptions} from './application/calendar-read.js';
 export type {AgentArtsRuntimeApplicationOptions} from './application/agentarts.js';
+export type {AgentArtsObservationRequestDescription, AgentArtsObservationAuthorization, AgentArtsObservationFetch,
+  AgentArtsObservationSurface, AgentArtsObservationInput, AgentArtsObservationBinding,
+  AgentArtsObservationAvailability, AgentArtsPlatformObservationRecord,
+  AgentArtsObservationHostOptions} from './application/agentarts-observation.js';
 export {createMemoryProjectionApplication, createPendingImpactApplication} from './application/memory.js';
 export {createSqliteFactProjectionHost} from './application/sqlite-fact-projection.js';
 export type {SqliteFactProjectionHost, SqliteFactProjectionHostOptions} from './application/sqlite-fact-projection.js';
