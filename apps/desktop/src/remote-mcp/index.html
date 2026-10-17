@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; form-action 'none'; frame-src 'none'; base-uri 'none'">
+<title>远程 MCP 管理</title><link rel="stylesheet" href="style.css"></head>
+<body><main><h1>远程 MCP · 只读服务</h1>
+<p>配置加密保存在本机。连接确认与任务审批分别进行；结果只在本机查看，不自动发送给模型。</p>
+<p id="status" role="status"></p><p id="error" role="alert"></p>
+<section><h2>1. 保存服务定义</h2><p>导入已审查的 JSON 定义，固定 HTTPS 地址、服务/工具版本、参数格式和目录摘要。文件不能包含凭据。</p>
+<button id="import">导入服务定义</button><pre id="definition"></pre>
+<form id="save-form"><label for="token">已签发的短期 token（空白表示不使用凭据）</label>
+<input id="token" type="password" autocomplete="off" spellcheck="false" maxlength="8192">
+<label for="expires">token 到期时间（带时区的 ISO 时间，如 2026-10-17T00:00:00.000Z）</label>
+<input id="expires" type="text" autocomplete="off" placeholder="2026-10-17T00:00:00.000Z">
+<button type="submit" id="save">确认并加密保存</button></form>
+<p>保存或轮换后需重启应用重新装配；不会自动连接。请通过应用正常退出以保存系统加密状态。</p></section>
+<section><h2>2. 本次会话连接</h2><button id="connect">确认连接</button><button id="disconnect">断开</button><button id="revoke">撤销并清除本机配置</button><button id="refresh">刷新状态</button></section>
+<section><h2>3. 逐任务只读调用</h2><p>创建本地 Runtime 任务后，再审核参数并批准一次。调用参数会发给已确认的 MCP 服务。</p>
+<form id="run-form"><label for="arguments">业务参数 JSON</label><textarea id="arguments" rows="4">{}</textarea><button id="submit" type="submit">创建审批任务</button></form>
+<label for="task-id">原任务 ID（重启后可读回）</label><input id="task-id" type="text" autocomplete="off"><button id="read-task">读回原任务</button>
+<div id="tasks"></div><pre id="task-result"></pre><button id="approve" disabled>原生确认并批准一次</button><button id="deny" disabled>拒绝</button><button id="cancel" disabled>停止任务</button></section>
+</main><script src="view.js"></script></body></html>
