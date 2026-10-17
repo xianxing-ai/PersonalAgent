@@ -174,6 +174,8 @@ test('known AgentArts destination permits Runtime and Live construction without 
     PA_AGENTARTS_RUNTIME_NAME:'synthetic-runtime'}});
   assert.equal(config.snapshot().configured,false);assert.equal(config.snapshot().runtimeReady,true);
   const binding=config.runtimeBinding();assert.ok(binding);
+  assert.deepEqual(config.readTransportOptions(binding),{});
+  assert.throws(()=>config.readTransportOptions({...binding,runtimeName:'another-runtime'}));
   assert.throws(()=>config.readAuthorization(binding));
   let application,requests=0;
   const startup=createDeferredRuntimeStartup({isConfigured:()=>config.snapshot().runtimeReady,
