@@ -75,6 +75,29 @@ test('silent remote directory drift is detected before tools/call; the changed s
   }finally{await s.close();}
 });
 
+test('local run conflicts do not revoke an unchanged bound host or cancel another call',async()=>{
+  for(const overlap of ['same-run','different-run']){
+    const s=await setup(),waiting=deferred(),started=deferred();let first;
+    try{
+      await s.start();const tool=s.host.tools[0],args=s.envelope();
+      s.setReader(()=>{started.resolve();return waiting.promise;});
+      first=tool.execute(args,context('A')).then(value=>({value}),error=>({error}));
+      await Promise.race([started.promise,first.then(result=>assert.fail('first call ended before preflight: '+JSON.stringify(result)))]);
+      await assert.rejects(tool.execute(args,context(overlap==='same-run'?'A':'B')),errorCode('REVISION_CONFLICT'));
+      assert.equal(s.host.health().connected,true);
+      assert.equal(s.host.currentConfigurationRef(),args.bindingRef);
+      assert.equal(s.f.calls().length,0);
+      s.setReader(()=>token);waiting.resolve(token);
+      assert.deepEqual(await first,{value:{text:'public synthetic reference'}});
+      assert.deepEqual(await tool.execute(args,context('C')),{text:'public synthetic reference'});
+      await assert.rejects(tool.execute({...args,arguments:{key:'changed'}},context('A')),errorCode('REVISION_CONFLICT'));
+      assert.equal(s.host.health().connected,true);
+      assert.deepEqual(await tool.execute(args,context('D')),{text:'public synthetic reference'});
+      assert.equal(s.f.calls().length,3);
+    }finally{waiting.resolve(token);await first;await s.close();}
+  }
+});
+
 test('native config/revocation changes reject before credentials and invalidate confirmed-result replay',async()=>{
   for(const change of ['revision','credential','remove','signal']){
     const s=await setup();
