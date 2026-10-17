@@ -80,6 +80,9 @@ Google **Material Design 3**（token/动态色）、**Microsoft Fluent 2**（Win
 | 5 | 分支 diff 不含 `apps/`、`packages/` 任何文件（悬浮球红线可审计） | ✅ 通过（`git diff --name-only origin/main...HEAD` 仅 docs/design/*） |
 | 6 | 门户/方案页在 1280×800 与 1920×1080 下无横向溢出 | ✅ 通过（响应式断点 + 抽屉/目录降密；1 处既存降级说明见下） |
 | 7 | 每页内联脚本 VM 语法编译 | ✅ 通过（6/6 单脚本编译零错误） |
+| 8 | **审查跟进（2026-10-17 第二轮）**：`server.mjs --selftest` v2 —— 遍历断言改用段内编码形态真实命中服务端拒绝（`/..%2fpackage.json`、`/deep/%2e%2e%2f..%2fpackage.json` → 404），两处 URL 归一化回退语义如实标注；`/%zz` 畸形百分号编码 → **400**（decode 容错，不再可能 500）；方案 03 目标 id/内容/状态经 `esc()` 转义后进 DOM；方案 05 rail 预览改为先截断后全量转义（`& < > " '`） | ✅ 通过（selftest 17 路由 0 失败；6 页结构+语法复检全绿；重验收 OK=88 PROBLEMS=0） |
+
+> 第二轮改动范围：`server.mjs`（自检语义 + decode 容错）与 `proposals/03`、`proposals/05`（用户输入回防转义）；未触碰其余四页与任何生产代码。对应 PR #378 审查者（zemeng5208）提出的两条非阻断建议。
 
 复核补充：方案 3 在验收时发现缺少「等待结果核实/正在取消/已取消」三个状态词，已补齐（2 条演示任务 + 3 枚筛选 chip + 状态映射）。
 证据原始文件（不入库）：`.cache/workspace-redesign-qa/acceptance-receipt.json`、`server-selftest.txt`、`page-*.json`、`site-acceptance.txt`。

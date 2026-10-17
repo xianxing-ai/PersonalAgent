@@ -89,7 +89,14 @@ function createHandler() {
 
   return async function handler(req, res) {
     const url = new URL(req.url, "http://127.0.0.1");
-    let pathname = decodeURIComponent(url.pathname);
+    let pathname;
+    try {
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      // 畸形百分号编码（如 /%zz）：直接 400，不得把 URIError 变成未处理异常
+      res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }).end("400 bad request");
+      return;
+    }
     if (pathname === "/") pathname = "/index.html";
     if (pathname === "/api/health") {
       sendJson(res, 200, { ok: true, site: "workspace-settings-redesign-20261017" });
@@ -166,10 +173,16 @@ async function selftest() {
     }
   }
 
-  // 404 与路径遍历防护
+  // 404 与路径遍历防护（审查跟进 2026-10-17：fetch/URL 解析会先做规范化——
+  // 纯 "/../.." 与完整 "%2e" 点段都会被客户端归一化，不能冒充“服务端拒绝遍历”的断言；
+  // 真正命中拒绝路径必须用“段内编码斜杠”形态：服务端 decode 后出现 .. → includes('..') 拒绝）
   const mustFail = [
-    { route: "/no-such-file.xyz", expect: 404 },
-    { route: "/../../package.json", expect: 404 },
+    { route: "/no-such-file.xyz", expect: 404, note: "普通缺失文件 404" },
+    { route: "/../../package.json", expect: 404, note: "fetch 先归一化为 /package.json → 缺失 404（回退语义）" },
+    { route: "/deep/%2e%2e/%2e%2e/package.json", expect: 404, note: "%2e 完整点段被 URL 解析器归一化 → 回退语义 404" },
+    { route: "/..%2fpackage.json", expect: 404, note: "段内编码：服务端 decode 出 /../package.json → 命中遍历拒绝" },
+    { route: "/deep/%2e%2e%2f..%2fpackage.json", expect: 404, note: "段内编码变体：decode 出 /deep/../package.json → 命中遍历拒绝" },
+    { route: "/%zz", expect: 400, note: "畸形百分号编码 → 400（decode 容错）" },
   ];
   for (const item of mustFail) {
     try {
