@@ -102,6 +102,7 @@ export type {
   AgentArtsFetch,
   AgentArtsFetchInit,
   AgentArtsFailureDiagnostic,
+  AgentArtsRequestIdentityObserver,
   AgentArtsResponse,
   AgentArtsRuntimeConfig,
   AgentArtsSchemaCategory,
