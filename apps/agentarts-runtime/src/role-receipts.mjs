@@ -4,6 +4,7 @@ const safeLabel = (value, max) => typeof value === 'string' && value.length <= m
 const isoTime = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value)
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 
+
 /** The host asserts a version label; this never claims independent platform verification. */
 export function createRoleReceiptWriter({deploymentVersion, write = line => process.stdout.write(line)} = {}) {
   if (deploymentVersion !== undefined && (!safeLabel(deploymentVersion,128)
@@ -15,6 +16,27 @@ export function createRoleReceiptWriter({deploymentVersion, write = line => proc
   return receipt => {
     try {
       if (!receipt || !roles.has(receipt.role) || !statuses.has(receipt.status)) return;
+      if (receipt.event === 'workflow_candidates') {
+        if (receipt.stage !== 'candidate_response' || !['fast','plan'].includes(receipt.role)
+          || !['completed','failed'].includes(receipt.status)) return;
+        // Keep candidate diagnostics distinct from model-call receipts, with only safe metadata.
+        const output = {event:'workflow_candidates',stage:'candidate_response',
+          role:receipt.role,status:receipt.status,
+          requestId:safeLabel(receipt.requestId,256) ? receipt.requestId : 'unknown',
+          promptVersion:safeLabel(receipt.promptVersion,64) ? receipt.promptVersion : 'unknown',
+          deploymentVersion:version,deploymentVersionSource:source};
+        if (/^F(?:0[1-9]|1[0-9]|2[0-8])_N\d{2}$/.test(receipt.nodeId)) output.nodeId = receipt.nodeId;
+        if (receipt.candidatePreparation === 'model_gateway' || receipt.candidatePreparation === 'deterministic_binding')
+          output.candidatePreparation = receipt.candidatePreparation;
+        if (Number.isSafeInteger(receipt.candidateCount) && receipt.candidateCount >= 0)
+          output.candidateCount = receipt.candidateCount;
+        if (typeof receipt.candidateArrayDigest === 'string' && /^[0-9a-f]{64}$/.test(receipt.candidateArrayDigest))
+          output.candidateArrayDigest = receipt.candidateArrayDigest;
+        if (receipt.errorCode === 'UNSUPPORTED_CAPABILITY' || receipt.errorCode === 'EXTERNAL_FAILURE')
+          output.errorCode = receipt.errorCode;
+        void Promise.resolve(write(JSON.stringify(output)+'\n')).catch(() => {});
+        return;
+      }
       // Deliberate field allowlist: never serialize arbitrary callback properties or errors.
       const output = {event:'owned_role',receiptVersion:'1.0',scope:'model_call',
         role:receipt.role,status:receipt.status,
@@ -32,3 +54,4 @@ export function createRoleReceiptWriter({deploymentVersion, write = line => proc
     } catch { /* A failed observability sink cannot change model orchestration. */ }
   };
 }
+
