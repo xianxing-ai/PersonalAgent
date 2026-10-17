@@ -1,0 +1,1 @@
+PASS: local Runtime Application desktop acceptance (7 model requests, 2 cancelled)

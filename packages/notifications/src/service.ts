@@ -2,6 +2,11 @@ import { ProtocolError } from '@personal-agent/contracts';
 import type { StoragePort, ProtocolContracts } from '@personal-agent/contracts';
 import { nextQuietEndMs, quietHoursActive } from './policy.js';
 import type { NotificationPolicy } from './policy.js';
+import {assertInterruptionState,beginNotificationDelivery,completeNotificationDelivery,emptyInterruptionState,feedEntryActive,
+  interruptionBlock,markNotificationFeed,notificationDigest,notificationScopeKey,queryNotificationFeed,reserveNotificationRound,
+  resolveInterruptionPolicy,updateNotificationPolicy,validUtc,assertLegacyNotificationPolicy,scopedLegacyPolicies,updateLegacyNotificationPolicy} from './interruption.js';
+import type {NotificationAtomicStatePort,NotificationChannel,NotificationFeedQuery,NotificationIngestContext,
+  NotificationInterruptionState,NotificationScope,NotificationStage,InterruptionPolicyUpdate,InterruptionReservation,LegacyNotificationPolicyUpdate} from './interruption.js';
 
 type ConnectorItem = ProtocolContracts['connectorItem'];
 
@@ -32,7 +37,7 @@ export interface NotificationBatch {
 
 export interface DrainReport {
   batches: NotificationBatch[];
-  held: {quiet: number; paused: number; digest: number};
+  held: {quiet: number; paused: number; digest: number;silent?:number};
 }
 
 export interface StatusReport {
@@ -42,11 +47,14 @@ export interface StatusReport {
   nextDigestCloseAt: string | null;
   /** 已裁定但桌面尚未确认接收的批次数（崩溃重启后这些批次会被再次返回）。 */
   unacknowledgedBatches: number;
+  interruptionQuotaSafety:'atomic'|'unavailable';
 }
 
 export interface NotificationServiceOptions {
   now: () => number;
   idFactory: () => string;
+  atomicState?:NotificationAtomicStatePort;
+  onStage?:(event:NotificationStage)=>void;
 }
 
 /**
@@ -63,6 +71,8 @@ interface NotificationState {
   batches: NotificationBatch[];
   /** 已交付 dedupeKey 的有界 FIFO（去重窗口），淘汰由宿主按 dedupeKey 吸收。 */
   delivered: string[];
+  /** Display/unread history, policies and round receipts extend the original state, not pending queues. */
+  interruption?:NotificationInterruptionState;
 }
 
 const STATE_KEY = 'notifications:state';
@@ -78,6 +88,7 @@ const DELIVERED_KEY_LIMIT = 500;
  */
 export class NotificationService {
   private readonly policy: NotificationPolicy;
+  private readonly stateRevisions=new WeakMap<object,number|undefined>();
 
   constructor(
     private readonly storage: StoragePort,
@@ -90,8 +101,14 @@ export class NotificationService {
   }
 
   /** 接收标准事件。重复 dedupeKey 静默忽略（计数披露在返回值）。单次状态写入，原子。 */
-  ingest(items: readonly ConnectorItem[]): {accepted: number; duplicates: number} {
+  ingest(items: readonly ConnectorItem[],context:NotificationIngestContext={}): {accepted: number; duplicates: number} {
     const state = this.readState();
+    const extension=this.extension(state),now=this.options.now();
+    if(context.scope)notificationScopeKey(context.scope);
+    if(context.validUntilUtc!==undefined&&context.validUntilUtc!==null&&!validUtc(context.validUntilUtc)
+      ||context.urgent!==undefined&&typeof context.urgent!=='boolean'
+      ||context.supersedes!==undefined&&(!Array.isArray(context.supersedes)||context.supersedes.some(id=>typeof id!=='string'||!id)))
+      throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted notification ingest metadata');
     // Outstanding batches pin their keys independently of the bounded history
     // window. Reconstruct from stored batches; no second dedupe store is needed.
     const unacknowledgedKeys = new Set(state.batches
@@ -99,19 +116,30 @@ export class NotificationService {
       .flatMap(batch => batch.itemRefs));
     let accepted = 0;
     let duplicates = 0;
+    let restored = 0;
+    const appendFeed=(item:ConnectorItem)=>extension.feed.push({id:item.dedupeKey,cursor:extension.nextCursor++,source:item.source,contentRef:item.contentRef,
+      occurredAt:item.occurredAt,receivedAt:new Date(now).toISOString(),scope:structuredClone(context.scope??{kind:'connector',connectorId:item.source}),
+      validUntilUtc:context.validUntilUtc??null,urgent:context.urgent===true});
     for (const item of items) {
       if (!item || typeof item !== 'object' || typeof item.dedupeKey !== 'string' || item.dedupeKey.length === 0) {
         throw new ProtocolError('INVALID_ARGUMENT', 'Ingested items must be ConnectorItems with a dedupeKey');
       }
-      if (unacknowledgedKeys.has(item.dedupeKey) || state.delivered.includes(item.dedupeKey)
+      if (extension.feed.some(entry=>entry.id===item.dedupeKey)||unacknowledgedKeys.has(item.dedupeKey) || state.delivered.includes(item.dedupeKey)
         || state.pending.some(existing => existing.dedupeKey === item.dedupeKey)) {
+        // Old ready batches retained only item IDs. Recover display metadata from the actual
+        // source replay, without enqueueing it twice or inventing missing historical content.
+        if(unacknowledgedKeys.has(item.dedupeKey)&&!extension.feed.some(entry=>entry.id===item.dedupeKey)) {appendFeed(item);restored++;}
         duplicates += 1;
         continue;
       }
       state.pending.push({dedupeKey: item.dedupeKey, source: item.source, receivedAt: this.isoNow(), item: structuredClone(item)});
+      appendFeed(item);
       accepted += 1;
     }
-    if (accepted > 0) this.writeState(state);
+    if (accepted > 0||restored>0) {
+      for(const id of context.supersedes??[]){const prior=extension.feed.find(entry=>entry.id===id);if(prior)prior.withdrawnAt??=new Date(now).toISOString();}
+      this.writeState(state);this.stage('notification_ingested_to_feed',{accepted,duplicates,restored});
+    }
     return {accepted, duplicates};
   }
 
@@ -125,21 +153,39 @@ export class NotificationService {
     const nowIso = this.isoNow();
     const state = this.readState();
     const held: DrainReport['held'] = {quiet: 0, paused: 0, digest: 0};
+    const extension=this.extension(state);
+    const suppressed=(key:string):boolean=>{
+      const entry=extension.feed.find(item=>item.id===key);
+      if(!entry)return false; // Legacy batches retain their original readback identity.
+      if(!feedEntryActive(entry,now)||entry.readAt)return true;
+      return !!interruptionBlock(extension,entry.scope,now,entry.urgent)&&!!extension.policies.global;
+    };
     const deliver: PendingItem[] = [];
     const digestPool: PendingItem[] = [];
+    const digestGroups=new Map<string,{items:PendingItem[];digest:NonNullable<NotificationPolicy['digest']>}>();
     const keep: PendingItem[] = [];
 
     for (const entry of state.pending) {
-      if (this.paused(now)) {
+      if(suppressed(entry.dedupeKey)) {
+        const feed=extension.feed.find(item=>item.id===entry.dedupeKey);
+        if(feed&&feedEntryActive(feed,now)&&!feed.readAt)keep.push(entry);
+        held.silent=(held.silent??0)+1;continue;
+      }
+      const policies=this.legacyPolicies(state,entry.dedupeKey,entry.source);
+      if (policies.some(policy=>policy.pauseUntilUtc!==undefined&&Date.parse(policy.pauseUntilUtc)>now)) {
         held.paused += 1;
         keep.push(entry);
         continue;
       }
-      if (this.policy.digest !== undefined && this.inDigestScope(entry)) {
+      const digest=policies.findLast(policy=>policy.digest&&(policy.digest.sources===undefined||policy.digest.sources.includes(entry.source)))?.digest;
+      if (digest) {
         digestPool.push(entry);
+        const scoped=!!extension.policies.global||!!Object.keys(extension.legacyPolicies??{}).length;
+        const key=notificationDigest([scoped?this.scopeOf(state,entry.dedupeKey,entry.source):null,digest]);
+        const group=digestGroups.get(key)??{items:[],digest};group.items.push(entry);digestGroups.set(key,group);
         continue;
       }
-      if (this.policy.quietHours !== undefined && quietHoursActive(this.policy.quietHours, now)) {
+      if (policies.some(policy=>policy.quietHours!==undefined&&quietHoursActive(policy.quietHours,now))) {
         held.quiet += 1;
         keep.push(entry);
         continue;
@@ -148,56 +194,74 @@ export class NotificationService {
     }
 
     const decided: NotificationBatch[] = [];
-    if (deliver.length > 0) {
+    // Scoped proactive rounds cannot reserve a batch containing another scope's
+    // items. Keep historical batching until an explicit global policy exists.
+    const groups = (items:PendingItem[]):PendingItem[][] => {
+      if (!extension.policies.global&&!Object.keys(extension.legacyPolicies??{}).length) return items.length ? [items] : [];
+      const scoped = new Map<string,PendingItem[]>();
+      for (const item of items) {
+        const entry = extension.feed.find(value=>value.id===item.dedupeKey);
+        const key = notificationScopeKey(entry?.scope??{kind:'connector',connectorId:item.source});
+        const group = scoped.get(key)??[];group.push(item);scoped.set(key,group);
+      }
+      return [...scoped.values()];
+    };
+    for (const group of groups(deliver)) {
       decided.push({
         id: this.options.idFactory(),
         kind: 'immediate',
-        itemRefs: deliver.map(entry => entry.dedupeKey),
+        itemRefs: group.map(entry => entry.dedupeKey),
         decidedAt: nowIso,
-        heldSince: earliest(deliver),
+        heldSince: earliest(group),
         reason: 'immediate',
         state: 'ready_for_delivery',
       });
     }
 
-    if (digestPool.length > 0) {
-      const digest = this.policy.digest as NonNullable<NotificationPolicy['digest']>;
-      const windowClosesAt = Math.min(...digestPool.map(entry => Date.parse(entry.receivedAt))) + digest.windowMs;
-      const flushes = digest.maxItems !== undefined && digestPool.length >= digest.maxItems;
+    for (const {items:pool,digest} of digestGroups.values()) {
+      const windowClosesAt = Math.min(...pool.map(entry => Date.parse(entry.receivedAt))) + digest.windowMs;
+      const flushes = pool.length >= digest.maxItems;
       const windowElapsed = windowClosesAt <= now;
       // 摘要交付同样尊重安静时段：窗口到了但在安静期，继续持有并披露。
-      const quietNow = this.policy.quietHours !== undefined && quietHoursActive(this.policy.quietHours, now);
-      if ((flushes || windowElapsed) && !this.paused(now) && !quietNow) {
-        decided.push({
+      const quietNow = pool.some(entry=>this.legacyPolicies(state,entry.dedupeKey,entry.source)
+        .some(policy=>policy.quietHours!==undefined&&quietHoursActive(policy.quietHours,now)));
+      if ((flushes || windowElapsed) && !quietNow) {
+        for (const group of groups(pool)) decided.push({
           id: this.options.idFactory(),
           kind: 'digest',
-          itemRefs: digestPool.map(entry => entry.dedupeKey),
+          itemRefs: group.map(entry => entry.dedupeKey),
           decidedAt: nowIso,
-          heldSince: earliest(digestPool),
+          heldSince: earliest(group),
           reason: flushes ? 'digest_max_items' : 'digest_window_closed',
           state: 'ready_for_delivery',
         });
       } else {
-        held.digest = digestPool.length;
-        keep.push(...digestPool);
+        held.digest += pool.length;
+        keep.push(...pool);
       }
     }
 
     // 单次原子写入：消费的条目移出 pending、进入 delivered 窗口与批次列表；失败则整体不生效。
     const nextState: NotificationState = {
+      ...state,
       pending: keep,
       batches: trimBatches([...state.batches, ...decided]),
       delivered: [...state.delivered, ...deliver.map(entry => entry.dedupeKey), ...flushedKeys(digestPool, decided)].slice(-DELIVERED_KEY_LIMIT),
     };
-    if (decided.length > 0) this.writeState(nextState);
+    if (decided.length > 0||keep.length!==state.pending.length) this.writeState(nextState,state);
 
     // 恢复语义优先：未确认批次排在本次新裁定之前返回；不重复生成（id 不变）。
     // 输出边界深拷贝：调用方改动返回批次不得影响存储内的状态（返回对象可能携带内部引用）。
-    const outstanding = state.batches.filter(batch => batch.state === 'ready_for_delivery');
-    const quiet = this.policy.quietHours !== undefined && quietHoursActive(this.policy.quietHours, now);
-    const prior = this.paused(now) || quiet ? [] : outstanding;
-    if (this.paused(now)) held.paused += outstanding.reduce((sum, batch) => sum + batch.itemRefs.length, 0);
-    else if (quiet) held.quiet += outstanding.reduce((sum, batch) => sum + batch.itemRefs.length, 0);
+    const outstanding = state.batches.filter(batch => batch.state === 'ready_for_delivery'&&!batch.itemRefs.some(suppressed));
+    const prior:NotificationBatch[]=[];
+    for(const batch of outstanding) {
+      const policies=batch.itemRefs.flatMap(id=>this.legacyPolicies(state,id));
+      if(policies.some(policy=>policy.pauseUntilUtc!==undefined&&Date.parse(policy.pauseUntilUtc)>now))held.paused+=batch.itemRefs.length;
+      else if(policies.some(policy=>policy.quietHours!==undefined&&quietHoursActive(policy.quietHours,now)))held.quiet+=batch.itemRefs.length;
+      else if(this.legacyDigestBlocked(state,batch.itemRefs,now,batch.heldSince))held.digest+=batch.itemRefs.length;
+      else prior.push(batch);
+    }
+    if(held.silent)this.stage('silent_notifications_retained_in_feed',{count:held.silent});
     return {batches: structuredClone([...prior, ...decided]), held};
   }
 
@@ -212,29 +276,36 @@ export class NotificationService {
     if (target.state === 'ready_for_delivery') {
       target.state = 'delivered';
       target.deliveredAt = this.isoNow();
-      this.writeState({...state, batches: trimBatches(state.batches)});
+      for(const entry of state.interruption?.feed??[])if(target.itemRefs.includes(entry.id))entry.deliveredAt??=target.deliveredAt;
+      this.writeState({...state, batches: trimBatches(state.batches)},state);
     }
     return structuredClone(target);
   }
 
-  status(): StatusReport {
+  status(scope?:NotificationScope): StatusReport {
     const now = this.options.now();
     const state = this.readState();
-    const quietEnd = this.policy.quietHours === undefined ? null : nextQuietEndMs(this.policy.quietHours, now);
+    if(scope)notificationScopeKey(scope);
+    const policies=[this.policy,...(scope?scopedLegacyPolicies(this.extension(state),scope):[])];
+    const quietEnds=policies.flatMap(policy=>policy.quietHours?[nextQuietEndMs(policy.quietHours,now)].filter((value):value is number=>value!==null):[]);
+    const quietEnd=quietEnds.length?Math.max(...quietEnds):null;
+    const pauses=policies.flatMap(policy=>policy.pauseUntilUtc&&Date.parse(policy.pauseUntilUtc)>now?[policy.pauseUntilUtc]:[])
+      .sort((a,b)=>Date.parse(a)-Date.parse(b));
+    const pending=state.pending.filter(entry=>!scope||notificationScopeKey(this.scopeOf(state,entry.dedupeKey,entry.source))===notificationScopeKey(scope));
     let nextDigest: number | null = null;
-    if (this.policy.digest !== undefined) {
-      const scoped = state.pending.filter(entry => this.inDigestScope(entry));
-      if (scoped.length > 0) {
-        const oldest = Math.min(...scoped.map(entry => Date.parse(entry.receivedAt)));
-        nextDigest = Math.min(oldest + this.policy.digest.windowMs, now + this.policy.digest.windowMs);
-      }
+    for(const entry of pending) {
+      const digest=this.legacyPolicies(state,entry.dedupeKey,entry.source)
+        .findLast(policy=>policy.digest&&(policy.digest.sources===undefined||policy.digest.sources.includes(entry.source)))?.digest;
+      if(digest){const end=Date.parse(entry.receivedAt)+digest.windowMs;nextDigest=nextDigest===null?end:Math.min(nextDigest,end);}
     }
     const report: StatusReport = {
-      pausedUntil: this.paused(now) ? (this.policy.pauseUntilUtc as string) : null,
+      pausedUntil: pauses.at(-1)??null,
       quietUntil: quietEnd === null ? null : isoInstant(quietEnd),
-      pending: state.pending.length,
+      pending: pending.length,
       nextDigestCloseAt: nextDigest === null ? null : isoInstant(nextDigest),
-      unacknowledgedBatches: state.batches.filter(batch => batch.state === 'ready_for_delivery').length,
+      unacknowledgedBatches: state.batches.filter(batch => batch.state === 'ready_for_delivery'&&(!scope
+        ||batch.itemRefs.some(id=>notificationScopeKey(this.scopeOf(state,id))===notificationScopeKey(scope)))).length,
+      interruptionQuotaSafety:this.options.atomicState?'atomic':'unavailable',
     };
     return report;
   }
@@ -275,6 +346,12 @@ export class NotificationService {
         taskIdempotencyKey: `notifications:digest:${status.nextDigestCloseAt}`,
       });
     }
+    if(status.pending>0||status.unacknowledgedBatches>0) {
+      const state=this.readState();const ends=new Set(Object.values(this.extension(state).policies)
+        .map(record=>record.patch.silentUntilUtc).filter((end):end is string=>typeof end==='string'&&Date.parse(end)>now));
+      for(const end of ends)plans.push({scheduleId:`notifications:silence-end:${end}`,goal:'用户静默期限结束，重新核对最新通知策略',conversationId,
+        runAt:end,timeZone:'UTC',missedRunPolicy:'run_once',taskIdempotencyKey:`notifications:silence-end:${end}`});
+    }
     return plans;
   }
 
@@ -282,34 +359,148 @@ export class NotificationService {
     return this.policy.pauseUntilUtc !== undefined && Date.parse(this.policy.pauseUntilUtc) > now;
   }
 
-  private inDigestScope(entry: PendingItem): boolean {
-    const digest = this.policy.digest;
-    if (digest === undefined) return false;
-    return digest.sources === undefined || digest.sources.includes(entry.source);
+  private scopeOf(state:NotificationState,id:string,source?:string):NotificationScope {
+    return this.extension(state).feed.find(entry=>entry.id===id)?.scope??(source?{kind:'connector',connectorId:source}:{kind:'global'});
+  }
+  private legacyPolicies(state:NotificationState,id:string,source?:string):NotificationPolicy[] {
+    return [this.policy,...scopedLegacyPolicies(this.extension(state),this.scopeOf(state,id,source))];
+  }
+  private legacyDigestBlocked(state:NotificationState,ids:readonly string[],now:number,fallback?:string):boolean {
+    const groups=new Map<string,{count:number;oldest:number;digest:NonNullable<NotificationPolicy['digest']>}>();
+    for(const id of ids) {
+      const feed=this.extension(state).feed.find(entry=>entry.id===id),source=feed?.source;
+      const digest=this.legacyPolicies(state,id,source).findLast(policy=>policy.digest
+        &&(policy.digest.sources===undefined||source!==undefined&&policy.digest.sources.includes(source)))?.digest;
+      const receivedAt=feed?.receivedAt??fallback;if(!digest||!receivedAt)continue;
+      const extension=this.extension(state),scoped=!!extension.policies.global||!!Object.keys(extension.legacyPolicies??{}).length;
+      const key=notificationDigest([scoped?feed?.scope??null:null,digest]),group=groups.get(key)??{count:0,oldest:Date.parse(receivedAt),digest};
+      group.count++;group.oldest=Math.min(group.oldest,Date.parse(receivedAt));groups.set(key,group);
+    }
+    return [...groups.values()].some(group=>group.count<group.digest.maxItems&&group.oldest+group.digest.windowMs>now);
   }
 
   private readState(): NotificationState {
-    const value = this.storage.get(STATE_KEY);
-    if (value === undefined || value === null) return {pending: [], batches: [], delivered: []};
-    if (typeof value !== 'object' || Array.isArray(value)) return {pending: [], batches: [], delivered: []};
+    const cell=this.options.atomicState?.read(STATE_KEY);
+    const value = this.options.atomicState?cell?.value:this.storage.get(STATE_KEY);
+    if(cell&&(!Number.isSafeInteger(cell.revision)||cell.revision<0))throw new ProtocolError('PROTOCOL_MISMATCH','Invalid atomic notification state revision');
+    if (value === undefined || value === null) {const empty={pending: [], batches: [], delivered: []};this.stateRevisions.set(empty,cell?.revision);return empty;}
+    if (typeof value !== 'object' || Array.isArray(value)) throw new ProtocolError('PROTOCOL_MISMATCH','Notification state cannot be silently reset');
     const record = value as Record<string, unknown>;
     const state: NotificationState = {
       pending: Array.isArray(record.pending) ? record.pending.filter(isPendingItem) : [],
       batches: Array.isArray(record.batches) ? record.batches.filter(isBatch) : [],
       delivered: Array.isArray(record.delivered) ? record.delivered.filter((key): key is string => typeof key === 'string').slice(-DELIVERED_KEY_LIMIT) : [],
+      ...(record.interruption===undefined?{}:{interruption:record.interruption as NotificationInterruptionState}),
     };
     // 读边界整态深拷贝（goo122 2026-09-13 复审 P1）：StoragePort 不保证 get 返回副本，
     // 不拷贝则 acknowledge 对状态对象的就地修改会先于写入生效——写失败也"生效"了。
-    return structuredClone(state);
+    if(state.interruption)assertInterruptionState(state.interruption);
+    const detached=structuredClone(state);this.stateRevisions.set(detached,cell?.revision);return detached;
   }
 
-  private writeState(state: NotificationState): void {
-    this.storage.set(STATE_KEY, {
+  private writeState(state: NotificationState,original:NotificationState=state): void {
+    const value={
       pending: state.pending,
       batches: trimBatches(state.batches),
       delivered: state.delivered.slice(-DELIVERED_KEY_LIMIT),
+      ...(state.interruption?{interruption:state.interruption}:{}),
+    };
+    if(this.options.atomicState) {
+      if(!this.stateRevisions.has(original))throw new ProtocolError('REVISION_CONFLICT','Original notification snapshot required');
+      if(!this.options.atomicState.compareAndSet(STATE_KEY,this.stateRevisions.get(original),structuredClone(value)))
+        throw new ProtocolError('REVISION_CONFLICT','Notification state changed; read original operation before retrying');
+    } else this.storage.set(STATE_KEY,value);
+  }
+
+  private extension(state:NotificationState):NotificationInterruptionState {
+    if(state.interruption)return state.interruption;
+    const extension=emptyInterruptionState();
+    // Only the original pending queue still contains full source metadata. Never fabricate
+    // feed content for legacy batches whose original item has not been read back.
+    for(const entry of state.pending)if(!extension.feed.some(item=>item.id===entry.dedupeKey))extension.feed.push({
+      id:entry.dedupeKey,cursor:extension.nextCursor++,source:entry.source,contentRef:entry.item.contentRef,occurredAt:entry.item.occurredAt,
+      receivedAt:entry.receivedAt,scope:{kind:'connector',connectorId:entry.source},validUntilUtc:null,urgent:false});
+    state.interruption=extension;return extension;
+  }
+  private stage(stage:string,details:Record<string,unknown>):void {
+    try{this.options.onStage?.({stage,observedAt:this.isoNow(),details:structuredClone(details)});}catch{/* telemetry never changes persisted outcome */}
+  }
+  private atomicMutation<T>(stage:string,run:(state:NotificationState,extension:NotificationInterruptionState)=>T):T {
+    if(!this.options.atomicState)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Atomic notification state port required; StoragePort is not a quota CAS');
+    const state=this.readState(),extension=this.extension(state),before=notificationDigest(extension),result=run(state,extension);
+    if(before!==notificationDigest(extension))this.writeState(state);
+    this.stage(stage,{});return structuredClone(result);
+  }
+
+  getInterruptionPolicy(scope:NotificationScope) {const state=this.readState();return resolveInterruptionPolicy(this.extension(state),scope,this.options.now());}
+  getLegacyPolicy(scope:NotificationScope) {
+    const state=this.readState(),record=this.extension(state).legacyPolicies?.[notificationScopeKey(scope)];
+    return {scope:structuredClone(scope),revision:record?.revision??0,policy:record?structuredClone(record.policy):null};
+  }
+  /** Trusted one-time import from the original host's saved policy; never overwrites newer CAS settings. */
+  importLegacyPolicy(scope:NotificationScope,policy:NotificationPolicy) {
+    const key=notificationScopeKey(scope);assertLegacyNotificationPolicy(policy);
+    if(key==='global')throw new ProtocolError('INVALID_ARGUMENT','Legacy connector scope required');
+    return this.atomicMutation('notification_legacy_policy_restored',(_state,extension)=>{
+      const restored=structuredClone(policy),modern=extension.policies[key]?.patch;
+      if(modern) {
+        if(Object.hasOwn(modern,'mode')||Object.hasOwn(modern,'silentUntilUtc'))delete restored.pauseUntilUtc;
+        if(Object.hasOwn(modern,'quietHours'))delete restored.quietHours;
+        if(Object.hasOwn(modern,'digestMode'))delete restored.digest;
+      }
+      extension.legacyPolicies??={};extension.legacyPolicies[key]??={scope:structuredClone(scope),revision:1,policy:restored};
+      return structuredClone(extension.legacyPolicies[key]);
     });
   }
+  updateLegacyPolicy(input:LegacyNotificationPolicyUpdate) {
+    return this.atomicMutation('notification_legacy_policy_updated',(_state,extension)=>updateLegacyNotificationPolicy(extension,structuredClone(input),this.options.now()));
+  }
+  updateInterruptionPolicy(input:InterruptionPolicyUpdate) {
+    return this.atomicMutation('interruption_policy_updated',(_state,extension)=>updateNotificationPolicy(extension,structuredClone(input),this.options.now()));
+  }
+  notificationFeed(input:NotificationFeedQuery={}) {const state=this.readState();return queryNotificationFeed(this.extension(state),input,this.options.now());}
+  acknowledgeRead(input:{operationId:string;itemIds:readonly string[]}) {
+    return this.atomicMutation('notification_feed_read_ack',(_state,extension)=>markNotificationFeed(extension,input,this.options.now(),'read'));
+  }
+  withdrawNotifications(input:{operationId:string;itemIds:readonly string[]}) {
+    return this.atomicMutation('notification_feed_withdrawn',(_state,extension)=>markNotificationFeed(extension,input,this.options.now(),'withdraw'));
+  }
+  /** Pure user-return/demand summary: no channel send and no interruption count. */
+  getDigest(input:{trigger:'on_return'|'scheduled'|'on_demand';scope?:NotificationScope}) {
+    if(!['on_return','scheduled','on_demand'].includes(input.trigger))throw new ProtocolError('INVALID_ARGUMENT','Explicit digest trigger required');
+    const state=this.readState(),extension=this.extension(state),now=this.options.now();
+    const queried=queryNotificationFeed(extension,{unreadOnly:true,...(input.scope?{scope:input.scope}:{})},now);
+    const items=queried.items.filter(item=>item.validity==='active'&&(input.trigger==='on_demand'
+      ||resolveInterruptionPolicy(extension,item.scope,now).effective?.digestMode===input.trigger));
+    this.stage('notification_'+input.trigger+'_digest',{count:items.length});
+    return {items,observedAt:this.isoNow(),interruptionCount:0};
+  }
+  reserveInterruption(input:InterruptionReservation) {
+    return this.atomicMutation('interruption_quota_reserved',(state,extension)=>{
+      const prior=extension.rounds[input.roundId];if(prior)return reserveNotificationRound(extension,structuredClone(input),prior.itemIds,this.options.now());
+      const batches=input.batchIds.map(id=>{const batch=state.batches.find(b=>b.id===id);if(!batch)throw new ProtocolError('NOT_FOUND','Original notification batch not found');return batch;});
+      const ids=[...new Set(batches.flatMap(batch=>batch.itemRefs))];
+      if(input.urgent===true&&ids.some(id=>!extension.feed.find(entry=>entry.id===id)?.urgent))throw new ProtocolError('INVALID_ARGUMENT','Urgency must come from original trusted feed metadata');
+      return reserveNotificationRound(extension,structuredClone(input),ids,this.options.now());
+    });
+  }
+  beginDelivery(input:{roundId:string;channel:NotificationChannel}) {
+    return this.atomicMutation('notification_before_send_policy_check',(state,extension)=>{
+      const now=this.options.now();return beginNotificationDelivery(extension,input,now,this.paused(now)
+        ||this.policy.quietHours!==undefined&&quietHoursActive(this.policy.quietHours,now)
+        ||this.legacyDigestBlocked(state,extension.rounds[input.roundId]?.itemIds??[],now));
+    });
+  }
+  completeDelivery(input:{roundId:string;channel:NotificationChannel;state:'delivered'|'unknown'|'failed';evidenceRefs:readonly string[]}) {
+    return this.atomicMutation('notification_delivery_receipt',(state,extension)=>{
+      const round=completeNotificationDelivery(extension,input,this.options.now());
+      if(input.state==='delivered')for(const batch of state.batches)if(round.batchIds.includes(batch.id)) {
+        batch.state='delivered';batch.deliveredAt??=this.isoNow();
+      }
+      return round;
+    });
+  }
+  getInterruptionRound(roundId:string) {const state=this.readState();const round=this.extension(state).rounds[roundId];return round?structuredClone(round):undefined;}
 
   private isoNow(): string {
     return new Date(this.options.now()).toISOString();

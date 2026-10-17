@@ -1,14 +1,42 @@
-# 当前设计与实施状态（2026-10-09）
+# 当前设计与实施状态（更新2026-10-15，保留历史）
+
+<!-- current-design-alignment-20261015 -->
+## 2026-10-15 最新设计与实际回执
+
+统一入口为[当前详细设计](design/CURRENT_DESIGN_20261015.md)、[28项逐图状态](design/WORKFLOW_STATUS_20261015.md)、
+[历史导航](design/README.md)、[具体新分工](competition/COLLABORATOR_WIRING_PACKAGE.md)。
+本机Laya、镜像全部28/185串行编排、AgentArts代理DeepSeek、百炼语音、原Runtime可信执行，架构仍实验未定。
+主动来源跟踪有出处的责任/关注，原文/Goal/记忆/上下文参与判断；无人值守与有效归来摘要、用户可调打扰/静默feed、
+最终语音询问确认复用原公开端口。高级影子并入已有判断、主任务优先、机会资源/收益选择，未知升级DeepSeek；
+只有双方案择优任务等双方，其他任务可先交已验主结果。真实机会调度仍待接线，当前两runner顺序await主/影。
+
+SWR local-laya-v3-244ca434与云arm64-local-v3-244ca434目录/关联日志已验；两案例完整表面为本机同版镜像、
+本机Runtime/Policy/工具/Laya与远端AA代理。flow/外层耗时分别Wukong167.432/183.618s、Pelican第二轮81.611/89.735s。
+41条Evidence，分支父succeeded但协调锚点created；首轮Pelican partial独立保留。
+Laya6判断182–618ms未达150ms、各案例3裁决升级DeepSeek；无高级调用减少、训练或28业务全验收证据。
+部署事实见[owned-release](competition/evidence/test-image-v3-20261015/owned-release.json)，执行事实见
+[full-workflow-results](competition/evidence/test-image-v3-20261015/full-workflow-results.json)，启动见[RUN](competition/TEST_IMAGE_V3_RUN.md)。
+
+下列原10-09/早期10-15内容是历史上下文，冲突的部署、发布、完成与旧协作门槛均不再作为当前要求。
+
+## 2026-10-15 Owner 当前修订
+
+采用 **本机 Laya + 自有镜像内 28 工作流 + 串行推进**，协作者经现有 Runtime/Policy/ToolGateway
+接本地工具、宿主观察和条件检查。主流程与隔离影子均纳入鹈鹕动画故障的增量修复实测。
+本机低 CPU 占用与 150 ms 判断为验收目标，未通过实测前不声明达标。
+当前实现与接口见 [ADR-0030](adr/0030-local-laya-serial-image-workflows.md)、
+[接线文档](competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。当时“镜像先不发布”已被新授权与SWR实际发布取代，main/PR集成仍单独确认。
+下文 10-09 和 10-14 嵌入式部署说明作为历史依据保留，不覆盖本次明确决定。
 
 产品方向：面向开发者的常驻自主助手。电脑运行时观察已授权世界变化，修复受影响计划、委派执行与监管；不引入独立云电脑。完整正文与图是目标设计，不把文档、目录或镜像构建当作能力验收。
 
-## 当前唯一设计入口
+## 历史设计入口（原10-09）
 
 - [完整方案（22 章节）](design/resident-developer-agent-20261008/DESIGN.md)
 - [离线阅读页与模块搜索](design/resident-developer-agent-20261008/index.html)
 - [39 模块总图](design/resident-developer-agent-20261008/architecture-overview.svg)、[自主闭环](design/resident-developer-agent-20261008/autonomy-lifecycle.svg)、[信任/双通道](design/resident-developer-agent-20261008/trust-and-transport.svg)、[Wiki 记忆](design/resident-developer-agent-20261008/wiki-memory.svg)
 - [Wiki 接入交接：goo122](design/resident-developer-agent-20261008/WIKI-MEMORY-HANDOFF.md)
-- [两人阅读确认与合并门槛](reviews/DESIGN_READING_GATE.md)
+- [历史设计阅读记录（当前合并规则见 CONTRIBUTING）](reviews/DESIGN_READING_GATE.md)
 - [新版 WSS 镜像发布记录与来源](competition/OWNED_IMAGE_WSS_RELEASE_20261009.md)、[GitHub 预发布下载](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-97aa51a6)
 
 ## 应同步到各模块的边界

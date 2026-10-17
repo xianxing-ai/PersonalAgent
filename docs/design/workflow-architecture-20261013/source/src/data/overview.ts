@@ -1,5 +1,6 @@
 import { ALL_FEATURES } from './architectureFeatures';
-import { PLATFORM_NODES } from './agentartsIntegration';
+import { PLATFORM_NODES } from './currentPlatform';
+import currentDesign from './currentDesign.generated.json';
 
 export const OVERVIEW_COLUMNS = [
   { title: '主对话 · 目标 · 记忆', ids: ['F01', 'F03', 'F28', 'F24', 'F02', 'F04', 'F05', 'F27'] },
@@ -75,8 +76,8 @@ export const OVERVIEW_LINKS: [string, string, string, RelationKind][] = [
   ['EVIDENCE', 'F03', '具体原操作、读回与修正因果链', 'evidence'],
   ['F03', 'POLICY', '实际补偿授权；已覆盖则直接执行', 'flow'],
   ['F24', 'F12', '停止中/待核实徽章与必要通知', 'flow'],
-  ['F26', 'AA_GATEWAY', 'AgentArts工作流接入平台Target', 'platform'],
-  ['DECISION', 'AA_GATEWAY', 'AgentArts Agent/Workflow编排Competition并分派执行模型', 'platform'],
+  ['F26', 'AA_GATEWAY', 'AgentArts构建、编排、评估与部署Workflow', 'platform'],
+  ['DECISION', 'AA_GATEWAY', 'AgentArts Agent/Workflow负责Competition编排', 'platform'],
   ['MODELS', 'AA_GATEWAY', 'ModelGateway → Inference Target', 'platform'],
   ['TOOL', 'AA_GATEWAY', '既有授权后，MCP客户端直连平台网关', 'platform'],
   ['AA_GATEWAY', 'AA_KNOWLEDGE', '知识检索Target：鉴权/区域待验证', 'platform'],
@@ -106,22 +107,29 @@ export const INTERFACE_NOTES: Record<string, string> = {
   F05: '现有MemoryQueryPort为事实查询，KnowledgePort提供本地search；新增平台知识库提供者和来源映射，不重写Wiki。当前尚无原生检索API接入证据。',
   F08: '复用邮件公开能力、既有Policy与ToolGateway；事件责任、条件语音与发送读回按真实连接器逐项验证。此页不连接真实邮箱。',
   F21: 'MCP与Skill支持平台、自有及GitHub/Gitee/第三方来源。固定stdio MCP、本机Skill安装/快照和云选择端口已有；远程传输、通用资源执行及平台资产适配待接线，不新建宿主或执行器。',
-  F22: '由AgentArts Evaluation按需评估候选；平台作业、报告与部署版本仍待真实读回。',
+  F22: '按需消费已有轨迹与测试夹具；影子逻辑留在镜像。适合的真实结果送平台评测集评估，独立宿主/上报/报告仍待验收。',
   F23: '复用已有本地评分和配对用例，补平台真实结果导出与任务适配；历史平台评测集已发布不等于评分完成。MaaS配置不直接修改远端权重。',
   F24: '复用现有 TaskRuntime、状态、事件、取消和检查点；四种操作结果、效果关联与读回UI待接线，不新增公共task终态。',
-  F26: 'AgentArts负责Competition工作流构建、编排、评估和部署；本地Runtime经CloudAgentPort消费提案并负责Policy、ToolGateway与Evidence。查看接入面板了解已有代码和缺口。',
+  F26: 'Competition由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权、Evidence与读回。已有自有镜像/Laya记录属于历史实测，不能证明平台编排已验收。',
   F27: '复用已有记忆、知识和模型端口；上下文分块、摘要引用映射与恢复为拟议编排。',
-  F28: 'Competition分派归AgentArts Agent/Workflow；本地Runtime只消费提案并保留授权、工具执行、Evidence与终态。平台部署和模型能力仍需实测。',
+  F28: 'Competition Agent/Workflow由AgentArts编排；subagentModels和本机受限循环不替代平台职责。CloudAgentPort接线、原生参数与完整主控流程仍需实测。',
 };
 
 export const SHARED_NODES = [
   {id:'USER',label:'可信用户指令',subtitle:'原句 · 条件 · 版本 · 授权',kind:'flow'},
   {id:'EVENT',label:'外部事件与变化',subtitle:'邮件 · 日程 · 订阅 · CI',kind:'flow'},
-  {id:'DECISION',label:'AgentArts Agent/Workflow编排',subtitle:'Competition全局分派；本地Runtime不静默替代',kind:'decision'},
-  {id:'MODELS',label:'受派执行模型',subtitle:'国内候选 · 范围内工具探索',kind:'flow'},
+  {id:'DECISION',label:'AgentArts Agent/Workflow',subtitle:'Competition主流程由平台构建与编排',kind:'decision'},
+  {id:'MODELS',label:'ModelGateway → AA DeepSeek',subtitle:'实际参数 · 范围内工具探索',kind:'flow'},
   {id:'POLICY',label:'现有授权与参数检查',subtitle:'沿用 Runtime / Policy；不新增限制',kind:'flow'},
   {id:'TOOL',label:'ToolGateway',subtitle:'执行 · 稳定操作ID · 取消',kind:'flow'},
   {id:'EVIDENCE',label:'执行证据与外部读回',subtitle:'未知结果先核实',kind:'evidence'},
   {id:'VERIFY',label:'验证与必需分支汇合',subtitle:'完成条件 · 失败修复 · 部分结果',kind:'evidence'},
   ...PLATFORM_NODES,
 ];
+
+// All feature status badges and detail adapters use the same committed matrix.
+for(const feature of currentDesign.workflows)INTERFACE_NOTES[feature.id]=feature.status;
+for(const link of OVERVIEW_LINKS){
+ link[2]=link[2].replaceAll('独立分支并行','独立依赖分支；当前Engine串行').replaceAll('按真实依赖并行','按真实依赖；当前Engine串行').replaceAll('平台Target','平台端口（缺配置unavailable）');
+}
+OVERVIEW_LINKS.push(['USER','EVENT','user_instruction / 原话来源','flow'],['F24','EVENT','subtask_feedback / 原Scheduler wake','flow'],['EVENT','F12','durable批次 / 静默feed / 有效摘要','flow']);

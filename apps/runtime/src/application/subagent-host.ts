@@ -16,6 +16,7 @@ import {
 } from '@personal-agent/agents';
 import {runAgent} from '@personal-agent/agents';
 import {CLOUD_SKILL_TOOL_NAME} from '@personal-agent/skills';
+import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import {
   ModelGateway,
   FakeModelProvider,
@@ -71,6 +72,7 @@ export function createConfiguredSubagentModelGateway(
 }
 
 export interface SubagentHostOptions {
+  competitionOnly?:true;
   getRuntime: () => TaskRuntime;
   getTools?: (() => AgentToolPort | undefined) | undefined;
   getModelGateway?: ((modelName?: string) => ModelGateway | undefined) | undefined;
@@ -95,6 +97,7 @@ function childBinding(runtime: TaskRuntime, taskId: string): ChildBinding {
     || (binding.roleLabel !== undefined && typeof binding.roleLabel !== 'string')
     || typeof binding.parentDeadline !== 'string' || !Number.isFinite(Date.parse(binding.parentDeadline))
     || (binding.model !== undefined && (typeof binding.model !== 'string' || !binding.model.trim()))
+    || (binding.reasoningEffort !== undefined && !['none','minimal','low','medium','high','xhigh','max'].includes(binding.reasoningEffort))
     || (binding.thinkingDepth !== undefined && (!Number.isInteger(binding.thinkingDepth)
       || binding.thinkingDepth < 0 || binding.thinkingDepth > 5))) {
     throw new ProtocolError('INVALID_ARGUMENT', 'Invalid persisted subagent binding');
@@ -124,8 +127,9 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
   const roleLabel = subtask.roleLabel?.trim() || DEFAULT_ROLE_LABELS[subtask.role];
   childWorker.reportProgress({stepId: `child-${subtask.subtaskId}`, label: `[${roleLabel}] 正在执行: ${subtask.goal}`});
   const priorExecution = childWorker.loadCheckpoint('subtask-execution-binding') as {kind?:string}|undefined;
-  const kind = priorExecution?.kind ?? (subtask.model === undefined && options.runDefaultWorker ? 'competition' : 'model');
-  if(!['competition','model'].includes(kind) || (kind==='competition' && (subtask.model!==undefined || !options.runDefaultWorker))) {
+  const kind = priorExecution?.kind ?? (options.runDefaultWorker && (options.competitionOnly || subtask.model===undefined) ? 'competition' : 'model');
+  if(!['competition','model'].includes(kind) || (kind==='competition' && !options.runDefaultWorker)
+    || (kind==='model' && options.competitionOnly)) {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original subagent execution strategy is unavailable');
   }
   if (priorExecution !== undefined && !isDeepStrictEqual(priorExecution, {kind})) {
@@ -243,6 +247,23 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
   };
   const execution = runtime.loadCheckpoint(childTaskId, 'subtask-execution-binding') as {kind?: string} | undefined;
   const defaultChild = execution?.kind === 'competition' || runtime.loadCheckpoint(childTaskId, 'subtask-coordination-binding') !== undefined;
+  const selectedModel = runtime.loadCheckpoint(childTaskId, 'execution-model');
+  if (defaultChild && (binding.model !== undefined || selectedModel !== undefined)) {
+    const records = runtime.loadCheckpoint(binding.parentTaskId, 'subtask-progress-records') as Record<string, SubtaskProgressRecord> | undefined;
+    const record = records && Object.hasOwn(records, binding.subtaskId) ? records[binding.subtaskId] : undefined;
+    if (!isDeepStrictEqual(execution, {kind: 'competition'}) || !record
+      || record.parentTaskId !== binding.parentTaskId || record.subtaskId !== binding.subtaskId
+      || record.inputDigest !== computeSubtaskInputDigest(binding)) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Competition child selection no longer matches its original dispatch');
+    }
+    let selection;
+    try {selection = parseExecutionModelSelection(selectedModel);}
+    catch {throw new ProtocolError('REVISION_CONFLICT', 'Competition child has no valid original model selection');}
+    if ((binding.model !== undefined && selection.modelId !== binding.model.trim())
+      || (binding.reasoningEffort !== undefined && selection.reasoningEffort !== binding.reasoningEffort)) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Competition child model selection changed');
+    }
+  }
   const competition=runtime.loadCheckpoint(childTaskId,'competition-loop') as {pending?:unknown;continuation?:unknown}|undefined;
   const replay=runtime.loadCheckpoint(childTaskId,'competition-confirmed-replay') as {runId:string;inputDigest:string}|undefined;
   if(defaultChild && !competition?.pending && competition?.continuation && replay
@@ -253,7 +274,7 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
   let runId: string, toolName: string, argumentsValue: Record<string, unknown>;
   if (defaultChild) {
     const loop = runtime.loadCheckpoint(childTaskId, 'competition-loop') as {step?: number; pending?: {toolName?: string; arguments?: Record<string, unknown>}} | undefined;
-    if (binding.model !== undefined || !options.runDefaultWorker || !Number.isSafeInteger(loop?.step) || (loop?.step ?? 0) < 1
+    if (!options.runDefaultWorker || !Number.isSafeInteger(loop?.step) || (loop?.step ?? 0) < 1
       || typeof loop?.pending?.toolName !== 'string' || !loop.pending.arguments || Array.isArray(loop.pending.arguments)) {
       throw new ProtocolError('NOT_FOUND', 'Default child has no original pending Competition invocation');
     }
@@ -357,7 +378,8 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
     const seen = new Set<string>();
     for (const subtask of input.subtasks) {
       if (!subtask.subtaskId?.trim() || !subtask.goal?.trim() || seen.has(subtask.subtaskId.trim())
-        || (subtask.model !== undefined && !subtask.model.trim())) {
+        || (subtask.model !== undefined && !subtask.model.trim())
+        || (subtask.reasoningEffort !== undefined && !['none','minimal','low','medium','high','xhigh','max'].includes(subtask.reasoningEffort))) {
         throw new ProtocolError('INVALID_ARGUMENT', 'Subtask identity, goal or explicit model is invalid');
       }
       seen.add(subtask.subtaskId.trim());
@@ -410,6 +432,7 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
         const original=childBinding(runtime,existing.taskId);
         if(original.parentTaskId!==context.taskId || original.subtaskId!==subtask.subtaskId
           || original.goal!==subtask.goal || original.role!==subtask.role || original.model!==subtask.model
+          || original.reasoningEffort!==subtask.reasoningEffort
           || original.thinkingDepth!==subtask.thinkingDepth || original.parentDeadline!==context.deadline
           || (original.roleLabel?.trim()||DEFAULT_ROLE_LABELS[original.role])!==roleLabel) {
           throw new ProtocolError('REVISION_CONFLICT','Existing child is bound to a different dispatch');
@@ -430,6 +453,7 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
             roleLabel,
             goal: subtask.goal,
             model: subtask.model,
+            ...(subtask.reasoningEffort===undefined?{}:{reasoningEffort:subtask.reasoningEffort}),
             thinkingDepth: subtask.thinkingDepth,
             parentDeadline: context.deadline,
           },
@@ -516,6 +540,7 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
 }
 
 export interface DesktopSubagentDispatchToolOptions {
+  competitionOnly?:true;
   getRuntime: () => TaskRuntime;
   getTools?: (() => AgentToolPort | undefined) | undefined;
   fakeModelMode?: boolean;
@@ -540,6 +565,7 @@ export interface DesktopSubagentDispatchToolOptions {
 export function createDesktopSubagentDispatchTool(options: DesktopSubagentDispatchToolOptions): RegisteredTool {
   const {getRuntime, getTools, fakeModelMode, modelConfig, modelRegistry, now, maxRecursionDepth} = options;
   return createRuntimeSubagentDispatchTool({
+    ...(options.competitionOnly?{competitionOnly:true as const}:{}),
     getRuntime,
     getTools,
     now,

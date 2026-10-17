@@ -1,12 +1,15 @@
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
+import {MAX_AGENTARTS_RESULT_BYTES} from '@personal-agent/contracts/agentarts-transport';
 import {attachAgentWebSocketTransport, equalInboundToken} from './websocket-transport.mjs';
 import {createBindingDispatcher} from './binding-dispatch.mjs';
 import {ownedRequestPath} from './request-path.mjs';
+import {createStageTimeline} from './stage-timeline.mjs';
 
 const MAX_BYTES = 1_200_000;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+const resultEvents = result => [{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}];
 const json = (response, status, data) => {
   response.writeHead(status, {'content-type':'application/json; charset=utf-8', 'cache-control':'no-store'});
   response.end(JSON.stringify(data));
@@ -24,7 +27,7 @@ function parsePayload(payload, workflowGoalInput) {
 }
 /** Both modes serve the same code. Only trusted startup selects mode/authentication. */
 export function createAgentServer({orchestrator, mode, authToken, wssAuthToken = authToken, workflowGoalInput,
-  getBindings, defaultControllerId, timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
+  getBindings, defaultControllerId, testVersionController, serviceControllers = {}, realtimeProxy, executionModels, onStageRecord, timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
   if (!['agentarts','standalone-validation'].includes(mode)
     || !orchestrator || typeof orchestrator.invoke !== 'function'
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647
@@ -33,6 +36,9 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     throw new ProtocolError('INVALID_ARGUMENT','Invalid server configuration');
   }
   const bindings = createBindingDispatcher({orchestrator,getBindings,defaultControllerId});
+  if (!serviceControllers || typeof serviceControllers !== 'object' || Array.isArray(serviceControllers)
+    || Object.keys(serviceControllers).some(key=>!['shadowVersion','platformVersion','proactiveVersion'].includes(key)
+      || typeof serviceControllers[key]!=='function')) throw new ProtocolError('INVALID_ARGUMENT','Invalid service controller configuration');
   let active = 0;
   let closing = false;
   const httpControllers = new Set();
@@ -52,18 +58,50 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     active++; return true;
   };
   const release = () => {active--;};
-  const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false}) => {
+  const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false,channel='http'}) => {
+    const timeline=createStageTimeline({onRecord:onStageRecord});
+    return timeline.run('invocation.dispatch',async()=>{
     const query = parsePayload(payload,workflowGoalInput);
     signal.throwIfAborted();
-    const binding = bindings.parse(query);
+    let testValue;
+    let catalogValue;
+    let serviceValue,serviceName;
+    try {
+      const parsed=JSON.parse(query);
+      if(parsed && typeof parsed==='object' && !Array.isArray(parsed)) {
+        if(Object.hasOwn(parsed,'modelCatalogVersion'))catalogValue=parsed;
+        const names=['shadowVersion','platformVersion','proactiveVersion','testVersion'].filter(key=>Object.hasOwn(parsed,key));
+        if(names.length>1) throw new ProtocolError('INVALID_ARGUMENT','Multiple service protocols');
+        if(names[0]==='testVersion')testValue=parsed;
+        else if(names.length){serviceName=names[0];serviceValue=parsed;}
+      }
+    }catch(error){if(error instanceof ProtocolError)throw error;}
+    if(catalogValue){
+      if(!bindingAuthorized)throw new ProtocolError('UNAUTHORIZED','Model directory host credential required');
+      if(Object.keys(catalogValue).length!==2||catalogValue.modelCatalogVersion!=='1.0'||catalogValue.action!=='list')throw new ProtocolError('INVALID_ARGUMENT','Invalid model directory query');
+      if(!executionModels)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Model directory unavailable');
+      return [{event:'message',data:{text:JSON.stringify(executionModels.catalog())}},{event:'task_end'},{event:'end'}];
+    }
+    const binding = testValue||serviceValue?undefined:bindings.parse(query);
+    if(testValue&&(!testVersionController||!bindingAuthorized))
+      throw new ProtocolError(testVersionController?'UNAUTHORIZED':'UNSUPPORTED_CAPABILITY','Test version requires explicit host configuration and credential');
     if (binding && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Owned binding credential required');
-    const invocation = {query,deadline,signal,sessionId,requestId};
-    const result = binding ? await bindings.invoke(invocation,binding) : await bindings.invokeDefault(invocation);
+    if (serviceValue && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Service host credential required');
+    if (serviceValue && !serviceControllers[serviceName]) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Service controller unavailable');
+    const invocation = {query,deadline,signal,sessionId,requestId,
+      ...(binding?.workflow&&channel==='websocket'?{resultFits:result=>Buffer.byteLength(JSON.stringify(resultEvents(result)))<=MAX_AGENTARTS_RESULT_BYTES}:{})};
+    const result = serviceValue ? await serviceControllers[serviceName]({...invocation,value:serviceValue})
+      : testValue ? await testVersionController({...invocation,value:testValue})
+      : binding ? await bindings.invoke(invocation,binding) : await bindings.invokeDefault(invocation);
     signal.throwIfAborted();
     if (Date.now() >= Date.parse(deadline)) throw new ProtocolError('TIMEOUT','Invocation deadline expired');
     const text = JSON.stringify(result);
-    if (Buffer.byteLength(text)>64_000) throw new ProtocolError('EXTERNAL_FAILURE','Agent output exceeds limit');
-    return [{event:'message',data:{text}},{event:'task_end'},{event:'end'}];
+    const outputLimit = (binding?.workflow || serviceValue) && channel==='http' ? 1_100_000 : 64_000;
+    const events=resultEvents(result);
+    if (Buffer.byteLength(text)>outputLimit||channel==='websocket'&&Buffer.byteLength(JSON.stringify(events))>MAX_AGENTARTS_RESULT_BYTES)
+      throw new ProtocolError('EXTERNAL_FAILURE','Agent output exceeds limit');
+    return events;
+    },{sessionId,requestId,channel});
   };
   let transport;
   const server = createServer(async (request,response) => {
@@ -171,8 +209,8 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   });
   server.requestTimeout = timeoutMs;
   server.headersTimeout = Math.min(timeoutMs,60_000);
-  transport = attachAgentWebSocketTransport(server,{...websocket,authToken:wssAuthToken,
-    invoke:value=>invoke({...value,bindingAuthorized:true}),acquire,release,timeoutMs});
+  transport = attachAgentWebSocketTransport(server,{...websocket,realtimeProxy,authToken:wssAuthToken,
+    invoke:value=>invoke({...value,bindingAuthorized:true,channel:'websocket'}),acquire,release,timeoutMs});
   // Node HTTP close does not close upgraded sockets. Stop them before awaiting close.
   const closeHttp = server.close.bind(server);
   server.close = (...args) => {
@@ -181,8 +219,11 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       controller.abort(new ProtocolError('CANCELLED','Agent server closed'));
     }
     for (const [request,response] of httpUploads) endUpload(request,response);
-    transport.close();
+    const realtimeClosed=transport.close();
     for (const socket of httpSockets) endSocket(socket);
+    if (typeof args[0]==='function') {
+      const callback=args[0];return closeHttp(error=>{void realtimeClosed.then(()=>callback(error));});
+    }
     return closeHttp(...args);
   };
   return server;

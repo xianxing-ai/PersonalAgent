@@ -14,6 +14,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test test/*.test.mjs"
   },
+  "devDependencies": {"@personal-agent/mail": "0.1.0-alpha.1"},
   "dependencies": {
     "@personal-agent/contracts": "0.1.0-alpha.1"
   }

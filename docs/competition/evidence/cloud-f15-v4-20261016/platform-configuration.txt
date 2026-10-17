@@ -1,0 +1,178 @@
+- link "智果（AgentArts）智能体平台":
+  - /url: "#/home"
+- generic: /
+- link "智能体运行时":
+  - /url: "#/home/runtime/list"
+- generic: /
+- generic: pa-owned-bindings-0dae0ff5-api
+- generic: pa-owned-bindings-0dae0ff5-api
+- generic: 
+- text: 正常
+- generic: 编辑
+- generic: 删除
+- text: 
+- list:
+  - generic: 基本信息
+  - generic: 版本
+  - generic: 日志
+  - generic: 标签
+- text:  
+- paragraph:
+  - generic: 基本信息
+- text: 
+- generic: ID
+- generic: 9a65747e-05f0-475c-a2dc-f24dd3ed87ae
+- generic: 
+- text: 
+- generic: 创建时间
+- generic: 2026/10/12 21:37:38 GMT+08:00
+- text: 
+- generic: 更新时间
+- generic: 2026/10/16 17:05:21 GMT+08:00
+- generic: 访问方式 (1)
+- button "删除" [disabled]
+- button "创建访问方式"
+- generic: 
+- textbox "选择属性筛选，或输入关键字搜索"
+- button "":
+  - generic: 
+- button "":
+  - generic: 
+- table:
+  - rowgroup:
+    - row " 访问方式名称 版本 访问地址 描述 更新时间  标签  操作":
+      - columnheader "":
+        - generic: 
+      - columnheader "访问方式名称":
+        - generic: 访问方式名称
+      - columnheader "版本":
+        - generic: 版本
+      - columnheader "访问地址":
+        - generic: 访问地址
+      - columnheader "描述":
+        - generic: 描述
+      - columnheader "更新时间 ":
+        - generic: 更新时间
+        - generic: 
+      - columnheader "标签 ":
+        - generic: 标签
+        - generic: 
+      - columnheader "操作":
+        - generic: 操作
+- table:
+  - rowgroup:
+    - row:
+      - columnheader
+      - columnheader
+      - columnheader
+      - columnheader
+      - columnheader
+      - columnheader
+      - columnheader
+      - columnheader
+  - rowgroup:
+    - row " Latest arm64-v4-e38ef23d-r2 https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/invocations?endpoint=Latest -- 2026/10/16 17:05:21 GMT+08:00 编辑 删除":
+      - cell "":
+        - generic: 
+      - cell "Latest":
+        - generic: Latest
+      - cell "arm64-v4-e38ef23d-r2":
+        - generic: arm64-v4-e38ef23d-r2
+      - cell "https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/invocations?endpoint=Latest":
+        - generic: https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/invocations?endpoint=Latest
+      - cell "--":
+        - generic: "--"
+      - cell "2026/10/16 17:05:21 GMT+08:00":
+        - generic: 2026/10/16 17:05:21 GMT+08:00
+      - cell:
+        - button [disabled]:
+      - cell "编辑 删除":
+        - generic "编辑":
+          - generic: 编辑
+        - generic "删除":
+          - generic: 删除
+        - text: 
+- text: 
+- generic: "10"
+- generic: 
+- generic: 
+- generic: "1"
+- generic: 
+- paragraph:
+  - generic: 最新版本配置详情
+- generic: 基本信息
+- text: 
+- generic: 版本
+- generic: arm64-v4-e38ef23d-r2
+- text: 
+- generic: 访问域名
+- generic: defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com
+- generic: 
+- text: 
+- generic: 镜像
+- link "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v4-e38ef23d ":
+  - /url: /swr?locale=zh-cn&agencyId=01a0723441b674fe9c7c1dd126324a02&region=cn-southwest-2#/swr/warehouse/detail/hid_kje1yt2y_ue05_o/zemeng5208-personal-agent/personal-agent-owned/tag
+  - generic: swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:workflow-v4-e38ef23d
+  - text: 
+- text: 
+- generic: 创建时间
+- generic: 2026/10/16 17:05:21 GMT+08:00
+- text: 
+- generic: 描述
+- generic: Self-owned ARM64 V4; source e38ef23dfc5ac5cd59728bb40299e0784f203cae; SWR sha256:58c6fc1c8be1dbb14a0a2aae1140a1058d3a8126eb487d541145e8e956f9929d. Runtime version label aligned; 28 templates/185 nodes, business acceptance pending. Local Runtime/Policy/ToolGateway/Evidence retained.
+- generic: 权限与访问控制
+- text: 
+- generic: 委托
+- link "DefaultAgentArtsRuntimeAgency ":
+  - /url: /iam5/?locale=zh-cn&agencyId=01a0723441b674fe9c7c1dd126324a02&region=cn-southwest-2#/agencies/edit/01a0953992767a0bba6045007addbdce/trustPolicy
+- text: 
+- generic: 入站网关
+- link "defaultgw ":
+  - /url: "#/home/net-setting/list?id=6f889c65-1138-4b1e-972d-79834722b792"
+- text: 
+- generic: 入站身份认证方式
+- generic: API Key 认证
+- text: 
+- generic: URN
+- link "agentIdentity:cn-southwest-2:01a0723441b67f3caabb81faccdbcc2d:workloadIdentity:workloadIdentityDirectory/default/agent-pa-owned-bindings-0dae0ff5-api ":
+  - /url: /agent-identity/?locale=zh-cn&agencyId=01a0723441b674fe9c7c1dd126324a02&region=cn-southwest-2#/workloadIdentity/detail/agent-pa-owned-bindings-0dae0ff5-api/basic
+  - generic: agentIdentity:cn-southwest-2:01a0723441b67f3caabb81faccdbcc2d:workloadIdentity:workloadIdentityDirectory/default/agent-pa-owned-bindings-0dae0ff5-api
+  - text: 
+- text: 
+- generic: API Key 名称
+- link "pa-owned-0dae0ff5-api ":
+  - /url: /agent-identity/?locale=zh-cn&agencyId=01a0723441b674fe9c7c1dd126324a02&region=cn-southwest-2#/workloadIdentity/detail/agent-pa-owned-bindings-0dae0ff5-api/basic
+  - generic: pa-owned-0dae0ff5-api
+  - text: 
+- generic: 可观测配置
+- text: 
+- generic: 日志记录
+- generic: 已开启
+- button "关闭"
+- generic: 生命周期配置
+- text: 
+- generic: 空闲会话超时
+- generic: 15 分钟
+- text: 
+- generic: 最大存活时间
+- generic: 24 小时
+- generic: 高级配置
+- text: 
+- generic: 实例规格
+- generic: 2000mCPU | 8192MiB
+- text: 
+- generic: 出网网络配置
+- generic: 公网访问
+- text: 
+- generic: 启动命令
+- generic: "--"
+- text: 
+- generic: 监听端口
+- generic: "8080"
+- text: 
+- generic: 路由配置
+- generic: 前缀匹配
+- text: 
+- generic: 文件上传下载
+- generic: 未开启
+- text: 

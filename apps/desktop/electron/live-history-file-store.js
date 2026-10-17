@@ -16,12 +16,21 @@ export function createLiveHistoryFileStore(file) {
       return envelope.messages;
     },
     write(messages) {
-      mkdirSync(path.dirname(file), {recursive: true});
-      const temporary = `${file}.pending`;
-      const fd = openSync(temporary, 'w', 0o600);
-      try {writeFileSync(fd, JSON.stringify({version: 1, messages}), 'utf8'); fsyncSync(fd);}
-      finally {closeSync(fd);}
-      renameSync(temporary, file);
+      const serialized = JSON.stringify({version: 1, messages});
+      try {
+        mkdirSync(path.dirname(file), {recursive: true});
+        const temporary = `${file}.pending`;
+        const fd = openSync(temporary, 'w', 0o600);
+        try {writeFileSync(fd, serialized, 'utf8'); fsyncSync(fd);}
+        finally {closeSync(fd);}
+        renameSync(temporary, file);
+      } catch (error) {
+        // A failed refresh does not invalidate an identical committed cache.
+        // Independently read the destination, never the uncommitted .pending
+        // file. Different or unreadable content keeps the original write error.
+        try {if (readFileSync(file, 'utf8') === serialized) return;} catch {}
+        throw error;
+      }
     },
   };
 }
