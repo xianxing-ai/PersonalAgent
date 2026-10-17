@@ -35,12 +35,13 @@ for relative in chosen:
     design=link(DESIGN/'DESIGN.md')
     reader=link(DESIGN/'index.html')
     gate=link(ROOT/'docs/reviews/DESIGN_READING_GATE.md')
-    note=f'<!-- current-design-20261009 -->\n> 当前目标与协作规则（2026-10-12）：[完整设计]({design}) · [离线阅读/全部 SVG]({reader}) · [一人批准审查规则]({gate})。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须由三人之一的合格非作者对当前 head 实质审查并 Approve；zemeng5208、goo122、Potatos498 跨 PR 平等分担审查和合并，不得推卸。合并还须满足目标分支保护，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。'
+    note=f'<!-- current-design-20261009 -->\n> 当前目标与协作规则（2026-10-17）：[完整设计]({design}) · [离线阅读/全部 SVG]({reader}) · [当前 PR 审查规则]({gate})。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。常规 PR 须有三人中任意一位非作者对当前 head 的有效 Approve；Owner 可对具体 PR 作有记录的审核例外。拥有合并权限者（包括作者）可在最新必需技术 CI、主线更新、无冲突和阻断性缺陷解决后合并；禁止强推、直接推 main 或绕过技术检查。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。'
     marker='<!-- current-design-20261009 -->'
     if marker in text:
         obsolete=next((line for line in text.splitlines()
-                       if line.startswith('> 当前目标与协作规则（2026-10-09）：')
-                       and 'goo122 与 Potatos498 均确认后' in line),None)
+                       if line.startswith('> 当前目标与协作规则（')
+                       and ('goo122 与 Potatos498 均确认后' in line
+                            or '禁止强制合并/管理员绕过' in line)),None)
         if obsolete is not None:
             patches.append(f'*** Update File: {file.as_posix()}\n@@\n-{obsolete}\n+{note.splitlines()[1]}\n')
             changed.append(relative)
