@@ -28,6 +28,8 @@ test('saved WSS restores both private credentials and overrides stale transport 
   f.config.configure(f.input);
   const config=createAgentArtsConfig(f.options),binding=config.binding(),transport=config.transportConfig(binding);
   assert.equal(config.snapshot().transport,'wss');
+  assert.equal(config.snapshot().effectiveTransport,'wss');
+  assert.equal(config.snapshot().transportSource,'saved');
   assert.equal(config.snapshot().websocketUrl,f.input.websocketUrl);
   assert.equal(transport.allowHttpsFallback,false);
   assert.equal(config.readAuthorization(binding,transport),f.input.authorization);
@@ -50,7 +52,9 @@ test('new settings offer WSS while legacy disk records require explicit migratio
   let config=createAgentArtsConfig(f.options);
   assert.equal(config.snapshot().transport,'https');
   const binding=config.binding(),old=config.transportConfig(binding);
-  assert.deepEqual(old,{transport:'https'});
+  assert.equal(old.transport,'https');
+  assert.equal(typeof old.fetchImpl,'function');
+  assert.throws(()=>old.fetchImpl('https://evil.example/runtimes/owned-runtime/invocations',{method:'POST',redirect:'error',headers:{}}),/已绑定目的地/);
   config.configure({...f.input,authorization:''});
   assert.equal(config.isTransportCurrent(old),false);
   assert.throws(()=>config.readAuthorization(binding,old),/已改变/);
