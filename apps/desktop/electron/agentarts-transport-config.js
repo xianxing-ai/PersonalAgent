@@ -1,3 +1,5 @@
+import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
+
 /** Trusted main-process options. Neither credentials nor this provider enter Renderer snapshots. */
 export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={}}) {
   const transport=environment.PA_AGENTARTS_TRANSPORT??transportPreferences.transport??'https';
@@ -35,7 +37,12 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
       || typeof binding.runtimeName!=='string' || !/^[A-Za-z0-9_-]{1,64}$/.test(binding.runtimeName)
       || typeof fetchImpl!=='function') throw Error('AgentArts HTTPS 目的地无效');
     const destination=gateway.origin+`/runtimes/${encodeURIComponent(binding.runtimeName)}/invocations`;
-    return {fetchHandlesHostAuthorization:true,fetchImpl:(url,init)=>{
+    return {fetchHandlesHostAuthorization:true,readOwnedWorkflowReceiptSecret:async signal=>{
+      if(signal?.aborted)throw Error('AgentArts 请求已取消');
+      const token=currentOptions().appToken??(transport==='wss'?environment.PA_AGENTARTS_APP_TOKEN:undefined);
+      if(typeof token!=='string'||! /^[\x21-\x7e]{32,4096}$/.test(token))throw Error('AgentArts 应用入站凭据不可用');
+      return deriveOwnedWorkflowKeys({transportToken:token}).receiptSecret;
+    },fetchImpl:(url,init)=>{
       // Compare the original URL too: URL normalization must not accept a different path or query.
       const input=url instanceof URL?url.href:url;
       // An explicitly pinned graph URL may name exactly the same host-selected version.

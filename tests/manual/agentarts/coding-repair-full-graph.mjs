@@ -1,6 +1,7 @@
 import {mkdtemp,mkdir,writeFile,readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 import {Client} from '@personal-agent/client';
 import {OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier,createWorkflowDecisionTool} from '@personal-agent/agentarts';
 import {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools,createWorkspaceCommandTool} from '@personal-agent/coding-tools';
@@ -57,6 +58,15 @@ export async function runCodingRepairFullGraphFixture(options={}) {
     if(name.includes('\\')||name.split('/').some(part=>!part||part==='..'||part==='.')||name.includes(':'))throw Error('Fixture files must be relative public paths');
     await mkdir(join(user,name,'..'),{recursive:true});await writeFile(join(user,name),content);
   }
+  let baselineVerification=null;
+  if(options.expectInitialFailure===true){
+    const startedAt=new Date().toISOString(),started=Date.now(),remaining=Date.parse(options.deadline)-Date.now();
+    if(!Number.isFinite(remaining)||remaining<=0||!options.fixture?.checkerArgs)throw Error('Initial verification requires its original deadline and public checker');
+    const checked=spawnSync(process.execPath,options.fixture.checkerArgs,{cwd:user,windowsHide:true,shell:false,encoding:'utf8',timeout:Math.min(2147483647,remaining)});
+    baselineVerification={startedAt,finishedAt:new Date().toISOString(),elapsedMs:Date.now()-started,exitCode:checked.status,
+      signal:checked.signal,stdout:checked.stdout,stderr:checked.stderr,scope:'public fixture precondition, not a graph-node Evidence receipt'};
+    if(checked.error||checked.signal||checked.status===null||checked.status===0)throw Error('Public baseline did not reproduce the required initial checker failure');
+  }
   const observed=[],operations=[];let app,host;
   const defer=Object.fromEntries(['start','list','read','snapshot','preview','patch','verify','check','publish','reconcile'].map(name=>[name,async(...args)=>{
     const begin=Date.now();try{await options.beforeHostOperation?.({name,args,user,app});return await host[name](...args);}finally{operations.push({name,elapsedMs:Date.now()-begin});}}]));
@@ -112,10 +122,10 @@ export async function runCodingRepairFullGraphFixture(options={}) {
       parent:app.runtime.getTask(taskId),child:child?app.runtime.getTask(child.taskId):null,
       graph:graph?.result?{state:graph.result.state,nodes:Object.fromEntries(Object.entries(graph.result.nodes).map(([id,node])=>[id,node.state])),codingRepair:graph.result.codingRepair}:null,
       timings:graph?.timings??[],observed,operations,mainRootBeforeSha256:sha(baseline),mainRootAfterSha256:sha(userAfter),
-      retainsUserComment:userAfter.startsWith('// User has an uncommitted target edit; preserve it\n'),
+      baselineVerification,retainsUserComment:userAfter.startsWith('// User has an uncommitted target edit; preserve it\n'),
       unrelatedUnchanged:(await readFile(join(user,'unrelated-user-edit.txt'),'utf8'))==='User uncommitted unrelated content\n',
       approvals,restarts,taskCount:allTasks.length,evidence:allTasks.flatMap(task=>app.runtime.readToolExecutions(task.taskId).map(record=>({taskId:task.taskId,...record}))),
-      cloudCalls:Array.isArray(coordination.requests)?coordination.requests.length:null};
+      cloudCalls:Array.isArray(coordination?.requests)?coordination.requests.length:null};
     await writeFile(join(directory,'report.json'),JSON.stringify(report,null,2));return report;
   } finally {while(app.activeTaskCount)await new Promise(resolve=>setTimeout(resolve,10));app.close();}
 }

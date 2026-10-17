@@ -106,6 +106,7 @@ F15 消费真实公布的别名：`workspace.coding_snapshot`、`workflow.host.f
 - Desktop 的 `fetchHandlesHostAuthorization: true` 只表示原受信 fetch 工厂负责 HTTP 宿主凭据注入；调用方不能注入或替换它的鉴权头。WSS 使用原安全凭据端口。
 - 沿用原 `workflowVersion: 1.0.0 / operation: advance / workflowId: F15` 载荷。checkpoint、原 input、resolvedValues 与签名 receipts 继续原版本协议，不手写假的工具回执。
 - owned 图响应解析由可信宿主显式选择现有图封装的 1.2MB 字节/字符上限；普通 coordination 入口仍默认1MiB字节与16k文本。WSS 完整事件字节预算继续原值。结果过大明确 unavailable 并保留可续检查点，不能静默提高协议上限或丢失原 Evidence。
+- 当普通结果放不进现有 WSS 64,000 字节预算时，先尝试 `deflate:` 编码的签名 checkpoint，再沿用原可信工具结果引用；节点状态、候选、源码指纹与 Evidence 保持完整。HMAC 同时绑定编码标记和内容，先验签后有界解压；解压上限保持原 plain checkpoint 的可接受容量。新镜像接受旧 plain checkpoint；旧镜像不能读取新压缩 checkpoint，任务必须继续绑定同一个精确发布版本，不把新 checkpoint 交给旧镜像。
 
 源码正文、路径/SHA 元数据和诊断都可能是用户数据。`authorizeMetadata` 检查当前原 `cloudExportAllowed`；`projectSource` 复用原生精确许可，绑定真实 coding.repair.read 的 task/proposal/run/path/SHA/字节数及配置。缺端口不是同意，已有相同有效许可不重复弹窗。不得冒充 workspace.read_text 绕过许可。
 
@@ -128,6 +129,8 @@ npm run start:desktop
 ## 本轮验收登记
 
 源码实现、Fake 控制流、真实本机文件/命令、整图、镜像构建、SWR 上传、AgentArts 部署和真实模型分别记录，不能相互替代。本节发布前由实际回执补齐；此时不声明新镜像已在线，也不把 F15 通过推广为其余27条业务已验。
+
+2026-10-17 的 `arm64-v6-b228afb6-r1` 已实际部署并通过固定版本 WSS 输入边界回归，但首次真实模型 F15 停于 N04：72,224 字节事件超过原64,000字节预算，N01–N03完成、没有源码写回。只压缩签名 checkpoint 的同状态离线尺寸核算为47,420字节，不作为修复后的云端通过记录。此处传输补丁须随新精确镜像版本重新验收；旧失败回执保留。
 
 - 本机宿主真实文件/Node/Windows锁内写入：12/12；Evidence 查询为显式 Fake。配置绑定、取消实际PID停止、包级失效、相关依赖读集冲突、无关编辑兼容、partial重启核实均有回归。
 - 原镜像引擎的新旧定向回归：93/93；模型及外部工具为显式 Fake，覆盖隔离影子与多配方补丁后失效重验。

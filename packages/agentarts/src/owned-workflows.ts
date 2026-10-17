@@ -1,4 +1,5 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
+import {deflateRawSync,inflateRawSync} from 'node:zlib';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
 import type {CoordinationAvailableTool} from '@personal-agent/coordination';
@@ -175,8 +176,11 @@ export class OwnedWorkflowEngine {
       ||typeof options.prepareCandidates!=='function') invalid('Invalid workflow startup configuration');
     this.secret=Buffer.from(options.checkpointSecret,'utf8');
   }
-  private seal(state:CheckpointState):string {
-    const encoded=Buffer.from(JSON.stringify(state)).toString('base64url');
+  private seal(state:CheckpointState,compressed=false):string {
+    const json=Buffer.from(JSON.stringify(state));
+    // Preserve the decoded capacity of the existing 1,100,000-byte plain envelope.
+    if(compressed&&json.length>Math.floor((1_100_000-44)*3/4))throw new ProtocolError('EXTERNAL_FAILURE','Workflow checkpoint exceeds the existing decoded capacity');
+    const encoded=compressed?'deflate:'+deflateRawSync(json).toString('base64url'):json.toString('base64url');
     return encoded+'.'+createHmac('sha256',this.secret).update(encoded).digest('base64url');
   }
   private open(value:string):CheckpointState {
@@ -186,7 +190,12 @@ export class OwnedWorkflowEngine {
     const expected=createHmac('sha256',this.secret).update(encoded).digest();
     const actual=Buffer.from(signature,'base64url');
     if(expected.length!==actual.length||!timingSafeEqual(expected,actual)) invalid('Workflow checkpoint integrity failed');
-    try {return JSON.parse(Buffer.from(encoded,'base64url').toString('utf8')) as CheckpointState;}
+    try {
+      const bytes=encoded.startsWith('deflate:')
+        ?inflateRawSync(Buffer.from(encoded.slice('deflate:'.length),'base64url'),{maxOutputLength:Math.floor((1_100_000-44)*3/4)})
+        :Buffer.from(encoded,'base64url');
+      return JSON.parse(bytes.toString('utf8')) as CheckpointState;
+    }
     catch {return invalid('Invalid workflow checkpoint');}
   }
   private async initialize(request:OwnedWorkflowAdvanceRequest,template:OwnedWorkflowTemplate,tools:readonly CoordinationAvailableTool[]):Promise<CheckpointState> {
@@ -723,10 +732,13 @@ export class OwnedWorkflowEngine {
   }
   private deliverable(template:OwnedWorkflowTemplate,state:CheckpointState,request:OwnedWorkflowAdvanceRequest,cancelled=false):OwnedWorkflowAdvanceResult|undefined {
     const fits=():OwnedWorkflowAdvanceResult|undefined=>{
-      let result:OwnedWorkflowAdvanceResult;
-      try {result=this.result(template,state,cancelled);}
-      catch(error) {if(error instanceof ProtocolError&&error.code==='EXTERNAL_FAILURE')return undefined;throw error;}
-      return !request.resultFits||request.resultFits(result)?result:undefined;
+      for(const compressed of request.resultFits?[false,true]:[false]) {
+        let result:OwnedWorkflowAdvanceResult;
+        try {result=this.result(template,state,cancelled,compressed);}
+        catch(error) {if(error instanceof ProtocolError&&error.code==='EXTERNAL_FAILURE')continue;throw error;}
+        if(!request.resultFits||request.resultFits(result))return result;
+      }
+      return undefined;
     };
     const original=fits();if(original||!request.resultFits)return original;
     // The original input is already resent and digest-bound on every advance. Avoid storing
@@ -752,7 +764,7 @@ export class OwnedWorkflowEngine {
     if(!result)invalid('Workflow continuation requires a larger result transport');
     return result!;
   }
-  private result(template:OwnedWorkflowTemplate,state:CheckpointState,cancelled=false):OwnedWorkflowAdvanceResult {
+  private result(template:OwnedWorkflowTemplate,state:CheckpointState,cancelled=false,compressed=false):OwnedWorkflowAdvanceResult {
     const steps=Object.values(state.nodes),proposals=state.hostControl&&state.hostControl.status!=='running'?[]
       :steps.flatMap(step=>step.state==='waiting_receipt'&&step.proposal?[copy(step.proposal)]:[]);
     const required=template.nodes.filter(node=>node.required||state.selections[node.id]==='selected').map(node=>state.nodes[node.id]!);
@@ -770,7 +782,7 @@ export class OwnedWorkflowEngine {
     const waitingForShadow=comparisons.some(shadow=>shadow.evaluation?.context.controlRevision!==state.controlRevision
       ||shadow.evaluation.policy.mayDeliverMain!==true||shadow.evaluation.policy.comparison.status!=='comparable');
     const result:OwnedWorkflowAdvanceResult={workflowVersion:OWNED_WORKFLOW_VERSION,workflowId:template.workflowId,templateVersion:template.version,
-      templateDigest:template.templateDigest,state:graphState,verification:'unverified',checkpoint:this.seal(state),nodes:copy(state.nodes),proposals,
+      templateDigest:template.templateDigest,state:graphState,verification:'unverified',checkpoint:this.seal(state,compressed),nodes:copy(state.nodes),proposals,
       ...(state.hostControl?{hostControl:copy(state.hostControl)}:{}),
       ...(shadows.length?{shadows,delivery:{waitingForShadow,mayDeliverMain:graphState==='settled'&&!waitingForShadow,
         reason:waitingForShadow?'explicit_comparison_requires_verified_comparable_results':graphState!=='settled'?'main_graph_not_settled':'main_graph_settled_without_shadow_wait'}}:{}),

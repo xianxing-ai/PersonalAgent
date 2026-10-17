@@ -61,7 +61,7 @@ function normalize(raw){
 export async function runCodingRepairCloudAcceptance(raw){
   const config=normalize(raw),directory=resolve(config.artifactRoot??'.cache/coding-repair-cloud-'+Date.now());await mkdir(directory,{recursive:true});
   const deadlineSignal=AbortSignal.timeout(Math.max(1,Date.parse(config.deadline)-Date.now()));
-  const teacherCalls=[],layaCalls=[],decisions=[],graphCalls=[],transportStates=[];let service;
+  const teacherCalls=[],layaCalls=[],decisions=[],graphCalls=[],transportStates=[];let service,local,stage='teacher_capabilities';
   const common={gatewayUrl:config.gatewayUrl,runtimeName:config.runtimeName,deploymentVersion:config.version,
     transport:'wss',websocketUrl:config.gatewayUrl.replace(/^https:/,'wss:')+'/runtimes/'+config.runtimeName+'/ws?endpoint='+config.version,
     allowHttpsFallback:false,invokeMode:config.invokeMode??'published',authorizationProvider:{read:async()=>config.inboundAuthorization},
@@ -72,9 +72,9 @@ export async function runCodingRepairCloudAcceptance(raw){
     const teacherProvider=await createTestImageModelProvider({url:config.gatewayUrl+'/runtimes/'+config.runtimeName+'/invocations?endpoint='+config.version,
       token:config.innerAuthorization.slice(7),inboundAuthorization:config.inboundAuthorization,deadline:config.deadline,signal:deadlineSignal,
       invokeMode:config.invokeMode??'published',onRecord:record=>teacherCalls.push(record)});
-    const teacher=new ModelGateway(teacherProvider),start=performance.now();
+    const teacher=new ModelGateway(teacherProvider),start=performance.now();stage='local_model_start';
     service=await startLayaService({...config.localLaya,signal:deadlineSignal,cpuExecutionPolicy:'sequential'});
-    const local={device:service.device,threads:service.torchThreads,startupMs:performance.now()-start};
+    local={device:service.device,threads:service.torchThreads,startupMs:performance.now()-start};stage='runtime_fixture';
     const laya=createOwnedLayaSelector({port:service.port,getApiKey:()=>service.key,isReady:service.isReady,cpuExecutionPolicy:'sequential',onDecision:record=>layaCalls.push(record)});
     let application;const selectors=new Map();
     const selector={bindApplication:app=>{application=app;},select:async request=>{
@@ -103,12 +103,19 @@ export async function runCodingRepairCloudAcceptance(raw){
         finally{record.elapsedMs=performance.now()-start;record.finishedAt=new Date().toISOString();}
       }};
       const report=await runCodingRepairFullGraphFixture({fakeModel:false,image:port,selector,selectorEvidenceKind:'real_laya_with_teacher_and_production_agentarts_graph',
-        createApplication:fixtureOptions=>createAgentArtsRuntimeApplication({...fixtureOptions,...common,initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json'}),
-        mode,fixture,deadline:config.deadline,artifactRoot:join(directory,name+'-'+mode)});
+        createApplication:fixtureOptions=>createAgentArtsRuntimeApplication({...fixtureOptions,...common,
+          // Publish the strict public-fixture snapshot only. Runtime adds the original coding dispatcher;
+          // the graph host resolves its remaining local tools through the original F15 driver.
+          competitionToolExports:fixtureOptions.tools.filter(tool=>tool.descriptor.name==='coding.repair.snapshot').map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+            exportPolicyVersion:'public-synthetic-coding-fixture-v1',accepts:()=>true,project:({result})=>result})),
+          initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json'}),
+        mode,fixture,expectInitialFailure:true,deadline:config.deadline,artifactRoot:join(directory,name+'-'+mode)});
       runs.push({case:name,mode,report});
       // No passing label for partial graph, absent original receipts, or a cloud self-report.
       assert.equal(report.parent.state,'succeeded');assert.equal(report.child?.state,'succeeded');assert.equal(report.graph?.state,'settled');
       for(const id of ['01','02','03','04','05','06'])assert.equal(report.graph.nodes['F15_N'+id],'completed');
+      assert.notEqual(report.baselineVerification.exitCode,0);assert.match(report.baselineVerification.stdout,/animation_not_started:/);assert.equal(report.unrelatedUnchanged,true);
+      if(mode==='main')assert.equal(report.mainRootAfterSha256,sha(fixture.baseline.replaceAll('begin="indefinite"','begin="0s"')),'Final readback must preserve all non-begin artwork bytes');
       if(mode==='isolated')assert.equal(report.mainRootAfterSha256,report.mainRootBeforeSha256);
     }
     const report={kind:'real_cloud_complete_F15_and_local_laya_teacher',deployment:config.deploymentEvidence,localModel:local,
@@ -121,7 +128,10 @@ export async function runCodingRepairCloudAcceptance(raw){
     for(const secret of [config.innerAuthorization.slice(7),config.inboundAuthorization.slice(7),config.receiptSecret].filter(Boolean))assert.ok(!serialized.includes(secret));
     await writeFile(join(directory,'receipt.json'),serialized);return {directory,status:'passed_real_complete_graphs',wallMs:report.wallMs,runs:runs.map(run=>({case:run.case,mode:run.mode,state:run.report.graph.state,totalMs:run.report.totalMs})),graphCalls:graphCalls.length,teacherCalls:teacherCalls.filter(call=>call.operation==='model_turn'&&call.status==='returned').length,layaCalls:layaCalls.length};
   }catch(error){
-    const failure={directory,status:'failed_or_unknown',code:typeof error?.code==='string'?error.code:'ASSERTION_OR_EXTERNAL_FAILURE',runs:runs.map(run=>({case:run.case,mode:run.mode,state:run.report.graph?.state})),graphCalls,teacherCalls};
+    const secrets=[config.innerAuthorization.slice(7),config.inboundAuthorization.slice(7),config.receiptSecret].filter(Boolean);
+    const message=secrets.reduce((text,secret)=>text.replaceAll(secret,'[redacted]'),String(error?.message??'Acceptance failed')).slice(0,1000);
+    const failure={directory,status:'failed_or_unknown',stage,localModel:local,code:typeof error?.code==='string'?error.code:'ASSERTION_OR_EXTERNAL_FAILURE',message,
+      runs:runs.map(run=>({case:run.case,mode:run.mode,state:run.report.graph?.state})),graphCalls,teacherCalls,layaCalls,decisions};
     await writeFile(join(directory,'failure.json'),JSON.stringify(failure,null,2));return failure;
   }finally{image.close();await service?.stop();}
 }

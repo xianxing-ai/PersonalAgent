@@ -127,6 +127,8 @@ export async function runRuntimeCodingRepairWorkflow(application:RuntimeApplicat
     state.receipts=[];
     for(const proposal of proposals) {
       if(proposal.kind!=='tool_proposal')throw new ProtocolError('UNSUPPORTED_CAPABILITY','Coding graph requires a registered host adapter');
+      if(!catalog.some(tool=>tool.name===proposal.toolName&&tool.version===proposal.toolVersion))
+        throw new ProtocolError('UNAUTHORIZED','Coding graph requested a tool outside its original published catalog');
       const local=bridge.submit(binding,proposal);
       // The child may finish asynchronously; wait only for the original registered worker, never replay it.
       const cancelChild=()=>{try{application.runtime.requestCancel(local.localTaskId,'Original coding graph was cancelled');}catch{/* Original terminal child is retained. */}};

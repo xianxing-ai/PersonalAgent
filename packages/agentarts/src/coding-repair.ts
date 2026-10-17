@@ -74,7 +74,10 @@ export function acceptCodingChecks(frontier:CodingRepairFrontier,value:unknown,t
   for(const receipt of readback.verification)if(receipt.evidenceRefs.length===0)receipt.evidenceRefs=[...trustedExecutionEvidence];
   if(readback.sessionId!==frontier.configuration.session.sessionId||readback.verification.some(r=>!frontier.configuration.recipes.some(recipe=>recipe.recipeId===r.recipeId)))
     throw new ProtocolError('REVISION_CONFLICT','Coding verification session or recipe changed');
-  if(readback.verification.some(r=>r.status==='FAILED'&&(r.inputSnapshotId!==readback.snapshot.snapshotId
+  // A failed recipe can remain current across unrelated package edits, just like a pass.
+  // Graph/files bind its dependency closure; legacy receipts still require the exact snapshot.
+  if(readback.verification.some(r=>r.status==='FAILED'&&(
+    codingRepairDigest([...r.packageIds].sort())!==codingRepairDigest([...frontier.configuration.recipes.find(recipe=>recipe.recipeId===r.recipeId)!.packageIds].sort())
     ||!codingVerificationCurrent({...r,status:'VALID',exitCode:0},readback.snapshot,readback.sessionId))))
     throw new ProtocolError('REVISION_CONFLICT','Failed verification does not match the current source snapshot');
   const affected=new Set(affectedCodingPackages(frontier.snapshot,readback.snapshot));

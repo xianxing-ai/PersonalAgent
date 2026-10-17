@@ -16,7 +16,7 @@ interface StoredVerification {receipt:CodingRepairVerificationReceipt;snapshot:C
 interface RepairJournal {version:1;configurationRef:string;session:CodingRepairSession;allowedPaths:string[];baseline:CodingRepairSnapshot;graphKnown:boolean;
   recipes:CodingRepairRecipe[];prepared:boolean;preparationReason?:string;unknown?:{kind:'patch'|'command'|'publish';runId:string;path?:string;argumentsDigest?:string};
   verification:StoredVerification[];delivery?:CodingRepairPublishReadback;publishIntent?:CodingRepairPublishRequest;publishSnapshot?:CodingRepairSnapshot;
-  pendingPatch?:CodingRepairPatch;}
+  pendingPatch?:CodingRepairPatch;pendingPatchAfterSha256?:string;}
 export interface IsolatedCodingRepairHostOptions {
   workspaceRoot:string;sessionRoot:string;workspaceId:string;
   /** Stable trusted command/helper configuration identity, excluding credentials. */
@@ -141,9 +141,9 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     return createWorkspacePatchPreviewTool({rootPath:p.workspace}).execute(patch,context);
   }
   async function applyPatch(journal:RepairJournal,value:CodingRepairPatch,context:ToolContext):Promise<unknown> {
-    requireStopped(journal);const patch=parseCodingRepairPatch(value);await previewPatch(journal,patch,context);
+    requireStopped(journal);const patch=parseCodingRepairPatch(value);const preview=await previewPatch(journal,patch,context) as {afterSha256:string};
     checkContext(context,scopes.patch,now);const p=paths(journal.session.sessionId);
-    journal.unknown={kind:'patch',runId:context.runId,path:patch.path,...(context.argumentsDigest?{argumentsDigest:context.argumentsDigest}:{})};journal.pendingPatch=clone(patch);await save(journal);
+    journal.unknown={kind:'patch',runId:context.runId,path:patch.path,...(context.argumentsDigest?{argumentsDigest:context.argumentsDigest}:{})};journal.pendingPatch=clone(patch);journal.pendingPatchAfterSha256=preview.afterSha256;await save(journal);
     let result:unknown;
     if(patch.expectedSha256===null){const destination=await codingRepairFilePath(p.workspace,patch.path,true);
       await mkdir(resolve(destination,'..'),{recursive:true});await codingRepairFilePath(p.workspace,patch.path,true);
@@ -299,7 +299,15 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
       }
       const p=paths(id),result=await reconcileWorkspacePatchApply({rootPath:p.workspace,recoveryRootPath:p.recovery,...options.patch,relativePath:journal.unknown.path,expectedRunId:journal.unknown.runId});
       if(result.state==='in_progress')return {state:'in_progress'};
-      if(result.state==='reconciled'&&result.outcome!=='unknown'){delete journal.unknown;delete journal.pendingPatch;await save(journal);return {state:'clear'};}return {state:'unknown'};}),
+      if(result.state==='clear') {
+        // A missing in-flight marker means the helper has exited; it does not prove whether it wrote.
+        // Compare only with the original preview, never reconstruct or retry the interrupted write.
+        if(!journal.pendingPatchAfterSha256)return {state:'unknown'};
+        try {const file=await codingRepairFilePath(p.workspace,journal.unknown.path,true),actual=repairSha256(await readFile(file));
+          if(actual!==journal.pendingPatch.expectedSha256&&actual!==journal.pendingPatchAfterSha256)return {state:'unknown'};
+        }catch{return {state:'unknown'};}
+      }
+      if(result.state==='clear'||result.state==='reconciled'&&result.outcome!=='unknown'){delete journal.unknown;delete journal.pendingPatch;delete journal.pendingPatchAfterSha256;await save(journal);return {state:'clear'};}return {state:'unknown'};}),
   };return host;
 }
 

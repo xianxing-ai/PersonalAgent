@@ -29,6 +29,35 @@ test('only current mandatory successful verification permits delivery; known fai
   assert.equal(acceptCodingChecks(frontier,{version:1,sessionId:'session',snapshot:snapshot('3'),verification:[receipt(snapshot('3'))]}),'passed');
   assert.equal(requiredCodingVerification(frontier),true);
 });
+test('independent recipe failure remains current across another package repair (synthetic host readbacks)',()=>{
+  const before=snapshot(),after=snapshot('2');
+  const config={...configuration,recipes:[{recipeId:'test-a',packageIds:['a'],required:true},{recipeId:'test-c',packageIds:['c'],required:true}]};
+  const failed=(s,id)=>receipt(s,{recipeId:'test-'+id,packageIds:[id],status:'FAILED',exitCode:1,diagnostics:[{source:'fake-host',path:id+'/main.ts',message:'expected repair'}]});
+  const a=failed(before,'a'),c=failed(before,'c'),original=structuredClone(c),frontier=createCodingRepairFrontier(config);
+  const read=(s,verification)=>({version:1,sessionId:'session',snapshot:s,verification});
+  assert.equal(acceptCodingChecks(frontier,read(before,[a,c])),'failed');
+  const aPass=receipt(after,{recipeId:'test-a',packageIds:['a'],runId:'a-round-2'});
+  assert.equal(acceptCodingChecks(frontier,read(after,[aPass,c])),'failed');
+  assert.equal(requiredCodingVerification(frontier),false);
+  assert.deepEqual(c,original,'the original host failure and its Evidence are unchanged');
+  assert.equal(acceptCodingChecks(frontier,read(after,[aPass,{...c,status:'UNKNOWN',exitCode:null}])),'unknown');
+  assert.equal(acceptCodingChecks(frontier,read(after,[aPass,receipt(after,{recipeId:'test-c',packageIds:['c']})])),'passed');
+  for(const change of [
+    s=>{s.files.find(f=>f.packageId==='c').sha256=sha('changed c');},
+    s=>{s.files.find(f=>f.kind==='lock').sha256=sha('changed lock');},
+    s=>{s.packages.find(p=>p.id==='c').dependencies=['a'];},
+    s=>{s.packages.find(p=>p.id==='a').path='';s.files.push({path:'tsconfig.json',packageId:'a',kind:'config',sha256:sha('changed config')});},
+  ]){
+    const changed=structuredClone(after);change(changed);
+    assert.throws(()=>acceptCodingChecks(createCodingRepairFrontier(config),read(changed,[c])),{code:'REVISION_CONFLICT'});
+  }
+  assert.throws(()=>acceptCodingChecks(createCodingRepairFrontier(config),read(after,[{...c,sessionId:'other'}])),{code:'INVALID_ARGUMENT'});
+  for(const forged of [{...c,packageIds:['a']},{...c,packageGraphDigest:'0'.repeat(64)}])
+    assert.throws(()=>acceptCodingChecks(createCodingRepairFrontier(config),read(after,[forged])),{code:'REVISION_CONFLICT'});
+  const legacy={...c};delete legacy.packageGraphDigest;
+  assert.throws(()=>acceptCodingChecks(createCodingRepairFrontier(config),read(after,[legacy])),{code:'REVISION_CONFLICT'});
+});
+
 test('jsdiff and TypeScript analyze actual exact patches and declaration ranges without fuzzy application',()=>{
   const before='export function answer() { return 1; }\n',after='export function answer() { return 2; }\n';
   const s={snapshotId:'code',packages:[{id:'a',path:'',dependencies:[]}],files:[{path:'main.ts',packageId:'a',kind:'source',sha256:sha(before),content:before}]};
