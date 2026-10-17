@@ -1599,7 +1599,8 @@ if(sayForm){
       if(rail&&!$("#mk3")){
         var mk=document.createElement("button");mk.className="mk";mk.id="mk3";
         mk.setAttribute("data-action","rail");mk.setAttribute("data-target","turn3");mk.setAttribute("aria-label","第 3 轮对话预览");
-        mk.innerHTML="<span class='tip'>"+v.replace(/</g,"&lt;").slice(0,120)+"（预览截至 160 字）</span>";
+        var rawTip=v.slice(0,120);
+        mk.innerHTML="<span class='tip'>"+rawTip.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")+"（预览截至 160 字）</span>";
         rail.appendChild(mk);
       }
     }
