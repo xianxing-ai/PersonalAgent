@@ -1,9 +1,31 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 5519f9fd71790035a342830e78163530a1526ed220ee56969fb066bc90b5d360
+// Source projection sha256: 088f7f00dfb3a7ab5ff4f1c38ca8fc80dd41ef25f36d4d019e2e0ec7e2ab341f
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
     "name": "主对话与责任理解",
+    "category": "交互与输入",
+    "summary": "原话/来源版本、上下文与目标责任、理解/选路、必要补问",
+    "decisionPoints": [
+      "区分单次任务、持久责任与任务变更，保持否定、条件、对象和参数关系。",
+      "联合排序责任、事实、模板与模型能力；有新证据需求才扩充上下文。",
+      "提出任务图与各执行模型/原生思考深度；既有判断可被F28消费。",
+      "区分已授权动作、事实引用、推断建议与真正缺失的用户决定。"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "DecisionReady / NeedContextExpansion 是拟议内部状态概念，不是新发布的wire DTO。",
+      "宿主校验来源身份、版本和授权记录；语义相容性由模型提出并保留不确定性，不声称代码能普遍证明中文逻辑等价。",
+      "rule_ref可以支持事实或用户规则；只有对应有效动作授权才允许执行。模型推断不会静默扩权。",
+      "检索不设固定一跳；相同检索没有新信息时停止重复，并沿用实际截止时间、取消和用户配置。"
+    ],
+    "acceptance": [
+      "清楚的已授权新责任无需额外首轮确认；歧义才进入补问。",
+      "否定、条件、省略及多对象输入保持原文关联；不能只用includes判断同意或授权。",
+      "检索扩充能恢复遗漏依据，也能在无新增信息时退出；记录调用轮数与用户打扰分布。"
+    ],
     "nodes": [
       {
         "id": "F01_N01",
@@ -20,11 +42,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "完整指令引用",
           "条件与否定原文"
-        ]
+        ],
+        "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F01_N02",
-        "label": "并行召回有效责任、上下文与能力",
+        "label": "独立依赖（默认串行）召回有效责任、上下文与能力",
         "kind": "tool_exec",
         "dependencies": [
           "F01_N01"
@@ -41,11 +64,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "事实片段",
           "模板/模型能力"
         ],
-        "evidenceRequirement": "每个引用可回到原始来源；事实记录与动作授权分别标记。"
+        "evidenceRequirement": "每个引用可回到原始来源；事实记录与动作授权分别标记。 模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F01_N03",
-        "label": "唯一主模型联合判断责任、计划与分工",
+        "label": "既有候选选择联合判断责任、计划与分工",
         "kind": "semantic_decision",
         "dependencies": [
           "F01_N02"
@@ -63,7 +86,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "任务图候选",
           "模型/思考配置候选",
           "就绪或需扩充建议"
-        ]
+        ],
+        "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F01_N04",
@@ -84,7 +113,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "可采用候选或待澄清项"
         ],
-        "evidenceRequirement": "字符串出现不证明自然语言等价；不能把“别发给张总”反转成发送授权。"
+        "evidenceRequirement": "字符串出现不证明自然语言等价；不能把“别发给张总”反转成发送授权。 模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F01_N05",
@@ -103,7 +132,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "子任务配置"
         ],
-        "evidenceRequirement": "消费主模型已有分派建议；只有新问题才再调用同一主决策配置。"
+        "evidenceRequirement": "消费候选判断已有分派建议；只有新问题才再调用同一主决策配置。 模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F01_N06",
@@ -120,7 +149,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "任务revision",
           "依赖边",
           "责任来源引用"
-        ]
+        ],
+        "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F01_N07",
@@ -137,7 +167,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "新片段与来源版本",
           "是否产生新信息"
         ],
-        "condition": "需要新证据且数据范围已授权"
+        "condition": "需要新证据且数据范围已授权",
+        "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F01_N08",
@@ -153,7 +184,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "绑定当前问题的回答"
         ],
-        "condition": "缺少关键条件、授权或责任范围有实际变化"
+        "condition": "缺少关键条件、授权或责任范围有实际变化",
+        "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F01_N09",
@@ -171,7 +203,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "适用范围",
           "撤销/变更关联"
         ],
-        "condition": "持久责任含义明确且现有授权覆盖"
+        "condition": "持久责任含义明确且现有授权覆盖",
+        "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -232,14 +265,35 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
-      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
-      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F02",
     "name": "语音交互与确认",
+    "category": "交互与输入",
+    "summary": "百炼既有语音端口、主动询问、最终用户确认、echo/partial过滤",
+    "decisionPoints": [
+      "从最终转写中提取用户真实意图（同意、拒绝、修改金额、附加条件）",
+      "识别否定语义（如“我绝不同意”，防止被误判为同意）",
+      "提取修改指令中的新参数值（如“改成三百元”）"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "确认记录关联可信用户回答，不称为密码学用户签名。",
+      "含“同意”子串不等于同意；“我绝不同意”按拒绝处理，附条件回答先处理条件。",
+      "直接停止入口不等ASR；口头停止仍取决于真实识别链，随后进入F24四种执行结果。",
+      "版本变化后旧回答失效；新参数已被既有授权覆盖时，不新增一律二次确认。"
+    ],
+    "acceptance": [
+      "同意、拒绝、修改、条件、旧版本、回声与中途转写分别核对。",
+      "主动播报与文字共用同一待决问题；无需专门点击弹窗。",
+      "取消受理与当前操作已停止分开显示，未知结果转读回。"
+    ],
     "nodes": [
       {
         "id": "F02_N01",
@@ -255,7 +309,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "参数指纹"
         ],
         "outputFields": [],
-        "condition": "已有Policy确实需要用户决定或关键含义仍不明确"
+        "condition": "已有Policy确实需要用户决定或关键含义仍不明确",
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F02_N02",
@@ -268,7 +323,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F02_N03",
@@ -285,7 +341,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "宿主语音会话引用",
           "当前问题记录"
         ],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F02_N04",
@@ -298,7 +355,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F02_N05",
@@ -312,7 +375,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "effectType": "读取",
         "inputFields": [],
         "outputFields": [],
-        "condition": "明确回答或经过语义解释的回答；中途转写、回声、沉默不消费授权"
+        "condition": "明确回答或经过语义解释的回答；中途转写、回声、沉默不消费授权",
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       },
       {
         "id": "F02_N06",
@@ -325,7 +390,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "写入（以工具描述为准）",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F02_N07",
@@ -341,7 +407,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "新候选revision",
           "是否仍需要新决定"
-        ]
+        ],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F02_N08",
@@ -354,7 +421,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F02_N09",
@@ -365,7 +433,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F02_N10",
@@ -378,7 +447,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F02_N11",
@@ -391,7 +461,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -467,14 +538,34 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "本地停止先执行；语音同意需当前问题、revision与参数匹配。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F03",
     "name": "世界状态、目标与局部重规划",
+    "category": "规划与记忆",
+    "summary": "来源变化、Goal依赖、影响判断、原图更新与后续观察",
+    "decisionPoints": [
+      "关联重叠时间、邻近地点、出行和共享资源；保留未知项与不确定性。",
+      "判断哪些结果仍有效、哪些尚未执行节点失效、哪些真实外部效果需要修正。",
+      "提出局部重规划或补偿候选，不能把修改计划当成外部回滚。"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "图更新和外部补偿是两种操作；不能靠换revision撤销已发生副作用。",
+      "原操作ID与效果ID在恢复、模型切换和重规划间保持稳定。",
+      "补偿分类由宿主结合实际图节点来源、原效果引用、前驱与证据绑定；同一收件人有历史发信不能把以后所有发信都归为补偿。"
+    ],
+    "acceptance": [
+      "同一对象的新正向动作、原动作重试与更正动作能分别追溯，不误分类。",
+      "原结果未知时不盲重试、不直接补偿；核实后保留原结果。",
+      "对比完整重规划与局部重规划时使用同样授权、幂等和读回能力。"
+    ],
     "nodes": [
       {
         "id": "F03_N01",
@@ -490,11 +581,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "有效变更原因"
-        ]
+        ],
+        "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F03_N05",
-        "label": "并行宽松召回时间、地点、人物、资源",
+        "label": "独立依赖（默认串行）宽松召回时间、地点、人物、资源",
         "kind": "tool_exec",
         "dependencies": [
           "F03_N01"
@@ -508,11 +600,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "未知属性项",
           "来源版本"
         ],
-        "evidenceRequirement": "未知地点/时间不因优先级低被自动排除；能力和配置决定实际检索范围。"
+        "evidenceRequirement": "未知地点/时间不因优先级低被自动排除；能力和配置决定实际检索范围。 版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F03_N02",
-        "label": "主模型判断依赖与受影响子图",
+        "label": "候选判断判断依赖与受影响子图",
         "kind": "semantic_decision",
         "dependencies": [
           "F03_N05"
@@ -526,7 +618,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "失效项",
           "依赖假设及依据",
           "可能补偿的原效果"
-        ]
+        ],
+        "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F03_N03",
@@ -543,7 +641,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "保留检查点",
           "计划新revision"
         ],
-        "evidenceRequirement": "不删除已发邮件或已发生写入的事实；依赖假设不是已验证因果关系。"
+        "evidenceRequirement": "不删除已发邮件或已发生写入的事实；依赖假设不是已验证因果关系。 版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F03_N06",
@@ -563,7 +661,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "已绑定的正向/重试/补偿上下文"
         ],
-        "evidenceRequirement": "REVISE加同一对象存在写入不够；必须关联具体原效果与修正原因，不能相信模型自报分类。"
+        "evidenceRequirement": "REVISE加同一对象存在写入不够；必须关联具体原效果与修正原因，不能相信模型自报分类。 版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F03_N07",
@@ -579,7 +677,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "已发生/未发生/仍未知及证据"
         ],
-        "condition": "原效果状态未知"
+        "condition": "原效果状态未知",
+        "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F03_N08",
@@ -600,7 +699,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "已覆盖或需决定"
         ],
         "condition": "已核实原效果，且确有补偿候选",
-        "evidenceRequirement": "正向授权不自动等于补偿授权；已有范围覆盖更正时直接执行。"
+        "evidenceRequirement": "正向授权不自动等于补偿授权；已有范围覆盖更正时直接执行。 版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F03_N09",
@@ -617,7 +716,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "独立补偿操作ID",
           "补偿结果与读回"
         ],
-        "condition": "实际补偿授权有效"
+        "condition": "实际补偿授权有效",
+        "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F03_N10",
@@ -634,7 +734,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "草稿",
           "待决问题引用"
         ],
-        "condition": "缺少补偿授权或关键条件"
+        "condition": "缺少补偿授权或关键条件",
+        "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F03_N04",
@@ -650,7 +751,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "可继续节点",
           "等待核实/决定项"
-        ]
+        ],
+        "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -723,14 +825,32 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
-      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
-      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F04",
     "name": "Wiki 与作用域记忆管理",
+    "category": "规划与记忆",
+    "summary": "Wiki正文、来源版本、作用域、Memory投影、删除/更正恢复",
+    "decisionPoints": [
+      "判断候选是事实、偏好、责任条款还是推断，分别留来源。",
+      "关联适用范围与已有版本，识别冲突及受影响上下文。",
+      "提出暂停使用、纠正或遗忘方式；使用现有授权和公开写入能力。"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "Wiki与索引能力按现有接口目录接入；图不证明真实Wiki已写入。",
+      "每次回忆记录用了哪个版本及影响了哪项判断，能恢复原文核实。"
+    ],
+    "acceptance": [
+      "冲突候选不会覆盖已有确定事实；过期索引不用于新授权决定。",
+      "撤销与更正能传播到F05/F27及关联计划。"
+    ],
     "nodes": [
       {
         "id": "F04_N01",
@@ -744,11 +864,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "来源引用",
           "事实/偏好/责任/推断类型候选"
-        ]
+        ],
+        "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F04_N05",
-        "label": "并行检索已有版本与有效授权引用",
+        "label": "独立依赖（默认串行）检索已有版本与有效授权引用",
         "kind": "tool_exec",
         "dependencies": [
           "F04_N01"
@@ -761,11 +882,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "事实版本链",
           "冲突候选",
           "授权引用（独立）"
-        ]
+        ],
+        "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F04_N02",
-        "label": "主模型判断相容、冲突或失效",
+        "label": "候选判断判断相容、冲突或失效",
         "kind": "semantic_decision",
         "dependencies": [
           "F04_N05"
@@ -778,7 +900,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "版本关联候选",
           "适用范围",
           "冲突解释"
-        ]
+        ],
+        "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F04_N06",
@@ -794,7 +922,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "可写候选或Unavailable"
         ],
-        "evidenceRequirement": "已确认事实不等于动作授权；来源不可读或能力未发布时明确不可用。"
+        "evidenceRequirement": "已确认事实不等于动作授权；来源不可读或能力未发布时明确不可用。 复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F04_N03",
@@ -811,7 +939,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "新事实版本",
           "旧版关联"
         ],
-        "condition": "相容更新且现有写入授权有效"
+        "condition": "相容更新且现有写入授权有效",
+        "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F04_N07",
@@ -828,7 +957,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "隔离标记",
           "尚未解决事项"
         ],
-        "condition": "证据矛盾未解决"
+        "condition": "证据矛盾未解决",
+        "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F04_N04",
@@ -845,7 +975,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "失效传播事件",
           "可恢复来源引用"
-        ]
+        ],
+        "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       }
     ],
     "edges": [
@@ -888,14 +1020,32 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
-      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
-      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F05",
     "name": "记忆搜索与来源回答",
+    "category": "规划与记忆",
+    "summary": "受权检索、上下文扩展、原文引用、来源冲突及版本核对",
+    "decisionPoints": [
+      "识别主题、对象、时间/地点/人物/资源及证据缺口。",
+      "排序有效片段，区分事实、授权和推断；需要新依据时提出扩充请求。",
+      "检查答案支持关系与反例；决定补查、改写或保留未知。"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "不固定检索跳数或Top-K；在实际上下文能力和配置内保留可能关联的未知项。",
+      "相同检索没有新增信息时停止重复；引用不足时回答未知，不伪造反事实结果。"
+    ],
+    "acceptance": [
+      "统计宽松召回漏检与误召回；测已知/未知属性以及来源过期。",
+      "对照相同模型、数据和范围，记录实际轮数/延迟/Token及答案支持率。"
+    ],
     "nodes": [
       {
         "id": "F05_N01",
@@ -909,11 +1059,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "可用检索线索",
           "未知属性"
-        ]
+        ],
+        "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F05_N02",
-        "label": "范围/版本初筛后并行多路召回",
+        "label": "范围/版本初筛后独立依赖（默认串行）多路召回",
         "kind": "tool_exec",
         "dependencies": [
           "F05_N01"
@@ -926,11 +1077,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "文本/事实/语义候选",
           "来源与版本"
         ],
-        "evidenceRequirement": "MemoryQueryPort事实查询与KnowledgePort.search分开；未提供向量能力不冒充已实现。"
+        "evidenceRequirement": "MemoryQueryPort事实查询与KnowledgePort.search分开；未提供向量能力不冒充已实现。 检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F05_N03",
-        "label": "主模型重排证据并判断缺口",
+        "label": "候选判断重排证据并判断缺口",
         "kind": "semantic_decision",
         "dependencies": [
           "F05_N02"
@@ -943,7 +1094,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "选用片段",
           "支持关系",
           "扩充建议或可回答建议"
-        ]
+        ],
+        "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F05_N06",
@@ -960,7 +1117,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "新增证据",
           "检索条件与无新增标记"
         ],
-        "condition": "存在可检索的新信息需求"
+        "condition": "存在可检索的新信息需求",
+        "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F05_N04",
@@ -977,11 +1135,18 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "回答候选",
           "引用映射"
         ],
-        "condition": "已有依据足以回答或明确声明未知"
+        "condition": "已有依据足以回答或明确声明未知",
+        "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "来源回答候选",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F05_N05",
-        "label": "主模型检查支持关系；代码核对引用版本",
+        "label": "候选判断检查支持关系；代码核对引用版本",
         "kind": "verification",
         "dependencies": [
           "F05_N04"
@@ -994,7 +1159,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "支持/未支持项",
           "需补查或未知"
         ],
-        "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。"
+        "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。 检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F05_N07",
@@ -1011,7 +1182,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "答案",
           "来源清单",
           "未解决项"
-        ]
+        ],
+        "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -1060,14 +1232,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
-      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
-      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F06",
     "name": "待办、提醒与跟进",
+    "category": "个人助理与调度",
+    "summary": "用户责任、原Scheduler、提醒状态、幂等跟进与归来摘要",
+    "decisionPoints": [
+      "拆解主任务截止时间、前置检查提醒与完成判定条件",
+      "解析“下午”等模糊时间，必要时主动澄清或按偏好设定",
+      "检测是否与现有待办重复，决定更新或新建"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F06_N01",
@@ -1085,7 +1270,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "deadline",
           "reminderTime"
-        ]
+        ],
+        "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F06_N02",
@@ -1105,7 +1291,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "isDuplicate",
           "actionPlan"
-        ]
+        ],
+        "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F06_N03",
@@ -1126,7 +1318,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "todoId",
           "opKey"
-        ]
+        ],
+        "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F06_N04",
@@ -1146,7 +1339,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "isTaskAlreadyFinished",
           "shouldFireAlarm"
-        ]
+        ],
+        "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F06_N05",
@@ -1165,7 +1359,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "delivered"
-        ]
+        ],
+        "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -1191,14 +1386,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F07",
     "name": "日历安排与冲突处理",
+    "category": "个人助理与调度",
+    "summary": "原日历连接器、时区/冲突、审批、写入与独立读回",
+    "decisionPoints": [
+      "识别参会人、所需时长、时段倾向与午休约束",
+      "从代码计算出的空闲时段中，排序最符合用户人际与工作习惯的候选",
+      "外部发送前核验是否符合当前责任授权"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F07_N01",
@@ -1217,7 +1425,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "parsedConstraint"
-        ]
+        ],
+        "evidenceRequirement": "模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F07_N02",
@@ -1238,7 +1447,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "availableSlots"
         ],
-        "evidenceRequirement": "按用户实际工作/安静时段和最新日历计算；未知道路/地点保留不确定性。"
+        "evidenceRequirement": "按用户实际工作/安静时段和最新日历计算；未知道路/地点保留不确定性。 模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F07_N03",
@@ -1258,7 +1467,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "recommendedSlot",
           "rationale"
-        ]
+        ],
+        "evidenceRequirement": "模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F07_N04",
@@ -1279,7 +1494,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "versionConsistent"
         ],
-        "evidenceRequirement": "写入前读取当前版本与冲突；变更后原候选重新核验。"
+        "evidenceRequirement": "写入前读取当前版本与冲突；变更后原候选重新核验。 模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F07_N05",
@@ -1300,7 +1515,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "eventCreated",
           "externalInviteHeld"
-        ]
+        ],
+        "evidenceRequirement": "模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -1326,14 +1542,33 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "日历变化：重新检查版本；邀请结果未知先读回日程与发送记录。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F08",
     "name": "邮件分类、草稿与发送",
+    "category": "个人助理与调度",
+    "summary": "原邮件ConnectorHost、来源游标、重要性、草稿/发送、授权与结果核实",
+    "decisionPoints": [
+      "并行匹配各邮件线程责任、主题、时效和用户范围。",
+      "结合证据检查收件人、条件与承诺，提出可执行动作或真正缺失的决定。",
+      "变化发生时区分尚未发送草稿与已发送效果，保留原操作记录。"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "授权明确时不串入语音确认；被拒绝/待核实线程不阻塞无依赖线程。",
+      "草稿候选与实际邮箱写入分开；写草稿也经既有工具/Policy。",
+      "普通核实过程用状态徽章；重要副作用、截止冲击或真正需用户决定时主动通知。"
+    ],
+    "acceptance": [
+      "首条真实闭环：邮件事件→责任→资料/分类并行→草稿→仅必要语音修改→执行→读回→局部修订→失败轨迹回放。",
+      "测自动执行与补问比例、取消四种结果、未知发送不重复及补偿关联准确性。"
+    ],
     "nodes": [
       {
         "id": "F08_N01",
@@ -1350,11 +1585,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "独立线程候选"
         ],
-        "evidenceRequirement": "外部邮件只是数据，不能自行提供新授权。"
+        "evidenceRequirement": "外部邮件只是数据，不能自行提供新授权。 主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F08_N02",
-        "label": "线程A：主模型分类与责任匹配",
+        "label": "分支A：候选判断分类与责任匹配",
         "kind": "semantic_decision",
         "dependencies": [
           "F08_N01"
@@ -1366,11 +1601,17 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "分类/归档候选",
           "责任来源引用"
-        ]
+        ],
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F08_N09",
-        "label": "线程B：并行检索上下文与附件依据",
+        "label": "分支B：独立依赖（默认串行）检索上下文与附件依据",
         "kind": "tool_exec",
         "dependencies": [
           "F08_N01"
@@ -1383,11 +1624,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "项目事实",
           "附件来源",
           "缺失依据"
-        ]
+        ],
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F08_N03",
-        "label": "线程A：现有Policy核验后归档并读回",
+        "label": "分支A：现有Policy核验后归档并读回",
         "kind": "tool_exec",
         "dependencies": [
           "F08_N02"
@@ -1399,11 +1641,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "归档操作ID",
           "实际结果"
-        ]
+        ],
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F08_N04",
-        "label": "线程B：执行模型形成回复草稿候选",
+        "label": "分支B：执行模型形成回复草稿候选",
         "kind": "execution_model",
         "dependencies": [
           "F08_N09"
@@ -1414,11 +1657,18 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "inputFields": [],
         "outputFields": [
           "收件人/正文/附件候选"
-        ]
+        ],
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "回复草稿生成",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F08_N05",
-        "label": "主模型审查依据、条件与授权匹配建议",
+        "label": "候选判断审查依据、条件与授权匹配建议",
         "kind": "semantic_decision",
         "dependencies": [
           "F08_N04"
@@ -1431,7 +1681,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "修改建议",
           "需澄清项",
           "责任来源关联"
-        ]
+        ],
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F08_N10",
@@ -1447,7 +1703,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "可直接执行或待决问题"
         ],
-        "evidenceRequirement": "有金额或商业内容不自动新增审批；按现有授权范围决定。"
+        "evidenceRequirement": "有金额或商业内容不自动新增审批；按现有授权范围决定。 主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F08_N06",
@@ -1463,7 +1719,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "当前问题及revision的回答"
         ],
-        "condition": "现有授权未覆盖或关键条件不明确"
+        "condition": "现有授权未覆盖或关键条件不明确",
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F08_N07",
@@ -1481,7 +1738,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "原发送operation/effect ID",
           "工具实际状态"
         ],
-        "condition": "已有授权直接通过，或待决问题得到有效决定"
+        "condition": "已有授权直接通过，或待决问题得到有效决定",
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       },
       {
         "id": "F08_N11",
@@ -1498,7 +1757,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "已发/未发/仍未知",
           "原始读回证据"
         ],
-        "evidenceRequirement": "缺少单次发件箱记录不证明未发送；沿用连接器支持的读回和实际截止配置。"
+        "evidenceRequirement": "缺少单次发件箱记录不证明未发送；沿用连接器支持的读回和实际截止配置。 主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F08_N12",
@@ -1515,7 +1774,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "待核实状态",
           "原发送身份"
         ],
-        "condition": "外部结果仍未知"
+        "condition": "外部结果仍未知",
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F08_N08",
@@ -1532,7 +1792,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "已核实结果",
           "待核实/待决定事项"
-        ]
+        ],
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       },
       {
         "id": "F08_N13",
@@ -1549,7 +1811,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "变更原因",
           "原效果因果链"
         ],
-        "condition": "用户或邮件线程出现有效新版本"
+        "condition": "用户或邮件线程出现有效新版本",
+        "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -1636,20 +1899,31 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "未知发送先保留原状态并读回，不换ID重发。",
-      "修改参数作废旧确认；既有授权覆盖新参数时直接重核验，确有缺失才补问。",
-      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
-      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
-      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F09",
     "name": "订阅、信号发现与筛选",
+    "category": "个人助理与调度",
+    "summary": "持续来源/授权、与责任关系、去重/版本、订阅外相关事件",
+    "decisionPoints": [
+      "判断推文与技术动态是否与当前项目技术栈（如决策模型轻量Agent）真正相关",
+      "识别高可信线索 vs 营销水文，决定是否进入深度调研队列",
+      "标记彼此冲突的外部动态并保留矛盾"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F09_N01",
-        "label": "多源订阅流并行拉取",
+        "label": "多源订阅流独立依赖（默认串行）拉取",
         "kind": "tool_exec",
         "dependencies": [],
         "required": true,
@@ -1662,7 +1936,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "rawEvents"
-        ]
+        ],
+        "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F09_N02",
@@ -1680,7 +1955,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "uniqueCount",
           "duplicateDiscarded"
-        ]
+        ],
+        "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F09_N03",
@@ -1701,7 +1977,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "highValueSignal",
           "discardedJunk",
           "forwardToFeature"
-        ]
+        ],
+        "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F09_N04",
@@ -1720,7 +2002,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "researchTaskSpawned"
-        ]
+        ],
+        "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -1741,18 +2024,31 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F10",
     "name": "深度研究与证据汇总",
+    "category": "开发与工程",
+    "summary": "可信检索接口、来源/版本、必要扩展、引用与结论读回",
+    "decisionPoints": [
+      "拆解技术约束、架构选型与适用场景的对比维度",
+      "协调 F28 为资料调研、架构批判与表格整合分配模型",
+      "审查是否存留未支持的主张并要求补查或标为未知"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F10_N01",
-        "label": "研究维度拆解与并行派发",
+        "label": "研究维度拆解与依赖派发（当前串行）",
         "kind": "parallel_split",
         "dependencies": [],
         "required": true,
@@ -1767,11 +2063,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "branchA",
           "branchB",
           "branchC"
-        ]
+        ],
+        "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F10_N02",
-        "label": "分支A：Qwen检索主题的一手资料",
+        "label": "分支A：配置执行模型检索主题的一手资料",
         "kind": "execution_model",
         "dependencies": [
           "F10_N01"
@@ -1785,11 +2082,18 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "pros",
           "cons"
-        ]
+        ],
+        "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "长文档调研",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F10_N03",
-        "label": "分支B：GLM寻找反例与替代路径",
+        "label": "分支B：配置执行模型寻找反例与替代路径",
         "kind": "execution_model",
         "dependencies": [
           "F10_N01"
@@ -1803,11 +2107,18 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "pros",
           "cons"
-        ]
+        ],
+        "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "架构优缺点剖析",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F10_N04",
-        "label": "分支C：DeepSeek整理已有项目上下文",
+        "label": "分支C：配置执行模型整理已有项目上下文",
         "kind": "execution_model",
         "dependencies": [
           "F10_N01"
@@ -1821,7 +2132,14 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "pros",
           "cons"
-        ]
+        ],
+        "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "方案梳理",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F10_N05",
@@ -1841,11 +2159,17 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "correctionsApplied"
         ],
-        "evidenceRequirement": "未验证数据一律标为未知，不可把模型猜测当基准数据"
+        "evidenceRequirement": "未验证数据一律标为未知，不可把模型猜测当基准数据 模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "严谨性反例审查",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F10_N06",
-        "label": "主模型判断证据差异并汇总候选",
+        "label": "候选判断判断证据差异并汇总候选",
         "kind": "join",
         "dependencies": [
           "F10_N05"
@@ -1861,7 +2185,14 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "summaryTableReady",
           "recommendation"
-        ]
+        ],
+        "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       }
     ],
     "edges": [
@@ -1902,14 +2233,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F11",
     "name": "天气、出行及计划影响",
+    "category": "个人助理与调度",
+    "summary": "原天气/日历工具、有效时间、行程影响与用户偏好",
+    "decisionPoints": [
+      "判断突发恶劣天气是否波及用户的既定线下行程",
+      "在日历中排查备选线上会议窗口或延期方案",
+      "决定何时发起语音提示，并在用户确认前不得擅自退票"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板已有；真实服务、时效与行程影响闭环未由28目录证明",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F11_N01",
@@ -1927,11 +2271,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "severeWeather"
-        ]
+        ],
+        "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F11_N02",
-        "label": "并行检索关联日程及未知地点项",
+        "label": "独立依赖（默认串行）检索关联日程及未知地点项",
         "kind": "tool_exec",
         "dependencies": [
           "F11_N01"
@@ -1946,7 +2291,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "targetEvent"
-        ]
+        ],
+        "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F11_N03",
@@ -1968,7 +2314,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "risk",
           "recommendedAlternative",
           "requiresVoiceConfirm"
-        ]
+        ],
+        "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F11_N04",
@@ -1988,7 +2340,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "userConfirmed"
         ],
-        "condition": "现有授权未覆盖或关键条件不明确"
+        "condition": "现有授权未覆盖或关键条件不明确",
+        "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F11_N05",
@@ -2011,7 +2364,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "calendarUpdated",
           "oldTrafficAlarmVoided"
         ],
-        "condition": "已授权直接执行或补问得到有效回答"
+        "condition": "已授权直接执行或补问得到有效回答",
+        "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       }
     ],
     "edges": [
@@ -2042,115 +2397,148 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F12",
     "name": "通知、安静时段与主动服务",
+    "category": "个人助理与调度",
+    "summary": "同一NotificationService、层级静默/额度、feed、投递/已读、有效归来摘要",
+    "decisionPoints": [
+      "研判多条并发通知的紧急度与可行动性（Actionability）",
+      "识别当前是否处于用户预设的免打扰安静时段",
+      "对低优先级信息生成单条合并摘要，避免轰炸用户"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F12_N01",
-        "label": "通知网关接收多项事件",
+        "label": "来源事件持久feed，保留source/revision/撤回",
         "kind": "input",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "notification_hub"
-        ],
-        "effectType": "读取",
+        "resourceKeys": [],
+        "effectType": "持久状态",
         "inputFields": [
-          "item1",
-          "item2",
-          "item3"
+          "eventRefs",
+          "sourceVersion",
+          "responsibilityRefs"
         ],
         "outputFields": [
-          "count"
-        ]
+          "itemId",
+          "unread",
+          "eventRefs"
+        ],
+        "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F12_N02",
-        "label": "读取用户安静时段 Policy",
+        "label": "读取global→connector→responsibility当前策略",
         "kind": "deterministic_check",
         "dependencies": [
           "F12_N01"
         ],
         "required": true,
-        "resourceKeys": [
-          "responsibility_db"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "checkTime",
-          "quietRange"
+          "scopeRefs",
+          "policyRevision"
         ],
         "outputFields": [
-          "isQuietModeActive",
-          "allowUrgentBypass"
+          "mode",
+          "maxInterruptions",
+          "windowMinutes",
+          "silentUntilUtc",
+          "preferredChannel",
+          "allowUrgentBreakthrough",
+          "digestMode",
+          "quietHours"
         ],
-        "evidenceRequirement": "使用当前用户安静时段、通知偏好和事件版本，不能套用固定午休样例。"
+        "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F12_N03",
-        "label": "决策模型 紧急度分流与摘要打包",
+        "label": "候选重要性与当前通知策略分流；不授权限",
         "kind": "semantic_decision",
         "dependencies": [
           "F12_N02"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "items",
-          "quiet"
+          "itemId",
+          "classificationRef",
+          "currentPolicy"
         ],
         "outputFields": [
-          "urgentBypass",
-          "queuedForDigest",
-          "digestReadyTime"
-        ]
+          "feed_only / may_attempt_delivery",
+          "decisionRefs"
+        ],
+        "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F12_N04",
-        "label": "立即推送单条紧急穿透提醒",
+        "label": "原子reserve同round→最新策略复检→实际渠道receipt",
         "kind": "tool_exec",
         "dependencies": [
           "F12_N03"
         ],
-        "required": true,
-        "resourceKeys": [
-          "notification_hub"
-        ],
-        "effectType": "读取",
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "授权投递/持久状态",
         "inputFields": [
-          "urgentTitle"
+          "itemId",
+          "roundId",
+          "policyRevision",
+          "currentChannel",
+          "原授权"
         ],
         "outputFields": [
-          "popped"
-        ]
+          "reservationRef",
+          "sending / confirmed / unknown",
+          "receiptRef"
+        ],
+        "condition": "当前策略允许打扰且渠道授权有效",
+        "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F12_N05",
-        "label": "安静时段结束交付合并摘要",
+        "label": "静默feed/独立read ack与有效return digest",
         "kind": "complete",
         "dependencies": [
           "F12_N03"
         ],
-        "required": true,
-        "resourceKeys": [
-          "notification_hub"
-        ],
-        "effectType": "读取",
+        "required": false,
+        "resourceKeys": [],
+        "effectType": "持久状态/读取",
         "inputFields": [
-          "scheduledAt"
+          "itemId",
+          "unread",
+          "deliveredAt",
+          "readAck",
+          "仍有效变化"
         ],
         "outputFields": [
-          "digestDispatched"
-        ]
+          "done / changed / pending / blocked",
+          "digestRef"
+        ],
+        "condition": "查询/归来摘要；静默不补弹旧通知",
+        "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       }
     ],
     "edges": [
@@ -2176,14 +2564,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F13",
     "name": "系统检查与故障诊断",
+    "category": "扩展与系统",
+    "summary": "受限本机观察、资源/进程归因、补查与明确未知",
+    "decisionPoints": [
+      "根据错误现象生成原因候选树（锁未释放、模型配额、网络断开）",
+      "选择最具信息价值与最低破坏性的下一步诊断工具",
+      "生成可逆修复建议并确认执行授权"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F13_N01",
@@ -2202,11 +2603,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "currentNodeId",
           "blockReason"
-        ]
+        ],
+        "evidenceRequirement": "模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F13_N02",
-        "label": "并行运行确定性探针诊断",
+        "label": "独立依赖（默认串行）运行确定性探针诊断",
         "kind": "tool_exec",
         "dependencies": [
           "F13_N01"
@@ -2224,7 +2626,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "quotaNormal",
           "staleLockFound"
         ],
-        "evidenceRequirement": "探针结果、进程/锁身份与时间分别记录，不能从日志文字推定宿主已停止。"
+        "evidenceRequirement": "探针结果、进程/锁身份与时间分别记录，不能从日志文字推定宿主已停止。 模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F13_N03",
@@ -2245,7 +2647,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "rootCause",
           "remediation",
           "isSafeAndReversible"
-        ]
+        ],
+        "evidenceRequirement": "模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F13_N04",
@@ -2266,7 +2674,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "lockReleased",
           "taskResumed"
         ],
-        "evidenceRequirement": "锁释放需要宿主生命周期与执行记录支持，不能凭模型说进程卡死强制解锁。"
+        "evidenceRequirement": "锁释放需要宿主生命周期与执行记录支持，不能凭模型说进程卡死强制解锁。 模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -2287,14 +2695,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F14",
     "name": "浏览器与桌面操作",
+    "category": "开发与工程",
+    "summary": "已授权窗口/浏览器观察、动作串行、scope与实际回执",
+    "decisionPoints": [
+      "从 DOM 树与候选动作中选择下一步可执行操作（聚焦、输入、单选）",
+      "在触发表单 Final Submit 动作前判定必须生成参数摘要并主动询问",
+      "在页面布局发生突发重绘或按钮失效时重新进行目标识别"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F14_N01",
@@ -2311,7 +2732,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "elementsFound"
-        ]
+        ],
+        "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F14_N02",
@@ -2331,7 +2753,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "lockAcquired"
         ],
-        "evidenceRequirement": "独占键盘与鼠标控制权，防止与其他并发任务按键打架"
+        "evidenceRequirement": "独占键盘与鼠标控制权，防止与其他并发任务按键打架 两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F14_N03",
@@ -2350,11 +2772,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "fieldsPopulated"
-        ]
+        ],
+        "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F14_N04",
-        "label": "主模型评估下一动作与已授权范围",
+        "label": "候选判断评估下一动作与已授权范围",
         "kind": "semantic_decision",
         "dependencies": [
           "F14_N03"
@@ -2370,7 +2793,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "summary",
           "mustHaltForVoice"
-        ]
+        ],
+        "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F14_N05",
@@ -2390,7 +2819,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "confirmed"
         ],
-        "condition": "既有Policy确实需要用户决定"
+        "condition": "既有Policy确实需要用户决定",
+        "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F14_N06",
@@ -2413,7 +2843,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "lockReleased"
         ],
         "condition": "有效授权与参数通过宿主检查",
-        "evidenceRequirement": "动作后核对页面/目标身份；结果未知先观察读回，不盲目重复点击。"
+        "evidenceRequirement": "动作后核对页面/目标身份；结果未知先观察读回，不盲目重复点击。 两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       }
     ],
     "edges": [
@@ -2449,14 +2880,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F15",
     "name": "代码修改、补丁与命令执行",
+    "category": "开发与工程",
+    "summary": "精确源SHA、preview/apply、原Policy授权、测试与结果读回",
+    "decisionPoints": [
+      "圈定修复文件范围，排除无关文件的过度重构",
+      "调用 F28 为生成补丁与独立审查指派合适编码模型（如 GLM-5.2）",
+      "评估独立审查提出的接口破坏与破坏性越界告警"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F15_N01",
@@ -2474,7 +2918,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "targetFile",
           "line"
-        ]
+        ],
+        "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F15_N02",
@@ -2494,7 +2939,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "scope",
           "forbiddenActions"
-        ]
+        ],
+        "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F15_N03",
@@ -2511,7 +2962,14 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "patchDiff"
-        ]
+        ],
+        "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "补丁代码编写",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F15_N04",
@@ -2531,7 +2989,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "noUnrelatedFormatting",
           "approved"
         ],
-        "evidenceRequirement": "审查实际补丁、目标范围与行为影响，不能按改动行数宣布无风险。"
+        "evidenceRequirement": "审查实际补丁、目标范围与行为影响，不能按改动行数宣布无风险。 Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "补丁红线审查",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F15_N05",
@@ -2553,7 +3017,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "failedTests",
           "testDurationMs"
         ],
-        "evidenceRequirement": "记录实际测试命令、基线、结果与失败；隔离能力按宿主真实实现描述。"
+        "evidenceRequirement": "记录实际测试命令、基线、结果与失败；隔离能力按宿主真实实现描述。 Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F15_N06",
@@ -2573,7 +3037,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "patchReadyForReview",
           "autoPushBlocked"
-        ]
+        ],
+        "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -2604,14 +3069,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "代码基线或他人修改冲突：只重做受影响候选，保留已验证结果。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F16",
     "name": "CI 检查与修复",
+    "category": "开发与工程",
+    "summary": "原CI连接器、明确失败日志、修复候选、再验与版本绑定",
+    "decisionPoints": [
+      "研判失败是代码逻辑问题、第三方服务网络抖动还是测试用例过期",
+      "审查候选修复方案，强力拦截“删除测试”或“放宽断言”等作弊行为",
+      "决定是走自动修复补丁还是标记环境偶发建议重跑"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F16_N01",
@@ -2629,7 +3107,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "errorClass"
-        ]
+        ],
+        "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F16_N02",
@@ -2649,7 +3128,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "rootCause",
           "legitimateFix"
-        ]
+        ],
+        "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F16_N03",
@@ -2668,7 +3153,14 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "patchApplied"
-        ]
+        ],
+        "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "补丁应用",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F16_N04",
@@ -2687,7 +3179,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "noCheatingDetected"
         ],
-        "evidenceRequirement": "检查断言/测试行为与需求，不以文件未改或断言数量不变证明没有规避测试。"
+        "evidenceRequirement": "检查断言/测试行为与需求，不以文件未改或断言数量不变证明没有规避测试。 模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F16_N05",
@@ -2707,7 +3199,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "ciStatus",
           "runtimeSeconds"
-        ]
+        ],
+        "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -2733,14 +3226,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F17",
     "name": "测试失败定位",
+    "category": "开发与工程",
+    "summary": "实际失败反馈、当前源码/测试条件、局部修复与回归",
+    "decisionPoints": [
+      "分析6个报错的堆栈，判断是否源于同一个底层依赖缺失或数据源异常（同源合并）",
+      "按信息收益最高原则设计最小复现用例",
+      "区分必然复现缺陷 vs 环境偶发 Flaky 假失败"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F17_N01",
@@ -2758,7 +3264,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "tracesCaptured"
-        ]
+        ],
+        "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F17_N02",
@@ -2779,7 +3286,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "clusterCount",
           "sharedRootCause",
           "evidence"
-        ]
+        ],
+        "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F17_N03",
@@ -2799,7 +3312,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "reproSuccess",
           "timeMs"
-        ]
+        ],
+        "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F17_N04",
@@ -2816,7 +3330,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "all6PassResolved"
-        ]
+        ],
+        "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -2837,14 +3352,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F18",
     "name": "PR 审查、批准条件与合并",
+    "category": "开发与工程",
+    "summary": "原GitHub工具、非作者有效批准、checks/冲突/意见门槛、授权操作",
+    "decisionPoints": [
+      "整合执行模型提出的架构缺陷、边界漏洞与测试覆盖率建议",
+      "区分阻断性问题 (Blocking Issues) 与非阻断建议 (Nitpicks)",
+      "核验当前提交是否因新 Commit 使得历史审查意见全部作废"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F18_N01",
@@ -2865,7 +3393,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "filesChanged",
           "additions",
           "deletions"
-        ]
+        ],
+        "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F18_N02",
@@ -2882,7 +3411,14 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "suggestions"
-        ]
+        ],
+        "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "架构边界审查",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F18_N03",
@@ -2903,7 +3439,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "hasBlockingBugs",
           "blockingCount",
           "nonBlockingCount"
-        ]
+        ],
+        "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F18_N04",
@@ -2925,7 +3467,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "mergeRequirementsSatisfied"
         ],
-        "evidenceRequirement": "严格核对为非作者真实批准，且CI全部通过"
+        "evidenceRequirement": "严格核对为非作者真实批准，且CI全部通过 模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F18_N05",
@@ -2945,7 +3487,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "mergedSha",
           "prClosed"
-        ]
+        ],
+        "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -2971,14 +3514,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F19",
     "name": "Issue 分诊与关联修复",
+    "category": "开发与工程",
+    "summary": "原Issue来源、实体/版本、任务关联、修改与回读",
+    "decisionPoints": [
+      "对新提交的多个 Issue 进行语义查重并合并为单一根因工单",
+      "判断信息是否充分（如缺少环境和日志时自动生成有针对性的追问模板）",
+      "在关联 PR 合并后，独立验证用户最初的 Bug 是否真正被解决"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板可发现；账号事件到真实修复/状态更新需本图Evidence",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F19_N01",
@@ -2995,7 +3551,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "count"
-        ]
+        ],
+        "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F19_N02",
@@ -3017,7 +3574,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "canonicalIssueId",
           "duplicateMarkedId",
           "triageCategory"
-        ]
+        ],
+        "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F19_N03",
@@ -3037,7 +3600,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "fixSubtaskSpawned"
-        ]
+        ],
+        "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F19_N04",
@@ -3058,7 +3622,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "originalBugGone",
           "verifiedPassed"
         ],
-        "evidenceRequirement": "按原问题复现并核实实际行为；PR合并、模型结论和Fake通过分别标记。"
+        "evidenceRequirement": "按原问题复现并核实实际行为；PR合并、模型结论和Fake通过分别标记。 模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F19_N05",
@@ -3078,7 +3642,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "closedSuccess"
-        ]
+        ],
+        "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -3104,18 +3669,31 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F20",
     "name": "API 文档与一致性检查",
+    "category": "开发与工程",
+    "summary": "原文/API版本、公开schema、独立比较、更新与读回",
+    "decisionPoints": [
+      "对比契约定义与实际后端路由参数，识别描述缺失与类型模糊",
+      "检查示例代码是否与真实签名严格吻合",
+      "将缺乏后端实现支持的文档能力标注为“拟新增/未验证”，严禁冒充生产可用"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：模板及来源校验端口可接；真实文档站点/版本差异与写回未全验",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F20_N01",
-        "label": "读取待比对的代码与契约来源",
+        "label": "比对后端代码与契约文件",
         "kind": "input",
         "dependencies": [],
         "required": true,
@@ -3128,12 +3706,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "codeFile"
         ],
         "outputFields": [
-          "sourceReadback"
-        ]
+          "diffFields"
+        ],
+        "evidenceRequirement": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F20_N02",
-        "label": "执行模型比对来源并生成文档补丁与示例",
+        "label": "执行模型生成文档补丁与示例",
         "kind": "execution_model",
         "dependencies": [
           "F20_N01"
@@ -3142,15 +3721,19 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "sourceReadback",
           "field",
           "docTemplate"
         ],
         "outputFields": [
-          "diffFields",
-          "docMarkdown",
-          "exampleArguments"
-        ]
+          "docMarkdown"
+        ],
+        "evidenceRequirement": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "文档草案编写",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F20_N03",
@@ -3169,11 +3752,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "typeCheckPassed",
           "noPhantomFields"
         ],
-        "evidenceRequirement": "类型检查器证实示例参数完全匹配 TypeScript Interface"
+        "evidenceRequirement": "类型检查器证实示例参数完全匹配 TypeScript Interface 模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F20_N04",
-        "label": "主模型检查来源支持并提出文档候选",
+        "label": "候选判断检查来源支持并提出文档候选",
         "kind": "semantic_decision",
         "dependencies": [
           "F20_N03"
@@ -3189,7 +3772,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "docVersion",
           "synchronized"
-        ]
+        ],
+        "evidenceRequirement": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       }
     ],
     "edges": [
@@ -3210,14 +3799,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F21",
     "name": "MCP、Skills 和连接器接入",
+    "category": "扩展与系统",
+    "summary": "现有注册宿主、发现/schema/授权、可信安装与调用",
+    "decisionPoints": [
+      "分析工具声明的 capability，评估其与已有内置工具的重合度与替代方案",
+      "判断接入该连接器对现有安全与数据隔离边界的影响",
+      "在连接器断开或权限回收时，级联取消所有等待该工具的就绪节点"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F21_N01",
@@ -3236,7 +3838,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "toolId",
           "transport"
-        ]
+        ],
+        "evidenceRequirement": "代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F21_N02",
@@ -3255,7 +3858,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "registered"
-        ]
+        ],
+        "evidenceRequirement": "代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F21_N03",
@@ -3276,7 +3880,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "connectionAlive",
           "latencyMs"
         ],
-        "evidenceRequirement": "记录实际握手或Unavailable；注册不是可调用证明。"
+        "evidenceRequirement": "记录实际握手或Unavailable；注册不是可调用证明。 代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F21_N04",
@@ -3297,11 +3901,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "filesReturned",
           "noSandboxEscape"
         ],
-        "evidenceRequirement": "独立核实调用、输出和实际隔离边界，不把TypeScript接口当安全沙箱。"
+        "evidenceRequirement": "独立核实调用、输出和实际隔离边界，不把TypeScript接口当安全沙箱。 代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F21_N05",
-        "label": "主模型匹配工具候选；宿主按现有授权启用",
+        "label": "候选判断匹配工具候选；宿主按现有授权启用",
         "kind": "complete",
         "dependencies": [
           "F21_N04"
@@ -3317,7 +3921,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "availableInWorkflow"
         ],
-        "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。"
+        "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。 代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       }
     ],
     "edges": [
@@ -3343,35 +3953,55 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F22",
     "name": "工作流调试与影子实验",
+    "category": "影子与校准",
+    "summary": "高级开关并入既有判断、同基线隔离、机会资源/收益、主优先与择优",
+    "decisionPoints": [
+      "研判该次运行适合决策影子、轨迹回放还是隔离执行模式",
+      "对比新旧两套 Prompt 或微调版本下的语义推理分歧点",
+      "审查影子结果中哪些属于“可比较”、哪些由于缺少反事实工具结果属于“未知”"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "影子不读未来数据，不写主任务/主记忆，不消费主授权。",
+      "隔离执行只覆盖已支持的测试工作区和服务；不承诺复制Outlook、微信等真实账号环境。",
+      "比较标记：完全可比、部分可比、缺少证据、不可比。没有反事实工具结果就标未知。"
+    ],
+    "acceptance": [
+      "无触发正常请求不新增影子调用；触发场景记录额外调用与后台排队。",
+      "验证主库、主账号与主授权没有被影子写入/消费；隔离失败不得声称物理安全已证明。"
+    ],
     "nodes": [
       {
         "id": "F22_N09",
-        "label": "按需触发：失败、变化、异常、调试或配置采样",
+        "label": "高级开关/风险价值/可信机会资源；主任务优先",
         "kind": "deterministic_check",
         "dependencies": [],
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "触发依据",
-          "用户配置"
+          "trustedSettings",
+          "resources",
+          "taskIdentity"
         ],
         "outputFields": [
-          "本次实验范围"
+          "eligible / defer / skip / need_teacher"
         ],
-        "evidenceRequirement": "无触发时跳过；不默认每个请求双跑或强制固定采样率。"
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F22_N01",
-        "label": "固定输入快照、来源版本与当时轨迹",
+        "label": "冻结同基线snapshot/asOf/sourceVersions与原验收",
         "kind": "input",
         "dependencies": [
           "F22_N09"
@@ -3379,12 +4009,20 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [],
-        "outputFields": []
+        "inputFields": [
+          "task/session/revision/deadline",
+          "snapshot",
+          "asOf",
+          "sourceVersions"
+        ],
+        "outputFields": [
+          "frozenComparisonInput"
+        ],
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F22_N02",
-        "label": "唯一决策模型选择可比较的实验方式",
+        "label": "同次候选value.shadowPlan选择模式与启动意图",
         "kind": "semantic_decision",
         "dependencies": [
           "F22_N01"
@@ -3392,54 +4030,94 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [],
-        "outputFields": []
+        "inputFields": [
+          "frozenComparisonInput",
+          "trustedResources",
+          "已有判断上下文"
+        ],
+        "outputFields": [
+          "decision_shadow / trace_replay / isolated",
+          "decisionRef"
+        ],
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F22_N03",
-        "label": "决策影子：同一输入，仅比较判断差异",
+        "label": "decision_shadow仅比较选择，不实际执行工具",
         "kind": "deterministic_check",
         "dependencies": [
           "F22_N02"
         ],
         "required": false,
         "resourceKeys": [],
-        "effectType": "读取",
-        "inputFields": [],
-        "outputFields": [],
-        "condition": "选择决策影子时为本轮必需分支，否则跳过"
+        "effectType": "纯判断结果",
+        "inputFields": [
+          "sealedCandidates",
+          "decisionRef"
+        ],
+        "outputFields": [
+          "shadowDecision",
+          "comparisonRefs"
+        ],
+        "condition": "选择decision_shadow",
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F22_N04",
-        "label": "轨迹回放：只读历史，不读取未来数据",
+        "label": "trace_replay只读历史；write仅timeline不重放",
         "kind": "tool_exec",
         "dependencies": [
           "F22_N02"
         ],
         "required": false,
         "resourceKeys": [],
-        "effectType": "读取",
-        "inputFields": [],
-        "outputFields": [],
-        "condition": "选择轨迹回放时为本轮必需分支，否则跳过"
+        "effectType": "历史读取（无工具副作用）",
+        "inputFields": [
+          "frozenSnapshot",
+          "historicalRecords",
+          "requestedActions",
+          "sourceVersions"
+        ],
+        "outputFields": [
+          "replay_result",
+          "timeline",
+          "historical failed / unknown"
+        ],
+        "condition": "选择trace_replay；F22历史adapter须显式绑定public replay服务",
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F22_N05",
-        "label": "隔离执行：独立数据、资源与操作记录",
+        "label": "isolated同基线/namespace/权限执行并独立验证",
         "kind": "tool_exec",
         "dependencies": [
           "F22_N02"
         ],
         "required": false,
         "resourceKeys": [],
-        "effectType": "读取",
-        "inputFields": [],
-        "outputFields": [],
-        "condition": "选择隔离执行时为本轮必需分支，否则跳过"
+        "effectType": "隔离环境授权副作用",
+        "inputFields": [
+          "baselineSHA",
+          "isolationProof",
+          "验收合同",
+          "隔离授权"
+        ],
+        "outputFields": [
+          "branchReceipt",
+          "EvidenceRefs",
+          "currentSHA"
+        ],
+        "condition": "选择isolated且真实隔离能力与授权可用",
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F22_N06",
-        "label": "核对回放完整性：缺反事实工具结果标未知",
+        "label": "核对replay可比性，缺反事实/failed/unknown保留原态",
         "kind": "verification",
         "dependencies": [
           "F22_N04"
@@ -3447,12 +4125,20 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "required": false,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [],
-        "outputFields": []
+        "inputFields": [
+          "replay_result",
+          "历史完整性/来源版本"
+        ],
+        "outputFields": [
+          "comparable / partial / unknown / not_comparable",
+          "reasonRefs"
+        ],
+        "condition": "选择trace_replay；完整与缺失记录均核对后汇合",
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F22_N07",
-        "label": "对齐可比较证据；候选实验可并行",
+        "label": "按已选模式汇合可比结果；显式比较才等双方",
         "kind": "join",
         "dependencies": [
           "F22_N03",
@@ -3462,22 +4148,42 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [],
-        "outputFields": [],
-        "condition": "只汇合已选择的实验模式；其他分支跳过"
+        "inputFields": [
+          "selectedMode",
+          "mainReceipt",
+          "shadowReceipt",
+          "验收配置"
+        ],
+        "outputFields": [
+          "comparable / partial / unknown",
+          "pairRefs"
+        ],
+        "condition": "只汇合已选择的实验模式；其他分支跳过",
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。",
+        "joinMode": "selected"
       },
       {
         "id": "F22_N08",
-        "label": "后台提出改进候选，不改主任务、主记忆或授权",
+        "label": "记录实际收益/资源/失败，候选交原F23",
         "kind": "complete",
         "dependencies": [
           "F22_N07"
         ],
         "required": true,
         "resourceKeys": [],
-        "effectType": "读取",
-        "inputFields": [],
-        "outputFields": []
+        "effectType": "持久状态",
+        "inputFields": [
+          "pairRefs",
+          "latency",
+          "calls",
+          "tokens",
+          "EvidenceRefs"
+        ],
+        "outputFields": [
+          "comparisonHistory",
+          "candidateRef"
+        ],
+        "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       }
     ],
     "edges": [
@@ -3538,38 +4244,57 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F23",
     "name": "决策配置、评估与版本晋升",
+    "category": "影子与校准",
+    "summary": "可信验收配置、同上下文可比结果、revision CAS、版本回读/回滚",
+    "decisionPoints": [
+      "对决策记录切分训练、验证与保留测试集（按时间与任务来源切分）",
+      "比对新旧版本在复杂长链推理、责任越界拦截与误报率方面的多维表现",
+      "在出现指标偏科（如准确率微升但误打扰率飙升20%）时给出拒绝晋升研判"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "用户项目补丁、提示/流程配置和受信宿主自身升级分别走已有测试、版本和发布流程，不默认热修可信Runtime。",
+      "AgentArts Evaluation作为拟议承载选项；实际项目、评估作业和结果需单独读回，截图不是接通证明。",
+      "对照组采用同一模型/数据/授权/幂等/读回，单独改变被测机制。"
+    ],
+    "acceptance": [
+      "记录正常放行和注入拒绝两方面，避免只追求拦截而阻止合法任务。",
+      "测调用轮数、首响/P50/P95、Token、用户打扰、召回与重规划成本；无数据时不填成绩。"
+    ],
     "nodes": [
       {
         "id": "F23_N01",
-        "label": "加载数据集并执行时序防泄漏切分",
+        "label": "可信验收配置/同task-session-revision-deadline比较",
         "kind": "input",
         "dependencies": [],
         "required": true,
-        "resourceKeys": [
-          "dataset_vault"
-        ],
+        "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "totalSamples",
-          "splitMethod"
+          "mainReceipt",
+          "shadowReceipt",
+          "task/session/revision/deadline",
+          "acceptanceConfig"
         ],
         "outputFields": [
-          "trainSet",
-          "testSetHeldOut",
-          "leakageOverlapCount"
-        ]
+          "candidatePair",
+          "comparisonContext"
+        ],
+        "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F23_N02",
-        "label": "确定性数据泄漏审查",
+        "label": "验签与verifyComparable完整上下文；不是授权",
         "kind": "deterministic_check",
         "dependencies": [
           "F23_N01"
@@ -3578,76 +4303,82 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [
-          "overlapHashCount"
+          "candidatePair",
+          "comparisonContext",
+          "trustedVerifier"
         ],
         "outputFields": [
-          "noLeakageVerified"
+          "verifiedComparable / rejected",
+          "reasonRefs"
         ],
-        "evidenceRequirement": "核对时间切分、同源关联及可比性；SHA不重复也不能单独证明没有数据泄漏。"
+        "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F23_N03",
-        "label": "评估提示、流程、调用配置与可用模型版本",
+        "label": "原Policy/ToolGateway授权configuration port",
         "kind": "tool_exec",
         "dependencies": [
           "F23_N02"
         ],
         "required": true,
-        "resourceKeys": [
-          "benchmark_cluster"
-        ],
-        "effectType": "读取",
+        "resourceKeys": [],
+        "effectType": "授权校验/读取",
         "inputFields": [
-          "配置与模板候选",
-          "可用模型版本",
-          "可选独立权重训练方案（另行实现）"
+          "verifiedComparable",
+          "configurationPort",
+          "expectedRevision",
+          "argumentsDigest",
+          "授权scope"
         ],
         "outputFields": [
-          "accuracy",
-          "falsePositiveRate",
-          "p95LatencyMs"
-        ]
+          "authorizedReleaseRequest / unavailable"
+        ],
+        "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F23_N04",
-        "label": "决策模型 综合质量与安全门禁裁决",
-        "kind": "semantic_decision",
+        "label": "revision CAS晋升并保留原operation",
+        "kind": "tool_exec",
         "dependencies": [
           "F23_N03"
         ],
         "required": true,
-        "resourceKeys": [
-          "domestic_decision_inference"
-        ],
-        "effectType": "读取",
+        "resourceKeys": [],
+        "effectType": "授权配置写入",
         "inputFields": [
-          "metrics"
+          "authorizedReleaseRequest",
+          "expectedRevision",
+          "candidateVersion",
+          "sideEffect声明"
         ],
         "outputFields": [
-          "gateVerdict",
-          "rationale"
-        ]
+          "operationId",
+          "applied / conflict / unknown"
+        ],
+        "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       },
       {
         "id": "F23_N05",
-        "label": "按现有发布条件固化配置版本与回滚点",
+        "label": "真实回读；必要回滚仍核原版本与授权",
         "kind": "complete",
         "dependencies": [
           "F23_N04"
         ],
         "required": true,
-        "resourceKeys": [
-          "image_version_registry"
-        ],
-        "effectType": "本地状态 / 缓存",
+        "resourceKeys": [],
+        "effectType": "读取/有条件授权配置回滚",
         "inputFields": [
-          "promotedVersion",
-          "rollbackAnchor"
+          "operationId",
+          "actualConfigurationRevision",
+          "readbackPort",
+          "原回滚授权"
         ],
         "outputFields": [
-          "promotionReady",
-          "rollbackPointActive"
-        ]
+          "verifiedReadback / waiting_reconciliation / conflict",
+          "rollbackAnchor原版本/参数digest",
+          "rollbackReceipt"
+        ],
+        "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
       }
     ],
     "edges": [
@@ -3673,14 +4404,32 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "评估失败保留当前版本；撤回候选并使用已记录的回滚点。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F24",
     "name": "调度、并发、取消与恢复",
+    "category": "个人助理与调度",
+    "summary": "原Scheduler、session持久intent/CAS、deadline、取消、未知写readback",
+    "decisionPoints": [
+      "候选判断建议优先级、失败归因与受影响子图，确定性调度和状态迁移归宿主。",
+      "根据已读回副作用建议继续、补查或转F03补偿；未知结果不能自报成功。"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "四种结果描述当前操作及外部副作用，不是新增公共task wire终态。",
+      "恢复不能重置稳定操作ID或重复未知写入；迟到云结果保留审计，不能覆盖新控制revision。",
+      "取消受理不是停止证明；当前操作未开始也不表示任务此前没有副作用。"
+    ],
+    "acceptance": [
+      "在提交前、在途、超时未知和已确认发生四个阶段取消，核对UI与执行/读回记录一致。",
+      "恢复保留已发生效果且不重复写入；无依赖分支不会被别的等待决定阻塞。"
+    ],
     "nodes": [
       {
         "id": "F24_N01",
@@ -3694,11 +4443,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "稳定节点/操作身份",
           "required/optional与条件分支"
-        ]
+        ],
+        "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N02",
-        "label": "就绪节点并行；资源冲突进入等待",
+        "label": "就绪节点默认串行；资源冲突进入等待",
         "kind": "parallel_split",
         "dependencies": [
           "F24_N01"
@@ -3711,7 +4461,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "已选择且依赖满足节点",
           "资源等待项"
         ],
-        "evidenceRequirement": "CPU/账号/服务能力按实际容量与用户配置调度；不新增固定并发上限。"
+        "evidenceRequirement": "CPU/账号/服务能力按实际容量与用户配置调度；不新增固定并发上限。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N03",
@@ -3727,7 +4477,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "获准的具体操作",
           "当前控制revision"
-        ]
+        ],
+        "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N04",
@@ -3744,7 +4495,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "执行记录",
           "实际效果/未知状态"
         ],
-        "evidenceRequirement": "读取、模型请求可并行；桌面输入和同资源写入遵守既有锁。"
+        "evidenceRequirement": "读取、模型请求可并行；桌面输入和同资源写入遵守既有锁。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N05",
@@ -3761,7 +4512,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "完成条件证据",
           "未完成项"
         ],
-        "evidenceRequirement": "TaskRuntime决定终态；模型自报、工具受理或取消受理都不等于完成。"
+        "evidenceRequirement": "TaskRuntime决定终态；模型自报、工具受理或取消受理都不等于完成。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N06",
@@ -3778,7 +4529,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "取消已受理",
           "停止信号"
         ],
-        "evidenceRequirement": "直接本地入口不等待云端；拦住尚未开始操作，取消传播到在途请求。"
+        "evidenceRequirement": "直接本地入口不等待云端；拦住尚未开始操作，取消传播到在途请求。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N07",
@@ -3795,7 +4546,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "当前操作未开始",
           "之前已发生效果"
         ],
-        "condition": "当前操作尚未提交"
+        "condition": "当前操作尚未提交",
+        "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N08",
@@ -3812,7 +4564,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "停止中",
           "在途请求身份"
         ],
-        "condition": "请求已提交，尚不能确认停止"
+        "condition": "请求已提交，尚不能确认停止",
+        "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N09",
@@ -3831,7 +4584,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "继续核实或明确结果"
         ],
         "condition": "外部结果未知",
-        "evidenceRequirement": "一次缺失读回不是未执行证明；使用支持的查询/回查及实际期限。"
+        "evidenceRequirement": "一次缺失读回不是未执行证明；使用支持的查询/回查及实际期限。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       },
       {
         "id": "F24_N10",
@@ -3849,7 +4603,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "原效果证据",
           "F03补偿候选"
         ],
-        "condition": "已有实际发生证据"
+        "condition": "已有实际发生证据",
+        "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       },
       {
         "id": "F24_N11",
@@ -3865,7 +4621,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "未知项先核实",
           "可恢复节点"
         ],
-        "condition": "重启、断连或恢复请求"
+        "condition": "重启、断连或恢复请求",
+        "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F24_N12",
@@ -3886,7 +4643,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "完成/停止中/待核实/已发生",
           "需要用户决定的事项"
         ],
-        "evidenceRequirement": "正常等待可静默；重要效果、截止冲击和必须决定的事项主动通知，不能一律隐藏。"
+        "evidenceRequirement": "正常等待可静默；重要效果、截止冲击和必须决定的事项主动通知，不能一律隐藏。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       }
     ],
     "edges": [
@@ -3991,14 +4749,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
-      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
-      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F25",
     "name": "配置、账户、凭据和数据范围",
+    "category": "扩展与系统",
+    "summary": "受信设置、加密凭据、作用域、参数/版本绑定与公开脱敏",
+    "decisionPoints": [
+      "解释配置变更的影响边界（哪些数据属于工作、哪些属于私人）",
+      "在发送云端前对请求载荷进行脱敏与私人关键词前置过滤",
+      "当许可撤销时级联清除相关未执行的临时上下文与缓存引用"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F25_N01",
@@ -4016,7 +4787,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "policyParsed"
-        ]
+        ],
+        "evidenceRequirement": "已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F25_N02",
@@ -4036,7 +4808,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "allowedCategories",
           "bannedCategories"
-        ]
+        ],
+        "evidenceRequirement": "已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F25_N03",
@@ -4055,7 +4833,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "filteredOut",
           "cleanPayloadReady"
         ],
-        "evidenceRequirement": "保留凭据隔离并核对数据范围；本地保存不等于没有内容送往已配置国内云。"
+        "evidenceRequirement": "保留凭据隔离并核对数据范围；本地保存不等于没有内容送往已配置国内云。 已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F25_N04",
@@ -4077,7 +4855,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "accountActive",
           "privateDataBlocked"
-        ]
+        ],
+        "evidenceRequirement": "已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -4098,14 +4877,27 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F26",
     "name": "镜像、部署与比赛验收",
+    "category": "扩展与系统",
+    "summary": "ARM64自有镜像、SWR、精确版本目录/日志、真实API与案例证据",
+    "decisionPoints": [
+      "检查镜像入口点架构与显存/算力配置依赖",
+      "进行端到端语义决策闭环推理（提案生成与工具读回评判）",
+      "在外部 AgentArts 网关不可用时坚决报错等待，严禁静默偷换为无鉴权的本地逻辑"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
+    ],
+    "acceptance": [],
     "nodes": [
       {
         "id": "F26_N01",
@@ -4124,7 +4916,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "imageTag"
-        ]
+        ],
+        "evidenceRequirement": "local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F26_N02",
@@ -4144,7 +4937,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "imageSizeMb",
           "buildDurationSeconds"
-        ]
+        ],
+        "evidenceRequirement": "local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F26_N03",
@@ -4165,7 +4959,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "podRunning",
           "readinessProbe"
         ],
-        "evidenceRequirement": "分别读取实际镜像版本、deployment与健康结果；就绪探针不是语义工具闭环。"
+        "evidenceRequirement": "分别读取实际镜像版本、deployment与健康结果；就绪探针不是语义工具闭环。 local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F26_N04",
@@ -4188,7 +4982,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "toolExecution",
           "evidenceVerified"
         ],
-        "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。"
+        "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。 local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F26_N05",
@@ -4208,7 +5008,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "activeServiceVersion",
           "status"
-        ]
+        ],
+        "evidenceRequirement": "local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -4234,14 +5035,32 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F27",
     "name": "上下文预算、压缩与恢复",
+    "category": "模型与上下文",
+    "summary": "当前任务真实输入、来源slice、版本化摘要/检查点、无截断或明确拒识",
+    "decisionPoints": [
+      "在主指令、当前责任、事实、工具证据和长日志中挑选当前需要内容。",
+      "决定是否压缩、补充检索或恢复被摘要片段，不把摘要当原始证据。",
+      "新来源/任务版本出现时让旧上下文映射失效，并反馈给F28模型适配。"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "不固定扩充一跳；无新信息时不重复同一检索，沿用实际取消和期限。",
+      "本地存储不等于数据不出机：仅把当前已授权上下文送到明确配置的国内服务。"
+    ],
+    "acceptance": [
+      "压缩后能定位原文，事实撤销/修订会让旧映射失效。",
+      "比较不同上下文策略的依据保留、实际Token与延迟，不仅比较摘要长度。"
+    ],
     "nodes": [
       {
         "id": "F27_N01",
@@ -4256,11 +5075,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "可用上下文容量",
           "当前任务/事实版本"
         ],
-        "evidenceRequirement": "不默认固定Token数；服务参数接受与内部思考深度验证分开。"
+        "evidenceRequirement": "不默认固定Token数；服务参数接受与内部思考深度验证分开。 现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F27_N05",
-        "label": "并行召回当前责任、事实与必要工具证据",
+        "label": "独立依赖（默认串行）召回当前责任、事实与必要工具证据",
         "kind": "tool_exec",
         "dependencies": [
           "F27_N01"
@@ -4272,11 +5091,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "原文片段与引用",
           "未知/缺失项"
-        ]
+        ],
+        "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F27_N02",
-        "label": "主模型联合排序上下文并识别缺口",
+        "label": "候选判断联合排序上下文并识别缺口",
         "kind": "semantic_decision",
         "dependencies": [
           "F27_N05"
@@ -4289,7 +5109,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "保留片段",
           "压缩建议",
           "扩充/恢复请求"
-        ]
+        ],
+        "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F27_N03",
@@ -4306,7 +5132,14 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "摘要",
           "原文区段映射"
         ],
-        "condition": "确需压缩且原文可恢复"
+        "condition": "确需压缩且原文可恢复",
+        "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "结构化摘要候选",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F27_N06",
@@ -4323,7 +5156,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "恢复原文",
           "新增依据或无新增标记"
         ],
-        "condition": "存在新证据需求或摘要不足"
+        "condition": "存在新证据需求或摘要不足",
+        "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F27_N04",
@@ -4343,7 +5177,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "保留/压缩原因"
         ],
         "condition": "直接选取或摘要候选已就绪",
-        "evidenceRequirement": "关键指令与有效授权绑定不可被摘要替换；实际容量不足时明确报告。"
+        "evidenceRequirement": "关键指令与有效授权绑定不可被摘要替换；实际容量不足时明确报告。 现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       },
       {
         "id": "F27_N07",
@@ -4360,7 +5195,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "上下文版本",
           "模型能力反馈",
           "可复用片段"
-        ]
+        ],
+        "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -4410,14 +5246,35 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "只重做来源或输入已失效的分支；保留仍有效结果、版本与操作记录。",
-      "取消先传播到本地宿主；已发生副作用保留，未知写入先读回核实。",
-      "截止时间、取消与实际配置贯穿模型及工具；不新增固定轮数、金额或预算限制。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   },
   {
     "id": "F28",
     "name": "多厂商模型、思考深度与主对话分配",
+    "category": "模型与上下文",
+    "summary": "既有主控理解/分派、原生参数、资格判断、未知升级及模型实际来源",
+    "decisionPoints": [
+      "将复合指令拆解为资料调研、深度分析、代码实现三类子任务",
+      "匹配各模型专长（Qwen长文搜集、DeepSeek深入推导、GLM编码）",
+      "核定思考深度偏好（快速/标准/深入），检查厂商适配器兼容性"
+    ],
+    "designNotes": [
+      "当前实现/实测边界：当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填",
+      "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
+      "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。",
+      "只有一个全局语义决策配置；不同执行模型的局部思考/工具选择不成为第二个全局决策层。",
+      "相同主判断已经包含分工时复用；新工具结果改变问题后再调用同一配置。",
+      "同一决策配置可提出独立判断；真实串行/合批能力分别验收；执行者不能改变全局责任、签发授权或决定TaskRuntime终态。",
+      "模型厂商与深度配置入口保留，不新设封锁名单。当前DeepSeek经AgentArts代理（平台后端MaaS如实记录，无客户端直连fallback），执行候选的角色优劣须实测。"
+    ],
+    "acceptance": [
+      "研究和现有上下文分析并行；依赖研究结果的编码必须等待真实前置结果。",
+      "主对话分派记录模型、原生参数映射和任务范围；不支持深度档位不会假装生效。",
+      "执行者的受限工具循环与真实工具/Policy接线分开记录可用性。"
+    ],
     "nodes": [
       {
         "id": "F28_N01",
@@ -4432,11 +5289,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "roles"
-        ]
+        ],
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F28_N02",
-        "label": "Laya从候选中选择模型分工与上下文",
+        "label": "合格Laya/未合格配置执行模型选择模型分工与上下文",
         "kind": "semantic_decision",
         "dependencies": [
           "F28_N01"
@@ -4450,7 +5308,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "能力匹配的模型候选",
           "原生参数/验证强度候选"
         ],
-        "condition": "缺少有效分派建议，或新证据需要重判"
+        "condition": "缺少有效分派建议，或新证据需要重判",
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F28_N03",
@@ -4471,12 +5335,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "analysis",
           "coder"
         ],
-        "condition": "复用有效已有分派建议，或本轮主模型分派完成",
-        "evidenceRequirement": "按实际MaaS/Provider能力映射；不支持的参数明确报告，步骤预算不冒充原生思考深度。"
+        "condition": "复用有效已有分派建议，或本轮候选判断分派完成",
+        "evidenceRequirement": "按实际MaaS/Provider能力映射；不支持的参数明确报告，步骤预算不冒充原生思考深度。 当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "joinMode": "selected"
       },
       {
         "id": "F28_N04",
-        "label": "并行启动独立研究与分析分支",
+        "label": "依赖就绪后串行推进独立研究与分析分支",
         "kind": "parallel_split",
         "dependencies": [
           "F28_N03"
@@ -4485,11 +5350,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F28_N06",
-        "label": "Qwen3-32B：收集与整理资料候选",
+        "label": "配置执行模型3-32B：收集与整理资料候选",
         "kind": "execution_model",
         "dependencies": [
           "F28_N04"
@@ -4500,11 +5366,18 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "inputFields": [],
         "outputFields": [
           "sources"
-        ]
+        ],
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "研究候选",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F28_N07",
-        "label": "DeepSeek-V4-Pro：分析现有上下文",
+        "label": "配置执行模型-V4-Pro：分析现有上下文",
         "kind": "execution_model",
         "dependencies": [
           "F28_N04"
@@ -4517,11 +5390,18 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "analysis"
-        ]
+        ],
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "分析候选",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F28_N08",
-        "label": "GLM-5.2：依据研究结果生成补丁候选",
+        "label": "配置执行模型-5.2：依据研究结果生成补丁候选",
         "kind": "execution_model",
         "dependencies": [
           "F28_N06"
@@ -4534,7 +5414,14 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "outputFields": [
           "patch"
-        ]
+        ],
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "可信ModelGateway配置",
+          "model": "当前已验DeepSeek-V4.1-Flash经AgentArts；其他模型待独立验",
+          "role": "编码候选",
+          "thinkingLevel": "原生参数按provider实际支持；预算不等于思考深度"
+        }
       },
       {
         "id": "F28_N09",
@@ -4549,7 +5436,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "resourceKeys": [],
         "effectType": "读取",
         "inputFields": [],
-        "outputFields": []
+        "outputFields": [],
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F28_N10",
@@ -4566,11 +5454,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "sourcesSupported",
           "tests"
         ],
-        "evidenceRequirement": "独立来源核对与实际行为检查分别记录；模型自报不能充当工具执行证据。"
+        "evidenceRequirement": "独立来源核对与实际行为检查分别记录；模型自报不能充当工具执行证据。 当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F28_N05",
-        "label": "唯一决策模型判断是否需要补查或修订",
+        "label": "既有候选判断判断是否需要补查或修订",
         "kind": "semantic_decision",
         "dependencies": [
           "F28_N10"
@@ -4581,7 +5469,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "inputFields": [],
         "outputFields": [
           "recommendation"
-        ]
+        ],
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
+        "modelAssignment": {
+          "vendor": "受信候选选择",
+          "model": "本机Laya / 未合格DeepSeek经AgentArts",
+          "role": "有限候选选择，领域资格不足必须升级；非授权边界"
+        }
       },
       {
         "id": "F28_N11",
@@ -4596,7 +5490,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "inputFields": [],
         "outputFields": [
           "result"
-        ]
+        ],
+        "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F28_N12",
@@ -4618,7 +5513,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "局部观察与候选"
         ],
         "condition": "该子任务需要本地工具循环",
-        "evidenceRequirement": "复用subagent-host.ts受限工具循环；无需每次工具选择都回到全局模型。授权仍通过原有Policy。"
+        "evidenceRequirement": "复用subagent-host.ts受限工具循环；无需每次工具选择都回到全局模型。授权仍通过原有Policy。 当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
     "edges": [
@@ -4695,9 +5590,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       }
     ],
     "recovery": [
-      "失败只重做受影响节点；保留已有证据与来源版本。",
-      "取消传播至未完成模型与工具请求；已经发生的副作用保留记录。",
-      "需要新信息的语义判断进入下一轮，不与其前置判断盲目合批。"
+      "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
+      "结果未知的写入保留原operation先读回，不换ID重放。",
+      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
     ]
   }
 ];

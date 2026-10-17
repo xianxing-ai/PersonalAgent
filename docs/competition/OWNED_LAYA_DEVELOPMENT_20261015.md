@@ -1,5 +1,8 @@
 # 镜像工作流开发实测与决策阻碍（2026-10-15）
 
+> 历史适用范围（2026-10-15 补注）：下文保留原日期、固定版本及当时的测试/失败记录。后续当前模型、本机 Laya、镜像发布与有限验收以 [当前详细设计](../design/CURRENT_DESIGN_20261015.md)、[V3 实测](TEST_IMAGE_V3.md) 及 [协作者接线](COLLABORATOR_WIRING_PACKAGE.md) 为准；历史“当前/未发布/未验/双人批准”等表述不覆盖后续事实或现行协作规则。
+
+
 目标 Profile：`huawei_ict_agentarts`。实现 PR：[#356](https://github.com/zemeng5208/PersonalAgent/pull/356)。本记录对应已测试的生产源码 `e4c87c1d25514422880f370f939a0a41a8962725`；后续文档提交不改变这次测试对象。
 
 **完整 F20 尚未跑通，新源码尚未发布。** 最新原生 Windows 实测使用真实国内 MaaS 和真实 Laya 权重，但首个工具提案被选择器转入复核，没有执行工具，没有产生工具 Evidence。历史 `fe886677` 的华为云首读取及后续复核仍只属于原版本，见[历史公共记录](evidence/OWNED_LAYA_20261014.json)。本轮可公开摘要另见[开发 Evidence](evidence/OWNED_LAYA_DEVELOPMENT_20261015.json)。

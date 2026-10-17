@@ -13,9 +13,10 @@ function safeFailure(error) {
 /** Host-only explicit capture → ASR → Runtime consumer → playback workflow. */
 export function createDesktopVoiceInputCore({source, microphoneHost, client, createBuffer,
   VoiceSessionManager, createConsumer, createSpeechPorts, onUpdate = () => {},
-  enabled = false, autoPlay = false, inputMode = 'conversation', onTranscript = () => {},
+  enabled = false, autoPlay = false, inputMode = 'conversation', onTranscript = () => {}, readConversationId,
   onTaskSubmitted = () => {}, now = Date.now}) {
   if (!['conversation', 'dictation'].includes(inputMode)) throw Error('无效的语音输入模式');
+  if(readConversationId!==undefined&&typeof readConversationId!=='function')throw Error('语音会话归属读取器无效');
   const ports = createSpeechPorts();
   const manager = new VoiceSessionManager({recognition: ports.recognition, output: ports.output});
   const voiceClient = {async call(operation, payload, options) {
@@ -28,7 +29,9 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
   let lastError = '';
   let lastFailure = null;
   let disposed = false;
+  let releaseUnknown = false;
   const sharedCleanups = new WeakMap();
+  const sharedStarts = new WeakMap();
   const publish = () => { try { onUpdate(); } catch {} };
 
   function recordFailure(stage, error, message = safeFailure(error)) {
@@ -50,6 +53,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
   }
 
   function assertOwner(senderId) {
+    if (releaseUnknown) throw Error('语音资源释放未确认，请重启应用后再启用');
     if (!active || active.senderId !== senderId) throw Error('语音操作来源不受信任');
   }
 
@@ -76,6 +80,9 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
         try { await microphoneHost.revoke(); }
         catch (error) { releaseError ??= error; }
       }
+      // Keep the host busy after a failed release, even once this record is cleared.
+      // Desktop uses hasActive() to guard switching to Wake and Live.
+      if (releaseError) releaseUnknown = true;
       if (active === record) active = undefined;
       publish();
       if (releaseError) throw releaseError;
@@ -87,26 +94,41 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
   async function startCapture(senderId, lease) {
     if (!enabled || disposed) throw Error('语音试用当前不可用');
     if (!Number.isSafeInteger(senderId) || senderId <= 0) throw Error('语音操作来源不受信任');
+    if (releaseUnknown) throw Error('语音资源释放未确认，请重启应用后再启用');
     if (active) throw Error('请先结束当前语音会话');
     if (lease && sharedCleanups.has(lease.signal)) {
-      try {await sharedCleanups.get(lease.signal);} catch {throw Error('共享麦克风资源释放未确认');}
-      if (active) throw Error('请先结束当前语音会话');
+      const waiting = {cancelled: false};
+      const starts = sharedStarts.get(lease.signal) ?? new Set();
+      starts.add(waiting);
+      sharedStarts.set(lease.signal, starts);
+      try {
+        try {await sharedCleanups.get(lease.signal);} catch {throw Error('共享麦克风资源释放未确认');}
+        if (disposed) throw Error('语音试用当前不可用');
+        if (releaseUnknown) throw Error('语音资源释放未确认，请重启应用后再启用');
+        if (waiting.cancelled) throw Error('语音采集已取消');
+        if (active) throw Error('请先结束当前语音会话');
+      } finally {
+        starts.delete(waiting);
+        if (starts.size === 0) sharedStarts.delete(lease.signal);
+      }
     }
     const sharedDeadline = lease ? Date.parse(lease.deadline) : now() + SESSION_MS;
     if (lease && (inputMode !== 'dictation' || !Number.isFinite(sharedDeadline) || sharedDeadline <= now()
       || sharedDeadline > now() + SESSION_MS || !lease.signal || lease.signal.aborted
       || typeof lease.signal.addEventListener !== 'function' || typeof lease.signal.removeEventListener !== 'function'
       || !microphoneHost.snapshot().authorized)) throw Error('共享麦克风租约无效');
+    const conversationId=readConversationId?.();
     if (!lease) microphoneHost.authorize();
     const controller = new AbortController();
     const captureDeadline = new Date(Math.min(now() + CAPTURE_MS, sharedDeadline)).toISOString();
     const sessionDeadline = new Date(sharedDeadline).toISOString();
-    const record = {senderId, controller, captureDeadline, sessionDeadline, phase: 'acquiring', subscription: undefined,
+    const record = {senderId, conversationId,controller, captureDeadline, sessionDeadline, phase: 'acquiring', subscription: undefined,
       buffer: createBuffer({signal: controller.signal, deadline: sessionDeadline, maxDurationMs: CAPTURE_MS}),
-      sessionId: undefined, replyId: undefined, parentSignal: lease?.signal};
+      sessionId: undefined, replyId: undefined, parentSignal: lease?.signal, cancelRequested: false};
     active = record;
     if (record.parentSignal) {
       record.onParentAbort = () => {
+        record.cancelRequested = true;
         record.controller.abort();
         void cleanup(record).catch(error => recordFailure('cleanup', error, '麦克风释放未确认'));
       };
@@ -164,10 +186,15 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
   };
 
   async function cancelSharedCapture(signal) {
+    if (releaseUnknown) throw Error('语音资源释放未确认，请重启应用后再启用');
+    const starts = sharedStarts.get(signal);
+    const cancelledStart = Boolean(starts?.size);
+    for (const waiting of starts ?? []) waiting.cancelled = true;
     if (!active || active.parentSignal !== signal) {
       await sharedCleanups.get(signal);
-      return {cancelled: false};
+      return {cancelled: cancelledStart};
     }
+    active.cancelRequested = true;
     await cleanup(active);
     return {cancelled: true};
   }
@@ -200,10 +227,12 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
         });
         if (record.controller.signal.aborted || active !== record) throw Error('语音输入已取消');
         await cleanup(record);
-        if (record.parentSignal && (record.parentSignal.aborted || now() >= Date.parse(record.sessionDeadline))) {
+        // Normal cleanup also aborts the controller; explicit cancellation is separate.
+        if (disposed || record.cancelRequested || record.parentSignal?.aborted
+          || now() >= Date.parse(record.sessionDeadline)) {
           throw Object.assign(Error('语音输入已取消'), {code: 'CANCELLED'});
         }
-        onTranscript({senderId, text});
+        onTranscript({senderId, text,...(record.conversationId===undefined?{}:{conversationId:record.conversationId,dictationId:record.sessionId+':'+transcript.transcriptId})});
         return {text, voice: snapshot()};
       }
       record.phase = 'consuming';
@@ -217,12 +246,15 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       publish();
     } catch (error) {
       clip?.data.fill(0);
-      recordFailure(stage, error, stage === 'pcm_release' ? '麦克风释放未确认' : safeFailure(error));
+      let failureMessage = stage === 'pcm_release' ? '麦克风释放未确认' : safeFailure(error);
+      recordFailure(stage, error, failureMessage);
       try { await cleanup(record); } catch (releaseError) {
+        failureMessage = '麦克风释放未确认';
         recordFailure(stage === 'pcm_release' ? 'pcm_release' : 'cleanup',
-          releaseError, '麦克风释放未确认');
+          releaseError, failureMessage);
       }
-      throw Error(lastError);
+      // A concurrent successful cancel can clear the shared UI error while cleanup settles.
+      throw Error(failureMessage);
     }
     return autoPlay ? playReply(senderId) : snapshot();
   }
@@ -265,6 +297,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
   async function cancelCapture(senderId) {
     assertOwner(senderId);
     const record = active;
+    record.cancelRequested = true;
     record.phase = 'cancelling';
     publish();
     try { await cleanup(record); }
@@ -286,5 +319,5 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
 
   return {snapshot, beginCapture, finishCapture, playReply, stopSpeaking, cancelCapture, dispose,
     beginSharedCapture, cancelSharedCapture, subscribePlayback: listener => manager.subscribe(listener),
-    hasActive: () => Boolean(active)};
+    hasActive: () => Boolean(active || releaseUnknown)};
 }

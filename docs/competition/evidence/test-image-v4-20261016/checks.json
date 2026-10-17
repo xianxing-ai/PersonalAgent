@@ -1,0 +1,372 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "recordedAtUtc": "2026-10-16T07:22:34.841Z",
+  "sourceRevision": "d83e6c4c04c57cdeb5ffbb06aecf2a3b86bf6d79",
+  "fullGateSource": "058e0df7",
+  "upstreamMain": "c4909b0b6566404db27aa16ac6e5659ac17d8ac5",
+  "productIdentity": [
+    {
+      "path": "apps",
+      "tested": "6f85d775bc0980c6e048a1655283240863c92e4b",
+      "current": "6f85d775bc0980c6e048a1655283240863c92e4b"
+    },
+    {
+      "path": "packages",
+      "tested": "3b1dd8d5d571f678d6cc73c47285304809f74b57",
+      "current": "3b1dd8d5d571f678d6cc73c47285304809f74b57"
+    },
+    {
+      "path": "package.json",
+      "tested": "2bcede3595908d112c99a38b019a5c6753e9160c",
+      "current": "2bcede3595908d112c99a38b019a5c6753e9160c"
+    },
+    {
+      "path": "package-lock.json",
+      "tested": "8d75b42c344f6fda3c5de6b1c3060b9da0c71160",
+      "current": "8d75b42c344f6fda3c5de6b1c3060b9da0c71160"
+    }
+  ],
+  "checks": [
+    {
+      "exitCode": 0,
+      "startedAtUtc": "2026-10-16T06:25:15.1483814Z",
+      "finishedAtUtc": "2026-10-16T06:25:16.9932088Z",
+      "logSha256": "566eb5b24e24a2337e4f728f9116a2e5a55035a9f2e728dfd77485defb12d992",
+      "wallMs": 1752.3742,
+      "log": "logs/v4-coordination-text-build.txt",
+      "stage": "v4-coordination-text-build",
+      "rawLogSha256": "aa3c98c7d0caf3358247ca820ba3fe6e39b7183ee5d2b2afd25d1bacaea5a782",
+      "projectedLogSha256": "566eb5b24e24a2337e4f728f9116a2e5a55035a9f2e728dfd77485defb12d992",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "wallMs": 2040.2049,
+      "finishedAtUtc": "2026-10-16T06:25:34.1560389Z",
+      "stage": "v4-coordination-tests",
+      "exitCode": 0,
+      "startedAtUtc": "2026-10-16T06:25:32.0074234Z",
+      "logSha256": "41497f1c987c6d97d36590a60a929dd4aeaf7a81847e0f0dab48cb651d5e3ca7",
+      "log": "logs/v4-coordination-tests.txt",
+      "rawLogSha256": "f0e7ebb8f860ddc5a98d47ff492fcd44c5b530f3e33dbb203e9da2f1495a2bb7",
+      "projectedLogSha256": "41497f1c987c6d97d36590a60a929dd4aeaf7a81847e0f0dab48cb651d5e3ca7",
+      "summary": {
+        "runners": 1,
+        "tests": 150,
+        "pass": 150,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "log": "logs/v4-integrated-full-check.txt",
+      "startedAtUtc": "2026-10-16T06:29:33.6264669Z",
+      "exitCode": 1,
+      "stage": "v4-integrated-full-check",
+      "finishedAtUtc": "2026-10-16T06:35:28.4724730Z",
+      "logSha256": "5da321c427f195002ced151a17896ba554c1bb6f4de14ca112a06748ebf3852d",
+      "wallMs": 354719.7276,
+      "rawLogSha256": "ddb77d217c6e816b1988d6fdbc3385f7901d946d761025ca8a0b1178e4bb90ca",
+      "projectedLogSha256": "5da321c427f195002ced151a17896ba554c1bb6f4de14ca112a06748ebf3852d",
+      "summary": {
+        "runners": 36,
+        "tests": 3579,
+        "pass": 3554,
+        "fail": 5,
+        "skipped": 20,
+        "cancelled": 0
+      }
+    },
+    {
+      "finishedAtUtc": "2026-10-16T06:36:25.6979246Z",
+      "stage": "v4-manual-harness-regressions",
+      "exitCode": 1,
+      "startedAtUtc": "2026-10-16T06:36:19.1116312Z",
+      "logSha256": "3677b5b80e48c998d8022beb2388f293d5eaa6d045a2320db0a6c3edc24dd121",
+      "log": "logs/v4-manual-harness-regressions.txt",
+      "wallMs": 6491.247,
+      "rawLogSha256": "b91696d5b72b1bd02e96d6f2a6ced17c1c6f09bb487fd67e1a0a8fdcf882c007",
+      "projectedLogSha256": "3677b5b80e48c998d8022beb2388f293d5eaa6d045a2320db0a6c3edc24dd121",
+      "summary": {
+        "runners": 1,
+        "tests": 67,
+        "pass": 63,
+        "fail": 3,
+        "skipped": 1,
+        "cancelled": 0
+      }
+    },
+    {
+      "wallMs": 3479.2669,
+      "exitCode": 0,
+      "logSha256": "36038efa71a89aba5ed722a6fbb46019931198de1d2407713aae391be66ca7ef",
+      "log": "logs/v4-wukong-stdout-encoding-regression.txt",
+      "stage": "v4-wukong-stdout-encoding-regression",
+      "startedAtUtc": "2026-10-16T06:37:29.1849930Z",
+      "finishedAtUtc": "2026-10-16T06:37:32.6764073Z",
+      "rawLogSha256": "b8679075b87f3e0d0f49c4b3ac8bb051409eace99b4d43fbeb5e8680e5dd0141",
+      "projectedLogSha256": "36038efa71a89aba5ed722a6fbb46019931198de1d2407713aae391be66ca7ef",
+      "summary": {
+        "runners": 1,
+        "tests": 9,
+        "pass": 9,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "log": "logs/v4-desktop-runtime-application-smoke.txt",
+      "stage": "v4-desktop-runtime-application-smoke",
+      "finishedAtUtc": "2026-10-16T06:37:47.3588985Z",
+      "logSha256": "e7c541e40f613105e7a77a9d52d624f5515263dc7a533a2c4ac0568b801880bf",
+      "wallMs": 551.9871,
+      "startedAtUtc": "2026-10-16T06:37:46.7101080Z",
+      "exitCode": 1,
+      "rawLogSha256": "6ccdadef352ee825a3ef56593f014ad3d3c6d81e498ff0d1b97625545e6c4540",
+      "projectedLogSha256": "e7c541e40f613105e7a77a9d52d624f5515263dc7a533a2c4ac0568b801880bf",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "exitCode": 1,
+      "log": "logs/v4-desktop-runtime-smoke-with-own-dependency.txt",
+      "wallMs": 31941.6107,
+      "stage": "v4-desktop-runtime-smoke-with-own-dependency",
+      "startedAtUtc": "2026-10-16T06:38:51.6836989Z",
+      "finishedAtUtc": "2026-10-16T06:39:23.6342231Z",
+      "logSha256": "af3380cca46653a39cd3f33f6d1e2979585b50d9d31a4116b88c69b81071ad0e",
+      "rawLogSha256": "e9b1e6303fa9b0483260f44c4e0d9a6f332ca86dd2de4820c5932b23824176b7",
+      "projectedLogSha256": "af3380cca46653a39cd3f33f6d1e2979585b50d9d31a4116b88c69b81071ad0e",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "logSha256": "e9d2ecc54e2fbadc238074a854475a843061126f24d89cec42375b6c03ff83b1",
+      "log": "logs/v4-integrated-full-check-final.txt",
+      "finishedAtUtc": "2026-10-16T06:48:51.1500646Z",
+      "startedAtUtc": "2026-10-16T06:42:51.9214763Z",
+      "stage": "v4-integrated-full-check-after-consumer-fixes",
+      "wallMs": 359185.068,
+      "exitCode": 0,
+      "rawLogSha256": "149c84e55aca07a76a13630a31dc24a545f73c508585cc486781c0772f2eb7a2",
+      "projectedLogSha256": "e9d2ecc54e2fbadc238074a854475a843061126f24d89cec42375b6c03ff83b1",
+      "summary": {
+        "runners": 37,
+        "tests": 3628,
+        "pass": 3608,
+        "fail": 0,
+        "skipped": 20,
+        "cancelled": 0
+      }
+    },
+    {
+      "log": "logs/v4-manual-harness-with-python.txt",
+      "startedAtUtc": "2026-10-16T06:49:45.5902818Z",
+      "logSha256": "66d133ffab14a1c9d7ecf21d9abbdd8336947123020f9bc931040652e99b306b",
+      "exitCode": 0,
+      "finishedAtUtc": "2026-10-16T06:49:58.9840341Z",
+      "wallMs": 13291.213,
+      "stage": "v4-manual-harness-with-explicit-python",
+      "rawLogSha256": "880100fb9dbb195c3cf25a9fbfea73c034dfd98a620002ef6575d93d30b1e594",
+      "projectedLogSha256": "66d133ffab14a1c9d7ecf21d9abbdd8336947123020f9bc931040652e99b306b",
+      "summary": {
+        "runners": 1,
+        "tests": 67,
+        "pass": 67,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "logSha256": "5b86622344b2d02e3c56a58cfd63520cc8c914f60e3489a284769f9dac12b3e7",
+      "startedAtUtc": "2026-10-16T06:50:22.4443975Z",
+      "stage": "v4-local-arm64-image-build",
+      "exitCode": 0,
+      "finishedAtUtc": "2026-10-16T06:50:43.1553320Z",
+      "wallMs": 20612.5542,
+      "log": "logs/v4-local-arm64-image-build.txt",
+      "rawLogSha256": "408e05e633f74960fd2c9f865deab40a9022b4ca482cd21e9cb3760b3587b66e",
+      "projectedLogSha256": "5b86622344b2d02e3c56a58cfd63520cc8c914f60e3489a284769f9dac12b3e7",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "finishedAtUtc": "2026-10-16T06:53:05.4955174Z",
+      "log": "logs/v4-real-wukong-main-shadow.txt",
+      "logSha256": "5f0a1e12f4e95d3a04c1e424a13ca22ca84f25c22f70614adcb5a57742a57cbc",
+      "wallMs": 9485.6774,
+      "stage": "v4-real-wukong-main-shadow",
+      "exitCode": 1,
+      "startedAtUtc": "2026-10-16T06:52:55.9743236Z",
+      "rawLogSha256": "5ef6890b7d2b670fb516eff12e38563dbe7155b4f4fc7d62f0309851fcd1d982",
+      "projectedLogSha256": "5f0a1e12f4e95d3a04c1e424a13ca22ca84f25c22f70614adcb5a57742a57cbc",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "stage": "v4-real-wukong-validated-assets",
+      "startedAtUtc": "2026-10-16T06:54:25.7450671Z",
+      "logSha256": "3b987747e1072199c16c1f4284f03e36baf53a3a54a25609df12b9b0cacef581",
+      "exitCode": -1073740791,
+      "wallMs": 15474.9207,
+      "log": "logs/v4-real-wukong-validated-assets.txt",
+      "finishedAtUtc": "2026-10-16T06:54:41.3235472Z",
+      "rawLogSha256": "ccae1b1b3fac05efe59b7d6fa2eff666455c8edec2991e302f89a70974bfdf29",
+      "projectedLogSha256": "3b987747e1072199c16c1f4284f03e36baf53a3a54a25609df12b9b0cacef581",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "logSha256": "45c21dc8de4f2e9dae8bdb49efd69be5a1ab5168af439eb5afcf6c403463f736",
+      "wallMs": 343205.6344,
+      "startedAtUtc": "2026-10-16T06:57:54.3186104Z",
+      "stage": "v4-real-wukong-after-startup-probe",
+      "exitCode": 1,
+      "log": "logs/v4-real-wukong-after-startup-probe.txt",
+      "finishedAtUtc": "2026-10-16T07:03:37.6288537Z",
+      "rawLogSha256": "91fc90b160954ab066921ef96d6966cdced0c825281b9385f43a58c99c41ab22",
+      "projectedLogSha256": "45c21dc8de4f2e9dae8bdb49efd69be5a1ab5168af439eb5afcf6c403463f736",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "logSha256": "7b2f4d6ac0933a3bceb8d6aabd23ae1da1d5cdc8c6853018d89c58c446efdbca",
+      "log": "logs/v4-manual-harness-identical-artifacts.txt",
+      "finishedAtUtc": "2026-10-16T07:06:16.6622963Z",
+      "wallMs": 12209.9077,
+      "exitCode": 0,
+      "startedAtUtc": "2026-10-16T07:06:04.4421084Z",
+      "stage": "v4-manual-harness-identical-artifact-regressions",
+      "rawLogSha256": "411f9d68bcace8390330a1052c725e41d3d1c6db5ac8fedc67e3649cc5ece437",
+      "projectedLogSha256": "7b2f4d6ac0933a3bceb8d6aabd23ae1da1d5cdc8c6853018d89c58c446efdbca",
+      "summary": {
+        "runners": 1,
+        "tests": 68,
+        "pass": 68,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "exitCode": 1,
+      "wallMs": 66477.6531,
+      "finishedAtUtc": "2026-10-16T07:08:09.6257565Z",
+      "stage": "v4-real-pelican-main-shadow",
+      "logSha256": "dc95573f79f750c363221b6aee710d191687b26728446040edd91f722b0b6ea6",
+      "log": "logs/v4-real-pelican-main-shadow.txt",
+      "startedAtUtc": "2026-10-16T07:07:03.1101443Z",
+      "rawLogSha256": "8bee064ececa556cbe98cc23ad6aa1faf7a45d6b8babe41408ba87cb02d1012a",
+      "projectedLogSha256": "dc95573f79f750c363221b6aee710d191687b26728446040edd91f722b0b6ea6",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "log": "logs/v4-real-wukong-identical-delivery.txt",
+      "finishedAtUtc": "2026-10-16T07:16:09.9993401Z",
+      "startedAtUtc": "2026-10-16T07:10:38.5254757Z",
+      "exitCode": 0,
+      "wallMs": 331371.0609,
+      "stage": "v4-real-wukong-identical-delivery",
+      "logSha256": "bce5de829bb6d90ea28abf40fe30cd6b65d1133084174ef5cd78e7833e23e03d",
+      "rawLogSha256": "280710191ee1e148be9bd3bd41e99921547ca829a52dedd653fa9668970a32a4",
+      "projectedLogSha256": "bce5de829bb6d90ea28abf40fe30cd6b65d1133084174ef5cd78e7833e23e03d",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    },
+    {
+      "wallMs": 200483.8852,
+      "log": "logs/v4-real-pelican-independent-repeat.txt",
+      "finishedAtUtc": "2026-10-16T07:20:26.6428746Z",
+      "startedAtUtc": "2026-10-16T07:17:06.0469150Z",
+      "exitCode": 0,
+      "logSha256": "6966ec6f52d74b7a0f2b871c5e3b1064ba7582b25a2c0ecd990a3e46b57c9251",
+      "stage": "v4-real-pelican-independent-repeat",
+      "rawLogSha256": "964a372d4df00e48378af657420872fc187e67b271ddb5d669bcb4d1c82fee7c",
+      "projectedLogSha256": "6966ec6f52d74b7a0f2b871c5e3b1064ba7582b25a2c0ecd990a3e46b57c9251",
+      "summary": {
+        "runners": 0,
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      }
+    }
+  ],
+  "desktop": {
+    "file": "logs/desktop-local-legacy-smoke.txt",
+    "rawSha256": "842199c6fb8ba0f60392ce118da1b39e9ad8e5791287fce1e6b892f867aa1887",
+    "projectedSha256": "311990e0c40b3d7d6a39f0473505193daa0506902dc665158e2ecc17379cf9d4",
+    "projection": "Implementation/toolchain/user path prefixes; public logs normalized to LF without trailing whitespace",
+    "result": "PASS: local Runtime Application desktop acceptance (7 model requests, 2 cancelled)",
+    "profile": "local legacy regression only",
+    "startedAtUtc": null,
+    "wallMs": null
+  },
+  "boundaries": {
+    "architectureFinalized": false,
+    "realDeviceAcceptance": false,
+    "realAccountAcceptance": false,
+    "cloudRuntimeFullWorkflowVerified": false
+  },
+  "publicLogProjection": "Implementation/toolchain/user path prefixes; LF line endings, trailing whitespace and excess final blank lines removed. Raw log SHA remains separate."
+}

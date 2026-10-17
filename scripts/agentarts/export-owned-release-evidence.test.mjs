@@ -39,6 +39,42 @@ test('new Laya window telemetry preserves exact counts and queue wait; old missi
   }
 });
 
+test('sequential telemetry preserves distinct actual forwards under one HTTP batch and rejects forged forward metadata',()=>{
+  const batchId='11111111-2222-4333-8444-555555555555';
+  const records=[1,2].map(index=>projectOwnedLayaTokenTelemetry({batchId,batchSize:1,submittedBatchSize:2,
+    executionPolicy:'sequential',forwardId:`11111111-2222-4333-8444-55555555555${index}`,
+    forwardIndex:index,forwardCount:2,sharedForwardScope:'sdk_heterogeneous_forward',inferenceMetrics:{forwardMs:25}}));
+  assert.equal(new Set(records.map(item=>item.batchId)).size,1);
+  assert.equal(new Set(records.map(item=>item.forwardId)).size,2);
+  assert.deepEqual(records.map(item=>item.forwardIndex),[1,2]);
+  assert.ok(records.every(item=>item.executionPolicy==='sequential'&&item.forwardCount===2&&!Object.hasOwn(item,'sharedForwardScope')));
+  assert.equal(JSON.stringify(records).includes('forwardMs'),false);
+  const packed={batchId,batchSize:2,submittedBatchSize:2,executionPolicy:'packed',forwardId:batchId,forwardIndex:1,forwardCount:1};
+  assert.equal(projectOwnedLayaTokenTelemetry(packed).forwardId,batchId);
+  for(const changed of [{forwardId:'secret arbitrary string'},{forwardIndex:0},{forwardIndex:2},{forwardCount:3},
+    {executionPolicy:'untrusted'},{forwardCount:2},{executionPolicy:'sequential'}]) {
+    const invalid=projectOwnedLayaTokenTelemetry({...packed,...changed});
+    assert.equal(Object.hasOwn(invalid,'forwardId'),false);assert.equal(Object.hasOwn(invalid,'executionPolicy'),false);
+  }
+});
+
+test('preparation timing stays HTTP-scoped and precheck scope is explicit, never inferred from old logs',()=>{
+  const batchId='11111111-2222-4333-8444-555555555555';
+  const record={batchId,batchSize:1,submittedBatchSize:2,
+    preparationMetrics:{scope:'http_batch_preparation',batchId,wallMs:3,processCpuMs:2,privateText:'never export'},
+    inferenceMetrics:{precheckScope:'forward_group_collation',forwardScope:'sdk_independent_sequential_forward',forwardMs:10}};
+  const value=projectOwnedLayaTokenTelemetry(record);
+  assert.deepEqual(value.preparationMetrics,{scope:'http_batch_preparation',batchId,wallMs:3,processCpuMs:2});
+  assert.equal(value.precheckScope,'forward_group_collation');assert.equal(value.forwardScope,'sdk_independent_sequential_forward');
+  assert.equal(JSON.stringify(value).includes('never export'),false);assert.equal(Object.hasOwn(value,'inferenceMetrics'),false);
+  assert.equal(Object.hasOwn(projectOwnedLayaTokenTelemetry({inferenceMetrics:{precheckMs:10}}),'precheckScope'),false);
+  for(const changed of [{scope:'guessed'},{batchId:'00000000-0000-4000-8000-000000000000'},
+    {wallMs:-1},{processCpuMs:Infinity}]) {
+    assert.equal(Object.hasOwn(projectOwnedLayaTokenTelemetry({...record,
+      preparationMetrics:{...record.preparationMetrics,...changed}}),'preparationMetrics'),false);
+  }
+});
+
 const metadata={schemaVersion:1,sourceRevision:'f'.repeat(40),indexDigest:'sha256:'+'1'.repeat(64),arm64Digest:'sha256:'+'2'.repeat(64),
   imageReference:'swr.cn-southwest-2.myhuaweicloud.com/public/owned:laya-preview',cpuTorchVersion:'2.14.0+cpu',
   layaModelRevision:'5'.repeat(40),layout:'single-arm64-manifest',imageValidationEnvironment:'local-qemu-arm64'};

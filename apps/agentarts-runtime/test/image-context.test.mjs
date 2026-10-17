@@ -55,11 +55,14 @@ test('actual image-context script isolates fixed-clock concurrent builds and pre
     assert.ok(manifest.files.includes('Dockerfile'));assert.ok(manifest.files.includes('packages/contracts/dist/index.js'));
     assert.ok(manifest.files.some(f=>f.startsWith('packages/contracts/schema/')));
     assert.ok(manifest.files.includes('apps/agentarts-runtime/src/server.mjs'));
-    assert.ok(manifest.files.includes('assets/laya/multilingual/model.safetensors'));
-    assert.equal(manifest.laya.revision,'a'.repeat(40));assert.equal(manifest.laya.files.length,5);
+    assert.ok(!manifest.files.some(file=>file.startsWith('assets/')||file.startsWith('scripts/laya/')));
+    assert.deepEqual(manifest.decision,{location:'local_runtime',tool:'decision.choose_candidate',execution:'sequential'});
+    assert.deepEqual(manifest.pythonDependencies,[]);
     assert.equal(await readFile(path.join(result.context,'Dockerfile'),'utf8'),await readFile(path.join(app,'Dockerfile'),'utf8'));
     const packageJson=JSON.parse(await readFile(path.join(result.context,'package.json'),'utf8'));
     assert.deepEqual(packageJson.workspaces,workspaces);
+    for(const relative of workspaces)assert.equal(await readFile(path.join(result.context,'dependency-manifests',relative,'package.json'),'utf8'),
+      await readFile(path.join(result.context,relative,'package.json'),'utf8'));
     const lock=JSON.parse(await readFile(path.join(result.context,'package-lock.json'),'utf8'));
     const sourceLock=JSON.parse(await readFile(path.join(fixture,'package-lock.json'),'utf8'));
     for(const [name,entry] of Object.entries(lock.packages)) {

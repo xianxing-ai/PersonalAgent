@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "github_release_asset_readback",
+  "recordedAtUtc": "2026-10-16T05:11:26.6285268Z",
+  "release": {
+    "id": 414539774,
+    "tag": "agentarts-preview-local-laya-v3-244ca434",
+    "url": "https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-local-laya-v3-244ca434",
+    "draft": false,
+    "prerelease": true,
+    "publishedAtUtc": "2026-10-16T04:41:45Z",
+    "tagCommit": "abb70879d5eb8c41451b89570978e2f454d4b93f"
+  },
+  "asset": {
+    "id": 646208632,
+    "name": "PersonalAgent-Test-V3-20261016-050438.zip",
+    "state": "uploaded",
+    "bytes": 92606006,
+    "downloadUrl": "https://github.com/zemeng5208/PersonalAgent/releases/download/agentarts-preview-local-laya-v3-244ca434/PersonalAgent-Test-V3-20261016-050438.zip",
+    "githubDigest": "sha256:7e6d1f4e158c8348561a3576761d186b4702df803edb3032a0cbdeddf5646f15",
+    "localSha256": "7e6d1f4e158c8348561a3576761d186b4702df803edb3032a0cbdeddf5646f15",
+    "digestMatchesLocal": true,
+    "uploadedAtUtc": "2026-10-16T05:06:06Z"
+  },
+  "verification": {
+    "method": "GitHub release API asset readback matched against independently validated local archive",
+    "archiveReceipt": "test-kit.json",
+    "sourceSnapshotCommit": "79e19f440a166be5d7bedd8c5203885bbbd7b1fa",
+    "sourceDirty": false,
+    "sourceFilesVerified": 1509,
+    "outerArtifactsVerified": 4,
+    "viewerOfflineHtmlSha256": "dfe9e80f3908ee8cc9cc77f07dc0e764f06646fca7bb9b8eb2c68556f9e4dcf5",
+    "postPublicationReceiptIncludedInArchive": false
+  },
+  "previousPublicationEvidence": "handoff-publication.json",
+  "boundaries": [
+    "The existing image-release tag remains at abb70879; this newer source snapshot has its own commit and file hashes.",
+    "The original Node design viewer is included; its validation does not add model, device or 28-business-chain acceptance.",
+    "The ARM64 image was exported unchanged; no image rebuild, SWR push or runtime redeploy occurred.",
+    "The older public bundle and its immutable readback remain available.",
+    "Latest metadata and this post-upload receipt are recorded after packaging, not represented as contents of the earlier snapshot."
+  ]
+}

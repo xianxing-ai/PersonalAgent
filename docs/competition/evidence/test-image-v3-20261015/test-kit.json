@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 2,
+  "kind": "verified_local_handoff_bundle",
+  "recordedAtUtc": "2026-10-16T05:11:26.6375578Z",
+  "bundle": {
+    "file": "PersonalAgent-Test-V3-20261016-050438.zip",
+    "downloadUrl": "https://github.com/zemeng5208/PersonalAgent/releases/download/agentarts-preview-local-laya-v3-244ca434/PersonalAgent-Test-V3-20261016-050438.zip",
+    "bytes": 92606006,
+    "sha256": "7e6d1f4e158c8348561a3576761d186b4702df803edb3032a0cbdeddf5646f15"
+  },
+  "release": {
+    "publicationStateSource": "GitHub Release asset readback, separate from packaging validation",
+    "readbackEvidence": "handoff-publication-latest.json",
+    "tag": "agentarts-preview-local-laya-v3-244ca434",
+    "url": "https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-local-laya-v3-244ca434"
+  },
+  "kit": {
+    "wukongStatus": "verified_main_shadow_and_delivery",
+    "all28BusinessChainsVerified": false,
+    "sourceDirty": false,
+    "sourceCommit": "79e19f440a166be5d7bedd8c5203885bbbd7b1fa",
+    "artifacts": [
+      {
+        "bytes": 248399,
+        "file": "build-context.zip",
+        "sha256": "e4361c10d242141241e7719f9da95c1eedd9b19b686cc807b0d1048d8d6a5ba1"
+      },
+      {
+        "bytes": 87059968,
+        "file": "personal-agent-test-v3-arm64.tar",
+        "sha256": "13ac31fc27e85a224096a123faa3a3e163931e695540575f314b831f8e9fd2a4"
+      },
+      {
+        "bytes": 6067264,
+        "file": "PersonalAgent-source.zip",
+        "sha256": "5112a42683048338197159d07ad92551022e8d280853b17a5276fcc8a26f9163"
+      },
+      {
+        "bytes": 19108,
+        "file": "RUN.md",
+        "sha256": "7e1d8c49bd81e6712ebbb3ede046507b0f35a1ec92a340d9b8cb97ebf5b65119"
+      }
+    ],
+    "sourceFileCount": 1509,
+    "pelicanStatus": "verified_main_shadow_and_delivery",
+    "image": "personal-agent:test-v3-final-local-laya",
+    "localLayaWeightsIncluded": false,
+    "imageId": "sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1",
+    "verificationSource": "docs/competition/evidence/test-image-v3-20261015/full-workflow-results.json",
+    "packagingDoesNotPublish": true,
+    "schemaVersion": 1,
+    "architecture": "arm64",
+    "createdAtUtc": "2026-10-16T05:04:45.959608Z",
+    "architectureFinalized": false,
+    "publicationEvidence": "docs/competition/evidence/test-image-v3-20261015/owned-release.json"
+  },
+  "archiveValidation": {
+    "sourceCommit": "79e19f440a166be5d7bedd8c5203885bbbd7b1fa",
+    "sourceScope": "Git-listed working-tree bytes with per-file SHA; latest test-kit metadata excluded to avoid archive self-reference",
+    "sourceFileHashesVerified": 1509,
+    "sourceDirty": false,
+    "imageNotRebuilt": true,
+    "outerArtifactHashesVerified": 4,
+    "metadataFileExcludedFromSource": true,
+    "viewerOfflineHtmlSha256": "dfe9e80f3908ee8cc9cc77f07dc0e764f06646fca7bb9b8eb2c68556f9e4dcf5",
+    "modelCalls": 0
+  }
+}

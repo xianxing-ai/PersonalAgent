@@ -15,15 +15,15 @@ function choiceResult(payload,index=0,scope='sdk_predict_batch') {
 const contextOf=payload=>JSON.parse(payload.state.split('\n')[1]);
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 
-test('F28 parallel frontier submits one independent batch and binds different candidate sets to their own nodes',async()=>{
-  const template=getOwnedWorkflowTemplate('F28');let inFlight=0,peak=0,arrivals=0,release,fakeForwardCalls=0;
-  const barrier=new Promise(resolve=>release=resolve),posted=[],decisions=[];
-  const selector=createOwnedLayaSelector({port:8123,getApiKey:()=> 'synthetic-loopback-key',
+test('F28 serial frontier preserves separate candidate identities and does not pack independent branches',async()=>{
+  const template=getOwnedWorkflowTemplate('F28');let inFlight=0,peak=0,arrivals=0,fakeForwardCalls=0;
+  const posted=[],decisions=[];
+  const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-loopback-key',
     onDecision:receipt=>decisions.push(receipt),request:async(url,options)=>{
       const payload=JSON.parse(options.body),pathname=new URL(url).pathname;posted.push({pathname,payload});
       inFlight++;peak=Math.max(peak,inFlight);fakeForwardCalls++;
       await new Promise(resolve=>setTimeout(resolve,5));inFlight--;
-      if(pathname==='/v1/systemone')return Response.json(choiceResult(payload));
+      if(pathname==='/v1/systemone')return Response.json(choiceResult(payload,contextOf(payload).nodeId==='F28_N06'?1:0));
       assert.equal(pathname,'/v1/systemone/independent-batch');assert.match(payload.batchId,uuid);assert.equal(payload.items.length,2);
       const items=payload.items.map(item=>{
         assert.match(item.itemId,uuid);assert.notEqual(item.itemId,'synthetic-request');
@@ -38,7 +38,7 @@ test('F28 parallel frontier submits one independent batch and binds different ca
       read:async()=>({state:'completed',value:{fixture:'synthetic native model configuration'}}),
       condition:async context=>['F28_N02','F28_N03'].includes(context.node.id)?'selected':'skipped'},
     prepareCandidates:async context=>{
-      if(['F28_N06','F28_N07'].includes(context.node.id)) {arrivals++;if(arrivals===2)release();await barrier;}
+      if(['F28_N06','F28_N07'].includes(context.node.id)) arrivals++;
       if(context.node.id==='F28_N06')return [
         {id:'research-first',description:'Synthetic first research candidate',value:{branch:'research',selection:'first'}},
         {id:'research-second',description:'Synthetic second research candidate',value:{branch:'research',selection:'second'}},
@@ -55,12 +55,11 @@ test('F28 parallel frontier submits one independent batch and binds different ca
   for(let step=0;step<3;step++)last=await runtime.advance({...request,checkpoint:last.checkpoint});
   assert.equal(last.nodes.F28_N04.state,'completed');const before={http:posted.length,forwards:fakeForwardCalls};
   last=await runtime.advance({...request,checkpoint:last.checkpoint});
-  assert.equal(arrivals,2);assert.equal(peak,1);assert.equal(fakeForwardCalls-before.forwards,1);
-  const frontierPosts=posted.slice(before.http);assert.equal(frontierPosts.length,1);
-  const batch=frontierPosts[0];assert.equal(batch.pathname,'/v1/systemone/independent-batch');
-  const items=new Map(batch.payload.items.map(item=>[contextOf(item).nodeId,item]));
+  assert.equal(arrivals,2);assert.equal(peak,1);assert.equal(fakeForwardCalls-before.forwards,2);
+  const frontierPosts=posted.slice(before.http);assert.equal(frontierPosts.length,2);
+  assert.ok(frontierPosts.every(post=>post.pathname==='/v1/systemone'));
+  const items=new Map(frontierPosts.map(item=>[contextOf(item.payload).nodeId,item.payload]));
   assert.deepEqual(new Set(items.keys()),new Set(['F28_N06','F28_N07']));
-  assert.notEqual(items.get('F28_N06').itemId,items.get('F28_N07').itemId);
   assert.equal(Object.keys(items.get('F28_N06').questions.decision.criteria).length,3);
   assert.equal(Object.keys(items.get('F28_N07').questions.decision.criteria).length,2);
   assert.equal(items.get('F28_N06').state.includes('analysis-only'),false);
@@ -68,9 +67,9 @@ test('F28 parallel frontier submits one independent batch and binds different ca
   assert.deepEqual(last.nodes.F28_N06.value,{branch:'research',selection:'second'});
   assert.deepEqual(last.nodes.F28_N07.value,{branch:'analysis',selection:'only'});
   assert.equal(last.nodes.F28_N08.state,'pending');assert.equal(last.verification,'unverified');
-  const batchDecisions=decisions.filter(receipt=>receipt.batchId===batch.payload.batchId);
+  const batchDecisions=decisions.slice(-2);
   assert.equal(batchDecisions.length,2);
-  assert.ok(batchDecisions.every(receipt=>receipt.batchSize===2&&receipt.sharedForwardScope==='sdk_heterogeneous_forward'));
+  assert.ok(batchDecisions.every(receipt=>receipt.batchSize===1&&!receipt.sharedForwardScope));
 });
 
 test('an isolated choice preserves the single-state endpoint and opaque candidate mapping',async()=>{

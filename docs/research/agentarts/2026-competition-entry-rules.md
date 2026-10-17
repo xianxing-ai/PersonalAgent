@@ -1,7 +1,15 @@
 # MOD-10：2026 年参赛规则与证据缺项
 
+## 2026-10-13 研究更新入口
+
+当前自有镜像能力与证据分层见 [自有镜像研究](2026-owned-image-research.md)，
+PA-022 服务支持、数据/评估方案与成本条件见 [模型训练研究](../model-training/README.md)。
+已读取本工作树 `main@5b581139` 的 PR #317 集成及 10 月 12 日真实 WSS 文件读取记录。
+下文各日期的“未部署”“当前开放 PR”“packages/agentarts 尚不存在”均为当时观察，
+不能覆盖现在的源码或真实镜像证据；本轮不改写历史失败，也未重新核对赛事报名及截止日期。
+
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前目标与协作规则（2026-10-13）：[完整设计](../../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛；三人均衡承担审查与合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

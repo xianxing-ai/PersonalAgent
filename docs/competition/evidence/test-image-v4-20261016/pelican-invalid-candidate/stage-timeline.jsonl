@@ -1,0 +1,14 @@
+{"event":"stage_started","kind":"startup","label":"browser","startedAt":"2026-10-16T07:07:10.460Z"}
+{"event":"stage_finished","kind":"startup","label":"browser","startedAt":"2026-10-16T07:07:10.460Z","endedAt":"2026-10-16T07:07:10.684Z","wallMs":224.22090000000003,"outcome":"completed"}
+{"event":"stage_started","kind":"startup","label":"image_model_binding","startedAt":"2026-10-16T07:07:10.684Z"}
+{"event":"stage_finished","kind":"startup","label":"image_model_binding","startedAt":"2026-10-16T07:07:10.684Z","endedAt":"2026-10-16T07:07:10.744Z","wallMs":59.53989999999999,"outcome":"completed"}
+{"event":"stage_started","kind":"startup","label":"local_laya","startedAt":"2026-10-16T07:07:10.760Z"}
+{"event":"stage_finished","kind":"startup","label":"local_laya","startedAt":"2026-10-16T07:07:10.760Z","endedAt":"2026-10-16T07:07:19.857Z","wallMs":9097.736299999999,"outcome":"completed"}
+{"event":"model_attempt_started","provider":"openai-compatible","model":"deepseek-v4.1-flash","stage":"candidate_planning","status":"attempted","startedAt":"2026-10-16T07:07:19.859Z","requestSummary":{"messageCount":2,"toolCount":0}}
+{"event":"stage_started","kind":"model","label":"model_turn","startedAt":"2026-10-16T07:07:19.859Z"}
+{"event":"stage_finished","kind":"model","label":"model_turn","startedAt":"2026-10-16T07:07:19.859Z","endedAt":"2026-10-16T07:07:30.789Z","wallMs":10929.4935,"outcome":"completed"}
+{"event":"model_attempt_finished","stage":"candidate_planning","status":"succeeded","startedAt":"2026-10-16T07:07:19.859Z","endedAt":"2026-10-16T07:07:30.789Z","wallMs":10930.459800000002}
+{"event":"model_attempt_started","provider":"openai-compatible","model":"deepseek-v4.1-flash","stage":"escalated_decision","status":"attempted","startedAt":"2026-10-16T07:07:46.390Z","requestSummary":{"messageCount":2,"toolCount":0}}
+{"event":"stage_started","kind":"model","label":"model_turn","startedAt":"2026-10-16T07:07:46.391Z"}
+{"event":"stage_finished","kind":"model","label":"model_turn","startedAt":"2026-10-16T07:07:46.391Z","endedAt":"2026-10-16T07:08:08.789Z","wallMs":22398.660499999998,"outcome":"completed"}
+{"event":"model_attempt_finished","stage":"escalated_decision","status":"succeeded","startedAt":"2026-10-16T07:07:46.390Z","endedAt":"2026-10-16T07:08:08.790Z","wallMs":22399.544}

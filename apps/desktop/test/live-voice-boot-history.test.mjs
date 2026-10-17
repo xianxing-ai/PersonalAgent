@@ -45,7 +45,7 @@ async function fixture(t) {
       runtimeApplication:{createLiveVoiceModel:noResource},conversations,taskGoals:new Map(),path,
       app:{getPath:name=>{assert.equal(name,'userData');return directory;}},createLiveHistoryFileStore,
       createLiveVoiceHost:options=>{const host=createLiveVoiceHost({...options,schedule,unschedule:token=>pendingTimers.delete(token)});hosts.push(host);return host;},
-      publish(){publications++;}});
+      publish(){publications++;},noteVoiceLevel(){}});
     vm.runInContext(source, context);
     await context.initializeLiveVoice();
     return {host:context.liveVoice,conversations};
