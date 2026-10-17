@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-17 F15 预览结果投影修复（provisional）
+
+注册的 `coding.repair.preview` 与 Desktop N04 别名在原 ToolGateway 保存执行结果及签署工作流回执前，仅投影会话确认和各补丁路径、前后 SHA、变更标记；不返回完整预览正文。宿主本地预览和补丁/CAS 校验不变，实际源码导出仍需原精确原生许可。未新增 Core wire、依赖或迁移；本地回归不代表真实镜像/华为整图已复测，不提升冻结状态。
+
 ## 2026-10-17 镜像 F15 编码最小修复（provisional）
 
 [V6 接线](../competition/CODING_MINIMAL_REPAIR_V6.md)说明原 F15 的多轮失败修复、原子任务入口 `coding.repair.workflow`、独立编码宿主与包级验证指纹。新增 `@personal-agent/contracts/coding-repair` v1 是进程/工具数据，不增加 Core wire 或数据库迁移。镜像实际消费 jsdiff 与 TypeScript Compiler API；原本机 Runtime/Policy/ToolGateway/Evidence 继续负责授权和可信执行。

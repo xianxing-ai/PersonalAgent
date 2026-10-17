@@ -56,16 +56,17 @@ test('cloud self-reported settled cannot complete F15 without original local ver
   assert.equal(report.operations.some(item=>item.name==='check'||item.name==='publish'),false);
 });
 test('cancel propagates from original graph into its running N05 host command and never publishes the main root',{skip:process.platform!=='win32'},async()=>{
-  let application;
+  let application,commandFinished=false;
   const report=await runCodingRepairFullGraphFixture({fakeModel:true,beforeHostOperation:async({app})=>{application=app;},hostOptions:{
     createCommandTool:({rootPath,session})=>{
       const original=createWorkspaceCommandTool({rootPath,recipes:[{id:'unit',executable:process.execPath,args:['-e','setInterval(()=>{},1000)']}]});
       return {...original,execute:async(input,context)=>{
         const timer=setTimeout(()=>application.runtime.requestCancel(session.taskId,'Explicit fixture cancel during original command'),100);
-        try{return await original.execute(input,context);}finally{clearTimeout(timer);}
+        try{return await original.execute(input,context);}finally{clearTimeout(timer);commandFinished=true;}
       }};
     }}});
   assert.equal(report.child.state,'cancelled');assert.equal(report.mainRootAfterSha256,report.mainRootBeforeSha256);
+  assert.equal(commandFinished,true,'the report must wait for the original command cancellation to finish');
   assert.equal(report.operations.filter(item=>item.name==='check').length,1);
   assert.equal(report.operations.some(item=>item.name==='publish'),false);
   const host=report.evidence.find(record=>record.toolName==='workflow.host.f15_n05');

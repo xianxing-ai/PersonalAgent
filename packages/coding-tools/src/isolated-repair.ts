@@ -319,7 +319,17 @@ export function createIsolatedCodingRepairTools(host:IsolatedCodingRepairHost):R
     {name:'list',scope:[scopes.list],properties:{...id,path:string,limit:{type:'integer',minimum:1}},required:['sessionId','path'],run:(v,c)=>host.list(v.sessionId,{path:v.path,...(v.limit===undefined?{}:{limit:v.limit})},c)},
     {name:'read',scope:[scopes.read],properties:{...id,path:string,maxBytes:{type:'integer',minimum:1}},required:['sessionId','path'],run:(v,c)=>host.read(v.sessionId,{path:v.path,...(v.maxBytes===undefined?{}:{maxBytes:v.maxBytes})},c)},
     {name:'snapshot',scope:[scopes.read],properties:id,run:(v,c)=>host.snapshot(v.sessionId,c)},
-    {name:'preview',scope:[scopes.read],properties:{...id,patches:{type:'array',items:patchSchema}},run:(v,c)=>host.preview(v.sessionId,v.patches,c)},
+    {name:'preview',scope:[scopes.read],properties:{...id,patches:{type:'array',items:patchSchema}},run:async(v,c)=>{
+      const preview=await host.preview(v.sessionId,v.patches,c);
+      // Project before the original ToolGateway records/signs this result. Source text
+      // remains in the local preview; exporting source uses the separate exact read grant.
+      return {sessionId:preview.sessionId,approved:preview.approved,previewed:preview.previewed,
+        patches:preview.patches.map(value=>{
+          if(!value||typeof value!=='object'||Array.isArray(value))throw new ProtocolError('PROTOCOL_MISMATCH','Invalid coding preview metadata');
+          const patch=value as Record<string,unknown>;
+          return {path:patch.path,beforeSha256:patch.beforeSha256,afterSha256:patch.afterSha256,changed:patch.changed};
+        })};
+    }},
     {name:'patch',scope:['workspace:read','workspace:write',scopes.patch],properties:{...id,patch:patchSchema},run:(v,c)=>host.patch(v.sessionId,v.patch,c)},
     {name:'verify',scope:[scopes.verify],properties:{...id,recipeId:string},run:(v,c)=>host.verify(v.sessionId,v.recipeId,c)},
     {name:'check',scope:['workspace:read','workspace:write',scopes.patch,scopes.verify],properties:{...id,patches:{type:'array',items:patchSchema},recipeIds:{type:'array',items:string}},run:(v,c)=>host.check(v.sessionId,v.patches,v.recipeIds,c)},

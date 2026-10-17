@@ -19,13 +19,29 @@ async function fixture(t,extra={}){
   await writeFile(path.join(user,'test','math.test.cjs'),"const a=require('node:assert/strict');a.equal(require('../math.cjs')(2,3),5);\n");
   await writeFile(path.join(user,'user-uncommitted.txt'),'Unrelated user changes\n');
   let roots=[];
-  const options={workspaceRoot:user,sessionRoot:sessions,workspaceId:'fixture-workspace',patch:{powerShellPath:'C:/Program Files/PowerShell/7/pwsh.exe'},
+  const options={workspaceRoot:user,sessionRoot:sessions,workspaceId:'fixture-workspace',patch:{powerShellPath:process.env.PA_TEST_PWSH??'C:/Program Files/PowerShell/7/pwsh.exe'},
     recipes:[{recipeId:'node-test',packageIds:[],required:true}],
     createCommandTool:({rootPath})=>{roots.push(rootPath);return createWorkspaceCommandTool({rootPath,recipes:[{id:'node-test',executable:process.execPath,args:['--test','test/math.test.cjs']}]});},
     // The outer Runtime records real Evidence; host tests use an explicitly Fake confirmation port.
     readVerificationEvidence:async()=>['explicit-fake-runtime-evidence'],...extra};
   return {user,sessions,options,host:await createIsolatedCodingRepairHost(options),roots};
 }
+
+test('registered repair preview exposes only metadata while the local host retains the full preview',async t=>{
+  const f=await fixture(t),input=await f.host.start({mode:'main',allowedPaths:['math.cjs','created.cjs']},ctx());
+  const before=await readFile(path.join(f.user,'math.cjs'),'utf8'),created='module.exports = 7;\n';
+  const patches=[{path:'math.cjs',expectedSha256:hash(before),edits:[{oldText:'a-b',newText:'a+b'}]},
+    {path:'created.cjs',expectedSha256:null,edits:[],createText:created}];
+  const local=await f.host.preview(input.session.sessionId,patches,ctx());
+  assert.equal(local.patches[0].previewText,before.replace('a-b','a+b'));
+  assert.equal(local.patches[1].previewText,created);
+  const tool=createIsolatedCodingRepairTools(f.host).find(tool=>tool.descriptor.name==='coding.repair.preview');
+  const result=await tool.execute({sessionId:input.session.sessionId,patches},ctx());
+  assert.deepEqual(result,{sessionId:input.session.sessionId,approved:true,previewed:true,patches:[
+    {path:'math.cjs',beforeSha256:hash(before),afterSha256:hash(before.replace('a-b','a+b')),changed:true},
+    {path:'created.cjs',beforeSha256:null,afterSha256:hash(created),changed:true}]});
+  assert.equal(await readFile(path.join(f.user,'math.cjs'),'utf8'),before);
+});
 
 test('real isolated read -> failing node test -> exact incremental patch -> passing test -> original-user CAS delivery',
   {skip:process.platform!=='win32'},async t=>{

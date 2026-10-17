@@ -67,9 +67,11 @@ export async function runCodingRepairFullGraphFixture(options={}) {
       signal:checked.signal,stdout:checked.stdout,stderr:checked.stderr,scope:'public fixture precondition, not a graph-node Evidence receipt'};
     if(checked.error||checked.signal||checked.status===null||checked.status===0)throw Error('Public baseline did not reproduce the required initial checker failure');
   }
-  const observed=[],operations=[];let app,host;
+  const observed=[],operations=[];let app,host,activeHostOperations=0;
   const defer=Object.fromEntries(['start','list','read','snapshot','preview','patch','verify','check','publish','reconcile'].map(name=>[name,async(...args)=>{
-    const begin=Date.now();try{await options.beforeHostOperation?.({name,args,user,app});return await host[name](...args);}finally{operations.push({name,elapsedMs:Date.now()-begin});}}]));
+    const begin=Date.now();activeHostOperations++;
+    try{await options.beforeHostOperation?.({name,args,user,app});return await host[name](...args);}
+    finally{operations.push({name,elapsedMs:Date.now()-begin});activeHostOperations--;}}]));
   const original=createIsolatedCodingRepairTools(defer),tools=[...original];
   for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],['check','workflow.host.f15_n05'],['publish','workflow.host.f15_n06']]) {
     const tool=original.find(item=>item.descriptor.name==='coding.repair.'+source);tools.push({...tool,descriptor:{...tool.descriptor,name}});
@@ -90,7 +92,7 @@ export async function runCodingRepairFullGraphFixture(options={}) {
   const createApplication=options.createApplication??createRuntimeApplication;
   app=createApplication(config);options.selector?.bindApplication?.(app);
   const hostConfig={workspaceRoot:user,sessionRoot:sessions,workspaceId:'synthetic-fixture-workspace',
-    configurationRef:sha('fixture-original-command-identity'),patch:{powerShellPath:options.powerShellPath??'C:/Program Files/PowerShell/7/pwsh.exe'},
+    configurationRef:sha('fixture-original-command-identity'),patch:{powerShellPath:options.powerShellPath??process.env.PA_TEST_PWSH??'C:/Program Files/PowerShell/7/pwsh.exe'},
     recipes:[{recipeId:'unit',packageIds:[],required:true}],
     createCommandTool:({rootPath})=>createWorkspaceCommandTool({rootPath,recipes:[{id:'unit',executable:process.execPath,args:options.fixture?.checkerArgs??['--test','checks/actual-check.cjs']}]}),
     resolveOriginalTaskId:taskId=>app.runtime.loadCheckpoint(taskId,'coding-repair:parent')?.taskId??taskId,
@@ -101,7 +103,9 @@ export async function runCodingRepairFullGraphFixture(options={}) {
     let client=new Client(app,Date.now);await client.connect();const begin=Date.now();
     const {taskId}=await client.call('task.submit',{goal:options.fixture?.goal??'Perform the complete F15 minimal repair workflow',conversationId:'synthetic-f15'},
       {idempotencyKey:'synthetic-f15-'+randomUUID(),timeoutMs:options.fakeModel===true?60000:Date.parse(options.deadline)-Date.now()});
-    const waitTask=()=>until(()=>app.activeTaskCount===0&&['succeeded','failed','waiting_approval','waiting_reconciliation','cancelled'].includes(app.runtime.getTask(taskId).state),
+    // Cancellation can settle a Runtime task before the original host command has finished unwinding.
+    // Capture its report only after both the Runtime workers and fixture-owned host operations settle.
+    const waitTask=()=>until(()=>app.activeTaskCount===0&&activeHostOperations===0&&['succeeded','failed','waiting_approval','waiting_reconciliation','cancelled'].includes(app.runtime.getTask(taskId).state),
       options.fakeModel===true?60000:Math.max(1,Date.parse(app.runtime.loadCheckpoint(taskId,'application-deadline'))-Date.now()));
     await waitTask();
     let approvals=0,restarts=0;
@@ -127,7 +131,7 @@ export async function runCodingRepairFullGraphFixture(options={}) {
       approvals,restarts,taskCount:allTasks.length,evidence:allTasks.flatMap(task=>app.runtime.readToolExecutions(task.taskId).map(record=>({taskId:task.taskId,...record}))),
       cloudCalls:Array.isArray(coordination?.requests)?coordination.requests.length:null};
     await writeFile(join(directory,'report.json'),JSON.stringify(report,null,2));return report;
-  } finally {while(app.activeTaskCount)await new Promise(resolve=>setTimeout(resolve,10));app.close();}
+  } finally {while(app.activeTaskCount||activeHostOperations)await new Promise(resolve=>setTimeout(resolve,10));app.close();}
 }
 if(process.argv[1]&&import.meta.url===new URL('file:///'+process.argv[1].replaceAll('\\','/')).href) {
   if(!process.argv.includes('--fake'))throw Error('This synthetic runner requires --fake; it does not discover credentials or call cloud services');
