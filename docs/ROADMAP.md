@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-15 远程 MCP 配置/目录绑定与凭据引用（in_progress）
+
+goo122 基于 #369 开始 [G11/G14 最小只读子集](modules/MOD-06-BOUND-CREDENTIALS-20261015.md)：新 bound host 通过现有 Policy 参数摘要绑定配置/目录及凭据版本，复用 SecretStorePort，异步取凭据前后重验，调用前核目录。定向 15/15 通过，完整 check 3155 通过、36 跳过、0 失败；无真实安全存储、设置/生产接线或平台验收，模型/AgentArts 调用 0。方案见 [ADR-0032](adr/0032-remote-mcp-bound-credentials.md)，完整 MOD 仍为 in_progress。
+
 ## 2026-10-16 V5 Desktop WSS、语音与主子模型（review）
 
 [V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya 架构或资格结论。
