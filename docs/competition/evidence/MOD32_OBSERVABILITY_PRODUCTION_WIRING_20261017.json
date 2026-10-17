@@ -1,0 +1,102 @@
+{
+  "formatVersion": "1.0.0",
+  "module": "MOD-32",
+  "profile": "huawei_ict_agentarts",
+  "date": "2026-10-17",
+  "owner": "zemeng",
+  "branch": "codex/mod32-observability",
+  "deliveryBaseCommit": "3275aa9116769386a93453d9370c0b17f828a834",
+  "priorCodeCommit": "97777403fcc2a9c27df5f5ed689acd002d82245d",
+  "priorEvidenceMergeCommit": "a6be7f93 (docs) and 87a011ff (merge main into branch)",
+  "status": "review",
+  "moduleStatus": "in_progress",
+  "pullRequest": "https://github.com/zemeng5208/PersonalAgent/pull/361",
+  "pullRequestBase": "main",
+  "deliveryKind": "production_wiring",
+  "priorOfflineEvidence": "MOD32_OBSERVABILITY_20261015.json kept as historical record",
+  "changedFiles": [
+    "apps/desktop/electron/main.js (explicit-unavailable assembly comment only, no behavior change)",
+    "apps/runtime/package.json (@personal-agent/agentarts dependency)",
+    "apps/runtime/src/application.ts (public type exports)",
+    "apps/runtime/src/application/agentarts.ts (composition root wires observation host + identity observer)",
+    "apps/runtime/src/application/agentarts-observation.ts (NEW: production observation consumption host)",
+    "apps/runtime/src/application/coordination.ts (record/readCompetitionCloudRequestIdentity)",
+    "apps/runtime/src/application/evidence-reader.ts (trusted readback evidence joins admin evidence page)",
+    "apps/runtime/test/agentarts-observation.test.mjs (NEW: 13 production-loop Fake tests)",
+    "docs/modules/MOD-32-AGENTARTS-OBSERVABILITY.md (2026-10-17 section)",
+    "packages/agentarts/package.json (./observability/reader export)",
+    "packages/agentarts/scripts/build-observability.mjs (copies reader asset)",
+    "packages/agentarts/src/observability/reader.mjs (NEW: bounded GET reader, promoted from manual support)",
+    "packages/agentarts/src/observability/reader.d.mts (NEW: reader declaration)",
+    "packages/agentarts/test/observability-package.test.mjs (reader asset/export assertions)",
+    "packages/coordination/src/agentarts.ts (8th constructor param identityObserver, one record per actual send)",
+    "packages/coordination/src/index.ts (identity observer type export)",
+    "tests/manual/agentarts/support/read-platform-trace.mjs (thin re-export, behavior unchanged)"
+  ],
+  "productionCallChain": [
+    "Client task.submit -> createAgentArtsRuntimeApplication (apps/runtime/src/application/agentarts.ts)",
+    "AgentArtsCloudAgentPort send (packages/coordination/src/agentarts.ts) -> identityObserver once per actual send, HTTPS before fetch, WSS before stage transport",
+    "recordCompetitionCloudRequestIdentity -> checkpoint competition-cloud-request-identity (bounded, erased like other non-allowlisted checkpoints)",
+    "app.readTaskPlatformObservation -> createAgentArtsObservationHost (apps/runtime/src/application/agentarts-observation.ts)",
+    "@personal-agent/agentarts/observability/reader readAgentArtsTraceObservation or readAgentArtsRunLogs (AK/SK signed GET, caller-supplied authorization)",
+    "trusted-readback-evidence:agentarts-observation-* metadata Evidence + agentarts-observation-readback:<surface> snapshot checkpoint",
+    "ScopedEvidenceReader lists execution records plus id-deduplicated readback evidence on the admin evidence.page"
+  ],
+  "honestFailureSemantics": {
+    "noObservationAuthorization": "unavailable (observation_authorization_unavailable), zero requests",
+    "noRecordedIdentity": "unknown_request (missing_request_identity)",
+    "unknownRevision": "unknown_request (missing_revision_identity)",
+    "identityConflict": "unknown_request (identity_conflict), read refused, no evidence",
+    "logSurfaceWithoutRunIdentityOrWindow": "unknown_request, zero requests",
+    "platformAuthFailure": "UNAUTHORIZED with httpStatus, no evidence, no retry",
+    "deploymentVersion": "always unavailable (official fact)"
+  },
+  "validation": {
+    "kind": "synthetic_offline_with_real_composition",
+    "newObservationTests": {"passed": 13, "failed": 0, "file": "apps/runtime/test/agentarts-observation.test.mjs"},
+    "runtimeWorkspace": {"passed": 518, "failed": 0},
+    "coordinationWorkspace": {"passed": 149, "failed": 0},
+    "agentartsWorkspace": {"passed": 67, "failed": 0},
+    "architectureGate": {"passed": 3, "failed": 0},
+    "manualReaderRegressions": {
+      "readPlatformTrace": "passed",
+      "readPlatformTraceConsumer": "passed",
+      "readPlatformTraceObservation": "passed",
+      "sdkTraceAuthorizer": "passed",
+      "sdkTraceAuthorizerOfficial": "passed_with_existing_environment_gate_skip"
+    },
+    "desktopMainSyntax": "node --check passed",
+    "build": "workspaces contracts/coordination/agentarts/runtime built; loop-root npm run build re-run after fixes"
+  },
+  "testLayers": {
+    "fakeHost": "all 13 new tests plus workspace regressions use synthetic transport/signatures; no credentials",
+    "realHostShape": "WSS cases run through SyntheticWebSocket with the real composition root and coordination transport",
+    "realCloud": "not executed; no authorization and no AK/SK credentials on this machine"
+  },
+  "platformEvidence": {
+    "newPlatformRequests": 0,
+    "credentialsReadyInCheckedSources": false,
+    "requestTraceJoinVerifiedAgainstRealCloud": false,
+    "platformLogsReadBackThisRun": false,
+    "requestDeploymentVersionVerified": false,
+    "billingVerified": false,
+    "historicalEvidenceReusedAsCurrent": false
+  },
+  "remainingDependencyGaps": [
+    "AK/SK observation signer host must be injected by a trusted host before real reads (real signer adapter already exists from 2026-10-15)",
+    "platform applicationId (resource_id) configuration source required for exact request-correlation; without it correlation stays not_checked",
+    "agentRunId must come from a platform run record; no local channel invents it",
+    "desktop main.js stays explicitly unavailable by default; wiring the signer is a future authorized change",
+    "version binding, cost and rollback acceptance remain separate"
+  ],
+  "cloudWrites": 0,
+  "modelInvocations": 0,
+  "imagesPublished": 0,
+  "publicApiReferences": [
+    "https://support.huaweicloud.com/api-agentarts/InvokeRuntime.html",
+    "https://support.huaweicloud.com/api-agentarts/ShowOpsTrace.html",
+    "https://support.huaweicloud.com/api-agentarts/ListOpsAgentRunLog.html",
+    "https://support.huaweicloud.com/api-agentarts/agentarts_07_0005.html",
+    "https://support.huaweicloud.com/devg-apisign/api-sign-sdk-nodejs.html"
+  ]
+}

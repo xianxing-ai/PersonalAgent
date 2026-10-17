@@ -1548,6 +1548,9 @@ async function initializeRuntime() {
       });
       const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding});
       cloudTransportNotice = '';
+      // 平台观测读回（MOD-32）默认装配为显式 unavailable：真实 ShowOpsTrace /
+      // ListOpsAgentRunLog 需要 AK/SK 签名宿主与平台 applicationId（resource_id），
+      // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         hostUserNamespace: namespace,

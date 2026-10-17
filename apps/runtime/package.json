@@ -40,6 +40,7 @@
     "@personal-agent/goals": "0.1.0-alpha.1",
     "@personal-agent/coordination": "0.1.0-alpha.1",
     "@personal-agent/agents": "0.1.0-alpha.1",
+    "@personal-agent/agentarts": "0.1.0-alpha.1",
     "@personal-agent/contracts": "0.1.0-alpha.1",
     "@personal-agent/cognition": "0.1.0-alpha.1",
     "@personal-agent/models": "0.1.0-alpha.1",
