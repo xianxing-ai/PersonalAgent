@@ -19,7 +19,7 @@ function fixture(policy = {}) {
 test('empty state returns an empty current page without side effects', () => {
   const {service} = fixture();
   const page = service.readBatchEvents();
-  assert.deepEqual(page, {eventVersion: 1, cursorState: 'current', events: [], nextCursor: null,
+  assert.deepEqual(page, {eventVersion: 1, snapshotRevision: 0, cursorState: 'current', events: [], nextCursor: null,
     retained: {readyForDelivery: 0, delivered: 0}});
 });
 
@@ -41,12 +41,17 @@ test('decided batches surface as versioned events in decision order without dupl
   assert.ok(!JSON.stringify(page).includes('fixture only'), 'connector content must not be projected');
 });
 
-test('acknowledged delivery is visible as state and deliveredAt, surviving restart', () => {
+test('snapshot continuation detects an acknowledgement and restart reads the delivered state', () => {
   const {service, tick, restart} = fixture();
   service.ingest([item('one')]);
   const batch = service.drain().batches[0];
+  const initial = service.readBatchEvents();
+  assert.equal(initial.events[0].state, 'ready_for_delivery');
   tick(5000);
   service.acknowledge(batch.id);
+  const stale = service.readBatchEvents({sinceBatchId: batch.id, snapshotRevision: initial.snapshotRevision});
+  assert.equal(stale.cursorState, 'changed');
+  assert.deepEqual(stale.events, []);
   const page = restart().readBatchEvents();
   assert.equal(page.retained.delivered, 1);
   assert.equal(page.events[0].state, 'delivered');
@@ -59,26 +64,11 @@ test('cursor pagination is bounded and terminates at the newest batch', () => {
   const first = service.readBatchEvents({limit: 2});
   assert.deepEqual(first.events.map(event => event.batchId), ['fixture-batch-1', 'fixture-batch-2']);
   assert.equal(first.nextCursor, 'fixture-batch-2');
-  const second = service.readBatchEvents({sinceBatchId: first.nextCursor, limit: 2});
+  const second = service.readBatchEvents({sinceBatchId: first.nextCursor, snapshotRevision: first.snapshotRevision, limit: 2});
   assert.deepEqual(second.events.map(event => event.batchId), ['fixture-batch-3']);
   assert.equal(second.nextCursor, null);
-  const caught = service.readBatchEvents({sinceBatchId: 'fixture-batch-3'});
+  const caught = service.readBatchEvents({sinceBatchId: 'fixture-batch-3', snapshotRevision: first.snapshotRevision});
   assert.deepEqual(caught.events, []);
-});
-
-test('a cursor older than the retained delivered window reports compaction, not data loss', () => {
-  const {service, tick} = fixture();
-  service.ingest([item('a')]);
-  service.drain();
-  service.acknowledge('fixture-batch-1');
-  tick(1000);
-  service.ingest([item('b')]);
-  service.drain();
-  const page = service.readBatchEvents({sinceBatchId: 'evicted-long-ago'});
-  assert.equal(page.cursorState, 'compacted');
-  assert.deepEqual(page.events.map(event => event.batchId), ['fixture-batch-1', 'fixture-batch-2']);
-  assert.equal(page.retained.readyForDelivery, 1);
-  assert.equal(page.retained.delivered, 1);
 });
 
 test('out of bounds requests are rejected and never mutate state', () => {
@@ -86,6 +76,7 @@ test('out of bounds requests are rejected and never mutate state', () => {
   service.ingest([item('one')]);
   service.drain();
   const before = service.readBatchEvents();
+  assert.throws(() => service.readBatchEvents({sinceBatchId: 'fixture-batch-1'}), {code: 'INVALID_ARGUMENT'});
   for (const invalid of [{limit: 0}, {limit: 101}, {limit: 1.5}, {sinceBatchId: ''}, {sinceBatchId: 'x'.repeat(129)}]) {
     assert.throws(() => service.readBatchEvents(invalid), {code: 'INVALID_ARGUMENT'});
   }
@@ -94,16 +85,51 @@ test('out of bounds requests are rejected and never mutate state', () => {
   assert.equal(service.ingest([item('one')]).duplicates, 1, 'dedupe window must stay intact');
 });
 
+test('same-time batch insertion invalidates an in-progress snapshot', () => {
+  const storage = new FakeStorage().namespace('events-readback-same-time');
+  let time = Date.parse('2026-10-17T10:00:00.000Z');
+  let ids = 0;
+  const service = new NotificationService(storage, {}, {
+    now: () => time, idFactory: () => ids++ === 0 ? 'batch-b' : 'batch-a'});
+  service.ingest([item('one')]);
+  service.drain();
+  const first = service.readBatchEvents({limit: 1});
+  assert.equal(first.events[0].batchId, 'batch-b');
+  service.ingest([item('two')]);
+  service.drain();
+  const stale = service.readBatchEvents({sinceBatchId: first.events[0].batchId,
+    snapshotRevision: first.snapshotRevision, limit: 1});
+  assert.equal(stale.cursorState, 'changed');
+  assert.deepEqual(stale.events, []);
+});
+
+test('a cursor evicted from the retained delivered window reports compaction', () => {
+  const {service, tick} = fixture();
+  let evictedBatchId = '';
+  for (let i = 0; i < 101; i++) {
+    service.ingest([item(`evict-${i}`)]);
+    const batch = service.drain().batches[0];
+    if (i === 0) evictedBatchId = batch.id;
+    service.acknowledge(batch.id);
+    tick(1);
+  }
+  const snapshot = service.readBatchEvents();
+  const page = service.readBatchEvents({sinceBatchId: evictedBatchId, snapshotRevision: snapshot.snapshotRevision});
+  assert.equal(page.cursorState, 'compacted');
+  assert.equal(page.retained.readyForDelivery, 0);
+  assert.equal(page.retained.delivered, 100);
+});
+
 test('digest batches expose their kind and held reason like immediate batches', () => {
-  const {service} = fixture({digest: {windowMs: 60_000, maxItems: 10}});
+  const {service, tick} = fixture({digest: {windowMs: 60_000, maxItems: 10}});
   service.ingest([item('d1')]);
   const drain = service.drain();
   assert.equal(drain.batches.length, 0);
   service.readBatchEvents();
+  tick(60_000);
   const {batches} = service.drain();
-  if (batches.length) {
-    const page = service.readBatchEvents();
-    assert.equal(page.events[0].kind, 'digest');
-    assert.ok(page.events[0].reason.length > 0);
-  }
+  assert.equal(batches.length, 1);
+  const page = service.readBatchEvents();
+  assert.equal(page.events[0].kind, 'digest');
+  assert.ok(page.events[0].reason.length > 0);
 });

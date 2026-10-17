@@ -71,6 +71,8 @@ interface NotificationState {
   batches: NotificationBatch[];
   /** 已交付 dedupeKey 的有界 FIFO（去重窗口），淘汰由宿主按 dedupeKey 吸收。 */
   delivered: string[];
+  /** Changes whenever persisted notification state changes, keeping paged batch snapshots consistent. */
+  snapshotRevision: number;
   /** Display/unread history, policies and round receipts extend the original state, not pending queues. */
   interruption?:NotificationInterruptionState;
 }
@@ -99,8 +101,10 @@ export interface NotificationBatchEvent {
 
 export interface NotificationBatchEventsPage {
   eventVersion: 1;
-  /** `compacted` 表示 sinceBatchId 早于已确认批次的保留窗口（未确认批次永不淘汰，可行动事件不丢失）。 */
-  cursorState: 'current' | 'compacted';
+  /** Persisted-state revision for all pages in one consistent snapshot. */
+  snapshotRevision: number;
+  /** `changed` 要求从第一页重读；`compacted` 表示游标早于已确认批次保留窗口。 */
+  cursorState: 'current' | 'compacted' | 'changed';
   events: readonly NotificationBatchEvent[];
   nextCursor: string | null;
   retained: {readyForDelivery: number; delivered: number};
@@ -408,10 +412,14 @@ export class NotificationService {
     const cell=this.options.atomicState?.read(STATE_KEY);
     const value = this.options.atomicState?cell?.value:this.storage.get(STATE_KEY);
     if(cell&&(!Number.isSafeInteger(cell.revision)||cell.revision<0))throw new ProtocolError('PROTOCOL_MISMATCH','Invalid atomic notification state revision');
-    if (value === undefined || value === null) {const empty={pending: [], batches: [], delivered: []};this.stateRevisions.set(empty,cell?.revision);return empty;}
+    if (value === undefined || value === null) {const empty={pending: [], batches: [], delivered: [], snapshotRevision:0};this.stateRevisions.set(empty,cell?.revision);return empty;}
     if (typeof value !== 'object' || Array.isArray(value)) throw new ProtocolError('PROTOCOL_MISMATCH','Notification state cannot be silently reset');
     const record = value as Record<string, unknown>;
+    const snapshotRevision = record.snapshotRevision === undefined ? 0 : record.snapshotRevision;
+    if (typeof snapshotRevision !== 'number' || !Number.isSafeInteger(snapshotRevision) || snapshotRevision < 0)
+      throw new ProtocolError('PROTOCOL_MISMATCH','Invalid notification snapshot revision');
     const state: NotificationState = {
+      snapshotRevision,
       pending: Array.isArray(record.pending) ? record.pending.filter(isPendingItem) : [],
       batches: Array.isArray(record.batches) ? record.batches.filter(isBatch) : [],
       delivered: Array.isArray(record.delivered) ? record.delivered.filter((key): key is string => typeof key === 'string').slice(-DELIVERED_KEY_LIMIT) : [],
@@ -424,7 +432,9 @@ export class NotificationService {
   }
 
   private writeState(state: NotificationState,original:NotificationState=state): void {
+    if(state.snapshotRevision>=Number.MAX_SAFE_INTEGER)throw new ProtocolError('PROTOCOL_MISMATCH','Notification snapshot revision exhausted');
     const value={
+      snapshotRevision:state.snapshotRevision+1,
       pending: state.pending,
       batches: trimBatches(state.batches),
       delivered: state.delivered.slice(-DELIVERED_KEY_LIMIT),
@@ -531,16 +541,27 @@ export class NotificationService {
    * 版本化批次事件读回（F12）。只读投影：不触发裁定（drain 归宿主调度点）、
    * 不代替受信桌面的 acknowledge；输出仅用于云端/镜像消费与重放对账。
    */
-  readBatchEvents(input: {sinceBatchId?: string; limit?: number} = {}): NotificationBatchEventsPage {
+  readBatchEvents(input: {sinceBatchId?: string; snapshotRevision?: number; limit?: number} = {}): NotificationBatchEventsPage {
     const limit = input.limit ?? 20;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100
+      || (input.snapshotRevision !== undefined
+        && (!Number.isSafeInteger(input.snapshotRevision) || input.snapshotRevision < 0))
       || (input.sinceBatchId !== undefined
         && (typeof input.sinceBatchId !== 'string' || !input.sinceBatchId.trim() || input.sinceBatchId.length > 128))) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Notification event page request out of bounds');
     }
+    if (input.sinceBatchId !== undefined && input.snapshotRevision === undefined)
+      throw new ProtocolError('INVALID_ARGUMENT', 'Notification page cursor requires its snapshot revision');
     const state = this.readState();
     const ordered = [...state.batches].sort((left, right) =>
-      left.decidedAt < right.decidedAt ? -1 : left.decidedAt > right.decidedAt ? 1 : left.id < right.id ? -1 : 1);
+      left.decidedAt < right.decidedAt ? -1 : left.decidedAt > right.decidedAt ? 1
+        : left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    const readyForDelivery = ordered.filter(batch => batch.state === 'ready_for_delivery').length;
+    const retained = {readyForDelivery, delivered: ordered.length - readyForDelivery};
+    if (input.snapshotRevision !== undefined && input.snapshotRevision !== state.snapshotRevision) {
+      return {eventVersion: 1, snapshotRevision: state.snapshotRevision, cursorState: 'changed', events: [],
+        nextCursor: null, retained};
+    }
     let start = 0;
     let cursorState: 'current' | 'compacted' = 'current';
     if (input.sinceBatchId !== undefined) {
@@ -549,17 +570,17 @@ export class NotificationService {
       else cursorState = 'compacted';
     }
     const page = ordered.slice(start, start + limit);
-    const readyForDelivery = ordered.filter(batch => batch.state === 'ready_for_delivery').length;
     const last = page.at(-1);
     return {
       eventVersion: 1,
+      snapshotRevision: state.snapshotRevision,
       cursorState,
       events: page.map(batch => ({eventVersion: 1, batchId: batch.id, kind: batch.kind,
         itemRefs: [...batch.itemRefs], decidedAt: batch.decidedAt, heldSince: batch.heldSince,
         reason: batch.reason, state: batch.state,
         ...(batch.deliveredAt === undefined ? {} : {deliveredAt: batch.deliveredAt})})),
       nextCursor: last !== undefined && start + page.length < ordered.length ? last.id : null,
-      retained: {readyForDelivery, delivered: ordered.length - readyForDelivery},
+      retained,
     };
   }
 
