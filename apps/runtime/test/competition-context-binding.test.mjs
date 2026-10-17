@@ -97,7 +97,7 @@ const descriptor={name:'fixture.read',version:'1.0.0',inputSchema:{type:'object'
   sideEffect:'read',requiredScopes:['fixture:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false};
 
 test('SQLite approval recovery preserves the same context, refuses changed revisions and retains the confirmed tool receipt',async t=>{
-  for(const changed of [false,true])await t.test(changed?'changed version':'same version',async t=>{
+  for(const change of ['same version','changed version','missing hooks','legacy without hooks'])await t.test(change,async t=>{
     const path=await directory(t);let calls=0,executions=0;
     const messages=[{id:'fact-source',role:'assistant',content:'synthetic revision 1'}];
     const options={path,profile:'huawei_ict_agentarts',coordinationBinding:'fixture-config-v1',
@@ -105,7 +105,7 @@ test('SQLite approval recovery preserves the same context, refuses changed revis
       competitionToolExports:[{toolName:descriptor.name,toolVersion:descriptor.version,exportPolicyVersion:'fixture-v1',
         accepts:()=>true,project:({result})=>result}],
       competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
-      coordinationInput:{beforeCoordinationSend(){},readConversationContext:async()=>messages},
+      ...(change==='legacy without hooks'?{}:{coordinationInput:{beforeCoordinationSend(){},readConversationContext:async()=>messages}}),
       coordination:{execute:async()=>++calls===1?{kind:'tool_proposal',proposalId:'fixture-proposal',
         toolName:descriptor.name,toolVersion:descriptor.version,arguments:{},verification:'unverified'}:
         {kind:'text',text:'synthetic answer',verification:'unverified'}}};
@@ -116,17 +116,40 @@ test('SQLite approval recovery preserves the same context, refuses changed revis
         {idempotencyKey:'restart',timeoutMs:60_000});
       await waitFor(app,taskId,['waiting_approval']);
       const original=app.runtime.loadCheckpoint(taskId,KEY);
-      app.close();if(changed)messages[0].content='synthetic revision 2';
-      app=createRuntimeApplication(options);client=new Client(app);await client.connect();
+      app.close();if(change==='changed version')messages[0].content='synthetic revision 2';
+      const recoveredOptions={...options};if(change==='missing hooks')delete recoveredOptions.coordinationInput;
+      app=createRuntimeApplication(recoveredOptions);client=new Client(app);await client.connect();
       assert.deepEqual(app.runtime.loadCheckpoint(taskId,KEY),original);
       const approval=(await client.call('approval.list',{taskId})).items.find(item=>item.state==='pending');
       await client.call('authorization.respond',{approvalId:approval.approvalId,
         expectedRevision:approval.revision,decision:'allow_once'});
+      const blocked=['changed version','missing hooks'].includes(change);
       assert.equal((await waitFor(app,taskId,['succeeded','failed','waiting_reconciliation'])).state,
-        changed?'waiting_reconciliation':'succeeded');
-      assert.equal(calls,changed?1:2);assert.equal(executions,1);
+        blocked?'waiting_reconciliation':'succeeded');
+      assert.equal(calls,blocked?1:2);assert.equal(executions,1);
       assert.equal(app.runtime.readToolExecutions(taskId)[0].state,'confirmed');
       assert.deepEqual(app.runtime.loadCheckpoint(taskId,KEY),original);
+    } finally {app.close();}
+  });
+});
+
+test('final export guard rejects existing context checkpoints without hooks, including redacted and malformed metadata',async t=>{
+  for(const mode of ['versioned','redacted','null'])await t.test(mode,async()=>{
+    let app,guardError,sends=0;
+    app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',coordination:{execute:async request=>{
+      const checkpoint=mode==='versioned'?bindCompiledContext({taskId:request.taskId,conversationId:'final-guard',
+        configurationRef:app.coordinationConfigurationRef,deadline:request.deadline,publicGoal:request.goal,
+        preparedGoal:request.goal,compiledGoal:request.goal,messages:[]}):mode==='redacted'?{redacted:true}:null;
+      app.runtime.saveCheckpoint(request.taskId,KEY,checkpoint);
+      try {app.assertCompetitionExportAllowed(request);}catch(error){guardError=error;throw error;}
+      sends++;return {kind:'text',text:'synthetic answer',verification:'unverified'};
+    }}});
+    try {
+      const client=new Client(app);await client.connect();
+      const {taskId}=await client.call('task.submit',{goal:'public',conversationId:'final-guard'},{idempotencyKey:mode});
+      const result=await waitFor(app,taskId);
+      assert.equal(result.state,'failed');assert.equal(guardError?.code,'UNAUTHORIZED');
+      assert.equal(result.error.code,'EXTERNAL_FAILURE');assert.equal(sends,0);
     } finally {app.close();}
   });
 });
