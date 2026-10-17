@@ -1,0 +1,3 @@
+# Preserve published evidence bytes and SHA256 values across checkouts.
+# CRLF in original reports is meaningful evidence, not trailing whitespace.
+* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

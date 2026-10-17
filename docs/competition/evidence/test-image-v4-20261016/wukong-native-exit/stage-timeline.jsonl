@@ -1,0 +1,5 @@
+{"event":"stage_started","kind":"startup","label":"browser","startedAt":"2026-10-16T06:54:32.736Z"}
+{"event":"stage_finished","kind":"startup","label":"browser","startedAt":"2026-10-16T06:54:32.736Z","endedAt":"2026-10-16T06:54:32.905Z","wallMs":169.2722000000001,"outcome":"completed"}
+{"event":"stage_started","kind":"startup","label":"image_model_binding","startedAt":"2026-10-16T06:54:32.906Z"}
+{"event":"stage_finished","kind":"startup","label":"image_model_binding","startedAt":"2026-10-16T06:54:32.906Z","endedAt":"2026-10-16T06:54:32.967Z","wallMs":61.23579999999993,"outcome":"completed"}
+{"event":"stage_started","kind":"startup","label":"local_laya","startedAt":"2026-10-16T06:54:32.986Z"}

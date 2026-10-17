@@ -1,34 +1,62 @@
-# 模块工作包模板
+# MOD-XX：模块名称
 
-## 目标与所有权
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
 
-- 工作包ID、MOD编号与F01—F28映射：
-- 目标profile（当前huawei_ict_agentarts）：
-- 唯一负责人、拥有文件与共享接线：
-- 需求/完成条件；不在本工作包的事项：
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
-## 契约与流程
+## 基本信息
 
-- 消费的公开端口、精确版本/提交及frozen/provisional/unavailable：
-- 输入快照/来源/目标revision、输出与节点依赖：
-- 原受信判断链参与点；代码确定性检查及执行模型候选：
-- 并行、条件/必需分支、资源锁、超时和取消：
-- 现有责任/授权覆盖、必要语音询问与参数修改失效：
-- 副作用身份、结果未知核实、检查点恢复与Evidence：
-- 影子/回放/隔离可比性及默认后台路径：
+- 关联需求：PA-XXX
+- 目标 Profile：`huawei_ict_agentarts`（当前默认）/ `local`（可选，需说明进入当前范围的理由）
+- GitHub 负责人：
+- 自审记录 / 可选同行评审者：
+- 独占目录：
+- 当前状态：todo
+- 消费的冻结基线 / 精确提交：
 
-## 兼容与验证
+## 职责
 
-- Schema/DTO/Provider/配置/数据库影响；无则注明：
-- 必要调用方接线与迁移/回退方式：
-- Fake/失败夹具与实际执行的检查：
-- 国内端点/真实目标系统/语音设备读回；未验证项：
-- 延迟/usage记录（无实测不编数字）：
+该模块负责什么。
 
-## 交付
+## 非职责
 
-- 状态与继续入口；实际提交/PR、拟审查/合并者：
-- 当前提交有效非作者Approve、检查、意见处理与集成：
-- 保留其他协作者修改、凭据/私人数据检查：
+该模块明确不负责什么。
 
-不开第二套任务库/调度器/授权系统，模型不签发授权；不因本模板描述能力便公布capability。
+## 输入、输出与公共入口
+
+列出公共端口、Schema、事件和 package exports。
+
+| 接口 | 提供方 | 状态（frozen / provisional / unavailable） | 兼容或迁移要求 |
+| --- | --- | --- | --- |
+|  |  |  |  |
+
+## 依赖
+
+- 前置模块及可用公开契约：
+- 上游未就绪时的 Fake/Unavailable 与独立验证方式：
+- 本工作包自行完成的必要消费/宿主接线：
+- 允许依赖：
+- 禁止依赖：
+
+## 权限与数据
+
+列出 Scope、副作用、敏感数据、凭据注入和保留边界。
+
+## 验收
+
+- Fake/离线测试：
+- 跨模块集成：
+- 真实条件验收：
+- 能力发现与不可用路径：
+- AgentArts deployment/API/trace 与防静默回退（Competition 模块）：
+
+## 排除项与已知限制
+
+明确本工作包不实现和仍未验证的事项。
+
+Competition 模块必须区分 AgentArts、Local 和 Fake 证据；Local 模块不能被计入比赛主路径完成度。
+
+## 本负责人实际调用方交付
+
+写明公开输入输出/版本、本人接入的生产调用方文件、受信配置键、必要fixture与真实验收命令、源码SHA和UTC/wall/exit/logSHA、task/run/Evidence/目标读回、fixture/realHost/realAccount/physicalDevice分类、失败/unknown恢复、未验项及下一任务。不得只交端口并写“等中央接线/代验”；引用 [全MOD清单](CURRENT_MOD_WIRING_HANDOFF.md) 对应行。

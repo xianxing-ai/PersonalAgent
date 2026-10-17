@@ -1,7 +1,7 @@
 # PersonalAgent 开发 Agent 工作规范
 
-<!-- current-design-20261013 -->
-> 当前目标与协作规则（2026-10-14）：[完整主架构](docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通总图](docs/design/workflow-architecture-20261013/index.html) · [协作规则](CONTRIBUTING.md)。Laya服务和权重迁入自有ARM64镜像，唯一全局语义选择；国内MaaS为执行候选，责任图、真依赖并行与按需后台影子沿用现有Runtime/Policy，不新增限制。平台网关、知识、日志/Trace和离线评估按[实施交接](docs/modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md)接线。设计不等于实现，每个PR仍须一位合资格非作者对当前提交有效批准及检查/冲突/意见门槛。
+<!-- current-design-20261015 -->
+> 当前设计与协作入口：[当前详细设计](docs/design/CURRENT_DESIGN_20261015.md) · [28项状态](docs/design/WORKFLOW_STATUS_20261015.md) · [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [历史图文导航](docs/design/README.md) · [具体分工与接线](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) · [协作与评审规则](CONTRIBUTING.md)。具体模型、部署与调度实验以当前设计及接口目录为依据，不在长期协作规则中固定选型；架构未最终定型。每位 MOD 负责人交付实现、实际调用方接线、测试、Evidence 和文档。常规 PR 须有三人中任意一位非作者对当前提交的有效批准；Owner 可按下文对具体 PR 作有记录的审核例外，技术 CI 仍必须通过。三人长期均衡承担审查与合并。设计不等于已实现；历史验收与作者记录保留。
 
 本文件约束在本仓库工作的开发 Agent，不是产品运行时的 Skill 或授权来源。默认用中文沟通。
 这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。
@@ -51,7 +51,8 @@
 
 ## 3. 实现与目录规则
 
-- 优先最小可验证的纵向工作包：公开端口/契约 → 实现 → 调用方接线 → 关键测试 → 文档。缺少真实服务时可先用明确的 Fake 端口完成离线验证。
+- 优先最小可验证的纵向工作包：公开端口/契约 → 实现 → 实际调用方接线 → 必要测试 → Evidence/文档。每个 MOD 由自己的负责人完成本链并交付，不能仅交注册/端口后默认交中央接线或代验。根 composition 协调共享入口、依赖与安全边界，不另建 Runtime、调度器、授权层或任务库。缺少真实服务时用明确 Fake 验证消费边界，真实缺项仍如实登记。
+- 当前十项具体接线包及逐 MOD 输入输出/测试/缺口见 [接线交付总包](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) 和 [全 MOD 清单](docs/modules/CURRENT_MOD_WIRING_HANDOFF.md)。来源、模型、设备、平台和本机验收分别记录，历史通过不代替当前实际调用方证据。
 - 修改只覆盖当前需求。保留现有风格，不顺带格式化全仓、升级依赖、重命名目录或重构无关模块。
 - 优先复用已有实现与端口；不创建第二套任务库、调度器、模型入口或连接器注册体系。只移除本次修改造成的孤立代码。
 - 生产代码放在 `apps/`、`packages/`，业务连接器放在 `packages/connectors/<capability>/`。根级 `src/` 不作为新的生产入口，未开工模块不创建空目录。
@@ -68,11 +69,11 @@
 - Renderer 只提交请求、接收事件并展示状态，通过安全 Preload/IPC 和 Client 接入；不直接导入 Runtime、Provider、数据库、Node/Shell 或连接器。
 - Desktop 主进程负责可信配置、凭据适配、IPC 和窗口生命周期。任务提交后的分派、Agent/Model 编排、审批恢复归 `apps/runtime/src/application/`，不在 Desktop 复制执行循环或直接调用 `runTask`。
 - TaskRuntime 是任务状态、事件、检查点和持久执行记录的事实来源。UI 和连接器不能自行改变任务终态。
-- 通用执行模型调用统一经过 ModelGateway；唯一全局决策Laya通过现有LayaInferencePort调用镜像内typed-choice服务，从宿主校验过的有限候选中选择。开放式理解、规划、摘要和补丁由执行模型/模板生成候选，执行者可在受派范围使用既有subagent-host局部探索；不得自己签发授权或写主任务终态。
+- 模型调用统一经过 ModelGateway。Agent 只生成回答或提出工具请求，通过端口调用工具；不得自己签发授权。
 - 工具统一经过 Runtime/ToolGateway，并在执行前通过 Policy。需要审批时先等待用户决定，再校验授权和参数；Connector Host 按契约注入受限凭据，连接器不负责授权决定。
 - `packages` 不反向依赖 `apps`；contracts 不依赖其他内部包。Agent 不导入具体 Runtime，Runtime 核心不导入 Electron 或具体业务连接器。
 - 目标边界为 Runtime 注入 CoordinationPort；Agent 只消费 ModelPort、MemoryQueryPort、FactChangeFeed 和 ToolExecutionPort。当前端口未交付时保持 unavailable，不能私设 DTO。
-- Competition Profile 经 CloudAgentPort 调用AgentArts高代码Runtime，全部28业务编排及Laya权重/服务在自有镜像；平台真实承担镜像托管/版本、Inference/MCP网关、知识检索、日志Trace和后台离线评估。通过平台部署和实际运行证明构建/编排/调试/评估价值。Local仅保留既有可选profile；正式比赛运行不得在AgentArts失败后静默回退。
+- Competition Profile 经 CloudAgentPort 调用 AgentArts，并让 AgentArts 真实承担构建、Agent/Workflow 编排、评估与部署。Local Agent 仅为可选 profile；正式比赛运行不得在 AgentArts 失败后静默回退。
 - 具体 Provider/Connector 在明确的组合入口注入。跨包只使用公开 package exports，不通过相对路径或私有深层路径访问其他模块；生产依赖不得成环。
 - 新代码保持边界，存量边界问题按独立工作包迁移；目录和 TypeScript 接口本身不构成运行时安全沙箱。
 
@@ -87,7 +88,7 @@
 - Evidence 由可信执行路径记录。区分实际执行状态、Schema 校验和外部读回验证；模型自报成功不构成证据。`mock`、`conditional` 和 `verified` 按真实依据填写。
 - 默认测试使用显式 Fake 或 Unavailable，缺配置时不偷偷回退到 Fake，也不把其他 Provider 冒充盘古。文字 JSON 提案适配不等于原生 function calling 已验证。
 - 只冻结满足当前接口目录门槛的子集。Schema 中存在、能编译、配置成功或 Fake 通过，均不等于接口冻结或真实能力可用；未公布 capability 必须返回不支持。
-- 盘古原生工具调用和文字 JSON 工具提案不得因离线适配声称真实闭环；新默认国内决策配置、完整语音/责任/影子按接口目录逐项登记。固定AgentArts读取场景的真实证据仅覆盖该场景，不把整条Agent/Model/Tool链标记frozen。
+- 盘古原生工具调用和文字 JSON 工具提案真实闭环当前均未验证；Agent/Model/Tool 链不得标记 frozen。AgentArts 在完成部署 API 与本地执行读回前为 unavailable。
 - AgentArts deployment/version/trace、工具提案和云端结果必须作为不可信外部输入校验；不能把平台配置、页面截图或云端“成功”当成本地任务完成证据。
 - 真实、付费模型和真实账号操作按用户授权执行；本机存在环境变量或 .env 不代表可以自动使用。需要 API Key 时指导用户在本地配置，不要求贴到聊天、提交 Git 或写入测试夹具。
 - 凭据由受信宿主与安全存储管理；不得进入模型提示、Renderer 持久状态、日志、公开 Evidence 或错误回显。只读取当前任务必要的数据，私人内容及向云端发送的范围需要对应授权。
@@ -95,6 +96,8 @@
 - 保留 TraceGuard 普通用户权限与关键系统保护。外部发送、删除、发布等动作需要对应授权，不用真实账号写入代替测试。
 
 ## 6. 验证与执行环境
+
+- 各负责人须本人确认并完成本模块的生产接线、测试和证据交付；镜像/工作流验收优先使用华为 AgentArts 评测集及评估任务，平台确实不支持或不可用时记录原因与证据，再采用明确标注的本地替代验证。具体确认、平台优先顺序与本地适用边界见 [接线责任与华为优先验收](docs/competition/OWNER_WIRING_TEST_POLICY.md)。必要代码检查、契约/权限测试及实体设备验证继续按下表执行；平台评分不代替整图执行回执。
 
 从当前工作树的实际脚本选命令。以下命令存在于当前 main；旧分支先核对可用性：
 
@@ -123,7 +126,7 @@
 - 一个分支/PR 对应一个可审查的工作包。按当前客户端要求使用分支前缀；Codex 默认 `codex/<task-slug>`。延续已有任务时优先复用对应分支。
 - 提交前检查完整 diff，仅暂存当前任务文件；使用 scoped commit，例如 `feat(runtime): ...`、`fix(models): ...`、`docs(agents): ...`。不把数据、密钥、缓存、依赖或工作树提交进去。
 - 创建 PR 前核对目标分支及是否已有同任务 PR；按 `.github/pull_request_template.md` 写明行为变化、接口/迁移、实际验证和限制，不沿用与最终改动不符的说明。
-- 每个 PR 至少取得 zemeng5208、goo122、Potatos498 中任意一位非作者对当前提交的有效 Approve；一位即可，不要求三人逐一批准。作者自审是必要准备，但不算独立批准；提交更新导致批准失效时须重新取得有效批准。合并前还要满足目标分支实际要求的检查、无冲突、无未解决阻断意见和已授权的 Git 操作；不得用管理员绕过、虚构批准或伪造阅读记录。
+- 常规 PR 至少取得 zemeng5208、goo122、Potatos498 中任意一位非作者对当前提交的有效 Approve；一位即可，不要求三人逐一批准。作者自审是必要准备，不算独立批准；提交更新导致批准失效时须重新取得。Owner zemeng5208 可明确授权具体 PR 的审核例外，并通过独立审核 ruleset 的 PR-only 例外合并；PR 必须记录授权、已处理意见与保留分歧，不能伪称独立批准或删除异议。技术 CI 与审核规则分离：最新提交必需检查通过、严格更新主线、无冲突及技术缺陷已处理仍是合并前提，不得绕过技术 CI、强制推送或伪造阅读记录。
 - zemeng5208、goo122、Potatos498 对 PR 审查和合并享有同等参与权并承担同等责任，应持续轮流承担实质审查与合并，不得将这两项工作长期推给他人。创建 PR 时记录拟负责审查与合并的人；无法履职时明确说明阻碍、主动协调交接并确认接手人，不得以等待其他人代办作为免责理由。记录实际审查、批准、合并者及结果，定期检查三人的参与是否均衡；均衡是跨 PR 的责任，不是每个 PR 必须三人批准。
 - 禁止用强制推送、硬重置、覆盖或清理未跟踪文件解决普通冲突；存在需要处置的他人修改时先说明具体影响。
 - 工作状态使用 CONTRIBUTING/ROADMAP 中的 `todo`、`ready`、`in_progress`、`review`、`blocked`、`done`。只有工作包约定的验收、必要检查、自审及实际集成都满足才转为 done。

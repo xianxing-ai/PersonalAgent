@@ -6,7 +6,9 @@ function validate(message) {
     || !['id', 'sessionId'].every(key => typeof message[key] === 'string' && message[key].length > 0 && message[key].length <= 256)
     || typeof message.text !== 'string' || !message.text.trim() || message.text.length > 100000
     || !Number.isFinite(Date.parse(message.createdAt))) throw Error('Live 历史消息格式无效');
+  if(message.conversationId!==undefined && (typeof message.conversationId!=='string' || !message.conversationId.trim() || message.conversationId.length>256))throw Error('Live 历史对话归属无效');
   return {id: message.id, sessionId: message.sessionId, role: message.role, text: message.text,
+    ...(message.conversationId===undefined?{}:{conversationId:message.conversationId}),
     createdAt: new Date(message.createdAt).toISOString()};
 }
 
@@ -38,7 +40,7 @@ export function createLiveHistoryQueue({store, maxMessages = MAX_MESSAGES, maxBy
       // Memory revisions received while recovery was unavailable win by stable identity.
       for (const [id, message] of pending) {
         const prior = recovered.get(id);
-        if (prior && (prior.sessionId !== message.sessionId || prior.role !== message.role)) throw Error();
+        if (prior && (prior.sessionId !== message.sessionId || prior.role !== message.role || (prior.conversationId??'desktop-panel')!==(message.conversationId??'desktop-panel'))) throw Error();
         recovered.set(id, message);
       }
       if (recovered.size > maxMessages || bytes([...recovered.values()]) > maxBytes) throw Error();
@@ -51,7 +53,7 @@ export function createLiveHistoryQueue({store, maxMessages = MAX_MESSAGES, maxBy
     enqueue(value) {
       const message = validate(value);
       const prior = pending.get(message.id);
-      if (prior && (prior.sessionId !== message.sessionId || prior.role !== message.role)) throw Error('Live 历史消息标识冲突');
+      if (prior && (prior.sessionId !== message.sessionId || prior.role !== message.role || (prior.conversationId??'desktop-panel')!==(message.conversationId??'desktop-panel'))) throw Error('Live 历史消息标识冲突');
       const next = new Map(pending); next.set(message.id, message);
       if (next.size > maxMessages || bytes([...next.values()]) > maxBytes) {
         rejected++; throw Error('Live 历史待保存容量已满，请恢复存储后继续');

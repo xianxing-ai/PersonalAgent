@@ -2,7 +2,10 @@ import { ProtocolError, validateToolValue } from '@personal-agent/contracts';
 import type { ToolDescriptor } from '@personal-agent/contracts';
 export {StructuredToolProvider} from './structured-tools.js';
 export {QwenRealtimeModelGateway} from './realtime.js';
-export type {RealtimeEvent, RealtimeRequest, RealtimeSession} from './realtime.js';
+export type {RealtimeEvent, RealtimeRequest, RealtimeSession, RealtimeSocket,
+  RealtimeSocketConstructor, RealtimeConnectionPort, RealtimePreparedConnection, QwenRealtimeDirectConfig} from './realtime.js';
+export {AgentArtsRealtimeModelGateway, createAgentArtsRealtimeConnection} from './agentarts-realtime.js';
+export type {AgentArtsRealtimeModelGatewayOptions, RealtimeAuthorizationProvider} from './agentarts-realtime.js';
 export {OpenAICompatibleModelProvider} from './openai-compatible.js';
 export type {OpenAICompatibleModelProviderOptions} from './openai-compatible.js';
 
@@ -19,6 +22,8 @@ export interface ModelCapabilities {
   rateLimit?: {requestsPerMinute?: number; tokensPerMinute?: number};
   /** Trusted endpoint declaration; not proof of real native support. */
   nativeReasoning?: NativeReasoningConfiguration;
+  /** Trusted visible-request budget binding; not a verified tokenizer declaration. */
+  requestTokenBudget?: RequestTokenBudgetBinding;
 }
 
 export interface ModelDeployment {
@@ -59,6 +64,28 @@ export interface NativeReasoningConfiguration {
   outputTokenParameter: 'max_tokens' | 'max_completion_tokens';
 }
 
+export interface RequestTokenBudgetBinding {
+  scope: 'provider-body';
+  model: string;
+  tokenizerRef: string;
+  configurationRef: string;
+  contextTokens: number;
+  reservedOutputTokens: number;
+}
+
+export interface VisibleRequestTokenBudget {
+  model: string;
+  tokenizerRef: string;
+  configurationRef: string;
+  reservedOutputTokens: number;
+  /** Count model input, including its framing, from the complete serialized provider body. */
+  countInputTokens(serializedBody: string): number;
+}
+
+export type ModelRequestBudget =
+  | {state: 'unmeasured'; scope: 'provider-body'; hiddenContext: 'unknown'}
+  | (RequestTokenBudgetBinding & {state: 'measured'; inputTokens: number; hiddenContext: 'unknown'});
+
 export interface ModelRequest {
   messages: readonly ModelMessage[];
   tools: readonly ToolDescriptor[];
@@ -76,6 +103,7 @@ export interface ModelResult {
   usage?: ModelUsage;
   latencyMs: number;
   stopReason: string;
+  requestBudget?: ModelRequestBudget;
 }
 
 export interface ModelProvider {

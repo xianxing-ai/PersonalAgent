@@ -1,0 +1,515 @@
+{
+  "readOnly": true,
+  "databases": [
+    {
+      "database": "generation/runtime.sqlite",
+      "tasks": [
+        {
+          "task_id": "68f51f48-f0b0-4258-8fd1-6e1b081fadaf",
+          "state": "succeeded",
+          "revision": 13
+        },
+        {
+          "task_id": "185dc07b-ce75-4bb0-b6ef-4013bba79d05",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "fb77c687-1e30-4daf-9ae9-2e10ce2d8cdd",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "fdc88579-8495-4288-b914-b9d0292ae9e5",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "3a3398f6-c661-4a72-b81b-a6b8c954bd30",
+          "state": "succeeded",
+          "revision": 10
+        }
+      ],
+      "records": [
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "73638884624fb4d9c9d6dd55d5b35d4f369d32e1c8b77fae97c4018298353db4",
+          "evidenceId": "host-tool-185dc07b-ce75-4bb0-b6ef-4013bba79d05",
+          "requestId": "agent-tool-request-1",
+          "taskId": "185dc07b-ce75-4bb0-b6ef-4013bba79d05",
+          "toolName": "workspace.read_text",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:11:10.666Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:11:10.675Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "5f38814beb35cb6562e1bd1f8f0547e0b9c74360fe7f49125cded03db17d4b3f",
+          "evidenceId": "host-tool-fb77c687-1e30-4daf-9ae9-2e10ce2d8cdd",
+          "requestId": "agent-tool-request-2",
+          "taskId": "fb77c687-1e30-4daf-9ae9-2e10ce2d8cdd",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:11:37.756Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:11:37.765Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "6c601a613ff78400940941e4e9abbd999a4c810494fa5594e87ac8d565f61f06",
+          "evidenceId": "host-tool-fdc88579-8495-4288-b914-b9d0292ae9e5",
+          "requestId": "agent-tool-request-3",
+          "taskId": "fdc88579-8495-4288-b914-b9d0292ae9e5",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:12:01.559Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:12:02.506Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "66569979f512dd47a070aba181f2ef8084240dbe7fab7f13be62fc8a71963d6b",
+          "evidenceId": "host-tool-3a3398f6-c661-4a72-b81b-a6b8c954bd30",
+          "requestId": "agent-tool-request-4",
+          "taskId": "3a3398f6-c661-4a72-b81b-a6b8c954bd30",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:12:09.788Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:12:10.506Z"
+        }
+      ]
+    },
+    {
+      "database": "main/runtime.sqlite",
+      "tasks": [
+        {
+          "task_id": "b6cae3f0-12bb-4d62-98f0-35987a85d013",
+          "state": "succeeded",
+          "revision": 15
+        },
+        {
+          "task_id": "d0a9c79c-c119-42e5-8772-237eef984884",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "2870437b-7e6d-4316-9b09-7b9d2d089773",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "8e583e5f-2dd3-4fc2-b077-6e8a8c19c099",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "3a7a075c-7289-49d6-96a6-636d4a9718de",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "554c8d6f-57aa-4fa3-b553-4cd33163906a",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "ebbea4f8-6ccc-4a86-81cd-a86a3e5835b6",
+          "state": "succeeded",
+          "revision": 10
+        }
+      ],
+      "records": [
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "15ef4814c9cee065b16225a02b86acdbbbf7eeae7ba4c83a4fd191e8ac22401f",
+          "evidenceId": "host-tool-d0a9c79c-c119-42e5-8772-237eef984884",
+          "requestId": "agent-tool-request-5",
+          "taskId": "d0a9c79c-c119-42e5-8772-237eef984884",
+          "toolName": "wukong.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:14:34.891Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:14:35.343Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "77c288d03b9b470386edc8571c4d15699ef8ddbfbb288e35b06eb64f85d56371",
+          "evidenceId": "host-tool-2870437b-7e6d-4316-9b09-7b9d2d089773",
+          "requestId": "agent-tool-request-6",
+          "taskId": "2870437b-7e6d-4316-9b09-7b9d2d089773",
+          "toolName": "workspace.read_text",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:14:39.996Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:14:40.004Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "6208423e17fe82500461504cfa5ba7efb1c4b411876531b766f107e47e22cc27",
+          "evidenceId": "host-tool-8e583e5f-2dd3-4fc2-b077-6e8a8c19c099",
+          "requestId": "agent-tool-request-7",
+          "taskId": "8e583e5f-2dd3-4fc2-b077-6e8a8c19c099",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:14:45.897Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:14:45.912Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "c56f732bf37544076985af2820ef24ff2b18ae984d103a8e46d0deb330ba288d",
+          "evidenceId": "host-tool-3a7a075c-7289-49d6-96a6-636d4a9718de",
+          "requestId": "agent-tool-request-8",
+          "taskId": "3a7a075c-7289-49d6-96a6-636d4a9718de",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:14:48.947Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:14:50.159Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "903f7ee6186cfc9222c1d733532f6b0ad8a4a717d3f1bddc67816c4f0bdc2e62",
+          "evidenceId": "host-tool-554c8d6f-57aa-4fa3-b553-4cd33163906a",
+          "requestId": "agent-tool-request-9",
+          "taskId": "554c8d6f-57aa-4fa3-b553-4cd33163906a",
+          "toolName": "wukong.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:14:54.435Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:14:54.857Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "c32492105e252bed6bab9782d446256918089ad71e363c34977e0cb7a11ded0b",
+          "evidenceId": "host-tool-ebbea4f8-6ccc-4a86-81cd-a86a3e5835b6",
+          "requestId": "agent-tool-request-10",
+          "taskId": "ebbea4f8-6ccc-4a86-81cd-a86a3e5835b6",
+          "toolName": "wukong.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:01.031Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:01.455Z"
+        }
+      ]
+    },
+    {
+      "database": "shadow/runtime.sqlite",
+      "tasks": [
+        {
+          "task_id": "7112065a-f70f-4a76-b15e-c8207c389f64",
+          "state": "succeeded",
+          "revision": 29
+        },
+        {
+          "task_id": "419db57f-da35-49d7-b464-85fc8d81883b",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "436edaff-a1a8-485e-8fe2-f4d40f6c095e",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "035d0ea2-8a74-4104-8373-616cf269bf23",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "50164bda-82eb-410b-81df-2a3aeccefbd3",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "2b026e51-1aea-4d87-9fec-3db7540bb2cc",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "39bf5493-41b1-4a9d-a3ec-c034cc481e28",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "cbc69bbc-6205-4a2a-aa29-254bb00179d4",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "591965ec-119f-4f31-8f3e-bef53481d1a7",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "f47158d2-3ffb-476e-988d-8c58746c09cc",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "7cce6a3b-06cd-4a6c-ba5f-8f13486d1d86",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "90c0739a-db3a-46c8-99f7-501f98ea9dd9",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "339cb6cf-36df-458e-a663-bc5ec599222f",
+          "state": "succeeded",
+          "revision": 10
+        },
+        {
+          "task_id": "292b3836-930f-45d3-a8f6-05ee2bd3b9f3",
+          "state": "succeeded",
+          "revision": 10
+        }
+      ],
+      "records": [
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "09ad1c8f6d84bcbfa675f6538a823eebb19a49596fd2cd7575c131771a2b1702",
+          "evidenceId": "host-tool-419db57f-da35-49d7-b464-85fc8d81883b",
+          "requestId": "agent-tool-request-11",
+          "taskId": "419db57f-da35-49d7-b464-85fc8d81883b",
+          "toolName": "wukong.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:02.486Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:02.906Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "a39a3c6c964eeb696c5ff4e8f7ac81fac501b7f4a2db3071ba6702f9be935160",
+          "evidenceId": "host-tool-436edaff-a1a8-485e-8fe2-f4d40f6c095e",
+          "requestId": "agent-tool-request-12",
+          "taskId": "436edaff-a1a8-485e-8fe2-f4d40f6c095e",
+          "toolName": "workspace.read_text",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:05.354Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:05.404Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "78c05ad3ca07b6c6f5d87442e99a1da4064c834faed8ec1ff267ea1ab401bd3d",
+          "evidenceId": "host-tool-035d0ea2-8a74-4104-8373-616cf269bf23",
+          "requestId": "agent-tool-request-13",
+          "taskId": "035d0ea2-8a74-4104-8373-616cf269bf23",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:17.098Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:17.111Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "e6494d3950295727203fa30325ee25df6bce469f76d03279badb120dcd8900a6",
+          "evidenceId": "host-tool-50164bda-82eb-410b-81df-2a3aeccefbd3",
+          "requestId": "agent-tool-request-14",
+          "taskId": "50164bda-82eb-410b-81df-2a3aeccefbd3",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:23.041Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:24.012Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "8110d92eed6e08e5410fa9dbcf64aad64af1b5039c09a8531f121b4d1d6d2e57",
+          "evidenceId": "host-tool-2b026e51-1aea-4d87-9fec-3db7540bb2cc",
+          "requestId": "agent-tool-request-15",
+          "taskId": "2b026e51-1aea-4d87-9fec-3db7540bb2cc",
+          "toolName": "wukong.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:26.398Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:26.814Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "b538b8a150e795504c267fcc7d4cfbce559a37f4f0fbacb1cddb19e43534309c",
+          "evidenceId": "host-tool-39bf5493-41b1-4a9d-a3ec-c034cc481e28",
+          "requestId": "agent-tool-request-16",
+          "taskId": "39bf5493-41b1-4a9d-a3ec-c034cc481e28",
+          "toolName": "workspace.read_text",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:29.535Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:29.543Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "9c007b1001675ffd6508e361e01a9d47553252fc2b0c82884d892c92c8746032",
+          "evidenceId": "host-tool-cbc69bbc-6205-4a2a-aa29-254bb00179d4",
+          "requestId": "agent-tool-request-17",
+          "taskId": "cbc69bbc-6205-4a2a-aa29-254bb00179d4",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:35.318Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:35.327Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "ce16e4dc137187a027df931267a9e51fd1afa9966e66b246bc6d16b693942fee",
+          "evidenceId": "host-tool-591965ec-119f-4f31-8f3e-bef53481d1a7",
+          "requestId": "agent-tool-request-18",
+          "taskId": "591965ec-119f-4f31-8f3e-bef53481d1a7",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:40.603Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:41.351Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "c0b5f316dcf076b0624a97471129ccb7ffef1638491bc359454c44f73ed26ed9",
+          "evidenceId": "host-tool-f47158d2-3ffb-476e-988d-8c58746c09cc",
+          "requestId": "agent-tool-request-19",
+          "taskId": "f47158d2-3ffb-476e-988d-8c58746c09cc",
+          "toolName": "wukong.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:43.631Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:44.039Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "042f38335d0109c31a13638997e8e02445318c1f11f84407ecb29b1bc2ec93c7",
+          "evidenceId": "host-tool-7cce6a3b-06cd-4a6c-ba5f-8f13486d1d86",
+          "requestId": "agent-tool-request-20",
+          "taskId": "7cce6a3b-06cd-4a6c-ba5f-8f13486d1d86",
+          "toolName": "workspace.preview_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:46.883Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:46.894Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "59c2ac5a44cb8fea1404f3e85feab10ab68f61c98e0916d885e01323c8a5507b",
+          "evidenceId": "host-tool-90c0739a-db3a-46c8-99f7-501f98ea9dd9",
+          "requestId": "agent-tool-request-21",
+          "taskId": "90c0739a-db3a-46c8-99f7-501f98ea9dd9",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:52.984Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:53.825Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "b33a5b090a5f3e891ca2c8fb3b5f16cabdf8c49b8b51e4f593e8be948e524106",
+          "evidenceId": "host-tool-339cb6cf-36df-458e-a663-bc5ec599222f",
+          "requestId": "agent-tool-request-22",
+          "taskId": "339cb6cf-36df-458e-a663-bc5ec599222f",
+          "toolName": "wukong.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:15:57.923Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:15:58.347Z"
+        },
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "12824a0640b002f4b8fc3abd7e734b0d941ee96dc7368337d3a3c22222f27b5f",
+          "evidenceId": "host-tool-292b3836-930f-45d3-a8f6-05ee2bd3b9f3",
+          "requestId": "agent-tool-request-23",
+          "taskId": "292b3836-930f-45d3-a8f6-05ee2bd3b9f3",
+          "toolName": "wukong.verify",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:16:06.515Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:16:06.934Z"
+        }
+      ]
+    },
+    {
+      "database": "delivery.sqlite",
+      "tasks": [
+        {
+          "task_id": "abb715c9-b5bf-4260-95df-a5e8f64a7018",
+          "state": "succeeded",
+          "revision": 10
+        }
+      ],
+      "records": [
+        {
+          "protocolVersion": "1.0.0",
+          "policyDecision": "allow",
+          "executionStarted": true,
+          "inputDigest": "f0412ee377c205c58e59a9548a762ec625f4337ef22beb4826f385492777bc25",
+          "evidenceId": "host-tool-abb715c9-b5bf-4260-95df-a5e8f64a7018",
+          "requestId": "agent-tool-request-24",
+          "taskId": "abb715c9-b5bf-4260-95df-a5e8f64a7018",
+          "toolName": "workspace.apply_text_patch",
+          "toolVersion": "1.0.0",
+          "startedAt": "2026-10-16T07:16:07.902Z",
+          "state": "confirmed",
+          "finishedAt": "2026-10-16T07:16:08.830Z"
+        }
+      ]
+    },
+    {
+      "database": "controller.sqlite",
+      "tasks": [
+        {
+          "task_id": "8312e6c8-7fff-4714-bfa1-7de1a0a8d7b3",
+          "state": "created",
+          "revision": 1
+        }
+      ],
+      "records": []
+    }
+  ]
+}

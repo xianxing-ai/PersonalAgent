@@ -1,8 +1,5 @@
 # MOD-32：AgentArts 请求级观测与恢复边界
 
-<!-- current-design-20261013 -->
-> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。当前实验为本机Laya有限候选判断，资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，架构未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
-
 ## 2026-10-15：请求身份比较与有界平台日志读取
 
 Owner：zemeng。Profile：`huawei_ict_agentarts`。本离线工作包状态 `review`；MOD-32 仍为 `in_progress`，真实平台观测验收未完成。
@@ -96,6 +93,8 @@ CRLF 规范化改变了源码原始字节，因此重新执行 `build:observabil
 后续最小现场验收：受信宿主提供同次 HTTP request/session/application 和原生 trace 或 agentRun 身份，
 显式只读执行上述入口并保存脱敏结果；版本绑定、费用和回滚继续独立验收。
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
 
 ## 2026-10-07：显式只读 Trace helper
 

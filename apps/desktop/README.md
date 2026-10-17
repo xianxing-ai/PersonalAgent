@@ -1,24 +1,42 @@
 # PersonalAgent Desktop
 
-<!-- architecture-scope-20261013 -->
-## 当前架构职责
+## 2026-10-16 远程 MCP 原生管理与生产装配（provisional）
 
-目标profile：huawei_ict_agentarts。工程责任：MOD-11（zemeng5208）、MOD-12（zemeng5208）、MOD-13（zemeng5208）、MOD-14（zemeng5208）。产品流程：F01、F02、F12、F24、F22、F23、F25、F26、F27、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
+Competition 后台顶栏新增「远程 MCP 管理」，打开独立 sandbox/contextIsolation 窗口。普通页面只能打开窗口和看到布尔状态，不能调用管理 IPC 或读回密钥。管理窗口支持导入服务定义、加密保存短期凭据、原生确认连接、创建/审核单次只读任务、原任务结果/Evidence 引用读回、停止、断开和撤销。无真实云端调用；不自动向 AgentArts 公布该工具或导出结果。
 
-复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+使用步骤：
 
-复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+1. 从已审查的本机 JSON 导入定义，顶层只含 `endpoint`、`server`、`tool`、`directoryDigest`。结构与下节配置 API 一致，`tool.descriptor.name` 限 `mcp.remote.*`，含对象输入/输出 Schema、版本和必要 scopes。摘要用 `@personal-agent/mcp` 的 `remoteMcpDirectoryDigest(tools)` 对真实工具目录计算，不接受自动信任发现的工具；文件不能含 token 或额外字段。
+2. 在独立窗口输入已有短期 token 和规范 ISO UTC 到期时间（空 token 明确不使用凭据）。原生确认固定地址/版本/目录后保存；保存不联网。定义、Schema 或凭据变化后，正常退出并重启，重新装配 Runtime；不热换旧任务 Schema。旧格式中不在远程命名空间的配置保留原密文并报告不可用，需显式导入符合命名空间的新定义。
+3. 点击「确认连接」，原生确认仅开启本次会话。连接不授予工具执行；重启后默认断开。后台未初始化原 Runtime 时仍可保存，试调用明确不可用，不创建另一套 Runtime 或静默回退 Local。
+4. 输入业务参数，创建本地审批任务；审核原任务的工具、参数与 revision，再原生确认批准一次或拒绝。ToolGateway/Policy 执行和 SQLite/Evidence 继续是事实来源；重启可选原任务读回，不重放。旧会话待审批任务无法以新会话许可执行，应拒绝并重新提交。
+5. 断开中止待连接确认；撤销先废止内存凭据，再清除本机密文。删除失败报告未完成，原任务记录保留；不声称撤销服务端签发的 token。
 
-复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+`npm run test:remote-mcp-product-smoke --workspace=@personal-agent/desktop` 使用实际产品 main、Preload、独立管理窗口、Electron safeStorage 与 SQLite，经过两次重启验证默认断开、批准前零调用、一次执行、原结果读回、旧审批拒绝和撤销。原生对话框响应为显式合成适配，HTTPS 请求由测试专用入口映射到本机 HTTP 合成服务；这不是远程 TLS/OAuth、真人确认或 AgentArts 验收。测试入口不进入生产 main。详见[本包记录](../../docs/modules/MOD-06-MANAGEMENT-20261016.md)。
 
-将主动语音询问、最终转写、问题/参数/revision绑定接到既有授权响应；保留直接本地停止。
+## 2026-10-16 远程 MCP 加密配置与宿主装配（provisional）
 
-当前实验由本机Laya提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收，架构未最终定型。
+`electron/remote-mcp-config.js` 的 `createRemoteMcpConfig({userData,safeStorage})` 仅供受信主进程调用。严格保存固定 HTTPS endpoint、服务/工具/schema、目录摘要与可选已签发 token/expiry；全量配置通过现有 Electron safeStorage 加密并原子替换。`snapshot()` 不返回地址、凭据或引用；`hostConfiguration()/binding()/secretStore/revocationSignal()` 是 host-only 端口，不能暴露为 Renderer 通用 IPC。
 
-本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+保存不联网、不连接、不授权工具。每次成功轮换递增 revision、更换 secretRef 并撤销旧 host；保存失败保留旧文件与旧状态。每次加载生成独立会话 nonce，重启默认断开，旧 envelope/许可不能恢复执行。`revoke()` 立即禁用内存访问并尝试清除本机加密文件，删除失败报告 `revoke_pending`、保留原文件；不声称已撤销服务端 token。单 userData 由一个主进程拥有，不支持并行配置写入。
 
-## 现有API、运行说明与历史验证参考
-<!-- /architecture-scope-20261013 -->
+`createDesktopRemoteMcpHost({config,confirmConnection,fetch?})` 复用原 bound host，默认拒绝连接。受信原生确认回调只看到 endpoint、服务/工具标识、目录摘要与是否有凭据；异步确认后重验配置/取消/期限，断开或关闭能阻止迟到确认。连接后 `arguments(businessArguments)` 提供当前 envelope，`tools` 经既有 RuntimeApplicationOptions.tools 接入原 Policy/ToolGateway。原生连接确认不授予工具执行许可，配置改变后必须重装配，不能热换已注册 schema。
+
+此处为 #371 的宿主首片记录，当时未新增 Renderer 页面/IPC 或默认生产装配；本分支后续管理入口见上节。确认回调单测为显式合成替身；真实远端与 OAuth 未验收。Competition 的本机 HTTP + SQLite Runtime 审批/重启测试与真实 Electron safeStorage 双进程测试分开记录；既有 Local 窗口回归不能替代比赛验收。
+
+构建依赖后执行：
+
+```powershell
+node --test apps/desktop/test/remote-mcp-config.test.mjs tests/integration/remote-mcp-host-runtime.test.mjs
+npm run test:remote-mcp-storage-smoke --workspace=@personal-agent/desktop
+```
+
+真实 safeStorage 烟测用两个隔离 Electron 进程和公开合成 token，正常 `app.quit()` 关闭并读回忽略目录的 receipt；没有工具或模型调用。首次加密后立即强制终止可能使 Chromium 加密状态未落盘，恢复将为 unavailable、保留原密文；本包不承诺首次保存后的崩溃恢复。详见 [ADR-0031](../../docs/adr/0031-remote-mcp-host-configuration.md) 与[验收记录](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
+## 2026-10-16 V5 当前验收状态
+
+本次 r3 真实验收已取得 AgentArts 公网 WSS Upgrade HTTP 101，并通过文字任务的原生推理强度 low 调用。实时语音 runner 使用公开 PCM 完成整轮，结果为 passed；这不代表已通过实际麦克风、扬声器或设备交互验收。Qwen 完整子任务派发仍在复测，当前不宣称通过。
+
+当前主通道、模型选择、持久化配置及验收边界见 [Desktop AgentArts Models V5](../../docs/competition/DESKTOP_AGENTARTS_MODELS_V5.md)；本轮原始回执与结果入口见 [V5 验收证据](../../docs/competition/evidence/desktop-agentarts-v5-20261016/README.md)。下方 2026-10-09 WSS 说明保留为历史记录，其中“公网 Upgrade 尚未证实”等结论仅描述当时状态。
 
 ## 2026-10-09 自有镜像 WSS 消费增量
 
@@ -28,6 +46,8 @@ Competition可信主进程已消费WSS传输及连接状态，此接入仍为 **
 
 `PA_AGENTARTS_APP_TOKEN`与镜像`PA_AGENT_WSS_AUTH_TOKEN`匹配并只留在受信环境。`PA_AGENTARTS_HTTPS_FALLBACK=1`明确允许证明未发出invoke的连接失败使用同部署备用。降级/认证失败/未知核实可见，未知任务不会重发。既有未配置消费者保留HTTPS兼容。配置、实际TLS连接、Runtime和Desktop合成验证分别记录，不代表华为公开WSS或物理窗口验收。具体接口与余项见[镜像接口](../../docs/competition/OWNED_IMAGE_INTERFACES.md)。
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
 
 本地 [MOD-08K](../../docs/modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 接通私人 SQLite
 备份清单与逐事实删除。备份放在 userData 的 `private-memory-backups/*.sqlite`；不自动
@@ -50,6 +70,7 @@ Wiki 写回增量（[MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.
 检查，使用现有定时入口每 30 秒检查一次，并展示状态。仅校验原确认记忆，新增笔记
 不自动形成记忆；缺失与扫描失败保留历史，不删除文件。尚无完整全文索引或安装插件。
 
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 ## 2026-10-11 球体、反馈与键盘操作继续交付
 

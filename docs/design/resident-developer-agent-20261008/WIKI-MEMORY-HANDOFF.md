@@ -1,8 +1,9 @@
 # Wiki 记忆接入：goo122 实施工作包
 
-<!-- current-design-20261013 -->
-> 历史设计，目标已由2026-10-14版替代；原基线/估算/验收保留。当前依据：[完整主架构](../workflow-architecture-20261013/DESIGN.md) · [28功能流程](../workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../workflow-architecture-20261013/index.html) · [接口状态](../../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。当前实验为本机Laya有限候选判断，资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，架构未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
-
+<!-- current-design-alignment-20261015 -->
+> **历史/待适配设计，非当前完成声明。** 原日期、作者、目标和验收记录保留；与最新部署、模型、影子交付条件、发布及旧协作门槛冲突的部分已superseded。
+> 当前请读[2026-10-15详细设计](../CURRENT_DESIGN_20261015.md)与[所有设计导航](../README.md)，其中逐项区分已实现、待接线和待真实验收；架构仍未最终定型。
+> 本页旧“未发布/未接通/已定”文字只适用于其当时对象，不否定新的SWR/云目录/实际API，也不自动完成全部业务。
 
 2026-10-09；状态：设计交接，尚未实现。目标：`huawei_ict_agentarts`。唯一交付负责人：**goo122**。本文件按用户要求明确实施责任，不表示已向某个聊天或智能体发送消息。
 
@@ -54,4 +55,4 @@ Memory 已有 provisional MemoryQueryPort、FactChangeFeedPort 与 SQLite 版本
 
 必要检查按实际改动执行受影响测试/类型检查；公共接口或 Runtime 集成执行仓库要求的 `npm run check`。提交公开 exports、Schema/Fake/Unavailable、实现、消费接线、失败路径、README 与真实证据；未验收的 Wiki/云能力仍 unavailable，不据文档调整模块估算为完成。
 
-合并遵守当前两人确认与本机阅读门槛；禁止强制合并、管理员绕过、跳过检查和自审冒充他人批准。
+合并遵守当前 CONTRIBUTING 的至少一位登记非作者对当前提交有效批准及必要检查门槛；禁止强制合并、管理员绕过、跳过检查和自审冒充他人批准。

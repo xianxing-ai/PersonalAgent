@@ -25,7 +25,7 @@ for(const feature of features) {
   for(const node of feature.nodes)for(const dependency of node.dependencies)assert(nodes.has(dependency),feature.id+' dangling dependency');
   for(const node of feature.nodes)for(const dependency of node.dependencies)assert(feature.edges.some(e=>e.source===dependency&&e.target===node.id),feature.id+' dependency without graph edge');
 }
-const {ARCHITECTURE_AREAS,ARCHITECTURE_MECHANISMS}=load('src/data/architectureRevisions.ts');
+const {ARCHITECTURE_AREAS,ARCHITECTURE_MECHANISMS}=load('src/data/currentMechanisms.ts');
 assert.equal(ARCHITECTURE_AREAS.length,6);
 assert.deepEqual(ARCHITECTURE_AREAS.flatMap(a=>a.features).sort(),features.map(f=>f.id).sort(),'Six areas must cover each feature once');
 const {OVERVIEW_LINKS,SHARED_NODES}=load('src/data/overview.ts');
@@ -46,5 +46,14 @@ assert.equal(send.nodes.find(n=>n.id==='F08_N06').required,false,'Voice question
 assert.equal(send.nodes.find(n=>n.id==='F08_N07').joinMode,'selected','Direct path must not wait for unused approval branch');
 assert(OVERVIEW_LINKS.some(([s,t])=>s==='MODELS'&&t==='POLICY'),'Executors need existing Policy tool path');
 const html=fs.readFileSync(path.join(root,'dist/architecture.html'),'utf8');
+const current=JSON.parse(fs.readFileSync(path.join(root,'src/data/currentDesign.generated.json'),'utf8'));
+assert.equal(current.workflows.length,28);assert.equal(current.workPackages.length,10);assert.equal(current.modules.length,39);
+assert.equal(detailNodes,185);assert(html.includes('本机Laya'));assert(html.includes('未最终定型'));
+const release=features.find(f=>f.id==='F23');
+assert(!JSON.stringify(release.nodes).includes('trainSet'),'Release detail must not retain obsolete training contract');
+assert(release.nodes.find(n=>n.id==='F23_N04').outputFields.includes('operationId'),'CAS release keeps original operation');
+const replay=features.find(f=>f.id==='F22');
+assert(replay.nodes.find(n=>n.id==='F22_N06').condition.includes('完整与缺失记录均核对'),'Successful replay must also reach comparison join');
+assert(replay.edges.some(e=>e.source==='F22_N04'&&e.target==='F22_N06')&&replay.edges.some(e=>e.source==='F22_N06'&&e.target==='F22_N07'));
 assert(!/<script\b[^>]*\bsrc=/.test(html));assert(!/<link\b[^>]*rel="stylesheet"/.test(html));
 console.log(JSON.stringify({features:features.length,detailNodes,logicalAreas:ARCHITECTURE_AREAS.length,mechanisms:ARCHITECTURE_MECHANISMS.length,connectedOverviewNodes:reached.size,relations:OVERVIEW_LINKS.length,localStopIndependent:true,parallelDependencies:true,conditionalVoice:true,offlineFileBytes:Buffer.byteLength(html),externalAssetTags:0}));

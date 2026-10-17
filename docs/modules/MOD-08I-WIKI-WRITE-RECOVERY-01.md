@@ -1,8 +1,6 @@
 # MOD-08I：Wiki 受控写回与来源投影恢复
 
-<!-- current-design-20261013 -->
-> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。当前实验为本机Laya有限候选判断，资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，架构未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
-
+> 公开脱敏投影：历史命令中的机器专属路径已改为接收者可配置占位或仓库相对路径；日期、数值、失败与原哈希保留。占位不是可直接执行的配置，运行前使用本机受信Node/npm、工作树及运行环境路径。
 
 - Profile：`huawei_ict_agentarts`，真实云验收继续暂缓
 - 负责人：`goo122`；非作者评审：其他已登记协作者
@@ -57,7 +55,7 @@ finalize。管理页“核实原整理任务”同时返回投影是否待恢复
 `.cache/wiki-p4-private-memory-smoke.log`。原 Git 夹具及通用窗口复验见 MOD-08H 续记。
 
 原生决定与配置绑定使用显式 Fake；真实写入/读回发生在独立公开合成 Vault，使用实际
-SQLite、Runtime 和 Windows helper。未读取或写入 `D:\test\知识库`，未调用 AgentArts。
+SQLite、Runtime 和 Windows helper。未读取或写入 `<private-vault>`，未调用 AgentArts。
 
 ## 2026-10-12：PR #320 原结果确认与投影恢复分离
 

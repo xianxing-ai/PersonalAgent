@@ -8,12 +8,56 @@
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
-Status: **offline tested / real service and devices not accepted**. This adapter is a
+Status: **offline tested / public synthetic SIS calls passed / devices not accepted**. This adapter is a
 thin, opt-in implementation of the existing `SpeechRecognitionPort` and
 `SpeechOutputPort`. It does not change the default Unavailable provider or publish
 the public `voice.start` / `voice.stop` wire capability.
 
 ## Trusted-host composition
+
+### 2026-10-16 compatible request signing
+
+`HuaweiSisConfig` accepts exactly one of the original `tokenPort` and the new
+`HuaweiSisRequestAuthPort`. The latter receives the exact serialized body,
+fixed regional URL, method, deadline and signal and returns only the permitted
+authorization, project and date headers. The adapter checks the same deadline again before
+uploading and rejects redirects. Existing Token callers remain compatible.
+
+Desktop's trusted host can use a separately encrypted AK/SK configuration and
+sign each fixed SIS ASR/TTS request. This avoids manually replacing a short-lived
+IAM Token; the access key remains revocable and is not an everlasting Token.
+The old Token/API configuration remains stored independently. No credential or
+signing header is exposed in Renderer snapshots. A successful credential lookup
+or configuration write does not prove a successful SIS invocation, physical
+microphone/playback, or an AgentArts SIS proxy. The current AgentArts image's
+Bailian realtime protocol is a separate path and does not implement SIS forwarding.
+
+After explicit service activation for the current credential subject on
+2026-10-16, a public short-phrase TTS response was sent back through ASR; both
+returned HTTP 200 and recognition was nonempty. This direct diagnostic did not
+open a microphone or speaker and does not establish AgentArts forwarding or
+Desktop device acceptance. The historical service user remained subscribed;
+earlier failures belonged to a different credential subject. See the
+[safe synthetic receipts](../../docs/competition/evidence/desktop-agentarts-v5-20261016/README.md).
+The current production recognition and output ports were then called against
+SIS with a read-only formal-profile copy, the actual request signer and the
+same public PCM. Both returned HTTP 200 and completed successfully, including
+the production `chinese_16k_general` ASR property. TTS used an explicit synthetic
+playback port, so neither a microphone nor a speaker was opened. Source and
+compiled-file digests are recorded in the separate production-port receipt.
+
+A one-time helper-profile encryption mistake was repaired without replacing the
+credential or changing the legacy API settings. Existing ciphertexts were backed
+up, decrypted only in trusted memory and re-encrypted with the normal Desktop
+profile. A fresh ordinary application start restored SIS, AgentArts and Live
+configuration; this is configuration persistence evidence, not a physical
+microphone, playback or AgentArts-to-SIS acceptance result. Helpers must select
+their intended Electron profile synchronously before asynchronous work, and must
+not write profile-bound ciphertext to a different profile's configuration folder.
+
+The original Token-only composition and acceptance record below describe the
+earlier increment. The current Desktop selects the compatible signing port when
+a trusted encrypted SIS access-key configuration is present.
 
 The public `@personal-agent/voice` entry exports
 `createHuaweiSisRecognitionPort` and `createHuaweiSisOutputPort`. A trusted host

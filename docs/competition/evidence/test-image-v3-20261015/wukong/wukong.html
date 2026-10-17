@@ -1,0 +1,80 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Wukong scaffold</title></head><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%" role="img" aria-labelledby="wukong-title">
+  <title id="wukong-title">孙悟空骑白龙马</title>
+  <desc>Sun Wukong riding the white dragon horse</desc>
+  <style>
+    .sky { fill: #bfe3f5; }
+    .cloud { fill: #ffffff; opacity: 0.85; }
+    .mountain { fill: #7fa8c9; }
+    .ground { fill: #8fbf6f; }
+    .horse-body { fill: #f7f7fa; stroke: #6b6b7a; stroke-width: 3; }
+    .horse-mane { fill: #e8e8f0; stroke: #6b6b7a; stroke-width: 2; }
+    .horse-hoof { fill: #4a4a58; }
+    .horse-eye { fill: #2b2b36; }
+    .wukong-fur { fill: #c98a3c; stroke: #6b3f14; stroke-width: 2.5; }
+    .wukong-face { fill: #f0c088; stroke: #6b3f14; stroke-width: 2; }
+    .wukong-cloth { fill: #d43b2f; stroke: #7a1c14; stroke-width: 2.5; }
+    .wukong-gold { fill: #f2c14e; stroke: #8a6410; stroke-width: 2; }
+    .wukong-eye { fill: #1a1a1a; }
+    .staff { stroke: #b8860b; stroke-width: 7; stroke-linecap: round; }
+    .staff-gold { fill: #f2c14e; stroke: #8a6410; stroke-width: 2; }
+    .scarf { fill: #e94f37; }
+  </style>
+
+  <rect class="sky" x="0" y="0" width="800" height="600"/>
+  <g class="clouds">
+    <ellipse class="cloud" cx="130" cy="110" rx="80" ry="28"/>
+    <ellipse class="cloud" cx="190" cy="95" rx="55" ry="22"/>
+    <ellipse class="cloud" cx="640" cy="150" rx="90" ry="30"/>
+    <ellipse class="cloud" cx="700" cy="135" rx="60" ry="24"/>
+  </g>
+  <g class="mountains">
+    <path class="mountain" d="M0 420 L140 260 L280 420 Z"/>
+    <path class="mountain" d="M200 420 L360 230 L520 420 Z"/>
+    <path class="mountain" d="M480 420 L640 270 L800 420 Z"/>
+  </g>
+  <rect class="ground" x="0" y="420" width="800" height="180"/>
+
+  <g id="horse-motion">
+    <animateTransform id="horse-gallop" attributeName="transform" type="translate" begin="0s" dur="0.8s" repeatCount="indefinite" values="0 0; 0 -14; 0 0; 0 -8; 0 0" keyTimes="0;0.25;0.5;0.75;1"/>
+    <g id="white-dragon-horse">
+      <path class="horse-body" d="M250 400 Q230 350 270 330 L360 320 Q420 315 470 330 L540 340 Q600 345 620 380 Q630 400 610 415 L560 420 L520 470 L500 470 L510 420 L360 420 L340 470 L320 470 L330 420 L280 420 Q250 415 250 400 Z"/>
+      <path class="horse-body" d="M540 340 Q590 300 620 280 Q650 265 660 285 Q665 300 640 315 L600 345 Z"/>
+      <path class="horse-mane" d="M560 330 Q600 295 630 285 Q615 305 590 330 Z"/>
+      <path class="horse-mane" d="M620 280 Q640 260 655 270 Q645 285 630 290 Z"/>
+      <circle class="horse-eye" cx="625" cy="300" r="5"/>
+      <path class="horse-body" d="M660 285 Q685 280 690 295 Q688 305 670 305 L655 300 Z"/>
+      <path class="horse-body" d="M250 400 Q215 395 200 375 Q195 360 215 355 Q235 360 245 380 Z"/>
+      <path class="horse-mane" d="M225 360 Q205 345 195 355 Q210 365 225 370 Z"/>
+      <rect class="horse-hoof" x="330" y="462" width="18" height="14" rx="4"/>
+      <rect class="horse-hoof" x="500" y="462" width="18" height="14" rx="4"/>
+      <path class="horse-body" d="M350 320 Q380 300 420 305 L430 320 Z"/>
+      <path class="horse-body" d="M470 330 Q500 315 530 325 L535 340 Z"/>
+    </g>
+  </g>
+
+  <g id="rider-motion">
+    <animateTransform id="rider-bob" attributeName="transform" type="translate" begin="0s" dur="1.2s" repeatCount="indefinite" values="0 0; 0 -10; 0 0; 0 -6; 0 0" keyTimes="0;0.25;0.5;0.75;1"/>
+    <g id="wukong">
+      <path class="scarf" d="M420 250 Q470 235 520 250 Q480 260 430 265 Z"/>
+      <path class="wukong-cloth" d="M400 300 Q395 250 430 240 Q470 235 480 280 L470 330 L410 335 Z"/>
+      <path class="wukong-gold" d="M400 300 Q430 315 470 300 L472 315 Q430 330 398 315 Z"/>
+      <circle class="wukong-fur" cx="440" cy="210" r="38"/>
+      <path class="wukong-face" d="M415 200 Q440 180 465 200 Q470 225 440 235 Q410 225 415 200 Z"/>
+      <circle class="wukong-eye" cx="428" cy="205" r="4"/>
+      <circle class="wukong-eye" cx="452" cy="205" r="4"/>
+      <path class="wukong-fur" d="M420 188 Q440 175 460 188 Q450 182 440 182 Q430 182 420 188 Z"/>
+      <path class="wukong-gold" d="M405 190 Q440 165 475 190 Q475 175 440 165 Q405 175 405 190 Z"/>
+      <circle class="wukong-gold" cx="440" cy="168" r="6"/>
+      <path class="wukong-fur" d="M410 215 Q400 218 405 225 Q412 224 415 220 Z"/>
+      <path class="wukong-fur" d="M470 215 Q480 218 475 225 Q468 224 465 220 Z"/>
+      <path class="wukong-cloth" d="M405 320 Q380 340 360 360 Q350 370 360 375 Q375 370 395 350 Z"/>
+      <path class="wukong-cloth" d="M470 320 Q495 340 515 360 Q525 370 515 375 Q500 370 480 350 Z"/>
+      <path class="staff" d="M350 180 L540 400"/>
+      <rect class="staff-gold" x="340" y="170" width="20" height="20" rx="4" transform="rotate(45 350 180)"/>
+      <rect class="staff-gold" x="530" y="390" width="20" height="20" rx="4" transform="rotate(45 540 400)"/>
+      <path class="wukong-cloth" d="M420 335 Q440 355 460 335 L465 350 Q440 370 415 350 Z"/>
+      <path class="wukong-fur" d="M415 350 Q440 375 465 350 L470 365 Q440 390 410 365 Z"/>
+      <path class="wukong-gold" d="M400 360 Q440 385 480 360 L480 370 Q440 395 400 370 Z"/>
+    </g>
+  </g>
+</svg></body></html>

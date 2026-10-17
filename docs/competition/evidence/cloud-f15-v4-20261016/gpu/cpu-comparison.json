@@ -1,0 +1,737 @@
+{
+  "schemaVersion": 1,
+  "kind": "real_local_laya_same_input_comparison",
+  "status": "completed",
+  "startedAt": "2026-10-16T08:33:05.578Z",
+  "stages": [
+    {
+      "stage": "service.starting",
+      "observedAtUtc": "2026-10-16T08:33:05.627Z",
+      "threadCount": 1,
+      "policy": "sequential"
+    },
+    {
+      "stage": "service.ready",
+      "observedAtUtc": "2026-10-16T08:33:19.727Z",
+      "threadCount": 1,
+      "policy": "sequential",
+      "processId": 10248,
+      "startupMs": 14099.3391
+    },
+    {
+      "stage": "service.stopping",
+      "observedAtUtc": "2026-10-16T08:33:54.090Z",
+      "threadCount": 1,
+      "policy": "sequential"
+    },
+    {
+      "stage": "service.stopped",
+      "observedAtUtc": "2026-10-16T08:33:54.094Z",
+      "threadCount": 1,
+      "policy": "sequential"
+    },
+    {
+      "stage": "service.starting",
+      "observedAtUtc": "2026-10-16T08:33:54.105Z",
+      "threadCount": 1,
+      "policy": "packed"
+    },
+    {
+      "stage": "service.ready",
+      "observedAtUtc": "2026-10-16T08:34:07.975Z",
+      "threadCount": 1,
+      "policy": "packed",
+      "processId": 16280,
+      "startupMs": 13867.884700000002
+    },
+    {
+      "stage": "service.stopping",
+      "observedAtUtc": "2026-10-16T08:34:32.141Z",
+      "threadCount": 1,
+      "policy": "packed"
+    },
+    {
+      "stage": "service.stopped",
+      "observedAtUtc": "2026-10-16T08:34:32.143Z",
+      "threadCount": 1,
+      "policy": "packed"
+    }
+  ],
+  "scope": "Native Windows actual hardware, no CPU/memory quota; warm selector + loopback HTTP + complete model inference; startup excluded",
+  "targetMs": 150,
+  "hardware": {
+    "architecture": "x64",
+    "logicalProcessors": 20
+  },
+  "device": "cpu",
+  "maasCalls": 0,
+  "toolExecutions": 0,
+  "offMachineRequests": 0,
+  "cachedChoices": false,
+  "modelInstancesAtOnce": 1,
+  "qualityVerified": false,
+  "arms": [
+    {
+      "threads": 1,
+      "policy": "sequential",
+      "precision": {
+        "autocastEnabled": false,
+        "autocastDtype": "torch.float32"
+      },
+      "startupMs": 14099.3391,
+      "serial": [
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 993.0570000000007,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 988.8238,
+          "processCpuMs": 937.5,
+          "queueWaitMs": 0.026699999998527346,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 1080.489700000002,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 1075.503,
+          "processCpuMs": 1078.125,
+          "queueWaitMs": 0.07949999999982538,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 917.8787000000011,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 914.6309,
+          "processCpuMs": 859.375,
+          "queueWaitMs": 0.026200000000244472,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 1186.830399999999,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 1182.8607,
+          "processCpuMs": 1156.25,
+          "queueWaitMs": 0.027399999999033753,
+          "batchSize": 1
+        },
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 998.2678000000014,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 994.783,
+          "processCpuMs": 953.125,
+          "queueWaitMs": 0.03690000000278815,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 1228.1653000000006,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 1225.1266,
+          "processCpuMs": 1234.375,
+          "queueWaitMs": 0.020999999997002305,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 1119.8037999999979,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 1116.8067,
+          "processCpuMs": 1046.875,
+          "queueWaitMs": 0.02149999999892316,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 1502.6375999999982,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 1499.4915,
+          "processCpuMs": 1500,
+          "queueWaitMs": 0.019199999998818384,
+          "batchSize": 1
+        },
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 1119.8200999999972,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 1116.3554,
+          "processCpuMs": 1062.5,
+          "queueWaitMs": 0.03749999999854481,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 1419.8905999999988,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 1416.0334,
+          "processCpuMs": 1390.625,
+          "queueWaitMs": 0.01939999999740394,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 1048.8763000000035,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 1045.3386,
+          "processCpuMs": 1000,
+          "queueWaitMs": 0.019200000002456363,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 1589.7897999999986,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 1586.0431,
+          "processCpuMs": 1546.875,
+          "queueWaitMs": 0.019800000001851004,
+          "batchSize": 1
+        }
+      ],
+      "parallelRequests": [
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 958.6025999999983,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 953.3138,
+          "processCpuMs": 953.125,
+          "queueWaitMs": 0.04109999999855063,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 2039.0996999999988,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 1077.4316,
+          "processCpuMs": 1093.75,
+          "queueWaitMs": 958.0537000000004,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 3049.346400000002,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 1007.3815,
+          "processCpuMs": 1000,
+          "queueWaitMs": 2038.9403999999995,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 4353.756099999999,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 1301.2145,
+          "processCpuMs": 1343.75,
+          "queueWaitMs": 3049.2697000000007,
+          "batchSize": 1
+        },
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 1424.8292000000038,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 1421.273,
+          "processCpuMs": 1453.125,
+          "queueWaitMs": 0.018000000000029104,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 2765.071899999999,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 1336.5815,
+          "processCpuMs": 1281.25,
+          "queueWaitMs": 1424.5735000000022,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 3869.315699999999,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 1100.1297,
+          "processCpuMs": 1078.125,
+          "queueWaitMs": 2765.028100000003,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 5623.798800000004,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 1751.0047,
+          "processCpuMs": 1625,
+          "queueWaitMs": 3869.290100000002,
+          "batchSize": 1
+        },
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 1083.5382000000027,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 1080.1263,
+          "processCpuMs": 1046.875,
+          "queueWaitMs": 0.02260000000387663,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 2439.8242000000027,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 1353.0506,
+          "processCpuMs": 1281.25,
+          "queueWaitMs": 1083.200699999994,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 3761.1034999999974,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 1318.1879,
+          "processCpuMs": 1296.875,
+          "queueWaitMs": 2439.748400000004,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 5742.809099999999,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 1978.2825,
+          "processCpuMs": 2000,
+          "queueWaitMs": 3761.071799999998,
+          "batchSize": 1
+        }
+      ],
+      "groups": [
+        {
+          "round": 0,
+          "mode": "serial",
+          "totalMs": 4178.292799999999
+        },
+        {
+          "round": 0,
+          "mode": "parallel_requests",
+          "totalMs": 4354.411700000001
+        },
+        {
+          "round": 1,
+          "mode": "serial",
+          "totalMs": 4848.8982
+        },
+        {
+          "round": 1,
+          "mode": "parallel_requests",
+          "totalMs": 5624.111100000002
+        },
+        {
+          "round": 2,
+          "mode": "serial",
+          "totalMs": 5178.402699999999
+        },
+        {
+          "round": 2,
+          "mode": "parallel_requests",
+          "totalMs": 5743.211799999997
+        }
+      ],
+      "summary": {
+        "serial": {
+          "samples": 12,
+          "p50Ms": 1119.8200999999972,
+          "p95Ms": 1589.7897999999986,
+          "maximumMs": 1589.7897999999986,
+          "allBelow150Ms": false
+        },
+        "parallelRequests": {
+          "samples": 12,
+          "p50Ms": 3049.346400000002,
+          "p95Ms": 5742.809099999999,
+          "maximumMs": 5742.809099999999,
+          "allBelow150Ms": false
+        }
+      },
+      "choicesStable": true
+    },
+    {
+      "threads": 1,
+      "policy": "packed",
+      "precision": {
+        "autocastEnabled": false,
+        "autocastDtype": "torch.float32"
+      },
+      "startupMs": 13867.884700000002,
+      "serial": [
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 686.3049000000028,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 683.5758,
+          "processCpuMs": 687.5,
+          "queueWaitMs": 0.062300000005052425,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 822.1667000000016,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 818.9711,
+          "processCpuMs": 812.5,
+          "queueWaitMs": 0.06469999998807907,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 698.875,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 695.8217,
+          "processCpuMs": 640.625,
+          "queueWaitMs": 0.08419999999750871,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 948.6931999999942,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 945.678,
+          "processCpuMs": 906.25,
+          "queueWaitMs": 0.06799999999930151,
+          "batchSize": 1
+        },
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 699.3511999999901,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 696.0355,
+          "processCpuMs": 687.5,
+          "queueWaitMs": 0.1947000000072876,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 825.7245000000112,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 822.5569,
+          "processCpuMs": 843.75,
+          "queueWaitMs": 0.06620000000111759,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 713.0969999999943,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 710.2337,
+          "processCpuMs": 703.125,
+          "queueWaitMs": 0.07529999999678694,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 942.3993000000046,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 939.3716,
+          "processCpuMs": 921.875,
+          "queueWaitMs": 0.09619999999995343,
+          "batchSize": 1
+        },
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 700.1454999999987,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 697.0416,
+          "processCpuMs": 687.5,
+          "queueWaitMs": 0.0687000000034459,
+          "batchSize": 1
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 829.579899999997,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 826.5965,
+          "processCpuMs": 828.125,
+          "queueWaitMs": 0.06570000000647269,
+          "batchSize": 1
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 704.956600000005,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 702.2323,
+          "processCpuMs": 718.75,
+          "queueWaitMs": 0.06839999998919666,
+          "batchSize": 1
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 930.1128000000026,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 927.1597,
+          "processCpuMs": 937.5,
+          "queueWaitMs": 0.0722000000096159,
+          "batchSize": 1
+        }
+      ],
+      "parallelRequests": [
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 3763.3840999999957,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 3754.0411,
+          "processCpuMs": 3765.625,
+          "queueWaitMs": 0.2946000000083586,
+          "batchSize": 4
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 3763.2896000000037,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 3754.0411,
+          "processCpuMs": 3765.625,
+          "queueWaitMs": 0.2434999999968568,
+          "batchSize": 4
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 3763.2655000000086,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 3754.0411,
+          "processCpuMs": 3765.625,
+          "queueWaitMs": 0.22280000000318978,
+          "batchSize": 4
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 3763.251199999999,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 3754.0411,
+          "processCpuMs": 3765.625,
+          "queueWaitMs": 0.20110000000568107,
+          "batchSize": 4
+        },
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 3842.8524000000034,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 3834.5631,
+          "processCpuMs": 3796.875,
+          "queueWaitMs": 0.20400000001245644,
+          "batchSize": 4
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 3842.7753999999986,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 3834.5631,
+          "processCpuMs": 3796.875,
+          "queueWaitMs": 0.16650000000663567,
+          "batchSize": 4
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 3842.7498999999953,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 3834.5631,
+          "processCpuMs": 3796.875,
+          "queueWaitMs": 0.12180000000807922,
+          "batchSize": 4
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 3842.7142999999924,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 3834.5631,
+          "processCpuMs": 3796.875,
+          "queueWaitMs": 0.09870000000228174,
+          "batchSize": 4
+        },
+        {
+          "input": "public-alpha",
+          "inputSha256": "dfda070431875649ddab97e0ba3f885454d482d836b7b8c1e80bdbe676908617",
+          "wallMs": 3746.5015999999887,
+          "selected": "alpha-observe",
+          "encodedTokens": 274,
+          "forwardMs": 3738.5458,
+          "processCpuMs": 3687.5,
+          "queueWaitMs": 0.1857999999920139,
+          "batchSize": 4
+        },
+        {
+          "input": "public-beta",
+          "inputSha256": "5caaff00588c918461a519584ab6b765d4d1c805fd857b96b37d7e50b71a88d8",
+          "wallMs": 3746.4242999999988,
+          "selected": "beta-keep",
+          "encodedTokens": 320,
+          "forwardMs": 3738.5458,
+          "processCpuMs": 3687.5,
+          "queueWaitMs": 0.14409999999043066,
+          "batchSize": 4
+        },
+        {
+          "input": "public-gamma",
+          "inputSha256": "b009b57c21a09c979f05f6fb7fdf83ae25014effafa9e7eada90678cbaf512cb",
+          "wallMs": 3746.3997999999992,
+          "selected": "gamma-review",
+          "encodedTokens": 275,
+          "forwardMs": 3738.5458,
+          "processCpuMs": 3687.5,
+          "queueWaitMs": 0.12489999999525025,
+          "batchSize": 4
+        },
+        {
+          "input": "public-delta",
+          "inputSha256": "016bc3aa498a0ba056bd855b6124db834b896696cfbf97cb78467c42e874a5b5",
+          "wallMs": 3746.385699999999,
+          "selected": "delta-different",
+          "encodedTokens": 347,
+          "forwardMs": 3738.5458,
+          "processCpuMs": 3687.5,
+          "queueWaitMs": 0.09889999999722932,
+          "batchSize": 4
+        }
+      ],
+      "groups": [
+        {
+          "round": 0,
+          "mode": "serial",
+          "totalMs": 3156.0659000000014
+        },
+        {
+          "round": 0,
+          "mode": "parallel_requests",
+          "totalMs": 3763.4189999999944
+        },
+        {
+          "round": 1,
+          "mode": "serial",
+          "totalMs": 3180.597299999994
+        },
+        {
+          "round": 1,
+          "mode": "parallel_requests",
+          "totalMs": 3842.877099999998
+        },
+        {
+          "round": 2,
+          "mode": "serial",
+          "totalMs": 3164.8199000000022
+        },
+        {
+          "round": 2,
+          "mode": "parallel_requests",
+          "totalMs": 3746.531899999987
+        }
+      ],
+      "summary": {
+        "serial": {
+          "samples": 12,
+          "p50Ms": 822.1667000000016,
+          "p95Ms": 948.6931999999942,
+          "maximumMs": 948.6931999999942,
+          "allBelow150Ms": false
+        },
+        "parallelRequests": {
+          "samples": 12,
+          "p50Ms": 3763.2896000000037,
+          "p95Ms": 3842.8524000000034,
+          "maximumMs": 3842.8524000000034,
+          "allBelow150Ms": false
+        }
+      },
+      "choicesStable": true
+    }
+  ],
+  "modelManifestSha256": "ecf84fda3ac53aba0f1cdc8705c9ddc70f8910d4086e304707e0883eb9145e20",
+  "bestSerial": {
+    "threads": 1,
+    "samples": 12,
+    "p50Ms": 1119.8200999999972,
+    "p95Ms": 1589.7897999999986,
+    "maximumMs": 1589.7897999999986,
+    "allBelow150Ms": false
+  },
+  "finishedAt": "2026-10-16T08:34:32.155Z"
+}

@@ -1,6 +1,9 @@
 # 架构决策记录
 
-当前主架构采用[ADR-0024](0024-unified-decision-workflow-architecture.md)。它采用Laya镜像内决策并替代旧DeepSeek全局决策和旧设计入口，保留模块化单体、Runtime权限、Wiki来源、WSS及既有恢复语义。ADR的accepted是决定状态，不表示实现/真实验收已完成。
+<!-- current-design-alignment-20261015 -->
+> 2026-10-15适用性：本页保留原日期、作者与accepted/proposed决定；仍适用的Runtime/权限/依赖边界不被撤销。
+> 冲突的部署、默认模型、发布、完成事实及旧协作门槛已由[当前设计](../design/CURRENT_DESIGN_20261015.md)更新（superseded），
+> 不把历史未验状态套到当前，也不把ADR存在当当前验收。[全部设计导航](../design/README.md)；当前接口另见[目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
 
 历史ADR保留原日期、内容与状态。后续替代由新ADR说明，不能覆盖旧作者或验收。协作按CONTRIBUTING，一位合资格非作者对当前head有效Approve及检查/冲突/意见门槛，不恢复旧双人本机阅读规则。
 
@@ -27,5 +30,12 @@
 - [ADR-0021：配对插件引用与逐条私人记忆](0021-paired-citation-memory.md)
 - [ADR-0022：本机 Wiki 页面身份与读取版本（proposed）](0022-wiki-source-identity.md)
 - [ADR-0023：本机 Skill 安装与 Competition 使用（proposed）](0023-local-skill-installation.md)
-- [历史架构方案（原 ADR-0024，已由本机Laya/teacher实验修订）](0024-unified-decision-workflow-architecture.md)
 - [ADR-0024：Competition 辅助模型原生思考配置（proposed）](0024-competition-native-reasoning.md)
+- [ADR-0025：Competition 编译上下文版本与预算绑定（proposed）](0025-competition-context-binding.md)
+- [ADR-0026：模型请求预算前端可见性与超限拦截（proposed）](0026-visible-model-request-budget.md)
+- [ADR-0027：模型请求预算展示与监控契约（proposed）](0027-model-budget-display.md)
+- [ADR-0029：远程 MCP 的首个只读传输纵片（proposed）](0029-remote-mcp-readonly-transport.md)
+- [ADR-0030：本机 Laya、镜像串行工作流与外部宿主接口（实验候选，未定稿）](0030-local-laya-serial-image-workflows.md)
+- [ADR-0031：远程 MCP 的加密宿主配置与会话恢复（proposed）](0031-remote-mcp-host-configuration.md)
+- [ADR-0032：远程只读 MCP 的授权绑定与凭据引用（proposed）](0032-remote-mcp-bound-credentials.md)
+- [ADR-0033：统一决策工作流架构与本机 Laya 串行实验（proposed）](0033-unified-decision-workflow-architecture.md)

@@ -11,6 +11,12 @@ Profile：`huawei_ict_agentarts`。隔离工作树登记：`.worktrees/subagent-
 分支 `codex/zemeng/subagent-model-config`，基线 main `4249ace1`（含批准的 #244/#246）。
 状态：review；本包不承担共享 main/preload/Admin/Runtime Application 挂载。
 
+## 2026-10-15：可见请求预算状态
+
+沿原 modelApi.state / Admin snapshot 显示 `models[].requestBudget`。可信宿主只复制与当前网关声明匹配且合法的 provider-body 计量元数据；无 meter/无效结果保持 unmeasured，hiddenContext 为 unknown。样本仅在内存中，调用开始、失败、取消及配置撤销后不显示旧计数，重启不恢复。较早调用迟到不能覆盖较新调用。
+
+预算变化只更新说明文字，不能清空正在编辑的配置或密钥输入；目的地改变后旧结果隐藏。Renderer 不导入 tokenizer、Runtime 或 Provider。词表实验不自动变成生产 meter，真实模板及 MaaS 匹配仍待验收。实现与证据见 [工作包](../../../docs/modules/MOD-04A-BUDGET-DISPLAY-20261014.md)。
+
 ## 默认 Competition 子任务执行策略（完整 MVP 增量）
 
 `SubagentHostOptions` / `DesktopSubagentDispatchToolOptions` 新增受信进程内端口：
