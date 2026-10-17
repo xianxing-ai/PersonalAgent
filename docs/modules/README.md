@@ -3,7 +3,7 @@
 当前每位MOD负责人自行闭环公开契约、实现、实际调用方接线、必要测试、Evidence/文档，不交中央代验。参见 [全MOD交接清单](CURRENT_MOD_WIRING_HANDOFF.md) 与 [十项新接线包](../competition/COLLABORATOR_WIRING_PACKAGE.md)。本目录历史记录保留各自日期、作者和验收范围；旧集中验收/两人批准条款不作为当前要求。
 
 <!-- current-design-20261009 -->
-> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+> 当前协作规则（2026-10-17）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。常规 PR 需 goo122、zemeng5208、Potatos498、2511375597-lab 中任意一位非作者对当前提交有效批准；Owner 对具体 PR 的审核例外需在 PR 留记录，不伪称独立批准。有合并权限的协作者（包括作者）可在最新必需技术 CI 通过、严格同步主线、无冲突且阻断性意见已处理后合并；禁止强推、直接推 main 或绕过技术检查。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
