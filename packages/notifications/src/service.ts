@@ -82,6 +82,31 @@ const DELIVERED_BATCH_LIMIT = 100;
 const DELIVERED_KEY_LIMIT = 500;
 
 /**
+ * 版本化批次事件（F12 消费端口）：通知域对镜像/云端节点公布的最小投影。
+ * 条目只引用 dedupeKey，不复制连接器内容；本类型是数据，不是投递确认。
+ */
+export interface NotificationBatchEvent {
+  eventVersion: 1;
+  batchId: string;
+  kind: 'immediate' | 'digest';
+  itemRefs: readonly string[];
+  decidedAt: string;
+  heldSince: string;
+  reason: string;
+  state: 'ready_for_delivery' | 'delivered';
+  deliveredAt?: string;
+}
+
+export interface NotificationBatchEventsPage {
+  eventVersion: 1;
+  /** `compacted` 表示 sinceBatchId 早于已确认批次的保留窗口（未确认批次永不淘汰，可行动事件不丢失）。 */
+  cursorState: 'current' | 'compacted';
+  events: readonly NotificationBatchEvent[];
+  nextCursor: string | null;
+  retained: {readyForDelivery: number; delivered: number};
+}
+
+/**
  * 通知汇总策略（MOD-23）：只做裁定，不调度、不展示。
  * 宿主按 Runtime 调度调用 drain：安静结束/摘要窗口关闭时（见 planSchedules 的建议），
  * 或任意时刻调用（幂等，无产出时返回空）。去重按 dedupeKey——同一事件重复投递只裁一次。
@@ -501,6 +526,42 @@ export class NotificationService {
     });
   }
   getInterruptionRound(roundId:string) {const state=this.readState();const round=this.extension(state).rounds[roundId];return round?structuredClone(round):undefined;}
+
+  /**
+   * 版本化批次事件读回（F12）。只读投影：不触发裁定（drain 归宿主调度点）、
+   * 不代替受信桌面的 acknowledge；输出仅用于云端/镜像消费与重放对账。
+   */
+  readBatchEvents(input: {sinceBatchId?: string; limit?: number} = {}): NotificationBatchEventsPage {
+    const limit = input.limit ?? 20;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100
+      || (input.sinceBatchId !== undefined
+        && (typeof input.sinceBatchId !== 'string' || !input.sinceBatchId.trim() || input.sinceBatchId.length > 128))) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Notification event page request out of bounds');
+    }
+    const state = this.readState();
+    const ordered = [...state.batches].sort((left, right) =>
+      left.decidedAt < right.decidedAt ? -1 : left.decidedAt > right.decidedAt ? 1 : left.id < right.id ? -1 : 1);
+    let start = 0;
+    let cursorState: 'current' | 'compacted' = 'current';
+    if (input.sinceBatchId !== undefined) {
+      const index = ordered.findIndex(batch => batch.id === input.sinceBatchId);
+      if (index >= 0) start = index + 1;
+      else cursorState = 'compacted';
+    }
+    const page = ordered.slice(start, start + limit);
+    const readyForDelivery = ordered.filter(batch => batch.state === 'ready_for_delivery').length;
+    const last = page.at(-1);
+    return {
+      eventVersion: 1,
+      cursorState,
+      events: page.map(batch => ({eventVersion: 1, batchId: batch.id, kind: batch.kind,
+        itemRefs: [...batch.itemRefs], decidedAt: batch.decidedAt, heldSince: batch.heldSince,
+        reason: batch.reason, state: batch.state,
+        ...(batch.deliveredAt === undefined ? {} : {deliveredAt: batch.deliveredAt})})),
+      nextCursor: last !== undefined && start + page.length < ordered.length ? last.id : null,
+      retained: {readyForDelivery, delivered: ordered.length - readyForDelivery},
+    };
+  }
 
   private isoNow(): string {
     return new Date(this.options.now()).toISOString();
