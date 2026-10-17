@@ -68,7 +68,8 @@ export function createBoundRemoteReadonlyMcpHost(input?:BoundRemoteReadonlyMcpOp
     if(typeof value!=='string' || !value || value.length>8192 || !/^[A-Za-z0-9._~+/-]+=*$/.test(value))fail('UNAUTHORIZED');
     return value;
   }
-  const base=createRemoteReadonlyMcpHost({endpoint:options.endpoint,server:options.server,tool:options.tool,enabled:options.enabled??false,expectedDirectoryDigest:binding.directoryDigest,fetch:async(url,init)=>{
+  const base=createRemoteReadonlyMcpHost({endpoint:options.endpoint,server:options.server,tool:options.tool,enabled:options.enabled??false,expectedDirectoryDigest:binding.directoryDigest,
+    ...(options.readRunReceipt?{readRunReceipt:options.readRunReceipt}:{}),fetch:async(url,init)=>{
     if(String(url)!==endpoint)fail('INVALID_ARGUMENT');
     const signal=AbortSignal.any([lifetime.signal,...(init?.signal?[init.signal]:[])]);
     assertCurrent(signal);

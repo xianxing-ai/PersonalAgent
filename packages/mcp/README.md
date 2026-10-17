@@ -1,5 +1,11 @@
 # MCP — Competition read-only slice
 
+## 2026-10-16 默认 fetch 的本机 HTTPS/TLS 验证
+
+新增 `npm run test:mcp-tls-smoke`，见[复现说明](../../tests/manual/mcp/README.md)和[验收记录](../../docs/modules/MOD-06-TLS-20261016.md)。实际 HTTPS 合成服务配合进程专属测试 CA、原 SDK 默认 fetch、SQLite/Policy 验证 5/5：可信证书与单次审批成功；不受信 CA、主机名、目录摘要和重定向拒绝。重启不联网、不重放原结果。无系统信任库修改、证书验证关闭或 HTTPS→HTTP 映射。
+
+服务/凭据/原生确认仍为合成，worker 的配置安全存储为显式 Fake；Evidence 保持 conditional。第三方服务身份、OAuth/令牌签发、真人确认与云端出口仍未验收。本增量只新增验证入口和测试夹具，不改变生产 Host/Runtime 或其 provisional 状态。
+
 <!-- current-design-20261009 -->
 > 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
@@ -50,6 +56,8 @@ await mcp.dispose();
 
 单个 host 生命周期最多保留 64 个 run 身份（包含失败/未知结果），每条结果仍受 1 MiB 限制；达到上限时新 run 在网络请求前以 `EXTERNAL_FAILURE` 拒绝，表示本地容量不足，不产生假的未知执行。stop/断线后重连不重置身份配额，stop 释放结果内容并保留输入绑定，旧 run 不重发。恢复服务需受信宿主重新创建 host，并依赖原 Runtime 持久记录防止跨实例重放；普通重连不能绕过上限。
 
+受信 Runtime 消费者可注入同步 `readRunReceipt({taskId,runId,argumentsDigest})`，返回精确原输入摘要及 confirmed/result、failed 或 unknown；查询异常必须拒绝，不能用“查不到”伪造新尝试。新调用仍只能由原 Policy/ToolGateway 的首次执行入口发起。满缓存仅移除已从原 Runtime 读回 confirmed/failed 的本地条目，unknown 不回收；旧 run 每次先读持久回执，故本地条目移除、断连或替换 host 都不会重发。`remoteMcpArgumentsDigest` 仅用于精确输入绑定，不是授权。Desktop 已消费原 Runtime 的回执与当前执行标记，见 [容量修复记录](../../docs/modules/MOD-06-CAPACITY-RECEIPTS-20261016.md)。无读回端口仍保留上述 64 身份限制；64 个未核实 run 全部占满时仍拒绝新调用，需原 Runtime 对账，不自动清理未知记录。
+
 `node --test packages/mcp/test/remote-http.test.mjs` 使用真实本机 HTTP 监听与显式 synthetic MCP fixture，经受信 fetch 端口将固定测试 HTTPS 地址映射到 loopback。覆盖 JSON 与 Streamable HTTP 的 SSE 响应、Policy 一次性授权、身份/schema/目录漂移、认证失败、重定向、大小限制、取消/超时、断连、重连与释放。它不是第三方服务、远程 TLS、OAuth 或真实 Competition/AgentArts 验收。生产 Desktop/Competition composition 尚未注入此 host；持久配置、鉴权引用、写工具及未知写入恢复属 G11/G14。
 
 SDK `1.31.0` 的 StreamableHTTP class declaration 与项目 exact optional 检查冲突，采用其公开 runtime export 的窄传输端口，不修改 node_modules、不放宽编译选项。方案与兼容边界见 [ADR-0029](../../docs/adr/0029-remote-mcp-readonly-transport.md) 和[本包记录](../../docs/modules/MOD-06-REMOTE-READONLY-20261015.md)。
@@ -80,6 +88,8 @@ await mcp.dispose();
 原 host 的 `expectedDirectoryDigest` 是可选增量：初始化及每次新调用前重读 tools/list，发现静默变化时在 tools/call 前拒绝。绑定 host 将目录变化、当前配置变化或撤销视为永久失效，须以新受信快照重新组装，不能重新 start 恢复旧许可。普通 stop/setEnabled 仍是连接管理，不替代 Policy 撤销；配置管理方必须更新 revision/撤销 signal。会话缓存和 `recoverySupport:false` 不变，不承诺跨重启未知结果恢复。
 
 验证使用本机 HTTP fixture、合成 Bearer token 和合成 SecretStore：授权参数绑定、同名工具旧 grant、目录静默漂移、取凭据期间配置变化/过期/取消/超时/撤销、401/403/重定向、凭据拒绝和脱敏。未接真实安全存储/配置管理、原生设置、Production Competition、OAuth 或实际平台 endpoint。方案见 [ADR-0032](../../docs/adr/0032-remote-mcp-bound-credentials.md)，实际结果见[本包记录](../../docs/modules/MOD-06-BOUND-CREDENTIALS-20261015.md)。
+
+G14 的 [Desktop 增量](../../apps/desktop/README.md) 已提供 safeStorage、会话 nonce、独立管理窗口与 Competition 生产 Runtime 装配；两次实际 Electron 重启、原 Runtime 单次审批/结果读回/旧许可拒绝/撤销通过。对话框响应显式合成、远端为 loopback HTTP fixture，不改变真实平台/OAuth 未验收边界；详见[管理记录](../../docs/modules/MOD-06-MANAGEMENT-20261016.md)及[宿主首片](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
 
 ### 公开参考结果出机
 
