@@ -1,8 +1,31 @@
 # 开发计划与进度
 
+## 2026-10-17 编码最小修复算法与 F15 多轮链（in_progress）
+
+Owner 本轮解除这部分暂停，要求算法与工作流进入自有镜像。[ADR-0033](adr/0033-coding-minimal-repair-workflow.md)记录复用 jsdiff/TypeScript、原 F15 多轮、任务隔离目录、包级验证失效、主/影子与 CAS 交付。根协调承担依赖/文档/集成，云图、编码工具、Runtime/Desktop 按现有模块归属交付实际接线。新工作包不混入固定 head 的 PR #376 审查；中间镜像暂不发，完整增量测试后统一构建。代码、真实模型、镜像与平台逐面验收，尚未标 done。
+## 2026-10-16 MCP 长驻缓存评审修复与 Desktop TLS 组合（in_progress）
+
+goo122 基于 #373 `14f34b40` 推进[组合验收](modules/MOD-06-PRODUCT-TLS-20261016.md)，交付基线为同步修复后的 #373 `3aa04eb6`：实际 Electron 管理窗口/安全存储、默认 fetch、loopback HTTPS 与原 SQLite/Policy 完成审批、一次调用、断连、拒绝、两次正常重启读回、旧许可拒绝和撤销；四类证书/目录/重定向负例零工具调用。原生对话框响应与服务内容仍为合成，云调用 0。#369 缓存无界增长评审已修复为每 host 最多 64 个 run，重连不能清空身份配额；`bfcb1ab1` 已普通推送，并逐层同步 #370～#373。基础修复完整 check 3153 通过、31 跳过、0 失败；组合包最终完整 check 3175 通过、31 跳过、0 失败，MCP 20/20。首轮未修改的知识库写回出现 RESULT_UNKNOWN，独立复现及一次串行完整复核通过，初次底层原因仍未定位并保留日志。当前 CI/非作者评审和集成以 GitHub 为准。真实平台/OAuth/真人确认仍待验收，整个 MOD-06 保持 in_progress、provisional。
+
+## 2026-10-16 远程 MCP 默认 HTTPS/TLS 验证（in_progress）
+
+goo122 基于 #372 `1b1ee4cb` 增加[本机 TLS 验收](modules/MOD-06-TLS-20261016.md)：原 SDK 默认 fetch、进程专属合成 CA、真实 loopback HTTPS 与 SQLite/Policy，五类证书/目录/重定向及审批/重启断开检查 5/5。MCP 工作区 19/19、宿主/管理/Runtime 回归 12/12、架构 3/3。无生产代码、Schema、迁移或依赖变化；没有修改系统信任或关闭 TLS 验证，模型/AgentArts 调用 0；不等同第三方平台/OAuth 验收，完整 MOD-06 保持 in_progress。
+
+## 2026-10-16 远程 MCP 原生管理与生产装配（in_progress）
+
+goo122 基于 #371 `49c2854d` 完成 [G14 管理工作包](modules/MOD-06-MANAGEMENT-20261016.md)：独立管理窗口、专用 IPC、服务定义导入/加密保存、原生连接与单次任务确认、Competition 默认生产注册、原 SQLite 审批/读回/撤销。配置变化需正常退出重启，不热换 Schema，不自动公布给云端或导出结果。最终定向（含退出回归）25/25，完整 check 3174 通过、31 跳过、0 失败；实际 Electron 产品烟测两次重启、批准前零调用、调用 1 次、旧审批拒绝、删除密文通过，未配置 Runtime 仍可保存且不能试调用。原生对话框响应显式合成，远端为本机 HTTP fixture，模型/AgentArts 调用 0；真实平台/OAuth 和真人原生确认未验收，完整模块保持 in_progress。
+
+## 2026-10-16 远程 MCP 加密宿主配置与会话恢复（in_progress）
+
+goo122 基于 #370 开始 [G14 宿主工作包](modules/MOD-06-HOST-CONFIG-20261016.md)：safeStorage 加密配置、轮换/撤销、新会话 nonce、确认回调与原 Runtime 接线。定向 8/8，完整 check 3163 通过、36 跳过、0 失败；真实 Electron 44.2.0 双进程 safeStorage 通过。既有 Local 窗口回归单独通过，不替代 Competition；真实模型/AgentArts 调用 0。未接原生管理页面、默认生产 main 或真实 endpoint，完整 MOD/G14 仍 in_progress；方案见 [ADR-0031](adr/0031-remote-mcp-host-configuration.md)。
+
+## 2026-10-15 远程 MCP 配置/目录绑定与凭据引用（in_progress）
+
+goo122 基于 #369 开始 [G11/G14 最小只读子集](modules/MOD-06-BOUND-CREDENTIALS-20261015.md)：新 bound host 通过现有 Policy 参数摘要绑定配置/目录及凭据版本，复用 SecretStorePort，异步取凭据前后重验，调用前核目录。定向 15/15 通过，完整 check 3155 通过、36 跳过、0 失败；无真实安全存储、设置/生产接线或平台验收，模型/AgentArts 调用 0。方案见 [ADR-0032](adr/0032-remote-mcp-bound-credentials.md)，完整 MOD 仍为 in_progress。
+
 ## 2026-10-16 V5 Desktop WSS、语音与主子模型（review）
 
-[V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya 架构或资格结论。
+[V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya Local Profile 候选的资格结论。
 
 本工作包仍为 review，PR #356 的远端提交、非作者批准、CI、main 集成各自核对；本机 UI/Runtime 修复不冒称已进入云端镜像。全部模型、物理语音设备、28条真实业务图及完整平台 Trace/评估未由此验收。下文 V4“新镜像不发布”为该阶段约束，本节只登记随后 Owner 授权的 V5 发布与实测。
 
@@ -31,11 +54,12 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 | --- | --- | --- |
 | ARM64镜像/SWR与指定云版本目录/关联日志 | 本轮范围已有真实回执；PR集成另记 | 不把目录当平台原生评估或28业务闭环 |
 | Wukong/Pelican公开隔离fixture | 两套主/影子+单CAS通过；41工具Evidence | 保留Pelican首轮partial；分支父成功不冒称协调锚点终态成功 |
-| 本机Laya原模型/质量资格 | in_progress，6判断182–618ms未达150ms，站点未合格 | 独立领域/holdout校准；不凭短延迟或自报置信直接抑制 |
+| 本机Laya原模型/质量资格 | todo，独立 Local Profile 候选；历史6判断182–618ms未达150ms，站点未合格 | 当前 Competition 不调用 Laya；只有 Local Profile 获得独立实施范围后再安排领域/holdout校准 |
 | 主动责任/ConnectorHost/session/通知原子策略 | provisional，端口与离线组合已有 | 按矩阵各owner完成真实来源/调用方/渠道/恢复消费 |
 | 语音主动询问/确认与上下文记忆 | provisional，百炼既有端口，SIS平台不可用 | 原文、Goal、Memory与真实最终命令串入同一任务，不以握手当完整听说 |
 | 高级影子开关/主任务优先/机会收益资源 | 当前设计，尚未真实机会并行验收 | 并入已有判断；双方案比较等双方，其余可先交已验主结果，未知交DeepSeek |
-| 最小修复/依赖重规划算法 | 设计交接保留，暂停/未定 | 等用户后续定稿，不由文档对齐自动恢复实现 |
+| 编码最小修复 | 本轮明确授权实施，in_progress | 镜像原F15多轮、隔离宿主和正常主Agent接线；分项与完整图通过，云发布单独验收 |
+| 其他依赖/计划重规划算法 | 原设计交接保留，未定 | 不由本轮编码修复授权自动恢复其他算法 |
 
 真实发布/案例范围见[full-workflow-results](competition/evidence/test-image-v3-20261015/full-workflow-results.json)、
 [owned-release](competition/evidence/test-image-v3-20261015/owned-release.json)、[平台日志读回](competition/evidence/test-image-v3-20261015/platform-log-readback.json)。
@@ -59,6 +83,13 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 ## 2026-10-15 远程 MCP 首个只读纵片（in_progress）
 
 goo122 从 main `8c395f5f` 开始 [MOD-06 / G10](modules/MOD-06-REMOTE-READONLY-20261015.md)：现有 SDK 上增加固定身份、单只读绑定的 HTTPS Streamable HTTP host，仍经原 Policy/ToolGateway。定向本机 HTTP fixture 7/7 通过，完整 check 3147 通过、36 跳过、0 失败；无模型/AgentArts 调用、生产接线或真实远端验收。远程鉴权、任意写工具与持久恢复尚待后续工作包，完整 MOD 保持 in_progress；方案见 [ADR-0029](adr/0029-remote-mcp-readonly-transport.md)。
+### 2026-10-15：完整官方模板离线检查（in_progress）
+
+G04 后续新增固定官方 recipe/词表的七类合成请求与 Linux 无网络编码检查入口。本机 guard 验证与 Linux 官方编码结果分别记录；未取得 Linux 实际回执前不声明模板通过，生产仍未计量，见 [工作包](modules/MOD-04A-TEMPLATE-PROBE-20261015.md)。
+
+### 2026-10-15：最终可见请求预算边界（in_progress）
+
+G04 首个纵片将镜像现有 MaaS 思考转换前移至 Provider 序列化/计量之前，预算与传输共用正文；请求格式纳入 Runtime 审批恢复身份。完整模板与生产真实计量仍未验收，云调用 0，详见 [工作包](modules/MOD-04A-FINAL-REQUEST-BUDGET-20261015.md)。
 
 ## 2026-10-15 预算展示与 tokenizer 离线核验（in_progress）
 

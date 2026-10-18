@@ -24,6 +24,9 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
     releaseNotifications?.();
     const index=implementations.findIndex(tool=>tool.descriptor.name==='notifications.status');
     if(index>=0) implementations.splice(index,1);
+    // notifications.events 只读工具暂由 fallback 提供；notificationHost 路径暴露 events 属下一增量。
+    const eventsIndex=implementations.findIndex(tool=>tool.descriptor.name==='notifications.events');
+    if(eventsIndex>=0) implementations.splice(eventsIndex,1);
     if (notificationHost) {
       releaseNotifications=toolHost.register({descriptor:{name:'notifications.status',version:notifications.NOTIFICATIONS_MODULE_VERSION,
         inputSchema:{type:'object',additionalProperties:false,properties:{}},outputSchema:{type:'object'},

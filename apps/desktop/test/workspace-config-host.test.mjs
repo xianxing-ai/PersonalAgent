@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {PROTOCOL_VERSION} from '@personal-agent/contracts';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
+import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
 
 async function workspaceBindingFixture(t) {
   const cache=path.resolve(fileURLToPath(new URL('../../../.cache/',import.meta.url)));
@@ -258,6 +259,82 @@ test('changed command selections require reassembly instead of authorizing start
       assert.equal(executedBinding.npm,method==='selectNode'?undefined:method==='selectNpmCli'?secondNpm:firstNpm);
     });
   }
+});
+
+test('native workspace selections expose standalone Node tests and retain normal npm recipes after reopening',async t=>{
+  for(const standalone of [true,false]) {
+    await t.test(standalone?'dependency-free Node test':'installed npm build and test',async t=>{
+      const {root,node,open}=await workspaceBindingFixture(t);
+      const npm=path.join(path.dirname(root),'npm-cli.js'),helper=path.join(path.dirname(root),'WindowsJobProcessHost.exe');
+      const check=path.join(root,'check.js');
+      await Promise.all([writeFile(npm,'// synthetic npm metadata only'),writeFile(helper,'synthetic helper metadata only'),
+        writeFile(check,'const synthetic = true;\n'),writeFile(path.join(root,'package.json'),JSON.stringify({
+          name:'synthetic-project',scripts:standalone?{test:'node --test'}:{build:'synthetic build',test:'synthetic test'}}))]);
+      if(!standalone)await mkdir(path.join(root,'node_modules'));
+      const calls=[],recipes=[];
+      const options={selectDirectory:async()=>root,selectNodeExecutable:async()=>node,selectCheckFile:async()=>check,
+        selectNpmCli:async()=>npm,jobHelperExecutable:helper,
+        createCommandRecipeTool:options=>createWorkspaceCommandRecipeTool({...options,createWorkspaceCommandTool:configuration=>{
+          recipes.push(...configuration.recipes);
+          return {descriptor:{name:'workspace.run_allowed_command',version:'1.0.0',sideEffect:'local_write',
+            requiredScopes:['workspace:execute']},execute:async({recipeId})=>{
+              // Explicit Fake command boundary: no fixture executable or project script is launched.
+              calls.push(configuration.recipes.find(recipe=>recipe.id===recipeId));
+              return {recipeId,exitCode:0,stdout:'',stderr:''};
+            }};
+        }})};
+      let host=open(options);
+      await host.select();await host.selectNode();await host.selectCheckFile();await host.selectNpmCli();host.close();
+      host=open(options);
+      const checkpoints=new Map();host.bindApplication({runtime:{loadCheckpoint:(id,key)=>checkpoints.get(`${id}:${key}`),
+        saveCheckpoint:(id,key,value)=>checkpoints.set(`${id}:${key}`,value)}});
+      assert.equal(host.snapshot().projectScriptsAvailable,true);
+      const snapshot=host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true});
+      assert.equal(snapshot.nodeCheckAvailable,true);
+      assert.deepEqual(snapshot.projectCommands,standalone?['test']:['build','test']);
+      const request={taskId:'synthetic-test-task',signal:new AbortController().signal};
+      for(const name of ['workspace.node_check',...snapshot.projectCommands.map(script=>'workspace.npm_'+script)]) {
+        assert.equal(host.competitionToolAvailability.find(entry=>entry.toolName===name).available(request),true);
+        assert.equal((await host.tools.find(tool=>tool.descriptor.name===name).execute({},request)).exitCode,0);
+      }
+      const testRecipe=calls.find(recipe=>recipe.id==='npm-test');
+      assert.equal(testRecipe.executable,helper);
+      assert.deepEqual(testRecipe.args,['--cwd',root,'--exe',node,'--',...(standalone?['--test']:[npm,'run','test'])]);
+      if(!standalone)assert.deepEqual(calls.find(recipe=>recipe.id==='npm-build').args,['--cwd',root,'--exe',node,'--',npm,'run','build']);
+      assert.ok(recipes.length>0);
+    });
+  }
+});
+
+test('project recipe validation rejects mixed shapes and changed executable or workspace bindings',async t=>{
+  const {root,node,open}=await workspaceBindingFixture(t);
+  const npm=path.join(path.dirname(root),'npm-cli.js'),helper=path.join(path.dirname(root),'WindowsJobProcessHost.exe');
+  await Promise.all([writeFile(npm,'// synthetic npm metadata only'),writeFile(helper,'synthetic helper metadata only'),
+    writeFile(path.join(root,'package.json'),JSON.stringify({name:'synthetic-project',scripts:{test:'node --test'}}))]);
+  const selectors={selectDirectory:async()=>root,selectNodeExecutable:async()=>node,selectNpmCli:async()=>npm};
+  const selection=open(selectors);await selection.select();await selection.selectNode();await selection.selectNpmCli();selection.close();
+  const invalid=[
+    ['different cwd',recipe=>({...recipe,args:recipe.args.map((value,index)=>index===1?path.dirname(root):value)})],
+    ['different Node',recipe=>({...recipe,args:recipe.args.map((value,index)=>index===3?npm:value)})],
+    ['different helper',recipe=>({...recipe,executable:node})],
+    ['extra argument',recipe=>({...recipe,args:[...recipe.args,'--watch']})],
+    ['mixed npm and Node arguments',recipe=>({...recipe,args:['--cwd',root,'--exe',node,'--',npm,'--test']})],
+    ['Node test mislabeled as build',recipe=>({...recipe,id:'npm-build'})],
+  ];
+  for(const [name,mutate] of invalid)await t.test(name,()=>{
+    let calls=0;
+    const host=open({...selectors,jobHelperExecutable:helper,createCommandRecipeTool:options=>{
+      const recipe=createWorkspaceCommandRecipeTool({...options,createWorkspaceCommandTool:()=>({
+        descriptor:{name:'workspace.run_allowed_command',version:'1.0.0',sideEffect:'local_write',requiredScopes:['workspace:execute']},
+        execute:async()=>{calls++;throw Error('Invalid recipe must never execute');}})});
+      return {...recipe,recipes:recipe.recipes.map(mutate)};
+    }});
+    assert.equal(host.snapshot().projectScriptsAvailable,false);
+    assert.match(host.snapshot().commandReason,/装配失败/);
+    assert.throws(()=>host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true}),/尚未准备好/);
+    assert.equal(host.tools.some(tool=>['workspace.npm_test','workspace.npm_build'].includes(tool.descriptor.name)),false);
+    assert.equal(calls,0);
+  });
 });
 
 test('trusted workspace binding rejects root or Node replacement at the same path', async t=> {

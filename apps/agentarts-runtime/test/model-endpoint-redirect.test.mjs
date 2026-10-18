@@ -53,8 +53,10 @@ async function fixture(t){
   });
   const expires=Date.now()+5000;
   while(!stdout.includes('"event":"listening"')){assert.equal(child.exitCode,null);assert.ok(Date.now()<expires);await pause(10);}
+  // Only the test control plane closes connections; the production HTTPS model transport is unchanged.
+  // A killed child must not leave a reusable socket in this process's shared fetch pool.
   const post=(headers={},signal)=>fetch(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,
-    headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers},
+    headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers,connection:'close'},
     body:JSON.stringify({query:marker})});
   return {first,second,post,setMode:value=>mode=value,disconnections:()=>disconnections,logs:()=>({stdout,stderr})};
 }
@@ -67,11 +69,16 @@ for(const status of [307,308])test(`production model endpoint refuses HTTPS ${st
   assert.equal(f.logs().stderr,'');assert.doesNotMatch(f.logs().stdout,/synthetic-private|synthetic-model-secret/);
 });
 test('production direct HTTPS model call preserves deadline and caller cancellation without retry',async t=>{
-  const f=await fixture(t),direct=await f.post();assert.equal(direct.status,200);
+  const f=await fixture(t);
+  t.diagnostic('control-plane phase: direct');
+  const direct=await f.post();assert.equal(direct.status,200);
   assert.equal(JSON.parse((await direct.json())[0].data.text).text,'synthetic direct model reply');
   assert.equal(f.first[0].authorization,'Bearer synthetic-model-secret');assert.equal(f.second.length,0);
+  t.diagnostic('control-plane phase: expired');
   f.setMode('hang');const expired=await f.post({'x-pa-deadline':new Date(Date.now()+200).toISOString()});
   assert.equal(expired.status,504);
+  await expired.arrayBuffer();
+  t.diagnostic('control-plane phase: cancel');
   const controller=new AbortController(),pending=f.post({},controller.signal);
   const limit=Date.now()+2000;while(f.first.length<3){assert.ok(Date.now()<limit);await pause(5);}
   controller.abort();await assert.rejects(pending,{name:'AbortError'});

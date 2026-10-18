@@ -85,14 +85,14 @@ function ref(value: unknown): RepairRef {
   return item as unknown as RepairRef;
 }
 const key = (value: RepairRef): string => JSON.stringify([value.id, value.revision]);
-function projectedNodes(value: unknown): Map<string, Record<string, unknown>> {
+function projectedNodes(value: unknown, hashedIds = true): Map<string, Record<string, unknown>> {
   if (!Array.isArray(value) || !value.length || value.length > 128) invalid();
   const nodes = new Map<string, Record<string, unknown>>();
   for (const item of value) {
     const node = record(item);
     exact(node, ['id', 'revision', 'kind', 'summary', 'state', 'validFrom', 'validUntil']);
     const r = ref({id: node.id, revision: node.revision});
-    if (!/^[a-f0-9]{64}$/.test(r.id) || r.revision < 1 || nodes.has(key(r))) invalid();
+    if ((hashedIds && !/^[a-f0-9]{64}$/.test(r.id)) || r.revision < 1 || nodes.has(key(r))) invalid();
     boundedText(node.summary, 8192);
     if (!['fact','goal','decision','plan'].includes(node.kind as string)
       || !['active','withdrawn'].includes(node.state as string)
@@ -136,8 +136,14 @@ export function repairInput(input: AgentInput): {context: RepairContext; data: u
     if (!result || typeof result !== 'object' || !Object.hasOwn(result, 'repairContext')) return undefined;
     // A context proves allowed references, not the text or provenance of a fact.
     // Until a host source projection is present, a complete report must RECHECK.
-    return {context: parseRepairContext(record(result).repairContext, false), data: input, initial: false,
+    const context = parseRepairContext(record(result).repairContext, false);
+    if (!Object.hasOwn(result, 'repairSources')) return {context, data: input, initial: false,
       sources: [], prospectiveDependencies: []};
+    const projection = record(record(result).repairSources);
+    exact(projection, ['sourceVersion', 'expectedGraphRevision', 'nodes']);
+    if (projection.sourceVersion !== '1.0' || projection.expectedGraphRevision !== context.expectedGraphRevision) invalid();
+    const validated = validateRepairSources(context, projectedNodes(projection.nodes, false), false);
+    return {context, data: input, initial: false, ...validated};
   }
   if (!input.goal.startsWith('PersonalAgent 主动决策：')) return undefined;
   if (!input.goal.startsWith(GOAL_PREFIX)) invalid();
@@ -150,10 +156,15 @@ export function repairInput(input: AgentInput): {context: RepairContext; data: u
   boundedText(payload.strategy, 4096);
   const context = parseRepairContext(payload.repairContext, true);
   const nodes = projectedNodes(payload.nodes);
+  return {context, data: payload, initial: true, ...validateRepairSources(context, nodes, true)};
+}
+
+function validateRepairSources(context: RepairContext, nodes: Map<string, Record<string, unknown>>, initial: boolean):
+  {sources: RepairSource[]; prospectiveDependencies: RepairRef[]} {
   for (const target of context.targets) {
     const node = nodes.get(key(target.node));
     if (!node || !['goal','decision','plan'].includes(node.kind as string) || node.state !== 'active'
-      || node.summary !== target.summary
+      || (initial && node.summary !== target.summary)
       || [...nodes.values()].some(other => other.id === node.id && (other.revision as number) > target.node.revision)) invalid();
   }
   const prospectiveDependencies: RepairRef[] = [];
@@ -174,5 +185,5 @@ export function repairInput(input: AgentInput): {context: RepairContext; data: u
   const sources: RepairSource[] = [...nodes.values()]
     .map(node => ({node: {id: node.id as string, revision: node.revision as number},
       kind: node.kind as RepairSource['kind'], summary: node.summary as string, state: node.state as RepairSource['state']}));
-  return {context, data: payload, initial: true, sources, prospectiveDependencies};
+  return {sources, prospectiveDependencies};
 }

@@ -4,8 +4,21 @@ import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult,parseExecutionModelSelection} from './index.js';
 import type {ExecutionModelSelection} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt} from './agentarts-websocket.js';
+import {AgentArtsRemoteInvocationError, AgentArtsResultUnknownError, AgentArtsTerminalError, AgentArtsWebSocketTransport, AgentArtsWebSocketUpgradeError, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
 import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
+import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
+
+/** Trusted host observer of the actual request identity about to be sent.
+ * Fired once per send attempt for HTTPS and WSS transports, synchronously
+ * after the export guard passes and before the transport send begins.
+ * The observer must not delay, retry or gate the invocation; persistence is
+ * the observer's concern and throwing aborts the invocation like any guard.
+ */
+export type AgentArtsRequestIdentityObserver = (
+  receipt: AgentArtsUnknownReceipt,
+  request: CoordinationRequest,
+) => void;
+
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_HTTP_DIAGNOSTIC_MS = 1_000;
@@ -69,9 +82,10 @@ export type AgentArtsSchemaCategory =
 export interface AgentArtsFailureDiagnostic {
   readonly stage: AgentArtsDiagnosticStage;
   readonly code: 'INVALID_ARGUMENT' | 'UNSUPPORTED_CAPABILITY' | 'UNAUTHORIZED'
-    | 'EXTERNAL_FAILURE' | 'CANCELLED' | 'TIMEOUT';
+    | 'EXTERNAL_FAILURE' | 'CANCELLED' | 'TIMEOUT' | 'RATE_LIMITED';
   readonly requestId?: string;
   readonly httpStatus?: number;
+  readonly transportPhase?: 'wss_upgrade';
   readonly contentType?: 'json' | 'sse' | 'missing' | 'other';
   readonly terminalEvents?: Readonly<{taskEnd: boolean; end: boolean}>;
   readonly schemaCategory?: AgentArtsSchemaCategory;
@@ -135,6 +149,7 @@ function external(message: string, retryable = false): never {
 
 function diagnosticCode(error: unknown): AgentArtsFailureDiagnostic['code'] {
   try {
+    if (error instanceof AgentArtsRemoteInvocationError) return error.remoteCode;
     if (error instanceof ProtocolError && [
       'INVALID_ARGUMENT', 'UNSUPPORTED_CAPABILITY', 'UNAUTHORIZED',
       'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT',
@@ -519,10 +534,10 @@ function createSha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-function appendResponseChunk(chunks: Uint8Array[], value: Uint8Array, total: {value: number}): void {
+function appendResponseChunk(chunks: Uint8Array[], value: Uint8Array, total: {value: number}, maxBytes = MAX_RESPONSE_BYTES): void {
   if (!(value instanceof Uint8Array)) external('AgentArts response body is malformed');
   total.value += value.byteLength;
-  if (total.value > MAX_RESPONSE_BYTES) external('AgentArts response exceeds the byte limit');
+  if (total.value > maxBytes) external('AgentArts response exceeds the byte limit');
   // A transport may reuse its buffer for the next read. Preserve received bytes
   // before advancing it, after enforcing the aggregate allocation limit.
   chunks.push(new Uint8Array(value));
@@ -554,7 +569,7 @@ function discardUnreadResponse(response: AgentArtsResponse): void {
   } catch { /* Even a malformed transport may expose throwing body accessors. */ }
 }
 
-async function readResponseText(response: AgentArtsResponse, combined: CombinedSignal): Promise<string> {
+async function readResponseText(response: AgentArtsResponse, combined: CombinedSignal, maxBytes = MAX_RESPONSE_BYTES): Promise<string> {
   const chunks: Uint8Array[] = [];
   const total = {value: 0};
   const body = response.body;
@@ -573,7 +588,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
             break;
           }
           if (result.value === undefined) external('AgentArts response body is malformed');
-          appendResponseChunk(chunks, result.value, total);
+          appendResponseChunk(chunks, result.value, total, maxBytes);
         }
       } finally {
         if (!consumed) closeWithoutWaiting(() => reader.cancel?.());
@@ -594,7 +609,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
             if (result.value !== undefined) external('AgentArts response body is malformed');
             break;
           }
-          appendResponseChunk(chunks, result.value, total);
+          appendResponseChunk(chunks, result.value, total, maxBytes);
         }
       } finally {
         if (typeof iterator.return === 'function') {
@@ -609,7 +624,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
   } else if (typeof response.arrayBuffer === 'function') {
     const buffer = await callWithAbort(() => response.arrayBuffer!(), combined);
     if (!(buffer instanceof ArrayBuffer)) external('AgentArts response body is malformed');
-    appendResponseChunk(chunks, new Uint8Array(buffer), total);
+    appendResponseChunk(chunks, new Uint8Array(buffer), total, maxBytes);
   } else if (typeof response.text === 'function') {
     const value = await callWithAbort(() => response.text!(), combined);
     if (typeof value !== 'string') external('AgentArts response body is malformed');
@@ -625,7 +640,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
       external('AgentArts response is not valid UTF-8');
     }
     if (roundTrip !== value) external('AgentArts response is not valid UTF-8');
-    appendResponseChunk(chunks, encoded, total);
+    appendResponseChunk(chunks, encoded, total, maxBytes);
   } else {
     external('AgentArts response body is unavailable');
   }
@@ -671,7 +686,8 @@ class TextCollector {
   private finalWorkflowAnswer: string | undefined;
   private terminalPhase: 'open' | 'task-ended' | 'ended' | 'invalid' = 'open';
 
-  constructor(private readonly strictCompletion = false, private readonly diagnostic?: TerminalDiagnosticState) {}
+  constructor(private readonly strictCompletion = false, private readonly diagnostic?: TerminalDiagnosticState,
+    private readonly maxTextChars = MAX_TEXT_CHARS) {}
 
   add(text: string, index: number | undefined): void {
     if (this.strictCompletion && this.terminalPhase !== 'open') {
@@ -687,7 +703,7 @@ class TextCollector {
       this.unindexed.push(text);
     }
     this.messageLength += text.length;
-    if (this.messageLength > MAX_TEXT_CHARS) external('AgentArts response exceeds the text limit');
+    if (this.messageLength > this.maxTextChars) external('AgentArts response exceeds the text limit');
   }
 
   startWorkflow(identity: WorkflowIdentity): void {
@@ -714,7 +730,7 @@ class TextCollector {
       this.finalWorkflowAnswer = undefined;
       return;
     }
-    if (answer.length > MAX_TEXT_CHARS) external('AgentArts response exceeds the text limit');
+    if (answer.length > this.maxTextChars) external('AgentArts response exceeds the text limit');
     this.finalWorkflowAnswer = answer;
   }
 
@@ -901,8 +917,9 @@ function parseSseStandard(payload: string, collector: TextCollector, strictCompl
 
 function parseSseWithoutSeparators(
   payload: string, strictCompletion: boolean, diagnostic?: TerminalDiagnosticState,
+  maxTextChars = MAX_TEXT_CHARS,
 ): TextCollector {
-  const collector = new TextCollector(strictCompletion, diagnostic);
+  const collector = new TextCollector(strictCompletion, diagnostic, maxTextChars);
   const lines = payload.split(/\r\n|\r|\n/);
   let done = false;
   for (const line of lines) {
@@ -933,8 +950,9 @@ function parseSseWithoutSeparators(
 
 function parseSsePayload(
   payload: string, strictCompletion: boolean, diagnostic?: TerminalDiagnosticState,
+  maxTextChars = MAX_TEXT_CHARS,
 ): TextCollector {
-  const standard = new TextCollector(strictCompletion, diagnostic);
+  const standard = new TextCollector(strictCompletion, diagnostic, maxTextChars);
   try {
     parseSseStandard(payload, standard, strictCompletion);
     return standard;
@@ -949,24 +967,66 @@ function parseSsePayload(
       diagnostic.providerFailureToken = undefined;
       diagnostic.providerErrorCode = undefined;
     }
-    return parseSseWithoutSeparators(payload, strictCompletion, diagnostic);
+    return parseSseWithoutSeparators(payload, strictCompletion, diagnostic, maxTextChars);
   }
 }
 
 function parseResponsePayload(
   payload: string, contentType: string | undefined, strictCompletion = false,
   diagnostic?: TerminalDiagnosticState,
+  maxTextChars = MAX_TEXT_CHARS, strictJsonCompletion = false,
 ): string {
   const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
   if (mediaType === 'text/event-stream') {
-    return parseSsePayload(payload, strictCompletion, diagnostic).finish(strictCompletion);
+    return parseSsePayload(payload, strictCompletion, diagnostic, maxTextChars).finish(strictCompletion);
   }
   if (mediaType === 'application/json') {
-    const collector = new TextCollector(strictCompletion, diagnostic);
+    const collector = new TextCollector(strictCompletion, diagnostic, maxTextChars);
     parseJsonPayload(payload, collector);
-    return collector.finish();
+    return collector.finish(strictJsonCompletion && strictCompletion);
   }
   external('AgentArts response content type is unsupported');
+}
+
+/** Host-selected envelope limits; they do not change the normal coordination adapter. */
+export interface AgentArtsResponseTextOptions {
+  readonly signal: AbortSignal;
+  readonly deadline: string;
+  readonly strictCompletion?: boolean;
+  readonly maxResponseBytes?: number;
+  readonly maxTextChars?: number;
+}
+
+/** Reuse the transport's UTF-8, cancellation, event ordering and failure checks for owned image protocols.
+ * Returned text is untrusted data: callers must still parse and bind their application-specific result.
+ */
+export async function parseAgentArtsResponseText(response: AgentArtsResponse,
+  options: AgentArtsResponseTextOptions): Promise<string> {
+  const maxBytes = options.maxResponseBytes ?? MAX_RESPONSE_BYTES;
+  const maxChars = options.maxTextChars ?? MAX_TEXT_CHARS;
+  const deadlineMs = typeof options.deadline === 'string' && ISO_DEADLINE.test(options.deadline)
+    ? Date.parse(options.deadline) : NaN;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isSafeInteger(maxChars) || maxChars <= 0
+    || !Number.isFinite(deadlineMs)
+    || (options.strictCompletion !== undefined && typeof options.strictCompletion !== 'boolean')) {
+    discardUnreadResponse(response);
+    invalid('Invalid AgentArts response parser options');
+  }
+  const combined = makeCombinedSignal(options.signal, deadlineMs);
+  try {
+    const aborted = currentAbortError(combined);
+    if (aborted) {discardUnreadResponse(response); throw aborted;}
+    if (!Number.isInteger(response.status) || response.status < 200 || response.status >= 300) {
+      discardUnreadResponse(response);
+      external('AgentArts invocation failed');
+    }
+    const payload = await readResponseText(response, combined, maxBytes);
+    const contentType = response.headers?.get('content-type') ?? undefined;
+    const parsed = parseResponsePayload(payload, contentType, options.strictCompletion ?? true, undefined, maxChars, true);
+    const lateAbort = currentAbortError(combined);
+    if (lateAbort) throw lateAbort;
+    return parsed;
+  } finally {combined.dispose();}
 }
 
 function defaultFetch(url: string, init: AgentArtsFetchInit): Promise<AgentArtsResponse> {
@@ -1025,6 +1085,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly onWebSocketDispatch: AgentArtsWebSocketOptions['onDispatch'];
   private readonly onWebSocketAccepted: AgentArtsWebSocketOptions['onAccepted'];
   private readonly onWebSocketTerminal: AgentArtsWebSocketOptions['onTerminal'];
+  private readonly identityObserver: AgentArtsRequestIdentityObserver | undefined;
   private closed = false;
 
   constructor(
@@ -1035,6 +1096,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     beforeInitialToolCatalogSend?: (request: CoordinationRequest) => Promise<void>,
     onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void,
     websocketOptions?: AgentArtsWebSocketOptions,
+    identityObserver?: AgentArtsRequestIdentityObserver,
   ) {
     const validated = validateRuntimeConfig(config);
     if (!authorizationProvider || typeof authorizationProvider.read !== 'function') {
@@ -1064,6 +1126,9 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     for (const callback of [websocketOptions?.onDispatch, websocketOptions?.onAccepted, websocketOptions?.onTerminal]) {
       if (callback !== undefined && typeof callback !== 'function') invalid('AgentArts WebSocket persistence callback is invalid');
     }
+    if (identityObserver !== undefined && typeof identityObserver !== 'function') {
+      invalid('AgentArts request identity observer is invalid');
+    }
     this.gatewayOrigin = validated.gatewayOrigin;
     this.runtimeName = validated.runtimeName;
     this.invokeMode = validated.invokeMode;
@@ -1083,12 +1148,57 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     this.onWebSocketDispatch = websocketOptions?.onDispatch;
     this.onWebSocketAccepted = websocketOptions?.onAccepted;
     this.onWebSocketTerminal = websocketOptions?.onTerminal;
+    this.identityObserver = identityObserver;
     this.websocket = validated.websocketUrl === undefined ? undefined
       : new AgentArtsWebSocketTransport(validated.websocketUrl, websocketOptions?.factory, websocketOptions?.onState);
   }
 
   /** Releases reusable sessions. It never resumes or retries an in-flight invocation. */
   close(): void { this.closed = true; this.websocket?.close(); }
+
+  /** Read-only provisional transport lookup. Returned events never authorize execution or task completion. */
+  async queryStatus(receipt: AgentArtsUnknownReceipt, controls: {deadline: string; signal: AbortSignal}):
+    Promise<Extract<AgentArtsTransportFrame, {type: 'status'; serverInstanceId: string}>> {
+    if (this.closed || this.websocket === undefined) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts WSS status query is unavailable');
+    }
+    const saved = snapshotAgentArtsUnknownReceipt(receipt);
+    let signal: AbortSignal, deadlineMs: number;
+    try {
+      signal = controls.signal;
+      const deadline = controls.deadline;
+      deadlineMs = Date.parse(deadline);
+      if (!(signal instanceof AbortSignal) || typeof deadline !== 'string' || !ISO_DEADLINE.test(deadline)
+        || !Number.isFinite(deadlineMs)
+        || deadline.replace(/\.000Z$/, 'Z') !== new Date(deadlineMs).toISOString().replace(/\.000Z$/, 'Z')) {
+        throw Error();
+      }
+    } catch { invalid('Invalid AgentArts status query control'); }
+    const combined = makeCombinedSignal(signal, deadlineMs);
+    try {
+      const initialAbort = currentAbortError(combined);
+      if (initialAbort) throw initialAbort;
+      let authorization: unknown;
+      try { authorization = await callWithAbort(() => this.authorizationProvider.read(combined.signal), combined); }
+      catch { throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts authorization is unavailable'); }
+      const outer = validateAuthorization(authorization);
+      let supplied: unknown = outer;
+      if (this.websocketAuthorizationProvider !== undefined) {
+        try { supplied = await callWithAbort(() => this.websocketAuthorizationProvider!.read(combined.signal), combined); }
+        catch { throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts WebSocket authorization is unavailable'); }
+      }
+      const inner = validateAuthorization(supplied);
+      if (!/^Bearer [\x21-\x7e]+$/.test(inner)) {
+        throw new ProtocolError('UNAUTHORIZED', 'AgentArts WebSocket needs a trusted Bearer authorization');
+      }
+      return await callWithAbort(() => this.websocket!.queryStatus(saved, {
+        Authorization: outer, 'X-PA-Agent-Token': inner, 'X-Invoke-Mode': this.invokeMode,
+      }, combined.signal), combined);
+    } catch (error) {
+      throw currentAbortError(combined) ?? (error instanceof ProtocolError ? error
+        : new ProtocolError('EXTERNAL_FAILURE', 'AgentArts status query failed'));
+    } finally { combined.dispose(); }
+  }
 
   async invoke(request: CoordinationRequest): Promise<CoordinationResult> {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
@@ -1219,6 +1329,8 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           throw new ProtocolError('UNAUTHORIZED', 'AgentArts send intent must be persisted synchronously');
         }
       }
+      // WSS frames and HTTPS fallback carry a transport receipt right here.
+      if (receipt !== undefined) this.identityObserver?.(receipt, sendRequest);
       stage = 'transport';
       },
       afterAccepted: receipt => {
@@ -1240,6 +1352,8 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         await guards.beforeCatalog?.();
         const receipt = fallback ? createAgentArtsUnknownReceipt(init) : undefined;
         guards.beforeSend(receipt);
+        // The plain HTTPS send created no receipt earlier; observe the actual request identity now.
+        if (receipt === undefined) this.identityObserver?.(createAgentArtsUnknownReceipt(init), sendRequest);
         // The final synchronous guard and fetch share one uninterrupted stack.
         if (receipt !== undefined) { fallbackReceipt = receipt; fallbackStarted = true; }
         return this.fetchImpl(url, init);
@@ -1346,11 +1460,14 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       if (fallbackStarted && fallbackReceipt !== undefined && !currentAbortError(combined)
         && !(error instanceof AgentArtsResultUnknownError)) error = new AgentArtsResultUnknownError(fallbackReceipt);
       if (this.onDiagnostic !== undefined) {
+        const upgradeFailure = error instanceof AgentArtsWebSocketUpgradeError ? error : undefined;
+        const diagnosticHttpStatus = upgradeFailure === undefined ? httpStatus : upgradeFailure.httpStatus;
         const receipt: AgentArtsFailureDiagnostic = Object.freeze({
           stage, code: diagnosticCode(error),
+          ...(upgradeFailure ? {transportPhase: 'wss_upgrade' as const} : {}),
           ...(error instanceof AgentArtsResultUnknownError ? {resultUnknown: true} : {}),
           ...(diagnosticRequestId === undefined ? {} : {requestId: diagnosticRequestId}),
-          ...(httpStatus === undefined ? {} : {httpStatus}),
+          ...(diagnosticHttpStatus === undefined ? {} : {httpStatus: diagnosticHttpStatus}),
           ...(contentType === undefined ? {} : {contentType}),
           ...(stage === 'response_schema' || stage === 'application_schema'
             ? {terminalEvents: Object.freeze({taskEnd: terminalEvents.taskEnd, end: terminalEvents.end})} : {}),

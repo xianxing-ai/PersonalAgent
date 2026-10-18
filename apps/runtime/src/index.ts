@@ -360,6 +360,13 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly toolGateway: RuntimeToolGateway | undefined;
   private readonly sessionRef = 'runtime-' + randomUUID();
   private readonly active = new Map<string, AbortController>();
+  private readonly activeToolExecutions = new Map<string,string>();
+
+  /** Trusted host handoff observation only; Policy remains the authorization source. */
+  isToolExecutionActive(record:Pick<ToolExecutionRecord,'taskId'|'evidenceId'|'inputDigest'>):boolean {
+    const current=this.activeToolExecutions.get(JSON.stringify([record.taskId,record.evidenceId]));
+    return current!==undefined && current===record.inputDigest;
+  }
 
   constructor(path: string, options: RuntimeOptions = {}) {
     this.db = openStorage(path, RUNTIME_MIGRATIONS);
@@ -807,6 +814,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
             startedAt: this.timestamp(), state: 'started',
           };
           this.saveToolExecution(record);
+          const activeIdentity=JSON.stringify([request.taskId,runId]);
+          this.activeToolExecutions.set(activeIdentity,inputDigest);
           try {
             const result = await this.toolGateway.invoke({
               toolName: request.payload.toolName,
@@ -835,6 +844,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
               break;
             }
             throw error;
+          } finally {
+            this.activeToolExecutions.delete(activeIdentity);
           }
           break;
         }
@@ -1133,11 +1144,11 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     if(task.state!=='failed' || !task.error || this.active.has(taskId) || this.loadCheckpoint(taskId,'competition-cloud-unknown')
       || !inflight || !received || typeof inflight!=='object' || typeof received!=='object')return undefined;
     const left=inflight as Record<string,unknown>,right=received as Record<string,unknown>;
-    const fields=['sessionId','requestId','idempotencyKey','payloadDigest','accepted'];
+    const fields=['sessionId','requestId','idempotencyKey','payloadDigest','accepted','serverInstanceId'];
     if(fields.some(key=>left[key]!==right[key]) || Object.keys(left).some(key=>!fields.includes(key)) || Object.keys(right).some(key=>!fields.includes(key))
       || ['sessionId','requestId','idempotencyKey'].some(key=>typeof left[key]!=='string' || !(left[key] as string).length)
       || typeof left.payloadDigest!=='string' || !/^[a-f0-9]{64}$/.test(left.payloadDigest)
-      || typeof left.accepted!=='boolean')return undefined;
+      || typeof left.accepted!=='boolean' || (left.serverInstanceId!==undefined && (typeof left.serverInstanceId!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(left.serverInstanceId))))return undefined;
     const loop=this.loadCheckpoint(taskId,'competition-loop') as {pending?:unknown}|undefined;
     const marker=this.loadCheckpoint(taskId,'competition-cloud-terminal-error') as {version?:string;kind?:string;receipt?:unknown}|undefined;
     const matchedTerminalMarker=marker?.version==='1.0' && marker.kind==='wss_terminal_error'

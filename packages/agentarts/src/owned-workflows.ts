@@ -1,4 +1,5 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
+import {deflateRawSync,inflateRawSync} from 'node:zlib';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
 import type {CoordinationAvailableTool} from '@personal-agent/coordination';
@@ -6,6 +7,10 @@ import {getOwnedWorkflowTemplate,OWNED_WORKFLOW_VERSION} from './owned-workflow-
 import type {OwnedWorkflowNode,OwnedWorkflowTemplate} from './owned-workflow-templates.js';
 import {parseWorkflowSelectionResult,workflowShadowSelectedPlan,workflowShadowSelectionDigest} from './workflow-shadow-policy.js';
 import type {WorkflowSelectionResult,WorkflowShadowSelectedPlan,WorkflowShadowEvaluationReceipt} from './workflow-shadow-policy.js';
+import {parseCodingRepairSnapshot,parseCodingRepairPublishReadback} from '@personal-agent/contracts/coding-repair';
+import {codingRepairConfiguration,createCodingRepairFrontier,compactCodingSnapshot,acceptCodingChecks,parseCodingPatchCandidate,
+  analyzeCodingPatches,codingPatchCost,codingPatchRepeated,codingSnapshotFingerprint,codingFailureFingerprint,codingPatchFingerprint,requiredCodingVerification,codingRepairDigestText} from './coding-repair.js';
+import type {CodingRepairFrontier} from './coding-repair.js';
 
 export type OwnedWorkflowMode = 'main' | 'decision_shadow' | 'trace_replay' | 'isolated';
 export interface WorkflowSelector {
@@ -24,6 +29,8 @@ export interface WorkflowNodeContext {
   predecessorOutputs:Readonly<Record<string,unknown>>;availableTools:readonly CoordinationAvailableTool[];
   predecessorStates:Readonly<Record<string,string>>;
   deadline:string;signal:AbortSignal;requestId:string;mode:OwnedWorkflowMode;namespace:string;
+  /** Sealed F15 round plus SHA-bound current sources, never a tool grant. */
+  codingRepair?:CodingRepairFrontier;
 }
 export interface WorkflowHostPort {
   /** Discovery is trusted startup composition, never supplied in query by an end user. */
@@ -86,6 +93,7 @@ interface CheckpointState {
   snapshotDigest:string;namespace:string;nodes:Record<string,StepState>;selections:Record<string,'selected'|'skipped'>;
   executionProfile:string;
   originalDeadline:string;
+  codingRepair?:CodingRepairFrontier;
   hostControl?:{status:'running'|'paused'|'awaiting_controller'|'awaiting_user';commands:Record<string,string>;
     events:{commandId:string;action:WorkflowControlAction;reason?:string}[]};
 }
@@ -96,6 +104,7 @@ export interface OwnedWorkflowAdvanceResult {
   verification:'unverified';checkpoint:string;nodes:Record<string,StepState>;proposals:WorkflowProposal[];
   unavailable:{nodeId:string;capabilities:string[];reason:string}[];
   feedback:{source:string;target:string;state:'requires_host_revision'}[];
+  codingRepair?:{version:1;round:number;snapshotId:string;history:CodingRepairFrontier['history'];verification:CodingRepairFrontier['verification'];stoppedReason?:CodingRepairFrontier['stoppedReason']};
   hostControl?:CheckpointState['hostControl'];
   /** Data for the existing host; never a new tool grant or proof an isolated branch ran. */
   shadows?:{nodeId:string;plan:WorkflowShadowSelectedPlan;evaluation?:WorkflowShadowEvaluationReceipt}[];
@@ -167,8 +176,11 @@ export class OwnedWorkflowEngine {
       ||typeof options.prepareCandidates!=='function') invalid('Invalid workflow startup configuration');
     this.secret=Buffer.from(options.checkpointSecret,'utf8');
   }
-  private seal(state:CheckpointState):string {
-    const encoded=Buffer.from(JSON.stringify(state)).toString('base64url');
+  private seal(state:CheckpointState,compressed=false):string {
+    const json=Buffer.from(JSON.stringify(state));
+    // Preserve the decoded capacity of the existing 1,100,000-byte plain envelope.
+    if(compressed&&json.length>Math.floor((1_100_000-44)*3/4))throw new ProtocolError('EXTERNAL_FAILURE','Workflow checkpoint exceeds the existing decoded capacity');
+    const encoded=compressed?'deflate:'+deflateRawSync(json).toString('base64url'):json.toString('base64url');
     return encoded+'.'+createHmac('sha256',this.secret).update(encoded).digest('base64url');
   }
   private open(value:string):CheckpointState {
@@ -178,7 +190,12 @@ export class OwnedWorkflowEngine {
     const expected=createHmac('sha256',this.secret).update(encoded).digest();
     const actual=Buffer.from(signature,'base64url');
     if(expected.length!==actual.length||!timingSafeEqual(expected,actual)) invalid('Workflow checkpoint integrity failed');
-    try {return JSON.parse(Buffer.from(encoded,'base64url').toString('utf8')) as CheckpointState;}
+    try {
+      const bytes=encoded.startsWith('deflate:')
+        ?inflateRawSync(Buffer.from(encoded.slice('deflate:'.length),'base64url'),{maxOutputLength:Math.floor((1_100_000-44)*3/4)})
+        :Buffer.from(encoded,'base64url');
+      return JSON.parse(bytes.toString('utf8')) as CheckpointState;
+    }
     catch {return invalid('Invalid workflow checkpoint');}
   }
   private async initialize(request:OwnedWorkflowAdvanceRequest,template:OwnedWorkflowTemplate,tools:readonly CoordinationAvailableTool[]):Promise<CheckpointState> {
@@ -186,6 +203,9 @@ export class OwnedWorkflowEngine {
       ||!Number.isSafeInteger(request.controlRevision)||request.controlRevision<0) invalid();
     const mode=request.mode??'main';
     if(!['main','decision_shadow','trace_replay','isolated'].includes(mode)) invalid();
+    const coding=codingRepairConfiguration(request.input);
+    if(coding&&(template.workflowId!=='F15'||coding.session.taskId!==request.taskId||coding.session.sessionId!==request.sessionId
+      ||(mode==='isolated')!==(coding.session.mode==='isolated')))invalid('Coding repair must bind its original F15 task/session/isolation');
     const snapshot=request.snapshot;
     if(mode!=='main'&&(!snapshot||!safeId(snapshot.namespace)||snapshot.namespace==='main'
       ||!Number.isFinite(Date.parse(snapshot.asOf))||!plain(snapshot.sourceVersions))) invalid('Shadow snapshot and separate namespace required');
@@ -205,6 +225,8 @@ export class OwnedWorkflowEngine {
         ||template.nodes.some(node=>!Object.hasOwn(state.nodes,node.id))) invalid('Workflow checkpoint input, catalog or revision is stale');
       const immutable=['workflowVersion','workflowId','templateVersion','templateDigest','taskId','sessionId','mode','snapshotDigest','namespace','executionProfile'] as const;
       if(immutable.some(key=>state[key]!==identity[key])) invalid('Workflow checkpoint identity is stale');
+      if(Boolean(coding)!==Boolean(state.codingRepair)||coding&&digest(state.codingRepair!.configuration)!==digest({...coding,initialSnapshot:compactCodingSnapshot(coding.initialSnapshot)}))
+        invalid('Coding repair configuration changed');
       if(state.controlRevision!==identity.controlRevision||state.inputDigest!==identity.inputDigest||state.catalogDigest!==identity.catalogDigest) {
         const migration=request.migration;
         if(!migration||request.controlRevision<=state.controlRevision||!this.options.receiptVerifier?.verifyMigration
@@ -257,11 +279,37 @@ export class OwnedWorkflowEngine {
       return state;
     }
     if(request.receipts?.length) invalid('A receipt requires its original checkpoint');
-    return {...identity,nodes:Object.fromEntries(template.nodes.map(node=>[node.id,{state:'pending' as const}])),selections:{}};
+    return {...identity,nodes:Object.fromEntries(template.nodes.map(node=>[node.id,{state:'pending' as const}])),selections:{},
+      ...(coding?{codingRepair:createCodingRepairFrontier(coding)}:{})};
   }
   private context(request:OwnedWorkflowAdvanceRequest,template:OwnedWorkflowTemplate,node:OwnedWorkflowNode,
     state:CheckpointState,tools:readonly CoordinationAvailableTool[]):WorkflowNodeContext {
-    return {template:copy(template),node:copy(node),input:copy(request.input),
+    let coding=state.codingRepair?copy(state.codingRepair):undefined;
+    if(coding){
+      // Delivery consumes the post-check snapshot. N01 intentionally describes pre-patch sources.
+      const original=node.id==='F15_N06'?undefined:state.nodes.F15_N01?.value;
+      let current=original;
+      if(referenced(original)){
+        current=request.resolvedValues?.F15_N01;
+        if(current!==undefined&&digest(current)!==original.valueDigest)invalid('Current coding source reference changed');
+      }
+      if(current!==undefined){const snapshot=parseCodingRepairSnapshot(current);
+        if(codingSnapshotFingerprint(snapshot)!==codingSnapshotFingerprint(coding.snapshot))invalid('Coding source snapshot changed');coding.snapshot=snapshot;}
+      for(const [path,reference] of Object.entries(coding.sourceReferences)){
+        const restored=request.resolvedValues?.['coding-source:'+path]??request.receipts?.find(receipt=>receipt.nodeId==='F15_N03'
+          &&plain(receipt.result)&&receipt.result.path===path)?.result;
+        if(!plain(restored)||digest(restored)!==reference.valueDigest||restored.sha256!==reference.sha256||typeof restored.content!=='string'
+          ||codingRepairDigestText(restored.content)!==reference.sha256)throw new ProtocolError('INVALID_ARGUMENT','Original coding source result must be restored with its exact digest');
+        const file=coding.snapshot.files.find(f=>f.path===path);
+        if(!file||file.sha256!==reference.sha256)throw new ProtocolError('INVALID_ARGUMENT','Coding source revision changed');
+        file.content=restored.content;
+      }
+      const unread=coding.scopePaths.find(path=>coding.snapshot.files.some(f=>f.path===path&&f.sha256!==null)&&!coding!.sourceReferences[path]);
+      if(unread)coding.readPath=unread;else delete coding.readPath;
+    }
+    const sourceTool=coding&&node.id==='F15_N01'?'workspace.coding_snapshot':coding&&node.id==='F15_N03'&&coding.readPath?'coding.repair.read':undefined;
+    const effectiveNode=sourceTool?{...node,kind:'tool' as const,effect:'read' as const,capabilities:[{kind:'tool' as const,name:sourceTool,boundary:'local' as const}]}:node;
+    return {template:copy(template),node:copy(effectiveNode),input:copy(request.input),...(coding?{codingRepair:coding}:{}),
       predecessorOutputs:copy(Object.fromEntries(node.dependencies.map(dep=>{
         const value=state.nodes[dep.nodeId]?.value;
         if(state.nodes[dep.nodeId]?.inputReference) {
@@ -349,7 +397,54 @@ export class OwnedWorkflowEngine {
       step.evidenceRefs=[...new Set([...(step.evidenceRefs??[]),...receipt.evidenceRefs])];delete step.reason;
       if(receipt.state==='failed'&&expected.effect==='read'&&plain(receipt.result)&&plain(receipt.result.failure)
         &&receipt.result.failure.retrySafe===true) step.retrySafe=true;
+      if(state.codingRepair&&receipt.state==='confirmed')this.admitCodingReceipt(state,receipt);
     }
+  }
+  private admitCodingReceipt(state:CheckpointState,receipt:WorkflowReceipt):void {
+    const coding=state.codingRepair!,step=state.nodes[receipt.nodeId]!;
+    try {
+      if(receipt.nodeId==='F15_N01'){
+        coding.snapshot=compactCodingSnapshot(parseCodingRepairSnapshot(receipt.result));return;
+      }
+      if(receipt.nodeId==='F15_N03'&&step.proposal?.kind==='tool_proposal'&&step.proposal.toolName==='coding.repair.read'){
+        const result=receipt.result,path=step.proposal.arguments.path;
+        if(typeof path!=='string'||!coding.scopePaths.includes(path)||!plain(result)||result.path!==path||typeof result.content!=='string'
+          ||typeof result.sha256!=='string'||codingRepairDigestText(result.content)!==result.sha256
+          ||coding.snapshot.files.find(file=>file.path===path)?.sha256!==result.sha256)throw new ProtocolError('REVISION_CONFLICT','Coding source read does not match its current sealed scope');
+        coding.sourceReferences[path]={sha256:result.sha256,valueDigest:digest(result),operationId:receipt.operationId};
+        step.state='pending';delete step.proposal;delete step.value;delete step.selectedCandidate;return;
+      }
+      if(receipt.nodeId==='F15_N04'){
+        if(!plain(receipt.result)||receipt.result.sessionId!==coding.configuration.session.sessionId||receipt.result.approved!==true)
+          throw new ProtocolError('REVISION_CONFLICT','Coding preview did not approve this original session');return;
+      }
+      if(receipt.nodeId==='F15_N05'){
+        const sourceFingerprint=codingSnapshotFingerprint(coding.snapshot),patchDigest=codingPatchFingerprint(coding.pendingPatch?.patches??[]);
+        const disposition=acceptCodingChecks(coding,receipt.result,receipt.evidenceRefs);
+        if(disposition==='passed'){coding.sourceReferences={};coding.scopePaths=[];return;}
+        if(disposition==='unknown'){step.state='unknown';step.reason='Required verification has no current confirmed result';coding.stoppedReason='verification_unknown';return;}
+        const record={round:coding.round,sourceFingerprint,failureFingerprint:codingFailureFingerprint(coding),patchDigest,
+          snapshotId:coding.snapshot.snapshotId,operationIds:[...Object.values(coding.sourceReferences).map(source=>source.operationId),...Object.values(state.nodes).flatMap(n=>n.proposal?[n.proposal.operationId]:[])],
+          evidenceRefs:[...new Set(Object.values(state.nodes).flatMap(n=>n.evidenceRefs??[]))]};
+        if(coding.history.some(prior=>prior.sourceFingerprint===record.sourceFingerprint&&prior.failureFingerprint===record.failureFingerprint&&prior.patchDigest===record.patchDigest)){
+          step.state='failed';step.reason='NO_PROGRESS: identical source, failure and patch already verified';coding.stoppedReason='no_progress';return;
+        }
+        coding.history.push(record);coding.round++;delete coding.pendingPatch;coding.scopePaths=[];coding.sourceReferences={};
+        // Known verification failure creates a new round, never a retry of an unknown effect.
+        // Full original operations/results remain in the trusted TaskRuntime and old signed checkpoint.
+        for(const id of Object.keys(state.nodes))state.nodes[id]={state:'pending'};
+        state.selections={};return;
+      }
+      if(receipt.nodeId==='F15_N06'){
+        const result=parseCodingRepairPublishReadback(receipt.result);
+        if(result.sessionId!==coding.configuration.session.sessionId||!requiredCodingVerification(coding))throw new ProtocolError('REVISION_CONFLICT','Coding publish lost its current verification');
+        if(result.state!=='published'){step.state=result.state==='unknown'?'unknown':result.state==='not_started'?'cancelled':'failed';step.reason='Original coding publish requires CAS readback: '+result.state;return;}
+        const initial=new Map(coding.configuration.initialSnapshot.files.map(f=>[f.path,f.sha256]));
+        const changed=coding.snapshot.files.filter(f=>f.sha256!==(initial.get(f.path)??null));
+        if(result.files.length!==changed.length||result.files.some(f=>!changed.some(current=>current.path===f.path&&current.sha256===f.afterSha256
+          &&(initial.get(f.path)??null)===f.beforeSha256)))throw new ProtocolError('REVISION_CONFLICT','Coding publish readback does not match verified exact files');
+      }
+    }catch{step.state='unknown';step.reason='Confirmed host effect retained; coding receipt needs original reconciliation';coding.stoppedReason='verification_unknown';}
   }
   private validateShadowEvaluation(evaluation:WorkflowShadowEvaluationReceipt,plan:WorkflowShadowSelectedPlan,
     selectionDigest:string,nodeId:string,state:CheckpointState):void {
@@ -383,6 +478,10 @@ export class OwnedWorkflowEngine {
         ...(context.node.evidenceRequirement?{evidenceRequirement:context.node.evidenceRequirement}:{})},
       ...workflowCandidateMetadata(context.node,context.availableTools),
       ...decisionInput(context),predecessorStates:context.predecessorStates,predecessors:context.predecessorOutputs,
+      ...(context.codingRepair?{codingRepair:{round:context.codingRepair.round,scopePaths:context.codingRepair.scopePaths,
+        currentSnapshot:context.codingRepair.snapshot,diagnostics:context.codingRepair.diagnostics,
+        objective:'Prefer the smallest supported file/line repair among feasible candidates; size is not correctness. Actual current verification is mandatory.',
+        history:context.codingRepair.history}}:{}),
       candidateValues:candidates.map(({id,value,branches,abstain,metadata})=>({id,value,...(metadata?{metadata}:{}),...(branches?{branches}:{}),...(abstain?{abstain}:{} )})),mode:context.mode}),
       candidates:candidates.map(({id,description,metadata})=>({id,description,...(metadata?{metadata}:{})})),deadline:context.deadline,
       signal:context.signal,requestId:context.requestId};
@@ -391,7 +490,8 @@ export class OwnedWorkflowEngine {
       if(!descriptor) return {state:'unavailable',reason:'Local decision tool is not published by the trusted Runtime'};
       const argumentsValue={context:selectionRequest.context,candidates:selectionRequest.candidates,requestId:context.requestId};
       validateToolValue(descriptor.inputSchema,argumentsValue);
-      const operationId='wf-decision-'+digest([state.taskId,state.controlRevision,state.workflowId,context.node.id,state.inputDigest,state.mode,state.namespace,candidates]).slice(0,48);
+      const operationId='wf-decision-'+digest([state.taskId,state.controlRevision,state.workflowId,context.node.id,state.inputDigest,state.mode,state.namespace,candidates,
+        ...(state.codingRepair?[state.codingRepair.round,codingSnapshotFingerprint(state.codingRepair.snapshot)]:[])]).slice(0,48);
       return {state:'waiting_receipt',pendingSelection:candidates,proposal:{kind:'tool_proposal',nodeId:context.node.id,
         operationId,proposalId:operationId,inputDigest:digest(argumentsValue),originControlRevision:state.controlRevision,
         toolName:descriptor.name,toolVersion:descriptor.version,toolSchemaDigest:digest(descriptor.inputSchema),
@@ -401,7 +501,8 @@ export class OwnedWorkflowEngine {
     control(context);
     const candidate=candidates.find(item=>item.id===result.selectedId);
     if(!candidate) throw new ProtocolError('EXTERNAL_FAILURE','Selector returned an unknown candidate');
-    const decisionRef='wf-decision-'+digest([state.taskId,state.controlRevision,state.workflowId,context.node.id,state.inputDigest,state.mode,state.namespace,candidates]).slice(0,48);
+    const decisionRef='wf-decision-'+digest([state.taskId,state.controlRevision,state.workflowId,context.node.id,state.inputDigest,state.mode,state.namespace,candidates,
+      ...(state.codingRepair?[state.codingRepair.round,codingSnapshotFingerprint(state.codingRepair.snapshot)]:[])]).slice(0,48);
     const plan=workflowShadowSelectedPlan(state.taskId,decisionRef,result);
     if(plan)state.nodes[context.node.id]!.shadow={plan:{...plan,mode:'ordinary'},selectionDigest:workflowShadowSelectionDigest(result)};
     return this.selectCandidate(context,state,candidate);
@@ -422,7 +523,8 @@ export class OwnedWorkflowEngine {
   private proposal(context:WorkflowNodeContext,state:CheckpointState,candidate:WorkflowCandidate):WorkflowProposal {
     if(!plain(candidate.value)) throw new ProtocolError('EXTERNAL_FAILURE','Invalid workflow operation candidate');
     const value=candidate.value;
-    const operationId='wf-'+digest([state.taskId,state.controlRevision,state.workflowId,context.node.id,state.inputDigest,state.mode,state.namespace]).slice(0,48);
+    const operationId='wf-'+digest([state.taskId,state.controlRevision,state.workflowId,context.node.id,state.inputDigest,state.mode,state.namespace,
+      ...(state.codingRepair?[state.codingRepair.round,codingSnapshotFingerprint(state.codingRepair.snapshot),digest(value)]:[])]).slice(0,48);
     const inputDigest=digest(value),base={nodeId:context.node.id,proposalId:operationId,operationId,inputDigest,
       originControlRevision:state.controlRevision,...this.isolation(state),
       resourceKeys:[...context.node.resourceKeys],effect:context.node.effect==='write'?'write' as const:'read' as const};
@@ -441,6 +543,15 @@ export class OwnedWorkflowEngine {
   private async runNode(context:WorkflowNodeContext,state:CheckpointState):Promise<StepState> {
     const {node}=context;
     if(context.mode==='trace_replay') return {state:'unknown',reason:'Replay has no trusted counterfactual observation for this node'};
+    if(state.codingRepair&&node.id==='F15_N06'&&context.mode==='isolated'){
+      const coding=state.codingRepair;
+      if(!requiredCodingVerification(coding))return {state:'unknown',reason:'Isolated artifact has no current mandatory verification'};
+      const evidenceRefs=[...new Set(coding.verification.filter(receipt=>receipt.status==='VALID').flatMap(receipt=>receipt.evidenceRefs))];
+      return {state:'completed',evidenceRefs,value:{version:1,sessionId:coding.configuration.session.sessionId,
+        state:'shadow_artifact_verified',snapshotId:coding.snapshot.snapshotId,published:false,
+        files:coding.snapshot.files.map(({content:_content,...file})=>file),
+        verificationRunIds:coding.configuration.recipes.filter(r=>r.required).map(recipe=>[...coding.verification].reverse().find(r=>r.recipeId===recipe.recipeId)!.runId),evidenceRefs}};
+    }
     const isolated=this.options.externalHost&&this.options.allowIsolatedProposals&&context.mode==='isolated';
     if(context.mode!=='main'&&!isolated&&(node.effect==='write'||node.designKind==='checkpoint'||node.designKind==='wait_user')) {
       return {state:'unavailable',reason:'Shadow does not consume main authorization, mutate main state or emit real effects'};
@@ -452,7 +563,8 @@ export class OwnedWorkflowEngine {
       const argumentsValue={workflowId:context.template.workflowId,nodeId:node.id,input:context.input,
         predecessorOutputs:context.predecessorOutputs,predecessorStates:context.predecessorStates};
       validateToolValue(descriptor.inputSchema,argumentsValue);
-      const operationId='wf-guard-'+digest([state.taskId,state.controlRevision,state.workflowId,node.id,state.inputDigest,state.mode,state.namespace]).slice(0,48);
+      const operationId='wf-guard-'+digest([state.taskId,state.controlRevision,state.workflowId,node.id,state.inputDigest,state.mode,state.namespace,
+        ...(state.codingRepair?[state.codingRepair.round,codingSnapshotFingerprint(state.codingRepair.snapshot)]:[])]).slice(0,48);
       return {state:'waiting_receipt',pendingGuard:true,proposal:{kind:'tool_proposal',nodeId:node.id,
         operationId,proposalId:operationId,inputDigest:digest(argumentsValue),originControlRevision:state.controlRevision,
         toolName:descriptor.name,toolVersion:descriptor.version,toolSchemaDigest:digest(descriptor.inputSchema),
@@ -463,6 +575,21 @@ export class OwnedWorkflowEngine {
     if(node.kind==='decision'||node.kind==='executor') {
       const chosen=await this.candidates(context,state);
       if('state' in chosen) return chosen;
+      if(state.codingRepair&&node.id==='F15_N02'&&!chosen.abstain){
+        if(!plain(chosen.value)||!Array.isArray(chosen.value.scope)||chosen.value.scope.length===0
+          ||chosen.value.scope.some(path=>typeof path!=='string'||!path||path.includes('\\')||path.startsWith('/')||/^[A-Za-z]:/.test(path)
+            ||path.split('/').some(part=>part==='..'||part===''||part==='.')||path.includes('\0')))
+          throw new ProtocolError('INVALID_ARGUMENT','Coding scope must name explicit relative source paths');
+        state.codingRepair.scopePaths=[...new Set(chosen.value.scope as string[])];
+      }
+      if(state.codingRepair&&node.id==='F15_N03'&&!chosen.abstain){
+        const candidate=parseCodingPatchCandidate(chosen.value);
+        if(candidate.patches.some(patch=>!state.codingRepair!.scopePaths.includes(patch.path)))throw new ProtocolError('INVALID_ARGUMENT','Coding patch exceeds its selected source scope');
+        if(codingPatchRepeated(state.codingRepair,candidate.patches)){state.codingRepair.stoppedReason='no_progress';return {state:'failed',reason:'NO_PROGRESS: identical source, failure and patch'};}
+        const analysis=codingPatchCost(state.codingRepair,candidate,context.codingRepair!.snapshot).analysis;
+        state.codingRepair.pendingPatch=copy(candidate);
+        return {state:'completed',value:{...candidate,analysis}};
+      }
       return chosen.abstain?{state:'unknown',reason:'Unique selector requested recheck; no execution or branch activation'}
         :{state:'completed',value:chosen.value};
     }
@@ -594,6 +721,7 @@ export class OwnedWorkflowEngine {
         // The cloud has not executed a business operation. Do not expose an undeliverable
         // proposal or retain branch choices selected by a candidate which was never emitted.
         state.nodes=rejected.nodes;state.selections=rejected.selections;
+        if(before.codingRepair)state.codingRepair=before.codingRepair;else delete state.codingRepair;
         return this.delivery(template,state,request);
       }
       // A sequential workflow never starts a second branch while a host effect/decision is unresolved.
@@ -604,10 +732,14 @@ export class OwnedWorkflowEngine {
   }
   private deliverable(template:OwnedWorkflowTemplate,state:CheckpointState,request:OwnedWorkflowAdvanceRequest,cancelled=false):OwnedWorkflowAdvanceResult|undefined {
     const fits=():OwnedWorkflowAdvanceResult|undefined=>{
-      let result:OwnedWorkflowAdvanceResult;
-      try {result=this.result(template,state,cancelled);}
-      catch(error) {if(error instanceof ProtocolError&&error.code==='EXTERNAL_FAILURE')return undefined;throw error;}
-      return !request.resultFits||request.resultFits(result)?result:undefined;
+      // F15 explicitly enables compressed coding checkpoints; other graphs retain their reference/capacity contract.
+      for(const compressed of request.resultFits&&state.codingRepair?[false,true]:[false]) {
+        let result:OwnedWorkflowAdvanceResult;
+        try {result=this.result(template,state,cancelled,compressed);}
+        catch(error) {if(error instanceof ProtocolError&&error.code==='EXTERNAL_FAILURE')continue;throw error;}
+        if(!request.resultFits||request.resultFits(result))return result;
+      }
+      return undefined;
     };
     const original=fits();if(original||!request.resultFits)return original;
     // The original input is already resent and digest-bound on every advance. Avoid storing
@@ -633,7 +765,7 @@ export class OwnedWorkflowEngine {
     if(!result)invalid('Workflow continuation requires a larger result transport');
     return result!;
   }
-  private result(template:OwnedWorkflowTemplate,state:CheckpointState,cancelled=false):OwnedWorkflowAdvanceResult {
+  private result(template:OwnedWorkflowTemplate,state:CheckpointState,cancelled=false,compressed=false):OwnedWorkflowAdvanceResult {
     const steps=Object.values(state.nodes),proposals=state.hostControl&&state.hostControl.status!=='running'?[]
       :steps.flatMap(step=>step.state==='waiting_receipt'&&step.proposal?[copy(step.proposal)]:[]);
     const required=template.nodes.filter(node=>node.required||state.selections[node.id]==='selected').map(node=>state.nodes[node.id]!);
@@ -651,7 +783,7 @@ export class OwnedWorkflowEngine {
     const waitingForShadow=comparisons.some(shadow=>shadow.evaluation?.context.controlRevision!==state.controlRevision
       ||shadow.evaluation.policy.mayDeliverMain!==true||shadow.evaluation.policy.comparison.status!=='comparable');
     const result:OwnedWorkflowAdvanceResult={workflowVersion:OWNED_WORKFLOW_VERSION,workflowId:template.workflowId,templateVersion:template.version,
-      templateDigest:template.templateDigest,state:graphState,verification:'unverified',checkpoint:this.seal(state),nodes:copy(state.nodes),proposals,
+      templateDigest:template.templateDigest,state:graphState,verification:'unverified',checkpoint:this.seal(state,compressed),nodes:copy(state.nodes),proposals,
       ...(state.hostControl?{hostControl:copy(state.hostControl)}:{}),
       ...(shadows.length?{shadows,delivery:{waitingForShadow,mayDeliverMain:graphState==='settled'&&!waitingForShadow,
         reason:waitingForShadow?'explicit_comparison_requires_verified_comparable_results':graphState!=='settled'?'main_graph_not_settled':'main_graph_settled_without_shadow_wait'}}:{}),
@@ -659,7 +791,10 @@ export class OwnedWorkflowEngine {
         ||state.nodes[node.id]!.reason==='Host receipt verifier unavailable; original operation is retained').map(node=>({nodeId:node.id,
         capabilities:node.capabilities.map(cap=>`${cap.kind}:${cap.name}`),reason:state.nodes[node.id]!.reason??'Provider unavailable'})),
       feedback:template.transitions.filter(edge=>edge.feedback&&state.nodes[edge.source]?.state==='completed')
-        .map(({source,target})=>({source,target,state:'requires_host_revision' as const}))};
+        .map(({source,target})=>({source,target,state:'requires_host_revision' as const})),
+      ...(state.codingRepair?{codingRepair:{version:1 as const,round:state.codingRepair.round,snapshotId:state.codingRepair.snapshot.snapshotId,
+        history:copy(state.codingRepair.history),verification:copy(state.codingRepair.verification),
+        ...(state.codingRepair.stoppedReason?{stoppedReason:state.codingRepair.stoppedReason}:{})}}:{})};
     if(Buffer.byteLength(JSON.stringify(result))>1_100_000) throw new ProtocolError('EXTERNAL_FAILURE','Workflow result exceeds the versioned graph transport budget');
     return result;
   }

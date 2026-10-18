@@ -21,7 +21,7 @@
 - `packages/contracts/agentarts-transport`：独立 provisional 0.1.0 Schema/生成类型/严格帧解析；既有本地 wire 1.0.0 保持兼容。
 - `packages/coordination/src/agentarts-websocket.ts`：可信宿主会话连接、逐次凭据读取、发送边界核验与有限 HTTPS 备用；持久任务/核实状态仍归 Runtime。
 - `docs/design/resident-developer-agent-20261008/`：完整方案、四张 SVG、离线阅读、模块估算和 Wiki 交接，可编辑生成器一并保留。
-- `scripts/review/`：本机打开/声明、内容清单及两人 review 校验；不是产品 Policy 或运行时依赖。
+- `scripts/review/`：设计清单、自愿本机阅读声明及当前 head 的一位合资格非作者批准校验；名单与合并规则以 CONTRIBUTING/AGENTS 和实际保护为准，不是产品 Policy 或运行时依赖。
 - `scripts/docs/`：文档导航同步生成器，保留历史事实。
 - `.github/workflows/owned-image-preview.yml`：指定工作分支的 GHCR 预览构建；不合并 PR。
 

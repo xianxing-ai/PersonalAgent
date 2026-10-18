@@ -49,9 +49,12 @@ import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
-import {createWorkspacePatchRecoveryHost} from './workspace-patch-recovery-host.js';
+import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
+import {createRemoteMcpConfig} from './remote-mcp-config.js';
+import {createDesktopRemoteMcpHost} from './remote-mcp-host.js';
+import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
@@ -188,6 +191,7 @@ let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 let installedSkillsHost;
+let remoteMcpConfig,remoteMcpHost,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
 let voicePcmSource;
 let voiceInput;
@@ -499,7 +503,7 @@ function taskResultMetadata(task) {
 
 function agentArtsSnapshot() {
   const value = agentArtsConfig?.snapshot();
-  return value && {...value,effectiveTransport:process.env.PA_AGENTARTS_TRANSPORT??value.transport,transportSource:process.env.PA_AGENTARTS_TRANSPORT!==undefined?'environment':'saved', reason: cloudRequestFailureNotice || cloudTransportNotice || value.reason};
+  return value && {...value,reason:cloudRequestFailureNotice || cloudTransportNotice || value.reason};
 }
 
 function visibleConversationTask(task,surface){return !surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface);}
@@ -532,6 +536,7 @@ function snapshot(surface) {
       vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
+    remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     approvals: [...approvals.values()].filter(approval=>!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface)),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
@@ -989,8 +994,10 @@ async function initializeModelFromEnvironment() {
   }
 }
 
-async function refresh(taskId) {
+async function refresh(taskId, isCurrent = () => true) {
+  if (!isCurrent()) throw Error('Task refresh session changed');
   const task = await client.call('task.get', {taskId});
+  if (!isCurrent()) throw Error('Task refresh session changed');
   const current = tasks.get(taskId);
   if (current?.taskId === task.taskId && current.revision > task.revision) return current;
   tasks.set(taskId, task);
@@ -1410,6 +1417,8 @@ async function initializeRuntime() {
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
         readWorkspaceExportPreflight:query=>publicReferenceConsent?.readPreflight(query),
         readWorkspaceExportAuthorization:query=>publicReferenceConsent?.readAuthorization(query),
+        requestWorkspaceExportPreflight:(query,context)=>publicReferenceConsent?.requestPreflight(query,context),
+        requestWorkspaceExportExact:(query,context)=>publicReferenceConsent?.requestExact(query,context),
         jobHelperExecutable:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async () => {
           const result = await dialog.showOpenDialog(admin, {title:'选择允许 PersonalAgent 使用的编程工作区',
@@ -1559,11 +1568,13 @@ async function initializeRuntime() {
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(obsidianPairing.source, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
-      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding,transportPreferences:agentArtsConfig.readTransportPreferences(),
-        configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(cloudBinding)}});
+      const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
+      // 平台观测读回（MOD-32）默认装配为显式 unavailable：真实 ShowOpsTrace /
+      // ListOpsAgentRunLog 需要 AK/SK 签名宿主与平台 applicationId（resource_id），
+      // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         proactiveWorkflows: true,
@@ -1641,7 +1652,7 @@ async function initializeRuntime() {
           }
           mailAnalysisHost?.assertCloudSend(request);
         },
-        tools: [...(syntheticMvp ? syntheticTools.tools : codingWorkspace.tools.length ? codingWorkspace.tools : competitionCatalog ? [competitionCatalog.tool] : []), ...(goalCloudHost?.tools ?? goalHost.tools), ...productTools.tools, ...(mailHost?.tools ?? []), ...(calendarMeetingHost?.tools ?? []), ...(feedsHost?.tools ?? []), ...(notepadHost?.tools ?? []), ...(todoHost?.tools ?? []), ...(notificationApplicationHost?.tools ?? []), ...(subagentTool ? [subagentTool] : []), ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[])],
+        tools: [...(syntheticMvp ? syntheticTools.tools : codingWorkspace.tools.length ? codingWorkspace.tools : competitionCatalog ? [competitionCatalog.tool] : []), ...(goalCloudHost?.tools ?? goalHost.tools), ...productTools.tools, ...(mailHost?.tools ?? []), ...(calendarMeetingHost?.tools ?? []), ...(feedsHost?.tools ?? []), ...(notepadHost?.tools ?? []), ...(todoHost?.tools ?? []), ...(notificationApplicationHost?.tools ?? []), ...(subagentTool ? [subagentTool] : []), ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[])],
         prepareCompetitionToolExport:async ({phase,taskId,proposal,deadline,signal})=>{
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;
           if (!publicReferenceConsent || !['preflight','projection'].includes(phase)) throw Error('原生公开资料许可入口不可用');
@@ -1686,7 +1697,7 @@ async function initializeRuntime() {
         },
         authorizationProvider: {
           read: async () => {
-            return agentArtsConfig.readAuthorization(cloudBinding);
+            return agentArtsConfig.readAuthorization(cloudBinding, agentArtsTransportConfig);
           },
         },
       });
@@ -2123,6 +2134,11 @@ function cancelKnowledgeTasks() {
   }
 }
 
+const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
+  getApplication: () => runtimeApplication, getAdmin: () => admin,
+  isEnabled: () => competitionMode && !syntheticMvp, refresh,
+});
+
 async function action(event, name, payload) {
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
@@ -2130,6 +2146,10 @@ async function action(event, name, payload) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel');
+  if(name==='remoteMcp.open') {
+    if(sender!==admin || !competitionMode || !remoteMcpManagement || payload!==undefined)throw Error('请从正式管理后台打开远程 MCP 管理');
+    remoteMcpManagement.open();return;
+  }
   if (['agentartsModels.state','agentartsModels.refresh','agentartsModels.configure'].includes(name)) {
     if(sender!==admin || !competitionMode || !agentArtsModels)throw Error('请从模型设置管理 AgentArts 模型');
     const result=name==='agentartsModels.state'?agentArtsModels.snapshot():name==='agentartsModels.refresh'?await agentArtsModels.refresh():agentArtsModels.configure(payload);publish();return result;
@@ -2290,13 +2310,7 @@ async function action(event, name, payload) {
     publish(); return result;
   }
   if (name === 'coding.reconcile') {
-    const application = runtimeApplication;
-    const authorized = () => sender === admin && !sender.isDestroyed()
-      && sender.webContents === event.sender && event.senderFrame === sender.webContents.mainFrame
-      && application === runtimeApplication && competitionMode && !syntheticMvp;
-    const recovery = createWorkspacePatchRecoveryHost({application, isAuthorized: authorized});
-    const result = await recovery.reconcile(payload);
-    publish(); return result;
+    return recoverWorkspacePatch(event, payload);
   }
   if (['coding.select','coding.selectNode','coding.selectNpmCli','coding.selectCheckFile','coding.authorize','coding.revoke'].includes(name)) {
     if ((sender !== admin && sender !== workspace) || !competitionMode || syntheticMvp || !codingWorkspace) throw Error('请从正式应用设置配置编程工作区');
@@ -3063,6 +3077,14 @@ app.whenReady().then(async () => {
     try{flushConversationDrafts(event,entries,{panel,workspace,conversations});event.returnValue={ok:true};}
     catch{event.returnValue={ok:false,error:'关闭前草稿保存未确认，请保持窗口打开并重试'};}
   });
+
+  if(competitionMode) {
+    remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
+    remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
+    remoteMcpManagement=createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner:()=>admin,
+      config:remoteMcpConfig,host:remoteMcpHost,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
+      namespace:desktopHost.userNamespace,onUpdate:publish});
+  }
   agentArtsModels=createAgentArtsModelSettings({configuration:agentArtsConfig,readCatalog:async({deadline,signal})=>{
     const binding=agentArtsConfig.binding();
     const transport=createAgentArtsTransportConfig({binding,environment:{PA_AGENTARTS_TRANSPORT:'https'},configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(binding)}});
@@ -3157,6 +3179,15 @@ app.whenReady().then(async () => {
       app.isQuitting = false;
       runtimeError = 'Runtime 仍有活动任务；请先等待完成或停止任务后再退出';
       publish();
+      return;
+    }
+    if(remoteMcpHost && !remoteMcpClosed) {
+      event.preventDefault();
+      if(!remoteMcpClosing) {
+        remoteMcpManagement.close();
+        remoteMcpClosing=remoteMcpHost.dispose().then(()=>{remoteMcpConfig.dispose();remoteMcpClosed=true;app.quit();})
+          .catch(()=>{remoteMcpClosing=undefined;runtimeError='远程 MCP 关闭未确认，请先断开连接后再退出';publish();});
+      }
       return;
     }
     if (wakeVoice && !wakeQuitHandled) {

@@ -3,7 +3,8 @@ import {OwnedAgentOrchestrator, OwnedWorkflowEngine, createOwnedWorkflowReceiptV
   WORKFLOW_DECISION_TOOL_NAME,WORKFLOW_DECISION_TOOL_VERSION} from '@personal-agent/agentarts';
 import {OpenAICompatibleModelProvider,ModelGateway} from '@personal-agent/models';
 import {createAgentServer} from './server.mjs';
-import {createOwnedModelFetch} from './model-fetch.mjs';
+import {createOwnedModelFetch,ownedModelRequestFormat} from './model-fetch.mjs';
+import {createRoleReceiptWriter} from './role-receipts.mjs';
 import {createAgentArtsModelFetch} from './model-proxy.mjs';
 import {createTestVersionController} from './test-version-controller.mjs';
 import {createImageServices,loadImageServiceConfiguration} from './image-services.mjs';
@@ -36,7 +37,7 @@ function model(role,entry) {
     requestProfile:entry?.requestProfile??process.env.PA_AGENT_MODEL_REQUEST_PROFILE??'standard',onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')})
     :createOwnedModelFetch({endpoint,model:name});
   return new OpenAICompatibleModelProvider({baseUrl:endpoint,model:name,
-    fetch,apiKey:readSecret,
+    requestFormat:ownedModelRequestFormat({endpoint,model:name}),fetch,apiKey:readSecret,
     timeoutMs:integer('PA_AGENT_TIMEOUT_MS',60_000)});
 }
 let server;
@@ -74,7 +75,8 @@ try {
     prepareCandidates:context => orchestrator.prepareOwnedWorkflowCandidates(context),
     ...(receiptSecret === undefined ? {} : {receiptVerifier:createOwnedWorkflowReceiptVerifier({secret:receiptSecret})})}) : undefined;
   orchestrator = new OwnedAgentOrchestrator(models,integer('PA_AGENT_MAX_OUTPUT_TOKENS',2048),
-    receipt => process.stdout.write(JSON.stringify(receipt)+'\n'), undefined, workflowEngine,executionModels?{executionModels}:undefined);
+    createRoleReceiptWriter({deploymentVersion:process.env.PA_AGENT_DEPLOYMENT_VERSION}),
+    undefined, workflowEngine,executionModels?{executionModels}:undefined);
   const authToken = process.env.PA_AGENT_INBOUND_TOKEN;
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
   server = createAgentServer({orchestrator,mode,serviceControllers:imageServices.controllers,

@@ -49,6 +49,17 @@ export function createProductToolsComposition({modules = {}, connectors = {}, wo
         add('workspace.run_allowed_command', coding.createWorkspaceCommandTool,
           {...workspace.options, ...workspace.command, rootPath: workspace.options.rootPath});
       } else missing('workspace.run_allowed_command', 'approved_host_recipes_required');
+      if(workspace.writeApproved===true&&workspace.commandApproved===true&&workspace.repair?.host
+        &&typeof workspace.repair.available==='function'&&typeof coding.createIsolatedCodingRepairTools==='function') {
+        const repair=coding.createIsolatedCodingRepairTools(workspace.repair.host);
+        for(const tool of repair)disposers.push(host.register(tool));
+        for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],
+          ['check','workflow.host.f15_n05'],['publish','workflow.host.f15_n06']]) {
+          const tool=repair.find(item=>item.descriptor.name==='coding.repair.'+source);
+          if(!tool)throw Error('Missing isolated coding adapter');
+          disposers.push(host.register({...tool,descriptor:{...tool.descriptor,name}}));
+        }
+      }else missing('coding.repair.workflow','trusted_isolated_host_and_current_workspace_scope_required');
     } else missing('workspace', 'approved_workspace_required');
     if (systemObservation) add('computer.system.observe', modules.windows?.createSystemObservationTool, {});
     else missing('computer.system.observe', 'not_enabled');
@@ -62,7 +73,8 @@ export function createProductToolsComposition({modules = {}, connectors = {}, wo
     if (!active || context.signal?.aborted || !Number.isFinite(Date.parse(context.deadline))
       || now() >= Date.parse(context.deadline)) return false;
     const family = tool.descriptor.name.split('.')[0];
-    const check = family === 'workspace' ? workspace?.available : connectors[family]?.available;
+    const repair=tool.descriptor.name.startsWith('coding.repair.')||tool.descriptor.name.startsWith('workflow.host.f15_')||tool.descriptor.name==='workspace.coding_snapshot';
+    const check=repair?workspace?.repair?.available:family === 'workspace' ? workspace?.available : connectors[family]?.available;
     try { return check ? await check(context) === true : family === 'computer'; } catch { return false; }
   };
   const competitionToolAvailability = registered.map(tool => ({toolName: tool.descriptor.name,
