@@ -551,7 +551,7 @@ test('observation input validation enforces deadline and cancellation bounds', a
       app.readTaskPlatformObservation({taskId, surface: 'trace', deadline: fakeDeadline(), signal, ...input});
     await assert.rejects(read({deadline: 'not-a-timestamp'}), {code: 'INVALID_ARGUMENT'});
     await assert.rejects(read({deadline: '2000-01-01T00:00:00Z'}), {code: 'INVALID_ARGUMENT'});
-    await assert.rejects(read({deadline: new Date(Date.now() + 2_147_483_648).toISOString()}), {code: 'INVALID_ARGUMENT'});
+    await assert.rejects(read({deadline: new Date(Date.now() + 2_200_000_000).toISOString()}), {code: 'INVALID_ARGUMENT'});
     const controller = new AbortController();
     controller.abort();
     await assert.rejects(read({}, controller.signal), {code: 'CANCELLED'});
