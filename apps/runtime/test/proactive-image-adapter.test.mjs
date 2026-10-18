@@ -90,7 +90,8 @@ test('existing public transport config derives the same runtime endpoint and nev
   await assert.rejects(adapter.advancePort({...request(),endpoint:'https://injected.example/invocations'}),{code:'INVALID_ARGUMENT'});
   assert.throws(()=>createRuntimeProactiveImageAdapter({...f.options,config:{gatewayUrl:'https://fixture.example',runtimeName:'runtime'}}),{code:'INVALID_ARGUMENT'});
   for(const endpoint of ['http://remote.example/invocations','https://user:secret@fixture.example/invocations','https://fixture.example/invocations?key=secret'])
-    assert.throws(()=>createRuntimeProactiveImageAdapter({...f.options,endpoint}),{code:'INVALID_ARGUMENT'});});
+    assert.throws(()=>createRuntimeProactiveImageAdapter({...f.options,endpoint}),{code:'INVALID_ARGUMENT'});
+});
 test('trusted saved deployment version pins catalog and advance URLs without widening explicit endpoints',async t=>{
   const f=await fixture(t),{endpoint:ignored,...options}=f.options,urls=[];
   const config={gatewayUrl:'https://fixture-gateway.example',runtimeName:'configured-runtime',deploymentVersion:'fixed.v-1'};
