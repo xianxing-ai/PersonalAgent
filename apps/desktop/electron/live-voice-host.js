@@ -333,14 +333,17 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
             }
             if (submittedTaskId && typeof client?.call === 'function') {
               try {
+                assertWorkCurrent();
                 const snapshot = pendingSnapshot ?? await boundedReadTask(client, submittedTaskId, controller.signal,
-                  Math.min(Date.parse(record.deadline), now() + 5000), now);
-                assertCurrent();
+                  Math.min(workDeadline, now() + 5000), now);
+                assertWorkCurrent();
                 if (snapshot?.taskId === submittedTaskId) {
+                  const description = await describeTask(snapshot);
+                  assertWorkCurrent();
                   receipt.state=['failed','cancelled','succeeded'].includes(snapshot.state)?'result_returned':'awaiting_result';
-                  return describeTask(snapshot);
+                  return description;
                 }
-              } catch {assertCurrent();}
+              } catch {assertWorkCurrent();}
             }
             throw err;
           }
