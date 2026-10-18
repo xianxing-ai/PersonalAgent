@@ -50,7 +50,7 @@ const deployment = await createDesktopDeveloperDeployment({
     "maxSteps": 12,
     "maxTokens": 4000,
     "reviewRules": [{"id": "scope", "text": "Review only the requested change and supplied diff."}],
-    "issueTriage": {"labels": ["bug", "documentation"], "minConfidence": 0.85},
+    "issueTriage": {"labels": {"bug": "bug", "feature": "enhancement", "docs": "documentation", "question": "question"}, "minConfidence": 0.85},
     "ciFix": {"verifyRecipeId": "node-check", "baseBranch": "main", "maxAttempts": 2, "maxLogBytes": 65536}
   }
 }
