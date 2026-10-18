@@ -18,7 +18,7 @@ if(workflows.length!==28||workPackages.length!==10||modules.length!==39)throw Er
 fs.writeFileSync(path.join(root,'src/data/currentDesign.generated.json'),JSON.stringify({sha,date:'2026-10-15',sourcePaths,workflows,workPackages,modules},null,2)+'\n');
 const replacements=[
  ['全部业务工作流和Laya multilingual服务/权重迁入自有镜像','Competition由AgentArts构建与编排Agent/Workflow；本地Runtime经CloudAgentPort调用部署版本'],
- ['Laya在镜像内裁决','Competition主链由AgentArts Agent/Workflow编排，本机Laya仅属可选Local实验'],
+ ['Laya在镜像内裁决','Competition由AgentArts Agent/Workflow编排，本机Laya在本机运行并参与Competition产品路径'],
  ['唯一全局语义决策配置','AgentArts Competition Agent/Workflow编排'],
  ['唯一主决策配置','AgentArts Competition编排'],
  ['唯一主模型','AgentArts Agent/Workflow'],['主模型','Competition Agent/Workflow'],
@@ -35,7 +35,7 @@ const architecture=clean(JSON.parse(fs.readFileSync(path.join(root,'src/data/arc
 for(const f of architecture){
  const current=workflows.find(w=>w.id===f.id); if(!current)throw Error(f.id);
  f.summary=current.design;
- f.designNotes=[`当前实现/实测边界：${current.status}`,'Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。','本机Laya/自有镜像结果是历史实测，不证明Competition平台编排验收；Competition失败不得静默回退Local。','该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。',...(f.designNotes||[]).filter(n=>!n.startsWith('当前实现/实测边界：')&&!n.startsWith('Competition目标由AgentArts')&&!n.startsWith('本机Laya/自有镜像结果是历史实测')&&!n.startsWith('该图默认串行；'))];
+ f.designNotes=[`当前实现/实测边界：${current.status}`,'Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。','本机Laya已确认为本项目Competition产品路径中的本地运行方案；AgentArts继续承担镜像Workflow编排。历史实测不证明完整平台验收；AgentArts失败不得静默回退到独立Local Agent Profile。','该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。',...(f.designNotes||[]).filter(n=>!n.startsWith('当前实现/实测边界：')&&!n.startsWith('Competition目标由AgentArts')&&!n.startsWith('本机Laya/自有镜像结果是历史实测')&&!n.startsWith('本机Laya已确认为本项目Competition产品路径中的本地运行方案；')&&!n.startsWith('该图默认串行；'))];
  f.recovery=['沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。','结果未知的写入保留原operation先读回，不换ID重放。','最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。'];
  for(const n of f.nodes){
   if(n.modelAssignment){

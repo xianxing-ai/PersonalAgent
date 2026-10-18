@@ -115,7 +115,7 @@ function OverviewBody(){
    <span>六大板块</span>{ARCHITECTURE_AREAS.map(item=><button key={item.id} aria-pressed={panel==='area'&&areaId===item.id} onClick={()=>{setAreaId(item.id);setPanel('area');setSelected(undefined);}}>{item.name}</button>)}
    <select aria-label="快速查看功能" value={f?.id||''} onChange={e=>{if(e.target.value)openFeature(e.target.value);}}><option value="">快速查看 F01–F28</option>{ALL_FEATURES.map(item=><option key={item.id} value={item.id}>{item.id} {item.name}</option>)}</select>
   </nav>
-  <div className="overview-caption">Competition目标由AgentArts负责构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并负责授权执行与Evidence。历史实测记录与目标分别展示，不把本机Laya或自有镜像编排作为比赛主链或故障回退。</div>
+  <div className="overview-caption">Competition目标由AgentArts负责构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并负责授权执行与Evidence。本机Laya在本机运行并参与Competition产品路径；历史实测记录与目标分别展示，AgentArts失败不得静默回退Local Profile。</div>
   {showLatency&&<div className="architecture-latency"><strong>{FINAL_DESIGN_STATUS}</strong><ul>{LATENCY_DESIGN.map((line,i)=><li key={i}>{line}</li>)}</ul></div>}
   <div className="overview-body">
    <div className="overview-canvas">
