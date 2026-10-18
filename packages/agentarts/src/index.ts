@@ -44,16 +44,20 @@ export type {AgentInput};
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
 export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string;executionModel?:ExecutionModelSelection}
+export interface RoleReceipt {
+  role: AgentRole; requestId: string; promptVersion: string; status: 'started' | 'completed' | 'failed'; totalTokens?: number;
+  /** Additive application observability, not a platform trace or execution receipt. */
+  spanId?: string; startedAt?: string; endedAt?: string; durationMs?: number;
+  durationScope?: 'model_gateway_complete'; event?: 'workflow_candidates';
+  stage?: 'candidate_response'; nodeId?: string; candidateCount?: number; candidateArrayDigest?: string;
+  errorCode?: 'UNSUPPORTED_CAPABILITY' | 'EXTERNAL_FAILURE';
+  candidatePreparation?: 'model_gateway' | 'deterministic_binding';
+}
 /** Process-local finite-choice port; distinct from ModelPort and every authorization boundary. */
 export interface OwnedCandidateSelector {
   select(request: {context: string; candidates: readonly {id: string; description: string}[];
     deadline: string; signal: AbortSignal; requestId: string}): Promise<string>;
 }
-export interface RoleReceipt {role: AgentRole; requestId: string; promptVersion: string; status: 'started' | 'completed' | 'failed'; totalTokens?: number;
-  durationMs?:number; durationScope?:'model_gateway_complete'; event?:'workflow_candidates';
-  stage?:'candidate_response'; nodeId?:string; candidateCount?:number; candidateArrayDigest?:string;
-  errorCode?:'UNSUPPORTED_CAPABILITY'|'EXTERNAL_FAILURE';candidatePreparation?:'model_gateway'|'deterministic_binding';
-  spanId?:string;startedAt?:string;endedAt?:string}
 export type AgentOutput = Omit<Extract<CoordinationResult, {kind: 'text'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'tool_proposal'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'repair_candidate'}>, 'verification'>;
@@ -166,10 +170,6 @@ export class OwnedAgentOrchestrator {
       status:errorCode?'failed':'completed',candidatePreparation,...(errorCode?{errorCode}:{}),
       ...(/^F(?:0[1-9]|1[0-9]|2[0-8])_N\d{2}$/.test(context.node.id)?{nodeId:context.node.id}:{}),
       ...(candidates?{candidateCount:candidates.length,candidateArrayDigest:createHash('sha256').update(JSON.stringify(candidates)).digest('hex')}:{})});
-  }
-  private callWorld(repair:NonNullable<ReturnType<typeof repairInput>>,request:AgentInvocation):Promise<unknown> {
-    return this.call('world',WORLD_PROMPT+WORLD_GUIDANCE_PROMPT,{input:repair.data,
-      report_constraints:worldGuidance(repair.context,repair.sources)},request);
   }
   private async runInvocation(request: AgentInvocation, bound: boolean): Promise<AgentOutput> {
     this.control(request);
@@ -318,8 +318,15 @@ export class OwnedAgentOrchestrator {
     if (request.signal.aborted) throw new ProtocolError('CANCELLED', 'Agent invocation cancelled');
     if (Date.parse(request.deadline) <= Date.now()) throw new ProtocolError('TIMEOUT', 'Agent invocation deadline exceeded');
   }
-  private emit(receipt:RoleReceipt):void {
-    try {void Promise.resolve(this.onReceipt?.(receipt)).catch(()=>{});} catch { /* Observability cannot change a result. */ }
+  private emit(receipt: RoleReceipt): void {
+    try {
+      // A callback may be async even when assigned to a void-returning interface.
+      void Promise.resolve(this.onReceipt?.(receipt)).catch(() => {});
+    } catch { /* Observability cannot change a result. */ }
+  }
+  private callWorld(repair: NonNullable<ReturnType<typeof repairInput>>, request: AgentInvocation): Promise<unknown> {
+    return this.call('world', WORLD_PROMPT + WORLD_GUIDANCE_PROMPT, {input: repair.data,
+      report_constraints: worldGuidance(repair.context, repair.sources)}, request);
   }
   private async selectOutput(proposal: AgentOutput, input: AgentInput, request: AgentInvocation): Promise<AgentOutput> {
     if (!this.candidateSelector) return proposal; // Existing callers retain their explicit old configuration.
@@ -337,10 +344,15 @@ export class OwnedAgentOrchestrator {
   }
   private async call(role: AgentRole, prompt: string, data: unknown, request: AgentInvocation): Promise<unknown> {
     this.check(request);
-    const span={role,requestId:request.requestId,promptVersion:PROMPT_VERSION,spanId:randomUUID(),startedAt:new Date().toISOString()};
-    const started=performance.now();let durationMs:number|undefined;
-    const end=()=>({...span,endedAt:new Date().toISOString(),durationMs:Math.max(0,durationMs??performance.now()-started),durationScope:'model_gateway_complete' as const});
-    this.emit({...span,status:'started'});
+    // Stack-local identity also distinguishes concurrent calls reusing a requestId.
+    const span = {role, requestId: request.requestId, promptVersion: PROMPT_VERSION,
+      spanId: randomUUID(), startedAt: new Date().toISOString()};
+    const spanStart = performance.now();
+    let durationMs: number | undefined;
+    let durationScope: RoleReceipt['durationScope'];
+    const end = () => ({...span, endedAt: new Date().toISOString(),
+      durationMs: Math.max(0, durationMs ?? performance.now() - spanStart), ...(durationScope ? {durationScope} : {})});
+    this.emit({...span, status: 'started'});
     try {
       const selection = request.executionModel??(request.query === 'owned-workflow-candidates' ? undefined : parseAgentInput(request.query).executionModel);
       if (selection && !this.options?.executionModels) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Execution model registry unavailable');
@@ -355,18 +367,20 @@ export class OwnedAgentOrchestrator {
               .map(model=>({id:model.id,reasoningEfforts:model.reasoningEfforts}))}};
         }
       }
+      const gatewayStarted=performance.now();
       const result = await gateway.complete({messages: [{role: 'system', content: prompt},
         {role: 'user', content: JSON.stringify(modelData)}], tools: [], requiredCapabilities: ['text'],
         maxOutputTokens: this.maxOutputTokens, ...(selection?.reasoningEffort?{reasoningEffort:selection.reasoningEffort}:selection?{}:{reasoningEffort:'none' as const}), deadline: request.deadline, signal: request.signal});
-      durationMs=performance.now()-started;
+      durationMs=performance.now()-gatewayStarted;
+      durationScope='model_gateway_complete';
       this.check(request);
       if (result.response.kind !== 'final' || result.response.text.length > 16_000) throw new Error();
       const parsed: unknown = JSON.parse(result.response.text);
       record(parsed);
-      this.emit({...end(),status:'completed',...(result.usage?.totalTokens===undefined?{}:{totalTokens:result.usage.totalTokens})});
+      this.emit({...end(), status: 'completed', ...(result.usage?.totalTokens === undefined ? {} : {totalTokens: result.usage.totalTokens})});
       return parsed;
     } catch (error) {
-      this.emit({...end(),status:'failed'});
+      this.emit({...end(), status: 'failed'});
       if (error instanceof ProtocolError) throw error;
       throw new ProtocolError('EXTERNAL_FAILURE', 'Agent role returned an invalid response');
     }
