@@ -36,7 +36,7 @@ function fixture() {
   const modelChoice = control(''), depth = control(''), fast = control(''), error = {textContent: ''}, label = {}, calls = [];
   const children={hidden:true,innerHTML:''};
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const context = vm.createContext({sessionControls:{update(){}},nativeReasoning:{update(){},setBusy(){}},composer:{update(){}},children,escape,stateNames,current: {tasks: []}, updateRevision: 0, preferenceSignature: undefined,
+  const context = vm.createContext({subagents:{update(items){children.items=items;children.hidden=items.length===0;}},sessionControls:{update(){}},nativeReasoning:{update(){},setBusy(){}},composer:{update(){}},children,escape,stateNames,current: {tasks: []}, updateRevision: 0, preferenceSignature: undefined,
     modelChoice, depth, fast, preferences: {querySelector: () => label}, root: {querySelector: () => error},
     Option: function(text, value) {this.text = text; this.value = value;},
     invoke: (name, payload) => new Promise((resolve, reject) => calls.push({name, payload, resolve, reject})),
@@ -154,4 +154,14 @@ test('previous preference rejection cannot discard newer native range input befo
   }
 });
 
-test('real child projection renders independently while a preference request is pending',async()=>{const f=fixture();assert.equal(f.children.hidden,true);f.modelChoice.value='fake-B';const pending=f.modelChoice.onchange();f.update({...observed(),subagentTasks:[{parentTaskId:'parent-1',taskId:'child-1',role:'<worker>',modelId:'cloud-child',reasoningEffort:'high',state:'running',resultSummary:'<untrusted>',evidenceRefs:['evidence-1']}]});assert.equal(f.children.hidden,false);assert.match(f.children.innerHTML,/parent-1/);assert.match(f.children.innerHTML,/child-1/);assert.match(f.children.innerHTML,/cloud-child/);assert.match(f.children.innerHTML,/&lt;worker&gt;/);assert.match(f.children.innerHTML,/&lt;untrusted&gt;/);assert.match(f.children.innerHTML,/evidence-1/);assert.equal(f.modelChoice.value,'fake-B');assert.equal(f.modelChoice.attrs['aria-busy'],'true');assert.equal(f.calls.length,1);f.calls[0].reject(Error('Current persistence failure'));await pending;assert.equal(f.modelChoice.value,'fake-A');f.update(observed());assert.equal(f.children.hidden,true);assert.equal(f.calls.length,1);});
+test('child readback reaches its component independently while a preference request is pending',async()=>{
+  const f=fixture();assert.equal(f.children.hidden,true);
+  f.modelChoice.value='fake-B';const pending=f.modelChoice.onchange();
+  const child={parentTaskId:'parent-1',taskId:'child-1',role:'<worker>',modelId:'cloud-child',state:'running'};
+  f.update({...observed(),subagentTasks:[child]});
+  assert.equal(f.children.hidden,false);assert.equal(f.children.items[0],child);
+  assert.equal(f.modelChoice.value,'fake-B');assert.equal(f.modelChoice.attrs['aria-busy'],'true');
+  assert.equal(f.calls.length,1);f.calls[0].reject(Error('Current persistence failure'));await pending;
+  assert.equal(f.modelChoice.value,'fake-A');f.update(observed());
+  assert.equal(f.children.hidden,true);assert.equal(f.calls.length,1);
+});

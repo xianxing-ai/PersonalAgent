@@ -1,5 +1,6 @@
 import {mountSessionControls} from '../conversation/session-controls.js';
 import {mountNativeReasoning} from '../conversation/native-reasoning.js';
+import {mountSubagentConversations} from '../conversation/subagent-conversations.js';
 import {mountWorkspaceComposer} from '../conversation/workspace-composer.js';
 import {Orb} from '../orb/orb.js';
 import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
@@ -21,7 +22,7 @@ export function mountWorkspace(root,invoke,escape){
       <aside class="connector-board" aria-label="连接器信息"><header><div><h2>连接器</h2></div><button class="icon-btn" id="connectors-refresh" aria-label="刷新连接器">↻</button></header><div id="connector-cards"></div></aside>
       <aside class="conversation-inspector" id="conversation-inspector" aria-label="对话详情" hidden><header><h2>对话详情</h2><button class="icon-btn" id="inspector-close" aria-label="关闭对话详情">${icon('close')}</button></header><div id="inspector-content"></div></aside></div>
     </main></section>`;
-  const children=document.createElement('section');children.className='subagent-tasks';children.setAttribute('aria-label','子任务派发');root.querySelector('.workspace-chat').append(children);
+  const subagents=mountSubagentConversations(root.querySelector('#workspace-stage'),invoke,escape);
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
   preferences.innerHTML='<label>主思考模型 <select class="conversation-model-choice" aria-label="工作区主思考模型"></select></label><label>执行步骤预算 <input type="range" min="0" max="5" step="1" aria-label="工作区执行步骤预算"></label><label><input type="checkbox">快速模式</label><button type="button" class="turn-action" data-more-models>更多模型与默认设置</button>';
@@ -100,8 +101,7 @@ export function mountWorkspace(root,invoke,escape){
     updateRevision++;
     const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['model','thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;root.querySelector('#conversation-inspector').hidden=true;}
     current=data;current.tasks ||= [];
-    children.hidden=!data.subagentTasks?.length;
-    children.innerHTML='<h3>子任务派发</h3>'+(data.subagentTasks??[]).map(t=>'<article><strong>'+escape(t.role??'子任务')+'</strong><p>父任务 '+escape(t.parentTaskId)+' · 子任务 '+escape(t.taskId)+'</p><p>'+escape(t.modelId??'未记录模型')+' · '+escape(t.reasoningEffort??'供应商默认')+' · '+escape(stateNames[t.state]??t.state)+'</p><p>'+escape(t.resultSummary??t.error?.message??t.error??'')+'</p><p>Evidence '+escape((t.evidenceRefs??[]).join(', '))+'</p></article>').join('');
+    subagents.update(data.subagentTasks??[]);
     const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference,data.conversationState?.activeId]);
     if(preferenceSignature!==nextPreferenceSignature) {
       modelChoice.replaceChildren(new Option('使用默认主思考模型',''),...(data.modelChoices??[]).map(item=>{

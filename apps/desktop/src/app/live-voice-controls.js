@@ -1,5 +1,13 @@
 const liveAudioFailureLabels=Object.freeze({PCM_FRAME_INVALID:'采集音频帧格式无效',CONNECTION_CLOSED:'实时连接已关闭',SEND_BACKPRESSURE:'网络发送阻塞',SEND_FAILED:'音频传输发送失败'});
 export function liveAudioFailureText(live){const code=live?.audioSendFailure?.code;return Object.hasOwn(liveAudioFailureLabels,code)?liveAudioFailureLabels[code]+'（'+code+'）':'';}
+export function liveWorkFeedbackText(live){
+  const work=live?.workRequests?.at(-1);if(!work)return '';
+  if(work.state==='submitting')return '正在提交工作请求，尚未确认受理';
+  if(work.state==='failed')return '工作请求受理未确认；请先核实任务状态，避免重复派发';
+  if(!work.taskId)return '';
+  if(work.state==='result_returned')return '任务回执已返回；不代表子任务成功或已独立验证';
+  return '任务已受理（'+work.taskId+'）'+(work.state==='awaiting_result'?'，结果尚待核实':'，正在等待结果')+'；受理不代表已派发子任务';
+}
 export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
   if (compact) return mountCompactLiveVoiceControls(root, invoke);
   const settings = document.createElement('details');
@@ -68,6 +76,7 @@ export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
       if(live.active&&live.conversationTitle)status.textContent+=' · 通话对话：'+live.conversationTitle;
       if (live.status === 'error' || !live.configured) status.textContent += ` · ${live.reason ?? '请先配置'}`;
       if (live.shortcut?.reason) status.textContent += ` · ${live.shortcut.reason}`;
+      const workFeedback=liveWorkFeedbackText(live);if(workFeedback)status.textContent+=' · '+workFeedback;
     },
   };
 }
@@ -99,6 +108,7 @@ function mountCompactLiveVoiceControls(root, invoke) {
       if(live.active&&live.conversationTitle)status.textContent+=' · 通话对话：'+live.conversationTitle;
       if(live.status==='error'||!live.configured)status.textContent+=` · ${live.reason??'请到语音设置配置'}`;
       if(live.shortcut?.reason)status.textContent+=` · ${live.shortcut.reason}`;
+      const workFeedback=liveWorkFeedbackText(live);if(workFeedback)status.textContent+=' · '+workFeedback;
     },
   };
 }

@@ -314,6 +314,30 @@ function harness(overrides = {}) {
   return {host,contents,commands,get request(){return request;}};
 }
 
+test('accepted work stays working across speech interruption and playback drain until its own result arrives', async()=>{
+  let finish;
+  const fixture=harness({client:{async call(operation){assert.equal(operation,'task.submit');return {taskId:'accepted-task'};}},
+    createConsumer:options=>({consume(value){return {result:(async()=>{
+      await options.client.call('task.submit',{goal:value.text});
+      return new Promise(resolve=>{finish=resolve;});
+    })()};}})});
+  await fixture.host.start();
+  const pending=fixture.request.onTool('request_work',{goal:'派发子智能体计算一加二'},'work-call');
+  await new Promise(setImmediate);
+  assert.equal(fixture.host.snapshot().status,'working');
+  fixture.request.onEvent({type:'interrupted'});
+  assert.equal(fixture.host.snapshot().status,'working','interrupting speech must not mark background work as idle');
+  fixture.request.onEvent({type:'audio',data:new Uint8Array([0,0])});
+  fixture.host.receive({sender:fixture.contents,senderFrame:fixture.contents.mainFrame},
+    {token:fixture.commands.find(c=>c.type==='start').token,type:'drained'});
+  assert.equal(fixture.host.snapshot().status,'working');
+  assert.deepEqual(fixture.host.snapshot().workRequests,[{state:'accepted',taskId:'accepted-task'}]);
+  finish({replyText:'已返回任务结果'});
+  assert.equal(await pending,'已返回任务结果');
+  assert.equal(fixture.host.snapshot().status,'listening');
+  await fixture.host.stop();
+});
+
 test('concurrent requests read their own task status and same call replay never resubmits', async () => {
   const releases=new Map(), submitted=[], read=[];
   const fixture=harness({client:{async call(op,payload) {
@@ -331,8 +355,10 @@ test('concurrent requests read their own task status and same call replay never 
   await new Promise(setImmediate);
   releases.get('B')();
   assert.match(await second,/等待用户审批/);
+  assert.deepEqual(fixture.host.snapshot().workRequests.find(item=>item.taskId==='task-B'),{state:'awaiting_result',taskId:'task-B'});
   releases.get('A')();
   assert.match(await first,/A failed/);
+  assert.deepEqual(fixture.host.snapshot().workRequests.find(item=>item.taskId==='task-A'),{state:'result_returned',taskId:'task-A'});
   assert.equal(await replay,await first);
   assert.deepEqual(submitted,['A','B']);
   assert.deepEqual(read,['task-B','task-A']);
@@ -348,6 +374,21 @@ test('consumer factory failure does not wedge Live or create a Runtime task', as
   assert.equal(fixture.host.snapshot().status,'listening');
   await fixture.host.stop();
   await fixture.host.start();
+  await fixture.host.stop();
+});
+
+test('successful task without a result summary is not described as still running', async()=>{
+  const fixture=harness({client:{async call(operation){
+    return operation==='task.submit'?{taskId:'task-empty-summary'}:{taskId:'task-empty-summary',state:'succeeded'};
+  }},createConsumer:options=>({consume(value){return {result:(async()=>{
+    await options.client.call('task.submit',{goal:value.text});throw Error('missing summary');
+  })()};}})});
+  await fixture.host.start();
+  const reply=await fixture.request.onTool('request_work',{goal:'A'},'call-empty-summary');
+  assert.match(reply,/状态为成功.*未返回.*结果摘要/);
+  assert.doesNotMatch(reply,/尚未完成/);
+  assert.deepEqual(fixture.host.snapshot().workRequests,[{state:'result_returned',taskId:'task-empty-summary'}]);
+  assert.equal(fixture.host.snapshot().status,'listening');
   await fixture.host.stop();
 });
 

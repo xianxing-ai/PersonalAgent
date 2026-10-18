@@ -2,6 +2,7 @@ import {handleConversationAction} from './conversation-actions.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
+import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
@@ -517,7 +518,8 @@ function snapshot(surface) {
     adminNavigation: {...adminNavigation},
     audioLevel,
     orbStateOverride,
-    subagentTasks:orderedTasks().filter(task=>visibleConversationTask(task,surface)).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
+    subagentTasks:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
+      readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface}),
     tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
@@ -2178,6 +2180,15 @@ async function action(event, name, payload) {
       totalFailures: report.totalFailures};
   }
   if (name === 'admin.open') { openAdmin(payload?.page); return; }
+  if (name === 'task.openConversation') {
+    if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('任务定位窗口不可信');
+    return openTaskConversation({payload,tasks,conversations,sourceSurface:taskSurface,openPanel,openWorkspace,publish});
+  }
+  if (name === 'task.subagentConversation') {
+    if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('子对话窗口不可信');
+    return readSubagentConversation({payload,tasks,readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
+      readTask:id=>runtimeApplication.runtime.getTask(id)});
+  }
   if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
   if (name === 'workspace.minimize' && sender === workspace) { workspace.minimize(); return; }
@@ -3031,6 +3042,13 @@ async function initializeLiveVoice() {
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
       currentUserQuestion:voiceQuestionForConversation(conversationId),
       agentArts:{configured:agentArtsConfig.snapshot().configured,reason:agentArtsSnapshot().reason},
+      subagentDispatch:{registered:competitionToolAvailabilityList.some(tool=>tool.toolName==='subagent.dispatch'),
+        available:runtimeApplication?.isDefaultSubagentAvailable?.()===true},
+      subagentTasks:orderedTasks().filter(task=>conversations.conversationIdForTask(task)===conversationId)
+        .flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]).slice(-10)
+        .map(({parentTaskId,taskId,role,modelId,reasoningEffort,state,resultSummary,error,evidenceRefs})=>
+          ({parentTaskId,taskId,role,modelId,reasoningEffort,state,resultSummary:resultSummary?.slice(0,800),
+            errorCode:error?.code,evidenceRefCount:evidenceRefs?.length??0})),
       tasks: orderedTasks().filter(task => taskSurface(task) === 'panel'&&conversations.conversationIdForTask(task)===conversationId).slice(-10)
         .map(task => ({taskId: task.taskId, goal: (taskGoals.get(task.taskId) ?? conversations.goal(task.taskId) ?? '').slice(0, 800),
           state: task.state, failureReason: task.error?.message, result: resultText(task.resultSummary,taskResultMetadata(task)).slice(0, 1600),
