@@ -78,6 +78,31 @@ See [COORDINATION-STORE-01](../../docs/modules/COORDINATION-STORE-01.md).
 
 ### Competition coordination and offline tool loop
 
+`createAgentArtsRuntimeApplication()` now returns a compatible host-only extension:
+`queryCompetitionCloudStatus(taskId, {expectedRevision, deadline, signal})`.
+It reads the original persisted `competition-cloud-inflight` / `competition-cloud-unknown`
+receipt and the dispatch-time `competition-cloud-dispatch-binding`; the caller cannot
+substitute a receipt. The task must be `waiting_reconciliation` at the expected revision,
+with the original Competition configuration binding. Missing legacy bindings or a
+different configured deployment are rejected before lookup. Task revision and all
+receipt/binding checkpoints are rechecked before recording a response.
+
+This provisional API calls the existing WSS `queryStatus` with current host credentials.
+It persists only the bounded `competition-cloud-status-observation` metadata summary
+and returns the same body-free summary: original correlation, status/code, server
+instance, task/configuration binding, observation time and `verification: unverified`.
+Cloud events/model text never enter the returned value or observation checkpoint.
+An unknown status may be a conservative local classification when the original server
+instance is missing or changed, not a platform acknowledgement or proof of non-execution.
+
+Every cloud state, including completed, leaves the local task and its original send
+holds unchanged. There is no invoke replay, tool execution, new Evidence, task success,
+automatic continuation, or clearing of inflight/unknown checkpoints. Old receipts with
+no dispatch configuration binding cannot be retroactively attributed to the current
+deployment. This is a trusted-host diagnostic consumer, not a Client/Renderer wire
+operation, public capability, or automatic reconciliation/finalization implementation.
+The trusted host must authorize access to the task before calling this method.
+
 Trusted composition may pass `profile: 'huawei_ict_agentarts'`, an explicit
 `coordination: CoordinationPort`, and local `RegisteredTool` values. Bounded text and
 strict proposals are parsed; `unverified` proposals are denied by default. Runtime owns submission, deduplication, cancellation,

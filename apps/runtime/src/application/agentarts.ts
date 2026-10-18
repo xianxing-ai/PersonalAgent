@@ -21,6 +21,8 @@ import {
 } from './agentarts-observation.js';
 import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt,
   recordCompetitionCloudRequestIdentity} from './coordination.js';
+import {CompetitionCloudStatusReader, recordCompetitionCloudStatusBinding} from './competition-cloud-status.js';
+import type {CompetitionCloudStatusScope, CompetitionCloudStatusObservation} from './competition-cloud-status.js';
 import {
   createRuntimeApplication,
   type RuntimeApplication,
@@ -67,13 +69,18 @@ export interface AgentArtsRuntimeApplicationOptions
   observationApplicationId?: string;
 }
 
+export type AgentArtsRuntimeApplication = AgentArtsObservationApplication & {
+  /** Trusted host only; reads persisted identity and returns metadata, never cloud event bodies. */
+  queryCompetitionCloudStatus(taskId:string,scope:CompetitionCloudStatusScope):Promise<CompetitionCloudStatusObservation>;
+};
+
 /**
  * Trusted Competition composition root. AgentArts provides unverified text;
  * RuntimeApplication remains the task-state and persistence authority.
  */
 export function createAgentArtsRuntimeApplication(
   options: AgentArtsRuntimeApplicationOptions
-): AgentArtsObservationApplication {
+): AgentArtsRuntimeApplication {
   const {
     gatewayUrl,
     runtimeName,
@@ -147,6 +154,7 @@ export function createAgentArtsRuntimeApplication(
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
         onDispatch: (request, receipt) => {
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
+          recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt);
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-received', null);
         },
         onAccepted: (request, receipt) => {
@@ -186,8 +194,9 @@ export function createAgentArtsRuntimeApplication(
       ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion})})).digest('hex'),
     coordination: new CompetitionCoordinator(cloud),
   });
+  const statusReader=new CompetitionCloudStatusReader(application.runtime,application.coordinationConfigurationRef,cloud,transport==='wss');
   const closeRuntime = application.close.bind(application);
-  application.close = () => { closeRuntime(); cloud.close(); };
+  application.close = () => { closeRuntime(); statusReader.close(); cloud.close(); };
   // The platform observation consumer lives only on the Competition composition; the
   // default (local) application keeps no observation surface at all.
   const observationHost = createAgentArtsObservationHost({
@@ -198,6 +207,7 @@ export function createAgentArtsRuntimeApplication(
     ...(observationApplicationId === undefined ? {} : {applicationId: observationApplicationId}),
   });
   return Object.assign(application, {
+    queryCompetitionCloudStatus: statusReader.query.bind(statusReader),
     readTaskPlatformObservation: (input: AgentArtsObservationInput) => observationHost.read(input),
-  }) as AgentArtsObservationApplication;
+  }) as AgentArtsRuntimeApplication;
 }
