@@ -1,0 +1,117 @@
+✔ synthetic meeting correction projects exact fact refs, repairs only affected plans, and survives restart (66.9351ms)
+✖ MVP composition reads the synthetic file only after approval, exports a minimal result and preserves evidence (5303.1795ms)
+✖ confirmed synthetic read produces exact graph-bound candidate, separate approved CAS, and restart readback (4932.8565ms)
+✔ synthetic host resumes baseline seeding after a committed fact-only projection (27.404ms)
+✔ explicit packed manual compares identical full payloads and deduplicates actual forward identity (41.6286ms)
+✔ production default concurrent selections stay single requests and forwards, without a shared-forward claim (6.88ms)
+✔ manual refuses a caller/service strategy mismatch before inference (1.3308ms)
+✔ manual refuses a service without the new capability before submitting any inference (4.7743ms)
+✔ manual cannot promote a mismatched batch identity to a completed measurement (3.086ms)
+✔ packed forward count tampering is rejected rather than reporting one successful shared forward (2.5131ms)
+✔ F20 public fixture contains source, contract/schema and a real documentation difference instead of a read-only banner (1.5291ms)
+✔ completion requires every F20 node, both original tool evidences and the exact source-supported candidate document (1.2404ms)
+✔ fixed public checker runs the installed real TypeScript compiler and rejects phantom parameters and changed artifact binding (1386.991ms)
+✔ real public compiler recipe keeps local_write Policy approval, actual ToolGateway Evidence and legal parent Runtime completion (1530.8888ms)
+✔ parent deadline does not close Runtime while the original worker is still settling or convert late results to success (94.145ms)
+✔ already expired parent deadline returns without waiting for a worker that Runtime never started (35.1555ms)
+✔ manual live receipt target preserves actual configured invoke mode without exporting credentials (0.3433ms)
+✔ image-live is explicitly admitted only for one strict loopback HTTP invocation endpoint and never replaces cloud mode (1.6387ms)
+✔ explicit owned-image log projection keeps real token accounting without filling missing historical telemetry (8.9291ms)
+✔ workflow log projection retains one shared batch identity across independently correlated request rows (13.4508ms)
+✔ workflow log projection keeps separate sequential forwards under one HTTP identity without leaking inference bodies (13.3755ms)
+✔ manual live parser accepts native owned-image JSON message/task_end/end without invoking anything (0.5438ms)
+✔ manual live parser accepts native data-event SSE and event-named SSE with CRLF framing (0.2731ms)
+✔ manual live parser respects current native null metadata and indexed-message deduplication (0.2533ms)
+✔ manual live parser rejects incomplete, reordered, provider-failed and wrong application envelopes (0.3156ms)
+﹣ pelican oracle fails the actual initial animation bug, accepts its narrow fix and rejects geometry replacement (0.6724ms) # Set explicit PA_TEST_PYTHON to run the real stdlib XML checker
+✔ offline image fixture uses authenticated invocations and structured proposal through ModelGateway (5.8096ms)
+✔ both runners persist attempted and failed model outcomes without treating failure as returned usage (3.9841ms)
+✔ disabled or missing image role fails closed (0.8235ms)
+✔ transport and malformed envelopes never echo response secrets (0.8855ms)
+✔ expired deadline and non-loopback plaintext fail before network (0.2818ms)
+✔ delivery edit preserves unchanged surroundings and supports exact CAS text patch (0.2214ms)
+✔ real HTTP server authenticates inner Bearer token and returns event arrays to image provider (63.468ms)
+✔ raw rejected model proposal and actual Runtime error survive branch failure reporting (64.7018ms)
+✔ fixed host stages separate planning, escalation and structured branch execution with explicit Laya rejection counts (1.0848ms)
+✔ actual ambiguous read-only preview failure reaches existing agent loop and permits a unique new preview (423.3049ms)
+✔ failed apply and unknown read results cannot become successful agent feedback (0.2561ms)
+✔ Windows actual host patch task awaits approval then writes once with real recovery binding and Evidence (2467.03ms)
+✔ planner, selection context and executor inputs carry the identical begin-only acceptance contract (0.8312ms)
+✔ explicit configuration only; duplicate supplied tools rejected; disposal is idempotent (2.3967ms)
+✔ mock mail public tools preserve multi-account paging, dedupe identity and UIDVALIDITY failure (4.7837ms)
+✔ mock research keeps DOI, publication/fetch time and disclosed stale failure; status is read-only (1.64ms)
+✔ explicit fixture draft capability preserves scope and unknown result; cancelled write never reaches provider (0.5085ms)
+✔ explicit Fake models drive existing child loop through real state/file/Evidence, notify and controller advice (1097.4937ms)
+✔ terminal parent rejects new report before decision/controller call (250.34ms)
+✔ cancelled parent rejects new report before decision/controller call (268.4011ms)
+✔ state revision change during actual observation rejects stale evidence without decision retry (312.3679ms)
+✔ failed notification is persisted accurately, does not replay advice, and leaves other child unchanged (357.3462ms)
+✔ unregistered controller tool is rejected without granting permissions or stopping child (181.9763ms)
+✔ new delegation site escalates an unqualified local choice to explicit Fake teacher once (1.1221ms)
+✔ frozen host synthetic dataset has balanced independent splits and pinned exact bytes (1.5412ms)
+✔ model input allowlist never includes holdout/development labels or expected host answers (3.0612ms)
+✔ FP/FN, review abstention, rejection and unattempted cases are distinct host scoring outcomes (0.7213ms)
+✔ latency percentiles do not silently count failed requests as fast successes (0.3137ms)
+✔ explicit offline fixture runs raw plus teacher, same-input modes and only one service instance (453.8267ms)
+✔ local context refusal still escalates actual teacher, and invalid teacher cannot become qualified output (347.3682ms)
+✔ explicitly local-only mode makes no teacher claim or cloud call; frozen SHA mismatch starts nothing (315.8932ms)
+✔ teacher-only reuses bound raw choices and input hashes with zero local starts or performance reruns (599.8742ms)
+✔ explicit fixture: checker rejects inactive animation and external active content without treating labels as visual proof (793.2986ms)
+✔ phase and model failure endpoints are synchronously durable before the caller receives failure (19.4121ms)
+✔ self-contained gradient URLs accept only validated existing page IDs, including normal quotes and whitespace (999.6989ms)
+✔ timing recorder captures UTC endpoints, wall time and failed model calls without fabricating usage (0.7284ms)
+✔ explicit fixture requires artwork beneath the corresponding animated ancestor and stable required ids (306.7017ms)
+✖ structural fault injection handles equivalent begin syntax and changes only the two animation attributes (189.3152ms)
+✔ browser observation measures artwork matrices, so moving empty groups cannot qualify static artwork (0.6599ms)
+✔ delivery requires exact bytes matching the latest verified SHA (0.3155ms)
+✔ explicit browser fixture cannot pass with invisible art even when transform matrices move (0.238ms)
+ℹ tests 67
+ℹ suites 0
+ℹ pass 63
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 6414.7121
+
+✖ failing tests:
+
+test at tests\manual\agentarts\mvp-readonly-runtime.test.mjs:25:1
+✖ MVP composition reads the synthetic file only after approval, exports a minimal result and preserves evidence (5303.1795ms)
+  Error: Synthetic task did not reach the expected state
+      at waitForState (file:///<implementation>/tests/manual/agentarts/mvp-readonly-runtime.test.mjs:20:9)
+      at async TestContext.<anonymous> (file:///<implementation>/tests/manual/agentarts/mvp-readonly-runtime.test.mjs:49:21)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at tests\manual\agentarts\mvp-repair-host.test.mjs:35:1
+✖ confirmed synthetic read produces exact graph-bound candidate, separate approved CAS, and restart readback (4932.8565ms)
+  Error: Synthetic task did not settle
+      at state (file:///<implementation>/tests/manual/agentarts/mvp-repair-host.test.mjs:26:9)
+      at async TestContext.<anonymous> (file:///<implementation>/tests/manual/agentarts/mvp-repair-host.test.mjs:84:18)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at tests\manual\agentarts\wukong-test-version.test.mjs:67:1
+✖ structural fault injection handles equivalent begin syntax and changes only the two animation attributes (189.3152ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'f9afa04e04268d74ca08aa1f939c860814f991b7e60b69b24e1e6529130b9643'
+  - 'c1bb1da7fbf25393d2e893167a8271be3fade0c5f9a7001f42c59042edc66195'
+
+      at injectPausedAnimations (file:///<implementation>/tests/manual/agentarts/wukong-test-version.mjs:36:94)
+      at TestContext.<anonymous> (file:///<implementation>/tests/manual/agentarts/wukong-test-version.test.mjs:71:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'f9afa04e04268d74ca08aa1f939c860814f991b7e60b69b24e1e6529130b9643',
+    expected: 'c1bb1da7fbf25393d2e893167a8271be3fade0c5f9a7001f42c59042edc66195',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

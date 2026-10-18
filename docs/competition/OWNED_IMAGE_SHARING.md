@@ -1,5 +1,8 @@
 # 协作者使用 GHCR 预览镜像
 
+> 历史适用范围（2026-10-15 补注）：下文保留原日期、固定版本及当时的测试/失败记录。后续当前模型、本机 Laya、镜像发布与有限验收以 [当前详细设计](../design/CURRENT_DESIGN_20261015.md)、[V3 实测](TEST_IMAGE_V3.md) 及 [协作者接线](COLLABORATOR_WIRING_PACKAGE.md) 为准；历史“当前/未发布/未验/双人批准”等表述不覆盖后续事实或现行协作规则。
+
+
 2026-10-09。代码、接口和设计已提交 [PR #317](https://github.com/zemeng5208/PersonalAgent/pull/317)；最新 WSS 预览源码为 `97aa51a6f32e0dffcca6436fba0d3b51d1851d8f`，AMD64/ARM64 镜像已发布 GHCR，见 [精确标签/摘要/下载/验证记录](OWNED_IMAGE_WSS_RELEASE_20261009.md)。匿名拉取已验证，两架构镜像分别通过容器测试 21/21 与生产入口合成 TLS 9 次请求；预览发布不合并 main，也不表示公网 WSS 或华为云已验收。两位协作者使用自己的运行配置，不共享凭据。
 
 ## 获取与本地运行

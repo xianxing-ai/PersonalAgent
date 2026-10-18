@@ -1,5 +1,5 @@
 import {ProtocolError} from '@personal-agent/contracts';
-import type {ModelCapabilities, ModelDeployment, ModelMessage, ModelProvider, ModelRequest, ModelResult, ModelUsage, NativeReasoningConfiguration, VisibleRequestTokenBudget, RequestTokenBudgetBinding, ModelRequestBudget} from './index.js';
+import type {ModelCapabilities, ModelDeployment, ModelMessage, ModelProvider, ModelRequest, ModelResult, ModelUsage, NativeReasoningConfiguration, VisibleRequestTokenBudget, RequestTokenBudgetBinding, ModelRequestBudget, OpenAICompatibleRequestFormat} from './index.js';
 
 /**
  * OpenAI 兼容文本 Provider（POST {baseUrl}/chat/completions）。POTATOS-MVP §9.3「约定供应者」：
@@ -23,6 +23,8 @@ export interface OpenAICompatibleModelProviderOptions {
   nativeReasoning?: NativeReasoningConfiguration;
   /** Trusted Competition input meter; requires explicit contextLimitTokens. */
   requestTokenBudget?: VisibleRequestTokenBudget;
+  /** Competition host selection; no endpoint/model-name inference in the Provider. */
+  requestFormat?: OpenAICompatibleRequestFormat;
 }
 
 function nativeReasoningConfiguration(value: NativeReasoningConfiguration): NativeReasoningConfiguration {
@@ -52,9 +54,14 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   private readonly apiKey: () => string | Promise<string>;
   private readonly timeoutMs: number;
   private readonly nativeReasoning: NativeReasoningConfiguration | undefined;
+  private readonly requestFormat: OpenAICompatibleRequestFormat | undefined;
   private readonly tokenBudget: (RequestTokenBudgetBinding & {countInputTokens: VisibleRequestTokenBudget['countInputTokens']}) | undefined;
 
   constructor(options: OpenAICompatibleModelProviderOptions) {
+    if (options.requestFormat !== undefined && options.requestFormat !== 'huawei-maas-deepseek-thinking-v1') {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Model request format is unsupported');
+    }
+    this.requestFormat = options.requestFormat;
     this.nativeReasoning = options.nativeReasoning === undefined ? undefined : nativeReasoningConfiguration(options.nativeReasoning);
     const base = options.baseUrl.trim().replace(/\/+$/, '');
     if (!/^https?:\/\//u.test(base)) {
@@ -87,6 +94,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       }
       this.tokenBudget = {scope: 'provider-body', model: this.model, tokenizerRef: budget.tokenizerRef,
         configurationRef: budget.configurationRef, contextTokens: contextLimitTokens,
+        ...(this.requestFormat === undefined ? {} : {requestFormat: this.requestFormat}),
         reservedOutputTokens: budget.reservedOutputTokens, countInputTokens: budget.countInputTokens};
     }
     this.deployment = {
@@ -95,6 +103,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       model: this.model,
       verification: 'conditional',
       capabilities: {...openAiCompatibleCapabilities(contextLimitTokens),
+        ...(this.requestFormat === undefined ? {} : {requestFormat: this.requestFormat}),
         ...(this.tokenBudget === undefined ? {} : {requestTokenBudget: this.budgetBinding()}),
         ...(this.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(this.nativeReasoning)})},
     };
@@ -157,7 +166,9 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       model: this.model, messages,
       ...(native === undefined ? {} : {thinking: {type: native.thinking}}),
       ...(outputTokens === undefined ? {} : {[native?.outputTokenParameter ?? 'max_tokens']: outputTokens}),
-      ...(effort === undefined ? {} : {reasoning_effort: effort}), stream: false,
+      ...(this.requestFormat === 'huawei-maas-deepseek-thinking-v1' && effort === 'none'
+        ? {chat_template_kwargs: {thinking: false}}
+        : effort === undefined ? {} : {reasoning_effort: effort}), stream: false,
     });
     const requestBudget = this.measureBudget(serializedBody, outputTokens);
     const key = await this.apiKey();

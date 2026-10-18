@@ -1,6 +1,7 @@
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {realpathSync, statSync} from 'node:fs';
+import {performance} from 'node:perf_hooks';
 import {lstat, readFile, unlink} from 'node:fs/promises';
 import {basename, isAbsolute, relative, resolve, sep} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
@@ -199,14 +200,17 @@ function canonicalPowerShellPath(powerShellPath: string): string {
   return resolved;
 }
 
+type ProcessQueryFailure = 'spawn_failed' | 'query_timeout' | 'output_limit' | 'query_failed' | 'invalid_output';
 type ProcessStartQuery =
   | {state: 'found'; startTimeTicks: string}
-  | {state: 'not_found'}
-  | {state: 'unknown'};
+  | {state: 'not_found'; elapsedMs: number}
+  | {state: 'unknown'; reason: ProcessQueryFailure; elapsedMs: number};
 
 function queryProcessStartTime(pid: number, powerShellPath: string): Promise<ProcessStartQuery> {
   const executable = canonicalPowerShellPath(powerShellPath);
   const command = `$ErrorActionPreference='Stop'; try { $p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($null -eq $p) { [Console]::Out.Write('NOT_FOUND'); exit 3 }; [Console]::Out.Write($p.StartTime.ToUniversalTime().Ticks) } catch { exit 4 }`;
+  const startedAt = performance.now();
+  const elapsedMs = (): number => Math.max(0, Math.round(performance.now() - startedAt));
   return new Promise(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try {
@@ -216,12 +220,12 @@ function queryProcessStartTime(pid: number, powerShellPath: string): Promise<Pro
         stdio: ['ignore', 'pipe', 'ignore'],
       });
     } catch {
-      resolveResult({state: 'unknown'});
+      resolveResult({state: 'unknown', reason: 'spawn_failed', elapsedMs: elapsedMs()});
       return;
     }
     let settled = false;
     let output = '';
-    const timer = setTimeout(() => finish({state: 'unknown'}), PROCESS_QUERY_TIMEOUT_MS);
+    const timer = setTimeout(() => finish({state: 'unknown', reason: 'query_timeout', elapsedMs: elapsedMs()}), PROCESS_QUERY_TIMEOUT_MS);
     const finish = (result: ProcessStartQuery): void => {
       if (settled) return;
       settled = true;
@@ -235,17 +239,19 @@ function queryProcessStartTime(pid: number, powerShellPath: string): Promise<Pro
     };
     child.stdout?.on('data', (chunk: Buffer) => {
       output += chunk.toString('utf8');
-      if (Buffer.byteLength(output, 'utf8') > MAX_PROCESS_QUERY_OUTPUT_BYTES) finish({state: 'unknown'});
+      if (Buffer.byteLength(output, 'utf8') > MAX_PROCESS_QUERY_OUTPUT_BYTES) {
+        finish({state: 'unknown', reason: 'output_limit', elapsedMs: elapsedMs()});
+      }
     });
-    child.once('error', () => finish({state: 'unknown'}));
+    child.once('error', () => finish({state: 'unknown', reason: 'spawn_failed', elapsedMs: elapsedMs()}));
     child.once('close', code => {
       const value = output.trim();
       if (code === 0 && PROCESS_START_TICKS.test(value) && BigInt(value).toString() === value) {
         finish({state: 'found', startTimeTicks: value});
       } else if (code === 3 && value === 'NOT_FOUND') {
-        finish({state: 'not_found'});
+        finish({state: 'not_found', elapsedMs: elapsedMs()});
       } else {
-        finish({state: 'unknown'});
+        finish({state: 'unknown', reason: code === 0 ? 'invalid_output' : 'query_failed', elapsedMs: elapsedMs()});
       }
     });
   });
@@ -256,9 +262,12 @@ export async function captureWorkspacePatchProcessIdentity(
   pid: number,
   powerShellPath: string,
 ): Promise<WorkspacePatchProcessIdentity> {
-  if (!Number.isSafeInteger(pid) || pid < 1) unknown('Workspace patch helper identity is unavailable');
+  if (!Number.isSafeInteger(pid) || pid < 1) unknown('Workspace patch helper identity is unavailable (invalid_pid, 0ms)');
   const result = await queryProcessStartTime(pid, powerShellPath);
-  if (result.state !== 'found') unknown('Workspace patch helper identity is unavailable');
+  if (result.state !== 'found') {
+    const reason = result.state === 'not_found' ? 'process_not_found' : result.reason;
+    unknown(`Workspace patch helper identity is unavailable (${reason}, ${result.elapsedMs}ms)`);
+  }
   return {pid, startTimeTicks: result.startTimeTicks};
 }
 

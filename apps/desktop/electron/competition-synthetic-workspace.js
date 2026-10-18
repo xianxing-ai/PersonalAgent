@@ -1,6 +1,6 @@
 import {createWorkspaceReadTool, WORKSPACE_READ_TOOL_NAME, WORKSPACE_READ_TOOL_VERSION} from '@personal-agent/coding-tools';
-import {lstatSync, realpathSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {lstatSync, realpathSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {SYNTHETIC_REPAIR_EXPORT_POLICY} from './competition-repair-context.js';
@@ -72,7 +72,12 @@ export function createSyntheticMeetingToolset(rootPath, projectConfirmed = undef
       toolName: WORKSPACE_READ_TOOL_NAME,
       toolVersion: WORKSPACE_READ_TOOL_VERSION,
       exportPolicyVersion: projectConfirmed ? SYNTHETIC_REPAIR_EXPORT_POLICY : 'synthetic-meeting-v1',
-      accepts: ({arguments: args}) => exactDataObject(args, ['path']) && args.path === SYNTHETIC_MEETING_PATH,
+      accepts: ({arguments: args}) => {
+        const bounded = exactDataObject(args, ['path', 'maxBytes']);
+        if (!bounded && !exactDataObject(args, ['path'])) return false;
+        return args.path === SYNTHETIC_MEETING_PATH
+          && (!bounded || (Number.isSafeInteger(args.maxBytes) && args.maxBytes >= 1 && args.maxBytes <= MAX_BYTES));
+      },
       project: ({taskId, proposalId, result, signal}) => {
         if (signal.aborted) throw Error('Synthetic meeting result export cancelled');
         const meeting = projectSyntheticMeetingResult(result);

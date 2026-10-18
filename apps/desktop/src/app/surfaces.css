@@ -316,6 +316,16 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 }
 .admin .main[data-surface="settings"]:not([data-section="memory"]) .feature-page .sheet > .btn,
 .admin .main[data-surface="settings"]:not([data-section="memory"]) .feature-page .sheet form {align-self:flex-start}
+.admin .main[data-section="notifications"] > .notification-settings {box-sizing:border-box;width:min(860px,calc(100% - 80px));margin:0 40px 32px;padding:20px;border-radius:16px}
+.admin .notification-settings .settings-form {grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.admin .notification-settings .settings-form label {min-width:0}
+.admin .notification-settings .settings-form .notification-check {display:flex;align-items:center;gap:8px;line-height:1.5}
+.admin .main[data-surface="settings"] .notification-settings .notification-check input {width:16px;height:16px;min-height:16px;flex:0 0 16px;margin:0}
+.admin .notification-settings [data-notifications="load"] {grid-column:1/-1;justify-self:start}
+.admin .notification-settings p,.admin .notification-settings li {font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.admin .notification-settings h2,.admin .notification-settings h3 {margin:0 0 12px}
+.admin .notification-settings h3 {margin-top:20px;font-size:14px}
+@media(max-width:900px) {.admin .main[data-section="notifications"] > .notification-settings {width:calc(100% - 32px);margin:0 16px 24px;padding:16px}.admin .notification-settings .settings-form {grid-template-columns:minmax(0,1fr)}}
 .admin .sis-settings {box-sizing:border-box;width:min(760px,calc(100% - 80px));margin:0 40px;border-radius:16px;padding:16px 18px}
 .admin .sis-fields {display:grid;gap:12px}
 .admin .sis-fields label {display:grid;gap:6px;font-size:12px;color:var(--muted)}
@@ -482,6 +492,35 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
   .admin .main[data-section="models"] .model-copy {flex:1 1 160px}
   .admin .main[data-section="models"] .page-lead {align-items:flex-start;flex-direction:column;gap:12px}
 }
+
+/* Native model settings use the model page's scroll area and bounded columns. */
+.admin .main[data-section="models"] [data-agentarts-model-mounted] {width:100%;min-width:0;box-sizing:border-box;margin-top:16px}
+.admin .main[data-section="models"] .agentarts-model-settings {width:100%;min-width:0;box-sizing:border-box;margin:0;padding:18px 20px}
+.admin .main[data-section="models"] .agentarts-model-settings .sis-fields {display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;margin-top:16px}
+.admin .agentarts-model-settings .sis-fields label {display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px}
+.admin .agentarts-model-settings .sis-fields select {width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:38px;text-overflow:ellipsis}
+.admin .agentarts-model-settings .form-actions {display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
+.admin .agentarts-model-settings .notice {overflow-wrap:anywhere}
+@media(max-width:760px){.admin .main[data-section="models"] .agentarts-model-settings .sis-fields {grid-template-columns:minmax(0,1fr)}}
+
+/* Keep all model configuration cards in a single nonshrinking scroll flow. */
+.admin .main[data-section="models"] > #content {flex:0 0 auto;min-width:0;width:100%;height:auto;overflow:visible}
+.admin .main[data-section="models"] .model-page {display:flex;flex-direction:column;gap:16px;min-width:0}
+.admin .main[data-section="models"] [data-model-settings-section] {position:static;flex:0 0 auto;min-width:0;width:100%;box-sizing:border-box;margin:0}
+.admin .main[data-section="models"] [data-model-settings-section] > :is(.sheet,.sis-settings) {position:static;flex:0 0 auto;max-width:none;width:100%;min-width:0;margin:0;box-sizing:border-box}
+
+/* Conversation management, native effort and the workspace use existing task IPC. */
+.conversation-sessions {display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 14px;border-bottom:1px solid var(--glass-hairline);font-size:11px;flex:0 0 auto;min-width:0}
+.conversation-sessions label {display:flex;align-items:center;gap:6px;min-width:0}
+.conversation-sessions select,.conversation-sessions input {box-sizing:border-box;min-width:0;max-width:180px;width:130px;border:1px solid var(--glass-border);border-radius:6px;background:var(--surface-2);color:var(--fg);padding:5px 7px;font:inherit}
+.conversation-sessions button {border:1px solid var(--glass-border);border-radius:6px;padding:5px 8px;background:var(--surface-2);color:var(--fg);font:inherit}
+.conversation-sessions .notice:empty {display:none}.conversation-sessions details {position:relative}.conversation-sessions details>div {display:flex;flex-wrap:wrap;gap:6px}
+.native-reasoning-control {display:flex;align-items:center;gap:8px;font-size:11px;min-width:0}.native-reasoning-control select {min-width:0;max-width:160px;padding:6px 8px;border:1px solid var(--glass-border);border-radius:6px;background:var(--surface-2);color:var(--fg);font:inherit}
+.workspace-composer {flex:0 0 auto;padding:12px 24px 16px;border-top:1px solid var(--glass-hairline)}.workspace-composer label {display:block;font-size:11px;color:var(--muted)}
+.workspace-composer textarea {box-sizing:border-box;display:block;width:100%;min-height:72px;max-height:180px;resize:vertical;margin-top:6px;padding:10px 12px;border:1px solid var(--glass-border);border-radius:10px;background:var(--surface-2);color:var(--fg);font:inherit;line-height:1.6}
+.workspace-composer-actions {display:flex;align-items:center;gap:12px;margin-top:8px}.workspace-composer-actions .notice {flex:1;margin:0}.workspace-composer-actions button {padding:7px 14px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);color:var(--fg)}.workspace-composer-actions button:disabled {opacity:.45}
+.workspace-chat>.subagent-tasks {flex:0 0 auto;max-height:150px;overflow:auto;padding-inline:24px;font-size:11px}.workspace-chat>.workspace-error {position:static;margin:0;padding:4px 24px;text-align:left;flex:0 0 auto}
+.panel>.conversation-sessions,.panel>div:has(>.conversation-sessions) {flex:0 0 auto}
 
 /* Native window controls remain separate from the draggable title area. */
 .admin {grid-template-rows:40px minmax(0,1fr)}

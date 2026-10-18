@@ -33,8 +33,8 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     calls.push('app-quit');const event = {prevented: false, preventDefault() {this.prevented = true;}};
     beforeQuit(event);if (!event.prevented) exited = true;
   }};
-  const optional = ['referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
-    'p5DeviceNotificationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
+  const optional = ['remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
+    'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray'];
@@ -48,7 +48,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     liveVoice: liveUnknown ? {hasActive: () => true, async stop() {
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
-    localServicesStopped: false, localServicesStopping: false, referenceClosed: false,
+    localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
@@ -101,6 +101,23 @@ test('accepted quit releases the active orb drag timer', async () => {
   assert.equal(f.context.orbDragPoll, undefined);
 });
 
+test('a bound NotificationHost survives refused quit and disposes once before Runtime on the next allowed quit',async()=>{
+  const f=fixture({count:1});
+  f.context.notificationApplicationHost={dispose(){f.calls.push('notification-dispose');}};
+  f.app.quit();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(f.context.app.isQuitting,false);
+  assert.match(f.context.runtimeError,/Runtime 仍有活动任务/);
+  assert.equal(f.calls.includes('notification-dispose'),false);
+  assert.equal(f.calls.includes('runtime-close'),false);
+  f.context.runtimeApplication.activeTaskCount=0;
+  await tick();assert.equal(f.exited,false);assert.equal(f.calls.includes('notification-dispose'),false);
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.context.runtimeClosed,true);
+  assert.equal(f.calls.filter(call=>call==='notification-dispose').length,1);
+  assert.equal(f.calls.filter(call=>call==='runtime-close').length,1);
+  assert.ok(f.calls.indexOf('notification-dispose')<f.calls.indexOf('runtime-close'));
+});
+
 test('accepted quit closes Wiki, pairing and installed Skills before Runtime; an active task refuses it',async()=>{
   const f=fixture({count:1});f.context.wikiSourceMonitor={close(){f.calls.push('wiki-monitor-close');}};
   f.context.obsidianPairing={close(){f.calls.push('obsidian-pairing-close');}};
@@ -122,6 +139,28 @@ test('Runtime startup guard keeps precedence over active-task preflight', async 
   const f = fixture({count: 1, startup: 'starting'});f.app.quit();await tick();
   assert.equal(f.exited, false);assert.equal(f.context.runtimeError, 'Runtime 正在连接，请稍后退出');
   assert.equal(f.calls.includes('wake-dispose'), false);assert.equal(f.calls.includes('voice-dispose'), false);
+});
+
+test('MCP cleanup waits for active work and releases the connection before Runtime closes',async()=>{
+  const f=fixture({count:1});let release;
+  f.context.remoteMcpManagement={close(){f.calls.push('mcp-window-close');}};
+  f.context.remoteMcpConfig={dispose(){f.calls.push('mcp-config-dispose');}};
+  f.context.remoteMcpHost={dispose(){f.calls.push('mcp-dispose');return new Promise(resolve=>{release=resolve;});}};
+  f.app.quit();await tick();assert.equal(f.calls.includes('mcp-dispose'),false);assert.equal(f.exited,false);
+  f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();
+  assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);assert.equal(f.calls.includes('voice-dispose'),false);
+  release();await tick();await tick();await tick();assert.equal(f.exited,true);
+  assert.equal(f.calls.filter(call=>call==='mcp-dispose').length,1);
+  assert.ok(f.calls.indexOf('mcp-window-close')<f.calls.indexOf('mcp-dispose'));
+  assert.ok(f.calls.indexOf('mcp-config-dispose')<f.calls.indexOf('runtime-close'));
+});
+
+test('failed MCP release blocks quitting without automatically retrying or closing Runtime',async()=>{
+  const f=fixture();f.context.remoteMcpManagement={close(){}};f.context.remoteMcpConfig={dispose(){assert.fail('release not confirmed');}};
+  f.context.remoteMcpHost={async dispose(){f.calls.push('mcp-dispose');throw Error('synthetic release failure');}};
+  f.app.quit();await tick();await tick();assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);
+  assert.equal(f.calls.filter(call=>call==='mcp-dispose').length,1);assert.equal(f.calls.filter(call=>call==='app-quit').length,1);
+  assert.match(f.context.runtimeError,/远程 MCP 关闭未确认/);
 });
 
 test('the original final task guard still catches work that appears during cleanup', async () => {
@@ -148,16 +187,16 @@ test('unknown SIS release stays blocked and does not repeat permanent disposal',
 
 // Original initialization/config/record functions; replace only dynamic imports with explicit Fake factories.
 function reconfigurationFixture() {
-  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, webContents: {id: 9}};
+  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, webContents: {id: 9}}, admin = {};
   const oldDispose = f.voiceInput.dispose;
   let oldDisposed = false;
   f.voiceInput.dispose = async () => {if (oldDisposed) return;oldDisposed = true;
     await oldDispose();f.context.runtimeApplication.activeTaskCount = 1;};
   f.wakeVoice.disable = async () => {};
   let configuration = {region: 'cn-north-4', projectId: 'synthetic-old'}, failInitialization = false;
-  Object.assign(f.context, {panel, competitionMode: true, client: {}, voiceConfigurationPending: false,
+  Object.assign(f.context, {panel, admin, competitionMode: true, client: {}, voiceConfigurationPending: false,
     voicePcmSource: undefined, sisPlaybackHost: undefined, panelHiding: false, voiceInitializationFailure: null,
-    sisConfigHost: {snapshot: () => ({configured: true}), current: () => configuration,
+    sisConfigHost: {snapshot: () => ({configured: true}), currentAccessKey:()=>undefined, current: () => configuration,
       configure(value) {configuration = value;f.calls.push('configure');}},
     desktopHost: {logVoicePlayback() {}}, taskGoals: new Map(), conversations: {add() {assert.fail('No Task');}},
     createDesktopSisPlaybackHost: () => ({async dispose() {f.calls.push('new-playback-dispose');}}),
@@ -191,7 +230,7 @@ function reconfigurationFixture() {
   find(ast);assert.ok(configure && record);
   const action = vm.runInContext(`(async function(sender,name,payload){${configure}\n${record}})`, f.context);
   return {...f, get exited() {return f.exited;}, inputs, asr,
-    invoke: (name, payload) => action(panel, name, payload),
+    invoke: (name, payload) => action(['voice.configure','voice.login'].includes(name) ? admin : panel, name, payload),
     fail(value) {failInitialization = value;},
     async refuseLateQuit() {
       f.app.quit();await tick();await tick();await tick();

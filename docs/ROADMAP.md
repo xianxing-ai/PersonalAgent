@@ -1,5 +1,79 @@
 # 开发计划与进度
 
+## 2026-10-17 编码最小修复算法与 F15 多轮链（in_progress）
+
+Owner 本轮解除这部分暂停，要求算法与工作流进入自有镜像。[ADR-0033](adr/0033-coding-minimal-repair-workflow.md)记录复用 jsdiff/TypeScript、原 F15 多轮、任务隔离目录、包级验证失效、主/影子与 CAS 交付。根协调承担依赖/文档/集成，云图、编码工具、Runtime/Desktop 按现有模块归属交付实际接线。新工作包不混入固定 head 的 PR #376 审查；中间镜像暂不发，完整增量测试后统一构建。代码、真实模型、镜像与平台逐面验收，尚未标 done。
+## 2026-10-16 MCP 长驻缓存评审修复与 Desktop TLS 组合（in_progress）
+
+goo122 基于 #373 `14f34b40` 推进[组合验收](modules/MOD-06-PRODUCT-TLS-20261016.md)，交付基线为同步修复后的 #373 `3aa04eb6`：实际 Electron 管理窗口/安全存储、默认 fetch、loopback HTTPS 与原 SQLite/Policy 完成审批、一次调用、断连、拒绝、两次正常重启读回、旧许可拒绝和撤销；四类证书/目录/重定向负例零工具调用。原生对话框响应与服务内容仍为合成，云调用 0。#369 缓存无界增长评审已修复为每 host 最多 64 个 run，重连不能清空身份配额；`bfcb1ab1` 已普通推送，并逐层同步 #370～#373。基础修复完整 check 3153 通过、31 跳过、0 失败；组合包最终完整 check 3175 通过、31 跳过、0 失败，MCP 20/20。首轮未修改的知识库写回出现 RESULT_UNKNOWN，独立复现及一次串行完整复核通过，初次底层原因仍未定位并保留日志。当前 CI/非作者评审和集成以 GitHub 为准。真实平台/OAuth/真人确认仍待验收，整个 MOD-06 保持 in_progress、provisional。
+
+## 2026-10-16 远程 MCP 默认 HTTPS/TLS 验证（in_progress）
+
+goo122 基于 #372 `1b1ee4cb` 增加[本机 TLS 验收](modules/MOD-06-TLS-20261016.md)：原 SDK 默认 fetch、进程专属合成 CA、真实 loopback HTTPS 与 SQLite/Policy，五类证书/目录/重定向及审批/重启断开检查 5/5。MCP 工作区 19/19、宿主/管理/Runtime 回归 12/12、架构 3/3。无生产代码、Schema、迁移或依赖变化；没有修改系统信任或关闭 TLS 验证，模型/AgentArts 调用 0；不等同第三方平台/OAuth 验收，完整 MOD-06 保持 in_progress。
+
+## 2026-10-16 远程 MCP 原生管理与生产装配（in_progress）
+
+goo122 基于 #371 `49c2854d` 完成 [G14 管理工作包](modules/MOD-06-MANAGEMENT-20261016.md)：独立管理窗口、专用 IPC、服务定义导入/加密保存、原生连接与单次任务确认、Competition 默认生产注册、原 SQLite 审批/读回/撤销。配置变化需正常退出重启，不热换 Schema，不自动公布给云端或导出结果。最终定向（含退出回归）25/25，完整 check 3174 通过、31 跳过、0 失败；实际 Electron 产品烟测两次重启、批准前零调用、调用 1 次、旧审批拒绝、删除密文通过，未配置 Runtime 仍可保存且不能试调用。原生对话框响应显式合成，远端为本机 HTTP fixture，模型/AgentArts 调用 0；真实平台/OAuth 和真人原生确认未验收，完整模块保持 in_progress。
+
+## 2026-10-16 远程 MCP 加密宿主配置与会话恢复（in_progress）
+
+goo122 基于 #370 开始 [G14 宿主工作包](modules/MOD-06-HOST-CONFIG-20261016.md)：safeStorage 加密配置、轮换/撤销、新会话 nonce、确认回调与原 Runtime 接线。定向 8/8，完整 check 3163 通过、36 跳过、0 失败；真实 Electron 44.2.0 双进程 safeStorage 通过。既有 Local 窗口回归单独通过，不替代 Competition；真实模型/AgentArts 调用 0。未接原生管理页面、默认生产 main 或真实 endpoint，完整 MOD/G14 仍 in_progress；方案见 [ADR-0031](adr/0031-remote-mcp-host-configuration.md)。
+
+## 2026-10-15 远程 MCP 配置/目录绑定与凭据引用（in_progress）
+
+goo122 基于 #369 开始 [G11/G14 最小只读子集](modules/MOD-06-BOUND-CREDENTIALS-20261015.md)：新 bound host 通过现有 Policy 参数摘要绑定配置/目录及凭据版本，复用 SecretStorePort，异步取凭据前后重验，调用前核目录。定向 15/15 通过，完整 check 3155 通过、36 跳过、0 失败；无真实安全存储、设置/生产接线或平台验收，模型/AgentArts 调用 0。方案见 [ADR-0032](adr/0032-remote-mcp-bound-credentials.md)，完整 MOD 仍为 in_progress。
+
+## 2026-10-16 V5 Desktop WSS、语音与主子模型（review）
+
+[V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya Local Profile 候选的资格结论。
+
+本工作包仍为 review，PR #356 的远端提交、非作者批准、CI、main 集成各自核对；本机 UI/Runtime 修复不冒称已进入云端镜像。全部模型、物理语音设备、28条真实业务图及完整平台 Trace/评估未由此验收。下文 V4“新镜像不发布”为该阶段约束，本节只登记随后 Owner 授权的 V5 发布与实测。
+
+## 2026-10-16 V4 实际接线工作包
+
+[生产接线增量](competition/WORKFLOW_WIRING_V4.md)补原 Runtime 常驻任务、四主动入口、主控报告、
+同次影子 metadata、F23 写入/读回、共享通知与当前语音确认，以及公开上下文版本校验。
+原模块负责人和 CW 分工保持不变；本轮代码接线为 `review`，实际主线集成及PR有效审批分别核对。
+[V4实测](competition/evidence/test-image-v4-20261016/README.md)保留整仓、两套真实公共主影子/CAS与原始失败；150ms性能、全部真实业务及设备验收仍未完成。
+不据离线测试把真实业务、模型资格、设备或平台专项标为 done；新镜像不发布。
+
+<!-- current-design-alignment-20261015 -->
+## 2026-10-15 当前组合工作包（review，非全模块done）
+
+[当前详细设计](design/CURRENT_DESIGN_20261015.md)与[28图状态](design/WORKFLOW_STATUS_20261015.md)
+取代冲突的历史默认模型/发布口径；保留原日期、作者、PR与失败记录，当前架构未定型。
+具体新增工作包的唯一owner、独占文件、公开依赖、实际调用方、验收/Evidence和下一任务见
+[协作者新分工矩阵](competition/COLLABORATOR_WIRING_PACKAGE.md)，沿既有三人归属，不在此维护另一套所有权。
+
+CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实际只读闭环及平台四面；
+03真实来源责任；04公开Vault更正/撤回到主动引用失效；05实际enter/return及cloud port；
+06日常机会影子收益；07真实parent-child主控报告；08逐来源cursor闭环；09真实渠道ack；10物理final到当前approval。
+每包负责人、文件和接线/Evidence以矩阵及[全部MOD交接](modules/CURRENT_MOD_WIRING_HANDOFF.md)为准，不将专项fixture通过提升为整MOD done。
+
+| 工作面 | 当前状态 | 下一验收 |
+| --- | --- | --- |
+| ARM64镜像/SWR与指定云版本目录/关联日志 | 本轮范围已有真实回执；PR集成另记 | 不把目录当平台原生评估或28业务闭环 |
+| Wukong/Pelican公开隔离fixture | 两套主/影子+单CAS通过；41工具Evidence | 保留Pelican首轮partial；分支父成功不冒称协调锚点终态成功 |
+| 本机Laya原模型/质量资格 | todo，独立 Local Profile 候选；历史6判断182–618ms未达150ms，站点未合格 | 当前 Competition 不调用 Laya；只有 Local Profile 获得独立实施范围后再安排领域/holdout校准 |
+| 主动责任/ConnectorHost/session/通知原子策略 | provisional，端口与离线组合已有 | 按矩阵各owner完成真实来源/调用方/渠道/恢复消费 |
+| 语音主动询问/确认与上下文记忆 | provisional，百炼既有端口，SIS平台不可用 | 原文、Goal、Memory与真实最终命令串入同一任务，不以握手当完整听说 |
+| 高级影子开关/主任务优先/机会收益资源 | 当前设计，尚未真实机会并行验收 | 并入已有判断；双方案比较等双方，其余可先交已验主结果，未知交DeepSeek |
+| 编码最小修复 | 本轮明确授权实施，in_progress | 镜像原F15多轮、隔离宿主和正常主Agent接线；分项与完整图通过，云发布单独验收 |
+| 其他依赖/计划重规划算法 | 原设计交接保留，未定 | 不由本轮编码修复授权自动恢复其他算法 |
+
+真实发布/案例范围见[full-workflow-results](competition/evidence/test-image-v3-20261015/full-workflow-results.json)、
+[owned-release](competition/evidence/test-image-v3-20261015/owned-release.json)、[平台日志读回](competition/evidence/test-image-v3-20261015/platform-log-readback.json)。
+此前阶段的“未发布/AgentArts未验”不再概括本轮发布与API；完整业务/长期常驻/资源机会策略仍需独立证据。
+
+## 2026-10-15 main 已合入的独立增量
+
+本次合入基线为 `origin/main@8c395f5f`。保留以下独立 PR 的实际 Git 记录，不将源码合入等同真实模型、平台或全部28业务验收：
+
+- #350：Competition 原生思考配置，`2009d4c1`，2026-10-15 18:05:57 +08:00。
+- #361：有界请求 trace 与日志观测，`fef57f61`，2026-10-15 03:37:00 -07:00。
+- #359：取消后的 Competition patch 恢复修复，`8c395f5f`，2026-10-15 03:56:56 -07:00。
+
+上述为提交记录时间，原作者、评审与验证记录保留在对应 PR 和模块文档；本轮合入后的集成检查另记。下列10-13/14记录保留当时状态，其“待集成”不再概括以上已合入增量。
 ## 2026-10-16 goo122 集成门禁继续入口
 
 #351 已经非作者批准、完整 Foundation 与设计门禁后由协作者合入 main `18ec9efe`；版本化上下文、可见预算和展示已进入主线，完整 MOD-04A/09 仍为 in_progress，真实云消费继续暂停。#367 已改接 main，#375 继续依赖 #367；#368 已合入 #367。#369～#374 本轮普通同步该主线，保留 MCP 容量拒绝、Runtime 持久回执消费和取消 scope 修复。#369/#372 的历史请求修改仍需非作者复审，其他有效批准分别核对；本轮不将 PR 合入 main。
@@ -9,6 +83,13 @@
 ## 2026-10-15 远程 MCP 首个只读纵片（in_progress）
 
 goo122 从 main `8c395f5f` 开始 [MOD-06 / G10](modules/MOD-06-REMOTE-READONLY-20261015.md)：现有 SDK 上增加固定身份、单只读绑定的 HTTPS Streamable HTTP host，仍经原 Policy/ToolGateway。定向本机 HTTP fixture 7/7 通过，完整 check 3147 通过、36 跳过、0 失败；无模型/AgentArts 调用、生产接线或真实远端验收。远程鉴权、任意写工具与持久恢复尚待后续工作包，完整 MOD 保持 in_progress；方案见 [ADR-0029](adr/0029-remote-mcp-readonly-transport.md)。
+### 2026-10-15：完整官方模板离线检查（in_progress）
+
+G04 后续新增固定官方 recipe/词表的七类合成请求与 Linux 无网络编码检查入口。本机 guard 验证与 Linux 官方编码结果分别记录；未取得 Linux 实际回执前不声明模板通过，生产仍未计量，见 [工作包](modules/MOD-04A-TEMPLATE-PROBE-20261015.md)。
+
+### 2026-10-15：最终可见请求预算边界（in_progress）
+
+G04 首个纵片将镜像现有 MaaS 思考转换前移至 Provider 序列化/计量之前，预算与传输共用正文；请求格式纳入 Runtime 审批恢复身份。完整模板与生产真实计量仍未验收，云调用 0，详见 [工作包](modules/MOD-04A-FINAL-REQUEST-BUDGET-20261015.md)。
 
 ## 2026-10-15 预算展示与 tokenizer 离线核验（in_progress）
 
@@ -22,7 +103,11 @@ goo122 从 #351 `3153e022` 开始 [F27 Provider 工作包](modules/MOD-04A-VISIB
 
 goo122 从 #350 `a378c3df` 开始 [F27 上下文工作包](modules/MOD-09-CONTEXT-BINDING-20261014.md)，沿既有编译/发送门禁增加持久摘要版本比较、可信 goal token 预算端口及新检查点删除覆盖。定向 33/33；完整 check 3050 通过、31 跳过、0 失败。无已验证 tokenizer 时明确 unmeasured，不把 goal 计量当作完整模型上下文窗；原私人确认、Skill 许可及整篇备份 pending 保持有效。真实云调用 0，PR/评审/集成未完成，完整模块状态不提升。
 
-## 2026-10-13 zemeng 模块继续范围（当前入口）
+## 2026-10-16 主线预算与上下文集成
+
+本分支已合并 `origin/main@18ec9efe`，保留 #351/#357/#358 的版本化上下文、可见请求预算和展示；上方对应工作包的“待批准/未集成”为原作者阶段记录，已合入事实以 Git/PR 为准。该集成不提升真实模型、设备或全部工作流验收等级。
+
+## 2026-10-13 zemeng 模块继续范围（历史阶段，当前进展见上）
 
 用户确认继续 MOD-04B、MOD-10～18、MOD-27～32，共 16 个模块；**MOD-19 继续暂停**，不进行安装、升级、卸载或分发验收。Wiki/记忆仍由 goo122 负责，业务连接器及 DEV-WORKFLOWS 原分工保持。暂停的 Gemini/Grok 交付文件不纳入本轮。
 
@@ -70,7 +155,7 @@ CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查�
 
 #317 的镜像源码固定为 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6`，已发布 GHCR、导入 SWR，Latest 为 `arm64-194799c6`。实际 MaaS 模型提出工具请求，经本地 Runtime / Policy 一次性审批、生产文件读取和 Evidence 回传，任务 succeeded；读取 1 次、Evidence 1 条、HTTPS 应用调用 0。持久读回不重放任务且关闭退出 0；云端目录发现 8 Workflow / 3 Controller。只验证固定公开合成文件，详见 [真实华为证据与限制](modules/AGENTARTS-HUAWEI-LIVE-COMPATIBILITY-20261012.md)。
 
-本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。当时的双人阅读确认门槛已由现行单人有效批准规则取代。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
+本次源码 CI 已通过，但预览不等于 main 集成；完整自主最小修复、Wiki、真实写入、全部绑定逐项调用、平台 trace/评估及费用仍未验收，不将整 MOD 改为 done。该记录中的双人门槛已由当前 CONTRIBUTING 的至少一位登记非作者有效批准规则替代。AMD64 五个 GHCR 专属版本和三个 Release tar 已撤销，今后发布仅 ARM64。
 
 ## 2026-10-12 镜像全部可承载绑定（in_progress）
 
@@ -80,7 +165,7 @@ CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查�
 接口、逐项清单和阶段验证见 [绑定说明](competition/OWNED_IMAGE_BINDINGS.md) 与
 [工作包](modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)。整仓check、镜像构建/发布和真实云验收分开记录。
 本轮根check已成功（2878项/2860通过/18跳过/0失败），包括11绑定真实核心HTTP分派和中文阶段报告兼容。
-两人当前head阅读确认/审批门槛保持；本轮不强制合并，不把预览镜像当作main集成。
+该历史双人门槛已由当前 CONTRIBUTING 的至少一位登记非作者有效批准规则替代；本轮不强制合并，不把预览镜像当作main集成。
 
 ## 2026-10-09 当前工作包与合并规则
 
@@ -92,8 +177,6 @@ CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查�
 
 模块表维持原工作包事实；当前设计估算和历史台账 done 的口径不同。新镜像不是独立云电脑，公开发布也不等于华为部署/验收。
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
 
 ### 2026-10-12 goo122 Wiki 来源离线变更与恢复验收（review）
 

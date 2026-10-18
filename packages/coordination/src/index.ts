@@ -32,9 +32,23 @@ function hasExactEnumerableKeys(value: object, fields: readonly string[]): boole
 
 /** Only the trusted host selects and minimizes these existing descriptor fields. */
 export type CoordinationAvailableTool = Pick<ToolDescriptor, 'name' | 'version' | 'inputSchema'>;
+export interface ExecutionModelSelection {catalogRevision: string; modelId: string; reasoningEffort?: 'none'|'minimal'|'low'|'medium'|'high'|'xhigh'|'max'}
+export interface ExecutionModelCatalog {version:'1.0';revision:string;defaultModelId:string;models:readonly {id:string;displayName:string;reasoningEfforts:readonly string[];requestProfile:'standard'|'deepseek-native-v1'|'bailian-deepseek-v1'|'huawei-openai-v1';route?:'agentarts-proxy'|'runtime-bailian';type?:'text'|'audio'|'embedding'|'image'|'unknown';availability?:'available'|'unverified'|'unavailable'}[]}
+export function parseExecutionModelSelection(value: unknown): ExecutionModelSelection {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ProtocolError('INVALID_ARGUMENT','Invalid execution model');
+  const item = value as Record<string,unknown>;
+  if (Object.keys(item).some(key=>!['catalogRevision','modelId','reasoningEffort'].includes(key))
+    || typeof item.catalogRevision !== 'string' || !/^[a-f0-9]{64}$/.test(item.catalogRevision)
+    || typeof item.modelId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(item.modelId)
+    || (item.reasoningEffort !== undefined && !['none','minimal','low','medium','high','xhigh','max'].includes(item.reasoningEffort as string)))
+    throw new ProtocolError('INVALID_ARGUMENT','Invalid execution model');
+  return Object.freeze({catalogRevision:item.catalogRevision,modelId:item.modelId,
+    ...(item.reasoningEffort===undefined?{}:{reasoningEffort:item.reasoningEffort as NonNullable<ExecutionModelSelection['reasoningEffort']>})});
+}
 
 /** In-process, provisional boundary. No Runtime, credentials or history. */
 export interface CoordinationRequest {
+  readonly executionModel?: ExecutionModelSelection;
   readonly taskId: string;
   readonly revision: number;
   readonly goal: string;
@@ -42,6 +56,8 @@ export interface CoordinationRequest {
   readonly signal: AbortSignal;
   readonly continuation?: CoordinationContinuation;
   readonly availableTools?: readonly CoordinationAvailableTool[];
+  /** Trusted host selection exchange on the same cloud port; never accepts tools or continuation. */
+  readonly textOnly?: true;
 }
 
 export interface CoordinationTextResult {
@@ -76,8 +92,8 @@ export interface CloudAgentPort {
   invoke(request: CoordinationRequest): Promise<CoordinationResult>;
 }
 
-export {AgentArtsCloudAgentPort} from './agentarts.js';
-export {AgentArtsResultUnknownError} from './agentarts-websocket.js';
+export {AgentArtsCloudAgentPort, parseAgentArtsResponseText} from './agentarts.js';
+export {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsWebSocketTransport} from './agentarts-websocket.js';
 export type {AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocket,
   AgentArtsWebSocketFactory, AgentArtsWebSocketConnectOptions} from './agentarts-websocket.js';
 export type {
@@ -86,7 +102,9 @@ export type {
   AgentArtsFetch,
   AgentArtsFetchInit,
   AgentArtsFailureDiagnostic,
+  AgentArtsRequestIdentityObserver,
   AgentArtsResponse,
+  AgentArtsResponseTextOptions,
   AgentArtsRuntimeConfig,
   AgentArtsSchemaCategory,
   AgentArtsWebSocketOptions,

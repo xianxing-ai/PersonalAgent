@@ -3,6 +3,8 @@ export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckRes
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
 export type {CoordinationGoalTokenBudget} from './application/context-binding.js';
 export type {PrepareCompetitionToolExport,CompetitionToolExport,CoordinationWorkerCapabilityPort} from './application/coordination.js';
+export type {CompetitionCloudRequestIdentityRecord, CompetitionCloudRequestIdentities,
+  CompetitionCloudIdentitySelection} from './application/coordination.js';
 export type {StartSystemObservationSessionRequest, SystemObservationSession} from './application/system-observation-session.js';
 export {createSystemObservationTool} from '@personal-agent/windows-client';
 export type {RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostToolTaskRequest,
@@ -13,9 +15,14 @@ export type {RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostT
 export type {LocalRepairHostOptions, LocalRepairBinding, SubmitLocalRepairRequest} from './application/local-repair.js';
 export type {CompetitionAvailableTool, CompetitionToolAvailability} from './application/tool-catalog.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
+export type {AgentArtsObservationApplication} from './application/agentarts.js';
 export {createCalendarEventReadTool, CALENDAR_EVENT_READ_TOOL, CALENDAR_EVENT_READ_VERSION} from './application/calendar-read.js';
 export type {CalendarReadBinding, CalendarEventReadOptions} from './application/calendar-read.js';
 export type {AgentArtsRuntimeApplicationOptions} from './application/agentarts.js';
+export type {AgentArtsObservationRequestDescription, AgentArtsObservationAuthorization, AgentArtsObservationFetch,
+  AgentArtsObservationSurface, AgentArtsObservationInput, AgentArtsObservationBinding,
+  AgentArtsObservationAvailability, AgentArtsPlatformObservationRecord,
+  AgentArtsObservationHostOptions} from './application/agentarts-observation.js';
 export {createMemoryProjectionApplication, createPendingImpactApplication} from './application/memory.js';
 export {createSqliteFactProjectionHost} from './application/sqlite-fact-projection.js';
 export type {SqliteFactProjectionHost, SqliteFactProjectionHostOptions} from './application/sqlite-fact-projection.js';
@@ -91,3 +98,22 @@ export {createWorkflowLearningApplication,createBoundPublicFactErasureApplicatio
 export type {WorkflowLearningOptions,LearningTaskBinding,LearningSkillManifest} from './application/memory-learning.js';
 export {KnowledgeWriteReconciliationAdapter} from './application/knowledge-write-reconciliation.js';
 export type {KnowledgeWriteReconciliationPort} from './application/knowledge-write-reconciliation.js';
+export * from './application/proactive-connector-host.js';
+export * from './application/notification-host.js';
+export * from './application/proactive-workflow-session.js';
+export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';
+export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions} from './application/owned-workflow-application.js';
+export {createRuntimeCodingRepairDispatchTool,runRuntimeCodingRepairWorkflow,readRuntimeCodingVerificationEvidence,
+  CODING_REPAIR_WORKFLOW_TOOL,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './application/coding-repair-application.js';
+export type {RuntimeCodingRepairOptions,RuntimeCodingRepairImagePort} from './application/coding-repair-application.js';
+export {createRuntimeOwnedWorkflowImageAdapter} from './application/owned-workflow-image-adapter.js';
+export type {RuntimeOwnedWorkflowImageOptions} from './application/owned-workflow-image-adapter.js';
+export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';
+export {createRuntimeProactiveDecisionTools,RUNTIME_PROACTIVE_DECISION_TOOLS} from './application/proactive-decision-tools.js';
+export type {RuntimeProactiveDecisionToolOptions} from './application/proactive-decision-tools.js';
+export type {RuntimeProactiveImageAdapterOptions,RuntimeProactiveImageResult,RuntimeProactiveImageContext,
+  RuntimeProactiveImageDescription} from './application/proactive-image-adapter.js';
+export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,RUNTIME_PROACTIVE_TOOLS,
+  RUNTIME_PROACTIVE_TOOL_VERSION} from './application/proactive-workflow-application.js';
+export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
+  RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';

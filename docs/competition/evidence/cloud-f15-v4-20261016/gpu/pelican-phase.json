@@ -1,0 +1,8 @@
+{
+  "scenario": "pelican",
+  "device": "cuda",
+  "exitCode": 0,
+  "finishedAtUtc": "2026-10-16T08:32:40.2451399Z",
+  "startedAtUtc": "2026-10-16T08:30:11.2465743Z",
+  "wallMs": 148995.8304
+}

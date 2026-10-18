@@ -13,7 +13,9 @@ import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {createMemoryProjectionApplication} from '@personal-agent/runtime/application';
 import {createSyntheticMeetingToolset} from '../../../apps/desktop/electron/competition-synthetic-workspace.js';
 import {createSyntheticRepairHost} from '../../../apps/desktop/electron/competition-repair-host.js';
+import {projectSyntheticRepairContext} from '../../../apps/desktop/electron/competition-repair-context.js';
 import {restoreSyntheticRepairSubmission} from '../../../apps/desktop/electron/competition-repair-submission.js';
+import {parseAgentInput, repairInput} from '../../../packages/agentarts/dist/input.js';
 
 const fixtureRoot = fileURLToPath(new URL('./fixtures/mvp-meeting/', import.meta.url));
 const namespace = 'mvp-synthetic-meeting';
@@ -39,6 +41,7 @@ test('confirmed synthetic read produces exact graph-bound candidate, separate ap
   let host;
   let app;
   let decisionCalls = 0;
+  let expectedSuggestions;
   t.after(() => {
     try { app?.close(); } finally { host?.close(); rmSync(directory, {recursive: true, force: true}); }
   });
@@ -48,10 +51,13 @@ test('confirmed synthetic read produces exact graph-bound candidate, separate ap
       arguments: {path: 'meeting-update.json'}, verification: 'unverified'};
     const context = request.continuation.result.repairContext;
     assert.equal(context.targets.length, 3);
+    const parsed = repairInput(parseAgentInput(JSON.stringify({continuation: request.continuation})));
+    assert.equal(parsed.sources.length, 5, 'Actual host continuation carries the approved source versions');
+    assert.equal(parsed.prospectiveDependencies.length, 3);
     return {kind: 'repair_candidate', candidateVersion: '1.0', verification: 'unverified',
       candidate: {expectedGraphRevision: context.expectedGraphRevision, changes: [
         {node: context.targets[0].node, summary: 'Attend meeting at 17:00',
-          reason: 'Confirmed synthetic meeting correction', dependencies: [context.projectedFact]},
+          reason: 'Confirmed synthetic meeting correction', dependencies: context.targets[0].requestedDependencies},
         {node: context.targets[1].node, summary: 'Prepare one hour before 17:00 meeting',
           reason: 'Dependent attendance time changed',
           dependencies: [{id: 'attend', revision: context.targets[0].node.revision + 1}]},
@@ -64,9 +70,15 @@ test('confirmed synthetic read produces exact graph-bound candidate, separate ap
     host = createSyntheticRepairHost(memoryPath, {decision: {async decide(request) {
       decisionCalls += 1;
       assert.equal(request.events.length, 1);
+      assert.equal(request.events[0].source, 'memory-projection:mvp-synthetic-meeting');
       assert.deepEqual(request.events[0].facts, [{id: 'meeting/time', revision: 2}]);
       assert.deepEqual(request.events[0].authorization, {state: 'none', revision: 0});
-      return [];
+      // Explicit advisory fixture: every submitted event has one bound answer,
+      // with no execution authority or automatic graph repair.
+      expectedSuggestions = request.events.map(event => ({eventId: event.eventId, source: event.source,
+        intervention: 'DEFER', confidence: null, reason: 'low_confidence',
+        facts: event.facts.map(fact => ({...fact})), authorizationRevision: event.authorization.revision}));
+      return structuredClone(expectedSuggestions);
     }}});
     app = createRuntimeApplication({path: runtimePath, profile: 'huawei_ict_agentarts',
       coordination: cloud, repairCandidateVersion: '1.0', localRepair: host.localRepair,
@@ -88,10 +100,13 @@ test('confirmed synthetic read produces exact graph-bound candidate, separate ap
     && app.runtime.loadCheckpoint(taskId, 'mvp-local-impact-advice')?.status !== 'ready'; attempt++)
     await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(decisionCalls, 1);
+  assert.equal(expectedSuggestions.length, 1);
   assert.deepEqual(app.runtime.loadCheckpoint(taskId, 'mvp-local-impact-advice'),
-    {graphRevision: 6, status: 'ready', suggestions: []});
+    {graphRevision: 6, status: 'ready', suggestions: expectedSuggestions});
   if (process.env.PA_MVP_CONTEXT_OUTPUT) {
-    const context = cloud.requests[1].continuation.result.repairContext;
+    const original = host.readBinding(taskId).binding;
+    const context = projectSyntheticRepairContext(host.readGraph(), {graphRevision: original.graphRevision,
+      links: [{fact: original.fact, node: original.node}]});
     writeFileSync(process.env.PA_MVP_CONTEXT_OUTPUT, JSON.stringify(context, null, 2));
   }
   const candidate = app.readRepairCandidate(taskId);

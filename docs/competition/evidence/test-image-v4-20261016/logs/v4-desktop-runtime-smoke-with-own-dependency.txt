@@ -1,0 +1,6 @@
+electronApplication.waitForEvent: Timeout 30000ms exceeded while waiting for event "window"
+    at openAdmin (<implementation>\apps\desktop\test\runtime-application-smoke.cjs:108:23)
+    at <implementation>\apps\desktop\test\runtime-application-smoke.cjs:160:23 {
+  log: [],
+  name: 'TimeoutError'
+}
