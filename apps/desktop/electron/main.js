@@ -1416,6 +1416,8 @@ async function initializeRuntime() {
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
         readWorkspaceExportPreflight:query=>publicReferenceConsent?.readPreflight(query),
         readWorkspaceExportAuthorization:query=>publicReferenceConsent?.readAuthorization(query),
+        requestWorkspaceExportPreflight:(query,context)=>publicReferenceConsent?.requestPreflight(query,context),
+        requestWorkspaceExportExact:(query,context)=>publicReferenceConsent?.requestExact(query,context),
         jobHelperExecutable:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async () => {
           const result = await dialog.showOpenDialog(admin, {title:'选择允许 PersonalAgent 使用的编程工作区',
