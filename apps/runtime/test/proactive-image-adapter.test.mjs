@@ -101,7 +101,7 @@ test('trusted saved deployment version pins catalog and advance URLs without wid
   await adapter.advancePort(request({requestId:'fixed-advance'}));
   assert.deepEqual(urls,Array(2).fill('https://fixture-gateway.example/runtimes/configured-runtime/invocations?endpoint=fixed.v-1'));
   assert.equal(f.calls.length,2);
-  for(const deploymentVersion of ['', 'invalid/version', 'v'.repeat(129)])
+  for(const deploymentVersion of ['', 'invalid/version', 'v'.repeat(129), 123, null])
     assert.throws(()=>createRuntimeProactiveImageAdapter({...options,config:{...config,deploymentVersion}}),{code:'INVALID_ARGUMENT'});
   for(const endpoint of ['https://fixture.example/invocations?endpoint=fixed.v-1',
     'https://fixture.example/invocations?endpoint='+'v'.repeat(65)])
