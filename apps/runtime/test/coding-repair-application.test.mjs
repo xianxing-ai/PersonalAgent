@@ -74,3 +74,39 @@ test('cancel propagates from original graph into its running N05 host command an
   const host=report.evidence.find(record=>record.toolName==='workflow.host.f15_n05');
   assert.ok(host);assert.ok(['unknown','failed'].includes(host.state));
 });
+
+test('public F15 fixture records only fixed local failures and bounded process-query reasons',{skip:process.platform!=='win32'},async t=>{
+  const identity=reason=>`Workspace patch helper identity is unavailable (${reason}, 2001ms)`;
+  const safeCode='RESULT_UNKNOWN',withheld={code:safeCode,message:'Host operation failed (details withheld)'};
+  const cases=[
+    ['fixed cancellation','Workspace command was cancelled','CANCELLED',{code:'CANCELLED',message:'Workspace command was cancelled'}],
+    ...['invalid_pid','process_not_found','spawn_failed','query_timeout','output_limit','query_failed','invalid_output'].map(reason=>
+      [reason,identity(reason),safeCode,{code:safeCode,message:identity(reason),reason,elapsedMs:2001}]),
+    ...[0,60000].map(elapsedMs=>{
+      const message=`Workspace patch helper identity is unavailable (query_timeout, ${elapsedMs}ms)`;
+      return ['elapsed boundary '+elapsedMs,message,safeCode,{code:safeCode,message,reason:'query_timeout',elapsedMs}];
+    }),
+    ['unknown message','Unrecognized local error',safeCode,withheld],
+    ['private path','Workspace patch helper identity is unavailable (query_timeout, 2001ms) C:\\private\\source.txt',safeCode,withheld],
+    ['stderr','stderr: private fixture details',safeCode,withheld],
+    ['long message','x'.repeat(2048),safeCode,withheld],
+    ['newline',identity('query_timeout')+'\n',safeCode,withheld],
+    ['unknown reason',identity('private_reason'),safeCode,withheld],
+    ['elapsed out of bounds','Workspace patch helper identity is unavailable (query_timeout, 60001ms)',safeCode,withheld],
+    ['elapsed not canonical','Workspace patch helper identity is unavailable (query_timeout, 02001ms)',safeCode,withheld],
+    ['elapsed fractional','Workspace patch helper identity is unavailable (query_timeout, 2.5ms)',safeCode,withheld],
+    ['elapsed negative','Workspace patch helper identity is unavailable (query_timeout, -1ms)',safeCode,withheld],
+    ['unknown code','private failure','C:\\private\\credential.txt',{...withheld,code:'EXTERNAL_FAILURE'}],
+  ];
+  for(const [name,message,code,expected] of cases)await t.test(name,async()=>{
+    const report=await runCodingRepairFullGraphFixture({fakeModel:true,beforeHostOperation:async({name})=>{
+      if(name==='start')throw Object.assign(new Error(message),{code});
+    }});
+    assert.deepEqual(report.operations.map(operation=>operation.name),['start']);
+    assert.deepEqual(report.operations[0].error,expected);
+    if(expected.message==='Host operation failed (details withheld)')assert.equal(JSON.stringify(report).includes(message),false);
+    if(expected.code!==code)assert.equal(JSON.stringify(report).includes(code),false);
+    assert.equal(report.mainRootAfterSha256,report.mainRootBeforeSha256);
+    assert.equal(report.operations.some(operation=>operation.name==='check'||operation.name==='publish'),false);
+  });
+});
