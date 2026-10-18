@@ -1,10 +1,6 @@
 {
   "version": 1,
-  "eligibleReviewers": [
-    "zemeng5208",
-    "goo122",
-    "Potatos498"
-  ],
+  "eligibleReviewers": ["zemeng5208", "goo122", "Potatos498", "2511375597-lab"],
   "designDirectory": "docs/design/workflow-architecture-20261013",
   "requiredFiles": [
     "index.html",
