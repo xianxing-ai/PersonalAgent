@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "eligibleReviewers": ["zemeng5208", "goo122", "Potatos498"],
+  "eligibleReviewers": ["zemeng5208", "goo122", "Potatos498", "2511375597-lab"],
   "designDirectory": "docs/design/resident-developer-agent-20261008",
   "requiredFiles": ["index.html", "DESIGN.md", "architecture-overview.svg", "autonomy-lifecycle.svg", "trust-and-transport.svg", "wiki-memory.svg", "WIKI-MEMORY-HANDOFF.md", "modules.json"],
   "receiptMarker": "personalagent-design-read-v1",
