@@ -52,8 +52,8 @@ Laya6判断182–618ms未达150ms、各案例3裁决升级DeepSeek；无高级�
 | 未知结果与恢复 | 本地持久发送标记、防重发与 `waiting_reconciliation` | 本地重启防重发已验证；云端仅有界内存回执，`restartRecovery:false`。自动 status 协调与持久云端恢复未交付 |
 | 任务/权限/执行 | 本地 Runtime/Policy/ToolGateway/Evidence | 保持既有边界；云结果需要校验及本地读回 |
 | 记忆 | Wiki 正文 + 来源绑定 Memory 投影/FactChangeFeed | goo122 负责 MOD-08/09；自动同步/整理未交付 |
-| 决策 | Competition 语义编排由 AgentArts 承担；Laya 仅为独立 Local Profile 候选 | 当前 Competition 不调用 Laya；候选资格与 Local 接线未验收 |
-| 合并 | zemeng5208、goo122、Potatos498、2511375597-lab 四位协作者共同审查与合并 | 常规 PR 需一名非作者对当前 head 有效批准及必要检查；不强制合并或绕过门禁 |
+| 决策 | Competition Agent/Workflow 由 AgentArts 承担；Laya 仅为独立 Local Profile 实验候选，不属于 Competition | Competition 不调用 Laya；Local 接线与候选资格仍待验收，AgentArts 失败不回退 Local |
+| 合并 | 常规 PR 由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前 head 有效批准；Owner 对具体 PR 的审核例外须有记录 | 有合并权限者（包括作者）仅在最新必需技术 CI 通过、main 同步、无冲突且阻断性技术缺陷已处理后合并；四位协作者跨 PR 均衡承担审查与合并 |
 | 分享 | GitHub PR + GHCR 固定版本/digest + 配置说明 | `97aa51a6` AMD64/ARM64 预览已发布并独立验证；main 合并、真实华为部署与验收分别记录 |
 
 模块百分比保留 2026-10-08 的工程估算，不因为 Wiki 新设计或本 PR 推送而提高。不重写历史作者、旧 PR 或历史验收；其旧合并政策不能作为当前执行授权。
