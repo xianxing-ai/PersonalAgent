@@ -37,7 +37,9 @@ function fixture(t, kind = 'workspace', handler = () => ({})) {
   const button = label => walk(root).find(element => element.tag === 'button' && element.textContent === label);
   return {...control, root, section, document, calls, button, walk,
     list: section.children[0], entry: index => section.children[0].children[index],
-    status: () => section.children[1], content: () => section.children[2]};
+    status: () => section.children[1], content: () => section.children[2],
+    input: () => walk(root).find(element => element.tag === 'textarea'),
+    sendStatus: () => walk(root).find(element => element.className === 'subagent-conversation-composer')?.children[1]};
 }
 
 const child = (taskId, overrides = {}) => ({parentTaskId: 'parent-1', taskId, role: '核验',
@@ -52,10 +54,11 @@ function deferred() {
   return {promise, resolve, reject};
 }
 
-test('workspace retains caller recency order, shows at most six entries and stays empty without children', t => {
+test('workspace retains caller recency order, shows at most six entries and keeps empty history accessible', t => {
   const ui = fixture(t);
   ui.update([]);
-  assert.equal(ui.section.hidden, true);
+  assert.equal(ui.section.hidden, false);
+  assert.equal(ui.list.hidden, true);
   const tasks = Array.from({length: 10}, (_, index) => child('task-' + index));
   ui.update([null, {taskId: 'invalid'}, ...tasks]);
   assert.equal(ui.section.hidden, false);
@@ -63,7 +66,7 @@ test('workspace retains caller recency order, shows at most six entries and stay
   assert.match(ui.entry(0).attrs.title, /子任务 task-0/);
   assert.match(ui.entry(5).attrs.title, /子任务 task-5/);
   assert.equal(ui.entry(0).type, 'button'); // Native Enter/Space activation.
-  assert.equal(ui.section.children.length, 2); // Entries + status, no inline detail.
+  assert.equal(ui.section.children.length, 3); // Entries + status + history link, no inline detail.
   assert.equal(ui.calls.length, 0);
   assert.equal(ui.document.head.children.length, 1);
 });
@@ -118,7 +121,8 @@ test('workspace reports current open failures and ignores replies for removed en
   ui.update([]);
   pending.reject(Error('旧错误'));
   await opening;
-  assert.equal(ui.section.hidden, true);
+  assert.equal(ui.section.hidden, false);
+  assert.equal(ui.list.hidden, true);
   assert.equal(ui.status().textContent, '');
   failing = true;
   ui.update([child('a')]);
@@ -218,4 +222,178 @@ test('page read and navigation errors stay visible and permit retry', async t =>
   failNavigation = false;
   await ui.button('返回主对话').onclick();
   assert.match(ui.status().textContent, /已返回主对话/);
+});
+
+test('send accepts a new task once, clears only its sent draft, and waits for recorded replies', async t => {
+  const accepted = deferred();
+  let hasAccepted = false;
+  const ui = fixture(t, 'page', name => {
+    if (name === 'subagentConversation.submit') return accepted.promise;
+    return record('original', {canSubmit: !hasAccepted, activeTaskId: hasAccepted ? 'follow-1' : undefined,
+      messages: hasAccepted ? [{taskId: 'follow-1', userText: '真实追加消息', state: 'running'}] : []});
+  });
+  await settle();
+  ui.input().value = '真实追加消息'; ui.input().oninput();
+  const sending = ui.button('发送').onclick();
+  await ui.button('发送').onclick();
+  assert.equal(ui.calls.filter(call => call.name === 'subagentConversation.submit').length, 1);
+  const request = ui.calls.find(call => call.name === 'subagentConversation.submit').payload;
+  assert.deepEqual(Object.keys(request).sort(), ['requestId', 'text']);
+  assert.equal(request.text, '真实追加消息');
+  assert.match(request.requestId, /^[a-f0-9-]{36}$/);
+  assert.equal(ui.button('发送').disabled, true);
+  hasAccepted = true;
+  accepted.resolve({acceptedTaskId: 'follow-1'});
+  await sending;
+  assert.equal(ui.input().value, '');
+  assert.match(ui.sendStatus().textContent, /消息已受理：follow-1/);
+  assert.match(ui.content().textContent, /真实追加消息/);
+  assert.match(ui.content().textContent, /回答尚未记录/);
+  assert.equal(ui.button('停止').disabled, false);
+});
+
+test('send failures preserve the draft and same-input retry ID; a new accepted message gets a new ID', async t => {
+  let submissions = 0;
+  const requests = [];
+  const ui = fixture(t, 'page', (name, payload) => {
+    if (name === 'subagentConversation.submit') {
+      requests.push(payload); submissions++;
+      if (submissions === 1) throw Error('受理回包丢失');
+      return {acceptedTaskId: 'follow-' + submissions};
+    }
+    return record('original', {canSubmit: true, messages: []});
+  });
+  await settle();
+  ui.input().value = '保留这份草稿'; ui.input().oninput();
+  await ui.button('发送').onclick();
+  assert.equal(ui.input().value, '保留这份草稿');
+  assert.match(ui.sendStatus().textContent, /发送失败，草稿已保留/);
+  await ui.button('发送').onclick();
+  assert.equal(requests[0].requestId, requests[1].requestId);
+  assert.equal(ui.input().value, '');
+  ui.input().value = '保留这份草稿'; ui.input().oninput();
+  await ui.button('发送').onclick();
+  assert.notEqual(requests[1].requestId, requests[2].requestId);
+});
+
+test('snapshots do not replace an unsent draft or overwrite a newer send result', async t => {
+  const oldRead = deferred(), accepted = deferred();
+  let reads = 0;
+  const ui = fixture(t, 'page', name => {
+    if (name === 'subagentConversation.submit') return accepted.promise;
+    return ++reads === 2 ? oldRead.promise : record('original', {canSubmit: true, messages: []});
+  });
+  await settle();
+  ui.input().value = '第一条消息'; ui.input().oninput();
+  const oldRefresh = ui.refresh();
+  const sending = ui.button('发送').onclick();
+  ui.input().value = '发送途中准备的下一条草稿'; ui.input().oninput();
+  oldRead.resolve(record('other-identity', {canSubmit: true}));
+  await oldRefresh;
+  assert.ok(!ui.status().textContent.includes('窗口不匹配'));
+  accepted.resolve({acceptedTaskId: 'follow-1'});
+  await sending;
+  assert.equal(ui.input().value, '发送途中准备的下一条草稿');
+  await ui.refresh();
+  assert.equal(ui.input().value, '发送途中准备的下一条草稿');
+});
+
+test('stop targets only the latest active follow-up, never the original terminal task', async t => {
+  let stopped = false;
+  const ui = fixture(t, 'page', (name, payload) => {
+    const snapshot = record('original-terminal', {state: 'succeeded', canSubmit: stopped,
+      activeTaskId: stopped ? undefined : 'active-followup', messages: [{taskId: 'active-followup',
+        userText: '继续处理', replyText: stopped ? '已保存的部分结果' : '', state: stopped ? 'cancelled' : 'running'}]});
+    if (name === 'subagentConversation.cancel') {
+      assert.deepEqual(payload, {taskId: 'active-followup'});
+      stopped = true;
+      return {taskId: payload.taskId, cancelAccepted: true};
+    }
+    return snapshot;
+  });
+  await settle();
+  assert.equal(ui.button('停止').disabled, false);
+  await ui.button('停止').onclick();
+  assert.deepEqual(ui.calls.find(call => call.name === 'subagentConversation.cancel').payload,
+    {taskId: 'active-followup'});
+  assert.match(ui.sendStatus().textContent, /停止请求已受理/);
+  assert.equal(ui.button('停止').disabled, true);
+  assert.match(ui.content().textContent, /已保存的部分结果/);
+});
+
+test('history displays actual follow-up messages, errors, and missing replies as plain text', async t => {
+  const unsafe = '<script>leak()</script>';
+  const ui = fixture(t, 'page', () => record('original', {canSubmit: true,
+    messages: [{taskId: 'm1', userText: unsafe, replyText: '真实已保存回答', state: 'succeeded'},
+      {taskId: 'm2', userText: '第二条', state: 'failed', error: {message: unsafe}},
+      {userText: '无任务绑定的消息不得显示'}]}));
+  await settle();
+  assert.match(ui.content().textContent, /真实已保存回答/);
+  assert.match(ui.content().textContent, /回答尚未记录/);
+  assert.ok(ui.content().textContent.includes(unsafe));
+  assert.ok(!ui.content().textContent.includes('无任务绑定的消息不得显示'));
+  assert.ok(ui.walk(ui.root).every(element => element.tag !== 'script'));
+  assert.equal(ui.content().children[0].tag, 'details');
+  assert.notEqual(ui.content().children[0].open, true);
+});
+
+test('a rejected cancellation is shown without claiming the task stopped', async t => {
+  const ui = fixture(t, 'page', name => name === 'subagentConversation.cancel'
+    ? {taskId: 'active-followup', cancelAccepted: false}
+    : record('original', {canSubmit: false, activeTaskId: 'active-followup', messages: []}));
+  await settle();
+  await ui.button('停止').onclick();
+  assert.match(ui.sendStatus().textContent, /未接受停止请求/);
+  assert.ok(!ui.sendStatus().textContent.includes('已受理'));
+});
+
+test('Enter sends, Shift+Enter keeps a newline, and IME composition never sends', async t => {
+  const ui = fixture(t, 'page', name => name === 'subagentConversation.submit'
+    ? {acceptedTaskId: 'follow-1'} : record('original', {canSubmit: true, messages: []}));
+  await settle();
+  ui.input().value = '输入法草稿'; ui.input().oninput();
+  let prevented = 0;
+  const enter = extra => ui.input().onkeydown({key: 'Enter', preventDefault: () => { prevented++; }, ...extra});
+  enter({shiftKey: true});
+  enter({isComposing: true});
+  enter({keyCode: 229});
+  assert.equal(prevented, 0);
+  assert.equal(ui.calls.filter(call => call.name === 'subagentConversation.submit').length, 0);
+  assert.equal(ui.input().value, '输入法草稿');
+  enter({});
+  await settle();
+  assert.equal(prevented, 1);
+  assert.equal(ui.calls.filter(call => call.name === 'subagentConversation.submit').length, 1);
+});
+
+test('availability reasons and active-task notices preserve failed-send feedback and drafts', async t => {
+  let unavailable = false, active = false;
+  const ui = fixture(t, 'page', name => {
+    if (name === 'subagentConversation.submit') { unavailable = true; throw Error('发送失败的原始反馈'); }
+    return record('original', {canSubmit: !unavailable, messages: [],
+      activeTaskId: active ? 'follow-1' : undefined,
+      submitUnavailableReason: unavailable ? '当前模型未配置，请先配置模型。' : undefined});
+  });
+  await settle();
+  ui.input().value = '需要保留的草稿'; ui.input().oninput();
+  await ui.button('发送').onclick();
+  const feedback = ui.sendStatus().textContent;
+  assert.match(feedback, /发送失败的原始反馈/);
+  assert.match(ui.root.textContent, /当前模型未配置，请先配置模型/);
+  assert.equal(ui.button('发送').disabled, true);
+  assert.equal(ui.input().value, '需要保留的草稿');
+  active = true;
+  await ui.refresh();
+  assert.equal(ui.sendStatus().textContent, feedback);
+  assert.match(ui.root.textContent, /当前任务正在执行或等待结果/);
+  assert.equal(ui.input().value, '需要保留的草稿');
+});
+
+test('more opens all historical children without payload even when the current cache is empty', async t => {
+  const ui = fixture(t);
+  ui.update([]);
+  assert.equal(ui.section.hidden, false);
+  assert.equal(ui.button('更多').attrs['aria-label'], '查看全部子智能体');
+  await ui.button('更多').onclick();
+  assert.deepEqual(ui.calls, [{name: 'subagentConversations.openAll', payload: undefined}]);
 });

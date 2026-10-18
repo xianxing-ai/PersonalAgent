@@ -1,6 +1,6 @@
 # Runtime task core
 
-`delegateUserTasks:true` 是 Competition 可信组合选项：仅新用户任务冻结一次真实子任务委派，根任务经原 Policy/Gateway 派发后只汇总，模型、预算和恢复绑定保留。旧任务不补派；既有单任务私人记忆/Skill 许可不继承。公开 `readDelegatedUserTaskParent()` 只提供经校验的公开历史范围。实现、105 项定向验证及未知写/汇总失败恢复限制见 [子对话与委派说明](../desktop/docs/live-task-visibility-20261018.md)。
+`delegateUserTasks:true` 是 Competition 可信组合选项：仅新用户任务冻结一次真实子任务委派，根任务经原 Policy/Gateway 派发后只汇总，模型、预算和恢复绑定保留。旧任务不补派；既有单任务私人记忆/Skill 许可不继承。`readDelegatedUserTaskParent()` 只提供经校验的公开历史范围。可信宿主通过 `readSubagentConversation` / `submitSubagentConversationMessage` / `cancelSubagentConversationTask` 访问同一子智能体的持久追加会话，每轮创建新任务，不重开原终态；`listSubagentConversations` 分页读取全部原子智能体，追加执行仍归原入口。实现、139 项定向验证（Runtime 51 项）及未知写/汇总失败恢复限制见 [子对话与委派说明](../desktop/docs/live-task-visibility-20261018.md)。
 
 
 <!-- architecture-scope-20261013 -->

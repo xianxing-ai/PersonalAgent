@@ -4,11 +4,26 @@ import {stateNames} from './state.js';
 export function mountSubagentConversations(root, invoke, escape) {
   ensureStylesheet();
   const section = node('section', '', 'subagent-conversations');
-  section.hidden = true;
   section.setAttribute('aria-label', '最近的子智能体对话');
   const list = node('div', '', 'subagent-conversations-list');
+  list.hidden = true;
   const status = notice();
-  section.append(list, status);
+  const more = action('更多', async () => {
+    if (more.disabled) return;
+    const version = ++latestRequest;
+    more.disabled = true;
+    status.textContent = '';
+    try {
+      await invoke('subagentConversations.openAll');
+    } catch (error) {
+      if (latestRequest === version) showError(status, error, '无法查看全部子智能体');
+    } finally {
+      more.disabled = false;
+    }
+  });
+  more.className = 'subagent-conversations-more';
+  more.setAttribute('aria-label', '查看全部子智能体');
+  section.append(list, status, more);
   root.append(section);
 
   let tasks = new Map(), buttons = new Map();
@@ -56,7 +71,7 @@ export function mountSubagentConversations(root, invoke, escape) {
       if (next.size === 6) break;
     }
     tasks = next;
-    section.hidden = tasks.size === 0;
+    list.hidden = tasks.size === 0;
     for (const key of pending.keys()) if (!tasks.has(key)) pending.delete(key);
     if (!tasks.size) status.textContent = '';
     const nextSignature = JSON.stringify([...tasks].map(([key, task]) =>
@@ -88,7 +103,7 @@ export function mountSubagentConversations(root, invoke, escape) {
   return {update};
 }
 
-/** Dedicated child-window view; its host fixes identity and restricts the IPC surface. */
+/** Dedicated child conversation; the host binds all new executions to its original child. */
 export function mountSubagentConversationPage(root, invoke) {
   ensureStylesheet();
   const page = node('section', '', 'subagent-conversation-page');
@@ -97,39 +112,95 @@ export function mountSubagentConversationPage(root, invoke) {
   const title = node('h1', '子智能体对话');
   const status = notice();
   const content = node('div', '', 'subagent-conversations-content');
-  content.setAttribute('aria-label', '已保存的子任务记录');
+  content.setAttribute('aria-label', '子任务与对话记录');
+  const original = node('details', '', 'subagent-conversation-original');
+  const originalBody = node('div');
+  original.append(node('summary', '查看原始子任务记录'), originalBody);
+  const messages = node('div', '', 'subagent-conversation-messages');
+  messages.setAttribute('aria-label', '追加对话记录');
+  content.append(original, node('h2', '对话记录'), messages);
+
+  const composer = node('form', '', 'subagent-conversation-composer');
+  const input = node('textarea');
+  input.rows = 2;
+  input.setAttribute('aria-label', '给子智能体的消息');
+  input.placeholder = '继续和这个子智能体对话…';
+  const composerStatus = notice();
+  const availability = notice();
+  availability.className += ' subagent-conversation-availability';
+  const composerActions = node('div', '', 'subagent-conversation-compose-actions');
+  const sendButton = action('发送', () => submit());
+  const stopButton = action('停止', () => cancel());
+  composerActions.append(stopButton, sendButton);
+  composer.append(input, composerStatus, availability, composerActions);
+  composer.onsubmit = event => { event.preventDefault(); return submit(); };
+  input.oninput = () => { draftVersion++; syncControls(); };
+  input.onkeydown = event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void submit();
+    }
+  };
+
   const footer = node('div', '', 'subagent-conversations-actions');
   const refreshButton = action('刷新子对话', () => refresh());
   const mainButton = action('返回主对话', () => navigate('subagentConversation.main', '无法返回主对话'));
   const closeButton = action('关闭子对话', () => navigate('subagentConversation.close', '无法关闭子对话'));
   header.append(title, closeButton);
   footer.append(refreshButton, mainButton);
-  page.append(header, status, content, footer);
+  page.append(header, status, content, composer, footer);
   root.append(page);
 
-  let identity = null, readVersion = 0, navigating = false, closed = false;
+  let identity = null, readVersion = 0, draftVersion = 0, navigating = false, closed = false;
+  let activeTaskId = null, canSubmit = false, sending = null, cancelling = null, retryRequest = null;
+  let submitUnavailableReason = '';
   const current = version => !closed && !navigating && readVersion === version;
 
+  function syncControls() {
+    const busy = closed || navigating;
+    input.disabled = busy;
+    sendButton.disabled = busy || Boolean(sending || cancelling || activeTaskId)
+      || !canSubmit || !input.value.trim();
+    stopButton.disabled = busy || Boolean(sending || cancelling) || !activeTaskId;
+    refreshButton.disabled = busy || Boolean(sending || cancelling);
+    mainButton.disabled = closeButton.disabled = busy;
+    sendButton.setAttribute('aria-busy', String(Boolean(sending)));
+    stopButton.setAttribute('aria-busy', String(Boolean(cancelling)));
+    availability.textContent = activeTaskId
+      ? '当前任务正在执行或等待结果，可先编写下一条消息。'
+      : canSubmit ? '' : submitUnavailableReason || '当前子对话暂不能发送新消息。';
+  }
+
+  function applySnapshot(record) {
+    if (!validIdentity(record)) throw Error('子对话记录缺少任务标识');
+    const nextIdentity = JSON.stringify([record.parentTaskId, record.taskId]);
+    if (identity && identity !== nextIdentity) throw Error('子对话记录与当前窗口不匹配');
+    identity = nextIdentity;
+    activeTaskId = text(record.activeTaskId) || null;
+    canSubmit = record.canSubmit === true;
+    submitUnavailableReason = text(record.submitUnavailableReason);
+    title.textContent = (text(record.role) || '子智能体') + ' · ' + record.taskId.slice(-8);
+    title.setAttribute('title', '子任务 ' + record.taskId + '\n父任务 ' + record.parentTaskId);
+    status.setAttribute('role', 'status');
+    status.textContent = record.transcriptAvailable === true
+      ? '以下内容来自已保存的执行记录。'
+      : '仅展示已保存的任务与回答；完整逐轮会话暂不可读。';
+    originalBody.replaceChildren();
+    renderRecord(originalBody, record);
+    renderMessages(messages, record.messages);
+    syncControls();
+  }
+
   async function refresh() {
-    if (closed || navigating) return;
+    if (closed || navigating || sending || cancelling) return;
     const version = ++readVersion;
     status.setAttribute('role', 'status');
     status.textContent = '正在读取子对话…';
     content.setAttribute('aria-busy', 'true');
     try {
       const record = await invoke('subagentConversation.snapshot');
-      if (!current(version)) return;
-      if (!validIdentity(record)) throw Error('子对话记录缺少任务标识');
-      const nextIdentity = JSON.stringify([record.parentTaskId, record.taskId]);
-      if (identity && identity !== nextIdentity) throw Error('子对话记录与当前窗口不匹配');
-      identity = nextIdentity;
-      title.textContent = (text(record.role) || '子智能体') + ' · ' + record.taskId.slice(-8);
-      title.setAttribute('title', '子任务 ' + record.taskId + '\n父任务 ' + record.parentTaskId);
-      status.textContent = record.transcriptAvailable === true
-        ? '以下内容来自已保存的子任务记录。'
-        : '仅展示已保存的任务与回答；完整逐轮会话暂不可读。';
-      content.replaceChildren();
-      renderRecord(content, record);
+      if (current(version)) applySnapshot(record);
     } catch (error) {
       if (current(version)) showError(status, error, '无法读取子对话');
     } finally {
@@ -137,12 +208,85 @@ export function mountSubagentConversationPage(root, invoke) {
     }
   }
 
+  async function submit() {
+    if (closed || navigating || sending || cancelling || activeTaskId || !canSubmit || !input.value.trim()) return;
+    const value = input.value;
+    if (!retryRequest || retryRequest.text !== value) {
+      try {
+        retryRequest = {text: value, requestId: crypto.randomUUID()};
+      } catch (error) {
+        showError(composerStatus, error, '无法创建消息请求标识');
+        return;
+      }
+    }
+    const request = retryRequest;
+    const sentDraftVersion = draftVersion;
+    const version = ++readVersion;
+    sending = request;
+    content.setAttribute('aria-busy', 'false');
+    composerStatus.setAttribute('role', 'status');
+    composerStatus.textContent = '正在提交消息…';
+    syncControls();
+    try {
+      const result = await invoke('subagentConversation.submit', {...request});
+      if (!current(version)) return;
+      let acceptedTaskId;
+      if (validIdentity(result)) {
+        applySnapshot(result);
+        acceptedTaskId = activeTaskId;
+      } else if (text(result?.acceptedTaskId)) {
+        acceptedTaskId = result.acceptedTaskId;
+        activeTaskId = acceptedTaskId;
+        canSubmit = false;
+      } else throw Error('未收到可核实的受理记录，请刷新后使用同一消息重试');
+      if (draftVersion === sentDraftVersion && input.value === value) input.value = '';
+      if (retryRequest === request) retryRequest = null;
+      composerStatus.textContent = '消息已受理' + (acceptedTaskId ? '：' + acceptedTaskId : '')
+        + '。是否完成以消息记录中的执行状态为准。';
+    } catch (error) {
+      if (current(version)) showError(composerStatus, error, '发送失败，草稿已保留');
+    } finally {
+      if (sending === request) sending = null;
+      syncControls();
+    }
+    if (current(version)) await refresh();
+  }
+
+  async function cancel() {
+    if (closed || navigating || sending || cancelling || !activeTaskId) return;
+    const taskId = activeTaskId;
+    const version = ++readVersion;
+    cancelling = taskId;
+    content.setAttribute('aria-busy', 'false');
+    composerStatus.setAttribute('role', 'status');
+    composerStatus.textContent = '正在提交停止请求…';
+    syncControls();
+    try {
+      const result = await invoke('subagentConversation.cancel', {taskId});
+      if (!current(version)) return;
+      if (validIdentity(result)) {
+        applySnapshot(result);
+        composerStatus.textContent = '已读取任务状态；是否停止以最新任务状态为准。';
+      } else if (result?.cancelAccepted === true) {
+        composerStatus.textContent = '停止请求已受理；是否停止以最新任务状态为准。';
+      } else if (result?.cancelAccepted === false) {
+        composerStatus.textContent = '当前任务未接受停止请求，请查看最新状态。';
+      } else throw Error('未收到可核实的停止回执，请刷新任务状态');
+    } catch (error) {
+      if (current(version)) showError(composerStatus, error, '停止请求失败');
+    } finally {
+      if (cancelling === taskId) cancelling = null;
+      syncControls();
+    }
+    if (current(version)) await refresh();
+  }
+
   async function navigate(name, fallback) {
     if (closed || navigating) return;
     navigating = true;
     readVersion++;
     content.setAttribute('aria-busy', 'false');
-    for (const button of [refreshButton, mainButton, closeButton]) button.disabled = true;
+    syncControls();
     try {
       await invoke(name);
       if (name === 'subagentConversation.close') closed = true;
@@ -154,12 +298,33 @@ export function mountSubagentConversationPage(root, invoke) {
       showError(status, error, fallback);
     } finally {
       navigating = false;
-      if (!closed) for (const button of [refreshButton, mainButton, closeButton]) button.disabled = false;
+      syncControls();
     }
   }
 
+  syncControls();
   void refresh();
   return {refresh};
+}
+
+function renderMessages(container, values) {
+  container.replaceChildren();
+  const messages = (Array.isArray(values) ? values : []).filter(message => text(message?.taskId));
+  if (!messages.length) {
+    container.append(node('p', '尚无已保存的追加消息。', 'subagent-conversations-metadata'));
+    return;
+  }
+  for (const message of messages) {
+    const article = node('article', '', 'subagent-conversation-turn');
+    article.setAttribute('data-task-id', message.taskId);
+    article.append(node('h3', '你'), node('p', text(message.userText) || '用户消息未记录',
+      'subagent-conversation-user'), node('h3', '子智能体'));
+    article.append(node('p', text(message.replyText) || '回答尚未记录', 'subagent-conversation-reply'));
+    article.append(node('p', stateLabel(message.state), 'subagent-conversations-metadata'));
+    const error = errorText(message.error);
+    if (error) article.append(node('p', error, 'subagent-conversations-error'));
+    container.append(article);
+  }
 }
 
 function renderRecord(content, record) {

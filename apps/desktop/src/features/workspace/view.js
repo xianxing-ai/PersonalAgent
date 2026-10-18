@@ -1,7 +1,6 @@
 import {mountSessionControls} from '../conversation/session-controls.js';
 import {mountNativeReasoning} from '../conversation/native-reasoning.js';
 import {mountSubagentConversations} from '../conversation/subagent-conversations.js';
-import {mountWorkspaceComposer} from '../conversation/workspace-composer.js';
 import {Orb} from '../orb/orb.js';
 import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
 import {mountConversationRail} from '../conversation/rail.js';
@@ -72,8 +71,9 @@ export function mountWorkspace(root,invoke,escape){
     activationTimer=setTimeout(()=>{activationTimer=0;orbButton.setAttribute('aria-pressed','false');},3200);
   };
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
-  const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
-  const sessionRoot=document.createElement('div');root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,composer.input,invoke,report);composer.beforeSubmit=()=>sessionControls.flush();composer.onAccepted=token=>sessionControls.submitted(token);
+  // Keep existing per-conversation drafts available to session actions without mounting a task composer.
+  const draftInput=document.createElement('textarea');
+  const sessionRoot=document.createElement('div');root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report);
   const nativeReasoning=mountNativeReasoning(preferences,invoke,report);
   const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
@@ -111,7 +111,7 @@ export function mountWorkspace(root,invoke,escape){
       projectPreferenceControls();
     }
     preferences.querySelector('label').hidden=!data.modelChoices?.length;
-    sessionControls.update(data);nativeReasoning.update(data);composer.update(data);
+    sessionControls.update(data);nativeReasoning.update(data);
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
     if(document.hidden)orb.stop();

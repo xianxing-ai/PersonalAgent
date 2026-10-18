@@ -36,7 +36,7 @@ function fixture() {
   const modelChoice = control(''), depth = control(''), fast = control(''), error = {textContent: ''}, label = {}, calls = [];
   const children={hidden:true,innerHTML:''};
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const context = vm.createContext({subagents:{update(items){children.items=items;children.hidden=items.length===0;}},sessionControls:{update(){}},nativeReasoning:{update(){},setBusy(){}},composer:{update(){}},children,escape,stateNames,current: {tasks: []}, updateRevision: 0, preferenceSignature: undefined,
+  const context = vm.createContext({subagents:{update(items){children.items=items;children.hidden=items.length===0;}},sessionControls:{update(){}},nativeReasoning:{update(){},setBusy(){}},children,escape,stateNames,current: {tasks: []}, updateRevision: 0, preferenceSignature: undefined,
     modelChoice, depth, fast, preferences: {querySelector: () => label}, root: {querySelector: () => error},
     Option: function(text, value) {this.text = text; this.value = value;},
     invoke: (name, payload) => new Promise((resolve, reject) => calls.push({name, payload, resolve, reject})),

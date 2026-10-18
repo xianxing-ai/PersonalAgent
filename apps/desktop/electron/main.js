@@ -3,7 +3,7 @@ import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
-import {handleSubagentWindowAction} from './subagent-window-actions.js';
+import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
@@ -131,6 +131,7 @@ let panel;
 let admin;
 let workspace;
 const subagentWindows=new Map();
+let subagentListWindow;
 let adminNavigation = {page: 'settings', revision: 0};
 let tray;
 let poll;
@@ -520,7 +521,7 @@ function snapshot(surface) {
     adminNavigation: {...adminNavigation},
     audioLevel,
     orbStateOverride,
-    subagentTasks:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
+    subagentTasks:surface==='workspace'?runtimeApplication?.listSubagentConversations({limit:6}).items??[]:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
       readTask:taskId=>runtimeApplication.runtime.getTask(taskId)}),
     tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
@@ -619,7 +620,10 @@ function publish() {
   for(const record of subagentWindows.values()){
     if(record.window.isDestroyed())continue;
     let revision='unavailable';
-    try{revision=runtimeApplication?.runtime.getTask(record.binding.taskId)?.updatedAt??revision;}catch{/* Reader reports missing original records without interrupting other windows. */}
+    try{
+      const conversation=runtimeApplication?.readSubagentConversation(record.binding);
+      revision=conversation?JSON.stringify([conversation.updatedAt,conversation.activeTaskId,conversation.messages.map(t=>[t.taskId,t.state,t.replyText])]):revision;
+    }catch{/* Reader reports missing original records without interrupting other windows. */}
     if(revision!==record.revision){record.revision=revision;record.window.webContents.send('desktop:update',{subagentTaskChanged:true});}
   }
 }
@@ -629,7 +633,7 @@ function windowFor(mode, bounds, options = {}) {
     webPreferences: {preload: path.join(dir, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true,
       ...(mode === 'panel' ? {autoplayPolicy: 'no-user-gesture-required'} : {})}, ...options});
   win.setMenuBarVisibility(false);
-  desktopHost.attach(win, mode, {remember:mode!=='subagent'});
+  desktopHost.attach(win, mode, {remember:!['subagent','subagent-list'].includes(mode)});
   win.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
   win.webContents.on('will-navigate', event => {
     event.preventDefault();
@@ -942,9 +946,35 @@ async function openWorkspace() {
   workspace.on('closed', () => { workspace = undefined; });
 }
 
-function readChildConversation(payload){
-  return readSubagentConversation({payload,tasks,readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
+async function readChildConversation(payload){
+  const detail=await readSubagentConversation({payload,tasks:{get:id=>tasks.get(id)??runtimeApplication.runtime.getTask(id)},
+    readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
     readTask:id=>runtimeApplication.runtime.getTask(id)});
+  let conversation;
+  try{conversation=runtimeApplication.readSubagentConversation(payload);}
+  catch(error){
+    if(error?.code!=='UNSUPPORTED_CAPABILITY')throw error;
+    conversation={parentTaskId:detail.parentTaskId,taskId:detail.taskId,messages:[],canSubmit:false,
+      submitUnavailableReason:'此历史子任务缺少可继续执行的绑定，保留原记录供查看'};
+  }
+  const unavailable=!competitionMode||!agentArtsConfig.snapshot().configured?'AgentArts 尚未配置':model.enabled===false?'模型已停用':'';
+  return {...detail,...conversation,canSubmit:conversation.canSubmit&&!unavailable,
+    ...(unavailable?{submitUnavailableReason:unavailable}:{})};
+}
+async function submitChildConversation(binding,payload){
+  if(!competitionMode||!runtimeApplication||!agentArtsConfig.snapshot().configured)throw Error('请先配置 AgentArts');
+  if(model.enabled===false)throw Error('模型已停用');
+  await readChildConversation(binding);
+  installedSkillsHost?.assertTask(binding.taskId);
+  const result=await runtimeApplication.submitSubagentConversationMessage({...binding,...payload});
+  const task=runtimeApplication.runtime.getTask(result.acceptedTaskId);
+  tasks.set(task.taskId,structuredClone(task));taskGoals.set(task.taskId,task.goal);
+  publish();return result;
+}
+async function cancelChildConversation(binding,executionTaskId){
+  await readChildConversation(binding);
+  const result=await runtimeApplication.cancelSubagentConversationTask({...binding,executionTaskId});
+  publish();return result;
 }
 async function openSubagentConversation(payload){
   const detail=await readChildConversation(payload);
@@ -958,6 +988,14 @@ async function openSubagentConversation(payload){
   subagentWindows.set(key,{window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt});
   window.on('closed',()=>subagentWindows.delete(key));
   return {opened:true};
+}
+function openAllSubagentConversations(){
+  if(subagentListWindow&&!subagentListWindow.isDestroyed()){subagentListWindow.show();subagentListWindow.focus();return;}
+  const area=screen.getDisplayMatching(orb.getBounds()).workArea;
+  const width=Math.min(900,area.width-32),height=Math.min(760,area.height-32);
+  subagentListWindow=windowFor('subagent-list',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
+    {title:'PersonalAgent · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+  subagentListWindow.on('closed',()=>{subagentListWindow=undefined;});
 }
 
 function toggleModel(input) {
@@ -1637,6 +1675,8 @@ async function initializeRuntime() {
           readConversationContext:readDesktopConversationContext,
           beforeCoordinationSend:(request,scope)=>{
             cloudRequestFailureNotice = '';
+            const conversationOrigin=runtimeApplication.readSubagentConversationOrigin?.(request.taskId);
+            if(conversationOrigin)installedSkillsHost?.assertTask(conversationOrigin.taskId);
             installedSkillsHost?.assertTask(request.taskId);
             const parent=runtimeApplication.readDelegatedUserTaskParent?.(request.taskId);
             const conversationId=parent?.conversationId??runtimeApplication.runtime.getTask(request.taskId).conversationId;
@@ -2181,8 +2221,12 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
 });
 
 async function action(event, name, payload) {
+  if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow.webContents===event.sender)
+    return handleSubagentListAction({event,name,payload,window:subagentListWindow,
+      list:input=>runtimeApplication.listSubagentConversations(input),open:openSubagentConversation});
   const child=[...subagentWindows.values()].find(record=>record.window.webContents===event.sender);
-  if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:readChildConversation,openMain:()=>openPanel(true)});
+  if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:readChildConversation,
+    openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
@@ -2236,6 +2280,10 @@ async function action(event, name, payload) {
   if(name==='task.openSubagentConversation'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
     return openSubagentConversation(payload);
+  }
+  if(name==='subagentConversations.openAll'){
+    if(sender!==workspace||payload!==undefined)throw Error('请从工作区打开全部子智能体');
+    openAllSubagentConversations();return;
   }
   if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
@@ -2843,6 +2891,7 @@ async function action(event, name, payload) {
   }
   if (name === 'task.submit' || name==='skill.run') {
     const skillRun=name==='skill.run';
+    if(!skillRun&&sender===workspace)throw Error('请在主面板协调，或进入具体子智能体对话发送消息');
     if(skillRun ? sender!==admin || !competitionMode || !installedSkillsHost : sender !== panel && sender !== workspace) throw Error('请从可信界面提交任务');
     const text=typeof payload==='string'?payload:payload?.text;
     if(!skillRun&&payload&&typeof payload==='object'&&Object.keys(payload).some(k=>!['text','conversationId'].includes(k)))throw Error('任务提交格式无效');

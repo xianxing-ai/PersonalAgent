@@ -1,9 +1,11 @@
-.subagent-conversations[hidden]{display:none!important}
-.subagent-conversations{margin:8px 0;min-width:0;max-width:100%;color:var(--fg)}
+.subagent-conversations[hidden],.subagent-conversations-list[hidden]{display:none!important}
+.subagent-conversations{position:relative;box-sizing:border-box;margin:8px 0;min-width:0;max-width:100%;min-height:26px;padding-right:42px;color:var(--fg)}
 .subagent-conversations-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .subagent-conversations button,.subagent-conversation-page button{font:inherit;color:inherit;cursor:pointer}
 .subagent-conversations-entry{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;height:34px;box-sizing:border-box;padding:6px 8px;border:1px solid var(--glass-border);border-radius:10px;background:var(--surface-2);font-size:12px;text-align:left;white-space:nowrap;overflow:hidden}
 .subagent-conversations-entry:hover{background:var(--composer-bg);border-color:var(--fg-2)}
+.subagent-conversations .subagent-conversations-more{position:absolute;top:1px;right:0;padding:5px 3px;border:0;background:transparent;color:var(--fg-2);font-size:11px;line-height:18px}
+.subagent-conversations .subagent-conversations-more:hover{color:var(--fg)}
 .subagent-conversations-role{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .subagent-conversations-id{flex:0 0 auto;color:var(--fg-2);font-size:11px}
 .subagent-conversations-state{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fg-2);font-size:11px}
@@ -26,6 +28,19 @@
 .subagent-conversations-actions{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:1px solid var(--glass-border)}
 .subagent-conversation-page button{padding:7px 10px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);font-size:12px}
 .subagent-conversation-page-header button{flex:0 0 auto}
+.subagent-conversation-original{padding:10px 12px;border:1px solid var(--glass-border);border-radius:10px;background:var(--surface-2)}
+.subagent-conversation-original summary{cursor:pointer;font-size:12px;color:var(--fg-2)}
+.subagent-conversation-original[open] summary{margin-bottom:10px}
+.subagent-conversation-turn{padding:12px 0;border-bottom:1px solid var(--glass-border)}
+.subagent-conversation-turn h3{margin:8px 0 4px;font-size:11px;color:var(--fg-2);font-weight:500}
+.subagent-conversation-user,.subagent-conversation-reply{white-space:pre-wrap;overflow-wrap:anywhere}
+.subagent-conversation-user{padding:9px 11px;border-radius:10px;background:var(--surface-2)}
+.subagent-conversation-composer{flex:0 0 auto;min-width:0;padding:10px;border:1px solid var(--glass-border);border-radius:12px;background:var(--composer-bg)}
+.subagent-conversation-composer textarea{display:block;box-sizing:border-box;width:100%;min-height:64px;max-height:22vh;resize:vertical;padding:4px;border:0;background:transparent;color:var(--fg);font:inherit;font-size:13px;line-height:1.6}
+.subagent-conversation-composer textarea::placeholder{color:var(--fg-placeholder)}
+.subagent-conversation-compose-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.subagent-conversation-compose-actions button:last-child{background:var(--fg);color:var(--bg)}
+.subagent-conversation-composer .subagent-conversations-notice{max-height:70px;overflow:auto;font-size:11px}
 .subagent-conversations button:focus-visible,.subagent-conversation-page button:focus-visible{outline:2px solid var(--fg-2);outline-offset:2px}
 .subagent-conversations button:disabled,.subagent-conversation-page button:disabled{opacity:.5;cursor:default}
 @media(max-width:480px){.subagent-conversation-page{padding:12px;gap:10px}.subagent-conversation-page h1{font-size:15px}.subagent-conversations-entry{gap:3px;padding:5px}}
