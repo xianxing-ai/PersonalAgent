@@ -86,7 +86,7 @@ export function mountWorkspace(root,invoke,escape){
     if(button&&!button.disabled)button.focus({preventScroll:true});
   };
   root.querySelectorAll('[data-open-settings]').forEach(button=>button.onclick=()=>invoke('admin.open',{page:button.dataset.openSettings}).catch(report));
-  function syncAuxiliaryPanels(){
+  function syncAuxiliaryPanels(restoreTaskFocus=true){
     const showConnectors=connectorsRequested&&!inspected;
     const inspector=root.querySelector('#conversation-inspector');
     const restoreFocus=!inspected&&inspector.contains(document.activeElement);
@@ -94,7 +94,7 @@ export function mountWorkspace(root,invoke,escape){
     root.querySelector('#connectors-toggle').setAttribute('aria-expanded',String(showConnectors));
     inspector.hidden=!inspected;
     if(restoreFocus){
-      const trigger=[...conversation.querySelectorAll('[data-view]')].find(button=>button.dataset.view===inspector.dataset.taskId);
+      const trigger=restoreTaskFocus?[...conversation.querySelectorAll('[data-view]')].find(button=>button.dataset.view===inspector.dataset.taskId):null;
       (trigger??root.querySelector('#connectors-toggle')).focus({preventScroll:true});
     }
   }
@@ -118,7 +118,7 @@ export function mountWorkspace(root,invoke,escape){
   }
   function update(data){
     updateRevision++;
-    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['model','thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;syncAuxiliaryPanels();}
+    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['model','thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;syncAuxiliaryPanels(false);}
     current=data;current.tasks ||= [];
     children.hidden=!data.subagentTasks?.length;
     children.innerHTML='<h3>子任务派发</h3>'+(data.subagentTasks??[]).map(t=>'<article><strong>'+escape(t.role??'子任务')+'</strong><p>父任务 '+escape(t.parentTaskId)+' · 子任务 '+escape(t.taskId)+'</p><p>'+escape(t.modelId??'未记录模型')+' · '+escape(t.reasoningEffort??'供应商默认')+' · '+escape(stateNames[t.state]??t.state)+'</p><p>'+escape(t.resultSummary??t.error?.message??t.error??'')+'</p><p>Evidence '+escape((t.evidenceRefs??[]).join(', '))+'</p></article>').join('');
