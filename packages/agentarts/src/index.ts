@@ -362,9 +362,13 @@ export class OwnedAgentOrchestrator {
         const input=record(data);
         if(Array.isArray(input.availableTools) && input.availableTools.some(tool=>tool && typeof tool==='object' && (tool as {name?:unknown}).name==='subagent.dispatch')) {
           const catalog=this.options.executionModels.catalog();
-          modelData={...input,executionModelCatalog:{revision:catalog.revision,defaultModelId:catalog.defaultModelId,
-            models:catalog.models.filter(model=>model.type==='text' && model.availability!=='unavailable')
-              .map(model=>({id:model.id,reasoningEfforts:model.reasoningEfforts}))}};
+          // Local usability guard: an unread/absent catalog must degrade to "no catalog hint"
+          // instead of crashing the whole panel snapshot chain on a null dereference.
+          if (catalog && Array.isArray(catalog.models) && catalog.defaultModelId) {
+            modelData={...input,executionModelCatalog:{revision:catalog.revision,defaultModelId:catalog.defaultModelId,
+              models:catalog.models.filter(model=>model.type==='text' && model.availability!=='unavailable')
+                .map(model=>({id:model.id,reasoningEfforts:model.reasoningEfforts}))}};
+          }
         }
       }
       const gatewayStarted=performance.now();
