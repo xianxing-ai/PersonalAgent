@@ -306,7 +306,9 @@ export class NotificationService {
       target.state = 'delivered';
       target.deliveredAt = this.isoNow();
       for(const entry of state.interruption?.feed??[])if(target.itemRefs.includes(entry.id))entry.deliveredAt??=target.deliveredAt;
-      this.writeState({...state, batches: trimBatches(state.batches)},state);
+      const batches=state.batches.filter(batch=>batch!==target);
+      batches.push(target);
+      this.writeState({...state,batches:trimBatches(batches)},state);
     }
     return structuredClone(target);
   }
@@ -589,12 +591,13 @@ export class NotificationService {
   }
 }
 
-/** 已确认批次保留最近 DELIVERED_BATCH_LIMIT 条作幂等记录；未确认批次永不淘汰。 */
+/** 按确认时间保留最近 DELIVERED_BATCH_LIMIT 条；同毫秒沿用持久顺序，未确认批次永不淘汰。 */
 function trimBatches(batches: NotificationBatch[]): NotificationBatch[] {
   const unacknowledged = batches.filter(batch => batch.state === 'ready_for_delivery');
-  const delivered = batches.filter(batch => batch.state === 'delivered').sort((left, right) =>
-    left.decidedAt < right.decidedAt ? -1 : left.decidedAt > right.decidedAt ? 1
-      : left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+  const delivered = batches.filter(batch => batch.state === 'delivered').map((batch,index)=>({batch,index})).sort((left,right)=>{
+    const leftAt=left.batch.deliveredAt??left.batch.decidedAt,rightAt=right.batch.deliveredAt??right.batch.decidedAt;
+    return leftAt<rightAt?-1:leftAt>rightAt?1:left.index-right.index;
+  }).map(item=>item.batch);
   return [...unacknowledged, ...delivered.slice(-DELIVERED_BATCH_LIMIT)];
 }
 
