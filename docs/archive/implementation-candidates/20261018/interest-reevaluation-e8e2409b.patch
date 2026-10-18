@@ -1,0 +1,345 @@
+commit e8e2409ba6ce7fc27a5bea9795990de3551ae1d1
+parent 02dcbca30801d550dbf60983c08a3052e8d5d4b6
+Subject: feat(cognition): deduplicate interest reviews before inference
+
+
+diff --git a/docs/modules/MVP-TWIN-B-INTEREST-RECHECK-01.md b/docs/modules/MVP-TWIN-B-INTEREST-RECHECK-01.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa68c4f07d306888a3ec65a463457930714df174
+--- /dev/null
++++ b/docs/modules/MVP-TWIN-B-INTEREST-RECHECK-01.md
+@@ -0,0 +1,43 @@
++# MVP-TWIN-B-INTEREST-RECHECK-01：兴趣选择前的去重与时效重评
++
++- Profile：`huawei_ict_agentarts`；MOD-28；负责人 zemeng；状态：`review`。
++- 所有权：`packages/cognition/**` 与本文件；继续复用 #191 的兴趣合法选项。
++- 非作者评审者：goo122；主宿主消费由 root 协调。
++
++同一组兴趣证据若在每次轮询时直接调用 Laya，会重复推理，也容易把轮询当成新的用户兴趣。
++本包在模型调用之前生成稳定触发身份，复用既有 `buildInterestOptions` 的条件与权限边界。
++没有建立新的任务库、计时器、订阅或授权封装。
++
++相同 topic、证据、来源与 scope 绑定在有效时间范围内复用原工作键；输入语义变化或时间
++边界到来才重新评估。checkpoint 是当前宿主的已消费触发记录，不是授权或模型成功证明。
++来源回执、用户撤销和 scope 修订始终来自可信宿主，Laya 不能自行填写它们来获取权限。
++
++```ts
++const trigger = planInterestReevaluation({namespace, input, checkpoint});
++if (trigger.duplicate) return readExistingRuntimeTask(trigger.workKey);
++// 调用方注入的既有 Runtime 组合入口：持久记录 input，再在任务内调用兴趣 chooser。
++const task = await submitDecision({idempotencyKey: trigger.workKey, input});
++runtime.saveCheckpoint(sourceTaskId, checkpointKey, trigger.checkpoint);
++return task;
++```
++
++示例中的 read/submit 是宿主注入点，不是新增已交付的 Runtime 方法。输出 `built` 复用
++既有合法选项，`nextEvaluationAt` 只是语义时效边界，不会启动定时器。未来证据在其发生时生效；
++证据/显式开启在 maxAge 相等时仍有效，超过后失效；scope 和来源核验在截止点立即失效。
++轮询不会改写旧 `policyExpiresAt`。新一轮尚未写入 checkpoint 时，多次计算仍使用相同新工作键。
++
++宿主先把准确原输入与工作键通过既有 Runtime 持久提交，之后才保存去重 checkpoint。
++重启时先读回该 checkpoint；若重复则按原工作键读取原任务状态，不再次调用 Laya。
++如果崩溃发生在提交后、保存前，同一原输入和旧 checkpoint 会生成相同工作键，
++Runtime 按该键恢复原任务。相同来源的接收/提交/checkpoint 写入由既有宿主串行处理。
++
++重复不表示选择完成或工具执行完成。失败、取消、待授权和待核实仍按原 Runtime 状态处理；
++该函数不会重开终态任务，也不会因为模型暂时离线而跳过 Policy。
++真正执行或交给 AgentArts 前，仍需最新来源、scope、撤销以及出云投影的宿主复核。
++
++实际兴趣证据来源、当前 scope 读回与 Runtime 任务恢复为生产接入依赖；本包不读真实
++邮箱或私人笔记，不调用真实 Laya/AgentArts，不提升任何 frozen/真实验收状态。
++
++验证：cognition 构建/类型检查及专属 6 个核心用例通过，覆盖重排、JSON 重启、崩溃重放、
++撤销、来源修订、future 证据与各时间边界；未运行全仓或真实模型。当前只作本地小提交，
++后续优先推进 Runtime 邮件消费接线；本函数仍需主宿主接入，不能替代生产闭环验收。
+diff --git a/packages/cognition/README.md b/packages/cognition/README.md
+index dc89cd488abddeeedc5ebc2d20567d1e94a5a0a2..7acadb5f3bc75e79dec9236b760d99ce966d9b5f 100644
+--- a/packages/cognition/README.md
++++ b/packages/cognition/README.md
+@@ -45,0 +46,7 @@ export content. See [`MVP-TWIN-B-TRIAGE-01`](../../docs/modules/MVP-TWIN-B-TRIAG
++`planInterestReevaluation({namespace, input, checkpoint})` produces a stable
++pre-inference trigger key for the existing interest options. Repeated polls
++reuse the original Runtime task and do not extend its watch window. Source,
++scope and evidence changes or semantic expiry boundaries require a new review;
++the helper neither schedules nor authorizes it. See
++[`MVP-TWIN-B-INTEREST-RECHECK-01`](../../docs/modules/MVP-TWIN-B-INTEREST-RECHECK-01.md).
++
+diff --git a/packages/cognition/src/index.ts b/packages/cognition/src/index.ts
+index eae5f1382914cdf4eb1183be216a3f4da208dbca..dd02a7328aad48c4bcd1210bfcf8f70d951de1a0 100644
+--- a/packages/cognition/src/index.ts
++++ b/packages/cognition/src/index.ts
+@@ -9,0 +10,2 @@ export type {KnowledgeDependency, KnowledgeReevaluationCheckpoint, KnowledgeReev
++export {planInterestReevaluation} from './interest-reevaluation.js';
++export type {InterestReevaluationCheckpoint, InterestReevaluationPlan} from './interest-reevaluation.js';
+diff --git a/packages/cognition/src/interest-reevaluation.ts b/packages/cognition/src/interest-reevaluation.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..5b7a29d9c2628f98636f32bcef12b37dcb9ba777
+--- /dev/null
++++ b/packages/cognition/src/interest-reevaluation.ts
+@@ -0,0 +1,140 @@
++import {createHash} from 'node:crypto';
++import {buildInterestOptions} from './interest-options.js';
++import type {InterestOptions} from './interest-options.js';
++import type {InterestEvidence, InterestEvidenceRef, InterestPolicyInput} from './interest-policy.js';
++
++/** Save only after the existing Runtime has durably accepted the decision task under workKey. */
++export interface InterestReevaluationCheckpoint {
++  readonly version: 1;
++  readonly namespace: string;
++  readonly topicId: string;
++  readonly fingerprint: string;
++  readonly workKey: string;
++  readonly evaluatedAt: string;
++  readonly nextEvaluationAt?: string;
++  readonly policyExpiresAt?: string;
++}
++export interface InterestReevaluationPlan {
++  readonly built: InterestOptions;
++  /** An idempotency identity for a host-owned Runtime decision task, not a model decision. */
++  readonly workKey: string;
++  /** Read back the existing Runtime task; this does not assert that it completed. */
++  readonly duplicate: boolean;
++  readonly checkpoint: InterestReevaluationCheckpoint;
++}
++
++const nonempty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
++function instant(value: string): number {
++  const parsed = Date.parse(value);
++  if (!Number.isFinite(parsed)) throw Error('Invalid interest reevaluation timestamp');
++  return parsed;
++}
++const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
++const evidenceKey = (e: InterestEvidence): string => JSON.stringify([
++  e.id, e.topicId, e.sourceId, e.sourceRevision, instant(e.occurredAt), e.interactionId,
++  e.kind, e.match, e.relatedEvidenceId ?? null]);
++const refKey = (e: InterestEvidenceRef): string => JSON.stringify([e.id, e.topicId, e.sourceId, e.sourceRevision]);
++const sortBy = <T>(values: readonly T[], key: (value: T) => string): T[] =>
++  [...values].sort((a, b) => key(a).localeCompare(key(b)));
++function uniqueById<T extends {readonly id: string}>(values: readonly T[], key: (value: T) => string): T[] {
++  const seen = new Map<string, string>();
++  const unique: T[] = [];
++  for (const value of values) {
++    const encoded = key(value), prior = seen.get(value.id);
++    if (prior !== undefined && prior !== encoded) throw Error('Conflicting interest evidence identity');
++    if (prior === undefined) { seen.set(value.id, encoded); unique.push(value); }
++  }
++  return sortBy(unique, key);
++}
++function checkpointAt(value: InterestReevaluationCheckpoint, namespace: string, topicId: string, at: number): void {
++  if (!value || typeof value !== 'object' || Array.isArray(value)
++    || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
++    || Reflect.ownKeys(value).some(key => typeof key !== 'string' || ![
++      'version', 'namespace', 'topicId', 'fingerprint', 'workKey', 'evaluatedAt',
++      'nextEvaluationAt', 'policyExpiresAt'].includes(key))
++    || value.version !== 1 || value.namespace !== namespace || value.topicId !== topicId
++    || !/^[a-f0-9]{64}$/.test(value.fingerprint) || !/^[a-f0-9]{64}$/.test(value.workKey)
++    || !nonempty(value.evaluatedAt)) throw Error('Invalid interest reevaluation checkpoint');
++  const previous = instant(value.evaluatedAt);
++  if (at < previous || (value.nextEvaluationAt !== undefined
++    && (!nonempty(value.nextEvaluationAt) || instant(value.nextEvaluationAt) <= previous))
++    || (value.policyExpiresAt !== undefined && (!nonempty(value.policyExpiresAt)
++      || instant(value.policyExpiresAt) < previous))) throw Error('Invalid interest reevaluation checkpoint time');
++}
++function nextBoundary(input: InterestPolicyInput, built: InterestOptions, at: number): string | undefined {
++  const future: number[] = [];
++  const add = (time: number) => { if (time > at) future.push(time); };
++  for (const e of input.evidence) {
++    if (e.topicId !== input.topicId || e.match === 'keyword') continue;
++    const occurred = instant(e.occurredAt);
++    add(occurred);
++    // Policy treats evidence as current at exactly maxAgeMs, then stale one millisecond later.
++    add(occurred + input.evidenceMaxAgeMs + 1);
++  }
++  if (input.explicitEnable?.topicId === input.topicId) {
++    const occurred = instant(input.explicitEnable.occurredAt);
++    add(occurred);
++    add(occurred + input.evidenceMaxAgeMs + 1);
++  }
++  add(instant(input.scope.expiresAt));
++  if (input.source) add(instant(input.source.verificationExpiresAt));
++  if (built.policy.expiresAt) add(instant(built.policy.expiresAt));
++  return future.length ? new Date(Math.min(...future)).toISOString() : undefined;
++}
++
++/** Pure trigger planning. Source heads and scope authority must be read back by the trusted host. */
++export function planInterestReevaluation(request: {
++  readonly namespace: string;
++  readonly input: InterestPolicyInput;
++  readonly checkpoint?: InterestReevaluationCheckpoint;
++}): InterestReevaluationPlan {
++  if (!request || typeof request !== 'object' || Array.isArray(request)
++    || ![Object.prototype, null].includes(Object.getPrototypeOf(request))
++    || Reflect.ownKeys(request).some(key => typeof key !== 'string'
++      || !['namespace', 'input', 'checkpoint'].includes(key))
++    || !nonempty(request.namespace)) throw Error('Invalid interest reevaluation request');
++  const input = structuredClone(request.input);
++  buildInterestOptions(input); // Reuse the policy's strict public input validation.
++  const at = instant(input.at);
++  const evidence = uniqueById(input.evidence, evidenceKey);
++  const classification = input.classification && {...input.classification,
++    evidence: uniqueById(input.classification.evidence, refKey)};
++  const normalized: InterestPolicyInput = {...input, evidence,
++    ...(classification ? {classification} : {})};
++  const built = buildInterestOptions(normalized);
++  if (request.checkpoint) checkpointAt(request.checkpoint, request.namespace, input.topicId, at);
++  const effective = evidence.filter(e => e.topicId === input.topicId && e.match !== 'keyword'
++    && instant(e.occurredAt) <= at && at - instant(e.occurredAt) <= input.evidenceMaxAgeMs);
++  const pending = evidence.filter(e => e.topicId === input.topicId && e.match !== 'keyword'
++    && instant(e.occurredAt) > at);
++  const fingerprint = digest({topicId: input.topicId, evidenceMaxAgeMs: input.evidenceMaxAgeMs,
++    watchDurationMs: input.watchDurationMs, evidence: effective, pendingEvidence: pending,
++    source: input.source ?? null,
++    scope: input.scope, previous: input.previous ?? null, tombstone: input.tombstone ?? null,
++    explicitEnable: input.explicitEnable ?? null, classification: classification ?? null,
++    policy: {state: built.policy.state, reason: built.policy.reason,
++      evidence: sortBy(built.policy.evidence, refKey), source: built.policy.source ?? null}});
++  const prior = request.checkpoint;
++  const due = prior?.nextEvaluationAt !== undefined && at >= instant(prior.nextEvaluationAt);
++  if (prior?.fingerprint === fingerprint && !due) {
++    // Preserve the original validity window; a harmless poll cannot renew it.
++    const expiresAt = prior.policyExpiresAt;
++    const unchanged = expiresAt && built.policy.expiresAt
++      ? {...built, policy: {...built.policy, expiresAt}, options: built.options.map(option =>
++        option.id === 'track_public' && option.source
++          ? {...option, source: {...option.source, validUntil: expiresAt}} : option)} : built;
++    return structuredClone({built: unchanged, workKey: prior.workKey, duplicate: true,
++      checkpoint: prior});
++  }
++  // The prior committed identity forms an epoch. A retry with the same prior checkpoint
++  // produces the same key even if the new policy expires relative to the current clock.
++  const workKey = digest({kind: 'interest-reevaluation-v1', namespace: request.namespace,
++    topicId: input.topicId, fingerprint, prior: prior?.workKey ?? null,
++    boundary: due ? prior?.nextEvaluationAt : null});
++  const nextEvaluationAt = nextBoundary(normalized, built, at);
++  const checkpoint: InterestReevaluationCheckpoint = {version: 1, namespace: request.namespace,
++    topicId: input.topicId, fingerprint, workKey, evaluatedAt: input.at,
++    ...(nextEvaluationAt ? {nextEvaluationAt} : {}),
++    ...(built.policy.expiresAt ? {policyExpiresAt: built.policy.expiresAt} : {})};
++  return structuredClone({built, workKey, duplicate: false, checkpoint});
++}
+diff --git a/packages/cognition/test/interest-reevaluation.test.mjs b/packages/cognition/test/interest-reevaluation.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a4abae4836003d711f2a0977e9b0d1759a9c6e65
+--- /dev/null
++++ b/packages/cognition/test/interest-reevaluation.test.mjs
+@@ -0,0 +1,120 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {planInterestReevaluation} from '../dist/interest-reevaluation.js';
++
++const minute = 60_000;
++const base = Date.parse('2026-01-01T00:00:00.000Z');
++const iso = value => new Date(value).toISOString();
++const evidence = (id, kind, occurredAt, extra = {}) => ({id, topicId: 'topic',
++  sourceId: 'conversation', sourceRevision: 'r1', occurredAt: iso(occurredAt),
++  interactionId: id, kind, match: 'semantic', ...extra});
++function fixture(at = base) {
++  return {topicId: 'topic', at: iso(at), evidenceMaxAgeMs: 120 * minute,
++    watchDurationMs: 30 * minute,
++    evidence: [evidence('q', 'question', base - minute),
++      evidence('f', 'followup', base, {relatedEvidenceId: 'q'})],
++    source: {id: 'public-source', revision: 's1', visibility: 'public', risk: 'low',
++      transportVerified: true, verificationExpiresAt: iso(base + 180 * minute)},
++    scope: {state: 'granted', id: 'scope', revision: 1,
++      publicLowRiskTracking: true, expiresAt: iso(base + 180 * minute)}};
++}
++const plan = (input, checkpoint) => planInterestReevaluation({namespace: 'user-A', input, checkpoint});
++
++test('reordered and identical evidence, polling, and JSON restart reuse one bounded identity', () => {
++  const input = fixture();
++  const first = plan(input);
++  assert.equal(first.built.policy.state, 'watch_public');
++  assert.equal(first.duplicate, false);
++  assert.equal(first.checkpoint.nextEvaluationAt, iso(base + 30 * minute));
++  const resumed = plan({...input, at: iso(base + 5 * minute),
++    evidence: [input.evidence[1], input.evidence[0], input.evidence[0]]},
++  JSON.parse(JSON.stringify(first.checkpoint)));
++  assert.equal(resumed.duplicate, true);
++  assert.equal(resumed.workKey, first.workKey);
++  assert.deepEqual(resumed.checkpoint, first.checkpoint);
++  assert.equal(resumed.built.policy.expiresAt, first.built.policy.expiresAt);
++  assert.equal(resumed.built.options[0].source.validUntil, first.built.options[0].source.validUntil);
++  assert.throws(() => plan({...input, evidence: [input.evidence[0],
++    {...input.evidence[0], interactionId: 'different'}]}), /Conflicting/);
++});
++
++test('watch window boundary creates a stable new key until its Runtime task is checkpointed', () => {
++  const input = fixture();
++  const first = plan(input);
++  const atBoundary = plan({...input, at: iso(base + 30 * minute)}, first.checkpoint);
++  assert.equal(atBoundary.duplicate, false);
++  assert.notEqual(atBoundary.workKey, first.workKey);
++  assert.equal(atBoundary.checkpoint.nextEvaluationAt, iso(base + 60 * minute));
++  const crashReplay = plan({...input, at: iso(base + 30 * minute + 1000)}, first.checkpoint);
++  assert.equal(crashReplay.workKey, atBoundary.workKey);
++  assert.equal(crashReplay.duplicate, false);
++  assert.equal(plan({...input, at: iso(base + 31 * minute)}, atBoundary.checkpoint).duplicate, true);
++});
++
++test('new future evidence advances a previously committed watch boundary', () => {
++  const input = fixture();
++  const first = plan(input);
++  assert.equal(first.checkpoint.nextEvaluationAt, iso(base + 30 * minute));
++  const future = evidence('new-bookmark', 'bookmark', base + 10 * minute);
++  const scheduled = plan({...input, at: iso(base + minute),
++    evidence: [...input.evidence, future]}, first.checkpoint);
++  assert.equal(scheduled.duplicate, false);
++  assert.notEqual(scheduled.workKey, first.workKey);
++  assert.equal(scheduled.checkpoint.nextEvaluationAt, future.occurredAt);
++  const activated = plan({...input, at: future.occurredAt,
++    evidence: [...input.evidence, future]}, scheduled.checkpoint);
++  assert.equal(activated.duplicate, false);
++  assert.notEqual(activated.workKey, scheduled.workKey);
++});
++
++test('scope revocation, source revision, and configuration changes require distinct reviews', () => {
++  const input = fixture();
++  const first = plan(input);
++  const revoked = plan({...input, scope: {...input.scope, state: 'revoked', revision: 2}}, first.checkpoint);
++  assert.notEqual(revoked.workKey, first.workKey);
++  assert.deepEqual(revoked.built.options.map(option => option.id), ['stop_tracking', 'keep_revoked']);
++  const source = plan({...input, source: {...input.source, revision: 's2'}}, first.checkpoint);
++  assert.notEqual(source.workKey, first.workKey);
++  const configured = plan({...input, watchDurationMs: 20 * minute}, first.checkpoint);
++  assert.notEqual(configured.workKey, first.workKey);
++  assert.throws(() => plan(input, {...first.checkpoint, namespace: 'user-B'}), /checkpoint/);
++  assert.throws(() => plan({...input, at: iso(base - 1)}, first.checkpoint), /checkpoint time/);
++});
++
++test('future evidence activates at its timestamp and decays one millisecond after max age', () => {
++  const input = fixture();
++  const future = evidence('future', 'bookmark', base + 10 * minute);
++  const start = plan({...input, evidence: [future], watchDurationMs: 180 * minute});
++  assert.equal(start.checkpoint.nextEvaluationAt, future.occurredAt);
++  const activated = plan({...input, at: future.occurredAt, evidence: [future],
++    watchDurationMs: 180 * minute}, start.checkpoint);
++  assert.notEqual(activated.workKey, start.workKey);
++  const oldest = evidence('old', 'question', base - 120 * minute);
++  const exact = plan({...input, evidence: [oldest], watchDurationMs: 180 * minute});
++  assert.equal(exact.built.policy.evidence.length, 1);
++  assert.equal(exact.checkpoint.nextEvaluationAt, iso(base + 1));
++  const stale = plan({...input, at: iso(base + 1), evidence: [oldest],
++    watchDurationMs: 180 * minute}, exact.checkpoint);
++  assert.equal(stale.built.policy.evidence.length, 0);
++  assert.notEqual(stale.workKey, exact.workKey);
++});
++
++test('source, scope and explicit enable validity boundaries do not extend through duplicate polls', () => {
++  const input = fixture();
++  const near = {...input, source: {...input.source, verificationExpiresAt: iso(base + minute)},
++    scope: {...input.scope, expiresAt: iso(base + 2 * minute)}};
++  const first = plan(near);
++  assert.equal(first.checkpoint.nextEvaluationAt, iso(base + minute));
++  assert.equal(plan({...near, at: iso(base + minute - 1)}, first.checkpoint).duplicate, true);
++  const expired = plan({...near, at: iso(base + minute)}, first.checkpoint);
++  assert.equal(expired.built.policy.reason, 'public_source_not_verified');
++  assert.notEqual(expired.workKey, first.workKey);
++  const enable = {...input, evidence: [], explicitEnable: {id: 'enable', topicId: 'topic',
++    occurredAt: iso(base)}};
++  const enabled = plan(enable);
++  assert.equal(enabled.built.policy.state, 'watch_public');
++  const stillValid = plan({...enable, at: iso(base + 120 * minute)}, enabled.checkpoint);
++  assert.equal(stillValid.built.policy.reason, 'explicit_user_enable');
++  const elapsed = plan({...enable, at: iso(base + 120 * minute + 1)}, stillValid.checkpoint);
++  assert.notEqual(elapsed.built.policy.reason, 'explicit_user_enable');
++});
