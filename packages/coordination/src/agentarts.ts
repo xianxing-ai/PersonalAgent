@@ -4,8 +4,9 @@ import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult,parseExecutionModelSelection} from './index.js';
 import type {ExecutionModelSelection} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError, AgentArtsWebSocketTransport, createAgentArtsUnknownReceipt} from './agentarts-websocket.js';
+import {AgentArtsRemoteInvocationError, AgentArtsResultUnknownError, AgentArtsTerminalError, AgentArtsWebSocketTransport, AgentArtsWebSocketUpgradeError, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
 import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
+import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 
 /** Trusted host observer of the actual request identity about to be sent.
  * Fired once per send attempt for HTTPS and WSS transports, synchronously
@@ -81,9 +82,10 @@ export type AgentArtsSchemaCategory =
 export interface AgentArtsFailureDiagnostic {
   readonly stage: AgentArtsDiagnosticStage;
   readonly code: 'INVALID_ARGUMENT' | 'UNSUPPORTED_CAPABILITY' | 'UNAUTHORIZED'
-    | 'EXTERNAL_FAILURE' | 'CANCELLED' | 'TIMEOUT';
+    | 'EXTERNAL_FAILURE' | 'CANCELLED' | 'TIMEOUT' | 'RATE_LIMITED';
   readonly requestId?: string;
   readonly httpStatus?: number;
+  readonly transportPhase?: 'wss_upgrade';
   readonly contentType?: 'json' | 'sse' | 'missing' | 'other';
   readonly terminalEvents?: Readonly<{taskEnd: boolean; end: boolean}>;
   readonly schemaCategory?: AgentArtsSchemaCategory;
@@ -147,6 +149,7 @@ function external(message: string, retryable = false): never {
 
 function diagnosticCode(error: unknown): AgentArtsFailureDiagnostic['code'] {
   try {
+    if (error instanceof AgentArtsRemoteInvocationError) return error.remoteCode;
     if (error instanceof ProtocolError && [
       'INVALID_ARGUMENT', 'UNSUPPORTED_CAPABILITY', 'UNAUTHORIZED',
       'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT',
@@ -1108,6 +1111,50 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   /** Releases reusable sessions. It never resumes or retries an in-flight invocation. */
   close(): void { this.closed = true; this.websocket?.close(); }
 
+  /** Read-only provisional transport lookup. Returned events never authorize execution or task completion. */
+  async queryStatus(receipt: AgentArtsUnknownReceipt, controls: {deadline: string; signal: AbortSignal}):
+    Promise<Extract<AgentArtsTransportFrame, {type: 'status'; serverInstanceId: string}>> {
+    if (this.closed || this.websocket === undefined) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts WSS status query is unavailable');
+    }
+    const saved = snapshotAgentArtsUnknownReceipt(receipt);
+    let signal: AbortSignal, deadlineMs: number;
+    try {
+      signal = controls.signal;
+      const deadline = controls.deadline;
+      deadlineMs = Date.parse(deadline);
+      if (!(signal instanceof AbortSignal) || typeof deadline !== 'string' || !ISO_DEADLINE.test(deadline)
+        || !Number.isFinite(deadlineMs)
+        || deadline.replace(/\.000Z$/, 'Z') !== new Date(deadlineMs).toISOString().replace(/\.000Z$/, 'Z')) {
+        throw Error();
+      }
+    } catch { invalid('Invalid AgentArts status query control'); }
+    const combined = makeCombinedSignal(signal, deadlineMs);
+    try {
+      const initialAbort = currentAbortError(combined);
+      if (initialAbort) throw initialAbort;
+      let authorization: unknown;
+      try { authorization = await callWithAbort(() => this.authorizationProvider.read(combined.signal), combined); }
+      catch { throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts authorization is unavailable'); }
+      const outer = validateAuthorization(authorization);
+      let supplied: unknown = outer;
+      if (this.websocketAuthorizationProvider !== undefined) {
+        try { supplied = await callWithAbort(() => this.websocketAuthorizationProvider!.read(combined.signal), combined); }
+        catch { throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts WebSocket authorization is unavailable'); }
+      }
+      const inner = validateAuthorization(supplied);
+      if (!/^Bearer [\x21-\x7e]+$/.test(inner)) {
+        throw new ProtocolError('UNAUTHORIZED', 'AgentArts WebSocket needs a trusted Bearer authorization');
+      }
+      return await callWithAbort(() => this.websocket!.queryStatus(saved, {
+        Authorization: outer, 'X-PA-Agent-Token': inner, 'X-Invoke-Mode': this.invokeMode,
+      }, combined.signal), combined);
+    } catch (error) {
+      throw currentAbortError(combined) ?? (error instanceof ProtocolError ? error
+        : new ProtocolError('EXTERNAL_FAILURE', 'AgentArts status query failed'));
+    } finally { combined.dispose(); }
+  }
+
   async invoke(request: CoordinationRequest): Promise<CoordinationResult> {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
     const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, availableTools, textOnly,executionModel} =
@@ -1368,11 +1415,14 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       if (fallbackStarted && fallbackReceipt !== undefined && !currentAbortError(combined)
         && !(error instanceof AgentArtsResultUnknownError)) error = new AgentArtsResultUnknownError(fallbackReceipt);
       if (this.onDiagnostic !== undefined) {
+        const upgradeFailure = error instanceof AgentArtsWebSocketUpgradeError ? error : undefined;
+        const diagnosticHttpStatus = upgradeFailure === undefined ? httpStatus : upgradeFailure.httpStatus;
         const receipt: AgentArtsFailureDiagnostic = Object.freeze({
           stage, code: diagnosticCode(error),
+          ...(upgradeFailure ? {transportPhase: 'wss_upgrade' as const} : {}),
           ...(error instanceof AgentArtsResultUnknownError ? {resultUnknown: true} : {}),
           ...(diagnosticRequestId === undefined ? {} : {requestId: diagnosticRequestId}),
-          ...(httpStatus === undefined ? {} : {httpStatus}),
+          ...(diagnosticHttpStatus === undefined ? {} : {httpStatus: diagnosticHttpStatus}),
           ...(contentType === undefined ? {} : {contentType}),
           ...(stage === 'response_schema' || stage === 'application_schema'
             ? {terminalEvents: Object.freeze({taskEnd: terminalEvents.taskEnd, end: terminalEvents.end})} : {}),

@@ -11,6 +11,7 @@ import {createHash} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import WebSocket from 'ws';
 import type {AgentArtsFetchInit, AgentArtsResponse} from './agentarts.js';
+import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 
 const MAX_FRAME_BYTES = MAX_AGENTARTS_TRANSPORT_BYTES;
 const MAX_RESULT_BYTES = MAX_AGENTARTS_RESULT_BYTES;
@@ -43,6 +44,28 @@ export interface AgentArtsUnknownReceipt {
   readonly idempotencyKey: string;
   readonly payloadDigest: string;
   readonly accepted: boolean;
+  /** Original ready-handshake identity; absent on legacy or HTTPS receipts. */
+  readonly serverInstanceId?: string;
+}
+
+type StatusResponse = Extract<AgentArtsTransportFrame, {type: 'status'; serverInstanceId: string}>;
+
+/** Capture and validate persisted metadata before awaiting current host credentials. */
+export function snapshotAgentArtsUnknownReceipt(receipt: AgentArtsUnknownReceipt): AgentArtsUnknownReceipt {
+  try {
+    const snapshot = {sessionId: receipt.sessionId, requestId: receipt.requestId,
+      idempotencyKey: receipt.idempotencyKey, payloadDigest: receipt.payloadDigest, accepted: receipt.accepted,
+      ...(receipt.serverInstanceId === undefined ? {} : {serverInstanceId: receipt.serverInstanceId})};
+    if (typeof snapshot.accepted !== 'boolean') throw Error();
+    const identity = {protocolVersion: AGENTARTS_TRANSPORT_VERSION, type: 'status',
+      sessionId: snapshot.sessionId, requestId: snapshot.requestId,
+      idempotencyKey: snapshot.idempotencyKey, payloadDigest: snapshot.payloadDigest};
+    parseAgentArtsTransportFrame(identity);
+    if (snapshot.serverInstanceId !== undefined) {
+      parseAgentArtsTransportFrame({...identity, serverInstanceId: snapshot.serverInstanceId, state: 'unknown'});
+    }
+    return Object.freeze(snapshot);
+  } catch { throw new ProtocolError('INVALID_ARGUMENT', 'Invalid AgentArts persisted receipt'); }
 }
 
 export function createAgentArtsUnknownReceipt(init: AgentArtsFetchInit): AgentArtsUnknownReceipt {
@@ -61,11 +84,33 @@ export class AgentArtsResultUnknownError extends ProtocolError {
   }
 }
 
+/** Internal diagnostic marker for a schema- and identity-validated error frame.
+ * Preserve the existing public EXTERNAL_FAILURE semantics; a remote TIMEOUT or
+ * CANCELLED is not a local abort, and never grants a retry or fallback. */
+export class AgentArtsRemoteInvocationError extends ProtocolError {
+  constructor(readonly remoteCode: Extract<AgentArtsTransportFrame, {type: 'error'}>['code']) {
+    super('EXTERNAL_FAILURE', 'AgentArts WebSocket invocation failed', false);
+  }
+}
+
+/** Internal marker created only from an HTTP response to the invoke socket Upgrade. */
+export class AgentArtsWebSocketUpgradeError extends ProtocolError {
+  readonly httpStatus?: number;
+  constructor(status: unknown) {
+    const denied = status === 401 || status === 403;
+    super(denied ? 'UNAUTHORIZED' : 'UNSUPPORTED_CAPABILITY', denied
+      ? 'AgentArts WebSocket authorization denied' : 'AgentArts WebSocket upgrade is unavailable', false);
+    if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) {
+      this.httpStatus = status;
+    }
+  }
+}
+
 /** Only a validated, correlated terminal error frame creates this local classification. */
-export class AgentArtsTerminalError extends ProtocolError {
+export class AgentArtsTerminalError extends AgentArtsRemoteInvocationError {
   readonly receipt:AgentArtsUnknownReceipt;
-  constructor(receipt:AgentArtsUnknownReceipt) {
-    super('EXTERNAL_FAILURE','AgentArts WebSocket invocation failed',false);
+  constructor(receipt:AgentArtsUnknownReceipt, remoteCode:Extract<AgentArtsTransportFrame,{type:'error'}>['code']='EXTERNAL_FAILURE') {
+    super(remoteCode);
     this.receipt=Object.freeze({...receipt});
   }
 }
@@ -140,6 +185,7 @@ function waitForReady(connection: Connection, signal: AbortSignal): Promise<void
 /** Session-scoped reusable connections, with no retries or persisted credentials/payloads. */
 export class AgentArtsWebSocketTransport {
   private readonly connections = new Map<string, Connection>();
+  private readonly statusQueries = new Set<(error: ProtocolError) => void>();
   private disposed = false;
   constructor(private readonly url: string,
     private readonly factory: AgentArtsWebSocketFactory = socketFactory,
@@ -147,6 +193,82 @@ export class AgentArtsWebSocketTransport {
 
   private report(state: AgentArtsTransportState): void {
     try { this.observe?.(Object.freeze(state)); } catch { /* Observation never changes execution. */ }
+  }
+  private openSocket(sessionId: string, headers: Record<string, string>): AgentArtsWebSocket {
+    return this.factory(this.url, {headers: {
+      Authorization: headers.Authorization!, 'X-PA-Agent-Token': headers['X-PA-Agent-Token']!,
+      'x-hw-agentarts-session-id': sessionId, 'X-Invoke-Mode': headers['X-Invoke-Mode']!,
+    }, maxPayload: MAX_FRAME_BYTES, perMessageDeflate: false, followRedirects: false, rejectUnauthorized: true});
+  }
+
+  /** One read-only exchange, isolated from pooled invokes and their cancellation. */
+  async queryStatus(receipt: AgentArtsUnknownReceipt, headers: Record<string, string>, signal: AbortSignal): Promise<StatusResponse> {
+    if (this.disposed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
+    const saved = snapshotAgentArtsUnknownReceipt(receipt);
+    if (signal.aborted) throw new ProtocolError('CANCELLED', 'AgentArts status query cancelled');
+    if (this.connections.size + this.statusQueries.size >= MAX_CONNECTIONS) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts connection capacity reached');
+    }
+    const identity = {protocolVersion: AGENTARTS_TRANSPORT_VERSION, type: 'status' as const,
+      sessionId: saved.sessionId, requestId: saved.requestId,
+      idempotencyKey: saved.idempotencyKey, payloadDigest: saved.payloadDigest} as const;
+    const outbound = encodeAgentArtsTransportFrame(identity);
+    return new Promise<StatusResponse>((resolve, reject) => {
+      let socket: AgentArtsWebSocket | undefined;
+      let opened = false, sent = false, finished = false;
+      let instance: string | undefined;
+      const finish = (error?: ProtocolError, value?: StatusResponse): void => {
+        if (finished) return;
+        finished = true;
+        signal.removeEventListener('abort', cancel);
+        this.statusQueries.delete(fail);
+        try { socket?.terminate(); } catch { /* Release only this lookup connection. */ }
+        if (error) reject(error); else resolve(value!);
+      };
+      const fail = (error: ProtocolError): void => finish(error);
+      const cancel = (): void => fail(new ProtocolError('CANCELLED', 'AgentArts status query cancelled'));
+      this.statusQueries.add(fail);
+      signal.addEventListener('abort', cancel, {once: true});
+      try {
+        if (signal.aborted) { cancel(); return; }
+        socket = this.openSocket(saved.sessionId, headers);
+        socket.on('open', () => { opened = true; });
+        socket.on('error', () => fail(failProtocol()));
+        socket.on('close', () => fail(failProtocol()));
+        socket.on('unexpected-response', (_request: unknown, response: {statusCode?: number; resume?: () => void}) => {
+          try { response?.resume?.(); } catch { /* Ignore external failure bodies. */ }
+          fail(response?.statusCode === 401 || response?.statusCode === 403
+            ? new ProtocolError('UNAUTHORIZED', 'AgentArts WebSocket authorization denied')
+            : new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts WebSocket upgrade is unavailable'));
+        });
+        socket.on('message', (data: unknown, binary: unknown) => {
+          if (finished) return;
+          try {
+            const frame = parseAgentArtsTransportFrame(JSON.parse(frameText(data, binary)));
+            if (frame.type === 'ready') {
+              if (!opened || instance !== undefined) throw failProtocol();
+              instance = frame.serverInstanceId;
+              if (!frame.capabilities.includes('status')) {
+                fail(new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts status query is unavailable')); return;
+              }
+              if (saved.serverInstanceId === undefined || saved.serverInstanceId !== instance) {
+                // Local conservative classification: another instance cannot resolve this receipt.
+                finish(undefined, {...identity, serverInstanceId: instance, state: 'unknown'}); return;
+              }
+              if (signal.aborted) { cancel(); return; }
+              sent = true;
+              socket!.send(outbound, error => { if (error) fail(failProtocol()); });
+              return;
+            }
+            if (!sent || instance === undefined || frame.type !== 'status' || !('state' in frame)
+              || frame.serverInstanceId !== instance || frame.sessionId !== saved.sessionId
+              || frame.requestId !== saved.requestId || frame.idempotencyKey !== saved.idempotencyKey
+              || frame.payloadDigest !== saved.payloadDigest) throw failProtocol();
+            finish(undefined, frame);
+          } catch { fail(failProtocol()); }
+        });
+      } catch { fail(failProtocol()); }
+    });
   }
   private remember(connection: Connection, requestId: string): void {
     connection.tombstones.add(requestId);
@@ -181,13 +303,7 @@ export class AgentArtsWebSocketTransport {
     void ready.catch(() => {});
     let socket: AgentArtsWebSocket;
     try {
-      socket = this.factory(this.url, {headers: {
-        Authorization: headers.Authorization!,
-        'X-PA-Agent-Token': headers['X-PA-Agent-Token']!,
-        'x-hw-agentarts-session-id': sessionId,
-        'X-Invoke-Mode': headers['X-Invoke-Mode']!,
-      }, maxPayload: MAX_FRAME_BYTES, perMessageDeflate: false, followRedirects: false,
-      rejectUnauthorized: true});
+      socket = this.openSocket(sessionId, headers);
     } catch { throw new BeforeInvokeConnectionError(); }
     const connection: Connection = {sessionId, fingerprint, socket, ready, resolveReady, rejectReady,
       pending: new Map(), tombstones: new Set(), opened: false, negotiated: false, closed: false, leases: 0};
@@ -199,11 +315,10 @@ export class AgentArtsWebSocketTransport {
       try { response?.resume?.(); } catch { /* Do not parse an external failure body. */ }
       if (status === 401 || status === 403) {
         this.report({state: 'auth_required', sessionId});
-        this.breakConnection(connection, new ProtocolError('UNAUTHORIZED', 'AgentArts WebSocket authorization denied'));
       } else {
         this.report({state: 'unsupported', sessionId});
-        this.breakConnection(connection, new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts WebSocket upgrade is unavailable'));
       }
+      this.breakConnection(connection, new AgentArtsWebSocketUpgradeError(status));
     });
     socket.on('error', () => this.breakConnection(connection,
       connection.opened ? failProtocol() : new BeforeInvokeConnectionError()));
@@ -251,7 +366,7 @@ export class AgentArtsWebSocketTransport {
           if (!pending.sent || frame.accepted !== pending.accepted) throw failProtocol();
           pending.afterTerminal({...pending.receipt, accepted: pending.accepted});
           this.dropPending(connection, frame.requestId);
-          pending.reject(new AgentArtsTerminalError({...pending.receipt,accepted:pending.accepted}));
+          pending.reject(new AgentArtsTerminalError({...pending.receipt,accepted:pending.accepted}, frame.code));
           return;
         }
         throw failProtocol();
@@ -272,7 +387,7 @@ export class AgentArtsWebSocketTransport {
       connection = undefined;
     }
     if (!connection) {
-      if (this.connections.size >= MAX_CONNECTIONS) {
+      if (this.connections.size + this.statusQueries.size >= MAX_CONNECTIONS) {
         const idle = [...this.connections.values()].find(item => item.leases === 0 && item.pending.size === 0);
         if (idle) this.breakConnection(idle, new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts idle connection released'));
         else throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts connection capacity reached');
@@ -288,7 +403,7 @@ export class AgentArtsWebSocketTransport {
       if (init.signal.aborted) throw new ProtocolError('CANCELLED', 'AgentArts request cancelled');
       if (selected.closed || selected.socket.readyState !== OPEN) throw failProtocol();
       const payload = JSON.parse(init.body) as {query: string} | {inputs: Record<string, string>};
-      const receipt = createAgentArtsUnknownReceipt(init);
+      const receipt = {...createAgentArtsUnknownReceipt(init), serverInstanceId: selected.serverInstanceId!};
       const payloadDigest = receipt.payloadDigest;
       const deadline = init.headers['X-PA-Deadline']!;
       const frame = encodeAgentArtsTransportFrame({protocolVersion: AGENTARTS_TRANSPORT_VERSION,
@@ -339,6 +454,7 @@ export class AgentArtsWebSocketTransport {
   close(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const fail of this.statusQueries) fail(new ProtocolError('CANCELLED', 'AgentArts transport closed'));
     for (const connection of this.connections.values()) {
       this.breakConnection(connection, new ProtocolError('CANCELLED', 'AgentArts transport closed'));
     }
