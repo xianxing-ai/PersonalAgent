@@ -8,7 +8,7 @@
 
 | 新包 | 唯一负责人 / MOD | 当前状态与下一本人任务 |
 | --- | --- | --- |
-| CW-01 本机Laya可信回执桥 | zemeng5208 / 28、30 | in_progress；公共夹具已真实调用，下一业务站点资格/正反样本与150ms未验继续做，未合格teacher接管 |
+| CW-01 Local-only Laya可信回执实验 | zemeng5208 / 28、30 | 保留现有实验和证据；不属于Competition工作包，不新增或扩展Local Profile |
 | CW-02 AA镜像/新代理/平台 | zemeng5208 / 29、30、32 | in_progress；SWR/云目录/代理已验，下一精确远端版本只读闭环及平台四面逐项验 |
 | CW-03 主动事件持续责任 | zemeng5208 / 27、28、30 | in_progress；四入口HTTP/SQLite fixture已验，下一真实来源责任消费 |
 | CW-04 上下文知识记忆 | goo122 / 08、09 | in_progress；下一公开Vault更正/撤回→主动引用失效，平台provider缺口单列 |
