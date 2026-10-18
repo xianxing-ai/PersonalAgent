@@ -59,7 +59,8 @@ const {_electron} = require('playwright');
     assert.equal(await panel.locator('textarea[aria-label="任务内容"]').inputValue(), '从小面板继续');
     assert.equal(await workspace.locator('.workspace-sidebar').count(), 0);
     assert.equal(await workspace.locator('[data-connector]').count(), 5);
-    assert.ok((await workspace.locator('.connector-card').first().innerText()).includes('预览'));
+    assert.match(await workspace.locator('.connector-card').first().innerText(),/暂无天气数据/);
+    assert.doesNotMatch(await workspace.locator('.connector-board').innerText(),/林晓|陈悦|整理今日计划/);
 
     const bounds = await app.evaluate(({BrowserWindow, screen}) => {
       const win = BrowserWindow.getAllWindows().find(item => item.webContents.getURL().includes('mode=workspace'));
@@ -82,7 +83,8 @@ const {_electron} = require('playwright');
     await workspace.locator('[data-open-settings="settings"]').click();
     const admin = await adminOpened;
     await admin.waitForSelector('[data-page="appearance"]');
-    for (const removed of ['import', 'tasks', 'browser', 'account', 'usage']) assert.equal(await admin.locator(`.side [data-page="${removed}"]`).count(), 0);
+    for (const removed of ['import', 'browser', 'account', 'usage']) assert.equal(await admin.locator(`.side [data-page="${removed}"]`).count(), 0);
+    assert.equal(await admin.locator('.side [data-page="tasks"]').count(), 1);
     await admin.locator('[data-page="appearance"]').click();
     for (const theme of ['dark', 'light']) {
       await admin.locator('#pref-theme').selectOption(theme);

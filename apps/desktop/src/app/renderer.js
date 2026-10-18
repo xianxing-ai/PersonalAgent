@@ -3,6 +3,7 @@ import {mountNativeReasoning} from '../features/conversation/native-reasoning.js
 import {mountInputPin} from './input-pin.js';
 import {conversationTimeline} from '../features/conversation/timeline.js';
 import {updateConversationTurns} from '../features/conversation/turn-view.js';
+import {mountTaskProgress} from '../features/conversation/task-progress.js';
 import {Orb} from '../features/orb/orb.js';
 import {stateNames,isTerminal,currentTask,visualOrbState,orbStatusLabel} from '../features/conversation/state.js';
 import {sisStatusLine} from '../features/conversation/sis-status.js';
@@ -13,6 +14,7 @@ import {mountConversationRail} from '../features/conversation/rail.js';
 import {resultText} from '../features/conversation/result-text.js';
 import {createGoalControl} from '../features/conversation/goal-view.js';
 import {mountDesktopShell} from '../ui/desktop-shell.js';
+import {mountWindowControls} from '../ui/window-controls.js';
 import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {mountProactiveControls} from './proactive-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
@@ -52,14 +54,14 @@ if(mode==='orb') {
   };
   reportSnapshotFailure=error=>{snapshotError=error.message;syncOperationFeedback();};
   clearSnapshotFailure=()=>{if(snapshotError){snapshotError='';syncOperationFeedback();}};
-  const orbOperation=async action=>{
+  const orbOperation=async (action,payload)=>{
     const explicit=action!=='orb.dragEnd',generation=explicit?++operationGeneration:operationGeneration,sequence=++operationSequence;
-    try{await invoke(action);if(!operationClosed&&explicit&&generation===operationGeneration&&sequence>=feedbackOwner){feedbackOwner=sequence;operationError='';syncOperationFeedback();}}
+    try{await invoke(action,payload);if(!operationClosed&&explicit&&generation===operationGeneration&&sequence>=feedbackOwner){feedbackOwner=sequence;operationError='';syncOperationFeedback();}}
     catch(error){if(!operationClosed&&generation===operationGeneration&&sequence>=feedbackOwner){feedbackOwner=sequence;operationError=error.message||String(error);syncOperationFeedback();}}
   };
   window.addEventListener('unload',()=>{operationClosed=true;},{once:true});
-  button.addEventListener('pointerdown',e=>{if(e.button!==0)return;start={x:e.screenX,y:e.screenY};button.setPointerCapture(e.pointerId);});
-  button.addEventListener('pointermove',e=>{if(start&&!drag&&Math.hypot(e.screenX-start.x,e.screenY-start.y)>4){drag=true;orbOperation('orb.dragStart');}});
+  button.addEventListener('pointerdown',e=>{if(e.button!==0)return;start={x:e.screenX,y:e.screenY,offset:{x:e.clientX,y:e.clientY}};button.setPointerCapture(e.pointerId);});
+  button.addEventListener('pointermove',e=>{if(start&&!drag&&Math.hypot(e.screenX-start.x,e.screenY-start.y)>4){drag=true;orbOperation('orb.dragStart',start.offset);}});
   function finish(){if(drag)orbOperation('orb.dragEnd');else if(start)orbOperation('orb.open');start=null;drag=false;}
   button.addEventListener('pointerup',finish);button.addEventListener('pointercancel',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('lostpointercapture',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
@@ -93,6 +95,7 @@ else {
   };
   const report=e=>setFeedback(typeof e==='string'?e:e.message);
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
+  const updateProgress=mountTaskProgress(thread,tasksNode);
   const quickStart=root.querySelector('#quick-start');
   const quickStartItems=[['整理今日计划','列出今天的日程、待办和昨天未完成的事项，整理成一份今日计划。'],['写本周周报','根据最近完成的任务，起草一份本周周报草稿。'],['查看天气提醒','查询明天天气，并给出出行与穿着提醒。'],['起草邮件回复','根据最近收到的邮件，起草一份回复草稿。']];
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
@@ -226,9 +229,13 @@ else {
   const budgetLabel=document.createElement('label');budgetLabel.textContent='执行步骤预算';
   const budget=document.createElement('input');budget.type='range';budget.min='0';budget.max='5';budget.step='1';budget.setAttribute('aria-label','模型执行步骤预算');budgetLabel.append(budget);modelMenu.querySelector('.mm-card').append(budgetLabel);
   const panelPreferenceRequests={thinking:0},panelPreferencePending={thinking:null},panelPreferenceErrors={thinking:null};
+  let panelPreferenceEditing=null,panelPreferenceConversationId;
   const syncPanelPreferenceBusy=()=>{for(const control of [budget,fastBtn])control.setAttribute('aria-busy',String(Boolean(panelPreferencePending.thinking)));};
   const projectPanelPreferences=()=>{
-    const thinking=panelPreferencePending.thinking??current?.thinking??current?.conversationPreference;
+    if(panelPreferenceConversationId!==current?.conversationState?.activeId){
+      panelPreferenceConversationId=current?.conversationState?.activeId;panelPreferenceEditing=null;
+    }
+    const thinking=panelPreferenceEditing??panelPreferencePending.thinking??current?.thinking??current?.conversationPreference;
     if(thinking){budget.value=String(thinking.depth??1);fastBtn.setAttribute('aria-pressed',String(Boolean(thinking.fast)));modelMenu.classList.toggle('fast',Boolean(thinking.fast));}
     syncPanelPreferenceBusy();
   };
@@ -251,8 +258,9 @@ else {
   const nativeReasoning=mountNativeReasoning(modelMenu.querySelector('.mm-card'),invoke,report,{slider,output:depthLabel,modelChoice,modelOutput,readFeedbackRevision:()=>errorFeedbackRevision,clearFeedback:()=>{setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}});
   bellBtn.onclick=e=>{e.stopPropagation();const open=bellMenu.hidden;closeBell();closeModel();if(open){bellMenu.hidden=false;bellBtn.setAttribute('aria-expanded','true');}};
   document.addEventListener('click',e=>{if(!modelMenu.hidden&&!e.target.closest('.model-box'))closeModel();if(!bellMenu.hidden&&!e.target.closest('.bell-box'))closeBell();});
-  budget.addEventListener('input',()=>requestPanelPreference('thinking','thinking.update',{depth:Number(budget.value),fast:fastBtn.getAttribute('aria-pressed')==='true'}));
-  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);return requestPanelPreference('thinking','thinking.update',{depth:Number(budget.value),fast:on});};
+  budget.addEventListener('input',()=>{panelPreferenceEditing={depth:Number(budget.value),fast:fastBtn.getAttribute('aria-pressed')==='true'};});
+  budget.addEventListener('change',()=>{const thinking={depth:Number(budget.value),fast:fastBtn.getAttribute('aria-pressed')==='true'};panelPreferenceEditing=null;return requestPanelPreference('thinking','thinking.update',thinking);});
+  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';panelPreferenceEditing=null;fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);return requestPanelPreference('thinking','thinking.update',{depth:Number(budget.value),fast:on});};
   mountInputPin(input,invoke,()=>current?.pinned===true,report);
   input.addEventListener('input',e=>{draftRevision++;setSendMode(Boolean(e.target.value.trim()));});
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(input.value.trim()&&!pending)form.requestSubmit();}});
@@ -319,6 +327,7 @@ else {
   render=(data,{preserveFeedback}={})=>{updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;for(const group of ['thinking']){panelPreferenceRequests[group]++;panelPreferencePending[group]=null;panelPreferenceErrors[group]=null;}draftRevision++;locateFeedback.clear();setFeedback('');}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);const task=currentTask(data.tasks);const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);
+    updateProgress(data.tasks);
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
     const notifs=Array.isArray(data.notifications)?data.notifications:[];
@@ -369,6 +378,11 @@ else {
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();setSendMode(Boolean(input.value.trim()));
     if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(wasAtBottom)thread.scrollTop=thread.scrollHeight;});}};
+}
+if(bridge&&['admin','workspace'].includes(mode)) {
+  mountWindowControls(root,invoke,mode,error=>{
+    root.querySelector(mode==='admin'?'#error':'#workspace-error').textContent=error.message;
+  });
 }
 if(bridge){
   let receivedUpdate=false,closed=false;

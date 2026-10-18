@@ -10,13 +10,13 @@ const declarations=[],projection=[];
 function visit(node){
   if(ts.isStatement(node)){
     const text=node.getText(ast);
-    if(/^(const panelPreferenceRequests=|const syncPanelPreferenceBusy=|const projectPanelPreferences=|const requestPanelPreference=|budget\.addEventListener\('input'|fastBtn\.onclick=)/.test(text))declarations.push(text);
+    if(/^(const panelPreferenceRequests=|let panelPreferenceEditing=|const syncPanelPreferenceBusy=|const projectPanelPreferences=|const requestPanelPreference=|budget\.addEventListener\('(input|change)'|fastBtn\.onclick=)/.test(text))declarations.push(text);
     if(node.pos>source.indexOf('render=(data,')&&text==='projectPanelPreferences();')projection.push(text);
   }
   ts.forEachChild(node,visit);
 }
 visit(ast);
-assert.equal(declarations.length,6);assert.equal(projection.length,1);
+assert.equal(declarations.length,8);assert.equal(projection.length,1);
 const observed=(depth=1,fast=false)=>({conversationPreference:{depth,fast},thinking:{depth,fast}});
 function fixture(){
   const control=value=>({value,attrs:{},handlers:{},setAttribute(name,value){this.attrs[name]=value;},getAttribute(name){return this.attrs[name];},addEventListener(name,handler){this.handlers[name]=handler;}});
@@ -30,23 +30,36 @@ function fixture(){
 }
 const pair=f=>[f.budget.value,f.fastBtn.attrs['aria-pressed']];
 const payload=call=>JSON.parse(JSON.stringify(call.payload));
+const commitRange=f=>{f.budget.handlers.input();return f.budget.handlers.change();};
 
 test('step budget failure restores observed pair without touching native effort',async()=>{
-  const f=fixture();f.budget.value='5';const pending=f.budget.handlers.input();
+  const f=fixture();f.budget.value='5';const pending=commitRange(f);
   f.calls[0].reject(Error('budget failed'));await pending;assert.deepEqual(pair(f),['1','false']);assert.equal(f.error(),'budget failed');
   assert.equal(f.budget.attrs['aria-busy'],'false');assert.equal(f.calls[0].name,'thinking.update');assert.deepEqual(payload(f.calls[0]),{depth:5,fast:false});
 });
 test('ordinary snapshots and old failure preserve latest full step/fast intent',async()=>{
-  const f=fixture();f.budget.value='5';const old=f.budget.handlers.input();f.budget.value='4';const next=f.budget.handlers.input();f.update(observed());
+  const f=fixture();f.budget.value='5';const old=commitRange(f);f.budget.value='4';const next=commitRange(f);f.update(observed());
   f.calls[0].reject(Error('old failure'));await old;assert.deepEqual(pair(f),['4','false']);assert.equal(f.error(),'');
   f.update(observed(4));f.calls[1].resolve();await next;assert.equal(f.budget.attrs['aria-busy'],'false');
 });
 test('Fast keeps step depth independent from native strength and restores latest snapshot on failure',async()=>{
-  const f=fixture();f.budget.value='5';const old=f.budget.handlers.input();const fast=f.fastBtn.onclick();assert.deepEqual(payload(f.calls[1]),{depth:5,fast:true});
+  const f=fixture();f.budget.value='5';const old=commitRange(f);const fast=f.fastBtn.onclick();assert.deepEqual(payload(f.calls[1]),{depth:5,fast:true});
   f.update(observed(3,true));f.calls[0].reject(Error('old'));await old;assert.deepEqual(pair(f),['5','true']);
   f.calls[1].reject(Error('fast failed'));await fast;assert.deepEqual(pair(f),['3','true']);assert.equal(f.classes.get('fast'),true);
 });
 test('successful explicit budget retry clears only its own error',async()=>{
-  for(const newer of [false,true]){const f=fixture();const first=f.fastBtn.onclick();f.calls[0].reject(Error('failed'));await first;
-    const retry=f.fastBtn.onclick();if(newer)f.report('new failure');f.calls[1].resolve();await retry;assert.equal(f.error(),newer?'new failure':'');}
+  for(const newer of ['none','workspace','host']){const f=fixture();const first=f.fastBtn.onclick();f.calls[0].reject(Error('failed'));await first;
+    const retry=f.fastBtn.onclick();if(newer==='workspace')f.report('new failure');if(newer==='host')f.context.hostFeedback='Current Host failure';f.calls[1].resolve();await retry;assert.equal(f.error(),newer==='workspace'?'new failure':newer==='host'?'Current Host failure':'');}
+});
+
+test('drag previews each level without IPC and commits once on release',async()=>{
+  const f=fixture();
+  for(const level of [2,3,4,5]){f.budget.value=String(level);f.budget.handlers.input();f.update(observed());assert.equal(f.budget.value,String(level));}
+  assert.equal(f.calls.length,0);assert.equal(f.budget.attrs['aria-busy'],'false');
+  const saved=f.budget.handlers.change();assert.equal(f.calls.length,1);assert.deepEqual(payload(f.calls[0]),{depth:5,fast:false});f.calls[0].resolve();await saved;
+});
+test('old request failure cannot discard a new uncommitted drag and changing conversation releases it',async()=>{
+  const f=fixture();f.budget.value='3';const old=commitRange(f);f.budget.value='5';f.budget.handlers.input();f.calls[0].reject(Error('old commit failed'));await old;
+  assert.equal(f.budget.value,'5');assert.equal(f.calls.length,1);
+  f.update({...observed(2),conversationState:{activeId:'different-session'}});assert.equal(f.budget.value,'2');
 });
