@@ -6,6 +6,7 @@ import {mountNativeReasoning} from '../features/conversation/native-reasoning.js
 import {mountInputPin} from './input-pin.js';
 import {conversationTimeline} from '../features/conversation/timeline.js';
 import {updateConversationTurns} from '../features/conversation/turn-view.js';
+import {mountTaskProgress} from '../features/conversation/task-progress.js';
 import {Orb} from '../features/orb/orb.js';
 import {stateNames,isTerminal,currentTask,visualOrbState,orbStatusLabel} from '../features/conversation/state.js';
 import {sisStatusLine} from '../features/conversation/sis-status.js';
@@ -16,6 +17,7 @@ import {mountConversationRail} from '../features/conversation/rail.js';
 import {resultText} from '../features/conversation/result-text.js';
 import {createGoalControl} from '../features/conversation/goal-view.js';
 import {mountDesktopShell} from '../ui/desktop-shell.js';
+import {mountWindowControls} from '../ui/window-controls.js';
 import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {mountProactiveControls} from './proactive-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
@@ -55,14 +57,14 @@ if(mode==='orb') {
   };
   reportSnapshotFailure=error=>{snapshotError=error.message;syncOperationFeedback();};
   clearSnapshotFailure=()=>{if(snapshotError){snapshotError='';syncOperationFeedback();}};
-  const orbOperation=async action=>{
+  const orbOperation=async (action,payload)=>{
     const explicit=action!=='orb.dragEnd',generation=explicit?++operationGeneration:operationGeneration,sequence=++operationSequence;
-    try{await invoke(action);if(!operationClosed&&explicit&&generation===operationGeneration&&sequence>=feedbackOwner){feedbackOwner=sequence;operationError='';syncOperationFeedback();}}
+    try{await invoke(action,payload);if(!operationClosed&&explicit&&generation===operationGeneration&&sequence>=feedbackOwner){feedbackOwner=sequence;operationError='';syncOperationFeedback();}}
     catch(error){if(!operationClosed&&generation===operationGeneration&&sequence>=feedbackOwner){feedbackOwner=sequence;operationError=error.message||String(error);syncOperationFeedback();}}
   };
   window.addEventListener('unload',()=>{operationClosed=true;},{once:true});
-  button.addEventListener('pointerdown',e=>{if(e.button!==0)return;start={x:e.screenX,y:e.screenY};button.setPointerCapture(e.pointerId);});
-  button.addEventListener('pointermove',e=>{if(start&&!drag&&Math.hypot(e.screenX-start.x,e.screenY-start.y)>4){drag=true;orbOperation('orb.dragStart');}});
+  button.addEventListener('pointerdown',e=>{if(e.button!==0)return;start={x:e.screenX,y:e.screenY,offset:{x:e.clientX,y:e.clientY}};button.setPointerCapture(e.pointerId);});
+  button.addEventListener('pointermove',e=>{if(start&&!drag&&Math.hypot(e.screenX-start.x,e.screenY-start.y)>4){drag=true;orbOperation('orb.dragStart',start.offset);}});
   function finish(){if(drag)orbOperation('orb.dragEnd');else if(start)orbOperation('orb.open');start=null;drag=false;}
   button.addEventListener('pointerup',finish);button.addEventListener('pointercancel',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('lostpointercapture',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
@@ -100,6 +102,7 @@ else {
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
   const subagents=mountSubagentCompletionNotice(thread,invoke);
   window.addEventListener('unload',()=>subagents.dispose(),{once:true});
+  const updateProgress=mountTaskProgress(thread,tasksNode);
   const quickStart=root.querySelector('#quick-start');
   const quickStartItems=[['整理今日计划','列出今天的日程、待办和昨天未完成的事项，整理成一份今日计划。'],['写本周周报','根据最近完成的任务，起草一份本周周报草稿。'],['查看天气提醒','查询明天天气，并给出出行与穿着提醒。'],['起草邮件回复','根据最近收到的邮件，起草一份回复草稿。']];
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
@@ -232,10 +235,14 @@ else {
   header.addEventListener('pointerup',finishPanelDrag);header.addEventListener('pointercancel',finishPanelDrag);header.addEventListener('lostpointercapture',finishPanelDrag);
   const syncSlider=()=>{const v=Number(slider.value);const labels=['最低','低','平衡','深入','高','最高'];const fill=6+(88*v/5);slider.style.setProperty('--fill',fill+'%');depthLabel.textContent=labels[v]??'平衡';modelMenu.classList.toggle('maxed',v===5);};
   const panelPreferenceRequests={model:0,thinking:0},panelPreferencePending={model:null,thinking:null},panelPreferenceErrors={model:null,thinking:null};
+  let panelPreferenceEditing=null,panelPreferenceConversationId;
   const syncPanelPreferenceBusy=()=>{nativeReasoning?.setBusy(Boolean(panelPreferencePending.model));modelChoice.setAttribute('aria-busy',String(Boolean(panelPreferencePending.model)));for(const control of [slider,fastBtn])control.setAttribute('aria-busy',String(Boolean(panelPreferencePending.thinking)));};
   const projectPanelPreferences=()=>{
+    if(panelPreferenceConversationId!==current?.conversationState?.activeId){
+      panelPreferenceConversationId=current?.conversationState?.activeId;panelPreferenceEditing=null;
+    }
     modelChoice.value=panelPreferencePending.model?.modelId??current?.conversationPreference?.modelId??'';
-    const thinking=panelPreferencePending.thinking??current?.thinking??current?.conversationPreference;
+    const thinking=panelPreferenceEditing??panelPreferencePending.thinking??current?.thinking??current?.conversationPreference;
     if(thinking){slider.value=String(thinking.depth??1);fastBtn.setAttribute('aria-pressed',String(Boolean(thinking.fast)));modelMenu.classList.toggle('fast',Boolean(thinking.fast));syncSlider();}
     syncPanelPreferenceBusy();
   };
@@ -260,8 +267,9 @@ else {
   let modelChoiceSignature;
   bellBtn.onclick=e=>{e.stopPropagation();const open=bellMenu.hidden;closeBell();closeModel();if(open){bellMenu.hidden=false;bellBtn.setAttribute('aria-expanded','true');}};
   document.addEventListener('click',e=>{if(!modelMenu.hidden&&!e.target.closest('.model-box'))closeModel();if(!bellMenu.hidden&&!e.target.closest('.bell-box'))closeBell();});
-  slider.addEventListener('input',()=>{syncSlider();return requestPanelPreference('thinking','thinking.update',{depth:Number(slider.value),fast:fastBtn.getAttribute('aria-pressed')==='true'});});syncSlider();
-  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);return requestPanelPreference('thinking','thinking.update',{depth:Number(slider.value),fast:on});};
+  slider.addEventListener('input',()=>{panelPreferenceEditing={depth:Number(slider.value),fast:fastBtn.getAttribute('aria-pressed')==='true'};syncSlider();});
+  slider.addEventListener('change',()=>{const thinking={depth:Number(slider.value),fast:fastBtn.getAttribute('aria-pressed')==='true'};panelPreferenceEditing=null;return requestPanelPreference('thinking','thinking.update',thinking);});syncSlider();
+  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';panelPreferenceEditing=null;fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);return requestPanelPreference('thinking','thinking.update',{depth:Number(slider.value),fast:on});};
   mountInputPin(input,invoke,()=>current?.pinned===true,report);
   input.addEventListener('input',e=>{draftRevision++;setSendMode(Boolean(e.target.value.trim()));});
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(input.value.trim()&&!pending)form.requestSubmit();}});
@@ -329,6 +337,7 @@ else {
     subagents.update(data.subagentTasks??[]);
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);
+    updateProgress(data.tasks);
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
     const notifs=Array.isArray(data.notifications)?data.notifications:[];
@@ -385,6 +394,11 @@ else {
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();setSendMode(Boolean(input.value.trim()));
     if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(wasAtBottom)thread.scrollTop=thread.scrollHeight;});}};
+}
+if(bridge&&['admin','workspace'].includes(mode)) {
+  mountWindowControls(root,invoke,mode,error=>{
+    root.querySelector(mode==='admin'?'#error':'#workspace-error').textContent=error.message;
+  });
 }
 if(bridge&&['subagent','subagent-list'].includes(mode)){
   const unsubscribe=bridge.subscribe(()=>{void render();});

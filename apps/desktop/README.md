@@ -42,6 +42,9 @@ npm run test:remote-mcp-storage-smoke --workspace=@personal-agent/desktop
 本次 r3 真实验收已取得 AgentArts 公网 WSS Upgrade HTTP 101，并通过文字任务的原生推理强度 low 调用。实时语音 runner 使用公开 PCM 完成整轮，结果为 passed；这不代表已通过实际麦克风、扬声器或设备交互验收。Qwen 完整子任务派发仍在复测，当前不宣称通过。
 
 当前主通道、模型选择、持久化配置及验收边界见 [Desktop AgentArts Models V5](../../docs/competition/DESKTOP_AGENTARTS_MODELS_V5.md)；本轮原始回执与结果入口见 [V5 验收证据](../../docs/competition/evidence/desktop-agentarts-v5-20261016/README.md)。下方 2026-10-09 WSS 说明保留为历史记录，其中“公网 Upgrade 尚未证实”等结论仅描述当时状态。
+## 2026-10-17 窗口控件与布局修复
+
+管理后台和大工作区统一原生最小化、最大化/还原及关闭操作；桌面偏好入口移至常规设置。窄窗口导航、短窗口空间和表单控件尺寸一并修正。实现边界、原生缩放矩阵和测试命令见[本次验证记录](docs/FRONTEND_LAYOUT_20261017.md)；`npm run test:frontend-layout --workspace=@personal-agent/desktop` 使用独立 Fake 配置检查实际窗口。
 
 ## 2026-10-09 自有镜像 WSS 消费增量
 

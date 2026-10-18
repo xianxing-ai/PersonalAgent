@@ -1,0 +1,653 @@
+commit 388377595940db4ac2045614fb170a056ffaa1dd
+parent e6e0fc558ed8a4337fa99f23a658b8c3998b5068
+Subject: feat(desktop): implement goal repair plan preview and reconciliation UI
+
+
+diff --git a/apps/desktop/src/features/conversation/goal-view.css b/apps/desktop/src/features/conversation/goal-view.css
+index a0ed1dd1fbfa5429723fff2c1e984f62257aecf9..ce592d1abc2e5f475eab5fbd65577a2802f0508b 100644
+--- a/apps/desktop/src/features/conversation/goal-view.css
++++ b/apps/desktop/src/features/conversation/goal-view.css
+@@ -14,0 +15,28 @@
++.goal-repair-preview{margin:12px 0;padding:10px;border:1px solid var(--glass-border);border-radius:10px;background:var(--surface-1,rgba(255,255,255,.04))}
++.goal-repair-preview h3{font-size:13px;margin:0 0 8px;color:var(--fg)}
++.goal-repair-preview h4{font-size:12px;margin:8px 0 4px;color:var(--fg-2)}
++.repair-status-banner{display:flex;align-items:flex-start;gap:6px;padding:6px 8px;border-radius:6px;margin-bottom:8px;font-size:12px;line-height:1.4}
++.repair-status-pending{background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.3)}
++.repair-status-conflict{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3)}
++.repair-status-insufficient{background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.3)}
++.repair-status-applied{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3)}
++.repair-status-badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
++.badge-pending{background:#eab308;color:#000}
++.badge-conflict{background:#ef4444;color:#fff}
++.badge-insufficient{background:#64748b;color:#fff}
++.badge-applied{background:#22c55e;color:#fff}
++.repair-status-text{flex:1;font-size:11.5px;color:var(--fg)}
++.repair-meta-row{font-size:11px;color:var(--fg-2);margin-bottom:6px}
++.repair-section{margin-top:8px}
++.repair-item-card{padding:8px;margin-bottom:6px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);font-size:12px}
++.repair-affected-card{border-left:3px solid #3b82f6}
++.repair-preserved-card{border-left:3px solid #64748b;opacity:.88}
++.repair-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
++.repair-tag{font-size:10.5px;padding:1px 5px;border-radius:4px;background:var(--surface-3,rgba(255,255,255,.1));color:var(--fg-2)}
++.tag-preserved{background:rgba(100,116,139,.2);color:var(--fg-2)}
++.repair-summary-diff p{margin:2px 0;font-size:11.5px}
++.repair-reason-row{margin:4px 0 2px;font-size:11.5px;color:var(--fg-2)}
++.repair-deps-row{margin:2px 0 0;font-size:11px;color:var(--fg-2)}
++.repair-empty-notice{font-size:11.5px;color:var(--fg-2);font-style:italic;margin:4px 0}
++.repair-item-card .text-muted,.repair-reason-row.text-muted{opacity:.7}
++
+diff --git a/apps/desktop/src/features/conversation/goal-view.js b/apps/desktop/src/features/conversation/goal-view.js
+index cc8f0ea026f9631ee623b7df90311ae8ed6fec0c..bda4a7afac02cd66ad174975308956ea12a003eb 100644
+--- a/apps/desktop/src/features/conversation/goal-view.js
++++ b/apps/desktop/src/features/conversation/goal-view.js
+@@ -10,0 +11,318 @@ export function appliedGoalRef(task) {
++export function formatDependencies(deps) {
++  if (!deps) return '无依赖';
++  if (!Array.isArray(deps)) return String(deps);
++  if (deps.length === 0) return '无依赖';
++  return deps.map(dep => {
++    if (!dep || typeof dep !== 'object') return String(dep);
++    const id = dep.id ?? '未知ID';
++    const rev = Number.isSafeInteger(dep.revision) ? `@${dep.revision}` : '';
++    return `${id}${rev}`;
++  }).join('、');
++}
++
++export function extractRepairCandidate(task) {
++  if (!task || typeof task !== 'object') return null;
++  if (task.candidate && Array.isArray(task.candidate.changes)) return task.candidate;
++  if (task.kind === 'repair_candidate' && task.candidate) return task.candidate;
++  if (task.repairCandidate?.candidate) return task.repairCandidate.candidate;
++  if (task.repairCandidate?.changes) return task.repairCandidate;
++  if (task.repair?.candidate) return task.repair.candidate;
++  if (task.repair?.changes) return task.repair;
++  if (task.result?.candidate) return task.result.candidate;
++  if (task.result?.repairCandidate?.candidate) return task.result.repairCandidate.candidate;
++  if (task.result?.repair?.changes) return task.result.repair;
++  if (task.approval?.candidate) return task.approval.candidate;
++  if (task.approval?.repairCandidate?.candidate) return task.approval.repairCandidate.candidate;
++  if (Array.isArray(task.changes)) return task;
++  return null;
++}
++
++export function projectRepairPreview({task = null, candidate = null, goals = [], graphRevision = null} = {}) {
++  const resolvedCandidate = candidate ?? extractRepairCandidate(task);
++  const expectedGraphRevision = Number.isSafeInteger(resolvedCandidate?.expectedGraphRevision)
++    ? resolvedCandidate.expectedGraphRevision
++    : (Number.isSafeInteger(task?.expectedGraphRevision)
++      ? task.expectedGraphRevision
++      : (Number.isSafeInteger(task?.result?.expectedGraphRevision) ? task.result.expectedGraphRevision : null));
++  const currentGraphRevision = Number.isSafeInteger(graphRevision)
++    ? graphRevision
++    : (Number.isSafeInteger(task?.result?.graphRevision) ? task.result.graphRevision : null);
++
++  const isConflictResult = task?.result?.kind === 'conflict';
++  const isConflictError = task?.error?.code === 'CONFLICT' || task?.error?.code === 'VERSION_CONFLICT';
++  const isRevisionMismatch = expectedGraphRevision !== null && currentGraphRevision !== null
++    && expectedGraphRevision !== currentGraphRevision;
++  const isConflict = isConflictResult || isConflictError || isRevisionMismatch;
++
++  const isUncertain = task?.result?.kind === 'uncertain' || task?.action === 'RECHECK';
++  const isMissingContext = (typeof task?.result?.text === 'string' && task.result.text.includes('缺少合法图谱上下文'))
++    || (typeof task?.error?.message === 'string' && task.error.message.includes('缺少'))
++    || Boolean(resolvedCandidate && typeof resolvedCandidate.message === 'string' && resolvedCandidate.message.includes('缺少'));
++  const hasNoChanges = !resolvedCandidate || !Array.isArray(resolvedCandidate.changes) || resolvedCandidate.changes.length === 0;
++  const hasNoExpectedRevision = expectedGraphRevision === null;
++  const isReconciliationNoCandidate = task?.state === 'waiting_reconciliation' && !resolvedCandidate;
++  const isInsufficient = !isConflict && (isUncertain || isMissingContext || (resolvedCandidate && hasNoExpectedRevision) || hasNoChanges || isReconciliationNoCandidate);
++
++  let status = 'pending';
++  let statusLabel = '待确认';
++  let statusMessage = '修复方案待人工核对；请确认具体计划与依赖变化后再做决定。';
++
++  if (isConflict) {
++    status = 'conflict';
++    statusLabel = '版本冲突';
++    statusMessage = `版本冲突：当前计划图版本（${currentGraphRevision ?? '未知'}）与修复预期版本（${expectedGraphRevision ?? '未知'}）不一致，方案基于过期版本，无法直接应用。`;
++  } else if (isInsufficient) {
++    status = 'insufficient';
++    statusLabel = '信息不足';
++    if (isMissingContext || isUncertain) {
++      statusMessage = '缺少合法图谱上下文或依赖依据，无法形成确定性修复方案，需重新核查事实。';
++    } else if (resolvedCandidate && hasNoExpectedRevision) {
++      statusMessage = '信息不足：修复方案缺少预期图版本。';
++    } else if (hasNoChanges) {
++      statusMessage = '信息不足：修复方案未包含任何受影响的计划变更。';
++    } else {
++      statusMessage = task?.error?.message || '缺少必要图谱信息或执行依据。';
++    }
++  } else if (task?.state === 'succeeded' && task.result?.kind === 'applied') {
++    status = 'applied';
++    statusLabel = '已应用';
++    statusMessage = `计划修复已成功写入图谱（图版本 ${currentGraphRevision ?? '已更新'}）。`;
++  } else if (task?.state === 'failed') {
++    status = 'failed';
++    statusLabel = '任务失败';
++    statusMessage = task.error?.message || '修复任务未成功应用。';
++  } else if (task?.state === 'cancelled') {
++    status = 'cancelled';
++    statusLabel = '已取消';
++    statusMessage = '修复任务已取消。';
++  } else if (task?.state === 'waiting_approval' || task?.approval?.state === 'pending') {
++    status = 'pending';
++    statusLabel = '待确认';
++    statusMessage = '方案待确认：等待一次性授权决定；尚未应用到计划图中。';
++  }
++
++  const goalsMap = new Map((Array.isArray(goals) ? goals : []).map(g => [g.id, g]));
++  const affected = [];
++  const affectedIds = new Set();
++
++  if (Array.isArray(resolvedCandidate?.changes)) {
++    for (const change of resolvedCandidate.changes) {
++      if (!change || typeof change !== 'object') continue;
++      const nodeId = change.node?.id ?? '未知计划';
++      affectedIds.add(nodeId);
++      const oldGoal = goalsMap.get(nodeId);
++      const oldRevision = Number.isSafeInteger(change.node?.revision)
++        ? change.node.revision
++        : (oldGoal ? oldGoal.revision : null);
++      const newRevision = oldRevision !== null ? oldRevision + 1 : null;
++      const oldSummary = typeof change.oldSummary === 'string'
++        ? change.oldSummary
++        : (oldGoal?.summary ?? null);
++      const newSummary = typeof change.summary === 'string' ? change.summary : null;
++      const reason = typeof change.reason === 'string' && change.reason.trim()
++        ? change.reason.trim()
++        : null;
++
++      const oldDeps = oldGoal?.dependencies ?? change.oldDependencies ?? null;
++      const newDeps = Array.isArray(change.dependencies) ? change.dependencies : null;
++
++      let dependenciesText;
++      if (oldDeps !== null && newDeps !== null) {
++        const oldStr = formatDependencies(oldDeps);
++        const newStr = formatDependencies(newDeps);
++        if (oldStr === newStr) {
++          dependenciesText = `依赖无变化：${newStr}`;
++        } else {
++          dependenciesText = `依赖变化：${oldStr} → ${newStr}`;
++        }
++      } else if (newDeps !== null) {
++        dependenciesText = `新依赖：${formatDependencies(newDeps)}（原依赖未记录）`;
++      } else {
++        dependenciesText = '未指定新依赖';
++      }
++
++      affected.push({
++        id: nodeId,
++        oldRevision,
++        newRevision,
++        oldSummary,
++        newSummary,
++        reason,
++        oldDependencies: oldDeps,
++        newDependencies: newDeps,
++        dependenciesText,
++      });
++    }
++  }
++
++  const preserved = [];
++  const candidatePreserved = Array.isArray(resolvedCandidate?.preserved)
++    ? resolvedCandidate.preserved
++    : (Array.isArray(resolvedCandidate?.preservedNodes)
++      ? resolvedCandidate.preservedNodes
++      : (Array.isArray(resolvedCandidate?.preserved_steps) ? resolvedCandidate.preserved_steps : []));
++
++  for (const item of candidatePreserved) {
++    if (!item || typeof item !== 'object' || !item.id) continue;
++    if (!affectedIds.has(item.id)) {
++      preserved.push({
++        id: item.id,
++        revision: item.revision ?? null,
++        summary: item.summary ?? '无摘要',
++        dependencies: item.dependencies ?? [],
++      });
++    }
++  }
++
++  for (const goal of (goals || [])) {
++    if (!affectedIds.has(goal.id) && !preserved.some(p => p.id === goal.id)) {
++      preserved.push({
++        id: goal.id,
++        revision: goal.revision,
++        summary: goal.summary,
++        dependencies: goal.dependencies ?? [],
++      });
++    }
++  }
++
++  const hasPreview = Boolean(resolvedCandidate || isConflict || isInsufficient || affected.length > 0);
++
++  return {
++    hasPreview,
++    status,
++    statusLabel,
++    statusMessage,
++    expectedGraphRevision,
++    currentGraphRevision,
++    affected,
++    preserved,
++  };
++}
++
++export function renderRepairPreview(container, data) {
++  if (!container) return;
++  container.replaceChildren();
++  if (!data || !data.hasPreview) {
++    container.hidden = true;
++    return;
++  }
++  container.hidden = false;
++
++  const title = element('h3', '计划修复预览');
++  container.append(title);
++
++  const banner = element('div');
++  banner.className = `repair-status-banner repair-status-${data.status}`;
++  const badge = element('span', data.statusLabel);
++  badge.className = `repair-status-badge badge-${data.status}`;
++  badge.setAttribute('data-status-badge', data.status);
++  const msg = element('span', data.statusMessage);
++  msg.className = 'repair-status-text';
++  banner.append(badge, msg);
++  container.append(banner);
++
++  if (data.expectedGraphRevision !== null || data.currentGraphRevision !== null) {
++    const meta = element('div');
++    meta.className = 'repair-meta-row';
++    const expText = data.expectedGraphRevision !== null ? `预期图版本 ${data.expectedGraphRevision}` : '预期图版本未指定';
++    const curText = data.currentGraphRevision !== null ? `当前图版本 ${data.currentGraphRevision}` : '当前图版本未知';
++    meta.textContent = `${expText} · ${curText}`;
++    container.append(meta);
++  }
++
++  const affectedSection = element('div');
++  affectedSection.className = 'repair-section repair-affected-section';
++  affectedSection.setAttribute('aria-label', '受影响的计划');
++  const affectedTitle = element('h4', `受影响的计划（${data.affected.length}）`);
++  affectedSection.append(affectedTitle);
++
++  if (data.affected.length === 0) {
++    const emptyNotice = element('p', data.status === 'insufficient'
++      ? '信息不足：未包含任何有效计划变更。'
++      : '无受影响的计划。');
++    emptyNotice.className = 'repair-empty-notice';
++    affectedSection.append(emptyNotice);
++  } else {
++    for (const item of data.affected) {
++      const card = element('div');
++      card.className = 'repair-item-card repair-affected-card';
++      card.setAttribute('data-affected-node', item.id);
++
++      const header = element('div');
++      header.className = 'repair-card-header';
++      const nodeTitle = element('strong', item.id);
++      const revText = item.oldRevision !== null
++        ? `版本 ${item.oldRevision} → ${item.newRevision ?? (item.oldRevision + 1)}`
++        : '原版本未记录';
++      const revTag = element('span', revText);
++      revTag.className = 'repair-tag';
++      header.append(nodeTitle, revTag);
++
++      const diff = element('div');
++      diff.className = 'repair-summary-diff';
++
++      const oldSummaryP = element('p');
++      oldSummaryP.append(element('span', '原摘要：'),
++        element('span', item.oldSummary ?? '原摘要未记录'));
++      if (!item.oldSummary) oldSummaryP.className = 'text-muted';
++
++      const newSummaryP = element('p');
++      newSummaryP.append(element('span', '新摘要：'),
++        element('strong', item.newSummary ?? '未提供新摘要'));
++
++      diff.append(oldSummaryP, newSummaryP);
++
++      const reasonP = element('p');
++      reasonP.className = 'repair-reason-row';
++      reasonP.append(element('span', '修复原因：'),
++        element('span', item.reason ?? '未提供修复原因'));
++      if (!item.reason) reasonP.className = 'repair-reason-row text-muted';
++
++      const depsP = element('p');
++      depsP.className = 'repair-deps-row';
++      depsP.textContent = item.dependenciesText;
++
++      card.append(header, diff, reasonP, depsP);
++      affectedSection.append(card);
++    }
++  }
++  container.append(affectedSection);
++
++  const preservedSection = element('div');
++  preservedSection.className = 'repair-section repair-preserved-section';
++  preservedSection.setAttribute('aria-label', '保持不变的计划');
++  const preservedTitle = element('h4', `保持不变的计划（${data.preserved.length}）`);
++  preservedSection.append(preservedTitle);
++
++  if (data.preserved.length === 0) {
++    const emptyNotice = element('p', '暂无保持不变的计划。');
++    emptyNotice.className = 'repair-empty-notice';
++    preservedSection.append(emptyNotice);
++  } else {
++    for (const item of data.preserved) {
++      const card = element('div');
++      card.className = 'repair-item-card repair-preserved-card';
++      card.setAttribute('data-preserved-node', item.id);
++
++      const header = element('div');
++      header.className = 'repair-card-header';
++      header.append(element('strong', item.id));
++      const revText = Number.isSafeInteger(item.revision) ? `版本 ${item.revision}` : '版本未知';
++      header.append(element('span', revText));
++      const tag = element('span', '保持不变');
++      tag.className = 'repair-tag tag-preserved';
++      header.append(tag);
++
++      const summaryP = element('p', item.summary ?? '无摘要');
++      summaryP.className = 'repair-preserved-summary';
++
++      const depsP = element('p', `依赖：${formatDependencies(item.dependencies)}`);
++      depsP.className = 'repair-deps-row text-muted';
++
++      card.append(header, summaryP, depsP);
++      preservedSection.append(card);
++    }
++  }
++  container.append(preservedSection);
++}
++
+@@ -45,0 +364,5 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
++  const repairPreview = element('section');
++  repairPreview.className = 'goal-repair-preview';
++  repairPreview.setAttribute('aria-label', '计划修复预览');
++  repairPreview.hidden = true;
++
+@@ -65 +388 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
+-    form, newGoal, reload, close);
++    repairPreview, form, newGoal, reload, close);
+@@ -70,0 +394 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
++  let knownGoals = [];
+@@ -197,0 +522 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
++      knownGoals = result.goals;
+@@ -208,0 +534,9 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
++  function updateRepairPreview(targetTask = activeTask) {
++    const preview = projectRepairPreview({
++      task: targetTask,
++      goals: knownGoals,
++      graphRevision,
++    });
++    renderRepairPreview(repairPreview, preview);
++  }
++
+@@ -212,0 +547,2 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
++    repairPreview.hidden = true;
++    repairPreview.replaceChildren();
+@@ -244,0 +581,2 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
++    repairPreview.hidden = true;
++    repairPreview.replaceChildren();
+@@ -330,0 +669 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
++    updateRepairPreview(task);
+@@ -346,0 +686 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
++      updateRepairPreview(task);
+@@ -482 +822 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
+-  return {button, dialog};
++  return {button, dialog, repairPreview, updateRepairPreview};
+diff --git a/apps/desktop/test/goal-view.test.mjs b/apps/desktop/test/goal-view.test.mjs
+index f01d1e2034fd9ca98e3f0ca7f73e51c6c226ab23..5af819ebb9747806e54df3e4886e4c821942bb30 100644
+--- a/apps/desktop/test/goal-view.test.mjs
++++ b/apps/desktop/test/goal-view.test.mjs
+@@ -3 +3,8 @@ import assert from 'node:assert/strict';
+-import {appliedGoalRef, createGoalControl} from '../src/features/conversation/goal-view.js';
++import {
++  appliedGoalRef,
++  createGoalControl,
++  projectRepairPreview,
++  renderRepairPreview,
++  extractRepairCandidate,
++  formatDependencies,
++} from '../src/features/conversation/goal-view.js';
+@@ -459,0 +467,241 @@ test('Goal expiry callbacks cannot replace newer draft feedback or another appro
++
++function fakeDoc(t) {
++  if (!documents.has(t)) {
++    const original = globalThis.document;
++    documents.set(t, original);
++    t.after(() => { globalThis.document = original; });
++  }
++  globalThis.document = {querySelector: () => null, createElement: tag => new FakeElement(tag), head: new FakeElement('head')};
++}
++const textOf = node => walk(node).map(n => n.textContent).join(' ');
++
++test('repair preview clearly separates affected plans from preserved plans with exact node identities', t => {
++  fakeDoc(t);
++  const currentGoals = [
++    {id: 'attend', revision: 1, summary: 'Attend meeting at 15:00', dependencies: [{id: 'meeting', revision: 1}]},
++    {id: 'prepare', revision: 1, summary: 'Prepare at 14:00', dependencies: [{id: 'attend', revision: 1}]},
++    {id: 'unrelated', revision: 1, summary: 'Unrelated goal remains active', dependencies: []},
++  ];
++  const candidate = {
++    expectedGraphRevision: 5,
++    changes: [
++      {
++        node: {id: 'attend', revision: 1},
++        summary: 'Attend meeting at 17:00',
++        reason: 'Meeting was rescheduled to 17:00 by host',
++        dependencies: [{id: 'meeting', revision: 2}],
++      },
++      {
++        node: {id: 'prepare', revision: 1},
++        summary: 'Prepare at 16:00',
++        reason: 'Preparation shifts one hour prior to 17:00',
++        dependencies: [{id: 'attend', revision: 2}],
++      },
++    ],
++  };
++  const task = {
++    taskId: 'repair-task-1',
++    state: 'waiting_approval',
++    approval: {state: 'pending', approvalId: 'app-1', revision: 1},
++    candidate,
++  };
++  const preview = projectRepairPreview({task, candidate, goals: currentGoals, graphRevision: 5});
++  assert.equal(preview.status, 'pending');
++  assert.equal(preview.statusLabel, '待确认');
++  assert.equal(preview.affected.length, 2);
++  assert.deepEqual(preview.affected.map(a => a.id), ['attend', 'prepare']);
++  assert.equal(preview.preserved.length, 1);
++  assert.equal(preview.preserved[0].id, 'unrelated');
++  assert.equal(preview.preserved[0].summary, 'Unrelated goal remains active');
++
++  const container = new FakeElement('section');
++  renderRepairPreview(container, preview);
++  assert.equal(container.hidden, false);
++  const allNodes = walk(container);
++  const affectedSection = allNodes.find(n => n.attrs['aria-label'] === '受影响的计划');
++  const preservedSection = allNodes.find(n => n.attrs['aria-label'] === '保持不变的计划');
++  assert.ok(affectedSection);
++  assert.ok(preservedSection);
++  assert.match(textOf(affectedSection), /受影响的计划（2）/);
++  assert.match(textOf(affectedSection), /attend/);
++  assert.match(textOf(affectedSection), /prepare/);
++  assert.match(textOf(preservedSection), /保持不变的计划（1）/);
++  assert.match(textOf(preservedSection), /unrelated/);
++  assert.match(textOf(preservedSection), /保持不变/);
++});
++
++test('repair preview displays old and new summaries, explicit repair reasons, and dependency revisions without fabricating data', t => {
++  fakeDoc(t);
++  const currentGoals = [
++    {id: 'existing-node', revision: 2, summary: 'Old summary text', dependencies: [{id: 'dep-a', revision: 1}]},
++  ];
++  const candidate = {
++    expectedGraphRevision: 3,
++    changes: [
++      {
++        node: {id: 'existing-node', revision: 2},
++        summary: 'New summary text',
++        reason: 'Explicit factual update reason',
++        dependencies: [{id: 'dep-a', revision: 2}],
++      },
++      {
++        node: {id: 'brand-new-node', revision: 1},
++        summary: 'Newly proposed plan step',
++        dependencies: [],
++      },
++    ],
++  };
++  const preview = projectRepairPreview({candidate, goals: currentGoals, graphRevision: 3});
++  assert.equal(preview.affected[0].oldSummary, 'Old summary text');
++  assert.equal(preview.affected[0].newSummary, 'New summary text');
++  assert.equal(preview.affected[0].reason, 'Explicit factual update reason');
++  assert.equal(preview.affected[0].dependenciesText, '依赖变化：dep-a@1 → dep-a@2');
++
++  assert.equal(preview.affected[1].oldSummary, null);
++  assert.equal(preview.affected[1].newSummary, 'Newly proposed plan step');
++  assert.equal(preview.affected[1].reason, null);
++  assert.equal(preview.affected[1].dependenciesText, '新依赖：无依赖（原依赖未记录）');
++
++  const container = new FakeElement('section');
++  renderRepairPreview(container, preview);
++  const text = textOf(container);
++  assert.match(text, /原摘要：\s*Old summary text/);
++  assert.match(text, /新摘要：\s*New summary text/);
++  assert.match(text, /修复原因：\s*Explicit factual update reason/);
++  assert.match(text, /依赖变化：dep-a@1 → dep-a@2/);
++
++  assert.match(text, /原摘要：\s*原摘要未记录/);
++  assert.match(text, /修复原因：\s*未提供修复原因/);
++  assert.doesNotMatch(text, /undefined|null/);
++});
++
++test('repair preview reflects pending, version conflict, and insufficient information statuses accurately', t => {
++  fakeDoc(t);
++  const validCandidate = {
++    expectedGraphRevision: 5,
++    changes: [
++      {node: {id: 'task-node', revision: 1}, summary: 'Step', reason: 'Because of change', dependencies: []},
++    ],
++  };
++
++  // 1. Pending (待确认)
++  const pendingTask = {
++    state: 'waiting_approval',
++    approval: {state: 'pending'},
++    candidate: validCandidate,
++  };
++  const pendingPreview = projectRepairPreview({task: pendingTask, graphRevision: 5});
++  assert.equal(pendingPreview.status, 'pending');
++  assert.equal(pendingPreview.statusLabel, '待确认');
++  assert.match(pendingPreview.statusMessage, /待确认|人工核对/);
++
++  // 2. Version conflict (版本冲突)
++  const mismatchPreview = projectRepairPreview({candidate: validCandidate, graphRevision: 6});
++  assert.equal(mismatchPreview.status, 'conflict');
++  assert.equal(mismatchPreview.statusLabel, '版本冲突');
++  assert.match(mismatchPreview.statusMessage, /版本冲突.*当前计划图版本（6）与修复预期版本（5）不一致/);
++
++  const conflictTask = {
++    result: {kind: 'conflict', graphRevision: 7},
++    expectedGraphRevision: 5,
++    candidate: validCandidate,
++  };
++  const taskConflictPreview = projectRepairPreview({task: conflictTask, graphRevision: 7});
++  assert.equal(taskConflictPreview.status, 'conflict');
++  assert.equal(taskConflictPreview.statusLabel, '版本冲突');
++
++  // 3. Insufficient information (信息不足)
++  const noRevCandidate = {
++    changes: [{node: {id: 'node-1', revision: 1}, summary: 'Step'}],
++  };
++  const noRevPreview = projectRepairPreview({candidate: noRevCandidate, graphRevision: 5});
++  assert.equal(noRevPreview.status, 'insufficient');
++  assert.equal(noRevPreview.statusLabel, '信息不足');
++  assert.match(noRevPreview.statusMessage, /缺少预期图版本/);
++
++  const emptyChangesCandidate = {
++    expectedGraphRevision: 5,
++    changes: [],
++  };
++  const emptyPreview = projectRepairPreview({candidate: emptyChangesCandidate, graphRevision: 5});
++  assert.equal(emptyPreview.status, 'insufficient');
++  assert.equal(emptyPreview.statusLabel, '信息不足');
++  assert.match(emptyPreview.statusMessage, /未包含任何受影响的计划变更/);
++
++  const uncertainTask = {
++    action: 'RECHECK',
++    result: {kind: 'uncertain', text: '缺少合法图谱上下文，无法生成修复候选。'},
++  };
++  const uncertainPreview = projectRepairPreview({task: uncertainTask, graphRevision: 5});
++  assert.equal(uncertainPreview.status, 'insufficient');
++  assert.equal(uncertainPreview.statusLabel, '信息不足');
++  assert.match(uncertainPreview.statusMessage, /缺少合法图谱上下文/);
++
++  const container = new FakeElement('section');
++  renderRepairPreview(container, mismatchPreview);
++  const conflictBadge = walk(container).find(n => n.dataset.statusBadge === 'conflict' || n.attrs['data-status-badge'] === 'conflict');
++  assert.ok(conflictBadge);
++  assert.equal(conflictBadge.textContent, '版本冲突');
++
++  renderRepairPreview(container, uncertainPreview);
++  const insufficientBadge = walk(container).find(n => n.dataset.statusBadge === 'insufficient' || n.attrs['data-status-badge'] === 'insufficient');
++  assert.ok(insufficientBadge);
++  assert.equal(insufficientBadge.textContent, '信息不足');
++});
++
++test('integrated dialog shows repair preview for candidate task and clears it when drafting a new goal', async t => {
++  const repairTask = {
++    taskId: 'repair-task-42',
++    revision: 2,
++    state: 'waiting_approval',
++    approval: {state: 'pending', approvalId: 'app-42', revision: 1, expiresAt: '2099-01-01T00:00:00.000Z'},
++    candidate: {
++      expectedGraphRevision: 2,
++      changes: [
++        {
++          node: {id: goals[0].id, revision: 1},
++          summary: 'Revised summary for A',
++          reason: 'Meeting adjusted',
++          dependencies: [{id: 'new-dep', revision: 1}],
++        },
++      ],
++    },
++  };
++  const ui = fixture(t, (name, id) => {
++    if (name === 'goal.readTask' && id === repairTask.taskId) return repairTask;
++  }, [repairTask]);
++
++  await ui.open();
++  // Automatically loads pending repair task upon opening
++  assert.equal(ui.repairPreview.hidden, false);
++  const previewText = textOf(ui.repairPreview);
++  assert.match(previewText, /计划修复预览/);
++  assert.match(previewText, /待确认/);
++  assert.match(previewText, /受影响的计划（1）/);
++  assert.match(previewText, /Revised summary for A/);
++  assert.match(previewText, /原摘要：\s*Summary synthetic-A/);
++  assert.match(previewText, /保持不变的计划（1）/);
++  assert.match(previewText, /synthetic-B/);
++
++  // When clicking "新建目标", preview is hidden/cleared
++  ui.button('新建目标').onclick();
++  assert.equal(ui.repairPreview.hidden, true);
++  assert.equal(ui.repairPreview.children.length, 0);
++
++  // Clicking history re-opens the repair preview
++  await ui.history(0);
++  assert.equal(ui.repairPreview.hidden, false);
++  assert.match(textOf(ui.repairPreview), /Revised summary for A/);
++});
++
++test('renderRepairPreview handles empty or missing preview data gracefully without errors', () => {
++  const container = new FakeElement('section');
++  renderRepairPreview(container, null);
++  assert.equal(container.hidden, true);
++
++  renderRepairPreview(container, {hasPreview: false});
++  assert.equal(container.hidden, true);
++
++  renderRepairPreview(null, {hasPreview: true});
++});
++

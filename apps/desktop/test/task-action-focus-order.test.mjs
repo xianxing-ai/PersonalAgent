@@ -57,6 +57,46 @@ for(const [surface,path,assignment] of [
     assert.deepEqual(f.errors,['原结果仍待核实']);assert.equal(replacement.disabled,false);assert.equal(f.context.current.tasks[0].state,'waiting_reconciliation');
     const retry=f.click(replacement);assert.equal(f.calls.length,2);f.replace([]);f.calls[1].resolve({taskId:'task-1',state:'cancelled'});await retry;assert.equal(f.buttons.length,0);
   });
+  if(surface==='workspace')test('workspace: session switch keeps inspector focus on a persistent control',()=>{
+    let panels,prefix;
+    function capture(node){
+      if(ts.isFunctionDeclaration(node)&&node.name?.text==='syncAuxiliaryPanels')panels=node.getText(ast);
+      if(ts.isFunctionDeclaration(node)&&node.name?.text==='update'){
+        const statements=[...node.body.statements];
+        const cut=statements.findIndex(part=>ts.isExpressionStatement(part)&&ts.isBinaryExpression(part.expression)
+          &&part.expression.operatorToken.kind===ts.SyntaxKind.EqualsToken&&part.expression.left.getText(ast)==='current');
+        assert.ok(cut>0,'session handling precedes adopting the new snapshot');
+        prefix=statements.slice(0,cut).map(part=>part.getText(ast)).join('\n');
+      }
+      ts.forEachChild(node,capture);
+    }
+    capture(ast);assert.ok(panels&&prefix,'actual auxiliary panel helper and snapshot prefix');
+    for(const connectorsRequested of [false,true]){
+      const document={body:{},activeElement:null};
+      const control=(dataset={})=>({dataset,focus(options){document.activeElement=this;this.focusOptions=options;}});
+      const close=control(),old=control({view:'old-task'}),toggle=control();
+      toggle.setAttribute=(name,value)=>{toggle[name]=value;};
+      const inspector={hidden:false,dataset:{taskId:'old-task'},contains:node=>node===close},board={hidden:false};
+      const nodes={'#conversation-inspector':inspector,'.connector-board':board,'#connectors-toggle':toggle};
+      let buttons=[old];
+      const context=vm.createContext({document,root:{querySelector:selector=>nodes[selector]},
+        conversation:{querySelectorAll:()=>buttons},current:{conversationState:{activeId:'old-session'}},
+        inspected:'old-task',connectorsRequested,updateRevision:0,preferenceEditing:null,
+        preferenceRequests:{model:0,thinking:0},preferencePending:{model:null,thinking:null},preferenceErrors:{model:null,thinking:null}});
+      vm.runInContext(panels,context);
+      const update=vm.runInContext('data=>{'+prefix+'}',context);
+      document.activeElement=close;
+      update({conversationState:{activeId:'old-session'}});
+      assert.equal(document.activeElement,close,'unchanged session does not steal focus');
+      update({conversationState:{activeId:'new-session'}});
+      buttons=[];if(document.activeElement===old)document.activeElement=document.body;
+      assert.equal(inspector.hidden,true);
+      assert.equal(document.activeElement,toggle);
+      assert.equal(toggle.focusOptions.preventScroll,true);
+      assert.equal(board.hidden,!connectorsRequested);
+      assert.equal(toggle['aria-expanded'],String(connectorsRequested));
+    }
+  });
   if(surface==='panel')test('panel: failure location actions retain their specific task identity',()=>{
     const f=fixture(),first=f.button('locate'),second=f.button('locate');
     delete first.dataset.id;delete second.dataset.id;first.dataset.locateId='task-1';second.dataset.locateId='task-2';
