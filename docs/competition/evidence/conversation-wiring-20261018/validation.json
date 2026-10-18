@@ -215,5 +215,70 @@
       "e1fb853c68511a6b3f716f2139a1ff47f4d8418a"
     ],
     "lastFixtureCommitResolution": "e1fb853c Windows fixture intent retained by the already-tested real Node transport, original getCredentials guards and revocable Synthetic ACL; final fixture bytes unchanged"
+  },
+  "postCiFollowup": {
+    "classification": "Local/Synthetic exact integration baseline/fix; production and prior 226 tested sources unchanged",
+    "baselineHead": "3000dcbdd4f26f4a27fdb62ae34c98653f02afe6",
+    "command": [
+      "node",
+      "--test",
+      "tests/integration/live-response-lifecycle.test.mjs"
+    ],
+    "node": "v24.15.0",
+    "dependencyProvenance": "Read-only reuse of primary 3000dcb node_modules/dist; no rebuild or broad suite",
+    "change": "Align Synthetic consumer task.submit to the public Client contract: only goal/conversationId in payload; trusted idempotencyKey in CallOptions. Preserve lifecycle and single execution assertions.",
+    "patchSha256": "8fc30258838a1ef7ce5c5a57ba8be789af82e8212fe12239538508d8f184efd6",
+    "baseline": {
+      "sourceSha256": "aa8f4dcb87e11ca2694d03918d09ffd252ed7353ba55468a7395d1b9a2a52242",
+      "startedAt": "2026-10-18T22:51:56.846567+00:00",
+      "completedAt": "2026-10-18T22:51:57.211540+00:00",
+      "wallSeconds": 0.365,
+      "exitCode": 1,
+      "logSha256": "9f889ff2ebf96342796c8d21f07b472b55b285bb6f4373d437ee3fd950e26641",
+      "result": "Reproduced undefined taskId -> requireText.trim"
+    },
+    "fixed": {
+      "sourceSha256": "ab3cabc522d4f5c6c114be76b08f1fdd6bc4dc310a84f8a2c679cd691df13c31",
+      "startedAt": "2026-10-18T22:51:57.213748+00:00",
+      "completedAt": "2026-10-18T22:51:57.681130+00:00",
+      "wallSeconds": 0.467,
+      "exitCode": 0,
+      "logSha256": "9debeaf8e63b6163c1eab4d3506f037da4c33cccec5c0cb1a59543ed0391199c",
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "skipped": 0
+      }
+    },
+    "priorCi": [
+      {
+        "runId": 39172889704,
+        "event": "pull_request",
+        "conclusion": "failure",
+        "logSha256": "e25496336b90d45f68777314a26c745c760612305be0bcf320fbabd4cb8a69c3",
+        "failure": "root integration 50/51; lifecycle fixture contract mismatch",
+        "knowledge": "56/56 pass",
+        "desktop": {
+          "tests": 1304,
+          "pass": 1298,
+          "fail": 0,
+          "skipped": 6
+        },
+        "runtime": "850/850 pass"
+      },
+      {
+        "runId": 39172886287,
+        "event": "push",
+        "conclusion": "failure",
+        "logSha256": "9b87dc0daa9fb8f5dab787f5a77a3c1f2ec10818d4ec0532a064e9e88995cbaf",
+        "failure": "knowledge 55/56; original PowerShell certificate process killed at 10128ms by 10000ms budget before observed script_enter; exact OS cause unproven",
+        "rootIntegration": "not executed due to workspace failure",
+        "owner": "goo122",
+        "productionChange": "knowledge unchanged main to 3000; no edits, timeout extension, test skip or certificate retry"
+      }
+    ],
+    "counting": "Original totalTestInstances 226 remains the prior unified package record; this new single-file 1/1 is recorded separately and no old failures or prior runs are added to it.",
+    "newHeadCi": "Must be read separately after publication; not yet passed by this record"
   }
 }

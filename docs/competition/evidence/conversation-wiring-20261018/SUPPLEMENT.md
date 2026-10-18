@@ -44,3 +44,21 @@ F15 原镜像仍依赖 `decision.choose_candidate` 与原本地 selector ready/�
 通用 driver 不是任意图的模型入口。其余业务 adapter、可信输入/guard、F22/F23配置/验证端口、真实云与设备仍按原 owner 处理。
 Live 后台主动播报须模型负责人提供可信公开端口，见 [交接提案](../../LIVE_BACKGROUND_RESULT_HANDOFF_20261018.md)；目前仍经原 context/wait 续接。
 没有真实云/账号写入、物理 Windows 或音频验收，没有发送邮件。
+
+## 当前头 Windows CI 后续修复
+
+`3000dcbdd4f26f4a27fdb62ae34c98653f02afe6` 的两条 Foundation 进一步暴露两个独立失败；未把本地226项记为远端通过。
+PR run `39172889704` 已通过全部 workspace 检查，但根集成51项中50通过、1失败：
+`tests/integration/live-response-lifecycle.test.mjs` 的旧 Synthetic consumer 把幂等键放进 `task.submit` 业务参数，
+被当前 Live 的严格字段校验正确拒绝，随后夹具误读未赋值的 taskId。
+本次仅将该夹具对齐原公开 consumer 契约：业务参数仅 goal/conversationId，幂等键进入可信 Client 调用选项，
+再由夹具的原 Client→TaskRuntime 边界映射；保留并强化原任务只执行一次、幂等身份、打断音频不取消后台任务及迟到音频拒绝断言。
+没有放宽生产字段、授权或恢复检查。新增定向复现/验证记录见 JSON 的 `postCiFollowup`；上表226项是原统一包的独立记录，不重复累加。
+
+push run `39172886287` 仅有原 knowledge TLS 夹具的证书创建失败（55/56）：
+原 PowerShell 进程在10,128ms触发10,000ms预算，被终止前未观测到 script_enter，尚未进入 TLS pin/descriptor 断言。
+具体操作系统原因未知，不能归因为 RSA 或 TLS 逻辑；相同提交的 PR run 该组56/56通过。
+knowledge 在 main→3000 无源码变动，本轮未修改其源码、延长期限、跳过测试或重试证书操作。
+新提交自动 CI 将单独记录；若该环境问题复发，交原负责人 goo122 核实 Windows 证书首次启动预算。
+两条 run 的 Desktop 均1298通过/0失败/6跳过，Runtime 均850/850；原部署、Live recovery和退出三簇均通过。
+push 因 knowledge 失败未执行根集成，不能视为其已通过。
