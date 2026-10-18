@@ -1630,7 +1630,10 @@ async function initializeRuntime() {
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'}] : [])],
-        readDefaultExecutionModel:role=>agentArtsModels.readExecutionModel(role),
+        // Local deployment adaptation: the deployed runtime rejects catalog-list invocations (401 UNAUTHORIZED),
+        // so an unreadable catalog must degrade to "no explicit execution model" (the runtime still accepts a
+        // plain-goal dispatch with its own server-side model) instead of failing every submission.
+        readDefaultExecutionModel:role=>{try{return agentArtsModels.readExecutionModel(role);}catch{return undefined;}},
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
         readConversationPreference: conversationId => {
           if (!conversations?.containsConversation(conversationId)) return undefined;
@@ -1638,7 +1641,14 @@ async function initializeRuntime() {
           const models=modelApiHost?.snapshot();
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
-          return {...preference,modelId,executionModel:preference.executionModel?agentArtsModels.resolveExecutionModel(preference.executionModel):modelId?agentArtsModels.resolveExecutionModel({modelId}):agentArtsModels.readExecutionModel(),configurationRef:selected?.configurationRef};
+          let executionModel;
+          if(preference.executionModel) executionModel=agentArtsModels.resolveExecutionModel(preference.executionModel);
+          else if(modelId) executionModel=agentArtsModels.resolveExecutionModel({modelId});
+          else {
+            try {executionModel=agentArtsModels.readExecutionModel();}
+            catch {/* Directory metadata is unavailable; dispatch without an implicit default model. */}
+          }
+          return {...preference,modelId,...(executionModel!==undefined?{executionModel}:{}),configurationRef:selected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
           if (!proactiveHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-proactive-goals:')) {
