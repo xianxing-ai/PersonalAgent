@@ -45,11 +45,25 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
+import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
+import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
+import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
+import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
+import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
 import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
+import {createDesktopDeveloperDeployment,projectDeveloperConversationStatus} from './developer-deployment-config.js';
+import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
+import {createToolPresenceHost} from './tool-presence-host.js';
+import {createConversationToolSurface} from './conversation-tool-surface.js';
+import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
+import {createSystemObservationConversation} from './system-observation-conversation.js';
+import {createDesktopWindowsControlHost} from './windows-control-host.js';
+import {createComputerControlLease} from './computer-control-lease.js';
+import {createWindowsDesktopControlHost} from '@personal-agent/windows-client';
 import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
@@ -234,6 +248,9 @@ let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
+let conversationToolAccess, voiceApprovalBridge, proactiveConversationTools;
+let proactiveRuntimePump,proactiveSourceRouter;
+let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
 let p5UnavailableReason = '';
 let p5RuntimeFailure = '';
@@ -251,6 +268,13 @@ function withReviewedRepairLock(work) {
 }
 let productTools;
 let codingWorkspace;
+let developerDeployment;
+let developerDeploymentFailure='';
+let toolPresenceHost,windowsControlHost,windowsControlClosing;
+let computerControlLease;
+let imageWorkflowCatalog;
+let systemObservationConversation;
+let windowsControlClosed=false;
 let referenceHost;
 let referenceClosing;
 let referenceClosed=false;
@@ -309,7 +333,13 @@ function taskSurface(task) {
 
 function voiceQuestionForConversation(conversationId){
   const question=voiceCommandHost?.snapshot();if(!question?.taskId)return question;
-  const task=tasks.get(question.taskId);return task&&conversations?.conversationIdForTask(task)===conversationId?question:null;
+  if(question.kind==='approval'&&question.state==='pending'){
+    const approval=conversationToolAccess?.readApproval(question.approvalId);
+    if(!approval||approval.state!=='pending'||approval.taskState!=='waiting_approval'
+      ||approval.revision!==question.approvalRevision||approval.argumentsDigest!==question.argumentsDigest
+      ||approval.expiresAt!==question.expiresAt)return null;
+  }
+  return conversationToolAccess?.authorizeTaskRead({taskId:question.taskId,conversationId})?question:null;
 }
 function p5DevicePanelSuggestions() {
   if (!p5DeviceReceiptStore) return [];
@@ -1330,6 +1360,7 @@ async function initializeInstalledSkills() {
 async function initializeRuntime() {
   const runtimeModule = await import('@personal-agent/runtime/application');
   const {createRuntimeApplication} = runtimeModule;
+  conversationToolAccess=createConversationToolAccess({getApplication:()=>runtimeApplication,getConversations:()=>conversations});
   let readEvents;
   if (!['local', 'huawei_ict_agentarts'].includes(runtimeProfile)) {
     throw Error('PA_RUNTIME_PROFILE 只允许 local 或 huawei_ict_agentarts');
@@ -1414,7 +1445,12 @@ async function initializeRuntime() {
           onUpdate: publish});
       }
       if (!syntheticMvp) goalCloudHost = createDesktopGoalCloudHost({goalHost, namespace,
+        isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         readProactiveBinding: taskId => proactiveHost?.readRepairBinding?.(taskId)});
+      if (!syntheticMvp) proactiveConversationTools=createDesktopProactiveConversationTools({
+        getApplication:()=>runtimeApplication,getHost:()=>proactiveWorkflowApplication,
+        isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
+        resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)});
       if (!syntheticMvp) {
         try {todoHost = createDesktopTodoHost({userData:app.getPath('userData'),safeStorage,namespace,
           notificationHost:notificationApplicationHost,
@@ -1427,6 +1463,30 @@ async function initializeRuntime() {
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
+      if(!syntheticMvp){
+        computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
+        toolPresenceHost=createToolPresenceHost({
+          registerNativeShortcut:handler=>globalShortcut.register('F9',handler)
+            ?()=>globalShortcut.unregister('F9'):undefined,
+          isTaskCurrent:taskId=>{
+            try{const task=runtimeApplication.runtime.getTask(taskId);
+              return ['running','waiting_approval'].includes(task.state)&&!task.cancelRequested;
+            }catch{return false;}
+          },
+          readTaskBinding:taskId=>conversationToolAccess.resolveConversation(taskId),
+          onPrompt:request=>{
+            if(request.state==='waiting'&&request.kind==='presence'&&Notification.isSupported())new Notification({title:'PersonalAgent 本机确认',
+              body:'保持本次操作的应用在前台，按 F9 确认当前任务在场。具体写入仍按原任务审批。'}).show();
+            publish();
+          },
+        });
+        windowsControlHost=createDesktopWindowsControlHost({createControlHost:createWindowsDesktopControlHost,
+          pythonExecutable:process.env.PA_WINDOWS_CONTROL_PYTHON,presenceHost:toolPresenceHost,
+          allowObservationExport:process.env.PA_WINDOWS_CONTROL_EXPORT==='1',onUpdate:publish});
+        if(process.platform==='win32'&&process.env.PA_WINDOWS_CONTROL_PYTHON){
+          await windowsControlHost.start({deadline:new Date(Date.now()+20_000).toISOString(),signal:new AbortController().signal});
+        }
+      }
       const hostPath = path.resolve(dir, '../../windows-host/host/bin/Release/net8.0-windows/WindowsHost.Host.exe');
       const bridgePath = path.resolve(dir, '../../windows-host/host/bridge/bin/Release/net8.0-windows/WindowsHost.PipeBridge.exe');
       if (!syntheticMvp && process.platform === 'win32' && existsSync(hostPath) && existsSync(bridgePath)) {
@@ -1434,8 +1494,7 @@ async function initializeRuntime() {
           createAdapter:runtimeModule.createWindowsHostNotepadAdapter,
           createAttempts:runtimeModule.createRuntimeWindowsHostAttemptStore,
           transport:runtimeModule.createWindowsHostBridgeTransport({hostPath,bridgePath}),
-          registerConfirmation:handler => globalShortcut.register('F9',handler)
-            ? () => globalShortcut.unregister('F9') : undefined,
+          registerConfirmation:handler=>toolPresenceHost?.registerConfirmation(handler),
           openNotepad:() => new Promise((resolve,reject) => {
             const child=spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows','System32','notepad.exe'),[],
               {windowsHide:false,stdio:'ignore'});
@@ -1455,6 +1514,13 @@ async function initializeRuntime() {
         rootPath: path.resolve(dir, '../fixtures/agentarts'), createWorkspaceReadTool,
       });
       productTools = createPublicConnectorHost({systemObservationFactory:runtimeModule.createSystemObservationTool});
+      if(!syntheticMvp)imageWorkflowCatalog=createImageWorkflowCatalogHost({getApplication:()=>runtimeApplication});
+      if(!syntheticMvp){
+        const observation=productTools.tools.find(tool=>tool.descriptor.name==='computer.system.observe');
+        if(observation)systemObservationConversation=createSystemObservationConversation({tool:observation,
+          getApplication:()=>runtimeApplication,resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
+          confirmExport:confirmDeveloperExport});
+      }
       const publicReferenceModule=await import('@personal-agent/mcp');
       publicReferenceConsent?.close();
       publicReferenceConsent=createNativePublicReferenceConsent({
@@ -1525,6 +1591,32 @@ async function initializeRuntime() {
           return result.canceled?undefined:result.filePaths[0];
         },
         createCommandRecipeTool:options=>createWorkspaceCommandRecipeTool({...options,createWorkspaceCommandTool})});
+      if(!syntheticMvp){
+        const developerCache=path.join(app.getPath('userData'),'developer-tool-cache');
+        mkdirSync(developerCache,{recursive:true,mode:0o700});
+        const powerShellPath=path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell','7','pwsh.exe');
+        const developerOptions={
+          configPath:process.env.PA_DEVELOPER_CONFIG_FILE,
+          workspace:codingWorkspace.readDeveloperConfiguration(),cacheRootPath:developerCache,
+          readModelGateway:(id,configurationRef)=>modelApiHost?.getModelGateway(id,configurationRef),
+          confirmExport:confirmDeveloperExport,
+          available:scope=>{
+            try{
+              const task=runtimeApplication.runtime.getTask(scope.taskId);
+              return task.state==='running'&&!task.cancelRequested
+                &&Boolean(conversationToolAccess.resolveConversation(scope.taskId));
+            }catch{return false;}
+          },
+          assertPrivateFile:file=>{
+            try{verifyWindowsRecoveryAcl(file,powerShellPath);return true;}catch{return false;}
+          },
+        };
+        try{developerDeployment=await createDesktopDeveloperDeployment(developerOptions);}
+        catch{
+          developerDeploymentFailure='开发部署配置无效或已失效；GitHub、Git 和开发工作流未启用';
+          developerDeployment=await createDesktopDeveloperDeployment({...developerOptions,configPath:undefined});
+        }
+      }
       referenceHost=createDesktopReferenceHost({workspace:codingWorkspace,createMcp:runtimeModule.createReadonlyMcpHost,onUpdate:publish,
         hostUserNamespace:namespace,
         publicReferenceExport:{
@@ -1653,6 +1745,19 @@ async function initializeRuntime() {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
       const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
+      const desktopControl={
+        tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[])],
+        availability:[...(toolPresenceHost?.competitionToolAvailability??[]),...(windowsControlHost?.competitionToolAvailability??[])],
+        exports:[...(toolPresenceHost?.competitionToolExports??[]),...(windowsControlHost?.competitionToolExports??[])],
+      };
+      let conversationTools=[...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
+        ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
+        ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
+        ...(proactiveConversationTools?.tools??[]),...productTools.tools,...(mailHost?.tools??[]),
+        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
+        ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
+        ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[])];
+      if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -1665,6 +1770,8 @@ async function initializeRuntime() {
         proactiveWorkflows: true,
         proactiveDecision: {localChooser:localLaya},
         hostUserNamespace: namespace,
+        ...(developerDeployment?.host.runtimeOptions??{}),
+        isUserPresent:taskId=>toolPresenceHost?.isUserPresent(taskId)===true,
         ...(notepadHost ? {windowsHostRecovery:{recover:(taskId,runId)=>{
           const intent=runtimeApplication.runtime.loadCheckpoint(taskId,'host-tool-intent');
           return notepadHost.recoverOriginalRun({taskId,runId,argumentsDigest:intent?.argumentsDigest},
@@ -1718,7 +1825,7 @@ async function initializeRuntime() {
         competitionMaxSteps: 8,
         // Module availability/consent, input validation and ToolGateway still run.
         // Explicit names prevent future destructive tools inheriting this policy.
-        automaticTools: [...[...productTools.tools,...codingWorkspace.tools,...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
+        automaticTools: [...[...productTools.tools,...codingWorkspace.tools,...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
           ...(todoHost?.tools??[]),...(feedsHost?.tools??[])].filter(tool=>[
             'weather.forecast','research.search','feeds.collect','feeds.subscriptions',
             'todo.list','todo.create','todo.update','notifications.status',
@@ -1726,6 +1833,9 @@ async function initializeRuntime() {
             'workspace.read_text','workspace.list_entries','workspace.preview_text_patch',
             'workspace.stage_text_patch','workspace.apply_text_patch','workspace.git_diff_check',
             'workspace.node_check','workspace.npm_build','workspace.npm_test',SUBAGENT_DISPATCH_TOOL_NAME,'knowledge.search','mcp.workspace.read_text',
+            'desktop.request_presence','computer.request_access',
+            'developer.repository_context',
+            'workflow.image.catalog',
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'}] : [])],
@@ -1760,8 +1870,9 @@ async function initializeRuntime() {
           }
           mailAnalysisHost?.assertCloudSend(request);
         },
-        tools: [...(syntheticMvp ? syntheticTools.tools : codingWorkspace.tools.length ? codingWorkspace.tools : competitionCatalog ? [competitionCatalog.tool] : []), ...(goalCloudHost?.tools ?? goalHost.tools), ...productTools.tools, ...(mailHost?.tools ?? []), ...(calendarMeetingHost?.tools ?? []), ...(feedsHost?.tools ?? []), ...(notepadHost?.tools ?? []), ...(todoHost?.tools ?? []), ...(notificationApplicationHost?.tools ?? []), ...(subagentTool ? [subagentTool] : []), ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[])],
+        tools: conversationTools,
         prepareCompetitionToolExport:async ({phase,taskId,proposal,deadline,signal})=>{
+          await developerDeployment?.prepareExport({phase,taskId,proposal,deadline,signal});
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;
           if (!publicReferenceConsent || !['preflight','projection'].includes(phase)) throw Error('原生公开资料许可入口不可用');
           const configurationRef=proposal.toolName === 'workspace.read_text'
@@ -1787,8 +1898,10 @@ async function initializeRuntime() {
         responseMode: agentArtsResponseMode ?? 'tool-proposal-json',
         ...(syntheticMvp ? {competitionToolExports: syntheticTools.competitionToolExports} : {
           initialRequestMode: 'goal-with-tools-json',
-          competitionToolAvailability: (competitionToolAvailabilityList = [...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...productTools.competitionToolAvailability, ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]),
-          competitionToolExports: [...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
+          competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
+            profile:'huawei_ict_agentarts',tools:conversationTools,
+            competitionToolAvailability:[...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
+          competitionToolExports: [...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -1816,6 +1929,8 @@ async function initializeRuntime() {
       if (syntheticRepairHost) await syntheticRepairHost.initialize(runtimeApplication.runtime);
       if (mailHost) {mailHost.bindApplication(runtimeApplication); mailConfig.markBound(configuredMail.revision);}
       codingWorkspace.bindApplication(runtimeApplication);
+      developerDeployment?.host.bind(runtimeApplication);
+      windowsControlHost?.bind(runtimeApplication);
       installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
       const cloudSkillSelector=referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
@@ -1917,30 +2032,50 @@ async function initializeRuntime() {
   if (notificationApplicationHost) {
     notificationApplicationHost.bindApplication(runtimeApplication, client);
     voiceCommandHost = createDesktopVoiceCommandHost({notifications:notificationApplicationHost,onUpdate:publish,
-      readApproval:approvalId=>{
-        const value=runtimeApplication.runtime.getApproval(approvalId), task=runtimeApplication.runtime.getTask(value.taskId);
-        return {...value,taskState:task.state,summary:task.goal};
-      },respondApproval:async payload=>{
+      readApproval:approvalId=>conversationToolAccess.readApproval(approvalId),respondApproval:async payload=>{
         const result=await client.call('authorization.respond',payload);
         approvals.delete(payload.approvalId);await pumpEvents();publish();return result;
       }});
+    voiceApprovalBridge=createVoiceRuntimeApprovalBridge({
+      readPendingApproval:scope=>conversationToolAccess.readPendingApproval(scope),
+      prepareApproval:payload=>voiceCommandHost.prepareApproval(payload),
+      readCurrentQuestion:({conversationId})=>voiceQuestionForConversation(conversationId)});
   }
   if (competitionMode && runtimeApplication?.startProactiveTask) {
     proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,
+      resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
       notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
-      bindings:[{kind:'local_decision_batch',toolName:'proactive.local_decision_batch',toolVersion:'1.0.0',location:'local_device',effect:'read'},
-        {kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
+      bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
       context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
-        readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(namespace),
+        readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
         readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
       readConfiguration:()=>{
         const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
-          contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
-        if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
-        return {contractRef,adapter:{config:binding,receiptSecret,
-          authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding)},
-          hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},invokeMode:agentArtsInvokeMode}};
+          contractRef=process.env.PA_PROACTIVE_CONTRACT_REF;
+        if(!binding||!receiptSecret||!contractRef)return undefined;
+        const transport=agentArtsConfig.transportConfig(binding);
+        const assertDeploymentBinding=()=>{
+          transport.assertDeploymentBinding?.();
+          if(!agentArtsConfig.isTransportCurrent(transport))throw Error('持续工作流原部署已改变');
+        };
+        return {contractRef,adapter:{config:{...binding,
+          ...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{}),
+          ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
+          assertDeploymentBinding,fetchImpl:transport.fetchImpl,
+          authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
+          invokeMode:agentArtsInvokeMode}};
       }});
+  }
+  if(proactiveWorkflowApplication){
+    proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,
+      getWorkflow:()=>proactiveWorkflowApplication,
+      recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),
+      resolveUserConversation:id=>conversationToolAccess.resolveConversation(id)});
+    proactiveSourceRouter=createDesktopProactiveConfirmedSourceRouter({getApplication:()=>runtimeApplication,
+      getWorkflow:()=>proactiveWorkflowApplication,namespace:desktopHost.userNamespace,
+      resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
+      readSourceBinding:id=>feedsHost?.readSourceBinding(id),
+      readTrackingGrant:query=>feedsHost?.readTrackingGrant(query)});
   }
   connectionLabel = fakeMode
     ? 'Fake Runtime · 联调模式'
@@ -2073,7 +2208,7 @@ async function initializeRuntime() {
         const receipt=rebuildFeedReceipt(binding);
         return receipt?.receiptId === query.receiptId ? receipt : undefined;
       };
-      const feedCollect = async (query, signal) => {
+      const feedCollect = async (query, signal, sourceScope) => {
         const collectTool = feedsHost?.tools?.find(tool => tool.descriptor?.name === 'feeds.collect');
         const availability = feedsHost?.competitionToolAvailability?.find(item => item.toolName === 'feeds.collect');
         if (!collectTool || !availability) {
@@ -2092,6 +2227,18 @@ async function initializeRuntime() {
           const error = new Error('订阅收集工具未获用户会话授权');
           error.code = 'UNAUTHORIZED';
           throw error;
+        }
+        const responsibilities=typeof sourceScope?.trackingTaskId==='string'&&proactiveSourceRouter
+          ?(proactiveWorkflowApplication?.snapshot().sessions??[]).filter(session=>
+            !['succeeded','failed','cancelled'].includes(session.taskState)&&Date.parse(session.taskDeadline)>Date.now()
+            &&proactiveSourceRouter.matchesTrackingTask(session.sourceTaskId,sourceScope.trackingTaskId)):[];
+        let proactiveReadBound=false;
+        if(responsibilities.length){
+          try{
+            proactiveSourceRouter.bindPreparedFeedRead({taskId:prepared.taskId,expectedTaskRevision:prepared.revision,
+              trackingTaskId:sourceScope.trackingTaskId,commandId,toolVersion:collectTool.descriptor.version,arguments:query});
+            proactiveReadBound=true;
+          }catch{proactiveSourceRoutingFailure='原持续责任与订阅读取未能绑定；未自动投递来源';}
         }
         runtimeApplication.finalizeHostToolTask({taskId:prepared.taskId,commandId,expectedTaskRevision:prepared.revision,arguments:query});
         const cancel=()=>runtimeApplication.runtime.requestCancel(prepared.taskId,'Knowledge feed check cancelled');
@@ -2114,6 +2261,15 @@ async function initializeRuntime() {
                 runtimeApplication.runtime.saveCheckpoint(knowledgeWatchTask.taskId,
                   'knowledge-watch-source-read:'+receipt.receiptId,receipt);
                 feedProofStore.set(sourceKey(query.subscriptionId),{...binding,receiptId:receipt.receiptId});
+              }
+              if(proactiveReadBound)for(const session of responsibilities){
+                try{
+                  const routed=await proactiveSourceRouter.routeConfirmedFeed({workflowTaskId:session.taskId,taskId:prepared.taskId,
+                    runId:read.confirmed.runId,toolVersion:collectTool.descriptor.version,arguments:query,
+                    scopeRef:read.confirmed.runId,trackingTaskId:sourceScope.trackingTaskId},{signal,deadline});
+                  if(!['persisted','already_persisted'].includes(routed?.state))
+                    proactiveSourceRoutingFailure='订阅已读取，但原持续责任的来源适配尚不可用';
+                }catch{proactiveSourceRoutingFailure='订阅已读取，但原持续责任尚未确认接收来源';}
               }
               return read.confirmed.result;
             }
@@ -2179,7 +2335,7 @@ async function initializeRuntime() {
             ?? runtimeApplication.runtime.loadCheckpoint(taskId,'host-tool-intent')?.deadline;
           if (!deadline || Date.now()>=Date.parse(deadline) || task.cancelRequested) continue;
           const signal=new AbortController().signal;
-          await feedCollect({subscriptionId:intake.subscriptionId,limit:20},signal);
+          await feedCollect({subscriptionId:intake.subscriptionId,limit:20},signal,{trackingTaskId:taskId});
           await knowledgeWatchHost.consumeInterestTask(taskId,{deadline,signal});
         }
       };
@@ -2201,7 +2357,38 @@ async function initializeRuntime() {
     }
   }
   eventPoll = setInterval(() => {void pumpEvents(); void tickProactiveP5(); void refreshMail(); void notepadHost?.refresh(); void todoHost?.tick();tickKnowledgeSchedules();
+    void proactiveRuntimePump?.tick().then(result=>{
+      const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
+        ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
+      if(proactiveMaintenanceFailure!==issue){proactiveMaintenanceFailure=issue;publish();}
+    }).catch(()=>{
+      if(!proactiveMaintenanceFailure){proactiveMaintenanceFailure='原持续任务的唤醒维护暂不可用；未新建任务或重放操作';publish();}
+    });
     void wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();});}, 120);
+}
+
+/** Exact payload consent stays in the trusted host and never grants tool permission. */
+async function confirmDeveloperExport(request) {
+  const {taskId,deadline,signal}=request??{};
+  const current=()=>{
+    try {
+      const task=runtimeApplication.runtime.getTask(taskId);
+      return !signal?.aborted&&Date.now()<Date.parse(deadline)&&task.state==='running'
+        &&task.cancelRequested!==true&&Boolean(conversationToolAccess.resolveConversation(taskId));
+    } catch {return false;}
+  };
+  if(!current())return false;
+  let payload;try{payload=JSON.stringify(request.payload,null,2);}catch{return false;}
+  // Native confirmation must show the entire payload. Oversized requests stay unavailable.
+  if(typeof payload!=='string'||Buffer.byteLength(payload,'utf8')>48_000)return false;
+  openAdmin('computer');const origin=admin,application=runtimeApplication;
+  if(!origin||origin.isDestroyed())return false;
+  const response=await dialog.showMessageBox(origin,{type:'question',title:'本任务资料出机确认',
+    message:'允许将以下完整工具资料发送给本任务使用的模型？',
+    detail:`原任务：${taskId}\n用途：${String(request.kind??'developer')}\n到期：${deadline}\n\n${payload}`,
+    buttons:['取消','仅允许本次完整内容'],defaultId:0,cancelId:0,noLink:true});
+  return response.response===1&&admin===origin&&!origin.isDestroyed()
+    &&runtimeApplication===application&&current();
 }
 
 async function initializeProductServices() {
@@ -3173,10 +3360,18 @@ async function initializeLiveVoice() {
     onTranscript: message => conversations.addLiveMessage(message),
     readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
     onFinalUserCommand:receipt=>voiceCommandHost?.consumeFinal(receipt),
+    prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope),
+    authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {taskGoals.set(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
       currentUserQuestion:voiceQuestionForConversation(conversationId),
       agentArts:{configured:agentArtsConfig.snapshot().configured,reason:agentArtsSnapshot().reason},
+      developer:{...projectDeveloperConversationStatus(developerDeployment?.snapshot()),
+        ...(developerDeploymentFailure?{configurationFailure:developerDeploymentFailure}:{})},
+      computer:projectComputerConversationStatus(windowsControlHost?.snapshot()),
+      proactiveMaintenance:{state:proactiveWorkflowApplication?.snapshot().state??'unavailable',
+        ...(proactiveMaintenanceFailure?{wakeFailure:proactiveMaintenanceFailure}:{}),
+        ...(proactiveSourceRoutingFailure?{sourceFailure:proactiveSourceRoutingFailure}:{})},
       subagentDispatch:{registered:competitionToolAvailabilityList.some(tool=>tool.toolName==='subagent.dispatch'),
         available:runtimeApplication?.isDefaultSubagentAvailable?.()===true},
       subagentTasks:orderedTasks().filter(task=>conversations.conversationIdForTask(task)===conversationId)
@@ -3190,7 +3385,7 @@ async function initializeLiveVoice() {
           createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt})),
       messages: conversations.messagesFor('panel',conversationId).slice(-20).map(({id,role, text, createdAt}) => ({id,role, text: text.slice(0, 1600), createdAt})),
       capabilities: capabilities.map(item => ({name: item.name ?? item.id, version: item.version})),
-      tools: (competitionToolAvailabilityList.length ? competitionToolAvailabilityList : [
+      tools: runtimeApplication?.readConversationToolCapabilities?.() ?? (competitionToolAvailabilityList.length ? competitionToolAvailabilityList : [
         ...(codingWorkspace?.competitionToolAvailability ?? []),
         ...(productTools?.competitionToolAvailability ?? []),...(feedsHost?.competitionToolAvailability ?? []),
         ...(todoHost?.competitionToolAvailability ?? []),...(goalCloudHost?.competitionToolAvailability ?? [])])
@@ -3356,6 +3551,12 @@ app.whenReady().then(async () => {
       }).catch(() => {notepadClosing = undefined;runtimeError = '本机操作停止尚未确认，请稍后退出';publish();});
       return;
     }
+    if(windowsControlHost&&!windowsControlClosed){
+      event.preventDefault();
+      windowsControlClosing??=windowsControlHost.close().then(()=>{windowsControlClosed=true;app.quit();})
+        .catch(()=>{windowsControlClosing=undefined;runtimeError='电脑控制进程停止尚未确认';publish();});
+      return;
+    }
     if (!localServicesStopped && (mailHost || localLaya)) {
       event.preventDefault();
       if (!localServicesStopping) {
@@ -3434,6 +3635,11 @@ app.whenReady().then(async () => {
       competitionCatalog?.close();
       productTools?.close();
       codingWorkspace?.close();
+      developerDeployment?.close();
+      toolPresenceHost?.close();
+      computerControlLease?.close();
+      imageWorkflowCatalog?.close();
+      systemObservationConversation?.close();
       publicReferenceConsent?.close();
       publicSkillSources.clear();
       feedsHost?.close();

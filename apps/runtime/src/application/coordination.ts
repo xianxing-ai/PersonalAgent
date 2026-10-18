@@ -215,7 +215,7 @@ function requireExportBinding(
   if (proposal.verification === 'mock') return undefined;
   const binding = bindings?.find(item => item.toolName === proposal.toolName && item.toolVersion === proposal.toolVersion);
   if (!binding || !tools?.list().some(tool => tool.name === proposal.toolName
-    && tool.version === proposal.toolVersion && !tool.requiresPresence
+    && tool.version === proposal.toolVersion
     && (tool.sideEffect === 'read' || permitWrite))) {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Real Competition tool result export is unavailable');
   }

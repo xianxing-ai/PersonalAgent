@@ -31,7 +31,8 @@ export interface RuntimeCodingRepairOptions {
   projectSource?:(input:{taskId:string;localTaskId:string;proposal:Extract<WorkflowProposal,{kind:'tool_proposal'}>;
     receipt:WorkflowReceipt;deadline:string;signal:AbortSignal})=>Promise<unknown>;
 }
-interface Request {version:1;mode:'main'|'isolated';allowedPaths?:string[];subtasks:SubtaskDefinition[]}
+export interface RuntimeCodingRepairRequest {version:1;mode:'main'|'isolated';allowedPaths?:string[];subtasks:SubtaskDefinition[]}
+type Request=RuntimeCodingRepairRequest;
 interface GraphState {
   version:1;sessionId:string;controlRevision:number;bindingId:string;sequence:number;
   input?:{goal:string;codingRepair:CodingRepairInput;executionModel?:ReturnType<typeof parseExecutionModelSelection>};checkpoint?:string;
@@ -47,13 +48,7 @@ export function isRuntimeDispatchTool(name:string):boolean {return name==='subag
 /** Original dispatcher owns child tasks, cancellation, summaries and model selection. */
 export function createRuntimeCodingRepairDispatchTool(getApplication:()=>RuntimeApplication):RegisteredTool {
   const original=()=>getApplication().createSubagentDispatchTool();
-  // Descriptor construction is static; application exists before this execute callback can run.
-  const schema={type:'object',properties:{subtasks:{type:'array',minItems:1,maxItems:1,items:{type:'object',properties:{
-    subtaskId:{type:'string',minLength:1},role:{type:'string',enum:['coder']},roleLabel:{type:'string'},goal:{type:'string',minLength:1},
-    model:{type:'string',minLength:1},reasoningEffort:{enum:['none','minimal','low','medium','high','xhigh','max']},thinkingDepth:{type:'integer',minimum:0,maximum:5}},
-    required:['subtaskId','role','goal'],additionalProperties:false}},codingRepair:{type:'object',properties:{
-      mode:{enum:['main','isolated']},allowedPaths:{type:'array',items:{type:'string',minLength:1}}},required:['mode'],additionalProperties:false}},
-    required:['subtasks','codingRepair'],additionalProperties:false};
+  const schema=codingRepairWorkflowInputSchema();
   return {descriptor:{name:CODING_REPAIR_WORKFLOW_TOOL,version:'1.0.0',inputSchema:schema,outputSchema:{},
     sideEffect:'local_write',requiredScopes:['agent:delegate','workspace:read','workspace:write','workspace:apply','workspace:execute'],
     idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async(value,context)=>{
@@ -64,6 +59,15 @@ export function createRuntimeCodingRepairDispatchTool(getApplication:()=>Runtime
       application.runtime.saveCheckpointOnce(context.taskId,key,request);
       return original().execute({subtasks:v.subtasks},context);
     }};
+}
+/** Shared public input shape for the original root dispatcher and same-worker capability. */
+export function codingRepairWorkflowInputSchema():Record<string,unknown> {
+  return {type:'object',properties:{subtasks:{type:'array',minItems:1,maxItems:1,items:{type:'object',properties:{
+    subtaskId:{type:'string',minLength:1},role:{type:'string',enum:['coder']},roleLabel:{type:'string'},goal:{type:'string',minLength:1},
+    model:{type:'string',minLength:1},reasoningEffort:{enum:['none','minimal','low','medium','high','xhigh','max']},thinkingDepth:{type:'integer',minimum:0,maximum:5}},
+    required:['subtaskId','role','goal'],additionalProperties:false}},codingRepair:{type:'object',properties:{
+      mode:{enum:['main','isolated']},allowedPaths:{type:'array',items:{type:'string',minLength:1}}},required:['mode'],additionalProperties:false}},
+    required:['subtasks','codingRepair'],additionalProperties:false};
 }
 export function readRuntimeCodingRepairRequest(application:RuntimeApplication,subtask:SubtaskDefinition,taskId:string):Request|undefined {
   const binding=application.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string}|undefined;
@@ -78,8 +82,8 @@ export function readRuntimeCodingRepairRequest(application:RuntimeApplication,su
 }
 /** The existing child's WorkerContext drives the image graph; no second runTask or task store. */
 export async function runRuntimeCodingRepairWorkflow(application:RuntimeApplication,subtask:SubtaskDefinition,
-  worker:WorkerContext,tools:AgentToolPort,options:RuntimeCodingRepairOptions):Promise<WorkerResult> {
-  const request=readRuntimeCodingRepairRequest(application,subtask,worker.taskId);
+  worker:WorkerContext,tools:AgentToolPort,options:RuntimeCodingRepairOptions,boundRequest?:RuntimeCodingRepairRequest):Promise<WorkerResult> {
+  const request=boundRequest??readRuntimeCodingRepairRequest(application,subtask,worker.taskId);
   if(!request)throw new ProtocolError('NOT_FOUND','Original coding workflow request is missing');
   let state=worker.loadCheckpoint(CODING_REPAIR_STATE) as GraphState|undefined;
   if(!state) {state={version:1,sessionId:randomUUID(),controlRevision:0,bindingId:options.image.bindingId,sequence:0,

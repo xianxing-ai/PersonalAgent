@@ -8,6 +8,11 @@ import type {SubtaskDefinition} from '@personal-agent/agents';
 import {createRuntimeCodingRepairDispatchTool,readRuntimeCodingRepairRequest,runRuntimeCodingRepairWorkflow,
   isRuntimeDispatchTool,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './coding-repair-application.js';
 import type {RuntimeCodingRepairOptions} from './coding-repair-application.js';
+import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-capability.js';
+import {createRuntimeDeveloperWorkflowWorker,DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,
+  developerWorkflowInputSchema,developerWorkflowConfigured,developerWorkflowRequiredTools,isDeveloperWorkflowTool} from './developer-workflows.js';
+import type {RuntimeDeveloperWorkflowsOptions} from './developer-workflows.js';
+import {DevWorkflowPatchRecovery} from '../dev-workflows-patch-reconciliation.js';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {TaskRuntime} from '../index.js';
 import type {WorkerContext,WorkerResult} from '../index.js';
@@ -51,7 +56,7 @@ import type {KnowledgeFeedQuotedItem} from './knowledge-feed-receipt.js';
 import {planKnowledgeReevaluation,LayaActionChoiceService,actionArgumentsDigest} from '@personal-agent/cognition';
 import type {LayaActionChoiceRequest} from '@personal-agent/cognition';
 import {createReferenceSummarySkill} from '@personal-agent/skills';
-import {CLOUD_SKILL_TOOL_NAME,CLOUD_SKILL_TOOL_VERSION,CLOUD_SKILL_PUBLIC_ENUM_PATHS} from '@personal-agent/skills';
+import {CLOUD_SKILL_TOOL_NAME,CLOUD_SKILL_TOOL_VERSION,CLOUD_SKILL_PUBLIC_ENUM_PATHS,CLOUD_SKILL_CHOICE_SCHEMA} from '@personal-agent/skills';
 import type {VersionedSkillWorkerPort,CloudSkillContext,CloudSkillSelection,CloudSkillReceipt} from '@personal-agent/skills';
 import type {ReferenceSummaryInput, ReferenceSummaryOptions, SkillReadReconciliationQuery} from '@personal-agent/skills';
 import {WORKSPACE_PATCH_APPLY_TOOL_NAME, WorkspacePatchReconciliationAdapter} from './workspace-patch-reconciliation.js';
@@ -297,6 +302,9 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
   workflowShadowRelease?: RuntimeWorkflowShadowReleaseOptions;
   codingRepair?:RuntimeCodingRepairOptions;
+  developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
+  /** Main-process presence source, rechecked by the original Gateway at dispatch time. */
+  isUserPresent?:(taskId:string)=>boolean;
   thinking?: ThinkingConfig;
   /** Trusted host policy for routine operations inside already enabled module scopes. */
   automaticTools?: readonly {toolName: string; toolVersion: string}[];
@@ -371,6 +379,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly coordinationBinding: string;
   private readonly assertCoordinationBinding?: () => void;
   private readonly codingRepair?:RuntimeCodingRepairOptions;
+  private readonly codingWorker?:ReturnType<typeof createRuntimeCodingRepairWorkerCapability>;
+  private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
+  private readonly developerWorker?:CoordinationWorkerCapabilityPort;
+  private readonly developerPatchRecovery?:DevWorkflowPatchRecovery;
   private readonly competitionRealtimeModel: RuntimeApplicationOptions['competitionRealtimeModel'];
   private readonly coordinationInput: CoordinationInputHooks | undefined;
   private readonly windowsHostRecovery: RuntimeApplicationOptions['windowsHostRecovery'];
@@ -439,6 +451,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.coordinationBinding=options.coordinationBinding??'runtime-configured-coordination';
     if(options.assertCoordinationBinding!==undefined)this.assertCoordinationBinding=options.assertCoordinationBinding;
     if(options.codingRepair!==undefined)this.codingRepair={...options.codingRepair};
+    if(options.developerWorkflows!==undefined){
+      if(this.profile!=='huawei_ict_agentarts')throw new ProtocolError('INVALID_ARGUMENT','Developer workflow workers require Competition Profile');
+      const configured=options.developerWorkflows;
+      this.developerWorkflows={...configured,repositories:[...configured.repositories],
+        ...(configured.reviewRules?{reviewRules:structuredClone(configured.reviewRules)}:{}),
+        ...(configured.ciFix?{ciFix:{...configured.ciFix,sourcePaths:[...configured.ciFix.sourcePaths],
+          ...(configured.ciFix.sourceRunBacklink?{sourceRunBacklink:{...configured.ciFix.sourceRunBacklink}}:{}),
+          ...(configured.ciFix.gitTools?{gitTools:{...configured.ciFix.gitTools}}:{})}}:{}),
+        ...(configured.issueTriage?{issueTriage:structuredClone(configured.issueTriage)}:{})};
+    }
     this.now = options.now ?? (() => new Date());
     this.repairCandidateVersion = options.repairCandidateVersion;
     this.localRepair = options.localRepair;
@@ -541,18 +563,28 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
           return policy.authorize(request);
         }}, now: () => (options.now?.() ?? new Date()).getTime()});
-        for (const tool of configuredTools) gateway.register(tool);
+        for (const tool of configuredTools) gateway.register(tool.descriptor.name===WORKSPACE_PATCH_APPLY_TOOL_NAME&&this.developerWorkflows
+          ?{...tool,execute:(input,context)=>{
+            if(!this.isDeveloperWorkerActive(context.taskId))return tool.execute(input,context);
+            if(!this.developerPatchRecovery)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted developer patch recovery is unavailable');
+            return this.developerPatchRecovery.bind(tool).execute(input,context);
+          }}:tool);
         if (options.proactiveWorkflows) {
           if (this.profile !== 'huawei_ict_agentarts') throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Proactive workflows require Competition Profile');
           for (const tool of createRuntimeProactiveWorkflowTools((taskId, sessionId) => this.proactiveHosts.get(JSON.stringify([taskId, sessionId])))) gateway.register(tool);
         }
         if (this.localRepair) gateway.register(createLocalRepairTool(() => this.runtime, this.localRepair));
-        return gateway;
+        return {list:()=>gateway!.list(),invoke:invocation=>{
+          let userPresent=false;try{userPresent=options.isUserPresent?.(invocation.taskId)===true;}catch{/* Missing presence is never inferred. */}
+          return gateway!.invoke({...invocation,userPresent});
+        }};
       }} : {}),
     });
     if (options.workspacePatchReconciliation) {
       this.workspacePatchReconciliation = new WorkspacePatchReconciliationAdapter(
         this.runtime, options.workspacePatchReconciliation, this.hostUserNamespace, this.coordinationBinding);
+      const preview=configuredTools.find(tool=>tool.descriptor.name==='workspace.preview_text_patch'&&tool.descriptor.version==='1.0.0');
+      if(this.developerWorkflows&&preview)this.developerPatchRecovery=new DevWorkflowPatchRecovery(this.runtime,options.workspacePatchReconciliation,preview);
     }
     this.observationSessions = new SystemObservationSessions(() => this.now().getTime(), taskId => {
       this.runtime.policy.revoke(`host-tool-${taskId}`);
@@ -594,7 +626,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if (tool.name === WORKSPACE_PATCH_APPLY_TOOL_NAME
           && this.runtime.loadCheckpoint(invocation.taskId, HOST_TOOL_CHECKPOINT) === undefined) {
           this.workspacePatchBindingFor(tool.name);
-          this.workspacePatchReconciliation!.bindCompetitionInvocation({taskId: invocation.taskId,
+          if(this.isDeveloperWorkerActive(invocation.taskId)) {
+            if(!this.developerPatchRecovery)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted developer patch preview/recovery is unavailable');
+          }else this.workspacePatchReconciliation!.bindCompetitionInvocation({taskId: invocation.taskId,
             runId: invocation.runId, toolVersion: tool.version, arguments: invocation.arguments as Record<string, unknown>});
         }
         const observationSession = this.runtime.loadCheckpoint(invocation.taskId, SYSTEM_OBSERVATION_SESSION_CHECKPOINT);
@@ -641,6 +675,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             scopes:tool.requiredScopes,argumentsDigest,maxUses:1,expiresAt:invocation.deadline});
         }
         if (!confirmedDispatch && !this.runtime.policy.get(ref)) {
+          const key='application-tool-invocation:'+ref;
+          const original={toolName:tool.name,toolVersion:tool.version,arguments:structuredClone(invocation.arguments),
+            argumentsDigest:toolArgumentsDigest(invocation.arguments),deadline:invocation.deadline};
+          const previous=this.runtime.loadCheckpoint(invocation.taskId,key);
+          if(previous!==undefined&&!isDeepStrictEqual(previous,original))throw new ProtocolError('REVISION_CONFLICT','Original pending tool input changed');
+          this.runtime.saveCheckpointOnce(invocation.taskId,key,original);
+          const loop=this.runtime.loadCheckpoint(invocation.taskId,'competition-loop') as {pending?:unknown}|undefined;
+          const worker=this.runtime.loadCheckpoint(invocation.taskId,'developer-workflow:active') as {bindingId?:string;proposalDigest?:string}|undefined;
+          if(worker?.bindingId===this.developerWorkflows?.bindingId&&loop?.pending
+            &&worker?.proposalDigest===createHash('sha256').update(JSON.stringify(loop.pending)).digest('hex'))
+            this.runtime.saveCheckpoint(invocation.taskId,'developer-workflow:pending-approval',{...worker,approvalId:ref});
           const expiresAt = new Date((options.now?.() ?? new Date()).getTime() + 600_000).toISOString();
           const approval = this.runtime.requestToolApproval(ref, invocation.taskId, tool, expiresAt, toolArgumentsDigest(invocation.arguments));
           if (approval.state === 'denied') throw new ProtocolError('UNAUTHORIZED', 'Tool approval was denied');
@@ -677,6 +722,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           evidenceRefs: [...new Set([...result.evidenceRefs, ...children.flatMap(child => child.evidenceRefs)])]};
       }};
     }
+    if(this.developerWorkflows)this.developerWorker=createRuntimeDeveloperWorkflowWorker(this,this.developerWorkflows,taskId=>this.taskTools(taskId));
+    if(this.codingRepair&&this.delegateUserTasks)this.codingWorker=createRuntimeCodingRepairWorkerCapability(this,this.codingRepair,taskId=>{
+      const tools=this.taskTools(taskId),frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
+      if(!tools||!Array.isArray(frozen))return undefined;
+      return {list:()=>structuredClone(frozen),invoke:request=>{
+        const descriptor=frozen.find(tool=>tool.name===request.toolName&&tool.version===request.toolVersion);
+        if(request.taskId!==taskId||!descriptor||!isDeepStrictEqual(descriptor,tools.list().find(tool=>tool.name===request.toolName&&tool.version===request.toolVersion)))
+          throw new ProtocolError('UNAUTHORIZED','Coding tool is outside the original worker binding');
+        return tools.invoke(request);
+      }};
+    });
     if (options.competitionToolAvailability !== undefined) {
       if (!this.tools) throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog needs registered tools');
       this.competitionToolCatalog = new RuntimeCompetitionToolCatalog(
@@ -689,8 +745,20 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             }}]:[])],[{
           toolName:CLOUD_SKILL_TOOL_NAME,toolVersion:CLOUD_SKILL_TOOL_VERSION,publicEnumPaths:CLOUD_SKILL_PUBLIC_ENUM_PATHS,
           requiredTool:{name:'mcp.workspace.read_text',version:'1.0.0'},
+          describeRegistered:()=>this.cloudSkill?{name:CLOUD_SKILL_TOOL_NAME,version:CLOUD_SKILL_TOOL_VERSION,inputSchema:CLOUD_SKILL_CHOICE_SCHEMA}:undefined,
           describe:input=>this.cloudSkill?.cloudSkillCatalog(input)??Promise.resolve(undefined),
-        }]);
+        },...DEVELOPER_WORKFLOW_KINDS.map(kind=>({toolName:developerWorkflowToolName(kind),toolVersion:'1.0.0',publicEnumPaths:[],
+          sideEffect:kind==='ci_list'||kind==='issue_list'?'read' as const:'external_write' as const,
+          requiredTool:{name:'github.repo.get',version:this.tools!.list().find(tool=>tool.name==='github.repo.get')?.version??'unavailable'},
+          describeRegistered:()=>this.developerWorkflows?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined,
+          describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
+            if(!this.developerWorkflows||!developerWorkflowConfigured(this.developerWorkflows,kind))return undefined;
+            if(kind==='ci_fix'&&!this.developerPatchRecovery)return undefined;
+            const descriptors=this.taskTools(input.taskId)?.list()??[];
+            if(developerWorkflowRequiredTools(this.developerWorkflows,kind).some(name=>!descriptors.some(tool=>tool.name===name)))return undefined;
+            this.developerWorkflows.assertCurrent(input);
+            return await this.developerWorkflows.available(kind,input)?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined;
+          }}))],options.isUserPresent===undefined?undefined:taskId=>{try{return options.isUserPresent?.(taskId)===true;}catch{return false;}});
     }
     this.textApplication = createTextApplication({...options.text, ...(this.tools ? {tools: this.tools} : {})});
     if(options.knowledgeWriteReconciliation && this.hostUserNamespace) {
@@ -700,6 +768,126 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   get deployment(): TextApplication['deployment'] { this.requireLocalText(); return structuredClone(this.textApplication.deployment); }
   get activeTaskCount(): number { return this.activeTextTasks.size; }
+
+  /** Public schema metadata, with no task readiness check, checkpoint or grant. */
+  readConversationToolCapabilities(){return this.competitionToolCatalog?.describe()??[];}
+
+  private isDeveloperWorkerActive(taskId:string):boolean {
+    const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {pending?:{toolName?:string}}|undefined;
+    const active=this.runtime.loadCheckpoint(taskId,'developer-workflow:active') as {bindingId?:string;proposalDigest?:string}|undefined;
+    return !!this.developerWorkflows&&active?.bindingId===this.developerWorkflows.bindingId
+      &&typeof loop?.pending?.toolName==='string'&&isDeveloperWorkflowTool(loop.pending.toolName)
+      &&active.proposalDigest===createHash('sha256').update(JSON.stringify(loop.pending)).digest('hex');
+  }
+
+  /** Original marker/source readback only. This does not retry a patch or resume the workflow. */
+  reconcileDeveloperWorkflowPatch(taskId:string,runId:string){
+    if(!this.developerPatchRecovery||this.activeTextTasks.has(taskId)||!this.isDeveloperWorkerActive(taskId))
+      throw new ProtocolError('UNAUTHORIZED','Original inactive developer patch binding is required');
+    return this.developerPatchRecovery.reconcile(taskId,runId);
+  }
+
+  resumeConfirmedDeveloperWorkflowPatch(taskId:string,receipt:{runId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>}):void {
+    if(receipt.toolName!==WORKSPACE_PATCH_APPLY_TOOL_NAME||!this.isDeveloperWorkerActive(taskId)||this.activeTextTasks.has(taskId))
+      throw new ProtocolError('UNAUTHORIZED','Original confirmed developer patch is required');
+    const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {pending?:unknown}|undefined;
+    const original=this.resolveDeveloperWorkerApproval(taskId,loop?.pending);
+    if(!original||original.runId!==receipt.runId||original.toolName!==receipt.toolName||!isDeepStrictEqual(original.arguments,receipt.arguments))
+      throw new ProtocolError('UNAUTHORIZED','Confirmed patch does not match the original nested workflow input');
+    this.runtime.prepareConfirmedReplay(taskId,receipt);
+    this.runtime.saveCheckpoint(taskId,'developer-confirmed-replay-receipt',structuredClone(receipt));this.resumeTask(taskId);
+  }
+
+  /** Trusted local host only: exact pending input, including nested workflow tools. */
+  readPendingToolInvocation(taskId:string,approvalId:string):{toolName:string;toolVersion:string;arguments:Record<string,unknown>;argumentsDigest:string;deadline:string}|undefined {
+    try {
+      const task=this.runtime.getTask(taskId),approval=this.runtime.getApproval(approvalId);
+      let saved=this.runtime.loadCheckpoint(taskId,'application-tool-invocation:'+approvalId) as
+        {toolName:string;toolVersion:string;arguments:Record<string,unknown>;argumentsDigest:string;deadline:string}|undefined;
+      const hostIntent=this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+      if(hostIntent!==undefined){
+        if(!this.hostUserNamespace||hostIntent.namespace!==this.hostUserNamespace||approvalId!==`host-tool-${taskId}`
+          ||task.conversationId!==`host-tool:${this.hostUserNamespace}`
+          ||this.runtime.findTaskByIdempotencyKey(`host-tool:${JSON.stringify([this.hostUserNamespace,hostIntent.commandId])}`)?.taskId!==taskId
+          ||toolArgumentsDigest(hostIntent.arguments)!==hostIntent.argumentsDigest)return undefined;
+        const original={toolName:hostIntent.toolName,toolVersion:hostIntent.toolVersion,arguments:structuredClone(hostIntent.arguments),
+          argumentsDigest:hostIntent.argumentsDigest,deadline:hostIntent.deadline};
+        if(saved!==undefined&&!isDeepStrictEqual(saved,original))return undefined;
+        saved=original;
+      }
+      if(!saved||approval.taskId!==taskId||approval.state!=='pending'||task.state!=='waiting_approval'||task.cancelRequested
+        ||!Number.isFinite(Date.parse(saved.deadline))||!Number.isFinite(Date.parse(approval.expiresAt))
+        ||Date.parse(saved.deadline)<=this.now().getTime()||Date.parse(approval.expiresAt)<=this.now().getTime())return undefined;
+      const descriptor=this.tools?.list().find(tool=>tool.name===saved.toolName&&tool.version===saved.toolVersion);
+      if(!descriptor||approval.toolName!==descriptor.name||approval.argumentsDigest!==saved.argumentsDigest
+        ||toolArgumentsDigest(saved.arguments)!==saved.argumentsDigest||!isDeepStrictEqual(approval.scopes,descriptor.requiredScopes))return undefined;
+      validateToolValue(descriptor.inputSchema,saved.arguments);return structuredClone(saved);
+    }catch{return undefined;}
+  }
+
+  /** Historical structural identity only. Execution/permission/deadline checks remain at their original ports. */
+  readToolConversation(taskId:string):string|undefined {
+    return this.readBoundToolConversation(taskId,new Set());
+  }
+
+  private readBoundToolConversation(taskId:string,seen:Set<string>):string|undefined {
+    if(seen.size>=32||seen.has(taskId))return undefined;
+    seen.add(taskId);
+    try {
+      const task=this.runtime.getTask(taskId),message=readSubagentConversationMessage(this.runtime,taskId);
+      if(message){const origin=this.subagentConversationOrigin({parentTaskId:message.parentTaskId,taskId:message.originTaskId});
+        readSubagentConversationMessage(this.runtime,taskId,origin);
+        return this.runtime.getTask(origin.parentTaskId).conversationId;}
+      const graph=this.runtime.loadCheckpoint(taskId,CODING_REPAIR_PARENT) as {taskId?:string;operationId?:string}|undefined;
+      if(graph!==undefined){
+        if(typeof graph.taskId!=='string'||graph.taskId===taskId||typeof graph.operationId!=='string')return undefined;
+        const original=this.runtime.loadCheckpoint(graph.taskId,'coding-repair:host:'+graph.operationId) as {localTaskId?:string;request?:SubmitHostToolTaskRequest}|undefined;
+        const intent=this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+        if(original?.localTaskId!==taskId||!original.request||!intent||intent.namespace!==this.hostUserNamespace
+          ||intent.commandId!==graph.operationId||!isDeepStrictEqual(original.request,{commandId:intent.commandId,toolName:intent.toolName,
+            toolVersion:intent.toolVersion,arguments:intent.arguments,deadline:intent.deadline})
+          ||toolArgumentsDigest(intent.arguments)!==intent.argumentsDigest||this.readHostToolTask(taskId).commandId!==graph.operationId)return undefined;
+        return this.readBoundToolConversation(graph.taskId,seen);
+      }
+      if(this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT)!==undefined)return undefined;
+      const binding=this.runtime.loadCheckpoint(taskId,'subtask-parent');
+      if(binding!==undefined){if(!plainObject(binding)||typeof binding.parentTaskId!=='string')return undefined;
+        const origin=this.subagentConversationOrigin({parentTaskId:binding.parentTaskId,taskId});
+        return this.runtime.getTask(origin.parentTaskId).conversationId;}
+      return typeof task.conversationId==='string'&&task.conversationId?task.conversationId:undefined;
+    }catch{return undefined;}
+  }
+
+  /** Read only the original active F15 host child, for task-bound approval discovery. */
+  readPendingOwnedWorkflowHostTask(taskId:string):TaskSnapshot|undefined {
+    try{return this.codingWorker?.pendingHostTask(taskId);}catch{return undefined;}
+  }
+
+  private resolveOriginalWorkerApproval(taskId:string,proposal:unknown):{runId:string;toolName:string;arguments:Record<string,unknown>}|undefined {
+    const coding=this.codingWorker?.resolveApproval(taskId,proposal);
+    return coding??this.resolveDeveloperWorkerApproval(taskId,proposal);
+  }
+
+  private resolveDeveloperWorkerApproval(taskId:string,proposal:unknown):{runId:string;toolName:string;arguments:Record<string,unknown>}|undefined {
+    if(!plainObject(proposal)||typeof proposal.toolName!=='string'||!isDeveloperWorkflowTool(proposal.toolName))return undefined;
+    const saved=this.runtime.loadCheckpoint(taskId,'developer-workflow:pending-approval') as {approvalId?:string;bindingId?:string;proposalDigest?:string}|undefined;
+    if(!this.developerWorkflows||!saved||typeof saved.approvalId!=='string'||saved.bindingId!==this.developerWorkflows.bindingId
+      ||saved.proposalDigest!==createHash('sha256').update(JSON.stringify(proposal)).digest('hex'))
+      throw new ProtocolError('UNAUTHORIZED','Original developer approval binding changed');
+    const original=this.runtime.loadCheckpoint(taskId,'application-tool-invocation:'+saved.approvalId) as
+      {toolName:string;toolVersion:string;arguments:Record<string,unknown>;argumentsDigest:string;deadline:string}|undefined;
+    const tool=this.tools?.list().find(tool=>tool.name===original?.toolName&&tool.version===original.toolVersion);
+    if(!original||!tool||original.argumentsDigest!==toolArgumentsDigest(original.arguments))
+      throw new ProtocolError('UNAUTHORIZED','Original developer tool input is unavailable');
+    const child=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentDeadline?:string}|undefined;
+    const expectedDeadline=child?.parentDeadline??readSubagentConversationMessage(this.runtime,taskId)?.deadline
+      ??this.runtime.loadCheckpoint(taskId,'application-deadline');
+    if(original.deadline!==expectedDeadline||original.deadline!==this.runtime.loadCheckpoint(taskId,'application-deadline')
+      ||Date.parse(original.deadline)<=this.now().getTime()||!this.isDeveloperWorkerActive(taskId))
+      throw new ProtocolError('UNAUTHORIZED','Original developer deadline or active proposal changed');
+    validateToolValue(tool.inputSchema,original.arguments);
+    return {runId:saved.approvalId,toolName:original.toolName,arguments:structuredClone(original.arguments)};
+  }
 
   readPrivateTaskBinding(taskId:string):unknown {return this.runtime.loadCheckpoint(taskId,'private-memory:consumption:v1');}
 
@@ -1192,15 +1380,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!binding?.taskId)return;
     const state=this.runtime.loadCheckpoint(binding.taskId,CODING_REPAIR_STATE) as {waiting?:{localTaskId?:string};pendingSend?:unknown}|undefined;
     const task=this.runtime.getTask(binding.taskId),local=this.runtime.getTask(localTaskId);
+    const observeUnknown=local.state==='waiting_reconciliation'&&this.codingWorker?.isActive(binding.taskId)===true;
     if(state?.waiting?.localTaskId!==localTaskId||state.pendingSend||task.cancelRequested
-      ||!['waiting_approval','waiting_reconciliation'].includes(task.state)||!['succeeded','failed','cancelled'].includes(local.state))return;
+      ||!['waiting_approval','waiting_reconciliation'].includes(task.state)||!['succeeded','failed','cancelled'].includes(local.state)&&!observeUnknown)return;
     // Parent may still be unwinding its first dispatch; resume only after that original worker exits.
-    void Promise.resolve(this.activeTextTasks.get(binding.taskId)).then(()=>this.resumeCodingRepairTask(binding.taskId!)).catch(error=>{
+    void Promise.resolve(this.activeTextTasks.get(binding.taskId)).then(()=>this.resumeCodingRepairTask(binding.taskId!,observeUnknown)).catch(error=>{
       try{this.runtime.saveCheckpoint(binding.taskId!,'coding-repair:resume-error',{code:error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE'});}catch{/* Closed application retains its original checkpoints. */}
     });
   }
 
-  private resumeCodingRepairTask(taskId:string):void {
+  private resumeCodingRepairTask(taskId:string,observeUnknown=false):void {
     if(this.activeTextTasks.has(taskId)||!this.codingRepair||!this.tools)return;
     this.assertCompetitionTaskConfiguration(taskId);
     const state=this.runtime.loadCheckpoint(taskId,CODING_REPAIR_STATE) as {waiting?:{localTaskId?:string};initialRunId?:string;input?:unknown;pendingSend?:unknown}|undefined;
@@ -1210,11 +1399,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const binding=this.runtime.loadCheckpoint(taskId,'subtask-parent') as (SubtaskDefinition&{parentTaskId:string;parentDeadline:string})|undefined;
     if(!binding)throw new ProtocolError('UNAUTHORIZED','Original F15 child binding is missing');
     const {parentTaskId:_parentTaskId,parentDeadline:_parentDeadline,...definition}=binding;
-    if(!readRuntimeCodingRepairRequest(this,definition,taskId))throw new ProtocolError('UNAUTHORIZED','Original F15 child request changed');
+    if(this.codingWorker?.isActive(taskId))this.codingWorker.assertResumeAllowed(taskId,observeUnknown);
+    else if(!readRuntimeCodingRepairRequest(this,definition,taskId))throw new ProtocolError('UNAUTHORIZED','Original F15 child request changed');
     if(state.waiting?.localTaskId) {
       const linked=this.runtime.loadCheckpoint(state.waiting.localTaskId,CODING_REPAIR_PARENT) as {taskId?:string}|undefined;
       const readback=this.readHostToolTask(state.waiting.localTaskId);
-      if(linked?.taskId!==taskId||!['succeeded','failed','cancelled'].includes(readback.task.state))
+      if(linked?.taskId!==taskId||!['succeeded','failed','cancelled'].includes(readback.task.state)
+        &&!(observeUnknown&&this.codingWorker?.isActive(taskId)&&readback.task.state==='waiting_reconciliation'))
         throw new ProtocolError('RESULT_UNKNOWN','Original F15 host operation is still pending or unknown');
     }else if(!state.input&&state.initialRunId) {
       const approval=this.runtime.getApproval(state.initialRunId);
@@ -2159,8 +2350,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private readonly coordinationWorkers:CoordinationWorkerCapabilityPort={
-    accepts:proposal=>proposal.toolName===CLOUD_SKILL_TOOL_NAME && proposal.toolVersion===CLOUD_SKILL_TOOL_VERSION,
+    accepts:proposal=>!!this.codingWorker?.accepts(proposal)||!!this.developerWorker?.accepts(proposal)||(proposal.toolName===CLOUD_SKILL_TOOL_NAME && proposal.toolVersion===CLOUD_SKILL_TOOL_VERSION),
     dispatch:async(proposal,context)=> {
+      if(this.codingWorker?.accepts(proposal))return this.codingWorker.dispatch(proposal,context);
+      if(this.developerWorker?.accepts(proposal))return this.developerWorker.dispatch(proposal,context);
       if(!this.cloudSkill)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Native public Skill selection is unavailable');
       let result:CloudSkillReceipt;
       try {result=await this.cloudSkill.dispatchCloudSkillProposal(proposal,context);}
@@ -2177,6 +2370,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       return {state:result.state,result,evidenceRefs:refs,selection:saved.selection};
     },
     assertReceiptAllowed:(proposal,selection,receipt,context)=> {
+      if(this.codingWorker?.accepts(proposal)){this.codingWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
+      if(this.developerWorker?.accepts(proposal)){this.developerWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
       if(!this.cloudSkill)throw new ProtocolError('UNAUTHORIZED','Skill final guard is unavailable');
       this.cloudSkill.assertReceiptAllowed(selection as CloudSkillSelection,receipt as CloudSkillReceipt,
         {...context,proposalId:proposal.proposalId});
@@ -2312,6 +2507,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const preferred=typeof childBinding.parentTaskId==='string' ? this.runtime.loadCheckpoint(childBinding.parentTaskId,
         'task-model-preference') as {configurationRef?:string}|undefined : undefined;
       const execution = resumeRuntimeSubagentTask({getRuntime: () => this.runtime, getTools: () => this.tools,
+        resolveWorkerApproval:(id,proposal)=>this.resolveOriginalWorkerApproval(id,proposal),
         ...(this.profile==='huawei_ict_agentarts'?{competitionOnly:true as const}:{}),
         runDefaultWorker:(subtask,worker,tools)=>this.runDefaultSubagentWorker(subtask,worker,tools),
         getModelGateway:name=>this.subagentModels?.getModelGateway?.(name,preferred?.configurationRef),
@@ -2354,9 +2550,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const selection=this.runtime.loadCheckpoint(taskId,'skill:cloud-selection:v1') as {choice:unknown;source:{path:string}}|undefined;
         if(skillPending && (!skillIntent || !selection || !isDeepStrictEqual(competition.pending?.arguments,selection.choice)
           || skillIntent.input.path!==selection.source.path))throw new ProtocolError('UNAUTHORIZED','Skill pending proposal changed');
-        const approvalRef=skillPending?`skill-read-${taskId}-${skillIntent!.input.digest.slice(0,16)}`:`competition-tool-${taskId}-${competition?.step}`;
+        const nested=competition?.pending?this.resolveOriginalWorkerApproval(taskId,competition.pending):undefined;
+        const approvalRef=nested?.runId??(skillPending?`skill-read-${taskId}-${skillIntent!.input.digest.slice(0,16)}`:`competition-tool-${taskId}-${competition?.step}`);
         const competitionApproval = this.runtime.getApproval(approvalRef);
         if (competitionApproval.state !== 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Task approval has not been allowed');
+        if(nested&&(competitionApproval.toolName!==nested.toolName||competitionApproval.argumentsDigest!==toolArgumentsDigest(nested.arguments)))
+          throw new ProtocolError('UNAUTHORIZED','Original nested worker approval changed');
         const confirmed=this.runtime.readToolExecutions(taskId).some(record=>record.evidenceId===approvalRef
           && record.state==='confirmed' && record.executionStarted && record.policyDecision==='allow');
         if(!confirmed && !this.runtime.policy.get(approvalRef))throw new ProtocolError('UNAUTHORIZED','Task grant was revoked');

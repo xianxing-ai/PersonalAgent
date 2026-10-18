@@ -89,6 +89,8 @@ export interface SubagentHostOptions {
   runDefaultWorker?: ((subtask: SubtaskDefinition, worker: WorkerContext, tools: AgentToolPort) => Promise<WorkerResult>) | undefined;
   /** Trusted host may narrow tools per role/child; this never creates authorization. */
   getToolsForSubtask?: ((subtask: SubtaskDefinition, worker: WorkerContext) => AgentToolPort | undefined) | undefined;
+  /** Trusted worker capability resolves its original nested input; the common approval guard below still runs. */
+  resolveWorkerApproval?:(taskId:string,proposal:unknown)=>{runId:string;toolName:string;arguments:Record<string,unknown>}|undefined;
   now?: (() => number) | undefined;
   maxRecursionDepth?: number | undefined;
 }
@@ -288,6 +290,8 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
     }
     runId = `competition-tool-${childTaskId}-${loop.step}`;
     toolName = loop.pending.toolName; argumentsValue = loop.pending.arguments;
+    const nested=options.resolveWorkerApproval?.(childTaskId,loop.pending);
+    if(nested){runId=nested.runId;toolName=nested.toolName;argumentsValue=nested.arguments;}
   } else {
     const loop = runtime.loadCheckpoint(childTaskId, 'agent-loop') as {step?: number; pending?: import('@personal-agent/models').ModelResult} | undefined;
     if (!Number.isSafeInteger(loop?.step) || (loop?.step ?? 0) < 1 || !loop?.pending || loop.pending.response.kind !== 'tool_proposal') {
