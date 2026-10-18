@@ -248,7 +248,7 @@ export function mountAdmin(root, invoke, escape) {
       shortcuts: ['快捷键', '当前可用的桌面输入快捷键',
         settingRow('发送消息', '输入框内提交任务', '<kbd>Enter</kbd>') +
         settingRow('换行', '在输入框中插入新行', '<kbd>Shift</kbd><span class="key-plus">＋</span><kbd>Enter</kbd>') +
-        settingRow('收起面板', '使用面板右上角关闭按钮', '<span class="value-pill">按钮</span>') +
+        settingRow('收起面板', '使用面板右上角关闭按钮', '<span class="value-pill">右上角 ✕</span>') +
         settingRow('Live 开启 / 关闭', data.live?.shortcut?.reason || '在语音设置中修改全局快捷键', `<kbd>${escape(data.live?.shortcut?.key ?? 'F8')}</kbd><button class="btn btn-sm" data-jump="voice">语音设置</button>`)],
       diagnostics: ['诊断与关于', '运行状态、版本边界与应用操作',
         settingRow('Runtime', data.connectionError ? `${data.connection} · ${data.connectionError}` : data.connection, '<button class="btn btn-sm" data-jump="connections">连接状态</button>') +
