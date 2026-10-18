@@ -1,13 +1,13 @@
-# 本机 Laya 与镜像工作流接线
+# 本机 Laya 原型与镜像工作流历史接线记录
 
-> 当前适用性：本机 Laya 仅为独立 Local Profile 的实验候选，不属于 Competition 路径；Competition 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。本地 Runtime/Policy/ToolGateway/Evidence 保留授权与执行边界。Local Profile 本轮不扩展，AgentArts 失败不得静默回退。领域资格、接线、外部比赛资格与真实端到端验收仍须分别核实；下文 Evidence 只证明对应固定版本和场景。
+> 文档性质：记录 2026-10-15 本机 Laya 与镜像工作流实验，不是当前 Competition 架构或接线说明。当前只实施 Competition Profile，由 AgentArts 负责 Agent/Workflow 的构建、编排、评估和部署；本机 Laya 仅为独立 Local Profile 的实验候选，Competition 路径不调用它。下文 Evidence 只证明对应历史版本和场景。
 
 > 2026-10-16 当前生成清单为152项（111 host、41 guard），旧148为历史数量。
 > [实物完整性审计](WORKFLOW_COMPLETENESS_AUDIT_20261016.md)明确图/引擎、节点接口注册与真实整图三种状态；
 > 早期孙悟空/鹈鹕工具循环不走F15 advance，不能据此宣布所有图完成。
 > 后续已真实上传V4并在AgentArts精确版本完成固定鹈鹕F15主/独立隔离整图，见[云端证据](evidence/cloud-f15-v4-20261016/README.md)；其余27图仍待验，完整输入150ms仍未达。
 
-## 当前接线与真实边界（2026-10-15）
+## 2026-10-15 实验接线与真实边界（历史快照）
 
 各MOD负责人自己完成实现、公开契约、实际调用方接线、必要测试、Evidence及文档；新具体分工见 [接线总包](COLLABORATOR_WIRING_PACKAGE.md)，逐MOD输入输出/调用方/命令/缺口见 [全MOD清单](../modules/CURRENT_MOD_WIRING_HANDOFF.md)。根composition协调共享入口，不替全部模块代接代验。
 
@@ -23,7 +23,7 @@
 > 本轮不提交架构定稿、不发布镜像，保留原始结果供选择。
 
 早期实现目标：`huawei_ict_agentarts`，工作分支 `codex/laya-owned-runtime`。原“镜像暂不发布”已被后续Owner授权与SWR实际回执更新。
-历史方案（2026-10-16，已由当前决定取代）：**本机 Laya + 镜像内 28 工作流 + 串行推进**。当前 Laya 仅为独立 Local Profile 候选，不属于 Competition；AgentArts 承担 Competition Agent/Workflow 构建、编排、评估与部署，Local Profile 本轮不扩展。
+本轮历史试验采用 **本机 Laya + 镜像内 28 工作流 + 串行推进**。这不是当前 Competition 架构决定，也不以历史镜像内嵌 Laya 的记录代表当前实现。
 
 ## 协作者先读哪里
 
@@ -165,8 +165,8 @@ GPU 对照设置 `device:"cuda"`、`torchThreads:1`，并按本机环境提供�
 一次仅运行一个实例。不传 sourceRun 时读取上述公开原始输入。
 
 150 ms 目标在上述部分 warm 样本达到，完整工作流及决策质量仍未通过。
-不交换候选顺序、覆盖 review 或手工补丁伪造端到端成功；保持 Owner 选择的本机 Laya，
-将任务适配/训练与独立质量验收作为明确未完成项，而不是悄悄切换第二决策模型。
+不交换候选顺序、覆盖 review 或手工补丁伪造端到端成功；本轮历史试验使用本机 Laya，
+任务适配/训练与独立质量验收仍是该试验未完成项。
 
 重跑实际镜像目录验证：将 `{docker,image,output}` 通过 stdin 交给
 `tests/manual/agentarts/local-image-catalog-smoke.mjs`。它启动真实 ARM64 生产入口，
