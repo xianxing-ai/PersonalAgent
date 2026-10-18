@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 088f7f00dfb3a7ab5ff4f1c38ca8fc80dd41ef25f36d4d019e2e0ec7e2ab341f
+// Source projection sha256: b9603488d7d8db8dba98619de15c3627bc5dc6f49355d332de4cfea7a7f8cc65
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -2889,18 +2889,20 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     "id": "F15",
     "name": "代码修改、补丁与命令执行",
     "category": "开发与工程",
-    "summary": "精确源SHA、preview/apply、原Policy授权、测试与结果读回",
+    "summary": "原F15整图内按真实失败增量修复；源SHA、隔离preview/apply、包级验证及CAS交付",
     "decisionPoints": [
       "圈定修复文件范围，排除无关文件的过度重构",
       "调用 F28 为生成补丁与独立审查指派合适编码模型（如 GLM-5.2）",
       "评估独立审查提出的接口破坏与破坏性越界告警"
     ],
     "designNotes": [
-      "当前实现/实测边界：Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收",
+      "新增codingRepair v1实现中；jsdiff仅分析hunk，TypeScript仅分析JS/TS语法与声明，其他语言消费实际已发布验证配方；代码与测试不等于任意仓库或真实云完成。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
       "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
     ],
-    "acceptance": [],
+    "acceptance": [
+      "初始检查失败→隔离区精确补丁→真实验证失败→重读源码→最小增补→当前必选验证VALID→CAS读回交付；真实云/设备分别验收。"
+    ],
     "nodes": [
       {
         "id": "F15_N01",
@@ -3066,12 +3068,18 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "source": "F15_N05",
         "target": "F15_N06",
         "required": true
+      },
+      {
+        "source": "F15_N05",
+        "target": "F15_N01",
+        "required": false,
+        "condition": "仅已确认的验证失败进入sealed下一轮；未知写入只读回，原期限不续期"
       }
     ],
     "recovery": [
       "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
       "结果未知的写入保留原operation先读回，不换ID重放。",
-      "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
+      "codingRepair v1经原F15 advance按已确认失败增量修复；保留原历史操作/Evidence，复用原任务deadline/预算；无进展停止，unknown/stopping不重试。"
     ]
   },
   {

@@ -79,7 +79,7 @@
 | [docs/adr/0021-paired-citation-memory.md](../../adr/0021-paired-citation-memory.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
 | [docs/adr/0022-wiki-source-identity.md](../../adr/0022-wiki-source-identity.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
 | [docs/adr/0023-local-skill-installation.md](../../adr/0023-local-skill-installation.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
-| [docs/adr/0033-unified-decision-workflow-architecture.md](../../adr/0033-unified-decision-workflow-architecture.md) | 历史架构讨论：原ADR-0024，现存于0033；现行决定见Competition Profile |
+| [docs/adr/0034-unified-decision-workflow-architecture.md](../../adr/0034-unified-decision-workflow-architecture.md) | 历史架构讨论：原ADR-0024，现存于0034；现行决定见Competition Profile |
 | [docs/adr/README.md](../../adr/README.md) | 当前规范：正文重写/同步 |
 | [docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md](../../competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) | 当前规范：正文重写/同步 |
 | [docs/competition/MOD30-ORDINARY-GOAL-CONTRACT.md](../../competition/MOD30-ORDINARY-GOAL-CONTRACT.md) | 接口/技术/阶段参考：当前设计导航统一 |

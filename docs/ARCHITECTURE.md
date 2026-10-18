@@ -1,5 +1,7 @@
 # 架构设计与技术契约
 
+> 2026-10-17 编码修复增量见 [F15 V6 接线](competition/CODING_MINIMAL_REPAIR_V6.md) 与 [ADR-0033](adr/0033-coding-minimal-repair-workflow.md)。算法和多轮控制运行于原自有镜像，真实隔离工具、授权及 Evidence 仍归本机原 Runtime；主/影子不共用可写工作区。不是整体架构或模型的重新定案，云发布与分项测试分别登记。
+
 <!-- current-design-alignment-20261015 -->
 ## 当前组合与设计差额（2026-10-15）
 
