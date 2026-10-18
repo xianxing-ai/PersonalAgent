@@ -221,10 +221,14 @@ else {
   header.addEventListener('pointerup',finishPanelDrag);header.addEventListener('pointercancel',finishPanelDrag);header.addEventListener('lostpointercapture',finishPanelDrag);
   const syncSlider=()=>{const v=Number(slider.value);const labels=['最低','低','平衡','深入','高','最高'];const fill=6+(88*v/5);slider.style.setProperty('--fill',fill+'%');depthLabel.textContent=labels[v]??'平衡';modelMenu.classList.toggle('maxed',v===5);};
   const panelPreferenceRequests={model:0,thinking:0},panelPreferencePending={model:null,thinking:null},panelPreferenceErrors={model:null,thinking:null};
+  let panelPreferenceEditing=null,panelPreferenceConversationId;
   const syncPanelPreferenceBusy=()=>{nativeReasoning?.setBusy(Boolean(panelPreferencePending.model));modelChoice.setAttribute('aria-busy',String(Boolean(panelPreferencePending.model)));for(const control of [slider,fastBtn])control.setAttribute('aria-busy',String(Boolean(panelPreferencePending.thinking)));};
   const projectPanelPreferences=()=>{
+    if(panelPreferenceConversationId!==current?.conversationState?.activeId){
+      panelPreferenceConversationId=current?.conversationState?.activeId;panelPreferenceEditing=null;
+    }
     modelChoice.value=panelPreferencePending.model?.modelId??current?.conversationPreference?.modelId??'';
-    const thinking=panelPreferencePending.thinking??current?.thinking??current?.conversationPreference;
+    const thinking=panelPreferenceEditing??panelPreferencePending.thinking??current?.thinking??current?.conversationPreference;
     if(thinking){slider.value=String(thinking.depth??1);fastBtn.setAttribute('aria-pressed',String(Boolean(thinking.fast)));modelMenu.classList.toggle('fast',Boolean(thinking.fast));syncSlider();}
     syncPanelPreferenceBusy();
   };
@@ -249,8 +253,9 @@ else {
   let modelChoiceSignature;
   bellBtn.onclick=e=>{e.stopPropagation();const open=bellMenu.hidden;closeBell();closeModel();if(open){bellMenu.hidden=false;bellBtn.setAttribute('aria-expanded','true');}};
   document.addEventListener('click',e=>{if(!modelMenu.hidden&&!e.target.closest('.model-box'))closeModel();if(!bellMenu.hidden&&!e.target.closest('.bell-box'))closeBell();});
-  slider.addEventListener('input',()=>{syncSlider();return requestPanelPreference('thinking','thinking.update',{depth:Number(slider.value),fast:fastBtn.getAttribute('aria-pressed')==='true'});});syncSlider();
-  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);return requestPanelPreference('thinking','thinking.update',{depth:Number(slider.value),fast:on});};
+  slider.addEventListener('input',()=>{panelPreferenceEditing={depth:Number(slider.value),fast:fastBtn.getAttribute('aria-pressed')==='true'};syncSlider();});
+  slider.addEventListener('change',()=>{const thinking={depth:Number(slider.value),fast:fastBtn.getAttribute('aria-pressed')==='true'};panelPreferenceEditing=null;return requestPanelPreference('thinking','thinking.update',thinking);});syncSlider();
+  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';panelPreferenceEditing=null;fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);return requestPanelPreference('thinking','thinking.update',{depth:Number(slider.value),fast:on});};
   mountInputPin(input,invoke,()=>current?.pinned===true,report);
   input.addEventListener('input',e=>{draftRevision++;setSendMode(Boolean(e.target.value.trim()));});
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(input.value.trim()&&!pending)form.requestSubmit();}});
