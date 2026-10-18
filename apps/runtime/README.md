@@ -2,6 +2,22 @@
 
 `delegateUserTasks:true` 是 Competition 可信组合选项：仅新用户任务冻结一次真实子任务委派，根任务经原 Policy/Gateway 派发后只汇总，模型、预算和恢复绑定保留。旧任务不补派；既有单任务私人记忆/Skill 许可不继承。公开 `readDelegatedUserTaskParent()` 只提供经校验的公开历史范围。实现、105 项定向验证及未知写/汇总失败恢复限制见 [子对话与委派说明](../desktop/docs/live-task-visibility-20261018.md)。
 
+
+<!-- architecture-scope-20261013 -->
+## 当前架构职责
+
+目标profile：huawei_ict_agentarts。工程责任：MOD-03（goo122）、MOD-31（zemeng5208）。产品流程：F01、F03、F06、F12、F24、F22、F23、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+执行模型协作与候选评估；不创建第二个最终语义裁决模型，建立独立影子宿主的能力与证据。
+
+本机Laya已确定为本地运行方案，提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收；外部比赛资格及真实 AgentArts 端到端验收另行核证。
+
+本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+
+## 现有API、运行说明与历史验证参考
+<!-- /architecture-scope-20261013 -->
 Competition 任务一旦保存 `competition-context:v1`，恢复和最终发送门禁都要求受信宿主继续装配 `coordinationInput`；缺失时拒绝发送，不降为原公开 goal。已确认工具回执保留，进入既有待核实路径，不重做工具。没有该检查点的旧任务仍允许沿原无 hooks 路径恢复。此为 host-only、provisional 加固，无新 wire/迁移；见 [F27 恢复加固记录](../../docs/modules/MOD-09-CONTEXT-BINDING-20261014.md#2026-10-16恢复-hooks-缺失加固)。
 
 <!-- current-design-20261009 -->
@@ -32,7 +48,6 @@ Wiki 来源增量提供可信 Application 入口 `revalidateWikiFact`：使用�
 既有确认事实，之后仅重校验变化路径。扫描/投影失败保留上次快照，不推导删除或自动
 确认新事实；关闭取消在途检查。参见 [MOD-08J](../../docs/modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md)。
 
-> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 @personal-agent/runtime is the MOD-03 local task and event core for PA-004 and the scheduling boundary of PA-009.
 

@@ -2226,7 +2226,7 @@ async function action(event, name, payload) {
   if (name === 'admin.open') { openAdmin(payload?.page); return; }
   if (name === 'task.openConversation') {
     if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('任务定位窗口不可信');
-    return openTaskConversation({payload,tasks,conversations,sourceSurface:taskSurface,openPanel,openWorkspace,publish});
+    return openTaskConversation({payload,tasks,conversations,sourceSurface:taskSurface,openPanel:()=>openPanel(true),openWorkspace,publish});
   }
   if (name === 'task.subagentConversation') {
     if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('子对话窗口不可信');
