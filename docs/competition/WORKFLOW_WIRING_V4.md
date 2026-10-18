@@ -4,7 +4,9 @@
 > 早期公开编码双案例走testVersion模型接口和本地runAgent，并非F15整图advance。
 > 后续V4已真实上传SWR并部署精确版本`arm64-v4-e38ef23d-r2`，固定鹈鹕F15主/独立隔离整图通过，见[云端证据](evidence/cloud-f15-v4-20261016/README.md)；其余27图仍待真实验收。
 
-目标为 `huawei_ict_agentarts`。本包延续本机 Laya、镜像内工作流、原 Runtime/Policy/ToolGateway/Evidence；不重新决定模型或架构，不恢复暂停的最小修复算法。当前长期负责人仍以 [MODULE_ASSIGNMENTS](../MODULE_ASSIGNMENTS.md) 为准，CW 分工以 [交付矩阵](COLLABORATOR_WIRING_PACKAGE.md) 为准。
+> 2026-10-18 当前范围：本文中的 Laya/镜像接线和执行记录保留为 Local-only 历史实验，不属于当前 Competition 路径或验收。Competition Agent/Workflow 的构建、编排、评估和部署由 AgentArts 承担；AgentArts 不可用时明确失败，不回退到 Laya。
+
+本文记录 `huawei_ict_agentarts` 范围内曾采用的本机 Laya/镜像实验和 Runtime/Policy/ToolGateway/Evidence 接线；该 Laya 路径现归为 Local-only 历史实验。当前 Competition 长期负责人仍以 [MODULE_ASSIGNMENTS](../MODULE_ASSIGNMENTS.md) 为准，CW 分工以 [交付矩阵](COLLABORATOR_WIRING_PACKAGE.md) 为准。
 
 本轮在Owner后续上传授权下发布既有V4镜像，实际构建源e38ef23d；新云端回执与历史 V3 的 SWR、云版本、41 条工具 Evidence 分开。完整上下文Laya选择214—654ms仍未达150ms。新增入口均 provisional，不新增 Core wire operation 或独立任务库；单条F15通过不冻结其余入口。
 

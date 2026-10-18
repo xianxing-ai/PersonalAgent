@@ -16,5 +16,6 @@ for(const [tag,src] of styles) {
   html=html.replace(tag,()=>'<style>'+css+'</style>');
 }
 if(/<(script|link)\b[^>]*(src|href)="\.\/assets\//.test(html))throw Error('Unbundled local dependency');
-await writeFile(resolve(root,'dist/architecture.html'),html);
+// Keep the committed offline artifact deterministic across Windows and Linux checkouts.
+await writeFile(resolve(root,'dist/architecture.html'),html.replace(/\r\n?/g,'\n'));
 process.stdout.write('Self-contained offline architecture: dist/architecture.html\n');

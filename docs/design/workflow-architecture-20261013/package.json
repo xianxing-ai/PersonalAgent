@@ -1,0 +1,11 @@
+{
+  "name": "personal-agent-architecture-page",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node serve.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
