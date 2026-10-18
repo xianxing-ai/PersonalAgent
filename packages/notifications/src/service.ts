@@ -71,6 +71,8 @@ interface NotificationState {
   batches: NotificationBatch[];
   /** 已交付 dedupeKey 的有界 FIFO（去重窗口），淘汰由宿主按 dedupeKey 吸收。 */
   delivered: string[];
+  /** Changes whenever persisted notification state changes, keeping paged batch snapshots consistent. */
+  snapshotRevision: number;
   /** Display/unread history, policies and round receipts extend the original state, not pending queues. */
   interruption?:NotificationInterruptionState;
 }
@@ -80,6 +82,33 @@ const STATE_KEY = 'notifications:state';
 const DELIVERED_BATCH_LIMIT = 100;
 /** 已交付 dedupeKey 的窗口上限。 */
 const DELIVERED_KEY_LIMIT = 500;
+
+/**
+ * 版本化批次事件（F12 消费端口）：通知域对镜像/云端节点公布的最小投影。
+ * 条目只引用 dedupeKey，不复制连接器内容；本类型是数据，不是投递确认。
+ */
+export interface NotificationBatchEvent {
+  eventVersion: 1;
+  batchId: string;
+  kind: 'immediate' | 'digest';
+  itemRefs: readonly string[];
+  decidedAt: string;
+  heldSince: string;
+  reason: string;
+  state: 'ready_for_delivery' | 'delivered';
+  deliveredAt?: string;
+}
+
+export interface NotificationBatchEventsPage {
+  eventVersion: 1;
+  /** Persisted-state revision for all pages in one consistent snapshot. */
+  snapshotRevision: number;
+  /** `changed` 要求从第一页重读；`compacted` 表示游标早于已确认批次保留窗口。 */
+  cursorState: 'current' | 'compacted' | 'changed';
+  events: readonly NotificationBatchEvent[];
+  nextCursor: string | null;
+  retained: {readyForDelivery: number; delivered: number};
+}
 
 /**
  * 通知汇总策略（MOD-23）：只做裁定，不调度、不展示。
@@ -277,7 +306,9 @@ export class NotificationService {
       target.state = 'delivered';
       target.deliveredAt = this.isoNow();
       for(const entry of state.interruption?.feed??[])if(target.itemRefs.includes(entry.id))entry.deliveredAt??=target.deliveredAt;
-      this.writeState({...state, batches: trimBatches(state.batches)},state);
+      const batches=state.batches.filter(batch=>batch!==target);
+      batches.push(target);
+      this.writeState({...state,batches:trimBatches(batches)},state);
     }
     return structuredClone(target);
   }
@@ -383,10 +414,14 @@ export class NotificationService {
     const cell=this.options.atomicState?.read(STATE_KEY);
     const value = this.options.atomicState?cell?.value:this.storage.get(STATE_KEY);
     if(cell&&(!Number.isSafeInteger(cell.revision)||cell.revision<0))throw new ProtocolError('PROTOCOL_MISMATCH','Invalid atomic notification state revision');
-    if (value === undefined || value === null) {const empty={pending: [], batches: [], delivered: []};this.stateRevisions.set(empty,cell?.revision);return empty;}
+    if (value === undefined || value === null) {const empty={pending: [], batches: [], delivered: [], snapshotRevision:0};this.stateRevisions.set(empty,cell?.revision);return empty;}
     if (typeof value !== 'object' || Array.isArray(value)) throw new ProtocolError('PROTOCOL_MISMATCH','Notification state cannot be silently reset');
     const record = value as Record<string, unknown>;
+    const snapshotRevision = record.snapshotRevision === undefined ? 0 : record.snapshotRevision;
+    if (typeof snapshotRevision !== 'number' || !Number.isSafeInteger(snapshotRevision) || snapshotRevision < 0)
+      throw new ProtocolError('PROTOCOL_MISMATCH','Invalid notification snapshot revision');
     const state: NotificationState = {
+      snapshotRevision,
       pending: Array.isArray(record.pending) ? record.pending.filter(isPendingItem) : [],
       batches: Array.isArray(record.batches) ? record.batches.filter(isBatch) : [],
       delivered: Array.isArray(record.delivered) ? record.delivered.filter((key): key is string => typeof key === 'string').slice(-DELIVERED_KEY_LIMIT) : [],
@@ -399,7 +434,9 @@ export class NotificationService {
   }
 
   private writeState(state: NotificationState,original:NotificationState=state): void {
+    if(state.snapshotRevision>=Number.MAX_SAFE_INTEGER)throw new ProtocolError('PROTOCOL_MISMATCH','Notification snapshot revision exhausted');
     const value={
+      snapshotRevision:state.snapshotRevision+1,
       pending: state.pending,
       batches: trimBatches(state.batches),
       delivered: state.delivered.slice(-DELIVERED_KEY_LIMIT),
@@ -494,23 +531,80 @@ export class NotificationService {
   completeDelivery(input:{roundId:string;channel:NotificationChannel;state:'delivered'|'unknown'|'failed';evidenceRefs:readonly string[]}) {
     return this.atomicMutation('notification_delivery_receipt',(state,extension)=>{
       const round=completeNotificationDelivery(extension,input,this.options.now());
-      if(input.state==='delivered')for(const batch of state.batches)if(round.batchIds.includes(batch.id)) {
-        batch.state='delivered';batch.deliveredAt??=this.isoNow();
+      if(input.state==='delivered') {
+        const newlyDelivered=new Set<NotificationBatch>();
+        for(const batch of state.batches)if(round.batchIds.includes(batch.id)) {
+          if(batch.state==='ready_for_delivery')newlyDelivered.add(batch);
+          batch.state='delivered';batch.deliveredAt??=this.isoNow();
+        }
+        // One round may confirm several batches. Move its new confirmations together,
+        // preserving their order; another channel or receipt replay must not refresh it.
+        state.batches=[...state.batches.filter(batch=>!newlyDelivered.has(batch)),...newlyDelivered];
       }
       return round;
     });
   }
   getInterruptionRound(roundId:string) {const state=this.readState();const round=this.extension(state).rounds[roundId];return round?structuredClone(round):undefined;}
 
+  /**
+   * 版本化批次事件读回（F12）。只读投影：不触发裁定（drain 归宿主调度点）、
+   * 不代替受信桌面的 acknowledge；输出仅用于云端/镜像消费与重放对账。
+   */
+  readBatchEvents(input: {sinceBatchId?: string; snapshotRevision?: number; limit?: number} = {}): NotificationBatchEventsPage {
+    const limit = input.limit ?? 20;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100
+      || (input.snapshotRevision !== undefined
+        && (!Number.isSafeInteger(input.snapshotRevision) || input.snapshotRevision < 0))
+      || (input.sinceBatchId !== undefined
+        && (typeof input.sinceBatchId !== 'string' || !input.sinceBatchId.trim() || input.sinceBatchId.length > 128))) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Notification event page request out of bounds');
+    }
+    if (input.sinceBatchId !== undefined && input.snapshotRevision === undefined)
+      throw new ProtocolError('INVALID_ARGUMENT', 'Notification page cursor requires its snapshot revision');
+    const state = this.readState();
+    const ordered = [...state.batches].sort((left, right) =>
+      left.decidedAt < right.decidedAt ? -1 : left.decidedAt > right.decidedAt ? 1
+        : left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    const readyForDelivery = ordered.filter(batch => batch.state === 'ready_for_delivery').length;
+    const retained = {readyForDelivery, delivered: ordered.length - readyForDelivery};
+    if (input.snapshotRevision !== undefined && input.snapshotRevision !== state.snapshotRevision) {
+      return {eventVersion: 1, snapshotRevision: state.snapshotRevision, cursorState: 'changed', events: [],
+        nextCursor: null, retained};
+    }
+    let start = 0;
+    let cursorState: 'current' | 'compacted' = 'current';
+    if (input.sinceBatchId !== undefined) {
+      const index = ordered.findIndex(batch => batch.id === input.sinceBatchId);
+      if (index >= 0) start = index + 1;
+      else cursorState = 'compacted';
+    }
+    const page = ordered.slice(start, start + limit);
+    const last = page.at(-1);
+    return {
+      eventVersion: 1,
+      snapshotRevision: state.snapshotRevision,
+      cursorState,
+      events: page.map(batch => ({eventVersion: 1, batchId: batch.id, kind: batch.kind,
+        itemRefs: [...batch.itemRefs], decidedAt: batch.decidedAt, heldSince: batch.heldSince,
+        reason: batch.reason, state: batch.state,
+        ...(batch.deliveredAt === undefined ? {} : {deliveredAt: batch.deliveredAt})})),
+      nextCursor: last !== undefined && start + page.length < ordered.length ? last.id : null,
+      retained,
+    };
+  }
+
   private isoNow(): string {
     return new Date(this.options.now()).toISOString();
   }
 }
 
-/** 已确认批次保留最近 DELIVERED_BATCH_LIMIT 条作幂等记录；未确认批次永不淘汰。 */
+/** 按确认时间保留最近 DELIVERED_BATCH_LIMIT 条；同毫秒沿用持久顺序，未确认批次永不淘汰。 */
 function trimBatches(batches: NotificationBatch[]): NotificationBatch[] {
   const unacknowledged = batches.filter(batch => batch.state === 'ready_for_delivery');
-  const delivered = batches.filter(batch => batch.state === 'delivered');
+  const delivered = batches.filter(batch => batch.state === 'delivered').map((batch,index)=>({batch,index})).sort((left,right)=>{
+    const leftAt=left.batch.deliveredAt??left.batch.decidedAt,rightAt=right.batch.deliveredAt??right.batch.decidedAt;
+    return leftAt<rightAt?-1:leftAt>rightAt?1:left.index-right.index;
+  }).map(item=>item.batch);
   return [...unacknowledged, ...delivered.slice(-DELIVERED_BATCH_LIMIT)];
 }
 
