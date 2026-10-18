@@ -1,5 +1,7 @@
 # 当前详细设计：常驻责任、可信执行与按需影子
 
+> 2026-10-17增量：Owner 已明确恢复编码最小修复的实现，要求算法与对应多轮工作流进入自有镜像，见 [ADR-0033](../adr/0033-coding-minimal-repair-workflow.md)。该工作包当前 in_progress；下文及历史记录中对此部分的暂停不再是现行指令。模型资格、整体架构与其余工作流完成状态不由此升级。
+
 日期：2026-10-18。目标 Profile：`huawei_ict_agentarts`。当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本机 Laya 仅作为独立 Local Profile 的实验候选，当前 Competition 路径不调用它。其他设计、接线和验收仍按实际证据确认。
 本页取代历史设计中冲突的模型部署、默认并行、发布和完成状态描述；不撤销既有 Runtime 权限边界，
 不把设计保存、接口存在或单条真实案例提升为全部模块完成。历史原文与日期见[导航](README.md)。

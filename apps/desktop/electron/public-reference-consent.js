@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 
-const PURPOSES=new Map([['workspace.read_text','coding-reference'],['mcp.workspace.read_text','reference-summary']]);
+const PURPOSES=new Map([['workspace.read_text','coding-reference'],['coding.repair.read','coding-reference'],['mcp.workspace.read_text','reference-summary']]);
 const key=query=>JSON.stringify([query.taskId,query.proposalId,query.path,query.configurationRef]);
 const sha=value=>typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 
