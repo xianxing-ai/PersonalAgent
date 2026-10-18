@@ -160,6 +160,15 @@ test('repair executes World Plan Review once, checks fixed revision/dependencies
   assert.deepEqual(await agent.invoke(invoke(sourcedQuery)),sourcedCandidate);
   assert.deepEqual(['world','plan','review'].map(r=>models[r].requests.length),[1,1,1]);
   assert.deepEqual(receipts.map(r=>r.role),['world','world','plan','plan','review','review']);
+  assert.equal(new Set(receipts.map(r=>r.spanId)).size,3);
+  for (let i=0;i<receipts.length;i+=2) {
+    const [started,ended]=receipts.slice(i,i+2);
+    assert.equal(started.status,'started'); assert.equal(ended.status,'completed');
+    assert.equal(started.spanId,ended.spanId); assert.equal(started.startedAt,ended.startedAt);
+    assert.equal(ended.requestId,'synthetic-request');
+    assert.equal(Number.isFinite(Date.parse(ended.endedAt)),true);
+    assert.ok(ended.durationMs>=0); assert.equal(started.endedAt,undefined);
+  }
   assert.equal(JSON.stringify(receipts).includes('16点'),false);
   for(const receipt of receipts.filter(value=>value.status==='completed')) {
     assert.ok(Number.isFinite(receipt.durationMs)&&receipt.durationMs>=0);
