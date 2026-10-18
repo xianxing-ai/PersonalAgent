@@ -518,7 +518,7 @@ function snapshot(surface) {
     adminNavigation: {...adminNavigation},
     audioLevel,
     orbStateOverride,
-    subagentTasks:orderedTasks().filter(task=>visibleConversationTask(task,surface)).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
+    subagentTasks:fakeMode?[]:orderedTasks().filter(task=>visibleConversationTask(task,surface)).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
     tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
