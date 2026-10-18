@@ -80,10 +80,16 @@ test('historical paired child failure consumes only inside atomic parent termina
     assert.equal(f.app.runtime.loadCheckpoint(f.child.taskId,'competition-cloud-inflight'),null);assert.equal(f.calls(),2);
   }finally{f.app.close();}
 });
-for(const fault of ['accepted','identity','unknown','active','unconfirmed-tool','wrong-marker'])test(`historical received failure refuses ${fault} and retains receipt pair`,async()=>{
+for(const fault of ['accepted','identity','instance','invalid-instance','unknown','active','unconfirmed-tool','wrong-marker'])test(`historical received failure refuses ${fault} and retains receipt pair`,async()=>{
   const f=await fixture({childFailure:true,childTool:fault==='unconfirmed-tool'});try{
     legacyPair(f);f.expire();
     if(fault==='accepted'||fault==='identity')f.app.runtime.saveCheckpoint(f.child.taskId,'competition-cloud-received',{...receipt,...(fault==='accepted'?{accepted:false}:{requestId:'different'})});
+    if(fault==='instance' || fault==='invalid-instance') {
+      const serverInstanceId=fault==='instance'?'instance-a':'invalid/instance';
+      f.app.runtime.saveCheckpoint(f.child.taskId,'competition-cloud-inflight',{...receipt,serverInstanceId});
+      f.app.runtime.saveCheckpoint(f.child.taskId,'competition-cloud-received',
+        {...receipt,serverInstanceId:fault==='instance'?'instance-b':serverInstanceId});
+    }
     if(fault==='unknown')f.app.runtime.saveCheckpoint(f.child.taskId,'competition-cloud-unknown',receipt);
     if(fault==='active')f.app.activeTextTasks.set(f.child.taskId,Promise.resolve());
     if(fault==='wrong-marker')f.app.runtime.saveCheckpoint(f.child.taskId,'competition-cloud-terminal-error',{
