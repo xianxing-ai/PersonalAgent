@@ -15,7 +15,8 @@ const status=(frame,state='unknown')=>({...identity(frame),type:'status',state,
   ...(state==='completed'?{events:events(JSON.stringify({kind:'tool_proposal',proposalId:'private-original-model-result',
     toolName:'fixture.read',toolVersion:'1.0.0',arguments:{}}))}:{}),
   ...(['failed','cancelled'].includes(state)?{code:'EXTERNAL_FAILURE'}:{})});
-function fixture(database,{respond=(frame,socket)=>socket.receive(status(frame)),overrides={}}={}) {
+function fixture(database,{respond=(frame,socket)=>socket.receive(status(frame)),
+  invokeRespond=(frame,socket)=>{socket.accepted(frame);socket.disconnect();},overrides={}}={}) {
   let invokes=0,statuses=0,fetches=0,executions=0;
   const sockets=[];
   const app=createAgentArtsRuntimeApplication({...target,path:database,
@@ -23,7 +24,7 @@ function fixture(database,{respond=(frame,socket)=>socket.receive(status(frame))
     websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'},
     websocketFactory:()=>{
       const socket=new SyntheticWebSocket((frame,connection)=>{
-        if(frame.type==='invoke'){invokes++;connection.accepted(frame);connection.disconnect();}
+        if(frame.type==='invoke'){invokes++;invokeRespond(frame,connection);}
         else if(frame.type==='status'){statuses++;respond(frame,connection);}
         else throw Error('Unexpected frame');
       });sockets.push(socket);return socket;
@@ -45,6 +46,15 @@ async function seed(h) {
   }
   throw Error('Task did not settle');
 }
+async function waitTask(h,taskId,state) {
+  for(let n=0;n<200;n++) {
+    const task=h.app.runtime.getTask(taskId);
+    if(task.state===state && h.app.activeTaskCount===0)return task;
+    if(['failed','succeeded'].includes(task.state))throw Error(`Unexpected task state: ${task.state}`);
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }
+  throw Error('Task did not settle');
+}
 async function temporary(t) {
   const base=fileURLToPath(new URL('../../../.cache/agentarts-status-application-tests/',import.meta.url));
   await mkdir(base,{recursive:true});const directory=await mkdtemp(path.join(base,'case-'));
@@ -55,14 +65,24 @@ async function temporary(t) {
 test('persisted instance/configuration survives actual reopen; completed status stores metadata while task stays unknown',async t=>{
   const database=await temporary(t),first=fixture(database);const taskId=await seed(first);
   const binding=first.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-binding');
+  const context=first.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context');
   const original=first.app.runtime.loadCheckpoint(taskId,'competition-cloud-unknown');
   assert.equal(binding.configurationRef,first.app.coordinationConfigurationRef);
   assert.equal(binding.invocation.serverInstanceId,'synthetic-instance');
   assert.equal(original.serverInstanceId,'synthetic-instance');assert.equal(original.accepted,true);
+  assert.equal(context.snapshotVersion,'1.0');assert.equal(context.taskId,taskId);
+  assert.deepEqual(context.invocation,binding.invocation);assert.equal(context.configurationRef,binding.configurationRef);
+  assert.equal(context.request.phase,'initial');assert.equal(context.loop.step,1);
+  assert.equal(context.request.deadline,first.app.runtime.loadCheckpoint(taskId,'application-deadline'));
+  assert.equal(context.catalog,null);assert.equal(context.continuation,null);
+  assert.deepEqual(context.privacyEligibility,{eligible:false,reason:'public-provenance-unavailable'});
+  assert.equal(context.recovery,'unavailable');
+  assert.doesNotMatch(JSON.stringify(context),/Synthetic unknown cloud result|Bearer/);
   first.app.close();
   const h=fixture(database,{respond:(frame,socket)=>socket.receive(status(frame,'completed'))});
   try {
     assert.deepEqual(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-binding'),binding);
+    assert.deepEqual(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context'),context);
     assert.deepEqual(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-unknown'),original);
     const before=h.app.runtime.getTask(taskId),inflight=h.app.runtime.loadCheckpoint(taskId,'competition-cloud-inflight');
     const observation=await h.app.queryCompetitionCloudStatus(taskId,scope(h.app,taskId));
@@ -111,24 +131,89 @@ test('deployment, binding, receipt, revision, privacy and cancellation checks ca
   } finally {h.app.close();}
 });
 
-test('binding or task revision changed during lookup cannot publish a stale observation',async()=>{
-  for(const changed of ['binding','revision']) {
+test('binding, dispatch context, catalog or task revision drift cannot publish a stale observation',async()=>{
+  for(const changed of ['binding','revision','context','catalog']) {
     let h,taskId;
     h=fixture(':memory:',{respond:(frame,socket)=>{
       if(changed==='binding')h.app.runtime.saveCheckpoint(taskId,'competition-cloud-dispatch-binding',{configurationRef:'replaced'});
-      else h.app.runtime.transitionTask(taskId,'cancelling');
+      else if(changed==='revision')h.app.runtime.transitionTask(taskId,'cancelling');
+      else h.app.runtime.saveCheckpoint(taskId,changed==='context'?'competition-cloud-dispatch-context':'competition-tool-catalog',null);
       socket.receive(status(frame,'completed'));
     }});
     try {
       taskId=await seed(h);
       await assert.rejects(h.app.queryCompetitionCloudStatus(taskId,scope(h.app,taskId)),
-        {code:changed==='binding'?'UNAUTHORIZED':'REVISION_CONFLICT'});
+        {code:changed==='binding'?'UNAUTHORIZED':changed==='revision'?'REVISION_CONFLICT':'RESULT_UNKNOWN'});
       assert.equal(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-status-observation'),undefined);
       assert.ok(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-inflight'));
       assert.ok(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-unknown'));
       assert.equal(h.invokes,1);assert.equal(h.statuses,1);assert.equal(h.executions,0);
     } finally {h.app.close();}
   }
+});
+
+test('initial catalog and confirmed continuation snapshots survive reopen without body persistence or recovery',async t=>{
+  const database=await temporary(t),snapshots=[];let h,executions=0;
+  const proposal={kind:'tool_proposal',proposalId:'snapshot-read',toolName:'fixture.read',toolVersion:'1.0.0',
+    arguments:{id:'synthetic-private-argument'}};
+  const overrides={responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',
+    competitionToolAvailability:[{toolName:'fixture.read',toolVersion:'1.0.0',available:()=>true}],
+    competitionToolExports:[{toolName:'fixture.read',toolVersion:'1.0.0',exportPolicyVersion:'snapshot-v1',
+      accepts:()=>true,project:({result})=>result}],
+    tools:[{descriptor:{name:'fixture.read',version:'1.0.0',inputSchema:{type:'object',required:['id'],
+      properties:{id:{type:'string'}}},outputSchema:{type:'object',required:['value'],properties:{value:{type:'string'}}},
+      sideEffect:'read',requiredScopes:['fixture:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false},
+      execute:async()=>{executions++;return {value:'synthetic-private-continuation-body'};}}]};
+  h=fixture(database,{overrides,invokeRespond:(frame,socket)=>{
+    const taskId=h.app.runtime.listTasks({}).items[0].taskId;
+    snapshots.push(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context'));
+    socket.accepted(frame);
+    if(snapshots.length===1)socket.result(frame,JSON.stringify(proposal));else socket.disconnect();
+  }});
+  let taskId;
+  try {
+    const client=new Client(h.app);await client.connect();
+    ({taskId}=await client.call('task.submit',{goal:'Snapshot a synthetic continuation',conversationId:'snapshot-test'},
+      {idempotencyKey:'snapshot-continuation'}));
+    await waitTask(h,taskId,'waiting_approval');
+    const approval=(await client.call('approval.list',{taskId})).items[0];
+    await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+    await waitTask(h,taskId,'waiting_reconciliation');
+    assert.equal(snapshots.length,2);assert.equal(executions,1);
+    assert.equal(snapshots[0].request.phase,'initial');assert.equal(snapshots[1].request.phase,'continuation');
+    assert.equal(snapshots[1].loop.step,2);assert.deepEqual(snapshots[1].catalog,snapshots[0].catalog);
+    assert.match(snapshots[0].catalog.entriesDigest,/^[a-f0-9]{64}$/);
+    assert.equal(snapshots[1].continuation.proposalId,proposal.proposalId);
+    assert.match(snapshots[1].continuation.continuationDigest,/^[a-f0-9]{64}$/);
+    assert.equal(snapshots[1].privacyEligibility.eligible,false);
+    assert.doesNotMatch(JSON.stringify(snapshots),/synthetic-private-argument|synthetic-private-continuation-body|Snapshot a synthetic/);
+  } finally {h.app.close();}
+  const reopened=fixture(database,{overrides,respond:(frame,socket)=>socket.receive(status(frame,'completed'))});
+  try {
+    assert.deepEqual(reopened.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context'),snapshots[1]);
+    const before=reopened.app.runtime.getTask(taskId);
+    assert.equal((await reopened.app.queryCompetitionCloudStatus(taskId,scope(reopened.app,taskId))).state,'completed');
+    assert.deepEqual(reopened.app.runtime.getTask(taskId),before);assert.equal(executions,1);assert.equal(reopened.invokes,0);
+    assert.throws(()=>reopened.app.resumeTask(taskId),{code:'RESULT_UNKNOWN'});
+    const loop=reopened.app.runtime.loadCheckpoint(taskId,'competition-loop');
+    reopened.app.runtime.saveCheckpoint(taskId,'competition-loop',{...loop,continuation:{...loop.continuation,result:{changed:true}}});
+    await assert.rejects(reopened.app.queryCompetitionCloudStatus(taskId,scope(reopened.app,taskId)),{code:'RESULT_UNKNOWN'});
+    assert.equal(reopened.statuses,1);
+  } finally {reopened.app.close();}
+});
+
+test('legacy records without dispatch context remain diagnostic only and are never backfilled',async()=>{
+  const h=fixture(':memory:');
+  const save=h.app.runtime.saveCheckpoint.bind(h.app.runtime);
+  h.app.runtime.saveCheckpoint=(taskId,key,value)=>{if(key!=='competition-cloud-dispatch-context')save(taskId,key,value);};
+  try {
+    const taskId=await seed(h);
+    assert.equal((await h.app.queryCompetitionCloudStatus(taskId,scope(h.app,taskId))).state,'unknown');
+    assert.equal(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context'),undefined);
+    assert.throws(()=>h.app.resumeTask(taskId),{code:'RESULT_UNKNOWN'});
+    assert.throws(()=>h.app.resumeConfirmedTask(taskId),{code:'RESULT_UNKNOWN'});
+    assert.equal(h.invokes,1);
+  } finally {h.app.close();}
 });
 
 test('unknown status and cancelled/expired lookups retain the original hold without replay or observation on failure',async()=>{
