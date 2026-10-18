@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint src scripts vite.config.ts",
     "check:architecture": "node scripts/check-architecture.mjs",
     "preview": "vite preview",
     "export:offline": "npm run build && node scripts/export-offline.mjs"
