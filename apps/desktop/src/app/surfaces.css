@@ -276,7 +276,18 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .admin .side .brand {padding:0;font-size:15px;line-height:1.3}
 .admin .side-home > span:last-child {color:var(--muted);font-size:12px}
 .admin .admin-search {min-height:36px;margin:2px 2px 6px;border-radius:10px;padding:0 10px}
+.admin .admin-search input {min-height:32px}
 .admin .admin-search:focus-within {outline:2px solid var(--focus-ring);outline-offset:2px}
+.admin .admin-search-status {margin:0 8px 8px;color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.admin .admin-search-status[hidden] {display:none}
+.admin .task-record-title {display:block;max-width:28ch;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.admin .task-record-id {display:block;margin-top:4px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.admin .task-record-state {display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;padding:4px 8px;border-radius:6px;background:var(--surface-2)}
+.admin .task-record-state::before {content:"";width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.admin .task-record-state[data-state="succeeded"]::before {background:var(--accent)}
+.admin .task-record-state[data-state="failed"]::before {background:var(--danger)}
+.admin .task-record-state:is([data-state="running"],[data-state="planning"],[data-state="verifying"])::before {background:var(--accent)}
+.admin .task-record-state:is([data-state="waiting_approval"],[data-state="waiting_reconciliation"])::before {background:var(--warn)}
 .admin .nav-group {margin:0 0 6px}
 .admin .nav-group h2 {margin:12px 10px 4px;font-size:11px;letter-spacing:.08em}
 .admin .side nav button {min-height:36px;padding:7px 10px;border-radius:10px;font-size:13px}

@@ -14,6 +14,7 @@ const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   let current={tasks:[]},lastSignature='',cardsSignature='',inspected=null;
   let updateRevision=0;
+  let connectorsRequested=true;
   const pendingCancelIds=new Set();
   root.innerHTML=`<section class="workspace focused-workspace">
     <header class="workspace-titlebar"><span class="workspace-app-title">PersonalAgent</span><span class="spacer"></span>${windowControlsHtml('workspace')}</header>
@@ -83,22 +84,39 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     if(button&&!button.disabled)button.focus({preventScroll:true});
   };
   root.querySelectorAll('[data-open-settings]').forEach(button=>button.onclick=()=>invoke('admin.open',{page:button.dataset.openSettings}).catch(report));
-  root.querySelector('#connectors-toggle').onclick=event=>{const hidden=root.querySelector('.connector-board').hidden;root.querySelector('.connector-board').hidden=!hidden;event.currentTarget.setAttribute('aria-expanded',String(hidden));};
+  function syncAuxiliaryPanels(){
+    const showConnectors=connectorsRequested&&!inspected;
+    const inspector=root.querySelector('#conversation-inspector');
+    const restoreFocus=!inspected&&inspector.contains(document.activeElement);
+    root.querySelector('.connector-board').hidden=!showConnectors;
+    root.querySelector('#connectors-toggle').setAttribute('aria-expanded',String(showConnectors));
+    inspector.hidden=!inspected;
+    if(restoreFocus){
+      const trigger=[...conversation.querySelectorAll('[data-view]')].find(button=>button.dataset.view===inspector.dataset.taskId);
+      (trigger??root.querySelector('#connectors-toggle')).focus({preventScroll:true});
+    }
+  }
+  root.querySelector('#connectors-toggle').onclick=()=>{
+    if(inspected){inspected=null;connectorsRequested=true;}else connectorsRequested=!connectorsRequested;
+    syncAuxiliaryPanels();
+  };
   root.querySelector('#connectors-refresh').onclick=async event=>{event.currentTarget.disabled=true;const operationRevision=updateRevision;let readRevision;try{await invoke('capability.list');readRevision=updateRevision;const data=await invoke('snapshot');if(readRevision===updateRevision)update(data);}catch(error){if((readRevision??operationRevision)===updateRevision)report(error);}finally{root.querySelector('#connectors-refresh').disabled=false;}};
-  root.querySelector('#inspector-close').onclick=()=>{inspected=null;root.querySelector('#conversation-inspector').hidden=true;};
+  root.querySelector('#inspector-close').onclick=()=>{inspected=null;syncAuxiliaryPanels();};
   root.querySelector('#connector-cards').onclick=event=>{const card=event.target.closest('[data-connector]');if(!card)return;invoke('admin.open',{page:'connections'}).catch(report);};
   conversation.onclick=async event=>{
     const button=event.target.closest('[data-cancel],[data-reconcile],[data-view],[data-copy]');if(!button)return;
     try{if(button.dataset.view){inspected=button.dataset.view;renderInspector();}else if(button.dataset.copy){await invoke('clipboard.writeText',resultText(current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultSummary,current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultMetadata));button.title='已复制';}else{const id=button.dataset.cancel??button.dataset.reconcile;if(button.disabled||pendingCancelIds.has(id))return;pendingCancelIds.add(id);syncCancelButtons();try{await invoke(button.dataset.reconcile?'task.reconcile.finish':'task.cancel',id);}finally{pendingCancelIds.delete(id);syncCancelButtons();}}}catch(error){report(error);syncCancelButtons();}
   };
   function renderInspector(){
-    const task=current.tasks.find(item=>item.taskId===inspected);if(!task)return;
-    root.querySelector('#conversation-inspector').hidden=false;
+    const task=current.tasks.find(item=>item.taskId===inspected);
+    if(!task){inspected=null;syncAuxiliaryPanels();return;}
+    root.querySelector('#conversation-inspector').dataset.taskId=task.taskId;
+    syncAuxiliaryPanels();
     root.querySelector('#inspector-content').innerHTML=`<h3>你的消息</h3><p>${escape(task.userMessage||'历史对话')}</p><h3>回答</h3><p>${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state])}</p>${task.resultMetadata?`<h3>模型与验证</h3><p>${escape(task.resultMetadata.profile)} · ${escape(task.resultMetadata.verification)}</p>`:'' }<h3>执行状态</h3><p>${escape(stateNames[task.state]||task.state)}</p>${(task.steps||[]).map(step=>`<p class="inspector-step">${escape(step.label)} · ${escape(step.state)}</p>`).join('')}`;
   }
   function update(data){
     updateRevision++;
-    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['model','thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;root.querySelector('#conversation-inspector').hidden=true;}
+    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['model','thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;syncAuxiliaryPanels();}
     current=data;current.tasks ||= [];
     children.hidden=!data.subagentTasks?.length;
     children.innerHTML='<h3>子任务派发</h3>'+(data.subagentTasks??[]).map(t=>'<article><strong>'+escape(t.role??'子任务')+'</strong><p>父任务 '+escape(t.parentTaskId)+' · 子任务 '+escape(t.taskId)+'</p><p>'+escape(t.modelId??'未记录模型')+' · '+escape(t.reasoningEffort??'供应商默认')+' · '+escape(stateNames[t.state]??t.state)+'</p><p>'+escape(t.resultSummary??t.error?.message??t.error??'')+'</p><p>Evidence '+escape((t.evidenceRefs??[]).join(', '))+'</p></article>').join('');

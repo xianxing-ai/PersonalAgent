@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-18 Desktop 前端交互与体验审查（review）
+
+Competition Profile 的 Desktop 前端工作包延续 #404，独立分支 `codex/frontend-ux-audit-20261019`。修复无关快照重建任务详情、保留模型 DOM 后重复绑定、预算拖动重复保存、连接器与详情状态不一致及焦点恢复；改善设置搜索与任务扫读。[审查记录](modules/DESKTOP_FRONTEND_UX_AUDIT_20261018.md)区分实际点击、离线 Electron 回归、视觉建议和未验收能力。无公共契约、迁移、依赖或 Runtime 行为变化；代码及调用方自审完成，拟审查 goo122、拟合并 Potatos498，尚未取得接手确认及有效 Approve/集成，保持 review。
+
 ## 2026-10-17 编码最小修复算法与 F15 多轮链（in_progress）
 
 Owner 本轮解除这部分暂停，要求算法与工作流进入自有镜像。[ADR-0033](adr/0033-coding-minimal-repair-workflow.md)记录复用 jsdiff/TypeScript、原 F15 多轮、任务隔离目录、包级验证失效、主/影子与 CAS 交付。根协调承担依赖/文档/集成，云图、编码工具、Runtime/Desktop 按现有模块归属交付实际接线。新工作包不混入固定 head 的 PR #376 审查；中间镜像暂不发，完整增量测试后统一构建。代码、真实模型、镜像与平台逐面验收，尚未标 done。
