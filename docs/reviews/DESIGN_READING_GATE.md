@@ -1,22 +1,22 @@
 # 设计审查与一人批准规则
 
-> 当前规则（2026-10-16修订）：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [三方实施交接](../modules/AGENTARTS-PLATFORM-HANDOFF-20261014.md) · [仓库贡献规则](../../CONTRIBUTING.md)。当前阅读清单绑定本机Laya/受信teacher判断链、185详情节点、平台四接入、模块与实施材料；旧镜像内Laya/无资格门禁决策/SVG设计包按历史阅读。人数与审批规则不变，设计不等于实现或真实验收。
+> 当前依据（2026-10-18）：[当前设计](../design/CURRENT_DESIGN_20261015.md) · [工作流架构](../design/workflow-architecture-20261013/DESIGN.md) · [Competition Profile](../competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) · [仓库贡献规则](../../CONTRIBUTING.md)。本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 路径；Competition 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。设计不等于实现或真实验收。
 
-2026-10-09 的“两人分别批准、必须在本人电脑阅读并提交声明”是历史版本，已由用户 2026-10-12 确认的一人批准规则替代。历史提交记录可追溯，旧规则不是当前合并门槛。
+2026-10-09 的“两人分别批准、必须在本人电脑阅读并提交声明”是历史版本，已由后续一人批准规则替代。历史提交记录可追溯，旧规则不是当前合并门槛。
 
 ## 当前合并要求
 
-1. zemeng5208、goo122、Potatos498 中任意一位**非作者**对 PR 当前 head 完成实质审查并提交有效 Approve，即满足人数要求；作者自审和普通评论不能代替批准。更新提交使审批过期时重新审查批准。
-2. 三人跨 PR 平等分担审查、批准与合并责任，不得长期推卸给他人；PR 记录拟审查者、拟合并者和实际执行人。无法承担时主动说明并协调接手。这不要求每个 PR 三人都批准。
+1. 常规 PR 由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位**非作者**对当前 head 完成实质审查并提交有效 Approve。作者自审和普通评论不能代替批准；更新提交使审批过期时重新审查批准。Owner zemeng5208 可对**具体 PR**明确授权审核例外，须在 PR 记录授权、意见处置和保留分歧，不伪称取得独立批准。
+2. 四位协作者跨 PR 平等分担审查、批准与合并责任，不得长期推卸给他人；PR 记录拟审查者、拟合并者和实际执行人。无法承担时主动说明并协调接手。这不要求每个 PR 四人都批准；有合并权限的协作者（包括作者）可在门槛满足后执行合并。
 3. 审查者实际核对变更源码、接口、测试、限制与相关设计文件，明确未运行的检查和真实环境未验收项。可以使用获授权的工作环境，不限定个人电脑；不得声称自己未完成的阅读、验证或审批。
-4. 合并还须通过目标分支实际要求的 CI 与保护、解决冲突和阻断意见，并获得相应 Git 操作授权。GitHub 不允许作者批准自己的 PR；不能使用管理员绕过、强推或虚构检查。发布镜像、main 合并和 Huawei 真实验收分别记录。
+4. 合并还须通过最新必需技术 CI、严格更新目标主线、解决冲突和阻断性技术缺陷，并获得相应 Git 操作授权。Owner 的具体 PR 审核例外仅针对审核规则，不豁免技术 CI。发布镜像、main 合并和 Huawei 真实验收分别记录。
 
 ## 自动核对与阅读记录
 
-`design-review-approval` 工作流读取 PR 当前 head 和 GitHub review，核对三位合资格审查者中至少一位非作者的当前 head 批准，并拒绝未解决的 Changes requested。它不替代人工实质审查，也不把评论或作者身份算作批准。该状态检查是否为远端必需项，以 GitHub 当前保护设置为准；仓库文件不能单独证明设置已生效。
+`design-review-approval` 工作流读取 PR 当前 head 和 GitHub review，核对 [design-policy.json](../../scripts/review/design-policy.json) 所列合资格审查者中至少一位非作者的当前 head 批准，并拒绝未解决的 Changes requested。它不替代人工实质审查，也不把评论或作者身份算作批准；目前未识别 Owner 对具体 PR 的审核例外。该辅助检查是否为远端必需项，以 GitHub 当前保护设置为准；它的红色状态不得冒充技术 CI 失败，也不能在未处理例外前把它升级为必需项。仓库文件不能单独证明远端设置已生效。
 
 `node scripts/review/open-design.mjs` 可在支持的环境生成设计阅读声明，供自愿记录版本、文件和摘要。声明只是本人自证，仓库无法独立证明屏幕可见或理解；它既不是新的强制合并条件，也不能代替 GitHub 批准。旧提交或旧内容的声明不得冒充当前 head 的阅读。合并前以最新文件、实际审查和真实检查结果为准。
 
 ## 禁止绕过
 
-不得使用 `gh pr merge --admin`、force merge、直接推 main、删除保护、伪造阅读声明或把未通过的检查改绿。CODEOWNERS、仓库原生审批和 CI 各按 GitHub 当前设置执行；本文件不授予任何人新的远端权限。
+不得强推、直接推 main、削弱或绕过技术保护、伪造阅读声明或把未通过的检查改绿。Owner 对具体 PR 的审核例外仅限审核规则，不能绕过技术 CI；本文件不授予任何人新的远端权限。
