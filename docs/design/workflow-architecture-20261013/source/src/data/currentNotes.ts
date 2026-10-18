@@ -1,3 +1,8 @@
+// Viewer-only clarification. Keep the reviewed production catalog and its
+// template identity unchanged; a deployment choice is not domain qualification.
+export const FEATURE_NOTE_REVISIONS:Readonly<Record<string,string>> = {
+ '本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。':'本机Laya按已确认的本机运行路线参与Competition产品路径；节点领域资格仍为实验验证范围，其余架构与具体接线尚未最终定型。未合格站点/复杂未知升级经AgentArts代理的DeepSeek；外部比赛资格与真实端到端验收仍须分别核实。',
+};
 export const SHARED_DETAILS:Record<string,string[]> = {
  USER:['可信原话、版本、否定/条件与scope保留；inferred_interest不授写权限。','清楚且已有授权直接执行；缺关键决定才主动询问。','final绑定当前问题/参数指纹/revision；partial/echo/旧录音不授权。'],
  EVENT:['四入口：connector / user_instruction / subtask_feedback / wake。','pending持久化→sink按batchId durable确认→cursor CAS；断线/撤权不是无变化。','保留source/version、原话、Goal/责任、撤回更正；未订阅不等于无关。','独立来源可并行，同来源防重入；注册不等于开始监视。'],
