@@ -150,18 +150,18 @@ TaskSnapshot 必含 `taskId`、`state`、`revision`、`updatedAt`、`steps`、`e
 | 端口 | 负责人 | 状态与使用规则 |
 | --- | --- | --- |
 | TaskPort / EventPort / SchedulerPort | `goo122` | provisional 内部端口；所有模块通过 Runtime，不私建任务库 |
-| ToolHost / ToolContext / PolicyPort | `goo122` | provisional；离线实现存在，真实模型/工具闭环未验收 |
-| ModelPort | `goo122` | unavailable；仅为可选 Local Profile 和明确专业模型适配使用，不阻塞 Competition Golden Path |
+| ToolHost / ToolContext / PolicyPort | `goo122` | provisional；已有本地 Policy/ToolGateway 与固定公开 Competition 模型提案、审批、工具读回及续答闭环；任意账号/业务与实体设备仍分别验收 |
+| ModelPort | `goo122` | provisional；Local ModelPort 由 ModelProvider/ModelGateway 装配，既有 Local Agent 仍保留具体耦合；不据此宣布整体依赖倒置或模型选型冻结 |
 | StoragePort | `goo122` | provisional；当前缺 revision、事务、容量和失败语义 |
 | SecretStorePort | `zemeng` 实现 Windows 适配，`goo122` 控制注入 | provisional read；save/replace/delete/status unavailable |
-| CoordinationPort | `zemeng`，Runtime 注入由 `goo122` | unavailable；主 Agent/认知与 Runtime 的独立边界 |
-| MemoryQueryPort / FactChangeFeed | `goo122` | unavailable；记忆不直接修改 Goal/Task |
-| CoordinationStorePort | `goo122` 适配、`zemeng` 消费 | unavailable；版本化目标/决策图谱存储 |
-| ToolExecutionPort | `goo122` | unavailable 的稳定消费面；复用现有工具语义，不另造授权 |
+| CoordinationPort | `zemeng`，Runtime 注入由 `goo122` | provisional；Competition Runtime 已由注入端口消费，完整主控认知、真实来源与恢复另行验收 |
+| MemoryQueryPort / FactChangeFeed | `goo122` | provisional；公开端口及 SQLite 来源投影已有受信消费，记忆不直接修改 Goal/Task；真实来源、撤回与生命周期分别验收 |
+| CoordinationStorePort | `goo122` 适配、`zemeng` 消费 | provisional；版本图及 Runtime SQLite CAS/原子存储已交付，真实来源与恢复仍分别验收 |
+| ToolExecutionPort | `goo122` | 此同名独立稳定消费面尚未冻结或交付；当前工具消费复用 AgentToolPort、RuntimeToolInvoker 与 Policy/ToolGateway，不另造授权 |
 | EvidencePort / ArtifactPort | `goo122` | unavailable；访问、过期、敏感性、分片与背压待定义 |
-| CloudAgentPort | `zemeng` | unavailable；Competition 第一优先，封装 AgentArts deployment/version/trace/提案/usage/error，不持有本地授权 |
-| KnowledgePort | `goo122` | unavailable |
-| DesktopActionPort / VoicePort | `zemeng` | unavailable |
+| CloudAgentPort | `zemeng` | provisional；Competition HTTPS/WSS 固定版本有限真实调用已接线，封装 deployment/version/trace/提案/usage/error，不持有本地授权；完整平台/业务另验收 |
+| KnowledgePort | `goo122` | provisional；受信只读 Vault/Obsidian 工具适配已有宿主消费，完整 Wiki/原生云知识与跨库副本分别验收 |
+| DesktopActionPort / VoicePort | `zemeng` | 同名统一契约尚未交付；已有 Windows/语音专用端口与 Desktop 私有 IPC，不据此宣布统一端口或公开 voice.start/voice.stop wire 可用 |
 
 工具代码隔离必须在运行时落实，TypeScript 接口或进程拆分本身不构成沙箱。
 
