@@ -1,5 +1,15 @@
 # PersonalAgent Desktop
 
+## 2026-10-18 思考滑块与小工作区单主对话（provisional）
+
+小工作区和大工作区的思考设置仅使用滑块：主思考模型显示实际名称，思考深度按当前受信目录的 `reasoningEfforts` 映射中文标签。首档是「供应商默认」，保存时省略 `reasoningEffort`；不支持调整的模型禁用强度滑块并说明原因。后台设置页保持原有控件。
+
+原 0–5 值另列为「执行步骤预算」，Fast 继续独立保存，不映射成原生强度。模型与强度通过原 `conversation.model` / `executionModel` 串行保存；连续拖动合并尚未发送的中间选择。旧响应不能覆盖新选择，保存失败恢复已确认状态，提交任务前等待模型设置保存成功。切换会话或目录会废弃旧界面请求。
+
+小工作区保留原有当前主对话，隐藏会话管理，主进程拒绝该窗口的新建、切换、归档、恢复；已有历史和草稿保留，不删记录、不迁移数据库。大工作区仍可管理独立对话。子智能体派发、完成提示和独立页面属于另一个工作包。
+
+验证：`node --test test/native-reasoning.test.mjs` 覆盖合法映射、默认、连续操作、失败与会话隔离；`node test/native-reasoning-slider-smoke.cjs` 使用实际 Competition main/Preload/两个 Renderer、隔离 userData 与显式合成传输，捕获 `low` 和省略强度的任务请求。可用 `PA_SLIDER_TEST_ELECTRON` 指定已有 Electron。未调用真实模型、麦克风或外部账号；这些证据不提升平台或供应商验证等级。
+
 ## 2026-10-16 远程 MCP 原生管理与生产装配（provisional）
 
 Competition 后台顶栏新增「远程 MCP 管理」，打开独立 sandbox/contextIsolation 窗口。普通页面只能打开窗口和看到布尔状态，不能调用管理 IPC 或读回密钥。管理窗口支持导入服务定义、加密保存短期凭据、原生确认连接、创建/审核单次只读任务、原任务结果/Evidence 引用读回、停止、断开和撤销。无真实云端调用；不自动向 AgentArts 公布该工具或导出结果。

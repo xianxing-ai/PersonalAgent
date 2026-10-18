@@ -24,21 +24,19 @@ export function mountWorkspace(root,invoke,escape){
   const children=document.createElement('section');children.className='subagent-tasks';children.setAttribute('aria-label','子任务派发');root.querySelector('.workspace-chat').append(children);
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
-  preferences.innerHTML='<label>主思考模型 <select class="conversation-model-choice" aria-label="工作区主思考模型"></select></label><label>执行步骤预算 <input type="range" min="0" max="5" step="1" aria-label="工作区执行步骤预算"></label><label><input type="checkbox">快速模式</label><button type="button" class="turn-action" data-more-models>更多模型与默认设置</button>';
+  preferences.innerHTML='<label>主思考模型 <output data-model-label></output><input type="range" class="conversation-model-choice" aria-label="工作区主思考模型"></label><label>执行步骤预算 <input type="range" min="0" max="5" step="1" aria-label="工作区执行步骤预算"></label><label><input type="checkbox">快速模式</label><button type="button" class="turn-action" data-more-models>更多模型与默认设置</button>';
   root.querySelector('.workspace-top').after(preferences);
   preferences.querySelector('[data-more-models]').onclick=()=>invoke('admin.open',{page:'models'}).catch(error=>report(error));
-  const modelChoice=preferences.querySelector('select'),depth=preferences.querySelector('[type=range]'),fast=preferences.querySelector('[type=checkbox]');
+  const modelChoice=preferences.querySelector('.conversation-model-choice'),depth=preferences.querySelector('[aria-label="工作区执行步骤预算"]'),fast=preferences.querySelector('[type=checkbox]');
   let feedbackRevision=0;
   const reportPreference=error=>report(error);
-  const preferenceRequests={model:0,thinking:0},preferencePending={model:null,thinking:null},preferenceErrors={model:null,thinking:null};
+  const preferenceRequests={thinking:0},preferencePending={thinking:null},preferenceErrors={thinking:null};
   let preferenceEditing=null;
-  const syncPreferenceBusy=()=>{nativeReasoning?.setBusy(Boolean(preferencePending.model));
-    modelChoice.setAttribute('aria-busy',String(Boolean(preferencePending.model)));
+  const syncPreferenceBusy=()=>{
     for(const control of [depth,fast])control.setAttribute('aria-busy',String(Boolean(preferencePending.thinking)));
   };
   const projectPreferenceControls=()=>{
     const observed=current.conversationPreference??current.thinking??{};
-    modelChoice.value=preferencePending.model?.modelId??observed.modelId??'';
     const thinking=preferenceEditing??preferencePending.thinking??observed;
     depth.value=String(thinking.depth??current.thinking?.depth??1);
     fast.checked=Boolean(thinking.fast??current.thinking?.fast);
@@ -52,7 +50,6 @@ export function mountWorkspace(root,invoke,escape){
     catch(error){if(request===preferenceRequests[group]){preferencePending[group]=null;projectPreferenceControls();reportPreference(error);preferenceErrors[group]=feedbackRevision;}}
     finally{if(request===preferenceRequests[group]){preferencePending[group]=null;syncPreferenceBusy();}}
   };
-  modelChoice.onchange=()=>requestPreference('model','conversation.model',{modelId:modelChoice.value});
   const editThinking=()=>{preferenceEditing={depth:Number(depth.value),fast:fast.checked};};
   depth.oninput=editThinking;fast.oninput=editThinking;
   const saveThinking=()=>{const payload={depth:Number(depth.value),fast:fast.checked};preferenceEditing=null;return requestPreference('thinking','thinking.update',payload);};
@@ -72,8 +69,8 @@ export function mountWorkspace(root,invoke,escape){
   };
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
   const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
-  const sessionRoot=document.createElement('div');root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,composer.input,invoke,report);composer.beforeSubmit=()=>sessionControls.flush();composer.onAccepted=token=>sessionControls.submitted(token);
-  const nativeReasoning=mountNativeReasoning(preferences,invoke,report);
+  const sessionRoot=document.createElement('div');root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,composer.input,invoke,report);composer.beforeSubmit=async()=>{await nativeReasoning.flush();return sessionControls.flush();};composer.onAccepted=token=>sessionControls.submitted(token);
+  const nativeReasoning=mountNativeReasoning(preferences,invoke,report,{modelChoice,modelOutput:preferences.querySelector('[data-model-label]'),readFeedbackRevision:()=>feedbackRevision,clearFeedback:()=>report('')});
   const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body)return;
@@ -98,15 +95,12 @@ export function mountWorkspace(root,invoke,escape){
   }
   function update(data){
     updateRevision++;
-    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['model','thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;root.querySelector('#conversation-inspector').hidden=true;}
+    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;root.querySelector('#conversation-inspector').hidden=true;}
     current=data;current.tasks ||= [];
     children.hidden=!data.subagentTasks?.length;
     children.innerHTML='<h3>子任务派发</h3>'+(data.subagentTasks??[]).map(t=>'<article><strong>'+escape(t.role??'子任务')+'</strong><p>父任务 '+escape(t.parentTaskId)+' · 子任务 '+escape(t.taskId)+'</p><p>'+escape(t.modelId??'未记录模型')+' · '+escape(t.reasoningEffort??'供应商默认')+' · '+escape(stateNames[t.state]??t.state)+'</p><p>'+escape(t.resultSummary??t.error?.message??t.error??'')+'</p><p>Evidence '+escape((t.evidenceRefs??[]).join(', '))+'</p></article>').join('');
     const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference,data.conversationState?.activeId]);
     if(preferenceSignature!==nextPreferenceSignature) {
-      modelChoice.replaceChildren(new Option('使用默认主思考模型',''),...(data.modelChoices??[]).map(item=>{
-        const option=new Option(item.displayName,item.id);option.disabled=!item.available;return option;
-      }));
       preferenceSignature=nextPreferenceSignature;
       projectPreferenceControls();
     }
