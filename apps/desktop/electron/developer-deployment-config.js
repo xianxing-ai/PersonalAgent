@@ -212,8 +212,10 @@ export async function createDesktopDeveloperDeployment({configPath,workspace,cac
         result.reviewRules=structuredClone(workflow.reviewRules);
       }
       if(workflow.issueTriage!==undefined){
-        const value=workflow.issueTriage;if(!keys(value,['labels','minConfidence'])||!Array.isArray(value.labels)||!value.labels.length||value.labels.length>100
-          ||value.labels.some(label=>typeof label!=='string'||!label||label.length>100)||typeof value.minConfidence!=='number'||value.minConfidence<0||value.minConfidence>1)fail();
+        const value=workflow.issueTriage,kinds=['bug','feature','docs','question'];
+        if(!keys(value,['labels','minConfidence'])||!keys(value.labels,kinds)||Object.keys(value.labels).length!==kinds.length
+          ||kinds.some(kind=>typeof value.labels[kind]!=='string'||!value.labels[kind].trim()||value.labels[kind].length>100)
+          ||typeof value.minConfidence!=='number'||!Number.isFinite(value.minConfidence)||value.minConfidence<0||value.minConfidence>1)fail();
         result.issueTriage=structuredClone(value);
       }
       if(workflow.ciFix!==undefined){
