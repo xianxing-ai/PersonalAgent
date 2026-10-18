@@ -1642,8 +1642,12 @@ async function initializeRuntime() {
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
           let executionModel;
-          try {executionModel=preference.executionModel?agentArtsModels.resolveExecutionModel(preference.executionModel):modelId?agentArtsModels.resolveExecutionModel({modelId}):agentArtsModels.readExecutionModel();}
-          catch {/* Directory metadata is unavailable on the current deployment; dispatch without an explicit execution model. */}
+          if(preference.executionModel) executionModel=agentArtsModels.resolveExecutionModel(preference.executionModel);
+          else if(modelId) executionModel=agentArtsModels.resolveExecutionModel({modelId});
+          else {
+            try {executionModel=agentArtsModels.readExecutionModel();}
+            catch {/* Directory metadata is unavailable; dispatch without an implicit default model. */}
+          }
           return {...preference,modelId,...(executionModel!==undefined?{executionModel}:{}),configurationRef:selected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
