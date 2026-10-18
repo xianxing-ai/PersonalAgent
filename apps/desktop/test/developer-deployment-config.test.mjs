@@ -4,6 +4,7 @@ import {chmodSync,mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,writeFil
 import path from 'node:path';
 import {Client} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
+import {createIssueTriageWorkflow} from '@personal-agent/cognition';
 import {createDesktopDeveloperDeployment,projectDeveloperConversationStatus} from '../electron/developer-deployment-config.js';
 // During an isolated fence this test-only override points at the other agent's
 // unchanged public host. The integrated worktree uses the normal sibling module.
@@ -158,7 +159,8 @@ test('Local/Synthetic repository context uses the original Runtime ToolGateway, 
 test('Local/Synthetic explicit workflow model configuration uses only the injected original gateway and exact egress callbacks',async t=>{
   const f=fixture(t),events=[];
   f.config.workflows={bindingId:'fixture-workflows',modelId:'fixture-model',configurationRef:'fixture-ref',maxSteps:8,maxTokens:2000,
-    reviewRules:[{id:'fixture-rule',text:'Review only the selected files'}],issueTriage:{labels:['bug'],minConfidence:0.8},
+    reviewRules:[{id:'fixture-rule',text:'Review only the selected files'}],
+    issueTriage:{labels:{bug:'bug',feature:'enhancement',docs:'documentation',question:'question'},minConfidence:0.8},
     ciFix:{verifyRecipeId:'node-check',baseBranch:'main'}};f.rewrite();
   const deployment=await createDesktopDeveloperDeployment({...f.options,readModelGateway:(modelId,ref)=>{
     assert.equal(modelId,'fixture-model');assert.equal(ref,'fixture-ref');return {deployment:{id:'fixture'},complete:async request=>{events.push('original-gateway');return {response:{kind:'text',text:'Synthetic answer'}};}};
@@ -168,6 +170,26 @@ test('Local/Synthetic explicit workflow model configuration uses only the inject
   assert.deepEqual(events,['developer_model_request','original-gateway']);
   assert.deepEqual(await workflow.projectResult({kind:'Synthetic report'},context()),{kind:'Synthetic report'});
   assert.equal(workflow.ciFix.headBranch,'codex/fixture');assert.deepEqual(workflow.ciFix.sourcePaths,['source.js']);
+  assert.deepEqual(workflow.issueTriage.labels,{bug:'bug',feature:'enhancement',docs:'documentation',question:'question'});
+  const triage=createIssueTriageWorkflow({...workflow.issueTriage,maxSteps:workflow.maxSteps,maxTokens:workflow.maxTokens,
+    model:workflow.model,tools:{list:()=>[],invoke:async()=>{throw Error('not invoked');}},authorizationRefFor:()=>undefined});
+  assert.equal(typeof triage.listIssues,'function');
+});
+
+test('Local/Synthetic triage config rejects arrays and incomplete or unbounded label mappings',async t=>{
+  const valid={bug:'bug',feature:'enhancement',docs:'documentation',question:'question'};
+  const cases={
+    'old-array':['bug','documentation'],
+    'missing-kind':{bug:'bug',feature:'enhancement',docs:'documentation'},
+    'extra-kind':{...valid,other:'other'},
+    'blank-kind':{...valid,question:'   '},
+    'long-kind':{...valid,question:'x'.repeat(101)},
+  };
+  for(const [name,labels] of Object.entries(cases))await t.test(name,async t=>{
+    const f=fixture(t);f.config.workflows={bindingId:'fixture-workflows',maxSteps:8,maxTokens:2000,
+      issueTriage:{labels,minConfidence:0.8}};f.rewrite();
+    await assert.rejects(createDesktopDeveloperDeployment(f.options),{code:'UNSUPPORTED_CAPABILITY'});
+  });
 });
 
 test('Local/Synthetic wrong paths, branch/remote scope and exposed private token files fail without leaking values',async t=>{
