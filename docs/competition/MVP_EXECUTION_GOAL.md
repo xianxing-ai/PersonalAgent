@@ -4,7 +4,7 @@
 
 
 <!-- current-design-20261015 -->
-> 当前协作规则（2026-10-17）：每个 MOD 负责人完成实现、公开接口、实际调用方接线、测试与 Evidence/文档。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前 head 有效批准；Owner zemeng5208 对具体 PR 的审核例外须留记录，不视为独立批准。拥有合并权限者（包括作者）在必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后可正常合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。见 [协作规则](../../CONTRIBUTING.md)、[工作规范](../../AGENTS.md)、[模块分工](../MODULE_ASSIGNMENTS.md) 和 [接线总包](COLLABORATOR_WIRING_PACKAGE.md)。历史正文、作者与验收按原日期保留。
+> 当前协作规则（2026-10-17）：每个 MOD 负责人完成实现、公开接口、实际调用方接线、测试与 Evidence/文档。常规 PR 须由 zemeng5208、goo122、Potatos498 中任一非作者对当前 head 有效批准；Owner zemeng5208 对具体 PR 的审核例外须留记录，不视为独立批准。拥有合并权限者（包括作者）在必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后可正常合并；三位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。见 [协作规则](../../CONTRIBUTING.md)、[工作规范](../../AGENTS.md)、[模块分工](../MODULE_ASSIGNMENTS.md) 和 [接线总包](COLLABORATOR_WIRING_PACKAGE.md)。历史正文、作者与验收按原日期保留。
 
 更新：2026-10-07。产品验收范围沿用原约定；开发分工按本日最新要求修订。
 

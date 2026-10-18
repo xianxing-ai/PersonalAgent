@@ -109,7 +109,7 @@ goo122 从 #350 `a378c3df` 开始 [F27 上下文工作包](modules/MOD-09-CONTEX
 
 用户本轮明确的执行顺序：**代码实现 → 绝对必要的关键检验 → 修复 → 下一项任务**。CI 在后台运行，不以等待 CI 阻塞下一项开发；不重复全仓测试、安装或构建。授权、写入、恢复和协议边界的受影响行为保留最小必要验证，尚未验证与尚未合并分别标注；这不授权绕过合并保护。
 
-#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前提交有效批准；Owner 对具体 PR 的审核例外须明确记录，不冒充独立批准。合并仍需最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理；不得强推、直接推 main 或绕过技术检查。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
+#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：常规 PR 须由 zemeng5208、goo122、Potatos498 中任意一位非作者对当前提交有效批准；Owner 对具体 PR 的审核例外须明确记录，不冒充独立批准。合并仍需最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理；不得强推、直接推 main 或绕过技术检查。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
 
 本轮主要工作树为 `.worktrees/zemeng-competition-completion`。两份 Astra Ultra 独立工作包分别在 `.worktrees/zemeng-voice-completion`（MOD-14/15）和 `.worktrees/zemeng-windows-tools-completion`（MOD-16/17/18）；不共享编辑目录或改写他人修改。
 
