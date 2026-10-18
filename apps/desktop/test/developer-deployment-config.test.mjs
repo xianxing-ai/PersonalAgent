@@ -13,13 +13,16 @@ const base=process.env.PA_WIRING_TEST_CACHE??path.resolve('.cache/wiring-2026101
 mkdirSync(base,{recursive:true});
 const context=()=>({taskId:'synthetic-task',runId:'synthetic-run',authorizationRef:'synthetic-run',scopes:['github:read','workspace:read'],
   deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal});
-function fixture(t,patch={}) {
+function fixture(t,patch={}, {syntheticTransport=process.platform==='win32'}={}) {
   const directory=mkdtempSync(path.join(base,'case-')),root=path.join(directory,'workspace'),cache=path.join(directory,'parser-cache');
   mkdirSync(root);mkdirSync(cache);writeFileSync(path.join(root,'source.js'),'export const fixture = true;\n');
-  const token='synthetic-private-token-20261018',tokenFile=path.join(directory,'token');
-  const fakeBinary=path.join(directory,'synthetic-gh'),binary=process.platform==='win32'?realpathSync(process.execPath):fakeBinary;
+  const token='synthetic-private-token-20261018',tokenFile=path.join(directory,'token'),script=path.join(directory,'synthetic-gh.cjs');
+  const binary=syntheticTransport?realpathSync(process.execPath):path.join(directory,'synthetic-gh');
+  const expectedArgs=['api','--hostname','github.com','--method','GET','repos/fixture/repo','-H','X-GitHub-Api-Version: 2022-11-28','-H','Accept: application/vnd.github+json'];
+  const program=`if(process.env.GH_TOKEN!==${JSON.stringify(token)}||process.env.AMBIENT_FIXTURE_SECRET||process.env.GH_CONFIG_DIR||process.env.GH_HOST!=='github.com'||JSON.stringify(process.argv.slice(2))!==${JSON.stringify(JSON.stringify(expectedArgs))})process.exit(2);\nprocess.stdout.write(JSON.stringify({full_name:'fixture/repo',default_branch:'codex/fixture',private:true,html_url:'https://github.com/fixture/repo'}));\n`;
   writeFileSync(tokenFile,token,{mode:0o600});
-  if(process.platform!=='win32')writeFileSync(fakeBinary,`#!${process.execPath}\nif(process.env.GH_TOKEN!==${JSON.stringify(token)}||process.env.AMBIENT_FIXTURE_SECRET)process.exit(2);\nprocess.stdout.write(JSON.stringify({full_name:'fixture/repo',default_branch:'codex/fixture',private:true,html_url:'https://github.com/fixture/repo'}));\n`,{mode:0o755});
+  if(syntheticTransport)writeFileSync(script,program,{mode:0o600});
+  else writeFileSync(binary,`#!${process.execPath}\n${program}`,{mode:0o755});
   const config={version:1,repository:'fixture/repo',workspaceRoot:root,github:{executable:binary,tokenFile},
     git:{sourceBranch:'codex/fixture',remoteName:'origin',remoteUrl:'https://github.com/fixture/repo.git',allowedPaths:['source.js'],authorName:'Synthetic Developer',authorEmail:'synthetic@example.invalid'},...patch};
   const configPath=path.join(directory,'config.json');writeFileSync(configPath,JSON.stringify(config),{mode:0o600});
@@ -27,26 +30,30 @@ function fixture(t,patch={}) {
     command:{rootPath:root,recipeIds:['node-check'],publicEnumPaths:['/recipeId'],available:()=>true,
       tool:{descriptor:{name:'workspace.run_allowed_command',version:'1.0.0',inputSchema:{type:'object',properties:{recipeId:{type:'string',enum:['node-check']}},required:['recipeId'],additionalProperties:false},
         outputSchema:{type:'object'},sideEffect:'local_write',requiredScopes:['workspace:execute'],requiresPresence:false,idempotencySupport:false,recoverySupport:false},execute:async()=>({exitCode:0})}}};
-  const deniedPrivate=new Set();
+  const privateFiles=new Set([realpathSync(tokenFile),realpathSync(configPath)]),transport={calls:0,disposed:false,originalDisposed:false};
+  // Windows cannot execute a POSIX shebang. This explicit test-only factory
+  // substitution retains original scope/credential guards and uses the public
+  // runner to spawn real Node.exe plus a fixed Synthetic script, not real gh.exe.
+  const createHost=options=>{
+    if(!syntheticTransport||!options.github?.provider)return createDesktopDeveloperToolsHost(options);
+    const original=options.github.provider,runner=new options.githubModule.SpawnGhCommandRunner(binary);
+    const disposeOriginal=()=>{transport.originalDisposed=true;original.dispose();};
+    const provider=new options.githubModule.GhCliProvider({repositories:[config.repository],
+      readToken:async scope=>(await options.git.options.getCredentials(scope)).token,
+      runner:{run(command){assert.deepEqual(command.args,expectedArgs);transport.calls++;
+        return runner.run({...command,args:[script,...command.args]});},dispose(){transport.disposed=true;runner.dispose();}}});
+    let host;
+    try{host=createDesktopDeveloperToolsHost({...options,github:{...options.github,provider}});}
+    catch(error){provider.dispose();disposeOriginal();throw error;}
+    return {...host,close(){try{host.close();}finally{provider.dispose();disposeOriginal();}}};
+  };
   t.after(()=>rmSync(directory,{recursive:true,force:true}));
   return {directory,root,cache,token,tokenFile,binary,config,configPath,workspace,
+    transport,revokePrivateFile(file){privateFiles.delete(realpathSync(file));},
     rewrite(){writeFileSync(configPath,JSON.stringify(config),{mode:0o600});},
-    denyPrivate(file){deniedPrivate.add(realpathSync(file));},
-    options:{configPath,workspace,cacheRootPath:cache,
-      assertPrivateFile:file=>!deniedPrivate.has(file)&&(file===realpathSync(configPath)||file===realpathSync(tokenFile)),
-      createHost:options=>{
-        if(process.platform!=='win32'||!options.github)return createDesktopDeveloperToolsHost(options);
-        const provider=new options.githubModule.GhCliProvider({repositories:['fixture/repo'],readToken:async()=>token,
-          runner:{async run(command){
-            assert.equal(command.token,token);
-            assert.deepEqual(command.args.slice(0,6),['api','--hostname','github.com','--method','GET','repos/fixture/repo']);
-            return {exitCode:0,stdout:JSON.stringify({full_name:'fixture/repo',default_branch:'codex/fixture',
-              private:true,html_url:'https://github.com/fixture/repo'}),stderr:''};
-          }}});
-        const host=createDesktopDeveloperToolsHost({...options,github:{...options.github,provider}});
-        options.github.provider.dispose();
-        return host;
-      }}};
+    options:{configPath,workspace,cacheRootPath:cache,createHost,
+      // Synthetic ACL only. Actual protected Windows ACLs require separate device acceptance.
+      assertPrivateFile:file=>privateFiles.has(realpathSync(file))}};
 }
 
 test('Local/Synthetic absent configuration is explicit unavailable with no ambient GitHub fallback',async()=>{
@@ -109,6 +116,20 @@ test('Local/Synthetic explicit config composes public gh provider, original comm
   finally{delete process.env.AMBIENT_FIXTURE_SECRET;}
   await assert.rejects(tool.execute({repo:'other/repo'},context()),{code:'SCOPE_DENIED'});
   assert.equal(JSON.stringify(deployment.snapshot()).includes(f.token),false);assert.equal(JSON.stringify(deployment.snapshot()).includes(f.tokenFile),false);
+});
+
+test('Local/Synthetic Node transport keeps original credential revocation and disposes both providers',async t=>{
+  const f=fixture(t,{}, {syntheticTransport:true}),deployment=await createDesktopDeveloperDeployment(f.options);t.after(()=>deployment.close());
+  const tool=deployment.host.tools.find(tool=>tool.descriptor.name==='github.repo.get');
+  process.env.AMBIENT_FIXTURE_SECRET='must-not-inherit';process.env.GH_CONFIG_DIR='must-not-inherit';
+  try{assert.equal((await tool.execute({repo:'fixture/repo'},context())).fullName,'fixture/repo');}
+  finally{delete process.env.AMBIENT_FIXTURE_SECRET;delete process.env.GH_CONFIG_DIR;}
+  assert.equal(f.transport.calls,1);
+  if(process.platform==='win32')f.revokePrivateFile(f.tokenFile);
+  else chmodSync(f.tokenFile,0o644);
+  await assert.rejects(tool.execute({repo:'fixture/repo'},context()),error=>['UNAUTHORIZED','UNSUPPORTED_CAPABILITY'].includes(error.code));
+  assert.equal(f.transport.calls,1);deployment.close();assert.equal(f.transport.disposed,true);assert.equal(f.transport.originalDisposed,true);
+  await assert.rejects(tool.execute({repo:'fixture/repo'},context()),{code:'UNSUPPORTED_CAPABILITY'});
 });
 
 test('Local/Synthetic exact metadata and result permissions bind one proposal and reject credential leakage',async t=>{
@@ -217,8 +238,15 @@ test('Local/Synthetic wrong paths, branch/remote scope and exposed private token
     if(kind==='remote')f.config.git.remoteUrl='https://github.com/another/repository.git';
     if(kind==='allowed-path')f.config.git.allowedPaths=['../token'];
     if(kind==='binary-relative')f.config.github.executable='gh';
-    if(kind==='token-world-readable'){if(process.platform==='win32')f.denyPrivate(f.tokenFile);else chmodSync(f.tokenFile,0o644);}
-    if(kind==='token-symlink'){const link=path.join(f.directory,'token-link');symlinkSync(f.tokenFile,link);f.config.github.tokenFile=link;}
+    if(kind==='token-world-readable'){
+      if(process.platform==='win32')f.revokePrivateFile(f.tokenFile);else chmodSync(f.tokenFile,0o644);
+    }
+    if(kind==='token-symlink'){
+      const link=path.join(f.directory,'token-link');
+      try{symlinkSync(f.tokenFile,link,'file');}
+      catch(error){if(['EPERM','EACCES','ENOTSUP'].includes(error.code)){t.skip('Local/Synthetic symlink permission unavailable; link rejection unverified on this host');return;}throw error;}
+      f.config.github.tokenFile=link;
+    }
     if(kind==='unknown-field')f.config.github.token=f.token;
     f.rewrite();await assert.rejects(createDesktopDeveloperDeployment(f.options),error=>{
       assert.equal(error.code,'UNSUPPORTED_CAPABILITY');assert.equal(error.message.includes(f.token),false);assert.equal(error.message.includes(f.configPath),false);return true;

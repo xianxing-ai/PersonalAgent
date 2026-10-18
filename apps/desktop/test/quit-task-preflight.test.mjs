@@ -165,6 +165,23 @@ test('failed MCP release blocks quitting without automatically retrying or closi
   assert.match(f.context.runtimeError,/远程 MCP 关闭未确认/);
 });
 
+test('Windows control closes once after active work and before Runtime; scoped permits close on final exit',async()=>{
+  const f=fixture({count:1});let release;
+  f.context.windowsControlHost={close(){f.calls.push('windows-close');return new Promise(resolve=>{release=resolve;});}};
+  for(const name of ['developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation'])
+    f.context[name]={close(){f.calls.push(name+'-close');}};
+  f.app.quit();await tick();
+  assert.equal(f.calls.includes('windows-close'),false);assert.equal(f.exited,false);
+  f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);
+  f.app.quit();await tick();assert.equal(f.calls.filter(call=>call==='windows-close').length,1);
+  release();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.context.windowsControlClosed,true);
+  assert.ok(f.calls.indexOf('windows-close')<f.calls.indexOf('runtime-close'));
+  for(const name of ['developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation'])
+    assert.equal(f.calls.filter(call=>call===name+'-close').length,1);
+});
+
 test('the original final task guard still catches work that appears during cleanup', async () => {
   const f = fixture();f.context.wakeVoice = undefined;f.context.voiceInput = undefined;
   f.context.stopP5DeviceTelemetry = () => {f.context.runtimeApplication.activeTaskCount = 1;};

@@ -10,7 +10,10 @@ import {FakeGitHubProvider,register as registerGitHub} from '@personal-agent/git
 import {MAX_AVAILABLE_TOOLS,MAX_AVAILABLE_TOOLS_JSON_BYTES} from '@personal-agent/coordination';
 import * as coding from '@personal-agent/coding-tools';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
-import {createRuntimeApplication,createDesktopSubagentDispatchTool} from '../dist/application.js';
+// Isolated Runtime-owner fixes can validate this consumer regression against
+// their own built public application entry without sharing node_modules.
+const {createRuntimeApplication,createDesktopSubagentDispatchTool}=await import(
+  process.env.PA_SYNTHETIC_DEVELOPER_RUNTIME_APPLICATION_MODULE??'../dist/application.js');
 
 const repo='synthetic/project',head='a'.repeat(40),fixed='b'.repeat(40),base='c'.repeat(40);
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -33,8 +36,8 @@ async function settle(app,client,taskId){
   }
   throw Error('Synthetic developer workflow did not settle: '+JSON.stringify([app.runtime.getTask(taskId),...app.readSubagentTasks(taskId)]));
 }
-function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssue=false}={}){
-  let app,currentHead=head,source='const value = 1;\n';const cloud=[],writes=[],modelPayloads=[];
+function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssue=false,unknownPatch=false,legacyBinding=false,automaticPatch=false,followupPatch=false}={}){
+  let app,currentHead=head,source='const value = 1;\n',patchInterrupted=false,verifiedRunId,initialWorkerId;const cloud=[],writes=[],modelPayloads=[];
   const provider=new FakeGitHubProvider({'repo.get':{fullName:repo,defaultBranch:'main',private:false,url:`https://github.com/${repo}`},
     'actions.run.list':failures,'actions.job.list':{items:[{id:14,runId:12,name:'test',status:'completed',conclusion:'failure',url:`https://github.com/${repo}/actions/runs/12/job/14`}],page:1,nextPage:null,hasMore:false},
     'actions.log.read':{text:'not ok 1 - value\n',offset:0,nextOffset:null,truncated:false},
@@ -49,9 +52,13 @@ function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssu
   tools.push(synthetic('workspace.git.head','read',async()=>({headSha:currentHead,clean:true,workspaceClean:true,fingerprint:'synthetic'})),
     synthetic('workspace.read_text','read',async()=>({path:'app.js',content:source,sha256:sha(source)})),
     synthetic('workspace.preview_text_patch','read',async()=>({path:'app.js',beforeSha256:sha(source),afterSha256:sha('const value = 2;\n'),changed:true,previewText:'const value = 2;\n'})),
-    synthetic('workspace.apply_text_patch','local_write',async()=>{writes.push('apply');const before=sha(source);source='const value = 2;\n';return {path:'app.js',applied:true,changed:true,beforeSha256:before,afterSha256:sha(source)};}),
-    synthetic('workspace.run_allowed_command','local_write',async()=>({recipeId:'check',exitCode:0,stdout:'',stderr:''})),
-    synthetic('workspace.git.commit','local_write',async()=>{writes.push('commit');currentHead=fixed;return {headSha:fixed,parentSha:head,branch:'repair'};},true),
+    synthetic('workspace.apply_text_patch','local_write',async()=>{writes.push('apply');const before=sha(source);source='const value = 2;\n';
+      if(unknownPatch&&!patchInterrupted){patchInterrupted=true;throw Error('Synthetic response lost after apply');}
+      return {path:'app.js',applied:true,changed:true,beforeSha256:before,afterSha256:sha(source)};}),
+    synthetic('workspace.run_allowed_command','local_write',async(_input,context)=>{verifiedRunId=context.runId;return {recipeId:'check',exitCode:0,stdout:'',stderr:''};}),
+    synthetic('workspace.git.commit','local_write',async(input,context)=>{assert.equal(input.verificationRunId,verifiedRunId,'Git consumes the actual original command receipt');
+      assert.ok(app.runtime.readToolExecutions(context.taskId).some(record=>record.evidenceId===input.verificationRunId&&record.toolName==='workspace.run_allowed_command'&&record.state==='confirmed'));
+      writes.push('commit');currentHead=fixed;return {headSha:fixed,parentSha:head,branch:'repair'};},true),
     synthetic('workspace.git.push','external_write',async()=>{writes.push('push');return {headSha:fixed,pushed:true};},true));
   const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});tools.unshift(dispatch);
@@ -65,19 +72,30 @@ function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssu
   const args={repo,...(kind==='ci_fix'?{runId:'12'}:{}),...(['code_review','issue_triage'].includes(kind)?{number:kind==='code_review'?9:7}:{}),
     ...(kind==='code_review'?{publish:true}:{}),...(repairIssue?{repairBug:true}:{})};
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,coordinationBinding:'synthetic-config',tools,
-    hostUserNamespace:'synthetic-dev',workspacePatchReconciliation:{bindingId:'d'.repeat(64),reconcile:async({relativePath})=>({path:relativePath,state:'clear'})},
+    hostUserNamespace:'synthetic-dev',workspacePatchReconciliation:{bindingId:'d'.repeat(64),reconcile:async input=>unknownPatch&&input.retainMarker
+      ?{path:input.relativePath,state:'reconciled',runId:input.expectedRunId,argumentsDigest:input.expectedArgumentsDigest,
+        beforeSha256:sha('const value = 1;\n'),afterSha256:sha('const value = 2;\n'),currentSha256:sha(source),outcome:'applied'}
+      :{path:input.relativePath,state:'clear'}},
     isUserPresent:()=>presence,readConversationPreference:()=>({depth:2,fast:false}),
     coordination:{execute:async request=>{cloud.push(request);const task=app.runtime.getTask(request.taskId);
       if(task.conversationId==='user-chat')return {kind:'text',text:'Parent summary of verified workflow receipt',verification:'unverified'};
       if(request.continuation){assert.ok(request.continuation.result.state||request.continuation.result.status);return {kind:'text',text:'Child used confirmed workflow result',verification:'unverified'};}
-      return {kind:'tool_proposal',proposalId:'developer-request',toolName:'developer.'+kind,toolVersion:'1.0.0',arguments:args,verification:'unverified'};}},
+      initialWorkerId??=request.taskId;
+      const originRead=followupPatch&&request.taskId===initialWorkerId;
+      const proposal={kind:'tool_proposal',proposalId:'developer-request',toolName:'developer.'+(originRead?'ci_list':kind),toolVersion:'1.0.0',arguments:originRead?{repo}:args,verification:'unverified'};
+      if(legacyBinding){const key='developer-workflow:'+sha(JSON.stringify(proposal.proposalId))+':binding';
+        if(app.runtime.loadCheckpoint(request.taskId,key)===undefined)app.runtime.saveCheckpoint(request.taskId,key,
+          {version:1,bindingId:'synthetic-dev-config',taskId:request.taskId,deadline:request.deadline,proposalRevision:request.revision,
+            request:{...args,kind},proposalDigest:sha(JSON.stringify(proposal))});}
+      return proposal;}},
     developerWorkflows:{bindingId:'synthetic-dev-config',repositories:[repo],maxSteps:40,maxTokens:64000,
       ...(modelConfigured?{model}:{}),reviewRules:[{id:'correctness',text:'Review correctness of changed lines'}],
       available:()=>online,assertCurrent:()=>{assert.equal(online,true);},authorizeModelRequest:()=>{},projectResult:value=>value,
       failedRunForIssue:()=> '12',
       ciFix:{verifyRecipeId:'check',sourcePaths:['app.js'],headBranch:'repair',baseBranch:'main',gitTools:{head:'workspace.git.head',commit:'workspace.git.commit',
         push:'workspace.git.push',pullRequest:'github.pr.create',backlink:'github.pr.comment'}}},
-    automaticTools:tools.filter(tool=>tool.descriptor.sideEffect==='read'&&!tool.descriptor.requiresPresence)
+    automaticTools:tools.filter(tool=>(tool.descriptor.sideEffect==='read'&&!tool.descriptor.requiresPresence)
+      ||(automaticPatch&&tool.descriptor.name==='workspace.apply_text_patch'))
       .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
@@ -98,7 +116,67 @@ for(const kind of ['ci_list','issue_list','issue_triage','code_review','ci_fix']
     assert.equal(f.app.readToolConversation(children[0].taskId),'user-chat','identity survives terminal child and parent');
     assert.equal(f.cloud.filter(request=>request.taskId===children[0].taskId).length,2,'pending nested approval does not resend paid proposal');
     if(kind==='ci_fix')assert.deepEqual(f.writes,['apply','commit','push']);
+    if(kind==='ci_fix')assert.ok(f.app.runtime.readToolExecutions(children[0].taskId).some(record=>record.evidenceId===f.cloud.find(request=>request.continuation)?.continuation.result.verificationRunId&&record.toolName==='workspace.run_allowed_command'));
     if(['ci_fix','code_review','issue_triage'].includes(kind))assert.equal(f.modelPayloads.length,1);
+  }finally{f.app.close();}
+});
+for(const followupPatch of [false,true])test(`automatic developer patch resumes exact confirmed receipt without manufacturing approval or repeating apply${followupPatch?' in an appended conversation message':''}`,async()=>{
+  const f=fixture('ci_fix',{unknownPatch:true,automaticPatch:true,followupPatch}),client=new Client(f.app);await client.connect();
+  try{const task=await client.call('task.submit',{goal:'Synthetic automatic patch loses its response',conversationId:'user-chat'},{idempotencyKey:'automatic-ci-replay',timeoutMs:60000});
+    let executionTaskId=task.taskId;
+    if(followupPatch){
+      assert.equal((await settle(f.app,client,task.taskId)).state,'succeeded');
+      const [origin]=f.app.readSubagentTasks(task.taskId);assert.equal(origin.state,'succeeded');
+      const next=f.app.submitSubagentConversationMessage({parentTaskId:task.taskId,taskId:origin.taskId,text:'Repair CI now',requestId:'automatic-ci-followup',deadline:new Date(Date.now()+60000).toISOString()});
+      executionTaskId=next.acceptedTaskId;assert.equal(f.app.readToolConversation(executionTaskId),'user-chat');
+      assert.equal(f.app.runtime.loadCheckpoint(executionTaskId,'subtask-parent'),undefined,'appended execution uses its original message binding, not initial-child binding');
+    }
+    let child;
+    for(let attempt=0;attempt<600;attempt++){
+      child=followupPatch?f.app.runtime.getTask(executionTaskId):f.app.readSubagentTasks(task.taskId)[0];
+      if(child?.state==='waiting_reconciliation'&&f.app.activeTaskCount===0)break;
+      await new Promise(resolve=>setTimeout(resolve,5));
+    }
+    assert.equal(child.state,'waiting_reconciliation');assert.deepEqual(f.writes,['apply']);
+    assert.equal(f.app.runtime.listApprovals({taskId:child.taskId}).items.length,0,'trusted automatic tool creates no fabricated approval');
+    const record=f.app.runtime.readToolExecutions(child.taskId).find(record=>record.toolName==='workspace.apply_text_patch');assert.equal(record.state,'unknown');
+    assert.equal(f.app.runtime.policy.get(record.evidenceId).usesRemaining,0,'the original routine grant was already consumed');
+    assert.equal(f.cloud.filter(request=>request.taskId===child.taskId).length,1);
+    const readback=await f.app.reconcileDeveloperWorkflowPatch(child.taskId,record.evidenceId);assert.equal(readback.receipt.runId,record.evidenceId);
+    assert.throws(()=>f.app.resumeConfirmedDeveloperWorkflowPatch(child.taskId,{...readback.receipt,arguments:{...readback.receipt.arguments,path:'foreign.js'}}),{code:'UNAUTHORIZED'});
+    assert.doesNotThrow(()=>f.app.resumeConfirmedDeveloperWorkflowPatch(child.taskId,readback.receipt),'the exact confirmed automatic run can resume without a pending Approval object');
+    assert.equal((await settle(f.app,client,executionTaskId)).state,'succeeded');assert.deepEqual(f.writes,['apply','commit','push']);
+    assert.equal(f.app.readToolConversation(child.taskId),'user-chat');
+    assert.equal(f.app.runtime.policy.get(record.evidenceId).usesRemaining,0);
+    assert.ok(f.app.runtime.listApprovals({taskId:child.taskId}).items.every(approval=>approval.action!=='workspace.apply_text_patch'));
+  }finally{f.app.close();}
+});
+for(const legacyBinding of [false,true])test(`CI confirmed patch replay keeps its original ${legacyBinding?'legacy':'namespaced'} run and verification receipt without a second apply`,async()=>{
+  const f=fixture('ci_fix',{unknownPatch:true,legacyBinding}),client=new Client(f.app);await client.connect();
+  try{const task=await client.call('task.submit',{goal:'Synthetic repair with lost apply response',conversationId:'user-chat'},{idempotencyKey:'ci-replay',timeoutMs:60000});
+    let child;
+    for(let attempt=0;attempt<600;attempt++){
+      [child]=f.app.readSubagentTasks(task.taskId);
+      if(child)for(const approval of f.app.runtime.listApprovals({taskId:child.taskId,state:'pending'}).items){
+        const original=f.app.readPendingToolInvocation(child.taskId,approval.approvalId);assert.ok(original);assert.equal(original.argumentsDigest,approval.argumentsDigest);
+        await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+      }
+      if(child?.state==='waiting_reconciliation'&&f.app.activeTaskCount===0)break;
+      await new Promise(resolve=>setTimeout(resolve,5));
+    }
+    assert.equal(child.state,'waiting_reconciliation');assert.deepEqual(f.writes,['apply']);
+    const record=f.app.runtime.readToolExecutions(child.taskId).find(record=>record.toolName==='workspace.apply_text_patch');
+    assert.equal(record.state,'unknown');assert.ok(record.evidenceId.startsWith(child.taskId+':ci-fix:'));assert.ok(record.evidenceId.length<=256);
+    const namespace=f.app.runtime.loadCheckpoint(child.taskId,'developer-workflow:'+sha(JSON.stringify('developer-request'))+':run-namespace');
+    if(legacyBinding)assert.equal(namespace,'legacy');else assert.match(namespace,/^[a-f0-9]{64}$/);
+    assert.equal(f.cloud.filter(request=>request.taskId===child.taskId).length,1,'unknown original proposal cannot solicit a fresh paid proposal');
+    const readback=await f.app.reconcileDeveloperWorkflowPatch(child.taskId,record.evidenceId);assert.equal(readback.receipt.runId,record.evidenceId);
+    assert.throws(()=>f.app.resumeConfirmedDeveloperWorkflowPatch(child.taskId,{...readback.receipt,runId:child.taskId+':ci-fix:foreign'}),{code:'UNAUTHORIZED'});
+    assert.deepEqual(f.writes,['apply']);f.app.resumeConfirmedDeveloperWorkflowPatch(child.taskId,readback.receipt);
+    assert.equal((await settle(f.app,client,task.taskId)).state,'succeeded');assert.deepEqual(f.writes,['apply','commit','push']);
+    const records=f.app.runtime.readToolExecutions(child.taskId),result=f.cloud.find(request=>request.taskId===child.taskId&&request.continuation)?.continuation.result;
+    assert.ok(records.some(record=>record.evidenceId===result.verificationRunId&&record.state==='confirmed'&&record.toolName==='workspace.run_allowed_command'));
+    assert.ok(result.evidenceRefs.every(ref=>records.some(record=>record.evidenceId===ref&&record.state==='confirmed')));
   }finally{f.app.close();}
 });
 test('Issue repair consumes the existing CI workflow with trusted repair goal and publishes one repair PR',async()=>{

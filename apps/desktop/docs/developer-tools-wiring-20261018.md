@@ -42,6 +42,12 @@ Runtime 的 `isUserPresent(taskId)` 来自可信主进程；目录选择、提�
 
 工作流内补丁复用原 `DevWorkflowPatchRecovery`、公开 preview/apply 和同一个受信 workspace marker port。`reconcileDeveloperWorkflowPatch(taskId,runId)` 只读回原 marker/source；只有得到原 applied/confirmed receipt 后才能显式 `resumeConfirmedDeveloperWorkflowPatch(taskId,receipt)`。unknown 不自动重试，not_applied 不能冒充已应用。
 
+同一 user-work 可以连续消费多个 DEV 提案。消费层保留原 WorkerContext.taskId，仅将业务 factory 的逻辑 runId 映射为该提案绑定的完整 SHA-256 命名空间；CI 仍保留原 `${taskId}:ci-fix:` 前缀，256 字符的 patch marker 上限检查失败时拒绝执行，不截断 hash。审批恢复沿用同一映射，新提案产生独立执行身份和原 Policy 审批。`confirmedReplayReady` 和 Issue→CI 的 confirmed receipt 只认本提案；Git commit 参数与 CI 结果中的 `verificationRunId` 精确映射到原命令的真实 run，不对正文、源码或任意字符串做替换。真实 Evidence 引用保留 Gateway 返回值。
+
+每个提案持久保存 execution namespace。升级前已有 binding 但尚无该标记的原提案固定采用 legacy 身份，以便读回原 pending 审批与 unknown receipt；后续新提案仍获得独立 SHA namespace。标记与原提案不符时拒绝，不把已批准或未知的旧执行改名重放。
+
+Local/Synthetic 回归先复现旧问题：同 worker 的两次不同 PR 审查发生 runId 冲突，新的重复 CI 页请求复用旧数据。修复后覆盖两个 PR 的独立参数审批、分页及相同页的新提案读取、CI 原命令收据、Issue 修复，以及 unknown 补丁经精确原回执恢复且不重复 apply。
+
 ## 对话与语音只读摘要
 
 `readConversationToolCapabilities()` 返回经原 safeSchema 清洗的注册/export/availability 交集及 worker schema，状态固定为 `registered_requires_task_authorization`，不调用 readiness、不保存 checkpoint、不授权。私有 enum/const 的值默认删除，只有明确 `publicEnumPaths` 可公开。开放 object 保持原泛型形状；本机最终参数仍使用原 Schema 校验。

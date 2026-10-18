@@ -92,6 +92,14 @@ export function createRuntimeDeveloperWorkflowWorker(application:RuntimeApplicat
         request:structuredClone(request),proposalDigest:hash(proposal)};
       const previous=application.runtime.loadCheckpoint(context.taskId,bindingKey);
       if(previous!==undefined&&!isDeepStrictEqual(previous,bound))throw new ProtocolError('REVISION_CONFLICT','Original developer workflow changed');
+      const runNamespaceKey=namespace+':run-namespace',savedRunNamespace=application.runtime.loadCheckpoint(context.taskId,runNamespaceKey);
+      // Pre-existing proposals must resume their already approved/unknown legacy
+      // run IDs. Only fresh proposals adopt the new execution namespace.
+      const runNamespace=savedRunNamespace??(previous===undefined?hash(bound):'legacy');
+      if(typeof runNamespace!=='string'||(runNamespace!=='legacy'&&runNamespace!==hash(bound))||(runNamespace==='legacy'&&previous===undefined))
+        throw new ProtocolError('REVISION_CONFLICT','Original developer run namespace changed');
+      // Persist the namespace first: a crash cannot mistake a fresh proposal for a legacy one.
+      application.runtime.saveCheckpointOnce(context.taskId,runNamespaceKey,runNamespace);
       application.runtime.saveCheckpointOnce(context.taskId,bindingKey,bound);
       context.saveCheckpoint('developer-workflow:active',{bindingId:options.bindingId,proposalDigest:hash(proposal)});
       const tools=getTools(context.taskId);if(!tools)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original developer tool scope unavailable');
@@ -99,7 +107,7 @@ export function createRuntimeDeveloperWorkflowWorker(application:RuntimeApplicat
         throw new ProtocolError('UNSUPPORTED_CAPABILITY','Required developer tool is outside the original child scope');
       const worker={...context,loadCheckpoint:(key:string)=>context.loadCheckpoint(namespace+':'+key),
         saveCheckpoint:(key:string,value:unknown)=>context.saveCheckpoint(namespace+':'+key,value)};
-      const outcome=await runRuntimeDeveloperWorkflow(application,request,worker,tools,options);
+      const outcome=await runRuntimeDeveloperWorkflow(application,request,worker,tools,options,runNamespace);
       if(outcome.state!=='confirmed')return {...outcome,selection:bound};
       let projected:unknown;
       try{projected=await options.projectResult!(structuredClone(outcome.result),{...scope});
@@ -124,17 +132,43 @@ export function createRuntimeDeveloperWorkflowWorker(application:RuntimeApplicat
 }
 /** Runs inside the original child worker. Every nested tool still uses Runtime/Policy/ToolGateway. */
 async function runRuntimeDeveloperWorkflow(application:RuntimeApplication,request:DeveloperWorkflowRequest,
-  worker:WorkerContext,tools:AgentToolPort,options:RuntimeDeveloperWorkflowsOptions):Promise<{state:'pending'|'unknown'|'confirmed';result:unknown;evidenceRefs:readonly string[]}> {
+  worker:WorkerContext,originalTools:AgentToolPort,options:RuntimeDeveloperWorkflowsOptions,namespace:string):Promise<{state:'pending'|'unknown'|'confirmed';result:unknown;evidenceRefs:readonly string[]}> {
   if(!options.repositories.includes(request.repo))
     throw new ProtocolError('REVISION_CONFLICT','Original developer configuration is unavailable');
   const scope={taskId:worker.taskId,deadline:worker.deadline,signal:worker.signal};
   if(!developerWorkflowConfigured(options,request.kind)||!await options.available(request.kind,{...scope}))
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','Developer workflow configuration is unavailable');
-  const replay=(runId:string)=>{
+  // Business factories retain the real task identity. Only their nested execution
+  // identity is scoped to this immutable outer proposal, including approval resumes.
+  const logicalPrefix=worker.taskId+':',logicalCiPrefix=logicalPrefix+'ci-fix:';
+  const ciPrefix=namespace==='legacy'?logicalCiPrefix:logicalCiPrefix+namespace+':';
+  const scopedRunId=(logical:string)=>{
+    if(typeof logical!=='string'||!logical.startsWith(logicalPrefix))
+      throw new ProtocolError('UNAUTHORIZED','Nested developer run is outside the original task');
+    const value=namespace==='legacy'?logical:(logical.startsWith(logicalCiPrefix)?ciPrefix:logicalPrefix+'developer:'+namespace+':')+hash(logical);
+    // The public patch marker/reconciler bounds run IDs to 256 characters.
+    // Keep full hashes and reject an oversized identity rather than truncate it.
+    if(value.length>256)throw new ProtocolError('INVALID_ARGUMENT','Nested developer run identity exceeds its bound');
+    return value;
+  };
+  const tools:AgentToolPort={list:()=>originalTools.list(),invoke:invocation=>{
+    if(invocation.taskId!==worker.taskId)throw new ProtocolError('UNAUTHORIZED','Nested developer task identity changed');
+    let args=invocation.arguments;
+    if(invocation.toolName===options.ciFix?.gitTools?.commit){
+      const value=args as Record<string,unknown>;
+      if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.verificationRunId!=='string'
+        ||!value.verificationRunId.startsWith(logicalCiPrefix))
+        throw new ProtocolError('UNAUTHORIZED','Original CI verification run is required');
+      args={...value,verificationRunId:scopedRunId(value.verificationRunId)};
+    }
+    return originalTools.invoke({...invocation,arguments:args,runId:scopedRunId(invocation.runId)});
+  }};
+  const confirmed=(runId:string)=>{
     const record=application.runtime.readToolExecutions(worker.taskId).find(item=>item.evidenceId===runId);
     return !!record&&record.state==='confirmed'&&record.executionStarted&&record.policyDecision==='allow'
       &&application.runtime.loadCheckpoint(worker.taskId,`tool-result-${runId}`)!==undefined;
   };
+  const replay=(logical:string)=>confirmed(scopedRunId(logical));
   const authorizationRefFor=()=>worker.taskId;
   const model=options.model?new ModelGateway({deployment:options.model.deployment,complete:async input=>{
     if(!options.authorizeModelRequest)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Exact developer model egress permission unavailable');
@@ -146,9 +180,12 @@ async function runRuntimeDeveloperWorkflow(application:RuntimeApplication,reques
   }}):undefined;
   const runFix=async(repo:string,runId?:string,issue?:NonNullable<CiFixOptions['issue']>,goal?:string,body?:string)=>{
     if(!options.ciFix||!model)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted CI workspace and model required');
-    return createCiFixWorkflow({...options.ciFix,repository:repo,...(runId?{runId}:{}),...(issue?{issue}:{}),
+    const outcome=await createCiFixWorkflow({...options.ciFix,repository:repo,...(runId?{runId}:{}),...(issue?{issue}:{}),
       ...(goal?{repairGoal:goal}:{}),...(body?{pullRequestBody:body}:{}),model,tools,authorizationRefFor,
       confirmedReplayReady:replay,maxSteps:options.maxSteps,maxTokens:options.maxTokens}).run(worker);
+    // This contract field refers to the real command receipt, not the factory's
+    // logical step ID. Do not rewrite arbitrary body/source/result strings.
+    return outcome.verificationRunId?{...outcome,verificationRunId:scopedRunId(outcome.verificationRunId)}:outcome;
   };
   let result:unknown=worker.loadCheckpoint(DEVELOPER_WORKFLOW_RESULT);
   try {
@@ -175,12 +212,12 @@ async function runRuntimeDeveloperWorkflow(application:RuntimeApplication,reques
           confirmedRepairReplayReady:()=>{
             const receipt=application.runtime.loadCheckpoint(worker.taskId,'developer-confirmed-replay-receipt') as
               {runId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>}|undefined;
-            if(!receipt?.runId.startsWith(`${worker.taskId}:ci-fix:`))return false;
-            const records=application.runtime.readToolExecutions(worker.taskId).filter(record=>record.evidenceId.startsWith(`${worker.taskId}:ci-fix:`));
+            if(!receipt?.runId.startsWith(ciPrefix))return false;
+            const records=application.runtime.readToolExecutions(worker.taskId).filter(record=>record.evidenceId.startsWith(ciPrefix));
             const original=records.find(record=>record.evidenceId===receipt.runId);
             return !!original&&original.toolName===receipt.toolName&&original.toolVersion===receipt.toolVersion
               &&application.runtime.matchesToolExecutionInput(original,{arguments:receipt.arguments,scopeRef:receipt.runId})
-              &&records.every(record=>replay(record.evidenceId));
+              &&records.every(record=>confirmed(record.evidenceId));
           },
           ...(options.ciFix&&model?{repair:{repairIssue:async(_context,input)=>{
             const runId=options.failedRunForIssue?.(input.repo,input.number);

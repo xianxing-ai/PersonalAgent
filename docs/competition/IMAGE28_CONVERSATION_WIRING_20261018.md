@@ -1,6 +1,6 @@
 # 镜像 28 图与主对话接线矩阵（2026-10-18）
 
-目标 profile：`huawei_ict_agentarts`。本轮基线：primary `.worktrees/main-tool-wiring-20261018`，Git 基线 `a37cd414` 与正在串行集成的工作区修改；主线已另到 `4168bd19`。本文件独占维护，不接管 goo122、Potatos498 或 2511375597-lab 的模块和 Renderer。
+目标 profile：`huawei_ict_agentarts`。首轮接线已发布于 #406 提交 `2e45faa5885ed5370eaa654aa0802f79f7c69450`；本次通用驱动增量以该提交为基线，位于独立 `.worktrees/image28-driver-plan-20261018`，不改 primary。主线另到 `4168bd19`。本文件独占维护，不接管 goo122、Potatos498 或 2511375597-lab 的模块和 Renderer。
 
 本轮只读源码与 Local 静态目录：28 图、185 节点、模板 `2026.10.15.2`，外部 adapterRequirements 共 **152 项：111 host、41 guard**。它们是接口要求，不是已注册能力。没有启动 Laya、镜像进程、真实模型、Windows、账号或云服务，没有全量测试。后续本地显式替身回归单列 **Synthetic**，不能提高真实验收等级。
 
@@ -15,6 +15,8 @@
 **F15 不能仅凭 main 未显式写 codingRepair 就判断未注入。** 实际闭包为 main → `createAgentArtsRuntimeApplication()` → `agentarts.ts:183`：当 `initialRequestMode='goal-with-tools-json'` 且有固定 `deploymentVersion`，自动创建 ownedImage 并注入 `codingRepair:{image}`；`codingWorkspace.bindApplication()` 再调用公开 `configureCodingRepairSourceExport()` 挂上元数据与精确原生正文出口。缺版本/密钥/工作区/实际许可时继续 unavailable，不另造 image host。
 
 本轮确定并修复的 F15 主对话断点是：main 的 `delegateUserTasks:true` 将 root 限制为 `subagent.dispatch`，实际 user-work child 能看到 `coding.repair.workflow`；旧 F15 execute 再调用 subagent dispatch 时会被 `subagent-host.ts` 的 `desktop-subtask:*` 禁止递归规则拒绝。现在 `coding-repair-worker-capability.ts` 在同一 user-work 的原 WorkerContext 中复用已有 F15 runner，绑定原proposal/config/deadline，保留递归禁止和旧 root dispatch。原直接 root/host F15 实验和单图云端历史证据不覆盖此新接线；本轮仅有下面明确列出的 Synthetic 验证。
+
+**F15当前生产仍依赖原本机Laya选择链，不能仅凭Runtime消费接通称为可无Laya闭环。** `apps/agentarts-runtime/src/main.mjs:62-76` 在agentarts mode要求 `PA_AGENT_LAYA_MODE=local`，OwnedWorkflowEngine使用 `decision.choose_candidate`；Runtime该工具的selector沿main注入的 `createLocalLayaHost.choose()` 调用，`laya-local-host.js` 在未ready时直接拒绝。运行还受原selector资格、`eligibleForRuntime`及绑定回执约束。本轮不启动Laya、不修改既有选择算法，不用默认selected或另造teacher替代；Synthetic候选选择器只证明原Runtime消费契约，不能代替这项生产依赖。
 
 `proactive.workflow.*` 是已有主对话入口，但镜像 `proactive.responsibility.v1` 明示 `changesOwnedF01ToF28:false`；它是持续责任补充链，不能计算为28图全部接通。
 
@@ -39,8 +41,8 @@
 | F11 天气、出行及计划影响 / 5 | Potatos498 20/25；语音zemeng | 2/2 | weather.forecast、calendar.events、已有问答 | N04 voice.ask/guard、N05 calendar update/invalidate_reminder/guard缺；不凭天气读回推断日程已改 |
 | F12 通知/安静时段 / 5 | Potatos498 23 | 3/2 | 单个Runtime NotificationHost+原设置/CAS | N02 quiet_hours、N04即时投递、N05到期投递及guards缺；Fake静默/配额不是实机送达 |
 | F13 系统检查与诊断 / 4 | zemeng 16/17 | 2/0 | computer.system.observe已注册聚合探测 | N02 system.registered_probe graph alias缺；N04 confirmed_recovery缺，TraceGuard治理/恢复本来排除，不能为凑整图恢复旧需求 |
-| F14 浏览器与桌面操作 / 6 | zemeng 16/14 | 5/2 | 新独立安装Windows-MCP受控对话工具；旧Notepad强目标工具 | N01 observation/N02唯一输入锁/N03 registered_input/N05补问/N06 submit的graph aliases和guards缺；未验证Windows、坐标/DPI、跨引擎锁，不把MCP观察当强OS绑定 |
-| F15 代码/补丁/命令 / 6 | zemeng 18/29/30 | 3/0 | 自动ownedImage、隔离coding工具与N04/05/06别名、原Graph runner；本轮same-worker capability已接 | 主对话root→user-work→原F15 runner已Synthetic通过，start与两次原HostTask审批恢复同Task；未做当前Windows/Live/云实机验收。固定version、receipt secret、工作区读写/命令/元数据及exact正文许可缺失仍unavailable |
+| F14 浏览器与桌面操作 / 6 | zemeng 16/14 | 5/2 | 新独立安装Windows-MCP受控对话工具；旧Notepad强目标工具 | N01 observation/N02唯一输入锁/N03 registered_input/N05补问/N06 submit的graph aliases和guards缺；本轮跨引擎锁已通过Synthetic互斥/未知结果封闭测试，真实Windows、坐标/DPI与设备并发仍未验证，不把MCP观察当强OS绑定 |
+| F15 代码/补丁/命令 / 6 | zemeng 18/29/30 | 3/0 | 自动ownedImage、隔离coding工具与N04/05/06别名、原Graph runner；本轮same-worker capability已接 | 主对话root→user-work→原F15 runner已Synthetic通过，start与两次原HostTask审批恢复同Task；原decision.choose_candidate仍依赖本机Laya ready/资格及回执，本轮未启动或改算法。未做当前Windows/Live/云实机验收；固定version、receipt secret、工作区读写/命令/元数据及exact正文许可缺失仍unavailable |
 | F16 CI检查与修复 / 5 | Potatos498 34；GitHub goo122 33 | 2/0 | developer.ci_list/ci_fix虚拟worker及原工具（条件配置） | N01 bound_ci_failure/N04 test_intent_check graph aliases缺；独立developer worker不等于F16图。Owner不接管CI业务 |
 | F17 测试失败定位 / 4 | Potatos498 35 | 1/0 | workspace.locate_test_failures、固定命令与CI消费 | N04 deliver_failure_report graph alias缺；其余model/tool节点还需真实目录/配方与元数据出口 |
 | F18 PR预审与合并 / 5 | goo122 33/36 | 3/0 | developer.code_review、github.pr.*（条件配置） | N01 bound_pr_diff、N04 current_head_merge_gate、N05 registered_merge均缺图adapter；本轮无Approve/merge授权，不把预审改为合并 |
@@ -65,12 +67,20 @@
 ## Owner纵向任务与文件fence
 
 1. **IW-F15（本轮已授权实施）**：same-user-work F15 capability，保留root直接dispatch兼容。独占 `apps/runtime/src/application/coding-repair-application.ts`、新 `coding-repair-worker-capability.ts`、新定向测试；`runtime-application.ts`仅必要composition/原nested审批读取/恢复，先与devtools已冻结增量对齐；`application.ts`仅必要export。绑定原proposal digest/config/deadline，复用已有graph runner/HostBridge，原approval和unknown不重放；不放宽递归。
-2. **IW-CATALOG/F20（下一最小契约，待Root选定）**：先提供28图实际可用性目录，再以F20作为无缺失host/guard的单图试点。仅Owner镜像消费/原Runtime capability新文件、对应定向测试和root composition；模型只能给受限workflowId/业务输入，不能给checkpoint/receipt/session/signer/availableTools。宿主注入原目录、固定部署/期限/身份，在同一WorkerContext持久消费frontier；缺其他图adapter返回结构化unavailable。先冻结contract，不能先写第二引擎。
+2. **IW-CATALOG/F20（目录已接；通用消费契约待Root选定）**：28图只读设计/入口及注册缺项目录已接主文字和Live；F20无缺失host/guard，但通用图消费入口与该业务的可信输入契约尚未实施。仅Owner镜像消费/原Runtime capability新文件、对应定向测试和root composition；模型只能给受限workflowId/业务输入，不能给checkpoint/receipt/session/signer/availableTools。宿主注入原目录、固定部署/期限/身份，在同一WorkerContext持久消费frontier；缺其他图adapter返回结构化unavailable。先冻结contract，不能先写第二引擎，也不代接goo122的MOD-37业务。
 3. **IW-F23（端口接收/配置工作包，暂不假实现）**：Root确认既有configurationPort/acceptance/receipt/test验证的真实提供者后，Owner仅完成公开options/availability/受限结果出口消费；配合goo122交付公共配置口，不接管其存储与事务实现。没有真实端口时提供缺项清单，不生成假CAS、假签名或全部图成功。
 
 全28图接线应按上述矩阵逐owner交付，不能让本轮Owner代接111个host及41个guard。主对话与Live都沿原task.submit；某图专用IPC/CLI、目录存在或独立业务工具可调用均不能代替该图的当前用户入口证据。
 
-## 通用28图消费的最小契约提案（未实施）
+## 已抽取的通用驱动与尚未实施的通用模型入口
+
+`apps/runtime/src/application/owned-workflow-driver.ts` 从现有F15 runner抽取 frontier→原HostBridge→本地审批/执行/签名receipt→原image.advance 的推进循环。生产 `runRuntimeCodingRepairWorkflow()` 实际调用该驱动；原 `coding-repair:graph` 字段、初始 `coding-start-*`、`coding-*` 请求ID、HostTask关联和legacy root路径保留。F15 wrapper继续负责隔离会话初始化、metadata/精确源码出机、N05必要检查、N06主工作区CAS发布或隔离产物验证，驱动没有默认“云settled即成功”。
+
+驱动只接收可信composition传入的workflowId、完整input、原catalog/HostBridge、投影及本地完成验证hook，不注册任何新模型工具。原WorkerContext、TaskRuntime、Policy、ToolGateway、Evidence和SQLite checkpoint不变；原host未知结果只读原operation，已持久化pendingSend阻止另发。追加的driver绑定检查workflow/task/session/deadline/image/input/catalog摘要，旧F15检查点不改版、不清库。
+
+第二图验证使用现有真实F20模板/OwnedWorkflowEngine及原TaskRuntime worker，候选、输入、读取与命令工具显式Synthetic；这仅证明驱动可消费第二图及原ID暂停/恢复，不交付goo122的MOD-37业务、真实API文档变更或生产F20入口。`owned-workflow-driver.test.mjs` 6个用例覆盖全4节点/两次原审批/SQLite重启、未知写入不重放、原workflow/catalog不可替换、原pendingSend阻止再发、无本地证据的云settled拒绝及原worker取消传达原host；与原F15 7用例、原HostBridge 2用例合计15/15通过。隔离树依赖构建及最终Runtime构建通过，未扩大测试到全仓，未运行云、Laya、真实Windows或业务命令。
+
+下述通用模型capability仍是未实施提案，不能与已被F15消费的通用驱动混为一项：
 
 复用 `CoordinationWorkerCapabilityPort.accepts/dispatch/assertReceiptAllowed`，不扩建 `TaskRuntime` 或增加 Agent 调度循环。F15 专用capability不应改成28图全部可用；先新增一个受限 capability，首个 allowlist 只有F20（仍需goo122确认其API文档消费输入）。目录能列出28图设计项，但每项分开报告 `registered`、`configured`、`missingAdapterNames`、`realAcceptance`；目录读取不执行 readiness、申请scope、推进graph或返回凭据。
 
@@ -84,7 +94,7 @@
 | 结果出口 | 仅在原graph已settled并有本地操作证据后导出受限metadata；源码/文档正文另走精确投影授权。F20候选文档不宣称已发布，模型自报synchronized不构成生产写回证明 |
 | 其他图 | 缺111host/41guard中的实际需求或trusted配置时结构化unavailable；不得用空receipt、固定branch、Fake成功补全，也不接管goo122/Potatos498的业务提供者 |
 
-这是下一工作包的契约建议；目前没有新增通用工具或graph运行器，也没有F20当前用户入口验收。
+这是下一工作包的模型入口契约建议；当前已有被F15实际消费的通用驱动，但未新增通用模型工具或F20生产业务入口，也没有F20当前用户入口验收。其他图的trusted input、host/guard及出机/本地完成验证必须由各owner按逐图矩阵提供；声明模板或具备驱动不代表这些端口存在。
 
 ## 本轮F15本地证据
 
@@ -92,4 +102,4 @@
 
 ## 事实来源
 
-`docs/MODULE_ASSIGNMENTS.md`（含2026-10-17前端交接与DEV分工）；`packages/agentarts/src/{owned-workflow-data,owned-workflow-templates,workflow-adapters,owned-workflows,owned-workflow-host-bridge,workflow-dataflow}.ts`；`apps/agentarts-runtime/src/{main,binding-dispatch,image-services}.mjs`；`apps/runtime/src/application/{agentarts,runtime-application,coding-repair-application,owned-workflow-application,owned-workflow-image-adapter,tool-catalog,developer-workflows,subagent-host}.ts`；Desktop `main.js/workspace-config-host.js/product-tools-composition.js/proactive-workflow-host.js`。历史V4/V5证据保持原日期与有限场景，不升格当前主对话或28图验收。
+`docs/MODULE_ASSIGNMENTS.md`（含2026-10-17前端交接与DEV分工）；`packages/agentarts/src/{owned-workflow-data,owned-workflow-templates,workflow-adapters,owned-workflows,owned-workflow-host-bridge,workflow-dataflow}.ts`；`apps/agentarts-runtime/src/{main,binding-dispatch,image-services}.mjs`；`apps/runtime/src/application/{agentarts,runtime-application,coding-repair-application,owned-workflow-driver,owned-workflow-application,owned-workflow-image-adapter,tool-catalog,developer-workflows,subagent-host}.ts`；Desktop `main.js/workspace-config-host.js/product-tools-composition.js/proactive-workflow-host.js`。历史V4/V5证据保持原日期与有限场景，不升格当前主对话或28图验收。

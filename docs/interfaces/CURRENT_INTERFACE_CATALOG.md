@@ -2,6 +2,8 @@
 
 ## 2026-10-18 主文字／Live 工具消费接线（provisional）
 
+最新定向分组检查 226/226，包含远端并行整合后的重叠补测；teacher 多轮、DEV 提案隔离、首次 user-work／追加会话的自动补丁核实续接、Live 原等待期限及 Windows 夹具修复见 [增量证据](../competition/evidence/conversation-wiring-20261018/SUPPLEMENT.md)。F15 实际复用通用图驱动，F20 的 Synthetic 验证不构成其业务入口接通。
+
 文字用户请求继续由原 parent 锚点强制交给原 `user-work` child；Live 使用同 UI conversation 和 `request_work/read_context/wait_for_task`，不创建第二业务执行器。原 Runtime 增加可信 `developerWorkflows`、`isUserPresent`、精确会话／待审批参数读回及 F15 同 worker 消费；HostTask 审批沿原输入、revision、digest、期限恢复，unknown 不重放。主对话目录保留完整公开入口 Schema，`modelExposure:'internal'` 仅为宿主目录投影，不删除内部 RegisteredTools 或授予权限；Live 完整 Schema 分页仍受 32K 上限约束。
 
 Desktop 组合原公开开发工作流、固定命令、Git/GitHub 和测试定位；显式配置、原工作区许可、精确资料出机及逐写授权仍分别检查。通用电脑控制消费用户独立安装的 Windows-MCP 0.8.8，真实 F9 在场、原执行记录、跨引擎互斥和未知结果封闭保留，结果仅 observed。持续责任复用原 Scheduler、confirmed 来源 Evidence 和原 durable event sink，不增加调度器或任务库。

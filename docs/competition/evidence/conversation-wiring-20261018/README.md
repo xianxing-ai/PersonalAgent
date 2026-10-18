@@ -5,6 +5,9 @@
 分工与逐能力状态见 [自有接线矩阵](../../OWNED_CONVERSATION_WIRING_20261018.md)，
 28 图逐项事实见 [镜像目录](../../IMAGE28_CONVERSATION_WIRING_20261018.md)。
 
+首包后发现的 teacher、连续 DEV、自动补丁恢复与 CI 问题已继续修复；
+最新分组结果为 **226/226**，包含并行提交整合后的重叠补测，见 [最终增量证据](SUPPLEMENT.md)。下表保留首包验证，不重复累加。
+
 ## 实际组合
 
 - 主文字与 Live 共用原 Runtime、原 `user-work` 子任务、Policy、Evidence 和结果续答；根任务仍只走原委派。
@@ -14,7 +17,7 @@
 - Windows 原引擎与 MCP 共用可信 F9 和跨引擎控制 lease。未知写结果保留原 reconciliation，不自动重放。
 - 开发能力依赖显式部署配置、原工作区和精确资料出机确认；缺配置明确 unavailable，不借用当前机器的 GitHub 登录。
 
-## Root 最后定向验证
+## 首包 2e45faa5 定向验证
 
 Node `24.15.0` / npm `11.12.1`；Linux 本地执行。UTC
 `2026-10-18T21:59:13.915150Z` 至 `2026-10-18T21:59:32.447849Z`。

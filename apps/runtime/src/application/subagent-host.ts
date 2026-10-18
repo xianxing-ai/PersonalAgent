@@ -307,10 +307,19 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
     runId=`skill-read-${childTaskId}-${intent.input.digest.slice(0,16)}`;
     toolName='mcp.workspace.read_text';argumentsValue={path:intent.input.path};
   }
-  const approval = runtime.getApproval(runId);
-  const confirmed=runtime.readToolExecutions(childTaskId).some(record=>record.evidenceId===runId
+  const confirmedRecord=runtime.readToolExecutions(childTaskId).find(record=>record.evidenceId===runId
     && record.state==='confirmed' && record.executionStarted && record.policyDecision==='allow'
     && record.toolName===toolName && runtime.matchesToolExecutionInput(record,{arguments:argumentsValue,scopeRef:runId}));
+  const routine=runtime.loadCheckpoint(childTaskId,`routine-tool-policy:${runId}`) as
+    {toolName?:string;toolVersion?:string;argumentsDigest?:string;source?:string}|undefined;
+  // A trusted routine invocation has no Approval object. Only its exact original
+  // confirmed readback may resume the worker; an unknown or different run cannot.
+  if(defaultChild&&confirmedRecord&&replay?.runId===runId&&replay.inputDigest===confirmedRecord.inputDigest
+    &&routine?.source==='trusted-routine-tool-policy'&&routine.toolName===toolName
+    &&routine.toolVersion===confirmedRecord.toolVersion&&routine.argumentsDigest===toolArgumentsDigest(argumentsValue))
+    return runOriginalWorker();
+  const approval = runtime.getApproval(runId);
+  const confirmed=confirmedRecord!==undefined;
   if (approval.taskId !== childTaskId || approval.state !== 'allowed'
     || approval.toolName !== toolName
     || approval.argumentsDigest !== toolArgumentsDigest(argumentsValue)

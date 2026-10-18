@@ -1,6 +1,6 @@
 import {ProtocolError, validateToolValue,validateContract} from '@personal-agent/contracts';
 import {createHash} from 'node:crypto';
-import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor} from '@personal-agent/contracts';
+import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
 import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
 import type {AgentToolPort} from '@personal-agent/agents';
@@ -75,6 +75,10 @@ import {createRuntimeProactiveTaskDriver} from './proactive-task-driver.js';
 import type {RuntimeProactiveTaskDriver} from './proactive-task-driver.js';
 import {createRuntimeProactiveDecisionTools} from './proactive-decision-tools.js';
 type SuccessfulResponse = Extract<Response, {outcome: 'ok'}>;
+interface ProactiveTeacherScope {
+  taskId:string;runId:string;authorizationRef:string;checkpointKey:string;leaseKey:string;
+  argumentsDigest:string;goalDigest:string;deadline:string;signal:AbortSignal;
+}
 
 export interface RevokeHostAuthorizationRequest {
   subjectRef: string;
@@ -389,6 +393,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly ephemeralSends = new Map<string, CoordinationRequest>();
   private readonly ephemeralGoals = new Map<string,{publicGoal:string;preparedGoal:string}>();
   private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[]}>();
+  private readonly teacherRequestScopes=new WeakMap<CoordinationRequest,ProactiveTeacherScope>();
+  private readonly teacherLeases=new Map<string,ProactiveTeacherScope>();
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
   private readonly competitionToolExports: readonly CompetitionToolExport[];
   private competitionMaxSteps: number;
@@ -529,7 +535,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       options.workflowShadowRelease ? {shadowRelease: options.workflowShadowRelease} : {}),
       ...(options.proactiveWorkflows ? createRuntimeProactiveDecisionTools({
         ...(options.proactiveDecision?.localChooser ? {localChooser: options.proactiveDecision.localChooser} : {}),
-        ...(this.coordination ? {teacher: this.coordination} : {}),
+        ...(options.coordination ? {teacherExchange:(request:CoordinationRequest,context:ToolContext)=>
+          this.executeProactiveTeacher(options.coordination!,request,context)} : {}),
         readContext: (taskId, contextRef, lifetime) => {
           const host = [...this.proactiveHosts.values()].find(value => value.taskId === taskId);
           if (!host) throw new ProtocolError('NOT_FOUND', 'Original proactive context host is unavailable');
@@ -659,6 +666,21 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           routineEligible = prepared?.kind === 'prepared' && isDeepStrictEqual(prepared.binding, intent?.binding)
             && isDeepStrictEqual(invocation.arguments, {intentDigest: toolArgumentsDigest(intent!)});
         }
+        // A routine grant does not create an Approval object. Persist the original nested
+        // invocation before granting/executing so confirmed unknown readback can resume it.
+        if (!confirmedDispatch && ((!this.runtime.policy.get(ref) && !routineEligible) || this.isDeveloperWorkerActive(invocation.taskId))) {
+          const key='application-tool-invocation:'+ref;
+          const original={toolName:tool.name,toolVersion:tool.version,arguments:structuredClone(invocation.arguments),
+            argumentsDigest:toolArgumentsDigest(invocation.arguments),deadline:invocation.deadline};
+          const previous=this.runtime.loadCheckpoint(invocation.taskId,key);
+          if(previous!==undefined&&!isDeepStrictEqual(previous,original))throw new ProtocolError('REVISION_CONFLICT','Original pending tool input changed');
+          this.runtime.saveCheckpointOnce(invocation.taskId,key,original);
+          const loop=this.runtime.loadCheckpoint(invocation.taskId,'competition-loop') as {pending?:unknown}|undefined;
+          const worker=this.runtime.loadCheckpoint(invocation.taskId,'developer-workflow:active') as {bindingId?:string;proposalDigest?:string}|undefined;
+          if(worker?.bindingId===this.developerWorkflows?.bindingId&&loop?.pending
+            &&worker?.proposalDigest===createHash('sha256').update(JSON.stringify(loop.pending)).digest('hex'))
+            this.runtime.saveCheckpoint(invocation.taskId,'developer-workflow:pending-approval',{...worker,approvalId:ref});
+        }
         if (!confirmedDispatch && !this.runtime.policy.get(ref) && routineEligible) {
           const decisionKey = `routine-tool-policy:${ref}`;
           if (this.runtime.loadCheckpoint(invocation.taskId, decisionKey)) {
@@ -675,17 +697,6 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             scopes:tool.requiredScopes,argumentsDigest,maxUses:1,expiresAt:invocation.deadline});
         }
         if (!confirmedDispatch && !this.runtime.policy.get(ref)) {
-          const key='application-tool-invocation:'+ref;
-          const original={toolName:tool.name,toolVersion:tool.version,arguments:structuredClone(invocation.arguments),
-            argumentsDigest:toolArgumentsDigest(invocation.arguments),deadline:invocation.deadline};
-          const previous=this.runtime.loadCheckpoint(invocation.taskId,key);
-          if(previous!==undefined&&!isDeepStrictEqual(previous,original))throw new ProtocolError('REVISION_CONFLICT','Original pending tool input changed');
-          this.runtime.saveCheckpointOnce(invocation.taskId,key,original);
-          const loop=this.runtime.loadCheckpoint(invocation.taskId,'competition-loop') as {pending?:unknown}|undefined;
-          const worker=this.runtime.loadCheckpoint(invocation.taskId,'developer-workflow:active') as {bindingId?:string;proposalDigest?:string}|undefined;
-          if(worker?.bindingId===this.developerWorkflows?.bindingId&&loop?.pending
-            &&worker?.proposalDigest===createHash('sha256').update(JSON.stringify(loop.pending)).digest('hex'))
-            this.runtime.saveCheckpoint(invocation.taskId,'developer-workflow:pending-approval',{...worker,approvalId:ref});
           const expiresAt = new Date((options.now?.() ?? new Date()).getTime() + 600_000).toISOString();
           const approval = this.runtime.requestToolApproval(ref, invocation.taskId, tool, expiresAt, toolArgumentsDigest(invocation.arguments));
           if (approval.state === 'denied') throw new ProtocolError('UNAUTHORIZED', 'Tool approval was denied');
@@ -911,9 +922,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   listBindings(input:Parameters<TaskRuntime['listBindings']>[0]={}) {return this.runtime.listBindings(input);}
   readCopyErasureReceipt(taskId:string) {return this.runtime.readCopyErasureReceipt(taskId);}
   async eraseTaskCopies(input:Omit<Parameters<TaskRuntime['eraseTaskCopies']>[0],'externalCopiesPurged'>) {
+    this.releaseEphemeralTask(input.taskId);
     this.coordinationInput?.releaseTask?.(input.taskId);
-    this.ephemeralSends.delete(input.taskId);this.ephemeralGoals.delete(input.taskId);
-    this.ephemeralContexts.delete(input.taskId);
     this.runtime.eraseTaskCopies({...input,externalCopiesPurged:false});
     let externalCopiesPurged=!this.coordinationInput?.onEphemeralReply;
     if(this.coordinationInput?.eraseEphemeralCopies) {
@@ -971,14 +981,90 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
   }
 
+  private releaseEphemeralTask(taskId:string):void {
+    const keys=[taskId,...[...this.teacherLeases].filter(([,scope])=>scope.taskId===taskId).map(([key])=>key)];
+    for(const key of keys){this.teacherLeases.delete(key);this.ephemeralSends.delete(key);
+      this.ephemeralGoals.delete(key);this.ephemeralContexts.delete(key);}
+  }
+
+  private assertTeacherScope(request:CoordinationRequest,scope:ProactiveTeacherScope):void {
+    if(this.teacherLeases.get(scope.leaseKey)!==scope||scope.signal.aborted||request.signal.aborted
+      ||request.taskId!==scope.taskId||request.deadline!==scope.deadline
+      ||request.textOnly!==true||request.availableTools!==undefined||request.continuation!==undefined)
+      throw new ProtocolError('UNAUTHORIZED','Original proactive teacher lease is unavailable');
+    const host=[...this.proactiveHosts.values()].find(value=>value.taskId===scope.taskId);
+    const operation=host?.inspect().session.state.operations[scope.runId];
+    const record=this.runtime.readToolExecutions(scope.taskId).find(value=>value.evidenceId===scope.runId);
+    const grant=this.runtime.policy.get(scope.authorizationRef);
+    const invocation=operation?.invocation;
+    if(!host||Date.parse(host.binding.taskDeadline)<Date.parse(scope.deadline)||!invocation
+      ||invocation.taskId!==scope.taskId||invocation.runId!==scope.runId||invocation.authorizationRef!==scope.authorizationRef
+      ||invocation.toolName!=='proactive.teacher_decision'||invocation.toolVersion!=='1.0.0'
+      ||invocation.deadline!==scope.deadline||toolArgumentsDigest(invocation.arguments)!==scope.argumentsDigest
+      ||record?.taskId!==scope.taskId||record.toolName!==invocation.toolName||record.toolVersion!==invocation.toolVersion
+      ||record.state!=='started'||!record.executionStarted||record.policyDecision!=='allow'
+      ||grant?.taskId!==scope.taskId||grant.toolName!==invocation.toolName||grant.argumentsDigest!==scope.argumentsDigest
+      ||!grant.scopes.includes('proactive:decision')||Date.parse(grant.expiresAt)<=this.now().getTime()
+      ||!plainObject(invocation.arguments)
+      ||!this.runtime.matchesToolExecutionInput(record,{arguments:invocation.arguments,scopeRef:scope.authorizationRef}))
+      throw new ProtocolError('UNAUTHORIZED','Original proactive teacher Gateway execution changed');
+  }
+
+  private teacherScopeFor(request:CoordinationRequest):ProactiveTeacherScope|undefined {
+    const direct=this.teacherRequestScopes.get(request);if(direct)return direct;
+    // AgentArts copies requests and combines AbortSignals before its final credential/send guard.
+    // Only an exact, unique live internal lease may recognize that copy; no request field selects a slot.
+    if(request.textOnly!==true||request.availableTools!==undefined||request.continuation!==undefined)return;
+    const matches=[...this.teacherLeases.values()].filter(scope=>{
+      const current=this.ephemeralSends.get(scope.leaseKey);
+      return current&&!current.signal.aborted&&current.taskId===request.taskId&&current.goal===request.goal
+        &&current.revision===request.revision&&current.deadline===request.deadline;
+    });
+    if(matches.length>1)throw new ProtocolError('UNAUTHORIZED','Proactive teacher request copy is ambiguous');
+    const scope=matches[0];if(scope)this.teacherRequestScopes.set(request,scope);return scope;
+  }
+
+  private async executeProactiveTeacher(port:CoordinationPort,request:CoordinationRequest,context:ToolContext) {
+    if(request.taskId!==context.taskId||request.deadline!==context.deadline||request.signal!==context.signal
+      ||!context.scopes.includes('proactive:decision'))throw new ProtocolError('UNAUTHORIZED','Original proactive teacher context required');
+    const host=[...this.proactiveHosts.values()].find(value=>value.taskId===context.taskId);
+    const invocation=host?.inspect().session.state.operations[context.runId]?.invocation;
+    if(!invocation)throw new ProtocolError('UNAUTHORIZED','Original proactive teacher operation unavailable');
+    const suffix=createHash('sha256').update(context.runId).digest('hex');
+    const scope:ProactiveTeacherScope={taskId:context.taskId,runId:context.runId,authorizationRef:context.authorizationRef,
+      checkpointKey:COMPETITION_CONTEXT_CHECKPOINT+':proactive-teacher:'+suffix,
+      leaseKey:JSON.stringify(['proactive-teacher',context.taskId,context.runId]),
+      argumentsDigest:toolArgumentsDigest(invocation.arguments),goalDigest:createHash('sha256').update(request.goal).digest('hex'),
+      deadline:request.deadline,signal:context.signal};
+    if(this.teacherLeases.has(scope.leaseKey))throw new ProtocolError('RESULT_UNKNOWN','Original proactive teacher exchange is already active');
+    this.teacherLeases.set(scope.leaseKey,scope);this.teacherRequestScopes.set(request,scope);
+    try {
+      this.assertInputActive(request);this.assertTeacherScope(request,scope);
+      const attemptKey=scope.checkpointKey+':attempt',attempt={version:1,runId:scope.runId,argumentsDigest:scope.argumentsDigest,
+        goalDigest:scope.goalDigest,deadline:scope.deadline,configurationRef:this.coordinationBinding};
+      const prior=this.runtime.loadCheckpoint(scope.taskId,attemptKey);
+      if(prior!==undefined&&!isDeepStrictEqual(prior,attempt))throw new ProtocolError('REVISION_CONFLICT','Original proactive teacher input changed');
+      if(!this.runtime.saveCheckpointOnce(scope.taskId,attemptKey,attempt))
+        throw new ProtocolError('RESULT_UNKNOWN','Original proactive teacher attempt requires its existing Gateway readback');
+      return await this.executeCoordination(port,request);
+    } finally {
+      if(this.teacherLeases.get(scope.leaseKey)===scope){this.teacherLeases.delete(scope.leaseKey);
+        this.ephemeralSends.delete(scope.leaseKey);this.ephemeralGoals.delete(scope.leaseKey);this.ephemeralContexts.delete(scope.leaseKey);}
+      this.teacherRequestScopes.delete(request);
+    }
+  }
+
   private async executeCoordination(port:CoordinationPort, request:CoordinationRequest) {
+    const teacherScope=this.teacherScopeFor(request),leaseKey=teacherScope?.leaseKey??request.taskId,
+      checkpointKey=teacherScope?.checkpointKey??COMPETITION_CONTEXT_CHECKPOINT;
     this.assertCompetitionTaskConfiguration(request.taskId,
       this.runtime.loadCheckpoint(request.taskId,'competition-loop')===undefined);
     const selection=this.runtime.loadCheckpoint(request.taskId,'execution-model');
     if(selection!==undefined) request=Object.freeze({...request,executionModel:parseExecutionModelSelection(selection)});
+    if(teacherScope){this.teacherRequestScopes.set(request,teacherScope);this.assertTeacherScope(request,teacherScope);}
     this.assertInputActive(request);
     const conversationMessage=readSubagentConversationMessage(this.runtime,request.taskId);
-    const hooks:CoordinationInputHooks|undefined=this.coordinationInput??(conversationMessage?{beforeCoordinationSend:()=>{}}:undefined);
+    const hooks:CoordinationInputHooks|undefined=this.coordinationInput??(conversationMessage||teacherScope?{beforeCoordinationSend:()=>{}}:undefined);
     if(!hooks) {
       if(this.runtime.loadCheckpoint(request.taskId,'private-memory:consumption:v1')) {
         throw new ProtocolError('UNAUTHORIZED','Private input lease cannot be recovered automatically');
@@ -996,6 +1082,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!nonEmptyText(prepared))throw new ProtocolError('INVALID_ARGUMENT','Empty ephemeral input');
     if(readUserTaskDelegation(this.runtime,task.taskId)
       && (prepared!==request.goal || this.readPrivateTaskBinding(task.taskId)!==undefined)) {
+      this.releaseEphemeralTask(task.taskId);
       hooks.releaseTask?.(task.taskId);
       throw new ProtocolError('UNAUTHORIZED','Delegated user summary requires public context; private input needs its own child confirmation');
     }
@@ -1018,13 +1105,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         deadline:request.deadline,configurationRef:this.coordinationBinding,publicGoal:request.goal,
         preparedGoal:prepared,compiledGoal:goal,messages:context,
         privateBinding:this.readPrivateTaskBinding(task.taskId)},hooks.goalTokenBudget);
-      if(!this.runtime.saveCheckpointOnce(task.taskId,COMPETITION_CONTEXT_CHECKPOINT,binding)) {
-        assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,COMPETITION_CONTEXT_CHECKPOINT),binding);
+      if(!this.runtime.saveCheckpointOnce(task.taskId,checkpointKey,binding)) {
+        assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,checkpointKey),binding);
       }
       const effective=Object.freeze({...request,goal});
-      this.ephemeralSends.set(task.taskId,effective);
-      this.ephemeralGoals.set(task.taskId,{publicGoal:request.goal,preparedGoal:prepared});
-      this.ephemeralContexts.set(task.taskId,{binding,historyTaskIds:context.flatMap(message=>message.taskId?[message.taskId]:[])});
+      if(teacherScope)this.teacherRequestScopes.set(effective,teacherScope);
+      this.ephemeralSends.set(leaseKey,effective);
+      this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:prepared});
+      this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:context.flatMap(message=>message.taskId?[message.taskId]:[])});
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
       this.assertInputActive(request);
@@ -1038,14 +1126,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if (!(error instanceof AgentArtsResultUnknownError)) this.holdCompetitionExport(task.taskId);
       throw error;
     } finally {
-      this.ephemeralSends.delete(task.taskId);
-      this.ephemeralGoals.delete(task.taskId);
-      this.ephemeralContexts.delete(task.taskId);
-      if(privateDerived)hooks.releaseTask?.(task.taskId);
+      this.ephemeralSends.delete(leaseKey);
+      this.ephemeralGoals.delete(leaseKey);
+      this.ephemeralContexts.delete(leaseKey);
+      if(privateDerived){this.releaseEphemeralTask(task.taskId);hooks.releaseTask?.(task.taskId);}
     }
   }
 
   private holdCompetitionExport(taskId:string):void {
+    this.releaseEphemeralTask(taskId);
     const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {continuation?:unknown;pending?:{toolName?:string}}|undefined;
     if(this.runtime.getTask(taskId).state==='running' && (loop?.continuation!==undefined
       || (loop?.pending && this.runtime.readToolExecutions(taskId).some(record=>record.state==='confirmed' && record.executionStarted && record.policyDecision==='allow')))) {
@@ -1340,8 +1429,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const response = await this.runtime.send(request, signal);
     if (request.operation === 'task.submit' && response.outcome === 'ok') this.dispatchSubmittedTextTask(request, response);
     if (request.operation === 'task.cancel' && response.outcome === 'ok') {
+      this.releaseEphemeralTask(request.payload.taskId);
       for (const child of this.runtime.listTasks({conversationId: `desktop-subtask:${request.payload.taskId}`, limit: 100}).items) {
-        if (!['succeeded', 'failed', 'cancelled'].includes(child.state)) this.runtime.requestCancel(child.taskId, 'Parent task cancelled');
+        if (!['succeeded', 'failed', 'cancelled'].includes(child.state)) {
+          this.releaseEphemeralTask(child.taskId);this.runtime.requestCancel(child.taskId, 'Parent task cancelled');
+        }
       }
       void Promise.resolve(this.activeTextTasks.get(request.payload.taskId))
         .then(() => this.refreshSubagentParent(request.payload.taskId)).catch(() => {});
@@ -2163,26 +2255,31 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Host-only real-adapter guard; never exposed as a wire or Renderer operation. */
   assertCompetitionExportAllowed(request: CoordinationRequest): void {
+    const teacherScope=this.teacherScopeFor(request),leaseKey=teacherScope?.leaseKey??request.taskId,
+      checkpointKey=teacherScope?.checkpointKey??COMPETITION_CONTEXT_CHECKPOINT;
+    if(teacherScope)this.assertTeacherScope(request,teacherScope);
+    else if(request.textOnly===true&&[...this.proactiveHosts.values()].some(host=>host.taskId===request.taskId))
+      throw new ProtocolError('UNAUTHORIZED','Original proactive teacher send lease is unavailable');
     this.assertCompetitionTaskConfiguration(request.taskId);
     this.assertInputActive(request);
     this.assertContextHooksAvailable(request.taskId);
-    if(this.coordinationInput) {
-      const effective=this.ephemeralSends.get(request.taskId);
+    if(this.coordinationInput||teacherScope) {
+      const effective=this.ephemeralSends.get(leaseKey);
       if(!effective || effective.goal!==request.goal || effective.revision!==request.revision
         || effective.deadline!==request.deadline || effective.signal.aborted) {
         throw new ProtocolError('UNAUTHORIZED','Ephemeral send lease is unavailable');
       }
       try {
-        const guardResult:unknown=this.coordinationInput.beforeCoordinationSend(request,this.ephemeralGoals.get(request.taskId)!);
+        const guardResult:unknown=this.coordinationInput?.beforeCoordinationSend(request,this.ephemeralGoals.get(leaseKey)!);
         if(guardResult!==undefined) {
           void Promise.resolve(guardResult).catch(()=>undefined);
           throw new Error();
         }
-        const lease=this.ephemeralContexts.get(request.taskId);
+        const lease=this.ephemeralContexts.get(leaseKey);
         if(!lease || lease.historyTaskIds.some(taskId=>this.isHistoryWithheld(taskId)))throw new Error();
         const {binding}=lease;
-        assertCompiledContextUnchanged(this.runtime.loadCheckpoint(request.taskId,COMPETITION_CONTEXT_CHECKPOINT),binding);
-        assertCompiledContextUnchanged(binding.budget,measureCompiledGoal(request.goal,this.coordinationInput.goalTokenBudget));
+        assertCompiledContextUnchanged(this.runtime.loadCheckpoint(request.taskId,checkpointKey),binding);
+        assertCompiledContextUnchanged(binding.budget,measureCompiledGoal(request.goal,this.coordinationInput?.goalTokenBudget));
         const privateBinding=this.readPrivateTaskBinding(request.taskId);
         const privateDigest=privateBinding===undefined ? undefined : createHash('sha256').update(JSON.stringify(privateBinding)).digest('hex');
         if(privateDigest!==binding.privateBindingDigest)throw new Error();
@@ -2267,8 +2364,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   close(): void {
     if(this.activeTextTasks.size || this.activeWindowsRecovery.size || this.workspacePatchReconciliation?.activeCount)throw new ProtocolError('REVISION_CONFLICT','Cannot close while workers or recovery are active');
     this.referenceSkill?.dispose(); this.observationSessions.stopAll(); this.mailReadSessions.stopAll();
-    for(const taskId of this.ephemeralSends.keys())this.coordinationInput?.releaseTask?.(taskId);
-    this.ephemeralSends.clear();this.ephemeralGoals.clear();this.ephemeralContexts.clear();this.runtime.close();
+    const taskIds=new Set([...this.ephemeralSends.keys()].filter(key=>!this.teacherLeases.has(key)));
+    for(const scope of this.teacherLeases.values())taskIds.add(scope.taskId);
+    for(const taskId of taskIds)this.releaseEphemeralTask(taskId);
+    this.teacherLeases.clear();this.ephemeralSends.clear();this.ephemeralGoals.clear();this.ephemeralContexts.clear();
+    for(const taskId of taskIds)this.coordinationInput?.releaseTask?.(taskId);
+    this.runtime.close();
   }
 
   /** One fixed worker-level Skill. No nested tool execution or model loop. */
@@ -2552,13 +2653,23 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           || skillIntent.input.path!==selection.source.path))throw new ProtocolError('UNAUTHORIZED','Skill pending proposal changed');
         const nested=competition?.pending?this.resolveOriginalWorkerApproval(taskId,competition.pending):undefined;
         const approvalRef=nested?.runId??(skillPending?`skill-read-${taskId}-${skillIntent!.input.digest.slice(0,16)}`:`competition-tool-${taskId}-${competition?.step}`);
-        const competitionApproval = this.runtime.getApproval(approvalRef);
-        if (competitionApproval.state !== 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Task approval has not been allowed');
-        if(nested&&(competitionApproval.toolName!==nested.toolName||competitionApproval.argumentsDigest!==toolArgumentsDigest(nested.arguments)))
-          throw new ProtocolError('UNAUTHORIZED','Original nested worker approval changed');
-        const confirmed=this.runtime.readToolExecutions(taskId).some(record=>record.evidenceId===approvalRef
+        const confirmedRecord=this.runtime.readToolExecutions(taskId).find(record=>record.evidenceId===approvalRef
           && record.state==='confirmed' && record.executionStarted && record.policyDecision==='allow');
-        if(!confirmed && !this.runtime.policy.get(approvalRef))throw new ProtocolError('UNAUTHORIZED','Task grant was revoked');
+        const routine=this.runtime.loadCheckpoint(taskId,`routine-tool-policy:${approvalRef}`) as
+          {toolName?:string;toolVersion?:string;argumentsDigest?:string;source?:string}|undefined;
+        const routineReplay=nested&&this.isDeveloperWorkerActive(taskId)&&confirmedRecord
+          &&replay?.runId===approvalRef&&replay.inputDigest===confirmedRecord.inputDigest
+          &&routine?.source==='trusted-routine-tool-policy'&&routine.toolName===nested.toolName
+          &&routine.toolVersion===confirmedRecord.toolVersion&&routine.argumentsDigest===toolArgumentsDigest(nested.arguments)
+          &&confirmedRecord.toolName===nested.toolName
+          &&this.runtime.matchesToolExecutionInput(confirmedRecord,{arguments:nested.arguments,scopeRef:approvalRef});
+        if(!routineReplay) {
+          const competitionApproval = this.runtime.getApproval(approvalRef);
+          if (competitionApproval.state !== 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Task approval has not been allowed');
+          if(nested&&(competitionApproval.toolName!==nested.toolName||competitionApproval.argumentsDigest!==toolArgumentsDigest(nested.arguments)))
+            throw new ProtocolError('UNAUTHORIZED','Original nested worker approval changed');
+          if(!confirmedRecord && !this.runtime.policy.get(approvalRef))throw new ProtocolError('UNAUTHORIZED','Task grant was revoked');
+        }
       }
       if(readSubagentConversationMessage(this.runtime,taskId)) {this.dispatchSubagentConversationMessage(taskId,true);return;}
       const catalog=this.taskCompetitionCatalog(taskId);

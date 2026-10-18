@@ -62,7 +62,7 @@ goo122；业务连接器和六项 DEV-WORKFLOWS 继续按原分工。下表只�
 | MOD-18 固定验证命令 | `workspace-command-recipes.js`、`workspace-config-host.js`；`workspace.git_diff_check/node_check/npm_build/npm_test`；包级 `workspace.run_allowed_command` | 已有固定 recipe 与受信 executable/工作区绑定；无任意 argv，未知命令结果不盲目重跑 | Node/npm/helper/工作区项目许可分别检查，缺环境 unavailable。跨全部真实项目安全/兼容未验 |
 | MOD-18 隔离修复与发布 | `isolated-repair.ts`；`coding.repair.start/list/read/snapshot/preview/patch/verify/check/publish/reconcile` | 已有公开工具与工作区 host 消费；包级 STALE、精确补丁、核实未知结果由原端口维护 | 可信 isolated host、路径白名单、原 baseline/check/receipt 与精确发布批准是前提；隔离模式不等于任意目录写入许可 |
 | 开发生产配置与原公开工作流消费 | `developer-deployment-config.js` / `developer-tools-host.js`；Runtime `developer-workflows.ts` 的 `developer.ci_list/ci_fix/code_review/issue_list/issue_triage` | primary 已组合受信配置、原 ModelPort/工具/child worker，未创建第二任务库；GitHub/Git/正文出机仍走原 Policy、F9/精确 payload 确认与有界 continuation | `PA_DEVELOPER_CONFIG_FILE`、原 repository/branch/remote/recipe/rules/model binding 与私密凭据文件需真实配置；缺项按 capability unavailable。连接器/规则算法仍归原 owner，真实 GitHub 写/CI 修复未因合成例而验收 |
-| MOD-18 F15 镜像整图修复 | Runtime `coding-repair-application.ts` / `owned-workflow-image-adapter.ts`；`coding.repair.workflow` | primary 已接同原 worker 的 image 消费、原 HostIntent pending 读回、可信有界会话映射与审批 BFS；新增 F15/旧 root 兼容专项 7/7 Synthetic | 缺可信 image/config/正文出机许可仍 unavailable；不解除 #406 原派发限制，不将28图目录或历史例视为全部闭环 |
+| MOD-18 F15 镜像整图修复 | Runtime `coding-repair-application.ts` / `owned-workflow-image-adapter.ts`；`coding.repair.workflow` | primary 已接同原 worker 的 image 消费、原 HostIntent pending 读回、可信有界会话映射与审批 BFS；F15 实际使用通用 frontier driver，保留原本地验证与 CAS；均有 Synthetic 回归 | 缺可信 image/config/正文出机许可仍 unavailable；原镜像的本地 selector ready/资格回执依赖保留，本轮未启动 Laya；不解除 #406 原派发限制，不将28图目录或历史例视为全部闭环 |
 | 编码未知写与取消恢复 | `workspace-patch-reconciliation.ts`、`patch-reconcile.ts`；`reconcileWorkspacePatchTask` / 原 resume | 确认已发生写入→保存原普通工具结果/Evidence→原 marker 确认→恢复原 continuation；取消也保留真实副作用 | 2026-10-13/15 已有有限真实 Windows/合成回执；不证明断电或写中崩溃原子性。旧任务缺原绑定、marker不明或 source/config 改变仍 waiting_reconciliation |
 
 原 feeds native tracking grant 只在其既有支持的原会话/原 task 范围有效；动态 UI 或追加 child 没有原 grant 时，来源投递仍 unavailable，可信会话 resolver 不迁移业务授权。
@@ -73,8 +73,8 @@ DEV-WORKFLOWS 的 GitHub/CI/Review/Issue provider、规则和模块测试由 goo
 
 ## 本轮证据与未完成边界
 
-Root 最后组合检查为 99/99，精确命令、UTC、日志 SHA 与剩余归属见
-[统一交付证据](evidence/conversation-wiring-20261018/README.md)。镜像 F01–F28 的查询已接入；
+Root 最新分组检查为 226/226，包含 teacher 多轮、DEV 连续调用、自动补丁两类会话恢复、CI 缺陷修复及远端并行整合补测；
+精确命令、UTC、日志 SHA 与剩余归属见 [最终增量证据](evidence/conversation-wiring-20261018/SUPPLEMENT.md)。镜像 F01–F28 的查询已接入；
 图目录、实际图入口与业务 adapter 就绪分别记录，不将目录可见当作全图闭环。
 
 - 核心定向用 Node 24.15.0 / npm 11.12.1：Goal 动态 panel 真实生产 user-work 子派发、workspace 新会话；主动公开 start/pause→两次原 Policy→HMAC 签名本地 HTTP 镜像→有界续答；跨轮来源身份/foreign/取消/过期；初包 7/7。
