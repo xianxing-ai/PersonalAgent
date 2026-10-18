@@ -67,6 +67,10 @@ button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cu
 .coding-workspace {box-sizing:border-box;width:calc(100% - 48px);max-width:680px;margin:0 auto 32px}
 .coding-workspace .setting-row {justify-content:flex-start;gap:12px}
 .coding-workspace .setting-row input {width:auto;flex:none;margin:0}
+.agentarts-settings [data-wss]:not([hidden]) {display:grid;gap:12px}
+.agentarts-settings select {width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--glass-border);border-radius:9px;padding:9px 10px;background:var(--bg);color:var(--fg);font:inherit}
+.agentarts-settings label:has(input[type="checkbox"]) {display:flex;align-items:center;gap:8px}
+.agentarts-settings input[type="checkbox"] {margin:0;accent-color:var(--accent)}
 .main[data-section="models"][data-cloud-config="true"] #content {min-height:0}
 .error {color:var(--danger);font-size:12px;overflow-wrap:anywhere}.status {font-size:11px;color:var(--accent)}
 :root[data-theme="light"] .icon-btn:hover:not(:disabled),:root[data-theme="light"] .model-select:hover {background:rgba(0,0,0,.06)}

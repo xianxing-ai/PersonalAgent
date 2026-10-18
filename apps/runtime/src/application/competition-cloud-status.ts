@@ -1,12 +1,15 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {AGENTARTS_TRANSPORT_VERSION, parseAgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
-import type {AgentArtsCloudAgentPort, AgentArtsUnknownReceipt} from '@personal-agent/coordination';
+import {parseCoordinationAvailableTools, parseCoordinationContinuation} from '@personal-agent/coordination';
+import type {AgentArtsCloudAgentPort, AgentArtsUnknownReceipt, CoordinationRequest} from '@personal-agent/coordination';
+import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {TaskRuntime} from '../index.js';
 
 const BINDING = 'competition-cloud-dispatch-binding';
 const OBSERVATION = 'competition-cloud-status-observation';
+const CONTEXT = 'competition-cloud-dispatch-context';
 type Status = Extract<AgentArtsTransportFrame, {type:'status'; serverInstanceId:string}>;
 type StatusMetadata = Exclude<Status, {state:'completed'}> | Omit<Extract<Status, {state:'completed'}>, 'events'>;
 
@@ -36,10 +39,97 @@ function receiptSnapshot(value:unknown):AgentArtsUnknownReceipt {
   } catch {throw new ProtocolError('RESULT_UNKNOWN','Stored cloud invocation identity is invalid');}
 }
 
+function digest(value:unknown):string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function object(value:unknown):Record<string,unknown> {
+  if(!value || typeof value!=='object' || Array.isArray(value))throw Error();
+  return value as Record<string,unknown>;
+}
+
+/** References and digests only: never copy goal, tool arguments or continuation bodies. */
+function dispatchFacts(runtime:TaskRuntime,taskId:string,phase:'initial'|'continuation',revision:number,deadline:string) {
+  const loopValue=runtime.loadCheckpoint(taskId,'competition-loop');
+  const loop=loopValue===undefined?undefined:object(loopValue);
+  const maxSteps=runtime.loadCheckpoint(taskId,'competition-max-steps');
+  if(!Number.isSafeInteger(maxSteps) || (maxSteps as number)<1)throw Error();
+  const step=loop?.step??1;
+  if(!Number.isSafeInteger(step) || (step as number)<1 || (step as number)>(maxSteps as number)
+    || (phase==='initial'?loop!==undefined:!loop || (step as number)<2 || loop.pending!==undefined))throw Error();
+  const catalogValue=runtime.loadCheckpoint(taskId,'competition-tool-catalog');
+  let catalog=null;
+  if(catalogValue!==undefined) {
+    const stored=object(catalogValue);
+    if(!Number.isSafeInteger(stored.revision) || (stored.revision as number)<0
+      || (stored.revision as number)>revision || stored.deadline!==deadline
+      || (phase==='initial' && stored.revision!==revision))throw Error();
+    const entries=parseCoordinationAvailableTools(stored.entries);
+    catalog={checkpointRef:'competition-tool-catalog',revision:stored.revision as number,
+      deadline,entriesDigest:digest(entries)};
+  }
+  let continuation=null;
+  if(phase==='continuation') {
+    const value=parseCoordinationContinuation(loop!.continuation);
+    if(!Array.isArray(loop!.receipts))throw Error();
+    const matches=loop!.receipts.map((item,index)=>({receipt:object(item),index}))
+      .filter(item=>object(item.receipt.proposal).proposalId===value.proposalId);
+    if(matches.length!==1 || !isDeepStrictEqual(matches[0]!.receipt.continuation,value))throw Error();
+    continuation={checkpointRef:'competition-loop',proposalId:value.proposalId,state:value.state,
+      continuationDigest:digest(value),receiptIndex:matches[0]!.index,receiptDigest:digest(matches[0]!.receipt)};
+  }
+  return {loop:{checkpointRef:'competition-loop',checkpointDigest:loopValue===undefined?null:digest(loopValue),
+    step:step as number,maxSteps:maxSteps as number},catalog,continuation};
+}
+
+function dispatchContext(runtime:TaskRuntime,taskId:string,configurationRef:string,receipt:AgentArtsUnknownReceipt,
+  phase:'initial'|'continuation',revision:number,deadline:string,capturedAt:string) {
+  if(!Number.isSafeInteger(revision) || revision<0 || revision>runtime.getTask(taskId).revision
+    || runtime.loadCheckpoint(taskId,'application-profile')!=='huawei_ict_agentarts'
+    || runtime.loadCheckpoint(taskId,'application-deadline')!==deadline
+    || !Number.isFinite(Date.parse(deadline)) || !Number.isFinite(Date.parse(capturedAt)))throw Error();
+  return {snapshotVersion:'1.0',taskId,configurationRef,invocation:identity(receipt),
+    request:{phase,revision,deadline},...dispatchFacts(runtime,taskId,phase,revision,deadline),capturedAt,
+    // No general, durable public-input provenance contract exists for this path.
+    // A missing privacy marker or an unchanged goal is not permission to recover.
+    privacyEligibility:{eligible:false,reason:'public-provenance-unavailable'},recovery:'unavailable'};
+}
+
+function readDispatchContext(runtime:TaskRuntime,taskId:string,configurationRef:string,receipt:AgentArtsUnknownReceipt) {
+  const value=runtime.loadCheckpoint(taskId,CONTEXT);
+  // Legacy status diagnostics remain readable; no context is invented for recovery.
+  if(value===undefined)return undefined;
+  try {
+    const saved=object(value),request=object(saved.request);
+    if(!['initial','continuation'].includes(request.phase as string)
+      || typeof request.deadline!=='string' || typeof saved.capturedAt!=='string')throw Error();
+    const expected=dispatchContext(runtime,taskId,configurationRef,receipt,request.phase as 'initial'|'continuation',
+      request.revision as number,request.deadline,saved.capturedAt);
+    if(!isDeepStrictEqual(value,expected))throw Error();
+    return expected;
+  } catch {throw new ProtocolError('RESULT_UNKNOWN','Original cloud dispatch context is missing or changed');}
+}
+
 /** Saved only by the trusted dispatch callback, with no credentials, endpoint or body. */
 export function recordCompetitionCloudStatusBinding(runtime:TaskRuntime,taskId:string,
-  configurationRef:string,receipt:AgentArtsUnknownReceipt):void {
-  runtime.saveCheckpoint(taskId,BINDING,{bindingVersion:'1.0',configurationRef,invocation:identity(receiptSnapshot(receipt))});
+  configurationRef:string,receipt:AgentArtsUnknownReceipt,request:CoordinationRequest):void {
+  const saved=receiptSnapshot(receipt);
+  let context;
+  try {
+    const task=runtime.getTask(taskId);
+    if(request.taskId!==taskId || task.state!=='running' || task.cancelRequested || task.revision!==request.revision
+      || request.signal.aborted || Date.now()>=Date.parse(request.deadline)
+      || runtime.loadCheckpoint(taskId,'private-copy-erasure')!==undefined)throw Error();
+    const phase=request.continuation===undefined?'initial':'continuation';
+    context=dispatchContext(runtime,taskId,configurationRef,saved,phase,request.revision,request.deadline,new Date().toISOString());
+    if(phase==='initial') {
+      const catalog=runtime.loadCheckpoint(taskId,'competition-tool-catalog');
+      if(!isDeepStrictEqual(request.availableTools,catalog===undefined?undefined:object(catalog).entries))throw Error();
+    } else if(request.availableTools!==undefined
+      || !isDeepStrictEqual(request.continuation,object(runtime.loadCheckpoint(taskId,'competition-loop')).continuation))throw Error();
+  } catch {throw new ProtocolError('RESULT_UNKNOWN','Cloud send context is not bound to the original task');}
+  runtime.saveCheckpoint(taskId,BINDING,{bindingVersion:'1.0',configurationRef,invocation:identity(saved)});
+  runtime.saveCheckpoint(taskId,CONTEXT,context);
 }
 
 /** Reads the original cloud status without consuming its result or clearing the send hold. */
@@ -87,7 +177,8 @@ export class CompetitionCloudStatusReader {
       if(!isDeepStrictEqual(binding,{bindingVersion:'1.0',configurationRef:this.configurationRef,invocation:identity(original)})) {
         throw new ProtocolError('UNAUTHORIZED','Original cloud deployment binding is missing or changed');
       }
-      return {inflight,unknown,binding,saved};
+      const context=readDispatchContext(this.runtime,taskId,this.configurationRef,saved);
+      return {inflight,unknown,binding,saved,context};
     };
     const before=read();
     if(this.active.has(taskId))throw new ProtocolError('REVISION_CONFLICT','A status query is already active for this task');
