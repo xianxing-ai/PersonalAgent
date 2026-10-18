@@ -97,7 +97,7 @@ const {_electron}=require('playwright');
    const admin=await opened;
    await admin.waitForURL(/mode=admin/);
    await admin.waitForSelector('[data-page="models"]');
-   // Task monitoring remains a supported host route, but is no longer a sidebar item.
+   // Task monitoring remains reachable through both its navigation item and Host route.
    await panel.evaluate(()=>window.desktop.invoke('admin.open',{page:'tasks'}));
    await admin.waitForSelector('tbody');
    assert.match(await admin.locator('tbody').innerText(),fake?/思考中/:/已创建/);
@@ -130,10 +130,11 @@ const {_electron}=require('playwright');
    assert.equal(await admin.locator('#model-config-form').count(),0);
    assert.equal(await admin.locator('.settings-single').count(),1);
    assert.deepEqual(await admin.locator('.side [data-page]').evaluateAll(buttons=>buttons.map(button=>button.dataset.page)),[
-     'settings','profile','appearance','voice','configuration','personalization','pets','shortcuts','analytics','models','memory',
-     'computer','capabilities','hooks','connections','git','environment','worktrees','authorizations','archive',
+     'tasks','models','memory','notifications','authorizations','archive',
+     'settings','profile','appearance','voice','personalization','pets','shortcuts',
+     'connections','computer','capabilities','configuration','hooks','git','environment','worktrees','analytics',
    ]);
-   assert.equal(await admin.locator('.nav-icon').count(),20);
+   assert.equal(await admin.locator('.nav-icon').count(),22);
    await admin.locator('[data-page="appearance"]').click();
    await admin.locator('#pref-theme').selectOption('light');
    assert.equal(await admin.evaluate(()=>document.documentElement.dataset.theme),'light');
