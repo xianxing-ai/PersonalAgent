@@ -1,4 +1,8 @@
 import {createHash} from 'node:crypto';
+export {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools} from './isolated-repair.js';
+export type {IsolatedCodingRepairHost,IsolatedCodingRepairHostOptions} from './isolated-repair.js';
+export {captureCodingRepairSnapshot,affectedCodingRepairPackages,codingRepairVerificationState,codingRepairPackageGraphDigest} from './repair-verification.js';
+export type {CapturedCodingRepairSnapshot} from './repair-verification.js';
 import { constants as fsConstants, realpathSync, statSync } from 'node:fs';
 import { lstat, open, opendir, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep, win32 } from 'node:path';

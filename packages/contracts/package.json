@@ -18,7 +18,8 @@
       "types": "./dist/agentarts-transport.d.ts",
       "import": "./dist/agentarts-transport.js"
     },
-    "./agentarts-transport-schema": "./schema/agentarts-transport.json"
+    "./agentarts-transport-schema": "./schema/agentarts-transport.json",
+    "./coding-repair": {"types":"./dist/coding-repair.d.ts","import":"./dist/coding-repair.js"}
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
