@@ -1,5 +1,9 @@
 # MOD-06/07：Skill 与 Wiki 主进程组合验收
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../design/workflow-architecture-20261013/index.html) · [接口状态](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。当前实验为本机Laya有限候选判断，资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，架构未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
+
 - 日期：2026-10-13；目标 profile：`huawei_ict_agentarts`。
 - 状态：`done`（仅本组合工作包；不代表整个模块完成）；负责人：`goo122`；登记非作者评审者及实际合并者：`zemeng5208`。
 - 工作树：`.worktrees/goo122-skill-wiki-integration-20261013`。
