@@ -130,10 +130,10 @@ const {_electron}=require('playwright');
    assert.equal(await admin.locator('#model-config-form').count(),0);
    assert.equal(await admin.locator('.settings-single').count(),1);
    assert.deepEqual(await admin.locator('.side [data-page]').evaluateAll(buttons=>buttons.map(button=>button.dataset.page)),[
-     'settings','profile','appearance','voice','configuration','personalization','pets','shortcuts','analytics','models','memory',
+     'settings','profile','appearance','voice','notifications','configuration','personalization','pets','shortcuts','analytics','models','memory',
      'computer','capabilities','hooks','connections','git','environment','worktrees','authorizations','tasks','archive',
    ]);
-   assert.equal(await admin.locator('.nav-icon').count(),21);
+   assert.equal(await admin.locator('.nav-icon').count(),22);
    await admin.locator('[data-page="appearance"]').click();
    await admin.locator('#pref-theme').selectOption('light');
    assert.equal(await admin.evaluate(()=>document.documentElement.dataset.theme),'light');
