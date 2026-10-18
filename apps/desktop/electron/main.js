@@ -1853,7 +1853,9 @@ async function initializeRuntime() {
         const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
           contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
         if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
-        return {contractRef,adapter:{config:binding,receiptSecret,
+        const transport=agentArtsConfig.transportConfig(binding);
+        return {contractRef,adapter:{config:{...binding,...(transport.deploymentVersion===undefined?{}:{deploymentVersion:transport.deploymentVersion})},
+          assertDeploymentBinding:transport.assertDeploymentBinding,receiptSecret,
           authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding)},
           hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},invokeMode:agentArtsInvokeMode}};
       }});
