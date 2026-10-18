@@ -1,5 +1,15 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-17 F15 预览结果投影修复（provisional）
+
+注册的 `coding.repair.preview` 与 Desktop N04 别名在原 ToolGateway 保存执行结果及签署工作流回执前，仅投影会话确认和各补丁路径、前后 SHA、变更标记；不返回完整预览正文。宿主本地预览和补丁/CAS 校验不变，实际源码导出仍需原精确原生许可。未新增 Core wire、依赖或迁移；本地回归不代表真实镜像/华为整图已复测，不提升冻结状态。
+
+## 2026-10-17 镜像 F15 编码最小修复（provisional）
+
+[V6 接线](../competition/CODING_MINIMAL_REPAIR_V6.md)说明原 F15 的多轮失败修复、原子任务入口 `coding.repair.workflow`、独立编码宿主与包级验证指纹。新增 `@personal-agent/contracts/coding-repair` v1 是进程/工具数据，不增加 Core wire 或数据库迁移。镜像实际消费 jsdiff 与 TypeScript Compiler API；原本机 Runtime/Policy/ToolGateway/Evidence 继续负责授权和可信执行。
+
+主分支交付需当前 required 验证 VALID、相关用户基线 CAS 及逐文件读回；isolated 影子只产出验证 artifact、不发布主目录。固定版 AgentArts WSS/HTTPS、原生精确源码与元数据出机门禁继续保留。实现、分项测试、完整图和真实云发布分别登记，不扩大冻结范围，不据此宣称28条全部业务已验。
+
 ## 2026-10-16 远程 MCP 有界缓存与原 Runtime 回执（provisional）
 
 `RemoteReadonlyMcpOptions.readRunReceipt` 为受信宿主同步只读查询，绑定 task/run 与原参数摘要；只回收持久 confirmed/failed 的本地缓存，unknown 保留。`TaskRuntime.isToolExecutionActive` 只观察当前进程首次 Gateway 分派的精确输入标记，不授予执行权限、不从 SQLite 恢复；Desktop 消费原执行记录、原结果 checkpoint 和该标记。无 wire、Schema、迁移或新依赖；接口继续 provisional，真实平台/真人及完整 MOD-06 验收未由合成容量回归完成。见 [修复与验证](../modules/MOD-06-CAPACITY-RECEIPTS-20261016.md)。

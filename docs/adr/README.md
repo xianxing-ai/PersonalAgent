@@ -26,6 +26,7 @@ ADR 记录已经采纳且会长期影响多个模块的决定。编号递增，�
 - [ADR-0025：Competition 编译上下文版本与预算绑定（proposed）](0025-competition-context-binding.md)
 - [ADR-0029：远程 MCP 的首个只读传输纵片（proposed）](0029-remote-mcp-readonly-transport.md)
 - [ADR-0030：本机 Laya、镜像串行工作流与外部宿主接口（实验候选，未定稿）](0030-local-laya-serial-image-workflows.md)
+- [ADR-0033：镜像内编码最小修复与 F15 多轮工作流（实施中）](0033-coding-minimal-repair-workflow.md)
 - [ADR-0031：远程 MCP 的加密宿主配置与会话恢复（proposed）](0031-remote-mcp-host-configuration.md)
 - [ADR-0032：远程只读 MCP 的授权绑定与凭据引用（proposed）](0032-remote-mcp-bound-credentials.md)
 - [ADR-0012：自有 AgentArts 镜像](0012-owned-agentarts-image.md)

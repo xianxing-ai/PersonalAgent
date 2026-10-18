@@ -1,10 +1,11 @@
-import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync} from 'node:fs';
+import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync,readdirSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import path from 'node:path';
 import {PROTOCOL_VERSION, ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import * as coding from '@personal-agent/coding-tools';
+import {readRuntimeCodingVerificationEvidence} from '@personal-agent/runtime/application';
 import {createDesktopCodingToolHost} from './coding-tool-host.js';
 import {findWindowsExecutable} from './windows-executable-discovery.js';
 
@@ -87,7 +88,8 @@ Set-Acl -LiteralPath $target -AclObject $acl`;
 export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   selectNodeExecutable,selectCheckFile,selectNpmCli,jobHelperExecutable,patchHelperScriptPath,
   projectScriptEnvSource,createCommandRecipeTool,createWorkspaceReferenceExport,
-  readWorkspaceExportPreflight,readWorkspaceExportAuthorization}) {
+  readWorkspaceExportPreflight,readWorkspaceExportAuthorization,
+  requestWorkspaceExportPreflight,requestWorkspaceExportExact}) {
   const file = path.join(userData,'coding-workspace.json');
   let savedRoot,savedNode,savedCheckFile,savedNpmCli,boundRoot,boundNode,boundCheckFile,boundNpmCli,boundProjectHelper,rootIdentity,nodeIdentity,application,active=true,consent,applyHost,failure='',commandFailure='',projectFailure='';
   let generation=randomUUID();
@@ -97,6 +99,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const workspaceExportProposals=new Map();
   const confirmedWorkspaceReads=new Map();
   let workspaceReferenceExport;
+  let boundRepairPowerShell,repairHostPromise;
   try {
     if (existsSync(file)) {
       if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -136,6 +139,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       const discovery={excludedDirectories:[boundRoot,recoveryPath(userData,boundRoot)]};
       const pwsh=findWindowsExecutable('pwsh.exe',discovery);
       if (pwsh) {
+        boundRepairPowerShell=pwsh;
         try {
           applyHost=createDesktopCodingToolHost({workspaceRoot:boundRoot,authorizedWorkspaceRoot:boundRoot,
             recoveryRootPath:recoveryDirectory(userData,boundRoot,pwsh),powerShellPath:pwsh,
@@ -197,11 +201,11 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
               ['npm-test','workspace.npm_test','test']]) {
               const fixed=recipe.recipes.find(item=>item.id===id);
               if(!fixed) continue;
+              const npmArgs=['--cwd',boundRoot,'--exe',savedNode,'--',savedNpmCli,'run',script];
+              const nodeTestArgs=['--cwd',boundRoot,'--exe',savedNode,'--','--test'];
               if(fixed.executable!==helper || !Array.isArray(fixed.args)
-                || fixed.args.length!==8 || fixed.args[0]!=='--cwd' || fixed.args[1]!==boundRoot
-                || fixed.args[2]!=='--exe' || fixed.args[3]!==savedNode
-                || fixed.args[4]!=='--' || fixed.args[5]!==savedNpmCli
-                || fixed.args[6]!=='run' || fixed.args[7]!==script) throw Error();
+                || !isDeepStrictEqual(fixed.args,npmArgs)
+                  && !(script==='test' && isDeepStrictEqual(fixed.args,nodeTestArgs))) throw Error();
               commandImplementations.push({descriptor:{...recipe.tool.descriptor,name,
                 inputSchema:{type:'object',properties:{},additionalProperties:false}},
                 execute:(_input,context)=>recipe.tool.execute({recipeId:id},context)});
@@ -219,6 +223,53 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       } else if (savedNode && (savedCheckFile || projectRequested)) commandFailure='命令实现尚未接入；读取和其他已配置能力仍可用';
       if(savedNpmCli && !projectRequested && !projectFailure) projectFailure='项目构建与测试尚未准备好';
     } catch {implementations.length=0; failure='选定工作区无法安全装配，请重新选择目录';}
+  }
+  const resolveRepairTask=taskId=>{
+    const parent=application?.runtime.loadCheckpoint(taskId,'coding-repair:parent');
+    return typeof parent?.taskId==='string'?parent.taskId:taskId;
+  };
+  const getRepairHost=async()=>{
+    if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || (boundNpmCli&&!boundProjectHelper)
+      || typeof createCommandRecipeTool!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
+    if(!repairHostPromise)repairHostPromise=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
+      sessionRoot:path.join(userData,'coding-isolation',createHash('sha256').update(boundRoot).digest('hex')),
+      workspaceId:createHash('sha256').update(boundRoot).digest('hex'),patch:{powerShellPath:boundRepairPowerShell,
+        ...(patchHelperScriptPath===undefined?{}:{helperScriptPath:patchHelperScriptPath})},
+      recipes:[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
+        ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])],
+      resolveOriginalTaskId:resolveRepairTask,
+      configurationRef:createHash('sha256').update(JSON.stringify({root:boundRoot,node:boundNode,check:boundCheckFile,npm:boundNpmCli,
+        helper:boundProjectHelper,nodeIdentity:String(nodeIdentity?.ino)+':'+String(nodeIdentity?.mtimeNs)})).digest('hex'),
+      readVerificationEvidence:async input=>readRuntimeCodingVerificationEvidence(application,input),
+      // Dependencies/outputs are independent. An unprepared project remains explicitly unavailable.
+      prepareWorkspace:async({isolatedRoot})=>{
+        let dependencies=false;
+        const visit=directory=>{for(const entry of readdirSync(directory,{withFileTypes:true})) {
+          const target=path.join(directory,entry.name);
+          if(entry.isDirectory()&&!['node_modules','.git','dist','build','.cache'].includes(entry.name))visit(target);
+          else if(entry.isFile()&&entry.name==='package.json') {
+            const value=JSON.parse(readFileSync(target,'utf8'));
+            if(Object.keys(value.dependencies??{}).length||Object.keys(value.devDependencies??{}).length||Object.keys(value.optionalDependencies??{}).length)dependencies=true;
+          }
+        }};visit(isolatedRoot);
+        return dependencies?{ready:false,reason:'此项目需要独立依赖准备；未共享主工作区 node_modules/dist'}:{ready:true};
+      },
+      createCommandTool:({rootPath})=>createCommandRecipeTool({workspaceRoot:rootPath,authorizedWorkspaceRoot:rootPath,
+        nodeExecutable:boundNode,checkFiles:boundCheckFile?[{id:'node-check',path:boundCheckFile}]:[],
+        allowProjectScripts:Boolean(boundNpmCli),jobHelperExecutable:boundProjectHelper,npmCliPath:boundNpmCli,
+        projectScriptEnvSource,maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
+    return repairHostPromise;
+  };
+  if(boundRoot && boundRepairPowerShell && typeof coding.createIsolatedCodingRepairTools==='function') {
+    const deferred=Object.fromEntries(['start','list','read','snapshot','preview','patch','verify','check','publish','reconcile']
+      .map(name=>[name,async(...args)=>(await getRepairHost())[name](...args)]));
+    const repairTools=coding.createIsolatedCodingRepairTools(deferred);
+    implementations.push(...repairTools);
+    for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],
+      ['check','workflow.host.f15_n05'],['publish','workflow.host.f15_n06']]) {
+      const tool=repairTools.find(tool=>tool.descriptor.name==='coding.repair.'+source);
+      implementations.push({...tool,descriptor:{...tool.descriptor,name}});
+    }
   }
   const identityCurrent=() => {
     try {const now=statSync(boundRoot,{bigint:true});return savedRoot===boundRoot
@@ -278,6 +329,14 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if (!application || !taskId) return false;
     const key='desktop-coding-scope';
     const previous=application.runtime.loadCheckpoint(taskId,key);
+    if(previous===undefined) {
+      const graph=application.runtime.loadCheckpoint(taskId,'coding-repair:parent');
+      const child=application.runtime.loadCheckpoint(taskId,'subtask-parent');
+      const original=graph?.taskId??child?.parentTaskId;
+      const permitted=graph?.taskId || (child?.subtaskId && application.runtime.loadCheckpoint(original,'coding-repair:request:'+child.subtaskId));
+      if(permitted && typeof original==='string' && application.runtime.loadCheckpoint(original,key)===generation)
+        application.runtime.saveCheckpoint(taskId,key,generation);
+    }
     if (previous===undefined && claim) application.runtime.saveCheckpoint(taskId,key,generation);
     return application.runtime.loadCheckpoint(taskId,key)===generation;
   };
@@ -311,6 +370,16 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       if(!live || !readTool || readTool.descriptor.version!=='1.0.0'
         || readTool.descriptor.sideEffect!=='read'
         || !isDeepStrictEqual(readTool.descriptor.requiredScopes,['workspace:read'])) return undefined;
+      const graph=runtime.loadCheckpoint(query.taskId,'coding-repair:graph');
+      const codingProposal=graph?.result?.proposals?.find(proposal=>proposal.proposalId===query.proposalId);
+      if(codingProposal?.kind==='tool_proposal'&&codingProposal.toolName==='coding.repair.read'&&codingProposal.toolVersion==='1.0.0') {
+        const operation=runtime.loadCheckpoint(query.taskId,'owned-workflow:operation:'+codingProposal.operationId);
+        const linked=operation?.localTaskId?runtime.loadCheckpoint(operation.localTaskId,'coding-repair:parent'):undefined;
+        if(operation?.taskId!==query.taskId||linked?.taskId!==query.taskId||operation.proposal?.proposalId!==query.proposalId
+          ||!isDeepStrictEqual(operation.proposal,codingProposal)||codingProposal.arguments.path!==query.path)return undefined;
+        return {runId:'host-tool-'+operation.localTaskId,readTaskId:operation.localTaskId,
+          proposal:codingProposal,deadline:live.deadline,task:live.task,coding:true};
+      }
       const loop=runtime.loadCheckpoint(query.taskId,'competition-loop');
       if(!loop || !Number.isSafeInteger(loop.step) || loop.step<1) return undefined;
       const key=JSON.stringify([query.taskId,query.proposalId]),saved=workspaceExportProposals.get(key);
@@ -343,22 +412,22 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     try {
       const original=readOriginalWorkspaceProposal(query),runtime=application?.runtime;
       if(!original) return undefined;
-      const {runId,proposal,deadline,task}=original;
+      const {runId,proposal,deadline,task}=original,readTaskId=original.readTaskId??query.taskId;
       const key=JSON.stringify([query.taskId,query.proposalId]),saved=confirmedWorkspaceReads.get(key);
-      const records=runtime.readToolExecutions(query.taskId).filter(record=>record.evidenceId===runId);
+      const records=runtime.readToolExecutions(readTaskId).filter(record=>record.evidenceId===runId);
       const record=records[0];
-      if(records.length!==1 || record.taskId!==query.taskId || record.protocolVersion!==PROTOCOL_VERSION
+      if(records.length!==1 || record.taskId!==readTaskId || record.protocolVersion!==PROTOCOL_VERSION
         || record.toolName!==proposal.toolName || record.toolVersion!==proposal.toolVersion
         || record.state!=='confirmed' || record.policyDecision!=='allow' || record.executionStarted!==true
         || !Number.isFinite(Date.parse(record.startedAt)) || !Number.isFinite(Date.parse(record.finishedAt))
         || Date.parse(record.finishedAt)<Date.parse(record.startedAt) || Date.parse(record.finishedAt)>Date.now()
         || Date.parse(record.finishedAt)>Date.parse(deadline)
         || !runtime.matchesToolExecutionInput(record,{arguments:proposal.arguments,scopeRef:runId})
-        || !task.evidenceRefs.includes(runId)) return undefined;
-      const evidence=runtime.readEvidence(query.taskId).filter(item=>item.evidenceId===runId);
+        || !(original.coding?runtime.getTask(readTaskId):task).evidenceRefs.includes(runId)) return undefined;
+      const evidence=runtime.readEvidence(readTaskId).filter(item=>item.evidenceId===runId);
       if(evidence.length!==1 || evidence[0].kind!=='execution' || evidence[0].sourceRef!==proposal.toolName
         || evidence[0].capturedAt!==record.finishedAt) return undefined;
-      const checkpoint=runtime.loadCheckpoint(query.taskId,`tool-result-${runId}`);
+      const checkpoint=runtime.loadCheckpoint(readTaskId,`tool-result-${runId}`);
       if(!checkpoint || !Object.hasOwn(checkpoint,'result')) return undefined;
       const result=checkpoint.result;
       validateToolValue(readTool.descriptor.outputSchema,result);
@@ -433,6 +502,9 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   };
   const tools=implementations.map(tool => ({descriptor:tool.descriptor,execute:async(input,context) => {
     if (!enabled(tool) || !bound(context.taskId)) throw Error('工作区许可已撤销或任务绑定已改变');
+    if((tool.descriptor.name.startsWith('coding.repair.')||tool.descriptor.name.startsWith('workflow.host.f15_')||tool.descriptor.name==='workspace.coding_snapshot')
+      && (consent?.cloudExportAllowed!==true||consent.commandAllowed!==true||consent.writeAllowed!==true
+        ||boundNpmCli&&consent.projectCodeAllowed!==true))throw new ProtocolError('UNAUTHORIZED','隔离编码需要当前工作区读取、写入、命令及出机许可');
     const controller=new AbortController();inflight.add(controller);
     try {return await tool.execute(input,{...context,signal:AbortSignal.any([context.signal,controller.signal])});}
     finally {inflight.delete(controller);}
@@ -494,7 +566,28 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     readWorkspaceExportConfigurationRef,readWorkspaceExportPreflightCandidate,
     readWorkspaceExportCandidate,readConfirmedWorkspaceExport,
     get patchReconciliation() { return applyHost ? patchReconciliation : undefined; },
-    bindApplication(value){if(application && application!==value) revoke();application=value;},
+    bindApplication(value){if(application && application!==value) revoke();application=value;
+      if(typeof application?.configureCodingRepairSourceExport==='function')application.configureCodingRepairSourceExport(async input=>{
+        if(input.signal.aborted||consent?.cloudExportAllowed!==true||!bound(input.taskId)||!taskLive(input.taskId))
+          throw new ProtocolError('UNAUTHORIZED','编程源码出机许可已失效');
+        const query={taskId:input.taskId,proposalId:input.proposal.proposalId,path:input.proposal.arguments.path,configurationRef:generation};
+        const candidate=readWorkspaceExportCandidate(query);
+        if(!candidate||candidate.runId!=='host-tool-'+input.localTaskId||candidate.toolName!=='coding.repair.read'
+          ||!isDeepStrictEqual(input.receipt.result,readOriginalWorkspaceReceipt(query)?.result))
+          throw new ProtocolError('UNAUTHORIZED','F15 原始源码读回不匹配');
+        if(typeof requestWorkspaceExportPreflight!=='function'||typeof requestWorkspaceExportExact!=='function')
+          throw new ProtocolError('UNSUPPORTED_CAPABILITY','F15 原生源码出机确认尚未接入');
+        const context={signal:input.signal,deadline:input.deadline};
+        await requestWorkspaceExportPreflight({...query,arguments:candidate.arguments},context);
+        await requestWorkspaceExportExact({...query,arguments:candidate.arguments,contentDigest:candidate.contentDigest,byteLength:candidate.byteLength},context);
+        const permission=readWorkspaceExportAuthorization({...query,arguments:candidate.arguments,contentDigest:candidate.contentDigest,byteLength:candidate.byteLength});
+        if(!permission||permission.contentDigest!==candidate.contentDigest||!isDeepStrictEqual(candidate,readWorkspaceExportCandidate(query)))
+          throw new ProtocolError('UNAUTHORIZED','F15 精确源码出机确认不匹配');
+        return structuredClone(input.receipt.result);
+      },input=>{
+        if(input.signal.aborted||consent?.cloudExportAllowed!==true||!bound(input.taskId)||!taskLive(input.taskId))
+          throw new ProtocolError('UNAUTHORIZED','编程目录、诊断和 SHA 元数据出机许可已失效');
+      });},
     async select() {
       const startedGeneration=beginSelection();
       const selected=await selectDirectory();
