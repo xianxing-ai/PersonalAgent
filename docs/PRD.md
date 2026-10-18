@@ -1,7 +1,7 @@
 # PersonalAgent 产品需求文档
 
 <!-- current-design-alignment-20261015 -->
-## 当前需求修订与验收范围（2026-10-15）
+## 当前需求修订与验收范围（2026-10-18）
 
 [当前详细设计](design/CURRENT_DESIGN_20261015.md)是本轮行为入口，[28项状态](design/WORKFLOW_STATUS_20261015.md)
 区分目录、宿主实现和真实验收；架构未最终定型，后文旧版本编号和记录不代表本轮全部实现状态。
@@ -11,13 +11,13 @@
 3. 用户可设置静默、窗口/次数、渠道、安静时段和摘要方式；静默仍工作/摄取/feed，未读与已投递独立。
    同通知轮次原子预占，发送前复检最新策略，unknown不退款重发；没有擅设“每小时两次”等默认额度。
 4. 语音可主动询问并收最终确认；百炼走已有端口/本机加密配置，partial/echo/模型自报不授予权限，SIS平台不可用。
-5. Laya本机常驻为部署目标，只在任务资格已独立验证时直接选择；复杂/未知/重要抑制升级DeepSeek，不能以模型置信证明资格。
+5. Competition 只使用 AgentArts 路径；Laya 仅保留为 Local Profile 的本地实验候选，不属于比赛产品路径或验收。Local Profile 当前不新增、不扩展，AgentArts 失败不得静默回退到 Laya。
 6. 高级影子开关进入已有判断，不固定增加模型调用。主任务优先、机会资源/收益决定是否启动；未知升级DeepSeek。
    仅双方案择优任务等双方，其他任务可先交已验证主结果；影子隔离和configuration CAS/readback不绕过Policy。
 
-当前实际已证SWR发布、云指定版本目录/关联日志，以及两案例本机同版镜像+本机Runtime/工具/Laya+远端AA代理闭环。
-41条工具Evidence不代表28业务或整体协调父任务完成；Laya182–618ms未达150ms，各案例3裁决仍升级DeepSeek。
-真实长期常驻、全部来源账号/通知渠道、完整语音确认、全域质量资格、机会并行和平台原生评估仍分别验收。
+历史 Local-only 实验已证 SWR 发布、云指定版本目录/关联日志，以及两案例“本机同版镜像+本机 Runtime/工具/Laya+远端 AgentArts 模型代理”执行；这些记录不代表 Competition Agent/Workflow 由 AgentArts 构建和编排，也不作为比赛验收证据。
+41 条工具 Evidence 不代表 28 项业务或整体协调父任务完成；历史 Local-only 案例中的 Laya 判断为 182–618ms、未达 150ms，各案例 3 次裁决均升级 DeepSeek。
+真实长期常驻、全部来源账号/通知渠道、完整语音确认、Local Laya 领域资格、机会并行和平台原生评估仍分别验收。
 本轮不自动恢复暂停的最小修复算法，不将需求文字作为已完成验收或新的权限来源。
 
 ## 2026-10-09 需求补充：常驻自主开发者助手
@@ -27,7 +27,7 @@
 - 电脑运行时无人监管：对已授权的事件/世界变化持续负责，局部修复受影响计划，委派执行与监管；不提供独立云电脑或关机后执行。
 - WSS 是本地到 AgentArts 的主通道，HTTPS 同语义备用；状态可见、任务与授权一致，断线未知副作用先核实。
 - Wiki 接入长期记忆，正文/来源版本归 MOD-08，结构化事实/检索投影归 MOD-09，由 goo122 实施；TaskRuntime 和授权不迁入 Wiki。
-- Laya 选择有限合法候选、弃权/升级；用户配置授权和沙箱实现受限自主，不依靠一个置信阈值扩权。
+- Local-only 历史实验中的 Laya 可选择有限候选并弃权/升级；这不是 Competition 能力或当前 Local Profile 新增范围，也不依靠置信阈值扩权。
 - 责任面板展示事实、计划、委派监管、证据、审批、降级与暂停；完成声明以真实读回为依据。
 
 验收使用完整设计第18节和 Wiki 交接；旧需求编号/历史验收保留，不因设计或镜像发布宣布整个 MOD 完成。开发合并必须满足登记协作者中至少一位非作者对当前提交有效批准及必要检查，属于协作门槛，不能变成产品运行时权限来源。
@@ -41,7 +41,7 @@
 
 构建 Windows 私人 Agent 助理，具备 Jarvis 式常驻交互：平时呈现动态悬浮球，鼠标靠近展开面板，通过专门按钮进入完整管理后台。
 
-用户表达目标后，系统结合版本化个人世界状态形成事实—决策—计划依赖，选择工具或专业 Agent，完成信息获取、判断、受控行动和结果反馈。当前只实施华为 ICT Competition Profile，AgentArts 是智能体构建、Workflow/Agent 编排、评估和云端部署的主平台。通用 Local Profile 只留存现有 `runAgent()`、`ModelGateway` 与盘古/自有模型 Provider，当前不新增、不扩展；若以后启用，仍与比赛 profile 共用本地 Runtime、Policy、ToolGateway、读回和任务终态。
+用户表达目标后，系统结合版本化个人世界状态形成事实—决策—计划依赖，选择工具或专业 Agent，完成信息获取、判断、受控行动和结果反馈。当前只实施华为 ICT Competition Profile，AgentArts 是智能体构建、Workflow/Agent 编排、评估和云端部署的主平台。Laya 仅属于 Local-only 实验候选，不进入 Competition 产品路径。通用 Local Profile 只留存现有 `runAgent()`、`ModelGateway`、盘古/自有模型 Provider 与既有 Laya 实验，当前不新增、不扩展；若以后启用，仍与比赛 profile 共用本地 Runtime、Policy、ToolGateway、读回和任务终态。
 
 明确纳入产品方向：Obsidian、日程、研究、软件操作、编程、语音、微信与其他可用社交平台、邮件、通知、博主订阅、实时信息、天气、MCP、Skills、持续学习、目标/决策图谱、事件影响与最小计划修复、AgentArts，以及所需的电脑状态读取能力。
 
@@ -55,9 +55,9 @@
 | Profile | 定位 | 当前优先级 | 关键规则 |
 | --- | --- | --- | --- |
 | `huawei_ict_agentarts` | 华为 ICT 创新赛正式开发、评估、部署和 Demo | 当前唯一实施 | AgentArts 必须真实承担构建、编排、评估与部署；不可静默回退 Local |
-| `local` | 可选历史基线 | 当前不实施 | 仅留存 `runAgent()`、`ModelGateway`、盘古/自有模型和既有测试；不新增、不扩展、不纳入比赛退出条件 |
+| `local` | 可选历史基线与 Local-only 实验 | 当前不实施 | 留存 `runAgent()`、`ModelGateway`、盘古/自有模型、既有 Laya 实验和测试；不新增、不扩展、不纳入比赛退出条件 |
 
-“只实施 Competition Profile”表示当前新增架构、代码和验收全部按比赛 Golden Path 排序；不删除已有 Local 代码，也不把本地隐私、授权和执行终态迁入云端，但不为 Local 承诺当前兼容性或新增交付。
+“只实施 Competition Profile”表示当前新增架构、代码和验收全部按比赛 Golden Path 排序；Laya 的本地实验不属于 Competition 路径或比赛证据。不删除已有 Local 代码，也不把本地隐私、授权和执行终态迁入云端，但不为 Local 承诺当前兼容性或新增交付。
 
 ## 2. 范围与证据状态
 

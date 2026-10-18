@@ -4,6 +4,8 @@
 本页取代历史设计中冲突的模型部署、默认并行、发布和完成状态描述；不撤销既有 Runtime 权限边界，
 不把设计保存、接口存在或单条真实案例提升为全部模块完成。历史原文与日期见[导航](README.md)。
 
+> 2026-10-18 当前边界：Competition Agent/Workflow 的构建、编排、评估和部署由 AgentArts 承担；Laya 仅作为 Local-only 实验候选，不属于 Competition 产品路径。下列 Laya 与镜像执行记录是 Local 实验，不能作为比赛路径验收。
+
 入口：[PRD](../PRD.md) · [架构](../ARCHITECTURE.md) · [28项状态](WORKFLOW_STATUS_20261015.md) ·
 [接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作者接口](../competition/PROACTIVE_COLLABORATOR_INTERFACES.md) ·
 [具体分工与下一工作包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [运行指南](../competition/TEST_IMAGE_V3_RUN.md)。
@@ -12,14 +14,14 @@
 
 | 部分 | 当前设计选择 | 已有实现与证据边界 |
 | --- | --- | --- |
-| 语义判断 | 本机常驻 Laya 从有限候选中选择；仅经独立任务资格验证的站点可直接决定 | 原权重及 SDK 单实例宿主服务/selector 已可调用；领域资格未证明，两个真实案例各3处裁决全部升级 DeepSeek，不能称全局主决策已合格 |
+| 语义判断 | Competition 使用 AgentArts；Laya 仅保留 Local-only 实验候选 | 本地 Laya 领域资格未证明；历史 Local 实验两个案例各3处裁决全部升级 DeepSeek，不能称 Competition 主决策已验收 |
 | 高级模型 | DeepSeek 经 AgentArts 新 `/inference/v1` 模型代理，底层平台 MaaS 来源如实记录 | 真实代理 API 已返回；不直连供应商 fallback，不把语音百炼入口用作 DeepSeek 替代；文字 JSON 工具提案不等于原生 function calling |
 | 工作流 | 全部 F01–F28、185 节点模板及其依赖、条件与串行推进逻辑在自有 ARM64 镜像 | 代码/catalog/云指定版本目录已读回；图和节点数量不等于28项真实业务验收 |
 | 实际执行 | 原本机 Runtime/Policy/ToolGateway/Evidence 负责权限、工具、副作用读回与任务终态 | 镜像只提出候选/宿主请求；验签 receipt、模型结论与来源文本都不能授予权限 |
 | 语音 | 百炼已有 Live 端口与本机加密配置；语音可主动询问、接受确认/暂停/静默设置 | 已有端口及有限握手证据；真实麦克风、听说、通知设置和 AgentArts 主任务完整组合仍分别验收；AgentArts SIS 适配不可用 |
 | 记忆 | Wiki 正文/来源版本与 Memory/FactChangeFeed 分工，按权限读取上下文、目标与经验 | 消费公开端口；引用、实体、版本、撤回和缺口保留，不把摘要当原文或把记忆当授权 |
 
-Laya 的“本机常驻”是部署与产品生命周期目标，不是容器内嵌模型；镜像不含权重、Python 或 PyTorch。
+Laya 的“本机常驻”只描述 Local-only 实验候选的部署方式，不属于 Competition 产品路径，也不是容器内嵌模型；镜像不含权重、Python 或 PyTorch。
 现有宿主可管理单实例生命周期，真实测试按轮启动/停止；Desktop 长期驻留、设备休眠/恢复和长期资源占用
 仍需对应接线与验收。电脑离线不虚构可执行能力；不新增云电脑、任务库、调度器或模型入口。
 
@@ -99,7 +101,7 @@ SWR tag `local-laya-v3-244ca434`，ARM64 digest
 AgentArts 指定版本 `arm64-local-v3-244ca434` 目录及关联请求日志已读回。它们分别证明发布、该版本目录和请求关联日志，
 不等于云端已完整执行下列工具循环。runner 的硬编码 imagePublished=false 不能推翻独立发布回执。
 
-[full-workflow-results.json](../competition/evidence/test-image-v3-20261015/full-workflow-results.json) 的真实完整案例表面为：
+[full-workflow-results.json](../competition/evidence/test-image-v3-20261015/full-workflow-results.json) 的 Local-only 实验案例表面为：
 本机同版镜像 + 本机 Runtime/Policy/工具/Laya + 远端 AgentArts 模型代理；测试工作区为公开隔离 fixture。
 
 | 案例 | 实际通过 | 时间与保留限制 |
@@ -118,7 +120,7 @@ AgentArts 指定版本 `arm64-local-v3-244ca434` 目录及关联请求日志已�
 当前分工采用已有三人归属，并由[新工作包矩阵](../competition/COLLABORATOR_WIRING_PACKAGE.md)列唯一 owner、文件、
 公开依赖、调用方、验收/Evidence 和下一任务；[ROADMAP](../ROADMAP.md)只引用该矩阵，不制造另一份归属表。
 
-旧设计中的“嵌入式 Laya”“直连 MaaS 默认”“每件事固定多模型判断”“全部影子等双方”“尚未发布”及旧 review 门槛，
+旧设计中的“嵌入式 Laya”“Laya 参与 Competition”“直连 MaaS 默认”“每件事固定多模型判断”“全部影子等双方”“尚未发布”及旧 review 门槛，
 与本页冲突的部分已被后续设计/事实 superseded；原日期、作者、测试和有条件能力边界保留。
 现有 Runtime 权限、依赖方向、未知结果和来源边界继续有效；PR 合并规则以当前 CONTRIBUTING/AGENTS 为准。
 最小修复/依赖重规划算法保留交接，不因本文恢复实施或擅自定稿。新方案不能以文档或 helper 存在越过真实验收。

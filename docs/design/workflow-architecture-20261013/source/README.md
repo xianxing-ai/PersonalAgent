@@ -25,4 +25,4 @@ npm run lint
 
 修改28功能流程用src/data/architecture.json；机制与六板块用architectureRevisions.ts；共享关系/适配用overview.ts；界面用components/workflow/WorkflowOverview.tsx。所有字段是查看器的设计数据，不是新增公共wire契约。
 
-AgentArts平台接入、已有代码/最小增量、多来源知识库与MCP/Skill在`src/data/agentartsIntegration.ts`。平台节点连入同一总图；本机Laya已确认属于本项目Competition产品路径中的本地运行方案，AgentArts负责Agent/Workflow构建、编排、评估与部署，本地Runtime经CloudAgentPort消费已部署工作流并负责授权工具执行和Evidence；外部比赛资格与真实平台端到端验收仍待验证。
+AgentArts平台接入、已有代码/最小增量、多来源知识库与MCP/Skill在`src/data/agentartsIntegration.ts`。平台节点连入同一总图；Laya仅作为Local-only实验候选，不属于Competition产品路径。AgentArts负责Agent/Workflow构建、编排、评估与部署，本地Runtime经CloudAgentPort消费已部署工作流并负责授权工具执行和Evidence；外部比赛资格与真实平台端到端验收仍待验证。

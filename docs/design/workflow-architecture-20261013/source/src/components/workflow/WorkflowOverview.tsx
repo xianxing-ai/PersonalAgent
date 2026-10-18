@@ -115,7 +115,7 @@ function OverviewBody(){
    <span>六大板块</span>{ARCHITECTURE_AREAS.map(item=><button key={item.id} aria-pressed={panel==='area'&&areaId===item.id} onClick={()=>{setAreaId(item.id);setPanel('area');setSelected(undefined);}}>{item.name}</button>)}
    <select aria-label="快速查看功能" value={f?.id||''} onChange={e=>{if(e.target.value)openFeature(e.target.value);}}><option value="">快速查看 F01–F28</option>{ALL_FEATURES.map(item=><option key={item.id} value={item.id}>{item.id} {item.name}</option>)}</select>
   </nav>
-  <div className="overview-caption">Competition目标由AgentArts负责构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并负责授权执行与Evidence。本机Laya在本机运行并参与Competition产品路径；历史实测记录与目标分别展示，AgentArts失败不得静默回退Local Profile。</div>
+  <div className="overview-caption">Competition目标由AgentArts负责构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并负责授权执行与Evidence。Laya仅保留为Local-only实验候选，不属于Competition产品路径；AgentArts失败必须明确失败，不得静默回退Local Profile。</div>
   {showLatency&&<div className="architecture-latency"><strong>{FINAL_DESIGN_STATUS}</strong><ul>{LATENCY_DESIGN.map((line,i)=><li key={i}>{line}</li>)}</ul></div>}
   <div className="overview-body">
    <div className="overview-canvas">
@@ -168,7 +168,7 @@ function OverviewBody(){
      <h3>真实证据与下一业务验收</h3><ol>{GOLDEN_PATH.map((step,i)=><li key={i}>{step}</li>)}</ol>{featureLinks(['F15','F22','F08','F12','F24'])}
      <h3>公平对照条件</h3><p>相同模型、数据、授权、幂等与读回能力；仅改变被测机制。完整重规划对照也能复用幂等，不故意做弱对照。</p>
      <h3>验收矩阵</h3><div className="architecture-matrix">{ACCEPTANCE_MATRIX.map(([ids,fixture,expected])=><article key={ids}><strong>{ids}</strong><p>{fixture}</p><small>{expected}</small></article>)}</div>
-     <div className="overview-adapter">历史实测：Wukong167.432s/外层183.618s/20条；Pelican第二轮81.611s/外层89.735s/21条，首轮partial保留；6次本机Laya判断182–618ms，历史案例中的站点均升级DeepSeek，未达150ms。该本机/镜像路径、云目录与关联日志均不证明Competition平台工作流闭环。网页构建/截图只验证查看器。</div>
+     <div className="overview-adapter">Local-only历史实验：Wukong167.432s/外层183.618s/20条；Pelican第二轮81.611s/外层89.735s/21条，首轮partial保留；6次本机Laya判断182–618ms，历史案例中的站点均升级DeepSeek，未达150ms。该本机/镜像路径、云目录与关联日志均不证明Competition平台工作流闭环。网页构建/截图只验证查看器。</div>
     </>}
     {panel==='node'&&selectedNode&&<>
      <div className="overview-kicker">{f?.id||'共用路径'} · 设计 / 逐项接线验证</div><h2>{selectedNode.data.label}</h2>

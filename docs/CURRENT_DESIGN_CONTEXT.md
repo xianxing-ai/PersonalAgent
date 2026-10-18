@@ -1,27 +1,27 @@
-# 当前设计与实施状态（更新2026-10-15，保留历史）
+# 当前设计与实施状态（更新2026-10-18，保留历史）
 
 <!-- current-design-alignment-20261015 -->
-## 2026-10-15 最新设计与实际回执
+## 2026-10-18 当前范围与历史回执
 
 统一入口为[当前详细设计](design/CURRENT_DESIGN_20261015.md)、[28项逐图状态](design/WORKFLOW_STATUS_20261015.md)、
 [历史导航](design/README.md)、[具体新分工](competition/COLLABORATOR_WIRING_PACKAGE.md)。
-本机Laya、镜像全部28/185串行编排、AgentArts代理DeepSeek、百炼语音、原Runtime可信执行，架构仍实验未定。
+Competition 由 AgentArts 承担 Agent/Workflow 构建、编排、评估和部署；Laya 仅是 Local Profile 的本地实验候选，不属于比赛路径。既有本机 Laya、镜像 28/185 串行编排和 AgentArts 模型代理记录均为 Local-only 历史实验，架构的其他部分仍待验收。
 主动来源跟踪有出处的责任/关注，原文/Goal/记忆/上下文参与判断；无人值守与有效归来摘要、用户可调打扰/静默feed、
 最终语音询问确认复用原公开端口。高级影子并入已有判断、主任务优先、机会资源/收益选择，未知升级DeepSeek；
 只有双方案择优任务等双方，其他任务可先交已验主结果。真实机会调度仍待接线，当前两runner顺序await主/影。
 
-SWR local-laya-v3-244ca434与云arm64-local-v3-244ca434目录/关联日志已验；两案例完整表面为本机同版镜像、
+历史 Local-only 实验的 SWR local-laya-v3-244ca434 与云 arm64-local-v3-244ca434 目录/关联日志已验；两案例执行表面为本机同版镜像、
 本机Runtime/Policy/工具/Laya与远端AA代理。flow/外层耗时分别Wukong167.432/183.618s、Pelican第二轮81.611/89.735s。
 41条Evidence，分支父succeeded但协调锚点created；首轮Pelican partial独立保留。
-Laya6判断182–618ms未达150ms、各案例3裁决升级DeepSeek；无高级调用减少、训练或28业务全验收证据。
+6次 Local Laya 判断182–618ms未达150ms、各案例3裁决升级DeepSeek；无高级调用减少、训练或28业务全验收证据。以上回执不证明 Competition Agent/Workflow 路径。
 部署事实见[owned-release](competition/evidence/test-image-v3-20261015/owned-release.json)，执行事实见
 [full-workflow-results](competition/evidence/test-image-v3-20261015/full-workflow-results.json)，启动见[RUN](competition/TEST_IMAGE_V3_RUN.md)。
 
 下列原10-09/早期10-15内容是历史上下文，冲突的部署、发布、完成与旧协作门槛均不再作为当前要求。
 
-## 2026-10-15 Owner 当前修订
+## 2026-10-15 Owner 历史修订（已被 2026-10-18 决定取代）
 
-采用 **本机 Laya + 自有镜像内 28 工作流 + 串行推进**，协作者经现有 Runtime/Policy/ToolGateway
+当时采用 **本机 Laya + 自有镜像内 28 工作流 + 串行推进**，协作者经现有 Runtime/Policy/ToolGateway
 接本地工具、宿主观察和条件检查。主流程与隔离影子均纳入鹈鹕动画故障的增量修复实测。
 本机低 CPU 占用与 150 ms 判断为验收目标，未通过实测前不声明达标。
 当前实现与接口见 [ADR-0030](adr/0030-local-laya-serial-image-workflows.md)、
@@ -48,7 +48,7 @@ Laya6判断182–618ms未达150ms、各案例3裁决升级DeepSeek；无高级�
 | 未知结果与恢复 | 本地持久发送标记、防重发与 `waiting_reconciliation` | 本地重启防重发已验证；云端仅有界内存回执，`restartRecovery:false`。自动 status 协调与持久云端恢复未交付 |
 | 任务/权限/执行 | 本地 Runtime/Policy/ToolGateway/Evidence | 保持既有边界；云结果需要校验及本地读回 |
 | 记忆 | Wiki 正文 + 来源绑定 Memory 投影/FactChangeFeed | goo122 负责 MOD-08/09；自动同步/整理未交付 |
-| 决策 | MOD-28 Laya 有限合法候选、弃权/升级 | 不签发权限；领域校准与完整用户设置待验收 |
+| 决策 | Local-only 实验候选 Laya；不进入 Competition | 不签发权限；领域校准与完整用户设置待验收 |
 | 合并 | zemeng5208、goo122、Potatos498、2511375597-lab 四位协作者共同审查与合并 | 常规 PR 需一名非作者对当前 head 有效批准及必要检查；不强制合并或绕过门禁 |
 | 分享 | GitHub PR + GHCR 固定版本/digest + 配置说明 | `97aa51a6` AMD64/ARM64 预览已发布并独立验证；main 合并、真实华为部署与验收分别记录 |
 

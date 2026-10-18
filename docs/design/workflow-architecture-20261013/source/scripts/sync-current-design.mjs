@@ -18,7 +18,7 @@ if(workflows.length!==28||workPackages.length!==10||modules.length!==39)throw Er
 fs.writeFileSync(path.join(root,'src/data/currentDesign.generated.json'),JSON.stringify({sha,date:'2026-10-15',sourcePaths,workflows,workPackages,modules},null,2)+'\n');
 const replacements=[
  ['全部业务工作流和Laya multilingual服务/权重迁入自有镜像','Competition由AgentArts构建与编排Agent/Workflow；本地Runtime经CloudAgentPort调用部署版本'],
- ['Laya在镜像内裁决','Competition由AgentArts Agent/Workflow编排，本机Laya在本机运行并参与Competition产品路径'],
+ ['Laya在镜像内裁决','Competition由AgentArts构建、编排、评估和部署Agent/Workflow；Laya仅作为Local-only实验候选，不属于Competition路径'],
  ['唯一全局语义决策配置','AgentArts Competition Agent/Workflow编排'],
  ['唯一主决策配置','AgentArts Competition编排'],
  ['唯一主模型','AgentArts Agent/Workflow'],['主模型','Competition Agent/Workflow'],

@@ -1,13 +1,19 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
-## 当前架构决定（2026-10-17）
+## 当前架构决定（2026-10-18）
+
+Owner 已确认：Laya 仅作为可选 Local Profile 的本地实验候选，不属于 `huawei_ict_agentarts` Competition 产品路径。Competition 必须由 AgentArts 承担 Agent/Workflow 构建、编排、评估和部署；本地 Runtime 经 CloudAgentPort 调用已部署版本，并保留本地 Policy、ToolGateway、TaskRuntime、Evidence 与外部读回。AgentArts 不可用时必须明确失败，不得静默回退 Laya 或其他 Local 路径。下文 2026-10-17 及更早的 Laya 部署、代理和本机实验记录保留为历史，不代表当前 Competition 路径或验收证据。
+
+## 已 superseded 的历史架构决定（2026-10-17）
+
+下方记录当时将本机 Laya 放入 Competition 路径的决定；该范围已被 2026-10-18 的 Owner 决定取代，历史回执继续保留原范围。
 
 Owner 已确认本机 Laya 是本项目确定的架构方案，在本机运行并参与 `huawei_ict_agentarts` 的 Competition 产品路径；下文“架构仍未最终定型”仅指其余待定设计、接线和验收范围，不否定这项决定。AgentArts 继续承担现有镜像 Workflow 编排职责。本决定不表示外部比赛资格已获认可，也不表示真实平台端到端验收完成；既有回执仅证明对应固定版本与场景。
 
 <!-- current-design-alignment-20261015 -->
-## 当前口径与历史适用性（2026-10-15）
+## 历史实现与证据（2026-10-15）
 
-当前以[详细设计](../design/CURRENT_DESIGN_20261015.md)区分设计意图、已有代码、待接线与真实验收；架构仍未最终定型。
+以下按 2026-10-15 时的架构口径记录实验、实现与回执；Laya 相关内容属于 Local-only 历史实验，不定义当前 Competition 路径。当时以[详细设计](../design/CURRENT_DESIGN_20261015.md)区分设计意图、已有代码、待接线与真实验收；架构仍未最终定型。
 本机Laya、全部28图/185节点镜像串行编排，未合格判断升级经AgentArts代理的DeepSeek；语音百炼既有端口，SIS平台不可用。
 SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1`，
 云指定版本 `arm64-local-v3-244ca434` 目录与关联日志已验，见[发布回执](evidence/test-image-v3-20261015/owned-release.json)。
@@ -20,7 +26,7 @@ SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98
 当前启动只用 `PA_AGENT_LAYA_MODE=local`，镜像不含模型权重、Python或PyTorch；不直连提供商fallback。
 旧协作门槛以当前CONTRIBUTING/AGENTS为准，文档或receipt不授予权限。
 
-## 2026-10-15 当前开发边界
+## 2026-10-15 历史开发边界（已被 2026-10-18 决定取代）
 
 Owner 选择本机 Laya，28 工作流编排仍由 AgentArts 自有镜像承担，不新增通用 Local Profile 或
 AgentArts 失败后静默回退。本地决策和宿主适配经既有工具/回执接口接线，见
@@ -29,7 +35,7 @@ AgentArts 失败后静默回退。本地决策和宿主适配经既有工具/回
 
 ## 2026-10-09 常驻目标与镜像分享增量
 
-当前比赛 profile 与本地 Runtime/Policy/工具/读回边界继续有效。面向开发者的常驻助手在电脑运行时负责世界变化、增量计划修复与执行/监管委派；不提供独立云电脑。
+当时记录的比赛 profile 与本地 Runtime/Policy/工具/读回边界继续有效。面向开发者的常驻助手在电脑运行时负责世界变化、增量计划修复与执行/监管委派；不提供独立云电脑。
 
 目标通道 WSS 主、HTTPS 备用，同一 AgentArts 部署且降级可见；本分支已有HTTP/WS服务、本地/桌面接线与发送前持久防重发，公开WSS网关和真实云闭环仍待验收，自动status协调尚未交付。Wiki长期记忆由goo122在MOD-08/09接入，Laya与Goal/Cognition通过公开端口消费。详细图与缺口见完整设计和ADR-0013/0014。
 
