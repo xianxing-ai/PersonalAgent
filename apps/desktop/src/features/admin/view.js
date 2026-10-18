@@ -36,10 +36,10 @@ export const sections = {
 };
 
 const navGroups = [
-  {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'notifications', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
-  {label: '集成', items: ['computer', 'capabilities']},
-  {label: '编码', items: ['hooks', 'connections', 'git', 'environment', 'worktrees', 'authorizations']},
-  {label: '任务', items: ['tasks', 'archive']},
+  {label: '常用', items: ['tasks', 'models', 'memory', 'notifications', 'authorizations', 'archive']},
+  {label: '偏好', items: ['settings', 'profile', 'appearance', 'voice', 'personalization', 'pets', 'shortcuts']},
+  {label: '集成', items: ['connections', 'computer', 'capabilities', 'configuration']},
+  {label: '开发', items: ['hooks', 'git', 'environment', 'worktrees', 'analytics']},
 ];
 
 const iconPaths = {

@@ -81,6 +81,26 @@ const {_electron}=require('playwright');
     const issues=await admin.evaluate(()=>[...document.querySelectorAll('#admin-search,.window-controls button')].filter(node=>{const r=node.getBoundingClientRect();return r.left<0||r.right>innerWidth+1||r.width<24||r.height<24;}).map(node=>node.id||node.dataset.window));assert.deepEqual(issues,[]);
    }
   });
+  await check('task progress reflects Runtime waits and preserves unchanged conversation turns',async()=>{
+   const active={taskId:'active-turn',state:'running',userMessage:'正在执行的任务',revision:1,steps:[{state:'running',label:'检查测试结果'}],evidenceRefs:[]};
+   const finished={taskId:'stable-turn',state:'succeeded',userMessage:'已经完成的对话',revision:1,steps:[],evidenceRefs:[]};
+   await publish({tasks:[active,finished]});assert.match(await workspace.locator('.task-progress').innerText(),/检查测试结果/);
+   await workspace.evaluate(()=>{window.stableTurn=document.querySelector('[data-turn="stable-turn"]');window.stableTurn.querySelector('[data-view]').focus();});
+   await publish({tasks:[{...active,revision:2,resultSummary:'新的进展'},finished]});
+   assert.equal(await workspace.evaluate(()=>window.stableTurn===document.querySelector('[data-turn="stable-turn"]')),true);
+   assert.equal(await workspace.evaluate(()=>document.activeElement.dataset.view),'stable-turn');
+   await workspace.evaluate(()=>{window.activeView=document.querySelector('[data-view="active-turn"]');window.activeView.focus();});
+   await publish({tasks:[{...active,revision:2,resultSummary:'新的进展'},{...finished,revision:2,resultSummary:'已补充结果'}]});
+   assert.equal(await workspace.evaluate(()=>window.activeView===document.querySelector('[data-view="active-turn"]')),true);
+   assert.equal(await workspace.evaluate(()=>document.activeElement.dataset.view),'active-turn');
+   for(const state of ['waiting_approval','waiting_external','waiting_reconciliation','cancelling']){
+    await publish({tasks:[{...active,state},finished]});assert.equal(await workspace.locator('.task-progress').getAttribute('data-state'),state);
+   }
+   assert.match(await workspace.locator('.task-progress').innerText(),/等待执行结束/);
+   assert.equal(await workspace.locator('.task-progress').evaluate(node=>{const r=node.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),true);
+   await capture(workspace,'workspace-progress.png');
+   await publish({tasks:[]});assert.equal(await workspace.locator('.task-progress').isVisible(),false);
+  });
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,'result.json'),JSON.stringify({fixture:'explicit-offline',cases,rendererErrors:errors},null,2));
  }finally{await app.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

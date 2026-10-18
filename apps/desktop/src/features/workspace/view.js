@@ -8,6 +8,7 @@ import {resultText} from '../conversation/result-text.js';
 import {updateConversationTurns} from '../conversation/turn-view.js';
 import {connectorCards} from './connectors.js';
 import {windowControlsHtml} from '../../ui/window-controls.js';
+import {mountTaskProgress} from '../conversation/task-progress.js';
 
 const paths={settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',connectors:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zm11 3h7m-3-3v7',close:'m6 6 12 12M6 18 18 6',maximize:'M5 5h14v14H5z',minimize:'M5 12h14',copy:'M8 8h12v12H8zM16 8V4H4v12h4',view:'M3 5h18v14H3zM9 5v14'};
 const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]}"/></svg>`;
@@ -25,6 +26,7 @@ export function mountWorkspace(root,invoke,escape){
     </main></section>`;
   const children=document.createElement('section');children.className='subagent-tasks';children.setAttribute('aria-label','子任务派发');root.querySelector('.workspace-chat').append(children);
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
+  const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage);
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
   preferences.innerHTML='<label>主思考模型 <select class="conversation-model-choice" aria-label="工作区主思考模型"></select></label><label>执行步骤预算 <input type="range" min="0" max="5" step="1" aria-label="工作区执行步骤预算"></label><label><input type="checkbox">快速模式</label><button type="button" class="turn-action" data-more-models>更多模型与默认设置</button>';
   root.querySelector('.workspace-top').after(preferences);
@@ -133,6 +135,7 @@ export function mountWorkspace(root,invoke,escape){
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
     if(document.hidden)orb.stop();
+    updateProgress(data.tasks);
     root.querySelector('#workspace-greeting').hidden=current.tasks.length>0;root.querySelector('#workspace-intro').hidden=current.tasks.length>0;root.querySelector('#workspace-welcome').classList.toggle('compact',current.tasks.length>0);
     const signature=JSON.stringify(data.tasks);
     if(signature!==lastSignature){

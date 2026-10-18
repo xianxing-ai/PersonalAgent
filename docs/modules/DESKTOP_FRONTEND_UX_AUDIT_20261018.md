@@ -1,5 +1,7 @@
 # Desktop 前端交互与体验审查 · 2026-10-18
 
+> 下文保留前序 #409 堆叠分支的审查与测试历史。本次用户要求仅交付前端，已从最新 main 独立整理，当前范围和验证以 [前端主线交付记录](DESKTOP_FRONTEND_MAIN_DELIVERY_20261018.md)为准；不再依赖或携入 #404 的 Runtime/AgentArts 改动。
+
 - 状态：review；代码修复与主线集成分别确认。
 - 目标 Profile：`huawei_ict_agentarts`；测试显式使用离线 Fake，未变更产品 Profile 或回退行为。
 - 范围：Desktop Admin、Panel、Workspace 的交互与展示；没有新增依赖、公共协议、迁移、模型或工具能力。

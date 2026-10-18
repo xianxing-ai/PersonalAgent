@@ -59,7 +59,8 @@ const {_electron} = require('playwright');
     assert.equal(await panel.locator('textarea[aria-label="任务内容"]').inputValue(), '从小面板继续');
     assert.equal(await workspace.locator('.workspace-sidebar').count(), 0);
     assert.equal(await workspace.locator('[data-connector]').count(), 5);
-    assert.ok((await workspace.locator('.connector-card').first().innerText()).includes('预览'));
+    assert.match(await workspace.locator('.connector-card').first().innerText(),/暂无天气数据/);
+    assert.doesNotMatch(await workspace.locator('.connector-board').innerText(),/林晓|陈悦|整理今日计划/);
 
     const bounds = await app.evaluate(({BrowserWindow, screen}) => {
       const win = BrowserWindow.getAllWindows().find(item => item.webContents.getURL().includes('mode=workspace'));
