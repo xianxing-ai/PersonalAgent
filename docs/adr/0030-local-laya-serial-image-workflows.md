@@ -1,12 +1,12 @@
 # ADR-0030：本机 Laya、镜像串行工作流与外部宿主接口
 
 <!-- current-design-alignment-20261015 -->
-> 当前适用性：本机Laya部署与本轮实验实现继续；**架构仍未最终定型，接口仍provisional**。
+> 当前适用性（2026-10-17）：Owner 已确认本机 Laya 是本项目确定的架构方案，在本机运行并参与 `huawei_ict_agentarts` 的 Competition 产品路径；AgentArts 继续承担现有镜像 Workflow 编排职责。接口仍为 provisional，其余待定设计、接线与验收范围分别记录。本决定不表示官方比赛资格获认可或真实平台端到端验收完成。详见 [Competition Profile](../competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)。
 > 当前详细行为、历史替代与实际验收见[当前设计](../design/CURRENT_DESIGN_20261015.md)、
 > [28项状态](../design/WORKFLOW_STATUS_20261015.md)与[全部历史导航](../design/README.md)。
-> 不将SWR发布、目录或两条公开fixture通过泛化为28业务、全局决策资格或最终架构批准。
+> 不将 SWR 发布、目录或两条公开 fixture 通过泛化为 28 项业务通过或全局决策资格；历史“架构未定”仅指其余待定设计、接线与验收范围。
 
-> 状态：实验候选，未定稿。Owner 后续要求先完成测试再决定架构；以下保留测试实现和此前方向的背景，
+> 历史阶段状态（2026-10-15）：实验候选，未定稿。Owner 当时要求先完成测试再决定架构；以下保留测试实现和此前方向的背景，
 > 不把代码存在、镜像构建或本机目录通过当作架构已获最终确认。
 
 - 2026-10-15；Owner 明确决定，接口实现仍为 provisional，待独立审查及集成。
