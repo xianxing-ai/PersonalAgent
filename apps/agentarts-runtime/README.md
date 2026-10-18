@@ -117,6 +117,7 @@ ModelGateway 是唯一模型入口，真实提供者由宿主配置，不会缺�
 - `PA_AGENT_MAX_OUTPUT_TOKENS`：单角色输出预算，默认 2048；修复最多顺序调用三个角色，无自动重试。
 - `PA_AGENT_TIMEOUT_MS`：服务期限上限，默认 60000；取与原 `X-PA-Deadline` 的较早值。
 - `PA_AGENT_WORKFLOW_GOAL_INPUT`：可选的单一旧 Workflow 输入名。
+- `PA_AGENT_DEPLOYMENT_VERSION`：可选的宿主显式固定版本标签，例如 `arm64-194799c6`。仅允许 1～128 个 ASCII 字母、数字、点、下划线、连字符且以字母/数字开头，拒绝 Latest/default/stable/current/unknown 别名或组成段；非法配置启动失败，不回显原值。缺省时回执记 `unknown`，不从模型、URL 或可变 Latest 推定。
 - `PA_AGENT_INBOUND_TOKEN`：可选额外入站保护；至少32字符，调用方走已有Authorization宿主注入。
 - `PA_AGENT_WSS_AUTH_TOKEN`：可信宿主注入的入站 WSS/状态查询凭据，至少32字符；缺省继承 `PA_AGENT_INBOUND_TOKEN`，二者都缺失时 `/ws` 与状态查询关闭。与模型密钥无关。
 
@@ -124,6 +125,12 @@ ModelGateway 是唯一模型入口，真实提供者由宿主配置，不会缺�
 独立模式只绑定 127.0.0.1，不改变 Desktop 的正式比赛 endpoint。
 AgentArts 模式监听 0.0.0.0，必须由平台入站认证保护；直接运行裸容器不等于安全公开服务。
 session 与 request 头只用于关联，不记录模型输入和凭据，不宣称已迁移平台会话存储。
+
+stdout 的 `owned_role` 回执通过字段白名单输出 requestId、独立 spanId、角色、提示词版本、
+开始/结束 UTC 时间、单调时钟耗时、状态和可用的 token 数。`deploymentVersionSource` 为
+`host_configuration` 或 `unknown`，只表明显式宿主配置来源，不证明平台版本已被独立读回。
+该回执的 `scope=model_call`：completed 不代表报告/候选校验通过，不代表本地工具执行或任务完成，
+也不是华为平台 trace。正文、任意错误、endpoint、凭据和额外属性均不输出；日志写入失败不改变编排结果。
 
 ## WSS 主通道与 HTTP 备用
 
