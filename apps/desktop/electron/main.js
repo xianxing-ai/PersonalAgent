@@ -502,7 +502,7 @@ function taskResultMetadata(task) {
 
 function agentArtsSnapshot() {
   const value = agentArtsConfig?.snapshot();
-  return value && {...value,effectiveTransport:process.env.PA_AGENTARTS_TRANSPORT??value.transport,transportSource:process.env.PA_AGENTARTS_TRANSPORT!==undefined?'environment':'saved', reason: cloudRequestFailureNotice || cloudTransportNotice || value.reason};
+  return value && {...value,reason:cloudRequestFailureNotice || cloudTransportNotice || value.reason};
 }
 
 function visibleConversationTask(task,surface){return !surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface);}
@@ -1416,6 +1416,8 @@ async function initializeRuntime() {
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
         readWorkspaceExportPreflight:query=>publicReferenceConsent?.readPreflight(query),
         readWorkspaceExportAuthorization:query=>publicReferenceConsent?.readAuthorization(query),
+        requestWorkspaceExportPreflight:(query,context)=>publicReferenceConsent?.requestPreflight(query,context),
+        requestWorkspaceExportExact:(query,context)=>publicReferenceConsent?.requestExact(query,context),
         jobHelperExecutable:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async () => {
           const result = await dialog.showOpenDialog(admin, {title:'选择允许 PersonalAgent 使用的编程工作区',
@@ -1565,8 +1567,7 @@ async function initializeRuntime() {
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(obsidianPairing.source, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
-      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding,transportPreferences:agentArtsConfig.readTransportPreferences(),
-        configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(cloudBinding)}});
+      const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -1695,7 +1696,7 @@ async function initializeRuntime() {
         },
         authorizationProvider: {
           read: async () => {
-            return agentArtsConfig.readAuthorization(cloudBinding);
+            return agentArtsConfig.readAuthorization(cloudBinding, agentArtsTransportConfig);
           },
         },
       });

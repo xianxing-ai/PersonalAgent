@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {appendVersion, createGraph} from '@personal-agent/goals';
-import {projectSyntheticRepairContext} from '../electron/competition-repair-context.js';
+import {projectSyntheticRepairContext, projectSyntheticRepairWire} from '../electron/competition-repair-context.js';
 
 function fixture() {
   let graph = createGraph('mvp-synthetic-meeting');
@@ -48,4 +48,19 @@ test('graph export rejects stale mappings, expanded summaries and unrelated depe
     const data = fixture(); mutate(data);
     assert.throws(() => projectSyntheticRepairContext(data.graph, data.projection), /export denied/);
   }
+});
+
+test('wire context stays strict and sources are the five actual approved versions', () => {
+  const {graph, projection} = fixture();
+  const wire = projectSyntheticRepairWire(graph, projection);
+  assert.deepEqual(Object.keys(wire.repairContext).sort(), ['allowedDependencies','expectedGraphRevision','targets']);
+  assert.deepEqual(Object.keys(wire.repairContext.targets[0]).sort(), ['node','requestedDependencies','requestedSummary']);
+  assert.equal(wire.repairSources.sourceVersion, '1.0');
+  assert.equal(wire.repairSources.nodes.length, 5);
+  assert.deepEqual(wire.repairSources.nodes.slice(0,2).map(node => node.revision), [1,2]);
+  for (const node of wire.repairSources.nodes) {
+    const source = graph.history.find(item => item.id === node.id && item.revision === node.revision);
+    for (const field of Object.keys(node)) assert.deepEqual(node[field], source[field]);
+  }
+  assert.doesNotMatch(JSON.stringify(wire), /PRIVATE|local-only|sourceRef|sensitivity|unrelated|projectedFact/);
 });

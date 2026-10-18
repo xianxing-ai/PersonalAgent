@@ -306,7 +306,9 @@ export class NotificationService {
       target.state = 'delivered';
       target.deliveredAt = this.isoNow();
       for(const entry of state.interruption?.feed??[])if(target.itemRefs.includes(entry.id))entry.deliveredAt??=target.deliveredAt;
-      this.writeState({...state, batches: trimBatches(state.batches)},state);
+      const batches=state.batches.filter(batch=>batch!==target);
+      batches.push(target);
+      this.writeState({...state,batches:trimBatches(batches)},state);
     }
     return structuredClone(target);
   }
@@ -529,8 +531,15 @@ export class NotificationService {
   completeDelivery(input:{roundId:string;channel:NotificationChannel;state:'delivered'|'unknown'|'failed';evidenceRefs:readonly string[]}) {
     return this.atomicMutation('notification_delivery_receipt',(state,extension)=>{
       const round=completeNotificationDelivery(extension,input,this.options.now());
-      if(input.state==='delivered')for(const batch of state.batches)if(round.batchIds.includes(batch.id)) {
-        batch.state='delivered';batch.deliveredAt??=this.isoNow();
+      if(input.state==='delivered') {
+        const newlyDelivered=new Set<NotificationBatch>();
+        for(const batch of state.batches)if(round.batchIds.includes(batch.id)) {
+          if(batch.state==='ready_for_delivery')newlyDelivered.add(batch);
+          batch.state='delivered';batch.deliveredAt??=this.isoNow();
+        }
+        // One round may confirm several batches. Move its new confirmations together,
+        // preserving their order; another channel or receipt replay must not refresh it.
+        state.batches=[...state.batches.filter(batch=>!newlyDelivered.has(batch)),...newlyDelivered];
       }
       return round;
     });
@@ -589,12 +598,13 @@ export class NotificationService {
   }
 }
 
-/** 已确认批次保留最近 DELIVERED_BATCH_LIMIT 条作幂等记录；未确认批次永不淘汰。 */
+/** 按确认时间保留最近 DELIVERED_BATCH_LIMIT 条；同毫秒沿用持久顺序，未确认批次永不淘汰。 */
 function trimBatches(batches: NotificationBatch[]): NotificationBatch[] {
   const unacknowledged = batches.filter(batch => batch.state === 'ready_for_delivery');
-  const delivered = batches.filter(batch => batch.state === 'delivered').sort((left, right) =>
-    left.decidedAt < right.decidedAt ? -1 : left.decidedAt > right.decidedAt ? 1
-      : left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+  const delivered = batches.filter(batch => batch.state === 'delivered').map((batch,index)=>({batch,index})).sort((left,right)=>{
+    const leftAt=left.batch.deliveredAt??left.batch.decidedAt,rightAt=right.batch.deliveredAt??right.batch.decidedAt;
+    return leftAt<rightAt?-1:leftAt>rightAt?1:left.index-right.index;
+  }).map(item=>item.batch);
   return [...unacknowledged, ...delivered.slice(-DELIVERED_BATCH_LIMIT)];
 }
 

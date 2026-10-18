@@ -139,6 +139,27 @@ test('a cursor evicted from the retained delivered window reports compaction', (
   assert.equal(page.retained.delivered, 100);
 });
 
+test('a late acknowledgement retains the newest confirmed batch within the bounded window', () => {
+  const {service} = fixture();
+  service.ingest([item('old-ready')]);
+  const old = service.drain().batches[0];
+  let firstLater;
+  for (let i = 0; i < 100; i++) {
+    service.ingest([item(`later-${i}`)]);
+    const batch = service.drain().batches.at(-1);
+    if (i === 0) firstLater = batch;
+    service.acknowledge(batch.id);
+  }
+  service.acknowledge(old.id);
+
+  const snapshot = service.readBatchEvents();
+  assert.equal(snapshot.retained.delivered, 100);
+  assert.equal(snapshot.events.find(event => event.batchId === old.id)?.state, 'delivered');
+  assert.equal(service.readBatchEvents({sinceBatchId: old.id, snapshotRevision: snapshot.snapshotRevision}).cursorState, 'current');
+  assert.equal(service.readBatchEvents({sinceBatchId: firstLater.id, snapshotRevision: snapshot.snapshotRevision}).cursorState,
+    'compacted');
+});
+
 test('digest batches expose their kind and held reason like immediate batches', () => {
   const {service, tick} = fixture({digest: {windowMs: 60_000, maxItems: 10}});
   service.ingest([item('d1')]);

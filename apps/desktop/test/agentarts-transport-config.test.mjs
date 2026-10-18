@@ -85,7 +85,7 @@ test('HTTPS rejects another destination, query, redirect, forged token and cance
   let reads=0,sends=0;const options=createAgentArtsTransportConfig({binding,environment:{},
     configurationProvider:{read:()=>{reads++;return {appToken:token,deploymentVersion:'v4'};}},fetchImpl:async()=>{sends++;}});
   for(const url of [invocationUrl.replace('synthetic.','other.'),invocationUrl.replace('owned-preview','other-runtime'),
-    invocationUrl+'?endpoint=v4',invocationUrl+'#fragment',invocationUrl+'/',invocationUrl.replace('/owned-preview/','/other/../owned-preview/'),
+    invocationUrl+'?endpoint=other',invocationUrl+'?endpoint=v4&endpoint=v4',invocationUrl+'?endpoint=v4&token=private',invocationUrl+'#fragment',invocationUrl+'/',invocationUrl.replace('/owned-preview/','/other/../owned-preview/'),
     invocationUrl.replace('https:','http:'),invocationUrl.replace('https://','https://user:pass@')]) {
     assert.throws(()=>options.fetchImpl(url,requestInit()),/目的地/);
   }
@@ -95,6 +95,21 @@ test('HTTPS rejects another destination, query, redirect, forged token and cance
     {...requestInit(),signal:AbortSignal.abort()}])assert.throws(()=>options.fetchImpl(invocationUrl,init));
   assert.equal(sends,0);
 });
+test('explicit HTTPS graph URL keeps the host-selected version and original header rejection',async()=>{
+  const calls=[];let current={appToken:token,deploymentVersion:'v-next'};
+  const options=createAgentArtsTransportConfig({binding,environment:{},configurationProvider:{read:()=>current},
+    fetchImpl:async(url,init)=>{calls.push({url,init});return {status:200};}});
+  await options.fetchImpl(invocationUrl+'?endpoint=v-next',requestInit());
+  assert.equal(options.fetchHandlesHostAuthorization,true,'only the trusted fetch closure owns HTTP host authentication');
+  assert.equal(calls[0].url,invocationUrl+'?endpoint=v-next');
+  assert.equal(new Headers(calls[0].init.headers).get('X-PA-Agent-Token'),'Bearer '+token);
+  for(const supplied of ['Bearer '+token,'Bearer forged'])assert.throws(()=>options.fetchImpl(invocationUrl+'?endpoint=v-next',
+    {...requestInit(),headers:{'X-PA-Agent-Token':supplied}}),/受信配置/);
+  current={appToken:token,deploymentVersion:'other'};
+  assert.throws(()=>options.fetchImpl(invocationUrl+'?endpoint=v-next',requestInit()),/固定部署版本/);
+  assert.equal(calls.length,1);
+});
+
 test('current configuration failure, removal or invalid values stop sending and cannot silently use an old token',async()=>{
   let current={appToken:token,deploymentVersion:'v4'},failure=false,sends=0;
   const options=createAgentArtsTransportConfig({binding,environment:{},configurationProvider:{read:()=>{
