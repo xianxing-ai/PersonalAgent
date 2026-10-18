@@ -50,11 +50,11 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     }} : undefined,
     localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
-    poll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
+    poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
     publish() {calls.push('publish');},
   });
-  for (const name of ['stopWakeVoice','disposeWakeForQuit','reportPanelVoiceFailure']) {
+  for (const name of ['stopWakeVoice','disposeWakeForQuit','reportPanelVoiceFailure','stopOrbDrag']) {
     vm.runInContext(declaration(name), context);
   }
   beforeQuit = vm.runInContext(callback, context);
@@ -106,6 +106,16 @@ test('a bound NotificationHost survives refused quit and disposes once before Ru
   assert.equal(f.calls.filter(call=>call==='notification-dispose').length,1);
   assert.equal(f.calls.filter(call=>call==='runtime-close').length,1);
   assert.ok(f.calls.indexOf('notification-dispose')<f.calls.indexOf('runtime-close'));
+});
+
+test('accepted quit releases the active orb drag timer', async () => {
+  const f = fixture(), cleared = [], timer = {};
+  f.context.orbDragPoll = timer;
+  f.context.clearInterval = value => cleared.push(value);
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited, true);
+  assert.ok(cleared.includes(timer));
+  assert.equal(f.context.orbDragPoll, undefined);
 });
 
 test('accepted quit closes Wiki, pairing and installed Skills before Runtime; an active task refuses it',async()=>{
