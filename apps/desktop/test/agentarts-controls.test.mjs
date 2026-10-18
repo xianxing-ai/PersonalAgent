@@ -5,17 +5,18 @@ import {mountAgentArtsControls} from '../src/app/agentarts-controls.js';
 function harness(t,invoke) {
   const previous=Object.getOwnPropertyDescriptor(globalThis,'document');
   t.after(()=>{if(previous) Object.defineProperty(globalThis,'document',previous);else delete globalThis.document;});
-  const node=()=>({value:'',disabled:false,textContent:'',listeners:new Map(),attributes:new Map(),
+  const node=()=>({value:'',checked:false,disabled:false,textContent:'',listeners:new Map(),attributes:new Map(),
     isConnected:true,getClientRects:()=>[{}],focus(){globalThis.document.activeElement=this;},
     addEventListener(name,listener){this.listeners.set(name,listener);},
     setAttribute(name,value){this.attributes.set(name,value);}});
-  const fields=Object.fromEntries(['gatewayUrl','runtimeName','authorization'].map(key=>[key,node()]));
+  const fields=Object.fromEntries(['gatewayUrl','runtimeName','authorization','transport','websocketUrl','appToken','allowHttpsFallback'].map(key=>[key,node()]));
   const submit=node(),revoke=node(),status=node(),form=node();
   Object.assign(form,{elements:fields,querySelector:()=>submit,
     querySelectorAll:()=>[...Object.values(fields),submit,revoke],
-    reset(){Object.values(fields).forEach(field=>{field.value='';});}});
+    reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='wss';}});
+  const wss=node();
   const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
-    querySelector:selector=>selector==='form'?form:selector==='[data-status]'?status:revoke};
+    querySelector:selector=>selector==='form'?form:selector==='[data-status]'?status:selector==='[data-wss]'?wss:revoke};
   form.contains=target=>[...Object.values(fields),submit,revoke].includes(target);
   const body={},documentListeners=new Map();
   globalThis.document={body,activeElement:body,createElement:()=>section,
@@ -23,12 +24,33 @@ function harness(t,invoke) {
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,status,section,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+  return {controls,fields,submit,revoke,status,section,wss,save:()=>form.listeners.get('submit')({preventDefault(){}}),
     blur:()=>{globalThis.document.activeElement=body;},
     focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
     clear:()=>revoke.listeners.get('click')(),
     edit:(key,value)=>{fields[key].value=value;form.listeners.get('input')({target:fields[key]});}};
 }
+
+test('AgentArts new UI offers explicit WSS and clears both secrets after save and failed revoke',async t=>{
+  let captured,fail=false;
+  const ui=harness(t,async(action,input)=>{captured=input?{...input}:undefined;if(fail)throw Error('private');return {configured:true};});
+  assert.equal(ui.fields.transport.value,'wss');assert.equal(ui.wss.hidden,false);
+  assert.match(ui.section.className,/agentarts-settings/);
+  assert.match(ui.section.innerHTML,/本机加密记录为准/);
+  assert.equal(ui.fields.allowHttpsFallback.checked,false);
+  ui.edit('websocketUrl','wss://example.huaweicloud-agentarts.com/runtimes/synthetic-runtime/invocations/ws');
+  ui.edit('authorization','Bearer synthetic-outer');ui.edit('appToken','synthetic-inner-at-least-32-characters');
+  await ui.save();
+  assert.equal(captured.transport,'wss');assert.equal(captured.allowHttpsFallback,false);
+  assert.equal(captured.appToken,'synthetic-inner-at-least-32-characters');
+  assert.equal(ui.fields.authorization.value,'');assert.equal(ui.fields.appToken.value,'');
+  ui.controls.render({transport:'https',configured:true,reason:'Legacy HTTPS'});
+  assert.equal(ui.wss.hidden,true);assert.equal(ui.fields.websocketUrl.required,false);
+  await ui.save();assert.equal(captured.transport,'https');assert.equal('appToken' in captured,false);
+  ui.edit('authorization','Bearer private');ui.edit('appToken','private');fail=true;await ui.clear();
+  assert.equal(ui.fields.authorization.value,'');assert.equal(ui.fields.appToken.value,'');
+  assert.match(ui.status.textContent,/撤销结果未获确认/);
+});
 
 test('AgentArts settings serialize save/revoke and preserve the pending destination across snapshots',async t=>{
   const calls=[];let resolve;
