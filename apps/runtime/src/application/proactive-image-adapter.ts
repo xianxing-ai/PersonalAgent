@@ -35,7 +35,8 @@ function endpointOf(options:RuntimeProactiveImageAdapterOptions):string {
     try {gateway=new URL(config.gatewayUrl);}catch {return fail('INVALID_ARGUMENT','Invalid trusted AgentArts gateway');}
     if(gateway.protocol!=='https:'||gateway.username||gateway.password||gateway.search||gateway.hash||!['','/'].includes(gateway.pathname)
       ||!/^[A-Za-z0-9_-]{1,64}$/u.test(config.runtimeName))fail('INVALID_ARGUMENT','Invalid trusted AgentArts gateway/runtime');
-    if(config.deploymentVersion!==undefined&&!/^[A-Za-z0-9_.-]{1,128}$/u.test(config.deploymentVersion))
+    if(config.deploymentVersion!==undefined&&(typeof config.deploymentVersion!=='string'
+      ||!/^[A-Za-z0-9_.-]{1,128}$/u.test(config.deploymentVersion)))
       fail('INVALID_ARGUMENT','Invalid trusted AgentArts deployment version');
     value=gateway.origin+'/runtimes/'+encodeURIComponent(config.runtimeName)+'/invocations'
       +(config.deploymentVersion===undefined?'':'?endpoint='+config.deploymentVersion);
