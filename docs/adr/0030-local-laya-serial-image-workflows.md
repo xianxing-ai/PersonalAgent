@@ -1,7 +1,7 @@
 # ADR-0030：本机 Laya、镜像串行工作流与外部宿主接口
 
 <!-- current-design-alignment-20261015 -->
-> 当前适用性：Owner 已确认本机 Laya 在本机运行并参与 `huawei_ict_agentarts` Competition 产品路径；AgentArts 继续承担镜像 Workflow 编排职责。领域资格、具体接线与其余架构尚待验证，接口仍 provisional。
+> 当前适用性：本机 Laya 仅为独立 Local Profile 的实验候选，不属于 `huawei_ict_agentarts` Competition 路径；Competition 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。Local Profile 本轮不扩展，AgentArts 失败不得静默回退。领域资格、接线与其余架构尚待验证，接口仍 provisional。
 > 当前详细行为、历史替代与实际验收见[当前设计](../design/CURRENT_DESIGN_20261015.md)、
 > [28项状态](../design/WORKFLOW_STATUS_20261015.md)与[全部历史导航](../design/README.md)。
 > 不将SWR发布、目录或两条公开fixture通过泛化为28业务、全局决策资格或最终架构批准。
