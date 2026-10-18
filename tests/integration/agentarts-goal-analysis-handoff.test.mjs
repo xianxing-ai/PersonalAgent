@@ -24,7 +24,12 @@ function agentWith(response={kind:'text',text:'需要复核目标与来源，建
 }
 function repairAgent({mutatePlan=p=>p,mutateReview=r=>r}={}) {
   const models=Object.fromEntries(['fast','world','plan','review'].map(role=>[role,new FakeModelProvider(role==='fast'?[]:[request=>{
-    const data=JSON.parse(request.messages[1].content),input=role==='world'?data:data.input;
+    const data=JSON.parse(request.messages[1].content),input=data.input;
+    if(role==='world') {
+      assert.deepEqual(Object.keys(data.report_constraints).sort(),
+        ['affected_item_candidates','changed_fact_candidates','observed_fact_candidates','reportVersion','revision']);
+      assert.equal(data.report_constraints.revision,input.repairContext.expectedGraphRevision);
+    }
     const context=input.repairContext;
     const version=context.targets.some(t=>input.nodes.find(n=>n.id===t.node.id&&n.revision===t.node.revision)?.kind==='goal')?'1.2':'1.1';
     let value;
