@@ -4,11 +4,12 @@ import {mkdtemp,mkdir,writeFile,readFile,rm,symlink,realpath} from 'node:fs/prom
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {existsSync,writeFileSync} from 'node:fs';
 import {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools,createWorkspaceCommandTool,
   captureCodingRepairSnapshot,affectedCodingRepairPackages} from '../dist/index.js';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
+const powerShellPath=process.env.PA_TEST_PWSH??process.env.PATH?.split(path.delimiter).map(directory=>path.join(directory,'pwsh.exe')).find(existsSync)??'C:/Program Files/PowerShell/7/pwsh.exe';
 const ctx=(overrides={})=>({taskId:'parent-fixture',runId:'run-'+randomUUID(),scopes:['workspace:read','workspace:list','workspace:write','workspace:apply','workspace:execute'],
   authorizationRef:'explicit-fixture-outer-grant',argumentsDigest:hash('public synthetic outer invocation'),deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal,...overrides});
 async function fixture(t,extra={}){
@@ -19,7 +20,7 @@ async function fixture(t,extra={}){
   await writeFile(path.join(user,'test','math.test.cjs'),"const a=require('node:assert/strict');a.equal(require('../math.cjs')(2,3),5);\n");
   await writeFile(path.join(user,'user-uncommitted.txt'),'Unrelated user changes\n');
   let roots=[];
-  const options={workspaceRoot:user,sessionRoot:sessions,workspaceId:'fixture-workspace',patch:{powerShellPath:process.env.PA_TEST_PWSH??'C:/Program Files/PowerShell/7/pwsh.exe'},
+  const options={workspaceRoot:user,sessionRoot:sessions,workspaceId:'fixture-workspace',patch:{powerShellPath},
     recipes:[{recipeId:'node-test',packageIds:[],required:true}],
     createCommandTool:({rootPath})=>{roots.push(rootPath);return createWorkspaceCommandTool({rootPath,recipes:[{id:'node-test',executable:process.execPath,args:['--test','test/math.test.cjs']}]});},
     // The outer Runtime records real Evidence; host tests use an explicitly Fake confirmation port.
