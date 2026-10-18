@@ -1,0 +1,3233 @@
+{
+  "schemaVersion": 1,
+  "planSha256": "bdf4cb53bd1e214db63faf79b1cbe126d2c9e8be15c4e11972ed0f77026832b9",
+  "startedAt": "2026-10-15T09:11:45.555Z",
+  "status": "measured",
+  "transport": [],
+  "variants": [
+    {
+      "id": "holdout-0-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7879,
+          "B": 0.2121
+        },
+        "confidence": 0.2546,
+        "answer_confidence": 0.7879,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 1,
+      "encodedSha256": "aa2b5d77b231ef5b0948436d6b6c8aa168e66c4dce6acd37d13a4eefaeaade27",
+      "sdkArgumentsSha256": "183b4b1a71487eee2e38c27e2f97833e1d8823c4106cea9005bda48079b18c14",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.7879,
+      "seed": 0,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-0-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1859,
+          "A": 0.8141
+        },
+        "confidence": 0.3071,
+        "answer_confidence": 0.8141,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 2,
+      "encodedSha256": "67d90331d37a8e1f4c55e9dcdf613b2b52e4f28c7d9837c6d81887e0d8229c2a",
+      "sdkArgumentsSha256": "b7e40678a7757b4f5062ce125f37140441c9624e00a891e292b091166c19f6f5",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8141,
+      "seed": 0,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-0-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7957,
+          "B": 0.2043
+        },
+        "confidence": 0.2695,
+        "answer_confidence": 0.7957,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 3,
+      "encodedSha256": "ecbbbd5a94eb99ed2807fdde76dd750ffacd60d1c9649f49abb7d63a9be1e322",
+      "sdkArgumentsSha256": "33c9d596327157afdf7aa1c46057bf0717f87bda770dd949b686ed271f9113d5",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7957,
+      "seed": 0,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-0-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1394,
+          "A": 0.8606
+        },
+        "confidence": 0.4173,
+        "answer_confidence": 0.8606,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 4,
+      "encodedSha256": "3e98e0064da164c4f552d12ccc28777efc1ca292e6b990295698b1b2fbb79134",
+      "sdkArgumentsSha256": "249009de9d6ae898029aa49e63ce9762135cd0a32d6e968f3ad0798cf416aac1",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8606,
+      "seed": 0,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-1-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7969,
+          "B": 0.2031
+        },
+        "confidence": 0.272,
+        "answer_confidence": 0.7969,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 5,
+      "encodedSha256": "9dbb3517f41d221abe326171a8f307460993f328fe3ba83b9a234d0e68805a7d",
+      "sdkArgumentsSha256": "c5525394833983600041f1803c627db4791065ae6717f5829f38e7a58f3fadcd",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.7969,
+      "seed": 1,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-1-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1716,
+          "A": 0.8284
+        },
+        "confidence": 0.3386,
+        "answer_confidence": 0.8284,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 6,
+      "encodedSha256": "e2439f190652f7ae5f9e87cd604f57c648fb225b1de22cac75c60dc5ff9db202",
+      "sdkArgumentsSha256": "4653c1dec37f3f8782a924928d84d1ece50f406ead417712a37b92e46f41481d",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8284,
+      "seed": 1,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-1-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8245,
+          "B": 0.1755
+        },
+        "confidence": 0.3298,
+        "answer_confidence": 0.8245,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 7,
+      "encodedSha256": "62c096df38ba9078c4cb0fa42e3dd2cabfe26c232667f403ef2035e52d2888c9",
+      "sdkArgumentsSha256": "dda2945fd99bd29d7e2c9c4f4b7dc6b6a7fa5bb5f6cf6bd27455b81f9fbab908",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8245,
+      "seed": 1,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-1-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1303,
+          "A": 0.8697
+        },
+        "confidence": 0.4418,
+        "answer_confidence": 0.8697,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 8,
+      "encodedSha256": "5e94044207d31001d59475624983196a31d03b6629efc399a73f356383f4f784",
+      "sdkArgumentsSha256": "b24ce013357adea1462a98e076c58d3213d5b884097b3e05d58cc60cf7e09a9f",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8697,
+      "seed": 1,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-2-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7969,
+          "B": 0.2031
+        },
+        "confidence": 0.272,
+        "answer_confidence": 0.7969,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 9,
+      "encodedSha256": "27b75c984e0c9436effb6f8391ee5e0714ab85b1a410adb9eff07c70800082a6",
+      "sdkArgumentsSha256": "59b8bc28f015ab31297f9a2099c0aa2db4b6fa8f338986a82b3e49b2ce038140",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.7969,
+      "seed": 2,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-2-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1603,
+          "A": 0.8397
+        },
+        "confidence": 0.3651,
+        "answer_confidence": 0.8397,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 10,
+      "encodedSha256": "5035996b1dcb6fab7243572169754b1fbb0bcd483fa761b5660f7bea7b5f6de2",
+      "sdkArgumentsSha256": "e726456a6169cc1f8772cb2850b097234e9dbad36733d7a0fa939880d01fa895",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8397,
+      "seed": 2,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-2-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7635,
+          "B": 0.2365
+        },
+        "confidence": 0.2108,
+        "answer_confidence": 0.7635,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 11,
+      "encodedSha256": "1af886c0f7f3866787c699c6d3a26c8d0b9e39af5dde6c6376b72c754aa6dbf5",
+      "sdkArgumentsSha256": "a769ec1adfe2d921089a3dc4d2d170ba6cfd4305cd1a01757f551c4a2347811e",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7635,
+      "seed": 2,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-2-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1371,
+          "A": 0.8629
+        },
+        "confidence": 0.4235,
+        "answer_confidence": 0.8629,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 12,
+      "encodedSha256": "be3eefc3483c13b45bd4c2045cc9ba8d95eba49fe61042046a2c61a5793bf18d",
+      "sdkArgumentsSha256": "6bd2a685d26795bbdf704deee7d1d59d093470bca107dba439bd2b87b30cbf36",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8629,
+      "seed": 2,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-3-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8019,
+          "B": 0.1981
+        },
+        "confidence": 0.282,
+        "answer_confidence": 0.8019,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 13,
+      "encodedSha256": "6423c8515e7eff22e2d98ac11a5c80a1d9bda50d64fbba4ff8f482775a5030d0",
+      "sdkArgumentsSha256": "ebd39e1ce26619c044c8fe5fc285dfed9f256afd6dd15be27b9fe4bbbb5d0eb5",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8019,
+      "seed": 3,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-3-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1618,
+          "A": 0.8382
+        },
+        "confidence": 0.3613,
+        "answer_confidence": 0.8382,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 14,
+      "encodedSha256": "bed4bbc981bc6736167b4c171de911379016da31a5f8b75be205eebcba78f9fb",
+      "sdkArgumentsSha256": "0e5a41d2cc046f0ed6bb7009dc96536abfe3ebbcfda78ffba78c26312c5ab315",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8382,
+      "seed": 3,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-3-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8129,
+          "B": 0.1871
+        },
+        "confidence": 0.3046,
+        "answer_confidence": 0.8129,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 15,
+      "encodedSha256": "df40d0feb2d8e35a24552a5b427822601a36565793cdbf9988f387e4e4ec219e",
+      "sdkArgumentsSha256": "04428b04be7a6c5a44c389314dfcffb25805d7d73a8a774bce3df6192da48e3c",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8129,
+      "seed": 3,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-3-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1136,
+          "A": 0.8864
+        },
+        "confidence": 0.4894,
+        "answer_confidence": 0.8864,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 16,
+      "encodedSha256": "bb5b8adb2804ed70b1085cae79bcff7f37e6ce53e5b0c6d41f5396ea26183048",
+      "sdkArgumentsSha256": "e68b8b62d49660bd476a4c400cd791c2296fb991c5bf2d82212fb6c8353d87e2",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8864,
+      "seed": 3,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-4-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8056,
+          "B": 0.1944
+        },
+        "confidence": 0.2895,
+        "answer_confidence": 0.8056,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 17,
+      "encodedSha256": "1fe71496cc107651763522d1f35d313954ce916557afebeb7afaa19f26503e25",
+      "sdkArgumentsSha256": "66d7e84af903d416d0d33ad68d6bf22b341a14b7c1cd5fa73b19a84c0386f999",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8056,
+      "seed": 4,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-4-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1551,
+          "A": 0.8449
+        },
+        "confidence": 0.3776,
+        "answer_confidence": 0.8449,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 18,
+      "encodedSha256": "50f8b970a0071b3e1eda4045ffd78840f0b7bfcb710291824029cff26af3b7dd",
+      "sdkArgumentsSha256": "4e96f71afaf5d703d041dbad6abda8b6c2d0456a44bb4fe78449454320a7a885",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8449,
+      "seed": 4,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-4-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8322,
+          "B": 0.1678
+        },
+        "confidence": 0.3474,
+        "answer_confidence": 0.8322,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 19,
+      "encodedSha256": "df9d42adcc9d972a745961f48a64b100385a3e32fdf68362f4a5fcdf950d94fb",
+      "sdkArgumentsSha256": "74d4ca5d83398197129c84784150ce6c3088512fff7173fd4e9724e651328d02",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8322,
+      "seed": 4,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-4-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1217,
+          "A": 0.8783
+        },
+        "confidence": 0.4658,
+        "answer_confidence": 0.8783,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 20,
+      "encodedSha256": "baac51f6236a1da89ca94d87786bc420023a50b8341e88db90312c8baf5210c3",
+      "sdkArgumentsSha256": "bcbfa424b54a8f36e268f3e7c0d138f908b9628b801d7213ab9ae963e97de28e",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8783,
+      "seed": 4,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-5-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8069,
+          "B": 0.1931
+        },
+        "confidence": 0.292,
+        "answer_confidence": 0.8069,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 21,
+      "encodedSha256": "838753a88338e24e05f53ffec10ecab64c2aed8d0e1ee0b01073947c4f97c69a",
+      "sdkArgumentsSha256": "0b6dfac55794fd30714014643b030427dcb6937706d097f11e8188931e7086e8",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8069,
+      "seed": 5,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-5-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1592,
+          "A": 0.8408
+        },
+        "confidence": 0.3676,
+        "answer_confidence": 0.8408,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 22,
+      "encodedSha256": "cc18ee1263473588ba29d9f1d267a4351eb2c56b86663726f450acb560adfafc",
+      "sdkArgumentsSha256": "ba69e406b900119d2de053a5f32b708a05d4b28bc6f6a673aa68a637de3fb358",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8408,
+      "seed": 5,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-5-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8449,
+          "B": 0.1551
+        },
+        "confidence": 0.3776,
+        "answer_confidence": 0.8449,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 23,
+      "encodedSha256": "70cfe4a2c414512627676554797557cc3396d2c11be89855ac2f64bcd8d7e27f",
+      "sdkArgumentsSha256": "1da670bcb13afab9cb964a1fb1ca3ead2617d0ee6e44edd771124dfd65460670",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8449,
+      "seed": 5,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-5-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1082,
+          "A": 0.8918
+        },
+        "confidence": 0.5056,
+        "answer_confidence": 0.8918,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 24,
+      "encodedSha256": "681b4d7127270663d61f18e30a3dc383f1d257afaefb9014bfc6fad17eda25fb",
+      "sdkArgumentsSha256": "87c58b4b087dcc9febed5bdbc66607e5236da4adbfc6ced7cec2e6241e1a8dd7",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8918,
+      "seed": 5,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-6-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8182,
+          "B": 0.1818
+        },
+        "confidence": 0.3159,
+        "answer_confidence": 0.8182,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 25,
+      "encodedSha256": "547c91510cdebb55a77636c1a05bd3cd9ef13ab6c5e37812d034ac2abbc86e69",
+      "sdkArgumentsSha256": "40c78d0cf5836fa0f92265f71b43f1cfface298dbc74e8cf43ca2fc62970d9c4",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8182,
+      "seed": 6,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-6-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.151,
+          "A": 0.849
+        },
+        "confidence": 0.3876,
+        "answer_confidence": 0.849,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 26,
+      "encodedSha256": "0c92e204963ac98a6b231274bfad3fbe9cd5910667fbe11db9f3b7b8014d9c44",
+      "sdkArgumentsSha256": "0fe96271b997608dedc838b7ae861cf809298e52ba3d1613847a3acda90809f6",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.849,
+      "seed": 6,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-6-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.784,
+          "B": 0.216
+        },
+        "confidence": 0.2472,
+        "answer_confidence": 0.784,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 27,
+      "encodedSha256": "29f27b71634397b58ec299036fbb344f6db3f786d076c3cd705cefd2bf30d5f0",
+      "sdkArgumentsSha256": "dbed585cd79c2fb104debd2d27a9e037a9e4ddf5d7a79511df8f203af574d875",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.784,
+      "seed": 6,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-6-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1456,
+          "A": 0.8544
+        },
+        "confidence": 0.4013,
+        "answer_confidence": 0.8544,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 28,
+      "encodedSha256": "a4ade9b7f60528d8cdfe83de36c8c6dc401e679e4eaf7a1e193877eb7e5599f0",
+      "sdkArgumentsSha256": "dc66c31bd44198e512f195875a2d1c8c6a73ccff8ae0edbcbb6191f51d23d682",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8544,
+      "seed": 6,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-7-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8193,
+          "B": 0.1807
+        },
+        "confidence": 0.3184,
+        "answer_confidence": 0.8193,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 29,
+      "encodedSha256": "a56aa8bf3b52ac0854a42f66254f116d8428263707abd15ef7c470e41a95620e",
+      "sdkArgumentsSha256": "1a5f9e4b9a67ea0a2bd08df511832e2356517609a53d855c86d741d036312dc4",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8193,
+      "seed": 7,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-7-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1476,
+          "A": 0.8524
+        },
+        "confidence": 0.3963,
+        "answer_confidence": 0.8524,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 30,
+      "encodedSha256": "d11148d8a694c58213c6ed8ce22e5bd3b662ff8770233cd270185fe9a8779f5d",
+      "sdkArgumentsSha256": "cfc9da6e1c47df772db7125ed7895be6fe7d0298f25e98dc145d3836ffcf0237",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8524,
+      "seed": 7,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-7-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8129,
+          "B": 0.1871
+        },
+        "confidence": 0.3046,
+        "answer_confidence": 0.8129,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 31,
+      "encodedSha256": "e028645ad816ddeb1f4660fa3f2850873d3ec1eb94e88232a60c598b5aa65d52",
+      "sdkArgumentsSha256": "3722aa04af00ccfb6de3d16cd9d356fb10d22406358eb53e9ef0788537c2932c",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8129,
+      "seed": 7,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-7-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1437,
+          "A": 0.8563
+        },
+        "confidence": 0.4062,
+        "answer_confidence": 0.8563,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 32,
+      "encodedSha256": "912fe4e3e083a764b5af066d137c5a1708ebf30796c5bdc6f18b131e34a93f1d",
+      "sdkArgumentsSha256": "5036e298336cad62bb742001f93be25d390e135b5cfb9a3e0233608356462554",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8563,
+      "seed": 7,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-8-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8152,
+          "B": 0.1848
+        },
+        "confidence": 0.3096,
+        "answer_confidence": 0.8152,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 33,
+      "encodedSha256": "07ef6192214087862696e661e9222c9f9e3e7c356ea7f3cf37c0313191f1701d",
+      "sdkArgumentsSha256": "f4e16e18193eec8cf4f6448e5cce5b698b461a7933b461c231104878829bb832",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8152,
+      "seed": 8,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-8-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1525,
+          "A": 0.8475
+        },
+        "confidence": 0.3838,
+        "answer_confidence": 0.8475,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 34,
+      "encodedSha256": "5d613dac10f82563d8026cd332697dc27a2caf95d00512a97cbeacffd5c9ec4e",
+      "sdkArgumentsSha256": "1402adefb21c99f0413d92c4ba33dba2c38ece73a2afa8003fa21c6cb8a2e7bf",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8475,
+      "seed": 8,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-8-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8429,
+          "B": 0.1571
+        },
+        "confidence": 0.3726,
+        "answer_confidence": 0.8429,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 35,
+      "encodedSha256": "9c7b02a0a8c1b301574689d7e9357731140e06642e2866c1b541b34e680b483a",
+      "sdkArgumentsSha256": "e07c26e559dd314fba002ccb05e96dbe717f98199f8f8f3eefa4d526c650e26a",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8429,
+      "seed": 8,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-8-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1164,
+          "A": 0.8836
+        },
+        "confidence": 0.4812,
+        "answer_confidence": 0.8836,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 36,
+      "encodedSha256": "9d9956712fc06444dfdaad4020095007db0b166a64119725569626e17e503905",
+      "sdkArgumentsSha256": "1aa98c97595e0cc9a0c2c6cd0a5d0071a803901e0be170e50b3bce9d97731c21",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8836,
+      "seed": 8,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-9-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8129,
+          "B": 0.1871
+        },
+        "confidence": 0.3046,
+        "answer_confidence": 0.8129,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 37,
+      "encodedSha256": "86592f804f991c47e00242bd3646aeefedcf2f0134d44472e3bc79882b25662b",
+      "sdkArgumentsSha256": "fe24ad9c111093771538e218fc2ababacd49ad5fcf4953b7f9383ef79130f7e4",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8129,
+      "seed": 9,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-9-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1571,
+          "A": 0.8429
+        },
+        "confidence": 0.3726,
+        "answer_confidence": 0.8429,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 38,
+      "encodedSha256": "b1231bf78affc93acf4cd44a31a2db8fbc5bcf06c8e40ba4d1f8d25cc44583dd",
+      "sdkArgumentsSha256": "a63d3f5fb2ed6e2e38b1b46b09d1a60cf7bcb3ae535478bc610aea86ce03ccd5",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8429,
+      "seed": 9,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-9-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8187,
+          "B": 0.1813
+        },
+        "confidence": 0.3172,
+        "answer_confidence": 0.8187,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 39,
+      "encodedSha256": "ad3184924b5b85c128465c31c2f40a8f240210c952440c208fffa9533ddad740",
+      "sdkArgumentsSha256": "7dd969a4043a7667900f23fcd9452dbd525ed24277ebcb544de1d01e041925d6",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8187,
+      "seed": 9,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-9-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1375,
+          "A": 0.8625
+        },
+        "confidence": 0.4223,
+        "answer_confidence": 0.8625,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 40,
+      "encodedSha256": "edd8132904b9888bb7d57135c3ee4ec7c30f32157e9b54e95cb038aa77bd32be",
+      "sdkArgumentsSha256": "0aa88af97e2644cc9a6cbc399d4b76251630c77e9256265997cee49709739098",
+      "encodedLengths": [
+        [
+          127
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8625,
+      "seed": 9,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-10-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8349,
+          "B": 0.1651
+        },
+        "confidence": 0.3537,
+        "answer_confidence": 0.8349,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 41,
+      "encodedSha256": "58dd67cbcb347e7d1584478d7a4ae5900e1679602f044e66b442ed84470e80ad",
+      "sdkArgumentsSha256": "6cb7187b44493a91e86f2e8b43b76ff5c6c79bfc6ee8089cf0c5bd41a716a134",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8349,
+      "seed": 10,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-10-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1215,
+          "A": 0.8785
+        },
+        "confidence": 0.4663,
+        "answer_confidence": 0.8785,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 42,
+      "encodedSha256": "c427cb6535936af55365e30f786d385a38052b6f75d9c77836b0a5596488cf8e",
+      "sdkArgumentsSha256": "7b41c69e7305cf04a11e13b18d057cd9a99c97f517e74bf07e7ff2b610f14a8b",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8785,
+      "seed": 10,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-10-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7009,
+          "B": 0.2991
+        },
+        "confidence": 0.1198,
+        "answer_confidence": 0.7009,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 43,
+      "encodedSha256": "4624c548640ba1436cca6d2fa9cfc2fab3630c292d26aac66387e45f2fd771e1",
+      "sdkArgumentsSha256": "e869702318b7b6375df9ad12fa7c3f7bcf66e5eb4858e9092f538cd43e303c0f",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7009,
+      "seed": 10,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-10-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1461,
+          "A": 0.8539
+        },
+        "confidence": 0.4,
+        "answer_confidence": 0.8539,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 44,
+      "encodedSha256": "33e8821abae7b5394b24ae6d2858dfb77c3c410839bba43811feedeb013d7215",
+      "sdkArgumentsSha256": "75a980a42e038b0192be80cff4ee73a26b19fcd95eb8b7b69d3b22bd5272a639",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8539,
+      "seed": 10,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-11-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8439,
+          "B": 0.1561
+        },
+        "confidence": 0.3751,
+        "answer_confidence": 0.8439,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 45,
+      "encodedSha256": "dcec62afc3788cde391b7a03319e7105e3e7e752cd11f7f8bb94ae88b49adc79",
+      "sdkArgumentsSha256": "02e7f5e20cca188966e3222ee070f240897e733eaaa9afc7a17dc92f1b004935",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8439,
+      "seed": 11,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-11-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1098,
+          "A": 0.8902
+        },
+        "confidence": 0.5005,
+        "answer_confidence": 0.8902,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 46,
+      "encodedSha256": "ceb0c00900207317f6dd75d436b41edff8bf22b681350fb2e2526c3ef7070cdc",
+      "sdkArgumentsSha256": "46cebf264ff7e4aef02dc787538598af20cd348418c702d00f93926cbf25197b",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8902,
+      "seed": 11,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-11-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.752,
+          "B": 0.248
+        },
+        "confidence": 0.1919,
+        "answer_confidence": 0.752,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 47,
+      "encodedSha256": "1fb42b5fe094aa619376436b58ab6e1c639b8720df42cacaf10ab53628dae065",
+      "sdkArgumentsSha256": "21ded4a8b4a684d3ffc914bca913a153b7272022368bfa96c2d1cf99da4d9588",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.752,
+      "seed": 11,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-11-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.0967,
+          "A": 0.9033
+        },
+        "confidence": 0.5415,
+        "answer_confidence": 0.9033,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 48,
+      "encodedSha256": "1148a3ec3d5dc34789622471d1fa5cf1dd1cdb937951ccfe3335014f50363d9a",
+      "sdkArgumentsSha256": "fb08a8d487669996cdfddddd10c9428af729e0e77543cb625abc19db45058e5b",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.9033,
+      "seed": 11,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-12-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8485,
+          "B": 0.1515
+        },
+        "confidence": 0.3863,
+        "answer_confidence": 0.8485,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 49,
+      "encodedSha256": "a8284759e49127f8ca7660613a5507a123365b2985851a5733a5c876e6594c74",
+      "sdkArgumentsSha256": "fbeb53e5d104a98a5f341aba93f275c324f4a2460ce9ede1273c4317207e589c",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8485,
+      "seed": 12,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-12-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1122,
+          "A": 0.8878
+        },
+        "confidence": 0.4936,
+        "answer_confidence": 0.8878,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 50,
+      "encodedSha256": "af2cf38a0adef5767faf01ac5c5607f4a4c80b5e746a6b1787f08e4f164e3527",
+      "sdkArgumentsSha256": "1bbd24291540472eacfac9b0d31404978cc71dc31ee21138ab99688dff95e17a",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8878,
+      "seed": 12,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-12-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7341,
+          "B": 0.2659
+        },
+        "confidence": 0.1645,
+        "answer_confidence": 0.7341,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 51,
+      "encodedSha256": "cdd9c839f1b891cc56fd740c6749c4f23594b9251998107a5d9060198e68fb22",
+      "sdkArgumentsSha256": "a683323de73107d2c7551c46823334769d6b068e0b57ca6d1ee8499715100cce",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7341,
+      "seed": 12,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-12-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1097,
+          "A": 0.8903
+        },
+        "confidence": 0.501,
+        "answer_confidence": 0.8903,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 52,
+      "encodedSha256": "f5ad8b28d43c218b25c08ee7ae34ce6426abe2cd30b6e04dcdab3e12dc9b3327",
+      "sdkArgumentsSha256": "d8c0de57cdc18ea342530bf1b589b1d07c9dcfdfdc84e500b62823e1e996e503",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8903,
+      "seed": 12,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-13-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.848,
+          "B": 0.152
+        },
+        "confidence": 0.3851,
+        "answer_confidence": 0.848,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 53,
+      "encodedSha256": "fc3f06daf1bd623882d2f46dc5523ed91272928e3bfe93e5775c7625d9ebc3ad",
+      "sdkArgumentsSha256": "953c998b260fae558b5a5ec841a4765e6e579b4f38b8efd32dd96d9e456d9adf",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.848,
+      "seed": 13,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-13-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1059,
+          "A": 0.8941
+        },
+        "confidence": 0.5125,
+        "answer_confidence": 0.8941,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 54,
+      "encodedSha256": "11da197c1d30e5a0869c8a744d46795f892fa36707971916d37b3c44e72a5a68",
+      "sdkArgumentsSha256": "2ab8833d63fce45ec198eedf2fc29af6f051211ee007df8a5019cf462bcd88ad",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8941,
+      "seed": 13,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-13-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7447,
+          "B": 0.2553
+        },
+        "confidence": 0.1804,
+        "answer_confidence": 0.7447,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 55,
+      "encodedSha256": "50951a1234ea74e59c4d56ad97a2481ba0b136666008606569ce2c4ca14a8e46",
+      "sdkArgumentsSha256": "15db3aa0007e50ea1f2ed7de7d1e1ca43220a1d239424eb21ea63d5accf2f6b7",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7447,
+      "seed": 13,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-13-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1002,
+          "A": 0.8998
+        },
+        "confidence": 0.5305,
+        "answer_confidence": 0.8998,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 56,
+      "encodedSha256": "ad2964777195f8a9d8a8394d67cc3c3fd6789d5fabbcc7f21089b7797fbc988d",
+      "sdkArgumentsSha256": "16e4b60848dcdc3f0918efe4bb0ea43e466138c10e126a324849304f5b62dda6",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8998,
+      "seed": 13,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-14-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8578,
+          "B": 0.1422
+        },
+        "confidence": 0.4099,
+        "answer_confidence": 0.8578,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 57,
+      "encodedSha256": "e4affc32e3d239be0f5f15731018d34e85ac562622997ff31f77c592393077a3",
+      "sdkArgumentsSha256": "eea90a3754010940025437ca3430ab8149341b903b2453ac68417ed1dc1eee62",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8578,
+      "seed": 14,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-14-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1015,
+          "A": 0.8985
+        },
+        "confidence": 0.5261,
+        "answer_confidence": 0.8985,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 58,
+      "encodedSha256": "c33b654eb3d788255c4ab81a135b896e0282aa5cc8a5c5ac3de6c190c8b0aaae",
+      "sdkArgumentsSha256": "d736e919fa78affdd5e361112592d6e8153e31d72f245f2fc70eb1843f4557fe",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8985,
+      "seed": 14,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-14-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7491,
+          "B": 0.2509
+        },
+        "confidence": 0.1873,
+        "answer_confidence": 0.7491,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 59,
+      "encodedSha256": "c1f1ef3268410bb4120b326ea132cd9fbd4aa2c795f55ef3c445a2aa482fa962",
+      "sdkArgumentsSha256": "194b63f06cab2821e866ba584b488ffc6a7e34051fd8c9d12920c1b7068fdbc8",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7491,
+      "seed": 14,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-14-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.0995,
+          "A": 0.9005
+        },
+        "confidence": 0.5327,
+        "answer_confidence": 0.9005,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 60,
+      "encodedSha256": "4a170ed434bc33b7a065e35d1c5a675ed8d849e386aaf6f9e1d5c2884bab963f",
+      "sdkArgumentsSha256": "1bde272ae968b49d4ee8f405432125848957e75df293000e041675b01faf2302",
+      "encodedLengths": [
+        [
+          133
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.9005,
+      "seed": 14,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-15-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8937,
+          "B": 0.1063
+        },
+        "confidence": 0.5113,
+        "answer_confidence": 0.8937,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 61,
+      "encodedSha256": "b5b15fae9ac156909c9f25e6864e7b04656161a9d7704fa6db9102b0e8fca1db",
+      "sdkArgumentsSha256": "6872771a07bb19b25ff88fb4f82814118383b98fc4bc062cc43f939113344690",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8937,
+      "seed": 15,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-15-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1281,
+          "A": 0.8719
+        },
+        "confidence": 0.4478,
+        "answer_confidence": 0.8719,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 62,
+      "encodedSha256": "0218486902087aebebc2b027794c1f978200880dbadca181614d54953531782c",
+      "sdkArgumentsSha256": "d6ea2d6f454dbf114a37cad5d4256d5d787709564fe518ae617bf5cc23228408",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8719,
+      "seed": 15,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-15-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7813,
+          "B": 0.2187
+        },
+        "confidence": 0.2423,
+        "answer_confidence": 0.7813,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 63,
+      "encodedSha256": "859c94902e64b1feec89edcdac2bbfb3841586cd904591994e49d7e4df498268",
+      "sdkArgumentsSha256": "e8ba2ccdfb29b2ac8fa22dfbcb1e0d4af985ebbdaa7a8c13e3f3903bad4c806d",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7813,
+      "seed": 15,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-15-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.248,
+          "A": 0.752
+        },
+        "confidence": 0.1919,
+        "answer_confidence": 0.752,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 64,
+      "encodedSha256": "41df2ef769344b8c95fbd3302aa572d6df6e31c39a1c8f7da53bc8c3c7f92407",
+      "sdkArgumentsSha256": "dae4bb7df023c24702f0408472298021e3b739b33eb48d4d7b4c71a929cd4f57",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.752,
+      "seed": 15,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-16-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8984,
+          "B": 0.1016
+        },
+        "confidence": 0.526,
+        "answer_confidence": 0.8984,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 65,
+      "encodedSha256": "e8fe145a35c045d0b3237eb0871a4bf17a3fb4a95991d194f4ab58c2134a8740",
+      "sdkArgumentsSha256": "399d502fdd93a21664cce57199143107d0e55e0dbf4542ccbb1a97356381e2a9",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8984,
+      "seed": 16,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-16-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1045,
+          "A": 0.8955
+        },
+        "confidence": 0.517,
+        "answer_confidence": 0.8955,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 66,
+      "encodedSha256": "0fff197ca5dec0a00d26d201992607a8518d36e59066c4229d6fe592bc282c6b",
+      "sdkArgumentsSha256": "e05d2cc8b802907eecf287fd500e4972ed723f411bcc3e6dae21e3d9af84940f",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8955,
+      "seed": 16,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-16-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7892,
+          "B": 0.2108
+        },
+        "confidence": 0.2571,
+        "answer_confidence": 0.7892,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 67,
+      "encodedSha256": "471865c9e46f5cc77d8f31bcca86661d8c2ee5bd17b1d71d27b420e4a010eca0",
+      "sdkArgumentsSha256": "055505bf3a7283d69a9a0c45198aa9071aeab9cdfb4ba61ab28839edc4eb1f0e",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7892,
+      "seed": 16,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-16-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.2241,
+          "A": 0.7759
+        },
+        "confidence": 0.2325,
+        "answer_confidence": 0.7759,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 68,
+      "encodedSha256": "443b625c3b110a9d26a4ae69afbfa2022d50ec54b879d03c6de3719b0aa574d8",
+      "sdkArgumentsSha256": "6b6df86c7f4badf3394c99839257aa3b0813d690a49d28dcfd725b52ffd587a6",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7759,
+      "seed": 16,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-17-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8988,
+          "B": 0.1012
+        },
+        "confidence": 0.5271,
+        "answer_confidence": 0.8988,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 69,
+      "encodedSha256": "76b5257b58db44ec37db54f23578638912f3e6d8cbdcbd0730325f0a9b614e67",
+      "sdkArgumentsSha256": "65676c0c02ad91f8ece403ae51bcad8117c15109931dd213ee3bd04282b45a08",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8988,
+      "seed": 17,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-17-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1059,
+          "A": 0.8941
+        },
+        "confidence": 0.5124,
+        "answer_confidence": 0.8941,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 70,
+      "encodedSha256": "cc8612fd77f265a65d77712ad5a7d375c4f97851631eae40b65cf5dcfa5006c1",
+      "sdkArgumentsSha256": "343bf05265191e783d338b5302659054fba5db86be214cc0a12eb98ee8a0ec06",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8941,
+      "seed": 17,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-17-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7892,
+          "B": 0.2108
+        },
+        "confidence": 0.2571,
+        "answer_confidence": 0.7892,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 71,
+      "encodedSha256": "1cc163f90cb2675ec5b3e96e0c0279fccc31b59c1c178306f5004a3aabe6c11f",
+      "sdkArgumentsSha256": "534d540e2efeb3cebcf3aeec381ceebfc53c0764826937662d8ec6bfba5cb40a",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7892,
+      "seed": 17,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-17-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.2134,
+          "A": 0.7866
+        },
+        "confidence": 0.2521,
+        "answer_confidence": 0.7866,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 72,
+      "encodedSha256": "8b9317d90ddd6f1fee47c27f0961d000b078d4acf2c3acf5458ffab6fc03d402",
+      "sdkArgumentsSha256": "7d8e634a15c487aa2bac4a60b42912bfaa47685596260ada8747fd4f0f3e0f40",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7866,
+      "seed": 17,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-18-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8988,
+          "B": 0.1012
+        },
+        "confidence": 0.5271,
+        "answer_confidence": 0.8988,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 73,
+      "encodedSha256": "9c296307ccc0c60d0393fbca10151b0fcd32fe0b84e6a9e66d919063edd91c99",
+      "sdkArgumentsSha256": "7bf08381a6aa4f535a3f0d5475465cdb662c95829ade8d842e6a7d860e692fe6",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8988,
+      "seed": 18,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-18-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.1105,
+          "A": 0.8895
+        },
+        "confidence": 0.4987,
+        "answer_confidence": 0.8895,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 74,
+      "encodedSha256": "c7f10d25c551a25a24de0244387e2bf9d1dfa022cc7f7c93d13892aee8fffc6d",
+      "sdkArgumentsSha256": "aaad57d916735f699b46e438c7223c70cd392b26a491677bbf01a4d67d731be4",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8895,
+      "seed": 18,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-18-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7786,
+          "B": 0.2214
+        },
+        "confidence": 0.2374,
+        "answer_confidence": 0.7786,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 75,
+      "encodedSha256": "61dd41a151a8b3b1b2cbf20b5949255219d92a5878c930a0a368fe3d08916f72",
+      "sdkArgumentsSha256": "bce817e09a4c45f2ab96742826e4d25bba9de399f6bd6ae91621b3dcab82c3c8",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7786,
+      "seed": 18,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-18-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.2121,
+          "A": 0.7879
+        },
+        "confidence": 0.2546,
+        "answer_confidence": 0.7879,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 76,
+      "encodedSha256": "3ad9d2e0bee4f776e053f8d494ade01b8659403cc6b381aae359d47729d80eae",
+      "sdkArgumentsSha256": "b676762c707bd6cd14655c8e7d711e2f778444b400161c7b461f490aa8d74adf",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7879,
+      "seed": 18,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "holdout-19-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8948,
+          "B": 0.1052
+        },
+        "confidence": 0.5147,
+        "answer_confidence": 0.8948,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 77,
+      "encodedSha256": "a6d6a0de37de9dfc2cb8e3893ac6e14a47053ba8cfa051a6453710904ace798c",
+      "sdkArgumentsSha256": "2bb8b69971a03ea6a14abefdf5e3ca7adb8b3ffd9eeadb406d51c3a1d094c2e1",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.8948,
+      "seed": 19,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "holdout-19-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.0998,
+          "A": 0.9002
+        },
+        "confidence": 0.5316,
+        "answer_confidence": 0.9002,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 78,
+      "encodedSha256": "0447d4f972a78ddc063d1c25152a9ace3d3ff245d0d1c60446bac1081cbc33a5",
+      "sdkArgumentsSha256": "3964b5a82c9b535812e759236b6173b83b71e63d91e81ff732965aa25efa36c1",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.9002,
+      "seed": 19,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "holdout-19-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.7905,
+          "B": 0.2095
+        },
+        "confidence": 0.2595,
+        "answer_confidence": 0.7905,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 79,
+      "encodedSha256": "0e8b393b5112877c0b57ff0b683d14207eaefdf19db9201701045d4b917fedb4",
+      "sdkArgumentsSha256": "af23fc452fe37cc80b06d9dc9f97882ede954c09cac807031073010fdeae49c5",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7905,
+      "seed": 19,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "holdout-19-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.2082,
+          "A": 0.7918
+        },
+        "confidence": 0.262,
+        "answer_confidence": 0.7918,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 80,
+      "encodedSha256": "830cc01afd5e0d6dae0c466506aebf7d603d367eec9f0b51a9669023612be745",
+      "sdkArgumentsSha256": "4de936b88e8332e9fc4238a6ce1483a1f96fe6bfa62484ae02a0f424fc43f9ea",
+      "encodedLengths": [
+        [
+          130
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_holdout",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.7918,
+      "seed": 19,
+      "negative": true,
+      "reversed": true
+    },
+    {
+      "id": "calibration-reference-canonical-0-false-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.926,
+          "B": 0.074
+        },
+        "confidence": 0.6195,
+        "answer_confidence": 0.926,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 81,
+      "encodedSha256": "c8580fd46e5b6c89d1baabbe97ea31a1cd5e0d10e605f244273bd2a8e4ec2216",
+      "sdkArgumentsSha256": "b09909c644389ae45c2993af9e0cdc6bcdca86a8603a1303f1f2e63bc8e47141",
+      "encodedLengths": [
+        [
+          100
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_reference",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.926,
+      "seed": 0,
+      "negative": false,
+      "reversed": false
+    },
+    {
+      "id": "calibration-reference-canonical-0-false-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.0594,
+          "A": 0.9406
+        },
+        "confidence": 0.6748,
+        "answer_confidence": 0.9406,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 82,
+      "encodedSha256": "9457c56b2ad424782a0e5bccffe9ca338e3cd8b0ff7223085b8df7e8a9c1a2a1",
+      "sdkArgumentsSha256": "1f8ac18d499ca1f2c82317e56b51abb3053c12935e0ebd818ce3496d4167182f",
+      "encodedLengths": [
+        [
+          100
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_reference",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "read",
+      "action": "read",
+      "correct": true,
+      "readProbability": 0.9406,
+      "seed": 0,
+      "negative": false,
+      "reversed": true
+    },
+    {
+      "id": "calibration-reference-canonical-0-true-false",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "A": 0.8872,
+          "B": 0.1128
+        },
+        "confidence": 0.4917,
+        "answer_confidence": 0.8872,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 83,
+      "encodedSha256": "53d955f1d4165f1275f9b96ec4cd6b04d6f5e451c3461381353cde12509107c6",
+      "sdkArgumentsSha256": "aad763115cf0f13d3dd762e78f2050a24951bd67c48d21ae74e1a50f6885b9f4",
+      "encodedLengths": [
+        [
+          103
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_reference",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.8872,
+      "seed": 0,
+      "negative": true,
+      "reversed": false
+    },
+    {
+      "id": "calibration-reference-canonical-0-true-true",
+      "answer": {
+        "type": "choice",
+        "choice": "A",
+        "probabilities": {
+          "B": 0.0947,
+          "A": 0.9053
+        },
+        "confidence": 0.5481,
+        "answer_confidence": 0.9053,
+        "action": {
+          "act_probability": 1
+        }
+      },
+      "auditIndex": 84,
+      "encodedSha256": "de115cc464661f1b5facc274a86c4ca69113445ac94622e310aa019f2bfbbefc",
+      "sdkArgumentsSha256": "327f7c85629bec4edb7cd7e8123f26e4037c1daa2c53781c21388718b586b5a3",
+      "encodedLengths": [
+        [
+          103
+        ]
+      ],
+      "precision": {
+        "autocastEnabled": true,
+        "dtype": "torch.bfloat16"
+      },
+      "group": "calibration_reference",
+      "factor": "baseline",
+      "parentId": null,
+      "expected": "review",
+      "action": "read",
+      "correct": false,
+      "readProbability": 0.9053,
+      "seed": 0,
+      "negative": true,
+      "reversed": true
+    }
+  ],
+  "precision": [],
+  "sourceChecks": [
+    {
+      "relative": "apps/agentarts-runtime/src/laya-selector.mjs",
+      "sha256": "31fb0ba2048a29a8c41ecd59910eb4c2baee484807574b3545d6c4d120af61f2",
+      "unchanged": true
+    },
+    {
+      "relative": "scripts/laya/batch-server.py",
+      "sha256": "5dc4ca445aa9527b9b6c87a95a0df6db1ded748e6b38c39e45ee1d6f9083d7da",
+      "unchanged": true
+    }
+  ],
+  "timingScope": "Observed SDK; duplicate encoding for audit. Not a speed benchmark.",
+  "runtime": {
+    "kind": "ready",
+    "processId": 37244,
+    "port": 53790,
+    "device": "cuda",
+    "torchThreads": 1,
+    "interopThreads": 1,
+    "torch": "2.14.0+cu130",
+    "laya": "0.3.20",
+    "transformers": "5.17.0",
+    "stockAutocast": true,
+    "stockDtype": "torch.bfloat16",
+    "defaultMaxLen": 1024,
+    "defaultHeadMaxLen": 256
+  },
+  "defaultWindow": [],
+  "finishedAt": "2026-10-15T09:11:58.417Z",
+  "forwardCount": 84
+}

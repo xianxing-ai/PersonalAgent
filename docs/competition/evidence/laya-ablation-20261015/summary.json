@@ -1,0 +1,1254 @@
+{
+  "schemaVersion": 1,
+  "scope": "Synthetic file-read choice only, six filename pairs; no architecture or broad capability acceptance",
+  "study": "main",
+  "architectureStatus": "undecided",
+  "deployed": false,
+  "trainingPerformed": false,
+  "realForwards": 452,
+  "runtime": {
+    "kind": "ready",
+    "processId": 32672,
+    "port": 61466,
+    "device": "cuda",
+    "torchThreads": 1,
+    "interopThreads": 1,
+    "torch": "2.14.0+cu130",
+    "laya": "0.3.20",
+    "transformers": "5.17.0",
+    "stockAutocast": true,
+    "stockDtype": "torch.bfloat16",
+    "defaultMaxLen": 1024,
+    "defaultHeadMaxLen": 256
+  },
+  "countScope": "Real observed SDK predict_batch calls, not independent user tasks or GPU kernel count",
+  "ofatValidation": {
+    "childVariants": 336,
+    "counterfactualPathPairs": 12,
+    "optionOrderPairs": 12
+  },
+  "transport": {
+    "groups": [
+      {
+        "specimenId": "original-match-normal",
+        "repeat": 0,
+        "samePayloadBytes": true,
+        "sameSdkArguments": true,
+        "sameEncodedTokensAndMarkers": true,
+        "sameChoice": true,
+        "maximumProbabilityDifference": 0
+      },
+      {
+        "specimenId": "original-match-normal",
+        "repeat": 1,
+        "samePayloadBytes": true,
+        "sameSdkArguments": true,
+        "sameEncodedTokensAndMarkers": true,
+        "sameChoice": true,
+        "maximumProbabilityDifference": 0
+      },
+      {
+        "specimenId": "original-match-reversed",
+        "repeat": 0,
+        "samePayloadBytes": true,
+        "sameSdkArguments": true,
+        "sameEncodedTokensAndMarkers": true,
+        "sameChoice": true,
+        "maximumProbabilityDifference": 0
+      },
+      {
+        "specimenId": "original-match-reversed",
+        "repeat": 1,
+        "samePayloadBytes": true,
+        "sameSdkArguments": true,
+        "sameEncodedTokensAndMarkers": true,
+        "sameChoice": true,
+        "maximumProbabilityDifference": 0
+      },
+      {
+        "specimenId": "original-wrong-normal",
+        "repeat": 0,
+        "samePayloadBytes": true,
+        "sameSdkArguments": true,
+        "sameEncodedTokensAndMarkers": true,
+        "sameChoice": true,
+        "maximumProbabilityDifference": 0
+      },
+      {
+        "specimenId": "original-wrong-normal",
+        "repeat": 1,
+        "samePayloadBytes": true,
+        "sameSdkArguments": true,
+        "sameEncodedTokensAndMarkers": true,
+        "sameChoice": true,
+        "maximumProbabilityDifference": 0
+      },
+      {
+        "specimenId": "original-wrong-reversed",
+        "repeat": 0,
+        "samePayloadBytes": true,
+        "sameSdkArguments": true,
+        "sameEncodedTokensAndMarkers": true,
+        "sameChoice": true,
+        "maximumProbabilityDifference": 0
+      },
+      {
+        "specimenId": "original-wrong-reversed",
+        "repeat": 1,
+        "samePayloadBytes": true,
+        "sameSdkArguments": true,
+        "sameEncodedTokensAndMarkers": true,
+        "sameChoice": true,
+        "maximumProbabilityDifference": 0
+      }
+    ],
+    "routes": {
+      "selector_http": {
+        "correct": 4,
+        "total": 8
+      },
+      "raw_http": {
+        "correct": 4,
+        "total": 8
+      },
+      "direct_sdk": {
+        "correct": 4,
+        "total": 8
+      }
+    }
+  },
+  "labels": {
+    "A/B": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "seenSeed": {
+        "correct": 2,
+        "total": 4,
+        "positives": {
+          "correct": 2,
+          "total": 2
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 2
+        }
+      },
+      "heldOutFilenamePairs": {
+        "correct": 10,
+        "total": 20,
+        "positives": {
+          "correct": 10,
+          "total": 10
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 10
+        }
+      }
+    },
+    "candidate_0/candidate_1": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "seenSeed": {
+        "correct": 2,
+        "total": 4,
+        "positives": {
+          "correct": 2,
+          "total": 2
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 2
+        }
+      },
+      "heldOutFilenamePairs": {
+        "correct": 10,
+        "total": 20,
+        "positives": {
+          "correct": 10,
+          "total": 10
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 10
+        }
+      }
+    },
+    "read/review": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "seenSeed": {
+        "correct": 2,
+        "total": 4,
+        "positives": {
+          "correct": 2,
+          "total": 2
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 2
+        }
+      },
+      "heldOutFilenamePairs": {
+        "correct": 10,
+        "total": 20,
+        "positives": {
+          "correct": 10,
+          "total": 10
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 10
+        }
+      }
+    },
+    "match/mismatch": {
+      "correct": 13,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 1,
+        "total": 12
+      },
+      "seenSeed": {
+        "correct": 2,
+        "total": 4,
+        "positives": {
+          "correct": 2,
+          "total": 2
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 2
+        }
+      },
+      "heldOutFilenamePairs": {
+        "correct": 11,
+        "total": 20,
+        "positives": {
+          "correct": 10,
+          "total": 10
+        },
+        "negatives": {
+          "correct": 1,
+          "total": 10
+        }
+      }
+    },
+    "yes/no": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "seenSeed": {
+        "correct": 2,
+        "total": 4,
+        "positives": {
+          "correct": 2,
+          "total": 2
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 2
+        }
+      },
+      "heldOutFilenamePairs": {
+        "correct": 10,
+        "total": 20,
+        "positives": {
+          "correct": 10,
+          "total": 10
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 10
+        }
+      }
+    }
+  },
+  "factors": {
+    "read_claim": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 0,
+      "brokeCorrect": 0,
+      "changedAction": 0
+    },
+    "review_description": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 0,
+      "brokeCorrect": 0,
+      "changedAction": 0
+    },
+    "read_concrete": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 0,
+      "brokeCorrect": 0,
+      "changedAction": 0
+    },
+    "review_short": {
+      "correct": 13,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 1,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 1,
+      "brokeCorrect": 0,
+      "changedAction": 1
+    },
+    "state_json_string": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 0,
+      "brokeCorrect": 0,
+      "changedAction": 0
+    },
+    "downstream_goal": {
+      "correct": 14,
+      "total": 24,
+      "positives": {
+        "correct": 5,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 9,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 9,
+      "brokeCorrect": 7,
+      "changedAction": 16,
+      "qualification": "Frozen original goal names pelican.svg. Held-out seeds introduce conflicting filenames; this is a stale-context stress test, not clean irrelevant-context accuracy."
+    },
+    "legacy_contract": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 0,
+      "brokeCorrect": 0,
+      "changedAction": 0
+    },
+    "nodeContract.inputFields": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 0,
+      "brokeCorrect": 0,
+      "changedAction": 0
+    },
+    "published_schema": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 0,
+      "brokeCorrect": 0,
+      "changedAction": 0
+    },
+    "instructions_short": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 0,
+      "brokeCorrect": 0,
+      "changedAction": 0
+    }
+  },
+  "originalFactors": {
+    "contract_input": {
+      "correct": 2,
+      "total": 4,
+      "positives": {
+        "correct": 1,
+        "total": 2
+      },
+      "negatives": {
+        "correct": 1,
+        "total": 2
+      },
+      "cases": [
+        {
+          "id": "original-match-normal-contract_input",
+          "expected": "read",
+          "action": "review",
+          "readProbability": 0.2114
+        },
+        {
+          "id": "original-match-reversed-contract_input",
+          "expected": "read",
+          "action": "read",
+          "readProbability": 0.5583
+        },
+        {
+          "id": "original-wrong-normal-contract_input",
+          "expected": "review",
+          "action": "review",
+          "readProbability": 0.0434
+        },
+        {
+          "id": "original-wrong-reversed-contract_input",
+          "expected": "review",
+          "action": "read",
+          "readProbability": 0.5964
+        }
+      ]
+    },
+    "stage_goal": {
+      "correct": 2,
+      "total": 4,
+      "positives": {
+        "correct": 0,
+        "total": 2
+      },
+      "negatives": {
+        "correct": 2,
+        "total": 2
+      },
+      "cases": [
+        {
+          "id": "original-match-normal-stage_goal",
+          "expected": "read",
+          "action": "review",
+          "readProbability": 0.2926
+        },
+        {
+          "id": "original-match-reversed-stage_goal",
+          "expected": "read",
+          "action": "review",
+          "readProbability": 0.0988
+        },
+        {
+          "id": "original-wrong-normal-stage_goal",
+          "expected": "review",
+          "action": "review",
+          "readProbability": 0.1415
+        },
+        {
+          "id": "original-wrong-reversed-stage_goal",
+          "expected": "review",
+          "action": "review",
+          "readProbability": 0.1618
+        }
+      ]
+    },
+    "question_short": {
+      "correct": 2,
+      "total": 4,
+      "positives": {
+        "correct": 1,
+        "total": 2
+      },
+      "negatives": {
+        "correct": 1,
+        "total": 2
+      },
+      "cases": [
+        {
+          "id": "original-match-normal-question_short",
+          "expected": "read",
+          "action": "review",
+          "readProbability": 0.2705
+        },
+        {
+          "id": "original-match-reversed-question_short",
+          "expected": "read",
+          "action": "read",
+          "readProbability": 0.5117
+        },
+        {
+          "id": "original-wrong-normal-question_short",
+          "expected": "review",
+          "action": "review",
+          "readProbability": 0.0685
+        },
+        {
+          "id": "original-wrong-reversed-question_short",
+          "expected": "review",
+          "action": "read",
+          "readProbability": 0.537
+        }
+      ]
+    },
+    "align_values_order": {
+      "correct": 1,
+      "total": 4,
+      "positives": {
+        "correct": 0,
+        "total": 2
+      },
+      "negatives": {
+        "correct": 1,
+        "total": 2
+      },
+      "cases": [
+        {
+          "id": "original-match-normal-align_values_order",
+          "expected": "read",
+          "action": "review",
+          "readProbability": 0.2095
+        },
+        {
+          "id": "original-match-reversed-align_values_order",
+          "expected": "read",
+          "action": "review",
+          "readProbability": 0.4187
+        },
+        {
+          "id": "original-wrong-normal-align_values_order",
+          "expected": "review",
+          "action": "review",
+          "readProbability": 0.0443
+        },
+        {
+          "id": "original-wrong-reversed-align_values_order",
+          "expected": "review",
+          "action": "read",
+          "readProbability": 0.6388
+        }
+      ]
+    }
+  },
+  "order": {
+    "A/B": {
+      "changed": 0,
+      "total": 12,
+      "pairs": [
+        {
+          "seed": 0,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 0,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        }
+      ]
+    },
+    "candidate_0/candidate_1": {
+      "changed": 0,
+      "total": 12,
+      "pairs": [
+        {
+          "seed": 0,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 0,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        }
+      ]
+    },
+    "read/review": {
+      "changed": 0,
+      "total": 12,
+      "pairs": [
+        {
+          "seed": 0,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 0,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        }
+      ]
+    },
+    "match/mismatch": {
+      "changed": 1,
+      "total": 12,
+      "pairs": [
+        {
+          "seed": 0,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 0,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": true,
+          "normal": "review",
+          "reversed": "read",
+          "changed": true
+        }
+      ]
+    },
+    "yes/no": {
+      "changed": 0,
+      "total": 12,
+      "pairs": [
+        {
+          "seed": 0,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 0,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        }
+      ]
+    }
+  },
+  "precision": {
+    "float32": {
+      "correct": 12,
+      "total": 24,
+      "changedFromBaseline": 0,
+      "maxProbabilityDifference": 0.008399999999999963
+    },
+    "stock": {
+      "correct": 12,
+      "total": 24,
+      "changedFromBaseline": 0,
+      "maxProbabilityDifference": 0
+    }
+  },
+  "defaultWindow": [
+    {
+      "id": "original-match-normal",
+      "matchedWindowChoice": "candidate_1",
+      "defaultWindowChoice": "candidate_1",
+      "matchedEncodingLengths": [
+        [
+          1177
+        ]
+      ],
+      "defaultEncodingLengths": [
+        [
+          1024
+        ]
+      ],
+      "encodingChanged": true,
+      "choiceChanged": false
+    },
+    {
+      "id": "original-match-reversed",
+      "matchedWindowChoice": "candidate_1",
+      "defaultWindowChoice": "candidate_1",
+      "matchedEncodingLengths": [
+        [
+          1177
+        ]
+      ],
+      "defaultEncodingLengths": [
+        [
+          1024
+        ]
+      ],
+      "encodingChanged": true,
+      "choiceChanged": false
+    },
+    {
+      "id": "original-wrong-normal",
+      "matchedWindowChoice": "candidate_1",
+      "defaultWindowChoice": "candidate_1",
+      "matchedEncodingLengths": [
+        [
+          1180
+        ]
+      ],
+      "defaultEncodingLengths": [
+        [
+          1024
+        ]
+      ],
+      "encodingChanged": true,
+      "choiceChanged": false
+    },
+    {
+      "id": "original-wrong-reversed",
+      "matchedWindowChoice": "candidate_1",
+      "defaultWindowChoice": "candidate_1",
+      "matchedEncodingLengths": [
+        [
+          1180
+        ]
+      ],
+      "defaultEncodingLengths": [
+        [
+          1024
+        ]
+      ],
+      "encodingChanged": true,
+      "choiceChanged": false
+    }
+  ],
+  "canonicalScoreRanking": {
+    "auc": 0.9375,
+    "pairedCorrectDirection": 12,
+    "pairCount": 12,
+    "positiveRange": [
+      0.8848,
+      0.9425
+    ],
+    "negativeRange": [
+      0.7009,
+      0.9208
+    ],
+    "pairs": [
+      {
+        "seed": 0,
+        "reversed": false,
+        "positive": 0.926,
+        "negative": 0.8872,
+        "delta": 0.03880000000000006
+      },
+      {
+        "seed": 0,
+        "reversed": true,
+        "positive": 0.9406,
+        "negative": 0.9053,
+        "delta": 0.0353
+      },
+      {
+        "seed": 1,
+        "reversed": false,
+        "positive": 0.9425,
+        "negative": 0.8661,
+        "delta": 0.07640000000000002
+      },
+      {
+        "seed": 1,
+        "reversed": true,
+        "positive": 0.9196,
+        "negative": 0.8688,
+        "delta": 0.050799999999999956
+      },
+      {
+        "seed": 2,
+        "reversed": false,
+        "positive": 0.9339,
+        "negative": 0.9208,
+        "delta": 0.0131
+      },
+      {
+        "seed": 2,
+        "reversed": true,
+        "positive": 0.9358,
+        "negative": 0.9155,
+        "delta": 0.020299999999999985
+      },
+      {
+        "seed": 3,
+        "reversed": false,
+        "positive": 0.8848,
+        "negative": 0.7009,
+        "delta": 0.18390000000000006
+      },
+      {
+        "seed": 3,
+        "reversed": true,
+        "positive": 0.9204,
+        "negative": 0.9059,
+        "delta": 0.014499999999999957
+      },
+      {
+        "seed": 4,
+        "reversed": false,
+        "positive": 0.9356,
+        "negative": 0.8988,
+        "delta": 0.036799999999999944
+      },
+      {
+        "seed": 4,
+        "reversed": true,
+        "positive": 0.9399,
+        "negative": 0.9047,
+        "delta": 0.03520000000000001
+      },
+      {
+        "seed": 5,
+        "reversed": false,
+        "positive": 0.9337,
+        "negative": 0.7491,
+        "delta": 0.1846
+      },
+      {
+        "seed": 5,
+        "reversed": true,
+        "positive": 0.9414,
+        "negative": 0.7969,
+        "delta": 0.14449999999999996
+      }
+    ]
+  }
+}
