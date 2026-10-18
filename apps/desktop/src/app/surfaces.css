@@ -521,3 +521,16 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .workspace-composer-actions {display:flex;align-items:center;gap:12px;margin-top:8px}.workspace-composer-actions .notice {flex:1;margin:0}.workspace-composer-actions button {padding:7px 14px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);color:var(--fg)}.workspace-composer-actions button:disabled {opacity:.45}
 .workspace-chat>.subagent-tasks {flex:0 0 auto;max-height:150px;overflow:auto;padding-inline:24px;font-size:11px}.workspace-chat>.workspace-error {position:static;margin:0;padding:4px 24px;text-align:left;flex:0 0 auto}
 .panel>.conversation-sessions,.panel>div:has(>.conversation-sessions) {flex:0 0 auto}
+
+/* 20261018 UX polish: opaque popup surfaces (bell menu / model menu) to stop text bleed-through */
+.panel .bell-menu,.panel .model-menu {backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg);box-shadow:0 10px 34px rgba(0,0,0,.28),0 2px 8px rgba(0,0,0,.2)}
+:root[data-theme="light"] .panel .bell-menu,:root[data-theme="light"] .panel .model-menu {background:#f7f7f5;box-shadow:0 10px 34px rgba(30,32,36,.18),0 2px 8px rgba(30,32,36,.12)}
+/* quick-start chips on empty panel thread */
+.thread .quick-start {display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 2px}
+.thread .quick-start button {border:1px solid var(--glass-border);background:rgba(255,255,255,.05);color:var(--fg-2);border-radius:999px;padding:7px 12px;font-size:12px;cursor:pointer}
+.thread .quick-start button:hover {color:var(--fg);border-color:var(--accent)}
+:root[data-theme="light"] .thread .quick-start button {background:rgba(0,0,0,.03)}
+/* hero treatment for the panel greeting bubble */
+.thread>.bubble {font-size:17px;font-weight:640;padding:16px 18px;text-align:center;background:none;border:0}
+/* proactive (电脑操控) checkbox rows: keep label text beside its checkbox (label variant only; admin rows use div) */
+.settings-list label.setting-row {justify-content:flex-start;gap:12px}
