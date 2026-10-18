@@ -103,6 +103,22 @@ deployment. This is a trusted-host diagnostic consumer, not a Client/Renderer wi
 operation, public capability, or automatic reconciliation/finalization implementation.
 The trusted host must authorize access to the task before calling this method.
 
+Each new WSS dispatch also records versioned `competition-cloud-dispatch-context`
+after the host send guards and before the invoke frame is sent. It binds the original
+invocation/configuration, request phase/revision/deadline, loop step/budget and
+catalog/continuation checkpoint references and digests. No goal, tool arguments,
+continuation body, cloud events or credentials are copied into this snapshot.
+Status diagnostics reject changed snapshots or changed referenced checkpoints.
+
+This path has no general durable public-input provenance contract, so every snapshot
+records `privacyEligibility: {eligible: false, reason: 'public-provenance-unavailable'}`
+and `recovery: 'unavailable'`. An unchanged goal or absent withdrawal marker cannot
+establish public provenance. This snapshot records dispatch facts only; it neither
+grants permission nor enables result recovery, replay, tool execution or finalization.
+Legacy records remain diagnostic only and are never backfilled. Partial dispatch
+records cannot supply missing recovery facts. Dynamic policy, tool availability and
+ephemeral input leases still need fresh host checks in any future recovery consumer.
+
 Trusted composition may pass `profile: 'huawei_ict_agentarts'`, an explicit
 `coordination: CoordinationPort`, and local `RegisteredTool` values. Bounded text and
 strict proposals are parsed; `unverified` proposals are denied by default. Runtime owns submission, deduplication, cancellation,
