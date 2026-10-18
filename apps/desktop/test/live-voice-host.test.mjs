@@ -511,17 +511,23 @@ test('Synthetic read_context keeps the complete reviewed schema and configuratio
   await fixture.host.stop();
 });
 
-test('Synthetic expired local work wait reads the accepted task once without resubmitting', async () => {
-  let clock=Date.now(),submits=0;
+test('Synthetic expired local work wait retains the accepted task for a later bound read', async () => {
+  let clock=Date.now(),submits=0,reads=0,state='running';
   const fixture=harness({now:()=>clock,client:{async call(operation,payload){
     if(operation==='task.submit'){submits++;return {taskId:'slow-original'};}
-    return {taskId:payload.taskId,state:'running'};
+    assert.equal(operation,'task.get');reads++;
+    return {taskId:payload.taskId,state,resultSummary:'Original slow result'};
   }},createConsumer:options=>({consume(value){return {result:(async()=>{
     await options.client.call('task.submit',{goal:value.text});clock+=120_001;throw Error('Synthetic deadline');
   })()};}})});
   await fixture.host.start();
-  const result=await fixture.request.onTool('request_work',{goal:'Synthetic slow task'},'slow-call');
-  assert.match(result,/slow-original/);assert.match(result,/尚未完成/);assert.equal(submits,1);
+  await assert.rejects(fixture.request.onTool('request_work',{goal:'Synthetic slow task'},'slow-call'),/工作等待已到期/);
+  assert.equal(reads,0);assert.equal(submits,1);
+  assert.deepEqual(fixture.host.snapshot().workRequests.find(item=>item.taskId==='slow-original'),
+    {state:'awaiting_result',taskId:'slow-original'});
+  state='succeeded';
+  assert.equal(await fixture.request.onTool('wait_for_task',{taskId:'slow-original'},'later-read'),'Original slow result');
+  assert.equal(reads,1);assert.equal(submits,1);
   await fixture.host.stop();
 });
 
