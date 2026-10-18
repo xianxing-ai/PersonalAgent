@@ -732,6 +732,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
   }
 
+  private assertContextHooksAvailable(taskId:string):void {
+    if(!this.coordinationInput && this.runtime.loadCheckpoint(taskId,COMPETITION_CONTEXT_CHECKPOINT)!==undefined) {
+      throw new ProtocolError('UNAUTHORIZED','Versioned context requires its input hooks');
+    }
+  }
+
   private assertCompetitionTaskConfiguration(taskId:string, initialize=false):void {
     try {
       const result:unknown=this.assertCoordinationBinding?.();
@@ -761,7 +767,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(this.runtime.loadCheckpoint(request.taskId,'private-memory:consumption:v1')) {
         throw new ProtocolError('UNAUTHORIZED','Private input lease cannot be recovered automatically');
       }
-      try {return await port.execute(request);}catch(error) {
+      try {this.assertContextHooksAvailable(request.taskId);return await port.execute(request);}catch(error) {
         if (!(error instanceof AgentArtsResultUnknownError)) this.holdCompetitionExport(request.taskId);
         throw error;
       }
@@ -1687,6 +1693,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   assertCompetitionExportAllowed(request: CoordinationRequest): void {
     this.assertCompetitionTaskConfiguration(request.taskId);
     this.assertInputActive(request);
+    this.assertContextHooksAvailable(request.taskId);
     if(this.coordinationInput) {
       const effective=this.ephemeralSends.get(request.taskId);
       if(!effective || effective.goal!==request.goal || effective.revision!==request.revision

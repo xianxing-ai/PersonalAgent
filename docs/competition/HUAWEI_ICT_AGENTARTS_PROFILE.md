@@ -1,5 +1,9 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
+## 当前架构决定（2026-10-17）
+
+Owner 已确认本机 Laya 是本项目确定的架构方案，在本机运行并参与 `huawei_ict_agentarts` 的 Competition 产品路径；下文“架构仍未最终定型”仅指其余待定设计、接线和验收范围，不否定这项决定。AgentArts 继续承担现有镜像 Workflow 编排职责。本决定不表示外部比赛资格已获认可，也不表示真实平台端到端验收完成；既有回执仅证明对应固定版本与场景。
+
 <!-- current-design-alignment-20261015 -->
 ## 当前口径与历史适用性（2026-10-15）
 

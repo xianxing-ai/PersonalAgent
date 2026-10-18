@@ -1,0 +1,13 @@
+<!doctype html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8">
+<title>PersonalAgent · Runtime IPC 补丁核实</title>
+<link rel="stylesheet" href="../../src/ui/tokens.css"><link rel="stylesheet" href="../../src/app/style.css">
+<link rel="stylesheet" href="../../src/app/surfaces.css"></head><body><main id="root"></main>
+<script type="module">
+import {mountAdmin} from '../../src/features/admin/view.js';
+const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const invoke=async(name,input)=>{const response=await window.desktop.invoke(name,input);if(!response.ok)throw Error(response.error);return response.value;};
+const render=mountAdmin(document.querySelector('#root'),invoke,escape);
+window.fixtureUpdates=[];
+window.desktop.subscribe(value=>{window.fixtureUpdates.push(value);render(value);});
+render(await invoke('snapshot'));
+</script></body></html>
