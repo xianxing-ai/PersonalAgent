@@ -45,6 +45,31 @@
 - 第二阶段减少固定证书脚本的启动依赖：直接输出两个生成的 Base64 JSON 字段，移除 `ConvertTo-Json` 的 Utility 模块加载，不扩大期限、不缓存/复用证书。一次本机脚本对照验证旧脚本加载 Utility、候选不加载，二者字段均为有效 cert/pfx Base64；该对照不是跨机器冷启动性能结论。新增方案无外部输入、字段/协议或依赖变化。
 - 第二阶段知识专项仍 53 通过、1 跳过，完整 check 仍 3052 通过、31 跳过、0 失败。日志 `.cache-ci351-certificate-tests.log`、`.cache-ci351-certificate-check.log`、`.cache-ci351-script-module-comparison.log` 保留。最终修复 head 的远程 Foundation 及首次证书耗时仍待读回；设计门禁和非作者评审分别核对。
 
+## 2026-10-16：恢复 hooks 缺失加固
+
+- Profile：`huawei_ict_agentarts`；负责人 goo122；状态 `in_progress`、接口 `provisional`。
+- 工作树 `.worktrees/goo122-context-recovery-guard-20261016`，分支 `codex/goo122-context-recovery-guard-20261016`；基线 #368 `4bf9f264913aeec4712e6c99f89b7ad8f72d3dd4`，包含 #351 / #357 / #358 / #367 上下文与预算增量。
+- 当前 Desktop 始终装配 hooks，原 #351 评审已将此项列为非阻断的宿主集成加固建议。本包验证公开 Runtime 工厂的恢复边界，不把它冒充已确认的 Desktop 生产故障。
+
+### 行为与兼容
+
+保存过 `competition-context:v1` 的任务，重启后若缺少可选 `coordinationInput`，原实现直接发送公开 goal，绕过已保存版本绑定。新增共享检查在原 `executeCoordination` 和受信 `assertCompetitionExportAllowed` 两个入口拒绝这种发送；检查点存在但已 redacted 或为 null 也明确拒绝，不猜测旧上下文。错误不包含检查点正文或宿主秘密。
+
+SQLite 审批恢复后已确认的一次工具结果仍保留，进入原 `waiting_reconciliation`，不重放工具或丢弃上下文元数据；相同 hooks 和版本正常恢复，来源版本变化仍拒绝。没有版本化检查点的旧任务继续沿既有无 hooks 路径恢复。没有新增 hooks 接口、Schema、wire operation、数据库迁移、依赖、正文副本或自动重试，Core Runtime Profile 1 冻结范围不变。
+
+### 验证
+
+- 原实现复现：新增定向 9 项，3 通过、6 失败（包含 2 个父测试失败）；缺 hooks 恢复误为 succeeded，三个最终门禁负例也误为 succeeded。日志 `.cache-context-guard-before.log`。
+- 首次修复后，恢复场景已通过；新最终门禁测试误把受信 guard 的 UNAUTHORIZED 当成任务层错误码。原 `coordination.ts` 会将适配器异常统一脱敏为 EXTERNAL_FAILURE。补为分别断言实际 guard 错误、原任务错误、任务失败及发送数为 0，未更改归一化生产代码或放宽权限/执行断言。失败日志 `.cache-context-guard-focused.log` 保留。
+- 最终原 F27 四文件定向回归 39/39、0 跳过、0 失败：上下文绑定、对话上下文、私人记忆消费、私人副本删除。含 SQLite 相同/变化/缺 hooks/旧任务恢复，最终正常/脱敏/null 检查点拒绝、已确认工具仅执行 1 次且回执保留。日志 `.cache-context-guard-focused-final.log`。
+- 根 build、Runtime 与 Windows helper 构建通过；本工作树完整 `npm run check` 退出码 0，37 个测试汇总为 3166 通过、36 跳过、0 失败、0 取消，包含架构、生成类型、类型检查及工作区测试。日志 `.cache-context-guard-check.log`；没有沿用父 PR 的通过数作为本包结果。
+- 初次 npm ci 遇 ECONNRESET，TLS 连接建立前中断，日志 `.cache-context-guard-install.log`。与已验证工作树比较，锁文件仅本地 MCP workspace 声明不同，全部 167 个外部包版本、resolved、integrity 一致；复制其包缓存到本工作树独立缓存后，用原 lock 离线 ci（ignore-scripts / no-audit）安装 201 个包通过，不改版本、不共用缓存。日志 `.cache-context-guard-install-offline.log`。
+- 新测试为明确合成 CoordinationPort、公开合成 goal 和独立真实 SQLite 文件；没有真实模型或 AgentArts I/O、没有 Vault/私人数据访问。本包不是实际云端或真人全链路验收。
+
+### 交付与剩余
+
+本包独立开发，未改变 #351/#367/#368 当前 head 或已有评审；2026-10-16 已获用户对应授权，可提交、普通推送并创建基于 #368 的独立 PR，实际状态以 Git/GitHub 为准。非作者评审与合并分别核对；原依赖链仍等待当前提交的有效非作者批准，真实云消费继续暂停。检索/摘要选择、跨库派生副本及完整生产 tokenizer/MaaS 匹配仍待后续工作包，整个 MOD-09 保持 in_progress。
+
 ## 2026-10-16：当前 main 集成准备
 
 - 负责人 goo122；Profile `huawei_ict_agentarts`，状态仍 `in_progress`。原本地工作树落后远端且需保留，改在 `.worktrees/goo122-context-main-sync-20261016` / `codex/goo122-context-main-sync-20261016` 从当前 #351 `a05e91ea` 准备同步 main `6d70734c`。
@@ -53,3 +78,7 @@
 - #368 已实际合入 #367 新头 `eb36dcea`，二者完整 tree 相同；未合入 main。#375 恢复 hooks 加固仍在独立 PR，下一次 Git 交付时应把其基线接到已包含 #368 的 #367 并核对差异。真实云消费继续暂停，未读取用户 Vault 或记忆。
 - 用户已授权本轮提交、普通推送更新现有 PR 及依赖链同步；实际提交、批准、CI 和冲突状态以远端当前 head 为准，不合并 main 或提升整个 MOD 状态。
 - MCP 组合门禁发现现有 ToolGateway 在途超时测试可能在 20ms 真实期限内未进入工具，随后读取未赋值 signal；本树同步完全相同的显式 Date/setTimeout 假时钟修复，保持 20ms、TIMEOUT/中止断言并新增进入工具断言，专项 7/7，日志 `.cache-context-sync-gateway.log`。不改变生产计时，未把本树专项结果或下游组合完整结果冒充 #351 新 head 的完整 Foundation。
+
+本轮已按授权同步 #367（包含已合入它的 #368）及 main `eb92311f`，#375 基线改接 #367。上述 #368 基线与独立交付描述为历史记录；当前实际依赖、提交及 CI 以 GitHub 为准，恢复 guard 的生产语义保持不变。
+
+依赖同步后 Runtime 构建通过；上下文绑定、对话上下文、私人记忆与删除四文件定向 32/32、0 跳过、0 失败，日志 `.cache-publish-context-build.log`、`.cache-publish-context-tests.log`。这是本次必要定向复核，不沿用原独立开发时的完整 check 数量作为同步后结果；真实云消费仍暂停。
