@@ -33,7 +33,7 @@ if(process.argv.includes('--inventory')) {
  const file=design+'/DOCUMENTATION_INVENTORY.md';
  const lines=files.map(p=>`| [${p}](${path.posix.relative(design,p)}) | ${classify(p)} |`);
  const body='# 全项目架构文档清单\n\n2026-10-17按当前Competition架构决定、本机Laya运行位置及AgentArts Workflow编排边界核对规范。下表覆盖受版本控制的规范、模块README、接口、技术说明、设计、ADR及工作包；示例Vault/夹具/SKILL正文不属于架构规范，保持原样。未提交的用户旧设计草稿不纳入PR。\n\n核心当前文档重写正文；模块当前架构职责重写并保留可用API/运行说明；历史验收与ADR保留原作者、日期和结果，仅替代导航/标记关系。此区分防止把目标设计写成过去已经实现。\n\n旧核心正文可用git show 3275aa91:文件路径读取；2026-10-15历史记录保留当时的Laya与镜像实测范围。本机Laya现已确认在本机运行并参与Competition产品路径，AgentArts继续承担Agent/Workflow构建、编排、评估与部署；既有回执不证明外部比赛资格或真实端到端。公开wire与数据迁移不由文档修改。\n\n| 文档 | 本次处理与阅读规则 |\n| --- | --- |\n'+lines.join('\n')+'\n';
- result.push(patch(file,fs.existsSync(path.join(root,file))?read(file):null,body));
+ result.push(patch(file,fs.existsSync(path.join(root,file))?read(file):null,body.replaceAll('本机Laya现已确认在本机运行并参与Competition产品路径','本机Laya仅为独立Local Profile实验候选，不属于Competition产品路径')));
 } else {
  const targets=files.filter(file=>!core.has(file)&&!file.startsWith(design+'/')&&file!=='docs/adr/0033-unified-decision-workflow-architecture.md'&&fs.existsSync(path.join(root,file))&&!read(file).includes('<!-- architecture-scope-20261013 -->'));
  const batch=Number(process.argv[2]||0),chosen=targets.slice(batch*24,batch*24+24);
@@ -43,7 +43,7 @@ if(process.argv.includes('--inventory')) {
   const historical=file.startsWith('docs/design/');
   const note=`<!-- current-design-20261013 -->\n> ${historical?'历史设计，当前适用性以Competition Profile及最新架构修订为准；原基线/估算/验收保留。':'本文按所记版本阅读，API/阶段/验收事实保留。'}当前依据：[完整主架构](${rel(design+'/DESIGN.md')}) · [28功能流程](${rel(design+'/WORKFLOWS.md')}) · [连通图](${rel(design+'/index.html')}) · [接口状态](${rel('docs/interfaces/CURRENT_INTERFACE_CATALOG.md')}) · [协作规则](${rel('CONTRIBUTING.md')})。本机Laya在本机运行并参与Competition产品路径，AgentArts负责Agent/Workflow构建、编排、评估与部署；本地Runtime保留Policy、ToolGateway、TaskRuntime及Evidence。具体节点、领域资格、外部比赛资格与真实验收分别核实，AgentArts失败不得静默回退Local Profile。常规PR须有合资格非作者对当前head有效批准；Owner具体PR审核例外须留记录，必需技术CI不豁免。`;
   let after=before.replace(/^<!-- current-design-202610(?:09|13) -->\n>[^\n]*\n?/gm,'');
-  after=after.replace(title,title+'\n\n'+note).replace(/\n{4,}/g,'\n\n\n');
+  after=after.replace(title,title+'\n\n'+note.replaceAll('本机Laya在本机运行并参与Competition产品路径','本机Laya仅为独立Local Profile实验候选，不属于Competition产品路径')).replace(/\n{4,}/g,'\n\n\n');
   result.push(patch(file,before,after));
  }
  process.stdout.write(JSON.stringify({total:targets.length,batch,files:chosen,changed:chosen.filter((_,i)=>Boolean(result[i])),patch:result.some(Boolean)?'*** Begin Patch\n'+result.filter(Boolean).join('')+'*** End Patch':null}));

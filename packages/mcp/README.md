@@ -3,7 +3,7 @@
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
-Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。本机 Laya 在本机运行并参与 Competition 产品路径；本地 Runtime/Policy/ToolGateway/Evidence 保留授权与执行事实。具体 Laya 调用范围、外部比赛资格和端到端验收仍按实际 Evidence 核实。
+Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 产品路径；本地 Runtime/Policy/ToolGateway/Evidence 保留授权与执行事实。具体 Laya 调用范围、外部比赛资格和端到端验收仍按实际 Evidence 核实。
 
 2026-10-16 [Desktop/TLS 组合验收](../../docs/modules/MOD-06-PRODUCT-TLS-20261016.md) 已在实际 Electron/安全存储与默认 HTTPS fetch 上完成成功链路及四类拒绝场景；原生对话框响应仍为合成。#369 评审的 run 缓存上限修复 `bfcb1ab1` 已普通推送并传递至 #373；接口保持 provisional，当前 CI/非作者评审及集成状态以 GitHub 为准。
 
@@ -21,7 +21,7 @@ Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 A
 
 复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
 
-当前实验由本机Laya提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收，架构未最终定型。
+独立Local Profile实验由本机Laya提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收，架构未最终定型。
 
 本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
 

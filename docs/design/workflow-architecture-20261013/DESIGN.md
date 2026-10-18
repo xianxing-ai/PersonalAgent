@@ -8,7 +8,7 @@
 
 用户通过主对话或语音提出目标，系统在已授权的责任范围内自行选路、分派、执行、核实和跟进。界面只需展示目标、正在处理的事项、结果与需要用户决定的问题。模型、图、Scope和内部检查放在详情与设置中，不成为日常使用的必填项。
 
-本地Windows Runtime保留任务状态、检查点、授权与执行Evidence；Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建与编排、评估和部署。本机 Laya 已确认为本机运行方案并参与 Competition 产品路径。F01–F28 是设计模板，不表示镜像或平台已完成全部比赛业务。Local Profile 保留现有 runAgent、ModelGateway 与 Provider；AgentArts 失败时不得静默回退到 Local Profile。具体 Laya 调用节点、领域资格、官方比赛资格与端到端验收按可复现 Evidence 核实。
+本地Windows Runtime保留任务状态、检查点、授权与执行Evidence；Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建与编排、评估和部署。本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 产品路径。F01–F28 是设计模板，不表示镜像或平台已完成全部比赛业务。Local Profile 保留现有 runAgent、ModelGateway 与 Provider；AgentArts 失败时不得静默回退到 Local Profile。具体 Laya 调用节点、领域资格、官方比赛资格与端到端验收按可复现 Evidence 核实。
 
 ## 2. 一张图与一套事实来源
 
@@ -42,7 +42,7 @@ flowchart TD
 
 Competition Profile 经 CloudAgentPort 调用 AgentArts；AgentArts 承担比赛路径的 Agent/Workflow 编排和模型调用，并负责构建、评估与部署。该路径不在本地自有镜像中另建编排，也不在 AgentArts 失败后静默回退。具体 CloudAgentPort 能力按当前接口目录记录；目录或设计图本身不构成生产验收。
 
-Local Profile 仅保留现有 runAgent、ModelGateway 与 Provider，不在本轮新增或扩展。本机 Laya 在本机运行并参与 Competition 产品路径；既有 typed-choice 实测只覆盖记录的固定版本与场景，不证明全部节点接线、官方比赛资格或真实云端端到端。模型输出只能形成回答或工具提案；可信 Runtime/Policy 校验授权和参数，TaskRuntime 与外部读回应决定实际状态和终态。
+Local Profile 仅保留现有 runAgent、ModelGateway 与 Provider，不在本轮新增或扩展。本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 产品路径；既有 typed-choice 实测只覆盖记录的固定版本与场景，不证明全部节点接线、官方比赛资格或真实云端端到端。模型输出只能形成回答或工具提案；可信 Runtime/Policy 校验授权和参数，TaskRuntime 与外部读回应决定实际状态和终态。
 
 并行候选、原生思考参数、MaaS 端点和具体 AgentArts 能力均以当前配置、代码和实际读回为准。历史架构和模型实验保留于对应日期记录，不据此声称新 Competition 能力已经接通。
 
@@ -134,7 +134,7 @@ MaaS API不能直接修改远端执行模型权重。本机Laya持有固定权�
 
 ## 12. 云端镜像、通信与国内执行
 
-Competition Profile 经 CloudAgentPort 让 AgentArts 实际承担构建、部署、Workflow/Agent 编排和评估；本机 Laya 按已确认的本机方案参与 Competition 产品路径。F01–F28 仅为设计模板；本机 Runtime 保存持久任务、私有状态、授权和执行Evidence，云端只接收当前任务需要且允许出机的上下文。Local Profile 只保留现有 `runAgent()`、ModelGateway 与 Provider，不作为 AgentArts 失败后的回退。平台模型、工具、知识、日志和评估能力分别按实际配置及读回验收。
+Competition Profile 经 CloudAgentPort 让 AgentArts 实际承担构建、部署、Workflow/Agent 编排和评估；本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 产品路径。F01–F28 仅为设计模板；本机 Runtime 保存持久任务、私有状态、授权和执行Evidence，云端只接收当前任务需要且允许出机的上下文。Local Profile 只保留现有 `runAgent()`、ModelGateway 与 Provider，不作为 AgentArts 失败后的回退。平台模型、工具、知识、日志和评估能力分别按实际配置及读回验收。
 
 WSS为主通道，HTTPS为显式备用。对已发送而结果未知的操作不能通过备用通道盲发；当前云端回执是有界内存、restartRecovery:false，不能承诺云端持久恢复。沿用独立transport 0.1.0、本地wire 1.0.0及已有候选协议，不把本设计直接写成新Schema。
 
@@ -148,7 +148,7 @@ WSS为主通道，HTTPS为显式备用。对已发送而结果未知的操作不
 
 本地受理、状态展示和直接停止不等待模型；事件去重、版本、锁、授权和参数检查直接由代码完成。独立判断按同一快照合批，已有有效决定复用，只重检受影响节点。需要新信息的下一轮调用无法通过合批省掉。
 
-影子、历史评估与非必需整理默认后台，前台结果仅等待必要证据。不要为了“模型各方面参与”让每个机械检查再做一次推理。Competition Workflow 由 AgentArts 承担编排；本机 Laya 是已确认的本机运行方案并参与产品路径，具体调用节点与领域资格按 Evidence 核实。Local Profile 中的其他现有模型服务不因此扩展为比赛裁决入口。确定性步骤由代码完成；真实服务延迟、队列与取消边界必须按对应 Profile 实测，不能承诺固定毫秒延迟。
+影子、历史评估与非必需整理默认后台，前台结果仅等待必要证据。不要为了“模型各方面参与”让每个机械检查再做一次推理。Competition Workflow 由 AgentArts 承担编排；本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 路径，具体调用节点与领域资格按 Evidence 核实。Local Profile 中的其他现有模型服务不因此扩展为比赛裁决入口。确定性步骤由代码完成；真实服务延迟、队列与取消边界必须按对应 Profile 实测，不能承诺固定毫秒延迟。
 
 测试需分别记录本地受理、首个可见结果/首token、工具读回、完整结果、P50/P95、并发排队、取消和超时；区分热会话、冷启动、网络失败、上下文大小和调用轮数。普通语义任务需考虑秒级等待，研究/编码更久；目前不设未经用户确认的固定预算或性能承诺。
 
@@ -164,7 +164,7 @@ main 3275aa91已包含#347查看器、Wiki/Skill组合与Windows/补丁恢复增
 
 采用Harness的任务契约、工具边界与客观验证；Graph Engineering的依赖图、fan-out/fan-in与局部恢复；作用域记忆的写入门槛、范围检索、来源失效；轨迹驱动的后台评估与回归。文章的自报准确率/成本不作为本项目成绩。
 
-唯一模型选型发生不兼容能力变化、关键路径质量不足、国内端点不可用或用户修改偏好时，按配置/ADR复审；保持一个生效决策配置，记录替代原因。本机 Laya 的运行位置已确定；其他配置、外部比赛资格与端到端验收仍按配置、ADR 和实际证据复核，用户保留后续修改权。
+唯一模型选型发生不兼容能力变化、关键路径质量不足、国内端点不可用或用户修改偏好时，按配置/ADR复审；保持一个生效决策配置，记录替代原因。本机 Laya 仅为独立 Local Profile 实验候选；其他配置、外部比赛资格与端到端验收仍按配置、ADR 和实际证据复核，用户保留后续修改权。
 
 历史常驻方案、镜像内 Laya 旧提案与 DeepSeek 全局决策草稿保留为历史，见[文档清单](DOCUMENTATION_INVENTORY.md)。当前入口以本设计、PRD、接口目录、模块分工和ROADMAP为准；GitHub有效非作者批准及真实检查是PR合并条件，不能用模型复评代替。
 

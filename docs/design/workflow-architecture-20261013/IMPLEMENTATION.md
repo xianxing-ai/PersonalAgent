@@ -6,7 +6,7 @@
 
 ## 1. 迁移目标与兼容
 
-28功能模板、依赖串行推进、模型分派、记忆/上下文取舍、恢复和按需影子都由自有ARM64镜像承载。Laya服务/权重留在本机，复用现有LayaInferencePort、typed_choice与batch-server.py；资格不足升级原受信teacher。国内执行模型经AgentArts调用，架构未最终定型。
+F01–F28 是设计模板，不表示Competition平台已完成全部业务。Local Profile实验候选可复用本机LayaInferencePort、typed_choice与batch-server.py；Competition由AgentArts承担Agent/Workflow构建、编排、评估与部署，本地Runtime保留授权、状态和Evidence。具体接线与验收按Profile及实际证据核实。
 
 Laya只对有上下文的有限合法候选做choice；当前没有任意规划/摘要/参数JSON或Score/Noul原生端点。开放式理解、计划、摘要和补丁先由执行模型/代码模板产生候选，宿主校验后交Laya选择。执行者可在受派边界内使用现有subagent-host探索工具，但不得扩责任、签权限或改主终态。
 

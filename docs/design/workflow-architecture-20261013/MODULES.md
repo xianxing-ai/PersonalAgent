@@ -344,7 +344,7 @@
 
 维护入口：`packages/cognition`、`scripts/laya`。
 
-接线责任：保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主；仅资格验证通过的站点可直接决定，其他升级原受信teacher，消费责任、记忆/上下文、分派、恢复与影子语义建议；不由模型签发权限或写主终态。
+接线责任：保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主，仅作为独立Local Profile实验候选；Competition路径不使用本机Laya；不由模型签发权限或写主终态。
 
 验收责任：公开契约和失败/取消夹具、受影响消费者检查、配置缺失不支持、真实场景单独读回。模型/图/文档或Fake通过不能宣布整模块完成。
 

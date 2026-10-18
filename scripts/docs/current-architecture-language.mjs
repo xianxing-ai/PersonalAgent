@@ -96,7 +96,7 @@ export const replacements = [
   ],
   [
     "将现有LayaInferencePort、typed_choice与batch-server迁入自有ARM64镜像内服务，统一责任、记忆/上下文、分派、恢复与影子语义建议",
-    "保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主；仅资格验证通过的站点可直接决定，其他升级原受信teacher，消费责任、记忆/上下文、分派、恢复与影子语义建议"
+    "保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主，仅作为独立Local Profile实验候选；Competition路径不使用本机Laya"
   ],
   [
     "镜像内Laya服务生命周期与28编排composition",
@@ -274,5 +274,15 @@ export function currentArchitectureLanguage(text) {
   text = text.replaceAll('全部28业务Workflow迁入自有ARM64镜像', '28功能模板及串行推进逻辑由自有ARM64镜像承载');
   text = text.replaceAll('唯一模型参与', '原受信判断链参与').replaceAll('由唯一模型建议', '由原受信判断链建议');
   text = text.replaceAll('唯一模型语义建议', '受信语义判断建议').replaceAll('最终语义裁决唯一', '判断绑定本机Laya领域资格与原受信teacher');
+  for (const before of [
+    '本机 Laya 已确认为本机运行方案并参与 Competition 产品路径',
+    '本机 Laya 在本机运行并参与 Competition 产品路径',
+    '本机 Laya 按已确认的本机方案参与 Competition 产品路径',
+    '本机 Laya按已确认的本机方案参与Competition产品路径',
+    '本机 Laya 是已确认的本机运行方案并参与产品路径',
+    '本机Laya现已确认在本机运行并参与Competition产品路径',
+    '本机Laya在本机运行并参与Competition产品路径'
+  ]) text = text.replaceAll(before, '本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 产品路径');
+  text = text.replaceAll('本机 Laya 的运行位置已确定', '本机 Laya 仅为独立 Local Profile 实验候选');
   return text;
 }
