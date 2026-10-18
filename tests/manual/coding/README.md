@@ -1,5 +1,7 @@
 # P6 编码工具真实本地验收
 
+
+
 2026-10-13 更新：本 runner 已接入生产 `createDesktopCodingToolHost` 的 ACL/身份绑定与
 `workspacePatchReconciliation`，兼容当前 Runtime 的强制恢复绑定；另新增
 `patch-recovery-acceptance.mjs`，使用真实 helper/marker 验证派发前 worker 退出和写后 marker 清理失败。
