@@ -225,7 +225,13 @@ function inspectPackageJson(canonicalRoot) {
     const scripts = parsed && typeof parsed.scripts === 'object' && parsed.scripts !== null
       ? Object.keys(parsed.scripts)
       : [];
-    return {exists: true, scripts};
+    const dependencyFree = ['dependencies','devDependencies','optionalDependencies','peerDependencies']
+      .every(key => parsed[key] === undefined || parsed[key] && typeof parsed[key] === 'object'
+        && !Array.isArray(parsed[key]) && Object.keys(parsed[key]).length === 0);
+    // Narrow built-in Node test recipe, without npm lifecycle hooks or arbitrary scripts.
+    const standaloneNodeTest = dependencyFree && parsed.scripts?.test === 'node --test'
+      && !parsed.scripts?.pretest && !parsed.scripts?.posttest;
+    return {exists: true, scripts, standaloneNodeTest};
   } catch {
     return {exists: true, scripts: [], invalid: true};
   }
@@ -389,16 +395,17 @@ export function buildWorkspaceCommandRecipes({
     }
 
     const hasNodeModules = checkNodeModules(canonicalRoot);
-    if (!hasNodeModules) {
+    const standaloneNodeTest = !existsSync(path.join(canonicalRoot,'node_modules')) && pkg.standaloneNodeTest;
+    if (!hasNodeModules && !standaloneNodeTest) {
       diagnostics.reasons.push('dependencies_missing: node_modules directory does not exist in workspace root or points outside; run install outside first');
     }
 
-    if (canonicalJobHelper && canonicalNpmCli && pkg.exists && !pkg.invalid && hasNodeModules) {
+    if (canonicalJobHelper && canonicalNpmCli && pkg.exists && !pkg.invalid && (hasNodeModules || standaloneNodeTest)) {
       const scriptNames = new Set(pkg.scripts);
       const safeEnv = buildSafeProjectScriptEnv(projectScriptEnvSource);
       let exposedCount = 0;
 
-      if (scriptNames.has('build')) {
+      if (hasNodeModules && scriptNames.has('build')) {
         recipes.push({
           id: 'npm-build',
           executable: canonicalJobHelper,
@@ -411,7 +418,9 @@ export function buildWorkspaceCommandRecipes({
         recipes.push({
           id: 'npm-test',
           executable: canonicalJobHelper,
-          args: ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', canonicalNpmCli, 'run', 'test'],
+          args: standaloneNodeTest
+            ? ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', '--test']
+            : ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', canonicalNpmCli, 'run', 'test'],
           env: safeEnv,
         });
         exposedCount++;
@@ -590,7 +599,8 @@ export function createWorkspaceCommandRecipeTool(options = {}) {
       if (!pinnedJobHelper || !verifyFilePin(pinnedJobHelper)) return false;
       if (!pinnedNpmCli || !verifyFilePin(pinnedNpmCli)) return false;
       if (!pinnedPackageJson || !verifyPackageJsonPin(pinnedPackageJson, workspaceRoot)) return false;
-      if (!checkNodeModules(workspaceRoot)) return false;
+      if (!checkNodeModules(workspaceRoot) && (existsSync(path.join(workspaceRoot,'node_modules'))
+        || !inspectPackageJson(workspaceRoot).standaloneNodeTest)) return false;
     }
     return true;
   }

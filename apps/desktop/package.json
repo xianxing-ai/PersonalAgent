@@ -25,6 +25,7 @@
     "test:native-reasoning-smoke": "node test/native-reasoning-product-smoke.cjs"
   },
   "dependencies": {
+    "@personal-agent/agentarts": "0.1.0-alpha.1",
     "@personal-agent/contracts": "0.1.0-alpha.1",
     "@personal-agent/mcp": "0.1.0-alpha.1",
     "@personal-agent/skills": "0.1.0-alpha.1",

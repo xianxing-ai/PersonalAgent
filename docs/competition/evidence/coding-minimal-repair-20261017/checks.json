@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "baseCommit": "90fd2138a0e44677b2fe1f877c84278870b0511c",
+  "localRootCheck": {
+    "command": "npm run check",
+    "elapsedMs": 371188,
+    "logSha256": "d07d2a6fa05f16f6ed2ffc1899d153fe85dad3c5a0e6505eda404d83c289db2b",
+    "finishedAtUtc": "2026-10-17T04:21:52.2874112Z",
+    "exitCode": 0,
+    "tests": 3933,
+    "pass": 3912,
+    "skipped": 21,
+    "fail": 0,
+    "cancelled": 0
+  },
+  "targeted": {
+    "cloudEngineWithFakePorts": {
+      "tests": 93,
+      "pass": 93,
+      "elapsedMs": 1001.8824
+    },
+    "isolatedHost": {
+      "tests": 12,
+      "pass": 12,
+      "followupAffectedTestPass": 1,
+      "externalEvidenceLookup": "explicit_fake"
+    },
+    "publicParser": {
+      "tests": 67,
+      "pass": 67
+    },
+    "desktopBindingsAndConsent": {
+      "tests": 14,
+      "pass": 14
+    }
+  },
+  "graphRuns": [
+    {
+      "name": "main",
+      "reportSha256": "e56416cd8a2a8af41a42b8cac5a80e1d910160c31ebf855d114255a80910f734",
+      "taskWallMs": 8145,
+      "parentState": "succeeded",
+      "childState": "succeeded",
+      "graphState": "settled",
+      "nodes": {
+        "F15_N01": "completed",
+        "F15_N02": "completed",
+        "F15_N03": "completed",
+        "F15_N04": "completed",
+        "F15_N05": "completed",
+        "F15_N06": "completed"
+      },
+      "initialUserFileSha256": "113cee0d9b5b7968a8e916ddb4c41d47961f8a2976bea58c3e5a90fda16d1eed",
+      "finalUserFileSha256": "c98e508a70f2a77aec67b886a417c49b071ff7b46d4c25787e025ccbe98749e1",
+      "unrelatedUnchanged": true,
+      "approvals": 0,
+      "restarts": 0,
+      "evidenceCount": 24,
+      "modelSurface": "explicit_fake_cloud_and_selector_real_local_runtime_tools_policy_sqlite"
+    },
+    {
+      "name": "isolated",
+      "reportSha256": "3262ff370b41cadedfcd1e0bb38200654ec2d71afa637646004277fea88d635f",
+      "taskWallMs": 8339,
+      "parentState": "succeeded",
+      "childState": "succeeded",
+      "graphState": "settled",
+      "nodes": {
+        "F15_N01": "completed",
+        "F15_N02": "completed",
+        "F15_N03": "completed",
+        "F15_N04": "completed",
+        "F15_N05": "completed",
+        "F15_N06": "completed"
+      },
+      "initialUserFileSha256": "113cee0d9b5b7968a8e916ddb4c41d47961f8a2976bea58c3e5a90fda16d1eed",
+      "finalUserFileSha256": "113cee0d9b5b7968a8e916ddb4c41d47961f8a2976bea58c3e5a90fda16d1eed",
+      "unrelatedUnchanged": true,
+      "approvals": 0,
+      "restarts": 0,
+      "evidenceCount": 22,
+      "modelSurface": "explicit_fake_cloud_and_selector_real_local_runtime_tools_policy_sqlite"
+    },
+    {
+      "name": "concurrent_conflict",
+      "reportSha256": "05e64a7fce1615eeded8129428b65583bd4126fa04c260135e8827f32c7d7210",
+      "taskWallMs": 7583,
+      "parentState": "succeeded",
+      "childState": "failed",
+      "graphState": "failed",
+      "nodes": {
+        "F15_N01": "completed",
+        "F15_N02": "completed",
+        "F15_N03": "completed",
+        "F15_N04": "completed",
+        "F15_N05": "completed",
+        "F15_N06": "failed"
+      },
+      "initialUserFileSha256": "113cee0d9b5b7968a8e916ddb4c41d47961f8a2976bea58c3e5a90fda16d1eed",
+      "finalUserFileSha256": "3e7529aa7abc5421ec840998f87e9ac0e6abc7692e43765160b7bd654cdb4be2",
+      "unrelatedUnchanged": true,
+      "approvals": 0,
+      "restarts": 0,
+      "evidenceCount": 24,
+      "modelSurface": "explicit_fake_cloud_and_selector_real_local_runtime_tools_policy_sqlite"
+    },
+    {
+      "name": "approval_sqlite_restart",
+      "reportSha256": "cc4d0afe07c9dd3136219b9553fba98af69fb66f6c5914a69adb507406879dab",
+      "taskWallMs": 8232,
+      "parentState": "succeeded",
+      "childState": "succeeded",
+      "graphState": "settled",
+      "nodes": {
+        "F15_N01": "completed",
+        "F15_N02": "completed",
+        "F15_N03": "completed",
+        "F15_N04": "completed",
+        "F15_N05": "completed",
+        "F15_N06": "completed"
+      },
+      "initialUserFileSha256": "113cee0d9b5b7968a8e916ddb4c41d47961f8a2976bea58c3e5a90fda16d1eed",
+      "finalUserFileSha256": "c98e508a70f2a77aec67b886a417c49b071ff7b46d4c25787e025ccbe98749e1",
+      "unrelatedUnchanged": true,
+      "approvals": 2,
+      "restarts": 2,
+      "evidenceCount": 24,
+      "modelSurface": "explicit_fake_cloud_and_selector_real_local_runtime_tools_policy_sqlite"
+    }
+  ],
+  "sourceFileSha256": {
+    "apps/desktop/electron/agentarts-transport-config.js": "7984c7c448c92b25c2514de660456c85b4639a2f2cc15aecf803da28cca6a87d",
+    "apps/desktop/electron/main.js": "91316c509a19337525727ef002947dc0f2b059b478b39eb1a2f96ff0c741be75",
+    "apps/desktop/electron/product-tools-composition.js": "d763e4fd8309f5a720460028331e9adef242dc38bf475fd2b8d923e4d9fc3f18",
+    "apps/desktop/electron/public-reference-consent.js": "3dc88fc04c9b5c48d0482846def3a33fcb8dfb3af89a8155249ee4892cb206ce",
+    "apps/desktop/electron/workspace-config-host.js": "991d42f2a9f62e4ac7f290dd5226faf63437e9e478d6e22e87c9a8c0aab2124a",
+    "apps/desktop/test/agentarts-transport-config.test.mjs": "7ab1d0cab06c6a55b17d7078aaa84c16001b27e18a1b1d0a45586b39bd2f529c",
+    "apps/runtime/src/application.ts": "02a0eb40fbc296971a040cc56c6b8a581d69640d4f9d287459e9d7c2b8e5db6b",
+    "apps/runtime/src/application/agentarts.ts": "16a05e45870db11d0ad7cc852815bf1bbf73381280803baf335b91c3d9643f09",
+    "apps/runtime/src/application/owned-workflow-application.ts": "04d90d61229e53b3aca130f943bd34599afaf224ba5a821f8fd3b6ef7907ce66",
+    "apps/runtime/src/application/runtime-application.ts": "a5941cbc4129fcb6b06860e6e88ab697f3f82f5dacb95f13683cd55733288aa5",
+    "packages/agentarts/package.json": "4e9aec2b743a7198729d912b978b5af8ebf1c0710221d84d72fc22012df72237",
+    "packages/agentarts/src/index.ts": "f3a975e0c057d54ea6271814c6a0e6f1b95307e6ebc8ebc685cbaefd34562c62",
+    "packages/agentarts/src/owned-workflow-data.ts": "2af07a8e363ea46911e57dbb54f428ae60685fd45e6d237f008166052b81f4b8",
+    "packages/agentarts/src/owned-workflows.ts": "ab96601a17b2ab0246d1470e2899071f05c2aab4f6bd127caa1e89f3cc738b9c",
+    "packages/agentarts/src/workflow-dataflow.ts": "d8695eb304ffa4edf22dd2c3c4bb867316fa1171ed69c9fd687bc7f376820276",
+    "packages/coding-tools/src/index.ts": "8ceeffab49abf6d4c78f57e13507f96de4fc0e6762eb91fbb9ebc1f5cef7a9aa",
+    "packages/contracts/package.json": "36cf5ab4179fd02cea40e9662219c40ddc11b1dbba22be2176c82da054a0ca47",
+    "packages/coordination/src/agentarts.ts": "ee75d77db08d295ccbf9d3af7b693bbc652d315d5444c8a157ea4ef66961b5d6",
+    "packages/coordination/src/index.ts": "51271547c521653b099906bd4dc127746e8b92dd652b0a8a0ec44ea4c0704019",
+    "apps/desktop/test/coding-repair-native-consent.test.mjs": "5bb8df83c906309acaa16f0c941f515d95ee5568f6c12cce5a09db723e9d8c01",
+    "apps/runtime/src/application/coding-repair-application.ts": "6739094c4024a61d1ce479d96fd83858a367149300cd984895369da194ca6cdc",
+    "apps/runtime/src/application/owned-workflow-image-adapter.ts": "43e06af2c2127983f0170ef3ebcce263171639fd736cfc51404973d8983e2c01",
+    "apps/runtime/test/coding-repair-application.test.mjs": "e73e0577eee51e1148dc16fd8406cf89c6b2355a87042f36add4b9f6acffa29f",
+    "apps/runtime/test/owned-workflow-image-adapter.test.mjs": "2e6da161de1feb08a2a6758fa1bd41d5cc00a173a9db3fba31433e774918a181",
+    "packages/agentarts/src/coding-repair.ts": "870c26c85b551d81b10bb6bdce657cc378faec52b1cbf774026131fbafe4fa3d",
+    "packages/agentarts/test/coding-repair-workflow.test.mjs": "3ccba2dc9d0974e5f02574f7025b6434a71fea5522ed3008527f67a07562189b",
+    "packages/agentarts/test/coding-repair.test.mjs": "f09ada994dcb9ecde79fd531d3bf4495b8c2f123854c005df46d477b4f97f57b",
+    "packages/coding-tools/src/isolated-repair.ts": "8d5b4d14ccf8406ad95c285d9749e67a393a534bef8b6ad39a4982fbd087a041",
+    "packages/coding-tools/src/repair-verification.ts": "1e5fc0eb16492464552b6cc853c06abbc53206e2544d3ab9cdac9218a7404e0b",
+    "packages/coding-tools/test/isolated-repair.test.mjs": "57ca847989cd251d38e16926f2fa40ba4265ecdd8424f0f26d01985a2d54ebae",
+    "packages/contracts/src/coding-repair.ts": "31b2aba1bb0f45db1e584108366b10aa8c37d8f4512e74edb5864776b8063bb5",
+    "packages/contracts/test/coding-repair.test.mjs": "f6b0f61ec57f32b48d6caa50a17fa6897c9922138e5061af763789bbc7f843eb",
+    "packages/coordination/test/agentarts-response-text.test.mjs": "1964f38e0f8d6a7e92d064fca35dfdb924b0ea57b2a4b540cfeb9adb3522a8ec",
+    "tests/manual/agentarts/coding-repair-cloud-acceptance.mjs": "8a27d17612c6e138c3de8bb0ac04a7da62ab41ff11e2e0e3d1ad41dbf0b5d5a0",
+    "tests/manual/agentarts/coding-repair-full-graph.mjs": "ac9cd5756591f60535342151019f94e6c549e6aeec62bf895d6d4c99e6382e2b"
+  },
+  "rawPrivateLogsIncluded": false,
+  "realCloudAcceptance": "not asserted by this local receipt; see separately read-back image/version/call evidence"
+}
