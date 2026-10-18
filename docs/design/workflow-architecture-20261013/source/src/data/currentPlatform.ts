@@ -1,6 +1,6 @@
 import type {PlatformIntegration} from './agentartsIntegration';
 export const PLATFORM_BASELINE='固定设计提交abb70879（2026-10-15），不将后续main源码增量自动提升为该轮真实验收。';
-export const PLATFORM_SCOPE='Competition由AgentArts负责Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用已部署工作流，并保留TaskRuntime状态、Policy授权、ToolGateway执行、可信Evidence与外部读回。Owner已确认本机Laya是本机运行方案并参与Competition产品路径；领域资格、具体接线和场景适用性仍待验证。AgentArts失败不得静默回退Local Profile。';
+export const PLATFORM_SCOPE='Competition由AgentArts负责Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用已部署工作流，并保留TaskRuntime状态、Policy授权、ToolGateway执行、可信Evidence与外部读回。本机Laya仍为实验候选，仅作为独立Local Profile的可选方案；接线与场景适用性尚待验证，不代表已纳入Competition产品路径。AgentArts失败不得静默回退Local Profile。';
 export const RESOURCE_ROUTES=[
  {name:'知识：local/platform',sources:['本地Wiki与KnowledgePort','显式平台KnowledgePort适配'],route:'原ToolGateway→按provider路由→带source/revision原文片段→上下文',existing:'两个route与公开port已有；平台官方API/账号适配未配置明确unavailable，不搬本地磁盘到镜像。'},
  {name:'MCP：现有SDK与工具入口',sources:['平台远程MCP','既有本地stdio/自有服务'],route:'可信启动endpoint/credential→SDK版本协商→tools/list→RegisteredTool→原ToolGateway执行',existing:'runtime SDK1.31.0真实client已实现；没有配置不Fake，payload不能注入URL/key。真实平台工具仍需单项证据。'},
@@ -15,4 +15,4 @@ export const PLATFORM_INTEGRATIONS:PlatformIntegration[]=[
 ];
 export const PLATFORM_NODES=PLATFORM_INTEGRATIONS.map(i=>({id:i.nodeId,label:i.name,subtitle:i.subtitle,kind:'platform'}));
 export const PLATFORM_GOLDEN_PATH=['AgentArts构建Competition Agent/Workflow并读回版本与配置','AgentArts负责Workflow编排、评估和部署，并读回trace/评估/部署结果','本地Runtime经CloudAgentPort调用已部署版本；本地Policy/ToolGateway执行获准操作并记录Evidence','按CW02逐项绑定真实MCP/knowledge/trace/evaluation port；缺少证据的能力标为unavailable'];
-export const PLATFORM_BOUNDARIES=['Owner已确认本机Laya参与Competition产品路径；领域资格、具体接线和场景适用性仍待验证。AgentArts承担Agent/Workflow构建、编排、评估与部署；不得静默回退Local Profile。','本机Laya/自有镜像的2026-10-15实测仍是历史证据；不能证明Competition平台编排或完整比赛验收。','TaskRuntime、Policy、ToolGateway、可信Evidence与外部读回仍由本地Runtime掌握。','28/185目录默认串行≠28业务全验收。','SIS经AA流式桥unavailable；百炼无mic握手不证明物理听说。','最小修复/依赖重规划算法暂停，网页不新增算法。'];
+export const PLATFORM_BOUNDARIES=['本机Laya仍是实验候选，仅作为独立Local Profile的可选方案；尚未确认纳入Competition产品路径。AgentArts承担Agent/Workflow构建、编排、评估与部署，本机判断不替代AgentArts编排；不得静默回退Local Profile。','本机Laya/自有镜像仍作为2026-10-15历史实测记录；不能证明Competition平台编排或完整比赛验收。','TaskRuntime、Policy、ToolGateway、可信Evidence与外部读回仍由本地Runtime掌握。','28/185目录默认串行≠28业务全验收。','SIS经AA流式桥unavailable；百炼无mic握手不证明物理听说。','最小修复/依赖重规划算法暂停，网页不新增算法。'];
