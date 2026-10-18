@@ -56,30 +56,30 @@
 | [docs/PROJECT_TAKEOVER_20261007.md](../../PROJECT_TAKEOVER_20261007.md) | 接口/技术/阶段参考：当前设计导航统一 |
 | [docs/README.md](../../README.md) | 当前规范：正文重写/同步 |
 | [docs/ROADMAP.md](../../ROADMAP.md) | 当前规范：正文重写/同步 |
-| [docs/adr/0001-modular-monolith.md](../../adr/0001-modular-monolith.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0002-dependency-direction.md](../../adr/0002-dependency-direction.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0003-runtime-authority.md](../../adr/0003-runtime-authority.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0004-persistent-tool-approval.md](../../adr/0004-persistent-tool-approval.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0005-layered-interface-freeze.md](../../adr/0005-layered-interface-freeze.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0006-coordination-and-agentarts-boundary.md](../../adr/0006-coordination-and-agentarts-boundary.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0007-huawei-ict-agentarts-competition-profile.md](../../adr/0007-huawei-ict-agentarts-competition-profile.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0008-fact-feed-consumption.md](../../adr/0008-fact-feed-consumption.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0009-knowledge-data-boundary.md](../../adr/0009-knowledge-data-boundary.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0010-memory-erasure.md](../../adr/0010-memory-erasure.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0011-native-live-voice.md](../../adr/0011-native-live-voice.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0012-owned-agentarts-image.md](../../adr/0012-owned-agentarts-image.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0013-resident-agent-wiki-wss.md](../../adr/0013-resident-agent-wiki-wss.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0014-agentarts-wss-transport.md](../../adr/0014-agentarts-wss-transport.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0015-owned-workflow-controller-bindings.md](../../adr/0015-owned-workflow-controller-bindings.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0016-wiki-write-projection-recovery.md](../../adr/0016-wiki-write-projection-recovery.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0017-wiki-source-monitor.md](../../adr/0017-wiki-source-monitor.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0018-managed-backups-and-volatile-index.md](../../adr/0018-managed-backups-and-volatile-index.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0019-obsidian-runtime-pairing.md](../../adr/0019-obsidian-runtime-pairing.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0020-obsidian-authenticated-bridge.md](../../adr/0020-obsidian-authenticated-bridge.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0021-paired-citation-memory.md](../../adr/0021-paired-citation-memory.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0022-wiki-source-identity.md](../../adr/0022-wiki-source-identity.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0023-local-skill-installation.md](../../adr/0023-local-skill-installation.md) | 历史ADR：保留原决定，替代关系见ADR-0024 |
-| [docs/adr/0024-unified-decision-workflow-architecture.md](../../adr/0024-unified-decision-workflow-architecture.md) | 新ADR：采用当前主架构 |
+| [docs/adr/0001-modular-monolith.md](../../adr/0001-modular-monolith.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0002-dependency-direction.md](../../adr/0002-dependency-direction.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0003-runtime-authority.md](../../adr/0003-runtime-authority.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0004-persistent-tool-approval.md](../../adr/0004-persistent-tool-approval.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0005-layered-interface-freeze.md](../../adr/0005-layered-interface-freeze.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0006-coordination-and-agentarts-boundary.md](../../adr/0006-coordination-and-agentarts-boundary.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0007-huawei-ict-agentarts-competition-profile.md](../../adr/0007-huawei-ict-agentarts-competition-profile.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0008-fact-feed-consumption.md](../../adr/0008-fact-feed-consumption.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0009-knowledge-data-boundary.md](../../adr/0009-knowledge-data-boundary.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0010-memory-erasure.md](../../adr/0010-memory-erasure.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0011-native-live-voice.md](../../adr/0011-native-live-voice.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0012-owned-agentarts-image.md](../../adr/0012-owned-agentarts-image.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0013-resident-agent-wiki-wss.md](../../adr/0013-resident-agent-wiki-wss.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0014-agentarts-wss-transport.md](../../adr/0014-agentarts-wss-transport.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0015-owned-workflow-controller-bindings.md](../../adr/0015-owned-workflow-controller-bindings.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0016-wiki-write-projection-recovery.md](../../adr/0016-wiki-write-projection-recovery.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0017-wiki-source-monitor.md](../../adr/0017-wiki-source-monitor.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0018-managed-backups-and-volatile-index.md](../../adr/0018-managed-backups-and-volatile-index.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0019-obsidian-runtime-pairing.md](../../adr/0019-obsidian-runtime-pairing.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0020-obsidian-authenticated-bridge.md](../../adr/0020-obsidian-authenticated-bridge.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0021-paired-citation-memory.md](../../adr/0021-paired-citation-memory.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0022-wiki-source-identity.md](../../adr/0022-wiki-source-identity.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0023-local-skill-installation.md](../../adr/0023-local-skill-installation.md) | 历史ADR：保留原决定与适用范围；现行规则见Competition Profile |
+| [docs/adr/0033-unified-decision-workflow-architecture.md](../../adr/0033-unified-decision-workflow-architecture.md) | 历史架构讨论：原ADR-0024，现存于0033；现行决定见Competition Profile |
 | [docs/adr/README.md](../../adr/README.md) | 当前规范：正文重写/同步 |
 | [docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md](../../competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) | 当前规范：正文重写/同步 |
 | [docs/competition/MOD30-ORDINARY-GOAL-CONTRACT.md](../../competition/MOD30-ORDINARY-GOAL-CONTRACT.md) | 接口/技术/阶段参考：当前设计导航统一 |

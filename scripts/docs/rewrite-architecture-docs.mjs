@@ -217,7 +217,7 @@ huawei_ict_agentarts为当前唯一实施路径，AgentArts真实承担构建/�
 
 保留公共wire 1.0.0、transport 0.1.0和候选版本的既有语义；新概念字段在实施时映射或经版本化扩展。Laya现有端口与服务为待迁入镜像的实现基础，旧fast/world/plan/review收敛最终裁决入口，具体迁移见[IMPLEMENTATION](design/workflow-architecture-20261013/IMPLEMENTATION.md)。
 
-真实延迟尚未实测，关键路径需分别量受理/首响/工具/完整结果/并发排队。已有固定公开文件云闭环是局部证据；28功能、语音、私人来源、写入、影子和配置晋升分别验收。设计采用见[ADR-0024](adr/0024-unified-decision-workflow-architecture.md)，不新增生产包、任务库或执行循环。
+真实延迟尚未实测，关键路径需分别量受理/首响/工具/完整结果/并发排队。已有固定公开文件云闭环是局部证据；28功能、语音、私人来源、写入、影子和配置晋升分别验收。历史架构讨论见[原ADR-0024（现存0033）](adr/0033-unified-decision-workflow-architecture.md)，现行决定以Competition Profile为准，不新增生产包、任务库或执行循环。
 `);
 set('docs/PROJECT_STRUCTURE.md', `# 目录与依赖规范
 
@@ -533,7 +533,7 @@ set('docs/ROADMAP.md', `# 开发计划与进度
 ${oldRoadmap.replace(/^# 开发计划与进度\n/,'')}
 `);
 
-set('docs/adr/0024-unified-decision-workflow-architecture.md', `# ADR-0024：统一决策、责任图与后台影子架构
+set('docs/adr/0033-unified-decision-workflow-architecture.md', `# ADR-0024：统一决策、责任图与后台影子架构
 
 状态：accepted（产品设计，实施待交付） · 日期：2026-10-14 · profile：huawei_ict_agentarts。
 
@@ -561,15 +561,15 @@ set('docs/adr/0024-unified-decision-workflow-architecture.md', `# ADR-0024：统
 
 按DESIGN/WORKFLOWS/IMPLEMENTATION检查全部功能、版本、确认、未知和影子隔离，并分别取得国内模型/连接器、设备、平台及P50/P95证据。模型能力/质量或国内可用性不满足时复审配置；本ADR不意味着生产能力已frozen或完成。
 `);
-const adrs=execFileSync('git',['ls-files','docs/adr/*.md'],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(p=>!p.endsWith('/README.md')&&!p.endsWith('/0024-unified-decision-workflow-architecture.md'));
+const adrs=execFileSync('git',['ls-files','docs/adr/*.md'],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(p=>!p.endsWith('/README.md')&&!p.endsWith('/0033-unified-decision-workflow-architecture.md'));
 set('docs/adr/README.md', `# 架构决策记录
 
-当前主架构采用[ADR-0024](0024-unified-decision-workflow-architecture.md)。它采用Laya镜像内决策并替代旧DeepSeek全局决策和旧设计入口，保留模块化单体、Runtime权限、Wiki来源、WSS及既有恢复语义。ADR的accepted是决定状态，不表示实现/真实验收已完成。
+[原ADR-0024（现存0033）](0033-unified-decision-workflow-architecture.md)保留历史架构讨论；当前主线ADR-0024为原生思考配置，两者不能混同。现行本机Laya与AgentArts职责以Competition Profile为准，历史ADR不证明实现或真实验收已完成。
 
 历史ADR保留原日期、内容与状态。后续替代由新ADR说明，不能覆盖旧作者或验收。协作按CONTRIBUTING，一位合资格非作者对当前head有效Approve及检查/冲突/意见门槛，不恢复旧双人本机阅读规则。
 
 ${adrs.map(file=>'- ['+original(file).split('\n')[0].replace(/^# /,'')+']('+path.basename(file)+')').join('\n')}
-- [ADR-0024：统一决策、责任图与后台影子](0024-unified-decision-workflow-architecture.md)
+- [历史架构讨论（原ADR-0024，现存0033）：统一决策、责任图与后台影子](0033-unified-decision-workflow-architecture.md)
 `);
 set('docs/interfaces/README.md', `# 接口与能力目录
 
@@ -671,8 +671,8 @@ for(const file of tracked.filter(p=>/^(apps|packages)\/.+\/README\.md$/.test(p)&
  const rel=p=>path.posix.relative(path.posix.dirname(file),p);
  const fsFor=[...new Set(assigned.flatMap(m=>m.workflows))];
  const introduction=`${title}\n\n<!-- architecture-scope-20261013 -->\n## 当前架构职责\n\n目标profile：huawei_ict_agentarts。工程责任：${assigned.map(m=>`${m.id}（${m.owner}）`).join('、')}。产品流程：${fsFor.join('、')}；逐节点流程见[WORKFLOWS](${rel(design+'/WORKFLOWS.md')})，主架构见[DESIGN](${rel(design+'/DESIGN.md')})，模块接线见[MODULES](${rel(design+'/MODULES.md')})。\n\n${assigned.map(m=>perModule(m).split('接线责任：')[1].split('\n\n验收责任')[0]).join('\n\n')}\n\n统一语义裁决由自有ARM64镜像内Laya承担；国内MaaS为执行模型，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。独立节点按真实依赖并行，影子/历史评估默认后台。\n\n本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](${rel('docs/interfaces/CURRENT_INTERFACE_CATALOG.md')})，也不证明新责任/语音/影子接线已经完成。\n\n## 现有API、运行说明与历史验证参考\n<!-- /architecture-scope-20261013 -->\n`;
- body=body.slice(title.length).trim().replace('## Legacy Laya advice consumer (migration pending)','## Laya advice consumer (image migration pending)').replace(/Legacy implementation: `ProactiveDecisionService`[^\n]*/,'`ProactiveDecisionService` takes a bounded local decision model. The current target moves Laya service and weights into the owned ARM64 image; existing exports remain compatible until the image consumer is verified.');
- if(file==='packages/cognition/README.md')body=body.replace('## Provisional Laya advice consumer','## Laya advice consumer (image migration pending)').replace('`ProactiveDecisionService` takes a bounded local decision model.','Existing implementation: `ProactiveDecisionService` takes a bounded local decision model. The 2026-10-14 target moves Laya service and weights into the owned ARM64 image; existing exports remain compatible until the image consumer is verified.');
+ body=body.slice(title.length).trim().replace('## Legacy Laya advice consumer (migration pending)','## Local Laya advice consumer').replace('## Laya advice consumer (image migration pending)','## Local Laya advice consumer').replace(/Legacy implementation: `ProactiveDecisionService`[^\n]*/,'`ProactiveDecisionService` takes a bounded local decision model. Laya service and weights remain on the local host and participate in the Competition product path; AgentArts retains Agent/Workflow orchestration. Node wiring, domain qualification and real end-to-end acceptance require separate evidence.');
+ if(file==='packages/cognition/README.md')body=body.replace('## Provisional Laya advice consumer','## Local Laya advice consumer').replace('The current target moves Laya service and weights into the owned ARM64 image; existing exports remain compatible until the image consumer is verified.','The current local Laya host participates in the Competition product path; AgentArts retains Agent/Workflow orchestration. Node wiring, domain qualification and real end-to-end acceptance require separate evidence.');
  if(file==='packages/models/README.md')body=body.replace('后续需提供最小 `ModelPort`，让 MOD-04B 不依赖具体网关实现。','公开源码已有 `ModelPort = ModelProvider`；调用方具体依赖迁移仍需逐项核对。').replace('流式输出和 PA-012 专业 Agent 委派仍未完成。','当前流式/Live与PA-012宿主工厂按实际部署和消费状态核对，不由历史离线验收推定全链完成。');
  set(file,introduction+'\n'+body);
 }

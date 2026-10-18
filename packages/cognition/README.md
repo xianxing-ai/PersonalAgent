@@ -202,9 +202,9 @@ proves only the durable graph append. It does not approve repair text, change
 task state, schedule or execute actions, rebind dependencies automatically, or
 claim cloud/real execution evidence.
 
-## Laya advice consumer (image migration pending)
+## Local Laya advice consumer
 
-Existing implementation: `ProactiveDecisionService` takes a bounded local decision model. The 2026-10-14 target moves Laya service and weights into the owned ARM64 image; existing exports remain compatible until the image consumer is verified. The current target moves Laya service and weights into the owned ARM64 image; existing exports remain compatible until the image consumer is verified.
+Existing implementation: `ProactiveDecisionService` takes a bounded local decision model. The 2026-10-14 image migration proposal is historical. Laya service and weights remain on the local host and participate in the Competition product path; AgentArts retains Agent/Workflow orchestration. Existing exports remain compatible; node wiring, domain qualification and real end-to-end acceptance require separate evidence.
 `LayaDecisionModel` and `LocalLayaHttpTransport` connect it to an authenticated
 loopback Laya server supplied by a trusted host. The service returns suggestions
 only; uncalibrated suppression or execution labels, low confidence, and model
