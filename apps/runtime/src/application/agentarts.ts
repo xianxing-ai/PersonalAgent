@@ -154,7 +154,7 @@ export function createAgentArtsRuntimeApplication(
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
         onDispatch: (request, receipt) => {
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
-          recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt);
+          recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt,request);
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-received', null);
         },
         onAccepted: (request, receipt) => {
