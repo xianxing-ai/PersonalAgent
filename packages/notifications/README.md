@@ -24,6 +24,10 @@ CAS 冲突明确拒绝，不自动重复写入；写结果未知时先按原 ope
 read ack、撤回和轮次预占/投递状态写入均返回 `UNSUPPORTED_CAPABILITY`。
 普通 `StoragePort.set` 的一次写入不被宣称为跨进程配额安全。
 
+### 批次状态快照分页（F12）
+
+`notifications.events` 返回保留批次的当前状态快照，包含 `ready_for_delivery` / `delivered` 与可选 `deliveredAt`，不表示不可变状态变更日志。首屏返回 `snapshotRevision`；旧持久状态缺少 revision 时按 0 读取，之后每次写入单调递增。续页必须同时传 `sinceBatchId` 和该 revision。若期间任一通知状态写入导致 revision 改变，返回 `cursorState: changed` 且不返回事件，消费端必须从第一页重读，并在 `nextCursor: null` 时才将该 revision 的分页视为完整快照。每轮从第一页对账可以读到先前确认后的 delivered 状态。
+
 ### 显式用户字段与继承
 
 作用域为 `{kind:'global'}`、`{kind:'connector',connectorId}`、
