@@ -1,14 +1,14 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
-## 当前架构决定（2026-10-17）
+## 当前架构决定（2026-10-18）
 
-Owner 已确认本机 Laya 是本项目确定的架构方案，在本机运行并参与 `huawei_ict_agentarts` 的 Competition 产品路径；下文“架构仍未最终定型”仅指其余待定设计、接线和验收范围，不否定这项决定。AgentArts 继续承担现有镜像 Workflow 编排职责。本决定不表示外部比赛资格已获认可，也不表示真实平台端到端验收完成；既有回执仅证明对应固定版本与场景。
+Owner 已确认：本机 Laya 仅作为独立 Local Profile 的实验候选，不属于当前 Competition 产品路径。当前只实施 `huawei_ict_agentarts` Competition Profile；AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署，本地 Runtime 经 `CloudAgentPort` 调用已部署工作流。Competition 路径不调用本机 Laya，AgentArts 失败也不得静默回退到 Local Profile。本决定不表示候选方案已通过资格验证、外部比赛资格已获认可或真实平台端到端验收完成；既有回执只证明对应固定版本与场景。
 
 <!-- current-design-alignment-20261015 -->
-## 当前口径与历史适用性（2026-10-15）
+## 2026-10-15 本机 Laya 实验记录与证据（历史）
 
-当前以[详细设计](../design/CURRENT_DESIGN_20261015.md)区分设计意图、已有代码、待接线与真实验收；架构仍未最终定型。
-本机Laya、全部28图/185节点镜像串行编排，未合格判断升级经AgentArts代理的DeepSeek；语音百炼既有端口，SIS平台不可用。
+以下记录当时本机 Laya 与镜像工作流实验的部署和证据，不覆盖上文当前 Profile 边界。当前设计、已有代码、待接线与真实验收以[详细设计](../design/CURRENT_DESIGN_20261015.md)区分。
+当时试验使用本机Laya、全部28图/185节点镜像串行编排，未合格判断升级经AgentArts代理的DeepSeek；语音百炼既有端口，SIS平台不可用。
 SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1`，
 云指定版本 `arm64-local-v3-244ca434` 目录与关联日志已验，见[发布回执](evidence/test-image-v3-20261015/owned-release.json)。
 两案例完整执行表面为本机同版镜像+本机Runtime/Policy/工具/Laya+远端AgentArts模型代理，
@@ -17,13 +17,13 @@ SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98
 主动责任、无人值守、归来摘要、用户可调打扰/静默feed与语音确认复用原端口。
 高级影子与已有判断合并、主任务优先、按机会资源/收益决定；真实runner目前顺序await主/影，机会并行与普通任务先交主结果仍待接线。
 以下带日期的嵌入式、直连MaaS、未发布与旧未验记录均保留原版本范围，冲突部署/完成状态已superseded，不作为当前启动参数。
-当前启动只用 `PA_AGENT_LAYA_MODE=local`，镜像不含模型权重、Python或PyTorch；不直连提供商fallback。
+`PA_AGENT_LAYA_MODE=local` 仅记录该历史试验的启动方式，不是当前 Competition Profile 的启动配置；镜像不含模型权重、Python或PyTorch，也不直连提供商fallback。
 旧协作门槛以当前CONTRIBUTING/AGENTS为准，文档或receipt不授予权限。
 
-## 2026-10-15 当前开发边界
+## 2026-10-15 原开发边界（历史）
 
-Owner 选择本机 Laya，28 工作流编排仍由 AgentArts 自有镜像承担，不新增通用 Local Profile 或
-AgentArts 失败后静默回退。本地决策和宿主适配经既有工具/回执接口接线，见
+当时试验选择本机 Laya，28 工作流编排由 AgentArts 自有镜像承担；该试验方案已由上文当前架构决定取代。
+本地决策和宿主适配经既有工具/回执接口接线，见
 [ADR-0030](../adr/0030-local-laya-serial-image-workflows.md) 和 [调用说明](LOCAL_LAYA_WORKFLOW_WIRING.md)。
 早期“本版镜像尚未发布”记录已由上述SWR回执取代；本机工具闭环、云目录/日志和平台原生评估仍分别记录。
 
