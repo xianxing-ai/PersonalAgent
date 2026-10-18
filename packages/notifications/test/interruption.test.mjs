@@ -130,6 +130,70 @@ test('concurrent rounds share a global cap and channel retries cannot double cha
   assert.equal(f.reserve('round-one',one).counted,true);assert.equal(f.service.notificationFeed().items[0].unread,true);
   assert.ok(f.service.notificationFeed().items[0].deliveredAt);
 });
+test('same-time late channel confirmation retains the newest hundred batches and replay cannot refresh an older batch',()=>{
+  const f=fixture();f.configure();const old=f.ingest('old-ready');
+  const complete=(roundId,batch)=>{
+    assert.equal(f.reserve(roundId,batch).counted,true);
+    assert.equal(f.service.beginDelivery({roundId,channel:'banner'}).maySend,true);
+    const receipt={roundId,channel:'banner',state:'delivered',evidenceRefs:['fixture:'+roundId]};
+    f.service.completeDelivery(receipt);return receipt;
+  };
+  const later=[];
+  for(let i=0;i<100;i++) {
+    const batch=f.ingest('later-'+i);
+    later.push({batch,receipt:complete('round-'+i,batch)});
+  }
+  complete('old-round',old);
+  const snapshot=f.service.readBatchEvents({limit:100});
+  assert.equal(snapshot.retained.delivered,100);
+  assert.equal(snapshot.retained.readyForDelivery,0);
+  assert.ok(snapshot.events.some(event=>event.batchId===old.id));
+  assert.ok(!snapshot.events.some(event=>event.batchId===later[0].batch.id));
+  assert.equal(new Set(snapshot.events.map(event=>event.deliveredAt)).size,1,'all confirmations occur in one millisecond');
+  assert.deepEqual(f.restart().readBatchEvents({limit:100}),snapshot);
+
+  f.service.completeDelivery(later[1].receipt);
+  assert.deepEqual(f.service.readBatchEvents({limit:100}),snapshot,'replay must neither write nor refresh retention');
+  assert.equal(f.service.beginDelivery({roundId:later[1].receipt.roundId,channel:'voice'}).maySend,true);
+  f.service.completeDelivery({...later[1].receipt,channel:'voice',evidenceRefs:['fixture:second-channel']});
+  assert.deepEqual(f.service.readBatchEvents({limit:100}).events,snapshot.events,'a second channel must preserve batch confirmation times');
+  complete('newest-round',f.ingest('newest'));
+  const newest=f.restart().readBatchEvents({limit:100});
+  assert.equal(newest.retained.delivered,100);
+  assert.ok(newest.events.some(event=>event.batchId===old.id));
+  assert.ok(!newest.events.some(event=>event.batchId===later[1].batch.id),'the oldest remaining confirmation is evicted');
+});
+
+test('same-time multi-batch channel confirmation retains the whole new group and leaves other ready batches pending',()=>{
+  const f=fixture();f.configure();
+  const first=f.ingest('old-first'),second=f.ingest('old-second'),held=f.ingest('still-ready');
+  let firstLater;
+  for(let i=0;i<99;i++) {
+    const batch=f.ingest('later-'+i);firstLater??=batch;
+    f.reserve('later-round-'+i,batch);
+    assert.equal(f.service.beginDelivery({roundId:'later-round-'+i,channel:'banner'}).maySend,true);
+    f.service.completeDelivery({roundId:'later-round-'+i,channel:'banner',state:'delivered',evidenceRefs:['fixture:later-'+i]});
+  }
+  const roundId='old-group';
+  assert.equal(f.reserve(roundId,first,{batchIds:[second.id,first.id]}).counted,true);
+  assert.equal(f.service.beginDelivery({roundId,channel:'banner'}).maySend,true);
+  const receipt={roundId,channel:'banner',state:'delivered',evidenceRefs:['fixture:old-group']};
+  f.service.completeDelivery(receipt);
+  const snapshot=f.service.readBatchEvents({limit:100});
+  assert.equal(typeof snapshot.nextCursor,'string');
+  const tail=f.service.readBatchEvents({sinceBatchId:snapshot.nextCursor,snapshotRevision:snapshot.snapshotRevision,limit:100});
+  const events=[...snapshot.events,...tail.events];
+  assert.equal(snapshot.retained.delivered,100);
+  assert.equal(snapshot.retained.readyForDelivery,1);
+  assert.equal(events.find(event=>event.batchId===first.id)?.state,'delivered');
+  assert.equal(events.find(event=>event.batchId===second.id)?.state,'delivered');
+  assert.equal(events.find(event=>event.batchId===held.id)?.state,'ready_for_delivery');
+  assert.ok(!events.some(event=>event.batchId===firstLater.id));
+  assert.deepEqual(f.restart().readBatchEvents({limit:100}),snapshot);
+  f.service.completeDelivery(receipt);
+  assert.deepEqual(f.service.readBatchEvents({limit:100}),snapshot);
+});
+
 test('silent mode ingests continuously, returns valid feed/digest only and never grants an interruption',()=>{
   const f=fixture();f.configure(userPolicy({mode:'silent',maxInterruptions:0}));
   f.service.ingest([f.item('silent-one')],{scope:connector});f.service.ingest([f.item('expired')],{scope:connector,validUntilUtc:new Date(f.now()+1).toISOString()});
