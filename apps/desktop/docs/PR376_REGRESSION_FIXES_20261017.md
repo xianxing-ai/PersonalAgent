@@ -2,6 +2,10 @@
 
 目标 Profile：`huawei_ict_agentarts`。工作包为 Desktop / Runtime Application 审查回归修复，基线 `0ef08645`，分支 `codex/fix-pr376-ui-regressions`。原 PR #376 已合并；本增量不代表修复已经集成 main 或发布。
 
+2026-10-18 补交为 PR #404（`codex/publish-pr376-regressions-20261018`），依赖窗口/拖拽 PR #403 及其冷启动父 PR #398，保留上游的 WSS 条件表单和已有空目录修复；同步 main `0b671afc`。上游已修复空目录的同一问题，不将其作为本增量重复实现。原生 WSS 测试现在先选择 WSS 再填写条件显示的令牌，保留原凭据清空及配置读回断言。
+
+本次新证据：构建及定向测试 61/61、原生回归 13 场景通过。完整 `npm run check` 已实际执行，Desktop 1134 项中 1128 通过、6 跳过、0 失败；Runtime 753 项中 751 通过、2 失败，均为 F15 main/shadow 停在 `waiting_reconciliation`，完整检查退出 1，末尾集成步骤未执行。不能宣称该合并头全仓通过，PR 保持草稿等待 F15 问题与必需 CI 解决。日志 `.cache/publish-pr376-full-check-20261018.log` 保留。下方完整检查、计数和烟测属于 2026-10-17 原分支的历史验收，不能替代本次失败结论；本次没有真实云验收。
+
 ## 修复与接线
 
 | 问题 | 修复后的行为与实际调用方 |
