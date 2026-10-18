@@ -1,6 +1,6 @@
 # 本机 Laya 与镜像工作流接线
 
-> 当前适用性：Owner 已确认本机 Laya 在本机运行并参与 Competition 产品路径；AgentArts 继续承担镜像 Workflow 编排，本地 Runtime/Policy/ToolGateway/Evidence 保留授权与执行边界。领域资格、具体接线、其余架构、外部比赛资格与真实端到端验收仍须分别核实。下文 Evidence 只证明对应固定版本和场景。
+> 当前适用性：本机 Laya 仅为独立 Local Profile 的实验候选，不属于 Competition 路径；Competition 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。本地 Runtime/Policy/ToolGateway/Evidence 保留授权与执行边界。Local Profile 本轮不扩展，AgentArts 失败不得静默回退。领域资格、接线、外部比赛资格与真实端到端验收仍须分别核实；下文 Evidence 只证明对应固定版本和场景。
 
 > 2026-10-16 当前生成清单为152项（111 host、41 guard），旧148为历史数量。
 > [实物完整性审计](WORKFLOW_COMPLETENESS_AUDIT_20261016.md)明确图/引擎、节点接口注册与真实整图三种状态；
@@ -18,12 +18,12 @@
 下文按原轮次保留具体接口/试验记录；其中“未发布”“模型未跑”“主影子未通过”只适用于其早期阶段，当前事实以上述回执为准。旧fixture不能扩展为真实账号、物理设备或平台服务验收。
 
 
-> 历史阶段说明（2026-10-15）：以下两行保留当时“先测试，再决定架构”的原记录；后续 Owner 已确认本机 Laya 在本机运行并参与 Competition 产品路径，原记录不否定这项路线决定。领域资格、其余架构、外部比赛资格与真实端到端验收仍须分别核实。
+> 历史阶段说明（2026-10-15）：以下保留当时“先测试，再决定架构”的原记录。随后将本机 Laya 写为 Competition 路径组成部分的内容也属于历史方案，现由 Local-only 决定取代；当前 Competition 由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署，Local Profile 本轮不扩展。领域资格、外部比赛资格与真实端到端验收仍须分别核实。
 > 历史记录（2026-10-15）：Owner 要求先测试，再决定架构。本文及现有代码仅描述实验候选实现，未据此确认最终架构；
 > 本轮不提交架构定稿、不发布镜像，保留原始结果供选择。
 
 早期实现目标：`huawei_ict_agentarts`，工作分支 `codex/laya-owned-runtime`。原“镜像暂不发布”已被后续Owner授权与SWR实际回执更新。
-Owner 当前决定为 **本机 Laya + 镜像内 28 工作流 + 串行推进**。不以历史镜像内嵌 Laya 的记录代表本版。
+历史方案（2026-10-16，已由当前决定取代）：**本机 Laya + 镜像内 28 工作流 + 串行推进**。当前 Laya 仅为独立 Local Profile 候选，不属于 Competition；AgentArts 承担 Competition Agent/Workflow 构建、编排、评估与部署，Local Profile 本轮不扩展。
 
 ## 协作者先读哪里
 
