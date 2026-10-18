@@ -75,6 +75,20 @@ const {_electron}=require('playwright');
    await toggle.click();await workspace.locator('[data-view]').click();await publish({tasks:[]});assert.equal(await inspector.isVisible(),false);assert.equal(await board.isVisible(),true);
    await capture(workspace,'workspace.png');
   });
+  await check('session switch closes inspector and focuses a stable control',async()=>{
+   const sessions=[{id:'old-session',title:'旧对话',archived:false},{id:'new-session',title:'新对话',archived:false}];
+   const oldTask={taskId:'old-session-task',userMessage:'旧对话任务',revision:1,state:'succeeded',steps:[],evidenceRefs:[]};
+   const newTask={...oldTask,taskId:'new-session-task',userMessage:'新对话任务'};
+   await publish({conversationState:{activeId:'old-session',sessions,draft:''},tasks:[oldTask]});
+   await workspace.locator('[data-view="old-session-task"]').click();
+   await workspace.locator('#inspector-close').focus();
+   await publish({conversationState:{activeId:'new-session',sessions,draft:''},tasks:[newTask]});
+   assert.equal(await workspace.locator('#conversation-inspector').isVisible(),false);
+   assert.equal(await workspace.evaluate(()=>document.activeElement.id),'connectors-toggle');
+   assert.equal(await workspace.locator('[data-view="old-session-task"]').count(),0);
+   await workspace.locator('[data-view="new-session-task"]').click();
+   assert.equal(await workspace.locator('#conversation-inspector').isVisible(),true);
+  });
   await check('search and window controls stay inside the viewport at narrow sizes and zoom',async()=>{
    for(const [width,zoom]of [[520,1],[820,1.3],[1280,1]]){
     await app.evaluate(({BrowserWindow},{width,zoom})=>{const win=BrowserWindow.getAllWindows().find(win=>win.webContents.getURL().includes('mode=admin'));win.setSize(width,800);win.webContents.setZoomFactor(zoom);},{width,zoom});await tick();
