@@ -531,8 +531,15 @@ export class NotificationService {
   completeDelivery(input:{roundId:string;channel:NotificationChannel;state:'delivered'|'unknown'|'failed';evidenceRefs:readonly string[]}) {
     return this.atomicMutation('notification_delivery_receipt',(state,extension)=>{
       const round=completeNotificationDelivery(extension,input,this.options.now());
-      if(input.state==='delivered')for(const batch of state.batches)if(round.batchIds.includes(batch.id)) {
-        batch.state='delivered';batch.deliveredAt??=this.isoNow();
+      if(input.state==='delivered') {
+        const newlyDelivered=new Set<NotificationBatch>();
+        for(const batch of state.batches)if(round.batchIds.includes(batch.id)) {
+          if(batch.state==='ready_for_delivery')newlyDelivered.add(batch);
+          batch.state='delivered';batch.deliveredAt??=this.isoNow();
+        }
+        // One round may confirm several batches. Move its new confirmations together,
+        // preserving their order; another channel or receipt replay must not refresh it.
+        state.batches=[...state.batches.filter(batch=>!newlyDelivered.has(batch)),...newlyDelivered];
       }
       return round;
     });
