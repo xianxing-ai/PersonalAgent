@@ -1,7 +1,7 @@
 # MOD-XX：模块名称
 
 <!-- current-design-20261009 -->
-> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。常规 PR 需四位协作者中任意一位非作者对当前提交的有效批准；Owner 可对具体 PR 作有记录的审核例外。拥有合并权限者（包括作者）可在最新必需技术 CI、主线更新、冲突及阻断意见解决后合并；四位协作者跨 PR 均衡承担评审与合并，禁止强推、直接推 main 或绕过技术检查。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+> 当前协作规则（2026-10-17）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。常规 PR 需 zemeng5208、goo122、Potatos498 中任意一位非作者对当前提交的有效批准；Owner 可对具体 PR 作有记录的审核例外。拥有合并权限者（包括作者）可在最新必需技术 CI、主线更新、冲突及阻断意见解决后合并；三位协作者跨 PR 均衡承担评审与合并，禁止强推、直接推 main 或绕过技术检查。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
