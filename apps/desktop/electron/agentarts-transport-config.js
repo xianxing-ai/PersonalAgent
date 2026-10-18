@@ -1,5 +1,5 @@
 /** Trusted main-process options. Neither credentials nor this provider enter Renderer snapshots. */
-export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={}}) {
+export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={},readAppToken}) {
   const transport=environment.PA_AGENTARTS_TRANSPORT??transportPreferences.transport??'https';
   const fallback=environment.PA_AGENTARTS_HTTPS_FALLBACK??(transportPreferences.allowHttpsFallback===true?'1':'0');
   if (!['https','wss'].includes(transport) || !['0','1'].includes(fallback)) {
@@ -94,7 +94,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
   }
   if (boundDeploymentVersion!==undefined) address.searchParams.set('endpoint',boundDeploymentVersion);
   const readToken=()=>{
-    const token=currentOptions().appToken??environment.PA_AGENTARTS_APP_TOKEN;
+    const token=readAppToken?readAppToken():currentOptions().appToken??environment.PA_AGENTARTS_APP_TOKEN;
     if (typeof token!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(token)) {
       throw Error('请在受信主机环境中配置 AgentArts 自有镜像入站凭据');
     }
