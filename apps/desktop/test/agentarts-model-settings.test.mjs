@@ -1,6 +1,26 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {createAgentArtsModelSettings} from '../electron/agentarts-model-settings.js';
+import {createAgentArtsModelSettings,readDesktopExecutionModel} from '../electron/agentarts-model-settings.js';
 const revision='a'.repeat(64);
+test('unread implicit defaults are optional but explicit selections still require the current catalog',async()=>{
+  const {host}=fixture();
+  assert.equal(readDesktopExecutionModel(host),undefined);
+  assert.equal(readDesktopExecutionModel(host,undefined,'subagent'),undefined);
+  for(const preference of [{modelId:'text'},{executionModel:{modelId:'text',catalogRevision:revision}}])
+    assert.throws(()=>readDesktopExecutionModel(host,preference),/模型目录已改变/);
+  await host.refresh();
+  assert.equal(readDesktopExecutionModel(host).modelId,'text');
+  assert.equal(readDesktopExecutionModel(host,undefined,'subagent').modelId,'text');
+  assert.deepEqual(readDesktopExecutionModel(host,{executionModel:{modelId:'text',catalogRevision:revision,reasoningEffort:'high'}}),
+    {modelId:'text',catalogRevision:revision,reasoningEffort:'high'});
+  for(const preference of [{modelId:'missing'},{executionModel:{modelId:'text',catalogRevision:'b'.repeat(64)}},
+    {executionModel:{modelId:'text',reasoningEffort:'low'}}])assert.throws(()=>readDesktopExecutionModel(host,preference));
+});
+
+test('an invalid configured default is not silently replaced even when a catalog is present',()=>{
+  const failure=Error('invalid configured default');
+  const models={snapshot:()=>({catalog:{revision}}),readExecutionModel(){throw failure;}};
+  assert.throws(()=>readDesktopExecutionModel(models),error=>error===failure);
+});
 function fixture(){let prefs;let dest={gatewayUrl:'https://one',runtimeName:'one',deploymentVersion:'1'};const catalog={version:'1.0',revision,defaultModelId:'text',models:[{id:'text',displayName:'Text',type:'text',availability:'unverified',reasoningEfforts:['high'],requestProfile:'standard'},{id:'audio',displayName:'Audio',type:'audio',availability:'unverified',reasoningEfforts:[],requestProfile:'standard'}]};const host=createAgentArtsModelSettings({configuration:{snapshot:()=>dest,readModelPreferences:()=>prefs,saveModelPreferences:p=>prefs=p},readCatalog:async()=>catalog});return {host,change:()=>dest={...dest,deploymentVersion:'2'}};}
 test('catalog binds native effort and rejects nontext/stale revisions',async()=>{const {host}=fixture();await host.refresh();assert.equal(host.readExecutionModel().modelId,'text');assert.throws(()=>host.resolveExecutionModel({modelId:'audio'}));assert.throws(()=>host.resolveExecutionModel({modelId:'text',reasoningEffort:'low'}));assert.throws(()=>host.configure({catalogRevision:'b'.repeat(64),defaultModelId:'text',defaultSubmodelId:'text'}));host.configure({catalogRevision:revision,defaultModelId:'text',defaultSubmodelId:'text',reasoningEffort:'high'});assert.equal(host.readExecutionModel().reasoningEffort,'high');assert.equal(host.readExecutionModel('subagent').reasoningEffort,undefined);});
 test('deployment change invalidates in-memory directory',async()=>{const {host,change}=fixture();await host.refresh();change();assert.equal(host.snapshot().available,false);assert.throws(()=>host.readExecutionModel());});

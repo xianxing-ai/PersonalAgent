@@ -56,7 +56,7 @@ import {createDesktopRemoteMcpHost} from './remote-mcp-host.js';
 import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
-import {createAgentArtsModelSettings,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
+import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
@@ -1416,6 +1416,8 @@ async function initializeRuntime() {
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
         readWorkspaceExportPreflight:query=>publicReferenceConsent?.readPreflight(query),
         readWorkspaceExportAuthorization:query=>publicReferenceConsent?.readAuthorization(query),
+        requestWorkspaceExportPreflight:(query,context)=>publicReferenceConsent?.requestPreflight(query,context),
+        requestWorkspaceExportExact:(query,context)=>publicReferenceConsent?.requestExact(query,context),
         jobHelperExecutable:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async () => {
           const result = await dialog.showOpenDialog(admin, {title:'选择允许 PersonalAgent 使用的编程工作区',
@@ -1628,10 +1630,7 @@ async function initializeRuntime() {
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'}] : [])],
-        // Local deployment adaptation: the deployed runtime rejects catalog-list invocations (401 UNAUTHORIZED),
-        // so an unreadable catalog must degrade to "no explicit execution model" (the runtime still accepts a
-        // plain-goal dispatch with its own server-side model) instead of failing every submission.
-        readDefaultExecutionModel:role=>{try{return agentArtsModels.readExecutionModel(role);}catch{return undefined;}},
+        readDefaultExecutionModel:role=>readDesktopExecutionModel(agentArtsModels,undefined,role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
         readConversationPreference: conversationId => {
           if (!conversations?.containsConversation(conversationId)) return undefined;
@@ -1639,10 +1638,8 @@ async function initializeRuntime() {
           const models=modelApiHost?.snapshot();
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
-          let executionModel;
-          try {executionModel=preference.executionModel?agentArtsModels.resolveExecutionModel(preference.executionModel):modelId?agentArtsModels.resolveExecutionModel({modelId}):agentArtsModels.readExecutionModel();}
-          catch {/* Directory metadata is unavailable on the current deployment; dispatch without an explicit execution model. */}
-          return {...preference,modelId,...(executionModel!==undefined?{executionModel}:{}),configurationRef:selected?.configurationRef};
+          const executionModel=readDesktopExecutionModel(agentArtsModels,preference);
+          return {...preference,modelId,executionModel,configurationRef:selected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
           if (!proactiveHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-proactive-goals:')) {
