@@ -1639,7 +1639,7 @@ async function initializeRuntime() {
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
           const executionModel=readDesktopExecutionModel(agentArtsModels,preference);
-          return {...preference,modelId,executionModel,configurationRef:selected?.configurationRef};
+          return {...preference,modelId,...(executionModel!==undefined?{executionModel}:{}),configurationRef:selected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
           if (!proactiveHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-proactive-goals:')) {
