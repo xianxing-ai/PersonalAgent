@@ -28,7 +28,7 @@ Competition 目录（`apps/desktop/electron/main.js` 组装）中业务面工具
 
 ## 2. 缺口清单（按交付内容对应）
 
-1. **通知域事件版本（F12）**：目录仅 `notifications.status` 读状态；安静时段/投递回执/提醒读回未作为版本化事件公布给镜像节点。对应交付 1。
+1. **通知域事件版本（F12）**：目录仅 `notifications.status` 读状态；安静时段/投递回执/提醒读回未作为版本化事件公布给镜像节点。对应交付 1。已交付（2026-10-17）：`notifications.events` 只读工具（eventVersion:1，快照分页使用 `snapshotRevision` + `sinceBatchId`；版本变化返回 `changed` 并从头对账；未知游标报 `compacted`。条目只引用 dedupeKey，不复制内容、不触发 drain，也不代替 acknowledge）已随 `packages/notifications` `register()` 注册；desktop `todo-host` 切换到 notificationHost 时会去除旧 fallback 的 events 绑定，notificationHost 路径暂不直接暴露 events（属下一增量）。原提交证据：notifications 53/53 绿（含 `test/events-readback.test.mjs` 7/7）、desktop todo-host 定向 13/13 绿（`test/todo-host.test.mjs` + `test/notification-application-host.test.mjs`）、`npm run build` 成功；本次快照修复将读回测试扩为 8 项并修正摘要窗口测试，当前 head 等待 CI 复验。
 2. **开发工作流入口工具化（F15–F19）**：MOD-34 CI 修复、MOD-35 测试定位、MOD-38 Issue 分诊作为镜像可消费的 ToolDescriptor/入口尚未登记（目前只有其下游 github 读工具）。对应交付 1/2。
 3. **国内 Provider 端点实测**：weather=Open-Meteo、research=OpenAlex 均为国际端点；交接要求按真实国内网络核验（华为云区域出网 + 本机双环境），不可达时按交付 4 显式 Unavailable，不静默换 Fake。对应交付 4。
 4. **验收场景集**：同资源写入排队、事件去重、分支部分成功、修改失效、取消四态、断网未知不重放——以公开合成场景落在各连接器测试与 `tests/manual` 验收脚本。对应验收节。

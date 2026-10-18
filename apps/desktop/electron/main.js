@@ -48,7 +48,7 @@ import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
-import {createWorkspacePatchRecoveryHost} from './workspace-patch-recovery-host.js';
+import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
 import {createRemoteMcpConfig} from './remote-mcp-config.js';
@@ -502,7 +502,7 @@ function taskResultMetadata(task) {
 
 function agentArtsSnapshot() {
   const value = agentArtsConfig?.snapshot();
-  return value && {...value,effectiveTransport:process.env.PA_AGENTARTS_TRANSPORT??value.transport,transportSource:process.env.PA_AGENTARTS_TRANSPORT!==undefined?'environment':'saved', reason: cloudRequestFailureNotice || cloudTransportNotice || value.reason};
+  return value && {...value,reason:cloudRequestFailureNotice || cloudTransportNotice || value.reason};
 }
 
 function visibleConversationTask(task,surface){return !surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface);}
@@ -993,8 +993,10 @@ async function initializeModelFromEnvironment() {
   }
 }
 
-async function refresh(taskId) {
+async function refresh(taskId, isCurrent = () => true) {
+  if (!isCurrent()) throw Error('Task refresh session changed');
   const task = await client.call('task.get', {taskId});
+  if (!isCurrent()) throw Error('Task refresh session changed');
   const current = tasks.get(taskId);
   if (current?.taskId === task.taskId && current.revision > task.revision) return current;
   tasks.set(taskId, task);
@@ -1565,8 +1567,7 @@ async function initializeRuntime() {
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(obsidianPairing.source, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
-      const agentArtsTransportConfig = createAgentArtsTransportConfig({binding:cloudBinding,transportPreferences:agentArtsConfig.readTransportPreferences(),
-        configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(cloudBinding)}});
+      const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -1695,7 +1696,7 @@ async function initializeRuntime() {
         },
         authorizationProvider: {
           read: async () => {
-            return agentArtsConfig.readAuthorization(cloudBinding);
+            return agentArtsConfig.readAuthorization(cloudBinding, agentArtsTransportConfig);
           },
         },
       });
@@ -2130,6 +2131,11 @@ function cancelKnowledgeTasks() {
   }
 }
 
+const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
+  getApplication: () => runtimeApplication, getAdmin: () => admin,
+  isEnabled: () => competitionMode && !syntheticMvp, refresh,
+});
+
 async function action(event, name, payload) {
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
@@ -2301,13 +2307,7 @@ async function action(event, name, payload) {
     publish(); return result;
   }
   if (name === 'coding.reconcile') {
-    const application = runtimeApplication;
-    const authorized = () => sender === admin && !sender.isDestroyed()
-      && sender.webContents === event.sender && event.senderFrame === sender.webContents.mainFrame
-      && application === runtimeApplication && competitionMode && !syntheticMvp;
-    const recovery = createWorkspacePatchRecoveryHost({application, isAuthorized: authorized});
-    const result = await recovery.reconcile(payload);
-    publish(); return result;
+    return recoverWorkspacePatch(event, payload);
   }
   if (['coding.select','coding.selectNode','coding.selectNpmCli','coding.selectCheckFile','coding.authorize','coding.revoke'].includes(name)) {
     if ((sender !== admin && sender !== workspace) || !competitionMode || syntheticMvp || !codingWorkspace) throw Error('请从正式应用设置配置编程工作区');

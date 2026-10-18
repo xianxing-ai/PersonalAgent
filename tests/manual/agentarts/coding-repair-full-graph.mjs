@@ -1,5 +1,6 @@
 import {mkdtemp,mkdir,writeFile,readFile} from 'node:fs/promises';
-import {join,resolve} from 'node:path';
+import {existsSync} from 'node:fs';
+import {delimiter,join,resolve} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {Client} from '@personal-agent/client';
@@ -9,6 +10,7 @@ import {createRuntimeApplication,readRuntimeCodingVerificationEvidence,CODING_RE
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
+const powerShellPath=process.env.PA_TEST_PWSH??process.env.PATH?.split(delimiter).map(directory=>join(directory,'pwsh.exe')).find(existsSync)??'C:/Program Files/PowerShell/7/pwsh.exe';
 const key='explicit-fake-cloud-receipt-secret-more-than-32';
 const localFailureCodes=new Set(['CANCELLED','TIMEOUT','RESULT_UNKNOWN','INVALID_ARGUMENT','SCOPE_DENIED',
   'REVISION_CONFLICT','EXTERNAL_FAILURE','UNSUPPORTED_CAPABILITY','UNAUTHORIZED']);
@@ -119,7 +121,7 @@ export async function runCodingRepairFullGraphFixture(options={}) {
   const createApplication=options.createApplication??createRuntimeApplication;
   app=createApplication(config);options.selector?.bindApplication?.(app);
   const hostConfig={workspaceRoot:user,sessionRoot:sessions,workspaceId:'synthetic-fixture-workspace',
-    configurationRef:sha('fixture-original-command-identity'),patch:{powerShellPath:options.powerShellPath??process.env.PA_TEST_PWSH??'C:/Program Files/PowerShell/7/pwsh.exe'},
+    configurationRef:sha('fixture-original-command-identity'),patch:{powerShellPath:options.powerShellPath??powerShellPath},
     recipes:[{recipeId:'unit',packageIds:[],required:true}],
     createCommandTool:({rootPath})=>createWorkspaceCommandTool({rootPath,recipes:[{id:'unit',executable:process.execPath,args:options.fixture?.checkerArgs??['--test','checks/actual-check.cjs']}]}),
     resolveOriginalTaskId:taskId=>app.runtime.loadCheckpoint(taskId,'coding-repair:parent')?.taskId??taskId,

@@ -25,15 +25,32 @@ confirmed 普通结果只总结，不误入修复；命令检查回执可确定�
 所有输出仍是不可信提案。本包不拥有授权、工具执行、任务终态、数据库或 Evidence。
 
 入口为既有 `{goal,availableTools}`、`{continuation}`、普通文字或固定主动 Goal 包装。
+续答来源接线采用独立 wire 投影：`repairContext` 仅含 revision、targets、allowedDependencies，
+target 仅含 node、requestedSummary、requestedDependencies；本地 fact/projectedFact 和原始边留在宿主。
+新增 `repairSources`（sourceVersion `1.0`、expectedGraphRevision、nodes）只承载实际已确认图谱的
+最小原/新 Fact 与目标节点投影，不能从引用补造来源。解析器重验重复、最新 active 基线和依赖；
+同批目标下一版只记 prospective，不记已观察来源。初始输入仍要求 64hex ID，续答沿用已有引用 ID。
+旧续答无 repairSources 时继续 sources=[]/RECHECK；未知字段或版本拒绝。新 wire 不授权执行，
+不清除既有 hold、不重发旧任务；合成宿主导出策略版本随之更新。
 ModelPort 按角色注入，可替换供应商；每次调用必须提供输出 token 预算、原期限和取消信号。
-模型失败不回退；角色 trace 仅记录角色/请求标识/状态/token，不记录内容或凭据。
+模型失败不回退；角色回执仅记录角色/请求标识/状态/token，不记录内容或凭据。
+`RoleReceipt` 兼容增加 `spanId`、`startedAt`、`endedAt`、`durationMs`：每次角色模型调用生成
+独立 span，同一 request 内的 World/Plan/Review 可关联，同角色并发也不会混淆；时间为 UTC ISO，
+耗时来自单调时钟。已开始的调用在成功、失败、取消或超时时各有一次结束回执，预先取消不开始调用。
+`completed` 仅表示模型输出已解析为对象，后续报告/候选校验仍可能拒绝，不能作为任务成功或工具执行证据。
+observer 的同步异常及异步拒绝均隔离；不维护额外 span 缓存。这是应用回执，不是华为平台 trace。
 部署入口在 `apps/agentarts-runtime`，迁移边界见 ADR-0012。
 
 这是 code-owned 路径的受限实现，提示词进入版本控制。2026-10-09 已核对已授权的8个 Workflow、
 3个顶层 Controller 导出，按原有内部职责补充完整 World/Plan 报告；逐项迁移与缺口见
 [迁移矩阵](../../docs/modules/AGENTARTS-OWNED-IMAGE-PARITY.md)。清点不等于全量等价或真实云验收。
 
-`owned-1.2` 提示词支持显式 prepared Goal target 的完整内部 World/Plan `reportVersion: "1.2"`；
+`owned-1.3` 为 World 增加代码从已解析来源生成的输出词表：合法 Fact/Goal 原文、最新连续变化对、
+允许的目标引用及报告类型。词表不预选影响或处置，不修补/放宽模型报告；原始投影仍是数据。
+它修复真实模型把 Plan 放进 observed_facts、编造额外变化对及输出 `kind: plan` 的格式问题；
+模型输出仍须通过原有严格校验。输出契约、候选版本、权限和执行边界均不改变。
+
+`owned-1.2` 起支持显式 prepared Goal target 的完整内部 World/Plan `reportVersion: "1.2"`；
 旧 Decision/Plan target 的完整 `reportVersion: "1.1"` 报告继续兼容。报告校验 graph revision、
 宿主提供的事实/Goal前后版本及原文、最新目标与允许依赖引用。World保留显式/推断观察、
 变化与 direct/transitive 影响标签；推断、缺项和缺少前后版本不能生成修复。

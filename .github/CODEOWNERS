@@ -1,3 +1,3 @@
-# Each PR needs one current-head approval from an eligible non-author code owner.
-# zemeng5208, goo122, and Potatos498 share review and merge responsibility.
-* @zemeng5208 @goo122 @Potatos498
+# Ordinary PRs need one current-head approval from an eligible non-author reviewer; a specific Owner review exception is separate.
+# zemeng5208, goo122, Potatos498, and 2511375597-lab share review and merge responsibility.
+* @zemeng5208 @goo122 @Potatos498 @2511375597-lab
