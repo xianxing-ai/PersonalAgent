@@ -7,7 +7,7 @@ import {test} from 'node:test';
 import {
   reconcileWorkspacePatchApply,
 } from '../dist/index.js';
-import {workspacePatchInflightPath} from '../dist/patch-reconcile.js';
+import {captureWorkspacePatchProcessIdentity, workspacePatchInflightPath} from '../dist/patch-reconcile.js';
 
 const sha = value => createHash('sha256').update(Buffer.from(value, 'utf8')).digest('hex');
 const startTimeTicks = '639262861336897246';
@@ -30,6 +30,16 @@ async function fixture(t, source = 'before\n') {
 async function marker(path, value) {
   await writeFile(path, JSON.stringify({startTimeTicks, runId, argumentsDigest, ...value}), {encoding: 'utf8'});
 }
+
+test('invalid patch helper PID reports a bounded reason before any recovery write', async t => {
+  const f = await fixture(t);
+  const original = await readFile(f.sourcePath);
+  await assert.rejects(captureWorkspacePatchProcessIdentity(0, 'unused'), error =>
+    error?.code === 'RESULT_UNKNOWN'
+    && error.message === 'Workspace patch helper identity is unavailable (invalid_pid, 0ms)');
+  assert.deepEqual(await readFile(f.sourcePath), original);
+  await assert.rejects(readFile(f.markerPath), {code: 'ENOENT'});
+});
 
 test('missing marker is already clear', async t => {
   const f = await fixture(t);
