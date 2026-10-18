@@ -86,3 +86,15 @@ test('catalog replacement invalidates old binding until an explicit model choice
   f.calls[0].resolve();await pending;assert.equal(f.slider.disabled,true);assert.equal(f.output.textContent,'不可用');
   const next=f.model(2);f.calls[1].resolve();await next;assert.equal(f.slider.disabled,false);assert.equal(f.output.textContent,'供应商默认');
 });
+
+const coldRevision='b'.repeat(64);
+const coldCatalog={version:'1.0',revision:coldRevision,defaultModelId:'text',models:[{id:'text',displayName:'Text',type:'text',availability:'unverified',reasoningEfforts:['high'],requestProfile:'standard'}]};
+test('absent catalog and absent saved preferences degrade instead of dereferencing null',()=>{
+  assert.deepEqual(nativeReasoningState({agentArtsModels:{catalog:null,preferences:null},conversationPreference:null}),{
+    catalogRevision:undefined,modelId:undefined,efforts:[],reasoningEffort:undefined,available:false,reason:'当前目录尚无此模型的文本能力'
+  });
+});
+test('matching saved defaults apply; stale revision falls back to the catalog default',()=>{
+  assert.equal(nativeReasoningState({agentArtsModels:{catalog:coldCatalog,preferences:{catalogRevision:coldRevision,defaultModelId:'text',reasoningEffort:'high'}},conversationPreference:null}).reasoningEffort,'high');
+  assert.equal(nativeReasoningState({agentArtsModels:{catalog:coldCatalog,preferences:{catalogRevision:'a'.repeat(64),defaultModelId:'stale'}},conversationPreference:null}).modelId,'text');
+});

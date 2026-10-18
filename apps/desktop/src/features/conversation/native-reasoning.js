@@ -6,7 +6,7 @@ const labelFor=effort=>effortLabels[effort]??effort;
 export function nativeReasoningState(snapshot){
   const catalog=snapshot?.agentArtsModels?.catalog,preference=snapshot?.conversationPreference;
   const defaults=snapshot?.agentArtsModels?.preferences;
-  const useDefaults=!preference?.executionModel&&!preference?.modelId&&defaults?.catalogRevision===catalog?.revision;
+  const useDefaults=Boolean(catalog)&&defaults!=null&&!preference?.executionModel&&!preference?.modelId&&defaults.catalogRevision===catalog.revision;
   const modelId=preference?.executionModel?.modelId??(preference?.modelId||undefined)??(useDefaults?defaults?.defaultModelId:catalog?.defaultModelId);
   const model=catalog?.models.find(m=>m.id===modelId&&m.type==='text'&&m.availability!=='unavailable'&&m.available!==false);
   const effort=preference?.executionModel?.reasoningEffort??(useDefaults?defaults?.reasoningEffort:undefined);

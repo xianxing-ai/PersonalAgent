@@ -1,5 +1,8 @@
 # AgentArts 安全配置入口
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../../docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../../docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../../docs/design/workflow-architecture-20261013/index.html) · [接口状态](../../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。本机Laya仅为独立Local Profile实验候选，不属于Competition产品路径，AgentArts负责Agent/Workflow构建、编排、评估与部署；本地Runtime保留Policy、ToolGateway、TaskRuntime及Evidence。具体节点、领域资格、外部比赛资格与真实验收分别核实，AgentArts失败不得静默回退Local Profile。常规PR须有合资格非作者对当前head有效批准；Owner具体PR审核例外须留记录，必需技术CI不豁免。
+
 ## 2026-10-13 WSS 与独立镜像凭据配置
 
 “设置 → 模型 → AgentArts 主智能体”新增 WSS 地址、独立镜像访问令牌和显式 HTTPS 备用开关。
