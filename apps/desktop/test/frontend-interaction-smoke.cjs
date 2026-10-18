@@ -97,6 +97,8 @@ const {_electron}=require('playwright');
     await publish({tasks:[{...active,state},finished]});assert.equal(await workspace.locator('.task-progress').getAttribute('data-state'),state);
    }
    assert.match(await workspace.locator('.task-progress').innerText(),/等待执行结束/);
+   assert.match(await workspace.locator('.workspace-composer [role="status"]').innerText(),/正在取消/);
+   assert.equal(await workspace.locator('.response-actions .turn-action').evaluate(node=>getComputedStyle(node).whiteSpace==='nowrap'&&node.getBoundingClientRect().height>=32),true);
    assert.equal(await workspace.locator('.task-progress').evaluate(node=>{const r=node.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),true);
    await capture(workspace,'workspace-progress.png');
    await publish({tasks:[]});assert.equal(await workspace.locator('.task-progress').isVisible(),false);

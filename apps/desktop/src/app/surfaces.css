@@ -121,6 +121,7 @@
 .workspace-turn .user-message {background:var(--surface-2);border:0;max-width:85%;padding:10px 15px;align-self:flex-end}
 .workspace-turn .assistant-message {width:100%;overflow-wrap:anywhere}
 .workspace-turn .response-actions {margin-top:-7px}
+.workspace-turn .response-actions .turn-action {width:auto;height:auto;min-height:32px;padding:6px 10px;white-space:nowrap;flex:0 0 auto}
 .workspace-chat .conversation-rail {top:28px;right:8px;bottom:28px}
 .workspace-chat>.workspace-error {position:absolute;left:24px;right:24px;bottom:16px;z-index:3;text-align:center;pointer-events:none}
 .connector-board {width:290px;flex-shrink:0;border-left:1px solid var(--glass-hairline);background:var(--bg-2);overflow:auto;padding:22px 16px;scrollbar-width:none}
