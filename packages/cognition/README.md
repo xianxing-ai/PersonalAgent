@@ -1,5 +1,10 @@
 # @personal-agent/cognition — MOD-28 local impact core
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 Owner: zemeng. Profile: huawei_ict_agentarts. Pure local domain increment with
 an optional host-bound persistent-store consumer; no AgentArts, Memory,
 scheduler, tool execution or TaskRuntime state transition.
@@ -10,6 +15,14 @@ identity and impact digest, keeps uncertainty unchanged, and requires tool
 Evidence plus graph readback before reporting applied. It never writes the graph
 from a policy callback. `createCommittedMeetingProjectionReader` binds existing
 Fact receipts to an authorized source revision readback.
+
+Meeting receipt stores bind the complete namespace/source/event ID tuple. New
+file receipts use tuple-hashed keys; legacy delimiter-hashed files are read only
+when all three stored fields match the query. Legacy files stay intact, while
+canonical records take precedence in queries and deduplicated receipt lists.
+Older builds still read legacy hashes and can see stale states after an upgrade;
+retaining those files does not make downgrade automatic. Back up before upgrading
+and use the existing rollback procedure to restore the matching receipt history.
 
 `createInboxPageConsumer` adds bounded page backpressure and pause/resume to the
 existing Runtime InboxTriagePipeline. Cursor, fingerprint, receipt cache and
@@ -309,6 +322,21 @@ another graph append during advice causes a revision conflict. Production
 composition and joint acceptance are still pending. Module tests use synthetic
 data only.
 
+The durable handoff accepts the feed's existing maximum of 100 links and calls
+the advisory port in ordered chunks of at most four. All chunks share the
+original deadline and cancellation signal; the full projection is isolated
+before the first await. Every chunk rechecks the graph revision before the next
+call. Cancellation, a changed graph, or a failed chunk rejects the whole advice
+result without returning partial completion, acknowledging a feed or writing
+the graph. This batching does not create a new feed receipt or relax the
+separate Policy/CAS gate for repair execution.
+
+Every affected event submitted to the advisory port requires exactly one
+suggestion bound to its event ID, source, Fact references and authorization
+revision. Missing, repeated or foreign answers reject the whole result, including
+a missing answer in the final chunk; valid answers retain the port's order.
+An empty or unrelated projection still returns no suggestions without calling
+the port. No failure publishes partial advice or changes the graph.
 `previewDurableFactRepair(boundStore, scopedHost, at, {graphNamespace,
 projection, changes})` uses the same durable completion and historical report
 check for an explicit candidate after advice. It reuses `previewProjectedRepair`

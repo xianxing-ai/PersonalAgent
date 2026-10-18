@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {getEventListeners} from 'node:events';
 import {LayaTriageService, LocalLayaBatchHttpTransport} from '../dist/index.js';
 
 const answer = (choice, probabilities) => ({choice, probabilities,
@@ -13,6 +14,57 @@ const messages = Array.from({length: 6}, (_, i) => ({source: 'mail', messageId: 
 const request = (selected = messages, signal = new AbortController().signal) => ({messages: selected,
   labels: {work: 'Work-related messages', news: 'Subscriptions and news'},
   deadline: new Date(Date.now() + 10_000).toISOString(), signal});
+
+test('classification cancellation keeps the original signal reason after caller swaps its request', async () => {
+  let entered;
+  const started = new Promise(resolve => {entered = resolve;});
+  const service = new LayaTriageService({infer: async () => {entered(); return new Promise(() => {});}});
+  const controller = new AbortController(), input = request(messages.slice(0, 1), controller.signal);
+  const pending = service.classify(input);
+  await started;
+  input.signal = new AbortController().signal;
+  controller.abort();
+  const output = await pending;
+  assert.equal(output[0].reason, 'cancelled');
+  assert.equal(output[0].abstained, true);
+});
+
+test('classification removes the original signal listener after a successful inference', async () => {
+  let entered, release;
+  const started = new Promise(resolve => {entered = resolve;});
+  const waiting = new Promise(resolve => {release = resolve;});
+  const service = new LayaTriageService({async infer() {entered(); await waiting; return result();}});
+  const controller = new AbortController(), input = request(messages.slice(0, 1), controller.signal);
+  const baseline = getEventListeners(controller.signal, 'abort').length;
+  const pending = service.classify(input);
+  await started;
+  assert.equal(getEventListeners(controller.signal, 'abort').length, baseline + 1);
+  input.signal = new AbortController().signal;
+  release();
+  assert.equal((await pending)[0].reason, 'classified');
+  assert.equal(getEventListeners(controller.signal, 'abort').length, baseline);
+});
+
+test('later classification chunks retain the submitted deadline and original inference hooks stay live', async () => {
+  let entered, release, liveCalls = 0;
+  const started = new Promise(resolve => {entered = resolve;});
+  const waiting = new Promise(resolve => {release = resolve;});
+  const payloads = [];
+  const response = payload => ({items: payload.items.map(item => ({requestId: item.requestId, result: result()}))});
+  const inference = {infer: () => assert.fail('No batch fallback'), async inferBatch(payload) {
+    payloads.push(payload); entered(); await waiting; return response(payload);
+  }};
+  const service = new LayaTriageService(inference, {batching: 'multi_state', chunkSize: 1});
+  const input = request(messages.slice(0, 2)), deadline = input.deadline;
+  const pending = service.classify(input);
+  await started;
+  input.deadline = new Date(Date.now() + 60_000).toISOString();
+  inference.inferBatch = async payload => {liveCalls++; payloads.push(payload); return response(payload);};
+  release();
+  assert.ok((await pending).every(item => item.reason === 'classified'));
+  assert.deepEqual(payloads.map(payload => payload.deadline), [deadline, deadline]);
+  assert.equal(liveCalls, 1);
+});
 
 test('batch triage keeps stable revisions, partial abstention, score semantics and cancellation without fallback', async () => {
   const calls = [];

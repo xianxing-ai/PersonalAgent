@@ -1,5 +1,10 @@
 # `@personal-agent/voice-wake`
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-13）：以 [CONTRIBUTING](../../CONTRIBUTING.md) 为准；当前提交须取得一位非作者有效 Approve，并满足必要检查。禁止管理员绕过或虚构批准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 MOD-15 的 provisional 唤醒会话生命周期控制器，目标 Profile 为
 `huawei_ict_agentarts`。本包只消费可信宿主的录音授权结果和撤销信号，默认关闭，
 只有调用方显式 `enable({deadlineAtMs})` 后才订阅注入的 `WakeSignalSource`；调用方必须
@@ -16,6 +21,9 @@ MOD-15 的 provisional 唤醒会话生命周期控制器，目标 Profile 为
 订阅并使旧 epoch 回调失效；宿主休眠后若定时回调延迟，下一次 `enable()` 也会先核对
 旧会话或待处理授权的期限，释放过期订阅或终止等待。播放状态由 MOD-14 调用方通过 `setPlaybackActive()`
 提供；冷却窗口由构造参数 `cooldownMs` 显式决定，不代表或测量误触率。
+异步或同步源就绪返回后再次检查实际期限；PCM 适配器在 detector/capture readiness、
+每帧和检测回调处同样复查墙钟时间。休眠恢复后即使到期定时器尚未调度，也不发布
+过期 listening、不继续启动采集或投递帧/唤醒，并释放该订阅及检测器一次。
 
 MOD-14 等本地宿主可通过 `subscribeLifecycle(listener)` 只读观察固定三字段
 `{state, sessionId, expiresAtMs}`。注册时同步收到冻结的初始快照；之后只发送稳定且变化的
@@ -23,8 +31,9 @@ MOD-14 等本地宿主可通过 `subscribeLifecycle(listener)` 只读观察固�
 该通道不携带文本、音频、外部错误、授权对象或 Runtime 能力，也不能修改控制器状态。
 
 `@personal-agent/voice-wake/testing` 公开导出 Fake 时钟、授权端口和事件源，仅用于离线
-生命周期测试，不能冒充真实麦克风、识别成功或实机误触/回声指标。模块仍需 MOD-14
-装配、真实硬件验收及非作者评审后，才可评估后续接口状态。
+生命周期测试，不能冒充真实麦克风、识别成功或实机误触/回声指标。基线 `5b581139`
+已有 Desktop `wake-voice-host.js` 与 MOD-14 的共享 PCM 组合；真实硬件验收及非作者
+评审仍需完成，才可评估后续接口状态。
 
 `createPcmKeywordWakeSignalSource(pcm, detector)` 是结构化接线入口：由可信宿主注入同一路
 授权 PCM 帧源和已经配置固定中文唤醒词的检测器，本包不导入 MOD-14，也不打开第二个
@@ -32,5 +41,7 @@ MOD-14 等本地宿主可通过 `subscribeLifecycle(listener)` 只读观察固�
 随后生命周期才可发布 `listening`。缺少任一 `ready`、源结束、取消或过期均失败关闭；
 迟到回调无效，句柄释放可等待返回订阅的 `closed`。音源 `closed` 只证明本订阅引用释放，
 若 ASR 仍在使用同一物理麦克风，须由宿主检查最终引用和设备 track 才能证明完全关闭。
-MOD-14 的 #156 音源和 #169 限定词检测器已提供所需端口；可信宿主的真实组合、
-目标机中文引擎及设备读回仍需验收，不能据此声明生产唤醒已可用。
+MOD-14 音源和限定词检测器已提供所需端口及 Desktop 消费；目标机中文引擎、设备读回
+和实机命中仍需验收。当前播放抑制只依据回调时的 playback 标志，不能识别播放结束后
+迟到的声学检测；不得宣称回声消除已通过。最新结果和现场步骤见
+[MOD-14/15 验收记录](../voice/ACCEPTANCE-20261013.md)。

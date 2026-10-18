@@ -1,6 +1,8 @@
 import {stateNames} from '../conversation/state.js';
 import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
+import {mountSisVoiceSettings} from './sis-voice-settings.js';
+import {mountNotificationSettings} from './notification-settings.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
@@ -12,27 +14,30 @@ import {mountNotepadControls} from '../../app/notepad-controls.js';
 import {mountTodoControls} from '../../app/todo-controls.js';
 import {mountGoalCloudControls} from '../../app/goal-cloud-controls.js';
 import {mountKnowledgeControls} from '../../app/knowledge-controls.js';
+import {mountAgentArtsModelControls} from '../../app/agentarts-model-controls.js';
 import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
+import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
 import {profilePage, bindProfile} from './profile.js';
 import {approvalPresentation, authorizationHistoryHtml, authorizationListHtml, nextApprovalExpiry} from './approval-status.js';
 import {agentArtsModelPage} from './agentarts-model.js';
 import {evidencePanelHtml} from './evidence-view.js';
+import {createWorkspacePatchRecoveryControls, workspacePatchRecoveryHtml} from './workspace-patch-recovery-controls.js';
 
 export const sections = {
-  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', configuration: '配置',
+  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接', git: 'Git', environment: '环境', worktrees: 'Worktrees',
   tasks: '任务监控', authorizations: '安全', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
 };
 
 const navGroups = [
-  {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
+  {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'notifications', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
   {label: '集成', items: ['computer', 'capabilities']},
   {label: '编码', items: ['hooks', 'connections', 'git', 'environment', 'worktrees', 'authorizations']},
-  {label: '任务', items: ['archive']},
+  {label: '任务', items: ['tasks', 'archive']},
 ];
 
 const iconPaths = {
@@ -59,8 +64,11 @@ const tone = state => ['ready', 'connected'].includes(state) ? 'ready' : ['unava
 const badge = (label, state) => `<span class="badge" data-tone="${tone(state)}"><span class="badge-dot"></span>${label}</span>`;
 const healthLabels = {ready: 'Runtime 报告就绪', connecting: '连接中', degraded: '降级', reauth_required: '需要重新授权', disconnected: '未连接', unavailable: '不可用'};
 
-export function taskTable(data, escape, evidenceStates = new Map()) {
+export function taskTable(data, escape, evidenceStates = new Map(), patchStates = new Map()) {
   const rows = data.tasks.map(task => {
+    const recovery = patchStates.get(task.taskId)?.result;
+    const displayed = recovery && recovery.revision >= task.revision
+      ? {state: recovery.taskState, revision: recovery.revision} : task;
     const steps = Array.isArray(task.steps) ? task.steps : [];
     const evidenceCount = Array.isArray(task.evidenceRefs) ? task.evidenceRefs.length : 0;
     const summary = task.resultSummary ?? (task.error?.code
@@ -71,7 +79,7 @@ export function taskTable(data, escape, evidenceStates = new Map()) {
     const evidence = evidenceCount
       ? `<button class="btn btn-sm" data-evidence-task="${escape(task.taskId)}">读取执行元数据</button><div data-evidence-panel="${escape(task.taskId)}">${evidencePanelHtml(evidenceStates.get(task.taskId), escape)}</div>`
       : '<span class="muted">尚无 Evidence 引用。</span>';
-    return `<tr><td>${escape(task.taskId)}</td><td>${stateNames[task.state] ?? escape(task.state)}</td><td>${task.revision}</td><td>${escape(summary)}</td><td><details ${evidenceStates.has(task.taskId) ? 'open' : ''}><summary>步骤 ${steps.length} 项 · Evidence 引用 ${evidenceCount} 条</summary>${stepList}${evidence}</details></td></tr>`;
+    return `<tr><td>${escape(task.taskId)}</td><td>${stateNames[displayed.state] ?? escape(displayed.state)}</td><td>${displayed.revision}</td><td>${escape(summary)}</td><td>${workspacePatchRecoveryHtml(task, recovery && recovery.revision < task.revision ? undefined : patchStates.get(task.taskId), escape)}<details ${evidenceStates.has(task.taskId) ? 'open' : ''}><summary>步骤 ${steps.length} 项 · Evidence 引用 ${evidenceCount} 条</summary>${stepList}${evidence}</details></td></tr>`;
   }).join('');
   return `<div class="sheet"><h2>任务记录</h2><p class="muted">只展示 Runtime 任务快照；Evidence 引用数量不代表目标系统已核实。此接口未提供任务来源或云端 trace。</p><div class="table-scroll"><table><thead><tr><th>任务</th><th>状态</th><th>版本</th><th>结果摘要</th><th>步骤与证据</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">还没有任务<br>从悬浮面板开始新的对话</td></tr>'}</tbody></table></div></div>`;
 }
@@ -82,12 +90,17 @@ export function mountAdmin(root, invoke, escape) {
   let modelEditorOpen = false;
   let approvalExpiryTimer;
   let current = {tasks: [], capabilities: [], health: [], approvals: []};
+  const patchRecovery = createWorkspacePatchRecoveryControls({invoke, changed: () => render(current)});
+  window.addEventListener('unload', () => patchRecovery.close(), {once:true});
   const evidenceStates = new Map();
+  let evidenceClosed = false;
+  window.addEventListener('unload', () => { evidenceClosed = true; evidenceStates.clear(); }, {once: true});
   const revocations = new Map();
   let history = {items: [], nextBeforeRowId: undefined, loading: false, loaded: false, error: false};
   let memorySearch = {query: '', hits: [], truncated: false, status: ''};
   const memorySummaries = new Map();
   let savedMemory = {facts: [], status: ''};
+  let renderedSection, memoryRenderKey;
   let historyGeneration = 0;
   async function loadHistory(reset = false) {
     if (history.loading && !reset) return;
@@ -130,8 +143,13 @@ export function mountAdmin(root, invoke, escape) {
   localSettingsButton.textContent = '桌面设置与恢复';
   localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
-  let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let modelApiSignature;
+  const remoteMcpButton=document.createElement('button');remoteMcpButton.type='button';remoteMcpButton.id='remote-mcp-manage';remoteMcpButton.className='btn btn-sm';remoteMcpButton.hidden=true;
+  remoteMcpButton.textContent='远程 MCP 管理';
+  remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
+  root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('#admin-close'));
+  let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let installedSkillsControls,sisControls,notificationControls;
+  let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,modelPageMarkup;
 
   function capabilityTable(data) {
     const status = data.capabilityDirectory ?? {state: 'unavailable', reason: '可信宿主尚未报告能力目录状态'};
@@ -187,7 +205,8 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('界面语言', '当前版本提供简体中文', '<span class="value-pill">简体中文</span>') +
         settingRow('模型与 API', agentArts ? '在模型页面管理 AgentArts 运行时和本机加密凭据' : '模型、Endpoint 和密钥在独立页面管理', '<button class="btn btn-sm" data-jump="models">打开模型</button>') +
         settingRow('开机启动', '宿主能力尚未接入', '<span class="status-note">待接入</span>', 'is-unavailable') +
-        settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>')],
+        settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>') +
+        settingRow('退出应用', '结束托盘、ORB 与所有桌面窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>')],
       appearance: ['外观', '延续 ORB-02 冷光青与标准毛玻璃设计',
         settingRow('界面主题', '所有窗口统一使用黑白主题，支持跟随系统自动切换', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
         settingRow('降低动效', '暂停轨道脉冲并缩短界面过渡', '<label class="switch-control"><input id="pref-calm" type="checkbox"><span></span></label>') +
@@ -199,12 +218,12 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('任务取消', '只显示 Runtime 回读后的最终状态', '<span class="value-pill">严格确认</span>') +
         settingRow('默认终端', '终端连接器尚未提供选择接口', '<span class="status-note">待接入</span>', 'is-unavailable')],
       voice: ['语音', '听写、原生实时对话和加密凭据',
-        settingRow('麦克风听写', '华为 SIS 转写填入输入框；你确认发送后用文字回答', `<span class="value-pill">${data.voice?.configuration?.configured ? '已配置' : '未配置'}</span>`) +
+        settingRow('麦克风听写', '本地 SIS 适配仅填草稿；经 AgentArts 的 SIS 适配当前不可用', `<span class="value-pill">${data.voice?.configuration?.configured ? '配置已保存' : '未配置'}</span>`) +
         settingRow('Live 实时语音', data.live?.reason ?? '在下方配置百炼北京业务空间和 API Key', `<span class="value-pill">${data.live?.active ? '通话中' : data.live?.configured ? '已配置' : '未配置'}</span>`) +
         settingRow('语音播报', '停止播报与任务取消保持独立', '<span class="value-pill">安全隔离</span>')],
       notifications: ['通知', '任务状态与需要用户处理的提醒',
         settingRow('应用内通知', '当前只显示真实 Runtime 状态', '<span class="value-pill">已启用</span>') +
-        settingRow('系统通知', 'Windows 通知宿主尚未接入', '<span class="status-note">待接入</span>', 'is-unavailable') +
+        settingRow('系统通知', '按当前打扰策略投递，系统 show 回执与用户已读分别核实', `<span class="value-pill">${data.notificationCenter?.available?'宿主已装配，设备待验':'等待 Runtime'}</span>`) +
         settingRow('授权提醒', '待处理授权会出现在“授权”页面', '<button class="btn btn-sm" data-jump="authorizations">查看授权</button>')],
       privacy: ['隐私与数据', '敏感数据与本地运行边界',
         (agentArts
@@ -259,19 +278,32 @@ export function mountAdmin(root, invoke, escape) {
   function memoryPage(data) {
     if (!data.privateMemory?.available) return featurePage(data, 'memory');
     const selected = data.privateMemory.vaultSelected;
-    const hits = memorySearch.hits.map((hit, index) => `<article class="sheet">
-      <p>${escape(hit.excerpt)}</p><small>${escape(hit.source.path)}:${hit.source.line}</small>
-      <label>拟保存的私人记忆<input data-memory-summary="${index}" maxlength="500"
+    const citationLabel = value => {
+      if (typeof value === 'string' && value.startsWith('wiki-v1:')) {
+        try {
+          const source = JSON.parse(value.slice(8));
+          if (typeof source?.path === 'string' && Number.isSafeInteger(source.line)) return `${source.path}:${source.line}`;
+        } catch { /* Preserve an unrecognized reference as text. */ }
+      }
+      return value;
+    };
+    const hits = memorySearch.hits.map((hit, index) => `<article class="sheet memory-hit">
+      <p class="memory-excerpt">${escape(hit.excerpt)}</p><small>${escape(hit.source.path)}:${hit.source.line}</small>
+      <label class="memory-field">拟保存的私人记忆<input data-memory-summary="${index}" maxlength="500"
         value="${escape(memorySummaries.get(index) ?? '')}" placeholder="逐条填写并确认摘要"></label>
       <button class="btn btn-sm" data-memory-save="${index}" ${data.privateMemory.writeEnabled ? '' : 'disabled'}>检查并确认</button></article>`).join('');
-    const saved = savedMemory.facts.map((fact, index) => `<article class="sheet">
-      <p>${escape(fact.summary)}</p><small>${escape(fact.sourceRef)}</small>
-      <button class="btn btn-sm" data-memory-delete="${index}">删除所有版本</button></article>`).join('');
+    const saved = savedMemory.facts.map((fact, index) => `<article class="sheet memory-hit">
+      <p class="memory-excerpt">${escape(fact.summary)}</p><small>${escape(citationLabel(fact.sourceRef))}</small>
+      <p class="muted">版本 ${escape(fact.ref.revision)}${fact.state === 'withdrawn' ? fact.confirmation === 'external_observation' ? ' · 来源已变化，后续任务不可消费' : ' · 已撤回，后续任务不可消费' : ''}</p>
+      ${fact.state==='active' ? `<button class="btn btn-sm" data-memory-withdraw="${index}">撤回</button>` : ''}
+      <button class="btn btn-sm btn-danger" data-memory-delete="${index}">删除所有版本</button></article>`).join('');
     return `<section class="feature-page"><div class="settings-heading"><h2>私人记忆</h2>
       <p>只读检索本机 Vault；每条摘录或更正都需在原生对话框中确认。不会自动发送至云端。</p></div>
-      <div class="sheet"><button class="btn btn-sm" id="memory-select-vault">选择本机 Vault 文件夹</button>
-      <p class="muted">${selected ? '已选择本机会话 Vault；重启后需重新选择。' : '尚未选择 Vault。'}</p>
-      <form id="memory-search-form"><input id="memory-query" type="search" maxlength="200"
+      <div class="sheet memory-card"><div class="memory-actions"><button class="btn btn-sm" id="memory-select-vault">选择本机 Vault 文件夹</button></div>
+      <p class="muted">${data.knowledgeSource?.pairing?.mode==='plugin'
+        ? selected ? '使用已配对 Obsidian 的只读摘录；每条记忆仍需确认。' : 'Obsidian 配对已失效，请重新配对；已保存记忆仍可管理。'
+        : selected ? '使用已选择的本机知识源；可在知识源设置中停用或撤销。' : '尚未选择可用知识源。'}</p>
+      <form id="memory-search-form" class="memory-search"><input id="memory-query" type="search" maxlength="200"
         value="${escape(memorySearch.query)}" placeholder="搜索摘录" ${selected ? '' : 'disabled'}>
         <button class="btn btn-sm" ${selected ? '' : 'disabled'}>搜索</button></form>
       <p role="status">${escape(data.privateMemory.writeEnabled ? memorySearch.status
@@ -282,17 +314,27 @@ export function mountAdmin(root, invoke, escape) {
       ${memorySearch.truncated ? '<p class="muted">结果已截断，请缩小搜索范围。</p>' : ''}</section>`;
   }
 
-  function render(data) {
+  function render(data, refreshMemory = false) {
     current = data;
+    for (const taskId of evidenceStates.keys()) {
+      if (!data.tasks.some(task => task.taskId === taskId)) evidenceStates.delete(taskId);
+    }
+    const consumableMemoryRefs = savedMemory.facts.filter(fact => fact.state === 'active'
+      && Date.parse(fact.validFrom) <= Date.now() && Date.now() < Date.parse(fact.validUntil)).map(fact => fact.ref);
     clearApprovalExpiryTimer();
     if (data.adminNavigation && data.adminNavigation.revision !== navigationRevision) {
       navigationRevision = data.adminNavigation.revision;
       if (sections[data.adminNavigation.page]) section = data.adminNavigation.page;
     }
     if (root.querySelector('#profile-dialog')?.open) return;
+    patchRecovery.sync(data.tasks, section === 'tasks' || section === 'overview', section);
     root.querySelector('.main').dataset.section = section;
-    if (section==='voice') liveControls ??= mountLiveVoiceControls(root,invoke);
+    remoteMcpButton.hidden=!data.remoteMcp;
+    if (section==='voice') {liveControls ??= mountLiveVoiceControls(root,invoke);sisControls ??= mountSisVoiceSettings(root,invoke);}
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
+    sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
+    if(section==='notifications') notificationControls??=mountNotificationSettings(root.querySelector('.main'),invoke);
+    notificationControls?.render(data.notificationCenter,data.voiceQuestion,data.approvals??[]);notificationControls?.show(section==='notifications');
     if (section==='computer') proactiveControls ??= mountProactiveControls(root.querySelector('.main'),invoke,{settings:true});
     proactiveControls?.render(data.proactive);proactiveControls?.show(section==='computer');
     if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);
@@ -317,28 +359,41 @@ export function mountAdmin(root, invoke, escape) {
     if(section==='memory' && data.memoryLearning && !memoryLearningControls) {
       memoryLearningRoot=document.createElement('div');memoryLearningRoot.className='memory-learning-settings';
       root.querySelector('.main').append(memoryLearningRoot);
-      memoryLearningControls=mountMemoryLearningControls(memoryLearningRoot,{invoke,status:data.memoryLearning,refs:savedMemory.facts.map(f=>f.ref)});
+      memoryLearningControls=mountMemoryLearningControls(memoryLearningRoot,{invoke,status:data.memoryLearning,refs:consumableMemoryRefs,
+        onMemoryChanged:async()=>{
+          const page=await invoke('memory.listSaved');
+          savedMemory={...page,status:'已刷新当前版本，包含已撤回的记忆。'};
+          render(current);
+        }});
     }
     if(memoryLearningRoot) memoryLearningRoot.hidden=section!=='memory';
-    memoryLearningControls?.update({status:data.memoryLearning,refs:savedMemory.facts.map(f=>f.ref)});
+    memoryLearningControls?.update({status:data.memoryLearning,refs:consumableMemoryRefs});
     if (section==='worktrees' || section==='environment') codingControls ??= mountWorkspaceControls(root.querySelector('.main'),invoke);
     codingControls?.render(data);codingControls?.show(section==='worktrees' || section==='environment');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
     referenceControls?.render(data.reference);referenceControls?.show(section==='capabilities');
+    if(section==='capabilities' && data.installedSkills) installedSkillsControls??=mountInstalledSkillsControls(root.querySelector('.main'),invoke);
+    installedSkillsControls?.render(data.installedSkills,data.tasks,data.installedSkills?.runtimeAvailable && data.model?.provider==='agentarts' && data.model?.configured && data.model?.enabled!==false);
+    installedSkillsControls?.show(section==='capabilities');
     const showAgentArts=section==='models' && data.model?.provider==='agentarts';
     if (showAgentArts) {
-      agentArtsControls ??= mountAgentArtsControls(root.querySelector('.main'),invoke);
+      if(!agentArtsControls){agentArtsConnectionRoot=document.createElement('div');agentArtsConnectionRoot.dataset.modelSettingsSection='connection';agentArtsControls=mountAgentArtsControls(agentArtsConnectionRoot,invoke);}
       agentArtsControls.render(data.agentArts);
     }
     agentArtsControls?.show(showAgentArts);
-    if (section === 'models' && data.modelApi) modelApiControls ??= mountModelApiControls(root.querySelector('.main'),invoke);
-    const nextModelApiSignature = JSON.stringify(data.modelApi);
+    if (section === 'models' && data.modelApi) {if(!modelApiControls){modelApiRoot=document.createElement('div');modelApiRoot.dataset.modelSettingsSection='independent-api';modelApiControls=mountModelApiControls(modelApiRoot,invoke);}if(!agentArtsModelControls){agentArtsModelRoot=document.createElement('div');agentArtsModelRoot.dataset.agentartsModelMounted='true';agentArtsModelRoot.dataset.modelSettingsSection='model-selection';agentArtsModelControls=mountAgentArtsModelControls(agentArtsModelRoot,invoke);}}
+    agentArtsModelControls?.update(data.agentArtsModels);
+    const nextModelApiSignature = JSON.stringify(data.modelApi,(key,value)=>key==='requestBudget'?undefined:value);
     if (modelApiControls && modelApiSignature !== nextModelApiSignature) {
       modelApiControls.render(data.modelApi);modelApiSignature=nextModelApiSignature;
     }
+    else if (modelApiControls && data.modelApi) modelApiControls.updateBudget(data.modelApi);
     modelApiControls?.showSettings(section === 'models');
+    if(agentArtsModelRoot)agentArtsModelRoot.hidden=section!=='models';
+    if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
+    if(modelApiRoot)modelApiRoot.hidden=section!=='models';
     root.querySelector('.main').dataset.cloudConfig=String(section==='models' && data.model?.provider==='agentarts');
-    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', shortcuts: 'shortcuts'};
+    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
     const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'usage', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
     root.querySelector('.main').dataset.surface = section === 'models' ? 'models' : directSettings[section] || featureSections.includes(section) ? 'settings' : 'standard';
     root.querySelector('#page-title').textContent = sections[section];
@@ -357,7 +412,7 @@ export function mountAdmin(root, invoke, escape) {
     const approvalNow = Date.now();
     let content = '';
     if (section === 'overview') {
-      content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>本次会话任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates)}`;
+      content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>本次会话任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates, patchRecovery.entries)}`;
     } else if (section === 'capabilities') {
       content = capabilityTable(data);
     } else if (section === 'models') {
@@ -365,7 +420,7 @@ export function mountAdmin(root, invoke, escape) {
     } else if (section === 'connections') {
       content = healthTable(data);
     } else if (section === 'tasks') {
-      content = taskTable(data, escape, evidenceStates);
+      content = taskTable(data, escape, evidenceStates, patchRecovery.entries);
     } else if (section === 'authorizations') {
       content = authorizationListHtml(data.approvals, escape, approvalNow, {canRevoke: true, revocations})
         + authorizationHistoryHtml(history.items, escape, history, approvalNow, {canRevoke: true, revocations});
@@ -382,7 +437,15 @@ export function mountAdmin(root, invoke, escape) {
     } else {
       content = `<div class="sheet"><h2>${sections[section]}</h2><div class="empty">尚未连接${sections[section]}服务<br>连接后将在这里显示真实数据。</div></div>`;
     }
-    root.querySelector('#content').innerHTML = content;
+    const nextMemoryKey = section === 'memory'
+      ? JSON.stringify({state: data.privateMemory, search: memorySearch, saved: savedMemory}) : undefined;
+    if (section === 'memory' && data.privateMemory?.available && renderedSection === section
+      && !refreshMemory && nextMemoryKey === memoryRenderKey) return;
+    const preserveModelsContent=section==='models'&&renderedSection===section&&modelPageMarkup===content;
+    renderedSection = section; memoryRenderKey = nextMemoryKey;
+    if(!preserveModelsContent)root.querySelector('#content').innerHTML = content;
+    modelPageMarkup=section==='models'?content:undefined;
+    if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==page)page.append(card);}
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);
       if (nextExpiry !== undefined) {
@@ -395,16 +458,17 @@ export function mountAdmin(root, invoke, escape) {
     }
     if (section === 'profile') bindProfile(root, escape);
     root.querySelector('#memory-select-vault')?.addEventListener('click', async event => {
-      event.currentTarget.disabled = true;
+      const button = event.currentTarget;
+      button.disabled = true;
       try {
         const result = await invoke('memory.selectVault');
         if (result.selected) {
           memorySearch = {query: '', hits: [], truncated: false, status: 'Vault 已选择，尚未保存任何摘录。'};
           memorySummaries.clear();
         }
-        render(current);
+        render(current, true);
       } catch (error) {
-        event.currentTarget.disabled = false;
+        button.disabled = false;
         root.querySelector('#error').textContent = error.message;
       }
     });
@@ -416,7 +480,7 @@ export function mountAdmin(root, invoke, escape) {
         memorySearch = {query, hits: result.hits, truncated: result.truncated,
           status: result.hits.length ? `找到 ${result.hits.length} 条引文；尚未保存。` : '没有匹配引文。'};
         memorySummaries.clear();
-        render(current);
+        render(current, true);
       } catch (error) { root.querySelector('#error').textContent = error.message; }
     });
     root.querySelectorAll('[data-memory-summary]').forEach(input => input.addEventListener('input', () => {
@@ -426,7 +490,7 @@ export function mountAdmin(root, invoke, escape) {
       try {
         const page = await invoke('memory.listSaved');
         savedMemory = {...page, status: page.facts.length ? '仅显示当前版本。' : '没有已保存的私人记忆。'};
-        render(current);
+        render(current, true);
       } catch (error) { root.querySelector('#error').textContent = error.message; }
     });
     root.querySelector('#memory-list-next')?.addEventListener('click', async () => {
@@ -434,18 +498,29 @@ export function mountAdmin(root, invoke, escape) {
         const page = await invoke('memory.listSaved',
           {at: savedMemory.at, snapshot: savedMemory.snapshot, cursor: savedMemory.nextCursor});
         savedMemory = {...page, facts: [...savedMemory.facts, ...page.facts], status: '仅显示当前版本。'};
-        render(current);
+        render(current, true);
       } catch (error) { root.querySelector('#error').textContent = error.message; }
     });
+    root.querySelectorAll('[data-memory-withdraw]').forEach(button => button.addEventListener('click', async () => {
+      button.disabled=true;
+      try {
+        const result=await invoke('memory.withdraw',{ref:savedMemory.facts[Number(button.dataset.memoryWithdraw)].ref});
+        savedMemory={...await invoke('memory.listSaved'),status:result.state==='withdrawn'
+          ? '已撤回，后续任务不可消费；历史仍可管理和删除。' : '已取消，未撤回记忆。'};
+        render(current,true);
+      } catch(error) {root.querySelector('#error').textContent=error.message;button.disabled=false;}
+    }));
     root.querySelectorAll('[data-memory-delete]').forEach(button => button.addEventListener('click', async () => {
       button.disabled = true;
       try {
         const result = await invoke('memory.delete', {ref: savedMemory.facts[Number(button.dataset.memoryDelete)].ref});
-        if (result.state === 'deleted') {
+        if (result.state === 'deleted' || result.state === 'pending') {
           const page = await invoke('memory.listSaved');
-          savedMemory = {...page, status: '已删除该记忆的全部版本并完成读回。'};
+          savedMemory = {...page, status: result.state === 'deleted' ? '已删除该记忆的全部版本并完成读回。'
+            : result.pendingBackupIds?.length ? '记忆已停止引用；应用备份仍待清理或整篇笔记备份已保留，删除尚未完成。'
+              : '来源已停止引用，关联任务副本仍待核实清除；删除尚未完成。'};
         } else savedMemory.status = '已取消，未删除记忆。';
-        render(current);
+        render(current, true);
       } catch (error) { root.querySelector('#error').textContent = error.message; button.disabled = false; }
     }));
     root.querySelectorAll('[data-memory-save]').forEach(button => button.addEventListener('click', async () => {
@@ -454,12 +529,14 @@ export function mountAdmin(root, invoke, escape) {
       try {
         const source=memorySearch.hits[index].source;
         const baseline=await invoke('memory.previewSave',{source});
+        memorySearch.hits[index]={...memorySearch.hits[index],excerpt:baseline.citation};
+        render(current,true);
         const result = await invoke('memory.save', {source,baseline,
           summary: (memorySummaries.get(index) ?? '').trim()});
         memorySearch.status = result.state === 'saved' ? `私人记忆已保存为版本 ${result.revision}。`
           : result.state === 'unchanged' ? '这条私人记忆已经保存。' : '已取消，未写入记忆。';
         if (result.state === 'saved') savedMemory = {facts: [], status: '已保存，点击查看已保存记忆刷新列表。'};
-        render(current);
+        render(current, true);
       } catch (error) { root.querySelector('#error').textContent = error.message; button.disabled = false; }
     }));
     root.querySelector('#quit')?.addEventListener('click', () => invoke('app.quit'));
@@ -567,38 +644,55 @@ export function mountAdmin(root, invoke, escape) {
   }
 
   root.querySelector('#admin-close').addEventListener('click', () => invoke('admin.close').catch(error => { root.querySelector('#error').textContent = error.message; }));
+  root.querySelector('#content').addEventListener('click', event => {
+    const button = event.target.closest('[data-patch-reconcile]');
+    if (button && root.isConnected !== false) void patchRecovery.reconcile(button.dataset.patchReconcile);
+  });
   root.querySelector('#content').addEventListener('click', async event => {
     const button = event.target.closest('[data-evidence-task], [data-evidence-id], [data-evidence-more], [data-evidence-retry]');
-    if (!button) return;
+    if (!button || evidenceClosed || root.isConnected === false) return;
     const panel = button.closest('[data-evidence-panel]');
     const taskId = button.dataset.evidenceTask ?? panel?.dataset.evidencePanel;
-    if (!current.tasks.some(task => task.taskId === taskId)) return;
+    const task = current.tasks.find(task => task.taskId === taskId);
+    if (!task) return;
     if (button.dataset.evidenceId) {
       const state = evidenceStates.get(taskId);
       const evidenceId = button.dataset.evidenceId;
       if (state?.status !== 'loaded' || !state.items.some(item => item.evidenceId === evidenceId)) return;
-      evidenceStates.set(taskId, {...state, detail: undefined, detailStatus: 'loading'});
+      const pending = {...state, detail: undefined, detailStatus: 'loading'};
+      evidenceStates.set(taskId, pending);
+      const isCurrent = () => !evidenceClosed && root.isConnected !== false
+        && evidenceStates.get(taskId) === pending
+        && current.tasks.some(item => item.taskId === taskId && item.conversationId === task.conversationId);
       render(current);
       try {
         const detail = await invoke('evidence.get', {taskId, evidenceId});
+        if (!isCurrent()) return;
         if (detail?.evidenceId !== evidenceId) throw Error('Evidence identity mismatch');
         evidenceStates.set(taskId, {...state, detail, detailStatus: 'loaded'});
       } catch {
+        if (!isCurrent()) return;
         evidenceStates.set(taskId, {...state, detail: undefined, detailStatus: 'error'});
       }
     } else {
       const beforeEvidenceId = button.hasAttribute('data-evidence-more')
         ? evidenceStates.get(taskId)?.nextBeforeEvidenceId : undefined;
-      evidenceStates.set(taskId, {status: 'loading'});
+      const pending = {status: 'loading'};
+      evidenceStates.set(taskId, pending);
+      const isCurrent = () => !evidenceClosed && root.isConnected !== false
+        && evidenceStates.get(taskId) === pending
+        && current.tasks.some(item => item.taskId === taskId && item.conversationId === task.conversationId);
       render(current);
       try {
         const page = await invoke('evidence.list', {taskId, limit: 10, ...(beforeEvidenceId ? {beforeEvidenceId} : {})});
+        if (!isCurrent()) return;
         if (!Array.isArray(page?.items) || page.items.some(item => typeof item?.evidenceId !== 'string')) {
           throw Error('Invalid Evidence page');
         }
         evidenceStates.set(taskId, {status: 'loaded', items: page.items,
           nextBeforeEvidenceId: page.nextBeforeEvidenceId});
       } catch {
+        if (!isCurrent()) return;
         evidenceStates.set(taskId, {status: 'error'});
       }
     }

@@ -35,6 +35,53 @@ function databasePath(t) {
   return join(directory, 'memory.sqlite');
 }
 
+test('private admin heads include withdrawn and expired records with isolated durable pagination', async t => {
+  let host;
+  t.after(() => host?.close());
+  const path = databasePath(t);
+  host = openSqliteMemoryHost(path);
+  host.provision('private-admin');
+  host.provision('other');
+  host.append('private-admin', version('a', 1, {sensitivity: 'private'}));
+  host.append('private-admin', version('a', 2, {sensitivity: 'private', state: 'withdrawn'}));
+  host.append('private-admin', {...version('b', 1, {sensitivity: 'private'}), validUntil: '2026-09-22T01:00:00.000Z'});
+  host.append('private-admin', version('public', 1));
+  host.append('private-admin', {...version('inferred', 1, {sensitivity: 'private'}), confirmation: 'model_inference'});
+  host.append('private-admin', version('hidden', 1, {sensitivity: 'private'}));
+  host.append('private-admin', version('hidden', 2, {sensitivity: 'restricted'}));
+  const first = await host.listUserFactHeads('private-admin', request({at, limit: 1}));
+  assert.deepEqual(first.facts.map(fact => [fact.ref.id, fact.ref.revision, fact.state]), [['a', 2, 'withdrawn']]);
+  assert.ok(first.nextCursor);
+  host.append('private-admin', version('c', 1, {sensitivity: 'private'}));
+  host.close();
+  host = openSqliteMemoryHost(path);
+  const second = await host.listUserFactHeads('private-admin', request({at, limit: 1,
+    snapshot: first.snapshot, cursor: first.nextCursor}));
+  assert.deepEqual(second.facts.map(fact => fact.ref.id), ['b']);
+  assert.equal(second.nextCursor, undefined);
+  assert.deepEqual((await host.listUserFactHeads('private-admin', request({at, limit: 10})))
+    .facts.map(fact => fact.ref.id), ['a', 'b', 'c']);
+  const consumer = host.bind('private-admin', {allowedSensitivities: ['private']});
+  assert.deepEqual((await consumer.listCurrent(request({at, limit: 10, factId: 'a'}))).facts, []);
+  await assert.rejects(consumer.listCurrent(request({at, limit: 1, snapshot: first.snapshot})), {code: 'INVALID_ARGUMENT'});
+  const publicPage = await consumer.listCurrent(request({at, limit: 1}));
+  await assert.rejects(host.listUserFactHeads('private-admin', request({at, limit: 1,
+    snapshot: publicPage.snapshot})), {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(host.listUserFactHeads('other', request({at, limit: 1,
+    snapshot: first.snapshot})), {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(host.listUserFactHeads('private-admin', request({at, limit: 101})), {code: 'INVALID_ARGUMENT'});
+  const signal = AbortSignal.abort();
+  await assert.rejects(host.listUserFactHeads('private-admin', request({at, limit: 1, signal})), {code: 'CANCELLED'});
+  await assert.rejects(host.listUserFactHeads('private-admin', request({at, limit: 1,
+    deadline: '2000-01-01T00:00:00.000Z'})), {code: 'TIMEOUT'});
+  const independent = await host.listUserFactHeads('other', request({at, limit: 1}));
+  host.eraseUnboundFact('private-admin', request({factId: 'a', expectedRevision: 2, operationId: 'erase-withdrawn'}));
+  await assert.rejects(host.listUserFactHeads('private-admin', request({at, limit: 1,
+    snapshot: first.snapshot, cursor: first.nextCursor})), {code: 'INVALID_ARGUMENT'});
+  assert.deepEqual((await host.listUserFactHeads('other', request({at, limit: 1,
+    snapshot: independent.snapshot}))).facts, []);
+});
+
 test('SQLite memory keeps immutable facts and query snapshots across restart', async t => {
   const path = databasePath(t);
   let host = openSqliteMemoryHost(path);

@@ -47,7 +47,7 @@ async function fixture(t) {
     }, readCopyErasureReceipt: taskId => receipts.get(taskId) ?? null});
   t.after(async () => {privateMemory.close(); await rm(base, {recursive: true, force: true});});
   return {get privateMemory() {return privateMemory;}, ref, source, bindings, copies, receipts, cancelled, released, add,
-    host: () => createPrivateMemoryErasureHost(ports()), setPending: value => {pending = value;},
+    host: (overrides = {}) => createPrivateMemoryErasureHost({...ports(), ...overrides}), setPending: value => {pending = value;},
     setForged: value => {forged = value;},
     restart() {privateMemory.close(); privateMemory = createPrivateMemoryController(database, async () => false);}};
 }
@@ -89,4 +89,31 @@ test('stale private deletion has zero task cancellation; missing and mismatched 
   assert.equal((await f.host().reconcile()).state, 'reconciled');
   assert.equal(f.copies.has('a-task'), false);
   assert.equal(f.bindings.length, 1);
+});
+
+test('committed source erasure keeps a failed cancellation pending and resumes without repeating purged copies', async t => {
+  const f = await fixture(t);
+  f.add('a-unavailable'); f.add('b-purged'); f.add('c-independent', {id: 'independent-fact', revision: 1});
+  const result = await f.host({cancelTask: taskId => {
+    if (taskId === 'a-unavailable') throw Error('Synthetic cancellation unavailable');
+    f.cancelled.push(taskId);
+  }}).erase(f.ref);
+  assert.equal(result.state, 'pending');
+  assert.deepEqual(result.pendingTaskIds, ['a-unavailable']);
+  assert.deepEqual(f.cancelled, ['b-purged']);
+  assert.deepEqual([...f.copies.keys()], ['a-unavailable', 'c-independent']);
+  assert.equal(f.receipts.has('a-unavailable'), false);
+  assert.equal(f.receipts.get('b-purged').state, 'purged');
+  assert.deepEqual((await f.privateMemory.listSaved()).facts, []);
+  const scope = {limit: 10, deadline: new Date(Date.now() + 60_000).toISOString(), signal: new AbortController().signal};
+  assert.equal(f.privateMemory.listErasureMarkers(scope)[0].phase, 'completed');
+  f.restart(); // The reopened controller rejects new source confirmation; recovery uses the original marker.
+  assert.equal((await f.host().reconcile()).state, 'reconciled');
+  assert.deepEqual(f.cancelled, ['b-purged', 'a-unavailable']);
+  assert.deepEqual([...f.copies.keys()], ['c-independent']);
+  assert.equal(f.receipts.get('a-unavailable').state, 'purged');
+  const callsBefore = f.released.length;
+  assert.equal((await f.host({cancelTask: () => {throw Error('Already purged tasks must not be cancelled again');}}).reconcile()).state, 'reconciled');
+  assert.equal(f.released.length, callsBefore);
+  assert.equal(f.receipts.has('c-independent'), false);
 });

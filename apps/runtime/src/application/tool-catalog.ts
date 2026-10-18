@@ -82,7 +82,8 @@ function safeSchema(value: unknown, depth = 0, publicEnums: ReadonlySet<string> 
   }
   for (const key of ['minLength', 'maxLength', 'minimum', 'maximum', 'minItems', 'maxItems']) {
     const number = schema[key];
-    if (typeof number === 'number' && Number.isFinite(number) && number >= 0) result[key] = number;
+    const signed = key === 'minimum' || key === 'maximum';
+    if (typeof number === 'number' && Number.isFinite(number) && (signed || number >= 0)) result[key] = number;
   }
   return result;
 }
@@ -134,26 +135,50 @@ export class RuntimeCompetitionToolCatalog {
       : selectable.some(descriptor => descriptor.sideEffect === 'local_write') ? 'local_write' : 'read';
   }
 
-  private async ready(binding: CompetitionToolAvailability, input: {taskId: string; revision: number; deadline: string; signal: AbortSignal}): Promise<boolean> {
-    if (input.signal.aborted) throw new ProtocolError('CANCELLED', 'Tool catalog selection cancelled');
-    const remaining = Date.parse(input.deadline) - Date.now();
+  private async readProvider<T>(input: {taskId: string; revision: number; deadline: string; signal: AbortSignal},
+    read: (view: {taskId: string; revision: number; deadline: string; signal: AbortSignal}) => T | Promise<T>): Promise<T | undefined> {
+    const signal = input.signal;
+    const deadline = input.deadline;
+    const expiresAt = Date.parse(deadline);
+    const view = {taskId: input.taskId, revision: input.revision, deadline, signal};
+    if (signal.aborted) throw new ProtocolError('CANCELLED', 'Tool catalog selection cancelled');
+    const remaining = expiresAt - Date.now();
     if (!Number.isFinite(remaining) || remaining <= 0) throw new ProtocolError('TIMEOUT', 'Tool catalog selection expired');
     let timer: ReturnType<typeof setTimeout> | undefined;
     let onAbort = (): void => {};
     const interrupted = new Promise<never>((_, reject) => {
       onAbort = () => reject(new ProtocolError('CANCELLED', 'Tool catalog selection cancelled'));
-      input.signal.addEventListener('abort', onAbort, {once: true});
-      timer = setTimeout(() => reject(new ProtocolError('TIMEOUT', 'Tool catalog selection expired')), Math.min(remaining, 2_147_483_647));
+      signal.addEventListener('abort', onAbort, {once: true});
+      const scheduleDeadline = (): void => {
+        const delay = expiresAt - Date.now();
+        if (delay <= 0) {
+          reject(new ProtocolError('TIMEOUT', 'Tool catalog selection expired'));
+          return;
+        }
+        timer = setTimeout(scheduleDeadline, Math.min(delay, 2_147_483_647));
+      };
+      scheduleDeadline();
+      if (signal.aborted) onAbort();
     });
     try {
-      return await Promise.race([Promise.resolve().then(async () => await binding.available(input) === true), interrupted]);
-    } catch (error) {
-      if (error instanceof ProtocolError && ['CANCELLED', 'TIMEOUT'].includes(error.code)) throw error;
-      return false;
+      const result = await Promise.race([Promise.resolve().then(() => read(view)), interrupted]);
+      if (signal.aborted) throw new ProtocolError('CANCELLED', 'Tool catalog selection cancelled');
+      if (Date.now() >= expiresAt) throw new ProtocolError('TIMEOUT', 'Tool catalog selection expired');
+      return result;
+    } catch {
+      // Catalog providers do not own this task's cancellation or deadline.
+      // Their errors can contain private host details, including ProtocolErrors.
+      if (signal.aborted) throw new ProtocolError('CANCELLED', 'Tool catalog selection cancelled');
+      if (Date.now() >= expiresAt) throw new ProtocolError('TIMEOUT', 'Tool catalog selection expired');
+      return undefined;
     } finally {
       if (timer) clearTimeout(timer);
-      input.signal.removeEventListener('abort', onAbort);
+      signal.removeEventListener('abort', onAbort);
     }
+  }
+
+  private async ready(binding: CompetitionToolAvailability, input: {taskId: string; revision: number; deadline: string; signal: AbortSignal}): Promise<boolean> {
+    return await this.readProvider(input, view => binding.available(view)) === true;
   }
 
   private assertCurrent(input: {taskId: string; revision: number; deadline: string; signal: AbortSignal}): void {
@@ -191,7 +216,7 @@ export class RuntimeCompetitionToolCatalog {
       }
     }
     for(const worker of this.workers) {
-      const descriptor=await worker.describe({...input,revision});
+      const descriptor=await this.readProvider({...input,revision},view=>worker.describe(view));
       if(!descriptor)continue;
       if(descriptor.name!==worker.toolName || descriptor.version!==worker.toolVersion)throw new ProtocolError('UNAUTHORIZED','Worker descriptor identity changed');
       selected.push({...descriptor,inputSchema:safeSchema(descriptor.inputSchema,0,new Set(worker.publicEnumPaths))});
@@ -212,8 +237,8 @@ export class RuntimeCompetitionToolCatalog {
     const entry = saved?.entries.find(item => item.name === input.toolName && item.version === input.toolVersion);
     const worker=this.workers.find(item=>item.toolName===input.toolName && item.toolVersion===input.toolVersion);
     if(worker) {
-      const fresh=await worker.describe(input);
-      if(!entry || !fresh || saved?.deadline!==input.deadline
+      const fresh=await this.readProvider(input,view=>worker.describe(view));
+      if(!entry || !fresh || fresh.name!==worker.toolName || fresh.version!==worker.toolVersion || saved?.deadline!==input.deadline
         || (input.firstCloudRequest && saved.revision!==revision)
         || !isDeepStrictEqual(safeSchema(fresh.inputSchema,0,new Set(worker.publicEnumPaths)),entry.inputSchema)) {
         throw new ProtocolError('UNAUTHORIZED','Worker selection is no longer available');
@@ -245,8 +270,9 @@ export class RuntimeCompetitionToolCatalog {
     for (const item of saved.entries) {
       const worker=this.workers.find(worker=>worker.toolName===item.name && worker.toolVersion===item.version);
       if(worker) {
-        const fresh=await worker.describe(input);
-        if(!fresh || !isDeepStrictEqual(safeSchema(fresh.inputSchema,0,new Set(worker.publicEnumPaths)),item.inputSchema))throw new ProtocolError('UNAUTHORIZED','Worker became unavailable before send');
+        const fresh=await this.readProvider(input,view=>worker.describe(view));
+        if(!fresh || fresh.name!==worker.toolName || fresh.version!==worker.toolVersion
+          || !isDeepStrictEqual(safeSchema(fresh.inputSchema,0,new Set(worker.publicEnumPaths)),item.inputSchema))throw new ProtocolError('UNAUTHORIZED','Worker became unavailable before send');
         continue;
       }
       const binding = this.availability.find(entry => entry.toolName === item.name && entry.toolVersion === item.version);

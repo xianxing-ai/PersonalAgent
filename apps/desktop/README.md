@@ -1,5 +1,144 @@
 # PersonalAgent Desktop
 
+## 2026-10-16 远程 MCP 原生管理与生产装配（provisional）
+
+Competition 后台顶栏新增「远程 MCP 管理」，打开独立 sandbox/contextIsolation 窗口。普通页面只能打开窗口和看到布尔状态，不能调用管理 IPC 或读回密钥。管理窗口支持导入服务定义、加密保存短期凭据、原生确认连接、创建/审核单次只读任务、原任务结果/Evidence 引用读回、停止、断开和撤销。无真实云端调用；不自动向 AgentArts 公布该工具或导出结果。
+
+使用步骤：
+
+1. 从已审查的本机 JSON 导入定义，顶层只含 `endpoint`、`server`、`tool`、`directoryDigest`。结构与下节配置 API 一致，`tool.descriptor.name` 限 `mcp.remote.*`，含对象输入/输出 Schema、版本和必要 scopes。摘要用 `@personal-agent/mcp` 的 `remoteMcpDirectoryDigest(tools)` 对真实工具目录计算，不接受自动信任发现的工具；文件不能含 token 或额外字段。
+2. 在独立窗口输入已有短期 token 和规范 ISO UTC 到期时间（空 token 明确不使用凭据）。原生确认固定地址/版本/目录后保存；保存不联网。定义、Schema 或凭据变化后，正常退出并重启，重新装配 Runtime；不热换旧任务 Schema。旧格式中不在远程命名空间的配置保留原密文并报告不可用，需显式导入符合命名空间的新定义。
+3. 点击「确认连接」，原生确认仅开启本次会话。连接不授予工具执行；重启后默认断开。后台未初始化原 Runtime 时仍可保存，试调用明确不可用，不创建另一套 Runtime 或静默回退 Local。
+4. 输入业务参数，创建本地审批任务；审核原任务的工具、参数与 revision，再原生确认批准一次或拒绝。ToolGateway/Policy 执行和 SQLite/Evidence 继续是事实来源；重启可选原任务读回，不重放。旧会话待审批任务无法以新会话许可执行，应拒绝并重新提交。
+5. 断开中止待连接确认；撤销先废止内存凭据，再清除本机密文。删除失败报告未完成，原任务记录保留；不声称撤销服务端签发的 token。
+
+`npm run test:remote-mcp-product-smoke --workspace=@personal-agent/desktop` 使用实际产品 main、Preload、独立管理窗口、Electron safeStorage 与 SQLite，经过两次重启验证默认断开、批准前零调用、一次执行、原结果读回、旧审批拒绝和撤销。原生对话框响应为显式合成适配，HTTPS 请求由测试专用入口映射到本机 HTTP 合成服务；这不是远程 TLS/OAuth、真人确认或 AgentArts 验收。测试入口不进入生产 main。详见[本包记录](../../docs/modules/MOD-06-MANAGEMENT-20261016.md)。
+
+## 2026-10-16 远程 MCP 加密配置与宿主装配（provisional）
+
+`electron/remote-mcp-config.js` 的 `createRemoteMcpConfig({userData,safeStorage})` 仅供受信主进程调用。严格保存固定 HTTPS endpoint、服务/工具/schema、目录摘要与可选已签发 token/expiry；全量配置通过现有 Electron safeStorage 加密并原子替换。`snapshot()` 不返回地址、凭据或引用；`hostConfiguration()/binding()/secretStore/revocationSignal()` 是 host-only 端口，不能暴露为 Renderer 通用 IPC。
+
+保存不联网、不连接、不授权工具。每次成功轮换递增 revision、更换 secretRef 并撤销旧 host；保存失败保留旧文件与旧状态。每次加载生成独立会话 nonce，重启默认断开，旧 envelope/许可不能恢复执行。`revoke()` 立即禁用内存访问并尝试清除本机加密文件，删除失败报告 `revoke_pending`、保留原文件；不声称已撤销服务端 token。单 userData 由一个主进程拥有，不支持并行配置写入。
+
+`createDesktopRemoteMcpHost({config,confirmConnection,fetch?})` 复用原 bound host，默认拒绝连接。受信原生确认回调只看到 endpoint、服务/工具标识、目录摘要与是否有凭据；异步确认后重验配置/取消/期限，断开或关闭能阻止迟到确认。连接后 `arguments(businessArguments)` 提供当前 envelope，`tools` 经既有 RuntimeApplicationOptions.tools 接入原 Policy/ToolGateway。原生连接确认不授予工具执行许可，配置改变后必须重装配，不能热换已注册 schema。
+
+此处为 #371 的宿主首片记录，当时未新增 Renderer 页面/IPC 或默认生产装配；本分支后续管理入口见上节。确认回调单测为显式合成替身；真实远端与 OAuth 未验收。Competition 的本机 HTTP + SQLite Runtime 审批/重启测试与真实 Electron safeStorage 双进程测试分开记录；既有 Local 窗口回归不能替代比赛验收。
+
+构建依赖后执行：
+
+```powershell
+node --test apps/desktop/test/remote-mcp-config.test.mjs tests/integration/remote-mcp-host-runtime.test.mjs
+npm run test:remote-mcp-storage-smoke --workspace=@personal-agent/desktop
+```
+
+真实 safeStorage 烟测用两个隔离 Electron 进程和公开合成 token，正常 `app.quit()` 关闭并读回忽略目录的 receipt；没有工具或模型调用。首次加密后立即强制终止可能使 Chromium 加密状态未落盘，恢复将为 unavailable、保留原密文；本包不承诺首次保存后的崩溃恢复。详见 [ADR-0031](../../docs/adr/0031-remote-mcp-host-configuration.md) 与[验收记录](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
+## 2026-10-16 V5 当前验收状态
+
+本次 r3 真实验收已取得 AgentArts 公网 WSS Upgrade HTTP 101，并通过文字任务的原生推理强度 low 调用。实时语音 runner 使用公开 PCM 完成整轮，结果为 passed；这不代表已通过实际麦克风、扬声器或设备交互验收。Qwen 完整子任务派发仍在复测，当前不宣称通过。
+
+当前主通道、模型选择、持久化配置及验收边界见 [Desktop AgentArts Models V5](../../docs/competition/DESKTOP_AGENTARTS_MODELS_V5.md)；本轮原始回执与结果入口见 [V5 验收证据](../../docs/competition/evidence/desktop-agentarts-v5-20261016/README.md)。下方 2026-10-09 WSS 说明保留为历史记录，其中“公网 Upgrade 尚未证实”等结论仅描述当时状态。
+
+## 2026-10-09 自有镜像 WSS 消费增量
+
+Competition可信主进程已消费WSS传输及连接状态，此接入仍为 **provisional**。启用`PA_AGENTARTS_TRANSPORT=wss`时，必须显式提供`PA_AGENTARTS_WSS_URL`，没有自动推导的公网地址，也不会依次试探不同路径。地址限定同一 HTTPS 网关 origin 与运行时名称，只接受`/runtimes/{runtimeName}/ws`或`/runtimes/{runtimeName}/invocations/ws`这两个精确路径；明文、跨源、URL认证信息、查询参数与其他路径均拒绝。
+
+官方目前只确认镜像内的`/ws`容器入口。直接公网`/runtimes/{runtimeName}/ws`没有已验证依据；`PREFIX_MATCH`的`/runtimes/{runtimeName}/invocations/ws`只有普通请求映射依据，WebSocket Upgrade 转发尚未证实。两个配置候选均不能据此宣称华为公开 WSS 已支持；实际公开地址、Upgrade、鉴权与连接生命周期须另行验收。
+
+`PA_AGENTARTS_APP_TOKEN`与镜像`PA_AGENT_WSS_AUTH_TOKEN`匹配并只留在受信环境。`PA_AGENTARTS_HTTPS_FALLBACK=1`明确允许证明未发出invoke的连接失败使用同部署备用。降级/认证失败/未知核实可见，未知任务不会重发。既有未配置消费者保留HTTPS兼容。配置、实际TLS连接、Runtime和Desktop合成验证分别记录，不代表华为公开WSS或物理窗口验收。具体接口与余项见[镜像接口](../../docs/competition/OWNED_IMAGE_INTERFACES.md)。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
+本地 [MOD-08K](../../docs/modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 接通私人 SQLite
+备份清单与逐事实删除。备份放在 userData 的 `private-memory-backups/*.sqlite`；不自动
+创建，新增应用副本须登记。清理保留无关事实，失败或登记失联时不报告完成。
+整篇 Wiki 写回备份按用户选择保留，不能证明无关时明确显示删除仍未完成。
+Knowledge 索引仅在内存、总正文最多 8 MiB；删除私人事实和撤销来源会清空缓存。
+插件安装包由 `apps/obsidian-plugin` 构建，当前没有插件 Runtime 配对或真实宿主验收。
+
+Wiki 来源增量（[MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)）：
+Competition 私人记忆与知识工具共用受信知识源，原生目录选择与加密配置可在重启后复用；
+切库、停用或撤销阻止旧引文保存与消费。摘录及更正仍逐条原生确认，任务仍逐任务确认。
+新鲜第一页及消费前验证来源，已知变化显示“来源已变化”，缺失/扫描失败不自动删除。
+无新增云调用；旧格式事实继续可管理与删除，消费需重新检索确认。
+
+Wiki 写回增量（[MOD-08I](../../docs/modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md)）复用既有
+受控精确补丁工具。正文成功与记忆投影完成独立记录，重启恢复只做来源重校验；管理页核实
+原任务时可见投影是否仍待恢复。新摘录仍逐条确认，不自动写入 Memory 或发送云端。
+
+后续 [MOD-08J](../../docs/modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md) 装配后台只读来源
+检查，使用现有定时入口每 30 秒检查一次，并展示状态。仅校验原确认记忆，新增笔记
+不自动形成记忆；缺失与扫描失败保留历史，不删除文件。尚无完整全文索引或安装插件。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
+## 2026-10-11 球体、反馈与键盘操作继续交付
+
+PR #302 已于 2026-10-08 合并，当前主分支为 `e86bac5`；下文旧日期的“未合并”记录保留当时基线。新成果沿原 PR #313 和 `desktop/orb-motion-settings` 交付，尚未合并。 当前最新完整检查固定4225dd1：799项/788通过/11跳过、typecheck通过，全部1116 tracked文件hash和HEAD前后相同；任务取消、定位反馈、首次状态恢复和标准按钮激活增量详见下方本日记录。
+
+- 真实任务的审批、外部核实、取消等待优先于 Live 球体视觉；历史完成任务不遮住当前 Live 标签。Compact 与 Workspace 使用现有降低动效偏好，隐藏期间快照和偏好更新不重启动画；点击动画不在恢复动效后重播。
+- 面板错误反馈不会被普通状态快照抹去；提交结束不会清空期间新增的草稿。停止请求跨 DOM 更新保持禁用，失败可重试；复制、定位等操作恢复同一对象的键盘焦点，不跳到另一个任务。
+- 旧 Workspace 快照不会覆盖已推送的新状态。拖动结束、切换面板拖动、窗口重载或销毁使迟到的 Orb 启动失效；不能在松开鼠标后恢复跟随。Compact 操作失败用标题与可访问标签提示，保留实际 Task/Live 状态；旧请求不能覆盖新反馈。
+- 面板新手势拥有独立身份，只有实际开始新拖动才转移Host归属；普通点击不阻止旧已松开手势的清理，旧拖动启动回包不得移动或结束当前新拖动；页面卸载后不补发移动/结束。Goal列表区分创建、修改及任务身份，短ID碰撞显示完整ID，取消和迟到读回仍绑定原任务。
+- Workspace设置按模型与完整思考参数对分别追踪当前请求；保存失败回填最新已观察值，旧拒绝不覆盖新请求或尚未提交的滑块值。普通音频快照保持待保存意图，成功重试只清本组自己的旧错误；不新增IPC或任务。
+- 面板思考参数保持原逐次输入保存方式，旧成功或失败不覆盖新意图；模型菜单内按Escape回到可见模型按钮，菜单外保留原关闭面板行为。头像异步读取在继续编辑、取消、关闭或卸载后失效，不能用旧回包覆盖新资料。
+- 外观页普通快照保留原主题与降低动效控件，按住Space或鼠标期间不丢动作；降低动效复选框有明确可访问名称。设置与快捷键页只在同页HTML未改变时复用导航，实际状态改变仍重建，其他模块页面保持原行为。
+- 主动建议在完整公开review、许可、待处理状态和最终HTML均未改变时保留原动作节点，按住Space或鼠标期间不丢一次操作；selected、来源、回执或新公开字段改变仍重建，未知受理继续锁定，不增加任务或审批权限。
+- 窄设置窗口保留 118px 侧栏，品牌和搜索提示完整可见，搜索框使用原主题焦点令牌。实际112×112球体页面使用内侧焦点圈，8组主题/降低动效前后组合可见，Enter/Space各触发一次；Proactive 音频快照更新保留同一非审批动作的焦点，不抢输入和终态操作。配置保存、业务表单和权限边界沿原入口。
+
+Node 24.15.0 下根树固定源码 `9cd32d8` 的完整 Desktop 测试为799项：788通过、11跳过、0失败；类型检查通过。2026-10-11 01:22:46Z至01:23:28Z检查期间HEAD与全部1115个tracked文件哈希前后相同，原日志SHA256为`d526df2f036a7855fb6b55cba844c4c7d1df912ccb156ddeabfda534b0e2b4e1`。此前Workspace786、Panel793、Profile799和根5d0e5bd各自冻结阶段证据保留，不用旧阶段结果代替最新源码检查。Chromium加载原页面，验证错误反馈、连续键盘操作、目标任务身份/窄屏、拖动新旧回包/卸载、隐藏/显示、降低动效、外观held-key/pointer、设置导航与主动建议手势/绑定失效；18组布局压力和16组主题/键盘焦点组合保留原证据。桥接、窗口、屏幕和音频流为明确替身；头像读取是合成FileReader与隔离浏览器存储，CSS viewport压力不等于Electron字体缩放。
+
+原 Electron 与工作区 smoke 均实际失败：当前 Linux 环境通过 `npm ci --ignore-scripts` 安装依赖，脚本启动的 `electron.exe` 不存在，且无 Xvfb。原失败日志保留；Windows 原生窗口、多屏/DPI、物理音频与真实云服务仍未验收。新增消费者证据位于隔离工作树 `.cache/desktop-noon-{panel,hide,refresh,action,orb-pref,drag,workspace-hidden,orb-operation}-fix/`；合成验证不能替代现场验收。
+
+## 2026-10-07 原功能源码核对
+
+本节核对 `main@4b5ec614` 已有入口；当前开发 PR #302 尚未合并，其新增修复不能记为该基线已交付。下文旧日期的记录保留原验收范围，模块状态继续为 `in_progress`。
+
+| 功能 | 已有源码与消费入口 | 具体剩余边界 |
+| --- | --- | --- |
+| 桌面本机设置 | [DesktopHost](electron/desktop-host.js) 提供托盘及后台的“桌面设置与恢复”、偏好读取/保存、窗口恢复；[设置页](src/desktop-settings/settings.js) 和 [外壳](src/ui/desktop-shell.js) 消费本机偏好 | 这是 Desktop 本机设置，不是 Runtime `settings.get/update`；后者仅有 Schema/Fake，生产握手不公布且调用返回 `UNSUPPORTED_CAPABILITY`。物理多屏/DPI、真实崩溃及快捷键冲突仍须 Windows 验收 |
+| 授权管理 | [后台](src/features/admin/view.js) 消费待处理审批、公开 `approval.list` 的脱敏分页历史及一次性允许/拒绝；[受信宿主](electron/evidence-host.js) 逐次检查会话与任务归属，消费已有宿主元数据读取和授权撤销端口并核对 grant 删除读回 | 不提供原始参数或 Evidence 内容；宿主撤销不是新增 wire operation，也不代表跨任务持续授权或完整凭据管理已完成 |
+| AgentArts 配置与状态 | [后台模型页](src/features/admin/agentarts-model.js) 展示配置状态，并挂载 [配置控件](src/app/agentarts-controls.js)；[主进程配置](electron/agentarts-config.js) 负责 HTTPS 目的地校验、加密保存、恢复与撤销，配置路由消费 Runtime 启动结果并提示是否需重启 | `configured` 表示已持有配置，配置快照的 `runtimeReady` 只表示目的地可供本机装配；Runtime 启动成功、云端连接成功和真实任务完成分别核实。真实 deployment/version/trace、工具回传及云端结果仍待联合验收 |
+| 文字会话与 Live 历史 | [会话元数据](electron/conversations.js) 持久化面板/工作区任务归属、每会话思考/辅助模型偏好及 Live 发言；任务恢复使用公开 `task.list/conversation.list/approval.list`，状态仍由 Runtime 决定 | 当前使用 `desktop-panel`、`desktop-workspace` 两个固定会话；显式创建、重命名、归档、删除和重试关联尚无公开生产 API，不能由 UI 另建任务或会话系统 |
+| SIS 与 Live 语音组合 | 主进程 `initializeSisVoice()` 已把 Huawei SIS 端口、同一授权 PCM 源、[Desktop 语音消费](electron/voice-input.js) 及本机 WAV 播放装配；听写仅填输入框。Live 使用独立可信宿主和显式开启入口，业务工作仍经过 Runtime/Policy/ToolGateway | 本机 `voice.record.*`、播放及停止入口不等于生产 wire `voice.start/stop` 已公布；本轮未重新执行真实 SIS/IAM、麦克风、扬声器、Live 网络续连或 AgentArts 联合验收，也不撤回旧记录中用户确认听到 Live 的事实 |
+| 有界唤醒 | 根 build/锁文件已包含 `@personal-agent/voice-wake`；`@personal-agent/voice` 已公开 `bindVoiceWake`、共享 PCM 端口和 Windows System.Speech 限定词检测器 | Desktop 尚未注册 `WakeLifecycleController`、可信唤醒授权和检测器组合，也没有显式启用入口；需先按已公布端口确认组合方案。中文识别器可用性、实际命中、误触、回声和设备释放另需 Windows 实测 |
+| 受控编程工作区 | [WorkspaceConfigHost](electron/workspace-config-host.js) 与 Worktrees/环境控件已消费受限枚举、读取、补丁预览/暂存/条件应用及固定命令；许可绑定本次进程、任务 checkpoint 与代次，撤销不复活旧任务 | “写入和命令未交付”是历史状态；当前能力仍受权限、平台和已有文件限制。Artifact 服务、真实项目补丁/命令、Windows 恢复与 AgentArts 联合验收未完成，详见 [工作区设置边界](../../docs/modules/MOD-18-DESKTOP-WORKSPACE-SETTINGS.md) |
+
+本节通过源码、公开接口目录和入口归属核对更新；没有运行真实云服务或设备验收。生产设置/连接器 wire API、会话管理 API 和完整持续授权仍按 [接口目录](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md) 保持未公布边界。只读 AgentArts 状态页及唤醒首片的旧模块说明是历史增量记录，不能据其中“未接线/未纳入根 build”的旧结论否认当前已存在的代码，也不能据新代码宣布整个模块完成。
+
+## 语音设备释放与配置编辑
+
+### PR #302 的未合并唤醒增量（2026-10-08）
+
+上表保留 `main@4b5ec614` 的基线含义；该main没有Desktop Wake宿主。现有PR #302的工作树已由 `initializeSisVoice()` 装配 [Wake宿主](electron/wake-voice-host.js)、共享授权PCM及限定词检测器，并提供可信面板的显式 `voice.wake.enable/disable`。单次许可最多10分钟，隐藏面板、撤销、停止或释放未确认仍按原生命周期处理，唤醒后的听写只填输入框。新增源码未合并，不记为main已发布；中文识别器、真实命中/误触/回声和Windows设备释放仍需现场验收。
+
+本轮补充了活动任务拒绝退出前的资源保护，以及SIS配置保存失败时保留可显式重新启用的旧Wake宿主。原启动、晚到任务和未知释放守卫保留，不自动续退或复活许可；保存后资源释放未知不回滚已保存配置。原公开消费者及合成端口检查分记于[本轮集成交接](../../docs/modules/MOD-27-28-INTEGRATION-HANDOFF.md)，不能当作真实设备或云验收。
+
+晚到任务阻止退出后，显式成功配置新的语音宿主会重新建立该宿主的退出清理归属；下次显式退出取消新宿主尚在识别的请求。初始化失败或旧资源释放未知仍保留原守卫。检查使用实际公开Voice/Config组合和合成ASR、app及设备回执，不证明物理设备验收。
+
+### Goal审批到期的界面恢复（PR #302 未合并增量）
+
+Goal任务只在原公开审批记录的身份、任务、工具、revision与状态全部匹配时展示原期限。期限缺失、无效或已过期时不提供批准/拒绝按钮；页面打开期间到期也会更新，点击时再次检查。刷新和取消目标任务仍可使用，已受理或受理未知的写入继续锁定，不能重复提交。界面时钟检查不替代Runtime原审批期限守卫，也不改变原授权或图版本；真实Runtime/SQLite与原完整HTTP页面的合成期限验证另记于本轮交接。
+
+Live 输出和麦克风采集在确认音频上下文关闭（采集还需确认所有轨道停止）前保留当前设备归属；释放未确认时阻止新会话。单个清理步骤失败仍继续尝试释放其余资源，迟到回调和已注销页面的命令不会重新开启设备。停止语音继续与 Runtime 任务取消分离。
+
+Live 配置保存期间可继续编辑。保存成功后，新修改保留为未保存草稿，宿主刷新不覆盖它；没有新增修改时才关闭设置并接受后续读回。正在处理的保存和界面启停请求不会重复提交。
+
+上述边界由 `test/live-voice-playback.test.mjs`、`test/microphone-capture.test.mjs` 和 `test/live-voice-controls.test.mjs` 的合成测试覆盖；它们不证明 Windows 麦克风、扬声器或真实 Live 云端验收。
+
+### 隐藏面板后的听写恢复（PR #302 未合并增量）
+
+隐藏、主页面导航或 renderer 崩溃时，主进程请求关闭唤醒并取消活动的手动听写；
+`cancelCapture` 中止该次会话，随后等待采集、识别和相关资源的释放确认。
+迟到的旧听写不能重新填入草稿；停止语音不自动提交或取消 Runtime 任务。
+仅隐藏同一存活面板保留当前输入草稿；导航重载和崩溃不承诺草稿持久化。
+重新打开面板不会自动恢复 Wake 或录音，须在有效 SIS 配置及释放确认后显式开启；
+原唤醒许可的取消与期限继续生效，不能借重开延长或恢复旧许可。
+释放未确认时保持设备门禁；退出或重启不能作为物理释放已验证的回执。
+此说明对应尚未进入 main 的 [PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302)，
+不改变旧设备验收记录；实现与现场边界见 [MOD-14](../../docs/modules/MOD-14-VOICE-SESSION-01.md)
+和 [MOD-15](../../docs/modules/MOD-15-WAKE-LIFECYCLE-01.md)。
+
 ## 2026-09-27 当前语音与主动提醒增量
 
 本轮按 Competition Profile 区分两个入口：麦克风使用 SIS 听写，只填入可编辑输入框，
@@ -139,6 +278,10 @@ AgentArts 发送还需单独的出机确认，保存记忆本身不授予消费�
 及精确收据；私人 Memory 源库尚无生产 backup/restore 路径，外部独立副本与已发送正文不在本机删除保证内。
 验收步骤见 [本机私人记忆验收](../../tests/manual/desktop/README.md#私人记忆本机验收)。
 
+私人记忆控制器关闭后释放会话 Vault，并拒绝新的搜索和已开始搜索的结果；
+关闭期间尚未完成的目录选择不得重新安装来源。该检查不声称中断已经发生的系统文件读取。
+合成回归与验证条件见 [关闭生命周期记录](../../docs/modules/MOD-09-VAULT-LIFECYCLE-20261008.md)。
+
 ## 文字交互垂直链路
 
 显式 `PA_RUNTIME_PROFILE=local` 时，文字任务通过 Runtime Application 的 `task.submit` 入口执行已有 Agent、`ModelGateway` 和 Provider。普通启动的 Competition Profile 由 AgentArts 编排，辅助模型配置只用于其委派子任务。Desktop 主进程负责安全配置、IPC、事件订阅和任务展示；缺少配置保持不可用，不会生成假回答。`--fake-runtime` / `--fake-model` 的显式联调入口默认 Local，不能与显式 Competition 同时启用。
@@ -192,3 +335,17 @@ Fake Model 只验证 Runtime、Agent、持久化和桌面显示链路，不代�
 在已合并 PR #33 的 `58b3dc8` 基线上，`test:workspace-smoke` 的原生窗口居中、主题、工作区交互及截图流程本机通过；历史居中失败此次未复现，尚不能据此保证所有 DPI 环境通过。
 
 `test:smoke` 已更新为现行 420px（窄屏收缩）面板和 20 项导航的精确列表。任务监控通过现有 `admin.open({page:'tasks'})` 宿主入口打开，保留任务表状态、后台关闭后任务仍存续及取消到终态的检查。Windows / Electron Fake Runtime 验收通过，包括悬浮热区、拖动、模型配置与启停、主题、搜索及页面错误检查；未调用真实模型服务。
+
+
+### 2026-10-11：任务取消与定位反馈跨快照
+
+面板和Workspace的任务进度刷新仅在相同完整Task身份、当前非终态/非取消中、无在途取消且动作结构一致时保留原取消按钮的连续连接，Space/指针操作保持一次原IPC。身份、状态、pending或动作变化仍按原方式重建，其他动作不会沿用旧节点。定位失败结果按Task、原错误文本和当前请求对象保存；跨进度刷新重新投影，旧Task/错误/重请求或卸载后的回复失效。MOD35 Host/parser未改。
+
+根固定43e35f608ae4493ecf981caa776cd1ba8d3efc32、Node24.15.0，01:41:00Z–01:41:40Z完整Desktop799项/788通过/11跳过、typecheck退出0，全部1116 tracked文件SHA及HEAD前后相同，原完整日志SHA2567304c71ca9e3b2dd0576d97c7bc790e3b85814067a7bff7fdb733927f9541887。首次c12ce76全套唯一失败是原审批过期VM未提供新增unload依赖，原失败保留；只补两依赖，六项原断言不弱化。Chromium原页面上的held键鼠、pending/unknown/retry/Task身份和定位迟回/转义/外部焦点控制分别固定；Task/IPC数据为明确Fake，无真实任务写入或现场设备验收。此后仅本README更新，不代表全部MOD或整体MVP完成。
+
+
+### 2026-10-11：首次状态读取恢复与标准按钮激活
+
+首次snapshot失败保留Orb/Panel/Workspace/admin原DOM和订阅，成功状态可继续恢复；独立读取错误只在有效render后清理，不覆盖原操作错误。有效订阅比initial完成更早时，迟回不会覆盖新状态；未知回复不会伪造成空Task成功。Orb原按钮补标准detail=0激活，鼠标/Enter/Space/HTMLElement.click及模拟touch均各一次，拖动/取消/失去捕获保持原动作与迟回身份。四页状态恢复和操作错误控制为实际Chromium/明确Fake桥，不是原生Windows/UIA或物理触控验收。
+
+根固定4225dd1e4019ba6f6d56126f860c0c43101b1f19、Node24.15.0，01:51:03Z–01:51:59Z完整Desktop799项/788通过/11跳过、type退出0；全部1116 tracked及HEAD前后相同，原完整日志SHA25603fe2ddb53e1177980c2bd5a3bc4c4334427dc59a63d8af8ccd130b2fda099c6。后续仅README记录更新。较早43e35f6完整通过与首次c12夹具失败保留，不累加计数或代验更新代码。

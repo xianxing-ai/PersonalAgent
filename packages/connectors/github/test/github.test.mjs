@@ -7,6 +7,43 @@ const fixtures = JSON.parse(await readFile(new URL('./fixtures/github.json', imp
 const repo = 'example/repository';
 const token = 'ghp_fakecredential01234567890';
 const context = () => ({signal: new AbortController().signal, deadline: new Date(Date.now() + 5000).toISOString()});
+test('provider retains runner during credential wait and releases only its injected runner', async () => {
+  function runner(name) {return {calls: 0, disposals: 0, async run(command) {
+    this.calls++;
+    if (command.args[0] === 'run') return {exitCode: 0, stdout: `${name} log`, stderr: ''};
+    const result = command.args.some(arg => arg.includes('/actions/jobs/')) ? {id: 41, run_id: 31}
+      : {full_name: repo, default_branch: name, private: false, html_url: `https://github.com/${repo}`};
+    return {exitCode: 0, stdout: JSON.stringify(result), stderr: ''};
+  }, dispose() {this.disposals++;}};}
+  const original = runner('original'), replacement = runner('replacement');
+  let release, entered;
+  const reached = new Promise(resolve => {entered = resolve;}), wait = new Promise(resolve => {release = resolve;});
+  const options = {runner: original, repositories: [repo], readToken: async () => {entered(); await wait; return token;}};
+  const old = new GhCliProvider(options), running = old.execute('repo.get', {repo}, context());
+  await reached; options.runner = replacement; const next = new GhCliProvider(options); release();
+  assert.equal((await running).defaultBranch, 'original');
+  assert.equal((await old.execute('actions.log.read', {repo, runId: 31, jobId: 41}, context())).text, 'original log');
+  assert.equal((await next.execute('repo.get', {repo}, context())).defaultBranch, 'replacement');
+  old.dispose(); assert.equal(original.disposals, 1); assert.equal(replacement.disposals, 0);
+  assert.equal((await next.execute('repo.get', {repo}, context())).defaultBranch, 'replacement');
+  next.dispose(); assert.equal(replacement.disposals, 1);
+});
+test('bound runner methods and credential and repository revocation remain live', async () => {
+  let calls = 0, disposals = 0;
+  const runner = {async run() {throw Error('method replaced before use');}, dispose() {throw Error('method replaced before release');}};
+  const options = {runner, repositories: [repo], readToken: async () => token};
+  const value = new GhCliProvider(options);
+  runner.run = async command => {calls++; assert.equal(command.token, 'synthetic-updated-token'); return {exitCode: 0, stderr: '',
+    stdout: JSON.stringify({full_name: repo, default_branch: 'main', private: false, html_url: `https://github.com/${repo}`})};};
+  options.readToken = async () => 'synthetic-updated-token';
+  assert.equal((await value.execute('repo.get', {repo}, context())).defaultBranch, 'main');
+  options.readToken = async () => {throw Error('credential revoked');};
+  await assert.rejects(value.execute('repo.get', {repo}, context()), error => error.code === 'UNAUTHORIZED');
+  options.readToken = async () => 'synthetic-updated-token'; options.repositories = [];
+  await assert.rejects(value.execute('repo.get', {repo}, context()), error => error.code === 'SCOPE_DENIED');
+  assert.equal(calls, 1);
+  runner.dispose = () => {disposals++;}; value.dispose(); assert.equal(disposals, 1);
+});
 function provider(responses) {
   const calls = [];
   const runner = {async run(command) {
@@ -71,6 +108,22 @@ test('failed job log validates run ownership and caps text', async () => {
   const wrong = provider([{...fixtures.jobs.jobs[0], run_id: 32}]);
   await assert.rejects(wrong.value.execute('actions.log.read', {repo, runId: 31, jobId: 41}, context()), error => error.code === 'INVALID_ARGUMENT');
   assert.equal(wrong.calls.length, 1);
+});
+test('failed jobs reject empty successful CLI log responses without retrying', async t => {
+  for (const stdout of ['', ' \r\n\t']) await t.test(JSON.stringify(stdout), async () => {
+    const p = provider([{...fixtures.jobs.jobs[0], conclusion: 'failure'}, {exitCode: 0, stdout, stderr: ''}]);
+    await assert.rejects(p.value.execute('actions.log.read', {repo, runId: 31, jobId: 41}, context()),
+      error => error.code === 'EXTERNAL_FAILURE' && error.message === 'GitHub operation failed');
+    assert.equal(p.calls.length, 2);
+  });
+});
+test('jobs without failures retain empty failed logs and nonempty logs allow an empty terminal page', async () => {
+  const p = provider([{...fixtures.jobs.jobs[0], conclusion: 'success'}, {exitCode: 0, stdout: '', stderr: ''},
+    {...fixtures.jobs.jobs[0], conclusion: 'failure'}, {exitCode: 0, stdout: 'error', stderr: ''}]);
+  assert.deepEqual(await p.value.execute('actions.log.read', {repo, runId: 31, jobId: 41}, context()),
+    {text: '', offset: 0, nextOffset: null, truncated: false});
+  assert.deepEqual(await p.value.execute('actions.log.read', {repo, runId: 31, jobId: 41, offset: 5}, context()),
+    {text: '', offset: 5, nextOffset: null, truncated: false});
 });
 test('write transport failure is unknown and never retried', async () => {
   const p = provider([fixtures.pull, new ProtocolError('TIMEOUT', token)]);

@@ -69,7 +69,7 @@ interface Journal {
 /** Single approved read. The host selects a run and submits a separate existing CI repair task. */
 export function createCiRunDiscoveryWorkflow(options: CiRunDiscoveryOptions): CiRunDiscoveryWorkflowPort {
   if (!positive(options.maxSteps) || !options.tools || typeof options.authorizationRefFor !== 'function') invalid();
-  const now = options.now ?? Date.now, maxSteps = options.maxSteps;
+  const now = options.now ?? Date.now, maxSteps = options.maxSteps, tools = options.tools;
   function check(context: AgentWorkerContext) {
     if (context.signal.aborted) throw new ProtocolError('CANCELLED', 'CI discovery cancelled');
     const deadline = Date.parse(context.deadline), current = now();
@@ -122,7 +122,7 @@ export function createCiRunDiscoveryWorkflow(options: CiRunDiscoveryOptions): Ci
   return {async listFailedRuns(context, request) {
     check(context);
     const args = argumentsFor(request);
-    const descriptor = options.tools.list().find(tool => tool.name === toolName);
+    const descriptor = tools.list().find(tool => tool.name === toolName);
     if (!descriptor || descriptor.sideEffect !== 'read') {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Registered read-only CI discovery tool unavailable');
     }
@@ -146,7 +146,7 @@ export function createCiRunDiscoveryWorkflow(options: CiRunDiscoveryOptions): Ci
     const authorizationRef = options.authorizationRefFor(toolName, context);
     if (!authorizationRef) {if (!reconciling) journal.phase = 'pending'; save(); return pause('waiting_approval');}
     journal.phase = 'inflight'; save();
-    const receipt = structuredClone(await bounded(context, signal => options.tools.invoke({toolName,
+    const receipt = structuredClone(await bounded(context, signal => tools.invoke({toolName,
       toolVersion: descriptor.version, arguments: structuredClone(args), taskId: context.taskId, runId,
       authorizationRef, deadline: context.deadline, signal})));
     check(context);

@@ -10,7 +10,7 @@ if (!configured) {
   console.log(JSON.stringify({outcome: 'not_configured', networkCalls: 0}));
   process.exitCode = 2;
 } else {
-  const diagnostic = createTextDiagnosticFetch(globalThis.fetch);
+  const diagnostic = createTextDiagnosticFetch(globalThis.fetch, true);
   const startedAt = new Date().toISOString();
   const report = {
     profile: 'huawei_ict_agentarts', surface: 'CloudAgentPort proposal only',

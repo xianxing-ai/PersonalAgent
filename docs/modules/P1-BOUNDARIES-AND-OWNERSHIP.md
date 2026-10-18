@@ -1,10 +1,13 @@
 # P1 接线基线与边界确认请求
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
 版本：1.1 · 日期：2026-09-29 · 原提案作者：`Potatos498` · 技术接口确认人：`goo122` · 关联：Issue #212、接线方案 PR #88、#107（MVP 口径）
 
 ## 0. 本文目的与有效边界
 
-以 Issue #212 顶部“最新有效边界”为准：Potatos498 仅继续 P0～P4；此前“全部非线上工作”的委派已收窄，P5～P8 已撤回。P5 认知、P6 Windows/编码工具、P7 知识/记忆、P8 共享集成不因本提案重新转交 Potatos498。
+2026-10-07 当前有效边界以 [MODULE_ASSIGNMENTS](../MODULE_ASSIGNMENTS.md) 为准：zemeng 负责核心与 AgentArts，goo122 负责底座，Potatos 独立负责业务连接器、业务接线和 MOD-35；各自验证并交付；Issue #212 的旧委派保留为历史，远程内容本轮未改写。
 
 本文保留原 P1 接线讨论与接口请求，不改变任何现有写入权。**合并本文只保存讨论基线，不等于 goo122 已逐节确认、不等于完成 P7 交接，也不证明工具已注册或真实验收通过。** 原 PR #88 的方案需按当前 main、接口登记与 Issue #212 最新边界复核；已由 #206 组合带入主线的功能不得重做。
 
@@ -12,11 +15,11 @@
 
 | 路径 | 当前边界 | 说明 |
 | --- | --- | --- |
-| `packages/connectors/**`（weather/feeds/mail/calendar/productivity 既有及后续 social） | `Potatos498` 的 P1 独立模块范围 | 业务逻辑、Provider、测试；不据此获得共享装配文件写入权 |
+| `packages/connectors/**`（weather/feeds/mail/calendar/productivity 既有及后续 social） | `Potatos498` 的 P1 独立模块范围 | 业务逻辑、Provider、测试与必要注册/消费接线；保持公共兼容 |
 | `packages/notifications/**`、`packages/productivity/**` | 沿用 P1 既有模块范围 | 不接管 P5/P7 消费或存储恢复 |
 | `packages/memory/**`、`packages/learning/**` | goo122 保留 #209～#211 在途工作；后续由 P7 明确登记交接 | 不再默认交给 Potatos498，见 §4 |
 | `apps/runtime/src/connectors-runtime.ts`（原方案建议的新文件） | 是否需要创建及唯一写入者由 P8 集成槽核定 | P1 先提交独立模块工厂和接线需求；避免重复现有组合入口 |
-| `apps/runtime/src/index.ts`、`application.ts` 等 Runtime 根装配 | P8 登记的唯一集成写入槽；goo122 保留公共语义职责 | P1 提供最小接入建议，不并发编辑共享文件 |
+| `apps/runtime/src/index.ts`、`application.ts` 等 Runtime 根装配 | goo122 长期维护；P1 可在独立分支完成必要接线 | 固定公开契约，补消费验证，合并前对齐 main |
 | 根 `package.json`、`package-lock.json` | P8 登记的唯一集成写入槽 | 依赖与 workspace link 变化统一生成和复核 |
 | `apps/desktop/electron/main.js`、`apps/desktop/src/features/admin/view.js` | 按 Issue #212 登记共享集成写入槽 | P2 提接线需求；排除 P5/P7 专属消费与在途私人记忆代码 |
 
@@ -40,12 +43,12 @@
 2. **目标工具**：feeds.collect、feeds.subscriptions（feeds:read）；mail.inbox、mail.accounts（mail:read）；todo.list（todo:read）；todo.create、todo.update（todo:write）；notifications.status（notifications:read）；research.search（research:read）。这些名称是接线核对清单，不是新增公共接口许可。
 3. **凭据**：mail 经受信 SecretStore 路径读取；取消与错误规范化、错误脱敏及合成哨兵回归按现有契约处理。
 4. **无凭据行为**：mail 保持未注册/不可用，不能伪报已同步；其他包仅在各自配置和依赖齐全时注册。
-5. **拆分建议**：先核对 feeds/mail/research 三包的独立增量；productivity/notifications 在存储适配与授权接口就绪后作为 Phase 1b。最终接线由 P8 单一写入者处理；不因等待 P7 交接而阻塞 P1 独立模块。
+5. **拆分建议**：先核对 feeds/mail/research 三包的独立增量；productivity/notifications 在存储适配与授权接口就绪后作为 Phase 1b。业务接线由 P1 随包完成；缺上游实现时先用固定契约与 Fake，不等待 P7 交接或 P8 的专属集成 PR。
 6. **验收**：覆盖正常授权调用、scope 拒绝、缺配置不注册和凭据脱敏。优先复用已有测试，只补真实差异；合成证据与真实账号/云端验收分开记账。
 
 ## 4. goo122 在途记忆线与 P7 交接
 
-Issue #212 明确保留 goo122 的 #209 → #210 → #211 在途工作与公共语义职责。Potatos498 可按 P0 盘点及做非作者评审，但不因此获得 P7 返修或恢复实现权。
+Issue #212 明确保留 goo122 的 #209 → #210 → #211 在途工作与公共语义职责。该句描述旧委派；2026-10-07 最新分工下，记忆与学习由 goo122 独立负责，核心认知与 AgentArts 由 zemeng 负责，业务由 Potatos498 负责；旧在途记录不形成指定人员的集成或审批门槛。
 
 需要由相关现有负责人在 Issue #212 登记并核对：
 

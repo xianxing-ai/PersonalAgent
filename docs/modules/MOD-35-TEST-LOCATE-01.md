@@ -1,13 +1,16 @@
 # MOD-35：测试失败自动定位（工作包 MOD-35-TEST-LOCATE-01）
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
 ## 基本信息
 
 - 关联需求：DEV-WORKFLOWS 选题「测试失败自动定位」（痛点高/演示好/工作量中）
 - 目标 Profile：`local`（Local Profile 产品化增量，不进入 Competition 退出条件）
-- GitHub 负责人：Potatos498（产品负责人 2026-10-03 授权开工）
-- 评审者：zemeng
+- 当前负责人：Potatos498（2026-10-07 独立交付重置；原实现作者不变）
+- 自审：Potatos498；同行评审按需邀请，历史 zemeng 评审保留，不作为新工作等待条件
 - 独占目录：`packages/coding-tools/src/test-locate/`、`packages/coding-tools/test/test-locate.test.mjs`
-- 当前状态：review（已实现+真实验收，待 zemeng 评审）
+- 当前状态：review（#279/#282 实现已进入 main；真实定位证据为历史回执，后续改动需自审、必要检查及对应验收）
 - 消费的冻结基线 / 精确提交：main@330be38
 
 ## 职责

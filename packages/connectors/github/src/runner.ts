@@ -36,7 +36,16 @@ export class SpawnGhCommandRunner implements GhCommandRunner {
       child.stderr.on('data', (chunk: Buffer) => collect(err, chunk));
       const cleanup = () => { clearTimeout(timer); command.context.signal.removeEventListener('abort', cancel); this.active.delete(child); };
       child.on('error', () => { cleanup(); reject(new ProtocolError('EXTERNAL_FAILURE', 'GitHub CLI could not be started')); });
-      child.on('close', code => { cleanup(); if (terminalError) reject(terminalError); else resolve({exitCode: code ?? -1, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8')}); });
+      child.on('close', code => {
+        cleanup();
+        if (terminalError) { reject(terminalError); return; }
+        try {
+          const decoder = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true});
+          resolve({exitCode: code ?? -1, stdout: decoder.decode(Buffer.concat(out)), stderr: decoder.decode(Buffer.concat(err))});
+        } catch {
+          reject(new ProtocolError('EXTERNAL_FAILURE', 'GitHub CLI output encoding invalid'));
+        }
+      });
       child.stdin.on('error', () => { /* EPIPE is reported by process exit. */ });
       child.stdin.end(command.stdin ?? '');
       if (command.context.signal.aborted) cancel();

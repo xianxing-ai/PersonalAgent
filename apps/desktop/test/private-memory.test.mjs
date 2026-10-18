@@ -7,6 +7,48 @@ import test from 'node:test';
 import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {createPrivateMemoryController} from '../electron/private-memory.js';
 
+test('withdrawn private heads remain manageable after restart without becoming consumable', async t => {
+  const base = await mkdtemp(join(tmpdir(), 'personal-agent-private-withdrawn-'));
+  const root = join(base, 'vault');
+  const database = join(base, 'private.sqlite');
+  await mkdir(root);
+  await writeFile(join(root, 'first.md'), '合成测试：待撤回。\n');
+  await writeFile(join(root, 'second.md'), '合成测试：保留。\n');
+  let controller = createPrivateMemoryController(database, async () => true, async () => true,
+    {confirmWithdraw: async () => true});
+  t.after(async () => {controller.close(); await rm(base, {recursive: true, force: true});});
+  await controller.selectVault(root);
+  const source = (await controller.search('待撤回')).hits[0].source;
+  await controller.save(source, '合成原摘要');
+  await controller.save(source, '合成更正摘要');
+  await controller.save((await controller.search('保留')).hits[0].source, '合成保留摘要');
+  const ref = (await controller.listSaved()).facts.find(fact => fact.summary === '合成更正摘要').ref;
+  assert.deepEqual(await controller.withdraw(ref), {state: 'withdrawn', revision: 3});
+  controller.close();
+  controller = createPrivateMemoryController(database, async () => false, async () => true);
+  assert.equal(controller.selected, false);
+  const page = await controller.listSaved();
+  const withdrawn = page.facts.find(fact => fact.ref.id === ref.id);
+  assert.ok(withdrawn, 'withdrawn head must remain discoverable for deletion');
+  assert.equal(withdrawn.state, 'withdrawn');
+  assert.equal(withdrawn.ref.revision, 3);
+  assert.equal(withdrawn.summary, '用户已撤回此私人记忆');
+  const memory = openSqliteMemoryHost(database);
+  try {
+    const query = memory.bind('desktop-private', {allowedSensitivities: ['private']});
+    const scope = () => ({deadline: new Date(Date.now() + 60_000).toISOString(), signal: new AbortController().signal});
+    assert.deepEqual((await query.listCurrent({at: new Date().toISOString(), limit: 20, ...scope()}))
+      .facts.map(fact => fact.summary), ['合成保留摘要']);
+    await assert.rejects(controller.delete(ref), /记忆版本已变化/);
+    assert.deepEqual(await controller.delete(withdrawn.ref), {state: 'deleted'});
+    assert.equal(memory.readUserFactHead('desktop-private', ref.id), undefined);
+    assert.equal((await controller.listSaved()).facts[0].summary, '合成保留摘要');
+  } finally {memory.close();}
+  controller.close();
+  controller = createPrivateMemoryController(database, async () => false);
+  assert.deepEqual((await controller.listSaved()).facts.map(fact => fact.summary), ['合成保留摘要']);
+});
+
 test('admin confirmation is required for each private citation and correction', async t => {
   const base = await mkdtemp(join(tmpdir(), 'personal-agent-private-admin-'));
   const root = join(base, 'vault');

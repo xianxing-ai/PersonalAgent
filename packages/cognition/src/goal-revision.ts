@@ -20,6 +20,19 @@ export interface GoalRevisionImpact {
   items: ImpactItem[];
 }
 
+/** Additive local discovery scope; the consecutive revision/repair contracts are unchanged. */
+export interface GoalAncestorSelectionRequest {
+  expectedGraphRevision: number;
+  currentGoal: NodeRef;
+}
+export interface GoalAncestorImpact {
+  namespace: string;
+  graphRevision: number;
+  evaluatedAt: string;
+  currentGoal: NodeRef;
+  items: ImpactItem[];
+}
+
 export interface GoalRevisionRepairRequest extends GoalRevisionSelectionRequest {
   changes: StoredRepairChange[];
 }
@@ -76,6 +89,37 @@ export function selectGoalRevisionImpact(
   return structuredClone({namespace: report.namespace, graphRevision: report.graphRevision,
     evaluatedAt: report.evaluatedAt, previousGoal: selected.previousGoal,
     currentGoal: selected.currentGoal, items});
+}
+
+/**
+ * Unresolved older Goal pins omitted by the latest consecutive-revision scope.
+ * This is a current-head discovery scope, not a nonconsecutive revision receipt.
+ * Keep any item covered by the original selector out, including mixed-cause items.
+ */
+export function selectGoalAncestorImpact(
+  snapshot: GraphSnapshot, at: string, request: GoalAncestorSelectionRequest
+): GoalAncestorImpact {
+  const raw = exact(request, ['expectedGraphRevision', 'currentGoal']);
+  const current = exact(raw.currentGoal, ['id', 'revision']);
+  if (!Number.isSafeInteger(raw.expectedGraphRevision) || (raw.expectedGraphRevision as number) < 0
+    || typeof current.id !== 'string' || !current.id.trim()
+    || !Number.isSafeInteger(current.revision) || (current.revision as number) < 2) return invalid();
+  const currentGoal = {id: current.id, revision: current.revision as number};
+  // Reuse the original exact graph/head and Goal-kind checks without relaxing its contract.
+  const consecutive = selectGoalRevisionImpact(snapshot, at, {
+    expectedGraphRevision: raw.expectedGraphRevision as number,
+    previousGoal: {id: currentGoal.id, revision: currentGoal.revision - 1}, currentGoal,
+  });
+  const covered = new Set(consecutive.items.map(item => JSON.stringify([item.node.id, item.node.revision])));
+  const report = analyzeImpact(snapshot, at);
+  const items = report.items.filter(item => item.action === 'RECHECK'
+    && !covered.has(JSON.stringify([item.node.id, item.node.revision]))
+    && item.causes.some(cause => cause.reason === 'superseded'
+      && cause.reference.id === currentGoal.id
+      && cause.currentRevision === currentGoal.revision
+      && cause.reference.revision < currentGoal.revision - 1));
+  return structuredClone({namespace: report.namespace, graphRevision: report.graphRevision,
+    evaluatedAt: report.evaluatedAt, currentGoal, items});
 }
 
 /** Preview caller-authored changes confined to the selected RECHECK subgraph. */

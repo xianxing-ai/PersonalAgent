@@ -1,5 +1,10 @@
 # MOD-16-SYSTEM-OBSERVATION-01：只读系统聚合观测
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - Profile：`huawei_ict_agentarts`；MOD-16/17、PA-011。
 - 负责人：zemeng；非作者评审者：goo122；状态：review。
 - 基线：`72cc76b`；分支：`codex/zemeng/system-observation`。
@@ -44,3 +49,7 @@
 拒绝、授权后仅执行一次采样。另执行一次默认 `node:os` probe 的本机 smoke，只输出 `PASS`，
 未输出或落盘任何观测值。上述结果证明 provider 的本地读取和边界，不证明 Competition/Desktop
 已接通。
+
+2026-10-06 续接修复（#212 `6017855959`）：原实现只比较聚合 tick，某核心或计数类别回退可被其他增长掩盖，错误返回有效利用率。现保存各核五类计数的独立数值快照，同数量两次采样间逐核逐项拒绝负差值，再按原算法聚合；允许某核心静止、其他核心增长，保持整体差值必须为正。注入 probe 复用数组或对象也不会改写已捕获的第一份快照。没有新增 CPU 身份字段，不能据此证明同数量处理器重排未发生。
+
+Node 24.15.0 下保留旧实现两场景失败（跨核掩盖、同核类别掩盖），修后模块 build、typecheck 和 12/12 测试通过；仅使用明确的注入 probe，不冒充原 Windows 实机观测。公开 Schema、scope、来源标记、取消、deadline 和脱敏错误语义保持。新提交的 CI、正式非作者 review 及实际集成在对应 PR 记录，整个 MOD16/17 真实验收仍按原负责人继续。

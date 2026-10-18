@@ -1,5 +1,10 @@
 # MOD-31：多 Agent 固定任务与 trace 对照评估
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - Profile：`huawei_ict_agentarts`；负责人：zemeng；非作者评审：待安排。
 - 范围：`tests/manual/agentarts/evaluation/**` 与本文档。无公共接口、迁移、生产配置或云资源变更。
 - 依赖：MOD-29 已发布的 AgentArts 应用、MOD-30 工具边界，以及真实 trace/usage 的人工核验。
@@ -148,3 +153,11 @@ provisional。现有 `CoordinationResult` 只提供最终 text/tool proposal/rep
 验证等级，SSE 的可选 `workflow_id`/`workflow_name` 仅用于事件配对，不向结果暴露嵌套
 角色映射。因此本包不从现有最终结果构造角色记录；在看到真实平台嵌套 trace 字段之前，
 不修改评分器去猜新格式，也不把旧六事件假设用于这些新分支。
+
+## 2026-10-15 owned workflow 实际产物评估增量
+
+新增 [MOD-31-OWNED-WORKFLOW-EVALUATION-03](MOD-31-OWNED-WORKFLOW-EVALUATION-03.md)：
+复用既有发布 Evidence 的读取/编译/续答/持久读回校验，补固定 F20 输入摘要、实际文档与
+独立回答/引用评审、配对一致性和缺失项处理。旧真实云端 partial Evidence 只进入历史
+未评分观察区；F01–F28 覆盖全部保留，不把模板数或合成测试算业务成功。
+本地评估器不是 AgentArts 原生 evaluation，也不改变本文原三标签 trace 评分语义。

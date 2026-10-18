@@ -1,5 +1,12 @@
 # 编程工具：可信工作区能力（MOD-18）
 
+2026-10-13：已更新 [真实补丁/固定命令与恢复验收](ACCEPTANCE-20261013.md)，修复旧 P6 runner 缺少生产恢复绑定的问题，并验证真实 marker 的派发前退出与写后清理失败恢复。当前合并规则以根 AGENTS/CONTRIBUTING 的一位非作者有效批准为准，覆盖下方历史双人门槛。
+
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 `@personal-agent/coding-tools` 为 `huawei_ict_agentarts` Competition Profile 提供两个受限只读工具、一个须由可信宿主显式注册的固定命令工具，以及独立授权的补丁候选和原文件应用工具。它不接受自由 shell/argv，不自动把候选文件应用到原文件，不自动发布，也不提供 Artifact/Evidence 服务。
 
 ## 当前增量：独占句柄内应用文本补丁
@@ -67,6 +74,8 @@ PID 的起始时间并与 marker 比对。未提供检查器或 PowerShell 路�
 独立授权的 apply；进程身份未知、记录损坏、源路径变化或对账竞态会保留标记并返回
 `RESULT_UNKNOWN`。该入口不会自动重试、回滚、删除备份或改变 ToolGateway 的错误映射。
 
+首次等待前复制本次 options；等待时复用或修改调用对象不能改变原执行绑定、进程 checker 或 `retainMarker`。保留标记后仍须宿主持久化可信回执再显式清除，不增加自动恢复或重试许可。
+
 ## 既有增量：授权后的文本补丁候选文件
 
 `createWorkspacePatchStageTool(options)` 提供显式注册的 `workspace.stage_text_patch@1.0.0`。可信宿主提供工作区根；现有 ToolGateway/Policy 按任务、工具、参数和 `workspace:read` + `workspace:write` 授权，本包不签发授权。输入沿用预览的规范路径、`expectedSha256` 和有界 `edits`。它拒绝链接、硬链接、目录逃逸、敏感文件和过期哈希，在可信根下排他创建 `.pa-stage-*.patch` 候选文件，读回摘要并复核原文件。返回的 `stagedPath` 是相对路径；原文件始终不打开写入、不重命名、不覆盖。`registerWorkspacePatchStage(host, options)` 沿用现有 ToolHost 生命周期，默认不在产品中注册。
@@ -94,8 +103,10 @@ PID 的起始时间并与 marker 比对。未提供检查器或 PowerShell 路�
 固定命令使用独立入口与 scope：
 
 - `createWorkspaceCommandTool(options)` 创建 `workspace.run_allowed_command@1.0.0`；`registerWorkspaceCommand(host, options)` 显式注册并返回 disposer。`rootPath`、非空 `recipes` 及其中每个绝对可执行文件路径和完整 argv 均来自可信宿主；可执行文件不能位于可写工作区内。工具输入仅有 `{recipeId}`，严格枚举并拒绝额外字段。宿主配置在注册时复制，不受后续数组修改影响。
+  执行开始时一次捕获宿主时钟，将任务 deadline 与最长执行时间合为本次期限；直接子进程结束、输出解码后再次检查取消与期限，延迟计时器不能使过期结果变为成功。时钟异常固定脱敏拒绝，取消保持优先；即使拒绝返回成功，命令也可能已产生副作用，仍不能自动重试。
 - scope 为 `workspace:execute`，descriptor 是 `local_write`、不可幂等/不可自动恢复；已有 Policy/ToolGateway 必须对精确参数审批并消费授权。当前 `requiresPresence:false` 仅因 Runtime 未提供独立在场字段，绝不代替审批。
 - 用 Node 内置 `spawn` 的 `shell:false`、固定 canonical 工作目录、默认空环境（或由受信宿主注入并经过模式/敏感词校验的受控 `env`）及隐藏窗口执行；不引入 execa 或另一套调度器。运行期限默认 30 秒、至多 120 秒；合并 stdout/stderr 原始字节预算默认 64 KiB、至多 256 KiB。超限、截止或取消会请求终止直接子进程；无法在 2 秒内确认退出时返回未知结果。输出必须完整有效 UTF-8，不截断成功结果。
+- 注册时绑定 canonical 根目录及其设备/目录身份；每次启动前同步复核路径仍解析到该目录、目录身份未变化。根被换为链接、另一个普通目录、文件或已移除时，公开工具拒绝 `SCOPE_DENIED`，不启动命令，也不自动重绑新目录。正常修改工作区内容不会使授权根失效；注册时提供的链接只解析到当时的 canonical 目标。检查仍不能消除复核与 OS 启动之间的路径竞态，不构成 OS 沙箱。
 - 输出 `{recipeId,exitCode,stdout,stderr}` 只证明该直接进程的退出码与收集到的文本；非零码是失败的验证命令，不代表产物已读回、Artifact 已保存或副作用可重试。`ToolGateway` 对 `local_write` 异常统一返回 `RESULT_UNKNOWN`，调用方必须对账。
 - `rootPath` 只是 cwd，不是进程文件系统边界。固定可信命令仍以宿主 OS 账号权限访问文件。在 Windows 上，直接执行 Node/npm 并在超时/取消时调用 `child.kill('SIGKILL')` 仅能终止直接进程，npm 脚本派生的子进程树会成为孤儿进程；为此在 `packages/coding-tools/native/` 下提供了 `WindowsJobProcessHost` 原生助手（基于 .NET 8 与 Win32 Job Object）：
   - 通过 `CreateJobObjectW` 与 `SetInformationJobObject` 设置 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE (0x2000)`，严禁 breakaway；
@@ -131,6 +142,15 @@ PID 的起始时间并与 marker 比对。未提供检查器或 PowerShell 路�
 
 真实目标系统读回、Evidence 与最终回答仍须在 Runtime/Desktop 联合链路验收；本地工具测试不构成 Competition Golden Path 的完成证据。
 
+已授权的 Local Profile 开发自动化另提供 `runCiFix` / `createCiFixWorkflow`，详见
+[MOD-34](../../docs/modules/MOD-34-CI-FIX-01.md)。每次调用在首个异步派发前捕获执行配置，
+复制源路径数组及 Issue、Git 工具名、源运行关联的子对象；调用方随后更新复用配置不会
+改变本次仓库、分支、验证 recipe 或预算。新任务可使用新配置，旧 checkpoint 仍按原
+identity 拒绝输入变更。factory 在创建时固定模型和工具对象，旧任务的 pending/unknown
+恢复仍经原端口消费原 run；新 factory 可使用新端口，直接 `runCiFix` 则每次调用选取
+端口。原对象的方法和注册能力，以及 Runtime 授权、确认回执就绪与时钟钩子保持实时；
+配置快照不签发权限、不重试未知写入，也不证明真实修复闭环已验收。
+
 ## 定向验证
 
 测试只创建系统临时目录中的合成文件，不读取真实用户项目内容：
@@ -148,3 +168,11 @@ git diff --check
 读取覆盖：允许的 UTF-8 文本；精确 Schema；绝对/父级/盘符/UNC/设备/ADS；兄弟前缀和 symlink/junction 逃逸；敏感文件；大文件与二进制；缺 scope；deadline/cancel；现有 Host 的 register/dispose；控制字符转义膨胀拒绝与正常 UTF-8 序列化边界。
 
 枚举覆盖：根目录 `.`、稳定排序、limit/truncated、不递归、逃逸/敏感项/symlink-junction、独立 scope、扫描中 deadline、取消、严格 Schema、register/dispose。测试只使用系统临时目录中的合成文件；不读取真实用户工作区。
+## 2026-10-12 Windows 取消测试就绪同步
+
+取消进程树测试在孙进程 PID 已写出且确实存活后才发送取消。就绪等待与命令宿主
+既有 30 秒租约一致，以实际 deadline 计时；不会改变生产命令期限、取消结果或退出断言。
+回归额外模拟 11 秒启动延迟：旧 10 秒测试期限先触发 TIMEOUT，修复后仍须得到
+CANCELLED，并确认孙进程退出。专项 `workspace-command.test.mjs` 24/24 通过、0 skip。
+日志保留在修复工作树 `.cache/readiness-tests.log` 和 `.cache/readiness-old-lease-repro.log`。
+此为 #321 Foundation 的本地修复证据，尚不等于新提交的远程 CI 已通过。

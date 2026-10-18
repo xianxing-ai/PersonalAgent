@@ -2,6 +2,9 @@ name: Foundation
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 jobs:
   check:
     runs-on: windows-latest
@@ -12,6 +15,24 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      - name: Build Windows Job process helper
+        shell: pwsh
+        run: |
+          $jobHostSdks = & dotnet --list-sdks
+          if ($LASTEXITCODE -ne 0 -or -not ($jobHostSdks -match '^8\.0\.\d+\s')) {
+            throw 'A preinstalled .NET 8 SDK is required for WindowsJobProcessHost.'
+          }
+          $jobHostTarget = Join-Path $env:RUNNER_TEMP 'personal-agent-job-host'
+          $jobHostOutput = & node packages/coding-tools/native/build-helper.mjs --target-dir $jobHostTarget
+          if ($LASTEXITCODE -ne 0) {
+            throw 'WindowsJobProcessHost build failed.'
+          }
+          $jobHostBuild = ($jobHostOutput -join "`n") | ConvertFrom-Json
+          if ([string]::IsNullOrWhiteSpace($jobHostBuild.helperPath) -or
+              -not (Test-Path -LiteralPath $jobHostBuild.helperPath -PathType Leaf)) {
+            throw 'WindowsJobProcessHost build did not return an existing executable.'
+          }
+          "PA_TEST_JOB_HOST_EXE=$($jobHostBuild.helperPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: npm run check
       - run: npm run dev
       - run: npm run demo:protocol

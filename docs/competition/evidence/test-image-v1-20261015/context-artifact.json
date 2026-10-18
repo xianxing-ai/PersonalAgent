@@ -1,0 +1,9 @@
+{
+  "kind": "allowlist_build_context_archive",
+  "context": "context-azpd0S",
+  "archive": "C:\\Users\\24035\\.codex\\worktrees\\laya-owned-runtime\\PersonalAgent\\.cache\\agentarts-image\\test-v1-build-context.zip",
+  "archiveBytes": 190858,
+  "archiveSha256": "75f36ed366c961619aeaa29d234fc9e9d4a04cfcabe2e01f5de5d4d290ecd5dd",
+  "sourceManifest": "source-manifest.json",
+  "containsCredentials": false
+}

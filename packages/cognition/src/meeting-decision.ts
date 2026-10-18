@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {existsSync, mkdirSync, readFileSync, renameSync, readdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {
@@ -106,7 +107,7 @@ export class InMemoryMeetingDecisionReceiptStore implements MeetingDecisionRecei
   private readonly records = new Map<string, MeetingReceiptRecord>();
 
   private makeKey(namespace: string, source: string, eventId: string): string {
-    return `${namespace}::${source}::${eventId}`;
+    return JSON.stringify([namespace, source, eventId]);
   }
 
   loadReceipt(query: string | MeetingReceiptQuery): MeetingReceiptRecord | undefined {
@@ -164,7 +165,7 @@ export class FileMeetingDecisionReceiptStore implements MeetingDecisionReceiptSt
   }
 
   private makeKey(namespace: string, source: string, eventId: string): string {
-    return hash(`${namespace}::${source}::${eventId}`);
+    return hash(JSON.stringify([namespace, source, eventId]));
   }
 
   private getFilePath(namespace: string, source: string, eventId: string): string {
@@ -173,11 +174,18 @@ export class FileMeetingDecisionReceiptStore implements MeetingDecisionReceiptSt
 
   loadReceipt(query: string | MeetingReceiptQuery): MeetingReceiptRecord | undefined {
     if (typeof query === 'object' && query.namespace && query.source) {
-      const file = this.getFilePath(query.namespace, query.source, query.eventId);
+      const current = this.getFilePath(query.namespace, query.source, query.eventId);
+      const legacy = path.join(this.storageDir,
+        `receipt-${hash(`${query.namespace}::${query.source}::${query.eventId}`)}.json`);
+      const file = existsSync(current) ? current : legacy;
       if (!existsSync(file)) return undefined;
       try {
         const raw = readFileSync(file, 'utf8');
-        return JSON.parse(raw) as MeetingReceiptRecord;
+        const record = JSON.parse(raw) as MeetingReceiptRecord;
+        // Old delimiter keys may alias another identity. Never expose that
+        // record, and leave all legacy files intact when saving new versions.
+        return record && record.namespace === query.namespace && record.source === query.source
+          && record.eventId === query.eventId ? record : undefined;
       } catch (err) {
         throw new Error(`Receipt file corrupt or unreadable (${file}): ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -189,6 +197,7 @@ export class FileMeetingDecisionReceiptStore implements MeetingDecisionReceiptSt
     } catch (err) {
       throw new Error(`Failed to read receipt storage directory (${this.storageDir}): ${err instanceof Error ? err.message : String(err)}`);
     }
+    let legacyMatch: MeetingReceiptRecord | undefined;
     for (const f of files) {
       const fullPath = path.join(this.storageDir, f);
       let record: MeetingReceiptRecord;
@@ -202,10 +211,11 @@ export class FileMeetingDecisionReceiptStore implements MeetingDecisionReceiptSt
           if (query.namespace && record.namespace !== query.namespace) continue;
           if (query.source && record.source !== query.source) continue;
         }
-        return record;
+        if (fullPath === this.getFilePath(record.namespace, record.source, record.eventId)) return record;
+        legacyMatch ??= record;
       }
     }
-    return undefined;
+    return legacyMatch;
   }
 
   saveReceipt(record: MeetingReceiptRecord): void {
@@ -222,19 +232,21 @@ export class FileMeetingDecisionReceiptStore implements MeetingDecisionReceiptSt
     } catch {
       return [];
     }
-    const results: MeetingReceiptRecord[] = [];
+    const records = new Map<string, MeetingReceiptRecord>();
     for (const f of files) {
       try {
         const fullPath = path.join(this.storageDir, f);
         const record = JSON.parse(readFileSync(fullPath, 'utf8')) as MeetingReceiptRecord;
         if (!record) continue;
-        if (filter?.namespace && record.namespace !== filter.namespace) continue;
-        if (filter?.source && record.source !== filter.source) continue;
-        if (filter?.status && record.status !== filter.status) continue;
-        results.push(record);
+        const key = JSON.stringify([record.namespace, record.source, record.eventId]);
+        const canonical = fullPath === this.getFilePath(record.namespace, record.source, record.eventId);
+        if (!records.has(key) || canonical) records.set(key, record);
       } catch {}
     }
-    return results;
+    return [...records.values()].filter(record =>
+      (!filter?.namespace || record.namespace === filter.namespace)
+      && (!filter?.source || record.source === filter.source)
+      && (!filter?.status || record.status === filter.status));
   }
 }
 
@@ -290,8 +302,11 @@ export function createPolicyGuardedExecutionPort(options: PolicyGuardedExecution
     || !options.policy || typeof options.policy.evaluateExecution !== 'function') {
     throw new CognitionError('INVALID_ARGUMENT');
   }
+  options = {...options};
   return {
     async executeBatch(request) {
+      try { request = {...request, inputs: structuredClone(request.inputs)}; }
+      catch { return {applied: false, snapshot: options.store.read(), error: '非法执行输入'}; }
       if (request.signal?.aborted) {
         return { applied: false, snapshot: options.store.read(), error: '执行前已取消' };
       }
@@ -308,7 +323,9 @@ export function createPolicyGuardedExecutionPort(options: PolicyGuardedExecution
       const policyDecision = await options.policy.evaluateExecution({
         eventId: request.eventId,
         source: request.source,
-        inputs: request.inputs,
+        // Policy receives its own view; neither it nor the caller can replace
+        // the private candidate committed after this awaited decision.
+        inputs: structuredClone(request.inputs),
         risk: 'low',
       });
       if (!policyDecision.allowed) {
@@ -337,8 +354,19 @@ export function createPolicyGuardedExecutionPort(options: PolicyGuardedExecution
               source: request.source,
               namespace: options.namespace,
             });
-            if (record && record.status === 'applied' && record.sourceRevision === request.sourceRevision) {
-              return { applied: true, snapshot: options.store.read() };
+            if (record && record.status === 'applied' && record.receipt.status === 'applied'
+              && record.eventId === request.eventId && record.source === request.source
+              && record.sourceRevision === request.sourceRevision
+              && record.receipt.eventId === request.eventId && record.receipt.source === request.source
+              && record.receipt.sourceRevision === request.sourceRevision
+              && record.receipt.graphRevisionBefore === request.expectedRevision) {
+              const expected = appendVersions(options.store.read(request.expectedRevision),
+                request.expectedRevision, request.inputs);
+              if (record.namespace === (options.namespace ?? expected.namespace)
+                && record.receipt.graphRevisionAfter === expected.revision
+                && isDeepStrictEqual(options.store.read(expected.revision), expected)) {
+                return { applied: true, snapshot: options.store.read() };
+              }
             }
           } catch {}
         }
@@ -444,6 +472,8 @@ export class MeetingRescheduleCoordinator {
       readonly signal?: AbortSignal | undefined;
     } = {}
   ): Promise<MeetingDecisionReceipt> {
+    query = {...query};
+    options = {...options};
     const operation = this.tail.then(() => this.applyProposalSerial(query, options));
     this.tail = operation.then(() => {}, () => {});
     return operation;
@@ -456,7 +486,8 @@ export class MeetingRescheduleCoordinator {
     if (!query || !query.eventId || !query.source) throw new CognitionError('INVALID_ARGUMENT');
     if (query.namespace !== undefined && query.namespace !== this.namespace) throw new CognitionError('INVALID_ARGUMENT');
     if (options.signal?.aborted) throw new CognitionError('INVALID_ARGUMENT');
-    if (options.deadline && this.now() >= Date.parse(options.deadline)) throw new CognitionError('INVALID_ARGUMENT');
+    if (options.deadline !== undefined && (!Number.isFinite(Date.parse(options.deadline))
+      || this.now() >= Date.parse(options.deadline))) throw new CognitionError('INVALID_ARGUMENT');
 
     const ns = query.namespace ?? this.namespace;
     const record = await this.receiptStore.loadReceipt({ eventId: query.eventId, namespace: ns, source: query.source });
@@ -492,6 +523,9 @@ export class MeetingRescheduleCoordinator {
       });
       return conflictReceipt;
     }
+
+    if (options.signal?.aborted || (options.deadline !== undefined
+      && this.now() >= Date.parse(options.deadline))) throw new CognitionError('INVALID_ARGUMENT');
 
     const execResult = await execPort.executeBatch({
       expectedRevision: currentGraph.revision,
@@ -556,6 +590,7 @@ export class MeetingRescheduleCoordinator {
    * 7. Execution through trusted port via atomic appendBatch or emission of proposal
    */
   async processEvent(event: MeetingRescheduleEvent): Promise<MeetingDecisionReceipt> {
+    event = {...event};
     const operation = this.tail.then(() => this.processEventSerial(event));
     this.tail = operation.then(() => {}, () => {});
     return operation;
@@ -630,10 +665,38 @@ export class MeetingRescheduleCoordinator {
         && node.reason?.includes(`[sourceRevision: ${event.sourceRevision}]`)
     );
     if (alreadyCommittedFact) {
-      const committedNodes = initialSnapshot.history.filter(
-        node => node.reason?.includes(`[eventId: ${event.eventId}]`)
-          && node.reason?.includes(`[sourceRevision: ${event.sourceRevision}]`)
-      );
+      let recoveredNodes = [alreadyCommittedFact];
+      const recoveredBefore = alreadyCommittedFact.graphRevision - 1;
+      let recoveredAfter = alreadyCommittedFact.graphRevision;
+      let completeHistoricalRepair = false;
+      try {
+        const historical = this.store.read(recoveredBefore);
+        const previous = historical.history.findLast(node => node.id === event.meetingFactId);
+        if (previous?.kind === 'fact' && previous.sourceRef === event.source
+          && previous.summary === event.originalSummary && isEffective(previous, event.detectedAt)) {
+          const {revision: _revision, graphRevision: _graphRevision, ...factInput} = alreadyCommittedFact;
+          const prospective = appendVersions(historical, recoveredBefore, [factInput]);
+          const items = analyzeImpact(prospective, event.detectedAt).items.filter(item => item.action === 'RECHECK'
+            && item.causes.some(cause => cause.reason === 'superseded'
+              && cause.reference.id === previous.id && cause.reference.revision === previous.revision
+              && cause.currentRevision === alreadyCommittedFact.revision));
+          const candidate = this.buildCandidates(prospective, alreadyCommittedFact, items, event)
+            .find(item => item.actionId === 'adjust_schedule');
+          const expected = appendVersions(historical, recoveredBefore,
+            [factInput, ...candidate!.proposedModifications!]);
+          // Per-node revisions span an ordered batch. Exact historical content
+          // does not establish transaction identity, approval or execution Evidence.
+          if (expected.revision <= initialSnapshot.revision
+            && isDeepStrictEqual(this.store.read(expected.revision), expected)) {
+            recoveredNodes = expected.history.filter(node => node.graphRevision > recoveredBefore);
+            recoveredAfter = expected.revision;
+            completeHistoricalRepair = true;
+          }
+        }
+      } catch {
+        // The matched Fact still prevents blind replay; other historical
+        // revisions cannot be attributed from event text alone.
+      }
       const recoveredReceipt: MeetingDecisionReceipt = {
         eventId: event.eventId,
         source: event.source,
@@ -643,11 +706,13 @@ export class MeetingRescheduleCoordinator {
         actionId: 'adjust_schedule',
         status: 'already_processed',
         confidence: null,
-        reason: '图谱已在历史事务中持久化该改期事件（崩溃恢复去重保护）',
-        graphRevisionBefore: initialSnapshot.revision - 1,
-        graphRevisionAfter: initialSnapshot.revision,
+        reason: completeHistoricalRepair
+          ? '历史内容与确定性会议修订一致（崩溃恢复去重保护）；仅恢复历史节点记录，不代表审批或执行已验证'
+          : '仅恢复该会议 Fact 历史记录（崩溃恢复去重保护）；其它修订未核验，不重放事件',
+        graphRevisionBefore: recoveredBefore,
+        graphRevisionAfter: recoveredAfter,
         evaluatedAt: event.detectedAt,
-        appliedNodeRevisions: committedNodes.map(n => ({ id: n.id, revision: n.revision })),
+        appliedNodeRevisions: recoveredNodes.map(n => ({ id: n.id, revision: n.revision })),
       };
       await this.saveReceiptRecord(event, inputDigest, recoveredReceipt);
       return recoveredReceipt;

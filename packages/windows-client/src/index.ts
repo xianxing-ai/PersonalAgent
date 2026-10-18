@@ -144,12 +144,13 @@ function safeNumber(value: number, integer = false): number {
   return value;
 }
 
-function cpuTotals(probe: SystemObservationProbe): {count: number; idle: number; total: number} {
+function cpuTotals(probe: SystemObservationProbe): {count: number; idle: number; total: number; counters: CpuTimes[]} {
   try {
     const samples = probe.cpuTimes();
     if (!Array.isArray(samples) || samples.length === 0) throw observationError();
     let idle = 0;
     let total = 0;
+    const counters: CpuTimes[] = [];
     for (const sample of samples) {
       if (!sample || typeof sample !== 'object') throw observationError();
       const user = safeNumber(sample.user);
@@ -157,11 +158,13 @@ function cpuTotals(probe: SystemObservationProbe): {count: number; idle: number;
       const sys = safeNumber(sample.sys);
       const sampleIdle = safeNumber(sample.idle);
       const irq = safeNumber(sample.irq);
+      // A probe may reuse and mutate its array and objects on the next read.
+      counters.push({user, nice, sys, idle: sampleIdle, irq});
       idle += sampleIdle;
       total += user + nice + sys + sampleIdle + irq;
     }
     if (!Number.isSafeInteger(samples.length) || !Number.isFinite(idle) || !Number.isFinite(total)) throw observationError();
-    return {count: samples.length, idle, total};
+    return {count: samples.length, idle, total, counters};
   } catch {
     throw observationError();
   }
@@ -255,6 +258,9 @@ export function createSystemObservationTool(options: SystemObservationToolOption
       const monotonicUntil = performance.now();
       const sampledUntil = safeNow(now).toISOString();
       if (before.count !== after.count) throw observationError();
+      const categories = ['user', 'nice', 'sys', 'idle', 'irq'] as const;
+      if (before.counters.some((sample, index) => categories.some(category =>
+        after.counters[index]![category] < sample[category]))) throw observationError();
       const totalDelta = after.total - before.total;
       const idleDelta = after.idle - before.idle;
       if (!Number.isFinite(totalDelta) || totalDelta <= 0 || idleDelta < 0 || idleDelta > totalDelta) throw observationError();

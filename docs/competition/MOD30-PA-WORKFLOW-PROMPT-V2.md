@@ -1,5 +1,13 @@
 # MOD-30：同一应用通用受限协议的云提示词候选
 
+> 历史适用范围（2026-10-15 补注）：下文保留原日期、固定版本及当时的测试/失败记录。后续当前模型、本机 Laya、镜像发布与有限验收以 [当前详细设计](../design/CURRENT_DESIGN_20261015.md)、[V3 实测](TEST_IMAGE_V3.md) 及 [协作者接线](COLLABORATOR_WIRING_PACKAGE.md) 为准；历史“当前/未发布/未验/双人批准”等表述不覆盖后续事实或现行协作规则。
+
+
+<!-- current-design-20261015 -->
+> 当前协作规则：每个 MOD 负责人完成实现、公开接口、实际调用方接线、测试与 Evidence/文档；每个 PR 需一位非作者对当前提交有效批准及实际检查。见 [协作规则](../../CONTRIBUTING.md) 和 [接线总包](COLLABORATOR_WIRING_PACKAGE.md)。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 Profile：`huawei_ict_agentarts`；负责人：zemeng；状态：**已应用、已发布及部署；请求级实调待验收**。
 目标仅为现有 `PA-证据安全审查` 最终节点和现有多 Agent 控制器。
 旧版逐字文本、资源 ID 和画布引用见

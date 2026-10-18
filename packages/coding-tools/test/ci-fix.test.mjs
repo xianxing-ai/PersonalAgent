@@ -4,9 +4,32 @@ import {createHash} from 'node:crypto';
 import {getEventListeners} from 'node:events';
 import {setImmediate} from 'node:timers/promises';
 import {GhCliProvider, githubRepairCheckName} from '@personal-agent/github';
-import {runCiFix, createCiFixWorkflow} from '../dist/dev-workflows/ci-fix.js';
+import {runCiFix, createCiFixWorkflow} from '@personal-agent/coding-tools';
 
 const headSha = 'a'.repeat(40), fixedSha = 'b'.repeat(40), fileSha = 'c'.repeat(64);
+test('old CI factory resumes pending identity through original ports while new factory uses replacements',async()=>{
+  const f=fixture();let oldCalls=0,newCalls=0,newModel=0;
+  const invoke=f.options.tools.invoke,complete=f.options.model.complete;
+  const oldTools={list:f.options.tools.list,invoke:async input=>{oldCalls++;if(oldCalls===1){f.calls.push(input);return {state:'pending',evidenceRefs:[]};}return invoke(input);}};
+  f.options.tools=oldTools;const old=createCiFixWorkflow(f.options);
+  assert.equal((await old.run(f.context)).status,'waiting_approval');const original=f.calls[0];
+  f.options.tools={list:oldTools.list,invoke:async input=>{newCalls++;return invoke(input);}};
+  f.options.model={complete:async input=>{newModel++;return complete(input);}};
+  const next=createCiFixWorkflow(f.options);
+  assert.equal((await old.run(f.context)).status,'succeeded');
+  assert.equal(f.calls[1].runId,original.runId);assert.deepEqual(f.calls[1].arguments,original.arguments);
+  assert.equal(newCalls,0);assert.equal(newModel,0);
+  const checkpoints=new Map(),context={...f.context,taskId:'new-ports-task',loadCheckpoint:key=>checkpoints.get(key),saveCheckpoint:(key,value)=>checkpoints.set(key,structuredClone(value))};
+  assert.equal((await next.run(context)).status,'succeeded');assert.ok(newCalls>0);assert.equal(newModel,1);
+});
+test('CI factory bound port methods remain live and capability withdrawal blocks dispatch',async()=>{
+  const f=fixture(),workflow=createCiFixWorkflow(f.options);
+  const tools=f.options.tools,model=f.options.model,invoke=tools.invoke,complete=model.complete;let methods=0;
+  tools.invoke=async input=>{methods++;return invoke(input);};model.complete=async input=>{methods++;return complete(input);};
+  assert.equal((await workflow.run(f.context)).status,'succeeded');assert.ok(methods>1);
+  tools.list=()=>[];const count=f.calls.length;
+  assert.equal((await workflow.run(f.context)).status,'unsupported');assert.equal(f.calls.length,count);
+});
 function fixture() {
   const checkpoints = new Map(), calls = [];
   const context = {taskId: 'ci-task', deadline: '2099-01-01T00:00:00Z', signal: new AbortController().signal,
@@ -48,6 +71,58 @@ test('actual verify precedes commit, push, approved PR and original run backlink
   assert.equal(f.calls.find(c=>c.toolName==='workspace.git.commit').arguments.verificationRunId,r.verificationRunId);
   const count=f.calls.length; await runCiFix(f.context,f.options); assert.equal(f.modelCalls(),1);
   assert.equal(f.calls.filter(c=>c.toolName==='workspace.git.commit').length,1); assert.equal(f.calls.length,count);
+});
+test('trusted repair goal reaches the model and the supplied PR body is retained with original backlinks',async()=>{
+  const f=fixture();f.options.repairGoal='Preserve data while repairing the crash';
+  f.options.pullRequestBody='Related issue: https://github.test/issues/4\n\nAutomatic close and merge are disabled.';
+  let prompt;const complete=f.options.model.complete;
+  f.options.model.complete=async request=>{prompt=JSON.parse(request.messages[1].content);return complete(request);};
+  assert.equal((await runCiFix(f.context,f.options)).status,'succeeded');
+  assert.equal(prompt.repairGoal,f.options.repairGoal);
+  const body=f.calls.find(call=>call.toolName==='github.pr.create').arguments.body;
+  assert.ok(body.includes(f.options.pullRequestBody));assert.match(body,/Repair source: https:\/\/github.test\/runs\/42/);
+  assert.ok(body.length<=65536);
+});
+test('changed trusted goal or PR body cannot reuse an original unknown write or migrate a legacy journal',async()=>{
+  for(const field of ['repairGoal','pullRequestBody']) for(const legacy of [false,true]) {
+    const f=fixture(),issue=f.responses['github.issue.get'];delete f.options.runId;f.options.expectedHeadSha=headSha;
+    f.options.issue={number:issue.number,url:issue.url,repository:'owner/repo',fingerprint:createHash('sha256').update(JSON.stringify(
+      [issue.number,issue.title,issue.body,issue.state,[...issue.labels].sort(),issue.url,issue.updatedAt])).digest('hex')};
+    if(!legacy)f.options[field]='Original trusted input';
+    const invoke=f.options.tools.invoke;f.options.tools.invoke=async input=>{
+      if(input.toolName==='workspace.git.push'){f.calls.push(input);return {state:'unknown',evidenceRefs:[]};}
+      return invoke(input);
+    };
+    assert.equal((await runCiFix(f.context,f.options)).status,'waiting_reconciliation');
+    const saved=f.context.loadCheckpoint('ci-fix-v1'),count=f.calls.length;
+    assert.equal((await runCiFix(f.context,f.options)).status,'waiting_reconciliation');assert.equal(f.calls.length,count);
+    f.options[field]='Changed trusted input';
+    await assert.rejects(runCiFix(f.context,f.options),error=>error.code==='INVALID_ARGUMENT');
+    assert.deepEqual(f.context.loadCheckpoint('ci-fix-v1'),saved);assert.equal(f.calls.length,count);
+  }
+});
+test('final composed PR body exceeding the connector bound stops before commit and push',async()=>{
+  const f=fixture();f.options.pullRequestBody='Host context';f.options.maxTokens=128000;
+  f.responses['github.actions.run.list'].items[0].url='https://github.test/runs/'+ 'x'.repeat(65536);
+  await assert.rejects(runCiFix(f.context,f.options),error=>error.code==='INVALID_ARGUMENT');
+  for(const name of ['workspace.git.commit','workspace.git.push','github.pr.create'])assert.equal(f.calls.some(call=>call.toolName===name),false);
+});
+test('trusted repair fields reject invalid bounds before calls and snapshot strings across awaited ports',async()=>{
+  for(const [field,max] of [['repairGoal',8000],['pullRequestBody',16000]]) {
+    for(const value of [null,7,'','   ','x'.repeat(max+1)]) {
+      const f=fixture();f.options[field]=value;
+      await assert.rejects(runCiFix(f.context,f.options),error=>error.code==='INVALID_ARGUMENT');
+      assert.equal(f.calls.length,0);assert.equal(f.modelCalls(),0);
+    }
+  }
+  const f=fixture();f.options.repairGoal='Original goal';f.options.pullRequestBody='Original body';
+  let prompt;const complete=f.options.model.complete,invoke=f.options.tools.invoke;
+  f.options.model.complete=async request=>{prompt=JSON.parse(request.messages[1].content);return complete(request);};
+  f.options.tools.invoke=async input=>{f.options.repairGoal='Replaced goal';f.options.pullRequestBody='Replaced body';return invoke(input);};
+  assert.equal((await runCiFix(f.context,f.options)).status,'succeeded');
+  assert.equal(prompt.repairGoal,'Original goal');
+  const body=f.calls.find(call=>call.toolName==='github.pr.create').arguments.body;
+  assert.ok(body.includes('Original body'));assert.ok(!body.includes('Replaced body'));
 });
 function sourceLinkFixture() {
   const f=fixture(),list=f.options.tools.list,invoke=f.options.tools.invoke;
@@ -578,4 +653,60 @@ test('model hash errors use the trusted read hash in the approved patch request'
 test('hash normalization never grants an unread model path',async()=>{
  const f=fixture(),complete=f.options.model.complete;f.options.model.complete=async request=>{const r=await complete(request);const p=JSON.parse(r.response.text);p.patches[0].path='src/unread.ts';r.response.text=JSON.stringify(p);return r;};
  await assert.rejects(runCiFix(f.context,f.options),/Invalid CI/);assert.equal(f.calls.filter(c=>c.toolName==='workspace.apply_text_patch').length,0);
+});
+
+test('one public workflow run snapshots scalar and nested execution inputs across an awaited read', async()=>{
+  const f=fixture();let release,entered;
+  const reached=new Promise(resolve=>entered=resolve),wait=new Promise(resolve=>release=resolve);
+  const invoke=f.options.tools.invoke;
+  f.options.tools.invoke=async input=>{if(input.toolName==='github.actions.run.list'){entered();await wait;}return invoke(input);};
+  const workflow=createCiFixWorkflow(f.options),running=workflow.run(f.context);
+  await reached;
+  f.options.repository='owner/next-repo';f.options.runId='99';f.options.headBranch='next-branch';f.options.baseBranch='other-base';
+  f.options.verifyRecipeId='other-recipe';f.options.maxSteps=1;f.options.maxTokens=1;
+  f.options.sourcePaths.push('src/next.ts');f.options.gitTools.commit='workspace.other.commit';
+  release();assert.equal((await running).status,'succeeded');
+  assert.ok(f.calls.filter(call=>call.arguments.repo).every(call=>call.arguments.repo==='owner/repo'));
+  assert.ok(f.calls.filter(call=>call.arguments.repository).every(call=>call.arguments.repository==='owner/repo'));
+  assert.deepEqual(f.calls.filter(call=>call.toolName==='workspace.read_text').map(call=>call.arguments.path),['src/a.ts']);
+  assert.equal(f.calls.find(call=>call.toolName==='workspace.run_allowed_command').arguments.recipeId,'test');
+  const pr=f.calls.find(call=>call.toolName==='github.pr.create');assert.equal(pr.arguments.head,'ci-fix');assert.equal(pr.arguments.base,'main');
+  assert.ok(f.calls.some(call=>call.toolName==='workspace.git.commit'));
+  f.options.gitTools.commit='workspace.git.commit'; // Keep adapters available so changed identity reaches the journal guard.
+  await assert.rejects(workflow.run(f.context),error=>error.code==='INVALID_ARGUMENT');
+});
+test('issue source binding is snapshotted while its original read is outstanding',async()=>{
+  const f=fixture(),issue=f.responses['github.issue.get'];delete f.options.runId;f.options.expectedHeadSha=headSha;
+  f.options.issue={number:issue.number,url:issue.url,repository:'owner/repo',fingerprint:createHash('sha256').update(JSON.stringify(
+    [issue.number,issue.title,issue.body,issue.state,[...issue.labels].sort(),issue.url,issue.updatedAt])).digest('hex')};
+  let release,entered;const reached=new Promise(resolve=>entered=resolve),wait=new Promise(resolve=>release=resolve);
+  const invoke=f.options.tools.invoke;f.options.tools.invoke=async input=>{if(input.toolName==='github.issue.get'){entered();await wait;}return invoke(input);};
+  const running=runCiFix(f.context,f.options);await reached;
+  Object.assign(f.options.issue,{number:99,url:'https://github.test/issues/99',fingerprint:'changed',repository:'owner/other'});
+  release();assert.equal((await running).status,'succeeded');
+  const backlink=f.calls.find(call=>call.toolName==='github.issue.comment');assert.equal(backlink.arguments.number,4);
+  assert.match(backlink.arguments.body,/Issue fingerprint: [a-f0-9]{64}/);
+});
+test('same workflow factory accepts updated configuration for a distinct task without mutating the original journal',async()=>{
+  const f=fixture(),workflow=createCiFixWorkflow(f.options);
+  assert.equal((await workflow.run(f.context)).status,'succeeded');const original=f.context.loadCheckpoint('ci-fix-v1');
+  f.options.headBranch='second-branch';
+  const checkpoints=new Map(),context={...f.context,taskId:'distinct-task',loadCheckpoint:key=>checkpoints.get(key),saveCheckpoint:(key,value)=>checkpoints.set(key,structuredClone(value))};
+  assert.equal((await workflow.run(context)).status,'succeeded');
+  assert.equal(f.calls.filter(call=>call.toolName==='github.pr.create').at(-1).arguments.head,'second-branch');
+  assert.deepEqual(f.context.loadCheckpoint('ci-fix-v1'),original);
+  await assert.rejects(workflow.run(f.context),error=>error.code==='INVALID_ARGUMENT');
+});
+test('authorization and clock hooks remain live across awaited execution inputs',async()=>{
+  for(const hook of ['authorization','clock']) {
+    const f=fixture();let release,entered;const reached=new Promise(resolve=>entered=resolve),wait=new Promise(resolve=>release=resolve);
+    const invoke=f.options.tools.invoke;f.options.tools.invoke=async input=>{if(input.toolName==='github.actions.run.list'){entered();await wait;}return invoke(input);};
+    const running=runCiFix(f.context,f.options);await reached;
+    if(hook==='authorization')f.options.authorizationRefFor=()=>undefined;
+    else f.options.now=()=>Date.parse('2100-01-01T00:00:00Z');
+    release();
+    if(hook==='authorization')assert.equal((await running).status,'waiting_approval');
+    else await assert.rejects(running,error=>error.code==='TIMEOUT');
+    assert.equal(f.calls.length,1);
+  }
 });

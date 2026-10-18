@@ -13,8 +13,11 @@ export function mountConversationRail(container, scroller) {
     const articles=[...scroller.querySelectorAll('[data-turn]')];
     const summaryFor=article=>article.querySelector('.user-message, .assistant-message')?.textContent||'';
     const next=articles.map(article=>`${article.dataset.turn}:${summaryFor(article)}`).join('|');
-    if(next!==signature){signature=next;rail.replaceChildren(...articles.map((article,index)=>{
-      const button=document.createElement('button');button.type='button';button.dataset.index=String(index);
+    let focusedTurn;
+    if(next!==signature){
+      focusedTurn=rail.contains(document.activeElement)?document.activeElement.dataset.turnRef:undefined;
+      signature=next;rail.replaceChildren(...articles.map((article,index)=>{
+      const button=document.createElement('button');button.type='button';button.dataset.index=String(index);button.dataset.turnRef=article.dataset.turn;
       const summary=summaryFor(article)||`第 ${index+1} 轮对话`;
       button.setAttribute('aria-label',`查看：${summary.slice(0,100)}`);
       const dash=document.createElement('span');dash.className='rail-dash';
@@ -22,5 +25,8 @@ export function mountConversationRail(container, scroller) {
       button.append(dash,preview);return button;
     }));}
     rail.hidden=articles.length<2;sync();
+    if(focusedTurn!==undefined && document.activeElement===document.body && rail.isConnected && rail.getClientRects().length) {
+      [...rail.querySelectorAll('button')].find(button=>button.dataset.turnRef===focusedTurn)?.focus({preventScroll:true});
+    }
   };
 }

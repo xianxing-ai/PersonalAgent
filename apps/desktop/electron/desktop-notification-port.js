@@ -45,6 +45,7 @@ function defaultNotifier() {
       const notification = new electron.Notification({title: input.title, body: input.body});
       notification.on('show', callbacks.onShow);
       notification.on('click', callbacks.onClick);
+      notification.on('failed', callbacks.onFailed);
       notification.show();
       return {close: () => notification.close()};
     },
@@ -98,6 +99,16 @@ export function createDesktopNotificationPort(options = {}) {
     persist(next);
   }
 
+  function readDeliveryOutcome(id) {
+    const record = records.find(item => item.id === id);
+    if (!record) return undefined;
+    const delivered = ['delivered', 'acknowledged'].includes(record.state);
+    return {id, deliveryState: delivered ? 'delivered' : record.state === 'failed' ? 'failed' : 'unknown',
+      deliveredAt: record.deliveredAt, userRead: record.state === 'acknowledged',
+      evidenceRefs: delivered ? [`desktop-notification:${id}:show`] : []};
+  }
+  const publishOutcome = id => {try {options.onOutcome?.(readDeliveryOutcome(id));} catch {}};
+
   return Object.freeze({
     /** P5 设备通知端口兼容入口：落盘意图 → 系统投递，delivered 只认系统回执。 */
     async sendAdvisoryNotification(input) {
@@ -139,20 +150,29 @@ export function createDesktopNotificationPort(options = {}) {
               settled = true;
               try {
                 persistState(record.id, {state: 'delivered', deliveredAt: new Date(now()).toISOString()});
+                publishOutcome(record.id);
               } catch { /* 回执落盘失败保持 persisted，交 reconcile */ }
             },
             onClick: () => {
+              settled = true;
               const current = records.find(item => item.id === record.id);
               persistState(record.id, {
                 state: 'acknowledged', acknowledgedAt: new Date(now()).toISOString(),
                 ...(current?.deliveredAt === undefined ? {deliveredAt: new Date(now()).toISOString()} : {}),
               });
+              publishOutcome(record.id);
+            },
+            onFailed: () => {
+              if (settled) return;
+              settled = true;
+              try {persistState(record.id, {state: 'failed', error: '系统通知失败回执'}); publishOutcome(record.id);} catch {}
             },
           },
         );
         openHandles.set(record.id, handle);
       } catch (error) {
-        persistState(record.id, {state: 'failed', error: `系统通知展示失败：${error instanceof Error ? error.message : String(error)}`});
+        // show may throw after the OS accepted the notification. The original
+        // persisted intent is unknown until an independent receipt/readback.
         return {delivered: false, error: '系统通知展示失败'};
       }
       // show 事件异步到达：本轮按 pending 返回未投递；状态落为 delivered 后同 id 重试得 true。
@@ -167,6 +187,7 @@ export function createDesktopNotificationPort(options = {}) {
         return {acknowledged: false};
       }
       persistState(id, {state: 'acknowledged', acknowledgedAt: new Date(now()).toISOString()});
+      publishOutcome(id);
       openHandles.get(id)?.close();
       openHandles.delete(id);
       return {acknowledged: true};
@@ -179,7 +200,10 @@ export function createDesktopNotificationPort(options = {}) {
       persistState(id, delivered
         ? {state: 'delivered', deliveredAt: new Date(now()).toISOString()}
         : {state: 'failed', error: '受信宿主确认未投递'});
+      publishOutcome(id);
     },
+
+    readDeliveryOutcome,
 
     list() {
       return records.map(record => ({...record}));

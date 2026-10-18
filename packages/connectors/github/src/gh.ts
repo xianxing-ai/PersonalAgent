@@ -46,11 +46,13 @@ function textPage(text: string, input: {offset?: number; maxChars?: number}): Te
 export class GhCliProvider implements GitHubProvider {
   readonly verification = 'conditional' as const;
   private disposed = false;
+  private readonly runner: GhCommandRunner;
   constructor(private readonly options: GhProviderOptions) {
     if (!options.runner || !options.readToken || !options.repositories.length) throw new ProtocolError('INVALID_ARGUMENT', 'GitHub requires explicit runner, credentials and repositories');
+    this.runner = options.runner;
     for (const repo of options.repositories) validateInput('repo.get', {repo});
   }
-  dispose(): void { this.disposed = true; this.options.runner.dispose?.(); }
+  dispose(): void { this.disposed = true; this.runner.dispose?.(); }
   async execute<K extends GitHubOperation>(op: K, input: GitHubInputs[K], context: GitHubReadContext): Promise<GitHubOutputs[K]> {
     validateInput(op, input); checkContext(context);
     if (this.disposed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'GitHub provider disposed');
@@ -66,7 +68,7 @@ export class GhCliProvider implements GitHubProvider {
       const args = ['api', '--hostname', 'github.com', '--method', method, endpoint, '-H', 'X-GitHub-Api-Version: 2022-11-28', '-H', `Accept: ${raw ? 'application/vnd.github.diff' : 'application/vnd.github+json'}`];
       if (payload !== undefined) args.push('--input', '-');
       let result;
-      try { result = await withGitHubContext(context, bounded => { if (method !== 'GET') writeDispatched = true; return this.options.runner.run({args, token, ...(payload === undefined ? {} : {stdin: JSON.stringify(payload)}), maxBytes: 1048576, context: bounded}); }); }
+      try { result = await withGitHubContext(context, bounded => { if (method !== 'GET') writeDispatched = true; return this.runner.run({args, token, ...(payload === undefined ? {} : {stdin: JSON.stringify(payload)}), maxBytes: 1048576, context: bounded}); }); }
       catch (error) {
         // Once a write is dispatched, transport failure does not prove no effect.
         if (method !== 'GET' && writeDispatched) throw new ProtocolError('RESULT_UNKNOWN', 'GitHub write outcome unknown; reconcile before any retry');
@@ -107,8 +109,9 @@ export class GhCliProvider implements GitHubProvider {
           // gh run view fetches text logs; the jobs/logs REST endpoint redirects
           // to a signed archive and must not be exposed as tool content.
           const args = ['run', 'view', String(r.runId), '--repo', r.repo, '--job', String(r.jobId), '--log-failed'];
-          const result = await withGitHubContext(context, bounded => this.options.runner.run({args, token, maxBytes: 1048576, context: bounded}));
+          const result = await withGitHubContext(context, bounded => this.runner.run({args, token, maxBytes: 1048576, context: bounded}));
           if (result.exitCode !== 0 || typeof result.stdout !== 'string' || typeof result.stderr !== 'string' || Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr) > 1048576) throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub log read failed');
+          if (job.conclusion === 'failure' && !result.stdout.trim()) throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub failed job log unavailable');
           return textPage(redactGitHubText(result.stdout, [token]), r);
         }
         case 'actions.repair.link': return executeGitHubRepairLink(input as GitHubInputs['actions.repair.link'], api, () => writeDispatched);

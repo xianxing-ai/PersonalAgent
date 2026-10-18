@@ -21,7 +21,7 @@ export function mountWorkspaceControls(root, invoke) {
     <label class="setting-row"><input type="checkbox" data-workspace="project-code" disabled><span data-workspace="project-label">允许执行项目构建/测试（尚未准备好）</span></label>
     <p class="notice">项目构建和测试会执行工作区中的代码，可读写当前用户有权访问的内容。这不是隔离沙箱；只有本机执行组件就绪且你在本会话单独勾选后才会开放，每次执行仍需本地审批。</p>
     <p class="notice">发送范围与写入、命令许可由宿主保存；每次实际执行仍须经过本地 Policy 校验与必要审批。</p>
-    <button class="btn" type="button" data-workspace="authorize">授权所选权限</button>
+    <button class="btn" type="button" data-workspace="authorize">授权本地读取及所选权限</button>
     <button class="btn" type="button" data-workspace="revoke">撤销工作区授权</button>
     <p class="notice" data-workspace="status" role="status"></p>`;
   root.append(section);
@@ -32,6 +32,24 @@ export function mountWorkspaceControls(root, invoke) {
   let consentDirty = false;
   let feedback = '';
   let unconfirmed = false;
+  let originatingFocus,restoreFocus=false;
+  const trackFocus=event=>{if(!section.contains(event.target) && event.target!==document.body) restoreFocus=false;};
+
+  function projectCommandNames() {
+    const commands = state.projectCommands;
+    if (!Array.isArray(commands)
+      || !commands.length || [...commands].some(command => !['build','test'].includes(command))
+      || new Set(commands).size !== commands.length) return [];
+    return ['build','test'].filter(command => commands.includes(command));
+  }
+
+  function updateStatus() {
+    const hostReason = (typeof state.reason === 'string' ? state.reason : '')
+      || (state.configured === true ? '请按需选择授权范围；设置状态以宿主读回为准。' : '请先由本机宿主选择工作区。');
+    field('status').textContent = feedback || (consentDirty && !busy && !unconfirmed
+      ? `权限选择尚未生效。点击“授权本地读取及所选权限”应用；要停止当前权限，请撤销授权。当前生效状态：${hostReason}`
+      : hostReason);
+  }
 
   function updateButtons() {
     const configured = state.configured === true;
@@ -43,8 +61,9 @@ export function mountWorkspaceControls(root, invoke) {
     field('write').disabled = busy || !configured;
     field('command').disabled = busy || !configured;
     field('project-code').disabled = busy || !configured || state.projectScriptsAvailable !== true || !field('command').checked;
-    field('authorize').disabled = busy || !configured || state.authorizationAvailable !== true || !field('cloud').checked;
+    field('authorize').disabled = busy || !configured || state.authorizationAvailable !== true;
     field('revoke').disabled = busy || (!configured && state.cloudExportAllowed !== true);
+    updateStatus();
   }
 
   function render(snapshot = {}, {keepFeedback = false} = {}) {
@@ -63,12 +82,14 @@ export function mountWorkspaceControls(root, invoke) {
     field('node-status').textContent = configured
       ? `Node：${state.nodeConfigured === true ? '已选择' : '未选择'} · 检查文件：${state.checkFileConfigured === true && typeof state.checkFileName === 'string' ? state.checkFileName : '未选择'} · Node 语法检查：${state.nodeCheckAvailable === true ? '可用' : '不可用'}${typeof state.commandReason === 'string' && state.commandReason ? ` · ${state.commandReason}` : ''}`
       : '先选择工作区，再由本机宿主选择 Node 与工作区内 JS 文件。';
+    const projectCommands = projectCommandNames();
     const projectReady = configured && state.projectScriptsAvailable === true;
+    const projectDescription = projectCommands.map(command => command === 'build' ? '构建' : '测试').join('/');
     field('project-status').textContent = configured
-      ? `npm 文件：${state.npmCliConfigured === true ? '已确定' : '未找到，可手动选择'} · 项目构建/测试：${projectReady ? '可授权' : '暂不可用'}${typeof state.projectReason === 'string' && state.projectReason ? ` · ${state.projectReason}` : ''}`
+      ? `npm 文件：${state.npmCliConfigured === true ? '已确定' : '未找到，可手动选择'} · ${projectReady && !projectCommands.length ? '项目命令信息待读回' : `项目${projectDescription || '命令'}：${projectReady ? '可授权' : '暂不可用'}`}${typeof state.projectReason === 'string' && state.projectReason ? ` · ${state.projectReason}` : ''}`
       : '选择工作区后才会检查项目构建和测试是否可用。';
     field('project-label').textContent = projectReady
-      ? '单独允许本会话执行项目构建/测试（先勾选受限命令）'
+      ? `单独允许本会话执行项目${projectDescription || '命令'}（先勾选受限命令）`
       : '允许执行项目构建/测试（尚未准备好）';
     if (!projectReady) field('project-code').checked = false;
     if (!configured || previousName !== state.displayName || (previouslyAllowed && state.cloudExportAllowed !== true)) {
@@ -83,13 +104,14 @@ export function mountWorkspaceControls(root, invoke) {
       field('command').checked = configured && state.commandAllowed === true;
       field('project-code').checked = projectReady && field('command').checked && state.projectCodeAllowed === true;
     }
-    field('status').textContent = feedback || (typeof state.reason === 'string' ? state.reason : '')
-      || (configured ? '请按需选择授权范围；设置状态以宿主读回为准。' : '请先由本机宿主选择工作区。');
     updateButtons();
   }
 
   async function run(action, payload) {
     if (busy) return;
+    originatingFocus=section.contains?.(document.activeElement)?document.activeElement:undefined;
+    restoreFocus=Boolean(originatingFocus);
+    document.addEventListener?.('focusin',trackFocus,true);
     busy = true;
     unconfirmed = false;
     feedback = '正在等待本机宿主读回…';
@@ -101,7 +123,9 @@ export function mountWorkspaceControls(root, invoke) {
       if (result && typeof result === 'object' && result.coding && typeof result.coding === 'object'
         && !Array.isArray(result.coding) && typeof result.coding.configured === 'boolean') {
         feedback = '';
-        consentDirty = false;
+        const cancelledSelection = ['coding.select','coding.selectNode','coding.selectCheckFile','coding.selectNpmCli'].includes(action)
+          && result.codingSelectionCancelled === true;
+        if (!cancelledSelection) consentDirty = false;
         render(result);
       } else {
         unconfirmed = true;
@@ -116,6 +140,11 @@ export function mountWorkspaceControls(root, invoke) {
       busy = false;
       section.setAttribute('aria-busy', 'false');
       updateButtons();
+      document.removeEventListener?.('focusin',trackFocus,true);
+      if(restoreFocus && document.activeElement===document.body && section.isConnected && !section.hidden
+        && section.getClientRects().length && originatingFocus?.isConnected && section.contains(originatingFocus)
+        && !originatingFocus.disabled) originatingFocus.focus();
+      originatingFocus=undefined;restoreFocus=false;
     }
   }
 
@@ -132,9 +161,9 @@ export function mountWorkspaceControls(root, invoke) {
   field('select-file').addEventListener('click', () => run('coding.selectCheckFile'));
   field('select-npm').addEventListener('click', () => run('coding.selectNpmCli'));
   field('authorize').addEventListener('click', () => {
-    if (!field('cloud').checked || state.configured !== true || state.authorizationAvailable !== true) return;
+    if (state.configured !== true || state.authorizationAvailable !== true) return;
     run('coding.authorize', {
-      cloudExportAllowed: true,
+      cloudExportAllowed: field('cloud').checked,
       writeAllowed: field('write').checked,
       commandAllowed: field('command').checked,
       projectCodeAllowed: state.projectScriptsAvailable === true && field('project-code').checked,
@@ -143,5 +172,5 @@ export function mountWorkspaceControls(root, invoke) {
   field('revoke').addEventListener('click', () => run('coding.revoke'));
 
   render();
-  return {render,show:visible=>{section.hidden=!visible;}};
+  return {render,show:visible=>{section.hidden=!visible;if(!visible) restoreFocus=false;}};
 }

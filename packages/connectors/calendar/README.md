@@ -1,5 +1,10 @@
 # @personal-agent/calendar
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 MOD-20 · 日历连接器（PA-013，P1；Fake 提供商先行）。负责人 `Potatos498`，评审者 `goo122`。
 
 ## 2026-09-30 云端业务增量（待本地统一验收）
@@ -99,3 +104,14 @@ manifest 随**实际 Provider** 声明（不保留把真实提供者标为 fixtu
 - manifest `verification: 'mock'`——**没有真实日历账号的授权与读回**。PA-013 的真实验收（至少一个真实连接器授权+读回、时区正确、邀请/变更按动作授权）待独立工作包完成后翻转。
 - Fake `search` 为客户端标题过滤；真实提供商应实现服务端搜索。
 - `respond` 在 Fake 上同步 `confirmed`；真实提供商可能返回 `pending/unknown`，届时不得当作已完成（ADR-0003）。
+## 2026-10-12 Foundation 时间边界修复
+
+CalDAV 请求计时器触发时复查实际截止时间，提前触发则等待剩余时间；请求上限与宿主
+deadline 仍取较小值。真实到期保留原 TIMEOUT/EXTERNAL_FAILURE 分类，取消和无旧数据
+返回语义不变，无接口、依赖或迁移变化。先用明确的合成时钟/计时器复现提前 1 ms
+终止许可，再回归宿主/提供商两种到期；不调用真实 CalDAV。
+本修复由 goo122 为根 Foundation 集成处理，MOD-20 的业务分工仍属 Potatos498，
+交付后需要当前提交非作者评审及集成，不据此升级真实连接验收等级。
+提前计时器和持久子任务专项 25/25、0 skip；日程单包 49 项、46 pass、3 skip、0 fail。
+日志 `.cache/caldav-early-timer-repro.log`、`.cache/ci-time-boundary-focused.log` 与
+`.cache/caldav-time-boundary-module.log` 保留；根完整门禁已通过，详细计数见执行记录。

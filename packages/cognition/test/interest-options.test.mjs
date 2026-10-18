@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {buildInterestOptions, LayaInterestDecisionService} from '../dist/interest-options.js';
 import {LayaActionChoiceService} from '../dist/index.js';
@@ -34,6 +36,41 @@ function chooser(pick, onInfer = () => {}) {
 }
 const request = () => ({deadline: iso(Date.now() + 60 * minute),
   signal: new AbortController().signal});
+
+test('uncooperative interest choices still reject on deadline and cancellation', async () => {
+  for (const code of ['CANCELLED', 'TIMEOUT']) {
+    const controller=new AbortController();
+    let portSignal,started;
+    const entered=new Promise(resolve=>{started=resolve;});
+    const service=new LayaInterestDecisionService({choose({signal}) {
+      portSignal=signal;started();return new Promise(()=>{});
+    }});
+    const lease={deadline:iso(Date.now()+(code==='TIMEOUT'?30:5000)),signal:controller.signal};
+    const pending=service.choose(fixture(),lease);
+    await entered;
+    if(code==='CANCELLED')controller.abort();
+    let guard;
+    try {
+      const result=await Promise.race([pending.then(()=> 'unexpected success',error=>error.code),
+        new Promise(resolve=>{guard=setTimeout(()=>resolve('unsettled'),300);})]);
+      assert.equal(result,code);assert.equal(portSignal.aborted,true);
+    } finally {clearTimeout(guard);}
+  }
+});
+
+test('caller cannot renew an interest lease by replacing its signal or deadline while choosing', async () => {
+  for(const code of ['CANCELLED','TIMEOUT']) {
+    let clock=Date.now();const controller=new AbortController(),expires=clock+1000;
+    const lease={deadline:iso(expires),signal:controller.signal};
+    const service=new LayaInterestDecisionService({async choose() {
+      if(code==='CANCELLED') {controller.abort();lease.signal=new AbortController().signal;}
+      else {clock=expires+1;lease.deadline=iso(clock+60*minute);}
+      return {state:'selected',selected:{id:'track_public',revision:1},eligibleForRuntime:true,
+        reason:'selected',calibrated:false,scores:[],receipt:{id:'synthetic'}};
+    }},()=>clock);
+    await assert.rejects(service.choose(fixture(clock),lease),{code});
+  }
+});
 
 test('a single inquiry stays candidate; sustained public scope offers three bound approaches', () => {
   const input = fixture();
@@ -129,7 +166,10 @@ test('async mutation and expiry cannot turn an old choice into a tracking decisi
     input.evidence[0].sourceRevision = 'forged';
     clock = expires + 1;
   }), () => clock);
-  const result = await service.choose(input, request());
+  // Policy validity expires while the caller's independent operation lease is
+  // still current. An expired operation lease is covered by the TIMEOUT tests.
+  const result = await service.choose(input, {deadline: iso(expires + minute),
+    signal: new AbortController().signal});
   assert.equal(result.policy.state, 'watch_public', 'caller mutation cannot alter captured policy');
   assert.equal(result.outcome, 'recheck');
   assert.equal(result.selected, undefined);
@@ -156,4 +196,46 @@ test('selection evaluates current time before offering choices and binds policy 
     .choose({...input, scope: {...input.scope, expiresAt: iso(now + 61 * minute)}},
       {...fixed, signal: new AbortController().signal});
   assert.notEqual(first.receipt.digest, changed.receipt.digest);
+});
+
+test('interest receipt digest keeps exact refs stable across portable locale ordering', () => {
+  const now = Date.now(), input = fixture(now);
+  input.evidence[0].id = 'ä-question';
+  input.evidence[1].id = 'z-followup';
+  input.evidence[1].relatedEvidenceId = 'ä-question';
+  const deadline = iso(now + 60 * minute);
+  // Isolated explicit Collators make this check portable without assuming
+  // a host adopts LC_ALL or changing the parent process's locale behavior.
+  const worker = `
+    import {LayaActionChoiceService,LayaInterestDecisionService} from '@personal-agent/cognition';
+    const [locale,inputText,timeText,deadline]=process.argv.slice(1),collator=new Intl.Collator(locale);
+    String.prototype.localeCompare=function(other){return collator.compare(String(this),other);};
+    const input=JSON.parse(inputText),now=Number(timeText);
+    const chooser=new LayaActionChoiceService({infer:async payload=>{
+      const ids=Object.keys(payload.questions.action.criteria),selected=ids.find(id=>JSON.parse(payload.questions.action.criteria[id]).description.includes('plan tracking'));
+      return {answers:{action:{choice:selected,probabilities:Object.fromEntries(ids.map(id=>[id,id===selected?0.9:0.1/(ids.length-1)])),answer_confidence:0.9,confidence:0.5}}};
+    }});
+    const result=await new LayaInterestDecisionService(chooser,()=>now).choose(input,{deadline,signal:new AbortController().signal});
+    console.log(JSON.stringify(result));
+  `;
+  const run = (locale, value = input) => JSON.parse(execFileSync(process.execPath,
+    ['--input-type=module', '-e', worker, locale, JSON.stringify(value), String(now), deadline],
+    {cwd: fileURLToPath(new URL('../../../', import.meta.url)), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim());
+  const first = run('en-US'), second = run('sv-SE');
+  assert.equal(first.receipt.digest, second.receipt.digest,
+    'Same exact evidence and binding retain their digest regardless of process locale');
+  assert.deepEqual(second, first, 'Policy, options, freshness, chosen approach and model receipt stay intact');
+  assert.deepEqual(first.receipt.evidence.map(ref => ref.id), ['z-followup', 'ä-question']);
+  for (const changed of [
+    {...input, scope: {...input.scope, revision: input.scope.revision + 1}},
+    {...input, source: {...input.source, revision: 'source-v2'}},
+    {...input, evidence: input.evidence.map(ref => ({...ref, sourceRevision: 'r2'}))},
+    {...input, evidence: input.evidence.map(ref => ({...ref,
+      id: ref.id === 'ä-question' ? 'new-question' : ref.id,
+      ...(ref.relatedEvidenceId ? {relatedEvidenceId: 'new-question'} : {})}))},
+  ]) {
+    const revised = run('sv-SE', changed);
+    assert.notEqual(revised.receipt.digest, first.receipt.digest,
+      'A changed exact scope, source or evidence ref is a new binding');
+  }
 });

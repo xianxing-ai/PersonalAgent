@@ -175,19 +175,20 @@ export class MailTriagePipeline {
     if (!options || (!options.inference && !options.classifier)) throw new CognitionError('INVALID_ARGUMENT');
     this.triageService = options.classifier ?? new LayaTriageService(options.inference!, options);
     this.checkpointPort = options.checkpoint;
-    this.labels = options.labels ?? DEFAULT_MAIL_LABELS;
+    this.labels = {...(options.labels ?? DEFAULT_MAIL_LABELS)};
     this.chunkSize = Math.max(1, Math.min(options.chunkSize ?? 4, 16));
     this.minimum = options.minimumAnswerProbability ?? 0.7;
     this.margin = options.minimumMargin ?? 0.15;
     this.now = options.now ?? Date.now;
 
-    const sortedLabels = Object.entries(this.labels).sort(([a], [b]) => a.localeCompare(b));
+    const sortedLabels = Object.entries(this.labels).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
     this.configDigest = hash(JSON.stringify({
       strategyVersion: MAIL_TRIAGE_STRATEGY_VERSION,
       model: 'multilingual',
       minimumAnswerProbability: this.minimum,
       minimumMargin: this.margin,
       labels: sortedLabels,
+      criteriaDigest: hash(JSON.stringify(this.labels)),
     }));
   }
 
@@ -199,6 +200,8 @@ export class MailTriagePipeline {
    * Processes a batch of projected mail messages with backpressure and bounded chunking.
    */
   async processBatch(request: MailBatchTriageRequest): Promise<MailBatchTriageSummary> {
+    if (!request || !Array.isArray(request.messages)) throw new CognitionError('INVALID_ARGUMENT');
+    request = {...request, messages: request.messages.map(message => ({...message}))};
     const result = this.batchTail.then(() => this.processBatchSerial(request));
     this.batchTail = result.then(() => {}, () => {});
     return result;
@@ -218,27 +221,38 @@ export class MailTriagePipeline {
     // Load durable progress once if checkpoint port provided
     if (this.checkpointPort && !this.checkpointLoaded) {
       const persisted = await this.checkpointPort.load();
+      const staged = new Map<string, LayaTriageResult>();
       if (persisted && typeof persisted === 'object') {
         for (const [key, val] of Object.entries(persisted)) {
           if (!val || typeof val !== 'object') throw new CognitionError('INVALID_ARGUMENT');
-          if (!transientReasons.has(val.reason)) this.cache.set(key, val);
+          if (!transientReasons.has(val.reason)) staged.set(key, structuredClone(val));
         }
       }
+      this.cache.clear();
+      for (const [key, val] of staged) this.cache.set(key, val);
       this.checkpointLoaded = true;
     }
 
     // Deduplicate duplicate messages within the batch request itself
     const uniqueMessages: LayaTriageMessage[] = [];
-    const seenBatch = new Set<string>();
+    const seenBatch = new Map<string, number>();
     for (const msg of request.messages) {
       if (!msg || typeof msg.source !== 'string' || typeof msg.messageId !== 'string'
-        || typeof msg.sourceRevision !== 'string' || typeof msg.text !== 'string') {
+        || typeof msg.sourceRevision !== 'string' || typeof msg.text !== 'string'
+        || (msg.highImpact !== undefined && typeof msg.highImpact !== 'boolean')) {
         throw new CognitionError('INVALID_ARGUMENT');
       }
-      const rawIdentity = `${msg.source}:${msg.messageId}:${msg.sourceRevision}`;
-      if (!seenBatch.has(rawIdentity)) {
-        seenBatch.add(rawIdentity);
+      const rawIdentity = JSON.stringify([msg.source, msg.messageId, msg.sourceRevision]);
+      const previousIndex = seenBatch.get(rawIdentity);
+      if (previousIndex === undefined) {
+        seenBatch.set(rawIdentity, uniqueMessages.length);
         uniqueMessages.push(msg);
+      } else {
+        const previous = uniqueMessages[previousIndex]!;
+        if (previous.text !== msg.text) throw new CognitionError('INVALID_ARGUMENT');
+        if (msg.highImpact === true && previous.highImpact !== true) {
+          uniqueMessages[previousIndex] = {...previous, highImpact: true};
+        }
       }
     }
 
@@ -255,7 +269,15 @@ export class MailTriagePipeline {
           || cached.sourceRevision !== msg.sourceRevision || cached.receipt?.contextDigest !== hash(msg.text)) {
           throw new CognitionError('INVALID_ARGUMENT');
         }
-        allResults.push(cached);
+        if (msg.highImpact !== true && cached.reason === 'high_impact'
+          && cached.impactScores?.choice === 'routine' && cached.candidateLabel !== 'meeting') {
+          pendingMessages.push(msg);
+          continue;
+        }
+        const result = structuredClone(cached);
+        allResults.push(result.reason === 'insufficient_input'
+          ? {...result, route: msg.highImpact === true ? 'main_agent' : 'review'}
+          : msg.highImpact === true ? {...result, route: 'main_agent', reason: 'high_impact'} : result);
         cachedCount++;
       } else {
         pendingMessages.push(msg);
@@ -308,7 +330,7 @@ export class MailTriagePipeline {
             calibrated: false,
             batching: 'multi_question',
             receipt: {
-              id: hash(JSON.stringify([msg.source, msg.messageId, msg.sourceRevision, this.configDigest, msg.text])),
+              id: hash(JSON.stringify([msg.source, msg.messageId, msg.sourceRevision, hash(JSON.stringify(this.labels)), msg.text])),
               promptVersion: 'mail-triage-v1',
               model: 'multilingual',
               candidateLabels: Object.keys(this.labels),
@@ -323,14 +345,14 @@ export class MailTriagePipeline {
 
       const chunk = pendingMessages.slice(i, i + this.chunkSize);
       const triageRequest: LayaTriageRequest = {
-        messages: chunk,
-        labels: this.labels,
+        messages: chunk.map(message => ({...message})),
+        labels: {...this.labels},
         deadline: request.deadline,
         signal: request.signal,
       };
 
       const inferenceStart = this.now();
-      const chunkResults = await this.triageService.classify(triageRequest);
+      const chunkResults = structuredClone(await this.triageService.classify(triageRequest));
       if (!Array.isArray(chunkResults) || chunkResults.length !== chunk.length) {
         throw new CognitionError('INVALID_ARGUMENT');
       }
@@ -355,14 +377,14 @@ export class MailTriagePipeline {
           }
         }
         // If save fails, this.cache is preserved without partial unpersisted entries
-        await this.checkpointPort.save(snapshot);
+        await this.checkpointPort.save(structuredClone(snapshot));
       }
 
       // Safe to update cache now
       for (const res of chunkResults) {
         if (!transientReasons.has(res.reason)) {
           const key = this.makeKey(res.source, res.messageId, res.sourceRevision);
-          this.cache.set(key, res);
+          this.cache.set(key, structuredClone(res));
         }
         newlyClassified.push(res);
         allResults.push(res);

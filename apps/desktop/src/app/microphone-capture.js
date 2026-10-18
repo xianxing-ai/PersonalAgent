@@ -1,22 +1,25 @@
 /** Panel-only capture. The main process initiates and owns every session. */
 export function mountMicrophoneCapture(bridge) {
-  let current;
+  let current, disposed = false;
 
   async function stop(session) {
     if (session.stopping) return session.stopping;
     session.cancelled = true;
     session.stopping = (async () => {
       try { await session.acquire; } catch {}
-      session.node?.port.close();
-      session.node?.disconnect();
-      session.source?.disconnect();
-      session.gain?.disconnect();
-      session.stream?.getTracks().forEach(track => track.stop());
+      try { session.node?.port.close(); } catch {}
+      try { session.node?.disconnect(); } catch {}
+      try { session.source?.disconnect(); } catch {}
+      try { session.gain?.disconnect(); } catch {}
+      let tracks;
+      try { tracks = session.stream?.getTracks(); } catch {}
+      for (const track of tracks ?? []) { try { track.stop(); } catch {} }
       try { if (session.context && session.context.state !== 'closed') await session.context.close(); }
       catch { /* The stopped receipt below must report the failed close. */ }
-      const tracksStopped = (!session.stream || session.stream.getTracks().every(track => track.readyState === 'ended'))
+      const tracksStopped = (!session.stream || Boolean(tracks?.every(track => track.readyState === 'ended')))
         && (!session.context || session.context.state === 'closed');
-      if (current === session) current = undefined;
+      // Retain ownership when device release cannot be confirmed.
+      if (current === session && tracksStopped) current = undefined;
       bridge.report({type: 'stopped', token: session.token, tracksStopped});
     })();
     return session.stopping;
@@ -66,12 +69,18 @@ export function mountMicrophoneCapture(bridge) {
   }
 
   const unsubscribe = bridge.onCommand(command => {
-    if (!command || typeof command.token !== 'string') return;
+    if (disposed || !command || typeof command.token !== 'string') return;
     if (command.type === 'start') void start(command.token);
     else if (command.type === 'stop' && current?.token === command.token) void stop(current);
   });
   const onVisibility = () => { if (document.hidden && current) void stop(current); };
   document.addEventListener('visibilitychange', onVisibility);
-  window.addEventListener('pagehide', () => { if (current) void stop(current); });
-  return () => { unsubscribe(); document.removeEventListener('visibilitychange', onVisibility); if (current) void stop(current); };
+  const onPageHide = () => { if (current) void stop(current); };
+  window.addEventListener('pagehide', onPageHide);
+  return () => {
+    disposed = true;
+    unsubscribe(); document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('pagehide', onPageHide);
+    if (current) void stop(current);
+  };
 }

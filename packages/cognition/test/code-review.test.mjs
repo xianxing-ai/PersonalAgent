@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {validateToolValue} from '@personal-agent/contracts';
 import {GhCliProvider, register as registerGitHub} from '@personal-agent/github';
-import {createCodeReviewWorkflow, codeReviewChangedLines, codeReviewPublicationCheckpointKey} from '../dist/dev-workflows/code-review.js';
+import {createCodeReviewWorkflow, codeReviewChangedLines, codeReviewPublicationCheckpointKey} from '@personal-agent/cognition';
 
 const head = 'a'.repeat(40), base = 'b'.repeat(40);
 const diff = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,2 +1,2 @@\n-old\n+new\n context\n';
@@ -39,6 +39,68 @@ function fixture(overrides = {}) {
   const prepare = () => workflow.prepare({repo: 'owner/repo', number: 7, rules: [{id: 'safe', text: 'Reject unsafe changes'}]}, context, access);
   return {workflow, tools, context, access, calls, modelCalls, checkpoints, prepare, changeHead: value => {currentHead = value;}, writeState: value => {writeState = value;}};
 }
+
+test('the public review factory retains its original ports when caller options are reused during prepare', async () => {
+  const original = fixture(), replacement = fixture();
+  let release, entered;
+  const started = new Promise(resolve => {entered = resolve;});
+  const waiting = new Promise(resolve => {release = resolve;});
+  const invoke = original.tools.invoke;
+  original.tools.invoke = async request => {
+    const result = await invoke(request);
+    if (request.runId.endsWith(':head-before')) {entered(); await waiting;}
+    return result;
+  };
+  let originalModels = 0, replacementModels = 0;
+  const model = {complete: async () => {originalModels++; return {response: {kind: 'final', text: JSON.stringify({findings: [finding]})}};}};
+  const nextModel = {complete: async () => {replacementModels++; return {response: {kind: 'final', text: JSON.stringify({findings: []})}};}};
+  const options = {model, tools: original.tools};
+  const workflow = createCodeReviewWorkflow(options);
+  const input = {repo: 'owner/repo', number: 7, rules: [{id: 'safe', text: 'Reject unsafe changes'}]};
+  const pending = workflow.prepare(input, original.context, original.access);
+  await started;
+  options.model = nextModel; options.tools = replacement.tools;
+  release();
+  const prepared = await pending;
+  assert.equal(prepared.state, 'prepared'); assert.deepEqual(prepared.report.findings, [finding]);
+  assert.equal(originalModels, 1); assert.equal(replacementModels, 0);
+  assert.equal(original.calls.length, 3); assert.equal(replacement.calls.length, 0);
+  assert.equal(options.model, nextModel); assert.equal(options.tools, replacement.tools, 'factory must not mutate caller options');
+  assert.equal((await createCodeReviewWorkflow(options).prepare(input, replacement.context, replacement.access)).state, 'prepared');
+  assert.equal(replacementModels, 1); assert.equal(replacement.calls.length, 3);
+});
+
+test('publishing a prepared report retains the original explicit Fake tool port after options replacement', async () => {
+  const original = fixture(), replacement = fixture();
+  const options = {tools: original.tools, model: {complete: async () => ({response: {kind: 'final', text: JSON.stringify({findings: [finding]})}})}};
+  const workflow = createCodeReviewWorkflow(options);
+  const prepared = await workflow.prepare({repo: 'owner/repo', number: 7, rules: [{id: 'safe', text: 'Reject unsafe changes'}]}, original.context, original.access);
+  options.tools = replacement.tools;
+  options.model = {complete: async () => {throw Error('publication must not call a model');}};
+  assert.equal((await workflow.publish(prepared.report, 0, original.context, {runId: 'publish-original', authorizationRef: 'synthetic-approved'})).state, 'confirmed');
+  assert.equal(original.calls.filter(call => call.toolName === 'github.pr.review.comment').length, 1);
+  assert.equal(replacement.calls.length, 0);
+});
+
+test('captured review ports still observe live tool availability and invocation hooks', async () => {
+  const f = fixture();
+  const list = f.tools.list;
+  f.tools.list = () => [];
+  assert.deepEqual(await f.prepare(), {state: 'unsupported', reason: 'github_read_unavailable'});
+  assert.equal(f.modelCalls.length, 0); assert.equal(f.calls.length, 0);
+  f.tools.list = list;
+  const prepared = await f.prepare(), reads = f.calls.length;
+  f.tools.list = () => list().filter(tool => tool.name !== 'github.pr.review.comment');
+  assert.deepEqual(await f.workflow.publish(prepared.report, 0, f.context, {runId: 'publish-live', authorizationRef: 'synthetic-approved'}),
+    {state: 'unsupported', reason: 'github_review_unavailable'});
+  assert.equal(f.calls.length, reads);
+  f.tools.list = list;
+  let liveCalls = 0;
+  const invoke = f.tools.invoke;
+  f.tools.invoke = async request => {liveCalls++; return invoke(request);};
+  assert.equal((await f.workflow.publish(prepared.report, 0, f.context, {runId: 'publish-live', authorizationRef: 'synthetic-approved'})).state, 'confirmed');
+  assert.equal(liveCalls, 2);
+});
 function realQuotedDiff(names) {
   const root = mkdtempSync(join(tmpdir(), 'code-review-paths-'));
   try {
@@ -51,9 +113,71 @@ function realQuotedDiff(names) {
     return git(['-c', 'core.quotePath=true', 'diff', '--no-ext-diff', '--no-textconv']);
   } finally {rmSync(root, {recursive: true, force: true});}
 }
+function realRenameDiff(previous = 'src/old file.ts', current = 'src/new file.ts', deleted = 'src/deleted.ts') {
+  const root = mkdtempSync(join(tmpdir(), 'code-review-rename-'));
+  try {
+    const config = join(root, '.fixture-git-config'); writeFileSync(config, '');
+    const git = args => execFileSync('git', args, {cwd: root, encoding: 'utf8', env: {...process.env, GIT_CONFIG_GLOBAL: config, GIT_CONFIG_NOSYSTEM: '1'}});
+    git(['init', '--quiet']); mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, previous), 'first\nsecond\nthird\nfourth\nfifth\n');
+    writeFileSync(join(root, deleted), 'deleted\n');
+    writeFileSync(join(root, 'src/other.ts'), 'before\n');
+    git(['add', '--', previous, deleted, 'src/other.ts']);
+    git(['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'fixture']);
+    git(['mv', '--', previous, current]);
+    writeFileSync(join(root, current), 'first\nchanged\nthird\nfourth\nfifth\n');
+    git(['rm', '--quiet', '--', deleted]); writeFileSync(join(root, 'src/other.ts'), 'after\n');
+    git(['add', '--', current, 'src/other.ts']);
+    const actual = git(['-c', 'core.quotePath=true', 'diff', '--cached', '--find-renames=50%', '--no-ext-diff', '--no-textconv']);
+    assert.match(actual, /similarity index (?:[5-9]\d|100)%\nrename from /);
+    return {actual, previous, current, deleted};
+  } finally {rmSync(root, {recursive: true, force: true});}
+}
+test('real Git multi-file rename anchors LEFT old line under the current filename and preserves pure deletion', () => {
+  for (const names of [[], ['src/旧文件.ts', 'src/新文件.ts'], ['src/旧 文件.ts', 'src/新 文件.ts', 'src/删除 文件.ts']]) {
+    const {actual, previous, current, deleted} = realRenameDiff(...names);
+    const lines = codeReviewChangedLines(actual);
+    assert.equal(lines.has(previous), false);
+    assert.deepEqual([...lines.get(current)], ['LEFT:2', 'RIGHT:2']);
+    assert.deepEqual([...lines.get(deleted)], ['LEFT:1']);
+    assert.deepEqual([...lines.get('src/other.ts')], ['LEFT:1', 'RIGHT:1']);
+    assert.equal(lines.size, 3);
+  }
+});
+test('registered synthetic Gh transport publishes rename LEFT at the current path once and drops the old path finding', async () => {
+  const {actual, previous, current} = realRenameDiff('src/旧 文件.ts', 'src/新 文件.ts', 'src/删除 文件.ts');
+  const commands = [], registered = new Map();
+  const pull = {number: 7, title: 'Rename', body: '', state: 'open', base: {ref: 'main', sha: base},
+    head: {ref: 'feature', sha: head}, html_url: 'https://github.com/owner/repo/pull/7', draft: false};
+  const provider = new GhCliProvider({repositories: ['owner/repo'], readToken: async () => 'synthetic-test-token', runner: {async run(command) {
+    commands.push(command);
+    return {exitCode: 0, stderr: '', stdout: command.args.includes('Accept: application/vnd.github.diff') ? actual
+      : JSON.stringify(command.args.includes('POST') ? {id: 1, html_url: 'https://github.com/owner/repo/pull/7#discussion_r1'} : pull)};
+  }}});
+  const dispose = registerGitHub({register(tool) {registered.set(tool.descriptor.name, tool); return () => registered.delete(tool.descriptor.name);}}, {provider});
+  const f = fixture();
+  const trusted = {scopes: ['github:read', 'github:write']};
+  const tools = {list: () => [...registered.values()].map(tool => tool.descriptor), invoke: async call => {
+    const tool = registered.get(call.toolName); validateToolValue(tool.descriptor.inputSchema, call.arguments);
+    return {state: 'confirmed', result: await tool.execute(call.arguments, {...trusted, ...call}), evidenceRefs: ['registered-gh-fixture']};
+  }};
+  const valid = {...finding, path: current, line: 2, side: 'LEFT'};
+  const workflow = createCodeReviewWorkflow({tools, model: {complete: async () => ({response: {kind: 'final',
+    text: JSON.stringify({findings: [valid, {...valid, path: previous}]})}})}});
+  try {
+    const prepared = await workflow.prepare({repo: 'owner/repo', number: 7, rules: [{id: 'safe', text: 'Reject unsafe changes'}]}, f.context, f.access);
+    assert.equal(prepared.state, 'prepared'); assert.deepEqual(prepared.report.findings, [valid]);
+    const access = {runId: 'publish-rename', authorizationRef: 'synthetic-grant'};
+    assert.equal((await workflow.publish(prepared.report, 0, f.context, access)).state, 'confirmed');
+    assert.equal((await workflow.publish(prepared.report, 0, f.context, access)).state, 'confirmed');
+    const posts = commands.filter(command => command.args.includes('POST')); assert.equal(posts.length, 1);
+    const body = JSON.parse(posts[0].stdin);
+    assert.equal(body.path, current); assert.equal(body.side, 'LEFT'); assert.equal(body.line, 2); assert.equal(body.commit_id, head);
+  } finally {dispose();}
+});
 test('parses default Git UTF-8 octal quoting and C-escaped filename characters', () => {
   // Windows cannot create the control-character/quote filenames, but uses the same Git diff format.
-  const names = ['src/中文.ts', 'src/ordinary.ts', ...(process.platform === 'win32' ? [] : ['src/quote".ts', 'src/back\\slash.ts', 'src/tab\tname.ts', 'src/new\nline.ts'])];
+  const names = ['src/中文.ts', 'src/中文 空格.ts', 'src/ordinary.ts', ...(process.platform === 'win32' ? [] : ['src/quote".ts', 'src/back\\slash.ts', 'src/tab\tname.ts', 'src/new\nline.ts'])];
   const actual = realQuotedDiff(names);
   assert.match(actual, /\\344\\270\\255/);
   const parsed = codeReviewChangedLines(actual);
@@ -73,17 +197,23 @@ test('actual Git diff paths with spaces retain the filename and strip only its t
   assert.equal(parsed.size, names.length);
   for (const name of names) assert.deepEqual([...parsed.get(name)], ['LEFT:1', 'RIGHT:1']);
 });
-test('Git space-path delimiters retain rename and deletion anchor sides', () => {
+test('Git space-path delimiters use the current rename path and retain deletion anchor sides', () => {
   const rename = 'diff --git a/old name.ts b/new name.ts\n--- a/old name.ts\t\n+++ b/new name.ts\t\n@@ -1 +1 @@\n-old\n+new\n';
-  assert.deepEqual([...codeReviewChangedLines(rename)], [['old name.ts', new Set(['LEFT:1'])], ['new name.ts', new Set(['RIGHT:1'])]]);
+  assert.deepEqual([...codeReviewChangedLines(rename)], [['new name.ts', new Set(['LEFT:1', 'RIGHT:1'])]]);
   const deletion = 'diff --git a/old name.ts b/old name.ts\n--- a/old name.ts\t\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n';
   assert.deepEqual([...codeReviewChangedLines(deletion)], [['old name.ts', new Set(['LEFT:1'])]]);
 });
 test('Git path delimiters do not accept embedded tabs, timestamps, malformed quoting or traversal', () => {
   for (const path of ['b/src/embedded\tname.ts', 'b/src/double.ts\t\t', 'b/src/a.ts\t2026-10-05 00:00:00',
-    '"b/src/a.ts"\t', 'b/../escape.ts\t', '/absolute.ts\t']) {
+    '"b/src/a.ts"\t\t', '"b/src/a.ts"\t2026-10-05 00:00:00', '"b/src/unclosed.ts\t',
+    '"b/src/raw\tname.ts"\t', '"b/src/\\000.ts"\t', '"b/../escape.ts"\t', 'b/../escape.ts\t', '/absolute.ts\t']) {
     assert.throws(() => codeReviewChangedLines(diff.replace('+++ b/src/a.ts', `+++ ${path}`)), /INVALID_ARGUMENT/);
   }
+});
+test('quoted headers accept exactly one trailing Git tab delimiter without trimming filename spaces', () => {
+  const quoted = diff.replace('--- a/src/a.ts', '--- "a/src/ with space.ts "\t')
+    .replace('+++ b/src/a.ts', '+++ "b/src/ with space.ts "\t');
+  assert.deepEqual([...codeReviewChangedLines(quoted)], [['src/ with space.ts ', new Set(['LEFT:1', 'RIGHT:1'])]]);
 });
 test('quoted paths reject invalid UTF-8, escapes, prefixes and traversal without accepting anchors', () => {
   for (const path of ['"b/src/\\377.ts"', '"b/src/\\303.ts"', '"b/src/\\400.ts"', '"b/src/\\q.ts"',
@@ -106,9 +236,9 @@ test('quoted paths do not relax diff pagination cursor validation', async () => 
     assert.equal(f.calls.some(call => call.toolName === 'github.pr.review.comment'), false);
   }
 });
-test('quoted rename and deletion anchors preserve original and current paths', () => {
+test('quoted rename anchors use the current path and pure deletions retain the original path', () => {
   const rename = 'diff --git "a/old\\tname.ts" "b/new\\tname.ts"\n--- "a/old\\tname.ts"\n+++ "b/new\\tname.ts"\n@@ -1 +1 @@\n-old\n+new\n';
-  assert.deepEqual([...codeReviewChangedLines(rename)], [['old\tname.ts', new Set(['LEFT:1'])], ['new\tname.ts', new Set(['RIGHT:1'])]]);
+  assert.deepEqual([...codeReviewChangedLines(rename)], [['new\tname.ts', new Set(['LEFT:1', 'RIGHT:1'])]]);
   const deletion = 'diff --git "a/old\\tname.ts" "b/old\\tname.ts"\n--- "a/old\\tname.ts"\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n';
   assert.deepEqual([...codeReviewChangedLines(deletion)], [['old\tname.ts', new Set(['LEFT:1'])]]);
 });
@@ -250,6 +380,50 @@ test('identical head reuses cached diff on re-prepare without re-pulling pages',
   const third = await f.prepare();
   assert.equal(third.state, 'prepared');
   assert.equal(f.calls.filter(call => call.toolName === 'github.pr.diff').length, diffCallsAfterFirst + 1);
+});
+test('approval resume retains every cached diff page evidence reference after checkpoint recovery', async () => {
+  let afterReady = false;
+  const split = Math.floor(diff.length / 2);
+  const f = fixture({invoke: async request => {
+    if (request.toolName === 'github.pr.get') {
+      if (request.runId.endsWith(':head-after') && !afterReady) return {state: 'pending', evidenceRefs: []};
+      return {state: 'confirmed', evidenceRefs: [request.runId], result: {number: 7, title: 'Change', body: '',
+        state: 'open', headSha: head, baseSha: base}};
+    }
+    assert.equal(request.toolName, 'github.pr.diff');
+    const offset = request.arguments.offset, end = offset === 0 ? split : diff.length;
+    return {state: 'confirmed', evidenceRefs: [`diff-page-${offset}`], result: {text: diff.slice(offset, end),
+      offset, nextOffset: end < diff.length ? end : null, truncated: end < diff.length}};
+  }});
+  assert.equal((await f.prepare()).state, 'pending');
+  assert.equal(f.modelCalls.length, 0);
+  for (const [key, value] of f.checkpoints) f.checkpoints.set(key, JSON.parse(JSON.stringify(value)));
+  afterReady = true;
+  const recovered = createCodeReviewWorkflow({model: {complete: async () => ({response: {kind: 'final',
+    text: JSON.stringify({findings: [finding]})}})}, tools: f.tools});
+  const result = await recovered.prepare({repo: 'owner/repo', number: 7,
+    rules: [{id: 'safe', text: 'Reject unsafe changes'}]}, f.context, f.access);
+  assert.equal(result.state, 'prepared');
+  assert.deepEqual(result.report.findings, [finding]);
+  assert.ok(result.report.evidenceRefs.includes('diff-page-0'));
+  assert.ok(result.report.evidenceRefs.includes(`diff-page-${split}`));
+  assert.equal(f.calls.filter(call => call.toolName === 'github.pr.diff').length, 2);
+});
+test('legacy or invalid cached diff evidence is refreshed through the original read port', async t => {
+  for (const invalidRefs of [undefined, [42]]) await t.test(JSON.stringify(invalidRefs) ?? 'missing', async () => {
+    const f = fixture();
+    assert.equal((await f.prepare()).state, 'prepared');
+    const key = [...f.checkpoints.keys()].find(key => key.startsWith('code-review-input:'));
+    const cached = structuredClone(f.checkpoints.get(key));
+    if (invalidRefs === undefined) delete cached.evidenceRefs;
+    else cached.evidenceRefs = invalidRefs;
+    f.checkpoints.set(key, cached);
+    const result = await f.prepare();
+    assert.equal(result.state, 'prepared');
+    assert.equal(f.calls.filter(call => call.toolName === 'github.pr.diff').length, 2);
+    assert.ok(result.report.evidenceRefs.includes('tool-evidence'));
+    assert.equal(f.calls.some(call => call.toolName === 'github.pr.review.comment'), false);
+  });
 });
 test('rejects confidence fields, unknown rules and approval categories; off-line findings are dropped', async () => {
   for (const changed of [{...finding, confidence: 0.99}, {...finding, ruleId: 'from-pr'}, {...finding, kind: 'approve'},

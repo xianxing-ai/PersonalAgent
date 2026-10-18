@@ -1,28 +1,70 @@
 # PersonalAgent
 
+<!-- current-design-alignment-20261015 -->
+## 当前设计、实现与验收入口（2026-10-15）
+
+[原 Node.js 连通架构图（10-16更新）](docs/design/workflow-architecture-20261013/index.html) · [运行/编辑说明](docs/design/workflow-architecture-20261013/README.md)。
+
+当前工作包面向 `huawei_ict_agentarts` Competition Profile，仍要求 AgentArts 实际承担智能体构建、Agent/Workflow 编排、评估与部署。
+当前接线为 Desktop → 本机 Runtime → `CloudAgentPort` → AgentArts 高代码自有镜像；镜像内 Agent/Workflow 负责图推进、模型编排及宿主请求提案，
+本机 Runtime/Policy/ToolGateway 负责授权、实际工具执行、任务状态与可信 Evidence。模型代理是其中的模型调用能力，不能概括整个 Competition 路径。
+
+本机 Laya 是 Owner 已授权、待独立站点资格验证的宿主组件；具体模型与调度实验见[详细设计](docs/design/CURRENT_DESIGN_20261015.md)及[当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)。
+该组件的存在不表示切换到 Local Profile，也不允许 AgentArts 失败后静默回退；不合格判断按受信配置升级。其比赛边界与资格仍待复核，架构及最终模型选型尚未定稿。
+AgentArts 的平台 MCP/知识库、Trace 与评估能力按[逐项状态](docs/design/WORKFLOW_STATUS_20261015.md)和[真实证据](docs/competition/evidence/desktop-agentarts-v5-20261016/README.md)分别验收；
+已读回的部署、目录、关联日志与有限调用仅证明对应范围，缺少平台能力或端到端证据的项目保持未验证，不将自有镜像部署或28项模板等同全部业务完成。
+
+主动来源跟踪用户责任/关注，贯穿原文、Goal、记忆与上下文；无人值守继续已有授权工作，归来汇总有效变化；
+静默保留 feed，用户控制打扰次数/窗口/渠道，语音最终确认由可信宿主验证。
+高级影子开关并入已有判断，主任务优先，按实际机会资源/收益选择；只有明确双方案比较任务等双方，
+其他任务可先交付已验证主结果。这是当前设计，真实机会并行/主优先资源调度尚未验收。
+
+SWR `local-laya-v3-244ca434` 已发布；云指定版本 `arm64-local-v3-244ca434` 目录和关联日志已验。
+两案例的完整执行表面为本机同版镜像、本机 Runtime/Policy/工具/Laya 与远端 AgentArts 模型代理；
+Wukong flow167.432s、Pelican第二轮81.611s，41条持久工具Evidence，首轮Pelican partial保留。
+分支父任务成功、协调锚点仍created；28目录不等于28业务通过。6次本机判断182–618ms未达150ms，
+各案例3裁决均升级DeepSeek，未证明减少高级模型调用或训练。
+
+查看[逐图状态](docs/design/WORKFLOW_STATUS_20261015.md)、[运行指南](docs/competition/TEST_IMAGE_V3_RUN.md)、
+[最新真实汇总](docs/competition/evidence/test-image-v3-20261015/full-workflow-results.json)、
+[新分工与接线包](docs/competition/COLLABORATOR_WIRING_PACKAGE.md)及[所有历史设计导航](docs/design/README.md)。
+以下带日期的旧设计、发布和测试保持原始适用范围，冲突口径不作为当前要求；PR/合并状态另按实际Git回执记录。
+
+> 2026-10-15 当前工作流实现入口：[本机 Laya + 镜像内全部工作流与协作者接线](docs/competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
+> 早期10-15部署修订已由上述当前设计和实际SWR发布回执更新；具体模型、串行推进与宿主实验以该设计和各项验收记录为准。
+
+## 历史交付与目标设计（2026-10-09）
+
+当前工作包同时提交自有 AgentArts 镜像源码、公开接口与必要接线，完整常驻自主设计和 Wiki 记忆交接。`97aa51a6` 预览镜像已发布到 GHCR，提供 `/ws` 与受保护状态查询；当前源码已接线 WSS 客户端与显式 HTTPS 备用、本地 Runtime 的审批/工具/证据和未知结果防重发。已发布 AMD64/ARM64 镜像分别通过容器测试 21/21 与生产入口合成 TLS 9 次请求；公网 Upgrade、真实华为验收、自动 status 协调、持久云端恢复、Wiki 自动接入和完整常驻监管仍待完成。详细实现见 [接口说明](docs/competition/OWNED_IMAGE_INTERFACES.md)，固定来源、digest 与下载见 [新版发布记录](docs/competition/OWNED_IMAGE_WSS_RELEASE_20261009.md) 和 [GitHub 预发布页](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-97aa51a6)；GHCR 发布、PR 合并与真实华为验收分别记录。
+
+使用入口：[当前设计与状态](docs/CURRENT_DESIGN_CONTEXT.md)、[镜像接口](docs/competition/OWNED_IMAGE_INTERFACES.md)、[GHCR 分享](docs/competition/OWNED_IMAGE_SHARING.md)。Wiki 由 goo122 实施；两位协作者必须在自己的电脑阅读当前设计并确认/审批，禁止强制合并或管理员绕过。下文 2026-10-07 的提交和验收记录是历史基线。
+
+
 面向 Windows 的持续型私人 Agent 助理：以动态悬浮球为入口，结合版本化个人世界状态、AgentArts 云端编排、平台连接器与受控电脑操作，提供主动提示和有限自动执行。
 
 项目参加**华为 ICT 大赛创新赛道**，选择“基于华为云 AgentArts 智能体开发平台的 Agent 设计和应用”赛题。[Huawei ICT AgentArts Competition Profile](docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 是当前唯一实施和验收优先级：AgentArts 必须真实承担智能体构建、编排、评估和部署。通用 Local Profile 及现有 `runAgent()`、`ModelGateway`、盘古/自有模型代码只作为可选基线留存，当前不新增能力，也不构成比赛退出条件。本地 Runtime 始终拥有授权、真实执行、读回和 Evidence。
 
-## 当前状态
+## 2026-10-07 历史基线
 
-截至 2026-09-09，MOD-01/02/03/25 及 MOD-04/05 的离线增量已集成；PR #31 已加入 Runtime-owned 会话上下文，PR #34 已完成非作者评审、CI 和合并，Desktop 已通过公开 task/conversation/approval 查询恢复状态。只冻结 [Core Runtime Profile 1](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) 的消息、任务、会话和审批只读查询子集。
+截至 2026-10-07，本地已同步到 `main@4d15f063`，该提交的 Foundation CI（run 37563282512）已读回成功。项目主要负责人为 **zemeng / zemeng5208**，用户继续负责核心与 AgentArts，goo122 和 Potatos 各自独立负责基础与业务主线；[模块分工](docs/MODULE_ASSIGNMENTS.md) 是负责人和文件所有权的唯一登记。
 
-整套协议、模型工具调用和 Agent 编排**尚未冻结**。盘古 Provider 当前仅声明非流式文本能力；原生 function calling 未提供，文字 JSON 工具提案没有真实盘古→审批→工具→读回闭环证据。AgentArts、记忆、知识、MCP、Skills、语音、Windows Host 等缺少生产提供者的能力统一登记为 unavailable。Competition Profile 已完成架构确认，但尚无 AgentArts Adapter、云端部署、API trace 或完整生产闭环。
+主分支已包含 AgentArts Adapter、Competition Runtime/审批工具循环、Desktop、语音与业务连接器，以及知识/记忆、认知和 DEV-WORKFLOWS 增量。#294 的撤回记忆管理与恢复、#297 的开发工作流修复均已合并；这纠正了旧文档中“尚无 Adapter”和“未合并”的描述。代码存在、CI 成功与真实功能验收分别记录。
+
+整体 MVP 仍为 `in_progress`。真实 Competition 全链、原生 Desktop/Live、目标账号、设备及恢复读回按各自证据推进；本轮仅做同步、文档和清理，没有重跑真实模型或桌面验收。开放 PR 为 #298（CI 增量）与 #291（明确不合并的验收草稿）。最新任务状态见 [ROADMAP](docs/ROADMAP.md)，清理备份与继续入口见 [接手记录](docs/PROJECT_TAKEOVER_20261007.md)。
 
 ## 文档入口
 
 - [华为 ICT AgentArts Competition Profile](docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)：参赛主路径、比赛与可选 Local 边界、实施顺序和验收矩阵。
 - [产品需求 PRD](docs/PRD.md)：产品范围、需求编号、优先级和验收条件。
 - [架构设计](docs/ARCHITECTURE.md)：模块、进程、协议、数据与技术验证项。
-- [模块分工](docs/MODULE_ASSIGNMENTS.md)：32 个主模块及 MOD-04A/04B 独占工作面；`Potatos498` 的 MOD-20～26 保持不变。
+- [模块分工](docs/MODULE_ASSIGNMENTS.md)：主模块、DEV-WORKFLOWS 及独占工作面；三人各自负责完整交付，当前合并须三名登记协作者中至少一位非作者对当前提交有效批准，并满足 CONTRIBUTING 的检查门槛，禁止强制合并或管理员绕过。
 - [公共开发协议](docs/DEVELOPMENT_PROTOCOL.md)：`goo122` 维护的任务、事件、工具、连接器契约与联调交付要求。
 - [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)：逐接口冻结状态、生产可用性、证据和未提供能力。
 - [协作开发规范](CONTRIBUTING.md)：任务分配、分支、PR、评审和完成标准。
 - [开发计划与进度](docs/ROADMAP.md)：阶段门槛、首批工作包和当前状态。
 - [Agent 协作规则](AGENTS.md)：在本仓库工作的自动化开发者必须遵循的约束。
 
-阅读顺序：Competition Profile → PRD → 模块分工 → 当前接口目录 → 公共开发协议 → 架构 → 协作规范 → 开发计划。`goo122` 与 `zemeng` 从同一冻结接口提交使用 Fake 独立开发；`Potatos498` 保持原连接器分工。当前新增实现只面向 `huawei_ict_agentarts`；Local Profile 仅留存现有代码，除非产品负责人以后明确启用，否则不新增、不扩展、不作为当前验收对象。任何实现变更必须关联需求编号、profile 和验收证据。
+阅读顺序：Competition Profile → PRD → 模块分工 → 当前接口目录 → 公共开发协议 → 架构 → 协作规范 → 开发计划。`goo122` 与 `zemeng` 从同一冻结接口提交使用 Fake 独立开发；Potatos 独立交付业务连接器与业务接线，三人可按公开契约自行补齐 Fake 和必要集成。当前新增实现只面向 `huawei_ict_agentarts`；Local Profile 仅留存现有代码，除非产品负责人以后明确启用，否则不新增、不扩展、不作为当前验收对象。任何实现变更必须关联需求编号、profile 和验收证据。
 
 ## 开发入口
 

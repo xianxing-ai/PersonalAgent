@@ -1,5 +1,105 @@
 # PA020 私人记忆与流程学习生产桥
 
+> 公开脱敏投影：历史命令中的机器专属路径已改为接收者可配置占位或仓库相对路径；日期、数值、失败与原哈希保留。占位不是可直接执行的配置，运行前使用本机受信Node/npm、工作树及运行环境路径。
+
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
+## 2026-10-06 收口验收矩阵（2026-10-07 更新）
+
+目标 profile 为 `huawei_ict_agentarts`，负责人 goo122。远端 main 核对基线为
+`e86bac5382180495854923dbcf4ca9bbaf3a9b55`（2026-10-08 复核）；原生验收基线为 `74b64c35`，后续仅交接文档变化。共享根工作区保留，不作为本轮验证基线。
+保留本节标题以兼容已有链接；最新真实本地结果见 [2026-10-08 验收记录](MOD-09-REAL-LOCAL-LIFECYCLE-20261008.md)。
+本节区分当前集成状态与下面保留的历史验收记录，不将阶段测试累计成完成百分比。
+
+| 验收项 | 当前证据 | 剩余条件 |
+| --- | --- | --- |
+| 同步消费门禁、实际 Runtime 父子副本清除 | #285 已合并；实际 SQLite/Runtime 回归，云响应与确认回调为 Fake | 原生许可和真实云消费不能由该回归替代 |
+| 流程验证、启用、回退、重启与删除 | #289 已于 2026-10-06 合并，提交 `1ecab685960c364016364d171fdc00a704aeccb5`；实际官方 filesystem stdio、Client、SQLite Policy/Runtime，公开合成文件 | 真实用户流程与原生启用/回退另验 |
+| 撤回后管理、全版本删除及取消异常恢复 | #294 已进入 main；#304/#305 原生控件及来源状态保护也已合并。2026-10-08 真实原生撤回 v3、重启管理、三版本删除及再次重启无复活通过 | 取消异常与混合批次无关数据保留仍为合成回归；新增真实副本或恢复路径需另验 |
+| 真实来源持久生命周期 | 用户逐条确认 A/B 并委托原生操作；独立正式装配完成保存 v1、更正 v2、重启读回、撤回 v3、全历史/回执删除及重启空查询；原文件哈希不变 | 本轮仅一条已确认事实；无关多事实保留不能冒充真实验收，详见本次记录 |
+| Electron 原生交互 | 2026-10-07 只读/取消通过；2026-10-08 真实保存、更正、撤回、删除对话与已保存列表通过，未用替身确认器；#304/#305 已合并 | 本地确认不授予云发送或子任务消费许可；GitHub reviews 为空的已合并 PR 仍需按用户工作规范补核非作者评审 |
+| 私人 parent→child 消费 | 当前私人派生提案在审批、工具执行和子任务创建前拒绝；父许可不传递给子任务 | 与 P8/认知负责人明确交付范围及逐任务许可；保持拒绝行为，不用副本删除测试冒充消费支持 |
+| 真实 AgentArts 消费 | 本工作包没有真实云调用证据 | 可用部署、明确任务目的地及独立出机/云调用授权；记录 deployment/version/trace、本地 Evidence 和读回 |
+
+`74b64c35` 的 Foundation 重跑终态为 success；首次失败记录保留，后续工作包 CI 另核对。
+执行顺序：交付本次脱敏验收记录与矩阵
+→ 明确 parent→child 范围和逐任务许可 → 独立授权后的真实 AgentArts 消费及用户流程验收。
+已确认 A/B 的本地原生生命周期通过，不重复索要相同本地授权；
+不得使用 Fake 自动确认私人内容、使用其他账号自评或因 CI 成功提前合并。
+MOD-09 保持 `in_progress`、接口保持 provisional，只有约定验收、非作者评审和集成都满足后再调整状态。
+
+## 2026-10-06 撤回后的管理入口补修
+
+目标 profile：`huawei_ict_agentarts`；goo122 延续在途 MOD-09 工作，状态 `in_progress`。
+基线 `e02865c`；隔离工作树 `.worktrees/mod09-withdrawn-memory-management`，
+分支 `codex/mod09-withdrawn-memory-management`。保留已有原生验收实例和共享工作区。
+
+- 失败复现：私人记忆更正为 v2、撤回为 v3 后，重启时管理列表只查询有效事实，
+  找不到撤回头，无法从列表选择全部历史删除。新增合成用例在修复前准确失败。
+- SQLite 新增 host-only `listUserFactHeads`，复用原快照/游标和水位，列出每条
+  `private/user_confirmed` 的当前头，包括撤回和过期；最新头不满足范围时不回退。
+  管理快照与 consumer query、其他 namespace 隔离，删除时失效相关快照。
+- Desktop 管理列表使用该端口，展示版本和撤回状态。撤回或删除确认成功后刷新列表，
+  任务选择只保留有效 active 引用；取消不刷新或改写引用。
+- 不新增 wire operation、Schema、迁移或依赖。`MemoryQueryPort` 的有效查询和任务消费授权不变，
+  接口仍为 provisional。真实原生逐条确认、真实来源持久生命周期和真实 AgentArts 消费尚未通过。
+- 验证：`npm ci`、根构建、native Release 构建通过；定向回归 35/35、Memory 工作区 44/44，
+  根集成 22/22。数据和确认回调均为显式合成，不构成原生确认或真实云端证据。
+  `npm run dev`、`demo:protocol`、`demo:runtime` 均通过；Runtime 演示 verification 为 mock。
+- `npm run check` 的架构、协议夹具、生成检查与全工作区类型检查通过；工作区测试共
+  2074 项，2047 通过、2 失败、25 跳过。失败代码均未修改：Desktop
+  `coding-tool-host.test.mjs:72` 在默认 TEMP 环境的装配断言失败。最初观察到 `where.exe`
+  输出解码后路径不匹配，但当前主线已经直接搜索 PATH，该观察不能作为本次装配失败的根因。
+  另 `windows-host-fixture.test.mjs:34`
+  要求稳定 .NET 8 SDK，本机只枚举到 SDK 10.0.302；已有 .NET 8 Runtime 不等于 SDK。
+  此为首次运行的失败记录，未修改这些门禁或顺带扩展 Windows 宿主范围。
+- 2026-10-06 环境复核：微软官方 SDK 8.0.425 zip 经官方 SHA-512 校验后解压到项目忽略缓存。
+  仅验证进程使用该 SDK，并把 TEMP/TMP 指向工作树外的项目缓存；原宿主装配门禁单独通过，
+  两项 Windows 门禁合计 7/7。默认 TEMP 兼容问题仍待 Windows 宿主负责人定位；本补修不声明解决它。
+- 隔离环境完整 `npm run check` 通过：工作区测试 2074 项，2049 通过、0 失败、25 跳过，
+  根集成 22/22；架构、协议夹具、生成检查和类型检查均通过。验证条件如上，不宣称默认 TEMP 兼容修复。
+- 本增量通过独立 PR 交付；当前提交的远程 CI、非作者评审与合并仍为集成条件，
+  不把本地通过记作主线交付或 MOD-09 完成。
+
+### 同日继续：删除待清除状态与 Electron 合成回归
+
+- 管理页此前把私人来源已删除、关联任务副本仍待清除的 `pending` 误报为“已取消”。
+  Renderer 合成响应准确复现该问题；现在刷新当前头，显示删除尚未完成，不保留已删除引用供任务选择。
+  独立控件对 `private_copy_erasure` 同样刷新；拒绝确认保持原引用。
+- 更新已有 `apps/desktop/test/private-memory-smoke.cjs`：旧回环网关不满足当前可信配置校验，
+  旧“所有私人写入禁用”和 fixture-root 开关也已不符合 main 的生产装配。现在以合法合成目标、
+  空云凭据和独立 userData 启动正式 Competition 装配，不配置真实账号、不提交云任务。
+- 实际隔离 Electron 回归通过：替身确认取消/保存、更正 v2、拒绝撤回、撤回 v3 后自动刷新、
+  无消费按钮、关闭重启且不重新选择 Vault、拒绝删除保留三版本、删除三版本、再次重启仍为空。
+  原夹具文件字节保留；验证进程 fetch 陷阱计数为零。待副本清除展示使用显式 Renderer fixture。
+- 原生 Computer Use 初始化及重置后重试仍报 `trusted Node process exited unexpectedly`，
+  没有原生窗口输入；上述自动化与替身对话不代替真实用户逐条确认或真实 AgentArts 验收。
+- 本补修 Desktop 类型检查与完整模块测试通过：444 项，442 通过、0 失败、2 跳过；
+  沿用上节的隔离 SDK/TEMP 验证条件。无公共接口、迁移或 Runtime 执行语义变更。
+- 首提交 `e829aef` 的远程 Foundation run `37446016736` 失败于未修改的 Calendar
+  `cloud-business.test.mjs:88`：deadline 预期 `TIMEOUT`，实际 `EXTERNAL_FAILURE`；同一用例本机复跑通过。
+  该目录不在本 PR diff 中，保留失败记录，不据复跑通过宣称远程门禁通过；后续提交须重新核对 CI。
+
+### 同日继续：删除提交后的取消异常恢复
+
+- 新用例准确复现：私人来源删除已提交，取消某个派生任务抛错，清理整批中断，
+  不能返回该副本的 pending 状态或继续处理其他目标副本。
+- `private-memory-erasure-host.js` 将释放、取消和精确副本清理纳入原失败收集边界。
+  取消失败保留该 taskId 为 pending，继续处理同事实的其他副本；恢复只使用原删除标记。
+  已有精确 `taskId/factId/bindingDigest/purged` 收据的副本跳过释放、取消和清理，
+  失配收据仍不能当作完成。不改 Runtime 取消受理语义，不重放工具或云调用。
+- 合成源库及替身取消端口复验覆盖部分清理、重启恢复、重复恢复零取消和无关副本保留；
+  连同实际 Runtime 父子副本、生产管理/消费门禁定向 13/13 通过。
+  无 Schema、公共 operation、数据库迁移、依赖或权限变化。
+- Desktop 类型检查与完整模块测试通过：445 项，443 通过、0 失败、2 跳过；
+  隔离 Electron 合成生命周期再次通过，fetch 陷阱计数零。沿用前述 SDK/TEMP 条件，
+  原生逐条确认及真实云端验收仍未完成。
+- 中间提交 `ce95539` 两项 Foundation（run `37447588019`、`37447583221`）成功，
+  暂无非作者评审。该证据仅覆盖此取消异常补修之前的提交；新提交须重新验证 CI 和评审。
+
 ## 2026-10-05 主线确认与实际 MCP 学习验收
 
 目标为 `huawei_ict_agentarts`，工作树 `.worktrees/main-ci-foundation-validation`，
@@ -157,7 +257,7 @@ Windows helper Release 构建通过，并用显式 `PA_TEST_JOB_HOST_EXE` 实际
 ## 原工作包记录
 
 目标 profile：`huawei_ict_agentarts`。负责人 zemeng，非作者评审/集成由 PR 专线和 P8。
-工作树 `D:/PersonalAgent/.worktrees/memory-learning-mvp`，分支 `codex/memory-learning-mvp`，
+工作树 `<implementation>/memory-learning-mvp`，分支 `codex/memory-learning-mvp`，
 基线 `1db50397`。状态 `review`；共享 main/preload/view/application exports/root package/lock 由 P8 单独装配。
 
 ## 已交付端口

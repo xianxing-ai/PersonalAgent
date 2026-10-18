@@ -8,6 +8,7 @@ import {
 } from './laya-action-choice.js';
 import type {LayaInferencePort} from './laya-decision.js';
 import {CognitionError} from './impact.js';
+import {withCognitionDeadline} from './deadline.js';
 
 export interface DeviceAnomalyActionChoicePort {
   choose(request: LayaActionChoiceRequest): Promise<LayaActionSelection>;
@@ -156,6 +157,8 @@ export class DeviceAnomalyDecisionService {
 
   private async load(): Promise<void> {
     if (this.loaded) return;
+    // A rejected checkpoint must not expose a partially loaded source prefix.
+    const loadedSources = new Map<string, SourceState>();
     const value = await this.checkpoint?.load();
     if (value !== undefined && value !== null) {
       const saved = value as {version: number; configDigest: string; sources: Record<string, SourceState>};
@@ -170,9 +173,11 @@ export class DeviceAnomalyDecisionService {
           || ![state.lastAlertTimestampMs, state.lastSampleTimestampMs].every(time => time === null || Number.isFinite(time))
           || (state.pendingDelivery && (typeof state.pendingDelivery.id !== 'string'
             || !Number.isFinite(state.pendingDelivery.timestampMs)))) throw new CognitionError('INVALID_ARGUMENT');
-        this.sourceStates.set(source, structuredClone(state));
+        loadedSources.set(source, structuredClone(state));
       }
     }
+    this.sourceStates.clear();
+    for (const [source, state] of loadedSources) this.sourceStates.set(source, state);
     this.loaded = true;
   }
 
@@ -206,7 +211,9 @@ export class DeviceAnomalyDecisionService {
         status: delivered ? 'alert_triggered' : 'monitoring', notificationDelivered: delivered,
         safeAdvice: delivered ? '受信通知宿主已读回确认投递，冷却状态已持久化'
           : '受信通知宿主确认未投递，后续新采样可以重试'};
-      state.pendingDelivery = undefined;
+      // Host-state checkpoints require lossless JSON; absent optional state
+      // must not be represented by an own property with an undefined value.
+      delete state.pendingDelivery;
       try {await this.save();}
       catch (error) {if (this.checkpoint) {this.loaded = false; this.sourceStates.clear();} throw error;}
     });
@@ -236,15 +243,21 @@ export class DeviceAnomalyDecisionService {
     sample: DeviceSample,
     layaRequest?: {deadline: string; signal: AbortSignal}
   ): Promise<DeviceAnomalyDecisionReceipt> {
+    // Capture caller-owned data before waiting for queued work or checkpoint I/O.
+    let submittedSample: DeviceSample;
+    try { submittedSample = structuredClone(sample); }
+    catch { throw new CognitionError('INVALID_ARGUMENT'); }
+    const submittedRequest = layaRequest
+      ? {deadline: layaRequest.deadline, signal: layaRequest.signal} : undefined;
     const operation = this.tail.then(async () => {
       await this.load();
       try {
-        const receipt = await this.evaluateSerial(sample, layaRequest);
+        const receipt = await this.evaluateSerial(submittedSample, submittedRequest);
         if (receipt.status !== 'replayed') {
-          this.getSourceState(sample.source).lastReceipt = receipt;
+          this.getSourceState(submittedSample.source).lastReceipt = structuredClone(receipt);
           await this.save();
         }
-        return receipt;
+        return structuredClone(receipt);
       } catch (error) {
         if (this.checkpoint) {this.loaded = false; this.sourceStates.clear();}
         throw error;
@@ -349,12 +362,8 @@ export class DeviceAnomalyDecisionService {
 
         let selection: LayaActionSelection;
         try {
-          selection = await this.choiceService.choose({
-            context,
-            candidates,
-            deadline,
-            signal,
-          });
+          selection = await withCognitionDeadline({deadline, signal}, bounded =>
+            this.choiceService.choose({context, candidates, ...bounded}), this.now);
         } catch {
           // If inference fails, do NOT update cooldown timestamp so subsequent attempts can proceed
           return {
@@ -406,8 +415,17 @@ export class DeviceAnomalyDecisionService {
           // Persist intent before delivery. A crash or final checkpoint failure
           // retains an unknown result that requires host readback, never resend.
           await this.save();
+          if (signal.aborted || this.now() >= Date.parse(deadline)) {
+            // This intent was created above and delivery has not been attempted.
+            if (state.pendingDelivery?.id === deliveryId) delete state.pendingDelivery;
+            return {receiptId: deliveryId, source: sample.source, status: 'monitoring',
+              isAlertActive: state.isAlertActive, consecutiveElevatedCount: state.consecutiveElevatedCount,
+              sample, selection, selectedCandidate, candidates, notificationDelivered: false,
+              safeAdvice: '本次请求已取消或到期，通知未投递，继续监测且未锁定冷却窗口'};
+          }
           try {
-            const deliveryResult = await this.notificationPort.sendAdvisoryNotification({
+            const deliveryResult = await withCognitionDeadline({deadline, signal}, () =>
+              Promise.resolve(this.notificationPort!.sendAdvisoryNotification({
               id: deliveryId,
               source: sample.source,
               title: `系统资源高负荷告警 (${sample.source})`,
@@ -415,13 +433,13 @@ export class DeviceAnomalyDecisionService {
               advice: safeAdvice,
               candidateId: selectedCandidate?.id ?? 'none',
               timestamp: sample.timestamp,
-            });
+              })), this.now);
             deliveryConfirmed = deliveryResult.delivered === true;
             notificationDelivered = deliveryConfirmed;
           } catch {
             return {receiptId: deliveryId, source: sample.source, status: 'indeterminate',
               isAlertActive: true, consecutiveElevatedCount: state.consecutiveElevatedCount,
-              sample, selection, candidates, safeAdvice: '通知端口异常，投递结果待受信宿主核实，未锁定冷却且不盲目重发',
+              sample, selection, candidates, safeAdvice: '通知投递未确认，结果待受信宿主核实，未锁定冷却且不盲目重发',
               notificationDelivered: false};
           }
         } else {
@@ -433,7 +451,7 @@ export class DeviceAnomalyDecisionService {
         if (deliveryConfirmed) {
           state.lastAlertTimestampMs = sampleTimeMs;
         }
-        state.pendingDelivery = undefined;
+        delete state.pendingDelivery;
 
         let adviceText = safeAdvice;
         if (!this.notificationPort) {

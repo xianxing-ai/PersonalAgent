@@ -1,79 +1,96 @@
 # 模块分工与独立交付清单
 
-版本：0.7 · 日期：2026-09-29 · 状态：只实施 Huawei ICT AgentArts Competition Profile；Local Profile 可选留存
+平台协作权限仅PersonalAgent AgentArts项目及关联资源的查看/编辑/部署/调用/调试/日志/评估管理，不含全云/IAM/其他项目；授权需求不代表已获访问，项目角色与入驻见 [协作访问记录](competition/AGENTARTS_COLLABORATION_ACCESS.md)。公开材料不写真实hid/秘密。
+
+## 2026-10-15 新接线工作包（不改变原 MOD 归属）
+
+每项唯一负责人亲自交付实现→公开契约→实际调用方→必要测试→Evidence/文档；共享根入口协调后随本人工作包补齐。根只协调组合，不承担全部MOD代验。精确文件范围、输入输出、公开依赖、本人接线位置、测试命令/真实验收与Evidence要求见 [完整矩阵](competition/COLLABORATOR_WIRING_PACKAGE.md)；逐 MOD 清单见 [模块当前交接](modules/CURRENT_MOD_WIRING_HANDOFF.md)。这些是新纵向任务，不把历史作者归属或六项DEV工作交回zemeng。
+
+| 新包 | 唯一负责人 / MOD | 当前状态与下一本人任务 |
+| --- | --- | --- |
+| CW-01 本机Laya可信回执桥 | zemeng5208 / 28、30 | in_progress；公共夹具已真实调用，下一业务站点资格/正反样本与150ms未验继续做，未合格teacher接管 |
+| CW-02 AA镜像/新代理/平台 | zemeng5208 / 29、30、32 | in_progress；SWR/云目录/代理已验，下一精确远端版本只读闭环及平台四面逐项验 |
+| CW-03 主动事件持续责任 | zemeng5208 / 27、28、30 | in_progress；四入口HTTP/SQLite fixture已验，下一真实来源责任消费 |
+| CW-04 上下文知识记忆 | goo122 / 08、09 | in_progress；下一公开Vault更正/撤回→主动引用失效，平台provider缺口单列 |
+| CW-05 无人值守/归来 | zemeng5208 / 28、30 | in_progress；下一实际enter/return控制接checkpoint，云持续与设备边界单验 |
+| CW-06 主影选择收益 | zemeng5208 / 30、31 | in_progress；串行专项双跑已验，下一日常任务收益/sampling真实接线，不把设计当验收 |
+| CW-07 委派/主控升级 | zemeng5208 / 04B、31 | in_progress；下一实际parent-child报告/进度/原授权内teacher建议消费 |
+| CW-08 业务连接器 | Potatos498 / 20–26 | in_progress；下一逐来源真实增量→持久sink→cursor，未选社交平台不自动开工 |
+| CW-09 通知静默频次 | Potatos498 / 23 | in_progress；下一真实渠道投递/ack，fixture静默0send及quota不作实机证明 |
+| CW-10 语音询问确认 | zemeng5208 / 13、14、15 | in_progress；下一当前参数final语音→原approval版本，物理设备和SIS经AA未验 |
+
+以上输入消费仍由原Runtime/Policy/ToolGateway/Evidence/Scheduler负责权限和事实状态。当前接口保持provisional/unavailable；实际两条公共编码链41条Evidence、本机Laya未达150ms、协调锚点created和远端全链未验等限制见接线包。状态不是整个MOD完成声明；PR/提交由根本轮另行处理。
+
+
+## 2026-10-09 Wiki 与常驻设计分工
+
+goo122 具体交付 MOD-08/09 的 Wiki 适配、来源版本、事实/检索投影、受控写回、双向去重和恢复，并随工作包完成必要公共契约/Runtime/Policy 接线。zemeng 负责 MOD-27/28 与 AgentArts 公开端口消费、常驻增量修复及监管产品体验；Potatos498 的业务模块所有权不改变。
+
+独立工作包见 `design/resident-developer-agent-20261008/WIKI-MEMORY-HANDOFF.md`。新设计不等于接入实现；估算基线2026-10-08保留。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。开发、使用契约一致 Fake 和提交 PR 可独立推进。
+
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：各 MOD 负责人自己接线、测试、交 Evidence；[具体十项接线包](competition/COLLABORATOR_WIRING_PACKAGE.md) · [全 MOD 清单](modules/CURRENT_MOD_WIRING_HANDOFF.md)。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。历史验收与作者保留。
+
+版本：1.0 · 日期：2026-10-07 · 状态：只实施 Huawei ICT AgentArts Competition Profile；Local Profile 可选留存
 
 本文件是未来工作负责人、文件所有权和交付边界的唯一登记处。[Competition Profile](competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 定义当前优先参赛路径，[PRD](PRD.md) 定义需求，[公共开发协议](DEVELOPMENT_PROTOCOL.md) 定义互通语义，[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) 决定接口是否冻结或可用，[ROADMAP](ROADMAP.md) 维护执行状态。
 
-## 0. 首版 MVP 本轮执行权调整（2026-09-29，优先于下文历史分工）
+## 0. 三人独立交付分工（2026-10-07 最新修订）
 
-产品负责人最新调整：`Potatos498` 继续负责 P0～P4；撤回此前委派给他的 P5～P8，交回 zemeng 侧统筹，具体执行者在接手前登记。此修订覆盖此前“全部非线上 AgentArts”委派。
-本轮任务、已核对基线、PR 状态和接手回执集中在 [Issue #212](https://github.com/zemeng5208/PersonalAgent/issues/212)，不另复制进度表。
-这是明确的跨模块实施委派；下文原归属保留作为历史及技术评审依据，不再限制 Potatos 只能开发 MOD-20～26。
+用户明确要求三个人都能独立工作，不因另一人的 PR 审批、集成排队或尚未提供的 Fake 而停工。**zemeng（GitHub：zemeng5208，即用户）继续负责项目核心、AgentArts 与技术方向**。本修订替代同日早先“Potatos 全部执行权转给 zemeng”的临时安排；三人各自拥有完整交付责任。
 
-| 边界 | 当前实现负责人 | 说明 |
-| --- | --- | --- |
-| P0～P4：PR收拢、业务连接器、Desktop通用接线、语音/Live、子Agent/多模型/本地执行底座 | Potatos498 | 排除下列 P5～P8 专属实现与共享集成写入；P0 可登记相关 PR 状态，不接手被撤回包的实现返修 |
-| P5：Laya、目标与主动认知 | zemeng；执行者 Gemini（原交互会话，任务已准备、待送达确认） | packages/goals、packages/cognition、scripts/laya 及明确登记的 Desktop 认知/主动/邮件消费专属文件；变化→多候选→真实 Laya→已授权动作→持久读回/恢复去重。连接器提供者仍归 P1，共享装配归 P8 |
-| P6：Windows与编码工具 | zemeng 侧统筹，执行者待登记 | apps/windows-host、packages/windows-client、packages/coding-tools；复用已集成实现，真实窗口隔离、接管与读回，工作区补丁实际应用和受限命令 |
-| P7：知识、记忆、关注事项 | goo122 保留在途实现；剩余交接由 zemeng 侧统筹 | packages/knowledge、plugins/obsidian、packages/memory、packages/learning 及本地消费；在途文件完成明确交接前不并发改写 |
-| P8：本地共享集成与非云比赛材料 | zemeng 侧统筹，goo122 评审公共兼容 | 根配置/锁文件/公共装配采用独立 PR 和唯一写入槽；既有 Gemini 两份证据/演示文档任务继续保留，不重复委派 |
-| 线上 AgentArts 控制台、工作流提示词修改、发布、实例绑定、云凭据与真实云运行 | zemeng | 保持唯一云配置写入者；本地AgentArts客户端代码可以交给Potatos，真实云验证由zemeng完成 |
-| goo122 已进行的 #209 → #210 → #211 私人记忆/删除恢复PR内部返修 | goo122（限在途范围） | Potatos可作非作者评审；goo122声明交接头与占用文件后，由P7登记的执行者接手，不再默认交给Potatos |
-| MOD-19 Windows打包安装 | 暂停 | 不因本轮扩大分工恢复打包安装；已排除的TraceGuard治理也不重新加入 |
+| 负责人 | 独立主线 | 模块归属 | 可独立交付的结果 |
+| --- | --- | --- | --- |
+| **zemeng / zemeng5208** | **核心认知、AgentArts、桌面与受控执行** | MOD-04B、10～19、27～32；MOD-19 仍暂停 | CloudAgent/Competition 编排、Agent/Workflow/多 Agent、Goal/Fact/Decision/Plan、Laya/主动认知、Desktop/语音/Windows/编码工具、比赛评估与 Demo；含本主线所需消费接线 |
+| **goo122** | **基础运行时、协议与知识记忆** | MOD-01～03、04A、05～09、33、36、37；MOD-37 按原范围待开工 | TaskRuntime、ModelGateway/Provider、Policy/ToolGateway、存储/凭据、MCP/Skills、知识/Obsidian/记忆/学习、协议与工程底座、GitHub 连接器、代码预审与 API 文档维护；含本主线所需宿主和管理接线 |
+| **Potatos498** | **业务能力与业务侧用户流程** | MOD-20～26、34、35、38；未选社交平台仍不自动开工 | 待办/日历/邮件/订阅/通知/研究/天气/已选社交连接器、CI 修复、测试失败定位、Issue 分类与修复 PR；含业务设置页、业务工具注册、业务结果展示与真实来源验收 |
 
-### 0.1 DEV-WORKFLOWS 开发自动化功能群（2026-10-02 登记；2026-10-03 开工）
+zemeng 掌握核心产品架构、认知语义和 AgentArts 云端方向；另外两人可在其既定目标内直接完成普通实现与交付，无需先等 zemeng 分派下一步或批准 PR。历史作者、评审、证据和已集成成果保留原归属。
 
-产品负责人 2026-10-02 提出 5 项开发自动化功能，登记为 MOD-33～38（含 MOD-33 共享底座），方案与验收边界见 [DEV-WORKFLOWS 规划](modules/DEV-WORKFLOWS-PLAN-20261002.md)。本群属 Local Profile 产品化增量，不进入当前比赛退出条件，不改变 §0 在途 P0～P8 边界。2026-10-03 用户明确授权 zemeng 按分工开始 MOD-33/34/36/38，代码交付进入 review，集中运行验证交 Potatos498；MOD-35/37 的既有负责人和开工权限不由本轮扩大。精确文件划分与验证状态见 [交接记录](modules/DEV-WORKFLOWS-HANDOFF-20261003.md)。
+### 0.1 DEV-WORKFLOWS 归属
 
-| 模块 | 功能 | 负责人 | 评审者 | 依赖 |
-| --- | --- | --- | --- | --- |
-| MOD-33 | GitHub 集成连接器底座（CI/issue/PR 端口） | zemeng | goo122 | 无（连接器模板 §6） |
-| MOD-34 | CI 构建失败自动修复 | zemeng | Potatos498 | MOD-33、子Agent/本地执行底座 |
-| MOD-35 | 测试失败自动定位 | Potatos498 | zemeng | 与 MOD-34 共享解析底座 |
-| MOD-36 | Code Review 自动预审 | zemeng | Potatos498 | MOD-33 |
-| MOD-37 | API 文档自动维护 | goo122 | zemeng | MOD-33、check:generated/architecture 产物 |
-| MOD-38 | Issue 自动分类+修复 PR | zemeng | Potatos498 | MOD-33、MOD-34 |
+按用户最新减负要求，六项由 goo122 与 Potatos498 各承担三项，zemeng 不再承担本组日常实现、返修或集中验收，继续负责核心认知、AgentArts 与桌面执行主线。两人的交付包含必要接线、自审和实际验收，不能把集成或验收默认交回 zemeng。
 
-2026-10-05 用户要求按 #277 与旧 MOD 继续实现、评审和必要验证，覆盖此前本轮执行端只做静态核对的限制。zemeng 仍串行负责既有 DEV-WORKFLOWS 集成槽；新旧任务与实际验证见 [接续记录](modules/DEV-WORKFLOWS-CONTINUATION-20261005.md)。MOD-35 已由 Potatos498 交 #279，zemeng 评审及返修；MOD-37 保留 goo122 分工，不接管其目录。
+| 模块 | 功能 | 负责人 | 独立交付边界 |
+| --- | --- | --- | --- |
+| MOD-33 | GitHub 连接器底座 | goo122 | 公开 GitHub 端口、Provider、Fake 和消费接入 |
+| MOD-34 | CI 失败修复 | Potatos498 | 模型归因、受控补丁/Git、Runtime 修复流程及验证 |
+| MOD-35 | 测试失败定位 | Potatos498 | 解析器、定位报告、公开 exports、CLI/测试和 MOD-34 接入适配 |
+| MOD-36 | Code Review 预审 | goo122 | 模型预审、意见锚定和受控发表流程 |
+| MOD-37 | API 文档维护 | goo122 | 协议/exports 与文档一致性；当前仍为待开工规划 |
+| MOD-38 | Issue 分类与修复 PR | Potatos498 | 分类、受控标签写回和修复流程接入 |
 
-写入类操作（commit/push/PR/review comment/标签写回）一律审批制并遵守 ADR-0003；GitHub 凭据走 SecretStore 声明式白名单，复用 gh CLI 已验证协议层。真实验收以本仓库自身为目标（真实 Actions 失败修复、真实 PR 预审）。
+主要维护文件：goo122 负责 `packages/connectors/github/`、`packages/cognition/src/dev-workflows/code-review*` 及 MOD-37 文档维护工作包；Potatos498 负责 `packages/coding-tools/src/dev-workflows/ci-fix*`、`git-tools*`、`packages/coding-tools/src/test-locate/` 和 `packages/cognition/src/dev-workflows/issue-triage*` 及对应测试。上述 cognition/dev-workflows 文件是模块归属的明确例外，核心 cognition/AgentArts 仍归 zemeng；共享 exports、`apps/runtime/src/dev-workflows-runtime.ts` 及 Desktop 接线由实际变更人随工作包完成，保持兼容并自行验证。
 
-### 单一写入与交接规则
+DEV-WORKFLOWS 保留已授权的 Local Profile 增量范围。每个模块由自己的负责人验证和交付，不再要求 Potatos 集中验收其余两人的成果。
 
-- Potatos 可将 P0～P4 内互不重叠的工作包分给自己的执行Agent；每包声明身份、MOD、拥有路径、基线、依赖和最小交付。保留所有协作者修改。已开展的 P5～P8 停止新增修改，保留分支/PR/未提交工作并回报交接头、差异与占用文件，不删除或回滚。
-- `apps/desktop/electron/main.js`、Admin共享入口、Runtime根装配、根配置/锁文件、公共Schema/迁移只由 P8 登记的一个集成写入者串行处理。P2/P4提供接口和接线补丁需求，P5/P7专属消费代码不因位于Desktop目录而重新归入P2。goo122负责公共语义兼容评审；在途#209～211占用部分先收尾再交接。模块工作不必等待共享文件，可以先通过公开端口独立实现。
-- 原PR作者保留历史归属；Potatos可接手 P0～P4 范围内返修，P5～P8仅盘点并交接。修改前在#212或对应PR登记当前head及范围，不覆盖原作者仍在进行的改动。
-- `codex/mvp-assembly` 的集成内容已通过#206进入main。新工作从最新main确认基线；旧PR先检查等效覆盖，不重复实现、重复合并或因CI绿灯就关闭。
-- Potatos可提交/推送/创建小PR并联系协作者提供接口。本人新增代码仍需另一位登记协作者评审；替他人返修后不能把自己的评审当作对该新增代码的独立批准。
-- 各执行者按当前 P0～P8 边界避免双写；线上AgentArts消费者需要本地改动时，向#212提交精确接口需求，交对应工作包的唯一写入者。Gemini既有两份比赛文档任务保留，不能据此扩展到产品代码。
-- 保留原有用户数据、加密凭据、工作流及配置，不将私人数据或本机路径放到GitHub。首次真实账号/设备操作仍按已有授权范围，不能把本次开发委派解释为任意账号副作用授权。
-- 实现优先，验证限于受影响关键路径。已有真实/离线证据分别复用，完整MVP仍需约定功能与对应真实验收；不通过降低验收口径或全套重复测试制造完成。
+## 1. 独立推进、评审与集成
 
-## 1. 人员与决策权
+1. **自己完成闭环**：每人负责本模块的公开端口、实现、必要消费接线、关键验证、文档和交付。开发、验证、创建交付 PR 不需要先取得另一位协作者的批准。
+2. **独立批准与自动检查**：每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。本人阅读与设计评审按工作包需要记录，不额外要求固定两人的共同批准。自审不能代替非作者批准。
+3. **接口先行，替身可自行提供**：优先使用 main 的公开 exports、Schema 和固定版本契约。上游尚不可用时，使用或自行补齐契约一致的 Fake/Unavailable 与消费测试，独立开发和验证；缺真实服务只阻止相应真实验收结论，不阻止模块实现。
+4. **必要接线随模块交付**：三人均可在自己的分支完成所需根配置、依赖锁、公开 Schema、迁移、Runtime/桌面注册和组合接线。公共区域由 goo122 长期维护，但不是其独占审批或集成槽；核心认知与 AgentArts 的长期责任仍归 zemeng。
+5. **共享文件用 Git 集成**：每人可自行使用隔离分支/工作树；不在同一物理 checkout 并发编辑。合并前基于最新 main 核对冲突和兼容，保留其他人的有效改动，不靠覆盖、强推或硬重置解决冲突。不再排队等待某位唯一集成人。
+6. **兼容性替代人员等待**：公共变更随 PR 记录消费者、版本/迁移及回退影响，并交付针对受影响消费方的契约测试。新增可选字段优先；破坏性变更必须提供版本化兼容/迁移方案。实现者可一并补必要接线；需求或账号授权确实不明确时才找用户确认。
+7. **状态与权限分开**：本规则调整开发协作流程；产品运行时 Policy/审批、真实账号写入、云发布和付费调用继续按对应授权。完成仍须满足约定验收和实际集成，不能用自审或 CI 冒充真实服务读回。
 
-| GitHub 用户名 | 当前职责 |
-| --- | --- |
-| goo122 | 工程与存储底座、公共协议、TaskRuntime、ModelGateway/Provider、本地 Policy/工具/MCP/Skills、知识与记忆 |
-| zemeng | 主 Agent 与核心认知架构、桌面/语音/Windows/TraceGuard/编程/分发、目标决策图谱、持续认知、AgentArts |
-| Potatos498 | 待办、日历、邮件、订阅、通知、搜索、天气、微信与社交连接器；保留 MOD-20～26 的长期目录所有权，当前工作顺序见 §5 |
+接口冻结按实际契约、生产实现、Fake/失败夹具、消费验证、自审和 CI 证据判断；不再要求另一位指定人员签字。证据不足时保持 provisional/unavailable，其他人仍可用固定契约独立开发。
 
-产品负责人决定当前只实施华为 ICT AgentArts Competition Profile，通用 Local Profile 仅留存现有代码。核心认知、Goal/Decision/Plan 语义、Competition Profile 及 AgentArts 本地—云边界由 zemeng 负责；公共 Schema、根配置、迁移、锁文件和根装配由 goo122 维护。历史 PR 的作者、评审者和 Evidence 按事实保留，不能因新分工改写。
+项目状态唯一来源为 [ROADMAP](ROADMAP.md)，逐接口状态见 [接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。本轮重置文档分工，未改 GitHub 权限；文档提交与推送状态以 Git 为准，早期接手与清理事实见 [接手记录](PROJECT_TAKEOVER_20261007.md)。
 
-第一版 MVP 的完成口径以产品负责人当前要求为准：除 Windows 安装包与安装流程外，已约定的功能须实现并取得对应真实验收；AgentArts 单链和合成会议演示只是阶段证据。该口径不改变模块所有权，也不自动把 PRD 明确排除的 PA-018 或尚未选定的 P2 扩展全部升为首版承诺。goo122 负责公共 Runtime、SecretStore、StoragePort 和根装配；zemeng 的 AgentArts、认知、Desktop 等仍由既有负责人推进；Potatos498 负责 §5 业务能力的独立工作包与业务侧验收。
+## 2. 三条主线的独立验证入口
 
-## 2. 共同所有权规则
+| 主线 | 上游未就绪时 | 本人负责的验证 | 不需等待的事项 |
+| --- | --- | --- | --- |
+| zemeng 核心与 AgentArts | Fake CloudAgent/Memory/Tool/Runtime；固定契约与合成事实 | 编排、审批消费、认知与端口回归；有授权后做云端/桌面/设备真实读回 | goo122 的真实数据库与模型配置、Potatos 的真实账号、对方 PR 批准 |
+| goo122 基础运行时、知识记忆与开发底座 | FakeCoordination、固定来源与测试 Vault、显式模型/工具替身 | 状态、持久化、迁移、取消/恢复、权限及公开消费契约；GitHub Provider、代码预审与文档一致性 | AgentArts 控制台和部署、真实 Desktop、zemeng 的审批 |
+| Potatos 业务能力与开发修复链 | FakeClock/Storage/ToolHost、固定 Provider 响应和测试日志 | 业务读写/去重/时区/失败语义、定位器、CI 修复、Issue 分类与修复 PR、业务注册与展示；有授权后做真实来源读回 | 核心 Agent 完成、云端账号、goo122 的专属集成 PR |
 
-- 每个工作包只有一个实现负责人。跨负责人只通过公开 package exports 和接口目录中的冻结接口协作。
-- 未标记 frozen 的接口必须固定精确提交并使用 Fake；unavailable 能力不得由消费者猜字段、读取私有实现或静默回退。
-- goo122 维护 packages/contracts、根 package/lock、公共迁移与根 composition；zemeng 提供新认知语义和消费者测试，由 goo122 发布需要进入公共 wire 的部分。
-- 新模块目录是规划边界，不因本文出现而创建空包。模块负责人开工时创建入口、README、测试和 Fake。
-- apps/desktop 按功能子目录分工；Renderer 不导入 Runtime、模型、数据库、Node/Shell 或连接器。
-- 一个 PR 只覆盖一个可审查工作包；共享文件通过单独集成 PR 修改，保留其他协作者及用户未提交内容。
-- 新工作默认服务 `huawei_ict_agentarts`；Local Profile 只有被明确列入范围时才新增能力。保留现有 Local 代码不等于当前必须为它扩展接口或通过比赛验收。
+人员归属是长期维护责任，不是跨目录修复的阻断权。已有实现优先复用；必要的小范围跨模块接线由提出需求的人随工作包完成，保持公开依赖方向和单一契约来源。
 
 ## 3. goo122：底座、模型、工具、知识与记忆
 
-| ID | 模块 / 需求 | 独占目录 | 依赖 | 独立交付与验收 |
+| ID | 模块 / 需求 | 主要维护目录 | 依赖 | 独立交付与验收 |
 | --- | --- | --- | --- | --- |
 | MOD-01 | 工程与存储底座 / PA-004 | 根配置、packages/storage、scripts/dev、.github/workflows | 无 | 可启动工程；有序迁移保留数据；根构建和 CI 可复现 |
 | MOD-02 | 公共协议与联调 SDK / PA-004、PA-023 | packages/contracts、packages/client、packages/testkit | MOD-01 | Schema、生成类型、Client、Fake 和兼容记录一致；逐接口登记冻结状态 |
@@ -89,7 +106,7 @@ goo122 必须让上述模块在没有真实 Desktop、AgentArts 或 zemeng 私�
 
 ## 4. zemeng：核心认知、桌面执行与 AgentArts
 
-| ID | 模块 / 需求 | 独占目录 | 依赖 | 独立交付与验收 |
+| ID | 模块 / 需求 | 主要维护目录 | 依赖 | 独立交付与验收 |
 | --- | --- | --- | --- | --- |
 | MOD-04B | Competition Coordination 与可选 Local Agent / PA-003、PA-012 | packages/coordination、packages/agents | MOD-02、03、05；Local 才依赖 04A | Competition 路径只消费 CloudAgent/Memory/Tool 端口；既有 Local Agent 代码保留为可选 baseline |
 | MOD-10 | 模型与 AgentArts 能力研究 / PA-022、PA-026 | docs/research/model-training、docs/research/agentarts | 供应商能力与数据条件 | 给出来源、实验、成本和条件结论；不把提示或记忆称为参数训练 |
@@ -111,9 +128,16 @@ goo122 必须让上述模块在没有真实 Desktop、AgentArts 或 zemeng 私�
 
 zemeng 必须优先交付 MOD-29/30/32 的 Competition Golden Path，并让模块在没有 goo122 的真实数据库或未合并实现时使用 Fake Memory/Tool/Runtime 独立开发。AgentArts 成功不能直接把本地任务标为完成；Local Agent 新能力当前不作为必交项。
 
+2026-10-08 自有镜像工作包目录登记：zemeng 负责 `packages/agentarts/src/{index,input,prompts}.ts`、
+`apps/agentarts-runtime/`、相应模块/根集成测试和迁移文档，依赖既有 contracts/models/coordination 公开 exports。
+为同一包修改根构建/锁文件及 Coordination 期限/续接接线，并提供消费验证；不覆盖 goo122 的协议/本地授权所有权。
+实际隔离工作树、接口影响与验收缺口见 [迁移工作包](modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)。
+
+2026-10-09同包WSS增量：zemeng在此隔离分支负责云HTTP/WS宿主及必要的Coordination、Runtime Application、Desktop消费接线；独立传输0.1.0契约由本包提供生成类型、兼容说明和消费验证，长期contracts/Runtime维护责任仍归goo122。Wiki接入仍由goo122负责，业务连接器仍由Potatos498独立交付。本次子智能体分工只用于开发，不进入产品授权或执行链；未合并/未真实云验收不能提高MOD整体状态。
+
 ## 5. Potatos498：业务连接器与当前工作顺序
 
-| ID | 模块 / 需求 | 独占目录 | 依赖 | 独立交付与验收 |
+| ID | 模块 / 需求 | 主要维护目录 | 依赖 | 独立交付与验收 |
 | --- | --- | --- | --- | --- |
 | MOD-20 | 待办与日历 / PA-009、PA-013 | packages/productivity、packages/connectors/calendar | MOD-02、03、05 | Fake 时钟/日历；时区、修改读回；不另建调度器 |
 | MOD-21 | 邮件连接器 / PA-014 | packages/connectors/mail | MOD-02、05 | 分页、重复事件、草稿和写入核实；真实账号单独验收 |
@@ -123,7 +147,7 @@ zemeng 必须优先交付 MOD-29/30/32 的 Competition Golden Path，并让模�
 | MOD-25 | 天气 / PA-010 | packages/connectors/weather | MOD-02、05 | 地点不静默猜测；缓存状态和真实提供商证据分开 |
 | MOD-26 | 微信与社交扩展 / PA-019 | packages/connectors/social/platform | MOD-02、05；交互模式另依赖 MOD-16 | 每个平台单独子任务；账号类型、能力和不支持项明确 |
 
-MOD-20～26 的长期负责人和目录所有权保持不变。AgentArts 只消费经 MOD-05 实际公布的能力。业务模块源码、历史单包 live 读回、生产 Runtime 注册和用户旅程真实验收是不同证据层；`register`、Fake/CI 或设计 PR 均不能替代首版验收。以下是 2026-09-24 的缺口盘点，具体证据见各包 README、模块记录、PR #4/#8/#22/#23/#27/#28/#47/#81 与当前接口目录：
+MOD-20～26 当前由 Potatos498 独立负责，业务接线和验证随模块交付；下列历史能力证据保持原日期与原作者。AgentArts 只消费经 MOD-05 实际公布的能力。业务模块源码、历史单包 live 读回、生产 Runtime 注册和用户旅程真实验收是不同证据层；`register`、Fake/CI 或设计 PR 均不能替代首版验收。以下是 2026-09-24 的缺口盘点，具体证据见各包 README、模块记录、PR #4/#8/#22/#23/#27/#28/#47/#81 与当前接口目录：
 
 | 能力 | 已有证据 | 第一版仍需读回的结果 |
 | --- | --- | --- |
@@ -136,26 +160,25 @@ MOD-20～26 的长期负责人和目录所有权保持不变。AgentArts 只消�
 | 天气（PA-010，P0） | `weather.forecast` 已在 Runtime 显式装配；Open-Meteo/可选 GeoNames 有历史真实读回，PR #4/#12/#23 已合并 | 当前环境下地点确认、观测/覆盖时间和缓存状态的应用内读回，以及 AgentArts/Policy 工具链证据 |
 | 微信与社交（PA-019，P2） | PRD 列为扩展；当前无已选平台的模块提供者或真实验收 | 先由产品负责人确认首版具体平台、账号类型与合法能力；每个被纳入的平台再按动作单独验收，不承诺全部平台读写 |
 
-#88 设计 PR 已合并，仅收敛工具清单与边界，不代表五包已经接入。后续按当前缺口逐项交付，一个能力一个小 PR，不把五包同时塞进根装配：PA-009 待办存取与提醒触发、PA-015 订阅采集与通知裁定分别形成可审查的业务工作包；PA-013 日历在选定一个真实提供商后单列，PA-014 邮件复用已有 QQ 提供商，只补连接器侧实际缺口；PA-010 研究/天气优先复用已实现提供者，不重复造同类工具。现有实现已足够的部分直接进入跨模块验收，不为凑 PR 另写源码。每包固定公开端口、已声明 scope、无配置时 `UNSUPPORTED_CAPABILITY`、对应失败/取消/读回证据；有副作用的操作另按动作授权。公共 Runtime/Policy、SecretStore、StoragePort、根 composition 与 capability 公布由 goo122 的独立 PR 交付并评审，Desktop 展示由 zemeng 负责，邮件分类/摘要/草稿由 MOD-04 负责；业务 PR 不越界修改这些共享文件。
+#88 设计 PR 已合并，仅收敛工具清单与边界，不代表五包已经接入。后续按当前缺口逐项交付，一个能力一个小 PR，不把五包同时塞进根装配：PA-009 待办存取与提醒触发、PA-015 订阅采集与通知裁定分别形成可审查的业务工作包；PA-013 日历在选定一个真实提供商后单列，PA-014 邮件复用已有 QQ 提供商，只补连接器侧实际缺口；PA-010 研究/天气优先复用已实现提供者，不重复造同类工具。现有实现已足够的部分直接进入跨模块验收，不为凑 PR 另写源码。每包固定公开端口、已声明 scope、无配置时 `UNSUPPORTED_CAPABILITY`、对应失败/取消/读回证据；有副作用的操作另按动作授权。公共 Runtime/Policy、SecretStore、StoragePort 的长期维护归 goo122，核心分类/认知语义归 zemeng；Potatos 可随业务 PR 完成必要的 capability 注册、宿主接线、业务设置与展示，使用公开端口和消费测试保证兼容，无需等待独立集成 PR。
 
 Windows 安装包与安装流程继续暂停。PA-019 及其他 PRD P2 项是否进入首版，先核实具体约定；未选择平台或账号时不得以空实现、Fake 或未经授权的真实账号写入冒充完成。
 
-## 6. 跨负责人冻结边界
+## 6. 跨主线接口与状态
 
-| 方向 | 必须使用的接口 | 当前状态 |
+| 方向 | 公开边界 | 独立开发方式 |
 | --- | --- | --- |
-| goo122 Runtime → zemeng 核心认知 | CoordinationPort | unavailable；需交付类型、Fake 和注入槽 |
-| zemeng Competition Coordination → AgentArts | CloudAgentPort | unavailable；当前第一优先，需交付 deployment/version/trace、提案和错误语义 |
-| 可选 Local Agent → goo122 模型 | 最小 ModelPort | unavailable；现有 ModelProvider/ModelGateway 为 provisional，不阻塞 Competition Profile |
-| zemeng 核心认知 → goo122 记忆 | MemoryQueryPort、FactChangeFeed | provisional；MOD-09B 重建分支已有公开类型与进程内 Fake，生产提供者和持久确认仍 unavailable |
-| zemeng 核心认知 → goo122 工具 | ToolExecutionPort | unavailable；现有 ToolHost/ToolGateway 为 provisional，稳定消费端口尚未定义 |
-| zemeng 目标/决策 → goo122 存储 | CoordinationStorePort | unavailable |
-| 所有模块 → Evidence/Artifact | EvidencePort、ArtifactPort | unavailable |
+| Runtime → 核心认知 | CoordinationPort / 已公布 application 入口 | goo122 使用 FakeCoordination；zemeng 使用 Fake Runtime |
+| Competition → AgentArts | CloudAgentPort | zemeng 自行维护适配器、云配置与 Fake，消费方使用公开响应 |
+| Agent → 模型 | ModelPort / ModelGateway | goo122 提供模型底座；其余人使用固定契约和显式替身 |
+| 核心认知 → 记忆 | MemoryQueryPort、FactChangeFeed | 来源与版本契约一致；双方可分别验证提供者/消费者 |
+| Agent/业务 → 工具 | ToolExecutionPort / ToolGateway | 本地授权与执行归 Runtime；各模块可自行提供测试宿主 |
+| Goal/业务 → 存储与证据 | 公开 Storage、CoordinationStore、Evidence/Artifact 端口 | 使用模块独立数据及固定夹具，生产接入随工作包完成 |
 
-上表的 ToolExecutionPort 名称为待冻结接口，不允许在实现前私设第二套 DTO。已冻结和不可用的精确清单以当前接口目录为准。
+接口是否 frozen、provisional 或 unavailable 以 [当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) 和实际公开 exports 为准；本表不复制过时状态，不私设第二套 wire DTO。接口成熟度只约束消费和声明方式，不成为等人审批的理由。
 
 ## 7. 工作包与完成标准
 
 每个模块必须交付：目标 profile、公开入口、消费的接口版本、README、Fake/夹具、代表性验证、接入说明、已知限制和真实验证条件。当前新增工作默认以 Competition Profile 验收；只有接口冻结不等于模块完成，只有 Fake 通过也不等于真实服务可用。
 
-模块负责人从同一冻结提交建立分支。根配置、锁文件、公共迁移和生产 composition 通过 goo122 的独立集成 PR 接入；模块实现 PR 不并发修改共享文件。作者不能自评，合并后才更新 done。
+模块负责人从最新 main 或明确固定的依赖提交建立分支，独立完成必要集成与自审。合并必须满足任意一位非作者对当前提交的有效批准和对应检查；实际集成且达到工作包验收后才能更新 done。整体 MOD 和真实服务完成度仍按原验收范围判断。

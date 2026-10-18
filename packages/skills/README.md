@@ -1,6 +1,21 @@
-# Skills — versioned reference summary
+# Skills — versioned reference summary 与本机安装
 
-目标 `huawei_ict_agentarts` / PA-006 / MOD-07，`provisional`。固定 `workspace-reference-summary@1.0.0`，按 [Agent Skills 格式](https://agentskills.io/specification) 提供同名目录与 `SKILL.md` 的 name/description frontmatter；产品 manifest 额外绑定稳定 ID、版本、内容 SHA-256、能力声明、受限参数与两步执行。没有通用脚本/YAML/外部 Skill 引擎，没有新增模型、任务库或 Agent loop。
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
+目标 `huawei_ict_agentarts` / PA-006 / MOD-07，`provisional`。固定 `workspace-reference-summary@1.0.0`，按 [Agent Skills 格式](https://agentskills.io/specification) 提供同名目录与 `SKILL.md` 的 name/description frontmatter；产品 manifest 额外绑定稳定 ID、版本、内容 SHA-256、能力声明、受限参数与两步执行。固定 worker 不解释任意脚本或外部步骤；本机 Skill 安装与使用见下节，没有新增模型、任务库或 Agent loop。
+
+## 本机目录安装
+
+新增 `readLocalSkillDirectory`、`openLocalSkillStore`、`localSkillInstructions` 受信宿主入口：标准 SKILL.md YAML 元数据校验、本机普通文件快照、内容 digest 和安装身份、默认停用、启停 generation、卸载及原子目录册持久化。YAML 复用 js-yaml 4.3.2（根锁文件既有版本，新增直接依赖）；固定参考摘要 worker 不变。
+
+安装范围是本机目录，不下载 GitHub/网络资源；拒绝符号链接、隐藏/敏感文件、逃逸、重名大小写冲突和超限资源。每包最多 1 MiB/128 文件/8 层，SKILL.md 最多 16384 字符，最多 16 个安装项。name 遵循标准并匹配父目录；description 必填，metadata.version 可选且须为字符串，否则使用内容 digest 前缀。同名同内容重复安装幂等；不同内容先卸载，不能静默覆盖。源修改不会改变已安装快照。
+
+Desktop “插件 → 本机 Skills”提供安装、查看、启停、使用、卸载。通用 Skill 使用完整 SKILL.md 作为不可信任务参考，接入既有 Competition 任务；不是将 Markdown 转为任意可执行脚本。用户每次原生确认发送完整说明与本次任务后才可出机，工具仍受已有注册、Policy 和 ToolGateway 限制。allowed-tools 不授权；scripts/references/assets 保存为安装快照，但本轮只发送 SKILL.md，不自动加载资源或执行脚本。依赖这些资源/脚本的 Skill 不能据此宣称完整可执行。
+
+说明及安装资源预览纯本地，无云请求。资源只从精确版本的安装快照读取，最多 64 KiB 普通 UTF-8 文本；二进制、控制字符、越界路径和卸载版本拒绝，脚本仅作文字展示。实际使用需要已配置 AgentArts；本轮仅显式合成 HTTP、原生确认回调及真实 Runtime/SQLite 验证，云验收继续暂缓。详见 [安装使用说明与验收](../../docs/modules/MOD-07-LOCAL-INSTALLATION-20261009.md)、[ADR-0023](../../docs/adr/0023-local-skill-installation.md)。
 
 ## 公开入口
 
@@ -36,7 +51,7 @@ const outcome = await skill.invoke({
 
 最终结果 checkpoint 的重复读取也检查其原配置引用；即使新会话服务仍 connected，不能跨被撤销/替换的许可返回旧摘要。此检查只读既有 checkpoint/configuration，不重新读取文件或新增 Evidence。
 
-打包时保留 `workspace-reference-summary/SKILL.md`（相对 dist）。内容 digest 规范化 CRLF/LF，绑定 manifest+完整正文。当前只加载这一份受信自有 bundle；不宣称导入任意社区 Skill。官方规范用于可移植格式，无额外 parser 依赖/源码复制；版本附加 metadata 不授权。
+固定 worker 打包时保留 `workspace-reference-summary/SKILL.md`（相对 dist）。内容 digest 规范化 CRLF/LF，绑定 manifest+完整正文。这个 worker 只加载这一份受信自有 bundle；本机安装入口另按上节处理，不将社区 Skill 接入固定 worker。固定 bundle 不需要 YAML parser，安装入口使用 js-yaml；版本附加 metadata 不授权。
 
 ## 验证
 

@@ -1,5 +1,10 @@
 # 订阅采集连接器（MOD-22）
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 负责人 Potatos498（C）；评审者 `goo122` 或 `zemeng`。包版本 0.1.0-alpha.1。关联需求 [PA-015](../../../docs/PRD.md) 的**采集半边**；汇总、安静时段、暂停与频率设置归 MOD-23（`packages/notifications/`）。
 
 对真实 RSS 2.0 / Atom 源做增量采集：条件请求 + 不透明游标实现增量，稳定的 `dedupeKey` 实现去重，所有派生字段标注来源而不伪造。manifest `verification` 取自 provider——`HttpFeedProvider` 为 `conditional`（结果依赖出站网络可达），`FakeFeedProvider` 为 `mock`。`register` 不默认任何 provider，也不默认任何订阅，装配方必须显式传入，缺失时抛 `INVALID_ARGUMENT`，避免静默构造会发出站请求的东西（DEVELOPMENT_PROTOCOL:173 `fake 明显标记，生产构建不得静默启用`）。

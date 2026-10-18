@@ -119,6 +119,47 @@ test('continuation is copied before authorization awaits and named Workflow inpu
   assert.deepEqual(body, {inputs: {goal: JSON.stringify({continuation})}});
 });
 
+test('continuation guards cannot change the projection after query serialization', async () => {
+  const original = structuredClone(continuation);
+  let sends = 0;
+  const cloud = new AgentArtsCloudAgentPort(config, {read: async () => 'Bearer synthetic'},
+    async () => { sends++; return response({kind: 'text', text: 'unexpected'}); }, guardRequest => {
+      guardRequest.continuation.result.time = 'private-replacement';
+    });
+  await assert.rejects(cloud.invoke(request({continuation: original})),
+    {code: 'UNAUTHORIZED', message: 'AgentArts export permission denied'});
+  assert.equal(sends, 0);
+  assert.deepEqual(original, continuation);
+  original.result.time = 'caller-still-mutable';
+  assert.equal(original.result.time, 'caller-still-mutable');
+});
+
+test('guard and transport share an isolated frozen JSON snapshot including special keys and arrays', async () => {
+  const projection = JSON.parse('{"__proto__":{"safe":true},"constructor":"data","values":[{"value":1}]}');
+  const original = {proposalId: 'fixture', state: 'confirmed', result: projection};
+  let checked;
+  let body;
+  const cloud = new AgentArtsCloudAgentPort(config, {read: async () => 'Bearer synthetic'},
+    async (_url, init) => { body = JSON.parse(JSON.parse(init.body).query); return response({kind: 'text', text: 'ok'}); }, input => {
+      checked = input.continuation;
+      for (const item of [checked, checked.result, checked.result.__proto__, checked.result.values,
+        checked.result.values[0]]) assert.equal(Object.isFrozen(item), true);
+      assert.equal(Object.getPrototypeOf(checked.result), Object.prototype);
+      assert.equal(Object.hasOwn(checked.result, '__proto__'), true);
+      assert.equal(Reflect.set(checked, 'proposalId', 'replacement'), false);
+      assert.equal(Reflect.set(checked.result.values[0], 'value', 99), false);
+    });
+  assert.equal((await cloud.invoke(request({continuation: original}))).text, 'ok');
+  assert.deepEqual(body, {continuation: checked});
+  assert.deepEqual(checked, original);
+  assert.notEqual(checked.result, projection);
+  assert.equal(Object.isFrozen(original), false);
+  assert.equal(Object.isFrozen(projection), false);
+  assert.equal(Object.isFrozen(projection.values), false);
+  projection.values[0].value = 99;
+  assert.equal(checked.result.values[0].value, 1);
+});
+
 test('cancelled or expired continuation cannot read credentials or start another invocation', async () => {
   const {cloud, reads} = setup(async () => response({kind: 'text', text: 'unexpected'}));
   const controller = new AbortController(); controller.abort();

@@ -1,9 +1,103 @@
 # Coordination ports
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 COMPETITION-PORTS-01 provides provisional, in-process `CoordinationPort.execute` and
 `CloudAgentPort.invoke` types. The consuming coordination package owns their shape.
 Runtime injects CoordinationPort; `AgentArtsCloudAgentPort` is the explicit,
-offline-testable HTTP implementation of the CloudAgentPort boundary.
+offline-testable HTTPS implementation with an explicitly configured WSS primary
+transport of the CloudAgentPort boundary.
+
+## 2026-10-09 WSS client increment (provisional)
+
+Trusted Competition composition can set `transport: 'wss'`,
+`websocketUrl: 'wss://<same-gateway>/runtimes/<runtimeName>/ws'`, and optionally
+`allowHttpsFallback: true`. WSS must use the same HTTPS origin and runtime as the
+existing invocation URL; the explicitly supplied URL may use only the exact
+`/runtimes/<runtimeName>/ws` or `/runtimes/<runtimeName>/invocations/ws` path.
+No public address is guessed and no alternative path is automatically probed.
+Credentials and query parameters are never placed in the URL. Omitted
+`transport` preserves the existing HTTPS behavior and configuration binding.
+The public gateway still needs a real Upgrade/authorization/deployment acceptance
+test; local socket tests do not prove that Huawei's public route supports WSS.
+The documented container `/ws` endpoint does not establish a public
+`/runtimes/<runtimeName>/ws` route. A `PREFIX_MATCH` ordinary-request mapping for
+`/runtimes/<runtimeName>/invocations/ws` does not prove WebSocket Upgrade support.
+Both public path candidates remain provisional pending real deployment evidence.
+
+The standalone provisional protocol is
+`@personal-agent/contracts/agentarts-transport` version `0.1.0`. A negotiated
+ready frame precedes an invoke; an accepted receipt precedes its result. The
+body carries the existing query or configured Workflow input, not Runtime
+methods or task authorization. Session/request/idempotency identity, canonical
+payload digest and the original deadline are validated. The returned events
+still pass the existing strict event/application parser, and outputs remain
+`unverified`. `accepted` and cloud `task_end` do not complete the local task.
+
+The seventh `AgentArtsCloudAgentPort` constructor argument accepts trusted
+WebSocket options: `authorizationProvider`, an optional test `factory`, `onState`,
+and synchronous `onDispatch`/`onTerminal` persistence callbacks. The outer
+AgentArts Authorization remains intact. A separate provider supplies the complete
+`X-PA-Agent-Token: Bearer ...` header for the image; absent that provider, WSS
+requires the outer value itself to be a Bearer header. Both credentials are read
+on every invocation. Reusable sockets are grouped by the hashed local session
+and an in-memory credential fingerprint; a changed credential replaces the
+connection. No original token is retained in the pool or persisted by this
+adapter. The actual socket library retains its handshake headers until release.
+
+After the asynchronous Upgrade and ready handshake, the adapter checks current
+tool availability again, then runs the synchronous continuation/export guard
+immediately before send. It never sends a query during the handshake. Default
+TLS verification remains enabled; redirects, compression and binary application
+frames are disabled. The same final guards run before an allowed HTTPS fallback.
+
+Automatic fallback requires an opt-in and a connection failure before any invoke
+was sent. HTTP 401/403, a rejected Upgrade, incompatible ready/protocol, and any
+post-send disconnection do not trigger a replay. State observations contain only
+`state`, hashed `sessionId`, and an optional `requestId`; `https_fallback` makes
+degradation visible to the trusted host. Observation failures do not change the
+invocation outcome. Cancellation sends a bound best-effort cancel and drops late
+results; this is not proof that remote work has stopped. The original deadline
+and cancellation result still take precedence.
+
+`createAgentArtsRuntimeApplication` exposes the corresponding options:
+`transport`, `websocketUrl`, `allowHttpsFallback`,
+`websocketAuthorizationProvider`, `websocketFactory`, and `onTransportState`.
+It synchronously saves `competition-cloud-inflight` identity/digest before send.
+A strict terminal receipt saves only `competition-cloud-received` correlation metadata;
+it does not clear the intent. Runtime clears it after durably consuming the parsed
+proposal in `competition-loop` or committing the original task's success. Missing
+consumption confirmation keeps the reconciliation hold. A locally classified unknown
+delivery/result enters `waiting_reconciliation` and saves
+`competition-cloud-unknown`. These existing Runtime checkpoints contain no query,
+token, or model text. Both an inflight intent and an unknown receipt prevent
+`resumeTask`/`resumeConfirmedTask` from resending after a restart, including when
+a local tool already has a confirmed receipt. The same protection covers an
+ambiguous attempted HTTPS fallback. No second task database is created.
+
+Call `AgentArtsCloudAgentPort.close()` to release pooled sessions. Runtime factory
+`application.close()` performs this disposal automatically. This increment
+provides reusable transport connections and bounded exchanges; it does not yet
+provide automatic status reconciliation, durable cloud receipt recovery across
+image restart, unsolicited cloud task execution, or the complete resident
+autonomy/supervision system. Cloud errors never select Local or Fake.
+
+Local verification: coordination tests cover reuse, credential replacement,
+post-handshake guards, visible fallback, authentication/protocol rejection,
+unknown delivery, cancellation, deadlines and strict event order. Runtime tests
+cover Competition consumption, checkpoint readback, restart/resume rejection,
+and a confirmed local tool followed by an unknown cloud continuation. These
+synthetic tests do not establish a real AgentArts Golden Path.
+
+Source status checked on 2026-10-07: main `4b5ec61` already contains the HTTP
+adapter, Workflow input, tool-proposal/candidate modes and Runtime consumers.
+The additional JSON-copy, direct-call lifecycle and continuation-snapshot fixes
+described below belong to [PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302),
+which is not yet merged at this checkpoint. All remain provisional; current cloud
+deployment/version/trace/usage and local target read-back need separate evidence.
 
 MOD-04B adds `CompetitionCoordinator`, which validates each bounded text/tool-proposal
 exchange with an explicitly injected `CloudAgentPort`. It forwards task revision and
@@ -96,6 +190,13 @@ is best effort and does not await an uncooperative transport, replace the origin
 error, or trigger a retry. Successfully consumed readers are only released. These
 local lifecycle checks do not prove that remote cloud execution has stopped.
 
+In pending PR #302, direct cloud-port calls use the same canonical UTC deadline forms as the coordinator
+(`...Z` with optional three-digit milliseconds); normalized impossible dates and
+other date formats fail before credentials or transport. Request/signal accessor
+and listener-setup failures return a fixed `INVALID_ARGUMENT`. Partially registered
+listeners are released where possible, and signal cleanup failures cannot replace
+a successful result or the original cancellation, deadline or provider error.
+
 When a response uses workflow events, each `workflow_start` must pair with a
 `workflow_end`; supplied workflow IDs/names must match. The adapter keeps the latest
 workflow answer and returns it only after the ordered `task_end` then `end` events.
@@ -106,7 +207,10 @@ For a cloud deployment whose prompt accepts tool selection, trusted composition 
 set `responseMode: 'tool-proposal-json'` and `initialRequestMode: 'goal-with-tools-json'`.
 The initial `query` then contains exactly `{"goal": string, "availableTools":
 [{"name": string, "version": string, "inputSchema": object}]}`. The host selects
-and minimizes the directory for that task; it is capped at 16 entries and 8 KiB.
+and minimizes the directory for that task; it is capped at 64 entries and 24,576
+UTF-8 JSON bytes by `MAX_AVAILABLE_TOOLS` and `MAX_AVAILABLE_TOOLS_JSON_BYTES`
+in [the public parser](src/index.ts). These limits are already present in main
+`4b5ec61`; they are separate from the 32 KiB initial query limit.
 Missing or empty directories fail locally with `UNSUPPORTED_CAPABILITY`, before
 credentials or network. The host must provide `beforeInitialToolCatalogSend` as the
 fifth constructor argument to recheck its current task binding after credential read;
@@ -148,7 +252,22 @@ authorization; the original goal is not automatically sent again. Request-level
 deployment/version/trace and usage association need separate verified contracts. No
 wire Schema or storage migration changes.
 
+In pending PR #302, the adapter deeply freezes its private, validated continuation copy before building
+the request text. The final host guard reviews that same snapshot and cannot rewrite
+it after serialization. A throwing mutation is denied before transport; caller-owned
+continuation data stays mutable. This preserves JSON special keys and the existing
+continuation budget and grants no new export or tool permission.
+
 Tool proposal and confirmed continuation JSON copies preserve own special keys such
 as `__proto__` as ordinary data properties. They do not change the copied object's
 prototype or silently drop fields before validation and authorization. Repeated
 parsing preserves the same JSON payload; schema and Policy checks still apply.
+
+Pending PR #302 adds a shared budget while copying tool proposal arguments, retaining the existing
+65,536 UTF-16 code-unit limit for their serialized JSON. This limit includes keys,
+escaped strings and container punctuation; it is separate from the UTF-8 continuation
+and tool-directory budgets. Dense JSON arrays are copied from own data properties;
+sparse arrays, accessors, custom methods and extra properties are rejected rather
+than running provider `map` implementations or silently changing argument data.
+Reflection failures return the fixed `INVALID_ARGUMENT` result. These in-process
+checks do not sandbox a provider, authorize a tool or establish cloud availability.

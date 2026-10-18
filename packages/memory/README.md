@@ -1,5 +1,19 @@
 # @personal-agent/memory — provisional queries and fact feed Fake
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+
+## Wiki 来源失效增量（MOD-08H，provisional）
+
+SQLite 可信写端口 `invalidateUserFactSource(namespace, request)` 要求用户创建记录、
+精确 expectedRevision/sourceRef 和有效 deadline/signal。事务内保留原摘要与证据，
+追加 withdrawn/external_observation 版本及既有 Feed 序列；重验已撤回头不重复追加。
+它不能生成用户确认、新事实或删除权限。失效头仍可管理、继续确认更正及彻底删除历史。
+没有迁移或新 wire operation；Desktop 私人 Feed 未自动绑定。边界和验收见
+[MOD-08H](../../docs/modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 This provisional Competition Profile package defines the first in-process
 `MemoryQueryPort` slice: current effective facts, bounded history, exact immutable
 versions, and an explicit `FakeMemoryHost`. It is not a wire protocol, production
@@ -78,6 +92,14 @@ After the trusted caller confirms one private excerpt, this method appends its f
 `user_confirmed` fact and feed event atomically. Exact retries return revision 1;
 altered operation IDs or existing fact IDs cannot overwrite a fact. Physical fact
 erasure removes the creation receipt. No Vault text is imported automatically.
+
+Host-only `listUserFactHeads(namespace, request)` lists the latest user-confirmed
+private heads, including withdrawn and expired records, so an admin can still find
+and physically delete them after restart. It reuses bounded opaque snapshot/cursor
+pagination; its tokens cannot be used with consumer queries or another namespace.
+It never falls back to an older private head. Erasure invalidates affected admin
+snapshots. `MemoryQueryPort.listCurrent` remains limited to effective active facts;
+the management listing does not grant task consumption or cloud permission.
 
 `withdrawPublicSource` records an append-only public tombstone with an expected Fact
 revision and an idempotent withdrawal ID. The caller must first verify source removal

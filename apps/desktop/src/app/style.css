@@ -15,6 +15,12 @@ button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cu
 .composer textarea {display:block;width:100%;resize:none;border:0;background:transparent;color:var(--fg);min-height:44px;max-height:160px;padding:6px 4px 2px;font-size:14px;line-height:1.6}
 .composer textarea::placeholder {color:var(--fg-placeholder)}
 .composer-bar {display:flex;align-items:center;gap:2px;margin-top:4px}
+.panel .wake-controls {margin-top:8px;padding-top:9px;border-top:1px solid var(--glass-hairline);min-width:0}
+.panel .wake-control-row {display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--fg-2)}
+.panel .wake-control-row button {border:1px solid var(--glass-border);border-radius:8px;background:var(--accent-soft);color:var(--fg);padding:6px 9px;font-size:11px}
+.panel .wake-control-row button[aria-pressed="true"] {color:var(--accent);border-color:var(--accent)}
+.panel .wake-controls p {margin:6px 0 0;color:var(--muted);font-size:10.5px;line-height:1.6;overflow-wrap:anywhere}
+.panel .wake-controls #wake-state {color:var(--fg-2)}
 .icon-btn {display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:9px;background:transparent;color:var(--fg-2);transition:background var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard)}
 .icon-btn:hover:not(:disabled) {background:rgba(255,255,255,.09);color:var(--fg)}
 .icon-btn svg {width:19px;height:19px}
@@ -97,3 +103,12 @@ button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cu
 :root .approval-card{margin:12px 0;padding:12px;border:1px solid var(--border,#555);border-radius:12px;background:var(--surface,#25282d);font-size:13px;overflow-wrap:anywhere}
 :root .approval-card p{margin:6px 0}
 :root .approval-card .turn-action{padding:8px 14px;border:1px solid currentColor;border-radius:8px}
+.panel .bell-menu .bell-notice{color:var(--fg);margin:6px 4px}
+.panel .bell-menu .bell-notice small{color:var(--muted)}
+.notepad-controls .notepad-text{display:block}
+.notepad-controls .notepad-text textarea{display:block;width:100%;box-sizing:border-box;margin-top:8px}
+.thinking-grid i[data-cell="0"]{--i:0}
+.thinking-grid i[data-cell="1"],.thinking-grid i[data-cell="3"]{--i:1}
+.thinking-grid i[data-cell="2"],.thinking-grid i[data-cell="4"],.thinking-grid i[data-cell="6"]{--i:2}
+.thinking-grid i[data-cell="5"],.thinking-grid i[data-cell="7"]{--i:3}
+.thinking-grid i[data-cell="8"]{--i:4}

@@ -1,5 +1,10 @@
 # AgentArts 手工验收记录
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 本目录保存 `huawei_ict_agentarts` Competition Profile 需要真实账号或云端读回的验收记录。
 记录只描述实际观察到的表面；配置、版本提交、部署、API、trace、工具闭环和本地 Evidence
 必须分别证明，不能互相替代。
@@ -281,3 +286,23 @@ MOD-04B 的同一份本机脱敏回执
 并始终使用返回私有固定序列的显式 Fake，仅验证 runner plumbing，不衡量模型能力；它不会
 读取环境凭据或自动连接 AgentArts。输出只记录 case 状态、验证等级、固定错误码、计数和
 耗时；`mock` 结果不构成真实 AgentArts、工具执行或 Evidence 验收。
+
+## 2026-10-07：显式评估与只读观测入口索引
+
+以下新增入口及诊断修正沿 [PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302)
+交付，尚未进入 main；不改变上方历史真实调用、验收或授权记录。导入这些模块不会
+主动执行评估、采集文件或发出网络请求。固定修复评估所需的 `CoordinationPort`，以及
+观测所需的 SDK 签名回调，均由受信调用者显式注入；没有自动服务选择或凭据读取。
+
+| 入口 | 用途与必要验证入口 | 边界说明 |
+| --- | --- | --- |
+| [固定修复 runner](support/fixed-synthetic-repair-batch.mjs) | `runFixedSyntheticRepairBatch(port, {deadline, signal, repetitions})`；[runner 测试](support/fixed-synthetic-repair-batch.test.mjs) | 原三个合法合成世界，隐藏期望不送模型；按节点、摘要、依赖及版本精确评分，错误计入实际尝试分母；[MOD-31](../../../docs/modules/MOD-31-FIXED-EVALUATION-01.md) |
+| [配对修复 runner](support/paired-synthetic-repair-batch.mjs) | `runPairedSyntheticRepairBatch({candidate, baseline}, {deadline, signal, repetitions})`；[组合测试](support/paired-synthetic-repair-batch.test.mjs) | 复用原修复评分，1～3 对、最多 18 请求；共用原期限与取消，只比较两侧完整批次，未配对保留事实；[MOD-31](../../../docs/modules/MOD-31-FIXED-EVALUATION-01.md) |
+| [平台 Trace 只读 helper](support/read-platform-trace.mjs) | `readAgentArtsTrace({traceId, deadline, signal, authorize, fetchImpl})`；[独立消费测试](support/read-platform-trace-consumer.test.mjs) | 固定已公布区域/GET，显式 SDK 签名；总 Span 数与返回数分开，不合计 token、不推断请求/版本关联或费用；[MOD-32](../../../docs/modules/MOD-32-AGENTARTS-OBSERVABILITY.md) |
+| [文本响应诊断](support/text-response-diagnostic.mjs) | `createTextDiagnosticFetch(innerFetch)`；[解析及生命周期测试](support/text-response-diagnostic.test.mjs) | 保留公开 Reader 消费形态，取消/早停立即转发底层 cancel，清理异常与迟到读取不覆盖终态，各请求快照隔离；诊断只报告有界结构与固定原因，不返回正文 |
+
+测试链接对应显式 Fake 端口、签名头、传输及流，仅验证辅助管线。合成签名头不证明
+服务端验签、账号权限或真实 Trace；有限重复与本机 await 时长不证明统计显著性、
+平台推理耗时、真实角色协作或多 Agent 优势。现有运行实例 Bearer 不能替代观测 API
+的 AK/SK 签名。真实调用、目标读回、部署/版本及 Trace 的证据仍须逐批独立核实，
+不从这些离线测试或旧记录推定能力已可用。

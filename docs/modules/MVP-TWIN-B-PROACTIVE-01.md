@@ -1,5 +1,10 @@
 # MVP-TWIN-B-PROACTIVE-01
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - Profile `huawei_ict_agentarts`; MOD-27/28 consumer increment; owner zemeng.
 - Status `review`; registered non-author review and root integration pending.
 - Ownership: cognition plus the new `proactive-cognition-host.ts` and dedicated test.
@@ -273,3 +278,117 @@ Real source adapters, private Fact ingestion, Desktop source lifecycle, authoriz
 cloud projection, Laya/AgentArts live execution and later Policy/Evidence write
 acceptance remain main integration/live-validation work. Interest policy from #187
 is reusable, but this increment does not start permanent subscriptions or crawling.
+
+## Current source wiring — 2026-10-07
+
+Source baseline: `main@4b5ec61`. This section records the wiring present at that
+revision; the earlier dates, toolchain observations and test counts remain the
+historical results of their original increments.
+
+[Runtime's existing proactive host](../../apps/runtime/src/application/proactive-cognition-host.ts)
+implements initial Goal planning, Goal revision review, public Fact correction and
+time-only expiry review. It also preserves uncertain choices as machine review and
+recovers unavailable Laya choices through persisted cooldown/successor checkpoints.
+[The existing Desktop Goal host](../../apps/desktop/electron/goal-cognition-host.js)
+consumes current graph Goals through the same review API, including Goals committed
+outside its UI command path, and handles the legacy unavailable markers. Its cloud
+projection recognizes machine review and rechecks the current grant and graph;
+[Desktop main](../../apps/desktop/electron/main.js) binds the existing host and final
+cloud-send checks. These local consumers are already present, rather than pending
+new hosts. The source scenarios are recorded in
+[Runtime host tests](../../apps/runtime/test/proactive-cognition-host.test.mjs) and
+[Desktop Goal host tests](../../apps/desktop/test/goal-cognition-host.test.mjs).
+
+The separate knowledge/interest consumer and reviewed-repair wiring are also
+present at this baseline; their current boundaries are recorded in
+[MVP-TWIN-B-INTEREST-01](MVP-TWIN-B-INTEREST-01.md) and
+[MOD-28-REVIEWED-REPAIR-01](MOD-28-REVIEWED-REPAIR-01.md). Their source evidence is
+not synthesized from public Fact summaries. Missing or revoked providers/grants
+still fail closed, and a submitted cloud task is not a verified local write.
+
+This update is a source-wiring reconciliation. It adds no live-model, cloud,
+private-source, Electron or installer acceptance and does not mark MOD/MVP done.
+
+## Device consumer and field acceptance — 2026-10-07
+
+At `main@4b5ec61`, [Desktop main](../../apps/desktop/electron/main.js) already binds
+the existing [P5 composition](../../apps/desktop/electron/cognition-p5-composition.js)
+to `DeviceAnomalyDecisionService`. Completed observation tasks enter through
+[the observation source](../../apps/desktop/electron/p5-system-observation-source.js),
+which rereads `readCurrentSystemObservationSample`: a current process-local
+monitoring lease, successful `computer.system.observe` result, `node:os` origin and
+nonempty Runtime Evidence are required. The separate older proactive composition
+also displays system-pressure suggestions; its cards are not P5 delivery proof.
+
+[P5 checkpoints](../../apps/desktop/electron/p5-runtime-checkpoints.js) use
+`createHostStateStore('proactive-receipts')` in the existing Runtime SQLite database.
+The anomaly state is namespace-bound and survives reopening. The existing
+[notification host](../../apps/desktop/electron/p5-device-notification-host.js)
+uses the separate `device-notifications` host-state binding in that same database;
+its receipt store imports legacy files without creating another database. A saved
+card is pending intent. Only native `show` confirms delivery; unsupported/failed
+is undelivered, timeout/interruption is unknown, and user reading is unobserved.
+`reconcileDeviceDeliveries` accepts only a persisted delivered/failed record matching
+the exact source and pending delivery ID. Missing, pending or unknown records do
+not clear the anomaly intent or authorize a resend.
+
+The current core also rechecks the original signal/deadline after saving a new
+delivery intent and before calling the notification port. Cancellation there
+clears only this unattempted intent; attempted or historical unknown deliveries
+remain available for trusted readback. Desktop stop aborts the tracked operation
+and interrupts its notification host. Restarting the P5 consumer restores feedback;
+it does not restore monitoring permission, load the shared model or create a new
+delivery attempt.
+
+This consumer check exposed a concrete checkpoint mismatch: clearing an intent by
+assigning `undefined` made the state fail the actual host-state port's lossless JSON
+validation. The core now removes that optional property when clearing a definite
+outcome or the new unattempted intent. On Node 24.15.0, the new strict-JSON cases
+failed for delivered, cancelled and reconciled outcomes before the fix, then the
+device checks passed 19/19. An isolated existing-P5-composition check with actual
+Runtime SQLite and explicit synthetic samples/chooser/notification passed:
+cancel-before-delivery produced zero sends and no pending intent; reopening and
+replaying produced zero sends; a fresh sample sent once and the next sample was
+cooldown-suppressed. Four focused existing Fake-native host checks also passed for
+show confirmation, timeout/late reconciliation, restart and stop without resend.
+The first Runtime build lacked internal dependency artifacts; building only the
+missing dependencies and Runtime resolved that setup failure without source changes
+outside cognition. These checks prove local consumption and recovery, not live
+device, model or OS notification behavior.
+
+The remaining field checks follow this existing chain:
+
+1. **P8 / MOD-11–13 owner zemeng:** load the integrated Desktop code in an isolated
+   userData/runtime namespace and record its source revision. Verify Competition
+   profile, P5 persistence/feedback availability and the absence of an automatically
+   restored monitoring lease. Preserve any pre-existing unknown deliveries.
+2. **Model/configuration owner goo122, with P8:** start the configured local Laya
+   through its existing control and record the loaded-model identity/readiness.
+   Do not substitute a Fake model or launch another model host. Then enable this
+   session's computer monitoring through the existing settings/IPC; verify one
+   active P5 subscription and its lease expiry.
+3. **MOD-16/17 observation owner zemeng:** read a completed sample through the
+   existing Runtime API and trace its task ID/Evidence into the P5 source. Check
+   real `node:os` provenance and revoked/expired lease rejection. Ordinary low-load
+   samples can verify the source chain; they cannot establish an anomaly trigger.
+   A natural sustained high-load observation must additionally establish three
+   consecutive qualifying samples, the Laya selection and its exact delivery ID.
+4. **P8 with MOD-23 owner Potatos498:** reread that exact notification's native
+   outcome and persisted receipt after `show`/`failed`. Verify that the anomaly
+   feedback agrees and only confirmed delivery starts cooldown. Quiet/pause or an
+   unavailable policy must suppress a new OS send. If only the native display needs
+   isolation, use the existing
+   [single synthetic native-receipt helper](../../apps/desktop/test/p5-device-native-receipt.mjs)
+   with an isolated storage binding and its explicit one-notification flag; retain
+   its synthetic-input, no-real-trigger/model/Evidence markers.
+5. **P8 with the MOD-28 core owner zemeng:** disable monitoring during a pending
+   choice or notification and verify cancellation/unsubscription. An already
+   attempted delivery whose outcome is unknown must remain unknown across restart,
+   without another `show`. A late or previously persisted definite outcome may
+   reconcile only its matching pending ID; a user click or card alone cannot do so.
+
+Record source revision, process/model identity, observation task/Evidence references,
+delivery ID, native outcome and reopened feedback separately. A synthetic native
+receipt does not prove real load detection; an injected consumer test does not
+prove OS display. These field checks remain unperformed by this documentation
+update, and MOD/MVP acceptance remains open.

@@ -1,8 +1,50 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
+## 当前架构决定（2026-10-17）
+
+Owner 已确认本机 Laya 是本项目确定的架构方案，在本机运行并参与 `huawei_ict_agentarts` 的 Competition 产品路径；下文“架构仍未最终定型”仅指其余待定设计、接线和验收范围，不否定这项决定。AgentArts 继续承担现有镜像 Workflow 编排职责。本决定不表示外部比赛资格已获认可，也不表示真实平台端到端验收完成；既有回执仅证明对应固定版本与场景。
+
+<!-- current-design-alignment-20261015 -->
+## 当前口径与历史适用性（2026-10-15）
+
+当前以[详细设计](../design/CURRENT_DESIGN_20261015.md)区分设计意图、已有代码、待接线与真实验收；架构仍未最终定型。
+本机Laya、全部28图/185节点镜像串行编排，未合格判断升级经AgentArts代理的DeepSeek；语音百炼既有端口，SIS平台不可用。
+SWR `local-laya-v3-244ca434` 已发布，digest `sha256:244ca4340ae5c0f0ee62df98b2e86cddc16a543cb6d1eb5f7abbf163528d96e1`，
+云指定版本 `arm64-local-v3-244ca434` 目录与关联日志已验，见[发布回执](evidence/test-image-v3-20261015/owned-release.json)。
+两案例完整执行表面为本机同版镜像+本机Runtime/Policy/工具/Laya+远端AgentArts模型代理，
+见[真实执行汇总](evidence/test-image-v3-20261015/full-workflow-results.json)：Wukong167.432s、Pelican第二轮81.611s，41工具Evidence；首轮partial保留。
+分支父成功、协调锚点created；28目录不等于28业务验收。6次判断182–618ms未达150ms，各案例3裁决均升级DeepSeek，未证高级调用减少或训练。
+主动责任、无人值守、归来摘要、用户可调打扰/静默feed与语音确认复用原端口。
+高级影子与已有判断合并、主任务优先、按机会资源/收益决定；真实runner目前顺序await主/影，机会并行与普通任务先交主结果仍待接线。
+以下带日期的嵌入式、直连MaaS、未发布与旧未验记录均保留原版本范围，冲突部署/完成状态已superseded，不作为当前启动参数。
+当前启动只用 `PA_AGENT_LAYA_MODE=local`，镜像不含模型权重、Python或PyTorch；不直连提供商fallback。
+旧协作门槛以当前CONTRIBUTING/AGENTS为准，文档或receipt不授予权限。
+
+## 2026-10-15 当前开发边界
+
+Owner 选择本机 Laya，28 工作流编排仍由 AgentArts 自有镜像承担，不新增通用 Local Profile 或
+AgentArts 失败后静默回退。本地决策和宿主适配经既有工具/回执接口接线，见
+[ADR-0030](../adr/0030-local-laya-serial-image-workflows.md) 和 [调用说明](LOCAL_LAYA_WORKFLOW_WIRING.md)。
+早期“本版镜像尚未发布”记录已由上述SWR回执取代；本机工具闭环、云目录/日志和平台原生评估仍分别记录。
+
+## 2026-10-09 常驻目标与镜像分享增量
+
+当前比赛 profile 与本地 Runtime/Policy/工具/读回边界继续有效。面向开发者的常驻助手在电脑运行时负责世界变化、增量计划修复与执行/监管委派；不提供独立云电脑。
+
+目标通道 WSS 主、HTTPS 备用，同一 AgentArts 部署且降级可见；本分支已有HTTP/WS服务、本地/桌面接线与发送前持久防重发，公开WSS网关和真实云闭环仍待验收，自动status协调尚未交付。Wiki长期记忆由goo122在MOD-08/09接入，Laya与Goal/Cognition通过公开端口消费。详细图与缺口见完整设计和ADR-0013/0014。
+
+代码/接口随 PR 提交，GHCR 分享是预览产物；华为平台部署通常需按实际拉取能力和镜像导入方式继续处理，不能用 GHCR 上传代替 SWR/AgentArts 验收。合并要求登记协作者中至少一位非作者对当前提交有效批准及必要检查，禁止强制合并；镜像预览发布不触发 main 合并。
+
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 版本：1.1 · 日期：2026-09-20 · 状态：架构基线已确认，离线 Competition 执行面为 `provisional`，真实云端运行仍为 `unavailable`
 
 ## 1. 参赛口径
+
+2026-10-08 自有镜像增量：按 [ADR-0012](../adr/0012-owned-agentarts-image.md) 允许同一云端编排代码
+在 AgentArts ARM64 Runtime 托管，并显式在独立宿主验证赛后迁移性；没有新增通用 Local 执行循环或自动回退。
+当前实现和资产/验收缺口见 [迁移工作包](../modules/AGENTARTS-OWNED-IMAGE-MIGRATION.md)，真实 Competition 状态仍为 unavailable。
 
 本项目参加**华为 ICT 大赛创新赛道**，选择的赛题是“基于华为云 AgentArts 智能体开发平台的 Agent 设计和应用”。本 profile 是当前唯一实施和验收优先级；[通用 Local Profile](#4-比赛-profile-与可选-local-边界) 只保留现有代码，当前不新增、不扩展，也不替代比赛演示中的 AgentArts 主路径。
 

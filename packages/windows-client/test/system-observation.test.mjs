@@ -170,3 +170,40 @@ test('invalid or failing probes do not fabricate observations or leak source err
   await assert.rejects(failed.execute({}, context({deadline: new Date(Date.now() + 1_000).toISOString()})),
     error => error.code === 'EXTERNAL_FAILURE' && !/Users|secret|private/i.test(error.message));
 });
+
+test('counter regressions cannot be hidden by another core or CPU time category', async t => {
+  for (const scenario of ['cross-core mutable snapshot', 'same-core category']) await t.test(scenario, async () => {
+    const samples = [{user: 100, nice: 0, sys: 0, idle: 900, irq: 0},
+      {user: 200, nice: 0, sys: 0, idle: 800, irq: 0}];
+    let reads = 0;
+    const tool = createSystemObservationTool({sampleWindowMs: 1, probe: probe({cpuTimes: () => {
+      if (reads++ > 0) {
+        if (scenario === 'cross-core mutable snapshot') {
+          Object.assign(samples[0], {user: 0, idle: 0});
+          Object.assign(samples[1], {user: 2000, idle: 2000});
+        } else {
+          Object.assign(samples[0], {user: 50, sys: 200, idle: 1000});
+        }
+      }
+      return samples;
+    }})});
+    await assert.rejects(tool.execute({}, context({deadline: new Date(Date.now() + 1000).toISOString()})),
+      error => error.code === 'EXTERNAL_FAILURE' && error.message === 'System observation is unavailable');
+    assert.equal(reads, 2);
+  });
+});
+
+test('one unchanged core and reused mutable snapshots still allow valid aggregate growth', async () => {
+  const samples = [{user: 100, nice: 0, sys: 0, idle: 900, irq: 0},
+    {user: 200, nice: 0, sys: 0, idle: 800, irq: 0}];
+  let reads = 0;
+  const tool = createSystemObservationTool({sampleWindowMs: 1, probe: probe({cpuTimes: () => {
+    if (reads++ > 0) Object.assign(samples[1], {user: 300, idle: 900});
+    return samples;
+  }})});
+  const result = await tool.execute({}, context({deadline: new Date(Date.now() + 1000).toISOString()}));
+  assert.deepEqual(result.cpu, {logicalProcessorCount: 2, utilizationPercent: 50});
+  assert.equal(result.source, 'injected');
+  assert.doesNotThrow(() => validateToolValue(tool.descriptor.outputSchema, result));
+  assert.equal(reads, 2);
+});

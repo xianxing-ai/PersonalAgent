@@ -93,6 +93,7 @@ export class LayaActionChoiceService {
     if (!request || !text(request.context, Number.MAX_SAFE_INTEGER) || !Array.isArray(request.candidates)
       || request.candidates.length < 2 || request.candidates.length > 16
       || !(request.signal instanceof AbortSignal) || !Number.isFinite(Date.parse(request.deadline))) throw new Error('Invalid action choice request');
+    request = {...request};
     const seen = new Set<string>();
     const candidates = request.candidates.map(candidate => {
       if (!candidate || !ref(candidate) || seen.has(candidate.id) || !text(candidate.description, Number.MAX_SAFE_INTEGER)

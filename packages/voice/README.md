@@ -1,5 +1,16 @@
 # MOD-14 voice session foundation
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-13）：以 [CONTRIBUTING](../../CONTRIBUTING.md) 为准；当前提交须取得一位非作者有效 Approve，并满足必要检查。禁止管理员绕过或虚构批准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
+当前交付与真实设备继续入口：[MOD-14/15 验收记录（2026-10-13）](ACCEPTANCE-20261013.md)。
+基线 `5b581139` 已包含 Desktop SIS、Live、共享 PCM 和 Wake 的可信宿主组合；本机 IPC
+不等于公开 `voice.start`/`voice.stop` wire 已公布，也不等于真实设备验收。
+本轮修复 SIS 的异步期限、大 WAV 校验、错误脱敏及播放释放，并修复 provider 启动重入停止、
+释放前恢复监听及重复 dispose 提前返回；没有修改 Desktop main 或公共契约。
+
 This package is the provisional in-process voice-session boundary for the
 `huawei_ict_agentarts` Competition Profile. It implements a push-to-talk lifecycle
 with explicit Fake/Unavailable adapters. It does not choose an ASR/TTS vendor, open a
@@ -26,6 +37,11 @@ their idempotent release handles, clears in-memory transcript/reply material and
 whether those handles released successfully. A parent cancellation or deadline does the
 same with `cancelled` or `expired` state. Starting another session replaces the previous
 one; late provider callbacks are discarded.
+
+Operation ownership is registered before calling a provider, so even a synchronous
+reentrant stop waits for the returned handle. Provider failure and playback interruption
+keep the session busy until release completes; a late interruption receipt cannot reset
+new work or revive a stopped session.
 
 `subscribe(listener)` is a provisional, in-process read-only state feed for trusted host
 composition. It emits an independently frozen snapshot after the initial session becomes
@@ -69,8 +85,9 @@ UTF-8 text uses bounded stdio; stdout is one bounded JSON result; stderr is drai
 logging. There is no file, network, credential or automatic retry path.
 
 Deadline, parent abort, `stop()` and adapter disposal terminate the exact child and wait
-for its close. The adapter copies and later zeroes its audio input. Recognition responses
-are restricted to 8,000 characters and all process/provider failures use fixed local
+for its close. Concurrent and repeated disposal calls share the same release promise.
+The adapter copies and later zeroes its audio input. Recognition responses are restricted
+to 8,000 characters and all process/provider failures use fixed local
 errors. The helper uses open dictation for recognition and the installed `zh-CN` default
 audio voice for speech.
 
@@ -257,6 +274,8 @@ registered before host start, so synchronous reentrant disposal includes it.
 subscribers may keep the physical capture active. Whole-source shutdown requires
 `port.dispose()` to await every attachment and the host to confirm the last track's
 release. Release failure remains `EXTERNAL_FAILURE`, not a false success receipt.
+After a failed start or release, the same port rejects new subscriptions without starting
+another attachment; the trusted host must resolve the unconfirmed resources separately.
 Frames are 16 kHz mono PCM S16LE, at most 3200 bytes each, with at most four queued
 frames/12800 queued bytes. Delivered and discarded local copies are zeroed; this
 port neither submits nor cancels Runtime tasks. Real device acceptance is separate.

@@ -1,5 +1,13 @@
 # ADR-0008：事实变化消费与投影确认边界
 
+<!-- current-design-alignment-20261015 -->
+> 2026-10-15适用性：本页保留原日期、作者与accepted/proposed决定；仍适用的Runtime/权限/依赖边界不被撤销。
+> 冲突的部署、默认模型、发布、完成事实及旧协作门槛已由[当前设计](../design/CURRENT_DESIGN_20261015.md)更新（superseded），
+> 不把历史未验状态套到当前，也不把ADR存在当当前验收。[全部设计导航](../design/README.md)；当前接口另见[目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - 状态：proposed，待非作者评审；MOD-09B/09C 已提供进程内契约、Fake 与独立 SQLite Memory 适配器，本修订定义后续生产消费边界。
 - Profile：huawei_ict_agentarts；关联 PA-024/025、PR #57/#62。
 

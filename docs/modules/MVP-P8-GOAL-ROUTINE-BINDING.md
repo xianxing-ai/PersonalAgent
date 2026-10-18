@@ -1,5 +1,10 @@
 # P8 本地 Goal 常规授权消费修复
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 Profile：`huawei_ict_agentarts`。共享集成树 `mvp-assembly`，整体 MVP 未完成验收。
 
 2026-09-30 实际验收目录 `.cache/p5-real-reviewed-goal/261508ba-a92c-415d-be40-7cd6b534d710`：Laya ready true，随后原任务 `dfe3b24e-deb1-4e3e-91de-f9cbba8e146b` 的 `goals.revise` 进入 waiting_reconciliation，cloudCalls=0，Laya stopped。只读 SQLite 确认图仍 revision 3、Goal revision 1；原 Policy 常规策略检查点及已消费授权存在，交互审批表为空。

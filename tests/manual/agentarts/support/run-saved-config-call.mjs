@@ -33,6 +33,7 @@ try {
     child.once('exit',(code,signal)=>resolve(signal ? 1 : code ?? 1));
   });
 } finally {
-  // Abnormal termination preserves the lock as an explicit unknown-result marker.
+  // Abnormal termination, including host exit 3 for an unknown dispatched call,
+  // preserves the lock. Only completed or proved pre-send outcomes release it.
   if ((!spawned || process.exitCode === 0 || process.exitCode === 2) && existsSync(lock)) unlinkSync(lock);
 }

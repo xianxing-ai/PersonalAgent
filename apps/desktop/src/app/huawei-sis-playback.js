@@ -1,20 +1,29 @@
 /** Play only the WAV bytes sent by the trusted main process. */
 export function mountHuaweiSisPlayback(bridge) {
-  let current;
+  let current, disposed = false;
 
   async function finish(operation, type) {
-    if (operation.finished) return;
+    if (operation.finished) return operation.finishing;
     operation.finished = true;
     clearTimeout(operation.timer);
-    try { operation.source?.stop(); } catch {}
-    operation.source?.disconnect();
-    if (operation.context && operation.context.state !== 'closed') {
-      try { await operation.context.close(); }
-      catch { type = 'release_failed'; }
-    }
     operation.audio?.fill(0);
-    if (current === operation) current = undefined;
-    bridge.report({type, id: operation.id});
+    operation.finishing = Promise.resolve().then(async () => {
+      if (operation.source) operation.source.onended = null;
+      try { operation.source?.stop(); } catch {}
+      try { operation.source?.disconnect(); } catch {}
+      if (operation.context) {
+        try {
+          if (operation.context.state !== 'closed') await operation.context.close();
+          if (operation.context.state !== 'closed') type = 'release_failed';
+        } catch { type = 'release_failed'; }
+      }
+      if (type !== 'release_failed') {
+        if (operation.stopping) type = 'stopped';
+        if (current === operation) current = undefined;
+      }
+      bridge.report({type, id: operation.id});
+    });
+    return operation.finishing;
   }
 
   async function readyWithin(promise, milliseconds = 5_000) {
@@ -58,6 +67,7 @@ export function mountHuaweiSisPlayback(bridge) {
   }
 
   const unsubscribe = bridge.onCommand(command => {
+    if (disposed) return;
     if (command?.type === 'start') void start(command);
     else if (command?.type === 'stop' && current?.id === command.id) {
       current.stopping = true;
@@ -79,6 +89,7 @@ export function mountHuaweiSisPlayback(bridge) {
   };
   window.addEventListener('pagehide', onPageHide);
   return () => {
+    disposed = true;
     unsubscribe();
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('pagehide', onPageHide);

@@ -1,8 +1,8 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
 import {actionArgumentsDigest, analyzeImpact, buildMinimalRepairCandidate, previewStoredRepair,
-  selectGoalRevisionImpact, selectProjectedRepairScope} from '@personal-agent/cognition';
-import type {GoalRevisionSelectionRequest, ImpactItem, LayaActionChoiceService,
+  selectGoalRevisionImpact, selectGoalAncestorImpact, selectProjectedRepairScope} from '@personal-agent/cognition';
+import type {GoalRevisionSelectionRequest, GoalAncestorSelectionRequest, ImpactItem, LayaActionChoiceService,
   LayaActionSelection, ProjectedRepairInput, StoredRepairRequest} from '@personal-agent/cognition';
 import type {MemoryReadContext} from '@personal-agent/memory';
 import {isEffective} from '@personal-agent/goals';
@@ -18,6 +18,8 @@ const LAYA_COOLDOWN = 'proactive-cognition-laya-cooldown-v1';
 type Trigger = {kind: 'fact'; input: ProjectedRepairInput}
   | {kind: 'goal'; input: GoalRevisionSelectionRequest}
   | {kind: 'goal_created'; input: GoalCreatedSelectionRequest}
+  | {kind: 'goal_unplanned'; input: GoalCreatedSelectionRequest}
+  | {kind: 'goal_ancestor'; input: GoalAncestorSelectionRequest & {consumers: NodeRef[]}}
   | {kind: 'expiry'; input: {graphRevision: number; facts: NodeRef[]; consumers: NodeRef[]}};
 export interface GoalCreatedSelectionRequest {expectedGraphRevision: number; currentGoal: NodeRef}
 interface ReviewIntent {
@@ -40,7 +42,7 @@ export interface ProactiveCognitionReview {
   evaluatedAt: string;
   action: 'KEEP' | 'RECHECK' | 'REVISE';
   affected: ImpactItem[];
-  /** Exact newly registered Goal; this is not a fabricated impact item or a created Plan. */
+  /** Exact registered Goal awaiting initial planning; not a fabricated impact item or a created Plan. */
   subjectGoal?: NodeRef;
   options: ProactiveCognitionOption[];
   selectedOption?: ProactiveCognitionOption;
@@ -91,6 +93,10 @@ export interface ProactiveCognitionHost {
   }>;
   reviewGoalRevision(input: GoalRevisionSelectionRequest, request: MemoryReadContext & {at: string}): Promise<ProactiveReviewReadback>;
   reviewGoalCreated(input: GoalCreatedSelectionRequest, request: MemoryReadContext & {at: string}): Promise<ProactiveReviewReadback>;
+  /** Compatibility: only never-reviewed, never-planned current revisions enter this additive scope. */
+  reviewUnplannedGoal(input: GoalCreatedSelectionRequest, request: MemoryReadContext & {at: string}): Promise<ProactiveReviewReadback | undefined>;
+  /** Additive current-head difference scope. Empty scope creates no task; old choices stay immutable. */
+  reviewGoalAncestorImpact(input: GoalAncestorSelectionRequest, request: MemoryReadContext & {at: string}): Promise<ProactiveReviewReadback | undefined>;
   readReview(taskId: string): ProactiveReviewReadback;
   /** Retry the same idempotent AgentArts handoff, never rerun a saved Laya decision. */
   handoffReview(taskId: string, context: MemoryReadContext): Promise<ProactiveReviewReadback>;
@@ -155,7 +161,55 @@ function initialGoalContext(snapshot: GraphSnapshot, goal: NodeVersion): string 
       })}});
 }
 
+function unplannedGoalInput(input: GoalCreatedSelectionRequest): GoalCreatedSelectionRequest {
+  const ref = input?.currentGoal;
+  if (!input || typeof input !== 'object' || Array.isArray(input)
+    || Reflect.ownKeys(input).length !== 2 || !Object.hasOwn(input, 'expectedGraphRevision')
+    || !Object.hasOwn(input, 'currentGoal') || !Number.isSafeInteger(input.expectedGraphRevision)
+    || input.expectedGraphRevision < 1 || !ref || typeof ref !== 'object' || Array.isArray(ref)
+    || Reflect.ownKeys(ref).length !== 2 || !Object.hasOwn(ref, 'id') || !Object.hasOwn(ref, 'revision')
+    || typeof ref.id !== 'string' || !ref.id.trim() || !Number.isSafeInteger(ref.revision) || ref.revision < 2) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Invalid unplanned Goal receipt');
+  }
+  return {expectedGraphRevision: input.expectedGraphRevision,
+    currentGoal: {id: ref.id, revision: ref.revision}};
+}
+function currentUnplannedGoal(snapshot: GraphSnapshot, ref: NodeRef, at: string): NodeVersion | undefined {
+  const goal = snapshot.history.findLast(node => node.id === ref.id);
+  if (!goal || goal.kind !== 'goal') throw new ProtocolError('INVALID_ARGUMENT', 'Expected a Goal');
+  if (goal.revision !== ref.revision) throw new ProtocolError('REVISION_CONFLICT', 'Goal revision changed');
+  return goal.state === 'active' && isEffective(goal, at) ? goal : undefined;
+}
+// Follow exact historical dependency references; a later consumer rebind does not erase prior planning.
+function dependencyGoals(snapshot: GraphSnapshot, refs: readonly NodeRef[]): Set<string> {
+  const versions = new Map(snapshot.history.map(node => [refKey(node), node]));
+  const found = new Set<string>(), seen = new Set<string>();
+  const pending = [...refs];
+  while (pending.length) {
+    const ref = pending.pop()!;
+    const key = refKey(ref);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const node = versions.get(key);
+    if (!node) continue;
+    if (node.kind === 'goal') found.add(node.id);
+    for (const dependency of node.dependencies) pending.push(dependency);
+  }
+  return found;
+}
+function historicallyPlanned(snapshot: GraphSnapshot, goalId: string): boolean {
+  return dependencyGoals(snapshot, snapshot.history.filter(node => node.kind === 'decision'
+    || node.kind === 'plan')).has(goalId);
+}
+
 const refKey = (ref: NodeRef): string => JSON.stringify([ref.id, ref.revision]);
+// Ancestor identity is an exact ref multiset, independent of process locale.
+// Canonicalize stored intents too so the existing fallback retains legacy IDs.
+// Leave earlier Goal trigger identities and their ordering contracts unchanged.
+const ancestorRefs = (refs: readonly NodeRef[]): NodeRef[] => refs.map(ref => ({id: ref.id, revision: ref.revision}))
+  .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : left.revision - right.revision);
+// Expiry uses the same exact multiset ordering, with its own legacy identity lookup.
+const expiryRefs = ancestorRefs;
 function expiredPublicFactScope(snapshot: GraphSnapshot, at: string): {facts: NodeRef[]; items: ImpactItem[]} {
   const current = new Map(snapshot.history.map(node => [node.id, node]));
   const expired = [...current.values()].filter(node => node.kind === 'fact' && node.state === 'active'
@@ -207,12 +261,18 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
     const review = runtime.loadCheckpoint(taskId, REVIEW) as ProactiveCognitionReview | undefined;
     return {task, ...(review ? {review: structuredClone(review)} : {})};
   };
-  const goalIdentity = (trigger: Trigger): string | undefined => trigger.kind === 'goal_created'
+  const goalIdentity = (trigger: Trigger): string | undefined => trigger.kind === 'goal_created' || trigger.kind === 'goal_unplanned'
     ? JSON.stringify([trigger.kind, trigger.input.currentGoal.id, trigger.input.currentGoal.revision])
     : trigger.kind === 'goal' ? JSON.stringify([trigger.kind,
       trigger.input.previousGoal.id, trigger.input.previousGoal.revision,
-      trigger.input.currentGoal.id, trigger.input.currentGoal.revision]) : undefined;
-  const goalTasks = (context: MemoryReadContext): Map<string, TaskSnapshot> => {
+      trigger.input.currentGoal.id, trigger.input.currentGoal.revision])
+      : trigger.kind === 'goal_ancestor' ? JSON.stringify([trigger.kind,
+        trigger.input.currentGoal.id, trigger.input.currentGoal.revision,
+        ancestorRefs(trigger.input.consumers).map(ref => [ref.id, ref.revision])]) : undefined;
+  const expiryIdentity = (trigger: Trigger): string | undefined => trigger.kind === 'expiry'
+    ? JSON.stringify([trigger.kind, expiryRefs(trigger.input.facts).map(ref => [ref.id, ref.revision]),
+      expiryRefs(trigger.input.consumers).map(ref => [ref.id, ref.revision])]) : undefined;
+  const goalTasks = (context: MemoryReadContext, reviewedGoals?: Set<string>): Map<string, TaskSnapshot> => {
     const found = new Map<string, TaskSnapshot>();
     let beforeSequence: number | undefined;
     let snapshotSequence: number | undefined;
@@ -224,9 +284,23 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
       snapshotSequence = page.snapshotSequence;
       for (const task of page.items) {
         const intent = runtime.loadCheckpoint(task.taskId, INTENT) as ReviewIntent | undefined;
-        if (intent?.version !== 1 || intent.graphNamespace !== graphNamespace
-          || intent.bindingVersion !== bindingVersion || intent.retryOf) continue;
-        const identity = goalIdentity(intent.trigger);
+        if (intent?.version !== 1 || intent.graphNamespace !== graphNamespace) continue;
+        if (reviewedGoals) {
+          const trigger = intent.trigger;
+          if (trigger.kind === 'goal' || trigger.kind === 'goal_created'
+            || trigger.kind === 'goal_ancestor' || trigger.kind === 'goal_unplanned') {
+            reviewedGoals.add(trigger.input.currentGoal.id);
+          } else {
+            const snapshot = store.read(trigger.kind === 'fact'
+              ? trigger.input.projection.graphRevision : trigger.input.graphRevision);
+            const refs = trigger.kind === 'fact'
+              ? selectProjectedRepairScope(snapshot, intent.evaluatedAt, trigger.input).items.map(item => item.node)
+              : trigger.input.consumers;
+            for (const id of dependencyGoals(snapshot, refs)) reviewedGoals.add(id);
+          }
+        }
+        if (intent.bindingVersion !== bindingVersion || intent.retryOf) continue;
+        const identity = goalIdentity(intent.trigger) ?? expiryIdentity(intent.trigger);
         if (identity && !found.has(identity)) found.set(identity, task);
       }
       beforeSequence = page.nextBeforeSequence;
@@ -278,7 +352,7 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
         runtime.saveCheckpoint(taskId, REVIEW, result);
         readback.review = structuredClone(result);
       }
-      const projected = await handoff.prepare(structuredClone(result), context);
+      const projected = await handoff.prepare(structuredClone(result), {...context});
       active(context); open();
       if (!projected) return {...readback, handoff: {state: 'unavailable'}};
       if (typeof projected.exportPolicyVersion !== 'string' || !projected.exportPolicyVersion.trim()
@@ -335,15 +409,17 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
   const review = async (trigger: Trigger, request: MemoryReadContext & {at: string},
     knownGoalTasks?: ReadonlyMap<string, TaskSnapshot>): Promise<ProactiveReviewReadback> => {
     open(); active(request); evaluationTime(request.at);
-    const identity = trigger.kind === 'expiry' ? {kind: trigger.kind, facts: trigger.input.facts,
-      consumers: trigger.input.consumers} : trigger.kind === 'goal_created'
+    const identity = trigger.kind === 'expiry' ? {kind: trigger.kind, facts: expiryRefs(trigger.input.facts),
+      consumers: expiryRefs(trigger.input.consumers)} : trigger.kind === 'goal_created' || trigger.kind === 'goal_unplanned'
         ? {kind: trigger.kind, currentGoal: trigger.input.currentGoal} : trigger.kind === 'goal'
           ? {kind: trigger.kind, previousGoal: trigger.input.previousGoal,
-            currentGoal: trigger.input.currentGoal} : trigger;
+            currentGoal: trigger.input.currentGoal} : trigger.kind === 'goal_ancestor'
+            ? {kind: trigger.kind, currentGoal: trigger.input.currentGoal,
+              consumers: trigger.input.consumers} : trigger;
     let key = 'proactive-cognition:' + toolArgumentsDigest({graphNamespace, bindingVersion, trigger: identity});
     let existing = runtime.findTaskByIdempotencyKey(key);
     if (!existing) {
-      const goalKey = goalIdentity(trigger);
+      const goalKey = goalIdentity(trigger) ?? expiryIdentity(trigger);
       if (goalKey) existing = (knownGoalTasks ?? goalTasks(request)).get(goalKey);
     }
     let retryOf: string | undefined;
@@ -383,17 +459,25 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
     const persisted = existing ? runtime.loadCheckpoint(existing.taskId, INTENT) as ReviewIntent : undefined;
     if (persisted) { request = {...request, at: persisted.evaluatedAt}; trigger = persisted.trigger; }
     const revision = trigger.kind === 'fact' ? trigger.input.projection.graphRevision
-      : trigger.kind === 'goal' || trigger.kind === 'goal_created'
+      : trigger.kind === 'goal' || trigger.kind === 'goal_created' || trigger.kind === 'goal_unplanned' || trigger.kind === 'goal_ancestor'
         ? trigger.input.expectedGraphRevision : trigger.input.graphRevision;
     const snapshot = store.read(revision);
     const scope = trigger.kind === 'fact'
       ? selectProjectedRepairScope(snapshot, request.at, trigger.input)
       : trigger.kind === 'goal' ? selectGoalRevisionImpact(snapshot, request.at, trigger.input)
-        : trigger.kind === 'goal_created' ? {items: [] as ImpactItem[]}
+        : trigger.kind === 'goal_ancestor' ? selectGoalAncestorImpact(snapshot, request.at, {
+          expectedGraphRevision: trigger.input.expectedGraphRevision, currentGoal: trigger.input.currentGoal})
+        : trigger.kind === 'goal_created' || trigger.kind === 'goal_unplanned' ? {items: [] as ImpactItem[]}
         : {items: expiredPublicFactScope(snapshot, request.at).items.filter(item =>
           trigger.input.consumers.some(ref => refKey(ref) === refKey(item.node)))};
+    if (trigger.kind === 'goal_ancestor'
+      && JSON.stringify(ancestorRefs(scope.items.map(item => item.node)))
+        !== JSON.stringify(ancestorRefs(trigger.input.consumers))) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Goal ancestor scope changed');
+    }
     const subject = trigger.kind === 'goal_created'
-      ? createdGoal(snapshot, trigger.input.currentGoal, request.at) : undefined;
+      ? createdGoal(snapshot, trigger.input.currentGoal, request.at)
+      : trigger.kind === 'goal_unplanned' ? currentUnplannedGoal(snapshot, trigger.input.currentGoal, request.at) : undefined;
     const intent: ReviewIntent = {version: 1, graphNamespace, bindingVersion, trigger: structuredClone(trigger),
       evaluatedAt: request.at, ...(retryOf ? {retryOf} : {})};
     const task = existing ?? runtime.submitTaskWithCheckpoint({goal: subject
@@ -414,7 +498,9 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
           ...(subject ? {subjectGoal: {id: subject.id, revision: subject.revision}} : {}),
           options: [], semanticReviewRequired: true};
         if (scope.items.length || subject) {
-          const candidate = trigger.kind === 'expiry' || subject ? undefined : buildMinimalRepairCandidate(snapshot, request.at, {
+          // The optional candidate has a 100-target bound; larger full scopes
+          // still choose between the original recheck and defer approaches.
+          const candidate = trigger.kind === 'expiry' || subject || scope.items.length > 100 ? undefined : buildMinimalRepairCandidate(snapshot, request.at, {
             expectedGraphRevision: snapshot.revision, targets: scope.items.map(item => item.node),
           });
           result.options = subject ? [
@@ -428,7 +514,7 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
               description: 'Ask AgentArts to evaluate this minimal dependency repair and revise affected plan content as needed; the candidate is not yet executed.',
               repair: candidate.request}] : []),
           ];
-          if (prepareOptions) result.options = structuredClone([...await prepareOptions(structuredClone(result), context)]);
+          if (prepareOptions) result.options = structuredClone([...await prepareOptions(structuredClone(result), {...context})]);
           active(context);
           if (result.options.length < 2 || result.options.length > 16) throw new ProtocolError('INVALID_ARGUMENT', 'Expected bounded cognition options');
           const seen = new Set<string>();
@@ -504,19 +590,57 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
       if (consumed.batch.atWatermark && !hasMoreReviews && reviews.length === 0) {
         const snapshot = store.read();
         const heads = new Map(snapshot.history.map(node => [node.id, node]));
-        const recorded = goalTasks(request);
-        const recordedGoal = (node: NodeVersion): boolean => recorded.has(node.revision === 1
+        // Freeze namespace-wide intent evidence before this pass can create a revision KEEP task.
+        const reviewedGoals = new Set<string>();
+        const recorded = goalTasks(request, reviewedGoals);
+        const recordedGoal = (node: NodeVersion): boolean => recorded.has(JSON.stringify(['goal_unplanned', node.id, node.revision]))
+          || recorded.has(node.revision === 1
           ? JSON.stringify(['goal_created', node.id, node.revision])
           : JSON.stringify(['goal', node.id, node.revision - 1, node.id, node.revision]));
+        const expiry = expiredPublicFactScope(snapshot, request.at);
+        const expiryTrigger = expiry.items.length ? {kind: 'expiry' as const, input: {
+          graphRevision: snapshot.revision, facts: expiryRefs(expiry.facts),
+          consumers: expiryRefs(expiry.items.map(item => item.node)),
+        }} : undefined;
+        const unrecordedExpiry = expiryTrigger && !runtime.findTaskByIdempotencyKey('proactive-cognition:'
+          + toolArgumentsDigest({graphNamespace, bindingVersion, trigger: {kind: 'expiry',
+            facts: expiryTrigger.input.facts, consumers: expiryTrigger.input.consumers}}))
+          && !recorded.has(expiryIdentity(expiryTrigger)!);
+        let expiryReviewed = false;
+        const reviewExpiry = async (): Promise<void> => {
+          if (!expiryTrigger || expiryReviewed || reviews.length >= request.limit) return;
+          reviews.push(await review(expiryTrigger, request, recorded));
+          expiryReviewed = true;
+        };
         const goals = [...heads.values()].filter(node => node.kind === 'goal'
-          && node.state === 'active' && isEffective(node, request.at))
+          && (node.revision > 1 || (node.state === 'active' && isEffective(node, request.at))))
           .sort((a, b) => Number(recordedGoal(a)) - Number(recordedGoal(b))
             || (a.revision === 1 ? 0 : 1) - (b.revision === 1 ? 0 : 1)
             || a.graphRevision - b.graphRevision);
         for (const goal of goals) {
           open(); active(request);
+          // New local expiry work must not wait for an older Goal's cloud grant.
+          // Recorded expiry work keeps the original fallback, so an unavailable
+          // expiry handoff cannot in turn starve pending Goal recovery at limit 1.
+          if (recordedGoal(goal) && unrecordedExpiry) await reviewExpiry();
           if (reviews.length >= request.limit) break;
           const currentGoal = {id: goal.id, revision: goal.revision};
+          if (goal.revision > 1) {
+            const unplanned: Trigger = {kind: 'goal_unplanned', input: {expectedGraphRevision: snapshot.revision, currentGoal}};
+            const priorUnplanned = recorded.get(goalIdentity(unplanned)!);
+            const changedConsumers = selectGoalRevisionImpact(snapshot, request.at, {
+              expectedGraphRevision: snapshot.revision, previousGoal: {id: goal.id, revision: goal.revision - 1}, currentGoal}).items.length
+              || selectGoalAncestorImpact(snapshot, request.at, {expectedGraphRevision: snapshot.revision, currentGoal}).items.length;
+            // A saved initial choice cannot hide consumers subsequently pinned to an older Goal.
+            if (priorUnplanned || (goal.state === 'active' && isEffective(goal, request.at)
+              && !reviewedGoals.has(goal.id) && !historicallyPlanned(snapshot, goal.id))) {
+              if (!priorUnplanned || (!changedConsumers && goalNeedsReview(priorUnplanned))) {
+                reviews.push(await review(unplanned, request, recorded));
+              }
+              if (!changedConsumers) continue;
+              if (reviews.length >= request.limit) break;
+            }
+          }
           let trigger: Trigger;
           if (goal.revision === 1) {
             if ([...heads.values()].some(node => (node.kind === 'decision' || node.kind === 'plan')
@@ -528,16 +652,25 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
               previousGoal, currentGoal}};
           }
           const prior = recorded.get(goalIdentity(trigger)!);
-          if (prior && !goalNeedsReview(prior)) continue;
-          reviews.push(await review(trigger, request, recorded));
+          const ancestorScope = goal.revision > 1 ? selectGoalAncestorImpact(snapshot, request.at,
+            {expectedGraphRevision: snapshot.revision, currentGoal}) : undefined;
+          const ancestor: Trigger | undefined = ancestorScope?.items.length ? {kind: 'goal_ancestor', input: {
+            expectedGraphRevision: snapshot.revision, currentGoal,
+            consumers: ancestorRefs(ancestorScope.items.map(item => item.node)),
+          }} : undefined;
+          const previousAncestor = ancestor && recorded.get(goalIdentity(ancestor)!);
+          // Newly uncovered local work precedes an older pending handoff at the same request bound.
+          if (prior && ancestor && !previousAncestor) {
+            reviews.push(await review(ancestor, request, recorded));
+            if (reviews.length >= request.limit) break;
+          }
+          if (!prior || goalNeedsReview(prior)) reviews.push(await review(trigger, request, recorded));
+          if (ancestor && reviews.length < request.limit && !(prior && !previousAncestor)
+            && (!previousAncestor || goalNeedsReview(previousAncestor))) {
+            reviews.push(await review(ancestor, request, recorded));
+          }
         }
-        if (reviews.length === 0) {
-          const scope = expiredPublicFactScope(snapshot, request.at);
-          if (scope.items.length) reviews.push(await review({kind: 'expiry', input: {
-            graphRevision: snapshot.revision, facts: scope.facts,
-            consumers: scope.items.map(item => item.node).sort((a, b) => refKey(a).localeCompare(refKey(b))),
-          }}, request));
-        }
+        if (reviews.length === 0) await reviewExpiry();
       }
       return {reviews, nextGraphRevision, atWatermark: consumed.batch.atWatermark, hasMoreReviews};
     },
@@ -552,6 +685,30 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
       }
       createdGoal(snapshot, selected.currentGoal, request.at);
       return review({kind: 'goal_created', input: selected}, request);
+    },
+    reviewUnplannedGoal: (input: GoalCreatedSelectionRequest, request: MemoryReadContext & {at: string}) => {
+      open(); active(request); evaluationTime(request.at);
+      const selected = unplannedGoalInput(input), snapshot = store.read();
+      if (snapshot.revision !== selected.expectedGraphRevision) {
+        throw new ProtocolError('REVISION_CONFLICT', 'Goal graph revision changed');
+      }
+      const goal = currentUnplannedGoal(snapshot, selected.currentGoal, request.at);
+      const reviewedGoals = new Set<string>(), recorded = goalTasks(request, reviewedGoals);
+      const trigger: Trigger = {kind: 'goal_unplanned', input: selected};
+      // Recover this exact scope before treating its own trusted intent as prior review evidence.
+      if (recorded.has(goalIdentity(trigger)!)) return review(trigger, request, recorded);
+      if (!goal || reviewedGoals.has(goal.id) || historicallyPlanned(snapshot, goal.id)) return Promise.resolve(undefined);
+      return review(trigger, request, recorded);
+    },
+    reviewGoalAncestorImpact: (input: GoalAncestorSelectionRequest, request: MemoryReadContext & {at: string}) => {
+      open(); active(request); evaluationTime(request.at);
+      const snapshot = store.read();
+      const scope = selectGoalAncestorImpact(snapshot, request.at, structuredClone(input));
+      if (!scope.items.length) return Promise.resolve(undefined);
+      return review({kind: 'goal_ancestor', input: {
+        expectedGraphRevision: scope.graphRevision, currentGoal: scope.currentGoal,
+        consumers: ancestorRefs(scope.items.map(item => item.node)),
+      }}, request);
     },
     readReview, handoffReview,
     close: () => { closed = true; for (const controller of controllers) controller.abort(); },

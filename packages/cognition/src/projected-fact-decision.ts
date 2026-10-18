@@ -1,5 +1,6 @@
 import {DecisionError, INTERVENTIONS} from './proactive-decision.js';
 import type {DecisionEvent, DecisionPort, DecisionRef, DecisionSuggestion} from './proactive-decision.js';
+import {withCognitionDeadline} from './deadline.js';
 
 /** Structural view of Runtime's committed FactProjectionReceipt. No Runtime dependency. */
 export interface ProjectedFactDecisionInput {
@@ -69,6 +70,9 @@ function exactArray(value: unknown, maximum: number): readonly unknown[] {
 /** Treat even an injected DecisionPort's output as advisory data, not a trusted binding. */
 function validatedSuggestions(value: unknown, events: readonly DecisionEvent[]): readonly DecisionSuggestion[] {
   const rawSuggestions = exactArray(value, events.length);
+  // Every submitted event needs one answer; the identity checks below reject
+  // duplicates and replacements, so a partial batch cannot look complete.
+  if (rawSuggestions.length !== events.length) invalidResult();
   const expected = new Map(events.map(event => [event.eventId, event]));
   const seen = new Set<string>();
   return rawSuggestions.map(raw => {
@@ -147,7 +151,8 @@ export async function decideProjectedFactImpact(
     facts: event.facts.map(reference => ({...reference})),
     authorization: {...event.authorization},
   }));
-  const suggestions = await decision.decide({events: submittedEvents, deadline, signal});
+  const suggestions = await withCognitionDeadline({deadline, signal},
+    context => decision.decide({events: submittedEvents, ...context}));
   checkLifecycle(deadline, signal);
   return validatedSuggestions(suggestions, expectedEvents);
 }

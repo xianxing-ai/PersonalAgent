@@ -1,9 +1,16 @@
 # MOD-30-COMPETITION-EXPORT-01：受信合成结果出机
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - Profile：`huawei_ict_agentarts`；MOD-11/13/30 的 Runtime 消费端增量。
 - 实现：zemeng 委派集成执行者（Git/GitHub `zemeng5208`）；评审：待 goo122 或另一位已登记非作者。
 - 状态：review；不代表真实云工具循环或整个 MOD 完成。
 - 基线：main `c5c4ada` + PR #99 `2630c94` 的 Workflow 输入适配。
+
+以下保留该基线的历史行为与验收；当前源码上限、消费接线及未合并增量见末节。
 
 ## 最小行为与兼容
 
@@ -68,3 +75,26 @@ PR #78 的 loopback MCP 桥不在本 PR 中整体引入。历史桥只支持预�
 后续 HTTPS 方案交主控协调：仅绑定 loopback，单次合成运行、短期随机 token、固定只读工具、
 显式字段投影、到期/取消关闭；公开入口与隧道服务确定并完成审批生命周期后才联调。
 本片没有打开公网入口、读取凭据、暴露 Shell/私人文件或变更平台法律承诺。
+
+## 2026-10-07 消费完成矩阵
+
+main `4b5ec61` 已有下列实现；[PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302)
+尚未合并，本节分开登记。没有新 wire DTO、授权协议或存储迁移；本轮没有真实云验收。
+
+| 边界 | main 已有实现 | #302 未合并增量 |
+| --- | --- | --- |
+| 提案与确认续接 | [coordination.ts](../../apps/runtime/src/application/coordination.ts) 主持原 Policy/审批/ToolGateway、持久 receipt、出机投影和发送前复核；已确认工具不因续接重放而重做 | adapter 冻结自己的 continuation 副本，让 guard 与已序列化发送内容一致；不冻结 caller 原对象 |
+| 初始目录 | [tool-catalog.ts](../../apps/runtime/src/application/tool-catalog.ts) 从任务绑定的已注册工具及 native worker 选择精简目录，提案和发送前重新检查；目录不授予执行权限 | 单工具/provider 异常只影响该项；原 caller 取消/期限仍约束整个调用。三处 worker describe 使用有界读取并重核 name/version，保留有限 signed minimum/maximum |
+| 输入 JSON | [公开 parser](../../packages/coordination/src/index.ts) 已有提案、目录和确认续接预算及严格结果类型 | 复制提案时共用预算、严格 dense own-data 数组与固定反射错误，保留合法 JSON 特殊键 |
+| 默认子任务 | [subagent-host.ts](../../apps/runtime/src/application/subagent-host.ts) 使用原 Runtime 子任务、Competition worker、审批与确认回执，不建立第二调度器 | 重放时保留父取消，合法特殊 JSON ID 按 own key 读取；候选模式参与配置绑定，见 [MOD-29 兼容说明](MOD-29-AGENTARTS-RUNTIME-INTEGRATION.md) |
+
+当前预算以公开 parser 为准：工具目录最多 **64 项 / 24,576 UTF-8 JSON 字节**；
+确认 continuation 的完整 JSON 最多 **1,048,576 UTF-8 字节**；提案 arguments 为
+**65,536 UTF-16 code units**。原文 8 KiB 记录是历史限制，不能当作当前上限。
+main 已有目录 opt-in 路径可包含受信注册的写工具；实际执行仍须本地 Policy/审批，
+结果出机仍须独立绑定与投影，不能据此扩大历史只读合成夹具的授权。
+
+已有 CloudSkill/native worker 消费是本地受信契约接线，不证明真实 AgentArts 已执行
+MCP/Skill。原生同云 run 恢复仍 unavailable；confirmed continuation 发起新的 invocation。
+下一真实验收须逐项关联同一任务的提案、原审批/执行读回、最小出机投影及独立云请求，
+并覆盖撤权、取消/期限和失败核实；保留原 confirmed 记录，不盲目重发或扩大外网入口。

@@ -6,6 +6,7 @@ function harness(t,invoke) {
   const previous=Object.getOwnPropertyDescriptor(globalThis,'document');
   t.after(()=>{if(previous) Object.defineProperty(globalThis,'document',previous);else delete globalThis.document;});
   const node=()=>({value:'',disabled:false,textContent:'',listeners:new Map(),attributes:new Map(),
+    isConnected:true,getClientRects:()=>[{}],focus(){globalThis.document.activeElement=this;},
     addEventListener(name,listener){this.listeners.set(name,listener);},
     setAttribute(name,value){this.attributes.set(name,value);}});
   const fields=Object.fromEntries(['gatewayUrl','runtimeName','authorization'].map(key=>[key,node()]));
@@ -13,11 +14,18 @@ function harness(t,invoke) {
   Object.assign(form,{elements:fields,querySelector:()=>submit,
     querySelectorAll:()=>[...Object.values(fields),submit,revoke],
     reset(){Object.values(fields).forEach(field=>{field.value='';});}});
-  const section={querySelector:selector=>selector==='form'?form:selector==='[data-status]'?status:revoke};
-  globalThis.document={createElement:()=>section};
+  const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
+    querySelector:selector=>selector==='form'?form:selector==='[data-status]'?status:revoke};
+  form.contains=target=>[...Object.values(fields),submit,revoke].includes(target);
+  const body={},documentListeners=new Map();
+  globalThis.document={body,activeElement:body,createElement:()=>section,
+    addEventListener:(name,listener)=>documentListeners.set(name,listener),
+    removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,status,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+  return {controls,fields,submit,revoke,status,section,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+    blur:()=>{globalThis.document.activeElement=body;},
+    focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
     clear:()=>revoke.listeners.get('click')(),
     edit:(key,value)=>{fields[key].value=value;form.listeners.get('input')({target:fields[key]});}};
 }
@@ -43,6 +51,33 @@ test('AgentArts settings serialize save/revoke and preserve the pending destinat
   resolve({configured:false});await revoking;
   assert.equal(ui.fields.runtimeName.value,'');
   assert.match(ui.status.textContent,/凭据已清除/);
+});
+
+test('AgentArts settled actions restore initiating focus without retries or stealing focus after departure',async t=>{
+  const calls=[];let resolve,reject;
+  const ui=harness(t,action=>{calls.push(action);return new Promise((done,fail)=>{resolve=done;reject=fail;});});
+  for(const result of [{configured:true},undefined,{configured:false}]) {
+    ui.fields.runtimeName.focus();const pending=ui.save();ui.blur();resolve(result);await pending;
+    assert.equal(globalThis.document.activeElement,ui.fields.runtimeName);
+  }
+  for(const result of [{configured:false},undefined]) {
+    ui.revoke.focus();const revoke=ui.clear();ui.blur();resolve(result);await revoke;
+    assert.equal(globalThis.document.activeElement,ui.revoke);
+  }
+  for(const action of [ui.save,ui.clear]) {
+    const origin=action===ui.save?ui.fields.runtimeName:ui.revoke;origin.focus();
+    const failed=action();ui.blur();reject(Error('synthetic failure'));await failed;
+    assert.equal(globalThis.document.activeElement,origin);
+  }
+  ui.fields.runtimeName.focus();const departed=ui.save();ui.focusElsewhere();ui.blur();resolve({configured:true});await departed;
+  assert.equal(globalThis.document.activeElement,globalThis.document.body);
+  ui.fields.runtimeName.focus();const hidden=ui.save();ui.blur();ui.controls.show(false);ui.controls.show(true);
+  resolve({configured:true});await hidden;
+  assert.equal(globalThis.document.activeElement,globalThis.document.body,'leaving and returning cannot restore stale focus');
+  ui.fields.runtimeName.focus();const disconnected=ui.save();ui.blur();ui.section.isConnected=false;
+  resolve({configured:true});await disconnected;
+  assert.equal(globalThis.document.activeElement,globalThis.document.body);
+  assert.equal(calls.length,10,'focus restoration cannot invoke an operation');
 });
 
 test('AgentArts settings keep failed writes unconfirmed, redact errors, and allow explicit retry',async t=>{

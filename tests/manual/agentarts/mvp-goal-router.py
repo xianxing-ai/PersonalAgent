@@ -50,7 +50,7 @@ def valid_context(value, goal=False):
         if not isinstance(target, dict) or set(target) != {"node", summary_key, "requestedDependencies"}:
             return False
         node, deps = target["node"], target["requestedDependencies"]
-        if not valid_ref(node, goal) or not text(target[summary_key], 4096):
+        if not valid_ref(node, goal) or not text(target[summary_key], 8192 if goal else 4096):
             return False
         if not isinstance(deps, list) or len(deps) > 64 or not all(valid_ref(r, goal) for r in deps):
             return False
@@ -78,7 +78,7 @@ def goal_route(goal):
         return direct_text("RECHECK：未确定的本地选择仅供复核，不能生成可提交修复候选。")
     try:
         payload = json.loads(goal[len(GOAL_PREFIX):])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         return direct_text("RECHECK：主动目标数据格式无效，尚未执行。")
     keys = {"action", "strategy", "nodes", "repairContext", "omittedSources", "calibrated", "executed"}
     if (not isinstance(payload, dict) or set(payload) != keys or payload["action"] != "REVISE"
@@ -111,7 +111,11 @@ def goal_route(goal):
 
 def main(args: dict) -> dict:
     raw = args.get("query")
-    if not isinstance(raw, str) or not raw or len(raw.encode("utf-8")) > MAX_QUERY_BYTES:
+    try:
+        valid_query = isinstance(raw, str) and bool(raw) and len(raw.encode("utf-8")) <= MAX_QUERY_BYTES
+    except UnicodeEncodeError:
+        valid_query = False
+    if not valid_query:
         return direct_text("请求格式或长度无效，无法生成提案。")
     initial = goal_route(raw)
     if initial is not None:
@@ -125,7 +129,7 @@ def main(args: dict) -> dict:
             break
     try:
         data = json.loads(raw)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         return direct_text("请求不是受限 JSON，无法生成提案。")
     if not isinstance(data, dict):
         return direct_text("请求结构无效，无法生成提案。")

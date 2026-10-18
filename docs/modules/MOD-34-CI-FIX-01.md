@@ -1,6 +1,11 @@
 # MOD-34-CI-FIX-01：有界失败修复消费链
 
-状态：review；目标 profile：`local`（本轮明确授权的开发工作流增量）。负责人 zemeng；非作者集中验收由 Potatos498 执行。本增量不声明真实 GitHub、模型、Windows 或 AgentArts 验收已完成，也不替代 Competition Golden Path。
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
+状态：review；目标 profile：`local`（本轮明确授权的开发工作流增量）。当前负责人 Potatos498（2026-10-07 接续）；负责实现、受控 Git、Runtime/桌面必要接线、验证、自审及交付，历史 zemeng 作者归属保留。本增量不声明真实 GitHub、模型、Windows 或 AgentArts 验收已完成，也不替代 Competition Golden Path。
 
 ## 入口与依赖
 
@@ -31,6 +36,10 @@ UTF16码点或达到上限时停止并保留truncated，不把不完整内容称
 原审批/页号/一步预算跨SQLite重启保持。宿主明确选定后提交独立 `ci_fix`，不自动轮询
 或为整页建子任务。完整公开输入输出与组合规则见
 [Runtime消费说明](DEV-WORKFLOWS-INTEGRATION-01.md)。
+发现工厂捕获原 ToolPort 引用，descriptor 与后续 bounded 调用使用同一端口；
+普通 caller 启动读取后为新实例替换复用 options.tools，不改变旧实例。原端口的
+list/invoke 方法及原授权/confirmedReplayReady 属性仍实时，原 now 函数捕获、
+请求参数/identity/checkpoint/一步预算保持不变，新 factory 可用新端口。
 
 可信宿主可显式设置 `sourceRunBacklink={toolName,runAttempt}`，原PR/评论后追加原预算内
 稳定source-backlink步骤。未配置时旧checkpoint identity不变，仍只表示PR引用原来源。
@@ -50,9 +59,30 @@ Git receipt 必须从 Runtime 获得；commit 参数中的 verificationRunId 仅
 
 issue fingerprint 与 MOD-38 一致：SHA256(JSON.stringify([number,title,body,state,sortedLabels,url,updatedAt]))；修复前重新读取并校验，变化返回 stale。PR 保留 issue URL/fingerprint，不使用自动关闭关键字。
 
+MOD38 默认 Runtime 桥还传递可信 `repairGoal` 与 `pullRequestBody`：前者最多 8000、
+后者最多 16000 字符，非空且在入口捕获为独立字符串。goal 作为有界模型 JSON 上下文
+计入原输入预算，不赋予权限；正文追加到原诊断、source/Issue 回链和 fingerprint 后。
+完整正文超过 65536 字符时在 commit/push 前拒绝，保留原审批与验证链。
+
 ## 恢复与预算
 
+单次 `runCiFix` 调用在首个 await 前捕获执行配置：仓库/run/源 SHA、分支、验证
+recipe、步骤/token/日志/尝试上限及已批准上下文，复制 sourcePaths 数组与
+Issue/Git 工具名/sourceRunBacklink 子对象。普通调用方在等待期间修改复用 options，
+不能让同一 task/identity 的后续参数偏离原配置。factory 不在创建时永久冻结执行
+配置，不同任务的新调用可以使用新配置；旧 journal 的 identity 校验和序列化保持
+不变。factory 创建时固定 ModelPort/工具对象，旧 pending/unknown 恢复不会因宿主
+复用 options 创建另一实例而切换 Runtime adapter。新 factory 可绑定新端口；直接
+`runCiFix(context, options)` 每次调用选取端口。原端口的方法和能力仍实时，Runtime `authorizationRefFor`、
+`confirmedReplayReady` 与 `now` 继续读取实时钩子，撤销、回执可消费性和期限不会被
+配置快照冻结。快照不替代工具权限检查或现场执行回执。
+
 Runtime checkpoint `ci-fix-v1` 保存参数 identity、调用计数、token 保守预留、confirmed receipts、evidence 与 in-flight 标识。工具 runId 稳定绑定 task/identity/step。每次 dispatch 前持久化；异常、取消、超时保留 in-flight，默认恢复不重试。pending 审批恢复复用相同 runId 与参数。unknown 仅当宿主 `confirmedReplayReady(runId)` 明确表示 Runtime 已完成真实读回且可消费缓存确认结果时，才允许调用既有 Runtime adapter 重放；不得用该函数授权重新执行未知写入。模型未知响应不自动重做。
+
+上述 goal/正文有值时参与同一 identity；变化不得消费旧运行。未配置两字段的 legacy CI
+身份字节不变。旧 Issue 未知 checkpoint 加入新上下文会拒绝，原 journal 不变、零新
+派发；不自动迁移、清除或换 run，由原可信宿主以旧上下文核实恢复。代码升级不证明
+旧外部副作用已经确认。
 
 `maxSteps` 含读取、模型、工具；tokens 在请求前保守预留全部剩余预算，确认响应后按合法 `usage.totalTokens` 结算，多轮共享预算。usage 缺失或非法时保留耗尽状态，恢复不能重置预算。每轮 source/model/patch/verify 标识绑定轮次，防止误用上一轮结果。取消信号与 deadline 贯穿全部调用。没有 shell 字段，模型不能选择 command recipe 或 Git/PR 参数。
 
@@ -78,9 +108,38 @@ PowerShell受控用例，包括外部helper实际apply、位置/硬链接拒绝�
 `packages/coding-tools/test/ci-fix.test.mjs` Fake行为场景覆盖完整消费链、执行顺序、确认verify失败拒绝commit、缺能力、模型shell拒绝、unknown不重发、pending同run恢复、HEAD/identity变化、取消、预算、issue-only与指纹漂移。初稿仅静态交付，后续授权已执行构建/受控回归；不能把Fake验证称为真实Git提交或账号闭环。
 
 Potatos498在 `656bd874` 的旧59/59报告保留为历史证据，不替代后续分轮修复和当前source。
-当前source `2eda73d` 固定Node24.15完整check实际exit0，coding-tools183/15平台跳过，
+历史source `2eda73d` 固定Node24.15完整check实际exit0，coding-tools183/15平台跳过，
 Runtime347、根integration19通过；CI83+发现30的受控定向验证已通过，包含上述恢复回归。
 完整31workspace1990/0/50及最新Windows head见
 [统一续接清单](DEV-WORKFLOWS-CONTINUATION-20261005.md)，模块仍review/provisional。
+
+上述 `2eda73d` 为历史组合证据。2026-10-06 新增单次输入快照（#212 `6019776595`）
+公开 before 1/1 失败：首个读取等待期间普通 caller 改 repository，后续参数改用新
+仓库而 identity 保持原值；明确 Fake 工具成功不代表真实 Gateway 放行跨仓库写入。
+修后同复现 1/1 通过，正式 Node24.15 构建/类型通过、coding-tools 227/0/15 Linux
+平台跳过。独立公开探针 10/10：读取/模型/验证等待期间标量和嵌套配置更新仍用原绑定，
+实时 hook 属性替换生效、旧 journal 拒绝新配置、新任务接受新配置、非法关联零派发
+拒绝及 legacy identity 一致。原失败与最终日志均保留；沿 #297 交付，精确发布头的
+Windows 门禁另读回，不把之前已通过的提交当作本增量验证。
+
+CI discovery 后续 #212 `6020191190` 有效公开 before1/1失败：同步 descriptor 来自
+原端口，调用方启动后复用 options 更换同名/version 的端口，bounded 微任务却调新
+端口。修后同脚本1/1通过，Node24.15 coding-tools build/typecheck、模块230/0/15
+Linux平台跳过；独立公开4/4通过，覆盖原端口/新factory、原方法和能力撤销、pending
+及 unknown 的原run/参数/steps1和实时授权/确认钩子。所有工具明确 Fake READ，
+无真实账号写入；误命名before的准备日志实际新dist3通过，不计旧失败。
+最小源码仅3行引用绑定变化，不改上述恢复与时钟语义；沿现有#297继续交付。
+
+factory 跨恢复的端口绑定另按 #212 `6022269030` 修复。旧公开复现1/1失败：原
+读取 pending 后，宿主复用 options 创建新 factory，旧 factory 恢复原 run 却使用新
+tools/model。独立纯 Fake READ 的 pending/unknown 两例旧2失败→同探针新2通过，
+保持原 run/参数、确认未就绪时暂停、就绪后仅经原 adapter 消费。私有执行入口固定
+factory 端口，公开两参数 `runCiFix` 保持每次调用选端口；不冻结原权限与时钟钩子。
+同公开复现after1/1通过；正式新增回归旧1失败/1通过，固定Node24.15的build/typecheck
+及coding-tools232/0/15 Linux平台跳过通过。独立追加边界4/4涵盖直接调用新端口、
+原方法更新、授权撤销/恢复、时钟更新和能力撤销。追加探针首轮把既有unsupported
+返回误断为异常，纠正断言后通过；保留原日志，不计作产品或旧实现失败。
+仅本人CI修复源码/测试和配套说明，沿#297交付；未知写核实、Runtime授权、配置
+identity/序列化和步骤预算未改变，真实自动修复链仍按原owner验收。
 
 真实验收由Potatos498在原受信场景接续，精确脚本以当前package.json为准；需要获授权的GitHub仓库/分支/账号、MOD33 adapter、真实受权ModelPort、Windows patch host、受限验证recipe及Runtime verification snapshot。Local链不强制依赖AgentArts；AgentArts兼容与比赛云验收另按对应profile执行。Fake通过不替代上述真实验收。

@@ -1,5 +1,10 @@
 # AgentArts 文字 MVP 继续入口
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 目标 profile：`huawei_ict_agentarts`。工作包：MOD-04B/29/30/32 文字适配；负责人
 zemeng，非作者评审待 goo122 或另一位已登记协作者完成。接口仍为 provisional。
 
@@ -71,8 +76,16 @@ global/workflow index 冲突数。此重放不做网络请求、不改变生产�
 Runtime 或 Desktop 验收。片段来自受信本地构建文件，云响应始终只作为数据。
 若构建布局变化会显式 diagnostic_internal；未知错误不会输出原始消息。
 
-结构计数仅支持完整 JSON data 行；标准多行 SSE 标 not_fully_inspected，但仍由
-实际解析器重放。该标志不允许把部分统计推断成完整事件证据。输出只含白名单
+重放的 `strictCompletion` 默认 false，与 [文字探针](support/run-text-probe.mjs) 的
+默认 text 模式一致；[提案](support/run-proposal-probe.mjs)与[候选](support/run-candidate-probe.mjs)
+探针显式传 true，沿其 JSON 模式检查 SSE 完成顺序。`workflow_order` 也涵盖
+task_end 后正文、[DONE] 后事件的既有拒绝原因，不将它们记成诊断内部故障。
+
+文字诊断的结构计数支持 JSON 响应及完整 JSON data 行中的事件对象或数组；标准
+多行 SSE 标 not_fully_inspected，但仍由实际解析器重放。另一个
+[结构观察器](support/structural-fetch.mjs)不检查 SSE 事件数组的成员，其
+`indexedMessages.coverage` 标 partial，不能据零冲突计数声称全流无冲突。
+这些覆盖标志不允许把部分统计推断成完整事件证据。输出只含白名单
 类别和数字，不保存响应正文、工作流名称、Authorization 或请求 ID。报告保存在
 忽略的 `.cache/agentarts-text/`；人工复核后才选择性加入真实验收记录。
 

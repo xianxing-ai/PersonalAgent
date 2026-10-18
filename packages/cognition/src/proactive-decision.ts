@@ -138,7 +138,7 @@ function checkLifecycle(signal: AbortSignal, deadlineMs: number): void {
   if (Date.now() >= deadlineMs) throw new DecisionError('TIMEOUT');
 }
 function versionKey(event: DecisionEvent): string {
-  const facts = [...event.facts].sort((a, b) => a.id.localeCompare(b.id));
+  const facts = [...event.facts].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return JSON.stringify([event.source, event.eventId, facts, event.goal?.ref ?? null,
     event.plan ?? null, event.authorization.state, event.authorization.revision]);
 }
@@ -175,16 +175,19 @@ export class ProactiveDecisionService implements DecisionPort {
     const timer = setTimeout(cancel, Math.max(1, Math.min(30_000, deadlineMs - Date.now())));
     const signal = controller.signal;
     try {
-      choices = await chooseBeforeAbort(this.model, unique, signal, request.signal);
+      // The model receives advisory data only; keep the validated references
+      // private so a mutating provider cannot rewrite the resulting binding.
+      choices = await chooseBeforeAbort(this.model, structuredClone(unique), signal, request.signal);
       checkLifecycle(request.signal, deadlineMs);
       if (signal.aborted) throw new DecisionError(request.signal.aborted ? 'CANCELLED' : 'TIMEOUT');
       if (!Array.isArray(choices) || choices.length !== unique.length) throw new Error('model shape');
-      choices.forEach(choice => {
+      for (let index = 0; index < choices.length; index++) {
+        const choice = choices[index]!;
         exact(choice, ['intervention', 'confidence']);
         if (!INTERVENTIONS.includes(choice.intervention as Intervention)
           || typeof choice.confidence !== 'number' || !Number.isFinite(choice.confidence)
           || choice.confidence < 0 || choice.confidence > 1) throw new Error('model shape');
-      });
+      }
     } catch (error) {
       checkLifecycle(request.signal, deadlineMs);
       if (signal.aborted) throw new DecisionError(request.signal.aborted ? 'CANCELLED' : 'TIMEOUT');

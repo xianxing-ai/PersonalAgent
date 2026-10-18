@@ -85,7 +85,8 @@ test('read cancellation reaches the tool and reports CANCELLED', async () => {
   assert.equal(toolSignal.aborted, true);
 });
 
-test('an in-flight read deadline aborts the tool and reports TIMEOUT', async () => {
+test('an in-flight read deadline aborts the tool and reports TIMEOUT', async t => {
+  t.mock.timers.enable({apis: ['Date', 'setTimeout'], now});
   const current = Date.now();
   const policy = new InMemoryAuthorizationPolicy();
   policy.grant({
@@ -102,10 +103,14 @@ test('an in-flight read deadline aborts the tool and reports TIMEOUT', async () 
     await new Promise(resolve => context.signal.addEventListener('abort', resolve, {once: true}));
     return {value: 'late'};
   }});
-  await assert.rejects(gateway.invoke(invocation({
+  const pending = gateway.invoke(invocation({
     authorizationRef: 'auth-timeout',
     deadline: new Date(current + 20).toISOString(),
-  })), {code: 'TIMEOUT'});
+  }));
+  assert.ok(toolSignal, 'the tool must start before testing an in-flight deadline');
+  const rejected = assert.rejects(pending, {code: 'TIMEOUT'});
+  t.mock.timers.tick(20);
+  await rejected;
   assert.equal(toolSignal.aborted, true);
 });
 

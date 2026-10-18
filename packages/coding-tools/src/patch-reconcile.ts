@@ -1,6 +1,7 @@
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {realpathSync, statSync} from 'node:fs';
+import {performance} from 'node:perf_hooks';
 import {lstat, readFile, unlink} from 'node:fs/promises';
 import {basename, isAbsolute, relative, resolve, sep} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
@@ -45,7 +46,8 @@ export type WorkspacePatchReconciliationResult =
   | {path: string; state: 'in_progress'; runId: string; argumentsDigest: string;
     pid: number; beforeSha256: string; afterSha256: string}
   | {path: string; state: 'reconciled'; runId: string; argumentsDigest: string;
-    outcome: 'applied' | 'not_applied' | 'unknown'; beforeSha256: string; afterSha256: string; currentSha256: string};
+    outcome: 'applied' | 'not_applied' | 'unknown'; beforeSha256: string; afterSha256: string; currentSha256: string;
+    byteLength?: number};
 
 interface InFlightMarker {
   runId: string;
@@ -198,14 +200,17 @@ function canonicalPowerShellPath(powerShellPath: string): string {
   return resolved;
 }
 
+type ProcessQueryFailure = 'spawn_failed' | 'query_timeout' | 'output_limit' | 'query_failed' | 'invalid_output';
 type ProcessStartQuery =
   | {state: 'found'; startTimeTicks: string}
-  | {state: 'not_found'}
-  | {state: 'unknown'};
+  | {state: 'not_found'; elapsedMs: number}
+  | {state: 'unknown'; reason: ProcessQueryFailure; elapsedMs: number};
 
 function queryProcessStartTime(pid: number, powerShellPath: string): Promise<ProcessStartQuery> {
   const executable = canonicalPowerShellPath(powerShellPath);
   const command = `$ErrorActionPreference='Stop'; try { $p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($null -eq $p) { [Console]::Out.Write('NOT_FOUND'); exit 3 }; [Console]::Out.Write($p.StartTime.ToUniversalTime().Ticks) } catch { exit 4 }`;
+  const startedAt = performance.now();
+  const elapsedMs = (): number => Math.max(0, Math.round(performance.now() - startedAt));
   return new Promise(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try {
@@ -215,12 +220,12 @@ function queryProcessStartTime(pid: number, powerShellPath: string): Promise<Pro
         stdio: ['ignore', 'pipe', 'ignore'],
       });
     } catch {
-      resolveResult({state: 'unknown'});
+      resolveResult({state: 'unknown', reason: 'spawn_failed', elapsedMs: elapsedMs()});
       return;
     }
     let settled = false;
     let output = '';
-    const timer = setTimeout(() => finish({state: 'unknown'}), PROCESS_QUERY_TIMEOUT_MS);
+    const timer = setTimeout(() => finish({state: 'unknown', reason: 'query_timeout', elapsedMs: elapsedMs()}), PROCESS_QUERY_TIMEOUT_MS);
     const finish = (result: ProcessStartQuery): void => {
       if (settled) return;
       settled = true;
@@ -234,17 +239,19 @@ function queryProcessStartTime(pid: number, powerShellPath: string): Promise<Pro
     };
     child.stdout?.on('data', (chunk: Buffer) => {
       output += chunk.toString('utf8');
-      if (Buffer.byteLength(output, 'utf8') > MAX_PROCESS_QUERY_OUTPUT_BYTES) finish({state: 'unknown'});
+      if (Buffer.byteLength(output, 'utf8') > MAX_PROCESS_QUERY_OUTPUT_BYTES) {
+        finish({state: 'unknown', reason: 'output_limit', elapsedMs: elapsedMs()});
+      }
     });
-    child.once('error', () => finish({state: 'unknown'}));
+    child.once('error', () => finish({state: 'unknown', reason: 'spawn_failed', elapsedMs: elapsedMs()}));
     child.once('close', code => {
       const value = output.trim();
       if (code === 0 && PROCESS_START_TICKS.test(value) && BigInt(value).toString() === value) {
         finish({state: 'found', startTimeTicks: value});
       } else if (code === 3 && value === 'NOT_FOUND') {
-        finish({state: 'not_found'});
+        finish({state: 'not_found', elapsedMs: elapsedMs()});
       } else {
-        finish({state: 'unknown'});
+        finish({state: 'unknown', reason: code === 0 ? 'invalid_output' : 'query_failed', elapsedMs: elapsedMs()});
       }
     });
   });
@@ -255,9 +262,12 @@ export async function captureWorkspacePatchProcessIdentity(
   pid: number,
   powerShellPath: string,
 ): Promise<WorkspacePatchProcessIdentity> {
-  if (!Number.isSafeInteger(pid) || pid < 1) unknown('Workspace patch helper identity is unavailable');
+  if (!Number.isSafeInteger(pid) || pid < 1) unknown('Workspace patch helper identity is unavailable (invalid_pid, 0ms)');
   const result = await queryProcessStartTime(pid, powerShellPath);
-  if (result.state !== 'found') unknown('Workspace patch helper identity is unavailable');
+  if (result.state !== 'found') {
+    const reason = result.state === 'not_found' ? 'process_not_found' : result.reason;
+    unknown(`Workspace patch helper identity is unavailable (${reason}, ${result.elapsedMs}ms)`);
+  }
   return {pid, startTimeTicks: result.startTimeTicks};
 }
 
@@ -271,7 +281,7 @@ async function inspectWorkspacePatchProcess(
   return 'running';
 }
 
-async function readCurrentSource(root: string, path: string): Promise<{sha256: string; identity: FileIdentity}> {
+async function readCurrentSource(root: string, path: string): Promise<{sha256: string; byteLength: number; identity: FileIdentity}> {
   let before: Awaited<ReturnType<typeof checkedSource>>;
   try { before = await checkedSource(root, path); }
   catch (error) { if (error instanceof ProtocolError) throw error; unknown('Workspace patch source could not be checked'); }
@@ -291,7 +301,7 @@ async function readCurrentSource(root: string, path: string): Promise<{sha256: s
   if (!sameFile(beforeIdentity, afterIdentity) || bytes.length !== after.size) {
     unknown('Workspace patch source changed during reconciliation');
   }
-  return {sha256: createHash('sha256').update(bytes).digest('hex'), identity: afterIdentity};
+  return {sha256: createHash('sha256').update(bytes).digest('hex'), byteLength: bytes.length, identity: afterIdentity};
 }
 
 /**
@@ -304,6 +314,8 @@ export async function reconcileWorkspacePatchApply(
   options: WorkspacePatchReconcileOptions,
 ): Promise<WorkspacePatchReconciliationResult> {
   if (!options || typeof options !== 'object') invalid('Workspace patch reconciliation options are required');
+  // Keep the original execution binding, checker and retention policy across awaits.
+  options = {...options};
   const path = canonicalRelativePath(options?.relativePath);
   const root = canonicalRoot(options.rootPath, 'Workspace rootPath');
   const recoveryRoot = canonicalRoot(options.recoveryRootPath, 'Recovery rootPath');
@@ -350,7 +362,7 @@ export async function reconcileWorkspacePatchApply(
     : current.sha256 === marker.beforeSha256 ? 'not_applied' : 'unknown') as 'applied' | 'not_applied' | 'unknown';
   const reconciled = {path, state: 'reconciled' as const, runId: marker.runId,
     argumentsDigest: marker.argumentsDigest, outcome, beforeSha256: marker.beforeSha256,
-    afterSha256: marker.afterSha256, currentSha256: current.sha256};
+    afterSha256: marker.afterSha256, currentSha256: current.sha256, byteLength: current.byteLength};
   let currentMarker: Awaited<ReturnType<typeof lstat>>;
   try { currentMarker = await lstat(markerPath); }
   catch (error) {

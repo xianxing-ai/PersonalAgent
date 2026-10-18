@@ -8,6 +8,8 @@ const REASONS = new Map([
   ['AgentArts response contains conflicting text', 'index_conflict'],
   ['AgentArts response exceeds the text limit', 'text_limit'],
   ['AgentArts workflow event order is malformed', 'workflow_order'],
+  ['AgentArts text follows the task terminal', 'workflow_order'],
+  ['AgentArts event follows the stream terminator', 'workflow_order'],
   ['AgentArts response contains no text', 'no_final_text'],
   ['AgentArts response event is malformed', 'event_shape'],
   ['AgentArts response reported a failure', 'provider_failure'],
@@ -36,7 +38,7 @@ function parserSnapshot() {
   const program = `const MAX_TEXT_CHARS = ${limit[1]};\n`
     + 'function external(message) { throw new Error(message); }\n'
     + source.slice(objectStart, objectEnd) + source.slice(start, end)
-    + '\nparseResponsePayload(payload, contentType).length;';
+    + '\nparseResponsePayload(payload, contentType, strictCompletion).length;';
   return {program, sha256: createHash('sha256').update(source).digest('hex')};
 }
 
@@ -92,7 +94,7 @@ function structuralSummary(payload, contentType) {
   return result;
 }
 
-export function inspectTextResponse(bytes, rawContentType) {
+export function inspectTextResponse(bytes, rawContentType, strictCompletion = false) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength > LIMIT) return {outcome: 'inspection_limit'};
   let payload;
   try { payload = new TextDecoder('utf-8', {fatal: true}).decode(bytes); }
@@ -106,7 +108,7 @@ export function inspectTextResponse(bytes, rawContentType) {
   report.parserSha256 = parser.sha256;
   report.structure = structuralSummary(payload, report.contentType);
   try {
-    report.resultCharacters = runInNewContext(parser.program, {payload, contentType}, {timeout: 1000});
+    report.resultCharacters = runInNewContext(parser.program, {payload, contentType, strictCompletion}, {timeout: 1000});
     report.parserOutcome = 'accepted';
   } catch (error) {
     report.parserOutcome = 'rejected';
@@ -116,47 +118,74 @@ export function inspectTextResponse(bytes, rawContentType) {
 }
 
 /** Pass to AgentArtsCloudAgentPort only in a manual diagnostic run. No logging,
- * disk writes, secret reads, retry, or raw response escapes through snapshot(). */
-export function createTextDiagnosticFetch(innerFetch) {
+ * disk writes, secret reads, retry, or raw response escapes through snapshot().
+ * Proposal/candidate callers pass true to match their port's SSE completion check. */
+export function createTextDiagnosticFetch(innerFetch, strictCompletion = false) {
   let report = {networkCalls: 0};
   return {
     snapshot: () => structuredClone(report),
     fetch: async (url, init) => {
-      report = {networkCalls: report.networkCalls + 1, bodyOutcome: 'pending'};
+      const current = {networkCalls: report.networkCalls + 1, bodyOutcome: 'pending'};
+      report = current;
       let response;
       try { response = await innerFetch(url, init); }
-      catch (error) { report.transport = 'rejected'; throw error; }
-      report.status = Number.isInteger(response.status) ? response.status : null;
+      catch (error) { current.transport = 'rejected'; throw error; }
+      current.status = Number.isInteger(response.status) ? response.status : null;
       const contentType = response.headers?.get('content-type');
       return {
         status: response.status, headers: response.headers,
         body: {
-          async *[Symbol.asyncIterator]() {
+          getReader() {
             const reader = response.body.getReader();
             let size = 0;
             const chunks = [];
-            try {
-              while (true) {
-                const item = await reader.read();
-                if (item.done) break;
-                size += item.value.byteLength;
-                if (size <= LIMIT) chunks.push(item.value.slice());
-                yield item.value;
-              }
-              report.bodyOutcome = 'complete';
-              if (size > LIMIT) report.diagnostic = {outcome: 'inspection_limit'};
-              else {
-                const bytes = new Uint8Array(size);
-                let offset = 0;
-                for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-                try { report.diagnostic = inspectTextResponse(bytes, contentType); }
-                catch { report.diagnostic = {outcome: 'diagnostic_internal'}; }
-              }
-            } catch (error) { report.bodyOutcome = 'rejected'; throw error; }
-            finally {
-              if (report.bodyOutcome === 'pending') report.bodyOutcome = 'interrupted';
-              reader.releaseLock();
-            }
+            let finished = false, cancelled = false;
+            const cancel = () => {
+              if (cancelled || finished) return;
+              cancelled = true;
+              if (current.bodyOutcome === 'pending') current.bodyOutcome = 'interrupted';
+              chunks.length = 0;
+              // Invoke immediately: an async generator's return() would queue
+              // behind its pending read and prevent the public port's cleanup.
+              return reader.cancel?.();
+            };
+            return {
+              async read() {
+                try {
+                  const item = await reader.read();
+                  if (current.bodyOutcome === 'pending') {
+                    if (item.done === true) {
+                      finished = true;
+                      current.bodyOutcome = 'complete';
+                      if (size > LIMIT) current.diagnostic = {outcome: 'inspection_limit'};
+                      else {
+                        const bytes = new Uint8Array(size);
+                        let offset = 0;
+                        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+                        try { current.diagnostic = inspectTextResponse(bytes, contentType, strictCompletion); }
+                        catch { current.diagnostic = {outcome: 'diagnostic_internal'}; }
+                      }
+                      chunks.length = 0;
+                    } else {
+                      size += item.value.byteLength;
+                      if (size <= LIMIT) chunks.push(item.value.slice());
+                    }
+                  }
+                  return item;
+                } catch (error) {
+                  if (current.bodyOutcome === 'pending') current.bodyOutcome = 'rejected';
+                  chunks.length = 0;
+                  throw error;
+                }
+              },
+              cancel,
+              releaseLock() {
+                if (!finished) {
+                  try { void Promise.resolve(cancel()).catch(() => {}); } catch { /* Best effort. */ }
+                }
+                try { reader.releaseLock?.(); } catch { /* Never replace the port's terminal result. */ }
+              },
+            };
           },
         },
       };

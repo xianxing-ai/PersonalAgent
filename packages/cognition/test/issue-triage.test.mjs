@@ -26,11 +26,12 @@ function fixture(overrides = {}) {
     if (overrides.repairIssue) return overrides.repairIssue(ctx, request);
     return {state: 'succeeded', resultSummary: 'PR delegated', evidenceRefs: ['repair-evidence']};
   }};
-  const workflow = createIssueTriageWorkflow({model, tools, repair, authorizationRefFor: overrides.authorizationRefFor ?? (() => 'host-scope'),
+  const options = {model, tools, repair, authorizationRefFor: overrides.authorizationRefFor ?? (() => 'host-scope'),
     confirmedReplayReady: overrides.confirmedReplayReady,
     confirmedRepairReplayReady: overrides.confirmedRepairReplayReady,
-    maxSteps: overrides.maxSteps ?? 8, maxTokens: overrides.maxTokens ?? 2048});
-  return {context, workflow, calls, modelCalls, repairs, checkpoints};
+    maxSteps: overrides.maxSteps ?? 8, maxTokens: overrides.maxTokens ?? 2048};
+  const workflow = createIssueTriageWorkflow(options);
+  return {context, workflow, calls, modelCalls, repairs, checkpoints, options};
 }
 const request = {repo: 'example/project', number: 7};
 
@@ -499,4 +500,161 @@ test('list preserves remote page cursor and tool evidence', async () => {
   const result = await f.workflow.listIssues(f.context, {repo: request.repo, page: 2, perPage: 10});
   assert.equal(result.state, 'listed'); assert.equal(result.nextPage, 3); assert.equal(result.items[0].number, 7);
   assert.deepEqual(result.evidenceRefs, ['list-evidence']);
+});
+
+test('pending label approval refreshes same-timestamp body, labels and state without reclassifying', async () => {
+  for (const change of [{body: 'Security vulnerability password token leaked'}, {body: 'Now asks for documentation'},
+    {labels: ['question']}, {state: 'closed'}]) {
+    let resumed = false, writes = 0;
+    const f = fixture({invoke: async call => call.toolName === 'github.issue.label'
+      ? (++writes === 1 ? {state: 'pending', evidenceRefs: ['pending-label']} : {state: 'confirmed', result: {state: 'confirmed'}, evidenceRefs: []})
+      : {state: 'confirmed', result: {...original, ...(resumed ? change : {})}, evidenceRefs: ['fresh-read']}});
+    const write = {...request, writeLabel: true};
+    assert.equal((await f.workflow.triageIssue(f.context, write)).state, 'waiting_approval');
+    resumed = true;
+    assert.equal((await f.workflow.triageIssue(f.context, write)).reason, 'issue_changed');
+    assert.equal(writes, 1); assert.equal(f.modelCalls.length, 1);
+  }
+});
+test('confirmed unknown label consumes original receipt before rejecting changed sensitive facts', async () => {
+  let ready = false, writes = 0;
+  const f = fixture({confirmedReplayReady: () => ready, invoke: async call => call.toolName === 'github.issue.label'
+    ? (++writes === 1 ? {state: 'unknown', evidenceRefs: ['unknown-write']} : {state: 'confirmed', result: {state: 'confirmed'}, evidenceRefs: ['original-receipt']})
+    : {state: 'confirmed', result: {...original, ...(ready ? {body: 'Security vulnerability password token leaked'} : {})}, evidenceRefs: ['fresh-read']}});
+  const write = {...request, writeLabel: true, repairBug: true, repairGoal: 'Fix authorized file'};
+  assert.equal((await f.workflow.triageIssue(f.context, write)).state, 'waiting_reconciliation');
+  ready = true;
+  const result = await f.workflow.triageIssue(f.context, write);
+  assert.equal(result.reason, 'issue_changed'); assert.equal(result.state, 'manual_review');
+  assert.equal(result.label, 'bug'); assert.ok(result.evidenceRefs.includes('original-receipt'));
+  assert.equal(f.repairs.length, 0); assert.equal(writes, 2);
+  const labels = f.calls.filter(c => c.toolName === 'github.issue.label');
+  assert.equal(labels[0].runId, labels[1].runId); assert.deepEqual(labels[0].arguments, labels[1].arguments);
+  assert.equal(f.calls.at(-1).toolName, 'github.issue.get');
+});
+test('unknown approval refreshes reserve unique reads and exhaust durable budget without new writes', async () => {
+  let paused = false, writes = 0;
+  const f = fixture({maxSteps: 6, invoke: async call => call.toolName === 'github.issue.label'
+    ? (++writes, {state: 'pending', evidenceRefs: []})
+    : paused ? {state: 'unknown', evidenceRefs: ['unknown-read']} : {state: 'confirmed', result: original, evidenceRefs: []}});
+  const write = {...request, writeLabel: true};
+  await f.workflow.triageIssue(f.context, write); paused = true;
+  assert.equal((await f.workflow.triageIssue(f.context, write)).state, 'waiting_reconciliation');
+  assert.equal((await f.workflow.triageIssue(f.context, write)).state, 'waiting_reconciliation');
+  assert.equal((await f.workflow.triageIssue(f.context, write)).reason, 'step_budget_exhausted');
+  assert.equal((await f.workflow.triageIssue(f.context, write)).reason, 'step_budget_exhausted');
+  const reads = f.calls.filter(c => c.runId.includes('label-resume-read'));
+  assert.equal(reads.length, 2); assert.notEqual(reads[0].runId, reads[1].runId);
+  assert.equal(writes, 1); assert.equal(f.modelCalls.length, 1);
+});
+test('cancelled post-receipt refresh preserves receipt and advances the next read identity', async () => {
+  let ready = false, writes = 0, stalled = false, release;
+  const f = fixture({confirmedReplayReady: () => ready, invoke: async call => {
+    if (call.toolName === 'github.issue.label') return ++writes === 1
+      ? {state: 'unknown', evidenceRefs: []} : {state: 'confirmed', result: {state: 'confirmed'}, evidenceRefs: ['receipt']};
+    if (stalled) return new Promise(resolve => {release = resolve;});
+    return {state: 'confirmed', result: original, evidenceRefs: ['read']};
+  }});
+  const write = {...request, writeLabel: true};
+  await f.workflow.triageIssue(f.context, write); ready = true; stalled = true;
+  const controller = new AbortController(); f.context.signal = controller.signal;
+  const attempt = f.workflow.triageIssue(f.context, write);
+  for (let i = 0; !release && i < 20; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.ok(release); controller.abort(); await attempt;
+  f.context.signal = new AbortController().signal; stalled = false;
+  assert.equal((await f.workflow.triageIssue(f.context, write)).reason, 'label_confirmed');
+  release({state: 'confirmed', result: {...original, body: 'late result'}, evidenceRefs: []});
+  const reads = f.calls.filter(c => c.runId.includes('label-resume-read'));
+  assert.equal(reads.length, 2); assert.notEqual(reads[0].runId, reads[1].runId);
+  assert.equal(writes, 2); assert.equal(f.modelCalls.length, 1);
+});
+test('pending resume GET consumes its approved cache once before the next approval uses a new read', async () => {
+  let writes = 0, approvedRead;
+  const f = fixture({maxSteps: 6, invoke: async call => {
+    if (call.toolName === 'github.issue.label') return ++writes < 3
+      ? {state: 'pending', evidenceRefs: ['label-pending']} : {state: 'confirmed', result: {state: 'confirmed'}, evidenceRefs: []};
+    if (call.runId.includes('label-resume-read') && call.runId !== approvedRead) return {state: 'pending', evidenceRefs: ['read-pending']};
+    return {state: 'confirmed', result: original, evidenceRefs: ['approved-read']};
+  }});
+  const write = {...request, writeLabel: true};
+  await f.workflow.triageIssue(f.context, write);
+  for (let i = 0; i < 3; i++) assert.equal((await f.workflow.triageIssue(f.context, write)).state, 'waiting_approval');
+  const first = f.calls.at(-1).runId;
+  assert.equal(new Set(f.calls.filter(c => c.runId.includes('label-resume-read')).map(c => c.runId)).size, 1);
+  approvedRead = first;
+  assert.equal((await f.workflow.triageIssue(f.context, write)).reason, 'label_approval_pending');
+  assert.equal(writes, 2);
+  assert.equal((await f.workflow.triageIssue(f.context, write)).state, 'waiting_approval');
+  const second = f.calls.at(-1).runId; assert.notEqual(second, first);
+  approvedRead = second;
+  assert.equal((await f.workflow.triageIssue(f.context, write)).reason, 'label_confirmed');
+  assert.equal(writes, 3); assert.equal(f.modelCalls.length, 1);
+});
+test('post-receipt pending GET retains read approval and never reconsumes label receipt', async () => {
+  let ready = false, writes = 0, approvedRead;
+  const f = fixture({confirmedReplayReady: () => ready, invoke: async call => {
+    if (call.toolName === 'github.issue.label') return ++writes === 1
+      ? {state: 'unknown', evidenceRefs: ['unknown-label']} : {state: 'confirmed', result: {state: 'confirmed'}, evidenceRefs: ['receipt']};
+    if (ready && call.runId !== approvedRead) return {state: 'pending', evidenceRefs: ['pending-read']};
+    return {state: 'confirmed', result: original, evidenceRefs: ['read']};
+  }});
+  const write = {...request, writeLabel: true};
+  await f.workflow.triageIssue(f.context, write); ready = true;
+  assert.equal((await f.workflow.triageIssue(f.context, write)).state, 'waiting_approval');
+  const pendingRun = f.calls.at(-1).runId;
+  assert.equal((await f.workflow.triageIssue(f.context, write)).state, 'waiting_approval');
+  assert.equal(f.calls.at(-1).runId, pendingRun); assert.equal(writes, 2);
+  approvedRead = pendingRun;
+  const result = await f.workflow.triageIssue(f.context, write);
+  assert.equal(result.reason, 'label_confirmed'); assert.ok(result.evidenceRefs.includes('receipt'));
+  assert.equal(writes, 2);
+});
+
+test('factory retains ports and validated budgets when caller reuses configuration during a read',async()=>{
+  let release,entered;const reached=new Promise(resolve=>entered=resolve),wait=new Promise(resolve=>release=resolve);
+  const f=fixture({invoke:async call=>{entered();await wait;return {state:'confirmed',result:call.toolName==='github.issue.label'?{state:'confirmed'}:original,evidenceRefs:['original-port']};}});
+  const requestWithRepair={...request,writeLabel:true,repairBug:true,repairGoal:'Fix authorized file'};
+  const running=f.workflow.triageIssue(f.context,requestWithRepair);await reached;
+  let newCalls=0;
+  f.options.model={complete:async()=>{newCalls++;throw Error('new model');}};
+  f.options.tools={list:()=>[],invoke:async()=>{newCalls++;throw Error('new tools');}};
+  f.options.repair={repairIssue:async()=>{newCalls++;throw Error('new repair');}};
+  f.options.maxSteps=1;f.options.maxTokens=1;
+  release();const result=await running;
+  assert.equal(result.state,'repair_requested');assert.equal(result.classification.kind,'bug');
+  assert.equal(newCalls,0);assert.equal(f.modelCalls.length,1);assert.equal(f.repairs.length,1);
+  assert.ok([...f.checkpoints.values()].filter(v=>v.maxSteps!==undefined).every(v=>v.maxSteps===8));
+  const next=createIssueTriageWorkflow(f.options);
+  assert.equal((await next.triageIssue({...f.context,taskId:'new-factory'},request)).state,'manual_review');
+});
+test('captured tool port keeps authorization and capability revocation live across reads',async()=>{
+  for(const revoke of ['authorization','capability']) {
+    let release,entered;const reached=new Promise(resolve=>entered=resolve),wait=new Promise(resolve=>release=resolve);
+    const f=fixture({invoke:async()=>{entered();await wait;return {state:'confirmed',result:original,evidenceRefs:[]};}});
+    const running=f.workflow.triageIssue(f.context,{...request,writeLabel:true});await reached;
+    if(revoke==='authorization')f.options.authorizationRefFor=name=>name==='github.issue.label'?undefined:'scope';
+    else f.options.tools.list=()=>[{name:'github.issue.get',version:'1.0.0'}];
+    release();const result=await running;
+    assert.equal(result.state,revoke==='authorization'?'waiting_approval':'manual_review');
+    assert.equal(f.calls.filter(c=>c.toolName==='github.issue.label').length,0);
+  }
+});
+test('confirmed replay hook properties remain live after factory creation',async()=>{
+  let writes=0;
+  const f=fixture({invoke:async call=>call.toolName==='github.issue.label'
+    ? (++writes===1?{state:'unknown',evidenceRefs:[]}:{state:'confirmed',result:{state:'confirmed'},evidenceRefs:['receipt']})
+    : {state:'confirmed',result:original,evidenceRefs:[]}});
+  const write={...request,writeLabel:true};
+  assert.equal((await f.workflow.triageIssue(f.context,write)).state,'waiting_reconciliation');
+  f.options.confirmedReplayReady=()=>true;
+  assert.equal((await f.workflow.triageIssue(f.context,write)).reason,'label_confirmed');assert.equal(writes,2);
+  let attempts=0;
+  const repair=fixture({repairIssue:async()=>++attempts===1
+    ? {state:'waiting_reconciliation',resultSummary:'unknown repair',evidenceRefs:[]}
+    : {state:'succeeded',resultSummary:'confirmed repair',evidenceRefs:['repair-receipt']}});
+  const requestRepair={...request,repairBug:true,repairGoal:'Fix authorized file'};
+  assert.equal((await repair.workflow.triageIssue(repair.context,requestRepair)).state,'waiting_reconciliation');
+  repair.options.confirmedRepairReplayReady=()=>true;
+  assert.equal((await repair.workflow.triageIssue(repair.context,requestRepair)).state,'repair_requested');
+  assert.equal(attempts,2);
 });

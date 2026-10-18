@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {AgentArtsCloudAgentPort} from "../../../../packages/coordination/dist/index.js";
 
 import {
   createStructuralDiagnosticFetch,
@@ -7,6 +8,38 @@ import {
 } from "./structural-fetch.mjs";
 
 const encoder = new TextEncoder();
+
+test("SSE event arrays retain partial index coverage while the public port decides acceptance", async () => {
+  for (const conflicting of [false, true]) {
+    let calls = 0;
+    const events = [
+      {event: "message", data: {text: "ARRAY_PRIVATE_A", index: 0}},
+      {event: "message", data: {text: conflicting ? "ARRAY_PRIVATE_B" : "ARRAY_PRIVATE_A", index: 0}}
+    ];
+    const diagnostic = createStructuralDiagnosticFetch(async () => {
+      calls++;
+      return new Response("data: " + JSON.stringify(events) + "\n\n", {
+        headers: {"content-type": "text/event-stream"}
+      });
+    });
+    const cloud = new AgentArtsCloudAgentPort({gatewayUrl: "https://synthetic.example.test", runtimeName: "synthetic"},
+      {read: async () => "Bearer HEADER_CANARY"}, diagnostic.fetch);
+    const run = cloud.invoke({taskId: "synthetic-array-probe", revision: 1, goal: "synthetic",
+      deadline: new Date(Date.now() + 5000).toISOString(), signal: new AbortController().signal});
+    if (conflicting) await assert.rejects(run, {code: "EXTERNAL_FAILURE"});
+    else assert.equal((await run).text, "ARRAY_PRIVATE_A");
+    const report = diagnostic.finish(), attempt = report.attempts[0];
+    assert.equal(calls, 1);
+    assert.equal(attempt.eventInspection, "sse_only");
+    assert.equal(attempt.bodyOutcome, "complete");
+    assert.equal(attempt.eventCounts.other, 1);
+    assert.equal(attempt.eventCounts.message, 0);
+    assert.equal(attempt.indexedMessages.coverage, "partial");
+    assert.equal(attempt.indexedMessages.trackedIndexCountCapped, 0);
+    assert.equal(attempt.indexedMessages.conflictObserved, false);
+    assert.doesNotMatch(JSON.stringify(report), /ARRAY_PRIVATE|HEADER_CANARY/);
+  }
+});
 
 test("iterator throw records rejection without changing the original error", async () => {
   const error = new Error("THROW_CANARY");

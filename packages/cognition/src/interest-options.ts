@@ -4,6 +4,7 @@ import {actionArgumentsDigest} from './laya-action-choice.js';
 import type {LayaActionChoiceService, LayaActionSelection} from './laya-action-choice.js';
 import {decideInterest} from './interest-policy.js';
 import type {InterestEvidenceRef, InterestPolicyDecision, InterestPolicyInput} from './interest-policy.js';
+import {withCognitionDeadline} from './deadline.js';
 
 export type InterestApproachId = 'track_public' | 'review_public' | 'retain_candidate' |
   'defer' | 'stop_tracking' | 'keep_revoked' | 'recheck';
@@ -171,29 +172,30 @@ export class LayaInterestDecisionService {
     private readonly now: () => Date | number = Date.now) {}
 
   async choose(input: InterestPolicyInput, request: {deadline: string; signal: AbortSignal}): Promise<InterestChoiceResult> {
+    const lease = {...request};
     const snapshot = structuredClone(input);
     validate(snapshot);
     const started = nowMs(this.now);
-    if (!(request?.signal instanceof AbortSignal) || time(request.deadline) <= started
+    if (!(lease.signal instanceof AbortSignal) || time(lease.deadline) <= started
       || time(snapshot.at) > started) invalid();
     const evaluated = {...snapshot, at: new Date(started).toISOString()};
     const built = buildInterestOptions(evaluated);
-    const model = await this.chooser.choose({
+    const model = await withCognitionDeadline(lease, bounded => this.chooser.choose({
       context: JSON.stringify({topicId: evaluated.topicId, policyState: built.policy.state,
         reason: built.policy.reason, evidenceCount: built.policy.evidence.length,
         destination: 'AgentArts orchestration; no tracking or authorization granted'}),
       candidates: built.options.map(option => ({id: option.id, revision: option.revision,
         kind: 'escalate' as const, description: option.description, sources: [],
         scopeRef: JSON.stringify([evaluated.scope.id, evaluated.scope.revision]),
-        expiresAt: option.id === 'track_public' ? new Date(Math.min(time(request.deadline),
-          time(option.source!.validUntil))).toISOString() : request.deadline,
+        expiresAt: option.id === 'track_public' ? new Date(Math.min(time(lease.deadline),
+          time(option.source!.validUntil))).toISOString() : lease.deadline,
         risk: 'low' as const, argumentsDigest: actionArgumentsDigest({})})),
-      deadline: request.deadline, signal: request.signal
-    });
+      ...bounded
+    }), () => nowMs(this.now));
     const offered = selectionRef(model, built.options);
     const current = nowMs(this.now);
     const currentPolicy = decideInterest({...evaluated, at: new Date(current).toISOString()});
-    const fresh = !request.signal.aborted && current < time(request.deadline)
+    const fresh = !lease.signal.aborted && current < time(lease.deadline)
       && currentPolicy.state === built.policy.state
       && currentPolicy.reason === built.policy.reason
       && isDeepStrictEqual(currentPolicy.evidence, built.policy.evidence)
@@ -202,9 +204,11 @@ export class LayaInterestDecisionService {
         && built.policy.expiresAt !== undefined && current < time(built.policy.expiresAt)
         && currentPolicy.expiresAt !== undefined && current < time(currentPolicy.expiresAt)));
     const selected = model.state === 'selected' && fresh ? offered : undefined;
-    const evidence = [...built.policy.evidence].sort((a, b) =>
-      JSON.stringify([a.id, a.topicId, a.sourceId, a.sourceRevision]).localeCompare(
-        JSON.stringify([b.id, b.topicId, b.sourceId, b.sourceRevision])));
+    const evidence = [...built.policy.evidence].sort((a, b) => {
+      const left = JSON.stringify([a.id, a.topicId, a.sourceId, a.sourceRevision]);
+      const right = JSON.stringify([b.id, b.topicId, b.sourceId, b.sourceRevision]);
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
     const binding = {topicId: evaluated.topicId, evidence, source: built.policy.source ?? null,
       scope: {id: evaluated.scope.id, revision: evaluated.scope.revision},
       optionRefs: built.options.map(option => ({id: option.id, revision: option.revision})),
@@ -218,7 +222,7 @@ export class LayaInterestDecisionService {
       tombstone: evaluated.tombstone ?? null,
       explicitEnable: evaluated.explicitEnable ?? null,
       optionValidity: built.options.map(option => ({id: option.id, revision: option.revision,
-        expiresAt: option.id === 'track_public' ? option.source!.validUntil : request.deadline}))};
+        expiresAt: option.id === 'track_public' ? option.source!.validUntil : lease.deadline}))};
     const receipt: InterestChoiceReceipt = {digest: createHash('sha256').update(JSON.stringify(binding)).digest('hex'),
       topicId: evaluated.topicId, evidence, ...(built.policy.source ? {source: built.policy.source} : {}),
       scope: binding.scope, optionRefs: binding.optionRefs,

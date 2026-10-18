@@ -66,7 +66,7 @@ function recoveryDirectory(userData, root, powerShell) {
   if (!existsSync(target)) {
     mkdirSync(target, {recursive:true});
     const script = String.raw`$ErrorActionPreference='Stop'
-$target=[Console]::In.ReadToEnd()
+$target=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(target,'utf8').toString('base64')}'))
 $self=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
 $acl=[System.Security.AccessControl.DirectorySecurity]::new()
 $acl.SetOwner($self)
@@ -76,7 +76,7 @@ $acl.AddAccessRule($rule)
 Set-Acl -LiteralPath $target -AclObject $acl`;
     execFileSync(powerShell, ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',
       Buffer.from(script,'utf16le').toString('base64')],
-    {input:target,encoding:'utf8',windowsHide:true,timeout:10000,stdio:['pipe','pipe','pipe']});
+    {encoding:'utf8',windowsHide:true,timeout:10000,stdio:['pipe','pipe','pipe']});
   }
   return target;
 }
@@ -232,7 +232,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   // Trusted main-process configuration only. A getter cannot grant read or
   // execute permission, and this record must not enter Renderer/cloud output.
   const readWorkspaceBinding=() => {
-    if(!active || consent?.cloudExportAllowed!==true || !selectionsCurrent() || !identityCurrent()
+    if(!active || !consent || !selectionsCurrent() || !identityCurrent()
       || !boundNode || savedNode!==boundNode || !nodeIdentity) return undefined;
     try {
       if(fixedNode(boundNode,boundRoot)!==boundNode) return undefined;
@@ -267,12 +267,12 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       && boundProjectHelper && outsideFile(boundProjectHelper,boundRoot,'项目命令')===boundProjectHelper;}
     catch {return false;}
   };
-  const enabled=tool => active && consent?.cloudExportAllowed===true && selectionsCurrent() && identityCurrent()
+  const enabled=tool => active && Boolean(consent) && selectionsCurrent() && identityCurrent()
     && commandReady(tool)
-    && (tool.descriptor.sideEffect==='read' || (isProject(tool)
+    && (tool.descriptor.sideEffect==='read' || (consent.cloudExportAllowed===true && (isProject(tool)
       ? consent.commandAllowed===true && consent.projectCodeAllowed===true && projectIdentityCurrent()
       : ['workspace.git_diff_check','workspace.node_check'].includes(tool.descriptor.name)
-        ? consent.commandAllowed===true : consent.writeAllowed===true))
+        ? consent.commandAllowed===true : consent.writeAllowed===true)))
     && (tool.descriptor.name!=='workspace.apply_text_patch' || applyHost?.available());
   const bound=(taskId, claim=false) => {
     if (!application || !taskId) return false;
@@ -284,7 +284,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   // These ports are Main-only. Session scope never grants PUBLIC export, and
   // only the original Runtime result checkpoint supplies bytes for confirmation.
   const readTool=implementations.find(tool=>tool.descriptor.name==='workspace.read_text');
-  const readWorkspaceExportConfigurationRef=() => readTool && enabled(readTool) ? generation : undefined;
+  const readWorkspaceExportConfigurationRef=() => consent?.cloudExportAllowed===true && readTool && enabled(readTool) ? generation : undefined;
   const readQuery=(query,withDigest=false,withArguments=false) => {
     if(!query || typeof query!=='object' || Array.isArray(query)
       || ![Object.prototype,null].includes(Object.getPrototypeOf(query))) return false;
@@ -499,7 +499,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       const startedGeneration=beginSelection();
       const selected=await selectDirectory();
       checkSelection(startedGeneration);
-      if (!selected) return snapshot();
+      if (!selected) return {...snapshot(),selectionCancelled:true};
       const root=directory(selected);
       let node;
       try {node=savedNode?fixedNode(savedNode,root):undefined;} catch {node=undefined;}
@@ -511,7 +511,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     async selectNode() {
       const startedGeneration=beginSelection();
       if(!savedRoot || typeof selectNodeExecutable!=='function') throw Error('请先选择工作区并使用本机 Node 选择器');
-      const selected=await selectNodeExecutable();checkSelection(startedGeneration);if(!selected) return snapshot();
+      const selected=await selectNodeExecutable();checkSelection(startedGeneration);if(!selected) return {...snapshot(),selectionCancelled:true};
       const node=fixedNode(selected,savedRoot);
       const npmCli=derivedNpmCli(node,savedRoot);
       persist(savedRoot,node,savedCheckFile,npmCli);revoke();savedNode=node;savedNpmCli=npmCli;
@@ -520,20 +520,20 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     async selectCheckFile() {
       const startedGeneration=beginSelection();
       if(!savedRoot || typeof selectCheckFile!=='function') throw Error('请先选择工作区并使用本机文件选择器');
-      const selected=await selectCheckFile(savedRoot);checkSelection(startedGeneration);if(!selected) return snapshot();
+      const selected=await selectCheckFile(savedRoot);checkSelection(startedGeneration);if(!selected) return {...snapshot(),selectionCancelled:true};
       const relative=checkFile(selected,savedRoot);
       persist(savedRoot,savedNode,relative,savedNpmCli);revoke();savedCheckFile=relative;commandFailure='';return snapshot();
     },
     async selectNpmCli() {
       const startedGeneration=beginSelection();
       if(!savedRoot || !savedNode || typeof selectNpmCli!=='function') throw Error('请先选择工作区与 Node');
-      const selected=await selectNpmCli();checkSelection(startedGeneration);if(!selected) return snapshot();
+      const selected=await selectNpmCli();checkSelection(startedGeneration);if(!selected) return {...snapshot(),selectionCancelled:true};
       const npmCli=fixedNpmCli(selected,savedRoot);
       persist(savedRoot,savedNode,savedCheckFile,npmCli);revoke();savedNpmCli=npmCli;
       projectFailure='';return snapshot();
     },
     authorize(input) {
-      if (!input || Array.isArray(input) || input.cloudExportAllowed!==true || typeof input.writeAllowed!=='boolean'
+      if (!input || Array.isArray(input) || typeof input.cloudExportAllowed!=='boolean' || typeof input.writeAllowed!=='boolean'
         || typeof input.commandAllowed!=='boolean'
         || (input.projectCodeAllowed!==undefined && typeof input.projectCodeAllowed!=='boolean')
         || Object.keys(input).some(k=>!['cloudExportAllowed','writeAllowed','commandAllowed','projectCodeAllowed'].includes(k))) throw Error('请确认工作区权限');
@@ -545,14 +545,14 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     },
     revoke,
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
-      available:({taskId,signal})=>!signal.aborted && enabled(tool) && bound(taskId,true)})),
+      available:({taskId,signal})=>!signal.aborted && consent?.cloudExportAllowed===true && enabled(tool) && bound(taskId,true)})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
       exportPolicyVersion:isProject(tool)?'authorized-project-script-redacted-v1'
         :tool.descriptor.name==='workspace.node_check'
           ? 'authorized-node-check-redacted-v1':tool.descriptor.name==='workspace.read_text'
             ? 'workspace-reference-3.0.0':'coding-local-result-redacted-v2',
       accepts:input=> {
-        if(!enabled(tool) || !bound(input.taskId)) return false;
+        if(consent?.cloudExportAllowed!==true || !enabled(tool) || !bound(input.taskId)) return false;
         if(tool.descriptor.name!=='workspace.read_text') return true;
         try {
           if(!['preflight','final'].includes(input.phase)) return false;
@@ -564,7 +564,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       },
       project:({taskId,proposalId,result,signal})=> {
         if(signal.aborted) throw new ProtocolError('CANCELLED','Workspace result export cancelled');
-        if(!enabled(tool) || !bound(taskId)) throw new ProtocolError('UNAUTHORIZED','Workspace result export consent changed');
+        if(consent?.cloudExportAllowed!==true || !enabled(tool) || !bound(taskId)) throw new ProtocolError('UNAUTHORIZED','Workspace result export consent changed');
         if (tool.descriptor.name==='workspace.node_check' || isProject(tool)) {
           const recipeId=isProject(tool)
             ? tool.descriptor.name==='workspace.npm_build'?'npm-build':'npm-test':'node-check';

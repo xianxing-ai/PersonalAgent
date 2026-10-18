@@ -114,6 +114,7 @@ export class LayaTriageService {
     const deadlineMs = Date.parse(request?.deadline);
     if (!request || !Array.isArray(request.messages) || !(request.signal instanceof AbortSignal)
       || !Number.isFinite(deadlineMs) || !isRecord(request.labels)) invalid();
+    request = {...request};
     const labels = {...request.labels};
     const keys = Object.keys(labels);
     if (keys.length < 2 || keys.length > 16 || keys.some(key => !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key)

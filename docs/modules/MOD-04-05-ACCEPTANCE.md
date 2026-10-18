@@ -1,5 +1,10 @@
 # MOD-04/05 验收工作包
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - 历史工作包负责人：goo122；评审者：zemeng 或 Potatos498。后续按 MOD-04A（ModelGateway/Provider，goo122）与 MOD-04B（主 Agent/认知编排，zemeng）分工，历史提交归属不追溯改写。
 - 分支：`codex/mod-04-05-acceptance`；工作树：`.worktrees/mod-04-05-acceptance`。
 - 基线：`0f7dc1e`，包含已合并的 ARCH-03（PR #24）。

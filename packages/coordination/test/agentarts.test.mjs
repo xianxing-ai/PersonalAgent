@@ -123,6 +123,7 @@ test('published JSON sends the exact bounded request and reads authorization per
     'x-hw-agentarts-session-id': calls[0].init.headers['x-hw-agentarts-session-id'],
     'X-Invoke-Mode': 'published',
     'X-Request-Id': `${calls[0].init.headers['x-hw-agentarts-session-id']}-7`,
+    'X-PA-Deadline': input.deadline,
   });
   assert.match(calls[0].init.headers['x-hw-agentarts-session-id'], /^pa-[0-9a-f]{32}$/);
   assert.equal(calls[0].init.headers['x-hw-agentarts-session-id'].includes('task'), false);
@@ -561,6 +562,128 @@ test('already cancelled and expired requests stop before authorization or fetch'
   await rejectsCode(cloud.invoke(request({deadline: new Date(Date.now() - 1).toISOString()})), 'TIMEOUT');
   assert.equal(authCalls, 0);
   assert.equal(fetchCalls, 0);
+});
+
+test('invalid normalized deadlines stop the direct cloud port before credentials or transport', async () => {
+  const auth = provider();
+  let sends = 0;
+  const cloud = port(async () => { sends++; return jsonResponse(message('never')); }, auth);
+  const year = new Date().getUTCFullYear() + 2;
+  for (const deadline of [`${year}-04-31T00:00:00.000Z`, `${year}-01-01T24:00:00.000Z`,
+    `${year}-01-01`, `${year}-01-01T00:00:00+00:00`]) {
+    await rejectsCode(cloud.invoke(request({deadline})), 'INVALID_ARGUMENT');
+  }
+  assert.equal(auth.calls, 0);
+  assert.equal(sends, 0);
+});
+
+test('direct cloud port keeps canonical deadlines with and without zero milliseconds', async () => {
+  const cloud = port(async () => jsonResponse(message('synthetic')));
+  const year = new Date().getUTCFullYear() + 2;
+  for (const deadline of [`${year}-01-01T00:00:00Z`, `${year}-01-01T00:00:00.000Z`, `${year}-01-01T00:00:00.123Z`]) {
+    assert.equal((await cloud.invoke(request({deadline}))).text, 'synthetic');
+  }
+});
+
+function failingCleanupSignal(controller, secret) {
+  let removals = 0;
+  return {
+    get removals() { return removals; },
+    get aborted() { return controller.signal.aborted; },
+    addEventListener(...args) { controller.signal.addEventListener(...args); },
+    removeEventListener(...args) {
+      removals++;
+      controller.signal.removeEventListener(...args);
+      throw new Error(secret);
+    },
+  };
+}
+
+test('signal cleanup errors preserve successful cloud results and original failures', async () => {
+  const secret = 'private-cleanup-canary';
+  const signal = failingCleanupSignal(new AbortController(), secret);
+  const success = port(async () => jsonResponse(message('synthetic')));
+  assert.equal((await success.invoke(request({signal}))).text, 'synthetic');
+  assert.equal(signal.removals, 1);
+  const failedSignal = failingCleanupSignal(new AbortController(), secret);
+  const failure = port(async () => { throw new Error('private-transport-canary'); });
+  await rejectsCode(failure.invoke(request({signal: failedSignal})), 'EXTERNAL_FAILURE', [secret]);
+  assert.equal(failedSignal.removals, 1);
+});
+
+test('signal cleanup errors preserve caller cancellation and deadline errors', async () => {
+  const secret = 'private-cleanup-canary';
+  for (const code of ['CANCELLED', 'TIMEOUT']) {
+    const controller = new AbortController();
+    const signal = failingCleanupSignal(controller, secret);
+    let started;
+    const ready = new Promise(resolve => { started = resolve; });
+    const cloud = port(() => { started(); return new Promise(() => {}); });
+    const pending = cloud.invoke(request({signal,
+      deadline: new Date(Date.now() + (code === 'TIMEOUT' ? 100 : 5_000)).toISOString()}));
+    await ready;
+    if (code === 'CANCELLED') controller.abort();
+    await rejectsCode(pending, code, [secret]);
+    assert.equal(signal.removals, 1);
+  }
+});
+
+test('signal listener setup errors are sanitized and release partially registered listeners', async () => {
+  const secret = 'private-setup-canary';
+  const controller = new AbortController();
+  let removals = 0;
+  const signal = {
+    aborted: false,
+    addEventListener(...args) {
+      controller.signal.addEventListener(...args);
+      throw new Error(secret);
+    },
+    removeEventListener(...args) {
+      removals++;
+      controller.signal.removeEventListener(...args);
+      throw new Error('private-cleanup-canary');
+    },
+  };
+  const auth = provider();
+  let sends = 0;
+  const cloud = port(async () => { sends++; return jsonResponse(message('never')); }, auth);
+  await rejectsCode(cloud.invoke(request({signal})), 'INVALID_ARGUMENT', [secret, 'private-cleanup-canary']);
+  assert.equal(removals, 1);
+  assert.equal(auth.calls, 0);
+  assert.equal(sends, 0);
+});
+
+test('request and signal accessor errors are sanitized before invocation setup', async () => {
+  const secret = 'private-request-canary';
+  const auth = provider();
+  const cloud = port(async () => jsonResponse(message('never')), auth);
+  const input = Object.defineProperty(request(), 'signal', {get() { throw new Error(secret); }});
+  await rejectsCode(cloud.invoke(input), 'INVALID_ARGUMENT', [secret]);
+  const signal = {aborted: false, removeEventListener() {},
+    get addEventListener() { throw new Error(secret); }};
+  await rejectsCode(cloud.invoke(request({signal})), 'INVALID_ARGUMENT', [secret]);
+  assert.equal(auth.calls, 0);
+});
+
+test('signal state failures after listener registration are invalid input and clean up', async () => {
+  for (const invalidState of ['throw', 'non-boolean']) {
+    let reads = 0;
+    const listeners = new Set();
+    const signal = {
+      get aborted() {
+        if (reads++ === 0) return false;
+        if (invalidState === 'throw') throw new Error('private-state-canary');
+        return 'cancelled';
+      },
+      addEventListener(_type, listener) { listeners.add(listener); },
+      removeEventListener(_type, listener) { listeners.delete(listener); },
+    };
+    const auth = provider();
+    const cloud = port(async () => jsonResponse(message('never')), auth);
+    await rejectsCode(cloud.invoke(request({signal})), 'INVALID_ARGUMENT', ['private-state-canary']);
+    assert.equal(listeners.size, 0);
+    assert.equal(auth.calls, 0);
+  }
 });
 
 test('abort during an in-flight fetch maps to CANCELLED and passes the combined signal', async () => {

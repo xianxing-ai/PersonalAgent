@@ -37,6 +37,96 @@ const decision = {async decide({events}) { return events.map(event => ({
 })); }};
 const reader = processed => ({readCompletedImpact: () => processed});
 
+function batchFixture() {
+  const store = new FakeCoordinationStoreHost().provision('synthetic-graph');
+  const links = [];
+  for (let index = 0; index < 5; index++) {
+    const id = `memory-fact:batch-${index}`;
+    store.append(store.read().revision, node(id, 'fact'));
+    store.append(store.read().revision, node(`goal-${index}`, 'goal', [ref(id)]));
+    store.append(store.read().revision, node(id, 'fact', [], `corrected ${index}`));
+    links.push({eventId: `event-${index}`, fact: ref(`batch-${index}`, 2), node: ref(id, 2)});
+  }
+  const projection = {batchToken: 'completed-five-facts', graphRevision: store.read().revision, links};
+  return {store, request: {graphNamespace: 'synthetic-graph', projection, at,
+    deadline: new Date(Date.now() + 5_000).toISOString(), signal: new AbortController().signal},
+  processed: {batchToken: projection.batchToken, report: analyzeImpact(store.read(), at)}};
+}
+
+test('a completed five-Fact batch reaches advice in bounded ordered chunks without writing', async () => {
+  const {store, request, processed} = batchFixture();
+  const before = store.read();
+  const calls = [];
+  const result = await decideDurableFactProjection(store, {async decide(input) {
+    calls.push({events: structuredClone(input.events), deadline: input.deadline});
+    return decision.decide(input);
+  }}, reader(processed), request);
+  assert.deepEqual(calls.map(call => call.events.length), [4, 1]);
+  assert.ok(calls.every(call => call.deadline === request.deadline));
+  assert.deepEqual(result.suggestions.map(item => item.eventId), request.projection.links.map(link => link.eventId));
+  assert.deepEqual(result.scope.items.map(item => item.node.id), ['goal-0', 'goal-1', 'goal-2', 'goal-3', 'goal-4']);
+  assert.deepEqual(store.read(), before);
+});
+
+test('durable advice rejects a graph change between chunks before calling the remaining chunk', async () => {
+  const {store, request, processed} = batchFixture();
+  let calls = 0;
+  await assert.rejects(() => decideDurableFactProjection(store, {async decide(input) {
+    calls++;
+    store.append(store.read().revision, node('concurrent', 'fact'));
+    return decision.decide(input);
+  }}, reader(processed), request), {code: 'REVISION_CONFLICT'});
+  assert.equal(calls, 1);
+});
+
+test('durable advice cancellation and later failure never return a partial batch', async () => {
+  for (const mode of ['cancelled', 'later-failure']) {
+    const {store, request, processed} = batchFixture();
+    const before = store.read();
+    const controller = new AbortController();
+    request.signal = controller.signal;
+    let calls = 0;
+    await assert.rejects(() => decideDurableFactProjection(store, {async decide(input) {
+      calls++;
+      if (mode === 'cancelled') controller.abort();
+      if (calls === 2) throw new Error('Second decision chunk unavailable');
+      return decision.decide(input);
+    }}, reader(processed), request), mode === 'cancelled' ? {code: 'CANCELLED'} : /Second decision chunk unavailable/);
+    assert.equal(calls, mode === 'cancelled' ? 1 : 2);
+    assert.deepEqual(store.read(), before);
+  }
+});
+
+test('missing advice in the first or last chunk rejects the complete batch without graph changes', async () => {
+  for (const missingChunk of [1, 2]) {
+    const {store, request, processed} = batchFixture();
+    const before = store.read();
+    let calls = 0;
+    await assert.rejects(() => decideDurableFactProjection(store, {async decide(input) {
+      calls++;
+      const suggestions = await decision.decide(input);
+      return calls === missingChunk ? suggestions.slice(0, -1) : suggestions;
+    }}, reader(processed), request), /Invalid projected fact decision result/);
+    assert.equal(calls, missingChunk, 'a missing answer stops the batch before any later call');
+    assert.deepEqual(store.read(), before);
+  }
+});
+test('caller mutation during advice cannot replace the next chunk Fact binding', async () => {
+  const {store, request, processed} = batchFixture();
+  const calls = [];
+  const result = await decideDurableFactProjection(store, {async decide(input) {
+    calls.push(structuredClone(input.events));
+    if (calls.length === 1) {
+      request.projection.links[4].eventId = 'replaced-event';
+      request.projection.links[4].fact = ref('replaced-fact', 99);
+    }
+    return decision.decide(input);
+  }}, reader(processed), request);
+  assert.equal(calls[1][0].eventId, 'event-4');
+  assert.deepEqual(calls[1][0].facts, [ref('batch-4', 2)]);
+  assert.equal(result.suggestions[4].eventId, 'event-4');
+});
+
 test('completed batch reaches only its affected scope and bounded advice', async () => {
   const {store, input} = fixture();
   const before = store.read().revision;

@@ -1,7 +1,12 @@
 # GitHub 连接器（MOD-33）
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 `@personal-agent/github` 是 DEV-WORKFLOWS 的 Local Profile 增量。接口为
-provisional，真实 GitHub、Windows CLI 和消费者闭环尚未验收；不纳入 Competition
+provisional，真实 GitHub 部分只读已验证，含本轮 Windows CLI 失败日志分页；账号写入和完整消费者闭环尚未验收；不纳入 Competition
 Profile 的完成证据。生产 provider 不自动回退 Fake。
 
 公开入口导出 `GitHubInputs`、`GitHubOutputs`、`GitHubOperation`、`GitHubPort`、
@@ -23,6 +28,17 @@ const dispose = register(toolHost, {provider});
 提供 token、CLI 路径、环境或 runner。runner 只接收 argv，不执行 shell；不继承进程
 环境。宿主显式提供所需 PATH/SystemRoot/TEMP 等可信值。仅支持 github.com。
 凭据通过 GH_TOKEN 环境传给 gh，命令参数、返回值和错误不含凭据。
+
+每个 GhCliProvider 在构造时绑定原 runner 对象，API、日志读取和 dispose 使用同一
+依赖。宿主复用 options 为新 Provider 更换 runner 时，旧实例不会转用或释放新
+实例的依赖。原 runner 的 run/dispose 方法仍实时，readToken 与仓库白名单保持
+原 options 检查语义，凭据更新和白名单撤销不会被配置快照冻结。
+
+stdout/stderr 共用原1 MiB字节上限，完整收集后分别严格UTF-8解码，保留合法BOM和
+跨chunk的中文字符。非法编码固定失败，不把替换字符作为issue/diff/写回执内容接受，
+错误不回显原始字节；取消、期限和超限错误优先。已派发写入的解码失败仍由Provider
+保持unknown，不能据此判定未执行或自动重发。实际子进程回归使用明确合成GH transport，
+不等于真实账号验收。
 
 工具版本为 `0.1.0-alpha.1`。全部输入拒绝未知字段；`repo` 必须在宿主白名单。
 所有操作需 `ToolContext.signal/deadline/authorizationRef/scopes`；读工具 scope 为
@@ -121,6 +137,28 @@ REST 分页不是快照，变化期间可能重复/遗漏，消费者按编号�
 CLI stdout+stderr 总上限 1 MiB；超过明确失败，不将部分 diff/log 冒充完整内容。
 失败日志先验证 job.run_id，再通过 `gh run view --job --log-failed` 读文本。
 不把临时签名下载 URL 或 zip 日志作为输出。
+
+可信宿主必须注入支持目标 Actions 日志归档布局的 CLI。当前真实只读验证使用官方
+`gh 2.102.0`；这不是最早支持版本的声明。已确认 `gh 2.46.0` 只匹配逐步骤日志，
+对仅含合并 job 文件 `0_check.txt` 和 `check/system.txt` 的归档会跳过全部步骤，
+使 `--log` 与 `--log-failed` 均成功退出但返回空文本。宿主验收需要检查原失败 job 的
+实际非空日志和完整分页，不能仅凭退出码确认读取成功；CLI 路径仍由可信组合注入。
+Provider 对 `conclusion=failure` 的 job 拒绝原始空/纯空白日志，返回脱敏
+`EXTERNAL_FAILURE`，不重试或自动换 CLI。成功 job 的空失败日志及非空原日志的分页末尾空页
+保持原语义；此检查不校验日志归因，也不表示真实模型或账号写入已经可用。
+
+2026-10-06 的真实 `GhCliProvider + SpawnGhCommandRunner` 在固定 Node24.15、官方
+gh2.102.0 下读取授权仓库 `zemeng5208/PersonalAgent` 的失败 run `37474438969` /
+job `112306058042`：正式 Schema 六页通过，offset 连续，末页 `nextOffset:null`，
+全文 348224 UTF-16 字符 / 356938 UTF-8 字节，SHA256
+`334b89ed82dc50fd73546b104ce4d760e2ca1c526ada1f6c565e4696245a253d`。
+原 Calendar 测试路径及 TIMEOUT/EXTERNAL_FAILURE 失败标记实际存在；这是受限账号
+GET 读取证据，未修复该历史测试，也不覆盖真实写入、Windows 或 Runtime 完整闭环。
+
+2026-10-07 在 Windows/Node24.15、当前安装的 gh2.97.0 上通过生产 Provider/runner
+复核同一失败日志：六页连续完整读回，字符数与 SHA256 同上，13 条只读命令，
+账号写入与模型调用均为零。此结果不宣称最低兼容 CLI 版本或完整 Runtime 审批链，
+详见 [本轮记录](../../../docs/modules/MOD-33-LOG-READ-ACCEPTANCE-20261007.md)。
 
 pr.diff 每页读前及读后核对两端 SHA；review.comment 写前核对 commitId 及可选 expectedBaseSha（MOD-36 总是提供）；pr.create
 写前核对 head branch SHA。issue.label 为追加标签，写前核对 expectedUpdatedAt，

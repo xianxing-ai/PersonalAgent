@@ -1,5 +1,12 @@
 # DEV-WORKFLOWS 代码交付与集中验证交接
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
+> 2026-10-07 最新规则：以下为原轮次记录；集中验证、指定评审和唯一集成槽已取消。MOD-33/36/37 由 goo122、MOD-34/35/38 由 Potatos498 各自负责实现、接线、验证和交付，zemeng 专注核心与 AgentArts（MOD-37 仍未开工），详见 [模块分工](../MODULE_ASSIGNMENTS.md)。
+
 ## 本轮授权与边界
 
 2026-10-03 产品负责人明确要求：同步项目，审查 Potatos498 的规划 PR，按最新分工开始代码实现；所有执行子任务使用 GPT-6.1 Sol；执行端只做可完成的静态核对，集中运行验证交给 Potatos498。

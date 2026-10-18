@@ -1,6 +1,6 @@
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {realpathSync} from 'node:fs';
+import {realpathSync, lstatSync} from 'node:fs';
 import {lstat, readFile, mkdtemp, rm, open, rename} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve, relative, isAbsolute, dirname, basename} from 'node:path';
@@ -38,6 +38,17 @@ export async function readGitWorkspaceFingerprint(rootPath: string, allowedPaths
 
 export function createGitTools(options: GitToolsOptions): {head: RegisteredTool; commit: RegisteredTool; push: RegisteredTool} {
   const root = realpathSync.native(options.rootPath);
+  const rootIdentity = lstatSync(root, {bigint: true});
+  if (!rootIdentity.isDirectory() || rootIdentity.isSymbolicLink()) fail('Git root must be a canonical directory');
+  const rootBindingCurrent = (): boolean => {
+    try {
+      const current = lstatSync(root, {bigint: true});
+      return current.isDirectory() && !current.isSymbolicLink() && current.dev === rootIdentity.dev
+        && current.ino === rootIdentity.ino && sameCanonicalPath(realpathSync.native(root), root);
+    } catch {return false;}
+  };
+  const checkRoot = (): void => {if (!rootBindingCurrent()) fail('Git root binding changed; trusted host must register the workspace again');};
+  checkRoot();
   const now = options.now ?? Date.now;
   const paths = [...options.allowedPaths].sort();
   const validPath = (p: string) => p.length > 0 && p.length < 1024 && !p.startsWith('-') && !p.includes('\\') && !/[\x00-\x1f]/u.test(p) && !isAbsolute(p) && p.split('/').every(s => s !== '.' && s !== '..' && s !== '' && s !== '.git');
@@ -51,6 +62,7 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
     if (!c.authorizationRef || !c.scopes.includes(scope)) fail('Git authorization scope is required');
     if (c.signal.aborted) throw new ProtocolError('CANCELLED', 'Git operation cancelled; reconcile any started write before retry');
     if (!Number.isFinite(Date.parse(c.deadline)) || Date.parse(c.deadline) <= now()) throw new ProtocolError('TIMEOUT', 'Git deadline expired; reconcile any started write before retry');
+    checkRoot();
   };
   // Host evidence/secret reads happen before the commit ref or remote push.
   // Bound these public ports even when an injected host ignores its signal;
@@ -112,6 +124,8 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
         clearTimeout(timer); c.signal.removeEventListener('abort',stop);
         if (interrupted) reject(new ProtocolError('RESULT_UNKNOWN','Git result unknown; reconcile before retry'));
         else if(code !== 0) reject(new ProtocolError(args[0]==='push' || args[0]==='update-ref' ? 'RESULT_UNKNOWN':'EXTERNAL_FAILURE','Git rejected the bounded operation; reconcile any started write before retry'));
+        else if (!rootBindingCurrent()) reject(new ProtocolError(args[0]==='push' || args[0]==='update-ref' ? 'RESULT_UNKNOWN':'SCOPE_DENIED',
+          'Git root binding changed; reconcile any started write before retry'));
         else {
           // Pipe chunks can split a filename's UTF-8 code point. Decode complete
           // bounded bytes once; never guess a path from replacement characters.
@@ -124,6 +138,7 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
     });
   };
   const snapshot = async (): Promise<GitFileHash[]> => {
+    checkRoot();
     const files: GitFileHash[] = [];
     for (const p of paths) {
       const candidate = resolve(root,p);
@@ -132,6 +147,7 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
       const s = await lstat(candidate);
       if (!s.isFile() || s.isSymbolicLink() || s.size > 4*1024*1024 || !sameCanonicalPath(realpathSync.native(candidate),candidate)) fail('Git allows bounded canonical regular files only');
       files.push({path:p,sha256:createHash('sha256').update(await readFile(candidate)).digest('hex')});
+      checkRoot();
     }
     return files;
   };
@@ -164,6 +180,7 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
       const rawIndexPath=(await git(['rev-parse','--git-path','index'],c,GIT_COMMIT_SCOPE)).trim();
       const requestedIndexPath=resolve(root,rawIndexPath);
       const indexPath=join(realpathSync.native(dirname(requestedIndexPath)),basename(requestedIndexPath));
+      check(c,GIT_COMMIT_SCOPE);
       const indexStat=await lstat(indexPath);
       if(!indexStat.isFile() || indexStat.isSymbolicLink()) fail('Git index must be a canonical regular file');
       const originalIndex=await readFile(indexPath);
@@ -187,6 +204,7 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
         // Git's exclusive index.lock makes the comparison and replacement one
         // transaction with respect to other cooperating Git index writers.
         const lockPath=indexPath+'.lock';
+        check(c,GIT_COMMIT_SCOPE);
         const lock=await open(lockPath,'wx',indexStat.mode & 0o777);
         let ownsLock=true; let refAttempted=false;
         try {
@@ -195,6 +213,7 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
             || createHash('sha256').update(await readFile(indexPath)).digest('hex')!==originalIndexHash) fail('User Git index changed before commit');
           const current=await state(c,GIT_COMMIT_SCOPE);
           if(!current.clean || current.headSha!==s.headSha || current.fingerprint!==s.fingerprint) fail('Git workspace changed before commit');
+          check(c,GIT_COMMIT_SCOPE);
           await lock.writeFile(await readFile(env.GIT_INDEX_FILE));
           await lock.sync();
           await lock.close();
@@ -203,6 +222,7 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
           await git(['update-ref',`refs/heads/${options.sourceBranch}`,next,s.headSha],c,GIT_COMMIT_SCOPE);
           // Complete local index installation even if cancellation arrives after
           // ref CAS: leaving an old index would invent reverse staged changes.
+          checkRoot();
           await rename(lockPath,indexPath);
           ownsLock=false;
         } catch(error) {
@@ -210,7 +230,9 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
           throw error;
         } finally {
           await lock.close().catch(()=>{});
-          if(ownsLock) await rm(lockPath,{force:true});
+          // A replaced pathname can now refer to somebody else's index.lock.
+          // Leave our original lock for explicit host recovery rather than delete that file.
+          if(ownsLock && rootBindingCurrent()) await rm(lockPath,{force:true});
         }
         return {headSha:next,parentSha:s.headSha,branch:options.sourceBranch};
       } finally {await rm(temp,{recursive:true,force:true});}

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-10-09",
+  "profile": "huawei_ict_agentarts",
+  "status": "preview-unmerged",
+  "sourceCommit": "97aa51a6f32e0dffcca6436fba0d3b51d1851d8f",
+  "pr": "https://github.com/zemeng5208/PersonalAgent/pull/317",
+  "ghcr": {
+    "tag": "ghcr.io/zemeng5208/personal-agent-owned:sha-97aa51a6f32e0dffcca6436fba0d3b51d1851d8f",
+    "digest": "sha256:71fae973fa5925aa3ced6a465fe4573e2b9453d4acb1fef67d91076b14399f70",
+    "anonymousPullVerified": true,
+    "platforms": [
+      {"os":"linux","architecture":"amd64","manifest":"sha256:3bd4bfa216322ad3c864d669b820b3d6acffcd2dad6a97bf36fc49f1bc3a16ec","config":"sha256:7b3d78f617da8afeb0350a0d27e3af9dc08de9445f22e570b030ec9e5265159b","containerTests":"21/21","productionTlsModelRequests":9},
+      {"os":"linux","architecture":"arm64","manifest":"sha256:bcd38d221369ab3afb8fba76c457f6d15051372e015e1d63370d662cf8a853fb","config":"sha256:b650f1069f822ae32069e5149b116f04c61772e5be07dbe10bb8ad36372c2af3","containerTests":"21/21","productionTlsModelRequests":9}
+    ]
+  },
+  "actions": {"run":"https://github.com/zemeng5208/PersonalAgent/actions/runs/37953071877","conclusion":"success","arm64Artifact":"https://github.com/zemeng5208/PersonalAgent/actions/runs/37953071877/artifacts/11626522428"},
+  "release": {
+    "url":"https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-97aa51a6",
+    "prerelease":true,
+    "targetCommit":"97aa51a6f32e0dffcca6436fba0d3b51d1851d8f",
+    "assets":[
+      {"file":"personal-agent-owned-amd64.tar","bytes":93430272,"sha256":"db0649cf1ea9e46be893263e9ec28e3efcd48b0e6480c67da4df9313fb55115e","repoTag":"personal-agent-owned:preview-97aa51a6-amd64","state":"uploaded"},
+      {"file":"personal-agent-owned-arm64.tar","bytes":298103808,"sha256":"0352ce812231f8fc1d0a52b3be2b5150223b394dd70355730b93d10902155aae","repoTag":"ghcr.io/zemeng5208/personal-agent-owned:sha-97aa51a6f32e0dffcca6436fba0d3b51d1851d8f","state":"uploaded"},
+      {"file":"resident-developer-agent-design-97aa51a6.zip","bytes":121139,"sha256":"6f1e6242e7138d15900e5139b5a8404ec824967cc6203634d1a1adc35ee87a49","state":"uploaded"},
+      {"file":"SHA256SUMS.txt","bytes":305,"sha256":"95a670fbcf3557373ee0978285f01497eb9dbf21eb0b6bdf5d843f183810c744","state":"uploaded"},
+      {"file":"VERIFICATION.json","bytes":3233,"sha256":"43c33a07911088273166278b4c8d5529fb9cdb3d04b37e85050faef497122616","state":"uploaded"}
+    ]
+  },
+  "validation": {"rootCheck":"passed locally","finalRecoveryRegression":"215/215","rootIntegration":"24/24","reviewGate":"6/6","productionTlsVerification":true,"externalModelNetwork":false,"realHuaweiAcceptance":false,"designDigest":"84b2c9d7b4729c6d1cab5ec52ce31fc4f0fad061a624e8d4332f8a3d4cfba1b8"},
+  "swr": {
+    "region":"cn-southwest-2",
+    "organization":"zemeng5208-personal-agent",
+    "visibility":"private",
+    "tag":"swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:sha-97aa51a6f32e0dffcca6436fba0d3b51d1851d8f",
+    "consoleDigest":"sha256:34e25482033afb6b8157d4ec2f46de31d8d576f57a39e8775bb8b95cfc80518e",
+    "upload":"console success; image and unique tag read back",
+    "sourceArchiveSha256":"0352ce812231f8fc1d0a52b3be2b5150223b394dd70355730b93d10902155aae",
+    "independentPullVerified":false,
+    "runtimeCreated":false,
+    "preparedRuntimeName":"pa-owned-wss-97aa51a6",
+    "credentials":"User must enter and submit in console; not recorded",
+    "oldRuntimesPreserved":true,
+    "iamPermissionsExpanded":false
+  },
+  "unverified":["Real Huawei deployment and model/tool/trace/usage/cost/evaluation","Public WSS Upgrade and keepalive","Automatic status reconciliation and durable cloud recovery","Wiki synchronization and complete unattended autonomy"],
+  "merge":{"requiredNamedReviewers":["goo122","Potatos498"],"requiredOwnComputerReading":true,"physicalReadingEvidence":"Personal account attestation; cannot independently prove remote physical reading","forceMergeAllowed":false,"merged":false}
+}

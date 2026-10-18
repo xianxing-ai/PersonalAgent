@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,6 +21,104 @@ const guardedEvent = extra => ({eventId: 'guarded-meeting', source: 'calendar:wo
   newSummary: '周四下午 17:00 项目架构同步会', sourceRevision: 'rev-guarded',
   detectedAt: '2026-09-29T11:00:00.000Z', deadline: new Date(Date.now() + 60_000).toISOString(),
   signal: new AbortController().signal, ...extra});
+
+test('queued meeting events preserve submitted content and source revision while receipts await', async () => {
+  const {store}=createMeetingFixture(),receipts=new InMemoryMeetingDecisionReceiptStore();
+  let release,entered;
+  const loading=new Promise(resolve=>{release=resolve;});
+  const started=new Promise(resolve=>{entered=resolve;});
+  const coordinator=new MeetingRescheduleCoordinator({store,namespace:'test-user-namespace',
+    chooser:new LayaActionChoiceService(createMockLaya()),executionPort:createStoreExecutionPort(store),
+    receiptStore:{async loadReceipt(query){entered();await loading;return receipts.loadReceipt(query);},
+      saveReceipt:record=>receipts.saveReceipt(record)}});
+  const event=guardedEvent(),submitted={...event};
+  const pending=coordinator.processEvent(event);await started;
+  event.newSummary='Changed after submission';event.sourceRevision='changed-revision';release();
+  assert.equal((await pending).status,'applied');
+  assert.equal(store.read().history.findLast(node=>node.id===submitted.meetingFactId).summary,submitted.newSummary);
+  assert.equal(receipts.listReceipts()[0].sourceRevision,submitted.sourceRevision);
+});
+
+test('queued approved proposals retain query and execution options while keeping original port hooks live', async () => {
+  const {store}=createMeetingFixture(),receipts=new InMemoryMeetingDecisionReceiptStore();
+  let release,entered,blocking=false,executed,replacedCalls=0;
+  const loading=new Promise(resolve=>{release=resolve;});
+  const started=new Promise(resolve=>{entered=resolve;});
+  const coordinator=new MeetingRescheduleCoordinator({store,namespace:'test-user-namespace',
+    chooser:new LayaActionChoiceService(createMockLaya()),receiptStore:{async loadReceipt(query){
+      if(blocking){entered();await loading;}return receipts.loadReceipt(query);
+    },saveReceipt:record=>receipts.saveReceipt(record)}});
+  const event=guardedEvent();assert.equal((await coordinator.processEvent(event)).status,'proposal');
+  const executionPort={executeBatch:request=>createStoreExecutionPort(store).executeBatch(request)};
+  const options={executionPort,deadline:event.deadline,signal:event.signal};
+  const query={eventId:event.eventId,source:event.source,namespace:'test-user-namespace'};
+  blocking=true;const pending=coordinator.applyApprovedProposal(query,options);await started;
+  query.eventId='replaced-event';query.source='replaced-source';
+  options.deadline=new Date(Date.now()-1000).toISOString();options.signal=new AbortController().signal;
+  options.executionPort={executeBatch:async()=>{replacedCalls++;return {applied:false,snapshot:store.read()};}};
+  executionPort.executeBatch=request=>{executed=request;return createStoreExecutionPort(store).executeBatch(request);};
+  release();assert.equal((await pending).status,'applied');
+  assert.equal(replacedCalls,0);assert.equal(executed.eventId,event.eventId);assert.equal(executed.source,event.source);
+  assert.equal(executed.deadline,event.deadline);assert.equal(executed.signal,event.signal);
+  assert.equal(store.read().history.findLast(node=>node.id===event.meetingFactId).summary,event.newSummary);
+});
+
+test('approved proposal cancellation and original deadline expiry during receipt load prevent execution', async () => {
+  for (const mode of ['cancelled', 'expired']) {
+    const {store} = createMeetingFixture(), receipts = new InMemoryMeetingDecisionReceiptStore();
+    let release, entered, blocking = false, executions = 0, clock = Date.now();
+    const loading = new Promise(resolve => {release = resolve;});
+    const started = new Promise(resolve => {entered = resolve;});
+    const coordinator = new MeetingRescheduleCoordinator({store, namespace: 'test-user-namespace',
+      inference: createMockLaya(), now: () => clock, receiptStore: {async loadReceipt(query) {
+        if (blocking) {entered(); await loading;}
+        return receipts.loadReceipt(query);
+      }, saveReceipt: record => receipts.saveReceipt(record)}});
+    const event = guardedEvent(), proposal = await coordinator.processEvent(event);
+    assert.equal(proposal.status, 'proposal');
+    const before = store.read(), originalRecords = receipts.listReceipts(), controller = new AbortController();
+    const options = {signal: controller.signal, deadline: event.deadline,
+      executionPort: {executeBatch: request => {executions++; return createStoreExecutionPort(store).executeBatch(request);}}};
+    blocking = true;
+    const pending = coordinator.applyApprovedProposal({eventId: event.eventId, source: event.source}, options);
+    await started;
+    if (mode === 'cancelled') {controller.abort(); options.signal = new AbortController().signal;}
+    else {clock = Date.parse(event.deadline); options.deadline = new Date(clock + 60_000).toISOString();}
+    release();
+    await assert.rejects(pending, error => error.code === 'INVALID_ARGUMENT', mode);
+    assert.equal(executions, 0, mode);
+    assert.deepEqual(store.read(), before, mode);
+    assert.deepEqual(receipts.listReceipts(), originalRecords, mode);
+  }
+});
+
+test('approved proposals reject invalid deadlines while completed receipts retain replay behavior', async () => {
+  const {store} = createMeetingFixture(), receipts = new InMemoryMeetingDecisionReceiptStore();
+  let blocking = false, entered, release, executions = 0;
+  const loading = new Promise(resolve => {release = resolve;});
+  const started = new Promise(resolve => {entered = resolve;});
+  const coordinator = new MeetingRescheduleCoordinator({store, namespace: 'test-user-namespace',
+    inference: createMockLaya(), receiptStore: {async loadReceipt(query) {
+      if (blocking) {entered(); await loading;}
+      return receipts.loadReceipt(query);
+    }, saveReceipt: record => receipts.saveReceipt(record)}});
+  const event = guardedEvent(), query = {eventId: event.eventId, source: event.source};
+  assert.equal((await coordinator.processEvent(event)).status, 'proposal');
+  const executionPort = {executeBatch: request => {executions++; return createStoreExecutionPort(store).executeBatch(request);}};
+  await assert.rejects(coordinator.applyApprovedProposal(query, {executionPort, deadline: 'invalid-date'}),
+    error => error.code === 'INVALID_ARGUMENT');
+  assert.equal(executions, 0);
+  const applied = await coordinator.applyApprovedProposal(query, {executionPort, deadline: event.deadline});
+  assert.equal(applied.status, 'applied');
+  const before = store.read(), controller = new AbortController();
+  blocking = true;
+  const pending = coordinator.applyApprovedProposal(query, {executionPort, signal: controller.signal, deadline: event.deadline});
+  await started;
+  controller.abort(); release();
+  assert.deepEqual(await pending, applied);
+  assert.equal(executions, 1);
+  assert.deepEqual(store.read(), before);
+});
 
 test('meeting revision excludes unrelated stale dependencies from selected repair', async () => {
   const {store} = createMeetingFixture();
@@ -459,6 +558,68 @@ test('MeetingRescheduleCoordinator: defer_and_verify defers without mutating sto
   assert.equal(store.read().revision, 5);
 });
 
+const syntheticReceiptRecord = (namespace, source, eventId = 'synthetic-event') => ({
+  namespace, source, eventId, sourceRevision: 'rev-1', inputDigest: 'synthetic-digest', status: 'proposal',
+  receipt: {eventId, source, sourceRevision: 'rev-1', meetingFactId: 'meeting-1',
+    selectedCandidateId: 'cand-adjust-schedule', actionId: 'adjust_schedule', status: 'proposal',
+    confidence: 0.9, reason: 'synthetic', graphRevisionBefore: 1, graphRevisionAfter: 1,
+    evaluatedAt: '2026-09-29T10:00:00.000Z'}, updatedAt: '2026-09-29T10:00:00.000Z',
+});
+
+test('meeting receipt stores keep delimiter-containing identities distinct', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'receipt-delimiter-test-'));
+  try {
+    for (const store of [new InMemoryMeetingDecisionReceiptStore(),
+      new FileMeetingDecisionReceiptStore({storageDir: tmpDir})]) {
+      const first = syntheticReceiptRecord('synthetic::group', 'calendar');
+      const second = syntheticReceiptRecord('synthetic', 'group::calendar');
+      store.saveReceipt(first);
+      assert.equal(store.loadReceipt(second), undefined);
+      store.saveReceipt(second);
+      assert.deepEqual(store.loadReceipt(first), first);
+      assert.deepEqual(store.loadReceipt(second), second);
+      assert.equal(store.listReceipts().length, 2);
+      const third = syntheticReceiptRecord('event-boundary', 'calendar::group', 'event-2');
+      const fourth = syntheticReceiptRecord('event-boundary', 'calendar', 'group::event-2');
+      store.saveReceipt(third);
+      assert.equal(store.loadReceipt(fourth), undefined);
+      store.saveReceipt(fourth);
+      assert.deepEqual(store.loadReceipt(third), third);
+      assert.deepEqual(store.loadReceipt(fourth), fourth);
+      assert.equal(store.listReceipts().length, 4);
+    }
+    const restarted = new FileMeetingDecisionReceiptStore({storageDir: tmpDir});
+    assert.equal(restarted.listReceipts().length, 4);
+  } finally { rmSync(tmpDir, {recursive: true, force: true}); }
+});
+
+test('legacy meeting files require exact identity and remain intact when upgraded', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'receipt-legacy-test-'));
+  try {
+    const original = syntheticReceiptRecord('synthetic::group', 'calendar');
+    const collision = syntheticReceiptRecord('synthetic', 'group::calendar');
+    const legacyKey = createHash('sha256').update(`${original.namespace}::${original.source}::${original.eventId}`).digest('hex');
+    const legacyPath = path.join(tmpDir, `receipt-${legacyKey}.json`);
+    const legacyBytes = JSON.stringify(original);
+    writeFileSync(legacyPath, legacyBytes, 'utf8');
+    const store = new FileMeetingDecisionReceiptStore({storageDir: tmpDir});
+    assert.deepEqual(store.loadReceipt(original), original);
+    assert.equal(store.loadReceipt(collision), undefined);
+    store.saveReceipt(collision);
+    assert.deepEqual(store.loadReceipt(original), original);
+    const updated = {...original, status: 'applied', receipt: {...original.receipt, status: 'applied'}};
+    store.saveReceipt(updated);
+    const restarted = new FileMeetingDecisionReceiptStore({storageDir: tmpDir});
+    assert.deepEqual(restarted.loadReceipt(original), updated);
+    assert.deepEqual(restarted.loadReceipt(collision), collision);
+    assert.deepEqual(restarted.loadReceipt({eventId: original.eventId, namespace: original.namespace}), updated);
+    assert.deepEqual(restarted.listReceipts({namespace: original.namespace}), [updated]);
+    assert.deepEqual(restarted.listReceipts({namespace: original.namespace, status: 'proposal'}), []);
+    assert.equal(restarted.listReceipts().length, 2);
+    assert.equal(readFileSync(legacyPath, 'utf8'), legacyBytes);
+  } finally { rmSync(tmpDir, {recursive: true, force: true}); }
+});
+
 test('FileMeetingDecisionReceiptStore: persists atomically and isolates by namespace, source, eventId', () => {
   const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'receipt-store-test-'));
   try {
@@ -565,6 +726,58 @@ test('MeetingRescheduleCoordinator: recovers from prior crash window after graph
   const saved = await receiptStore.loadReceipt({namespace: 'default', source: 'calendar:work', eventId: 'evt-crash-recovery-1'});
   assert.ok(saved);
   assert.equal(saved.status, 'already_processed');
+});
+
+test('historical meeting recovery matches deterministic content and retains differently sourced Plans', async () => {
+  const {store} = createMeetingFixture();
+  const event = guardedEvent({eventId: 'event-shared', sourceRevision: 'rev-shared'});
+  const beforeRevision = store.read().revision;
+  const original = new MeetingRescheduleCoordinator({store, inference: createMockLaya(),
+    executionPort: createStoreExecutionPort(store), receiptStore: {loadReceipt: () => undefined,
+      saveReceipt() {throw Error('Synthetic receipt failure after actual commit');}}});
+  await assert.rejects(original.processEvent(event), /Synthetic receipt failure/);
+  const originalHistory = store.read();
+  const expectedRefs = originalHistory.history.filter(node => node.graphRevision > beforeRevision)
+    .map(node => ({id: node.id, revision: node.revision}));
+  assert.equal(expectedRefs.length, 4, 'generated Fact, Goal, Decision and differently sourced Plan');
+  store.append(originalHistory.revision, {id: 'meeting-other', kind: 'fact', sourceRef: 'calendar:other',
+    summary: 'Independent meeting', sensitivity: 'private', state: 'active',
+    validFrom: '2026-09-29T10:00:00.000Z', validUntil: '2026-09-30T00:00:00.000Z', dependencies: [],
+    reason: 'Other event [eventId: event-shared] [sourceRevision: rev-shared]'});
+  let models = 0;
+  const coordinator = new MeetingRescheduleCoordinator({store, receiptStore: new InMemoryMeetingDecisionReceiptStore(),
+    chooser: {async choose() {models++; throw Error('Recovery must not infer');}}});
+  const before = store.read(), receipt = await coordinator.processEvent(event);
+  assert.equal(receipt.status, 'already_processed');
+  assert.deepEqual(receipt.appliedNodeRevisions, expectedRefs);
+  assert.equal(receipt.graphRevisionBefore, beforeRevision);
+  assert.equal(receipt.graphRevisionAfter, originalHistory.revision);
+  assert.match(receipt.reason, /不代表审批或执行已验证/);
+  assert.equal(models, 0);
+  assert.deepEqual(store.read(), before, 'recovery must not write or replay');
+  assert.deepEqual((await coordinator.getReceipt(event.eventId, event.source)).appliedNodeRevisions, expectedRefs);
+});
+
+test('unmatched historical repair content recovers only the exact Fact without claiming other revisions', async () => {
+  const {store} = createMeetingFixture(), event = guardedEvent({eventId: 'event-shared', sourceRevision: 'rev-shared'});
+  const previous = store.read().history.findLast(node => node.id === event.meetingFactId);
+  const {revision: _revision, graphRevision: _graphRevision, ...input} = previous;
+  store.append(store.read().revision, {...input, summary: event.newSummary,
+    reason: 'Fact update [eventId: event-shared] [sourceRevision: rev-shared]'});
+  const factRevision = store.read().revision;
+  store.append(factRevision, {id: 'meeting-other', kind: 'fact', sourceRef: 'calendar:other', summary: 'Independent',
+    sensitivity: 'public', state: 'active', validFrom: input.validFrom, validUntil: input.validUntil,
+    reason: 'Other event [eventId: event-shared] [sourceRevision: rev-shared]', dependencies: []});
+  const before = store.read();
+  const coordinator = new MeetingRescheduleCoordinator({store,
+    chooser: {async choose() {throw Error('Recovery must not infer');}}});
+  const receipt = await coordinator.processEvent(event);
+  assert.equal(receipt.status, 'already_processed');
+  assert.deepEqual(receipt.appliedNodeRevisions, [{id: event.meetingFactId, revision: previous.revision + 1}]);
+  assert.equal(receipt.graphRevisionBefore, factRevision - 1);
+  assert.equal(receipt.graphRevisionAfter, factRevision);
+  assert.match(receipt.reason, /其它修订未核验/);
+  assert.deepEqual(store.read(), before);
 });
 
 test('MeetingRescheduleCoordinator: proposal can be subsequently executed via applyApprovedProposal', async () => {
@@ -707,6 +920,91 @@ test('MeetingRescheduleCoordinator: rejects baseline revision mismatch with conf
   const receipt = await coordinator.processEvent(event);
   assert.equal(receipt.status, 'conflict');
   assert.match(receipt.reason, /源事实基线版本不匹配/);
+});
+
+test('guarded execution commits only the captured input and store after asynchronous policy review', async () => {
+  const host=new FakeCoordinationStoreHost(),approved=host.provision('approved'),other=host.provision('other');
+  const input={id:'approved-fact',kind:'fact',summary:'approved summary',sourceRef:'calendar:synthetic',
+    sensitivity:'public',state:'active',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z',
+    reason:'synthetic',dependencies:[]};
+  let release,entered,policyInput,commits=0,notified=0,replacedCalls=0;
+  const reviewing=new Promise(resolve=>{release=resolve;});
+  const started=new Promise(resolve=>{entered=resolve;});
+  const store={read:revision=>approved.read(revision),appendBatch:(revision,inputs)=>approved.appendBatch(revision,inputs)};
+  const policy={evaluateExecution:async()=>{throw Error('original method should be replaced on the same port');}};
+  const options={store,policy,namespace:'approved',onExecuted:()=>{notified++;}};
+  const port=createPolicyGuardedExecutionPort(options);
+  policy.evaluateExecution=async request=>{policyInput=request;entered();await reviewing;return {allowed:true};};
+  const request={expectedRevision:0,inputs:[structuredClone(input)],eventId:'approved-event',source:'calendar:synthetic',sourceRevision:'r1'};
+  const pending=port.executeBatch(request);
+  await started;
+  assert.equal(policyInput.inputs[0].summary,input.summary);
+  request.inputs[0].summary='caller replacement';
+  request.inputs.push({...input,id:'unapproved-extra'});
+  policyInput.inputs[0].summary='policy replacement';
+  policyInput.inputs[0].dependencies.push({id:'missing',revision:1});
+  options.store=other;options.namespace='other';
+  options.policy={evaluateExecution(){replacedCalls++;return {allowed:false};}};
+  options.onExecuted=()=>{replacedCalls++;};
+  store.appendBatch=(revision,inputs)=>{commits++;return approved.appendBatch(revision,inputs);};
+  release();
+  const result=await pending;
+  assert.equal(result.applied,true);assert.equal(commits,1);assert.equal(notified,1);assert.equal(replacedCalls,0);
+  assert.deepEqual(approved.read().history,[{...input,revision:1,graphRevision:1}]);
+  assert.deepEqual(result.snapshot,approved.read());assert.equal(other.read().revision,0);
+});
+
+test('guarded execution cannot replace the captured cancellation signal during policy review', async () => {
+  const store=new FakeCoordinationStoreHost().provision('approved'),controller=new AbortController();
+  let release,entered;
+  const reviewing=new Promise(resolve=>{release=resolve;});
+  const started=new Promise(resolve=>{entered=resolve;});
+  const port=createPolicyGuardedExecutionPort({store,policy:{async evaluateExecution(){entered();await reviewing;return {allowed:true};}}});
+  const request={expectedRevision:0,eventId:'approved-event',source:'calendar:synthetic',sourceRevision:'r1',
+    signal:controller.signal,deadline:new Date(Date.now()+5000).toISOString(),inputs:[{id:'fact',kind:'fact',summary:'approved',
+      sourceRef:'calendar:synthetic',sensitivity:'public',state:'active',reason:'synthetic',dependencies:[],
+      validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z'}]};
+  const pending=port.executeBatch(request);await started;
+  controller.abort();request.signal=new AbortController().signal;release();
+  const result=await pending;
+  assert.equal(result.applied,false);assert.match(result.error,/异步授权后中止/);assert.equal(store.read().revision,0);
+});
+
+test('guarded recovery verifies the exact committed input and receipt boundaries against graph history', async () => {
+  const store=new FakeCoordinationStoreHost().provision('synthetic-recovery'),receipts=new InMemoryMeetingDecisionReceiptStore();
+  const input={id:'recovered-fact',kind:'fact',summary:'approved summary',sourceRef:'calendar:synthetic',
+    sensitivity:'public',state:'active',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z',
+    reason:'synthetic',dependencies:[]};
+  store.appendBatch(0,[input]);
+  const record=syntheticReceiptRecord('synthetic-recovery','calendar:synthetic','recovered-event');
+  record.status='applied';record.receipt={...record.receipt,status:'applied',graphRevisionBefore:0,graphRevisionAfter:1,
+    appliedNodeRevisions:[{id:input.id,revision:1}]};
+  receipts.saveReceipt(record);
+  const request={expectedRevision:0,inputs:[input],eventId:record.eventId,source:record.source,sourceRevision:record.sourceRevision};
+  const port=createPolicyGuardedExecutionPort({store,receiptStore:receipts,namespace:record.namespace,
+    policy:{evaluateExecution:()=>({allowed:true})}});
+  assert.equal((await port.executeBatch(request)).applied,true);
+  store.appendBatch(1,[{...input,id:'unrelated-fact',summary:'unrelated append'}]);
+  const recovered=await port.executeBatch(request);
+  assert.equal(recovered.applied,true);assert.equal(recovered.snapshot.revision,2);
+  const before=store.read();
+  assert.equal((await port.executeBatch({...request,inputs:[{...input,summary:'unexecuted replacement'}]})).applied,false);
+  for(const mutation of [
+    value=>{value.namespace='other-namespace';},value=>{value.source='other-source';},
+    value=>{value.eventId='other-event';},value=>{value.receipt.sourceRevision='other-revision';},
+    value=>{value.receipt.source='other-source';},value=>{value.receipt.eventId='other-event';},
+    value=>{value.receipt.graphRevisionBefore=1;},value=>{value.receipt.graphRevisionAfter=2;},
+  ]) {
+    const forged=structuredClone(record);mutation(forged);
+    const mismatched=createPolicyGuardedExecutionPort({store,namespace:record.namespace,
+      receiptStore:{loadReceipt:()=>forged,saveReceipt(){}},policy:{evaluateExecution:()=>({allowed:true})}});
+    assert.equal((await mismatched.executeBatch(request)).applied,false);
+  }
+  const unavailable=createPolicyGuardedExecutionPort({store:{appendBatch:(...args)=>store.appendBatch(...args),
+    read:revision=>{if(revision!==undefined)throw Error('history unavailable');return store.read();}},
+    namespace:record.namespace,receiptStore:receipts,policy:{evaluateExecution:()=>({allowed:true})}});
+  assert.equal((await unavailable.executeBatch(request)).applied,false);
+  assert.deepEqual(store.read(),before,'recovery neither retries nor changes persisted history');
 });
 
 test('MeetingRescheduleCoordinator: createPolicyGuardedExecutionPort evaluates policy before commit', async () => {

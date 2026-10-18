@@ -1,12 +1,17 @@
 # MOD-20：待办与日历
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 ## 基本信息
 
 - 关联需求：PA-009（P0 本地待办和定时提醒）、PA-013（P1 日历同步）
-- GitHub 负责人：`Potatos498`
-- 评审者：`goo122`（非作者）
+- 当前 GitHub 负责人：`Potatos498`（2026-10-07 三人独立交付重置）
+- 自审：模块负责人；可选同行评审：`goo122`，不作为交付前置
 - 独占目录：`packages/productivity/`、`packages/connectors/calendar/`
-- 当前状态：review（源码完成，待非作者评审；分支 `feat/mod-20-productivity`）
+- 历史工作包状态（原记录，不作为新 PR 审批门槛）：review（源码完成，待非作者评审；分支 `feat/mod-20-productivity`）
 
 ## 职责
 

@@ -147,3 +147,38 @@ test('deadline bounds an ignoring read and synchronous late settlement cannot be
   await assert.rejects(createCiRunDiscoveryWorkflow(late.options).listFailedRuns(late.context, late.request), e => e.code === 'TIMEOUT');
   assert.notEqual(late.context.loadCheckpoint('ci-run-discovery-v1').phase, 'listed');
 });
+
+test('started discovery binds the factory port while new factories accept new configuration',async()=>{
+  const f=fixture(),workflow=createCiRunDiscoveryWorkflow(f.options);let otherCalls=0;
+  const running=workflow.listFailedRuns(f.context,f.request);
+  f.options.tools={list:f.tools.list,invoke:async()=>{otherCalls++;return {state:'confirmed',
+    result:{items:[{...run,name:'Second provider'}],page:1,nextPage:null,hasMore:false},evidenceRefs:['second-port']};}};
+  const result=await running;
+  assert.equal(otherCalls,0);assert.equal(f.calls.length,1);assert.equal(result.items[0].name,'Foundation');
+  const fresh=createCiRunDiscoveryWorkflow(f.options),checkpoints=new Map();
+  const context={...f.context,taskId:'next-factory',loadCheckpoint:key=>checkpoints.get(key),saveCheckpoint:(key,value)=>checkpoints.set(key,structuredClone(value))};
+  assert.equal((await fresh.listFailedRuns(context,f.request)).items[0].name,'Second provider');assert.equal(otherCalls,1);
+});
+test('bound discovery port retains live method replacement and capability withdrawal',async()=>{
+  const f=fixture(),workflow=createCiRunDiscoveryWorkflow(f.options);let replacements=0;
+  f.tools.invoke=async()=>{replacements++;return structuredClone(f.response);};
+  assert.equal((await workflow.listFailedRuns(f.context,f.request)).state,'listed');assert.equal(replacements,1);
+  f.tools.list=()=>[];
+  await assert.rejects(workflow.listFailedRuns(f.context,f.request),error=>error.code==='UNSUPPORTED_CAPABILITY');
+  assert.equal(replacements,1);
+});
+test('unknown discovery retains original port through live exact replay readiness',async()=>{
+  const f=fixture();f.response.state='unknown';delete f.response.result;
+  const workflow=createCiRunDiscoveryWorkflow(f.options);
+  assert.equal((await workflow.listFailedRuns(f.context,f.request)).state,'waiting_reconciliation');
+  const original=f.calls[0];let otherCalls=0;
+  f.options.tools={list:f.tools.list,invoke:async()=>{otherCalls++;throw Error('next port');}};
+  f.options.confirmedReplayReady=()=>false;
+  assert.equal((await workflow.listFailedRuns(f.context,f.request)).state,'waiting_reconciliation');
+  f.options.confirmedReplayReady=id=>id===original.runId;
+  f.tools.invoke=async input=>{f.calls.push(input);assert.equal(input.runId,original.runId);assert.deepEqual(input.arguments,original.arguments);
+    return {state:'confirmed',result:{items:[run],page:1,nextPage:null,hasMore:false},evidenceRefs:['original-cache']};};
+  const result=await workflow.listFailedRuns(f.context,f.request);
+  assert.equal(result.state,'listed');assert.ok(result.evidenceRefs.includes('original-cache'));assert.equal(otherCalls,0);
+  assert.equal(f.context.loadCheckpoint('ci-run-discovery-v1').steps,1);
+});

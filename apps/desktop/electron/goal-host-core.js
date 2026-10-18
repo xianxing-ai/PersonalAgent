@@ -32,18 +32,30 @@ function goalResult(value) {
     currentGoal: {id: value.currentGoal.id, revision: value.currentGoal.revision}};
 }
 
-function projectTask(readback, toolNames) {
+function projectTask(readback, toolNames, runtime) {
   const {GOAL_CREATE_TOOL, GOAL_REVISE_TOOL, GOAL_TOOL_VERSION} = toolNames;
   const GOAL_TOOLS = new Set([GOAL_CREATE_TOOL, GOAL_REVISE_TOOL]);
   if (!GOAL_TOOLS.has(readback.toolName) || readback.toolVersion !== GOAL_TOOL_VERSION) {
     throw Error('Goal 任务不存在');
   }
   const {task, approval, confirmed} = readback;
+  let expiresAt;
+  if (approval) {
+    try {
+      const native = runtime.getApproval(approval.approvalId);
+      if (native?.approvalId === approval.approvalId && native.taskId === task.taskId
+        && native.toolName === readback.toolName && native.revision === approval.revision
+        && native.state === approval.state && typeof native.expiresAt === 'string') {
+        expiresAt = native.expiresAt;
+      }
+    } catch (error) { if (error?.code !== 'NOT_FOUND') throw error; }
+  }
   const result = confirmed ? goalResult(confirmed.result) : null;
   if (task.state === 'succeeded' && !result) throw Error('Goal 任务缺少可验证的工具结果');
   return {taskId: task.taskId, commandId: readback.commandId, operation: readback.toolName,
     state: task.state, revision: task.revision, updatedAt: task.updatedAt,
-    ...(approval ? {approval: {approvalId: approval.approvalId, revision: approval.revision, state: approval.state}} : {}),
+    ...(approval ? {approval: {approvalId: approval.approvalId, revision: approval.revision, state: approval.state,
+      ...(expiresAt === undefined ? {} : {expiresAt})}} : {}),
     ...(result ? {result, evidenceRefs: [...confirmed.evidenceRefs]} : {}),
     ...(task.error ? {error: {code: task.error.code, message: task.error.message}} : {})};
 }
@@ -70,7 +82,7 @@ export function createGoalHostCore(namespace, {getGoal, listGoals, createGoalToo
     get(id) { ready(); return getGoal(store, id); },
     create(payload) { return submit(GOAL_CREATE_TOOL, payload); },
     revise(payload) { return submit(GOAL_REVISE_TOOL, payload); },
-    readTask(taskId) { ready(); return projectTask(application.readHostToolTask(taskId), toolNames); },
+    readTask(taskId) { ready(); return projectTask(application.readHostToolTask(taskId), toolNames, application.runtime); },
     listTasks() {
       ready();
       const result = [];
@@ -82,7 +94,7 @@ export function createGoalHostCore(namespace, {getGoal, listGoals, createGoalToo
           ...(snapshotSequence === undefined ? {} : {snapshotSequence})});
         snapshotSequence = page.snapshotSequence;
         for (const task of page.items) {
-          try { result.push(projectTask(application.readHostToolTask(task.taskId), toolNames)); }
+          try { result.push(projectTask(application.readHostToolTask(task.taskId), toolNames, application.runtime)); }
           catch (error) { if (error?.code !== 'NOT_FOUND' && error?.message !== 'Goal 任务不存在') throw error; }
         }
         beforeSequence = page.nextBeforeSequence;
@@ -126,6 +138,6 @@ export function createGoalHostCore(namespace, {getGoal, listGoals, createGoalToo
     const readback = application.submitHostToolTask({commandId, toolName,
       toolVersion: GOAL_TOOL_VERSION, arguments: args,
       deadline: new Date(Date.now() + DEADLINE_MS).toISOString()});
-    return projectTask(readback, toolNames);
+    return projectTask(readback, toolNames, application.runtime);
   }
 }

@@ -40,6 +40,54 @@ async function workspaceBindingFixture(t) {
 }
 const allowWorkspaceRead=host=>host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false});
 
+test('local read consent permits MCP binding without granting AgentArts availability or export',async t=>{
+  const {root,open}=await workspaceBindingFixture(t);
+  const host=open();
+  assert.equal(host.readWorkspaceBinding(),undefined);
+  host.authorize({cloudExportAllowed:false,writeAllowed:false,commandAllowed:false});
+  const binding=host.readWorkspaceBinding();
+  assert.equal(binding.rootPath,root);
+  host.bindApplication({runtime:{loadCheckpoint:(_taskId,key)=>
+    key==='desktop-coding-scope'?binding.bindingId:undefined}});
+  assert.equal(host.snapshot().readAvailable,true);
+  assert.equal(host.snapshot().cloudExportAllowed,false);
+  assert.equal(host.snapshot().writeAvailable,false);
+  assert.equal(host.snapshot().commandAvailable,false);
+  assert.equal(host.readWorkspaceExportConfigurationRef(),undefined);
+  for(const entry of host.competitionToolAvailability) {
+    assert.equal(await entry.available({taskId:'local-only',signal:new AbortController().signal}),false);
+  }
+  for(const entry of host.competitionToolExports) {
+    assert.equal(entry.accepts({taskId:'local-only'}),false);
+    assert.throws(()=>entry.project({taskId:'local-only',signal:new AbortController().signal}),
+      error=>error.code==='UNAUTHORIZED');
+  }
+  host.revoke();
+  assert.equal(host.readWorkspaceBinding(),undefined);
+  assert.equal(host.isWorkspaceBindingCurrent(binding),false);
+  assert.equal(host.snapshot().readAvailable,false);
+  assert.equal(open().readWorkspaceBinding(),undefined);
+});
+
+test('native selector cancellation receipts are explicit and never persist into snapshots or authorization',async t=>{
+  const {root,configuration,open}=await workspaceBindingFixture(t);
+  const host=open({selectDirectory:async()=>undefined,selectNodeExecutable:async()=>undefined,
+    selectCheckFile:async()=>undefined,selectNpmCli:async()=>undefined});
+  const before=await readFile(configuration,'utf8');
+  for(const method of ['select','selectNode','selectCheckFile','selectNpmCli']) {
+    const snapshot=host.snapshot(),result=await host[method]();
+    assert.deepEqual(result,{...snapshot,selectionCancelled:true});
+    assert.deepEqual(host.snapshot(),snapshot);
+    assert.equal(Object.hasOwn(host.snapshot(),'selectionCancelled'),false);
+    assert.equal(await readFile(configuration,'utf8'),before);
+  }
+  assert.equal(Object.hasOwn(host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false}),'selectionCancelled'),false);
+  assert.equal(Object.hasOwn(host.revoke(),'selectionCancelled'),false);
+  const selected=await open({selectDirectory:async()=>root}).select();
+  assert.equal(Object.hasOwn(selected,'selectionCancelled'),false);
+  assert.equal(Object.hasOwn(JSON.parse(await readFile(configuration,'utf8')),'selectionCancelled'),false);
+});
+
 test('native selections cannot persist late results after their workspace host closes',async t=>{
   for(const [method,selector] of [['select','selectDirectory'],['selectNode','selectNodeExecutable'],
     ['selectCheckFile','selectCheckFile'],['selectNpmCli','selectNpmCli']]) {

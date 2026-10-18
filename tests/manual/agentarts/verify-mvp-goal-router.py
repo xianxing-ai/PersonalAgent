@@ -24,6 +24,23 @@ def check(raw, expected):
 
 check(request(payload), 'complex')
 check(json.dumps(dict(goal=request(payload), availableTools=[])), 'complex')
+
+# Goal targets carry the original node baseline, unlike the bounded fixed
+# requestedSummary in the legacy Fact path. Both Goal fields must agree.
+for length in [4096, 5000, 8192, 8193]:
+    changed = copy.deepcopy(payload)
+    changed['nodes'][2]['summary'] = 'P' * length
+    changed['repairContext']['targets'][0]['summary'] = changed['nodes'][2]['summary']
+    raw = request(changed)
+    wrapped = json.dumps(dict(goal=raw, availableTools=[]))
+    assert len(raw.encode('utf-8')) <= router.MAX_QUERY_BYTES
+    check(raw, 'complex' if length <= 8192 else 'text')
+    # Keep the separate goal-with-tools string bound. The direct Goal wrapper
+    # carries two copies of this baseline and cannot fit its 8192-char goal.
+    assert len(raw) > 8192
+    assert len(wrapped.encode('utf-8')) <= router.MAX_QUERY_BYTES
+    check(wrapped, 'text')
+
 changed = copy.deepcopy(payload)
 changed['executed'] = True
 check(request(changed), 'text')
@@ -56,7 +73,30 @@ for prefix, suffix in [(router.CONTINUATION_PREFIX, router.CONTINUATION_SUFFIX),
 fact_context = dict(expectedGraphRevision=3, allowedDependencies=[dict(id='synthetic-fact', revision=2)], targets=[dict(node=dict(id='synthetic-plan', revision=1), requestedSummary='合法固定摘要', requestedDependencies=[dict(id='synthetic-fact', revision=2)])])
 fact = dict(continuation=dict(proposalId='synthetic-fact-001', state='confirmed', result=dict(repairContext=fact_context)))
 check(json.dumps(fact), 'complex')
+for length in [4096, 5000]:
+    changed = copy.deepcopy(fact)
+    changed['continuation']['result']['repairContext']['targets'][0]['requestedSummary'] = 'F' * length
+    query = json.dumps(changed)
+    assert len(query.encode('utf-8')) <= router.MAX_QUERY_BYTES
+    check(query, 'complex' if length <= 4096 else 'text')
 fact['continuation']['state'] = 'pending'
 check(json.dumps(fact), 'text')
 check(json.dumps(dict(goal='请运行node_check', availableTools=[dict(name='workspace.node_check', version='1.0.0', inputSchema=dict(type='object', properties={}, additionalProperties=False))])), 'review')
+
+# Exercise the actual public entry, including both JSON decode paths. Each input
+# stays within the existing byte budget; malformed input must remain a text refusal.
+for surrogate in ['\ud800', '\udfff']:
+    rejected = router.main({'query': 'synthetic ' + surrogate})
+    assert rejected['route'] == 'text'
+    assert json.loads(rejected['text_result']) == {'kind': 'text', 'text': '请求格式或长度无效，无法生成提案。'}
+
+deep_json = '[' * 12000 + '0' + ']' * 12000
+for prefix, message in [('', '请求不是受限 JSON，无法生成提案。'),
+                        (router.GOAL_PREFIX, 'RECHECK：主动目标数据格式无效，尚未执行。')]:
+    query = prefix + deep_json
+    assert len(query.encode('utf-8')) <= router.MAX_QUERY_BYTES
+    rejected = router.main({'query': query})
+    assert rejected['route'] == 'text'
+    assert json.loads(rejected['text_result']) == {'kind': 'text', 'text': message}
+
 print('Goal/Fact/receipt compatibility checks passed; no cloud calls or local tool execution.')

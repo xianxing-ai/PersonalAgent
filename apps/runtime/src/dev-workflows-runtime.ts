@@ -282,11 +282,13 @@ export function createDevWorkflowsRuntime(options: DevWorkflowsRuntimeOptions): 
   const repair = options.issueTriage?.repair ?? (ciOptions && (options.failedRunForIssue || ciOptions.expectedHeadSha) ? {
     async repairIssue(context: AgentWorkerContext, request: {repo: string; number: number; issueUrl: string;
       issueFingerprint: string; goal: string; pullRequestBody: string}) {
-      const runId = options.failedRunForIssue?.(request.repo, request.number);
+      const {repo, number, issueUrl, issueFingerprint, goal, pullRequestBody} = request;
+      const runId = options.failedRunForIssue?.(repo, number);
       if (!runId && !ciOptions.expectedHeadSha) return {state: 'unsupported', resultSummary: 'No trusted source revision is bound to this issue', evidenceRefs: []};
-      const outcome = await createCiFixWorkflow({...ciOptions, repository: request.repo, ...(runId ? {runId} : {}), model, tools,
+      const outcome = await createCiFixWorkflow({...ciOptions, repository: repo, ...(runId ? {runId} : {}), model, tools,
         authorizationRefFor, maxSteps: options.maxSteps, maxTokens: options.maxTokens,
-        issue: {url: request.issueUrl, number: request.number, repository: request.repo, fingerprint: request.issueFingerprint},
+        repairGoal: goal, pullRequestBody,
+        issue: {url: issueUrl, number, repository: repo, fingerprint: issueFingerprint},
         confirmedReplayReady: id => confirmedReplayReady(context.taskId, id)}).run(context);
       return {state: outcome.status, resultSummary: outcome.reason, evidenceRefs: outcome.evidenceRefs};
     },

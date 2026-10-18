@@ -79,6 +79,9 @@ export async function readSmallJson(response: Response): Promise<unknown> {
       if (bytes > 65_536) throw new Error('Oversized Laya response');
       chunks.push(value);
     }
+  } catch (error) {
+    try { void Promise.resolve(reader.cancel()).catch(() => {}); } catch {}
+    throw error;
   } finally {
     reader.releaseLock();
   }

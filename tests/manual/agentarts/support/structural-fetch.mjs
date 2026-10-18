@@ -297,6 +297,8 @@ function createEventAnalyzer(record) {
   }
 
   function addEvent(value) {
+    // The public parser accepts event arrays; this observer does not inspect their members.
+    if (Array.isArray(value)) record.indexedMessages.coverage = "partial";
     const summary = sanitizeEvent(value);
     record.eventCountCapped = incrementCapped(record.eventCountCapped);
     if (record.eventCountCapped >= STRUCTURAL_DIAGNOSTIC_LIMITS.counters) {

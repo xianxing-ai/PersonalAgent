@@ -1,5 +1,35 @@
 # 项目目录与模块开发规范
 
+<!-- current-design-alignment-20261015 -->
+## 当前实现与设计入口增量（2026-10-15）
+
+- `docs/design/CURRENT_DESIGN_20261015.md` / `WORKFLOW_STATUS_20261015.md` / `README.md`：最新详细设计、28图状态及全部历史设计导航。
+- `packages/agentarts/src/owned-workflow-data.ts` / `owned-workflow-templates.ts` / `owned-workflows.ts`：全部28图185节点数据、公开模板及镜像侧串行推进；目录不是28业务验收。
+- `apps/agentarts-runtime/src/main.mjs` / `model-proxy.mjs` / `image-services.mjs`：ARM64生产入口、强制AgentArts代理DeepSeek与宿主能力服务；本机Laya不随权重入镜像。
+- `apps/agentarts-runtime/src/proactive-controller.mjs` / `shadow-controller.mjs` / `trace-replay.mjs`：签名增量控制、影子评估与只读回放；依赖受信配置及真实适配器。
+- `apps/runtime/src/application/proactive-workflow-session.ts` / `proactive-connector-host.ts` / `notification-host.ts`：原Runtime session、ConnectorHost与NotificationService组合；`atomic-host-state.ts`复用原SQLite CAS。
+- `packages/notifications/`：原服务的继承策略/静默feed/同轮额度与投递状态；`packages/agentarts/src/workflow-shadow-release.ts`：可信可比评估与配置CAS/readback/rollback端口，不复制队列或授权器。
+- `tests/manual/agentarts/`：公开隔离fixture的真实手工runner，模型/工具/浏览器/平台分别取证；`docs/competition/evidence/test-image-v3-20261015/`：发布、精确云版本目录/日志、两案例与失败保留。
+
+新增分工及接线调用方以[工作包矩阵](competition/COLLABORATOR_WIRING_PACKAGE.md)为准；packages不反向依赖apps。
+高级影子的主优先机会调度/先交主结果是待接线设计，不以新增目录冒充已实现；架构仍未最终定型。
+
+## 2026-10-09 当前目录增量
+
+- `packages/agentarts/`：公开契约消费与自有 fast/world/plan/review 编排，不包含本地工具宿主或任务库。
+- `apps/agentarts-runtime/`：8080 HTTP/WS 部署入口、独立传输校验、受保护状态查询、可信 Provider 配置、ARM64/AMD64 Dockerfile 与裁剪镜像上下文；公网 WSS 另验收。
+- `packages/contracts/agentarts-transport`：独立 provisional 0.1.0 Schema/生成类型/严格帧解析；既有本地 wire 1.0.0 保持兼容。
+- `packages/coordination/src/agentarts-websocket.ts`：可信宿主会话连接、逐次凭据读取、发送边界核验与有限 HTTPS 备用；持久任务/核实状态仍归 Runtime。
+- `docs/design/resident-developer-agent-20261008/`：完整方案、四张 SVG、离线阅读、模块估算和 Wiki 交接，可编辑生成器一并保留。
+- `scripts/review/`：设计清单、自愿本机阅读声明及当前 head 的一位合资格非作者批准校验；名单与合并规则以 CONTRIBUTING/AGENTS 和实际保护为准，不是产品 Policy 或运行时依赖。
+- `scripts/docs/`：文档导航同步生成器，保留历史事实。
+- `.github/workflows/owned-image-preview.yml`：指定工作分支的 GHCR 预览构建；不合并 PR。
+
+Wiki 接入复用 `packages/knowledge/`、`packages/memory/` 与 `packages/learning/`，由 goo122 实施。此设计不提前创建空 Wiki workspace 或第二套数据库/调度器。
+
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 版本：1.2 · 日期：2026-09-09 · 状态：只实施 Competition Profile、Local Profile 可选留存的目录与依赖基线
 
 本文是 PersonalAgent 目录布局、包边界和新增模块结构的唯一规范。当前实现优先级以[华为 ICT AgentArts Competition Profile](competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)为准，需求范围以 [PRD](PRD.md) 为准，运行语义以 [公共开发协议](DEVELOPMENT_PROTOCOL.md) 为准，负责人以 [模块分工](MODULE_ASSIGNMENTS.md) 为准，跨模块接口可用性以 [当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) 为准。
@@ -20,7 +50,9 @@ PersonalAgent/
 ├─ .worktrees/               本地隔离工作树，禁止提交
 ├─ apps/                     可启动应用与可信装配入口
 │  ├─ desktop/               Electron 桌面应用
-│  └─ runtime/               当前 Runtime 应用与本地组合入口
+│  ├─ runtime/               当前 Runtime 应用与本地组合入口
+│  ├─ agentarts-runtime/     自有云端编排的 HTTP/ARM64 镜像组合入口，ADR-0012
+│  └─ obsidian-plugin/       可打包的本机只读知识检索插件
 ├─ packages/                 可复用核心模块
 │  ├─ contracts/
 │  ├─ client/
@@ -28,7 +60,7 @@ PersonalAgent/
 │  ├─ coordination/          已有 provisional Competition 文字编排消费边界
 │  ├─ goals/                 已有离线版本图及 provisional 存储端口
 │  ├─ cognition/             已有离线依赖影响分析
-│  ├─ agentarts/             目标目录；AgentArts Adapter/Workflow/Evaluation
+│  ├─ agentarts/             自有云端语义编排；本地 Adapter 仍在 coordination
 │  ├─ models/
 │  ├─ policy/
 │  ├─ tool-gateway/
@@ -206,7 +238,7 @@ tests/fixtures/               无隐私共享夹具
 
 ## 11. 新模块开工门槛
 
-每个模块必须先登记：目标 profile、模块 ID、负责人、评审者、独占目录、依赖、公共输入输出、不在范围、Fake 验收和真实验收条件。当前新增模块只服务 Competition Profile；Local Profile 只有产品负责人以后明确启用才产生新增工作。随后按“接口状态登记 → 端口/Schema → Fake 和契约测试 → 实现 → 集成 → 真实条件验收 → 文档和 ROADMAP”推进。
+每个模块必须先登记：目标 profile、模块 ID、负责人、自审/可选同行评审、独占目录、依赖、公共输入输出、不在范围、Fake 验收和真实验收条件。当前新增模块只服务 Competition Profile；Local Profile 只有产品负责人以后明确启用才产生新增工作。随后按“接口状态登记 → 端口/Schema → Fake 和契约测试 → 实现 → 集成 → 真实条件验收 → 文档和 ROADMAP”推进。
 
 完成定义：
 
@@ -214,5 +246,5 @@ tests/fixtures/               无隐私共享夹具
 - README、负责人、测试和已知限制齐全。
 - 默认测试无密钥、无付费调用、可重复。
 - 有副作用操作经过 Runtime、Policy 和 ToolGateway。
-- PR 由非作者评审并合并后，才根据完整验收更新为 done。
+- PR 完成自审、必要检查与实际合并后，按完整验收更新 done；不等待指定协作者的 PR 批准。
 - 依赖接口必须为 frozen；如只能消费 provisional，工作包记录精确提交和迁移风险。unavailable 接口不能作为开工前提已满足。

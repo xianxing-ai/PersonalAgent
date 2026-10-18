@@ -5,6 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {test} from 'node:test';
 import {ProactiveDecisionService} from '../dist/proactive-decision.js';
 import {LayaDecisionModel, LocalLayaHttpTransport} from '../dist/laya-decision.js';
+import {LocalLayaBatchHttpTransport} from '../dist/laya-batch-transport.js';
 
 const event = (overrides = {}) => ({
   eventId: 'change-1', source: 'synthetic-calendar',
@@ -15,6 +16,43 @@ const event = (overrides = {}) => ({
 });
 const request = events => ({events, deadline: new Date(Date.now() + 5_000).toISOString(),
   signal: new AbortController().signal});
+
+test('reordered exact Unicode Fact refs merge one version without normalizing IDs or output order', async () => {
+  const facts = [{id: '\u00e5', revision: 1}, {id: 'a\u030a', revision: 2}];
+  const events = [event({facts}), event({facts: [...facts].reverse()})];
+  const before = structuredClone(events);
+  const calls = [];
+  const service = new ProactiveDecisionService({async choose(unique) {
+    calls.push(structuredClone(unique));
+    return unique.map(() => ({intervention: 'REMIND', confidence: 0.9}));
+  }});
+  const result = await service.decide(request(events));
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], [before[0]]);
+  assert.deepEqual(result.map(item => [item.intervention, item.reason]),
+    [['REMIND', 'model'], ['MERGE', 'rule_duplicate']]);
+  assert.deepEqual(result.map(item => item.facts), before.map(item => item.facts));
+  assert.deepEqual(events, before);
+});
+
+test('exact Unicode version merging still rejects changed bindings and duplicate Fact IDs before the model', async t => {
+  const facts = [{id: '\u00e5', revision: 1}, {id: 'a\u030a', revision: 2}];
+  const changes = {
+    revision: {facts: [{...facts[0], revision: 3}, facts[1]]},
+    observation: {observation: 'Different synthetic observation'},
+    authorization: {authorization: {state: 'granted', revision: 1}},
+    goal: {goal: {ref: {id: 'goal-1', revision: 3}, summary: '准备比赛演示'}},
+    plan: {plan: {id: 'plan-1', revision: 5}},
+    duplicate: {facts: [facts[0], {...facts[0], revision: 2}]},
+  };
+  for (const [name, changed] of Object.entries(changes)) await t.test(name, async () => {
+    let calls = 0;
+    const service = new ProactiveDecisionService({async choose() {calls++; return [];}});
+    const events = [event({facts}), event({facts, ...changed})];
+    await assert.rejects(() => service.decide(request(events)), {code: 'INVALID_ARGUMENT'});
+    assert.equal(calls, 0);
+  });
+});
 
 test('same version is merged before one model call; changed authorization cannot share its decision', async () => {
   const calls = [];
@@ -43,6 +81,26 @@ test('suggestions retain source when distinct sources reuse one event ID', async
   ]);
 });
 
+test('model input mutation cannot rewrite the validated suggestion references', async () => {
+  const original = event();
+  const before = structuredClone(original);
+  const service = new ProactiveDecisionService({async choose(events) {
+    events[0].eventId = 'invented-event';
+    events[0].source = 'invented-source';
+    events[0].facts[0].id = 'invented-fact';
+    events[0].facts[0].revision = 99;
+    events[0].plan.revision = 99;
+    events[0].authorization.revision = 99;
+    events[0].goal.ref.revision = 99;
+    return [{intervention: 'REMIND', confidence: 0.9}];
+  }});
+  const [result] = await service.decide(request([original]));
+  assert.deepEqual(result, {eventId: before.eventId, source: before.source,
+    intervention: 'REMIND', confidence: 0.9, reason: 'model',
+    facts: before.facts, plan: before.plan, authorizationRevision: before.authorization.revision});
+  assert.deepEqual(original, before, 'the caller retains its original event');
+});
+
 test('uncalibrated suppression and action labels never become executable results', async () => {
   for (const intervention of ['IGNORE', 'MERGE', 'DEFER', 'EXECUTE']) {
     const service = new ProactiveDecisionService({async choose() { return [{intervention, confidence: 0.99}]; }});
@@ -63,6 +121,19 @@ test('low confidence and malformed model response escalate without leaking model
   assert.deepEqual([failed.intervention, failed.reason, failed.confidence],
     ['ESCALATE_AGENTARTS', 'model_unavailable', null]);
   assert.doesNotMatch(JSON.stringify(failed), /private provider message/);
+});
+
+test('a sparse model choice batch escalates every unique event without throwing', async () => {
+  const service = new ProactiveDecisionService({async choose() {
+    const choices = new Array(2);
+    choices[0] = {intervention: 'REMIND', confidence: 0.9};
+    return choices;
+  }});
+  const results = await service.decide(request([event(), event({eventId: 'change-2'})]));
+  assert.deepEqual(results.map(item => [item.intervention, item.reason, item.confidence]), [
+    ['ESCALATE_AGENTARTS', 'model_unavailable', null],
+    ['ESCALATE_AGENTARTS', 'model_unavailable', null],
+  ]);
 });
 
 test('deadline bounds even an uncooperative model, and caller cancellation stays distinct', async () => {
@@ -168,4 +239,50 @@ test('real fetch rejects a redirect before POST data reaches another local serve
     await Promise.all([new Promise(resolve => source.close(resolve)),
       new Promise(resolve => redirected.close(resolve))]);
   }
+});
+
+test('oversized single and batch responses stop their producers without awaiting or replacing cancellation errors', async t => {
+  for (const Transport of [LocalLayaHttpTransport, LocalLayaBatchHttpTransport]) {
+    for (const mode of ['pending', 'throw', 'reject']) await t.test(`${Transport.name} ${mode}`, async () => {
+      let cancellations = 0;
+      const response = new Response(new ReadableStream({start(controller) {
+        controller.enqueue(new Uint8Array(32768)); controller.enqueue(new Uint8Array(32769));
+      }, cancel() {
+        cancellations++;
+        if (mode === 'throw') throw Error('Synthetic cancellation failure');
+        return mode === 'reject' ? Promise.reject(Error('Synthetic cancellation failure')) : new Promise(() => {});
+      }}));
+      const transport = new Transport(8765, () => 'local-test-token', async () => response);
+      const operation = Transport === LocalLayaBatchHttpTransport ? 'inferBatch' : 'infer';
+      await assert.rejects(transport[operation]({model: 'multilingual', state: {events: []}, questions: {}},
+        new AbortController().signal), /^Error: Oversized Laya response$/);
+      assert.equal(cancellations, 1, 'the rejected oversized response must stop its producer');
+      assert.equal(response.body.locked, false);
+    });
+  }
+});
+
+test('single and batch responses still accept exactly 65536 bytes without cancellation', async () => {
+  for (const Transport of [LocalLayaHttpTransport, LocalLayaBatchHttpTransport]) {
+    let cancellations = 0;
+    const response = new Response(new ReadableStream({start(controller) {
+      controller.enqueue(new TextEncoder().encode(' '.repeat(65534) + '{}')); controller.close();
+    }, cancel() {cancellations++;}}));
+    const transport = new Transport(8765, () => 'local-test-token', async () => response);
+    const operation = Transport === LocalLayaBatchHttpTransport ? 'inferBatch' : 'infer';
+    assert.deepEqual(await transport[operation]({model: 'multilingual', state: {events: []}, questions: {}},
+      new AbortController().signal), {});
+    assert.equal(cancellations, 0); assert.equal(response.body.locked, false);
+  }
+});
+
+test('a reader failure retains its original error when cancellation throws synchronously', async () => {
+  const original = Error('Synthetic read failure'); let cancellations = 0, releases = 0;
+  const transport = new LocalLayaHttpTransport(8765, () => 'local-test-token', async () => ({ok: true,
+    body: {getReader: () => ({read: async () => {throw original;},
+      cancel: () => {cancellations++; throw Error('Synthetic cancellation failure');},
+      releaseLock: () => {releases++;}})}}));
+  await assert.rejects(transport.infer({model: 'multilingual', state: {events: []}, questions: {}},
+    new AbortController().signal), error => error === original);
+  assert.equal(cancellations, 1); assert.equal(releases, 1);
 });

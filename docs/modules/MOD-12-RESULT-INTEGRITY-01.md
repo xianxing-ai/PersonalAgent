@@ -1,5 +1,10 @@
 # MOD-12-RESULT-INTEGRITY-01：回答正文完整性
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - Profile：huawei_ict_agentarts；MOD-11/12，PA-001/004。
 - 负责人 zemeng；非作者评审者 goo122；状态 review，待评审及集成。
 - 基线 main `72cc76b`；工作树 `.worktrees/zemeng-desktop-result-integrity`。
@@ -34,3 +39,26 @@
 - 现有 `text-chat-smoke.cjs` 的旧“不得出现元数据文本”断言已同步为完整正文及剪贴板值断言，
   仅静态检查，未运行该 GUI 检查；未声明面板/工作区的动态渲染验收通过。
 - 无公共接口、依赖、数据迁移或真实调用变化，可通过回滚单一提交恢复。
+
+## 2026-10-07 原页面消费续接（PR #302 未合并）
+
+固定 child `ab7c5ef0979acc5f30870bfcc87c58c33ca1f180` 的原完整 panel/workspace、
+原 CSP 与 actual main taskResultMetadata 路由新增独立 native 浏览器补证。
+legacy model 尾缀、没有可信 profile 的 Competition 尾缀保持字面正文；
+显式 Fake 可信 checkpoint 只分离最后一条 mock footer，之前的 unverified 字面行保留。
+原复制、分享的 clipboard fallback 和 inspector 保持完整内容；Live 消息仍不是 Task。
+script/b/img 字符串只作为转义正文显示，没有生成对应 DOM 或执行脚本。
+实际 exit0、console/pageerror0、10 次显式 Fake clipboard write、任务提交/取消零。
+证据 `result-literal-consumer-validation.md` 及脚本、JSON、日志/截图在原 Desktop 私有目录；
+不主张真实系统剪贴板、分享窗口、模型、数据库来源或 Electron 验收。
+
+同 PR 的任务 Evidence 详情与分页现在绑定各自当前请求：旧选择 A 的成功/错误不能覆盖
+新选择 B 的元数据或失败，旧分页也不能覆盖新刷新列表、游标或失败。
+任务移除、conversation 更换、root 脱离或 unload 后的旧完成不恢复卡片；
+原受信 Host 会话/归属复核、字段转义、conditional 标签、任务待核实与授权规则保留。
+详情新增两项与原四项共 6/6，随后分页两项加受影响 list/detail 替换项共 3/3，
+分次实际 exit0，不相加冒称一轮完整检查。原完整 admin 的两组 BEFORE/AFTER 各 exit0，
+实际 Fake Reader 回包计数证明迟到结果已交付而未覆盖，console/pageerror0。
+最终 admin blob `dfa1b274b3d5395ae7ba4e77a81df65e41bc30ec`；证据
+`admin-evidence-detail-order-fix-validation.md`、`admin-evidence-list-order-fix-validation.md`
+及对应工件。IPC/RuntimeReader/元数据与故障明确 Fake，未新增 Evidence 权限或声称真实存储验收。

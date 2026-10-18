@@ -2,12 +2,16 @@ import { ProtocolError, validateToolValue } from '@personal-agent/contracts';
 import type { ToolDescriptor } from '@personal-agent/contracts';
 export {StructuredToolProvider} from './structured-tools.js';
 export {QwenRealtimeModelGateway} from './realtime.js';
-export type {RealtimeEvent, RealtimeRequest, RealtimeSession} from './realtime.js';
+export type {RealtimeEvent, RealtimeRequest, RealtimeSession, RealtimeSocket,
+  RealtimeSocketConstructor, RealtimeConnectionPort, RealtimePreparedConnection, QwenRealtimeDirectConfig} from './realtime.js';
+export {AgentArtsRealtimeModelGateway, createAgentArtsRealtimeConnection} from './agentarts-realtime.js';
+export type {AgentArtsRealtimeModelGatewayOptions, RealtimeAuthorizationProvider} from './agentarts-realtime.js';
 export {OpenAICompatibleModelProvider} from './openai-compatible.js';
 export type {OpenAICompatibleModelProviderOptions} from './openai-compatible.js';
 
 export type ModelCapability = 'text' | 'streaming' | 'toolCalling' | 'structuredOutput' | 'vision';
 export type Verification = 'mock' | 'verified' | 'conditional';
+export type OpenAICompatibleRequestFormat = 'huawei-maas-deepseek-thinking-v1';
 
 export interface ModelCapabilities {
   text: boolean;
@@ -17,6 +21,12 @@ export interface ModelCapabilities {
   vision: boolean;
   contextLimit?: number;
   rateLimit?: {requestsPerMinute?: number; tokensPerMinute?: number};
+  /** Trusted endpoint declaration; not proof of real native support. */
+  nativeReasoning?: NativeReasoningConfiguration;
+  /** Trusted visible-request budget binding; not a verified tokenizer declaration. */
+  requestTokenBudget?: RequestTokenBudgetBinding;
+  /** Explicit trusted-host wire format, applied before visible-request measurement. */
+  requestFormat?: OpenAICompatibleRequestFormat;
 }
 
 export interface ModelDeployment {
@@ -48,7 +58,37 @@ export interface ModelUsage {
   totalTokens?: number;
 }
 
-export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high';
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export interface NativeReasoningConfiguration {
+  thinking: 'enabled' | 'disabled';
+  effort?: ReasoningEffort;
+  supportedEfforts: readonly ReasoningEffort[];
+  outputTokenParameter: 'max_tokens' | 'max_completion_tokens';
+}
+
+export interface RequestTokenBudgetBinding {
+  scope: 'provider-body';
+  model: string;
+  tokenizerRef: string;
+  configurationRef: string;
+  contextTokens: number;
+  reservedOutputTokens: number;
+  requestFormat?: OpenAICompatibleRequestFormat;
+}
+
+export interface VisibleRequestTokenBudget {
+  model: string;
+  tokenizerRef: string;
+  configurationRef: string;
+  reservedOutputTokens: number;
+  /** Count model input, including its framing, from the complete serialized provider body. */
+  countInputTokens(serializedBody: string): number;
+}
+
+export type ModelRequestBudget =
+  | {state: 'unmeasured'; scope: 'provider-body'; hiddenContext: 'unknown'}
+  | (RequestTokenBudgetBinding & {state: 'measured'; inputTokens: number; hiddenContext: 'unknown'});
 
 export interface ModelRequest {
   messages: readonly ModelMessage[];
@@ -67,6 +107,7 @@ export interface ModelResult {
   usage?: ModelUsage;
   latencyMs: number;
   stopReason: string;
+  requestBudget?: ModelRequestBudget;
 }
 
 export interface ModelProvider {
@@ -94,8 +135,8 @@ function validateRequest(request: ModelRequest): void {
   if (request.maxOutputTokens !== undefined && (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens < 1)) {
     throw new ProtocolError('INVALID_ARGUMENT', 'maxOutputTokens must be a positive integer');
   }
-  if (request.reasoningEffort !== undefined && !['none', 'low', 'medium', 'high'].includes(request.reasoningEffort)) {
-    throw new ProtocolError('INVALID_ARGUMENT', 'reasoningEffort must be one of none, low, medium, high');
+  if (request.reasoningEffort !== undefined && !['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(request.reasoningEffort)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'reasoningEffort is invalid');
   }
   if (request.thinkingBudget !== undefined && (!Number.isSafeInteger(request.thinkingBudget) || request.thinkingBudget < 0)) {
     throw new ProtocolError('INVALID_ARGUMENT', 'thinkingBudget must be a non-negative integer');

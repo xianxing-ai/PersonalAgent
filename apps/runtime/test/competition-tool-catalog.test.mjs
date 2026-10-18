@@ -4,8 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import {test} from 'node:test';
 import {Client} from '@personal-agent/client';
+import {ProtocolError} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools, MAX_AVAILABLE_TOOLS} from '@personal-agent/coordination';
-import {createRuntimeApplication} from '../dist/application.js';
+import {CLOUD_SKILL_TOOL_NAME, CLOUD_SKILL_TOOL_VERSION} from '@personal-agent/skills';
+import {createRuntimeApplication, createAgentArtsRuntimeApplication} from '../dist/application.js';
 
 const descriptor = {
   name: 'fixture.read', version: '1.0.0',
@@ -39,10 +41,11 @@ test('trusted step budget supports four tools plus answer and is not reset by ap
     try {
       const client=new Client(app,Date.now);await client.connect();
       const {taskId}=await client.call('task.submit',{goal:'Four dependent operations',conversationId:'budget'},
-        {idempotencyKey:`budget-${budget??'default'}`});
+        {idempotencyKey:`budget-${budget??'default'}`,timeoutMs:60_000});
       const approved=new Set();
       let terminal;
-      for (let attempt=0;attempt<200;attempt++) {
+      const deadline=Date.now()+60_000;
+      while (Date.now()<deadline) {
         const task=app.runtime.getTask(taskId);
         if (['succeeded','failed'].includes(task.state)) {terminal=task;break;}
         for (const approval of (await client.call('approval.list',{taskId})).items) {
@@ -71,6 +74,308 @@ async function waitFor(app, taskId, states) {
   }
   throw new Error(`Task did not settle: ${states.join(',')}`);
 }
+
+test('initial AgentArts tool directory preserves signed numeric bounds and local validation', async t => {
+  const signedDescriptor = {...descriptor, name: 'fixture.signed-bounds', inputSchema: {
+    type: 'object', required: ['signed', 'negative', 'samples'], additionalProperties: false,
+    properties: {signed: {type: 'number', minimum: -90, maximum: 90},
+      negative: {type: 'integer', minimum: -10, maximum: -1},
+      samples: {type: 'array', minItems: 1, maxItems: 2,
+        items: {type: 'number', minimum: -2.5, maximum: -0.25}}},
+  }, outputSchema: {type: 'object'}};
+  for (const [label, argumentsValue, valid] of [
+    ['legal negative values', {signed: -45, negative: -5, samples: [-1.25]}, true],
+    ['below signed minimum', {signed: -91, negative: -5, samples: [-1.25]}, false],
+    ['above negative maximum', {signed: -45, negative: 0, samples: [-1.25]}, false],
+  ]) await t.test(label, async () => {
+    let executions = 0;
+    const requests = [];
+    const app = createAgentArtsRuntimeApplication({path: ':memory:',
+      gatewayUrl: 'https://agentarts.example.test', runtimeName: 'signed-bounds',
+      responseMode: 'tool-proposal-json', initialRequestMode: 'goal-with-tools-json',
+      authorizationProvider: {read: async () => 'Bearer synthetic'},
+      tools: [{descriptor: signedDescriptor, execute: async input => {executions++; return input;}}],
+      competitionToolAvailability: [{toolName: signedDescriptor.name, toolVersion: signedDescriptor.version, available: () => true}],
+      competitionToolExports: [{toolName: signedDescriptor.name, toolVersion: signedDescriptor.version,
+        exportPolicyVersion: 'signed-v1', accepts: () => true, project: ({result}) => result}],
+      fetchImpl: async (_url, init) => {
+        const query = JSON.parse(JSON.parse(init.body).query);
+        requests.push(query);
+        const result = query.continuation ? {kind: 'text', text: 'Signed fixture completed'}
+          : {kind: 'tool_proposal', proposalId: 'signed-1', toolName: signedDescriptor.name,
+            toolVersion: signedDescriptor.version, arguments: argumentsValue};
+        return new Response(JSON.stringify({event: 'message', data: {text: JSON.stringify(result), index: 0}}),
+          {headers: {'content-type': 'application/json'}});
+      },
+    });
+    try {
+      const client = new Client(app); await client.connect();
+      const {taskId} = await client.call('task.submit', {goal: 'Use explicit signed numeric ranges', conversationId: 'signed'},
+        {idempotencyKey: 'signed'});
+      const initial = await waitFor(app, taskId, ['waiting_approval', 'failed']);
+      assert.equal(requests.length, 1);
+      assert.deepEqual(requests[0].availableTools[0].inputSchema, signedDescriptor.inputSchema);
+      if (!valid) {
+        assert.equal(initial.state, 'failed'); assert.equal(initial.error.code, 'INVALID_ARGUMENT');
+        assert.deepEqual((await client.call('approval.list', {taskId})).items, []);
+        assert.equal(executions, 0); assert.deepEqual(app.runtime.readToolExecutions(taskId), []);
+      } else {
+        assert.equal(initial.state, 'waiting_approval'); assert.equal(executions, 0);
+        const approval = (await client.call('approval.list', {taskId})).items[0];
+        await client.call('authorization.respond', {approvalId: approval.approvalId,
+          expectedRevision: approval.revision, decision: 'allow_once'});
+        const completed = await waitFor(app, taskId, ['succeeded', 'failed']);
+        assert.equal(completed.state, 'succeeded'); assert.equal(executions, 1);
+        assert.equal(requests.length, 2); assert.equal(requests[1].availableTools, undefined);
+        assert.deepEqual(requests[1].continuation.result, argumentsValue);
+        assert.equal(app.runtime.readToolExecutions(taskId)[0].state, 'confirmed');
+      }
+    } finally {app.close();}
+  });
+});
+
+test('provider lifecycle errors exclude only that tool and never enter task snapshots', async t => {
+  for (const [code, mutateInput] of [['CANCELLED', false], ['TIMEOUT', false],
+    ['CANCELLED', true], ['TIMEOUT', true]]) await t.test(`${code}, mutation=${mutateInput}`, async () => {
+    const healthy = {...descriptor, name: 'fixture.healthy'};
+    const bodies = [];
+    let unhealthyExecutions = 0;
+    let healthyExecutions = 0;
+    const app = createAgentArtsRuntimeApplication({path: ':memory:',
+      gatewayUrl: 'https://agentarts.example.test', runtimeName: 'synthetic',
+      responseMode: 'tool-proposal-json', initialRequestMode: 'goal-with-tools-json',
+      authorizationProvider: {read: async () => 'Bearer synthetic'},
+      tools: [
+        {descriptor, execute: async () => { unhealthyExecutions++; return {value: 'unexpected'}; }},
+        {descriptor: healthy, execute: async () => { healthyExecutions++; return {value: 'synthetic'}; }},
+      ],
+      competitionToolExports: [toolExport, {...toolExport, toolName: healthy.name}],
+      competitionToolAvailability: [
+        {toolName: descriptor.name, toolVersion: descriptor.version,
+          available: input => {
+            if (mutateInput && code === 'CANCELLED') input.signal = AbortSignal.abort();
+            if (mutateInput && code === 'TIMEOUT') input.deadline = new Date(0).toISOString();
+            throw new ProtocolError(code, 'private-provider-canary');
+          }},
+        {toolName: healthy.name, toolVersion: healthy.version, available: () => true},
+      ],
+      fetchImpl: async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        const result = bodies.length === 1
+          ? {kind: 'tool_proposal', proposalId: 'healthy-proposal', toolName: healthy.name,
+            toolVersion: healthy.version, arguments: {path: 'secret-path'}}
+          : {kind: 'text', text: 'Synthetic healthy read confirmed'};
+        return new Response(JSON.stringify({event: 'message', data: {text: JSON.stringify(result)}}),
+          {headers: {'content-type': 'application/json'}});
+      },
+    });
+    try {
+      const client = new Client(app); await client.connect();
+      const {taskId} = await client.call('task.submit', {goal: 'Synthetic healthy read',
+        conversationId: 'catalog-provider-error'}, {idempotencyKey: code});
+      const waiting = await waitFor(app, taskId, ['waiting_approval', 'failed', 'cancelled']);
+      assert.equal(waiting.state, 'waiting_approval');
+      assert.doesNotMatch(JSON.stringify(waiting), /private-provider-canary/);
+      assert.equal(Date.parse(app.runtime.loadCheckpoint(taskId, 'application-deadline')) > Date.now(), true);
+      const initial = JSON.parse(bodies[0].query);
+      assert.deepEqual(initial.availableTools.map(item => item.name), [healthy.name]);
+      const approval = (await client.call('approval.list', {taskId})).items[0];
+      await client.call('authorization.respond', {approvalId: approval.approvalId,
+        expectedRevision: approval.revision, decision: 'allow_once'});
+      const task = await waitFor(app, taskId, ['succeeded', 'failed', 'cancelled']);
+      assert.equal(task.state, 'succeeded');
+      assert.doesNotMatch(JSON.stringify(task), /private-provider-canary/);
+      assert.equal(healthyExecutions, 1);
+      assert.equal(unhealthyExecutions, 0);
+      assert.equal(bodies.length, 2);
+      assert.deepEqual(JSON.parse(bodies[1].query).continuation.result, {value: 'synthetic'});
+    } finally { app.close(); }
+  });
+});
+
+test('catalog availability still obeys actual caller cancellation and task deadline', async t => {
+  for (const lifecycle of ['cancel', 'deadline']) await t.test(lifecycle, async () => {
+    let started;
+    const ready = new Promise(resolve => { started = resolve; });
+    let release;
+    let exchanges = 0;
+    const app = createRuntimeApplication({path: ':memory:', profile: 'huawei_ict_agentarts',
+      tools: [{descriptor, execute: async () => ({value: 'unexpected'})}],
+      competitionToolExports: [toolExport],
+      competitionToolAvailability: [{toolName: descriptor.name, toolVersion: descriptor.version,
+        available: () => { started(); return new Promise(resolve => { release = resolve; }); }}],
+      coordination: {execute: async () => { exchanges++; return {kind: 'text', text: 'unexpected', verification: 'mock'}; }},
+    });
+    try {
+      const client = new Client(app); await client.connect();
+      const {taskId} = await client.call('task.submit', {goal: 'Synthetic catalog lifecycle',
+        conversationId: 'catalog-lifecycle'}, {idempotencyKey: lifecycle,
+        timeoutMs: lifecycle === 'deadline' ? 250 : 10_000});
+      // The original deadline may expire before the provider is called.
+      // Observe that real terminal state instead of waiting forever for startup.
+      await Promise.race([ready, waitFor(app, taskId, ['failed', 'cancelled'])]);
+      if (lifecycle === 'cancel') {
+        assert.equal(typeof release, 'function', 'Cancellation covers an already-running provider');
+        await client.call('task.cancel', {taskId});
+      }
+      const task = await waitFor(app, taskId, ['failed', 'cancelled']);
+      assert.equal(task.state, lifecycle === 'cancel' ? 'cancelled' : 'failed');
+      if (lifecycle === 'deadline') assert.equal(task.error.code, 'TIMEOUT');
+      release?.(true);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(app.runtime.getTask(taskId).state, task.state);
+      assert.equal(exchanges, 0);
+      assert.equal(app.runtime.loadCheckpoint(taskId, 'competition-tool-catalog'), undefined);
+      assert.deepEqual(app.runtime.readToolExecutions(taskId), []);
+    } finally { app.close(); }
+  });
+});
+
+const workerDescriptor = {name: CLOUD_SKILL_TOOL_NAME, version: CLOUD_SKILL_TOOL_VERSION,
+  inputSchema: {type: 'object', properties: {sourceRef: {type: 'string', enum: ['public-fixture']}},
+    required: ['sourceRef'], additionalProperties: false}};
+async function workerFixture(t, describe, respond = query => query.continuation
+  ? {kind: 'text', text: 'Healthy fixture completed'}
+  : {kind: 'tool_proposal', proposalId: 'healthy-1', toolName: descriptor.name,
+    toolVersion: descriptor.version, arguments: {path: 'secret-path'}}) {
+  const requests = [];
+  const diagnostics = [];
+  let executions = 0, dispatches = 0;
+  const app = createAgentArtsRuntimeApplication({path: ':memory:',
+    gatewayUrl: 'https://agentarts.example.test', runtimeName: 'worker-catalog',
+    responseMode: 'tool-proposal-json', initialRequestMode: 'goal-with-tools-json',
+    authorizationProvider: {read: async () => 'Bearer synthetic'},
+    onDiagnostic: receipt => {diagnostics.push(receipt);},
+    tools: [{descriptor, execute: async () => {executions++; return {value: 'synthetic'};}},
+      {descriptor: {...descriptor, name: 'mcp.workspace.read_text'}, execute: async () => {executions++; return {value: 'unexpected'};}}],
+    competitionToolExports: [toolExport],
+    competitionToolAvailability: [{toolName: descriptor.name, toolVersion: descriptor.version, available: () => true}],
+    cloudSkill: {cloudSkillCatalog: describe,
+      dispatchCloudSkillProposal: async () => {dispatches++; throw Error('unexpected worker dispatch');},
+      assertReceiptAllowed: () => {}},
+    fetchImpl: async (_url, init) => {
+      const query = JSON.parse(JSON.parse(init.body).query); requests.push(query);
+      return new Response(JSON.stringify({event: 'message', data: {text: JSON.stringify(respond(query)), index: 0}}),
+        {headers: {'content-type': 'application/json'}});
+    },
+  });
+  t.after(() => app.close());
+  const client = new Client(app); await client.connect();
+  return {app, client, requests, diagnostics, executions: () => executions, dispatches: () => dispatches};
+}
+
+test('native worker provider errors omit only that directory entry while healthy tools still execute', async t => {
+  for (const code of ['CANCELLED', 'TIMEOUT']) await t.test(code, async t => {
+    const f = await workerFixture(t, async input => {
+      input.signal = AbortSignal.abort(); input.deadline = new Date(0).toISOString();
+      throw new ProtocolError(code, 'private-worker-provider-canary');
+    });
+    const {taskId} = await f.client.call('task.submit', {goal: 'Discover healthy tool', conversationId: 'worker-error'},
+      {idempotencyKey: code});
+    const initial = await waitFor(f.app, taskId, ['waiting_approval', 'failed', 'cancelled']);
+    assert.equal(initial.state, 'waiting_approval');
+    assert.deepEqual(f.requests[0].availableTools.map(tool => tool.name), [descriptor.name]);
+    const approval = (await f.client.call('approval.list', {taskId})).items[0];
+    await f.client.call('authorization.respond', {approvalId: approval.approvalId, expectedRevision: approval.revision, decision: 'allow_once'});
+    const task = await waitFor(f.app, taskId, ['succeeded', 'failed', 'cancelled']);
+    assert.equal(task.state, 'succeeded'); assert.equal(f.executions(), 1); assert.equal(f.dispatches(), 0);
+    assert.equal(f.requests.length, 2); assert.deepEqual(f.requests[1].continuation.result, {value: 'synthetic'});
+    assert.doesNotMatch(JSON.stringify([initial, task]), /private-worker-provider-canary/);
+  });
+});
+
+test('worker directory revalidation failures are fixed denials before send or dispatch', async t => {
+  for (const phase of ['send', 'proposal']) await t.test(phase, async t => {
+    let reads = 0;
+    const f = await workerFixture(t, async () => {
+      if (++reads === (phase === 'send' ? 2 : 3)) throw new ProtocolError('TIMEOUT', 'private-worker-recheck-canary');
+      return workerDescriptor;
+    }, () => ({kind: 'tool_proposal', proposalId: 'worker-1', toolName: CLOUD_SKILL_TOOL_NAME,
+      toolVersion: CLOUD_SKILL_TOOL_VERSION, arguments: {sourceRef: 'public-fixture'}}));
+    const {taskId} = await f.client.call('task.submit', {goal: 'Verify published worker selection', conversationId: 'worker-check'},
+      {idempotencyKey: phase});
+    const task = await waitFor(f.app, taskId, ['failed', 'waiting_approval']);
+    assert.equal(task.state, 'failed');
+    assert.equal(task.error.code, phase === 'send' ? 'EXTERNAL_FAILURE' : 'UNAUTHORIZED');
+    if (phase === 'send') {
+      assert.equal(f.diagnostics[0].stage, 'catalog_guard'); assert.equal(f.diagnostics[0].code, 'UNAUTHORIZED');
+    }
+    assert.doesNotMatch(JSON.stringify(task), /private-worker-recheck-canary/);
+    assert.equal(f.requests.length, phase === 'send' ? 0 : 1);
+    assert.equal(f.executions(), 0); assert.equal(f.dispatches(), 0);
+    assert.deepEqual((await f.client.call('approval.list', {taskId})).items, []);
+    assert.deepEqual(f.app.runtime.readToolExecutions(taskId), []);
+  });
+});
+
+test('fresh worker identity stays bound through final send and proposal revalidation', async t => {
+  for (const phase of ['send', 'proposal']) for (const field of ['name', 'version']) await t.test(`${phase}: ${field}`, async t => {
+    let reads = 0;
+    const f = await workerFixture(t, async () => {
+      const changed = ++reads >= (phase === 'send' ? 2 : 3);
+      return {...workerDescriptor, ...(changed ? {[field]: field === 'name' ? 'fixture.changed-worker' : '2.0.0'} : {})};
+    }, () => phase === 'send' ? {kind: 'text', text: 'Unexpected stale worker catalog accepted'}
+      : {kind: 'tool_proposal', proposalId: 'worker-identity', toolName: CLOUD_SKILL_TOOL_NAME,
+        toolVersion: CLOUD_SKILL_TOOL_VERSION, arguments: {sourceRef: 'public-fixture'}});
+    const {taskId} = await f.client.call('task.submit', {goal: 'Revalidate exact public worker identity', conversationId: 'worker-identity'},
+      {idempotencyKey: `${phase}-${field}`});
+    const task = await waitFor(f.app, taskId, ['failed', 'succeeded', 'waiting_approval', 'waiting_reconciliation']);
+    assert.equal(task.state, 'failed');
+    assert.equal(task.error.code, phase === 'send' ? 'EXTERNAL_FAILURE' : 'UNAUTHORIZED');
+    if (phase === 'send') {
+      assert.equal(f.diagnostics[0].stage, 'catalog_guard'); assert.equal(f.diagnostics[0].code, 'UNAUTHORIZED');
+    }
+    assert.equal(f.requests.length, phase === 'send' ? 0 : 1);
+    assert.equal(f.executions(), 0); assert.equal(f.dispatches(), 0);
+    assert.deepEqual((await f.client.call('approval.list', {taskId})).items, []);
+    assert.deepEqual(f.app.runtime.readToolExecutions(taskId), []);
+    const selected = f.app.runtime.loadCheckpoint(taskId, 'competition-tool-catalog').entries
+      .find(tool => tool.name === CLOUD_SKILL_TOOL_NAME);
+    assert.equal(selected.version, CLOUD_SKILL_TOOL_VERSION);
+  });
+});
+
+test('worker providers receive a private lease view at discovery and final catalog revalidation', async t => {
+  let reads = 0;
+  const f = await workerFixture(t, async input => {
+    reads++;
+    assert.deepEqual(Object.keys(input).sort(), ['deadline', 'revision', 'signal', 'taskId']);
+    input.taskId = 'replacement-worker-private-canary'; input.revision = 0;
+    input.signal = AbortSignal.abort(); input.deadline = new Date(0).toISOString();
+    return workerDescriptor;
+  }, () => ({kind: 'text', text: 'Public worker directory observed'}));
+  const {taskId} = await f.client.call('task.submit', {goal: 'Discover public worker', conversationId: 'worker-view'},
+    {idempotencyKey: 'private-view'});
+  const task = await waitFor(f.app, taskId, ['succeeded', 'failed']);
+  assert.equal(task.state, 'succeeded'); assert.equal(reads, 2); assert.equal(f.requests.length, 1);
+  assert.deepEqual(f.requests[0].availableTools.map(tool => tool.name), [descriptor.name, CLOUD_SKILL_TOOL_NAME]);
+  assert.doesNotMatch(JSON.stringify(task), /replacement-worker-private-canary/);
+  assert.equal(f.executions(), 0); assert.equal(f.dispatches(), 0);
+});
+
+test('worker discovery retains actual task cancellation and deadline after lease-view mutation', async t => {
+  for (const lifecycle of ['cancel', 'deadline']) await t.test(lifecycle, async t => {
+    let arrive, release;
+    const ready = new Promise(resolve => {arrive = resolve;});
+    const f = await workerFixture(t, input => {
+      input.signal = new AbortController().signal; input.deadline = new Date(Date.now() + 60_000).toISOString();
+      arrive(); return new Promise(resolve => {release = resolve;});
+    });
+    const {taskId} = await f.client.call('task.submit', {goal: 'Wait for public worker directory', conversationId: 'worker-life'},
+      {idempotencyKey: lifecycle, timeoutMs: lifecycle === 'deadline' ? 400 : 10_000});
+    await Promise.race([ready, waitFor(f.app, taskId, ['failed', 'cancelled'])]);
+    if (lifecycle === 'cancel') {
+      assert.equal(typeof release, 'function'); await f.client.call('task.cancel', {taskId});
+    }
+    const task = await waitFor(f.app, taskId, ['failed', 'cancelled']);
+    assert.equal(task.state, lifecycle === 'cancel' ? 'cancelled' : 'failed');
+    if (lifecycle === 'deadline') assert.equal(task.error.code, 'TIMEOUT');
+    release?.(workerDescriptor); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.app.runtime.getTask(taskId).state, task.state);
+    assert.equal(f.requests.length, 0); assert.equal(f.executions(), 0); assert.equal(f.dispatches(), 0);
+    assert.equal(f.app.runtime.loadCheckpoint(taskId, 'competition-tool-catalog'), undefined);
+  });
+});
 
 test('task catalog projects only public Schema fields and rechecks before export', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'personal-agent-catalog-'));

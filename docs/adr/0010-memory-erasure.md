@@ -1,5 +1,13 @@
 # ADR-0010：记忆物理删除与派生投影清理
 
+<!-- current-design-alignment-20261015 -->
+> 2026-10-15适用性：本页保留原日期、作者与accepted/proposed决定；仍适用的Runtime/权限/依赖边界不被撤销。
+> 冲突的部署、默认模型、发布、完成事实及旧协作门槛已由[当前设计](../design/CURRENT_DESIGN_20261015.md)更新（superseded），
+> 不把历史未验状态套到当前，也不把ADR存在当当前验收。[全部设计导航](../design/README.md)；当前接口另见[目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - 状态：proposed；在实现和对外公布删除能力前需非作者评审。
 - Profile：`huawei_ict_agentarts`；关联 PA-020、PA-024、MOD-09。
 - 产品选择：用户要求删除时，清除选定事实的历史版本及派生索引；逻辑撤回不能冒充删除。

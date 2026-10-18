@@ -5,7 +5,7 @@ import {createDesktopGoalCognitionHost} from './goal-cognition-host.js';
 
 // Desktop preferences and notification metadata only. Runtime owns every sample/task/approval.
 export function createDesktopProactiveHost({application, client, userData, namespace,
-  goalHost, chooser, cognitionReady, createCognitionHost,
+  goalHost, chooser, cognitionReady, createCognitionHost, initialRequestMode,
   onUpdate = () => {}, onAnalysisTask = () => {}, now = Date.now}) {
   const file = path.join(userData, 'proactive-state.json');
   let stored = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {version: 1, cloudAnalysis: false, values: {}};
@@ -28,7 +28,7 @@ export function createDesktopProactiveHost({application, client, userData, names
   });
   const publish = () => {try {onUpdate();} catch {}};
   const cognition = createCognitionHost && createDesktopGoalCognitionHost({application,client,
-    facts:factHost,namespace,goalHost,chooser,ready:cognitionReady,createHost:createCognitionHost,
+    facts:factHost,namespace,goalHost,chooser,ready:cognitionReady,createHost:createCognitionHost,initialRequestMode,
     onTask:onAnalysisTask,onUpdate:publish,now});
   function observeAnalysis(item) {
     if (item.analysisTaskId) onAnalysisTask({taskId: item.analysisTaskId, goal: item.summary});
@@ -46,6 +46,12 @@ export function createDesktopProactiveHost({application, client, userData, names
     }
   });
   async function configure(input) {
+    if(input && Object.keys(input).length===2 && Object.hasOwn(input,'goalAnalysis') && Object.hasOwn(input,'goalCloudAnalysis')) {
+      if(typeof input.goalAnalysis!=='boolean' || typeof input.goalCloudAnalysis!=='boolean') throw Error('目标分析设置无效');
+      if(!cognition) throw Error('目标分析尚未装配');
+      cognition.configure({enabled:input.goalAnalysis,cloudAllowed:input.goalCloudAnalysis});
+      publish();return snapshot();
+    }
     if (!input || Object.keys(input).some(key => !['enabled', 'cloudAnalysis', 'goalAnalysis', 'goalCloudAnalysis'].includes(key))
       || typeof input.enabled !== 'boolean' || typeof input.cloudAnalysis !== 'boolean') throw Error('主动提醒设置无效');
     if ('goalAnalysis' in input || 'goalCloudAnalysis' in input) {
@@ -103,6 +109,8 @@ export function createDesktopProactiveHost({application, client, userData, names
     composition.stop(); status = 'disabled'; reason = '已停止观察';
   }
   return {snapshot, configure, analyze, tick, stop,
+    /** Host-only fixed public namespace; never exported through Renderer snapshots. */
+    get publicMemory() {return factHost.publicMemory;},
     createPublicFactErasureApplication: options=>factHost.createPublicFactErasureApplication(options),
     readRepairBinding: taskId=>cognition?.readRepairBinding(taskId),
     readPreparedRepair: taskId=>cognition?.readPreparedRepair(taskId),

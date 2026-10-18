@@ -365,17 +365,21 @@ export class SqliteMemoryHost {
       let affected = snapshot.mode === 'history' && filter.factId === factId;
       if (snapshot.mode === 'current') {
         const latest = this.db.prepare([
-          'SELECT sensitivity, state, source_ref, valid_from_ms, valid_until_ms',
+          "SELECT sensitivity, state, source_ref, valid_from_ms, valid_until_ms, json_extract(payload, '$.confirmation') AS confirmation",
           'FROM memory_facts WHERE namespace = ? AND fact_id = ? AND sequence <= ?',
           'ORDER BY revision DESC LIMIT 1',
         ].join(' ')).get(namespace, factId, rowNumber(snapshot, 'watermark')) as Row | undefined;
         const allowed = parseJson<FactSensitivity[]>(rowText(snapshot, 'scope_key'));
         const at = Date.parse(filter.at as string);
-        affected = latest !== undefined && (filter.factId === null || filter.factId === factId)
-          && (filter.sourceRef === null || filter.sourceRef === latest.source_ref)
-          && allowed.includes(latest.sensitivity as FactSensitivity)
-          && latest.state === 'active' && (latest.valid_from_ms as number) <= at
-          && at < (latest.valid_until_ms as number);
+        affected = latest !== undefined && allowed.includes(latest.sensitivity as FactSensitivity)
+          && (filter.privateAdminHeads === true ? latest.confirmation === 'user_confirmed'
+            || latest.state === 'withdrawn' && latest.confirmation === 'external_observation'
+              && this.db.prepare('SELECT 1 FROM memory_user_creations WHERE namespace = ? AND fact_id = ?')
+                .get(namespace, factId) !== undefined
+            : (filter.factId === null || filter.factId === factId)
+              && (filter.sourceRef === null || filter.sourceRef === latest.source_ref)
+              && latest.state === 'active' && (latest.valid_from_ms as number) <= at
+              && at < (latest.valid_until_ms as number));
       }
       if (affected) this.db.prepare('DELETE FROM memory_query_snapshots WHERE token = ?')
         .run(rowText(snapshot, 'token'));
@@ -516,8 +520,32 @@ export class SqliteMemoryHost {
       ORDER BY f.revision DESC LIMIT 1`).get(namespace, factId) as Row | undefined;
     if (!row) return undefined;
     const saved = fact(parseJson(rowText(row, 'payload')));
-    if (saved.sensitivity !== 'private' || saved.confirmation !== 'user_confirmed') return queryFail('SCOPE_DENIED');
+    const invalidated = saved.state === 'withdrawn' && saved.confirmation === 'external_observation'
+      && this.db.prepare('SELECT 1 FROM memory_user_creations WHERE namespace = ? AND fact_id = ?')
+        .get(namespace, factId) !== undefined;
+    if (saved.sensitivity !== 'private' || saved.confirmation !== 'user_confirmed' && !invalidated) return queryFail('SCOPE_DENIED');
     return structuredClone(saved);
+  }
+
+  /** Trusted private admin listing; inactive heads remain discoverable for physical deletion. */
+  async listUserFactHeads(namespaceValue: unknown,
+    raw: Omit<ListCurrentFactsRequest, 'factId' | 'sourceRef'>): Promise<FactPage> {
+    try {
+      const namespace = text(namespaceValue);
+      const record = exact(raw, ['at', 'limit', 'deadline', 'signal'], ['snapshot', 'cursor']);
+      const operation = context(record, queryFail);
+      const at = time(record.at);
+      const page = parsePage(record);
+      await Promise.resolve();
+      active(operation, queryFail);
+      const result = this.queryPage(namespace, scope({allowedSensitivities: ['private']}, false),
+        'current', JSON.stringify({at: at.text, privateAdminHeads: true}), page, {privateAdminHeads: true});
+      active(operation, queryFail);
+      return structuredClone(result);
+    } catch (error) {
+      if (error instanceof MemoryQueryError) throw error;
+      return queryFail();
+    }
   }
 
   /** Trusted private composition readiness; a previous feed binding is irreversible here. */
@@ -851,6 +879,34 @@ export class SqliteMemoryHost {
           operation_id, namespace, fact_id, fact_revision, fingerprint
         ) VALUES (?, ?, ?, 1, ?)`).run(operationId, namespace, factId, fingerprint);
         return {fact: saved, appended: true};
+      }, () => active(operation, queryFail));
+    } catch (error) {
+      if (error instanceof MemoryQueryError) throw error;
+      return queryFail();
+    }
+  }
+
+  /** Trusted source invalidation only. Preserves the confirmed text/history; grants no new fact or deletion authority. */
+  invalidateUserFactSource(namespaceValue: unknown, value: unknown): {readonly fact: FactVersion; readonly appended: boolean} {
+    try {
+      const namespace = text(namespaceValue);
+      const record = exact(value, ['factId', 'expectedRevision', 'sourceRef', 'observedAt', 'deadline', 'signal']);
+      const operation = context(record, queryFail);
+      const factId = text(record.factId);
+      const sourceRef = text(record.sourceRef, MAX_SOURCE);
+      const observedAt = time(record.observedAt).text;
+      if (!Number.isSafeInteger(record.expectedRevision) || (record.expectedRevision as number) < 1) return queryFail();
+      return transaction(this.db, () => {
+        active(operation, queryFail);
+        if (this.db.prepare('SELECT 1 FROM memory_user_creations WHERE namespace = ? AND fact_id = ?')
+          .get(namespace, factId) === undefined) return queryFail('SCOPE_DENIED');
+        const current = this.readUserFactHead(namespace, factId);
+        if (!current) return queryFail('NOT_FOUND');
+        if (current.ref.revision !== record.expectedRevision || current.sourceRef !== sourceRef) return queryFail('REVISION_CONFLICT');
+        if (current.state === 'withdrawn') return {fact: current, appended: false};
+        const next = fact({...current, ref: {id: factId, revision: current.ref.revision + 1},
+          state: 'withdrawn', confirmation: 'external_observation', observedAt, corrects: current.ref});
+        return {fact: this.appendFact(namespace, next), appended: true};
       }, () => active(operation, queryFail));
     } catch (error) {
       if (error instanceof MemoryQueryError) throw error;
@@ -1315,7 +1371,8 @@ export class SqliteMemoryHost {
     mode: 'current' | 'history',
     filterKey: string,
     page: PageOptions,
-    criteria: {readonly at?: number; readonly factId?: string; readonly sourceRef?: string},
+    criteria: {readonly at?: number; readonly factId?: string; readonly sourceRef?: string;
+      readonly privateAdminHeads?: boolean},
   ): FactPage {
     let snapshot = page.snapshot;
     let watermark: number;
@@ -1358,13 +1415,18 @@ export class SqliteMemoryHost {
         'f.sequence <= ?',
         'NOT EXISTS (SELECT 1 FROM memory_erasure_intents e WHERE e.namespace = f.namespace AND e.fact_id = f.fact_id)',
         `f.sensitivity IN (${placeholders})`,
-        "f.state = 'active'",
-        'f.valid_from_ms <= ?',
-        '? < f.valid_until_ms',
       ];
       const parameters: (string | number)[] = [
-        namespace, watermark, ...allowed.values, criteria.at!, criteria.at!,
+        namespace, watermark, ...allowed.values,
       ];
+      if (criteria.privateAdminHeads) {
+        clauses.push("(json_extract(f.payload, '$.confirmation') = 'user_confirmed' OR (f.state = 'withdrawn'"
+          + " AND json_extract(f.payload, '$.confirmation') = 'external_observation' AND EXISTS (SELECT 1"
+          + " FROM memory_user_creations u WHERE u.namespace = f.namespace AND u.fact_id = f.fact_id)))");
+      } else {
+        clauses.push("f.state = 'active'", 'f.valid_from_ms <= ?', '? < f.valid_until_ms');
+        parameters.push(criteria.at!, criteria.at!);
+      }
       if (criteria.factId !== undefined) { clauses.push('f.fact_id = ?'); parameters.push(criteria.factId); }
       if (criteria.sourceRef !== undefined) { clauses.push('f.source_ref = ?'); parameters.push(criteria.sourceRef); }
       rows = this.db.prepare(`SELECT f.payload FROM memory_facts f

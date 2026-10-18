@@ -30,6 +30,10 @@ export interface CiFixOptions {
   headBranch?: string;
   baseBranch?: string;
   issue?: {url: string; number: number; repository: string; fingerprint: string};
+  /** Trusted host repair scope, captured before dispatch; at most 8000 characters. */
+  repairGoal?: string;
+  /** Trusted host PR context appended without replacing source/issue backlinks; at most 16000 characters. */
+  pullRequestBody?: string;
   /** Host opt-in: create a separate neutral check on the original source SHA, never change its failed run. */
   sourceRunBacklink?: {toolName: string; runAttempt: number};
   maxSteps: number;

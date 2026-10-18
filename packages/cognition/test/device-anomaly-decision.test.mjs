@@ -5,6 +5,287 @@ import {
   CognitionError,
 } from '../dist/index.js';
 
+test('queued device evaluation preserves submitted telemetry and request deadline', async () => {
+  let release;
+  const loading = new Promise(resolve => { release = resolve; });
+  const checkpoint = {load: () => loading, save() {}};
+  const service = new DeviceAnomalyDecisionService(createMockLayaChoiceInference(), {checkpoint});
+  const sample = {source: 'synthetic', timestamp: new Date().toISOString(), cpuPercent: 10,
+    memoryPercent: 20, samplingIntervalMs: 1000, unavailableMetrics: []};
+  const expected = structuredClone(sample);
+  const request = {deadline: new Date(Date.now() + 5000).toISOString(), signal: new AbortController().signal};
+  const pending = service.evaluateSample(sample, request);
+  sample.cpuPercent = 95;
+  sample.unavailableMetrics.push('memory');
+  request.deadline = new Date(Date.now() - 1000).toISOString();
+  release(undefined);
+  const receipt = await pending;
+  assert.equal(receipt.status, 'normal');
+  assert.deepEqual(receipt.sample, expected);
+});
+
+
+test('rejected device checkpoint loads publish no partial sources after trusted repair', async t => {
+  for (const entry of ['feedback', 'evaluation']) {
+    for (const repair of ['empty', 'replacement']) await t.test(`${entry}:${repair}`, async () => {
+      let saved, inferenceCalls = 0;
+      const checkpoint = {load: () => structuredClone(saved), save(value) {saved = structuredClone(value);}};
+      const chooser = {choose() {inferenceCalls++; throw Error('unexpected synthetic inference');}};
+      const sample = {source: 'synthetic-original', timestamp: '2026-10-08T03:00:00.000Z',
+        cpuPercent: 10, memoryPercent: 20, samplingIntervalMs: 1000};
+      const producer = new DeviceAnomalyDecisionService(chooser, {checkpoint});
+      assert.equal((await producer.evaluateSample(sample)).status, 'normal');
+      const valid = structuredClone(saved);
+      saved.sources['synthetic-invalid'] = {consecutiveElevatedCount: -1, isAlertActive: false,
+        sampleCounter: 0, lastAlertTimestampMs: null, lastSampleTimestampMs: null};
+      const affected = new DeviceAnomalyDecisionService(chooser, {checkpoint});
+      const read = () => entry === 'feedback' ? affected.readFeedback() : affected.evaluateSample(sample);
+      await assert.rejects(read, {code: 'INVALID_ARGUMENT'});
+      saved = {...valid, sources: repair === 'empty' ? {} : {'synthetic-replacement': {
+        consecutiveElevatedCount: 0, isAlertActive: false, sampleCounter: 0,
+        lastAlertTimestampMs: null, lastSampleTimestampMs: null}}};
+      const repaired = structuredClone(saved);
+      assert.deepEqual((await affected.readFeedback()).map(item => item.source),
+        repair === 'empty' ? [] : ['synthetic-replacement']);
+      assert.deepEqual(saved, repaired, 'loading and feedback must not rewrite trusted repaired disk state');
+      assert.equal((await affected.evaluateSample(sample)).status, 'normal');
+      const restarted = new DeviceAnomalyDecisionService(chooser, {checkpoint});
+      assert.equal((await restarted.evaluateSample(sample)).status, 'replayed');
+      assert.equal(inferenceCalls, 0);
+    });
+  }
+});
+
+test('device checkpoint clone failure retains its error and publishes no validated prefix', async () => {
+  let saved;
+  const checkpoint = {load: () => saved, save(value) {saved = structuredClone(value);}};
+  const chooser = {choose() {throw Error('unexpected synthetic inference');}};
+  const sample = {source: 'synthetic-original', timestamp: '2026-10-08T03:00:00.000Z',
+    cpuPercent: 10, memoryPercent: 20, samplingIntervalMs: 1000};
+  const producer = new DeviceAnomalyDecisionService(chooser, {checkpoint});
+  await producer.evaluateSample(sample);
+  const valid = structuredClone(saved);
+  // Synthetic non-JSON port data; the actual lossless-JSON SQLite adapter rejects it earlier.
+  saved.sources['synthetic-uncloneable'] = {...structuredClone(saved.sources[sample.source]),
+    lastReceipt: {syntheticUnsupportedValue() {}}};
+  const affected = new DeviceAnomalyDecisionService(chooser, {checkpoint});
+  await assert.rejects(() => affected.readFeedback(), {name: 'DataCloneError'});
+  saved = {...valid, sources: {}};
+  assert.deepEqual(await affected.readFeedback(), []);
+  assert.equal((await affected.evaluateSample(sample)).status, 'normal');
+});
+
+test('returned device receipts cannot rewrite later feedback or caller telemetry', async () => {
+  let saved;
+  const checkpoint = {load: () => saved, save: value => { saved = structuredClone(value); }};
+  const service = new DeviceAnomalyDecisionService(createMockLayaChoiceInference(), {checkpoint});
+  const sample = {source: 'synthetic', timestamp: new Date().toISOString(), cpuPercent: 10,
+    memoryPercent: 20, samplingIntervalMs: 1000};
+  const receipt = await service.evaluateSample(sample);
+  const expected = structuredClone(receipt);
+  receipt.status = 'alert_triggered';
+  receipt.notificationDelivered = true;
+  receipt.sample.cpuPercent = 99;
+  assert.equal(sample.cpuPercent, 10);
+  sample.memoryPercent = 99;
+  assert.deepEqual((await service.readFeedback())[0].receipt, expected);
+  assert.deepEqual(saved.sources.synthetic.lastReceipt, expected);
+});
+
+test('uncooperative device choices honor cancellation and deadline without blocking feedback', async () => {
+  for (const interruption of ['cancel', 'deadline']) {
+    const controller = new AbortController();
+    let portSignal;
+    let started;
+    const entered = new Promise(resolve => { started = resolve; });
+    let deliveries = 0;
+    const service = new DeviceAnomalyDecisionService({choose({signal}) {
+      portSignal = signal;
+      started();
+      return new Promise(() => {});
+    }}, {sustainedSampleCount: 1, notificationPort: {sendAdvisoryNotification() {
+      deliveries++;
+      return {delivered: true};
+    }}});
+    const sample = {source: 'synthetic', timestamp: new Date().toISOString(), cpuPercent: 95,
+      memoryPercent: 20, samplingIntervalMs: 1000};
+    const pending = service.evaluateSample(sample, {
+      deadline: new Date(Date.now() + (interruption === 'deadline' ? 30 : 5000)).toISOString(),
+      signal: controller.signal,
+    });
+    await entered;
+    if (interruption === 'cancel') controller.abort();
+    let guard;
+    try {
+      const receipt = await Promise.race([pending,
+        new Promise(resolve => { guard = setTimeout(() => resolve({status: 'unsettled'}), 300); })]);
+      assert.equal(receipt.status, 'monitoring');
+      assert.equal(portSignal.aborted, true);
+      assert.equal(deliveries, 0);
+      assert.equal((await service.readFeedback())[0].receipt.status, 'monitoring');
+      assert.equal((await service.evaluateSample({...sample, cpuPercent: 10,
+        timestamp: new Date(Date.parse(sample.timestamp) + 1000).toISOString()})).status, 'normal');
+    } finally { clearTimeout(guard); }
+  }
+});
+
+test('in-flight notification cancellation and deadline preserve unknown intent without blocking feedback', async t => {
+  for (const mode of ['cancel', 'deadline']) await t.test(mode, async () => {
+    let saved, releaseDelivery, enteredDelivery, deliveries = 0;
+    const entered = new Promise(resolve => {enteredDelivery = resolve;});
+    const checkpoint = {load: () => saved, save(value) {saved = structuredClone(value);}};
+    const controller = new AbortController();
+    const inference = createMockLayaChoiceInference();
+    const service = new DeviceAnomalyDecisionService(inference, {checkpoint, sustainedSampleCount: 1,
+      notificationPort: {sendAdvisoryNotification() {
+        deliveries++; enteredDelivery();
+        return new Promise(resolve => {releaseDelivery = resolve;});
+      }}});
+    const sample = {source: 'synthetic', timestamp: new Date().toISOString(), cpuPercent: 95,
+      memoryPercent: 20, samplingIntervalMs: 1000};
+    const pending = service.evaluateSample(sample, {signal: controller.signal,
+      deadline: new Date(Date.now() + (mode === 'deadline' ? 80 : 5000)).toISOString()});
+    await entered;
+    if (mode === 'cancel') controller.abort();
+    let guard;
+    try {
+      const receipt = await Promise.race([pending,
+        new Promise(resolve => {guard = setTimeout(() => resolve({status: 'unsettled'}), 300);})]);
+      assert.equal(receipt.status, 'indeterminate');
+      assert.equal(receipt.notificationDelivered, false);
+      const feedback = (await service.readFeedback())[0];
+      const deliveryId = feedback.pendingDeliveryId;
+      assert.ok(deliveryId);
+      assert.equal(saved.sources.synthetic.pendingDelivery.id, deliveryId);
+      assert.equal(saved.sources.synthetic.lastAlertTimestampMs, null);
+      const next = {...sample, timestamp: new Date(Date.parse(sample.timestamp) + 1000).toISOString()};
+      assert.equal((await service.evaluateSample(next)).status, 'indeterminate');
+      assert.equal(deliveries, 1, 'unknown notification must not be replayed');
+      const restarted = new DeviceAnomalyDecisionService(inference, {checkpoint, sustainedSampleCount: 1});
+      assert.equal((await restarted.readFeedback())[0].pendingDeliveryId, deliveryId);
+      await service.reconcileDelivery('synthetic', deliveryId, true);
+      assert.equal((await service.evaluateSample({...next, cpuPercent: 10})).status, 'recovered');
+      const reconciled = structuredClone(saved);
+      releaseDelivery({delivered: false}); await new Promise(setImmediate);
+      assert.deepEqual(saved, reconciled, 'late old result cannot overwrite explicit readback or newer telemetry');
+      assert.equal((await service.readFeedback())[0].pendingDeliveryId, undefined);
+    } finally {clearTimeout(guard); releaseDelivery?.({delivered: false}); await pending;}
+  });
+});
+
+test('synchronous notification delivery outcomes keep their confirmed and unknown semantics', async t => {
+  for (const result of ['true', 'false', 'throw']) await t.test(result, async () => {
+    let saved;
+    const checkpoint = {load: () => saved, save(value) {saved = structuredClone(value);}};
+    const service = new DeviceAnomalyDecisionService(createMockLayaChoiceInference(), {checkpoint,
+      sustainedSampleCount: 1, notificationPort: {sendAdvisoryNotification() {
+        if (result === 'throw') throw Error('Synthetic unknown delivery');
+        return {delivered: result === 'true'};
+      }}});
+    const sample = {source: 'synthetic', timestamp: new Date().toISOString(), cpuPercent: 95,
+      memoryPercent: 20, samplingIntervalMs: 1000};
+    const receipt = await service.evaluateSample(sample);
+    assert.equal(receipt.status, result === 'throw' ? 'indeterminate' : 'alert_triggered');
+    assert.equal(receipt.notificationDelivered, result === 'true');
+    assert.equal(Boolean((await service.readFeedback())[0].pendingDeliveryId), result === 'throw');
+    assert.equal(saved.sources.synthetic.lastAlertTimestampMs, result === 'true' ? Date.parse(sample.timestamp) : null);
+  });
+});
+
+test('cancellation or deadline expiry during durable intent save prevents notification and preserves recovery', async () => {
+  for (const mode of ['cancelled', 'deadline']) {
+    let saved, saves = 0, deliveries = 0, entered, release, firstIntent, clock = Date.now();
+    const started = new Promise(resolve => {entered = resolve;});
+    const waiting = new Promise(resolve => {release = resolve;});
+    const checkpoint = {load: () => saved, async save(value) {
+      if (++saves === 1) {firstIntent = structuredClone(value); entered(); await waiting;}
+      saved = structuredClone(value);
+    }};
+    const inference = createMockLayaChoiceInference(), controller = new AbortController();
+    const options = {checkpoint, sustainedSampleCount: 1, now: () => clock,
+      notificationPort: {sendAdvisoryNotification: () => {deliveries++; return {delivered: true};}}};
+    const service = new DeviceAnomalyDecisionService(inference, options);
+    const sample = {source: 'synthetic', timestamp: new Date(clock).toISOString(), cpuPercent: 95,
+      memoryPercent: 50, samplingIntervalMs: 1000};
+    const request = {signal: controller.signal, deadline: new Date(clock + 60_000).toISOString()};
+    const pending = service.evaluateSample(sample, request);
+    await started;
+    assert.ok(firstIntent.sources.synthetic.pendingDelivery);
+    assert.equal(deliveries, 0);
+    if (mode === 'cancelled') controller.abort();
+    else clock = Date.parse(request.deadline);
+    release();
+    const receipt = await pending;
+    assert.equal(deliveries, 0, mode);
+    assert.equal(receipt.status, 'monitoring', mode);
+    assert.equal(receipt.notificationDelivered, false, mode);
+    assert.equal(saved.sources.synthetic.pendingDelivery, undefined);
+    assert.equal(saved.sources.synthetic.lastAlertTimestampMs, null);
+    const restarted = new DeviceAnomalyDecisionService(inference, options);
+    const feedback = (await restarted.readFeedback())[0];
+    assert.equal(feedback.pendingDeliveryId, undefined);
+    assert.equal(feedback.receipt.status, 'monitoring');
+    assert.equal((await restarted.evaluateSample(sample)).status, 'replayed');
+    assert.equal(deliveries, 0);
+    const fresh = {...sample, timestamp: new Date(Date.parse(sample.timestamp) + 1000).toISOString()};
+    assert.equal((await restarted.evaluateSample(fresh)).notificationDelivered, true);
+    assert.equal(deliveries, 1);
+    assert.equal((await restarted.evaluateSample({...sample,
+      timestamp: new Date(Date.parse(sample.timestamp) + 2000).toISOString()})).status, 'cooldown_suppressed');
+    assert.equal(deliveries, 1);
+  }
+});
+
+test('cleared device intents remain lossless JSON for the actual host-state checkpoint contract', async t => {
+  for (const mode of ['delivered', 'cancelled', 'reconciled']) await t.test(mode, async () => {
+    let saved, deliveries = 0;
+    const controller = new AbortController();
+    const checkpoint = {load: () => saved, save(value) {
+      const encoded = JSON.parse(JSON.stringify(value));
+      assert.deepEqual(value, encoded, 'host-state storage rejects lossy JSON');
+      saved = encoded;
+      if (mode === 'cancelled' && saved.sources.synthetic.pendingDelivery) controller.abort();
+    }};
+    const inference = createMockLayaChoiceInference();
+    const options = {checkpoint, sustainedSampleCount: 1, notificationPort: {
+      sendAdvisoryNotification() {
+        deliveries++;
+        if (mode === 'reconciled') throw Error('explicit unknown delivery fixture');
+        return {delivered: true};
+      }
+    }};
+    const service = new DeviceAnomalyDecisionService(inference, options);
+    const sample = {source: 'synthetic', timestamp: new Date().toISOString(), cpuPercent: 95,
+      memoryPercent: 50, samplingIntervalMs: 1000};
+    const receipt = await service.evaluateSample(sample, {signal: controller.signal,
+      deadline: new Date(Date.now() + 60_000).toISOString()});
+    if (mode === 'reconciled') {
+      assert.equal(receipt.status, 'indeterminate');
+      const id = (await service.readFeedback())[0].pendingDeliveryId;
+      assert.ok(id);
+      await assert.rejects(service.reconcileDelivery('synthetic', 'wrong-id', true), {code: 'INVALID_ARGUMENT'});
+      assert.equal(saved.sources.synthetic.pendingDelivery.id, id);
+      await service.reconcileDelivery('synthetic', id, true);
+    } else assert.equal(receipt.notificationDelivered, mode === 'delivered');
+    assert.equal(Object.hasOwn(saved.sources.synthetic, 'pendingDelivery'), false);
+    assert.equal(deliveries, mode === 'cancelled' ? 0 : 1);
+    const restarted = new DeviceAnomalyDecisionService(inference, options);
+    const feedback = (await restarted.readFeedback())[0];
+    assert.equal(feedback.pendingDeliveryId, undefined);
+    assert.equal(feedback.receipt.notificationDelivered, mode !== 'cancelled');
+    assert.equal((await restarted.evaluateSample(sample)).status, 'replayed');
+    const next = {...sample, timestamp: new Date(Date.parse(sample.timestamp) + 1000).toISOString()};
+    if (mode === 'cancelled') {
+      assert.equal(saved.sources.synthetic.lastAlertTimestampMs, null);
+      assert.equal((await restarted.evaluateSample(next)).notificationDelivered, true);
+      assert.equal(deliveries, 1);
+    } else {
+      assert.equal((await restarted.evaluateSample(next)).status, 'cooldown_suppressed');
+      assert.equal(deliveries, 1);
+    }
+  });
+});
+
 test('durable device feedback preserves cooldown and replay protection across restart', async () => {
   let saved;
   const checkpoint = {load: () => saved, save: value => {saved = structuredClone(value);}};

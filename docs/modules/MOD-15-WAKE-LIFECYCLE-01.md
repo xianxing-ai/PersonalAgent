@@ -1,5 +1,10 @@
 # MOD-15-WAKE-LIFECYCLE-01：唤醒会话生命周期离线首片
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - Profile：`huawei_ict_agentarts`；模块负责人：`zemeng`；实现者：Luna（授权等待修复）与 zemeng（生命周期订阅）。
 - 非作者评审：`goo122`；本次主对话由用户（产品负责人/授权源）授权，主代理负责总协调。
 - 当前独立工作树：`e15c/PersonalAgent`；分支：`codex/zemeng/mod15-voice-wake-restoration`。代码恢复自旧 `codex/zemeng/voice-wake-lifecycle`，其 PR #65 因当时被 #61 吸收而关闭；#61 当前已收窄为 MOD-14，最终差异不再包含本包。
@@ -122,3 +127,75 @@ KWS 模型和从同一路 16 kHz 单声道 PCM 转为 `Float32Array` 后输入 K
 撤销、期限、设备失效和关闭时需停源并读回实际麦克风释放；本包的同步
 `unsubscribe()` 只能证明已请求退订和旧事件失效，不能证明物理设备已关闭。
 此项随 MOD-14 语音链集中实机验收，不单独重复跑整链。
+
+## Desktop 共享唤醒消费增量与验收（2026-10-07）
+
+本轮继续入口基于 `codex/core-competition-continuation@9618da9`（当时 `main@4b5ec61`），
+保留以上历史日期、分支、PR 和当时未接线结论。
+新消费增量复用 MOD-11/14 的单物理麦克风与现有 Voice/Wake 公包；提交和实际 main
+接线状态以本轮根集成读回为准，不能用旧包的编译结果宣布设备或整个模块完成。
+
+[wake-voice-host](../../apps/desktop/electron/wake-voice-host.js) 的可信面板 `enable(senderId)`
+仅申请原十分钟麦克风许可。限定词检测器与实际 PCM 源双就绪后才发布 `listening`；
+失败后必须尝试释放本轮全部资源。检测命中或 listening 中手动听写复用
+[voice-input-core](../../apps/desktop/electron/voice-input-core.js) 的 host-only
+`beginSharedCapture(senderId, {signal, deadline})`，保留原授权上界，不重新授权。
+来源绑定继续是 [MicrophoneCaptureHost.binding](../../apps/desktop/electron/microphone-capture-host.js)；
+Wake/ASR 两个逻辑订阅可以共享同一个物理采集，ASR 结束只释放自己的引用。
+听写只回填草稿，不自动提交 Runtime 任务；结束唤醒不等于取消既有后台任务。
+
+播放抑制通过现有 VoiceSessionManager 的公开状态订阅传入唤醒控制器。默认 Desktop
+听写模式自身没有播放回答流程；独立 Manager 的播放组合验证不得描述为听写播放验收。
+Live 的互斥依据由根消费方传入 `isBusy`，启动 Live 前须确认唤醒退出；配置变更、隐藏、
+导航、渲染进程退出及应用退出的具体 main/UI 消费由同轮根接线处理。
+
+物理释放继续由 [panel capture](../../apps/desktop/src/app/microphone-capture.js) 停止全部
+track 并确认 AudioContext closed，再经原 sender/mainFrame/token 回传 `tracksStopped`。
+PCM 订阅 `closed` 只证明本 attachment 已释放，不能替代最后物理引用的关闭读回。
+detector、PCM、ASR 或 track 任一释放失败时，宿主保留 `release_unconfirmed` 与
+`hasActive=true` 并拒绝重启。Host 关闭确认固定上限五秒；原生检测器或其他资源不返回
+关闭回执时，超时同样保留 unknown，不能以限时等待结束宣称资源已释放。
+不得将 logical disabled 或清空指针视为资源已释放。
+
+### 独立消费验证入口
+
+[wake-voice-host-integration.test.mjs](../../apps/desktop/test/wake-voice-host-integration.test.mjs)
+运行实际 Desktop MicrophoneCaptureHost、Wake consumer、DesktopVoiceInput、公开 PCM
+源及 VoiceSessionManager。面板握手/permission、关键词识别、ASR 与 speech output
+均为明确 Fake，不启动 Electron、Windows 音频设备、中文引擎、SIS 或云服务。
+期限用例用 Node Fake Date/setTimeout 与显式合成四百毫秒可信 lease 验证原上界，
+没有改变生产十分钟许可或新增测试专用生产参数。Live 用例验证合成 ownership 谓词，
+不证明真实 Live 设备交接或 main IPC 已执行。
+
+新增用例核对授权前零 attachment、双就绪、单 physical start 下 Wake/ASR 两个引用及
+同帧消费、听写只回填草稿且零 task 调用、原 lease 取消/期限贯穿 ASR、不同 signal/旧
+检测回调不误杀后续采集、readiness 失败清理与显式 retry，以及 track、keyword、ASR
+各自失败时的 unknown 锁。另一实际 VoiceSessionManager 加 Fake output 验证播放状态
+抑制，与上述听写链的证据分开。验收环境使用仓库 pinned Node 24.15.0 / npm 11.12.1。
+
+```text
+node --test apps/desktop/test/wake-voice-host-integration.test.mjs
+```
+
+实际验证：Host/core 源码由根提交为 `0fffa2d`，验收隔离树消费提交为 `052b767`。
+必要 Voice 公包构建退出码 0；原生 Windows speech host 编译在 Linux 明确 skipped，
+不构成 Windows 编译或设备验收。上述新增消费用例正式运行 **10/10 通过，0 跳过**。
+未重复既有 Host/core 绿测，也未把先前根完整检查当作本增量的验证。
+本次没有运行 main IPC、实际 renderer、原生识别器或真实 Live；这些消费者接线由
+同轮根 Desktop 工作包独立核验与集成，本文件的 Fake 组合结果不代替它们。
+
+### 现场验收继续步骤（zemeng，MOD-11/14/15）
+
+1. 在已授权 Windows 目标机读回 Node/架构、已安装 zh-CN recognizer 和固定词表。
+   打开可信面板，确认默认 off、未授权时零采集；缺引擎须 unavailable，不用 Fake 回退。
+   同时确认 SIS 配置有效且未过期（`snapshot().configured` 为真）、VoiceInput 已装配；缺失时保持 unavailable，不启用唤醒。
+2. 明确启用后记录有限 expiresAt、双 readiness 与单物理采集证据；触发固定词并取得
+   同路听写草稿，确认不自动提交任务。记录 Wake/ASR 引用数，ASR 完成后 Wake 继续监听。
+3. 逐项验证原期限到期、授权撤销、隐藏、导航、设备断开、renderer 崩溃和退出；读回
+   track 全部 ended、AudioContext closed、detector/ASR 退出，确认没有迟到草稿或新任务。
+   不能读回时保持 unknown/重启锁，不以 UI 按钮关闭替代设备关闭。
+4. 验证播放时不触发新听写、停止播放后恢复及 Live 与 Wake 的先停后启；以实际设备
+   读回证明互斥。用固定正/负词、噪声和回声试验记录次数与结果，未实测不宣称准确率。
+
+本增量仍为 `provisional`，所有 OS 设备、中文命中、回声/误触、SIS 与真实 Live 验收
+单独记录；离线组合通过也不将公共 voice wire 或 MOD-14/15 升格为已完成。

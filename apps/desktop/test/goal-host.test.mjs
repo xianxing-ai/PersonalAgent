@@ -24,6 +24,12 @@ function fixture() {
     runtime: {
       provisionCoordinationStore: value => { calls.push(['bind', value]); return store; },
       listTasks: () => ({items: [...readbacks.keys()].map(taskId => ({taskId})), snapshotSequence: 1}),
+      getApproval: approvalId => {
+        const value = [...readbacks.values()].find(item => item.approval?.approvalId === approvalId);
+        if (!value) throw Object.assign(Error('not found'), {code: 'NOT_FOUND'});
+        return {...value.approval, taskId: value.task.taskId, toolName: value.toolName,
+          expiresAt: '2099-01-01T00:00:00.000Z'};
+      },
     },
     submitHostToolTask: request => {
       calls.push(['submit', request]);
@@ -93,4 +99,28 @@ test('restart recovery only resumes allowed Goal approvals', () => {
   readbacks.get(task.taskId).approval.state = 'allowed';
   host.resumeApproved();
   assert.deepEqual(calls.at(-1), ['resume', task.taskId]);
+});
+
+test('Goal approval expiry comes only from the matching native record and lookup failures stay conservative', () => {
+  const {host, application} = fixture();
+  let native = {approvalId: 'approval-1', taskId: 'task-1', toolName: names.GOAL_CREATE_TOOL,
+    revision: 1, state: 'pending', expiresAt: '2099-01-01T00:00:00.000Z', scopes: ['secret']};
+  application.runtime.getApproval = () => native;
+  host.bind(application);
+  const task = host.create({expectedGraphRevision: 0, goal: input});
+  assert.equal(task.approval.expiresAt, native.expiresAt);
+  assert.equal(Object.hasOwn(task.approval, 'scopes'), false);
+  assert.equal(host.listTasks()[0].approval.expiresAt, native.expiresAt);
+  for (const field of ['approvalId', 'taskId', 'toolName', 'revision', 'state']) {
+    const original = native[field]; native[field] = field === 'revision' ? 2 : 'wrong';
+    assert.equal(Object.hasOwn(host.readTask(task.taskId).approval, 'expiresAt'), false, field);
+    native[field] = original;
+  }
+  native.expiresAt = 0;
+  assert.equal(Object.hasOwn(host.readTask(task.taskId).approval, 'expiresAt'), false);
+  application.runtime.getApproval = () => {throw Object.assign(Error('not found'), {code: 'NOT_FOUND'});};
+  assert.equal(Object.hasOwn(host.readTask(task.taskId).approval, 'expiresAt'), false);
+  const error = Object.assign(Error('storage unavailable'), {code: 'UNAVAILABLE'});
+  application.runtime.getApproval = () => {throw error;};
+  assert.throws(() => host.readTask(task.taskId), candidate => candidate === error);
 });

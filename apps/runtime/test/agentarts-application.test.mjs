@@ -330,3 +330,124 @@ test('factory rejects a catalog without explicit initial request mode', () => {
     competitionToolAvailability: [],
   }), /explicit initial request mode/);
 });
+
+test('factory retains raw adapter synchronous validation of the host send guard', async t => {
+  for (const mode of ['pending', 'resolved', 'rejected', 'sync', 'throw']) await t.test(mode, async () => {
+    let fetches = 0;
+    let guardCalls = 0;
+    let release;
+    const diagnostics = [];
+    const app = createAgentArtsRuntimeApplication({path: ':memory:',
+      gatewayUrl: 'https://agentarts.example.test', runtimeName: 'send-guard',
+      authorizationProvider: {read: async () => 'Bearer synthetic'},
+      onDiagnostic: receipt => diagnostics.push(receipt),
+      beforeCompetitionSend: request => {
+        guardCalls++;
+        assert.equal(Object.isFrozen(request), true);
+        if (mode === 'pending') return new Promise(resolve => {release = resolve;});
+        if (mode === 'resolved') return Promise.resolve();
+        if (mode === 'rejected') {
+          const rejected = Promise.reject(Error('private-guard-canary'));
+          // Keep the original factory reproduction from producing an unrelated
+          // process rejection; the guard result itself must still be rejected.
+          void rejected.catch(() => undefined);
+          return rejected;
+        }
+        if (mode === 'throw') throw Error('private-guard-canary');
+      },
+      fetchImpl: async () => {
+        fetches++;
+        return new Response(JSON.stringify(event('Synthetic guard result')), {
+          headers: {'content-type': 'application/json'},
+        });
+      },
+    });
+    try {
+      const client = new Client(app); await client.connect();
+      const {taskId} = await client.call('task.submit', {goal: 'Synthetic send guard', conversationId: 'send-guard'},
+        {idempotencyKey: mode});
+      const task = await terminal(app, taskId);
+      assert.equal(guardCalls, 1);
+      assert.equal(fetches, mode === 'sync' ? 1 : 0);
+      assert.equal(task.state, mode === 'sync' ? 'succeeded' : 'failed');
+      assert.deepEqual(app.runtime.readToolExecutions(taskId), []);
+      assert.doesNotMatch(JSON.stringify({task, diagnostics}), /private-guard-canary/);
+      if (mode === 'sync') assert.deepEqual(diagnostics, []);
+      else {
+        assert.equal(task.error.code, 'EXTERNAL_FAILURE');
+        assert.equal(task.error.message, 'Coordination adapter failed');
+        assert.equal(diagnostics.length, 1);
+        assert.equal(diagnostics[0].stage, 'export_guard');
+        assert.equal(diagnostics[0].code, 'UNAUTHORIZED');
+      }
+    } finally {release?.(); app.close();}
+  });
+});
+
+test('coordination input guards enforce synchronous void before preparation export and after credentials', async t => {
+  for (const phase of [1, 2]) for (const mode of ['pending', 'resolved', 'late-rejection', 'number', 'throw', 'sync', 'microtask']) {
+    await t.test(`phase=${phase} ${mode}`, async () => {
+      let guards = 0;
+      let reads = 0;
+      let fetches = 0;
+      let replies = 0;
+      let sendAllowed = true;
+      let release;
+      let reject;
+      const diagnostics = [];
+      const app = createAgentArtsRuntimeApplication({path: ':memory:',
+        gatewayUrl: 'https://agentarts.example.test', runtimeName: 'input-guard',
+        authorizationProvider: {read: async () => {reads++; return 'Bearer synthetic';}},
+        onDiagnostic: receipt => diagnostics.push(receipt),
+        coordinationInput: {
+          prepareCoordinationGoal: async () => 'Synthetic prepared input',
+          beforeCoordinationSend: (request, scope) => {
+            guards++;
+            assert.equal(request.goal, 'Synthetic prepared input');
+            assert.deepEqual(scope, {publicGoal: 'Synthetic public input', preparedGoal: 'Synthetic prepared input'});
+            if (guards !== phase) return;
+            if (mode === 'pending') return new Promise(resolve => {release = resolve;});
+            if (mode === 'resolved') return Promise.resolve();
+            if (mode === 'late-rejection') return new Promise((_resolve, fail) => {reject = fail;});
+            if (mode === 'number') return 1;
+            if (mode === 'throw') throw Error('private-input-guard-canary');
+            if (mode === 'microtask' && phase === 2) queueMicrotask(() => {sendAllowed = false;});
+          },
+          onEphemeralReply: () => {replies++;},
+        },
+        fetchImpl: async (_url, init) => {
+          fetches++;
+          assert.equal(sendAllowed, true);
+          assert.equal(JSON.parse(init.body).query, 'Synthetic prepared input');
+          return new Response(JSON.stringify(event('Synthetic input reply')), {
+            headers: {'content-type': 'application/json'},
+          });
+        },
+      });
+      try {
+        const client = new Client(app); await client.connect();
+        const {taskId} = await client.call('task.submit', {goal: 'Synthetic public input', conversationId: 'input-guard'},
+          {idempotencyKey: `${phase}-${mode}`});
+        const task = await terminal(app, taskId);
+        const allowed = mode === 'sync' || mode === 'microtask';
+        assert.equal(task.state, allowed ? 'succeeded' : 'failed');
+        assert.equal(guards, allowed ? 2 : phase);
+        assert.equal(reads, allowed || phase === 2 ? 1 : 0);
+        assert.equal(fetches, allowed ? 1 : 0);
+        assert.equal(replies, allowed ? 1 : 0);
+        if (mode === 'late-rejection') {
+          reject(Error('private-input-guard-canary'));
+          await new Promise(resolve => setImmediate(resolve));
+        }
+        assert.deepEqual(app.runtime.readToolExecutions(taskId), []);
+        assert.doesNotMatch(JSON.stringify({task, diagnostics}), /private-input-guard-canary/);
+        if (!allowed && phase === 2) {
+          assert.equal(diagnostics.length, 1);
+          assert.equal(diagnostics[0].stage, 'export_guard');
+          assert.equal(diagnostics[0].code, 'UNAUTHORIZED');
+        }
+        if (mode === 'microtask' && phase === 2) assert.equal(sendAllowed, false);
+      } finally {release?.(); app.close();}
+    });
+  }
+});

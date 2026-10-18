@@ -1,5 +1,8 @@
 # DEV-WORKFLOWS 真实验收记录（2026-10-05）
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
 负责人：Potatos498（集中验证与真实环境执行）。关联 PR #277（MOD-33/34/36/38 实现）。环境：本机 Windows、Node 24.18、仓库锁定凭据（gh CLI 已登录账号、`~/.pa-secrets/model.env` 的 GLM OpenAI 兼容端点）。验收脚本不入仓（`.cache/dev-workflows/acceptance/`），本文件登记证据与结论。
 
 ## MOD-36 Code Review 预审——✅ 闭环
@@ -11,7 +14,7 @@
 - 数据点：第一轮无白名单时 7 条 finding 因行号漂移被丢弃（防线正确拦截），加白名单后降为 0；
 - 真实模型兼容三修随此验收进入 #277（commit 7999446）：markdown 围栏剥离、越界 finding 降级丢弃、changed-lines 白名单提示。code-review 测试 10/10。
 
-## MOD-34 CI 修复链——⏸ 推进至补丁应用层，剩余 1 项待作者定位
+## MOD-34 CI 修复链——✅ 闭环（2026-10-06 更新）
 
 真实对象：分支 `mod34-acceptance/failing` 注入真实类型错误（`const brokenAcceptanceAnchor: number = window.fromUtc;`）触发的真实失败 Foundation run（37293044269 / 37294953665 / 37297169038，均为 GitHub Actions 真实执行）。
 
@@ -34,9 +37,17 @@
 | 模型编造 64 位 sha256（复制长哈希不可靠） | GLM 输出 `566033be…` 与实际不符，被 path+sha 校验拒绝 | 以刚读取的源快照 sha 修正提案；持久锚不变（oldText 精确匹配 + apply 自身 before-sha 核对） |
 | locked-apply.ps1 的 FILETIME 在 Windows PowerShell 5.1 Add-Type 编译失败 | helper 直接冒烟编译错误，写工具恒 RESULT_UNKNOWN | 全限定 `System.Runtime.InteropServices.ComTypes.FILETIME`，5.1/7 双兼容（两版 smoke 均过） |
 
-### 当前卡点（已报告 #277，待 zemeng5208 定位）
+### 卡点的修复与最终闭环（2026-10-06）
 
-`patch-0-0` 在真实 dev-workflows runtime 链路稳定 RESULT_UNKNOWN；本地穷尽复现（极简 env spawn、真实协议 smoke、marker 流、进程身份查询 259ms≪2s 超时）全部正常。另发现 DevWorkflowsRuntime 缺 unknown 后的恢复入口（desktop 侧有 reconcileWorkspacePatchTask，组合运行时未暴露）。复现入口与失败 run 见 #277 评论（2026-10-05）。
+05 日报告的 patch 层 RESULT_UNKNOWN 与恢复入口缺失，由 #290 的 `DevWorkflowPatchRecovery`（preview 校验+持久 intent 绑定+readback 仅喂本绑定 receipt）修复并合入 main（#288/#289/#290 一并集成）。
+
+**最终闭环**（真实失败 run [37400194940](https://github.com/zemeng5208/PersonalAgent/actions/runs/37400194940)，注入 `const x: string = 12345`）：
+
+runs→jobs→log→head→source→GLM 归因→patch（confirmed）→**真实 tsc 验证通过**→precommit HEAD 核对→**commit 创建（confirmed，d911e56，1 行字面量修正）**→push unknown→按 ADR-0003 fail-closed 等待核实→宿主核实远端未推送（not_performed，无重试歧义）→人工 fast-forward 推送+draft PR #291（验收产物，明确不合并）。
+
+**模型对比结论**：glm-4-flash 两轮均未修到出错行（对无关行幻觉修复）；**glm-4.7 一轮精确修复**。"现场跑挂构建再修复"演示需 glm-4.7 级别模型（同端点同 Key 可用）。
+
+### 运行环境要点（复现须知）
 
 ### 环境要点（复现须知）
 
@@ -48,7 +59,7 @@
 ## 结论
 
 - MOD-36 真实验收闭环：#277 的 code-review 链在真实 GitHub + 真实模型上可用，评审意见可精确锚定；
-- MOD-34 真实验收完成 90%：gh→模型→校验→审批全链真实可用，剩余 patch 应用层 1 项待定位；期间发现的 4 个真实缺陷已全部修复并合入 #277；
+- MOD-34 原现场已取得 gh→GLM→审批→补丁→真实 tsc→commit 的回执；push 返回 unknown 后由宿主核实未发生，再人工推送并创建 #291。该历史记录覆盖旧“patch 层待定位”结论；自动 push/PR 全链和最新代码在原场景的复验仍未据此完成。
 - MOD-35 定位器另见其真实验收（MOD-35-TEST-LOCATE-01：注入测试定位 4:10 精确行列；真实 2639 行 CI 日志一次解析定位全部 16 项失败并命中根因行）。
 
-本记录不改变任何模块状态：#277 合并与"现场跑挂构建再修复"完整演示仍以 patch 层修复后重跑为准。
+本记录保留原现场验收与人工收尾边界，不改变模块为 done。#277 与 #297 续作已合并，#291 为明确不合并的验收产物；本轮未运行旧脚本或使用原账号。后续验收由 zemeng 接手，并先恢复受信宿主配置及备份证据。

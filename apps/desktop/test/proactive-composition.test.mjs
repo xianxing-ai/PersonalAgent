@@ -104,3 +104,25 @@ test('unknown submit preserves idempotency key and original projected payload on
   assert.deepEqual(calls[0][1], calls[1][1]);
   assert.equal(calls[0][2].idempotencyKey, calls[1][2].idempotencyKey);
 });
+
+
+test('Goal-only permission configuration preserves the independent system observation lease and cloud switch',async t=>{
+  const {mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),path=await import('node:path');
+  const {createDesktopProactiveHost}=await import('../electron/proactive-host.js');
+  const userData=await mkdtemp(path.join(tmpdir(),'synthetic-goal-only-'));let starts=0,stops=0;
+  const host=createDesktopProactiveHost({userData,namespace:'synthetic-goal-only',client:{},
+    application:{profile:'huawei_ict_agentarts',createCompetitionFactHost:()=>({close(){}}),
+      runtime:{bindCoordinationStore:()=>({read:()=>({revision:0})}),listTasks:()=>({items:[]})},
+      startSystemObservationSession:input=>{starts++;return{sessionId:'synthetic-system',expiresAt:input.expiresAt};},
+      stopSystemObservationSession:()=>{stops++;}},goalHost:{listTasks:()=>[]},
+    chooser:{},cognitionReady:()=>true,createCognitionHost:()=>({close(){}})});
+  t.after(async()=>{host.close();await rm(userData,{recursive:true,force:true});});
+  const original=await host.configure({enabled:true,cloudAnalysis:true,goalAnalysis:true,goalCloudAnalysis:true});
+  const local=await host.configure({goalAnalysis:true,goalCloudAnalysis:false});
+  assert.equal(local.enabled,true);assert.equal(local.cloudAnalysis,true);assert.equal(local.expiresAt,original.expiresAt);
+  assert.equal(local.cognition.enabled,true);assert.equal(local.cognition.cloudAllowed,false);
+  assert.equal(starts,1);assert.equal(stops,0);
+  for(const input of [{goalAnalysis:true},{goalCloudAnalysis:false},{goalAnalysis:true,goalCloudAnalysis:false,unknown:false},
+    {goalAnalysis:false,goalCloudAnalysis:'false'},{goalAnalysis:'true',goalCloudAnalysis:false}]) await assert.rejects(host.configure(input));
+  assert.deepEqual(host.snapshot(),local);
+});

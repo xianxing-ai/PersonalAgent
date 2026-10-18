@@ -1,5 +1,10 @@
 # MVP-TWIN-B-INTEREST-01：持续兴趣的合法选项
 
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 - Profile：`huawei_ict_agentarts`；MOD-28；负责人 zemeng。
 - 状态：`review`；依赖 #187 的 InterestPolicy 与 #190 的主动选择/AgentArts 交接方向。
 - 所有权：`packages/cognition/**` 和本文件；根接线及连接器注册由主任务负责。
@@ -34,3 +39,44 @@
 没有 contracts、数据库迁移、新依赖或业务连接器变更。
 主任务仍需接入兴趣证据来源、最新 scope 状态及 AgentArts 的最小出云交接。
 真实订阅来源、次日知识更新和生产持久撤销链尚未验收；本包不改变接口冻结状态。
+
+## 当前源码接线核对（2026-10-07）
+
+来源基线为 `main@4b5ec61`。以上日期、工具链与测试数量保留各原工作包的历史结论；
+其中“主任务仍需接入”按以下当前源码状态理解，不再作为另建消费者的待办。
+
+[既有 Desktop knowledge-watch-host](../../apps/desktop/electron/knowledge-watch-host.js)
+已消费 `buildInterestOptions`、`LayaInterestDecisionService` 和
+`planKnowledgeReevaluation`。`consumeInterestTask` 从可信 reader 读取 Runtime
+任务绑定的兴趣证据，保存原始 intake 身份与未知/完成回执，在判断及提交阶段复核原任务、
+来源和跟踪许可；已完成回执复用当前 watch，不能重开已撤销兴趣。已有 due/source-change
+路径复用 Runtime 调度和知识重评估，不需要新增任务库或另一宿主。
+
+[Desktop main](../../apps/desktop/electron/main.js) 已装配该宿主的 Laya、
+`readInterestSignal`、当前 tracking grant、原生 feed 工具及其持久执行证据 reader。
+该 reader 检查公开无凭据传输证据、来源配置、原始读取回执和有效期，才生成兴趣输入；
+消费者身份、内容哈希和成功检查时间来自这些原始绑定，不能由摘要或模型输出补造。
+本地接线场景见
+[兴趣任务检查](../../apps/desktop/test/knowledge-watch-interest-task.test.mjs)、
+[due/撤销检查](../../apps/desktop/test/knowledge-watch-due.test.mjs) 和
+[feed 消费检查](../../apps/desktop/test/knowledge-watch-formal-feeds.test.mjs)。
+
+这是现有源码接线的校正，未在本次启动真实订阅、Laya、AgentArts 或桌面进程。
+真实来源的次日更新、生产持久撤销和云端最终读回仍需现场验收；源码装配和本地场景
+不能替代该验收，也不改变原接口冻结状态或将 MOD/MVP 标记 done。
+
+## 选择收据的跨语言稳定摘要（2026-10-08 续接）
+
+同一精确公开 evidence、scope、来源、时刻和模型选择，原 receipt 证据排序依赖
+localeCompare，在 en-US/sv-SE 下生成不同 digest。只将原 fresh-copy 的四字段 ref
+tuple 排序改为 code-unit 比较，保持原字符串、重复项数及全部 binding 字段；不改
+policy/options/选择/freshness/deadline，不迁移旧 receipt，也不改知识 watch 或 Runtime。
+当前 Desktop 存 modelReceiptId，没有以此 digest 去重，未证明重复 tracking 后果。
+
+EXACT2 manifest SHA256 782dd30b501adc4b851854dc017ba0b39d50fa0f9cb9c15e3c40b5c733f68a54，
+source7dac4ffb/testcee8a733，17 artifacts 与原 discovery 证据保留。Node24.15 portable
+原正式42789/d42230 actual1；cognition build7653/bee61f、受影响两文件39483/c035fa
+actual0、10/10。fresh 公开 service8a0371 actual0，同输入两 locale 的完整 result
+与 digest 相同；精确 scope/source/evidence ref 改变仍产生不同 digest。旧 compiled
+与原 source ESM emit 逐字相同，合法旧证据未改写。Chooser/infer 为显式 Fake，无
+SQLite、真实来源、跟踪、云或外部写验收；前1f548检查不覆盖本增量，后续根检查另记。

@@ -1,5 +1,10 @@
 # QQ 信头本地分类：main 装配
 
+<!-- current-design-20261009 -->
+> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
 本片不读取任何真实账号。连接器仍由 Potato 维护；只消费公开 QQMailProvider/register，未新增邮件写工具或云端出口。
 
 本轮 main 与“设置 → 连接”已接入以下配置和操作；“记忆”页也提供 Laya 启停。只在明确点击“启动本地模型”后发现当前 checkout/Git common root 内已安装缓存并启动项目 batch-server；不下载、不复用未知 Python 进程、不自动加载权重。模型子进程不继承云服务凭据，停止会取消本地分类。可用内存不足 3 GiB 时显示未启动。邮箱派生分类单独以 safeStorage 加密保存，Renderer 仅见遮盖账号、各类别数量与待核对计数。

@@ -36,16 +36,38 @@ function isExactRecord(value) {
       && Object.getOwnPropertyDescriptor(value, key)?.value !== undefined);
 }
 
+function snapshotArray(value, maximumLength) {
+  try {
+    if (!Array.isArray(value)) invalid();
+    const length = Object.getOwnPropertyDescriptor(value, 'length')?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || length > maximumLength) invalid();
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== length + 1 || !keys.includes('length')
+      || keys.some(key => key !== 'length' && (typeof key !== 'string'
+        || !/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= length))) invalid();
+    const events = [];
+    for (let index = 0; index < length; index++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) invalid();
+      events.push(descriptor.value);
+    }
+    return events;
+  } catch {
+    invalid();
+  }
+}
+
 function validateRecord(item) {
-  if (!isExactRecord(item) || !CASE_BY_ID.has(item.caseId)
+  if (!isExactRecord(item)) invalid();
+  const events = snapshotArray(item.events, 24);
+  if (!CASE_BY_ID.has(item.caseId)
     || !VARIANTS.includes(item.variant)
     || !Number.isInteger(item.runIndex)
     || item.runIndex < 1 || item.runIndex > 1000
     || (item.decision !== null && !['KEEP', 'RECHECK', 'REJECT'].includes(item.decision))
     || !ERRORS.includes(item.errorCode)
     || (item.errorCode === 'NONE') !== (item.decision !== null)
-    || !Array.isArray(item.events) || item.events.length > 24
-    || item.events.some(event => typeof event !== 'string'
+    || events.some(event => typeof event !== 'string'
       || ![...MULTI_EVENTS, ...SINGLE_EVENTS].includes(event))
     || (item.traceId !== null && (typeof item.traceId !== 'string'
       || !/^[A-Za-z0-9._:-]{1,128}$/.test(item.traceId)))
@@ -54,6 +76,7 @@ function validateRecord(item) {
       || item.durationMs > 86_400_000))
     || (item.totalTokens !== null && (!Number.isSafeInteger(item.totalTokens)
       || item.totalTokens < 0 || item.totalTokens > 1_000_000_000))) invalid();
+  return {...item, events};
 }
 
 function median(values) {
@@ -111,19 +134,20 @@ function summarize(records, variant) {
  * The scorer cannot authenticate trace IDs or infer a decision from raw model text.
  */
 export function scoreAgentArtsRuns(records) {
-  if (!Array.isArray(records) || records.length > 1000) {
-    invalid();
-  }
+  records = snapshotArray(records, 1000);
   const seen = new Set();
   const traceIds = new Set();
-  for (const item of records) {
-    validateRecord(item);
+  const snapshots = [];
+  for (const original of records) {
+    const item = validateRecord(original);
     const key = JSON.stringify([item.caseId, item.variant, item.runIndex]);
     if (seen.has(key)) invalid();
     if (item.traceId !== null && traceIds.has(item.traceId)) invalid();
     seen.add(key);
     if (item.traceId !== null) traceIds.add(item.traceId);
+    snapshots.push(item);
   }
+  records = snapshots;
   const paired = [];
   const missingMultiAgentCases = [];
   const missingComparisonCases = [];

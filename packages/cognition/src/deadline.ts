@@ -4,6 +4,7 @@ import {DecisionError} from './proactive-decision.js';
 export async function withCognitionDeadline<T>(input: {deadline: string; signal: AbortSignal},
   work: (context: {deadline: string; signal: AbortSignal}) => Promise<T>, now: () => number = Date.now): Promise<T> {
   if (!(input?.signal instanceof AbortSignal) || !Number.isFinite(Date.parse(input.deadline))) throw new DecisionError('INVALID_ARGUMENT');
+  input = {...input};
   if (input.signal.aborted) throw new DecisionError('CANCELLED');
   const deadline = Date.parse(input.deadline);
   if (now() >= deadline) throw new DecisionError('TIMEOUT');

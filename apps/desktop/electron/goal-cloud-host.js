@@ -103,6 +103,14 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
     return refs.some(ref=>ref.id===goal.id && ref.revision===goal.revision)
       && goal.dependencies.every(dependency=>refs.some(ref=>isDeepStrictEqual(ref,dependency)))?goal:null;
   }
+  // Revalidate the original read, without replacing it or rejecting unrelated graph changes.
+  function currentReadResult(toolName,result,taskId) {
+    try {
+      const goals=toolName==='goals.list'?result.goals:[result.goal].filter(Boolean);
+      return Array.isArray(goals)&&goals.every(goal=>isDeepStrictEqual(goal,
+        scopedGoal(goalHost.get(goal.id).goal,taskId)));
+    } catch {return false;}
+  }
   function authorizedLocalHostTool(input,context,toolName) {
     if(!application || context?.signal?.aborted || typeof context.taskId!=='string') return false;
     const runId=`host-tool-${context.taskId}`;
@@ -148,8 +156,8 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
     if(!input || typeof input!=='object' || Array.isArray(input)) throw Error('Goal list arguments are invalid');
     const {graphRevision,goals}=goalHost.list();
     const limit=input.limit??20;
-    const visible=goals.map(goal=>scopedGoal(goal,taskId)).filter(Boolean).sort((a,b)=>a.id.localeCompare(b.id));
-    const remaining=visible.filter(goal=>input.afterId===undefined || goal.id.localeCompare(input.afterId)>0);
+    const visible=goals.map(goal=>scopedGoal(goal,taskId)).filter(Boolean).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+    const remaining=visible.filter(goal=>input.afterId===undefined || goal.id>input.afterId);
     const page=remaining.slice(0,limit);
     return {graphRevision,goals:page,nextAfterId:remaining.length>page.length?page.at(-1).id:null};
   }
@@ -177,10 +185,13 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
     toolVersion:tool.descriptor.version,available:({taskId,signal})=>!signal?.aborted&&bound(taskId,true,tool.descriptor.name)}));
   const competitionToolExports=tools.map(tool=>({toolName:tool.descriptor.name,
     toolVersion:tool.descriptor.version,exportPolicyVersion:POLICY,
-    accepts:({taskId,arguments:args})=>bound(taskId,false,tool.descriptor.name)
+    accepts:({taskId,arguments:args,phase,projection})=>bound(taskId,false,tool.descriptor.name)
+      && (phase!=='final' || !READ_NAMES.has(tool.descriptor.name) || currentReadResult(tool.descriptor.name,projection,taskId))
       && (!WRITE_NAMES.has(tool.descriptor.name) || writeArguments(args,tool.descriptor.name)),
     project:({taskId,result,signal})=>{
       readable(taskId,signal,tool.descriptor.name);
+      if(READ_NAMES.has(tool.descriptor.name)&&!currentReadResult(tool.descriptor.name,result,taskId))
+        throw Error('Goal read result is no longer exportable');
       let value;
       if(tool.descriptor.name==='goals.list') {
         value={graphRevision:result.graphRevision,goals:result.goals.map(goal=>scopedGoal(goal,taskId)).filter(Boolean),
@@ -218,6 +229,10 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
       const receipt=receipts?.find(item=>item.proposal.proposalId===request.continuation?.proposalId);
       if((offered || ALL_NAMES.has(receipt?.proposal?.toolName))
         && (request.signal?.aborted || !bound(request.taskId))) throw Error('Goal cloud session was revoked');
+      if(READ_NAMES.has(receipt?.proposal?.toolName)
+        && (!isDeepStrictEqual(receipt.continuation,request.continuation)
+          || !currentReadResult(receipt.proposal.toolName,receipt.continuation.result,request.taskId)))
+        throw Error('Goal read result is no longer exportable');
     },
     close(){active=false;revoke();},
   });

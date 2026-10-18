@@ -66,7 +66,10 @@ export function createCommittedMeetingProjectionReader(options: {
     || typeof options.facts?.listImpactReceipts !== 'function' || typeof options.readSourceRevision !== 'function') {
     throw new CognitionError('INVALID_ARGUMENT');
   }
+  options = {...options};
   return async (event, context) => {
+    event = {...event};
+    context = {...context};
     const source = await withCognitionDeadline(context,
       bounded => options.readSourceRevision({...event, ...bounded}, bounded));
     if (!source || source.source !== event.source || source.sourceRevision !== event.sourceRevision
@@ -98,13 +101,15 @@ export function buildMeetingRepairOptions(snapshot: GraphSnapshot, at: string, p
   if (!selected) throw new CognitionError('INVALID_ARGUMENT');
   const scope = selectMeetingRepairScope(snapshot, at, projection, selected);
   if (!scope.items.length) return [];
-  const candidate = buildMinimalRepairCandidate(snapshot, at, {
+  // The optional structural candidate is bounded to 100 targets. Larger
+  // scopes still retain every affected item for recheck and defer choices.
+  const candidate = scope.items.length > 100 ? undefined : buildMinimalRepairCandidate(snapshot, at, {
     expectedGraphRevision: snapshot.revision, targets: scope.items.map(item => item.node),
   });
   return [
     {id: 'recheck', revision: 1, action: 'RECHECK', description: 'Verify the changed meeting Fact and affected dependencies through AgentArts before changing the plan.'},
     {id: 'defer', revision: 1, action: 'RECHECK', description: 'Keep current plan content and arrange a recheck; do not execute stale dependent steps.'},
-    ...(candidate.kind === 'candidate' ? [{id: 'revise', revision: 1, action: 'REVISE',
+    ...(candidate?.kind === 'candidate' ? [{id: 'revise', revision: 1, action: 'REVISE',
       description: 'Ask AgentArts to evaluate the minimal affected repair and revise plan content; this is not execution authorization.',
       repair: candidate.request}] : []),
   ];
@@ -124,6 +129,7 @@ export class ReviewedMeetingFactConsumer {
       || typeof options.receiptStore?.loadReceipt !== 'function' || typeof options.receiptStore.saveReceipt !== 'function') {
       throw new CognitionError('INVALID_ARGUMENT');
     }
+    this.options = {...options};
   }
   private now(): number {return (this.options.now ?? Date.now)();}
   private active(context: MeetingReviewContext): void {
@@ -143,6 +149,12 @@ export class ReviewedMeetingFactConsumer {
     return await this.options.receiptStore.listReceipts?.({...filter, namespace: this.options.namespace}) ?? [];
   }
   private async save(record: MeetingReceiptRecord, receipt: MeetingDecisionReceipt): Promise<MeetingDecisionReceipt> {
+    // These optional fields are cleared by the consumer, while the existing
+    // host-state checkpoint requires their absent representation in JSON.
+    receipt = {...receipt};
+    for (const key of ['retryableInference', 'selection', 'repairTaskId'] as const) {
+      if (receipt[key] === undefined) delete receipt[key];
+    }
     await this.options.receiptStore.saveReceipt({...record, status: receipt.status, receipt,
       updatedAt: new Date(this.now()).toISOString()});
     return receipt;
@@ -220,18 +232,19 @@ export class ReviewedMeetingFactConsumer {
     if (review.action === 'REVISE' && prepareReviewedRepair(current, event.detectedAt, review).kind !== 'prepared') {
       throw new CognitionError('NOT_APPLICABLE');
     }
-    const chosen: MeetingDecisionReceipt = {...receipt, reviewTaskId: review.taskId,
+    const chosen: MeetingDecisionReceipt = await this.save(record, {...receipt, reviewTaskId: review.taskId,
       retryableInference: undefined, selectedCandidateId: review.selectedOption?.id ?? 'recheck',
       selection: review.selection, confidence: review.selection?.answerConfidence ?? null,
       decisionAction: review.action, status: review.action === 'KEEP' ? 'kept' : 'proposal',
-      reason: '既有 Runtime 已记录 Laya 选择；等待 AgentArts 编排和受控工具结果'};
-    await this.save(record, chosen);
+      reason: '既有 Runtime 已记录 Laya 选择；等待 AgentArts 编排和受控工具结果'});
     // Current host authorization controls whether applyDecision can hand off/submit.
     // This call itself grants no authority, and uncertainty stays RECHECK.
     return this.refreshSerial({...record, receipt: chosen, status: chosen.status}, event);
   }
   applyApprovedProposal(query: {eventId: string; source: string; namespace?: string},
     context: MeetingReviewContext): Promise<MeetingDecisionReceipt> {
+    query = {...query};
+    context = {...context};
     return this.serialize(async () => {
       this.active(context);
       if (query.namespace !== undefined && query.namespace !== this.options.namespace) throw new CognitionError('INVALID_ARGUMENT');

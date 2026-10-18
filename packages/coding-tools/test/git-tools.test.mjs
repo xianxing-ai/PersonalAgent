@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync, mkdirSync, writeFileSync, realpathSync} from 'node:fs';
+import {mkdtempSync, rmSync, mkdirSync, writeFileSync, realpathSync, cpSync, renameSync, statSync, symlinkSync, readFileSync, existsSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -160,6 +160,162 @@ test('Git bounded host read retains trusted verification and normal local commit
     assert.equal(f.git(['show','HEAD:src/main.ts']),'export const value = 2;');
     assert.equal(f.git(['status','--porcelain']),'');
   } finally {f.dispose();}
+});
+
+function replaceRepositoryRoot(f, replacement = 'directory') {
+  const root = f.options.rootPath, parent = mkdtempSync(join(tmpdir(), 'git-root-replacement-'));
+  const saved = join(parent, 'preserved'), copy = join(parent, 'copy');
+  const original = statSync(root, {bigint: true});
+  cpSync(root, copy, {recursive: true});
+  renameSync(root, saved);
+  if (replacement === 'directory') {
+    // A freshly copied Windows fixture may briefly retain an open file handle.
+    for (let attempt = 0; ; attempt++) {
+      try { renameSync(copy, root); break; }
+      catch (error) {
+        if (process.platform !== 'win32' || error.code !== 'EPERM' || attempt >= 19) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      }
+    }
+  } else symlinkSync(copy, root, process.platform === 'win32' ? 'junction' : 'dir');
+  const current = statSync(root, {bigint: true});
+  assert.notEqual(`${current.dev}:${current.ino}`, `${original.dev}:${original.ino}`);
+  const git = args => execFileSync('git', args, {cwd: saved, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim();
+  return {saved, git, dispose: () => rmSync(parent, {recursive: true, force: true})};
+}
+
+for (const replacement of ['directory', 'symlink']) {
+  for (const operation of ['head', 'commit', 'push']) {
+    test(`Git ${operation} rejects a replaced ${replacement} root before any process or host port`, async t => {
+      const f = repositoryFixture(); let swapped;
+      let processes = 0, receipts = 0, credentials = 0;
+      const originalSpawn = childProcess.spawn;
+      t.mock.method(childProcess, 'spawn', (...args) => {processes++; return originalSpawn(...args);});
+      syncBuiltinESMExports();
+      try {
+        const tools = createGitTools({...f.options, readVerification: async () => {receipts++; return undefined;},
+          getCredentials: async () => {credentials++; return {token: 'explicit-synthetic-token'};}});
+        const originalIndex = readFileSync(join(f.options.rootPath, '.git/index'));
+        swapped = replaceRepositoryRoot(f, replacement);
+        const scope = operation === 'head' ? 'workspace:git:read' : `workspace:git:${operation}`;
+        const context = {taskId: 'synthetic-root', runId: operation, authorizationRef: 'synthetic-auth', scopes: [scope],
+          signal: new AbortController().signal, deadline: new Date(Date.now() + 60_000).toISOString()};
+        const input = operation === 'head' ? {repository: f.options.repository} : operation === 'commit'
+          ? {repository: f.options.repository, expectedHeadSha: f.headSha, paths: ['src/main.ts'], message: 'synthetic change', verificationRunId: 'verify'}
+          : {repository: f.options.repository, expectedHeadSha: f.headSha};
+        await assert.rejects(tools[operation].execute(input, context), error => error.code === 'SCOPE_DENIED');
+        assert.equal(processes, 0); assert.equal(receipts, 0); assert.equal(credentials, 0);
+        assert.equal(swapped.git(['rev-parse', 'HEAD']), f.headSha);
+        assert.equal(f.git(['rev-parse', 'HEAD']), f.headSha);
+        assert.deepEqual(readFileSync(join(f.options.rootPath, '.git/index')), originalIndex);
+        assert.deepEqual(readFileSync(join(swapped.saved, '.git/index')), originalIndex);
+      } finally {t.mock.restoreAll(); syncBuiltinESMExports(); f.dispose(); swapped?.dispose();}
+    });
+  }
+}
+
+for (const phase of ['verification', 'credentials']) {
+  test(`Git rejects root replacement while awaiting ${phase} before any write`, async t => {
+    const f = repositoryFixture(); let swapped;
+    let processes = [], hostCalls = 0;
+    const originalSpawn = childProcess.spawn;
+    t.mock.method(childProcess, 'spawn', (executable, args, options) => {
+      processes.push([...args]);
+      // The regression must never contact a remote even on the unsafe old implementation.
+      if (args.includes('ls-remote') || args.includes('push')) {
+        const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+        child.kill = () => true;
+        child.stdin = {end() {queueMicrotask(() => {child.stdout.end(); child.stderr.end(); child.emit('close', 0);});}};
+        return child;
+      }
+      return originalSpawn(executable, args, options);
+    });
+    syncBuiltinESMExports();
+    try {
+      writeFileSync(join(f.options.rootPath, 'src/main.ts'), 'export const value = 2;\n');
+      const {files} = await readGitWorkspaceFingerprint(f.options.rootPath, f.options.allowedPaths);
+      const originalIndex = readFileSync(join(f.options.rootPath, '.git/index'));
+      const replace = async (context, runId) => {
+        hostCalls++; swapped = replaceRepositoryRoot(f);
+        return phase === 'credentials' ? {token: 'explicit-synthetic-token'} : {taskId: context.taskId, runId,
+          toolName: 'workspace.run_allowed_command', status: 'confirmed', exitCode: 0, headSha: f.headSha, files};
+      };
+      const tools = createGitTools({...f.options, ...(phase === 'verification' ? {readVerification: replace} : {getCredentials: replace})});
+      const context = {taskId: 'synthetic-host-root', runId: phase, authorizationRef: 'synthetic-auth',
+        scopes: [phase === 'verification' ? 'workspace:git:commit' : 'workspace:git:push'],
+        signal: new AbortController().signal, deadline: new Date(Date.now() + 60_000).toISOString()};
+      const input = phase === 'verification' ? {repository: f.options.repository, expectedHeadSha: f.headSha,
+        paths: ['src/main.ts'], message: 'synthetic replacement commit', verificationRunId: 'verify'}
+        : {repository: f.options.repository, expectedHeadSha: f.headSha};
+      await assert.rejects((phase === 'verification' ? tools.commit : tools.push).execute(input, context), error => error.code === 'SCOPE_DENIED');
+      assert.equal(hostCalls, 1);
+      assert.equal(processes.some(args => args.includes('read-tree') || args.includes('hash-object') || args.includes('commit-tree')
+        || args.includes('update-ref') || args.includes('ls-remote') || args.includes('push')), false);
+      assert.equal(swapped.git(['rev-parse', 'HEAD']), f.headSha); assert.equal(f.git(['rev-parse', 'HEAD']), f.headSha);
+      assert.deepEqual(readFileSync(join(f.options.rootPath, '.git/index')), originalIndex);
+      assert.deepEqual(readFileSync(join(swapped.saved, '.git/index')), originalIndex);
+    } finally {t.mock.restoreAll(); syncBuiltinESMExports(); f.dispose(); swapped?.dispose();}
+  });
+}
+
+test('Git retains unknown ref outcome and does not remove a replacement index lock', async t => {
+  const f = repositoryFixture(); let swapped;
+  const originalSpawn = childProcess.spawn, unrelatedLock = Buffer.from('synthetic unrelated index lock');
+  t.mock.method(childProcess, 'spawn', (executable, args, options) => {
+    const child = originalSpawn(executable, args, options);
+    if (args.includes('update-ref')) child.once('close', () => {
+      swapped = replaceRepositoryRoot(f);
+      writeFileSync(join(f.options.rootPath, '.git/index.lock'), unrelatedLock);
+    });
+    return child;
+  });
+  syncBuiltinESMExports();
+  try {
+    writeFileSync(join(f.options.rootPath, 'src/main.ts'), 'export const value = 2;\n');
+    const {files} = await readGitWorkspaceFingerprint(f.options.rootPath, f.options.allowedPaths);
+    const originalIndex = readFileSync(join(f.options.rootPath, '.git/index'));
+    const tools = createGitTools({...f.options, readVerification: async (context, runId) => ({taskId: context.taskId,
+      runId, toolName: 'workspace.run_allowed_command', status: 'confirmed', exitCode: 0, headSha: f.headSha, files})});
+    const context = {taskId: 'synthetic-late-root', runId: 'commit', authorizationRef: 'synthetic-auth',
+      scopes: ['workspace:git:commit'], signal: new AbortController().signal, deadline: new Date(Date.now() + 60_000).toISOString()};
+    await assert.rejects(tools.commit.execute({repository: f.options.repository, expectedHeadSha: f.headSha, paths: ['src/main.ts'],
+      message: 'synthetic original commit', verificationRunId: 'verify'}, context), error => error.code === 'RESULT_UNKNOWN');
+    assert.ok(swapped); assert.notEqual(swapped.git(['rev-parse', 'HEAD']), f.headSha);
+    assert.equal(existsSync(join(swapped.saved, '.git/index.lock')), true);
+    assert.deepEqual(readFileSync(join(swapped.saved, '.git/index')), originalIndex);
+    assert.deepEqual(readFileSync(join(f.options.rootPath, '.git/index')), originalIndex);
+    assert.deepEqual(readFileSync(join(f.options.rootPath, '.git/index.lock')), unrelatedLock);
+  } finally {t.mock.restoreAll(); syncBuiltinESMExports(); f.dispose(); swapped?.dispose();}
+});
+
+test('Git keeps a canonical registration alias and ordinary directory edits valid', async () => {
+  const f = repositoryFixture(), parent = mkdtempSync(join(tmpdir(), 'git-root-alias-'));
+  try {
+    const alias = join(parent, 'alias');
+    symlinkSync(f.options.rootPath, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const tools = createGitTools({...f.options, rootPath: alias});
+    mkdirSync(join(f.options.rootPath, 'ordinary-edit'));
+    rmSync(join(f.options.rootPath, 'ordinary-edit'), {recursive: true});
+    const context = {taskId: 'synthetic-alias', runId: 'read', authorizationRef: 'synthetic-auth', scopes: ['workspace:git:read'],
+      signal: new AbortController().signal, deadline: new Date(Date.now() + 60_000).toISOString()};
+    const result = await tools.head.execute({repository: f.options.repository}, context);
+    assert.equal(result.headSha, f.headSha); assert.equal(result.workspaceClean, true);
+  } finally {f.dispose(); rmSync(parent, {recursive: true, force: true});}
+});
+
+test('Git rejects a missing registered root without leaking filesystem details', async () => {
+  const f = repositoryFixture(), parent = mkdtempSync(join(tmpdir(), 'git-root-missing-'));
+  try {
+    const tools = createGitTools(f.options);
+    renameSync(f.options.rootPath, join(parent, 'preserved'));
+    const context = {taskId: 'synthetic-missing', runId: 'read', authorizationRef: 'synthetic-auth', scopes: ['workspace:git:read'],
+      signal: new AbortController().signal, deadline: new Date(Date.now() + 60_000).toISOString()};
+    await assert.rejects(tools.head.execute({repository: f.options.repository}, context), error =>
+      error.code === 'SCOPE_DENIED' && !error.message.includes(f.options.rootPath) && !error.message.includes('ENOENT'));
+    const controller = new AbortController(); controller.abort();
+    await assert.rejects(tools.head.execute({repository: f.options.repository}, {...context, signal: controller.signal}), error => error.code === 'CANCELLED');
+    await assert.rejects(tools.head.execute({repository: f.options.repository}, {...context, deadline: new Date(0).toISOString()}), error => error.code === 'TIMEOUT');
+  } finally {f.dispose(); rmSync(parent, {recursive: true, force: true});}
 });
 
 test('Git preserves literal spaces in a canonical working-tree root', async () => {

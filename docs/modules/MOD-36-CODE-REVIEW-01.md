@@ -1,8 +1,19 @@
 # MOD-36 Code Review 预审
 
-- 负责人：zemeng；非作者验收：Potatos498；状态：review（已有外部定向验证与只读验收报告，完整写入闭环及协议兼容评审仍待完成）。
+<!-- current-design-20261009 -->
+> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+
+> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+
+- 当前负责人：goo122（2026-10-07 接续）；自行实现、接线、验证与自审，原 zemeng 作者及 Potatos 历史验收保留；状态：review（已有外部定向验证与只读验收报告，完整写入闭环及协议兼容评审仍待完成）。
 - Profile：2026-10-03 产品负责人授权的 Local DEV-WORKFLOWS 增量，不替代 Huawei ICT AgentArts Competition Profile 或计入比赛验收；实现为公开 ModelPort / Runtime-backed AgentToolPort 的消费流程，不新增模型、GitHub授权或工具注册体系。
 - 工厂：`createCodeReviewWorkflow({model,tools,maxDiffChars?,maxPages?,maxFindings?,maxTokens?})`；公开类型位于 `packages/cognition/src/dev-workflows/code-review-types.ts`，根组合负责公共导出、依赖与 Runtime 装配。
+
+工厂捕获本实例的 ModelPort 与 Runtime-backed AgentToolPort 引用；调用方为后续实例
+替换复用 options 的端口，不能使原 prepare/publish 中途切到另一提供者。新 factory
+可使用新端口，原端口的 `list`、`invoke`、`complete` 方法仍实时调用，不缓存工具
+可用性或权限。context/access 的授权、用户在场、取消、期限与确认回执钩子保持原
+检查语义；捕获端口不代表真实能力冻结或授权。
 
 `prepare({repo,number,rules}, AgentWorkerContext, {runId,authorizationRef})` 经 `github.pr.get` 读取精确 base/head，经带 expectedHeadSha / expectedBaseSha 的 `github.pr.diff` 完整分页，再读 PR 确认未漂移。相同 head/base 可复用 Runtime checkpoint 中的完整 diff，提交变化则重新分页；缓存不免除发表前复核。可信规则必须由宿主提供；PR 标题、正文、diff 与从完整 diff 生成的 changed-lines 提示仅置于模型 user 数据消息，不成为规则或权限。提示最多列出前 400 个变更文件；实际校验仍覆盖完整 diff，不把提示截断当作完整评审证明。
 
@@ -16,9 +27,16 @@
 
 Git C-style带引号/转义路径已在后续增量提供有界解码与逐字节UTF8校验，中文路径可锚定
 真实变更行；拒绝非法编码、畸形转义、NUL或路径越界，不猜另一个文件。
-Git对含空格的未加引号路径头附加一个末尾tab分隔符；解析仅移除这个分隔符，
+Git对含空格路径头附加一个末尾tab分隔符；中文与空格同在时也会在合法quoted头后附加。
+解析仅移除单个这个分隔符，再执行原quoted/unquoted严格校验，
 保留文件名的首尾/中间空格。内嵌tab、多余tab、时间戳与畸形quoted头仍拒绝，
-rename/deletion的左右变更行按原路径精确锚定；不采用trim或以空格拆路径。
+不采用trim或以空格拆路径。重命名文件的两侧变更行都使用当前PR文件名作为评论path，
+LEFT保留旧行号、RIGHT使用新行号；只有纯删除文件才回退旧路径。前一版本错误地将
+rename的LEFT锚放在旧文件名、并拒绝quoted末尾合法tab；2026-10-06真实Git回归分别
+复现后修正，没有把丢弃合法finding或改变旧错误断言当作成功证据。
+GitHub第一方VSCode扩展的[固定源码](https://github.com/microsoft/vscode-pull-request-github/blob/e62a2ad08cc07791d0d13f471532b5032486b6f1/src/view/fileChangeModel.ts#L227)
+分别保存旧文件读取路径和当前PR文件身份，并[按当前path与LEFT/base映射评论](https://github.com/microsoft/vscode-pull-request-github/blob/e62a2ad08cc07791d0d13f471532b5032486b6f1/src/view/pullRequestCommentController.ts#L145)。
+这是第一方实现与真实本地Git格式依据；本轮没有实际账号COMMENT写入或声称平台422实测。
 只读可定位的合法Git文件名不一定能发表：超过GitHub现有限长、包含控制字符/反斜线/
 `..`/`@{`等禁止路径时publish返回unsupported且保留finding，不预留新的unknown评论写入。
 先前已有confirmed/unknown发表checkpoint及原执行绑定仍优先，不改变原未知结果或盲重试。
@@ -27,6 +45,21 @@ prepared report、当前index/总数/已confirmed索引及累计Evidence，发�
 审批/SQLite重启消费原确认缓存，不重模型或已发表评论；未知评论仍由原执行核实。
 
 ## 集中验收
+
+2026-10-07 goo122 的真实 GitHub/Fake 模型/Runtime SQLite 读回发现：等待 head-after
+审批后复用完整 diff 缓存，会丢失其分页 Evidence 引用。缓存现在保存并恢复各页引用；
+旧缓存缺少或包含非法引用时经原公开读取端口刷新，不清库、不改既有报告或写入记录。
+新回归覆盖两页 diff、审批中断、JSON checkpoint 恢复和旧缓存兼容；真实读取加拒绝
+评论的证据与限制见 [恢复验收记录](MOD-36-EVIDENCE-CACHE-20261007.md)。
+
+2026-10-06 #212 `6019894581` 增量保留公开 before：首 head 读取等待期间普通 caller
+替换复用 model/tools，原 workflow 会调用新模型/工具；prepare 后换 tools 还可绕过
+原端口已移除的评论能力。全部明确合成端口，不是实际账号写入或 Gateway 许可证明。
+新增正式回归原码2失败/1通过，修后 Node24.15 cognition build/typecheck 通过、完整
+216/216、零跳过。独立同公开 probe 原2/2失败→修后2/2通过：原实例端口保持、
+新实例可换端口、原工具撤销评论能力仍 unsupported/零 Fake 写入。原失败与最终日志
+均归档，源 hash `1a8e2caf0780901106b3095b1fde6a768afc67333f45b6428e0131bbba857017`。
+沿 #297 交付，精确新提交 Windows 门禁另读回；不改公共 DTO/wire 或上述审批恢复。
 
 初稿按当时用户限制仅静态交付；后续用户已授权持续实现与必要构建/受控测试。
 `packages/cognition/test/code-review.test.mjs`实际覆盖可信规则隔离、head/base绑定、完整分页、严格JSON、变更行校验、报告篡改、过时head、仅COMMENT、缺工具/授权、unknown不重复写、diff不完整拒绝，以及围栏兼容/外部文字拒绝、非法条目与重复过滤、空报告不可发表。
