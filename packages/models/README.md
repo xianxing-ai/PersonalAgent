@@ -1,11 +1,20 @@
 # Models
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+<!-- architecture-scope-20261013 -->
+## 当前架构职责
 
-> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+目标profile：huawei_ict_agentarts。工程责任：MOD-04A（goo122）。产品流程：F23、F27、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
 
-MOD-04A（负责人 `goo122`）的模型 Provider 和模型网关实现。`ModelGateway` 只接受显式配置的 Provider，并在请求前校验文本、工具调用和结构化输出能力；Provider 返回的 deployment、verification 和 usage 会随结果保留。当前公开形状为 `provisional`：后续需提供最小 `ModelPort`，让 MOD-04B 不依赖具体网关实现。精确状态见[当前接口目录](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)。
+复用ModelPort/ModelGateway，映射真实供应商能力与原生思考参数，并向F27反馈上下文配置版本。
+
+当前实验由本机Laya提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收，架构未最终定型。
+
+本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+
+## 现有API、运行说明与历史验证参考
+<!-- /architecture-scope-20261013 -->
+
+MOD-04A（负责人 `goo122`）的模型 Provider 和模型网关实现。`ModelGateway` 只接受显式配置的 Provider，并在请求前校验文本、工具调用和结构化输出能力；Provider 返回的 deployment、verification 和 usage 会随结果保留。当前公开形状为 `provisional`：公开源码已有 `ModelPort = ModelProvider`；调用方具体依赖迁移仍需逐项核对。精确状态见[当前接口目录](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)。
 
 通用文本 Provider 与 Agent 仍作为可选 Local Profile 和既有离线测试基线留存，当前不新增、不扩展，也不进入 [Huawei ICT AgentArts Competition Profile](../../docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 的比赛退出条件。既有原生 Live 语音入口经 Runtime 工厂接入 Competition，工具工作仍转交 AgentArts 与原 Runtime；真实语音、模型网络和比赛云端证据分别记录。比赛模型由 AgentArts 支持的 MaaS/模型配置承担。
 
@@ -19,7 +28,7 @@ MOD-04A（负责人 `goo122`）的模型 Provider 和模型网关实现。`Model
 
 `StructuredToolProvider` 是显式的文字 JSON 提案适配器。它将工具目录写入宿主协议提示，严格校验 JSON、提案字段和参数，再交回 Agent；不声明盘古原生 function calling 已验证。Runtime Application 注入工具时为盘古启用该适配。`ModelGateway` 统一强制截止时间与取消，并对非协议异常脱敏；无响应的 Provider 也不能无限阻塞调用。真实盘古→提案→审批→工具→读回→回答尚无完成证据，因此不能把该适配器或 Model/Agent/Tool 链标为冻结。
 
-离线验收和真实验收入口见 [MOD-04/05 验收记录](../../docs/modules/MOD-04-05-ACCEPTANCE.md)。流式输出和 PA-012 专业 Agent 委派仍未完成。
+离线验收和真实验收入口见 [MOD-04/05 验收记录](../../docs/modules/MOD-04-05-ACCEPTANCE.md)。当前流式/Live与PA-012宿主工厂按实际部署和消费状态核对，不由历史离线验收推定全链完成。
 
 Provider 支持盘古原生 `/api/v2/chat/completions` 和 ModelArts MaaS 的 OpenAI 兼容 Endpoint（例如 `https://api.modelarts-maas.com/openai/v1`，适配器会追加 `/chat/completions`）非流式接口。单元测试只注入 Mock fetch，不发起网络请求；真实账号、Endpoint 和模型部署仍需单独授权验证，不能把本地 Mock 结果当作真实连通证据。
 
