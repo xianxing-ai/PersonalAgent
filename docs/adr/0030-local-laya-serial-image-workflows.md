@@ -1,18 +1,17 @@
 # ADR-0030：本机 Laya、镜像串行工作流与外部宿主接口
 
 <!-- current-design-alignment-20261015 -->
-> 当前适用性：本机Laya部署与本轮实验实现继续；**架构仍未最终定型，接口仍provisional**。
+> 当前适用性：本文记录本机 Laya 的历史实验与候选接线。Owner 已确认本机 Laya 仅是独立 Local Profile 的实验候选；当前 Competition 路径由 AgentArts 承担 Agent/Workflow 构建、编排、评估和部署，不调用本机 Laya。接口仍 provisional。
 > 当前详细行为、历史替代与实际验收见[当前设计](../design/CURRENT_DESIGN_20261015.md)、
 > [28项状态](../design/WORKFLOW_STATUS_20261015.md)与[全部历史导航](../design/README.md)。
 > 不将SWR发布、目录或两条公开fixture通过泛化为28业务、全局决策资格或最终架构批准。
 
-> 状态：实验候选，未定稿。Owner 后续要求先完成测试再决定架构；以下保留测试实现和此前方向的背景，
-> 不把代码存在、镜像构建或本机目录通过当作架构已获最终确认。
+> 状态：历史实验记录；本机 Laya 仅可能用于独立 Local Profile，资格、接线和适用场景仍待验证。以下保留测试实现和此前方向的背景，不把代码存在、镜像构建或本机目录通过当作当前 Competition 架构或 Local Profile 验收。
 
 - 2026-10-15；Owner 明确决定，接口实现仍为 provisional，待独立审查及集成。
 - 本决定取代本开发分支的“镜像内嵌 Laya”默认部署。保留旧 Evidence 的原版本和验收范围。
 
-## 运行边界
+## 历史试验运行边界
 
 28 项工作流的节点、依赖、候选制备、条件和推进逻辑在 AgentArts 自有 Node 镜像。
 同时保留原图决策要点、模型分工、汇合标记、恢复和验收要求；catalog 公布设计摘要用于逐图核验。

@@ -76,8 +76,8 @@ export const OVERVIEW_LINKS: [string, string, string, RelationKind][] = [
   ['EVIDENCE', 'F03', '具体原操作、读回与修正因果链', 'evidence'],
   ['F03', 'POLICY', '实际补偿授权；已覆盖则直接执行', 'flow'],
   ['F24', 'F12', '停止中/待核实徽章与必要通知', 'flow'],
-  ['F26', 'AA_GATEWAY', '自有镜像接入平台Target', 'platform'],
-  ['DECISION', 'AA_GATEWAY', 'Laya选定执行候选；通用模型经国内MaaS网关', 'platform'],
+  ['F26', 'AA_GATEWAY', 'AgentArts构建、编排、评估与部署Workflow', 'platform'],
+  ['DECISION', 'AA_GATEWAY', 'AgentArts Agent/Workflow负责Competition编排', 'platform'],
   ['MODELS', 'AA_GATEWAY', 'ModelGateway → Inference Target', 'platform'],
   ['TOOL', 'AA_GATEWAY', '既有授权后，MCP客户端直连平台网关', 'platform'],
   ['AA_GATEWAY', 'AA_KNOWLEDGE', '知识检索Target：鉴权/区域待验证', 'platform'],
@@ -110,15 +110,15 @@ export const INTERFACE_NOTES: Record<string, string> = {
   F22: '按需消费已有轨迹与测试夹具；影子逻辑留在镜像。适合的真实结果送平台评测集评估，独立宿主/上报/报告仍待验收。',
   F23: '复用已有本地评分和配对用例，补平台真实结果导出与任务适配；历史平台评测集已发布不等于评分完成。MaaS配置不直接修改远端权重。',
   F24: '复用现有 TaskRuntime、状态、事件、取消和检查点；四种操作结果、效果关联与读回UI待接线，不新增公共task终态。',
-  F26: '全部业务编排进入自有镜像。Runtime入站/WSS已有限定场景记录；新增推理/MCP网关、原生知识、日志/Trace与评估适配须分别验收。查看AgentArts接入面板了解已有代码和增量。',
+  F26: 'Competition由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权、Evidence与读回。已有自有镜像/Laya记录属于历史实测，不能证明平台编排已验收。',
   F27: '复用已有记忆、知识和模型端口；上下文分块、摘要引用映射与恢复为拟议编排。',
-  F28: 'subagentModels工厂和subagent-host受限循环存在；复用ModelGateway，把执行模型连接配置接到平台Inference Target。Competition分派、原生参数与网关消费仍需实测。',
+  F28: 'Competition Agent/Workflow由AgentArts编排；subagentModels和本机受限循环不替代平台职责。CloudAgentPort接线、原生参数与完整主控流程仍需实测。',
 };
 
 export const SHARED_NODES = [
   {id:'USER',label:'可信用户指令',subtitle:'原句 · 条件 · 版本 · 授权',kind:'flow'},
   {id:'EVENT',label:'外部事件与变化',subtitle:'邮件 · 日程 · 订阅 · CI',kind:'flow'},
-  {id:'DECISION',label:'本机Laya / AA教师接管',subtitle:'合格站点选择 · 未合格DeepSeek',kind:'decision'},
+  {id:'DECISION',label:'AgentArts Agent/Workflow',subtitle:'Competition主流程由平台构建与编排',kind:'decision'},
   {id:'MODELS',label:'ModelGateway → AA DeepSeek',subtitle:'实际参数 · 范围内工具探索',kind:'flow'},
   {id:'POLICY',label:'现有授权与参数检查',subtitle:'沿用 Runtime / Policy；不新增限制',kind:'flow'},
   {id:'TOOL',label:'ToolGateway',subtitle:'执行 · 稳定操作ID · 取消',kind:'flow'},
@@ -130,6 +130,6 @@ export const SHARED_NODES = [
 // All feature status badges and detail adapters use the same committed matrix.
 for(const feature of currentDesign.workflows)INTERFACE_NOTES[feature.id]=feature.status;
 for(const link of OVERVIEW_LINKS){
- link[2]=link[2].replaceAll('独立分支并行','独立依赖分支；当前Engine串行').replaceAll('按真实依赖并行','按真实依赖；当前Engine串行').replaceAll('通用模型经国内MaaS网关','未合格点DeepSeek经AgentArts代理').replaceAll('平台Target','平台端口（缺配置unavailable）');
+ link[2]=link[2].replaceAll('独立分支并行','独立依赖分支；当前Engine串行').replaceAll('按真实依赖并行','按真实依赖；当前Engine串行').replaceAll('平台Target','平台端口（缺配置unavailable）');
 }
 OVERVIEW_LINKS.push(['USER','EVENT','user_instruction / 原话来源','flow'],['F24','EVENT','subtask_feedback / 原Scheduler wake','flow'],['EVENT','F12','durable批次 / 静默feed / 有效摘要','flow']);
