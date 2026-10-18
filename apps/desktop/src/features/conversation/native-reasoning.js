@@ -2,10 +2,13 @@
 export function nativeReasoningState(snapshot){
   const catalog=snapshot?.agentArtsModels?.catalog,preference=snapshot?.conversationPreference;
   const defaults=snapshot?.agentArtsModels?.preferences;
-  const currentDefaults=Boolean(catalog?.revision&&defaults&&defaults.catalogRevision===catalog.revision);
-  const modelId=preference?.executionModel?.modelId??preference?.modelId??(currentDefaults?defaults.defaultModelId:catalog?.defaultModelId);
+  // Root fix: "both null" made `defaults?.catalogRevision===catalog?.revision` vacuously true
+  // and dereferenced null defaults (panel 状态读取失败: Cannot read properties of null).
+  // Require a present catalog and an object default with matching revision before fallback.
+  const sameRevision=Boolean(catalog)&&defaults!=null&&defaults.catalogRevision===catalog.revision;
+  const modelId=preference?.executionModel?.modelId??preference?.modelId??(sameRevision?defaults.defaultModelId:catalog?.defaultModelId);
   const model=catalog?.models.find(m=>m.id===modelId&&m.type==='text'&&m.availability!=='unavailable');
-  const effort=preference?.executionModel?.reasoningEffort??(!preference?.modelId&&currentDefaults?defaults.reasoningEffort:undefined);
+  const effort=preference?.executionModel?.reasoningEffort??(!preference?.modelId&&sameRevision?defaults.reasoningEffort:undefined);
   return {catalogRevision:catalog?.revision,modelId,efforts:model?.reasoningEfforts??[],reasoningEffort:effort,available:Boolean(model)};
 }
 export function mountNativeReasoning(root,invoke,report){
