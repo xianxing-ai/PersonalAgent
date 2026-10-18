@@ -1,7 +1,5 @@
 # AgentArts 安全配置入口
 
-<!-- current-design-20261013 -->
-> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../../docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../../docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../../docs/design/workflow-architecture-20261013/index.html) · [接口状态](../../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。本机Laya按已确认路线在本机参与Competition有限候选判断，领域资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，其余架构与具体接线未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。四位协作者共担审查与合并，常规PR须有一位非作者对当前提交的有效Approve，具体PR的Owner审核例外须有记录；最新必需技术CI、主线更新、冲突及阻断问题门槛仍须满足。设计不等于实现。
 
 ## 2026-10-13 WSS 与独立镜像凭据配置
 
@@ -33,6 +31,9 @@
 这些是原始提交的历史证据；当前头新增保存传输接线、绑定保护与样式回归断言后，尚未独立重新执行定向测试，
 须以当前头 CI 为准。没有读取真实凭据或连接 Huawei。本次入口补齐不代表桌面到真实云端、
 完整自主修复或各业务工具已经验收；既有真实镜像文件读取证据仍按原记录单独计算。
+
+<!-- current-design-20261009 -->
+> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../../CONTRIBUTING.md) 和 [AGENTS](../../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧审批人数与本机阅读门槛不作为现行要求。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

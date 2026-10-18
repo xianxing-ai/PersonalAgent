@@ -16,6 +16,8 @@
 
 2026-10-13：[当前就绪与现场条件](ACCEPTANCE-20261013.md) 记录新的 HostFixture/Bridge 构建、真实 hello 握手和正式 F9 入口；完整 UIA 仍待用户现场验收。当前合并规则以根 AGENTS/CONTRIBUTING 的一位非作者有效批准为准，覆盖下方历史双人门槛。
 
+<!-- current-design-20261009 -->
+> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 
 
 此目录包含受限 Windows 类库和 `host/` 中的独立进程入口。Host 消费 [#168](https://github.com/zemeng5208/PersonalAgent/pull/168) 的 provisional `0.1.0` 内部 Schema。当前 main 已有公开 Runtime adapter、持久 attempt store 和 Desktop 的新记事本/F9 确认入口；Desktop 仅在 Windows 且固定 Host/Bridge Release 产物存在时注册本机工具，真实握手与 UIA 仍须另行验收。目标 Profile 为 `huawei_ict_agentarts`；本地执行不能由 AgentArts 的成功响应、Renderer 文本或单独的 `authorizationRef` 触发。正式入口与证据缺项见 [Desktop 记事本操作](../desktop/docs/notepad-operation.md)。
