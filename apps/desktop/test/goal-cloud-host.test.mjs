@@ -240,7 +240,19 @@ for(const toolName of ['goals.get','goals.list'])for(const change of ['none','re
   store.append(2,{...exportGoal,summary:'SYNTHETIC_RESTORED_PUBLIC_SUMMARY'});
   const next=await client.call('task.submit',{conversationId:'desktop-panel',goal:'Read the newly permitted current Goal'},{idempotencyKey:'synthetic-restored-read'});
   for(let i=0;i<400;i++){const current=app.runtime.getTask(next.taskId);if(current.state==='waiting_approval'){const approval=(await client.call('approval.list',{taskId:current.taskId})).items[0];await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});}if(['succeeded','failed','waiting_reconciliation'].includes(current.state))break;await new Promise(r=>setTimeout(r,5));}
-  assert.equal(app.runtime.getTask(next.taskId).state,'succeeded');assert.equal(queries.length,3);
+  const restored=app.runtime.getTask(next.taskId);
+  const safeCodes=new Set(['TIMEOUT','CANCELLED','RESULT_UNKNOWN','UNAUTHORIZED','REVISION_CONFLICT','EXTERNAL_FAILURE','INVALID_ARGUMENT','UNSUPPORTED_CAPABILITY','SCOPE_DENIED','NOT_FOUND','NOT_CONFIRMED']);
+  const safeCode=value=>value===undefined?null:safeCodes.has(value)?value:'OTHER';
+  const savedDeadline=app.runtime.loadCheckpoint(next.taskId,'application-deadline');
+  const deadline=typeof savedDeadline==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(savedDeadline)
+    &&Number.isFinite(Date.parse(savedDeadline))?savedDeadline:null;
+  const now=new Date().toISOString();
+  // Diagnose the restored task separately; this does not identify the earlier intermittent cause.
+  const restoredDiagnostic={phase:'restored_goal',toolName,change,state:restored.state,errorCode:safeCode(restored.error?.code),
+    deadline,now,deadlineExpired:deadline===null?null:Date.parse(now)>=Date.parse(deadline),credentials,fetches:queries.length,
+    tools:app.runtime.readToolExecutions(next.taskId).map(record=>({state:record.state,errorCode:safeCode(record.errorCode)})),externalCloud:false};
+  t.diagnostic(JSON.stringify(restoredDiagnostic));
+  assert.equal(restored.state,'succeeded',JSON.stringify(restoredDiagnostic));assert.equal(queries.length,3);
   assert.equal(app.runtime.getTask(task.taskId).state,'waiting_reconciliation');
   assert.deepEqual(app.runtime.loadCheckpoint(task.taskId,'competition-loop').receipts[0],originalReceipt);
   assert.equal(app.runtime.readToolExecutions(task.taskId).length,1);
