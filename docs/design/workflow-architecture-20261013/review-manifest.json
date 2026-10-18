@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "normalization": "UTF-8, CRLF/CR converted to LF",
+  "files": [
+    {
+      "path": "docs/design/workflow-architecture-20261013/index.html",
+      "sha256": "420789c782506b3650b25830c5febb8b6201c6c9f17bdd2f877d0fc92a6329a9"
+    },
+    {
+      "path": "docs/design/workflow-architecture-20261013/DESIGN.md",
+      "sha256": "bfd0d67c6981f688e035f6e7b70fb7b28e64dfb375a045fc0aa40d1da2557388"
+    },
+    {
+      "path": "docs/design/workflow-architecture-20261013/WORKFLOWS.md",
+      "sha256": "26e75fd0dd3f69ad595f6216fafc92e799e7a95fd6118743a8eac3e204671679"
+    },
+    {
+      "path": "docs/design/workflow-architecture-20261013/IMPLEMENTATION.md",
+      "sha256": "c5d483c21bba8223b2362e1b31d4d9b75d8d8afb2a82a66d897748ff87255de3"
+    },
+    {
+      "path": "docs/design/workflow-architecture-20261013/MODULES.md",
+      "sha256": "a4be204de1e194bdacbbab516415b725acee6294d80486b8ad5ec1af3046ff6f"
+    },
+    {
+      "path": "docs/design/workflow-architecture-20261013/modules.json",
+      "sha256": "e1d6ddf96aeefb24a1c84692598b73cbde1393cb6866e48f3d479de0f3eb3836"
+    },
+    {
+      "path": "docs/design/workflow-architecture-20261013/DOCUMENTATION_INVENTORY.md",
+      "sha256": "ab68b4d9c0c65b25aae4425e783ddf781fa6fabfe148d7749e4085685e46841a"
+    }
+  ],
+  "digest": "422c6dec607317a49aabedbd67452cc68116ca48e78662386c06a7fc31c194b9"
+}

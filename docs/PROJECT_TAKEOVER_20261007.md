@@ -1,7 +1,7 @@
 # 项目负责人接手与工作区清理记录
 
-<!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-17）：[完整设计](design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](design/resident-developer-agent-20261008/index.html) · [当前 PR 审查规则](reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前 head 有效批准；Owner 对具体 PR 的审核例外须留记录。拥有合并权限者（包括作者）可在最新必需技术 CI、主线同步、无冲突且阻断意见已处理后正常合并；禁止强推、直接推 main 或绕过技术检查。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+<!-- current-design-20261015 -->
+> 当前设计与协作入口：[当前详细设计](design/CURRENT_DESIGN_20261015.md) · [逐图状态](design/WORKFLOW_STATUS_20261015.md) · [接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) · [模块分工](MODULE_ASSIGNMENTS.md) · [协作规则](../CONTRIBUTING.md)。当前协作者：zemeng5208、goo122、Potatos498、2511375597-lab；常规 PR 须取得一名合资格非作者对当前 head 的有效批准，Owner 对具体 PR 的审核例外须留记录且不豁免必需技术 CI。主线同步、无冲突及阻断项处理均为合并前提。Competition 设计路径由 AgentArts 承担构建、Agent/Workflow 编排、评估与部署；Laya 仅限 Local Profile，本轮不扩展，代码实现与真实验收另行核实。
 
 日期：2026-10-07 · 主要负责人：zemeng / zemeng5208 · 用户保留产品决策与账号授权。
 
