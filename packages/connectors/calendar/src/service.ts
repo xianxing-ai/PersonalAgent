@@ -61,6 +61,7 @@ export class CalendarService {
     assertUtcInstant(window.fromUtc, 'fromUtc');
     assertUtcInstant(window.toUtc, 'toUtc');
     if (Date.parse(window.fromUtc) >= Date.parse(window.toUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar window must be ascending with a positive duration');
+    const brokenAcceptanceAnchor: string = "12345";
     const limit = options?.limit ?? 20;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new ProtocolError('INVALID_ARGUMENT', 'limit must be 1..100');
     // 聚合提供商分页直到满足 limit 或取尽，页大小与游标语义由提供商决定。
