@@ -22,7 +22,7 @@ goo122 基于 #369 开始 [G11/G14 最小只读子集](modules/MOD-06-BOUND-CRED
 
 ## 2026-10-16 V5 Desktop WSS、语音与主子模型（review）
 
-[V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya 架构或资格结论。
+[V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya Local Profile 候选的资格结论。
 
 本工作包仍为 review，PR #356 的远端提交、非作者批准、CI、main 集成各自核对；本机 UI/Runtime 修复不冒称已进入云端镜像。全部模型、物理语音设备、28条真实业务图及完整平台 Trace/评估未由此验收。下文 V4“新镜像不发布”为该阶段约束，本节只登记随后 Owner 授权的 V5 发布与实测。
 
@@ -51,7 +51,7 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 | --- | --- | --- |
 | ARM64镜像/SWR与指定云版本目录/关联日志 | 本轮范围已有真实回执；PR集成另记 | 不把目录当平台原生评估或28业务闭环 |
 | Wukong/Pelican公开隔离fixture | 两套主/影子+单CAS通过；41工具Evidence | 保留Pelican首轮partial；分支父成功不冒称协调锚点终态成功 |
-| 本机Laya原模型/质量资格 | in_progress，6判断182–618ms未达150ms，站点未合格 | 独立领域/holdout校准；不凭短延迟或自报置信直接抑制 |
+| 本机Laya原模型/质量资格 | todo，独立 Local Profile 候选；历史6判断182–618ms未达150ms，站点未合格 | 当前 Competition 不调用 Laya；只有 Local Profile 获得独立实施范围后再安排领域/holdout校准 |
 | 主动责任/ConnectorHost/session/通知原子策略 | provisional，端口与离线组合已有 | 按矩阵各owner完成真实来源/调用方/渠道/恢复消费 |
 | 语音主动询问/确认与上下文记忆 | provisional，百炼既有端口，SIS平台不可用 | 原文、Goal、Memory与真实最终命令串入同一任务，不以握手当完整听说 |
 | 高级影子开关/主任务优先/机会收益资源 | 当前设计，尚未真实机会并行验收 | 并入已有判断；双方案比较等双方，其余可先交已验主结果，未知交DeepSeek |

@@ -5,7 +5,7 @@
 [F01–F28 状态](../WORKFLOW_STATUS_20261015.md)及[具体接线工作包](../../competition/COLLABORATOR_WIRING_PACKAGE.md)。
 架构仍未最终定型；页面分别说明设计目标、接口/代码、真实回执和缺口。
 
-Competition目标边界：AgentArts负责Agent/Workflow的构建、编排、评估和部署，本地Runtime经CloudAgentPort调用已部署工作流，并保留TaskRuntime、Policy、ToolGateway、Evidence与外部读回。Laya仅是Local-only实验候选，不属于Competition路径；本机Laya/镜像回执不代表外部比赛资格或完整平台验收；AgentArts失败必须明确失败，不得静默回退Local Profile。
+Competition目标边界：AgentArts负责Competition Agent/Workflow的构建、编排、评估和部署；本地Runtime经CloudAgentPort调用已部署工作流，并保留TaskRuntime、Policy、ToolGateway、Evidence与外部读回。本机Laya仍为实验候选，仅作为独立Local Profile的可选方案；节点接线、适用场景和架构选择尚待验证，不代表已纳入Competition产品路径。AgentArts失败不得静默回退到独立Local Agent Profile。
 
 ## 打开与运行
 
@@ -31,7 +31,7 @@ npm run preview -- --host 127.0.0.1 --port 4173
 355 条边包含 191 条详细依赖、31 条入口边和 133 条总览关系；这些数量不是新的生产工作流数量。
 
 - Competition由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort消费已部署工作流，负责授权执行与可信Evidence。
-- 2026-10-15基线的本机Laya/自有ARM64镜像实测保留为Local-only历史证据；Laya不属于Competition产品路径，Local Profile也不是AgentArts失败时的回退方案。
+- 2026-10-15基线的本机Laya/自有ARM64镜像实测保留为历史证据；本机Laya仍是实验候选，仅作为独立Local Profile的可选方案，不代表已纳入Competition产品路径；独立Local Agent Profile不是AgentArts失败时的静默回退。
 - 主动四入口、持续责任、来源/Goal/原文、Wiki/记忆/上下文、一般新任务与候选图逐项说明。
 - 无人值守/归来、用户可调打扰额度、静默 feed、语音主动询问及当前参数确认同步到节点与机制详情。
 - 主对话模型分派和原生思考参数按实际 Provider 能力说明，不把模型预算当思考效果。

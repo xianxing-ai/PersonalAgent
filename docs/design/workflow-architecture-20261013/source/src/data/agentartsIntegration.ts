@@ -5,7 +5,7 @@ export interface PlatformIntegration {
  code:string[];sources:{label:string;url:string}[];
 }
 export const PLATFORM_BASELINE = '2026-10-14 核对：当前网页分支的生产代码与 origin/main 3275aa91 相同；远程 main 已核实。代码存在、历史真实记录与本轮拟议接入分别标注。';
-export const PLATFORM_SCOPE = 'Competition由AgentArts负责Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用已部署工作流，并保留TaskRuntime、Policy、ToolGateway、Evidence与外部读回。Laya仅保留为Local-only实验候选，不属于Competition产品路径；AgentArts失败必须明确失败，不得静默回退Local Profile。';
+export const PLATFORM_SCOPE = 'Competition由AgentArts负责Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用已部署工作流，并保留TaskRuntime、Policy、ToolGateway、Evidence与外部读回。本机Laya仍为实验候选，仅作为独立Local Profile的可选方案；具体接线与场景适用性尚待验证，不代表已纳入Competition产品路径。AgentArts失败不得静默回退Local Profile。';
 export const RESOURCE_ROUTES = [
  {name:'知识库：本地与云端并存',sources:['本地Wiki/Obsidian/自建资料库','AgentArts原生知识库','配置的其他云端知识服务'],route:'同一检索工作流选择或并行查询提供者 → 按来源/版本合并片段 → 唯一决策配置重排 → 上下文与引用。',existing:'本地KnowledgePort、Wiki和引用已有；平台/其他云提供者、多来源汇合和云引用适配待接线。'},
  {name:'MCP：平台、自有与社区',sources:['AgentArts平台MCP网关','自有本地stdio服务','自有或第三方远程HTTPS/MCP服务','GitHub/Gitee/其他人项目部署出的服务'],route:'选择服务来源 → 现有宿主发现目录 → 映射RegisteredTool → 原ToolGateway调用 → 实际结果与Evidence。平台来源由远程MCP客户端直连平台网关。',existing:'固定本地stdio子集已有；远程传输、平台直连、通用来源配置与目录适配待接线。仓库地址是代码来源，实际连接目标是服务端点或本地进程。'},
@@ -59,4 +59,4 @@ export const PLATFORM_INTEGRATIONS:PlatformIntegration[] = [
 ];
 export const PLATFORM_NODES = PLATFORM_INTEGRATIONS.map(item=>({id:item.nodeId,label:item.name,subtitle:item.subtitle,kind:'platform'}));
 export const PLATFORM_GOLDEN_PATH = ['在AgentArts创建Competition Agent/Workflow并绑定版本','由AgentArts构建与编排流程并核对回执','由AgentArts执行评估并读回真实报告','由AgentArts部署指定版本并核对状态','本地Runtime经CloudAgentPort调用已部署工作流，不静默回退Local','本地Policy/ToolGateway执行获准操作并记录Evidence','分别核对AgentArts部署/trace与本地任务终态和工具读回'];
-export const PLATFORM_BOUNDARIES = ['本页区分Competition目标边界、现有实现与真实回执，不把设计视图等同平台能力已上线。','Competition由AgentArts构建、编排、评估与部署；本地Runtime负责授权、ToolGateway、Evidence和TaskRuntime终态。','Laya仅保留为Local-only实验候选，不属于Competition产品路径；AgentArts失败必须明确失败，不得静默回退Local Profile。','区域、账号权限、平台API/日志/评估与部署状态仍需真实读回；Competition失败不得静默回退Local。'];
+export const PLATFORM_BOUNDARIES = ['本页区分Competition目标边界、现有实现与真实回执，不把设计视图等同平台能力已上线。','Competition由AgentArts构建、编排、评估与部署；本地Runtime负责授权、ToolGateway、Evidence和TaskRuntime终态。','本机Laya仍为实验候选，仅作为独立Local Profile的可选方案；接线与场景适用性尚待验证，不代表已纳入Competition产品路径。','区域、账号权限、平台API/日志/评估与部署状态仍需真实读回；Competition失败不得静默回退Local。'];
