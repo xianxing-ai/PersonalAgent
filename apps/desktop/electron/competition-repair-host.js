@@ -3,7 +3,7 @@ import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {createMemoryProjectionApplication, createPendingImpactApplication} from '@personal-agent/runtime/application';
 import {decideProjectedFactImpact} from '@personal-agent/cognition';
 import {projectSyntheticMeetingResult} from './competition-synthetic-workspace.js';
-import {projectSyntheticRepairContext, SYNTHETIC_REPAIR_EXPORT_POLICY} from './competition-repair-context.js';
+import {projectSyntheticRepairContext, projectSyntheticRepairWire, SYNTHETIC_REPAIR_EXPORT_POLICY} from './competition-repair-context.js';
 
 const namespace = 'mvp-synthetic-meeting';
 const consumerKey = 'mvp-cognition';
@@ -213,7 +213,7 @@ export function createSyntheticRepairHost(memoryPath, {decision} = {}) {
         });
       }
       // Export only selected synthetic plan context; Evidence identity stays local.
-      return {...meeting, repairContext: context};
+      return {...meeting, ...projectSyntheticRepairWire(snapshot, projectionReceipt.projection)};
   }
   return host;
 }

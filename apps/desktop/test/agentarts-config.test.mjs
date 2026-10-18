@@ -8,6 +8,133 @@ import {agentArtsModelSnapshot} from '../electron/agentarts-model-state.js';
 import {createDeferredRuntimeStartup} from '../electron/runtime-startup.js';
 import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
 import {Client} from '@personal-agent/client';
+import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
+
+function wssFixture(t,environment={}) {
+  const userData=mkdtempSync(path.join(os.tmpdir(),'pa-cloud-wss-'));
+  t.after(()=>rmSync(userData,{recursive:true,force:true}));
+  const options={userData,environment,safeStorage:{isEncryptionAvailable:()=>true,
+    encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()}};
+  const input={gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'owned-runtime',
+    authorization:'Bearer synthetic-outer-no-real-secret',transport:'wss',
+    websocketUrl:'wss://synthetic.huaweicloud-agentarts.com/runtimes/owned-runtime/invocations/ws',
+    appToken:'synthetic-inner-no-real-secret-at-least-32',allowHttpsFallback:false};
+  return {options,input,file:path.join(userData,'agentarts-config.json'),config:createAgentArtsConfig(options)};
+}
+
+test('saved WSS restores both private credentials and overrides stale transport environment',async t=>{
+  const f=wssFixture(t,{PA_AGENTARTS_TRANSPORT:'https'});
+  assert.equal(f.config.snapshot().transport,'https');
+  f.config.configure(f.input);
+  const config=createAgentArtsConfig(f.options),binding=config.binding(),transport=config.transportConfig(binding);
+  assert.equal(config.snapshot().transport,'wss');
+  assert.equal(config.snapshot().effectiveTransport,'wss');
+  assert.equal(config.snapshot().transportSource,'saved');
+  assert.equal(config.snapshot().websocketUrl,f.input.websocketUrl);
+  assert.equal(transport.allowHttpsFallback,false);
+  assert.equal(config.readAuthorization(binding,transport),f.input.authorization);
+  assert.equal(await transport.websocketAuthorizationProvider.read(),`Bearer ${f.input.appToken}`);
+  for(const serialized of [JSON.stringify(config.snapshot()),JSON.stringify(transport),readFileSync(f.file,'utf8')]) {
+    assert.doesNotMatch(serialized,/synthetic-inner|synthetic-outer|Bearer/);
+  }
+  config.configure({...f.input,authorization:'',appToken:''});
+  assert.equal(await transport.websocketAuthorizationProvider.read(),`Bearer ${f.input.appToken}`);
+  config.configure({...f.input,authorization:'Bearer rotated-synthetic-outer',appToken:f.input.appToken+'-rotated'});
+  assert.equal(config.readAuthorization(binding,transport),'Bearer rotated-synthetic-outer');
+  assert.equal(await transport.websocketAuthorizationProvider.read(),`Bearer ${f.input.appToken}-rotated`);
+});
+
+test('new settings offer WSS while legacy disk records require explicit migration',async t=>{
+  const f=wssFixture(t);
+  assert.equal(f.config.snapshot().transport,'wss');
+  const {gatewayUrl,runtimeName,authorization}=f.input;
+  f.config.configure({gatewayUrl,runtimeName,authorization});
+  let config=createAgentArtsConfig(f.options);
+  assert.equal(config.snapshot().transport,'https');
+  const binding=config.binding(),old=config.transportConfig(binding);
+  assert.equal(old.transport,'https');
+  assert.equal(typeof old.fetchImpl,'function');
+  assert.throws(()=>old.fetchImpl('https://evil.example/runtimes/owned-runtime/invocations',{method:'POST',redirect:'error',headers:{}}),/已绑定目的地/);
+  config.configure({...f.input,authorization:''});
+  assert.equal(config.isTransportCurrent(old),false);
+  assert.throws(()=>config.readAuthorization(binding,old),/已改变/);
+  config=createAgentArtsConfig(f.options);
+  const wss=config.transportConfig(config.binding());
+  assert.equal(await wss.websocketAuthorizationProvider.read(),`Bearer ${f.input.appToken}`);
+  config.configure({gatewayUrl,runtimeName,authorization:'',transport:'https'});
+  assert.equal(config.snapshot().transport,'https');
+  await assert.rejects(wss.websocketAuthorizationProvider.read(),/已改变/);
+});
+
+test('invalid WSS updates fail before persistence; destination and transport changes invalidate both providers',async t=>{
+  const f=wssFixture(t);f.config.configure(f.input);
+  const binding=f.config.binding(),transport=f.config.transportConfig(binding),record=readFileSync(f.file,'utf8');
+  for(const input of [
+    {websocketUrl:f.input.websocketUrl+'?token=private'}, {websocketUrl:f.input.websocketUrl.replace('owned-runtime','other')},
+    {appToken:'short'}, {appToken:f.input.appToken+'\r\n'}, {appToken:null},
+    {allowHttpsFallback:'1'}, {allowHttpsFallback:null}, {transport:null},
+    {runtimeName:'other',authorization:'',appToken:''},
+    {gatewayUrl:'https://other.huaweicloud-agentarts.com',authorization:'',appToken:''},
+  ]) {
+    assert.throws(()=>f.config.configure({...f.input,...input}));
+    assert.equal(readFileSync(f.file,'utf8'),record);
+    assert.equal(f.config.readAuthorization(binding,transport),f.input.authorization);
+  }
+  f.config.configure({...f.input,allowHttpsFallback:true});
+  assert.equal(f.config.isTransportCurrent(transport),false);
+  assert.throws(()=>f.config.readAuthorization(binding,transport),/已改变/);
+  await assert.rejects(transport.websocketAuthorizationProvider.read(),/已改变/);
+});
+
+test('failed WSS disk revoke disables both in-memory credentials and retries remove the encrypted record',async t=>{
+  const f=wssFixture(t);f.config.configure(f.input);
+  const binding=f.config.binding(),transport=f.config.transportConfig(binding);
+  renameSync(f.file,f.file+'.retained');mkdirSync(f.file);
+  assert.throws(()=>f.config.revoke(),/未能删除/);
+  assert.equal(f.config.snapshot().configured,false);
+  assert.throws(()=>f.config.readAuthorization(binding,transport));
+  await assert.rejects(transport.websocketAuthorizationProvider.read());
+  rmSync(f.file,{recursive:true});renameSync(f.file+'.retained',f.file);
+  assert.equal(createAgentArtsConfig(f.options).snapshot().configured,true);
+  f.config.revoke();assert.equal(existsSync(f.file),false);
+  assert.equal(createAgentArtsConfig(f.options).snapshot().configured,false);
+});
+
+test('failed WSS encryption or persistence preserves the previously usable configuration',async t=>{
+  const f=wssFixture(t);f.config.configure(f.input);
+  const binding=f.config.binding(),transport=f.config.transportConfig(binding),record=readFileSync(f.file,'utf8');
+  f.options.safeStorage.isEncryptionAvailable=()=>false;
+  assert.throws(()=>f.config.configure({...f.input,appToken:f.input.appToken+'-new'}),/安全存储不可用/);
+  assert.equal(readFileSync(f.file,'utf8'),record);
+  f.options.safeStorage.isEncryptionAvailable=()=>true;
+  mkdirSync(f.file+'.tmp');
+  assert.throws(()=>f.config.configure({...f.input,appToken:f.input.appToken+'-new'}));
+  assert.equal(readFileSync(f.file,'utf8'),record);
+  assert.equal(f.config.readAuthorization(binding,transport),f.input.authorization);
+  assert.equal(await transport.websocketAuthorizationProvider.read(),`Bearer ${f.input.appToken}`);
+});
+
+test('restored Desktop WSS configuration drives the real Runtime factory with distinct headers and zero HTTP calls',async t=>{
+  const f=wssFixture(t);f.config.configure(f.input);
+  const config=createAgentArtsConfig(f.options),binding=config.binding(),transport=config.transportConfig(binding);
+  let sockets=0,http=0;
+  const app=createAgentArtsRuntimeApplication({...binding,...transport,path:':memory:',
+    authorizationProvider:{read:async()=>config.readAuthorization(binding,transport)},
+    websocketFactory:(url,init)=>{
+      sockets++;assert.equal(url,f.input.websocketUrl);
+      assert.equal(init.headers.Authorization,f.input.authorization);
+      assert.equal(init.headers['X-PA-Agent-Token'],`Bearer ${f.input.appToken}`);
+      return new SyntheticWebSocket((frame,socket)=>{if(frame.type==='invoke'){socket.accepted(frame);socket.result(frame,'Synthetic saved WSS result');}});
+    },fetchImpl:async()=>{http++;throw Error('Unexpected fallback');}});
+  try {
+    const client=new Client(app);await client.connect();
+    const {taskId}=await client.call('task.submit',{goal:'Synthetic configured desktop task',conversationId:'desktop-panel'},{idempotencyKey:'saved-wss'});
+    for(let i=0;i<100 && !['failed','succeeded'].includes(app.runtime.getTask(taskId).state);i++) await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(app.runtime.getTask(taskId).state,'succeeded');
+    assert.match(app.runtime.getTask(taskId).resultSummary,/Synthetic saved WSS/);
+    assert.equal(sockets,1);assert.equal(http,0);
+  } finally {app.close();}
+});
 
 const invalidRuntimeNames=[
   ['missing',{}],['undefined',{runtimeName:undefined}],['null',{runtimeName:null}],

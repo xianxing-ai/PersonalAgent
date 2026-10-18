@@ -1,6 +1,6 @@
 import {currentNodes} from '@personal-agent/goals';
 
-export const SYNTHETIC_REPAIR_EXPORT_POLICY = 'synthetic-meeting-graph-v3';
+export const SYNTHETIC_REPAIR_EXPORT_POLICY = 'synthetic-meeting-graph-v4';
 const targets = Object.freeze([
   ['attend', 'goal', 'Attend meeting at 15:00'],
   ['prepare', 'decision', 'Prepare one hour before meeting'],
@@ -58,5 +58,25 @@ export function projectSyntheticRepairContext(snapshot, projection) {
         [{id: selected[0].id, revision: selected[0].revision + 1}],
         [{id: selected[1].id, revision: selected[1].revision + 1}]][index],
     })),
+  };
+}
+
+/** Separate cloud projection; local binding fields never become wire context fields. */
+export function projectSyntheticRepairWire(snapshot, projection) {
+  const context = projectSyntheticRepairContext(snapshot, projection);
+  const selectedRefs = [context.targets[0].dependencies[0], context.projectedFact,
+    ...context.targets.map(target => target.node)];
+  const nodes = selectedRefs.map(reference => {
+    const node = snapshot.history.find(item => same(item, reference));
+    if (!node) return deny();
+    const {id, revision, kind, summary, state, validFrom, validUntil} = node;
+    return {id, revision, kind, summary, state, validFrom, validUntil};
+  });
+  return {
+    repairContext: {expectedGraphRevision: context.expectedGraphRevision,
+      allowedDependencies: context.allowedDependencies,
+      targets: context.targets.map(({node, requestedSummary, requestedDependencies}) =>
+        ({node, requestedSummary, requestedDependencies}))},
+    repairSources: {sourceVersion: '1.0', expectedGraphRevision: snapshot.revision, nodes},
   };
 }
