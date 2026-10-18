@@ -97,7 +97,7 @@ const {_electron}=require('playwright');
    const admin=await opened;
    await admin.waitForURL(/mode=admin/);
    await admin.waitForSelector('[data-page="models"]');
-   // Task monitoring remains a supported host route, but is no longer a sidebar item.
+   // Task monitoring remains reachable through both its navigation item and Host route.
    await panel.evaluate(()=>window.desktop.invoke('admin.open',{page:'tasks'}));
    await admin.waitForSelector('tbody');
    assert.match(await admin.locator('tbody').innerText(),fake?/思考中/:/已创建/);

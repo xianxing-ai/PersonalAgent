@@ -86,8 +86,8 @@ const {_electron}=require('playwright');
   assert.equal(notification.expectedRevision,2);assert.equal(notification.patch.mode,'silent');assert.equal(notification.patch.maxInterruptions,2);receipts.notificationScope=notification;
   // Exercise the actual configuration component and real host through the production bridge.
   await app.evaluate(()=>globalThis.setFixture({adminNavigation:{revision:2,page:'models'},model:{provider:'agentarts',configured:true,status:'configured'}}));
-  await admin.waitForSelector('input[name=appToken]');
-  await admin.selectOption('[name=transport]','wss');await admin.fill('[name=appToken]','public-fixture-inner-not-a-real-credential-123456789');await admin.fill('[name=deploymentVersion]','fixture-v5');await admin.fill('[name=websocketUrl]','wss://fixture.huaweicloud-agentarts.com/runtimes/fixture/ws?endpoint=fixture-v5');
+  await admin.waitForSelector('[name=transport]');
+  await admin.selectOption('[name=transport]','wss');await admin.waitForSelector('input[name=appToken]');await admin.fill('[name=appToken]','public-fixture-inner-not-a-real-credential-123456789');await admin.fill('[name=deploymentVersion]','fixture-v5');await admin.fill('[name=websocketUrl]','wss://fixture.huaweicloud-agentarts.com/runtimes/fixture/ws?endpoint=fixture-v5');
   await admin.locator('form:has([name=gatewayUrl])').evaluate(form=>form.requestSubmit());
   await admin.waitForFunction(()=>document.querySelector('form:has([name=gatewayUrl])').getAttribute('aria-busy')==='false');
   const saved=await app.evaluate(()=>globalThis.configuration.snapshot());assert.equal(saved.transport,'wss');assert.equal(saved.appTokenConfigured,true);assert.equal(saved.deploymentVersion,'fixture-v5');assert.equal(await admin.locator('[name=appToken]').inputValue(),'');receipts.wss={transport:saved.transport,version:saved.deploymentVersion,secretCleared:true};

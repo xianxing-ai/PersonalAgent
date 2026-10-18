@@ -3,6 +3,10 @@
 2026-10-17 审查回归修复与验证边界见 [PR #376 修复记录](docs/PR376_REGRESSION_FIXES_20261017.md)。
 
 
+## 2026-10-17 窗口控件与布局修复
+
+管理后台和大工作区统一原生最小化、最大化/还原及关闭操作；桌面偏好入口移至常规设置。窄窗口导航、短窗口空间和表单控件尺寸一并修正。实现边界、原生缩放矩阵和测试命令见[本次验证记录](docs/FRONTEND_LAYOUT_20261017.md)；`npm run test:frontend-layout --workspace=@personal-agent/desktop` 使用独立 Fake 配置检查实际窗口。
+
 ## 2026-10-16 远程 MCP 原生管理与生产装配（provisional）
 
 Competition 后台顶栏新增「远程 MCP 管理」，打开独立 sandbox/contextIsolation 窗口。普通页面只能打开窗口和看到布尔状态，不能调用管理 IPC 或读回密钥。管理窗口支持导入服务定义、加密保存短期凭据、原生确认连接、创建/审核单次只读任务、原任务结果/Evidence 引用读回、停止、断开和撤销。无真实云端调用；不自动向 AgentArts 公布该工具或导出结果。

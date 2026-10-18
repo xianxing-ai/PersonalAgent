@@ -7,6 +7,7 @@ import {mountConversationRail} from '../conversation/rail.js';
 import {resultText} from '../conversation/result-text.js';
 import {updateConversationTurns} from '../conversation/turn-view.js';
 import {connectorCards} from './connectors.js';
+import {windowControlsHtml} from '../../ui/window-controls.js';
 
 const paths={settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',connectors:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zm11 3h7m-3-3v7',close:'m6 6 12 12M6 18 18 6',maximize:'M5 5h14v14H5z',minimize:'M5 12h14',copy:'M8 8h12v12H8zM16 8V4H4v12h4',view:'M3 5h18v14H3zM9 5v14'};
 const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]}"/></svg>`;
@@ -15,7 +16,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   let updateRevision=0;
   const pendingCancelIds=new Set();
   root.innerHTML=`<section class="workspace focused-workspace">
-    <header class="workspace-titlebar"><span class="workspace-app-title">PersonalAgent</span><span class="spacer"></span><button class="window-button" data-window="minimize" aria-label="最小化">${icon('minimize')}</button><button class="window-button" data-window="maximize" aria-label="最大化或还原">${icon('maximize')}</button><button class="window-button window-close" data-window="close" aria-label="关闭工作区">${icon('close')}</button></header>
+    <header class="workspace-titlebar"><span class="workspace-app-title">PersonalAgent</span><span class="spacer"></span>${windowControlsHtml('workspace')}</header>
     <main class="workspace-main"><header class="workspace-top"><strong>悬浮球对话</strong><span class="spacer"></span><button class="icon-btn" id="connectors-toggle" aria-label="显示或隐藏连接器" aria-expanded="true">${icon('connectors')}</button><button class="icon-btn" data-open-settings="settings" aria-label="打开设置">${icon('settings')}</button></header>
     <div class="workspace-layout"><section class="workspace-chat"><p class="workspace-error" id="workspace-error" role="alert"></p><div class="workspace-stage" id="workspace-stage"><div class="workspace-welcome" id="workspace-welcome"><button class="workspace-orb" id="workspace-orb" aria-label="激活助手" aria-pressed="false"><canvas aria-hidden="true"></canvas></button><h1 id="workspace-greeting">从一个想法开始</h1><p id="workspace-intro"></p></div><div class="workspace-conversation" id="workspace-conversation" aria-live="polite"></div></div></section>
       <aside class="connector-board" aria-label="连接器信息"><header><div><h2>连接器</h2></div><button class="icon-btn" id="connectors-refresh" aria-label="刷新连接器">↻</button></header><div id="connector-cards"></div></aside>
@@ -81,7 +82,6 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     const button=[...conversation.querySelectorAll('button')].find(item=>item.dataset[action]===focused.dataset[action]);
     if(button&&!button.disabled)button.focus({preventScroll:true});
   };
-  root.querySelectorAll('[data-window]').forEach(button=>button.onclick=()=>invoke(`workspace.${button.dataset.window}`).catch(report));
   root.querySelectorAll('[data-open-settings]').forEach(button=>button.onclick=()=>invoke('admin.open',{page:button.dataset.openSettings}).catch(report));
   root.querySelector('#connectors-toggle').onclick=event=>{const hidden=root.querySelector('.connector-board').hidden;root.querySelector('.connector-board').hidden=!hidden;event.currentTarget.setAttribute('aria-expanded',String(hidden));};
   root.querySelector('#connectors-refresh').onclick=async event=>{event.currentTarget.disabled=true;const operationRevision=updateRevision;let readRevision;try{await invoke('capability.list');readRevision=updateRevision;const data=await invoke('snapshot');if(readRevision===updateRevision)update(data);}catch(error){if((readRevision??operationRevision)===updateRevision)report(error);}finally{root.querySelector('#connectors-refresh').disabled=false;}};
