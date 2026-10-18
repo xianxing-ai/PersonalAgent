@@ -13,6 +13,31 @@ transport of the CloudAgentPort boundary.
 
 ## 2026-10-09 WSS client increment (provisional)
 
+### Read-only unknown-result lookup (MOD-04B, provisional)
+
+`AgentArtsCloudAgentPort.queryStatus(receipt, {deadline, signal})` is an explicit
+trusted-host lookup using a previously persisted `AgentArtsUnknownReceipt`. It
+returns the existing `@personal-agent/contracts/agentarts-transport` 0.1.0 status
+response union. This is not a new Runtime wire operation or automatic recovery.
+The current configured gateway/runtime and both current credentials are used;
+the host must select a receipt belonging to that same deployment binding.
+
+Each lookup owns a short-lived WSS connection, sends at most one `status` frame,
+and closes on result, failure, timeout or cancellation. It never sends `invoke`
+or `cancel`, never retries the original task, and never falls back to HTTPS.
+Session/request/idempotency/digest must match the saved receipt and the response
+server instance must match the ready handshake. New WSS dispatch receipts include
+an optional `serverInstanceId` captured from their original handshake. Legacy
+receipts without it, or a changed server instance, yield a local conservative
+`unknown` status after handshake without trusting another instance's cache.
+That local classification is not a platform receipt or proof of non-execution.
+
+Remote cache misses/expiry remain `unknown`; none of running/completed/failed/
+cancelled/unknown authorize resending. Completed events remain untrusted data,
+are not automatically parsed into executable proposals, and never complete the
+local task. Runtime reconciliation, durable application consumption and any
+explicit user resolution remain separate, unimplemented consumers of this API.
+
 Trusted Competition composition can set `transport: 'wss'`,
 `websocketUrl: 'wss://<same-gateway>/runtimes/<runtimeName>/ws'`, and optionally
 `allowHttpsFallback: true`. WSS must use the same HTTPS origin and runtime as the

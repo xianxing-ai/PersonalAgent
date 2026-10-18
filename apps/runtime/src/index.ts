@@ -1144,11 +1144,11 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     if(task.state!=='failed' || !task.error || this.active.has(taskId) || this.loadCheckpoint(taskId,'competition-cloud-unknown')
       || !inflight || !received || typeof inflight!=='object' || typeof received!=='object')return undefined;
     const left=inflight as Record<string,unknown>,right=received as Record<string,unknown>;
-    const fields=['sessionId','requestId','idempotencyKey','payloadDigest','accepted'];
+    const fields=['sessionId','requestId','idempotencyKey','payloadDigest','accepted','serverInstanceId'];
     if(fields.some(key=>left[key]!==right[key]) || Object.keys(left).some(key=>!fields.includes(key)) || Object.keys(right).some(key=>!fields.includes(key))
       || ['sessionId','requestId','idempotencyKey'].some(key=>typeof left[key]!=='string' || !(left[key] as string).length)
       || typeof left.payloadDigest!=='string' || !/^[a-f0-9]{64}$/.test(left.payloadDigest)
-      || typeof left.accepted!=='boolean')return undefined;
+      || typeof left.accepted!=='boolean' || (left.serverInstanceId!==undefined && (typeof left.serverInstanceId!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(left.serverInstanceId))))return undefined;
     const loop=this.loadCheckpoint(taskId,'competition-loop') as {pending?:unknown}|undefined;
     const marker=this.loadCheckpoint(taskId,'competition-cloud-terminal-error') as {version?:string;kind?:string;receipt?:unknown}|undefined;
     const matchedTerminalMarker=marker?.version==='1.0' && marker.kind==='wss_terminal_error'
