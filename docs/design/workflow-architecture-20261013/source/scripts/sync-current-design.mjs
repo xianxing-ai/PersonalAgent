@@ -17,11 +17,11 @@ const modules=rows(docs.modules).filter(r=>/^MOD-/.test(r[0])).map(r=>({title:r[
 if(workflows.length!==28||workPackages.length!==10||modules.length!==39)throw Error(`Unexpected committed source coverage ${workflows.length}/${workPackages.length}/${modules.length}`);
 fs.writeFileSync(path.join(root,'src/data/currentDesign.generated.json'),JSON.stringify({sha,date:'2026-10-15',sourcePaths,workflows,workPackages,modules},null,2)+'\n');
 const replacements=[
- ['全部业务工作流和Laya multilingual服务/权重迁入自有镜像','Competition由AgentArts构建与编排Agent/Workflow；本机Laya在本机运行并参与产品路径'],
- ['Laya在镜像内裁决','Competition Workflow由AgentArts编排；本机Laya参与本机候选判断'],
- ['唯一全局语义决策配置','本机Laya参与Competition本地判断；AgentArts承担Workflow编排'],
- ['唯一主决策配置','本机Laya判断与AgentArts Workflow编排'],
- ['唯一主模型','本机Laya与AgentArts Workflow'],['主模型','Competition Agent/Workflow'],
+ ['全部业务工作流和Laya multilingual服务/权重迁入自有镜像','Competition由AgentArts构建与编排Agent/Workflow；本地Runtime经CloudAgentPort调用部署版本'],
+ ['Laya在镜像内裁决','Competition由AgentArts Agent/Workflow编排，本机Laya在本机运行并参与Competition产品路径'],
+ ['唯一全局语义决策配置','AgentArts Competition Agent/Workflow编排'],
+ ['唯一主决策配置','AgentArts Competition编排'],
+ ['唯一主模型','AgentArts Agent/Workflow'],['主模型','Competition Agent/Workflow'],
  ['独立分支并行','独立依赖分支（当前Engine默认串行；机会并行待验）'],
  ['独立分类、资料查询与草稿生成并行','独立分类、资料查询与草稿依赖；当前Engine串行推进'],
  ['线程A：','分支A：'],['线程B：','分支B：'],
@@ -31,18 +31,19 @@ const replacements=[
  ['多任务并发完成时的通知收敛器','同一NotificationService的feed/层级静默与用户可调打扰策略'],
 ];
 function clean(value){if(typeof value==='string'){for(const[a,b]of replacements)value=value.replaceAll(a,b);return value;}if(Array.isArray(value))return value.map(clean);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,clean(v)]));return value;}
-const architecture=clean(JSON.parse(fs.readFileSync(path.join(root,'src/data/architecture.json'),'utf8')));
+// The catalog also feeds production prompts and templateDigest. Current viewer
+// prose must not reassign reviewed models, requirements or checkpoint identity.
+const reviewedArchitecture=JSON.parse(fs.readFileSync(path.join(root,'src/data/architecture.json'),'utf8'));
+const architecture=clean(structuredClone(reviewedArchitecture));
 for(const f of architecture){
  const current=workflows.find(w=>w.id===f.id); if(!current)throw Error(f.id);
  f.summary=current.design;
- f.designNotes=[`当前实现/实测边界：${current.status}`,'Competition目标由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权执行与Evidence。','本机Laya已确认为本机运行方案并参与Competition产品路径；既有实测不证明全部节点接线、官方比赛资格或真实端到端，AgentArts失败不得静默回退Local Profile。','该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。',...(f.designNotes||[]).filter(n=>!n.startsWith('当前实现/实测边界：')&&!n.startsWith('Competition目标由AgentArts')&&!n.startsWith('本机Laya已确认为本机运行方案')&&!n.startsWith('本机Laya/自有镜像结果是历史实测')&&!n.startsWith('本机Laya仍为实验候选')&&!n.startsWith('该图默认串行；'))];
  f.recovery=['沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。','结果未知的写入保留原operation先读回，不换ID重放。','最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。'];
  for(const n of f.nodes){
   if(n.modelAssignment){
-   n.modelAssignment=(n.kind==='semantic_decision'||n.modelAssignment.vendor==='Laya'||n.modelAssignment.vendor==='受信候选选择')?{vendor:'本机Laya',model:'Laya multilingual（本机）',role:'本机Laya参与Competition产品路径的本地候选判断；AgentArts承担Workflow编排；具体节点调用与资格按Evidence核验'}:{vendor:'可信ModelGateway配置',model:'经AgentArts部署工作流调用；实际模型按平台读回记录',role:n.modelAssignment.role,thinkingLevel:'原生参数按provider实际支持；预算不等于思考深度'};
    n.label=n.label.replace(/Qwen|GLM|DeepSeek/g,'配置执行模型');
   }
-  n.label=n.label.replaceAll('并行启动','依赖就绪后串行推进').replaceAll('并行派发','依赖派发（当前串行）').replaceAll('就绪节点并行','就绪节点默认串行').replaceAll('并行','独立依赖（默认串行）').replaceAll('Laya从候选中选择','本机Laya有限候选选择').replaceAll('合格Laya/未合格配置执行模型选择','本机Laya及teacher候选判断').replaceAll('Laya选择','本机Laya有限候选选择').replaceAll('唯一决策模型','本机Laya候选判断');
+  n.label=n.label.replaceAll('并行启动','依赖就绪后串行推进').replaceAll('并行派发','依赖派发（当前串行）').replaceAll('就绪节点并行','就绪节点默认串行').replaceAll('并行','独立依赖（默认串行）');
   const suffix='节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。';
   if(!n.evidenceRequirement?.includes(suffix))n.evidenceRequirement=[n.evidenceRequirement||'',current.status,suffix].filter(Boolean).join(' ');
  }
@@ -80,8 +81,17 @@ node('F23_N03','原Policy/ToolGateway授权configuration port','tool_exec','授�
 node('F23_N04','revision CAS晋升并保留原operation','tool_exec','授权配置写入',['authorizedReleaseRequest','expectedRevision','candidateVersion','sideEffect声明'],['operationId','applied / conflict / unknown']);
 node('F23_N05','真实回读；必要回滚仍核原版本与授权','complete','读取/有条件授权配置回滚',['operationId','actualConfigurationRevision','readbackPort','原回滚授权'],['verifiedReadback / waiting_reconciliation / conflict','rollbackAnchor原版本/参数digest','rollbackReceipt']);
 for(const f of architecture){
- f.designNotes=f.designNotes.map(s=>s.replaceAll('默认国内MaaS','当前DeepSeek经AgentArts代理（平台后端MaaS如实记录，无客户端直连fallback）').replaceAll('同一决策配置可以并发处理独立判断','同一决策配置可提出独立判断；真实串行/合批能力分别验收'));
  if(['F12','F22','F23'].includes(f.id))for(const e of f.edges){e.branchLabel=architecture.find(f=>e.target.startsWith(f.id+'_')).nodes.find(n=>n.id===e.target).condition||'沿当前选择/原授权推进';}
+}
+for(const f of architecture){
+ const reviewed=reviewedArchitecture.find(item=>item.id===f.id);
+ f.designNotes=structuredClone(reviewed.designNotes);
+ for(const n of f.nodes){
+  const original=reviewed.nodes.find(item=>item.id===n.id);
+  if(original.modelAssignment)n.modelAssignment=structuredClone(original.modelAssignment);
+  else delete n.modelAssignment;
+  if(n.id==='F28_N02')n.label=original.label;
+ }
 }
 fs.writeFileSync(path.join(root,'src/data/architecture.json'),JSON.stringify(architecture,null,2)+'\n');
 console.log(JSON.stringify({sha,workflows:workflows.length,nodes:architecture.reduce((s,f)=>s+f.nodes.length,0),workPackages:workPackages.length,modules:modules.length}));

@@ -110,7 +110,7 @@ export const INTERFACE_NOTES: Record<string, string> = {
   F22: '按需消费已有轨迹与测试夹具；影子逻辑留在镜像。适合的真实结果送平台评测集评估，独立宿主/上报/报告仍待验收。',
   F23: '复用已有本地评分和配对用例，补平台真实结果导出与任务适配；历史平台评测集已发布不等于评分完成。MaaS配置不直接修改远端权重。',
   F24: '复用现有 TaskRuntime、状态、事件、取消和检查点；四种操作结果、效果关联与读回UI待接线，不新增公共task终态。',
-  F26: 'Competition由AgentArts承担Agent/Workflow构建、编排、评估和部署；本机Laya在本机运行并参与产品路径。本地Runtime经CloudAgentPort调用部署版本并保留授权、Evidence与读回。已有自有镜像/Laya记录不能证明完整平台编排或外部比赛验收。',
+  F26: 'Competition由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort调用部署版本并保留授权、Evidence与读回。已有自有镜像/Laya记录属于历史实测，不能证明平台编排已验收。',
   F27: '复用已有记忆、知识和模型端口；上下文分块、摘要引用映射与恢复为拟议编排。',
   F28: 'Competition Agent/Workflow由AgentArts编排；subagentModels和本机受限循环不替代平台职责。CloudAgentPort接线、原生参数与完整主控流程仍需实测。',
 };

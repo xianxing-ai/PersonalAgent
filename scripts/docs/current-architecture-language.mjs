@@ -1,4 +1,6 @@
-// Current documentation language only; historical execution receipts stay unchanged.
+// Current documentation prose only; historical execution receipts stay unchanged.
+// Never use this transformer on architecture.json or modelAssignment/designNotes:
+// those reviewed fields feed production prompts and immutable templateDigest.
 export const replacements = [
   [
     "统一语义裁决由自有ARM64镜像内Laya承担；国内MaaS为执行模型，",

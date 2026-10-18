@@ -64,7 +64,7 @@ for (const f of features) {
  for (const n of f.nodes) {
   workflows += `#### ${n.id} ${n.label}\n\n- 类型：${kind[n.kind]||n.kind}；前置：${n.dependencies.join('、')||'独立入口'}。\n- 汇合要求：${n.required?'本轮必需':'条件/可选'}${n.condition?`；${n.condition}`:''}。\n- 输入概念：${n.inputFields.join('、')||'由当前任务快照与节点上下文提供，具体字段在接线时映射'}。\n- 输出概念：${n.outputFields.join('、')||'节点结果、来源及状态引用，具体字段在接线时映射'}。\n- 资源：${n.resourceKeys.join('、')||'沿用所选宿主资源管理'}；动作性质：${n.effectType}。\n`;
   if(n.evidenceRequirement)workflows+=`- 依据：${n.evidenceRequirement}（设计条件；示例ID不证明已有授权或真实证据）。\n`;
-  if(n.modelAssignment)workflows+=`- 模型角色：${n.kind==='semantic_decision'?'镜像内同一Laya typed-choice配置':n.modelAssignment.role}；Laya在宿主校验的有限候选中选择，开放式计划/摘要/参数由执行模型或模板形成候选。执行模型与思考参数必须通过F28按实际能力映射。\n`;
+  if(n.modelAssignment)workflows+=`- 模型角色：${n.modelAssignment.role}（${n.modelAssignment.vendor} / ${n.modelAssignment.model}）；开放式计划/摘要/参数由执行模型或模板形成候选。执行模型与思考参数必须通过F28按实际能力映射；模型声明不证明站点资格或授予权限。\n`;
   workflows+='\n';
  }
  workflows+='### 分支、反馈与恢复边\n\n| 起点 | 终点 | 条件/目的 |\n| --- | --- | --- |\n'+f.edges.map(e=>`| ${e.source} | ${e.target} | ${e.branchLabel||'满足前置后推进'} |`).join('\n')+'\n\n';
