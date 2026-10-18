@@ -1,34 +1,31 @@
-.subagent-conversations[hidden],.subagent-conversations-detail[hidden]{display:none!important}
+.subagent-conversations[hidden]{display:none!important}
 .subagent-conversations{margin:8px 0;min-width:0;max-width:100%;color:var(--fg)}
-.subagent-conversations-list{display:flex;flex-wrap:wrap;gap:6px}
-.subagent-conversations button{font:inherit;color:inherit;cursor:pointer}
-.subagent-conversations-entry{display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:7px 10px;border:1px solid var(--glass-border);border-radius:12px;background:var(--surface-2);font-size:12px;text-align:left}
-.subagent-conversations-entry:hover,.subagent-conversations-entry[aria-expanded="true"]{background:var(--composer-bg);border-color:var(--fg-2)}
-.subagent-conversations-role{font-weight:600;overflow-wrap:anywhere}
-.subagent-conversations-id,.subagent-conversations-state,.subagent-conversations-model{color:var(--fg-2);font-size:11px}
-.subagent-conversations-model{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.subagent-conversations-detail{margin-top:10px;padding:14px;border:1px solid var(--glass-border);border-radius:14px;background:var(--surface-2);max-height:65vh;overflow:auto;overflow-wrap:anywhere}
-.subagent-conversations-header{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.subagent-conversations h3{font-size:14px;margin:0}
-.subagent-conversations h4{font-size:12px;margin:16px 0 5px}
-.subagent-conversations p,.subagent-conversations li{font-size:12px;line-height:1.65;margin:5px 0}
-.subagent-conversations-notice,.subagent-conversations-metadata{color:var(--fg-2)}
+.subagent-conversations-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.subagent-conversations button,.subagent-conversation-page button{font:inherit;color:inherit;cursor:pointer}
+.subagent-conversations-entry{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;height:34px;box-sizing:border-box;padding:6px 8px;border:1px solid var(--glass-border);border-radius:10px;background:var(--surface-2);font-size:12px;text-align:left;white-space:nowrap;overflow:hidden}
+.subagent-conversations-entry:hover{background:var(--composer-bg);border-color:var(--fg-2)}
+.subagent-conversations-role{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.subagent-conversations-id{flex:0 0 auto;color:var(--fg-2);font-size:11px}
+.subagent-conversations-state{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fg-2);font-size:11px}
+.subagent-conversations-notice{color:var(--fg-2);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.subagent-conversations-notice:empty{display:none}
+.subagent-conversations .subagent-conversations-notice{margin:6px 0 0}
+/* The small panel has its own brief completion notice. */
+.panel .subagent-conversations{display:none!important}
+.subagent-conversation-page{display:flex;flex-direction:column;gap:12px;box-sizing:border-box;width:100%;height:100vh;min-height:0;padding:18px;background:var(--bg);color:var(--fg);overflow:hidden}
+.subagent-conversation-page-header{display:flex;flex:0 0 auto;justify-content:space-between;align-items:center;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--glass-border)}
+.subagent-conversation-page h1{min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:17px}
+.subagent-conversation-page h2{font-size:13px;margin:20px 0 6px}
+.subagent-conversation-page p,.subagent-conversation-page li{font-size:13px;line-height:1.75;margin:6px 0}
+.subagent-conversation-page>.subagent-conversations-notice{flex:0 0 auto;margin:0}
+.subagent-conversation-page .subagent-conversations-content{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-wrap:anywhere;scrollbar-width:thin}
+.subagent-conversations-metadata{color:var(--fg-2)}
 .subagent-conversations-message{white-space:pre-wrap}
-.subagent-conversations-error,.subagent-conversations [role="alert"]{color:var(--danger)}
+.subagent-conversations-error,.subagent-conversations [role="alert"],.subagent-conversation-page [role="alert"]{color:var(--danger)}
 .subagent-conversations-steps{padding-left:22px}
-.subagent-conversations-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.subagent-conversations-header button,.subagent-conversations-actions button{padding:5px 8px;border:1px solid var(--glass-border);border-radius:8px;background:transparent;font-size:11px}
-.subagent-conversations button:focus-visible{outline:2px solid var(--fg-2);outline-offset:2px}
-.subagent-conversations button:disabled{opacity:.5;cursor:default}
-@media(max-width:480px){.subagent-conversations-model{max-width:95px}.subagent-conversations-detail{padding:10px}}
-.panel .subagent-conversations-list{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;overscroll-behavior-x:contain;padding:2px 1px 5px}
-.panel .subagent-conversations-entry{flex:0 0 auto;max-width:290px;white-space:nowrap;gap:5px;padding:6px 8px}
-.panel .subagent-conversations-role{max-width:90px;overflow:hidden;text-overflow:ellipsis}
-.panel .subagent-conversations-model{max-width:80px}
-/* The panel establishes a fixed-position containing block; stay above its composer. */
-.panel .subagent-conversations-detail{position:fixed;inset:54px 10px 10px;z-index:20;display:flex;flex-direction:column;gap:6px;box-sizing:border-box;margin:0;max-height:none;min-height:0;padding:12px;overflow:hidden;background:var(--surface-2);box-shadow:var(--shadow-3)}
-.panel .subagent-conversations-header,.panel .subagent-conversations-notice,.panel .subagent-conversations-actions{flex:0 0 auto}
-.panel .subagent-conversations-header h3{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.panel .subagent-conversations-header button{flex:0 0 auto}
-.panel .subagent-conversations-content{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
-.panel .subagent-conversations-actions{margin-top:4px;padding-top:7px;border-top:1px solid var(--glass-border)}
+.subagent-conversations-actions{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:1px solid var(--glass-border)}
+.subagent-conversation-page button{padding:7px 10px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);font-size:12px}
+.subagent-conversation-page-header button{flex:0 0 auto}
+.subagent-conversations button:focus-visible,.subagent-conversation-page button:focus-visible{outline:2px solid var(--fg-2);outline-offset:2px}
+.subagent-conversations button:disabled,.subagent-conversation-page button:disabled{opacity:.5;cursor:default}
+@media(max-width:480px){.subagent-conversation-page{padding:12px;gap:10px}.subagent-conversation-page h1{font-size:15px}.subagent-conversations-entry{gap:3px;padding:5px}}

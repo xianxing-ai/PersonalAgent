@@ -15,6 +15,15 @@ test('workspace shows voice children from another conversation; panel remains co
   assert.deepEqual(projectSubagentActivity({...options,readChildren:()=>undefined,surface:'workspace'}),[]);
 });
 
+test('activity order uses actual Runtime mutation times for recent records and completion notices',()=>{
+  const tasks=[{taskId:'parent',surface:'panel'}];
+  const records=projectSubagentActivity({tasks,surface:'workspace',visible:()=>true,sourceSurface:t=>t.surface,
+    readChildren:()=>[{parentTaskId:'parent',taskId:'older'},{parentTaskId:'parent',taskId:'recent'}],
+    readTask:taskId=>({updatedAt:taskId==='older'?'2026-10-18T00:00:00Z':'2026-10-18T01:00:00Z'})});
+  assert.deepEqual(records.map(t=>t.taskId),['recent','older']);
+  assert.equal(records[0].updatedAt,'2026-10-18T01:00:00Z');
+});
+
 test('opening a parent navigates its original surface and never submits or reruns work',async()=>{
   const events=[];const tasks=new Map([['parent',{taskId:'parent',surface:'panel'}]]);
   const options={tasks,payload:{taskId:'parent'},sourceSurface:t=>t.surface,

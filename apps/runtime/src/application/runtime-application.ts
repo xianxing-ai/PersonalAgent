@@ -39,6 +39,8 @@ import {MailReadSessions, MAIL_READ_SESSION_CHECKPOINT, MAIL_READ_TOOL, MAIL_REA
 import type {StartMailReadSessionRequest, MailReadSession} from './mail-read-session.js';
 import {createRuntimeSubagentDispatchTool, resumeRuntimeSubagentTask, readRuntimeSubagentSummary,
   SUBAGENT_DISPATCH_TOOL_NAME} from './subagent-host.js';
+import {USER_TASK_DELEGATION, readUserTaskDelegation, assertUserTaskDelegationInvocation,
+  userTaskDelegationPort} from './user-task-delegation.js';
 import {verifyKnowledgeFeedReceiptBinding,createKnowledgeFeedReceiptFromCollectResult,createKnowledgeFeedReceiptFromConfirmedExecution,knowledgeFeedReceiptItems} from './knowledge-feed-receipt.js';
 import type {KnowledgeFeedQuotedItem} from './knowledge-feed-receipt.js';
 import {planKnowledgeReevaluation,LayaActionChoiceService,actionArgumentsDigest} from '@personal-agent/cognition';
@@ -283,6 +285,8 @@ export interface ThinkingState extends ThinkingConfig {
 }
 
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
+  /** Competition user submissions must execute in a durable child; the root only dispatches and summarizes. */
+  delegateUserTasks?: true;
   /** Registers only the scoped host adapters; no source, model or device is enabled by this flag. */
   proactiveWorkflows?: true;
   proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
@@ -358,6 +362,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly tools: AgentToolPort | undefined;
   readonly profile: 'local' | 'huawei_ict_agentarts';
   private readonly coordination: CoordinationPort | undefined;
+  private readonly delegateUserTasks: boolean;
   private readonly coordinationBinding: string;
   private readonly assertCoordinationBinding?: () => void;
   private readonly codingRepair?:RuntimeCodingRepairOptions;
@@ -392,6 +397,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly knowledgeWriteReconciliation?: KnowledgeWriteReconciliationAdapter;
 
   constructor(options: RuntimeApplicationOptions) {
+    if (options.delegateUserTasks !== undefined && (options.delegateUserTasks !== true || options.profile !== 'huawei_ict_agentarts')) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Required user delegation needs Competition Profile');
+    }
+    this.delegateUserTasks = options.delegateUserTasks === true;
     this.storagePath = resolve(options.path);
     this.profile = options.profile ?? 'local';
     if (options.competitionMaxSteps !== undefined && (this.profile !== 'huawei_ict_agentarts'
@@ -401,6 +410,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.competitionMaxSteps = options.competitionMaxSteps ?? 4;
     if (options.thinking) this.configureThinking(options.thinking);
     else if (options.competitionMaxSteps !== undefined) this.thinkingConfig = {depth: Math.min(5, Math.max(0, Math.floor(options.competitionMaxSteps / 2) - 1)), fast: false};
+    if(this.delegateUserTasks && this.competitionMaxSteps<2) {
+      throw new ProtocolError('INVALID_ARGUMENT','Required user delegation needs a dispatch and a summary step');
+    }
     if (!['local', 'huawei_ict_agentarts'].includes(this.profile)
       || (this.profile === 'local' && (options.coordination !== undefined || options.competitionToolExports !== undefined || options.competitionToolAvailability !== undefined || options.repairCandidateVersion !== undefined || options.hostUserNamespace !== undefined || options.workflowShadowRelease !== undefined))
       || (options.repairCandidateVersion !== undefined && options.repairCandidateVersion !== '1.0')
@@ -502,6 +514,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       ...(options.idFactory ? {idFactory: options.idFactory} : {}),
       ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
+          assertUserTaskDelegationInvocation(this.runtime, request);
           // Gate even the generic tool.invoke wire path: a persisted sample
           // grant alone cannot survive its process-local consent lease.
           const session = this.runtime.loadCheckpoint(request.taskId, SYSTEM_OBSERVATION_SESSION_CHECKPOINT);
@@ -566,6 +579,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return current;
       };
       this.tools = {list: currentDescriptors, invoke: async invocation => {
+        assertUserTaskDelegationInvocation(this.runtime, {...invocation, argumentsDigest: toolArgumentsDigest(invocation.arguments)});
         const current=currentDescriptors();
         const tool = current.find(item => item.name === invocation.toolName && item.version === invocation.toolVersion);
         if (!tool) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Tool is not registered');
@@ -778,6 +792,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const prepared=await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
     this.assertInputActive(request);
     if(!nonEmptyText(prepared))throw new ProtocolError('INVALID_ARGUMENT','Empty ephemeral input');
+    if(readUserTaskDelegation(this.runtime,task.taskId)
+      && (prepared!==request.goal || this.readPrivateTaskBinding(task.taskId)!==undefined)) {
+      hooks.releaseTask?.(task.taskId);
+      throw new ProtocolError('UNAUTHORIZED','Delegated user summary requires public context; private input needs its own child confirmation');
+    }
     const messages=await hooks.readConversationContext?.({taskId:task.taskId,conversationId:task.conversationId ?? '',
       deadline:request.deadline,signal:request.signal}) ?? [];
     this.assertInputActive(request);
@@ -1045,13 +1064,20 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const selected=subtask.reasoningEffort===undefined && subtask.model===undefined?fallback:
         this.resolveExecutionModel?.({modelId:subtask.model??fallback?.modelId??'',
           ...(subtask.reasoningEffort===undefined?{}:{reasoningEffort:subtask.reasoningEffort})});
+      const required=readUserTaskDelegation(this.runtime,binding.parentTaskId);
+      const original=required?this.runtime.loadCheckpoint(binding.parentTaskId,'execution-model'):undefined;
+      if(original!==undefined && !isDeepStrictEqual(selected,original)) {
+        throw new ProtocolError('REVISION_CONFLICT','Original delegated execution model catalog changed');
+      }
       if((subtask.model!==undefined || subtask.reasoningEffort!==undefined) && !selected)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Cloud child model is not in the trusted catalog');
       if(selected)worker.saveCheckpoint('execution-model',parseExecutionModelSelection(selected));
     }
     const selectedModel=worker.loadCheckpoint('execution-model') as ExecutionModelSelection|undefined;
     const selectedEffort=selectedModel?.reasoningEffort;
+    const delegation=readUserTaskDelegation(this.runtime,binding.parentTaskId);
+    const maxSteps=delegation?.maxSteps??(subtask.thinkingDepth===undefined?6:Math.max(2,(subtask.thinkingDepth+1)*2));
     worker.saveCheckpoint('subtask-thinking-binding',{depth:subtask.thinkingDepth??null,
-      stepBudget:{maxSteps:subtask.thinkingDepth===undefined?6:Math.max(2,(subtask.thinkingDepth+1)*2)},
+      stepBudget:{maxSteps},
       modelReasoning:{requestedEffort:subtask.reasoningEffort??selectedEffort??null,effort:selectedEffort??null,
         supported:selectedEffort!==undefined,verification:'conditional',thinkingBudgetSupported:false,
         reason:selectedEffort===undefined?'Provider default; native reasoning control is not selected':'Trusted cloud catalog native effort selection; actual provider execution requires independent evidence'}});
@@ -1059,7 +1085,6 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(previous!==undefined && !isDeepStrictEqual(previous,identity)) {
       throw new ProtocolError('REVISION_CONFLICT','Competition child configuration changed');
     }
-    const maxSteps=subtask.thinkingDepth===undefined?6:Math.max(2,(subtask.thinkingDepth+1)*2);
     if(previous===undefined) {
       worker.saveCheckpoint('subtask-coordination-binding',identity);
       worker.saveCheckpoint('application-profile',this.profile);
@@ -1606,6 +1631,26 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     });
   }
 
+  /** Context lookup only: never changes the actual child identity or inherits a private-input/Skill lease. */
+  readDelegatedUserTaskParent(childTaskId:string):{taskId:string;conversationId:string;deadline:string}|undefined {
+    try {
+      const child=this.runtime.getTask(childTaskId);
+      const saved=this.runtime.loadCheckpoint(childTaskId,'subtask-parent');
+      if(!plainObject(saved) || typeof saved.parentTaskId!=='string')return undefined;
+      const {parentTaskId,parentDeadline,...definition}=saved;
+      const binding=readUserTaskDelegation(this.runtime,parentTaskId);
+      if(!binding || parentDeadline!==binding.deadline || !isDeepStrictEqual(definition,binding.subtask)
+        || child.conversationId!==`desktop-subtask:${parentTaskId}` || child.goal!==`[任务执行] ${binding.goal}`
+        || this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parentTaskId}-${binding.subtask.subtaskId}`)?.taskId!==childTaskId
+        || child.cancelRequested || ['succeeded','failed','cancelled','cancelling'].includes(child.state)
+        || !Number.isFinite(Date.parse(binding.deadline)) || this.now().getTime()>=Date.parse(binding.deadline))return undefined;
+      const parent=this.runtime.getTask(parentTaskId);
+      if(parent.cancelRequested || ['succeeded','failed','cancelled','cancelling'].includes(parent.state)
+        || typeof parent.conversationId!=='string' || !parent.conversationId)return undefined;
+      return {taskId:parent.taskId,conversationId:parent.conversationId,deadline:binding.deadline};
+    } catch {return undefined;}
+  }
+
   /** Trusted host only: binds an independently verified public source to durable Fact/Graph projection. */
   createCompetitionFactHost(options: CompetitionFactHostOptions): CompetitionFactHost {
     const memoryPath = resolve(options.memoryPath);
@@ -1738,7 +1783,23 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Trusted host obtains only the task-selected public tool shape for cloud input construction. */
+  private taskCoordination(taskId:string):CoordinationPort|undefined {
+    const binding=readUserTaskDelegation(this.runtime,taskId);
+    return binding && this.coordination ? userTaskDelegationPort(this.runtime,this.coordination,binding) : this.coordination;
+  }
+
+  private taskTools(taskId:string):AgentToolPort|undefined {
+    if(!readUserTaskDelegation(this.runtime,taskId) || !this.tools)return this.tools;
+    return {list:()=>this.tools!.list().filter(tool=>tool.name===SUBAGENT_DISPATCH_TOOL_NAME),invoke:invocation=>{
+      if(invocation.taskId!==taskId)throw new ProtocolError('SCOPE_DENIED','Root tool scope belongs to another task');
+      return this.tools!.invoke(invocation);
+    }};
+  }
+
   private taskCompetitionCatalog(taskId:string):RuntimeCompetitionToolCatalog|undefined {
+    if(readUserTaskDelegation(this.runtime,taskId)) {
+      const tools=this.taskTools(taskId);return tools?this.competitionToolCatalog?.restrict(tools):undefined;
+    }
     if(this.runtime.loadCheckpoint(taskId,'subtask-coordination-binding')===undefined)return this.competitionToolCatalog;
     const descriptors=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
     if(!Array.isArray(descriptors) || !this.tools || descriptors.some(tool=>tool.name===SUBAGENT_DISPATCH_TOOL_NAME
@@ -2064,11 +2125,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           && record.state==='confirmed' && record.executionStarted && record.policyDecision==='allow');
         if(!confirmed && !this.runtime.policy.get(approvalRef))throw new ProtocolError('UNAUTHORIZED','Task grant was revoked');
       }
+      const catalog=this.taskCompetitionCatalog(taskId);
       const execution = startCoordinationTask(
-        this.runtime, this.coordination, this.tools, taskId, goal, deadline,
+        this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
         {resume: true, toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
-          ...(this.competitionToolCatalog ? {toolCatalog: this.competitionToolCatalog} : {}),
+          ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},
       ).finally(() => this.activeTextTasks.delete(taskId));
       this.activeTextTasks.set(taskId, execution);
@@ -2550,11 +2612,18 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId, 'task-thinking', {depth:config.depth,fast:config.fast,maxSteps});
       if (preference?.modelId) this.runtime.saveCheckpoint(taskId,'task-model-preference',{
         modelId:preference.modelId,...(preference.configurationRef?{configurationRef:preference.configurationRef}:{})});
+      if(this.delegateUserTasks) {
+        const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
+        this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline:request.deadline,maxSteps,
+          subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal,thinkingDepth:config.depth,
+            ...(selected?{model:selected.modelId,...(selected.reasoningEffort?{reasoningEffort:selected.reasoningEffort}:{})}:{})}});
+      }
+      const catalog=this.taskCompetitionCatalog(taskId);
       const execution = Promise.resolve().then(() => startCoordinationTask(
-        this.runtime, this.coordination, this.tools, taskId, goal, request.deadline,
+        this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, request.deadline,
         {toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
-          ...(this.competitionToolCatalog ? {toolCatalog: this.competitionToolCatalog} : {}),
+          ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},
       )).finally(() => this.activeTextTasks.delete(taskId));
       this.activeTextTasks.set(taskId, execution);

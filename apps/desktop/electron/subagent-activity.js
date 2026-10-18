@@ -1,7 +1,9 @@
 /** Workspace is the host-wide activity view; panel stays scoped to its conversation. */
-export function projectSubagentActivity({tasks, surface, visible, readChildren, sourceSurface}) {
+export function projectSubagentActivity({tasks, surface, visible, readChildren, sourceSurface, readTask}) {
   return tasks.filter(task => surface === 'workspace' || visible(task, surface)).flatMap(parent =>
-    (readChildren(parent.taskId) ?? []).map(child => ({...child, sourceSurface: sourceSurface(parent)})));
+    (readChildren(parent.taskId) ?? []).map(child => ({...child, sourceSurface: sourceSurface(parent),
+      ...(readTask?{updatedAt:readTask(child.taskId).updatedAt}:{})})))
+    .sort((a,b)=>String(b.updatedAt??'').localeCompare(String(a.updatedAt??'')));
 }
 
 /** Read-only task detail. The public Runtime snapshot is not a complete model transcript. */

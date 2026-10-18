@@ -1,5 +1,7 @@
 # Runtime task core
 
+`delegateUserTasks:true` 是 Competition 可信组合选项：仅新用户任务冻结一次真实子任务委派，根任务经原 Policy/Gateway 派发后只汇总，模型、预算和恢复绑定保留。旧任务不补派；既有单任务私人记忆/Skill 许可不继承。公开 `readDelegatedUserTaskParent()` 只提供经校验的公开历史范围。实现、105 项定向验证及未知写/汇总失败恢复限制见 [子对话与委派说明](../desktop/docs/live-task-visibility-20261018.md)。
+
 Competition 任务一旦保存 `competition-context:v1`，恢复和最终发送门禁都要求受信宿主继续装配 `coordinationInput`；缺失时拒绝发送，不降为原公开 goal。已确认工具回执保留，进入既有待核实路径，不重做工具。没有该检查点的旧任务仍允许沿原无 hooks 路径恢复。此为 host-only、provisional 加固，无新 wire/迁移；见 [F27 恢复加固记录](../../docs/modules/MOD-09-CONTEXT-BINDING-20261014.md#2026-10-16恢复-hooks-缺失加固)。
 
 <!-- current-design-20261009 -->

@@ -90,6 +90,8 @@ Profile 在受信 composition root 选择，不由 Renderer、模型输出或外
 
 这些边界由根命令 `npm run check:architecture` 检查；当前门禁还禁止 Desktop 直接导入 Agent/Model 实现、旧文本入口或调用 `runTask`。Runtime Application 的关闭会在存在活动任务时拒绝静默退出。当前仍保持模块化单体，不把目录边界描述成进程安全沙箱。
 
+Competition Desktop 可在 Runtime Application 装配 `delegateUserTasks:true`：用户根任务仅派发和汇总，原 `subagent.dispatch` 经 Policy/ToolGateway 创建持久化子任务执行，旧任务不追补。新增子对话 Renderer 由主进程固定原父子身份，只可读当前绑定记录、关闭或返回当前主对话，不能提交任务或审批；它不形成新的 Runtime/调度器。私人记忆和 Skill 的单任务许可不自动跨父子任务继承。完整行为、有限会话读取及恢复边界见 [委派工作包](../apps/desktop/docs/live-task-visibility-20261018.md)。
+
 ## 3. 进程与信任边界
 
 ```mermaid

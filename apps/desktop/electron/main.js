@@ -3,6 +3,7 @@ import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
+import {handleSubagentWindowAction} from './subagent-window-actions.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
@@ -129,6 +130,7 @@ let orb;
 let panel;
 let admin;
 let workspace;
+const subagentWindows=new Map();
 let adminNavigation = {page: 'settings', revision: 0};
 let tray;
 let poll;
@@ -519,7 +521,8 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     subagentTasks:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
-      readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface}),
+      readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
+      readTask:taskId=>runtimeApplication.runtime.getTask(taskId)}),
     tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
@@ -613,6 +616,12 @@ function publish() {
   for (const win of [orb, panel, admin, workspace]) {
     if (win && !win.isDestroyed()) win.webContents.send('desktop:update', snapshot(win === workspace ? 'workspace' : win === admin ? undefined : 'panel'));
   }
+  for(const record of subagentWindows.values()){
+    if(record.window.isDestroyed())continue;
+    let revision='unavailable';
+    try{revision=runtimeApplication?.runtime.getTask(record.binding.taskId)?.updatedAt??revision;}catch{/* Reader reports missing original records without interrupting other windows. */}
+    if(revision!==record.revision){record.revision=revision;record.window.webContents.send('desktop:update',{subagentTaskChanged:true});}
+  }
 }
 
 function windowFor(mode, bounds, options = {}) {
@@ -620,7 +629,7 @@ function windowFor(mode, bounds, options = {}) {
     webPreferences: {preload: path.join(dir, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true,
       ...(mode === 'panel' ? {autoplayPolicy: 'no-user-gesture-required'} : {})}, ...options});
   win.setMenuBarVisibility(false);
-  desktopHost.attach(win, mode);
+  desktopHost.attach(win, mode, {remember:mode!=='subagent'});
   win.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
   win.webContents.on('will-navigate', event => {
     event.preventDefault();
@@ -933,6 +942,24 @@ async function openWorkspace() {
   workspace.on('closed', () => { workspace = undefined; });
 }
 
+function readChildConversation(payload){
+  return readSubagentConversation({payload,tasks,readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
+    readTask:id=>runtimeApplication.runtime.getTask(id)});
+}
+async function openSubagentConversation(payload){
+  const detail=await readChildConversation(payload);
+  const key=JSON.stringify([detail.parentTaskId,detail.taskId]);
+  const previous=subagentWindows.get(key);
+  if(previous&&!previous.window.isDestroyed()){previous.window.show();previous.window.focus();return {opened:true};}
+  const area=screen.getDisplayMatching(orb.getBounds()).workArea;
+  const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
+  const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
+    {title:'PersonalAgent · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+  subagentWindows.set(key,{window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt});
+  window.on('closed',()=>subagentWindows.delete(key));
+  return {opened:true};
+}
+
 function toggleModel(input) {
   if (!model.configured) throw Error('请先保存模型配置');
   const enabled = Boolean(input?.enabled);
@@ -1197,8 +1224,11 @@ async function promptSyntheticRepairCandidate(taskId) {
 }
 
 async function readDesktopConversationContext(scope) {
+  const requestingTaskId=scope.taskId;
+  const parent=scope.taskId?runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId):undefined;
+  if(parent)scope={...scope,taskId:parent.taskId,conversationId:parent.conversationId};
   if (!conversations?.containsConversation(scope.conversationId)) {
-    if(scope.taskId)coordinationWatchInputs.set(scope.taskId,'[]');return [];
+    if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,'[]');return [];
   }
   const task=scope.taskId ? runtimeApplication.runtime.getTask(scope.taskId) : undefined;
   const cutoff=conversations.turns.get(scope.taskId)?.createdAt ?? task?.createdAt ?? task?.updatedAt ?? new Date().toISOString();
@@ -1210,7 +1240,7 @@ async function readDesktopConversationContext(scope) {
   if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
   const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
     .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
-  if(scope.taskId)coordinationWatchInputs.set(scope.taskId,JSON.stringify(current));
+  if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,JSON.stringify(current));
   if(current.length)context.push({id:'knowledge-watch-current',role:'assistant',
     content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
   return context.slice(-20);
@@ -1578,6 +1608,7 @@ async function initializeRuntime() {
       // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
+        delegateUserTasks: true,
         proactiveWorkflows: true,
         proactiveDecision: {localChooser:localLaya},
         hostUserNamespace: namespace,
@@ -1588,16 +1619,27 @@ async function initializeRuntime() {
         }}} : {}),
         coordinationInput:{
           prepareCoordinationGoal:async scope=>{
+            const parent=runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId);
+            if(parent){
+              const original=runtimeApplication.runtime.getTask(parent.taskId);
+              installedSkillsHost?.prepareTask({...parent,publicGoal:original.goal,signal:scope.signal});
+              installedSkillsHost?.assertTask(scope.taskId);
+              if(privateConsumption?.snapshot(parent.conversationId).selected)throw Error('主对话所选私人记忆许可不覆盖子任务；需要独立确认后才能使用，当前未发送私人记忆');
+              return scope.publicGoal;
+            }
             if (!conversations?.containsConversation(scope.conversationId)) return scope.publicGoal;
             installedSkillsHost?.prepareTask(scope);
             if (!privateConsumption) throw Error('私人记忆消费宿主尚未装配');
+            if(runtimeApplication.runtime.loadCheckpoint(scope.taskId,'required-subagent-delegation:v1')
+              &&privateConsumption.snapshot(scope.conversationId).selected)throw Error('委派任务的汇总不能继承主对话所选私人记忆许可，当前未发送私人记忆');
             return (await privateConsumption.prepare({...scope,goal:scope.publicGoal})).goal;
           },
           readConversationContext:readDesktopConversationContext,
           beforeCoordinationSend:(request,scope)=>{
             cloudRequestFailureNotice = '';
             installedSkillsHost?.assertTask(request.taskId);
-            const conversationId=runtimeApplication.runtime.getTask(request.taskId).conversationId;
+            const parent=runtimeApplication.readDelegatedUserTaskParent?.(request.taskId);
+            const conversationId=parent?.conversationId??runtimeApplication.runtime.getTask(request.taskId).conversationId;
             if (!conversations?.containsConversation(conversationId)) return;
             if (!privateConsumption) throw Error('私人记忆发送门禁尚未装配');
             privateConsumption.assertCloudSend({...request,goal:scope.preparedGoal});
@@ -2139,6 +2181,8 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
 });
 
 async function action(event, name, payload) {
+  const child=[...subagentWindows.values()].find(record=>record.window.webContents===event.sender);
+  if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:readChildConversation,openMain:()=>openPanel(true)});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
@@ -2188,6 +2232,10 @@ async function action(event, name, payload) {
     if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('子对话窗口不可信');
     return readSubagentConversation({payload,tasks,readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
       readTask:id=>runtimeApplication.runtime.getTask(id)});
+  }
+  if(name==='task.openSubagentConversation'){
+    if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
+    return openSubagentConversation(payload);
   }
   if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
