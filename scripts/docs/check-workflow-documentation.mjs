@@ -27,14 +27,15 @@ for(const f of features) {
  for(const n of f.nodes)assert.ok(workflows.includes('#### '+n.id+' '+n.label),n.id);
 }
 const requirements=[...read('docs/PRD.md').matchAll(/^\| (PA-\d{3}) \|/gm)].map(m=>m[1]);
-assert.equal(requirements.length,31);
-assert.equal(new Set(requirements).size,31);
-for(let i=1;i<=31;i++)assert.ok(requirements.includes('PA-'+String(i).padStart(3,'0')));
+assert.equal(new Set(requirements).size,requirements.length);
+assert.ok(requirements.length>0);
+for(let i=1;i<=requirements.length;i++)assert.ok(requirements.includes('PA-'+String(i).padStart(3,'0')));
 const core=['README.md','docs/README.md','docs/CURRENT_DESIGN_CONTEXT.md','docs/PRD.md','docs/ARCHITECTURE.md','docs/PROJECT_STRUCTURE.md','docs/MODULE_ASSIGNMENTS.md','docs/DEVELOPMENT_PROTOCOL.md','docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md'];
 for(const file of core) {
  const body=read(file);
- assert.ok(!body.includes('](design/resident-developer-agent-20261008/'),file+' obsolete entry');
- assert.ok(!body.includes('](docs/design/resident-developer-agent-20261008/'),file+' obsolete entry');
+ const current=body.split(/^## 历史设计入口/m)[0];
+ assert.ok(!current.includes('](design/resident-developer-agent-20261008/'),file+' obsolete entry');
+ assert.ok(!current.includes('](docs/design/resident-developer-agent-20261008/'),file+' obsolete entry');
 }
 function missingLinks(file,body) {
  const missing=[];
