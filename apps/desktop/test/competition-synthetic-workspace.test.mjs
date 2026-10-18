@@ -56,15 +56,29 @@ test('synthetic export rejects arbitrary file results and expanded content with 
   assert.equal(getterReads, 0);
 });
 
-test('host binding permits only the exact synthetic tool arguments and honours cancellation', () => {
+test('host binding permits the fixed path and optional bounded maxBytes and honours cancellation', () => {
   const fixtureRoot = fileURLToPath(new URL('../../../tests/manual/agentarts/fixtures/mvp-meeting/', import.meta.url));
   const {tools, competitionToolExports: [binding]} = createSyntheticMeetingToolset(fixtureRoot);
   assert.equal(tools.length, 1);
   assert.equal(binding.toolName, 'workspace.read_text');
   assert.equal(binding.toolVersion, '1.0.0');
   assert.equal(binding.accepts({arguments: {path: 'meeting-update.json'}}), true);
-  assert.equal(binding.accepts({arguments: {path: 'meeting-update.json', maxBytes: 2048}}), false);
+  const maxBytes = tools[0].descriptor.inputSchema.properties.maxBytes.maximum;
+  assert.equal(maxBytes, 2048);
+  for (const valid of [1, maxBytes]) {
+    assert.equal(binding.accepts({arguments: {path: 'meeting-update.json', maxBytes: valid}}), true);
+  }
+  for (const invalid of [0, -1, maxBytes + 1, 1.5, NaN, Infinity, '2048', null, undefined]) {
+    assert.equal(binding.accepts({arguments: {path: 'meeting-update.json', maxBytes: invalid}}), false);
+  }
+  assert.equal(binding.accepts({arguments: {path: 'meeting-update.json', maxBytes, extra: true}}), false);
   assert.equal(binding.accepts({arguments: {path: '../private.txt'}}), false);
+  assert.equal(binding.accepts({arguments: {path: '../private.txt', maxBytes}}), false);
+  let reads = 0;
+  const accessor = {path: 'meeting-update.json'};
+  Object.defineProperty(accessor, 'maxBytes', {enumerable: true, get() { reads++; return maxBytes; }});
+  assert.equal(binding.accepts({arguments: accessor}), false);
+  assert.equal(reads, 0);
   const controller = new AbortController();
   controller.abort();
   assert.throws(() => binding.project({result: result(), signal: controller.signal}), /cancelled/);
