@@ -3,6 +3,7 @@ import {OwnedAgentOrchestrator, OwnedWorkflowEngine, createOwnedWorkflowReceiptV
   WORKFLOW_DECISION_TOOL_NAME,WORKFLOW_DECISION_TOOL_VERSION} from '@personal-agent/agentarts';
 import {OpenAICompatibleModelProvider,ModelGateway} from '@personal-agent/models';
 import {createAgentServer} from './server.mjs';
+import {createRoleReceiptWriter} from './role-receipts.mjs';
 import {createOwnedModelFetch,ownedModelRequestFormat} from './model-fetch.mjs';
 import {createRoleReceiptWriter} from './role-receipts.mjs';
 import {createAgentArtsModelFetch} from './model-proxy.mjs';
