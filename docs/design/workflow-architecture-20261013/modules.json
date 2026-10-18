@@ -1,0 +1,556 @@
+{
+  "version": "2026-10-14",
+  "profile": "huawei_ict_agentarts",
+  "baseline": "3275aa91",
+  "scope": "目标责任映射，不是完成度或生产能力声明",
+  "modules": [
+    {
+      "id": "MOD-01",
+      "name": "工程与存储底座",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/storage"
+      ],
+      "workflows": [
+        "F24",
+        "F25",
+        "F26"
+      ]
+    },
+    {
+      "id": "MOD-02",
+      "name": "公共契约与客户端",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/contracts",
+        "packages/client",
+        "packages/testkit"
+      ],
+      "workflows": [
+        "F01",
+        "F02",
+        "F24",
+        "F25",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-03",
+      "name": "任务Runtime与调度",
+      "owner": "goo122",
+      "codePaths": [
+        "apps/runtime"
+      ],
+      "workflows": [
+        "F01",
+        "F03",
+        "F06",
+        "F12",
+        "F24"
+      ]
+    },
+    {
+      "id": "MOD-04A",
+      "name": "模型网关与Provider",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/models"
+      ],
+      "workflows": [
+        "F23",
+        "F27",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-04B",
+      "name": "协调与云端口",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/coordination",
+        "packages/agents"
+      ],
+      "workflows": [
+        "F01",
+        "F03",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-05",
+      "name": "Policy、工具与连接器宿主",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/policy",
+        "packages/tool-gateway",
+        "packages/connector-host"
+      ],
+      "workflows": [
+        "F02",
+        "F14",
+        "F15",
+        "F21",
+        "F24",
+        "F25"
+      ]
+    },
+    {
+      "id": "MOD-06",
+      "name": "本地MCP",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/mcp"
+      ],
+      "workflows": [
+        "F21"
+      ]
+    },
+    {
+      "id": "MOD-07",
+      "name": "Skills安装与执行",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/skills"
+      ],
+      "workflows": [
+        "F21",
+        "F23"
+      ]
+    },
+    {
+      "id": "MOD-08",
+      "name": "知识、Wiki与Obsidian",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/knowledge",
+        "apps/obsidian-plugin"
+      ],
+      "workflows": [
+        "F04",
+        "F05"
+      ]
+    },
+    {
+      "id": "MOD-09",
+      "name": "版本化记忆与流程学习",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/memory",
+        "packages/learning"
+      ],
+      "workflows": [
+        "F04",
+        "F05",
+        "F23",
+        "F27"
+      ]
+    },
+    {
+      "id": "MOD-10",
+      "name": "模型能力与训练研究",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "docs/research/agentarts"
+      ],
+      "workflows": [
+        "F23",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-11",
+      "name": "Desktop外壳与桥接",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "apps/desktop/electron",
+        "apps/desktop/src/app"
+      ],
+      "workflows": [
+        "F01",
+        "F02",
+        "F12"
+      ]
+    },
+    {
+      "id": "MOD-12",
+      "name": "悬浮球与对话面板",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "apps/desktop/src/features/orb",
+        "apps/desktop/src/features/conversation"
+      ],
+      "workflows": [
+        "F01",
+        "F12",
+        "F24"
+      ]
+    },
+    {
+      "id": "MOD-13",
+      "name": "管理后台与配置展示",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "apps/desktop/src/features/admin",
+        "apps/desktop/src/ui"
+      ],
+      "workflows": [
+        "F22",
+        "F23",
+        "F25",
+        "F26",
+        "F27",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-14",
+      "name": "语音会话与确认接线",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/voice",
+        "apps/desktop/src/features/voice"
+      ],
+      "workflows": [
+        "F02"
+      ]
+    },
+    {
+      "id": "MOD-15",
+      "name": "唤醒与连续语音",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/voice-wake"
+      ],
+      "workflows": [
+        "F02"
+      ]
+    },
+    {
+      "id": "MOD-16",
+      "name": "Windows执行与凭据适配",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "apps/windows-host",
+        "packages/windows-client"
+      ],
+      "workflows": [
+        "F14",
+        "F25"
+      ]
+    },
+    {
+      "id": "MOD-17",
+      "name": "本机状态读取",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/windows-client"
+      ],
+      "workflows": [
+        "F13"
+      ]
+    },
+    {
+      "id": "MOD-18",
+      "name": "工作区补丁与命令工具",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/coding-tools"
+      ],
+      "workflows": [
+        "F15",
+        "F17"
+      ]
+    },
+    {
+      "id": "MOD-19",
+      "name": "打包与安装",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packaging",
+        "scripts/release"
+      ],
+      "workflows": [
+        "F26"
+      ]
+    },
+    {
+      "id": "MOD-20",
+      "name": "待办与日历",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/productivity",
+        "packages/connectors/calendar"
+      ],
+      "workflows": [
+        "F06",
+        "F07"
+      ]
+    },
+    {
+      "id": "MOD-21",
+      "name": "邮件连接器",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/connectors/mail"
+      ],
+      "workflows": [
+        "F08"
+      ]
+    },
+    {
+      "id": "MOD-22",
+      "name": "订阅采集",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/connectors/feeds"
+      ],
+      "workflows": [
+        "F09"
+      ]
+    },
+    {
+      "id": "MOD-23",
+      "name": "通知汇总策略",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/notifications"
+      ],
+      "workflows": [
+        "F12"
+      ]
+    },
+    {
+      "id": "MOD-24",
+      "name": "研究与资料获取",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/connectors/research"
+      ],
+      "workflows": [
+        "F10"
+      ]
+    },
+    {
+      "id": "MOD-25",
+      "name": "天气",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/connectors/weather"
+      ],
+      "workflows": [
+        "F11"
+      ]
+    },
+    {
+      "id": "MOD-26",
+      "name": "可选社交能力",
+      "owner": "Potatos498",
+      "codePaths": [],
+      "workflows": [
+        "F09",
+        "F12",
+        "F21"
+      ]
+    },
+    {
+      "id": "MOD-27",
+      "name": "目标与依赖图",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/goals"
+      ],
+      "workflows": [
+        "F01",
+        "F03"
+      ]
+    },
+    {
+      "id": "MOD-28",
+      "name": "持续认知与唯一决策消费",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/cognition",
+        "scripts/laya"
+      ],
+      "workflows": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "F17",
+        "F18",
+        "F19",
+        "F20",
+        "F21",
+        "F22",
+        "F23",
+        "F24",
+        "F25",
+        "F26",
+        "F27",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-29",
+      "name": "AgentArts镜像与云基础",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/agentarts",
+        "apps/agentarts-runtime"
+      ],
+      "workflows": [
+        "F26",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-30",
+      "name": "云Workflow与工具提案",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/agentarts"
+      ],
+      "workflows": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "F17",
+        "F18",
+        "F19",
+        "F20",
+        "F21",
+        "F22",
+        "F23",
+        "F24",
+        "F25",
+        "F26",
+        "F27",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-31",
+      "name": "执行模型协作与评估",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/agentarts",
+        "apps/runtime/src/application/subagent-host.ts"
+      ],
+      "workflows": [
+        "F22",
+        "F23",
+        "F28"
+      ]
+    },
+    {
+      "id": "MOD-32",
+      "name": "云端观测与比赛验收",
+      "owner": "zemeng5208",
+      "codePaths": [
+        "packages/agentarts",
+        "tests/manual/agentarts"
+      ],
+      "workflows": [
+        "F22",
+        "F24",
+        "F26"
+      ]
+    },
+    {
+      "id": "MOD-33",
+      "name": "GitHub能力底座",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/connectors/github"
+      ],
+      "workflows": [
+        "F16",
+        "F18",
+        "F19",
+        "F20"
+      ]
+    },
+    {
+      "id": "MOD-34",
+      "name": "CI失败修复",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/coding-tools/src/dev-workflows"
+      ],
+      "workflows": [
+        "F15",
+        "F16",
+        "F18"
+      ]
+    },
+    {
+      "id": "MOD-35",
+      "name": "测试失败定位",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/coding-tools/src/test-locate"
+      ],
+      "workflows": [
+        "F16",
+        "F17"
+      ]
+    },
+    {
+      "id": "MOD-36",
+      "name": "代码评审预审",
+      "owner": "goo122",
+      "codePaths": [
+        "packages/cognition/src/dev-workflows"
+      ],
+      "workflows": [
+        "F18"
+      ]
+    },
+    {
+      "id": "MOD-37",
+      "name": "API文档一致性",
+      "owner": "goo122",
+      "codePaths": [],
+      "workflows": [
+        "F20"
+      ]
+    },
+    {
+      "id": "MOD-38",
+      "name": "Issue分诊与修复",
+      "owner": "Potatos498",
+      "codePaths": [
+        "packages/cognition/src/dev-workflows"
+      ],
+      "workflows": [
+        "F19"
+      ]
+    }
+  ]
+}
