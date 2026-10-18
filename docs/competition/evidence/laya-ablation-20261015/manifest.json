@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-15",
+  "architectureStatus": "undecided",
+  "modelTraining": false,
+  "productionChanges": false,
+  "imagePublished": false,
+  "validatedSdkCalls": 592,
+  "priorRun": {
+    "directory": ".cache/laya-controlled/run-LAEX9T",
+    "sdkCalls": 452,
+    "protocolCorrections": [
+      "Original question uses targetFile; canonical fixture uses requestedFile",
+      "Aligned canonical contract must require requestedFile"
+    ],
+    "unaffectedVariants": 348,
+    "identicalEncoding": 348,
+    "identicalAnswers": 348
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 6985,
+      "sha256": "5f6338bb00f3828751d1c6a9edf4c18f6ddf45ca650443d27f4799455cb96d3a"
+    },
+    {
+      "path": "plan.json",
+      "bytes": 675322,
+      "sha256": "62f255e00c1bd25fd606f41674b8f14da769aae6ae55aaedc5b5551a4a08831a"
+    },
+    {
+      "path": "report.json",
+      "bytes": 449865,
+      "sha256": "0e48ca1e623f9aaf6764d6efbd1aff2a20ce860fb6ec54d451264bd1e8ff58eb"
+    },
+    {
+      "path": "forward-audit.json",
+      "bytes": 458739,
+      "sha256": "6d21299c3ca234a57d84cca3919dd4e9bdaf8fb8b7fb2087a302fd19441c7a00"
+    },
+    {
+      "path": "summary.json",
+      "bytes": 27499,
+      "sha256": "7d4e623ccc844f4597bd73f122413693de80b45795772756fb570fed379096a4"
+    },
+    {
+      "path": "followup/plan.json",
+      "bytes": 144825,
+      "sha256": "7fe90286991234ad98a6058e7702540d00e5aad6b3b2627d219fadf6a2861c1b"
+    },
+    {
+      "path": "followup/report.json",
+      "bytes": 56898,
+      "sha256": "b125d99d49b6bed9a10a7e13efcaefa4638262adf760a1a5e93feff27d5c6aa4"
+    },
+    {
+      "path": "followup/forward-audit.json",
+      "bytes": 56428,
+      "sha256": "8ff1b0469307387f951c955040bd9fc791baf1b9da6919ba6e6598572937eba2"
+    },
+    {
+      "path": "followup/summary.json",
+      "bytes": 4501,
+      "sha256": "364435ce2a3ad5f28ffcc86a47aee0464e9320872b52ef2176e8e09d5c8dc1c6"
+    },
+    {
+      "path": "calibration/plan.json",
+      "bytes": 166069,
+      "sha256": "bdf4cb53bd1e214db63faf79b1cbe126d2c9e8be15c4e11972ed0f77026832b9"
+    },
+    {
+      "path": "calibration/report.json",
+      "bytes": 83228,
+      "sha256": "4bbdfc54a772c271ebc264eaafb84510cfd9df27c271cc42a27716176635fe27"
+    },
+    {
+      "path": "calibration/forward-audit.json",
+      "bytes": 84689,
+      "sha256": "878a65c398949934f287c84f78fa719a5c5f85fafcbed21a74895745c3f89897"
+    },
+    {
+      "path": "calibration/summary.json",
+      "bytes": 13981,
+      "sha256": "45040dcac752ab1459c70bd316fcf2cf473a3fd6e2dea0997ad8e36f9f2d94de"
+    }
+  ]
+}

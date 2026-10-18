@@ -1,0 +1,4 @@
+# These recovered diagnostic programs are identified by SHA256 in historical plans.
+laya-controlled-ablation.mjs -text
+laya-controlled-worker.py -text
+summarize-laya-ablation.mjs -text
