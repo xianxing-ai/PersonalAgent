@@ -10,6 +10,26 @@ import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const key='explicit-fake-cloud-receipt-secret-more-than-32';
+const localFailureCodes=new Set(['CANCELLED','TIMEOUT','RESULT_UNKNOWN','INVALID_ARGUMENT','SCOPE_DENIED',
+  'REVISION_CONFLICT','EXTERNAL_FAILURE','UNSUPPORTED_CAPABILITY','UNAUTHORIZED']);
+const localFailureMessages=new Set([
+  'Workspace patch helper identity is unavailable',
+  'Workspace patch process checker requires an absolute PowerShell path',
+  'Workspace patch process checker PowerShell path is unavailable',
+  'Workspace patch process checker requires pwsh.exe or powershell.exe',
+  'Workspace patch in-flight record could not be persisted',
+  'Workspace patch helper stop is unconfirmed',
+  'Workspace patch apply was interrupted',
+  'Workspace patch helper output exceeded limit',
+  'Workspace patch helper input failed',
+  'Workspace patch helper could not start',
+  'Workspace patch helper exited but in-flight record remains',
+  'Workspace patch helper did not complete',
+  'Workspace patch helper returned an invalid receipt',
+  'Workspace patch apply preflight failed',
+  'Workspace patch apply deadline expired',
+  'Workspace command was cancelled',
+]);
 const until=async(predicate,timeout=60000)=>{const end=Date.now()+timeout;while(Date.now()<end){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Original Runtime graph did not reach the expected state');};
 export function createExplicitFakeCodingRepairImage(target,observed=[]) {
   const engine=new OwnedWorkflowEngine({checkpointSecret:'explicit-fake-cloud-checkpoint-secret-32',externalHost:true,allowIsolatedProposals:true,
@@ -69,9 +89,16 @@ export async function runCodingRepairFullGraphFixture(options={}) {
   }
   const observed=[],operations=[];let app,host,activeHostOperations=0;
   const defer=Object.fromEntries(['start','list','read','snapshot','preview','patch','verify','check','publish','reconcile'].map(name=>[name,async(...args)=>{
-    const begin=Date.now();activeHostOperations++;
+    const begin=Date.now();let failure;activeHostOperations++;
     try{await options.beforeHostOperation?.({name,args,user,app});return await host[name](...args);}
-    finally{operations.push({name,elapsedMs:Date.now()-begin});activeHostOperations--;}}]));
+    catch(error){
+      // This runner uses public synthetic workspaces. Keep the original local failure before Gateway redaction.
+      // Never attach command arguments, source contents or credentials to this diagnostic receipt.
+      failure={code:localFailureCodes.has(error?.code)?error.code:'EXTERNAL_FAILURE',
+        message:localFailureMessages.has(error?.message)?error.message:'Host operation failed (details withheld)'};
+      throw error;
+    }
+    finally{operations.push({name,elapsedMs:Date.now()-begin,...(failure?{error:failure}:{})});activeHostOperations--;}}]));
   const original=createIsolatedCodingRepairTools(defer),tools=[...original];
   for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],['check','workflow.host.f15_n05'],['publish','workflow.host.f15_n06']]) {
     const tool=original.find(item=>item.descriptor.name==='coding.repair.'+source);tools.push({...tool,descriptor:{...tool.descriptor,name}});

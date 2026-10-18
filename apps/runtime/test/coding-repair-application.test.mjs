@@ -68,6 +68,8 @@ test('cancel propagates from original graph into its running N05 host command an
   assert.equal(report.child.state,'cancelled');assert.equal(report.mainRootAfterSha256,report.mainRootBeforeSha256);
   assert.equal(commandFinished,true,'the report must wait for the original command cancellation to finish');
   assert.equal(report.operations.filter(item=>item.name==='check').length,1);
+  assert.deepEqual(report.operations.find(item=>item.name==='check').error,
+    {code:'CANCELLED',message:'Workspace command was cancelled'},'retain the original local failure before Gateway redaction');
   assert.equal(report.operations.some(item=>item.name==='publish'),false);
   const host=report.evidence.find(record=>record.toolName==='workflow.host.f15_n05');
   assert.ok(host);assert.ok(['unknown','failed'].includes(host.state));
