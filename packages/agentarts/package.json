@@ -14,6 +14,8 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
+    "diff": "8.0.4",
+    "typescript": "5.9.3",
     "@personal-agent/contracts": "0.1.0-alpha.1",
     "@personal-agent/coordination": "0.1.0-alpha.1",
     "@personal-agent/models": "0.1.0-alpha.1"
