@@ -37,7 +37,8 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
-    'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray'];
+    'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
+    'windowsControlHost','developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
     runtimeStartup: {snapshot: () => ({state: startup})}, runtimeApplication: {activeTaskCount: count,
@@ -49,6 +50,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
     localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
+    windowsControlClosed: false, windowsControlClosing: undefined,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
@@ -161,6 +163,23 @@ test('failed MCP release blocks quitting without automatically retrying or closi
   f.app.quit();await tick();await tick();assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);
   assert.equal(f.calls.filter(call=>call==='mcp-dispose').length,1);assert.equal(f.calls.filter(call=>call==='app-quit').length,1);
   assert.match(f.context.runtimeError,/远程 MCP 关闭未确认/);
+});
+
+test('Windows control closes once after active work and before Runtime; scoped permits close on final exit',async()=>{
+  const f=fixture({count:1});let release;
+  f.context.windowsControlHost={close(){f.calls.push('windows-close');return new Promise(resolve=>{release=resolve;});}};
+  for(const name of ['developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation'])
+    f.context[name]={close(){f.calls.push(name+'-close');}};
+  f.app.quit();await tick();
+  assert.equal(f.calls.includes('windows-close'),false);assert.equal(f.exited,false);
+  f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);
+  f.app.quit();await tick();assert.equal(f.calls.filter(call=>call==='windows-close').length,1);
+  release();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.context.windowsControlClosed,true);
+  assert.ok(f.calls.indexOf('windows-close')<f.calls.indexOf('runtime-close'));
+  for(const name of ['developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation'])
+    assert.equal(f.calls.filter(call=>call===name+'-close').length,1);
 });
 
 test('the original final task guard still catches work that appears during cleanup', async () => {
