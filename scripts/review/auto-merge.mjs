@@ -1,0 +1,83 @@
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+import {evaluateReviews} from './check-design-review.mjs';
+
+const execute=promisify(execFile);
+const requiredChecks=['check','ecs-linux-check'];
+const actionsAppId=15368;
+
+export function evaluateMerge({pr,mainSha,reviews,checks,statuses,repository}) {
+  if(pr.state!=='open'||pr.draft||pr.merged||pr.base?.ref!=='main'||
+    pr.base.repo.full_name!==repository||pr.head?.repo?.full_name!==repository) return 'ineligible PR';
+  if(!/^[a-f0-9]{40}$/.test(pr.head.sha)||pr.base.sha!==mainSha||
+    pr.mergeable!==true||pr.mergeable_state!=='clean') return 'branch protection or main update pending';
+  if(!evaluateReviews({headSha:pr.head.sha,author:pr.user.login,reviews}).passed) return 'eligible non-author current-head approval required';
+  const latest=new Map();
+  for(const check of checks) {
+    if(check.head_sha!==pr.head.sha) continue;
+    const key=`${check.app?.id}:${check.name}`;
+    if(!latest.has(key)||latest.get(key).id<check.id) latest.set(key,check);
+  }
+  for(const name of requiredChecks) {
+    const check=latest.get(`${actionsAppId}:${name}`);
+    if(check?.status!=='completed'||check.conclusion!=='success') return `${name} has not passed`;
+  }
+  if([...latest.values()].some(check=>check.status!=='completed'||check.conclusion!=='success')) return 'another check has not passed';
+  const latestStatuses=new Map();
+  for(const status of statuses) {
+    if(!latestStatuses.has(status.context)||latestStatuses.get(status.context).id<status.id) latestStatuses.set(status.context,status);
+  }
+  if([...latestStatuses.values()].some(status=>status.state!=='success')) return 'another status has not passed';
+  return null;
+}
+
+export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,token=process.env.GITHUB_TOKEN,fetchImpl=fetch,executeImpl=execute,log=console.log}={}) {
+  if(!/^[-\w]+\/[-\w.]+$/.test(repository??'')||!token) throw Error('Missing trusted repository context');
+  async function api(route) {
+    const response=await fetchImpl(`https://api.github.com/repos/${repository}/${route}`,{
+      headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},
+      redirect:'error',signal:AbortSignal.timeout(30000)
+    });
+    if(!response.ok) throw Error(`GitHub read failed (${response.status})`);
+    return response.json();
+  }
+  async function pages(route,key) {
+    const all=[];
+    for(let page=1;;page++) {
+      const value=await api(`${route}${route.includes('?')?'&':'?'}per_page=100&page=${page}`);
+      const batch=key?value[key]:value;
+      if(!Array.isArray(batch)) throw Error('Incomplete GitHub result');
+      all.push(...batch);
+      if(batch.length<100) return all;
+    }
+  }
+  const prs=await pages('pulls?state=open&base=main');
+  for(const candidate of prs) {
+    if(candidate.draft||candidate.head?.repo?.full_name!==repository) continue;
+    try {
+      const pr=await api(`pulls/${candidate.number}`);
+      const [main,reviews,checks,statuses]=await Promise.all([
+        api('branches/main'),pages(`pulls/${pr.number}/reviews`),
+        pages(`commits/${pr.head.sha}/check-runs?filter=latest`,'check_runs'),pages(`commits/${pr.head.sha}/statuses`)
+      ]);
+      const reason=evaluateMerge({pr,mainSha:main.commit.sha,reviews,checks,statuses,repository});
+      if(reason) {log(`#${pr.number}: ${reason}`);continue;}
+      // The short-lived Actions token has no owner bypass. GitHub rechecks all
+      // protected-branch rules and atomically matches this exact reviewed head.
+      await executeImpl('gh',['pr','merge',String(pr.number),'--repo',repository,'--auto','--squash','--match-head-commit',pr.head.sha],{
+        env:{...process.env,GH_TOKEN:token},timeout:60000,windowsHide:true,maxBuffer:1048576
+      });
+      log(`#${pr.number}: GitHub accepted the protected-branch merge request`);
+    } catch(error) {
+      // A moved head, new review, unresolved thread or GitHub API error cannot
+      // become a merge approval. Do not echo CLI stderr or token-bearing data.
+      log(`#${candidate.number}: not merged (${error.status??'gate or GitHub request failed'})`);
+    }
+  }
+}
+
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+  await mergeApproved();
+}
