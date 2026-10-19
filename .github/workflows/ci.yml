@@ -94,10 +94,9 @@ jobs:
           path: ${{ runner.temp }}/ci-transfer
       - name: Restore verified same-run source locally
         if: matrix.runner[0] == 'self-hosted'
-        shell: bash
         env:
           CI_SOURCE_SHA256: ${{ needs.route.outputs.source_sha256 }}
-        run: node "$RUNNER_TEMP/ci-transfer/source-transfer.mjs" restore
+        run: node "${{ runner.temp }}/ci-transfer/source-transfer.mjs" restore
       - name: Verify Windows ECS admission and inherited resource controls
         if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
         working-directory: ${{ env.PA_CI_SOURCE || github.workspace }}
@@ -105,12 +104,9 @@ jobs:
         run: ./scripts/ci/windows-admission.ps1
       - name: Record the selected runner and exact checkout
         working-directory: ${{ env.PA_CI_SOURCE || github.workspace }}
-        shell: bash
         env:
           CI_ROUTE: ${{ matrix.name }}
-        run: |
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          printf 'Selected: %s; actual runner: %s; OS: %s; SHA: %s\n' "$CI_ROUTE" "$RUNNER_NAME" "$RUNNER_OS" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+        run: node -e "const cp=require('node:child_process'),fs=require('node:fs');if(cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==process.env.GITHUB_SHA)throw Error('Checkout SHA mismatch');fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,JSON.stringify({selected:process.env.CI_ROUTE,runner_name:process.env.RUNNER_NAME,os:process.env.RUNNER_OS,sha:process.env.GITHUB_SHA})+'\n')"
       - uses: actions/setup-node@v4
         if: matrix.runner[0] != 'self-hosted'
         with:
