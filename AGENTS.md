@@ -1,7 +1,7 @@
 # PersonalAgent 开发 Agent 工作规范
 
 <!-- current-design-20261015 -->
-> 当前设计与协作入口：[当前详细设计](docs/design/CURRENT_DESIGN_20261015.md) · [28项状态](docs/design/WORKFLOW_STATUS_20261015.md) · [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [历史图文导航](docs/design/README.md) · [具体分工与接线](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) · [协作与评审规则](CONTRIBUTING.md)。具体模型、部署与调度实验以当前设计及接口目录为依据，不在长期协作规则中固定选型；架构未最终定型。每位 MOD 负责人交付实现、实际调用方接线、测试、Evidence 和文档。常规 PR 须有四位协作者中任意一位非作者对当前提交的有效批准；提交更新使批准失效后须对新 head 重新审查批准。Owner 可按下文对具体 PR 作有记录的审核例外，技术 CI 仍必须通过。四位协作者长期均衡承担审查与合并。设计不等于已实现；历史验收与作者记录保留。
+> 当前设计与协作入口：[当前详细设计](docs/design/CURRENT_DESIGN_20261015.md) · [28项状态](docs/design/WORKFLOW_STATUS_20261015.md) · [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [历史图文导航](docs/design/README.md) · [具体分工与接线](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) · [协作与评审规则](CONTRIBUTING.md)。具体模型、部署与调度实验以当前设计及接口目录为依据，不在长期协作规则中固定选型；架构未最终定型。每位 MOD 负责人交付实现、实际调用方接线、测试、Evidence 和文档。常规 PR 首轮须有四位协作者中任意一位非作者的有效批准，批准在后续 CI 修复提交中保留；Owner 可按下文对具体 PR 作有记录的审核例外，技术 CI 仍必须通过。四位协作者长期均衡承担审查与合并。设计不等于已实现；历史验收与作者记录保留。
 
 本文件约束在本仓库工作的开发 Agent，不是产品运行时的 Skill 或授权来源。默认用中文沟通。
 这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。
@@ -127,7 +127,7 @@
 - 一个分支/PR 对应一个可审查的工作包。按当前客户端要求使用分支前缀；Codex 默认 `codex/<task-slug>`。延续已有任务时优先复用对应分支。
 - 提交前检查完整 diff，仅暂存当前任务文件；使用 scoped commit，例如 `feat(runtime): ...`、`fix(models): ...`、`docs(agents): ...`。不把数据、密钥、缓存、依赖或工作树提交进去。
 - 创建 PR 前核对目标分支及是否已有同任务 PR；按 `.github/pull_request_template.md` 写明行为变化、接口/迁移、实际验证和限制，不沿用与最终改动不符的说明。
-- 常规 PR 合并前至少取得 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前提交的有效 Approve；一位即可，不要求四人逐一批准。作者自审不算独立批准；提交更新使批准失效后须对新 head 重新审查批准。显式撤销批准或 Changes Requested 仍需处理。评审者负责审批与验证，失败由原作者修改；当前提交 CI 通过后受保护自动合并，main 不重复运行全量 CI。Owner zemeng5208 可明确授权具体 PR 的审核例外，并通过独立审核 ruleset 的 PR-only 例外合并；PR 必须记录授权、已处理意见与保留分歧，不能伪称独立批准或删除异议。技术 CI 与审核规则分离：最新提交必需检查通过、严格更新主线、无冲突及技术缺陷已处理仍是合并前提，不得绕过技术 CI、强制推送或伪造阅读记录。
+- 常规 PR 首轮至少取得 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者的有效 Approve；一位即可，不要求四人逐一批准。作者自审不算独立批准。批准在后续 CI 修复提交中保留；显式撤销批准或 Changes Requested 仍需处理。评审者负责审批与验证，失败由原作者修改；当前提交 CI 通过后受保护自动合并，main 不重复运行全量 CI。Owner zemeng5208 可明确授权具体 PR 的审核例外，并通过独立审核 ruleset 的 PR-only 例外合并；PR 必须记录授权、已处理意见与保留分歧，不能伪称独立批准或删除异议。技术 CI 与审核规则分离：最新提交必需检查通过、严格更新主线、无冲突及技术缺陷已处理仍是合并前提，不得绕过技术 CI、强制推送或伪造阅读记录。
 - zemeng5208、goo122、Potatos498、2511375597-lab 对 PR 审查和合并享有同等参与权并承担同等责任，应持续轮流承担实质审查与合并，不得将这两项工作长期推给他人。创建 PR 时记录拟负责审查与合并的人；无法履职时明确说明阻碍、主动协调交接并确认接手人，不得以等待其他人代办作为免责理由。记录实际审查、批准、合并者及结果，定期检查四位协作者的参与是否均衡；均衡是跨 PR 的责任，不是每个 PR 必须四人批准。
 - 禁止用强制推送、硬重置、覆盖或清理未跟踪文件解决普通冲突；存在需要处置的他人修改时先说明具体影响。
 - 工作状态使用 CONTRIBUTING/ROADMAP 中的 `todo`、`ready`、`in_progress`、`review`、`blocked`、`done`。只有工作包约定的验收、必要检查、自审及实际集成都满足才转为 done。
