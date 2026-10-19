@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-18 Desktop 前端交互与体验审查（review）
+
+前序 #409 的[审查历史](modules/DESKTOP_FRONTEND_UX_AUDIT_20261018.md)保留。本轮按用户“只改前端”的要求，从最新 main 独立整理 `codex/frontend-final-main-20261018`，不纳入 #404/#398 的核心改动；窗口/悬浮球、刷新/焦点、预算、侧栏、常用入口与搜索、任务进展和真实空态一并交付。[当前前端交付记录](modules/DESKTOP_FRONTEND_MAIN_DELIVERY_20261018.md)记录本工作树实际验证。Runtime、AgentArts、公共契约、依赖及迁移未修改；拟审查 goo122、拟合并 Potatos498，当前有效批准/CI/集成以 PR 为准，保持 review。
+
 ## 2026-10-17 编码最小修复算法与 F15 多轮链（in_progress）
 
 Owner 本轮解除这部分暂停，要求算法与工作流进入自有镜像。[ADR-0033](adr/0033-coding-minimal-repair-workflow.md)记录复用 jsdiff/TypeScript、原 F15 多轮、任务隔离目录、包级验证失效、主/影子与 CAS 交付。根协调承担依赖/文档/集成，云图、编码工具、Runtime/Desktop 按现有模块归属交付实际接线。新工作包不混入固定 head 的 PR #376 审查；中间镜像暂不发，完整增量测试后统一构建。代码、真实模型、镜像与平台逐面验收，尚未标 done。

@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "scope": "Synthetic file-read choice only, six filename pairs; no architecture or broad capability acceptance",
+  "study": "context_followup",
+  "architectureStatus": "undecided",
+  "deployed": false,
+  "trainingPerformed": false,
+  "realForwards": 56,
+  "runtime": {
+    "kind": "ready",
+    "processId": 16132,
+    "port": 52744,
+    "device": "cuda",
+    "torchThreads": 1,
+    "interopThreads": 1,
+    "torch": "2.14.0+cu130",
+    "laya": "0.3.20",
+    "transformers": "5.17.0",
+    "stockAutocast": true,
+    "stockDtype": "torch.bfloat16",
+    "defaultMaxLen": 1024,
+    "defaultHeadMaxLen": 256
+  },
+  "ofatValidation": {
+    "childVariants": 24,
+    "counterfactualPathPairs": 12,
+    "optionOrderPairs": 12
+  },
+  "transport": {
+    "groups": [],
+    "routes": {
+      "selector_http": {
+        "correct": 0,
+        "total": 0
+      },
+      "raw_http": {
+        "correct": 0,
+        "total": 0
+      },
+      "direct_sdk": {
+        "correct": 0,
+        "total": 0
+      }
+    }
+  },
+  "labels": {
+    "A/B": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 12,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 12
+      },
+      "seenSeed": {
+        "correct": 2,
+        "total": 4,
+        "positives": {
+          "correct": 2,
+          "total": 2
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 2
+        }
+      },
+      "heldOutFilenamePairs": {
+        "correct": 10,
+        "total": 20,
+        "positives": {
+          "correct": 10,
+          "total": 10
+        },
+        "negatives": {
+          "correct": 0,
+          "total": 10
+        }
+      }
+    }
+  },
+  "factors": {
+    "downstream_goal_consistent": {
+      "correct": 12,
+      "total": 24,
+      "positives": {
+        "correct": 7,
+        "total": 12
+      },
+      "negatives": {
+        "correct": 5,
+        "total": 12
+      },
+      "parentCorrect": 12,
+      "fixedErrors": 5,
+      "brokeCorrect": 5,
+      "changedAction": 10
+    }
+  },
+  "originalFactors": {},
+  "order": {
+    "A/B": {
+      "changed": 0,
+      "total": 12,
+      "pairs": [
+        {
+          "seed": 0,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 0,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 1,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 2,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 3,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 4,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": false,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        },
+        {
+          "seed": 5,
+          "negative": true,
+          "normal": "read",
+          "reversed": "read",
+          "changed": false
+        }
+      ]
+    }
+  },
+  "precision": {},
+  "defaultWindow": [],
+  "semanticControl": {
+    "correct": 7,
+    "total": 8,
+    "positives": {
+      "correct": 4,
+      "total": 4
+    },
+    "negatives": {
+      "correct": 3,
+      "total": 4
+    },
+    "mapping": {
+      "read": "animation_not_running",
+      "review": "source_not_loaded"
+    },
+    "qualification": "Separate functional positive control, not an OFAT causal comparison to filename equality"
+  }
+}
