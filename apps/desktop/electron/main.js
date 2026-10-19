@@ -4,7 +4,7 @@ import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
-import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
+import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -15,6 +15,7 @@ import {register, requestTaskCancellation, submitConversationTask} from './runti
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
+import {panelWindowAppearance, bindPanelMaterial} from './panel-material.js';
 import {desktopDataPaths} from './data-paths.js';
 import {restoreSyntheticRepairSubmission} from './competition-repair-submission.js';
 import {readCapabilityDirectory} from './capability-directory.js';
@@ -672,6 +673,7 @@ function windowFor(mode, bounds, options = {}) {
     if (mode === 'panel') void stopPanelVoice().catch(reportPanelVoiceFailure);
   });
   if (mode === 'panel') {
+    win.on('resize', () => applyShape(win, 24));
     win.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => {
       if (mainFrame) void stopPanelVoice().catch(reportPanelVoiceFailure);
     });
@@ -695,7 +697,7 @@ function windowFor(mode, bounds, options = {}) {
     presented = true;
     if (mode === 'orb') placeOrb(win, win.getBounds());
     if (centerOnPresent) win.center();
-    if (['panel','admin','workspace'].includes(mode)) applyShape(win, mode === 'panel' ? 20 : 12);
+    if (['panel','admin','workspace'].includes(mode)) applyShape(win, mode === 'panel' ? 24 : 12);
     if (mode !== 'panel') win.show();
     publish();
   };
@@ -744,7 +746,7 @@ function openPanel(focus = false) {
   if (!orb || !panel || orb.isDestroyed() || panel.isDestroyed()) return;
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
   placePanel(panelBounds(orb.getBounds(), screen.getDisplayMatching(orb.getBounds()).workArea));
-  applyShape(panel, 20);
+  applyShape(panel, 24);
   if (focus) panel.show(); else panel.showInactive();
   away = 0;
 }
@@ -3470,7 +3472,8 @@ app.whenReady().then(async () => {
   orb = windowFor('orb', {x: area.x + area.width - 150, y: area.y + area.height - 180, width: 112, height: 112},
     {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false});
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
-    {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, backgroundMaterial: 'none', roundedCorners: true});
+    {frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
+  bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
   createTray();
