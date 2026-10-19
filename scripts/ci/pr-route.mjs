@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 
 const imageRoot='apps/agentarts-runtime/';
-const sharedImageRoots=['packages/contracts/','packages/models/','packages/coordination/','packages/agentarts/','scripts/agentarts/','scripts/laya/','.github/workflows/','.github/actions/','scripts/ci/','tests/architecture/','tests/contracts/'];
+const sharedImageRoots=['packages/contracts/','packages/models/','packages/coordination/','packages/agentarts/','packages/client/','apps/runtime/','scripts/agentarts/','scripts/laya/','.github/workflows/','.github/actions/','scripts/ci/','tests/architecture/','tests/contracts/'];
 const sharedImageFiles=new Set(['package.json','package-lock.json','tsconfig.base.json','.node-version','.npmrc','tests/integration/owned-agentarts-image.test.mjs']);
 function validPath(name) {return typeof name==='string'&&name.length>0&&!name.startsWith('/')&&!name.includes('\\')&&!name.split('/').some(part=>part==='..'||part==='.'||part==='');}
 export function classifyPullRequest(files,expectedCount) {

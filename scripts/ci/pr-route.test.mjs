@@ -12,6 +12,8 @@ for(const [name,files,mode] of [
   ['shared contracts',['packages/contracts/schema/protocol.json'],'both'],
   ['root dependencies',['package-lock.json'],'both'],
   ['shared compiler configuration',['tsconfig.base.json'],'both'],
+  ['Runtime host used by the owned image integration fixture',['apps/runtime/src/application.ts'],'both'],
+  ['Client used by the owned image integration fixture',['packages/client/src/index.ts'],'both'],
   ['contract fixture gate',['tests/contracts/protocol.test.mjs'],'both'],
   ['image integration fixture',['tests/integration/owned-agentarts-image.test.mjs'],'both'],
   ['CI routing changes',['scripts/ci/pr-route.mjs'],'both'],
