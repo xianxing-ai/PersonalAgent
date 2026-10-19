@@ -16,7 +16,7 @@ const PROTOCOL_ID = 'https://personalagent.local/protocol/1.0.0';
 
 const forecastInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '查询某地某日的天气预报。地名来自 Open-Meteo/GeoNames，其索引不跨文字匹配：中文串只在 language=zh 下可检索，而该索引的简繁覆盖逐条不可预测，简体外国城市名常只命中同名小镇（伦敦→加拿大安大略、东京→中国江苏）。外国城市请同时在 locationQuery 给出英文或当地名。若返回的 resolved.confidence 为 low，说明只找到小型同名地点或非城市记录，应改用英文/当地名重试，不要把该结果当作目标城市的天气。内置离线别名表已覆盖 140 个常见外国城市，当简体输入在索引中零命中时（纽约/首尔等）会自动改用其英文名重查，无需额外配置；表外的简体外国城市名仍请用 locationQuery 给出英文名。装配层配置 geonamesUsername 后，汉字地名会先经 GeoNames name_equals 精确名检索层解析，覆盖面进一步扩大到任意已知别名。',
+  description: '查询某地某日的天气预报。地名来自 Open-Meteo/GeoNames，其索引不跨文字匹配：中文串只在 language=zh 下可检索，而该索引的简繁覆盖逐条不可预测，简体外国城市名常只命中同名小镇（伦敦→加拿大安大略、东京→中国江苏）。外国城市请同时在 locationQuery 给出英文或当地名以免同名误中。天气结果只包含天气本身（地点、日期、摘要、温度、降水概率），不附带地名解析、置信度等技术性说明，回答时请直接转述天气内容。内置离线别名表已覆盖 140 个常见外国城市，当简体输入在索引中零命中时（纽约/首尔等）会自动改用其英文名重查，无需额外配置；表外的简体外国城市名仍请用 locationQuery 给出英文名。装配层配置 geonamesUsername 后，汉字地名会先经 GeoNames name_equals 精确名检索层解析，覆盖面进一步扩大到任意已知别名。',
   properties: {
     location: {type: 'string', minLength: 1, description: '用户原始的地名表述，同时作为缓存与记录身份的基准。'},
     locationQuery: {
@@ -48,23 +48,6 @@ const forecastOutputSchema: ToolDescriptor['outputSchema'] = {
         temperatureMax: {type: 'number'},
         precipitationProbability: {type: ['integer', 'null'], minimum: 0, maximum: 100},
         publishedTimeKind: {enum: ['provider_published', 'coverage_start']},
-        resolved: {
-          type: 'object',
-          required: ['name', 'latitude', 'longitude', 'timezone', 'ambiguous', 'alternatives', 'confidence'],
-          additionalProperties: false,
-          properties: {
-            name: {type: 'string', minLength: 1},
-            admin1: {type: 'string', minLength: 1},
-            country: {type: 'string', minLength: 1},
-            latitude: {type: 'number', minimum: -90, maximum: 90},
-            longitude: {type: 'number', minimum: -180, maximum: 180},
-            timezone: {type: 'string', minLength: 1},
-            ambiguous: {type: 'boolean'},
-            alternatives: {type: 'array', maxItems: 4, items: {type: 'string', minLength: 1}},
-            confidence: {enum: ['high', 'low']},
-            featureCode: {type: 'string', minLength: 1},
-          },
-        },
       },
     },
     cache: {
@@ -129,7 +112,12 @@ export function register(host: ToolHost, options: WeatherModuleOptions): () => v
       if (typeof raw.locationQuery === 'string') query.locationQuery = raw.locationQuery;
       if (typeof raw.date === 'string') query.date = raw.date;
       if (raw.units === 'metric' || raw.units === 'imperial') query.units = raw.units;
-      return service.getForecast(query, context.signal);
+      const result = await service.getForecast(query, context.signal);
+      // 对话可见的结果只说天气：地名解析与置信度留在 service/provider 内部供质量门槛使用，
+      // 不进入智能体读到的工具结果，避免回答里冒出解析标记与置信度字样。
+      const forecast = {...result.forecast};
+      delete forecast.resolved;
+      return {...result, forecast};
     },
   };
 

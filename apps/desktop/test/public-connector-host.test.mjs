@@ -76,3 +76,23 @@ test('without the environment variable the exact-name tier is not called', async
     if (previous !== undefined) process.env.PA_GEONAMES_USERNAME = previous;
   }
 });
+
+test('the weather public projection publishes only the weather, never the place resolution', async () => {
+  const host = createPublicConnectorHost({researchProvider: new OpenAlexProvider({fetchImpl: async () => {throw Error('unused');}})});
+  try {
+    const policy = host.competitionToolExports.find(item => item.toolName === 'weather.forecast');
+    const result = await policy.project({signal: new AbortController().signal, result: {
+      forecast: {location: '北京', date: '2026-10-19', units: 'metric', summary: '晴',
+        temperatureMin: 8, temperatureMax: 19, precipitationProbability: 12, publishedTimeKind: 'coverage_start',
+        resolved: {name: '北京', latitude: 39.9, longitude: 116.4, timezone: 'Asia/Shanghai', ambiguous: true,
+          alternatives: ['北京, 重庆市, 中国', '北京, 四川省, 中国'], confidence: 'high', featureCode: 'PPLC'}},
+      record: {source: 'open-meteo', occurredAt: '2026-10-19T00:00:00.000Z'},
+      cache: {state: 'fresh', fetchedAt: '2026-10-19T00:00:00.000Z', ageMs: 0, ttlMs: 1},
+    }});
+    assert.equal(result.forecast.location, '北京');
+    assert.equal(result.forecast.temperatureMax, 19);
+    assert.ok(!('resolved' in result.forecast), 'projection strips the resolution block even if the service payload had one');
+    assert.ok(!JSON.stringify(result).includes('Asia/Shanghai') && !JSON.stringify(result).includes('"confidence"'),
+      'no resolution marker or confidence wording may leak into the public projection');
+  } finally {host.close();}
+});
