@@ -36,6 +36,8 @@ main 两项原必需状态名 `check` 与 `ecs-linux-check` 及官方 Actions ap
 
 Runner 位于 `/opt/personalagent-ci/runner`，systemd 服务 `actions.runner.zemeng5208-PersonalAgent.ecs-472f-c018-linux.service` 自动启动。Docker 服务也需自动启动，`pa-ci` 的 Docker 组权限经用户明确授权。Docker 组具有 root 等价权限；该专用 CI 主机只接收本仓库任务，不放生产或模型凭据，不能作为恶意代码的隔离边界。
 
+镜像步骤通过 `sg docker` 在新进程载入已授权的组成员关系，无需重启正在处理其他 PR 的 Runner；正常重启和开机后服务也会自动继承该成员关系。
+
 默认 `PA_IMAGE_RUNNER=ecs`。ECS 故障时可将仓库 Actions 变量 `PA_IMAGE_RUNNER` 设为 `github` 后重跑，让镜像任务在 GitHub Ubuntu 执行；恢复后删除变量或设回 `ecs`。这是显式切换，GitHub 不会因自托管 Runner 离线而自动改派其他系统。不得跳过镜像构建来制造绿灯。
 
 查看服务与 GitHub Runner 在线状态后再处理故障，繁忙时不重启。只清理本次 CI 镜像标签，不执行全局 Docker prune。回滚路由需完整还原上一版两个工作流、分组脚本和命令；保留原必需状态和审批保护。
