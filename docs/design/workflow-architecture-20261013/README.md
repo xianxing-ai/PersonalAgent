@@ -1,9 +1,11 @@
-# PersonalAgent 当前架构查看页（2026-10-16 修订）
+# PersonalAgent 当前架构查看页（2026-10-17 修订）
 
 沿用原 Node.js / React / React Flow 查看器，把当前设计更新到同一张连通图；本页不运行真实 Agent。
 设计依据为 `abb70879` 中的[当前详细设计](../CURRENT_DESIGN_20261015.md)、
 [F01–F28 状态](../WORKFLOW_STATUS_20261015.md)及[具体接线工作包](../../competition/COLLABORATOR_WIRING_PACKAGE.md)。
 架构仍未最终定型；页面分别说明设计目标、接口/代码、真实回执和缺口。
+
+Competition目标边界：AgentArts负责Competition Agent/Workflow的构建、编排、评估和部署；本地Runtime经CloudAgentPort调用已部署工作流，并保留TaskRuntime、Policy、ToolGateway、Evidence与外部读回。本机Laya仍为实验候选，仅作为独立Local Profile的可选方案；节点接线、适用场景和架构选择尚待验证，不代表已纳入Competition产品路径。AgentArts失败不得静默回退到独立Local Agent Profile。
 
 ## 打开与运行
 
@@ -28,14 +30,14 @@ npm run preview -- --host 127.0.0.1 --port 4173
 展开后 225 个可见节点包含 28 个功能容器、185 个详细节点和 12 个共享节点，
 355 条边包含 191 条详细依赖、31 条入口边和 133 条总览关系；这些数量不是新的生产工作流数量。
 
-- 本机 Laya 为实验候选，镜像无权重/Python/PyTorch；未合格站点升级经 AgentArts 代理的 DeepSeek。
-- 自有 ARM64 镜像保存 28 图/185 节点，当前每图默认串行；本机 Runtime/Policy/ToolGateway/Evidence 保持事实和授权来源。
+- Competition由AgentArts承担Agent/Workflow构建、编排、评估和部署；本地Runtime经CloudAgentPort消费已部署工作流，负责授权执行与可信Evidence。
+- 2026-10-15基线的本机Laya/自有ARM64镜像实测保留为历史证据；本机Laya仍是实验候选，仅作为独立Local Profile的可选方案，不代表已纳入Competition产品路径；独立Local Agent Profile不是AgentArts失败时的静默回退。
 - 主动四入口、持续责任、来源/Goal/原文、Wiki/记忆/上下文、一般新任务与候选图逐项说明。
 - 无人值守/归来、用户可调打扰额度、静默 feed、语音主动询问及当前参数确认同步到节点与机制详情。
 - 主对话模型分派和原生思考参数按实际 Provider 能力说明，不把模型预算当思考效果。
 - 高级影子融入已有判断、主任务优先、显式比较与普通任务交付分别说明；当前真实案例仍为 main 后 shadow 串行。
 - 10 项工作包和全部 39 个 MOD 展示负责人、端口、真实消费方、测试/Evidence 与未完成项。
-- AgentArts 模型/工具网关、知识、观测和评估分别显示真实范围；未绑定能力保持 unavailable。
+- AgentArts工作流、模型/工具网关、知识、观测和评估分别显示目标边界、已实现范围与真实验收缺口；未绑定能力保持 unavailable。
 
 ## 验证与证据边界
 

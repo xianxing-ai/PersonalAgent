@@ -1,0 +1,65 @@
+{
+  "formatVersion": 1,
+  "archiveDate": "2026-10-18",
+  "comparisonBaseline": "14049ca15bdda6e4ce6b52c836687dc5b4d98350",
+  "verification": "historical_claim/not_reverified",
+  "sourceLocation": "Original local agentarts-owned-image worktree; personal absolute prefix intentionally omitted",
+  "currentProfile": "huawei_ict_agentarts; Competition does not invoke Laya",
+  "fixtureLinkPolicy": "Evaluation document links the sibling public fixture; the original fixture was not tracked at the historical source URL.",
+  "runner": {
+    "logicalPath": ".cache/minimal-repair-eval.mjs",
+    "reviewed": false,
+    "included": false,
+    "executed": false
+  },
+  "caseIntegrity": {
+    "count": 24,
+    "allSynthetic": true,
+    "caseInputsAndExpectationsEqualSource": true
+  },
+  "files": [
+    {
+      "file": "OWNED-IMAGE-BINDING-ACCEPTANCE-MATRIX.md",
+      "sourceSha256": "34df13cefdb1e392d28f5164ef8b24a36e8743aad0e584f320e8a8547963016f",
+      "sourceBytes": 51982,
+      "sourceLogicalPath": "docs/modules/OWNED-IMAGE-BINDING-ACCEPTANCE-MATRIX.md",
+      "verification": "historical_claim/not_reverified",
+      "transformations": [
+        "Add separate archive scope banner",
+        "Replace personal absolute paths with historical-worktrees labels",
+        "Replace file links and original relative documentation links with immutable historical commit links",
+        "Normalize line endings to LF and remove trailing Markdown hard-break spaces"
+      ],
+      "publicSha256": "65499a70086bbc033d6a41187d794fbc87743bce19bee9ec757c2d9eaa16b316",
+      "publicBytes": 52879
+    },
+    {
+      "file": "OWNED-IMAGE-MINIMAL-REPAIR-EVALUATION.md",
+      "sourceSha256": "747e8b4b9b61dc36e26ab50b45366a67150d80085f42f070ac0a52a2cd64fb7f",
+      "sourceBytes": 48580,
+      "sourceLogicalPath": "docs/modules/OWNED-IMAGE-MINIMAL-REPAIR-EVALUATION.md",
+      "verification": "historical_claim/not_reverified",
+      "transformations": [
+        "Add separate archive scope banner",
+        "Replace personal absolute paths with historical-worktrees labels",
+        "Replace file links and original relative documentation links with immutable historical commit links",
+        "Normalize line endings to LF and remove trailing Markdown hard-break spaces"
+      ],
+      "publicSha256": "0c120eb1004229b6e20c54dd951fb9cfec8dec0c6d8380ab0ed32841eab5c46c",
+      "publicBytes": 49262
+    },
+    {
+      "file": "minimal-repair-cases.json",
+      "sourceSha256": "9873325fadf85be0c970f5f112a3f6691d8a7578a61551cf0a7d8dd5913b713e",
+      "sourceBytes": 148257,
+      "sourceLogicalPath": "tests/fixtures/agentarts-owned/minimal-repair-cases.json",
+      "verification": "historical_claim/not_reverified",
+      "transformations": [
+        "Replace fixedTargetWorktree personal absolute path with historical-worktrees/agentarts-report-version",
+        "Normalize line endings to LF"
+      ],
+      "publicSha256": "27729700303c5c7ce7a1ca96e4b04c17487ecb93303c59e8b3e201ad49349545",
+      "publicBytes": 148250
+    }
+  ]
+}

@@ -1,14 +1,15 @@
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
-import {parseCoordinationResult} from '@personal-agent/coordination';
+import {parseCoordinationResult,parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {CoordinationResult,ExecutionModelSelection,ExecutionModelCatalog} from '@personal-agent/coordination';
 import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
 import type {AgentInput, RepairContext, RepairRef, RepairSource} from './input.js';
-import {FAST_PROMPT, DISPATCH_PROMPT, WORLD_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
+import {FAST_PROMPT, DISPATCH_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
 import {ownedBinding} from './bindings.js';
+import {worldGuidance} from './world-guidance.js';
 import type {OwnedBinding} from './bindings.js';
 import {getOwnedWorkflowBindings, getOwnedWorkflowTemplate,getOwnedWorkflowDesignCoverage} from './owned-workflow-templates.js';
 import type {OwnedWorkflowEngine, OwnedWorkflowAdvanceRequest, WorkflowNodeContext, WorkflowCandidate} from './owned-workflows.js';
@@ -16,7 +17,9 @@ import {workflowCandidateMetadata} from './owned-workflows.js';
 import {getOwnedWorkflowAdapterRequirements} from './workflow-adapters.js';
 import {boundSourceReadCandidates} from './workflow-dataflow.js';
 import {parseWorkflowSelectionResult} from './workflow-shadow-policy.js';
+import {rankCodingRepairCandidates} from './coding-repair.js';
 export {OwnedWorkflowEngine,workflowJoinReady} from './owned-workflows.js';
+export * from './coding-repair.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
 export {createProactiveHostProofs} from './proactive-host-proofs.js';
@@ -40,16 +43,21 @@ export type {OwnedBinding} from './bindings.js';
 export type {AgentInput};
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
-export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string}
+export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string;executionModel?:ExecutionModelSelection}
+export interface RoleReceipt {
+  role: AgentRole; requestId: string; promptVersion: string; status: 'started' | 'completed' | 'failed'; totalTokens?: number;
+  /** Additive application observability, not a platform trace or execution receipt. */
+  spanId?: string; startedAt?: string; endedAt?: string; durationMs?: number;
+  durationScope?: 'model_gateway_complete'; event?: 'workflow_candidates';
+  stage?: 'candidate_response'; nodeId?: string; candidateCount?: number; candidateArrayDigest?: string;
+  errorCode?: 'UNSUPPORTED_CAPABILITY' | 'EXTERNAL_FAILURE';
+  candidatePreparation?: 'model_gateway' | 'deterministic_binding';
+}
 /** Process-local finite-choice port; distinct from ModelPort and every authorization boundary. */
 export interface OwnedCandidateSelector {
   select(request: {context: string; candidates: readonly {id: string; description: string}[];
     deadline: string; signal: AbortSignal; requestId: string}): Promise<string>;
 }
-export interface RoleReceipt {role: AgentRole; requestId: string; promptVersion: string; status: 'started' | 'completed' | 'failed'; totalTokens?: number;
-  durationMs?:number; durationScope?:'model_gateway_complete'; event?:'workflow_candidates';
-  stage?:'candidate_response'; nodeId?:string; candidateCount?:number; candidateArrayDigest?:string;
-  errorCode?:'UNSUPPORTED_CAPABILITY'|'EXTERNAL_FAILURE';candidatePreparation?:'model_gateway'|'deterministic_binding'}
 export type AgentOutput = Omit<Extract<CoordinationResult, {kind: 'text'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'tool_proposal'}>, 'verification'>
   | Omit<Extract<CoordinationResult, {kind: 'repair_candidate'}>, 'verification'>;
@@ -100,7 +108,9 @@ export class OwnedAgentOrchestrator {
   /** Existing MaaS/ModelGateway generates data candidates; Laya chooses one later. */
   async prepareOwnedWorkflowCandidates(context: WorkflowNodeContext): Promise<readonly WorkflowCandidate[]> {
     const request: AgentInvocation = {query:'owned-workflow-candidates', sessionId:context.namespace,
-      requestId:context.requestId, deadline:context.deadline, signal:context.signal};
+      requestId:context.requestId, deadline:context.deadline, signal:context.signal,
+      ...(context.input&&typeof context.input==='object'&&!Array.isArray(context.input)&&Object.hasOwn(context.input,'executionModel')
+        ?{executionModel:parseExecutionModelSelection((context.input as Record<string,unknown>).executionModel)}:{})};
     this.control(request);
     const bound=boundSourceReadCandidates(context);
     if(bound) {
@@ -118,13 +128,19 @@ export class OwnedAgentOrchestrator {
           designNotes:context.template.designNotes,acceptance:context.template.acceptance},
         ...workflowCandidateMetadata(context.node,context.availableTools),
         predecessorOutputs:context.predecessorOutputs,predecessorStates:context.predecessorStates,availableTools:context.availableTools,
+        ...(context.codingRepair?{codingRepair:context.codingRepair,codingRepairContract:{version:1,
+          currentRound:context.codingRepair.round,rule:'Use the current SHA-bound snapshot and actual verification diagnostics; preserve working code and unrelated files. Patch the smallest causally supported scope. Do not remove tests or assertions merely to make checks pass. JS/TS AST analysis describes syntax/declaration ranges only; other languages require the published validation recipes.',
+          nodeOutput:context.node.id==='F15_N03'?{diagnosis:'explain actual failure evidence',patches:[{path:'current relative file',expectedSha256:'exact current SHA256',edits:[{oldText:'unique exact current bytes',newText:'incremental replacement'}]}]}
+            :{scope:['current affected relative file path'],forbiddenActions:'changes outside the task and source evidence'},
+          newFiles:'Only a host-authorized absent file may use {path,expectedSha256:null,edits:[],createText:string}. A requested new file does not authorize writing it.',
+          resultShape:'For F15_N03 output the diagnosis/patches object directly, not patchDiff or a unified diff.'}}:{}),
         conditionalNodes:context.template.nodes.filter(node => node.condition).map(({id,condition}) => ({id,condition})),
         mode:context.mode}, request));
     if (Object.keys(raw).length !== 1 || !Array.isArray(raw.candidates) || raw.candidates.length > 15) {
       this.emitCandidateReceipt(context,request,Array.isArray(raw.candidates)?raw.candidates:undefined,'EXTERNAL_FAILURE');
       throw new ProtocolError('EXTERNAL_FAILURE', 'Invalid workflow candidate response');
     }
-    const candidates = raw.candidates.map(value => {
+    let candidates = raw.candidates.map(value => {
       const item = record(value);
       if (Object.keys(item).some(key => !['id','description','value','branches','shadowIntent'].includes(key))
         || item.id === 'owned-review' || typeof item.id !== 'string' || typeof item.description !== 'string'
@@ -140,6 +156,8 @@ export class OwnedAgentOrchestrator {
       }
       return candidate as unknown as WorkflowCandidate;
     });
+    if(context.codingRepair&&context.node.id==='F15_N03'&&context.node.kind==='executor')
+      candidates=rankCodingRepairCandidates(context.codingRepair,context.codingRepair.snapshot,candidates);
     this.emitCandidateReceipt(context,request,raw.candidates,candidates.length?undefined:'UNSUPPORTED_CAPABILITY');
     if (!candidates.length) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'No evidence-supported workflow candidate');
     return [...candidates, {id:'owned-review', description:'Available evidence does not support these proposals. Continue review without granting authorization, executing a tool or changing task state.',value:null,abstain:true}];
@@ -147,12 +165,11 @@ export class OwnedAgentOrchestrator {
   /** Runtime diagnostic identity only; neither a quality score nor authorization. */
   private emitCandidateReceipt(context:WorkflowNodeContext,request:AgentInvocation,candidates?:unknown[],errorCode?:RoleReceipt['errorCode'],
     candidatePreparation:RoleReceipt['candidatePreparation']='model_gateway'):void {
-    try {this.onReceipt?.({event:'workflow_candidates',stage:'candidate_response',
+    this.emit({event:'workflow_candidates',stage:'candidate_response',
       role:context.node.kind==='executor'?'plan':'fast',requestId:request.requestId,promptVersion:PROMPT_VERSION,
       status:errorCode?'failed':'completed',candidatePreparation,...(errorCode?{errorCode}:{}),
       ...(/^F(?:0[1-9]|1[0-9]|2[0-8])_N\d{2}$/.test(context.node.id)?{nodeId:context.node.id}:{}),
-      ...(candidates?{candidateCount:candidates.length,candidateArrayDigest:createHash('sha256').update(JSON.stringify(candidates)).digest('hex')}:{})});}
-    catch { /* Safe metadata cannot change candidate processing. */ }
+      ...(candidates?{candidateCount:candidates.length,candidateArrayDigest:createHash('sha256').update(JSON.stringify(candidates)).digest('hex')}:{})});
   }
   private async runInvocation(request: AgentInvocation, bound: boolean): Promise<AgentOutput> {
     this.control(request);
@@ -161,7 +178,7 @@ export class OwnedAgentOrchestrator {
     let raw: unknown;
     let reviewedChanges: unknown;
     if (repair) {
-      const world = await this.call('world', WORLD_PROMPT, repair.data, request);
+      const world = await this.callWorld(repair, request);
       const worldReport = this.validateWorld(world, repair.context, repair.sources, bound);
       if (worldReport.disposition === 'KEEP') return this.selectOutput({kind: 'text', text: 'KEEP：世界状态分析无需修复。'},input,request);
       if (worldReport.disposition !== 'REVISE' || repair.sources.length === 0) {
@@ -207,7 +224,7 @@ export class OwnedAgentOrchestrator {
     }
     if (!repair) throw new ProtocolError('INVALID_ARGUMENT', 'Repair input required by workflow');
     if (binding.dispatch === 'world') {
-      const world = await this.call('world', WORLD_PROMPT, repair.data, request);
+      const world = await this.callWorld(repair, request);
       this.validateWorld(world, repair.context, repair.sources, true);
       return this.envelope(binding, {kind:'role_report',role:'world',value:world});
     }
@@ -301,10 +318,15 @@ export class OwnedAgentOrchestrator {
     if (request.signal.aborted) throw new ProtocolError('CANCELLED', 'Agent invocation cancelled');
     if (Date.parse(request.deadline) <= Date.now()) throw new ProtocolError('TIMEOUT', 'Agent invocation deadline exceeded');
   }
-  private emit(role: AgentRole, request: AgentInvocation, status: RoleReceipt['status'], totalTokens?: number, durationMs?:number): void {
-    try { this.onReceipt?.({role, requestId: request.requestId, promptVersion: PROMPT_VERSION, status,
-      ...(totalTokens === undefined ? {} : {totalTokens}),
-      ...(durationMs === undefined ? {} : {durationMs,durationScope:'model_gateway_complete' as const})}); } catch { /* Observability cannot change a result. */ }
+  private emit(receipt: RoleReceipt): void {
+    try {
+      // A callback may be async even when assigned to a void-returning interface.
+      void Promise.resolve(this.onReceipt?.(receipt)).catch(() => {});
+    } catch { /* Observability cannot change a result. */ }
+  }
+  private callWorld(repair: NonNullable<ReturnType<typeof repairInput>>, request: AgentInvocation): Promise<unknown> {
+    return this.call('world', WORLD_PROMPT + WORLD_GUIDANCE_PROMPT, {input: repair.data,
+      report_constraints: worldGuidance(repair.context, repair.sources)}, request);
   }
   private async selectOutput(proposal: AgentOutput, input: AgentInput, request: AgentInvocation): Promise<AgentOutput> {
     if (!this.candidateSelector) return proposal; // Existing callers retain their explicit old configuration.
@@ -321,10 +343,18 @@ export class OwnedAgentOrchestrator {
     throw new ProtocolError('EXTERNAL_FAILURE', 'Owned decision selected an unknown candidate');
   }
   private async call(role: AgentRole, prompt: string, data: unknown, request: AgentInvocation): Promise<unknown> {
-    this.check(request); this.emit(role, request, 'started');
-    const started=performance.now();let durationMs:number|undefined;
+    this.check(request);
+    // Stack-local identity also distinguishes concurrent calls reusing a requestId.
+    const span = {role, requestId: request.requestId, promptVersion: PROMPT_VERSION,
+      spanId: randomUUID(), startedAt: new Date().toISOString()};
+    const spanStart = performance.now();
+    let durationMs: number | undefined;
+    let durationScope: RoleReceipt['durationScope'];
+    const end = () => ({...span, endedAt: new Date().toISOString(),
+      durationMs: Math.max(0, durationMs ?? performance.now() - spanStart), ...(durationScope ? {durationScope} : {})});
+    this.emit({...span, status: 'started'});
     try {
-      const selection = request.query === 'owned-workflow-candidates' ? undefined : parseAgentInput(request.query).executionModel;
+      const selection = request.executionModel??(request.query === 'owned-workflow-candidates' ? undefined : parseAgentInput(request.query).executionModel);
       if (selection && !this.options?.executionModels) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Execution model registry unavailable');
       const gateway = selection ? new ModelGateway(this.options!.executionModels.resolve(selection)) : this.models[role];
       let modelData=data;
@@ -332,23 +362,29 @@ export class OwnedAgentOrchestrator {
         const input=record(data);
         if(Array.isArray(input.availableTools) && input.availableTools.some(tool=>tool && typeof tool==='object' && (tool as {name?:unknown}).name==='subagent.dispatch')) {
           const catalog=this.options.executionModels.catalog();
-          modelData={...input,executionModelCatalog:{revision:catalog.revision,defaultModelId:catalog.defaultModelId,
-            models:catalog.models.filter(model=>model.type==='text' && model.availability!=='unavailable')
-              .map(model=>({id:model.id,reasoningEfforts:model.reasoningEfforts}))}};
+          // Local usability guard: an unread/absent catalog must degrade to "no catalog hint"
+          // instead of crashing the whole panel snapshot chain on a null dereference.
+          if (catalog && Array.isArray(catalog.models) && catalog.defaultModelId) {
+            modelData={...input,executionModelCatalog:{revision:catalog.revision,defaultModelId:catalog.defaultModelId,
+              models:catalog.models.filter(model=>model.type==='text' && model.availability!=='unavailable')
+                .map(model=>({id:model.id,reasoningEfforts:model.reasoningEfforts}))}};
+          }
         }
       }
+      const gatewayStarted=performance.now();
       const result = await gateway.complete({messages: [{role: 'system', content: prompt},
         {role: 'user', content: JSON.stringify(modelData)}], tools: [], requiredCapabilities: ['text'],
         maxOutputTokens: this.maxOutputTokens, ...(selection?.reasoningEffort?{reasoningEffort:selection.reasoningEffort}:selection?{}:{reasoningEffort:'none' as const}), deadline: request.deadline, signal: request.signal});
-      durationMs=performance.now()-started;
+      durationMs=performance.now()-gatewayStarted;
+      durationScope='model_gateway_complete';
       this.check(request);
       if (result.response.kind !== 'final' || result.response.text.length > 16_000) throw new Error();
       const parsed: unknown = JSON.parse(result.response.text);
       record(parsed);
-      this.emit(role, request, 'completed', result.usage?.totalTokens,durationMs);
+      this.emit({...end(), status: 'completed', ...(result.usage?.totalTokens === undefined ? {} : {totalTokens: result.usage.totalTokens})});
       return parsed;
     } catch (error) {
-      this.emit(role, request, 'failed',undefined,durationMs??performance.now()-started);
+      this.emit({...end(), status: 'failed'});
       if (error instanceof ProtocolError) throw error;
       throw new ProtocolError('EXTERNAL_FAILURE', 'Agent role returned an invalid response');
     }

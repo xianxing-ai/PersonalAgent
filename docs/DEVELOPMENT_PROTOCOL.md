@@ -10,10 +10,10 @@ WSS 主通道和 HTTPS 备用是同一 CloudAgentPort 的适配，不改变既�
 
 Wiki 复用 KnowledgePort、MemoryQueryPort 和 FactChangeFeed；新增页面身份、source/config revision、引用失效、写后投影和去重契约由 goo122 发布。原始内容权限、索引权限和出机权限分开；断线/未知写入不盲重试，任务终态归 Runtime。
 
-公共变更由本MOD负责人随工作包完成实际调用方接线、消费验证、Evidence和文档，不默认交中央代验。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。
+公共变更由本MOD负责人随工作包完成实际调用方接线、消费验证、Evidence和文档，不默认交中央代验。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前提交有效批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。
 
 <!-- current-design-20261009 -->
-> 当前协作规则（2026-10-15）：[模块分工](MODULE_ASSIGNMENTS.md) · [实际接线包](competition/COLLABORATOR_WIRING_PACKAGE.md)。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。历史验收保留；旧两人门槛不再适用。
+> 当前协作规则（2026-10-17）：[模块分工](MODULE_ASSIGNMENTS.md) · [实际接线包](competition/COLLABORATOR_WIRING_PACKAGE.md)。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前提交有效批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。历史验收保留；旧两人门槛不再适用。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
@@ -28,7 +28,7 @@ Wiki 复用 KnowledgePort、MemoryQueryPort 和 FactChangeFeed；新增页面身
 - 状态分为 `frozen`、`provisional`、`unavailable`、`deprecated`。接口只有具备单一来源、生产实现、Fake/失败夹具、消费验证、负责人自审和 CI 后才可冻结；外部行为影响语义时还需要真实目标系统闭环。
 - 新增可选字段为兼容扩展；删除字段、修改含义、增加消费者无法处理的必需状态必须升级不兼容版本或协商能力。
 - 握手交换协议版本与能力列表；主版本不一致拒绝连接。新操作必须先通过能力发现，不能只凭次版本猜测支持。
-- 变更流程：提出差异和消费者影响 → 更新接口目录为 provisional → 实施者更新单一 Schema/夹具和必要接线 → 消费契约验证 → 自审与 CI → 任意一位非作者对当前提交有效批准且检查满足后按授权合并 → 按实际证据更新为 frozen。goo122 负责公共协议长期维护，不是独占实施者；开发可独立推进，合并遵守当前门槛，禁止 UI 和服务端私设临时字段。
+- 变更流程：提出差异和消费者影响 → 更新接口目录为 provisional → 实施者更新单一 Schema/夹具和必要接线 → 消费契约验证 → 自审与 CI → 常规 PR 获四位协作者中任一非作者对当前提交有效批准，或 Owner 对具体 PR 留存审核例外记录；最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理后由有合并权限者合并 → 按实际证据更新为 frozen。goo122 负责公共协议长期维护，不是独占实施者；开发可独立推进，合并遵守当前门槛，禁止 UI 和服务端私设临时字段。
 - Schema 中已知但生产握手未公布的 operation 为 unavailable；消费者不调用，Host 返回 `UNSUPPORTED_CAPABILITY`，UI 明确展示不可用。
 
 ## 2. Profile 与通信分层
@@ -150,18 +150,18 @@ TaskSnapshot 必含 `taskId`、`state`、`revision`、`updatedAt`、`steps`、`e
 | 端口 | 负责人 | 状态与使用规则 |
 | --- | --- | --- |
 | TaskPort / EventPort / SchedulerPort | `goo122` | provisional 内部端口；所有模块通过 Runtime，不私建任务库 |
-| ToolHost / ToolContext / PolicyPort | `goo122` | provisional；离线实现存在，真实模型/工具闭环未验收 |
-| ModelPort | `goo122` | unavailable；仅为可选 Local Profile 和明确专业模型适配使用，不阻塞 Competition Golden Path |
+| ToolHost / ToolContext / PolicyPort | `goo122` | provisional；已有本地 Policy/ToolGateway 与固定公开 Competition 模型提案、审批、工具读回及续答闭环；任意账号/业务与实体设备仍分别验收 |
+| ModelPort | `goo122` | provisional；Local ModelPort 由 ModelProvider/ModelGateway 装配，既有 Local Agent 仍保留具体耦合；不据此宣布整体依赖倒置或模型选型冻结 |
 | StoragePort | `goo122` | provisional；当前缺 revision、事务、容量和失败语义 |
 | SecretStorePort | `zemeng` 实现 Windows 适配，`goo122` 控制注入 | provisional read；save/replace/delete/status unavailable |
-| CoordinationPort | `zemeng`，Runtime 注入由 `goo122` | unavailable；主 Agent/认知与 Runtime 的独立边界 |
-| MemoryQueryPort / FactChangeFeed | `goo122` | unavailable；记忆不直接修改 Goal/Task |
-| CoordinationStorePort | `goo122` 适配、`zemeng` 消费 | unavailable；版本化目标/决策图谱存储 |
-| ToolExecutionPort | `goo122` | unavailable 的稳定消费面；复用现有工具语义，不另造授权 |
+| CoordinationPort | `zemeng`，Runtime 注入由 `goo122` | provisional；Competition Runtime 已由注入端口消费，完整主控认知、真实来源与恢复另行验收 |
+| MemoryQueryPort / FactChangeFeed | `goo122` | provisional；公开端口及 SQLite 来源投影已有受信消费，记忆不直接修改 Goal/Task；真实来源、撤回与生命周期分别验收 |
+| CoordinationStorePort | `goo122` 适配、`zemeng` 消费 | provisional；版本图及 Runtime SQLite CAS/原子存储已交付，真实来源与恢复仍分别验收 |
+| ToolExecutionPort | `goo122` | 此同名独立稳定消费面尚未冻结或交付；当前工具消费复用 AgentToolPort、RuntimeToolInvoker 与 Policy/ToolGateway，不另造授权 |
 | EvidencePort / ArtifactPort | `goo122` | unavailable；访问、过期、敏感性、分片与背压待定义 |
-| CloudAgentPort | `zemeng` | unavailable；Competition 第一优先，封装 AgentArts deployment/version/trace/提案/usage/error，不持有本地授权 |
-| KnowledgePort | `goo122` | unavailable |
-| DesktopActionPort / VoicePort | `zemeng` | unavailable |
+| CloudAgentPort | `zemeng` | provisional；Competition HTTPS/WSS 固定版本有限真实调用已接线，封装 deployment/version/trace/提案/usage/error，不持有本地授权；完整平台/业务另验收 |
+| KnowledgePort | `goo122` | provisional；受信只读 Vault/Obsidian 工具适配已有宿主消费，完整 Wiki/原生云知识与跨库副本分别验收 |
+| DesktopActionPort / VoicePort | `zemeng` | 同名统一契约尚未交付；已有 Windows/语音专用端口与 Desktop 私有 IPC，不据此宣布统一端口或公开 voice.start/voice.stop wire 可用 |
 
 工具代码隔离必须在运行时落实，TypeScript 接口或进程拆分本身不构成沙箱。
 

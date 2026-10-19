@@ -1,5 +1,16 @@
 # 开发计划与进度
 
+## 2026-10-18 Desktop 前端交互与体验审查（review）
+
+前序 #409 的[审查历史](modules/DESKTOP_FRONTEND_UX_AUDIT_20261018.md)保留。本轮按用户“只改前端”的要求，从最新 main 独立整理 `codex/frontend-final-main-20261018`，不纳入 #404/#398 的核心改动；窗口/悬浮球、刷新/焦点、预算、侧栏、常用入口与搜索、任务进展和真实空态一并交付。[当前前端交付记录](modules/DESKTOP_FRONTEND_MAIN_DELIVERY_20261018.md)记录本工作树实际验证。Runtime、AgentArts、公共契约、依赖及迁移未修改；拟审查 goo122、拟合并 Potatos498，当前有效批准/CI/集成以 PR 为准，保持 review。
+
+## 2026-10-17 编码最小修复算法与 F15 多轮链（in_progress）
+
+Owner 本轮解除这部分暂停，要求算法与工作流进入自有镜像。[ADR-0033](adr/0033-coding-minimal-repair-workflow.md)记录复用 jsdiff/TypeScript、原 F15 多轮、任务隔离目录、包级验证失效、主/影子与 CAS 交付。根协调承担依赖/文档/集成，云图、编码工具、Runtime/Desktop 按现有模块归属交付实际接线。新工作包不混入固定 head 的 PR #376 审查；中间镜像暂不发，完整增量测试后统一构建。代码、真实模型、镜像与平台逐面验收，尚未标 done。
+## 2026-10-16 MCP 长驻缓存评审修复与 Desktop TLS 组合（in_progress）
+
+goo122 基于 #373 `14f34b40` 推进[组合验收](modules/MOD-06-PRODUCT-TLS-20261016.md)，交付基线为同步修复后的 #373 `3aa04eb6`：实际 Electron 管理窗口/安全存储、默认 fetch、loopback HTTPS 与原 SQLite/Policy 完成审批、一次调用、断连、拒绝、两次正常重启读回、旧许可拒绝和撤销；四类证书/目录/重定向负例零工具调用。原生对话框响应与服务内容仍为合成，云调用 0。#369 缓存无界增长评审已修复为每 host 最多 64 个 run，重连不能清空身份配额；`bfcb1ab1` 已普通推送，并逐层同步 #370～#373。基础修复完整 check 3153 通过、31 跳过、0 失败；组合包最终完整 check 3175 通过、31 跳过、0 失败，MCP 20/20。首轮未修改的知识库写回出现 RESULT_UNKNOWN，独立复现及一次串行完整复核通过，初次底层原因仍未定位并保留日志。当前 CI/非作者评审和集成以 GitHub 为准。真实平台/OAuth/真人确认仍待验收，整个 MOD-06 保持 in_progress、provisional。
+
 ## 2026-10-16 远程 MCP 默认 HTTPS/TLS 验证（in_progress）
 
 goo122 基于 #372 `1b1ee4cb` 增加[本机 TLS 验收](modules/MOD-06-TLS-20261016.md)：原 SDK 默认 fetch、进程专属合成 CA、真实 loopback HTTPS 与 SQLite/Policy，五类证书/目录/重定向及审批/重启断开检查 5/5。MCP 工作区 19/19、宿主/管理/Runtime 回归 12/12、架构 3/3。无生产代码、Schema、迁移或依赖变化；没有修改系统信任或关闭 TLS 验证，模型/AgentArts 调用 0；不等同第三方平台/OAuth 验收，完整 MOD-06 保持 in_progress。
@@ -18,7 +29,7 @@ goo122 基于 #369 开始 [G11/G14 最小只读子集](modules/MOD-06-BOUND-CRED
 
 ## 2026-10-16 V5 Desktop WSS、语音与主子模型（review）
 
-[V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya 架构或资格结论。
+[V5 接线](competition/DESKTOP_AGENTARTS_MODELS_V5.md)与[真实回执](competition/evidence/desktop-agentarts-v5-20261016/README.md)记录已发布自有镜像的固定版本 WSS、主模型派发 Qwen 后续答、公开合成 PCM 实时语音，以及原 panel confirmed 子任务回执的本地核实。13 个厂商精选条目与设置中完整177目录分开，原 API 配置保留，默认主/子模型及原生强度使用受信设置；不改变本机 Laya Local Profile 候选的资格结论。
 
 本工作包仍为 review，PR #356 的远端提交、非作者批准、CI、main 集成各自核对；本机 UI/Runtime 修复不冒称已进入云端镜像。全部模型、物理语音设备、28条真实业务图及完整平台 Trace/评估未由此验收。下文 V4“新镜像不发布”为该阶段约束，本节只登记随后 Owner 授权的 V5 发布与实测。
 
@@ -47,11 +58,12 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 | --- | --- | --- |
 | ARM64镜像/SWR与指定云版本目录/关联日志 | 本轮范围已有真实回执；PR集成另记 | 不把目录当平台原生评估或28业务闭环 |
 | Wukong/Pelican公开隔离fixture | 两套主/影子+单CAS通过；41工具Evidence | 保留Pelican首轮partial；分支父成功不冒称协调锚点终态成功 |
-| 本机Laya原模型/质量资格 | in_progress，6判断182–618ms未达150ms，站点未合格 | 独立领域/holdout校准；不凭短延迟或自报置信直接抑制 |
+| 本机Laya原模型/质量资格 | todo，独立 Local Profile 候选；历史6判断182–618ms未达150ms，站点未合格 | 当前 Competition 不调用 Laya；只有 Local Profile 获得独立实施范围后再安排领域/holdout校准 |
 | 主动责任/ConnectorHost/session/通知原子策略 | provisional，端口与离线组合已有 | 按矩阵各owner完成真实来源/调用方/渠道/恢复消费 |
 | 语音主动询问/确认与上下文记忆 | provisional，百炼既有端口，SIS平台不可用 | 原文、Goal、Memory与真实最终命令串入同一任务，不以握手当完整听说 |
 | 高级影子开关/主任务优先/机会收益资源 | 当前设计，尚未真实机会并行验收 | 并入已有判断；双方案比较等双方，其余可先交已验主结果，未知交DeepSeek |
-| 最小修复/依赖重规划算法 | 设计交接保留，暂停/未定 | 等用户后续定稿，不由文档对齐自动恢复实现 |
+| 编码最小修复 | 本轮明确授权实施，in_progress | 镜像原F15多轮、隔离宿主和正常主Agent接线；分项与完整图通过，云发布单独验收 |
+| 其他依赖/计划重规划算法 | 原设计交接保留，未定 | 不由本轮编码修复授权自动恢复其他算法 |
 
 真实发布/案例范围见[full-workflow-results](competition/evidence/test-image-v3-20261015/full-workflow-results.json)、
 [owned-release](competition/evidence/test-image-v3-20261015/owned-release.json)、[平台日志读回](competition/evidence/test-image-v3-20261015/platform-log-readback.json)。
@@ -105,7 +117,7 @@ goo122 从 #350 `a378c3df` 开始 [F27 上下文工作包](modules/MOD-09-CONTEX
 
 用户本轮明确的执行顺序：**代码实现 → 绝对必要的关键检验 → 修复 → 下一项任务**。CI 在后台运行，不以等待 CI 阻塞下一项开发；不重复全仓测试、安装或构建。授权、写入、恢复和协议边界的受影响行为保留最小必要验证，尚未验证与尚未合并分别标注；这不授权绕过合并保护。
 
-#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：三名协作者中任意一位非作者对当前提交有效批准，必要检查通过；禁止强制合并、管理员绕过和直接推 main。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
+#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前提交有效批准；Owner 对具体 PR 的审核例外须明确记录，不冒充独立批准。合并仍需最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理；不得强推、直接推 main 或绕过技术检查。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
 
 本轮主要工作树为 `.worktrees/zemeng-competition-completion`。两份 Astra Ultra 独立工作包分别在 `.worktrees/zemeng-voice-completion`（MOD-14/15）和 `.worktrees/zemeng-windows-tools-completion`（MOD-16/17/18）；不共享编辑目录或改写他人修改。
 

@@ -1,0 +1,4476 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "2.2.0",
+  "catalog": "agentarts-owned-minimal-repair-evaluation",
+  "synthetic": true,
+  "baselineCommit": "0dae0ff5c1553b855825a29934b22270b675bb48",
+  "headCommit": "c5e9222f8c24032a41f6c697ae29745292c739c5",
+  "fixedTargetWorktree": "historical-worktrees/agentarts-report-version",
+  "description": "PersonalAgent 自有镜像“最小计划修复”合成评估用例集（24例完整扩展版），支持 baseline 与 fixed 双模式严格断言。明确标注 synthetic，不作为真实宿主来源或云平台部署验收依据。",
+  "cases": [
+    {
+      "caseId": "SMR-01-SINGLE-FACT-REPAIR",
+      "scenario": "单个事实变化，只修一个相关计划节点",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "基础环境版本1.0",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "基础环境版本2.0升级完成",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行基础环境下的部署任务",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "记录日常监控与运维巡检",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行基础环境下的部署任务",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "summary": "记录日常监控与运维巡检",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "基础环境版本1.0",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "基础环境版本2.0升级完成",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "基础环境由版本1.0升级为2.0"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "依赖的基础环境发生主版本变更"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "仅部署步骤直接受环境版本升级影响"
+        },
+        "plan": {
+          "reportVersion": "1.1",
+          "base_revision": 7,
+          "disposition": "REVISE",
+          "preserved_steps": [
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "reason": "日常监控步骤与环境版本无关，维持原样"
+            }
+          ],
+          "rechecked_steps": [],
+          "revised_steps": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "replacement": "适配基础环境2.0后执行部署任务",
+              "reason": "依赖的基础环境发生主版本变更"
+            }
+          ],
+          "removed_steps": [],
+          "dependency_updates": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ],
+              "reason": "更新部署依赖至环境2.0"
+            }
+          ],
+          "evidence_required": [
+            "本地Policy审查、CAS及部署后读回"
+          ],
+          "missing_information": [],
+          "local_next_actions": []
+        },
+        "review": {
+          "kind": "repair_candidate",
+          "candidateVersion": "1.0",
+          "candidate": {
+            "expectedGraphRevision": 7,
+            "changes": [
+              {
+                "node": {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 1
+                },
+                "summary": "适配基础环境2.0后执行部署任务",
+                "reason": "依赖的基础环境发生主版本变更",
+                "dependencies": [
+                  {
+                    "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "revision": 2
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "baselineExpected": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 1,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "fixedExpected": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 1,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "candidateChanges": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "summary": "适配基础环境2.0后执行部署任务",
+          "reason": "依赖的基础环境发生主版本变更",
+          "dependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        }
+      ],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1
+          },
+          "reason": "日常监控步骤与环境版本无关，维持原样"
+        }
+      ],
+      "decisionBasis": "World 识别单一事实变更并仅波及部署节点 A；Plan 仅修订 A，将无关巡检节点 B 列入 preserved_steps；Review 输出精准 1 项候选。",
+      "sourceLocation": "packages/agentarts/src/index.ts:50-64,328-371",
+      "complementsExisting": "验证最标准业务场景下单事实影响单一计划节点的因果收敛。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 1,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 1
+      }
+    },
+    {
+      "caseId": "SMR-02-MULTI-IMPACT-PRESERVE-UNRELATED",
+      "scenario": "多个受影响节点，无关节点保持原样",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "微服务架构v1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "微服务架构v2升级为gRPC通讯",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "配置API网关路由规则",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "打包容器镜像并注入gRPC客户端配置",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "备份静态资源与文档",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "配置API网关路由规则",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "summary": "打包容器镜像并注入gRPC客户端配置",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            },
+            {
+              "node": {
+                "id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "revision": 1
+              },
+              "summary": "备份静态资源与文档",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "微服务架构v1",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "微服务架构v2升级为gRPC通讯",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "微服务通讯协议变更"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "网关需升级为gRPC协议转发"
+            },
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "后端服务需编译gRPC协议桩"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "网关与服务部署受架构变更直接影响"
+        },
+        "plan": {
+          "reportVersion": "1.1",
+          "base_revision": 7,
+          "disposition": "REVISE",
+          "preserved_steps": [
+            {
+              "node": {
+                "id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "revision": 1
+              },
+              "reason": "静态文档备份与运行时协议无关，维持原样"
+            }
+          ],
+          "rechecked_steps": [],
+          "revised_steps": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "replacement": "配置API网关支持gRPC路由规则",
+              "reason": "网关需升级为gRPC协议转发"
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "replacement": "重新打包镜像并注入gRPC桩代码",
+              "reason": "后端服务需编译gRPC协议桩"
+            }
+          ],
+          "removed_steps": [],
+          "dependency_updates": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ],
+              "reason": "更新网关依赖至架构v2"
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ],
+              "reason": "更新镜像依赖至架构v2"
+            }
+          ],
+          "evidence_required": [
+            "网关协议测试通过报告",
+            "gRPC健康检查通过记录"
+          ],
+          "missing_information": [],
+          "local_next_actions": []
+        },
+        "review": {
+          "kind": "repair_candidate",
+          "candidateVersion": "1.0",
+          "candidate": {
+            "expectedGraphRevision": 7,
+            "changes": [
+              {
+                "node": {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 1
+                },
+                "summary": "配置API网关支持gRPC路由规则",
+                "reason": "网关需升级为gRPC协议转发",
+                "dependencies": [
+                  {
+                    "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "revision": 2
+                  }
+                ]
+              },
+              {
+                "node": {
+                  "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "revision": 1
+                },
+                "summary": "重新打包镜像并注入gRPC桩代码",
+                "reason": "后端服务需编译gRPC协议桩",
+                "dependencies": [
+                  {
+                    "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "revision": 2
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "baselineExpected": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 2,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "fixedExpected": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 2,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "candidateChanges": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "summary": "配置API网关支持gRPC路由规则",
+          "reason": "网关需升级为gRPC协议转发",
+          "dependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        {
+          "node": {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1
+          },
+          "summary": "重新打包镜像并注入gRPC桩代码",
+          "reason": "后端服务需编译gRPC协议桩",
+          "dependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        }
+      ],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "revision": 1
+          },
+          "reason": "静态文档备份与运行时协议无关，维持原样"
+        }
+      ],
+      "decisionBasis": "World 识别 A、B 受波及而 C 无关；Plan 仅修订 A、B，C 列入 preserved_steps；Review 产出精准 2 项变更候选。",
+      "sourceLocation": "packages/agentarts/src/index.ts:50-64,328-371",
+      "complementsExisting": "验证多节点受影响场景下，能够精准隔离无关节点并将其完全保留。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 2,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 1
+      }
+    },
+    {
+      "caseId": "SMR-03-NO-RELEVANT-CHANGE-KEEP",
+      "scenario": "没有相关变化，保留计划",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "测试环境配置不变",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行自动化测试套件",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行自动化测试套件",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 1
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 1
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "测试环境配置不变",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [],
+          "affected_items": [],
+          "missing_information": [],
+          "recommended_disposition": "KEEP",
+          "summary": "事实未变化，无需修复计划"
+        }
+      },
+      "baselineExpected": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "KEEP：世界状态分析无需修复。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "fixedExpected": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "KEEP：世界状态分析无需修复。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "世界状态判定无需修复，全部计划节点维持原样"
+        }
+      ],
+      "decisionBasis": "World 判定 disposition 为 KEEP，协调器直接短路截断，不调用 Plan/Review，返回纯文本说明。",
+      "sourceLocation": "packages/agentarts/src/index.ts:53",
+      "complementsExisting": "验证零变更场景下的快速短路保护，避免模型幻觉引入无效变更。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "KEEP：世界状态分析无需修复。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-04A-MISSING-SOURCE-MODEL-RECHECK",
+      "scenario": "缺少来源或前后版本，模型主动声明 missing_information 停止确定修复",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行数据迁移任务",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行数据迁移任务",
+              "requestedDependencies": []
+            }
+          ],
+          "allowedDependencies": []
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [],
+          "changed_facts": [],
+          "affected_items": [],
+          "missing_information": [
+            "缺少数据库实例版本与前序事实投影，无法确认迁移边界"
+          ],
+          "recommended_disposition": "RECHECK",
+          "summary": "缺少确定的事实依据"
+        }
+      },
+      "baselineExpected": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "RECHECK：世界状态分析缺少确定的修复依据。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "fixedExpected": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "RECHECK：世界状态分析缺少确定的修复依据。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "缺少事实证据，停止修复并维持现有基线"
+        }
+      ],
+      "decisionBasis": "World 包含 missing_information 并给出 RECHECK，协调器安全截断为纯文本指导，避免盲目猜测。",
+      "sourceLocation": "packages/agentarts/src/index.ts:54,316-317",
+      "complementsExisting": "证明当大模型主动报告缺事实依据时，编排器能正确停止并输出指导文本。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "RECHECK：世界状态分析缺少确定的修复依据。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-04B-EMPTY-SOURCES-LEGACY-WORLD-REVISE",
+      "scenario": "sources 为空（continuation），旧版 World 却返回 REVISE",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "continuation": {
+          "proposalId": "prop-empty-sources-1",
+          "state": "confirmed",
+          "result": {
+            "repairContext": {
+              "expectedGraphRevision": 7,
+              "targets": [
+                {
+                  "node": {
+                    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "revision": 1
+                  },
+                  "requestedSummary": "修复任务A",
+                  "requestedDependencies": []
+                }
+              ],
+              "allowedDependencies": []
+            }
+          }
+        }
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "disposition": "REVISE",
+          "affected": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "reason": "旧版世界报告盲目认定受影响",
+          "missing_information": []
+        },
+        "plan": {
+          "disposition": "REVISE",
+          "changes": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "修复任务A",
+              "reason": "依据旧版世界报告修复",
+              "dependencies": []
+            }
+          ],
+          "missing_information": []
+        },
+        "review": {
+          "kind": "repair_candidate",
+          "candidateVersion": "1.0",
+          "candidate": {
+            "expectedGraphRevision": 7,
+            "changes": [
+              {
+                "node": {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 1
+                },
+                "summary": "修复任务A",
+                "reason": "依据旧版世界报告修复",
+                "dependencies": []
+              }
+            ]
+          }
+        }
+      },
+      "baselineExpected": {
+        "status": "defect_reproduced_awaiting_fix",
+        "actualOutputKind": "repair_candidate",
+        "expectedChangesCount": 1,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ],
+        "finding": "旧基线在 sources 为空时放行旧版 World REVISE，下游 Plan/Review 均被调用并产出了 repair_candidate"
+      },
+      "fixedExpected": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "RECHECK：世界状态分析缺少确定的修复依据。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ],
+        "grokFixExpectation": "直接 invoke，无来源旧 World 返回 RECHECK；World 1 次，Plan/Review 0 次，不生成候选"
+      },
+      "candidateChanges": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "summary": "修复任务A",
+          "reason": "依据旧版世界报告修复",
+          "dependencies": []
+        }
+      ],
+      "nodesPreservedOrUnmodified": [],
+      "decisionBasis": "复现 Grok 发现的缺陷：在 continuation 输入中 sources 为空，但旧版无 reportVersion 的 World 给出 REVISE 时，旧基线未检查 sources 长度便直接放行给 Plan 与 Review 并最终产出候选；修复后直接返回 RECHECK 并截断。",
+      "sourceLocation": "packages/agentarts/src/index.ts:54-55,265-271",
+      "complementsExisting": "验证系统在缺来源事实投影时从放行缺陷转变为强制安全截断。",
+      "verificationStatus": "defect_reproduced_awaiting_fix",
+      "expectedResult": {
+        "status": "defect_reproduced_awaiting_fix",
+        "actualOutputKind": "repair_candidate",
+        "expectedChangesCount": 1,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ],
+        "finding": "旧基线在 sources 为空时放行旧版 World REVISE，下游 Plan/Review 均被调用并产出了 repair_candidate"
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 1
+      }
+    },
+    {
+      "caseId": "SMR-04C-EMPTY-SOURCES-LEGACY-WORKFLOW-REVIEW",
+      "scenario": "sources 为空（continuation），调用方提供旧版 World 与 Plan 尝试进入 Review 工作流",
+      "synthetic": true,
+      "entrypoint": "invokeWorkflow",
+      "workflowId": "998031d7-ec28-40ed-83e6-96667f22ff51",
+      "providedRoleReports": {
+        "world": {
+          "disposition": "REVISE",
+          "affected": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "reason": "调用方传入旧版World报告",
+          "missing_information": []
+        },
+        "plan": {
+          "disposition": "REVISE",
+          "changes": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "修复任务A",
+              "reason": "调用方传入旧版Plan报告",
+              "dependencies": []
+            }
+          ],
+          "missing_information": []
+        }
+      },
+      "completeInput": {
+        "continuation": {
+          "proposalId": "prop-empty-sources-review-1",
+          "state": "confirmed",
+          "result": {
+            "repairContext": {
+              "expectedGraphRevision": 7,
+              "targets": [
+                {
+                  "node": {
+                    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "revision": 1
+                  },
+                  "requestedSummary": "修复任务A",
+                  "requestedDependencies": []
+                }
+              ],
+              "allowedDependencies": []
+            }
+          }
+        }
+      },
+      "syntheticModelResponses": {
+        "review": {
+          "kind": "repair_candidate",
+          "candidateVersion": "1.0",
+          "candidate": {
+            "expectedGraphRevision": 7,
+            "changes": [
+              {
+                "node": {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 1
+                },
+                "summary": "修复任务A",
+                "reason": "调用方传入旧版Plan报告",
+                "dependencies": []
+              }
+            ]
+          }
+        }
+      },
+      "baselineExpected": {
+        "status": "defect_reproduced_awaiting_fix",
+        "actualOutputKind": "application_result",
+        "expectedChangesCount": 1,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "review"
+        ],
+        "finding": "旧基线在 sources 为空时放行带旧版报告的 review 工作流，直接调用 Review 角色并输出 repair_candidate"
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [],
+        "grokFixExpectation": "绑定 Review 工作流时，传入无版本旧报告在 validateWorld 时直接被判定为无效角色报告并抛出 EXTERNAL_FAILURE，所有角色 0 次调用"
+      },
+      "candidateChanges": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "summary": "修复任务A",
+          "reason": "调用方传入旧版Plan报告",
+          "dependencies": []
+        }
+      ],
+      "nodesPreservedOrUnmodified": [],
+      "decisionBasis": "复现 Grok 发现的缺陷：调用方携带旧版 World 与 Plan 请求 review 工作流，旧基线未核验证据即调用 Review 产出候选；修复后在 validateWorld 处直接抛出 EXTERNAL_FAILURE。",
+      "sourceLocation": "packages/agentarts/src/index.ts:99-116,269",
+      "complementsExisting": "验证缺少来源投影时，调用方无法通过携带旧报告绕过前序校验直接获取 Review 候选。",
+      "verificationStatus": "defect_reproduced_awaiting_fix",
+      "expectedResult": {
+        "status": "defect_reproduced_awaiting_fix",
+        "actualOutputKind": "application_result",
+        "expectedChangesCount": 1,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "review"
+        ],
+        "finding": "旧基线在 sources 为空时放行带旧版报告的 review 工作流，直接调用 Review 角色并输出 repair_candidate"
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 0,
+        "plan": 0,
+        "review": 1
+      }
+    },
+    {
+      "caseId": "SMR-04D-EMPTY-SOURCES-VERSIONED-WORLD-REVISE",
+      "scenario": "sources 为空（continuation），版本化 1.1 World 尝试返回 REVISE",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "continuation": {
+          "proposalId": "prop-empty-sources-ver-1",
+          "state": "confirmed",
+          "result": {
+            "repairContext": {
+              "expectedGraphRevision": 7,
+              "targets": [
+                {
+                  "node": {
+                    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "revision": 1
+                  },
+                  "requestedSummary": "修复任务A",
+                  "requestedDependencies": []
+                }
+              ],
+              "allowedDependencies": []
+            }
+          }
+        }
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [],
+          "changed_facts": [],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "无来源直接判定"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "无来源却给出REVISE"
+        }
+      },
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "报告被阻断，维持原基线"
+        }
+      ],
+      "decisionBasis": "validateWorld 在 1.1 版本化报告模式下执行强约束（index.ts:316-317）：若 sources 中不存在 fact/goal，且 disposition 不为 RECHECK，强制触发 reportFailure 抛出 EXTERNAL_FAILURE。",
+      "sourceLocation": "packages/agentarts/src/index.ts:316-317",
+      "complementsExisting": "证明 1.1 版本化 World 具备“来源为空时禁止返回 REVISE”的防御能力，与旧版报告形成对比。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-04E-EMPTY-SOURCES-LEGACY-WORLD-KEEP",
+      "scenario": "sources 为空（continuation），旧版紧凑 World 返回 KEEP",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "continuation": {
+          "proposalId": "prop-empty-sources-keep-1",
+          "state": "confirmed",
+          "result": {
+            "repairContext": {
+              "expectedGraphRevision": 7,
+              "targets": [
+                {
+                  "node": {
+                    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "revision": 1
+                  },
+                  "requestedSummary": "修复任务A",
+                  "requestedDependencies": []
+                }
+              ],
+              "allowedDependencies": []
+            }
+          }
+        }
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "disposition": "KEEP",
+          "affected": [],
+          "reason": "世界状态分析无需修复",
+          "missing_information": []
+        }
+      },
+      "baselineExpected": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "KEEP：世界状态分析无需修复。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "fixedExpected": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "KEEP：世界状态分析无需修复。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "世界分析无需修复，维持原样"
+        }
+      ],
+      "decisionBasis": "在直接 invoke 下，紧凑 World 报告返回 KEEP 且无 missing_information 时，在 index.ts:54-55 (修复版 55 行) 直接返回 KEEP 文本；下游 Plan/Review 不被调用。不应误写为“无来源一律 RECHECK”。",
+      "sourceLocation": "packages/agentarts/src/index.ts:54-55 (fixed 55)",
+      "complementsExisting": "补齐无来源输入下紧凑 World 返回 KEEP 的边界判定，证明其与 RECHECK/REVISE 语义严格隔离。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "recheck_or_keep",
+        "resultKind": "text",
+        "resultText": "KEEP：世界状态分析无需修复。",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-04F-EMPTY-SOURCES-VERSIONED-WORLD-KEEP",
+      "scenario": "sources 为空（continuation），版本化 1.1 World 返回 KEEP",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "continuation": {
+          "proposalId": "prop-empty-sources-ver-keep-1",
+          "state": "confirmed",
+          "result": {
+            "repairContext": {
+              "expectedGraphRevision": 7,
+              "targets": [
+                {
+                  "node": {
+                    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "revision": 1
+                  },
+                  "requestedSummary": "修复任务A",
+                  "requestedDependencies": []
+                }
+              ],
+              "allowedDependencies": []
+            }
+          }
+        }
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [],
+          "changed_facts": [],
+          "affected_items": [],
+          "missing_information": [],
+          "recommended_disposition": "KEEP",
+          "summary": "世界状态分析无需修复"
+        }
+      },
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "报告被阻断，维持原基线"
+        }
+      ],
+      "decisionBasis": "在版本化 1.1 校验下，当 sources 为空时，若 recommended_disposition 不为 RECHECK，不论是 REVISE 还是 KEEP，均必须满足 sources 存在 fact/goal 投影；否则在 index.ts:316-317 触发 reportFailure 抛出 EXTERNAL_FAILURE。",
+      "sourceLocation": "packages/agentarts/src/index.ts:316-317",
+      "complementsExisting": "补齐版本化 World 在无来源且给出 KEEP 时的强校验拦截行为，仅调用 World 1 次。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-05A-STALE-REPORT-GRAPH-REV-MISMATCH",
+      "scenario": "合法新输入携带陈旧版本化 World 报告（图修订版本不一致：输入为8，报告为7）",
+      "synthetic": true,
+      "entrypoint": "invokeWorkflow",
+      "workflowId": "ed2363d9-b770-4ce5-a988-9bf0903466f7",
+      "providedRoleReports": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "事实v1",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "事实v2",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "事实更新"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "依赖事实更新"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "计划受影响"
+        }
+      },
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "事实v1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "事实v2",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行计划",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 8,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行计划",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {},
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "陈旧报告被拒，维持原基线"
+        }
+      ],
+      "decisionBasis": "输入本身合法，但调用方传入的 World 报告 revision (7) 与当前 repairContext.expectedGraphRevision (8) 不匹配，validateWorld 识别后抛出 EXTERNAL_FAILURE 拒绝复用。",
+      "sourceLocation": "packages/agentarts/src/index.ts:101,276",
+      "complementsExisting": "验证版本化报告具备图修订防重放能力，防止跨图谱版本错误复用审定结论。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 0,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-05B-STALE-REPORT-TARGET-REV-MISMATCH",
+      "scenario": "合法新输入携带陈旧版本化 World 报告（目标修订版本不一致：输入为目标rev 2，报告为rev 1）",
+      "synthetic": true,
+      "entrypoint": "invokeWorkflow",
+      "workflowId": "ed2363d9-b770-4ce5-a988-9bf0903466f7",
+      "providedRoleReports": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "事实v1",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "事实v2",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "事实更新"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "依赖事实更新"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "计划受影响"
+        }
+      },
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "事实v1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "事实v2",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 2,
+            "kind": "plan",
+            "summary": "执行计划最新修订",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 2
+              },
+              "summary": "执行计划最新修订",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {},
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 2
+          },
+          "reason": "陈旧报告被拒，维持原基线"
+        }
+      ],
+      "decisionBasis": "输入中目标节点已迭代至 revision 2，但传入报告的 affected_items 仍引用 revision 1，validateWorld 识别目标版本不匹配抛出 EXTERNAL_FAILURE。",
+      "sourceLocation": "packages/agentarts/src/index.ts:308-309",
+      "complementsExisting": "验证受影响节点版本发生变更后，旧目标报告无法被错误偷换复用。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 0,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-05C-STALE-REPORT-SOURCE-TEXT-MISMATCH",
+      "scenario": "合法新输入携带陈旧版本化 World 报告（来源事实文本发生更新，报告内仍为旧文本）",
+      "synthetic": true,
+      "entrypoint": "invokeWorkflow",
+      "workflowId": "ed2363d9-b770-4ce5-a988-9bf0903466f7",
+      "providedRoleReports": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "事实v1旧文本描述",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "事实v2",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "事实更新"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "依赖事实更新"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "计划受影响"
+        }
+      },
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "事实v1已在宿主中重新标定文本",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "事实v2",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行计划",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行计划",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {},
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "陈旧报告被拒，维持原基线"
+        }
+      ],
+      "decisionBasis": "输入事实文本已变更为“事实v1已在宿主中重新标定文本”，但报告中仍记录为“事实v1旧文本描述”，validateWorld 识别 item.fact !== source.summary 抛出 EXTERNAL_FAILURE。",
+      "sourceLocation": "packages/agentarts/src/index.ts:286",
+      "complementsExisting": "验证即使 ID 与版本号相同，来源语义文本的变更也能阻止陈旧报告复用。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 0,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-05D-LEGACY-REPORT-GRAPH-REV-REUSE",
+      "scenario": "合法新输入携带旧版 World 报告（图修订从7变为8，但旧报告无revision字段）",
+      "synthetic": true,
+      "entrypoint": "invokeWorkflow",
+      "workflowId": "ed2363d9-b770-4ce5-a988-9bf0903466f7",
+      "providedRoleReports": {
+        "world": {
+          "disposition": "REVISE",
+          "affected": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "reason": "依赖事实更新",
+          "missing_information": []
+        }
+      },
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "事实v1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "事实v2",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行计划",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 8,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行计划",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "plan": {
+          "disposition": "REVISE",
+          "changes": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行计划",
+              "reason": "依赖事实更新",
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "missing_information": []
+        }
+      },
+      "baselineExpected": {
+        "status": "defect_reproduced_awaiting_fix",
+        "actualOutputKind": "role_report",
+        "role": "plan",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "plan"
+        ],
+        "finding": "旧基线无版本报告缺乏 revision 绑定，在调用方传入跨图版本的 World 报告时直接放行并调用 Plan 工作流"
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [],
+        "grokFixExpectation": "绑定 Plan 工作流时，传入无版本旧报告被强制判定为无效角色报告，抛出 EXTERNAL_FAILURE 并阻断下游角色调用"
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [],
+      "decisionBasis": "复现 Grok 发现的缺陷：旧版报告缺乏 revision 字段，validateReport 无法校验图修订，导致报告被错误跨图版本放行；修复后在 validateWorld 处直接抛出 EXTERNAL_FAILURE。",
+      "sourceLocation": "packages/agentarts/src/index.ts:101,269",
+      "complementsExisting": "将跨图版本复用旧报告明确定性为第 3 个已知放行缺陷用例，验证修复后阻断。",
+      "verificationStatus": "defect_reproduced_awaiting_fix",
+      "expectedResult": {
+        "status": "defect_reproduced_awaiting_fix",
+        "actualOutputKind": "role_report",
+        "role": "plan",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "plan"
+        ],
+        "finding": "旧基线无版本报告缺乏 revision 绑定，在调用方传入跨图版本的 World 报告时直接放行并调用 Plan 工作流"
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 0,
+        "plan": 1,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-06A-INPUT-TARGET-REVISION-CONFLICT",
+      "scenario": "目标请求版本与活跃活动基线版本冲突（请求版本陈旧）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "配置信息",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行计划v1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 2,
+            "kind": "plan",
+            "summary": "执行计划v2最新",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行计划v1",
+              "requestedDependencies": []
+            }
+          ],
+          "allowedDependencies": []
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {},
+      "baselineExpected": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "fixedExpected": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 2
+          },
+          "reason": "目标版本落后于活跃活动基线，输入层直接拒绝"
+        }
+      ],
+      "decisionBasis": "repairInput 检查 target.node.revision 必须是该节点在 nodes 中的最新活跃版本；发现 nodes 存在更大版本 2 时直接调用 invalid() 抛出 INVALID_ARGUMENT。",
+      "sourceLocation": "packages/agentarts/src/input.ts:153-156",
+      "complementsExisting": "独立覆盖目标修订冲突，防范陈旧目标版本的并发覆盖。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 0,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-06B-INPUT-SOURCE-REFERENCE-MISMATCH",
+      "scenario": "来源引用不匹配（allowedDependencies 引用了 nodes 中不存在的节点）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "基础环境配置",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行部署任务",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行部署任务",
+              "requestedDependencies": [
+                {
+                  "id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                  "revision": 1
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "revision": 1
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {},
+      "baselineExpected": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "fixedExpected": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "输入来源引用不匹配，输入层直接拒绝"
+        }
+      ],
+      "decisionBasis": "repairInput 校验 allowedDependencies：引用的节点在 nodes 中不存在且不是同批 target 的 prospective 递增版本，判定为非法依赖引用，抛出 INVALID_ARGUMENT。",
+      "sourceLocation": "packages/agentarts/src/input.ts:158-170",
+      "complementsExisting": "独立覆盖来源依赖引用不匹配，防范虚构来源引用的注入。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 0,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-06C-INPUT-DEPENDENCY-REFERENCE-MISMATCH",
+      "scenario": "依赖引用不匹配（target.requestedDependencies 引用了未在 allowedDependencies 中声明的节点）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "事实版本1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "事实版本2",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行部署任务",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行部署任务",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 1
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {},
+      "baselineExpected": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "fixedExpected": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "输入依赖未在允许集合中，输入层直接拒绝"
+        }
+      ],
+      "decisionBasis": "parseRepairContext 校验 target.requestedDependencies：引用的节点 factId1@1 未在 allowedDependencies (仅含 factId1@2) 中声明，抛出 INVALID_ARGUMENT。",
+      "sourceLocation": "packages/agentarts/src/input.ts:121-122",
+      "complementsExisting": "独立覆盖请求依赖不在允许依赖白名单中的非法参数输入。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "rejection",
+        "errorCode": "INVALID_ARGUMENT",
+        "errorMessage": "Invalid agent input",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 0,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": []
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 0,
+        "plan": 0,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-07-PLAN-EXCEEDS-WORLD-SCOPE",
+      "scenario": "Plan 扩大 World 的影响范围（私自引入未受波及节点）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "基础环境1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "基础环境2",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "部署服务A",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "巡检服务B",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "部署服务A",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "summary": "巡检服务B",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "disposition": "REVISE",
+          "affected": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "reason": "仅服务A直接受环境升级影响",
+          "missing_information": []
+        },
+        "plan": {
+          "disposition": "REVISE",
+          "changes": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "合法修订服务A",
+              "reason": "仅服务A直接受环境升级影响",
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "summary": "私自越界修改服务B",
+              "reason": "Plan私自扩大影响范围",
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "missing_information": []
+        }
+      },
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Plan exceeds world impact scope",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Plan exceeds world impact scope",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "因 Plan 越界导致整个修复候选被熔断拒绝"
+        },
+        {
+          "node": {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1
+          },
+          "reason": "原本不受波及，因越界被编排器拦截"
+        }
+      ],
+      "decisionBasis": "World 明确 affected 仅包含 A；Plan 却在 changes 中提出了针对 B 的变更；编排器 invoke/planScope 检查 changes.some(!world.affected.includes) 触发 EXTERNAL_FAILURE 熔断。",
+      "sourceLocation": "packages/agentarts/src/index.ts:60-62,140-142",
+      "complementsExisting": "验证分阶段流水线中，下游 Plan 绝无权力单方面扩大上游 World 界定的因果影响范围。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Plan exceeds world impact scope",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-08-REVIEW-SUBSTITUTES-PLAN",
+      "scenario": "Review 替换、遗漏或改写原修复方案（私自篡改修订理由）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "生产配置1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "生产配置2",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行关键服务配置",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行关键服务配置",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "生产配置1",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "生产配置2",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "生产配置更新为2"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "步骤依赖的配置更新"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "步骤直接受影响"
+        },
+        "plan": {
+          "reportVersion": "1.1",
+          "base_revision": 7,
+          "disposition": "REVISE",
+          "preserved_steps": [],
+          "rechecked_steps": [],
+          "revised_steps": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "replacement": "合法的Plan修订步骤摘要",
+              "reason": "步骤依赖的配置更新"
+            }
+          ],
+          "removed_steps": [],
+          "dependency_updates": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ],
+              "reason": "更新配置依赖"
+            }
+          ],
+          "evidence_required": [
+            "本地读回"
+          ],
+          "missing_information": [],
+          "local_next_actions": []
+        },
+        "review": {
+          "kind": "repair_candidate",
+          "candidateVersion": "1.0",
+          "candidate": {
+            "expectedGraphRevision": 7,
+            "changes": [
+              {
+                "node": {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 1
+                },
+                "summary": "合法的Plan修订步骤摘要",
+                "reason": "【Review私自篡改的理由】：非Plan原定理由",
+                "dependencies": [
+                  {
+                    "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "revision": 2
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Review substituted the proposed plan",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Review substituted the proposed plan",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "因 Review 篡改方案导致候选发布被拒绝"
+        }
+      ],
+      "decisionBasis": "Review 返回的 candidate.changes[0].reason 与 Plan 审定的 reason 不一致；applicationOutput 核对归一化变更时检测到篡改，抛出 EXTERNAL_FAILURE 拒绝发布。",
+      "sourceLocation": "packages/agentarts/src/index.ts:167-173",
+      "complementsExisting": "确保 Review 角色只能审查核准 Plan 方案，绝对不能私自改写任何计划内容或变更理由。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Review substituted the proposed plan",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 1
+      }
+    },
+    {
+      "caseId": "SMR-09A-PROSPECTIVE-DEPENDENCY-VALID-ORDER",
+      "scenario": "同批依赖修订的正确拓扑顺序（生产者优先）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "基础运行环境1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "基础运行环境2升级",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "生产依赖步骤A",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "消费依赖步骤B",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "生产依赖步骤A",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "summary": "消费依赖步骤B",
+              "requestedDependencies": [
+                {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            },
+            {
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "基础运行环境1",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "基础运行环境2升级",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "基础环境升级为2"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "需要生成新版本步骤A"
+            },
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "impact": "transitive",
+              "reason": "消费步骤A的新版本"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "同批前后依赖同时修订"
+        },
+        "plan": {
+          "reportVersion": "1.1",
+          "base_revision": 7,
+          "disposition": "REVISE",
+          "preserved_steps": [],
+          "rechecked_steps": [],
+          "revised_steps": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "replacement": "生产步骤A修订版本2",
+              "reason": "需要生成新版本步骤A"
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "replacement": "消费步骤B修订",
+              "reason": "消费步骤A的新版本"
+            }
+          ],
+          "removed_steps": [],
+          "dependency_updates": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ],
+              "reason": "依赖升级后的环境2"
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 2
+                }
+              ],
+              "reason": "依赖同批新生产的步骤A@2"
+            }
+          ],
+          "evidence_required": [
+            "本地DAG校验"
+          ],
+          "missing_information": [],
+          "local_next_actions": []
+        },
+        "review": {
+          "kind": "repair_candidate",
+          "candidateVersion": "1.0",
+          "candidate": {
+            "expectedGraphRevision": 7,
+            "changes": [
+              {
+                "node": {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 1
+                },
+                "summary": "生产步骤A修订版本2",
+                "reason": "需要生成新版本步骤A",
+                "dependencies": [
+                  {
+                    "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "revision": 2
+                  }
+                ]
+              },
+              {
+                "node": {
+                  "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "revision": 1
+                },
+                "summary": "消费步骤B修订",
+                "reason": "消费步骤A的新版本",
+                "dependencies": [
+                  {
+                    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "revision": 2
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "baselineExpected": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 2,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "fixedExpected": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 2,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "candidateChanges": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "summary": "生产步骤A修订版本2",
+          "reason": "需要生成新版本步骤A",
+          "dependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        {
+          "node": {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1
+          },
+          "summary": "消费步骤B修订",
+          "reason": "消费步骤A的新版本",
+          "dependencies": [
+            {
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "revision": 2
+            }
+          ]
+        }
+      ],
+      "nodesPreservedOrUnmodified": [],
+      "decisionBasis": "生产者 A 位于 revised_steps[0]，产出 A@2 加入 produced 集合；消费者 B 位于 revised_steps[1]，成功引用已生产的 A@2，拓扑合法通过。",
+      "sourceLocation": "packages/agentarts/src/index.ts:377-392",
+      "complementsExisting": "验证同一批次修订中，前置生产者先更新、后置消费者引用其产生的新版本的合法拓扑。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "success",
+        "resultKind": "repair_candidate",
+        "expectedChangesCount": 2,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 1
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan",
+          "review"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 1
+      }
+    },
+    {
+      "caseId": "SMR-09B-PROSPECTIVE-DEPENDENCY-INVALID-ORDER",
+      "scenario": "同批依赖修订的错误顺序（消费前置于生产）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "基础运行环境1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "基础运行环境2升级",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "生产依赖步骤A",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "消费依赖步骤B",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "生产依赖步骤A",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            },
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "summary": "消费依赖步骤B",
+              "requestedDependencies": [
+                {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            },
+            {
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "基础运行环境1",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "基础运行环境2升级",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "基础环境升级为2"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "需要生成新版本步骤A"
+            },
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "impact": "transitive",
+              "reason": "消费步骤A的新版本"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "同批前后依赖同时修订"
+        },
+        "plan": {
+          "reportVersion": "1.1",
+          "base_revision": 7,
+          "disposition": "REVISE",
+          "preserved_steps": [],
+          "rechecked_steps": [],
+          "revised_steps": [
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "replacement": "消费步骤B颠倒前置",
+              "reason": "消费步骤A的新版本"
+            },
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "replacement": "生产步骤A被置后",
+              "reason": "需要生成新版本步骤A"
+            }
+          ],
+          "removed_steps": [],
+          "dependency_updates": [
+            {
+              "node": {
+                "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "revision": 2
+                }
+              ],
+              "reason": "依赖尚未生产的步骤A@2"
+            },
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ],
+              "reason": "依赖升级后的环境2"
+            }
+          ],
+          "evidence_required": [
+            "本地DAG校验"
+          ],
+          "missing_information": [],
+          "local_next_actions": []
+        }
+      },
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Repair uses an unproduced prospective dependency",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Repair uses an unproduced prospective dependency",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "因拓扑依赖倒序被熔断阻断，维持原基线"
+        },
+        {
+          "node": {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1
+          },
+          "reason": "因拓扑依赖倒序被熔断阻断，维持原基线"
+        }
+      ],
+      "decisionBasis": "消费者 B 颠倒置于生产方 A 之前；validateChanges 检查到 B 引用的 A@2 尚未进入 produced 集合，抛出 EXTERNAL_FAILURE: Repair uses an unproduced prospective dependency。",
+      "sourceLocation": "packages/agentarts/src/index.ts:386-389",
+      "complementsExisting": "验证同批 prospective 依赖必须严格遵守因果与拓扑生产顺序，消费在先直接被熔断。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Repair uses an unproduced prospective dependency",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-10A-UNSUPPORTED-REMOVAL-REQUEST",
+      "scenario": "Plan 提出步骤物理删除请求（超出 candidateVersion 1.0 契约）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "旧环境废弃1.0",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "新环境2.0已上线",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "旧版本兼容性适配补丁步骤",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "旧版本兼容性适配补丁步骤",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "旧环境废弃1.0",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "新环境2.0已上线",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "旧环境彻底废弃"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "适配补丁步骤已无必要存在"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "旧步骤不再需要"
+        },
+        "plan": {
+          "reportVersion": "1.1",
+          "base_revision": 7,
+          "disposition": "REVISE",
+          "preserved_steps": [],
+          "rechecked_steps": [],
+          "revised_steps": [],
+          "removed_steps": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "reason": "在新环境中物理删除该冗余适配步骤"
+            }
+          ],
+          "dependency_updates": [],
+          "evidence_required": [
+            "本地依赖拓扑读回"
+          ],
+          "missing_information": [],
+          "local_next_actions": []
+        }
+      },
+      "baselineExpected": {
+        "status": "unsupported",
+        "errorCode": "UNSUPPORTED_CAPABILITY",
+        "errorMessage": "Plan requests operations outside the repair candidate contract",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "fixedExpected": {
+        "status": "unsupported",
+        "errorCode": "UNSUPPORTED_CAPABILITY",
+        "errorMessage": "Plan requests operations outside the repair candidate contract",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "当前契约不支持物理删除，拒绝生成候选"
+        }
+      ],
+      "decisionBasis": "Plan 的 removed_steps 非空；validatePlan 判定 unsupported 为 true；invoke 在 L59 抛出 UNSUPPORTED_CAPABILITY。",
+      "sourceLocation": "packages/agentarts/src/index.ts:59,348,370",
+      "complementsExisting": "独立验证 Plan 提出物理删除步骤时，契约边界准确拒绝并返回 UNSUPPORTED_CAPABILITY。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "unsupported",
+        "errorCode": "UNSUPPORTED_CAPABILITY",
+        "errorMessage": "Plan requests operations outside the repair candidate contract",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-10B-UNSUPPORTED-NEW-NODE-PROPOSAL",
+      "scenario": "Plan 提出创建全新节点请求（新节点 ID 不在 targets 声明中）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "新业务需求v1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "新业务需求v2上线",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "原有基础服务计划",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "原有基础服务计划",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "新业务需求v1",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "新业务需求v2上线",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "新需求上线"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "需要调整服务"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "业务需求变更"
+        },
+        "plan": {
+          "reportVersion": "1.1",
+          "base_revision": 7,
+          "disposition": "REVISE",
+          "preserved_steps": [],
+          "rechecked_steps": [],
+          "revised_steps": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "replacement": "调整原有基础服务计划",
+              "reason": "需要调整服务"
+            },
+            {
+              "node": {
+                "id": "9999999999999999999999999999999999999999999999999999999999999999",
+                "revision": 1
+              },
+              "replacement": "尝试新增全新步骤节点",
+              "reason": "创建新步骤"
+            }
+          ],
+          "removed_steps": [],
+          "dependency_updates": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ],
+              "reason": "依赖事实v2"
+            }
+          ],
+          "evidence_required": [
+            "本地读回"
+          ],
+          "missing_information": [],
+          "local_next_actions": []
+        }
+      },
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "因 Plan 包含未知新节点，方案整体被拒"
+        }
+      ],
+      "decisionBasis": "Plan 在 revised_steps 中引用了未在 context.targets 声明的新节点 ID；validatePlan 在匹配 target 时失败，被判定为非法版本化角色报告，抛出 EXTERNAL_FAILURE。",
+      "sourceLocation": "packages/agentarts/src/index.ts:340-342",
+      "complementsExisting": "独立验证 Plan 阶段试图通过注入未知节点 ID 创建新节点时，被 Schema 与上下文强校验直接拦截。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-10C-UNSUPPORTED-LOCAL-ACTIONS",
+      "scenario": "Plan 提出本地执行后续动作请求（local_next_actions 非空）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "服务补丁版本1",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 2,
+            "kind": "fact",
+            "summary": "服务补丁版本2",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1,
+            "kind": "plan",
+            "summary": "执行服务部署升级",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "summary": "执行服务部署升级",
+              "requestedDependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ]
+            }
+          ],
+          "allowedDependencies": [
+            {
+              "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "revision": 2
+            }
+          ]
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "服务补丁版本1",
+              "confidence": "explicit"
+            },
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "fact": "服务补丁版本2",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [
+            {
+              "previous": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "current": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 2
+              },
+              "change": "补丁升级"
+            }
+          ],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "需要安装补丁"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "补丁升级"
+        },
+        "plan": {
+          "reportVersion": "1.1",
+          "base_revision": 7,
+          "disposition": "REVISE",
+          "preserved_steps": [],
+          "rechecked_steps": [],
+          "revised_steps": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "replacement": "升级服务部署至补丁版本2",
+              "reason": "需要安装补丁"
+            }
+          ],
+          "removed_steps": [],
+          "dependency_updates": [
+            {
+              "node": {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "revision": 1
+              },
+              "dependencies": [
+                {
+                  "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "revision": 2
+                }
+              ],
+              "reason": "更新补丁依赖"
+            }
+          ],
+          "evidence_required": [
+            "本地读回"
+          ],
+          "missing_information": [],
+          "local_next_actions": [
+            "执行本地Shell脚本部署",
+            "重启宿主网关"
+          ]
+        }
+      },
+      "baselineExpected": {
+        "status": "unsupported",
+        "errorCode": "UNSUPPORTED_CAPABILITY",
+        "errorMessage": "Plan requests operations outside the repair candidate contract",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "fixedExpected": {
+        "status": "unsupported",
+        "errorCode": "UNSUPPORTED_CAPABILITY",
+        "errorMessage": "Plan requests operations outside the repair candidate contract",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 1
+          },
+          "reason": "因包含本地动作超出契约，拒绝生成候选"
+        }
+      ],
+      "decisionBasis": "Plan 的 local_next_actions 包含 2 个动作字符串；validatePlan 判定 unsupported 为 true；invoke 在 L59 抛出 UNSUPPORTED_CAPABILITY。",
+      "sourceLocation": "packages/agentarts/src/index.ts:59,333,370",
+      "complementsExisting": "独立验证 Plan 提出在本地执行动作的越权请求时，契约边界准确拒绝并返回 UNSUPPORTED_CAPABILITY。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "unsupported",
+        "errorCode": "UNSUPPORTED_CAPABILITY",
+        "errorMessage": "Plan requests operations outside the repair candidate contract",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 1,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world",
+          "plan"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 1,
+        "review": 0
+      }
+    },
+    {
+      "caseId": "SMR-11-GOAL-TARGET-VERSION-MIXING",
+      "scenario": "Goal 目标与旧版 1.1 报告混用（含 goal targets 必须使用 1.2 报告）",
+      "synthetic": true,
+      "entrypoint": "invoke",
+      "completeInput": {
+        "action": "REVISE",
+        "strategy": "最小修复",
+        "nodes": [
+          {
+            "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "revision": 1,
+            "kind": "fact",
+            "summary": "战略方向调整",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          },
+          {
+            "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "revision": 1,
+            "kind": "goal",
+            "summary": "年度数字化转型核心指标",
+            "state": "active",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2027-01-01T00:00:00.000Z"
+          }
+        ],
+        "repairContext": {
+          "expectedGraphRevision": 7,
+          "targets": [
+            {
+              "node": {
+                "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "revision": 1
+              },
+              "summary": "年度数字化转型核心指标",
+              "requestedDependencies": []
+            }
+          ],
+          "allowedDependencies": []
+        },
+        "omittedSources": 0,
+        "calibrated": false,
+        "executed": false
+      },
+      "syntheticModelResponses": {
+        "world": {
+          "reportVersion": "1.1",
+          "revision": 7,
+          "observed_facts": [
+            {
+              "node": {
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "revision": 1
+              },
+              "fact": "战略方向调整",
+              "confidence": "explicit"
+            }
+          ],
+          "changed_facts": [],
+          "affected_items": [
+            {
+              "kind": "plan_step",
+              "node": {
+                "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "revision": 1
+              },
+              "impact": "direct",
+              "reason": "指标受战略影响"
+            }
+          ],
+          "missing_information": [],
+          "recommended_disposition": "REVISE",
+          "summary": "目标受影响"
+        }
+      },
+      "baselineExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "fixedExpected": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "candidateChanges": [],
+      "nodesPreservedOrUnmodified": [
+        {
+          "node": {
+            "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "revision": 1
+          },
+          "reason": "因报告版本混用导致方案被拒，维持原基线"
+        }
+      ],
+      "decisionBasis": "targets 包含 kind 为 goal 的节点，hasGoalTarget 为 true；validateWorld 强校验 (hasGoalTarget && report.reportVersion !== \"1.2\")，因报告为 1.1 抛出 EXTERNAL_FAILURE。",
+      "sourceLocation": "packages/agentarts/src/index.ts:263-264,275",
+      "complementsExisting": "验证顶层目标重订（Goal Target）与下层报告版本的严格因果隔离，防止低版本报告侵入高阶目标。",
+      "verificationStatus": "verified_local",
+      "expectedResult": {
+        "status": "error",
+        "errorCode": "EXTERNAL_FAILURE",
+        "errorMessage": "Invalid versioned role report",
+        "expectedChangesCount": 0,
+        "expectedRoleCalls": {
+          "fast": 0,
+          "world": 1,
+          "plan": 0,
+          "review": 0
+        },
+        "expectedCallSequence": [
+          "world"
+        ]
+      },
+      "expectedRoleCalls": {
+        "fast": 0,
+        "world": 1,
+        "plan": 0,
+        "review": 0
+      }
+    }
+  ]
+}

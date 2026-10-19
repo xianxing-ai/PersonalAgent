@@ -1,5 +1,7 @@
 # 架构设计与技术契约
 
+> 2026-10-17 编码修复增量见 [F15 V6 接线](competition/CODING_MINIMAL_REPAIR_V6.md) 与 [ADR-0033](adr/0033-coding-minimal-repair-workflow.md)。算法和多轮控制运行于原自有镜像，真实隔离工具、授权及 Evidence 仍归本机原 Runtime；主/影子不共用可写工作区。不是整体架构或模型的重新定案，云发布与分项测试分别登记。
+
 <!-- current-design-alignment-20261015 -->
 ## 当前组合与设计差额（2026-10-15）
 
@@ -56,7 +58,7 @@ MOD-04B/29 的通信采用 WSS 主、HTTPS 备用，同部署/任务/幂等/授�
 | Desktop | Electron；当前原生 HTML/CSS/JavaScript | 窗口、悬浮球、后台、状态展示；不假定 React 已采用 |
 | Runtime | Node.js、TypeScript | 会话、任务、事件、连接器、模型与工具调度 |
 | Coordination | TypeScript、端口注入 | 主 Agent、目标/决策图谱、事实影响和最小计划修复 |
-| AgentArts Adapter | TypeScript、HTTPS | Competition Profile 的 Agent/Workflow/评估/部署调用与本地提案映射 |
+| AgentArts Adapter | TypeScript、HTTPS/WSS | Competition Profile 的 Agent/Workflow/评估/部署调用与本地提案映射 |
 | Windows Host | C#、.NET | UI Automation、窗口/输入、系统观测 |
 | Knowledge | Markdown、FTS5、可替换向量索引 | Obsidian 增量索引、混合检索、来源 |
 | Storage | SQLite WAL | 任务、事件、授权、同步状态和迁移 |
@@ -79,14 +81,16 @@ Profile 在受信 composition root 选择，不由 Renderer、模型输出或外
 ### 2.2 模块依赖边界
 
 - `apps` 是进程和装配入口，可以依赖 `packages`；可复用 `packages` 不能反向依赖 `apps`。
-- Agent 只持有 ModelPort、MemoryQueryPort、FactChangeFeed 和 ToolExecutionPort，不导入具体 Runtime 或 ModelGateway 实现。
+- 目标边界为 Agent 只持有 ModelPort、MemoryQueryPort、FactChangeFeed 和 ToolExecutionPort，不导入具体 Runtime 或 ModelGateway 实现；既有 Local Agent 的具体耦合仍需逐项迁移。
 - Runtime 核心不导入 Electron 或具体连接器；具体 Weather 等只出现在明确组合入口。
-- Runtime Application 层负责持有 TaskRuntime、接收 task.submit 和执行生命周期；目标形态是注入 CoordinationPort，不直接构造主 Agent 或具体 ModelGateway。当前代码仍直接装配两者，因此该注入边界登记为 unavailable，迁移前不得称为已冻结。
+- Runtime Application 层持有 TaskRuntime，接收 task.submit 并管理执行生命周期。Competition 组合通过 RuntimeApplicationOptions.coordination 注入 CoordinationPort，AgentArts 工厂显式装配 CompetitionCoordinator/CloudAgentPort；该边界保持 provisional。既有 Local Agent/辅助模型装配分别保留，不据此宣称全部 Agent 依赖倒置或接口冻结。
 - 根 composition 是唯一同时引用 goo122 与 zemeng 具体实现的位置。goo122 使用 FakeCoordination 开发 Runtime；zemeng 使用 Fake Model/Memory/Tool/Runtime 开发核心认知。
 - 连接器只实现公共连接器/工具契约，不能拥有任务状态、授权决定或 UI。
 - 跨包调用只能使用包的公开 `exports`，生产依赖图必须无环。
 
 这些边界由根命令 `npm run check:architecture` 检查；当前门禁还禁止 Desktop 直接导入 Agent/Model 实现、旧文本入口或调用 `runTask`。Runtime Application 的关闭会在存在活动任务时拒绝静默退出。当前仍保持模块化单体，不把目录边界描述成进程安全沙箱。
+
+Competition Desktop 可在 Runtime Application 装配 `delegateUserTasks:true`：用户根任务仅派发和汇总，原 `subagent.dispatch` 经 Policy/ToolGateway 创建持久化子任务执行，旧任务不追补。大工作区只展示概览、最多两行最近子智能体入口及全部历史入口，不接受通用任务提交。各独立子对话 Renderer 由主进程固定原父子身份，只能读取、发送本子对话消息、停止匹配的活动执行、关闭或返回主对话，不能任意提交其他任务或审批。每轮追加消息复用原 TaskRuntime/SQLite 创建新执行，保留原终态、模型/预算/工具绑定、幂等与重新审批；不会形成新 Runtime/调度器或额外子智能体层。私人记忆和 Skill 的单任务许可不跨任务继承。全部原子智能体持久分页，旧绑定不完整时只读，完整内部模型轨迹仍不公开。行为、验证及恢复边界见 [委派工作包](../apps/desktop/docs/live-task-visibility-20261018.md)。
 
 ## 3. 进程与信任边界
 
@@ -104,7 +108,7 @@ flowchart TD
   CP --> G[Tool Proposal -> ToolExecutionPort]
   LP --> G
   G --> C[本地 MCP / Skills / 连接器]
-  G --> W[Windows Host / TraceGuard]
+  G --> W[Windows Host / 受控系统观测]
   G --> V[执行读回 / Evidence]
   V --> R
   R --> S[Task / Event / Checkpoint]
@@ -186,15 +190,15 @@ Fact、Goal、Decision 和 Plan 使用稳定 ID、revision、来源、有效期�
 
 Coordination 根据事实变化计算影响，只输出 KEEP、RECHECK 或 REVISE、理由和最小 PlanPatch。Runtime 决定何时调度、审批和持久化任务终态；Decision Graph 不能绕过 TaskRuntime。
 
-该架构边界已由 [ADR-0006](adr/0006-coordination-and-agentarts-boundary.md) 接受，但端口和实现尚未提供，当前状态为 unavailable。
+该架构边界已由 [ADR-0006](adr/0006-coordination-and-agentarts-boundary.md) 接受。CoordinationPort、CloudAgentPort、MemoryQueryPort、FactChangeFeedPort、版本图及 SQLite 存储已有 provisional 实现与受信 Runtime 消费；既有离线影响分析、显式修复预览/提交不等于完整持续认知完成。真实来源、当前主控调用方及恢复分别验收；当前最小修复/依赖重规划算法仍暂停/未定，不由端口存在自动恢复实施或提升冻结状态。
 
 ## 10. 语音与电脑控制
 
-语音：麦克风 → 回声处理/VAD → ASR → 任务 → TTS。供应商适配，首版按键语音，唤醒词后续验证。音频录制和保留可见且受控。
+语音有听写与原生 Live 两条既有入口：听写只回填可编辑草稿，不自动提交；Live 使用原生实时模型，业务任务仍经原 Runtime/Policy/ToolGateway。共享 PCM/Wake 的源码接线、公开合成音频/供应商端口证据与实体麦克风、扬声器、唤醒/回声/打断验收分开。音频录制和保留可见且受控。
 
 电脑操作优先 API/命令接口，再 UI Automation，最后视觉定位。操作绑定当前窗口、前置状态、执行及后置验证。用户输入触发让出控制，不能仅凭点击调用成功宣布完成。
 
-TraceGuard 通过适配层提供真实观测和受限动作，不在此阶段复制或修改原项目。移植前审查实际实现、接口与可复用范围。
+电脑状态由 PersonalAgent 的 packages/windows-client 与 apps/windows-host 在受控边界内提供，按动作记录真实观测、权限与不可观测项；不集成、发布或依赖独立 TraceGuard，PA-018 治理/恢复不在本轮范围。
 
 ## 11. 权限与审计
 
@@ -208,11 +212,11 @@ TraceGuard 通过适配层提供真实观测和受限动作，不在此阶段复
 
 | 决策 | 当前状态 | 后续验证 |
 | --- | --- | --- |
-| Windows 本地常驻、盘古主推理 | 用户确认方向 | 盘古实际部署闭环 |
+| Windows 本地常驻与比赛模型路由 | 常驻目标保留；模型由受信配置选择，最终选型未定 | AgentArts 代理、Local Provider、本机 Laya 及各模型质量/设备边界分别验收 |
 | 分层接口冻结 | accepted / ADR-0005 | 每次接口状态变化逐项复审 |
-| 核心认知依赖倒置 | accepted / ADR-0006；实现 unavailable | Coordination/Model/Memory/Tool Fakes 与注入槽 |
-| AgentArts 只提案、本地执行 | accepted / ADR-0006；实现 unavailable | 已部署 API、Policy、执行读回和 Evidence |
-| 当前只实施 Huawei ICT Competition Profile；Local Profile 可选留存 | accepted / ADR-0007；实现 unavailable | AgentArts 构建、编排、评估、部署、Golden Path 与 profile 防静默回退 |
+| 核心认知依赖倒置 | accepted / ADR-0006；公开端口及 Competition 注入为 provisional，Local Agent 仍有具体 ModelGateway 耦合 | 当前主控/真实来源消费、恢复及兼容验证；不整体冻结 |
+| AgentArts 只提案、本地执行 | accepted / ADR-0006；有限固定场景闭环已验证，接口 provisional | 各工具/账号/设备、未知结果恢复与完整平台 Trace 分别验收 |
+| 当前只实施 Huawei ICT Competition Profile；Local Profile 可选留存 | accepted / ADR-0007；Competition 实现 provisional，验收按固定版本和场景限定 | AgentArts 构建、编排、评估、部署、Golden Path 与 profile 防静默回退 |
 | Electron + TS Runtime + .NET Host | 建议基线 | 打包体积、IPC、悬浮窗口、真实 UIA |
 | SQLite + Markdown + 可替换向量索引 | 建议基线 | 冲突、检索质量、数据量和迁移 |
 | 本地调度优先 | 建议基线 | 休眠、退出、中断恢复 |

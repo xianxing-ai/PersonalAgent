@@ -23,12 +23,13 @@ const UTC_PATTERN_STRING = '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3}
 
 const eventsOutputSchema: ToolDescriptor['outputSchema'] = {
   type: 'object',
-  required: ['eventVersion', 'cursorState', 'events', 'nextCursor', 'retained'],
+  required: ['eventVersion', 'snapshotRevision', 'cursorState', 'events', 'nextCursor', 'retained'],
   additionalProperties: false,
   properties: {
     eventVersion: {type: 'integer', const: 1},
-    cursorState: {type: 'string', enum: ['current', 'compacted'],
-      description: 'compacted：游标早于已确认批次的保留窗口；未确认批次永不淘汰。'},
+    snapshotRevision: {type: 'integer', minimum: 0, description: '同一分页快照的持久状态版本。'},
+    cursorState: {type: 'string', enum: ['current', 'compacted', 'changed'],
+      description: 'changed：快照已变化，必须从第一页重新读取。'},
     events: {
       type: 'array', maxItems: 100,
       items: {
@@ -157,12 +158,13 @@ export function register(host: ToolHost, options: NotificationsModuleOptions): (
       version: NOTIFICATIONS_MODULE_VERSION,
       inputSchema: {
         type: 'object',
-        description: '版本化批次事件读回（F12 消费端口）：按裁定顺序返回通知批次的最小投影，条目只引用 dedupeKey。'
-          + '只读，不触发裁定，不代替受信桌面的接收确认。',
+        description: '版本化批次状态快照（F12 消费端口）：按裁定顺序分页返回最小投影，条目只引用 dedupeKey。'
+          + '续页须回传 snapshotRevision；changed 时从头重读。只读，不触发裁定或代替接收确认。',
         additionalProperties: false,
         properties: {
           sinceBatchId: {type: 'string', minLength: 1, maxLength: 128,
-            description: '游标：上一页最后一条 batchId。缺省从最旧保留批次开始。'},
+            description: '同一快照内续页的上一页最后一条 batchId。'},
+          snapshotRevision: {type: 'integer', minimum: 0, description: '续页须回传首屏返回的版本；不匹配时 cursorState=changed。'},
           limit: {type: 'integer', minimum: 1, maximum: 100, description: '单页上限，默认 20。'},
         },
       },
@@ -174,8 +176,9 @@ export function register(host: ToolHost, options: NotificationsModuleOptions): (
       requiresPresence: false,
     },
     execute: async (input: unknown): Promise<NotificationBatchEventsPage> => {
-      const request = input as {sinceBatchId?: string; limit?: number};
+      const request = input as {sinceBatchId?: string; snapshotRevision?: number; limit?: number};
       return service.readBatchEvents({...(request?.sinceBatchId === undefined ? {} : {sinceBatchId: request.sinceBatchId}),
+        ...(request?.snapshotRevision === undefined ? {} : {snapshotRevision: request.snapshotRevision}),
         ...(request?.limit === undefined ? {} : {limit: request.limit})});
     },
   };

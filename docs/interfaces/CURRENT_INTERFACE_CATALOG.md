@@ -1,5 +1,25 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-18 主文字／Live 工具消费接线（provisional）
+
+最新定向分组检查 226/226，包含远端并行整合后的重叠补测；teacher 多轮、DEV 提案隔离、首次 user-work／追加会话的自动补丁核实续接、Live 原等待期限及 Windows 夹具修复见 [增量证据](../competition/evidence/conversation-wiring-20261018/SUPPLEMENT.md)。F15 实际复用通用图驱动，F20 的 Synthetic 验证不构成其业务入口接通。
+
+文字用户请求继续由原 parent 锚点强制交给原 `user-work` child；Live 使用同 UI conversation 和 `request_work/read_context/wait_for_task`，不创建第二业务执行器。原 Runtime 增加可信 `developerWorkflows`、`isUserPresent`、精确会话／待审批参数读回及 F15 同 worker 消费；HostTask 审批沿原输入、revision、digest、期限恢复，unknown 不重放。主对话目录保留完整公开入口 Schema，`modelExposure:'internal'` 仅为宿主目录投影，不删除内部 RegisteredTools 或授予权限；Live 完整 Schema 分页仍受 32K 上限约束。
+
+Desktop 组合原公开开发工作流、固定命令、Git/GitHub 和测试定位；显式配置、原工作区许可、精确资料出机及逐写授权仍分别检查。通用电脑控制消费用户独立安装的 Windows-MCP 0.8.8，真实 F9 在场、原执行记录、跨引擎互斥和未知结果封闭保留，结果仅 observed。持续责任复用原 Scheduler、confirmed 来源 Evidence 和原 durable event sink，不增加调度器或任务库。
+
+没有新增 Core wire operation、数据库迁移或 frozen 能力；新增 Desktop 直接依赖使用已有 workspace 包，Windows client 使用已锁定 MCP SDK 1.31.0。本轮 Local/Synthetic 与真实云、模型、设备验收分账。28 图、185 节点及其 adapterRequirements 仍是设计／契约目录，不能当成全部业务已接通。具体接口、缺配置及归属见 [自有消费矩阵](../competition/OWNED_CONVERSATION_WIRING_20261018.md)、[28 图矩阵](../competition/IMAGE28_CONVERSATION_WIRING_20261018.md)、[开发部署配置](../competition/DEVELOPER_DEPLOYMENT_CONFIG_20261018.md) 与 [Windows client](../../packages/windows-client/README.md)。
+
+## 2026-10-17 F15 预览结果投影修复（provisional）
+
+注册的 `coding.repair.preview` 与 Desktop N04 别名在原 ToolGateway 保存执行结果及签署工作流回执前，仅投影会话确认和各补丁路径、前后 SHA、变更标记；不返回完整预览正文。宿主本地预览和补丁/CAS 校验不变，实际源码导出仍需原精确原生许可。未新增 Core wire、依赖或迁移；本地回归不代表真实镜像/华为整图已复测，不提升冻结状态。
+
+## 2026-10-17 镜像 F15 编码最小修复（provisional）
+
+[V6 接线](../competition/CODING_MINIMAL_REPAIR_V6.md)说明原 F15 的多轮失败修复、原子任务入口 `coding.repair.workflow`、独立编码宿主与包级验证指纹。新增 `@personal-agent/contracts/coding-repair` v1 是进程/工具数据，不增加 Core wire 或数据库迁移。镜像实际消费 jsdiff 与 TypeScript Compiler API；原本机 Runtime/Policy/ToolGateway/Evidence 继续负责授权和可信执行。
+
+主分支交付需当前 required 验证 VALID、相关用户基线 CAS 及逐文件读回；isolated 影子只产出验证 artifact、不发布主目录。固定版 AgentArts WSS/HTTPS、原生精确源码与元数据出机门禁继续保留。实现、分项测试、完整图和真实云发布分别登记，不扩大冻结范围，不据此宣称28条全部业务已验。
+
 ## 2026-10-16 远程 MCP 有界缓存与原 Runtime 回执（provisional）
 
 `RemoteReadonlyMcpOptions.readRunReceipt` 为受信宿主同步只读查询，绑定 task/run 与原参数摘要；只回收持久 confirmed/failed 的本地缓存，unknown 保留。`TaskRuntime.isToolExecutionActive` 只观察当前进程首次 Gateway 分派的精确输入标记，不授予执行权限、不从 SQLite 恢复；Desktop 消费原执行记录、原结果 checkpoint 和该标记。无 wire、Schema、迁移或新依赖；接口继续 provisional，真实平台/真人及完整 MOD-06 验收未由合成容量回归完成。见 [修复与验证](../modules/MOD-06-CAPACITY-RECEIPTS-20261016.md)。
@@ -116,7 +136,7 @@ WSS主通道、显式HTTPS备用、同会话复用、发送前持久身份与未
 知识受控写入和固定 MCP/Skills已有受限增量，以当前公开源码/README为准；本文较旧历史矩阵不能抹去这些增量，也不能据存在代码冻结整个模块。合并确认是开发规则，不成为产品运行时授权或接口冻结证据。
 
 <!-- current-design-20261009 -->
-> 当前协作规则（2026-10-15）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。下文历史正文、作者及验收按原日期保留，旧流程不作为现行门槛。
+> 当前协作规则（2026-10-17）：[接线交付总包](../competition/COLLABORATOR_WIRING_PACKAGE.md) · [模块分工](../MODULE_ASSIGNMENTS.md) · [当前设计](../design/CURRENT_DESIGN_20261015.md)。各 MOD 负责人自行闭环实现、公开契约、实际调用方接线、必要测试与 Evidence/文档。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前 head 有效批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不视为独立批准。拥有合并权限者（包括作者）可在必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后正常合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。历史正文、作者与验收按原日期保留，旧流程不作为现行门槛。
 
 2026-10-11 [MOD-08O](../modules/MOD-08O-PAIRED-CITATION-MEMORY-01.md) 在 PR #322 上继续：
 peer 可选 readCitation、桥接版本 2（PA2，旧 PA1 仅检索）与 Runtime `wikiSource.acquireWiki`。
@@ -163,7 +183,7 @@ capability、迁移或依赖。接口保持 provisional，未完成真实用户/
 
 | 部署 profile | 优先级 | 当前能力 | 接口规则 |
 | --- | --- | --- | --- |
-| `huawei_ict_agentarts` | 当前唯一优先实现与比赛验收路径 | 架构 accepted；接口 `provisional`；#317 分支真实 WSS 文件读取闭环已验证，main 和其余场景未完成 | 只在明确已部署配置中使用上述场景；不静默回退，不扩大冻结集合 |
+| `huawei_ict_agentarts` | 当前唯一优先实现与比赛验收路径 | 架构 accepted；接口 `provisional`；main 已合入 #317 的受限 WSS 读取与审批实现；2026-10-12 真实读取/Evidence 回执绑定独立固定版本镜像，并非 main HEAD 实测；其余业务场景和实体设备仍分别验收 | 只在明确已部署配置中使用已验证场景；不静默回退，不扩大冻结集合 |
 | `local` | 可选保留 | 现有 Agent/Model 部分实现为 `provisional` | 不删除既有代码；新增 Local 能力不阻塞 Competition，也不计入比赛验收 |
 
 ## 2. 状态定义与冻结门槛
@@ -271,8 +291,8 @@ Fake、SQLite 提供者与可恢复投影。它区分 query snapshot、feed 水�
 | `settings.update` | `unavailable` | 否 | Schema/Fake 已有；生产返回 `UNSUPPORTED_CAPABILITY` |
 | `connector.connect` | `unavailable` | 否 | ConnectorHost 存在但未接 wire 路由 |
 | `connector.disconnect` | `unavailable` | 否 | ConnectorHost 内部参数与 wire 账号语义尚未统一 |
-| `voice.start` | `unavailable` | 否 | 只有 Schema；无 VoicePort 或生产提供者 |
-| `voice.stop` | `unavailable` | 否 | 只有 Schema；“停止播报”不能替代 `task.cancel` |
+| `voice.start` | `unavailable` | 否 | 该 Core wire operation 未公布；既有 Desktop 私有语音及 Realtime 端口不等于此 operation 可用 |
+| `voice.stop` | `unavailable` | 否 | 该 Core wire operation 未公布；本机停止播报仍不能替代 `task.cancel` |
 
 ### 3.4 九类事件状态矩阵
 
@@ -286,7 +306,7 @@ Fake、SQLite 提供者与可恢复投影。它区分 query snapshot、feed 水�
 | `task.cancelled` | Core Runtime payload `frozen` / 可产生 | 同上 |
 | `approval.requested` | `provisional` / 仅工具装配路径 | 同上 |
 | `tool.completed` | `provisional` / 仅工具装配路径 | 同上 |
-| `notification.created` | `unavailable` / 当前无生产通知模块 | 同上；不能因 Schema 存在显示为已接通 |
+| `notification.created` | `unavailable` / 此 Core wire 事件未公布 | 同上；不能因 Schema 或 Desktop 私有通知存在显示为公开 wire 已接通 |
 
 ### 3.5 冻结范围之外
 
@@ -310,22 +330,22 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | `StructuredToolProvider` | 严格 JSON 解析、工具名/版本/参数校验单测 | 只是文字 JSON 提案适配器；没有真实盘古闭环，不是原生 function calling | `provisional` |
 | `ConnectorPort`、`ConnectorHost`、`SecretStorePort.read` | 类型、FakeConnector、宿主单测 | 账号会话未持久化；wire connect/disconnect 未接 Runtime；无真实账号 | `provisional` |
 | `StoragePort` | contracts 类型、FakeStorage | 只有同步 get/set/delete；没有 revision、事务、容量和失败语义 | `provisional` |
-| `CoordinationPort`、`CloudAgentPort`、Competition Runtime/工具循环 | PR #36、#49：Fake、审批恢复和 continuation 离线循环 | Workflow 输入 #72 与载荷边界 #80 尚未进入 main；真实 deployment/version/trace、成功云 API、MCP/Skill 和目标系统读回未验证 | `provisional` |
-| `createSqliteFactProjectionHost`、`RuntimeApplication.createCompetitionFactHost`、`SqliteMemoryHost.withdrawPublicSource` | DEP02 将固定 public feed/query/确认和 Runtime 持久投影组合；PR #177 已将 Application 宿主工厂合入 main，管理独立 Memory SQLite，来源修订/撤回以 CAS 写入幂等 Fact 变化事件 | #177 合并前缺非作者批准评审；受信来源读回、生产触发/生命周期、真实来源撤回证明和完整目标系统读回仍待 Desktop 接线验证；不作为 Runtime wire capability | `provisional` |
-| NotificationService | PR #27、#81：持久批次、ack、DST、摘要与毫秒窗口测试 | 无 Runtime wire 查询、Desktop 展示和真实通知通道 | `provisional` |
+| `CoordinationPort`、`CloudAgentPort`、Competition Runtime/工具循环 | PR #36、#49：Fake、审批恢复和 continuation 离线循环 | #72/#80 已进入 main；固定版本 WSS 文件读取/审批续答、有限 Desktop 主子委派与公开 F15 整图已有独立证据。完整平台 Trace、原生知识/MCP、全部业务及实体设备仍分别验收，不扩大冻结范围 | `provisional` |
+| `createSqliteFactProjectionHost`、`RuntimeApplication.createCompetitionFactHost`、`SqliteMemoryHost.withdrawPublicSource` | DEP02 将固定 public feed/query/确认和 Runtime 持久投影组合；PR #177 已将 Application 宿主工厂合入 main，管理独立 Memory SQLite，来源修订/撤回以 CAS 写入幂等 Fact 变化事件 | 受信来源读回、生产触发/生命周期、真实来源撤回证明和完整目标系统读回仍待 Desktop 接线验证；不作为 Runtime wire capability | `provisional` |
+| NotificationService | PR #27、#81：持久批次、ack、DST、摘要与毫秒窗口测试 | 现有 Runtime/桌面私有通知消费不等于 Core wire 事件或查询已公布；真实来源、设备渠道与恢复闭环仍逐项验收 | `provisional` |
 
 这些接口可以继续迭代，但消费者必须固定精确包版本或提交，并准备迁移；不能称为“冻结接口”。
 
-## 5. 当前不可用接口与能力
+## 5. 尚未交付或未验收的接口与能力
 
-下表中的条目可能已经在 Schema、设计文档或 UI 中出现，但当前没有满足要求的生产提供者。状态统一为 `unavailable`。
+下表登记具体缺口，不将整个 MOD 统一判为 unavailable。尚无实现或未公布的 operation 仍 unavailable；已有实现但对应真实验收未完成者保持 provisional／未验证。有限案例不新增 wire 能力或冻结承诺。
 
-| 分组 | 不可用接口或能力 | 缺口 / 解锁条件 | 负责人 |
+| 分组 | 具体范围／缺口 | 缺口 / 解锁条件 | 负责人 |
 | --- | --- | --- | --- |
 | 模型 | 盘古原生 function calling | Pangu Provider 明确声明 `toolCalling=false`；需真实部署能力探测和闭环验收 | MOD-04A `goo122` |
 | 模型 | 盘古文字 JSON 工具提案的真实闭环 | 手动脚本默认 SKIPPED；需真实盘古→提案→审批→工具→读回→回答证据 | MOD-04A/04B |
 | 模型 | 流式、视觉、稳定结构化输出 | 当前 Pangu Provider 均声明不支持 | MOD-04A `goo122` |
-| Agent | 真实 AgentArts deployment/version/trace 与多 Agent 结果 | provisional Competition 适配和 Fake 已集成；真实云端成功路径、结果解析和完整 trace 未验收 | MOD-29～32 `zemeng` |
+| Agent | 全域多 Agent 与完整独立 Trace | 固定版本有限真实主子委派已有证据；完整角色路由、预算/质量/恢复与平台独立 Trace 仍分别验收 | MOD-29～32 `zemeng` |
 | 结果 | 结构化 `TaskResult` | 当前仅 `resultSummary` 字符串；需正文、模型、usage、verification、plan/evidence 分离 | MOD-02/03 `goo122` |
 | 会话 | 显式创建、重命名、归档、删除、重试关联 | 当前只有 `task.submit` 携带 conversationId 和只读列表 | MOD-02/03 `goo122` |
 | 调度 | 循环规则、唤醒计时器、睡眠恢复公共 API | Runtime 只有内部一次性调度，没有 wire operation | MOD-03 `goo122` |
@@ -334,18 +354,17 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | 设置 | 生产 `settings.get` / `settings.update` | Schema 和 Fake 存在；生产 Runtime 不公布也不处理 | MOD-02/03 `goo122` |
 | 连接器 | 生产 `connector.connect` / `connector.disconnect` wire 路由 | Schema 与 ConnectorHost 存在，但 Runtime 未公布/分派，账号语义不一致 | MOD-05 `goo122` |
 | 凭据 | SecretStore save/replace/delete/status 与迁移 | 只有 ConnectorHost 私有 read 端口；无公共管理面或 Windows 适配 | MOD-05 `goo122`、MOD-16 `zemeng` |
-| 通知 | Runtime 列表/恢复、已读/隐藏、策略配置与 Desktop 展示 | NotificationService 已集成但尚未接 wire 或 Desktop；`notification.created` 仍无生产发布链 | MOD-23 `Potatos498`、MOD-13 `zemeng` |
-| 语音 | `voice.start` / `voice.stop`、ASR/TTS 流和设备适配 | session/wake/transcript consumer 仍在冲突的堆叠分支，main 无生产提供者；真实供应商、流协议和设备验收未提供 | MOD-14/15 `zemeng` |
-| 知识 | `KnowledgePort`、Obsidian/LLM Wiki | PR #93～#95、#97、#98 已合并：provisional KnowledgePort、只读 Vault、Policy 检索工具及公开资料 Fake Competition 链。[MOD-08G](../modules/MOD-08G-WIKI-SOURCE-REVISIONS-01.md)/[08H](../modules/MOD-08H-WIKI-MEMORY-PROJECTION-01.md)/[08I](../modules/MOD-08I-WIKI-WRITE-RECOVERY-01.md) 在 [PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 提供 WikiPort、稳定来源引用、revalidateWikiFact 与 host-only 写回投影恢复；本机完整 check 通过，尚未评审/集成。[MOD-08J](../modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md) 新增 host-only createWikiSourceMonitor、状态和批量 revalidateSources，沿用现有 tick 驱动只读来源检查；专项及真实合成 Electron 后台链路通过，完整门禁见工作包，已在 [PR #321](https://github.com/zemeng5208/PersonalAgent/pull/321) 堆叠交付，待评审/集成。仍 provisional，无新 wire capability。[MOD-08K](../modules/MOD-08K-BACKUPS-INDEX-PLUGIN-01.md) 通过 PR #321 提供应用 SQLite 备份协调、clearIndex 和临时全文索引及只读插件包；host-only provisional。[MOD-08L](../modules/MOD-08L-OBSIDIAN-INSTALLATION-01.md) 修复真实宿主相对 require，补齐显式安装/卸载，Obsidian 1.12.7 合成 Vault 验收通过；仍无新 wire 端口。整篇笔记备份保留并报告 pending；持久索引、插件 Runtime 配对、跨库投影、真实云消费与完整 LLM Wiki 仍 unavailable | MOD-08/09 `goo122` |
+| 通知 | 公开 Runtime wire 查询/事件、真实渠道 ack 与设备恢复 | NotificationService、Runtime host、Desktop 通知及策略消费已有 provisional 接线；公开 wire 查询/事件未公布，真实来源、渠道 ack 与设备恢复仍逐项验收 | MOD-23 `Potatos498`、MOD-13 `zemeng` |
+| 语音 | 公开 `voice.start` / `voice.stop` wire 与实体设备闭环 | main 已有 SIS/Live、共享 PCM、Wake 与 Desktop 私有宿主消费；公开 voice.start/voice.stop wire 仍未公布。固定版本公开合成 PCM 实时语音、直连 SIS ASR/TTS 的有限证据见 V5；实体麦克风、扬声器、唤醒/回声及设备恢复仍需验收 | MOD-14/15 `zemeng` |
+| 知识 | 完整 LLM Wiki、跨库派生副本与真实云知识消费 | KnowledgePort、只读 Vault/Obsidian、Wiki 来源版本/重验/受控写回恢复、来源监视、备份协调、临时全文索引、插件及受信配对已随 [#320](https://github.com/zemeng5208/PersonalAgent/pull/320) 组合进入 main；接口仍 provisional。真人原生流程、跨库派生副本、真实云知识与完整 LLM Wiki 仍逐项验收，整篇笔记备份 pending 边界保留 | MOD-08/09 `goo122` |
 | 记忆 | 生产 `MemoryQueryPort` / `FactChangeFeed` 提供者、确认消费、修正/删除 | PR #89、#90、#91 已合并 provisional 端口、Fake、SQLite 恢复与确认后原子激活投影；DEP02 仅新增可信组合和显式撤回版本，生产 Runtime capability、自动触发、真实来源及撤回证明仍未提供 | MOD-09 `goo122` |
-| MCP | 任意服务自动注册、OAuth、写工具及真实平台/真人完整验收 | main 已有固定官方只读 stdio；G10/G11/G14 分支有固定远程绑定、safeStorage、独立管理/生产注册和原 Runtime 审批读回；实际 Electron 验证与原生合成响应分开记录。TLS 增量以原 SDK 默认 fetch、进程专属 CA、实际 loopback HTTPS/SQLite 通过 5/5，证书/主机/目录/重定向拒绝、审批和重启不联网；服务/凭据仍合成，未验证第三方身份、OAuth/云出口，均 provisional，未宣称进入 main | MOD-06 `goo122` |
-| Skills | 任意脚本引擎及真实云端使用 | main 已有 packages/skills 固定参考摘要；本机 SKILL.md 安装、资源本地预览和 Competition 使用增量在未合并 [PR #318](https://github.com/zemeng5208/PersonalAgent/pull/318)，见 [安装记录](../modules/MOD-07-LOCAL-INSTALLATION-20261009.md)，不冻结；原生完整安装、任意脚本与真实云验收未提供 | MOD-07 `goo122` |
+| MCP | 任意服务自动注册、OAuth、写工具及真实平台/真人完整验收 | main 已有固定官方只读 stdio、固定远程绑定、safeStorage、独立管理/生产注册和 Runtime 审批读回；#369 长驻 run 身份上限 64、重连不重置已进入 main。[独立 TLS 验收](../modules/MOD-06-TLS-20261016.md) 以原 SDK 默认 fetch、进程专属 CA、实际 loopback HTTPS/SQLite 通过 5/5；[#374 Desktop/TLS 组合](../modules/MOD-06-PRODUCT-TLS-20261016.md) 已进入 main，用实际 Electron 管理窗口/安全存储、默认 fetch 和 loopback HTTPS 验证审批前零工具调用、批准后一次调用、断连、拒绝、两次正常重启读回、旧审批拒绝及撤销；不受信 CA、主机名不符、目录摘要不符和 307 重定向均零工具调用。服务/凭据及确认响应仍为合成，第三方服务身份、OAuth/云出口、真人确认、任意写工具和完整恢复未验收；接口仍 provisional，不增加 Core wire capability | MOD-06 `goo122` |
+| Skills | 任意脚本引擎及真实云端使用 | main 已有 packages/skills 固定参考摘要；本机 SKILL.md 安装、资源本地预览、启停/使用/卸载已随 [#320](https://github.com/zemeng5208/PersonalAgent/pull/320) 组合进入 main；[#318](https://github.com/zemeng5208/PersonalAgent/pull/318) 的原始交付和关闭记录保留为历史。真人原生完整安装流程、任意脚本与真实云验收仍未提供；接口不冻结 | MOD-07 `goo122` |
 | 决策 | 目标/事实/决策图谱的生产集成 | main 已有版本图及 SQLite/Fake 原子 `appendBatch`；自动事实投影、真实事实来源与生产消费未完成 | MOD-27 `zemeng`，存储 `goo122` |
 | 认知 | 事件驱动的完整计划修复 | main 已有离线影响分析与显式修复预览/提交，并通过原子 `appendBatch` 写入；事实变化流、自动投影和真实 Evidence 未完成 | MOD-28 `zemeng` |
-| AgentArts | Competition Profile 的真实身份、Agent/Workflow、MaaS/模型、知识、MCP/Skill、工具提案与多 Agent | main 已有 provisional adapter 和离线工具循环；Workflow 输入仍在堆叠分支，没有成功 deployment/API/trace 与真实 MCP/Skill 读回 | MOD-29～31 `zemeng` |
-| AgentArts | Competition 发布、API、trace、评估、成本、回滚和端到端证据 | 无云资源读回、本地 Policy/ToolGateway 闭环或 profile 防静默回退证据 | MOD-32 `zemeng` |
+| AgentArts | 平台原生知识、MCP/Skill 及未验真实业务 | main 已有 provisional CloudAgentPort、Workflow 输入及 HTTPS/WSS 工具提案循环；固定版本文件读取/审批续答和有限主子模型委派已取得独立证据。平台原生知识、MCP/Skill、全域多 Agent 质量和其余业务场景仍未由这些证据验收 | MOD-29～31 `zemeng` |
+| AgentArts | 完整平台 Trace、评估、成本、回滚和比赛端到端证据 | 已有 SWR/部署/精确版本目录、有限平台关联日志、公开文件读取及特定 F15 主图/隔离图的本地 Policy/ToolGateway/Evidence 闭环；只证明对应版本与公开场景，不代表完整 Trace/成本/平台评估、回滚、全部 28 图或比赛验收完成；禁止静默 Local 回退 | MOD-32 `zemeng` |
 | Windows | Named Pipe、DesktopActionPort、资源锁、用户接管 | 内部帧契约为 provisional；Host/Client 生产接线与真实应用验收未提供 | MOD-16 `zemeng` |
-| TraceGuard | 公开工具和 Evidence/恢复端口 | 仓库适配 package 未提供 | MOD-17 `zemeng` |
 | 编程 | 正文读取、patch、command、artifact 端口 | PR #83 已集成受限 `workspace.list` 与 `workspace.read_text`；两者仍为 provisional，patch、command、artifact 和完整隔离验收未提供 | MOD-18 `zemeng` |
 | 分发 | 生产装配、安装、升级、卸载生命周期契约 | 无安装包与隔离安装证据 | MOD-19 `zemeng`、根装配 `goo122` |
 
@@ -355,7 +374,7 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 
 ### 6.1 Competition 执行面（provisional）
 
-PR #36、#49 已进入 main，提供文字 Coordination/CloudAgent 与 Runtime 审批工具循环。Workflow 输入 #72 和总载荷边界 #80 只合并到堆叠分支，尚未进入 main。现有 Fake 证据不包含成功真实 AgentArts 调用、deployment/version/trace、MCP/Skill 或目标系统读回。
+PR #36、#49、#72、#80 与 #317 的相关实现已进入 main：文字 Coordination/CloudAgent、Workflow 输入、总载荷边界与 Runtime 审批工具循环已有源码/测试。2026-10-12 独立固定版本镜像源码 `194799c6979ed47d20dfd2d3ea17bbfd16f63fd6` 的真实 Huawei 主 WSS 一次文件读取、一次性审批续答、Evidence 及 deployment/version 读回已有记录；该源码不是当前 main 的祖先，回执不构成 main HEAD 实测，也不等于全部 11 个绑定逐项调用、平台 trace/评估、原生知识/MCP/Skill、真实写入或实体设备均已验收。
 
 ### 6.2 世界状态与认知面（provisional）
 
@@ -496,4 +515,4 @@ Competition 工具提案/Runtime Application/Desktop 装配仍未由此项交付
 
 截至 2026-09-27，**冻结范围仍只有 Core Runtime Profile 1 的消息、任务、会话与审批只读查询子集；不冻结整套协议、外部模型工具调用或 AgentArts 编排。** main 中已有 Competition 的离线 Coordination/审批工具循环、版本图、原子存储、显式修复预览/提交、受限工作区读取、公开演示知识检索，以及 provisional 的 SQLite 事实查询/变化流、可恢复投影和受信 Fact host 工厂；编码工具的补丁候选与独占 apply 也已合入 package，但尚未生产注册。生产事实自动消费、Runtime Memory capability、真实工作区写入与语音消费仍未完成验收。
 
-真实 AgentArts deployment/API/trace、目标系统工具读回、完整 Evidence、真实语音设备和外部事实提供者仍 `unavailable`。Fake、合成评估、HTTP 200、配置成功或平台截图都不能提升这些状态；正式比赛路径不得静默回退 Local。
+在上述 2026-09-27 历史快照中，真实 AgentArts deployment/API/trace、目标系统工具读回、完整 Evidence、真实语音设备和外部事实提供者仍 `unavailable`。Fake、合成评估、HTTP 200、配置成功或平台截图都不能提升这些状态；正式比赛路径不得静默回退 Local。该历史状态不覆盖本页后续登记的固定版本有限真实云调用、工具闭环与语音端口证据；未验的完整 Trace、实体设备和全业务范围仍按各自缺口登记。

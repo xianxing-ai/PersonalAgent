@@ -1,7 +1,27 @@
 # Runtime task core
 
+`delegateUserTasks:true` 是 Competition 可信组合选项：仅新用户任务冻结一次真实子任务委派，根任务经原 Policy/Gateway 派发后只汇总，模型、预算和恢复绑定保留。旧任务不补派；既有单任务私人记忆/Skill 许可不继承。`readDelegatedUserTaskParent()` 只提供经校验的公开历史范围。可信宿主通过 `readSubagentConversation` / `submitSubagentConversationMessage` / `cancelSubagentConversationTask` 访问同一子智能体的持久追加会话，每轮创建新任务，不重开原终态；`listSubagentConversations` 分页读取全部原子智能体，追加执行仍归原入口。实现、139 项定向验证（Runtime 51 项）及未知写/汇总失败恢复限制见 [子对话与委派说明](../desktop/docs/live-task-visibility-20261018.md)。
+
+
+<!-- architecture-scope-20261013 -->
+## 当前架构职责
+
+目标profile：huawei_ict_agentarts。工程责任：MOD-03（goo122）、MOD-31（zemeng5208）。产品流程：F01、F03、F06、F12、F24、F22、F23、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+执行模型协作与候选评估；不创建第二个最终语义裁决模型，建立独立影子宿主的能力与证据。
+
+本机Laya已确定为本地运行方案，提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收；外部比赛资格及真实 AgentArts 端到端验收另行核证。
+
+本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+
+## 现有API、运行说明与历史验证参考
+<!-- /architecture-scope-20261013 -->
+Competition 任务一旦保存 `competition-context:v1`，恢复和最终发送门禁都要求受信宿主继续装配 `coordinationInput`；缺失时拒绝发送，不降为原公开 goal。已确认工具回执保留，进入既有待核实路径，不重做工具。没有该检查点的旧任务仍允许沿原无 hooks 路径恢复。此为 host-only、provisional 加固，无新 wire/迁移；见 [F27 恢复加固记录](../../docs/modules/MOD-09-CONTEXT-BINDING-20261014.md#2026-10-16恢复-hooks-缺失加固)。
+
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-12）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前 AGENTS.md 与 CONTRIBUTING.md 为准。
+> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧审批人数与本机阅读门槛不作为现行要求。
 
 Obsidian 本机桥接沿用 `createObsidianPairingHost` 与 `createTrustedKnowledgeTools`。
 Desktop 根组合用公开 `@personal-agent/knowledge/bridge` 进行 TLS 证书指纹固定/一次性
@@ -28,7 +48,6 @@ Wiki 来源增量提供可信 Application 入口 `revalidateWikiFact`：使用�
 既有确认事实，之后仅重校验变化路径。扫描/投影失败保留上次快照，不推导删除或自动
 确认新事实；关闭取消在途检查。参见 [MOD-08J](../../docs/modules/MOD-08J-WIKI-SOURCE-MONITOR-01.md)。
 
-> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 @personal-agent/runtime is the MOD-03 local task and event core for PA-004 and the scheduling boundary of PA-009.
 
@@ -75,6 +94,47 @@ No wire capability or AgentArts integration is enabled by this host-only API.
 See [COORDINATION-STORE-01](../../docs/modules/COORDINATION-STORE-01.md).
 
 ### Competition coordination and offline tool loop
+
+`createAgentArtsRuntimeApplication()` now returns a compatible host-only extension:
+`queryCompetitionCloudStatus(taskId, {expectedRevision, deadline, signal})`.
+It reads the original persisted `competition-cloud-inflight` / `competition-cloud-unknown`
+receipt and the dispatch-time `competition-cloud-dispatch-binding`; the caller cannot
+substitute a receipt. The task must be `waiting_reconciliation` at the expected revision,
+with the original Competition configuration binding. Missing legacy bindings or a
+different configured deployment are rejected before lookup. Task revision and all
+receipt/binding checkpoints are rechecked before recording a response.
+
+This provisional API calls the existing WSS `queryStatus` with current host credentials.
+It persists only the bounded `competition-cloud-status-observation` metadata summary
+and returns the same body-free summary: original correlation, status/code, server
+instance, task/configuration binding, observation time and `verification: unverified`.
+Cloud events/model text never enter the returned value or observation checkpoint.
+An unknown status may be a conservative local classification when the original server
+instance is missing or changed, not a platform acknowledgement or proof of non-execution.
+
+Every cloud state, including completed, leaves the local task and its original send
+holds unchanged. There is no invoke replay, tool execution, new Evidence, task success,
+automatic continuation, or clearing of inflight/unknown checkpoints. Old receipts with
+no dispatch configuration binding cannot be retroactively attributed to the current
+deployment. This is a trusted-host diagnostic consumer, not a Client/Renderer wire
+operation, public capability, or automatic reconciliation/finalization implementation.
+The trusted host must authorize access to the task before calling this method.
+
+Each new WSS dispatch also records versioned `competition-cloud-dispatch-context`
+after the host send guards and before the invoke frame is sent. It binds the original
+invocation/configuration, request phase/revision/deadline, loop step/budget and
+catalog/continuation checkpoint references and digests. No goal, tool arguments,
+continuation body, cloud events or credentials are copied into this snapshot.
+Status diagnostics reject changed snapshots or changed referenced checkpoints.
+
+This path has no general durable public-input provenance contract, so every snapshot
+records `privacyEligibility: {eligible: false, reason: 'public-provenance-unavailable'}`
+and `recovery: 'unavailable'`. An unchanged goal or absent withdrawal marker cannot
+establish public provenance. This snapshot records dispatch facts only; it neither
+grants permission nor enables result recovery, replay, tool execution or finalization.
+Legacy records remain diagnostic only and are never backfilled. Partial dispatch
+records cannot supply missing recovery facts. Dynamic policy, tool availability and
+ephemeral input leases still need fresh host checks in any future recovery consumer.
 
 Trusted composition may pass `profile: 'huawei_ict_agentarts'`, an explicit
 `coordination: CoordinationPort`, and local `RegisteredTool` values. Bounded text and

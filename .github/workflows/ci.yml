@@ -1,18 +1,153 @@
 name: Foundation
-on: [push, pull_request]
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      windows_runner:
+        description: Explicit Windows pool for a full two-platform validation
+        type: choice
+        default: auto
+        options: [auto, github, ecs]
+      image_runner:
+        description: Explicit Linux pool for a full two-platform validation
+        type: choice
+        default: ecs
+        options: [ecs, github]
 permissions:
   contents: read
+  pull-requests: read
+  actions: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 jobs:
-  check:
-    runs-on: windows-latest
+  route:
+    # Keep the required context; check below requires every selected platform job.
+    name: ecs-linux-check
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.route.outputs.matrix }}
+      source_sha256: ${{ steps.source.outputs.sha256 }}
+      electron_cache_sha256: ${{ steps.windows-cache.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify the exact event checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
+      - name: Verify routing, approval and automatic merge gates
+        run: node --test scripts/ci/*.test.mjs scripts/review/design-review.test.mjs scripts/review/auto-merge.test.mjs
+      - name: Verify CI cleanup boundaries
+        run: python3 -m unittest discover -s scripts/ci -p resources_test.py
+      - name: Select CI from the complete current PR file list
+        id: route
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PA_IMAGE_RUNNER: ${{ inputs.image_runner || vars.PA_IMAGE_RUNNER }}
+          PA_WINDOWS_RUNNER: ${{ inputs.windows_runner || vars.PA_WINDOWS_RUNNER }}
+          PA_WINDOWS_RUNNER_OVERRIDES: ${{ vars.PA_WINDOWS_RUNNER_OVERRIDES }}
+        run: node scripts/ci/pr-route.mjs
+      - name: Package exact source for ECS without persisting checkout credentials
+        id: source
+        if: contains(steps.route.outputs.matrix, 'self-hosted')
+        run: node scripts/ci/source-transfer.mjs pack
+      - uses: actions/upload-artifact@v4
+        if: contains(steps.route.outputs.matrix, 'self-hosted')
+        with:
+          name: ci-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.source.outputs.directory }}
+          retention-days: 1
+          if-no-files-found: error
+      - name: Read the locked Electron downloader without running desktop install hooks
+        if: contains(steps.route.outputs.matrix, 'Windows CI (ECS)')
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare the official Windows Electron cache for ECS
+        if: contains(steps.route.outputs.matrix, 'Windows CI (ECS)')
+        id: windows-cache
+        run: node scripts/ci/electron-cache.mjs pack
+      - uses: actions/upload-artifact@v4
+        if: contains(steps.route.outputs.matrix, 'Windows CI (ECS)')
+        with:
+          name: windows-electron-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.windows-cache.outputs.directory }}
+          retention-days: 1
+          if-no-files-found: error
+  validate:
+    needs: route
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.route.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check dedicated ECS capacity before checkout
+        if: matrix.kind == 'image' && matrix.runner[0] == 'self-hosted'
+        shell: bash
+        run: python3 /opt/personalagent-ci/maintenance/resources.py start
+      - uses: actions/checkout@v4
+        if: matrix.runner[0] != 'self-hosted'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Use the preinstalled ECS Node toolchain
+        if: matrix.kind == 'image' && matrix.runner[0] == 'self-hosted'
+        shell: bash
+        run: echo '/opt/personalagent-review/toolchain/node/bin' >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        if: matrix.runner[0] == 'self-hosted'
+        with:
+          name: ci-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-transfer
+      - name: Restore verified same-run source locally
+        id: restore
+        if: matrix.runner[0] == 'self-hosted'
+        env:
+          CI_SOURCE_SHA256: ${{ needs.route.outputs.source_sha256 }}
+        run: node "${{ runner.temp }}/ci-transfer/source-transfer.mjs" restore
+      - name: Verify Windows ECS admission and inherited resource controls
+        if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        shell: pwsh
+        run: ./scripts/ci/windows-admission.ps1
+      - name: Record the selected runner and exact checkout
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        env:
+          CI_ROUTE: ${{ matrix.name }}
+        run: node -e "const cp=require('node:child_process'),fs=require('node:fs');if(cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==process.env.GITHUB_SHA)throw Error('Checkout SHA mismatch');fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,JSON.stringify({selected:process.env.CI_ROUTE,runner_name:process.env.RUNNER_NAME,os:process.env.RUNNER_OS,sha:process.env.GITHUB_SHA})+'\n')"
+      - uses: actions/setup-node@v4
+        if: matrix.runner[0] != 'self-hosted'
+        with:
+          node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      - name: Match the repository npm version on hosted runners
+        if: matrix.runner[0] != 'self-hosted'
+        run: node -e "const cp=require('node:child_process');if(cp.execSync('npm --version',{encoding:'utf8'}).trim()!=='11.12.1')cp.execSync('npm install --global npm@11.12.1',{stdio:'inherit'})"
+      - name: Verify Node and npm versions
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        run: node -e "const fs=require('fs'),cp=require('child_process');if(process.version!=='v'+fs.readFileSync('.node-version','utf8').trim()||cp.execSync('npm --version',{encoding:'utf8'}).trim()!=='11.12.1')process.exit(1)"
+      - uses: actions/download-artifact@v4
+        if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
+        with:
+          name: windows-electron-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-electron-transfer
+      - name: Seed the verified official Electron cache without skipping postinstall
+        if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        env:
+          CI_ELECTRON_CACHE_SHA256: ${{ needs.route.outputs.electron_cache_sha256 }}
+        run: node scripts/ci/electron-cache.mjs restore
+      - name: Install Windows dependencies
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'windows'
+        run: npm.cmd ci --foreground-scripts --loglevel=error
       - name: Build Windows Job process helper
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'windows'
         shell: pwsh
         run: |
           $jobHostSdks = & dotnet --list-sdks
@@ -21,16 +156,97 @@ jobs:
           }
           $jobHostTarget = Join-Path $env:RUNNER_TEMP 'personal-agent-job-host'
           $jobHostOutput = & node packages/coding-tools/native/build-helper.mjs --target-dir $jobHostTarget
-          if ($LASTEXITCODE -ne 0) {
-            throw 'WindowsJobProcessHost build failed.'
-          }
+          if ($LASTEXITCODE -ne 0) { throw 'WindowsJobProcessHost build failed.' }
           $jobHostBuild = ($jobHostOutput -join "`n") | ConvertFrom-Json
           if ([string]::IsNullOrWhiteSpace($jobHostBuild.helperPath) -or
               -not (Test-Path -LiteralPath $jobHostBuild.helperPath -PathType Leaf)) {
             throw 'WindowsJobProcessHost build did not return an existing executable.'
           }
           "PA_TEST_JOB_HOST_EXE=$($jobHostBuild.helperPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - run: npm run check
-      - run: npm run dev
-      - run: npm run demo:protocol
-      - run: npm run demo:runtime
+      - name: Run the complete original Windows check
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'windows'
+        run: npm.cmd run check
+      - name: Run examples against the already built current-head outputs
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          node scripts/dev/storage-demo.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/dev/protocol-demo.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node apps/runtime/examples/task-lifecycle.mjs
+          exit $LASTEXITCODE
+      - name: Install image dependencies without desktop lifecycle scripts
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'image'
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validate contracts and build image plus host fixture inputs
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'image'
+        shell: bash
+        run: |
+          npm run check:architecture
+          npm run test:contract-fixtures
+          npm run check:generated --workspace=@personal-agent/contracts
+          # Existing image tests import real Runtime/SQLite host fixtures.
+          npm run build
+          npm run typecheck --workspace=@personal-agent/contracts --workspace=@personal-agent/models --workspace=@personal-agent/coordination --workspace=@personal-agent/agentarts --workspace=@personal-agent/agentarts-runtime
+      - name: Test image transport, models, orchestration and runtime
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'image'
+        shell: bash
+        run: |
+          node apps/agentarts-runtime/scripts/export-bindings.mjs --check
+          node --test --test-concurrency=1 packages/contracts/test/agentarts-transport.test.mjs packages/models/test/*.test.mjs packages/coordination/test/*.test.mjs packages/agentarts/test/*.test.mjs apps/agentarts-runtime/test/*.test.mjs
+          node --test --test-concurrency=1 tests/integration/owned-agentarts-image.test.mjs
+      - name: Generate the allowlist image context
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'image'
+        id: context
+        shell: bash
+        run: |
+          node apps/agentarts-runtime/scripts/image-context.mjs > "$RUNNER_TEMP/image-context.json"
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/image-context.json'));fs.appendFileSync(process.env.GITHUB_OUTPUT,'directory='+c.context+'\n');"
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.kind == 'image' && matrix.runner[0] != 'self-hosted'
+        with:
+          platforms: arm64
+      - name: Build and verify ARM64 without publishing
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'image'
+        shell: bash
+        env:
+          IMAGE_CONTEXT: ${{ steps.context.outputs.directory }}
+          IMAGE_RUNNER: ${{ matrix.runner[0] }}
+        run: |
+          if [[ "$IMAGE_RUNNER" == self-hosted ]]; then
+            # Load the authorized group membership without restarting a busy runner.
+            sg docker -c 'bash scripts/ci/build-image.sh'
+          else
+            bash scripts/ci/build-image.sh
+          fi
+      - name: Record dedicated ECS capacity and cleanup results
+        if: always() && matrix.kind == 'image' && matrix.runner[0] == 'self-hosted'
+        shell: bash
+        run: python3 /opt/personalagent-ci/maintenance/resources.py complete
+  check:
+    if: always()
+    needs: [route, validate]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Require the router and every selected CI job to succeed
+        env:
+          ROUTE_RESULT: ${{ needs.route.result }}
+          CI_RESULT: ${{ needs.validate.result }}
+          CI_MATRIX: ${{ needs.route.outputs.matrix }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci/check-result.mjs

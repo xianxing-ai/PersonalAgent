@@ -24,6 +24,10 @@ CAS 冲突明确拒绝，不自动重复写入；写结果未知时先按原 ope
 read ack、撤回和轮次预占/投递状态写入均返回 `UNSUPPORTED_CAPABILITY`。
 普通 `StoragePort.set` 的一次写入不被宣称为跨进程配额安全。
 
+### 批次状态快照分页（F12）
+
+`notifications.events` 返回保留批次的当前状态快照，包含 `ready_for_delivery` / `delivered` 与可选 `deliveredAt`，不表示不可变状态变更日志。首屏返回 `snapshotRevision`；旧持久状态缺少 revision 时按 0 读取，之后每次写入单调递增。续页必须同时传 `sinceBatchId` 和该 revision。若期间任一通知状态写入导致 revision 改变，返回 `cursorState: changed` 且不返回事件，消费端必须从第一页重读，并在 `nextCursor: null` 时才将该 revision 的分页视为完整快照。每轮从第一页对账可以读到先前确认后的 delivered 状态。
+
 ### 显式用户字段与继承
 
 作用域为 `{kind:'global'}`、`{kind:'connector',connectorId}`、
@@ -95,7 +99,7 @@ revision 并绑定完整参数 digest。模型自报 final 或把 legacy 参数�
 这些结果不是真实横幅、语音播放、麦克风、账号或生产平台验收。
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 

@@ -11,8 +11,12 @@ const DEFAULT_COMPETITION_STEPS = 4;
 
 function sameCloudInvocation(left: AgentArtsUnknownReceipt | undefined | null,
   right: AgentArtsUnknownReceipt | undefined | null): boolean {
+  // Legacy/HTTPS receipts may omit the instance. Only the first admission may
+  // add it; a known instance must never change or disappear in a later receipt.
   return !!left && !!right && left.sessionId === right.sessionId && left.requestId === right.requestId
-    && left.idempotencyKey === right.idempotencyKey && left.payloadDigest === right.payloadDigest;
+    && left.idempotencyKey === right.idempotencyKey && left.payloadDigest === right.payloadDigest
+    && (left.serverInstanceId === right.serverInstanceId
+      || (left.serverInstanceId === undefined && left.accepted === false && right.accepted === true));
 }
 
 function markCompetitionCloudUnknown(runtime: TaskRuntime, taskId: string,
@@ -211,7 +215,7 @@ function requireExportBinding(
   if (proposal.verification === 'mock') return undefined;
   const binding = bindings?.find(item => item.toolName === proposal.toolName && item.toolVersion === proposal.toolVersion);
   if (!binding || !tools?.list().some(tool => tool.name === proposal.toolName
-    && tool.version === proposal.toolVersion && !tool.requiresPresence
+    && tool.version === proposal.toolVersion
     && (tool.sideEffect === 'read' || permitWrite))) {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Real Competition tool result export is unavailable');
   }

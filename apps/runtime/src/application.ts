@@ -14,6 +14,9 @@ export type {RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostT
   ConfirmedSystemObservationSample} from './application/runtime-application.js';
 export type {LocalRepairHostOptions, LocalRepairBinding, SubmitLocalRepairRequest} from './application/local-repair.js';
 export type {CompetitionAvailableTool, CompetitionToolAvailability} from './application/tool-catalog.js';
+export type {ConversationToolCapability} from './application/tool-catalog.js';
+export {DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,developerWorkflowInputSchema} from './application/developer-workflows.js';
+export type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope,DeveloperWorkflowKind} from './application/developer-workflows.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
 export type {AgentArtsObservationApplication} from './application/agentarts.js';
 export {createCalendarEventReadTool, CALENDAR_EVENT_READ_TOOL, CALENDAR_EVENT_READ_VERSION} from './application/calendar-read.js';
@@ -103,6 +106,12 @@ export * from './application/notification-host.js';
 export * from './application/proactive-workflow-session.js';
 export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';
 export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions} from './application/owned-workflow-application.js';
+export {createRuntimeCodingRepairDispatchTool,runRuntimeCodingRepairWorkflow,readRuntimeCodingVerificationEvidence,
+  CODING_REPAIR_WORKFLOW_TOOL,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './application/coding-repair-application.js';
+export type {RuntimeCodingRepairOptions,RuntimeCodingRepairImagePort} from './application/coding-repair-application.js';
+export {createRuntimeCodingRepairWorkerCapability} from './application/coding-repair-worker-capability.js';
+export {createRuntimeOwnedWorkflowImageAdapter} from './application/owned-workflow-image-adapter.js';
+export type {RuntimeOwnedWorkflowImageOptions} from './application/owned-workflow-image-adapter.js';
 export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';
 export {createRuntimeProactiveDecisionTools,RUNTIME_PROACTIVE_DECISION_TOOLS} from './application/proactive-decision-tools.js';
 export type {RuntimeProactiveDecisionToolOptions} from './application/proactive-decision-tools.js';

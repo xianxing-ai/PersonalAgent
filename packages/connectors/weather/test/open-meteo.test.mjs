@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {OpenMeteoProvider, WeatherService, WeatherConnector, register} from '../dist/index.js';
+import {ZH_PLACE_ALIASES} from '../dist/locale-aliases.js';
 import {FakeClock, FakeToolHost} from '@personal-agent/testkit';
 import {ProtocolError, validateContract} from '@personal-agent/contracts';
 
@@ -548,16 +549,18 @@ test('a hint is a fallback tier and never outranks a good original match', async
   assert.equal(rome.country, '意大利');
 });
 
-test('a hint also covers a place the Chinese index does not carry at all', async () => {
+test('a place the Chinese index does not carry resolves through the shipped alias, and a hint still works', async () => {
   const provider = makeProvider([captureRoutes(CAPTURES)]);
   const sig = signal();
-  await assert.rejects(provider.resolvePlace('纽约', undefined, sig), {code: 'NOT_FOUND'});
+  // Previously NOT_FOUND: the alias table is what makes the repository usable with no account.
+  const unhinted = await provider.resolvePlace('纽约', undefined, sig);
+  assert.equal(unhinted.latitude, 40.71427);
+  assert.equal(unhinted.timezone, 'America/New_York');
+  assert.equal(unhinted.confidence, 'high');
+
   const hinted = await provider.resolvePlace('纽约', 'New York', sig);
-  assert.equal(hinted.latitude, 40.71427);
   assert.equal(hinted.timezone, 'America/New_York');
   assert.equal(hinted.confidence, 'high');
-
-  await assert.rejects(provider.resolvePlace('首尔', undefined, sig), {code: 'NOT_FOUND'});
   assert.equal((await provider.resolvePlace('首尔', 'Seoul', sig)).timezone, 'Asia/Seoul');
 });
 
@@ -1017,4 +1020,94 @@ test('live read-back labels the reported misresolutions and the hint that repair
   await assert.rejects(strict.resolvePlace('东京', undefined, sig), {code: 'INVALID_ARGUMENT'});
 
   console.log('live geocoding read-back:', JSON.stringify(report, null, 1));
+});
+
+/**
+ * Measured 2026-10-19: `name=纽约` and `name=首尔` return zero results under every language pass,
+ * because the provider's `zh` index is Traditional and incomplete. A bare "found no place named"
+ * left the caller with nothing to do, so the message has to name the cause and the recovering call.
+ */
+test('a zero-candidate Han query names the script mismatch and the recovering call', async () => {
+  const provider = makeProvider([geoRoutesByLanguage({})]);
+  await assert.rejects(provider.resolvePlace('纽约', undefined, signal()), error => {
+    assert.equal(error.code, 'NOT_FOUND');
+    assert.match(error.message, /Traditional-Chinese index/);
+    assert.match(error.message, /locationQuery/);
+    assert.match(error.message, /New York/);
+    return true;
+  });
+});
+
+test('a zero-candidate Latin query keeps a short spelling hint', async () => {
+  const provider = makeProvider([geoRoutesByLanguage({})]);
+  await assert.rejects(provider.resolvePlace('Nowhereville', undefined, signal()), error => {
+    assert.equal(error.code, 'NOT_FOUND');
+    assert.match(error.message, /Check the spelling/);
+    assert.doesNotMatch(error.message, /Traditional-Chinese/);
+    return true;
+  });
+});
+
+test('an unmatched hint is reported as such instead of repeating the retry advice', async () => {
+  const provider = makeProvider([geoRoutesByLanguage({})]);
+  await assert.rejects(provider.resolvePlace('纽约', 'Niuyue', signal()), error => {
+    assert.match(error.message, /Neither that name nor the hint "Niuyue"/);
+    return true;
+  });
+});
+
+/** Captured from `https://geocoding-api.open-meteo.com/v1/search?name=New+York&language=en`. */
+const newYorkCity = {id: 5128581, name: 'New York', latitude: 40.71427, longitude: -74.00597, timezone: 'America/New_York', feature_code: 'PPL', population: 8804190, admin1: '纽约州', country: '美国'};
+
+const nameRoutes = byName => ['geocoding-api.open-meteo.com', url => {
+  const parsed = new URL(url);
+  const byLanguage = byName[parsed.searchParams.get('name')] ?? {};
+  return jsonResponse({results: byLanguage[parsed.searchParams.get('language')] ?? []});
+}];
+
+test('a shipped alias resolves 纽约 with no account and no caller hint', async () => {
+  const provider = makeProvider([nameRoutes({'纽约': {zh: [], en: []}, 'New York': {zh: [], en: [newYorkCity]}})]);
+  const place = await provider.resolvePlace('纽约', undefined, signal());
+
+  assert.equal(place.name, 'New York');
+  assert.equal(place.timezone, 'America/New_York');
+  assert.equal(place.confidence, 'high');
+  assert.equal(place.ambiguous, false, 'a single major seat leaves nothing to disclose');
+});
+
+test('the alias tier stays idle when the first pass already resolves a major seat', async () => {
+  const fetchImpl = stubFetch([captureRoutes(CAPTURES)]);
+  const provider = new OpenMeteoProvider({fetchImpl});
+  const place = await provider.resolvePlace('北京', undefined, signal());
+
+  assert.equal(place.confidence, 'high');
+  assert.equal(fetchImpl.calls.length, 2, 'zh + en only; no alias pass for a name that resolved');
+});
+
+/**
+ * Review finding on #417: the first generated table mapped 釜山 to Foshan (CN) and 奥克兰 to
+ * Oakland (US) — `name_equals` returns homographs abroad and the generator had ranked by
+ * population only. Entries are now bound to the country the candidate list meant.
+ */
+test('the shipped table never crosses the border on a homograph', () => {
+  assert.equal(ZH_PLACE_ALIASES['釜山'], 'Busan');
+  assert.equal(ZH_PLACE_ALIASES['奥克兰'], undefined, 'no New Zealand hit, so no entry rather than Oakland');
+  assert.equal(ZH_PLACE_ALIASES['上海'], undefined, 'domestic names are answered by the zh index and stay out of the table');
+});
+
+test('釜山 resolves to Korea, not to its Chinese homograph', async () => {
+  const busan = {id: 1838524, name: 'Busan', latitude: 35.10278, longitude: 129.04028, timezone: 'Asia/Seoul', feature_code: 'PPLA', population: 3285147, admin1: '釜山广域市', country: '韩国'};
+  const provider = makeProvider([nameRoutes({'釜山': {zh: [], en: []}, 'Busan': {zh: [], en: [busan]}})]);
+  const place = await provider.resolvePlace('釜山', undefined, signal());
+
+  assert.equal(place.name, 'Busan');
+  assert.equal(place.country, '韩国');
+  assert.equal(place.timezone, 'Asia/Seoul');
+  assert.equal(place.confidence, 'high');
+});
+
+test('奥克兰 stays unresolved rather than answering for Oakland', async () => {
+  const oakland = {id: 5378538, name: 'Oakland', latitude: 37.80437, longitude: -122.2708, timezone: 'America/Los_Angeles', feature_code: 'PPLA2', population: 419267, admin1: '加州', country: '美国'};
+  const provider = makeProvider([nameRoutes({'奥克兰': {zh: [], en: []}, 'Oakland': {zh: [], en: [oakland]}})]);
+  await assert.rejects(provider.resolvePlace('奥克兰', undefined, signal()), {code: 'NOT_FOUND'});
 });

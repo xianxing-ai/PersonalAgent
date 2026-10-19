@@ -143,9 +143,10 @@ test('P2 synchronous read_context rechecks the deadline before returning the ass
 
 test('P2 task.get late result past request deadline cannot escape as a successful reply', async () => {
   let clock = Date.now();
-  const reading = deferred(), status = deferred();
+  const reading = deferred(), status = deferred(),calls=[];
   const f = fixture({now: () => clock,
     client: {async call(operation) {
+      calls.push(operation);
       if (operation === 'task.submit') return {taskId: 'accepted'};
       reading.resolve(); return status.promise;
     }},
@@ -161,7 +162,28 @@ test('P2 task.get late result past request deadline cannot escape as a successfu
     status.resolve({taskId: 'accepted', state: 'succeeded', resultSummary: '不应外返'});
     await rejection;
     assert.equal(f.host.snapshot().status, 'listening');
+    assert.deepEqual(calls,['task.submit','task.get']);
+    assert.equal(f.host.snapshot().workRequests[0].taskId,'accepted');
+    assert.equal(f.host.snapshot().workRequests[0].state,'awaiting_result');
   } finally {await f.host.dispose();}
+});
+
+test('Local/Synthetic late approval summary cannot escape the original work wait deadline or resubmit',async()=>{
+  let clock=Date.now();const preparing=deferred(),prepared=deferred(),calls=[];
+  const question={taskId:'original-pending',state:'pending',questionId:'original-question',revision:1,argumentsDigest:'a'.repeat(64),
+    summary:'Synthetic current parameters',expiresAt:new Date(clock+600_000).toISOString()};
+  const f=fixture({now:()=>clock,readCurrentQuestion:()=>question,
+    prepareTaskApproval(){preparing.resolve();return prepared.promise;},
+    client:{async call(operation){calls.push(operation);if(operation==='task.submit')return {taskId:'original-pending'};
+      return {taskId:'original-pending',state:'waiting_approval'};}},
+    createConsumer:({client})=>({consume(input){return {result:client.call('task.submit',{goal:input.text})
+      .then(()=>{throw Error('Synthetic consumer ended before approval readback');})};}})});
+  try{
+    await f.host.start();const rejection=assert.rejects(f.request.onTool('request_work',{goal:'Synthetic original approval'},'approval-deadline'),/工作等待已到期/);
+    await preparing.promise;clock+=120_001;prepared.resolve(question);await rejection;
+    assert.deepEqual(calls,['task.submit','task.get']);assert.equal(f.host.snapshot().workRequests[0].taskId,'original-pending');
+    assert.equal(f.host.snapshot().workRequests[0].state,'awaiting_result');assert.equal(f.host.snapshot().status,'listening');
+  }finally{await f.host.dispose();}
 });
 
 test('P2 old generation cannot replay a completed request after the next Live starts', async () => {

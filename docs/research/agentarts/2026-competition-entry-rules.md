@@ -1,5 +1,8 @@
 # MOD-10：2026 年参赛规则与证据缺项
 
+<!-- current-design-20261013 -->
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../design/workflow-architecture-20261013/index.html) · [接口状态](../../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。当前实验为本机Laya有限候选判断，资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，架构未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
+
 ## 2026-10-13 研究更新入口
 
 当前自有镜像能力与证据分层见 [自有镜像研究](2026-owned-image-research.md)，
@@ -9,7 +12,7 @@ PA-022 服务支持、数据/评估方案与成本条件见 [模型训练研究]
 不能覆盖现在的源码或真实镜像证据；本轮不改写历史失败，也未重新核对赛事报名及截止日期。
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-13）：[完整设计](../../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。每个 PR 须有三人中任意一位非作者对当前提交的有效批准，并满足检查、冲突及未解决意见门槛；三人均衡承担审查与合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留。
+> 当前目标与协作规则（2026-10-17）：[完整设计](../../design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../design/resident-developer-agent-20261008/index.html) · [协作与评审规则](../../../CONTRIBUTING.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前 head 有效批准；Owner 对具体 PR 的审核例外须留记录。拥有合并权限者（包括作者）可在最新必需技术 CI、主线同步、无冲突且阻断意见已处理后正常合并；禁止强推、直接推 main 或绕过技术检查。四位协作者跨 PR 均衡承担审查与合并。设计不等于已实现；本文历史验收与作者记录保留。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
