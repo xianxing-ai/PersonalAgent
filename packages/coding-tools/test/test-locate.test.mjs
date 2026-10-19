@@ -184,3 +184,22 @@ test('actual node TAP output locates multiline errors and nested failures with e
     assert.equal(failure.frames.some(frame=>frame.file.includes('node:internal')),false);
   } finally { await rm(root,{recursive:true,force:true}); }
 });
+
+test('allowedPaths denies snippet reads outside trusted prefixes and the read budget stops further opens', async () => {
+  const root = await repo();
+  try {
+    await writeFile(path.join(root, 'src/private.js'), 'export const secret = "do-not-project-this";' + String.fromCharCode(10));
+    const output = [
+      '✖ case one (1ms)', '  Error: boom one', '      at one (src/private.js:1:1)', '      at two (src/calc.js:1:1)',
+      '✖ case two (1ms)', '  Error: boom two', '      at three (src/calc.js:1:1)',
+    ].join(String.fromCharCode(10));
+    const denied = locateTestFailures(output, {root, allowedPaths: ['src/calc.js'], maxSnippetReads: 1});
+    const privateFrame = denied.failures.find(f => f.name === 'case one').frames.find(fr => fr.file === 'src/private.js');
+    assert.equal(privateFrame.snippet, undefined, 'restricted path must not be read');
+    const snippets = denied.failures.flatMap(f => f.frames).filter(fr => fr.snippet !== undefined);
+    assert.equal(snippets.length, 1, 'read budget caps opens');
+    assert.ok(!JSON.stringify(denied).includes('do-not-project-this'));
+    const none = locateTestFailures(output, {root, allowedPaths: [], contextLines: 2});
+    assert.ok(none.failures.flatMap(f => f.frames).every(fr => fr.snippet === undefined), 'empty allowlist reads nothing');
+  } finally { await rm(root, {recursive: true, force: true}); }
+});

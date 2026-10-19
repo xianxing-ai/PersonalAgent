@@ -209,6 +209,7 @@ test('Local/Synthetic explicit workflow model configuration uses only the inject
   assert.deepEqual(await workflow.projectResult({kind:'Synthetic report'},context()),{kind:'Synthetic report'});
   assert.equal(workflow.ciFix.headBranch,'codex/fixture');assert.deepEqual(workflow.ciFix.sourcePaths,['source.js']);
   assert.equal(workflow.testLocate.root,f.workspace.rootPath,'F17 locate root binds the trusted workspace root');
+  assert.deepEqual(workflow.testLocate.allowedPaths,['source.js'],'F17 snippets reuse the ciFix trusted allowlist');
   assert.deepEqual(workflow.issueTriage.labels,{bug:'bug',feature:'enhancement',docs:'documentation',question:'question'});
   const triage=createIssueTriageWorkflow({...workflow.issueTriage,maxSteps:workflow.maxSteps,maxTokens:workflow.maxTokens,
     model:workflow.model,tools:{list:()=>[],invoke:async()=>{throw Error('not invoked');}},authorizationRefFor:()=>undefined});

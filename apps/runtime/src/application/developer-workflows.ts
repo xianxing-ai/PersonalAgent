@@ -31,8 +31,9 @@ export interface RuntimeDeveloperWorkflowsOptions {
   model?:ModelPort;
   reviewRules?:readonly CodeReviewRule[];
   ciFix?:Omit<CiFixOptions,'repository'|'runId'|'model'|'tools'|'authorizationRefFor'|'confirmedReplayReady'|'maxSteps'|'maxTokens'>;
-  /** F17 trusted filesystem root for test-failure snippet reading. Never a tool argument. */
-  testLocate?: {root:string; contextLines?: number; maxInputBytes?: number};
+  /** F17 trusted filesystem scope. Root alone is never read permission: only
+   * allowedPaths prefixes are read for snippets; empty means no snippet reads. */
+  testLocate?: {root:string; allowedPaths:readonly string[]; contextLines?: number; maxInputBytes?: number};
   issueTriage?:Pick<IssueTriageOptions,'labels'|'minConfidence'>;
   failedRunForIssue?:(repo:string,number:number)=>string|undefined;
   maxSteps:number;maxTokens:number;
@@ -64,7 +65,8 @@ export function developerWorkflowInputSchema(kind:DeveloperWorkflowKind):Record<
 export function developerWorkflowConfigured(options:RuntimeDeveloperWorkflowsOptions,kind:DeveloperWorkflowKind):boolean {
   if(!options.projectResult || !options.repositories.length)return false;
   if(kind==='ci_list'||kind==='issue_list')return true;
-  if(kind==='test_locate')return !!options.testLocate?.root;
+  if(kind==='test_locate')return !!options.testLocate?.root && Array.isArray(options.testLocate.allowedPaths)
+    && options.testLocate.allowedPaths.every(scope=>typeof scope==='string');
   if(!options.model||!options.authorizeModelRequest)return false;
   if(kind==='code_review')return !!options.reviewRules?.length;
   if(kind==='ci_fix')return !!options.ciFix?.gitTools&&!!options.ciFix.headBranch&&!!options.ciFix.baseBranch&&!!options.ciFix.sourcePaths.length;
@@ -204,11 +206,12 @@ async function runRuntimeDeveloperWorkflow(application:RuntimeApplication,reques
         confirmedReplayReady:replay}).listFailedRuns(worker,{repo:request.repo,...(request.page?{page:request.page}:{}),...(request.perPage?{perPage:request.perPage}:{})});
       else if(request.kind==='ci_fix')result=await runFix(request.repo,request.runId);
       else if(request.kind==='test_locate') {
-        // Deterministic F17 parser: no model, no nested tools; snippet reads stay
-        // inside the trusted composition root and never a tool argument.
-        if(!options.testLocate?.root)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted test locate root unavailable');
+        // Deterministic F17 parser: no model, no nested tools. Snippet reads are
+        // denied outside the trusted allowedPaths prefixes even inside the root.
+        if(!options.testLocate?.root || !Array.isArray(options.testLocate.allowedPaths))throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted test locate scope unavailable');
         const contextLines=request.contextLines??options.testLocate.contextLines;
         const report=locateTestFailures(request.output!,{root:options.testLocate.root,
+          allowedPaths:options.testLocate.allowedPaths,
           ...(contextLines===undefined?{}:{contextLines}),
           ...(options.testLocate.maxInputBytes===undefined?{}:{maxInputBytes:options.testLocate.maxInputBytes})});
         result={state:'succeeded',report};

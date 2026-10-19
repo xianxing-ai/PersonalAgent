@@ -98,7 +98,7 @@ function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssu
       ...(modelConfigured?{model}:{}),reviewRules:[{id:'correctness',text:'Review correctness of changed lines'}],
       available:()=>online,assertCurrent:()=>{assert.equal(online,true);},authorizeModelRequest:()=>{},projectResult:value=>value,
       failedRunForIssue:()=> '12',
-      ...(locateConfigured?{testLocate:{root:locateRoot,contextLines:2}}:{}),
+      ...(locateConfigured?{testLocate:{root:locateRoot,allowedPaths:['app.js'],contextLines:2}}:{}),
       ciFix:{verifyRecipeId:'check',sourcePaths:['app.js'],headBranch:'repair',baseBranch:'main',gitTools:{head:'workspace.git.head',commit:'workspace.git.commit',
         push:'workspace.git.push',pullRequest:'github.pr.create',backlink:'github.pr.comment'}}},
     automaticTools:tools.filter(tool=>(tool.descriptor.sideEffect==='read'&&!tool.descriptor.requiresPresence)

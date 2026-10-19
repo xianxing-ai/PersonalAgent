@@ -194,8 +194,9 @@ export async function createDesktopDeveloperDeployment({configPath,workspace,cac
         available:(kind,scope)=>ready('developer.'+kind,scope),assertCurrent,
         ...(typeof confirmExport==='function'?{authorizeModelRequest:(request,scope)=>consent('developer_model_request',request,scope),
           projectResult:async(result,scope)=>{await consent('developer_workflow_result',result,scope);return structuredClone(result);}}:{})};
-      // F17 reads snippets only inside the already-validated trusted workspace root.
-      if(root!==undefined)result.testLocate={root:workspace.rootPath};
+      // F17 reuses the ciFix trusted path allowlist: the workspace root alone is
+      // never read permission for source snippets.
+      if(root!==undefined)result.testLocate={root:workspace.rootPath,allowedPaths:[...git.allowedPaths]};
       if(workflow.modelId!==undefined||workflow.configurationRef!==undefined){
         if(typeof workflow.modelId!=='string'||!workflow.modelId||typeof workflow.configurationRef!=='string'||!workflow.configurationRef)fail();
         if(typeof readModelGateway==='function')try {
