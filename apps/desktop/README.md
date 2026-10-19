@@ -1,11 +1,7 @@
 # PersonalAgent Desktop
 
 <!-- current-design-20261013 -->
-> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../docs/design/workflow-architecture-20261013/index.html) · [接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 产品路径，AgentArts 负责 Agent/Workflow 构建、编排、评估与部署；本地 Runtime 保留 Policy、ToolGateway、TaskRuntime 及 Evidence。具体节点、领域资格、外部比赛资格与真实验收分别核实，AgentArts 失败不得静默回退 Local Profile。常规 PR 须有合资格非作者对当前 head 有效批准；Owner 具体 PR 审核例外须留记录，必需技术 CI 不豁免。
-
-## 2026-10-17 窗口控件与布局修复
-
-管理后台和大工作区统一原生最小化、最大化/还原及关闭操作；桌面偏好入口移至常规设置。窄窗口导航、短窗口空间和表单控件尺寸一并修正。实现边界、原生缩放矩阵和测试命令见[本次验证记录](docs/FRONTEND_LAYOUT_20261017.md)；`npm run test:frontend-layout --workspace=@personal-agent/desktop` 使用独立 Fake 配置检查实际窗口。
+> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../docs/design/workflow-architecture-20261013/index.html) · [接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。本机Laya仅为独立Local Profile实验候选，不属于Competition产品路径，AgentArts负责Agent/Workflow构建、编排、评估与部署；本地Runtime保留Policy、ToolGateway、TaskRuntime及Evidence。具体节点、领域资格、外部比赛资格与真实验收分别核实，AgentArts失败不得静默回退Local Profile。常规PR须有合资格非作者对当前head有效批准；Owner具体PR审核例外须留记录，必需技术CI不豁免。
 
 ## 2026-10-16 远程 MCP 原生管理与生产装配（provisional）
 
@@ -44,6 +40,9 @@ npm run test:remote-mcp-storage-smoke --workspace=@personal-agent/desktop
 本次 r3 真实验收已取得 AgentArts 公网 WSS Upgrade HTTP 101，并通过文字任务的原生推理强度 low 调用。实时语音 runner 使用公开 PCM 完成整轮，结果为 passed；这不代表已通过实际麦克风、扬声器或设备交互验收。Qwen 完整子任务派发仍在复测，当前不宣称通过。
 
 当前主通道、模型选择、持久化配置及验收边界见 [Desktop AgentArts Models V5](../../docs/competition/DESKTOP_AGENTARTS_MODELS_V5.md)；本轮原始回执与结果入口见 [V5 验收证据](../../docs/competition/evidence/desktop-agentarts-v5-20261016/README.md)。下方 2026-10-09 WSS 说明保留为历史记录，其中“公网 Upgrade 尚未证实”等结论仅描述当时状态。
+## 2026-10-17 窗口控件与布局修复
+
+管理后台和大工作区统一原生最小化、最大化/还原及关闭操作；桌面偏好入口移至常规设置。窄窗口导航、短窗口空间和表单控件尺寸一并修正。实现边界、原生缩放矩阵和测试命令见[本次验证记录](docs/FRONTEND_LAYOUT_20261017.md)；`npm run test:frontend-layout --workspace=@personal-agent/desktop` 使用独立 Fake 配置检查实际窗口。
 
 ## 2026-10-09 自有镜像 WSS 消费增量
 

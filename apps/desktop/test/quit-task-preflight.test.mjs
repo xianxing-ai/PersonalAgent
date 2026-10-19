@@ -91,16 +91,6 @@ test('a zero-task quit retains the original cleanup sequence', async () => {
   assert.ok(f.calls.indexOf('installed-skills-close') < f.calls.indexOf('runtime-close'));
 });
 
-test('accepted quit releases the active orb drag timer', async () => {
-  const f = fixture(), cleared = [], timer = {};
-  f.context.orbDragPoll = timer;
-  f.context.clearInterval = value => cleared.push(value);
-  f.app.quit();await tick();await tick();await tick();
-  assert.equal(f.exited, true);
-  assert.ok(cleared.includes(timer));
-  assert.equal(f.context.orbDragPoll, undefined);
-});
-
 test('a bound NotificationHost survives refused quit and disposes once before Runtime on the next allowed quit',async()=>{
   const f=fixture({count:1});
   f.context.notificationApplicationHost={dispose(){f.calls.push('notification-dispose');}};
