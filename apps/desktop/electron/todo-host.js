@@ -139,7 +139,7 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
     dismiss(input) {
       if(!input || Object.keys(input).length!==1 || typeof input.id!=='string') throw Error('通知标识无效');
       const known=records();if(!known[input.id]) throw Error('通知不存在');
-      if (notificationHost) notificationHost.acknowledgeRead({operationId:'todo-read-'+input.id,itemIds:[input.id]});
+      if (notificationHost && known[input.id].batchId) notificationHost.acknowledgeRead({operationId:'todo-read-'+input.id,itemIds:[input.id]});
       known[input.id].state='dismissed';storage.set('desktop-reminder-records',known);return snapshot();
     },
     async create(input) {
