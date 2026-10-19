@@ -5,21 +5,35 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+  repository_dispatch:
+    types: [post_merge_ecs_ci]
 permissions:
   contents: read
 concurrency:
-  group: ecs-linux-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ecs-linux-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 jobs:
   ecs-linux-check:
     name: ecs-linux-check
+    if: ${{ github.event_name != 'repository_dispatch' || (github.ref == 'refs/heads/main' && github.event.client_payload.target_sha == github.sha) }}
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","personalagent-ecs"]') }}
     env:
       PATH: /opt/personalagent-review/toolchain/node/bin:/usr/local/bin:/usr/bin:/bin
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name != 'repository_dispatch'
         with:
           persist-credentials: false
+      - uses: actions/checkout@v4
+        if: github.event_name == 'repository_dispatch'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify dispatched main checkout
+        if: github.event_name == 'repository_dispatch'
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-node@v4
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
         with:
