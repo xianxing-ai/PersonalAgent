@@ -33,6 +33,7 @@ jobs:
     outputs:
       matrix: ${{ steps.route.outputs.matrix }}
       source_sha256: ${{ steps.source.outputs.sha256 }}
+      electron_cache_sha256: ${{ steps.windows-cache.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,6 +65,20 @@ jobs:
         with:
           name: ci-source-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ steps.source.outputs.directory }}
+          retention-days: 1
+          if-no-files-found: error
+      - name: Read the locked Electron downloader without running desktop install hooks
+        if: contains(steps.route.outputs.matrix, 'Windows CI (ECS)')
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare the official Windows Electron cache for ECS
+        if: contains(steps.route.outputs.matrix, 'Windows CI (ECS)')
+        id: windows-cache
+        run: node scripts/ci/electron-cache.mjs pack
+      - uses: actions/upload-artifact@v4
+        if: contains(steps.route.outputs.matrix, 'Windows CI (ECS)')
+        with:
+          name: windows-electron-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.windows-cache.outputs.directory }}
           retention-days: 1
           if-no-files-found: error
   validate:
@@ -118,6 +133,17 @@ jobs:
       - name: Verify Node and npm versions
         working-directory: ${{ env.PA_CI_SOURCE || github.workspace }}
         run: node -e "const fs=require('fs'),cp=require('child_process');if(process.version!=='v'+fs.readFileSync('.node-version','utf8').trim()||cp.execSync('npm --version',{encoding:'utf8'}).trim()!=='11.12.1')process.exit(1)"
+      - uses: actions/download-artifact@v4
+        if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
+        with:
+          name: windows-electron-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-electron-transfer
+      - name: Seed the verified official Electron cache without skipping postinstall
+        if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
+        working-directory: ${{ env.PA_CI_SOURCE || github.workspace }}
+        env:
+          CI_ELECTRON_CACHE_SHA256: ${{ needs.route.outputs.electron_cache_sha256 }}
+        run: node scripts/ci/electron-cache.mjs restore
       - name: Install Windows dependencies
         working-directory: ${{ env.PA_CI_SOURCE || github.workspace }}
         if: matrix.kind == 'windows'

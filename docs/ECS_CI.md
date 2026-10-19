@@ -32,13 +32,15 @@ Windows 保留 .NET 8 Job process helper、原始完整架构/契约/生成类�
 
 手动完整 Foundation 验证还可用 `windows_runner` / `image_runner` 输入显式选择两个池，不改其他 PR 的仓库变量；手动运行始终检查两个平台，不可用来缩小覆盖范围。
 
-两条 Windows 路径使用同一作业步骤，仅 `runs-on` 与预装工具链选择不同；不删产品测试、不修改断言。混合 PR 中架构/契约及镜像相关测试仍在两个操作系统检查，保留兼容性覆盖。去重只消除同一 PR 的两份 Windows 全套和三个示例各自再次构建全仓的开销；没有把跨平台公共检查移走后宣称等价。
+两条 Windows 路径使用同一套安装、构建与测试命令；ECS 额外执行源码/下载缓存传递和主机准入校验，不删产品测试、不修改断言。混合 PR 中架构/契约及镜像相关测试仍在两个操作系统检查，保留兼容性覆盖。去重只消除同一 PR 的两份 Windows 全套和三个示例各自再次构建全仓的开销；没有把跨平台公共检查移走后宣称等价。
 
 ECS 的 Git HTTPS 直连曾在实际短任务中失败。工作流因此由托管路由作业 checkout 精确事件 SHA，将不含 checkout 凭据的 Git 元数据和对象打包成同 run/attempt 的短期 Actions artifact；ECS 从 Actions 下载并核验独立输出的 SHA256，在本任务新建的临时目录本地恢复精确 SHA，全程不在 ECS 执行 Git 网络 fetch。打包拒绝 HTTP/credential/include 等本地 Git 配置和含凭据的 origin，不包含未跟踪 `.env`、依赖、缓存、Git hooks 或 reflog；还原禁用 hooks，不覆盖既有 checkout。源码 artifact 保留一天；排队超过有效期必须重新运行全部 jobs，不能复用其他 run 的工件。下载通道不可达仍应失败并显式切换，不能跳过源码或测试。
 
 Linux 使用 Node 24.15.0 / npm 11.12.1，执行架构、契约夹具、生成类型检查、五个镜像 workspace 的类型检查及模型/协调/传输/编排/镜像应用测试、owned-agentarts-image 集成测试。已有镜像测试还导入真实 Runtime/SQLite 宿主 fixture，因此先用原 `npm run build` 补全测试输入，不将缺依赖用例跳过；Linux 不运行完整 Windows 测试集。随后使用现有 allowlist 导出上下文，实际构建 `linux/arm64` 并检查产物架构。QEMU 用于在 X64 ECS 构建 ARM64。构建不推送、不部署、不调用模型；通过只证明这些 CI 检查，不能代替 AgentArts 平台和真实工具链验收。
 
 Linux 的 `npm ci --ignore-scripts` 避开无关 Electron GUI 下载；新增必要依赖安装脚本时须显式接入。Windows 使用完整 `npm ci`。同仓库镜像任务使用 `[self-hosted,Linux,X64,personalagent-ecs]`；fork 镜像任务使用 GitHub Ubuntu 24.04，避免把外部 PR 交给常驻 ECS。没有给未选平台创建跳过状态来充当通过。
+
+Windows ECS 的 Electron 安装包直连 GitHub 也曾失败。选中 ECS 时，托管路由作业只安装锁定的 npm 包而不执行安装脚本，再用锁定的官方 `@electron/get` 从官方发布地址下载 Windows x64 Electron，核验 Electron npm 包内嵌 SHA256。官方缓存布局通过同 run/attempt 的独立 artifact 传给 ECS；恢复时校验归档 SHA256、完整锁文件摘要、版本与文件摘要，并设置本 job 的 `electron_config_cache`。原始 `npm ci` 和 Electron `postinstall` 仍执行并使用官方内嵌校验和；没有跳过安装、修改依赖、使用第三方二进制源或改主机配置。缓存工件保留一天，不能借用其他 run 或不同锁文件的缓存。
 
 ECS 直连 Docker Hub 超时，因此 CI 将 Dockerfile 中官方 Node 基础镜像的 registry 显式换为 Docker 官方 ECR Public 副本，保留相同版本及 SHA256 digest；仅接受该固定格式，未知基础镜像不静默替换。已在 ECS 拉取同 digest 的 ARM64 基础镜像，未修改产品 Dockerfile 或全局 Docker 镜像源。
 
