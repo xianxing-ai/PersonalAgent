@@ -327,7 +327,7 @@ export class OpenMeteoProvider implements WeatherProvider {
     }
 
     const top = ranked[0];
-    if (!top) throw new ProtocolError('NOT_FOUND', `Open-Meteo geocoding found no place named "${location}"`, false);
+    if (!top) throw new ProtocolError('NOT_FOUND', noPlaceFound(location, hint), false);
 
     const confidence = this.confidenceOf(top);
     if (confidence === 'low' && this.locationResolution === 'strict') {
@@ -566,6 +566,22 @@ function rankPlaces(places: MergedPlace[], query: string): MergedPlace[] {
   const exact = places.filter(place => place.names.includes(query) || place.exactNameMatch === true);
   const pool = exact.length > 0 ? exact : places;
   return [...pool].sort((a, b) => b.population - a.population || a.order - b.order);
+}
+
+/**
+ * A zero-candidate Han query is almost always a script mismatch, not a missing city: the
+ * provider's `zh` index is Traditional and incomplete, so 纽约 and 首尔 match nothing at all
+ * (measured 2026-10-19). Saying which cause applies and which call fixes it is the difference
+ * between a caller that recovers on the next attempt and one that reports "not found".
+ */
+function noPlaceFound(location: string, hint: string | undefined): string {
+  const head = `Open-Meteo geocoding found no place named "${location}".`;
+  if (!HAN_PATTERN.test(location)) return `${head} Check the spelling.`;
+  const cause = ' A Han-script query is matched only against the provider\'s Traditional-Chinese index, which is incomplete, so this is usually a script mismatch rather than a missing place.';
+  const next = hint === undefined
+    ? ' Retry once with locationQuery set to the English or local spelling (纽约 -> New York, 首尔 -> Seoul).'
+    : ` Neither that name nor the hint "${hint}" matched; retry with the English or local spelling.`;
+  return `${head}${cause}${next}`;
 }
 
 /**

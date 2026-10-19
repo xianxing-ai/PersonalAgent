@@ -1018,3 +1018,37 @@ test('live read-back labels the reported misresolutions and the hint that repair
 
   console.log('live geocoding read-back:', JSON.stringify(report, null, 1));
 });
+
+/**
+ * Measured 2026-10-19: `name=纽约` and `name=首尔` return zero results under every language pass,
+ * because the provider's `zh` index is Traditional and incomplete. A bare "found no place named"
+ * left the caller with nothing to do, so the message has to name the cause and the recovering call.
+ */
+test('a zero-candidate Han query names the script mismatch and the recovering call', async () => {
+  const provider = makeProvider([geoRoutesByLanguage({})]);
+  await assert.rejects(provider.resolvePlace('纽约', undefined, signal()), error => {
+    assert.equal(error.code, 'NOT_FOUND');
+    assert.match(error.message, /Traditional-Chinese index/);
+    assert.match(error.message, /locationQuery/);
+    assert.match(error.message, /New York/);
+    return true;
+  });
+});
+
+test('a zero-candidate Latin query keeps a short spelling hint', async () => {
+  const provider = makeProvider([geoRoutesByLanguage({})]);
+  await assert.rejects(provider.resolvePlace('Nowhereville', undefined, signal()), error => {
+    assert.equal(error.code, 'NOT_FOUND');
+    assert.match(error.message, /Check the spelling/);
+    assert.doesNotMatch(error.message, /Traditional-Chinese/);
+    return true;
+  });
+});
+
+test('an unmatched hint is reported as such instead of repeating the retry advice', async () => {
+  const provider = makeProvider([geoRoutesByLanguage({})]);
+  await assert.rejects(provider.resolvePlace('纽约', 'Niuyue', signal()), error => {
+    assert.match(error.message, /Neither that name nor the hint "Niuyue"/);
+    return true;
+  });
+});
