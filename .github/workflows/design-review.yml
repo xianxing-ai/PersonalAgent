@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-      - name: Verify the initial eligible non-author approval remains valid
+      - name: Verify one eligible non-author current-head approval
         run: node scripts/review/check-design-review.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}

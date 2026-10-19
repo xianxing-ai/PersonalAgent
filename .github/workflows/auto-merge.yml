@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-      - name: Merge initially approved PRs when every current-head CI is green
+      - name: Merge approved current-head PRs when every current-head CI is green
         run: node scripts/review/auto-merge.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -20,9 +20,7 @@ export function evaluateReviews({headSha,author,reviews}) {
     const mine=reviews.filter(review=>review.user?.login?.toLowerCase()===login.toLowerCase()).sort((a,b)=>a.id-b.id);
     const governing=mine.filter(review=>['APPROVED','CHANGES_REQUESTED','DISMISSED'].includes(review.state)).at(-1);
     if(governing?.state==='CHANGES_REQUESTED') blocked.push(login);
-    // One independent approval persists through later CI-fix commits. Explicit
-    // dismissal or a later changes request still revokes/blocks that approval.
-    if(governing?.state==='APPROVED'&&/^[a-f0-9]{40}$/.test(governing.commit_id??'')) approved.push(login);
+    if(governing?.state==='APPROVED'&&governing.commit_id===headSha) approved.push(login);
   }
   return {passed:approved.length>=1&&blocked.length===0,approved,blocked};
 }
@@ -47,6 +45,6 @@ async function run() {
   }
   const result=evaluateReviews({headSha,author:pr.user.login,reviews});
   console.log(JSON.stringify({headSha,...result}));
-  if(!result.passed) throw Error('Awaiting one eligible non-author approval and resolution of blocking reviews. Never bypass this check.');
+  if(!result.passed) throw Error('Awaiting one eligible non-author current-head approval and resolution of blocking reviews. Never bypass this check.');
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) await run();
