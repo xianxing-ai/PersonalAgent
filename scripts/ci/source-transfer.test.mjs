@@ -28,6 +28,12 @@ test('same-run source transfer restores exact tracked source without untracked d
   await assert.rejects(readFile(path.join(restored,'.env')),/ENOENT/);
   assert.equal(execFileSync('git',['-C',restored,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),sha);
   await assert.rejects(packSource(root,temp,'a'.repeat(40)),/exact ordinary checkout/);
+  const output=path.join(temp,'github-output'),environment=path.join(temp,'github-env');
+  execFileSync(process.execPath,[path.join(packed.directory,'source-transfer.mjs'),'restore'],{cwd:root,windowsHide:true,env:{...process.env,RUNNER_TEMP:temp,GITHUB_SHA:sha,CI_SOURCE_SHA256:packed.sha256,GITHUB_OUTPUT:output,GITHUB_ENV:environment}});
+  const restoredPath=(await readFile(output,'utf8')).match(/^directory=(.+)$/m)?.[1];
+  assert.ok(restoredPath);
+  assert.equal((await readFile(environment,'utf8')).trim(),`PA_CI_SOURCE=${restoredPath}`);
+  assert.equal(await readFile(path.join(restoredPath,'source.txt'),'utf8'),'exact source\n');
   git('config','http.https://github.com/.extraheader','synthetic-header');
   await assert.rejects(packSource(root,temp,sha),/authentication/);
 });
