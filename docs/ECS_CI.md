@@ -1,39 +1,43 @@
-# 单台 ECS 分担现有 CI 与批准后的自动合并
+# 按 PR 分流 Windows 与 Linux 镜像 CI
 
-当前接入一台华为 Ubuntu ECS，使用 GitHub 官方开源 Actions Runner、独立 `pa-ci` 用户和 systemd 开机自启。其余三台机器尚未接入，不配置用户本机。GitHub 原 Windows Runner 与 ECS 并行分担同一个 PR 的必要检查。
+华为 Ubuntu ECS 使用 GitHub 官方开源 [Actions Runner](https://github.com/actions/runner)、独立 `pa-ci` 用户和 systemd 开机自启。Linux 负责 AgentArts 镜像相关 PR；普通 PR 保留完整 Windows 检查。第二台 Windows ECS 的安装独立进行，接入前本工作流仍使用 GitHub Windows Runner。所有服务安装都在远程 ECS。
 
-## 检查分工
+## 路由与验证
 
-| 原检查 | ECS：ecs-linux-check | Windows：check |
-| --- | --- | --- |
-| 架构门禁、契约夹具、生成类型一致性 | 执行 | 已迁移到 ECS |
-| 全工作区类型检查 | 执行原 npm run typecheck | 已迁移到 ECS |
-| 构建测试所需 dist | 构建本机测试输入 | 构建本机测试输入 |
-| 原 workspace 单测 | 26 个已确认无 Windows 平台测试分支的 workspace | 8 个 Windows / 桌面 / 宿主相关 workspace |
-| 原 22 个集成测试文件 | 20 个跨平台文件 | Obsidian pairing、wiki write recovery 两个文件 |
-| .NET 8 Windows Job Helper | 不适用 | 保留原构建与 helper 环境 |
-| storage / protocol / runtime 示例 | 不重复执行 | 运行原 Node 入口，复用本次已构建的 dist |
+Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件列表，再生成仅包含所选任务的矩阵：
 
-精确清单在 [partition.json](../scripts/ci/partition.json)。Windows 保留 coding-tools、cognition、knowledge、windows-client、agentarts-runtime、desktop、obsidian-plugin、runtime 的原 `npm run test`；ECS 执行其他 26 个原 workspace 测试脚本。没有删除测试或修改断言。每次运行验证清单覆盖所有现有 workspace 与集成测试文件且不重不漏；新增文件或 workspace 未分组会失败，需明确审查归属。
+| PR 修改范围 | 实际 CI |
+| --- | --- |
+| 仅 `apps/agentarts-runtime/**` | Linux image CI，在 ECS 构建和测试镜像 |
+| 普通 Windows、桌面、连接器及其他文件 | Windows CI，执行完整 `npm run check` |
+| 同时涉及镜像目录和其他目录 | Windows CI + Linux image CI |
+| 镜像共享依赖、根依赖或 CI 配置 | Windows CI + Linux image CI |
+| 文件证据不完整、未知路径、main push 或手动运行 | 两边均执行；API 错误或 head 变化直接失败 |
 
-运行版本为 Node 24.15.0 / npm 11.12.1。ECS 使用 `npm ci --ignore-scripts`，避开不使用的 Electron GUI 下载；当前锁定依赖没有其他必要安装脚本，后续若引入应显式接入。Windows 完整 `npm ci` 和原生宿主构建保留。两端均只在 PR 和 main push 执行，避免 feature push 与同一 PR 重复构建。
+共享依赖包括 `packages/contracts/`、`models/`、`coordination/`、`agentarts/`，`scripts/agentarts/`、`scripts/laya/`、`scripts/ci/`，`.github/workflows/`、`.github/actions/`，`tests/architecture/`、`tests/contracts/`，以及根 `package.json`、锁文件、`tsconfig.base.json`、`.node-version`、`.npmrc`。重命名同时考虑新旧路径，删除也参与分类。规则与回归用例见 [pr-route.mjs](../scripts/ci/pr-route.mjs) 及其测试。
 
-首次 Ubuntu 全量实验发现 coding-tools 的 isolated-repair publish CAS / unrelated 用例返回 unknown，预期 published；补丁发布依赖 Windows PowerShell，故 coding-tools 原套件保留 Windows。不能把该实验称为通过，也不能把 Linux 绿灯当作 Windows 原生验收。
+Windows 保留 .NET 8 Job process helper、原始完整架构/契约/生成类型/类型检查/全部 workspace 单测/全部集成测试，以及三个示例。示例复用本次已构建的 dist，避免重复全仓构建。此前将同一 PR 的单测分成两份的配置已移除。
 
-本次把实际检查工作移到 ECS，同时去掉 Windows 三个示例前重复的全仓构建。两端各需本机构建作为测试输入，尚未跨平台共享 dist；少量 workspace 原测试脚本内部仍会构建其依赖。实际提速须比较调整前后完成耗时，不能仅凭并行或增加 Runner 声称提速。自动合并减少的是全绿后等待手动合并的时间，仍需非作者审批。
+Linux 使用 Node 24.15.0 / npm 11.12.1，执行架构、契约夹具、生成类型检查、`build:owned-agent`、五个镜像 workspace 的类型检查及模型/协调/传输/编排/镜像应用测试；随后使用现有 allowlist 导出上下文，实际构建 `linux/arm64` 并检查产物架构。QEMU 用于在 X64 ECS 构建 ARM64。构建不推送、不部署、不调用模型；通过只证明这些 CI 检查，不能代替 AgentArts 平台和真实工具链验收。
 
-## 合并规则
+Linux 的 `npm ci --ignore-scripts` 避开无关 Electron GUI 下载；新增必要依赖安装脚本时须显式接入。Windows 使用完整 `npm ci`。同仓库镜像任务使用 `[self-hosted,Linux,X64,personalagent-ecs]`；fork 镜像任务使用 GitHub Ubuntu 24.04，避免把外部 PR 交给常驻 ECS。没有给未选平台创建跳过状态来充当通过。
 
-main 原必需状态 `check` 保留，追加 `ecs-linux-check`，均绑定官方 Actions app。保留 strict 主线同步、管理员约束、一次非作者审批、过期批准作废和会话解决规则。
+ECS 直连 Docker Hub 超时，因此 CI 将 Dockerfile 中官方 Node 基础镜像的 registry 显式换为 Docker 官方 ECR Public 副本，保留相同版本及 SHA256 digest；仅接受该固定格式，未知基础镜像不静默替换。已在 ECS 拉取同 digest 的 ARM64 基础镜像，未修改产品 Dockerfile 或全局 Docker 镜像源。
 
-`Approved PR auto-merge` 在 CI/审查工作流完成后检查 PR，每五分钟补查，也可手动触发。仅从默认分支加载脚本，使用短期 `GITHUB_TOKEN`；只处理同仓库到 main 的非 Draft PR，复用现有 `evaluateReviews`，要求既有名单中至少一位非作者对当前 head 的有效批准，且没有未处理的 Changes Requested。两项必需 CI 及当前 head 其他检查/状态必须成功。
+## 合并门槛
 
-随后调用 `gh pr merge --auto --squash --match-head-commit`，由 GitHub 再次检查分支保护与会话。无 `--admin` 或 Owner 例外。本配置 PR 本身仍须独立批准，进入 main 后才自动处理后续 PR。不接入 AI、不调用模型。
+main 两项原必需状态名 `check` 与 `ecs-linux-check` 及官方 Actions app 绑定不变。`ecs-linux-check` 现在是路由与门禁回归检查；`check` 是最终汇总，要求路由及每个实际选中任务都成功，失败、取消、跳过或缺少结果均不能通过。两绿表示本 PR 所需平台已实际通过，不要求无关平台空跑。
 
-## 运维
+保留 strict 主线同步、管理员约束、一次有效非作者审批、过期批准作废和会话解决规则。`Approved PR auto-merge` 仍从默认分支读取脚本，复用现有 `evaluateReviews`，只处理同仓库到 main 的非 Draft PR，要求四位既有协作者之一对当前 head 有有效非作者批准且无未处理 Changes Requested；当前 head 的其他检查/状态也必须成功。
 
-远程 Runner 目录执行 `sudo ./svc.sh status`、`start`、`stop`；GitHub Settings → Actions → Runners 确认在线。ECS 只执行同仓库分支；fork PR 的同一 Linux 检查改用 GitHub Ubuntu Runner，避免因跳过任务而遗失已迁移的验证。自动合并仍只处理同仓库 PR。专用 CI 主机不放生产或模型凭据；公开仓库长期 Runner 不能作为恶意代码隔离边界。
+之后执行 `gh pr merge --auto --squash --match-head-commit`，由 GitHub 再检查保护和会话。无需修改自动合并脚本或放宽保护；本配置 PR 本身也须独立审批。AI 暂不启用。
 
-恢复时同时还原原 Windows 完整 CI、撤回新增必需状态 `ecs-linux-check`，再停止 ECS 服务；不能先撤走 ECS 执行器而遗失已迁移的测试。保留原 `check` 与审查规则。
+## 运维与恢复
 
-依据：[官方 Runner](https://github.com/actions/runner)、[Runner 服务与自启](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application)、[GitHub 自动合并](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/automatically-merging-a-pull-request)、[gh pr merge](https://cli.github.com/manual/gh_pr_merge)。
+Runner 位于 `/opt/personalagent-ci/runner`，systemd 服务 `actions.runner.zemeng5208-PersonalAgent.ecs-472f-c018-linux.service` 自动启动。Docker 服务也需自动启动，`pa-ci` 的 Docker 组权限经用户明确授权。Docker 组具有 root 等价权限；该专用 CI 主机只接收本仓库任务，不放生产或模型凭据，不能作为恶意代码的隔离边界。
+
+默认 `PA_IMAGE_RUNNER=ecs`。ECS 故障时可将仓库 Actions 变量 `PA_IMAGE_RUNNER` 设为 `github` 后重跑，让镜像任务在 GitHub Ubuntu 执行；恢复后删除变量或设回 `ecs`。这是显式切换，GitHub 不会因自托管 Runner 离线而自动改派其他系统。不得跳过镜像构建来制造绿灯。
+
+查看服务与 GitHub Runner 在线状态后再处理故障，繁忙时不重启。只清理本次 CI 镜像标签，不执行全局 Docker prune。回滚路由需完整还原上一版两个工作流、分组脚本和命令；保留原必需状态和审批保护。
+
+依据：[Runner 服务](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application)、[自托管任务路由](https://docs.github.com/en/actions/reference/runners/self-hosted-runners)、[自动合并](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/automatically-merging-a-pull-request)、[gh pr merge](https://cli.github.com/manual/gh_pr_merge)。

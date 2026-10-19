@@ -3,22 +3,66 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 permissions:
   contents: read
+  pull-requests: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 jobs:
-  check:
-    runs-on: windows-latest
+  route:
+    # Keep the required context; check below requires every selected platform job.
+    name: ecs-linux-check
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.route.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
+      - name: Verify routing, approval and automatic merge gates
+        run: node --test scripts/ci/pr-route.test.mjs scripts/review/design-review.test.mjs scripts/review/auto-merge.test.mjs
+      - name: Select CI from the complete current PR file list
+        id: route
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PA_IMAGE_RUNNER: ${{ vars.PA_IMAGE_RUNNER }}
+        run: node scripts/ci/pr-route.mjs
+  validate:
+    needs: route
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.route.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use the preinstalled ECS Node toolchain
+        if: matrix.kind == 'image' && matrix.runner[0] == 'self-hosted'
+        shell: bash
+        run: echo '/opt/personalagent-review/toolchain/node/bin' >> "$GITHUB_PATH"
+      - uses: actions/setup-node@v4
+        if: matrix.runner[0] != 'self-hosted'
+        with:
+          node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      - name: Match the repository npm version on hosted runners
+        if: matrix.runner[0] != 'self-hosted'
+        run: npm install --global npm@11.12.1
+      - name: Verify Node and npm versions
+        run: node -e "const fs=require('fs'),cp=require('child_process');if(process.version!=='v'+fs.readFileSync('.node-version','utf8').trim()||cp.execSync('npm --version',{encoding:'utf8'}).trim()!=='11.12.1')process.exit(1)"
+      - name: Install Windows dependencies
+        if: matrix.kind == 'windows'
+        run: npm ci
       - name: Build Windows Job process helper
+        if: matrix.kind == 'windows'
         shell: pwsh
         run: |
           $jobHostSdks = & dotnet --list-sdks
@@ -27,24 +71,18 @@ jobs:
           }
           $jobHostTarget = Join-Path $env:RUNNER_TEMP 'personal-agent-job-host'
           $jobHostOutput = & node packages/coding-tools/native/build-helper.mjs --target-dir $jobHostTarget
-          if ($LASTEXITCODE -ne 0) {
-            throw 'WindowsJobProcessHost build failed.'
-          }
+          if ($LASTEXITCODE -ne 0) { throw 'WindowsJobProcessHost build failed.' }
           $jobHostBuild = ($jobHostOutput -join "`n") | ConvertFrom-Json
           if ([string]::IsNullOrWhiteSpace($jobHostBuild.helperPath) -or
               -not (Test-Path -LiteralPath $jobHostBuild.helperPath -PathType Leaf)) {
             throw 'WindowsJobProcessHost build did not return an existing executable.'
           }
           "PA_TEST_JOB_HOST_EXE=$($jobHostBuild.helperPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Validate complete Windows and ECS test assignment
-        run: npm run ci:test -- validate
-      - name: Build Windows test inputs
-        run: npm run build
-      - name: Windows native, desktop and runtime workspace tests
-        run: npm run ci:test -- windows
-      - name: Windows integration tests
-        run: npm run ci:test -- integration-windows
+      - name: Run the complete original Windows check
+        if: matrix.kind == 'windows'
+        run: npm run check
       - name: Run examples against the already built current-head outputs
+        if: matrix.kind == 'windows'
         shell: pwsh
         run: |
           node scripts/dev/storage-demo.mjs
@@ -53,3 +91,63 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node apps/runtime/examples/task-lifecycle.mjs
           exit $LASTEXITCODE
+      - name: Install image dependencies without desktop lifecycle scripts
+        if: matrix.kind == 'image'
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validate image contracts and build the owned agent
+        if: matrix.kind == 'image'
+        shell: bash
+        run: |
+          npm run check:architecture
+          npm run test:contract-fixtures
+          npm run check:generated --workspace=@personal-agent/contracts
+          npm run build:owned-agent
+          npm run typecheck --workspace=@personal-agent/contracts --workspace=@personal-agent/models --workspace=@personal-agent/coordination --workspace=@personal-agent/agentarts --workspace=@personal-agent/agentarts-runtime
+      - name: Test image transport, models, orchestration and runtime
+        if: matrix.kind == 'image'
+        shell: bash
+        run: |
+          node apps/agentarts-runtime/scripts/export-bindings.mjs --check
+          node --test packages/contracts/test/agentarts-transport.test.mjs packages/models/test/*.test.mjs packages/coordination/test/*.test.mjs packages/agentarts/test/*.test.mjs apps/agentarts-runtime/test/*.test.mjs
+      - name: Generate the allowlist image context
+        if: matrix.kind == 'image'
+        id: context
+        shell: bash
+        run: |
+          node apps/agentarts-runtime/scripts/image-context.mjs > "$RUNNER_TEMP/image-context.json"
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/image-context.json'));fs.appendFileSync(process.env.GITHUB_OUTPUT,'directory='+c.context+'\n');"
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.kind == 'image' && matrix.runner[0] != 'self-hosted'
+        with:
+          platforms: arm64
+      - name: Build and verify ARM64 without publishing
+        if: matrix.kind == 'image'
+        shell: bash
+        env:
+          IMAGE_CONTEXT: ${{ steps.context.outputs.directory }}
+          IMAGE_RUNNER: ${{ matrix.runner[0] }}
+        run: |
+          image="personalagent-ci:$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          trap 'docker image rm "$image" >/dev/null 2>&1 || true' EXIT
+          args=()
+          if [[ "$IMAGE_RUNNER" == self-hosted ]]; then
+            # ECR hosts Docker Official Images and is reachable from this ECS.
+            # Keep the exact Dockerfile version and immutable digest.
+            base=$(sed -n 's|^ARG NODE_BASE_IMAGE=node:|public.ecr.aws/docker/library/node:|p' "$IMAGE_CONTEXT/Dockerfile")
+            [[ "$base" =~ ^public\.ecr\.aws/docker/library/node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$ ]]
+            args+=(--build-arg "NODE_BASE_IMAGE=$base")
+          fi
+          docker build --platform linux/arm64 "${args[@]}" --tag "$image" "$IMAGE_CONTEXT"
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")" = linux/arm64
+  check:
+    if: always()
+    needs: [route, validate]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the router and every selected CI job to succeed
+        env:
+          ROUTE_RESULT: ${{ needs.route.result }}
+          CI_RESULT: ${{ needs.validate.result }}
+        run: |
+          test "$ROUTE_RESULT" = success
+          test "$CI_RESULT" = success
