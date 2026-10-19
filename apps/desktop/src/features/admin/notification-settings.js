@@ -26,6 +26,8 @@ export function mountNotificationSettings(root, invoke) {
   root.append(section);
   const field=name=>section.querySelector(`[data-notifications="${name}"]`),form=field('form');
   let state={},question=null,approvals=[],busy=false,dirty=false,scopeLoaded=true;
+  let selectedPolicy;
+  const scopeKey=value=>JSON.stringify([value?.kind,value?.connectorId??'',value?.responsibilityId??'']);
   const element=name=>form.elements.namedItem(name);
   function scope() {
     const kind=element('scope').value,connectorId=element('connector').value.trim(),responsibilityId=element('responsibility').value.trim();
@@ -34,12 +36,12 @@ export function mountNotificationSettings(root, invoke) {
     return kind==='connector'?{kind,connectorId}:{kind,responsibilityId,...(connectorId?{connectorId}:{})};
   }
   function settings() {
-    if(!form.reportValidity() || !scopeLoaded)throw Error('请先读取当前范围并完整填写参数');
+    if(!form.reportValidity() || !scopeLoaded || scopeKey(selectedPolicy?.scope)!==scopeKey(scope()))throw Error('请先读取当前范围并完整填写参数');
     const maximum=element('maximum').value;
     if(!element('unlimited').checked && maximum==='')throw Error('请明确次数，或选择不设数值上限');
     const quietStart=element('quietStart').value,quietEnd=element('quietEnd').value,timeZone=element('timezone').value.trim();
     if((quietStart||quietEnd||timeZone) && !(quietStart&&quietEnd&&timeZone))throw Error('安静时段需要开始、结束和时区');
-    return {operationId:crypto.randomUUID(),expectedRevision:state.policy?.revision??0,scope:scope(),patch:{
+    return {operationId:crypto.randomUUID(),expectedRevision:selectedPolicy.revision,scope:scope(),patch:{
       mode:element('mode').value,windowMinutes:Number(element('window').value),maxInterruptions:element('unlimited').checked?null:Number(maximum),
       silentUntilUtc:element('until').value?new Date(element('until').value).toISOString():null,preferredChannel:element('channel').value,
       allowUrgentBreakthrough:element('urgent').checked,digestMode:element('digest').value,
@@ -50,9 +52,9 @@ export function mountNotificationSettings(root, invoke) {
     busy=true;render(state,question,approvals);field('status').textContent='正在读取原 Runtime 回执…';
     try {
       const result=await invoke(action,payload);
-      if(action==='notifications.get'){state=result;scopeLoaded=true;dirty=false;}
+      if(action==='notifications.get'){state=result;selectedPolicy=result.policy;scopeLoaded=scopeKey(selectedPolicy?.scope)===scopeKey(scope());dirty=false;}
       if(action==='notifications.configure') {
-        state=result.notificationCenter??state;dirty=false;
+        state=result.notificationCenter??state;selectedPolicy=state.policy;dirty=false;
         field('status').textContent=result.state==='confirmed'?'设置已生效；原任务 '+result.taskId:'设置结果待原任务核实：'+result.taskId;
       } else if(action==='notifications.digest') field('digest-result').textContent=`仍有效未读变化 ${result.items.length} 条；未发送通知，也未标记已读。`;
       else if(action.includes('confirmation')) question=result;
@@ -71,9 +73,12 @@ export function mountNotificationSettings(root, invoke) {
   field('digest').onclick=()=>run('notifications.digest',{trigger:'on_demand'});field('return').onclick=()=>run('notifications.digest',{trigger:'on_return'});
   function render(value={},currentQuestion=null,pendingApprovals=[]) {
     state=value??{};question=currentQuestion;approvals=pendingApprovals;
+    // Global feed broadcasts must not replace another scope's loaded policy/revision.
+    let requestedScope;try{requestedScope=scope();}catch{}
+    if(!dirty&&!busy&&requestedScope&&scopeKey(state.policy?.scope)===scopeKey(requestedScope))selectedPolicy=state.policy;
     for(const control of section.querySelectorAll('button,input,select'))control.disabled=busy||!state.available;
     if(!dirty&&!busy) {
-      const p=state.policy?.effective;
+      const p=selectedPolicy?.effective;
       if(p) {
         element('mode').value=p.mode;element('window').value=String(p.windowMinutes);element('maximum').value=p.maxInterruptions===null?'':String(p.maxInterruptions);
         element('unlimited').checked=p.maxInterruptions===null;element('channel').value=p.preferredChannel;element('urgent').checked=p.allowUrgentBreakthrough;
