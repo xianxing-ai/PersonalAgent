@@ -10,7 +10,8 @@ export function nativeReasoningState(snapshot){
   const modelId=preference?.executionModel?.modelId??(preference?.modelId||undefined)??(useDefaults?defaults?.defaultModelId:catalog?.defaultModelId);
   const model=catalog?.models.find(m=>m.id===modelId&&m.type==='text'&&m.availability!=='unavailable'&&m.available!==false);
   const effort=preference?.executionModel?.reasoningEffort??(useDefaults?defaults?.reasoningEffort:undefined);
-  const efforts=[...new Set(model?.reasoningEfforts??[])].sort((a,b)=>effortOrder.indexOf(a)-effortOrder.indexOf(b));
+  const publishedEfforts=new Set(model?.reasoningEfforts??[]);
+  const efforts=effortOrder.filter(effort=>publishedEfforts.has(effort));
   const stale=Boolean(preference?.executionModel&&preference.executionModel.catalogRevision!==catalog?.revision);
   const available=Boolean(model)&&!stale&&(effort===undefined||efforts.includes(effort));
   return {catalogRevision:catalog?.revision,modelId,efforts,reasoningEffort:effort,available,

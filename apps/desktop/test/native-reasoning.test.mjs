@@ -40,6 +40,12 @@ test('legal catalog enums drive native range and Chinese label independently fro
   f.control.update(snapshot());assert.equal(f.slider.value,'1','late pre-save snapshot cannot replace acknowledgement');
   f.control.update(snapshot({modelId:'a',executionModel:selection('a','low')}));assert.equal(f.output.textContent,'低');
 });
+test('catalog values outside the execution protocol enum are not offered by the native range',async t=>{
+  const data=snapshot();data.agentArtsModels.catalog.models[0].reasoningEfforts=['future','high'];
+  const f=fixture(t);f.control.update(data);
+  assert.deepEqual(nativeReasoningState(data).efforts,['high']);assert.equal(f.slider.max,'1');
+  const pending=f.drag(1);assert.equal(f.calls[0].payload.executionModel.reasoningEffort,'high');f.calls[0].resolve();await pending;
+});
 test('provider default omits effort and an explicit provider default never inherits global max',async t=>{
   const f=fixture(t);f.control.update(snapshot({}));assert.equal(f.output.textContent,'最高');assert.equal(f.slider.max,'1');
   f.control.update(snapshot({executionModel:selection('a','')}));assert.equal(f.output.textContent,'供应商默认');assert.equal(f.slider.value,'0');
