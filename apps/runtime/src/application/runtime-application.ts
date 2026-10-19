@@ -759,7 +759,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           describeRegistered:()=>this.cloudSkill?{name:CLOUD_SKILL_TOOL_NAME,version:CLOUD_SKILL_TOOL_VERSION,inputSchema:CLOUD_SKILL_CHOICE_SCHEMA}:undefined,
           describe:input=>this.cloudSkill?.cloudSkillCatalog(input)??Promise.resolve(undefined),
         },...DEVELOPER_WORKFLOW_KINDS.map(kind=>({toolName:developerWorkflowToolName(kind),toolVersion:'1.0.0',publicEnumPaths:[],
-          sideEffect:kind==='ci_list'||kind==='issue_list'?'read' as const:'external_write' as const,
+          sideEffect:kind==='ci_list'||kind==='issue_list'||kind==='test_locate'?'read' as const:'external_write' as const,
           requiredTool:{name:'github.repo.get',version:this.tools!.list().find(tool=>tool.name==='github.repo.get')?.version??'unavailable'},
           describeRegistered:()=>this.developerWorkflows?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined,
           describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{

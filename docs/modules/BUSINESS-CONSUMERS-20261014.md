@@ -42,3 +42,10 @@ Competition 目录（`apps/desktop/electron/main.js` 组装）中业务面工具
 4. 缺口 5 在镜像版本可用后单独记录，不改断言、不代验他人模块。
 
 凭据全部本地配置，不入仓。每个 PR 由任一非作者在当前 head 有效 Approve + 实际检查后按授权合并。
+
+## 4. 进度更新（2026-10-19）
+
+- 缺口 1（F12 通知事件版本）：已由 #391 合入 main（`notifications.events` 快照分页 + snapshotRevision 协议）。
+- 缺口 2（开发工作流入口工具化）：审计修正——F16/F19 已有 `developer.ci_list/ci_fix`、`developer.issue_list/issue_triage` 入口（runtime `developer-workflows.ts`，1.0.0，镜像提案可直接消费）；F15 由 #382 的 `coding.repair.workflow` 覆盖。本 PR 补齐最后一项 **F17：`developer.test_locate`**（确定性定位器入口：不调模型、零嵌套工具、摘录读取限定受信组合 root、未配置显式 Unavailable、目录声明 sideEffect=read）。
+- 缺口 3：Open-Meteo/OpenAlex 国内实测可达（记录于 #355）。
+- 剩余：缺口 4 验收场景集、缺口 5 镜像独立 Evidence。

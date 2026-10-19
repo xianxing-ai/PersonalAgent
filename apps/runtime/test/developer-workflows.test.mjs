@@ -1,7 +1,7 @@
-import test from 'node:test';
+import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {Client} from '@personal-agent/client';
@@ -17,6 +17,10 @@ const {createRuntimeApplication,createDesktopSubagentDispatchTool}=await import(
 
 const repo='synthetic/project',head='a'.repeat(40),fixed='b'.repeat(40),base='c'.repeat(40);
 const sha=value=>createHash('sha256').update(value).digest('hex');
+const locateRoots=[];
+after(()=>{for(const root of locateRoots)rmSync(root,{recursive:true,force:true});});
+const locateOutput=['✖ value check (12.3ms)','  AssertionError [ERR_ASSERTION]: expected 1 to be 2',
+  '      at TestContext.<anonymous> (app.js:2:10)','ℹ tests 1','ℹ pass 0','ℹ fail 1','✖ failing tests:',''].join('\n');
 const issue={number:7,title:'Improve docs',body:'Please improve docs',state:'open',labels:[],url:`https://github.com/${repo}/issues/7`,updatedAt:'2026-10-01T00:00:00.000Z'};
 const pr={number:9,title:'Fix value',body:'Update value',state:'open',base:'main',baseSha:base,head:'repair',headSha:head,url:`https://github.com/${repo}/pull/9`,draft:false};
 const failures={items:[{id:12,name:'CI',status:'completed',conclusion:'failure',headSha:head,url:`https://github.com/${repo}/actions/runs/12`,createdAt:'2026-10-01T00:00:00.000Z'}],page:1,nextPage:null,hasMore:false};
@@ -36,7 +40,9 @@ async function settle(app,client,taskId){
   }
   throw Error('Synthetic developer workflow did not settle: '+JSON.stringify([app.runtime.getTask(taskId),...app.readSubagentTasks(taskId)]));
 }
-function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssue=false,unknownPatch=false,legacyBinding=false,automaticPatch=false,followupPatch=false}={}){
+function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssue=false,unknownPatch=false,legacyBinding=false,automaticPatch=false,followupPatch=false,locateConfigured=true}={}){
+  const locateRoot=mkdtempSync(path.join(os.tmpdir(),'developer-locate-'));locateRoots.push(locateRoot);
+  writeFileSync(path.join(locateRoot,'app.js'),'function value(){\n  return 1;\n}\nmodule.exports={value};\n');
   let app,currentHead=head,source='const value = 1;\n',patchInterrupted=false,verifiedRunId,initialWorkerId;const cloud=[],writes=[],modelPayloads=[];
   const provider=new FakeGitHubProvider({'repo.get':{fullName:repo,defaultBranch:'main',private:false,url:`https://github.com/${repo}`},
     'actions.run.list':failures,'actions.job.list':{items:[{id:14,runId:12,name:'test',status:'completed',conclusion:'failure',url:`https://github.com/${repo}/actions/runs/12/job/14`}],page:1,nextPage:null,hasMore:false},
@@ -70,7 +76,7 @@ function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssu
     {kind:'final',text:JSON.stringify(fix)}]:[{kind:'final',text:JSON.stringify(response)},{kind:'final',text:JSON.stringify(response)}]);
   const complete=model.complete.bind(model);model.complete=input=>{modelPayloads.push(input);return complete(input);};
   const args={repo,...(kind==='ci_fix'?{runId:'12'}:{}),...(['code_review','issue_triage'].includes(kind)?{number:kind==='code_review'?9:7}:{}),
-    ...(kind==='code_review'?{publish:true}:{}),...(repairIssue?{repairBug:true}:{})};
+    ...(kind==='code_review'?{publish:true}:{}),...(repairIssue?{repairBug:true}:{}),...(kind==='test_locate'?{output:locateOutput}:{})};
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,coordinationBinding:'synthetic-config',tools,
     hostUserNamespace:'synthetic-dev',workspacePatchReconciliation:{bindingId:'d'.repeat(64),reconcile:async input=>unknownPatch&&input.retainMarker
       ?{path:input.relativePath,state:'reconciled',runId:input.expectedRunId,argumentsDigest:input.expectedArgumentsDigest,
@@ -92,6 +98,7 @@ function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssu
       ...(modelConfigured?{model}:{}),reviewRules:[{id:'correctness',text:'Review correctness of changed lines'}],
       available:()=>online,assertCurrent:()=>{assert.equal(online,true);},authorizeModelRequest:()=>{},projectResult:value=>value,
       failedRunForIssue:()=> '12',
+      ...(locateConfigured?{testLocate:{root:locateRoot,contextLines:2}}:{}),
       ciFix:{verifyRecipeId:'check',sourcePaths:['app.js'],headBranch:'repair',baseBranch:'main',gitTools:{head:'workspace.git.head',commit:'workspace.git.commit',
         push:'workspace.git.push',pullRequest:'github.pr.create',backlink:'github.pr.comment'}}},
     automaticTools:tools.filter(tool=>(tool.descriptor.sideEffect==='read'&&!tool.descriptor.requiresPresence)
@@ -103,7 +110,7 @@ function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssu
   });
   return {app,cloud,writes,modelPayloads,provider};
 }
-for(const kind of ['ci_list','issue_list','issue_triage','code_review','ci_fix'])test(`public ${kind} workflow executes in the original child, approves nested writes and continues`,async()=>{
+for(const kind of ['ci_list','issue_list','issue_triage','code_review','ci_fix','test_locate'])test(`public ${kind} workflow executes in the original child, approves nested writes and continues`,async()=>{
   const f=fixture(kind);const client=new Client(f.app);await client.connect();
   try{
     const task=await client.call('task.submit',{goal:'Run developer workflow '+kind,conversationId:'user-chat'},{idempotencyKey:kind,timeoutMs:60000});
@@ -118,6 +125,40 @@ for(const kind of ['ci_list','issue_list','issue_triage','code_review','ci_fix']
     if(kind==='ci_fix')assert.deepEqual(f.writes,['apply','commit','push']);
     if(kind==='ci_fix')assert.ok(f.app.runtime.readToolExecutions(children[0].taskId).some(record=>record.evidenceId===f.cloud.find(request=>request.continuation)?.continuation.result.verificationRunId&&record.toolName==='workspace.run_allowed_command'));
     if(['ci_fix','code_review','issue_triage'].includes(kind))assert.equal(f.modelPayloads.length,1);
+    if(kind==='test_locate')assert.equal(f.modelPayloads.length,0);
+  }finally{f.app.close();}
+});
+test('test_locate returns deterministic repo frames with snippets and no side effects',async()=>{
+  const f=fixture('test_locate');const client=new Client(f.app);await client.connect();
+  try{
+    const task=await client.call('task.submit',{goal:'Locate the failing test',conversationId:'user-chat'},{idempotencyKey:'test-locate',timeoutMs:60000});
+    const final=await settle(f.app,client,task.taskId);assert.equal(final.state,'succeeded',JSON.stringify(final.error));
+    const child=f.app.readSubagentTasks(task.taskId)[0];assert.equal(child.state,'succeeded');
+    const continuation=f.cloud.filter(request=>request.taskId===child.taskId).find(request=>request.continuation).continuation;
+    const report=continuation.result.report;
+    assert.equal(continuation.result.state,'succeeded');
+    assert.equal(report.totalFailures,1);
+    assert.equal(report.failures[0].name,'value check');
+    assert.equal(report.failures[0].reporter,'spec');
+    assert.equal(report.failures[0].frames[0].file,'app.js');
+    assert.equal(report.failures[0].frames[0].line,2);
+    assert.match(report.failures[0].frames[0].snippet,/> 2 .*return 1;/);
+    assert.ok(report.failures[0].frames[0].confidence>0&&report.failures[0].frames[0].confidence<=1);
+    assert.deepEqual(f.writes,[]);
+    assert.equal(f.app.runtime.readToolExecutions(child.taskId).length,0,'deterministic parser performs no nested tool runs');
+  }finally{f.app.close();}
+});
+test('test_locate without a trusted composition root stays explicitly unavailable',async()=>{
+  const f=fixture('test_locate',{locateConfigured:false});const client=new Client(f.app);await client.connect();
+  try{
+    const task=await client.call('task.submit',{goal:'Locate the failing test',conversationId:'user-chat'},{idempotencyKey:'test-locate-unconfigured',timeoutMs:60000});
+    const final=await settle(f.app,client,task.taskId);
+    assert.ok(['succeeded','failed'].includes(final.state),JSON.stringify(final.error));
+    const child=f.app.readSubagentTasks(task.taskId)[0];
+    const entries=f.app.runtime.loadCheckpoint(child.taskId,'competition-tool-catalog').entries;
+    assert.ok(!entries.some(tool=>tool.name==='developer.test_locate'),'unconfigured workflow must stay out of the child catalog');
+    assert.ok(!f.cloud.some(request=>request.continuation&&request.continuation.result.report),'no locate report may be exported');
+    assert.deepEqual(f.writes,[]);
   }finally{f.app.close();}
 });
 for(const followupPatch of [false,true])test(`automatic developer patch resumes exact confirmed receipt without manufacturing approval or repeating apply${followupPatch?' in an appended conversation message':''}`,async()=>{

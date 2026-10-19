@@ -4,7 +4,7 @@ import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {AgentToolPort} from '@personal-agent/agents';
 import {ModelGateway,UnavailableModelProvider} from '@personal-agent/models';
 import type {ModelPort,ModelRequest} from '@personal-agent/models';
-import {createCiFixWorkflow,createCiRunDiscoveryWorkflow} from '@personal-agent/coding-tools';
+import {createCiFixWorkflow,createCiRunDiscoveryWorkflow,locateTestFailures} from '@personal-agent/coding-tools';
 import type {CiFixOptions} from '@personal-agent/coding-tools';
 import {createCodeReviewWorkflow,createIssueTriageWorkflow} from '@personal-agent/cognition';
 import type {CodeReviewReport,CodeReviewRule,IssueTriageOptions} from '@personal-agent/cognition';
@@ -16,11 +16,12 @@ import type {CoordinationWorkerCapabilityPort} from './coordination.js';
 
 export const DEVELOPER_WORKFLOW_REQUEST='developer-workflow:request';
 export const DEVELOPER_WORKFLOW_RESULT='developer-workflow:result';
-export const DEVELOPER_WORKFLOW_KINDS=['ci_list','ci_fix','code_review','issue_list','issue_triage'] as const;
+export const DEVELOPER_WORKFLOW_KINDS=['ci_list','ci_fix','test_locate','code_review','issue_list','issue_triage'] as const;
 export type DeveloperWorkflowKind=typeof DEVELOPER_WORKFLOW_KINDS[number];
 export interface DeveloperWorkflowRequest {
   kind:DeveloperWorkflowKind;repo:string;number?:number;runId?:string;page?:number;perPage?:number;
   publish?:boolean;writeLabel?:boolean;repairBug?:boolean;
+  output?:string;contextLines?:number;
 }
 export interface RuntimeDeveloperWorkflowScope {taskId:string;deadline:string;signal:AbortSignal;}
 /** Trusted composition only. None of these ports or rules comes from a tool argument. */
@@ -30,6 +31,8 @@ export interface RuntimeDeveloperWorkflowsOptions {
   model?:ModelPort;
   reviewRules?:readonly CodeReviewRule[];
   ciFix?:Omit<CiFixOptions,'repository'|'runId'|'model'|'tools'|'authorizationRefFor'|'confirmedReplayReady'|'maxSteps'|'maxTokens'>;
+  /** F17 trusted filesystem root for test-failure snippet reading. Never a tool argument. */
+  testLocate?: {root:string; contextLines?: number; maxInputBytes?: number};
   issueTriage?:Pick<IssueTriageOptions,'labels'|'minConfidence'>;
   failedRunForIssue?:(repo:string,number:number)=>string|undefined;
   maxSteps:number;maxTokens:number;
@@ -49,6 +52,10 @@ export function developerWorkflowInputSchema(kind:DeveloperWorkflowKind):Record<
   const properties:Record<string,unknown>={repo:repoSchema},required=['repo'];
   if(kind==='ci_list'||kind==='issue_list')Object.assign(properties,{page:{type:'integer',minimum:1,maximum:10000},perPage:{type:'integer',minimum:1,maximum:30}});
   if(kind==='ci_fix'){properties.runId={type:'string',minLength:1,maxLength:32};required.push('runId');}
+  if(kind==='test_locate') {properties.output={type:'string',minLength:1,maxLength:2_100_000,
+      description:'失败测试输出全文（TAP 或 spec 格式），由确定性解析器定位源码帧；不调用模型。'};
+    properties.contextLines={type:'integer',minimum:0,maximum:8,description:'源码摘录上下文行数，覆盖组合默认值。'};
+    required.push('output');}
   if(kind==='code_review'||kind==='issue_triage'){properties.number={type:'integer',minimum:1};required.push('number');}
   if(kind==='code_review')properties.publish={type:'boolean'};
   if(kind==='issue_triage')Object.assign(properties,{writeLabel:{type:'boolean'},repairBug:{type:'boolean'}});
@@ -57,6 +64,7 @@ export function developerWorkflowInputSchema(kind:DeveloperWorkflowKind):Record<
 export function developerWorkflowConfigured(options:RuntimeDeveloperWorkflowsOptions,kind:DeveloperWorkflowKind):boolean {
   if(!options.projectResult || !options.repositories.length)return false;
   if(kind==='ci_list'||kind==='issue_list')return true;
+  if(kind==='test_locate')return !!options.testLocate?.root;
   if(!options.model||!options.authorizeModelRequest)return false;
   if(kind==='code_review')return !!options.reviewRules?.length;
   if(kind==='ci_fix')return !!options.ciFix?.gitTools&&!!options.ciFix.headBranch&&!!options.ciFix.baseBranch&&!!options.ciFix.sourcePaths.length;
@@ -65,6 +73,7 @@ export function developerWorkflowConfigured(options:RuntimeDeveloperWorkflowsOpt
 export function developerWorkflowRequiredTools(options:RuntimeDeveloperWorkflowsOptions,kind:DeveloperWorkflowKind):string[] {
   if(kind==='ci_list')return ['github.actions.run.list'];
   if(kind==='issue_list')return ['github.issue.list'];
+  if(kind==='test_locate')return [];
   if(kind==='code_review')return ['github.pr.get','github.pr.diff'];
   if(kind==='issue_triage')return ['github.issue.get'];
   return ['github.actions.run.list','github.actions.job.list','github.actions.log.read','workspace.read_text',
@@ -194,6 +203,16 @@ async function runRuntimeDeveloperWorkflow(application:RuntimeApplication,reques
       if(request.kind==='ci_list')result=await createCiRunDiscoveryWorkflow({tools,authorizationRefFor,maxSteps:options.maxSteps,
         confirmedReplayReady:replay}).listFailedRuns(worker,{repo:request.repo,...(request.page?{page:request.page}:{}),...(request.perPage?{perPage:request.perPage}:{})});
       else if(request.kind==='ci_fix')result=await runFix(request.repo,request.runId);
+      else if(request.kind==='test_locate') {
+        // Deterministic F17 parser: no model, no nested tools; snippet reads stay
+        // inside the trusted composition root and never a tool argument.
+        if(!options.testLocate?.root)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted test locate root unavailable');
+        const contextLines=request.contextLines??options.testLocate.contextLines;
+        const report=locateTestFailures(request.output!,{root:options.testLocate.root,
+          ...(contextLines===undefined?{}:{contextLines}),
+          ...(options.testLocate.maxInputBytes===undefined?{}:{maxInputBytes:options.testLocate.maxInputBytes})});
+        result={state:'succeeded',report};
+      }
       else if(request.kind==='code_review') {
         const workflow=createCodeReviewWorkflow({model:model!,tools,maxTokens:Math.min(options.maxTokens,32000)});
         const access={runId:`${worker.taskId}:review`,authorizationRef:worker.taskId,confirmedReplayReady:replay};
