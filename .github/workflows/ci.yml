@@ -141,7 +141,7 @@ jobs:
           path: ${{ runner.temp }}/ci-electron-transfer
       - name: Seed the verified official Electron cache without skipping postinstall
         if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
-        working-directory: ${{ env.PA_CI_SOURCE || github.workspace }}
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         env:
           CI_ELECTRON_CACHE_SHA256: ${{ needs.route.outputs.electron_cache_sha256 }}
         run: node scripts/ci/electron-cache.mjs restore
