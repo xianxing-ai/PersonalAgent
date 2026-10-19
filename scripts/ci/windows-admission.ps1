@@ -11,10 +11,15 @@ if ($context.fixture -ne $false -or $context.id -ne $env:PA_CI_JOB_ID -or $gate.
     throw 'Resource admission is missing, synthetic, stale or belongs to another job.'
 }
 $worker = Get-Process -Id $context.processId
-if ($worker.ProcessName -ne 'Runner.Worker' -or $worker.StartTime.ToUniversalTime().ToString('o') -ne $context.processStartUtc -or
-    $worker.ProcessorAffinity.ToInt64() -ne 1 -or $context.initial.freeMemoryBytes -lt $context.required.memory -or
-    $context.initial.freeDiskBytes -lt $context.required.disk) {
-    throw 'The admitted Windows worker or capacity evidence does not match this job.'
+if ($worker.ProcessName -ne 'Runner.Worker') { throw 'The admitted process is not Runner.Worker.' }
+# PowerShell converts ISO JSON timestamps to DateTime. Compare the exact UTC
+# instant, retaining subsecond precision, instead of comparing formatted strings.
+if ($worker.StartTime.ToUniversalTime().Ticks -ne ([DateTimeOffset]$context.processStartUtc).UtcDateTime.Ticks) {
+    throw 'The admitted Windows worker was replaced.'
+}
+if ($worker.ProcessorAffinity.ToInt64() -ne 1) { throw 'The admitted worker lost its single-core affinity.' }
+if ($context.initial.freeMemoryBytes -lt $context.required.memory -or $context.initial.freeDiskBytes -lt $context.required.disk) {
+    throw 'The recorded admission capacity was below its required threshold.'
 }
 if ($env:NODE_OPTIONS -notmatch '--max-old-space-size=1536' -or $env:DOTNET_PROCESSOR_COUNT -ne '1') {
     throw 'Expected inherited ECS resource controls are missing.'
