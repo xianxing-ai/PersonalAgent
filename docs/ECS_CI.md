@@ -32,6 +32,8 @@ Windows 保留 .NET 8 Job process helper、原始完整架构/契约/生成类�
 
 两条 Windows 路径使用同一作业步骤，仅 `runs-on` 与预装工具链选择不同；不删产品测试、不修改断言。混合 PR 中架构/契约及镜像相关测试仍在两个操作系统检查，保留兼容性覆盖。去重只消除同一 PR 的两份 Windows 全套和三个示例各自再次构建全仓的开销；没有把跨平台公共检查移走后宣称等价。
 
+ECS 的 Git HTTPS 直连曾在实际短任务中失败。工作流因此由托管路由作业 checkout 精确事件 SHA，将不含 checkout 凭据的 Git 元数据和对象打包成同 run/attempt 的短期 Actions artifact；ECS 从 Actions 下载并核验独立输出的 SHA256，在本任务新建的临时目录本地恢复精确 SHA，全程不在 ECS 执行 Git 网络 fetch。打包拒绝 HTTP/credential/include 等本地 Git 配置和含凭据的 origin，不包含未跟踪 `.env`、依赖、缓存、Git hooks 或 reflog；还原禁用 hooks，不覆盖既有 checkout。源码 artifact 保留一天；排队超过有效期必须重新运行全部 jobs，不能复用其他 run 的工件。下载通道不可达仍应失败并显式切换，不能跳过源码或测试。
+
 Linux 使用 Node 24.15.0 / npm 11.12.1，执行架构、契约夹具、生成类型检查、五个镜像 workspace 的类型检查及模型/协调/传输/编排/镜像应用测试、owned-agentarts-image 集成测试。已有镜像测试还导入真实 Runtime/SQLite 宿主 fixture，因此先用原 `npm run build` 补全测试输入，不将缺依赖用例跳过；Linux 不运行完整 Windows 测试集。随后使用现有 allowlist 导出上下文，实际构建 `linux/arm64` 并检查产物架构。QEMU 用于在 X64 ECS 构建 ARM64。构建不推送、不部署、不调用模型；通过只证明这些 CI 检查，不能代替 AgentArts 平台和真实工具链验收。
 
 Linux 的 `npm ci --ignore-scripts` 避开无关 Electron GUI 下载；新增必要依赖安装脚本时须显式接入。Windows 使用完整 `npm ci`。同仓库镜像任务使用 `[self-hosted,Linux,X64,personalagent-ecs]`；fork 镜像任务使用 GitHub Ubuntu 24.04，避免把外部 PR 交给常驻 ECS。没有给未选平台创建跳过状态来充当通过。

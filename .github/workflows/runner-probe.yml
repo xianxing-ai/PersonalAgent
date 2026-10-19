@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
+      source_sha256: ${{ steps.source.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,6 +26,16 @@ jobs:
         env:
           PROBE_TARGET: ${{ inputs.target }}
         run: node scripts/ci/runner-probe.mjs
+      - id: source
+        if: contains(steps.select.outputs.matrix, 'self-hosted')
+        run: node scripts/ci/source-transfer.mjs pack
+      - uses: actions/upload-artifact@v4
+        if: contains(steps.select.outputs.matrix, 'self-hosted')
+        with:
+          name: probe-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.source.outputs.directory }}
+          retention-days: 1
+          if-no-files-found: error
   probe:
     needs: select
     strategy:
@@ -34,18 +45,34 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        if: matrix.runner[0] != 'self-hosted'
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: matrix.runner[0] == 'self-hosted'
+        with:
+          name: probe-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-transfer
+      - name: Restore verified same-run source locally
+        if: matrix.runner[0] == 'self-hosted'
+        shell: pwsh
+        env:
+          CI_SOURCE_SHA256: ${{ needs.select.outputs.source_sha256 }}
+        run: |
+          node "$env:RUNNER_TEMP/ci-transfer/source-transfer.mjs" restore
+          if ($LASTEXITCODE -ne 0) { throw 'Source restore failed' }
       - uses: actions/setup-node@v4
         if: matrix.runner[0] != 'self-hosted'
         with:
           node-version-file: .node-version
       - name: Verify real automatic resource admission
+        working-directory: ${{ env.PA_CI_SOURCE || github.workspace }}
         if: matrix.runner[0] == 'self-hosted'
         shell: pwsh
         run: ./scripts/ci/windows-admission.ps1
       - name: Run a short routing and toolchain probe
+        working-directory: ${{ env.PA_CI_SOURCE || github.workspace }}
         shell: pwsh
         run: |
           if ((& git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Probe checkout mismatch' }
