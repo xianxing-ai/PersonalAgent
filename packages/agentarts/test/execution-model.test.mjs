@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import {OwnedAgentOrchestrator,parseAgentInput} from '../dist/index.js';
 import {FakeModelProvider} from '@personal-agent/models';
 const selection={catalogRevision:'a'.repeat(64),modelId:'cloud-deepseek',reasoningEffort:'high'};
+
+test('an absent catalog does not block an implicit fast dispatch or invent catalog hints',async()=>{
+  const model=new FakeModelProvider([{kind:'final',text:JSON.stringify({kind:'text',text:'answer'})}]);
+  const agent=new OwnedAgentOrchestrator({fast:model,world:model,plan:model,review:model},128,undefined,undefined,undefined,
+    {executionModels:{catalog:()=>undefined,resolve(){assert.fail('no explicit model was requested');}}});
+  const result=await agent.invoke({query:JSON.stringify({goal:'delegate',availableTools:[{name:'subagent.dispatch',version:'1.0.0',inputSchema:{type:'object'}}]}),
+    deadline:new Date(Date.now()+5000).toISOString(),signal:new AbortController().signal,sessionId:'session',requestId:'request'});
+  assert.equal(result.text,'answer');
+  assert.equal('executionModelCatalog' in JSON.parse(model.requests[0].messages[1].content),false);
+});
 test('execution selection survives initial and confirmed continuation envelopes',()=>{
   for(const envelope of [{goal:'hello',availableTools:[]},{continuation:{proposalId:'p1',state:'confirmed',result:{ok:true}}}])
     assert.deepEqual(parseAgentInput(JSON.stringify({...envelope,executionModel:selection})).executionModel,selection);
