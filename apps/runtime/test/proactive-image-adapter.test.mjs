@@ -92,6 +92,39 @@ test('existing public transport config derives the same runtime endpoint and nev
   for(const endpoint of ['http://remote.example/invocations','https://user:secret@fixture.example/invocations','https://fixture.example/invocations?key=secret'])
     assert.throws(()=>createRuntimeProactiveImageAdapter({...f.options,endpoint}),{code:'INVALID_ARGUMENT'});
 });
+test('trusted saved deployment version pins catalog and advance URLs without widening explicit endpoints',async t=>{
+  const f=await fixture(t),{endpoint:ignored,...options}=f.options,urls=[];
+  const config={gatewayUrl:'https://fixture-gateway.example',runtimeName:'configured-runtime',deploymentVersion:'fixed.v-1'};
+  const adapter=createRuntimeProactiveImageAdapter({...options,config,
+    fetchImpl:(url,init)=>{urls.push(url);return fetch(f.endpoint,init);}});
+  await adapter.describe(context({requestId:'fixed-describe'}));
+  await adapter.advancePort(request({requestId:'fixed-advance'}));
+  assert.deepEqual(urls,Array(2).fill('https://fixture-gateway.example/runtimes/configured-runtime/invocations?endpoint=fixed.v-1'));
+  assert.equal(f.calls.length,2);
+  for(const deploymentVersion of ['', 'invalid/version', 'v'.repeat(129), 123, null])
+    assert.throws(()=>createRuntimeProactiveImageAdapter({...options,config:{...config,deploymentVersion}}),{code:'INVALID_ARGUMENT'});
+  for(const endpoint of ['https://fixture.example/invocations?endpoint=fixed.v-1',
+    'https://fixture.example/invocations?endpoint='+'v'.repeat(65)])
+    assert.throws(()=>createRuntimeProactiveImageAdapter({...f.options,endpoint}),{code:'INVALID_ARGUMENT'});
+});
+test('changed deployment binding fails closed before credentials and after awaited credentials without POST',async t=>{
+  const f=await fixture(t),{endpoint:ignored,...options}=f.options;
+  const config={gatewayUrl:'https://fixture-gateway.example',runtimeName:'configured-runtime',deploymentVersion:'fixed.v-1'};
+  let current=false,reads=0,sends=0;
+  const assertDeploymentBinding=()=>{if(!current)throw Error('private binding detail');};
+  const before=createRuntimeProactiveImageAdapter({...options,config,assertDeploymentBinding,
+    authorizationProvider:{read:async()=>{reads++;return outer;}},fetchImpl:async()=>{sends++;throw Error('unexpected send');}});
+  await assert.rejects(before.describe(context()),error=>error.code==='REVISION_CONFLICT'&&!error.message.includes('private binding detail'));
+  assert.equal(reads,0);assert.equal(sends,0);
+  current=true;let release,entered;
+  const began=new Promise(resolve=>{entered=resolve;}),gate=new Promise(resolve=>{release=resolve;});
+  const during=createRuntimeProactiveImageAdapter({...options,config,assertDeploymentBinding,
+    authorizationProvider:{read:async()=>{entered();await gate;return outer;}},
+    fetchImpl:async()=>{sends++;throw Error('unexpected send');}});
+  const pending=during.advancePort(request({requestId:'fixed-during-auth'}));
+  await began;current=false;release();
+  await assert.rejects(pending,{code:'REVISION_CONFLICT'});assert.equal(sends,0);
+});
 test('tampered payload, wrong signed identity, unexpected fields and legacy response cannot pass the complete response proof',async t=>{
   for(const [name,mutate] of [
     ['body',result=>({...result,mode:'paused'})],

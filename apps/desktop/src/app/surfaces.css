@@ -121,6 +121,7 @@
 .workspace-turn .user-message {background:var(--surface-2);border:0;max-width:85%;padding:10px 15px;align-self:flex-end}
 .workspace-turn .assistant-message {width:100%;overflow-wrap:anywhere}
 .workspace-turn .response-actions {margin-top:-7px}
+.workspace-turn .response-actions .turn-action {width:auto;height:auto;min-height:32px;padding:6px 10px;white-space:nowrap;flex:0 0 auto}
 .workspace-chat .conversation-rail {top:28px;right:8px;bottom:28px}
 .workspace-chat>.workspace-error {position:absolute;left:24px;right:24px;bottom:16px;z-index:3;text-align:center;pointer-events:none}
 .connector-board {width:290px;flex-shrink:0;border-left:1px solid var(--glass-hairline);background:var(--bg-2);overflow:auto;padding:22px 16px;scrollbar-width:none}
@@ -272,7 +273,28 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .admin .side .brand {padding:0;font-size:15px;line-height:1.3}
 .admin .side-home > span:last-child {color:var(--muted);font-size:12px}
 .admin .admin-search {min-height:36px;margin:2px 2px 6px;border-radius:10px;padding:0 10px}
+.admin .admin-search input {min-height:32px}
 .admin .admin-search:focus-within {outline:2px solid var(--focus-ring);outline-offset:2px}
+.admin .admin-search-status {margin:0 8px 8px;color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.admin .admin-search-status[hidden] {display:none}
+.panel .task-progress,.workspace .task-progress {display:flex;align-items:flex-start;gap:12px;margin:12px 0;padding:12px 14px;border:1px solid var(--glass-border);border-radius:12px;background:var(--surface-2);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.task-progress strong {display:flex;align-items:center;gap:7px;flex:0 0 auto;color:var(--fg);font-weight:600}
+.task-progress strong::before {content:"";width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.task-progress span {color:var(--muted);min-width:0}
+.workspace-chat>.task-progress {flex:0 0 auto;margin:10px 24px}
+.connector-card .connector-empty {padding:10px 0;color:var(--muted);font-size:12px;line-height:1.7}
+.task-progress[data-state="failed"] strong::before {background:var(--danger)}
+.task-progress:is([data-state="waiting_approval"],[data-state="waiting_reconciliation"]) strong::before {background:var(--warn)}
+.panel .task-progress[hidden],.workspace .task-progress[hidden] {display:none}
+@media(max-width:540px){.panel .task-progress,.workspace .task-progress {flex-direction:column;gap:4px}}
+.admin .task-record-title {display:block;max-width:28ch;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.admin .task-record-id {display:block;margin-top:4px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.admin .task-record-state {display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;padding:4px 8px;border-radius:6px;background:var(--surface-2)}
+.admin .task-record-state::before {content:"";width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.admin .task-record-state[data-state="succeeded"]::before {background:var(--accent)}
+.admin .task-record-state[data-state="failed"]::before {background:var(--danger)}
+.admin .task-record-state:is([data-state="running"],[data-state="planning"],[data-state="verifying"])::before {background:var(--accent)}
+.admin .task-record-state:is([data-state="waiting_approval"],[data-state="waiting_reconciliation"])::before {background:var(--warn)}
 .admin .nav-group {margin:0 0 6px}
 .admin .nav-group h2 {margin:12px 10px 4px;font-size:11px;letter-spacing:.08em}
 .admin .side nav button {min-height:36px;padding:7px 10px;border-radius:10px;font-size:13px}
@@ -521,7 +543,6 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .workspace-composer-actions {display:flex;align-items:center;gap:12px;margin-top:8px}.workspace-composer-actions .notice {flex:1;margin:0}.workspace-composer-actions button {padding:7px 14px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);color:var(--fg)}.workspace-composer-actions button:disabled {opacity:.45}
 .workspace-chat>.subagent-tasks {flex:0 0 auto;max-height:150px;overflow:auto;padding-inline:24px;font-size:11px}.workspace-chat>.workspace-error {position:static;margin:0;padding:4px 24px;text-align:left;flex:0 0 auto}
 .panel>.conversation-sessions,.panel>div:has(>.conversation-sessions) {flex:0 0 auto}
-
 /* Native window controls remain separate from the draggable title area. */
 .admin {grid-template-rows:40px minmax(0,1fr)}
 .admin,.workspace {background-color:var(--bg)}
@@ -550,3 +571,16 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
   .admin .side-home>span:last-child,.admin .side footer {display:none}
   .admin .side-home {padding-bottom:2px}
 }
+
+/* 20261018 UX polish: opaque popup surfaces (bell menu / model menu) to stop text bleed-through */
+.panel .bell-menu,.panel .model-menu {backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg);box-shadow:0 10px 34px rgba(0,0,0,.28),0 2px 8px rgba(0,0,0,.2)}
+:root[data-theme="light"] .panel .bell-menu,:root[data-theme="light"] .panel .model-menu {background:#f7f7f5;box-shadow:0 10px 34px rgba(30,32,36,.18),0 2px 8px rgba(30,32,36,.12)}
+/* quick-start chips on empty panel thread */
+.thread .quick-start {display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 2px}
+.thread .quick-start button {border:1px solid var(--glass-border);background:rgba(255,255,255,.05);color:var(--fg-2);border-radius:999px;padding:7px 12px;font-size:12px;cursor:pointer}
+.thread .quick-start button:hover {color:var(--fg);border-color:var(--accent)}
+:root[data-theme="light"] .thread .quick-start button {background:rgba(0,0,0,.03)}
+/* hero treatment for the panel greeting bubble */
+.thread>.bubble {font-size:17px;font-weight:640;padding:16px 18px;text-align:center;background:none;border:0}
+/* proactive (电脑操控) checkbox rows: keep label text beside its checkbox (label variant only; admin rows use div) */
+.settings-list label.setting-row {justify-content:flex-start;gap:12px}

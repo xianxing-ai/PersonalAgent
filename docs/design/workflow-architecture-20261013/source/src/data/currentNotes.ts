@@ -12,7 +12,7 @@ export const SHARED_DETAILS:Record<string,string[]> = {
  POLICY:['原Runtime/Policy/ToolGateway核task、scope、参数digest、revision与deadline；签名不是授权。','外部来源、模型、Skill不授新权限；已有有效授权复用，缺项沿原审批。'],
  TOOL:['本机工具统一ToolGateway；同资源写/鼠标键盘串行。','unknown保留原operation核实，不换ID重放；取消受理不等于停止。','平台MCP真实SDK已实现，执行仍经原ToolGateway；缺ToolExecution/官方port明确unavailable。'],
  EVIDENCE:['TaskRuntime是状态、执行记录与终态事实来源。','Wukong20+Pelican第二轮21=41条工具Evidence，首轮partial保留。','历史完整链为本机同版镜像+本机Runtime/Laya+远端AA代理，不证明Competition由AgentArts构建/编排Workflow。','协调锚点created、分支父succeeded分别说明；目录/模型自报不证明完成。'],
- VERIFY:['默认每图串行，分支/join是控制关系而非并发证据。','显式双方案等双方；普通任务可先交已验主结果，机会资源调度待验。','真实两套实验await main再await shadow；不证明主抢占/机会并行。','原期限/取消与未知写读回不变；最小修复算法暂停。'],
+ VERIFY:['默认每图串行，分支/join是控制关系而非并发证据。','显式双方案等双方；普通任务可先交已验主结果，机会资源调度待验。','真实两套实验await main再await shadow；不证明主抢占/机会并行。','原期限/取消与未知写读回边界不变；编码最小修复已有实现，真实云/设备验收按各版本Evidence分别确认。'],
 };
 export const LATENCY_DESIGN=['Laya六次182–618ms，未达150ms；未合格站点均升级DeepSeek。','Wukong flow167.432s/外层183.618s/20条Evidence；Pelican第二轮81.611s/外层89.735s/21条，首轮partial保留。','两套主影子实际串行；网页/目录不证明28业务、机会并行、长期无人值守或减少模型调用。','云指定版本目录/关联日志已验；真实完整工具链表面是本机同版镜像+本机Runtime/Laya+远端AA代理。'];
 export const FINAL_DESIGN_STATUS='历史实测基线2026-10-15 / abb70879：本机Laya实验、ARM64镜像28图185节点、DeepSeek经AA；Competition目标边界由AgentArts承担Agent/Workflow构建与编排，本地Runtime负责授权执行。';

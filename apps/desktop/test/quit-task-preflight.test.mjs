@@ -118,6 +118,16 @@ test('a bound NotificationHost survives refused quit and disposes once before Ru
   assert.ok(f.calls.indexOf('notification-dispose')<f.calls.indexOf('runtime-close'));
 });
 
+test('accepted quit releases the active orb drag timer', async () => {
+  const f = fixture(), cleared = [], timer = {};
+  f.context.orbDragPoll = timer;
+  f.context.clearInterval = value => cleared.push(value);
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited, true);
+  assert.ok(cleared.includes(timer));
+  assert.equal(f.context.orbDragPoll, undefined);
+});
+
 test('accepted quit closes Wiki, pairing and installed Skills before Runtime; an active task refuses it',async()=>{
   const f=fixture({count:1});f.context.wikiSourceMonitor={close(){f.calls.push('wiki-monitor-close');}};
   f.context.obsidianPairing={close(){f.calls.push('obsidian-pairing-close');}};
