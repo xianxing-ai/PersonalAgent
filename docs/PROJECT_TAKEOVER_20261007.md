@@ -1,8 +1,7 @@
 # 项目负责人接手与工作区清理记录
 
-<!-- current-design-20261013 -->
-> 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](design/workflow-architecture-20261013/index.html) · [接口状态](interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../CONTRIBUTING.md)。当前实验为本机Laya有限候选判断，资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，架构未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
-
+<!-- current-design-20261015 -->
+> 当前设计与协作入口：[当前详细设计](design/CURRENT_DESIGN_20261015.md) · [逐图状态](design/WORKFLOW_STATUS_20261015.md) · [接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) · [模块分工](MODULE_ASSIGNMENTS.md) · [协作规则](../CONTRIBUTING.md)。当前协作者：zemeng5208、goo122、Potatos498、2511375597-lab；常规 PR 须取得一名合资格非作者对当前 head 的有效批准，Owner 对具体 PR 的审核例外须留记录且不豁免必需技术 CI。主线同步、无冲突及阻断项处理均为合并前提。Competition 设计路径由 AgentArts 承担构建、Agent/Workflow 编排、评估与部署；Laya 仅限 Local Profile，本轮不扩展，代码实现与真实验收另行核实。
 
 日期：2026-10-07 · 主要负责人：zemeng / zemeng5208 · 用户保留产品决策与账号授权。
 
