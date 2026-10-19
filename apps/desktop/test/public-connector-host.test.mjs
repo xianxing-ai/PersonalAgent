@@ -32,3 +32,47 @@ test('public providers assemble without calls and only publish bounded public re
     await assert.rejects(policy.project(context), /unavailable/);
   } finally {host.close();}
 });
+
+/**
+ * The GeoNames exact-name tier is the only path that resolves simplified-Chinese foreign city
+ * names, so the default provider must pick the account up from the environment: without it
+ * 纽约 and 首尔 return zero candidates and the tool answers NOT_FOUND.
+ */
+test('the default weather provider takes the GeoNames account from the environment', async () => {
+  const previous = process.env.PA_GEONAMES_USERNAME;
+  const realFetch = globalThis.fetch;
+  const urls = [];
+  process.env.PA_GEONAMES_USERNAME = 'acct-under-test';
+  globalThis.fetch = async url => {urls.push(String(url)); return {ok: false, status: 500, json: async () => ({})};};
+  const host = createPublicConnectorHost({researchProvider: new OpenAlexProvider({fetchImpl: async () => {throw Error('unused');}})});
+  try {
+    const tool = host.tools.find(item => item.descriptor.name === 'weather.forecast');
+    await tool.execute({location: '纽约', date: '2026-10-19'}, {signal: new AbortController().signal}).catch(() => {});
+    assert.ok(urls.some(url => url.includes('secure.geonames.org') && url.includes('username=acct-under-test')),
+      `expected the exact-name tier to be called, got:/n${urls.join('\n')}`);
+  } finally {
+    host.close();
+    globalThis.fetch = realFetch;
+    if (previous === undefined) delete process.env.PA_GEONAMES_USERNAME;
+    else process.env.PA_GEONAMES_USERNAME = previous;
+  }
+});
+
+test('without the environment variable the exact-name tier is not called', async () => {
+  const previous = process.env.PA_GEONAMES_USERNAME;
+  const realFetch = globalThis.fetch;
+  const urls = [];
+  delete process.env.PA_GEONAMES_USERNAME;
+  globalThis.fetch = async url => {urls.push(String(url)); return {ok: false, status: 500, json: async () => ({})};};
+  const host = createPublicConnectorHost({researchProvider: new OpenAlexProvider({fetchImpl: async () => {throw Error('unused');}})});
+  try {
+    const tool = host.tools.find(item => item.descriptor.name === 'weather.forecast');
+    await tool.execute({location: '纽约', date: '2026-10-19'}, {signal: new AbortController().signal}).catch(() => {});
+    assert.ok(urls.length > 0, 'the geocoding passes still run');
+    assert.ok(!urls.some(url => url.includes('secure.geonames.org')), urls.join('\n'));
+  } finally {
+    host.close();
+    globalThis.fetch = realFetch;
+    if (previous !== undefined) process.env.PA_GEONAMES_USERNAME = previous;
+  }
+});
