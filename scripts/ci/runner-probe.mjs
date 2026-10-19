@@ -7,6 +7,7 @@ export function probeMatrix(target) {
   if(target==='windows-github') return {include:[{name:'Probe Windows GitHub',runner:['windows-latest']}]};
   if(target==='windows-pool') return {include:[{name:'Probe Windows pool',runner:pool}]};
   if(target==='windows-pool-pair') return {include:[1,2].map(slot=>({name:`Probe Windows pool ${slot}`,runner:pool}))};
+  if(target==='windows-pool-three') return {include:[1,2,3].map(slot=>({name:`Probe Windows pool ${slot}`,runner:pool}))};
   if(target==='ecs-17f8') return {include:[{name:'Probe ECS-17F8',runner:[...pool,'ecs-17f8']}]};
   throw Error('Unknown probe target; never infer readiness from a runner name');
 }
