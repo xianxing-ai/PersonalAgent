@@ -17,11 +17,12 @@ const policy=(patch={})=>({mode:'normal',maxInterruptions:null,windowMinutes:17,
   preferredChannel:'banner',allowUrgentBreakthrough:false,digestMode:'on_return',quietHours:null,...patch});
 const encryption={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()};
 async function idle(app){while(app.activeTaskCount)await new Promise(resolve=>setTimeout(resolve,5));}
-async function fixture(t,{autoShow=false,todo=false,legacyPolicy}={}) {
+async function fixture(t,{autoShow=false,todo=false,legacyPolicy,legacyRecords}={}) {
   const cache=new URL('../../../.cache/desktop-notification-application-tests/',import.meta.url);mkdirSync(cache,{recursive:true});
   const userData=mkdtempSync(new URL('run-',cache)),file=path.join(userData,'runtime.sqlite');
   let application,host,channel,client,todoHost,time=Date.now();
   const originalPolicy=typeof legacyPolicy==='function'?legacyPolicy(time):legacyPolicy;
+  if(legacyRecords)createEncryptedModuleStorage({userData,safeStorage:encryption,filename:'productivity-state.json'}).set('desktop-reminder-records',legacyRecords);
   if(originalPolicy!==undefined)createEncryptedModuleStorage({userData,safeStorage:encryption,filename:'productivity-state.json'})
     .set('desktop-notification-policy',originalPolicy);
   const native=[], callbacks=new Map();
@@ -48,6 +49,18 @@ async function fixture(t,{autoShow=false,todo=false,legacyPolicy}={}) {
       return host.drain().batches.find(b=>b.itemRefs.includes(id));},
   };
 }
+
+test('legacy visible reminders dismiss and stay dismissed after restart without a new feed record or toast',async t=>{
+  const f=await fixture(t,{todo:true,legacyRecords:{old:{notificationId:'old',taskId:'historical',summary:'old inbox',occurredAt:new Date().toISOString(),state:'visible',presentationAttempted:true}}});
+  assert.equal(f.todo.snapshot().notifications.length,1);assert.equal(f.host.snapshot().feed.items.length,0);
+  f.todo.dismiss({id:'old'});assert.equal(f.todo.snapshot().notifications.length,0);
+  await f.restart();await f.todo.tick(true);assert.equal(f.todo.snapshot().notifications.length,0);assert.equal(f.host.snapshot().feed.items.length,0);assert.equal(f.native.length,0);
+});
+
+test('new reminder read acknowledgments still require their original feed record',async t=>{
+  const f=await fixture(t,{todo:true,legacyRecords:{newer:{notificationId:'newer',batchId:'missing-feed',summary:'new inbox',occurredAt:new Date().toISOString(),state:'visible',presentationAttempted:true}}});
+  assert.throws(()=>f.todo.dismiss({id:'newer'}),/not found/);assert.equal(f.todo.snapshot().notifications.length,1);
+});
 
 test('explicit UI settings traverse original Runtime approval and ToolGateway once, then latest policy governs delivery',async t=>{
   const f=await fixture(t);
