@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-18 Desktop 前端交互与体验审查（review）
+
+前序 #409 的[审查历史](modules/DESKTOP_FRONTEND_UX_AUDIT_20261018.md)保留。本轮按用户“只改前端”的要求，从最新 main 独立整理 `codex/frontend-final-main-20261018`，不纳入 #404/#398 的核心改动；窗口/悬浮球、刷新/焦点、预算、侧栏、常用入口与搜索、任务进展和真实空态一并交付。[当前前端交付记录](modules/DESKTOP_FRONTEND_MAIN_DELIVERY_20261018.md)记录本工作树实际验证。Runtime、AgentArts、公共契约、依赖及迁移未修改；拟审查 goo122、拟合并 Potatos498，当前有效批准/CI/集成以 PR 为准，保持 review。
+
 ## 2026-10-17 编码最小修复算法与 F15 多轮链（in_progress）
 
 Owner 本轮解除这部分暂停，要求算法与工作流进入自有镜像。[ADR-0033](adr/0033-coding-minimal-repair-workflow.md)记录复用 jsdiff/TypeScript、原 F15 多轮、任务隔离目录、包级验证失效、主/影子与 CAS 交付。根协调承担依赖/文档/集成，云图、编码工具、Runtime/Desktop 按现有模块归属交付实际接线。新工作包不混入固定 head 的 PR #376 审查；中间镜像暂不发，完整增量测试后统一构建。代码、真实模型、镜像与平台逐面验收，尚未标 done。
@@ -113,7 +117,7 @@ goo122 从 #350 `a378c3df` 开始 [F27 上下文工作包](modules/MOD-09-CONTEX
 
 用户本轮明确的执行顺序：**代码实现 → 绝对必要的关键检验 → 修复 → 下一项任务**。CI 在后台运行，不以等待 CI 阻塞下一项开发；不重复全仓测试、安装或构建。授权、写入、恢复和协议边界的受影响行为保留最小必要验证，尚未验证与尚未合并分别标注；这不授权绕过合并保护。
 
-#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：三名协作者中任意一位非作者对当前提交有效批准，必要检查通过；禁止强制合并、管理员绕过和直接推 main。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
+#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前提交有效批准；Owner 对具体 PR 的审核例外须明确记录，不冒充独立批准。合并仍需最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理；不得强推、直接推 main 或绕过技术检查。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
 
 本轮主要工作树为 `.worktrees/zemeng-competition-completion`。两份 Astra Ultra 独立工作包分别在 `.worktrees/zemeng-voice-completion`（MOD-14/15）和 `.worktrees/zemeng-windows-tools-completion`（MOD-16/17/18）；不共享编辑目录或改写他人修改。
 

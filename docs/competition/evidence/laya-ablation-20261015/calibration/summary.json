@@ -1,0 +1,544 @@
+{
+  "schemaVersion": 1,
+  "scope": "Synthetic file-read choice only, six filename pairs; no architecture or broad capability acceptance",
+  "study": "calibration_holdout",
+  "architectureStatus": "undecided",
+  "deployed": false,
+  "trainingPerformed": false,
+  "realForwards": 84,
+  "runtime": {
+    "kind": "ready",
+    "processId": 37244,
+    "port": 53790,
+    "device": "cuda",
+    "torchThreads": 1,
+    "interopThreads": 1,
+    "torch": "2.14.0+cu130",
+    "laya": "0.3.20",
+    "transformers": "5.17.0",
+    "stockAutocast": true,
+    "stockDtype": "torch.bfloat16",
+    "defaultMaxLen": 1024,
+    "defaultHeadMaxLen": 256
+  },
+  "countScope": "Real observed SDK predict_batch calls, not independent user tasks or GPU kernel count",
+  "ofatValidation": {
+    "holdoutPairs": 20,
+    "observations": 80,
+    "seed0References": 4,
+    "onlyModelInputChange": "filenames; question, labels, descriptions and state schema identical to original canonical baseline",
+    "postprocessingFactor": "argmax versus frozen seed0-only threshold, applied to the very same returned scores"
+  },
+  "transport": {
+    "groups": [],
+    "routes": {
+      "selector_http": {
+        "correct": 0,
+        "total": 0
+      },
+      "raw_http": {
+        "correct": 0,
+        "total": 0
+      },
+      "direct_sdk": {
+        "correct": 0,
+        "total": 0
+      }
+    }
+  },
+  "labels": {},
+  "factors": {},
+  "originalFactors": {},
+  "order": {},
+  "precision": {},
+  "defaultWindow": [],
+  "canonicalScoreRanking": null,
+  "calibration": {
+    "sourceReportSha256": "0e48ca1e623f9aaf6764d6efbd1aff2a20ce860fb6ec54d451264bd1e8ff58eb",
+    "trainingCaseIds": [
+      "canonical-0-false-false",
+      "canonical-0-false-true",
+      "canonical-0-true-false",
+      "canonical-0-true-true"
+    ],
+    "minPositive": 0.926,
+    "maxNegative": 0.9053,
+    "threshold": 0.9156500000000001,
+    "formula": "Midpoint between smallest positive and largest negative score, seed 0 only; never fit on new holdout labels",
+    "qualification": "Exploratory calibration hypothesis from the prior experiment; new filenames below are frozen before inference. No production change.",
+    "newFilenamePairs": 20,
+    "argmax": {
+      "correct": 40,
+      "total": 80,
+      "positives": {
+        "correct": 40,
+        "total": 40
+      },
+      "negatives": {
+        "correct": 0,
+        "total": 40
+      }
+    },
+    "fixedBoundary": {
+      "correct": 40,
+      "total": 80,
+      "positives": {
+        "correct": 0,
+        "total": 40
+      },
+      "negatives": {
+        "correct": 40,
+        "total": 40
+      }
+    },
+    "ranking": {
+      "auc": 0.6765625,
+      "pairedCorrectDirection": 19,
+      "pairCount": 40,
+      "positiveRange": [
+        0.7879,
+        0.9002
+      ],
+      "negativeRange": [
+        0.7009,
+        0.9033
+      ],
+      "pairs": [
+        {
+          "seed": 0,
+          "reversed": false,
+          "positive": 0.7879,
+          "negative": 0.7957,
+          "delta": -0.007799999999999918
+        },
+        {
+          "seed": 0,
+          "reversed": true,
+          "positive": 0.8141,
+          "negative": 0.8606,
+          "delta": -0.046499999999999986
+        },
+        {
+          "seed": 1,
+          "reversed": false,
+          "positive": 0.7969,
+          "negative": 0.8245,
+          "delta": -0.027599999999999958
+        },
+        {
+          "seed": 1,
+          "reversed": true,
+          "positive": 0.8284,
+          "negative": 0.8697,
+          "delta": -0.0413
+        },
+        {
+          "seed": 2,
+          "reversed": false,
+          "positive": 0.7969,
+          "negative": 0.7635,
+          "delta": 0.033400000000000096
+        },
+        {
+          "seed": 2,
+          "reversed": true,
+          "positive": 0.8397,
+          "negative": 0.8629,
+          "delta": -0.0232
+        },
+        {
+          "seed": 3,
+          "reversed": false,
+          "positive": 0.8019,
+          "negative": 0.8129,
+          "delta": -0.01100000000000001
+        },
+        {
+          "seed": 3,
+          "reversed": true,
+          "positive": 0.8382,
+          "negative": 0.8864,
+          "delta": -0.04820000000000002
+        },
+        {
+          "seed": 4,
+          "reversed": false,
+          "positive": 0.8056,
+          "negative": 0.8322,
+          "delta": -0.026600000000000068
+        },
+        {
+          "seed": 4,
+          "reversed": true,
+          "positive": 0.8449,
+          "negative": 0.8783,
+          "delta": -0.033399999999999985
+        },
+        {
+          "seed": 5,
+          "reversed": false,
+          "positive": 0.8069,
+          "negative": 0.8449,
+          "delta": -0.038000000000000034
+        },
+        {
+          "seed": 5,
+          "reversed": true,
+          "positive": 0.8408,
+          "negative": 0.8918,
+          "delta": -0.051000000000000045
+        },
+        {
+          "seed": 6,
+          "reversed": false,
+          "positive": 0.8182,
+          "negative": 0.784,
+          "delta": 0.03420000000000001
+        },
+        {
+          "seed": 6,
+          "reversed": true,
+          "positive": 0.849,
+          "negative": 0.8544,
+          "delta": -0.005400000000000071
+        },
+        {
+          "seed": 7,
+          "reversed": false,
+          "positive": 0.8193,
+          "negative": 0.8129,
+          "delta": 0.006400000000000072
+        },
+        {
+          "seed": 7,
+          "reversed": true,
+          "positive": 0.8524,
+          "negative": 0.8563,
+          "delta": -0.0038999999999999035
+        },
+        {
+          "seed": 8,
+          "reversed": false,
+          "positive": 0.8152,
+          "negative": 0.8429,
+          "delta": -0.027699999999999947
+        },
+        {
+          "seed": 8,
+          "reversed": true,
+          "positive": 0.8475,
+          "negative": 0.8836,
+          "delta": -0.03610000000000002
+        },
+        {
+          "seed": 9,
+          "reversed": false,
+          "positive": 0.8129,
+          "negative": 0.8187,
+          "delta": -0.005800000000000027
+        },
+        {
+          "seed": 9,
+          "reversed": true,
+          "positive": 0.8429,
+          "negative": 0.8625,
+          "delta": -0.019600000000000062
+        },
+        {
+          "seed": 10,
+          "reversed": false,
+          "positive": 0.8349,
+          "negative": 0.7009,
+          "delta": 0.134
+        },
+        {
+          "seed": 10,
+          "reversed": true,
+          "positive": 0.8785,
+          "negative": 0.8539,
+          "delta": 0.024599999999999955
+        },
+        {
+          "seed": 11,
+          "reversed": false,
+          "positive": 0.8439,
+          "negative": 0.752,
+          "delta": 0.09189999999999998
+        },
+        {
+          "seed": 11,
+          "reversed": true,
+          "positive": 0.8902,
+          "negative": 0.9033,
+          "delta": -0.0131
+        },
+        {
+          "seed": 12,
+          "reversed": false,
+          "positive": 0.8485,
+          "negative": 0.7341,
+          "delta": 0.11440000000000006
+        },
+        {
+          "seed": 12,
+          "reversed": true,
+          "positive": 0.8878,
+          "negative": 0.8903,
+          "delta": -0.0024999999999999467
+        },
+        {
+          "seed": 13,
+          "reversed": false,
+          "positive": 0.848,
+          "negative": 0.7447,
+          "delta": 0.10329999999999995
+        },
+        {
+          "seed": 13,
+          "reversed": true,
+          "positive": 0.8941,
+          "negative": 0.8998,
+          "delta": -0.005700000000000038
+        },
+        {
+          "seed": 14,
+          "reversed": false,
+          "positive": 0.8578,
+          "negative": 0.7491,
+          "delta": 0.10870000000000002
+        },
+        {
+          "seed": 14,
+          "reversed": true,
+          "positive": 0.8985,
+          "negative": 0.9005,
+          "delta": -0.0020000000000000018
+        },
+        {
+          "seed": 15,
+          "reversed": false,
+          "positive": 0.8937,
+          "negative": 0.7813,
+          "delta": 0.11240000000000006
+        },
+        {
+          "seed": 15,
+          "reversed": true,
+          "positive": 0.8719,
+          "negative": 0.752,
+          "delta": 0.1199
+        },
+        {
+          "seed": 16,
+          "reversed": false,
+          "positive": 0.8984,
+          "negative": 0.7892,
+          "delta": 0.10919999999999996
+        },
+        {
+          "seed": 16,
+          "reversed": true,
+          "positive": 0.8955,
+          "negative": 0.7759,
+          "delta": 0.11959999999999993
+        },
+        {
+          "seed": 17,
+          "reversed": false,
+          "positive": 0.8988,
+          "negative": 0.7892,
+          "delta": 0.10960000000000003
+        },
+        {
+          "seed": 17,
+          "reversed": true,
+          "positive": 0.8941,
+          "negative": 0.7866,
+          "delta": 0.10750000000000004
+        },
+        {
+          "seed": 18,
+          "reversed": false,
+          "positive": 0.8988,
+          "negative": 0.7786,
+          "delta": 0.12020000000000008
+        },
+        {
+          "seed": 18,
+          "reversed": true,
+          "positive": 0.8895,
+          "negative": 0.7879,
+          "delta": 0.10159999999999991
+        },
+        {
+          "seed": 19,
+          "reversed": false,
+          "positive": 0.8948,
+          "negative": 0.7905,
+          "delta": 0.10430000000000006
+        },
+        {
+          "seed": 19,
+          "reversed": true,
+          "positive": 0.9002,
+          "negative": 0.7918,
+          "delta": 0.10840000000000005
+        }
+      ]
+    },
+    "referenceScores": [
+      {
+        "id": "calibration-reference-canonical-0-false-false",
+        "answer": {
+          "type": "choice",
+          "choice": "A",
+          "probabilities": {
+            "A": 0.926,
+            "B": 0.074
+          },
+          "confidence": 0.6195,
+          "answer_confidence": 0.926,
+          "action": {
+            "act_probability": 1
+          }
+        },
+        "auditIndex": 81,
+        "encodedSha256": "c8580fd46e5b6c89d1baabbe97ea31a1cd5e0d10e605f244273bd2a8e4ec2216",
+        "sdkArgumentsSha256": "b09909c644389ae45c2993af9e0cdc6bcdca86a8603a1303f1f2e63bc8e47141",
+        "encodedLengths": [
+          [
+            100
+          ]
+        ],
+        "precision": {
+          "autocastEnabled": true,
+          "dtype": "torch.bfloat16"
+        },
+        "group": "calibration_reference",
+        "factor": "baseline",
+        "parentId": null,
+        "expected": "read",
+        "action": "read",
+        "correct": true,
+        "readProbability": 0.926,
+        "seed": 0,
+        "negative": false,
+        "reversed": false
+      },
+      {
+        "id": "calibration-reference-canonical-0-false-true",
+        "answer": {
+          "type": "choice",
+          "choice": "A",
+          "probabilities": {
+            "B": 0.0594,
+            "A": 0.9406
+          },
+          "confidence": 0.6748,
+          "answer_confidence": 0.9406,
+          "action": {
+            "act_probability": 1
+          }
+        },
+        "auditIndex": 82,
+        "encodedSha256": "9457c56b2ad424782a0e5bccffe9ca338e3cd8b0ff7223085b8df7e8a9c1a2a1",
+        "sdkArgumentsSha256": "1f8ac18d499ca1f2c82317e56b51abb3053c12935e0ebd818ce3496d4167182f",
+        "encodedLengths": [
+          [
+            100
+          ]
+        ],
+        "precision": {
+          "autocastEnabled": true,
+          "dtype": "torch.bfloat16"
+        },
+        "group": "calibration_reference",
+        "factor": "baseline",
+        "parentId": null,
+        "expected": "read",
+        "action": "read",
+        "correct": true,
+        "readProbability": 0.9406,
+        "seed": 0,
+        "negative": false,
+        "reversed": true
+      },
+      {
+        "id": "calibration-reference-canonical-0-true-false",
+        "answer": {
+          "type": "choice",
+          "choice": "A",
+          "probabilities": {
+            "A": 0.8872,
+            "B": 0.1128
+          },
+          "confidence": 0.4917,
+          "answer_confidence": 0.8872,
+          "action": {
+            "act_probability": 1
+          }
+        },
+        "auditIndex": 83,
+        "encodedSha256": "53d955f1d4165f1275f9b96ec4cd6b04d6f5e451c3461381353cde12509107c6",
+        "sdkArgumentsSha256": "aad763115cf0f13d3dd762e78f2050a24951bd67c48d21ae74e1a50f6885b9f4",
+        "encodedLengths": [
+          [
+            103
+          ]
+        ],
+        "precision": {
+          "autocastEnabled": true,
+          "dtype": "torch.bfloat16"
+        },
+        "group": "calibration_reference",
+        "factor": "baseline",
+        "parentId": null,
+        "expected": "review",
+        "action": "read",
+        "correct": false,
+        "readProbability": 0.8872,
+        "seed": 0,
+        "negative": true,
+        "reversed": false
+      },
+      {
+        "id": "calibration-reference-canonical-0-true-true",
+        "answer": {
+          "type": "choice",
+          "choice": "A",
+          "probabilities": {
+            "B": 0.0947,
+            "A": 0.9053
+          },
+          "confidence": 0.5481,
+          "answer_confidence": 0.9053,
+          "action": {
+            "act_probability": 1
+          }
+        },
+        "auditIndex": 84,
+        "encodedSha256": "de115cc464661f1b5facc274a86c4ca69113445ac94622e310aa019f2bfbbefc",
+        "sdkArgumentsSha256": "327f7c85629bec4edb7cd7e8123f26e4037c1daa2c53781c21388718b586b5a3",
+        "encodedLengths": [
+          [
+            103
+          ]
+        ],
+        "precision": {
+          "autocastEnabled": true,
+          "dtype": "torch.bfloat16"
+        },
+        "group": "calibration_reference",
+        "factor": "baseline",
+        "parentId": null,
+        "expected": "review",
+        "action": "read",
+        "correct": false,
+        "readProbability": 0.9053,
+        "seed": 0,
+        "negative": true,
+        "reversed": true
+      }
+    ]
+  }
+}

@@ -6,7 +6,7 @@ import type {AgentArtsRuntimeConfig,AgentArtsAuthorizationProvider,AgentArtsFetc
 export interface RuntimeProactiveImageAdapterOptions {
   /** Original trusted AgentArts transport configuration; never read from a model/event/Renderer request. */
   config?:AgentArtsRuntimeConfig & {deploymentVersion?:string};
-  /** Trusted composition rejects configuration changes before any credentials/send. */
+  /** Recheck the trusted deployment binding before credentials and before POST. */
   assertDeploymentBinding?:()=>void;
   /** Explicit startup endpoint, mutually exclusive with config. HTTP is restricted to loopback fixtures. */
   endpoint?:string;
@@ -37,6 +37,8 @@ function endpointOf(options:RuntimeProactiveImageAdapterOptions):string {
       ||!/^[A-Za-z0-9_-]{1,64}$/u.test(config.runtimeName))fail('INVALID_ARGUMENT','Invalid trusted AgentArts gateway/runtime');
     value=gateway.origin+'/runtimes/'+encodeURIComponent(config.runtimeName)+'/invocations';
     let version=config.deploymentVersion;
+    if(version!==undefined&&(typeof version!=='string'||!/^[A-Za-z0-9_.-]{1,128}$/u.test(version)))
+      fail('INVALID_ARGUMENT','Invalid trusted AgentArts deployment version');
     if(config.websocketUrl!==undefined){
       let websocket:URL;try{websocket=new URL(config.websocketUrl);}catch{return fail('INVALID_ARGUMENT','Invalid bound proactive WSS endpoint');}
       if(websocket.protocol!=='wss:'||websocket.username||websocket.password||websocket.hash
@@ -48,7 +50,6 @@ function endpointOf(options:RuntimeProactiveImageAdapterOptions):string {
       version??=selected;
     }
     if(version!==undefined){
-      if(typeof version!=='string'||!/^[A-Za-z0-9_.-]{1,128}$/u.test(version))fail('INVALID_ARGUMENT','Invalid proactive deployment version');
       value+='?endpoint='+version;
     }
   }
@@ -57,7 +58,8 @@ function endpointOf(options:RuntimeProactiveImageAdapterOptions):string {
   if(value!==value?.trim()||/[\s\\]/u.test(value!)||url.username||url.password||url.hash
     ||url.protocol!=='https:'&&!(url.protocol==='http:'&&['127.0.0.1','[::1]','localhost'].includes(url.hostname))
     ||!/^\/(?:runtimes\/[A-Za-z0-9_-]{1,64}\/)?invocations$/u.test(url.pathname)
-    ||url.search&&([...url.searchParams].length!==1||!url.searchParams.has('endpoint')||!/^[A-Za-z0-9_.-]{1,128}$/u.test(url.searchParams.get('endpoint')!)))
+    ||url.search&&([...url.searchParams].length!==1||!url.searchParams.has('endpoint')
+      ||!(options.config?/^[A-Za-z0-9_.-]{1,128}$/u:/^[A-Za-z0-9_-]{1,64}$/u).test(url.searchParams.get('endpoint')!)))
     fail('INVALID_ARGUMENT','Invalid trusted proactive endpoint');
   return url.href;
 }
@@ -109,11 +111,13 @@ function resultFromEvents(events:unknown[]):unknown {
 export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImageAdapterOptions) {
   const endpoint=endpointOf(options),proofs=createProactiveHostProofs(options.receiptSecret);
   if(typeof options.authorizationProvider?.read!=='function'||options.hostAuthorizationProvider&&typeof options.hostAuthorizationProvider.read!=='function'
-    ||options.fetchImpl!==undefined&&typeof options.fetchImpl!=='function')fail('INVALID_ARGUMENT','Trusted proactive transport providers required');
+    ||options.fetchImpl!==undefined&&typeof options.fetchImpl!=='function'
+    ||options.assertDeploymentBinding!==undefined&&typeof options.assertDeploymentBinding!=='function')fail('INVALID_ARGUMENT','Trusted proactive transport providers required');
   const invokeMode=options.invokeMode??options.config?.invokeMode??'published',workflowGoalInput=options.workflowGoalInput??options.config?.workflowGoalInput;
   if(!['debug','published'].includes(invokeMode)||workflowGoalInput!==undefined&&!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u.test(workflowGoalInput))
     fail('INVALID_ARGUMENT','Invalid trusted proactive envelope configuration');
   const fetchImpl:AgentArtsFetch=options.fetchImpl??((url,init)=>globalThis.fetch(url,init));
+  const assertBinding=()=>{try{options.assertDeploymentBinding?.();}catch{return fail('REVISION_CONFLICT','Proactive image deployment binding changed');}};
   const validContext=(input:RuntimeProactiveImageContext)=>{
     if(!input||!id(input.taskId)||!id(input.sessionId)||!id(input.requestId)||!Number.isSafeInteger(input.controlRevision)||input.controlRevision<0
       ||!(input.signal instanceof AbortSignal)||!Number.isFinite(Date.parse(input.deadline))||!Number.isFinite(Date.parse(input.taskDeadline)))
@@ -186,6 +190,7 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
     };
     let response:AgentArtsResponse|undefined;
     try {
+      assertBinding();
       const auth=await authorization(options.authorizationProvider),hostAuth=options.hostAuthorizationProvider?await authorization(options.hostAuthorizationProvider):undefined;
       if(hostAuth!==undefined&&!/^Bearer [\x21-\x7e]+$/u.test(hostAuth))fail('UNAUTHORIZED','Proactive image host credential unavailable');
       const request=input as ProactiveAdvanceRequest;
@@ -195,10 +200,9 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
           hostAvailability:request.hostAvailability,availableCapabilities:request.availableCapabilities},input)};
       proactiveWorkflowDigest(value);const query=JSON.stringify(value),payload=workflowGoalInput===undefined?{query}:{inputs:{[workflowGoalInput]:query}};
       const body=JSON.stringify(payload);if(Buffer.byteLength(body)>MAX_BYTES)fail('INVALID_ARGUMENT','Proactive image request exceeds existing transport limit');
-      assertBinding();
-      response=await bounded(()=>fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
+      response=await bounded(()=>{assertBinding();return fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
         'x-hw-agentarts-session-id':input.sessionId,'X-Request-Id':input.requestId,'X-Invoke-Mode':invokeMode,'X-PA-Deadline':new Date(limit).toISOString(),
-        ...(hostAuth===undefined?{}:{'X-PA-Agent-Token':hostAuth})},body,signal,redirect:'error'}));
+        ...(hostAuth===undefined?{}:{'X-PA-Agent-Token':hostAuth})},body,signal,redirect:'error'});});
       if(response.status!==200)fail(response.status===401||response.status===403?'UNAUTHORIZED':'EXTERNAL_FAILURE','Proactive image invocation rejected; no automatic retry');
       const chunks:Uint8Array[]=[];let bytes=0;
       const add=(chunk:Uint8Array)=>{bytes+=chunk.byteLength;if(bytes>MAX_BYTES)fail('PROTOCOL_MISMATCH','Proactive image response exceeds existing transport limit');chunks.push(chunk);};

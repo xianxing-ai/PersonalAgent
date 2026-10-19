@@ -54,7 +54,7 @@ test('legacy visible reminders dismiss and stay dismissed after restart without 
   const f=await fixture(t,{todo:true,legacyRecords:{old:{notificationId:'old',taskId:'historical',summary:'old inbox',occurredAt:new Date().toISOString(),state:'visible',presentationAttempted:true}}});
   assert.equal(f.todo.snapshot().notifications.length,1);assert.equal(f.host.snapshot().feed.items.length,0);
   f.todo.dismiss({id:'old'});assert.equal(f.todo.snapshot().notifications.length,0);
-  await f.restart();await f.todo.tick(true);assert.equal(f.todo.snapshot().notifications.length,0);assert.equal(f.native.length,0);
+  await f.restart();await f.todo.tick(true);assert.equal(f.todo.snapshot().notifications.length,0);assert.equal(f.host.snapshot().feed.items.length,0);assert.equal(f.native.length,0);
 });
 
 test('new reminder read acknowledgments still require their original feed record',async t=>{

@@ -1,0 +1,86 @@
+name: Runner probe
+on:
+  # Enables reviewable pre-merge validation; only an explicitly pushed probe ref runs.
+  push:
+    branches: ['codex/ci-probe/**']
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Confirm registration, online state and host-owner readiness before selecting ECS
+        required: true
+        type: choice
+        options: [windows-github, windows-pool, windows-pool-pair, windows-pool-three, ecs-17f8]
+permissions:
+  contents: read
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      source_sha256: ${{ steps.source.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: select
+        env:
+          PROBE_TARGET: ${{ inputs.target }}
+        run: node scripts/ci/runner-probe.mjs
+      - id: source
+        if: contains(steps.select.outputs.matrix, 'self-hosted')
+        run: node scripts/ci/source-transfer.mjs pack
+      - uses: actions/upload-artifact@v4
+        if: contains(steps.select.outputs.matrix, 'self-hosted')
+        with:
+          name: probe-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.source.outputs.directory }}
+          retention-days: 1
+          if-no-files-found: error
+  probe:
+    needs: select
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        if: matrix.runner[0] != 'self-hosted'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: matrix.runner[0] == 'self-hosted'
+        with:
+          name: probe-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-transfer
+      - name: Restore verified same-run source locally
+        id: restore
+        if: matrix.runner[0] == 'self-hosted'
+        shell: pwsh
+        env:
+          CI_SOURCE_SHA256: ${{ needs.select.outputs.source_sha256 }}
+        run: |
+          node "$env:RUNNER_TEMP/ci-transfer/source-transfer.mjs" restore
+          if ($LASTEXITCODE -ne 0) { throw 'Source restore failed' }
+      - uses: actions/setup-node@v4
+        if: matrix.runner[0] != 'self-hosted'
+        with:
+          node-version-file: .node-version
+      - name: Verify real automatic resource admission
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.runner[0] == 'self-hosted'
+        shell: pwsh
+        run: ./scripts/ci/windows-admission.ps1
+      - name: Run a short routing and toolchain probe
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        shell: pwsh
+        run: |
+          if ((& git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Probe checkout mismatch' }
+          node -e "const fs=require('fs');if(process.version!=='v'+fs.readFileSync('.node-version','utf8').trim())process.exit(1)"
+          if ($LASTEXITCODE -ne 0) { throw 'Node version mismatch' }
+          $sdks = & dotnet --list-sdks
+          if ($LASTEXITCODE -ne 0 -or -not ($sdks -match '^8\.0\.\d+\s')) { throw '.NET 8 SDK missing' }
+          node --test scripts/ci/pr-route.test.mjs scripts/ci/check-result.test.mjs scripts/ci/runner-probe.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Routing regressions failed' }
+          "Short probe only; runner_name=$env:RUNNER_NAME; SHA=$env:GITHUB_SHA. This is not a full CI pass." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

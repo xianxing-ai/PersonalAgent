@@ -39,6 +39,7 @@
     "@personal-agent/coding-tools": "0.1.0-alpha.1",
     "@personal-agent/learning": "0.1.0-alpha.1",
     "@personal-agent/goals": "0.1.0-alpha.1",
+    "@personal-agent/github": "0.1.0-alpha.1",
     "@personal-agent/feeds": "0.1.0-alpha.1",
     "@personal-agent/productivity": "0.1.0-alpha.1",
     "@personal-agent/notifications": "0.1.0-alpha.1",
@@ -47,7 +48,8 @@
     "@personal-agent/research": "0.1.0-alpha.1",
     "@personal-agent/runtime": "0.1.0-alpha.1",
     "@personal-agent/tool-gateway": "0.1.0-alpha.1",
-    "@personal-agent/voice": "0.1.0-alpha.1"
+    "@personal-agent/voice": "0.1.0-alpha.1",
+    "@personal-agent/windows-client": "0.1.0-alpha.1"
   },
   "devDependencies": {
     "@personal-agent/testkit": "0.1.0-alpha.1",

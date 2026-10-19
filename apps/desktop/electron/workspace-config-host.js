@@ -99,7 +99,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const workspaceExportProposals=new Map();
   const confirmedWorkspaceReads=new Map();
   let workspaceReferenceExport;
-  let boundRepairPowerShell,repairHostPromise;
+  let boundRepairPowerShell,repairHostPromise,developerCommand;
   try {
     if (existsSync(file)) {
       if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -219,6 +219,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
             }
           }
           implementations.push(...commandImplementations);
+          developerCommand={descriptor:recipe.tool.descriptor,recipeIds:recipe.recipes.map(item=>item.id)};
         } catch {commandFailure='Node 检查装配失败；读取和其他已配置能力仍可用';}
       } else if (savedNode && (savedCheckFile || projectRequested)) commandFailure='命令实现尚未接入；读取和其他已配置能力仍可用';
       if(savedNpmCli && !projectRequested && !projectFailure) projectFailure='项目构建与测试尚未准备好';
@@ -562,7 +563,30 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       return current.reconcile(input);
     },
   };
-  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,
+  const readDeveloperConfiguration=()=>{
+    if(!active||!boundRoot||!selectionsCurrent()||!identityCurrent())return undefined;
+    const rootPath=boundRoot;
+    const bindingId=createHash('sha256').update(JSON.stringify([rootPath,String(rootIdentity.dev),String(rootIdentity.ino),
+      String(rootIdentity.birthtimeNs),boundNode??null,boundCheckFile??null,boundNpmCli??null,boundProjectHelper??null])).digest('hex');
+    const available=scope=>{
+      if(typeof application?.readToolConversation!=='function')return false;
+      const conversationId=application.readToolConversation(scope.taskId);
+      return typeof conversationId==='string'&&conversationId.length>0&&!scope.signal?.aborted&&Date.now()<Date.parse(scope.deadline)&&Boolean(consent)
+        &&active&&selectionsCurrent()&&identityCurrent()&&bound(scope.taskId,true);
+    };
+    const aliases={'node-check':'workspace.node_check','npm-build':'workspace.npm_build','npm-test':'workspace.npm_test'};
+    const command=developerCommand?{rootPath,recipeIds:[...developerCommand.recipeIds],publicEnumPaths:['/recipeId'],
+      available:scope=>available(scope)&&implementations.some(tool=>Object.values(aliases).includes(tool.descriptor.name)&&enabled(tool)),
+      tool:{descriptor:structuredClone(developerCommand.descriptor),execute:(input,context)=>{
+        validateToolValue(developerCommand.descriptor.inputSchema,input);
+        const alias=implementations.find(tool=>tool.descriptor.name===aliases[input.recipeId]);
+        if(!available(context)||!alias||!enabled(alias))throw new ProtocolError('UNAUTHORIZED','原工作区命令许可或配置已变化');
+        return alias.execute({},context);
+      }}}:undefined;
+    return {bindingId,rootPath,metadataExportAllowed:false,available,
+      assertCurrent:scope=>{if(!available(scope))throw new ProtocolError('UNAUTHORIZED','原开发工作区许可或配置已变化');},...(command?{command}:{})};
+  };
+  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,
     readWorkspaceExportConfigurationRef,readWorkspaceExportPreflightCandidate,
     readWorkspaceExportCandidate,readConfirmedWorkspaceExport,
     get patchReconciliation() { return applyHost ? patchReconciliation : undefined; },
@@ -638,6 +662,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     },
     revoke,
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+      publicEnumPaths:tool.descriptor.name==='coding.repair.start'?['/mode']:tool.descriptor.name==='coding.repair.publish'?['/version']:[],
       available:({taskId,signal})=>!signal.aborted && consent?.cloudExportAllowed===true && enabled(tool) && bound(taskId,true)})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
       exportPolicyVersion:isProject(tool)?'authorized-project-script-redacted-v1'

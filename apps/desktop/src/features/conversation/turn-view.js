@@ -25,12 +25,15 @@ export function updateConversationTurns(container, html, {tasks,pendingCancelIds
       &&action.childNodes.length===freshAction.childNodes.length
       &&children.length===freshChildren.length&&children.every((child,childIndex)=>child.contains(button)
         ?childIndex===freshChildren.indexOf(freshAction):!freshChildren[childIndex].contains(fresh)));
-    if(!canKeep&&card.outerHTML!==replacement.outerHTML) {safe=false;break;}
     plans.push({card,replacement,children,freshChildren,button,action,freshAction,canKeep});
   }
   if(!safe) {container.innerHTML=html;return;}
   for(const {card,replacement,children,freshChildren,button,action,freshAction,canKeep} of plans) {
-    if(!canKeep) {card.replaceWith(replacement);continue;}
+    if(card.outerHTML===replacement.outerHTML)continue;
+    if(!canKeep) {
+      if(card.outerHTML!==replacement.outerHTML)card.replaceWith(replacement);
+      continue; // Unchanged turns retain selection, disclosure and keyboard focus.
+    }
     // Refresh every other action as before; only task.cancel retains its native gesture state.
     const actionChildren=[...action.childNodes],freshActionChildren=[...freshAction.childNodes];
     for(let index=0;index<actionChildren.length;index++) {

@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
-import type {CoordinationPort} from '@personal-agent/coordination';
+import type {CoordinationPort,CoordinationRequest,CoordinationResult} from '@personal-agent/coordination';
 import type {LayaActionChoiceService} from '@personal-agent/cognition';
 import {actionArgumentsDigest} from '@personal-agent/cognition';
 import {proactiveWorkflowDigest} from '@personal-agent/agentarts';
@@ -10,6 +10,8 @@ export interface RuntimeProactiveDecisionToolOptions {
   localChooser?:Pick<LayaActionChoiceService,'choose'>;
   /** Original Competition coordinator already bound by trusted composition to its teacher deployment. */
   teacher?:CoordinationPort;
+  /** Trusted Runtime composition carries the original Gateway run; never a model request field. */
+  teacherExchange?:(request:CoordinationRequest,context:ToolContext)=>Promise<CoordinationResult>;
   readContext:(taskId:string,contextRef:string,lifetime:{deadline:string;signal:AbortSignal})=>unknown|Promise<unknown>;
   getRevision:(taskId:string)=>number;
 }
@@ -63,12 +65,13 @@ export function createRuntimeProactiveDecisionTools(options:RuntimeProactiveDeci
         }
         return {selections};
       }
-      const result=await options.teacher!.execute({taskId:context.taskId,revision:options.getRevision(context.taskId),deadline:context.deadline,
+      const request:CoordinationRequest={taskId:context.taskId,revision:options.getRevision(context.taskId),deadline:context.deadline,
         signal:context.signal,textOnly:true,goal:JSON.stringify({goal:'Compare every independent proactive item using only its original contract candidates and original context. '
           +'Return a text answer containing only JSON {"selections":[{"itemId":"original item","candidateId":"original candidate",'
           +'"uncertain":false,"complex":false,"importance":"important|normal|irrelevant","authorityRequired":false}]}. '
           +'Do not invent authorization or execution evidence. Important/conflicting or unsupported events must not be silently ignored.\n'
-          +JSON.stringify({contract,independentQuestions:observations}),availableTools:[]})});
+          +JSON.stringify({contract,independentQuestions:observations}),availableTools:[]})};
+      const result=await(options.teacherExchange?options.teacherExchange(request,context):options.teacher!.execute(request));
       active(context);
       if(result.kind!=='text')throw new ProtocolError('EXTERNAL_FAILURE','Proactive teacher must return selection data only');
       let parsed:unknown;try{parsed=JSON.parse(result.text);}catch{throw new ProtocolError('EXTERNAL_FAILURE','Proactive teacher returned invalid JSON');}
@@ -85,5 +88,5 @@ export function createRuntimeProactiveDecisionTools(options:RuntimeProactiveDeci
       });
       return {selections};
     }});
-  return [...(options.localChooser?[tool('local')]:[]),...(options.teacher?[tool('teacher')]:[])];
+  return [...(options.localChooser?[tool('local')]:[]),...(options.teacher||options.teacherExchange?[tool('teacher')]:[])];
 }
