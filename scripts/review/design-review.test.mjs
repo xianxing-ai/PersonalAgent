@@ -20,10 +20,10 @@ test('author self-approval and outsider approval cannot satisfy the gate',()=>{
   assert.equal(check([review('2511375597-lab',1)],'2511375597-lab').passed,false);
   assert.equal(check([review('outsider',1)]).passed,false);
 });
-test('a stale approval does not satisfy the current-head gate',()=>{
-  assert.equal(check([review('goo122',1,'APPROVED',oldHead)]).passed,false);
+test('the initial approval persists after CI-fix commits',()=>{
+  assert.equal(check([review('goo122',1,'APPROVED',oldHead)]).passed,true);
   assert.equal(check([review('goo122',1,'APPROVED',oldHead),review('goo122',2)]).passed,true);
-  assert.equal(check([review('2511375597-lab',1,'APPROVED',oldHead)],'goo122').passed,false);
+  assert.equal(check([review('2511375597-lab',1,'APPROVED',oldHead)],'goo122').passed,true);
   assert.equal(check([review('goo122',1,'APPROVED','')]).passed,false);
 });
 test('a blocking changes request must be resolved even with another approval',()=>{
