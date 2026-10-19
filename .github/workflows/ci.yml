@@ -81,7 +81,7 @@ jobs:
     needs: route
     name: ${{ matrix.name }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix: ${{ fromJSON(needs.route.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
@@ -126,7 +126,7 @@ jobs:
           cache: npm
       - name: Match the repository npm version on hosted runners
         if: matrix.runner[0] != 'self-hosted'
-        run: npm install --global npm@11.12.1
+        run: node -e "const cp=require('node:child_process');if(cp.execSync('npm --version',{encoding:'utf8'}).trim()!=='11.12.1')cp.execSync('npm install --global npm@11.12.1',{stdio:'inherit'})"
       - name: Verify Node and npm versions
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         run: node -e "const fs=require('fs'),cp=require('child_process');if(process.version!=='v'+fs.readFileSync('.node-version','utf8').trim()||cp.execSync('npm --version',{encoding:'utf8'}).trim()!=='11.12.1')process.exit(1)"
@@ -144,7 +144,7 @@ jobs:
       - name: Install Windows dependencies
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         if: matrix.kind == 'windows'
-        run: npm ci
+        run: npm.cmd ci --foreground-scripts --loglevel=error
       - name: Build Windows Job process helper
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         if: matrix.kind == 'windows'
@@ -166,7 +166,7 @@ jobs:
       - name: Run the complete original Windows check
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         if: matrix.kind == 'windows'
-        run: npm run check
+        run: npm.cmd run check
       - name: Run examples against the already built current-head outputs
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         if: matrix.kind == 'windows'

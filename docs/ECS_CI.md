@@ -54,7 +54,7 @@ main 两项原必需状态名 `check` 与 `ecs-linux-check` 及官方 Actions ap
 
 CI 完成事件触发受保护自动合并：`gh pr merge --squash --match-head-commit`，由 GitHub 再检查保护和会话。多条 PR 并行检查，合并请求串行且立即核对 main 是否变化；不再读取 main 的测试结果，也不补发合并后 CI。失败由原作者修复，更新后只测试该 PR 新版本。本 PR 不使用 Owner 审核例外或管理员绕过；原生 ruleset 仅关闭 `dismiss_stale_reviews_on_push`，仍要求一次批准，其他保护不变。AI 暂不启用。
 
-`CI failure feedback` 在 Foundation 失败或超时完成事件后，从默认分支加载通知脚本，在对应的仍打开且 head 未变的 PR 中 `@原作者`，附实际失败 job 链接。评审者负责审批和验证，不代改代码。同 run/attempt 只通知一次；取消、旧 head、已关闭 PR 和手动探测不通知。通知只读取 API 元数据，不执行失败 PR 的代码或下载其工件。工作流须合入默认分支后才接收真实完成事件；消息到达时间取决于 GitHub 事件和通知投递。
+同一 PR 的选中检查并行执行；首个失败会停止该 PR 的剩余检查，其他 PR 继续并行。`CI failure feedback` 在 Foundation 失败或超时完成事件后，从默认分支加载通知脚本，在对应的仍打开且 head 未变的 PR 中 `@原作者`，附实际失败 job 链接。评审者负责审批和验证，不代改代码。同 run/attempt 只通知一次；取消、旧 head、已关闭 PR 和手动探测不通知。通知只读取 API 元数据，不执行失败 PR 的代码或下载其工件。工作流须合入默认分支后才接收真实完成事件；消息到达时间取决于 GitHub 事件和通知投递。
 
 ## 运维与恢复
 
