@@ -1,5 +1,10 @@
 name: Foundation
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  repository_dispatch:
+    types: [post_merge_foundation_ci]
 permissions:
   contents: read
 concurrency:
@@ -7,9 +12,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 jobs:
   check:
+    if: ${{ github.event_name != 'repository_dispatch' || (github.ref == 'refs/heads/main' && github.event.client_payload.target_sha == github.sha) }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name != 'repository_dispatch'
+      - uses: actions/checkout@v4
+        if: github.event_name == 'repository_dispatch'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify dispatched main checkout
+        if: github.event_name == 'repository_dispatch'
+        shell: pwsh
+        run: |
+          $actual = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:GITHUB_SHA) { throw 'Dispatch checkout SHA mismatch' }
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
@@ -33,7 +51,20 @@ jobs:
             throw 'WindowsJobProcessHost build did not return an existing executable.'
           }
           "PA_TEST_JOB_HOST_EXE=$($jobHostBuild.helperPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - run: npm run check
-      - run: npm run dev
-      - run: npm run demo:protocol
-      - run: npm run demo:runtime
+      - name: Validate complete Windows and ECS test assignment
+        run: npm run ci:test -- validate
+      - name: Build Windows test inputs
+        run: npm run build
+      - name: Windows native, desktop and runtime workspace tests
+        run: npm run ci:test -- windows
+      - name: Windows integration tests
+        run: npm run ci:test -- integration-windows
+      - name: Run examples against the already built current-head outputs
+        shell: pwsh
+        run: |
+          node scripts/dev/storage-demo.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/dev/protocol-demo.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node apps/runtime/examples/task-lifecycle.mjs
+          exit $LASTEXITCODE

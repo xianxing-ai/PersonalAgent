@@ -1,0 +1,284 @@
+{
+  "classification": "Local/Synthetic targeted verification",
+  "node": "v24.15.0",
+  "baseline": "e1fb853c68511a6b3f716f2139a1ff47f4d8418a",
+  "limits": [
+    "No Laya",
+    "No real cloud/model/account writes",
+    "No physical Windows/audio acceptance",
+    "No full repository test suite",
+    "Pelican write is an explicit temporary Synthetic CAS"
+  ],
+  "steps": [
+    {
+      "name": "main-syntax",
+      "command": [
+        "node",
+        "--check",
+        "apps/desktop/electron/main.js"
+      ],
+      "startedAt": "2026-10-18T22:27:20.873693+00:00",
+      "completedAt": "2026-10-18T22:27:20.897696+00:00",
+      "wallSeconds": 0.024,
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "counts": {},
+      "sourceSnapshot": "Pre-sync run; affected Runtime/test source hashes unchanged after sync"
+    },
+    {
+      "name": "architecture",
+      "command": [
+        "node",
+        "--test",
+        "tests/architecture/dependency-boundaries.test.mjs",
+        "tests/architecture/integration-test-entrypoint.test.mjs"
+      ],
+      "startedAt": "2026-10-18T22:27:20.898071+00:00",
+      "completedAt": "2026-10-18T22:27:21.036314+00:00",
+      "wallSeconds": 0.138,
+      "exitCode": 0,
+      "logSha256": "bbc98b75cbb2927278d7efe635be84ca43c844f029f2d33bb7424ee248443c91",
+      "counts": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "sourceSnapshot": "Pre-sync run; affected Runtime/test source hashes unchanged after sync"
+    },
+    {
+      "name": "conversation-integration",
+      "command": [
+        "node",
+        "--test",
+        "apps/runtime/test/coding-repair-worker-capability.test.mjs",
+        "apps/runtime/test/developer-workflows.test.mjs",
+        "apps/runtime/test/developer-workflow-runids.test.mjs",
+        "apps/runtime/test/owned-workflow-driver.test.mjs",
+        "apps/runtime/test/competition-context-binding.test.mjs",
+        "apps/runtime/test/competition-conversation-context.test.mjs",
+        "apps/runtime/test/proactive-decision-tools.test.mjs",
+        "apps/runtime/test/proactive-image-adapter.test.mjs",
+        "apps/runtime/test/proactive-image-deployment-binding.test.mjs",
+        "apps/runtime/test/proactive-teacher-context.test.mjs",
+        "apps/desktop/test/conversation-pelican-wiring.test.mjs",
+        "apps/desktop/test/conversation-tool-access.test.mjs",
+        "apps/desktop/test/proactive-runtime-pump.test.mjs",
+        "apps/desktop/test/proactive-confirmed-source-router.test.mjs",
+        "apps/desktop/test/voice-runtime-approval-bridge.test.mjs",
+        "apps/desktop/test/system-observation-conversation.test.mjs",
+        "apps/desktop/test/image-workflow-catalog.test.mjs",
+        "apps/desktop/test/computer-control-lease.test.mjs"
+      ],
+      "startedAt": "2026-10-18T22:27:21.036868+00:00",
+      "completedAt": "2026-10-18T22:28:44.572514+00:00",
+      "wallSeconds": 83.536,
+      "exitCode": 0,
+      "logSha256": "ed6d0b06cd0aebd94d594fcf10ed4b3eef2de5b9742850ac3190a5f27cfd1c04",
+      "counts": {
+        "tests": 135,
+        "pass": 135,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "sourceSnapshot": "Pre-sync run; affected Runtime/test source hashes unchanged after sync"
+    },
+    {
+      "name": "live-handoff",
+      "command": [
+        "node",
+        "--test",
+        "apps/desktop/test/live-voice-host.test.mjs",
+        "apps/desktop/test/live-voice-recovery.test.mjs"
+      ],
+      "startedAt": "2026-10-18T22:32:39.522210+00:00",
+      "completedAt": "2026-10-18T22:32:40.675062+00:00",
+      "wallSeconds": 1.153,
+      "exitCode": 0,
+      "logSha256": "edd6d8d63f5645257372a2e798f8d06dbb8fe0557e4d7343f564525bbc0fc178",
+      "counts": {
+        "tests": 43,
+        "pass": 43,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "sourceSnapshot": "Post-sync merged index on 5acb60f2"
+    },
+    {
+      "name": "desktop-lifecycle",
+      "command": [
+        "node",
+        "--test",
+        "apps/desktop/test/quit-task-preflight.test.mjs"
+      ],
+      "startedAt": "2026-10-18T22:32:40.675501+00:00",
+      "completedAt": "2026-10-18T22:32:41.071862+00:00",
+      "wallSeconds": 0.396,
+      "exitCode": 0,
+      "logSha256": "6c376a97ec06027e6287319f432fd83985675e6cc5eb31bd043ea46773454b85",
+      "counts": {
+        "tests": 16,
+        "pass": 16,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "sourceSnapshot": "Post-sync merged index on 5acb60f2"
+    },
+    {
+      "name": "developer-deployment",
+      "command": [
+        "node",
+        "--test",
+        "apps/desktop/test/developer-deployment-config.test.mjs"
+      ],
+      "startedAt": "2026-10-18T22:32:41.072285+00:00",
+      "completedAt": "2026-10-18T22:32:42.786480+00:00",
+      "wallSeconds": 1.714,
+      "exitCode": 0,
+      "logSha256": "991b0502df47c15696465faef341f869c3734c24fcd357fccf069b6b4cbaa53d",
+      "counts": {
+        "tests": 29,
+        "pass": 29,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "sourceSnapshot": "Post-sync merged index on 5acb60f2"
+    }
+  ],
+  "sourceSha256": {
+    "apps/desktop/electron/developer-deployment-config.js": "8fc4e32d0735f85717ddbc8b3aa1b59423d8de80d17b71137a675432f231c4b6",
+    "apps/desktop/electron/live-voice-host.js": "d327cc478d828f508a92c39ccc358422af8db897bcb30e16582abe877980fa7d",
+    "apps/desktop/test/developer-deployment-config.test.mjs": "705faf7cbf3c6e81c6771a2b9116a9614dfc3452b4a06f24d31a001f9ee6b116",
+    "apps/desktop/test/live-voice-host.test.mjs": "6a13971ad93a7124803d9bc8a8e20cd7c4e57c6b87b613e43af626e336a1092b",
+    "apps/desktop/test/live-voice-recovery.test.mjs": "710d488c8b7b9dc1bbb3737fe1aca6c0a7c38030195c694d91b51530d064e3c9",
+    "apps/desktop/test/quit-task-preflight.test.mjs": "af4d29b31c95ac537a55cf674d49e25576b9171837f25e471e27c78a245f7427",
+    "apps/runtime/src/application/coding-repair-application.ts": "f3048761fcf1696921c9dccc2246cee009af2f1c098e6356da996c610486a36b",
+    "apps/runtime/src/application/developer-workflows.ts": "0156d5a44b865145c5325eb5bad43043d0abbf5995d392d36930cffaf8fdcaea",
+    "apps/runtime/src/application/owned-workflow-driver.ts": "32ae9136d40f3c939ad2019cace410b75b3b8ebcc04873acab1212bf040db460",
+    "apps/runtime/src/application/proactive-decision-tools.ts": "12f5241d6a0d303ada9ec992744e5f48a722f55b6b5d016d13f5bce720e117f5",
+    "apps/runtime/src/application/proactive-image-adapter.ts": "214a3a0965a8040b492c5f0bbc79406a248f94a157a4415391b7d72e5557c42b",
+    "apps/runtime/src/application/runtime-application.ts": "0d8b1283c524b9b1f73c0449b241926be03a694307e3c8d294a6deb7bda54dfc",
+    "apps/runtime/src/application/subagent-host.ts": "9e9dbe93eee00f2045d987da9b3f5c801e0e3b17dd5aea34f08fd1898fa0d820",
+    "apps/runtime/test/developer-workflow-runids.test.mjs": "fa660eda54998fd641337607e7a9b1c04af4071d9da383b50c840e013bc0e622",
+    "apps/runtime/test/developer-workflows.test.mjs": "a935d32062cb54f0d6af388624a6a65a59e16ba104a965b84e11df740eeac29e",
+    "apps/runtime/test/owned-workflow-driver.test.mjs": "57562fe436fa690b07bf41eb7a6028b2552ed95b035cd507945144e7790608f3",
+    "apps/runtime/test/proactive-image-adapter.test.mjs": "58da75012cfea29e421db1c86cfea28c07b899279133698605d5b972c9aa42e9",
+    "apps/runtime/test/proactive-teacher-context.test.mjs": "89b7996222ea3731898e3208efdfb8821d202de22c7510224cbec0b13e077bf7"
+  },
+  "totalTestInstances": 226,
+  "runtimeBuild": {
+    "command": [
+      "npm",
+      "run",
+      "build",
+      "--workspace=@personal-agent/runtime"
+    ],
+    "exitCode": 0,
+    "logSha256": "f12efe3b91f5fb80470dcf208852b80690176834cb51f584201062daf5149855"
+  },
+  "postSyncProvenance": {
+    "previousFullRunTestInstances": 220,
+    "recheckedGroups": [
+      "live-handoff",
+      "desktop-lifecycle",
+      "developer-deployment"
+    ],
+    "recheckedTestInstances": 88,
+    "retainedUnchangedGroups": [
+      "architecture",
+      "conversation-integration"
+    ],
+    "retainedTestInstances": 138,
+    "changedPreviouslyHashedFiles": [
+      "apps/desktop/electron/live-voice-host.js",
+      "apps/desktop/test/developer-deployment-config.test.mjs",
+      "apps/desktop/test/live-voice-host.test.mjs",
+      "apps/desktop/test/quit-task-preflight.test.mjs"
+    ],
+    "remoteCommitsPreserved": [
+      "a3733e0665d9970d77db09ef8ba0e733133df07a",
+      "b4e2e1c13acd2ee1f2bba74d8b14700b70f278c1",
+      "148194beecabb6ccb73c80ed90d74781c7499373",
+      "d636fd5135067509107b5ea3b4f41614492c24be",
+      "5814844a1fc4b7fc57a926e9fec678eae2cf87bb",
+      "5acb60f213b0c23e8f206b2c206b5cc262ca846d",
+      "e1fb853c68511a6b3f716f2139a1ff47f4d8418a"
+    ],
+    "lastFixtureCommitResolution": "e1fb853c Windows fixture intent retained by the already-tested real Node transport, original getCredentials guards and revocable Synthetic ACL; final fixture bytes unchanged"
+  },
+  "postCiFollowup": {
+    "classification": "Local/Synthetic exact integration baseline/fix; production and prior 226 tested sources unchanged",
+    "baselineHead": "3000dcbdd4f26f4a27fdb62ae34c98653f02afe6",
+    "command": [
+      "node",
+      "--test",
+      "tests/integration/live-response-lifecycle.test.mjs"
+    ],
+    "node": "v24.15.0",
+    "dependencyProvenance": "Read-only reuse of primary 3000dcb node_modules/dist; no rebuild or broad suite",
+    "change": "Align Synthetic consumer task.submit to the public Client contract: only goal/conversationId in payload; trusted idempotencyKey in CallOptions. Preserve lifecycle and single execution assertions.",
+    "patchSha256": "8fc30258838a1ef7ce5c5a57ba8be789af82e8212fe12239538508d8f184efd6",
+    "baseline": {
+      "sourceSha256": "aa8f4dcb87e11ca2694d03918d09ffd252ed7353ba55468a7395d1b9a2a52242",
+      "startedAt": "2026-10-18T22:51:56.846567+00:00",
+      "completedAt": "2026-10-18T22:51:57.211540+00:00",
+      "wallSeconds": 0.365,
+      "exitCode": 1,
+      "logSha256": "9f889ff2ebf96342796c8d21f07b472b55b285bb6f4373d437ee3fd950e26641",
+      "result": "Reproduced undefined taskId -> requireText.trim"
+    },
+    "fixed": {
+      "sourceSha256": "ab3cabc522d4f5c6c114be76b08f1fdd6bc4dc310a84f8a2c679cd691df13c31",
+      "startedAt": "2026-10-18T22:51:57.213748+00:00",
+      "completedAt": "2026-10-18T22:51:57.681130+00:00",
+      "wallSeconds": 0.467,
+      "exitCode": 0,
+      "logSha256": "9debeaf8e63b6163c1eab4d3506f037da4c33cccec5c0cb1a59543ed0391199c",
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "skipped": 0
+      }
+    },
+    "priorCi": [
+      {
+        "runId": 39172889704,
+        "event": "pull_request",
+        "conclusion": "failure",
+        "logSha256": "e25496336b90d45f68777314a26c745c760612305be0bcf320fbabd4cb8a69c3",
+        "failure": "root integration 50/51; lifecycle fixture contract mismatch",
+        "knowledge": "56/56 pass",
+        "desktop": {
+          "tests": 1304,
+          "pass": 1298,
+          "fail": 0,
+          "skipped": 6
+        },
+        "runtime": "850/850 pass"
+      },
+      {
+        "runId": 39172886287,
+        "event": "push",
+        "conclusion": "failure",
+        "logSha256": "9b87dc0daa9fb8f5dab787f5a77a3c1f2ec10818d4ec0532a064e9e88995cbaf",
+        "failure": "knowledge 55/56; original PowerShell certificate process killed at 10128ms by 10000ms budget before observed script_enter; exact OS cause unproven",
+        "rootIntegration": "not executed due to workspace failure",
+        "owner": "goo122",
+        "productionChange": "knowledge unchanged main to 3000; no edits, timeout extension, test skip or certificate retry"
+      }
+    ],
+    "counting": "Original totalTestInstances 226 remains the prior unified package record; this new single-file 1/1 is recorded separately and no old failures or prior runs are added to it.",
+    "newHeadCi": "Must be read separately after publication; not yet passed by this record"
+  }
+}

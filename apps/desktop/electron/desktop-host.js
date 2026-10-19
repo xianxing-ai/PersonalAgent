@@ -81,7 +81,7 @@ export function createDesktopHost() {
     const bounds = mode === 'orb' ? {...saved, width: fallback.width, height: fallback.height} : saved;
     return fitBounds(bounds, area(bounds));
   }
-  function attach(win, mode) {
+  function attach(win, mode, {remember = true} = {}) {
     const contentsId = win.webContents.id;
     windows.set(contentsId, {win, mode});
     const publishWindowState = () => {
@@ -94,7 +94,7 @@ export function createDesktopHost() {
     win.on('restore', publishWindowState);
     let saveTimer;
     const save = () => {
-      if (mode === 'panel' || win.isDestroyed() || win.isMinimized()) return;
+      if (!remember || mode === 'panel' || win.isDestroyed() || win.isMinimized()) return;
       try { state.remember(mode, win.getNormalBounds()); } catch { log('settings-write-failed', mode); }
     };
     const changed = () => { clearTimeout(saveTimer); saveTimer = setTimeout(save, 200); };

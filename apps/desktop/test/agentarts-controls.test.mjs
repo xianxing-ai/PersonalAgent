@@ -9,7 +9,7 @@ function harness(t,invoke) {
     isConnected:true,getClientRects:()=>[{}],focus(){globalThis.document.activeElement=this;},
     addEventListener(name,listener){this.listeners.set(name,listener);},
     setAttribute(name,value){this.attributes.set(name,value);}});
-  const fields=Object.fromEntries(['gatewayUrl','runtimeName','authorization','transport','websocketUrl','appToken','allowHttpsFallback'].map(key=>[key,node()]));
+  const fields=Object.fromEntries(['gatewayUrl','runtimeName','deploymentVersion','authorization','transport','websocketUrl','appToken','allowHttpsFallback'].map(key=>[key,node()]));
   const submit=node(),revoke=node(),status=node(),form=node();
   Object.assign(form,{elements:fields,querySelector:()=>submit,
     querySelectorAll:()=>[...Object.values(fields),submit,revoke],
@@ -213,4 +213,29 @@ test('AgentArts settings keep unconfirmed errors above draft and host feedback u
   ui.controls.render({gatewayUrl:'https://new.huaweicloud-agentarts.com',runtimeName:'retry-draft',reason:'synthetic fresh confirmed host'});
   assert.equal(ui.fields.gatewayUrl.value,'https://new.huaweicloud-agentarts.com');
   assert.equal(ui.status.textContent,'synthetic fresh confirmed host');
+});
+
+test('AgentArts fixed deployment version renders and saves without losing edits',async t=>{
+  let submitted;
+  const ui=harness(t,async(action,input)=>{
+    submitted={action,gatewayUrl:input.gatewayUrl,runtimeName:input.runtimeName,
+      deploymentVersion:input.deploymentVersion};
+    return {configured:true};
+  });
+  assert.match(ui.section.innerHTML,/name="deploymentVersion"[^>]*maxlength="128"/);
+  ui.controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',
+    runtimeName:'synthetic-runtime',deploymentVersion:'v5.release-1'});
+  assert.equal(ui.fields.deploymentVersion.value,'v5.release-1');
+  ui.edit('deploymentVersion',' v6.release-2 ');
+  ui.controls.render({gatewayUrl:'https://stale.huaweicloud-agentarts.com',
+    runtimeName:'stale',deploymentVersion:'stale'});
+  assert.equal(ui.fields.deploymentVersion.value,' v6.release-2 ');
+  ui.edit('authorization','Bearer synthetic-only');
+  await ui.save();
+  assert.deepEqual(submitted,{action:'agentarts.configure',
+    gatewayUrl:'https://example.huaweicloud-agentarts.com',
+    runtimeName:'synthetic-runtime',deploymentVersion:'v6.release-2'});
+  assert.equal(ui.fields.authorization.value,'');
+  ui.controls.render({deploymentVersion:'v6.release-2'});
+  assert.equal(ui.fields.deploymentVersion.value,'v6.release-2');
 });

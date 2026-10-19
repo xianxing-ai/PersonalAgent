@@ -9,6 +9,9 @@
 小工作区保留原有当前主对话，隐藏会话管理，主进程拒绝该窗口的新建、切换、归档、恢复；已有历史和草稿保留，不删记录、不迁移数据库。大工作区仍可管理独立对话。子智能体派发、完成提示和独立页面属于另一个工作包。
 
 验证：`node --test test/native-reasoning.test.mjs` 覆盖合法映射、默认、连续操作、失败与会话隔离；`node test/native-reasoning-slider-smoke.cjs` 使用实际 Competition main/Preload/两个 Renderer、隔离 userData 与显式合成传输，捕获 `low` 和省略强度的任务请求。可用 `PA_SLIDER_TEST_ELECTRON` 指定已有 Electron。未调用真实模型、麦克风或外部账号；这些证据不提升平台或供应商验证等级。
+
+2026-10-18 子智能体工作包：Competition 主对话启用真实 Runtime 子任务委派；大工作区移除任务输入区，最多两行最近入口，“更多”查看全部持久历史。每个独立子对话都有输入、发送、停止及追加消息记录，后续消息创建新执行且保留原任务终态；小面板仅首次完成时短暂提示。139 项定向测试和实际窗口检查通过，未发送真实模型测试消息；完整内部模型逐轮记录仍不可读。权限与恢复限制见 [工作包说明](docs/live-task-visibility-20261018.md)。思考滑块及单主对话管理另由独立工作包交付，未在此冒称已经集成。
+
 <!-- current-design-20261013 -->
 > 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../docs/design/workflow-architecture-20261013/index.html) · [接口状态](../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../CONTRIBUTING.md)。本机Laya仅为独立Local Profile实验候选，不属于Competition产品路径，AgentArts负责Agent/Workflow构建、编排、评估与部署；本地Runtime保留Policy、ToolGateway、TaskRuntime及Evidence。具体节点、领域资格、外部比赛资格与真实验收分别核实，AgentArts失败不得静默回退Local Profile。常规PR须有合资格非作者对当前head有效批准；Owner具体PR审核例外须留记录，必需技术CI不豁免。
 

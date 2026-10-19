@@ -5,7 +5,7 @@ import type {AgentArtsRuntimeConfig,AgentArtsAuthorizationProvider,AgentArtsFetc
 
 export interface RuntimeProactiveImageAdapterOptions {
   /** Original trusted AgentArts transport configuration; never read from a model/event/Renderer request. */
-  config?:AgentArtsRuntimeConfig&{deploymentVersion?:string};
+  config?:AgentArtsRuntimeConfig & {deploymentVersion?:string};
   /** Recheck the trusted deployment binding before credentials and before POST. */
   assertDeploymentBinding?:()=>void;
   /** Explicit startup endpoint, mutually exclusive with config. HTTP is restricted to loopback fixtures. */
@@ -35,11 +35,23 @@ function endpointOf(options:RuntimeProactiveImageAdapterOptions):string {
     try {gateway=new URL(config.gatewayUrl);}catch {return fail('INVALID_ARGUMENT','Invalid trusted AgentArts gateway');}
     if(gateway.protocol!=='https:'||gateway.username||gateway.password||gateway.search||gateway.hash||!['','/'].includes(gateway.pathname)
       ||!/^[A-Za-z0-9_-]{1,64}$/u.test(config.runtimeName))fail('INVALID_ARGUMENT','Invalid trusted AgentArts gateway/runtime');
-    if(config.deploymentVersion!==undefined&&(typeof config.deploymentVersion!=='string'
-      ||!/^[A-Za-z0-9_.-]{1,128}$/u.test(config.deploymentVersion)))
+    value=gateway.origin+'/runtimes/'+encodeURIComponent(config.runtimeName)+'/invocations';
+    let version=config.deploymentVersion;
+    if(version!==undefined&&(typeof version!=='string'||!/^[A-Za-z0-9_.-]{1,128}$/u.test(version)))
       fail('INVALID_ARGUMENT','Invalid trusted AgentArts deployment version');
-    value=gateway.origin+'/runtimes/'+encodeURIComponent(config.runtimeName)+'/invocations'
-      +(config.deploymentVersion===undefined?'':'?endpoint='+config.deploymentVersion);
+    if(config.websocketUrl!==undefined){
+      let websocket:URL;try{websocket=new URL(config.websocketUrl);}catch{return fail('INVALID_ARGUMENT','Invalid bound proactive WSS endpoint');}
+      if(websocket.protocol!=='wss:'||websocket.username||websocket.password||websocket.hash
+        ||websocket.origin.replace(/^wss:/u,'https:')!==gateway.origin
+        ||![`/runtimes/${config.runtimeName}/ws`,`/runtimes/${config.runtimeName}/invocations/ws`].includes(websocket.pathname)
+        ||websocket.search&&!/^\?endpoint=[A-Za-z0-9_.-]{1,128}$/u.test(websocket.search))fail('INVALID_ARGUMENT','Invalid bound proactive WSS endpoint');
+      const selected=websocket.searchParams.get('endpoint')??undefined;
+      if(version!==undefined&&selected!==undefined&&version!==selected)fail('INVALID_ARGUMENT','Proactive deployment version mismatch');
+      version??=selected;
+    }
+    if(version!==undefined){
+      value+='?endpoint='+version;
+    }
   }
   let url:URL;
   try {url=new URL(value!);}catch {return fail('INVALID_ARGUMENT','Invalid trusted proactive endpoint');}
@@ -151,6 +163,8 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
       &&typeof item.id==='string'&&!!item.id&&typeof item.version==='string'&&!!item.version&&typeof item.qualifiedForMain==='boolean')
     &&new Set(value.contracts.map(item=>(item as {id:string}).id)).size===value.contracts.length;
   async function invoke(input:RuntimeProactiveImageContext,describeOnly:boolean):Promise<RuntimeProactiveImageResult|RuntimeProactiveImageDescription> {
+    const assertBinding=()=>{try{options.assertDeploymentBinding?.();}catch{fail('REVISION_CONFLICT','Original proactive image deployment changed');}};
+    assertBinding();
     validContext(input);if(!describeOnly)validInput(input as ProactiveAdvanceRequest);
     else if(!exact(input,['taskId','sessionId','controlRevision','taskDeadline','requestId','deadline','signal']))fail('INVALID_ARGUMENT','Unexpected proactive description context');
     const originalSignal=input.signal;

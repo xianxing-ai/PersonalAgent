@@ -6,6 +6,7 @@ const CHECKPOINT='desktop-goal-cloud-scope-v1';
 const CATALOG='competition-tool-catalog';
 const LOOP='competition-loop';
 const POLICY='desktop-goal-cloud-projection-v2';
+const MAX_GOAL_EXPORT_BYTES=7_500;
 const CONVERSATIONS=new Set(['desktop-panel','desktop-workspace']);
 const WRITE_NAMES=new Set([GOAL_CREATE_TOOL,GOAL_REVISE_TOOL]);
 const READ_NAMES=new Set(['goals.list','goals.get']);
@@ -43,7 +44,7 @@ function projectedGoal(node) {
 }
 
 /** Trusted Desktop adapter. Goal writes still use the public Goal tools and Runtime Policy. */
-export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBinding}) {
+export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBinding,isConversationAllowed}) {
   if(!goalHost || !Array.isArray(goalHost.tools) || typeof goalHost.list!=='function'
     || typeof goalHost.get!=='function') throw Error('Goal host is unavailable');
   const writes=goalHost.tools.filter(tool=>WRITE_NAMES.has(tool.descriptor?.name)
@@ -83,7 +84,9 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
     let task;
     try {task=application.runtime.getTask(taskId);} catch {return false;}
     const proactive=task.conversationId===`desktop-proactive-goals:${namespace}`;
-    if(!CONVERSATIONS.has(task.conversationId) && !proactive) return false;
+    const conversationAllowed=isConversationAllowed
+      ? isConversationAllowed(task.conversationId,taskId)===true : CONVERSATIONS.has(task.conversationId);
+    if(!conversationAllowed && !proactive) return false;
     const scope=proactive?proactiveScope(taskId):undefined;
     if(proactive && (!scope || WRITE_NAMES.has(toolName))) return false;
     const expected=scope?{generation,scopeDigest:createHash('sha256').update(JSON.stringify(scope)).digest('hex')}:generation;
@@ -158,8 +161,16 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
     const limit=input.limit??20;
     const visible=goals.map(goal=>scopedGoal(goal,taskId)).filter(Boolean).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
     const remaining=visible.filter(goal=>input.afterId===undefined || goal.id>input.afterId);
-    const page=remaining.slice(0,limit);
-    return {graphRevision,goals:page,nextAfterId:remaining.length>page.length?page.at(-1).id:null};
+    const page=[];
+    const result=()=>({graphRevision,goals:page,nextAfterId:remaining.length>page.length?page.at(-1)?.id??null:null});
+    for(const goal of remaining.slice(0,limit)) {
+      page.push(goal);
+      if(Buffer.byteLength(JSON.stringify(result()),'utf8')<=MAX_GOAL_EXPORT_BYTES)continue;
+      page.pop();
+      if(!page.length)throw Error('One Goal exceeds the cloud page projection budget; inspect this Goal locally');
+      break;
+    }
+    return result();
   }
   function readOne(input,taskId) {
     if(!input || typeof input.id!=='string' || blockedText(input.id)) throw Error('Goal ID is unavailable');
@@ -182,7 +193,9 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
     readable(context.taskId,context.signal);return readOne(input,context.taskId);
   }}];
   const competitionToolAvailability=tools.map(tool=>({toolName:tool.descriptor.name,
-    toolVersion:tool.descriptor.version,available:({taskId,signal})=>!signal?.aborted&&bound(taskId,true,tool.descriptor.name)}));
+    toolVersion:tool.descriptor.version,
+    ...(WRITE_NAMES.has(tool.descriptor.name)?{publicEnumPaths:['/goal/sensitivity','/goal/state']}:{}),
+    available:({taskId,signal})=>!signal?.aborted&&bound(taskId,true,tool.descriptor.name)}));
   const competitionToolExports=tools.map(tool=>({toolName:tool.descriptor.name,
     toolVersion:tool.descriptor.version,exportPolicyVersion:POLICY,
     accepts:({taskId,arguments:args,phase,projection})=>bound(taskId,false,tool.descriptor.name)
@@ -206,7 +219,7 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
       } else if(result?.kind==='conflict'||result?.kind==='rejected') {
         value={kind:result.kind,graphRevision:result.graphRevision};
       } else throw Error('Goal result is invalid');
-      if(Buffer.byteLength(JSON.stringify(value),'utf8')>7_500) throw Error('Goal result exceeds cloud projection limit');
+      if(Buffer.byteLength(JSON.stringify(value),'utf8')>MAX_GOAL_EXPORT_BYTES) throw Error('Goal result exceeds cloud projection limit');
       return structuredClone(value);
     }}));
   const revoke=()=>{allowed=false;generation=randomUUID();return snapshot();};

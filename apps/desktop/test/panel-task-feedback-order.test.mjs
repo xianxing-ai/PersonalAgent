@@ -12,7 +12,10 @@ const dependencies=new Map();let handler,hostProjection,renderFeedback;
 function visit(node){
   if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='form.onsubmit')handler=node.right.getText(ast);
   if(ts.isCallExpression(node)&&node.expression.getText(ast)==='syncHostFeedback')hostProjection=node.getText(ast);
-  if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='render'&&ts.isArrowFunction(node.right))renderFeedback=node.right.body.statements.filter(statement=>/data\.connectionError\|\|voiceError|preserveFeedback===false&&hostFeedback/.test(statement.getText(ast))).map(statement=>statement.getText(ast)).join('\n');
+  if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='render'&&ts.isArrowFunction(node.right)){
+    const body=ts.isBlock(node.right.body)?node.right.body.statements:[node.right.body];
+    renderFeedback=body.filter(statement=>/data\.connectionError\|\|voiceError|preserveFeedback===false&&hostFeedback/.test(statement.getText(ast))).map(statement=>statement.getText(ast)).join('\n');
+  }
   if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&!dependencies.has(node.name.text)&&['errorFeedbackRevision','setFeedback','hostFeedback','hostFeedbackRevision','syncHostFeedback','report'].includes(node.name.text))dependencies.set(node.name.text,node.getText(ast));
   ts.forEachChild(node,visit);
 }
