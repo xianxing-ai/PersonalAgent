@@ -14,8 +14,23 @@ const {_electron} = require('playwright');
     args: [project, '--fake-runtime'],
     env: {...process.env, ELECTRON_RUN_AS_NODE: undefined, PA_DESKTOP_EPHEMERAL_MODEL: '1'},
   });
-  const errors = [];
+  const errors = [], shellCases = [];
   app.on('window', page => page.on('pageerror', error => errors.push(error.message)));
+
+  async function assertFlatShell(page, selector) {
+    const shell = await page.locator(selector).evaluate(element => {
+      const style = getComputedStyle(element), rect = element.getBoundingClientRect();
+      return {x:rect.x,y:rect.y,width:rect.width,height:rect.height,viewportWidth:innerWidth,viewportHeight:innerHeight,
+        border:style.borderTopWidth,radius:style.borderRadius,shadow:style.boxShadow,clip:style.clipPath,
+        blur:style.backdropFilter,background:style.backgroundColor};
+    });
+    assert.equal(shell.x,0);assert.equal(shell.y,0);
+    assert.ok(Math.abs(shell.width-shell.viewportWidth)<1 && Math.abs(shell.height-shell.viewportHeight)<1,JSON.stringify(shell));
+    assert.equal(shell.border,'0px');assert.equal(shell.radius,'0px');
+    assert.equal(shell.shadow,'none');assert.equal(shell.clip,'none');assert.equal(shell.blur,'none');
+    assert.match(shell.background,/^rgb\(/,'large windows use one opaque theme');
+    shellCases.push({selector,...shell});
+  }
 
   async function captureNative(mode, file) {
     const wasOnTop = await app.evaluate(({BrowserWindow}, selectedMode) => {
@@ -27,7 +42,9 @@ const {_electron} = require('playwright');
     await new Promise(resolve => setTimeout(resolve, 200));
     const png = await app.evaluate(async ({BrowserWindow, desktopCapturer, screen}, selectedMode) => {
       const win = BrowserWindow.getAllWindows().find(item => item.webContents.getURL().includes(`mode=${selectedMode}`));
-      const bounds = win.getBounds();
+      // Maximized Windows bounds include the invisible native resize margin.
+      // Capture only our actual content, excluding other apps and the taskbar.
+      const bounds = win.getContentBounds();
       const display = screen.getDisplayMatching(bounds);
       const sources = await desktopCapturer.getSources({types: ['screen'], thumbnailSize: {width: Math.round(display.size.width * display.scaleFactor), height: Math.round(display.size.height * display.scaleFactor)}});
       const source = sources.find(item => item.display_id === String(display.id)) ?? sources[0];
@@ -50,6 +67,8 @@ const {_electron} = require('playwright');
     await panel.locator('#panel-expand').click();
     const workspace = await opened;
     await workspace.waitForSelector('#workspace-stage');
+    await workspace.waitForFunction(() => document.documentElement.dataset.windowMaximized === 'true');
+    assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(win=>win.webContents.getURL().includes('mode=workspace')).isMaximized()),true,'expand opens a maximized workspace without a desktop surround');
 
     assert.equal(await workspace.locator('.workspace-compose-area').count(), 0);
     assert.equal(await workspace.locator('#workspace-input').count(), 0);
@@ -64,9 +83,10 @@ const {_electron} = require('playwright');
 
     const bounds = await app.evaluate(({BrowserWindow, screen}) => {
       const win = BrowserWindow.getAllWindows().find(item => item.webContents.getURL().includes('mode=workspace'));
-      return {bounds: win.getBounds(), area: screen.getDisplayMatching(win.getBounds()).workArea, panelVisible: BrowserWindow.getAllWindows().find(item => item.webContents.getURL().includes('mode=panel')).isVisible()};
+      return {bounds: win.getBounds(), contentBounds:win.getContentBounds(), maximized:win.isMaximized(), area: screen.getDisplayMatching(win.getBounds()).workArea, panelVisible: BrowserWindow.getAllWindows().find(item => item.webContents.getURL().includes('mode=panel')).isVisible()};
     });
     assert.equal(bounds.panelVisible, false);
+    for (const key of ['x','y','width','height']) assert.ok(Math.abs(bounds.contentBounds[key]-bounds.area[key])<=1,`expanded content must fill the work area: ${JSON.stringify(bounds)}`);
     assert.ok(
       Math.abs(bounds.bounds.x + bounds.bounds.width / 2 - (bounds.area.x + bounds.area.width / 2)) <= 1.5,
       `workspace is not horizontally centered: ${JSON.stringify(bounds)}`,
@@ -91,7 +111,18 @@ const {_electron} = require('playwright');
       await workspace.waitForFunction(value => document.documentElement.dataset.theme === value, theme);
       assert.equal(await workspace.locator('.workspace').evaluate(element => getComputedStyle(element).backgroundColor), theme === 'light' ? 'rgb(250, 250, 250)' : 'rgb(16, 16, 16)');
       assert.equal(await admin.locator('.admin').evaluate(element => getComputedStyle(element).backgroundColor), theme === 'light' ? 'rgb(250, 250, 250)' : 'rgb(16, 16, 16)');
+      await assertFlatShell(workspace,'.workspace');
+      await assertFlatShell(admin,'.admin');
+      for (const page of [workspace,admin]) {
+        await page.locator('[data-window="maximize"]').click();
+        await page.waitForTimeout(100);
+        await assertFlatShell(page,page===workspace?'.workspace':'.admin');
+        await page.locator('[data-window="maximize"]').click();
+        await page.waitForTimeout(100);
+        await assertFlatShell(page,page===workspace?'.workspace':'.admin');
+      }
       await workspace.screenshot({path: path.join(output, `workspace-${theme}.png`)});
+      await captureNative('workspace', `native-workspace-${theme}.png`);
       if (theme === 'light') await captureNative('workspace', 'native-workspace.png');
     }
     await admin.locator('#pref-theme').selectOption('system');
@@ -113,7 +144,8 @@ const {_electron} = require('playwright');
     await panel.screenshot({path: path.join(output, 'panel-light.png')});
     await captureNative('panel', 'native-panel.png');
     assert.deepEqual(errors, []);
-    console.log('PASS: large workspace composer removed; opaque themes, connectors, orb burst, panel conversation rail and native clipping verified; screenshots: ' + output);
+    fs.writeFileSync(path.join(output,'shell-receipt.json'),JSON.stringify({profile:'explicit_fake_runtime',bounds,shellCases,pageErrors:errors},null,2));
+    console.log('PASS: flat opaque window shells in both themes and maximize/restore; expanded workspace starts maximized; connectors, orb, conversations and native captures verified; screenshots: ' + output);
   } finally {
     await app.close();
   }
