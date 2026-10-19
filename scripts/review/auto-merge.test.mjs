@@ -25,8 +25,8 @@ for(const [name,change] of [
   ['wrong app',s=>s.checks[1].app.id=1],
   ['old head CI',s=>s.checks[1].head_sha=base],
   ['self approval',s=>s.reviews[0].user.login='zemeng5208'],
+  ['stale head approval',s=>s.reviews[0].commit_id=base],
   ['outsider approval',s=>s.reviews[0].user.login='outsider'],
-  ['stale approval',s=>s.reviews[0].commit_id=base],
   ['dismissed approval',s=>s.reviews.push({...s.reviews[0],id:2,state:'DISMISSED'})],
   ['changes requested',s=>s.reviews.push({id:2,user:{login:'Potatos498'},state:'CHANGES_REQUESTED',commit_id:head})],
   ['unresolved protection',s=>s.pr.mergeable_state='blocked'],
@@ -72,87 +72,51 @@ function fakeApi(snapshot,requests=[]) {
     return {ok:true,status:200,json:async()=>result};
   };
 }
-test('entry point requires green main and reviewed PR before immediate protected merge',async()=>{
+test('PR green CI and current-head independent approval permit immediate protected merge',async()=>{
   const snapshot=fixture(),calls=[],requests=[];
+  snapshot.mainChecks=[];
   await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async(...args)=>calls.push(args),log:()=>{}});
   assert.equal(requests.length,0);
   assert.equal(calls.length,1);
   assert.deepEqual(calls[0].slice(0,2),['gh',['pr','merge','1','--repo',repository,'--squash','--match-head-commit',head]]);
   assert.equal(calls[0][2].env.GH_TOKEN,'fixture-token');
 });
-test('missing main checks dispatch each exact current SHA without merging',async()=>{
+
+for(const conclusion of [undefined,'failure','cancelled','skipped']) test('main checks do not enqueue another CI round: '+conclusion,async()=>{
   const snapshot=fixture(),calls=[],requests=[];
-  snapshot.mainChecks=[];
-  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async()=>calls.push(1),log:()=>{}});
-  assert.equal(calls.length,0);
-  assert.deepEqual(requests.map(r=>JSON.parse(r.init.body)),[
-    {event_type:'post_merge_foundation_ci',client_payload:{target_sha:base}},
-    {event_type:'post_merge_ecs_ci',client_payload:{target_sha:base}}
-  ]);
-  assert.ok(requests.every(r=>r.init.method==='POST'&&r.init.headers.Authorization==='Bearer fixture-token'));
-});
-test('one missing main check dispatches only its own workflow',async()=>{
-  const snapshot=fixture(),requests=[];
-  snapshot.mainChecks.pop();
-  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async()=>assert.fail('merge'),log:()=>{}});
-  assert.deepEqual(requests.map(r=>JSON.parse(r.init.body).event_type),['post_merge_ecs_ci']);
-});
-for(const [name,change,expectedPosts] of [
-  ['pending',s=>s.mainChecks[0].status='in_progress',0],
-  ['failed',s=>s.mainChecks[0].conclusion='failure',0],
-  ['timed out',s=>s.mainChecks[0].conclusion='timed_out',0],
-  ['skipped',s=>s.mainChecks[0].conclusion='skipped',1],
-  ['cancelled',s=>s.mainChecks[0].conclusion='cancelled',1],
-  ['wrong app',s=>s.mainChecks[0].app.id=1,1],
-  ['old SHA',s=>s.mainChecks[0].head_sha=head,1]
-]) test('main '+name+' does not allow merge',async()=>{
-  const snapshot=fixture(),requests=[];change(snapshot);
-  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async()=>assert.fail('merge'),log:()=>{}});
-  assert.equal(requests.length,expectedPosts);
-});
-test('newer failed main check supersedes earlier success',async()=>{
-  const snapshot=fixture(),requests=[];
-  snapshot.mainChecks.push({...snapshot.mainChecks[0],id:99,conclusion:'failure'});
-  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async()=>assert.fail('merge'),log:()=>{}});
+  snapshot.mainChecks=conclusion?[{...snapshot.mainChecks[0],conclusion}]:[];
+  const fetchImpl=fakeApi(snapshot,requests);
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:async(url,init)=>{
+    assert.ok(!url.includes('commits/'+base+'/check-runs'),'main test results must not be read');
+    assert.notEqual(init?.method,'POST','no automatic postmerge CI dispatch');
+    return fetchImpl(url,init);
+  },executeImpl:async()=>calls.push(1),log:()=>{}});
+  assert.equal(calls.length,1);
   assert.equal(requests.length,0);
 });
-test('main SHA change before dispatch prevents stale request',async()=>{
-  const snapshot=fixture(),requests=[];
-  snapshot.mainChecks=[];
-  snapshot.mainSequence=[base,'c'.repeat(40)];
-  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async()=>assert.fail('merge'),log:()=>{}});
-  assert.equal(requests.length,0);
-});
-test('main SHA change between two dispatches prevents the second stale request',async()=>{
-  const snapshot=fixture(),requests=[];
-  snapshot.mainChecks=[];
-  snapshot.mainSequence=[base,base,'c'.repeat(40)];
-  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async()=>assert.fail('merge'),log:()=>{}});
-  assert.equal(requests.length,1);
-});
-test('dispatch error propagates and cannot be mistaken for a green check',async()=>{
-  const snapshot=fixture();snapshot.mainChecks=[];snapshot.dispatchStatus=403;
-  await assert.rejects(mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>assert.fail('merge'),log:()=>{}}),/dispatch failed \(403\)/);
-});
-test('main advancing before the merge call prevents a stale merge request',async()=>{
+
+test('main advancing before merge still prevents a stale merge request',async()=>{
   const snapshot=fixture(),calls=[];
-  snapshot.mainSequence=[base,base,'c'.repeat(40),'c'.repeat(40)];
+  snapshot.mainSequence=[base,'c'.repeat(40)];
   await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>calls.push(1),log:()=>{}});
   assert.equal(calls.length,0);
 });
-test('red PR-head CI still blocks when main checks are green',async()=>{
+
+test('red current-head PR CI blocks even after approval',async()=>{
   const snapshot=fixture(),calls=[];
   snapshot.checks[1].conclusion='failure';
   await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>calls.push(1),log:()=>{}});
   assert.equal(calls.length,0);
 });
+
 test('existing auto-merge candidate is skipped without changing other requests',async()=>{
   const snapshot=fixture(),calls=[];
   snapshot.pr.auto_merge={enabled_by:{login:'goo122'}};
   await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>calls.push(1),log:()=>{}});
   assert.equal(calls.length,0);
 });
-test('confirmed immediate merge dispatches checks for new main before another merge',async()=>{
+
+test('a confirmed merge never dispatches another main test round',async()=>{
   const snapshot=fixture(),calls=[],requests=[];
   const merged='c'.repeat(40);
   await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async(...args)=>{
@@ -162,14 +126,16 @@ test('confirmed immediate merge dispatches checks for new main before another me
     snapshot.mainChecks=[];
   },log:()=>{}});
   assert.equal(calls.length,1);
-  assert.deepEqual(requests.map(r=>JSON.parse(r.init.body).client_payload.target_sha),[merged,merged]);
+  assert.equal(requests.length,0);
 });
+
 test('unreadable final merge state is not retried as another merge request',async()=>{
   const snapshot=fixture(),calls=[];
   await assert.rejects(mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>{calls.push(1);snapshot.unreadablePr=true;},log:()=>{}}),/GitHub read failed/);
   assert.equal(calls.length,1);
 });
-test('unreadable main evidence and invalid main SHA fail closed',async()=>{
+
+test('unreadable repository evidence and invalid main SHA fail closed',async()=>{
   const bad=fixture();bad.mainSha='not-a-sha';
   await assert.rejects(mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(bad),executeImpl:async()=>assert.fail('merge'),log:()=>{}}),/Invalid main SHA/);
   await assert.rejects(mergeApproved({repository,token:'fixture-token',fetchImpl:async()=>({ok:false,status:503}),executeImpl:async()=>assert.fail('merge'),log:()=>{}}),/GitHub read failed/);

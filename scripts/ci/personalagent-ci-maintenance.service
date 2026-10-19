@@ -1,0 +1,12 @@
+[Unit]
+Description=Idle-only PersonalAgent CI resource maintenance
+After=docker.service
+
+[Service]
+Type=oneshot
+User=pa-ci
+Group=pa-ci
+SupplementaryGroups=docker
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/bin/python3 /opt/personalagent-ci/maintenance/resources.py maintain

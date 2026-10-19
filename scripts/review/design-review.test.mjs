@@ -9,7 +9,7 @@ function review(login,id,state='APPROVED',commit_id=head,body='') {
 function check(reviews,author='zemeng5208') {
   return evaluateReviews({headSha:head,author,reviews});
 }
-test('any one eligible non-author current-head approval suffices',()=>{
+test('any one eligible non-author approval suffices',()=>{
   assert.deepEqual(policy.eligibleReviewers,['zemeng5208','goo122','Potatos498','2511375597-lab']);
   for(const [author,reviewer] of [['zemeng5208','goo122'],['goo122','Potatos498'],['Potatos498','zemeng5208'],['goo122','2511375597-lab'],['2511375597-lab','goo122']]) {
     assert.equal(check([review(reviewer,1)],author).passed,true);
@@ -20,10 +20,11 @@ test('author self-approval and outsider approval cannot satisfy the gate',()=>{
   assert.equal(check([review('2511375597-lab',1)],'2511375597-lab').passed,false);
   assert.equal(check([review('outsider',1)]).passed,false);
 });
-test('stale head approval does not satisfy the gate',()=>{
+test('a stale approval does not satisfy the current-head gate',()=>{
   assert.equal(check([review('goo122',1,'APPROVED',oldHead)]).passed,false);
   assert.equal(check([review('goo122',1,'APPROVED',oldHead),review('goo122',2)]).passed,true);
   assert.equal(check([review('2511375597-lab',1,'APPROVED',oldHead)],'goo122').passed,false);
+  assert.equal(check([review('goo122',1,'APPROVED','')]).passed,false);
 });
 test('a blocking changes request must be resolved even with another approval',()=>{
   const result=check([review('goo122',1),review('Potatos498',2,'CHANGES_REQUESTED')]);

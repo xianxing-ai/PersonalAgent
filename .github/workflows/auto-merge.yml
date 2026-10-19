@@ -1,7 +1,7 @@
 name: Approved PR auto-merge
 on:
   workflow_run:
-    workflows: [Foundation, ECS Linux CI, Design review approval, DeepSeek template offline]
+    workflows: [Foundation, Design review approval, DeepSeek template offline]
     types: [completed]
   schedule:
     - cron: '*/5 * * * *'
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-      - name: Merge only approved current-head PRs with green Windows and ECS CI
+      - name: Merge approved current-head PRs when every current-head CI is green
         run: node scripts/review/auto-merge.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
