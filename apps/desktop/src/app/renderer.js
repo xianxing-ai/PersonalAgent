@@ -330,6 +330,7 @@ else {
       button.dataset.approvalDecision,current?.tasks??[],current?.approvals??[]));
       approvalDecisions.set(id,'submitted');syncApprovalButtons();}
     catch(error){approvalDecisions.delete(id);report(error);syncApprovalButtons();}
+  });
   render=(data,{preserveFeedback}={})=>{updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;for(const group of ['thinking']){panelPreferenceRequests[group]++;panelPreferencePending[group]=null;panelPreferenceErrors[group]=null;}draftRevision++;locateFeedback.clear();setFeedback('');}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);const task=currentTask(data.tasks);const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
     subagents.update(data.subagentTasks??[]);
     renderWake(data);
