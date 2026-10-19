@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {matrixFor} from './pr-route.mjs';
-import {verifySelectedJobs,readAttemptJobs} from './check-result.mjs';
+import {verifySelectedJobs,readAttemptJobs,waitForSelectedJobs,expectedJobHead} from './check-result.mjs';
 
 function fixture(mode='both') {
   const matrix=matrixFor(mode,{number:421});
@@ -42,4 +42,43 @@ test('unreadable and incomplete job receipts cannot pass',async()=>{
   const args={repository:'owner/repo',runId:123,attempt:2,token:'fixture'};
   await assert.rejects(readAttemptJobs({...args,fetchImpl:async()=>({ok:false,status:403})}),/Cannot read/);
   await assert.rejects(readAttemptJobs({...args,fetchImpl:async()=>({ok:true,json:async()=>({jobs:[],total_count:2})})}),/Incomplete/);
+});
+
+function pollingFixture() {
+  const state=fixture('windows'),headSha='a'.repeat(40);
+  state.jobs=state.jobs.map(job=>({...job,id:456,run_id:123,run_attempt:2,head_sha:headSha}));
+  const logs=[],sleeps=[];let reads=0;
+  return {state,logs,sleeps,args:{...state,headSha,runId:123,attempt:2,maxReads:3,
+    readJobs:async()=>{reads++;return state.jobs;},sleep:async ms=>sleeps.push(ms),log:line=>logs.push(JSON.parse(line))},reads:()=>reads};
+}
+test('PR API head identity comes from its event head rather than the synthetic checkout merge',()=>{
+  assert.equal(expectedJobHead({pull_request:{head:{sha:'a'.repeat(40)}}},'b'.repeat(40)),'a'.repeat(40));
+  assert.equal(expectedJobHead({},'b'.repeat(40)),'b'.repeat(40));
+});
+test('same-attempt pending evidence can settle to success with bounded re-reads',async()=>{
+  const f=pollingFixture(),complete=f.state.jobs;let reads=0;
+  const receipts=await waitForSelectedJobs({...f.args,readJobs:async()=>++reads===1?[]:reads===2?complete.map(job=>({...job,status:'in_progress',conclusion:null})):complete});
+  assert.equal(receipts[0].result,'success');assert.equal(reads,3);assert.equal(f.sleeps.length,2);
+  assert.deepEqual(f.logs.map(row=>row.status),['missing','in_progress','completed']);
+  assert.ok(f.logs.every(row=>row.runId==='123'&&row.attempt==='2'));
+});
+for(const conclusion of ['failure','cancelled','timed_out','skipped']) test(`terminal ${conclusion} is never retried`,async()=>{
+  const f=pollingFixture();f.state.jobs[0].conclusion=conclusion;
+  await assert.rejects(waitForSelectedJobs(f.args),/did not pass/);
+  assert.equal(f.reads(),1);assert.equal(f.sleeps.length,0);
+});
+for(const status of ['missing','queued','in_progress']) test(`${status} evidence exhausts budget and fails closed`,async()=>{
+  const f=pollingFixture();if(status==='missing')f.state.jobs=[];
+  else Object.assign(f.state.jobs[0],{status,conclusion:null});
+  await assert.rejects(waitForSelectedJobs(f.args),/bounded read budget/);
+  assert.equal(f.reads(),3);assert.equal(f.sleeps.length,2);
+});
+for(const [field,value] of [['run_id',999],['run_attempt',1],['head_sha','b'.repeat(40)]]) test(`wrong ${field} cannot supply success`,async()=>{
+  const f=pollingFixture();f.state.jobs[0][field]=value;
+  await assert.rejects(waitForSelectedJobs(f.args),/context mismatch/);
+  assert.equal(f.reads(),1);assert.equal(f.sleeps.length,0);
+});
+test('unsuccessful needs never reads or polls job evidence',async()=>{
+  const f=pollingFixture();await assert.rejects(waitForSelectedJobs({...f.args,ciResult:'failure'}));
+  assert.equal(f.reads(),0);
 });

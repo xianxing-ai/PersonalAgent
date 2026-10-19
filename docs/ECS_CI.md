@@ -4,6 +4,8 @@ Linux ECS 负责 AgentArts 镜像相关 PR；普通 PR 的完整 Windows 检查�
 
 `windows-latest` 只选择 GitHub 托管 Windows。自建 Windows 必须显式选择 `[self-hosted,Windows,X64,personalagent-windows]`。公共池不固定机器数量：已注册且在线、完成主机准入配置的第二、第三、第四台 Windows 才能实际领取；未注册机器不算已验收。
 
+2026-10-19 四台 ECS 的实际失败归因、修复及未验证项见 [本轮排查记录](ECS_CI_TRIAGE_20261019.md)。历史 job 记录不证明当前 runner 在线，仓库修复不代替主机连接和设备验收。
+
 ## 路由与验证
 
 Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件列表，再生成仅包含所选任务的矩阵：
@@ -43,6 +45,14 @@ Linux 的 `npm ci --ignore-scripts` 避开无关 Electron GUI 下载；新增必
 Windows ECS 的 Electron 安装包直连 GitHub 也曾失败。选中 ECS 时，托管路由作业只安装锁定的 npm 包而不执行安装脚本，再用锁定的官方 `@electron/get` 从官方发布地址下载 Windows x64 Electron，核验 Electron npm 包内嵌 SHA256。官方缓存布局通过同 run/attempt 的独立 artifact 传给 ECS；恢复时校验归档 SHA256、完整锁文件摘要、版本与文件摘要，并设置本 job 的 `electron_config_cache`。原始 `npm ci` 和 Electron `postinstall` 仍执行并使用官方内嵌校验和；没有跳过安装、修改依赖、使用第三方二进制源或改主机配置。缓存工件保留一天，不能借用其他 run 或不同锁文件的缓存。
 
 ECS 直连 Docker Hub 超时，因此 CI 将 Dockerfile 中官方 Node 基础镜像的 registry 显式换为 Docker 官方 ECR Public 副本，保留相同版本及 SHA256 digest；仅接受该固定格式，未知基础镜像不静默替换。已在 ECS 拉取同 digest 的 ARM64 基础镜像，未修改产品 Dockerfile 或全局 Docker 镜像源。
+
+## 传递与汇总的故障边界
+
+Foundation 与 Runner probe 固定使用官方 `actions/download-artifact` v7 commit `37930b1c2abaa49bbe596cd826c3c89aef350131`，使用 Node 24，要求 runner 至少 2.327.1，并兼容现有 v4 上传工件。原 v4 在响应提前关闭时可能留下未完成 Promise 并以 0 退出；小型合成复现证实此机制，具体 ECS 网络断流原因仍未确定。新版使该超时进入原下载动作的失败/重试路径；这不保证网络恢复。
+
+Electron 下载使用本 job 新建的空目录，生产者独立输出归档大小及 SHA256；恢复保留锁文件、版本、内嵌校验和及归档摘要验证。缺失或损坏时只报告安全的大小与摘要，不输出路径或凭据。源码和 Electron 的 tar 恢复都使用传输目录作为 cwd、相对归档文件名，兼容 Windows PATH 中的 GNU tar 与系统 bsdtar，避免把盘符 `C:` 解释为远程主机，不更改主机 PATH。
+
+汇总仍先要求所有 needs 成功，再读取同 run、同 attempt、同 head 的实际 job。仅对缺失或尚未完成的 API 证据最多读取 6 次、间隔 2 秒；真实失败、取消、超时、歧义或身份不匹配立即拒绝，预算耗尽也失败。不重新执行产品操作，不借用其他 attempt 的通过结果。
 
 ## 合并门槛
 

@@ -1,0 +1,122 @@
+{
+  "base": "b63a41c6f0bb295af9a2a79bcf55258ad92edd2f",
+  "node": "v24.15.0",
+  "steps": [
+    {
+      "name": "ci-regressions",
+      "command": [
+        "node",
+        "--test",
+        "scripts/ci/check-result.test.mjs",
+        "scripts/ci/electron-cache.test.mjs",
+        "scripts/ci/failure-feedback.test.mjs",
+        "scripts/ci/pr-route.test.mjs",
+        "scripts/ci/runner-probe.test.mjs",
+        "scripts/ci/source-transfer.test.mjs",
+        "scripts/review/design-review.test.mjs",
+        "scripts/review/auto-merge.test.mjs"
+      ],
+      "startedAt": "2026-10-19T16:23:00.839638+00:00",
+      "completedAt": "2026-10-19T16:23:01.409495+00:00",
+      "wallSeconds": 0.57,
+      "exitCode": 0,
+      "logSha256": "f324aaff31ded2ad6ab5b15f35aafa11a2b9f5b38131716407004dcb9e750480",
+      "counts": {
+        "tests": 111,
+        "pass": 111,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "name": "f15-fixture-syntax",
+      "command": [
+        "node",
+        "--check",
+        "tests/manual/agentarts/coding-repair-full-graph.mjs"
+      ],
+      "startedAt": "2026-10-19T16:23:01.409861+00:00",
+      "completedAt": "2026-10-19T16:23:01.434523+00:00",
+      "wallSeconds": 0.025,
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "counts": {}
+    },
+    {
+      "name": "f15-test-syntax",
+      "command": [
+        "node",
+        "--check",
+        "apps/runtime/test/coding-repair-application.test.mjs"
+      ],
+      "startedAt": "2026-10-19T16:23:01.434578+00:00",
+      "completedAt": "2026-10-19T16:23:01.460859+00:00",
+      "wallSeconds": 0.026,
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "counts": {}
+    }
+  ],
+  "limits": [
+    "No ECS SSH permission in current executor",
+    "No physical Windows or host-network validation",
+    "No Laya, model calls or account writes",
+    "F15 Windows behavior not passed by syntax checks"
+  ],
+  "actionlint": {
+    "version": "1.7.12",
+    "archiveSha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "utc": "2026-10-19T16:23:35.028935+00:00",
+    "command": [
+      "actionlint",
+      ".github/workflows/ci.yml",
+      ".github/workflows/runner-probe.yml"
+    ]
+  },
+  "upstreamResponseCloseReproduction": {
+    "node": "v24.15.0",
+    "classification": "Synthetic early-closed response; actual upstream dist function, 30ms timeout instead of 30s; not real ECS transport acceptance",
+    "runs": [
+      {
+        "commit": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+        "distSha256": "02c2cf24c5b60ae4b3f8d71d3cc85e2e6433dbdf106a38fee7ec3f1c96e2d18e",
+        "startedAt": "2026-10-19T16:25:03.614722+00:00",
+        "exitCode": 0,
+        "expectedExitCode": 0,
+        "output": "EXIT 0\n",
+        "logSha256": "d4e49dd8b59469b9ec9b4026c9796f2e272e46b3e0dfe7486db13f05630cfbf9"
+      },
+      {
+        "commit": "37930b1c2abaa49bbe596cd826c3c89aef350131",
+        "distSha256": "cb83ebca6829ea2610bea827fae4a37ee9e49fed1443396c72899708e2867905",
+        "startedAt": "2026-10-19T16:25:03.703056+00:00",
+        "exitCode": 1,
+        "expectedExitCode": 1,
+        "output": "REJECTED: Blob storage chunk did not respond in 30ms\nEXIT 1\n",
+        "logSha256": "8360834110690c0f79f69a37d0c2eb2d944835579d9f19e54ea7869fbf4446ae"
+      }
+    ]
+  },
+  "sourceSha256": {
+    ".github/workflows/ci.yml": "dc5babe443a870ca8ed769322248b9d1c18a6c6607e434c2f0f9cb9f2f38cfbb",
+    ".github/workflows/runner-probe.yml": "bc79c3acc6eb42d152218a16373d3c322f3b04b7714fb0a3ea8ba04d24f30fb5",
+    "apps/runtime/test/coding-repair-application.test.mjs": "920764616cc9e2b97e361608ee19173d171a1804d94a3caa2beaa9b099adef08",
+    "scripts/ci/check-result.mjs": "a01e3acaa677a583962ce5d955cdb4c4779c8ea68b3e358f61d98468fb05977a",
+    "scripts/ci/check-result.test.mjs": "26f335aea38f4ae2cc372a056ff980a1312a5f27555b5b0632ab1b429560df63",
+    "scripts/ci/electron-cache.mjs": "57d966c0e03a610b5f57ae184652f823cf755a041b7478c16245bb63e4369de9",
+    "scripts/ci/electron-cache.test.mjs": "acd69be4a1b4e188c382b3309581a0776595d46dba8928067fa1ed5990253643",
+    "scripts/ci/source-transfer.mjs": "290a981a74d18483122f920ec887cc82f6ae9e6cdd7fcc402bbf6bbf15be2511",
+    "scripts/ci/source-transfer.test.mjs": "00202ec628c0df866f7c8f8e373b7ce03739ce2a724e3fab2a99227592634e8d",
+    "tests/manual/agentarts/coding-repair-full-graph.mjs": "57cfbc94d18da5671e2f02a79bbcc02ba857a1ac3464ef9ddb8c2e7660710301"
+  },
+  "observedJobLogs": {
+    "427ElectronDigestFailure": "SHA256: df504e8f63c4d0b6c2f62bfcada6fb4573904f3de2dc8d7bdb92038ec45dbbff",
+    "426AggregateFailure": "SHA256: 830c934ebcac2b033991af4938d8de2c41c26c4636a3ec3eb1b9c5415005cc63",
+    "423F15Failure": "SHA256: f2ed068fabb4bdd8ea1e262b00dd0983ccc555c803e73b2c506b576e47c27e4c"
+  },
+  "remoteAcceptance": "Not yet validated on a new CI run; original failures and current host online states are distinct from local regression results."
+}
