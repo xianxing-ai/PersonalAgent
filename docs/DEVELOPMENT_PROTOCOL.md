@@ -10,10 +10,10 @@ WSS 主通道和 HTTPS 备用是同一 CloudAgentPort 的适配，不改变既�
 
 Wiki 复用 KnowledgePort、MemoryQueryPort 和 FactChangeFeed；新增页面身份、source/config revision、引用失效、写后投影和去重契约由 goo122 发布。原始内容权限、索引权限和出机权限分开；断线/未知写入不盲重试，任务终态归 Runtime。
 
-公共变更由本MOD负责人随工作包完成实际调用方接线、消费验证、Evidence和文档，不默认交中央代验。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。
+公共变更由本MOD负责人随工作包完成实际调用方接线、消费验证、Evidence和文档，不默认交中央代验。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前提交有效批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。
 
 <!-- current-design-20261009 -->
-> 当前协作规则（2026-10-15）：[模块分工](MODULE_ASSIGNMENTS.md) · [实际接线包](competition/COLLABORATOR_WIRING_PACKAGE.md)。每个 PR 需 goo122、zemeng5208、Potatos498 中任意一位非作者对当前提交的有效批准，并满足必要检查、冲突及未解决意见门槛；三人跨 PR 均衡承担评审与合并，禁止强制合并或管理员绕过。历史验收保留；旧两人门槛不再适用。
+> 当前协作规则（2026-10-17）：[模块分工](MODULE_ASSIGNMENTS.md) · [实际接线包](competition/COLLABORATOR_WIRING_PACKAGE.md)。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前提交有效批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。历史验收保留；旧两人门槛不再适用。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
@@ -28,7 +28,7 @@ Wiki 复用 KnowledgePort、MemoryQueryPort 和 FactChangeFeed；新增页面身
 - 状态分为 `frozen`、`provisional`、`unavailable`、`deprecated`。接口只有具备单一来源、生产实现、Fake/失败夹具、消费验证、负责人自审和 CI 后才可冻结；外部行为影响语义时还需要真实目标系统闭环。
 - 新增可选字段为兼容扩展；删除字段、修改含义、增加消费者无法处理的必需状态必须升级不兼容版本或协商能力。
 - 握手交换协议版本与能力列表；主版本不一致拒绝连接。新操作必须先通过能力发现，不能只凭次版本猜测支持。
-- 变更流程：提出差异和消费者影响 → 更新接口目录为 provisional → 实施者更新单一 Schema/夹具和必要接线 → 消费契约验证 → 自审与 CI → 任意一位非作者对当前提交有效批准且检查满足后按授权合并 → 按实际证据更新为 frozen。goo122 负责公共协议长期维护，不是独占实施者；开发可独立推进，合并遵守当前门槛，禁止 UI 和服务端私设临时字段。
+- 变更流程：提出差异和消费者影响 → 更新接口目录为 provisional → 实施者更新单一 Schema/夹具和必要接线 → 消费契约验证 → 自审与 CI → 常规 PR 获四位协作者中任一非作者对当前提交有效批准，或 Owner 对具体 PR 留存审核例外记录；最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理后由有合并权限者合并 → 按实际证据更新为 frozen。goo122 负责公共协议长期维护，不是独占实施者；开发可独立推进，合并遵守当前门槛，禁止 UI 和服务端私设临时字段。
 - Schema 中已知但生产握手未公布的 operation 为 unavailable；消费者不调用，Host 返回 `UNSUPPORTED_CAPABILITY`，UI 明确展示不可用。
 
 ## 2. Profile 与通信分层
