@@ -58,6 +58,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===script) {
   } else if(process.argv[2]==='restore') {
     const root=await restoreSource(path.dirname(script),process.env.RUNNER_TEMP,process.env.GITHUB_SHA,process.env.CI_SOURCE_SHA256);
     await appendFile(process.env.GITHUB_ENV,`PA_CI_SOURCE=${root}\n`);
+    await appendFile(process.env.GITHUB_OUTPUT,`directory=${root}\n`);
     console.log(`Restored verified GitHub Actions source for ${process.env.GITHUB_SHA}; no Git network fetch used.`);
   } else throw Error('Expected pack or restore');
 }
