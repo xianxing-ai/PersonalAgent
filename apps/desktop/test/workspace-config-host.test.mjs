@@ -41,6 +41,18 @@ async function workspaceBindingFixture(t) {
 }
 const allowWorkspaceRead=host=>host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false});
 
+test('developer configuration is Main-only, preserves the original task lease and never grants metadata export',async t=>{
+  const {root,open}=await workspaceBindingFixture(t),host=open(),checkpoints=new Map();
+  let canonical='synthetic-user';
+  host.bindApplication({readToolConversation:()=>canonical,runtime:{loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}});
+  const configuration=host.readDeveloperConfiguration(),scope={taskId:'developer-task',deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+  assert.equal(configuration.rootPath,root);assert.equal(configuration.metadataExportAllowed,false);assert.equal(configuration.available(scope),false);
+  allowWorkspaceRead(host);assert.equal(configuration.available(scope),true);canonical=undefined;assert.equal(configuration.available(scope),false);
+  canonical='synthetic-user';host.revoke();assert.equal(configuration.available(scope),false);
+  assert.throws(()=>configuration.assertCurrent(scope),{code:'UNAUTHORIZED'});
+  assert.equal(Object.hasOwn(host.snapshot(),'rootPath'),false);
+});
+
 test('local read consent permits MCP binding without granting AgentArts availability or export',async t=>{
   const {root,open}=await workspaceBindingFixture(t);
   const host=open();

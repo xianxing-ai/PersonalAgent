@@ -1,6 +1,6 @@
 import {mountSessionControls} from '../conversation/session-controls.js';
 import {mountNativeReasoning} from '../conversation/native-reasoning.js';
-import {mountWorkspaceComposer} from '../conversation/workspace-composer.js';
+import {mountSubagentConversations} from '../conversation/subagent-conversations.js';
 import {Orb} from '../orb/orb.js';
 import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
 import {mountConversationRail} from '../conversation/rail.js';
@@ -24,7 +24,7 @@ export function mountWorkspace(root,invoke,escape){
       <aside class="connector-board" aria-label="连接器信息"><header><div><h2>连接器</h2></div><button class="icon-btn" id="connectors-refresh" aria-label="刷新连接器">↻</button></header><div id="connector-cards"></div></aside>
       <aside class="conversation-inspector" id="conversation-inspector" aria-label="对话详情" hidden><header><h2>对话详情</h2><button class="icon-btn" id="inspector-close" aria-label="关闭对话详情">${icon('close')}</button></header><div id="inspector-content"></div></aside></div>
     </main></section>`;
-  const children=document.createElement('section');children.className='subagent-tasks';children.setAttribute('aria-label','子任务派发');root.querySelector('.workspace-chat').append(children);
+  const subagents=mountSubagentConversations(root.querySelector('#workspace-stage'),invoke,escape);
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
   const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage);
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
@@ -75,8 +75,9 @@ export function mountWorkspace(root,invoke,escape){
     activationTimer=setTimeout(()=>{activationTimer=0;orbButton.setAttribute('aria-pressed','false');},3200);
   };
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
-  const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
-  const sessionRoot=document.createElement('div');root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,composer.input,invoke,report);composer.beforeSubmit=()=>sessionControls.flush();composer.onAccepted=token=>sessionControls.submitted(token);
+  // Keep existing per-conversation drafts available to session actions without mounting a task composer.
+  const draftInput=document.createElement('textarea');
+  const sessionRoot=document.createElement('div');root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report);
   const nativeReasoning=mountNativeReasoning(preferences,invoke,report);
   const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
@@ -120,8 +121,7 @@ export function mountWorkspace(root,invoke,escape){
     updateRevision++;
     const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['model','thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;syncAuxiliaryPanels(false);}
     current=data;current.tasks ||= [];
-    children.hidden=!data.subagentTasks?.length;
-    children.innerHTML='<h3>子任务派发</h3>'+(data.subagentTasks??[]).map(t=>'<article><strong>'+escape(t.role??'子任务')+'</strong><p>父任务 '+escape(t.parentTaskId)+' · 子任务 '+escape(t.taskId)+'</p><p>'+escape(t.modelId??'未记录模型')+' · '+escape(t.reasoningEffort??'供应商默认')+' · '+escape(stateNames[t.state]??t.state)+'</p><p>'+escape(t.resultSummary??t.error?.message??t.error??'')+'</p><p>Evidence '+escape((t.evidenceRefs??[]).join(', '))+'</p></article>').join('');
+    subagents.update(data.subagentTasks??[]);
     const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference,data.conversationState?.activeId]);
     if(preferenceSignature!==nextPreferenceSignature) {
       modelChoice.replaceChildren(new Option('使用默认主思考模型',''),...(data.modelChoices??[]).map(item=>{
@@ -131,7 +131,7 @@ export function mountWorkspace(root,invoke,escape){
       projectPreferenceControls();
     }
     preferences.querySelector('label').hidden=!data.modelChoices?.length;
-    sessionControls.update(data);nativeReasoning.update(data);composer.update(data);
+    sessionControls.update(data);nativeReasoning.update(data);
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
     if(document.hidden)orb.stop();

@@ -59,6 +59,8 @@ export interface RuntimeProactiveWorkflowHostOptions {
   routeConnectorEvent?(event: ProactiveEvent): Partial<Pick<UnsignedEvent, 'change' | 'previousVersion' | 'expiresAt' | 'priority' | 'responsibilityRefs' | 'goalRefs' | 'anchorRefs' | 'contractRef'>>;
   /** Authenticated native UI/final user instruction check; model/source fields cannot satisfy it. */
   verifyControlCommand?(command: RuntimeProactiveControlCommand, source: TaskSnapshot, context: Context): boolean | Promise<boolean>;
+  /** Trusted structural provenance only. Does not replace execution identity, deadlines, quotes or grants. */
+  resolveUserConversation?(taskId: string): string | undefined;
   /** Existing controller consumer. An uncertain call is read back, never automatically sent again. */
   controller?: {consume(report: RuntimeProactiveChildReport, context: Context): Promise<RuntimeProactiveControllerReceipt>;
     readReceipt(eventId: string, context: Context): Promise<RuntimeProactiveControllerReceipt | undefined>};
@@ -142,7 +144,11 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
   const taskEvidence = (taskId: string) => runtimeEvents(taskId).map(event => event.eventId);
   const sourceTask = (taskId: string) => {
     const task = runtime.getTask(taskId);
-    if (task.conversationId !== original.conversationId || !text(task.goal)) fail('UNAUTHORIZED', 'Original user instruction belongs to another conversation');
+    const originalConversation = options.resolveUserConversation?.(original.taskId);
+    const sameConversation = options.resolveUserConversation
+      ? text(originalConversation) && options.resolveUserConversation(taskId) === originalConversation
+      : task.conversationId === original.conversationId;
+    if (!sameConversation || !text(task.goal)) fail('UNAUTHORIZED', 'Original user instruction belongs to another conversation');
     if (runtime.loadCheckpoint(taskId, 'private-copy-erasure') !== undefined) fail('UNAUTHORIZED', 'Original instruction was withheld');
     return task;
   };
