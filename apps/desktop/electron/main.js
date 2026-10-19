@@ -2051,8 +2051,8 @@ async function initializeRuntime() {
         readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
       readConfiguration:()=>{
         const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
-          contractRef=process.env.PA_PROACTIVE_CONTRACT_REF;
-        if(!binding||!receiptSecret||!contractRef)return undefined;
+          contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
+        if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
         const transport=agentArtsConfig.transportConfig(binding);
         const assertDeploymentBinding=()=>{
           transport.assertDeploymentBinding?.();
@@ -2063,6 +2063,7 @@ async function initializeRuntime() {
           ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
           assertDeploymentBinding,fetchImpl:transport.fetchImpl,
           authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
+          hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},
           invokeMode:agentArtsInvokeMode}};
       }});
   }

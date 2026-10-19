@@ -6,7 +6,7 @@ import type {AgentArtsRuntimeConfig,AgentArtsAuthorizationProvider,AgentArtsFetc
 export interface RuntimeProactiveImageAdapterOptions {
   /** Original trusted AgentArts transport configuration; never read from a model/event/Renderer request. */
   config?:AgentArtsRuntimeConfig & {deploymentVersion?:string};
-  /** Trusted composition rejects configuration changes before any credentials/send. */
+  /** Recheck the trusted deployment binding before credentials and before POST. */
   assertDeploymentBinding?:()=>void;
   /** Explicit startup endpoint, mutually exclusive with config. HTTP is restricted to loopback fixtures. */
   endpoint?:string;
@@ -37,6 +37,8 @@ function endpointOf(options:RuntimeProactiveImageAdapterOptions):string {
       ||!/^[A-Za-z0-9_-]{1,64}$/u.test(config.runtimeName))fail('INVALID_ARGUMENT','Invalid trusted AgentArts gateway/runtime');
     value=gateway.origin+'/runtimes/'+encodeURIComponent(config.runtimeName)+'/invocations';
     let version=config.deploymentVersion;
+    if(version!==undefined&&(typeof version!=='string'||!/^[A-Za-z0-9_.-]{1,128}$/u.test(version)))
+      fail('INVALID_ARGUMENT','Invalid trusted AgentArts deployment version');
     if(config.websocketUrl!==undefined){
       let websocket:URL;try{websocket=new URL(config.websocketUrl);}catch{return fail('INVALID_ARGUMENT','Invalid bound proactive WSS endpoint');}
       if(websocket.protocol!=='wss:'||websocket.username||websocket.password||websocket.hash
@@ -48,7 +50,6 @@ function endpointOf(options:RuntimeProactiveImageAdapterOptions):string {
       version??=selected;
     }
     if(version!==undefined){
-      if(typeof version!=='string'||!/^[A-Za-z0-9_.-]{1,128}$/u.test(version))fail('INVALID_ARGUMENT','Invalid proactive deployment version');
       value+='?endpoint='+version;
     }
   }
@@ -116,6 +117,7 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
   if(!['debug','published'].includes(invokeMode)||workflowGoalInput!==undefined&&!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u.test(workflowGoalInput))
     fail('INVALID_ARGUMENT','Invalid trusted proactive envelope configuration');
   const fetchImpl:AgentArtsFetch=options.fetchImpl??((url,init)=>globalThis.fetch(url,init));
+  const assertBinding=()=>{try{options.assertDeploymentBinding?.();}catch{return fail('REVISION_CONFLICT','Proactive image deployment binding changed');}};
   const validContext=(input:RuntimeProactiveImageContext)=>{
     if(!input||!id(input.taskId)||!id(input.sessionId)||!id(input.requestId)||!Number.isSafeInteger(input.controlRevision)||input.controlRevision<0
       ||!(input.signal instanceof AbortSignal)||!Number.isFinite(Date.parse(input.deadline))||!Number.isFinite(Date.parse(input.taskDeadline)))
@@ -188,6 +190,7 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
     };
     let response:AgentArtsResponse|undefined;
     try {
+      assertBinding();
       const auth=await authorization(options.authorizationProvider),hostAuth=options.hostAuthorizationProvider?await authorization(options.hostAuthorizationProvider):undefined;
       if(hostAuth!==undefined&&!/^Bearer [\x21-\x7e]+$/u.test(hostAuth))fail('UNAUTHORIZED','Proactive image host credential unavailable');
       const request=input as ProactiveAdvanceRequest;
