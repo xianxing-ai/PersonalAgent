@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mountLiveVoiceControls,liveAudioFailureText} from '../src/app/live-voice-controls.js';
+import {mountLiveVoiceControls,liveAudioFailureText,liveWorkFeedbackText} from '../src/app/live-voice-controls.js';
+
+test('work feedback distinguishes unknown acceptance, accepted requests and returned receipts',()=>{
+  assert.match(liveWorkFeedbackText({workRequests:[{state:'failed'}]}),/受理未确认.*避免重复派发/);
+  const accepted=liveWorkFeedbackText({workRequests:[{state:'accepted',taskId:'task-1'}]});
+  assert.match(accepted,/task-1.*等待结果/);
+  assert.match(accepted,/不代表已派发子任务/);
+  const returned=liveWorkFeedbackText({workRequests:[{state:'result_returned',taskId:'task-1'}]});
+  assert.match(returned,/回执已返回/);
+  assert.match(returned,/不代表子任务成功或已独立验证/);
+});
 
 function deferred() {
   let resolve, reject;

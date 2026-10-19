@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {mountNotificationSettings} from '../src/features/admin/notification-settings.js';
 import {createServer} from 'node:http';
 import {readFile,mkdir} from 'node:fs/promises';
 import {resolve,extname,join} from 'node:path';
@@ -13,7 +14,7 @@ test('notification page submits current scope/revision, preserves draft and sepa
   const {chromium}=await import('playwright'),source=resolve(fileURLToPath(new URL('../src',import.meta.url)));
   const fixture={tasks:[],messages:[],approvals:[],notifications:[],capabilities:[],health:[],connection:'隔离通知页面',
     model:{provider:'agentarts',configured:true,status:'configured'},modelChoices:[],thinking:{depth:1,fast:false},
-    adminNavigation:{revision:1,page:'notifications'},notificationCenter:{available:true,policy:{state:'unconfigured',revision:0,effective:null},
+    adminNavigation:{revision:1,page:'notifications'},notificationCenter:{available:true,policy:{state:'unconfigured',revision:0,scope:{kind:'global'},effective:null},
       status:{interruptionQuotaSafety:'atomic'},feed:{items:[{id:'fixture-notice',source:'fixture',contentRef:'仅本机测试',validity:'active',unread:true}]}}};
   const html=`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PersonalAgent 通知设置夹具</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/app/style.css"><link rel="stylesheet" href="/app/surfaces.css"></head><body><main id="root"></main><script>
   window.fixture=${JSON.stringify(fixture)};window.calls=[];window.desktop={subscribe(fn){window.update=fn;return()=>{}},openSettings:async()=>{},invoke:async(name,payload)=>{
@@ -66,4 +67,86 @@ test('notification page submits current scope/revision, preserves draft and sepa
   await page.setViewportSize({width:600,height:850});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   if(output)await page.screenshot({path:join(output,'notification-settings-narrow.png')});
   assert.deepEqual(errors,[]);
+});
+
+const globalScope = {kind:'global'};
+const mailScope = {kind:'connector',connectorId:'mail'};
+const basePolicy = {mode:'normal',windowMinutes:17,maxInterruptions:3,silentUntilUtc:null,
+  preferredChannel:'banner',allowUrgentBreakthrough:false,digestMode:'on_return',quietHours:null};
+const mailPolicy = {...basePolicy,mode:'silent',windowMinutes:20,preferredChannel:'voice'};
+const center = (scope,revision,effective=basePolicy) => ({
+  available:true,policy:{state:effective?'configured':'unconfigured',scope,revision,effective},feed:{items:[]}
+});
+
+function scopeFixture(t) {
+  const names=['scope','connector','responsibility','mode','window','maximum','unlimited','until',
+    'channel','urgent','digest','quietStart','quietEnd','timezone'];
+  const inputs=Object.fromEntries(names.map(name=>[name,{name,value:'',checked:false,disabled:false}]));
+  inputs.scope.value='global';
+  const node=()=>({textContent:'',disabled:false,append(){},replaceChildren(){}});
+  const fields=Object.fromEntries(['form','load','voice','status','question','cancel','reconcile',
+    'digest','return','digest-result','approvals','feed'].map(name=>[name,node()]));
+  fields.form={...node(),elements:{namedItem:name=>inputs[name]},reportValidity:()=>true};
+  const section={...node(),
+    querySelector:selector=>fields[selector.split('"')[1]],
+    querySelectorAll:()=>[...Object.values(inputs),...Object.values(fields)]};
+  const original=Object.getOwnPropertyDescriptor(globalThis,'document');
+  Object.defineProperty(globalThis,'document',{configurable:true,writable:true,
+    value:{createElement:tag=>tag==='section'?section:node()}});
+  t.after(()=>{if(original)Object.defineProperty(globalThis,'document',original);
+    else delete globalThis.document;});
+  const calls=[];
+  let reply={};
+  const view=mountNotificationSettings({append(){}},(action,payload)=>{
+    calls.push({action,payload:structuredClone(payload)});return structuredClone(reply);
+  });
+  return {calls,inputs,fields,render:view.render,reply:value=>{reply=value;},
+    input(name,value){inputs[name].value=value;fields.form.oninput({target:inputs[name]});},
+    async act(name){if(name==='submit')fields.form.onsubmit({preventDefault(){}});
+      else fields[name].onclick();await new Promise(resolve=>setImmediate(resolve));}};
+}
+async function loadMail(h) {
+  h.render(center(globalScope,0,null));
+  h.input('scope','connector');h.input('connector','mail');
+  h.reply(center(mailScope,2,mailPolicy));await h.act('load');
+  assert.deepEqual(h.calls[0].payload,{scope:mailScope});h.calls.length=0;
+}
+
+test('notification settings preserve selected scope and revision',{concurrency:false},async t=>{
+  await t.test('unconfigured global revision zero can save',async t=>{
+    const h=scopeFixture(t);h.render(center(globalScope,0,null));
+    for(const [name,value] of Object.entries({mode:'normal',window:'17',maximum:'3',
+      channel:'banner',digest:'on_return'}))h.input(name,value);
+    h.reply({state:'confirmed',taskId:'fixture',notificationCenter:center(globalScope,1)});
+    await h.act('submit');
+    assert.deepEqual(h.calls.map(call=>call.action),['notifications.configure']);
+    assert.equal(h.calls[0].payload.expectedRevision,0);
+    assert.deepEqual(h.calls[0].payload.scope,globalScope);
+    assert.deepEqual(h.calls[0].payload.patch,basePolicy);
+  });
+  await t.test('global broadcasts cannot replace clean or dirty connector policy',async t=>{
+    const h=scopeFixture(t);await loadMail(h);
+    h.render(center(globalScope,5));
+    assert.equal(h.inputs.mode.value,'silent');assert.equal(h.inputs.window.value,'20');
+    h.reply({summary:'fixture',revision:1,state:'pending'});await h.act('voice');
+    assert.equal(h.calls[0].action,'notifications.confirmation.prepare');
+    assert.equal(h.calls[0].payload.expectedRevision,2);
+    assert.deepEqual(h.calls[0].payload.scope,mailScope);
+    h.input('window','23');
+    h.render(center(globalScope,6));h.render(center(mailScope,9,basePolicy));
+    assert.equal(h.inputs.window.value,'23');
+    h.reply({state:'confirmed',taskId:'fixture',notificationCenter:center(mailScope,3)});
+    await h.act('submit');
+    assert.equal(h.calls[1].action,'notifications.configure');
+    assert.equal(h.calls[1].payload.expectedRevision,2);
+    assert.deepEqual(h.calls[1].payload.patch,{...mailPolicy,windowMinutes:23});
+  });
+  await t.test('a changed scope or mismatched readback cannot submit',async t=>{
+    const h=scopeFixture(t);await loadMail(h);
+    h.input('connector','calendar');await h.act('submit');
+    assert.deepEqual(h.calls,[]);
+    h.reply(center(globalScope,5));await h.act('load');
+    await h.act('submit');await h.act('voice');
+    assert.deepEqual(h.calls.map(call=>call.action),['notifications.get']);
+  });
 });

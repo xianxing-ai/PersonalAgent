@@ -1,9 +1,20 @@
 # 天气连接器（MOD-25）
 
 <!-- current-design-20261009 -->
-> 当前目标与协作规则（2026-10-09）：[完整设计](../../../docs/design/resident-developer-agent-20261008/DESIGN.md) · [离线阅读/全部 SVG](../../../docs/design/resident-developer-agent-20261008/index.html) · [两人确认与本机阅读门槛](../../../docs/reviews/DESIGN_READING_GATE.md)。WSS 主通道、HTTPS 备用；Wiki 记忆由 goo122 接入。goo122 与 Potatos498 均确认后才可按授权合并，禁止强制合并/管理员绕过。设计不等于已实现；本文历史验收与作者记录保留，旧合并规则以当前门槛为准。
+> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../../CONTRIBUTING.md) 和 [AGENTS](../../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
+<!-- architecture-scope-20261013 -->
+## 当前架构职责
 
-> 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
+目标profile：huawei_ict_agentarts。工程责任：MOD-25（Potatos498）。产品流程：F11；逐节点流程见[WORKFLOWS](../../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../../docs/design/workflow-architecture-20261013/MODULES.md)。
+
+复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
+
+当前实验由本机Laya提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收，架构未最终定型。
+
+本轮仅重写架构说明。具体方法/配置/真实证据以当前源码与下面技术参考为准；这些参考的历史阶段不覆盖[当前接口状态](../../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md)，也不证明新责任/语音/影子接线已经完成。
+
+## 现有API、运行说明与历史验证参考
+<!-- /architecture-scope-20261013 -->
 
 负责人 Potatos498（C）；评审者 `goo122` 或 `zemeng`。包版本 0.1.0-alpha.1。关联需求 [PA-010](../../../docs/PRD.md)。
 
@@ -33,6 +44,7 @@ MOD-25 的天气 Provider/Connector 工作包已完成，但通用 ConnectorPort
 - **地点不静默猜测**：地点只能来自本次请求或已配置的 `defaultLocation`（用户设置），两者都缺时返回 `INVALID_ARGUMENT`。
 - **检索轮由输入文字决定，展示名由配置语言决定**：Open-Meteo 的地理编码按语言分别建索引，且 `language` 同时决定「搜哪套名字」与「显示名」。2026-09-06 对生产端点实测：**任何中文串在 `language=en` 下返回 0 条**，`zh-TW` / `zh-Hant` 同样 0 条；`zh` 索引的简繁覆盖逐条不可预测（`东京` 只命中江苏同名地点，要繁体 `東京` 才命中东京都）。因此轮集合 = { 配置语言, `en` } ∪ { 输入含汉字时的 `zh` }，去重后并行；**不再因为配置语言以 `en` 开头就砍掉轮次**——此前 `language:'en'` 下所有中文输入一律 `NOT_FOUND`。合并顺序即展示名优先序：**GeoNames 精确名层（配置了 `geonamesUsername` 时）** → 配置语言 → `zh`（汉字输入时）→ `en`。同一地点按 GeoNames `id`（无 `id` 时退化为两位小数坐标）合并。这**没有**让解析与文字无关，`zh` 索引在两个方向上都不完整，缺口由 GeoNames 层与下面的提示串兜。
 - **GeoNames 精确名层（可选，装配层配置 `geonamesUsername` 后启用）**：2026-09-07 实测，未配置账号时简体中文查外国大城市 26 个中 7 个 `NOT_FOUND`（纽约/首尔/温哥华/利马/内罗毕/伊斯坦布尔/胡志明市）、3 个低置信误解析、1 个高置信静默错误（`开罗`→美国伊利诺伊州 Cairo，人口 1733 的 PPLA2；埃及开罗不在 `zh` 索引返回里）。配置后对汉字输入增加一层 GeoNames 官方 API（`secure.geonames.org/searchJSON?name_equals=`，免费账号日 3 万次额度）——`name_equals` 精确匹配任一语言的已知名（含简体别名），返回的 geonameId 再经 Open-Meteo `/v1/get?id=` 取规范记录（时区/人口/feature_code 与搜索结果同字段、同 id 体系）。**`name_equals` 命中即证明「输入串是该地点的已知名」**，因此该层候选直接参与 exact-match 排序，显示名不同（`伦敦` vs `倫敦`）不影响；排序按人口，`开罗` 由 PPLC 960 万压过 PPLA2 小镇。该层**尽力而为**：账号缺失、网络失败、401、额度超限、`/v1/get` 404 都只跳过本层或丢弃对应候选，回退到仅 Open-Meteo 的既有行为，不让查询整体失败（取消除外）。配置后 26 城简体查询 **26/26 高置信命中**（含纽约→America/New_York、开罗→Africa/Cairo、东京→Asia/Tokyo）。账号由装配层从环境变量注入（如 `PA_GEONAMES_USERNAME`），不进仓库、不进前端快照；真实端到端验证命令：`PA_WEATHER_LIVE=1 PA_GEONAMES_USERNAME=<账号> node --test`。
+- **内置离线别名表（默认生效，不需要账号）**：`src/locale-aliases.ts` 提供「简体中文 → 可检索写法」表（约 140 条常见外国城市）。**只在原始输入零候选时触发**，且排在调用方显式给的 `locationQuery` 之后（显式写法永远优先）；查到的写法再走一轮检索，只有判 `high` 才采用。因此**仓库版本无需任何配置**即可解析 `纽约`/`首尔` 等 `zh` 索引完全不收录的城市；**已有低置信度判定语义不变**——别名层不重写 `low` 结论，那类「命中同名小镇」的场景仍由 `strict` 拒绝或 GeoNames 层（若装配提供账号）处理。表由 `scripts/generate-zh-aliases.mjs` 生成，**不手写**：每个条目经四步核验——候选清单为每个中文名登记**预期国家**（同名跨国会静默给出错误城市：`釜山` 会命中佛山 CN、`奥克兰` 会命中奥克兰 US），GeoNames `name_equals` 的命中必须先落在预期国家；`/v1/get?id=` 取该地点的英文规范名（存的是 Open-Meteo 索引真正携带的写法，因此 `Montréal`→`Montreal`、`Washington`→`Washington D.C.`）；再用该写法按运行时同一套 `rankPlaces` 语义重查，**只有胜出者仍是同一 id 且属主要城市席位才收录**。预期国家无命中即跳过，不按人口猜（`奥克兰` 因此没有条目）。被跳过的城市（如 `新加坡`：城市 PPLC 563 万被国家记录 PCLI 611 万压过）说明该串在当前 provider 下确实解析不到，留在报告里而不是塞进表里假装可用。数据派生自 GeoNames（CC BY 4.0）。
 - **拉丁名提示是兜底轮，不是平权轮**：`weather.forecast` 入参可选 `locationQuery`，即用于检索的英文／当地文字书写形式；`location` 仍是用户原始表述。**仅当原始输入零候选或被判低置信度时**才检索提示串，且只有提示串自身判为高置信度才采用。实测理由：`婺源` 用中文正确，而其拉丁写法 `Wuyuan` 把浙江另一个县排在前面（两者都是 `PPLA3` 行政中心，`feature_code` 与人口都分不开），平权合并会让错误提示压过正确输入。提示串并入记录身份（见「默认日期」），因为同一 `location` 带不同提示可能解析到不同地点。提示串 trim 后为空视为未提供，不发空检索。
 - **排序不依赖提供商顺序**：提供商的相关性排序跨语言不可靠（`New York` 的 `zh` 轮把内布拉斯加州 York 排第一，人口 7864，而纽约市人口 8,804,190 只在 `en` 轮出现）。改为先筛名称与查询完全相等的条目，再按人口降序，人口相同时按首次出现顺序。**`admin1` / `country` 不再算作「名称完全相等」**——那会让 `Texas`、`France`、`England` 这类区域名伪装成精确地名匹配；它们现在由置信度规则暴露为低置信度，而不是在这里被悄悄提升。
 - **匹配置信度必须披露**：`forecast.resolved.confidence` 取 `high` / `low`，只看排序首位：`feature_code` 不属于有人居住地点家族（`PPL*`）→ `low`（国家、行政区、岛屿、山体记录都不能回答天气）；是**首级行政中心**（`PPLC` 首都 / `PPLA` 一级行政区驻地）→ `high`；是**次级行政中心**（`PPLA2`–`PPLA5`）→ 人口 ≥ `minMinorSeatPopulation`（默认 **100000**）才 `high`，否则 `low`；其余 `PPL` 人口 ≥ `minCorroboratedPopulation`（默认 **500000**）才 `high`；GeoNames 精确名层命中的「已证名」在任何人口档位都可佐证为 `high`。`feature_code` 缺失按无分类保守处理。同时披露 `featureCode` 本身，使判定可复核。两个阈值均取自实测空档而非整数偏好（次级席位：错误小席位 ≤14574 ↔ 正确最小席位 211151；非席位：422324 ↔ 8804190）。**这是对匹配的判定，不是对天气数据的判定，且刻意不当场纠正**（见已知限制）。

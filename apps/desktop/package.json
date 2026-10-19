@@ -13,6 +13,7 @@
     "dev:text-fake": "electron . --fake-model",
     "test": "node --test test/*.test.mjs",
     "test:smoke": "node test/electron-smoke.cjs",
+    "test:frontend-layout": "node test/frontend-layout-smoke.cjs",
     "test:desktop-local": "node test/desktop-local-smoke.cjs",
     "check:desktop-local": "node --check electron/desktop-host.js && node --check electron/desktop-state.js && node --check electron/desktop-preload.cjs && node --check src/desktop-settings/settings.js && node --check src/ui/desktop-shell.js",
     "test:workspace-smoke": "node test/workspace-smoke.cjs",
@@ -36,6 +37,7 @@
     "@personal-agent/coding-tools": "0.1.0-alpha.1",
     "@personal-agent/learning": "0.1.0-alpha.1",
     "@personal-agent/goals": "0.1.0-alpha.1",
+    "@personal-agent/github": "0.1.0-alpha.1",
     "@personal-agent/feeds": "0.1.0-alpha.1",
     "@personal-agent/productivity": "0.1.0-alpha.1",
     "@personal-agent/notifications": "0.1.0-alpha.1",
@@ -44,7 +46,8 @@
     "@personal-agent/research": "0.1.0-alpha.1",
     "@personal-agent/runtime": "0.1.0-alpha.1",
     "@personal-agent/tool-gateway": "0.1.0-alpha.1",
-    "@personal-agent/voice": "0.1.0-alpha.1"
+    "@personal-agent/voice": "0.1.0-alpha.1",
+    "@personal-agent/windows-client": "0.1.0-alpha.1"
   },
   "devDependencies": {
     "@personal-agent/testkit": "0.1.0-alpha.1",

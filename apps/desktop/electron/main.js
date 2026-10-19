@@ -2,6 +2,8 @@ import {handleConversationAction} from './conversation-actions.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
+import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
+import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
@@ -10,7 +12,7 @@ import path from 'node:path';
 import {existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
-import {panelBounds, clampOrb, draggedGroupBounds} from './placement.js';
+import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
 import {desktopDataPaths} from './data-paths.js';
@@ -43,11 +45,25 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
+import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
+import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
+import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
+import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
+import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
 import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
+import {createDesktopDeveloperDeployment,projectDeveloperConversationStatus} from './developer-deployment-config.js';
+import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
+import {createToolPresenceHost} from './tool-presence-host.js';
+import {createConversationToolSurface} from './conversation-tool-surface.js';
+import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
+import {createSystemObservationConversation} from './system-observation-conversation.js';
+import {createDesktopWindowsControlHost} from './windows-control-host.js';
+import {createComputerControlLease} from './computer-control-lease.js';
+import {createWindowsDesktopControlHost} from '@personal-agent/windows-client';
 import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
@@ -128,6 +144,8 @@ let orb;
 let panel;
 let admin;
 let workspace;
+const subagentWindows=new Map();
+let subagentListWindow;
 let adminNavigation = {page: 'settings', revision: 0};
 let tray;
 let poll;
@@ -135,6 +153,7 @@ let pinned = false;
 let dragging = false;
 let orbDragRevision = 0;
 let dragOffset;
+let orbDragPoll;
 let panelDragOrigin;
 let away = 0;
 let audioLevel = 0;
@@ -229,6 +248,9 @@ let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
+let conversationToolAccess, voiceApprovalBridge, proactiveConversationTools;
+let proactiveRuntimePump,proactiveSourceRouter;
+let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
 let p5UnavailableReason = '';
 let p5RuntimeFailure = '';
@@ -246,6 +268,13 @@ function withReviewedRepairLock(work) {
 }
 let productTools;
 let codingWorkspace;
+let developerDeployment;
+let developerDeploymentFailure='';
+let toolPresenceHost,windowsControlHost,windowsControlClosing;
+let computerControlLease;
+let imageWorkflowCatalog;
+let systemObservationConversation;
+let windowsControlClosed=false;
 let referenceHost;
 let referenceClosing;
 let referenceClosed=false;
@@ -304,7 +333,13 @@ function taskSurface(task) {
 
 function voiceQuestionForConversation(conversationId){
   const question=voiceCommandHost?.snapshot();if(!question?.taskId)return question;
-  const task=tasks.get(question.taskId);return task&&conversations?.conversationIdForTask(task)===conversationId?question:null;
+  if(question.kind==='approval'&&question.state==='pending'){
+    const approval=conversationToolAccess?.readApproval(question.approvalId);
+    if(!approval||approval.state!=='pending'||approval.taskState!=='waiting_approval'
+      ||approval.revision!==question.approvalRevision||approval.argumentsDigest!==question.argumentsDigest
+      ||approval.expiresAt!==question.expiresAt)return null;
+  }
+  return conversationToolAccess?.authorizeTaskRead({taskId:question.taskId,conversationId})?question:null;
 }
 function p5DevicePanelSuggestions() {
   if (!p5DeviceReceiptStore) return [];
@@ -517,7 +552,9 @@ function snapshot(surface) {
     adminNavigation: {...adminNavigation},
     audioLevel,
     orbStateOverride,
-    subagentTasks:orderedTasks().filter(task=>visibleConversationTask(task,surface)).flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]),
+    subagentTasks:fakeMode?[]:(surface==='workspace'?runtimeApplication?.listSubagentConversations({limit:6}).items??[]:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
+      readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
+      readTask:taskId=>runtimeApplication.runtime.getTask(taskId)})),
     tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
@@ -611,14 +648,24 @@ function publish() {
   for (const win of [orb, panel, admin, workspace]) {
     if (win && !win.isDestroyed()) win.webContents.send('desktop:update', snapshot(win === workspace ? 'workspace' : win === admin ? undefined : 'panel'));
   }
+  for(const record of subagentWindows.values()){
+    if(record.window.isDestroyed())continue;
+    let revision='unavailable';
+    try{
+      const conversation=runtimeApplication?.readSubagentConversation(record.binding);
+      revision=conversation?JSON.stringify([conversation.updatedAt,conversation.activeTaskId,conversation.messages.map(t=>[t.taskId,t.state,t.replyText])]):revision;
+    }catch{/* Reader reports missing original records without interrupting other windows. */}
+    if(revision!==record.revision){record.revision=revision;record.window.webContents.send('desktop:update',{subagentTaskChanged:true});}
+  }
 }
 
 function windowFor(mode, bounds, options = {}) {
+  const centerOnPresent = mode === 'workspace' && !desktopHost.hasSavedBounds(mode);
   const win = new BrowserWindow({...desktopHost.restore(mode, bounds), show: false, backgroundColor: '#00000000',
     webPreferences: {preload: path.join(dir, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true,
       ...(mode === 'panel' ? {autoplayPolicy: 'no-user-gesture-required'} : {})}, ...options});
   win.setMenuBarVisibility(false);
-  desktopHost.attach(win, mode);
+  desktopHost.attach(win, mode, {remember:!['subagent','subagent-list'].includes(mode)});
   win.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
   win.webContents.on('will-navigate', event => {
     event.preventDefault();
@@ -635,7 +682,7 @@ function windowFor(mode, bounds, options = {}) {
     const invalidateDrag = () => {
       if (win !== orb) return;
       orbDragRevision++;
-      if (dragging === true) dragging = false;
+      if (dragging === true) { dragging = false; stopOrbDrag(); }
     };
     win.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => {if (mainFrame) invalidateDrag();});
     win.webContents.on('render-process-gone', invalidateDrag);
@@ -646,6 +693,8 @@ function windowFor(mode, bounds, options = {}) {
   const present = () => {
     if (presented || win.isDestroyed()) return;
     presented = true;
+    if (mode === 'orb') placeOrb(win, win.getBounds());
+    if (centerOnPresent) win.center();
     if (['panel','admin','workspace'].includes(mode)) applyShape(win, mode === 'panel' ? 20 : 12);
     if (mode !== 'panel') win.show();
     publish();
@@ -700,14 +749,23 @@ function openPanel(focus = false) {
   away = 0;
 }
 
+function stopOrbDrag() {
+  clearInterval(orbDragPoll);
+  orbDragPoll = undefined;
+}
+
+function moveOrbDrag() {
+  if (dragging !== true || !orb || orb.isDestroyed()) return;
+  const point = screen.getCursorScreenPoint(), bounds = orb.getContentBounds();
+  const next = clampOrb({...bounds, x: point.x - dragOffset.x, y: point.y - dragOffset.y}, screen.getDisplayNearestPoint(point).workArea);
+  if (next.x !== bounds.x || next.y !== bounds.y) placeOrb(orb, next);
+}
+
 function movePanelGroup(point) {
   if (!panelDragOrigin || !orb || !panel) return;
   const area = screen.getDisplayNearestPoint(point).workArea;
   const next = draggedGroupBounds(panelDragOrigin.orb, panelDragOrigin.pointer, point, area);
-  // On Windows, setBounds() can expand a frameless non-resizable window to the
-  // native minimum tracking size, leaving an invisible click-blocking area.
-  // Dragging the orb must only change its position and preserve 112x112.
-  orb.setPosition(next.orb.x, next.orb.y);
+  placeOrb(orb, next.orb);
   placePanel(next.panel);
   applyShape(panel, 20);
 }
@@ -719,9 +777,11 @@ function openAdmin(page) {
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   admin = windowFor('admin', {width: Math.min(1120, area.width), height: Math.min(760, area.height)},
-    {title: 'PersonalAgent · 管理后台', frame: false, transparent: true, backgroundMaterial: 'none', roundedCorners: true, minWidth: 600, minHeight: 400});
+    // Resizable windows use native maximize/restore state; transparent Windows
+    // windows only resize to the work area without reliably entering that state.
+    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, minWidth: 600, minHeight: 400});
   admin.once('ready-to-show', () => applyShape(admin, 12));
-  admin.on('resize', () => applyShape(admin, 12));
+  admin.on('resize', () => applyShape(admin, admin.isMaximized() ? 0 : 12));
   admin.on('closed', () => { admin = undefined; });
 }
 
@@ -925,10 +985,62 @@ async function openWorkspace() {
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
-    {title: 'PersonalAgent · 工作区', frame: false, transparent: true, backgroundMaterial: 'none', roundedCorners: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+    {title: 'PersonalAgent · 工作区', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
   workspace.once('ready-to-show', () => { applyShape(workspace, 12); workspace.focus(); });
   workspace.on('resize', () => applyShape(workspace, workspace.isMaximized() ? 0 : 12));
   workspace.on('closed', () => { workspace = undefined; });
+}
+
+async function readChildConversation(payload){
+  const detail=await readSubagentConversation({payload,tasks:{get:id=>tasks.get(id)??runtimeApplication.runtime.getTask(id)},
+    readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
+    readTask:id=>runtimeApplication.runtime.getTask(id)});
+  let conversation;
+  try{conversation=runtimeApplication.readSubagentConversation(payload);}
+  catch(error){
+    if(error?.code!=='UNSUPPORTED_CAPABILITY')throw error;
+    conversation={parentTaskId:detail.parentTaskId,taskId:detail.taskId,messages:[],canSubmit:false,
+      submitUnavailableReason:'此历史子任务缺少可继续执行的绑定，保留原记录供查看'};
+  }
+  const unavailable=!competitionMode||!agentArtsConfig.snapshot().configured?'AgentArts 尚未配置':model.enabled===false?'模型已停用':'';
+  return {...detail,...conversation,canSubmit:conversation.canSubmit&&!unavailable,
+    ...(unavailable?{submitUnavailableReason:unavailable}:{})};
+}
+async function submitChildConversation(binding,payload){
+  if(!competitionMode||!runtimeApplication||!agentArtsConfig.snapshot().configured)throw Error('请先配置 AgentArts');
+  if(model.enabled===false)throw Error('模型已停用');
+  await readChildConversation(binding);
+  installedSkillsHost?.assertTask(binding.taskId);
+  const result=await runtimeApplication.submitSubagentConversationMessage({...binding,...payload});
+  const task=runtimeApplication.runtime.getTask(result.acceptedTaskId);
+  tasks.set(task.taskId,structuredClone(task));taskGoals.set(task.taskId,task.goal);
+  publish();return result;
+}
+async function cancelChildConversation(binding,executionTaskId){
+  await readChildConversation(binding);
+  const result=await runtimeApplication.cancelSubagentConversationTask({...binding,executionTaskId});
+  publish();return result;
+}
+async function openSubagentConversation(payload){
+  const detail=await readChildConversation(payload);
+  const key=JSON.stringify([detail.parentTaskId,detail.taskId]);
+  const previous=subagentWindows.get(key);
+  if(previous&&!previous.window.isDestroyed()){previous.window.show();previous.window.focus();return {opened:true};}
+  const area=screen.getDisplayMatching(orb.getBounds()).workArea;
+  const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
+  const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
+    {title:'PersonalAgent · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+  subagentWindows.set(key,{window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt});
+  window.on('closed',()=>subagentWindows.delete(key));
+  return {opened:true};
+}
+function openAllSubagentConversations(){
+  if(subagentListWindow&&!subagentListWindow.isDestroyed()){subagentListWindow.show();subagentListWindow.focus();return;}
+  const area=screen.getDisplayMatching(orb.getBounds()).workArea;
+  const width=Math.min(900,area.width-32),height=Math.min(760,area.height-32);
+  subagentListWindow=windowFor('subagent-list',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
+    {title:'PersonalAgent · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+  subagentListWindow.on('closed',()=>{subagentListWindow=undefined;});
 }
 
 function toggleModel(input) {
@@ -1195,8 +1307,11 @@ async function promptSyntheticRepairCandidate(taskId) {
 }
 
 async function readDesktopConversationContext(scope) {
+  const requestingTaskId=scope.taskId;
+  const parent=scope.taskId?runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId):undefined;
+  if(parent)scope={...scope,taskId:parent.taskId,conversationId:parent.conversationId};
   if (!conversations?.containsConversation(scope.conversationId)) {
-    if(scope.taskId)coordinationWatchInputs.set(scope.taskId,'[]');return [];
+    if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,'[]');return [];
   }
   const task=scope.taskId ? runtimeApplication.runtime.getTask(scope.taskId) : undefined;
   const cutoff=conversations.turns.get(scope.taskId)?.createdAt ?? task?.createdAt ?? task?.updatedAt ?? new Date().toISOString();
@@ -1208,7 +1323,7 @@ async function readDesktopConversationContext(scope) {
   if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
   const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
     .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
-  if(scope.taskId)coordinationWatchInputs.set(scope.taskId,JSON.stringify(current));
+  if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,JSON.stringify(current));
   if(current.length)context.push({id:'knowledge-watch-current',role:'assistant',
     content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
   return context.slice(-20);
@@ -1245,6 +1360,7 @@ async function initializeInstalledSkills() {
 async function initializeRuntime() {
   const runtimeModule = await import('@personal-agent/runtime/application');
   const {createRuntimeApplication} = runtimeModule;
+  conversationToolAccess=createConversationToolAccess({getApplication:()=>runtimeApplication,getConversations:()=>conversations});
   let readEvents;
   if (!['local', 'huawei_ict_agentarts'].includes(runtimeProfile)) {
     throw Error('PA_RUNTIME_PROFILE 只允许 local 或 huawei_ict_agentarts');
@@ -1329,7 +1445,12 @@ async function initializeRuntime() {
           onUpdate: publish});
       }
       if (!syntheticMvp) goalCloudHost = createDesktopGoalCloudHost({goalHost, namespace,
+        isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         readProactiveBinding: taskId => proactiveHost?.readRepairBinding?.(taskId)});
+      if (!syntheticMvp) proactiveConversationTools=createDesktopProactiveConversationTools({
+        getApplication:()=>runtimeApplication,getHost:()=>proactiveWorkflowApplication,
+        isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
+        resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)});
       if (!syntheticMvp) {
         try {todoHost = createDesktopTodoHost({userData:app.getPath('userData'),safeStorage,namespace,
           notificationHost:notificationApplicationHost,
@@ -1342,6 +1463,30 @@ async function initializeRuntime() {
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
+      if(!syntheticMvp){
+        computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
+        toolPresenceHost=createToolPresenceHost({
+          registerNativeShortcut:handler=>globalShortcut.register('F9',handler)
+            ?()=>globalShortcut.unregister('F9'):undefined,
+          isTaskCurrent:taskId=>{
+            try{const task=runtimeApplication.runtime.getTask(taskId);
+              return ['running','waiting_approval'].includes(task.state)&&!task.cancelRequested;
+            }catch{return false;}
+          },
+          readTaskBinding:taskId=>conversationToolAccess.resolveConversation(taskId),
+          onPrompt:request=>{
+            if(request.state==='waiting'&&request.kind==='presence'&&Notification.isSupported())new Notification({title:'PersonalAgent 本机确认',
+              body:'保持本次操作的应用在前台，按 F9 确认当前任务在场。具体写入仍按原任务审批。'}).show();
+            publish();
+          },
+        });
+        windowsControlHost=createDesktopWindowsControlHost({createControlHost:createWindowsDesktopControlHost,
+          pythonExecutable:process.env.PA_WINDOWS_CONTROL_PYTHON,presenceHost:toolPresenceHost,
+          allowObservationExport:process.env.PA_WINDOWS_CONTROL_EXPORT==='1',onUpdate:publish});
+        if(process.platform==='win32'&&process.env.PA_WINDOWS_CONTROL_PYTHON){
+          await windowsControlHost.start({deadline:new Date(Date.now()+20_000).toISOString(),signal:new AbortController().signal});
+        }
+      }
       const hostPath = path.resolve(dir, '../../windows-host/host/bin/Release/net8.0-windows/WindowsHost.Host.exe');
       const bridgePath = path.resolve(dir, '../../windows-host/host/bridge/bin/Release/net8.0-windows/WindowsHost.PipeBridge.exe');
       if (!syntheticMvp && process.platform === 'win32' && existsSync(hostPath) && existsSync(bridgePath)) {
@@ -1349,8 +1494,7 @@ async function initializeRuntime() {
           createAdapter:runtimeModule.createWindowsHostNotepadAdapter,
           createAttempts:runtimeModule.createRuntimeWindowsHostAttemptStore,
           transport:runtimeModule.createWindowsHostBridgeTransport({hostPath,bridgePath}),
-          registerConfirmation:handler => globalShortcut.register('F9',handler)
-            ? () => globalShortcut.unregister('F9') : undefined,
+          registerConfirmation:handler=>toolPresenceHost?.registerConfirmation(handler),
           openNotepad:() => new Promise((resolve,reject) => {
             const child=spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows','System32','notepad.exe'),[],
               {windowsHide:false,stdio:'ignore'});
@@ -1370,6 +1514,13 @@ async function initializeRuntime() {
         rootPath: path.resolve(dir, '../fixtures/agentarts'), createWorkspaceReadTool,
       });
       productTools = createPublicConnectorHost({systemObservationFactory:runtimeModule.createSystemObservationTool});
+      if(!syntheticMvp)imageWorkflowCatalog=createImageWorkflowCatalogHost({getApplication:()=>runtimeApplication});
+      if(!syntheticMvp){
+        const observation=productTools.tools.find(tool=>tool.descriptor.name==='computer.system.observe');
+        if(observation)systemObservationConversation=createSystemObservationConversation({tool:observation,
+          getApplication:()=>runtimeApplication,resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
+          confirmExport:confirmDeveloperExport});
+      }
       const publicReferenceModule=await import('@personal-agent/mcp');
       publicReferenceConsent?.close();
       publicReferenceConsent=createNativePublicReferenceConsent({
@@ -1440,6 +1591,32 @@ async function initializeRuntime() {
           return result.canceled?undefined:result.filePaths[0];
         },
         createCommandRecipeTool:options=>createWorkspaceCommandRecipeTool({...options,createWorkspaceCommandTool})});
+      if(!syntheticMvp){
+        const developerCache=path.join(app.getPath('userData'),'developer-tool-cache');
+        mkdirSync(developerCache,{recursive:true,mode:0o700});
+        const powerShellPath=path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell','7','pwsh.exe');
+        const developerOptions={
+          configPath:process.env.PA_DEVELOPER_CONFIG_FILE,
+          workspace:codingWorkspace.readDeveloperConfiguration(),cacheRootPath:developerCache,
+          readModelGateway:(id,configurationRef)=>modelApiHost?.getModelGateway(id,configurationRef),
+          confirmExport:confirmDeveloperExport,
+          available:scope=>{
+            try{
+              const task=runtimeApplication.runtime.getTask(scope.taskId);
+              return task.state==='running'&&!task.cancelRequested
+                &&Boolean(conversationToolAccess.resolveConversation(scope.taskId));
+            }catch{return false;}
+          },
+          assertPrivateFile:file=>{
+            try{verifyWindowsRecoveryAcl(file,powerShellPath);return true;}catch{return false;}
+          },
+        };
+        try{developerDeployment=await createDesktopDeveloperDeployment(developerOptions);}
+        catch{
+          developerDeploymentFailure='开发部署配置无效或已失效；GitHub、Git 和开发工作流未启用';
+          developerDeployment=await createDesktopDeveloperDeployment({...developerOptions,configPath:undefined});
+        }
+      }
       referenceHost=createDesktopReferenceHost({workspace:codingWorkspace,createMcp:runtimeModule.createReadonlyMcpHost,onUpdate:publish,
         hostUserNamespace:namespace,
         publicReferenceExport:{
@@ -1568,6 +1745,19 @@ async function initializeRuntime() {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
       const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
+      const desktopControl={
+        tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[])],
+        availability:[...(toolPresenceHost?.competitionToolAvailability??[]),...(windowsControlHost?.competitionToolAvailability??[])],
+        exports:[...(toolPresenceHost?.competitionToolExports??[]),...(windowsControlHost?.competitionToolExports??[])],
+      };
+      let conversationTools=[...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
+        ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
+        ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
+        ...(proactiveConversationTools?.tools??[]),...productTools.tools,...(mailHost?.tools??[]),
+        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
+        ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
+        ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[])];
+      if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -1576,9 +1766,12 @@ async function initializeRuntime() {
       // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
+        delegateUserTasks: true,
         proactiveWorkflows: true,
         proactiveDecision: {localChooser:localLaya},
         hostUserNamespace: namespace,
+        ...(developerDeployment?.host.runtimeOptions??{}),
+        isUserPresent:taskId=>toolPresenceHost?.isUserPresent(taskId)===true,
         ...(notepadHost ? {windowsHostRecovery:{recover:(taskId,runId)=>{
           const intent=runtimeApplication.runtime.loadCheckpoint(taskId,'host-tool-intent');
           return notepadHost.recoverOriginalRun({taskId,runId,argumentsDigest:intent?.argumentsDigest},
@@ -1586,16 +1779,29 @@ async function initializeRuntime() {
         }}} : {}),
         coordinationInput:{
           prepareCoordinationGoal:async scope=>{
+            const parent=runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId);
+            if(parent){
+              const original=runtimeApplication.runtime.getTask(parent.taskId);
+              installedSkillsHost?.prepareTask({...parent,publicGoal:original.goal,signal:scope.signal});
+              installedSkillsHost?.assertTask(scope.taskId);
+              if(privateConsumption?.snapshot(parent.conversationId).selected)throw Error('主对话所选私人记忆许可不覆盖子任务；需要独立确认后才能使用，当前未发送私人记忆');
+              return scope.publicGoal;
+            }
             if (!conversations?.containsConversation(scope.conversationId)) return scope.publicGoal;
             installedSkillsHost?.prepareTask(scope);
             if (!privateConsumption) throw Error('私人记忆消费宿主尚未装配');
+            if(runtimeApplication.runtime.loadCheckpoint(scope.taskId,'required-subagent-delegation:v1')
+              &&privateConsumption.snapshot(scope.conversationId).selected)throw Error('委派任务的汇总不能继承主对话所选私人记忆许可，当前未发送私人记忆');
             return (await privateConsumption.prepare({...scope,goal:scope.publicGoal})).goal;
           },
           readConversationContext:readDesktopConversationContext,
           beforeCoordinationSend:(request,scope)=>{
             cloudRequestFailureNotice = '';
+            const conversationOrigin=runtimeApplication.readSubagentConversationOrigin?.(request.taskId);
+            if(conversationOrigin)installedSkillsHost?.assertTask(conversationOrigin.taskId);
             installedSkillsHost?.assertTask(request.taskId);
-            const conversationId=runtimeApplication.runtime.getTask(request.taskId).conversationId;
+            const parent=runtimeApplication.readDelegatedUserTaskParent?.(request.taskId);
+            const conversationId=parent?.conversationId??runtimeApplication.runtime.getTask(request.taskId).conversationId;
             if (!conversations?.containsConversation(conversationId)) return;
             if (!privateConsumption) throw Error('私人记忆发送门禁尚未装配');
             privateConsumption.assertCloudSend({...request,goal:scope.preparedGoal});
@@ -1619,7 +1825,7 @@ async function initializeRuntime() {
         competitionMaxSteps: 8,
         // Module availability/consent, input validation and ToolGateway still run.
         // Explicit names prevent future destructive tools inheriting this policy.
-        automaticTools: [...[...productTools.tools,...codingWorkspace.tools,...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
+        automaticTools: [...[...productTools.tools,...codingWorkspace.tools,...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
           ...(todoHost?.tools??[]),...(feedsHost?.tools??[])].filter(tool=>[
             'weather.forecast','research.search','feeds.collect','feeds.subscriptions',
             'todo.list','todo.create','todo.update','notifications.status',
@@ -1627,9 +1833,13 @@ async function initializeRuntime() {
             'workspace.read_text','workspace.list_entries','workspace.preview_text_patch',
             'workspace.stage_text_patch','workspace.apply_text_patch','workspace.git_diff_check',
             'workspace.node_check','workspace.npm_build','workspace.npm_test',SUBAGENT_DISPATCH_TOOL_NAME,'knowledge.search','mcp.workspace.read_text',
+            'desktop.request_presence','computer.request_access',
+            'developer.repository_context',
+            'workflow.image.catalog',
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'}] : [])],
+        // A missing remote catalog omits only the implicit model; an invalid configured default remains an error.
         readDefaultExecutionModel:role=>readDesktopExecutionModel(agentArtsModels,undefined,role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
         readConversationPreference: conversationId => {
@@ -1652,8 +1862,9 @@ async function initializeRuntime() {
           }
           mailAnalysisHost?.assertCloudSend(request);
         },
-        tools: [...(syntheticMvp ? syntheticTools.tools : codingWorkspace.tools.length ? codingWorkspace.tools : competitionCatalog ? [competitionCatalog.tool] : []), ...(goalCloudHost?.tools ?? goalHost.tools), ...productTools.tools, ...(mailHost?.tools ?? []), ...(calendarMeetingHost?.tools ?? []), ...(feedsHost?.tools ?? []), ...(notepadHost?.tools ?? []), ...(todoHost?.tools ?? []), ...(notificationApplicationHost?.tools ?? []), ...(subagentTool ? [subagentTool] : []), ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[])],
+        tools: conversationTools,
         prepareCompetitionToolExport:async ({phase,taskId,proposal,deadline,signal})=>{
+          await developerDeployment?.prepareExport({phase,taskId,proposal,deadline,signal});
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;
           if (!publicReferenceConsent || !['preflight','projection'].includes(phase)) throw Error('原生公开资料许可入口不可用');
           const configurationRef=proposal.toolName === 'workspace.read_text'
@@ -1679,8 +1890,10 @@ async function initializeRuntime() {
         responseMode: agentArtsResponseMode ?? 'tool-proposal-json',
         ...(syntheticMvp ? {competitionToolExports: syntheticTools.competitionToolExports} : {
           initialRequestMode: 'goal-with-tools-json',
-          competitionToolAvailability: (competitionToolAvailabilityList = [...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...productTools.competitionToolAvailability, ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]),
-          competitionToolExports: [...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
+          competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
+            profile:'huawei_ict_agentarts',tools:conversationTools,
+            competitionToolAvailability:[...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
+          competitionToolExports: [...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -1708,6 +1921,8 @@ async function initializeRuntime() {
       if (syntheticRepairHost) await syntheticRepairHost.initialize(runtimeApplication.runtime);
       if (mailHost) {mailHost.bindApplication(runtimeApplication); mailConfig.markBound(configuredMail.revision);}
       codingWorkspace.bindApplication(runtimeApplication);
+      developerDeployment?.host.bind(runtimeApplication);
+      windowsControlHost?.bind(runtimeApplication);
       installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
       const cloudSkillSelector=referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
@@ -1809,30 +2024,51 @@ async function initializeRuntime() {
   if (notificationApplicationHost) {
     notificationApplicationHost.bindApplication(runtimeApplication, client);
     voiceCommandHost = createDesktopVoiceCommandHost({notifications:notificationApplicationHost,onUpdate:publish,
-      readApproval:approvalId=>{
-        const value=runtimeApplication.runtime.getApproval(approvalId), task=runtimeApplication.runtime.getTask(value.taskId);
-        return {...value,taskState:task.state,summary:task.goal};
-      },respondApproval:async payload=>{
+      readApproval:approvalId=>conversationToolAccess.readApproval(approvalId),respondApproval:async payload=>{
         const result=await client.call('authorization.respond',payload);
         approvals.delete(payload.approvalId);await pumpEvents();publish();return result;
       }});
+    voiceApprovalBridge=createVoiceRuntimeApprovalBridge({
+      readPendingApproval:scope=>conversationToolAccess.readPendingApproval(scope),
+      prepareApproval:payload=>voiceCommandHost.prepareApproval(payload),
+      readCurrentQuestion:({conversationId})=>voiceQuestionForConversation(conversationId)});
   }
   if (competitionMode && runtimeApplication?.startProactiveTask) {
     proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,
+      resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
       notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
-      bindings:[{kind:'local_decision_batch',toolName:'proactive.local_decision_batch',toolVersion:'1.0.0',location:'local_device',effect:'read'},
-        {kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
+      bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
       context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
-        readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(namespace),
+        readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
         readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
       readConfiguration:()=>{
         const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
           contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
         if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
-        return {contractRef,adapter:{config:binding,receiptSecret,
-          authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding)},
-          hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},invokeMode:agentArtsInvokeMode}};
+        const transport=agentArtsConfig.transportConfig(binding);
+        const assertDeploymentBinding=()=>{
+          transport.assertDeploymentBinding?.();
+          if(!agentArtsConfig.isTransportCurrent(transport))throw Error('持续工作流原部署已改变');
+        };
+        return {contractRef,adapter:{config:{...binding,
+          ...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{}),
+          ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
+          assertDeploymentBinding,fetchImpl:transport.fetchImpl,
+          authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
+          hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},
+          invokeMode:agentArtsInvokeMode}};
       }});
+  }
+  if(proactiveWorkflowApplication){
+    proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,
+      getWorkflow:()=>proactiveWorkflowApplication,
+      recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),
+      resolveUserConversation:id=>conversationToolAccess.resolveConversation(id)});
+    proactiveSourceRouter=createDesktopProactiveConfirmedSourceRouter({getApplication:()=>runtimeApplication,
+      getWorkflow:()=>proactiveWorkflowApplication,namespace:desktopHost.userNamespace,
+      resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
+      readSourceBinding:id=>feedsHost?.readSourceBinding(id),
+      readTrackingGrant:query=>feedsHost?.readTrackingGrant(query)});
   }
   connectionLabel = fakeMode
     ? 'Fake Runtime · 联调模式'
@@ -1965,7 +2201,7 @@ async function initializeRuntime() {
         const receipt=rebuildFeedReceipt(binding);
         return receipt?.receiptId === query.receiptId ? receipt : undefined;
       };
-      const feedCollect = async (query, signal) => {
+      const feedCollect = async (query, signal, sourceScope) => {
         const collectTool = feedsHost?.tools?.find(tool => tool.descriptor?.name === 'feeds.collect');
         const availability = feedsHost?.competitionToolAvailability?.find(item => item.toolName === 'feeds.collect');
         if (!collectTool || !availability) {
@@ -1984,6 +2220,18 @@ async function initializeRuntime() {
           const error = new Error('订阅收集工具未获用户会话授权');
           error.code = 'UNAUTHORIZED';
           throw error;
+        }
+        const responsibilities=typeof sourceScope?.trackingTaskId==='string'&&proactiveSourceRouter
+          ?(proactiveWorkflowApplication?.snapshot().sessions??[]).filter(session=>
+            !['succeeded','failed','cancelled'].includes(session.taskState)&&Date.parse(session.taskDeadline)>Date.now()
+            &&proactiveSourceRouter.matchesTrackingTask(session.sourceTaskId,sourceScope.trackingTaskId)):[];
+        let proactiveReadBound=false;
+        if(responsibilities.length){
+          try{
+            proactiveSourceRouter.bindPreparedFeedRead({taskId:prepared.taskId,expectedTaskRevision:prepared.revision,
+              trackingTaskId:sourceScope.trackingTaskId,commandId,toolVersion:collectTool.descriptor.version,arguments:query});
+            proactiveReadBound=true;
+          }catch{proactiveSourceRoutingFailure='原持续责任与订阅读取未能绑定；未自动投递来源';}
         }
         runtimeApplication.finalizeHostToolTask({taskId:prepared.taskId,commandId,expectedTaskRevision:prepared.revision,arguments:query});
         const cancel=()=>runtimeApplication.runtime.requestCancel(prepared.taskId,'Knowledge feed check cancelled');
@@ -2006,6 +2254,15 @@ async function initializeRuntime() {
                 runtimeApplication.runtime.saveCheckpoint(knowledgeWatchTask.taskId,
                   'knowledge-watch-source-read:'+receipt.receiptId,receipt);
                 feedProofStore.set(sourceKey(query.subscriptionId),{...binding,receiptId:receipt.receiptId});
+              }
+              if(proactiveReadBound)for(const session of responsibilities){
+                try{
+                  const routed=await proactiveSourceRouter.routeConfirmedFeed({workflowTaskId:session.taskId,taskId:prepared.taskId,
+                    runId:read.confirmed.runId,toolVersion:collectTool.descriptor.version,arguments:query,
+                    scopeRef:read.confirmed.runId,trackingTaskId:sourceScope.trackingTaskId},{signal,deadline});
+                  if(!['persisted','already_persisted'].includes(routed?.state))
+                    proactiveSourceRoutingFailure='订阅已读取，但原持续责任的来源适配尚不可用';
+                }catch{proactiveSourceRoutingFailure='订阅已读取，但原持续责任尚未确认接收来源';}
               }
               return read.confirmed.result;
             }
@@ -2071,7 +2328,7 @@ async function initializeRuntime() {
             ?? runtimeApplication.runtime.loadCheckpoint(taskId,'host-tool-intent')?.deadline;
           if (!deadline || Date.now()>=Date.parse(deadline) || task.cancelRequested) continue;
           const signal=new AbortController().signal;
-          await feedCollect({subscriptionId:intake.subscriptionId,limit:20},signal);
+          await feedCollect({subscriptionId:intake.subscriptionId,limit:20},signal,{trackingTaskId:taskId});
           await knowledgeWatchHost.consumeInterestTask(taskId,{deadline,signal});
         }
       };
@@ -2093,7 +2350,38 @@ async function initializeRuntime() {
     }
   }
   eventPoll = setInterval(() => {void pumpEvents(); void tickProactiveP5(); void refreshMail(); void notepadHost?.refresh(); void todoHost?.tick();tickKnowledgeSchedules();
+    void proactiveRuntimePump?.tick().then(result=>{
+      const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
+        ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
+      if(proactiveMaintenanceFailure!==issue){proactiveMaintenanceFailure=issue;publish();}
+    }).catch(()=>{
+      if(!proactiveMaintenanceFailure){proactiveMaintenanceFailure='原持续任务的唤醒维护暂不可用；未新建任务或重放操作';publish();}
+    });
     void wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();});}, 120);
+}
+
+/** Exact payload consent stays in the trusted host and never grants tool permission. */
+async function confirmDeveloperExport(request) {
+  const {taskId,deadline,signal}=request??{};
+  const current=()=>{
+    try {
+      const task=runtimeApplication.runtime.getTask(taskId);
+      return !signal?.aborted&&Date.now()<Date.parse(deadline)&&task.state==='running'
+        &&task.cancelRequested!==true&&Boolean(conversationToolAccess.resolveConversation(taskId));
+    } catch {return false;}
+  };
+  if(!current())return false;
+  let payload;try{payload=JSON.stringify(request.payload,null,2);}catch{return false;}
+  // Native confirmation must show the entire payload. Oversized requests stay unavailable.
+  if(typeof payload!=='string'||Buffer.byteLength(payload,'utf8')>48_000)return false;
+  openAdmin('computer');const origin=admin,application=runtimeApplication;
+  if(!origin||origin.isDestroyed())return false;
+  const response=await dialog.showMessageBox(origin,{type:'question',title:'本任务资料出机确认',
+    message:'允许将以下完整工具资料发送给本任务使用的模型？',
+    detail:`原任务：${taskId}\n用途：${String(request.kind??'developer')}\n到期：${deadline}\n\n${payload}`,
+    buttons:['取消','仅允许本次完整内容'],defaultId:0,cancelId:0,noLink:true});
+  return response.response===1&&admin===origin&&!origin.isDestroyed()
+    &&runtimeApplication===application&&current();
 }
 
 async function initializeProductServices() {
@@ -2138,6 +2426,12 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
 });
 
 async function action(event, name, payload) {
+  if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow.webContents===event.sender)
+    return handleSubagentListAction({event,name,payload,window:subagentListWindow,
+      list:input=>runtimeApplication.listSubagentConversations(input),open:openSubagentConversation});
+  const child=[...subagentWindows.values()].find(record=>record.window.webContents===event.sender);
+  if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:readChildConversation,
+    openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
@@ -2179,10 +2473,33 @@ async function action(event, name, payload) {
       totalFailures: report.totalFailures};
   }
   if (name === 'admin.open') { openAdmin(payload?.page); return; }
+  if (name === 'task.openConversation') {
+    if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('任务定位窗口不可信');
+    return openTaskConversation({payload,tasks,conversations,sourceSurface:taskSurface,openPanel:()=>openPanel(true),openWorkspace,publish});
+  }
+  if (name === 'task.subagentConversation') {
+    if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('子对话窗口不可信');
+    return readSubagentConversation({payload,tasks,readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
+      readTask:id=>runtimeApplication.runtime.getTask(id)});
+  }
+  if(name==='task.openSubagentConversation'){
+    if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
+    return openSubagentConversation(payload);
+  }
+  if(name==='subagentConversations.openAll'){
+    if(sender!==workspace||payload!==undefined)throw Error('请从工作区打开全部子智能体');
+    openAllSubagentConversations();return;
+  }
   if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
   if (name === 'workspace.minimize' && sender === workspace) { workspace.minimize(); return; }
   if (name === 'workspace.maximize' && sender === workspace) { if(workspace.isMaximized()) workspace.unmaximize(); else workspace.maximize(); return; }
+  if (name === 'admin.minimize' || name === 'admin.maximize') {
+    if (sender !== admin) throw Error('Untrusted sender');
+    if (name === 'admin.minimize') admin.minimize();
+    else if (admin.isMaximized()) admin.unmaximize(); else admin.maximize();
+    return;
+  }
   if (name === 'admin.close') {
     if (sender !== admin) throw Error('Untrusted sender');
     admin.close(); return;
@@ -2192,17 +2509,24 @@ async function action(event, name, payload) {
   if (name === 'orb.open' && sender === orb) { pinned = true; openPanel(true); publish(); return; }
   if (name === 'orb.dragStart' && sender === orb) {
     const revision = ++orbDragRevision, dragWindow = orb;
+    const point = screen.getCursorScreenPoint(), bounds = dragWindow.getBounds();
+    if (payload !== undefined && (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)
+      || payload.x < 0 || payload.y < 0 || payload.x > bounds.width || payload.y > bounds.height)) throw Error('拖动坐标无效');
+    // Keep the pointer-down offset in window-local DIPs, before asynchronous panel cleanup.
+    const offset = payload === undefined ? {x: point.x - bounds.x, y: point.y - bounds.y} : {x: payload.x, y: payload.y};
     await hidePanel();
     if (revision !== orbDragRevision || orb !== dragWindow || dragWindow.isDestroyed()) return;
-    dragging = true; const point = screen.getCursorScreenPoint(); const bounds = orb.getBounds();
-    dragOffset = {x: point.x - bounds.x, y: point.y - bounds.y}; return;
+    dragging = true; dragOffset = offset;
+    stopOrbDrag(); moveOrbDrag();
+    orbDragPoll = setInterval(moveOrbDrag, 16); return;
   }
-  if (name === 'orb.dragEnd' && sender === orb) { orbDragRevision++; if (dragging === 'panel') return; dragging = false; desktopHost.snap(orb); away = Date.now() + 400; return; }
+  if (name === 'orb.dragEnd' && sender === orb) { orbDragRevision++; if (dragging === 'panel') return; moveOrbDrag(); dragging = false; stopOrbDrag(); desktopHost.snap(orb); away = Date.now() + 400; return; }
   if (name === 'panel.dragStart' && sender === panel) {
     if (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)) throw Error('拖动坐标无效');
     orbDragRevision++;
+    stopOrbDrag();
     dragging = 'panel';
-    panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getBounds()};
+    panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getContentBounds()};
     return;
   }
   if (name === 'panel.dragMove' && sender === panel && dragging === 'panel') {
@@ -2210,7 +2534,7 @@ async function action(event, name, payload) {
     movePanelGroup(payload);
     return;
   }
-  if (name === 'panel.dragEnd' && sender === panel) { orbDragRevision++; dragging = false; panelDragOrigin = undefined; away = Date.now() + 400; return; }
+  if (name === 'panel.dragEnd' && sender === panel) { orbDragRevision++; dragging = false; stopOrbDrag(); panelDragOrigin = undefined; away = Date.now() + 400; return; }
   if (name === 'app.quit') { app.quit(); return; }
   if (name === 'agentarts.configure') {
     if (sender!==admin || !competitionMode || runtimeApplication?.activeTaskCount || liveVoice?.hasActive()
@@ -2785,6 +3109,7 @@ async function action(event, name, payload) {
   }
   if (name === 'task.submit' || name==='skill.run') {
     const skillRun=name==='skill.run';
+    if(!skillRun&&sender===workspace)throw Error('请在主面板协调，或进入具体子智能体对话发送消息');
     if(skillRun ? sender!==admin || !competitionMode || !installedSkillsHost : sender !== panel && sender !== workspace) throw Error('请从可信界面提交任务');
     const text=typeof payload==='string'?payload:payload?.text;
     if(!skillRun&&payload&&typeof payload==='object'&&Object.keys(payload).some(k=>!['text','conversationId'].includes(k)))throw Error('任务提交格式无效');
@@ -3028,17 +3353,32 @@ async function initializeLiveVoice() {
     onTranscript: message => conversations.addLiveMessage(message),
     readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
     onFinalUserCommand:receipt=>voiceCommandHost?.consumeFinal(receipt),
+    prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope),
+    authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {taskGoals.set(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
       currentUserQuestion:voiceQuestionForConversation(conversationId),
       agentArts:{configured:agentArtsConfig.snapshot().configured,reason:agentArtsSnapshot().reason},
+      developer:{...projectDeveloperConversationStatus(developerDeployment?.snapshot()),
+        ...(developerDeploymentFailure?{configurationFailure:developerDeploymentFailure}:{})},
+      computer:projectComputerConversationStatus(windowsControlHost?.snapshot()),
+      proactiveMaintenance:{state:proactiveWorkflowApplication?.snapshot().state??'unavailable',
+        ...(proactiveMaintenanceFailure?{wakeFailure:proactiveMaintenanceFailure}:{}),
+        ...(proactiveSourceRoutingFailure?{sourceFailure:proactiveSourceRoutingFailure}:{})},
+      subagentDispatch:{registered:competitionToolAvailabilityList.some(tool=>tool.toolName==='subagent.dispatch'),
+        available:runtimeApplication?.isDefaultSubagentAvailable?.()===true},
+      subagentTasks:orderedTasks().filter(task=>conversations.conversationIdForTask(task)===conversationId)
+        .flatMap(task=>runtimeApplication?.readSubagentTasks?.(task.taskId)??[]).slice(-10)
+        .map(({parentTaskId,taskId,role,modelId,reasoningEffort,state,resultSummary,error,evidenceRefs})=>
+          ({parentTaskId,taskId,role,modelId,reasoningEffort,state,resultSummary:resultSummary?.slice(0,800),
+            errorCode:error?.code,evidenceRefCount:evidenceRefs?.length??0})),
       tasks: orderedTasks().filter(task => taskSurface(task) === 'panel'&&conversations.conversationIdForTask(task)===conversationId).slice(-10)
         .map(task => ({taskId: task.taskId, goal: (taskGoals.get(task.taskId) ?? conversations.goal(task.taskId) ?? '').slice(0, 800),
           state: task.state, failureReason: task.error?.message, result: resultText(task.resultSummary,taskResultMetadata(task)).slice(0, 1600),
           createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt})),
       messages: conversations.messagesFor('panel',conversationId).slice(-20).map(({id,role, text, createdAt}) => ({id,role, text: text.slice(0, 1600), createdAt})),
       capabilities: capabilities.map(item => ({name: item.name ?? item.id, version: item.version})),
-      tools: (competitionToolAvailabilityList.length ? competitionToolAvailabilityList : [
+      tools: runtimeApplication?.readConversationToolCapabilities?.() ?? (competitionToolAvailabilityList.length ? competitionToolAvailabilityList : [
         ...(codingWorkspace?.competitionToolAvailability ?? []),
         ...(productTools?.competitionToolAvailability ?? []),...(feedsHost?.competitionToolAvailability ?? []),
         ...(todoHost?.competitionToolAvailability ?? []),...(goalCloudHost?.competitionToolAvailability ?? [])])
@@ -3140,22 +3480,17 @@ app.whenReady().then(async () => {
   if (competitionMode && !agentArtsConfig.snapshot().configured) openAdmin('models');
 
   function reposition() {
-    const bounds = orb.getBounds();
+    const bounds = orb.getContentBounds();
     const next = clampOrb(bounds, screen.getDisplayMatching(bounds).workArea);
-    orb.setPosition(next.x, next.y);
+    placeOrb(orb, next);
     if (panel.isVisible()) openPanel();
   }
   screen.on('display-removed', reposition);
   screen.on('display-metrics-changed', reposition);
   poll = setInterval(() => {
-    if (orb.isDestroyed()) return;
+    if (orb.isDestroyed() || dragging === true) return;
     const point = screen.getCursorScreenPoint();
     const bounds = orb.getBounds();
-    if (dragging === true) {
-      const next = clampOrb({...bounds, x: point.x - dragOffset.x, y: point.y - dragOffset.y}, screen.getDisplayNearestPoint(point).workArea);
-      orb.setPosition(next.x, next.y);
-      return;
-    }
     if (away > Date.now()) return;
     const near = Math.hypot(point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2) <= 90;
     const panelBoundsValue = panel.getBounds();
@@ -3207,6 +3542,12 @@ app.whenReady().then(async () => {
       if (!notepadClosing) notepadClosing = notepadHost.close().then(() => {
         notepadClosed = true; app.quit();
       }).catch(() => {notepadClosing = undefined;runtimeError = '本机操作停止尚未确认，请稍后退出';publish();});
+      return;
+    }
+    if(windowsControlHost&&!windowsControlClosed){
+      event.preventDefault();
+      windowsControlClosing??=windowsControlHost.close().then(()=>{windowsControlClosed=true;app.quit();})
+        .catch(()=>{windowsControlClosing=undefined;runtimeError='电脑控制进程停止尚未确认';publish();});
       return;
     }
     if (!localServicesStopped && (mailHost || localLaya)) {
@@ -3287,6 +3628,11 @@ app.whenReady().then(async () => {
       competitionCatalog?.close();
       productTools?.close();
       codingWorkspace?.close();
+      developerDeployment?.close();
+      toolPresenceHost?.close();
+      computerControlLease?.close();
+      imageWorkflowCatalog?.close();
+      systemObservationConversation?.close();
       publicReferenceConsent?.close();
       publicSkillSources.clear();
       feedsHost?.close();
@@ -3303,6 +3649,7 @@ app.whenReady().then(async () => {
     microphonePermissionGate?.revoke();
     app.isQuitting = true;
     clearInterval(poll);
+    stopOrbDrag();
     clearInterval(eventPoll);
     tray?.destroy();
     runtimeConnection?.dispose?.();

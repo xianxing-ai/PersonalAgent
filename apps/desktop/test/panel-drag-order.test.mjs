@@ -34,8 +34,9 @@ function fixture() {
   // Actual renderer/Host branches, explicit Fake header/window/IPC responses. No Runtime writes.
   const listeners = {}, captures = [], calls = [], starts = [], errors = [], moves = [], receipts = new Map();
   const header = {addEventListener: (name, handler) => {listeners[name] = handler;}, setPointerCapture: id => captures.push(id)};
-  const panel = {}, orb = {getBounds: () => ({x: 10, y: 20})};
-  const host = vm.createContext({panel, orb, dragging: false, panelDragOrigin: undefined, orbDragRevision: 0, away: 0, Date, movePanelGroup: payload => moves.push(payload)});
+  const panel = {}, orb = {getContentBounds: () => ({x: 10, y: 20})};
+  const host = vm.createContext({panel, orb, dragging: false, panelDragOrigin: undefined, orbDragRevision: 0, away: 0, Date,
+    stopOrbDrag: () => {}, movePanelGroup: payload => moves.push(payload)});
   const dispatch = vm.runInContext(`async(name,payload)=>{const sender=panel;${branches.join('\n')}}`, host);
   const context = vm.createContext({window: {addEventListener: (name, handler) => {listeners[name] = handler;}}, Math, root: {querySelector: () => header}, report: error => errors.push(error.message),
     invoke: async (name, payload) => {
