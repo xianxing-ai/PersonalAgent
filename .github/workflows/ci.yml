@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  repository_dispatch:
+    types: [post_merge_foundation_ci]
 permissions:
   contents: read
 concurrency:
@@ -10,9 +12,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 jobs:
   check:
+    if: ${{ github.event_name != 'repository_dispatch' || (github.ref == 'refs/heads/main' && github.event.client_payload.target_sha == github.sha) }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name != 'repository_dispatch'
+      - uses: actions/checkout@v4
+        if: github.event_name == 'repository_dispatch'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify dispatched main checkout
+        if: github.event_name == 'repository_dispatch'
+        shell: pwsh
+        run: |
+          $actual = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:GITHUB_SHA) { throw 'Dispatch checkout SHA mismatch' }
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
