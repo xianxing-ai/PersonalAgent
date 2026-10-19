@@ -44,7 +44,7 @@ const item = (key, at = '2026-10-19T10:00:00.000Z') => ({source: 'acceptance', a
   let staleRejected = false;
   try { service.save(stale); } catch (error) { staleRejected = error.code === 'INVALID_ARGUMENT' && /Revision must increase/.test(error.message); }
   const after = service.get(created.id);
-  record('A2-write-cas', '同资源写入排队', {passed: updated.revision === created.revision + 1 && staleRejected
+  record('A2-write-cas', '同资源写回CAS（过期修订拒绝）', {passed: updated.revision === created.revision + 1 && staleRejected
     && after.title === '第一次修改' && after.revision === updated.revision,
     detail: `created.r${created.revision}→updated.r${updated.revision} staleRejected=${staleRejected} final="${after.title}"`});
 }
@@ -67,7 +67,7 @@ const item = (key, at = '2026-10-19T10:00:00.000Z') => ({source: 'acceptance', a
   service.acknowledge(batches[0].id);
   const status = service.status();
   const page = service.readBatchEvents();
-  record('A3-partial-branch', '分支部分成功', {passed: status.unacknowledgedBatches === 1
+  record('A3-partial-branch', '批次部分确认（一交付一待办）', {passed: status.unacknowledgedBatches === 1
     && page.events.filter(event => event.state === 'delivered').length === 1
     && page.events.filter(event => event.state === 'ready_for_delivery').length === 1,
     detail: `unacknowledged=${status.unacknowledgedBatches} delivered=${page.events.filter(e => e.state === 'delivered').length} pending=${page.events.filter(e => e.state === 'ready_for_delivery').length}`});
@@ -89,27 +89,34 @@ const item = (key, at = '2026-10-19T10:00:00.000Z') => ({source: 'acceptance', a
   const stalePage = service.readBatchEvents({sinceBatchId: firstPage.events[0].batchId,
     snapshotRevision: firstPage.snapshotRevision, limit: 1});
   const freshPage = service.readBatchEvents({limit: 10});
-  record('A4-modification-invalidation', '修改失效', {passed: stalePage.cursorState === 'changed' && stalePage.events.length === 0
+  record('A4-modification-invalidation', '旧快照版本续页拒绝（分页层修改失效）', {passed: stalePage.cursorState === 'changed' && stalePage.events.length === 0
     && freshPage.cursorState === 'current' && freshPage.events.length === 2,
     detail: `staleCursor=${stalePage.cursorState} staleEvents=${stalePage.events.length} freshEvents=${freshPage.events.length}`});
 }
 
-// Part B：深层生命周期语义由既有定向套件拥有，此处重跑并记录计数。
+// Part B：定向用例断言——按名过滤运行，并断言目标用例确实执行且通过（非套件泛跑）。
 const delegated = [
-  {id: 'B1-cancel-outcomes', family: '取消四态', file: 'apps/runtime/test/runtime.test.mjs', mustMention: ['cancel']},
-  {id: 'B2-unknown-no-replay', family: '断网未知不重放', file: 'packages/coding-tools/test/ci-fix.test.mjs', mustMention: ['unknown', 'retri']},
+  {id: 'B1-cancel-terminal', family: '取消终态语义（定向用例）', file: 'apps/runtime/test/runtime.test.mjs',
+   pattern: 'cancel', mustRun: /cancel/i},
+  {id: 'B2-unknown-no-retry', family: '未知结果不自动重试（定向用例）', file: 'packages/coding-tools/test/ci-fix.test.mjs',
+   pattern: 'unknown patch is persisted and never automatically retried', mustRun: /never automatically retried/i},
 ];
 for (const suite of delegated) {
   let output = '';
   try {
-    output = execFileSync(process.execPath, ['--test', path.join(root, suite.file)],
+    output = execFileSync(process.execPath, ['--test', '--test-name-pattern', suite.pattern, path.join(root, suite.file)],
       {encoding: 'utf8', timeout: 10 * 60_000, maxBuffer: 16 * 1024 * 1024, shell: false, env: {...process.env}});
   } catch (error) { output = String(error.stdout ?? '') + String(error.stderr ?? ''); }
-  const tally = /tests (\d+)[\s\S]*?pass (\d+)[\s\S]*?fail (\d+)[\s\S]*?skipped (\d+)/.exec(output.replace(/\u2139/g, '').replace(/ℹ/g, ''));
-  const named = (output.match(/^[✔✖][^\n]*$/gm) ?? []).join('\n');
-  record(suite.id, suite.family, {passed: !!tally && Number(tally[3]) === 0 && Number(tally[2]) > 0
-      && suite.mustMention.every(term => named.toLowerCase().includes(term) || output.toLowerCase().includes(term)),
-    detail: tally ? `tests=${tally[1]} pass=${tally[2]} fail=${tally[3]} skip=${tally[4]} suite=${suite.file}` : `tally missing for ${suite.file}`});
+  const normalized = output.replace(/ℹ/g, '');
+  const tally = /tests (\d+)[\s\S]*?pass (\d+)[\s\S]*?fail (\d+)[\s\S]*?skipped (\d+)/.exec(normalized);
+  // 定向判定：过滤后确有用例被执行（tests>0 且 skipped<tests），目标名出现在执行清单，
+  // 且全部执行用例通过、零失败。
+  const executedNames = (output.match(/^\u2714 [^\n]*$/gm) ?? []).join('\n');
+  const passed = !!tally && Number(tally[1]) > 0 && Number(tally[3]) === 0
+    && Number(tally[4]) < Number(tally[1])
+    && suite.mustRun.test(executedNames);
+  record(suite.id, suite.family, {passed,
+    detail: tally ? `pattern="${suite.pattern}" tests=${tally[1]} pass=${tally[2]} fail=${tally[3]} skip=${tally[4]} suite=${suite.file}` : `tally missing for ${suite.file}`});
 }
 
 const failed = checks.filter(check => !check.passed);

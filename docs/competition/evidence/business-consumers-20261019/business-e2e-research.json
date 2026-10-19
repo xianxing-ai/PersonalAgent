@@ -5,7 +5,7 @@
   "dataClass": "public",
   "scenario": "research",
   "expectTool": "research.search",
-  "userData": "C:\\Users\\34687\\Documents\\Qoder\\2026-09-06\\84baa8eb\\PersonalAgent\\.worktrees\\business-consumers-20261014\\.cache\\business-consumers-evidence-20261019\\userdata",
+  "userData": "<local-userdata>",
   "stage": "capture",
   "sourceTaskId": "5635d5f3-6df2-4390-a275-5b7ff6247b67",
   "sourceState": "succeeded",

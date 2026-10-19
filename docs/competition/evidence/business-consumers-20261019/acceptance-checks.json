@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-19T11:33:52.304Z",
+  "generatedAt": "2026-10-19T14:30:11.132Z",
   "scope": "BUSINESS-CONSUMERS #354 缺口4 汇总验收（公开合成数据，无凭据/网络/云端调用）",
   "summary": {
     "total": 6,
@@ -12,42 +12,42 @@
       "family": "事件去重",
       "passed": true,
       "detail": "accepted=1/0 duplicates=1 batches=1 events=1",
-      "at": "2026-10-19T11:33:50.249Z"
+      "at": "2026-10-19T14:30:09.037Z"
     },
     {
       "id": "A2-write-cas",
-      "family": "同资源写入排队",
+      "family": "同资源写回CAS（过期修订拒绝）",
       "passed": true,
       "detail": "created.r1→updated.r2 staleRejected=true final=\"第一次修改\"",
-      "at": "2026-10-19T11:33:50.256Z"
+      "at": "2026-10-19T14:30:09.043Z"
     },
     {
       "id": "A3-partial-branch",
-      "family": "分支部分成功",
+      "family": "批次部分确认（一交付一待办）",
       "passed": true,
       "detail": "unacknowledged=1 delivered=1 pending=1",
-      "at": "2026-10-19T11:33:50.257Z"
+      "at": "2026-10-19T14:30:09.044Z"
     },
     {
       "id": "A4-modification-invalidation",
-      "family": "修改失效",
+      "family": "旧快照版本续页拒绝（分页层修改失效）",
       "passed": true,
       "detail": "staleCursor=changed staleEvents=0 freshEvents=2",
-      "at": "2026-10-19T11:33:50.258Z"
+      "at": "2026-10-19T14:30:09.045Z"
     },
     {
-      "id": "B1-cancel-outcomes",
-      "family": "取消四态",
+      "id": "B1-cancel-terminal",
+      "family": "取消终态语义（定向用例）",
       "passed": true,
-      "detail": "tests=11 pass=11 fail=0 skip=0 suite=apps/runtime/test/runtime.test.mjs",
-      "at": "2026-10-19T11:33:51.731Z"
+      "detail": "pattern=\"cancel\" tests=1 pass=1 fail=0 skip=0 suite=apps/runtime/test/runtime.test.mjs",
+      "at": "2026-10-19T14:30:10.258Z"
     },
     {
-      "id": "B2-unknown-no-replay",
-      "family": "断网未知不重放",
+      "id": "B2-unknown-no-retry",
+      "family": "未知结果不自动重试（定向用例）",
       "passed": true,
-      "detail": "tests=93 pass=93 fail=0 skip=0 suite=packages/coding-tools/test/ci-fix.test.mjs",
-      "at": "2026-10-19T11:33:52.304Z"
+      "detail": "pattern=\"unknown patch is persisted and never automatically retried\" tests=1 pass=1 fail=0 skip=0 suite=packages/coding-tools/test/ci-fix.test.mjs",
+      "at": "2026-10-19T14:30:11.132Z"
     }
   ]
 }

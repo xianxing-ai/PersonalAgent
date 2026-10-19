@@ -5,7 +5,7 @@
   "dataClass": "public",
   "scenario": "weather",
   "expectTool": "weather.forecast",
-  "userData": "C:\\Users\\34687\\Documents\\Qoder\\2026-09-06\\84baa8eb\\PersonalAgent\\.worktrees\\business-consumers-20261014\\.cache\\business-consumers-evidence-20261019\\userdata",
+  "userData": "<local-userdata>",
   "stage": "capture",
   "sourceTaskId": "11162e04-5a94-4c4f-a177-b6cee74fe2b3",
   "sourceState": "succeeded",
