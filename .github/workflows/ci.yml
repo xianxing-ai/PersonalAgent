@@ -5,6 +5,17 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      windows_runner:
+        description: Explicit Windows pool for a full two-platform validation
+        type: choice
+        default: auto
+        options: [auto, github, ecs]
+      image_runner:
+        description: Explicit Linux pool for a full two-platform validation
+        type: choice
+        default: ecs
+        options: [ecs, github]
   repository_dispatch:
     types: [post_merge_foundation_ci, post_merge_ecs_ci]
 permissions:
@@ -40,8 +51,8 @@ jobs:
         id: route
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PA_IMAGE_RUNNER: ${{ vars.PA_IMAGE_RUNNER }}
-          PA_WINDOWS_RUNNER: ${{ vars.PA_WINDOWS_RUNNER }}
+          PA_IMAGE_RUNNER: ${{ inputs.image_runner || vars.PA_IMAGE_RUNNER }}
+          PA_WINDOWS_RUNNER: ${{ inputs.windows_runner || vars.PA_WINDOWS_RUNNER }}
           PA_WINDOWS_RUNNER_OVERRIDES: ${{ vars.PA_WINDOWS_RUNNER_OVERRIDES }}
         run: node scripts/ci/pr-route.mjs
       - name: Package exact source for ECS without persisting checkout credentials

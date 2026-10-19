@@ -30,6 +30,8 @@ Windows 保留 .NET 8 Job process helper、原始完整架构/契约/生成类�
 
 变量由有权限的维护者修改；不从 PR 正文、评论或模型输出读取调度指令。无效值使路由失败。路由只用本次 Actions 短期 token 读取 PR 文件，无需向主机分发个人 PAT 或提升 runner-list API 权限。
 
+手动完整 Foundation 验证还可用 `windows_runner` / `image_runner` 输入显式选择两个池，不改其他 PR 的仓库变量；手动运行始终检查两个平台，不可用来缩小覆盖范围。
+
 两条 Windows 路径使用同一作业步骤，仅 `runs-on` 与预装工具链选择不同；不删产品测试、不修改断言。混合 PR 中架构/契约及镜像相关测试仍在两个操作系统检查，保留兼容性覆盖。去重只消除同一 PR 的两份 Windows 全套和三个示例各自再次构建全仓的开销；没有把跨平台公共检查移走后宣称等价。
 
 ECS 的 Git HTTPS 直连曾在实际短任务中失败。工作流因此由托管路由作业 checkout 精确事件 SHA，将不含 checkout 凭据的 Git 元数据和对象打包成同 run/attempt 的短期 Actions artifact；ECS 从 Actions 下载并核验独立输出的 SHA256，在本任务新建的临时目录本地恢复精确 SHA，全程不在 ECS 执行 Git 网络 fetch。打包拒绝 HTTP/credential/include 等本地 Git 配置和含凭据的 origin，不包含未跟踪 `.env`、依赖、缓存、Git hooks 或 reflog；还原禁用 hooks，不覆盖既有 checkout。源码 artifact 保留一天；排队超过有效期必须重新运行全部 jobs，不能复用其他 run 的工件。下载通道不可达仍应失败并显式切换，不能跳过源码或测试。
