@@ -29,7 +29,14 @@ jobs:
           uname -a
       - name: Install dependencies for headless checks
         run: npm ci --ignore-scripts
-      - name: Build, type-check and test on the ECS
-        run: npm run check
+      - name: Architecture and contract fixtures
+        run: |
+          npm run check:architecture
+          npm run test:contract-fixtures
+          npm run check:generated --workspace=@personal-agent/contracts
+      - name: Build and type-check every workspace
+        run: npm run typecheck
+      - name: Cross-platform integration tests
+        run: npm run test:integration
       - name: Verify the approval and automatic merge gates
         run: node --test scripts/review/design-review.test.mjs scripts/review/auto-merge.test.mjs

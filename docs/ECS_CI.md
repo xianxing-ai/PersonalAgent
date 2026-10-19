@@ -1,6 +1,8 @@
 # ECS 协助 CI 与批准后的自动合并
 
-使用 GitHub 官方开源 Actions Runner，运行在华为 Ubuntu ECS；服务由 systemd 管理，以独立 `pa-ci` 用户执行并随开机启动。Windows 原有 `Foundation / check` 完整保留，ECS 新增 `ECS Linux CI / ecs-linux-check`，执行 Node 24.15.0、npm 11.12.1 下的 `npm ci --ignore-scripts`、`npm run check` 和审查门禁测试。Linux 检查不能证明 Windows 原生路径通过。
+使用 GitHub 官方开源 Actions Runner，运行在华为 Ubuntu ECS；服务由 systemd 管理，以独立 `pa-ci` 用户执行并随开机启动。Windows 原有 `Foundation / check` 完整保留，ECS 新增 `ECS Linux CI / ecs-linux-check`。Node 24.15.0 / npm 11.12.1 下执行无界面依赖安装、架构门禁、契约夹具、生成类型一致性、所有工作区构建与类型检查、跨平台集成测试和审查门禁测试。
+
+Windows Foundation 继续执行完整 `npm run check`、原生 Job Host 构建与示例。首次在 Ubuntu 尝试全量 workspace 测试时，既有 `coding-tools/test/isolated-repair.test.mjs` 的 publish CAS / unrelated 子用例返回 unknown，预期 published；它调用的补丁发布实现依赖 Windows PowerShell。ECS 不承担整套 Windows workspace 测试，也不修改或放宽该断言；完整套件由原 Windows 必需 CI 验证。Linux 绿灯只证明本页列出的检查通过。
 
 ECS 无图形桌面，安装时不运行生命周期脚本，避免 Desktop 的 postinstall 下载 Electron GUI 二进制；保留上述所有代码检查，不运行 Electron 窗口冒烟。目前锁定依赖无其他必须执行的安装脚本。以后加入需要生成本地产物的依赖时，应显式接入它的可信构建步骤。Windows Foundation 的完整安装与原生验证不受影响。
 
