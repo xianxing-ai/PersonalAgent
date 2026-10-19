@@ -27,6 +27,8 @@ jobs:
           node-version-file: .node-version
       - name: Verify routing, approval and automatic merge gates
         run: node --test scripts/ci/pr-route.test.mjs scripts/review/design-review.test.mjs scripts/review/auto-merge.test.mjs
+      - name: Verify CI cleanup boundaries
+        run: python3 -m unittest discover -s scripts/ci -p resources_test.py
       - name: Select CI from the complete current PR file list
         id: route
         env:
@@ -41,6 +43,10 @@ jobs:
       matrix: ${{ fromJSON(needs.route.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
+      - name: Check dedicated ECS capacity before checkout
+        if: matrix.kind == 'image' && matrix.runner[0] == 'self-hosted'
+        shell: bash
+        run: python3 /opt/personalagent-ci/maintenance/resources.py start
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -109,8 +115,8 @@ jobs:
         shell: bash
         run: |
           node apps/agentarts-runtime/scripts/export-bindings.mjs --check
-          node --test packages/contracts/test/agentarts-transport.test.mjs packages/models/test/*.test.mjs packages/coordination/test/*.test.mjs packages/agentarts/test/*.test.mjs apps/agentarts-runtime/test/*.test.mjs
-          node --test tests/integration/owned-agentarts-image.test.mjs
+          node --test --test-concurrency=1 packages/contracts/test/agentarts-transport.test.mjs packages/models/test/*.test.mjs packages/coordination/test/*.test.mjs packages/agentarts/test/*.test.mjs apps/agentarts-runtime/test/*.test.mjs
+          node --test --test-concurrency=1 tests/integration/owned-agentarts-image.test.mjs
       - name: Generate the allowlist image context
         if: matrix.kind == 'image'
         id: context
@@ -135,6 +141,10 @@ jobs:
           else
             bash scripts/ci/build-image.sh
           fi
+      - name: Record dedicated ECS capacity and cleanup results
+        if: always() && matrix.kind == 'image' && matrix.runner[0] == 'self-hosted'
+        shell: bash
+        run: python3 /opt/personalagent-ci/maintenance/resources.py complete
   check:
     if: always()
     needs: [route, validate]

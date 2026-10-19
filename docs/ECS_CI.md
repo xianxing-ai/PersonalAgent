@@ -38,6 +38,18 @@ Runner 位于 `/opt/personalagent-ci/runner`，systemd 服务 `actions.runner.ze
 
 镜像步骤通过 `sg docker` 在新进程载入已授权的组成员关系，无需重启正在处理其他 PR 的 Runner；正常重启和开机后服务也会自动继承该成员关系。
 
+### 自动资源管理
+
+该 Linux 节点 2 核、约 5.4 GiB 可用物理内存、40 GiB 系统盘，先保持单 Runner、单重任务；镜像测试文件并发为 1，构建 workspace 串行。已观察 Runner 整个 systemd 进程组的历史峰值约 1.54 GiB；服务使用 `MemoryHigh=3G`、`MemoryMax=4G`，约留 1.4 GiB 给系统及独立 Docker 构建。该 cgroup 限制覆盖 Runner 及其后代，Docker 构建进程归 Docker 服务，不能把它或单 Node heap 误报为整机上限。实际 Docker 构建已成功，当前镜像/构建缓存不足 1 GiB。
+
+远程 `/opt/personalagent-ci/maintenance/` 保存 root 拥有的资源脚本，Runner 前后 hook 同步检查，并在新 Foundation 的前后步骤中显式回读。启动要求磁盘至少 8 GiB、`MemAvailable` 至少 2.5 GiB；门槛按当前构建增量、已观察进程组峰值及系统余量设置，后续按实测更新。空间不足只先回收过期 CI 数据，仍不足明确失败并写摘要；不自动付费扩容、不杀其他任务，也不伪造成功。
+
+每个实际任务按 5 秒采样整机可用内存及磁盘余量，摘要记录最低可用量和整机已用内存峰值；JSONL 诊断留在 `/opt/personalagent-ci/resource-state/`，保留 14 天。报告只记录容量指标，不输出环境变量或凭据。
+
+远程 `personalagent-ci-maintenance.timer` 每小时在空闲时维护。它与任务启动共用文件锁；有 `Runner.Worker` 时跳过，维护期间新任务的前置 hook 等待。只处理核验归属的 CI 路径：过期 7 天的 Runner 临时目录、14 天 Worker/npm 日志和资源报告、30 天 Runner 日志、3 天的旧 allowlist 上下文；拒绝符号链接、外部路径、其他用户数据和含近期文件的旧目录。Docker 只回收超过 7 天的未使用构建缓存，保留 6 GB 缓存预算，不清空镜像、容器或 volume。每次构建结束只删除本次镜像标签和本次 allowlist 上下文；失败的未完成导出留作短期诊断，之后按保留策略处理。
+
+`scripts/ci/resources_test.py` 用临时 fixture 验证清理边界、外链/他人文件保护、活跃任务互斥和内存不足失败。运维可执行 `python3 /opt/personalagent-ci/maintenance/resources.py dry-run` 查看空闲回收范围。持续不足时根据资源摘要调整任务并发、显式切换托管 Runner，或由用户决定升级；Windows 的同类保护由其独立配置任务负责，不能用 Linux 的验证冒充 Windows 已生效。
+
 默认 `PA_IMAGE_RUNNER=ecs`。ECS 故障时可将仓库 Actions 变量 `PA_IMAGE_RUNNER` 设为 `github` 后重跑，让镜像任务在 GitHub Ubuntu 执行；恢复后删除变量或设回 `ecs`。这是显式切换，GitHub 不会因自托管 Runner 离线而自动改派其他系统。不得跳过镜像构建来制造绿灯。
 
 查看服务与 GitHub Runner 在线状态后再处理故障，繁忙时不重启。只清理本次 CI 镜像标签，不执行全局 Docker prune。回滚路由需完整还原上一版两个工作流、分组脚本和命令；保留原必需状态和审批保护。

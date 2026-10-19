@@ -4,7 +4,16 @@ set -euo pipefail
 : "${IMAGE_CONTEXT:?Missing allowlist image context}"
 : "${IMAGE_RUNNER:?Missing image runner selection}"
 image="personalagent-ci:$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-trap 'docker image rm "$image" >/dev/null 2>&1 || true' EXIT
+cleanup() {
+  docker image rm "$image" >/dev/null 2>&1 || true
+  # Only delete this invocation's regular allowlist context inside this checkout.
+  parent="$(pwd -P)/.cache/agentarts-image"
+  resolved=$(realpath -e -- "$IMAGE_CONTEXT") || return 0
+  if [[ ! -L "$IMAGE_CONTEXT" && "$resolved" == "$parent"/context-* && "$(dirname -- "$resolved")" == "$parent" && -O "$resolved" ]]; then
+    rm -r -- "$resolved"
+  fi
+}
+trap cleanup EXIT
 args=()
 if [[ "$IMAGE_RUNNER" == self-hosted ]]; then
   # ECR hosts Docker Official Images and is reachable from this ECS.
