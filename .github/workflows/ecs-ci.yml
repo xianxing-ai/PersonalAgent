@@ -13,14 +13,17 @@ concurrency:
 jobs:
   ecs-linux-check:
     name: ecs-linux-check
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Linux, X64, personalagent-ecs]
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","personalagent-ecs"]') }}
     env:
       PATH: /opt/personalagent-review/toolchain/node/bin:/usr/local/bin:/usr/bin:/bin
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        with:
+          node-version-file: .node-version
       - name: Verify the ECS toolchain matches the repository
         shell: bash
         run: |
@@ -36,7 +39,9 @@ jobs:
           npm run check:generated --workspace=@personal-agent/contracts
       - name: Build and type-check every workspace
         run: npm run typecheck
-      - name: Cross-platform integration tests
-        run: npm run test:integration
+      - name: Cross-platform workspace tests moved from Windows
+        run: npm run ci:test -- linux
+      - name: Cross-platform integration tests moved from Windows
+        run: npm run ci:test -- integration-linux
       - name: Verify the approval and automatic merge gates
-        run: node --test scripts/review/design-review.test.mjs scripts/review/auto-merge.test.mjs
+        run: node --test scripts/ci/partition.test.mjs scripts/review/design-review.test.mjs scripts/review/auto-merge.test.mjs

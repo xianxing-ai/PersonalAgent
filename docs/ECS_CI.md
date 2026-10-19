@@ -1,21 +1,39 @@
-# ECS 协助 CI 与批准后的自动合并
+# 单台 ECS 分担现有 CI 与批准后的自动合并
 
-使用 GitHub 官方开源 Actions Runner，运行在华为 Ubuntu ECS；服务由 systemd 管理，以独立 `pa-ci` 用户执行并随开机启动。Windows 原有 `Foundation / check` 完整保留，ECS 新增 `ECS Linux CI / ecs-linux-check`。Node 24.15.0 / npm 11.12.1 下执行无界面依赖安装、架构门禁、契约夹具、生成类型一致性、所有工作区构建与类型检查、跨平台集成测试和审查门禁测试。
+当前接入一台华为 Ubuntu ECS，使用 GitHub 官方开源 Actions Runner、独立 `pa-ci` 用户和 systemd 开机自启。其余三台机器尚未接入，不配置用户本机。GitHub 原 Windows Runner 与 ECS 并行分担同一个 PR 的必要检查。
 
-Windows Foundation 继续执行完整 `npm run check`、原生 Job Host 构建与示例。首次在 Ubuntu 尝试全量 workspace 测试时，既有 `coding-tools/test/isolated-repair.test.mjs` 的 publish CAS / unrelated 子用例返回 unknown，预期 published；它调用的补丁发布实现依赖 Windows PowerShell。ECS 不承担整套 Windows workspace 测试，也不修改或放宽该断言；完整套件由原 Windows 必需 CI 验证。Linux 绿灯只证明本页列出的检查通过。
+## 检查分工
 
-ECS 无图形桌面，安装时不运行生命周期脚本，避免 Desktop 的 postinstall 下载 Electron GUI 二进制；保留上述所有代码检查，不运行 Electron 窗口冒烟。目前锁定依赖无其他必须执行的安装脚本。以后加入需要生成本地产物的依赖时，应显式接入它的可信构建步骤。Windows Foundation 的完整安装与原生验证不受影响。
+| 原检查 | ECS：ecs-linux-check | Windows：check |
+| --- | --- | --- |
+| 架构门禁、契约夹具、生成类型一致性 | 执行 | 已迁移到 ECS |
+| 全工作区类型检查 | 执行原 npm run typecheck | 已迁移到 ECS |
+| 构建测试所需 dist | 构建本机测试输入 | 构建本机测试输入 |
+| 原 workspace 单测 | 26 个已确认无 Windows 平台测试分支的 workspace | 8 个 Windows / 桌面 / 宿主相关 workspace |
+| 原 22 个集成测试文件 | 20 个跨平台文件 | Obsidian pairing、wiki write recovery 两个文件 |
+| .NET 8 Windows Job Helper | 不适用 | 保留原构建与 helper 环境 |
+| storage / protocol / runtime 示例 | 不重复执行 | 运行原 Node 入口，复用本次已构建的 dist |
 
-`Approved PR auto-merge` 在 CI/审查工作流完成后检查 PR，每五分钟补查一次，也可手动触发。它仅从默认分支加载脚本，使用短期 `GITHUB_TOKEN`，不运行 PR 代码。仅处理当前仓库到 main 的非 Draft PR，复用现有 `evaluateReviews`，要求既有名单中至少一位非作者对当前 head 的有效批准，且没有待处理的 Changes Requested。
+精确清单在 [partition.json](../scripts/ci/partition.json)。Windows 保留 coding-tools、cognition、knowledge、windows-client、agentarts-runtime、desktop、obsidian-plugin、runtime 的原 `npm run test`；ECS 执行其他 26 个原 workspace 测试脚本。没有删除测试或修改断言。每次运行验证清单覆盖所有现有 workspace 与集成测试文件且不重不漏；新增文件或 workspace 未分组会失败，需明确审查归属。
 
-`check` 和 `ecs-linux-check` 必须来自官方 Actions app，当前 head 的所有检查及外部状态均须成功。主线必须同步、可合并。随后调用 `gh pr merge --auto --squash --match-head-commit`，由 GitHub 再次执行分支保护、审查与未解决会话规则；不传 `--admin`，不使用 Owner 审查例外。新提交使旧批准失效，红灯或缺少结果均不合并。
+运行版本为 Node 24.15.0 / npm 11.12.1。ECS 使用 `npm ci --ignore-scripts`，避开不使用的 Electron GUI 下载；当前锁定依赖没有其他必要安装脚本，后续若引入应显式接入。Windows 完整 `npm ci` 和原生宿主构建保留。两端均只在 PR 和 main push 执行，避免 feature push 与同一 PR 重复构建。
 
-部署时在 main 的既有必需状态 `check` 之外增加 `ecs-linux-check`，保留 `strict`、管理员约束、一次非作者审批、过期批准作废、会话解决等原有规则。工作流合并到 main 后，后续 PR 无需逐个手动开启自动合并。配置 PR 自身仍须独立批准，不豁免审查。
+首次 Ubuntu 全量实验发现 coding-tools 的 isolated-repair publish CAS / unrelated 用例返回 unknown，预期 published；补丁发布依赖 Windows PowerShell，故 coding-tools 原套件保留 Windows。不能把该实验称为通过，也不能把 Linux 绿灯当作 Windows 原生验收。
 
-ECS 工作流只接收同仓库分支，不执行 fork PR。专用 CI 主机不放生产凭据或模型密钥，Runner 用户不使用 root。公开仓库的长期自托管 Runner 不能作为恶意代码的隔离边界；如需接受外部贡献者代码，应先部署临时隔离 Runner。原 Windows CI 仍可验证 fork PR。
+本次把实际检查工作移到 ECS，同时去掉 Windows 三个示例前重复的全仓构建。两端各需本机构建作为测试输入，尚未跨平台共享 dist；少量 workspace 原测试脚本内部仍会构建其依赖。实际提速须比较调整前后完成耗时，不能仅凭并行或增加 Runner 声称提速。自动合并减少的是全绿后等待手动合并的时间，仍需非作者审批。
 
-本次不接入 AI，不调用模型，不要求模型密钥。没有给本地电脑配置常驻 Runner 或开机服务。
+## 合并规则
 
-运维：在远程 Runner 安装目录运行 `sudo ./svc.sh status`、`sudo ./svc.sh start`、`sudo ./svc.sh stop`。GitHub 仓库 Settings → Actions → Runners 可确认在线状态。恢复时停止远程服务；若撤回 ECS 工作流，同时从 main 必需状态中移除新增的 `ecs-linux-check`，保留原有 `check` 与所有审查规则。
+main 原必需状态 `check` 保留，追加 `ecs-linux-check`，均绑定官方 Actions app。保留 strict 主线同步、管理员约束、一次非作者审批、过期批准作废和会话解决规则。
 
-依据：[官方 Runner](https://github.com/actions/runner)、[Runner 服务与开机启动](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application)、[GitHub 自动合并](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/automatically-merging-a-pull-request)、[gh pr merge](https://cli.github.com/manual/gh_pr_merge)。
+`Approved PR auto-merge` 在 CI/审查工作流完成后检查 PR，每五分钟补查，也可手动触发。仅从默认分支加载脚本，使用短期 `GITHUB_TOKEN`；只处理同仓库到 main 的非 Draft PR，复用现有 `evaluateReviews`，要求既有名单中至少一位非作者对当前 head 的有效批准，且没有未处理的 Changes Requested。两项必需 CI 及当前 head 其他检查/状态必须成功。
+
+随后调用 `gh pr merge --auto --squash --match-head-commit`，由 GitHub 再次检查分支保护与会话。无 `--admin` 或 Owner 例外。本配置 PR 本身仍须独立批准，进入 main 后才自动处理后续 PR。不接入 AI、不调用模型。
+
+## 运维
+
+远程 Runner 目录执行 `sudo ./svc.sh status`、`start`、`stop`；GitHub Settings → Actions → Runners 确认在线。ECS 只执行同仓库分支；fork PR 的同一 Linux 检查改用 GitHub Ubuntu Runner，避免因跳过任务而遗失已迁移的验证。自动合并仍只处理同仓库 PR。专用 CI 主机不放生产或模型凭据；公开仓库长期 Runner 不能作为恶意代码隔离边界。
+
+恢复时同时还原原 Windows 完整 CI、撤回新增必需状态 `ecs-linux-check`，再停止 ECS 服务；不能先撤走 ECS 执行器而遗失已迁移的测试。保留原 `check` 与审查规则。
+
+依据：[官方 Runner](https://github.com/actions/runner)、[Runner 服务与自启](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application)、[GitHub 自动合并](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/automatically-merging-a-pull-request)、[gh pr merge](https://cli.github.com/manual/gh_pr_merge)。
