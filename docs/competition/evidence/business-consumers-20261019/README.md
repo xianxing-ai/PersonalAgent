@@ -20,3 +20,16 @@
 - 未行使写路径模块（F08 邮件真实调用本轮明令禁止；日历写/通知实机送达待用户配合验收）。
 - `notifications.events`/`developer.*`（含 #423 的 `developer.test_locate`）已有各自单元/集成验收；其云端消费 Evidence 待镜像侧对应图接线后按同法采集。
 - 每场景一次真实模型调用（deepseek，费用已发生）；失败迭代记录保留于 `.cache`（未入仓），首次失败仅断言位置问题（执行记录在子任务），链路本身一次即通。
+
+## 汇总验收（缺口 4，2026-10-19）
+
+`tests/manual/business-consumers-acceptance.mjs`（公开合成数据，无凭据/网络/云端调用）以六项检查覆盖工作包要求的场景族，结果快照 `acceptance-checks.json`（6/6 通过）：
+
+| 场景族 | 检查 | 结果 |
+| --- | --- | --- |
+| 事件去重 | 同 dedupeKey 重复投递只裁一次，事件读回仅一条 | PASS |
+| 同资源写入排队 | todo 保存路径旧 revision 拒绝（Revision must increase），无丢失更新 | PASS |
+| 分支部分成功 | 两批次仅确认其一，另一分支不阻塞（drain 重返未确认批次按身份去重） | PASS |
+| 修改失效 | 写入推进快照版本后，旧 snapshotRevision 续页得 changed 空页（#391 协议） | PASS |
+| 取消四态 | 委托重跑 `apps/runtime/test/runtime.test.mjs`（11/11） | PASS |
+| 断网未知不重放 | 委托重跑 `packages/coding-tools/test/ci-fix.test.mjs`（93/93，含 unknown 不自动重试） | PASS |
