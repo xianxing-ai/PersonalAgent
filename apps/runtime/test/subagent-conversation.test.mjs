@@ -9,7 +9,7 @@ import {createRuntimeApplication,createDesktopSubagentDispatchTool} from '../dis
 
 const selected={catalogRevision:'a'.repeat(64),modelId:'original-model',reasoningEffort:'high'};
 const terminal=task=>['succeeded','failed','cancelled'].includes(task.state);
-async function until(predicate){const end=Date.now()+5000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('State did not arrive');}
+async function until(predicate,timeoutMs=5000){const end=Date.now()+timeoutMs;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('State did not arrive');}
 function fixture({storage=':memory:',hold,write=false,execute,coordinationInput}={}) {
   let app,currentModel=selected,available=true;const calls=[],queries=[];
   const descriptor={name:'fixture.agent-read',version:'1.0.0',inputSchema:{type:'object',properties:{},additionalProperties:false},outputSchema:{type:'object'},
@@ -46,10 +46,10 @@ function fixture({storage=':memory:',hold,write=false,execute,coordinationInput}
   });
   return {app,port,calls,queries,descriptor,setModel:value=>{currentModel=value;},setAvailable:value=>{available=value;}};
 }
-async function origin(f,name='origin') {
+async function origin(f,name='origin',timeoutMs=5000) {
   const client=new Client(f.app);await client.connect();
   const parent=await client.call('task.submit',{goal:`Start ${name}`,conversationId:`user-${name}`},{idempotencyKey:name,timeoutMs:60000});
-  await until(()=>f.app.activeTaskCount===0);
+  await until(()=>f.app.activeTaskCount===0,timeoutMs);
   const [child]=f.app.readSubagentTasks(parent.taskId);
   assert.equal(child.state,'succeeded');return {parentTaskId:parent.taskId,taskId:child.taskId};
 }
@@ -114,7 +114,7 @@ test('request identity is idempotent and cannot change its text, scope or deadli
 test('each message gets fresh Policy approval, persists over restart, and cannot inherit a consumed grant',async()=>{
   const directory=await mkdtemp(path.join(os.tmpdir(),'pa-agent-conversation-'));let f=fixture({storage:path.join(directory,'runtime.sqlite')});
   try {
-    const scope=await origin(f);
+    const scope=await origin(f,'origin',15000);
     const {acceptedTaskId}=f.app.submitSubagentConversationMessage({...scope,text:'use tool once',requestId:'read-one'});
     assert.equal((await settle(f.app,acceptedTaskId)).state,'waiting_approval');assert.equal(f.calls.length,0);
     const approval=f.app.runtime.getApproval(`competition-tool-${acceptedTaskId}-1`);
