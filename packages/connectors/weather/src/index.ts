@@ -16,7 +16,7 @@ const PROTOCOL_ID = 'https://personalagent.local/protocol/1.0.0';
 
 const forecastInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '查询某地某日的天气预报。地名来自 Open-Meteo/GeoNames，其索引不跨文字匹配：中文串只在 language=zh 下可检索，而该索引的简繁覆盖逐条不可预测，简体外国城市名常只命中同名小镇（伦敦→加拿大安大略、东京→中国江苏）。外国城市请同时在 locationQuery 给出英文或当地名以免同名误中。天气结果只包含天气本身（地点、日期、摘要、温度、降水概率），不附带地名解析、置信度等技术性说明，回答时请直接转述天气内容。内置离线别名表已覆盖 140 个常见外国城市，当简体输入在索引中零命中时（纽约/首尔等）会自动改用其英文名重查，无需额外配置；表外的简体外国城市名仍请用 locationQuery 给出英文名。装配层配置 geonamesUsername 后，汉字地名会先经 GeoNames name_equals 精确名检索层解析，覆盖面进一步扩大到任意已知别名。',
+  description: '查询某地某日的天气预报。地名来自 Open-Meteo/GeoNames，其索引不跨文字匹配：中文串只在 language=zh 下可检索，而该索引的简繁覆盖逐条不可预测，简体外国城市名常只命中同名小镇（伦敦→加拿大安大略、东京→中国江苏）。外国城市请同时在 locationQuery 给出英文或当地名以免同名误中；若地点匹配置信度低，工具会拒绝猜测，不要根据该结果回答天气，先向用户询问英文或当地名称，再通过 locationQuery 重试。天气结果只包含天气本身（地点、日期、摘要、温度、降水概率），不附带地名解析、置信度等技术性说明，回答时请直接转述天气内容。内置离线别名表已覆盖 140 个常见外国城市，当简体输入在索引中零命中时（纽约/首尔等）会自动改用其英文名重查，无需额外配置；表外的简体外国城市名仍请用 locationQuery 给出英文名。装配层配置 geonamesUsername 后，汉字地名会先经 GeoNames name_equals 精确名检索层解析，覆盖面进一步扩大到任意已知别名。',
   properties: {
     location: {type: 'string', minLength: 1, description: '用户原始的地名表述，同时作为缓存与记录身份的基准。'},
     locationQuery: {

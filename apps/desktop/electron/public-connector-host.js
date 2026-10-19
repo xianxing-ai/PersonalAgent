@@ -14,6 +14,7 @@ const cacheProjection = cache => ({state:cache.state, fetchedAt:cache.fetchedAt,
  * exactly the previous Open-Meteo-only one.
  */
 const defaultWeatherProvider = () => new weather.OpenMeteoProvider({
+  locationResolution: 'strict',
   ...(process.env.PA_GEONAMES_USERNAME ? {geonamesUsername: process.env.PA_GEONAMES_USERNAME} : {}),
 });
 

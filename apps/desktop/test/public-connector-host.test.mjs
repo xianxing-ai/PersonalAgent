@@ -77,6 +77,57 @@ test('without the environment variable the exact-name tier is not called', async
   }
 });
 
+test('the default weather provider refuses weak place matches and accepts a location hint', async () => {
+  const previous = process.env.PA_GEONAMES_USERNAME;
+  const realFetch = globalThis.fetch;
+  const urls = [];
+  delete process.env.PA_GEONAMES_USERNAME;
+  globalThis.fetch = async input => {
+    const url = String(input);
+    urls.push(url);
+    const parsed = new URL(url);
+    if (parsed.hostname === 'geocoding-api.open-meteo.com') {
+      const name = parsed.searchParams.get('name');
+      const language = parsed.searchParams.get('language');
+      const weakLondon = {id: 6058560, name: '伦敦', latitude: 42.98339, longitude: -81.23304,
+        timezone: 'America/Toronto', feature_code: 'PPL', population: 422324, admin1: '安大略', country: '加拿大'};
+      const london = {id: 2643743, name: 'London', latitude: 51.50853, longitude: -0.12574,
+        timezone: 'Europe/London', feature_code: 'PPLC', population: 8961989, admin1: 'England', country: 'United Kingdom'};
+      const results = name === '伦敦' && language === 'zh' ? [weakLondon]
+        : name === 'London' && language === 'en' ? [london, weakLondon] : [];
+      return {ok: true, status: 200, json: async () => ({results})};
+    }
+    if (parsed.hostname === 'api.open-meteo.com') {
+      const date = parsed.searchParams.get('start_date');
+      return {ok: true, status: 200, json: async () => ({
+        timezone: parsed.searchParams.get('timezone'),
+        daily: {time: [date], temperature_2m_min: [12], temperature_2m_max: [20],
+          precipitation_probability_max: [10], weather_code: [3]},
+      })};
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  const host = createPublicConnectorHost({researchProvider: new OpenAlexProvider({fetchImpl: async () => {throw Error('unused');}})});
+  try {
+    const tool = host.tools.find(item => item.descriptor.name === 'weather.forecast');
+    const context = {signal: new AbortController().signal};
+    await assert.rejects(tool.execute({location: '伦敦', date: '2026-10-19'}, context),
+      error => error.code === 'INVALID_ARGUMENT' && /locationQuery/.test(error.message));
+    assert.ok(!urls.some(url => new URL(url).hostname === 'api.open-meteo.com'), 'weak matches must not fetch a forecast');
+
+    const result = await tool.execute({location: '伦敦', locationQuery: 'London', date: '2026-10-19'}, context);
+    assert.equal(result.forecast.location, '伦敦');
+    assert.equal(result.forecast.temperatureMax, 20);
+    assert.equal(new URL(urls.find(url => new URL(url).hostname === 'api.open-meteo.com')).searchParams.get('timezone'), 'Europe/London');
+    assert.ok(!('resolved' in result.forecast));
+    assert.doesNotMatch(JSON.stringify(result), /Europe\/London|confidence|timezone/);
+  } finally {
+    host.close();
+    globalThis.fetch = realFetch;
+    if (previous !== undefined) process.env.PA_GEONAMES_USERNAME = previous;
+  }
+});
+
 test('the weather public projection publishes only the weather, never the place resolution', async () => {
   const host = createPublicConnectorHost({researchProvider: new OpenAlexProvider({fetchImpl: async () => {throw Error('unused');}})});
   try {
