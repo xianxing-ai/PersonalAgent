@@ -1,8 +1,8 @@
 # ECS 协助 CI 与批准后的自动合并
 
-使用 GitHub 官方开源 Actions Runner，运行在华为 Ubuntu ECS；服务由 systemd 管理，以独立 `pa-ci` 用户执行并随开机启动。Windows 原有 `Foundation / check` 完整保留，ECS 新增 `ECS Linux CI / ecs-linux-check`，执行 Node 24.15.0、npm 11.12.1 下的 `npm ci`、`npm run check` 和审查门禁测试。Linux 检查不能证明 Windows 原生路径通过。
+使用 GitHub 官方开源 Actions Runner，运行在华为 Ubuntu ECS；服务由 systemd 管理，以独立 `pa-ci` 用户执行并随开机启动。Windows 原有 `Foundation / check` 完整保留，ECS 新增 `ECS Linux CI / ecs-linux-check`，执行 Node 24.15.0、npm 11.12.1 下的 `npm ci --ignore-scripts`、`npm run check` 和审查门禁测试。Linux 检查不能证明 Windows 原生路径通过。
 
-ECS 无图形桌面，跳过 Electron 应用二进制下载，保留 npm 安装脚本与上述所有检查；本任务不运行 Electron 窗口冒烟。Windows Foundation 的安装与原生验证不受影响。
+ECS 无图形桌面，安装时不运行生命周期脚本，避免 Desktop 的 postinstall 下载 Electron GUI 二进制；保留上述所有代码检查，不运行 Electron 窗口冒烟。目前锁定依赖无其他必须执行的安装脚本。以后加入需要生成本地产物的依赖时，应显式接入它的可信构建步骤。Windows Foundation 的完整安装与原生验证不受影响。
 
 `Approved PR auto-merge` 在 CI/审查工作流完成后检查 PR，每五分钟补查一次，也可手动触发。它仅从默认分支加载脚本，使用短期 `GITHUB_TOKEN`，不运行 PR 代码。仅处理当前仓库到 main 的非 Draft PR，复用现有 `evaluateReviews`，要求既有名单中至少一位非作者对当前 head 的有效批准，且没有待处理的 Changes Requested。
 

@@ -17,7 +17,6 @@ jobs:
     runs-on: [self-hosted, Linux, X64, personalagent-ecs]
     env:
       PATH: /opt/personalagent-review/toolchain/node/bin:/usr/local/bin:/usr/bin:/bin
-      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,7 +27,8 @@ jobs:
           test "$(node --version)" = "v$(tr -d '\r\n' < .node-version)"
           test "$(npm --version)" = '11.12.1'
           uname -a
-      - run: npm ci
+      - name: Install dependencies for headless checks
+        run: npm ci --ignore-scripts
       - name: Build, type-check and test on the ECS
         run: npm run check
       - name: Verify the approval and automatic merge gates
