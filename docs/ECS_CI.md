@@ -14,11 +14,11 @@ Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件�
 | 镜像共享依赖、根依赖或 CI 配置 | Windows CI + Linux image CI |
 | 文件证据不完整、未知路径、main push 或手动运行 | 两边均执行；API 错误或 head 变化直接失败 |
 
-共享依赖包括 `packages/contracts/`、`models/`、`coordination/`、`agentarts/`，`scripts/agentarts/`、`scripts/laya/`、`scripts/ci/`，`.github/workflows/`、`.github/actions/`，`tests/architecture/`、`tests/contracts/`，以及根 `package.json`、锁文件、`tsconfig.base.json`、`.node-version`、`.npmrc`。重命名同时考虑新旧路径，删除也参与分类。规则与回归用例见 [pr-route.mjs](../scripts/ci/pr-route.mjs) 及其测试。
+共享依赖包括 `packages/contracts/`、`models/`、`coordination/`、`agentarts/`，`scripts/agentarts/`、`scripts/laya/`、`scripts/ci/`，`.github/workflows/`、`.github/actions/`，`tests/architecture/`、`tests/contracts/`、owned-agentarts-image 集成测试，以及根 `package.json`、锁文件、`tsconfig.base.json`、`.node-version`、`.npmrc`。重命名同时考虑新旧路径，删除也参与分类。规则与回归用例见 [pr-route.mjs](../scripts/ci/pr-route.mjs) 及其测试。
 
 Windows 保留 .NET 8 Job process helper、原始完整架构/契约/生成类型/类型检查/全部 workspace 单测/全部集成测试，以及三个示例。示例复用本次已构建的 dist，避免重复全仓构建。此前将同一 PR 的单测分成两份的配置已移除。
 
-Linux 使用 Node 24.15.0 / npm 11.12.1，执行架构、契约夹具、生成类型检查、`build:owned-agent`、五个镜像 workspace 的类型检查及模型/协调/传输/编排/镜像应用测试；随后使用现有 allowlist 导出上下文，实际构建 `linux/arm64` 并检查产物架构。QEMU 用于在 X64 ECS 构建 ARM64。构建不推送、不部署、不调用模型；通过只证明这些 CI 检查，不能代替 AgentArts 平台和真实工具链验收。
+Linux 使用 Node 24.15.0 / npm 11.12.1，执行架构、契约夹具、生成类型检查、五个镜像 workspace 的类型检查及模型/协调/传输/编排/镜像应用测试、owned-agentarts-image 集成测试。已有镜像测试还导入真实 Runtime/SQLite 宿主 fixture，因此先用原 `npm run build` 补全测试输入，不将缺依赖用例跳过；Linux 不运行完整 Windows 测试集。随后使用现有 allowlist 导出上下文，实际构建 `linux/arm64` 并检查产物架构。QEMU 用于在 X64 ECS 构建 ARM64。构建不推送、不部署、不调用模型；通过只证明这些 CI 检查，不能代替 AgentArts 平台和真实工具链验收。
 
 Linux 的 `npm ci --ignore-scripts` 避开无关 Electron GUI 下载；新增必要依赖安装脚本时须显式接入。Windows 使用完整 `npm ci`。同仓库镜像任务使用 `[self-hosted,Linux,X64,personalagent-ecs]`；fork 镜像任务使用 GitHub Ubuntu 24.04，避免把外部 PR 交给常驻 ECS。没有给未选平台创建跳过状态来充当通过。
 

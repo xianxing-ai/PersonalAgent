@@ -13,6 +13,7 @@ for(const [name,files,mode] of [
   ['root dependencies',['package-lock.json'],'both'],
   ['shared compiler configuration',['tsconfig.base.json'],'both'],
   ['contract fixture gate',['tests/contracts/protocol.test.mjs'],'both'],
+  ['image integration fixture',['tests/integration/owned-agentarts-image.test.mjs'],'both'],
   ['CI routing changes',['scripts/ci/pr-route.mjs'],'both'],
   ['image publisher workflow',['.github/workflows/owned-image-preview.yml'],'both'],
   ['PowerShell image release',['scripts/agentarts/release-owned-image.ps1'],'both']

@@ -94,14 +94,15 @@ jobs:
       - name: Install image dependencies without desktop lifecycle scripts
         if: matrix.kind == 'image'
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Validate image contracts and build the owned agent
+      - name: Validate contracts and build image plus host fixture inputs
         if: matrix.kind == 'image'
         shell: bash
         run: |
           npm run check:architecture
           npm run test:contract-fixtures
           npm run check:generated --workspace=@personal-agent/contracts
-          npm run build:owned-agent
+          # Existing image tests import real Runtime/SQLite host fixtures.
+          npm run build
           npm run typecheck --workspace=@personal-agent/contracts --workspace=@personal-agent/models --workspace=@personal-agent/coordination --workspace=@personal-agent/agentarts --workspace=@personal-agent/agentarts-runtime
       - name: Test image transport, models, orchestration and runtime
         if: matrix.kind == 'image'
@@ -109,6 +110,7 @@ jobs:
         run: |
           node apps/agentarts-runtime/scripts/export-bindings.mjs --check
           node --test packages/contracts/test/agentarts-transport.test.mjs packages/models/test/*.test.mjs packages/coordination/test/*.test.mjs packages/agentarts/test/*.test.mjs apps/agentarts-runtime/test/*.test.mjs
+          node --test tests/integration/owned-agentarts-image.test.mjs
       - name: Generate the allowlist image context
         if: matrix.kind == 'image'
         id: context
