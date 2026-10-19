@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {OpenMeteoProvider, WeatherService, WeatherConnector, register} from '../dist/index.js';
+import {ZH_PLACE_ALIASES} from '../dist/locale-aliases.js';
 import {FakeClock, FakeToolHost} from '@personal-agent/testkit';
 import {ProtocolError, validateContract} from '@personal-agent/contracts';
 
@@ -1081,4 +1082,32 @@ test('the alias tier stays idle when the first pass already resolves a major sea
 
   assert.equal(place.confidence, 'high');
   assert.equal(fetchImpl.calls.length, 2, 'zh + en only; no alias pass for a name that resolved');
+});
+
+/**
+ * Review finding on #417: the first generated table mapped 釜山 to Foshan (CN) and 奥克兰 to
+ * Oakland (US) — `name_equals` returns homographs abroad and the generator had ranked by
+ * population only. Entries are now bound to the country the candidate list meant.
+ */
+test('the shipped table never crosses the border on a homograph', () => {
+  assert.equal(ZH_PLACE_ALIASES['釜山'], 'Busan');
+  assert.equal(ZH_PLACE_ALIASES['奥克兰'], undefined, 'no New Zealand hit, so no entry rather than Oakland');
+  assert.equal(ZH_PLACE_ALIASES['上海'], undefined, 'domestic names are answered by the zh index and stay out of the table');
+});
+
+test('釜山 resolves to Korea, not to its Chinese homograph', async () => {
+  const busan = {id: 1838524, name: 'Busan', latitude: 35.10278, longitude: 129.04028, timezone: 'Asia/Seoul', feature_code: 'PPLA', population: 3285147, admin1: '釜山广域市', country: '韩国'};
+  const provider = makeProvider([nameRoutes({'釜山': {zh: [], en: []}, 'Busan': {zh: [], en: [busan]}})]);
+  const place = await provider.resolvePlace('釜山', undefined, signal());
+
+  assert.equal(place.name, 'Busan');
+  assert.equal(place.country, '韩国');
+  assert.equal(place.timezone, 'Asia/Seoul');
+  assert.equal(place.confidence, 'high');
+});
+
+test('奥克兰 stays unresolved rather than answering for Oakland', async () => {
+  const oakland = {id: 5378538, name: 'Oakland', latitude: 37.80437, longitude: -122.2708, timezone: 'America/Los_Angeles', feature_code: 'PPLA2', population: 419267, admin1: '加州', country: '美国'};
+  const provider = makeProvider([nameRoutes({'奥克兰': {zh: [], en: []}, 'Oakland': {zh: [], en: [oakland]}})]);
+  await assert.rejects(provider.resolvePlace('奥克兰', undefined, signal()), {code: 'NOT_FOUND'});
 });
