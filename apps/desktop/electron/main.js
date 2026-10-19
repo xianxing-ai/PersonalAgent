@@ -4,7 +4,7 @@ import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
-import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
+import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -15,6 +15,7 @@ import {register, requestTaskCancellation, submitConversationTask} from './runti
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
+import {panelWindowAppearance, bindPanelMaterial} from './panel-material.js';
 import {desktopDataPaths} from './data-paths.js';
 import {restoreSyntheticRepairSubmission} from './competition-repair-submission.js';
 import {readCapabilityDirectory} from './capability-directory.js';
@@ -672,6 +673,7 @@ function windowFor(mode, bounds, options = {}) {
     if (mode === 'panel') void stopPanelVoice().catch(reportPanelVoiceFailure);
   });
   if (mode === 'panel') {
+    win.on('resize', () => applyShape(win, 24));
     win.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => {
       if (mainFrame) void stopPanelVoice().catch(reportPanelVoiceFailure);
     });
@@ -695,7 +697,8 @@ function windowFor(mode, bounds, options = {}) {
     presented = true;
     if (mode === 'orb') placeOrb(win, win.getBounds());
     if (centerOnPresent) win.center();
-    if (['panel','admin','workspace'].includes(mode)) applyShape(win, mode === 'panel' ? 20 : 12);
+    if (mode === 'panel') applyShape(win, 24);
+    if (mode === 'workspace') win.maximize();
     if (mode !== 'panel') win.show();
     publish();
   };
@@ -744,7 +747,7 @@ function openPanel(focus = false) {
   if (!orb || !panel || orb.isDestroyed() || panel.isDestroyed()) return;
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
   placePanel(panelBounds(orb.getBounds(), screen.getDisplayMatching(orb.getBounds()).workArea));
-  applyShape(panel, 20);
+  applyShape(panel, 24);
   if (focus) panel.show(); else panel.showInactive();
   away = 0;
 }
@@ -767,7 +770,7 @@ function movePanelGroup(point) {
   const next = draggedGroupBounds(panelDragOrigin.orb, panelDragOrigin.pointer, point, area);
   placeOrb(orb, next.orb);
   placePanel(next.panel);
-  applyShape(panel, 20);
+  applyShape(panel, 24);
 }
 
 function openAdmin(page) {
@@ -779,9 +782,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1120, area.width), height: Math.min(760, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, minWidth: 600, minHeight: 400});
-  admin.once('ready-to-show', () => applyShape(admin, 12));
-  admin.on('resize', () => applyShape(admin, admin.isMaximized() ? 0 : 12));
+    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: false, hasShadow: false, minWidth: 600, minHeight: 400});
   admin.on('closed', () => { admin = undefined; });
 }
 
@@ -981,13 +982,12 @@ async function testPangu() {
 
 async function openWorkspace() {
   await hidePanel();
-  if (workspace && !workspace.isDestroyed()) { workspace.show(); workspace.focus(); publish(); return; }
+  if (workspace && !workspace.isDestroyed()) { workspace.maximize(); workspace.show(); workspace.focus(); publish(); return; }
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
-    {title: 'PersonalAgent · 工作区', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
-  workspace.once('ready-to-show', () => { applyShape(workspace, 12); workspace.focus(); });
-  workspace.on('resize', () => applyShape(workspace, workspace.isMaximized() ? 0 : 12));
+    {title: 'PersonalAgent · 工作区', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: false, hasShadow: false, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+  workspace.once('ready-to-show', () => workspace.focus());
   workspace.on('closed', () => { workspace = undefined; });
 }
 
@@ -3462,7 +3462,8 @@ app.whenReady().then(async () => {
   orb = windowFor('orb', {x: area.x + area.width - 150, y: area.y + area.height - 180, width: 112, height: 112},
     {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false});
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
-    {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, backgroundMaterial: 'none', roundedCorners: true});
+    {frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
+  bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
   createTray();
