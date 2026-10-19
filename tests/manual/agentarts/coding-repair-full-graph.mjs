@@ -108,7 +108,14 @@ export async function runCodingRepairFullGraphFixture(options={}) {
       failure=localFailure(error);
       throw error;
     }
-    finally{operations.push({name,elapsedMs:Date.now()-begin,...(failure?{error:failure}:{})});activeHostOperations--;}}]));
+    finally{
+      const operation={name,elapsedMs:Date.now()-begin,...(failure?{error:failure}:{})};
+      operations.push(operation);activeHostOperations--;
+      // Emit only the existing bounded, allowlisted receipt, including before an
+      // approval/setup failure prevents report.json from being returned.
+      // Diagnostic observers cannot change the original host operation outcome.
+      try{options.onHostOperationSettled?.(structuredClone(operation));}catch{}
+    }}]));
   const original=createIsolatedCodingRepairTools(defer),tools=[...original];
   for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],['check','workflow.host.f15_n05'],['publish','workflow.host.f15_n06']]) {
     const tool=original.find(item=>item.descriptor.name==='coding.repair.'+source);tools.push({...tool,descriptor:{...tool.descriptor,name}});
