@@ -1,6 +1,8 @@
-# 按 PR 分流 Windows 与 Linux 镜像 CI
+# ECS 与 GitHub 托管 Runner 的 PR 分流
 
-华为 Ubuntu ECS 使用 GitHub 官方开源 [Actions Runner](https://github.com/actions/runner)、独立 `pa-ci` 用户和 systemd 开机自启。Linux 负责 AgentArts 镜像相关 PR；普通 PR 保留完整 Windows 检查。第二台 Windows ECS 的安装独立进行，接入前本工作流仍使用 GitHub Windows Runner。所有服务安装都在远程 ECS。
+Linux ECS 负责 AgentArts 镜像相关 PR；普通 PR 的完整 Windows 检查在 GitHub 托管 Windows 与远程 Windows ECS 公共池之间分流。同类自建节点共享用途标签，GitHub 将任务派给匹配且空闲的 Runner，不为每个 PR 在每台机器重复完整检查。仓库工作流不注册、安装或配置主机；工具链、长期服务、自启动与资源保护由各主机负责人管理。
+
+`windows-latest` 只选择 GitHub 托管 Windows。自建 Windows 必须显式选择 `[self-hosted,Windows,X64,personalagent-windows]`。公共池不固定机器数量：已注册且在线、完成主机准入配置的第二、第三、第四台 Windows 才能实际领取；未注册机器不算已验收。
 
 ## 路由与验证
 
@@ -9,7 +11,7 @@ Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件�
 | PR 修改范围 | 实际 CI |
 | --- | --- |
 | 仅 `apps/agentarts-runtime/**` | Linux image CI，在 ECS 构建和测试镜像 |
-| 普通 Windows、桌面、连接器及其他文件 | Windows CI，执行完整 `npm run check` |
+| 普通 Windows、桌面、连接器及其他文件 | 一条 Windows CI，执行完整 `npm run check` |
 | 同时涉及镜像目录和其他目录 | Windows CI + Linux image CI |
 | 镜像共享依赖、根依赖或 CI 配置 | Windows CI + Linux image CI |
 | 文件证据不完整、未知路径、main push 或手动运行 | 两边均执行；API 错误或 head 变化直接失败 |
@@ -17,6 +19,18 @@ Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件�
 共享依赖包括 `packages/contracts/`、`models/`、`coordination/`、`agentarts/`，`scripts/agentarts/`、`scripts/laya/`、`scripts/ci/`，`.github/workflows/`、`.github/actions/`，`tests/architecture/`、`tests/contracts/`、owned-agentarts-image 集成测试，以及根 `package.json`、锁文件、`tsconfig.base.json`、`.node-version`、`.npmrc`。重命名同时考虑新旧路径，删除也参与分类。规则与回归用例见 [pr-route.mjs](../scripts/ci/pr-route.mjs) 及其测试。
 
 Windows 保留 .NET 8 Job process helper、原始完整架构/契约/生成类型/类型检查/全部 workspace 单测/全部集成测试，以及三个示例。示例复用本次已构建的 dist，避免重复全仓构建。此前将同一 PR 的单测分成两份的配置已移除。
+
+同仓库 PR 的 Windows 默认策略为奇数 PR → `Windows CI (ECS)`，偶数 PR → `Windows CI (GitHub)`。PR 更新和重跑保持同一分配，多条奇数 PR 由公共池中空闲节点分担。main push、合并后 dispatch 和手动完整验证默认使用托管 Windows。fork 两个平台均强制托管，显式开关也不能把 fork 送入常驻 ECS。该策略是稳定分流，不是实时资源预测；`online` 不表示磁盘、内存或工具链已经通过。
+
+| Actions 仓库变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `PA_WINDOWS_RUNNER` | `auto` | `auto` 使用奇偶策略；`github` / `ecs` 显式选择 Windows 池 |
+| `PA_WINDOWS_RUNNER_OVERRIDES` | `{}` | 按 PR 定点切换，例如 `{"421":"github"}`；优先于仓库 Windows 开关 |
+| `PA_IMAGE_RUNNER` | `ecs` | `github` 显式切换镜像检查到 GitHub Ubuntu |
+
+变量由有权限的维护者修改；不从 PR 正文、评论或模型输出读取调度指令。无效值使路由失败。路由只用本次 Actions 短期 token 读取 PR 文件，无需向主机分发个人 PAT 或提升 runner-list API 权限。
+
+两条 Windows 路径使用同一作业步骤，仅 `runs-on` 与预装工具链选择不同；不删产品测试、不修改断言。混合 PR 中架构/契约及镜像相关测试仍在两个操作系统检查，保留兼容性覆盖。去重只消除同一 PR 的两份 Windows 全套和三个示例各自再次构建全仓的开销；没有把跨平台公共检查移走后宣称等价。
 
 Linux 使用 Node 24.15.0 / npm 11.12.1，执行架构、契约夹具、生成类型检查、五个镜像 workspace 的类型检查及模型/协调/传输/编排/镜像应用测试、owned-agentarts-image 集成测试。已有镜像测试还导入真实 Runtime/SQLite 宿主 fixture，因此先用原 `npm run build` 补全测试输入，不将缺依赖用例跳过；Linux 不运行完整 Windows 测试集。随后使用现有 allowlist 导出上下文，实际构建 `linux/arm64` 并检查产物架构。QEMU 用于在 X64 ECS 构建 ARM64。构建不推送、不部署、不调用模型；通过只证明这些 CI 检查，不能代替 AgentArts 平台和真实工具链验收。
 
@@ -28,9 +42,11 @@ ECS 直连 Docker Hub 超时，因此 CI 将 Dockerfile 中官方 Node 基础镜
 
 main 两项原必需状态名 `check` 与 `ecs-linux-check` 及官方 Actions app 绑定不变。`ecs-linux-check` 现在是路由与门禁回归检查；`check` 是最终汇总，要求路由及每个实际选中任务都成功，失败、取消、跳过或缺少结果均不能通过。两绿表示本 PR 所需平台已实际通过，不要求无关平台空跑。
 
+最终汇总还通过 GitHub API 读取**本 run、本 attempt** 的所有 jobs，逐项核验选中 job 的 `success`、`runner_name` 和标签，并在 summary 中将未选平台标为 `not selected / not run / not a pass`。重跑不能借用旧 attempt 的通过结果。
+
 保留 strict 主线同步、管理员约束、一次有效非作者审批、过期批准作废和会话解决规则。`Approved PR auto-merge` 仍从默认分支读取脚本，复用现有 `evaluateReviews`，只处理同仓库到 main 的非 Draft PR，要求四位既有协作者之一对当前 head 有有效非作者批准且无未处理 Changes Requested；当前 head 的其他检查/状态也必须成功。
 
-之后执行 `gh pr merge --auto --squash --match-head-commit`，由 GitHub 再检查保护和会话。无需修改自动合并脚本或放宽保护；本配置 PR 本身也须独立审批。AI 暂不启用。
+保留 #419 的 main 技术检查协调与立即受保护合并：`gh pr merge --squash --match-head-commit`，由 GitHub 再检查保护和会话；主线未绿时不合并下一条 PR。Foundation 现在一次运行产生两个必需状态，因此任一个缺失仅 dispatch 一次完整 Foundation；仍校验请求的 main SHA 与实际 checkout。兼容旧 `post_merge_ecs_ci` 事件，但不再存在重复的 ECS 工作流。本 PR 不使用 Owner 审核例外或管理员绕过；也不修改保护规则。AI 暂不启用。
 
 ## 运维与恢复
 
@@ -38,19 +54,38 @@ Runner 位于 `/opt/personalagent-ci/runner`，systemd 服务 `actions.runner.ze
 
 镜像步骤通过 `sg docker` 在新进程载入已授权的组成员关系，无需重启正在处理其他 PR 的 Runner；正常重启和开机后服务也会自动继承该成员关系。
 
-### 自动资源管理
+### 资源保护接线与部署边界
+
+下述 Linux 文件来自保留的 `ba6072f` WIP。仓库中的脚本与 systemd 模板不证明远程维护 timer、自动 hook 已加载。脚本更新仍须由主机负责人安装、回读配置并用真实 job 验证；本任务不会执行这些主机操作。Foundation 的显式 start/complete 步骤只能证明该次调用，不等于自动 hook 或冷重启验收。
 
 该 Linux 节点 2 核、约 5.4 GiB 可用物理内存、40 GiB 系统盘，先保持单 Runner、单重任务；镜像测试文件并发为 1，构建 workspace 串行。已观察 Runner 整个 systemd 进程组的历史峰值约 1.54 GiB；服务使用 `MemoryHigh=3G`、`MemoryMax=4G`，约留 1.4 GiB 给系统及独立 Docker 构建。该 cgroup 限制覆盖 Runner 及其后代，Docker 构建进程归 Docker 服务，不能把它或单 Node heap 误报为整机上限。实际 Docker 构建已成功，当前镜像/构建缓存不足 1 GiB。
 
-远程 `/opt/personalagent-ci/maintenance/` 保存 root 拥有的资源脚本，Runner 前后 hook 同步检查，并在新 Foundation 的前后步骤中显式回读。启动要求磁盘至少 8 GiB、`MemAvailable` 至少 2.5 GiB；门槛按当前构建增量、已观察进程组峰值及系统余量设置，后续按实测更新。空间不足只先回收过期 CI 数据，仍不足明确失败并写摘要；不自动付费扩容、不杀其他任务，也不伪造成功。
+Linux Foundation 调用 checkout 之外 `/opt/personalagent-ci/maintenance/resources.py` 做前后检查，文件不存在或资源不足时失败。脚本设计的门槛为磁盘至少 8 GiB、`MemAvailable` 至少 2.5 GiB；空间不足只先回收过期 CI 数据，仍不足明确失败并写摘要。不会自动付费扩容、杀其他任务或伪造成功。
 
 每个实际任务按 5 秒采样整机可用内存及磁盘余量，摘要记录最低可用量和整机已用内存峰值；JSONL 诊断留在 `/opt/personalagent-ci/resource-state/`，保留 14 天。报告只记录容量指标，不输出环境变量或凭据。
 
-远程 `personalagent-ci-maintenance.timer` 每小时在空闲时维护。它与任务启动共用文件锁；有 `Runner.Worker` 时跳过，维护期间新任务的前置 hook 等待。只处理核验归属的 CI 路径：过期 7 天的 Runner 临时目录、14 天 Worker/npm 日志和资源报告、30 天 Runner 日志、3 天的旧 allowlist 上下文；拒绝符号链接、外部路径、其他用户数据和含近期文件的旧目录。Docker 只回收超过 7 天的未使用构建缓存，保留 6 GB 缓存预算，不清空镜像、容器或 volume。每次构建结束只删除本次镜像标签和本次 allowlist 上下文；失败的未完成导出留作短期诊断，之后按保留策略处理。
+`personalagent-ci-maintenance.timer` 模板设计为每小时在空闲时维护。它与任务启动共用文件锁；有 `Runner.Worker` 时跳过，维护期间新任务的前置 hook 等待。只处理核验归属的 CI 路径：过期 7 天的 Runner 临时目录、14 天 Worker/npm 日志和资源报告、30 天 Runner 日志、3 天的旧 allowlist 上下文；拒绝清理根及祖先符号链接、外部路径、其他用户数据和含近期文件的旧目录。Docker 只回收超过 7 天的未使用构建缓存，保留 6 GB 缓存预算，不清空镜像、容器或 volume。每次构建结束只删除本次镜像标签和本次 allowlist 上下文；失败的未完成导出留作短期诊断，之后按保留策略处理。
 
 `scripts/ci/resources_test.py` 用临时 fixture 验证清理边界、外链/他人文件保护、活跃任务互斥和内存不足失败。运维可执行 `python3 /opt/personalagent-ci/maintenance/resources.py dry-run` 查看空闲回收范围。持续不足时根据资源摘要调整任务并发、显式切换托管 Runner，或由用户决定升级；Windows 的同类保护由其独立配置任务负责，不能用 Linux 的验证冒充 Windows 已生效。
 
+Windows ECS 使用主机负责人安装的 `C:\ProgramData\PersonalAgentCI` 前后 hooks。仓库只读验证实际 PreJob context：非 fixture、run/attempt/job 匹配、真实 Runner.Worker 启动身份、资源门槛、单核 affinity 及继承的 Node/.NET 设置。缺项直接失败，不能用在仓库内重新调用 hook 来冒充自动加载成功。Node heap1536 MiB 是每进程限制，整机聚合硬内存上限未配置；真实进程树峰值与 PostJob 记录须另外回读。
+
 默认 `PA_IMAGE_RUNNER=ecs`。ECS 故障时可将仓库 Actions 变量 `PA_IMAGE_RUNNER` 设为 `github` 后重跑，让镜像任务在 GitHub Ubuntu 执行；恢复后删除变量或设回 `ecs`。这是显式切换，GitHub 不会因自托管 Runner 离线而自动改派其他系统。不得跳过镜像构建来制造绿灯。
+
+Windows 故障或公共池繁忙时，先查看 GitHub runner 注册、online/busy 状态与 job 是否已领取。可以等待空闲节点；需迁出时设置该 PR 的 `PA_WINDOWS_RUNNER_OVERRIDES` 为 `github`，取消旧 run 并确认已结束，再 **Re-run all jobs**。仅重跑失败 job 会复用旧 route 输出，不能用来切换池。全池故障可设置 `PA_WINDOWS_RUNNER=github`，同时清除冲突的逐 PR override。已领取但资源不足的任务会由主机准入失败；不杀其他进程、不把排队当通过，不假定 GitHub 自动迁移已领取任务。恢复后清除临时 override；已有运行不会因此原地改派。
+
+## 验证与证据
+
+`Runner probe` 是短任务，不包含安装或全量构建。默认不会随普通 PR 执行。合并后可手动选择 `windows-github`、`windows-pool`、`windows-pool-pair` 或 `ecs-17f8`；`ecs-17f8` 需要主机的同名定点标签。合并前可将待审提交普通推送至 `codex/ci-probe/<target>/<unique-suffix>` 触发相同流程，无需绕过 main 保护。只在刚读取的注册状态及主机负责人确认都满足时创建该探测 ref；`windows-pool-pair` 仅用于至少两台已准备好的 Windows，验证多 job 在公共池的分配，不能假定两个任务必然落在不同机器。
+
+验收按以下四项分别记录，不相互替代：
+
+1. 注册：GitHub runner id、名称、OS、用途标签。
+2. 在线与资源：读取时刻的 online/busy，以及主机配置/fixture；不代表真实 job。
+3. 短任务：run/attempt/job ID、job API 的 `runner_name`、真实自动 PreJob/PostJob 与日志结果。
+4. 完整 CI：准确 commit SHA、全部所选平台结论及最终 `check`；不是短任务或历史另一提交的通过。
+
+主机对应关系为 Linux `ecs-472f-c018-linux`、Windows `ecs-782b-windows-2`、第三台计划 `ecs-17f8-windows-3`、第四台 `ecs-905d-4175-windows-4`。这张名称表不是注册或通过证明，实时证据放在 PR 验证记录中。CI 与真实 AgentArts 部署、模型、设备、冷重启验收继续分开。
 
 查看服务与 GitHub Runner 在线状态后再处理故障，繁忙时不重启。只清理本次 CI 镜像标签，不执行全局 Docker prune。回滚路由需完整还原上一版两个工作流、分组脚本和命令；保留原必需状态和审批保护。
 

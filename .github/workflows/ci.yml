@@ -5,9 +5,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+  repository_dispatch:
+    types: [post_merge_foundation_ci, post_merge_ecs_ci]
 permissions:
   contents: read
   pull-requests: read
+  actions: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
@@ -21,12 +24,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Verify the exact event checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
       - name: Verify routing, approval and automatic merge gates
-        run: node --test scripts/ci/pr-route.test.mjs scripts/review/design-review.test.mjs scripts/review/auto-merge.test.mjs
+        run: node --test scripts/ci/*.test.mjs scripts/review/design-review.test.mjs scripts/review/auto-merge.test.mjs
       - name: Verify CI cleanup boundaries
         run: python3 -m unittest discover -s scripts/ci -p resources_test.py
       - name: Select CI from the complete current PR file list
@@ -34,6 +40,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PA_IMAGE_RUNNER: ${{ vars.PA_IMAGE_RUNNER }}
+          PA_WINDOWS_RUNNER: ${{ vars.PA_WINDOWS_RUNNER }}
+          PA_WINDOWS_RUNNER_OVERRIDES: ${{ vars.PA_WINDOWS_RUNNER_OVERRIDES }}
         run: node scripts/ci/pr-route.mjs
   validate:
     needs: route
@@ -49,7 +57,19 @@ jobs:
         run: python3 /opt/personalagent-ci/maintenance/resources.py start
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Verify Windows ECS admission and inherited resource controls
+        if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
+        shell: pwsh
+        run: ./scripts/ci/windows-admission.ps1
+      - name: Record the selected runner and exact checkout
+        shell: bash
+        env:
+          CI_ROUTE: ${{ matrix.name }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          printf 'Selected: %s; actual runner: %s; OS: %s; SHA: %s\n' "$CI_ROUTE" "$RUNNER_NAME" "$RUNNER_OS" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
       - name: Use the preinstalled ECS Node toolchain
         if: matrix.kind == 'image' && matrix.runner[0] == 'self-hosted'
         shell: bash
@@ -150,10 +170,17 @@ jobs:
     needs: [route, validate]
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
       - name: Require the router and every selected CI job to succeed
         env:
           ROUTE_RESULT: ${{ needs.route.result }}
           CI_RESULT: ${{ needs.validate.result }}
-        run: |
-          test "$ROUTE_RESULT" = success
-          test "$CI_RESULT" = success
+          CI_MATRIX: ${{ needs.route.outputs.matrix }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci/check-result.mjs

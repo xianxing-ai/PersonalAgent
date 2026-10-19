@@ -35,8 +35,8 @@ def expired_owned(entry, cutoff, uid):
 def expire(directory, pattern, age_days, *, dry=False, uid=None):
     if not directory.exists():
         return []
-    if directory.is_symlink():
-        raise ValueError('CI cleanup root must not be a symbolic link')
+    if any(component.is_symlink() for component in (directory, *directory.parents)):
+        raise ValueError('CI cleanup root and its ancestors must not be symbolic links')
     root = directory.resolve(strict=True)
     removed = []
     for entry in root.glob(pattern):

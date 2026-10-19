@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyPullRequest,matrixFor} from './pr-route.mjs';
+import {classifyPullRequest,matrixFor,selectWindowsRunner,resolveRoute} from './pr-route.mjs';
 for(const [name,files,mode] of [
   ['image Dockerfile',['apps/agentarts-runtime/Dockerfile'],'image'],
   ['image sources and tests',['apps/agentarts-runtime/src/server.mjs','apps/agentarts-runtime/test/server.test.mjs'],'image'],
@@ -36,4 +36,66 @@ test('forks and the explicit outage switch use hosted Linux',()=>{
   assert.deepEqual(matrixFor('image',{imageRunner:'github'}).include[0].runner,['ubuntu-24.04']);
   assert.ok(matrixFor('image').include[0].runner.includes('personalagent-ecs'));
   assert.throws(()=>matrixFor('image',{imageRunner:'unknown'}));
+});
+
+test('different PRs share Windows work between hosted and the common ECS pool',()=>{
+  assert.deepEqual(matrixFor('windows',{number:420}).include[0].runner,['windows-latest']);
+  assert.deepEqual(matrixFor('windows',{number:421}).include[0].runner,['self-hosted','Windows','X64','personalagent-windows']);
+  for(const number of [420,421,422,423]) assert.equal(matrixFor('both',{number}).include.filter(job=>job.kind==='windows').length,1);
+  assert.equal(selectWindowsRunner().pool,'github');
+});
+test('explicit switches change the selected pool without duplicating Windows checks',()=>{
+  assert.equal(selectWindowsRunner({number:421,windowsRunner:'github'}).pool,'github');
+  assert.equal(selectWindowsRunner({number:420,windowsRunner:'ecs'}).pool,'ecs');
+  assert.equal(selectWindowsRunner({number:421,windowsRunner:'ecs',windowsOverrides:'{"421":"github"}'}).pool,'github');
+  assert.equal(selectWindowsRunner({number:423,windowsOverrides:'{"421":"github"}'}).pool,'ecs');
+});
+test('forks stay hosted even when both explicit switches request ECS',()=>{
+  const matrix=matrixFor('both',{fork:true,number:421,windowsRunner:'ecs',windowsOverrides:'{"421":"ecs"}'});
+  assert.deepEqual(matrix.include.map(job=>job.runner),[['windows-latest'],['ubuntu-24.04']]);
+});
+test('invalid overrides and selectors fail rather than silently changing coverage',()=>{
+  for(const windowsOverrides of ['null','[]','{"421":"skip"}','{"bad":"github"}','{"0":"ecs"}','invalid']) {
+    assert.throws(()=>selectWindowsRunner({number:421,windowsOverrides}));
+  }
+  assert.throws(()=>selectWindowsRunner({windowsRunner:'other'}));
+  assert.throws(()=>selectWindowsRunner({number:0}));
+});
+
+const repository='owner/repo',head='a'.repeat(40),sha='b'.repeat(40);
+const event={pull_request:{number:421,head:{sha:head}}};
+function fakeFiles({files,count=files.length,finalHead=head,status=200}) {
+  let reads=0;
+  return async url=>({ok:status===200,status,json:async()=>{
+    if(url.includes('/files?')) {
+      const page=Number(new URL(url).searchParams.get('page'));
+      return files.slice((page-1)*100,page*100);
+    }
+    return {head:{sha:reads++?finalHead:head,repo:{full_name:repository}},changed_files:count};
+  }});
+}
+test('the CLI router includes the second file page before deciding image-only',async()=>{
+  const files=Array.from({length:100},(_,i)=>({filename:`apps/agentarts-runtime/${i}.mjs`}));
+  files.push({filename:'apps/desktop/main.js'});
+  const result=await resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files})});
+  assert.equal(result.selection.mode,'both');
+  assert.equal(result.matrix.include[0].name,'Windows CI (ECS)');
+});
+test('API failures and a moving PR head cannot produce a successful route',async()=>{
+  const files=[{filename:'apps/agentarts-runtime/a.mjs'}];
+  await assert.rejects(resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files,status:403})}),/read failed/);
+  await assert.rejects(resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files,finalHead:sha})}),/head moved/);
+  await assert.rejects(resolveRoute({event:{pull_request:{...event.pull_request,head:{sha}}},repository,token:'fixture',fetchImpl:fakeFiles({files})}),/head moved/);
+});
+test('incomplete file evidence requires both actual platforms',async()=>{
+  const result=await resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files:[{filename:'apps/agentarts-runtime/a'}],count:3001})});
+  assert.equal(result.selection.mode,'both');
+});
+test('post-merge validation requires the exact current main event SHA',async()=>{
+  const args={event:{client_payload:{target_sha:sha}},eventName:'repository_dispatch',ref:'refs/heads/main',sha,repository,token:'fixture'};
+  const result=await resolveRoute(args);
+  assert.equal(result.selection.mode,'both');
+  assert.equal(result.matrix.include[0].name,'Windows CI (GitHub)');
+  await assert.rejects(resolveRoute({...args,ref:'refs/heads/other'}),/non-main/);
+  await assert.rejects(resolveRoute({...args,sha:head}),/Stale/);
 });

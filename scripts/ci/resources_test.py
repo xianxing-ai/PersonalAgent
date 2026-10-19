@@ -45,6 +45,19 @@ class CleanupSafety(unittest.TestCase):
         self.old(folder)
         self.assertEqual(expire(self.root, 'context-*', 3), [])
 
+    def test_linked_ancestor_cannot_redirect_cleanup_to_user_files(self):
+        outside = self.root / 'user-data'
+        nested = outside / 'logs'
+        nested.mkdir(parents=True)
+        value = nested / 'old.log'
+        value.touch()
+        self.old(value)
+        link = self.root / 'linked-parent'
+        link.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            expire(link / 'logs', '*.log', 14)
+        self.assertTrue(value.exists())
+
     def test_does_not_follow_symbolic_link(self):
         outside = self.root / 'user-data'
         outside.mkdir()
