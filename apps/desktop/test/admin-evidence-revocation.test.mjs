@@ -120,7 +120,7 @@ test('task Evidence detail uses host-only metadata actions and never renders raw
   }});
   await click({evidenceTask: 'task-1'});
   assert.deepEqual(calls[0], ['evidence.list', {taskId: 'task-1', limit: 10}]);
-  assert.match(ui.html(), /<details open>/, 'readback remains visible after rerender');
+  assert.match(ui.html(), /<details data-task-details="task-1" open>/, 'readback remains visible after rerender');
   assert.match(ui.html(), /Tool execution confirmed/);
   await click({evidenceId: 'ev-1'}, 'task-1');
   assert.deepEqual(calls[1], ['evidence.get', {taskId: 'task-1', evidenceId: 'ev-1'}]);

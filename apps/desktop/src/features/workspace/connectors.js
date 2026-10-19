@@ -1,10 +1,10 @@
 const previews = {
-  weather: '<div class="weather-preview"><strong>18<span>°</span></strong><div>多云<small>北京 · 今日</small></div></div>',
-  calendar: '<div class="agenda-row"><time>09:30</time><div>整理今日计划<small>待完成</small></div></div><div class="agenda-row"><time>14:00</time><div>项目进度同步<small>待开始</small></div></div>',
-  mail: '<div class="mail-preview"><span class="mail-avatar">林</span><div><strong>林晓 · 09:12</strong><small>项目进度已更新</small></div></div><div class="mail-preview"><span class="mail-avatar">陈</span><div><strong>陈悦 · 昨天</strong><small>会议时间确认</small></div></div>',
-  knowledge: '<div class="note-preview"><span>最近笔记</span><strong>项目规划</strong><p>本周目标 · 会议纪要 · 参考资料</p></div>',
-  feeds: '<div class="feed-preview"><span>最新文章</span><strong>人工智能行业动态</strong><p>科技 · 产品 · 开发</p></div>',
-  notifications: '<p>日程提醒<small>今天 · 14:00</small></p><p>项目进度同步<small>今天 · 16:30</small></p>',
+  weather: '<p class="connector-empty">暂无天气数据，连接天气服务后显示。</p>',
+  calendar: '<p class="connector-empty">暂无待办记录，连接服务后可在这里查看。</p>',
+  mail: '<p class="connector-empty">连接邮箱后显示邮件状态与未读数量。</p>',
+  knowledge: '<p class="connector-empty">连接知识库后显示已挂载的笔记来源。</p>',
+  feeds: '<p class="connector-empty">添加订阅后显示已配置的来源。</p>',
+  notifications: '<p class="connector-empty">暂无通知。</p>',
 };
 
 const definitions = [
@@ -22,7 +22,7 @@ const definitions = [
         };
       }
       return {
-        status: '预览',
+        status: '未连接',
         preview: previews.weather,
         footer: '天气服务未连接',
       };
@@ -51,7 +51,7 @@ const definitions = [
       }
       if (data.todo?.available) {
         return {
-          status: '预览',
+          status: '已就绪',
           preview: previews.calendar,
           footer: '本地待办已就绪',
         };
@@ -121,7 +121,7 @@ const definitions = [
       }
       if (data.feeds?.available) {
         return {
-          status: '预览',
+          status: '已就绪',
           preview: previews.feeds,
           footer: '订阅服务已就绪',
         };
@@ -139,7 +139,7 @@ export function connectorCards(data, escape) {
   const cards = definitions.map(item => {
     const health = (data.health || []).find(entry => entry.id === item.id);
     const rendered = item.render(data, escape);
-    const status = rendered?.status ?? '预览';
+    const status = rendered?.status ?? '未连接';
     const preview = rendered?.preview ?? item.defaultPreview;
     const footer = rendered?.footer ?? escape(health ? labels[health.state] || health.state : '未连接');
     return `<article class="connector-card" data-connector="${item.id}"><header><span class="connector-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${item.path}"/></svg></span><h3>${item.name}</h3><span class="connector-status">${escape(status)}</span></header>${preview}<footer>${footer}</footer></article>`;
@@ -147,7 +147,7 @@ export function connectorCards(data, escape) {
 
   const notifList = Array.isArray(data.notifications) ? data.notifications : [];
   const notifError = data.todo?.failure || (data.health || []).find(h => h.id === 'notifications' && h.state === 'error')?.reason;
-  const notifStatus = notifError ? '读取失败' : notifList.length ? `${notifList.length} 条` : '预览';
+  const notifStatus = notifError ? '读取失败' : notifList.length ? `${notifList.length} 条` : '暂无';
   const notifContent = notifError
     ? `<p class="notif-error" style="color:var(--danger)">通知读取失败：${escape(notifError)}</p>`
     : notifList.length

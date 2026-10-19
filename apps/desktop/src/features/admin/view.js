@@ -25,6 +25,8 @@ import {approvalPresentation, authorizationHistoryHtml, authorizationListHtml, n
 import {agentArtsModelPage} from './agentarts-model.js';
 import {evidencePanelHtml} from './evidence-view.js';
 import {createWorkspacePatchRecoveryControls, workspacePatchRecoveryHtml} from './workspace-patch-recovery-controls.js';
+import {windowControlsHtml} from '../../ui/window-controls.js';
+import {matchesSettingSearch} from './setting-search.js';
 
 export const sections = {
   settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
@@ -34,10 +36,10 @@ export const sections = {
 };
 
 const navGroups = [
-  {label: '个人', items: ['settings', 'profile', 'appearance', 'voice', 'notifications', 'configuration', 'personalization', 'pets', 'shortcuts', 'analytics', 'models', 'memory']},
-  {label: '集成', items: ['computer', 'capabilities']},
-  {label: '编码', items: ['hooks', 'connections', 'git', 'environment', 'worktrees', 'authorizations']},
-  {label: '任务', items: ['tasks', 'archive']},
+  {label: '常用', items: ['tasks', 'models', 'memory', 'notifications', 'authorizations', 'archive']},
+  {label: '偏好', items: ['settings', 'profile', 'appearance', 'voice', 'personalization', 'pets', 'shortcuts']},
+  {label: '集成', items: ['connections', 'computer', 'capabilities', 'configuration']},
+  {label: '开发', items: ['hooks', 'git', 'environment', 'worktrees', 'analytics']},
 ];
 
 const iconPaths = {
@@ -79,7 +81,9 @@ export function taskTable(data, escape, evidenceStates = new Map(), patchStates 
     const evidence = evidenceCount
       ? `<button class="btn btn-sm" data-evidence-task="${escape(task.taskId)}">读取执行元数据</button><div data-evidence-panel="${escape(task.taskId)}">${evidencePanelHtml(evidenceStates.get(task.taskId), escape)}</div>`
       : '<span class="muted">尚无 Evidence 引用。</span>';
-    return `<tr><td>${escape(task.taskId)}</td><td>${stateNames[displayed.state] ?? escape(displayed.state)}</td><td>${displayed.revision}</td><td>${escape(summary)}</td><td>${workspacePatchRecoveryHtml(task, recovery && recovery.revision < task.revision ? undefined : patchStates.get(task.taskId), escape)}<details ${evidenceStates.has(task.taskId) ? 'open' : ''}><summary>步骤 ${steps.length} 项 · Evidence 引用 ${evidenceCount} 条</summary>${stepList}${evidence}</details></td></tr>`;
+    const title = task.userMessage?.trim() || task.taskId;
+    const identity = `<span class="task-record-title">${escape(title)}</span>${title !== task.taskId ? `<small class="task-record-id">${escape(task.taskId)}</small>` : ''}`;
+    return `<tr><td>${identity}</td><td><span class="task-record-state" data-state="${escape(displayed.state)}">${stateNames[displayed.state] ?? escape(displayed.state)}</span></td><td>${displayed.revision}</td><td>${escape(summary)}</td><td>${workspacePatchRecoveryHtml(task, recovery && recovery.revision < task.revision ? undefined : patchStates.get(task.taskId), escape)}<details data-task-details="${escape(task.taskId)}" ${evidenceStates.has(task.taskId) ? 'open' : ''}><summary>步骤 ${steps.length} 项 · Evidence 引用 ${evidenceCount} 条</summary>${stepList}${evidence}</details></td></tr>`;
   }).join('');
   return `<div class="sheet"><h2>任务记录</h2><p class="muted">只展示 Runtime 任务快照；Evidence 引用数量不代表目标系统已核实。此接口未提供任务来源或云端 trace。</p><div class="table-scroll"><table><thead><tr><th>任务</th><th>状态</th><th>版本</th><th>结果摘要</th><th>步骤与证据</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">还没有任务<br>从悬浮面板开始新的对话</td></tr>'}</tbody></table></div></div>`;
 }
@@ -93,6 +97,7 @@ export function mountAdmin(root, invoke, escape) {
   const patchRecovery = createWorkspacePatchRecoveryControls({invoke, changed: () => render(current)});
   window.addEventListener('unload', () => patchRecovery.close(), {once:true});
   const evidenceStates = new Map();
+  const taskDetails = new Map();
   let evidenceClosed = false;
   window.addEventListener('unload', () => { evidenceClosed = true; evidenceStates.clear(); }, {once: true});
   const revocations = new Map();
@@ -134,22 +139,26 @@ export function mountAdmin(root, invoke, escape) {
     approvalExpiryTimer = undefined;
   };
   window.addEventListener('unload', clearApprovalExpiryTimer, {once: true});
-  root.innerHTML = `<div class="admin"><header class="admin-bar"><span class="admin-title">PersonalAgent · 设置</span><span class="spacer"></span><button class="icon-btn hdr-btn" id="admin-close" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg></button></header><aside class="side"><div class="side-home"><span class="brand">PersonalAgent</span><span>设置与管理</span></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><nav aria-label="设置导航">${navGroups.map(group => `<section class="nav-group"><h2>${group.label}</h2>${group.items.map(id => `<button data-page="${id}">${icon(id)}<span>${sections[id]}</span></button>`).join('')}</section>`).join('')}</nav><footer>私人助理 · Windows<br>冷光青 / 标准毛玻璃</footer></aside><section class="main"><div class="eyebrow">PERSONAL WORKSPACE</div><h1 id="page-title"></h1><div class="banner" id="connection"></div><div id="content"></div><p class="error" role="alert" id="error"></p></section></div>`;
-
-  const localSettingsButton = document.createElement('button');
-  localSettingsButton.type = 'button';
-  localSettingsButton.id = 'desktop-local-settings';
-  localSettingsButton.className = 'btn btn-sm';
-  localSettingsButton.textContent = '桌面设置与恢复';
-  localSettingsButton.addEventListener('click', () => window.desktop.openSettings().catch(error => { root.querySelector('#error').textContent = error.message; }));
-  root.querySelector('.admin-bar').insertBefore(localSettingsButton, root.querySelector('#admin-close'));
+  root.innerHTML = `<div class="admin"><header class="admin-bar"><span class="admin-title">PersonalAgent · 设置</span><span class="spacer"></span>${windowControlsHtml('admin')}</header><aside class="side"><div class="side-home"><span class="brand">PersonalAgent</span><span>设置与管理</span></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><nav aria-label="设置导航">${navGroups.map(group => `<section class="nav-group"><h2>${group.label}</h2>${group.items.map(id => `<button data-page="${id}" title="${sections[id]}">${icon(id)}<span>${sections[id]}</span></button>`).join('')}</section>`).join('')}</nav><footer>私人助理 · Windows<br>冷光青 / 标准毛玻璃</footer></aside><section class="main"><div class="eyebrow">PERSONAL WORKSPACE</div><h1 id="page-title"></h1><div class="banner" id="connection"></div><div id="content"></div><p class="error" role="alert" id="error"></p></section></div>`;
+  root.querySelector('#content').addEventListener('click', async event => {
+    const button = event.target.closest('#desktop-local-settings');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try { await window.desktop.openSettings(); }
+    catch (error) { root.querySelector('#error').textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  root.querySelector('#content').addEventListener('toggle', event => {
+    const details = event.target;
+    if (details.isConnected && details.dataset.taskDetails) taskDetails.set(details.dataset.taskDetails, details.open);
+  }, true);
   const remoteMcpButton=document.createElement('button');remoteMcpButton.type='button';remoteMcpButton.id='remote-mcp-manage';remoteMcpButton.className='btn btn-sm';remoteMcpButton.hidden=true;
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
-  root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('#admin-close'));
+  root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
   let installedSkillsControls,sisControls,notificationControls;
-  let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,modelPageMarkup;
+  let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup;
 
   function capabilityTable(data) {
     const status = data.capabilityDirectory ?? {state: 'unavailable', reason: '可信宿主尚未报告能力目录状态'};
@@ -202,7 +211,7 @@ export function mountAdmin(root, invoke, escape) {
       : data.model?.status === 'ready' ? '已测试并连接' : data.model?.configured ? '已配置，等待测试' : '未配置';
     const panes = {
       general: ['常规', '管理应用的基础行为与入口',
-        settingRow('界面语言', '当前版本提供简体中文', '<span class="value-pill">简体中文</span>') +
+        settingRow('桌面与窗口', '调整语言、字体缩放和悬浮球行为，或查看窗口诊断', '<button type="button" class="btn btn-sm" id="desktop-local-settings">桌面偏好</button>') +
         settingRow('模型与 API', agentArts ? '在模型页面管理 AgentArts 运行时和本机加密凭据' : '模型、Endpoint 和密钥在独立页面管理', '<button class="btn btn-sm" data-jump="models">打开模型</button>') +
         settingRow('开机启动', '宿主能力尚未接入', '<span class="status-note">待接入</span>', 'is-unavailable') +
         settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>') +
@@ -239,7 +248,7 @@ export function mountAdmin(root, invoke, escape) {
       shortcuts: ['快捷键', '当前可用的桌面输入快捷键',
         settingRow('发送消息', '输入框内提交任务', '<kbd>Enter</kbd>') +
         settingRow('换行', '在输入框中插入新行', '<kbd>Shift</kbd><span class="key-plus">＋</span><kbd>Enter</kbd>') +
-        settingRow('收起面板', '使用面板右上角关闭按钮', '<span class="value-pill">按钮</span>') +
+        settingRow('收起面板', '使用面板右上角关闭按钮', '<span class="value-pill">右上角 ✕</span>') +
         settingRow('Live 开启 / 关闭', data.live?.shortcut?.reason || '在语音设置中修改全局快捷键', `<kbd>${escape(data.live?.shortcut?.key ?? 'F8')}</kbd><button class="btn btn-sm" data-jump="voice">语音设置</button>`)],
       diagnostics: ['诊断与关于', '运行状态、版本边界与应用操作',
         settingRow('Runtime', data.connectionError ? `${data.connection} · ${data.connectionError}` : data.connection, '<button class="btn btn-sm" data-jump="connections">连接状态</button>') +
@@ -318,6 +327,9 @@ export function mountAdmin(root, invoke, escape) {
     current = data;
     for (const taskId of evidenceStates.keys()) {
       if (!data.tasks.some(task => task.taskId === taskId)) evidenceStates.delete(taskId);
+    }
+    for (const taskId of taskDetails.keys()) {
+      if (!data.tasks.some(task => task.taskId === taskId)) taskDetails.delete(taskId);
     }
     const consumableMemoryRefs = savedMemory.facts.filter(fact => fact.state === 'active'
       && Date.parse(fact.validFrom) <= Date.now() && Date.now() < Date.parse(fact.validUntil)).map(fact => fact.ref);
@@ -441,10 +453,22 @@ export function mountAdmin(root, invoke, escape) {
       ? JSON.stringify({state: data.privateMemory, search: memorySearch, saved: savedMemory}) : undefined;
     if (section === 'memory' && data.privateMemory?.available && renderedSection === section
       && !refreshMemory && nextMemoryKey === memoryRenderKey) return;
-    const preserveModelsContent=section==='models'&&renderedSection===section&&modelPageMarkup===content;
+    // Keep interactive task/model DOM when an unrelated snapshot changes.
+    const retainContent = ['models', 'tasks', 'overview'].includes(section)
+      && renderedSection === section && renderedContentMarkup === content;
+    const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
+      ? document.activeElement.parentElement.dataset.taskDetails : undefined;
     renderedSection = section; memoryRenderKey = nextMemoryKey;
-    if(!preserveModelsContent)root.querySelector('#content').innerHTML = content;
-    modelPageMarkup=section==='models'?content:undefined;
+    if (!retainContent) {
+      root.querySelector('#content').innerHTML = content;
+      root.querySelectorAll('[data-task-details]').forEach(details => {
+        if (taskDetails.has(details.dataset.taskDetails)) details.open = taskDetails.get(details.dataset.taskDetails);
+        if (focusedSummary === details.dataset.taskDetails && document.activeElement === document.body) {
+          details.querySelector('summary').focus({preventScroll: true});
+        }
+      });
+    }
+    renderedContentMarkup = content;
     if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==page)page.append(card);}
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);
@@ -456,6 +480,8 @@ export function mountAdmin(root, invoke, escape) {
         }, delay);
       }
     }
+    // Retained nodes already own their listeners. Rebinding would multiply IPC calls.
+    if (retainContent) return;
     if (section === 'profile') bindProfile(root, escape);
     root.querySelector('#memory-select-vault')?.addEventListener('click', async event => {
       const button = event.currentTarget;
@@ -544,8 +570,9 @@ export function mountAdmin(root, invoke, escape) {
     root.querySelector('#model-more')?.addEventListener('click', () => { modelEditorOpen = true; render(current); });
     root.querySelector('#model-editor-close')?.addEventListener('click', () => { modelEditorOpen = false; render(current); });
     root.querySelector('#model-enabled')?.addEventListener('change', async event => {
-      try { await invoke('model.toggle', {enabled: event.currentTarget.checked}); }
-      catch (error) { event.currentTarget.checked = !event.currentTarget.checked; root.querySelector('#error').textContent = error.message; }
+      const input = event.currentTarget, previous = !input.checked;
+      try { await invoke('model.toggle', {enabled: input.checked}); }
+      catch (error) { input.checked = previous; root.querySelector('#error').textContent = error.message; }
     });
     root.querySelectorAll('[data-jump]').forEach(button => button.addEventListener('click', () => { section = button.dataset.jump; render(current); }));
     const themeSelect = root.querySelector('#pref-theme');
@@ -589,10 +616,12 @@ export function mountAdmin(root, invoke, escape) {
     });
     const thinkingSlider = root.querySelector('#thinking-depth');
     const thinkingFast = root.querySelector('#thinking-fast');
-    thinkingSlider?.addEventListener('input', async () => {
+    thinkingSlider?.addEventListener('input', () => {
       const value = Number(thinkingSlider.value);
       root.querySelector('#thinking-depth-label').textContent = ['最低','低','平衡','深入','高','最高'][value] ?? '低';
-      try { await invoke('thinking.update', {depth: value, fast: Boolean(thinkingFast.checked)}); }
+    });
+    thinkingSlider?.addEventListener('change', async () => {
+      try { await invoke('thinking.update', {depth: Number(thinkingSlider.value), fast: Boolean(thinkingFast.checked)}); }
       catch (error) { root.querySelector('#error').textContent = error.message; }
     });
     thinkingFast?.addEventListener('change', async () => {
@@ -643,7 +672,6 @@ export function mountAdmin(root, invoke, escape) {
     }
   }
 
-  root.querySelector('#admin-close').addEventListener('click', () => invoke('admin.close').catch(error => { root.querySelector('#error').textContent = error.message; }));
   root.querySelector('#content').addEventListener('click', event => {
     const button = event.target.closest('[data-patch-reconcile]');
     if (button && root.isConnected !== false) void patchRecovery.reconcile(button.dataset.patchReconcile);
@@ -702,16 +730,34 @@ export function mountAdmin(root, invoke, escape) {
     const button = event.target.closest('[data-page]');
     if (button) { section = button.dataset.page; render(current); }
   });
-  root.querySelector('#admin-search').addEventListener('input', event => {
-    const query = event.currentTarget.value.trim().toLowerCase();
+  const search = root.querySelector('#admin-search');
+  const searchStatus = document.createElement('p');
+  searchStatus.className = 'admin-search-status';searchStatus.id = 'admin-search-status';
+  searchStatus.setAttribute('role', 'status');searchStatus.hidden = true;
+  root.querySelector('.side')?.insertBefore(searchStatus, root.querySelector('nav'));
+  search.setAttribute('aria-describedby', searchStatus.id);
+  function filterSettings() {
+    const query = search.value.trim();
+    let total = 0;
     root.querySelectorAll('.nav-group').forEach(group => {
       let visible = 0;
       group.querySelectorAll('[data-page]').forEach(button => {
-        button.hidden = Boolean(query) && !button.textContent.toLowerCase().includes(query);
+        button.hidden = !matchesSettingSearch(button.dataset.page, button.textContent, query);
         if (!button.hidden) visible += 1;
       });
+      total += visible;
       group.hidden = visible === 0;
     });
+    searchStatus.hidden = !query;
+    searchStatus.textContent = total ? `找到 ${total} 项设置` : '没有匹配设置，试试“模型”“连接”或“任务”。';
+  }
+  search.addEventListener('input', filterSettings);
+  search.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault();search.value = '';filterSettings(); }
+    if (event.key === 'ArrowDown') {
+      const first = [...root.querySelectorAll('nav [data-page]')].find(button => !button.hidden);
+      if (first) {event.preventDefault();first.focus();}
+    }
   });
   return render;
 }
