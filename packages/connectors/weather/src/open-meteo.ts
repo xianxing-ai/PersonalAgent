@@ -1,5 +1,6 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import type { ForecastFetch, ForecastRequest, PlaceConfidence, ResolvedPlace, WeatherProvider } from './provider.js';
+import { aliasForPlace } from './locale-aliases.js';
 
 export interface FetchResponseLike {
   readonly ok: boolean;
@@ -325,9 +326,21 @@ export class OpenMeteoProvider implements WeatherProvider {
       const hinted = rankPlaces(await this.searchPasses(hint, signal), normalize(hint));
       if (hinted[0] !== undefined && this.confidenceOf(hinted[0]) === 'high') ranked = hinted;
     }
+    // Offline tier, consulted only when nothing matched at all and after the caller's own hint,
+    // so an explicit spelling always wins and no existing low-confidence verdict is rewritten.
+    // The shipped table exists because the `zh` index answers neither 纽约 nor 首尔 at all, and
+    // the GeoNames tier that would cover them needs an account at assembly time; a repository
+    // that only works once every machine exports an environment variable is not fixed.
+    if (ranked[0] === undefined) {
+      const alias = aliasForPlace(trimmed);
+      if (alias !== undefined) {
+        const aliased = rankPlaces(await this.searchPasses(alias, signal), normalize(alias));
+        if (aliased[0] !== undefined && this.confidenceOf(aliased[0]) === 'high') ranked = aliased;
+      }
+    }
 
     const top = ranked[0];
-    if (!top) throw new ProtocolError('NOT_FOUND', `Open-Meteo geocoding found no place named "${location}"`, false);
+    if (!top) throw new ProtocolError('NOT_FOUND', noPlaceFound(location, hint), false);
 
     const confidence = this.confidenceOf(top);
     if (confidence === 'low' && this.locationResolution === 'strict') {
@@ -566,6 +579,22 @@ function rankPlaces(places: MergedPlace[], query: string): MergedPlace[] {
   const exact = places.filter(place => place.names.includes(query) || place.exactNameMatch === true);
   const pool = exact.length > 0 ? exact : places;
   return [...pool].sort((a, b) => b.population - a.population || a.order - b.order);
+}
+
+/**
+ * A zero-candidate Han query is almost always a script mismatch, not a missing city: the
+ * provider's `zh` index is Traditional and incomplete, so 纽约 and 首尔 match nothing at all
+ * (measured 2026-10-19). Saying which cause applies and which call fixes it is the difference
+ * between a caller that recovers on the next attempt and one that reports "not found".
+ */
+function noPlaceFound(location: string, hint: string | undefined): string {
+  const head = `Open-Meteo geocoding found no place named "${location}".`;
+  if (!HAN_PATTERN.test(location)) return `${head} Check the spelling.`;
+  const cause = ' A Han-script query is matched only against the provider\'s Traditional-Chinese index, which is incomplete, so this is usually a script mismatch rather than a missing place.';
+  const next = hint === undefined
+    ? ' Retry once with locationQuery set to the English or local spelling (纽约 -> New York, 首尔 -> Seoul).'
+    : ` Neither that name nor the hint "${hint}" matched; retry with the English or local spelling.`;
+  return `${head}${cause}${next}`;
 }
 
 /**
