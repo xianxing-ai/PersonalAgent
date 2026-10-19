@@ -42,3 +42,5 @@ Competition 目录（`apps/desktop/electron/main.js` 组装）中业务面工具
 4. 缺口 5 在镜像版本可用后单独记录，不改断言、不代验他人模块。
 
 凭据全部本地配置，不入仓。每个 PR 由任一非作者在当前 head 有效 Approve + 实际检查后按授权合并。
+
+- 缺口 5（镜像独立 Evidence）首批已交付（2026-10-19）：weather（F11）与 research（F10）全链路真实证据（云端提案→子任务派发→本地 Provider 实调→续答 succeeded），采集入口 `tests/manual/agentarts/business-consumers-cloud-e2e.cjs`，证据快照见 [docs/competition/evidence/business-consumers-20261019/](../competition/evidence/business-consumers-20261019/README.md)。写路径模块与实机送达验收仍待用户配合，边界以该 README 为准。
