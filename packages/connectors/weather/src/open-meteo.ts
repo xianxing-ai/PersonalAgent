@@ -1,5 +1,6 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import type { ForecastFetch, ForecastRequest, PlaceConfidence, ResolvedPlace, WeatherProvider } from './provider.js';
+import { aliasForPlace } from './locale-aliases.js';
 
 export interface FetchResponseLike {
   readonly ok: boolean;
@@ -324,6 +325,18 @@ export class OpenMeteoProvider implements WeatherProvider {
     if (hint !== undefined && (ranked[0] === undefined || this.confidenceOf(ranked[0]) === 'low')) {
       const hinted = rankPlaces(await this.searchPasses(hint, signal), normalize(hint));
       if (hinted[0] !== undefined && this.confidenceOf(hinted[0]) === 'high') ranked = hinted;
+    }
+    // Offline tier, consulted only when nothing matched at all and after the caller's own hint,
+    // so an explicit spelling always wins and no existing low-confidence verdict is rewritten.
+    // The shipped table exists because the `zh` index answers neither 纽约 nor 首尔 at all, and
+    // the GeoNames tier that would cover them needs an account at assembly time; a repository
+    // that only works once every machine exports an environment variable is not fixed.
+    if (ranked[0] === undefined) {
+      const alias = aliasForPlace(trimmed);
+      if (alias !== undefined) {
+        const aliased = rankPlaces(await this.searchPasses(alias, signal), normalize(alias));
+        if (aliased[0] !== undefined && this.confidenceOf(aliased[0]) === 'high') ranked = aliased;
+      }
     }
 
     const top = ranked[0];

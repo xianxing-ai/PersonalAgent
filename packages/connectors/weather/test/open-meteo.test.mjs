@@ -548,16 +548,18 @@ test('a hint is a fallback tier and never outranks a good original match', async
   assert.equal(rome.country, '意大利');
 });
 
-test('a hint also covers a place the Chinese index does not carry at all', async () => {
+test('a place the Chinese index does not carry resolves through the shipped alias, and a hint still works', async () => {
   const provider = makeProvider([captureRoutes(CAPTURES)]);
   const sig = signal();
-  await assert.rejects(provider.resolvePlace('纽约', undefined, sig), {code: 'NOT_FOUND'});
+  // Previously NOT_FOUND: the alias table is what makes the repository usable with no account.
+  const unhinted = await provider.resolvePlace('纽约', undefined, sig);
+  assert.equal(unhinted.latitude, 40.71427);
+  assert.equal(unhinted.timezone, 'America/New_York');
+  assert.equal(unhinted.confidence, 'high');
+
   const hinted = await provider.resolvePlace('纽约', 'New York', sig);
-  assert.equal(hinted.latitude, 40.71427);
   assert.equal(hinted.timezone, 'America/New_York');
   assert.equal(hinted.confidence, 'high');
-
-  await assert.rejects(provider.resolvePlace('首尔', undefined, sig), {code: 'NOT_FOUND'});
   assert.equal((await provider.resolvePlace('首尔', 'Seoul', sig)).timezone, 'Asia/Seoul');
 });
 
@@ -1051,4 +1053,32 @@ test('an unmatched hint is reported as such instead of repeating the retry advic
     assert.match(error.message, /Neither that name nor the hint "Niuyue"/);
     return true;
   });
+});
+
+/** Captured from `https://geocoding-api.open-meteo.com/v1/search?name=New+York&language=en`. */
+const newYorkCity = {id: 5128581, name: 'New York', latitude: 40.71427, longitude: -74.00597, timezone: 'America/New_York', feature_code: 'PPL', population: 8804190, admin1: '纽约州', country: '美国'};
+
+const nameRoutes = byName => ['geocoding-api.open-meteo.com', url => {
+  const parsed = new URL(url);
+  const byLanguage = byName[parsed.searchParams.get('name')] ?? {};
+  return jsonResponse({results: byLanguage[parsed.searchParams.get('language')] ?? []});
+}];
+
+test('a shipped alias resolves 纽约 with no account and no caller hint', async () => {
+  const provider = makeProvider([nameRoutes({'纽约': {zh: [], en: []}, 'New York': {zh: [], en: [newYorkCity]}})]);
+  const place = await provider.resolvePlace('纽约', undefined, signal());
+
+  assert.equal(place.name, 'New York');
+  assert.equal(place.timezone, 'America/New_York');
+  assert.equal(place.confidence, 'high');
+  assert.equal(place.ambiguous, false, 'a single major seat leaves nothing to disclose');
+});
+
+test('the alias tier stays idle when the first pass already resolves a major seat', async () => {
+  const fetchImpl = stubFetch([captureRoutes(CAPTURES)]);
+  const provider = new OpenMeteoProvider({fetchImpl});
+  const place = await provider.resolvePlace('北京', undefined, signal());
+
+  assert.equal(place.confidence, 'high');
+  assert.equal(fetchImpl.calls.length, 2, 'zh + en only; no alias pass for a name that resolved');
 });
