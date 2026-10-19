@@ -78,7 +78,7 @@ Windows 故障或公共池繁忙时，先查看 GitHub runner 注册、online/bu
 
 ## 验证与证据
 
-`Runner probe` 是短任务，不包含安装或全量构建。默认不会随普通 PR 执行。合并后可手动选择 `windows-github`、`windows-pool`、`windows-pool-pair` 或 `ecs-17f8`；`ecs-17f8` 需要主机的同名定点标签。合并前可将待审提交普通推送至 `codex/ci-probe/<target>/<unique-suffix>` 触发相同流程，无需绕过 main 保护。只在刚读取的注册状态及主机负责人确认都满足时创建该探测 ref；`windows-pool-pair` 仅用于至少两台已准备好的 Windows，验证多 job 在公共池的分配，不能假定两个任务必然落在不同机器。
+`Runner probe` 是短任务，不包含安装或全量构建。默认不会随普通 PR 执行。合并后可手动选择 `windows-github`、`windows-pool`、`windows-pool-pair`、`windows-pool-three` 或 `ecs-17f8`；`ecs-17f8` 需要主机的同名定点标签。合并前可将待审提交普通推送至 `codex/ci-probe/<target>/<unique-suffix>` 触发相同流程，无需绕过 main 保护。只在刚读取的注册状态及主机负责人确认都满足时创建该探测 ref；pair/three 分别仅用于至少两台/三台已准备好的 Windows，验证多 job 在公共池的分配，不能假定任务必然落在不同机器。
 
 验收按以下四项分别记录，不相互替代：
 
