@@ -35,7 +35,7 @@ export function selectWindowsRunner({fork=false,number,windowsRunner='auto',wind
   if(fork) return {pool:'github',reason:'fork uses an isolated GitHub-hosted runner'};
   if(number!==undefined&&Object.hasOwn(overrides,String(number))) return {pool:overrides[number],reason:`explicit override for PR #${number}`};
   if(windowsRunner!=='auto') return {pool:windowsRunner,reason:'explicit repository Windows runner switch'};
-  if(number===undefined) return {pool:'github',reason:'main/manual validation uses GitHub Windows'};
+  if(number===undefined) return {pool:'github',reason:'explicit manual validation uses GitHub Windows'};
   return {pool:number%2?'ecs':'github',reason:`PR #${number} is ${number%2?'odd: shared ECS pool':'even: GitHub Windows'}`};
 }
 export function matrixFor(mode,{fork=false,imageRunner='ecs',...windowsOptions}={}) {
@@ -48,8 +48,8 @@ export function matrixFor(mode,{fork=false,imageRunner='ecs',...windowsOptions}=
 }
 export async function resolveRoute({event,eventName,ref,sha,repository,token,imageRunner='ecs',windowsRunner='auto',windowsOverrides='{}',fetchImpl=fetch}) {
   if(!/^[-\w]+\/[-\w.]+$/.test(repository??'')||!token) throw Error('Missing trusted GitHub context');
-  if(eventName==='repository_dispatch'&&(ref!=='refs/heads/main'||event.client_payload?.target_sha!==sha)) throw Error('Stale or non-main CI dispatch');
-  let selection={mode:'both',reason:'main push or manual validation'},fork=false,number;
+  if(['push','repository_dispatch'].includes(eventName)) throw Error('Automatic post-merge CI is disabled');
+  let selection={mode:'both',reason:'explicit manual validation'},fork=false,number;
   if(event.pull_request) {
     number=event.pull_request.number;
     if(!Number.isSafeInteger(number)||number<1)throw Error('Invalid PR number');

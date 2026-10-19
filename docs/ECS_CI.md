@@ -14,13 +14,13 @@ Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件�
 | 普通 Windows、桌面、连接器及其他文件 | 一条 Windows CI，执行完整 `npm run check` |
 | 同时涉及镜像目录和其他目录 | Windows CI + Linux image CI |
 | 镜像共享依赖、根依赖或 CI 配置 | Windows CI + Linux image CI |
-| 文件证据不完整、未知路径、main push 或手动运行 | 两边均执行；API 错误或 head 变化直接失败 |
+| 文件证据不完整、未知路径或手动运行 | 两边均执行；API 错误或 head 变化直接失败 |
 
 共享依赖包括 `packages/contracts/`、`models/`、`coordination/`、`agentarts/`、`client/`，`apps/runtime/`，`scripts/agentarts/`、`scripts/laya/`、`scripts/ci/`，`.github/workflows/`、`.github/actions/`，`tests/architecture/`、`tests/contracts/`、owned-agentarts-image 集成测试，以及根 `package.json`、锁文件、`tsconfig.base.json`、`.node-version`、`.npmrc`。Runtime 与 Client 是实际镜像集成 fixture 的依赖。重命名同时考虑新旧路径，删除也参与分类。规则与回归用例见 [pr-route.mjs](../scripts/ci/pr-route.mjs) 及其测试。
 
 Windows 保留 .NET 8 Job process helper、原始完整架构/契约/生成类型/类型检查/全部 workspace 单测/全部集成测试，以及三个示例。示例复用本次已构建的 dist，避免重复全仓构建。此前将同一 PR 的单测分成两份的配置已移除。
 
-同仓库 PR 的 Windows 默认策略为奇数 PR → `Windows CI (ECS)`，偶数 PR → `Windows CI (GitHub)`。PR 更新和重跑保持同一分配，多条奇数 PR 由公共池中空闲节点分担。main push、合并后 dispatch 和手动完整验证默认使用托管 Windows。fork 两个平台均强制托管，显式开关也不能把 fork 送入常驻 ECS。该策略是稳定分流，不是实时资源预测；`online` 不表示磁盘、内存或工具链已经通过。
+同仓库 PR 的 Windows 默认策略为奇数 PR → `Windows CI (ECS)`，偶数 PR → `Windows CI (GitHub)`。PR 更新和重跑保持同一分配，多条奇数 PR 由公共池中空闲节点分担。手动完整验证默认使用托管 Windows。main push 和合并后 dispatch 不再触发 CI；合并前 PR 当前提交通过即可，不增加主线复测或主线证据复用层。fork 两个平台均强制托管，显式开关也不能把 fork 送入常驻 ECS。该策略是稳定分流，不是实时资源预测；`online` 不表示磁盘、内存或工具链已经通过。
 
 | Actions 仓库变量 | 默认值 | 用途 |
 | --- | --- | --- |
@@ -50,9 +50,11 @@ main 两项原必需状态名 `check` 与 `ecs-linux-check` 及官方 Actions ap
 
 最终汇总还通过 GitHub API 读取**本 run、本 attempt** 的所有 jobs，逐项核验选中 job 的 `success`、`runner_name` 和标签，并在 summary 中将未选平台标为 `not selected / not run / not a pass`。重跑不能借用旧 attempt 的通过结果。
 
-保留 strict 主线同步、管理员约束、一次有效非作者审批、过期批准作废和会话解决规则。`Approved PR auto-merge` 仍从默认分支读取脚本，复用现有 `evaluateReviews`，只处理同仓库到 main 的非 Draft PR，要求四位既有协作者之一对当前 head 有有效非作者批准且无未处理 Changes Requested；当前 head 的其他检查/状态也必须成功。
+保留 strict 主线同步、管理员约束、一次有效非作者审批和会话解决规则。首轮需要四位既有协作者之一给出非作者批准；后续 CI 修复提交保留批准，不要求反复审批。显式撤销或 Changes Requested 仍然阻止合并。`Approved PR auto-merge` 从默认分支读取脚本，只处理同仓库到 main 的非 Draft PR；当前 head 的全部检查/状态必须成功。
 
-保留 #419 的 main 技术检查协调与立即受保护合并：`gh pr merge --squash --match-head-commit`，由 GitHub 再检查保护和会话；主线未绿时不合并下一条 PR。Foundation 现在一次运行产生两个必需状态，因此任一个缺失仅 dispatch 一次完整 Foundation；仍校验请求的 main SHA 与实际 checkout。兼容旧 `post_merge_ecs_ci` 事件，但不再存在重复的 ECS 工作流。本 PR 不使用 Owner 审核例外或管理员绕过；也不修改保护规则。AI 暂不启用。
+CI 完成事件触发受保护自动合并：`gh pr merge --squash --match-head-commit`，由 GitHub 再检查保护和会话。多条 PR 并行检查，合并请求串行且立即核对 main 是否变化；不再读取 main 的测试结果，也不补发合并后 CI。失败由原作者修复，更新后只测试该 PR 新版本。本 PR 不使用 Owner 审核例外或管理员绕过；原生 ruleset 仅关闭 `dismiss_stale_reviews_on_push`，仍要求一次批准，其他保护不变。AI 暂不启用。
+
+`CI failure feedback` 在 Foundation 失败或超时完成事件后，从默认分支加载通知脚本，在对应的仍打开且 head 未变的 PR 中 `@原作者`，附实际失败 job 链接。评审者负责审批和验证，不代改代码。同 run/attempt 只通知一次；取消、旧 head、已关闭 PR 和手动探测不通知。通知只读取 API 元数据，不执行失败 PR 的代码或下载其工件。工作流须合入默认分支后才接收真实完成事件；消息到达时间取决于 GitHub 事件和通知投递。
 
 ## 运维与恢复
 

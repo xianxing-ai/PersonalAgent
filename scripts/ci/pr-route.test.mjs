@@ -93,11 +93,11 @@ test('incomplete file evidence requires both actual platforms',async()=>{
   const result=await resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files:[{filename:'apps/agentarts-runtime/a'}],count:3001})});
   assert.equal(result.selection.mode,'both');
 });
-test('post-merge validation requires the exact current main event SHA',async()=>{
+test('automatic main reruns are disabled; explicit manual validation still checks both platforms',async()=>{
   const args={event:{client_payload:{target_sha:sha}},eventName:'repository_dispatch',ref:'refs/heads/main',sha,repository,token:'fixture'};
-  const result=await resolveRoute(args);
+  await assert.rejects(resolveRoute(args),/post-merge CI is disabled/);
+  await assert.rejects(resolveRoute({...args,eventName:'push'}),/post-merge CI is disabled/);
+  const result=await resolveRoute({...args,eventName:'workflow_dispatch'});
   assert.equal(result.selection.mode,'both');
   assert.equal(result.matrix.include[0].name,'Windows CI (GitHub)');
-  await assert.rejects(resolveRoute({...args,ref:'refs/heads/other'}),/non-main/);
-  await assert.rejects(resolveRoute({...args,sha:head}),/Stale/);
 });
