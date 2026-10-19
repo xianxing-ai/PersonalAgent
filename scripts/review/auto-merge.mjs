@@ -13,7 +13,7 @@ export function evaluateMerge({pr,mainSha,reviews,checks,statuses,repository}) {
     pr.base.repo.full_name!==repository||pr.head?.repo?.full_name!==repository) return 'ineligible PR';
   if(!/^[a-f0-9]{40}$/.test(pr.head.sha)||pr.base.sha!==mainSha||
     pr.mergeable!==true||pr.mergeable_state!=='clean') return 'branch protection or main update pending';
-  if(!evaluateReviews({headSha:pr.head.sha,author:pr.user.login,reviews}).passed) return 'eligible non-author current-head approval required';
+  if(!evaluateReviews({headSha:pr.head.sha,author:pr.user.login,reviews}).passed) return 'one eligible non-author approval required';
   const latest=new Map();
   for(const check of checks) {
     if(check.head_sha!==pr.head.sha) continue;
