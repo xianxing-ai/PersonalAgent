@@ -33,7 +33,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     calls.push('app-quit');const event = {prevented: false, preventDefault() {this.prevented = true;}};
     beforeQuit(event);if (!event.prevented) exited = true;
   }};
-  const optional = ['remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
+  const optional = ['voiceStartupHost','remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',

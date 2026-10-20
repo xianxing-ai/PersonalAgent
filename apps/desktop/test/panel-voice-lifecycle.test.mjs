@@ -32,7 +32,7 @@ function fixture({stopFails = false, revokeGate} = {}) {
   const contents = {id: 42, isDestroyed: () => false, send: (channel, payload) => drafts.push({channel, ...payload})};
   const panel = {isVisible: () => visible, isDestroyed: () => false, webContents: contents};
   const conversations=new Conversations();
-  const context = {panel, conversations, wakeQuitUnknown: false, wakeVoice: undefined, Promise, Error,
+  const context = {panel, conversations, voiceStartupHost:undefined, wakeQuitUnknown: false, wakeVoice: undefined, Promise, Error,
     publish: () => calls.push('publish'),
     liveVoice: {stop: async () => calls.push('live-stop'), hasActive: () => false},
     sisPlaybackHost: {stop: async () => calls.push('playback-stop')},
