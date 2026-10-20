@@ -77,6 +77,23 @@ test('invalid destinations, injection and unsupported inputs preserve the previo
   }
 });
 
+test('loopback HTTP collection pages pass only for localhost, 127.0.0.1 and [::1] and keep https rules elsewhere', t => {
+  const f = fixture(t);
+  for (const [raw, stored] of [
+    ['http://localhost:5233/potatos/mvp', 'http://localhost:5233/potatos/mvp/'],
+    ['http://127.0.0.1:5233/potatos/mvp/', 'http://127.0.0.1:5233/potatos/mvp/'],
+    ['http://[::1]:5233/potatos/mvp/', 'http://[::1]:5233/potatos/mvp/'],
+  ]) {
+    f.config.configure({...input, calendarUrl: raw});
+    assert.equal(f.config.binding().calendarUrl, stored);
+  }
+  const snapshot = f.config.snapshot();
+  for (const bad of ['http://calendar.example.test/', 'http://192.168.1.10:5233/x/', 'http://calendar.example.test/?q=1']) {
+    assert.throws(() => f.config.configure({...input, calendarUrl: bad}), /HTTPS/);
+    assert.deepEqual(f.config.snapshot(), snapshot);
+  }
+});
+
 test('unavailable encryption and corrupt storage fail safely; explicit revoke removes only calendar configuration', t => {
   const f = fixture(t);
   f.config.configure(input);

@@ -30,10 +30,8 @@ export function mountTodoControls(root,invoke) {
       action.className='btn btn-sm';action.disabled=busy;
       if(item.status==='open') {
         action.textContent='标为完成';action.onclick=()=>run('todo.update',{id:item.id,status:'done'});
-      } else {
-        action.textContent='重新打开';action.onclick=()=>run('todo.update',{id:item.id,status:'open'});
       }
-      row.append(text,' ',action);field('items').append(row);
+      row.append(text);if(item.status==='open')row.append(' ',action);field('items').append(row);
     }
     field('notifications').replaceChildren();for(const item of value.notifications ?? []) {
       const row=document.createElement('li'),text=document.createElement('span'),dismiss=document.createElement('button');
