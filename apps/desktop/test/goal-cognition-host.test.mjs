@@ -701,7 +701,7 @@ async function originalGoalTaskSurface() {
   visit(ast);assert.ok(notify&&filter);
   const conversations=new Conversations(undefined),taskGoals=new Map(),tasks=new Map();
   const context=vm.createContext({conversations,taskGoals,tasks,Date});
-  vm.runInContext(declaration('orderedTasks')+'\n'+declaration('taskSurface')+'\n'+declaration('visibleConversationTask'),context);
+  vm.runInContext(text.match(/const TASK_GOAL_LIMIT = \d+;/)[0]+'\n'+declaration('rememberTaskGoal')+'\n'+declaration('orderedTasks')+'\n'+declaration('taskSurface')+'\n'+declaration('visibleConversationTask'),context);
   return {conversations,taskGoals,tasks,notify:vm.runInContext('('+notify+')',context),
     panelTasks:()=>{context.surface='panel';return vm.runInContext(filter,context);},
     adminTasks:()=>{context.surface=undefined;return vm.runInContext(filter,context);}};

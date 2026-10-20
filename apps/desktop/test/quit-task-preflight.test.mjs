@@ -38,7 +38,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
-    'windowsControlHost','developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation'];
+    'windowsControlHost','developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
     runtimeStartup: {snapshot: () => ({state: startup})}, runtimeApplication: {activeTaskCount: count,
