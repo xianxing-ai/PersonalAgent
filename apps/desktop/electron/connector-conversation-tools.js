@@ -74,7 +74,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
             const authorization=await calendar.readAuthorization(binding);assertCurrent(context);
             secrets.add(authorization);
             if(authorization.startsWith('Basic '))secrets.add(Buffer.from(authorization.slice(6),'base64').toString('utf8').split(':').slice(1).join(':'));
-            provider=createCalendarProvider({calendarUrl:binding.calendarUrl,calendarName:binding.calendarName,authorization,
+            provider=createCalendarProvider({calendarUrl:binding.calendarUrl,calendarName:binding.calendarName,authorization,allowLoopbackHttp:true,
               fetchImpl:(url,init)=>{const active=execution.getStore();if(!active)denied();assertCurrent(active);
                 return fetch(url,{...init,signal:AbortSignal.any([init.signal,active.signal].filter(Boolean))});}});
           }

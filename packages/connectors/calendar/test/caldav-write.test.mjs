@@ -3,6 +3,9 @@ import test from 'node:test';
 import {CalDavProvider} from '../dist/index.js';
 
 const URL_BASE = 'https://caldav.test/potatos/mvp/';
+const xml = value => String(value).replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]));
+const report = entries => '<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+  + entries.map(([href,body])=>`<D:response><D:href>${xml(href)}</D:href><D:propstat><D:prop><C:calendar-data>${xml(body)}</C:calendar-data></D:prop></D:propstat></D:response>`).join('')+'</D:multistatus>';
 
 /** 假 CalDAV 服务器：记录请求并按脚本应答；资源表模拟 PUT/GET/DELETE 语义。 */
 function fakeServer() {
@@ -13,6 +16,7 @@ function fakeServer() {
     const method = init.method;
     log.push({method, url: String(url), headers: {...init.headers}});
     const path = String(url).replace(URL_BASE, '');
+    if (method === 'REPORT') return {ok:true,status:207,text:async()=>report([...resources].map(([path,body])=>[URL_BASE+path,body]))};
     if (method === 'PUT') {
       if (init.headers['if-none-match'] === '*' && resources.has(path)
         || init.headers['if-match'] !== undefined && init.headers['if-match'] !== `"${versions.get(path) ?? 0}"`)
@@ -138,7 +142,7 @@ test('cancel 删除资源；再次 cancel 如实报 already_absent', async () =>
   assert.equal(cancelled.state, 'cancelled');
   const again = await provider.cancelEvent('pa-cancel-1', ctx());
   assert.equal(again.state, 'already_absent');
-  await assert.rejects(provider.getEvent('cal', 'pa-cancel-1', ctx()), () => true);
+  assert.equal(await provider.getEvent('cal', 'pa-cancel-1', ctx()), undefined);
 });
 
 test('非法输入与认证失败按契约报错', async () => {
@@ -231,7 +235,7 @@ test('missing or weak ETag prevents an update or delete before any write',async 
     }});
     await provider.createEvent(originalEvent,ctx());const count=server.log.length;
     await assert.rejects(method==='update'?provider.updateEvent({uid:originalEvent.uid,summary:'local edit'},ctx()):provider.cancelEvent(originalEvent.uid,ctx()),{code:'UNSUPPORTED_CAPABILITY'});
-    assert.deepEqual(server.log.slice(count).map(r=>r.method),['GET']);
+    assert.deepEqual(server.log.slice(count).map(r=>r.method),['REPORT','GET']);
   });
 });
 
@@ -244,4 +248,60 @@ test('cancel requires an absence readback and does not repeat a deletion which s
   await provider.createEvent(originalEvent,ctx());
   await assert.rejects(provider.cancelEvent(originalEvent.uid,ctx()),{code:'EXTERNAL_FAILURE'});
   assert.equal(deletions,1);assert.ok(server.resources.has('guarded-event.ics'));
+});
+
+test('update and cancel resolve UID to the actual resource href and leave another event at UID.ics untouched',async()=>{
+  const server=fakeServer(),provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:server.fetchImpl});
+  await provider.createEvent(originalEvent,ctx());const body=server.resources.get('guarded-event.ics');
+  server.resources.set('server-chosen.ics',body);server.versions.set('server-chosen.ics',1);
+  const unrelated=body.replace('UID:guarded-event','UID:unrelated-event');server.resources.set('guarded-event.ics',unrelated);
+  const updated=await provider.updateEvent({uid:originalEvent.uid,summary:'resolved'},ctx());assert.equal(updated.title,'resolved');
+  const cancelled=await provider.cancelEvent(originalEvent.uid,ctx());assert.equal(cancelled.state,'cancelled');
+  assert.equal(server.resources.has('server-chosen.ics'),false);assert.equal(server.resources.get('guarded-event.ics'),unrelated);
+  assert.ok(server.log.some(r=>r.method==='REPORT'));
+});
+
+test('an absent UID never deletes a different event whose filename happens to match',async()=>{
+  const server=fakeServer(),provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:server.fetchImpl});
+  await provider.createEvent(originalEvent,ctx());const unrelated=server.resources.get('guarded-event.ics').replace('UID:guarded-event','UID:unrelated-event');
+  server.resources.set('guarded-event.ics',unrelated);
+  assert.equal((await provider.cancelEvent(originalEvent.uid,ctx())).state,'already_absent');
+  assert.equal(server.resources.get('guarded-event.ics'),unrelated);assert.equal(server.log.some(r=>r.method==='DELETE'),false);
+});
+
+test('reported write destinations outside the exact original collection are rejected before credentials can be sent',async t=>{
+  for(const href of ['https://other.example.invalid/event.ics',URL_BASE+'../event.ics',URL_BASE+'nested/event.ics',
+    URL_BASE+'%2e%2e%2foutside.ics',URL_BASE+'event.ics?query=x',URL_BASE+'event.ics#fragment'])await t.test(href,async()=>{
+    const server=fakeServer();const provider=new CalDavProvider({calendarUrl:URL_BASE,authorization:'Basic synthetic',fetchImpl:async(url,init)=>
+      init.method==='REPORT'?{ok:true,status:207,text:async()=>report([[href,server.resources.get('guarded-event.ics')]])}:server.fetchImpl(url,init)});
+    await provider.createEvent(originalEvent,ctx());const count=server.log.length;
+    await assert.rejects(provider.updateEvent({uid:originalEvent.uid,summary:'unsafe'},ctx()),{code:'UNAUTHORIZED'});
+    await assert.rejects(provider.cancelEvent(originalEvent.uid,ctx()),{code:'UNAUTHORIZED'});
+    assert.equal(server.log.length,count);
+  });
+});
+
+test('single-event reads preserve existing UID syntax and escape it inside the REPORT filter',async()=>{
+  const server=fakeServer();let query;
+  const provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:async(url,init)=>{
+    if(init.method==='REPORT')query=init.body;return server.fetchImpl(url,init);
+  }});
+  await provider.createEvent(originalEvent,ctx());
+  const uid='urn:uuid:amp&angle<test>';
+  server.resources.set('guarded-event.ics',server.resources.get('guarded-event.ics').replace('UID:guarded-event',`UID:${uid}`));
+  assert.equal((await provider.getEvent('cal',uid,ctx())).externalId,uid);
+  assert.ok(query.includes('urn:uuid:amp&amp;angle&lt;test&gt;'));
+});
+
+test('an early write timer callback reschedules until its actual timeout instead of aborting a valid write',async t=>{
+  const setTimeoutBefore=globalThis.setTimeout;let early=false;
+  globalThis.setTimeout=(callback,delay,...args)=>{
+    if(!early&&delay>100&&delay<=500){early=true;return setTimeoutBefore(callback,0,...args);}
+    return setTimeoutBefore(callback,delay,...args);
+  };
+  t.after(()=>{globalThis.setTimeout=setTimeoutBefore;});
+  const server=fakeServer(),provider=new CalDavProvider({calendarUrl:URL_BASE,requestTimeoutMs:500,fetchImpl:async(url,init)=>{
+    await new Promise(resolve=>setTimeoutBefore(resolve,20));return server.fetchImpl(url,init);
+  }});
+  assert.equal((await provider.createEvent(originalEvent,ctx())).title,originalEvent.summary);assert.equal(early,true);
 });

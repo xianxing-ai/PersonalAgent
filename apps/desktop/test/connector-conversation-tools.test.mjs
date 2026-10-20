@@ -231,14 +231,18 @@ test('Desktop proxy consumes the real CalDAV provider against a local HTTP fixtu
       if(req.headers['if-match']!==entry?.etag){res.writeHead(412).end();return;}
       resources.delete(path);res.writeHead(204).end();return;
     }
-    if(req.method==='REPORT'){res.writeHead(207).end('<D:multistatus xmlns:D="DAV:"></D:multistatus>');return;}
+    if(req.method==='REPORT'){
+      const xml=value=>String(value).replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]));
+      res.writeHead(207).end('<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+        +[...resources].map(([path,entry])=>`<D:response><D:href>${xml(path)}</D:href><D:propstat><D:prop><C:calendar-data>${xml(entry.body)}</C:calendar-data></D:prop></D:propstat></D:response>`).join('')+'</D:multistatus>');return;
+    }
     res.writeHead(405).end();
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);}));
   const calendarUrl=`http://127.0.0.1:${server.address().port}/calendar/`;
   const f=fixture(t,{calendar:{binding:()=>({calendarUrl,revision:1}),readAuthorization:()=> 'Basic c3ludGhldGljOnBhc3N3b3Jk'},
-    createCalendarProvider:options=>new CalDavProvider({...options,allowLoopbackHttp:true})});
+    createCalendarProvider:undefined});
   for(const [name,args]of [['calendar.create',calendarEvent],['calendar.update',{uid:calendarEvent.uid,summary:'updated'}],['calendar.cancel',{uid:calendarEvent.uid}]]){
     const p=await prepare(f.host,name,args),result=await p.tool.execute(args,p.s);await project(p.policy,p.s,result);
     assert.equal(JSON.stringify(result).includes('c3ludGhldGljOnBhc3N3b3Jk'),false);
@@ -249,4 +253,12 @@ test('Desktop proxy consumes the real CalDAV provider against a local HTTP fixtu
   }
   assert.equal(resources.size,0);assert.equal(requests.filter(x=>x==='PUT').length,2);
   assert.equal(requests.filter(x=>x==='DELETE').length,1);assert.ok(requests.filter(x=>x==='GET').length>=5);
+});
+
+test('calendar provider rejects non-loopback HTTP before any request even when the host permits loopback',async t=>{
+  let requests=0;
+  const f=fixture(t,{calendar:{binding:()=>({calendarUrl:'http://calendar.example.invalid/collection/',revision:1}),readAuthorization:()=> 'Basic synthetic'},
+    createCalendarProvider:options=>new CalDavProvider({...options,fetchImpl:async()=>{requests++;throw Error('must not request');}})});
+  const p=await prepare(f.host,'calendar.create',calendarEvent);
+  await assert.rejects(p.tool.execute(calendarEvent,p.s),{code:'INVALID_ARGUMENT'});assert.equal(requests,0);
 });

@@ -266,7 +266,7 @@ function localWall(ms: number, timeZone: string): string {
   return `${value.get('year')}-${value.get('month')}-${value.get('day')}T${String(hour).padStart(2, '0')}:${value.get('minute')}:${value.get('second')}`;
 }
 
-function calendarQueryXml(window: CalendarWindow | undefined): string {
+function calendarQueryXml(window: CalendarWindow | undefined, uid?: string): string {
   const stamp = (instant: string): string => `${instant.replaceAll(/[-:]/g, '').slice(0, 15)}Z`;
   const range = window === undefined ? '' : `<C:time-range start="${stamp(window.fromUtc)}"
       end="${stamp(window.toUtc)}"/>`;
@@ -274,7 +274,8 @@ function calendarQueryXml(window: CalendarWindow | undefined): string {
     + '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
     + '<D:prop><D:getetag/><C:calendar-data/></D:prop>'
     + '<C:filter><C:comp-filter name="VCALENDAR"><C:comp-filter name="VEVENT">'
-    + range
+    + range + (uid === undefined ? '' : '<C:prop-filter name="UID"><C:text-match collation="i;octet">'
+      + uid.replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]!)) + '</C:text-match></C:prop-filter>')
     + '</C:comp-filter></C:comp-filter></C:filter></C:calendar-query>';
 }
 
@@ -416,8 +417,8 @@ export class CalDavProvider implements CalendarProvider {
     return {ctag, etags};
   }
 
-  private async queryEvents(window: CalendarWindow | undefined, context?: CalendarReadContext): Promise<ParsedCalDavEvent[]> {
-    const body = await this.request('REPORT', calendarQueryXml(window), '1', context);
+  private async queryEvents(window: CalendarWindow | undefined, context?: CalendarReadContext, uid?: string): Promise<ParsedCalDavEvent[]> {
+    const body = await this.request('REPORT', calendarQueryXml(window, uid), '1', context);
     const events: ParsedCalDavEvent[] = [];
     for (const item of parseMultistatus(body)) {
       if (item.calendarData === undefined) continue;
@@ -483,7 +484,7 @@ export class CalDavProvider implements CalendarProvider {
     if (typeof externalId !== 'string' || externalId.length === 0) {
       throw new ProtocolError('INVALID_ARGUMENT', 'externalId must be a non-empty string');
     }
-    const event = (await this.queryEvents(undefined, context)).find(item => item.uid === externalId);
+    const event = (await this.queryEvents(undefined, context, externalId)).find(item => item.uid === externalId);
     return event === undefined ? undefined : this.toRecord(event);
   }
 
@@ -496,13 +497,14 @@ export class CalDavProvider implements CalendarProvider {
     const endUtc = assertWriteUtc(input?.endUtc, 'endUtc');
     if (Date.parse(endUtc) <= Date.parse(startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
     const uid = input.uid === undefined ? randomUUID() : assertWriteUid(input.uid);
+    const resourceUrl = this.resourceUrl(uid);
     const ics = buildIcs({uid, summary, startUtc, endUtc,
       ...(input.location === undefined ? {} : {location: String(input.location)}),
       ...(input.notes === undefined ? {} : {notes: String(input.notes)})}, stamp(Date.now()));
-    const write = await this.writeRequest('PUT', this.resourceUrl(uid), ics, 'text/calendar; charset=utf-8', context,
+    const write = await this.writeRequest('PUT', resourceUrl, ics, 'text/calendar; charset=utf-8', context,
       [200, 201, 204, 412], {'if-none-match': '*'});
     return this.readBack({uid, summary, startUtc, endUtc,
-      location: input.location?.trim() ?? '', notes: input.notes?.trim() ?? ''}, context,
+      location: input.location?.trim() ?? '', notes: input.notes?.trim() ?? ''}, resourceUrl, context,
       write.status === 412 ? 'REVISION_CONFLICT' : 'EXTERNAL_FAILURE');
   }
 
@@ -513,7 +515,8 @@ export class CalDavProvider implements CalendarProvider {
     // Reject unrepresentable instants before even reading the original resource.
     if (input.startUtc !== undefined) assertWriteUtc(input.startUtc, 'startUtc');
     if (input.endUtc !== undefined) assertWriteUtc(input.endUtc, 'endUtc');
-    const resourceUrl = this.resourceUrl(uid);
+    const resourceUrl = await this.resolveWriteResource(uid, context);
+    if (resourceUrl === undefined) throw new ProtocolError('NOT_FOUND', 'Calendar event UID is absent');
     const {text: current, etag} = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200]);
     const version = this.writeEtag(etag);
     const parsed = parseCalDavEvents(current).find(event => event.uid === uid);
@@ -554,14 +557,19 @@ export class CalDavProvider implements CalendarProvider {
     preserved.splice(preserved.indexOf('END:VEVENT'), 0, ...replacements);
     const ics = preserved.map(foldIcalLine).join('\r\n') + '\r\n';
     await this.writeRequest('PUT', resourceUrl, ics, 'text/calendar; charset=utf-8', context, [200, 201, 204], {'if-match': version});
-    return this.readBack({...merged, preservedTimes}, context);
+    return this.readBack({...merged, preservedTimes}, resourceUrl, context);
   }
 
   /** 取消事件：DELETE 资源。404 视为已不存在（幂等），状态如实返回。 */
   async cancelEvent(uid: string, context?: CalendarReadContext): Promise<{uid: string; state: 'cancelled' | 'already_absent'}> {
-    const resourceUrl = this.resourceUrl(assertWriteUid(uid));
+    assertWriteUid(uid);
+    const resourceUrl = await this.resolveWriteResource(uid, context);
+    if (resourceUrl === undefined) return {uid, state: 'already_absent'};
     const existing = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200, 404]);
     if (existing.status === 404) return {uid, state: 'already_absent'};
+    const events = parseCalDavEvents(existing.text);
+    if (events.length !== 1 || events[0]?.uid !== uid)
+      throw new ProtocolError('REVISION_CONFLICT', 'Calendar resource no longer identifies the original event');
     const {status} = await this.writeRequest('DELETE', resourceUrl, undefined, undefined, context, [200, 204, 404],
       {'if-match': this.writeEtag(existing.etag)});
     if (status === 404) return {uid, state: 'already_absent'};
@@ -580,9 +588,25 @@ export class CalDavProvider implements CalendarProvider {
     return `${this.calendarUrl}${encodeURIComponent(uid)}.ics`;
   }
 
+  private async resolveWriteResource(uid: string, context?: CalendarReadContext): Promise<string | undefined> {
+    const body = await this.request('REPORT', calendarQueryXml(undefined, uid), '1', context);
+    const matches = parseMultistatus(body).filter(item => item.calendarData !== undefined
+      && parseCalDavEvents(item.calendarData).some(event => event.uid === uid));
+    if (matches.length === 0) return undefined;
+    if (matches.length !== 1) throw new ProtocolError('REVISION_CONFLICT', 'Calendar UID identifies more than one resource');
+    const collection = new URL(this.calendarUrl), target = new URL(matches[0]!.href, collection);
+    const member = target.pathname.startsWith(collection.pathname) ? target.pathname.slice(collection.pathname.length) : '';
+    let decoded: string;
+    try {decoded = decodeURIComponent(member);} catch {throw new ProtocolError('UNAUTHORIZED', 'Invalid calendar resource href');}
+    if (target.origin !== collection.origin || target.username || target.password || target.search || target.hash
+      || !member || /[\\/]/u.test(decoded) || decoded === '.' || decoded === '..')
+      throw new ProtocolError('UNAUTHORIZED', 'Calendar resource is outside the original collection');
+    return target.href;
+  }
+
   private async readBack(expected: {uid: string; summary: string; startUtc: string; endUtc: string; location: string; notes: string; preservedTimes?: string[]},
-    context?: CalendarReadContext, mismatchCode: 'REVISION_CONFLICT' | 'EXTERNAL_FAILURE' = 'EXTERNAL_FAILURE'): Promise<CalendarEventRecord> {
-    const {text} = await this.writeRequest('GET', this.resourceUrl(expected.uid), undefined, undefined, context, [200]);
+    resourceUrl: string, context?: CalendarReadContext, mismatchCode: 'REVISION_CONFLICT' | 'EXTERNAL_FAILURE' = 'EXTERNAL_FAILURE'): Promise<CalendarEventRecord> {
+    const {text} = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200]);
     const parsed = parseCalDavEvents(text).find(event => event.uid === expected.uid);
     if (parsed === undefined || parsed.summary !== expected.summary || parsed.startMs !== Date.parse(expected.startUtc)
       || parsed.endMs !== Date.parse(expected.endUtc) || (parsed.location ?? '') !== expected.location || (parsed.notes ?? '') !== expected.notes
@@ -620,7 +644,12 @@ export class CalDavProvider implements CalendarProvider {
     const startedAt = Date.now();
     const remainingMs = context?.deadline === undefined ? this.requestTimeoutMs : Date.parse(context.deadline) - startedAt;
     const timeoutAt = startedAt + Math.min(this.requestTimeoutMs, remainingMs);
-    let timeout = setTimeout((): void => controller.abort(), Math.max(0, timeoutAt - Date.now()));
+    const expire = (): void => {
+      const remaining = timeoutAt - Date.now();
+      if (remaining > 0) {timeout = setTimeout(expire, remaining);return;}
+      controller.abort();
+    };
+    let timeout = setTimeout(expire, Math.max(0, timeoutAt - Date.now()));
     const bounded = async <T>(operation: () => Promise<T>): Promise<T> => {
       const interrupted = (): never => {assertReadActive(context);throw new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 写入结果未确认，请先核实原资源', false);};
       if (controller.signal.aborted) interrupted();
