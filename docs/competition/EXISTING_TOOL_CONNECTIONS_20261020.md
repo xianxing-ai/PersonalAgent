@@ -1,6 +1,6 @@
 # 已有工具接入（2026-10-20）
 
-状态：review（本地接线与回归；整仓默认并行检查非全绿）；profile：huawei_ict_agentarts；隔离工作树 `27bb/Personal Agent`；分支 `codex/connect-existing-tools`，基线 `fe60cce4`。用户已授权提交 PR；提交、远端分支和审查状态以 Git/PR 记录为准。本分支同时包含此前已推送的上下文完整性修复，PR 对照 main 时一并列明。
+状态：review（整仓首轮环境失败，重建helper后受影响工作区及桌面烟测通过；当前head CI与批准单独核对）；profile：huawei_ict_agentarts；隔离工作树 `27bb/Personal Agent`；分支 `codex/connect-existing-tools`，基线 `fe60cce4`。用户已授权提交 PR；提交、远端分支和审查状态以 Git/PR 记录为准。本分支同时包含此前已推送的上下文完整性修复，PR 对照 main 时一并列明。
 
 用户授权把可以接入的接口接入正式项目。此包消费已有 mail/calendar/GitHub 公开实现及原 Runtime/Policy/ToolGateway；不创建第二注册表、任务库、发送循环或配置库。
 
@@ -18,7 +18,7 @@
 
 真实邮件/日历账号及业务写入不作为自动化夹具。真实提供者或原始发送记录缺失时不能宣称真实验收通过。平台 Trace signer、F23 受信配置提供者、其余未实现图适配和 Artifact 服务单独列缺口，不用 Fake 填成可用。
 
-## 实际结果
+## 接线初验结果
 
 - 当前实例由34变为48项登记：6项邮件/日历，7项Windows控制（含request_access），1项Notepad。邮箱/日历未配置时仍不可用；登记不代表已获得账号或出机许可。
 - 新连接器最终定向回归13/13；实际Runtime在批准前零写入、批准后原执行一次confirmed，明确Fake提供者不冒充真实账号。GitHub配置回归31通过/1跳过（32项）；退出资源回归17/17通过。
@@ -45,3 +45,14 @@
 | 其他公共接口 | 任意MCP/OAuth/写工具、任意Skill脚本、Artifact生命周期及公共settings/connector/voice等wire仍缺相应实现；Desktop私有IPC不冒充完整公共服务 |
 
 没有真实提供者可消费的项保留明确缺口，不创建假CAS、假签名、假模型或假图执行回执。
+
+## 主线同步后的复验（2026-10-20）
+
+- 普通合并 main `85e686fc`，保留 `owned-1.7` 上下文规则及主线有依据的直接回答要求。协作者同期推送 `d64d945c`，其生产树与本地一致，另有两条提示词回归断言；通过普通合并保留双方历史，未强推。
+- `npm run check` 实际执行540秒：架构、契约、生成、构建及类型检查通过；Desktop **1378通过/9跳过**，Runtime **877/877通过**。此前三项F15失败在本轮没有复现，不据此声称并行不稳定根因已修复。
+- 首轮命令退出1，唯一失败工作区为Coding Tools三项原生身份查询及Knowledge一项恢复测试。验证入口仍引用旧缓存helper，实报 `--exe <target> is required` / 身份未确认；旧二进制不支持当前源码的查询协议。失败日志保留，不改断言或跳过用例。
+- 用当前源码和本机已有.NET8重建受信helper，先核实真实进程身份查询，再完整复跑：Coding Tools **274/274**，Knowledge **57通过/1既有跳过**；AgentArts含协作者新增断言 **212/212**；集成 **51/51**。
+- 本轮没有将上述“首轮失败＋受影响复验”表述成单次 `npm run check` 返回0。新提交的远端必需CI及非作者批准另以PR当前head为准，旧头绿色不替代新头。
+- 文字、工作区及Runtime Application三项桌面烟测均退出0，使用独立测试数据目录和显式合成配置；日志为本机 `pr442-current-*-smoke.log`，不冒充真实模型/业务账号验收。
+- 原用户桌面、数据、凭据和固定云镜像未因本轮自动化复验被重新发布或替换。新的host安装物与所有日志保留在忽略目录/受信临时目录，不提交二进制或个人绝对路径。
+- 本机日志：`pr442-sync-check.log`、`native-helper-build.log`、`pr442-current-coding.log`、`pr442-current-knowledge.log`、`pr442-current-agentarts.log`、`pr442-current-integration.log`。
