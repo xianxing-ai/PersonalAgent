@@ -311,6 +311,15 @@ export class SqliteLearningHost {
     return storedVersion(row);
   }
 
+  /** Read-only metadata inventory for the existing host management surface, one latest version per workflow. */
+  listWorkflowHeads(namespace: string): WorkflowVersion[] {
+    const rows = this.db.prepare(`SELECT v.* FROM learning_versions v
+      WHERE v.namespace = ? AND v.revision = (SELECT MAX(latest.revision) FROM learning_versions latest
+        WHERE latest.namespace = v.namespace AND latest.workflow_id = v.workflow_id)
+      ORDER BY v.workflow_id`).all(label(namespace)) as Row[];
+    return rows.map(storedVersion);
+  }
+
   async validate(namespace: string, workflowId: string, version: number,
     validator: WorkflowValidatorPort, context: LearningContext): Promise<WorkflowVersion> {
     active(context);

@@ -32,9 +32,9 @@ export interface DeveloperExperiencePorts {
   confirmActivation(candidate: WorkflowVersion, context: LearningContext): Promise<boolean>;
 }
 
-const fail = (code: 'INVALID_ARGUMENT' | 'NOT_VALIDATED' | 'REVISION_CONFLICT' | 'CANCELLED' | 'TIMEOUT'): never => {
+function fail(code: 'INVALID_ARGUMENT' | 'NOT_VALIDATED' | 'REVISION_CONFLICT' | 'CANCELLED' | 'TIMEOUT'): never {
   throw new LearningError(code);
-};
+}
 const validText = (v: unknown, max = 128): v is string => typeof v === 'string' && !!v.trim() && v.length <= max;
 const sha = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 const sameKeys = (v: object, keys: string[]) => Object.keys(v).sort().join(',') === keys.sort().join(',');
@@ -84,6 +84,9 @@ export function createDeveloperExperienceApplication(options: {
     return source;
   };
   return Object.freeze({
+    listCandidates(): WorkflowVersion[] { return learning.listWorkflowHeads(namespace); },
+    readVersion(workflowId: string, revision: number): WorkflowVersion { return learning.readVersion(namespace,workflowId,revision); },
+    readActive(workflowId: string): WorkflowVersion | null { return learning.readActive(namespace,workflowId); },
     propose(request: Omit<ProposeWorkflowRequest,'namespace'|'summary'|'steps'>): WorkflowVersion {
       const source = readSource(request.sourceRef, request);
       return learning.propose({...request,namespace,summary,steps:steps(source)});

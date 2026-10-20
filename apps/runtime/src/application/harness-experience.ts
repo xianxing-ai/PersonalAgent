@@ -23,7 +23,7 @@ export interface RuntimeHarnessExperienceOptions {
   /** Original invocation from the trusted Gateway/host journal; never caller/model reconstructed arguments. */
   readInvocation(run:HarnessExperienceRun):{arguments:Record<string,unknown>;scopeRef:string}|undefined;
   /** Original main F15 session checkpoint owned by the adoption tool; never an isolated session. */
-  readMainInput(taskId:string):CodingRepairInput|undefined;
+  readMainInput(run:HarnessExperienceRun):CodingRepairInput|undefined;
   /** Synchronous coherent current workspace/configuration/recipe/version fence, including actual source hashes. */
   readCurrent(ownerTaskId:string):{scope:DeveloperExperienceScope;snapshot:CodingRepairSnapshot}|undefined;
   confirmActivation(candidate:WorkflowVersion,context:LearningContext):Promise<boolean>;
@@ -81,7 +81,7 @@ export function createRuntimeHarnessExperienceApplication(options:RuntimeHarness
     const trialCheck=parseCodingRepairCheckReadback(trialValue.checkReadback);
     const compared=plain(comparison.value),recommended=plain(compared.recommendation);
     const checked=parseCodingRepairCheckReadback(adoption.value);
-    const inputValue=options.readMainInput(origin.adoption.taskId);
+    const inputValue=options.readMainInput(origin.adoption);
     if(!inputValue)return denied('Original main F15 session checkpoint unavailable');
     const main=parseCodingRepairInput(inputValue),request=parseCodingRepairPublishRequest(publication.arguments);
     const published=parseCodingRepairPublishReadback(publication.value);
