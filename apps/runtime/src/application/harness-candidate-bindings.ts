@@ -20,6 +20,10 @@ export interface RuntimeHarnessCandidateBindingsOptions {
   readConfiguration(scope:RuntimeHarnessCandidateScope,context:ToolContext):HarnessCandidateContext|Promise<HarnessCandidateContext>;
   now?:()=>number;
 }
+/** Native task.reconcile caller must first validate user permission and original owner/plan membership. */
+export interface RuntimeHarnessCandidateRecoveryRequest {
+  ownerTaskId:string;actualTaskId:string;trialRunId:string;expectedRevision:number;configurationRef:string;
+}
 interface Operation {
   version:1;scope:RuntimeHarnessCandidateScope;runId:string;toolName:string;toolVersion:string;
   arguments:Record<string,unknown>;argumentsDigest:string;deadline:string;
@@ -182,6 +186,32 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     if(!isDeepStrictEqual(saved.operation,locator(op)))conflict('Original recovery session binding changed');
     return parseCodingRepairInput(saved.input);
   }
+  /** Host-only metadata lookup for the original waiting task. Never exposed as a model tool or grant. */
+  function readOriginalSessionForRecovery(input:RuntimeHarnessCandidateRecoveryRequest):CodingRepairInput|undefined {
+    const runtime=application.runtime,task=runtime.getTask(input.actualTaskId);
+    if(!Number.isSafeInteger(input.expectedRevision)||task.revision!==input.expectedRevision)
+      conflict('Original recovery task revision changed');
+    if(task.state!=='waiting_reconciliation')conflict('Original task is not waiting for reconciliation');
+    const saved=runtime.loadCheckpoint(input.ownerTaskId,sessionKey(input.trialRunId)) as SavedSession|undefined;
+    if(!saved)return;
+    const {operation:op}=saved;
+    if(op.version!==1||op.runId!==input.trialRunId||op.scope.ownerTaskId!==input.ownerTaskId
+      ||op.scope.actualTaskId!==input.actualTaskId||op.scope.configurationRef!==input.configurationRef
+      ||![trialTool,adoptTool].includes(op.toolName)
+      ||!isDeepStrictEqual(runtime.loadCheckpoint(input.ownerTaskId,operationKey(input.trialRunId)),op)
+      ||!isDeepStrictEqual(locator(invocation(op.scope,input.trialRunId)),op)
+      ||!runtime.readEvidence(input.actualTaskId).some(e=>e.evidenceId===input.trialRunId&&e.kind==='execution'&&e.sourceRef===op.toolName))
+      denied('Original native recovery execution binding differs');
+    const original=parseCodingRepairInput(saved.input),configuration=frozen(op.scope);
+    if(original.session.taskId!==input.actualTaskId||original.session.workspaceId!==configuration.binding.workspaceId
+      ||original.session.mode!==(op.toolName===trialTool?'isolated':'main')
+      ||original.session.baselineSnapshotId!==configuration.binding.baselineSnapshotId
+      ||harnessCandidateArtifactDigest(original.initialSnapshot)!==harnessCandidateArtifactDigest(configuration.baseline)
+      ||harnessCandidateRecipeFingerprint(original.recipes)!==configuration.binding.recipeFingerprint
+      ||original.initialSnapshot.files.some(f=>f.content!==undefined))denied('Original native recovery session differs');
+    if(runtime.getTask(input.actualTaskId).revision!==input.expectedRevision)conflict('Recovery task changed during metadata readback');
+    return original;
+  }
   async function readParentArtifactDigests(context:ToolContext,candidateId:string,parentRuns:readonly string[],patches:readonly CodingRepairPatch[]):Promise<readonly string[]> {
     const op=own(context,[trialTool]);
     if(op.arguments.candidateId!==candidateId||!isDeepStrictEqual(op.arguments.parentTrialRunIds??[],parentRuns)
@@ -232,5 +262,5 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     return {trial:structuredClone(selected!.trial),comparison,patches:structuredClone(selected!.patches)};
   }
   const trial={readBinding,readParentArtifactDigests,readSession,saveSession};
-  return {trial,adoption:{...trial,readSelection},recovery:{readOriginalSession},compare};
+  return {trial,adoption:{...trial,readSelection},recovery:{readOriginalSession},compare,readOriginalSessionForRecovery};
 }

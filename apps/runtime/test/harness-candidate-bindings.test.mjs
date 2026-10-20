@@ -7,15 +7,15 @@ import {createRuntimeHarnessCandidateTools} from '../dist/application/harness-ca
 import {context as configuration,trial} from '../../../packages/agentarts/test/harness-candidate-fixtures.mjs';
 
 function fixture() {
-  const c=configuration(),checkpoints=new Map(),records=[],contexts=new Map();
+  const c=configuration(),checkpoints=new Map(),records=[],contexts=new Map(),tasks=new Map();
   const deadline=new Date(Date.now()+60000).toISOString();let sourcesAllowed=true;
   const key=(taskId,name)=>JSON.stringify([taskId,name]);
-  const runtime={getTask:taskId=>({taskId,state:'running',cancelRequested:false}),
+  const runtime={getTask:taskId=>tasks.get(taskId)??({taskId,state:'running',cancelRequested:false,revision:1}),
     loadCheckpoint:(taskId,name)=>structuredClone(checkpoints.get(key(taskId,name))),
     saveCheckpointOnce:(taskId,name,value)=>{const k=key(taskId,name);if(checkpoints.has(k))return false;checkpoints.set(k,structuredClone(value));return true;},
     readToolExecutions:taskId=>records.filter(r=>r.taskId===taskId),
     matchesToolExecutionInput:(record,input)=>record.argumentsDigest===toolArgumentsDigest(input.arguments)&&record.scopeRef===input.scopeRef,
-    readEvidence:taskId=>records.filter(r=>r.taskId===taskId&&r.state==='confirmed').map(r=>({evidenceId:r.evidenceId,kind:'execution',sourceRef:r.toolName}))};
+    readEvidence:taskId=>records.filter(r=>r.taskId===taskId&&r.executionStarted).map(r=>({evidenceId:r.evidenceId,kind:'execution',sourceRef:r.toolName}))};
   const scope=ctx=>({ownerTaskId:c.binding.taskId,actualTaskId:ctx.taskId,parentTaskId:'synthetic-parent',scopeRef:ctx.authorizationRef,
     configurationRef:c.binding.configurationDigest,inputDigest:c.binding.inputDigest,deadline,workspaceRef:'synthetic-opaque-workspace-binding'});
   const options={resolveHarnessScope:(ctx,source)=>source?(sourcesAllowed?scope(contexts.get(source.runId)):undefined):scope(ctx),readConfiguration:()=>structuredClone(c)};
@@ -36,7 +36,8 @@ function fixture() {
     await bindings.trial.readBinding(ctx,candidateId);await bindings.trial.saveSession(ctx,input(ctx,'session-'+candidateId));
     const result=trial(candidateId,c,status,ctx.runId);changeResult?.(result);confirm(ctx,result);return {ctx,result};
   }
-  return {c,runtime,bindings,begin,confirm,input,observed,records,disableSources:()=>{sourcesAllowed=false;}};
+  return {c,runtime,bindings,begin,confirm,input,observed,records,disableSources:()=>{sourcesAllowed=false;},
+    setTask:(taskId,state,revision)=>tasks.set(taskId,{taskId,state,revision,cancelRequested:false})};
 }
 test('factories are lazy; distinct workspace IDs and authorization refs retain immutable session identity',async()=>{
   let reads=0;const lazy={get runtime(){reads++;throw Error('Runtime not constructed');}};
@@ -56,6 +57,16 @@ test('source scope and exact original input are required for peer origin resolut
   assert.equal(f.bindings.compare.getBinding(compare).binding.taskId,f.c.binding.taskId);
   assert.equal(f.bindings.compare.resolveTrialOrigin(f.c.binding.taskId,'run-one',compare).actualTaskId,f.c.binding.taskId);
   f.disableSources();assert.throws(()=>f.bindings.compare.resolveTrialOrigin(f.c.binding.taskId,'run-one',compare),{code:'UNAUTHORIZED'});
+});
+test('native recovery reads only original waiting-task metadata and preserves unknown without a running context',async()=>{
+  const f=fixture();await f.observed('one');f.records.find(r=>r.evidenceId==='run-one').state='unknown';
+  f.setTask(f.c.binding.taskId,'waiting_reconciliation',7);f.disableSources();
+  const input={ownerTaskId:f.c.binding.taskId,actualTaskId:f.c.binding.taskId,trialRunId:'run-one',expectedRevision:7,configurationRef:f.c.binding.configurationDigest};
+  const saved=f.bindings.readOriginalSessionForRecovery(input);
+  assert.equal(saved.session.sessionId,'session-one');
+  assert.equal(f.runtime.getTask(input.actualTaskId).state,'waiting_reconciliation');assert.equal(f.records[0].state,'unknown');
+  assert.throws(()=>f.bindings.readOriginalSessionForRecovery({...input,expectedRevision:6}),{code:'REVISION_CONFLICT'});
+  assert.throws(()=>f.bindings.readOriginalSessionForRecovery({...input,configurationRef:'another-config'}),{code:'UNAUTHORIZED'});
 });
 test('an internally consistent replacement session cannot replace the original saveOnce trial session',async()=>{
   const f=fixture();await f.observed('one','VALID',[],result=>{
