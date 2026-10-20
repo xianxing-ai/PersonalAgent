@@ -5,7 +5,7 @@
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
-当前负责人 Potatos498（2026-10-07 接续；历史作者 zemeng 保留）；目标为已授权的 `local` DEV-WORKFLOWS 增量；状态 `review`（由负责人完成自审、必要检查及真实标签/修复 PR/Issue 回链验收，不等待集中验收）。不计入 `huawei_ict_agentarts` 比赛验收。
+当前负责人 Potatos498（2026-10-07 接续；历史作者 zemeng 保留）；目标为已授权的 `local` DEV-WORKFLOWS 增量。**状态与待验收项以 [ROADMAP](../ROADMAP.md) 的 MOD-38 台账行为单一事实源**（`review`；真实标签/修复 PR/Issue 回链待验收），本页只记录行为、依赖与验证边界，不复制台账；台账行同时回链本页。不计入 `huawei_ict_agentarts` 比赛验收。
 初始基线 `3d4d917`、工作树 `.worktrees/dev-issue`、分支 `codex/dev-issue`；历史交付沿
 PR #290集成；当前沿既有 PR #297 续接，精确提交与验收入口见下方统一记录。
 

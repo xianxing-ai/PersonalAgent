@@ -110,3 +110,32 @@ test('panel stop without an active task only interrupts playback',async()=>{
   const f=stopFixture({tasks:[]});await f.stop();
   assert.deepEqual(f.calls,['browser-playback-stop',['voice.stop',undefined]]);assert.deepEqual(f.errors,[]);
 });
+
+test('task-row actions retain the like limit and truncate stopped output before the receipt',async()=>{
+  let rowHandler,capDeclaration;
+  function capture(node){
+    if(ts.isBinaryExpression(node)&&node.left.getText(ast)==="root.querySelector('#tasks').onclick")rowHandler=node.right.getText(ast);
+    if(ts.isVariableDeclaration(node)&&node.name.getText(ast)==='capCollection')capDeclaration=node.getText(ast);
+    ts.forEachChild(node,capture);
+  }
+  capture(ast);assert.ok(rowHandler);assert.ok(capDeclaration);
+  const likedTasks=new Set(Array.from({length:200},(_,index)=>`liked-${index}`));
+  const pendingCancelIds=new Set(),truncatedTaskIds=new Set(),calls=[],errors=[],modes=[];
+  let finish;
+  const context=vm.createContext({likedTasks,pendingCancelIds,truncatedTaskIds,input:{value:'unsent draft'},
+    invoke:(name,id)=>{calls.push([name,id]);return new Promise(resolve=>{finish=resolve;});},
+    setSendMode:hasDraft=>modes.push(hasDraft),syncCancelButtons(){},report:error=>errors.push(error)});
+  vm.runInContext(`const ${capDeclaration};`,context);
+  const click=vm.runInContext(`(${rowHandler})`,context);
+  const button=dataset=>({dataset,disabled:false,classList:{toggle(){}},setAttribute(){}});
+  const like=button({uiAction:'like',id:'new-liked'});
+  await click({target:{closest:()=>like}});
+  assert.equal(likedTasks.size,200);assert.equal(likedTasks.has('liked-0'),false);assert.equal(likedTasks.has('new-liked'),true);
+  const stop=button({action:'task.cancel',id:'running-task'});
+  const pending=click({target:{closest:()=>stop}});
+  assert.equal(truncatedTaskIds.has('running-task'),true);assert.equal(pendingCancelIds.has('running-task'),true);
+  assert.deepEqual(modes,[true]);assert.equal(stop.disabled,true);assert.deepEqual(calls,[['task.cancel','running-task']]);
+  assert.equal(context.input.value,'unsent draft');
+  finish({cancelAccepted:true});await pending;
+  assert.equal(pendingCancelIds.size,0);assert.equal(truncatedTaskIds.has('running-task'),true);assert.deepEqual(errors,[]);
+});
