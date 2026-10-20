@@ -56,7 +56,7 @@ export function compareHarnessCandidates(context:HarnessCandidateContext,values:
     if(b.parentArtifactDigests.length<2||b.parentArtifactDigests.some(d=>!trials.some(t=>t!==trial&&t.binding.artifactDigest===d)))
       fail('Combination must reference independently observed parent artifacts');
     // Fresh artifact/session and run IDs were checked above; no parent result is substituted here.
-    if(b.parentArtifactDigests.includes(b.artifactDigest))fail('Combination must be a separately validated artifact');
+    if(b.parentArtifactDigests.some(d=>d===b.artifactDigest))fail('Combination must be a separately validated artifact');
   }
   const visiting=new Set<string>(),visited=new Set<string>();
   const visit=(artifactId:string):void=>{
