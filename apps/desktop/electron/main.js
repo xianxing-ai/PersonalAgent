@@ -2,6 +2,7 @@ import {handleConversationAction} from './conversation-actions.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
+import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
@@ -1306,7 +1307,7 @@ async function promptSyntheticRepairCandidate(taskId) {
   } finally { repairPrompts.delete(taskId); }
 }
 
-async function readDesktopConversationContext(scope) {
+function readDesktopConversationContext(scope) {
   const requestingTaskId=scope.taskId;
   const parent=scope.taskId?runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId):undefined;
   if(parent)scope={...scope,taskId:parent.taskId,conversationId:parent.conversationId};
@@ -1318,7 +1319,7 @@ async function readDesktopConversationContext(scope) {
   const surface=conversations.session(scope.conversationId).surface;
   const messages=[...conversations.messagesFor(surface,scope.conversationId),...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
     .filter(message=>Date.parse(message.createdAt)<=Date.parse(cutoff))
-    .map(message=>({id:message.id,role:message.role,content:message.text}));
+    .map(message=>({id:message.id,role:message.role,content:message.text,createdAt:message.createdAt}));
   let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages});
   if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
   const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
@@ -1326,7 +1327,7 @@ async function readDesktopConversationContext(scope) {
   if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,JSON.stringify(current));
   if(current.length)context.push({id:'knowledge-watch-current',role:'assistant',
     content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
-  return context.slice(-20);
+  return context;
 }
 
 async function initializeInstalledSkills() {
@@ -1712,9 +1713,17 @@ async function initializeRuntime() {
       const subagentExport = {
         toolName: SUBAGENT_DISPATCH_TOOL_NAME,
         toolVersion: SUBAGENT_DISPATCH_TOOL_VERSION,
-        exportPolicyVersion: '1.0.0',
+        exportPolicyVersion: '1.2.0',
         accepts: ({arguments: args}) => Array.isArray(args?.subtasks) && args.subtasks.length > 0 && args.subtasks.length <= 10,
-        project: projectSubagentResult,
+        project: async input => {
+          const delegation=runtimeApplication.runtime.loadCheckpoint(input.taskId,'required-subagent-delegation:v1');
+          const task=runtimeApplication.runtime.getTask(input.taskId);
+          const context=delegation ? await readDesktopConversationContext({taskId:input.taskId,
+            conversationId:task.conversationId,deadline:delegation.deadline,signal:input.signal}) : [];
+          return projectSubagentResult({...input,userRequest:delegation
+            ? process.env.PA_AGENTARTS_CONTINUATION_CONTEXT==='goal'?delegation.goal
+              :runtimeApplication.compileTaskConversationGoal(input.taskId,delegation.goal,delegation.goal,context) : undefined});
+        },
       };
 
       const powerShell=path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell','7','pwsh.exe');
@@ -1750,7 +1759,12 @@ async function initializeRuntime() {
         availability:[...(toolPresenceHost?.competitionToolAvailability??[]),...(windowsControlHost?.competitionToolAvailability??[])],
         exports:[...(toolPresenceHost?.competitionToolExports??[]),...(windowsControlHost?.competitionToolExports??[])],
       };
-      let conversationTools=[...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
+      const historyTool=syntheticMvp?undefined:createConversationHistoryTool({readContext:({taskId,signal})=>{
+        const task=runtimeApplication.runtime.getTask(taskId);
+        return readDesktopConversationContext({taskId,conversationId:task.conversationId,
+          deadline:runtimeApplication.runtime.loadCheckpoint(taskId,'application-deadline'),signal:signal??new AbortController().signal});
+      }});
+      let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...productTools.tools,...(mailHost?.tools??[]),
@@ -1825,9 +1839,9 @@ async function initializeRuntime() {
         competitionMaxSteps: 8,
         // Module availability/consent, input validation and ToolGateway still run.
         // Explicit names prevent future destructive tools inheriting this policy.
-        automaticTools: [...[...productTools.tools,...codingWorkspace.tools,...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
+        automaticTools: [...[...(historyTool?[historyTool.tool]:[]),...productTools.tools,...codingWorkspace.tools,...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
           ...(todoHost?.tools??[]),...(feedsHost?.tools??[])].filter(tool=>[
-            'weather.forecast','research.search','feeds.collect','feeds.subscriptions',
+            'conversation.read_history','weather.forecast','research.search','feeds.collect','feeds.subscriptions',
             'todo.list','todo.create','todo.update','notifications.status',
             'goals.list','goals.get','goals.create','goals.revise',
             'workspace.read_text','workspace.list_entries','workspace.preview_text_patch',
@@ -1896,12 +1910,13 @@ async function initializeRuntime() {
         repairCandidateVersion: repairCandidateVersion ?? '1.0',
         ...(process.env.PA_AGENTARTS_WORKFLOW_GOAL_INPUT === undefined ? {} : {workflowGoalInput: process.env.PA_AGENTARTS_WORKFLOW_GOAL_INPUT}),
         responseMode: agentArtsResponseMode ?? 'tool-proposal-json',
+        ...(process.env.PA_AGENTARTS_CONTINUATION_CONTEXT?{continuationContext:process.env.PA_AGENTARTS_CONTINUATION_CONTEXT}:{}),
         ...(syntheticMvp ? {competitionToolExports: syntheticTools.competitionToolExports} : {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
             profile:'huawei_ict_agentarts',tools:conversationTools,
-            competitionToolAvailability:[...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
-          competitionToolExports: [...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
+            competitionToolAvailability:[...(historyTool?[historyTool.availability]:[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
+          competitionToolExports: [...(historyTool?[historyTool.binding]:[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -3365,6 +3380,7 @@ async function initializeLiveVoice() {
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {taskGoals.set(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
+      contextMessages:readDesktopConversationContext({conversationId,deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal}),
       currentUserQuestion:voiceQuestionForConversation(conversationId),
       agentArts:{configured:agentArtsConfig.snapshot().configured,reason:agentArtsSnapshot().reason},
       developer:{...projectDeveloperConversationStatus(developerDeployment?.snapshot()),

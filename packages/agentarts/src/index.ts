@@ -7,7 +7,7 @@ import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
 import type {AgentInput, RepairContext, RepairRef, RepairSource} from './input.js';
-import {FAST_PROMPT, DISPATCH_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
+import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
 import {ownedBinding} from './bindings.js';
 import {worldGuidance} from './world-guidance.js';
 import type {OwnedBinding} from './bindings.js';
@@ -49,6 +49,7 @@ export interface RoleReceipt {
   /** Additive application observability, not a platform trace or execution receipt. */
   spanId?: string; startedAt?: string; endedAt?: string; durationMs?: number;
   durationScope?: 'model_gateway_complete'; event?: 'workflow_candidates';
+  failureStage?: 'model_gateway' | 'response_shape' | 'response_json' | 'response_object';
   stage?: 'candidate_response'; nodeId?: string; candidateCount?: number; candidateArrayDigest?: string;
   errorCode?: 'UNSUPPORTED_CAPABILITY' | 'EXTERNAL_FAILURE';
   candidatePreparation?: 'model_gateway' | 'deterministic_binding';
@@ -199,7 +200,7 @@ export class OwnedAgentOrchestrator {
       if (deterministic) return deterministic;
       raw = await this.call('fast', input.kind === 'goal_analysis'
         ? FAST_PROMPT + '\n仅分析宿主 RECHECK 数据；只返回 text，不提出工具或修复候选。没有执行授权，尚未执行或修改计划。'
-        : FAST_PROMPT + DISPATCH_PROMPT, input, request);
+        : FAST_PROMPT + CONTEXT_INTEGRITY_PROMPT + HISTORY_LOOKUP_PROMPT + (input.kind==='continuation'?CONTINUATION_REPLY_PROMPT+CONTINUATION_CONTEXT_PROMPT:DISPATCH_PROMPT), input, request);
     }
     return this.selectOutput(this.applicationOutput(raw, input, repair, reviewedChanges, request), input, request);
   }
@@ -350,6 +351,7 @@ export class OwnedAgentOrchestrator {
     const spanStart = performance.now();
     let durationMs: number | undefined;
     let durationScope: RoleReceipt['durationScope'];
+    let failureStage: NonNullable<RoleReceipt['failureStage']> = 'model_gateway';
     const end = () => ({...span, endedAt: new Date().toISOString(),
       durationMs: Math.max(0, durationMs ?? performance.now() - spanStart), ...(durationScope ? {durationScope} : {})});
     this.emit({...span, status: 'started'});
@@ -378,13 +380,16 @@ export class OwnedAgentOrchestrator {
       durationMs=performance.now()-gatewayStarted;
       durationScope='model_gateway_complete';
       this.check(request);
+      failureStage='response_shape';
       if (result.response.kind !== 'final' || result.response.text.length > 16_000) throw new Error();
+      failureStage='response_json';
       const parsed: unknown = JSON.parse(result.response.text);
+      failureStage='response_object';
       record(parsed);
       this.emit({...end(), status: 'completed', ...(result.usage?.totalTokens === undefined ? {} : {totalTokens: result.usage.totalTokens})});
       return parsed;
     } catch (error) {
-      this.emit({...end(), status: 'failed'});
+      this.emit({...end(), status: 'failed', failureStage});
       if (error instanceof ProtocolError) throw error;
       throw new ProtocolError('EXTERNAL_FAILURE', 'Agent role returned an invalid response');
     }

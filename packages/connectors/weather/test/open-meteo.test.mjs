@@ -346,6 +346,33 @@ test('discloses an ambiguous place instead of silently picking one', async () =>
   assert.deepEqual(result.forecast.resolved.alternatives, ['北京, 重庆市, 中国', '北京, 四川, 中国']);
 });
 
+test('recovers an omitted Chinese city via its exact municipal name before fetching weather', async () => {
+  // Public endpoint read-back, 2026-10-20: 青岛 only returned a Liaoning village and Shandong islands.
+  const village={id:11827472,name:'青岛',admin1:'辽宁',country:'中国',feature_code:'PPL',latitude:39.32908,longitude:121.73279,timezone:'Asia/Shanghai'};
+  const city={id:1797929,name:'青岛市',admin1:'山东',country:'中国',feature_code:'PPLA2',population:7172451,latitude:36.06488,longitude:120.38042,timezone:'Asia/Shanghai'};
+  const fetchImpl=stubFetch([['geocoding-api.open-meteo.com',url=>jsonResponse({results:new URL(url).searchParams.get('name')==='青岛市'?[city]:[village]})],forecastRoute(healthyDaily)]);
+  const service=new WeatherService({provider:new OpenMeteoProvider({fetchImpl,locationResolution:'strict'}),now:()=>Date.parse('2026-10-20T05:00:00.000Z')});
+  const result=await service.getForecast({location:'青岛',date:DATE});
+  assert.equal(result.forecast.resolved.admin1,'山东');
+  assert.equal(result.forecast.resolved.name,'青岛市');
+  assert.equal(result.forecast.resolved.confidence,'high');
+  assert.equal(result.forecast.resolved.ambiguous,false);
+  const forecast=new URL(fetchImpl.calls.find(url=>url.includes('/v1/forecast')));
+  assert.equal(forecast.searchParams.get('latitude'),'36.06488');
+  assert.equal(forecast.searchParams.get('longitude'),'120.38042');
+});
+
+test('a municipal retry does not promote fuzzy, foreign, or uncorroborated matches', async () => {
+  for(const overrides of [{name:'别处市'},{country:'日本'},{feature_code:'ISL'},{population:1}]){
+    const village={name:'青岛',admin1:'辽宁',country:'中国',feature_code:'PPL',latitude:39.32908,longitude:121.73279,timezone:'Asia/Shanghai'};
+    const candidate={...village,name:'青岛市',admin1:'山东',feature_code:'PPLA2',population:7172451,...overrides};
+    const fetchImpl=stubFetch([['geocoding-api.open-meteo.com',url=>jsonResponse({results:new URL(url).searchParams.get('name')==='青岛市'?[candidate]:[village]})]]);
+    const provider=new OpenMeteoProvider({fetchImpl});
+    const result=await provider.resolvePlace('青岛',undefined,signal());
+    assert.equal(result.admin1,'辽宁');assert.equal(result.confidence,'low');
+  }
+});
+
 test('confidence separates the intended city from a same-name village', async () => {
   const provider = makeProvider([captureRoutes(CAPTURES)]);
   const sig = signal();
@@ -569,7 +596,8 @@ test('a blank hint is treated as no hint and never queried', async () => {
   const provider = new OpenMeteoProvider({fetchImpl});
   await provider.resolvePlace('丽江', '   ', signal());
   assert.ok(!fetchImpl.calls.some(url => url.includes('name=Lijiang') || url.includes('name=%20')));
-  assert.equal(fetchImpl.calls.filter(url => url.includes('name=')).length, 2, 'one pass per language on the original input');
+  assert.deepEqual(fetchImpl.calls.map(url=>new URL(url).searchParams.get('name')),['丽江','丽江','丽江市','丽江市'],
+    'only the original and municipal retry are queried, never the blank hint');
 });
 
 test('the geocode cache keeps a hinted lookup separate from an unhinted one', async () => {

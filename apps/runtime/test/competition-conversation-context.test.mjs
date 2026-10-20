@@ -28,7 +28,7 @@ function task(app, conversationId = 'conversation-a', state = 'created', goal = 
 const read = (app, taskId, historyMessages = []) => app.readConversationContext({
   taskId, conversationId: 'conversation-a', historyMessages, ...context()});
 
-test('Competition context accepts only earlier successful task overlays from the same conversation', t => {
+test('Competition context preserves earlier requests in every state but only accepts successful assistant overlays', t => {
   const app = application(t);
   const earlier = task(app, 'conversation-a', 'succeeded');
   const other = task(app, 'conversation-b', 'succeeded');
@@ -44,6 +44,9 @@ test('Competition context accepts only earlier successful task overlays from the
   assert.deepEqual(read(app, current, overlays), [
     {id: `${earlier}:user`, taskId: earlier, role: 'user', content: 'Synthetic public question'},
     {id: `${earlier}:assistant`, taskId: earlier, role: 'assistant', content: 'Public overlay answer'},
+    {id: `${failed}:user`, taskId: failed, role: 'user', content: 'Synthetic public question',taskState:'failed'},
+    {id: `${cancelled}:user`, taskId: cancelled, role: 'user', content: 'Synthetic public question',taskState:'cancelled'},
+    {id: `${pending}:user`, taskId: pending, role: 'user', content: 'Synthetic public question',taskState:'created'},
     {id: 'live-public', role: 'user', content: 'Synthetic host-scoped Live message'},
   ]);
 });
@@ -68,16 +71,17 @@ test('Competition context cannot restore withheld task history through an overla
     role: 'user', content: 'Synthetic public question'}]);
 });
 
-test('Competition context merges by message id, returns detached data and keeps at most twenty messages', t => {
+test('Competition context merges by message id and keeps original requests beyond twenty messages', t => {
   const app = application(t);
   for (let index = 0; index < 14; index++) task(app, 'conversation-a', 'succeeded', `Public turn ${index}`);
   const current = task(app);
-  assert.equal(read(app, current).length, 20);
-  assert.equal(read(app, current)[0].content, 'Public turn 4');
+  assert.equal(read(app, current).length, 28);
+  assert.equal(read(app, current)[0].content, 'Public turn 0');
   const overlays = Array.from({length: 25}, (_, index) => ({id: `live-${index}`, role: 'user', content: `Public Live ${index}`}));
   overlays.push({...overlays.at(-1), content: 'Last public overlay'});
   const messages = read(app, current, overlays);
-  assert.deepEqual(messages.map(message => message.id), overlays.slice(5, 25).map(message => message.id));
+  assert.equal(messages.length,53);
+  assert.deepEqual(messages.slice(-25).map(message => message.id), overlays.slice(0,25).map(message => message.id));
   assert.equal(messages.at(-1).content, 'Last public overlay');
   messages.at(-1).content = 'Changed result';
   assert.equal(overlays.at(-1).content, 'Last public overlay');

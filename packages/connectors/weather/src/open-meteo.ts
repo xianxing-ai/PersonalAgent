@@ -326,6 +326,16 @@ export class OpenMeteoProvider implements WeatherProvider {
       const hinted = rankPlaces(await this.searchPasses(hint, signal), normalize(hint));
       if (hinted[0] !== undefined && this.confidenceOf(hinted[0]) === 'high') ranked = hinted;
     }
+    // The Chinese index can omit a city's short name entirely (青岛 -> villages/islands),
+    // while its full municipal name is indexed. Only adopt a corroborated exact city seat.
+    if (ranked[0] !== undefined && this.confidenceOf(ranked[0]) === 'low'
+      && /^[\u3400-\u4dbf\u4e00-\u9fff]{2,10}$/.test(trimmed) && !/[市县区镇乡村]$/.test(trimmed)) {
+      const cityName = `${trimmed}市`;
+      const cities = rankPlaces(await this.searchPasses(cityName, signal), normalize(cityName));
+      const city = cities[0];
+      if (city?.names.includes(normalize(cityName)) && city.candidate.country === '中国'
+        && ['PPLA', 'PPLA2'].includes(city.featureCode ?? '') && this.confidenceOf(city) === 'high') ranked = cities;
+    }
     // Offline tier, consulted only when nothing matched at all and after the caller's own hint,
     // so an explicit spelling always wins and no existing low-confidence verdict is rewritten.
     // The shipped table exists because the `zh` index answers neither 纽约 nor 首尔 at all, and
