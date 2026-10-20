@@ -17,7 +17,7 @@ async function fixture(t) {
   const {taskId}=await client.call('task.submit',{goal:'Synthetic original adoption',conversationId:'synthetic-experience'},{idempotencyKey:'owner'});
   runtime.transitionTask(taskId,'planning');runtime.transitionTask(taskId,'running');
   const context={deadline,signal:new AbortController().signal};
-  const packages=[{id:'pkg',path:'.',dependencies:[]}];
+  const packages=[{id:'pkg',path:'pkg',dependencies:[]}];
   const baseline={snapshotId:'baseline',packages,files:[{path:'a.ts',sha256:'a'.repeat(64),packageId:'pkg',kind:'source'}]};
   const snapshot={snapshotId:'checked',packages,files:[{...baseline.files[0],sha256:'b'.repeat(64)}]};
   const scope={workspaceId:'workspace',workspaceDigest:harnessExperienceWorkspaceDigest(snapshot),configurationDigest:'c'.repeat(64),
@@ -59,6 +59,7 @@ async function fixture(t) {
   await invoke('harness.candidates.compare',{trialRunIds:['trial']},'compare');
   await invoke('coding.repair.prepare_adoption',{trialRunId:'trial'},'adopt');
   await invoke('coding.repair.publish',{version:1,sessionId:session.sessionId,baselineSnapshotId:'baseline',snapshotId:'checked',paths:['a.ts'],verificationRunIds:['verification']},'publish');
+  runtime.transitionTask(taskId,'verifying');
   runtime.transitionTask(taskId,'succeeded');
   const ref=runId=>({taskId,runId});
   const origin={ownerTaskId:taskId,candidateId:'candidate',trial:ref('trial'),comparison:ref('compare'),adoption:ref('adopt'),publication:ref('publish')};
