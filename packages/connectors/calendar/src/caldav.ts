@@ -510,11 +510,16 @@ export class CalDavProvider implements CalendarProvider {
   async updateEvent(input: {uid: string; summary?: string; startUtc?: string; endUtc?: string;
     location?: string; notes?: string}, context?: CalendarReadContext): Promise<CalendarEventRecord> {
     const uid = assertWriteUid(input?.uid);
+    // Reject unrepresentable instants before even reading the original resource.
+    if (input.startUtc !== undefined) assertWriteUtc(input.startUtc, 'startUtc');
+    if (input.endUtc !== undefined) assertWriteUtc(input.endUtc, 'endUtc');
     const resourceUrl = this.resourceUrl(uid);
     const {text: current, etag} = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200]);
     const version = this.writeEtag(etag);
     const parsed = parseCalDavEvents(current).find(event => event.uid === uid);
     if (parsed === undefined) throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar event is unreadable after fetch', false);
+    if (parsed.allDay && (input.startUtc === undefined) !== (input.endUtc === undefined))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Changing one boundary of an all-day event would mix DATE and DATE-TIME');
     const merged = {
       uid,
       summary: typeof input.summary === 'string' && input.summary.trim() ? input.summary.trim() : parsed.summary,
@@ -529,8 +534,15 @@ export class CalDavProvider implements CalendarProvider {
       || originalLines.some(line => /^(?:RRULE|RDATE|EXDATE|RECURRENCE-ID)(?:;|:)/u.test(line)))
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Recurring or multi-event resources require their original calendar editor');
     const updated = unfoldLines(buildIcs(merged, stamp(Date.now()), parsed.sequence + 1));
-    const replacements = updated.slice(updated.indexOf('BEGIN:VEVENT') + 1, updated.indexOf('END:VEVENT'));
+    const preservedTimeKeys = new Set([
+      ...(input.startUtc === undefined ? ['DTSTART'] : []),
+      ...(input.endUtc === undefined ? ['DTEND'] : []),
+    ]);
+    const preservedTimes = originalLines.filter(line => preservedTimeKeys.has(line.split(/[:;]/u)[0] ?? ''));
+    const replacements = updated.slice(updated.indexOf('BEGIN:VEVENT') + 1, updated.indexOf('END:VEVENT'))
+      .filter(line => !preservedTimeKeys.has(line.split(/[:;]/u)[0] ?? ''));
     const keys = new Set(['UID','DTSTAMP','DTSTART','DTEND','SUMMARY','LOCATION','DESCRIPTION','SEQUENCE']);
+    for (const key of preservedTimeKeys) keys.delete(key);
     // Preserve unrelated attendee, organizer, alarm and calendar properties rather than rebuilding the resource.
     let depth = 0;
     const preserved = originalLines.filter(line => {
@@ -542,7 +554,7 @@ export class CalDavProvider implements CalendarProvider {
     preserved.splice(preserved.indexOf('END:VEVENT'), 0, ...replacements);
     const ics = preserved.map(foldIcalLine).join('\r\n') + '\r\n';
     await this.writeRequest('PUT', resourceUrl, ics, 'text/calendar; charset=utf-8', context, [200, 201, 204], {'if-match': version});
-    return this.readBack(merged, context);
+    return this.readBack({...merged, preservedTimes}, context);
   }
 
   /** 取消事件：DELETE 资源。404 视为已不存在（幂等），状态如实返回。 */
@@ -568,12 +580,13 @@ export class CalDavProvider implements CalendarProvider {
     return `${this.calendarUrl}${encodeURIComponent(uid)}.ics`;
   }
 
-  private async readBack(expected: {uid: string; summary: string; startUtc: string; endUtc: string; location: string; notes: string},
+  private async readBack(expected: {uid: string; summary: string; startUtc: string; endUtc: string; location: string; notes: string; preservedTimes?: string[]},
     context?: CalendarReadContext, mismatchCode: 'REVISION_CONFLICT' | 'EXTERNAL_FAILURE' = 'EXTERNAL_FAILURE'): Promise<CalendarEventRecord> {
     const {text} = await this.writeRequest('GET', this.resourceUrl(expected.uid), undefined, undefined, context, [200]);
     const parsed = parseCalDavEvents(text).find(event => event.uid === expected.uid);
     if (parsed === undefined || parsed.summary !== expected.summary || parsed.startMs !== Date.parse(expected.startUtc)
-      || parsed.endMs !== Date.parse(expected.endUtc) || (parsed.location ?? '') !== expected.location || (parsed.notes ?? '') !== expected.notes)
+      || parsed.endMs !== Date.parse(expected.endUtc) || (parsed.location ?? '') !== expected.location || (parsed.notes ?? '') !== expected.notes
+      || expected.preservedTimes?.some(line => !unfoldLines(text).includes(line)))
       throw new ProtocolError(mismatchCode, 'Calendar resource differs from the requested event; do not overwrite or retry an unknown write', false);
     return this.toRecord(parsed);
   }
@@ -674,6 +687,9 @@ const WRITE_UID_PATTERN = /^[A-Za-z0-9@][A-Za-z0-9@._-]{0,127}$/u;
 function assertWriteUtc(value: unknown, field: string): string {
   if (typeof value !== 'string' || !WRITE_UTC_PATTERN.test(value) || !Number.isFinite(Date.parse(value))) {
     throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be an ISO-8601 UTC instant`);
+  }
+  if (Date.parse(value) % 1000 !== 0) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} requires whole-second precision`);
   }
   return `${value.slice(0, 19)}.${(value.match(/\.(\d{3})Z$/u) ?? ['', '000'])[1]}Z`;
 }
