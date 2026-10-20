@@ -56,7 +56,7 @@ import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
-import {createDesktopDeveloperDeployment,projectDeveloperConversationStatus} from './developer-deployment-config.js';
+import {projectDeveloperConversationStatus} from './developer-deployment-config.js';
 import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 import {createToolPresenceHost} from './tool-presence-host.js';
 import {createConversationToolSurface} from './conversation-tool-surface.js';
@@ -83,6 +83,7 @@ import {createMailConfig} from './mail-config.js';
 import {createCalendarConfig} from './calendar-config.js';
 import {createModelApiConfig} from './model-api-config.js';
 import {createDesktopHarnessContextHost} from './harness-context-host.js';
+import {createDeveloperSettingsHost} from './developer-settings-host.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
 import {createDesktopMailAnalysisHost} from './mail-analysis-host.js';
@@ -268,6 +269,8 @@ let modelApiHost;
 let harnessContextHost;
 let harnessContextFailure='';
 let harnessModelSummarizer;
+let runtimeBuildIdentityReader;
+let startupRecoveryStatus={state:'not_run',verification:'not_run'};
 let reviewedRepairLock = Promise.resolve();
 function withReviewedRepairLock(work) {
   const result = reviewedRepairLock.then(work);
@@ -277,6 +280,7 @@ function withReviewedRepairLock(work) {
 let productTools;
 let codingWorkspace;
 let developerDeployment;
+let developerSettings;
 let developerDeploymentFailure='';
 let toolPresenceHost,windowsControlHost,windowsControlClosing;
 let computerControlLease;
@@ -588,9 +592,10 @@ function snapshot(surface) {
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
     model: structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model),
     agentArtsModels:agentArtsModels?.snapshot(),
-    modelApi: surface ? undefined : modelApiHost?.snapshot(),
+    modelApi: surface ? undefined : readDesktopModelApiState(),
     harnessContext:surface?undefined:harnessContextHost?.snapshot()??{state:harnessContextFailure?'unavailable':'disabled',
       enabled:false,reason:harnessContextFailure,verification:'not_run'},
+    startupRecovery:surface?undefined:startupRecoveryStatus,
     modelChoices: featuredModelChoices(agentArtsModels?.snapshot().catalog?.models,{selectedId:conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking)?.modelId??''}),
     conversationPreference: conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking),
     thinking: {...thinking,...(conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking) ?? {}),
@@ -1426,6 +1431,27 @@ function readDesktopDeveloperHarnessConfiguration() {
     }};
 }
 
+function readDesktopModelApiState() {
+  const value=modelApiHost?.snapshot();
+  if(!value)return undefined;
+  let executionAvailable=false;try{executionAvailable=Boolean(readDesktopDeveloperHarnessConfiguration());}catch{}
+  return {...value,developerSettings:developerSettings?.snapshot(),harness:{...value.harness,executionAvailable,
+    executionReason:executionAvailable?'按当前编程工作区的原许可接入':value.harness?.enabled
+      ?'请在电脑操控中选择编程工作区，并启用本会话读取与结果出机许可':'开发任务规划未启用',
+    contextAvailable:Boolean(harnessContextHost?.runtimeHooks),contextReason:harnessContextFailure}};
+}
+
+function readDesktopHarnessVersions() {
+  if(!competitionMode||fakeMode||fakeModelMode||syntheticMvp)return undefined;
+  try {
+    const binding=agentArtsConfig.binding(),transport=agentArtsConfig.readTransportOptions(binding),
+      deploymentVersion=transport.deploymentVersion,runtimeVersion=runtimeBuildIdentityReader?.();
+    if(typeof deploymentVersion!=='string'||!deploymentVersion||/^(latest|current|default)$/iu.test(deploymentVersion)
+      ||typeof runtimeVersion!=='string'||!/^runtime-artifacts:sha256:[a-f0-9]{64}$/u.test(runtimeVersion))return undefined;
+    return {workflowVersion:'agentarts-deployment:'+deploymentVersion,runtimeVersion,executionKind:'real_host'};
+  }catch{return undefined;}
+}
+
 async function initializeInstalledSkills() {
   if(competitionMode && !installedSkillsHost) {
     const {openLocalSkillStore}=await import('@personal-agent/skills');
@@ -1458,6 +1484,8 @@ async function initializeInstalledSkills() {
 
 async function initializeRuntime() {
   const runtimeModule = await import('@personal-agent/runtime/application');
+  const runtimeRoot=await import('@personal-agent/runtime');
+  runtimeBuildIdentityReader=runtimeRoot.readRuntimeBuildIdentity;
   const {createRuntimeApplication} = runtimeModule;
   conversationToolAccess=createConversationToolAccess({getApplication:()=>runtimeApplication,getConversations:()=>conversations});
   let readEvents;
@@ -1662,6 +1690,7 @@ async function initializeRuntime() {
       });
       const commandHelper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
       codingWorkspace = createWorkspaceConfigHost({userData:app.getPath('userData'),safeStorage,
+        readHarnessVersions:readDesktopHarnessVersions,
         patchHelperScriptPath:process.env.PA_CODING_PATCH_HELPER_SCRIPT,
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
         readWorkspaceExportPreflight:query=>publicReferenceConsent?.readPreflight(query),
@@ -1710,11 +1739,10 @@ async function initializeRuntime() {
             try{verifyWindowsRecoveryAcl(file,powerShellPath);return true;}catch{return false;}
           },
         };
-        try{developerDeployment=await createDesktopDeveloperDeployment(developerOptions);}
-        catch{
-          developerDeploymentFailure='开发部署配置无效或已失效；GitHub、Git 和开发工作流未启用';
-          developerDeployment=await createDesktopDeveloperDeployment({...developerOptions,configPath:undefined});
-        }
+        developerSettings=createDeveloperSettingsHost({userData:app.getPath('userData'),safeStorage,
+          readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),
+          readModels:()=>modelApiHost?.snapshot().models??[],onUpdate:publish});
+        developerDeployment=await developerSettings.createDeployment(developerOptions);
       }
       referenceHost=createDesktopReferenceHost({workspace:codingWorkspace,createMcp:runtimeModule.createReadonlyMcpHost,onUpdate:publish,
         hostUserNamespace:namespace,
@@ -1869,10 +1897,14 @@ async function initializeRuntime() {
         path: dbPath,
         delegateUserTasks: true,
         readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
+        ...(codingWorkspace.harnessRepairHost&&typeof codingWorkspace.readHarnessCandidateContext==='function'?{
+          harnessCandidates:{host:codingWorkspace.harnessRepairHost,
+            readContext:(context,scope)=>codingWorkspace.readHarnessCandidateContext(context,scope)},
+        }:{}),
         proactiveWorkflows: true,
         proactiveDecision: {localChooser:localLaya},
         hostUserNamespace: namespace,
-        ...(developerDeployment?.host.runtimeOptions??{}),
+        ...(developerDeployment?{readDeveloperWorkflows:scope=>developerDeployment.readDeveloperWorkflows(scope)}:{}),
         isUserPresent:taskId=>toolPresenceHost?.isUserPresent(taskId)===true,
         ...(notepadHost ? {windowsHostRecovery:{recover:(taskId,runId)=>{
           const intent=runtimeApplication.runtime.loadCheckpoint(taskId,'host-tool-intent');
@@ -2096,12 +2128,21 @@ async function initializeRuntime() {
       calendarMeetingHost?.bindApplication(runtimeApplication);
       goalCloudHost?.bindApplication(runtimeApplication);
       notepadHost?.bind(runtimeApplication);
-      goalHost.resumeApproved();
+      let startupRecovered=false;
+      if(typeof runtimeRoot.createRuntimeStartupRecovery==='function'&&typeof runtimeApplication.resumeStartupTask==='function') {
+        const recovery=runtimeRoot.createRuntimeStartupRecovery({runtime:runtimeApplication.runtime,
+          configurationRef:runtimeApplication.coordinationConfigurationRef,exclusiveOwner:ownsDesktopInstance===true,
+          durableCloudDispatch:agentArtsTransportConfig.transport==='wss',
+          resumeOriginalTask:request=>runtimeApplication.resumeStartupTask(request)});
+        const recovered=await recovery.recover();startupRecovered=true;
+        startupRecoveryStatus={state:'classified',inspectedTasks:recovered.items.length,verification:'not_run'};
+      }else startupRecoveryStatus={state:'unavailable',reason:'原任务恢复门禁未装配，历史任务保留核实状态',verification:'not_run'};
+      if(startupRecovered)goalHost.resumeApproved();
       if (!syntheticMvp && competitionCatalog && !codingWorkspace.tools.length) competitionFactBridge = createDesktopCompetitionFactBridge({
         application: runtimeApplication, catalog: competitionCatalog,
         runtimePath: dbPath, userNamespace: namespace,
       });
-      await competitionFactBridge?.recover();
+      if(startupRecovered)await competitionFactBridge?.recover();
     } else {
       const createApplication = process.argv.includes('--weather-tools')
         ? (await import('@personal-agent/runtime/weather')).createOpenMeteoApplication
@@ -2557,6 +2598,13 @@ async function action(event, name, payload) {
       : name === 'modelApi.configure' ? modelApiHost.configure(payload)
         :name==='modelApi.harness.configure'?modelApiHost.configureHarness(payload):modelApiHost.remove(payload);
     if(name!=='modelApi.state')refreshHarnessContextHost();
+    publish();return {...result,...readDesktopModelApiState()};
+  }
+  if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(name)) {
+    if(sender!==admin||!competitionMode||!developerSettings)throw Error('请从正式管理后台配置开发宿主');
+    if(name==='developer.settings.read'&&payload!==undefined)throw Error('开发状态读取不接受参数');
+    const result=name==='developer.settings.read'?developerSettings.snapshot()
+      :name==='developer.settings.configure'?await developerSettings.configure(payload):await developerSettings.setEnabled(payload);
     publish();return result;
   }
   if (name === 'notepad.start' || name === 'notepad.cancel') {
@@ -3741,6 +3789,7 @@ app.whenReady().then(async () => {
       competitionCatalog?.close();
       productTools?.close();
       codingWorkspace?.close();
+      developerSettings?.close();
       developerDeployment?.close();
       toolPresenceHost?.close();
       computerControlLease?.close();

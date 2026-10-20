@@ -18,9 +18,11 @@ export function validateContextConfiguration(value) {
   return structuredClone(value);
 }
 export function validateHarnessConfiguration(value) {
-  if(!keys(value,['version','revision','enabled','maxExecutorSteps','context'])||value.version!==1||!text(value.revision)
+  if(!keys(value,['version','revision','enabled','maxExecutorSteps','context','events'])||value.version!==1||!text(value.revision)
     ||typeof value.enabled!=='boolean'||(value.enabled||value.maxExecutorSteps!==undefined)&&!positive(value.maxExecutorSteps))fail();
+  const events=value.events??{enabled:false,quiet:false};
+  if(!keys(events,['enabled','quiet'])||typeof events.enabled!=='boolean'||typeof events.quiet!=='boolean')fail();
   return {version:1,revision:value.revision,enabled:value.enabled,
     ...(value.maxExecutorSteps===undefined?{}:{maxExecutorSteps:value.maxExecutorSteps}),
-    context:validateContextConfiguration(value.context)};
+    context:validateContextConfiguration(value.context),events:{enabled:events.enabled,quiet:events.quiet}};
 }

@@ -16,6 +16,11 @@ export function mountHarnessControls(root,invoke) {
       ${budgetFields.map(([name,label,min])=>`<label>${label}<input data-harness="${name}" type="number" min="${min}" step="1" inputmode="numeric" placeholder="明确填写预算"></label>`).join('')}
       <p class="notice">原最终输入上限保留为 16000 字符。目标字符数 ≤ 触发字符数 ≤ 16000，完整尾部数量须小于来源范围。保存不会调用模型；真实连接以实际任务回执为准。</p>
     </fieldset>
+    <fieldset><legend>持续责任的事件接入</legend>
+      <label><input data-harness="eventsEnabled" type="checkbox">将原持续工作流的来源变化与唤醒交给执行子智能体</label>
+      <label><input data-harness="eventsQuiet" type="checkbox">静默期间不接入新事件</label>
+      <p class="notice">需要原用户责任、公开来源跟踪许可或原日程的有效回执。停用或静默期间的事件不会在恢复后补发；原任务结果仍可核实。</p>
+    </fieldset>
     <div class="form-actions"><button data-harness="save" type="button">保存 Harness 设置</button><button data-harness="disable" type="button">停用开发规划与摘要</button></div>
     <p data-harness="status" class="notice" role="status"></p></div>`;
   root.append(settings);
@@ -31,6 +36,7 @@ export function mountHarnessControls(root,invoke) {
     if(next===signature)return;signature=next;
     const config=value.harness??{},context=config.context??{};
     field('enabled').checked=config.enabled===true;field('contextEnabled').checked=context.enabled===true;
+    field('eventsEnabled').checked=config.events?.enabled===true;field('eventsQuiet').checked=config.events?.quiet===true;
     field('maxExecutorSteps').value=config.maxExecutorSteps??'';
     field('modelId').replaceChildren();
     for(const model of [{id:'',displayName:'请选择已保存的辅助模型'},...(value.models??[])]) {
@@ -41,7 +47,8 @@ export function mountHarnessControls(root,invoke) {
     field('modelId').value=context.modelId??'';
     for(const [name]of budgetFields)field(name).value=(name==='maxOutputTokens'?context.maxOutputTokens:context.policy?.[name])??'';
     field('status').textContent=config.enabled||context.enabled
-      ?`设置已保存；${config.enabled?'子智能体规划按当前工作区许可启用':'开发任务规划未启用'}；${context.enabled?(config.contextModelAvailable?'摘要模型版本已绑定，真实模型尚未验证':'摘要模型版本不可用，请重新选择并保存'):'历史摘要未启用'}。`
+      ?`设置已保存；${config.executionReason??(config.enabled?'子智能体规划按当前工作区许可启用':'开发任务规划未启用')}；${context.enabled?(config.contextAvailable===false?(config.contextReason||'摘要宿主或模型版本不可用，请检查设置')
+        :config.contextModelAvailable?'摘要模型版本已绑定，真实模型尚未验证':'摘要模型版本不可用，请重新选择并保存'):'历史摘要未启用'}。`
       :'开发任务规划与历史摘要均未启用。';controls();
   }
   const integer=name=>{
@@ -53,7 +60,9 @@ export function mountHarnessControls(root,invoke) {
     if(busy||closed)return;
     let payload;
     try {
-      payload={expectedRevision:state.harness?.revision??'unconfigured',enabled:disable?false:field('enabled').checked,context:{enabled:disable?false:field('contextEnabled').checked}};
+      payload={expectedRevision:state.harness?.revision??'unconfigured',enabled:disable?false:field('enabled').checked,
+        context:{enabled:disable?false:field('contextEnabled').checked},
+        events:{enabled:disable?false:field('eventsEnabled').checked,quiet:field('eventsQuiet').checked}};
       if(!disable&&(payload.enabled||field('maxExecutorSteps').value.trim()))payload.maxExecutorSteps=integer('maxExecutorSteps');
       if(payload.context.enabled) {
         const selected=state.models?.find(model=>model.id===field('modelId').value&&model.available);

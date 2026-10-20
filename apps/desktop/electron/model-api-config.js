@@ -64,7 +64,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
   fetchImpl=globalThis.fetch, isDefaultExecutionAvailable, profile = 'huawei_ict_agentarts'}) {
   const target = path.join(userData, 'model-api-config.json');
   let entries = new Map(), defaultId, restoreFailed = false, disposed = false;
-  let harness={version:1,revision:'unconfigured',enabled:false,context:{enabled:false}};
+  let harness={version:1,revision:'unconfigured',enabled:false,context:{enabled:false},events:{enabled:false,quiet:false}};
   const gateways = new Map();
   const controllers = new Map();
   const requestBudgets = new Map();
@@ -220,8 +220,10 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
     readHarnessConfiguration(){active();return structuredClone(harness);},
     configureHarness(input){
       active();
-      if(profile!=='huawei_ict_agentarts'||!input||Object.keys(input).some(key=>!['expectedRevision','enabled','maxExecutorSteps','context'].includes(key))
-        ||input.expectedRevision!==harness.revision||typeof input.enabled!=='boolean'||!input.context||typeof input.context.enabled!=='boolean'
+      if(profile!=='huawei_ict_agentarts'||!input||typeof input!=='object'||Array.isArray(input)
+        ||Object.keys(input).some(key=>!['expectedRevision','enabled','maxExecutorSteps','context','events'].includes(key))
+        ||input.expectedRevision!==harness.revision||typeof input.enabled!=='boolean'||!input.context||typeof input.context!=='object'
+        ||Array.isArray(input.context)||typeof input.context.enabled!=='boolean'
         ||Object.keys(input.context).some(key=>!['enabled','modelId','configurationRef','maxOutputTokens','policy'].includes(key)))
         fail('开发者 Harness 配置已变化，请刷新后保存');
       const revision=randomUUID();
@@ -229,7 +231,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
         :{...harness.context,enabled:false};
       const next=validateHarnessConfiguration({version:1,revision,enabled:input.enabled,
         ...(input.maxExecutorSteps===undefined?(harness.maxExecutorSteps===undefined?{}:{maxExecutorSteps:harness.maxExecutorSteps})
-          :{maxExecutorSteps:input.maxExecutorSteps}),context});
+          :{maxExecutorSteps:input.maxExecutorSteps}),context,events:input.events??harness.events});
       if(next.context.enabled&&!selectedEntry(next.context.modelId,next.context.configurationRef))fail('请选择当前可用的摘要模型版本');
       persist(entries,defaultId,next);harness=next;return snapshot();
     },
