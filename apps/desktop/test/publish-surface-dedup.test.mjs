@@ -65,3 +65,10 @@ test('a closed runtime publishes nothing at all', t => {
   assert.deepEqual(surfaces, []);
   assert.deepEqual(sent, []);
 });
+
+test('unrelated runtime errors never unlock a prepared quit during ordinary publishing', t => {
+  const {context}=run(t);
+  context.draftQuitPreflight={cancel(){assert.fail('ordinary runtime feedback must not cancel quit');}};
+  context.runtimeError='unrelated configuration feedback';
+  vm.runInContext('publish()',context);
+});

@@ -651,7 +651,6 @@ function publishAudioLevel(){
   for(const win of [orb,panel,admin,workspace])if(win&&!win.isDestroyed())win.webContents.send('desktop:audio-level',level);
 }
 function publish() {
-  draftQuitPreflight?.checkFailure(runtimeError);
   if (runtimeClosed) return;
   // Orb and panel read the same 'panel' surface; build each surface once per broadcast instead of
   // cloning every task four times. Each window still receives its own structured-clone copy.
@@ -819,7 +818,7 @@ async function disposeWakeForQuit() {
     await Promise.race([stopWakeVoice(true), new Promise((_resolve, reject) => {
       timer = setTimeout(() => reject(Error('唤醒音频释放未确认')), 5000);
     })]);
-  } catch {wakeQuitUnknown = true; reportPanelVoiceFailure();}
+  } catch {wakeQuitUnknown = true; reportQuitFailure('语音资源释放未确认；请勿重新开启麦克风');}
   finally {clearTimeout(timer);}
   // This marks only the quit attempt as handled, never physical release verified.
   wakeQuitHandled = true;
@@ -828,6 +827,13 @@ async function disposeWakeForQuit() {
 
 function reportPanelVoiceFailure() {
   runtimeError = '语音资源释放未确认；请勿重新开启麦克风';
+  publish();
+}
+
+function reportQuitFailure(message) {
+  draftQuitPreflight?.cancel();
+  app.isQuitting = false;
+  runtimeError = message;
   publish();
 }
 
@@ -3581,17 +3587,16 @@ app.whenReady().then(async () => {
     if ((near && desktopHost.settings.hover) || inside || pinned) { away = 0; if (near && desktopHost.settings.hover && !panel.isVisible()) openPanel(); }
     else if (panel.isVisible()) { if (!away) away = Date.now(); else if (Date.now() - away > 520) { void hidePanel().catch(reportPanelVoiceFailure); away = 0; } }
   }, 80);
-  draftQuitPreflight=createDraftQuitPreflight({windows:()=>[panel,workspace],retry:()=>app.quit(),readError:()=>runtimeError,
+  draftQuitPreflight=createDraftQuitPreflight({windows:()=>[panel,workspace],retry:()=>app.quit(),
     onFailure:error=>{app.isQuitting=false;runtimeError=error.message;publish();}});
   app.on('before-quit', event => {
     if (runtimeStartup.snapshot().state === 'starting') {
-      event.preventDefault(); runtimeError = 'Runtime 正在连接，请稍后退出'; publish(); return;
+      event.preventDefault(); reportQuitFailure('Runtime 正在连接，请稍后退出'); return;
     }
     if ((runtimeApplication?.activeTaskCount ?? 0) > 0 || submitting.size > 0) {
       event.preventDefault();
       app.isQuitting = false;
-      runtimeError = 'Runtime 仍有活动任务；请先等待完成或停止任务后再退出';
-      publish();
+      reportQuitFailure('Runtime 仍有活动任务；请先等待完成或停止任务后再退出');
       return;
     }
     if(!draftQuitPreflight.allow()){event.preventDefault();return;}
@@ -3600,7 +3605,7 @@ app.whenReady().then(async () => {
       if(!remoteMcpClosing) {
         remoteMcpManagement.close();
         remoteMcpClosing=remoteMcpHost.dispose().then(()=>{remoteMcpConfig.dispose();remoteMcpClosed=true;app.quit();})
-          .catch(()=>{remoteMcpClosing=undefined;runtimeError='远程 MCP 关闭未确认，请先断开连接后再退出';publish();});
+          .catch(()=>{remoteMcpClosing=undefined;reportQuitFailure('远程 MCP 关闭未确认，请先断开连接后再退出');});
       }
       return;
     }
@@ -3613,27 +3618,27 @@ app.whenReady().then(async () => {
     if(referenceHost && !referenceClosed) {
       event.preventDefault();
       referenceClosing??=referenceHost.dispose().then(()=>{referenceClosed=true;app.quit();})
-        .catch(()=>{referenceClosing=undefined;runtimeError='参考工具尚未停止，请稍后退出';publish();});
+        .catch(()=>{referenceClosing=undefined;reportQuitFailure('参考工具尚未停止，请稍后退出');});
       return;
     }
     proactiveHost?.stop();
     if(todoHost && !todoClosed) {
       event.preventDefault();
       todoClosing ??= todoHost.close().then(()=>{todoClosed=true;app.quit();})
-        .catch(()=>{todoClosing=undefined;runtimeError='提醒队列尚未结束，请稍后退出';publish();});
+        .catch(()=>{todoClosing=undefined;reportQuitFailure('提醒队列尚未结束，请稍后退出');});
       return;
     }
     if (notepadHost && !notepadClosed) {
       event.preventDefault();
       if (!notepadClosing) notepadClosing = notepadHost.close().then(() => {
         notepadClosed = true; app.quit();
-      }).catch(() => {notepadClosing = undefined;runtimeError = '本机操作停止尚未确认，请稍后退出';publish();});
+      }).catch(() => {notepadClosing = undefined;reportQuitFailure('本机操作停止尚未确认，请稍后退出');});
       return;
     }
     if(windowsControlHost&&!windowsControlClosed){
       event.preventDefault();
       windowsControlClosing??=windowsControlHost.close().then(()=>{windowsControlClosed=true;app.quit();})
-        .catch(()=>{windowsControlClosing=undefined;runtimeError='电脑控制进程停止尚未确认';publish();});
+        .catch(()=>{windowsControlClosing=undefined;reportQuitFailure('电脑控制进程停止尚未确认');});
       return;
     }
     if (!localServicesStopped && (mailHost || localLaya)) {
@@ -3645,7 +3650,7 @@ app.whenReady().then(async () => {
           const result = await localLaya?.stop();
           if (result?.state === 'stop_unconfirmed') throw Error('本地模型退出尚未确认');
           localServicesStopped = true; app.quit();
-        })().catch(() => {runtimeError = '本地分类服务退出尚未确认，请稍后再退出'; publish();})
+        })().catch(() => {reportQuitFailure('本地分类服务退出尚未确认，请稍后再退出');})
           .finally(() => {localServicesStopping = false;});
       }
       return;
@@ -3653,9 +3658,9 @@ app.whenReady().then(async () => {
     if (liveVoice?.hasActive()) {
       event.preventDefault();
       void liveVoice.stop().then(result => {
-        if (result.active) {runtimeError = result.reason || 'Live 音频资源释放未确认'; publish(); return;}
+        if (result.active) {reportQuitFailure(result.reason || 'Live 音频资源释放未确认'); return;}
         app.quit();
-      }).catch(() => {runtimeError = 'Live 音频资源释放未确认'; publish();});
+      }).catch(() => {reportQuitFailure('Live 音频资源释放未确认');});
       return;
     }
     if (voiceInput && !voiceDisposed) {
@@ -3666,8 +3671,7 @@ app.whenReady().then(async () => {
           app.quit();
         }).catch(error => {
           voiceDisposalFailed = true;
-          runtimeError = '语音资源释放未确认';
-          publish();
+          reportQuitFailure('语音资源释放未确认');
         });
       }
       return;
@@ -3675,16 +3679,14 @@ app.whenReady().then(async () => {
     if (microphoneCaptureHost?.snapshot().busy) {
       event.preventDefault();
       void microphoneCaptureHost.revoke().then(() => app.quit()).catch(error => {
-        runtimeError = error instanceof Error ? error.message : '麦克风释放未确认';
-        publish();
+        reportQuitFailure(error instanceof Error ? error.message : '麦克风释放未确认');
       });
       return;
     }
     if ((runtimeApplication?.activeTaskCount ?? 0) > 0) {
       event.preventDefault();
       app.isQuitting = false;
-      runtimeError = 'Runtime 仍有活动任务；请先等待完成或停止任务后再退出';
-      publish();
+      reportQuitFailure('Runtime 仍有活动任务；请先等待完成或停止任务后再退出');
       return;
     }
     globalShortcut.unregisterAll();
@@ -3726,8 +3728,7 @@ app.whenReady().then(async () => {
     } catch (error) {
       event.preventDefault();
       app.isQuitting = false;
-      runtimeError = error instanceof Error ? error.message : 'Runtime 仍有活动任务，无法安全退出';
-      publish();
+      reportQuitFailure(error instanceof Error ? error.message : 'Runtime 仍有活动任务，无法安全退出');
       return;
     }
     try { syntheticRepairHost?.close(); }
