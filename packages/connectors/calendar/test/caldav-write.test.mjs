@@ -32,6 +32,41 @@ function fakeServer() {
 
 const ctx = () => ({deadline: new Date(Date.now() + 30_000).toISOString(), signal: new AbortController().signal});
 
+test('impossible Gregorian dates and 24:00 are rejected before GET or PUT', async t => {
+  for (const invalid of ['2026-02-30T09:00:00Z', '2026-02-29T09:00:00.000Z',
+    '2026-04-31T09:00:00Z', '1900-02-29T09:00:00Z', '2026-02-28T24:00:00Z', '0000-02-29T09:00:00Z']) {
+    for (const operation of ['createEvent', 'updateEvent']) for (const field of ['startUtc', 'endUtc']) {
+      await t.test(`${operation} ${field} ${invalid}`, async () => {
+        const server = fakeServer(), provider = new CalDavProvider({calendarUrl: URL_BASE, fetchImpl: server.fetchImpl});
+        const year = invalid.startsWith('0000') ? '0001' : invalid.slice(0, 4), uid = 'calendar-invalid';
+        const original = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', `UID:${uid}`,
+          `DTSTART:${year}0101T090000Z`, `DTEND:${year}1231T100000Z`, 'SUMMARY:original',
+          'END:VEVENT', 'END:VCALENDAR'].join('\r\n') + '\r\n';
+        server.resources.set(uid + '.ics', original);
+        const input = {uid, summary: 'must not persist', startUtc: `${year}-01-01T09:00:00Z`,
+          endUtc: `${year}-12-31T10:00:00.000Z`, [field]: invalid};
+        await assert.rejects(provider[operation](input, ctx()), {code: 'INVALID_ARGUMENT'});
+        assert.deepEqual(server.log, [], 'invalid date must not issue even the initial update GET');
+        assert.deepEqual([...server.resources], [[uid + '.ics', original]], 'the original resource is untouched');
+      });
+    }
+  }
+});
+
+test('valid leap days and years below 100 retain their literal UTC write boundaries', async () => {
+  for (const date of ['2028-02-29', '2000-02-29', '0096-02-29', '0004-02-29', '0099-04-30']) {
+    const server = fakeServer(), provider = new CalDavProvider({calendarUrl: URL_BASE, fetchImpl: server.fetchImpl});
+    const created = await provider.createEvent({uid: 'calendar-valid', summary: 'valid',
+      startUtc: `${date}T09:00:00Z`, endUtc: `${date}T10:00:00.000Z`}, ctx());
+    assert.equal(created.startUtc, `${date}T09:00:00.000Z`);
+    const updated = await provider.updateEvent({uid: 'calendar-valid', startUtc: `${date}T09:30:00.000Z`,
+      endUtc: `${date}T10:30:00Z`}, ctx());
+    assert.equal(updated.startUtc, `${date}T09:30:00.000Z`);assert.equal(updated.endUtc, `${date}T10:30:00.000Z`);
+    assert.match(server.resources.get('calendar-valid.ics'), new RegExp('DTSTART:' + date.replaceAll('-', '') + 'T093000Z\\r\\n'));
+    assert.equal(server.log.filter(entry => entry.method === 'PUT').length, 2);
+  }
+});
+
 test('recurrence property names reject lowercase and mixed case before PUT', async () => {
   for (const [key,value] of [['RRULE','FREQ=DAILY'],['RDATE','20261022T070000Z'],
     ['EXDATE','20261022T070000Z'],['RECURRENCE-ID','20261021T070000Z']]) {

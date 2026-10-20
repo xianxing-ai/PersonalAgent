@@ -672,13 +672,26 @@ const WRITE_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/u;
 const WRITE_UID_PATTERN = /^[A-Za-z0-9@][A-Za-z0-9@._-]{0,127}$/u;
 
 function assertWriteUtc(value: unknown, field: string): string {
-  if (typeof value !== 'string' || !WRITE_UTC_PATTERN.test(value) || !Number.isFinite(Date.parse(value))) {
+  if (typeof value !== 'string' || !WRITE_UTC_PATTERN.test(value)) {
     throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be an ISO-8601 UTC instant`);
   }
-  if (Date.parse(value) % 1000 !== 0) {
+  if (Number(value.slice(0, 4)) < 1) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} requires a Gregorian year from 0001 to 9999`);
+  }
+  const instant = Date.parse(value);
+  if (!Number.isFinite(instant)) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be an ISO-8601 UTC instant`);
+  }
+  if (instant % 1000 !== 0) {
     throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} requires whole-second precision`);
   }
-  return `${value.slice(0, 19)}.${(value.match(/\.(\d{3})Z$/u) ?? ['', '000'])[1]}Z`;
+  const canonical = new Date(instant).toISOString();
+  // Date.parse accepts e.g. February 30 or 24:00 by normalizing them. ICS must
+  // preserve the exact valid date/time, not write the original impossible literal.
+  if (canonical !== `${value.slice(0, 19)}.000Z`) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must contain a valid Gregorian UTC date and time`);
+  }
+  return canonical;
 }
 
 function assertWriteUid(value: unknown): string {
