@@ -20,15 +20,20 @@ function validateBinding(value) {
   if (typeof value.runtimeName!=='string' || !/^[A-Za-z0-9_-]{1,64}$/.test(value.runtimeName)) throw Error('请填写运行时实例名称');
   return {gatewayUrl,runtimeName:value.runtimeName};
 }
-function validatePreferences(value){
- if(!value||Object.keys(value).some(k=>!['catalogRevision','defaultModelId','defaultSubmodelId','reasoningEffort','submodelReasoningEffort'].includes(k))||!/^[a-f0-9]{64}$/.test(value.catalogRevision)||['defaultModelId','defaultSubmodelId'].some(k=>typeof value[k]!=='string'||!value[k]||value[k].length>200)||['reasoningEffort','submodelReasoningEffort'].some(k=>value[k]!==undefined&&(typeof value[k]!=='string'||value[k].length>30)))throw Error('模型偏好格式无效');return structuredClone(value);
+function validatePreferences(value){ if(!value||Object.keys(value).some(k=>!['catalogRevision','defaultModelId','defaultSubmodelId','reasoningEffort','submodelReasoningEffort'].includes(k))||!/^[a-f0-9]{64}$/.test(value.catalogRevision)||['defaultModelId','defaultSubmodelId'].some(k=>typeof value[k]!=='string'||!value[k]||value[k].length>200)||['reasoningEffort','submodelReasoningEffort'].some(k=>value[k]!==undefined&&(typeof value[k]!=='string'||value[k].length>30)))throw Error('模型偏好格式无效');return structuredClone(value);
+}
+/** Reads `?endpoint=<version>` from a pasted pinned address without normalizing the URL. */
+function pinFromUrl(value) {
+  const query = value.indexOf('?');
+  if (query < 0) return undefined;
+  return /^\?endpoint=([A-Za-z0-9_.-]{1,128})$/.exec(value.slice(query))?.[1];
 }
 function validate(value) {
   const binding=validateBinding(value);
   if (typeof value.authorization!=='string' || !value.authorization.trim() || value.authorization.length>4096
     || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value.authorization)) throw Error('请填写控制台 API 示例中的完整 Authorization 值');
-  if (value.appToken!==undefined && (typeof value.appToken!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(value.appToken))) throw Error('AgentArts 应用入站凭据格式无效');
-  if (value.deploymentVersion!==undefined && (typeof value.deploymentVersion!=='string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(value.deploymentVersion))) throw Error('AgentArts 部署版本格式无效');
+  if (value.appToken!==undefined && (typeof value.appToken!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(value.appToken))) throw Error('“独立镜像访问令牌”格式无效：需要 32–4096 位可见字符（不含空格）');
+  if (value.deploymentVersion!==undefined && (typeof value.deploymentVersion!=='string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(value.deploymentVersion))) throw Error('“固定部署版本”格式无效：只允许字母、数字、下划线、点和短横线，最长 128 位');
   if(value.transport!==undefined&&!['https','wss'].includes(value.transport)||value.allowHttpsFallback!==undefined&&typeof value.allowHttpsFallback!=='boolean'||value.websocketUrl!==undefined&&typeof value.websocketUrl!=='string')throw Error('AgentArts 传输配置无效');
   if(value.transport==='wss') createAgentArtsTransportConfig({binding,environment:{},transportPreferences:value,
     configurationProvider:{read:()=>({...value.appToken===undefined?{}:{appToken:value.appToken},...value.deploymentVersion===undefined?{}:{deploymentVersion:value.deploymentVersion}})}});
@@ -111,14 +116,22 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       const binding=validateBinding(input);
       const sameDestination=binding.gatewayUrl===saved?.gatewayUrl&&binding.runtimeName===saved?.runtimeName;
       const authorization=input.authorization===undefined||input.authorization===''?(sameDestination?saved.authorization:''):input.authorization;
-      const deploymentVersion=input.deploymentVersion===undefined?(sameDestination?saved.deploymentVersion:undefined):input.deploymentVersion===''?undefined:input.deploymentVersion;
-      const sameDeployment=sameDestination&&deploymentVersion===saved?.deploymentVersion;
+      let deploymentVersion=input.deploymentVersion===undefined?(sameDestination?saved.deploymentVersion:undefined):input.deploymentVersion===''?undefined:input.deploymentVersion;
+      let sameDeployment=sameDestination&&deploymentVersion===saved?.deploymentVersion;
+      const websocketUrl=input.websocketUrl===undefined?(sameDeployment?saved?.websocketUrl:undefined):input.websocketUrl||undefined;
+      // A pasted pinned address already names the deployment; requiring the same value twice made
+      // the form reject every URL the console hands out. The address is authoritative when the
+      // field is blank, and a contradiction is refused instead of silently picking one.
+      const urlEndpoint=websocketUrl===undefined?undefined:pinFromUrl(websocketUrl);
+      if(deploymentVersion===undefined&&urlEndpoint!==undefined)deploymentVersion=urlEndpoint;
+      if(urlEndpoint!==undefined&&deploymentVersion!==undefined&&urlEndpoint!==deploymentVersion)throw Error('WSS 地址中的 endpoint 版本（'+urlEndpoint+'）与“固定部署版本”（'+deploymentVersion+'）不一致，请改成同一个版本');
+      sameDeployment=sameDestination&&deploymentVersion===saved?.deploymentVersion;
       const transport=input.transport??(sameDeployment?saved?.transport:undefined);
       const appToken=input.appToken===undefined||input.appToken===''?
         (sameDestination&&transport==='wss'?(saved?.appToken??environment.PA_AGENTARTS_APP_TOKEN):
           input.transport===undefined&&sameDestination?saved?.appToken:undefined):input.appToken;
-      const websocketUrl=input.websocketUrl===undefined?(sameDeployment?saved?.websocketUrl:undefined):input.websocketUrl||undefined;
       if(!sameDeployment&&transport==='wss'&&input.websocketUrl===undefined)throw Error('目的地或部署已改变，请重新填写精确 WSS 地址');
+      if(transport==='wss'&&appToken===undefined)throw Error('首次配置 WSS 主通道必须填写“独立镜像访问令牌”（至少 32 位可见字符）');
       const allowHttpsFallback=input.allowHttpsFallback??(sameDeployment?saved?.allowHttpsFallback:undefined);
       const value=validate({...binding,authorization,appToken,deploymentVersion,transport,
         websocketUrl:transport==='https'?undefined:websocketUrl,

@@ -1105,3 +1105,34 @@ test('奥克兰 stays unresolved rather than answering for Oakland', async () =>
   const provider = makeProvider([nameRoutes({'奥克兰': {zh: [], en: []}, 'Oakland': {zh: [], en: [oakland]}})]);
   await assert.rejects(provider.resolvePlace('奥克兰', undefined, signal()), {code: 'NOT_FOUND'});
 });
+
+test('reads present conditions and the requested day hourly curve when the provider publishes them', async () => {
+  const route = ['api.open-meteo.com', url => {
+    const date = new URL(url).searchParams.get('start_date');
+    assert.match(url, /[?&]current=/);
+    assert.match(url, /[?&]hourly=/);
+    return jsonResponse({
+      latitude: 39.89, longitude: 116.36, timezone: 'Asia/Shanghai',
+      daily: {time: [date], temperature_2m_min: [22.3], temperature_2m_max: [31.4],
+        precipitation_probability_max: [12], weather_code: [3]},
+      current: {time: '2026-09-06T11:00', temperature_2m: 26.4, apparent_temperature: 27.1,
+        relative_humidity_2m: 58, wind_speed_10m: 9.7, wind_direction_10m: 135, weather_code: 3},
+      hourly: {time: ['2026-09-06T00:00', '2026-09-06T01:00', '2026-09-07T00:00'],
+        temperature_2m: [22.5, 22.1, 21.0], precipitation_probability: [5, 10, 0], weather_code: [3, 3, 1]},
+    });
+  }];
+  const {service} = makeService([geoRoute(beijingCandidates), route]);
+  const result = await service.getForecast({location: '北京', date: DATE});
+  assert.deepEqual(result.forecast.current, {observedAt: '2026-09-06T11:00', temperature: 26.4,
+    apparentTemperature: 27.1, relativeHumidity: 58, windSpeed: 9.7, windDirection: 135, weatherCode: 3});
+  assert.equal(result.forecast.hourly.length, 2, 'hours outside the requested local day are dropped');
+  assert.deepEqual(result.forecast.hourly[0], {time: '2026-09-06T00:00', temperature: 22.5,
+    precipitationProbability: 5, weatherCode: 3});
+});
+
+test('a provider without present conditions still answers the daily forecast', async () => {
+  const {service} = makeService([geoRoute(beijingCandidates), forecastRoute(healthyDaily)]);
+  const result = await service.getForecast({location: '北京', date: DATE});
+  assert.equal(result.forecast.current, undefined);
+  assert.equal(result.forecast.hourly, undefined);
+});

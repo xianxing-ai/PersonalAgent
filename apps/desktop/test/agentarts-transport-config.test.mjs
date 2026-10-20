@@ -16,7 +16,7 @@ test('WSS host credentials remain separate, re-readable and absent from serializ
   environment.PA_AGENTARTS_APP_TOKEN=token+'-rotated';
   assert.equal(await options.websocketAuthorizationProvider.read(),`Bearer ${token}-rotated`);
   delete environment.PA_AGENTARTS_APP_TOKEN;
-  await assert.rejects(options.websocketAuthorizationProvider.read(),/入站凭据/);
+  await assert.rejects(options.websocketAuthorizationProvider.read(),/独立镜像访问令牌.*至少 32/);
 });
 test('Legacy configuration is retained, while WSS fallback needs explicit opt-in and destination binding',()=>{
   assert.deepEqual(createAgentArtsTransportConfig({binding,environment:{}}),{transport:'https'});
@@ -143,7 +143,7 @@ test('WSS endpoint query must exactly match the independent trusted deployment a
       '?endpoint='+('x'.repeat(129))]) {
       assert.throws(()=>createAgentArtsTransportConfig({binding,configurationProvider,environment:{...environment,PA_AGENTARTS_WSS_URL:base+query}}));
     }
-    assert.throws(()=>createAgentArtsTransportConfig({binding,environment:{...environment,PA_AGENTARTS_APP_TOKEN:token}}),/受信部署版本/);
+    assert.throws(()=>createAgentArtsTransportConfig({binding,environment:{...environment,PA_AGENTARTS_APP_TOKEN:token}}),/固定部署版本.*尚未填写/);
   }
 });
 test('explicit WSS HTTPS fallback preserves its bound version and accepts only the original current host credential',async()=>{
