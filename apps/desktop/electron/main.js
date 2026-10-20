@@ -3523,19 +3523,30 @@ app.whenReady().then(async () => {
     else if (panel.isVisible()) { if (!away) away = Date.now(); else if (Date.now() - away > 520) { void hidePanel().catch(reportPanelVoiceFailure); away = 0; } }
   }, 80);
   // Long-running sessions grow a renderer past what the user can keep using (#435). A reload is
-  // safe: tasks, drafts and messages are persisted, and it is skipped while work is running.
+  // guarded: editable/unknown surfaces remain open, and active work or voice prevents recycling.
   memoryWatchdog = createMemoryWatchdog({
     getMetrics: () => app.getAppMetrics(),
-    resolveTarget: pid => {
+    resolveTarget: async pid => {
       const windows = [panel, admin, workspace, orb, ...[...subagentWindows.values()].map(record => record.window)];
       for (const win of windows) {
         if (!win || win.isDestroyed()) continue;
-        try {if (win.webContents.getOSProcessId() === pid) return win.webContents;} catch {/* destroyed mid-scan */}
+        try {
+          if(win.webContents.getOSProcessId()!==pid)continue;
+          // Editable surfaces have no atomic draft-flush/reload handshake. Only the stateless orb
+          // can be recycled; all conversation and settings windows retain their in-memory input.
+          if(win!==orb){
+            console.warn('[memory] oversized renderer retained to protect unsaved input',{pid});return undefined;
+          }
+          return win.webContents;
+        }catch{return undefined;}
       }
       return undefined;
     },
     isBusy: () => runtimeClosed || runtimeStartup.snapshot().state === 'starting'
-      || (runtimeApplication?.activeTaskCount ?? 0) > 0,
+      || submitting.size>0 || voiceConfigurationPending || panelHiding
+      || (runtimeApplication?.activeTaskCount ?? 0) > 0 || liveVoice?.hasActive()===true
+      || voiceInput?.hasActive()===true || wakeVoice?.hasActive()===true
+      || microphoneCaptureHost?.snapshot().busy===true,
     onReload: info => {console.warn('[memory] reloaded an oversized renderer', {pid: info.pid, megabytes: Math.round(info.bytes / 1024 / 1024)});},
   });
   memoryWatchdog.start();

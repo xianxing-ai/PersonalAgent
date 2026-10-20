@@ -2,8 +2,9 @@
  * Long-running desktop memory reclamation.
  *
  * Electron reports `memory.workingSetSize` in kilobytes. A renderer that grows past the limit is
- * reloaded: every task, draft and message is already persisted, so a reload costs a repaint, not
- * data. This is the self-healing half of #435; the Maps it cannot bound are left to heap profiling.
+ * reloaded only after the host confirms that the surface can be reclaimed without unsaved input.
+ * Persisted task history survives; editable or unknown surfaces stay open. The Maps it cannot
+ * bound are left to heap profiling.
  */
 export const DEFAULT_MEMORY_LIMIT_BYTES = 1.5 * 1024 ** 3;
 export const DEFAULT_INTERVAL_MS = 60_000;
@@ -37,18 +38,23 @@ export function createMemoryWatchdog({getMetrics, resolveTarget, limitBytes = DE
     throw new Error('Memory watchdog requires metrics and a target resolver');
   }
   const reloadedAt = new Map();
-  let timer;
-  function tick() {
+  let timer,checking=false,generation=0;
+  async function tick() {
+    if(checking)return undefined;
+    const epoch=generation;
+    checking=true;
+    try{
     if (isBusy()) return undefined;
     const target = selectOverLimitRenderer(getMetrics(), limitBytes);
     if (!target) return undefined;
     if (now() - (reloadedAt.get(target.pid) ?? 0) < cooldownMs) return undefined;
-    const contents = resolveTarget(target.pid);
-    if (!contents || contents.isDestroyed?.()) return undefined;
+    const contents = await resolveTarget(target.pid);
+    if (epoch!==generation || isBusy() || !contents || contents.isDestroyed?.()) return undefined;
     reloadedAt.set(target.pid, now());
     contents.reload();
     onReload(target);
     return target;
+    }catch{return undefined;}finally{checking=false;}
   }
   return {
     tick,
@@ -60,6 +66,7 @@ export function createMemoryWatchdog({getMetrics, resolveTarget, limitBytes = DE
       return timer;
     },
     stop() {
+      generation++;
       if (timer !== undefined) cancel(timer);
       timer = undefined;
     },
