@@ -215,7 +215,8 @@ export function mountAdmin(root, invoke, escape) {
       general: ['常规', '管理应用的基础行为与入口',
         settingRow('桌面与窗口', '调整语言、字体缩放和悬浮球行为，或查看窗口诊断', '<button type="button" class="btn btn-sm" id="desktop-local-settings">桌面偏好</button>') +
         settingRow('模型与 API', agentArts ? '在模型页面管理 AgentArts 运行时和本机加密凭据' : '模型、Endpoint 和密钥在独立页面管理', '<button class="btn btn-sm" data-jump="models">打开模型</button>') +
-        settingRow('开机启动', '宿主能力尚未接入', '<span class="status-note">待接入</span>', 'is-unavailable') +
+        settingRow('登录 Windows 时启动', data.loginItem?.reason??'启动项状态尚未读回',
+          `<label class="switch-control"><input id="login-item-enabled" aria-label="登录 Windows 时启动" type="checkbox" ${data.loginItem?.configured===true?'checked':''} ${data.loginItem?.supported===true?'':'disabled'}><span></span></label><button type="button" class="btn btn-sm" id="login-item-refresh">刷新状态</button>`,data.loginItem?.supported===true?'':'is-unavailable') +
         settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>') +
         settingRow('退出应用', '结束托盘、ORB 与所有桌面窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>')],
       appearance: ['外观', '延续 ORB-02 冷光青与标准毛玻璃设计',
@@ -573,6 +574,18 @@ export function mountAdmin(root, invoke, escape) {
       } catch (error) { root.querySelector('#error').textContent = error.message; button.disabled = false; }
     }));
     root.querySelector('#quit')?.addEventListener('click', () => invoke('app.quit'));
+    root.querySelector('#login-item-refresh')?.addEventListener('click',async()=>{
+      try{const result=await invoke('app.startup.read');current={...current,loginItem:result};render(current,true);}
+      catch(error){root.querySelector('#error').textContent=error.message;}
+    });
+    root.querySelector('#login-item-enabled')?.addEventListener('change',async event=>{
+      const input=event.currentTarget;input.disabled=true;
+      try{const result=await invoke('app.startup.configure',{enabled:input.checked});current={...current,loginItem:result};render(current,true);}
+      catch(error){
+        try{current={...current,loginItem:await invoke('app.startup.read')};render(current,true);}catch{}
+        root.querySelector('#error').textContent=error.message;
+      }finally{const next=root.querySelector('#login-item-enabled');if(next)next.disabled=current.loginItem?.supported!==true;}
+    });
     root.querySelector('#model-add')?.addEventListener('click', () => { modelEditorOpen = true; render(current); });
     root.querySelector('#model-more')?.addEventListener('click', () => { modelEditorOpen = true; render(current); });
     root.querySelector('#model-editor-close')?.addEventListener('click', () => { modelEditorOpen = false; render(current); });
