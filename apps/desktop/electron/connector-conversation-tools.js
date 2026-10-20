@@ -35,16 +35,18 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
   const assertCurrent=scope=>{if(!current(scope))denied();};
   const available=(name,scope)=>taskScope(scope)&&Boolean(identity(family(name)))
     &&getApplication().runtime.getTask(scope.taskId).state==='running'&&typeof confirmExport==='function';
-  const invokeProvider=(kind,key,args,write=false)=>{
-    const scope=execution.getStore();if(!scope||scope.kind!==kind)denied();assertCurrent(scope);
-    const provider=write?scope.provider.writes:scope.provider;
-    if(typeof provider?.[key]!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前提供者不支持此连接器操作');
-    return provider[key](...args);
-  };
-  const proxy=kind=>new Proxy({providerKind:kind==='mail'?'qq':'caldav',verification:'conditional',
-    ...(kind==='calendar'?{writes:Object.fromEntries(['createEvent','updateEvent','cancelEvent'].map(name=>
-      [name,(...args)=>invokeProvider(kind,name,args,true)]))}:{})}, {get(target,key){
-    if(key in target)return target[key];return (...args)=>invokeProvider(kind,key,args);
+  const proxy=kind=>new Proxy({providerKind:kind==='mail'?'qq':'caldav',verification:'conditional'}, {get(target,key){
+    if(key in target)return target[key];
+    if(kind==='calendar'&&key==='writes')return Object.freeze(Object.fromEntries(
+      ['createEvent','updateEvent','cancelEvent'].map(method=>[method,(...args)=>{
+        const scope=execution.getStore();if(!scope||scope.kind!=='calendar')denied();assertCurrent(scope);
+        const writes=scope.provider.writes;
+        if(typeof writes?.[method]!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前提供者不支持此日历写操作');
+        return writes[method](...args);
+      }])));
+    return (...args)=>{const scope=execution.getStore();if(!scope||scope.kind!==kind)denied();assertCurrent(scope);
+      if(typeof scope.provider[key]!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前提供者不支持此连接器操作');
+      return scope.provider[key](...args);};
   }});
   const host={register(tool){
     if(!MAIL_TOOLS.has(tool.descriptor.name)&&!CALENDAR_TOOLS.has(tool.descriptor.name))return ()=>{};

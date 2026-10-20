@@ -40,7 +40,7 @@ async function project(policy,s,result){return policy.project({taskId:s.taskId,p
 
 test('registers only existing supplemental tools; missing configuration and absent native consent stay closed',async t=>{
   const f=fixture(t,{mail:{current:()=>undefined},calendar:{binding:()=>undefined}});
-  assert.deepEqual(new Set(f.host.tools.map(t=>t.descriptor.name)),new Set(['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.events','calendar.create','calendar.update','calendar.cancel']));
+  assert.deepEqual(f.host.tools.map(t=>t.descriptor.name),['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.create','calendar.update','calendar.cancel','calendar.events']);
   for(const tool of f.host.tools){const s=scope(tool);assert.equal(await f.host.competitionToolAvailability.find(x=>x.toolName===tool.descriptor.name).available(s),false);
     await assert.rejects(f.host.prepareExport({...s,phase:'preflight'}),{code:'UNAUTHORIZED'});}
   assert.deepEqual(f.calls,[]);
@@ -326,4 +326,97 @@ test('calendar provider rejects non-loopback HTTP before any request even when t
     createCalendarProvider:options=>new CalDavProvider({...options,fetchImpl:async()=>{requests++;throw Error('must not request');}})});
   const p=await prepare(f.host,'calendar.create',calendarEvent);
   await assert.rejects(p.tool.execute(calendarEvent,p.s),{code:'INVALID_ARGUMENT'});assert.equal(requests,0);
+});
+
+function calDavFixture() {
+  const root='https://calendar.example.invalid/collection/',resources=new Map(),requests=[],versions=new Map();let revision=0;
+  resources.set('original.ics',['BEGIN:VCALENDAR','VERSION:2.0','BEGIN:VEVENT','UID:original',
+    'DTSTART:20261021T070000Z','DTEND:20261021T080000Z','SUMMARY:original','END:VEVENT','END:VCALENDAR'].join('\r\n')+'\r\n');
+  const fetchImpl=async(url,init)=>{
+    const name=String(url).slice(root.length);requests.push({method:init.method,name});
+    const etag=versions.get(name)??'"original"';
+    if(init.method==='PUT'){
+      if(init.headers['If-None-Match']==='*'&&resources.has(name)||init.headers['If-Match']!==undefined&&init.headers['If-Match']!==etag)return {status:412,text:async()=>''};
+      resources.set(name,init.body);versions.set(name,`"${++revision}"`);return {status:201,text:async()=>''};
+    }
+    if(init.method==='GET')return {status:resources.has(name)?200:404,headers:{get:key=>key.toLowerCase()==='etag'?etag:null},text:async()=>resources.get(name)??''};
+    if(init.method==='DELETE'){
+      if(init.headers['If-Match']!==etag)return {status:412,text:async()=>''};
+      return {status:resources.delete(name)?204:404,text:async()=>''};
+    }
+    if(init.method==='REPORT'){
+      const xml=value=>String(value).replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]));
+      return {status:207,text:async()=>'<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+        +[...resources].map(([key,body])=>`<d:response><d:href>${xml(root+key)}</d:href><d:propstat><d:prop><c:calendar-data>${xml(body)}</c:calendar-data></d:prop></d:propstat></d:response>`).join('')+'</d:multistatus>'};
+    }
+    throw Error('Unexpected synthetic CalDAV request');
+  };
+  return {root,resources,requests,fetchImpl};
+}
+
+test('actual Runtime advertises calendar writes and requires original approval before a single CalDAV write',async t=>{
+  for(const [name,args,method] of [
+    ['calendar.create',{uid:'created',summary:'created',startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00Z'},'PUT'],
+    ['calendar.update',{uid:'original',summary:'updated'},'PUT'],['calendar.cancel',{uid:'original'},'DELETE'],
+  ]) for(const unknown of [false,true]) await t.test(name+(unknown?' unknown receipt':''),async t=>{
+    const server=calDavFixture(),consents=[];let application,sends=0,catalog;
+    const host=createConnectorConversationTools({calendar:{binding:()=>({calendarUrl:server.root,revision:1}),readAuthorization:async()=> 'Basic c3ludGhldGljOnBhc3N3b3Jk'},
+      getApplication:()=>application,resolveConversation:id=>application.runtime.getTask(id).conversationId,
+      createCalendarProvider:()=>new CalDavProvider({calendarUrl:server.root,fetchImpl:async(url,init)=>{
+        const response=await server.fetchImpl(url,init);
+        if(unknown&&init.method===method)throw new ProtocolError('RESULT_UNKNOWN','Synthetic lost write acknowledgement');
+        return response;
+      }}),
+      confirmExport:async request=>{consents.push(request.kind);return true;}});
+    t.after(()=>host.close());
+    const descriptor=host.tools.find(tool=>tool.descriptor.name===name).descriptor;
+    assert.equal(descriptor.sideEffect,'external_write');assert.deepEqual(descriptor.requiredScopes,['calendar:write']);
+    if(name==='calendar.create'){assert.equal(descriptor.idempotencySupport,false);assert.equal(descriptor.recoverySupport,false);}
+    application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-write-consumer',
+      initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
+      tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
+      prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
+      fetchImpl:async(_url,init)=>{sends++;catalog??=String(init.body);return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
+        ?{kind:'tool_proposal',proposalId:'calendar-write',toolName:name,toolVersion:descriptor.version,arguments:args}
+        :{kind:'text',text:'合成日历操作已核实。'})}}),{headers:{'content-type':'application/json'}});}});
+    t.after(()=>application.close());const client=new Client(application);await client.connect();
+    const {taskId}=await client.call('task.submit',{goal:'执行合成日历操作',conversationId:'calendar-consumer'},{idempotencyKey:name,timeoutMs:10000});
+    const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}throw Error(JSON.stringify(application.runtime.getTask(taskId)));};
+    await wait(()=>application.runtime.getTask(taskId).state==='waiting_approval');
+    assert.deepEqual(server.requests,[],'Policy approval precedes provider access');
+    for(const toolName of ['calendar.create','calendar.update','calendar.cancel'])assert.ok(catalog.includes(toolName),'model catalog contains '+toolName);
+    const approval=application.runtime.listApprovals({taskId,state:'pending'}).items[0];
+    await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+    await wait(()=>['succeeded','failed','waiting_reconciliation'].includes(application.runtime.getTask(taskId).state));
+    assert.equal(application.runtime.getTask(taskId).state,unknown?'waiting_reconciliation':'succeeded');
+    assert.equal(server.requests.filter(r=>r.method===method).length,1);
+    assert.equal(application.runtime.readToolExecutions(taskId)[0].state,unknown?'unknown':'confirmed');assert.equal(sends,unknown?1:2);
+    assert.ok(consents.includes('connector_tool_metadata'));
+    if(unknown){
+      // Original Runtime's confirmed-only handoff denies an unknown receipt.
+      assert.throws(()=>application.resumeConfirmedTask(taskId),{code:'UNAUTHORIZED'});
+      const same=await client.call('task.submit',{goal:'执行合成日历操作',conversationId:'calendar-consumer'},{idempotencyKey:name,timeoutMs:10000});
+      assert.equal(same.taskId,taskId);assert.equal(sends,1,'unknown write cannot request a replacement model proposal');
+      assert.equal(server.requests.filter(r=>r.method===method).length,1,'unknown write cannot execute again');
+    }else assert.ok(consents.includes('connector_tool_result'));
+  });
+});
+
+test('calendar write proxy denies read-only scope and never repeats an interrupted or revoked write',async t=>{
+  for(const mode of ['scope','cancel','revoke'])await t.test(mode,async t=>{
+    let writes=0,started;const invoked=new Promise(resolve=>{started=resolve;});
+    const provider=new FakeCalendarProvider();provider.writes.createEvent=async()=>{writes++;started();return new Promise(()=>{});};
+    const f=fixture(t,{createCalendarProvider:()=>provider});
+    const args={summary:'pending',startUtc:'2026-10-21T07:00:00Z',endUtc:'2026-10-21T08:00:00Z'};
+    const {tool,s}=await prepare(f.host,'calendar.create',args);
+    if(mode==='scope'){
+      await assert.rejects(tool.execute(args,{...s,scopes:['calendar:read']}),{code:'UNAUTHORIZED'});assert.equal(writes,0);return;
+    }
+    const controller=new AbortController(),context={...s,signal:controller.signal};
+    const pending=tool.execute(args,context);await invoked;
+    const rejected=assert.rejects(pending,{code:'CANCELLED'});
+    if(mode==='cancel')controller.abort();else await f.host.invalidate('calendar');
+    await rejected;assert.equal(writes,1);
+    await assert.rejects(tool.execute(args,context),{code:'UNAUTHORIZED'});assert.equal(writes,1);
+  });
 });

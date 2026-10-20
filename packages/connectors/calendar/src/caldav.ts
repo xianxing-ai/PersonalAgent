@@ -226,8 +226,9 @@ export function parseCalDavEvents(raw: string): ParsedCalDavEvent[] {
   let current: Record<string, string> | undefined;
   let nestedDepth = 0;
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { current = {}; nestedDepth = 0; continue; }
-    if (line === 'END:VEVENT') {
+    const upper = line.toUpperCase();
+    if (upper === 'BEGIN:VEVENT') { current = {}; nestedDepth = 0; continue; }
+    if (upper === 'END:VEVENT') {
       if (current) {
         const parsed = readEvent(current);
         if (parsed) events.push(parsed);
@@ -236,8 +237,8 @@ export function parseCalDavEvents(raw: string): ParsedCalDavEvent[] {
       continue;
     }
     if (current === undefined) continue;
-    if (line.startsWith('BEGIN:')) {nestedDepth++;continue;}
-    if (line.startsWith('END:')) {nestedDepth = Math.max(0, nestedDepth - 1);continue;}
+    if (upper.startsWith('BEGIN:')) {nestedDepth++;continue;}
+    if (upper.startsWith('END:')) {nestedDepth = Math.max(0, nestedDepth - 1);continue;}
     if (nestedDepth > 0) continue;
     const colon = line.indexOf(':');
     if (colon <= 0) continue;
@@ -533,15 +534,16 @@ export class CalDavProvider implements CalendarProvider {
     };
     if (Date.parse(merged.endUtc) <= Date.parse(merged.startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
     const originalLines = unfoldLines(current);
-    if (originalLines.filter(line => line === 'BEGIN:VEVENT').length !== 1
-      || originalLines.some(line => /^(?:RRULE|RDATE|EXDATE|RECURRENCE-ID)(?:;|:)/u.test(line)))
+    const propertyKey = (line: string) => (line.split(/[:;]/u)[0] ?? '').toUpperCase();
+    if (originalLines.filter(line => line.toUpperCase() === 'BEGIN:VEVENT').length !== 1
+      || originalLines.some(line => /^(?:RRULE|RDATE|EXDATE|RECURRENCE-ID)(?:;|:)/iu.test(line)))
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Recurring or multi-event resources require their original calendar editor');
     const updated = unfoldLines(buildIcs(merged, stamp(Date.now()), parsed.sequence + 1));
     const preservedTimeKeys = new Set([
       ...(input.startUtc === undefined ? ['DTSTART'] : []),
       ...(input.endUtc === undefined ? ['DTEND'] : []),
     ]);
-    const preservedTimes = originalLines.filter(line => preservedTimeKeys.has(line.split(/[:;]/u)[0] ?? ''));
+    const preservedTimes = originalLines.filter(line => preservedTimeKeys.has(propertyKey(line)));
     const replacements = updated.slice(updated.indexOf('BEGIN:VEVENT') + 1, updated.indexOf('END:VEVENT'))
       .filter(line => !preservedTimeKeys.has(line.split(/[:;]/u)[0] ?? ''));
     const keys = new Set(['UID','DTSTAMP','DTSTART','DTEND','SUMMARY','LOCATION','DESCRIPTION','SEQUENCE']);
@@ -549,12 +551,13 @@ export class CalDavProvider implements CalendarProvider {
     // Preserve unrelated attendee, organizer, alarm and calendar properties rather than rebuilding the resource.
     let depth = 0;
     const preserved = originalLines.filter(line => {
-      if (line === 'BEGIN:VEVENT') {depth = 1;return true;}
-      if (depth && line.startsWith('BEGIN:')) {depth++;return true;}
-      if (depth && line.startsWith('END:')) {depth--;return true;}
-      return depth !== 1 || !keys.has(line.split(/[:;]/u)[0] ?? '');
+      const upper = line.toUpperCase();
+      if (upper === 'BEGIN:VEVENT') {depth = 1;return true;}
+      if (depth && upper.startsWith('BEGIN:')) {depth++;return true;}
+      if (depth && upper.startsWith('END:')) {depth--;return true;}
+      return depth !== 1 || !keys.has(propertyKey(line));
     });
-    preserved.splice(preserved.indexOf('END:VEVENT'), 0, ...replacements);
+    preserved.splice(preserved.findIndex(line => line.toUpperCase() === 'END:VEVENT'), 0, ...replacements);
     const ics = preserved.map(foldIcalLine).join('\r\n') + '\r\n';
     await this.writeRequest('PUT', resourceUrl, ics, 'text/calendar; charset=utf-8', context, [200, 201, 204], {'if-match': version});
     return this.readBack({...merged, preservedTimes}, resourceUrl, context);
@@ -714,15 +717,26 @@ const WRITE_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/u;
 const WRITE_UID_PATTERN = /^[A-Za-z0-9@][A-Za-z0-9@._-]{0,127}$/u;
 
 function assertWriteUtc(value: unknown, field: string): string {
-  if (typeof value !== 'string' || !WRITE_UTC_PATTERN.test(value) || !Number.isFinite(Date.parse(value))) {
+  if (typeof value !== 'string' || !WRITE_UTC_PATTERN.test(value)) {
     throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be an ISO-8601 UTC instant`);
   }
-  if (Date.parse(value) % 1000 !== 0) {
+  if (Number(value.slice(0, 4)) < 1) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} requires a Gregorian year from 0001 to 9999`);
+  }
+  const instant = Date.parse(value);
+  if (!Number.isFinite(instant)) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be an ISO-8601 UTC instant`);
+  }
+  if (instant % 1000 !== 0) {
     throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} requires whole-second precision`);
   }
-  if (new Date(Date.parse(value)).toISOString() !== (value.length === 20 ? value.slice(0, -1) + '.000Z' : value))
-    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be a canonical valid UTC calendar date`);
-  return `${value.slice(0, 19)}.${(value.match(/\.(\d{3})Z$/u) ?? ['', '000'])[1]}Z`;
+  const canonical = new Date(instant).toISOString();
+  // Date.parse accepts e.g. February 30 or 24:00 by normalizing them. ICS must
+  // preserve the exact valid date/time, not write the original impossible literal.
+  if (canonical !== `${value.slice(0, 19)}.000Z`) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must contain a valid Gregorian UTC date and time`);
+  }
+  return canonical;
 }
 
 function assertWriteUid(value: unknown): string {
