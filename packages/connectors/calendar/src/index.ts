@@ -52,7 +52,7 @@ const eventsOutputSchema: ToolDescriptor['outputSchema'] = {
 
 const createEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。给 uid 时同 UID 重放幂等。',
+  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。uid 可选：给 uid 时同 UID 重放幂等；缺省时按事件内容确定性派生 UID——同内容重复提交命中同一资源（幂等），不同内容自然产生不同事件。',
   required: ['summary', 'startUtc', 'endUtc'],
   additionalProperties: false,
   properties: {
@@ -61,7 +61,7 @@ const createEventInputSchema: ToolDescriptor['inputSchema'] = {
     endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
     location: {type: 'string', maxLength: 512},
     notes: {type: 'string', maxLength: 4096},
-    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$', description: '可选：显式资源 UID（用于重放幂等）；缺省由提供商生成。'},
+    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$', description: '可选：显式资源 UID（重放/迁移场景）；缺省按事件内容确定性派生（同输入重放幂等，不再随机生成）。'},
   },
 };
 

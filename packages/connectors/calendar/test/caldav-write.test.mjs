@@ -156,7 +156,7 @@ test('create 写入 ICS 并读回核对；字段与形态正确', async () => {
   const provider = new CalDavProvider({calendarUrl: URL_BASE, authorization: 'Basic dGVzdA==', fetchImpl: server.fetchImpl});
   const record = await provider.createEvent({summary: '接线验收测试', startUtc: '2026-10-21T07:00:00.000Z',
     endUtc: '2026-10-21T08:00:00.000Z', location: '会议室 1', notes: '来自验收'});
-  assert.match(record.externalId, /^[a-f0-9-]{36}$/);
+  assert.match(record.externalId, /^pa-e[0-9a-f]{24}$/, 'uid 缺省=内容确定性派生（同输入重放幂等），不再是随机 UUID');
   assert.equal(record.title, '接线验收测试');
   assert.equal(record.startUtc, '2026-10-21T07:00:00.000Z');
   assert.equal(record.status, 'confirmed');
@@ -252,4 +252,25 @@ test('caller cancellation bounds uncooperative write transport without a second 
     startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00.000Z'},
     {signal:controller.signal,deadline:new Date(Date.now()+30000).toISOString()}),{code:'CANCELLED'});
   assert.equal(calls,1);
+});
+
+test('uid omitted initializes a content-derived identifier: same input replays idempotently onto one resource (zemeng #439 P2)', async () => {
+  const server = fakeServer(), provider = new CalDavProvider({calendarUrl: URL_BASE, fetchImpl: server.fetchImpl});
+  const input = {summary: 'standup', startUtc: '2026-10-21T07:00:00.000Z', endUtc: '2026-10-21T08:00:00Z',
+    location: '  前台  ', notes: 'day 3'};
+  const first = await provider.createEvent(input, ctx());
+  assert.match(first.externalId, /^pa-e[0-9a-f]{24}$/, 'derived uid = pa-e + sha256 hex（且通过 WRITE_UID_PATTERN 语义）');
+  const second = await provider.createEvent(input, ctx());
+  assert.equal(second.externalId, first.externalId, '同内容重复提交必须命中同一 UID（重放幂等），而不是生成第二个事件');
+  const puts = server.log.filter(entry => entry.method === 'PUT');
+  assert.equal(puts.length, 2, '两次提交都是 PUT（第二次覆盖同一资源）');
+  assert.equal(puts[0].url, puts[1].url, '两次 PUT 打到同一资源 URL');
+  const resources = [...server.resources.keys()];
+  assert.equal(resources.length, 1, 'content-derived uid 下同输入只有一个资源，不会累积第二个事件');
+  // 不同内容 → 不同 UID
+  const other = await provider.createEvent({...input, summary: 'standup (moved)'}, ctx());
+  assert.notEqual(other.externalId, first.externalId, '不同内容自然产生不同 UID');
+  // 显式 uid 优先于派生
+  const explicit = await provider.createEvent({...input, uid: 'explicit-uid-1'}, ctx());
+  assert.equal(explicit.externalId, 'explicit-uid-1');
 });

@@ -1,5 +1,5 @@
 import { ProtocolError } from '@personal-agent/contracts';
-import {randomUUID} from 'node:crypto';
+import {createHash} from 'node:crypto';
 import { unfoldLines, unescapeIcalText, parseIcalDate } from './ical-subscription.js';
 import { assertReadActive } from './read-context.js';
 import type {
@@ -495,13 +495,18 @@ export class CalDavProvider implements CalendarProvider {
     const startUtc = assertWriteUtc(input?.startUtc, 'startUtc');
     const endUtc = assertWriteUtc(input?.endUtc, 'endUtc');
     if (Date.parse(endUtc) <= Date.parse(startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
-    const uid = input.uid === undefined ? randomUUID() : assertWriteUid(input.uid);
+    const location = input.location?.trim() ?? '';
+    const notes = input.notes?.trim() ?? '';
+    // 幂等语义修正（#439 评审 P2）：uid 缺省不再 randomUUID——首次 PUT 成功而响应丢失时，
+    // 同输入重试会生成第二个事件，与 idempotencySupport:true 的声明不符。
+    // 现改为按事件内容确定性派生 UID：同内容重复提交=同 UID=PUT 覆盖同一资源（真幂等），
+    // 不同内容自然不同 UID；显式 uid 仍接受（重放/迁移场景由调用方定资源身份）。
+    const uid = input.uid === undefined ? derivedWriteUid({summary, startUtc, endUtc, location, notes}) : assertWriteUid(input.uid);
     const ics = buildIcs({uid, summary, startUtc, endUtc,
-      ...(input.location === undefined ? {} : {location: String(input.location)}),
-      ...(input.notes === undefined ? {} : {notes: String(input.notes)})}, stamp(Date.now()));
+      ...(location === '' ? {} : {location}),
+      ...(notes === '' ? {} : {notes})}, stamp(Date.now()));
     await this.writeRequest('PUT', this.resourceUrl(uid), ics, 'text/calendar; charset=utf-8', context, [200, 201, 204]);
-    return this.readBack({uid, summary, startUtc, endUtc,
-      location: input.location?.trim() ?? '', notes: input.notes?.trim() ?? ''}, context);
+    return this.readBack({uid, summary, startUtc, endUtc, location, notes}, context);
   }
 
   /** 更新事件：GET 现值合并（SEQUENCE 递增）后 PUT，写后读回核对。 */
@@ -699,6 +704,12 @@ function assertWriteUid(value: unknown): string {
     throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event UID is malformed');
   }
   return value;
+}
+
+/** uid 缺省时的确定性派生（#439 评审 P2）：同内容重提交=同 UID（重放幂等），不同内容不同 UID。 */
+function derivedWriteUid(parts: {summary: string; startUtc: string; endUtc: string; location: string; notes: string}): string {
+  const basis = [parts.summary, parts.startUtc, parts.endUtc, parts.location, parts.notes].join('\u0000');
+  return 'pa-e' + createHash('sha256').update(basis, 'utf8').digest('hex').slice(0, 24);
 }
 
 function stamp(instant: number): string {
