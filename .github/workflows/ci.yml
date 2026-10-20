@@ -29,6 +29,7 @@ jobs:
     outputs:
       matrix: ${{ steps.route.outputs.matrix }}
       source_sha256: ${{ steps.source.outputs.sha256 }}
+      producer_attempt: ${{ steps.artifact-binding.outputs.producer_attempt }}
       electron_cache_sha256: ${{ steps.windows-cache.outputs.sha256 }}
       electron_cache_size: ${{ steps.windows-cache.outputs.size }}
     steps:
@@ -53,6 +54,11 @@ jobs:
           PA_WINDOWS_RUNNER: ${{ inputs.windows_runner || vars.PA_WINDOWS_RUNNER }}
           PA_WINDOWS_RUNNER_OVERRIDES: ${{ vars.PA_WINDOWS_RUNNER_OVERRIDES }}
         run: node scripts/ci/pr-route.mjs
+      - name: Bind the producer artifact attempt for reruns
+        id: artifact-binding
+        env:
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: node scripts/ci/source-transfer.mjs artifact-attempt
       - name: Package exact source for ECS without persisting checkout credentials
         id: source
         if: contains(steps.route.outputs.matrix, 'self-hosted')
@@ -60,7 +66,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: contains(steps.route.outputs.matrix, 'self-hosted')
         with:
-          name: ci-source-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ci-source-${{ github.run_id }}-${{ steps.artifact-binding.outputs.producer_attempt }}
           path: ${{ steps.source.outputs.directory }}
           retention-days: 1
           if-no-files-found: error
@@ -74,7 +80,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: contains(steps.route.outputs.matrix, 'Windows CI (ECS)')
         with:
-          name: windows-electron-${{ github.run_id }}-${{ github.run_attempt }}
+          name: windows-electron-${{ github.run_id }}-${{ steps.artifact-binding.outputs.producer_attempt }}
           path: ${{ steps.windows-cache.outputs.directory }}
           retention-days: 1
           if-no-files-found: error
@@ -102,7 +108,7 @@ jobs:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: matrix.runner[0] == 'self-hosted'
         with:
-          name: ci-source-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ci-source-${{ github.run_id }}-${{ needs.route.outputs.producer_attempt }}
           path: ${{ runner.temp }}/ci-transfer
       - name: Restore verified same-run source locally
         id: restore
@@ -139,7 +145,7 @@ jobs:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
         with:
-          name: windows-electron-${{ github.run_id }}-${{ github.run_attempt }}
+          name: windows-electron-${{ github.run_id }}-${{ needs.route.outputs.producer_attempt }}
           path: ${{ steps.electron-transfer.outputs.directory }}
       - name: Seed the verified official Electron cache without skipping postinstall
         if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
