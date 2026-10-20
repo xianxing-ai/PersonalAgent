@@ -144,7 +144,7 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
         || !Array.isArray(event.evidenceRefs) || !event.evidenceRefs.length || !event.evidenceRefs.every(text)
         || ![event.anchorRefs, event.responsibilityRefs, event.goalRefs].every(refs => Array.isArray(refs) && refs.every(text))) fail('INVALID_ARGUMENT');
   }
-  function suppress(event: Event, revision: string, reason: Delivery['reason'], anchor?: HarnessEventAnchor) {
+  function suppress(event: Event, revision: string, reason: NonNullable<Delivery['reason']>, anchor?: HarnessEventAnchor) {
     const originalKey = key(event), old = atomic.read(originalKey);
     // A previous side effect intent is never converted into a denial or a fresh dispatch.
     if (old) return;

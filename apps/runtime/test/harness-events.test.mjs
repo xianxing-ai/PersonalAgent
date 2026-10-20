@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
-import {createRuntimeHarnessEvents} from '../dist/application/harness-events.js';
+import {createRuntimeHarnessEvents,readPersistedHarnessOriginalDelivery} from '../dist/application/harness-events.js';
 import {createRuntimeHarnessEventDelivery} from '../dist/application/harness-event-delivery.js';
+import {proactiveWorkflowDigest} from '@personal-agent/agentarts';
 
 // Explicit in-memory original Runtime/host ports. No connector, cloud or user account.
 function fixture() {
@@ -151,6 +152,32 @@ test('cancelled before dispatch settles pending only from exact inactive origina
   const saved=[...f.state.values()].map(v=>v.value).find(v=>v?.deliveryId===origin.deliveryId);
   assert.equal(saved.state,'suppressed');assert.equal(saved.reason,'cancelled');assert.equal(saved.receipt,undefined);
   assert.equal(f.counts().calls,1);assert.equal(submits,0);
+});
+
+test('persisted startup delivery readback stays read-only and retains the current control fence',async()=>{
+  const f=fixture();f.entries.first={event:f.event('a')};f.setUnknown(true);
+  const consumer=createRuntimeHarnessEvents(f.options);await consumer.start();
+  const pending=[...f.state.values()].map(v=>v.value).find(v=>v?.state==='pending');assert.ok(pending);
+  const origin={deliveryId:pending.deliveryId,eventDigest:pending.eventDigest,
+    sourceTaskId:pending.anchor.sourceTaskId,originalParentTaskId:pending.anchor.parentTaskId};
+  const binding={taskId:'host',sessionId:'s',controlRevision:0,taskDeadline:f.options.host.binding.taskDeadline};
+  f.tasks.get('host').conversationId='c-a';
+  // Explicit persisted Runtime application/session ports, not a live host constructor.
+  f.state.set('runtime-proactive-workflowsapplication:'+proactiveWorkflowDigest(['host','s']),
+    {version:1,binding,conversationId:'c-a',contractRef:'contract',entries:f.entries,
+      responsibilities:{},batches:{},schedules:{},requests:{}});
+  const sessionKey='runtime-proactive-workflowsproactive.session:'+proactiveWorkflowDigest({taskId:'host',sessionId:'s'});
+  f.state.set(sessionKey,{version:1,binding,requests:{},proposals:{},operations:{}});
+  const {host:_host,delivery:_delivery,...options}=f.options;
+  const before=JSON.stringify([...f.state]),calls=f.counts().calls;
+  const request={...options,taskId:'host',sessionId:'s'};
+  const saved=readPersistedHarnessOriginalDelivery(request,origin);assert.ok(saved);
+  assert.equal(saved.ledgerState,'pending');saved.assertCurrent();
+  assert.equal(f.counts().calls,calls);assert.equal(JSON.stringify([...f.state]),before);
+  f.settings.quiet=true;f.settings.revision='2';assert.throws(()=>saved.assertCurrent(),{code:'REVISION_CONFLICT'});
+  assert.equal(readPersistedHarnessOriginalDelivery(request,origin),undefined);
+  f.state.delete(sessionKey);assert.equal(readPersistedHarnessOriginalDelivery(request,origin),undefined);
+  await consumer.stop();
 });
 
 test('restart overlapping stop scans new entries without resending the unknown delivery',async()=>{
