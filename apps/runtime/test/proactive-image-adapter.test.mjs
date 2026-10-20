@@ -20,6 +20,28 @@ const contract={id:'fixture-observed-contract',version:'fixture-v1',criteria:'Pu
 const context=extra=>({taskId:'fixture-task',sessionId:'fixture-session',controlRevision:0,requestId:'fixture-request',
   taskDeadline:new Date(Date.now()+60000).toISOString(),deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal,...extra});
 const request=extra=>({...context(),hostAvailability:{localDevice:true,cloudPersistentHost:false},availableCapabilities:[],...extra});
+test('proactive describe and advance retain the original fixed deployment and refuse a changed binding before credentials',async()=>{
+  for(const config of [{gatewayUrl:'https://fixture.example',runtimeName:'fixture',transport:'wss',websocketUrl:'wss://fixture.example/runtimes/fixture/ws?endpoint=v5.release-1'},
+    {gatewayUrl:'https://fixture.example',runtimeName:'fixture',deploymentVersion:'v5.release-1'}]){
+    const calls=[];let current=true,credentials=0;
+    const controller=createProactiveWorkflowController({receiptSecret:secret,decisionContracts:[contract]});
+    const adapter=createRuntimeProactiveImageAdapter({config,receiptSecret:secret,assertDeploymentBinding:()=>{if(!current)throw Error('changed');},authorizationProvider:{read:async()=>{credentials++;return outer;}},
+      fetchImpl:async(url,init)=>{calls.push(url);const value=JSON.parse(JSON.parse(init.body).query);const result=await controller({value,sessionId:init.headers['x-hw-agentarts-session-id'],requestId:init.headers['X-Request-Id'],deadline:init.headers['X-PA-Deadline'],signal:init.signal});
+        return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});}});
+    await adapter.describe(context());await adapter.advancePort(request());
+    assert.equal(calls.length,2);for(const url of calls)assert.equal(new URL(url).searchParams.get('endpoint'),'v5.release-1');
+    current=false;await assert.rejects(adapter.describe(context()),{code:'REVISION_CONFLICT'});assert.equal(calls.length,2);assert.equal(credentials,2);
+  }
+  assert.throws(()=>createRuntimeProactiveImageAdapter({config:{gatewayUrl:'https://fixture.example',runtimeName:'fixture',deploymentVersion:'different',websocketUrl:'wss://fixture.example/runtimes/fixture/ws?endpoint=v5'},receiptSecret:secret,authorizationProvider:{read:async()=>outer}}),/mismatch/);
+});
+test('deployment change while credentials are pending prevents the HTTP send',async()=>{
+  let current=true,fetches=0,started,release;
+  const entered=new Promise(resolve=>{started=resolve;}),credential=new Promise(resolve=>{release=resolve;});
+  const adapter=createRuntimeProactiveImageAdapter({config:{gatewayUrl:'https://fixture.example',runtimeName:'fixture',deploymentVersion:'v5'},receiptSecret:secret,
+    assertDeploymentBinding:()=>{if(!current)throw Error('changed');},authorizationProvider:{read:()=>{started();return credential;}},fetchImpl:async()=>{fetches++;throw Error('must not send');}});
+  const pending=adapter.describe(context());await entered;current=false;release(outer);
+  await assert.rejects(pending,{code:'REVISION_CONFLICT'});assert.equal(fetches,0);
+});
 async function fixture(t,{sse=false,mutateResult,mutateEvents,dropResponse=false,workflowGoalInput}={}) {
   const proofs=createProactiveHostProofs(secret),controller=createProactiveWorkflowController({receiptSecret:secret,decisionContracts:[contract]});
   const calls=[];

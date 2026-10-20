@@ -11,6 +11,9 @@ export interface CompactableContextMessage {
   readonly content:string;
   readonly taskId?:string;
   readonly withheld?:boolean;
+  readonly createdAt?:string;
+  readonly taskState?:string;
+  readonly answerWithheld?:true;
 }
 export interface ContextCompactionScope {
   readonly taskId:string;
@@ -152,7 +155,11 @@ function snapshot(options:ContextCompactionOptions):ContextCompactionSnapshot {
   for(const message of value.messages) {
     if(!message||!validText(message.id)||ids.has(message.id)||!['user','assistant'].includes(message.role)
       ||typeof message.content!=='string'||message.withheld===true
-      ||Object.keys(message).some(key=>!['id','role','content','taskId','withheld'].includes(key))
+      ||Object.keys(message).some(key=>!['id','role','content','taskId','withheld','createdAt','taskState','answerWithheld'].includes(key))
+      ||message.createdAt!==undefined&&(typeof message.createdAt!=='string'||!Number.isFinite(Date.parse(message.createdAt)))
+      ||message.taskState!==undefined&&!['created','planning','running','waiting_approval','waiting_external',
+        'waiting_reconciliation','verifying','cancelling','succeeded','failed','cancelled'].includes(message.taskState)
+      ||message.answerWithheld!==undefined&&message.answerWithheld!==true
       ||(message.taskId!==undefined&&!validText(message.taskId)))
       throw new ProtocolError('UNAUTHORIZED','Compaction requires already eligible, distinct conversation messages');
     ids.add(message.id);

@@ -50,6 +50,7 @@ export function createRoleReceiptWriter({deploymentVersion, write = line => proc
         if (Number.isFinite(receipt.durationMs) && receipt.durationMs >= 0) output.durationMs = receipt.durationMs;
       }
       if (receipt.status === 'completed' && Number.isSafeInteger(receipt.totalTokens) && receipt.totalTokens >= 0) output.totalTokens = receipt.totalTokens;
+      if (receipt.status === 'failed' && ['model_gateway','response_shape','response_json','response_object'].includes(receipt.failureStage)) output.failureStage = receipt.failureStage;
       void Promise.resolve(write(JSON.stringify(output)+'\n')).catch(() => {});
     } catch { /* A failed observability sink cannot change model orchestration. */ }
   };

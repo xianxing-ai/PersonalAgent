@@ -1,6 +1,6 @@
 # H3 开发经验：来源、生命周期与消费接线
 
-日期：2026-10-20。状态：in_progress。Profile：huawei_ict_agentarts。
+日期：2026-10-20。状态：review（源包；不代表整个 MOD 完成）。Profile：huawei_ict_agentarts。
 
 分支：`codex/harness-experience`，实施基线 `9eb2fb08`。
 保留 goo122 的 learning 所有权及全部协作者修改；不修改 H1 独占的 RuntimeApplication/subagent-host 或 H2 独占的 Desktop 入口。
@@ -22,14 +22,14 @@ H2 在原管理入口调用 `validate/activate/stop`，保持宿主确认与版�
 H1 在后续开发子任务取得 `readApplicable` 的版本 lease，沿原 TaskRuntime 检查点持久绑定，并在每次消费及恢复时调用 `assertApplicable`。
 lease 仅提供描述性验证策略，不含 tools/scopes 或授权，也不能扩大原 Policy、ToolGateway、工作区、预算或期限。
 
-在 H1/H2 共享入口完成接线、实际消费回归和 PR 前，本工作包不声明完成。无新增 store、调度器、授权器、Core wire Schema 或数据库迁移。
+H1/H2 共享入口已在 #451 `4d303170ec29a464bcd12f827816505c9c9a3c28` 接通：Runtime 原任务完成钩子幂等提议，原 checkpoint 冻结 lease/null，dispatch/send/resume 重验；Desktop 原管理 IPC、原生确认及设置页消费同一 learning 实例。源包可供审查，真实平台验收与整个 MOD 完成状态另行记录。无新增 store、调度器、授权器、Core wire Schema 或数据库迁移。
 
 ## 实现与验证状态
 
 - 已实现 learning 生命周期适配、同一版本重激活的 sequence lease、原 Runtime 输入摘要/confirmed Evidence 检查、选中候选与重新验证和 CAS readback 绑定。
 - 依赖现有 Windows/MOD31 交付的 `coding.repair.trial`、`harness.candidates.compare`、`coding.repair.prepare_adoption`、`coding.repair.publish`；它们仍由各自唯一 writer 负责实际注册和恢复。
 - 回归源码：`packages/learning/test/developer-experience.test.mjs`、`apps/runtime/test/harness-experience.test.mjs`。Runtime 用实际 SQLite/Policy/Gateway 加显式合成工具，不冒充真实 F15、模型、云端或设备验收。
-- 按用户最新优先级，未运行构建、完整测试、全量 check 或扩大 QA；源码接齐后由主控统一安排集成验证。当前共享入口的真实调用方接线仍交 H1/H2，不能把本工厂导出当作整包完成。
+- 源包依赖闭包与 learning/Runtime 编译、两份源包测试 6/6 及 canonical journal 回归 2/2 已通过。#451 实际 Runtime 编译及 experience application consumer 3/3 通过，覆盖自动提议、原生确认后冻结 lease/停用拒绝，以及未配置普通任务冻结 null、中途启用不补绑。使用实际 Runtime/Gateway/SQLite 与明确 Synthetic coordination/host，未使用真实模型、云账号或设备，不构成真实 Windows/F15 发布验收。
 
 ## 原 receipts/session 适配（H3 owned）
 
@@ -56,4 +56,4 @@ Windows 原 `workspace-config-host` 已公布 `readHarnessExperienceCurrentSync(
 - 原设置页挂载 `mountHarnessExperienceControls(root,{invoke,status,onChanged})`；mount 自动只读刷新，离开页面调用 dispose，外部 metadata 更新调用 update。
 - 控件通过真实 validate/activate/stop 调用后读取宿主状态；未验证禁用启用按钮，最终启用仍须 `confirmActivation` 原宿主确认，旧 active revision 通过 CAS 绑定。没有 UI 本地布尔假启用，也不向 Renderer 发送 patch/源正文/路径/凭据。
 
-CI 报告的 learning strict narrowing 已通过改用明确 never 的函数声明修正；本地仅 learning 与两份 H3 Runtime 源文件的定向 noEmit 类型检查、JS/MJS 语法检查通过（复用既有声明依赖，不构建）。新增管理控件回归源码未运行。完整 CI 和实际挂载/下一任务消费仍待统一集成验证。
+CI 报告的 learning strict narrowing 已通过改用明确 never 的函数声明修正；源 head `5aae4006` 的 Foundation 已通过。当前正常同步 main `85e686fc` 后需以新 HEAD 的实际必需 CI 为准；有效非作者批准仍是独立合并门禁，旧头成功不替代新头验证。维护证据位于 `.cache/pr-maintenance-20261020/pr452/`。

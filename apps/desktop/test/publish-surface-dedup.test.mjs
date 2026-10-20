@@ -20,7 +20,7 @@ function run(t) {
   const surfaces = [];
   const window = name => ({name, isDestroyed: () => false, webContents: {send: (channel, payload) => sent.push({name, channel, payload})}});
   const context = vm.createContext({
-    runtimeClosed: false,
+    runtimeClosed: false,draftQuitPreflight:undefined,runtimeError:'',
     orb: window('orb'),
     panel: window('panel'),
     admin: window('admin'),
@@ -64,4 +64,11 @@ test('a closed runtime publishes nothing at all', t => {
 
   assert.deepEqual(surfaces, []);
   assert.deepEqual(sent, []);
+});
+
+test('unrelated runtime errors never unlock a prepared quit during ordinary publishing', t => {
+  const {context}=run(t);
+  context.draftQuitPreflight={cancel(){assert.fail('ordinary runtime feedback must not cancel quit');}};
+  context.runtimeError='unrelated configuration feedback';
+  vm.runInContext('publish()',context);
 });

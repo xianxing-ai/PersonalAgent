@@ -21,6 +21,7 @@ function visit(node) {
 }
 visit(ast);
 assert.ok(quitBranch);
+const quitFailure=ast.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='reportQuitFailure').getText(ast);
 
 function fixture({releaseFails = false} = {}) {
   let live, quitCalls = 0, prevented = 0, publishes = 0, sessionCloses = 0;
@@ -35,7 +36,8 @@ function fixture({releaseFails = false} = {}) {
     createGateway:()=>({async connect(){return {sendAudio(){},interrupt(){},async close(){sessionCloses++;}};}}),
     createConsumer:()=>({}),readContext:()=>'',client:{}});
   const event = {preventDefault(){prevented++;}};
-  const context = vm.createContext({liveVoice:live,app:{quit(){quitCalls++;}},runtimeError:'',publish(){publishes++;},Error});
+  const context = vm.createContext({liveVoice:live,app:{quit(){quitCalls++;}},draftQuitPreflight:{cancel(){}},runtimeError:'',publish(){publishes++;},Error});
+  vm.runInContext(quitFailure,context);
   const beforeQuit = vm.runInContext(`(event)=>{${quitBranch}}`,context);
   return {live,context,quit:()=>beforeQuit(event),get quitCalls(){return quitCalls;},get prevented(){return prevented;},
     get publishes(){return publishes;},get sessionCloses(){return sessionCloses;}};

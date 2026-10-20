@@ -303,7 +303,9 @@ test('disabling configuration denies old executor approval before grant consumpt
     expectedRevision:approval.revision,decision:'allow_once'}),{code:'REVISION_CONFLICT'});
   assert.equal(f.app.runtime.getApproval(approval.approvalId).state,'pending');
   assert.equal(f.app.runtime.policy.get(approval.approvalId),undefined);assert.equal(f.reads(),0);
-  assert.equal(f.app.readSubagentConversation({parentTaskId:parent.taskId,taskId:coder}).available,false);
+  const conversation=f.app.readSubagentConversation({parentTaskId:parent.taskId,taskId:coder});
+  assert.equal(conversation.canSubmit,false);
+  assert.match(conversation.submitUnavailableReason,/原模型、部署或工具绑定不可用或已变化/);
   assert.ok(f.app.readSubagentTasks(parent.taskId).some(task=>task.taskId===coder));
   assert.equal(f.app.cancelSubagentConversationTask({parentTaskId:parent.taskId,taskId:coder,executionTaskId:coder}).cancelAccepted,true);
   await f.client.call('task.cancel',{taskId:parent.taskId,reason:'Stop disabled original work'});
