@@ -47,7 +47,7 @@ test('encrypted legacy workspace adds fixed Node check without granting writes o
     const request={taskId:'node-task',signal:new AbortController().signal,
       deadline:new Date(Date.now()+30_000).toISOString()};
     assert.equal(binding.available(request),false);
-    host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:false});
+    await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:false});
     assert.equal(host.snapshot().writeAvailable,false);
     assert.equal(host.snapshot().nodeCheckAvailable,true);
     assert.equal(host.snapshot().projectScriptsAvailable,false);
@@ -61,7 +61,7 @@ test('encrypted legacy workspace adds fixed Node check without granting writes o
     assert.deepEqual(cloud.project({...request,result:{...result,stderr:`${root} private source`,stdout:'secret'}}),
       {recipeId:'node-check',exitCode:0,passed:true});
     host.revoke();assert.equal(binding.available(request),false);
-    assert.throws(()=>host.authorize({cloudExportAllowed:true,writeAllowed:false,
+    await assert.rejects(()=>host.authorize({cloudExportAllowed:true,writeAllowed:false,
       commandAllowed:true,projectCodeAllowed:true}),/尚未准备好/);
     await assert.rejects(host.selectNode(),/Node/);
     await assert.rejects(host.selectCheckFile(),/工作区/);
@@ -101,11 +101,11 @@ test('project scripts need a trusted helper, factory receipt and separate sessio
     const binding=host.competitionToolAvailability.find(item=>item.toolName==='workspace.npm_build');
     const request={taskId:'project-task',signal:new AbortController().signal};
     assert.equal(binding.available(request),false);
-    assert.throws(()=>host.authorize({cloudExportAllowed:true,writeAllowed:false,
+    await assert.rejects(()=>host.authorize({cloudExportAllowed:true,writeAllowed:false,
       commandAllowed:false,projectCodeAllowed:true}),/不能授权/);
-    host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:false});
+    await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:false});
     assert.equal(binding.available(request),false);
-    host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true});
+    await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true});
     assert.equal(binding.available(request),true);
     const output=await host.tools.find(item=>item.descriptor.name==='workspace.npm_build')
       .execute({}, {...request,scopes:['workspace:execute']});
@@ -145,7 +145,7 @@ test('current recipe readiness gates Node/project status, consent and Competitio
     loadCheckpoint:(id,key)=>checkpoints.get(`${id}:${key}`),
     saveCheckpoint:(id,key,value)=>checkpoints.set(`${id}:${key}`,value)}});
   const consent={cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true};
-  host.authorize(consent);
+  await host.authorize(consent);
   const request={taskId:'ready-task',signal:new AbortController().signal};
   const names=['workspace.node_check','workspace.npm_build','workspace.npm_test'];
   for(const name of names) assert.equal(host.competitionToolAvailability.find(item=>item.toolName===name)
@@ -154,7 +154,7 @@ test('current recipe readiness gates Node/project status, consent and Competitio
     readinessOverride=read;
     assert.equal(host.snapshot().nodeCheckAvailable,false);
     assert.equal(host.snapshot().projectScriptsAvailable,false);
-    assert.throws(()=>host.authorize(consent),/尚未准备好/);
+    await assert.rejects(()=>host.authorize(consent),/尚未准备好/);
     assert.doesNotMatch(JSON.stringify(host.snapshot()),/private diagnostic/);
   }
   readinessOverride=undefined;
@@ -169,7 +169,7 @@ test('current recipe readiness gates Node/project status, consent and Competitio
     assert.equal(host.snapshot().readAvailable,true,'command changes preserve read permission');
     assert.match(host.snapshot().commandReason,/重新装配/);
     assert.match(host.snapshot().projectReason,/重新装配/);
-    assert.throws(()=>host.authorize(consent),/尚未准备好/);
+    await assert.rejects(()=>host.authorize(consent),/尚未准备好/);
     for(const name of names) {
       const binding=host.competitionToolAvailability.find(item=>item.toolName===name);
       const exported=host.competitionToolExports.find(item=>item.toolName===name);
