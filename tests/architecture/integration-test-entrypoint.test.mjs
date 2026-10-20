@@ -12,6 +12,6 @@ test('the standard check gates root integration tests after workspace build and 
   assert.ok(steps.indexOf('npm run test --workspaces') >= 0 && steps.indexOf('npm run test --workspaces') < integration);
 });
 
-test('the integration runner discovers every root integration test without filtering failures', () => {
-  assert.equal(scripts['test:integration'], 'node --test tests/integration/*.test.mjs');
+test('the integration runner serially discovers every root integration test without filtering failures', () => {
+  assert.equal(scripts['test:integration'], 'node --test --test-concurrency=1 tests/integration/*.test.mjs');
 });
