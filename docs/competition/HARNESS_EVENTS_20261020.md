@@ -63,3 +63,30 @@ fixture 尚未执行。通过现有 TypeScript transpileModule 的源码语法�
 首个检查脚本在 Windows ESM 导入使用绝对盘符路径失败（ERR_UNSUPPORTED_ESM_URL_SCHEME），
 改为标准 file URL 后语法检查成功；没有更改产品依赖。不能以新增测试文件视为通过。
 未调用真实云、模型、业务账号或设备，不改变平台冻结或发布状态。
+
+## 2026-10-20：原生调用方顺序修复与启动前纯读取
+
+H2 接入发现，先读 grant 再处理 quiet/disabled 会漏记 suppressed，旧失效 entry 也会阻塞后续事件。
+现逐 entry 先验证原持久结构、身份、版本与 digest，再将 native quiet/disabled/host paused、过期与取消
+原子记录为 suppressed；无须让失效 grant 假通过。可投递事件才核原锚点与权限，明确撤销／不可用
+记录固定 authorization_denied，之后启用也不回填。结构损坏记录限于原 entry 的拒绝 tombstone。
+每条失败隔离；已经调用 consume 的 pending 保留，只能读原回执。
+
+新增 host-only `manager.readOriginalDelivery(origin)`，精确读取原 host/session 与 Runtime ledger，
+返回 `HarnessOriginalDelivery` 的原 event、anchor、control、deadline、ledger state/revision 和
+同步 `assertCurrent`。这些只读信息及 fence 供 H2 组合当前配置／权限，再由 H1 对同一 created root
+做已证明尚无 attempt 的原首次续排；H6 不创建替代 root，也不重新 consume。
+
+启动阶段尚无 live host 时，`readPersistedRuntimeProactiveWorkflow(runtime,taskId,sessionId)`
+在原持久模块封装 application/session key，读取原 TaskRuntime atomic state；
+`readPersistedHarnessOriginalDelivery(options,origin)` 组合相同证据和当前授权／偏好。
+无 host constructor、adapter.describe、网络、签名、调度或状态初始化；缺原 session 或 ledger 不补造。
+读取的是本机原持久记录，不把读取操作本身视为平台签名重新验真。只供 trusted host，不返回 Renderer 或模型目录。
+
+新增一条针对性组合回归已在 Node v24.19.0 运行，1/1 通过；覆盖 quiet 下失效 resolver、撤权后不回填、
+损坏旧 entry 后的新事件、unknown 保留与只读 origin fence。使用当前源码的隔离 transpile，
+仅改导入位置，contracts 使用原已存在产物，未安装／重建其他 workspace。
+隔离工具首轮 NodeNext 缺 package 上下文生成 CommonJS，导入 named export 失败；
+改为显式 ESM 后单例通过，此工具修正没有更改产品模块语义。
+随后追加的静态 startup reader 仅检查 TypeScript 语法及 Node --check，未扩大测试。
+旧四条 fixture、完整类型检查、H1/H2 生产装配和统一验证仍待执行，不以此单例完成整个 H6 验收。

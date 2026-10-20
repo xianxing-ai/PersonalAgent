@@ -84,3 +84,31 @@ test('payload drift and revoked authorization fail closed without creating anoth
   const denied=createRuntimeHarnessEvents(other.options);await denied.start();await denied.stop();
   assert.equal(other.counts().calls,0);assert.doesNotMatch(JSON.stringify(denied.inspect()),/PRIVATE/);
 });
+
+test('suppression and rejected entries persist without blocking later authorized events or replaying unknown writes',async()=>{
+  const f=fixture();let denied=true;const original=f.options.resolveAnchor;
+  f.entries.quiet={event:f.event('a','quiet')};f.settings.quiet=true;
+  f.options.resolveAnchor=()=>{throw Error('PRIVATE expired grant');};
+  const consumer=createRuntimeHarnessEvents(f.options);await consumer.start();
+  assert.equal(f.counts().calls,0);
+  assert.equal([...f.state.values()].filter(v=>v.value?.reason==='quiet').length,1);
+  f.settings.quiet=false;f.settings.revision='2';
+  f.entries.denied={event:f.event('a','denied')};
+  f.entries.malformed={event:{...f.event('a','malformed'),evidenceRefs:[]}};
+  f.options.resolveAnchor=event=>{if(event.sourceVersion==='denied'&&denied)throw Error('PRIVATE revoked');return original(event);};
+  f.entries.good={event:f.event('a','good')};await consumer.flush();
+  assert.equal(f.counts().calls,1);
+  assert.equal([...f.state.values()].filter(v=>v.value?.reason==='authorization_denied').length,1);
+  assert.equal([...f.state.values()].filter(v=>v.value?.state==='rejected').length,1);
+  denied=false;await consumer.flush();assert.equal(f.counts().calls,1);
+  f.setUnknown(true);f.entries.unknown={event:f.event('a','unknown')};await consumer.flush();
+  const pending=[...f.state.values()].map(v=>v.value).find(v=>v?.state==='pending');assert.ok(pending);
+  const origin={deliveryId:pending.deliveryId,eventDigest:pending.eventDigest,
+    sourceTaskId:pending.anchor.sourceTaskId,originalParentTaskId:pending.anchor.parentTaskId};
+  const before=f.counts().calls,readback=consumer.readOriginalDelivery(origin);assert.equal(readback.ledgerState,'pending');
+  readback.assertCurrent();assert.equal(f.counts().calls,before);
+  f.settings.quiet=true;f.settings.revision='3';assert.throws(()=>readback.assertCurrent());
+  await consumer.flush();assert.equal(f.counts().calls,before);
+  assert.equal([...f.state.values()].filter(v=>v.value?.state==='pending').length,1);
+  await consumer.stop();assert.doesNotMatch(JSON.stringify(consumer.inspect()),/PRIVATE/);
+});
