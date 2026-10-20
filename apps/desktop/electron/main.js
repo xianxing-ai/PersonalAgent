@@ -4,6 +4,7 @@ import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
+import {createMemoryWatchdog} from './memory-watchdog.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
@@ -153,6 +154,7 @@ let subagentListWindow;
 let adminNavigation = {page: 'settings', revision: 0};
 let tray;
 let poll;
+let memoryWatchdog;
 let pinned = false;
 let dragging = false;
 let orbDragRevision = 0;
@@ -199,6 +201,17 @@ if (competitionMode) {
 let thinking = {depth: 1, fast: false, applied: false, reason: 'Runtime 尚未公开思考参数契约'};
 const tasks = new Map();
 const taskGoals = new Map();
+// Goals are a display cache: the conversation store and SQLite keep the durable copy, so the
+// oldest entries can be dropped without losing history (#435).
+const TASK_GOAL_LIMIT = 500;
+function rememberTaskGoal(taskId, goal) {
+  taskGoals.set(taskId, goal);
+  if (taskGoals.size <= TASK_GOAL_LIMIT) return;
+  for (const key of taskGoals.keys()) {
+    if (taskGoals.size <= TASK_GOAL_LIMIT) break;
+    if (key !== taskId) taskGoals.delete(key);
+  }
+}
 let conversations;
 const submitting = new Set();
 const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
@@ -1029,7 +1042,7 @@ async function submitChildConversation(binding,payload){
   installedSkillsHost?.assertTask(binding.taskId);
   const result=await runtimeApplication.submitSubagentConversationMessage({...binding,...payload});
   const task=runtimeApplication.runtime.getTask(result.acceptedTaskId);
-  tasks.set(task.taskId,structuredClone(task));taskGoals.set(task.taskId,task.goal);
+  tasks.set(task.taskId,structuredClone(task));rememberTaskGoal(task.taskId,task.goal);
   publish();return result;
 }
 async function cancelChildConversation(binding,executionTaskId){
@@ -1323,7 +1336,7 @@ async function syncRuntimeSnapshots() {
   do {
     const page = await client.call('task.list', {limit: 100, ...(beforeSequence ? {beforeSequence} : {}), ...(snapshotSequence === undefined ? {} : {snapshotSequence})});
     snapshotSequence = page.snapshotSequence;
-    for (const task of page.items) { tasks.set(task.taskId, structuredClone(task)); if (task.goal) taskGoals.set(task.taskId, task.goal); }
+    for (const task of page.items) { tasks.set(task.taskId, structuredClone(task)); if (task.goal) rememberTaskGoal(task.taskId, task.goal); }
     beforeSequence = page.nextBeforeSequence;
   } while (beforeSequence);
   const pending = await client.call('approval.list', {state: 'pending', limit: 100});
@@ -1573,7 +1586,7 @@ async function initializeRuntime() {
             {deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal}),
           onUpdate:publish,
           onTask:({taskId,goal}) => {
-            conversations.add(taskId,'panel',goal); taskGoals.set(taskId,goal);
+            conversations.add(taskId,'panel',goal); rememberTaskGoal(taskId,goal);
           },
         });
       }
@@ -2146,7 +2159,7 @@ async function initializeRuntime() {
     application:runtimeApplication,client,mail:mailHost,config:mailConfig,namespace:desktopHost.userNamespace,
     onUpdate:publish,onTask:({taskId,goal})=>{
       if (!conversations.turns.has(taskId)) conversations.add(taskId,'panel',goal);
-      taskGoals.set(taskId,goal);
+      rememberTaskGoal(taskId,goal);
     },
   });
   await syncCapabilities();
@@ -2158,7 +2171,7 @@ async function initializeRuntime() {
     createCognitionHost:runtimeModule.createProactiveCognitionHost,
     onAnalysisTask: ({taskId, goal}) => {
       if (!conversations.turns.has(taskId)) conversations.add(taskId, 'panel', goal);
-      taskGoals.set(taskId, goal);
+      rememberTaskGoal(taskId, goal);
     },
   });
   if(competitionMode && memoryLearningHost && proactiveHost) {
@@ -3201,7 +3214,7 @@ async function action(event, name, payload) {
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode});
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);
-    taskGoals.set(result.taskId, userGoal);
+    rememberTaskGoal(result.taskId, userGoal);
     if (sender === panel) pinned = true;
     const task = await refresh(result.taskId);
     return task;
@@ -3299,7 +3312,7 @@ async function initializeSisVoice() {
         }
       },
       onTaskSubmitted: ({taskId, goal}) => {
-        taskGoals.set(taskId, goal);
+        rememberTaskGoal(taskId, goal);
         conversations.add(taskId, 'panel', goal);
       }});
     const wake = createDesktopWakeVoiceHost({getPanel: () => panel, microphoneHost: microphoneCaptureHost,
@@ -3428,7 +3441,7 @@ async function initializeLiveVoice() {
     onFinalUserCommand:receipt=>voiceCommandHost?.consumeFinal(receipt),
     prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope),
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
-    onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {taskGoals.set(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
+    onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
       currentUserQuestion:voiceQuestionForConversation(conversationId),
       agentArts:{configured:agentArtsConfig.snapshot().configured,reason:agentArtsSnapshot().reason},
@@ -3572,6 +3585,34 @@ app.whenReady().then(async () => {
     if ((near && desktopHost.settings.hover) || inside || pinned) { away = 0; if (near && desktopHost.settings.hover && !panel.isVisible()) openPanel(); }
     else if (panel.isVisible()) { if (!away) away = Date.now(); else if (Date.now() - away > 520) { void hidePanel().catch(reportPanelVoiceFailure); away = 0; } }
   }, 80);
+  // Long-running sessions grow a renderer past what the user can keep using (#435). A reload is
+  // guarded: editable/unknown surfaces remain open, and active work or voice prevents recycling.
+  memoryWatchdog = createMemoryWatchdog({
+    getMetrics: () => app.getAppMetrics(),
+    resolveTarget: async pid => {
+      const windows = [panel, admin, workspace, orb, ...[...subagentWindows.values()].map(record => record.window)];
+      for (const win of windows) {
+        if (!win || win.isDestroyed()) continue;
+        try {
+          if(win.webContents.getOSProcessId()!==pid)continue;
+          // Editable surfaces have no atomic draft-flush/reload handshake. Only the stateless orb
+          // can be recycled; all conversation and settings windows retain their in-memory input.
+          if(win!==orb){
+            console.warn('[memory] oversized renderer retained to protect unsaved input',{pid});return undefined;
+          }
+          return win.webContents;
+        }catch{return undefined;}
+      }
+      return undefined;
+    },
+    isBusy: () => runtimeClosed || runtimeStartup.snapshot().state === 'starting'
+      || submitting.size>0 || voiceConfigurationPending || panelHiding
+      || (runtimeApplication?.activeTaskCount ?? 0) > 0 || liveVoice?.hasActive()===true
+      || voiceInput?.hasActive()===true || wakeVoice?.hasActive()===true
+      || microphoneCaptureHost?.snapshot().busy===true,
+    onReload: info => {console.warn('[memory] reloaded an oversized renderer', {pid: info.pid, megabytes: Math.round(info.bytes / 1024 / 1024)});},
+  });
+  memoryWatchdog.start();
   app.on('before-quit', event => {
     if (runtimeStartup.snapshot().state === 'starting') {
       event.preventDefault(); runtimeError = 'Runtime 正在连接，请稍后退出'; publish(); return;
@@ -3699,6 +3740,7 @@ app.whenReady().then(async () => {
       if (runtimeApplication) runtimeApplication.close();
       else runtime?.close?.();
       runtimeClosed = true;
+      memoryWatchdog?.stop();
       competitionCatalog?.close();
       productTools?.close();
       codingWorkspace?.close();
