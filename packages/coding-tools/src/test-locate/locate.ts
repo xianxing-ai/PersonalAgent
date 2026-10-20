@@ -23,6 +23,8 @@ export interface TestFailure {
 export interface TestFailureReport {
   failures: TestFailure[];
   totalFailures: number;
+  /** Present only when the whole-report size budget dropped snippets. */
+  snippetsTruncated?: number;
 }
 
 export interface TestLocateOptions {
@@ -32,6 +34,10 @@ export interface TestLocateOptions {
   contextLines?: number;
   /** Maximum accepted input length. Default 2 MiB. */
   maxInputBytes?: number;
+  /** Trusted posix-relative file or directory prefixes. Absent or empty denies all snippet reads. */
+  allowedPaths?: readonly string[];
+  /** Whole-report budget for snippet file reads. Default 64; 0 disables snippets. */
+  maxSnippetReads?: number;
 }
 
 interface RawFailure {
@@ -193,16 +199,18 @@ function parseTap(output: string, root: string): RawFailure[] {
   return failures.filter(failure => !failure.container);
 }
 
-function readSnippet(file: string, line: number, context: number, root: string): string | undefined {
+function readSnippet(file: string, line: number, context: number, root: string, allowedPaths: readonly string[]): string | undefined {
   let fd: number | undefined;
   try {
     const candidate = absoluteOf(file, root);
     if (foreignWindowsPath(candidate) || !withinRoot(root, candidate)) return undefined;
     const canonical = realpathSync.native(candidate);
     if (!withinRoot(root, canonical)) return undefined;
+    const canonicalRelative = toPosix(relative(root, canonical));
+    if (!allowedPaths.some(prefix => canonicalRelative === prefix || canonicalRelative.startsWith(`${prefix}/`))) return undefined;
     fd = openSync(canonical, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
     const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.size > MAX_SOURCE_BYTES || realpathSync.native(candidate) !== canonical) return undefined;
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > MAX_SOURCE_BYTES || realpathSync.native(candidate) !== canonical) return undefined;
     const buffer = Buffer.alloc(MAX_SOURCE_BYTES + 1);
     let size = 0;
     while (size < buffer.length) {
@@ -238,6 +246,17 @@ export function locateTestFailures(output: string, options: TestLocateOptions = 
   if (Buffer.byteLength(output) > maxBytes) invalid('Test output exceeds the configured byte limit');
   const contextLines = options.contextLines ?? 2;
   if (!Number.isSafeInteger(contextLines) || contextLines < 0 || contextLines > 8) invalid('Invalid context line count');
+  const maxSnippetReads = options.maxSnippetReads ?? 64;
+  if (!Number.isSafeInteger(maxSnippetReads) || maxSnippetReads < 0 || maxSnippetReads > 64) invalid('Invalid snippet read budget');
+  const allowedPaths = options.allowedPaths ?? [];
+  if (allowedPaths !== undefined) {
+    if (!Array.isArray(allowedPaths) || allowedPaths.some(value => typeof value !== 'string' || !value.trim()
+      || value.includes('\\') || value.startsWith('/') || value.split('/').some(part => part === '..' || part === ''))) {
+      invalid('Allowed path prefixes must be relative posix paths');
+    }
+  }
+  const readAllowed = (file: string): boolean => allowedPaths.some(prefix => file === prefix || file.startsWith(`${prefix}/`));
+  let snippetReads = 0;
   const root = realpathSync.native(options.root ?? process.cwd());
   const isTap = /^TAP version/mu.test(output) || /^not ok /mu.test(output);
   const parsed = isTap ? parseTap(output, root) : parseSpec(output, root);
@@ -252,10 +271,25 @@ export function locateTestFailures(output: string, options: TestLocateOptions = 
       timedOut: f.timedOut,
       reporter: isTap ? 'tap' as const : 'spec' as const,
       frames: f.frames.map((frame, index): TestFailureFrame => {
-        const snippet = readSnippet(frame.file, frame.line, contextLines, root);
+        // Being inside the workspace root is not read permission: only trusted
+        // prefixes open files, within one whole-report read budget.
+        const snippet = readAllowed(frame.file) && snippetReads < maxSnippetReads
+          ? (snippetReads++, readSnippet(frame.file, frame.line, contextLines, root, allowedPaths)) : undefined;
         return {...frame, ...(snippet === undefined ? {} : {snippet}),
           confidence: scoreFrame(index, f.frames.length, frame.file, f.timedOut)};
       }),
     }));
-  return {failures, totalFailures: failures.length};
+  const report: TestFailureReport = {failures, totalFailures: failures.length};
+  // Keep the exported report inside the bounded continuation envelope; drop
+  // snippets from the least-confident end when the projection overflows.
+  let truncated = 0;
+  while (Buffer.byteLength(JSON.stringify(report), 'utf8') > 240_000) {
+    const frame = [...report.failures].reverse().flatMap(failure => [...failure.frames].reverse())
+      .find(candidate => candidate.snippet !== undefined);
+    if (!frame) break;
+    delete frame.snippet;
+    truncated++;
+  }
+  if (Buffer.byteLength(JSON.stringify(report), 'utf8') > 240_000) invalid('Test failure report exceeds the configured output budget');
+  return truncated ? {...report, snippetsTruncated: truncated} : report;
 }

@@ -37,3 +37,17 @@ test('event payload and evidence verification must be explicit', () => {
   assert.throws(() => parseEvent({...event,payload:{percent:50}}));
   assert.throws(() => validateContract('evidence',{evidenceId:'e',verification:'done'}));
 });
+
+test('repeated fixed-reference checks validate current values and still reject unknown contracts', () => {
+  const snapshot = {taskId:'t',state:'running',revision:1,updatedAt:'2026-10-20T00:00:00Z',steps:[],evidenceRefs:[]};
+  for (let i = 0; i < 100; i++) {
+    validateContract('snapshot',snapshot);
+    assert.throws(() => validateContract('snapshot',{...snapshot,state:'invented'}),{code:'INVALID_ARGUMENT'});
+    assert.throws(() => validateContract('snapshot',{...snapshot,unexpected:true}),{code:'INVALID_ARGUMENT'});
+  }
+  snapshot.revision = -1;
+  assert.throws(() => validateContract('snapshot',snapshot),{code:'INVALID_ARGUMENT'});
+  assert.throws(() => validateContract('unregistered',snapshot));
+  snapshot.revision = 2;
+  validateContract('snapshot',snapshot);
+});

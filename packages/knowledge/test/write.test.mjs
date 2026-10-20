@@ -10,7 +10,10 @@ import {openControlledVaultWriter, createKnowledgeWriteTool, KNOWLEDGE_WRITE_SCO
 const powerShellPath = process.env.PA_TEST_POWERSHELL ?? (process.env.PATH ?? '').split(delimiter)
   .map(directory => join(directory, 'pwsh.exe')).find(existsSync);
 const windows = process.platform === 'win32' && Boolean(powerShellPath);
-const processIdentityHelperPath = process.env.PA_TEST_JOB_HOST_EXE;
+// Reuse the native helper built by CI or the coding-tools Windows fixture build.
+// PowerShell alone cannot prove that an inflight marker's original process exited.
+const processIdentityHelperPath = process.env.PA_TEST_JOB_HOST_EXE
+  ?? fileURLToPath(new URL('../../coding-tools/native/bin/Release/net8.0-windows/WindowsJobProcessHost.exe', import.meta.url));
 const nativeIdentity = process.platform === 'win32' && typeof processIdentityHelperPath === 'string'
   && existsSync(processIdentityHelperPath) ? processIdentityHelperPath : undefined;
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -171,8 +174,11 @@ test('empty frontmatter remains byte-for-byte intact when the selected body para
   assert.equal(await readFile(join(root, 'demo.md'), 'utf8'), content.replace('待整理段落', '已整理的合成段落'));
 });
 
-test('a user edit between reconciliation reads returns unknown and retains both durable markers', {skip: !windows}, async t => {
-  const {root, recovery, writer, options, input, context} = await fixture(t);
+test('a user edit between reconciliation reads returns unknown and retains both durable markers', {
+  skip: !windows ? 'Windows and PowerShell 7 are required'
+    : nativeIdentity === undefined ? 'WindowsJobProcessHost.exe is required to reach reconciliation readback' : false,
+}, async t => {
+  const {root, recovery, writer, options, input, context} = await fixture(t, true);
   const authorized = context(), receipt = await writer.apply(input, authorized);
   const canonicalRoot = realpathSync.native(root);
   const helperMarker = join(recovery, digest(canonicalRoot + '\ndemo.md').slice(0, 32) + '.inflight');

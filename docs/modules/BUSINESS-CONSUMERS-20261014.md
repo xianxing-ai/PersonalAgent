@@ -42,3 +42,17 @@ Competition 目录（`apps/desktop/electron/main.js` 组装）中业务面工具
 4. 缺口 5 在镜像版本可用后单独记录，不改断言、不代验他人模块。
 
 凭据全部本地配置，不入仓。每个 PR 由任一非作者在当前 head 有效 Approve + 实际检查后按授权合并。
+
+## 4. 进度更新（#423 阶段记录，2026-10-19）
+
+- 缺口 1（F12 通知事件版本）：已由 #391 合入 main（`notifications.events` 快照分页 + snapshotRevision 协议）。
+- 缺口 2（开发工作流入口工具化）：审计修正——F16/F19 已有 `developer.ci_list/ci_fix`、`developer.issue_list/issue_triage` 入口（runtime `developer-workflows.ts`，1.0.0，镜像提案可直接消费）；F15 由 #382 的 `coding.repair.workflow` 覆盖。本 PR 补齐最后一项 **F17：`developer.test_locate`**（确定性定位器入口：不调模型、零嵌套工具、摘录读取限定受信组合 root、未配置显式 Unavailable、目录声明 sideEffect=read）。
+- 缺口 3：Open-Meteo/OpenAlex 国内实测可达（记录于 #355）。
+- 剩余：缺口 4 验收场景集、缺口 5 镜像独立 Evidence。
+## 5. 进度更新（#427 后续验收记录，2026-10-19）
+
+- 缺口 3（端点实测）：Open-Meteo/OpenAlex 从真实执行环境（本机国内网络）实测可达（HTTP 200，~2s），记录于 #355 评论；无需换国内 Provider。
+- 缺口 1（F12 通知事件版本）：已由 #391 合入 main（`notifications.events` 快照分页 + snapshotRevision 协议）。
+- 缺口 2（开发工作流入口工具化）：审计修正——F16/F19 已有 `developer.ci_list/ci_fix`、`developer.issue_list/issue_triage`（runtime `developer-workflows.ts`，1.0.0）；F15 由 #382 的 `coding.repair.workflow` 覆盖；本工作包补齐最后一项 **F17：`developer.test_locate`**（确定性解析、不调模型、摘录读取限受信 allowedPaths、未配置显式 Unavailable），见 #423。
+- 缺口 4（验收场景汇总）：`tests/manual/business-consumers-acceptance.mjs` 六项检查，声明按实测范围收窄（写回 CAS/批次部分确认/旧快照续页拒绝/定向取消与未知不重试用例），快照见证据目录 `acceptance-checks.json`。
+- 缺口 5（镜像独立 Evidence）首批：weather（F11）与 research（F10）全链路真实证据（云端提案→子任务派发→本地 Provider 实调→续答 succeeded），采集入口 `tests/manual/agentarts/business-consumers-cloud-e2e.cjs`，快照与边界见 [docs/competition/evidence/business-consumers-20261019/](../competition/evidence/business-consumers-20261019/README.md)。写路径模块与实机送达验收仍待用户配合。

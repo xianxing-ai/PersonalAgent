@@ -3,6 +3,7 @@ import {structuredPatch} from 'diff';
 import ts from 'typescript';
 import {ProtocolError} from '@personal-agent/contracts';
 import {parseCodingRepairInput,parseCodingRepairPatch,parseCodingRepairCheckReadback} from '@personal-agent/contracts/coding-repair';
+import {harnessCandidateArtifactDigest} from '@personal-agent/contracts/harness-candidates';
 import type {CodingRepairInput,CodingRepairSnapshot,CodingRepairPatch,CodingRepairVerificationReceipt,CodingRepairDiagnostic} from '@personal-agent/contracts/coding-repair';
 
 /** Data analysis only. No filesystem, subprocess, model, authorization or task store. */
@@ -16,8 +17,7 @@ export const codingRepairDigest=(value:unknown):string=>createHash('sha256').upd
 export const codingPackageGraphDigest=(snapshot:CodingRepairSnapshot):string=>codingRepairDigest(snapshot.packages
   .map(p=>({id:p.id,path:p.path,dependencies:[...p.dependencies].sort()})).sort((a,b)=>a.id.localeCompare(b.id)));
 export function codingSnapshotFingerprint(snapshot:CodingRepairSnapshot):string {
-  return codingRepairDigest({files:snapshot.files.map(f=>({path:f.path,sha256:f.sha256,packageId:f.packageId,kind:f.kind})).sort((a,b)=>a.path.localeCompare(b.path)),
-    packages:snapshot.packages.map(p=>({id:p.id,path:p.path,dependencies:[...p.dependencies].sort()})).sort((a,b)=>a.id.localeCompare(b.id))});
+  return harnessCandidateArtifactDigest(snapshot);
 }
 export function codingRepairConfiguration(input:unknown):CodingRepairInput|undefined {
   if(!input||typeof input!=='object'||Array.isArray(input)||!Object.hasOwn(input,'codingRepair'))return;

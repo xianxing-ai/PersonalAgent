@@ -39,6 +39,15 @@ test('a synchronous Runtime close failure after draft commit cancels and unfreez
   assert.equal(win.webContents.eventNames().length,0);assert.match(f.context.runtimeError,/synthetic Runtime close failure/);
 });
 
+test('H6 close failure unlocks preflight drafts before retaining the original Runtime',async()=>{
+  const f=fixture();let cancelled=0;
+  Object.assign(f.context,{harnessEventsHost:{close:async()=>{throw Error('synthetic close failed');}},
+    harnessExperienceLifetime:new AbortController(),draftQuitPreflight:{allow:()=>true,cancel(){cancelled++;}}});
+  f.app.quit();await tick();await tick();
+  assert.equal(cancelled,1);assert.equal(f.exited,false);
+  assert.equal(f.calls.includes('runtime-close'),false);assert.match(f.context.runtimeError,/开发事件消费尚未停止/);
+});
+
 const main = readFileSync(process.env.QUIT_PREFLIGHT_MAIN_SOURCE || new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', main, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 let callback;
@@ -73,7 +82,8 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
-    'windowsControlHost','developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog'];
+    'windowsControlHost','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
+    'harnessEventsHost','harnessEventsClosing','harnessContextHost'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
     submitting:new Set(),draftQuitPreflight:{allow:()=>true,commit:()=>true,cancel(){}},
@@ -87,7 +97,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
     localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
-    windowsControlClosed: false, windowsControlClosing: undefined,
+    windowsControlClosed: false, windowsControlClosing: undefined, harnessEventsClosed:false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
@@ -176,6 +186,16 @@ test('a zero-task quit retains the original cleanup sequence', async () => {
   assert.ok(f.calls.indexOf('voice-dispose') < f.calls.indexOf('runtime-close'));
   assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);
   assert.ok(f.calls.indexOf('installed-skills-close') < f.calls.indexOf('runtime-close'));
+});
+
+test('accepted quit releases the active orb drag timer', async () => {
+  const f = fixture(), cleared = [], timer = {};
+  f.context.orbDragPoll = timer;
+  f.context.clearInterval = value => cleared.push(value);
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited, true);
+  assert.ok(cleared.includes(timer));
+  assert.equal(f.context.orbDragPoll, undefined);
 });
 
 test('connector conversation permits close only after quit is accepted and before Runtime',async()=>{

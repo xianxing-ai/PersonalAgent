@@ -170,7 +170,12 @@ test('multi-file publish journals the confirmed prefix and preserves a concurren
 });
 
 test('publish CAS covers verification dependencies and global lockfiles, but permits unrelated package edits',async t=>{
-  for(const change of ['dependency','lock','unrelated'])await t.test(change,async t=>{
+  // Conflict preflight is portable; the unrelated case proceeds to the real locked
+  // write, whose production contract requires Windows and a trusted PowerShell host.
+  for(const change of ['dependency','lock','unrelated'])await t.test(change,{
+    skip: change==='unrelated' && (process.platform!=='win32' || !existsSync(powerShellPath))
+      ? 'Successful locked publish requires Windows and the configured PowerShell host' : false,
+  },async t=>{
     const f=await fixture(t,{recipes:[{recipeId:'node-test',packageIds:['pkg:packages/b'],required:true}],
       prepareWorkspace:async()=>({ready:true}),createCommandTool:({rootPath})=>createWorkspaceCommandTool({rootPath,recipes:[{id:'node-test',executable:process.execPath,args:['-e','process.exit(0)']} ]})});
     for(const name of ['a','b','c']){await mkdir(path.join(f.user,'packages',name),{recursive:true});await writeFile(path.join(f.user,'packages',name,'package.json'),JSON.stringify({name:'@fixture/'+name,...(name==='b'?{dependencies:{'@fixture/a':'1.0.0'}}:{})}));await writeFile(path.join(f.user,'packages',name,'index.js'),'export const value=1;\n');}

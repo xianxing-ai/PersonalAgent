@@ -1,3 +1,7 @@
+import {mountHarnessControls} from './harness-controls.js';
+import {mountDeveloperControls} from '../features/admin/developer-controls.js';
+import {mountHarnessExperienceControls} from '../features/admin/harness-experience-controls.js';
+
 /** Safe presentation only; the trusted host independently enforces the declaration. */
 export function describeModelThinking(entry, depth) {
   if (depth !== undefined && (!Number.isInteger(depth) || depth < 0 || depth > 5)) throw Error('思考深度无效');
@@ -62,6 +66,10 @@ export function mountModelApiControls(root, invoke) {
     <button data-model-api="remove" type="button">删除并撤销</button>
     <p data-model-api="status" class="notice" role="status"></p></div>`;
   root.append(settings);
+  const harness=mountHarnessControls(root,invoke);
+  const developer=mountDeveloperControls(root,invoke);
+  const experienceRoot=document.createElement('div');root.append(experienceRoot);
+  let experience=mountHarnessExperienceControls(experienceRoot,{invoke});
   const field = name => settings.querySelector(`[data-model-api="${name}"]`);
   let state = {}, busy = false, closed = false, destinationChanged = false;
   const effortInputs = [...settings.querySelectorAll('[data-model-effort]')];
@@ -92,6 +100,9 @@ export function mountModelApiControls(root, invoke) {
   function render(value = {}, selectedId = field('saved').value) {
     if (closed) return;
     state = value;
+    harness.render(value);
+    developer.render(value.developerSettings);
+    experience?.update(value.harnessExperience??{available:false,entries:[],reason:'开发经验尚未接通'});
     field('defaultExecution').textContent = value.defaultExecution?.reason
       ?? '默认 AgentArts 子任务执行器尚未公布；独立 API 按子对话明确选型使用';
     field('saved').replaceChildren();
@@ -153,7 +164,11 @@ export function mountModelApiControls(root, invoke) {
     if (closed) return;
     state = value;
     if (!destinationChanged) field('requestBudget').textContent = describeModelRequestBudget(state.models?.find(entry=>entry.id===field('saved').value));
-  }, showSettings(show) {settings.hidden = !show;}, close() {
-    closed = true; field('key').value = ''; settings.remove();
+  }, showSettings(show) {
+    settings.hidden = !show;harness.showSettings(show);developer.showSettings(show);experienceRoot.hidden=!show;
+    if(show&&!experience)experience=mountHarnessExperienceControls(experienceRoot,{invoke,status:state.harnessExperience});
+    else if(!show&&experience){experience.dispose();experience=undefined;experienceRoot.replaceChildren();}
+  }, close() {
+    closed = true; field('key').value = ''; settings.remove();harness.close();developer.close();experience?.dispose();experienceRoot.remove();
   }};
 }

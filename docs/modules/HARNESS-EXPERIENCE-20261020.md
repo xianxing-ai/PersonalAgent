@@ -56,7 +56,7 @@ Windows 原 `workspace-config-host` 已公布 `readHarnessExperienceCurrentSync(
 - 原设置页挂载 `mountHarnessExperienceControls(root,{invoke,status,onChanged})`；mount 自动只读刷新，离开页面调用 dispose，外部 metadata 更新调用 update。
 - 控件通过真实 validate/activate/stop 调用后读取宿主状态；未验证禁用启用按钮，最终启用仍须 `confirmActivation` 原宿主确认，旧 active revision 通过 CAS 绑定。没有 UI 本地布尔假启用，也不向 Renderer 发送 patch/源正文/路径/凭据。
 
-CI 报告的 learning strict narrowing 已通过改用明确 never 的函数声明修正；源 head `5aae4006` 的 Foundation 已通过。当前正常同步 main `85e686fc` 后需以新 HEAD 的实际必需 CI 为准；有效非作者批准仍是独立合并门禁，旧头成功不替代新头验证。维护证据位于 `.cache/pr-maintenance-20261020/pr452/`。
+CI 报告的 learning strict narrowing 已通过改用明确 never 的函数声明修正；源 head `5aae4006` 的 Foundation 已通过。该结果仅属于历史 head，不代表当前整合源码联合通过。正常同步 main `85e686fc` 后需以新 HEAD 的实际必需 CI 为准；有效非作者批准仍是独立合并门禁，旧头成功不替代新头验证。维护证据位于 `.cache/pr-maintenance-20261020/pr452/`。
 
 ## 本人发布后仅汇报的只读来源断言
 

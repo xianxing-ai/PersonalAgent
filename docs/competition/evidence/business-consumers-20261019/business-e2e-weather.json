@@ -1,0 +1,61 @@
+{
+  "profile": "huawei_ict_agentarts",
+  "surface": "Electron Desktop 业务工具全链路（非合成组合）",
+  "startedAt": "2026-10-19T11:22:48.895Z",
+  "dataClass": "public",
+  "scenario": "weather",
+  "expectTool": "weather.forecast",
+  "userData": "<local-userdata>",
+  "stage": "capture",
+  "sourceTaskId": "11162e04-5a94-4c4f-a177-b6cee74fe2b3",
+  "sourceState": "succeeded",
+  "resultSummary": "已确认的次级任务结果为：北京 2026-10-19（公制单位）局部多云，最低气温 6.9°C，最高气温 18.2°C，降水概率 0%；数据来源 open-meteo，发布时间类型 coverage_start，获取时间 2026-10-19T11:23:00.300Z（缓存 ageMs 0，ttlMs 600000）。地点解析显示“北京”存在歧义（ambiguous 为 true，置信度 high），备选包括“北京, 重庆市, 中国”和“北京, 四川, 中国”。该结果为未验证状态，仅覆盖上述日期与地点，未包含其他日期、地点或后续动作。\n[profile=huawei_ict_agentarts; verification=unverified]",
+  "resultMetadata": {
+    "profile": "huawei_ict_agentarts",
+    "verification": "unverified"
+  },
+  "approvalMode": "automatic-read-tool",
+  "fetchInfo": [
+    {
+      "attempt": 1,
+      "startedAt": "2026-10-19T11:22:58.213Z",
+      "url": "https://geocoding-api.open-meteo.com/v1/search?name=%E5%8C%97%E4%BA%AC&count=5&language=zh&format=json",
+      "status": 200,
+      "responseAt": "2026-10-19T11:22:59.284Z"
+    },
+    {
+      "attempt": 2,
+      "startedAt": "2026-10-19T11:22:58.213Z",
+      "url": "https://geocoding-api.open-meteo.com/v1/search?name=%E5%8C%97%E4%BA%AC&count=5&language=en&format=json",
+      "status": 200,
+      "responseAt": "2026-10-19T11:22:59.394Z"
+    },
+    {
+      "attempt": 3,
+      "startedAt": "2026-10-19T11:22:59.396Z",
+      "url": "https://api.open-meteo.com/v1/forecast?latitude=39.9075&longitude=116.39723&daily=temperature_2m_min,temperature_2m_max,",
+      "status": 200,
+      "responseAt": "2026-10-19T11:23:00.299Z"
+    }
+  ],
+  "subtaskIds": [
+    "6ed3a17c-be3c-4062-9251-a313722dcdc4"
+  ],
+  "toolExecutions": [
+    {
+      "toolName": "subagent.dispatch",
+      "toolVersion": "1.0.0",
+      "state": "confirmed",
+      "policyDecision": "allow",
+      "evidenceId": "competition-tool-11162e04-5a94-4c4f-a177-b6cee74fe2b3-1"
+    },
+    {
+      "toolName": "weather.forecast",
+      "toolVersion": "0.1.0-alpha.1",
+      "state": "confirmed",
+      "policyDecision": "allow",
+      "evidenceId": "competition-tool-6ed3a17c-be3c-4062-9251-a313722dcdc4-1"
+    }
+  ],
+  "finishedAt": "2026-10-19T11:23:13.724Z"
+}

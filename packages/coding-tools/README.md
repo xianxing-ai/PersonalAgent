@@ -142,6 +142,8 @@ Runtime 选择/确认与依赖变更端口为显式 fixture，不代表真实云
 ## 现有API、运行说明与历史验证参考
 <!-- /architecture-scope-20261013 -->
 
+`locateTestFailures` 的 `allowedPaths` 必须由受信宿主提供；缺省或空数组均只解析栈帧、不打开源码。白名单同时约束显示路径及真实规范路径，硬链接不作为摘录来源；`maxSnippetReads` 为全报告预算。Desktop `task.locate` 仅分类、不读取摘录；F17 工作流继续使用其原工作区显式白名单和独立出机确认。报告超过输出预算时明确拒绝，不返回无限增长的帧或正文。
+
 F15 注册工具 `coding.repair.preview`（包括 Desktop 的 `workflow.host.f15_n04` 别名）只返回会话、预览确认及路径/前后 SHA/变更标记；完整预览正文保留在本地宿主，须在 ToolGateway 记录和原回执签名前完成投影。源码出机继续走原 `coding.repair.read` 的精确原生许可，不能以元数据许可替代。宿主本地 `preview()` 返回及实际补丁/CAS 校验保留。
 
 2026-10-13：已更新 [真实补丁/固定命令与恢复验收](ACCEPTANCE-20261013.md)，修复旧 P6 runner 缺少生产恢复绑定的问题，并验证真实 marker 的派发前退出与写后清理失败恢复。当前合并规则以根 AGENTS/CONTRIBUTING 的一位非作者有效批准为准，覆盖下方历史双人门槛。

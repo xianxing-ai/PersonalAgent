@@ -87,6 +87,13 @@ test('production direct HTTPS model call preserves deadline and caller cancellat
   // The 200ms deadline can expire before dispatch on a busy host. Neither
   // legitimate zero dispatch nor one cancelled dispatch permits a retry.
   assert.ok(expiredRequests()<=1);assert.equal(f.first.length,1+expiredRequests());
+  // Check deadline cancellation before the caller-cancel phase, with a separate
+  // budget so that phase cannot consume or extend the deadline disconnect wait.
+  const expiredDisconnectLimit=Date.now()+2000;
+  while(f.disconnections(expiredQuery)<expiredRequests()){
+    assert.ok(Date.now()<expiredDisconnectLimit);await pause(5);
+  }
+  assert.equal(f.disconnections(expiredQuery),expiredRequests());
   t.diagnostic('control-plane phase: cancel');
   const query=marker+'-caller-cancel',received=()=>f.first.filter(request=>request.body.includes(query)).length;
   const controller=new AbortController(),pending=f.post({},controller.signal,query);
@@ -94,6 +101,7 @@ test('production direct HTTPS model call preserves deadline and caller cancellat
   controller.abort();await assert.rejects(pending,{name:'AbortError'});
   while(f.disconnections(query)<1){assert.ok(Date.now()<limit);await pause(5);}
   assert.equal(received(),1);assert.equal(f.disconnections(query),1);
+  assert.equal(f.disconnections(expiredQuery),expiredRequests());
   assert.ok(expiredRequests()<=1);assert.equal(f.first.length,1+expiredRequests()+received());
   assert.equal(f.second.length,0);assert.equal(f.logs().stderr,'');
 });

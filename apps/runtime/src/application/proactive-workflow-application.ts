@@ -15,7 +15,7 @@ import type {NodeVersion} from '@personal-agent/goals';
 import type {CoordinationStorePort} from '@personal-agent/goals/store';
 import type {TaskRuntime, WorkerContext} from '../index.js';
 import {createRuntimeAtomicStatePort} from '../atomic-host-state.js';
-import {createProactiveWorkflowSession} from './proactive-workflow-session.js';
+import {createProactiveWorkflowSession, readPersistedProactiveWorkflowSession} from './proactive-workflow-session.js';
 import type {ProactiveExecutionReadback, ProactiveSessionBinding} from './proactive-workflow-session.js';
 import {readRuntimeSubagentSummary, SUBAGENT_DISPATCH_TOOL_NAME} from './subagent-host.js';
 import type {RuntimeNotificationHost} from './notification-host.js';
@@ -94,6 +94,26 @@ const body = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 const terminal = (task: TaskSnapshot) => ['succeeded', 'failed', 'cancelled', 'cancelling'].includes(task.state) || task.cancelRequested === true;
+
+/** Original persisted application/session only. No host constructor, adapter.describe, signing or network.
+ * Saved signed frontier data is local evidence; this reader does not re-verify a platform signature.
+ */
+export function readPersistedRuntimeProactiveWorkflow(runtime:Pick<TaskRuntime,'bindTrustedHostState'|'getTask'>,
+  taskId:string,sessionId:string) {
+  if(!text(taskId)||!text(sessionId))return fail('INVALID_ARGUMENT','Original proactive task and session required');
+  const atomic=createRuntimeAtomicStatePort(runtime,'runtime-proactive-workflows');
+  const saved=atomic.read('application:'+digest([taskId,sessionId]));
+  if(!saved)return undefined;
+  const state=saved.value as ApplicationState,task=runtime.getTask(taskId);
+  if(state?.version!==1||state.binding?.taskId!==taskId||state.binding.sessionId!==sessionId
+    ||state.conversationId!==task.conversationId||!text(state.contractRef)
+    ||!Number.isFinite(Date.parse(state.binding.taskDeadline))||!Number.isSafeInteger(state.binding.controlRevision)
+    ||state.binding.controlRevision<0
+    ||[state.entries,state.responsibilities,state.batches,state.schedules,state.requests].some(value=>!value||typeof value!=='object'||Array.isArray(value)))
+    return fail('REVISION_CONFLICT','Original persisted proactive application differs');
+  const session=readPersistedProactiveWorkflowSession(atomic,state.binding);
+  return {application:{revision:saved.revision,state:structuredClone(state)},session};
+}
 
 /** Application composition over the original TaskRuntime, atomic state, Policy/ToolGateway and Scheduler.
  * The image is a signed frontier; no source/model/control payload can install a tool or grant authority.

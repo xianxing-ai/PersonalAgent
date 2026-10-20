@@ -11,11 +11,31 @@ import type {RuntimeCodingRepairOptions} from './coding-repair-application.js';
 import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-capability.js';
 import {createRuntimeDeveloperWorkflowWorker,DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,
   developerWorkflowInputSchema,developerWorkflowConfigured,developerWorkflowRequiredTools,isDeveloperWorkflowTool} from './developer-workflows.js';
-import type {RuntimeDeveloperWorkflowsOptions} from './developer-workflows.js';
+import type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope} from './developer-workflows.js';
+import {createRuntimeDeveloperHarnessTool, assertDeveloperHarnessConfiguration, developerHarnessAvailable,
+  developerHarnessConfigurationRef, readDeveloperHarnessConfiguration as readTrustedDeveloperHarnessConfiguration,
+  DEVELOPER_HARNESS_TOOL_NAME, DEVELOPER_HARNESS_TOOL_VERSION} from './developer-harness.js';
+import type {RuntimeDeveloperHarnessOptions} from './developer-harness.js';
+import {createHarnessCandidateTrialTool,createHarnessCandidateAdoptionTool,createHarnessCandidateRecoveryTool,
+  HARNESS_TRIAL_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL} from '@personal-agent/coding-tools';
+import type {IsolatedCodingRepairHost} from '@personal-agent/coding-tools';
+import type {HarnessCandidateContext,HarnessTrialRecovery} from '@personal-agent/contracts/harness-candidates';
+import type {CodingRepairInput} from '@personal-agent/contracts/coding-repair';
+import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
+import {parseCodingRepairInput,parseCodingRepairCheckReadback,parseCodingRepairPublishRequest,parseCodingRepairPublishReadback} from '@personal-agent/contracts/coding-repair';
+import {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL} from './harness-candidates.js';
+import {createRuntimeHarnessCandidateBindings} from './harness-candidate-bindings.js';
+import {createHarnessExperienceBindings} from './harness-experience-bindings.js';
+import {createRuntimeHarnessExperienceApplication,harnessExperienceWorkspaceDigest} from './harness-experience.js';
+import type {HarnessExperienceOrigin} from './harness-experience.js';
+import type {SqliteLearningHost,WorkflowVersion,LearningContext,DeveloperExperienceScope,DeveloperExperienceLease} from '@personal-agent/learning';
+import type {CodingRepairSnapshot} from '@personal-agent/contracts/coding-repair';
+import type {HarnessEventOrigin} from './harness-event-delivery.js';
+import type {RuntimeHarnessExperienceOptions} from './harness-experience.js';
 import {DevWorkflowPatchRecovery} from '../dev-workflows-patch-reconciliation.js';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {TaskRuntime} from '../index.js';
-import type {WorkerContext,WorkerResult} from '../index.js';
+import type {WorkerContext,WorkerResult,SubmitTaskInput} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
 import type {QwenRealtimeModelGateway} from '@personal-agent/models';
@@ -30,6 +50,8 @@ import {isDeepStrictEqual} from 'node:util';
 import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
   measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
 import type {CoordinationGoalTokenBudget} from './context-binding.js';
+import {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT} from './context-compaction.js';
+import type {RuntimeContextCompactionOptions,ContextCompactionResult,ContextCompactionScope} from './context-compaction.js';
 import {RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import type {CompetitionAvailableTool, CompetitionToolAvailability} from './tool-catalog.js';
 import {ScopedEvidenceReader} from './evidence-reader.js';
@@ -43,7 +65,7 @@ import type {StartSystemObservationSessionRequest, SystemObservationSession} fro
 import {MailReadSessions, MAIL_READ_SESSION_CHECKPOINT, MAIL_READ_TOOL, MAIL_READ_VERSION} from './mail-read-session.js';
 import type {StartMailReadSessionRequest, MailReadSession} from './mail-read-session.js';
 import {createRuntimeSubagentDispatchTool, resumeRuntimeSubagentTask, readRuntimeSubagentSummary,
-  SUBAGENT_DISPATCH_TOOL_NAME} from './subagent-host.js';
+  SUBAGENT_DISPATCH_TOOL_NAME, readRuntimeSubagentSibling} from './subagent-host.js';
 import {USER_TASK_DELEGATION, readUserTaskDelegation, assertUserTaskDelegationInvocation,
   userTaskDelegationPort} from './user-task-delegation.js';
 import {SUBAGENT_CONVERSATION_MESSAGE,assertConversationScope,readSubagentConversationOrigin,
@@ -92,6 +114,32 @@ export interface RevokeHostAuthorizationRequest {
 }
 
 export interface RevokeHostAuthorizationResult {revoked: boolean; grantPresent: false; approvalRevision: number;}
+
+/** Trusted composition identity for candidate/experience adapters; never a model-supplied permission. */
+export interface RuntimeHarnessScope {
+  ownerTaskId:string;actualTaskId:string;parentTaskId:string;scopeRef:string;configurationRef:string;
+  inputDigest:string;deadline:string;workspaceRef:string;
+}
+export interface RuntimeHarnessCandidatesOptions {
+  host:IsolatedCodingRepairHost;
+  readContext:(context:ToolContext,scope:RuntimeHarnessScope)=>HarnessCandidateContext|undefined|Promise<HarnessCandidateContext|undefined>;
+  /** Native original-session observation only; this supplies no model ToolContext or execution grant. */
+  reconcileOriginalSession?:(input:{session:CodingRepairInput;trialRunId:string;expectedRevision:number;deadline:string;
+    signal:AbortSignal;assertCurrent:()=>void})=>Promise<HarnessTrialRecovery>;
+}
+export interface RuntimeHarnessExperienceHostOptions extends Pick<RuntimeHarnessExperienceOptions,'namespace'|'learning'|'confirmActivation'> {
+  /** Fresh synchronous metadata from the same original workspace host; no cached async snapshot. */
+  readCurrent:()=>{snapshot:CodingRepairSnapshot;versions:{workflowVersion:string;runtimeVersion:string;executionKind:'real_host'};
+    configuration:{bindingId:string;workspaceId:string;recipeFingerprint:string}}|undefined;
+}
+
+/** Main-process composition only. The synchronous source reader conveys no execution grant. */
+export interface RuntimeHarnessExperienceApplicationOptions {
+  namespace:string;learning:SqliteLearningHost;
+  readCurrent():{snapshot:CodingRepairSnapshot;versions:{workflowVersion:string;runtimeVersion:string;executionKind:string};
+    configuration:{bindingId:string;workspaceId:string;recipeFingerprint:string}}|undefined;
+  confirmActivation(candidate:WorkflowVersion,context:LearningContext):Promise<boolean>;
+}
 
 const CONVERSATION_HISTORY_LIMIT = 20;
 const MODEL_METADATA = /\s*\[model=[^;\]]+;\s*verification=[^;\]]+;\s*tokens=[^\]]+\]\s*$/;
@@ -308,6 +356,18 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   workflowShadowRelease?: RuntimeWorkflowShadowReleaseOptions;
   codingRepair?:RuntimeCodingRepairOptions;
   developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
+  /** Current trusted product configuration, pinned by its host to the original task revision. */
+  readDeveloperWorkflows?:(scope:RuntimeDeveloperWorkflowScope)=>RuntimeDeveloperWorkflowsOptions|undefined;
+  /** Native user-work broker only; the interaction root retains its original forced delegation. */
+  developerHarness?:RuntimeDeveloperHarnessOptions;
+  /** Synchronous trusted host resolver; undefined disables admission without rebuilding the application. */
+  readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
+  /** Existing workspace host and original trusted F15 metadata; no source/model authority is inferred. */
+  harnessCandidates?:RuntimeHarnessCandidatesOptions;
+  /** Trusted delivery wakeup only. Its consumer must revalidate original event authorization. */
+  onHarnessEventProgress?:(taskId:string)=>void|Promise<void>;
+  /** Original native responsibility/lease/control check, including after asynchronous credential/model preparation. */
+  assertHarnessEventCurrent?:(rootTaskId:string,origin:HarnessEventOrigin)=>void;
   /** Main-process presence source, rechecked by the original Gateway at dispatch time. */
   isUserPresent?:(taskId:string)=>boolean;
   thinking?: ThinkingConfig;
@@ -344,6 +404,11 @@ export interface CloudSkillRuntimeHostPort {
 }
 export interface ConversationContextMessage {id:string; role:'user'|'assistant'; content:string; taskId?:string; withheld?:boolean;createdAt?:string;taskState?:string;answerWithheld?:true;}
 /** Shared by trusted host preflight and the actual Coordination send. */
+export function serializeCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
+  return messages.length ? JSON.stringify({publicGoal,
+    ...(preparedGoal===publicGoal ? {} : {ephemeralGoal:preparedGoal}),
+    conversationContext:{treatment:'untrusted_data',messages}}) : preparedGoal;
+}
 export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[],selection?:'preserve-user-requests'):string {
   const selected=[...messages];
   const omitted:string[]=[];
@@ -367,6 +432,8 @@ export interface CoordinationInputHooks {
   goalTokenBudget?: CoordinationGoalTokenBudget;
   prepareCoordinationGoal?: (scope:CoordinationGoalScope)=>Promise<string>;
   readConversationContext?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>Promise<readonly ConversationContextMessage[]>;
+  /** Explicit trusted policy and source egress; ordinary overlays require a sync snapshot. */
+  contextCompaction?:RuntimeContextCompactionOptions;
   /** Must be synchronous, and called by the adapter again after credential awaits. */
   beforeCoordinationSend: (request:CoordinationRequest, scope:{publicGoal:string;preparedGoal:string})=>void;
   /** Private-derived replies are withheld from Runtime history; host may display a volatile copy. */
@@ -396,6 +463,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly codingRepair?:RuntimeCodingRepairOptions;
   private readonly codingWorker?:ReturnType<typeof createRuntimeCodingRepairWorkerCapability>;
   private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
+  private readonly readDeveloperWorkflows?:RuntimeApplicationOptions['readDeveloperWorkflows'];
+  private readonly readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
+  private readonly harnessCandidateOptions?:RuntimeHarnessCandidatesOptions;
+  private readonly harnessCandidateBindings?:ReturnType<typeof createRuntimeHarnessCandidateBindings>;
+  private harnessExperienceState?:{application:ReturnType<typeof createRuntimeHarnessExperienceApplication>;
+    bindings:ReturnType<typeof createHarnessExperienceBindings>;options:RuntimeHarnessExperienceApplicationOptions};
+  private readonly activeHarnessCandidateRecovery=new Map<string,Promise<{task:TaskSnapshot;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}>>();
+  private readonly experienceSendPolicies=new Map<string,{ownerTaskId:string;lease:DeveloperExperienceLease}>();
+  private readonly onHarnessEventProgress?:RuntimeApplicationOptions['onHarnessEventProgress'];
+  private readonly assertHarnessEventCurrentPort?:RuntimeApplicationOptions['assertHarnessEventCurrent'];
   private readonly developerWorker?:CoordinationWorkerCapabilityPort;
   private readonly developerPatchRecovery?:DevWorkflowPatchRecovery;
   private readonly competitionRealtimeModel: RuntimeApplicationOptions['competitionRealtimeModel'];
@@ -403,7 +480,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly windowsHostRecovery: RuntimeApplicationOptions['windowsHostRecovery'];
   private readonly ephemeralSends = new Map<string, CoordinationRequest>();
   private readonly ephemeralGoals = new Map<string,{publicGoal:string;preparedGoal:string}>();
-  private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[];answerTaskIds:string[]}>();
+  private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[];answerTaskIds:string[];
+    assertCompactionCurrent?:()=>void}>();
   private readonly teacherRequestScopes=new WeakMap<CoordinationRequest,ProactiveTeacherScope>();
   private readonly teacherLeases=new Map<string,ProactiveTeacherScope>();
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
@@ -436,6 +514,32 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Required user delegation needs Competition Profile');
     }
     this.delegateUserTasks = options.delegateUserTasks === true;
+    if(options.onHarnessEventProgress!==undefined) {
+      if(typeof options.onHarnessEventProgress!=='function')throw new ProtocolError('INVALID_ARGUMENT','Invalid harness event progress listener');
+      this.onHarnessEventProgress=options.onHarnessEventProgress;
+    }
+    if(options.assertHarnessEventCurrent!==undefined) {
+      if(typeof options.assertHarnessEventCurrent!=='function')throw new ProtocolError('INVALID_ARGUMENT','Invalid native harness event guard');
+      this.assertHarnessEventCurrentPort=options.assertHarnessEventCurrent;
+    }
+    if (options.developerHarness !== undefined || options.readDeveloperHarnessConfiguration !== undefined) {
+      if (options.developerHarness !== undefined && options.readDeveloperHarnessConfiguration !== undefined
+        || options.readDeveloperHarnessConfiguration !== undefined && typeof options.readDeveloperHarnessConfiguration !== 'function') {
+        throw new ProtocolError('INVALID_ARGUMENT', 'Use one trusted developer harness configuration source');
+      }
+      if (options.developerHarness !== undefined) assertDeveloperHarnessConfiguration(options.developerHarness);
+      if (!this.delegateUserTasks || options.profile !== 'huawei_ict_agentarts') {
+        throw new ProtocolError('INVALID_ARGUMENT', 'Developer harness requires the original Competition user-work delegation');
+      }
+      const fixed = options.developerHarness === undefined ? undefined : {...options.developerHarness};
+      this.readDeveloperHarnessConfiguration = options.readDeveloperHarnessConfiguration ?? (()=>fixed);
+    }
+    if(options.harnessCandidates&&(!this.readDeveloperHarnessConfiguration
+      ||typeof options.harnessCandidates.readContext!=='function'
+      ||['start','check','publish','reconcile'].some(key=>typeof options.harnessCandidates!.host?.[key as keyof IsolatedCodingRepairHost]!=='function'))) {
+      throw new ProtocolError('INVALID_ARGUMENT','Harness candidates require the original trusted workspace host and user-work composition');
+    }
+    if(options.harnessCandidates)this.harnessCandidateOptions={...options.harnessCandidates};
     this.storagePath = resolve(options.path);
     this.profile = options.profile ?? 'local';
     if (options.competitionMaxSteps !== undefined && (this.profile !== 'huawei_ict_agentarts'
@@ -469,6 +573,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.coordinationBinding=options.coordinationBinding??'runtime-configured-coordination';
     if(options.assertCoordinationBinding!==undefined)this.assertCoordinationBinding=options.assertCoordinationBinding;
     if(options.codingRepair!==undefined)this.codingRepair={...options.codingRepair};
+    if(options.readDeveloperWorkflows!==undefined) {
+      if(typeof options.readDeveloperWorkflows!=='function'||options.developerWorkflows!==undefined
+        ||this.profile!=='huawei_ict_agentarts')throw new ProtocolError('INVALID_ARGUMENT','Use one trusted Competition developer workflow configuration source');
+      this.readDeveloperWorkflows=options.readDeveloperWorkflows;
+    }
     if(options.developerWorkflows!==undefined){
       if(this.profile!=='huawei_ict_agentarts')throw new ProtocolError('INVALID_ARGUMENT','Developer workflow workers require Competition Profile');
       const configured=options.developerWorkflows;
@@ -518,6 +627,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
     this.competitionToolExports = (options.competitionToolExports ?? []).map(binding => Object.freeze({...binding}));
     this.retainPriorToolResults=options.retainPriorToolResults===true;
+    if (this.readDeveloperHarnessConfiguration) this.competitionToolExports = [...this.competitionToolExports, {
+      toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
+      exportPolicyVersion:'developer-harness-runtime-facts-v1',accepts:()=>true,
+      project:({result})=>result,
+    }];
+    if(options.harnessCandidates)this.competitionToolExports=[...this.competitionToolExports,
+      ...[HARNESS_TRIAL_TOOL,HARNESS_CANDIDATE_COMPARE_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL].map(toolName=>({
+        toolName,toolVersion:'1.0.0',exportPolicyVersion:'harness-candidate-original-metadata-v1',accepts:()=>true,
+        project:({result}:{result:unknown})=>result}))];
     if(this.codingRepair)this.competitionToolExports=[...this.competitionToolExports,{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
       exportPolicyVersion:'coding-repair-child-summary-v1',accepts:()=>true,project:({taskId}:{taskId:string})=>{
         const value=readRuntimeSubagentSummary(this.runtime,taskId);
@@ -535,7 +653,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       exportNames.add(key);
     }
     let gateway: ToolGateway | undefined;
-    const configuredTools = [...(options.tools ?? []),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
+    let harnessCandidateTools:RegisteredTool[]=[];
+    const harnessHost = this.readDeveloperHarnessConfiguration ? {getRuntime:()=>this.runtime,getTools:()=>this.tools,
+      getSubagentOptions:()=>({competitionOnly:true as const,getRuntime:()=>this.runtime,getTools:()=>this.tools,
+        runDefaultWorker:(subtask:SubtaskDefinition,worker:WorkerContext,tools:AgentToolPort)=>this.runDefaultSubagentWorker(subtask,worker,tools),
+        getToolsForSubtask:(subtask:SubtaskDefinition,worker:WorkerContext)=>this.tools
+          ? (this.getToolsForSubtask ? this.getToolsForSubtask(subtask,worker,this.tools) : this.tools) : undefined}),
+      configurationRef:this.coordinationBinding,readConfiguration:()=>this.readDeveloperHarnessConfiguration!(),
+      now:()=>this.now().getTime()} : undefined;
+    const harnessTool = harnessHost ? createRuntimeDeveloperHarnessTool(harnessHost) : undefined;
+    const configuredTools = [...(options.tools ?? []),...(harnessTool?[harnessTool]:[]),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
       ...(options.proactiveDecision?.localChooser&&!options.tools?.some(tool=>tool.descriptor.name==='decision.choose_candidate')
         ?[createWorkflowDecisionTool({selector:{select:async input=>{
           const value=await options.proactiveDecision!.localChooser!.choose({context:input.context,deadline:input.deadline,signal:input.signal,
@@ -559,10 +686,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.runtime = new TaskRuntime(options.path, {
       ...(options.now ? {now: options.now} : {}),
       ...(options.idFactory ? {idFactory: options.idFactory} : {}),
-      ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
+      ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
+          this.harnessExperienceRecipes(request.taskId,{
+            deadline:this.runtime.loadCheckpoint(request.taskId,'application-deadline') as string,
+            signal:new AbortController().signal});
+          this.assertHarnessExperienceToolOpen(request.taskId);
+          this.assertHarnessEventCurrent(request.taskId);
           assertUserTaskDelegationInvocation(this.runtime, request);
           this.assertSubagentConversationInvocation(request.taskId,request.toolName);
+          this.assertDeveloperHarnessToolScope(request.taskId,request.toolName);
           // Gate even the generic tool.invoke wire path: a persisted sample
           // grant alone cannot survive its process-local consent lease.
           const session = this.runtime.loadCheckpoint(request.taskId, SYSTEM_OBSERVATION_SESSION_CHECKPOINT);
@@ -583,7 +716,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
           return policy.authorize(request);
         }}, now: () => (options.now?.() ?? new Date()).getTime()});
-        for (const tool of configuredTools) gateway.register(tool.descriptor.name===WORKSPACE_PATCH_APPLY_TOOL_NAME&&this.developerWorkflows
+        for (const tool of configuredTools) gateway.register(tool.descriptor.name===WORKSPACE_PATCH_APPLY_TOOL_NAME&&(this.developerWorkflows||this.readDeveloperWorkflows)
           ?{...tool,execute:(input,context)=>{
             if(!this.isDeveloperWorkerActive(context.taskId))return tool.execute(input,context);
             if(!this.developerPatchRecovery)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted developer patch recovery is unavailable');
@@ -600,11 +733,31 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }};
       }} : {}),
     });
+    if(options.harnessCandidates&&gateway) {
+      const candidateOptions=options.harnessCandidates;
+      const bindings=createRuntimeHarnessCandidateBindings(this,{
+        resolveHarnessScope:(context,source)=>this.resolveHarnessScope(context,source),
+        readConfiguration:async(scope,context)=>{
+          const current=this.resolveHarnessScope(context);
+          if(!current||!isDeepStrictEqual(current,scope))throw new ProtocolError('UNAUTHORIZED','Original harness configuration scope changed');
+          const configuration=await candidateOptions.readContext(context,current);
+          if(!configuration||!isDeepStrictEqual(this.resolveHarnessScope(context),current))
+            throw new ProtocolError('REVISION_CONFLICT','Original harness workspace configuration is unavailable or changed');
+          return configuration;
+        },now:()=>this.now().getTime(),
+      });
+      this.harnessCandidateBindings=bindings;
+      harnessCandidateTools=[createHarnessCandidateTrialTool({host:candidateOptions.host,...bindings.trial,now:()=>this.now().getTime()}),
+        createHarnessCandidateAdoptionTool({host:candidateOptions.host,...bindings.adoption,now:()=>this.now().getTime()}),
+        createHarnessCandidateRecoveryTool({host:candidateOptions.host,...bindings.recovery,now:()=>this.now().getTime()}),
+        ...createRuntimeHarnessCandidateTools(this,bindings.compare)];
+      for(const tool of harnessCandidateTools)gateway.register(tool);
+    }
     if (options.workspacePatchReconciliation) {
       this.workspacePatchReconciliation = new WorkspacePatchReconciliationAdapter(
         this.runtime, options.workspacePatchReconciliation, this.hostUserNamespace, this.coordinationBinding);
       const preview=configuredTools.find(tool=>tool.descriptor.name==='workspace.preview_text_patch'&&tool.descriptor.version==='1.0.0');
-      if(this.developerWorkflows&&preview)this.developerPatchRecovery=new DevWorkflowPatchRecovery(this.runtime,options.workspacePatchReconciliation,preview);
+      if((this.developerWorkflows||this.readDeveloperWorkflows)&&preview)this.developerPatchRecovery=new DevWorkflowPatchRecovery(this.runtime,options.workspacePatchReconciliation,preview);
     }
     this.observationSessions = new SystemObservationSessions(() => this.now().getTime(), taskId => {
       this.runtime.policy.revoke(`host-tool-${taskId}`);
@@ -637,8 +790,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return current;
       };
       this.tools = {list: currentDescriptors, invoke: async invocation => {
+        this.harnessExperienceRecipes(invocation.taskId,invocation);
+        this.assertHarnessExperienceToolOpen(invocation.taskId);
+        this.assertHarnessEventCurrent(invocation.taskId);
+        this.consumeHarnessExperiencePolicy(invocation);
         assertUserTaskDelegationInvocation(this.runtime, {...invocation, argumentsDigest: toolArgumentsDigest(invocation.arguments)});
         this.assertSubagentConversationInvocation(invocation.taskId,invocation.toolName);
+        this.assertDeveloperHarnessToolScope(invocation.taskId,invocation.toolName);
         const current=currentDescriptors();
         const tool = current.find(item => item.name === invocation.toolName && item.version === invocation.toolVersion);
         if (!tool) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Tool is not registered');
@@ -681,7 +839,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
         // A routine grant does not create an Approval object. Persist the original nested
         // invocation before granting/executing so confirmed unknown readback can resume it.
-        if (!confirmedDispatch && ((!this.runtime.policy.get(ref) && !routineEligible) || this.isDeveloperWorkerActive(invocation.taskId))) {
+        if (!confirmedDispatch && ((!this.runtime.policy.get(ref) && !routineEligible) || this.isDeveloperWorkerActive(invocation.taskId)
+          ||[HARNESS_TRIAL_TOOL,HARNESS_CANDIDATE_COMPARE_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL].includes(tool.name)
+          ||this.harnessCandidateOptions&&tool.name==='coding.repair.publish')) {
           const key='application-tool-invocation:'+ref;
           const original={toolName:tool.name,toolVersion:tool.version,arguments:structuredClone(invocation.arguments),
             argumentsDigest:toolArgumentsDigest(invocation.arguments),deadline:invocation.deadline};
@@ -690,7 +850,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           this.runtime.saveCheckpointOnce(invocation.taskId,key,original);
           const loop=this.runtime.loadCheckpoint(invocation.taskId,'competition-loop') as {pending?:unknown}|undefined;
           const worker=this.runtime.loadCheckpoint(invocation.taskId,'developer-workflow:active') as {bindingId?:string;proposalDigest?:string}|undefined;
-          if(worker?.bindingId===this.developerWorkflows?.bindingId&&loop?.pending
+          if(worker&&worker.bindingId===this.developerWorkflowsFor({taskId:invocation.taskId,deadline:invocation.deadline,signal:invocation.signal})?.bindingId&&loop?.pending
             &&worker?.proposalDigest===createHash('sha256').update(JSON.stringify(loop.pending)).digest('hex'))
             this.runtime.saveCheckpoint(invocation.taskId,'developer-workflow:pending-approval',{...worker,approvalId:ref});
         }
@@ -716,12 +876,40 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           if (approval.state === 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Tool grant was revoked');
           return {state: 'pending', evidenceRefs: []};
         }
-        const result = await new RuntimeToolInvoker(this.runtime,current).invoke({...invocation, authorizationRef: ref});
+        let result = await new RuntimeToolInvoker(this.runtime,current).invoke({...invocation, authorizationRef: ref});
+        if(tool.name===SUBAGENT_DISPATCH_TOOL_NAME&&readUserTaskDelegation(this.runtime,invocation.taskId)) {
+          const owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${invocation.taskId}-user-work`);
+          if(owner?.state==='succeeded')this.proposeHarnessExperienceFromOwner(owner.taskId);
+        }
+        if (tool.name === DEVELOPER_HARNESS_TOOL_NAME && result.state === 'confirmed' && harnessTool) {
+          if (confirmedDispatch && plainObject(result.result)
+            && ['waiting_approval','waiting_reconciliation'].includes(String(result.result.state))) {
+            result = {...result,result:await harnessTool.continueOriginal(invocation.arguments,
+              {...invocation,authorizationRef:ref,scopes:tool.requiredScopes})};
+          }
+          if (plainObject(result.result) && Array.isArray(result.result.executors)) {
+            const refs = result.result.executors.flatMap(item=>{
+              if(!plainObject(item)||typeof item.taskId!=='string')return [];
+              const sibling=readRuntimeSubagentSibling(this.runtime,item.taskId);
+              return sibling?.binding.ownerTaskId===invocation.taskId?this.runtime.getTask(item.taskId).evidenceRefs:[];
+            });
+            result={...result,evidenceRefs:[...new Set([...result.evidenceRefs,...refs])]};
+          }
+        }
+        if (tool.name === DEVELOPER_HARNESS_TOOL_NAME && result.state === 'confirmed' && plainObject(result.result)
+          && ['waiting_approval','waiting_reconciliation'].includes(String(result.result.state))) {
+          const unknown = result.result.state === 'waiting_reconciliation';
+          this.runtime.saveCheckpoint(invocation.taskId,'developer-harness:wait',{
+            runId:invocation.runId,planId:result.result.planId,argumentsDigest:toolArgumentsDigest(invocation.arguments)});
+          this.runtime.transitionTask(invocation.taskId,unknown?'waiting_reconciliation':'waiting_approval');
+          return {state:unknown?'unknown':'pending',evidenceRefs:result.evidenceRefs};
+        }
         if (!isRuntimeDispatchTool(tool.name) || result.state !== 'confirmed') return result;
         // Dispatch was confirmed; aggregate actual children without executing it again.
         const summary = readRuntimeSubagentSummary(this.runtime, invocation.taskId);
         this.runtime.saveCheckpoint(invocation.taskId, 'subagent-current-summary', summary);
-        const children = this.runtime.listTasks({conversationId: `desktop-subtask:${invocation.taskId}`, limit: 100}).items;
+        const children = this.subagentTaskSnapshots(invocation.taskId)
+          .filter(child => readRuntimeSubagentSibling(this.runtime,child.taskId) === undefined);
         const proactive = [...this.proactiveHosts.values()].find(host => host.taskId === invocation.taskId);
         if (proactive) for (const child of children) {
           try {await proactive.ingestSubtaskFeedback({childTaskId: child.taskId, expectedRevision: child.revision},
@@ -746,7 +934,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           evidenceRefs: [...new Set([...result.evidenceRefs, ...children.flatMap(child => child.evidenceRefs)])]};
       }};
     }
-    if(this.developerWorkflows)this.developerWorker=createRuntimeDeveloperWorkflowWorker(this,this.developerWorkflows,taskId=>this.taskTools(taskId));
+    if(this.developerWorkflows||this.readDeveloperWorkflows) {
+      const workerFor=(scope:RuntimeDeveloperWorkflowScope)=>{
+        const configuration=this.developerWorkflowsFor(scope);
+        if(!configuration)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted developer workflow configuration is unavailable');
+        return createRuntimeDeveloperWorkflowWorker(this,configuration,taskId=>this.taskTools(taskId));
+      };
+      this.developerWorker={accepts:proposal=>proposal.toolVersion==='1.0.0'&&isDeveloperWorkflowTool(proposal.toolName),
+        dispatch:(proposal,context)=>workerFor(context).dispatch(proposal,context),
+        assertReceiptAllowed:(proposal,selection,result,context)=>workerFor(context).assertReceiptAllowed(proposal,selection,result,context)};
+    }
     if(this.codingRepair&&this.delegateUserTasks)this.codingWorker=createRuntimeCodingRepairWorkerCapability(this,this.codingRepair,taskId=>{
       const tools=this.taskTools(taskId),frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
       if(!tools||!Array.isArray(frozen))return undefined;
@@ -761,6 +958,20 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if (!this.tools) throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog needs registered tools');
       this.competitionToolCatalog = new RuntimeCompetitionToolCatalog(
         this.runtime, this.tools, this.competitionToolExports,[...options.competitionToolAvailability,
+          ...(harnessHost?[{toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
+            publicEnumPaths:['/tasks/*/role'],available:(input:{taskId:string;deadline:string;signal:AbortSignal})=>
+              developerHarnessAvailable(harnessHost,input.taskId,input.deadline,input.signal)}]:[]),
+          ...harnessCandidateTools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+            available:(input:{taskId:string;deadline:string;signal:AbortSignal})=>{
+              if(!harnessHost||input.signal.aborted)return false;
+              try {
+                const peer=readRuntimeSubagentSibling(this.runtime,input.taskId);
+                if(!peer)return developerHarnessAvailable(harnessHost,input.taskId,input.deadline,input.signal);
+                this.assertDeveloperHarnessExecutorCurrent(input.taskId);
+                return tool.descriptor.name!==HARNESS_PREPARE_ADOPTION_TOOL&&peer.binding.deadline===input.deadline
+                  &&this.runtime.getTask(input.taskId).state==='running';
+              }catch{return false;}
+            }})),
           ...(this.codingRepair?[{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
             publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort','/codingRepair/mode'],
             available:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
@@ -772,16 +983,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           describeRegistered:()=>this.cloudSkill?{name:CLOUD_SKILL_TOOL_NAME,version:CLOUD_SKILL_TOOL_VERSION,inputSchema:CLOUD_SKILL_CHOICE_SCHEMA}:undefined,
           describe:input=>this.cloudSkill?.cloudSkillCatalog(input)??Promise.resolve(undefined),
         },...DEVELOPER_WORKFLOW_KINDS.map(kind=>({toolName:developerWorkflowToolName(kind),toolVersion:'1.0.0',publicEnumPaths:[],
-          sideEffect:kind==='ci_list'||kind==='issue_list'?'read' as const:'external_write' as const,
+          sideEffect:kind==='ci_list'||kind==='issue_list'||kind==='test_locate'?'read' as const:'external_write' as const,
           requiredTool:{name:'github.repo.get',version:this.tools!.list().find(tool=>tool.name==='github.repo.get')?.version??'unavailable'},
-          describeRegistered:()=>this.developerWorkflows?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined,
+          describeRegistered:()=>this.developerWorkflows||this.readDeveloperWorkflows?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined,
           describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
-            if(!this.developerWorkflows||!developerWorkflowConfigured(this.developerWorkflows,kind))return undefined;
+            const configuration=this.developerWorkflowsFor(input);
+            if(!configuration||!developerWorkflowConfigured(configuration,kind))return undefined;
             if(kind==='ci_fix'&&!this.developerPatchRecovery)return undefined;
             const descriptors=this.taskTools(input.taskId)?.list()??[];
-            if(developerWorkflowRequiredTools(this.developerWorkflows,kind).some(name=>!descriptors.some(tool=>tool.name===name)))return undefined;
-            this.developerWorkflows.assertCurrent(input);
-            return await this.developerWorkflows.available(kind,input)?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined;
+            if(developerWorkflowRequiredTools(configuration,kind).some(name=>!descriptors.some(tool=>tool.name===name)))return undefined;
+            configuration.assertCurrent(input);
+            return await configuration.available(kind,input)?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined;
           }}))],options.isUserPresent===undefined?undefined:taskId=>{try{return options.isUserPresent?.(taskId)===true;}catch{return false;}});
     }
     this.textApplication = createTextApplication({...options.text, ...(this.tools ? {tools: this.tools} : {})});
@@ -792,14 +1004,102 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   get deployment(): TextApplication['deployment'] { this.requireLocalText(); return structuredClone(this.textApplication.deployment); }
   get activeTaskCount(): number { return this.activeTextTasks.size; }
+  get harnessExperience():ReturnType<typeof createRuntimeHarnessExperienceApplication>|undefined {return this.harnessExperienceState?.application;}
+
+  /** Existing Main composition entry; createHarnessExperienceApplication is its compatible returning alias. */
+  configureHarnessExperience(options:RuntimeHarnessExperienceHostOptions):void {
+    this.createHarnessExperienceApplication(options);
+  }
+
+  private originalHarnessOwner(taskId:string):TaskSnapshot|undefined {
+    const marker=readRuntimeSubagentSibling(this.runtime,taskId),owner=this.runtime.getTask(marker?.binding.ownerTaskId??taskId);
+    const parent=this.runtime.loadCheckpoint(owner.taskId,'subtask-parent') as
+      (SubtaskDefinition&{parentTaskId:string;parentDeadline:string})|undefined;
+    const root=parent&&readUserTaskDelegation(this.runtime,parent.parentTaskId);
+    if(!parent||!root||!isDeepStrictEqual(parent,{...root.subtask,parentTaskId:root.parentTaskId,parentDeadline:root.deadline})
+      ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${root.parentTaskId}-user-work`)?.taskId!==owner.taskId)return undefined;
+    return owner;
+  }
+
+  private harnessExperiencePolicy(taskId:string,context:LearningContext,_strict=false):
+    {ownerTaskId:string;lease:DeveloperExperienceLease;requiredRecipeIds:readonly string[]}|undefined {
+    const owner=this.originalHarnessOwner(taskId);if(!owner)return undefined;
+    const requiredRecipeIds=this.harnessExperienceRecipes(taskId,context);
+    const saved=this.runtime.loadCheckpoint(owner.taskId,'harness-experience:lease:v1');
+    const lease=plainObject(saved)&&Object.hasOwn(saved,'lease')?saved.lease:saved;
+    if(!lease)return undefined;
+    return {ownerTaskId:owner.taskId,lease:lease as DeveloperExperienceLease,requiredRecipeIds};
+  }
+
+  private consumeHarnessExperiencePolicy(invocation:{taskId:string;runId:string;toolName:string;arguments:unknown;
+    deadline:string;signal:AbortSignal}):void {
+    const policy=this.harnessExperiencePolicy(invocation.taskId,invocation);if(!policy)return;
+    const recipeIds=plainObject(invocation.arguments)?invocation.arguments.recipeIds:undefined;
+    if(invocation.toolName===HARNESS_TRIAL_TOOL&&(!Array.isArray(recipeIds)
+      ||policy.requiredRecipeIds.some(id=>!recipeIds.includes(id))))
+      throw new ProtocolError('SCOPE_DENIED','Candidate omits verification required by the active experience strategy');
+    this.runtime.saveCheckpoint(invocation.taskId,'harness-experience:consumed:'+invocation.runId,
+      {ownerTaskId:policy.ownerTaskId,workflowId:policy.lease.workflowId,revision:policy.lease.revision,
+        activationSequence:policy.lease.activationSequence,requiredRecipeIds:[...policy.requiredRecipeIds]});
+  }
+
+  private proposeHarnessExperienceFromOwner(ownerTaskId:string):void {
+    const host=this.harnessExperienceState;
+    if(!host||this.runtime.getTask(ownerTaskId).state!=='succeeded')return;
+    try {
+      const current=this.readHarnessExperienceCurrent(ownerTaskId,host.options);if(!current)return;
+      const owner=this.runtime.getTask(ownerTaskId),deadline=this.runtime.loadCheckpoint(ownerTaskId,'application-deadline');
+      if(typeof deadline!=='string'||this.now().getTime()>=Date.parse(deadline))return;
+      for(const origin of host.bindings.publishedOrigins(ownerTaskId)) {
+        const key='harness-experience:proposal:'+hashJson(origin),workflowId=this.harnessExperienceWorkflowId(current.scope);
+        const existing=this.runtime.loadCheckpoint(ownerTaskId,key);
+        // Earlier successful completion hooks stored the acknowledged revision here.
+        // Preserve that receipt; do not reinterpret it as a pending intent or propose again.
+        if(plainObject(existing)&&typeof existing.workflowId==='string'&&Number.isSafeInteger(existing.revision)
+          &&!Object.hasOwn(existing,'operationId'))continue;
+        let intent=existing as
+          {workflowId:string;expectedRevision:number|null;operationId:string;createdAt:string}|undefined;
+        if(intent===undefined) {
+          intent={workflowId,expectedRevision:host.application.listCandidates().find(item=>item.workflowId===workflowId)?.revision??null,
+            operationId:'harness-experience-'+hashJson(origin),createdAt:owner.updatedAt};
+          this.runtime.saveCheckpointOnce(ownerTaskId,key,intent);
+        }
+        // The former colon-prefixed ID could never pass the learning operation
+        // schema. Retain its original intent row and deterministically map only
+        // that known rejected spelling to the same valid per-origin operation.
+        const operationId=intent.operationId==='harness-experience:'+hashJson(origin)
+          ?'harness-experience-'+hashJson(origin):intent.operationId;
+        host.application.proposeFromConfirmed(origin,{...intent,operationId,deadline,signal:new AbortController().signal});
+      }
+    }catch(error){this.runtime.saveCheckpoint(ownerTaskId,'harness-experience:proposal-error',{
+      code:error instanceof ProtocolError?error.code:'NOT_VALIDATED'});}
+  }
 
   /** Public schema metadata, with no task readiness check, checkpoint or grant. */
   readConversationToolCapabilities(){return this.competitionToolCatalog?.describe()??[];}
 
+  private developerWorkflowsFor(scope:RuntimeDeveloperWorkflowScope):RuntimeDeveloperWorkflowsOptions|undefined {
+    if(scope.signal.aborted||this.runtime.getTask(scope.taskId).cancelRequested)return undefined;
+    const configuration=this.readDeveloperWorkflows?.(scope)??(this.readDeveloperWorkflows?undefined:this.developerWorkflows);
+    if(!configuration)return undefined;
+    const checked:unknown=configuration.assertCurrent({...scope});
+    if(checked!==undefined){void Promise.resolve(checked).catch(()=>{});
+      throw new ProtocolError('UNAUTHORIZED','Developer workflow configuration guard must complete synchronously');}
+    return configuration;
+  }
+
+  private developerWorkflowsForTask(taskId:string):RuntimeDeveloperWorkflowsOptions|undefined {
+    const deadline=this.runtime.loadCheckpoint(taskId,'application-deadline');
+    if(typeof deadline!=='string')return undefined;
+    return this.developerWorkflowsFor({taskId,deadline,signal:new AbortController().signal});
+  }
+
   private isDeveloperWorkerActive(taskId:string):boolean {
     const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {pending?:{toolName?:string}}|undefined;
     const active=this.runtime.loadCheckpoint(taskId,'developer-workflow:active') as {bindingId?:string;proposalDigest?:string}|undefined;
-    return !!this.developerWorkflows&&active?.bindingId===this.developerWorkflows.bindingId
+    if(!active||typeof loop?.pending?.toolName!=='string'||!isDeveloperWorkflowTool(loop.pending.toolName))return false;
+    const configuration=this.developerWorkflowsForTask(taskId);
+    return !!configuration&&active?.bindingId===configuration.bindingId
       &&typeof loop?.pending?.toolName==='string'&&isDeveloperWorkflowTool(loop.pending.toolName)
       &&active.proposalDigest===createHash('sha256').update(JSON.stringify(loop.pending)).digest('hex');
   }
@@ -895,7 +1195,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private resolveDeveloperWorkerApproval(taskId:string,proposal:unknown):{runId:string;toolName:string;arguments:Record<string,unknown>}|undefined {
     if(!plainObject(proposal)||typeof proposal.toolName!=='string'||!isDeveloperWorkflowTool(proposal.toolName))return undefined;
     const saved=this.runtime.loadCheckpoint(taskId,'developer-workflow:pending-approval') as {approvalId?:string;bindingId?:string;proposalDigest?:string}|undefined;
-    if(!this.developerWorkflows||!saved||typeof saved.approvalId!=='string'||saved.bindingId!==this.developerWorkflows.bindingId
+    const configuration=this.developerWorkflowsForTask(taskId);
+    if(!configuration||!saved||typeof saved.approvalId!=='string'||saved.bindingId!==configuration.bindingId
       ||saved.proposalDigest!==createHash('sha256').update(JSON.stringify(proposal)).digest('hex'))
       throw new ProtocolError('UNAUTHORIZED','Original developer approval binding changed');
     const original=this.runtime.loadCheckpoint(taskId,'application-tool-invocation:'+saved.approvalId) as
@@ -948,7 +1249,231 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
   get coordinationConfigurationRef():string {return this.coordinationBinding;}
 
+  /** Connect the existing learning lifecycle to canonical original Runtime journals. */
+  createHarnessExperienceApplication(options:RuntimeHarnessExperienceApplicationOptions) {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks||!this.harnessCandidateBindings
+      ||!this.readDeveloperHarnessConfiguration||this.harnessExperienceState||typeof options.readCurrent!=='function'||typeof options.confirmActivation!=='function')
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original harness experience composition unavailable');
+    const bindings=createHarnessExperienceBindings(this.runtime,this.harnessCandidateBindings);
+    const application=createRuntimeHarnessExperienceApplication({...options,namespace:'developer-harness:'+hashJson(options.namespace),runtime:this.runtime,
+      readInvocation:bindings.readInvocation,readMainInput:bindings.readMainInput,
+      readCurrent:ownerTaskId=>this.readHarnessExperienceCurrent(ownerTaskId,options),
+      assertOrigin:origin=>this.assertHarnessExperienceOrigin(origin,options)});
+    this.harnessExperienceState={application,bindings,options:{...options}};
+    return application;
+  }
+
+  private readHarnessExperienceCurrent(ownerTaskId:string,options:RuntimeHarnessExperienceApplicationOptions):
+    {scope:DeveloperExperienceScope;snapshot:CodingRepairSnapshot}|undefined {
+    if(!this.originalHarnessOwner(ownerTaskId))return undefined;
+    const configuration=this.readDeveloperHarnessConfiguration
+      ?readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration):undefined;
+    const current=options.readCurrent();
+    if(!configuration||!current||current.configuration.bindingId!==configuration.workspaceRef
+      ||current.versions.executionKind!=='real_host')return undefined;
+    const task=this.runtime.getTask(ownerTaskId);
+    if(this.runtime.loadCheckpoint(ownerTaskId,'competition-configuration-binding')!==undefined||task.state==='succeeded')
+      this.assertCompetitionTaskConfiguration(ownerTaskId);
+    const selected=this.runtime.loadCheckpoint(ownerTaskId,'execution-model');
+    if(selected!==undefined) {
+      const original=parseExecutionModelSelection(selected);
+      const resolved=this.resolveExecutionModel?.({modelId:original.modelId,
+        ...(original.reasoningEffort?{reasoningEffort:original.reasoningEffort}:{})});
+      if(!isDeepStrictEqual(original,resolved))return undefined;
+    }
+    return {snapshot:structuredClone(current.snapshot),scope:{workspaceId:current.configuration.workspaceId,
+      workspaceDigest:harnessExperienceWorkspaceDigest(current.snapshot),
+      configurationDigest:this.harnessStableConfigurationRef(configuration,ownerTaskId),
+      workflowVersion:current.versions.workflowVersion,runtimeVersion:current.versions.runtimeVersion,
+      recipeFingerprint:current.configuration.recipeFingerprint}};
+  }
+
+  private assertHarnessExperienceOrigin(origin:HarnessExperienceOrigin,options:RuntimeHarnessExperienceApplicationOptions):void {
+    const owner=this.runtime.getTask(origin.ownerTaskId);
+    const saved=this.runtime.loadCheckpoint(owner.taskId,'subtask-parent');
+    const root=plainObject(saved)&&typeof saved.parentTaskId==='string'?readUserTaskDelegation(this.runtime,saved.parentTaskId):undefined;
+    const current=this.readHarnessExperienceCurrent(owner.taskId,options);
+    const frozen=this.runtime.loadCheckpoint(owner.taskId,'harness-candidates:configuration') as
+      {configurationRef?:string;workspaceRef?:string;context?:HarnessCandidateContext}|undefined;
+    if(!root||!current||owner.state!=='succeeded'||owner.cancelRequested
+      ||!isDeepStrictEqual(saved,{...root.subtask,parentTaskId:root.parentTaskId,parentDeadline:root.deadline})
+      ||owner.conversationId!==`desktop-subtask:${root.parentTaskId}`
+      ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${root.parentTaskId}-user-work`)?.taskId!==owner.taskId
+      ||this.runtime.getTask(root.parentTaskId).cancelRequested
+      ||frozen?.configurationRef!==current.scope.configurationDigest
+      ||frozen.context?.binding.workspaceId!==current.scope.workspaceId
+      ||frozen.workspaceRef!==this.readDeveloperHarnessConfiguration?.()?.workspaceRef
+      ||origin.adoption.taskId!==owner.taskId||origin.publication.taskId!==owner.taskId)
+      throw new ProtocolError('UNAUTHORIZED','Experience origin is not the original successful user-work');
+    const canonical=this.harnessExperienceState?.bindings.readOrigin(owner.taskId,origin.publication.runId);
+    if(!isDeepStrictEqual(canonical,origin))
+      throw new ProtocolError('UNAUTHORIZED','Experience origin differs from the canonical adoption and publication');
+    for(const reference of [origin.trial,origin.comparison,origin.adoption,origin.publication]) {
+      const task=this.runtime.getTask(reference.taskId);
+      if(task.state!=='succeeded'||task.cancelRequested||task.conversationId!==owner.conversationId)
+        throw new ProtocolError('UNAUTHORIZED','Experience source task is not an original successful member');
+      if(task.taskId!==owner.taskId) {
+        const peer=readRuntimeSubagentSibling(this.runtime,task.taskId);
+        if(!peer||peer.binding.ownerTaskId!==owner.taskId||peer.binding.parentTaskId!==root.parentTaskId
+          ||peer.binding.deadline!==root.deadline)
+          throw new ProtocolError('UNAUTHORIZED','Experience executor is outside its original persisted plan');
+        this.assertDeveloperHarnessExecutorCurrent(task.taskId);
+      }
+    }
+  }
+
+  private harnessExperienceWorkflowId(scope:DeveloperExperienceScope):string {
+    return 'developer-harness:'+hashJson({...scope,workspaceDigest:undefined}).slice(0,48);
+  }
+
+  private harnessExperienceOwner(taskId:string):string|undefined {
+    const peer=readRuntimeSubagentSibling(this.runtime,taskId);
+    if(peer)return peer.binding.ownerTaskId;
+    const binding=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string;subtaskId?:string}|undefined;
+    const root=binding?.parentTaskId?readUserTaskDelegation(this.runtime,binding.parentTaskId):undefined;
+    return root&&binding?.subtaskId==='user-work'
+      &&this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${root.parentTaskId}-user-work`)?.taskId===taskId?taskId:undefined;
+  }
+
+  /** A consumed strategy may finish only the original confirmed publication, never authorize another tool. */
+  private assertHarnessExperienceToolOpen(taskId:string):void {
+    const ownerTaskId=this.harnessExperienceOwner(taskId);
+    if(ownerTaskId&&this.runtime.loadCheckpoint(ownerTaskId,'harness-experience:publication-completion:v1')!==undefined)
+      throw new ProtocolError('SCOPE_DENIED','Original development guidance is complete; only its publication summary remains');
+  }
+
+  private assertHarnessExperienceResponse(taskId:string,kind:string):void {
+    const ownerTaskId=this.harnessExperienceOwner(taskId);
+    if(ownerTaskId&&this.runtime.loadCheckpoint(ownerTaskId,'harness-experience:publication-completion:v1')!==undefined&&kind!=='text')
+      throw new ProtocolError('SCOPE_DENIED','Completed original publication permits only a text summary');
+  }
+
+  /** No workspace exception is available until canonical confirmed adoption, CAS publication and exact readback agree. */
+  private assertHarnessExperiencePublicationCompletion(ownerTaskId:string,lease:DeveloperExperienceLease,
+    current:{scope:DeveloperExperienceScope;snapshot:CodingRepairSnapshot},context:LearningContext):void {
+    const host=this.harnessExperienceState;
+    if(!host||!this.harnessCandidateBindings||this.runtime.getTask(ownerTaskId).state!=='running'
+      ||this.runtime.getTask(ownerTaskId).cancelRequested||context.signal.aborted
+      ||!Number.isFinite(Date.parse(context.deadline))||this.now().getTime()>=Date.parse(context.deadline)
+      ||!isDeepStrictEqual({...current.scope,workspaceDigest:''},{...lease.source.scope,workspaceDigest:''}))
+      throw new ProtocolError('REVISION_CONFLICT','Original guidance publication completion is unavailable');
+    const originalParent=this.runtime.loadCheckpoint(ownerTaskId,'subtask-parent') as {parentTaskId:string};
+    for(const task of this.subagentTaskSnapshots(originalParent.parentTaskId)) {
+      const peer=readRuntimeSubagentSibling(this.runtime,task.taskId);
+      if(peer?.binding.ownerTaskId===ownerTaskId&&(!isTerminalTask(task)||this.activeTextTasks.has(task.taskId)||this.runtime.isTaskActive(task.taskId)))
+        throw new ProtocolError('RESULT_UNKNOWN','Original guidance executors have not stopped');
+    }
+    const records=this.runtime.readToolExecutions(ownerTaskId),publication=records.filter(record=>record.toolName==='coding.repair.publish').at(-1);
+    const invocation=publication&&this.runtime.loadCheckpoint(ownerTaskId,'application-tool-invocation:'+publication.evidenceId) as
+      {toolName?:string;toolVersion?:string;arguments?:unknown;argumentsDigest?:string;deadline?:string}|undefined;
+    if(!publication||publication.state!=='confirmed'||!publication.executionStarted||publication.policyDecision!=='allow'
+      ||publication.toolVersion!=='1.0.0'||invocation?.toolName!=='coding.repair.publish'||invocation.toolVersion!=='1.0.0'
+      ||!plainObject(invocation.arguments)||invocation.argumentsDigest!==toolArgumentsDigest(invocation.arguments)
+      ||invocation.deadline!==context.deadline
+      ||!this.runtime.matchesToolExecutionInput(publication,{arguments:invocation.arguments,scopeRef:publication.evidenceId})
+      ||!this.runtime.readEvidence(ownerTaskId).some(item=>item.evidenceId===publication.evidenceId&&item.kind==='execution'&&item.sourceRef==='coding.repair.publish'))
+      throw new ProtocolError('REVISION_CONFLICT','Original guidance has no confirmed publication Evidence');
+    const request=parseCodingRepairPublishRequest(invocation.arguments);
+    const matches=records.filter(record=>record.toolName===HARNESS_PREPARE_ADOPTION_TOOL&&record.state==='confirmed').filter(record=>{
+      const saved=this.runtime.loadCheckpoint(ownerTaskId,'harness-candidates:session:'+record.evidenceId) as {input?:unknown}|undefined;
+      return saved?.input!==undefined&&parseCodingRepairInput(saved.input).session.sessionId===request.sessionId;
+    });
+    if(matches.length!==1)throw new ProtocolError('UNAUTHORIZED','Original guidance publication has no unique canonical adoption');
+    const adoption=matches[0]!;
+    const canonical=this.harnessCandidateBindings.readAdoptionOriginForCompletion({ownerTaskId,actualTaskId:ownerTaskId,
+      runId:adoption.evidenceId,publicationRunId:publication.evidenceId});
+    if(!canonical)throw new ProtocolError('UNAUTHORIZED','Original guidance adoption provenance is unavailable');
+    const checkedCache=this.runtime.loadCheckpoint(ownerTaskId,'tool-result-'+adoption.evidenceId) as {result?:unknown}|undefined;
+    const publicationCache=this.runtime.loadCheckpoint(ownerTaskId,'tool-result-'+publication.evidenceId) as {result?:unknown}|undefined;
+    const checked=parseCodingRepairCheckReadback(checkedCache?.result),published=parseCodingRepairPublishReadback(publicationCache?.result);
+    const main=canonical.input;
+    if(main.session.mode!=='main'||main.session.taskId!==ownerTaskId||main.session.sessionId!==request.sessionId
+      ||request.baselineSnapshotId!==main.initialSnapshot.snapshotId||request.snapshotId!==checked.snapshot.snapshotId
+      ||checked.sessionId!==request.sessionId||published.sessionId!==request.sessionId||published.state!=='published'
+      ||harnessExperienceWorkspaceDigest(checked.snapshot)!==current.scope.workspaceDigest
+      ||harnessExperienceWorkspaceDigest(current.snapshot)!==current.scope.workspaceDigest
+      ||harnessCandidateArtifactDigest(checked.snapshot)!==canonical.origin.artifactDigest
+      ||harnessCandidateArtifactDigest(current.snapshot)!==canonical.origin.artifactDigest
+      ||!request.paths.length||request.paths.length!==published.files.length||new Set(published.files.map(file=>file.path)).size!==request.paths.length
+      ||request.paths.some(path=>!published.files.some(file=>file.path===path))
+      ||published.files.some(file=>file.beforeSha256!==(main.initialSnapshot.files.find(before=>before.path===file.path)?.sha256??null)
+        ||file.afterSha256!==checked.snapshot.files.find(after=>after.path===file.path)?.sha256)
+      ||!published.evidenceRefs.includes(adoption.evidenceId)
+      ||main.recipes.filter(recipe=>recipe.required).some(recipe=>!checked.verification.some(receipt=>receipt.recipeId===recipe.recipeId
+        &&receipt.sessionId===request.sessionId&&receipt.status==='VALID'&&receipt.exitCode===0
+        &&receipt.inputSnapshotId===checked.snapshot.snapshotId&&request.verificationRunIds.includes(receipt.runId)
+        &&receipt.evidenceRefs.includes(adoption.evidenceId)
+        &&isDeepStrictEqual([...receipt.packageIds].sort(),[...recipe.packageIds].sort())
+        &&harnessCandidateArtifactDigest({...checked.snapshot,files:receipt.files})===canonical.origin.artifactDigest)))
+      throw new ProtocolError('REVISION_CONFLICT','Original guidance publication or current readback differs');
+    // This checks the original source and activation, not a new execution lease for the changed workspace.
+    host.application.assertPublishedGuidanceSource(lease,current.scope,context);
+    const key='harness-experience:publication-completion:v1',proof={version:1,ownerTaskId,leaseDigest:hashJson(lease),
+      origin:canonical.origin,publicationRunId:publication.evidenceId,publicationInputDigest:publication.inputDigest,
+      publicationResultDigest:toolArgumentsDigest(publicationCache!.result),scope:current.scope};
+    this.runtime.saveCheckpointOnce(ownerTaskId,key,proof);
+    if(!isDeepStrictEqual(this.runtime.loadCheckpoint(ownerTaskId,key),proof))
+      throw new ProtocolError('REVISION_CONFLICT','Original publication completion facts changed');
+  }
+
+  private harnessExperienceRecipes(taskId:string,context:LearningContext,initialize=false):readonly string[] {
+    const ownerTaskId=this.harnessExperienceOwner(taskId);
+    if(!ownerTaskId)return [];
+    const key='harness-experience:lease:v1',host=this.harnessExperienceState;
+    const original=this.runtime.loadCheckpoint(ownerTaskId,key);
+    let saved=original as {ownerTaskId:string;scope:DeveloperExperienceScope|null;lease:DeveloperExperienceLease|null}|undefined;
+    if(original===null)saved={ownerTaskId,scope:null,lease:null};
+    else if(plainObject(original)&&!Object.hasOwn(original,'ownerTaskId')) {
+      const lease=original as unknown as DeveloperExperienceLease;
+      saved={ownerTaskId,scope:lease.source?.scope??null,lease};
+    }
+    if(this.runtime.loadCheckpoint(ownerTaskId,'harness-experience:lease-invalidated:v1')!==undefined) {
+      if(saved?.lease)throw new ProtocolError('REVISION_CONFLICT','Original experience lease was invalidated');
+      return [];
+    }
+    if(saved===undefined&&initialize&&host) {
+      const current=this.readHarnessExperienceCurrent(ownerTaskId,host.options);
+      const beforeFirstAttempt=this.runtime.loadCheckpoint(ownerTaskId,'competition-loop')===undefined
+        &&this.runtime.readToolExecutions(ownerTaskId).length===0;
+      const lease=current&&beforeFirstAttempt
+        ?host.application.readApplicable(this.harnessExperienceWorkflowId(current.scope),current.scope,context):null;
+      saved={ownerTaskId,scope:current?.scope??null,lease};
+      this.runtime.saveCheckpointOnce(ownerTaskId,key,saved);
+      if(!isDeepStrictEqual(this.runtime.loadCheckpoint(ownerTaskId,key),saved))
+        throw new ProtocolError('REVISION_CONFLICT','Original experience lease changed');
+    }
+    if(saved===undefined)return [];
+    if(saved.ownerTaskId!==ownerTaskId)throw new ProtocolError('UNAUTHORIZED','Original experience owner changed');
+    if(saved.scope===null&&saved.lease===null)return [];
+    if(!host||saved.scope===null)throw new ProtocolError('UNAUTHORIZED','Original experience reader unavailable');
+    const current=this.readHarnessExperienceCurrent(ownerTaskId,host.options);
+    // No recipe lease was consumed: normal original work may change its files,
+    // but a later activation or a different configuration cannot replace this decision.
+    if(saved.lease===null) {
+      if(!current||!isDeepStrictEqual({...current.scope,workspaceDigest:''},{...saved.scope,workspaceDigest:''}))
+        throw new ProtocolError('REVISION_CONFLICT','Original experience configuration changed');
+      return [];
+    }
+    if(current&&(this.runtime.loadCheckpoint(ownerTaskId,'harness-experience:publication-completion:v1')!==undefined
+      ||!isDeepStrictEqual(current.scope,saved.scope))) {
+      this.assertHarnessExperiencePublicationCompletion(ownerTaskId,saved.lease,current,context);
+      return saved.lease.source.requiredRecipeIds;
+    }
+    if(!current||!isDeepStrictEqual(current.scope,saved.scope))
+      throw new ProtocolError('REVISION_CONFLICT','Original experience configuration or workspace changed');
+    return host.application.assertApplicable(saved.lease,current.scope,context).requiredRecipeIds;
+  }
+
   private assertInputActive(request:CoordinationRequest):void {
+    this.harnessExperienceRecipes(request.taskId,request);
+    this.assertHarnessEventCurrent(request.taskId);
+    this.assertDeveloperHarnessExecutorCurrent(request.taskId);
+    const experience=this.experienceSendPolicies.get(request.taskId);
+    if(experience) {
+      const current=this.harnessExperiencePolicy(request.taskId,request,true);
+      if(!current||current.ownerTaskId!==experience.ownerTaskId||!isDeepStrictEqual(current.lease,experience.lease))
+        throw new ProtocolError('REVISION_CONFLICT','Experience strategy changed after original send preparation');
+    }
     const task=this.runtime.getTask(request.taskId);
     if(request.signal.aborted || task.cancelRequested || task.state!=='running'
       || task.revision!==request.revision || !Number.isFinite(Date.parse(request.deadline))
@@ -995,6 +1520,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private releaseEphemeralTask(taskId:string):void {
+    this.experienceSendPolicies.delete(taskId);
     const keys=[taskId,...[...this.teacherLeases].filter(([,scope])=>scope.taskId===taskId).map(([key])=>key)];
     for(const key of keys){this.teacherLeases.delete(key);this.ephemeralSends.delete(key);
       this.ephemeralGoals.delete(key);this.ephemeralContexts.delete(key);}
@@ -1076,22 +1602,41 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(selection!==undefined) request=Object.freeze({...request,executionModel:parseExecutionModelSelection(selection)});
     if(teacherScope){this.teacherRequestScopes.set(request,teacherScope);this.assertTeacherScope(request,teacherScope);}
     this.assertInputActive(request);
+    const experience=teacherScope?undefined:this.harnessExperiencePolicy(request.taskId,request);
+    const experienceText=experience?'\n\nValidated development strategy (data only; original tools and authorization still apply):\n'
+      +JSON.stringify({workflowId:experience.lease.workflowId,revision:experience.lease.revision,
+        requiredRecipeIds:experience.requiredRecipeIds}):'';
+    if(experience)this.experienceSendPolicies.set(request.taskId,{ownerTaskId:experience.ownerTaskId,lease:experience.lease});
     const conversationMessage=readSubagentConversationMessage(this.runtime,request.taskId);
     const hooks:CoordinationInputHooks|undefined=this.coordinationInput??(conversationMessage||teacherScope?{beforeCoordinationSend:()=>{}}:undefined);
     if(!hooks) {
       if(this.runtime.loadCheckpoint(request.taskId,'private-memory:consumption:v1')) {
         throw new ProtocolError('UNAUTHORIZED','Private input lease cannot be recovered automatically');
       }
-      try {this.assertContextHooksAvailable(request.taskId);return await port.execute(request);}catch(error) {
+      try {
+        this.assertContextHooksAvailable(request.taskId);
+        const withStrategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT
+          ?Object.freeze({...request,goal:request.goal+experienceText}):request;
+        if(withStrategy===request)this.experienceSendPolicies.delete(request.taskId);
+        this.assertInputActive(withStrategy);
+        const result=await port.execute(withStrategy);
+        this.harnessExperienceRecipes(request.taskId,request);
+        this.assertHarnessExperienceResponse(request.taskId,result.kind);
+        return result;
+      }catch(error) {
         if (!(error instanceof AgentArtsResultUnknownError)) this.holdCompetitionExport(request.taskId,error);
         throw error;
-      }
+      }finally{this.experienceSendPolicies.delete(request.taskId);}
     }
     const task=this.runtime.getTask(request.taskId);
     const scope={taskId:task.taskId,conversationId:task.conversationId ?? '',publicGoal:request.goal,
       deadline:request.deadline,signal:request.signal};
-    const prepared=await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
+    const preparedSource=await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
+    const privateDerived=preparedSource!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
+    let prepared=preparedSource;
     this.assertInputActive(request);
+    if(!privateDerived&&experienceText&&prepared.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT)prepared+=experienceText;
+    else this.experienceSendPolicies.delete(request.taskId);
     if(!nonEmptyText(prepared))throw new ProtocolError('INVALID_ARGUMENT','Empty ephemeral input');
     if(readUserTaskDelegation(this.runtime,task.taskId)
       && (prepared!==request.goal || this.readPrivateTaskBinding(task.taskId)!==undefined)) {
@@ -1100,36 +1645,78 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('UNAUTHORIZED','Delegated user summary requires public context; private input needs its own child confirmation');
     }
     const contextScope={taskId:task.taskId,conversationId:task.conversationId ?? '',deadline:request.deadline,signal:request.signal};
-    const messages=conversationMessage?this.readSubagentConversationContext(contextScope)
-      :await hooks.readConversationContext?.(contextScope) ?? [];
+    const compaction=hooks.contextCompaction,historyLimit=compaction?.policy.maxSourceMessages;
+    if(historyLimit!==undefined&&(!Number.isSafeInteger(historyLimit)||historyLimit<1))throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted conversation range');
+    const compactionScope:ContextCompactionScope={...contextScope,cutoff:task.taskId};
+    if(compaction&&!conversationMessage&&!compaction.readSnapshot)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Conversation compaction requires a synchronous original overlay snapshot');
+    const readNative=()=>this.readSubagentConversationContext({...contextScope,...(historyLimit===undefined?{}:{maxMessages:historyLimit})});
+    const readCompaction=()=>conversationMessage?readNative():compaction!.readSnapshot!(compactionScope,compaction!.policy.maxSourceMessages);
+    const messages=compaction?readCompaction():conversationMessage?readNative():await hooks.readConversationContext?.(contextScope)??[];
     this.assertInputActive(request);
-    const ids=new Set<string>();
-    const context=messages.filter(message=> {
-      if(!nonEmptyText(message.id) || ids.has(message.id) || !['user','assistant'].includes(message.role)
-        || typeof message.content!=='string')throw new ProtocolError('INVALID_ARGUMENT','Invalid conversation context');
-      ids.add(message.id);
-      return !message.withheld && (!message.taskId || !this.isHistoryWithheld(message.taskId));
-    });
-    const privateDerived=prepared!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
+    const eligible=(messages:readonly ConversationContextMessage[])=>{
+      const ids=new Set<string>();
+      return messages.filter(message=>{
+        if(!nonEmptyText(message.id)||ids.has(message.id)||!['user','assistant'].includes(message.role)
+          ||typeof message.content!=='string')throw new ProtocolError('INVALID_ARGUMENT','Invalid conversation context');
+        ids.add(message.id);
+        return !message.withheld&&(!message.taskId||!this.isHistoryWithheld(message.taskId));
+      });
+    };
+    const sourceContext=eligible(messages);
+    if(historyLimit!==undefined&&sourceContext.length>historyLimit)
+      throw new ProtocolError('INVALID_ARGUMENT','Complete conversation exceeds the explicit source range');
     // Context is data, never instructions or an authorization. Only digests are checkpointed.
     try {
+      let compacted:ContextCompactionResult|undefined;
+      if(compaction) {
+        if(compaction.policy.maxCharacters>COORDINATION_GOAL_CHARACTER_LIMIT)
+          throw new ProtocolError('INVALID_ARGUMENT','Compaction cannot enlarge the original Coordination character budget');
+        const modelConfigurationRef=compaction.modelConfigurationRef,summarize=compaction.summarize,
+          readSnapshot=compaction.readSnapshot,compactionKey=checkpointKey+':'+CONTEXT_COMPACTION_CHECKPOINT;
+        compacted=await compactConversationContext({scope:compactionScope,policy:compaction.policy,modelConfigurationRef,
+          ...(hooks.goalTokenBudget===undefined?{}:{goalTokenBudget:hooks.goalTokenBudget}),
+          readSnapshot:()=>{
+            const current=eligible(readCompaction());
+            if(!isDeepStrictEqual(current,sourceContext))throw new ProtocolError('REVISION_CONFLICT','Original conversation source changed');
+            return {configurationRef:this.coordinationBinding,messages:current};
+          },
+          compile:messages=>serializeCoordinationGoal(request.goal,prepared,messages),summarize,
+          assertCurrent:()=>{
+            this.assertCompetitionTaskConfiguration(request.taskId);this.assertInputActive(request);
+            if(hooks.contextCompaction!==compaction||compaction.modelConfigurationRef!==modelConfigurationRef
+              ||compaction.summarize!==summarize||compaction.readSnapshot!==readSnapshot)
+              throw new ProtocolError('REVISION_CONFLICT','Original conversation compaction host changed');
+            const guarded:unknown=compaction.assertCurrent(compactionScope);
+            if(guarded!==undefined){void Promise.resolve(guarded).catch(()=>undefined);
+              throw new ProtocolError('INVALID_ARGUMENT','Compaction host guard must be synchronous');}
+          },loadCheckpoint:()=>this.runtime.loadCheckpoint(task.taskId,compactionKey),
+          saveCheckpoint:receipt=>{
+            if(!this.runtime.saveCheckpointOnce(task.taskId,compactionKey,receipt))
+              assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,compactionKey),receipt);
+          },now:()=>this.now().getTime()});
+      }
+      const context=compacted?.messages??sourceContext;
       const goal=this.compileTaskConversationGoal(task.taskId,request.goal,prepared,context);
       const binding=bindCompiledContext({taskId:task.taskId,conversationId:task.conversationId ?? '',
         deadline:request.deadline,configurationRef:this.coordinationBinding,publicGoal:request.goal,
         preparedGoal:prepared,compiledGoal:goal,messages:context,
-        privateBinding:this.readPrivateTaskBinding(task.taskId)},hooks.goalTokenBudget);
+        privateBinding:this.readPrivateTaskBinding(task.taskId),
+        ...(compacted?.state==='compacted'?{compactionReceipt:compacted.receipt}:{})},hooks.goalTokenBudget);
       if(!this.runtime.saveCheckpointOnce(task.taskId,checkpointKey,binding)) {
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,checkpointKey),binding);
       }
       const effective=Object.freeze({...request,goal});
       if(teacherScope)this.teacherRequestScopes.set(effective,teacherScope);
       this.ephemeralSends.set(leaseKey,effective);
-      this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:prepared});
-      this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:context.flatMap(message=>message.taskId?[message.taskId]:[]),
-        answerTaskIds:context.flatMap(message=>message.role==='assistant'&&message.taskId?[message.taskId]:[])});
+      this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:preparedSource});
+      this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:sourceContext.flatMap(message=>message.taskId?[message.taskId]:[]),
+        answerTaskIds:sourceContext.flatMap(message=>message.role==='assistant'&&message.taskId?[message.taskId]:[]),
+        ...(compacted?.state==='compacted'?{assertCompactionCurrent:compacted.assertCurrent}:{})});
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
       this.assertInputActive(request);
+      this.assertHarnessExperienceResponse(request.taskId,result.kind);
       if(!privateDerived)return result;
       this.runtime.saveCheckpoint(task.taskId,'private-derived-output',{withheld:true});
       if(result.kind!=='text')throw new ProtocolError('UNAUTHORIZED','Private-derived proposals require a separate public task and authorization');
@@ -1143,6 +1730,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.ephemeralSends.delete(leaseKey);
       this.ephemeralGoals.delete(leaseKey);
       this.ephemeralContexts.delete(leaseKey);
+      this.experienceSendPolicies.delete(request.taskId);
       if(privateDerived){this.releaseEphemeralTask(task.taskId);hooks.releaseTask?.(task.taskId);}
     }
   }
@@ -1197,7 +1785,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Original Runtime cutoff; a host merges Conversations/Live by message id, then re-filters. */
   readConversationContext(input:{taskId?:string;conversationId:string;deadline:string;signal:AbortSignal;
-    historyMessages?:readonly ConversationContextMessage[]}):ConversationContextMessage[] {
+    historyMessages?:readonly ConversationContextMessage[];maxMessages?:number}):ConversationContextMessage[] {
+    const historyLimit=input.maxMessages;
+    if(historyLimit!==undefined&&(!Number.isSafeInteger(historyLimit)||historyLimit<1))throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted conversation range');
     const task=input.taskId ? this.runtime.getTask(input.taskId) : undefined;
     if((task && (task.conversationId!==input.conversationId || task.cancelRequested)) || !Number.isFinite(Date.parse(input.deadline)) || input.signal.aborted
       || this.now().getTime()>=Date.parse(input.deadline))throw new ProtocolError('UNAUTHORIZED','Conversation scope expired');
@@ -1236,7 +1826,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
     }
     // Stable sort also preserves user/assistant order when task timestamps tie.
-    return [...result.values()].sort((a,b)=>(order.get(a.id)??Infinity)-(order.get(b.id)??Infinity));
+    const ordered=[...result.values()].sort((a,b)=>(order.get(a.id)??Infinity)-(order.get(b.id)??Infinity));
+    if(historyLimit!==undefined&&ordered.length>historyLimit)
+      throw new ProtocolError('INVALID_ARGUMENT','Complete conversation exceeds the explicit source range');
+    return ordered;
   }
 
   configureThinking(config: ThinkingConfig): ThinkingState {
@@ -1412,6 +2005,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(parent.cancelRequested || ['succeeded','failed','cancelled','cancelling'].includes(parent.state)) {
       throw new ProtocolError('CANCELLED','Original parent no longer permits child work');
     }
+    if(binding.subtaskId==='user-work')this.notifyHarnessEventProgress(parent.taskId);
     const identity={profile:'huawei_ict_agentarts',configurationRef:this.coordinationBinding};
     if(worker.loadCheckpoint('execution-model')===undefined) {
       const fallback=subtask.model===undefined?this.readDefaultExecutionModel?.('subagent'):undefined;
@@ -1429,7 +2023,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const selectedModel=worker.loadCheckpoint('execution-model') as ExecutionModelSelection|undefined;
     const selectedEffort=selectedModel?.reasoningEffort;
     const delegation=readUserTaskDelegation(this.runtime,binding.parentTaskId);
-    const maxSteps=delegation?.maxSteps??(subtask.thinkingDepth===undefined?6:Math.max(2,(subtask.thinkingDepth+1)*2));
+    const sibling=readRuntimeSubagentSibling(this.runtime,worker.taskId);
+    if(sibling) this.assertDeveloperHarnessExecutorCurrent(worker.taskId);
+    const maxSteps=sibling?.maxSteps??delegation?.maxSteps??(subtask.thinkingDepth===undefined?6:Math.max(2,(subtask.thinkingDepth+1)*2));
     worker.saveCheckpoint('subtask-thinking-binding',{depth:subtask.thinkingDepth??null,
       stepBudget:{maxSteps},
       modelReasoning:{requestedEffort:subtask.reasoningEffort??selectedEffort??null,effort:selectedEffort??null,
@@ -1455,6 +2051,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       || !isDeepStrictEqual(worker.loadCheckpoint('subtask-tools-binding'),descriptors)) {
       throw new ProtocolError('UNAUTHORIZED','Default child tool scope changed');
     }
+    if(binding.subtaskId==='user-work')this.harnessExperienceRecipes(worker.taskId,worker,true);
     const catalog=this.competitionToolCatalog?.restrict(tools);
     if(readRuntimeCodingRepairRequest(this,subtask,worker.taskId)) {
       if(!this.codingRepair)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original F15 image binding is unavailable');
@@ -1483,16 +2080,21 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (request.operation === 'authorization.respond' && request.payload.decision === 'allow_once'
       && this.profile === 'huawei_ict_agentarts') {
       const approval=this.runtime.getApproval(request.payload.approvalId);
+      this.harnessExperienceRecipes(approval.taskId,{deadline:request.deadline,signal});
+      this.assertHarnessEventCurrent(approval.taskId);
       if(this.runtime.loadCheckpoint(approval.taskId,'application-profile')==='huawei_ict_agentarts'
         || this.runtime.loadCheckpoint(approval.taskId,'competition-loop')!==undefined) {
         this.assertCompetitionTaskConfiguration(approval.taskId);
+        this.assertDeveloperHarnessExecutorCurrent(approval.taskId);
+        const message=readSubagentConversationMessage(this.runtime,approval.taskId);
+        if(message)this.assertDeveloperHarnessExecutorCurrent(message.originTaskId);
       }
     }
     const response = await this.runtime.send(request, signal);
     if (request.operation === 'task.submit' && response.outcome === 'ok') this.dispatchSubmittedTextTask(request, response);
     if (request.operation === 'task.cancel' && response.outcome === 'ok') {
       this.releaseEphemeralTask(request.payload.taskId);
-      for (const child of this.runtime.listTasks({conversationId: `desktop-subtask:${request.payload.taskId}`, limit: 100}).items) {
+      for (const child of this.subagentTaskSnapshots(request.payload.taskId)) {
         if (!['succeeded', 'failed', 'cancelled'].includes(child.state)) {
           this.releaseEphemeralTask(child.taskId);this.runtime.requestCancel(child.taskId, 'Parent task cancelled');
         }
@@ -1527,6 +2129,179 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!this.codingRepair)return;
     this.codingRepair.projectSource=project;
     this.codingRepair.authorizeMetadata=authorizeMetadata;
+  }
+
+  private readHarnessCandidateRecoveryOrigin(taskId:string,expectedRevision:number) {
+    const actual=this.runtime.getTask(taskId),peer=readRuntimeSubagentSibling(this.runtime,taskId);
+    const parent=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string;parentDeadline?:string;subtaskId?:string}|undefined;
+    const delegation=parent?.parentTaskId?readUserTaskDelegation(this.runtime,parent.parentTaskId):undefined;
+    const ownerTaskId=peer?.binding.ownerTaskId??taskId;
+    if(!this.harnessCandidateBindings||!this.harnessCandidateOptions?.reconcileOriginalSession
+      ||actual.revision!==expectedRevision||actual.state!=='waiting_reconciliation'
+      ||this.activeTextTasks.has(taskId)||this.runtime.isTaskActive(taskId)||!delegation
+      ||actual.conversationId!==`desktop-subtask:${delegation.parentTaskId}`
+      ||!peer&&parent?.subtaskId!=='user-work'
+      ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${delegation.parentTaskId}-user-work`)?.taskId!==ownerTaskId
+      ||parent?.parentDeadline!==delegation.deadline)return undefined;
+    const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {step?:number;pending?:{toolName?:string}}|undefined;
+    const trialRunId=`competition-tool-${taskId}-${loop?.step}`;
+    const record=this.runtime.readToolExecutions(taskId).find(item=>item.evidenceId===trialRunId);
+    const saved=this.runtime.loadCheckpoint(ownerTaskId,'harness-candidates:operation:'+trialRunId) as
+      {scope?:RuntimeHarnessScope;toolName?:string;runId?:string}|undefined;
+    if(!saved?.scope||saved.runId!==trialRunId||saved.scope.actualTaskId!==taskId||saved.scope.ownerTaskId!==ownerTaskId
+      ||saved.scope.parentTaskId!==delegation.parentTaskId||saved.scope.deadline!==delegation.deadline
+      ||saved.toolName!==loop?.pending?.toolName||![HARNESS_TRIAL_TOOL,HARNESS_PREPARE_ADOPTION_TOOL].includes(saved.toolName??'')
+      ||record?.state!=='unknown'||record.policyDecision!=='allow'||!record.executionStarted
+      ||this.runtime.loadCheckpoint(taskId,'competition-configuration-binding')!==this.coordinationBinding)return undefined;
+    const request={ownerTaskId,actualTaskId:taskId,trialRunId,expectedRevision,configurationRef:saved.scope.configurationRef};
+    const session=this.harnessCandidateBindings.readOriginalSessionForRecovery(request);
+    return session?{request,session,record}:undefined;
+  }
+
+  private harnessCandidateRecoveryTargets(taskId:string,expectedRevision:number):{taskId:string;expectedRevision:number}[] {
+    const task=this.runtime.getTask(taskId);
+    if(task.revision!==expectedRevision||task.state!=='waiting_reconciliation'||this.activeTextTasks.has(taskId)
+      ||this.runtime.isTaskActive(taskId))return [];
+    if(this.readHarnessCandidateRecoveryOrigin(taskId,expectedRevision))return [{taskId,expectedRevision}];
+    const root=readUserTaskDelegation(this.runtime,taskId);
+    if(!root)return [];
+    const rootRun=`competition-tool-${taskId}-1`,record=this.runtime.readToolExecutions(taskId).find(item=>item.evidenceId===rootRun);
+    if(record?.state!=='confirmed'||record.toolName!==SUBAGENT_DISPATCH_TOOL_NAME||record.toolVersion!=='1.0.0'
+      ||record.policyDecision!=='allow'||!record.executionStarted
+      ||!this.runtime.matchesToolExecutionInput(record,{arguments:{subtasks:[root.subtask]},scopeRef:rootRun}))return [];
+    const owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${taskId}-user-work`);
+    const original=owner?this.runtime.loadCheckpoint(owner.taskId,'subtask-parent'):undefined;
+    if(!owner||!isDeepStrictEqual(original,{...root.subtask,parentTaskId:taskId,parentDeadline:root.deadline}))return [];
+    return this.subagentTaskSnapshots(taskId).filter(child=>{
+      if(child.taskId===owner.taskId)return true;
+      const marker=readRuntimeSubagentSibling(this.runtime,child.taskId);
+      return marker?.binding.ownerTaskId===owner.taskId&&marker.binding.parentTaskId===taskId;
+    }).flatMap(child=>this.readHarnessCandidateRecoveryOrigin(child.taskId,child.revision)
+      ?[{taskId:child.taskId,expectedRevision:child.revision}]:[]);
+  }
+
+  /** Metadata only. A root resolves its canonical owner/plan executors; users never need task IDs. */
+  readHarnessCandidateRecoveryAvailable(taskId:string):boolean {
+    try{return this.harnessCandidateRecoveryTargets(taskId,this.runtime.getTask(taskId).revision).length>0;}catch{return false;}
+  }
+
+  /** Explicit native readback preserves UNKNOWN facts and never resumes writes, commands, or the old root. */
+  async reconcileHarnessCandidateTask(taskId:string,expectedRevision:number,scope:{deadline:string;signal:AbortSignal}):
+    Promise<{task:TaskSnapshot;readbacks:{taskId:string;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}[]}> {
+    const targets=this.harnessCandidateRecoveryTargets(taskId,expectedRevision);
+    if(!targets.length)throw new ProtocolError('UNAUTHORIZED','Original unknown candidate tasks are unavailable');
+    const readbacks:{taskId:string;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}[]=[];
+    for(const target of targets) {
+      if(this.runtime.getTask(taskId).revision!==expectedRevision)
+        throw new ProtocolError('REVISION_CONFLICT','Native source task changed during candidate observation');
+      const observed=await this.reconcileHarnessCandidateExecutor(target.taskId,target.expectedRevision,scope);
+      readbacks.push({taskId:target.taskId,trialRunId:observed.trialRunId,recovery:observed.recovery,evidenceRef:observed.evidenceRef});
+    }
+    this.finishHarnessCandidateNativeParents(taskId,readbacks);
+    return {task:this.runtime.getTask(taskId),readbacks};
+  }
+
+  private finishHarnessCandidateNativeParents(taskId:string,readbacks:{taskId:string;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}[]):void {
+    const direct=readUserTaskDelegation(this.runtime,taskId),binding=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string}|undefined;
+    const rootId=direct?.parentTaskId??binding?.parentTaskId;if(!rootId)return;
+    const root=readUserTaskDelegation(this.runtime,rootId),owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${rootId}-user-work`);
+    if(!root||!owner||!isDeepStrictEqual(this.runtime.loadCheckpoint(owner.taskId,'subtask-parent'),
+      {...root.subtask,parentTaskId:rootId,parentDeadline:root.deadline}))return;
+    const members=()=>{
+      const children=this.subagentTaskSnapshots(rootId);
+      for(const child of children) {
+        if(child.taskId===owner.taskId)continue;
+        const marker=readRuntimeSubagentSibling(this.runtime,child.taskId);
+        if(marker?.binding.ownerTaskId!==owner.taskId||marker.binding.parentTaskId!==rootId)
+          throw new ProtocolError('SCOPE_DENIED','Native parent contains an unrecognized execution task');
+      }
+      return children;
+    };
+    const stopped=(tasks:TaskSnapshot[])=>tasks.every(task=>{
+      if(!isTerminalTask(task)||this.activeTextTasks.has(task.taskId)||this.runtime.isTaskActive(task.taskId))return false;
+      const proof=this.runtime.loadCheckpoint(task.taskId,'native-reconciliation-termination:v1') as
+        {terminal?:string;toolOutcomesPreserved?:boolean}|undefined;
+      if((this.runtime.loadCheckpoint(task.taskId,'competition-cloud-inflight')||this.runtime.loadCheckpoint(task.taskId,'competition-cloud-unknown'))
+        &&!proof&&!this.runtime.readReceivedCloudFailureBinding(task.taskId,true))return false;
+      return this.runtime.readToolExecutions(task.taskId).every(record=>{
+        if(record.state!=='unknown'&&record.state!=='started')return true;
+        const readback=this.runtime.loadCheckpoint(task.taskId,'harness-candidates:native-readback:'+record.evidenceId) as
+          {trialRunId?:string;recovery?:{state?:string};evidenceRef?:string}|undefined;
+        return proof?.terminal===task.state&&proof.toolOutcomesPreserved===true&&readback?.trialRunId===record.evidenceId
+          &&readback.recovery?.state==='clear'&&typeof readback.evidenceRef==='string';
+      });
+    });
+    const finish=(parentId:string,children:()=>TaskSnapshot[])=>{
+      const parent=this.runtime.getTask(parentId);
+      if(!['waiting_reconciliation','cancelling'].includes(parent.state)||this.activeTextTasks.has(parentId)||this.runtime.isTaskActive(parentId)
+        ||!stopped(children()))return;
+      const ownRecords=this.runtime.readToolExecutions(parentId);
+      if(ownRecords.some(record=>record.state!=='confirmed'||!record.executionStarted||record.policyDecision!=='allow'))return;
+      const evidenceRefs=readbacks.filter(item=>item.recovery.state==='clear').map(item=>item.evidenceRef);
+      if(!evidenceRefs.length)return;
+      for(const item of readbacks) {
+        const evidence=this.runtime.loadCheckpoint(item.taskId,'trusted-readback-evidence:'+item.evidenceRef);
+        if(evidence!==undefined)this.runtime.saveCheckpoint(parentId,'trusted-readback-evidence:'+item.evidenceRef,evidence);
+      }
+      const facts=()=>JSON.stringify({parent:this.runtime.getTask(parentId),records:this.runtime.readToolExecutions(parentId),
+        delegation:this.runtime.loadCheckpoint(rootId,USER_TASK_DELEGATION),members:members().map(child=>({task:child,
+          marker:this.runtime.loadCheckpoint(child.taskId,'developer-harness-executor:v1'),
+          proof:this.runtime.loadCheckpoint(child.taskId,'native-reconciliation-termination:v1'),records:this.runtime.readToolExecutions(child.taskId)}))});
+      const original=facts();
+      this.runtime.finishNativeReconciliation(parentId,parent.revision,{terminal:parent.cancelRequested?'cancelled':'failed',evidenceRefs,
+        reason:'原执行成员已停止；按原生核实结束任务，保留未知写入及实际副作用事实，未重开模型或重放工具。',
+        assertUnchangedAndStopped:()=>{
+          if(facts()!==original||!stopped(children())||this.activeTextTasks.has(parentId))
+            throw new ProtocolError('REVISION_CONFLICT','Original native child facts changed before termination');
+        }});
+    };
+    finish(owner.taskId,()=>members().filter(child=>child.taskId!==owner.taskId));
+    finish(rootId,members);
+    this.notifyHarnessEventProgress(rootId);
+  }
+
+  private reconcileHarnessCandidateExecutor(taskId:string,expectedRevision:number,scope:{deadline:string;signal:AbortSignal}):
+    Promise<{task:TaskSnapshot;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}> {
+    const active=this.activeHarnessCandidateRecovery.get(taskId);
+    if(active)throw new ProtocolError('REVISION_CONFLICT','Original candidate native readback is active');
+    const origin=this.readHarnessCandidateRecoveryOrigin(taskId,expectedRevision);
+    if(!origin)throw new ProtocolError('UNAUTHORIZED','Original unknown candidate session is unavailable');
+    const check=()=>{
+      if(scope.signal.aborted)throw new ProtocolError('CANCELLED','Native candidate observation cancelled');
+      if(!Number.isFinite(Date.parse(scope.deadline))||this.now().getTime()>=Date.parse(scope.deadline))
+        throw new ProtocolError('TIMEOUT','Native candidate observation expired');
+      this.assertCompetitionTaskConfiguration(taskId);
+      if(!isDeepStrictEqual(this.readHarnessCandidateRecoveryOrigin(taskId,expectedRevision),origin))
+        throw new ProtocolError('REVISION_CONFLICT','Original unknown session changed during native observation');
+    };
+    check();
+    const execution=(async()=>{
+      const recovery=await this.harnessCandidateOptions!.reconcileOriginalSession!({session:structuredClone(origin.session),
+        trialRunId:origin.request.trialRunId,expectedRevision,deadline:scope.deadline,signal:scope.signal,assertCurrent:check});
+      check();
+      if(!['clear','in_progress','unknown'].includes(recovery.state)||recovery.sessionId!==origin.session.session.sessionId)
+        throw new ProtocolError('INVALID_ARGUMENT','Invalid native original-session readback');
+      if(recovery.checkReadback&&parseCodingRepairCheckReadback(recovery.checkReadback).sessionId!==recovery.sessionId)
+        throw new ProtocolError('UNAUTHORIZED','Native original-session readback belongs to another session');
+      const evidenceRef='harness-native-readback-'+hashJson({taskId,trialRunId:origin.request.trialRunId,
+        inputDigest:origin.record.inputDigest,recovery});
+      this.runtime.saveCheckpoint(taskId,'trusted-readback-evidence:'+evidenceRef,{evidenceId:evidenceRef,kind:'observation',
+        sourceRef:HARNESS_RECONCILE_TRIAL_TOOL,capturedAt:this.now().toISOString(),
+        summary:'Native original-session observation; journal clear is not verification success',verification:'conditional',sensitivity:'internal'});
+      this.runtime.saveCheckpoint(taskId,'harness-candidates:native-readback:'+origin.request.trialRunId,
+        {trialRunId:origin.request.trialRunId,expectedRevision,recovery:structuredClone(recovery),evidenceRef});
+      if(recovery.state==='clear')this.runtime.finishNativeReconciliation(taskId,expectedRevision,{
+        terminal:this.runtime.getTask(taskId).cancelRequested?'cancelled':'failed',evidenceRefs:[evidenceRef],
+        reason:'原会话的活动操作已停止；按原生核实结束，原写入结果仍为 UNKNOWN，未重放或确认成功。',
+        assertUnchangedAndStopped:()=>{
+          check();
+          const saved=this.runtime.loadCheckpoint(taskId,'harness-candidates:native-readback:'+origin.request.trialRunId);
+          if(!isDeepStrictEqual(saved,{trialRunId:origin.request.trialRunId,expectedRevision,recovery,evidenceRef}))
+            throw new ProtocolError('REVISION_CONFLICT','Original native stopped-session readback changed');
+        }});
+      return {task:this.runtime.getTask(taskId),trialRunId:origin.request.trialRunId,recovery,evidenceRef};
+    })().finally(()=>this.activeHarnessCandidateRecovery.delete(taskId));
+    this.activeHarnessCandidateRecovery.set(taskId,execution);return execution;
   }
 
   private refreshCodingRepairParent(localTaskId:string):void {
@@ -1978,6 +2753,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   readEvents(afterSequence = 0): Event[] { return this.runtime.readEvents(afterSequence); }
+  private subagentTaskSnapshots(parentTaskId:string):TaskSnapshot[] {
+    const result:TaskSnapshot[]=[];let beforeSequence:number|undefined;let snapshotSequence:number|undefined;
+    for(;;){
+      const page=this.runtime.listTasks({conversationId:`desktop-subtask:${parentTaskId}`,limit:100,
+        ...(beforeSequence===undefined?{}:{beforeSequence}),...(snapshotSequence===undefined?{}:{snapshotSequence})});
+      result.push(...page.items);
+      if(page.nextBeforeSequence===undefined)return result;
+      beforeSequence=page.nextBeforeSequence;snapshotSequence=page.snapshotSequence;
+    }
+  }
   /** Durable child tasks only; model metadata is the original execution binding. */
   readSubagentTasks(parentTaskId:string): {parentTaskId:string;taskId:string;role:string;modelId:string;reasoningEffort?:NonNullable<ExecutionModelSelection['reasoningEffort']>;state:TaskSnapshot['state'];resultSummary?:string;error?:NonNullable<TaskSnapshot['error']>;evidenceRefs:string[]}[] {
     this.runtime.getTask(parentTaskId);
@@ -1990,6 +2775,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       beforeSequence=page.nextBeforeSequence;snapshotSequence=page.snapshotSequence;
     }
     return tasks.flatMap(task=>{
+      readRuntimeSubagentSibling(this.runtime,task.taskId);
       const binding=this.runtime.loadCheckpoint(task.taskId,'subtask-parent') as {parentTaskId?:string;role?:string;model?:string}|undefined;
       if(binding?.parentTaskId!==parentTaskId || typeof binding.role!=='string')return [];
       const selected=this.runtime.loadCheckpoint(task.taskId,'execution-model') as ExecutionModelSelection|undefined;
@@ -2026,6 +2812,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!binding||typeof binding.parentTaskId!=='string'||typeof binding.subtaskId!=='string'||typeof binding.role!=='string'
           ||task.conversationId!==`desktop-subtask:${binding.parentTaskId}`
           ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${binding.parentTaskId}-${binding.subtaskId}`)?.taskId!==task.taskId)continue;
+        readRuntimeSubagentSibling(this.runtime,task.taskId);
         const selected=this.runtime.loadCheckpoint(task.taskId,'execution-model') as ExecutionModelSelection|undefined;
         let latest=task;
         const followup=this.runtime.listTasks({conversationId:`desktop-subagent-conversation:${task.taskId}`,limit:1}).items[0];
@@ -2065,11 +2852,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   private subagentConversationOrigin(scope:SubagentConversationScope):SubagentConversationOrigin {
     if(this.profile!=='huawei_ict_agentarts')throw new ProtocolError('UNSUPPORTED_CAPABILITY','Subagent conversations require Competition Profile');
+    readRuntimeSubagentSibling(this.runtime,scope.taskId);
     return readSubagentConversationOrigin(this.runtime,scope);
   }
 
   private assertSubagentConversationCurrent(origin:SubagentConversationOrigin):void {
     if(!this.isDefaultSubagentAvailable()||!this.tools)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Competition subagent is unavailable');
+    this.assertDeveloperHarnessExecutorCurrent(origin.task.taskId);
     if(origin.configurationRef!==this.coordinationBinding||!sameConversationTools(origin.tools,this.tools.list())) {
       throw new ProtocolError('REVISION_CONFLICT','Original subagent deployment or tool scope changed');
     }
@@ -2090,6 +2879,195 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding');
     if(!isDeepStrictEqual(frozen,origin.tools)||!origin.tools.some(tool=>tool.name===toolName)||isRuntimeDispatchTool(toolName)) {
       throw new ProtocolError('SCOPE_DENIED','Tool is outside this subagent conversation');
+    }
+  }
+
+  /** Host-only journal routing. Model fields cannot choose a journal or change the original task owner. */
+  isHarnessCodingRepairSession(context:ToolContext,input:{sessionId:string;operation:'publish'|'snapshot'|'readback'|'reconcile'}):boolean {
+    if(!['publish','snapshot','readback','reconcile'].includes(input.operation)||typeof input.sessionId!=='string'||!input.sessionId)return false;
+    const loop=this.runtime.loadCheckpoint(context.taskId,'competition-loop') as
+      {pending?:{toolName?:string;toolVersion?:string;arguments?:Record<string,unknown>}}|undefined;
+    // HostBridge aliases continue to use their original F15 journal and task mapping.
+    if(loop?.pending?.toolName!=='coding.repair.'+input.operation||loop.pending.toolVersion!=='1.0.0'
+      ||loop.pending.arguments?.sessionId!==input.sessionId)return false;
+    const scope=this.resolveHarnessScope(context);
+    if(!scope||scope.ownerTaskId!==context.taskId||scope.actualTaskId!==context.taskId)return false;
+    const originals=this.runtime.readToolExecutions(context.taskId).filter(record=>record.toolName===HARNESS_PREPARE_ADOPTION_TOOL)
+      .map(record=>({record,saved:this.runtime.loadCheckpoint(context.taskId,'harness-candidates:session:'+record.evidenceId) as
+        {operation?:{scope?:RuntimeHarnessScope;runId?:string;toolName?:string;toolVersion?:string;argumentsDigest?:string};input?:unknown}|undefined}))
+      .filter(({saved})=>{
+        try{return saved?.input!==undefined&&parseCodingRepairInput(saved.input).session.sessionId===input.sessionId;}catch{return false;}
+      });
+    if(!originals.length)return false;
+    if(originals.length!==1)throw new ProtocolError('UNAUTHORIZED','Candidate main session has ambiguous original provenance');
+    const {record,saved}=originals[0]!,session=parseCodingRepairInput(saved!.input),originRun=record.evidenceId;
+    const original=this.runtime.loadCheckpoint(context.taskId,'application-tool-invocation:'+originRun) as
+      {toolName?:string;toolVersion?:string;arguments?:Record<string,unknown>;argumentsDigest?:string;deadline?:string}|undefined;
+    const frozen=this.runtime.loadCheckpoint(context.taskId,'harness-candidates:configuration') as
+      {configurationRef?:string;workspaceRef?:string;context?:HarnessCandidateContext}|undefined;
+    if(record.state!=='confirmed'||!record.executionStarted||record.policyDecision!=='allow'||record.toolVersion!=='1.0.0'
+      ||saved!.operation?.runId!==originRun||saved!.operation.toolName!==HARNESS_PREPARE_ADOPTION_TOOL
+      ||saved!.operation.toolVersion!=='1.0.0'||!isDeepStrictEqual(saved!.operation.scope,{...scope,scopeRef:originRun})
+      ||original?.toolName!==HARNESS_PREPARE_ADOPTION_TOOL||original.toolVersion!=='1.0.0'||!original.arguments
+      ||original.argumentsDigest!==toolArgumentsDigest(original.arguments)||original.argumentsDigest!==saved!.operation.argumentsDigest
+      ||original.deadline!==scope.deadline||!this.runtime.matchesToolExecutionInput(record,{arguments:original.arguments,scopeRef:originRun})
+      ||!this.runtime.readEvidence(context.taskId).some(item=>item.evidenceId===originRun&&item.kind==='execution'&&item.sourceRef===HARNESS_PREPARE_ADOPTION_TOOL)
+      ||frozen?.configurationRef!==scope.configurationRef||frozen.workspaceRef!==scope.workspaceRef
+      ||frozen.context?.binding.taskId!==context.taskId||frozen.context.binding.inputDigest!==scope.inputDigest
+      ||session.session.mode!=='main'||session.session.taskId!==context.taskId||session.session.workspaceId!==frozen.context.binding.workspaceId
+      ||harnessCandidateArtifactDigest(session.initialSnapshot)!==harnessCandidateArtifactDigest(frozen.context.baseline)
+      ||harnessCandidateRecipeFingerprint(session.recipes)!==frozen.context.binding.recipeFingerprint)
+      throw new ProtocolError('UNAUTHORIZED','Candidate main session does not match its original confirmed preparation');
+    const cached=this.runtime.loadCheckpoint(context.taskId,'tool-result-'+originRun) as {result?:unknown}|undefined;
+    const checked=parseCodingRepairCheckReadback(cached?.result);
+    if(checked.sessionId!==input.sessionId)throw new ProtocolError('UNAUTHORIZED','Candidate preparation result belongs to another session');
+    if(input.operation==='publish') {
+      const request=parseCodingRepairPublishRequest(loop.pending.arguments);
+      if(request.baselineSnapshotId!==session.initialSnapshot.snapshotId||request.snapshotId!==checked.snapshot.snapshotId
+        ||!request.verificationRunIds.length||request.verificationRunIds.some(runId=>!this.readHarnessCandidateVerificationEvidence({
+          session:session.session,runId,originTaskId:context.taskId,originRunId:originRun})))
+        throw new ProtocolError('UNAUTHORIZED','Candidate publication lacks its original main-session verification');
+    }
+    return true;
+  }
+
+  /** Original confirmed main-session preparation is evidence only for a distinct publish invocation. */
+  readHarnessCandidateVerificationEvidence(input:{session:{taskId:string;sessionId:string};runId:string;
+    originTaskId:string;originRunId:string}):readonly string[]|undefined {
+    try {
+      const owner=this.runtime.getTask(input.session.taskId),configuration=this.readDeveloperHarnessConfiguration
+        ?readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration):undefined;
+      if(!configuration||owner.taskId!==input.originTaskId||owner.state!=='running'||owner.cancelRequested)return undefined;
+      const original=this.runtime.loadCheckpoint(owner.taskId,'application-tool-invocation:'+input.originRunId) as
+        {toolName?:string;toolVersion?:string;arguments?:Record<string,unknown>;argumentsDigest?:string;deadline?:string}|undefined;
+      const stored=this.runtime.loadCheckpoint(owner.taskId,'harness-candidates:session:'+input.originRunId) as
+        {operation?:{runId?:string;toolName?:string;argumentsDigest?:string;scope?:RuntimeHarnessScope};input?:unknown}|undefined;
+      const frozen=this.runtime.loadCheckpoint(owner.taskId,'harness-candidates:configuration') as
+        {configurationRef?:string;context?:HarnessCandidateContext}|undefined;
+      const scope=stored?.operation?.scope,session=stored?.input===undefined?undefined:parseCodingRepairInput(stored.input);
+      if(!scope||scope.ownerTaskId!==owner.taskId||scope.actualTaskId!==owner.taskId||scope.scopeRef!==input.originRunId
+        ||scope.configurationRef!==this.harnessStableConfigurationRef(configuration,owner.taskId)
+        ||scope.workspaceRef!==configuration.workspaceRef||frozen?.configurationRef!==scope.configurationRef
+        ||frozen.context?.binding.taskId!==owner.taskId||frozen.context.binding.inputDigest!==scope.inputDigest
+        ||original?.toolName!==HARNESS_PREPARE_ADOPTION_TOOL||original.toolVersion!=='1.0.0'||!original.arguments
+        ||original.argumentsDigest!==toolArgumentsDigest(original.arguments)||original.deadline!==scope.deadline
+        ||this.now().getTime()>=Date.parse(scope.deadline)||stored?.operation?.runId!==input.originRunId
+        ||stored.operation.toolName!==HARNESS_PREPARE_ADOPTION_TOOL||stored.operation.argumentsDigest!==original.argumentsDigest
+        ||session?.session.sessionId!==input.session.sessionId||session.session.taskId!==owner.taskId||session.session.mode!=='main'
+        ||session.session.workspaceId!==frozen.context.binding.workspaceId
+        ||harnessCandidateArtifactDigest(session.initialSnapshot)!==harnessCandidateArtifactDigest(frozen.context.baseline)
+        ||harnessCandidateRecipeFingerprint(session.recipes)!==frozen.context.binding.recipeFingerprint)return undefined;
+      const parent=readUserTaskDelegation(this.runtime,scope.parentTaskId);
+      if(!parent||parent.deadline!==scope.deadline
+        ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${scope.parentTaskId}-user-work`)?.taskId!==owner.taskId)return undefined;
+      const record=this.runtime.readToolExecutions(owner.taskId).find(item=>item.evidenceId===input.originRunId);
+      if(record?.state!=='confirmed'||!record.executionStarted||record.policyDecision!=='allow'
+        ||record.toolName!==HARNESS_PREPARE_ADOPTION_TOOL||record.toolVersion!=='1.0.0'
+        ||!this.runtime.matchesToolExecutionInput(record,{arguments:original.arguments,scopeRef:scope.scopeRef})
+        ||!this.runtime.readEvidence(owner.taskId).some(item=>item.evidenceId===input.originRunId
+          &&item.kind==='execution'&&item.sourceRef===HARNESS_PREPARE_ADOPTION_TOOL))return undefined;
+      const loop=this.runtime.loadCheckpoint(owner.taskId,'competition-loop') as
+        {step?:number;pending?:{toolName?:string;arguments?:Record<string,unknown>}}|undefined;
+      const publishRun=`competition-tool-${owner.taskId}-${loop?.step}`;
+      const publish=this.runtime.readToolExecutions(owner.taskId).find(item=>item.evidenceId===publishRun);
+      if(publishRun===input.originRunId||loop?.pending?.toolName!=='coding.repair.publish'
+        ||loop.pending.arguments?.sessionId!==input.session.sessionId||publish?.state!=='started'
+        ||!publish.executionStarted||publish.policyDecision!=='allow'
+        ||!this.runtime.matchesToolExecutionInput(publish,{arguments:loop.pending.arguments,scopeRef:publishRun}))return undefined;
+      const cached=this.runtime.loadCheckpoint(owner.taskId,'tool-result-'+input.originRunId) as {result?:unknown}|undefined;
+      const checked=parseCodingRepairCheckReadback(cached?.result);
+      if(checked.sessionId!==input.session.sessionId||!checked.verification.some(item=>item.runId===input.runId
+        &&item.sessionId===input.session.sessionId&&item.inputSnapshotId===checked.snapshot.snapshotId
+        &&item.status==='VALID'&&item.exitCode===0&&item.evidenceRefs.includes(input.originRunId))
+        ||session.recipes.filter(recipe=>recipe.required).some(recipe=>!checked.verification.some(item=>item.recipeId===recipe.recipeId
+          &&item.sessionId===input.session.sessionId&&item.inputSnapshotId===checked.snapshot.snapshotId
+          &&item.status==='VALID'&&item.exitCode===0&&item.evidenceRefs.includes(input.originRunId))))return undefined;
+      return [input.originRunId];
+    }catch{return undefined;}
+  }
+
+  /** The generic wire and the model ToolPort share the executor's original frozen subset. */
+  private harnessStableConfigurationRef(configuration:RuntimeDeveloperHarnessOptions,ownerTaskId:string):string {
+    const binding=this.runtime.loadCheckpoint(ownerTaskId,'subtask-parent') as {parentTaskId?:string}|undefined;
+    const selection=this.runtime.loadCheckpoint(ownerTaskId,'execution-model');
+    const preference=binding?.parentTaskId?this.runtime.loadCheckpoint(binding.parentTaskId,'task-model-preference'):undefined;
+    return hashJson([this.coordinationBinding,developerHarnessConfigurationRef(configuration),selection??null,preference??null]);
+  }
+
+  resolveHarnessScope(context:ToolContext,source?:{actualTaskId:string;runId:string;scopeRef:string}):RuntimeHarnessScope|undefined {
+    try {
+      const actual=this.runtime.getTask(context.taskId),peer=readRuntimeSubagentSibling(this.runtime,actual.taskId);
+      const owner=this.runtime.getTask(peer?.binding.ownerTaskId??actual.taskId);
+      const saved=this.runtime.loadCheckpoint(owner.taskId,'subtask-parent') as
+        (SubtaskDefinition&{parentTaskId:string;parentDeadline:string})|undefined;
+      const root=saved&&readUserTaskDelegation(this.runtime,saved.parentTaskId);
+      const configuration=this.readDeveloperHarnessConfiguration
+        ?readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration):undefined;
+      if(!configuration||!saved||!root||saved.subtaskId!=='user-work'
+        ||!isDeepStrictEqual(saved,{...root.subtask,parentTaskId:root.parentTaskId,parentDeadline:root.deadline})
+        ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${root.parentTaskId}-user-work`)?.taskId!==owner.taskId
+        ||actual.conversationId!==`desktop-subtask:${root.parentTaskId}`||context.deadline!==root.deadline
+        ||context.signal.aborted||actual.cancelRequested||owner.cancelRequested||actual.state!=='running'
+        ||!['running','waiting_approval','waiting_reconciliation'].includes(owner.state)
+        ||context.authorizationRef!==context.runId||this.now().getTime()>=Date.parse(root.deadline))return undefined;
+      const parent=this.runtime.getTask(root.parentTaskId);
+      if(parent.cancelRequested||!['running','waiting_approval','waiting_reconciliation'].includes(parent.state))return undefined;
+      if(peer)this.assertDeveloperHarnessExecutorCurrent(actual.taskId);
+      const loop=this.runtime.loadCheckpoint(actual.taskId,'competition-loop') as
+        {step?:number;pending?:{toolName?:string;toolVersion?:string;arguments?:Record<string,unknown>}}|undefined;
+      const execution=this.runtime.readToolExecutions(actual.taskId).find(item=>item.evidenceId===context.runId);
+      if(context.runId!==`competition-tool-${actual.taskId}-${loop?.step}`||!loop?.pending?.arguments
+        ||execution?.state!=='started'||!execution.executionStarted||execution.policyDecision!=='allow'
+        ||execution.toolName!==loop.pending.toolName||execution.toolVersion!==loop.pending.toolVersion
+        ||!this.runtime.matchesToolExecutionInput(execution,{arguments:loop.pending.arguments,scopeRef:context.authorizationRef}))return undefined;
+      const inputDigest=hashJson({parentTaskId:parent.taskId,ownerTaskId:owner.taskId,
+        parentGoal:parent.goal,ownerGoal:owner.goal,delegation:root});
+      const scope:RuntimeHarnessScope={ownerTaskId:owner.taskId,actualTaskId:actual.taskId,parentTaskId:parent.taskId,
+        scopeRef:context.authorizationRef,inputDigest,deadline:root.deadline,workspaceRef:configuration.workspaceRef,
+        configurationRef:this.harnessStableConfigurationRef(configuration,owner.taskId)};
+      if(!source)return scope;
+      if(source.scopeRef!==source.runId)return undefined;
+      const sourceTask=this.runtime.getTask(source.actualTaskId),sourcePeer=readRuntimeSubagentSibling(this.runtime,source.actualTaskId);
+      if(sourceTask.conversationId!==actual.conversationId
+        ||source.actualTaskId!==owner.taskId&&(!sourcePeer||sourcePeer.binding.ownerTaskId!==owner.taskId
+          ||sourcePeer.binding.parentTaskId!==parent.taskId)
+        ||!this.runtime.readToolExecutions(source.actualTaskId).some(item=>item.evidenceId===source.runId))return undefined;
+      if(sourcePeer)this.assertDeveloperHarnessExecutorCurrent(source.actualTaskId);
+      return {...scope,actualTaskId:source.actualTaskId,scopeRef:source.scopeRef};
+    } catch {return undefined;}
+  }
+
+  private assertDeveloperHarnessExecutorCurrent(taskId:string):void {
+    const sibling=readRuntimeSubagentSibling(this.runtime,taskId);
+    if(!sibling)return;
+    const current=this.readDeveloperHarnessConfiguration
+      ?readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration):undefined;
+    const budget=this.runtime.loadCheckpoint(sibling.binding.ownerTaskId,'developer-harness:budget:v1') as
+      {limit?:number;configurationRef?:string}|undefined;
+    const parent=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentDeadline?:string}|undefined;
+    if(!current || sibling.binding.workspaceRef!==current.workspaceRef
+      || sibling.binding.harnessConfigurationRef!==developerHarnessConfigurationRef(current)
+      || sibling.binding.configurationRef!==this.coordinationBinding
+      || sibling.binding.deadline!==parent?.parentDeadline
+      || budget?.limit!==current.maxExecutorSteps || budget.configurationRef!==sibling.binding.harnessConfigurationRef) {
+      throw new ProtocolError('REVISION_CONFLICT','Original developer executor composition changed');
+    }
+  }
+
+  private assertDeveloperHarnessToolScope(taskId:string,toolName:string):void {
+    const sibling=readRuntimeSubagentSibling(this.runtime,taskId);
+    if(!sibling)return;
+    this.assertDeveloperHarnessExecutorCurrent(taskId);
+    const root=readUserTaskDelegation(this.runtime,sibling.binding.parentTaskId);
+    const owner=this.runtime.getTask(sibling.binding.ownerTaskId);
+    const original=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
+    const descriptor=this.tools?.list().find(tool=>tool.name===toolName);
+    if(root?.deadline!==sibling.binding.deadline
+      || owner.cancelRequested || ['succeeded','failed','cancelled','cancelling'].includes(owner.state)
+      || !descriptor || !original?.some(tool=>isDeepStrictEqual(tool,descriptor))
+      || !sibling.binding.tools.some(tool=>isDeepStrictEqual(tool,descriptor))
+      || [SUBAGENT_DISPATCH_TOOL_NAME,DEVELOPER_HARNESS_TOOL_NAME].includes(toolName)) {
+      throw new ProtocolError('SCOPE_DENIED','Tool is outside the original developer executor scope');
     }
   }
 
@@ -2216,7 +3194,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Runtime-owned history from this unique channel; original private/Skill leases never transfer. */
-  readSubagentConversationContext(input:{taskId:string;conversationId:string;deadline:string;signal:AbortSignal}):ConversationContextMessage[] {
+  readSubagentConversationContext(input:{taskId:string;conversationId:string;deadline:string;signal:AbortSignal;maxMessages?:number}):ConversationContextMessage[] {
     const binding=readSubagentConversationMessage(this.runtime,input.taskId);
     if(!binding)throw new ProtocolError('SCOPE_DENIED','Task is not a subagent conversation message');
     const origin=this.subagentConversationOrigin({parentTaskId:binding.parentTaskId,taskId:binding.originTaskId});
@@ -2229,7 +3207,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       {id:origin.task.taskId+':user',taskId:origin.task.taskId,role:'user',content:origin.definition.goal},
       {id:origin.task.taskId+':assistant',taskId:origin.task.taskId,role:'assistant',content:assistantText(origin.task.resultSummary)},
     ]:[];
-    return [...initial,...history];
+    const combined=[...initial,...history];
+    if(input.maxMessages!==undefined&&combined.length>input.maxMessages)
+      throw new ProtocolError('INVALID_ARGUMENT','Complete conversation exceeds the explicit source range');
+    return combined;
   }
 
   /** Trusted host only: binds an independently verified public source to durable Fact/Graph projection. */
@@ -2340,6 +3321,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const lease=this.ephemeralContexts.get(leaseKey);
         if(!lease || lease.historyTaskIds.some(taskId=>this.isHistoryWithheld(taskId))
           ||lease.answerTaskIds.some(taskId=>!this.isConversationAnswerExportable(taskId,request.signal)))throw new Error();
+        lease.assertCompactionCurrent?.();
         const {binding}=lease;
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(request.taskId,checkpointKey),binding);
         assertCompiledContextUnchanged(binding.budget,measureCompiledGoal(request.goal,this.coordinationInput?.goalTokenBudget));
@@ -2651,7 +3633,85 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.activeTextTasks.set(taskId,execution);return execution;
   }
 
+  /** Startup classifier supplies an unchanged original record, never permission to repeat an attempt. */
+  resumeStartupTask(request:{taskId:string;expectedRevision:number;mode:'before_first_send'|'confirmed_read';
+    deadline:string;assertUnchanged:()=>void;harnessEventOrigin?:{deliveryId:string;eventDigest:string;sourceTaskId:string;originalParentTaskId:string}}):{accepted:boolean} {
+    if(this.profile!=='huawei_ict_agentarts'||this.activeTextTasks.has(request.taskId)||this.runtime.isTaskActive(request.taskId)
+      ||typeof request.assertUnchanged!=='function'||!['before_first_send','confirmed_read'].includes(request.mode))return {accepted:false};
+    request.assertUnchanged();
+    this.harnessExperienceRecipes(request.taskId,{deadline:request.deadline,signal:new AbortController().signal});
+    const original=this.runtime.getTask(request.taskId),goal=this.runtime.loadCheckpoint(request.taskId,'application-goal');
+    if(request.harnessEventOrigin) {
+      const origin=request.harnessEventOrigin;
+      if(request.mode!=='before_first_send'||original.state!=='created'||original.cancelRequested
+        ||original.revision!==request.expectedRevision||!this.delegateUserTasks
+        ||typeof original.goal!=='string'||typeof original.conversationId!=='string'
+        ||!isDeepStrictEqual(this.runtime.loadCheckpoint(original.taskId,'harness-event-origin'),origin)
+        ||this.runtime.findTaskByIdempotencyKey('harness-event-root:'+origin.deliveryId)?.taskId!==original.taskId
+        ||!sha256(origin.eventDigest)||!Number.isFinite(Date.parse(request.deadline))
+        ||this.now().getTime()>=Date.parse(request.deadline)||this.runtime.readToolExecutions(original.taskId).length
+        ||this.runtime.loadCheckpoint(original.taskId,'competition-loop')!==undefined
+        ||this.runtime.loadCheckpoint(original.taskId,'competition-cloud-inflight')
+        ||this.runtime.loadCheckpoint(original.taskId,'competition-cloud-unknown'))return {accepted:false};
+      const current:unknown=this.assertCoordinationBinding?.();
+      if(current!==undefined){void Promise.resolve(current).catch(()=>{});return {accepted:false};}
+      this.dispatchAcceptedTextTask(original.taskId,original.goal,original.conversationId,request.deadline);
+      return {accepted:this.activeTextTasks.has(original.taskId)};
+    }
+    this.assertCompetitionTaskConfiguration(request.taskId);
+    this.assertDeveloperHarnessExecutorCurrent(request.taskId);
+    if(original.revision!==request.expectedRevision||original.cancelRequested||typeof goal!=='string'
+      ||request.deadline!==this.runtime.loadCheckpoint(request.taskId,'application-deadline')
+      ||!Number.isFinite(Date.parse(request.deadline))||this.now().getTime()>=Date.parse(request.deadline)
+      ||this.runtime.loadCheckpoint(request.taskId,'competition-cloud-inflight')
+      ||this.runtime.loadCheckpoint(request.taskId,'competition-cloud-unknown'))return {accepted:false};
+    if(request.mode==='confirmed_read') {
+      if(original.state!=='waiting_reconciliation')return {accepted:false};
+      this.resumeConfirmedTask(request.taskId);return {accepted:this.activeTextTasks.has(request.taskId)};
+    }
+    if(!['created','waiting_reconciliation'].includes(original.state)
+      ||this.runtime.loadCheckpoint(request.taskId,'competition-loop')!==undefined
+      ||this.runtime.readToolExecutions(request.taskId).length!==0)return {accepted:false};
+    const child=this.runtime.loadCheckpoint(request.taskId,'subtask-parent') as {parentTaskId?:string}|undefined;
+    if(!child&&this.delegateUserTasks&&!readUserTaskDelegation(this.runtime,request.taskId))return {accepted:false};
+    if(child&&(original.state==='created'||!Array.isArray(this.runtime.loadCheckpoint(request.taskId,'subtask-tools-binding'))
+      ||!isDeepStrictEqual(this.runtime.loadCheckpoint(request.taskId,'subtask-execution-binding'),{kind:'competition'})))return {accepted:false};
+    const prepared=original.state==='created'?original:this.runtime.prepareVerifiedContinuation(request.taskId,original.revision);
+    const assertPrepared=()=>{
+      this.assertCompetitionTaskConfiguration(request.taskId);this.assertDeveloperHarnessExecutorCurrent(request.taskId);
+      const current=this.runtime.getTask(request.taskId);
+      if(current.revision!==prepared.revision||current.state!==prepared.state||current.cancelRequested
+        ||this.runtime.loadCheckpoint(request.taskId,'competition-loop')!==undefined
+        ||this.runtime.readToolExecutions(request.taskId).length!==0
+        ||this.runtime.loadCheckpoint(request.taskId,'competition-cloud-inflight')
+        ||this.runtime.loadCheckpoint(request.taskId,'competition-cloud-unknown'))
+        throw new ProtocolError('RESULT_UNKNOWN','Original startup worker changed before its first send');
+    };
+    assertPrepared();
+    let execution:Promise<TaskSnapshot>;
+    if(child) {
+      execution=resumeRuntimeSubagentTask({competitionOnly:true,getRuntime:()=>this.runtime,getTools:()=>this.tools,
+        runDefaultWorker:(subtask,worker,tools)=>this.runDefaultSubagentWorker(subtask,worker,tools),
+        getToolsForSubtask:(subtask,worker)=>this.tools
+          ?(this.getToolsForSubtask?this.getToolsForSubtask(subtask,worker,this.tools):this.tools):undefined},
+        request.taskId,undefined,{assertBeforeFirstSend:assertPrepared}).then(async task=>{
+          await this.refreshSubagentParent(request.taskId);return task;
+        });
+    } else {
+      const catalog=this.taskCompetitionCatalog(request.taskId);
+      execution=startCoordinationTask(this.runtime,this.taskCoordination(request.taskId),this.taskTools(request.taskId),
+        request.taskId,goal,request.deadline,{...(prepared.state==='waiting_approval'?{resume:true}:{}),
+          toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+          ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
+          ...(catalog?{toolCatalog:catalog}:{}),...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
+    }
+    execution=execution.finally(()=>{this.activeTextTasks.delete(request.taskId);this.notifyHarnessEventProgress(request.taskId);});
+    this.activeTextTasks.set(request.taskId,execution);void execution.catch(()=>{});return {accepted:true};
+  }
+
   resumeTask(taskId: string): void {
+    this.harnessExperienceRecipes(taskId,{deadline:this.runtime.loadCheckpoint(taskId,'application-deadline') as string,signal:new AbortController().signal});
+    this.assertHarnessEventCurrent(taskId);
     if(this.runtime.loadCheckpoint(taskId,CODING_REPAIR_STATE)!==undefined) {this.resumeCodingRepairTask(taskId);return;}
     if(this.profile==='huawei_ict_agentarts'
       && (this.runtime.loadCheckpoint(taskId,'application-profile')==='huawei_ict_agentarts'
@@ -2768,7 +3828,23 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private async refreshSubagentParent(childTaskId: string): Promise<void> {
     const binding = this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?: string} | undefined;
     if (typeof binding?.parentTaskId !== 'string') return;
+    const child=this.runtime.getTask(childTaskId);
+    if(child.state==='succeeded'&&this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${binding.parentTaskId}-user-work`)?.taskId===childTaskId)
+      this.proposeHarnessExperienceFromOwner(childTaskId);
     await this.activeTextTasks.get(binding.parentTaskId);
+    const sibling=readRuntimeSubagentSibling(this.runtime,childTaskId);
+    if(sibling) {
+      const owner=this.runtime.getTask(sibling.binding.ownerTaskId);
+      const plan=this.runtime.loadCheckpoint(owner.taskId,`developer-harness:plan:${sibling.binding.planId}`) as
+        {executors?:unknown[]}|undefined;
+      const admitted=this.subagentTaskSnapshots(binding.parentTaskId).filter(task=>{
+        const marker=readRuntimeSubagentSibling(this.runtime,task.taskId);
+        return marker?.binding.ownerTaskId===owner.taskId&&marker.binding.planDigest===sibling.binding.planDigest;
+      });
+      if(owner.state==='waiting_approval'&&!owner.cancelRequested&&!this.activeTextTasks.has(owner.taskId)
+        &&plan?.executors?.length===admitted.length&&admitted.length>0&&admitted.every(isTerminalTask))this.resumeTask(owner.taskId);
+      return;
+    }
     const proactive = [...this.proactiveHosts.values()].find(host => host.taskId === binding.parentTaskId);
     if (proactive && !this.runtime.getTask(binding.parentTaskId).cancelRequested) {
       const child = this.runtime.getTask(childTaskId);
@@ -2834,7 +3910,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!tool || tool.requiresPresence)throw new ProtocolError('UNAUTHORIZED','Original dispatch descriptor is unavailable');
         validateToolValue(tool.inputSchema,proposal.arguments);
         const definitions=proposal.arguments.subtasks as SubtaskDefinition[];
-        const children=this.runtime.listTasks({conversationId:`desktop-subtask:${taskId}`,limit:100}).items;
+        const children=this.subagentTaskSnapshots(taskId)
+          .filter(child=>readRuntimeSubagentSibling(this.runtime,child.taskId)===undefined);
         const failureReceipts=children.flatMap(child=>{
           const binding=this.runtime.readReceivedCloudFailureBinding(child.taskId,true);
           return binding===undefined?[]:[{taskId:child.taskId,binding}];
@@ -2909,6 +3986,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Trusted readback consumer, resuming the same loop only after exact original run confirmation. */
   resumeConfirmedTask(taskId:string):void {
+    this.harnessExperienceRecipes(taskId,{deadline:this.runtime.loadCheckpoint(taskId,'application-deadline') as string,signal:new AbortController().signal});
     if (this.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
       throw new ProtocolError('RESULT_UNKNOWN', 'Confirmed local tool execution cannot replay an unknown cloud invocation');
     }
@@ -2951,7 +4029,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (!record || record.state !== 'confirmed' || !record.executionStarted || record.policyDecision !== 'allow'
       || record.toolName !== loop.pending.toolName || record.toolVersion !== wait.toolVersion
       || !this.runtime.matchesToolExecutionInput(record, {arguments: loop.pending.arguments, scopeRef: wait.runId})) return false;
-    const children=this.runtime.listTasks({conversationId: `desktop-subtask:${taskId}`, limit: 100}).items;
+    const children=this.subagentTaskSnapshots(taskId)
+      .filter(child=>readRuntimeSubagentSibling(this.runtime,child.taskId)===undefined);
     const subtasks=loop.pending.arguments.subtasks;
     return Array.isArray(subtasks) && subtasks.length>0 && children.length===subtasks.length
       && children.every(child=> {
@@ -3223,17 +4302,81 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return execution;
   }
 
+  private notifyHarnessEventProgress(taskId:string):void {
+    if(this.runtime.loadCheckpoint(taskId,'harness-event-origin')===undefined)return;
+    try {void Promise.resolve(this.onHarnessEventProgress?.(taskId)).catch(()=>{});}catch {/* Wakeup never grants authority. */}
+  }
+
+  /** Exact original-delivery observation; missing or mismatched identity is conservatively active. */
+  isHarnessEventTaskActive(origin:HarnessEventOrigin):boolean {
+    try {
+      const root=this.runtime.findTaskByIdempotencyKey('harness-event-root:'+origin.deliveryId);
+      if(!root||!isDeepStrictEqual(this.runtime.loadCheckpoint(root.taskId,'harness-event-origin'),origin))return true;
+      return this.activeTextTasks.has(root.taskId)||this.runtime.isTaskActive(root.taskId);
+    }catch{return true;}
+  }
+
+  private assertHarnessEventCurrent(taskId:string):void {
+    const message=readSubagentConversationMessage(this.runtime,taskId);
+    const coding=this.runtime.loadCheckpoint(taskId,CODING_REPAIR_PARENT) as {taskId?:string}|undefined;
+    const sourceTaskId=message?.originTaskId??coding?.taskId??taskId;
+    const parent=this.runtime.loadCheckpoint(sourceTaskId,'subtask-parent') as
+      (SubtaskDefinition&{parentTaskId:string;parentDeadline:string})|undefined;
+    const rootTaskId=this.runtime.loadCheckpoint(sourceTaskId,'harness-event-origin')!==undefined
+      ?sourceTaskId:parent?.parentTaskId;
+    if(!rootTaskId)return;
+    const origin=this.runtime.loadCheckpoint(rootTaskId,'harness-event-origin') as HarnessEventOrigin|undefined;
+    if(origin===undefined)return;
+    const delegation=readUserTaskDelegation(this.runtime,rootTaskId);
+    if(!delegation)throw new ProtocolError('UNAUTHORIZED','Original event interaction delegation is unavailable');
+    if(sourceTaskId!==rootTaskId) {
+      const peer=readRuntimeSubagentSibling(this.runtime,sourceTaskId);
+      const owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${rootTaskId}-user-work`);
+      if(!owner||parent?.parentTaskId!==rootTaskId||parent.parentDeadline!==delegation.deadline
+        ||!peer&&(!isDeepStrictEqual(parent,{...delegation.subtask,parentTaskId:rootTaskId,parentDeadline:delegation.deadline})
+          ||sourceTaskId!==owner.taskId)
+        ||peer&&(peer.binding.parentTaskId!==rootTaskId||peer.binding.ownerTaskId!==owner.taskId))
+        throw new ProtocolError('SCOPE_DENIED','Event execution is outside the original owner or admitted plan');
+    }
+    if(!this.assertHarnessEventCurrentPort)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original native event authorization is unavailable');
+    const result:unknown=this.assertHarnessEventCurrentPort(rootTaskId,structuredClone(origin));
+    if(result!==undefined){void Promise.resolve(result).catch(()=>{});
+      throw new ProtocolError('UNAUTHORIZED','Native event authorization guard must complete synchronously');}
+  }
+
+  /** Trusted event delivery creates a fresh interaction turn; it never reopens its source parent. */
+  submitHarnessEventTask(input:SubmitTaskInput&{deadline:string;origin:{deliveryId:string;eventDigest:string;
+    sourceTaskId:string;originalParentTaskId:string}}):TaskSnapshot {
+    const {deadline,origin,...submission}=input;
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks
+      ||!origin||Object.keys(origin).sort().join(',')!=='deliveryId,eventDigest,originalParentTaskId,sourceTaskId'
+      ||!nonEmptyText(origin.deliveryId)||!sha256(origin.eventDigest)||!nonEmptyText(origin.sourceTaskId)
+      ||!nonEmptyText(origin.originalParentTaskId)||submission.idempotencyKey!=='harness-event-root:'+origin.deliveryId
+      ||!Number.isFinite(Date.parse(deadline))||this.now().getTime()>=Date.parse(deadline)) {
+      throw new ProtocolError('INVALID_ARGUMENT','Harness event requires its original delivery identity and live deadline');
+    }
+    this.runtime.getTask(origin.sourceTaskId);this.runtime.getTask(origin.originalParentTaskId);
+    const task=this.runtime.submitTaskWithCheckpoint(submission,'harness-event-origin',structuredClone(origin));
+    if(task.state==='created')this.dispatchAcceptedTextTask(task.taskId,submission.goal,submission.conversationId,deadline);
+    return this.runtime.getTask(task.taskId);
+  }
+
   private dispatchSubmittedTextTask(request: Request, response: SuccessfulResponse): void {
     const taskId = response.data && typeof response.data === 'object' && 'taskId' in response.data ? response.data.taskId : undefined;
     const goal = request.operation === 'task.submit' ? request.payload.goal : undefined;
     const conversationId = request.operation === 'task.submit' ? request.payload.conversationId : undefined;
     if (typeof taskId !== 'string' || typeof goal !== 'string' || typeof conversationId !== 'string' || this.activeTextTasks.has(taskId)) return;
+    this.dispatchAcceptedTextTask(taskId,goal,conversationId,request.deadline);
+  }
+
+  private dispatchAcceptedTextTask(taskId:string,goal:string,conversationId:string,deadline:string):void {
+    if(this.activeTextTasks.has(taskId))return;
     if (this.runtime.getTask(taskId).state !== 'created') return;
     if (this.profile === 'huawei_ict_agentarts') {
       this.runtime.saveCheckpoint(taskId, 'application-profile', this.profile);
       this.runtime.saveCheckpoint(taskId, 'competition-configuration-binding', this.coordinationBinding);
       this.runtime.saveCheckpoint(taskId, 'application-goal', goal);
-      this.runtime.saveCheckpoint(taskId, 'application-deadline', request.deadline);
+      this.runtime.saveCheckpoint(taskId, 'application-deadline', deadline);
       let preference:ReturnType<NonNullable<RuntimeApplicationOptions['readConversationPreference']>>;
       try {
         preference=this.readConversationPreference?.(conversationId);
@@ -3256,18 +4399,18 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         modelId:preference.modelId,...(preference.configurationRef?{configurationRef:preference.configurationRef}:{})});
       if(this.delegateUserTasks) {
         const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
-        this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline:request.deadline,maxSteps,
+        this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline,maxSteps,
           subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal,thinkingDepth:config.depth,
             ...(selected?{model:selected.modelId,...(selected.reasoningEffort?{reasoningEffort:selected.reasoningEffort}:{})}:{})}});
       }
       const catalog=this.taskCompetitionCatalog(taskId);
       const execution = Promise.resolve().then(() => startCoordinationTask(
-        this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, request.deadline,
+        this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
         {retainPriorToolResults:this.retainPriorToolResults,toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},
-      )).finally(() => this.activeTextTasks.delete(taskId));
+      )).finally(() => {this.activeTextTasks.delete(taskId);this.notifyHarnessEventProgress(taskId);});
       this.activeTextTasks.set(taskId, execution);
       void execution.catch(() => {});
       return;

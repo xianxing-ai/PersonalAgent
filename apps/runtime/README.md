@@ -358,3 +358,98 @@ and [ADR-0021](../../docs/adr/0021-paired-citation-memory.md).
 - SQLite migration ownership remains with goo122; other modules must not add competing root migration sequences.
 - This work package verifies Fake model/tool behavior and Desktop smoke tests. Real model and external-write acceptance remain separate. Cross-task continuing grants and the Windows SecretStore adapter remain outside this slice.
 - `event.subscribe` and `readEvents` have local replay tests, but no unsubscribe, pruning/expiry policy, or frozen cross-process stream lifecycle.
+
+### Native developer harness: controlled executors (H1, provisional)
+
+Competition composition can explicitly set `developerHarness: {workspaceRef, maxExecutorSteps, configurationRef?, assertCurrent?}`
+alongside `delegateUserTasks: true`. `workspaceRef` identifies the workspace already confined by the
+existing tool host; it grants no filesystem access. `maxExecutorSteps` is a required trusted aggregate
+allowance for all execution plans owned by one `user-work` task. There is no new default allowance,
+provider route, database, wire operation, or Local fallback.
+
+The trusted host may instead provide synchronous `readDeveloperHarnessConfiguration: () => configuration | undefined`.
+The two sources are mutually exclusive. A resolver registers the scoped broker even when initially disabled;
+returning `undefined` hides it from the worker's usable catalog. Enabling it makes the next original user worker
+eligible without recreating RuntimeApplication. Every admission, executor send/tool call, and approval recovery
+rechecks the trusted snapshot. Plans and total reservations bind its workspace, budget, and opaque configuration
+revision; changing or disabling the configuration fails closed for old work without increasing its allowance.
+Original Runtime readback and cancellation remain available. `assertCurrent` must complete synchronously;
+the model has no configuration mutation operation.
+
+The interaction root still dispatches its exact original `user-work` and summarizes its receipt.
+It cannot call `developer.harness.run`. Only that original worker can submit a plan through the normal
+ToolGateway authorization path. The plan contains `planId`, an optional `expectedRevision` guard, and up to ten `tasks`;
+each task supplies `id`, `role` (`researcher`, `coder`, or `reviewer`), `goal`, `dependsOn`, and `maxSteps`.
+Model proposals cannot choose a parent, conversation, workspace, tool subset, provider, or deadline.
+The broker validates the dependency graph, immutable owner binding, exact Gateway execution, tools,
+configuration, and total step reservation before admitting work. All plans share the owner's durable
+allowance; reservations are retained after failure, cancellation, and blocked dependencies.
+The original proposal revision is always bound from Runtime's pending-loop record. Models need not
+invent a revision absent from their public cloud input; an explicitly supplied different revision is rejected.
+
+Executors are durable siblings in the original `desktop-subtask:<root>` conversation. Their
+`developer-harness-executor:v1` marker must match the owner's persisted plan and exact definition.
+They reuse TaskRuntime and the original Competition worker, with their allocated step limit and a
+subset of the original tools. Neither ordinary recursive dispatch nor the broker tool is available
+to executors. The generic `tool.invoke` path enforces the same subset. Independent eligible tasks may
+run together; a dependent task starts only after its prerequisites actually succeed. The dependency
+context cites their task IDs, revisions, and Evidence. Root dispatch checkpoints and receipts keep
+their original `user-work` meaning; executor progress is stored in the owner's plan namespace.
+
+`readSubagentTasks`, `listSubagentConversations`, `readSubagentConversation`,
+`submitSubagentConversationMessage`, and `cancelSubagentConversationTask` consume the same durable
+executor tasks. Results and progress return through the original worker to the interaction root.
+Cancellation stops new admission and propagates to started tasks; Runtime facts remain authoritative.
+Unknown writes retain `waiting_reconciliation`, block dependents, and are never retried by the broker.
+Pending approvals retain `waiting_approval`. After the admitted executor group actually settles,
+the original owner resumes its exact confirmed broker invocation and may admit newly eligible tasks;
+the run identity, inputs, and total reservation remain unchanged. This does not reopen unknown
+executors or automatically recover interrupted process work. Explicit child conversation messages
+use the existing continuation API; they do not reopen the original plan or grant authority.
+
+`test/developer-harness.test.mjs` exercises the actual RuntimeApplication/Gateway caller with explicit
+Fake Coordination and SQLite, including dependency results, independent executors, scope rejection,
+aggregate budget, cancellation, and unknown write preservation. This is local synthetic evidence;
+real AgentArts/model invocation, Desktop composition enablement, native workspace isolation, and
+complete developer harness acceptance require their own observations. The implementation follows
+the project's original interaction-root/execution-child design and introduces no upstream code,
+prompts, or execution configuration.
+
+The native composition also connects `harnessCandidates` to the original Gateway catalog and canonical
+run/session checkpoints. Trial, comparison, preparation, and the distinct original `coding.repair.publish`
+remain separate executions. `isHarnessCodingRepairSession` is a synchronous host reader for the four
+session operations `publish`, `snapshot`, `readback`, and `reconcile`: only the exact original owner/main
+session prepared by a confirmed candidate operation uses the harness journal. HostBridge aliases retain
+their existing F15 journal. Publication still requires original successful main-session verification,
+Policy authorization, compare-and-swap, and readback; routing itself grants none of these.
+
+The existing native `task.reconcile` surface can resolve an interaction root to its original unknown
+candidate executors. It reads their original sessions without forging a running ToolContext or starting
+a model/tool run. A clear stopped-operation observation permits the original Runtime atomic native
+termination port to end the executor and fully stopped owner/root as failed or cancelled. Original
+UNKNOWN tool records, caches, cloud markers, and side-effect Evidence are preserved. Unknown or active
+readbacks remain unresolved; no successful outcome is inferred from a clear journal.
+
+`configureHarnessExperience` composes once with the existing learning store. It proposes strategies only
+after a succeeded original owner has exact confirmed trial/comparison/adoption/publication provenance.
+Activation remains a separate native confirmation. Future workers read a current source-bound lease;
+the model receives only the applicable verification recipe metadata and the original tool boundary
+still applies. Final sends recheck the held lease. Source, configuration, or activation changes
+invalidate its consumption rather than creating authority. Public strategy metadata does not become
+private-memory content or bypass the original private-memory send guard.
+
+An active guidance lease can enter a task-bound publication completion phase after its own canonical
+confirmed adoption and original CAS publication/readback. The complete fresh workspace metadata must
+equal that verified publication; a different configuration, external edit, revoked activation/source,
+or UNKNOWN publication cannot enter this phase. The original lease stays immutable. Its frozen prompt
+metadata is retained for the existing context binding, but every new tool request is refused and only
+the original text completion can return. Final sends still check the same publication/source facts.
+This is a narrow end of guidance consumption for one task, not applicability to the changed snapshot:
+a later task must acquire its own strictly current lease through the unchanged learning lifecycle.
+
+The H6 event composition submits an atomic original event-origin checkpoint before normal root
+delegation. Startup observes that original record through pure readers, while live sends, tools, and
+approval recovery recheck the current native source/responsibility authorization. Completion callbacks
+only trigger receipt observation. Predispatch cancellation uses the exact original root activity and
+cancellation facts; it creates no delivery receipt. All these final callers are source integration;
+the combined pinned-runtime checks and real platform/device acceptance remain separate and pending.

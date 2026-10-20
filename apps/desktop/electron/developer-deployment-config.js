@@ -28,6 +28,10 @@ export function projectDeveloperConversationStatus(snapshot) {
 const fail=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','Developer deployment configuration is invalid or unavailable');};
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','Exact developer export permission is unavailable');};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)??'undefined').digest('hex');
+export const developerRepositoryDescriptor={name:'developer.repository_context',version:'1.0.0',
+  inputSchema:{type:'object',properties:{},additionalProperties:false},
+  outputSchema:{type:'object',properties:{repository:{type:'string',minLength:3,maxLength:201}},required:['repository'],additionalProperties:false},
+  sideEffect:'read',requiredScopes:['github:read'],requiresPresence:false,idempotencySupport:true,recoverySupport:true};
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const keys=(value,allowed)=>object(value)&&Object.keys(value).every(key=>allowed.includes(key));
 const branch=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/u.test(value)
@@ -107,11 +111,13 @@ export function attachExactExports(host,{current,ready,assertCurrent,confirmExpo
 }
 
 /** Main-only deployment configuration. No Electron, ambient gh account or new Runtime. */
-export async function createDesktopDeveloperDeployment({configPath,workspace,cacheRootPath,readModelGateway,confirmExport,
+export async function createDesktopDeveloperDeployment({configPath,configurationSource,workspace,cacheRootPath,readModelGateway,confirmExport,
   available,assertPrivateFile,now=Date.now,createHost}={}) {
   const factory=createHost??(await import('./developer-tools-host.js')).createDesktopDeveloperToolsHost;
   if(typeof factory!=='function')fail();
-  if(configPath===undefined||configPath===''){
+  if(configurationSource!==undefined&&(configPath!==undefined&&configPath!==''
+    ||!object(configurationSource)||['readConfiguration','readToken','current'].some(key=>typeof configurationSource[key]!=='function')))fail();
+  if(configurationSource===undefined&&(configPath===undefined||configPath==='')){
     let active=true,host;
     try {
       if(workspace&&(typeof workspace.bindingId!=='string'||!workspace.bindingId||typeof workspace.available!=='function'
@@ -142,13 +148,21 @@ export async function createDesktopDeveloperDeployment({configPath,workspace,cac
       ||typeof workspace.assertCurrent!=='function'||!path.isAbsolute(workspace.rootPath))fail();
     const root=realpathSync(workspace.rootPath),rootIdentity=lstatSync(root,{bigint:true});
     if(!rootIdentity.isDirectory()||rootIdentity.isSymbolicLink())fail();
-    const file=boundFile(configPath,65536,{privateFile:true,workspaceRoot:root,assertPrivateFile,immutable:true}),raw=file.read(),configuration=JSON.parse(raw);
+    // Product settings supply the same original configuration through a trusted encrypted host.
+    // Never materialize credentials into a second plaintext configuration/token-file registry.
+    const sourceRaw=configurationSource?.readConfiguration();
+    if(configurationSource&&(typeof sourceRaw!=='string'||Buffer.byteLength(sourceRaw,'utf8')>65536))fail();
+    const file=configurationSource?{read:()=>sourceRaw,current:()=>configurationSource.current()===true
+      &&configurationSource.readConfiguration()===sourceRaw}
+      :boundFile(configPath,65536,{privateFile:true,workspaceRoot:root,assertPrivateFile,immutable:true});
+    const raw=file.read(),configuration=JSON.parse(raw);
     if(!keys(configuration,['version','repository','workspaceRoot','github','git','workflows'])||configuration.version!==1
       ||typeof configuration.repository!=='string'||!/^[-\w.]+\/[-\w.]+$/u.test(configuration.repository)
       ||configuration.repository.includes('..')||realpathSync(configuration.workspaceRoot)!==root
       ||!keys(configuration.github,['executable','tokenFile','environment','repairLinks'])
       ||configuration.github.repairLinks!==undefined&&typeof configuration.github.repairLinks!=='boolean'
       ||!keys(configuration.git,['sourceBranch','remoteName','remoteUrl','allowedPaths','authorName','authorEmail']))fail();
+    if(configurationSource&&configuration.github.tokenFile!==undefined)fail();
     const repository=configuration.repository,git=configuration.git;
     if(!branch(git.sourceBranch)||typeof git.remoteName!=='string'||! /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(git.remoteName)
       ||![`https://github.com/${repository}`,`https://github.com/${repository}.git`].includes(git.remoteUrl)
@@ -166,9 +180,10 @@ export async function createDesktopDeveloperDeployment({configPath,workspace,cac
     const environment=configuration.github.environment??{};
     if(!keys(environment,['SystemRoot','TEMP','TMP'])||Object.values(environment).some(value=>typeof value!=='string'
       ||!path.isAbsolute(value)||/[\x00-\x1f]/u.test(value)||!lstatSync(value).isDirectory()))fail();
-    const token=boundFile(configuration.github.tokenFile,4096,{privateFile:true,workspaceRoot:root,assertPrivateFile,immutable:true});
+    const token=configurationSource?{current:()=>file.current(),read:()=>configurationSource.readToken()}
+      :boundFile(configuration.github.tokenFile,4096,{privateFile:true,workspaceRoot:root,assertPrivateFile,immutable:true});
     let tokenDigest;
-    const readToken=()=>{const value=token.read().trim();if(value.length<8||value.length>4096||/[\s\x00]/u.test(value)
+    const readToken=()=>{const rawToken=token.read();if(typeof rawToken!=='string')fail();const value=rawToken.trim();if(value.length<8||value.length>4096||/[\s\x00]/u.test(value)
       ||tokenDigest!==undefined&&hash(value)!==tokenDigest)fail();return value;};
     tokenDigest=hash(readToken());
     const current=scope=>{
@@ -199,6 +214,9 @@ export async function createDesktopDeveloperDeployment({configPath,workspace,cac
         available:(kind,scope)=>ready('developer.'+kind,scope),assertCurrent,
         ...(typeof confirmExport==='function'?{authorizeModelRequest:(request,scope)=>consent('developer_model_request',request,scope),
           projectResult:async(result,scope)=>{await consent('developer_workflow_result',result,scope);return structuredClone(result);}}:{})};
+      // F17 reuses the ciFix trusted path allowlist: the workspace root alone is
+      // never read permission for source snippets.
+      if(root!==undefined)result.testLocate={root:workspace.rootPath,allowedPaths:[...git.allowedPaths]};
       if(workflow.modelId!==undefined||workflow.configurationRef!==undefined){
         if(typeof workflow.modelId!=='string'||!workflow.modelId||typeof workflow.configurationRef!=='string'||!workflow.configurationRef)fail();
         if(typeof readModelGateway==='function')try {
@@ -234,10 +252,7 @@ export async function createDesktopDeveloperDeployment({configPath,workspace,cac
     }
     // Register once through the original host, then attach only explicit exact-payload export policies.
     host=factory({...options,exports:[]});
-    const originalHost=host,repositoryDescriptor={name:'developer.repository_context',version:'1.0.0',
-      inputSchema:{type:'object',properties:{},additionalProperties:false},
-      outputSchema:{type:'object',properties:{repository:{type:'string',minLength:3,maxLength:201}},required:['repository'],additionalProperties:false},
-      sideEffect:'read',requiredScopes:['github:read'],requiresPresence:false,idempotencySupport:true,recoverySupport:true};
+    const originalHost=host,repositoryDescriptor=structuredClone(developerRepositoryDescriptor);
     const repositoryTool={descriptor:repositoryDescriptor,execute:async(input,context)=>{
       validateToolValue(repositoryDescriptor.inputSchema,input);
       if(!context.authorizationRef||!context.scopes?.includes('github:read'))throw new ProtocolError('SCOPE_DENIED','Repository context requires original read authorization');
@@ -256,4 +271,37 @@ export async function createDesktopDeveloperDeployment({configPath,workspace,cac
       workflowsConfigured:workflow!==undefined,modelConfigured:typeof options.workflows?.model?.complete==='function',
       exportConfirmationConfigured:typeof confirmExport==='function',unavailable}),close(){if(!active)return;active=false;exports.clear();host.close();}};
   }catch{active=false;try{host?.close();provider?.dispose();}catch{}fail();}
+}
+
+/** Original public descriptors only. None of the metadata-only handles below can execute. */
+export async function readDeveloperToolDescriptors({cacheRootPath}) {
+  const coding=await import('@personal-agent/coding-tools');
+  const {developerTestLocatorDescriptor,developerPublicEnumPaths}=await import('./developer-tools-host.js');
+  const descriptors=[];
+  const unavailable={verification:'conditional',execute:async()=>{fail();},dispose(){}};
+  // conditional is the SDK's unverified-provider type, not a live/fake account fallback.
+  const metadataHost={register(tool){descriptors.push(structuredClone(tool.descriptor));return ()=>{};}};
+  const unregister=githubModule.register(metadataHost,{provider:unavailable});
+  try {
+    const unregisterRepair=githubModule.registerGitHubRepairLinks(metadataHost,{provider:unavailable});
+    unregisterRepair();
+  } finally {unregister();}
+  const git=coding.createGitTools({rootPath:cacheRootPath,repository:'unconfigured/unconfigured',allowedPaths:['metadata-only'],
+    sourceBranch:'unavailable',remoteName:'origin',remoteUrl:'https://github.com/unconfigured/unconfigured',
+    authorName:'Unavailable',authorEmail:'unavailable@invalid',getCredentials:async()=>{fail();}});
+  descriptors.push(...Object.values(git).map(tool=>structuredClone(tool.descriptor)));
+  const command=coding.createWorkspaceCommandTool({rootPath:cacheRootPath,
+    recipes:[{id:'metadata-only',executable:process.execPath,args:[]}]});
+  descriptors.push(structuredClone(command.descriptor),structuredClone(developerTestLocatorDescriptor),structuredClone(developerRepositoryDescriptor));
+  for(const descriptor of descriptors){
+    if(descriptor.name.startsWith('workspace.git.')){
+      delete descriptor.inputSchema.properties.repository.enum;
+      if(descriptor.inputSchema.properties.paths)delete descriptor.inputSchema.properties.paths.items.enum;
+    }
+    if(descriptor.name==='workspace.run_allowed_command'){
+      delete descriptor.inputSchema.properties.recipeId.enum;delete descriptor.outputSchema.properties.recipeId.enum;
+      descriptor.requiredScopes=[...new Set([...descriptor.requiredScopes,'workspace:git:read'])];
+    }
+  }
+  return {descriptors,publicEnumPaths:structuredClone(developerPublicEnumPaths)};
 }

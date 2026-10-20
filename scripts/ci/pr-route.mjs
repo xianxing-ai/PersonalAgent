@@ -38,6 +38,12 @@ export function selectWindowsRunner({fork=false,number,windowsRunner='auto',wind
   if(number===undefined) return {pool:'github',reason:'explicit manual validation uses GitHub Windows'};
   return {pool:number%2?'ecs':'github',reason:`PR #${number} is ${number%2?'odd: shared ECS pool':'even: GitHub Windows'}`};
 }
+// Approved one-off integration only; do not broaden this to a branch prefix or global switch.
+export function isHostedIntegrationPullRequest({eventName,repository,pr}={}) {
+  return eventName==='pull_request'&&repository==='zemeng5208/PersonalAgent'&&
+    pr?.head?.repo?.full_name===repository&&pr.head.ref==='codex/pr-harness-big-batch-20261020'&&
+    pr?.base?.repo?.full_name===repository&&pr.base.ref==='main';
+}
 export function matrixFor(mode,{fork=false,imageRunner='ecs',...windowsOptions}={}) {
   if(!['windows','image','both'].includes(mode)||!['ecs','github'].includes(imageRunner)) throw Error('Invalid CI routing configuration');
   const windows=selectWindowsRunner({fork,...windowsOptions});
@@ -49,7 +55,7 @@ export function matrixFor(mode,{fork=false,imageRunner='ecs',...windowsOptions}=
 export async function resolveRoute({event,eventName,ref,sha,repository,token,imageRunner='ecs',windowsRunner='auto',windowsOverrides='{}',fetchImpl=fetch}) {
   if(!/^[-\w]+\/[-\w.]+$/.test(repository??'')||!token) throw Error('Missing trusted GitHub context');
   if(['push','repository_dispatch'].includes(eventName)) throw Error('Automatic post-merge CI is disabled');
-  let selection={mode:'both',reason:'explicit manual validation'},fork=false,number;
+  let selection={mode:'both',reason:'explicit manual validation'},fork=false,number,hostedIntegration=false;
   if(event.pull_request) {
     number=event.pull_request.number;
     if(!Number.isSafeInteger(number)||number<1)throw Error('Invalid PR number');
@@ -69,9 +75,16 @@ export async function resolveRoute({event,eventName,ref,sha,repository,token,ima
     }
     selection=classifyPullRequest(files,pr.changed_files);
     if((await api(`pulls/${number}`)).head.sha!==pr.head.sha)throw Error('PR head moved during file listing; use the new run');
+    hostedIntegration=isHostedIntegrationPullRequest({eventName,repository,pr});
   }
   const windows=selectWindowsRunner({fork,number,windowsRunner,windowsOverrides});
   const matrix=matrixFor(selection.mode,{fork,number,imageRunner,windowsRunner,windowsOverrides});
+  // Validate the original configuration above before applying the narrowly scoped exception.
+  if(hostedIntegration) return {
+    selection,
+    windows:{pool:'github',reason:'approved one-off integration branch; every selected platform uses GitHub-hosted runners'},
+    matrix:matrixFor(selection.mode,{fork,number,imageRunner:'github',windowsRunner:'github',windowsOverrides:'{}'})
+  };
   return {selection,windows,matrix};
 }
 async function route() {
