@@ -81,6 +81,14 @@ export interface TransitionPatch {
   cancelRequested?: boolean;
 }
 
+/** Trusted native host only; the synchronous readback guard grants no execution authority. */
+export interface NativeReconciliationTerminationInput {
+  terminal: 'failed' | 'cancelled';
+  evidenceRefs: readonly string[];
+  reason: string;
+  assertUnchangedAndStopped(): void;
+}
+
 export interface RunOptions {
   deadline: string;
   sideEffect: SideEffect;
@@ -1156,6 +1164,65 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
 
   transitionTask(taskId: string, state: TaskState, patch: TransitionPatch = {}): TaskSnapshot {
     return structuredClone(this.transaction(() => this.updateTask(requireText(taskId, 'taskId'), state, patch, true)));
+  }
+
+  /** End an original native reconciliation after its trusted host has proved it stopped.
+   * Unknown tool outcomes remain unknown; this commits neither tool success nor replay. */
+  finishNativeReconciliation(taskId:string,expectedRevision:number,input:NativeReconciliationTerminationInput):TaskSnapshot {
+    requireText(taskId,'taskId');
+    if(!Number.isSafeInteger(expectedRevision) || expectedRevision<0 || !input
+      || !['failed','cancelled'].includes(input.terminal) || typeof input.reason!=='string' || !input.reason.trim()
+      || !Array.isArray(input.evidenceRefs) || input.evidenceRefs.some(ref=>typeof ref!=='string' || !ref.trim())
+      || typeof input.assertUnchangedAndStopped!=='function')throw new RuntimeError('INVALID_ARGUMENT','Native termination input is invalid');
+    const {terminal:nextState,reason,assertUnchangedAndStopped}=input,evidenceRefs=[...input.evidenceRefs];
+    return structuredClone(this.transaction(()=>{
+      const original=taskFromRow(this.taskRow(taskId));
+      if(original.revision!==expectedRevision || !['waiting_reconciliation','cancelling'].includes(original.state)
+        || this.isTaskActive(taskId) || this.loadCheckpoint(taskId,'native-reconciliation-termination:v1')!==undefined)
+        throw new RuntimeError('REVISION_CONFLICT','Original native task revision, state or activity changed');
+      const readFacts=()=>({task:taskFromRow(this.taskRow(taskId)),records:this.readToolExecutions(taskId),
+        checkpoints:this.db.prepare('SELECT checkpoint_key, value_json, updated_at FROM task_checkpoints WHERE task_id = ? ORDER BY checkpoint_key')
+          .all(taskId)});
+      const facts=canonical(readFacts());
+      const inflight=this.loadCheckpoint(taskId,'competition-cloud-inflight'),unknown=this.loadCheckpoint(taskId,'competition-cloud-unknown'),
+        received=this.loadCheckpoint(taskId,'competition-cloud-received'),marker=this.loadCheckpoint(taskId,'competition-cloud-terminal-error');
+      let cloudDisposition:'no_unresolved_cloud'|'transport_terminal_error'='no_unresolved_cloud';
+      const present=(value:unknown)=>value!==undefined && value!==null;
+      if(present(inflight) || present(unknown) || present(received)) {
+        const fields=['sessionId','requestId','idempotencyKey','payloadDigest','accepted','serverInstanceId'];
+        const validReceipt=(value:unknown):value is Record<string,unknown>=>{
+          if(!value || typeof value!=='object' || Array.isArray(value))return false;
+          const receipt=value as Record<string,unknown>;
+          return Object.keys(receipt).every(key=>fields.includes(key))
+            && ['sessionId','requestId','idempotencyKey'].every(key=>typeof receipt[key]==='string' && (receipt[key] as string).length>0)
+            && typeof receipt.payloadDigest==='string' && /^[a-f0-9]{64}$/.test(receipt.payloadDigest)
+            && typeof receipt.accepted==='boolean' && (receipt.serverInstanceId===undefined
+              || typeof receipt.serverInstanceId==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(receipt.serverInstanceId));
+        };
+        const terminalMarker=marker as {version?:unknown;kind?:unknown;receipt?:unknown}|undefined;
+        if(!validReceipt(inflight) || !validReceipt(received) || canonical(inflight)!==canonical(received)
+          || present(unknown) && (!validReceipt(unknown) || canonical(unknown)!==canonical(received))
+          || !terminalMarker || terminalMarker.version!=='1.0' || terminalMarker.kind!=='wss_terminal_error'
+          || Object.keys(terminalMarker).some(key=>!['version','kind','receipt'].includes(key))
+          || !validReceipt(terminalMarker.receipt) || canonical(terminalMarker.receipt)!==canonical(received))
+          throw new RuntimeError('RESULT_UNKNOWN','Original cloud invocation has no exact terminal transport proof');
+        cloudDisposition='transport_terminal_error';
+      }
+      // The host re-reads the original session/readback, local task, and complete owner/peer set here,
+      // inside this same SQLite transaction. It must not dispatch, mutate, or return a Promise.
+      const guardResult:unknown=assertUnchangedAndStopped();
+      if(guardResult!==undefined)throw new RuntimeError('INVALID_ARGUMENT','Native termination guard must be synchronous and read-only');
+      if(this.isTaskActive(taskId) || canonical(readFacts())!==facts)
+        throw new RuntimeError('REVISION_CONFLICT','Original native reconciliation facts changed during readback');
+      const refs=[...new Set([...original.evidenceRefs,...evidenceRefs])];
+      this.saveCheckpoint(taskId,'native-reconciliation-termination:v1',{version:'1.0',taskId,
+        originalRevision:expectedRevision,originalState:original.state,terminal:nextState,reason,evidenceRefs:refs,
+        originalFactsDigest:createHash('sha256').update(facts).digest('hex'),cloudDisposition,
+        toolOutcomesPreserved:true,cloudMarkersPreserved:true,toolReexecuted:false,cloudResent:false,terminatedAt:this.timestamp()});
+      return this.updateTask(taskId,nextState,{resultSummary:reason,evidenceRefs:refs,
+        ...(nextState==='cancelled'?{cancelRequested:true}:original.error?{}:
+          {error:{code:'RESULT_UNKNOWN',message:'Native execution stopped; original operation outcomes remain unresolved',retryable:false}})},true);
+    }));
   }
   /** Read-only exact binding of a durable local failure and its received transport identity. */
   readReceivedCloudFailureBinding(taskId:string,allowHistorical=false):string|undefined {

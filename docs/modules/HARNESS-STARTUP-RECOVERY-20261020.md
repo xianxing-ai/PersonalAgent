@@ -14,7 +14,7 @@ Profile：`huawei_ict_agentarts`；模块：MOD-03 / 原生 harness。分支 `co
 
 ## 唯一写入者接线合同
 
-Runtime 唯一写入者 H1 已在 `7149d728` 保存 `RuntimeApplication.resumeStartupTask(request):{accepted:boolean}`：先同步调用 guard，confirmed_read 沿原 `resumeConfirmedTask`；before_first_send 沿原 `startCoordinationTask`，created root 不伪造 approval，已恢复等待任务经 `prepareVerifiedContinuation` 交接；child 经原 `runSubagentWorker` 的原模型及 frozen tools。独立工作包状态不替代后续集成和统一验证。
+Runtime 唯一写入者 H1 已在 `7149d728` 保存 `RuntimeApplication.resumeStartupTask(request):{accepted:boolean}`：先同步调用 guard，confirmed_read 沿原 `resumeConfirmedTask`；before_first_send 沿原 `startCoordinationTask`，created root 不伪造 approval，已恢复等待任务经 `prepareVerifiedContinuation` 交接；child 经原 `runSubagentWorker` 的原模型及 frozen tools。原子 event created 间隙的同 taskId 分支另保存于 `49cccffc`。独立工作包状态不替代后续集成和统一验证。
 
 Desktop 唯一写入者 H2 的生产调用位置为 `initializeRuntime()` 完成 model/coding/skill/private 等宿主绑定之后，**在 `goalHost.resumeApproved()`、Client register/connect、任务刷新和 proactive pump 之前**：
 
@@ -29,7 +29,7 @@ const recovery = createRuntimeStartupRecovery({
 await recovery.recover();
 ```
 
-H2 必须使用原实际 transport 与 singleton 值；不得以 helper 存在、配置写入或返回 accepted 冒充任务完成。Runtime 适配与 Desktop caller 的集成 SHA / PR、统一类型及行为验证待对应唯一写入者提交后补齐。
+H2 必须使用原实际 transport 与 singleton 值；不得以 helper 存在、配置写入或返回 accepted 冒充任务完成。H2 的实际 main caller、原事件 facade 纯读 fence 及 Runtime artifact 身份组合已保存于 `b3d75029`：先绑定宿主并建立纯读 facade，等待恢复，再 start 原事件 consumer，之后 register/connect。统一类型及组合行为验证待代码汇合后执行。
 
 ### 原子事件受理与首次 enqueue 之间的崩溃窗口
 
@@ -41,6 +41,26 @@ H2 的可选 `canResumeHarnessEvent({taskId,expectedRevision,conversationId,orig
 
 缺少完整 fence 时保留原 created/manual；不伪造 deadline 或默认授权。原 `task.cancel` 对精确、无活动/工具/云尝试的 unstarted event root 可直接确认取消；普通 created task 仍保留原取消语义，未知操作不因此清除。当前 created 间隙、lease 在交接前撤销已补小回归；H6 `readOriginalDelivery` 与 H2 的真实 fence 组合由各自唯一写入者交付并在合并图中验证。
 
+## 原生只读核实后的原子终结
+
+原生 H3 会话实际 clear/停止后，单独调用 `transitionTask` 或 `confirmCancellation` 不能把原 session、只读回执及 owner/peer 事实校验和终结放进同一事务；旧 confirmed-subagent 终结又要求所有工具 confirmed，不能处理必须保留的 UNKNOWN。本包新增受信宿主口，未注册为 wire、工具或模型输入：
+
+```ts
+interface NativeReconciliationTerminationInput {
+  terminal: 'failed' | 'cancelled';
+  evidenceRefs: readonly string[];
+  reason: string;
+  assertUnchangedAndStopped(): void;
+}
+runtime.finishNativeReconciliation(taskId, expectedRevision, input): TaskSnapshot;
+```
+
+同一原 SQLite 事务先检查 waiting_reconciliation/cancelling、精确 revision 和没有原 worker/工具活动。随后同步调用 H1 的 guard；guard 必须重读精确原 session 已 clear/停止、原核实 checkpoint 及完整 canonical owner/peer/child 事实，所有需收敛成员已终态且无活动。运行时拒绝 Promise、thenable 及任何非 undefined 返回。core 还核对 guard 前后原 TaskSnapshot、全部 checkpoint 原始 JSON/时间戳、工具记录完全不变；变更、旧 revision 或 guard 抛错均回滚。
+
+允许保留 UNKNOWN 工具记录、缓存及原 Evidence；只新增 `native-reconciliation-termination:v1` 原事实摘要/停止审计和 failed/cancelled 终态。合并原 evidenceRefs，reason 作为原任务结果说明，原错误保留。没有模型续接、工具重做或成功声明。取消也不把原未知操作说成已撤销。
+
+任何未决、非法或错配 cloud inflight/unknown/received 均拒绝；只有完整 receipt 的 session/request/idempotency/digest/accepted/serverInstance 一致，且原 `wss_terminal_error` 精确匹配，才视为传输已终态。即使此时允许结束，全部原 marker 仍保留，不 consume/clear。H1 是原生调用方唯一写入者，负责先验原生用户权限/只读 scope，再给同步 guard 并以同口依次收敛真实 child、owner/root；本包不代签其组合验收。
+
 ## 实际 Runtime 构建身份
 
 根公开 `readRuntimeBuildIdentity(): string | undefined`，格式为 `runtime-artifacts:sha256:<64位小写摘要>`。它在该模块首次加载时，固定自身相邻 `dist` 中实际 `.js` 的稳定相对路径及字节摘要；每次读回核对同一文件集合。增删改、缺失、符号链接或读取失败使本进程身份永久失效，须重新启动。源码 TS 直接运行不产生构建身份。
@@ -51,4 +71,8 @@ H2 的可选 `canResumeHarnessEvent({taskId,expectedRevision,conversationId,orig
 
 按当前“代码先齐、随后统一测试”要求，本包没有安装依赖、全量构建或重跑 #448 的 110 项。仅对新增两个模块与最小 core 改动使用现成 TypeScript 做纯转译语法检查；两份小回归覆盖分类/原身份交接、confirmed read/write/unknown、HTTPS/私有 checkpoint 拒绝、active/approval 保留、取消/到期、交接前 revision 变化、独占要求、事件 created 窗口与 lease 撤销；独立临时 dist 的字节绑定及失效不重新认领。实际结果在本 PR 验证记录中列明。
 
-startup 回归使用显式 Fake Runtime port，不能称实际 SQLite/进程重开或生产消费通过；build identity 使用私有临时文件夹，未改生产 dist。另保存 `startup-recovery-core.test.mjs` 三个实际 core/SQLite 用例，留待统一构建后执行，本轮 `not_run`。完整 TypeScript、实际 SQLite 重开、H1/H2 组合调用、Windows packaged/.asar、云端 API 和实体应用仍 `not_run`，待代码汇合后统一验证；CI、独立批准、合并与发布分别记录。接口保持 provisional，不新增公共 Schema/capability 或权限。
+startup 回归使用显式 Fake Runtime port，不能称实际 SQLite/进程重开或生产消费通过；build identity 使用私有临时文件夹，未改生产 dist。另保存 `startup-recovery-core.test.mjs` 三个实际 startup core/SQLite 用例，留待统一构建后执行，本轮 `not_run`。
+
+原子终结追加只跑 `native-reconciliation-termination.test.mjs`，12/12 通过：失败/取消保留 UNKNOWN、旧 revision、异步 guard、读回变化回滚、host 拒绝、原 worker/工具活动、未决/错配/非法云绑定、精确终态 marker 保留、私有 SQLite 关闭重开后原记录及审计保留。执行使用 Node 24.15.0、现成 TypeScript 纯转译当前 index 与两个新 helper，依赖经只读 resolver 复用 #448 树先前已构建产物；没有安装依赖或写入他树的 node_modules/dist。此为本地 core 隔离回归，不等于当前树完整构建或原生 session/App 实机验证。命令形状为 `node --import ./.cache/native-core-minimal-preload.mjs --test apps/runtime/test/native-reconciliation-termination.test.mjs`；原始输出保存在忽略目录 `.cache/native-core-minimal-tests.log`。
+
+完整 TypeScript、实际 startup SQLite 重开、H1/H2/H6 组合调用、Windows packaged/.asar、真实 native session clear、云端 API 和实体应用仍 `not_run`，待代码汇合后统一验证；CI、独立批准、合并与发布分别记录。接口保持 provisional，不新增公共 Schema/capability 或权限。
