@@ -59,7 +59,7 @@ test('public mail account, draft, mark-seen, reconciliation and calendar impleme
     assert.equal(policy.accepts({taskId:s.taskId,proposalId:s.proposal.proposalId,arguments:{...args,injected:true}}),false);
   }
   assert.ok(f.calls.includes('draft'));assert.ok(f.calls.includes('mark'));assert.ok(f.calls.includes('calendar'));
-  assert.equal(f.calls.filter(x=>x==='mail-provider').length,1);
+  assert.equal(f.calls.filter(x=>x==='mail-provider').length,5);
 });
 
 test('cross-account requests, missing Runtime grant and unknown sends never reach a provider write or Sent read',async t=>{
@@ -117,7 +117,25 @@ test('a hanging provider respects cancellation and deadline without retrying the
     const args={to:'synthetic@example.invalid',subject:'Synthetic',text:'t'},s=scope(tool,args,'original-write',controller);
     if(timeout)s.deadline=new Date(Date.now()+500).toISOString();await f.host.prepareExport({...s,phase:'preflight'});
     const pending=tool.execute(args,s);await invoked;if(!timeout)controller.abort();
-    await assert.rejects(pending,{code:timeout?'TIMEOUT':'CANCELLED'});assert.equal(calls,1);assert.ok(disposals>=1);
+    await assert.rejects(pending,{code:timeout?'TIMEOUT':'CANCELLED'});assert.equal(calls,1);assert.equal(disposals,1);
+  });
+});
+
+test('hanging asynchronous disposal cannot delay cancellation or timeout',async t=>{
+  for(const timeout of [false,true])await t.test(timeout?'timeout':'cancel',{timeout:3000},async t=>{
+    let started,release,calls=0,disposals=0;const invoked=new Promise(r=>{started=r;});
+    const cleanup=new Promise(r=>{release=r;});t.after(()=>release());
+    const provider=new FakeMailProvider();provider.saveDraft=()=>{calls++;started();return new Promise(()=>{});};
+    provider.dispose=()=>{disposals++;return cleanup;};
+    const f=fixture(t,{createMailProvider:()=>provider}),tool=f.host.tools.find(t=>t.descriptor.name==='mail.save_draft');
+    const controller=new AbortController(),args={to:'synthetic@example.invalid',subject:'s',text:'t'},s=scope(tool,args,'hanging-dispose',controller);
+    if(timeout)s.deadline=new Date(Date.now()+100).toISOString();
+    await f.host.prepareExport({...s,phase:'preflight'});
+    const pending=tool.execute(args,s);await invoked;if(!timeout)controller.abort();
+    let timer;const bound=new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('execute waited for disposal')),1000);});
+    try {await assert.rejects(Promise.race([pending,bound]),{code:timeout?'TIMEOUT':'CANCELLED'});}
+    finally {clearTimeout(timer);release();}
+    assert.equal(disposals,1);assert.equal(calls,1);
   });
 });
 
@@ -128,6 +146,53 @@ test('asynchronous credential reads stop on cancellation and cannot create a pro
   const {tool,s}=await prepare(f.host,'calendar.events');const controller=new AbortController(),pending=tool.execute({}, {...s,signal:controller.signal});
   await called;controller.abort();await assert.rejects(pending,{code:'CANCELLED'});revision=2;release('Basic c3ludGhldGljOnBhc3N3b3Jk');
   await new Promise(r=>setTimeout(r,0));assert.equal(creations,0);
+});
+
+test('late credentials after cancellation, timeout or family revoke never create a provider',async t=>{
+  for(const mode of ['cancel','timeout','revoke'])await t.test(mode,async t=>{
+    let release,started,creations=0;const called=new Promise(r=>{started=r;});
+    const f=fixture(t,{calendar:{binding:()=>({calendarUrl:'https://calendar.example.invalid/',revision:1}),
+      readAuthorization:()=>{started();return new Promise(r=>{release=r;});}},
+      createCalendarProvider:()=>{creations++;return new FakeCalendarProvider();}});
+    const tool=f.host.tools.find(t=>t.descriptor.name==='calendar.events'),controller=new AbortController(),s=scope(tool,{},mode,controller);
+    if(mode==='timeout')s.deadline=new Date(Date.now()+500).toISOString();
+    await f.host.prepareExport({...s,phase:'preflight'});const pending=tool.execute({},s);
+    await called;const rejected=assert.rejects(pending,{code:mode==='timeout'?'TIMEOUT':'CANCELLED'});
+    if(mode==='cancel')controller.abort();if(mode==='revoke')await f.host.invalidate('calendar');
+    await rejected;release('Basic c3ludGhldGljOnBhc3N3b3Jk');await new Promise(r=>setImmediate(r));assert.equal(creations,0);
+  });
+});
+
+test('same-account concurrent tasks own independent providers; cancelling A preserves B',async t=>{
+  const providers=[];
+  const f=fixture(t,{createMailProvider:()=>{
+    const p=new FakeMailProvider();p.disposals=0;
+    p.saveDraft=()=>new Promise((resolve,reject)=>{p.resolve=()=>resolve({state:'confirmed',actionId:'draft',evidenceRefs:[]});p.reject=reject;});
+    p.dispose=()=>{p.disposals++;p.reject?.(new Error('connection closed'));};providers.push(p);return p;
+  }});
+  const tool=f.host.tools.find(t=>t.descriptor.name==='mail.save_draft'),args={to:'synthetic@example.invalid',subject:'s',text:'t'};
+  const a=new AbortController(),b=new AbortController();
+  const sa={...scope(tool,args,'a',a),taskId:'task-a'},sb={...scope(tool,args,'b',b),taskId:'task-b'};
+  for(const s of [sa,sb])await f.host.prepareExport({...s,phase:'preflight'});
+  const pa=tool.execute(args,sa),pb=tool.execute(args,sb);a.abort();
+  await assert.rejects(pa,{code:'CANCELLED'});assert.equal(providers.length,2);
+  assert.equal(providers[0].disposals,1);assert.equal(providers[1].disposals,0);
+  providers[1].resolve();assert.equal((await pb).state,'confirmed');assert.equal(b.signal.aborted,false);
+  assert.equal(providers[1].disposals,1);
+});
+
+test('family revoke stops every in-flight provider once',async t=>{
+  const providers=[];const f=fixture(t,{createMailProvider:()=>{
+    const p=new FakeMailProvider();p.disposals=0;p.saveDraft=()=>new Promise(()=>{});
+    p.dispose=()=>{p.disposals++;};providers.push(p);return p;
+  }});
+  const tool=f.host.tools.find(t=>t.descriptor.name==='mail.save_draft'),args={to:'synthetic@example.invalid',subject:'s',text:'t'};
+  const pending=[];
+  for(const id of ['task-a','task-b']){const s={...scope(tool,args,id),taskId:id};
+    await f.host.prepareExport({...s,phase:'preflight'});pending.push(tool.execute(args,s));}
+  const rejected=Promise.all(pending.map(p=>assert.rejects(p,{code:'CANCELLED'})));
+  await f.host.invalidate('mail');await rejected;
+  assert.equal(providers.length,2);assert.deepEqual(providers.map(p=>p.disposals),[1,1]);
 });
 
 test('actual Runtime asks for approval before a supplemental write and then confirms the original tool result',async t=>{

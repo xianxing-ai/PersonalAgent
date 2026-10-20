@@ -56,10 +56,13 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       const selected=bindings.get(bindingKey(context.taskId,kind));
       if(kind==='mail'&&input?.account!==undefined&&input.account!==MAIL_ACCOUNT)denied();
       const controller=new AbortController(),signal=AbortSignal.any([context.signal,controller.signal]);controllers.set(controller,kind);
-      let provider=providers.get(selected.identity)?.provider,timer,onAbort;
+      // Each execution owns its connection: cancelling one task must not close another's socket.
+      let provider,timer,onAbort,disposal;
+      const dispose=()=>disposal??=(Promise.resolve().then(()=>provider?.dispose?.()).catch(()=>{}));
+      const activeContext={...context,signal};
       try {
         const interrupted=new Promise((_,reject)=>{
-          onAbort=()=>{void Promise.resolve().then(()=>provider?.dispose?.()).catch(()=>{});
+          onAbort=()=>{void dispose();
             reject(new ProtocolError(context.signal.aborted?'CANCELLED':'TIMEOUT','连接器操作已停止，写入结果须在原任务核实'));};
           signal.addEventListener('abort',onAbort,{once:true});
           timer=setTimeout(()=>controller.abort(),Math.max(1,Math.min(2_147_483_647,Date.parse(context.deadline)-now())));
@@ -67,18 +70,18 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
         });
         const operation=(async()=>{
         if(!provider){
-          const binding=configuration(kind);assertCurrent(context);
+          const binding=configuration(kind);assertCurrent(activeContext);
           if(kind==='mail'){
             secrets.add(binding.authCode);provider=createMailProvider({user:binding.user,authCode:binding.authCode});
           }else{
-            const authorization=await calendar.readAuthorization(binding);assertCurrent(context);
+            const authorization=await calendar.readAuthorization(binding);assertCurrent(activeContext);
             secrets.add(authorization);
             if(authorization.startsWith('Basic '))secrets.add(Buffer.from(authorization.slice(6),'base64').toString('utf8').split(':').slice(1).join(':'));
             provider=createCalendarProvider({calendarUrl:binding.calendarUrl,calendarName:binding.calendarName,authorization,allowLoopbackHttp:true,
               fetchImpl:(url,init)=>{const active=execution.getStore();if(!active)denied();assertCurrent(active);
                 return fetch(url,{...init,signal:AbortSignal.any([init.signal,active.signal].filter(Boolean))});}});
           }
-          assertCurrent(context);providers.set(selected.identity,{kind,provider});
+          providers.set(controller,{kind,provider,dispose});assertCurrent(activeContext);
         }
         const scope={...context,signal,kind,provider};assertCurrent(scope);
         const result=await execution.run(scope,()=>tool.execute(input,{...context,signal}));assertCurrent(scope);return result;
@@ -89,7 +92,8 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
           '连接器操作已停止，已发生的写入须在原任务核实');
         if(error instanceof ProtocolError)throw new ProtocolError(error.code,'连接器操作未完成；请按错误码核实原任务');
         throw new ProtocolError('EXTERNAL_FAILURE','连接器操作未完成；请核实原任务，勿重复未知写入');
-      }finally{clearTimeout(timer);signal.removeEventListener('abort',onAbort);controllers.delete(controller);}
+      }finally{clearTimeout(timer);signal.removeEventListener('abort',onAbort);controllers.delete(controller);
+        providers.delete(controller);void dispose();}
     }});return ()=>{};
   }};
   disposers.push(mailModule.register(host,{provider:proxy('mail'),accountRef:MAIL_ACCOUNT}));
@@ -118,7 +122,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
     exports.clear(kind?new Set(tools.filter(tool=>family(tool.descriptor.name)===kind).map(tool=>tool.descriptor.name)):undefined);
     for(const [controller,source]of controllers)if(!kind||source===kind)controller.abort();
     const pending=[];for(const [key,value]of providers)if(!kind||value.kind===kind){
-      providers.delete(key);pending.push(Promise.resolve().then(()=>value.provider.dispose?.()).catch(()=>{}));
+      providers.delete(key);pending.push(value.dispose());
     }
     await Promise.all(pending);if(!kind)secrets.clear();
   },async close(){closed=true;await this.invalidate();for(const dispose of disposers.reverse())dispose();}};
