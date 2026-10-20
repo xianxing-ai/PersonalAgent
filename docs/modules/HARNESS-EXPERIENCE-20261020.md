@@ -67,3 +67,9 @@ App 仅在本人原 canonical confirmed main CAS publish、当前 snapshot 与�
 断言复用原 sourceRef 解析及四 confirmed run/provenance、原版本与 recipe 验证；只允许当前 workspaceDigest 不同。当前完整同步快照摘要仍必须等于 currentScope.workspaceDigest；除该摘要外 scope 必须精确匹配原来源，原来源摘要也重新绑定原 checked snapshot。启用 revision/activationSequence、sourceRef、passed validation/evidenceRef、原来源任务撤回/删除及源停止/失效仍拒绝；不复制私有 sourceRef 解析到 App，不写第二份 store。
 
 本增量验证：新 helper 定向 noEmit 通过；在本分支忽略缓存中只转译经验 helper/只读 canonical adapter，复用既有编译依赖，执行 `published guidance source` 两个关键小例 2/2 通过。使用实际 Runtime/Policy/Gateway/SQLite 与明确 Fake canonical 来源/发布后快照，不证明 H1 当前任务的真实 CAS、云端、模型或设备验收；未改整合树 dist，未跑全量 build/check。
+
+## Windows CI 锁测试前置诊断（2026-10-20）
+
+源 `c1868519` 的运行 `39440822221` 中，memory 恢复测试的子 writer 在 `BEGIN IMMEDIATE` 获取测试前置锁时返回 SQLITE_BUSY；父 fixture 只等待 `locked` 消息，随后把子进程提前退出掩成测试超时。仅修改原 `sqlite-recovery.test.mjs`：子进程建立前置锁允许最多 2000ms busy wait；父进程同时检查消息、退出和启动错误，前置等待有界且统一清理子进程。原受测 100ms deadline、持锁释放 350ms 和行为断言全部保留。新增子进程提前 exit(23) 的准确错误回归，不改生产内存、learning、权限或恢复语义。当前已正常合入 main `93e00889`，Node 24.15.0 于 2026-10-20 15:07:17 UTC 执行 `node --test packages/memory/test/sqlite-recovery.test.mjs`，完整单文件 5/5 通过，含真实 exit(23) 回归与原全部四项断言。未 build/install；先逐包核对 memory/storage/contracts 的 src 与 package.json 相对已建树 `5aae4006` 无差异，再复制该树对应 dist 到本独占树复用。日志 `.cache/pr452-memory-fixture/validation.log`；本地 Linux 通过不冒充 Windows 全 CI 或知识证书恢复。
+
+同次运行 knowledge 六项 SOURCE_UNAVAILABLE 均发生在证书进程约 10 秒终止前，未取得首个脚本阶段标记；不足以确定 CPU、PowerShell 启动或 runner 策略原因。未修改知识生产代码、证书 10 秒限制，未声称该失败已修复。原 CI、实际 Windows/账号与平台验收分别记账。

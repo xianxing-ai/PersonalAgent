@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {once} from 'node:events';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -33,10 +32,30 @@ async function fixture(t) {
   return {state, feed, batch: await feed.read(request({limit: 10}))};
 }
 
+function waitForWriterLock(writer) {
+  return new Promise((resolve, reject) => {
+    const finish = error => {
+      clearTimeout(timer);
+      writer.removeListener('message', onMessage);
+      writer.removeListener('exit', onExit);
+      writer.removeListener('error', onError);
+      if (error) reject(error); else resolve();
+    };
+    const onMessage = message => finish(message === 'locked' ? undefined : new Error('Writer lock setup returned an unexpected message'));
+    const onExit = (code, signal) => finish(new Error(`Writer lock setup exited before acquiring the lock (code=${code}, signal=${signal})`));
+    const onError = error => finish(new Error('Writer lock setup process failed', {cause: error}));
+    const timer = setTimeout(() => finish(new Error('Writer lock setup did not acquire the lock within 8000ms')), 8000);
+    writer.once('message', onMessage);
+    writer.once('exit', onExit);
+    writer.once('error', onError);
+  });
+}
+
 async function withWriterLock(path, action) {
   const writer = spawn(process.execPath, ['--input-type=module', '--eval', `
     import {DatabaseSync} from 'node:sqlite';
     const db = new DatabaseSync(process.argv[1]);
+    db.exec('PRAGMA busy_timeout = 2000');
     db.exec('BEGIN IMMEDIATE');
     process.on('message', () => setTimeout(() => {
       db.exec('ROLLBACK');
@@ -45,17 +64,29 @@ async function withWriterLock(path, action) {
     }, 350));
     process.send('locked');
   `, path], {stdio: ['ignore', 'ignore', 'inherit', 'ipc'], windowsHide: true});
-  const exited = once(writer, 'exit');
+  const closed = new Promise(resolve => writer.once('close', (code, signal) => resolve([code, signal])));
   try {
-    const [message] = await once(writer, 'message');
-    assert.equal(message, 'locked');
+    await waitForWriterLock(writer);
     writer.send('release');
     await action(new Date(Date.now() + 100).toISOString());
-    assert.deepEqual(await exited, [0, null]);
+    assert.deepEqual(await closed, [0, null]);
   } finally {
-    if (writer.exitCode === null) { writer.kill(); await exited; }
+    if (writer.exitCode === null && writer.signalCode === null && writer.pid !== undefined) writer.kill();
+    await closed;
   }
 }
+
+test('writer lock setup reports an early child exit instead of waiting for the test timeout', {timeout: 10000}, async () => {
+  const writer = spawn(process.execPath, ['--eval', 'process.exit(23)'],
+    {stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true});
+  const closed = new Promise(resolve => writer.once('close', resolve));
+  try {
+    await assert.rejects(waitForWriterLock(writer), /Writer lock setup exited before acquiring the lock \(code=23, signal=null\)/);
+  } finally {
+    if (writer.exitCode === null && writer.signalCode === null && writer.pid !== undefined) writer.kill();
+    await closed;
+  }
+});
 
 test('confirmation expires while waiting for a writer without consuming the batch', {timeout: 10000}, async t => {
   const {state, feed, batch} = await fixture(t);
