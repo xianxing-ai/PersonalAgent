@@ -149,7 +149,7 @@ async function completionFixture() {
   const published={version:1,sessionId:'main-session',state:'published',files:[{path:'src.js',beforeSha256:f.c.baseline.files[0].sha256,
     afterSha256:checked.snapshot.files[0].sha256}],evidenceRefs:['adopt']};f.confirm(publish,published);
   const continuation={proposalId:'publish-proposal',state:'confirmed',result:published};
-  f.runtime.saveCheckpoint(f.c.binding.taskId,'competition-loop',{step:5,continuation,receipts:[{runId:'publish',
+  f.runtime.saveCheckpoint(f.c.binding.taskId,'competition-loop',{step:5,continuation,receipts:[{runId:'publish',exportPolicyVersion:'synthetic-original-publish-v1',
     proposal:{kind:'tool_proposal',proposalId:'publish-proposal',toolName:'coding.repair.publish',toolVersion:'1.0.0',arguments:publicationArguments,verification:'unverified'},continuation}]});
   f.setTask(f.c.binding.taskId,'running',8);
   return {f,request:{ownerTaskId:f.c.binding.taskId,actualTaskId:f.c.binding.taskId,runId:'adopt',publicationRunId:'publish'},saved};
@@ -176,4 +176,33 @@ test('completion-only reader rejects unknown, pending, wrong cache, scope, input
   ];
   for(const mutate of cases){const value=await completionFixture();mutate(value);
     assert.throws(()=>value.f.bindings.readAdoptionOriginForCompletion(value.request),{code:'UNAUTHORIZED'});}
+});
+
+test('completion reader accepts original redacted export without treating its projection as CAS facts',async()=>{
+  const {f,request,saved}=await completionFixture(),loop=f.runtime.loadCheckpoint(request.ownerTaskId,'competition-loop');
+  loop.continuation={proposalId:'publish-proposal',state:'confirmed',result:{published:true,fileCount:1}};
+  loop.receipts[0].continuation=structuredClone(loop.continuation);
+  f.runtime.saveCheckpoint(request.ownerTaskId,'competition-loop',loop);
+  assert.deepEqual(f.bindings.readAdoptionOriginForCompletion(request).input,saved);
+  assert.equal(f.runtime.loadCheckpoint(request.ownerTaskId,'tool-result-publish').result.files.length,1,'original CAS readback remains local');
+  const broken=f.runtime.loadCheckpoint(request.ownerTaskId,'tool-result-publish');broken.result.files[0].afterSha256='0'.repeat(64);
+  f.runtime.saveCheckpoint(request.ownerTaskId,'tool-result-publish',broken);
+  assert.throws(()=>f.bindings.readAdoptionOriginForCompletion(request),{code:'UNAUTHORIZED'},'redacted success cannot replace original verified CAS facts');
+});
+
+test('completion projection requires its unique original run, exact arguments and explicit export policy version',async()=>{
+  const cases=[
+    loop=>{delete loop.receipts[0].exportPolicyVersion;},
+    loop=>{loop.receipts[0].exportPolicyVersion=' ';},
+    loop=>{loop.receipts[0].exportPolicyVersion='v'.repeat(129);},
+    loop=>{loop.receipts[0].proposal.arguments.snapshotId='substituted';},
+    loop=>{loop.receipts[0].proposal.verification='mock';},
+    loop=>{loop.receipts.push(structuredClone(loop.receipts[0]));},
+    loop=>{loop.receipts.push({...structuredClone(loop.receipts[0]),runId:'another'});},
+    loop=>{loop.receipts[0].continuation={...loop.continuation,result:{substituted:true}};},
+    loop=>{loop.continuation.extra='invalid';loop.receipts[0].continuation=structuredClone(loop.continuation);},
+  ];
+  for(const mutate of cases){const {f,request}=await completionFixture(),loop=f.runtime.loadCheckpoint(request.ownerTaskId,'competition-loop');
+    mutate(loop);f.runtime.saveCheckpoint(request.ownerTaskId,'competition-loop',loop);
+    assert.throws(()=>f.bindings.readAdoptionOriginForCompletion(request),{code:'UNAUTHORIZED'});}
 });

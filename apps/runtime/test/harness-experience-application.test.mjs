@@ -73,6 +73,7 @@ async function fixture(t,{enabled=true,useConfigure=false}={}){
     if(!published){const checked=app.runtime.loadCheckpoint(request.taskId,'tool-result-'+adoption.evidenceId).result;
       return proposal('coding.repair.publish',{version:1,sessionId:checked.sessionId,baselineSnapshotId:inputs.get(checked.sessionId).session.baselineSnapshotId,snapshotId:checked.snapshot.snapshotId,
         paths:['src.js'],verificationRunIds:checked.verification.map(r=>r.runId)});}
+    if(mode==='hold_after_publish'){entered=request.taskId;await new Promise(resolve=>release=resolve);}
     if(mode==='tool_after_publish')return proposal('coding.repair.trial',{candidateId:'extra',patches,recipeIds:['unit']});
     return {kind:'text',text:'Published original verified artifact',verification:'mock'};
   });
@@ -220,4 +221,17 @@ test('completed guidance cannot execute another proposed tool after its original
   assert.notEqual(owner.state,'succeeded');assert.equal(f.publishes(),2);
   assert.equal(f.app.runtime.readToolExecutions(owner.taskId).length,4,'no fifth tool is admitted');
   assert.ok(f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:publication-completion:v1'));
+});
+
+for(const change of ['external','revoke'])test('completed publication rechecks '+change+' before accepting its summary',async t=>{
+  const f=await fixture(t),candidate=await activateOriginal(f),root=await f.start('hold_after_publish');
+  await until(()=>f.entered());const owner=f.owner(root);
+  const completion=f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:publication-completion:v1');assert.ok(completion);
+  if(change==='external')f.mutateCurrent();
+  else f.experience.stop({...f.context(),workflowId:candidate.workflowId,expectedActiveRevision:candidate.revision,
+    operationId:'revoke-after-publication',stoppedAt:new Date().toISOString()});
+  f.release();await until(()=>f.app.activeTaskCount===0);
+  assert.equal(f.app.runtime.getTask(owner.taskId).state,'failed');assert.equal(f.publishes(),2);
+  assert.deepEqual(f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:publication-completion:v1'),completion,'immutable original completion is not migrated again');
+  assert.equal(f.experience.listCandidates().length,1);
 });
