@@ -1,8 +1,10 @@
 // Host-local overlay for the existing Conversations store, not a second task store.
 import {createLiveHistoryQueue} from './live-history-queue.js';
+import {compileCoordinationGoal} from '@personal-agent/runtime/application';
 
 export function createLiveVoiceHistory({save, readContext = () => '', recentLimit = 20,
   recoveryStore, queue = createLiveHistoryQueue({store: recoveryStore})}) {
+  let contextDegraded=false;
   if (typeof save !== 'function' || !Number.isSafeInteger(recentLimit) || recentLimit < 1) {
     throw Error('Live 历史保存端口无效');
   }
@@ -49,13 +51,15 @@ export function createLiveVoiceHistory({save, readContext = () => '', recentLimi
   }
   function context({conversationId='desktop-panel'}={}) {
     let data = {};
+    contextDegraded=false;
     try {
       const raw = readContext({conversationId});
-      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const parsed = typeof raw === 'string' ? raw.trim()?JSON.parse(raw):{} : raw;
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) data = parsed;
-    } catch { /* A store read failure must not discard the unsaved overlay. */ }
+    } catch { contextDegraded=true; /* Preserve unsaved transcripts, but the host must block incomplete sends. */ }
     const entries = [], messagesById = new Map();
-    for (const task of (Array.isArray(data.tasks) ? data.tasks : [])) {
+    const canonical=Array.isArray(data.contextMessages)?data.contextMessages:undefined;
+    for (const task of (!canonical&&Array.isArray(data.tasks) ? data.tasks : [])) {
       if(task?.conversationId!==undefined && task.conversationId!==conversationId)continue;
       const time = Date.parse(task?.createdAt) || 0;
       if (typeof task?.goal === 'string' && task.goal.trim()) entries.push({time, role:'user', text:task.goal});
@@ -66,18 +70,25 @@ export function createLiveVoiceHistory({save, readContext = () => '', recentLimi
       } else if (task?.state === 'cancelled') entries.push({time:time+1, role:'assistant', text:'[任务已取消]'});
     }
     let index = 0;
-    for (const message of [...(Array.isArray(data.messages) ? data.messages : []), ...messages().filter(message=>(message.conversationId??'desktop-panel')===conversationId)]) {
+    for (const message of [...(canonical?canonical.map((m,index)=>({...m,text:m.content,canonicalIndex:index})):
+      Array.isArray(data.messages) ? data.messages : []), ...messages().filter(message=>(message.conversationId??'desktop-panel')===conversationId)]) {
       if(message?.conversationId!==undefined && message.conversationId!==conversationId)continue;
       if (!message || !['user', 'assistant'].includes(message.role)
         || typeof message.text !== 'string' || !message.text.trim()) continue;
       // Identity dedup preserves intentional repeated sentences in separate turns.
       const id = typeof message.id === 'string' ? message.id : `unidentified:${index++}`;
-      messagesById.set(id, {time:Date.parse(message.createdAt)||0, role:message.role, text:message.text});
+      const prior=messagesById.get(id);
+      messagesById.set(id, {id,time:prior?.time??message.canonicalIndex??(Date.parse(message.createdAt)||0), role:message.role, text:message.text,
+        ...(message.taskState?{taskState:message.taskState}:{})});
     }
     entries.push(...messagesById.values());
-    return entries.sort((a,b)=>a.time-b.time).slice(-10)
-      .map(({role,text})=>({role,text:String(text).slice(0,1600)}));
+    const ordered=entries.sort((a,b)=>a.time-b.time).map(({id,role,text,taskState},index)=>({id:id??'live-context-'+index,role,content:String(text),...(taskState?{taskState}:{})}));
+    const compiled=ordered.length?JSON.parse(compileCoordinationGoal('衔接本会话前文','衔接本会话前文',ordered,'preserve-user-requests')).conversationContext:{messages:[]};
+    const selected=compiled.messages.map(({role,content,taskState})=>({role,text:content,...(taskState?{taskState}:{})}));
+    if(compiled.selection)selected.push({role:'assistant',text:JSON.stringify({contextSelection:compiled.selection})});
+    if(JSON.stringify(selected).length>16000)throw Error('Live 关键上下文超过预算，无法完整发送，请缩小范围');
+    return selected;
   }
-  return {record, flush, context, messages, snapshot:()=>({...queue.snapshot(), pendingCount:queue.snapshot().pending,
+  return {record, flush, context, messages, snapshot:()=>({...queue.snapshot(), contextDegraded,pendingCount:queue.snapshot().pending,
     transcripts:messages().slice(-recentLimit)})};
 }

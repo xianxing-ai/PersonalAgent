@@ -1,4 +1,5 @@
 import { ProtocolError } from '@personal-agent/contracts';
+import {randomUUID} from 'node:crypto';
 import { unfoldLines, unescapeIcalText, parseIcalDate } from './ical-subscription.js';
 import { assertReadActive } from './read-context.js';
 import type {
@@ -12,11 +13,11 @@ import type {
   CalendarWindow,
 } from './provider.js';
 
-/** CalDAV 传输端口：PROPFIND/REPORT 都是 XML 请求体，宿主注入 fetch 实现即可离线测试。 */
+/** CalDAV 传输端口：读（PROPFIND/REPORT）与写（PUT/GET/DELETE）共用宿主注入的 fetch 实现即可离线测试。 */
 export type CalDavFetchLike = (url: string, init: {
-  readonly method: 'PROPFIND' | 'REPORT';
+  readonly method: 'PROPFIND' | 'REPORT' | 'PUT' | 'GET' | 'DELETE';
   readonly headers: Record<string, string>;
-  readonly body: string;
+  readonly body?: string;
   readonly signal: AbortSignal;
   readonly redirect: 'error';
 }) => Promise<CalDavFetchResponseLike>;
@@ -160,6 +161,8 @@ interface ParsedCalDavEvent {
   sequence: number;
   lastModifiedMs: number | undefined;
   status: 'confirmed' | 'tentative' | 'cancelled';
+  location?: string;
+  notes?: string;
 }
 
 /** 读取属性值与其参数串：parseIcalEvents 会同时存 `KEY` 与 `KEY;params` 两个键。 */
@@ -211,6 +214,8 @@ function readEvent(props: Record<string, string>): ParsedCalDavEvent | undefined
     uid, summary, startMs, endMs, allDay, timeZone, sequence,
     lastModifiedMs: lastModifiedRaw === undefined ? undefined : parseIcalDate(lastModifiedRaw.split(';')[0] ?? ''),
     status,
+    ...(props.LOCATION === undefined ? {} : {location: unescapeIcalText(props.LOCATION)}),
+    ...(props.DESCRIPTION === undefined ? {} : {notes: unescapeIcalText(props.DESCRIPTION)}),
   };
 }
 
@@ -218,9 +223,11 @@ export function parseCalDavEvents(raw: string): ParsedCalDavEvent[] {
   const lines = unfoldLines(raw);
   const events: ParsedCalDavEvent[] = [];
   let current: Record<string, string> | undefined;
+  let nestedDepth = 0;
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { current = {}; continue; }
-    if (line === 'END:VEVENT') {
+    const upper = line.toUpperCase();
+    if (upper === 'BEGIN:VEVENT') { current = {}; nestedDepth = 0; continue; }
+    if (upper === 'END:VEVENT') {
       if (current) {
         const parsed = readEvent(current);
         if (parsed) events.push(parsed);
@@ -229,6 +236,9 @@ export function parseCalDavEvents(raw: string): ParsedCalDavEvent[] {
       continue;
     }
     if (current === undefined) continue;
+    if (upper.startsWith('BEGIN:')) {nestedDepth++;continue;}
+    if (upper.startsWith('END:')) {nestedDepth = Math.max(0, nestedDepth - 1);continue;}
+    if (nestedDepth > 0) continue;
     const colon = line.indexOf(':');
     if (colon <= 0) continue;
     const left = line.slice(0, colon);
@@ -275,6 +285,11 @@ function calendarQueryXml(window: CalendarWindow | undefined): string {
 export class CalDavProvider implements CalendarProvider {
   readonly providerKind = 'caldav';
   readonly verification = 'conditional' as const;
+  readonly writes = {
+    createEvent: (input: Parameters<CalDavProvider['createEvent']>[0], context?: CalendarReadContext) => this.createEvent(input, context),
+    updateEvent: (input: Parameters<CalDavProvider['updateEvent']>[0], context?: CalendarReadContext) => this.updateEvent(input, context),
+    cancelEvent: (uid: string, context?: CalendarReadContext) => this.cancelEvent(uid, context),
+  };
   private readonly calendarUrl: string;
   private readonly authorization: string | undefined;
   private readonly calendarName: string | undefined;
@@ -472,9 +487,165 @@ export class CalDavProvider implements CalendarProvider {
     return event === undefined ? undefined : this.toRecord(event);
   }
 
-  /** 只读首片：CalDAV 写侧（/respond、ETag If-Match 更新）留待独立工作包。 */
+  /** 创建事件：PUT 固定 UID 资源（同 UID 同内容重放幂等），写后 GET 读回核对再返回记录。 */
+  async createEvent(input: {summary: string; startUtc: string; endUtc: string;
+    location?: string; notes?: string; uid?: string}, context?: CalendarReadContext): Promise<CalendarEventRecord> {
+    const summary = typeof input?.summary === 'string' ? input.summary.trim() : '';
+    if (!summary || summary.length > 512) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event summary is required (1..512 chars)');
+    const startUtc = assertWriteUtc(input?.startUtc, 'startUtc');
+    const endUtc = assertWriteUtc(input?.endUtc, 'endUtc');
+    if (Date.parse(endUtc) <= Date.parse(startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
+    const uid = input.uid === undefined ? randomUUID() : assertWriteUid(input.uid);
+    const ics = buildIcs({uid, summary, startUtc, endUtc,
+      ...(input.location === undefined ? {} : {location: String(input.location)}),
+      ...(input.notes === undefined ? {} : {notes: String(input.notes)})}, stamp(Date.now()));
+    await this.writeRequest('PUT', this.resourceUrl(uid), ics, 'text/calendar; charset=utf-8', context, [200, 201, 204]);
+    return this.readBack({uid, summary, startUtc, endUtc,
+      location: input.location?.trim() ?? '', notes: input.notes?.trim() ?? ''}, context);
+  }
+
+  /** 更新事件：GET 现值合并（SEQUENCE 递增）后 PUT，写后读回核对。 */
+  async updateEvent(input: {uid: string; summary?: string; startUtc?: string; endUtc?: string;
+    location?: string; notes?: string}, context?: CalendarReadContext): Promise<CalendarEventRecord> {
+    const uid = assertWriteUid(input?.uid);
+    // Reject unrepresentable instants before even reading the original resource.
+    if (input.startUtc !== undefined) assertWriteUtc(input.startUtc, 'startUtc');
+    if (input.endUtc !== undefined) assertWriteUtc(input.endUtc, 'endUtc');
+    const resourceUrl = this.resourceUrl(uid);
+    const current = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200]);
+    const parsed = parseCalDavEvents(current).find(event => event.uid === uid);
+    if (parsed === undefined) throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar event is unreadable after fetch', false);
+    if (parsed.allDay && (input.startUtc === undefined) !== (input.endUtc === undefined))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Changing one boundary of an all-day event would mix DATE and DATE-TIME');
+    const merged = {
+      uid,
+      summary: typeof input.summary === 'string' && input.summary.trim() ? input.summary.trim() : parsed.summary,
+      startUtc: input.startUtc === undefined ? iso(parsed.startMs) : assertWriteUtc(input.startUtc, 'startUtc'),
+      endUtc: input.endUtc === undefined ? iso(parsed.endMs) : assertWriteUtc(input.endUtc, 'endUtc'),
+      location: input.location === undefined ? parsed.location ?? '' : String(input.location).trim(),
+      notes: input.notes === undefined ? parsed.notes ?? '' : String(input.notes).trim(),
+    };
+    if (Date.parse(merged.endUtc) <= Date.parse(merged.startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
+    const originalLines = unfoldLines(current);
+    const propertyKey = (line: string) => (line.split(/[:;]/u)[0] ?? '').toUpperCase();
+    if (originalLines.filter(line => line.toUpperCase() === 'BEGIN:VEVENT').length !== 1
+      || originalLines.some(line => /^(?:RRULE|RDATE|EXDATE|RECURRENCE-ID)(?:;|:)/iu.test(line)))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Recurring or multi-event resources require their original calendar editor');
+    const updated = unfoldLines(buildIcs(merged, stamp(Date.now()), parsed.sequence + 1));
+    const preservedTimeKeys = new Set([
+      ...(input.startUtc === undefined ? ['DTSTART'] : []),
+      ...(input.endUtc === undefined ? ['DTEND'] : []),
+    ]);
+    const preservedTimes = originalLines.filter(line => preservedTimeKeys.has(propertyKey(line)));
+    const replacements = updated.slice(updated.indexOf('BEGIN:VEVENT') + 1, updated.indexOf('END:VEVENT'))
+      .filter(line => !preservedTimeKeys.has(line.split(/[:;]/u)[0] ?? ''));
+    const keys = new Set(['UID','DTSTAMP','DTSTART','DTEND','SUMMARY','LOCATION','DESCRIPTION','SEQUENCE']);
+    for (const key of preservedTimeKeys) keys.delete(key);
+    // Preserve unrelated attendee, organizer, alarm and calendar properties rather than rebuilding the resource.
+    let depth = 0;
+    const preserved = originalLines.filter(line => {
+      const upper = line.toUpperCase();
+      if (upper === 'BEGIN:VEVENT') {depth = 1;return true;}
+      if (depth && upper.startsWith('BEGIN:')) {depth++;return true;}
+      if (depth && upper.startsWith('END:')) {depth--;return true;}
+      return depth !== 1 || !keys.has(propertyKey(line));
+    });
+    preserved.splice(preserved.findIndex(line => line.toUpperCase() === 'END:VEVENT'), 0, ...replacements);
+    const ics = preserved.map(foldIcalLine).join('\r\n') + '\r\n';
+    await this.writeRequest('PUT', resourceUrl, ics, 'text/calendar; charset=utf-8', context, [200, 201, 204]);
+    return this.readBack({...merged, preservedTimes}, context);
+  }
+
+  /** 取消事件：DELETE 资源。404 视为已不存在（幂等），状态如实返回。 */
+  async cancelEvent(uid: string, context?: CalendarReadContext): Promise<{uid: string; state: 'cancelled' | 'already_absent'}> {
+    const resourceUrl = this.resourceUrl(assertWriteUid(uid));
+    const {status} = await this.writeExchange('DELETE', resourceUrl, undefined, undefined, context);
+    if (status === 404) return {uid, state: 'already_absent'};
+    if (status !== 200 && status !== 204) {
+      if (status === 401 || status === 403) throw new ProtocolError('UNAUTHORIZED', `CalDAV 认证被拒绝（HTTP ${status}）`);
+      throw new ProtocolError('EXTERNAL_FAILURE', `CalDAV 服务器返回异常（HTTP ${status}）`, status >= 500);
+    }
+    return {uid, state: 'cancelled'};
+  }
+
+  private resourceUrl(uid: string): string {
+    return `${this.calendarUrl}${encodeURIComponent(uid)}.ics`;
+  }
+
+  private async readBack(expected: {uid: string; summary: string; startUtc: string; endUtc: string; location: string; notes: string; preservedTimes?: string[]},
+    context?: CalendarReadContext): Promise<CalendarEventRecord> {
+    const text = await this.writeRequest('GET', this.resourceUrl(expected.uid), undefined, undefined, context, [200]);
+    const parsed = parseCalDavEvents(text).find(event => event.uid === expected.uid);
+    if (parsed === undefined || parsed.summary !== expected.summary || parsed.startMs !== Date.parse(expected.startUtc)
+      || parsed.endMs !== Date.parse(expected.endUtc) || (parsed.location ?? '') !== expected.location || (parsed.notes ?? '') !== expected.notes
+      || expected.preservedTimes?.some(line => !unfoldLines(text).includes(line)))
+      throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar write read-back differs from the requested event; do not retry an unknown write', false);
+    return this.toRecord(parsed);
+  }
+
+  /** 写请求：与读请求同一超时/中止纪律；状态不在白名单时抛错并返回响应体文本。 */
+  private async writeRequest(method: 'PUT' | 'GET' | 'DELETE', url: string, body: string | undefined,
+    contentType: string | undefined, context: CalendarReadContext | undefined, okStatuses: readonly number[]): Promise<string> {
+    const {status, text} = await this.writeExchange(method, url, body, contentType, context);
+    if (!okStatuses.includes(status)) {
+      if (status === 401 || status === 403) throw new ProtocolError('UNAUTHORIZED', `CalDAV 认证被拒绝（HTTP ${status}）`);
+      if (status === 404 && method === 'GET') throw new ProtocolError('NOT_FOUND', 'Calendar event resource is missing');
+      throw new ProtocolError('EXTERNAL_FAILURE', `CalDAV 服务器返回异常（HTTP ${status}）`, status >= 500);
+    }
+    return text;
+  }
+
+  private async writeExchange(method: 'PUT' | 'GET' | 'DELETE', url: string, body: string | undefined,
+    contentType: string | undefined, context?: CalendarReadContext): Promise<{status: number; text: string}> {
+    assertReadActive(context);
+    const headers: Record<string, string> = {'user-agent': USER_AGENT};
+    if (contentType !== undefined) headers['content-type'] = contentType;
+    if (body !== undefined) headers['content-length'] = String(Buffer.byteLength(body, 'utf8'));
+    if (this.authorization !== undefined) headers.authorization = this.authorization;
+    const controller = new AbortController();
+    const abort = (): void => controller.abort();
+    context?.signal?.addEventListener('abort', abort, {once: true});
+    const startedAt = Date.now();
+    const remainingMs = context?.deadline === undefined ? this.requestTimeoutMs : Date.parse(context.deadline) - startedAt;
+    const timeoutAt = startedAt + Math.min(this.requestTimeoutMs, remainingMs);
+    let timeout = setTimeout((): void => controller.abort(), Math.max(0, timeoutAt - Date.now()));
+    const bounded = async <T>(operation: () => Promise<T>): Promise<T> => {
+      const interrupted = (): never => {assertReadActive(context);throw new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 写入结果未确认，请先核实原资源', false);};
+      if (controller.signal.aborted) interrupted();
+      let onAbort: () => void = () => {};
+      const cancelled = new Promise<never>((_resolve, reject) => {
+        onAbort = () => {try {interrupted();} catch (error) {reject(error);}};
+        controller.signal.addEventListener('abort', onAbort, {once: true});
+      });
+      try {return await Promise.race([operation(), cancelled]);}
+      finally {controller.signal.removeEventListener('abort', onAbort);}
+    };
+    try {
+      let response: CalDavFetchResponseLike;
+      try {
+        response = await bounded(() => this.fetchImpl(url, {method, headers, ...(body === undefined ? {} : {body}),
+          signal: controller.signal, redirect: 'error'}));
+      } catch (error) {
+        assertReadActive(context);
+        if (error instanceof ProtocolError) throw error;
+        throw new ProtocolError('EXTERNAL_FAILURE', controller.signal.aborted ? 'CalDAV 请求超时' : 'CalDAV 请求失败', true);
+      }
+      if (response.status === 429) throw new ProtocolError('RATE_LIMITED', 'CalDAV 服务器限流', true, 60_000);
+      const text = await bounded(() => response.text());
+      assertReadActive(context);
+      return {status: response.status, text};
+    } catch (error) {
+      assertReadActive(context);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      context?.signal?.removeEventListener('abort', abort);
+    }
+  }
+
+  /** 只读首片：/respond（与会者应答）留待独立工作包；事件写路径已由 create/update/cancel 提供。 */
   respond(_input: CalendarRespondInput): CalendarRespondResult {
-    throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'CalDAV read provider has no write path yet');
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'CalDAV provider does not implement attendee responses');
   }
 
   private toRecord(event: ParsedCalDavEvent): CalendarEventRecord {
@@ -488,8 +659,83 @@ export class CalDavProvider implements CalendarProvider {
       startLocal: localWall(event.startMs, event.timeZone),
       endLocal: localWall(event.endMs, event.timeZone),
       status: event.status,
+      ...(event.location === undefined ? {} : {location: event.location}),
+      ...(event.notes === undefined ? {} : {notes: event.notes}),
       sequence: event.sequence,
       updatedUtc: event.lastModifiedMs === undefined ? iso(event.startMs) : iso(event.lastModifiedMs),
     };
   }
+}
+
+
+const WRITE_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/u;
+const WRITE_UID_PATTERN = /^[A-Za-z0-9@][A-Za-z0-9@._-]{0,127}$/u;
+
+function assertWriteUtc(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !WRITE_UTC_PATTERN.test(value)) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be an ISO-8601 UTC instant`);
+  }
+  if (Number(value.slice(0, 4)) < 1) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} requires a Gregorian year from 0001 to 9999`);
+  }
+  const instant = Date.parse(value);
+  if (!Number.isFinite(instant)) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be an ISO-8601 UTC instant`);
+  }
+  if (instant % 1000 !== 0) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} requires whole-second precision`);
+  }
+  const canonical = new Date(instant).toISOString();
+  // Date.parse accepts e.g. February 30 or 24:00 by normalizing them. ICS must
+  // preserve the exact valid date/time, not write the original impossible literal.
+  if (canonical !== `${value.slice(0, 19)}.000Z`) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must contain a valid Gregorian UTC date and time`);
+  }
+  return canonical;
+}
+
+function assertWriteUid(value: unknown): string {
+  if (typeof value !== 'string' || !WRITE_UID_PATTERN.test(value) || value.includes('..')) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event UID is malformed');
+  }
+  return value;
+}
+
+function stamp(instant: number): string {
+  return `${new Date(instant).toISOString().slice(0, 19).replace(/[-:]/gu, '')}Z`;
+}
+
+function escapeIcal(value: string): string {
+  return value.replace(/\\/gu, '\\\\').replace(/;/gu, '\\;').replace(/,/gu, '\\,').replace(/\r?\n/gu, '\\n');
+}
+
+function buildIcs(input: {uid: string; summary: string; startUtc: string; endUtc: string;
+  location?: string; notes?: string}, dtstamp: string, sequence?: number): string {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//personal-agent//calendar 0.1.0-alpha.1//CN',
+    'BEGIN:VEVENT',
+    `UID:${input.uid}`,
+    `DTSTAMP:${dtstamp}`,
+    `DTSTART:${input.startUtc.slice(0, 19).replace(/[-:]/gu, '')}Z`,
+    `DTEND:${input.endUtc.slice(0, 19).replace(/[-:]/gu, '')}Z`,
+    `SUMMARY:${escapeIcal(input.summary)}`,
+  ];
+  if (input.location !== undefined && input.location.trim()) lines.push(`LOCATION:${escapeIcal(input.location.trim())}`);
+  if (input.notes !== undefined && input.notes.trim()) lines.push(`DESCRIPTION:${escapeIcal(input.notes.trim())}`);
+  if (sequence !== undefined) lines.push(`SEQUENCE:${sequence}`);
+  lines.push('END:VEVENT', 'END:VCALENDAR');
+  return `${lines.map(foldIcalLine).join('\r\n')}\r\n`;
+}
+
+/** RFC 5545: fold at 75 octets without splitting a UTF-8 code point. */
+function foldIcalLine(line: string): string {
+  let result = '', current = '', bytes = 0;
+  for (const character of line) {
+    const size = Buffer.byteLength(character, 'utf8');
+    if (bytes + size > 75) {result += current + '\r\n';current = ' ';bytes = 1;}
+    current += character;bytes += size;
+  }
+  return result + current;
 }
