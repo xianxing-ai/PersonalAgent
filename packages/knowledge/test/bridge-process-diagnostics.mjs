@@ -44,8 +44,8 @@ export function certificatePhaseTracker(elapsed) {
 }
 
 /** Test-runner diagnostics: never copy commands, messages, stdout, stderr or key material. */
-export function bridgeProcessDetails(error, elapsedMs, spawnMs, timeoutMs) {
-  return {phase:'knowledge-test-powershell',elapsedMs,spawnMs,timeoutMs,
+export function bridgeProcessDetails(error, elapsedMs, spawnMs, timeoutMs, instrumentationMatched = false) {
+  return {phase:'knowledge-test-powershell',elapsedMs,spawnMs,timeoutMs,instrumentationMatched:instrumentationMatched === true,
     code:Number.isInteger(error?.code) ? error.code :
       ['ENOENT','EACCES','EPERM','ABORT_ERR','ERR_CHILD_PROCESS_STDIO_MAXBUFFER'].includes(error?.code)
         ? error.code : error ? 'other' : 'ok',
@@ -67,7 +67,7 @@ childProcess.execFile = function (...args) {
   let spawned;
   args[args.length-1] = (error, stdout, stderr) => {
     console.error('KNOWLEDGE_PROCESS '+JSON.stringify({...bridgeProcessDetails(error,
-      Math.round(performance.now()-started),spawned,timeoutMs),...phases?.details()}));
+      Math.round(performance.now()-started),spawned,timeoutMs,instrumented !== undefined),...phases?.details()}));
     callback(error,stdout,stderr);
   };
   const child = original(...args);
