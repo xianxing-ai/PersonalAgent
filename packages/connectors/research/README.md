@@ -65,7 +65,7 @@ manifest：`id=research`、`accountTypes=['openalex']`、`capabilities=['search'
 
 ## 测试
 
-`node --test test/*.test.mjs`（23 项：22 离线 + 1 门控 live）：材料契约校验、失败/过期区分（1999 材料标 stale 仍返回）、无发布时间回退与标注、缓存三态（fresh/stale+lastError/不可重试照实抛）、无缓存失败照实抛、OpenAlex 规范化（日期归一/作者/venue/坏条目跳过）、连接器能力边界、工具 schema/scope、中文查询相关度桥接（#445：观察复现→空结果、拉丁词桥与词边界、汉字二元组桥、短查询阈值、拉丁查询透传防回归、空结果 envelope 仍入缓存）。
+`node --test test/*.test.mjs`（26 项：25 离线 + 1 门控 live）：材料契约校验、失败/过期区分（1999 材料标 stale 仍返回）、无发布时间回退与标注、缓存三态（fresh/stale+lastError/不可重试照实抛）、无缓存失败照实抛、OpenAlex 规范化（日期归一/作者/venue/坏条目跳过）、连接器能力边界、工具 schema/scope、中文查询相关度桥接（#445：观察复现→空结果、拉丁词桥与词边界、汉字二元组桥、短查询阈值、拉丁查询透传防回归、空结果 envelope 仍入缓存；#447 评审整改：C++/C# 判据词保留、C++11/C#12 版本化词元正反例）。
 
 真实读回（免 key）：
 
@@ -77,5 +77,5 @@ PA_RESEARCH_LIVE=1 node --test packages/connectors/research/test/
 
 - `verification: 'conditional'`：真实读回依赖出站网络，实测样本为一次查询的 5 条结果；
 - 缓存为实例内存级（同 weather），跨进程不共享；TTL 内不感知源数据更新；
-- 材料不含正文摘要（OpenAlex 有 abstract_inverted_index，反排还原属后续增强）；相关度桥接为词面级（拉丁词/汉字二元组），无语义级 rerank——桥接全空时如实返回空结果；日语假名/韩文查询不在桥接覆盖内；
+- 材料不含正文摘要（OpenAlex 有 abstract_inverted_index，反排还原属后续增强）；相关度桥接为词面级（拉丁词/汉字二元组），**且存在误保留方向的放水**：查询中「研究/方法/知识」一类通用汉字二元组足以凑满阈值，无关中文题名可能被保留；两方向的残余风险都由语义级 rerank（后续增强）收口，当前承诺只有「桥接全空时如实返回空结果」；日语假名/韩文查询不在桥接覆盖内；
 - 仅学术源；通用 web 搜索待 Bing（需 key）或网络环境变化后的其他提供商。

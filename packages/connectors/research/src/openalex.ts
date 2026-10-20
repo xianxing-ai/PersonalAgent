@@ -164,7 +164,9 @@ function latinQueryTerms(query: string): string[] {
   for (const match of query.toLowerCase().matchAll(LATIN_TERM)) {
     const raw = match[0];
     if (raw === undefined) continue;
-    const term = raw.replace(/[.+#]+$/, '');
+    // 只剥尾部句点；+/# 是 C++/C# 判据词的字面本体（#447 评审 P2）——剥掉后只剩单字母
+    // 被长度门槛丢弃，这类题就永远只剩汉字桥，英文题名命中全筛掉。
+    const term = raw.replace(/[.]+$/, '');
     if (term.length < 2 || LATIN_STOPWORDS.has(term)) continue;
     terms.push(term);
   }
@@ -173,7 +175,9 @@ function latinQueryTerms(query: string): string[] {
 
 function containsLatinTerm(lowerTitle: string, term: string): boolean {
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(lowerTitle);
+  // 边界把 +/# 视为词内字符（#447 评审 P3）：c++/c# 是完整词元，不受半边界系统
+  // 另外 C++11/C#12 这类紧邻数字的版本化写法也能整体命中。
+  return new RegExp(`(^|[^a-z0-9+#])${escaped}($|[^a-z0-9+#])`).test(lowerTitle);
 }
 
 function cjkBigrams(text: string): Set<string> {

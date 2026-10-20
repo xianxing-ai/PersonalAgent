@@ -65,6 +65,35 @@ test('#445 防回归边界：纯拉丁查询不做任何筛选，OpenAlex 原序
   assert.equal(materials[1].externalId, 'W8000000001');
 });
 
+test('#447 评审整改（zemeng P2）：C++/C# 判据词保留，不再被尾部清洗削成单字母', async () => {
+  const CPP = {id: 'https://openalex.org/W8000000006',
+    display_name: 'Modern C++ Memory Model for Concurrency Review', publication_date: '2025-03-01'};
+  const CS = {id: 'https://openalex.org/W8000000007',
+    display_name: 'C# Async Programming Patterns in Practice', publication_date: '2025-06-01'};
+  const provider = new OpenAlexProvider({fetchImpl: openAlexReturns([CPP, CS])});
+  const materials = await provider.search(ACCOUNT, {query: '研究一下 C++ 内存模型与 C# 异步编程', limit: 10});
+  assert.equal(materials.length, 2, '整改前 strip 会把 c++/c# 削成 c 而丢弃 → 两条全被筛走；整改后拉丁词桥各自成桥');
+  assert.equal(materials[0] && materials[0].externalId, 'W8000000006');
+  assert.equal(materials[1] && materials[1].externalId, 'W8000000007');
+});
+
+test('#447 评审整改（P3 边界）：C++11 紧邻数字写法整体成判据词元，命中版本化题名', async () => {
+  const CPPT = {id: 'https://openalex.org/W8000000008',
+    display_name: 'C++11 Memory Order and Atomics in Practice', publication_date: '2024-11-01'};
+  const provider = new OpenAlexProvider({fetchImpl: openAlexReturns([CPPT])});
+  const materials = await provider.search(ACCOUNT, {query: 'C++11 内存序与原子操作 实践综述', limit: 10});
+  assert.equal(materials.length, 1, 'c++11 词元在题名词边界命中 → 保留');
+  assert.equal(materials[0] && materials[0].externalId, 'W8000000008');
+});
+
+test('#447 评审整改（P3 边界负例）：版本化查询不命中无对应词元的题名', async () => {
+  const NOPE = {id: 'https://openalex.org/W8000000009',
+    display_name: 'Modern C++ Memory Model for Concurrency Review', publication_date: '2025-03-01'};
+  const provider = new OpenAlexProvider({fetchImpl: openAlexReturns([NOPE])});
+  const materials = await provider.search(ACCOUNT, {query: 'C++11 内存序与原子操作 实践综述', limit: 10});
+  assert.equal(materials.length, 0, '题名只有 c++ 无 c++11 词元、又无共享汉字二元组 → 不放行');
+});
+
 test('#445 service 层：筛选后为空仍是合法 envelope（results=[] + cache），且同查询走缓存', async () => {
   let providerCalls = 0;
   const fetchImpl = async () => {
