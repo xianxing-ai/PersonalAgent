@@ -230,7 +230,173 @@ export function parseCalDavEvents(raw: string): ParsedCalDavEvent[] {
     if (upper === 'END:VEVENT') {
       if (current) {
         const parsed = readEvent(current);
-        if …2320 tokens truncated…ody);
+        if (parsed) events.push(parsed);
+      }
+      current = undefined;
+      continue;
+    }
+    if (current === undefined) continue;
+    if (upper.startsWith('BEGIN:')) {nestedDepth++;continue;}
+    if (upper.startsWith('END:')) {nestedDepth = Math.max(0, nestedDepth - 1);continue;}
+    if (nestedDepth > 0) continue;
+    const colon = line.indexOf(':');
+    if (colon <= 0) continue;
+    const left = line.slice(0, colon);
+    const value = line.slice(colon + 1);
+    const keyRaw = left.split(';')[0] ?? '';
+    const key = keyRaw.toUpperCase();
+    const params = left.slice(key.length + 1);
+    current[`${key}${params ? `;${params}` : ''}`] = value;
+    if (!(key in current) || params === '') current[key] = value;
+  }
+  return events;
+}
+
+function iso(ms: number): string {
+  return `${new Date(ms).toISOString().slice(0, 19)}.000Z`;
+}
+
+function localWall(ms: number, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(ms));
+  const value = new Map(parts.map(part => [part.type, part.value]));
+  const hour = Number(value.get('hour')) % 24;
+  return `${value.get('year')}-${value.get('month')}-${value.get('day')}T${String(hour).padStart(2, '0')}:${value.get('minute')}:${value.get('second')}`;
+}
+
+function calendarQueryXml(window: CalendarWindow | undefined): string {
+  const stamp = (instant: string): string => `${instant.replaceAll(/[-:]/g, '').slice(0, 15)}Z`;
+  const range = window === undefined ? '' : `<C:time-range start="${stamp(window.fromUtc)}"
+      end="${stamp(window.toUtc)}"/>`;
+  return '<?xml version="1.0" encoding="utf-8"?>'
+    + '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+    + '<D:prop><D:getetag/><C:calendar-data/></D:prop>'
+    + '<C:filter><C:comp-filter name="VCALENDAR"><C:comp-filter name="VEVENT">'
+    + range
+    + '</C:comp-filter></C:comp-filter></C:filter></C:calendar-query>';
+}
+
+/**
+ * 只读 CalDAV 提供商：ctag/etag 廉价轮询 + calendar-query 时间窗。
+ * 变更检测 = ctag 或 etag 变化；取消读回走 getEvent（fetchWindow 与订阅源一致会滤掉 cancelled）。
+ */
+export class CalDavProvider implements CalendarProvider {
+  readonly providerKind = 'caldav';
+  readonly verification = 'conditional' as const;
+  readonly writes = {
+    createEvent: (input: Parameters<CalDavProvider['createEvent']>[0], context?: CalendarReadContext) => this.createEvent(input, context),
+    updateEvent: (input: Parameters<CalDavProvider['updateEvent']>[0], context?: CalendarReadContext) => this.updateEvent(input, context),
+    cancelEvent: (uid: string, context?: CalendarReadContext) => this.cancelEvent(uid, context),
+  };
+  private readonly calendarUrl: string;
+  private readonly authorization: string | undefined;
+  private readonly calendarName: string | undefined;
+  private readonly fetchImpl: CalDavFetchLike;
+  private readonly requestTimeoutMs: number;
+
+  constructor(options: CalDavReadProviderOptions) {
+    // 默认仅 HTTPS；allowLoopbackHttp 仅放行本机回环的 http://（本地 Radicale 等验收服务器），
+    // 凭据仍走宿主注入的 Authorization 头——回环明文只在本机可见，非回环明文一律拒绝。
+    const loopbackHttp = options.allowLoopbackHttp === true
+      && /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/u.test(options.calendarUrl);
+    if (typeof options.calendarUrl !== 'string'
+      || (!loopbackHttp && !/^https:\/\//u.test(options.calendarUrl))) {
+      throw new ProtocolError('INVALID_ARGUMENT',
+        'CalDAV calendar url must be HTTPS (loopback HTTP only with allowLoopbackHttp)');
+    }
+    this.calendarUrl = options.calendarUrl.endsWith('/') ? options.calendarUrl : `${options.calendarUrl}/`;
+    this.authorization = options.authorization;
+    this.calendarName = options.calendarName;
+    this.fetchImpl = options.fetchImpl ?? ((url, init) => fetch(url, init));
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    if (!Number.isSafeInteger(this.requestTimeoutMs) || this.requestTimeoutMs < 1 || this.requestTimeoutMs > 120_000) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'CalDAV request timeout must be 1..120000 ms');
+    }
+  }
+
+  listCalendars(): CalendarSummary[] {
+    const fallback = decodeURIComponent(this.calendarUrl.split('/').filter(Boolean).pop() ?? 'caldav');
+    return [{id: 'caldav', name: this.calendarName ?? fallback, timeZone: 'UTC'}];
+  }
+
+  private async request(method: 'PROPFIND' | 'REPORT', body: string, depth: '0' | '1', context?: CalendarReadContext): Promise<string> {
+    assertReadActive(context);
+    const headers: Record<string, string> = {
+      'user-agent': USER_AGENT,
+      'content-type': 'application/xml; charset=utf-8',
+      accept: 'application/xml, text/xml',
+      depth,
+    };
+    if (this.authorization !== undefined) headers.authorization = this.authorization;
+    const controller = new AbortController();
+    const abort = (): void => controller.abort();
+    context?.signal?.addEventListener('abort', abort, {once: true});
+    const startedAt = Date.now();
+    const remainingMs = context?.deadline === undefined ? this.requestTimeoutMs : Date.parse(context.deadline) - startedAt;
+    const timeoutAt = startedAt + Math.min(this.requestTimeoutMs, remainingMs);
+    const expire = (): void => {
+      const remaining = timeoutAt - Date.now();
+      if (remaining > 0) {timeout = setTimeout(expire, remaining); return;}
+      abort();
+    };
+    let timeout = setTimeout(expire, Math.max(0, timeoutAt - Date.now()));
+    const interrupted = (): ProtocolError => {
+      assertReadActive(context);
+      return new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 请求超时', true);
+    };
+    // Bound both fetch and body reads even when an injected transport ignores abort.
+    const read = async <T>(operation: () => Promise<T>): Promise<T> => {
+      if (controller.signal.aborted) throw interrupted();
+      let onAbort: () => void = () => {};
+      const cancelled = new Promise<never>((_resolve, reject) => {
+        onAbort = () => {
+          try { reject(interrupted()); } catch (error) { reject(error); }
+        };
+        controller.signal.addEventListener('abort', onAbort, {once: true});
+      });
+      try { return await Promise.race([operation(), cancelled]); }
+      finally { controller.signal.removeEventListener('abort', onAbort); }
+    };
+    try {
+      let response: CalDavFetchResponseLike;
+      try {
+        response = await read(() => this.fetchImpl(this.calendarUrl, {method, headers, body,
+          signal: controller.signal, redirect: 'error'}));
+      } catch (error) {
+        assertReadActive(context);
+        if (error instanceof ProtocolError) throw error;
+        throw new ProtocolError('EXTERNAL_FAILURE', controller.signal.aborted ? 'CalDAV 请求超时' : 'CalDAV 请求失败', true);
+      }
+      if (response.status === 429) throw new ProtocolError('RATE_LIMITED', 'CalDAV 服务器限流', true, 60_000);
+      if (response.status === 401 || response.status === 403) {
+        throw new ProtocolError('UNAUTHORIZED', `CalDAV 认证被拒绝（HTTP ${response.status}）`);
+      }
+      // PROPFIND/REPORT 的成功状态是 207 Multi-Status（fetch 的 ok 不含 207）。
+      if (response.status !== 207 && !(response.status >= 200 && response.status < 300)) {
+        throw new ProtocolError('EXTERNAL_FAILURE', `CalDAV 服务器返回异常（HTTP ${response.status}）`, response.status >= 500);
+      }
+      let text: string;
+      try { text = await read(() => response.text()); }
+      catch (error) {
+        assertReadActive(context);
+        if (error instanceof ProtocolError) throw error;
+        throw new ProtocolError('EXTERNAL_FAILURE', controller.signal.aborted ? 'CalDAV 响应读取超时' : 'CalDAV 响应读取失败', true);
+      }
+      if (text.trim().length === 0) throw new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 响应为空', false);
+      assertReadActive(context);
+      return text;
+    } finally {
+      clearTimeout(timeout);
+      context?.signal?.removeEventListener('abort', abort);
+    }
+  }
+
+  /** 廉价变更轮询：一次 Depth:1 PROPFIND 同时取 ctag 与全部子资源 etag。 */
+  async pollChanges(context?: CalendarReadContext): Promise<CalDavChangeSnapshot> {
+    const body = await this.request('PROPFIND', PROP_BOTH, '1', context);
+    const responses = parseMultistatus(body);
     // href 可能是绝对 URL 也可能只有路径（Radicale 只给路径），按解析后的 pathname 归一化比较。
     const collectionPath = new URL(this.calendarUrl).pathname.replace(/\/+$/, '');
     const etags: Record<string, string> = {};
