@@ -21,7 +21,7 @@ export function mountHarnessControls(root,invoke) {
       <label><input data-harness="eventsQuiet" type="checkbox">静默期间不接入新事件</label>
       <p class="notice">需要原用户责任、公开来源跟踪许可或原日程的有效回执。停用或静默期间的事件不会在恢复后补发；原任务结果仍可核实。</p>
     </fieldset>
-    <div class="form-actions"><button data-harness="save" type="button">保存 Harness 设置</button><button data-harness="disable" type="button">停用开发规划与摘要</button></div>
+    <div class="form-actions"><button data-harness="save" type="button">保存 Harness 设置</button><button data-harness="disable" type="button">停用规划、摘要与事件接入</button></div>
     <p data-harness="status" class="notice" role="status"></p></div>`;
   root.append(settings);
   const field=name=>settings.querySelector(`[data-harness="${name}"]`);
@@ -49,7 +49,10 @@ export function mountHarnessControls(root,invoke) {
     field('status').textContent=config.enabled||context.enabled
       ?`设置已保存；${config.executionReason??(config.enabled?'子智能体规划按当前工作区许可启用':'开发任务规划未启用')}；${context.enabled?(config.contextAvailable===false?(config.contextReason||'摘要宿主或模型版本不可用，请检查设置')
         :config.contextModelAvailable?'摘要模型版本已绑定，真实模型尚未验证':'摘要模型版本不可用，请重新选择并保存'):'历史摘要未启用'}。`
-      :'开发任务规划与历史摘要均未启用。';controls();
+      :'开发任务规划与历史摘要均未启用。';
+    field('status').textContent+=config.events?.enabled
+      ?config.events.quiet?' 事件接入处于静默状态，期间不补发新事件。':config.enabled?' 事件接入已保存，按原持续责任与来源许可逐条检查。':' 事件设置已保存，需先启用子智能体开发任务规划。'
+      :' 事件接入未启用。';controls();
   }
   const integer=name=>{
     const value=field(name).valueAsNumber;

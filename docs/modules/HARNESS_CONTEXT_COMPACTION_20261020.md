@@ -35,6 +35,7 @@
 | `policy.triggerCharacters`、`targetCharacters`、`maxCharacters` | 触发、目标、最终字符预算；最终预算不能扩大原 16000 字符边界 |
 | `policy.retainMessages`、`maxSourceMessages` | 完整尾部保留数量及最大来源消息范围 |
 | `policy.segmentCharacters`、`maxSummaryCharacters` | 每段完整原消息材料与每段摘要的显式字符预算 |
+| `events.enabled`、`events.quiet` | 原持续责任事件接入与静默偏好；不授予来源、工具或模型权限 |
 
 Harness 配置不重复存 API Key。Key 继续由原加密模型设置托管。每段原文通过既有本机精确出机确认显示用途、实际 Provider/Endpoint/model/配置版本及完整请求；取消即不发送，原 AgentArts 或私人记忆许可不会自动转授给摘要模型。私人任务绑定直接拒绝，摘要只处理合资格的先前历史。`model-api-config.js` 的 `getGuardedModelGateway` 每次创建独立模型端口和 fetch 闭包，真实 fetch 前复核原模型配置和该次来源，不在并发请求间共享 guard。没有独立 guarded factory 时保持不可用，不把普通 `ModelPort.complete` 当作已受最终门禁保护。
 

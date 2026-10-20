@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
+import {proactiveWorkflowDigest as sourceDigest} from '@personal-agent/agentarts';
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const rawHash=value=>createHash('sha256').update(value).digest('hex');
@@ -79,10 +80,6 @@ export function createDesktopHarnessEventsHost({application,createEvents,createD
     const source=runtime.getTask(anchor.sourceTaskId),hostTask=runtime.getTask(session.binding.taskId);
     if(source.cancelRequested||terminal.has(source.state)||hostTask.cancelRequested
       ||['succeeded',...terminal].includes(hostTask.state)||withheld(runtime,hostTask.taskId))return fail('CANCELLED');
-    // A later durable version supersedes this observation; no external source text chooses its own head.
-    if(Object.values(value.entries).some(({event:other})=>other.sourceId===event.sourceId&&other.entityRef===event.entityRef
-      &&other.sourceVersion!==event.sourceVersion&&Date.parse(other.observedAt)>=Date.parse(event.observedAt)))
-      return fail('REVISION_CONFLICT');
     let evidence;
     if(event.entry==='connector') {
       if(event.change!=='upsert')return fail('SCOPE_DENIED');
@@ -95,8 +92,8 @@ export function createDesktopHarnessEventsHost({application,createEvents,createD
       const record=runtime.readToolExecutions(session.binding.taskId).find(item=>item.evidenceId===event.entityRef);
       const args=proposal?{sessionId:session.binding.sessionId,proposalId:proposal.proposalId}:undefined;
       if(!value.schedules[event.entityRef]||!proposal||proposal.capabilityRef!=='proactive.schedule_wake'
-        ||proposal.capabilityKind!=='schedule_wake'||hash(proposal.arguments)!==value.schedules[event.entityRef]
-        ||schedule.status!=='fired'||!schedule.taskId||hash(schedule)!==event.payloadDigest||hash(schedule)!==event.sourceVersion
+        ||proposal.capabilityKind!=='schedule_wake'||sourceDigest(proposal.arguments)!==value.schedules[event.entityRef]
+        ||schedule.status!=='fired'||!schedule.taskId||sourceDigest(schedule)!==event.payloadDigest||sourceDigest(schedule)!==event.sourceVersion
         ||runtime.findTaskByIdempotencyKey(schedule.taskIdempotencyKey)?.taskId!==schedule.taskId
         ||resolveUserConversation(schedule.taskId)!==anchor.responsibility.conversationId
         ||record?.toolName!=='proactive.schedule_wake'||record.toolVersion!=='1.0.0'||record.state!=='confirmed'
@@ -109,13 +106,18 @@ export function createDesktopHarnessEventsHost({application,createEvents,createD
     // Preference changes suppress new work. Readback keeps the original receipt, never resubmits.
     const settings=control(session);
     if(mode==='dispatch'&&(!settings.enabled||settings.quiet))return fail('SCOPE_DENIED');
+    if(mode==='dispatch') {
+      const config=readDeveloperHarnessConfiguration();if(!config)return fail('SCOPE_DENIED');config.assertCurrent?.();
+    }
     return hash([anchor,event,evidence.fence,settings]);
   }
   function attach(session) {
     if(closed||sessions.has(session.binding.taskId))return;
     const assertCurrentAuthorization=(anchor,event,context,mode)=>authorization(session,anchor,event,context,mode);
     const delivery=createDelivery({runtime:()=>runtime,
-      submitHarnessEventTask:input=>application.submitHarnessEventTask(input),resolveUserConversation,assertCurrentAuthorization});
+      submitHarnessEventTask:input=>application.submitHarnessEventTask(input),resolveUserConversation,assertCurrentAuthorization,
+      isHarnessEventTaskActive:origin=>typeof application.isHarnessEventTaskActive==='function'
+        ?application.isHarnessEventTaskActive(origin):true});
     const consumer=createEvents({runtime,host:session.host,resolveAnchor:event=>resolveAnchor(session,event),
       resolveUserConversation,assertCurrentAuthorization,readControl:()=>control(session),delivery});
     sessions.set(session.binding.taskId,{session,consumer});
@@ -126,6 +128,13 @@ export function createDesktopHarnessEventsHost({application,createEvents,createD
     for(const session of readPersistedSessions())if(!result.has(session.binding.taskId))result.set(session.binding.taskId,session);
     return [...result.values()];
   };
+  const originalDelivery=(session,origin)=>readOriginalDelivery(session,origin,{runtime,
+    taskId:session.binding.taskId,sessionId:session.binding.sessionId,
+    resolveAnchor:event=>resolveAnchor(session,event),resolveUserConversation,
+    assertCurrentAuthorization:(anchor,event,context,mode)=>authorization(session,anchor,event,context,mode),
+    readControl:()=>control(session)});
+  const ledgerDigest=value=>hash({origin:value.origin,ledgerState:value.ledgerState,ledgerRevision:value.ledgerRevision,
+    event:value.event,anchor:value.anchor,control:value.control,deadline:value.deadline});
   return {
     attach,
     start(){if(closed)return;started=true;for(const {consumer}of sessions.values())void consumer.start();},
@@ -137,22 +146,24 @@ export function createDesktopHarnessEventsHost({application,createEvents,createD
       if(closed||typeof readOriginalDelivery!=='function')return undefined;
       try {
         for(const session of availableSessions()) {
-          const original=readOriginalDelivery(session,query.origin);
-          if(!original||!['pending','confirmed'].includes(original.state)
-            ||query.phase==='created_root'&&original.state!=='pending')continue;
+          const original=originalDelivery(session,query.origin);
+          if(!original||!['pending','confirmed'].includes(original.ledgerState)
+            ||query.phase==='created_root'&&original.ledgerState!=='pending')continue;
+          original.assertCurrent();
           const {event,anchor}=original;
           if(anchor.sourceTaskId!==query.origin.sourceTaskId||anchor.parentTaskId!==query.origin.originalParentTaskId
-            ||original.deliveryId!==query.origin.deliveryId||original.eventDigest!==query.origin.eventDigest
+            ||original.origin.deliveryId!==query.origin.deliveryId||original.origin.eventDigest!==query.origin.eventDigest
             ||hash(event)!==query.origin.eventDigest||anchor.responsibility.conversationId!==query.conversationId)continue;
           const readFence=()=>{
-            const task=runtime.getTask(query.taskId),current=readOriginalDelivery(session,query.origin),settings=control(session);
-            if(task.revision!==query.expectedRevision||task.cancelRequested||!isDeepStrictEqual(current,original)
+            const task=runtime.getTask(query.taskId),current=originalDelivery(session,query.origin),settings=control(session);
+            current?.assertCurrent();original.assertCurrent();
+            if(task.revision!==query.expectedRevision||task.cancelRequested||!current||ledgerDigest(current)!==ledgerDigest(original)
               ||!settings.enabled||settings.quiet)return fail('REVISION_CONFLICT');
             const config=readDeveloperHarnessConfiguration();if(!config)return fail('SCOPE_DENIED');config.assertCurrent?.();
             const auth=authorization(session,anchor,event,{deadline:anchor.deadline,signal:new AbortController().signal},'dispatch');
-            return {deadline:anchor.deadline,configurationRef:application.coordinationConfigurationRef,
+            return {deadline:original.deadline,configurationRef:application.coordinationConfigurationRef,
               fence:hash([auth,settings,config.workspaceRef,config.maxExecutorSteps,config.configurationRef,
-                readConfiguration(),query.origin])};
+                readConfiguration(),query.origin,ledgerDigest(current)])};
           };
           const frozen=readFence();return {...frozen,assertCurrent(){if(!isDeepStrictEqual(readFence(),frozen))fail('REVISION_CONFLICT');}};
         }

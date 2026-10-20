@@ -176,6 +176,14 @@ export function createDesktopProactiveConfirmedSourceRouter({getApplication,getW
     const application=getApplication();if(!application?.runtime||event?.entry!=='connector')return undefined;
     const state=stateStore(application).read(digest([workflowTaskId,event.sourceId]))?.value;
     if(state?.version!==1||state.sourceId!==event.sourceId)return undefined;
+    // eventSink notifies synchronously before its durable acknowledgement returns. The exact
+    // original pending invocation was committed before that call and already has confirmed Policy Evidence.
+    const pending=state.pending;
+    if(pending?.batch?.sourceId===event.sourceId
+      &&event.payloadRef==='runtime:proactive-batch:'+pending.batch.batchId+':'+event.eventId
+      &&pending.batch.events.some(item=>item.eventId===event.eventId&&item.sourceRevision===event.sourceVersion
+        &&digest(item.item)===event.payloadDigest))
+      return structuredClone({receiptId:pending.receiptId,batchId:pending.batch.batchId,origin:pending.origin,selection:pending.selection});
     for(const [receiptId,batchId]of Object.entries(state.deliveries??{})) {
       const original=state.deliveryOrigins?.[receiptId];
       if(event.payloadRef!=='runtime:proactive-batch:'+batchId+':'+event.eventId||!original
@@ -188,6 +196,9 @@ export function createDesktopProactiveConfirmedSourceRouter({getApplication,getW
     const application=getApplication(),original=this.readHarnessSourceOrigin(workflowTaskId,event);
     if(!application?.runtime||!original)return undefined;
     try {
+      const state=stateStore(application).read(digest([workflowTaskId,event.sourceId]))?.value;
+      const head=state?.pending?.heads?.[digest(event.entityRef)]??state?.heads?.[digest(event.entityRef)];
+      if(head?.revision!==event.sourceVersion||head.eventId!==event.eventId)return undefined;
       const binding=application.runtime.loadCheckpoint(workflowTaskId,'desktop-proactive-workflow-v1');
       if(binding?.version!==1||binding.taskId!==workflowTaskId)return undefined;
       const input=originalPendingInput(workflowTaskId,original,application);

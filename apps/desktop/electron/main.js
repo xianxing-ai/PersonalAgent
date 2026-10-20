@@ -1,6 +1,8 @@
 import {handleConversationAction} from './conversation-actions.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
+import {withNativeReadbackScope} from './native-readback-scope.js';
+import {ProtocolError} from '@personal-agent/contracts';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
@@ -84,6 +86,7 @@ import {createMailConfig} from './mail-config.js';
 import {createCalendarConfig} from './calendar-config.js';
 import {createModelApiConfig} from './model-api-config.js';
 import {createDesktopHarnessContextHost} from './harness-context-host.js';
+import {createDesktopHarnessEventsHost} from './harness-events-host.js';
 import {createDeveloperSettingsHost} from './developer-settings-host.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
@@ -258,6 +261,8 @@ let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
 let conversationToolAccess, voiceApprovalBridge, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
+let harnessEventsHost;
+let harnessEventsDisposal,harnessEventsDisposed=false;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
 let p5UnavailableReason = '';
@@ -599,6 +604,7 @@ function snapshot(surface) {
     harnessContext:surface?undefined:harnessContextHost?.snapshot()??{state:harnessContextFailure?'unavailable':'disabled',
       enabled:false,reason:harnessContextFailure,verification:'not_run'},
     startupRecovery:surface?undefined:startupRecoveryStatus,
+    harnessEvents:surface?undefined:harnessEventsHost?.snapshot(),
     modelChoices: featuredModelChoices(agentArtsModels?.snapshot().catalog?.models,{selectedId:conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking)?.modelId??''}),
     conversationPreference: conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking),
     thinking: {...thinking,...(conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking) ?? {}),
@@ -1455,6 +1461,49 @@ function readDesktopHarnessVersions() {
   }catch{return undefined;}
 }
 
+function bindDesktopProactiveWorkflows(runtimeModule) {
+  if(!competitionMode||!runtimeApplication?.startProactiveTask||proactiveWorkflowApplication)return;
+  const resolveUserConversation=taskId=>conversationToolAccess.resolveConversation(taskId);
+  proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,resolveUserConversation,
+    onSession:session=>harnessEventsHost?.attach(session),
+    readPersistedSession:(taskId,sessionId)=>runtimeModule.readPersistedRuntimeProactiveWorkflow?.(runtimeApplication.runtime,taskId,sessionId),
+    notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
+    bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
+    context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
+      readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
+      readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
+    readConfiguration:()=>{
+      const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
+        contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
+      if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
+      const transport=agentArtsConfig.transportConfig(binding);
+      const assertDeploymentBinding=()=>{
+        transport.assertDeploymentBinding?.();
+        if(!agentArtsConfig.isTransportCurrent(transport))throw Error('持续工作流原部署已改变');
+      };
+      return {contractRef,adapter:{config:{...binding,
+        ...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{}),
+        ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
+        assertDeploymentBinding,fetchImpl:transport.fetchImpl,
+        authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
+        hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},invokeMode:agentArtsInvokeMode}};
+    }});
+  proactiveSourceRouter=createDesktopProactiveConfirmedSourceRouter({getApplication:()=>runtimeApplication,
+    getWorkflow:()=>proactiveWorkflowApplication,namespace:desktopHost.userNamespace,resolveUserConversation,
+    readSourceBinding:id=>feedsHost?.readSourceBinding(id),readTrackingGrant:query=>feedsHost?.readTrackingGrant(query)});
+  if(typeof runtimeModule.createRuntimeHarnessEvents==='function'&&typeof runtimeModule.createRuntimeHarnessEventDelivery==='function') {
+    harnessEventsHost=createDesktopHarnessEventsHost({application:runtimeApplication,
+      createEvents:runtimeModule.createRuntimeHarnessEvents,createDelivery:runtimeModule.createRuntimeHarnessEventDelivery,
+      readConfiguration:()=>modelApiHost.readHarnessConfiguration(),readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
+      resolveUserConversation,readSourceOrigin:(taskId,event)=>proactiveSourceRouter.readHarnessSourceOrigin(taskId,event),
+      readSourceAuthorization:(taskId,event)=>proactiveSourceRouter.readHarnessSourceAuthorization(taskId,event),
+      readPersistedSessions:()=>proactiveWorkflowApplication.readPersistedSessions(),
+      readOriginalDelivery:(_session,origin,options)=>runtimeModule.readPersistedHarnessOriginalDelivery?.(options,origin)});
+  }
+  proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,getWorkflow:()=>proactiveWorkflowApplication,
+    recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),resolveUserConversation});
+}
+
 async function initializeInstalledSkills() {
   if(competitionMode && !installedSkillsHost) {
     const {openLocalSkillStore}=await import('@personal-agent/skills');
@@ -1632,8 +1681,8 @@ async function initializeRuntime() {
           }),
           respond:payload => client.call('authorization.respond',payload),
           cancelTask:taskId => client.call('task.cancel',{taskId,reason:'用户停止记事本操作'}),
-          reconcileTask:taskId=>runtimeApplication.reconcileWindowsHostTask(taskId,
-            {deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal}),
+          reconcileTask:taskId=>withNativeReadbackScope({owner:admin},
+            scope=>runtimeApplication.reconcileWindowsHostTask(taskId,scope)),
           onUpdate:publish,
           onTask:({taskId,goal}) => {
             conversations.add(taskId,'panel',goal); taskGoals.set(taskId,goal);
@@ -1902,17 +1951,25 @@ async function initializeRuntime() {
         readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
         ...(codingWorkspace.harnessRepairHost&&typeof codingWorkspace.readHarnessCandidateContext==='function'?{
           harnessCandidates:{host:codingWorkspace.harnessRepairHost,
-            readContext:(context,scope)=>codingWorkspace.readHarnessCandidateContext(context,scope)},
+            readContext:(context,scope)=>codingWorkspace.readHarnessCandidateContext(context,scope),
+            reconcileOriginalSession:input=>codingWorkspace.reconcileHarnessOriginalSession(input)},
         }:{}),
         proactiveWorkflows: true,
+        onHarnessEventProgress:()=>harnessEventsHost?.flush(),
+        assertHarnessEventCurrent:(taskId,origin)=>{
+          const task=runtimeApplication.runtime.getTask(taskId),scope=harnessEventsHost?.canResumeHarnessEvent({taskId,
+            expectedRevision:task.revision,conversationId:task.conversationId,origin,phase:'continuation'});
+          if(!scope)throw new ProtocolError('SCOPE_DENIED','原持续责任或事件接入许可已撤回');
+          scope.assertCurrent();
+        },
         proactiveDecision: {localChooser:localLaya},
         hostUserNamespace: namespace,
         ...(developerDeployment?{readDeveloperWorkflows:scope=>developerDeployment.readDeveloperWorkflows(scope)}:{}),
         isUserPresent:taskId=>toolPresenceHost?.isUserPresent(taskId)===true,
         ...(notepadHost ? {windowsHostRecovery:{recover:(taskId,runId)=>{
           const intent=runtimeApplication.runtime.loadCheckpoint(taskId,'host-tool-intent');
-          return notepadHost.recoverOriginalRun({taskId,runId,argumentsDigest:intent?.argumentsDigest},
-            {deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
+          return withNativeReadbackScope({owner:admin},scope=>notepadHost.recoverOriginalRun(
+            {taskId,runId,argumentsDigest:intent?.argumentsDigest},scope));
         }}} : {}),
         coordinationInput:{
           get contextCompaction(){return harnessContextHost?.runtimeHooks;},
@@ -2131,16 +2188,20 @@ async function initializeRuntime() {
       calendarMeetingHost?.bindApplication(runtimeApplication);
       goalCloudHost?.bindApplication(runtimeApplication);
       notepadHost?.bind(runtimeApplication);
+      // Construct only native facades. No consumer/pump starts before original startup classification.
+      bindDesktopProactiveWorkflows(runtimeModule);
       let startupRecovered=false;
       if(typeof runtimeRoot.createRuntimeStartupRecovery==='function'&&typeof runtimeApplication.resumeStartupTask==='function') {
         const recovery=runtimeRoot.createRuntimeStartupRecovery({runtime:runtimeApplication.runtime,
           configurationRef:runtimeApplication.coordinationConfigurationRef,exclusiveOwner:ownsDesktopInstance===true,
           durableCloudDispatch:agentArtsTransportConfig.transport==='wss',
+          canResumeHarnessEvent:query=>harnessEventsHost?.canResumeHarnessEvent(query),
           resumeOriginalTask:request=>runtimeApplication.resumeStartupTask(request)});
         const recovered=await recovery.recover();startupRecovered=true;
         startupRecoveryStatus={state:'classified',inspectedTasks:recovered.items.length,verification:'not_run'};
       }else startupRecoveryStatus={state:'unavailable',reason:'原任务恢复门禁未装配，历史任务保留核实状态',verification:'not_run'};
       if(startupRecovered)goalHost.resumeApproved();
+      if(startupRecovered)harnessEventsHost?.start();
       if (!syntheticMvp && competitionCatalog && !codingWorkspace.tools.length) competitionFactBridge = createDesktopCompetitionFactBridge({
         application: runtimeApplication, catalog: competitionCatalog,
         runtimePath: dbPath, userNamespace: namespace,
@@ -2181,43 +2242,7 @@ async function initializeRuntime() {
       prepareApproval:payload=>voiceCommandHost.prepareApproval(payload),
       readCurrentQuestion:({conversationId})=>voiceQuestionForConversation(conversationId)});
   }
-  if (competitionMode && runtimeApplication?.startProactiveTask) {
-    proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,
-      resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
-      notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
-      bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
-      context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
-        readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
-        readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
-      readConfiguration:()=>{
-        const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
-          contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
-        if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
-        const transport=agentArtsConfig.transportConfig(binding);
-        const assertDeploymentBinding=()=>{
-          transport.assertDeploymentBinding?.();
-          if(!agentArtsConfig.isTransportCurrent(transport))throw Error('持续工作流原部署已改变');
-        };
-        return {contractRef,adapter:{config:{...binding,
-          ...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{}),
-          ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
-          assertDeploymentBinding,fetchImpl:transport.fetchImpl,
-          authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
-          hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},
-          invokeMode:agentArtsInvokeMode}};
-      }});
-  }
-  if(proactiveWorkflowApplication){
-    proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,
-      getWorkflow:()=>proactiveWorkflowApplication,
-      recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),
-      resolveUserConversation:id=>conversationToolAccess.resolveConversation(id)});
-    proactiveSourceRouter=createDesktopProactiveConfirmedSourceRouter({getApplication:()=>runtimeApplication,
-      getWorkflow:()=>proactiveWorkflowApplication,namespace:desktopHost.userNamespace,
-      resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
-      readSourceBinding:id=>feedsHost?.readSourceBinding(id),
-      readTrackingGrant:query=>feedsHost?.readTrackingGrant(query)});
-  }
+  bindDesktopProactiveWorkflows(runtimeModule);
   connectionLabel = fakeMode
     ? 'Fake Runtime · 联调模式'
     : competitionMode ? '本地 Runtime · AgentArts Competition' : '本地 Runtime · 已连接';
@@ -2605,7 +2630,7 @@ async function action(event, name, payload) {
     const result = name === 'modelApi.state' ? modelApiHost.snapshot()
       : name === 'modelApi.configure' ? modelApiHost.configure(payload)
         :name==='modelApi.harness.configure'?modelApiHost.configureHarness(payload):modelApiHost.remove(payload);
-    if(name!=='modelApi.state')refreshHarnessContextHost();
+    if(name!=='modelApi.state'){refreshHarnessContextHost();harnessEventsHost?.flush();}
     publish();return {...result,...readDesktopModelApiState()};
   }
   if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(name)) {
@@ -3310,7 +3335,11 @@ async function action(event, name, payload) {
     return task;
     } finally { submitting.delete(conversationId); }
   }
-  if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,application:runtimeApplication,refresh,publish});
+  if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
+    application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
+    reportNative:result=>dialog.showMessageBox(sender,{type:'info',message:'已读取原编码会话，任务仍待核实',
+      detail:(result.readbacks??[]).map(item=>`${item.taskId}：${({clear:'原宿主当前已空闲；这不证明未知试验成功',in_progress:'原宿主仍在执行',unknown:'原宿主状态仍无法确认'})[item.recovery.state]??'状态未知'}；证据 ${item.evidenceRef}`).join('\n')
+        +'\n本次只读取原会话，没有重发试验或更改原 UNKNOWN。',buttons:['关闭'],noLink:true})});
   if (name === 'task.cancel') {
     if (typeof payload !== 'string' || !tasks.has(payload)) throw Error('Unknown task');
     if (sender !== admin && taskSurface(tasks.get(payload)) !== (sender === workspace ? 'workspace' : 'panel')) throw Error('无法停止其他工作区的任务');
@@ -3704,6 +3733,12 @@ app.whenReady().then(async () => {
       app.isQuitting = false;
       runtimeError = 'Runtime 仍有活动任务；请先等待完成或停止任务后再退出';
       publish();
+      return;
+    }
+    if(harnessEventsHost&&!harnessEventsDisposed){
+      event.preventDefault();
+      harnessEventsDisposal??=harnessEventsHost.close().then(()=>{harnessEventsDisposed=true;app.quit();})
+        .catch(()=>{runtimeError='事件接入资源释放未确认';publish();});
       return;
     }
     if(remoteMcpHost && !remoteMcpClosed) {
