@@ -5,9 +5,12 @@ import {mountSubagentConversations, mountSubagentConversationPage} from '../src/
 // Explicit Fake DOM/IPC: real renderers execute without models, microphones or task writes.
 function fixture(t, kind = 'workspace', handler = () => ({})) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const previousWindow=globalThis.window,listeners=new Map();
+  globalThis.window={addEventListener(name,callback){listeners.set(name,callback);},removeEventListener(name){listeners.delete(name);}};
   t.after(() => {
     if (original) Object.defineProperty(globalThis, 'document', original);
     else delete globalThis.document;
+    if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;
   });
   class Element {
     constructor(tag) {
@@ -35,7 +38,7 @@ function fixture(t, kind = 'workspace', handler = () => ({})) {
   const walk = element => [element, ...element.children.flatMap(walk)];
   const section = root.children[0];
   const button = label => walk(root).find(element => element.tag === 'button' && element.textContent === label);
-  return {...control, root, section, document, calls, button, walk,
+  return {...control, root, section, document, calls, button, walk,listeners,
     list: section.children[0], entry: index => section.children[0].children[index],
     status: () => section.children[1], content: () => section.children[2],
     input: () => walk(root).find(element => element.tag === 'textarea'),
@@ -48,6 +51,16 @@ const record = (taskId, overrides = {}) => ({...child(taskId), goal: '保存的�
   resultSummary: '保存的回答', reasoningEffort: 'high', evidenceRefCount: 2,
   steps: [{label: '读取原记录', state: 'succeeded'}], transcriptAvailable: false, ...overrides});
 const settle = () => new Promise(resolve => setImmediate(resolve));
+test('child unload protects drafts and pending submissions but permits an empty idle page',async t=>{
+  const accepted=deferred();
+  const ui=fixture(t,'page',name=>name==='subagentConversation.submit'?accepted.promise:record('a',{canSubmit:true}));
+  await settle();
+  const blocked=()=>{let prevented=false;const event={preventDefault(){prevented=true;}};ui.listeners.get('beforeunload')(event);return prevented;};
+  assert.equal(blocked(),false);ui.input().value='未发送草稿';ui.input().oninput();assert.equal(blocked(),true);
+  const submission=ui.button('发送').onclick();ui.input().value='';assert.equal(blocked(),true);
+  accepted.resolve({acceptedTaskId:'next'});await submission;assert.equal(blocked(),false);
+  ui.listeners.get('unload')();assert.equal(ui.listeners.has('beforeunload'),false);
+});
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -66,7 +79,7 @@ test('workspace retains caller recency order, shows at most six entries and keep
   assert.match(ui.entry(0).attrs.title, /子任务 task-0/);
   assert.match(ui.entry(5).attrs.title, /子任务 task-5/);
   assert.equal(ui.entry(0).type, 'button'); // Native Enter/Space activation.
-  assert.equal(ui.section.children.length, 3); // Entries + status + history link, no inline detail.
+  assert.equal(ui.section.children.length, 4); // Entries + status + history link + collapse, no inline detail.
   assert.equal(ui.calls.length, 0);
   assert.equal(ui.document.head.children.length, 1);
 });
@@ -396,4 +409,48 @@ test('more opens all historical children without payload even when the current c
   assert.equal(ui.button('更多').attrs['aria-label'], '查看全部子智能体');
   await ui.button('更多').onclick();
   assert.deepEqual(ui.calls, [{name: 'subagentConversations.openAll', payload: undefined}]);
+});
+
+test('stop truncates locally: send is usable before the host confirms and survives a stale refresh', async t => {
+  const pending = deferred();
+  const ui = fixture(t, 'page', name => name === 'subagentConversation.cancel'
+    ? pending.promise
+    : record('original', {canSubmit: false, activeTaskId: 'active-followup', messages: []}));
+  await settle();
+  ui.input().value = '停止后要发的新消息'; ui.input().oninput();
+  assert.equal(ui.button('发送').disabled, true);
+  const stopping = ui.button('停止').onclick();
+  assert.equal(ui.button('发送').disabled, false, 'send is released while the stop request is still in flight');
+  assert.match(ui.sendStatus().textContent, /可以继续发送新消息/);
+  pending.resolve({taskId: 'active-followup', cancelAccepted: true});
+  await stopping; await settle();
+  assert.equal(ui.button('发送').disabled, false, 'a snapshot still naming the stopped task keeps the composer usable');
+});
+
+test('a bare stop message cancels the running follow-up instead of submitting text', async t => {
+  const ui = fixture(t, 'page', name => name === 'subagentConversation.cancel'
+    ? {taskId: 'active-followup', cancelAccepted: true}
+    : record('original', {canSubmit: false, activeTaskId: 'active-followup', messages: []}));
+  await settle();
+  ui.input().value = '停止'; ui.input().oninput();
+  await ui.button('发送').onclick();
+  assert.ok(!ui.calls.some(call => call.name === 'subagentConversation.submit'), 'stop is not sent as a message');
+  assert.deepEqual(ui.calls.find(call => call.name === 'subagentConversation.cancel').payload, {taskId: 'active-followup'});
+});
+
+test('a stop message with nothing running says so without calling the host', async t => {
+  const ui = fixture(t, 'page', () => record('original', {canSubmit: true, messages: []}));
+  await settle();
+  ui.input().value = '停止'; ui.input().oninput();
+  await ui.button('发送').onclick();
+  assert.ok(!ui.calls.some(call => call.name === 'subagentConversation.submit'));
+  assert.match(ui.sendStatus().textContent, /当前没有正在执行的任务/);
+});
+
+test('workspace collapse closes every child window in one action', async t => {
+  const ui = fixture(t, 'workspace', () => ({closed: 3}));
+  ui.update([child('a')]);
+  await ui.button('收起').onclick();
+  assert.deepEqual(ui.calls.at(-1), {name: 'subagentConversations.collapseAll', payload: undefined});
+  assert.match(ui.status().textContent, /已收起 3 个子对话窗口/);
 });
