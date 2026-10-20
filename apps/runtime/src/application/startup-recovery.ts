@@ -3,9 +3,21 @@ import {isDeepStrictEqual} from 'node:util';
 import type {TaskSnapshot} from '@personal-agent/contracts';
 import type {TaskRuntime} from '../index.js';
 
+export interface RuntimeStartupHarnessEventOrigin {
+  deliveryId:string;eventDigest:string;sourceTaskId:string;originalParentTaskId:string;
+}
+export interface RuntimeStartupHarnessEventScope {
+  deadline:string;configurationRef:string;fence:string;assertCurrent():void;
+}
+export interface RuntimeStartupHarnessEventRequest {
+  taskId:string;expectedRevision:number;conversationId:string;origin:RuntimeStartupHarnessEventOrigin;
+  phase:'created_root'|'continuation';
+}
 export interface RuntimeStartupResumeRequest {
   taskId:string; expectedRevision:number; deadline:string;
   mode:'before_first_send'|'confirmed_read';
+  /** Only the original atomically accepted root before its first enqueue. */
+  harnessEventOrigin?:RuntimeStartupHarnessEventOrigin;
   /** Call synchronously immediately before the original Runtime worker handoff. */
   assertUnchanged():void;
 }
@@ -16,6 +28,8 @@ export interface RuntimeStartupRecoveryOptions {
   durableCloudDispatch:boolean;
   /** The Desktop singleton/runtime owner must hold exclusive ownership of this database. */
   exclusiveOwner:boolean;
+  /** Pure current readback of the original durable event, responsibility, native lease and configuration. */
+  canResumeHarnessEvent?:(request:RuntimeStartupHarnessEventRequest)=>RuntimeStartupHarnessEventScope|undefined;
   resumeOriginalTask(request:RuntimeStartupResumeRequest):{accepted:boolean}|Promise<{accepted:boolean}>;
   now?:()=>Date;
 }
@@ -40,7 +54,7 @@ const BASE_KEYS=new Set(['runtime-interruption:v1',KEY,'application-profile','ap
   'competition-cloud-received','competition-cloud-request-identity','competition-cloud-dispatch-binding',
   'competition-cloud-dispatch-context','execution-model','task-thinking','task-model-preference','required-subagent-delegation:v1',
   'subtask-parent','subtask-execution-binding','subtask-coordination-binding','subtask-tools-binding','subtask-thinking-binding',
-  'subtask-progress-records','subagent-parent-wait','subagent-current-summary']);
+  'subtask-progress-records','subagent-parent-wait','subagent-current-summary','harness-event-origin','developer-harness-executor:v1']);
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 function reject(message:string):never {throw Object.assign(new Error(message),{code:'REVISION_CONFLICT'});}
 
@@ -64,17 +78,44 @@ export function createRuntimeStartupRecovery(options:RuntimeStartupRecoveryOptio
     const parent=object(checkpoints['subtask-parent'])?checkpoints['subtask-parent']:undefined;
     let parentTask:TaskSnapshot|undefined;
     if(typeof parent?.parentTaskId==='string'){try{parentTask=runtime.getTask(parent.parentTaskId);}catch{/* Missing original parent stays manual. */}}
-    return {task,keys,checkpoints,records,children,parent,parentTask,descriptors:runtime.readToolDescriptors()};
+    const eventRoot=checkpoints['harness-event-origin']!==undefined?task
+      :parentTask&&runtime.loadCheckpoint(parentTask.taskId,'harness-event-origin')!==undefined?parentTask:undefined;
+    const origin=eventRoot?runtime.loadCheckpoint(eventRoot.taskId,'harness-event-origin'):undefined;
+    let eventScope:{deadline:string;configurationRef:string;fence:string}|undefined;
+    if(eventRoot&&typeof eventRoot.conversationId==='string'&&eventRoot.conversationId.trim().length>0
+      &&object(origin)&&Object.keys(origin).sort().join(',')==='deliveryId,eventDigest,originalParentTaskId,sourceTaskId'
+      &&['deliveryId','sourceTaskId','originalParentTaskId'].every(key=>typeof origin[key]==='string'&&(origin[key] as string).trim().length>0)
+      &&typeof origin.eventDigest==='string'&&/^[a-f0-9]{64}$/.test(origin.eventDigest)
+      &&runtime.findTaskByIdempotencyKey('harness-event-root:'+origin.deliveryId)?.taskId===eventRoot.taskId) {
+      try {
+        const scope=options.canResumeHarnessEvent?.({taskId:eventRoot.taskId,expectedRevision:eventRoot.revision,
+          conversationId:eventRoot.conversationId,origin:origin as unknown as RuntimeStartupHarnessEventOrigin,
+          phase:eventRoot.state==='created'?'created_root':'continuation'});
+        if(scope&&scope.configurationRef===options.configurationRef&&typeof scope.fence==='string'&&scope.fence.length>0
+          &&Number.isFinite(Date.parse(scope.deadline))&&typeof scope.assertCurrent==='function') {
+          scope.assertCurrent();eventScope={deadline:scope.deadline,configurationRef:scope.configurationRef,fence:scope.fence};
+        }
+      } catch {/* Missing or stale original authority never becomes permission to enqueue. */}
+    }
+    return {task,keys,checkpoints,records,children,parent,parentTask,eventRoot,origin,eventScope,descriptors:runtime.readToolDescriptors()};
   };
   type RecoveryPlan={facts:ReturnType<typeof read>;item:RuntimeStartupRecoveryItem;deadline?:string;action?:'cancel'|'expire'|'resume'|undefined};
   const plan=(taskId:string):RecoveryPlan=>{
-    const facts=read(taskId),{task,checkpoints:cp,records,children,parent,parentTask,descriptors}=facts;
+    const facts=read(taskId),{task,checkpoints:cp,records,children,parent,parentTask,eventRoot,eventScope,descriptors}=facts;
     let classification:RuntimeStartupRecoveryItem['classification']='manual',reason='unsupported_original_checkpoint';
     const finish=(kind:RuntimeStartupRecoveryItem['classification'],why:string)=>({facts,
       item:{taskId,revision:task.revision,classification:kind,reason:why,outcome:'retained' as const}});
     if(TERMINAL.has(task.state))return finish('terminal','already_terminal');
     if(runtime.isTaskActive(taskId))return finish('active','original_worker_is_active');
     if(task.state==='waiting_approval')return finish('approval_required','original_approval_is_preserved');
+    if(eventRoot&&!eventScope)return finish('manual','original_event_responsibility_or_native_lease_is_unavailable');
+    if(eventRoot?.taskId===taskId&&task.state==='created'&&facts.keys.every(key=>key===KEY||key==='harness-event-origin')
+      &&typeof task.goal==='string'&&task.goal.trim().length>0&&records.length===0&&children.length===0&&eventScope) {
+      if(task.cancelRequested||now().getTime()>=Date.parse(eventScope.deadline))
+        return {...finish('before_first_send','original_event_root_has_no_execution'),deadline:eventScope.deadline,
+          action:task.cancelRequested?'cancel':'expire'};
+      return {...finish('before_first_send','original_event_acceptance_preceded_enqueue'),deadline:eventScope.deadline,action:'resume'};
+    }
     if(cp['application-profile']!=='huawei_ict_agentarts' || cp['competition-configuration-binding']!==options.configurationRef)
       return finish('manual','original_profile_or_configuration_differs');
     if(facts.keys.some(key=>!BASE_KEYS.has(key)&&!key.startsWith('tool-result-')&&!key.startsWith('routine-tool-policy:')))
@@ -102,7 +143,7 @@ export function createRuntimeStartupRecovery(options:RuntimeStartupRecoveryOptio
       ||runtime.loadCheckpoint(child.taskId,'competition-cloud-inflight')||runtime.loadCheckpoint(child.taskId,'competition-cloud-unknown')))
       return finish('parent_wait','original_children_require_recovery');
     const deadline=cp['application-deadline'];
-    if(typeof deadline!=='string'||!Number.isFinite(Date.parse(deadline))||cp['application-goal']!==task.goal)
+    if(typeof deadline!=='string'||!Number.isFinite(Date.parse(deadline))||typeof task.goal!=='string'||cp['application-goal']!==task.goal)
       return finish('manual','original_goal_or_deadline_is_unavailable');
     const interruption=cp['runtime-interruption:v1'];
     const adopted=task.state==='waiting_reconciliation'&&object(interruption)&&interruption.version==='1.0'
@@ -166,7 +207,10 @@ export function createRuntimeStartupRecovery(options:RuntimeStartupRecoveryOptio
         try {
           assertUnchanged();checked=false;
           const accepted=await options.resumeOriginalTask({taskId:item.taskId,expectedRevision:item.revision,
-            deadline:original.deadline!,mode:original.item.classification as RuntimeStartupResumeRequest['mode'],assertUnchanged});
+            deadline:original.deadline!,mode:original.item.classification as RuntimeStartupResumeRequest['mode'],assertUnchanged,
+            ...(original.facts.eventRoot?.taskId===item.taskId&&original.facts.task.state==='created'
+              &&original.facts.keys.every(key=>key===KEY||key==='harness-event-origin')
+              ?{harnessEventOrigin:structuredClone(original.facts.origin) as unknown as RuntimeStartupHarnessEventOrigin}:{})});
           if(accepted.accepted&&checked)item.outcome='resumed';else item.reason='original_worker_did_not_accept_recovery';
         } catch {item.reason='original_worker_rejected_changed_or_unavailable_recovery';}
       }
