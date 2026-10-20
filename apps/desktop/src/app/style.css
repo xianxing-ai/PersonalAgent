@@ -45,12 +45,15 @@ button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cu
 .mm-slider:focus-visible::-webkit-slider-thumb {box-shadow:0 1px 4px rgba(0,0,0,.52),0 0 0 3px rgba(8,119,217,.34)}
 .mm-fast[aria-pressed="true"] {color:var(--warn);background:rgba(230,185,85,.14)}
 .model-menu .notice {margin:2px 4px 4px;font-size:10.5px;line-height:1.5}
-.send-btn {display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin-left:4px;border:0;border-radius:50%;background:#fff;color:#0b0d10;transition:transform var(--dur-instant) var(--ease-standard)}
+.send-btn {display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin-left:4px;border:0;border-radius:50%;background:#fff;color:#0b0d10;transition:transform var(--dur-instant) var(--ease-standard),opacity var(--dur-instant) var(--ease-standard)}
 .send-btn svg {width:18px;height:18px}
-.send-btn .icon-send {display:none}
+.send-btn .icon-send,.send-btn .icon-stop {display:none}
+.send-btn .icon-stop {width:20px;height:20px}
+.send-btn[data-mode="stop"] .icon-stop {display:block}
+.send-btn[data-mode="stop"] .icon-voice,.send-btn[data-mode="stop"] .icon-send {display:none}
 .send-btn[data-mode="send"] .icon-send {display:block}
 .send-btn[data-mode="send"] .icon-voice {display:none}
-.send-btn:disabled {background:rgba(255,255,255,.22);color:rgba(255,255,255,.45)}
+.send-btn:disabled {opacity:.5}
 .send-btn:hover:not(:disabled) {transform:scale(1.06)}
 .mic-state {margin:8px 6px 2px}
 .sis-settings {margin:12px 0;border:1px solid var(--glass-border);border-radius:12px;padding:9px 11px;color:var(--fg-2);font-size:11px}
@@ -75,7 +78,7 @@ button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cu
 .error {color:var(--danger);font-size:12px;overflow-wrap:anywhere}.status {font-size:11px;color:var(--accent)}
 :root[data-theme="light"] .icon-btn:hover:not(:disabled),:root[data-theme="light"] .model-select:hover {background:rgba(0,0,0,.06)}
 :root[data-theme="light"] .send-btn {background:#15181b;color:#fff}
-:root[data-theme="light"] .send-btn:disabled {background:rgba(0,0,0,.14);color:rgba(0,0,0,.4)}
+:root[data-theme="light"] .send-btn:disabled {opacity:.5}
 :root[data-theme="light"] .user-message {background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.08)}
 @media (prefers-reduced-motion:reduce) {.thinking-grid i::after {animation:none}.thinking-grid i:nth-child(5)::after {opacity:1;transform:scale(1)}}
 :root[data-theme="light"] .panel header button {background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.08);color:var(--fg-2)}

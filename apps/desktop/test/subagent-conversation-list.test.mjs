@@ -27,9 +27,9 @@ function fixture(t, handler) {
   const root = new Element('main'), calls = [];
   const control = mountSubagentConversationList(root, async (name, payload) => {calls.push({name, payload}); return handler(name, payload);});
   const page = root.children[0], header = page.children[0], search = page.children[1].children[0];
-  const [refreshButton, closeButton] = header.children.slice(1);
+  const [collapseButton, refreshButton, closeButton] = header.children.slice(1);
   const count = page.children[2], status = page.children[3], [list, empty] = page.children[4].children, more = page.children[5];
-  return {...control, root, page, search, count, status, list, empty, more, refreshButton, closeButton, calls, document,
+  return {...control, root, page, search, count, status, list, empty, more, collapseButton, refreshButton, closeButton, calls, document,
     rows:() => list.querySelectorAll('button'), filter(value) {search.value = value; search.oninput();}};
 }
 const child = (taskId, extra = {}) => ({parentTaskId:'parent', taskId, role:'核验', modelId:'model-a',
