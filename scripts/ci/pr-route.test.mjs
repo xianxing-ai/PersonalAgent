@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyPullRequest,matrixFor,selectWindowsRunner,resolveRoute} from './pr-route.mjs';
+import {classifyPullRequest,matrixFor,selectWindowsRunner,resolveRoute,isHostedIntegrationPullRequest} from './pr-route.mjs';
 for(const [name,files,mode] of [
   ['image Dockerfile',['apps/agentarts-runtime/Dockerfile'],'image'],
   ['image sources and tests',['apps/agentarts-runtime/src/server.mjs','apps/agentarts-runtime/test/server.test.mjs'],'image'],
@@ -100,4 +100,78 @@ test('automatic main reruns are disabled; explicit manual validation still check
   const result=await resolveRoute({...args,eventName:'workflow_dispatch'});
   assert.equal(result.selection.mode,'both');
   assert.equal(result.matrix.include[0].name,'Windows CI (GitHub)');
+});
+
+
+const integrationRepository='zemeng5208/PersonalAgent',integrationBranch='codex/pr-harness-big-batch-20261020';
+function integrationPR({headRepository=integrationRepository,headRef=integrationBranch,baseRepository=integrationRepository,baseRef='main'}={}) {
+  return {head:{sha:head,ref:headRef,repo:{full_name:headRepository}},base:{ref:baseRef,repo:{full_name:baseRepository}}};
+}
+function integrationRoute({pr=integrationPR(),files=[{filename:'package-lock.json'}],...options}={}) {
+  return resolveRoute({event,eventName:'pull_request',repository:integrationRepository,token:'fixture',...options,
+    fetchImpl:async url=>({ok:true,status:200,json:async()=>url.includes('/files?')?files:{...pr,changed_files:files.length}})});
+}
+test('the one-off hosted exception requires the exact trusted repository and source branch',()=>{
+  assert.equal(isHostedIntegrationPullRequest({eventName:'pull_request',repository:integrationRepository,pr:integrationPR()}),true);
+  assert.equal(isHostedIntegrationPullRequest(),false);
+  for(const pr of [undefined,{}, {head:{}},integrationPR({headRepository:'fork/PersonalAgent'}),integrationPR({baseRepository:'other/repo'}),integrationPR({baseRef:'release'})]) {
+    assert.equal(isHostedIntegrationPullRequest({eventName:'pull_request',repository:integrationRepository,pr}),false);
+  }
+  for(const eventName of [undefined,'workflow_dispatch','push','repository_dispatch','pull_request_target']) {
+    assert.equal(isHostedIntegrationPullRequest({eventName,repository:integrationRepository,pr:integrationPR()}),false);
+  }
+  assert.equal(isHostedIntegrationPullRequest({eventName:'pull_request',repository:'other/repo',pr:integrationPR({headRepository:'other/repo',baseRepository:'other/repo'})}),false);
+});
+test('the exact integration branch uses the existing hosted jobs despite valid ECS selectors',async()=>{
+  const result=await integrationRoute({imageRunner:'ecs',windowsRunner:'ecs',windowsOverrides:'{"421":"ecs"}'});
+  assert.equal(result.selection.mode,'both');
+  assert.deepEqual(result.matrix.include,[
+    {kind:'windows',name:'Windows CI (GitHub)',runner:['windows-latest']},
+    {kind:'image',name:'Linux image CI',runner:['ubuntu-24.04']}
+  ]);
+  assert.equal(result.windows.pool,'github');
+  assert.match(result.windows.reason,/approved one-off integration branch/);
+});
+test('near-miss source branches preserve both original runner defaults even if the event claims the exact branch',async()=>{
+  const claimedEvent={pull_request:{...event.pull_request,head:{...event.pull_request.head,ref:integrationBranch,repo:{full_name:integrationRepository}}}};
+  for(const headRef of ['codex/another-batch',integrationBranch+'-extra',integrationBranch+'0',integrationBranch.toUpperCase(),'refs/heads/'+integrationBranch,undefined]) {
+    const pr=integrationPR();
+    pr.head.ref=headRef;
+    assert.equal(isHostedIntegrationPullRequest({eventName:'pull_request',repository:integrationRepository,pr}),false);
+    const result=await integrationRoute({pr,event:claimedEvent});
+    assert.deepEqual(result.matrix,matrixFor('both',{number:event.pull_request.number}));
+    assert.equal(result.windows.pool,'ecs');
+  }
+});
+test('the same branch in another repository is ordinary routing and forks remain isolated',async()=>{
+  const other=await integrationRoute({repository:'other/repo',pr:integrationPR({headRepository:'other/repo',baseRepository:'other/repo'})});
+  assert.deepEqual(other.matrix,matrixFor('both',{number:event.pull_request.number}));
+  const fork=await integrationRoute({pr:integrationPR({headRepository:'fork/PersonalAgent'}),imageRunner:'ecs',windowsRunner:'ecs',windowsOverrides:'{"421":"ecs"}'});
+  assert.deepEqual(fork.matrix.include.map(job=>job.runner),[['windows-latest'],['ubuntu-24.04']]);
+  assert.match(fork.windows.reason,/fork uses an isolated/);
+  const otherBase=await integrationRoute({pr:integrationPR({baseRef:'release'})});
+  assert.deepEqual(otherBase.matrix,matrixFor('both',{number:event.pull_request.number}));
+});
+test('the one-off hosted exception changes runners without adding or omitting selected platforms',async()=>{
+  for(const [filename,mode,expected] of [
+    ['apps/desktop/electron/main.js','windows',[{kind:'windows',name:'Windows CI (GitHub)',runner:['windows-latest']}]],
+    ['apps/agentarts-runtime/Dockerfile','image',[{kind:'image',name:'Linux image CI',runner:['ubuntu-24.04']}]]
+  ]) {
+    const result=await integrationRoute({files:[{filename}]});
+    assert.equal(result.selection.mode,mode);
+    assert.deepEqual(result.matrix.include,expected);
+  }
+});
+test('manual and non-PR event behavior is not broadened by the branch exception',async()=>{
+  const manual=await resolveRoute({event:{},eventName:'workflow_dispatch',repository:integrationRepository,token:'fixture'});
+  assert.deepEqual(manual.matrix,matrixFor('both'));
+  assert.equal(manual.windows.pool,'github');
+  const manualWithPR=await integrationRoute({eventName:'workflow_dispatch'});
+  assert.deepEqual(manualWithPR.matrix,matrixFor('both',{number:event.pull_request.number}));
+  for(const eventName of ['push','repository_dispatch']) await assert.rejects(integrationRoute({eventName}),/post-merge CI is disabled/);
+});
+test('the branch exception does not mask invalid existing runner configuration',async()=>{
+  for(const options of [{windowsRunner:'other'},{imageRunner:'other'},{windowsOverrides:'invalid'},{windowsOverrides:'null'},{windowsOverrides:'{"421":"skip"}'},{windowsOverrides:'{"bad":"github"}'}]) {
+    await assert.rejects(integrationRoute(options));
+  }
 });
