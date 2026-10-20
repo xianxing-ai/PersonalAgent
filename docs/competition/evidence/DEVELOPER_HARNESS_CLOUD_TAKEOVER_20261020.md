@@ -87,3 +87,10 @@ F13/F14 已有独立系统观察/Windows-MCP 用户工具，不等于 graph alia
 - 用户要求仅使用仓库已有 ARM 镜像，不新造镜像，不以 AMD 代替目标。历史 AMD 日志保留，但不计目标验收；该路线已经停止。
 - 只读证据 `.cache/harness-cleanup-20261020/arm-image-existing/latest-existing-arm-evidence.json` 记录最新 owned-1.7 / `arm64-context-1-7-1020` 引用 digest `sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004`。该 digest 与既有 SWR repository 拼接的引用未由本轮 manifest/config 核实，匿名读取为 401，精确 OCI source revision 不明，不能说它包含当前451。
 - 历史 GHCR ARM 制品可以匿名下载和 inspect，但不是最新1.7的等价证明。本机既有 ARM 制品及官方 Node ARM 的运行前置遇到 `exec format error`，下载成功不等于运行通过。实际 ARM 执行与最新1.7目标验收仍未完成；不以新 build、新 tag、AMD 或新代理夹具替代既有制品要求。
+
+## 交审前 main 与诊断源同步
+
+- 正常合入 main `b7ec1fc2077620f153d3bb06da654f20eb7649f1`。其完整 tree 与451已消费的 source442 `a93734c195ceaff56d3e7a5654e320f3007b35f3` 同为 `c88ab90981c9f4b3ad317b802cd916088d329ad4`，两者源码差异为零，且后者已是451 `1472c6e2` 的祖先。合并冲突来自 squash 后的历史重叠；逐块保留原451的条件日历写、上下文、开发与经验增强，合并 tree 精确保持 `c9cfbe2a41366f51243e62775aff44e2d855b2ee`，没有覆盖新来源或撤掉安全检查。
+- 随后正常合入 source450 `3015bcd396ab41f7dc24417e8d004fb238cea144` 与 source452 `726d86532db9e6c77a2c2888cf85c67b7681b52c`。source450 后续已定位知识模块首个冷证书调用超过原10秒，沿既有独立CI准备处理；被测生产调用的10秒期限不变。source452 的真正 MCP 文件级失败底层原因尚未核实，本轮只增加原失败 reporter 的双输出诊断，不改变测试 glob、并发、断言或期限，不把诊断能力当作业务失败已修复。
+- 相对451 `1472c6e2`，此批源码净增量仅 `packages/mcp/package.json` 的测试诊断命令及 `scripts/ci/mcp-failure-diagnostics.test.mjs`；所有 TypeScript 与产品源码字节不变，因此不重复构建或产品套件。Node 24.15.0、仓库外 TEMP 下运行 MCP 诊断、原 reporter 与证书准备三个纯JS测试文件：5/5、0 skip、exit 0。日志 `.cache/ready-validation/diagnostics-tests.log` SHA256 `4a5c5cd54975aa9c03af5adee54c83aaa39bfe63cf0a07fd8f880cc4a58f76ad`。
+- 当前代码实现与必要定向证据已具备交独立审查的条件；由owner发布后转 ready for review 并请求真实非作者审查。此判断不代表当前 head CI 已通过、不构成自我批准，也不把整MOD或真实平台验收标为完成。原 root check exit 1、所有真实平台未验及历史失败记录继续保留；新 head 技术CI与有效非作者批准仍约束合并。
