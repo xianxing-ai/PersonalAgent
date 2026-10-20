@@ -57,18 +57,17 @@ const {_electron}=require('playwright');
  const app=await _electron.launch({executablePath,args:[entry],env:{...process.env,ELECTRON_RUN_AS_NODE:undefined}});
  const receipts={profile:'huawei_ict_agentarts',data:'explicit offline fixtures',layouts:[]};
  try{
-  const panel=await app.firstWindow();await panel.waitForSelector('.conversation-sessions');
-  const base=await app.evaluate(()=>globalThis.journal.snapshot('panel'));
+  const panel=await app.firstWindow();await panel.waitForSelector('.conversation-sessions',{state:'attached'});
+  assert.equal(await panel.locator('.conversation-sessions').isVisible(),false,'panel keeps a single main conversation while draft hooks remain mounted');
+  receipts.singleMainDraftHooks=true;
   await app.evaluate(()=>globalThis.setFixture({agentArtsModels:{catalog:null,preferences:null}}));
-  await panel.waitForFunction(()=>document.querySelector('.native-reasoning-control select').disabled);
-  await app.evaluate((_,base)=>globalThis.setFixture({conversationState:{...base,sessions:[...base.sessions,...Array.from({length:20},(_,i)=>({id:'archived-'+i,title:'较长归档对话名称：检查布局、恢复和滚动 '+i,archived:true}))]}}),base);
-  await panel.locator('.conversation-sessions summary').click();
+  await panel.waitForFunction(()=>document.querySelector('#mm-slider')?.disabled===true);
+  await app.evaluate(()=>globalThis.setFixture({}));
   for(const size of [[420,720],[600,720],[420,600]])for(const zoom of [1,1.25,1.5]){
    await app.evaluate(({BrowserWindow},{size,zoom})=>{const win=BrowserWindow.getAllWindows()[0];win.setContentSize(...size);win.webContents.setZoomFactor(zoom);win.show();},{size,zoom});
    await panel.evaluate(zoom=>document.documentElement.dataset.theme=zoom===1.25?'dark':'light',zoom);
-   await panel.locator('[data-restore-conversation="archived-19"]').scrollIntoViewIfNeeded();
-   const result=await panel.evaluate(()=>{const rect=s=>document.querySelector(s).getBoundingClientRect(),thread=rect('.thread'),composer=rect('.composer'),last=rect('[data-restore-conversation="archived-19"]');return {width:innerWidth,height:innerHeight,lastBottom:last.bottom,composerBottom:composer.bottom,threadBottom:thread.bottom,composerTop:composer.top};});
-   assert.ok(result.lastBottom<=result.height+2,JSON.stringify(result));assert.ok(result.composerBottom<=result.height+2,JSON.stringify(result));assert.ok(result.threadBottom<=result.composerTop+2,JSON.stringify(result));
+   const result=await panel.evaluate(()=>{const rect=s=>document.querySelector(s).getBoundingClientRect(),thread=rect('.thread'),composer=rect('.composer');return {width:innerWidth,height:innerHeight,composerBottom:composer.bottom,threadBottom:thread.bottom,composerTop:composer.top};});
+   assert.ok(result.composerBottom<=result.height+2,JSON.stringify(result));assert.ok(result.threadBottom<=result.composerTop+2,JSON.stringify(result));
    receipts.layouts.push({size,zoom,...result});
    const png=await app.evaluate(async({BrowserWindow})=>(await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));
    fs.writeFileSync(path.join(directory,'panel-'+size.join('x')+'-'+zoom+'.png'),Buffer.from(png,'base64'));
@@ -76,7 +75,7 @@ const {_electron}=require('playwright');
    const menu=await panel.evaluate(()=>{const slider=document.querySelector('#mm-slider'),r=slider.getBoundingClientRect(),menu=document.querySelector('#model-menu').getBoundingClientRect();return {top:menu.top,bottom:menu.bottom,reachable:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===slider};});
    assert.ok(menu.top>=0&&menu.bottom<=result.height+2&&menu.reachable,JSON.stringify({size,zoom,menu}));await panel.locator('#model').click();
   }
-  // Reset the synthetic archived metadata before the final close boundary validates it.
+  // Later close checks use the authoritative fixture journal, with no synthetic session overlay.
   await app.evaluate(()=>globalThis.setFixture({}));
   await app.evaluate(()=>globalThis.openMode('admin'));
   const admin=app.windows().find(page=>page.url().includes('mode=admin'));await admin.waitForSelector('.notification-settings');

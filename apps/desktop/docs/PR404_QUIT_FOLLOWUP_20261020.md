@@ -20,3 +20,11 @@
 针对无响应 Renderer 与错误来源的意见，新增超时/迟到确认、同步崩溃、普通广播不解锁和明确退出清理失败解锁的回归，并补齐原 Live 退出 VM 使用的真实 helper 依赖，保留原断言。七份相关文件最终 60/60 通过；Desktop typecheck、原生退出 smoke 14 项及标准窗口/桥接 smoke 通过。最终原生退出回执：`apps/desktop/.cache/pr376-regressions/run-z2QAtn/receipts.json`。
 
 最终完整 Desktop workspace 回归 1371 项，唯一失败仍为 Windows HostFixture 要求稳定 .NET 8 SDK；没有跳过或放宽该断言。完整日志 `.cache/pr-maintenance/review-followup-desktop-final.log`；前次运行在修改前加载旧 Live VM 夹具产生的失败保留于 `review-followup-desktop.log`，不把旧运行当作最终结果。仍不宣称本机完整检查全绿；远端当前提交 CI、原评审者复审及合并需另行确认。
+
+## 同步单主对话与滑块后的回归入口
+
+协作者将 main 的 #407 普通合并到 `b859b5c4` 后，生产面板有意隐藏会话管理、将原生思考控件改为滑块。原手动 smoke 仍等待 `.conversation-sessions` 可见，已在实际隔离 Electron 复现 30 秒超时；这是夹具入口失效，没有证据表明草稿退出生产路径回归。
+
+本次仅更新 smoke：确认隐藏的会话组件仍挂载、按当前 `#mm-slider` 检查缺目录的禁用状态；面板 9 组尺寸/缩放检查继续验证线程、输入框与模型菜单可达性，不再向已隐藏的面板会话管理注入归档按钮。原 Workspace 会话组件、无任务输入框、通知 scope/revision、配置秘钥清空、关闭保存失败、app.quit 清理次数为零、失败后可编辑及显式重试后的最终草稿磁盘读回断言全部保留。没有恢复已移除的产品界面或修改生产代码。
+
+Node 24.15.0 / Electron 44.2.0 的实际 smoke 14 项通过，回执为 `apps/desktop/.cache/pr376-regressions/run-NmyBBj/receipts.json`；失败前日志和修正后日志分别保留在 `.cache/pr-maintenance/latest-native-{before,after}.log`。同步后的五份退出/会话/原生思考单元文件也通过。未重复完整 Desktop/全仓检查；真实账号、云、音频、现有数据与其他应用会话均未参与。
