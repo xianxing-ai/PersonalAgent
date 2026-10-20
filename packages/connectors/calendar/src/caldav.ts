@@ -720,6 +720,8 @@ function assertWriteUtc(value: unknown, field: string): string {
   if (Date.parse(value) % 1000 !== 0) {
     throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} requires whole-second precision`);
   }
+  if (new Date(Date.parse(value)).toISOString() !== (value.length === 20 ? value.slice(0, -1) + '.000Z' : value))
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be a canonical valid UTC calendar date`);
   return `${value.slice(0, 19)}.${(value.match(/\.(\d{3})Z$/u) ?? ['', '000'])[1]}Z`;
 }
 

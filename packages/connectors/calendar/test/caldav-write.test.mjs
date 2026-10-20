@@ -305,3 +305,12 @@ test('an early write timer callback reschedules until its actual timeout instead
   }});
   assert.equal((await provider.createEvent(originalEvent,ctx())).title,originalEvent.summary);assert.equal(early,true);
 });
+
+test('normalized-but-invalid UTC calendar dates are rejected before any create or update request',async t=>{
+  for(const startUtc of ['2026-02-30T07:00:00.000Z','2025-02-29T07:00:00.000Z','2026-10-21T24:00:00.000Z'])for(const method of ['create','update'])await t.test(`${method}:${startUtc}`,async()=>{
+    let requests=0;const provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:async()=>{requests++;throw Error('must not request');}});
+    const input={...originalEvent,startUtc,endUtc:'2027-03-01T08:00:00.000Z'};
+    await assert.rejects(method==='create'?provider.createEvent(input,ctx()):provider.updateEvent(input,ctx()),{code:'INVALID_ARGUMENT'});
+    assert.equal(requests,0);
+  });
+});
