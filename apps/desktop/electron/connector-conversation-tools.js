@@ -7,6 +7,7 @@ import {attachExactExports} from './developer-deployment-config.js';
 
 const MAIL_ACCOUNT='desktop-qq-inbox';
 const MAIL_TOOLS=new Set(['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send']);
+const CALENDAR_TOOLS=new Set(['calendar.events','calendar.create','calendar.update','calendar.cancel']);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','连接器配置或本次任务许可已失效');};
 
@@ -36,12 +37,19 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
     &&getApplication().runtime.getTask(scope.taskId).state==='running'&&typeof confirmExport==='function';
   const proxy=kind=>new Proxy({providerKind:kind==='mail'?'qq':'caldav',verification:'conditional'}, {get(target,key){
     if(key in target)return target[key];
+    if(kind==='calendar'&&key==='writes')return Object.freeze(Object.fromEntries(
+      ['createEvent','updateEvent','cancelEvent'].map(method=>[method,(...args)=>{
+        const scope=execution.getStore();if(!scope||scope.kind!=='calendar')denied();assertCurrent(scope);
+        const writes=scope.provider.writes;
+        if(typeof writes?.[method]!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前提供者不支持此日历写操作');
+        return writes[method](...args);
+      }])));
     return (...args)=>{const scope=execution.getStore();if(!scope||scope.kind!==kind)denied();assertCurrent(scope);
       if(typeof scope.provider[key]!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前提供者不支持此连接器操作');
       return scope.provider[key](...args);};
   }});
   const host={register(tool){
-    if(!MAIL_TOOLS.has(tool.descriptor.name)&&tool.descriptor.name!=='calendar.events')return ()=>{};
+    if(!MAIL_TOOLS.has(tool.descriptor.name)&&!CALENDAR_TOOLS.has(tool.descriptor.name))return ()=>{};
     tools.push({...tool,execute:async(input,context)=>{
       // Original batch tasks retain their stricter local-session/UID/classifier checks.
       if(tool.descriptor.name==='mail.inbox'&&!resolveConversation(context.taskId)&&localInbox)return localInbox.execute(input,context);
