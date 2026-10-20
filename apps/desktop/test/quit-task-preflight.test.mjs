@@ -71,7 +71,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
   const optional = ['remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
-    'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
+    'mailAnalysisHost','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
     'windowsControlHost','developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
@@ -143,14 +143,12 @@ test('a zero-task quit retains the original cleanup sequence', async () => {
   assert.ok(f.calls.indexOf('installed-skills-close') < f.calls.indexOf('runtime-close'));
 });
 
-test('accepted quit releases the active orb drag timer', async () => {
-  const f = fixture(), cleared = [], timer = {};
-  f.context.orbDragPoll = timer;
-  f.context.clearInterval = value => cleared.push(value);
-  f.app.quit();await tick();await tick();await tick();
-  assert.equal(f.exited, true);
-  assert.ok(cleared.includes(timer));
-  assert.equal(f.context.orbDragPoll, undefined);
+test('connector conversation permits close only after quit is accepted and before Runtime',async()=>{
+  const f=fixture({count:1});f.context.connectorConversationTools={async close(){f.calls.push('connector-close');}};
+  f.app.quit();await tick();assert.equal(f.calls.includes('connector-close'),false);
+  f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.calls.filter(x=>x==='connector-close').length,1);
+  assert.ok(f.calls.indexOf('connector-close')<f.calls.indexOf('runtime-close'));
 });
 
 test('a bound NotificationHost survives refused quit and disposes once before Runtime on the next allowed quit',async()=>{
