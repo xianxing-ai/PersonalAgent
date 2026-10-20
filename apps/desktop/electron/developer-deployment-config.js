@@ -60,7 +60,7 @@ function boundFile(name,maxBytes,{privateFile=false,workspaceRoot,assertPrivateF
     const bytes=readFileSync(canonical);if(bytes.length>maxBytes||!identity(true))fail();return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}};
 }
 
-function attachExactExports(host,{current,ready,assertCurrent,confirmExport,containsCredential=()=>false,policyBinding,now}) {
+export function attachExactExports(host,{current,ready,assertCurrent,confirmExport,containsCredential=()=>false,policyBinding,now,kindPrefix='developer'}) {
   const permits=new Map(),descriptors=host.tools.map(tool=>tool.descriptor);
   const consent=async(kind,payload,scope)=>{
     assertCurrent(scope);if(typeof confirmExport!=='function')denied();
@@ -82,7 +82,7 @@ function attachExactExports(host,{current,ready,assertCurrent,confirmExport,cont
     assertCurrent(scope);
   };
   const policies=typeof confirmExport==='function'?descriptors.map(descriptor=>({toolName:descriptor.name,toolVersion:descriptor.version,
-    exportPolicyVersion:'developer-exact-v1-'+policyBinding,accepts:input=>{
+    exportPolicyVersion:kindPrefix+'-exact-v1-'+policyBinding,accepts:input=>{
       const permit=permits.get(JSON.stringify([input.taskId,input.proposalId]));
       try{
         if(!permit)return false;const scope={...permit,signal:input.signal??permit.signal};assertCurrent(scope);
@@ -91,20 +91,23 @@ function attachExactExports(host,{current,ready,assertCurrent,confirmExport,cont
       }catch{return false;}
     },project:async input=>{
       const permit=permits.get(JSON.stringify([input.taskId,input.proposalId]));if(!permit||permit.toolName!==descriptor.name)denied();
-      await consent('developer_tool_result',{toolName:descriptor.name,toolVersion:descriptor.version,result:input.result},{...permit,signal:input.signal});
+      await consent(kindPrefix+'_tool_result',{toolName:descriptor.name,toolVersion:descriptor.version,result:input.result},{...permit,signal:input.signal});
       permit.resultDigest=hash(input.result);return structuredClone(input.result);
     }})):[];
   const prepareExport=async scope=>{
     const descriptor=descriptors.find(item=>item.name===scope.proposal?.toolName&&item.version===scope.proposal?.toolVersion);
     if(!descriptor)return;
     if(scope.phase==='preflight'){
+      for(const [key,permit]of permits)if(Date.parse(permit.deadline)<=now())permits.delete(key);
       if(!await ready(descriptor.name,scope))denied();
-      await consent('developer_tool_metadata',{toolName:descriptor.name,toolVersion:descriptor.version,arguments:scope.proposal.arguments},scope);
+      await consent(kindPrefix+'_tool_metadata',{toolName:descriptor.name,toolVersion:descriptor.version,arguments:scope.proposal.arguments},scope);
       const key=JSON.stringify([scope.taskId,scope.proposal.proposalId]);if(permits.size>=512&&!permits.has(key))denied();
       permits.set(key,{taskId:scope.taskId,deadline:scope.deadline,signal:scope.signal,toolName:descriptor.name,argumentsDigest:hash(scope.proposal.arguments)});
     }
   };
-  return {host:{...host,competitionToolExports:policies},consent,prepareExport,clear:()=>permits.clear()};
+  return {host:{...host,competitionToolExports:policies},consent,prepareExport,clear:toolNames=>{
+    if(!toolNames)permits.clear();else for(const [key,permit]of permits)if(toolNames.has(permit.toolName))permits.delete(key);
+  }};
 }
 
 /** Main-only deployment configuration. No Electron, ambient gh account or new Runtime. */
@@ -156,7 +159,9 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
     if(!keys(configuration,['version','repository','workspaceRoot','github','git','workflows'])||configuration.version!==1
       ||typeof configuration.repository!=='string'||!/^[-\w.]+\/[-\w.]+$/u.test(configuration.repository)
       ||configuration.repository.includes('..')||realpathSync(configuration.workspaceRoot)!==root
-      ||!keys(configuration.github,['executable','tokenFile','environment'])||!keys(configuration.git,['sourceBranch','remoteName','remoteUrl','allowedPaths','authorName','authorEmail']))fail();
+      ||!keys(configuration.github,['executable','tokenFile','environment','repairLinks'])
+      ||configuration.github.repairLinks!==undefined&&typeof configuration.github.repairLinks!=='boolean'
+      ||!keys(configuration.git,['sourceBranch','remoteName','remoteUrl','allowedPaths','authorName','authorEmail']))fail();
     if(configurationSource&&configuration.github.tokenFile!==undefined)fail();
     const repository=configuration.repository,git=configuration.git;
     if(!branch(git.sourceBranch)||typeof git.remoteName!=='string'||! /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(git.remoteName)
@@ -193,7 +198,7 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
     let consent;
     provider=new githubModule.GhCliProvider({runner:new githubModule.SpawnGhCommandRunner(binary.path,{...environment}),
       repositories:[repository],readToken:async scope=>{assertCurrent(scope);return readToken();}});
-    const options={githubModule,github:{provider,available:scope=>ready('github',scope)},
+    const options={githubModule,github:{provider,repairLinks:configuration.github.repairLinks===true,available:scope=>ready('github',scope)},
       git:{options:{repository,rootPath:root,...git,getCredentials:async scope=>{assertCurrent(scope);return {token:readToken()};}},
         available:scope=>ready('workspace.git',scope)},
       ...(workspace.command?{command:{...workspace.command,available:async scope=>await ready('workspace.run_allowed_command',scope)

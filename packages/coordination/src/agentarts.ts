@@ -47,6 +47,8 @@ export interface AgentArtsRuntimeConfig {
   responseMode?: 'text' | 'tool-proposal-json';
   /** Opt in to a trusted, per-task tool directory in the initial query. */
   initialRequestMode?: 'goal' | 'goal-with-tools-json';
+  /** Owned runtime opt-in: carry the already guarded goal on every stateless continuation. */
+  continuationContext?: 'goal';
   /** Opt in only after composition supports the versioned, untrusted candidate. */
   repairCandidateVersion?: '1.0';
   /** Explicit host opt-in. Omission preserves the existing HTTPS adapter. */
@@ -215,6 +217,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
   initialRequestMode: 'goal' | 'goal-with-tools-json'): {
   taskId: string; revision: number; goal: string; deadline: string;
   deadlineMs: number; signal: AbortSignal; continuation?: CoordinationContinuation;
+  priorContinuations?:readonly CoordinationContinuation[];
   executionModel?:ExecutionModelSelection;
   availableTools?: readonly CoordinationAvailableTool[];
   textOnly?: true;
@@ -225,13 +228,14 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
     if (!source) invalid('Invalid AgentArts coordination request');
     input = {taskId: source.taskId, revision: source.revision, goal: source.goal,
       deadline: source.deadline, signal: source.signal,
-      continuation: source.continuation, availableTools: source.availableTools, textOnly:source.textOnly,executionModel:source.executionModel};
+      continuation: source.continuation, priorContinuations:source.priorContinuations,
+      availableTools: source.availableTools, textOnly:source.textOnly,executionModel:source.executionModel};
   } catch {
     invalid('Invalid AgentArts coordination request');
   }
   // A text-only invocation cannot silently discard a future tool result.
   if (input.textOnly !== undefined && input.textOnly !== true) invalid('Invalid text-only coordination request');
-  if (input.textOnly && (input.continuation !== undefined || input.availableTools !== undefined)) {
+  if (input.textOnly && (input.continuation !== undefined || input.availableTools !== undefined || input.priorContinuations!==undefined)) {
     invalid('Text-only coordination cannot include tools or continuation');
   }
   let continuation: CoordinationContinuation | undefined;
@@ -294,7 +298,13 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
   const signal = candidateSignal as AbortSignal;
   if (aborted) throw abortError('cancelled');
   if (deadlineMs <= Date.now()) throw abortError('deadline');
+  if(input.priorContinuations!==undefined && (!continuation || !Array.isArray(input.priorContinuations) || input.priorContinuations.length>32))
+    invalid('Invalid prior continuations');
+  const priorContinuations=input.priorContinuations===undefined?undefined:(input.priorContinuations as unknown[]).map(parseCoordinationContinuation);
+  if(priorContinuations && new Set([...priorContinuations.map(item=>item.proposalId),continuation!.proposalId]).size!==priorContinuations.length+1)
+    invalid('Duplicate prior continuation');
   return {taskId, revision, goal, deadline, deadlineMs, signal,
+    ...(priorContinuations===undefined?{}:{priorContinuations}),
     ...(input.executionModel===undefined?{}:{executionModel:parseExecutionModelSelection(input.executionModel)}),
     ...(input.textOnly ? {textOnly:true as const} : {}),
     ...(continuation === undefined ? {} : {continuation}),
@@ -331,6 +341,7 @@ function validateRuntimeConfig(config: AgentArtsRuntimeConfig): {
   workflowGoalInput?: string;
   responseMode: 'text' | 'tool-proposal-json';
   initialRequestMode: 'goal' | 'goal-with-tools-json';
+  continuationContext?: 'goal';
   repairCandidateVersion?: '1.0';
   transport: 'https' | 'wss';
   websocketUrl?: string;
@@ -385,6 +396,9 @@ function validateRuntimeConfig(config: AgentArtsRuntimeConfig): {
     invalid('AgentArts initial tool directory requires tool proposal mode');
   }
   const repairCandidateVersion = value.repairCandidateVersion;
+  if(value.continuationContext!==undefined && (value.continuationContext!=='goal'||responseMode!=='tool-proposal-json')) {
+    invalid('AgentArts continuation context requires tool proposal mode');
+  }
   if (repairCandidateVersion !== undefined && (repairCandidateVersion !== '1.0' || responseMode !== 'tool-proposal-json')) {
     invalid('AgentArts repair candidate version is invalid');
   }
@@ -405,6 +419,7 @@ function validateRuntimeConfig(config: AgentArtsRuntimeConfig): {
     }
   }
   return {gatewayOrigin, runtimeName, invokeMode, responseMode, initialRequestMode, transport, allowHttpsFallback,
+    ...(value.continuationContext===undefined?{}:{continuationContext:'goal' as const}),
     ...(websocketUrl === undefined ? {} : {websocketUrl}),
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     ...(workflowGoalInput === undefined ? {} : {workflowGoalInput})};
@@ -1071,6 +1086,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly workflowGoalInput: string | undefined;
   private readonly responseMode: 'text' | 'tool-proposal-json';
   private readonly initialRequestMode: 'goal' | 'goal-with-tools-json';
+  private readonly continuationContext: 'goal' | undefined;
   private readonly repairCandidateVersion: '1.0' | undefined;
   private readonly authorizationProvider: AgentArtsAuthorizationProvider;
   private readonly fetchImpl: AgentArtsFetch;
@@ -1135,6 +1151,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     this.workflowGoalInput = validated.workflowGoalInput;
     this.responseMode = validated.responseMode;
     this.initialRequestMode = validated.initialRequestMode;
+    this.continuationContext = validated.continuationContext;
     this.repairCandidateVersion = validated.repairCandidateVersion;
     this.authorizationProvider = authorizationProvider;
     this.fetchImpl = fetchImpl ?? defaultFetch;
@@ -1202,7 +1219,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
 
   async invoke(request: CoordinationRequest): Promise<CoordinationResult> {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
-    const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, availableTools, textOnly,executionModel} =
+    const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, priorContinuations, availableTools, textOnly,executionModel} =
       validateRequest(request, this.responseMode, this.initialRequestMode);
     if (continuation !== undefined && this.beforeSend === undefined) {
       throw new ProtocolError('UNAUTHORIZED', 'AgentArts continuation export guard is unavailable');
@@ -1216,7 +1233,9 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       : this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
         && Object.prototype.hasOwnProperty.call(continuation.result, 'repairContext')
         ? executionModel===undefined?candidateContinuationQuery(continuation):JSON.stringify({continuation,...modelSelection})
-        : JSON.stringify({continuation,...modelSelection});
+        : JSON.stringify({continuation,...(this.continuationContext==='goal'?{goal,
+          ...(priorContinuations?.length?{priorContinuations}:{})}:{}),...modelSelection});
+    if(new TextEncoder().encode(query).byteLength>1_100_000)invalid('AgentArts complete query exceeds the byte limit');
     if (continuation === undefined && availableTools !== undefined
       && new TextEncoder().encode(query).byteLength > MAX_INITIAL_QUERY_BYTES) {
       invalid('AgentArts initial tool query exceeds the byte limit');
@@ -1226,6 +1245,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       taskId, revision, goal, deadline, signal: combined.signal,
       ...(textOnly ? {textOnly:true as const} : {}),
       ...(continuation === undefined ? {} : {continuation}),
+      ...(this.continuationContext==='goal'&&priorContinuations?.length?{priorContinuations}:{}),
       ...(availableTools === undefined ? {} : {availableTools}),
     });
     let stage: AgentArtsDiagnosticStage = 'authorization';
