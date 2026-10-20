@@ -31,6 +31,10 @@ or advertise the public `voice.start` / `voice.stop` wire operations.
 
 ## Public flow
 
+应用启动问候、有限许可内的持续监听及恢复入口见 [2026-10-20 接入说明](STARTUP-20261020.md)。
+新增 `createVoiceStartupController` / `createVoiceHostListeningPort` 消费原输出和 Live 宿主；
+Desktop 共享入口仍待指定写入者接通，不代表已启用真实录音或系统开机启动。
+
 1. A trusted caller starts one bounded session with an ISO UTC deadline and an
    `AbortSignal`.
 2. The caller supplies one PCM S16LE, 16 kHz, mono clip to `recognizeAudio`. The maximum
