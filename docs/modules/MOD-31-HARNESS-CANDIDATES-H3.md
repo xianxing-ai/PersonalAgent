@@ -1,0 +1,88 @@
+# MOD-31 H3：候选试跑回执比较与采用建议
+
+日期：2026-10-20。Profile：`huawei_ict_agentarts`。负责人：zemeng5208；执行者：MOD-31 开发对话。
+状态：`in_progress`，独立工作树 `.worktrees/harness-candidates`，分支 `codex/harness-candidates`，基线 `9eb2fb08`。
+#364 已于 2026-10-17 合入，不从旧评估分支重复实现。
+
+本包本人负责：唯一候选契约、比较器、原 Runtime 工具消费者、必要关键测试和本文。
+Windows/coding 对话负责真实隔离试跑与原 F15 采用接线；H1 核心写入者负责共享 RuntimeApplication 的
+实际工具目录装配与 owner/executor 解析，不进入对方工作树修改。
+
+## 唯一 provisional 契约
+
+`@personal-agent/contracts/harness-candidates` 导出 `HarnessCandidateBinding`、`HarnessCandidateTrial`、
+`HarnessCandidateContext`、`HarnessCandidateComparison`、`parseHarnessCandidateBinding`、
+`parseHarnessCandidateTrial`、`harnessCandidateArtifactDigest` 和 `harnessCandidateRecipeFingerprint`。
+Schema 位于 `packages/contracts/schema/harness-candidates.json`，类型及运行时 Schema 由原 generate 脚本生成。
+Trial 组合既有 `CodingRepairSession`、`CodingRepairCheckReadback`，不另建跨包 DTO、任务库、调度器或授权层。
+
+绑定字段：version/candidateId/artifactId/taskId/trialTaskId/workspaceId/sessionId/baselineSnapshotId/
+inputDigest/configurationDigest/workflowVersion/runtimeVersion/recipeFingerprint/artifactDigest/
+parentArtifactDigests/executionKind。taskId 是共同 owner；trialTaskId 是原实际执行者，必须等于 session.taskId。
+workspaceId 是原用户工作区，不用它冒充隔离目录；session 是各候选独立隔离身份。
+
+artifactDigest 精确复用已有 F15 元数据指纹：按 path 排序的 path/sha256/packageId/kind，
+以及按 id 排序、dependencies 排序的包图；不包含 snapshotId 或正文。
+原 `codingSnapshotFingerprint` 委托唯一实现，保持已有哈希语义。
+recipeFingerprint 为 recipeId 排序、每项 packageIds 排序后的 recipeId/packageIds/required 的 JSON SHA256。
+configurationDigest 还须由宿主绑定实际命令配方实现、模型/参数与执行环境；相同 recipe 名不证明相同命令。
+所有输入仅接受 metadata，正文不进入比较结果或 Evidence。
+
+## 真实调用方和安全边界
+
+试跑工具锁定 `coding.repair.trial@1.0.0`，输入仅 `{candidateId,patches,recipeIds}`，
+候选/baseline/原输入/配置/版本来自可信宿主；每次实际试跑使用独立 session、原 Gateway run 与真实验证回执。
+外层工具所需 scopes 覆盖内部原 host 的 read/write/apply/execute，不直接调用别的 RegisteredTool.execute，
+不 publish。结果中引用本次外层 run，须等原 Runtime confirmed 后才能比较。
+
+`createRuntimeHarnessCandidateTools(application, options)` 由 `@personal-agent/runtime/application` 导出。
+options 缺失时返回空工具集合；包含：
+
+```typescript
+getBinding(context: ToolContext): HarnessCandidateContext | undefined;
+resolveTrialOrigin(ownerTaskId: string, runId: string, context: ToolContext):
+  {actualTaskId: string; arguments: Record<string, unknown>; scopeRef: string} | undefined;
+```
+
+共享宿主必须先验证当前比较执行者属于原 H1 plan/marker，再返回冻结绑定；origin 仅能指向原 owner
+或同一持久计划验证的实际执行者。模型持有其他任务 runId 不构成跨任务权限。
+工具只放原执行子智能体目录，root 不获执行工具；实际装配由 H1 写入者交付。
+缺少调用方注册或可信 owner resolver 时，本包接口仍不能声明为产品全链完成。
+
+`harness.candidates.compare@1.0.0` 输入严格为 `{trialRunIds:string[]}`，不接模型提供的回执或绑定。
+它核对自身原 started/allow Gateway 操作、原调用参数与 scope；再核对每个 trial 的原 task/run、
+tool/version、executionStarted/allow/confirmed、完整参数摘要、原 execution Evidence 和缓存结果。
+最终核对候选/session/验证引用与原操作；当前绑定以原 checkpoint once 固定，取消或期限失效立即拒绝。
+不调用 Shell、模型或目录写入工具；不在此复制执行循环。
+
+## 比较、组合和采用
+
+比较绑定同一 owner/workspace/baseline/input/configuration/workflow/runtime/recipe/执行表面。
+候选 artifact/session、验证 run 须独立；源摘要、测试指纹、包图、必选 recipe 的实际包集、当前 snapshot、
+验证文件指纹、exit/status/Evidence 均核对。测试或包图变化需要另一明确实验，不在本比较中放行。
+已知失败保留 failed，缺失/过期/未知保留 unknown，不把候选自报、编译或签名当正确性证明。
+
+默认 `unique_verified` 仅在唯一候选满足当前必要验证时建议选择；多个通过保留弃权。
+可信宿主可显式选 `fewest_changed_files`，只比较实际变化文件数且不任意打破并列。
+这不是语义质量评分，也不证明最优修复。输出 `verification: unverified`，仅建议/产物引用。
+
+组合记录须关联实际观察的父 artifact 摘要，提供新 artifact/session 和新验证 run；循环来源、
+继承父验证或缺父产物均拒绝。组合正文生成、真实父产物读取与写入属于隔离 runner，
+未绑定真实组合执行者时保持 unavailable；本包不伪造组合结果。
+
+推荐中的 publishRequest 是原产物的参数引用，**不是发布授权或已采用结果**。
+isolated session 不能直接 publish。最终采用应从原 confirmed trial 的精确 patch 读回，进入原 F15
+main 会话重新 apply/check 必选 recipes，再经原 Policy/CAS/publish/readback；不得切换 isolated 的 mode，
+不得将候选验证继承为主目录验证。未知写入必须核实原 operation。
+经验激活未接 goo122 的公开能力，不宣称跨任务学习完成。
+
+## 验证与 Evidence
+
+当前已完成唯一契约生成；必要定向编译/测试待本机重型槽释放后执行，尚未声明测试通过。
+本包用显式 synthetic trial 验证契约、绑定/失败/unknown/弃权/组合边界，Runtime 用真实 SQLite/
+Policy/ToolGateway 消费 synthetic 端口；Windows 真实 host/Node 固定配方由 runner 工作包独立取证。
+没有真实 AgentArts/付费模型调用或云发布授权，平台效果验收 not_run；这些必要工程检查不代替平台验收。
+未运行全仓 check；接口保持 provisional，不新增 Core wire、依赖或数据库迁移。
+
+所有源码、实际接线和验证结果将经独立 PR 交付；拟审查者 goo122，拟合并者 Potatos498，
+尚无独立批准或合并记录。本包不自行合并。

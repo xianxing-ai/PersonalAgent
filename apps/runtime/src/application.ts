@@ -117,6 +117,8 @@ export {createRuntimeCodingRepairDispatchTool,runRuntimeCodingRepairWorkflow,rea
   CODING_REPAIR_WORKFLOW_TOOL,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './application/coding-repair-application.js';
 export type {RuntimeCodingRepairOptions,RuntimeCodingRepairImagePort} from './application/coding-repair-application.js';
 export {createRuntimeCodingRepairWorkerCapability} from './application/coding-repair-worker-capability.js';
+export {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL,HARNESS_CANDIDATE_TRIAL_TOOL} from './application/harness-candidates.js';
+export type {RuntimeHarnessCandidateOptions} from './application/harness-candidates.js';
 export {createRuntimeOwnedWorkflowImageAdapter} from './application/owned-workflow-image-adapter.js';
 export type {RuntimeOwnedWorkflowImageOptions} from './application/owned-workflow-image-adapter.js';
 export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';
