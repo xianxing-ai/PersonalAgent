@@ -17,7 +17,7 @@ const image=configured=>sha(JSON.stringify({contractRef:configured.contractRef,g
   runtimeName:configured.adapter.config.runtimeName,websocketUrl:configured.adapter.config.websocketUrl,
   deploymentVersion:configured.adapter.config.deploymentVersion,invokeMode:'published'}));
 
-async function fixture(t,{unknown=false,kind='connector',sourceChild=false}={}) {
+async function fixture(t,{unknown=false,kind='connector',sourceChild=false,wakeConversation='desktop-panel',workflowConversation='desktop-panel'}={}) {
   const directory=await mkdtemp(path.join(tmpdir(),'pa-native-harness-'));
   let gateway;
   const runtime=new TaskRuntime(path.join(directory,'runtime.sqlite'),{createToolGateway:policy=>{
@@ -34,7 +34,7 @@ async function fixture(t,{unknown=false,kind='connector',sourceChild=false}={}) 
   }
   runtime.transitionTask(source.taskId,'planning');runtime.transitionTask(source.taskId,'running');
   runtime.transitionTask(source.taskId,'verifying');runtime.transitionTask(source.taskId,'succeeded');
-  const hostTask=runtime.submitTask({goal:source.goal,conversationId:'desktop-panel',idempotencyKey:'workflow'});
+  const hostTask=runtime.submitTask({goal:source.goal,conversationId:workflowConversation,idempotencyKey:'workflow'});
   runtime.transitionTask(hostTask.taskId,'planning');runtime.transitionTask(hostTask.taskId,'running');
   const deadline=new Date(Date.now()+120000).toISOString(),grantDeadline=new Date(Date.now()+90000).toISOString();
   let configured={contractRef:'contract',adapter:{config:{gatewayUrl:'https://fixture.invalid',runtimeName:'fixture',deploymentVersion:'v1'}}};
@@ -49,6 +49,7 @@ async function fixture(t,{unknown=false,kind='connector',sourceChild=false}={}) 
   const event={eventId:payload.eventId,entry:kind,conversationId:'desktop-panel',sourceId:'feed',entityRef:'item',sourceVersion:'version-1',
     observedAt:payload.observedAt,change:'upsert',payloadRef:'runtime:proactive-batch:fixture:'+payload.eventId,payloadDigest:digest(payload.item),
     anchorRefs:[],responsibilityRefs:[responsibility.id],goalRefs:[],contractRef:'contract',priority:'normal',evidenceRefs:['runtime:proactive-batch:fixture']};
+  const nativeHead={eventId:event.eventId,revision:event.sourceVersion};
   const state={version:1,binding:{taskId:hostTask.taskId,sessionId:binding.sessionId,taskDeadline:deadline,controlRevision:0},
     conversationId:'desktop-panel',contractRef:'contract',entries:{[event.eventId]:{event,payload}},responsibilities:{[responsibility.id]:responsibility},
     batches:{fixture:{batchId:'fixture',sourceId:'feed',events:[payload],observedAt:payload.observedAt}},schedules:{},requests:{}};
@@ -64,14 +65,14 @@ async function fixture(t,{unknown=false,kind='connector',sourceChild=false}={}) 
     gateway.register({descriptor:{name:'proactive.schedule_wake',version:'1.0.0',inputSchema:{type:'object'},outputSchema:{},
       sideEffect:'local_write',requiredScopes:['schedule:write'],idempotencySupport:true,recoverySupport:true,requiresPresence:false},
       execute:async()=>({scheduleId:runtime.createSchedule({scheduleId:operationId,goal:proposal.arguments.wake.reason,
-        conversationId:'desktop-panel',runAt:proposal.arguments.wake.runAt,timeZone:'UTC',missedRunPolicy:'run_once',
+        conversationId:wakeConversation,runAt:proposal.arguments.wake.runAt,timeZone:'UTC',missedRunPolicy:'run_once',
         taskIdempotencyKey:proposal.arguments.taskIdempotencyKey}).scheduleId})});
     runtime.policy.grant({authorizationRef:operationId,taskId:hostTask.taskId,toolName:'proactive.schedule_wake',
       scopes:['schedule:write'],expiresAt:deadline,argumentsDigest:toolArgumentsDigest(args)});
     const client=new Client(runtime);await client.connect();
     const result=await client.call('tool.invoke',{toolName:'proactive.schedule_wake',toolVersion:'1.0.0',arguments:args,scopeRef:operationId},
       {taskId:hostTask.taskId,idempotencyKey:operationId});assert.equal(result.state,'confirmed');
-    runtime.dispatchDueSchedules('desktop-panel');const schedule=runtime.getSchedule(operationId);
+    runtime.dispatchDueSchedules(wakeConversation);const schedule=runtime.getSchedule(operationId);
     Object.assign(event,{eventId:'runtime-wake:'+operationId,sourceId:'runtime:scheduler',entityRef:operationId,
       sourceVersion:digest(schedule),payloadRef:'runtime:schedule:'+operationId,payloadDigest:digest(schedule),responsibilityRefs:[]});
     state.entries={[event.eventId]:{event,payload:schedule}};state.schedules[operationId]=digest(proposal.arguments);
@@ -111,7 +112,8 @@ async function fixture(t,{unknown=false,kind='connector',sourceChild=false}={}) 
     // Explicit native router/developer authority fixtures, independent of the durable H6 batch.
     readSourceOrigin:()=>({receiptId:'original-native-receipt',batchId:'fixture',origin:{taskId:tracking.taskId,runId:'original-source-read'},
       selection:{grantExpiresAt:grantDeadline,grantRevision:1}}),
-    readSourceAuthorization:()=>nativeProof?{expiresAt:grantDeadline,fence:'original-confirmed-policy-source-'+nativeProofRevision}:undefined,
+    readSourceAuthorization:(_taskId,value)=>nativeProof&&value.eventId===nativeHead.eventId&&value.sourceVersion===nativeHead.revision
+      ?{expiresAt:grantDeadline,fence:'original-confirmed-policy-source-'+nativeProofRevision}:undefined,
     readDeveloperHarnessConfiguration:()=>developerAllowed?{workspaceRef:'native-workspace',maxExecutorSteps:7,
       configurationRef:'native-developer-'+developerRevision,assertCurrent(){if(!developerAllowed)throw Error('Native workspace revoked');}}:undefined,
     readPersistedWorkflow:readPersistedRuntimeProactiveWorkflow,readPersistedDelivery:readPersistedHarnessOriginalDelivery,
@@ -206,6 +208,51 @@ test('wake dispatch requires the original fired schedule and confirmed Policy/Ga
   f.adapter.assertHarnessEventCurrent(f.ledger().receipt.parentTaskId,origin);
   f.state.schedules[f.event.entityRef]='substituted-proposal';f.save();
   assert.throws(()=>f.adapter.assertHarnessEventCurrent(f.ledger().receipt.parentTaskId,origin));
+  assert.equal(f.counts().submissions,1);
+});
+
+test('Synthetic wake from canonical user-work keeps the original workflow user conversation',async t=>{
+  const f=await fixture(t,{kind:'wake',sourceChild:true});await f.adapter.start(f.binding.taskId,f.context);
+  assert.notEqual(f.source.conversationId,f.hostTask.conversationId);
+  assert.equal(f.ledger().state,'confirmed');assert.equal(f.counts().submissions,1);
+  const root=f.ledger().receipt.parentTaskId,origin=f.runtime.loadCheckpoint(root,'harness-event-origin');
+  assert.equal(origin.sourceTaskId,f.source.taskId);assert.equal(origin.originalParentTaskId,f.tracking.taskId);
+  f.adapter.assertHarnessEventCurrent(root,origin);
+  assert.ok(f.parentReads.some(value=>value.parentTaskId===f.tracking.taskId&&value.taskId===f.source.taskId));
+  f.runtime.saveCheckpoint(f.source.taskId,'private-copy-erasure',{withheld:true});
+  assert.throws(()=>f.adapter.assertHarnessEventCurrent(root,origin),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(f.counts().submissions,1);
+});
+
+test('Synthetic wake rejects a confirmed schedule or workflow from another user conversation',async t=>{
+  const wrongSchedule=await fixture(t,{kind:'wake',sourceChild:true,wakeConversation:'foreign-ui'});
+  await wrongSchedule.adapter.start(wrongSchedule.binding.taskId,wrongSchedule.context);
+  assert.equal(wrongSchedule.counts().submissions,0);
+  assert.equal(wrongSchedule.adapter.snapshot().consumers[0].lastError,'UNAUTHORIZED');
+  const wrongWorkflow=await fixture(t,{kind:'wake',sourceChild:true,workflowConversation:'foreign-ui'});
+  await assert.rejects(wrongWorkflow.adapter.start(wrongWorkflow.binding.taskId,wrongWorkflow.context),{code:'UNAUTHORIZED'});
+  assert.equal(wrongWorkflow.counts().submissions,0);
+});
+
+test('Synthetic equal observation times admit only the exact native router head',async t=>{
+  const f=await fixture(t,{unknown:true}),current=f.state.entries[f.event.eventId];
+  const older=structuredClone(current);older.event.eventId='older-confirmed-feed';older.event.sourceVersion='version-0';
+  older.event.payloadRef='runtime:proactive-batch:fixture:'+older.event.eventId;
+  older.payload.eventId=older.event.eventId;older.payload.sourceRevision=older.event.sourceVersion;
+  f.state.entries={[older.event.eventId]:older,[f.event.eventId]:current};
+  f.state.batches.fixture.events.unshift(older.payload);f.save();
+  assert.equal(older.event.observedAt,f.event.observedAt);
+  assert.equal(f.options.readSourceAuthorization(f.binding.taskId,older.event),undefined);
+  assert.ok(f.options.readSourceAuthorization(f.binding.taskId,f.event));
+  await f.adapter.start(f.binding.taskId,f.context);
+  assert.equal(f.ledger().state,'pending');assert.equal(f.counts().submissions,1);
+  const root=f.runtime.findTaskByIdempotencyKey('harness-event-root:'+f.ledger().deliveryId);
+  f.adapter.assertHarnessEventCurrent(root.taskId,f.runtime.loadCheckpoint(root.taskId,'harness-event-origin'));
+  const deliveries=f.runtime.bindTrustedHostState('runtime-harness-events');
+  const key='delivery:'+sha(JSON.stringify([sha(JSON.stringify([f.binding.taskId,f.binding.sessionId])),
+    older.event.sourceId,older.event.entityRef,older.event.sourceVersion]));
+  assert.equal(deliveries.get(key).value.state,'suppressed');
+  f.denySourceProof();assert.throws(()=>f.adapter.assertHarnessEventCurrent(root.taskId,f.runtime.loadCheckpoint(root.taskId,'harness-event-origin')));
   assert.equal(f.counts().submissions,1);
 });
 

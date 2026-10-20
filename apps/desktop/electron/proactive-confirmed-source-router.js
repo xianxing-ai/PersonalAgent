@@ -197,6 +197,8 @@ export function createDesktopProactiveConfirmedSourceRouter({getApplication,getW
     if(!application?.runtime||!original)return undefined;
     try {
       const state=stateStore(application).read(digest([workflowTaskId,event.sourceId]))?.value;
+      // A persisted pending batch already owns this exact head while the sink notifies.
+      // Ack only moves it into heads; timestamps and historical entries are not authority.
       const head=state?.pending?.heads?.[digest(event.entityRef)]??state?.heads?.[digest(event.entityRef)];
       if(head?.revision!==event.sourceVersion||head.eventId!==event.eventId)return undefined;
       const binding=application.runtime.loadCheckpoint(workflowTaskId,'desktop-proactive-workflow-v1');

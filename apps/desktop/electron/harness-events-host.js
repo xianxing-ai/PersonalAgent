@@ -49,7 +49,8 @@ export function createDesktopHarnessEventsHost({getApplication,getWorkflow,getNo
     const task=runtime.getTask(binding.taskId),source=runtime.getTask(binding.sourceTaskId);
     const conversation=sync(resolveUserConversation(binding.sourceTaskId));
     if(!text(conversation)||!text(source.goal)||source.cancelRequested||['failed','cancelled','cancelling'].includes(source.state)
-      ||task.cancelRequested||terminal.has(task.state)||sync(resolveUserConversation(binding.taskId))!==conversation
+      ||task.cancelRequested||terminal.has(task.state)||task.conversationId!==conversation
+      ||sync(resolveUserConversation(binding.taskId))!==conversation
       ||!Number.isFinite(Date.parse(binding.taskDeadline))||now()>=Date.parse(binding.taskDeadline))fail('UNAUTHORIZED');
     for(const id of [binding.taskId,binding.sourceTaskId])for(const key of ['private-copy-erasure','private-copy-erasure-binding'])
       if(runtime.loadCheckpoint(id,key)!==undefined)fail('SCOPE_DENIED');
@@ -126,8 +127,6 @@ export function createDesktopHarnessEventsHost({getApplication,getWorkflow,getNo
     if(!isDeepStrictEqual(actual,expected))fail('REVISION_CONFLICT');
     const entry=facts.saved.application.state.entries[event.eventId];
     if(event.contractRef!==binding.contractRef||!Array.isArray(event.evidenceRefs)||!event.evidenceRefs.length)fail('SCOPE_DENIED');
-    if(Object.values(facts.saved.application.state.entries).some(({event:other})=>other.sourceId===event.sourceId&&other.entityRef===event.entityRef
-      &&other.sourceVersion!==event.sourceVersion&&Date.parse(other.observedAt)>=Date.parse(event.observedAt)))fail('REVISION_CONFLICT');
     let developer;
     if(mode==='dispatch') {
       const settings=control(binding);if(!settings.enabled||settings.quiet)fail('SCOPE_DENIED');
@@ -140,6 +139,8 @@ export function createDesktopHarnessEventsHost({getApplication,getWorkflow,getNo
     if(event.entry==='connector') {
       if(typeof readSourceBinding!=='function'||typeof readTrackingGrant!=='function'||typeof readSourceOrigin!=='function'
         ||typeof readSourceAuthorization!=='function')fail('UNSUPPORTED_CAPABILITY');
+      // The original router checks exact durable heads/pending.heads plus confirmed receipt
+      // provenance. Observation timestamps cannot order versions or replace that authority.
       const original=sync(readSourceOrigin(binding.taskId,event)),proof=sync(readSourceAuthorization(binding.taskId,event));
       if(event.change!=='upsert'||!original||!text(proof?.fence)||!Number.isFinite(Date.parse(proof.expiresAt))
         ||now()>=Date.parse(proof.expiresAt)||Date.parse(expected.deadline)>Date.parse(proof.expiresAt))fail('SCOPE_DENIED');
@@ -172,7 +173,7 @@ export function createDesktopHarnessEventsHost({getApplication,getWorkflow,getNo
       const record=facts.runtime.readToolExecutions(binding.taskId).find(value=>value.evidenceId===event.entityRef);
       const args=proposal?{sessionId:binding.sessionId,proposalId:proposal.proposalId}:undefined;
       if(!facts.saved.application.state.schedules[event.entityRef]||event.sourceId!=='runtime:scheduler'||schedule.status!=='fired'
-        ||!schedule.taskId||schedule.conversationId!==facts.source.conversationId
+        ||!schedule.taskId||schedule.conversationId!==facts.saved.application.state.conversationId
         ||facts.runtime.findTaskByIdempotencyKey(schedule.taskIdempotencyKey)?.taskId!==schedule.taskId
         ||event.sourceVersion!==proactiveWorkflowDigest(schedule)||event.payloadDigest!==proactiveWorkflowDigest(schedule)
         ||!isDeepStrictEqual(entry.payload,schedule)||!proposal||proposal.capabilityRef!=='proactive.schedule_wake'
