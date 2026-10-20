@@ -2,6 +2,12 @@
 
 目标 Profile：`huawei_ict_agentarts`。Desktop 启用可信组合选项 `delegateUserTasks:true`：主对话只派发和汇总，实际工作经原 Runtime/Policy/ToolGateway 在持久化子任务中执行。
 
+### 主对话与实际执行边界（2026-10-20，#430）
+
+主对话负责用户交互、委派和汇总，实际工作继续由原持久化 `user-work` 子智能体执行。所有新用户工作都冻结原 `required-subagent-delegation` 绑定，短句、只读天气等查询也不例外；根任务只经 `subagent.dispatch` 派发，不直接调用业务工具。
+
+原拟加入的根任务直答路由已按用户确认撤回。单个成功子任务的结果可直接透传到主对话，避免重复协作汇总头，但这只是展示/汇总行为，不改变执行归属。Runtime、Policy、ToolGateway、审批、Evidence 与无 Local 静默回退的边界保持原有链路。
+
 ## 问题与行为
 
 旧版工作区按当前工作区对话过滤父任务，导致语音面板所属对话的子任务被排除。实际旧版窗口读回：面板有 5 条子任务，工作区为 0 条。

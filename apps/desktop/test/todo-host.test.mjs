@@ -5,6 +5,27 @@ import path from 'node:path';
 import {Client} from '@personal-agent/client';
 import {createRuntimeApplication,createReminderDeliveryHost} from '@personal-agent/runtime/application';
 import {createDesktopTodoHost} from '../electron/todo-host.js';
+import {mountTodoControls} from '../src/app/todo-controls.js';
+
+test('todo controls retain open completion and show terminal items without reopening actions',async()=>{
+  const previous=globalThis.document,fields=new Map(),calls=[];
+  const node=()=>({children:[],append(...values){this.children.push(...values);},replaceChildren(){this.children=[];},
+    querySelector(selector){if(!fields.has(selector))fields.set(selector,node());return fields.get(selector);}});
+  globalThis.document={createElement:()=>node()};
+  try{
+    const state={available:true,items:[{id:'active',title:'Active',status:'open'},
+      {id:'finished',title:'Finished',status:'done'},{id:'cancelled',title:'Cancelled',status:'cancelled'}]};
+    const controls=mountTodoControls(node(),async(name,input)=>{calls.push({name,input});return state;});
+    controls.render(state);
+    const rows=fields.get('[data-todo="items"]').children;
+    for(const row of rows.slice(1)){
+      assert.equal(row.children.length,1);assert.equal(row.children.some(child=>typeof child?.onclick==='function'),false);
+    }
+    assert.match(rows[1].children[0].textContent,/已完成/);assert.match(rows[2].children[0].textContent,/已取消/);
+    await rows[0].children[2].onclick();
+    assert.deepEqual(calls,[{name:'todo.update',input:{id:'active',status:'done'}}]);
+  }finally{globalThis.document=previous;}
+});
 
 const cache=new URL('../../../.cache/todo-host-tests/',import.meta.url);mkdirSync(cache,{recursive:true});
 const encryption={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),
