@@ -20,7 +20,7 @@ const PROTOCOL_ID = 'https://personalagent.local/protocol/1.0.0';
 
 const searchInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '联网检索学术与公开资料（当前提供商为 OpenAlex 学术库）。每条结果披露来源（DOI/ venue）、发布时间（日期精度，无发布时间时回退抓取时刻并显式标注）与获取时间；发布时间超过 maxAgeMs 的材料标 freshness: stale（仍返回，由调用方取舍）。检索失败照实报错；提供商故障且缓存未过期时返回 stale 结果并附 lastError，不用旧结果冒充新结果。',
+  description: '联网检索学术与公开资料（当前提供商为 OpenAlex 学术库）。每条结果披露来源（DOI/ venue）、发布时间（日期精度，无发布时间时回退抓取时刻并显式标注）与获取时间；发布时间超过 maxAgeMs 的材料标 freshness: stale（仍返回，由调用方取舍）。检索失败照实报错；提供商故障且缓存未过期时返回 stale 结果并附 lastError，不用旧结果冒充新结果。中文查询另做相关度底线筛选：结果题名与检索词既无拉丁词交集、又无足量连续汉字交集时不返回（宁可如实未命中，不呈现无关材料）；拉丁查询不受影响。',
   properties: {
     query: {type: 'string', minLength: 1, description: '检索词。'},
     limit: {type: 'integer', minimum: 1, maximum: 20, description: '返回条数上限，默认 10。'},
