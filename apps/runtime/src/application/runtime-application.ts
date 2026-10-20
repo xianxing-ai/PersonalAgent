@@ -19,7 +19,8 @@ import type {RuntimeDeveloperHarnessOptions} from './developer-harness.js';
 import {createHarnessCandidateTrialTool,createHarnessCandidateAdoptionTool,createHarnessCandidateRecoveryTool,
   HARNESS_TRIAL_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL} from '@personal-agent/coding-tools';
 import type {IsolatedCodingRepairHost} from '@personal-agent/coding-tools';
-import type {HarnessCandidateContext} from '@personal-agent/contracts/harness-candidates';
+import type {HarnessCandidateContext,HarnessTrialRecovery} from '@personal-agent/contracts/harness-candidates';
+import type {CodingRepairInput} from '@personal-agent/contracts/coding-repair';
 import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import {parseCodingRepairInput,parseCodingRepairCheckReadback} from '@personal-agent/contracts/coding-repair';
 import {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL} from './harness-candidates.js';
@@ -115,6 +116,9 @@ export interface RuntimeHarnessScope {
 export interface RuntimeHarnessCandidatesOptions {
   host:IsolatedCodingRepairHost;
   readContext:(context:ToolContext,scope:RuntimeHarnessScope)=>HarnessCandidateContext|undefined|Promise<HarnessCandidateContext|undefined>;
+  /** Native original-session observation only; this supplies no model ToolContext or execution grant. */
+  reconcileOriginalSession?:(input:{session:CodingRepairInput;trialRunId:string;expectedRevision:number;deadline:string;
+    signal:AbortSignal;assertCurrent:()=>void})=>Promise<HarnessTrialRecovery>;
 }
 
 const CONVERSATION_HISTORY_LIMIT = 20;
@@ -426,6 +430,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
   private readonly readDeveloperWorkflows?:RuntimeApplicationOptions['readDeveloperWorkflows'];
   private readonly readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
+  private readonly harnessCandidateOptions?:RuntimeHarnessCandidatesOptions;
+  private readonly harnessCandidateBindings?:ReturnType<typeof createRuntimeHarnessCandidateBindings>;
+  private readonly activeHarnessCandidateRecovery=new Map<string,Promise<{task:TaskSnapshot;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}>>();
   private readonly onHarnessEventProgress?:RuntimeApplicationOptions['onHarnessEventProgress'];
   private readonly developerWorker?:CoordinationWorkerCapabilityPort;
   private readonly developerPatchRecovery?:DevWorkflowPatchRecovery;
@@ -488,6 +495,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       ||['start','check','publish','reconcile'].some(key=>typeof options.harnessCandidates!.host?.[key as keyof IsolatedCodingRepairHost]!=='function'))) {
       throw new ProtocolError('INVALID_ARGUMENT','Harness candidates require the original trusted workspace host and user-work composition');
     }
+    if(options.harnessCandidates)this.harnessCandidateOptions={...options.harnessCandidates};
     this.storagePath = resolve(options.path);
     this.profile = options.profile ?? 'local';
     if (options.competitionMaxSteps !== undefined && (this.profile !== 'huawei_ict_agentarts'
@@ -688,6 +696,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           return configuration;
         },now:()=>this.now().getTime(),
       });
+      this.harnessCandidateBindings=bindings;
       harnessCandidateTools=[createHarnessCandidateTrialTool({host:candidateOptions.host,...bindings.trial,now:()=>this.now().getTime()}),
         createHarnessCandidateAdoptionTool({host:candidateOptions.host,...bindings.adoption,now:()=>this.now().getTime()}),
         createHarnessCandidateRecoveryTool({host:candidateOptions.host,...bindings.recovery,now:()=>this.now().getTime()}),
@@ -1690,6 +1699,110 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!this.codingRepair)return;
     this.codingRepair.projectSource=project;
     this.codingRepair.authorizeMetadata=authorizeMetadata;
+  }
+
+  private readHarnessCandidateRecoveryOrigin(taskId:string,expectedRevision:number) {
+    const actual=this.runtime.getTask(taskId),peer=readRuntimeSubagentSibling(this.runtime,taskId);
+    const parent=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string;parentDeadline?:string;subtaskId?:string}|undefined;
+    const delegation=parent?.parentTaskId?readUserTaskDelegation(this.runtime,parent.parentTaskId):undefined;
+    const ownerTaskId=peer?.binding.ownerTaskId??taskId;
+    if(!this.harnessCandidateBindings||!this.harnessCandidateOptions?.reconcileOriginalSession
+      ||actual.revision!==expectedRevision||actual.state!=='waiting_reconciliation'
+      ||this.activeTextTasks.has(taskId)||this.runtime.isTaskActive(taskId)||!delegation
+      ||actual.conversationId!==`desktop-subtask:${delegation.parentTaskId}`
+      ||!peer&&parent?.subtaskId!=='user-work'
+      ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${delegation.parentTaskId}-user-work`)?.taskId!==ownerTaskId
+      ||parent?.parentDeadline!==delegation.deadline)return undefined;
+    const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {step?:number;pending?:{toolName?:string}}|undefined;
+    const trialRunId=`competition-tool-${taskId}-${loop?.step}`;
+    const record=this.runtime.readToolExecutions(taskId).find(item=>item.evidenceId===trialRunId);
+    const saved=this.runtime.loadCheckpoint(ownerTaskId,'harness-candidates:operation:'+trialRunId) as
+      {scope?:RuntimeHarnessScope;toolName?:string;runId?:string}|undefined;
+    if(!saved?.scope||saved.runId!==trialRunId||saved.scope.actualTaskId!==taskId||saved.scope.ownerTaskId!==ownerTaskId
+      ||saved.scope.parentTaskId!==delegation.parentTaskId||saved.scope.deadline!==delegation.deadline
+      ||saved.toolName!==loop?.pending?.toolName||![HARNESS_TRIAL_TOOL,HARNESS_PREPARE_ADOPTION_TOOL].includes(saved.toolName??'')
+      ||record?.state!=='unknown'||record.policyDecision!=='allow'||!record.executionStarted
+      ||this.runtime.loadCheckpoint(taskId,'competition-configuration-binding')!==this.coordinationBinding)return undefined;
+    const request={ownerTaskId,actualTaskId:taskId,trialRunId,expectedRevision,configurationRef:saved.scope.configurationRef};
+    const session=this.harnessCandidateBindings.readOriginalSessionForRecovery(request);
+    return session?{request,session,record}:undefined;
+  }
+
+  private harnessCandidateRecoveryTargets(taskId:string,expectedRevision:number):{taskId:string;expectedRevision:number}[] {
+    const task=this.runtime.getTask(taskId);
+    if(task.revision!==expectedRevision||task.state!=='waiting_reconciliation'||this.activeTextTasks.has(taskId)
+      ||this.runtime.isTaskActive(taskId))return [];
+    if(this.readHarnessCandidateRecoveryOrigin(taskId,expectedRevision))return [{taskId,expectedRevision}];
+    const root=readUserTaskDelegation(this.runtime,taskId);
+    if(!root)return [];
+    const rootRun=`competition-tool-${taskId}-1`,record=this.runtime.readToolExecutions(taskId).find(item=>item.evidenceId===rootRun);
+    if(record?.state!=='confirmed'||record.toolName!==SUBAGENT_DISPATCH_TOOL_NAME||record.toolVersion!=='1.0.0'
+      ||record.policyDecision!=='allow'||!record.executionStarted
+      ||!this.runtime.matchesToolExecutionInput(record,{arguments:{subtasks:[root.subtask]},scopeRef:rootRun}))return [];
+    const owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${taskId}-user-work`);
+    const original=owner?this.runtime.loadCheckpoint(owner.taskId,'subtask-parent'):undefined;
+    if(!owner||!isDeepStrictEqual(original,{...root.subtask,parentTaskId:taskId,parentDeadline:root.deadline}))return [];
+    return this.subagentTaskSnapshots(taskId).filter(child=>{
+      if(child.taskId===owner.taskId)return true;
+      const marker=readRuntimeSubagentSibling(this.runtime,child.taskId);
+      return marker?.binding.ownerTaskId===owner.taskId&&marker.binding.parentTaskId===taskId;
+    }).flatMap(child=>this.readHarnessCandidateRecoveryOrigin(child.taskId,child.revision)
+      ?[{taskId:child.taskId,expectedRevision:child.revision}]:[]);
+  }
+
+  /** Metadata only. A root resolves its canonical owner/plan executors; users never need task IDs. */
+  readHarnessCandidateRecoveryAvailable(taskId:string):boolean {
+    try{return this.harnessCandidateRecoveryTargets(taskId,this.runtime.getTask(taskId).revision).length>0;}catch{return false;}
+  }
+
+  /** Explicit native readback preserves UNKNOWN facts and never resumes writes, commands, or the old root. */
+  async reconcileHarnessCandidateTask(taskId:string,expectedRevision:number,scope:{deadline:string;signal:AbortSignal}):
+    Promise<{task:TaskSnapshot;readbacks:{taskId:string;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}[]}> {
+    const targets=this.harnessCandidateRecoveryTargets(taskId,expectedRevision);
+    if(!targets.length)throw new ProtocolError('UNAUTHORIZED','Original unknown candidate tasks are unavailable');
+    const readbacks:{taskId:string;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}[]=[];
+    for(const target of targets) {
+      if(this.runtime.getTask(taskId).revision!==expectedRevision)
+        throw new ProtocolError('REVISION_CONFLICT','Native source task changed during candidate observation');
+      const observed=await this.reconcileHarnessCandidateExecutor(target.taskId,target.expectedRevision,scope);
+      readbacks.push({taskId:target.taskId,trialRunId:observed.trialRunId,recovery:observed.recovery,evidenceRef:observed.evidenceRef});
+    }
+    return {task:this.runtime.getTask(taskId),readbacks};
+  }
+
+  private reconcileHarnessCandidateExecutor(taskId:string,expectedRevision:number,scope:{deadline:string;signal:AbortSignal}):
+    Promise<{task:TaskSnapshot;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}> {
+    const active=this.activeHarnessCandidateRecovery.get(taskId);
+    if(active)throw new ProtocolError('REVISION_CONFLICT','Original candidate native readback is active');
+    const origin=this.readHarnessCandidateRecoveryOrigin(taskId,expectedRevision);
+    if(!origin)throw new ProtocolError('UNAUTHORIZED','Original unknown candidate session is unavailable');
+    const check=()=>{
+      if(scope.signal.aborted)throw new ProtocolError('CANCELLED','Native candidate observation cancelled');
+      if(!Number.isFinite(Date.parse(scope.deadline))||this.now().getTime()>=Date.parse(scope.deadline))
+        throw new ProtocolError('TIMEOUT','Native candidate observation expired');
+      this.assertCompetitionTaskConfiguration(taskId);
+      if(!isDeepStrictEqual(this.readHarnessCandidateRecoveryOrigin(taskId,expectedRevision),origin))
+        throw new ProtocolError('REVISION_CONFLICT','Original unknown session changed during native observation');
+    };
+    check();
+    const execution=(async()=>{
+      const recovery=await this.harnessCandidateOptions!.reconcileOriginalSession!({session:structuredClone(origin.session),
+        trialRunId:origin.request.trialRunId,expectedRevision,deadline:scope.deadline,signal:scope.signal,assertCurrent:check});
+      check();
+      if(!['clear','in_progress','unknown'].includes(recovery.state)||recovery.sessionId!==origin.session.session.sessionId)
+        throw new ProtocolError('INVALID_ARGUMENT','Invalid native original-session readback');
+      if(recovery.checkReadback&&parseCodingRepairCheckReadback(recovery.checkReadback).sessionId!==recovery.sessionId)
+        throw new ProtocolError('UNAUTHORIZED','Native original-session readback belongs to another session');
+      const evidenceRef='harness-native-readback-'+hashJson({taskId,trialRunId:origin.request.trialRunId,
+        inputDigest:origin.record.inputDigest,recovery});
+      this.runtime.saveCheckpoint(taskId,'trusted-readback-evidence:'+evidenceRef,{evidenceId:evidenceRef,kind:'observation',
+        sourceRef:HARNESS_RECONCILE_TRIAL_TOOL,capturedAt:this.now().toISOString(),
+        summary:'Native original-session observation; journal clear is not verification success',verification:'conditional',sensitivity:'internal'});
+      this.runtime.saveCheckpoint(taskId,'harness-candidates:native-readback:'+origin.request.trialRunId,
+        {trialRunId:origin.request.trialRunId,expectedRevision,recovery:structuredClone(recovery),evidenceRef});
+      return {task:this.runtime.getTask(taskId),trialRunId:origin.request.trialRunId,recovery,evidenceRef};
+    })().finally(()=>this.activeHarnessCandidateRecovery.delete(taskId));
+    this.activeHarnessCandidateRecovery.set(taskId,execution);return execution;
   }
 
   private refreshCodingRepairParent(localTaskId:string):void {
