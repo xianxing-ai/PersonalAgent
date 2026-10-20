@@ -16,6 +16,34 @@ const globalScope={kind:'global'},scope={kind:'connector',connectorId:'mail'};
 const policy=(patch={})=>({mode:'normal',maxInterruptions:null,windowMinutes:17,silentUntilUtc:null,
   preferredChannel:'banner',allowUrgentBreakthrough:false,digestMode:'on_return',quietHours:null,...patch});
 const encryption={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()};
+
+test('startup binds one original notification host before Client and later attaches the connection without replacing policy',async()=>{
+  let shown=0,created=0;const time=Date.now();
+  const channel={readDeliveryOutcome:()=>undefined,sendAdvisoryNotification:async()=>{shown++;},dispose(){}};
+  const host=createDesktopNotificationApplicationHost({namespace:'early-notification-user',channel,now:()=>time});
+  const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',hostUserNamespace:'early-notification-user',tools:host.tools,now:()=>new Date(time)});
+  const other=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts'});
+  const original=app.createNotificationHost.bind(app);
+  app.createNotificationHost=options=>{created++;return original(options);};
+  try {
+    const singleton=host.bindApplication(app);
+    assert.equal(host.runtimeHost,singleton);assert.equal(host.snapshot().available,true);
+    host.ingest([{source:'mail',accountRef:'fixture',externalId:'early-item',occurredAt:new Date().toISOString(),
+      fetchedAt:new Date().toISOString(),contentRef:'fixture:early',sensitivity:'normal',dedupeKey:'early-item'}],{scope});
+    const saved=host.snapshot();assert.equal(saved.feed.items.length,1);
+    const client=new Client(app,()=>time);await client.connect();
+    assert.equal(host.bindApplication(app,client),singleton);
+    assert.equal(host.bindApplication(app),singleton,'an omitted late connection does not discard the attached Client');
+    assert.equal(created,1);assert.deepEqual(host.snapshot().feed,saved.feed);assert.equal(shown,0);
+    const configured=await host.configureSettings({operationId:'after-client',expectedRevision:0,scope:globalScope,patch:policy({mode:'silent'})});
+    assert.equal(configured.state,'confirmed');
+    assert.equal(host.snapshot().policy.effective.mode,'silent');
+    assert.throws(()=>host.bindApplication(other,client),/不同 Runtime/);
+    host.dispose();assert.throws(()=>host.bindApplication(app,client),/已经释放/);
+    assert.equal(created,1);assert.equal(shown,0);
+  }finally {host.dispose();await idle(app);app.close();other.close();}
+});
+
 async function idle(app){while(app.activeTaskCount)await new Promise(resolve=>setTimeout(resolve,5));}
 async function fixture(t,{autoShow=false,todo=false,legacyPolicy,legacyRecords}={}) {
   const cache=new URL('../../../.cache/desktop-notification-application-tests/',import.meta.url);mkdirSync(cache,{recursive:true});
