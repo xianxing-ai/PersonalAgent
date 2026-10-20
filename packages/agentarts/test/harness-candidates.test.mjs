@@ -66,6 +66,8 @@ test('combination requires independent fresh verification and observed parents; 
   assert.throws(()=>compareHarnessCandidates(context(),[a,b,combined]));
   const fresh=trial('combined');fresh.binding.parentArtifactDigests=[a.binding.artifactDigest,b.binding.artifactDigest];
   assert.equal(compareHarnessCandidates(context(),[a,b,fresh]).candidates[2].status,'verified');
+  const failedA=trial('one',context(),'FAILED'),failedB=trial('two',context(),'FAILED');
+  assert.equal(compareHarnessCandidates(context(),[failedA,failedB,fresh]).recommendation.candidateId,'combined');
 });
 test('cyclic combination provenance rejects rather than manufacturing ancestral validation',()=>{
   const a=trial('one'),b=trial('two'),c=trial('three');

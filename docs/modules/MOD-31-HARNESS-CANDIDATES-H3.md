@@ -13,6 +13,8 @@ Windows/coding 对话负责真实隔离试跑与原 F15 采用接线；H1 核心
 `@personal-agent/contracts/harness-candidates` 导出 `HarnessCandidateBinding`、`HarnessCandidateTrial`、
 `HarnessCandidateContext`、`HarnessCandidateComparison`、`parseHarnessCandidateBinding`、
 `parseHarnessCandidateTrial`、`harnessCandidateArtifactDigest` 和 `harnessCandidateRecipeFingerprint`。
+恢复结果 `HarnessTrialRecovery` 只读回原 session 的 clear/in_progress/unknown 与既有 checkReadback；
+clear 只代表 journal 无挂起操作，不等于验证通过，不重写原 UNKNOWN 或 Evidence。
 Schema 位于 `packages/contracts/schema/harness-candidates.json`，类型及运行时 Schema 由原 generate 脚本生成。
 Trial 组合既有 `CodingRepairSession`、`CodingRepairCheckReadback`，不另建跨包 DTO、任务库、调度器或授权层。
 
@@ -54,6 +56,7 @@ resolveTrialOrigin(ownerTaskId: string, runId: string, context: ToolContext):
 tool/version、executionStarted/allow/confirmed、完整参数摘要、原 execution Evidence 和缓存结果。
 最终核对候选/session/验证引用与原操作；当前绑定以原 checkpoint once 固定，取消或期限失效立即拒绝。
 不调用 Shell、模型或目录写入工具；不在此复制执行循环。
+Runtime 将推荐精确关联 `recommendation.trialRunId`；纯比较器缺少可信来源时不填该字段。
 
 ## 比较、组合和采用
 
@@ -74,6 +77,10 @@ tool/version、executionStarted/allow/confirmed、完整参数摘要、原 execu
 isolated session 不能直接 publish。最终采用应从原 confirmed trial 的精确 patch 读回，进入原 F15
 main 会话重新 apply/check 必选 recipes，再经原 Policy/CAS/publish/readback；不得切换 isolated 的 mode，
 不得将候选验证继承为主目录验证。未知写入必须核实原 operation。
+Windows runner 提供 `coding.repair.prepare_adoption@1.0.0` 的实现，输入仅 `{trialRunId}`，
+宿主从已确认比较和原 invocation 读精确补丁；返回新的 main checkReadback，待原 Gateway 确认后
+另调原 publish。`coding.repair.reconcile_trial@1.0.0` 只核实原 session，不生成新试跑或重放写入。
+这些实际工具由 runner 包及共享 H1 调用方分别提交源码和回执，本包不代签其验证。
 经验激活未接 goo122 的公开能力，不宣称跨任务学习完成。
 
 ## 验证与 Evidence
