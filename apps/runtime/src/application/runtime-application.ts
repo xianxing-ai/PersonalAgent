@@ -2285,7 +2285,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         {configurationRef?:string;context?:HarnessCandidateContext}|undefined;
       const scope=stored?.operation?.scope,session=stored?.input===undefined?undefined:parseCodingRepairInput(stored.input);
       if(!scope||scope.ownerTaskId!==owner.taskId||scope.actualTaskId!==owner.taskId||scope.scopeRef!==input.originRunId
-        ||scope.configurationRef!==hashJson([this.coordinationBinding,developerHarnessConfigurationRef(configuration)])
+        ||scope.configurationRef!==this.harnessStableConfigurationRef(configuration,owner.taskId)
         ||scope.workspaceRef!==configuration.workspaceRef||frozen?.configurationRef!==scope.configurationRef
         ||frozen.context?.binding.taskId!==owner.taskId||frozen.context.binding.inputDigest!==scope.inputDigest
         ||original?.toolName!==HARNESS_PREPARE_ADOPTION_TOOL||original.toolVersion!=='1.0.0'||!original.arguments
@@ -2326,6 +2326,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** The generic wire and the model ToolPort share the executor's original frozen subset. */
+  private harnessStableConfigurationRef(configuration:RuntimeDeveloperHarnessOptions,ownerTaskId:string):string {
+    const binding=this.runtime.loadCheckpoint(ownerTaskId,'subtask-parent') as {parentTaskId?:string}|undefined;
+    const selection=this.runtime.loadCheckpoint(ownerTaskId,'execution-model');
+    const preference=binding?.parentTaskId?this.runtime.loadCheckpoint(binding.parentTaskId,'task-model-preference'):undefined;
+    return hashJson([this.coordinationBinding,developerHarnessConfigurationRef(configuration),selection??null,preference??null]);
+  }
+
   resolveHarnessScope(context:ToolContext,source?:{actualTaskId:string;runId:string;scopeRef:string}):RuntimeHarnessScope|undefined {
     try {
       const actual=this.runtime.getTask(context.taskId),peer=readRuntimeSubagentSibling(this.runtime,actual.taskId);
@@ -2356,7 +2363,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         parentGoal:parent.goal,ownerGoal:owner.goal,delegation:root});
       const scope:RuntimeHarnessScope={ownerTaskId:owner.taskId,actualTaskId:actual.taskId,parentTaskId:parent.taskId,
         scopeRef:context.authorizationRef,inputDigest,deadline:root.deadline,workspaceRef:configuration.workspaceRef,
-        configurationRef:hashJson([this.coordinationBinding,developerHarnessConfigurationRef(configuration)])};
+        configurationRef:this.harnessStableConfigurationRef(configuration,owner.taskId)};
       if(!source)return scope;
       if(source.scopeRef!==source.runId)return undefined;
       const sourceTask=this.runtime.getTask(source.actualTaskId),sourcePeer=readRuntimeSubagentSibling(this.runtime,source.actualTaskId);
@@ -2959,11 +2966,28 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Startup classifier supplies an unchanged original record, never permission to repeat an attempt. */
   resumeStartupTask(request:{taskId:string;expectedRevision:number;mode:'before_first_send'|'confirmed_read';
-    deadline:string;assertUnchanged:()=>void}):{accepted:boolean} {
-    if(this.profile!=='huawei_ict_agentarts'||this.activeTextTasks.has(request.taskId)
+    deadline:string;assertUnchanged:()=>void;harnessEventOrigin?:{deliveryId:string;eventDigest:string;sourceTaskId:string;originalParentTaskId:string}}):{accepted:boolean} {
+    if(this.profile!=='huawei_ict_agentarts'||this.activeTextTasks.has(request.taskId)||this.runtime.isTaskActive(request.taskId)
       ||typeof request.assertUnchanged!=='function'||!['before_first_send','confirmed_read'].includes(request.mode))return {accepted:false};
     request.assertUnchanged();
     const original=this.runtime.getTask(request.taskId),goal=this.runtime.loadCheckpoint(request.taskId,'application-goal');
+    if(request.harnessEventOrigin) {
+      const origin=request.harnessEventOrigin;
+      if(request.mode!=='before_first_send'||original.state!=='created'||original.cancelRequested
+        ||original.revision!==request.expectedRevision||!this.delegateUserTasks
+        ||typeof original.goal!=='string'||typeof original.conversationId!=='string'
+        ||!isDeepStrictEqual(this.runtime.loadCheckpoint(original.taskId,'harness-event-origin'),origin)
+        ||this.runtime.findTaskByIdempotencyKey('harness-event-root:'+origin.deliveryId)?.taskId!==original.taskId
+        ||!sha256(origin.eventDigest)||!Number.isFinite(Date.parse(request.deadline))
+        ||this.now().getTime()>=Date.parse(request.deadline)||this.runtime.readToolExecutions(original.taskId).length
+        ||this.runtime.loadCheckpoint(original.taskId,'competition-loop')!==undefined
+        ||this.runtime.loadCheckpoint(original.taskId,'competition-cloud-inflight')
+        ||this.runtime.loadCheckpoint(original.taskId,'competition-cloud-unknown'))return {accepted:false};
+      const current:unknown=this.assertCoordinationBinding?.();
+      if(current!==undefined){void Promise.resolve(current).catch(()=>{});return {accepted:false};}
+      this.dispatchAcceptedTextTask(original.taskId,original.goal,original.conversationId,request.deadline);
+      return {accepted:this.activeTextTasks.has(original.taskId)};
+    }
     this.assertCompetitionTaskConfiguration(request.taskId);
     this.assertDeveloperHarnessExecutorCurrent(request.taskId);
     if(original.revision!==request.expectedRevision||original.cancelRequested||typeof goal!=='string'
@@ -3592,7 +3616,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
     this.runtime.getTask(origin.sourceTaskId);this.runtime.getTask(origin.originalParentTaskId);
     const task=this.runtime.submitTaskWithCheckpoint(submission,'harness-event-origin',structuredClone(origin));
-    if(task.state==='created')this.dispatchAcceptedTextTask(task.taskId,task.goal,task.conversationId,deadline);
+    if(task.state==='created')this.dispatchAcceptedTextTask(task.taskId,submission.goal,submission.conversationId,deadline);
     return this.runtime.getTask(task.taskId);
   }
 
