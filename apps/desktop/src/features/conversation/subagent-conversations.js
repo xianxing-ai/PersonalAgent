@@ -1,4 +1,5 @@
 import {stateNames} from './state.js';
+import {isStopRequest} from './stop-request.js';
 
 /** Compact workspace history; the trusted host opens each independent child window. */
 export function mountSubagentConversations(root, invoke, escape) {
@@ -23,7 +24,24 @@ export function mountSubagentConversations(root, invoke, escape) {
   });
   more.className = 'subagent-conversations-more';
   more.setAttribute('aria-label', '查看全部子智能体');
-  section.append(list, status, more);
+  // One action reclaims every child window's renderer process instead of closing them one by one.
+  const collapse = action('收起', async () => {
+    if (collapse.disabled) return;
+    collapse.disabled = true;
+    status.textContent = '';
+    try {
+      const result = await invoke('subagentConversations.collapseAll');
+      const closed = Number(result?.closed ?? 0);
+      status.textContent = closed > 0 ? `已收起 ${closed} 个子对话窗口。` : '当前没有打开的子对话窗口。';
+    } catch (error) {
+      showError(status, error, '无法收起子对话');
+    } finally {
+      collapse.disabled = false;
+    }
+  });
+  collapse.className = 'subagent-conversations-collapse';
+  collapse.setAttribute('aria-label', '收起全部子对话窗口');
+  section.append(list, status, more, collapse);
   root.append(section);
 
   let tasks = new Map(), buttons = new Map();
@@ -155,12 +173,22 @@ export function mountSubagentConversationPage(root, invoke) {
   let identity = null, readVersion = 0, draftVersion = 0, navigating = false, closed = false;
   let activeTaskId = null, canSubmit = false, sending = null, cancelling = null, retryRequest = null;
   let submitUnavailableReason = '';
+  // Set when the user stops: the composer stays usable even if the host still reports the old
+  // task as active, because waiting for the runtime to unwind is what made stop feel broken.
+  let truncated = false;
   const current = version => !closed && !navigating && readVersion === version;
+  const beforeUnload=event=>{
+    if(!closed&&(input.value.trim()||sending)){event.preventDefault();event.returnValue=false;}
+  };
+  const dispose=()=>{closed=true;readVersion++;globalThis.window?.removeEventListener('beforeunload',beforeUnload);};
+  globalThis.window?.addEventListener('beforeunload',beforeUnload);
+  globalThis.window?.addEventListener('unload',dispose,{once:true});
 
   function syncControls() {
     const busy = closed || navigating;
     input.disabled = busy;
-    sendButton.disabled = busy || Boolean(sending || cancelling || activeTaskId)
+    // A stop request never blocks the composer: the local truncation already released the task.
+    sendButton.disabled = busy || Boolean(sending || activeTaskId)
       || !canSubmit || !input.value.trim();
     stopButton.disabled = busy || Boolean(sending || cancelling) || !activeTaskId;
     refreshButton.disabled = busy || Boolean(sending || cancelling);
@@ -177,9 +205,18 @@ export function mountSubagentConversationPage(root, invoke) {
     const nextIdentity = JSON.stringify([record.parentTaskId, record.taskId]);
     if (identity && identity !== nextIdentity) throw Error('子对话记录与当前窗口不匹配');
     identity = nextIdentity;
-    activeTaskId = text(record.activeTaskId) || null;
-    canSubmit = record.canSubmit === true;
-    submitUnavailableReason = text(record.submitUnavailableReason);
+    const reportedActive = text(record.activeTaskId) || null;
+    if (reportedActive && truncated) {
+      // Keep the local truncation until the host itself reports no active task.
+      activeTaskId = null;
+      canSubmit = true;
+      submitUnavailableReason = '';
+    } else {
+      activeTaskId = reportedActive;
+      canSubmit = record.canSubmit === true;
+      submitUnavailableReason = text(record.submitUnavailableReason);
+      if (!reportedActive) truncated = false;
+    }
     title.textContent = (text(record.role) || '子智能体') + ' · ' + record.taskId.slice(-8);
     title.setAttribute('title', '子任务 ' + record.taskId + '\n父任务 ' + record.parentTaskId);
     status.setAttribute('role', 'status');
@@ -209,7 +246,15 @@ export function mountSubagentConversationPage(root, invoke) {
   }
 
   async function submit() {
-    if (closed || navigating || sending || cancelling || activeTaskId || !canSubmit || !input.value.trim()) return;
+    if (closed || navigating || sending || !input.value.trim()) return;
+    if (isStopRequest(input.value)) {
+      // "停止" in this composer is an instruction to the running task, not a new message.
+      if (activeTaskId) { await cancel(); return; }
+      composerStatus.setAttribute('role', 'status');
+      composerStatus.textContent = '当前没有正在执行的任务。';
+      return;
+    }
+    if (activeTaskId || !canSubmit) return;
     const value = input.value;
     if (!retryRequest || retryRequest.text !== value) {
       try {
@@ -231,6 +276,8 @@ export function mountSubagentConversationPage(root, invoke) {
       const result = await invoke('subagentConversation.submit', {...request});
       if (!current(version)) return;
       let acceptedTaskId;
+      // A newly accepted message owns the composer again; the earlier truncation is over.
+      truncated = false;
       if (validIdentity(result)) {
         applySnapshot(result);
         acceptedTaskId = activeTaskId;
@@ -244,7 +291,12 @@ export function mountSubagentConversationPage(root, invoke) {
       composerStatus.textContent = '消息已受理' + (acceptedTaskId ? '：' + acceptedTaskId : '')
         + '。是否完成以消息记录中的执行状态为准。';
     } catch (error) {
-      if (current(version)) showError(composerStatus, error, '发送失败，草稿已保留');
+      if (current(version)) {
+        // The host refuses a new message while the stopped turn is still unwinding.
+        if (/active or unresolved task/i.test(text(error?.message))) {
+          showError(composerStatus, Error('上一条执行仍在停止中，请稍候几秒再发送'), '发送失败，草稿已保留');
+        } else showError(composerStatus, error, '发送失败，草稿已保留');
+      }
     } finally {
       if (sending === request) sending = null;
       syncControls();
@@ -257,23 +309,28 @@ export function mountSubagentConversationPage(root, invoke) {
     const taskId = activeTaskId;
     const version = ++readVersion;
     cancelling = taskId;
+    // Forced truncation: release the composer now instead of waiting for the runtime to unwind.
+    truncated = true;
+    activeTaskId = null;
+    canSubmit = true;
+    submitUnavailableReason = '';
     content.setAttribute('aria-busy', 'false');
     composerStatus.setAttribute('role', 'status');
-    composerStatus.textContent = '正在提交停止请求…';
+    composerStatus.textContent = '已停止当前执行，可以继续发送新消息；是否停止以任务状态为准。';
     syncControls();
     try {
       const result = await invoke('subagentConversation.cancel', {taskId});
       if (!current(version)) return;
       if (validIdentity(result)) {
         applySnapshot(result);
-        composerStatus.textContent = '已读取任务状态；是否停止以最新任务状态为准。';
+        composerStatus.textContent = '停止请求已受理；可以继续发送新消息，是否停止以任务状态为准。';
       } else if (result?.cancelAccepted === true) {
-        composerStatus.textContent = '停止请求已受理；是否停止以最新任务状态为准。';
+        composerStatus.textContent = '停止请求已受理；可以继续发送新消息，是否停止以任务状态为准。';
       } else if (result?.cancelAccepted === false) {
-        composerStatus.textContent = '当前任务未接受停止请求，请查看最新状态。';
+        composerStatus.textContent = '当前任务未接受停止请求；本地已停止显示，可刷新核实最新状态。';
       } else throw Error('未收到可核实的停止回执，请刷新任务状态');
     } catch (error) {
-      if (current(version)) showError(composerStatus, error, '停止请求失败');
+      if (current(version)) showError(composerStatus, error, '停止请求未获确认；本地已停止显示，可刷新核实');
     } finally {
       if (cancelling === taskId) cancelling = null;
       syncControls();
@@ -283,13 +340,16 @@ export function mountSubagentConversationPage(root, invoke) {
 
   async function navigate(name, fallback) {
     if (closed || navigating) return;
+    if(name==='subagentConversation.close'&&(input.value.trim()||sending)){
+      showError(status,Error('请先发送或清空当前草稿，提交中的消息须等待受理'),fallback);return;
+    }
     navigating = true;
     readVersion++;
     content.setAttribute('aria-busy', 'false');
     syncControls();
     try {
       await invoke(name);
-      if (name === 'subagentConversation.close') closed = true;
+      if (name === 'subagentConversation.close') dispose();
       else {
         status.setAttribute('role', 'status');
         status.textContent = '已返回主对话。';

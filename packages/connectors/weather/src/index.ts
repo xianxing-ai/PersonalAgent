@@ -3,7 +3,7 @@ import type { RegisteredTool, ToolDescriptor, ToolHost } from '@personal-agent/c
 import { WeatherConnector, WEATHER_CONNECTOR_VERSION } from './connector.js';
 export { WeatherConnector, WEATHER_CONNECTOR_VERSION } from './connector.js';
 export { FakeWeatherProvider, defaultWeatherFixtures } from './provider.js';
-export type { FixtureForecast, ForecastFetch, ForecastRequest, PlaceConfidence, PublishedTimeKind, ResolvedPlace, WeatherProvider, WeatherUnits } from './provider.js';
+export type { FixtureForecast, ForecastCurrent, ForecastFetch, ForecastHourlyPoint, ForecastRequest, PlaceConfidence, PublishedTimeKind, ResolvedPlace, WeatherProvider, WeatherUnits } from './provider.js';
 export { OpenMeteoProvider } from './open-meteo.js';
 export type { FetchLike, FetchResponseLike, LocationResolution, OpenMeteoOptions } from './open-meteo.js';
 export { WeatherService } from './service.js';
@@ -48,6 +48,37 @@ const forecastOutputSchema: ToolDescriptor['outputSchema'] = {
         temperatureMax: {type: 'number'},
         precipitationProbability: {type: ['integer', 'null'], minimum: 0, maximum: 100},
         publishedTimeKind: {enum: ['provider_published', 'coverage_start']},
+        current: {
+          type: 'object',
+          description: '查询时刻的实况（可选）：体感温度、湿度、风速风向。用于判断当下是否适合外出。',
+          required: ['observedAt', 'temperature'],
+          additionalProperties: false,
+          properties: {
+            observedAt: {type: 'string', minLength: 1},
+            temperature: {type: 'number'},
+            apparentTemperature: {type: ['number', 'null']},
+            relativeHumidity: {type: ['number', 'null'], minimum: 0, maximum: 100},
+            windSpeed: {type: ['number', 'null'], minimum: 0},
+            windDirection: {type: ['number', 'null'], minimum: 0, maximum: 360},
+            weatherCode: {type: ['integer', 'null']},
+          },
+        },
+        hourly: {
+          type: 'array',
+          description: '查询当日的逐小时温度与降水概率（可选），用于按时段给出建议。',
+          maxItems: 48,
+          items: {
+            type: 'object',
+            required: ['time', 'temperature'],
+            additionalProperties: false,
+            properties: {
+              time: {type: 'string', minLength: 1},
+              temperature: {type: 'number'},
+              precipitationProbability: {type: ['integer', 'null'], minimum: 0, maximum: 100},
+              weatherCode: {type: ['integer', 'null']},
+            },
+          },
+        },
       },
     },
     cache: {
