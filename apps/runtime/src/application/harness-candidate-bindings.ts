@@ -1,7 +1,7 @@
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {ToolContext} from '@personal-agent/contracts';
-import {parseCodingRepairInput,parseCodingRepairPatch} from '@personal-agent/contracts/coding-repair';
+import {parseCodingRepairInput,parseCodingRepairPatch,parseCodingRepairCheckReadback} from '@personal-agent/contracts/coding-repair';
 import type {CodingRepairInput,CodingRepairPatch} from '@personal-agent/contracts/coding-repair';
 import {parseHarnessCandidateTrial,harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import type {HarnessCandidateContext,HarnessCandidateTrial} from '@personal-agent/contracts/harness-candidates';
@@ -24,6 +24,16 @@ export interface RuntimeHarnessCandidateBindingsOptions {
 export interface RuntimeHarnessCandidateRecoveryRequest {
   ownerTaskId:string;actualTaskId:string;trialRunId:string;expectedRevision:number;configurationRef:string;
 }
+/** Host-only historical lookup. H1 still checks original owner/plan and the experience current-authority fence. */
+export interface RuntimeHarnessCandidateProvenanceRequest {ownerTaskId:string;actualTaskId:string;runId:string}
+export interface RuntimeHarnessCandidateAdoptionOrigin {
+  version:1;ownerTaskId:string;
+  adoption:{taskId:string;runId:string};trial:{taskId:string;runId:string};comparison:{taskId:string;runId:string};
+  inputDigest:string;configurationRef:string;workspaceRef:string;workspaceId:string;baselineSnapshotId:string;
+  candidateId:string;artifactId:string;artifactDigest:string;
+  adoptionInputDigest:string;trialInputDigest:string;comparisonInputDigest:string;
+  trialResultDigest:string;comparisonResultDigest:string;
+}
 interface Operation {
   version:1;scope:RuntimeHarnessCandidateScope;runId:string;toolName:string;toolVersion:string;
   arguments:Record<string,unknown>;argumentsDigest:string;deadline:string;
@@ -36,6 +46,7 @@ const tools=[trialTool,compareTool,adoptTool,recoverTool];
 const freezeKey='harness-candidates:configuration';
 const operationKey=(runId:string)=>'harness-candidates:operation:'+runId;
 const sessionKey=(runId:string)=>'harness-candidates:session:'+runId;
+const adoptionOriginKey=(runId:string)=>'harness-candidates:adoption-origin:'+runId;
 function denied(message:string):never {throw new ProtocolError('UNAUTHORIZED',message);}
 function conflict(message:string):never {throw new ProtocolError('REVISION_CONFLICT',message);}
 const plain=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
@@ -212,6 +223,72 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     if(runtime.getTask(input.actualTaskId).revision!==input.expectedRevision)conflict('Recovery task changed during metadata readback');
     return original;
   }
+  function provenanceOperation(input:RuntimeHarnessCandidateProvenanceRequest):{operation:Operation;executionInputDigest:string;result:unknown} {
+    const runtime=application.runtime,task=runtime.getTask(input.actualTaskId),owner=runtime.getTask(input.ownerTaskId);
+    if(task.state!=='succeeded'||task.cancelRequested||owner.state!=='succeeded'||owner.cancelRequested)
+      denied('Experience metadata requires original succeeded tasks');
+    const saved=runtime.loadCheckpoint(input.ownerTaskId,operationKey(input.runId)) as OperationRecord|undefined;
+    if(!saved||saved.version!==1||saved.runId!==input.runId||saved.scope.actualTaskId!==input.actualTaskId
+      ||saved.scope.ownerTaskId!==input.ownerTaskId||![trialTool,compareTool,adoptTool].includes(saved.toolName))
+      denied('Original provenance operation unavailable');
+    const op=invocation(saved.scope,input.runId);
+    const record=runtime.readToolExecutions(input.actualTaskId).find(r=>r.evidenceId===input.runId)!;
+    const cached=runtime.loadCheckpoint(input.actualTaskId,'tool-result-'+input.runId);
+    if(!isDeepStrictEqual(locator(op),saved)||record.state!=='confirmed'
+      ||!runtime.readEvidence(input.actualTaskId).some(e=>e.evidenceId===input.runId&&e.kind==='execution'&&e.sourceRef===op.toolName)
+      ||!plain(cached)||!Object.hasOwn(cached,'result'))denied('Original confirmed provenance Evidence unavailable');
+    frozen(op.scope);
+    return {operation:op,executionInputDigest:record.inputDigest,result:structuredClone(cached.result)};
+  }
+  /** Read the single canonical {operation,input} row. No session, selection, or owner-session writes. */
+  function readOriginalSessionForProvenance(input:RuntimeHarnessCandidateProvenanceRequest):CodingRepairInput|undefined {
+    const runtime=application.runtime,{operation:op}=provenanceOperation(input);
+    if(![trialTool,adoptTool].includes(op.toolName))denied('Provenance run has no repair session');
+    const saved=runtime.loadCheckpoint(input.ownerTaskId,sessionKey(input.runId)) as SavedSession|undefined;
+    if(!saved)return;
+    if(!isDeepStrictEqual(saved.operation,locator(op)))denied('Canonical provenance session operation differs');
+    const parsed=parseCodingRepairInput(saved.input),configuration=frozen(op.scope);
+    if(parsed.session.taskId!==input.actualTaskId||parsed.session.workspaceId!==configuration.binding.workspaceId
+      ||parsed.session.mode!==(op.toolName===trialTool?'isolated':'main')||parsed.session.baselineSnapshotId!==configuration.binding.baselineSnapshotId
+      ||harnessCandidateArtifactDigest(parsed.initialSnapshot)!==harnessCandidateArtifactDigest(configuration.baseline)
+      ||harnessCandidateRecipeFingerprint(parsed.recipes)!==configuration.binding.recipeFingerprint
+      ||parsed.initialSnapshot.files.some(f=>f.content!==undefined))denied('Canonical provenance session metadata differs');
+    return parsed;
+  }
+  function readAdoptionOrigin(input:RuntimeHarnessCandidateProvenanceRequest):RuntimeHarnessCandidateAdoptionOrigin|undefined {
+    const runtime=application.runtime;
+    const stored=runtime.loadCheckpoint(input.ownerTaskId,adoptionOriginKey(input.runId)) as RuntimeHarnessCandidateAdoptionOrigin|undefined;
+    if(!stored)return;
+    const adoption=provenanceOperation(input);
+    if(stored.version!==1||stored.ownerTaskId!==input.ownerTaskId||input.actualTaskId!==input.ownerTaskId
+      ||!isDeepStrictEqual(stored.adoption,{taskId:input.actualTaskId,runId:input.runId})||adoption.operation.toolName!==adoptTool)
+      denied('Original adoption provenance owner differs');
+    const trial=provenanceOperation({ownerTaskId:input.ownerTaskId,actualTaskId:stored.trial.taskId,runId:stored.trial.runId});
+    const comparison=provenanceOperation({ownerTaskId:input.ownerTaskId,actualTaskId:stored.comparison.taskId,runId:stored.comparison.runId});
+    const scope=adoption.operation.scope,configuration=frozen(scope);
+    if(trial.operation.toolName!==trialTool||comparison.operation.toolName!==compareTool
+      ||stored.inputDigest!==scope.inputDigest||stored.configurationRef!==scope.configurationRef||stored.workspaceRef!==scope.workspaceRef
+      ||stored.workspaceId!==configuration.binding.workspaceId||stored.baselineSnapshotId!==configuration.binding.baselineSnapshotId
+      ||[trial,comparison].some(source=>source.operation.scope.configurationRef!==scope.configurationRef
+        ||source.operation.scope.inputDigest!==scope.inputDigest||source.operation.scope.workspaceRef!==scope.workspaceRef)
+      ||stored.adoptionInputDigest!==adoption.executionInputDigest||stored.trialInputDigest!==trial.executionInputDigest
+      ||stored.comparisonInputDigest!==comparison.executionInputDigest
+      ||stored.trialResultDigest!==toolArgumentsDigest(trial.result)||stored.comparisonResultDigest!==toolArgumentsDigest(comparison.result)
+      ||adoption.operation.arguments.trialRunId!==stored.trial.runId)denied('Original adoption provenance inputs differ');
+    const candidate=parseHarnessCandidateTrial(trial.result),session=readOriginalSessionForProvenance(input);
+    const trialSession=readOriginalSessionForProvenance({ownerTaskId:input.ownerTaskId,actualTaskId:stored.trial.taskId,runId:stored.trial.runId});
+    if(!session||!trialSession||!isDeepStrictEqual(candidate.session,trialSession.session)||candidate.binding.candidateId!==stored.candidateId
+      ||candidate.binding.artifactId!==stored.artifactId||candidate.binding.artifactDigest!==stored.artifactDigest
+      ||!plain(comparison.result)||!plain(comparison.result.recommendation)||comparison.result.state!=='selected'
+      ||comparison.result.recommendation.trialRunId!==stored.trial.runId||comparison.result.recommendation.candidateId!==stored.candidateId
+      ||comparison.result.recommendation.artifactId!==stored.artifactId||comparison.result.recommendation.artifactDigest!==stored.artifactDigest
+      ||!Array.isArray(comparison.operation.arguments.trialRunIds)||!comparison.operation.arguments.trialRunIds.includes(stored.trial.runId))
+      denied('Original confirmed selection provenance differs');
+    const adopted=parseCodingRepairCheckReadback(adoption.result);
+    if(adopted.sessionId!==session.session.sessionId||harnessCandidateArtifactDigest(adopted.snapshot)!==stored.artifactDigest)
+      denied('Original adoption result is not the saved main session artifact');
+    return structuredClone(stored);
+  }
   async function readParentArtifactDigests(context:ToolContext,candidateId:string,parentRuns:readonly string[],patches:readonly CodingRepairPatch[]):Promise<readonly string[]> {
     const op=own(context,[trialTool]);
     if(op.arguments.candidateId!==candidateId||!isDeepStrictEqual(op.arguments.parentTrialRunIds??[],parentRuns)
@@ -259,8 +336,20 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
       ||comparison.recommendation?.trialRunId!==trialRunId)denied('Latest confirmed comparison does not select this original trial');
     const selected=observed[(ids as string[]).indexOf(trialRunId)];
     if(!selected)denied('Selected trial is not in the original comparison');
+    const executionInputDigest=(op:Operation)=>runtime.readToolExecutions(op.scope.actualTaskId).find(r=>r.evidenceId===op.runId)!.inputDigest;
+    const trialCache=runtime.loadCheckpoint(selected.operation.scope.actualTaskId,'tool-result-'+trialRunId) as {result:unknown};
+    const origin:RuntimeHarnessCandidateAdoptionOrigin={version:1,ownerTaskId:active.scope.ownerTaskId,
+      adoption:{taskId:context.taskId,runId:context.runId},trial:{taskId:selected.operation.scope.actualTaskId,runId:trialRunId},
+      comparison:{taskId:original.scope.actualTaskId,runId:original.runId},inputDigest:active.scope.inputDigest,
+      configurationRef:active.scope.configurationRef,workspaceRef:active.scope.workspaceRef,workspaceId:configuration.binding.workspaceId,
+      baselineSnapshotId:configuration.binding.baselineSnapshotId,candidateId:selected.trial.binding.candidateId,
+      artifactId:selected.trial.binding.artifactId,artifactDigest:selected.trial.binding.artifactDigest,
+      adoptionInputDigest:executionInputDigest(active),trialInputDigest:executionInputDigest(selected.operation),comparisonInputDigest:executionInputDigest(original),
+      trialResultDigest:toolArgumentsDigest(trialCache.result),comparisonResultDigest:toolArgumentsDigest(cached.result)};
+    once(active.scope.ownerTaskId,adoptionOriginKey(context.runId),origin);
     return {trial:structuredClone(selected!.trial),comparison,patches:structuredClone(selected!.patches)};
   }
   const trial={readBinding,readParentArtifactDigests,readSession,saveSession};
-  return {trial,adoption:{...trial,readSelection},recovery:{readOriginalSession},compare,readOriginalSessionForRecovery};
+  return {trial,adoption:{...trial,readSelection},recovery:{readOriginalSession},compare,readOriginalSessionForRecovery,
+    readOriginalSessionForProvenance,readAdoptionOrigin};
 }

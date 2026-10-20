@@ -93,6 +93,32 @@ revision、operation/参数摘要/Evidence、saveOnce session 与冻结配置/�
 允许过期或禁用后的原会话只读核实，但不接受更换 workspace/config，不写状态、回执或 Evidence。
 H1/Windows 随后仅读原 journal/current metadata，并在异步读回前后复核 revision；clear 仍不是验证成功。
 
+### 经验 consumer 的唯一来源读取
+
+`adoption.readSelection` 完成原 confirmed trial/compare 及当前 started adoption 校验后，在原 owner
+以 saveOnce 写 `harness-candidates:adoption-origin:<adoptionRunId>`。记录 version/ownerTaskId、精确
+adoption/trial/comparison 的 taskId/runId、owner inputDigest、configurationRef/workspaceRef、实际 workspaceId、
+baselineSnapshotId、candidateId/artifactId/artifactDigest、三个原 Gateway inputDigest 及 trial/compare 原结果摘要。
+不另写 `selection` 或 `owner-session` 格式，不复制补丁正文；同 adoption run 的来源改变即拒绝。
+
+factory 顶层公开两个 **host-only 同步纯 reader**：
+
+```typescript
+readOriginalSessionForProvenance({ownerTaskId, actualTaskId, runId}): CodingRepairInput | undefined;
+readAdoptionOrigin({ownerTaskId, actualTaskId, runId}): RuntimeHarnessCandidateAdoptionOrigin | undefined;
+```
+
+请求类型是 `RuntimeHarnessCandidateProvenanceRequest`。二者仅读原 canonical `{operation,input}` 和来源记录，
+要求 owner/实际任务 succeeded、未取消、原 Gateway confirmed/allow/started、精确调用参数摘要及 execution Evidence。
+session、配置/基线、原 compare/trial 的结果摘要和采用结果实际 session/artifact 均复核。
+其中 `inputDigest` 是原 owner 输入；`adoptionInputDigest/trialInputDigest/comparisonInputDigest` 是三条原
+ToolExecutionRecord.inputDigest，不可混用。
+
+经验 consumer 从原 publication.sessionId 精确匹配该 owner 原 confirmed prepare_adoption 的 canonical session，
+再读其固定 origin；不猜“最新 compare”，不重新写同名 session key 或建立第二套 journal。
+reader 不构成用户授权，不进入模型工具目录；经验 `proposeFromConfirmed` 仍必须执行 H1 assertOrigin、四条
+原 confirmed 回执、实际发布/测试读回和当前 workspace/configuration fence。本包不代验经验激活或学习效果。
+
 采用只消费 owner 最新的 confirmed 比较（后续 pending/unknown/failed/弃权不回退旧选择），
 重算同一输入的比较并与原确认结果逐字段核对，再交精确选中补丁。
 组合核原 refs/祖先无环和原候选输入，首版只接受精确补丁并集；同一路径冲突明确 unsupported。
@@ -141,6 +167,9 @@ workspaceId/workspaceRef 差异，仅用 Node 24.15.0 源码 loader 执行 `fact
 本包已交上述 native-only reader，另用同一源码 loader 运行 `native recovery reads` 一个必要 Fake 端口单例，
 1/1 通过，日志 `.cache/harness-bindings-native-case.log`；原 state/Evidence 不变，过期 revision/换配置拒绝。
 H1/Windows 实际 native 调用方及真实 journal 联合路径仍待统一集成验证，不因目录或两个 Fake 单例宣称闭环已验。
+经验来源接线另做一个必要源码 loader Fake 单例 `host-only provenance pins`，1/1 通过，
+日志 `.cache/harness-bindings-provenance-case.log`；覆盖只读 canonical main session、固定原来源及原输入摘要替换拒绝。
+定向 noEmit 诊断仍为 0；未扩大为全量行为回归，经验实际 sourceconsumer 组合验收另记。
 以上只读审查不是仓库非作者 Approve，也不代替后续联调。
 本包用显式 synthetic trial 验证契约、绑定/失败/unknown/弃权/组合边界，Runtime 用真实 SQLite/
 Policy/ToolGateway 消费 synthetic 端口；Windows 真实 host/Node 固定配方由 runner 工作包独立取证。
