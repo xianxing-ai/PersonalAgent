@@ -35,4 +35,6 @@ Node 24.15.0 / Electron 44.2.0 的实际 smoke 14 项通过，回执为 `apps/de
 
 预检现绑定原窗口集合、webContents 与主 frame，并在主 frame 跨文档导航开始/提交、renderer 消失或销毁、窗口关闭时使 pending/ready 回执失效；同文档和子 frame 导航不撤销回执。每次 allow 仍核对原实体集合；加载中的替换页面拒绝预检，待就绪后显式重试。失效/取消/超时清理监听器和计时器，并尝试解冻仍存活的原页面及当前页面；旧异步成功不能再触发 quit。保持原 5 秒上限、原清理顺序和权限，不新增关停流程。
 
-对应轻量回归补充同窗同 frame 重载、窗口替换、pending 导航及迟到成功、重复取消清理、同文档/子 frame 导航、renderer 消失和加载中替换页。Node 24.15.0 下，`draft-quit-preflight`、`conversation-draft-close`、`quit-task-preflight` 三文件 33/33 通过，Desktop typecheck 与 diff 检查通过；日志在忽略目录 `.cache/pr-maintenance-20261020/pr404/page-generation-{tests,typecheck}.log`。未重跑实际 Electron smoke 或全仓测试，不沿用上节实际 smoke 结果冒充新版本验证。
+初轮导航回归后补齐正常退出的最终提交边界：Main 完成全部异步释放及最后活动任务门禁后，在注销快捷键和同步 Runtime/托盘清理前调用 `commit()`。该调用同步重验 ready 页面，成功后移除生命周期监听器，正常窗口 destroyed/closed 不再报告退出失败；失败阻止清理并重新预检。同步清理失败仍沿 `reportQuitFailure` 调用 `cancel()`，解冻保留页面。手动 smoke 的显式 Fake before-quit 组合也对齐该提交边界，没有修改其保存或清理断言。
+
+对应轻量回归覆盖同窗同 frame 重载、窗口替换、pending 导航及迟到成功、重复取消清理、同文档/子 frame 导航、renderer 消失、加载中替换页、最终 commit 后正常两窗口销毁及同步 Runtime 关闭失败解冻。Node 24.15.0 下，`draft-quit-preflight`、`conversation-draft-close`、`quit-task-preflight` 三文件最终 38/38 通过，Desktop typecheck、smoke 语法与 diff 检查通过；日志在忽略目录 `.cache/pr-maintenance-20261020/pr404/page-generation-final-{tests,typecheck}.log`。未重跑实际 Electron smoke 或全仓测试，不沿用上节实际 smoke 结果冒充新版本验证。初轮 `f542ad93` 不含 final commit，不能作为最终交付版本。

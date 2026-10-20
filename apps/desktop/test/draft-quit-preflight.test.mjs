@@ -89,3 +89,19 @@ test('a loading replacement page cannot obtain a receipt until loading finishes'
   f.windows[0].webContents.isLoadingMainFrame=()=>false;assert.equal(f.guard.allow(),false);assert.equal(f.pending.length,4);
   f.guard.cancel();
 });
+
+test('final commit detaches lifecycle listeners while explicit cleanup failure can still resume drafts',async()=>{
+  const f=fixture();f.guard.allow();f.pending.forEach(value=>value.resolve(true));await settle();
+  assert.equal(f.guard.commit(),true);const failures=f.calls.filter(value=>value.includes('页面已变化')).length;
+  for(const win of f.windows){win.webContents.emit('destroyed');win.emit('closed');assert.equal(win.webContents.eventNames().length,0);}
+  assert.equal(f.calls.filter(value=>value.includes('页面已变化')).length,failures);
+  f.guard.cancel();assert.equal(f.calls.some(value=>value.includes('pa:cancel-quit')),true);
+});
+
+test('navigation before final commit refuses cleanup and no-window exit can commit',async()=>{
+  const f=fixture();f.guard.allow();f.pending.forEach(value=>value.resolve(true));await settle();
+  f.windows[0].webContents.emit('did-start-navigation',{},'file:///replacement',false,true);
+  assert.equal(f.guard.commit(),false);
+  const empty=createDraftQuitPreflight({windows:()=>[],retry(){assert.fail('no asynchronous retry needed');},onFailure(){assert.fail('no page failed');}});
+  assert.equal(empty.allow(),true);assert.equal(empty.commit(),true);empty.cancel();
+});

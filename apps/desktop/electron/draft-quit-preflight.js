@@ -23,10 +23,11 @@ export function createDraftQuitPreflight({windows,retry,onFailure,timeoutMs=5000
   }
   return {
     allow(){
+      if(phase==='committed')return true;
       if(phase!=='idle'&&!current())cancel();
       if(phase==='ready')return true;
       if(phase==='pending')return false;
-      const targets=pages();if(!targets.length)return true;
+      const targets=pages();if(!targets.length){phase='ready';bindings=[];return true;}
       if(targets.some(win=>win.webContents.isLoadingMainFrame?.())){
         onFailure(Error('页面正在加载，请等待草稿界面就绪后重试退出'));return false;
       }
@@ -49,6 +50,13 @@ export function createDraftQuitPreflight({windows,retry,onFailure,timeoutMs=5000
         phase='ready';retry();
       }).catch(error=>{if(version===generation){cancel();onFailure(error);}}).finally(()=>{clearTimeout(timer);if(waitTimer===timer)waitTimer=undefined;});
       return false;
+    },
+    // Called synchronously immediately before irreversible host cleanup. Normal
+    // window destruction must no longer turn a successful shutdown into failure.
+    commit(){
+      if(phase==='committed')return true;
+      if(phase!=='ready'||!current()){cancel();return false;}
+      phase='committed';clearTimeout(waitTimer);waitTimer=undefined;clearListeners();return true;
     },
     cancel,
   };

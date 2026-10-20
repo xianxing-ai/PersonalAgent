@@ -33,7 +33,7 @@ const {_electron}=require('playwright');
   globalThis.journal=journal;globalThis.configuration=configuration;
   globalThis.cleanupCount=0;globalThis.quitError='';
   draftQuitPreflight=createDraftQuitPreflight({windows:()=>[windows.get('panel'),windows.get('workspace')],retry:()=>app.quit(),onFailure:error=>{globalThis.quitError=error.message;}});
-  app.on('before-quit',event=>{if(!draftQuitPreflight.allow()){event.preventDefault();return;}globalThis.cleanupCount++;});
+  app.on('before-quit',event=>{if(!draftQuitPreflight.allow()){event.preventDefault();return;}if(!draftQuitPreflight.commit()){event.preventDefault();draftQuitPreflight.allow();return;}globalThis.cleanupCount++;});
   ipcMain.handle('desktop-local',(_event,name)=>{if(name==='renderer-error')globalThis.rendererErrors.push('renderer-error');return {locale:'zh-CN',settings:{language:'zh-CN'}};});
   ipcMain.on('desktop:draft-close',(event,entries)=>{try{if(globalThis.denyDraftClose)throw Error('fixture write failure');flushConversationDrafts(event,entries,{panel:windows.get('panel'),workspace:windows.get('workspace'),conversations:journal});event.returnValue={ok:true};}catch{event.returnValue={ok:false,error:'fixture final save denied'};}});
   ipcMain.handle('desktop:action',async(event,name,payload)=>{
