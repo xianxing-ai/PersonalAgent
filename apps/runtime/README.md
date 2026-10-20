@@ -412,3 +412,33 @@ real AgentArts/model invocation, Desktop composition enablement, native workspac
 complete developer harness acceptance require their own observations. The implementation follows
 the project's original interaction-root/execution-child design and introduces no upstream code,
 prompts, or execution configuration.
+
+The native composition also connects `harnessCandidates` to the original Gateway catalog and canonical
+run/session checkpoints. Trial, comparison, preparation, and the distinct original `coding.repair.publish`
+remain separate executions. `isHarnessCodingRepairSession` is a synchronous host reader for the four
+session operations `publish`, `snapshot`, `readback`, and `reconcile`: only the exact original owner/main
+session prepared by a confirmed candidate operation uses the harness journal. HostBridge aliases retain
+their existing F15 journal. Publication still requires original successful main-session verification,
+Policy authorization, compare-and-swap, and readback; routing itself grants none of these.
+
+The existing native `task.reconcile` surface can resolve an interaction root to its original unknown
+candidate executors. It reads their original sessions without forging a running ToolContext or starting
+a model/tool run. A clear stopped-operation observation permits the original Runtime atomic native
+termination port to end the executor and fully stopped owner/root as failed or cancelled. Original
+UNKNOWN tool records, caches, cloud markers, and side-effect Evidence are preserved. Unknown or active
+readbacks remain unresolved; no successful outcome is inferred from a clear journal.
+
+`configureHarnessExperience` composes once with the existing learning store. It proposes strategies only
+after a succeeded original owner has exact confirmed trial/comparison/adoption/publication provenance.
+Activation remains a separate native confirmation. Future workers read a current source-bound lease;
+the model receives only the applicable verification recipe metadata and the original tool boundary
+still applies. Final sends recheck the held lease. Source, configuration, or activation changes
+invalidate its consumption rather than creating authority. Public strategy metadata does not become
+private-memory content or bypass the original private-memory send guard.
+
+The H6 event composition submits an atomic original event-origin checkpoint before normal root
+delegation. Startup observes that original record through pure readers, while live sends, tools, and
+approval recovery recheck the current native source/responsibility authorization. Completion callbacks
+only trigger receipt observation. Predispatch cancellation uses the exact original root activity and
+cancellation facts; it creates no delivery receipt. All these final callers are source integration;
+the combined pinned-runtime checks and real platform/device acceptance remain separate and pending.
