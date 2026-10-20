@@ -39,7 +39,9 @@ export async function restoreSource(directory,tempRoot,sha,expectedDigest) {
   // Use a new directory under this job's temporary root. Never clean or overlay
   // an existing runner checkout or another job's workspace.
   const root=await mkdtemp(path.join(tempRoot,'ci-source-'));
-  execFileSync('tar',['-xzf',path.join(directory,'source.tgz'),'-C',root],{windowsHide:true,stdio:'pipe'});
+  // GNU tar interprets a drive-letter archive such as C:\\... as a remote
+  // hostname. A basename relative to the transfer cwd also works with bsdtar.
+  execFileSync('tar',['-xzf','source.tgz','-C',root],{cwd:directory,windowsHide:true,stdio:'pipe'});
   const hooks=path.join(root,'.git','disabled-hooks');
   await mkdir(hooks);
   git(root,'config','core.hooksPath',hooks);

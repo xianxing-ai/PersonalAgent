@@ -42,6 +42,29 @@ test('real Windows knowledge recovery ACL accepts Unicode paths and keeps write 
     await host.revoke(); assert.equal(host.pairingIdentity(), undefined);
   });
 
+test('replacing the bound native process identity helper disables only the writer',
+  {skip: process.platform !== 'win32'}, async t => {
+    const f = await fixture(t), powerShellPath = findWindowsExecutable('pwsh.exe');
+    assert.ok(powerShellPath, 'PowerShell 7 is required for Windows recovery tests');
+    const processIdentityHelperPath = join(f.userData, 'WindowsJobProcessHost.exe');
+    await writeFile(processIdentityHelperPath, 'synthetic helper v1');
+    const host = await createKnowledgeSourceConfig({...f.options, powerShellPath, processIdentityHelperPath});
+    t.after(() => host.close());
+    await host.select(); await host.selectNotes(binding(host));
+    await host.configure({...binding(host), enabled: true, dataLevel: 'private', writeAllowed: true,
+      cloudExportAllowed: false, publicQueries: []});
+    assert.equal(host.snapshot().writeAvailable, true, host.snapshot().reason);
+    const before = host.acquire(binding(host), new AbortController().signal);
+    assert.ok(before.write);
+    await writeFile(processIdentityHelperPath, 'synthetic helper replacement with a different identity');
+    assert.equal(host.snapshot().available, true);
+    assert.equal(host.snapshot().writeAvailable, false);
+    const after = host.acquire(binding(host), new AbortController().signal);
+    assert.equal(after.write, undefined);
+    assert.equal(after.reconcileWrite, undefined);
+    before.release(); after.release();
+  });
+
 test('missing config is unavailable; native selection persists a host-bound root without snapshot paths', async t => {
   const {host, userData, first, options} = await fixture(t);
   assert.equal(host.snapshot().available, false);
