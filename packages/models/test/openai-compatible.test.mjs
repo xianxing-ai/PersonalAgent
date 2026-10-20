@@ -35,6 +35,18 @@ function provider(fetchImpl, options = {}) {
   });
 }
 
+test('trusted JSON output is explicit and does not advertise native tools or strict schemas',async()=>{
+ for(const responseFormat of [undefined,'json_object']){
+  let body;
+  const p=provider(async(_url,init)=>{body=JSON.parse(init.body);return jsonResponse({choices:[{message:{content:'{"kind":"text","text":"hello"}'}}]});},{responseFormat});
+  await p.complete(request({messages:[{role:'system',content:'Return one JSON object.'},{role:'user',content:'Hello'}]}));
+  assert.deepEqual(body.response_format,responseFormat===undefined?undefined:{type:'json_object'});
+  assert.equal(p.deployment.capabilities.toolCalling,false);
+  assert.equal(p.deployment.capabilities.structuredOutput,false);
+ }
+ for(const responseFormat of ['json_schema','text',null,true])assert.throws(()=>provider(async()=>assert.fail('must not send'),{responseFormat}),{code:'INVALID_ARGUMENT'});
+});
+
 test('trusted native reasoning maps thinking, max effort and a single total output budget', async () => {
   let body;
   const nativeReasoning = {thinking: 'enabled', effort: 'max', supportedEfforts: ['low', 'high', 'max'],
