@@ -60,6 +60,7 @@ export function createAgentArtsModelFetch({endpoint,model,authentication,request
       let responseModel=null;
       if(response.ok){try{const value=await response.clone().json();if(typeof value.model==='string'&&value.model.length<256)responseModel=value.model;}catch{/* Original Provider validates the body. */}}
       try{onRecord?.({event:'model_proxy_response',observedAtUtc:new Date().toISOString(),route,configuredModel:model,reasoningEffort:JSON.parse(init.body).reasoning_effort??null,
+        ...(payload.response_format?.type==='json_object'?{responseFormat:'json_object'}:{}),
         responseModel,httpStatus:response.status,requestId:response.headers.get('x-request-id')??response.headers.get('x-hw-request-id')??null,
         streaming:false,verification:'response_received_not_platform_trace_readback'});}catch{/* Telemetry is not task state. */}
       return response;

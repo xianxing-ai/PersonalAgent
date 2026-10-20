@@ -4,6 +4,15 @@ import {createAgentArtsModelFetch} from '../src/model-proxy.mjs';
 const endpoint='https://proxy.synthetic.invalid/inference/v1',model='registered-domestic-alias',secret='public-fixture-secret';
 const init=()=>({method:'POST',headers:{authorization:'Bearer backend-must-not-leak','content-type':'application/json'},
   body:JSON.stringify({model,messages:[{role:'user',content:'public fixture'}],stream:false,reasoning_effort:'none'}),signal:new AbortController().signal});
+
+test('JSON-only role output survives Huawei proxy translation without retries or text fallback',async()=>{
+ let calls=0;const records=[];
+ const fetch=createAgentArtsModelFetch({endpoint,model,requestProfile:'huawei-openai-v1',authentication:{kind:'api_key',headerName:'x-key',readSecret:()=>secret},
+  onRecord:record=>records.push(record),
+  fetch:async(_url,request)=>{calls++;const body=JSON.parse(request.body);assert.deepEqual(body.response_format,{type:'json_object'});assert.equal(body.chat_template_kwargs.thinking,false);return Response.json({model});}});
+ const request=init();request.body=JSON.stringify({...JSON.parse(request.body),response_format:{type:'json_object'}});
+ await fetch(endpoint+'/chat/completions',request);assert.equal(calls,1);assert.equal(records.find(record=>record.event==='model_proxy_response').responseFormat,'json_object');
+});
 test('configured AgentArts Bearer ingress replaces backend auth and prefixes the raw key exactly once',async()=>{
  const fetch=createAgentArtsModelFetch({endpoint,model,authentication:{kind:'api_key',headerName:'Authorization',keyPrefix:'Bearer',readSecret:()=>secret},
   fetch:async(_url,request)=>{assert.equal(request.headers.get('authorization'),'Bearer '+secret);return Response.json({model});}});

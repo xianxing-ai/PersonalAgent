@@ -502,13 +502,20 @@ test('Synthetic read_context keeps the complete reviewed schema and configuratio
   const tools=[{name:'fixture.configured',version:'1',description:'Reviewed bounded description',state:'available',
     inputSchema:{type:'object',properties:{value:{type:'string',enum:['public-option']}},required:['value'],additionalProperties:false}},
     {name:'fixture.disabled',version:'1',state:'missing_trusted_configuration',reason:'Explicit configuration is missing'}];
-  const fixture=harness({readContext:()=>({tools,messages:Array.from({length:30},()=>({role:'user',text:'合成历史'.repeat(500)}))})});
+  const fixture=harness({readContext:()=>({tools,messages:Array.from({length:30},()=>({role:'assistant',text:'合成历史'.repeat(500)}))})});
   await fixture.host.start();
   assert.ok(fixture.request.tools.some(tool=>tool.name==='wait_for_task'));
   const result=await fixture.request.onTool('read_context',{},'directory');
   const context=JSON.parse(result);
   assert.deepEqual(context.tools,tools);assert.equal(context.historyOmitted,true);assert.ok(result.length<=32000);
   await fixture.host.stop();
+});
+
+test('Live refuses to send oversized critical user history instead of trimming it for a connection',async()=>{
+ const fixture=harness({readContext:()=>({messages:[{id:'critical',role:'user',text:'必须保留的用户条件'.repeat(3000)}]})});
+ await assert.rejects(fixture.host.start(),/上下文.*无法完整发送/);
+ assert.equal(fixture.request,undefined);
+ await fixture.host.stop();
 });
 
 test('Synthetic expired local work wait retains the accepted task for a later bound read', async () => {
@@ -619,7 +626,7 @@ test('Local/Synthetic large reviewed tool directory pages exact complete schemas
     summary:'Exact current action parameters',argumentsDigest:'a'.repeat(64),expiresAt:new Date(Date.now()+30000).toISOString()};
   let clientCalls=0;
   const fixture=harness({client:{call(){clientCalls++;throw Error('Directory must not execute');}},readCurrentQuestion:()=>question,
-    readContext:()=>({tools,currentUserQuestion:question,messages:Array.from({length:10},()=>({role:'user',text:'Synthetic old history '.repeat(300)}))})});
+    readContext:()=>({tools,currentUserQuestion:question,messages:Array.from({length:10},()=>({role:'assistant',text:'Synthetic old history '.repeat(300)}))})});
   await fixture.host.start();
   const collected=[],offsets=[];let offset;
   do {
