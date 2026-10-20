@@ -55,6 +55,33 @@ export interface CalendarRespondResult {
   response: CalendarResponse;
 }
 
+/** 事件写输入：全部字段为规范 UTC 瞬间；UID 缺省由提供商生成。 */
+export interface CalendarEventWriteInput {
+  summary: string;
+  startUtc: string;
+  endUtc: string;
+  location?: string;
+  notes?: string;
+  /** 指定 UID 时创建重放幂等（同 UID 同内容 PUT）；缺省由提供商生成。 */
+  uid?: string;
+}
+
+export interface CalendarEventUpdateInput {
+  uid: string;
+  summary?: string;
+  startUtc?: string;
+  endUtc?: string;
+  location?: string;
+  notes?: string;
+}
+
+/** 可选事件写能力：提供商声明后，register() 才公布 calendar.create/update/cancel 工具。 */
+export interface CalendarEventWrites {
+  createEvent(input: CalendarEventWriteInput, context?: CalendarReadContext): Promise<CalendarEventRecord>;
+  updateEvent(input: CalendarEventUpdateInput, context?: CalendarReadContext): Promise<CalendarEventRecord>;
+  cancelEvent(uid: string, context?: CalendarReadContext): Promise<{uid: string; state: 'cancelled' | 'already_absent'}>;
+}
+
 export interface CalendarProvider {
   /** 账号类型（进 manifest.accountTypes），Fake 为 'fixture'。 */
   readonly providerKind: string;
@@ -64,4 +91,6 @@ export interface CalendarProvider {
   fetchWindow(accountRef: string, window: CalendarWindow, cursor?: string, context?: CalendarReadContext): CalendarFetchPage | Promise<CalendarFetchPage>;
   getEvent(accountRef: string, externalId: string, context?: CalendarReadContext): CalendarEventRecord | undefined | Promise<CalendarEventRecord | undefined>;
   respond(input: CalendarRespondInput): CalendarRespondResult | Promise<CalendarRespondResult>;
+  /** 可选事件写能力；缺省（未声明）时本包不注册 calendar.create/update/cancel。 */
+  readonly writes?: CalendarEventWrites;
 }

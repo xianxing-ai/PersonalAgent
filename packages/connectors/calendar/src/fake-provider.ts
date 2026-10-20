@@ -8,6 +8,7 @@ import type {
   CalendarSummary,
   CalendarWindow,
 } from './provider.js';
+import type {CalendarEventUpdateInput, CalendarEventWriteInput} from './provider.js';
 
 /**
  * Fake 日历提供商（测试专用）。夹具以 UTC 瞬间给定，本地表示在构造时按
@@ -124,6 +125,44 @@ export class FakeCalendarProvider implements CalendarProvider {
     return event === undefined ? undefined : structuredClone(event);
   }
 
+  readonly writes = {
+    createEvent: (input: CalendarEventWriteInput): Promise<CalendarEventRecord> => {
+      const summary = typeof input?.summary === 'string' ? input.summary.trim() : '';
+      if (!summary || summary.length > 512) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event summary is required (1..512 chars)');
+      const startUtc = assertFakeUtc(input?.startUtc, 'startUtc');
+      const endUtc = assertFakeUtc(input?.endUtc, 'endUtc');
+      if (Date.parse(endUtc) <= Date.parse(startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
+      const uid = input.uid === undefined ? `evt-fake-${Date.now().toString(36)}` : assertFakeUid(input.uid);
+      if (this.events.has(uid)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event UID already exists');
+      const record: CalendarEventRecord = {
+        externalId: uid, calendarId: 'cal-fake', title: summary,
+        startUtc, endUtc, timeZone: 'UTC',
+        startLocal: startUtc.slice(0, 19), endLocal: endUtc.slice(0, 19),
+        status: 'confirmed', sequence: 1, updatedUtc: startUtc,
+      };
+      this.events.set(uid, record);
+      return Promise.resolve(structuredClone(record));
+    },
+    updateEvent: (input: CalendarEventUpdateInput): Promise<CalendarEventRecord> => {
+      const existing = this.events.get(input?.uid ?? '');
+      if (existing === undefined) throw new ProtocolError('NOT_FOUND', `Calendar event ${input?.uid} not found`);
+      const merged: CalendarEventRecord = {...existing};
+      if (typeof input.summary === 'string' && input.summary.trim()) merged.title = input.summary.trim();
+      if (input.startUtc !== undefined) merged.startUtc = assertFakeUtc(input.startUtc, 'startUtc');
+      if (input.endUtc !== undefined) merged.endUtc = assertFakeUtc(input.endUtc, 'endUtc');
+      if (Date.parse(merged.endUtc) <= Date.parse(merged.startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
+      if (input.location !== undefined) merged.organizer = String(input.location);
+      merged.sequence = existing.sequence + 1;
+      merged.updatedUtc = new Date().toISOString().slice(0, 19) + '.000Z';
+      this.events.set(merged.externalId, merged);
+      return Promise.resolve(structuredClone(merged));
+    },
+    cancelEvent: (uid: string): Promise<{uid: string; state: 'cancelled' | 'already_absent'}> => {
+      // 与真实 CalDAV DELETE 语义一致：资源整体移除（读窗口不再出现），而非标记状态。
+      return Promise.resolve(this.events.delete(uid ?? '') ? {uid, state: 'cancelled'} : {uid, state: 'already_absent'});
+    },
+  };
+
   respond(input: CalendarRespondInput): CalendarRespondResult {
     if (!input || typeof input.idempotencyKey !== 'string' || input.idempotencyKey.length === 0) {
       throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
@@ -149,4 +188,20 @@ export class FakeCalendarProvider implements CalendarProvider {
     if (!event) throw new Error(`No fixture ${externalId}`);
     Object.assign(event, patch, {sequence: event.sequence + 1, updatedUtc: '2026-09-07T00:00:00.000Z'});
   }
+}
+
+
+function assertFakeUtc(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/u.test(value)
+    || !Number.isFinite(Date.parse(value))) {
+    throw new ProtocolError('INVALID_ARGUMENT', `Calendar ${field} must be an ISO-8601 UTC instant`);
+  }
+  return `${value.slice(0, 19)}.${(value.match(/\.(\d{3})Z$/u) ?? ['', '000'])[1]}Z`;
+}
+
+function assertFakeUid(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9@][A-Za-z0-9@._-]{0,127}$/u.test(value) || value.includes('..')) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event UID is malformed');
+  }
+  return value;
 }
