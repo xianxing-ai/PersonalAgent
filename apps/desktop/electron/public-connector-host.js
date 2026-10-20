@@ -47,7 +47,20 @@ export function createPublicConnectorHost({systemObservationFactory,
           units:result.forecast.units, summary:result.forecast.summary,
           temperatureMin:result.forecast.temperatureMin, temperatureMax:result.forecast.temperatureMax,
           precipitationProbability:result.forecast.precipitationProbability,
-          publishedTimeKind:result.forecast.publishedTimeKind},
+          publishedTimeKind:result.forecast.publishedTimeKind,
+          // Present conditions and the day's hourly curve are what let an answer judge
+          // "适合跑步吗" instead of only quoting a daily range.
+          ...(result.forecast.current ? {current:{observedAt:result.forecast.current.observedAt,
+            temperature:result.forecast.current.temperature,
+            apparentTemperature:result.forecast.current.apparentTemperature,
+            relativeHumidity:result.forecast.current.relativeHumidity,
+            windSpeed:result.forecast.current.windSpeed,
+            windDirection:result.forecast.current.windDirection,
+            weatherCode:result.forecast.current.weatherCode}} : {}),
+          ...(Array.isArray(result.forecast.hourly) && result.forecast.hourly.length ? {hourly:
+            result.forecast.hourly.slice(0,24).map(point => ({time:point.time, temperature:point.temperature,
+              precipitationProbability:point.precipitationProbability, weatherCode:point.weatherCode}))} : {}),
+        },
         source:result.record.source, occurredAt:result.record.occurredAt, cache:cacheProjection(result.cache),
       })),
       publicResult('research.search', research.RESEARCH_MODULE_VERSION, result => ({

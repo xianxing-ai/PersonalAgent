@@ -365,8 +365,11 @@ export function readRuntimeSubagentSummary(runtime: TaskRuntime, parentTaskId: s
   const failed = progress.filter(item => item.state === 'failed').length;
   const cancelled = progress.filter(item => item.state === 'cancelled').length;
   const pending = progress.length - succeeded - failed - cancelled;
-  const summary = `## 次级智能体协作汇总（共 ${progress.length} 项：成功 ${succeeded}，失败 ${failed}，取消 ${cancelled}，未完成 ${pending}）\n\n`
-    + progress.map(item => `### 【${item.roleLabel}】(${item.role}) · ${item.state}\n${item.result ?? item.error ?? ''}`).join('\n\n');
+  // One successful child is the answer itself; only real multi-child coordination keeps the header.
+  const summary = progress.length === 1 && succeeded === 1
+    ? progress[0]?.result?.trim() || '无输出'
+    : `## 次级智能体协作汇总（共 ${progress.length} 项：成功 ${succeeded}，失败 ${failed}，取消 ${cancelled}，未完成 ${pending}）\n\n`
+      + progress.map(item => `### 【${item.roleLabel}】(${item.role}) · ${item.state}\n${item.result ?? item.error ?? ''}`).join('\n\n');
   return {total: progress.length, succeeded, failed, cancelled, subtasks: progress, aggregatedSummary: summary, summary};
 }
 
