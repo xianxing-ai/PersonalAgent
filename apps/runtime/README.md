@@ -436,6 +436,15 @@ still applies. Final sends recheck the held lease. Source, configuration, or act
 invalidate its consumption rather than creating authority. Public strategy metadata does not become
 private-memory content or bypass the original private-memory send guard.
 
+An active guidance lease can enter a task-bound publication completion phase after its own canonical
+confirmed adoption and original CAS publication/readback. The complete fresh workspace metadata must
+equal that verified publication; a different configuration, external edit, revoked activation/source,
+or UNKNOWN publication cannot enter this phase. The original lease stays immutable. Its frozen prompt
+metadata is retained for the existing context binding, but every new tool request is refused and only
+the original text completion can return. Final sends still check the same publication/source facts.
+This is a narrow end of guidance consumption for one task, not applicability to the changed snapshot:
+a later task must acquire its own strictly current lease through the unchanged learning lifecycle.
+
 The H6 event composition submits an atomic original event-origin checkpoint before normal root
 delegation. Startup observes that original record through pure readers, while live sends, tools, and
 approval recovery recheck the current native source/responsibility authorization. Completion callbacks

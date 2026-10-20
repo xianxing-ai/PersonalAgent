@@ -4,6 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Client} from '@personal-agent/client';
+import {ProtocolError} from '@personal-agent/contracts';
 import {openSqliteLearningHost} from '@personal-agent/learning';
 import {harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import {codingRepairPackageGraphDigest} from '@personal-agent/coding-tools';
@@ -22,15 +23,17 @@ async function fixture(t,{enabled=true,useConfigure=false}={}){
     {path:'test.js',sha256:'b'.repeat(64),packageId:'pkg',kind:'test'}]};
   const patches=[{path:'src.js',expectedSha256:'a'.repeat(64),edits:[{oldText:'old',newText:'new'}]}];
   let app,mode='publish',bindingId='opaque-workspace-grant',developerEnabled=enabled,snapshot=structuredClone(baseline),sessionIndex=0,
-    publishes=0,confirmation=false,release,entered;
-  const sessions=new Map(),observed=[];
+    publishes=0,confirmation=false,release,entered,afterPublish,publicationOutcome='confirmed',denyPublicationExport=false;
+  const sessions=new Map(),inputs=new Map(),observed=[];
   // Explicit Synthetic host: the real_host wire value exercises the production
   // contract; no real workspace command, publication or account is invoked.
   const host={
     async start({mode},context){const session={version:1,sessionId:'synthetic-'+(++sessionIndex),taskId:context.taskId,
-      workspaceId:'actual-workspace-id',mode,baselineSnapshotId:'baseline'};
-      sessions.set(session.sessionId,session);return {version:1,session,initialSnapshot:structuredClone(baseline),recipes};},
-    async check(sessionId,_patches,_recipeIds,context){const checked=structuredClone(baseline);checked.snapshotId='checked-'+sessionId;checked.files[0].sha256='c'.repeat(64);
+      workspaceId:'actual-workspace-id',mode,baselineSnapshotId:snapshot.snapshotId};
+      const input={version:1,session,initialSnapshot:structuredClone(snapshot),recipes};
+      sessions.set(session.sessionId,session);inputs.set(session.sessionId,input);return input;},
+    async check(sessionId,_patches,_recipeIds,context){const checked=structuredClone(inputs.get(sessionId).initialSnapshot);
+      checked.snapshotId='checked-'+sessionId;checked.files[0].sha256=(checked.files[0].sha256==='c'.repeat(64)?'d':'c').repeat(64);
       return {version:1,sessionId,snapshot:checked,verification:[{version:1,sessionId,runId:'verify-'+context.runId,
         recipeId:'unit',packageIds:['pkg'],inputSnapshotId:checked.snapshotId,files:checked.files,packageGraphDigest:codingRepairPackageGraphDigest(checked),
         exitCode:0,status:'VALID',evidenceRefs:[],diagnostics:[]}]};},
@@ -46,9 +49,13 @@ async function fixture(t,{enabled=true,useConfigure=false}={}){
       const checked=app.runtime.loadCheckpoint(context.taskId,'tool-result-'+original.evidenceId).result;
       assert.deepEqual(app.readHarnessCandidateVerificationEvidence({session:sessions.get(input.sessionId),runId:input.verificationRunIds[0],
         originTaskId:context.taskId,originRunId:original.evidenceId}),[original.evidenceId]);
+      const beforeSha256=inputs.get(input.sessionId).initialSnapshot.files[0].sha256;
       snapshot=structuredClone(checked.snapshot);
-      return {version:1,sessionId:input.sessionId,state:'published',files:[{path:'src.js',beforeSha256:'a'.repeat(64),afterSha256:'c'.repeat(64)}],
+      const result={version:1,sessionId:input.sessionId,state:'published',files:[{path:'src.js',beforeSha256,afterSha256:snapshot.files[0].sha256}],
         evidenceRefs:[original.evidenceId]};
+      afterPublish?.();
+      if(publicationOutcome==='unknown')throw new ProtocolError('RESULT_UNKNOWN','Synthetic write outcome unknown');
+      return result;
     }};
   const port=new FakeCoordinationPort(async request=>{
     const parent=app.runtime.loadCheckpoint(request.taskId,'subtask-parent');
@@ -59,23 +66,27 @@ async function fixture(t,{enabled=true,useConfigure=false}={}){
     const records=app.runtime.readToolExecutions(request.taskId),trial=records.find(r=>r.toolName==='coding.repair.trial'),
       compare=records.find(r=>r.toolName==='harness.candidates.compare'),adoption=records.find(r=>r.toolName==='coding.repair.prepare_adoption'),
       published=records.find(r=>r.toolName==='coding.repair.publish');
-    const proposal=(toolName,args)=>({kind:'tool_proposal',proposalId:'proposal-'+records.length,toolName,toolVersion:'1.0.0',arguments:args,verification:'mock'});
-    if(!trial)return proposal('coding.repair.trial',{candidateId:'candidate',patches,recipeIds:['unit']});
+    const proposal=(toolName,args)=>({kind:'tool_proposal',proposalId:'proposal-'+records.length,toolName,toolVersion:'1.0.0',arguments:args,verification:'unverified'});
+    if(!trial)return proposal('coding.repair.trial',{candidateId:'candidate',patches:[{...patches[0],expectedSha256:snapshot.files[0].sha256}],recipeIds:['unit']});
     if(!compare)return proposal('harness.candidates.compare',{trialRunIds:[trial.evidenceId]});
     if(!adoption)return proposal('coding.repair.prepare_adoption',{trialRunId:trial.evidenceId});
     if(!published){const checked=app.runtime.loadCheckpoint(request.taskId,'tool-result-'+adoption.evidenceId).result;
-      return proposal('coding.repair.publish',{version:1,sessionId:checked.sessionId,baselineSnapshotId:'baseline',snapshotId:checked.snapshot.snapshotId,
+      return proposal('coding.repair.publish',{version:1,sessionId:checked.sessionId,baselineSnapshotId:inputs.get(checked.sessionId).session.baselineSnapshotId,snapshotId:checked.snapshot.snapshotId,
         paths:['src.js'],verificationRunIds:checked.verification.map(r=>r.runId)});}
+    if(mode==='tool_after_publish')return proposal('coding.repair.trial',{candidateId:'extra',patches,recipeIds:['unit']});
     return {kind:'text',text:'Published original verified artifact',verification:'mock'};
   });
   app=createRuntimeApplication({path:join(folder,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
     coordination:port,coordinationBinding:'synthetic-original-cloud-config',competitionMaxSteps:8,
     readDeveloperHarnessConfiguration:()=>developerEnabled?{workspaceRef:bindingId,maxExecutorSteps:6}:undefined,
     harnessCandidates:{host,readContext:(_context,scope)=>({binding:{version:1,taskId:scope.ownerTaskId,workspaceId:'actual-workspace-id',
-      baselineSnapshotId:'baseline',inputDigest:scope.inputDigest,configurationDigest:scope.configurationRef,workflowVersion:'workflow-v1',runtimeVersion:'runtime-v1',
-      recipeFingerprint,executionKind:'real_host'},baseline:structuredClone(baseline),recipes,selectionPolicy:'unique_verified'})},
+      baselineSnapshotId:snapshot.snapshotId,inputDigest:scope.inputDigest,configurationDigest:scope.configurationRef,workflowVersion:'workflow-v1',runtimeVersion:'runtime-v1',
+      recipeFingerprint,executionKind:'real_host'},baseline:structuredClone(snapshot),recipes,selectionPolicy:'unique_verified'})},
     tools:[dispatch,publisher],competitionToolExports:[{toolName:SUBAGENT_DISPATCH_TOOL_NAME,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-summary',accepts:()=>true,project:({result})=>result},
-      {toolName:'coding.repair.publish',toolVersion:'1.0.0',exportPolicyVersion:'synthetic-publish',accepts:()=>true,project:({result})=>result}],
+      {toolName:'coding.repair.publish',toolVersion:'1.0.0',exportPolicyVersion:'synthetic-publish',accepts:()=>true,project:({result})=>{
+        if(denyPublicationExport)throw new ProtocolError('UNAUTHORIZED','Synthetic native result export revoked');
+        return {version:1,sessionId:result.sessionId,state:result.state,publishedFileCount:result.files.length};}}],
+    competitionToolAvailability:[SUBAGENT_DISPATCH_TOOL_NAME,'coding.repair.publish'].map(toolName=>({toolName,toolVersion:'1.0.0',available:()=>true})),
     automaticTools:[SUBAGENT_DISPATCH_TOOL_NAME,'coding.repair.trial','harness.candidates.compare','coding.repair.prepare_adoption','coding.repair.publish']
       .map(toolName=>({toolName,toolVersion:'1.0.0'}))});
   const experienceOptions={namespace:'synthetic-harness',learning,
@@ -94,7 +105,17 @@ async function fixture(t,{enabled=true,useConfigure=false}={}){
   const settle=async root=>{await until(()=>app.activeTaskCount===0);assert.equal(app.runtime.getTask(root.taskId).state,'succeeded',JSON.stringify({root:app.runtime.getTask(root.taskId),owner:owner(root),records:owner(root)&&app.runtime.readToolExecutions(owner(root).taskId)}));return owner(root);};
   const context=()=>({deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal});
   return {app,experience,learning,start,settle,owner,observed,context,publishes:()=>publishes,setBinding:value=>bindingId=value,
-    confirm:()=>confirmation=true,setEnabled:value=>developerEnabled=value,entered:()=>entered,release:()=>release?.()};
+    confirm:()=>confirmation=true,setEnabled:value=>developerEnabled=value,entered:()=>entered,release:()=>release?.(),
+    setAfterPublish:fn=>afterPublish=fn,setPublicationOutcome:value=>publicationOutcome=value,
+    denyPublicationExport:()=>denyPublicationExport=true,
+    mutateCurrent:()=>snapshot.files[1].sha256='e'.repeat(64)};
+}
+
+async function activateOriginal(f) {
+  await f.settle(await f.start());const [candidate]=f.experience.listCandidates();
+  await f.experience.validate(candidate.workflowId,candidate.revision,f.context());f.confirm();
+  await f.experience.activate({...f.context(),workflowId:candidate.workflowId,revision:candidate.revision,expectedActiveRevision:null,
+    operationId:'activate',activatedAt:new Date().toISOString()});return candidate;
 }
 
 test('canonical published user-work automatically proposes once, and unactivated experience is never consumed',async t=>{
@@ -157,4 +178,46 @@ test('unconfigured ordinary user-work freezes no experience and enabling mid-fli
   const nextBinding=f.app.runtime.loadCheckpoint(nextOwner.taskId,'harness-experience:lease:v1');
   assert.equal(nextBinding.scope.workspaceId,'actual-workspace-id','a later task can read the now-configured current source');
   assert.equal(nextBinding.lease,null,'configuration alone never activates experience');
+});
+
+test('an active lease completes its own confirmed changed publication and original child/root summaries',async t=>{
+  const f=await fixture(t),candidate=await activateOriginal(f),root=await f.start(),owner=await f.settle(root);
+  assert.equal(owner.state,'succeeded');assert.equal(f.publishes(),2);
+  const bound=f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:lease:v1');
+  assert.equal(bound.lease.revision,candidate.revision,'the original active guidance lease is retained');
+  const completion=f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:publication-completion:v1');
+  assert.equal(completion.ownerTaskId,owner.taskId);assert.notEqual(completion.scope.workspaceDigest,bound.scope.workspaceDigest);
+  assert.equal(f.app.runtime.readToolExecutions(owner.taskId).find(r=>r.toolName==='coding.repair.publish').state,'confirmed');
+  assert.match(owner.resultSummary,/Published original verified artifact/);
+  assert.deepEqual(f.app.runtime.readToolExecutions(root.taskId).map(r=>r.toolName),[SUBAGENT_DISPATCH_TOOL_NAME]);
+  assert.equal(f.experience.listCandidates()[0].revision,2,'the new successful publication can propose its own new snapshot');
+  const later=await f.start('plain');await until(()=>f.app.activeTaskCount===0);
+  const laterOwner=f.owner(later);assert.equal(laterOwner.state,'failed','old active source cannot silently apply to a new snapshot');
+  assert.equal(f.app.runtime.loadCheckpoint(laterOwner.taskId,'harness-experience:publication-completion:v1'),undefined);
+});
+
+for(const change of ['external','revoke','configuration','unknown','export_revoked'])test('publication completion stays closed after '+change,async t=>{
+  const f=await fixture(t),candidate=await activateOriginal(f);
+  f.setAfterPublish(()=>{
+    if(change==='external')f.mutateCurrent();
+    if(change==='configuration')f.setBinding('replaced-workspace');
+    if(change==='revoke')f.experience.stop({...f.context(),workflowId:candidate.workflowId,expectedActiveRevision:candidate.revision,
+      operationId:'revoke',stoppedAt:new Date().toISOString()});
+  });
+  if(change==='unknown')f.setPublicationOutcome('unknown');
+  if(change==='export_revoked')f.denyPublicationExport();
+  const root=await f.start();await until(()=>f.app.activeTaskCount===0);const owner=f.owner(root);
+  assert.notEqual(owner.state,'succeeded');assert.equal(f.publishes(),2,'the original publication is never retried');
+  const publication=f.app.runtime.readToolExecutions(owner.taskId).find(r=>r.toolName==='coding.repair.publish');
+  assert.equal(publication.state,change==='unknown'?'unknown':'confirmed','original publication facts are retained');
+  assert.equal(f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:publication-completion:v1'),undefined);
+  assert.equal(f.experience.listCandidates().length,1,'no successful experience is fabricated');
+});
+
+test('completed guidance cannot execute another proposed tool after its original publication',async t=>{
+  const f=await fixture(t);await activateOriginal(f);const root=await f.start('tool_after_publish');
+  await until(()=>f.app.activeTaskCount===0);const owner=f.owner(root);
+  assert.notEqual(owner.state,'succeeded');assert.equal(f.publishes(),2);
+  assert.equal(f.app.runtime.readToolExecutions(owner.taskId).length,4,'no fifth tool is admitted');
+  assert.ok(f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:publication-completion:v1'));
 });

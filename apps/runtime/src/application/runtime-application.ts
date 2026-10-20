@@ -22,7 +22,7 @@ import type {IsolatedCodingRepairHost} from '@personal-agent/coding-tools';
 import type {HarnessCandidateContext,HarnessTrialRecovery} from '@personal-agent/contracts/harness-candidates';
 import type {CodingRepairInput} from '@personal-agent/contracts/coding-repair';
 import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
-import {parseCodingRepairInput,parseCodingRepairCheckReadback,parseCodingRepairPublishRequest} from '@personal-agent/contracts/coding-repair';
+import {parseCodingRepairInput,parseCodingRepairCheckReadback,parseCodingRepairPublishRequest,parseCodingRepairPublishReadback} from '@personal-agent/contracts/coding-repair';
 import {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL} from './harness-candidates.js';
 import {createRuntimeHarnessCandidateBindings} from './harness-candidate-bindings.js';
 import {createHarnessExperienceBindings} from './harness-experience-bindings.js';
@@ -676,6 +676,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           this.harnessExperienceRecipes(request.taskId,{
             deadline:this.runtime.loadCheckpoint(request.taskId,'application-deadline') as string,
             signal:new AbortController().signal});
+          this.assertHarnessExperienceToolOpen(request.taskId);
           this.assertHarnessEventCurrent(request.taskId);
           assertUserTaskDelegationInvocation(this.runtime, request);
           this.assertSubagentConversationInvocation(request.taskId,request.toolName);
@@ -775,6 +776,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       };
       this.tools = {list: currentDescriptors, invoke: async invocation => {
         this.harnessExperienceRecipes(invocation.taskId,invocation);
+        this.assertHarnessExperienceToolOpen(invocation.taskId);
         this.assertHarnessEventCurrent(invocation.taskId);
         this.consumeHarnessExperiencePolicy(invocation);
         assertUserTaskDelegationInvocation(this.runtime, {...invocation, argumentsDigest: toolArgumentsDigest(invocation.arguments)});
@@ -1318,6 +1320,87 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       &&this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${root.parentTaskId}-user-work`)?.taskId===taskId?taskId:undefined;
   }
 
+  /** A consumed strategy may finish only the original confirmed publication, never authorize another tool. */
+  private assertHarnessExperienceToolOpen(taskId:string):void {
+    const ownerTaskId=this.harnessExperienceOwner(taskId);
+    if(ownerTaskId&&this.runtime.loadCheckpoint(ownerTaskId,'harness-experience:publication-completion:v1')!==undefined)
+      throw new ProtocolError('SCOPE_DENIED','Original development guidance is complete; only its publication summary remains');
+  }
+
+  private assertHarnessExperienceResponse(taskId:string,kind:string):void {
+    const ownerTaskId=this.harnessExperienceOwner(taskId);
+    if(ownerTaskId&&this.runtime.loadCheckpoint(ownerTaskId,'harness-experience:publication-completion:v1')!==undefined&&kind!=='text')
+      throw new ProtocolError('SCOPE_DENIED','Completed original publication permits only a text summary');
+  }
+
+  /** No workspace exception is available until canonical confirmed adoption, CAS publication and exact readback agree. */
+  private assertHarnessExperiencePublicationCompletion(ownerTaskId:string,lease:DeveloperExperienceLease,
+    current:{scope:DeveloperExperienceScope;snapshot:CodingRepairSnapshot},context:LearningContext):void {
+    const host=this.harnessExperienceState;
+    if(!host||!this.harnessCandidateBindings||this.runtime.getTask(ownerTaskId).state!=='running'
+      ||this.runtime.getTask(ownerTaskId).cancelRequested||context.signal.aborted
+      ||!Number.isFinite(Date.parse(context.deadline))||this.now().getTime()>=Date.parse(context.deadline)
+      ||!isDeepStrictEqual({...current.scope,workspaceDigest:''},{...lease.source.scope,workspaceDigest:''}))
+      throw new ProtocolError('REVISION_CONFLICT','Original guidance publication completion is unavailable');
+    const originalParent=this.runtime.loadCheckpoint(ownerTaskId,'subtask-parent') as {parentTaskId:string};
+    for(const task of this.subagentTaskSnapshots(originalParent.parentTaskId)) {
+      const peer=readRuntimeSubagentSibling(this.runtime,task.taskId);
+      if(peer?.binding.ownerTaskId===ownerTaskId&&(!isTerminalTask(task)||this.activeTextTasks.has(task.taskId)||this.runtime.isTaskActive(task.taskId)))
+        throw new ProtocolError('RESULT_UNKNOWN','Original guidance executors have not stopped');
+    }
+    const records=this.runtime.readToolExecutions(ownerTaskId),publication=records.filter(record=>record.toolName==='coding.repair.publish').at(-1);
+    const invocation=publication&&this.runtime.loadCheckpoint(ownerTaskId,'application-tool-invocation:'+publication.evidenceId) as
+      {toolName?:string;toolVersion?:string;arguments?:unknown;argumentsDigest?:string;deadline?:string}|undefined;
+    if(!publication||publication.state!=='confirmed'||!publication.executionStarted||publication.policyDecision!=='allow'
+      ||publication.toolVersion!=='1.0.0'||invocation?.toolName!=='coding.repair.publish'||invocation.toolVersion!=='1.0.0'
+      ||!plainObject(invocation.arguments)||invocation.argumentsDigest!==toolArgumentsDigest(invocation.arguments)
+      ||invocation.deadline!==context.deadline
+      ||!this.runtime.matchesToolExecutionInput(publication,{arguments:invocation.arguments,scopeRef:publication.evidenceId})
+      ||!this.runtime.readEvidence(ownerTaskId).some(item=>item.evidenceId===publication.evidenceId&&item.kind==='execution'&&item.sourceRef==='coding.repair.publish'))
+      throw new ProtocolError('REVISION_CONFLICT','Original guidance has no confirmed publication Evidence');
+    const request=parseCodingRepairPublishRequest(invocation.arguments);
+    const matches=records.filter(record=>record.toolName===HARNESS_PREPARE_ADOPTION_TOOL&&record.state==='confirmed').filter(record=>{
+      const saved=this.runtime.loadCheckpoint(ownerTaskId,'harness-candidates:session:'+record.evidenceId) as {input?:unknown}|undefined;
+      return saved?.input!==undefined&&parseCodingRepairInput(saved.input).session.sessionId===request.sessionId;
+    });
+    if(matches.length!==1)throw new ProtocolError('UNAUTHORIZED','Original guidance publication has no unique canonical adoption');
+    const adoption=matches[0]!;
+    const canonical=this.harnessCandidateBindings.readAdoptionOriginForCompletion({ownerTaskId,actualTaskId:ownerTaskId,
+      runId:adoption.evidenceId,publicationRunId:publication.evidenceId});
+    if(!canonical)throw new ProtocolError('UNAUTHORIZED','Original guidance adoption provenance is unavailable');
+    const checkedCache=this.runtime.loadCheckpoint(ownerTaskId,'tool-result-'+adoption.evidenceId) as {result?:unknown}|undefined;
+    const publicationCache=this.runtime.loadCheckpoint(ownerTaskId,'tool-result-'+publication.evidenceId) as {result?:unknown}|undefined;
+    const checked=parseCodingRepairCheckReadback(checkedCache?.result),published=parseCodingRepairPublishReadback(publicationCache?.result);
+    const main=canonical.input;
+    if(main.session.mode!=='main'||main.session.taskId!==ownerTaskId||main.session.sessionId!==request.sessionId
+      ||request.baselineSnapshotId!==main.initialSnapshot.snapshotId||request.snapshotId!==checked.snapshot.snapshotId
+      ||checked.sessionId!==request.sessionId||published.sessionId!==request.sessionId||published.state!=='published'
+      ||harnessExperienceWorkspaceDigest(checked.snapshot)!==current.scope.workspaceDigest
+      ||harnessExperienceWorkspaceDigest(current.snapshot)!==current.scope.workspaceDigest
+      ||harnessCandidateArtifactDigest(checked.snapshot)!==canonical.origin.artifactDigest
+      ||harnessCandidateArtifactDigest(current.snapshot)!==canonical.origin.artifactDigest
+      ||!request.paths.length||request.paths.length!==published.files.length||new Set(published.files.map(file=>file.path)).size!==request.paths.length
+      ||request.paths.some(path=>!published.files.some(file=>file.path===path))
+      ||published.files.some(file=>file.beforeSha256!==(main.initialSnapshot.files.find(before=>before.path===file.path)?.sha256??null)
+        ||file.afterSha256!==checked.snapshot.files.find(after=>after.path===file.path)?.sha256)
+      ||!published.evidenceRefs.includes(adoption.evidenceId)
+      ||main.recipes.filter(recipe=>recipe.required).some(recipe=>!checked.verification.some(receipt=>receipt.recipeId===recipe.recipeId
+        &&receipt.sessionId===request.sessionId&&receipt.status==='VALID'&&receipt.exitCode===0
+        &&receipt.inputSnapshotId===checked.snapshot.snapshotId&&request.verificationRunIds.includes(receipt.runId)
+        &&receipt.evidenceRefs.includes(adoption.evidenceId)
+        &&isDeepStrictEqual([...receipt.packageIds].sort(),[...recipe.packageIds].sort())
+        &&harnessCandidateArtifactDigest({...checked.snapshot,files:receipt.files})===canonical.origin.artifactDigest)))
+      throw new ProtocolError('REVISION_CONFLICT','Original guidance publication or current readback differs');
+    // This checks the original source and activation, not a new execution lease for the changed workspace.
+    host.application.assertPublishedGuidanceSource(lease,current.scope,context);
+    const key='harness-experience:publication-completion:v1',proof={version:1,ownerTaskId,leaseDigest:hashJson(lease),
+      origin:canonical.origin,publicationRunId:publication.evidenceId,publicationInputDigest:publication.inputDigest,
+      publicationResultDigest:toolArgumentsDigest(publicationCache!.result),scope:current.scope};
+    this.runtime.saveCheckpointOnce(ownerTaskId,key,proof);
+    if(!isDeepStrictEqual(this.runtime.loadCheckpoint(ownerTaskId,key),proof))
+      throw new ProtocolError('REVISION_CONFLICT','Original publication completion facts changed');
+  }
+
   private harnessExperienceRecipes(taskId:string,context:LearningContext,initialize=false):readonly string[] {
     const ownerTaskId=this.harnessExperienceOwner(taskId);
     if(!ownerTaskId)return [];
@@ -1355,6 +1438,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(!current||!isDeepStrictEqual({...current.scope,workspaceDigest:''},{...saved.scope,workspaceDigest:''}))
         throw new ProtocolError('REVISION_CONFLICT','Original experience configuration changed');
       return [];
+    }
+    if(current&&(this.runtime.loadCheckpoint(ownerTaskId,'harness-experience:publication-completion:v1')!==undefined
+      ||!isDeepStrictEqual(current.scope,saved.scope))) {
+      this.assertHarnessExperiencePublicationCompletion(ownerTaskId,saved.lease,current,context);
+      return saved.lease.source.requiredRecipeIds;
     }
     if(!current||!isDeepStrictEqual(current.scope,saved.scope))
       throw new ProtocolError('REVISION_CONFLICT','Original experience configuration or workspace changed');
@@ -1518,6 +1606,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         this.assertInputActive(withStrategy);
         const result=await port.execute(withStrategy);
         this.harnessExperienceRecipes(request.taskId,request);
+        this.assertHarnessExperienceResponse(request.taskId,result.kind);
         return result;
       }catch(error) {
         if (!(error instanceof AgentArtsResultUnknownError)) this.holdCompetitionExport(request.taskId,error);
@@ -1609,6 +1698,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
       this.assertInputActive(request);
+      this.assertHarnessExperienceResponse(request.taskId,result.kind);
       if(!privateDerived)return result;
       this.runtime.saveCheckpoint(task.taskId,'private-derived-output',{withheld:true});
       if(result.kind!=='text')throw new ProtocolError('UNAUTHORIZED','Private-derived proposals require a separate public task and authorization');
