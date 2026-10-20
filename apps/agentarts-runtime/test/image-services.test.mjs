@@ -5,18 +5,24 @@ import {createImageServices} from '../src/image-services.mjs';
 import {OwnedWorkflowEngine,OwnedWorkflowHostBridge,createOwnedWorkflowReceiptVerifier,
  getOwnedWorkflowBindings,getOwnedWorkflowTemplate} from '@personal-agent/agentarts';
 const token='public-fixture-inner-credential-at-least-32-bytes';
+// Fixed test-only markers survive a native worker exit; never print request
+// values, credentials, addresses, environment or command lines.
+const phase=state=>process.stderr.write(JSON.stringify({phase:'image-services-fixture',state})+'\n');
+phase('module-ready');
 async function host(t,options={}) {
  const server=createAgentServer({orchestrator:{invoke:async()=>{throw Error('No model fallback');}},mode:'standalone-validation',
   authToken:token,wssAuthToken:token,...options});
  server.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
- t.after(()=>new Promise(resolve=>server.close(resolve)));
+ phase('server-listening');
+ t.after(()=>new Promise(resolve=>{phase('server-close');server.close(()=>{phase('server-closed');resolve();});}));
  const url='http://127.0.0.1:'+server.address().port;
- return {url,post:value=>fetch(url+'/invocations',{method:'POST',headers:{'content-type':'application/json',
+ return {url,post:value=>{phase('request');return fetch(url+'/invocations',{method:'POST',headers:{'content-type':'application/json',
   'x-pa-agent-token':'Bearer '+token,'x-hw-agentarts-session-id':'fixture-session','x-request-id':'fixture-request'},
-  body:JSON.stringify({query:JSON.stringify(value)})})};
+  body:JSON.stringify({query:JSON.stringify(value)})});}};
 }
 const answer=async response=>JSON.parse((await response.json())[0].data.text);
 test('composed service entry exposes exact missing ports and never turns authenticated transport into tool permission',async t=>{
+ phase('platform-case-start');
  const services=createImageServices();t.after(()=>services.close());
  const {post}=await host(t,{serviceControllers:services.controllers});
  const listed=await answer(await post({platformVersion:1,operation:'list'}));
@@ -30,6 +36,7 @@ test('composed service entry exposes exact missing ports and never turns authent
  const injection=await post({platformVersion:1,operation:'list',apiKey:'must-not-be-used'});assert.equal(injection.status,400);
 });
 test('actual HTTP advance forwards signed pause/controller/user controls and fixed task lifetime',async t=>{
+ phase('workflow-case-start');
  const secret=token,engine=new OwnedWorkflowEngine({externalHost:true,checkpointSecret:secret,
   selector:{select:async()=> 'review'},prepareCandidates:async()=>[{id:'review',description:'Explicit fixture refuses work',value:null,abstain:true}],
   receiptVerifier:createOwnedWorkflowReceiptVerifier({secret})});

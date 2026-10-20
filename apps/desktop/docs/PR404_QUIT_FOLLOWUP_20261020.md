@@ -38,3 +38,9 @@ Node 24.15.0 / Electron 44.2.0 的实际 smoke 14 项通过，回执为 `apps/de
 初轮导航回归后补齐正常退出的最终提交边界：Main 完成全部异步释放及最后活动任务门禁后，在注销快捷键和同步 Runtime/托盘清理前调用 `commit()`。该调用同步重验 ready 页面，成功后移除生命周期监听器，正常窗口 destroyed/closed 不再报告退出失败；失败阻止清理并重新预检。同步清理失败仍沿 `reportQuitFailure` 调用 `cancel()`，解冻保留页面。手动 smoke 的显式 Fake before-quit 组合也对齐该提交边界，没有修改其保存或清理断言。
 
 对应轻量回归覆盖同窗同 frame 重载、窗口替换、pending 导航及迟到成功、重复取消清理、同文档/子 frame 导航、renderer 消失、加载中替换页、最终 commit 后正常两窗口销毁及同步 Runtime 关闭失败解冻。Node 24.15.0 下，`draft-quit-preflight`、`conversation-draft-close`、`quit-task-preflight` 三文件最终 38/38 通过，Desktop typecheck、smoke 语法与 diff 检查通过；日志在忽略目录 `.cache/pr-maintenance-20261020/pr404/page-generation-final-{tests,typecheck}.log`。未重跑实际 Electron smoke 或全仓测试，不沿用上节实际 smoke 结果冒充新版本验证。初轮 `f542ad93` 不含 final commit，不能作为最终交付版本。
+
+## 同步启动语音宿主后的失败解冻
+
+以分支 `863e20e6` 和 main `8edc4899` 静态核对：#444 新增的启动语音退出释放在失败时仍只广播错误，未沿原 `reportQuitFailure` 取消草稿预检，可能使保留窗口持续只读和 inert。本次将该明确的清理失败接入原解冻路径；缓存原释放 Promise，不重做结果未知的设备释放。每次显式退出都观察同一 Promise 的失败并解冻，重复点击等待同次成功释放时仅允许一次退出重入。
+
+同类的 SIS 释放未知状态继续阻止退出且不重做释放；再次显式退出仍调用原失败解冻路径，不留下新一轮预检冻结。新增实际 Main 回调与真实草稿预检的失败/再次退出回归，以及待释放期间重复退出的单次释放/重入回归，并补强原 SIS 回归的每次解冻断言。仅静态检查及 `git diff --check`，未在此云 Git 工作区运行构建或测试；最终提交仍须独立审查和当前头远端 CI，不沿用上述历史通过结果。主线接口目录冲突保留 Desktop 与日历两段新增登记，不更改冻结等级或原协作者内容。

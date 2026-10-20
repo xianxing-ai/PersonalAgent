@@ -163,6 +163,19 @@ test('late credentials after cancellation, timeout or family revoke never create
   });
 });
 
+test('the deadline timer retains TIMEOUT when the observed wall clock has not caught up',async t=>{
+  const clock=Date.now();let release,creations=0;
+  const f=fixture(t,{now:()=>clock,calendar:{binding:()=>({calendarUrl:'https://calendar.example.invalid/',revision:1}),
+    readAuthorization:()=>new Promise(resolve=>{release=resolve;})},
+    createCalendarProvider:()=>{creations++;return new FakeCalendarProvider();}});
+  const tool=f.host.tools.find(item=>item.descriptor.name==='calendar.events'),s=scope(tool);
+  s.deadline=new Date(clock+20).toISOString();
+  await f.host.prepareExport({...s,phase:'preflight'});
+  await assert.rejects(tool.execute({},s),{code:'TIMEOUT'});
+  release('Basic c3ludGhldGljOnBhc3N3b3Jk');await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(creations,0);assert.equal(s.signal.aborted,false);
+});
+
 test('same-account concurrent tasks own independent providers; cancelling A preserves B',async t=>{
   const providers=[];
   const f=fixture(t,{createMailProvider:()=>{

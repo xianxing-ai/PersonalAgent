@@ -59,7 +59,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       if(kind==='mail'&&input?.account!==undefined&&input.account!==MAIL_ACCOUNT)denied();
       const controller=new AbortController(),signal=AbortSignal.any([context.signal,controller.signal]);controllers.set(controller,kind);
       // Each execution owns its connection: cancelling one task must not close another's socket.
-      let provider,timer,onAbort,disposal;
+      let provider,timer,onAbort,disposal,timedOut=false;
       const dispose=()=>disposal??=(Promise.resolve().then(()=>provider?.dispose?.()).catch(()=>{}));
       const activeContext={...context,signal};
       try {
@@ -67,7 +67,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
           onAbort=()=>{void dispose();
             reject(new ProtocolError(context.signal.aborted?'CANCELLED':'TIMEOUT','连接器操作已停止，写入结果须在原任务核实'));};
           signal.addEventListener('abort',onAbort,{once:true});
-          timer=setTimeout(()=>controller.abort(),Math.max(1,Math.min(2_147_483_647,Date.parse(context.deadline)-now())));
+          timer=setTimeout(()=>{timedOut=true;controller.abort();},Math.max(1,Math.min(2_147_483_647,Date.parse(context.deadline)-now())));
           if(signal.aborted)onAbort();
         });
         const operation=(async()=>{
@@ -90,7 +90,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
         })();
         return await Promise.race([operation,interrupted]);
       }catch(error){
-        if(signal.aborted)throw new ProtocolError(!context.signal.aborted&&now()>=Date.parse(context.deadline)?'TIMEOUT':'CANCELLED',
+        if(signal.aborted)throw new ProtocolError(!context.signal.aborted&&(timedOut||now()>=Date.parse(context.deadline))?'TIMEOUT':'CANCELLED',
           '连接器操作已停止，已发生的写入须在原任务核实');
         if(error instanceof ProtocolError)throw new ProtocolError(error.code,'连接器操作未完成；请按错误码核实原任务');
         throw new ProtocolError('EXTERNAL_FAILURE','连接器操作未完成；请核实原任务，勿重复未知写入');

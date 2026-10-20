@@ -1,5 +1,11 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-17 Desktop 审查回归修复（provisional）
+
+Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Conversations v4 草稿；Preload/主进程核验来源主 frame、窗口与对话归属，失败保留窗口。正常输入继续原异步防抖，不增加任务或凭据权限。原 `agentarts.configure` 表单补齐已有安全配置字段，没有新增 Core wire 或数据库迁移。
+
+`RuntimeProactiveImageAdapterOptions` 兼容增加可信 `config.deploymentVersion` 与 `assertDeploymentBinding`，Desktop 原组合传入已选部署，describe/advance 保留同版 HTTP endpoint，凭据等待期间绑定改变则拒绝发送。原版本未知时不假造已固定版本；现有签名、取消、deadline 与 unknown 核实语义保留。具体接线及离线测试边界见 [修复记录](../../apps/desktop/docs/PR376_REGRESSION_FIXES_20261017.md)；不扩大冻结或真实华为/设备验收范围。
+
 ## 2026-10-20 日历写能力消费接线（provisional，离线接线已验）
 
 复用#442@3b1e6d6c已包含的#439可选CalendarProvider.writes与calendar.create/update/cancel接线，沿原Runtime/Policy/ToolGateway保留逐任务批准、配置撤销和完整metadata/result原生出机门禁。#458补充条件写入、实际资源地址校验、删除读回及额外消费验证，见[工作包](../competition/CALENDAR_CONVERSATION_WRITES_20261020.md)。依赖尚未合并主线，真实账号/平台验收未执行，不提升冻结或真实可用等级。无Core wire/数据库迁移，CalDAV响应只增加兼容的可选headers.get端口。
@@ -21,12 +27,6 @@ Desktop `subagent.dispatch` 导出策略更新为 `1.2.0`：`userRequest` 经原
 稳定性增量：Provider 的可选受信 `responseFormat:'json_object'` 仅在 AgentArts 严格 JSON 角色启用，默认文本行为不变，不修改 ModelRequest 或能力冻结状态；模型代理仅记录固定格式标签。角色回执附加固定 `failureStage` 枚举，不记录模型正文或任意错误文本。`owned-1.4` 重启轮失败，`owned-1.5` 上下文通过但主桌面问候仍暴露角色身份；最终 `owned-1.6` 八项真实对话及主桌面问候通过。整仓检查未全绿，全部MOD及原生工具调用不据此冻结，详见同一修复记录。
 
 Desktop `subagent.dispatch` 导出策略 `1.1.0` 在现有有界 JSON result 中附加可选宿主原问题 `userRequest`，子任务正文与可信 footer 的 `resultMetadata` 分离。原问题仅来自当前任务的委派 checkpoint，不采信子任务同名字段；保留原任务/版本/导出守卫、状态与错误。云端为普通 continuation 注入用户答复提示，初始派发和修复报告路径不变。无 Core wire、公共 envelope、数据库迁移或新依赖；旧待核实任务不重绑、不重发。自动化、真实验证及限制见 [修复记录](../competition/CHAT_CONTINUATION_REPLY_20261019.md)，不扩大冻结或全部业务可用范围。
-
-## 2026-10-17 Desktop 审查回归修复（provisional）
-
-Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Conversations v4 草稿；Preload/主进程核验来源主 frame、窗口与对话归属，失败保留窗口。正常输入继续原异步防抖，不增加任务或凭据权限。原 `agentarts.configure` 表单补齐已有安全配置字段，没有新增 Core wire 或数据库迁移。
-
-`RuntimeProactiveImageAdapterOptions` 兼容增加可信 `config.deploymentVersion` 与 `assertDeploymentBinding`，Desktop 原组合传入已选部署，describe/advance 保留同版 HTTP endpoint，凭据等待期间绑定改变则拒绝发送。原版本未知时不假造已固定版本；现有签名、取消、deadline 与 unknown 核实语义保留。具体接线及离线测试边界见 [修复记录](../../apps/desktop/docs/PR376_REGRESSION_FIXES_20261017.md)；不扩大冻结或真实华为/设备验收范围。
 
 ## 2026-10-18 主文字／Live 工具消费接线（provisional）
 
