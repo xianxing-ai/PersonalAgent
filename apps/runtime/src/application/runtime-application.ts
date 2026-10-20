@@ -16,6 +16,14 @@ import {createRuntimeDeveloperHarnessTool, assertDeveloperHarnessConfiguration, 
   developerHarnessConfigurationRef, readDeveloperHarnessConfiguration as readTrustedDeveloperHarnessConfiguration,
   DEVELOPER_HARNESS_TOOL_NAME, DEVELOPER_HARNESS_TOOL_VERSION} from './developer-harness.js';
 import type {RuntimeDeveloperHarnessOptions} from './developer-harness.js';
+import {createHarnessCandidateTrialTool,createHarnessCandidateAdoptionTool,createHarnessCandidateRecoveryTool,
+  HARNESS_TRIAL_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL} from '@personal-agent/coding-tools';
+import type {IsolatedCodingRepairHost} from '@personal-agent/coding-tools';
+import type {HarnessCandidateContext} from '@personal-agent/contracts/harness-candidates';
+import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
+import {parseCodingRepairInput,parseCodingRepairCheckReadback} from '@personal-agent/contracts/coding-repair';
+import {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL} from './harness-candidates.js';
+import {createRuntimeHarnessCandidateBindings} from './harness-candidate-bindings.js';
 import {DevWorkflowPatchRecovery} from '../dev-workflows-patch-reconciliation.js';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {TaskRuntime} from '../index.js';
@@ -103,6 +111,10 @@ export interface RevokeHostAuthorizationResult {revoked: boolean; grantPresent: 
 export interface RuntimeHarnessScope {
   ownerTaskId:string;actualTaskId:string;parentTaskId:string;scopeRef:string;configurationRef:string;
   inputDigest:string;deadline:string;workspaceRef:string;
+}
+export interface RuntimeHarnessCandidatesOptions {
+  host:IsolatedCodingRepairHost;
+  readContext:(context:ToolContext,scope:RuntimeHarnessScope)=>HarnessCandidateContext|undefined|Promise<HarnessCandidateContext|undefined>;
 }
 
 const CONVERSATION_HISTORY_LIMIT = 20;
@@ -323,6 +335,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   developerHarness?:RuntimeDeveloperHarnessOptions;
   /** Synchronous trusted host resolver; undefined disables admission without rebuilding the application. */
   readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
+  /** Existing workspace host and original trusted F15 metadata; no source/model authority is inferred. */
+  harnessCandidates?:RuntimeHarnessCandidatesOptions;
   /** Trusted delivery wakeup only. Its consumer must revalidate original event authorization. */
   onHarnessEventProgress?:(taskId:string)=>void|Promise<void>;
   /** Main-process presence source, rechecked by the original Gateway at dispatch time. */
@@ -466,6 +480,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const fixed = options.developerHarness === undefined ? undefined : {...options.developerHarness};
       this.readDeveloperHarnessConfiguration = options.readDeveloperHarnessConfiguration ?? (()=>fixed);
     }
+    if(options.harnessCandidates&&(!this.readDeveloperHarnessConfiguration
+      ||typeof options.harnessCandidates.readContext!=='function'
+      ||['start','check','publish','reconcile'].some(key=>typeof options.harnessCandidates!.host?.[key as keyof IsolatedCodingRepairHost]!=='function'))) {
+      throw new ProtocolError('INVALID_ARGUMENT','Harness candidates require the original trusted workspace host and user-work composition');
+    }
     this.storagePath = resolve(options.path);
     this.profile = options.profile ?? 'local';
     if (options.competitionMaxSteps !== undefined && (this.profile !== 'huawei_ict_agentarts'
@@ -552,6 +571,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       exportPolicyVersion:'developer-harness-runtime-facts-v1',accepts:()=>true,
       project:({result})=>result,
     }];
+    if(options.harnessCandidates)this.competitionToolExports=[...this.competitionToolExports,
+      ...[HARNESS_TRIAL_TOOL,HARNESS_CANDIDATE_COMPARE_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL].map(toolName=>({
+        toolName,toolVersion:'1.0.0',exportPolicyVersion:'harness-candidate-original-metadata-v1',accepts:()=>true,
+        project:({result}:{result:unknown})=>result}))];
     if(this.codingRepair)this.competitionToolExports=[...this.competitionToolExports,{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
       exportPolicyVersion:'coding-repair-child-summary-v1',accepts:()=>true,project:({taskId}:{taskId:string})=>{
         const value=readRuntimeSubagentSummary(this.runtime,taskId);
@@ -569,6 +592,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       exportNames.add(key);
     }
     let gateway: ToolGateway | undefined;
+    let harnessCandidateTools:RegisteredTool[]=[];
     const harnessHost = this.readDeveloperHarnessConfiguration ? {getRuntime:()=>this.runtime,getTools:()=>this.tools,
       getSubagentOptions:()=>({competitionOnly:true as const,getRuntime:()=>this.runtime,getTools:()=>this.tools,
         runDefaultWorker:(subtask:SubtaskDefinition,worker:WorkerContext,tools:AgentToolPort)=>this.runDefaultSubagentWorker(subtask,worker,tools),
@@ -643,6 +667,25 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }};
       }} : {}),
     });
+    if(options.harnessCandidates&&gateway) {
+      const candidateOptions=options.harnessCandidates;
+      const bindings=createRuntimeHarnessCandidateBindings(this,{
+        resolveHarnessScope:(context,source)=>this.resolveHarnessScope(context,source),
+        readConfiguration:async(scope,context)=>{
+          const current=this.resolveHarnessScope(context);
+          if(!current||!isDeepStrictEqual(current,scope))throw new ProtocolError('UNAUTHORIZED','Original harness configuration scope changed');
+          const configuration=await candidateOptions.readContext(context,current);
+          if(!configuration||!isDeepStrictEqual(this.resolveHarnessScope(context),current))
+            throw new ProtocolError('REVISION_CONFLICT','Original harness workspace configuration is unavailable or changed');
+          return configuration;
+        },now:()=>this.now().getTime(),
+      });
+      harnessCandidateTools=[createHarnessCandidateTrialTool({host:candidateOptions.host,...bindings.trial,now:()=>this.now().getTime()}),
+        createHarnessCandidateAdoptionTool({host:candidateOptions.host,...bindings.adoption,now:()=>this.now().getTime()}),
+        createHarnessCandidateRecoveryTool({host:candidateOptions.host,...bindings.recovery,now:()=>this.now().getTime()}),
+        ...createRuntimeHarnessCandidateTools(this,bindings.compare)];
+      for(const tool of harnessCandidateTools)gateway.register(tool);
+    }
     if (options.workspacePatchReconciliation) {
       this.workspacePatchReconciliation = new WorkspacePatchReconciliationAdapter(
         this.runtime, options.workspacePatchReconciliation, this.hostUserNamespace, this.coordinationBinding);
@@ -725,7 +768,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
         // A routine grant does not create an Approval object. Persist the original nested
         // invocation before granting/executing so confirmed unknown readback can resume it.
-        if (!confirmedDispatch && ((!this.runtime.policy.get(ref) && !routineEligible) || this.isDeveloperWorkerActive(invocation.taskId))) {
+        if (!confirmedDispatch && ((!this.runtime.policy.get(ref) && !routineEligible) || this.isDeveloperWorkerActive(invocation.taskId)
+          ||[HARNESS_TRIAL_TOOL,HARNESS_CANDIDATE_COMPARE_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL].includes(tool.name))) {
           const key='application-tool-invocation:'+ref;
           const original={toolName:tool.name,toolVersion:tool.version,arguments:structuredClone(invocation.arguments),
             argumentsDigest:toolArgumentsDigest(invocation.arguments),deadline:invocation.deadline};
@@ -832,6 +876,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           ...(harnessHost?[{toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
             publicEnumPaths:['/tasks/*/role'],available:(input:{taskId:string;deadline:string;signal:AbortSignal})=>
               developerHarnessAvailable(harnessHost,input.taskId,input.deadline,input.signal)}]:[]),
+          ...harnessCandidateTools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+            available:(input:{taskId:string;deadline:string;signal:AbortSignal})=>{
+              if(!harnessHost||input.signal.aborted)return false;
+              try {
+                const peer=readRuntimeSubagentSibling(this.runtime,input.taskId);
+                if(!peer)return developerHarnessAvailable(harnessHost,input.taskId,input.deadline,input.signal);
+                this.assertDeveloperHarnessExecutorCurrent(input.taskId);
+                return tool.descriptor.name!==HARNESS_PREPARE_ADOPTION_TOOL&&peer.binding.deadline===input.deadline
+                  &&this.runtime.getTask(input.taskId).state==='running';
+              }catch{return false;}
+            }})),
           ...(this.codingRepair?[{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
             publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort','/codingRepair/mode'],
             available:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
@@ -2176,6 +2231,61 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!isDeepStrictEqual(frozen,origin.tools)||!origin.tools.some(tool=>tool.name===toolName)||isRuntimeDispatchTool(toolName)) {
       throw new ProtocolError('SCOPE_DENIED','Tool is outside this subagent conversation');
     }
+  }
+
+  /** Original confirmed main-session preparation is evidence only for a distinct publish invocation. */
+  readHarnessCandidateVerificationEvidence(input:{session:{taskId:string;sessionId:string};runId:string;
+    originTaskId:string;originRunId:string}):readonly string[]|undefined {
+    try {
+      const owner=this.runtime.getTask(input.session.taskId),configuration=this.readDeveloperHarnessConfiguration
+        ?readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration):undefined;
+      if(!configuration||owner.taskId!==input.originTaskId||owner.state!=='running'||owner.cancelRequested)return undefined;
+      const original=this.runtime.loadCheckpoint(owner.taskId,'application-tool-invocation:'+input.originRunId) as
+        {toolName?:string;toolVersion?:string;arguments?:Record<string,unknown>;argumentsDigest?:string;deadline?:string}|undefined;
+      const stored=this.runtime.loadCheckpoint(owner.taskId,'harness-candidates:session:'+input.originRunId) as
+        {operation?:{runId?:string;toolName?:string;argumentsDigest?:string;scope?:RuntimeHarnessScope};input?:unknown}|undefined;
+      const frozen=this.runtime.loadCheckpoint(owner.taskId,'harness-candidates:configuration') as
+        {configurationRef?:string;context?:HarnessCandidateContext}|undefined;
+      const scope=stored?.operation?.scope,session=stored?.input===undefined?undefined:parseCodingRepairInput(stored.input);
+      if(!scope||scope.ownerTaskId!==owner.taskId||scope.actualTaskId!==owner.taskId||scope.scopeRef!==input.originRunId
+        ||scope.configurationRef!==hashJson([this.coordinationBinding,developerHarnessConfigurationRef(configuration)])
+        ||scope.workspaceRef!==configuration.workspaceRef||frozen?.configurationRef!==scope.configurationRef
+        ||frozen.context?.binding.taskId!==owner.taskId||frozen.context.binding.inputDigest!==scope.inputDigest
+        ||original?.toolName!==HARNESS_PREPARE_ADOPTION_TOOL||original.toolVersion!=='1.0.0'||!original.arguments
+        ||original.argumentsDigest!==toolArgumentsDigest(original.arguments)||original.deadline!==scope.deadline
+        ||this.now().getTime()>=Date.parse(scope.deadline)||stored?.operation?.runId!==input.originRunId
+        ||stored.operation.toolName!==HARNESS_PREPARE_ADOPTION_TOOL||stored.operation.argumentsDigest!==original.argumentsDigest
+        ||session?.session.sessionId!==input.session.sessionId||session.session.taskId!==owner.taskId||session.session.mode!=='main'
+        ||session.session.workspaceId!==frozen.context.binding.workspaceId
+        ||harnessCandidateArtifactDigest(session.initialSnapshot)!==harnessCandidateArtifactDigest(frozen.context.baseline)
+        ||harnessCandidateRecipeFingerprint(session.recipes)!==frozen.context.binding.recipeFingerprint)return undefined;
+      const parent=readUserTaskDelegation(this.runtime,scope.parentTaskId);
+      if(!parent||parent.deadline!==scope.deadline
+        ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${scope.parentTaskId}-user-work`)?.taskId!==owner.taskId)return undefined;
+      const record=this.runtime.readToolExecutions(owner.taskId).find(item=>item.evidenceId===input.originRunId);
+      if(record?.state!=='confirmed'||!record.executionStarted||record.policyDecision!=='allow'
+        ||record.toolName!==HARNESS_PREPARE_ADOPTION_TOOL||record.toolVersion!=='1.0.0'
+        ||!this.runtime.matchesToolExecutionInput(record,{arguments:original.arguments,scopeRef:scope.scopeRef})
+        ||!this.runtime.readEvidence(owner.taskId).some(item=>item.evidenceId===input.originRunId
+          &&item.kind==='execution'&&item.sourceRef===HARNESS_PREPARE_ADOPTION_TOOL))return undefined;
+      const loop=this.runtime.loadCheckpoint(owner.taskId,'competition-loop') as
+        {step?:number;pending?:{toolName?:string;arguments?:Record<string,unknown>}}|undefined;
+      const publishRun=`competition-tool-${owner.taskId}-${loop?.step}`;
+      const publish=this.runtime.readToolExecutions(owner.taskId).find(item=>item.evidenceId===publishRun);
+      if(publishRun===input.originRunId||loop?.pending?.toolName!=='coding.repair.publish'
+        ||loop.pending.arguments?.sessionId!==input.session.sessionId||publish?.state!=='started'
+        ||!publish.executionStarted||publish.policyDecision!=='allow'
+        ||!this.runtime.matchesToolExecutionInput(publish,{arguments:loop.pending.arguments,scopeRef:publishRun}))return undefined;
+      const cached=this.runtime.loadCheckpoint(owner.taskId,'tool-result-'+input.originRunId) as {result?:unknown}|undefined;
+      const checked=parseCodingRepairCheckReadback(cached?.result);
+      if(checked.sessionId!==input.session.sessionId||!checked.verification.some(item=>item.runId===input.runId
+        &&item.sessionId===input.session.sessionId&&item.inputSnapshotId===checked.snapshot.snapshotId
+        &&item.status==='VALID'&&item.exitCode===0&&item.evidenceRefs.includes(input.originRunId))
+        ||session.recipes.filter(recipe=>recipe.required).some(recipe=>!checked.verification.some(item=>item.recipeId===recipe.recipeId
+          &&item.sessionId===input.session.sessionId&&item.inputSnapshotId===checked.snapshot.snapshotId
+          &&item.status==='VALID'&&item.exitCode===0&&item.evidenceRefs.includes(input.originRunId))))return undefined;
+      return [input.originRunId];
+    }catch{return undefined;}
   }
 
   /** The generic wire and the model ToolPort share the executor's original frozen subset. */

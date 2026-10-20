@@ -1,5 +1,6 @@
 export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReevaluator,REFERENCE_SKILL_WORKER_TOOL,compileCoordinationGoal} from './application/runtime-application.js';
-export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult,RuntimeHarnessScope} from './application/runtime-application.js';
+export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult,RuntimeHarnessScope,
+  RuntimeHarnessCandidatesOptions} from './application/runtime-application.js';
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
 export type {CoordinationGoalTokenBudget} from './application/context-binding.js';
 export {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT} from './application/context-compaction.js';
@@ -119,6 +120,10 @@ export type {RuntimeCodingRepairOptions,RuntimeCodingRepairImagePort} from './ap
 export {createRuntimeCodingRepairWorkerCapability} from './application/coding-repair-worker-capability.js';
 export {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL,HARNESS_CANDIDATE_TRIAL_TOOL} from './application/harness-candidates.js';
 export type {RuntimeHarnessCandidateOptions} from './application/harness-candidates.js';
+export {createRuntimeHarnessEvents} from './application/harness-events.js';
+export type {RuntimeHarnessEventsOptions,HarnessEventAnchor,HarnessEventReceipt} from './application/harness-events.js';
+export {createRuntimeHarnessEventDelivery} from './application/harness-event-delivery.js';
+export type {HarnessEventOrigin,HarnessEventSubmitInput,HarnessEventDeliveryOptions} from './application/harness-event-delivery.js';
 export {createRuntimeOwnedWorkflowImageAdapter} from './application/owned-workflow-image-adapter.js';
 export type {RuntimeOwnedWorkflowImageOptions} from './application/owned-workflow-image-adapter.js';
 export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';
