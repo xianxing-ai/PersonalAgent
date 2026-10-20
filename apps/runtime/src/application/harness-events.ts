@@ -88,6 +88,7 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
   let controller: AbortController | undefined;
   let lastError: string | undefined;
   let generation = 0;
+  let activeGeneration = 0;
   const key = (event: Event) => 'delivery:' + hash([scope, event.sourceId, event.entityRef, event.sourceVersion]);
   function control() {
     const value = options.readControl();
@@ -267,7 +268,7 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
         }, context);
         if (signal.aborted) return; // A late response cannot settle a stopped consumer.
         const original = atomic.read(originalKey);
-        if (!original || !isDeepStrictEqual(original.value, value)) fail('REVISION_CONFLICT');
+        if (!original || !isDeepStrictEqual(original.value, value)) return fail('REVISION_CONFLICT');
         confirm(original, receipt);
       } catch (error) {
         lastError = errorCode(error);
@@ -316,10 +317,16 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
   }
   function pump(): Promise<void> {
     rerun = true;
-    if (active) return active;
+    if (active) {
+      // A restart must wait for the cancelled generation to release its pump,
+      // then scan durable entries with a fresh signal. Never resend pending work.
+      if (activeGeneration !== generation) return active.then(() => running() ? pump() : undefined);
+      return active;
+    }
     if (!running()) return Promise.resolve();
     controller = new AbortController();
     const signal = controller.signal, currentGeneration = generation;
+    activeGeneration = currentGeneration;
     active = (async () => {
       try {
         while (rerun && !signal.aborted && running() && generation === currentGeneration) {

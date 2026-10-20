@@ -112,3 +112,30 @@ test('suppression and rejected entries persist without blocking later authorized
   assert.equal([...f.state.values()].filter(v=>v.value?.state==='pending').length,1);
   await consumer.stop();assert.doesNotMatch(JSON.stringify(consumer.inspect()),/PRIVATE/);
 });
+
+test('restart overlapping stop scans new entries without resending the unknown delivery',async()=>{
+  const f=fixture();f.entries.first={event:f.event('a')};
+  let entered;
+  const reached=new Promise(resolve=>{entered=resolve;});
+  const consume=f.options.delivery.consume;
+  f.options.delivery.consume=async input=>{
+    await consume(input);
+    entered();
+    // Simulate an uncooperative delivery with a lost acknowledgement. Stop must
+    // release its bounded wait without waiting for this operation to settle.
+    return new Promise(()=>{});
+  };
+  const consumer=createRuntimeHarnessEvents(f.options);
+  const started=consumer.start();await reached;
+  const stopping=consumer.stop();
+  f.entries.second={event:f.event('a','2')};
+  f.options.delivery.consume=consume;
+  const restarted=consumer.start();
+  await Promise.all([started,stopping,restarted]);
+  assert.equal(consumer.inspect().running,true);
+  assert.equal(consumer.inspect().active,false);
+  assert.equal(f.counts().calls,2);
+  assert.equal(f.counts().reads,1);
+  assert.equal([...f.state.values()].filter(v=>v.value?.state==='confirmed').length,2);
+  await consumer.stop();
+});
