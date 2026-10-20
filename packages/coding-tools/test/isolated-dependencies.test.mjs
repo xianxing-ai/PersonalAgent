@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,rm,symlink,realpath,stat} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,symlink,realpath,stat,lstat} from 'node:fs/promises';
 import {writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -57,7 +57,14 @@ test('workspace links are remapped inside the candidate and main build outputs a
   }
   await mkdir(path.join(f.source,relative,'dist'));await writeFile(path.join(f.source,relative,'dist','old.js'),'main-only old output');
   await mkdir(path.join(f.source,'node_modules','@fixture'));
-  await symlink(path.join(f.source,relative),path.join(f.source,'node_modules','@fixture','local'),process.platform==='win32'?'junction':'dir');
+  // Windows temp roots may use an 8.3 alias. A junction retains that target
+  // spelling, while the lock verifier uses the canonical source root.
+  const originalWorkspace=await realpath(path.join(f.source,relative));
+  const originalLink=path.join(f.source,'node_modules','@fixture','local');
+  await symlink(originalWorkspace,originalLink,process.platform==='win32'?'junction':'dir');
+  assert.equal((await lstat(originalLink)).isSymbolicLink(),true);
+  assert.equal(await realpath(originalLink),await realpath(path.join(f.input.sourceRoot,relative)),
+    'fixture link resolves to the exact original locked workspace before preparation');
   await writeFile(path.join(f.source,'node_modules','.package-lock.json'),JSON.stringify({lockfileVersion:3,packages:{
     'node_modules/fixture-lib':f.pinned,'node_modules/@fixture/local':{resolved:relative,link:true}}}));
   const prepared=await prepareIsolatedCodingDependencies(f.input);
