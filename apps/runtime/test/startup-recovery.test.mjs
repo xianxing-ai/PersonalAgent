@@ -70,3 +70,28 @@ test('startup refuses to inspect/adopt a database without exclusive host ownersh
   const f=fixture();f.options.exclusiveOwner=false;
   await assert.rejects(createRuntimeStartupRecovery(f.options).recover(),{code:'REVISION_CONFLICT'});assert.equal(f.task.state,'running');
 });
+test('an atomically accepted event root resumes the same task only through its current original native fence',async()=>{
+  for(const valid of [true,false]){
+    const f=fixture({state:'created'}),origin={deliveryId:'delivery',eventDigest:'a'.repeat(64),sourceTaskId:'source',originalParentTaskId:'parent'};
+    f.values.clear();f.values.set('harness-event-origin',origin);
+    f.runtime.findTaskByIdempotencyKey=key=>key==='harness-event-root:delivery'?structuredClone(f.task):undefined;
+    f.options.canResumeHarnessEvent=query=>{assert.equal(query.taskId,'original');assert.equal(query.phase,'created_root');
+      assert.deepEqual(query.origin,origin);return valid?{deadline,configurationRef:'configuration',fence:'original-current-fence',assertCurrent:()=>{}}:undefined;};
+    let handed;
+    f.options.resumeOriginalTask=request=>{request.assertUnchanged();handed=request;return {accepted:true};};
+    const result=await createRuntimeStartupRecovery(f.options).recover();
+    assert.equal(result.items[0].outcome,valid?'resumed':'retained');assert.equal(f.task.state,'created');
+    if(valid){assert.equal(handed.taskId,'original');assert.deepEqual(handed.harnessEventOrigin,origin);}
+    else assert.equal(handed,undefined);
+  }
+});
+test('revoking the event lease before original enqueue prevents recovery without creating another root',async()=>{
+  const f=fixture({state:'created'}),origin={deliveryId:'delivery',eventDigest:'a'.repeat(64),sourceTaskId:'source',originalParentTaskId:'parent'};
+  f.values.clear();f.values.set('harness-event-origin',origin);
+  f.runtime.findTaskByIdempotencyKey=key=>key==='harness-event-root:delivery'?structuredClone(f.task):undefined;
+  let authorized=true,started=false;
+  f.options.canResumeHarnessEvent=()=>authorized?{deadline,configurationRef:'configuration',fence:'same-original-lease',assertCurrent:()=>{}}:undefined;
+  f.options.resumeOriginalTask=request=>{authorized=false;request.assertUnchanged();started=true;return {accepted:true};};
+  assert.equal((await createRuntimeStartupRecovery(f.options).recover()).items[0].outcome,'retained');assert.equal(started,false);
+  assert.equal(f.task.taskId,'original');assert.equal(f.task.state,'created');
+});

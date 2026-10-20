@@ -15,7 +15,7 @@ export type {TrustedHostStateStore} from './host-state-store.js';
 export {readRuntimeBuildIdentity} from './build-identity.js';
 export {createRuntimeStartupRecovery} from './application/startup-recovery.js';
 export type {RuntimeStartupRecoveryOptions,RuntimeStartupRecovery,RuntimeStartupRecoveryReport,RuntimeStartupRecoveryItem,
-  RuntimeStartupResumeRequest} from './application/startup-recovery.js';
+  RuntimeStartupResumeRequest,RuntimeStartupHarnessEventOrigin,RuntimeStartupHarnessEventScope,RuntimeStartupHarnessEventRequest} from './application/startup-recovery.js';
 export {createRuntimeAtomicStatePort} from './atomic-host-state.js';
 export type {RuntimeAtomicStatePort} from './atomic-host-state.js';
 
@@ -1333,6 +1333,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   requestCancel(taskId: string, _reason?: string): {taskId: string; state: TaskState; cancelAccepted: boolean} {
+    const wasCreated = this.getTask(taskId).state === 'created';
     const wasWaitingApproval = this.getTask(taskId).state === 'waiting_approval';
     const result = this.transaction(() => {
       const task = taskFromRow(this.taskRow(taskId));
@@ -1344,7 +1345,16 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       return {taskId, state: next.state, cancelAccepted: true};
     });
     this.active.get(taskId)?.abort();
-    if (wasWaitingApproval && !this.active.has(taskId) && result.state === 'cancelling') {
+    const origin=wasCreated?this.loadCheckpoint(taskId,'harness-event-origin') as {deliveryId?:string;eventDigest?:string;
+      sourceTaskId?:string;originalParentTaskId?:string}|undefined:undefined;
+    const unstartedCreated=wasCreated&&origin&&Object.keys(origin).sort().join(',')==='deliveryId,eventDigest,originalParentTaskId,sourceTaskId'
+      &&typeof origin.deliveryId==='string'&&typeof origin.eventDigest==='string'&&/^[a-f0-9]{64}$/.test(origin.eventDigest)
+      &&typeof origin.sourceTaskId==='string'&&typeof origin.originalParentTaskId==='string'
+      &&this.findTaskByIdempotencyKey('harness-event-root:'+origin.deliveryId)?.taskId===taskId
+      &&this.readToolExecutions(taskId).length===0
+      &&!this.loadCheckpoint(taskId,'competition-cloud-inflight')&&!this.loadCheckpoint(taskId,'competition-cloud-unknown')
+      &&!this.loadCheckpoint(taskId,'competition-cloud-received')&&!this.loadCheckpoint(taskId,'competition-cloud-request-identity');
+    if ((wasWaitingApproval||unstartedCreated) && !this.isTaskActive(taskId) && result.state === 'cancelling') {
       return {taskId, state: this.confirmCancellation(taskId).state, cancelAccepted: true};
     }
     return result;
