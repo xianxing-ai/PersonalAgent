@@ -16,6 +16,17 @@ const pair = (receipts,status) => {
   assert.ok(receipts[1].durationMs>=0);
 };
 
+test('failure stage distinguishes provider errors from JSON decoding without response content',async()=>{
+ for(const stage of ['model_gateway','response_json','response_object']){
+  const receipts=[],provider=fixture();
+  if(stage==='model_gateway')provider.complete=async()=>{throw Error('private-provider-detail');};
+  else provider.complete=async()=>({response:{kind:'final',text:stage==='response_json'?'private-invalid-json':'[]'},deployment:provider.deployment,latencyMs:0});
+  await assert.rejects(agent(provider,receipt=>receipts.push(receipt)).invoke(invocation()));
+  assert.equal(receipts.at(-1).failureStage,stage);
+  assert.equal(JSON.stringify(receipts).includes('private-'),false);
+ }
+});
+
 test('same-role concurrent requests sharing a requestId retain independent spans on reverse completion',async()=>{
   const provider=fixture(),completions=[],receipts=[];
   const response={response:{kind:'final',text:JSON.stringify({kind:'text',text:'private-model-output'})},

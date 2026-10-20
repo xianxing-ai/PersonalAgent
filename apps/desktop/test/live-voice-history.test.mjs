@@ -61,6 +61,22 @@ test('store read failures still retain unsaved history and snapshots cannot muta
   history.record(message('u1'));
   history.snapshot().transcripts[0].text='changed';
   assert.equal(history.context()[0].text,'u1');
+  assert.equal(history.snapshot().contextDegraded,true);
+});
+
+test('canonical history retains early user constraints and long final conditions beyond the former window',()=>{
+ const canonical=[{id:'first',role:'user',content:'不要皮革，预算500元'},
+  ...Array.from({length:25},(_,i)=>({id:'u'+i,role:'user',content:'补充'+i})),
+  {id:'long',role:'user',content:'x'.repeat(1700)+'结尾条件不能丢失'}];
+ const history=createLiveVoiceHistory({save:()=>{},readContext:()=>({contextMessages:canonical,tasks:[{goal:'不要重复任务',state:'succeeded'}]})});
+ const context=history.context();assert.equal(context.length,27);
+ assert.equal(context[0].text,'不要皮革，预算500元');assert.match(context.at(-1).text,/结尾条件不能丢失$/);
+ assert.equal(context.some(m=>m.text==='不要重复任务'),false);
+});
+
+test('critical Live context overflow is explicit instead of silently trimming user statements',()=>{
+ const history=createLiveVoiceHistory({save:()=>{},readContext:()=>({contextMessages:[{id:'long',role:'user',content:'条件'.repeat(10000)}]})});
+ assert.throws(()=>history.context(),/无法完整发送/);
 });
 
 test('recovered user and assistant transcripts persist in the same real Conversations file and reload once', () => {

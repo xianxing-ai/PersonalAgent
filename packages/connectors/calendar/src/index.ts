@@ -1,7 +1,7 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import type { RegisteredTool, ToolDescriptor, ToolHost } from '@personal-agent/contracts';
 import { CalendarConnector, CALENDAR_CONNECTOR_VERSION } from './connector.js';
-import { CalendarService } from './service.js';
+import { CalendarService, eventToItem } from './service.js';
 import type { CalendarReadContext, CalendarWindow } from './provider.js';
 import type { CalendarProvider } from './provider.js';
 
@@ -50,6 +50,55 @@ const eventsOutputSchema: ToolDescriptor['outputSchema'] = {
   },
 };
 
+const createEventInputSchema: ToolDescriptor['inputSchema'] = {
+  type: 'object',
+  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。给 uid 时同 UID 重放幂等。',
+  required: ['summary', 'startUtc', 'endUtc'],
+  additionalProperties: false,
+  properties: {
+    summary: {type: 'string', minLength: 1, maxLength: 512},
+    startUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
+    endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
+    location: {type: 'string', maxLength: 512},
+    notes: {type: 'string', maxLength: 4096},
+    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$', description: '可选：显式资源 UID（用于重放幂等）；缺省由提供商生成。'},
+  },
+};
+
+const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
+  type: 'object',
+  description: '更新既有日历事件的字段（缺省字段保持原值）；SEQUENCE 递增后写回并读回核对。',
+  required: ['uid'],
+  additionalProperties: false,
+  properties: {
+    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'},
+    summary: {type: 'string', minLength: 1, maxLength: 512},
+    startUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
+    endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
+    location: {type: 'string', maxLength: 512},
+    notes: {type: 'string', maxLength: 4096},
+  },
+};
+
+const cancelEventInputSchema: ToolDescriptor['inputSchema'] = {
+  type: 'object',
+  description: '取消（删除）日历事件。资源不存在视为已取消（幂等），状态如实返回。',
+  required: ['uid'],
+  additionalProperties: false,
+  properties: {uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'}},
+};
+
+const writeOutputSchema: ToolDescriptor['outputSchema'] = {
+  type: 'object',
+  required: ['state'],
+  additionalProperties: false,
+  properties: {
+    item: {$ref: `${PROTOCOL_ID}#/definitions/ConnectorItem`, description: 'create/update 与 cancel 命中资源时返回的读回记录。'},
+    uid: {type: 'string', description: '仅 cancel 且资源不存在时返回。'},
+    state: {type: 'string', enum: ['created', 'updated', 'cancelled', 'already_absent']},
+  },
+};
+
 export interface CalendarModuleOptions {
   provider: CalendarProvider;
   accountRef?: string;
@@ -94,9 +143,70 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
     },
   };
 
+  const writes = options.provider.writes;
+  const writeUnregisters: (() => void)[] = [];
+  if (writes !== undefined && typeof writes.createEvent === 'function'
+    && typeof writes.updateEvent === 'function' && typeof writes.cancelEvent === 'function') {
+    const writeDescriptorBase = {
+      version: CALENDAR_CONNECTOR_VERSION,
+      sideEffect: 'external_write' as const,
+      requiredScopes: ['calendar:write'],
+      requiresPresence: false,
+    };
+    const createTool: RegisteredTool = {
+      descriptor: {...writeDescriptorBase, name: 'calendar.create',
+        inputSchema: createEventInputSchema, outputSchema: writeOutputSchema,
+        idempotencySupport: false, recoverySupport: false},
+      execute: async (input: unknown, context) => {
+        const raw = input as {summary: string; startUtc: string; endUtc: string; location?: string; notes?: string; uid?: string};
+        const record = await writes.createEvent({
+          summary: raw.summary, startUtc: raw.startUtc, endUtc: raw.endUtc,
+          ...(raw.location === undefined ? {} : {location: raw.location}),
+          ...(raw.notes === undefined ? {} : {notes: raw.notes}),
+          ...(raw.uid === undefined ? {} : {uid: raw.uid})},
+          {signal: context.signal, deadline: context.deadline});
+        return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'created'};
+      },
+    };
+    const updateTool: RegisteredTool = {
+      descriptor: {...writeDescriptorBase, name: 'calendar.update',
+        inputSchema: updateEventInputSchema, outputSchema: writeOutputSchema,
+        idempotencySupport: true, recoverySupport: true},
+      execute: async (input: unknown, context) => {
+        const raw = input as {uid: string; summary?: string; startUtc?: string; endUtc?: string; location?: string; notes?: string};
+        const record = await writes.updateEvent({
+          uid: raw.uid,
+          ...(raw.summary === undefined ? {} : {summary: raw.summary}),
+          ...(raw.startUtc === undefined ? {} : {startUtc: raw.startUtc}),
+          ...(raw.endUtc === undefined ? {} : {endUtc: raw.endUtc}),
+          ...(raw.location === undefined ? {} : {location: raw.location}),
+          ...(raw.notes === undefined ? {} : {notes: raw.notes})},
+          {signal: context.signal, deadline: context.deadline});
+        return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'updated'};
+      },
+    };
+    const cancelTool: RegisteredTool = {
+      descriptor: {...writeDescriptorBase, name: 'calendar.cancel',
+        inputSchema: cancelEventInputSchema, outputSchema: writeOutputSchema,
+        idempotencySupport: true, recoverySupport: true},
+      execute: async (input: unknown, context) => {
+        const raw = input as {uid: string};
+        const result = await writes.cancelEvent(raw.uid, {signal: context.signal, deadline: context.deadline});
+        // DELETE 后资源已移除，多数服务器读不回条目；能读回（如状态标记式实现）才附带 item。
+        const item = result.state === 'cancelled'
+          ? await service.getEventItem(accountRef, raw.uid, {signal: context.signal, deadline: context.deadline}).catch(() => undefined)
+          : undefined;
+        return item === undefined
+          ? {uid: raw.uid, state: result.state}
+          : {item, state: result.state};
+      },
+    };
+    writeUnregisters.push(host.register(createTool), host.register(updateTool), host.register(cancelTool));
+  }
   const unregister = host.register(tool);
   return () => {
     unregister();
+    for (const dispose of writeUnregisters) dispose();
     connector.disconnect();
   };
 }
