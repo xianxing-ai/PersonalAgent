@@ -5,6 +5,7 @@ import {ToolGateway,toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {openSqliteLearningHost} from '@personal-agent/learning';
 import {TaskRuntime} from '../dist/index.js';
 import {createRuntimeHarnessExperienceApplication,harnessExperienceWorkspaceDigest} from '../dist/application/harness-experience.js';
+import {createHarnessExperienceBindings} from '../dist/application/harness-experience-bindings.js';
 
 // Explicit synthetic tools. Real TaskRuntime/Policy/ToolGateway/SQLite records, no account or filesystem publish.
 async function fixture(t) {
@@ -23,6 +24,8 @@ async function fixture(t) {
     workflowVersion:'F15@1',runtimeVersion:'runtime@1',recipeFingerprint:'d'.repeat(64)};
   const session={version:1,sessionId:'main-session',taskId,workspaceId:'workspace',mode:'main',baselineSnapshotId:'baseline'};
   const recipes=[{recipeId:'unit',packageIds:['pkg'],required:true}];
+  const mainInput={version:1,session,initialSnapshot:baseline,recipes};
+  const bindings=createHarnessExperienceBindings(runtime);
   const checked={version:1,sessionId:session.sessionId,snapshot,verification:[{version:1,sessionId:session.sessionId,runId:'verification',
     recipeId:'unit',packageIds:['pkg'],inputSnapshotId:snapshot.snapshotId,files:snapshot.files,exitCode:0,status:'VALID',evidenceRefs:['adopt'],diagnostics:[]}]};
   const trialSession={...session,sessionId:'trial-session',mode:'isolated'};
@@ -37,10 +40,18 @@ async function fixture(t) {
   };
   const invocations=new Map();
   for(const [name,result] of Object.entries(values))gateway.register({descriptor:{name,version:'1.0.0',inputSchema:{type:'object'},outputSchema:{},
-    sideEffect:'local_write',requiredScopes:['workspace:write'],idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async()=>structuredClone(result)});
+    sideEffect:'local_write',requiredScopes:['workspace:write'],idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async(_args,context)=>{
+      if(name==='coding.repair.trial')bindings.saveSession(context,taskId,{...mainInput,session:trialSession});
+      if(name==='coding.repair.prepare_adoption') {
+        bindings.saveSelection(context,{ownerTaskId:taskId,trial:{taskId,runId:'trial'},comparison:{taskId,runId:'compare'}});
+        bindings.saveSession(context,taskId,mainInput);
+      }
+      return structuredClone(result);
+    }});
   const invoke=async(name,args,runId)=>{
     runtime.policy.grant({authorizationRef:runId,taskId,toolName:name,scopes:['workspace:write'],expiresAt:deadline,argumentsDigest:toolArgumentsDigest(args)});
     invocations.set(runId,{arguments:args,scopeRef:runId});
+    runtime.saveCheckpoint(taskId,'application-tool-invocation:'+runId,{toolName:name,toolVersion:'1.0.0',arguments:args,deadline});
     const result=await client.call('tool.invoke',{toolName:name,toolVersion:'1.0.0',arguments:args,scopeRef:runId},{taskId,idempotencyKey:runId,timeoutMs:60000});
     assert.equal(result.state,'confirmed');
   };
@@ -53,14 +64,17 @@ async function fixture(t) {
   const origin={ownerTaskId:taskId,candidateId:'candidate',trial:ref('trial'),comparison:ref('compare'),adoption:ref('adopt'),publication:ref('publish')};
   let current={scope,snapshot};
   const app=createRuntimeHarnessExperienceApplication({namespace:'developer',runtime,learning,
-    assertOrigin:value=>{assert.deepEqual(value,origin);},readInvocation:run=>invocations.get(run.runId),
-    readMainInput:()=>({version:1,session,initialSnapshot:baseline,recipes}),readCurrent:()=>current,confirmActivation:async()=>true});
+    assertOrigin:value=>{assert.deepEqual(value,origin);},readInvocation:bindings.readInvocation,
+    readMainInput:run=>{assert.deepEqual(run,{taskId,runId:'adopt'});return bindings.readMainInput(run);},
+    readCurrent:()=>current,confirmActivation:async()=>true});
   const propose=()=>app.proposeFromConfirmed(origin,{...context,workflowId:'experience',expectedRevision:null,operationId:'propose',createdAt:new Date(now).toISOString()});
-  return {app,runtime,learning,context,scope,taskId,origin,invocations,propose,setCurrent:value=>{current=value;},snapshot};
+  return {app,runtime,learning,context,scope,taskId,origin,invocations,propose,setCurrent:value=>{current=value;},snapshot,bindings};
 }
 test('actual Runtime confirmed adoption/publication feeds existing learning and a read-only policy lease',async t=>{
   const f=await fixture(t);
   const candidate=f.propose();assert.equal(candidate.validation,'candidate');
+  assert.deepEqual(f.bindings.publishedOrigins(f.taskId),[f.origin]);
+  assert.equal(f.bindings.readMainInput({taskId:f.taskId,runId:'compare'}),undefined,'never guesses the latest main session');
   assert.equal(f.app.readApplicable('experience',f.scope,f.context),null);
   await f.app.validate('experience',1,f.context);
   await f.app.activate({...f.context,workflowId:'experience',revision:1,expectedActiveRevision:null,operationId:'activate',activatedAt:new Date().toISOString()});
@@ -70,8 +84,9 @@ test('actual Runtime confirmed adoption/publication feeds existing learning and 
 });
 test('altered original invocation, unknown publish and changed current workspace are refused',async t=>{
   const f=await fixture(t);
-  const saved=f.invocations.get('adopt');f.invocations.set('adopt',{...saved,arguments:{trialRunId:'another'}});
-  assert.throws(f.propose,{code:'NOT_VALIDATED'});f.invocations.set('adopt',saved);
+  const saved=f.runtime.loadCheckpoint(f.taskId,'application-tool-invocation:adopt');
+  f.runtime.saveCheckpoint(f.taskId,'application-tool-invocation:adopt',{...saved,arguments:{trialRunId:'another'}});
+  assert.throws(f.propose,{code:'NOT_VALIDATED'});f.runtime.saveCheckpoint(f.taskId,'application-tool-invocation:adopt',saved);
   const published=f.runtime.loadCheckpoint(f.taskId,'tool-result-publish');
   f.runtime.saveCheckpoint(f.taskId,'tool-result-publish',{...published,result:{...published.result,state:'unknown'}});
   assert.throws(f.propose,{code:'NOT_VALIDATED'});f.runtime.saveCheckpoint(f.taskId,'tool-result-publish',published);
