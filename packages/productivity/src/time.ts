@@ -2,6 +2,9 @@ import { ProtocolError } from '@personal-agent/contracts';
 
 const UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
 const LOCAL_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+/** 输入桥接形态：允许数值时区偏移（+08:00）、秒省略与空格分隔——解析后一律规范化存储。 */
+const UTC_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
+const LOCAL_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/;
 
 /** 一个时刻：精确 UTC 瞬间 + 产生它时的本地表示与时区，读回时两者都返回。 */
 export interface TodoWhen {
@@ -19,6 +22,17 @@ export interface WhenInput {
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new ProtocolError('INVALID_ARGUMENT', message);
+}
+
+/** Date.parse normalizes some impossible dates instead of rejecting them. */
+function assertCalendarDate(value: string, field: string): void {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ]/.exec(value);
+  assert(match, `${field} must contain a valid Gregorian date`);
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  assert(month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1]!,
+    `${field} must contain a valid Gregorian date`);
 }
 
 function validTimeZone(timeZone: string): boolean {
@@ -75,6 +89,7 @@ function formatInZone(instant: number, timeZone: string): string {
  * - 春季跳跃（本地时刻不存在）：向前推过跳跃（Temporal 'compatible' 语义）。
  */
 export function localToUtc(localDateTime: string, timeZone: string): number {
+  assertCalendarDate(localDateTime, 'localDateTime');
   const asIfUtc = Date.parse(`${localDateTime}Z`);
   const offsetHere = zoneOffsetMs(asIfUtc, timeZone);
   const guess = asIfUtc - offsetHere;
@@ -124,8 +139,8 @@ function findTransition(timeZone: string, low: number, high: number): number {
   return high;
 }
 
-function toIsoUtc(instant: number): string {
-  return `${new Date(instant).toISOString().slice(0, 19)}.000Z`;
+export function toIsoUtc(instant: number): string {
+  return new Date(instant).toISOString();
 }
 
 /** 解析时间输入为 TodoWhen。校验失败抛 INVALID_ARGUMENT。 */
@@ -137,15 +152,36 @@ export function resolveWhen(input: WhenInput, field: string): TodoWhen {
     throw new ProtocolError('INVALID_ARGUMENT', `${field}: provide exactly one of utc or localDateTime`);
   }
   if (hasUtc) {
-    assert(UTC_PATTERN.test(input.utc as string), `${field}.utc must be an ISO-8601 UTC instant`);
-    assert(Number.isFinite(Date.parse(input.utc as string)), `${field}.utc is not a valid date`);
-    return {utc: input.utc as string, timeZone: 'UTC', localDateTime: (input.utc as string).slice(0, 19)};
+    const value = input.utc as string;
+    assert(UTC_INPUT_PATTERN.test(value), `${field}.utc must be an ISO-8601 instant (UTC Z or numeric offset)`);
+    assertCalendarDate(value, `${field}.utc`);
+    const instant = Date.parse(value);
+    assert(Number.isFinite(instant), `${field}.utc is not a valid date`);
+    if (value.endsWith('Z')) {
+      return {utc: toIsoUtc(instant), timeZone: 'UTC', localDateTime: value.slice(0, 19)};
+    }
+    // 桥接：数值偏移（如 +08:00）规范化为规范 UTC 存储。整小时偏移保留为固定偏移
+    // IANA 区（Etc/GMT 符号与 POSIX 相反），本地表示按该偏移渲染；半时区偏移退回 UTC 表示。
+    const offsetMatch = /([+-])(\d{2}):(\d{2})$/.exec(value);
+    assert(offsetMatch, `${field}.utc must have a valid numeric offset`);
+    const hours = Number(offsetMatch[2]), minutes = Number(offsetMatch[3]);
+    assert(minutes < 60 && hours <= 14 && (hours < 14 || minutes === 0), `${field}.utc offset must be within ±14:00`);
+    const sign = offsetMatch![1] === '-' ? -1 : 1;
+    const offsetMinutes = sign * (Number(offsetMatch![2]) * 60 + Number(offsetMatch![3]));
+    const fixedZone = offsetMinutes % 60 === 0
+      ? `Etc/GMT${offsetMinutes <= 0 ? '+' : '-'}${Math.abs(offsetMinutes / 60)}`
+      : 'UTC';
+    const zone = validTimeZone(fixedZone) ? fixedZone : 'UTC';
+    return {utc: toIsoUtc(instant), timeZone: zone, localDateTime: formatInZone(instant, zone)};
   }
-  assert(LOCAL_PATTERN.test(input.localDateTime as string), `${field}.localDateTime must be YYYY-MM-DDTHH:mm:ss`);
+  const localRaw = input.localDateTime as string;
+  assert(LOCAL_INPUT_PATTERN.test(localRaw), `${field}.localDateTime must be YYYY-MM-DDTHH:mm:ss`);
+  // 桥接：空格分隔与秒省略规范化为 T 分隔全秒形态。
+  const localDateTime = `${localRaw.slice(0, 10)}T${localRaw.slice(11)}${localRaw.length === 16 ? ':00' : ''}`;
   assert(typeof input.timeZone === 'string' && input.timeZone.length > 0, `${field}.timeZone is required with localDateTime`);
   assert(validTimeZone(input.timeZone as string), `${field}.timeZone is not a valid IANA time zone`);
-  const instant = localToUtc(input.localDateTime as string, input.timeZone as string);
-  return {utc: toIsoUtc(instant), timeZone: input.timeZone as string, localDateTime: input.localDateTime as string};
+  const instant = localToUtc(localDateTime, input.timeZone as string);
+  return {utc: toIsoUtc(instant), timeZone: input.timeZone as string, localDateTime};
 }
 
 /** 校验已有的 TodoWhen（读回自存储时），失败抛 INVALID_ARGUMENT。 */

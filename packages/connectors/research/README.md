@@ -55,6 +55,7 @@ manifest：`id=research`、`accountTypes=['openalex']`、`capabilities=['search'
 - 可选 `mailto` 进 polite pool（限速更稳），由装配层注入；
 - 响应映射：`id`→externalId（剥域名前缀）、`display_name`→标题、`publication_date`（YYYY-MM-DD）→当日 UTC 零点、`authorships[].author.display_name`、`primary_location.source.display_name`→venue、`doi`→url、`cited_by_count`；无标题条目跳过；
 - 错误映射：429→`RATE_LIMITED`（附 60s retryAfter）；网络→`EXTERNAL_FAILURE`（可重试）；取消不被吞。
+- 中文查询相关度桥接（#445，2026-10-20 实机证据）：OpenAlex 对 CJK 口语查询会返回与检索词毫无交集的高排名结果（Node.js 24 题命中《BayLing》/YOLOv11 教室论文）。现在题名与查询既无拉丁词桥（产品名/术语按词边界命中）又无足量汉字二元组桥（查询汉字数≥4 需 ≥2 个共享，2-3 字放宽为 ≥1）的命中不返回——诚实未命中优于呈现无关材料；拉丁查询不受影响（不做词面桥接，避免误伤 LLM vs large language models 一类合法英文结果）。
 
 ## 取消、超时与重试
 
@@ -64,7 +65,7 @@ manifest：`id=research`、`accountTypes=['openalex']`、`capabilities=['search'
 
 ## 测试
 
-`node --test test/*.test.mjs`（9 项：8 离线 + 1 门控 live）：材料契约校验、失败/过期区分（1999 材料标 stale 仍返回）、无发布时间回退与标注、缓存三态（fresh/stale+lastError/不可重试照实抛）、无缓存失败照实抛、OpenAlex 规范化（日期归一/作者/venue/坏条目跳过）、连接器能力边界、工具 schema/scope。
+`node --test test/*.test.mjs`（36 项：35 离线通过 + 1 门控 live 跳过）：材料契约校验、失败/过期区分（1999 材料标 stale 仍返回）、无发布时间回退与标注、缓存三态（fresh/stale+lastError/不可重试照实抛）、无缓存失败照实抛、OpenAlex 规范化（日期归一/作者/venue/坏条目跳过）、连接器能力边界、工具 schema/scope、中文查询相关度桥接（#445：观察复现→空结果、拉丁词桥与词边界、汉字二元组桥、短查询阈值、拉丁查询透传防回归、空结果 envelope 仍入缓存；#447 评审整改：C++/C# 判据词保留、C++11/C#12 版本化词元正反例）。汉字二元组必须在原文中相邻，不能跨题名或查询中的标点、空白、换行或拉丁词拼接；多个连续汉字片段仍可各自成桥。新增边界用例先在旧实现下复现8个失败子用例，修复后全套通过；build/typecheck及diff检查通过。以上为显式假响应的离线验证，未开启真实OpenAlex调用，不提升conditional等级。
 
 真实读回（免 key）：
 
@@ -76,5 +77,5 @@ PA_RESEARCH_LIVE=1 node --test packages/connectors/research/test/
 
 - `verification: 'conditional'`：真实读回依赖出站网络，实测样本为一次查询的 5 条结果；
 - 缓存为实例内存级（同 weather），跨进程不共享；TTL 内不感知源数据更新；
-- 材料不含正文摘要（OpenAlex 有 abstract_inverted_index，反排还原属后续增强）；
+- 材料不含正文摘要（OpenAlex 有 abstract_inverted_index，反排还原属后续增强）；相关度桥接为词面级（拉丁词/汉字二元组），**且存在误保留方向的放水**：查询中「研究/方法/知识」一类通用汉字二元组足以凑满阈值，无关中文题名可能被保留；两方向的残余风险都由语义级 rerank（后续增强）收口，当前承诺只有「桥接全空时如实返回空结果」；日语假名/韩文查询不在桥接覆盖内；
 - 仅学术源；通用 web 搜索待 Bing（需 key）或网络环境变化后的其他提供商。

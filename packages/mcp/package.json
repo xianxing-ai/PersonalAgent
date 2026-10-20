@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}},
-  "scripts": {"build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test test/*.test.mjs", "test:real": "node --test test/real-stdio.test.mjs"},
+  "scripts": {"build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test --test-reporter=spec --test-reporter=../../apps/desktop/test-support/node-test-failure-reporter.mjs --test-reporter-destination=stdout --test-reporter-destination=stderr test/*.test.mjs", "test:real": "node --test test/real-stdio.test.mjs"},
   "dependencies": {"@personal-agent/contracts": "0.1.0-alpha.1", "@personal-agent/coding-tools": "0.1.0-alpha.1", "@personal-agent/connector-host": "0.1.0-alpha.1", "@modelcontextprotocol/sdk": "1.31.0", "@modelcontextprotocol/server-filesystem": "2026.8.31"},
   "devDependencies": {"@personal-agent/tool-gateway": "0.1.0-alpha.1", "@personal-agent/policy": "0.1.0-alpha.1"}
 }

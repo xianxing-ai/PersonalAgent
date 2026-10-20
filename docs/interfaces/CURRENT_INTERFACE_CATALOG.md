@@ -6,6 +6,10 @@ Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Con
 
 `RuntimeProactiveImageAdapterOptions` 兼容增加可信 `config.deploymentVersion` 与 `assertDeploymentBinding`，Desktop 原组合传入已选部署，describe/advance 保留同版 HTTP endpoint，凭据等待期间绑定改变则拒绝发送。原版本未知时不假造已固定版本；现有签名、取消、deadline 与 unknown 核实语义保留。具体接线及离线测试边界见 [修复记录](../../apps/desktop/docs/PR376_REGRESSION_FIXES_20261017.md)；不扩大冻结或真实华为/设备验收范围。
 
+## 2026-10-20 日历写能力消费接线（provisional，离线接线已验）
+
+复用#442@3b1e6d6c已包含的#439可选CalendarProvider.writes与calendar.create/update/cancel接线，沿原Runtime/Policy/ToolGateway保留逐任务批准、配置撤销和完整metadata/result原生出机门禁。#458补充条件写入、实际资源地址校验、删除读回及额外消费验证，见[工作包](../competition/CALENDAR_CONVERSATION_WRITES_20261020.md)。依赖尚未合并主线，真实账号/平台验收未执行，不提升冻结或真实可用等级。无Core wire/数据库迁移，CalDAV响应只增加兼容的可选headers.get端口。
+
 ## 2026-10-20 已有邮件/日历工具接入（provisional）
 
 Desktop沿原Runtime/Policy/ToolGateway接入mail.inbox普通对话、mail.accounts/mark_seen/save_draft/reconcile_send及calendar.events，原本地信头分类/单事件会议绑定保留。账号配置、逐任务审批及完整metadata/result原生出机确认分开，配置撤销和异步取消重新校验，不扩大本地分类许可。GitHub修复链接由受信配置github.repairLinks:true单独注册。Windows Host/PipeBridge及固定Windows-MCP本机目录核对已有证据，当前48项登记不代表48项真实业务均可用。账号、工作区、界面出机、语音、默认并行检查失败及152项图适配缺口见[接入记录](../competition/EXISTING_TOOL_CONNECTIONS_20261020.md)。无Core wire/数据库迁移，不冻结整个连接器或Windows接口。

@@ -3759,8 +3759,9 @@ app.whenReady().then(async () => {
     }
     if (voiceStartupHost && !voiceStartupDisposed) {
       event.preventDefault();
-      voiceStartupDisposal ??= voiceStartupHost.dispose().then(() => {voiceStartupDisposed=true;app.quit();})
-        .catch(() => {runtimeError='启动语音资源释放未确认';publish();});
+      voiceStartupDisposal ??= voiceStartupHost.dispose();
+      void voiceStartupDisposal.then(() => {if(!voiceStartupDisposed){voiceStartupDisposed=true;app.quit();}})
+        .catch(() => {reportQuitFailure('启动语音资源释放未确认');});
       return;
     }
     if (liveVoice?.hasActive()) {
@@ -3773,6 +3774,7 @@ app.whenReady().then(async () => {
     }
     if (voiceInput && !voiceDisposed) {
       event.preventDefault();
+      if(voiceDisposalFailed){reportQuitFailure('语音资源释放未确认');return;}
       if (!voiceDisposal && !voiceDisposalFailed) {
         voiceDisposal = voiceInput.dispose().then(() => {
           voiceDisposed = true;

@@ -81,6 +81,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
       close() {calls.push('runtime-close');}}, runtimeError: '', runtimeClosed: false,
     wakeQuitHandled: false, wakeQuitUnknown: false, wakeDisposal: undefined,
     voiceDisposed: false, voiceDisposal: undefined, voiceDisposalFailed: false,
+    voiceStartupDisposed: false, voiceStartupDisposal: undefined,
     microphoneCaptureHost: {snapshot: () => ({busy: false})},
     liveVoice: liveUnknown ? {hasActive: () => true, async stop() {
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
@@ -121,6 +122,40 @@ test('an explicit quit cleanup failure unlocks drafts before reporting it',async
   f.context.remoteMcpManagement={close(){}};f.app.quit();await tick();
   assert.equal(cancelled,1);assert.equal(f.exited,false);assert.equal(f.context.runtimeClosed,false);
   assert.match(f.context.runtimeError,/远程 MCP 关闭未确认/);
+});
+
+test('startup voice release failure resumes real draft preflight on every explicit quit without repeating disposal',async()=>{
+  const f=fixture();let prepared=0,resumed=0,disposals=0,frozen=false;
+  f.context.wakeQuitHandled=true;f.context.voiceDisposed=true;
+  const win=Object.assign(new EventEmitter(),{isDestroyed:()=>false,
+    webContents:Object.assign(new EventEmitter(),{mainFrame:{},isDestroyed:()=>false,
+      async executeJavaScript(script){
+        if(script.includes('pa:prepare-quit')){prepared++;frozen=true;}
+        if(script.includes('pa:cancel-quit')){resumed++;frozen=false;}
+        return true;
+      }})});
+  f.context.draftQuitPreflight=createDraftQuitPreflight({windows:()=>[win],retry:()=>f.app.quit(),
+    onFailure:error=>f.context.reportQuitFailure(error.message)});
+  f.context.voiceStartupHost={async dispose(){disposals++;throw Error('synthetic startup release failure');}};
+  for(let attempt=1;attempt<=2;attempt++){
+    f.app.quit();await tick();await tick();
+    assert.equal(f.exited,false);assert.equal(f.app.isQuitting,false);assert.equal(frozen,false);
+    assert.equal(prepared,attempt);assert.equal(resumed,attempt);assert.equal(disposals,1);
+    assert.equal(f.context.voiceStartupDisposed,false);assert.equal(f.context.runtimeClosed,false);
+    assert.equal(f.calls.includes('runtime-close'),false);assert.equal(f.calls.includes('unregister-shortcuts'),false);
+    assert.equal(win.webContents.eventNames().length,0);assert.match(f.context.runtimeError,/启动语音资源释放未确认/);
+  }
+});
+
+test('repeated quit while startup voice disposal is pending releases once and resumes accepted quit once',async()=>{
+  const f=fixture();let release,disposals=0;
+  f.context.wakeQuitHandled=true;f.context.voiceDisposed=true;
+  f.context.voiceStartupHost={dispose(){disposals++;return new Promise(resolve=>{release=resolve;});}};
+  f.app.quit();f.app.quit();assert.equal(disposals,1);assert.equal(f.exited,false);
+  assert.equal(f.context.runtimeClosed,false);release();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.context.voiceStartupDisposed,true);assert.equal(disposals,1);
+  assert.equal(f.calls.filter(value=>value==='app-quit').length,3);
+  assert.equal(f.calls.filter(value=>value==='runtime-close').length,1);
 });
 
 test('a task finishing does not resume a refused quit; the next explicit quit closes normally', async () => {
@@ -255,9 +290,12 @@ test('unknown Live release still blocks quit without recursively retrying it', a
 });
 
 test('unknown SIS release stays blocked and does not repeat permanent disposal', async () => {
-  const f = fixture({voiceFailure: true});f.context.wakeVoice = undefined;
+  const f = fixture({voiceFailure: true});let cancelled=0;f.context.wakeVoice = undefined;
+  f.context.draftQuitPreflight.cancel=()=>{cancelled++;};
   f.app.quit();await tick();assert.equal(f.exited, false);assert.equal(f.context.voiceDisposalFailed, true);
+  assert.equal(cancelled,1);
   f.app.quit();await tick();assert.equal(f.exited, false);
+  assert.equal(cancelled,2);assert.equal(f.context.runtimeClosed,false);
   assert.equal(f.calls.filter(call => call === 'voice-dispose').length, 1);
   assert.equal(f.context.runtimeError, '语音资源释放未确认');
 });

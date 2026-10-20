@@ -61,6 +61,12 @@ export class OpenAlexProvider implements ResearchProvider {
       const material = readWork(entry);
       if (material !== undefined) materials.push(material);
     }
+    // 中文查询做相关度底线筛选（#445）：OpenAlex 对 CJK 口语查询会返回与检索词毫无
+    // 交集的高排名结果（实机两例：Node.js 24 题命中《BayLing》与 YOLOv11 教室论文）。
+    // 两桥皆空的命中不返回——诚实未命中优于呈现无关材料；拉丁查询不受影响。
+    if (hasCjk(input.query)) {
+      return materials.filter(material => bridgedToCjkQuery(input.query, material.title));
+    }
     return materials;
   }
 
@@ -126,4 +132,74 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+// —— 中文（CJK）查询的相关度桥接（#445，2026-10-20 实机证据）——
+// OpenAlex /works?search= 对中文口语查询的跨语言召回会给出与检索词毫无交集的高排名
+// 结果（实机收据：Node.js 24 题命中《BayLing: Bridging Cross-lingual Alignment…》
+// 与《Design of an Intelligent Classroom Attentiveness Analysis System Based on
+// YOLOv11》）。桥接判据（命中其一才保留，都在题名上判定）：
+// ① 拉丁词桥：查询里的拉丁词（产品名/术语，如 node.js）在题名按词边界出现；
+// ② 汉字二元组桥：题名与查询共享 ≥2 个连续汉字二元组（查询仅 2-3 个汉字时放宽为 ≥1，
+//    否则两字查询词永远无法构成桥）。
+// 两桥皆空 → 视为不相关，不返回：诚实未命中优于呈现无关材料。
+// 拉丁查询不经此筛选：OpenAlex 自排质量已可用，且词面桥接会误伤合法英文结果
+//（如「LLM」题名不含「large language models」字面）。日语假名/韩文/query 语义级
+// rerank 均为后续增强（见 README 已知限制）。
+const CJK_CHAR = /[\u3400-\u9fff]/;
+const LATIN_TERM = /[a-z][a-z0-9+#.]*/g;
+const LATIN_STOPWORDS = new Set([
+  'a', 'an', 'the', 'of', 'and', 'or', 'for', 'with', 'on', 'in', 'to', 'is', 'are', 'be',
+  'by', 'as', 'at', 'vs', 'via', 'using', 'based', 'new', 'how',
+]);
+
+function hasCjk(text: string): boolean {
+  return CJK_CHAR.test(text);
+}
+
+/** 查询里的拉丁判据词（小写）：纯数字（如「24」）不构成判据——在任意题名里都过度命中，
+ * 只会放水；虚词丢弃；长度 <2 丢弃。 */
+function latinQueryTerms(query: string): string[] {
+  const terms: string[] = [];
+  for (const match of query.toLowerCase().matchAll(LATIN_TERM)) {
+    const raw = match[0];
+    if (raw === undefined) continue;
+    // 只剥尾部句点；+/# 是 C++/C# 判据词的字面本体（#447 评审 P2）——剥掉后只剩单字母
+    // 被长度门槛丢弃，这类题就永远只剩汉字桥，英文题名命中全筛掉。
+    const term = raw.replace(/[.]+$/, '');
+    if (term.length < 2 || LATIN_STOPWORDS.has(term)) continue;
+    terms.push(term);
+  }
+  return terms;
+}
+
+function containsLatinTerm(lowerTitle: string, term: string): boolean {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 边界把 +/# 视为词内字符（#447 评审 P3）：c++/c# 是完整词元，不受半边界系统
+  // 另外 C++11/C#12 这类紧邻数字的版本化写法也能整体命中。
+  return new RegExp(`(^|[^a-z0-9+#])${escaped}($|[^a-z0-9+#])`).test(lowerTitle);
+}
+
+function cjkBigrams(text: string): Set<string> {
+  const chars = Array.from(text);
+  const bigrams = new Set<string>();
+  for (let i = 0; i + 1 < chars.length; i++) {
+    const head = chars[i];
+    const tail = chars[i + 1];
+    if (head === undefined || tail === undefined || !CJK_CHAR.test(head) || !CJK_CHAR.test(tail)) continue;
+    bigrams.add(head + tail);
+  }
+  return bigrams;
+}
+
+function bridgedToCjkQuery(query: string, title: string): boolean {
+  const lowerTitle = title.toLowerCase();
+  if (latinQueryTerms(query).some(term => containsLatinTerm(lowerTitle, term))) return true;
+  const queryBigrams = cjkBigrams(query);
+  if (queryBigrams.size === 0) return false;
+  const titleBigrams = cjkBigrams(title);
+  let shared = 0;
+  for (const bigram of queryBigrams) if (titleBigrams.has(bigram)) shared++;
+  const queryCjkCount = Array.from(query).filter(ch => CJK_CHAR.test(ch)).length;
+  return shared >= (queryCjkCount >= 4 ? 2 : 1);
 }
