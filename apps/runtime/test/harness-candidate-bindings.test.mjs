@@ -17,7 +17,7 @@ function fixture() {
     matchesToolExecutionInput:(record,input)=>record.argumentsDigest===toolArgumentsDigest(input.arguments)&&record.scopeRef===input.scopeRef,
     readEvidence:taskId=>records.filter(r=>r.taskId===taskId&&r.state==='confirmed').map(r=>({evidenceId:r.evidenceId,kind:'execution',sourceRef:r.toolName}))};
   const scope=ctx=>({ownerTaskId:c.binding.taskId,actualTaskId:ctx.taskId,parentTaskId:'synthetic-parent',scopeRef:ctx.authorizationRef,
-    configurationRef:c.binding.configurationDigest,inputDigest:c.binding.inputDigest,deadline,workspaceRef:c.binding.workspaceId});
+    configurationRef:c.binding.configurationDigest,inputDigest:c.binding.inputDigest,deadline,workspaceRef:'synthetic-opaque-workspace-binding'});
   const options={resolveHarnessScope:(ctx,source)=>source?(sourcesAllowed?scope(contexts.get(source.runId)):undefined):scope(ctx),readConfiguration:()=>structuredClone(c)};
   const bindings=createRuntimeHarnessCandidateBindings({runtime},options);
   function begin(toolName,args,runId,taskId=c.binding.taskId) {
@@ -31,14 +31,14 @@ function fixture() {
   function confirm(ctx,result) {records.find(r=>r.evidenceId===ctx.runId).state='confirmed';runtime.saveCheckpointOnce(ctx.taskId,'tool-result-'+ctx.runId,{result});}
   const input=(ctx,sessionId)=>({version:1,session:{version:1,sessionId,taskId:ctx.taskId,workspaceId:c.binding.workspaceId,mode:'isolated',baselineSnapshotId:c.baseline.snapshotId},
     initialSnapshot:structuredClone(c.baseline),recipes:structuredClone(c.recipes)});
-  async function observed(candidateId,status='VALID',patches=[]) {
+  async function observed(candidateId,status='VALID',patches=[],changeResult) {
     const ctx=begin('coding.repair.trial',{candidateId,patches,recipeIds:['unit']},'run-'+candidateId);
     await bindings.trial.readBinding(ctx,candidateId);await bindings.trial.saveSession(ctx,input(ctx,'session-'+candidateId));
-    const result=trial(candidateId,c,status,ctx.runId);confirm(ctx,result);return {ctx,result};
+    const result=trial(candidateId,c,status,ctx.runId);changeResult?.(result);confirm(ctx,result);return {ctx,result};
   }
   return {c,runtime,bindings,begin,confirm,input,observed,records,disableSources:()=>{sourcesAllowed=false;}};
 }
-test('factories are lazy and original run/session is immutable; recovery never needs a confirmed unknown write',async()=>{
+test('factories are lazy; distinct workspace IDs and authorization refs retain immutable session identity',async()=>{
   let reads=0;const lazy={get runtime(){reads++;throw Error('Runtime not constructed');}};
   createRuntimeHarnessCandidateBindings(lazy,{});createRuntimeHarnessCandidateTools(lazy,{getBinding(){},resolveTrialOrigin(){}});
   assert.equal(reads,0);
@@ -56,6 +56,14 @@ test('source scope and exact original input are required for peer origin resolut
   assert.equal(f.bindings.compare.getBinding(compare).binding.taskId,f.c.binding.taskId);
   assert.equal(f.bindings.compare.resolveTrialOrigin(f.c.binding.taskId,'run-one',compare).actualTaskId,f.c.binding.taskId);
   f.disableSources();assert.throws(()=>f.bindings.compare.resolveTrialOrigin(f.c.binding.taskId,'run-one',compare),{code:'UNAUTHORIZED'});
+});
+test('an internally consistent replacement session cannot replace the original saveOnce trial session',async()=>{
+  const f=fixture();await f.observed('one','VALID',[],result=>{
+    result.binding.sessionId='replacement';result.session.sessionId='replacement';result.checkReadback.sessionId='replacement';
+    result.checkReadback.verification.forEach(receipt=>{receipt.sessionId='replacement';});
+  });
+  const compare=f.begin('harness.candidates.compare',{trialRunIds:['run-one']},'compare');f.bindings.compare.getBinding(compare);
+  assert.throws(()=>f.bindings.compare.resolveTrialOrigin(f.c.binding.taskId,'run-one',compare),{code:'UNAUTHORIZED'});
 });
 test('adoption reads the latest confirmed comparison and exact original trial patches, never replacement model input',async()=>{
   const f=fixture(),patches=[{path:'src.js',expectedSha256:f.c.baseline.files[0].sha256,edits:[{oldText:'broken',newText:'fixed'}]}];
