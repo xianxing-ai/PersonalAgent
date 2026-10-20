@@ -22,6 +22,7 @@ interface ValidatedRequest {
   readonly signal: AbortSignal;
   readonly expiresAt: number;
   readonly continuation?: CoordinationContinuation;
+  readonly priorContinuations?:readonly CoordinationContinuation[];
   readonly availableTools?: readonly CoordinationAvailableTool[];
   readonly textOnly?: true;
 }
@@ -86,6 +87,7 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
   let deadline: unknown;
   let signal: unknown;
   let continuationValue: unknown;
+  let priorValue:unknown;
   let availableToolsValue: unknown;
   let hasAvailableTools = false;
   let textOnly = false;
@@ -98,7 +100,8 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
     textOnly = request !== null && typeof request === 'object'
       && Object.prototype.hasOwnProperty.call(request, 'textOnly');
     const hasExecutionModel=request!==null && typeof request==='object' && Object.prototype.hasOwnProperty.call(request,'executionModel');
-    const fields=hasContinuation ? continuationRequestFields
+    const hasPrior=request!==null && typeof request==='object' && Object.prototype.hasOwnProperty.call(request,'priorContinuations');
+    const fields=hasContinuation ? [...continuationRequestFields,...(hasPrior?['priorContinuations']:[])]
       : hasAvailableTools ? availableToolsRequestFields : textOnly ? textOnlyRequestFields : requestFields;
     if (request === null || typeof request !== 'object' || Array.isArray(request)
       || (hasContinuation && hasAvailableTools) || (textOnly && (hasContinuation || hasAvailableTools))
@@ -110,6 +113,7 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
     deadline = request.deadline;
     signal = request.signal;
     continuationValue = hasContinuation ? request.continuation : undefined;
+    priorValue=hasPrior?request.priorContinuations:undefined;
     availableToolsValue = hasAvailableTools ? request.availableTools : undefined;
     executionModel=hasExecutionModel?parseExecutionModelSelection(request.executionModel):undefined;
   } catch {
@@ -129,7 +133,11 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
   if (expiresAt <= Date.now()) throw new ProtocolError('TIMEOUT', 'Coordination deadline expired');
   const continuation = continuationValue === undefined ? undefined : parseCoordinationContinuation(continuationValue);
   const availableTools = hasAvailableTools ? parseCoordinationAvailableTools(availableToolsValue) : undefined;
+  if(priorValue!==undefined && (!Array.isArray(priorValue)||priorValue.length>32||continuationValue===undefined))invalidRequest();
+  const priorContinuations=Array.isArray(priorValue)?priorValue.map(parseCoordinationContinuation):undefined;
+  if(priorContinuations && new Set([...priorContinuations.map(item=>item.proposalId),parseCoordinationContinuation(continuationValue).proposalId]).size!==priorContinuations.length+1)invalidRequest();
   return {taskId, revision, goal, deadline, signal, expiresAt,
+    ...(priorContinuations===undefined?{}:{priorContinuations}),
     ...(executionModel===undefined?{}:{executionModel}),
     ...(textOnly ? {textOnly:true as const} : {}),
     ...(continuation === undefined ? {} : {continuation}),
@@ -210,6 +218,7 @@ export class CompetitionCoordinator implements CoordinationPort {
         signal: controller.signal,
         ...(validated.textOnly ? {textOnly:true as const} : {}),
         ...(validated.continuation === undefined ? {} : {continuation: validated.continuation}),
+        ...(validated.priorContinuations===undefined?{}:{priorContinuations:validated.priorContinuations}),
         ...(validated.executionModel===undefined?{}:{executionModel:validated.executionModel}),
         ...(validated.availableTools === undefined ? {} : {availableTools: validated.availableTools}),
       });

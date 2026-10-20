@@ -62,6 +62,18 @@ test('Local/Synthetic absent configuration is explicit unavailable with no ambie
   assert.ok(deployment.host.unavailable.some(item=>item.capability==='github'));deployment.close();
 });
 
+test('trusted GitHub repair links require a separate boolean opt-in and retain exact export policies',async t=>{
+  for(const enabled of [false,true])await t.test(String(enabled),async t=>{
+    const f=fixture(t);f.config.github.repairLinks=enabled;f.rewrite();
+    const deployment=await createDesktopDeveloperDeployment({...f.options,confirmExport:async()=>true});t.after(()=>deployment.close());
+    assert.equal(deployment.host.tools.some(tool=>tool.descriptor.name==='github.actions.repair.link'),enabled);
+    assert.equal(deployment.host.competitionToolExports.some(binding=>binding.toolName==='github.actions.repair.link'),enabled);
+    assert.equal(deployment.snapshot().unavailable.some(item=>item.capability==='github.actions.repair.link'),!enabled);
+  });
+  const f=fixture(t);f.config.github.repairLinks='true';f.rewrite();
+  await assert.rejects(createDesktopDeveloperDeployment(f.options),{code:'UNSUPPORTED_CAPABILITY'});
+});
+
 test('Local/Synthetic conversation status excludes private repository, paths, branches and future credential fields',()=>{
   const projected=projectDeveloperConversationStatus({configured:true,state:'configured',workflowsConfigured:true,modelConfigured:false,
     exportConfirmationConfigured:true,repository:'private-owner/private-project',rootPath:'/private/workspace',branch:'private-topic',
