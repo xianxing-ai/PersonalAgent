@@ -1,11 +1,11 @@
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {ToolContext} from '@personal-agent/contracts';
-import {parseCodingRepairInput,parseCodingRepairPatch,parseCodingRepairCheckReadback} from '@personal-agent/contracts/coding-repair';
+import {parseCodingRepairInput,parseCodingRepairPatch,parseCodingRepairCheckReadback,parseCodingRepairPublishRequest,parseCodingRepairPublishReadback} from '@personal-agent/contracts/coding-repair';
 import type {CodingRepairInput,CodingRepairPatch} from '@personal-agent/contracts/coding-repair';
 import {parseHarnessCandidateTrial,harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import type {HarnessCandidateContext,HarnessCandidateTrial} from '@personal-agent/contracts/harness-candidates';
-import {compareHarnessCandidates} from '@personal-agent/agentarts';
+import {compareHarnessCandidates,codingVerificationCurrent} from '@personal-agent/agentarts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import type {RuntimeApplication} from './runtime-application.js';
 import type {RuntimeHarnessCandidateOptions} from './harness-candidates.js';
@@ -26,6 +26,7 @@ export interface RuntimeHarnessCandidateRecoveryRequest {
 }
 /** Host-only historical lookup. H1 still checks original owner/plan and the experience current-authority fence. */
 export interface RuntimeHarnessCandidateProvenanceRequest {ownerTaskId:string;actualTaskId:string;runId:string}
+export interface RuntimeHarnessCandidateCompletionRequest extends RuntimeHarnessCandidateProvenanceRequest {publicationRunId:string}
 export interface RuntimeHarnessCandidateAdoptionOrigin {
   version:1;ownerTaskId:string;
   adoption:{taskId:string;runId:string};trial:{taskId:string;runId:string};comparison:{taskId:string;runId:string};
@@ -223,9 +224,10 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     if(runtime.getTask(input.actualTaskId).revision!==input.expectedRevision)conflict('Recovery task changed during metadata readback');
     return original;
   }
-  function provenanceOperation(input:RuntimeHarnessCandidateProvenanceRequest):{operation:Operation;executionInputDigest:string;result:unknown} {
+  function provenanceOperation(input:RuntimeHarnessCandidateProvenanceRequest,completionOwner?:string):{operation:Operation;executionInputDigest:string;result:unknown} {
     const runtime=application.runtime,task=runtime.getTask(input.actualTaskId),owner=runtime.getTask(input.ownerTaskId);
-    if(task.state!=='succeeded'||task.cancelRequested||owner.state!=='succeeded'||owner.cancelRequested)
+    const settled=(value:typeof task)=>value.state==='succeeded'||value.taskId===completionOwner&&value.state==='running';
+    if(!settled(task)||task.cancelRequested||!settled(owner)||owner.cancelRequested)
       denied('Experience metadata requires original succeeded tasks');
     const saved=runtime.loadCheckpoint(input.ownerTaskId,operationKey(input.runId)) as OperationRecord|undefined;
     if(!saved||saved.version!==1||saved.runId!==input.runId||saved.scope.actualTaskId!==input.actualTaskId
@@ -241,8 +243,8 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     return {operation:op,executionInputDigest:record.inputDigest,result:structuredClone(cached.result)};
   }
   /** Read the single canonical {operation,input} row. No session, selection, or owner-session writes. */
-  function readOriginalSessionForProvenance(input:RuntimeHarnessCandidateProvenanceRequest):CodingRepairInput|undefined {
-    const runtime=application.runtime,{operation:op}=provenanceOperation(input);
+  function sessionForProvenance(input:RuntimeHarnessCandidateProvenanceRequest,completionOwner?:string):CodingRepairInput|undefined {
+    const runtime=application.runtime,{operation:op}=provenanceOperation(input,completionOwner);
     if(![trialTool,adoptTool].includes(op.toolName))denied('Provenance run has no repair session');
     const saved=runtime.loadCheckpoint(input.ownerTaskId,sessionKey(input.runId)) as SavedSession|undefined;
     if(!saved)return;
@@ -255,16 +257,19 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
       ||parsed.initialSnapshot.files.some(f=>f.content!==undefined))denied('Canonical provenance session metadata differs');
     return parsed;
   }
-  function readAdoptionOrigin(input:RuntimeHarnessCandidateProvenanceRequest):RuntimeHarnessCandidateAdoptionOrigin|undefined {
+  function readOriginalSessionForProvenance(input:RuntimeHarnessCandidateProvenanceRequest):CodingRepairInput|undefined {
+    return sessionForProvenance(input);
+  }
+  function adoptionOrigin(input:RuntimeHarnessCandidateProvenanceRequest,completionOwner?:string):RuntimeHarnessCandidateAdoptionOrigin|undefined {
     const runtime=application.runtime;
     const stored=runtime.loadCheckpoint(input.ownerTaskId,adoptionOriginKey(input.runId)) as RuntimeHarnessCandidateAdoptionOrigin|undefined;
     if(!stored)return;
-    const adoption=provenanceOperation(input);
+    const adoption=provenanceOperation(input,completionOwner);
     if(stored.version!==1||stored.ownerTaskId!==input.ownerTaskId||input.actualTaskId!==input.ownerTaskId
       ||!isDeepStrictEqual(stored.adoption,{taskId:input.actualTaskId,runId:input.runId})||adoption.operation.toolName!==adoptTool)
       denied('Original adoption provenance owner differs');
-    const trial=provenanceOperation({ownerTaskId:input.ownerTaskId,actualTaskId:stored.trial.taskId,runId:stored.trial.runId});
-    const comparison=provenanceOperation({ownerTaskId:input.ownerTaskId,actualTaskId:stored.comparison.taskId,runId:stored.comparison.runId});
+    const trial=provenanceOperation({ownerTaskId:input.ownerTaskId,actualTaskId:stored.trial.taskId,runId:stored.trial.runId},completionOwner);
+    const comparison=provenanceOperation({ownerTaskId:input.ownerTaskId,actualTaskId:stored.comparison.taskId,runId:stored.comparison.runId},completionOwner);
     const scope=adoption.operation.scope,configuration=frozen(scope);
     if(trial.operation.toolName!==trialTool||comparison.operation.toolName!==compareTool
       ||stored.inputDigest!==scope.inputDigest||stored.configurationRef!==scope.configurationRef||stored.workspaceRef!==scope.workspaceRef
@@ -275,8 +280,8 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
       ||stored.comparisonInputDigest!==comparison.executionInputDigest
       ||stored.trialResultDigest!==toolArgumentsDigest(trial.result)||stored.comparisonResultDigest!==toolArgumentsDigest(comparison.result)
       ||adoption.operation.arguments.trialRunId!==stored.trial.runId)denied('Original adoption provenance inputs differ');
-    const candidate=parseHarnessCandidateTrial(trial.result),session=readOriginalSessionForProvenance(input);
-    const trialSession=readOriginalSessionForProvenance({ownerTaskId:input.ownerTaskId,actualTaskId:stored.trial.taskId,runId:stored.trial.runId});
+    const candidate=parseHarnessCandidateTrial(trial.result),session=sessionForProvenance(input,completionOwner);
+    const trialSession=sessionForProvenance({ownerTaskId:input.ownerTaskId,actualTaskId:stored.trial.taskId,runId:stored.trial.runId},completionOwner);
     if(!session||!trialSession||!isDeepStrictEqual(candidate.session,trialSession.session)||candidate.binding.candidateId!==stored.candidateId
       ||candidate.binding.artifactId!==stored.artifactId||candidate.binding.artifactDigest!==stored.artifactDigest
       ||!plain(comparison.result)||!plain(comparison.result.recommendation)||comparison.result.state!=='selected'
@@ -288,6 +293,60 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     if(adopted.sessionId!==session.session.sessionId||harnessCandidateArtifactDigest(adopted.snapshot)!==stored.artifactDigest)
       denied('Original adoption result is not the saved main session artifact');
     return structuredClone(stored);
+  }
+  function readAdoptionOrigin(input:RuntimeHarnessCandidateProvenanceRequest):RuntimeHarnessCandidateAdoptionOrigin|undefined {
+    return adoptionOrigin(input);
+  }
+  /** Current owner's confirmed publication may be reported; this is never a new tool/lease permission. */
+  function readAdoptionOriginForCompletion(input:RuntimeHarnessCandidateCompletionRequest):{origin:RuntimeHarnessCandidateAdoptionOrigin;input:CodingRepairInput}|undefined {
+    const runtime=application.runtime,owner=runtime.getTask(input.ownerTaskId);
+    const deadline=runtime.loadCheckpoint(input.ownerTaskId,'application-deadline');
+    if(input.actualTaskId!==input.ownerTaskId||owner.state!=='running'||owner.cancelRequested
+      ||typeof deadline!=='string'||!Number.isFinite(Date.parse(deadline))||now()>=Date.parse(deadline))
+      denied('Completion requires the original live running owner');
+    const records=runtime.readToolExecutions(input.ownerTaskId),record=records.find(r=>r.evidenceId===input.publicationRunId);
+    const invocation=runtime.loadCheckpoint(input.ownerTaskId,'application-tool-invocation:'+input.publicationRunId);
+    const cached=runtime.loadCheckpoint(input.ownerTaskId,'tool-result-'+input.publicationRunId);
+    if(!record||record.taskId!==input.ownerTaskId||record.toolName!=='coding.repair.publish'||record.toolVersion!=='1.0.0'
+      ||record.state!=='confirmed'||!record.executionStarted||record.policyDecision!=='allow'
+      ||records.at(-1)?.evidenceId!==input.publicationRunId||records.some(r=>r.state==='unknown'||r.state==='started')
+      ||!plain(invocation)||invocation.toolName!==record.toolName||invocation.toolVersion!==record.toolVersion
+      ||invocation.deadline!==deadline||!plain(invocation.arguments)||invocation.argumentsDigest!==toolArgumentsDigest(invocation.arguments)
+      ||!runtime.matchesToolExecutionInput(record,{arguments:invocation.arguments,scopeRef:input.publicationRunId})
+      ||!runtime.readEvidence(input.ownerTaskId).some(e=>e.evidenceId===input.publicationRunId&&e.kind==='execution'&&e.sourceRef===record.toolName)
+      ||!plain(cached)||!Object.hasOwn(cached,'result'))denied('Original confirmed publication unavailable for completion');
+    const loop=runtime.loadCheckpoint(input.ownerTaskId,'competition-loop');
+    if(!plain(loop)||loop.pending!==undefined||!plain(loop.continuation)||loop.continuation.state!=='confirmed'
+      ||typeof loop.continuation.proposalId!=='string'||!Array.isArray(loop.receipts))denied('Original publication continuation unavailable');
+    const receipts=loop.receipts.filter(item=>plain(item)&&item.runId===input.publicationRunId);
+    const receipt=receipts[0];
+    if(receipts.length!==1||!plain(receipt)||!plain(receipt.proposal)||receipt.proposal.proposalId!==loop.continuation.proposalId
+      ||receipt.proposal.toolName!==record.toolName||receipt.proposal.toolVersion!==record.toolVersion||receipt.proposal.verification==='mock'
+      ||!isDeepStrictEqual(receipt.proposal.arguments,invocation.arguments)||!isDeepStrictEqual(receipt.continuation,loop.continuation)
+      ||!isDeepStrictEqual(loop.continuation.result,cached.result))denied('Publication continuation differs from its original cache and proposal');
+    const request=parseCodingRepairPublishRequest(invocation.arguments),published=parseCodingRepairPublishReadback(cached.result);
+    const origin=adoptionOrigin(input,input.ownerTaskId),session=sessionForProvenance(input,input.ownerTaskId);
+    if(!origin||!session)return;
+    const scope=(runtime.loadCheckpoint(input.ownerTaskId,operationKey(input.runId)) as OperationRecord).scope;
+    const adoption=provenanceOperation(input,input.ownerTaskId),checked=parseCodingRepairCheckReadback(adoption.result);
+    if(scope.deadline!==deadline||published.state!=='published'||published.sessionId!==session.session.sessionId
+      ||request.sessionId!==session.session.sessionId||request.baselineSnapshotId!==session.session.baselineSnapshotId
+      ||request.snapshotId!==checked.snapshot.snapshotId||checked.sessionId!==session.session.sessionId
+      ||harnessCandidateArtifactDigest(checked.snapshot)!==origin.artifactDigest||!published.evidenceRefs.includes(input.runId)
+      ||!request.paths.length||published.files.length!==request.paths.length
+      ||request.paths.some(path=>!published.files.some(file=>file.path===path))
+      ||published.files.some(file=>file.beforeSha256!==(session.initialSnapshot.files.find(f=>f.path===file.path)?.sha256??null)
+        ||file.afterSha256!==checked.snapshot.files.find(f=>f.path===file.path)?.sha256))
+      denied('Publication is not the original freshly adopted CAS readback');
+    const changed=[...new Set([...session.initialSnapshot.files,...checked.snapshot.files].map(f=>f.path))].filter(path=>
+      session.initialSnapshot.files.find(f=>f.path===path)?.sha256!==checked.snapshot.files.find(f=>f.path===path)?.sha256);
+    if(!isDeepStrictEqual([...changed].sort(),[...request.paths].sort())||session.recipes.filter(r=>r.required).some(recipe=>{
+      const verified=[...checked.verification].reverse().find(r=>r.recipeId===recipe.recipeId);
+      return !verified||verified.inputSnapshotId!==checked.snapshot.snapshotId||!request.verificationRunIds.includes(verified.runId)
+        ||!verified.evidenceRefs.includes(input.runId)||!isDeepStrictEqual([...verified.packageIds].sort(),[...recipe.packageIds].sort())
+        ||!codingVerificationCurrent(verified,checked.snapshot,session.session.sessionId);
+    }))denied('Publication lacks fresh current required verification');
+    return {origin,input:session};
   }
   async function readParentArtifactDigests(context:ToolContext,candidateId:string,parentRuns:readonly string[],patches:readonly CodingRepairPatch[]):Promise<readonly string[]> {
     const op=own(context,[trialTool]);
@@ -351,5 +410,5 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
   }
   const trial={readBinding,readParentArtifactDigests,readSession,saveSession};
   return {trial,adoption:{...trial,readSelection},recovery:{readOriginalSession},compare,readOriginalSessionForRecovery,
-    readOriginalSessionForProvenance,readAdoptionOrigin};
+    readOriginalSessionForProvenance,readAdoptionOrigin,readAdoptionOriginForCompletion};
 }
