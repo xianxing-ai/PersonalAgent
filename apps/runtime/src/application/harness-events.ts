@@ -194,7 +194,7 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
         }, context);
         if (signal.aborted) return; // A late response cannot settle a stopped consumer.
         const original = atomic.read(originalKey);
-        if (!original || !isDeepStrictEqual(original.value, value)) fail('REVISION_CONFLICT');
+        if (!original || !isDeepStrictEqual(original.value, value)) return fail('REVISION_CONFLICT');
         confirm(original, receipt);
       } catch (error) {lastError = error instanceof ProtocolError ? error.code : 'RESULT_UNKNOWN';}
     }
