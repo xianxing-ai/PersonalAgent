@@ -75,11 +75,16 @@ const reminderTriggerSchema: object = {
   },
 };
 
+
+const toIsoUtc = (instant: number): string => `${new Date(instant).toISOString().slice(0, 19)}.000Z`;
+
 const whenInputProperties: Record<string, object> = {
-  utc: {type: 'string', pattern: UTC_PATTERN_STRING, description: 'UTC 瞬间（ISO-8601，Z 结尾）。'},
-  localDateTime: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$', description: '目标时区的本地墙上时间。'},
+  utc: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$', description: 'UTC 瞬间（ISO-8601，Z 或数值偏移结尾；偏移会被规范化存储）。'},
+  localDateTime: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2})?$', description: '目标时区的本地墙上时间（空格分隔与秒省略会被规范化）。'},
   timeZone: {type: 'string', minLength: 1, description: 'IANA 时区，与 localDateTime 搭配；DST 边界按 README 策略解析。'},
 };
+const remindInMinutesProperty: object = {type: 'integer', minimum: 1, maximum: 525600,
+  description: '相对提醒：距当前时刻 N 分钟触发，由本地执行时解析（无时钟漂移）；与 remindUtc/remindLocal 互斥。'};
 
 export interface ProductivityModuleOptions {
   storage: StoragePort;
@@ -93,8 +98,9 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
   if (typeof options.conversationId !== 'string' || options.conversationId.length === 0) {
     throw new ProtocolError('INVALID_ARGUMENT', 'conversationId is required to scope reminder triggers');
   }
+  const now = options.now ?? Date.now;
   const service = new TodoService(options.storage, {
-    now: options.now ?? Date.now,
+    now,
     idFactory: options.idFactory ?? defaultIdFactory,
   });
   const conversationId = options.conversationId;
@@ -142,9 +148,10 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
           dueUtc: whenInputProperties.utc,
           dueLocal: whenInputProperties.localDateTime,
           dueTimeZone: whenInputProperties.timeZone,
-          remindUtc: {...whenInputProperties.utc, description: '提醒时刻的 UTC 瞬间；与 remindLocal/remindTimeZone 二选一。'},
+          remindUtc: {...whenInputProperties.utc, description: '提醒时刻的 UTC 瞬间；与 remindLocal/remindTimeZone/remindInMinutes 互斥。'},
           remindLocal: {...whenInputProperties.localDateTime, description: '提醒时刻的本地墙上时间。'},
           remindTimeZone: whenInputProperties.timeZone,
+          remindInMinutes: remindInMinutesProperty,
           missedPolicy: {enum: ['run_once', 'skip'], description: '休眠恢复策略：run_once 补跑一次，skip 标记错过。默认 run_once。'},
         },
       },
@@ -168,8 +175,18 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
       const due = pickWhen(raw, 'due');
       if (due !== undefined) create.due = due;
       const remindAt = pickWhen(raw, 'remind');
+      if (remindAt !== undefined && raw.remindInMinutes !== undefined) {
+        throw new ProtocolError('INVALID_ARGUMENT', 'remindInMinutes is mutually exclusive with remindUtc/remindLocal');
+      }
       if (remindAt !== undefined) {
         create.reminder = {remindAt};
+        if (raw.missedPolicy === 'run_once' || raw.missedPolicy === 'skip') create.reminder.missedPolicy = raw.missedPolicy;
+      } else if (raw.remindInMinutes !== undefined) {
+        const minutes = raw.remindInMinutes as unknown;
+        if (!Number.isSafeInteger(minutes) || (minutes as number) < 1 || (minutes as number) > 525600) {
+          throw new ProtocolError('INVALID_ARGUMENT', 'remindInMinutes must be an integer between 1 and 525600');
+        }
+        create.reminder = {remindAt: {utc: toIsoUtc(now() + (minutes as number) * 60_000)}};
         if (raw.missedPolicy === 'run_once' || raw.missedPolicy === 'skip') create.reminder.missedPolicy = raw.missedPolicy;
       }
       const item = service.create(create);
@@ -196,6 +213,7 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
           remindUtc: whenInputProperties.remindUtc ?? whenInputProperties.utc,
           remindLocal: whenInputProperties.localDateTime,
           remindTimeZone: whenInputProperties.timeZone,
+          remindInMinutes: remindInMinutesProperty,
           missedPolicy: {enum: ['run_once', 'skip']},
           clearDue: {type: 'boolean'},
           clearReminder: {type: 'boolean', description: '撤销提醒：装配方应同时移除对应 schedule（scheduleId 见返回的 reminderTrigger）。'},
@@ -225,8 +243,18 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
       const due = pickWhen(raw, 'due');
       if (due !== undefined) patch.due = due;
       const remindAt = pickWhen(raw, 'remind');
+      if (remindAt !== undefined && raw.remindInMinutes !== undefined) {
+        throw new ProtocolError('INVALID_ARGUMENT', 'remindInMinutes is mutually exclusive with remindUtc/remindLocal');
+      }
       if (remindAt !== undefined) {
         patch.reminder = {remindAt};
+        if (raw.missedPolicy === 'run_once' || raw.missedPolicy === 'skip') patch.reminder.missedPolicy = raw.missedPolicy;
+      } else if (raw.remindInMinutes !== undefined) {
+        const minutes = raw.remindInMinutes as unknown;
+        if (!Number.isSafeInteger(minutes) || (minutes as number) < 1 || (minutes as number) > 525600) {
+          throw new ProtocolError('INVALID_ARGUMENT', 'remindInMinutes must be an integer between 1 and 525600');
+        }
+        patch.reminder = {remindAt: {utc: toIsoUtc(now() + (minutes as number) * 60_000)}};
         if (raw.missedPolicy === 'run_once' || raw.missedPolicy === 'skip') patch.reminder.missedPolicy = raw.missedPolicy;
       }
       const item = service.update(raw.id, patch);

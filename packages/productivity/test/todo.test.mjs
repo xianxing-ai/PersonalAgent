@@ -258,3 +258,47 @@ test('原子性：唯一写入点注入异常 → 悬空索引不可能存在，
   assert.equal(rebuilt.update(first.id, {title: '改标题'}).title, '改标题');
   assert.equal(rebuilt.list().length, 1);
 });
+
+test('输入桥接：数值偏移 UTC、缺秒与空格分隔的本地时间全部规范化', async () => {
+  const host = new FakeToolHost(() => NOW);
+  const ctx = () => ({deadline: new Date(NOW + 60_000).toISOString(), signal: new AbortController().signal,
+    scopes: ['todo:write'], authorizationRef: 'test', runId: 'test-bridge'});
+  const storage = new FakeStorage().namespace('todo-bridge');
+  let counter = 0;
+  const unregister = register(host, {storage, conversationId: 'conv-bridge', now: () => NOW, idFactory: () => `t${++counter}`});
+  try {
+    const created = await host.invoke('todo.create', {title: '偏移形态',
+      remindUtc: '2026-09-07T08:41:00+08:00'}, ctx());
+    assert.equal(created.item.reminder.remindAt.utc, '2026-09-07T00:41:00.000Z');
+    assert.equal(created.item.reminder.remindAt.timeZone, 'Etc/GMT-8');
+    assert.equal(created.item.reminder.remindAt.localDateTime, '2026-09-07T08:41:00');
+    const loose = await host.invoke('todo.create', {title: '宽松本地形态',
+      remindLocal: '2026-09-07 09:30', remindTimeZone: 'Asia/Shanghai'}, ctx());
+    assert.equal(loose.item.reminder.remindAt.utc, '2026-09-07T01:30:00.000Z');
+    assert.equal(loose.item.reminder.remindAt.localDateTime, '2026-09-07T09:30:00');
+    const offsetDue = await host.invoke('todo.create', {title: '偏移到期',
+      dueUtc: '2026-09-08T23:59:59.500+09:30'}, ctx());
+    assert.equal(offsetDue.item.due.utc, '2026-09-08T14:29:59.000Z');
+  } finally { unregister(); }
+});
+
+test('remindInMinutes：执行期解析为绝对时刻，与绝对输入互斥且边界拒绝', async () => {
+  const host = new FakeToolHost(() => NOW);
+  const ctx = () => ({deadline: new Date(NOW + 60_000).toISOString(), signal: new AbortController().signal,
+    scopes: ['todo:write'], authorizationRef: 'test', runId: 'test-relative'});
+  const storage = new FakeStorage().namespace('todo-relative');
+  let counter = 0;
+  const unregister = register(host, {storage, conversationId: 'conv-relative', now: () => NOW, idFactory: () => `t${++counter}`});
+  try {
+    const created = await host.invoke('todo.create', {title: '两分钟后', remindInMinutes: 2}, ctx());
+    assert.equal(created.item.reminder.remindAt.utc, '2026-09-07T00:02:00.000Z');
+    assert.equal(created.item.reminder.remindAt.timeZone, 'UTC');
+    const updated = await host.invoke('todo.update', {id: created.item.id, remindInMinutes: 60}, ctx());
+    assert.equal(updated.item.reminder.remindAt.utc, '2026-09-07T01:00:00.000Z');
+    await assert.rejects(
+      host.invoke('todo.create', {title: '互斥', remindUtc: '2026-09-07T00:05:00.000Z', remindInMinutes: 5}, ctx()),
+      {code: 'INVALID_ARGUMENT'});
+    await assert.rejects(host.invoke('todo.create', {title: '越界', remindInMinutes: 0}, ctx()), {code: 'INVALID_ARGUMENT'});
+    await assert.rejects(host.invoke('todo.create', {title: '越界上限', remindInMinutes: 525601}, ctx()), {code: 'INVALID_ARGUMENT'});
+  } finally { unregister(); }
+});
