@@ -77,7 +77,7 @@ test('coding capabilities in authorized synthetic workspace: restricted patch, c
   });
 
   // 2. 授权工作区权限（读取、写入、受限命令与 AgentArts 出云导出）
-  host.authorize({
+  await host.authorize({
     cloudExportAllowed: true,
     writeAllowed: true,
     commandAllowed: true,

@@ -51,3 +51,21 @@ test('certificate phases retain split fixed markers and never expose arbitrary s
   assert.deepEqual(phases.details(),{lastPhase:'rsa_ready',phaseElapsedMs:21});
   assert.doesNotMatch(JSON.stringify(phases.details()),/SYNTHETIC|stderr|PFX|KEY/);
 });
+
+test('instrumentation match is distinct from whether a certificate phase was observed',()=>{
+  const source=readFileSync(new URL('../src/bridge.ts',import.meta.url),'utf8');
+  const script=source.match(/const script = `([\s\S]*?)`;/)[1].replace(/\r\n/g,'\n');
+  for(const matched of [true,false]){
+    const args=['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',
+      Buffer.from(script+(matched?'':';# synthetic drift'),'utf16le').toString('base64')];
+    const instrumented=certificateDiagnosticArguments(args);
+    const phases=instrumented===undefined?undefined:certificatePhaseTracker(()=>5);
+    const details=()=>({...bridgeProcessDetails({killed:true,signal:'SIGTERM'},10_100,5,10_000,
+      instrumented!==undefined),...phases?.details()});
+    assert.equal(details().instrumentationMatched,matched);
+    assert.equal(Object.hasOwn(details(),'lastPhase'),false,'matched alone cannot imply script entry');
+    phases?.observe(Buffer.from('PA_KNOWLEDGE_CERT_PHASE:script_enter\n'));
+    assert.equal(details().lastPhase,matched?'script_enter':undefined);
+    assert.doesNotMatch(JSON.stringify(details()),/synthetic drift|EncodedCommand|pfx|token|env/);
+  }
+});
