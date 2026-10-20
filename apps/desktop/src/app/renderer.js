@@ -74,7 +74,7 @@ if(mode==='orb') {
   button.addEventListener('click',e=>{if(e.detail===0)orbOperation('orb.open');});
   render=data=>{orb.setLevel(data.audioLevel??0);orb.setState(visualOrbState(data));if(document.hidden)orb.stop();orbLabel=`PersonalAgent · ${orbStatusLabel(data)}`;syncOperationFeedback();};
 } else if(mode==='admin') render=mountAdmin(root,invoke,escape);
-else if(mode==='workspace') render=mountWorkspace(root,invoke,escape);
+else if(mode==='workspace') render=mountWorkspace(root,invoke,escape,{flushBeforeClose:bridge?.flushDrafts});
 else if(mode==='subagent') {const page=mountSubagentConversationPage(root,invoke);render=()=>page.refresh();}
 else if(mode==='subagent-list') {const page=mountSubagentConversationList(root,invoke);render=()=>page.refresh();}
 else {
@@ -116,7 +116,7 @@ else {
   const quickStartItems=[['整理今日计划','列出今天的日程、待办和昨天未完成的事项，整理成一份今日计划。'],['写本周周报','根据最近完成的任务，起草一份本周周报草稿。'],['查看天气提醒','查询明天天气，并给出出行与穿着提醒。'],['起草邮件回复','根据最近收到的邮件，起草一份回复草稿。']];
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
   quickStart.onclick=e=>{const chip=e.target.closest('button[data-fill]');if(!chip)return;input.value=chip.dataset.fill;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};
-  const sessionRoot=document.createElement('div');root.querySelector('.panel header').after(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,input,invoke,report,{singleMain:true});
+  const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.panel header').after(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,input,invoke,report,{singleMain:true,flushBeforeClose:bridge?.flushDrafts});
   const syncCancelButtons=()=>tasksNode.querySelectorAll('[data-action="task.cancel"],[data-action="task.reconcile.finish"]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.id)||current?.tasks.some(task=>task.taskId===button.dataset.id&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body||focused.dataset.approvalDecision)return;

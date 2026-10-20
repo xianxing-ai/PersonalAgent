@@ -4,6 +4,15 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
+test('H6 close failure unlocks preflight drafts before retaining the original Runtime',async()=>{
+  const f=fixture();let cancelled=0;
+  Object.assign(f.context,{harnessEventsHost:{close:async()=>{throw Error('synthetic close failed');}},
+    harnessExperienceLifetime:new AbortController(),draftQuitPreflight:{allow:()=>true,cancel(){cancelled++;}}});
+  f.app.quit();await tick();await tick();
+  assert.equal(cancelled,1);assert.equal(f.exited,false);
+  assert.equal(f.calls.includes('runtime-close'),false);assert.match(f.context.runtimeError,/开发事件消费尚未停止/);
+});
+
 const main = readFileSync(process.env.QUIT_PREFLIGHT_MAIN_SOURCE || new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', main, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 let callback;
@@ -36,12 +45,13 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
   const optional = ['voiceStartupHost','remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
-    'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
+    'mailAnalysisHost','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
     'windowsControlHost','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
     'harnessEventsHost','harnessEventsClosing','harnessContextHost'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
+    submitting:new Set(),draftQuitPreflight:{allow:()=>true,cancel(){}},
     runtimeStartup: {snapshot: () => ({state: startup})}, runtimeApplication: {activeTaskCount: count,
       close() {calls.push('runtime-close');}}, runtimeError: '', runtimeClosed: false,
     wakeQuitHandled: false, wakeQuitUnknown: false, wakeDisposal: undefined,
@@ -57,7 +67,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
     publish() {calls.push('publish');},
   });
-  for (const name of ['stopWakeVoice','disposeWakeForQuit','reportPanelVoiceFailure','stopOrbDrag']) {
+  for (const name of ['stopWakeVoice','disposeWakeForQuit','reportPanelVoiceFailure','reportQuitFailure','stopOrbDrag']) {
     vm.runInContext(declaration(name), context);
   }
   beforeQuit = vm.runInContext(callback, context);
@@ -72,6 +82,20 @@ test('an already active task refuses quit before permanent voice or wake disposa
   assert.equal(f.calls.includes('telemetry-stop'), false);assert.equal(f.calls.includes('runtime-close'), false);
   assert.equal((await f.voiceInput.beginCapture()).status, 'listening');
   assert.equal((await f.wakeVoice.enable()).phase, 'listening');
+});
+
+test('app.quit with a failed draft preflight preserves Runtime, tray and every host',async()=>{
+  const f=fixture();f.context.draftQuitPreflight={allow:()=>false};f.app.quit();await tick();
+  assert.equal(f.exited,false);assert.deepEqual(f.calls,['app-quit']);assert.equal(f.context.runtimeClosed,false);
+});
+
+test('an explicit quit cleanup failure unlocks drafts before reporting it',async()=>{
+  const f=fixture();let cancelled=0;
+  f.context.draftQuitPreflight={allow:()=>true,cancel(){cancelled++;}};
+  f.context.remoteMcpHost={dispose:async()=>{throw Error('release failed');}};
+  f.context.remoteMcpManagement={close(){}};f.app.quit();await tick();
+  assert.equal(cancelled,1);assert.equal(f.exited,false);assert.equal(f.context.runtimeClosed,false);
+  assert.match(f.context.runtimeError,/远程 MCP 关闭未确认/);
 });
 
 test('a task finishing does not resume a refused quit; the next explicit quit closes normally', async () => {
@@ -92,6 +116,24 @@ test('a zero-task quit retains the original cleanup sequence', async () => {
   assert.ok(f.calls.indexOf('voice-dispose') < f.calls.indexOf('runtime-close'));
   assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);
   assert.ok(f.calls.indexOf('installed-skills-close') < f.calls.indexOf('runtime-close'));
+});
+
+test('accepted quit releases the active orb drag timer', async () => {
+  const f = fixture(), cleared = [], timer = {};
+  f.context.orbDragPoll = timer;
+  f.context.clearInterval = value => cleared.push(value);
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited, true);
+  assert.ok(cleared.includes(timer));
+  assert.equal(f.context.orbDragPoll, undefined);
+});
+
+test('connector conversation permits close only after quit is accepted and before Runtime',async()=>{
+  const f=fixture({count:1});f.context.connectorConversationTools={async close(){f.calls.push('connector-close');}};
+  f.app.quit();await tick();assert.equal(f.calls.includes('connector-close'),false);
+  f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.calls.filter(x=>x==='connector-close').length,1);
+  assert.ok(f.calls.indexOf('connector-close')<f.calls.indexOf('runtime-close'));
 });
 
 test('a bound NotificationHost survives refused quit and disposes once before Runtime on the next allowed quit',async()=>{

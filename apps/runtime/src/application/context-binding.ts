@@ -62,11 +62,16 @@ export function measureCompiledGoal(compiledGoal: string, budget?: CoordinationG
 
 /** No bodies, source paths, credentials or raw message ids enter the checkpoint. */
 export function bindCompiledContext(input: CompiledContextInput, budget?: CoordinationGoalTokenBudget) {
+  const projected=input.messages.length ? JSON.parse(input.compiledGoal).conversationContext : undefined;
+  const included=new Set<string>((projected?.messages??[]).map((message:{id:string})=>message.id));
   return {version:1,taskId:input.taskId,conversationId:input.conversationId,deadline:input.deadline,
     configurationRef:input.configurationRef,publicGoalDigest:digest(input.publicGoal),
     preparedGoalDigest:digest(input.preparedGoal),compiledGoalDigest:digest(input.compiledGoal),
     messages:input.messages.map(message=>({identityDigest:digest(JSON.stringify([message.id,message.taskId ?? null])),
       role:message.role,contentDigest:digest(message.content)})),
+    selection:{policy:projected?.selection?.policy??'complete-history-v1',sourceMessages:input.messages.length,
+      includedMessages:included.size,omittedAssistantDigests:input.messages.filter(message=>!included.has(message.id))
+        .map(message=>digest(JSON.stringify([message.id,message.taskId??null])))},
     ...(input.privateBinding === undefined ? {} : {privateBindingDigest:digest(JSON.stringify(input.privateBinding))}),
     ...(input.compactionReceipt === undefined ? {} : {compactionReceiptDigest:digest(JSON.stringify(input.compactionReceipt))}),
     budget:measureCompiledGoal(input.compiledGoal,budget)};

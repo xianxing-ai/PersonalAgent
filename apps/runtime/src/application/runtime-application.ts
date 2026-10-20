@@ -347,6 +347,7 @@ export interface ThinkingState extends ThinkingConfig {
 }
 
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
+  retainPriorToolResults?:boolean;
   /** Competition user submissions must execute in a durable child; the root only dispatches and summarizes. */
   delegateUserTasks?: true;
   /** Registers only the scoped host adapters; no source, model or device is enabled by this flag. */
@@ -401,16 +402,28 @@ export interface CloudSkillRuntimeHostPort {
   dispatchCloudSkillProposal(proposal:import('@personal-agent/coordination').CoordinationToolProposalResult,context:Omit<CloudSkillContext,'proposalId'>):Promise<CloudSkillReceipt>;
   assertReceiptAllowed(selection:CloudSkillSelection,receipt:CloudSkillReceipt,context:CloudSkillContext):void;
 }
-export interface ConversationContextMessage {id:string; role:'user'|'assistant'; content:string; taskId?:string; withheld?:boolean;}
+export interface ConversationContextMessage {id:string; role:'user'|'assistant'; content:string; taskId?:string; withheld?:boolean;createdAt?:string;taskState?:string;answerWithheld?:true;}
 /** Shared by trusted host preflight and the actual Coordination send. */
 export function serializeCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
   return messages.length ? JSON.stringify({publicGoal,
     ...(preparedGoal===publicGoal ? {} : {ephemeralGoal:preparedGoal}),
     conversationContext:{treatment:'untrusted_data',messages}}) : preparedGoal;
 }
-export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
-  const goal=serializeCoordinationGoal(publicGoal,preparedGoal,messages);
-  if(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT)throw new ProtocolError('INVALID_ARGUMENT','任务、Skill 与对话上下文合并后超过 16000 字符限制，请缩短内容或减少对话历史');
+export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[],selection?:'preserve-user-requests'):string {
+  const selected=[...messages];
+  const omitted:string[]=[];
+  const encode=()=>messages.length ? JSON.stringify({publicGoal,
+    ...(preparedGoal===publicGoal ? {} : {ephemeralGoal:preparedGoal}),
+    conversationContext:{treatment:'untrusted_data',messages:selected,
+      ...(omitted.length?{selection:{policy:'preserve-user-requests-v1',omittedAssistantIds:omitted}}:{})}}) : preparedGoal;
+  let goal=encode();
+  if(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT && selection!=='preserve-user-requests')
+    throw new ProtocolError('INVALID_ARGUMENT','任务、Skill 与对话上下文合并后超过 16000 字符限制；不能完整发送，请缩小范围');
+  while(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT) {
+    const index=selected.findIndex(message=>message.role==='assistant'&&!message.id.startsWith('knowledge-watch-'));
+    if(index<0)throw new ProtocolError('INVALID_ARGUMENT','关键用户上下文超过 16000 字符预算，无法完整发送；请拆分问题或明确缩小范围');
+    omitted.push(selected[index]!.id);selected.splice(index,1);goal=encode();
+  }
   return goal;
 }
 /** All hooks are trusted host composition, never model supplied. Bodies remain process-local. */
@@ -467,12 +480,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly windowsHostRecovery: RuntimeApplicationOptions['windowsHostRecovery'];
   private readonly ephemeralSends = new Map<string, CoordinationRequest>();
   private readonly ephemeralGoals = new Map<string,{publicGoal:string;preparedGoal:string}>();
-  private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[];
+  private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[];answerTaskIds:string[];
     assertCompactionCurrent?:()=>void}>();
   private readonly teacherRequestScopes=new WeakMap<CoordinationRequest,ProactiveTeacherScope>();
   private readonly teacherLeases=new Map<string,ProactiveTeacherScope>();
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
   private readonly competitionToolExports: readonly CompetitionToolExport[];
+  private readonly retainPriorToolResults:boolean;
   private competitionMaxSteps: number;
   private thinkingConfig: ThinkingConfig = {depth: 1, fast: false};
   private readonly repairCandidateVersion: '1.0' | undefined;
@@ -612,6 +626,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
     }
     this.competitionToolExports = (options.competitionToolExports ?? []).map(binding => Object.freeze({...binding}));
+    this.retainPriorToolResults=options.retainPriorToolResults===true;
     if (this.readDeveloperHarnessConfiguration) this.competitionToolExports = [...this.competitionToolExports, {
       toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
       exportPolicyVersion:'developer-harness-runtime-facts-v1',accepts:()=>true,
@@ -1630,13 +1645,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('UNAUTHORIZED','Delegated user summary requires public context; private input needs its own child confirmation');
     }
     const contextScope={taskId:task.taskId,conversationId:task.conversationId ?? '',deadline:request.deadline,signal:request.signal};
-    const compaction=hooks.contextCompaction,historyLimit=compaction?.policy.maxSourceMessages??CONVERSATION_HISTORY_LIMIT;
-    if(!Number.isSafeInteger(historyLimit)||historyLimit<1)throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted conversation range');
+    const compaction=hooks.contextCompaction,historyLimit=compaction?.policy.maxSourceMessages;
+    if(historyLimit!==undefined&&(!Number.isSafeInteger(historyLimit)||historyLimit<1))throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted conversation range');
     const compactionScope:ContextCompactionScope={...contextScope,cutoff:task.taskId};
     if(compaction&&!conversationMessage&&!compaction.readSnapshot)
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Conversation compaction requires a synchronous original overlay snapshot');
-    const readNative=()=>this.readSubagentConversationContext({...contextScope,maxMessages:historyLimit});
-    const readCompaction=()=>conversationMessage?readNative():compaction!.readSnapshot!(compactionScope,historyLimit);
+    const readNative=()=>this.readSubagentConversationContext({...contextScope,...(historyLimit===undefined?{}:{maxMessages:historyLimit})});
+    const readCompaction=()=>conversationMessage?readNative():compaction!.readSnapshot!(compactionScope,compaction!.policy.maxSourceMessages);
     const messages=compaction?readCompaction():conversationMessage?readNative():await hooks.readConversationContext?.(contextScope)??[];
     this.assertInputActive(request);
     const eligible=(messages:readonly ConversationContextMessage[])=>{
@@ -1646,9 +1661,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           ||typeof message.content!=='string')throw new ProtocolError('INVALID_ARGUMENT','Invalid conversation context');
         ids.add(message.id);
         return !message.withheld&&(!message.taskId||!this.isHistoryWithheld(message.taskId));
-      }).slice(-historyLimit);
+      });
     };
     const sourceContext=eligible(messages);
+    if(historyLimit!==undefined&&sourceContext.length>historyLimit)
+      throw new ProtocolError('INVALID_ARGUMENT','Complete conversation exceeds the explicit source range');
     // Context is data, never instructions or an authorization. Only digests are checkpointed.
     try {
       let compacted:ContextCompactionResult|undefined;
@@ -1680,7 +1697,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           },now:()=>this.now().getTime()});
       }
       const context=compacted?.messages??sourceContext;
-      const goal=compileCoordinationGoal(request.goal,prepared,context);
+      const goal=this.compileTaskConversationGoal(task.taskId,request.goal,prepared,context);
       const binding=bindCompiledContext({taskId:task.taskId,conversationId:task.conversationId ?? '',
         deadline:request.deadline,configurationRef:this.coordinationBinding,publicGoal:request.goal,
         preparedGoal:prepared,compiledGoal:goal,messages:context,
@@ -1694,6 +1711,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.ephemeralSends.set(leaseKey,effective);
       this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:preparedSource});
       this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:sourceContext.flatMap(message=>message.taskId?[message.taskId]:[]),
+        answerTaskIds:sourceContext.flatMap(message=>message.role==='assistant'&&message.taskId?[message.taskId]:[]),
         ...(compacted?.state==='compacted'?{assertCompactionCurrent:compacted.assertCurrent}:{})});
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
@@ -1739,33 +1757,79 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       || this.runtime.loadCheckpoint(taskId,KNOWLEDGE_RECHECK_RESULT_KEY)!==undefined;
   }
 
+  /** Shared trusted task compiler; private and Skill inputs retain the strict preflight budget. */
+  compileTaskConversationGoal(taskId:string,publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
+    this.runtime.getTask(taskId);
+    const canSelect=publicGoal===preparedGoal && !this.isHistoryWithheld(taskId) && this.readPrivateTaskBinding(taskId)===undefined
+      &&this.runtime.loadCheckpoint(taskId,REFERENCE_SKILL_TASK)===undefined
+      &&this.runtime.loadCheckpoint(taskId,'skill:cloud-selection:v1')===undefined;
+    return compileCoordinationGoal(publicGoal,preparedGoal,messages,canSelect?'preserve-user-requests':undefined);
+  }
+
+  private isConversationAnswerExportable(taskId:string,signal:AbortSignal,visited=new Set<string>()):boolean {
+    if(signal.aborted||visited.has(taskId)||this.isHistoryWithheld(taskId))return false;
+    visited.add(taskId);
+    if(this.readSubagentTasks(taskId).some(child=>!this.isConversationAnswerExportable(child.taskId,signal,visited)))return false;
+    const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {receipts?:{proposal:import('@personal-agent/coordination').CoordinationToolProposalResult;
+      continuation:{result:unknown};exportPolicyVersion?:string}[]}|undefined;
+    return (loop?.receipts??[]).every(receipt=>{
+      if(receipt.proposal.verification==='mock')return true;
+      // A worker's original private/Skill consumption lease never transfers to another task.
+      if(this.coordinationWorkers.accepts(receipt.proposal))return false;
+      const binding=this.competitionToolExports.find(item=>item.toolName===receipt.proposal.toolName&&item.toolVersion===receipt.proposal.toolVersion);
+      if(!binding||binding.exportPolicyVersion!==receipt.exportPolicyVersion)return false;
+      try{return binding.accepts({taskId,proposalId:receipt.proposal.proposalId,arguments:structuredClone(receipt.proposal.arguments),
+        phase:'final',projection:structuredClone(receipt.continuation.result),signal})===true;}catch{return false;}
+    });
+  }
+
   /** Original Runtime cutoff; a host merges Conversations/Live by message id, then re-filters. */
   readConversationContext(input:{taskId?:string;conversationId:string;deadline:string;signal:AbortSignal;
     historyMessages?:readonly ConversationContextMessage[];maxMessages?:number}):ConversationContextMessage[] {
-    const historyLimit=input.maxMessages??CONVERSATION_HISTORY_LIMIT;
-    if(!Number.isSafeInteger(historyLimit)||historyLimit<1)throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted conversation range');
+    const historyLimit=input.maxMessages;
+    if(historyLimit!==undefined&&(!Number.isSafeInteger(historyLimit)||historyLimit<1))throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted conversation range');
     const task=input.taskId ? this.runtime.getTask(input.taskId) : undefined;
     if((task && (task.conversationId!==input.conversationId || task.cancelRequested)) || !Number.isFinite(Date.parse(input.deadline)) || input.signal.aborted
       || this.now().getTime()>=Date.parse(input.deadline))throw new ProtocolError('UNAUTHORIZED','Conversation scope expired');
     const result=new Map<string,ConversationContextMessage>();
     const eligibleTasks=new Set<string>();
     // Without a task, a host can check the same bounded history before confirmation/acceptance.
-    const turns=this.runtime.readConversationHistory(input.conversationId,input.taskId,historyLimit);
+    const turns=this.runtime.readConversationContextHistory(input.conversationId,input.taskId);
+    const order=new Map<string,number>();
+    const successfulTasks=new Set<string>();
     for(const turn of turns) {
       if(this.isHistoryWithheld(turn.taskId))continue;
       eligibleTasks.add(turn.taskId);
-      result.set(turn.taskId+':user',{id:turn.taskId+':user',taskId:turn.taskId,role:'user',content:turn.goal});
-      result.set(turn.taskId+':assistant',{id:turn.taskId+':assistant',taskId:turn.taskId,role:'assistant',content:assistantText(turn.resultSummary)});
+      const userId=turn.taskId+':user',assistantId=turn.taskId+':assistant';
+      const answerAllowed=!turn.resultSummary||this.isConversationAnswerExportable(turn.taskId,input.signal);
+      order.set(userId,Date.parse(turn.createdAt));order.set(assistantId,Date.parse(turn.createdAt));
+      result.set(userId,{id:userId,taskId:turn.taskId,role:'user',content:turn.goal,
+        ...(!answerAllowed?{answerWithheld:true as const}:{}),
+        ...(turn.state!=='succeeded'?{taskState:turn.state}:{})});
+      if(turn.resultSummary&&answerAllowed){successfulTasks.add(turn.taskId);
+        result.set(assistantId,{id:assistantId,taskId:turn.taskId,role:'assistant',content:assistantText(turn.resultSummary)});}
     }
     for(const message of input.historyMessages??[]) {
       if(!nonEmptyText(message.id) || !['user','assistant'].includes(message.role) || typeof message.content!=='string') {
         throw new ProtocolError('INVALID_ARGUMENT','Invalid history overlay');
       }
       if(message.taskId!==undefined && !eligibleTasks.has(message.taskId))continue;
+      if(message.taskId!==undefined && message.role==='assistant' && !successfulTasks.has(message.taskId))continue;
       if(message.withheld || (message.taskId && this.isHistoryWithheld(message.taskId)))result.delete(message.id);
-      else if(!input.taskId || message.taskId!==input.taskId)result.set(message.id,structuredClone(message));
+      else if(!input.taskId || message.taskId!==input.taskId){
+        if(message.createdAt!==undefined){
+          const time=Date.parse(message.createdAt);
+          if(!Number.isFinite(time))throw new ProtocolError('INVALID_ARGUMENT','Invalid history timestamp');
+          order.set(message.id,time);
+        }
+        result.set(message.id,structuredClone(message));
+      }
     }
-    return [...result.values()].slice(-historyLimit);
+    // Stable sort also preserves user/assistant order when task timestamps tie.
+    const ordered=[...result.values()].sort((a,b)=>(order.get(a.id)??Infinity)-(order.get(b.id)??Infinity));
+    if(historyLimit!==undefined&&ordered.length>historyLimit)
+      throw new ProtocolError('INVALID_ARGUMENT','Complete conversation exceeds the explicit source range');
+    return ordered;
   }
 
   configureThinking(config: ThinkingConfig): ThinkingState {
@@ -1995,7 +2059,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       return runRuntimeCodingRepairWorkflow(this,subtask,worker,tools,this.codingRepair);
     }
     return runCoordinationWorker(this.runtime,this.coordination,tools,worker.taskId,child.goal,worker,
-      {toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+      {retainPriorToolResults:this.retainPriorToolResults,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
   }
@@ -3103,7 +3167,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       worker.reportProgress({stepId:'subagent-conversation',label:`[${roleLabel}] 正在响应独立会话消息`});
       const catalog=this.competitionToolCatalog?.restrict(tools);
       return runCoordinationWorker(this.runtime,this.coordination,tools,taskId,subagentConversationGoal(origin,message.userText),worker,
-        {toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        {retainPriorToolResults:this.retainPriorToolResults,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(catalog?{toolCatalog:catalog}:{}),...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
     },{deadline:message.deadline,sideEffect:origin.tools.some(tool=>tool.sideEffect==='external_write')?'external_write'
@@ -3143,7 +3207,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       {id:origin.task.taskId+':user',taskId:origin.task.taskId,role:'user',content:origin.definition.goal},
       {id:origin.task.taskId+':assistant',taskId:origin.task.taskId,role:'assistant',content:assistantText(origin.task.resultSummary)},
     ]:[];
-    return [...initial,...history].slice(-(input.maxMessages??CONVERSATION_HISTORY_LIMIT));
+    const combined=[...initial,...history];
+    if(input.maxMessages!==undefined&&combined.length>input.maxMessages)
+      throw new ProtocolError('INVALID_ARGUMENT','Complete conversation exceeds the explicit source range');
+    return combined;
   }
 
   /** Trusted host only: binds an independently verified public source to durable Fact/Graph projection. */
@@ -3252,7 +3319,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           throw new Error();
         }
         const lease=this.ephemeralContexts.get(leaseKey);
-        if(!lease || lease.historyTaskIds.some(taskId=>this.isHistoryWithheld(taskId)))throw new Error();
+        if(!lease || lease.historyTaskIds.some(taskId=>this.isHistoryWithheld(taskId))
+          ||lease.answerTaskIds.some(taskId=>!this.isConversationAnswerExportable(taskId,request.signal)))throw new Error();
         lease.assertCompactionCurrent?.();
         const {binding}=lease;
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(request.taskId,checkpointKey),binding);
@@ -3267,6 +3335,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.assertInputActive(request);
     }
     if(request.continuation) {
+      for(const prior of request.priorContinuations??[]) {
+        const {priorContinuations:_,...single}=request;
+        this.assertCompetitionExportAllowed({...single,continuation:prior});
+      }
       const loop=this.runtime.loadCheckpoint(request.taskId,'competition-loop') as {receipts?:{proposal:import('@personal-agent/coordination').CoordinationToolProposalResult;
         continuation:unknown;workerSelection?:unknown;workerRevision?:number}[]}|undefined;
       const receipt=loop?.receipts?.find(item=>item.proposal.proposalId===request.continuation?.proposalId);
@@ -3730,7 +3802,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const catalog=this.taskCompetitionCatalog(taskId);
       const execution = startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
-        {resume: true, toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        {resume: true,retainPriorToolResults:this.retainPriorToolResults, toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},
@@ -4334,7 +4406,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const catalog=this.taskCompetitionCatalog(taskId);
       const execution = Promise.resolve().then(() => startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
-        {toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        {retainPriorToolResults:this.retainPriorToolResults,toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},

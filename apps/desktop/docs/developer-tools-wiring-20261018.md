@@ -1,5 +1,7 @@
 # 开发工具主对话与语音消费接线（2026-10-18）
 
+2026-10-20增量：可信部署配置 `github.repairLinks:true` 可单独接入已有 `github.actions.repair.link`，缺省关闭，非布尔值拒绝。注册仍保留原任务scopes、Runtime审批、原始发送身份和精确metadata/result出机门禁；不自动取得checks写权限。实施和验证见[已有工具接入](../../../docs/competition/EXISTING_TOOL_CONNECTIONS_20261020.md)。
+
 目标 profile 为 `huawei_ict_agentarts`，基线为 #406 `a37cd414`。本包是必要组合接线，不改变 MOD-33/36/37 归 goo122、MOD-34/35/38 归 Potatos498 的长期分工，不改他们的业务实现。MOD-37 仍未实现。所有本轮验证为本机 Synthetic；没有云、真实账号写入、Windows 实机、麦克风或 Laya 验收。
 
 ## 断点与当前消费路径

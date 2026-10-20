@@ -1,5 +1,29 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-20 已有邮件/日历工具接入（provisional）
+
+Desktop沿原Runtime/Policy/ToolGateway接入mail.inbox普通对话、mail.accounts/mark_seen/save_draft/reconcile_send及calendar.events，原本地信头分类/单事件会议绑定保留。账号配置、逐任务审批及完整metadata/result原生出机确认分开，配置撤销和异步取消重新校验，不扩大本地分类许可。GitHub修复链接由受信配置github.repairLinks:true单独注册。Windows Host/PipeBridge及固定Windows-MCP本机目录核对已有证据，当前48项登记不代表48项真实业务均可用。账号、工作区、界面出机、语音、默认并行检查失败及152项图适配缺口见[接入记录](../competition/EXISTING_TOOL_CONNECTIONS_20261020.md)。无Core wire/数据库迁移，不冻结整个连接器或Windows接口。
+
+## 2026-10-20 会话完整性修缮（provisional，固定1.7文字链路已验收）
+
+Competition 按事件截面保留失败/取消/未完成任务的公开用户原文，普通对话优先保留用户信息并披露助手历史省略，Skill/私人预检保持严格预算。新增同会话只读 `conversation.read_history`，按引用、内容散列及当前许可取回原文；来源撤销贯穿旧助手回答与子任务。可选 `continuationContext:'goal'`/`priorContinuations` 为 in-process/owned JSON 增量，默认关闭，不改冻结 Core wire。owned-1.7 已部署固定 `arm64-context-1-7-1020`，当前桌面显式启用；新版本真实文字上下文7项及历史取回通过。合成历史范围、自动化、默认并行检查失败及未验收项见 [评估记录](../competition/CONTEXT_INTEGRITY_20261020.md)，接口仍 provisional，不能据此冻结全部记忆或新协议。
+
+## 2026-10-20 地点补充后的答复衔接（provisional）
+
+Desktop `subagent.dispatch` 导出策略更新为 `1.2.0`：`userRequest` 经原 `compileCoordinationGoal` 有界编译器附带同会话历史，历史从原 Desktop 上下文入口读取，保留 cutoff、withheld、Skill 过滤与出机门禁；不采信子任务自报的上下文。Weather 对中文简称的低置信度匹配新增受限完整城市名补查，不冻结全部地点解析能力。真实“今天穿什么出门→在青岛”已查到山东青岛市并给出穿衣建议；首次真实复验有模型提案 Schema 拒绝，不能据一次成功声称稳定性问题全部消除。详见 [修复记录](../competition/CHAT_CONTINUATION_REPLY_20261019.md)。
+
+## 2026-10-19 委派聊天答复投影（provisional，文字链路真实复验通过）
+
+稳定性增量：Provider 的可选受信 `responseFormat:'json_object'` 仅在 AgentArts 严格 JSON 角色启用，默认文本行为不变，不修改 ModelRequest 或能力冻结状态；模型代理仅记录固定格式标签。角色回执附加固定 `failureStage` 枚举，不记录模型正文或任意错误文本。`owned-1.4` 重启轮失败，`owned-1.5` 上下文通过但主桌面问候仍暴露角色身份；最终 `owned-1.6` 八项真实对话及主桌面问候通过。整仓检查未全绿，全部MOD及原生工具调用不据此冻结，详见同一修复记录。
+
+Desktop `subagent.dispatch` 导出策略 `1.1.0` 在现有有界 JSON result 中附加可选宿主原问题 `userRequest`，子任务正文与可信 footer 的 `resultMetadata` 分离。原问题仅来自当前任务的委派 checkpoint，不采信子任务同名字段；保留原任务/版本/导出守卫、状态与错误。云端为普通 continuation 注入用户答复提示，初始派发和修复报告路径不变。无 Core wire、公共 envelope、数据库迁移或新依赖；旧待核实任务不重绑、不重发。自动化、真实验证及限制见 [修复记录](../competition/CHAT_CONTINUATION_REPLY_20261019.md)，不扩大冻结或全部业务可用范围。
+
+## 2026-10-17 Desktop 审查回归修复（provisional）
+
+Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Conversations v4 草稿；Preload/主进程核验来源主 frame、窗口与对话归属，失败保留窗口。正常输入继续原异步防抖，不增加任务或凭据权限。原 `agentarts.configure` 表单补齐已有安全配置字段，没有新增 Core wire 或数据库迁移。
+
+`RuntimeProactiveImageAdapterOptions` 兼容增加可信 `config.deploymentVersion` 与 `assertDeploymentBinding`，Desktop 原组合传入已选部署，describe/advance 保留同版 HTTP endpoint，凭据等待期间绑定改变则拒绝发送。原版本未知时不假造已固定版本；现有签名、取消、deadline 与 unknown 核实语义保留。具体接线及离线测试边界见 [修复记录](../../apps/desktop/docs/PR376_REGRESSION_FIXES_20261017.md)；不扩大冻结或真实华为/设备验收范围。
+
 ## 2026-10-18 主文字／Live 工具消费接线（provisional）
 
 最新定向分组检查 226/226，包含远端并行整合后的重叠补测；teacher 多轮、DEV 提案隔离、首次 user-work／追加会话的自动补丁核实续接、Live 原等待期限及 Windows 夹具修复见 [增量证据](../competition/evidence/conversation-wiring-20261018/SUPPLEMENT.md)。F15 实际复用通用图驱动，F20 的 Synthetic 验证不构成其业务入口接通。

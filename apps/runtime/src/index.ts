@@ -554,6 +554,28 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     }));
   }
 
+  /** Host-only conversation source at the original task cutoff; never a new wire operation. */
+  readConversationContextHistory(conversationId:string,beforeTaskId?:string):Array<{
+    taskId:string;goal:string;state:TaskState;createdAt:string;resultSummary?:string}> {
+    requireText(conversationId,'conversationId');
+    if(beforeTaskId)this.getTask(beforeTaskId);
+    const cutoff=beforeTaskId ? (this.db.prepare("SELECT sequence FROM task_events WHERE task_id=? AND type='task.created' ORDER BY sequence LIMIT 1")
+      .get(beforeTaskId) as {sequence:number}|undefined)?.sequence : this.snapshotSequence()+1;
+    if(cutoff===undefined)return [];
+    const rows=this.db.prepare(`SELECT t.task_id AS taskId,t.goal,e.occurred_at AS createdAt,
+      (SELECT s.payload_json FROM task_events s WHERE s.task_id=t.task_id AND s.sequence < ?
+        AND s.type IN ('task.created','task.state_changed') ORDER BY s.sequence DESC LIMIT 1) AS snapshot
+      FROM tasks t JOIN task_events e ON e.task_id=t.task_id AND e.type='task.created'
+      WHERE t.conversation_id=? AND e.sequence < ? ORDER BY e.sequence`).all(cutoff,conversationId,cutoff) as unknown as
+      Array<{taskId:string;goal:string;createdAt:string;snapshot:string}>;
+    return rows.filter(row=>!['private-copy-erasure','private-memory:consumption:v1','private-derived-output','knowledge-recheck-result']
+      .some(key=>this.loadCheckpoint(row.taskId,key)!==undefined)).map(row=>{
+        const snapshot=JSON.parse(row.snapshot) as TaskSnapshot;
+        return {taskId:row.taskId,goal:row.goal,createdAt:row.createdAt,state:snapshot.state,
+          ...(snapshot.state==='succeeded'&&snapshot.resultSummary ? {resultSummary:snapshot.resultSummary} : {})};
+      });
+  }
+
   /** Host-only metadata inventory. Descendants are copies, never inherited consumption licenses. */
   listBindings(input:{limit?:number;afterTaskId?:string}={}):{items:{taskId:string;binding:Record<string,unknown>}[];nextAfterTaskId?:string} {
     const limit=input.limit??100;

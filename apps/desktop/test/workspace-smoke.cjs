@@ -104,7 +104,7 @@ const {_electron} = require('playwright');
     const admin = await adminOpened;
     await admin.waitForSelector('[data-page="appearance"]');
     for (const removed of ['import', 'browser', 'account', 'usage']) assert.equal(await admin.locator(`.side [data-page="${removed}"]`).count(), 0);
-    assert.equal(await admin.locator('.side [data-page="tasks"]').count(), 1);
+    assert.equal(await admin.locator('.side [data-page="tasks"]').count(), 1, 'the current task monitoring route remains available');
     await admin.locator('[data-page="appearance"]').click();
     for (const theme of ['dark', 'light']) {
       await admin.locator('#pref-theme').selectOption(theme);

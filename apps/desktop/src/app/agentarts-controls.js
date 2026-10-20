@@ -70,6 +70,7 @@ export function mountAgentArtsControls(root,invoke) {
       form.elements.allowHttpsFallback.checked=value.allowHttpsFallback===true;updateTransport();}
     const transportState=section.querySelector('[data-transport-state]');if(transportState)transportState.textContent='当前通道：'+(value.effectiveTransport??value.transport??'https').toUpperCase()+(value.transportSource==='environment'?'（主机环境覆盖）':value.transportSource==='saved'?'（本机保存）':'（默认）');
     if(!dirty&&!busy&&form.elements.deploymentVersion)form.elements.deploymentVersion.value=value.deploymentVersion??'';
+    if(form.elements.appToken)form.elements.appToken.placeholder=value.appTokenConfigured?'已安全保存；同一实例留空保留':'WSS 必需；仅在本机加密保存';
     if(tokenHint) tokenHint.textContent=value.appTokenConfigured===true
       ? '独立镜像访问令牌已在本机加密保存；留空沿用，填写则覆盖。'
       : '首次配置 WSS 主通道必填：至少 32 位可见字符。';
