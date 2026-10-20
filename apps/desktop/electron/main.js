@@ -1460,8 +1460,11 @@ function readDesktopDeveloperHarnessConfiguration() {
 function readDesktopModelApiState() {
   const value=modelApiHost?.snapshot();
   if(!value)return undefined;
+  let harnessExperience;
+  try{harnessExperience=harnessExperienceAdminHost?.snapshot();}
+  catch{harnessExperience={available:false,entries:[],reason:'原开发经验宿主暂不可读取'};}
   let executionAvailable=false;try{executionAvailable=Boolean(readDesktopDeveloperHarnessConfiguration());}catch{}
-  return {...value,developerSettings:developerSettings?.snapshot(),harnessExperience:harnessExperienceAdminHost?.snapshot(),
+  return {...value,developerSettings:developerSettings?.snapshot(),harnessExperience,
     harness:{...value.harness,executionAvailable,
     executionReason:executionAvailable?'按当前编程工作区的原许可接入':value.harness?.enabled
       ?'请在电脑操控中选择编程工作区，并启用本会话读取与结果出机许可':'开发任务规划未启用',

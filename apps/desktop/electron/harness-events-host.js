@@ -128,12 +128,16 @@ export function createDesktopHarnessEventsHost({application,createEvents,createD
     for(const session of readPersistedSessions())if(!result.has(session.binding.taskId))result.set(session.binding.taskId,session);
     return [...result.values()];
   };
-  const originalDelivery=(session,origin)=>readOriginalDelivery(session,origin,{runtime,
-    taskId:session.binding.taskId,sessionId:session.binding.sessionId,
-    resolveAnchor:event=>resolveAnchor(session,event),resolveUserConversation,
-    assertCurrentAuthorization:(anchor,event,context,mode)=>authorization(session,anchor,event,context,mode),
-    readControl:()=>control(session)});
+  const originalDelivery=(session,origin)=>{
+    const native=sessions.get(session.binding.taskId)?.consumer;
+    if(typeof native?.readOriginalDelivery==='function')return native.readOriginalDelivery(origin);
+    return readOriginalDelivery(session,origin,{runtime,taskId:session.binding.taskId,sessionId:session.binding.sessionId,
+      resolveAnchor:event=>resolveAnchor(session,event),resolveUserConversation,
+      assertCurrentAuthorization:(anchor,event,context,mode)=>authorization(session,anchor,event,context,mode),
+      readControl:()=>control(session)});
+  };
   const ledgerDigest=value=>hash({origin:value.origin,ledgerState:value.ledgerState,ledgerRevision:value.ledgerRevision,
+    lifecycleRevision:value.lifecycleRevision,lifecycleRunning:value.lifecycleRunning,
     event:value.event,anchor:value.anchor,control:value.control,deadline:value.deadline});
   return {
     attach,
@@ -146,6 +150,7 @@ export function createDesktopHarnessEventsHost({application,createEvents,createD
       if(closed||typeof readOriginalDelivery!=='function')return undefined;
       try {
         for(const session of availableSessions()) {
+          try {
           const original=originalDelivery(session,query.origin);
           if(!original||!['pending','confirmed'].includes(original.ledgerState)
             ||query.phase==='created_root'&&original.ledgerState!=='pending')continue;
@@ -166,6 +171,7 @@ export function createDesktopHarnessEventsHost({application,createEvents,createD
                 readConfiguration(),query.origin,ledgerDigest(current)])};
           };
           const frozen=readFence();return {...frozen,assertCurrent(){if(!isDeepStrictEqual(readFence(),frozen))fail('REVISION_CONFLICT');}};
+          }catch{/* An unrelated stale native session cannot authorize or hide this origin. */}
         }
       }catch{return undefined;}
       return undefined;

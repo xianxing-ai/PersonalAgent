@@ -38,4 +38,8 @@ Main 在原 `workflow-learning.sqlite` 的 `SqliteLearningHost` 创建后调用 
 
 ## 当前检查
 
-遵循先实现全部源码再统一验证的顺序。目前已保存分阶段 Runtime 与 Desktop WIP，执行过必要语法与差异检查。`node --test apps/desktop/test/harness-events-host.test.mjs` 的两个最小 Synthetic 用例通过：实际 user-work 结构父链解析/分类前不启动，以及原 source/config/ledger 撤销后的 fence 拒绝。该测试的 Runtime/core/source 为显式 Fake，不证明最新真实 core、Provider 或平台组合。完整组合、最新源码的联合构建/回归、实际管理 UI 渲染与真实服务验收待主控统一执行。不能据这些源码或历史阶段通过把整体 Harness、云或实体设备标为完成。
+遵循先实现全部源码再统一验证的顺序。目前已保存分阶段 Runtime 与 Desktop WIP，执行过必要语法与差异检查。`node --test apps/desktop/test/harness-events-host.test.mjs` 的两个最小 Synthetic 用例通过：实际 user-work 结构父链解析/分类前不启动，以及原 source/config/ledger 撤销后的 fence 拒绝。该次 shell 为 Node 26.3.0，Runtime/core/source 为显式 Fake，不能作为仓库钉版 Node 24.15.0 或最新真实 core/Provider 的验收。
+
+新增原 sink 通知/ack 竞态的单例已保存在 `proactive-confirmed-source-router.test.mjs`。一次定向尝试在 import 时因 `@personal-agent/feeds/dist/index.js` 缺失而退出，未进入用例；没有补安装或扩大构建，状态为 not_run。后续按根 `.node-version` 的 Node 24.15.0，在统一依赖构建后执行。
+
+完整组合、最新源码的联合构建/回归、实际管理 UI 渲染与真实服务验收待主控统一执行。不能据这些源码或历史阶段通过把整体 Harness、云或实体设备标为完成。

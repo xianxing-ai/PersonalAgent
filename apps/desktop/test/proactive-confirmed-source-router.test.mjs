@@ -107,6 +107,27 @@ test('Synthetic original confirmed feed Evidence reaches durable sink; repeated 
   }finally{f.close();}
 });
 
+test('Synthetic native Harness reads the same confirmed invocation during sink notification and after acknowledgement',async()=>{
+  const f=await fixture();let unsubscribe;
+  try {
+    f.app.runtime.saveCheckpoint(f.original.taskId,'desktop-proactive-workflow-v1',{version:1,taskId:f.original.taskId,
+      sourceTaskId:f.source.taskId,taskDeadline:f.deadline});
+    const input=await f.read('harness-native-origin');let during;
+    unsubscribe=f.host.subscribe(()=>{
+      const entry=Object.values(f.host.inspect().application.state.entries).find(value=>value.event.entry==='connector');
+      if(entry)during={event:entry.event,origin:f.router.readHarnessSourceOrigin(f.original.taskId,entry.event),
+        authorization:f.router.readHarnessSourceAuthorization(f.original.taskId,entry.event)};
+    });
+    await f.router.routeConfirmedFeed(input,f.context());
+    assert.ok(during?.origin,'Original pending proof exists before the sink acknowledges');
+    assert.ok(during.authorization,'Only the exact confirmed Runtime Policy/source receipt authorizes native admission');
+    assert.deepEqual(f.router.readHarnessSourceOrigin(f.original.taskId,during.event),during.origin);
+    assert.deepEqual(f.router.readHarnessSourceAuthorization(f.original.taskId,during.event),during.authorization);
+    f.revoke();assert.equal(f.router.readHarnessSourceAuthorization(f.original.taskId,during.event),undefined);
+    assert.equal(f.providerCalls(),1,'Native readback never fetches another source');
+  }finally{unsubscribe?.();f.close();}
+});
+
 test('Synthetic SQLite reopen plus ordinary maintenance tick recovers exact lost ack without another collection',async()=>{
   const f=await fixture();try {
     const {input}=await f.hostRead('poll-recovery'),persist=f.host.eventSink.persist;
