@@ -227,11 +227,24 @@ for(const change of ['external','revoke'])test('completed publication rechecks '
   const f=await fixture(t),candidate=await activateOriginal(f),root=await f.start('hold_after_publish');
   await until(()=>f.entered());const owner=f.owner(root);
   const completion=f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:publication-completion:v1');assert.ok(completion);
+  const lease=f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:lease:v1');
+  const facts=()=>({records:f.app.runtime.readToolExecutions(owner.taskId),evidence:f.app.runtime.readEvidence(owner.taskId),
+    original:f.app.runtime.readToolExecutions(owner.taskId).map(record=>({
+      input:f.app.runtime.loadCheckpoint(owner.taskId,'application-tool-invocation:'+record.evidenceId),
+      cache:f.app.runtime.loadCheckpoint(owner.taskId,'tool-result-'+record.evidenceId)}))});
+  const originalFacts=facts(),sendCount=f.observed.filter(value=>value.taskId===owner.taskId).length;
+  assert.equal(originalFacts.records.length,4);assert.ok(originalFacts.records.every(record=>record.state==='confirmed'));
   if(change==='external')f.mutateCurrent();
   else f.experience.stop({...f.context(),workflowId:candidate.workflowId,expectedActiveRevision:candidate.revision,
     operationId:'revoke-after-publication',stoppedAt:new Date().toISOString()});
   f.release();await until(()=>f.app.activeTaskCount===0);
-  assert.equal(f.app.runtime.getTask(owner.taskId).state,'failed');assert.equal(f.publishes(),2);
+  const held=f.app.runtime.getTask(owner.taskId);
+  assert.equal(held.state,'waiting_reconciliation');assert.equal(held.error.code,'UNAUTHORIZED');assert.equal(held.error.retryable,false);
+  assert.deepEqual(f.app.runtime.loadCheckpoint(owner.taskId,'competition-export-withheld'),{withheld:true});
+  assert.deepEqual(facts(),originalFacts,'confirmed inputs, cached results and Evidence are retained without replay');
+  assert.equal(f.observed.filter(value=>value.taskId===owner.taskId).length,sendCount,'no further model request is admitted');
+  assert.equal(f.publishes(),2);
   assert.deepEqual(f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:publication-completion:v1'),completion,'immutable original completion is not migrated again');
+  assert.deepEqual(f.app.runtime.loadCheckpoint(owner.taskId,'harness-experience:lease:v1'),lease);
   assert.equal(f.experience.listCandidates().length,1);
 });
