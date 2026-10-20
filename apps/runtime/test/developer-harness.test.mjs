@@ -311,4 +311,3 @@ test('disabling configuration denies old executor approval before grant consumpt
   await f.client.call('task.cancel',{taskId:parent.taskId,reason:'Stop disabled original work'});
   await until(()=>f.app.activeTaskCount===0);assert.equal(f.reads(),0);
 });
-
