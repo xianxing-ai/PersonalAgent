@@ -20,12 +20,16 @@ export async function handleSubagentWindowAction({event,name,payload,record,read
 }
 
 /** The all-conversations window may page local history and open a validated child, never execute work. */
-export async function handleSubagentListAction({event,name,payload,window,list,open}) {
+export async function handleSubagentListAction({event,name,payload,window,list,open,collapse}) {
   if(window.isDestroyed()||event.sender!==window.webContents||event.senderFrame!==window.webContents.mainFrame)throw Error('子对话列表窗口不可信');
   const exact=keys=>payload&&typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).every(key=>keys.includes(key));
   if(name==='subagentConversations.list'){
     if(payload!==undefined&&(!exact(['cursor'])||(payload.cursor!==undefined&&typeof payload.cursor!=='string')))throw Error('子对话分页参数无效');
     return list(payload??{});
+  }
+  if(name==='subagentConversations.collapseAll'){
+    if(payload!==undefined||typeof collapse!=='function')throw Error('子对话收起参数无效');
+    return collapse();
   }
   if(name==='subagentConversations.open'){
     if(!exact(['parentTaskId','taskId'])||typeof payload.parentTaskId!=='string'||!payload.parentTaskId.trim()

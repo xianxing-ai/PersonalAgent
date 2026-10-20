@@ -147,6 +147,9 @@ let panel;
 let admin;
 let workspace;
 const subagentWindows=new Map();
+// Each child conversation owns a renderer process. Keeping every one alive across turns is what
+// made long sessions slow, so the host recycles the least recently used window past this bound.
+const SUBAGENT_WINDOW_LIMIT=6;
 let subagentListWindow;
 let adminNavigation = {page: 'settings', revision: 0};
 let tray;
@@ -664,6 +667,12 @@ function publish() {
   }
   for(const record of subagentWindows.values()){
     if(record.window.isDestroyed())continue;
+    // A hidden child keeps its last rendered state. Re-reading every child on every publish made
+    // idle cost grow with the number of open windows, which is what accumulated into stutter.
+    if(!record.window.isVisible()||record.window.isMinimized())continue;
+    const now=Date.now();
+    if(now-(record.checkedAt??0)<500)continue;
+    record.checkedAt=now;
     let revision='unavailable';
     try{
       const conversation=runtimeApplication?.readSubagentConversation(record.binding);
@@ -1038,14 +1047,65 @@ async function openSubagentConversation(payload){
   const detail=await readChildConversation(payload);
   const key=JSON.stringify([detail.parentTaskId,detail.taskId]);
   const previous=subagentWindows.get(key);
-  if(previous&&!previous.window.isDestroyed()){previous.window.show();previous.window.focus();return {opened:true};}
+  if(previous&&!previous.window.isDestroyed()){previous.lastUsedAt=Date.now();previous.window.show();previous.window.focus();return {opened:true};}
+  await recycleSubagentWindows();
+  if(subagentWindows.size>=SUBAGENT_WINDOW_LIMIT)throw Error('子对话窗口仍在使用，请先发送草稿或关闭空闲窗口');
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
   const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
     {title:'PersonalAgent · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
-  subagentWindows.set(key,{window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt});
+  const record={window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt,lastUsedAt:Date.now(),checkedAt:0};
+  subagentWindows.set(key,record);
+  window.on('focus',()=>{record.lastUsedAt=Date.now();});
   window.on('closed',()=>subagentWindows.delete(key));
   return {opened:true};
+}
+/** Bounded child windows: close the least recently used one before opening another. */
+async function canRecycleSubagentWindow(window){
+  if(window.isDestroyed())return true;
+  try{
+    // Read only a fixed boolean; drafts stay in their original renderer.
+    return await window.webContents.executeJavaScript(`(() => {
+      const input=document.querySelector('textarea');
+      return Boolean(input&&!input.disabled&&!input.value.trim()&&!document.querySelector('[aria-busy="true"]'));
+    })()`)===true;
+  }catch{return false;}
+}
+async function closeSubagentWindow(window){
+  if(window.isDestroyed())return true;
+  return new Promise(resolve=>{
+    let timer;
+    const finish=closed=>{clearTimeout(timer);window.removeListener('closed',closedEvent);window.webContents.removeListener('will-prevent-unload',prevented);resolve(closed);};
+    const closedEvent=()=>finish(true),prevented=()=>finish(false);
+    window.once('closed',closedEvent);window.webContents.once('will-prevent-unload',prevented);
+    timer=setTimeout(()=>finish(window.isDestroyed()),1000);
+    try{window.close();}catch{finish(false);}
+  });
+}
+async function recycleSubagentWindows(){
+  while(subagentWindows.size>=SUBAGENT_WINDOW_LIMIT){
+    let recycled=false;
+    const ordered=[...subagentWindows].sort((a,b)=>(a[1].lastUsedAt??0)-(b[1].lastUsedAt??0));
+    for(const [key,record] of ordered){
+      if(record.window.isDestroyed()){subagentWindows.delete(key);recycled=true;break;}
+      if(!await canRecycleSubagentWindow(record.window))continue;
+      if(await closeSubagentWindow(record.window)){recycled=true;break;}
+    }
+    if(!recycled)throw Error('子对话窗口均有草稿或状态无法确认，已保留输入；请先发送草稿或关闭空闲窗口');
+  }
+}
+/** One action closes every child conversation window, releasing their renderer processes. */
+async function collapseAllSubagentConversations(keep){
+  let closed=0,preserved=0;
+  for(const [key,record] of [...subagentWindows]){
+    if(!await canRecycleSubagentWindow(record.window)){preserved++;continue;}
+    if(record.window.isDestroyed()){subagentWindows.delete(key);continue;}
+    if(await closeSubagentWindow(record.window))closed++;else preserved++;
+  }
+  if(preserved)throw Error(`已收起 ${closed} 个子对话；${preserved} 个含草稿或状态无法确认的窗口已保留。`);
+  if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow!==keep){subagentListWindow.close();closed++;}
+  if(subagentListWindow===keep)subagentListWindow=keep;else subagentListWindow=undefined;
+  return {closed};
 }
 function openAllSubagentConversations(){
   if(subagentListWindow&&!subagentListWindow.isDestroyed()){subagentListWindow.show();subagentListWindow.focus();return;}
@@ -2472,7 +2532,8 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
 async function action(event, name, payload) {
   if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow.webContents===event.sender)
     return handleSubagentListAction({event,name,payload,window:subagentListWindow,
-      list:input=>runtimeApplication.listSubagentConversations(input),open:openSubagentConversation});
+      list:input=>runtimeApplication.listSubagentConversations(input),open:openSubagentConversation,
+      collapse:async()=>{const result=await collapseAllSubagentConversations(subagentListWindow);publish();return result;}});
   const child=[...subagentWindows.values()].find(record=>record.window.webContents===event.sender);
   if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:readChildConversation,
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
@@ -2535,6 +2596,10 @@ async function action(event, name, payload) {
   if(name==='subagentConversations.openAll'){
     if(sender!==workspace||payload!==undefined)throw Error('请从工作区打开全部子智能体');
     openAllSubagentConversations();return;
+  }
+  if(name==='subagentConversations.collapseAll'){
+    if(![panel,workspace,admin].includes(sender)||payload!==undefined)throw Error('请从主对话或工作区收起子对话');
+    const result=await collapseAllSubagentConversations();publish();return result;
   }
   if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
