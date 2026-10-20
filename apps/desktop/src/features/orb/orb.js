@@ -141,6 +141,7 @@ export class Orb {
     this.time = 0;
     this.calm = false;
     this.running = false;
+    this._tokenCache = null;
     this._rebuild();
     this._resize();
     this._observer = new ResizeObserver(() => {
@@ -148,6 +149,12 @@ export class Orb {
       if (!this.running) this._draw();
     });
     this._observer.observe(canvas.parentElement ?? canvas);
+    // Theme and calm live in CSS custom properties; one event replaces per-frame getComputedStyle.
+    this._onPreferences = () => {
+      this._tokenCache = null;
+      if (!this.running) this._draw();
+    };
+    window.addEventListener?.("preferences-changed", this._onPreferences);
     this.start();
   }
 
@@ -290,15 +297,23 @@ export class Orb {
   }
 
   _tokens() {
+    if (this._tokenCache) return this._tokenCache;
     const css = getComputedStyle(this.canvas);
     const v = (n, fb) => (css.getPropertyValue(n).trim() || fb);
-    return {
+    this._tokenCache = {
       particle: v("--orb-particle", "#ffffff"),
       core1: v("--orb-core-1", "#05070a"),
       core2: v("--orb-core-2", "#10151c"),
       accent: v("--accent", "#52c7bd"),
       danger: v("--danger", "#ef6a72"),
     };
+    return this._tokenCache;
+  }
+
+  /** Drop cached design tokens after a theme, calm or palette change. */
+  refreshTokens() {
+    this._tokenCache = null;
+    if (!this.running) this._draw();
   }
 
   _geom(p) {
@@ -763,5 +778,6 @@ export class Orb {
   dispose() {
     this.stop();
     this._observer?.disconnect();
+    if (this._onPreferences) window.removeEventListener?.("preferences-changed", this._onPreferences);
   }
 }
