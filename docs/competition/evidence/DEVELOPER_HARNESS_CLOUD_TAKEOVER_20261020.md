@@ -56,5 +56,12 @@ F13/F14 已有独立系统观察/Windows-MCP 用户工具，不等于 graph alia
 - 最终产品 tree `17c47668` 的 settings 三文件 10/10、0 skip，integration 51 项：48 pass / 0 fail / 3 Windows skip，均 exit 0。日志 `final-settings-17c47668.log` SHA256 `bbc4facde6c80844a71f6e6f040d7a90293afc769c3c13800e672620058162be`；`final-integration-17c47668.log` SHA256 `5f4f46810196658c90a6a748ff6b939d5cc1dd6c75cd8dd99910122808c11486`。无 TS/package/lock/tsconfig 改动，仍复用前述实际构建，不宣称重新运行整个 root check。
 - 最终合成页面 `/tmp/personal-agent-final-ui-20261020/160831-529017/report.json` PASS / exit 0，SHA256 `65699b4af2580b64f0a54b9d96f461379a4ce901b1ad12f9d33ecdea3b4cc94d`。六组检查，全部 src JS/CSS/index/preload 哈希首尾一致，页面错误与外部请求均为空。执行方实际查看最终 Harness 及两尺寸 Panel 截图；保存按钮前景灰度 23 / 背景 238，可读。此前 UI pending 已由本轮最终报告取代。
 - 真实 Electron Main/safeStorage **NOTRUN**，页面重开不代表原生生命周期通过。不将独立补丁或 UI 报告写成已 push、整体 root check 成功或真实账号验收。
-- 源 PR #450 的另一 Windows 依赖准备 `ready:false` 根因仍待新 CI 诊断；最终源 PR 当前 head CI / 非作者批准未满足时仍不能合并。产品代码交付、PR 合并及真实能力验收分别记录。
+- 当时源 PR #450 的另一 Windows 依赖准备 `ready:false` 根因仍待新 CI 诊断；后续定位与夹具修复见下节。最终源 PR 当前 head CI / 非作者批准未满足时仍不能合并。产品代码交付、PR 合并及真实能力验收分别记录。
 - Windows 原生 helper、音频/输入设备、真实账号、云模型、Laya、真实整图和实际发布的证据与本地代码检查分账；缺平台时如实记未验，不降低权限、期限、CAS 或 unknown 保护。
+
+## 后续 Windows CI 夹具定位
+
+- 源 PR #450 在 `cd370` 对应 Windows 失败日志中的唯一原因已定位为 `Workspace dependency link does not match the original locked workspace`；前一轮 Desktop canonical 修复不再失败。以上“待诊断”为当时状态，不代表最新定位仍未知。
+- source450 新 head `2d30464b91edbd4979620b55f8ba2aa238cd44a6` 仅修改 `packages/coding-tools/test/isolated-dependencies.test.mjs`：以 `realpath` 后的规范 workspace target 创建 junction，并在准备依赖前通过 `lstat` 与 `realpath` 断言原链接身份和锁定 workspace 精确一致；没有修改生产校验或放宽安全门禁。
+- 执行方提供该夹具 Linux 定向结果 7/7、0 skip，日志 SHA256 `db015379f4c9a65e1eb0918910df29406573f4da329c9708dd095f6ebd3e39ba`。Windows TEMP 的 8.3 别名路径解释及此修复的 Windows 效果仍待新 head CI 验证，不能由 Linux 结果宣称已经通过。
+- 本轮整合仅合入上述测试夹具与此证据更新，未重跑构建、安装或整组测试，既有生产 tree `17c47668` 的产品内容保持不变；当前 head 的 CI 与非作者批准仍是实际合并门禁。
