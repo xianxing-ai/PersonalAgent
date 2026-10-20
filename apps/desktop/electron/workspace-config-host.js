@@ -1,13 +1,15 @@
-import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync,readdirSync} from 'node:fs';
+import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import path from 'node:path';
 import {PROTOCOL_VERSION, ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import * as coding from '@personal-agent/coding-tools';
+import {harnessCandidateRecipeFingerprint,parseHarnessCandidateBinding} from '@personal-agent/contracts/harness-candidates';
 import {readRuntimeCodingVerificationEvidence} from '@personal-agent/runtime/application';
 import {createDesktopCodingToolHost} from './coding-tool-host.js';
 import {findWindowsExecutable} from './windows-executable-discovery.js';
+import {codingRepairExportOperation,projectCodingRepairResult} from './coding-repair-result-export.js';
 
 function directory(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.startsWith('\\\\')
@@ -89,7 +91,9 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   selectNodeExecutable,selectCheckFile,selectNpmCli,jobHelperExecutable,patchHelperScriptPath,
   projectScriptEnvSource,createCommandRecipeTool,createWorkspaceReferenceExport,
   readWorkspaceExportPreflight,readWorkspaceExportAuthorization,
-  requestWorkspaceExportPreflight,requestWorkspaceExportExact}) {
+  requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions,
+  // Main-only injection supports offline discovery fixtures; never accepted from Renderer.
+  findExecutable=findWindowsExecutable}) {
   const file = path.join(userData,'coding-workspace.json');
   let savedRoot,savedNode,savedCheckFile,savedNpmCli,boundRoot,boundNode,boundCheckFile,boundNpmCli,boundProjectHelper,rootIdentity,nodeIdentity,application,active=true,consent,applyHost,failure='',commandFailure='',projectFailure='';
   let generation=randomUUID();
@@ -99,7 +103,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const workspaceExportProposals=new Map();
   const confirmedWorkspaceReads=new Map();
   let workspaceReferenceExport;
-  let boundRepairPowerShell,repairHostPromise,developerCommand;
+  let boundRepairPowerShell,repairHostPromise,harnessHostPromise,developerCommand;
+  let dependencyFingerprint,dependencyPreparationReason,dependencyPreparation;
   try {
     if (existsSync(file)) {
       if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -145,7 +150,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           boundProjectHelper=helper;
         } catch {projectFailure='项目命令所需的本机组件不可用';}
       }
-      const pwsh=findWindowsExecutable('pwsh.exe',discovery);
+      const pwsh=findExecutable('pwsh.exe',discovery);
       if (pwsh) {
         boundRepairPowerShell=pwsh;
         try {
@@ -158,7 +163,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           implementations.push(...applyHost.tools);
         } catch {failure='读取和候选生成可用；安全应用补丁所需的目录或 PowerShell 检查未通过';}
       } else failure='读取和候选生成可用；安全应用补丁需要 PowerShell 7';
-      const git=findWindowsExecutable('git.exe',discovery);
+      const git=findExecutable('git.exe',discovery);
       if (git) {
         const command=coding.createWorkspaceCommandTool({rootPath:boundRoot,recipes:[{id:'git-diff-check',
           executable:git,args:['--no-pager','-c','core.fsmonitor=false','diff','--no-ext-diff','--no-textconv','--check']}],
@@ -230,42 +235,79 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const parent=application?.runtime.loadCheckpoint(taskId,'coding-repair:parent');
     return typeof parent?.taskId==='string'?parent.taskId:taskId;
   };
-  const getRepairHost=async()=>{
+  const repairRecipes=()=>[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
+    ...(boundNpmCli&&developerCommand?.recipeIds.includes('npm-build')?[{recipeId:'npm-build',packageIds:[],required:true}]:[]),
+    ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])];
+  const getRepairHost=async(harness=false)=>{
+    if(dependencyPreparation)await dependencyPreparation;
     if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || (boundNpmCli&&!boundProjectHelper)
       || typeof createCommandRecipeTool!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
-    if(!repairHostPromise)repairHostPromise=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
-      sessionRoot:path.join(userData,'coding-isolation',createHash('sha256').update(boundRoot).digest('hex')),
-      workspaceId:createHash('sha256').update(boundRoot).digest('hex'),patch:{powerShellPath:boundRepairPowerShell,
+    if(harness?harnessHostPromise:repairHostPromise)return harness?harnessHostPromise:repairHostPromise;
+    const workspaceId=createHash('sha256').update(boundRoot).digest('hex');
+    const preparedFingerprint=dependencyFingerprint,preparationReason=dependencyPreparationReason;
+    // Reuse the same host implementation with separate journals: F15 retains owner-mapped
+    // sessions, while harness receipts bind the actual executor in the same workspace.
+    const pending=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
+      sessionRoot:path.join(userData,harness?'harness-isolation':'coding-isolation',workspaceId),
+      workspaceId,patch:{powerShellPath:boundRepairPowerShell,
          ...(boundProjectHelper===undefined?{}:{processIdentityHelperPath:boundProjectHelper}),
         ...(patchHelperScriptPath===undefined?{}:{helperScriptPath:patchHelperScriptPath})},
-      recipes:[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
-        ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])],
-      resolveOriginalTaskId:resolveRepairTask,
+      recipes:repairRecipes(),
+      ...(harness?{}:{resolveOriginalTaskId:resolveRepairTask}),
       configurationRef:createHash('sha256').update(JSON.stringify({root:boundRoot,node:boundNode,check:boundCheckFile,npm:boundNpmCli,
-        helper:boundProjectHelper,nodeIdentity:String(nodeIdentity?.ino)+':'+String(nodeIdentity?.mtimeNs)})).digest('hex'),
+        helper:boundProjectHelper,nodeIdentity:String(nodeIdentity?.ino)+':'+String(nodeIdentity?.mtimeNs),
+        ...(preparedFingerprint?{dependencyFingerprint:preparedFingerprint}:{})})).digest('hex'),
       readVerificationEvidence:async input=>readRuntimeCodingVerificationEvidence(application,input),
-      // Dependencies/outputs are independent. An unprepared project remains explicitly unavailable.
-      prepareWorkspace:async({isolatedRoot})=>{
-        let dependencies=false;
-        const visit=directory=>{for(const entry of readdirSync(directory,{withFileTypes:true})) {
-          const target=path.join(directory,entry.name);
-          if(entry.isDirectory()&&!['node_modules','.git','dist','build','.cache'].includes(entry.name))visit(target);
-          else if(entry.isFile()&&entry.name==='package.json') {
-            const value=JSON.parse(readFileSync(target,'utf8'));
-            if(Object.keys(value.dependencies??{}).length||Object.keys(value.devDependencies??{}).length||Object.keys(value.optionalDependencies??{}).length)dependencies=true;
-          }
-        }};visit(isolatedRoot);
-        return dependencies?{ready:false,reason:'此项目需要独立依赖准备；未共享主工作区 node_modules/dist'}:{ready:true};
+      // Copy only the already prepared, authorized lock-bound bytes. No installer or network fallback.
+      prepareWorkspace:input=>preparationReason?Promise.resolve({ready:false,reason:preparationReason})
+        :coding.prepareIsolatedCodingDependencies({...input,expectedFingerprint:preparedFingerprint??null}),
+      validatePreparedWorkspace:async({isolatedRoot,deadline,signal})=>{
+        if(preparationReason)throw new ProtocolError('UNSUPPORTED_CAPABILITY',preparationReason);
+        if(await coding.capturePreparedDependencyFingerprint(boundRoot,{deadline,signal})!==preparedFingerprint)
+          throw new ProtocolError('REVISION_CONFLICT','原准备依赖已变化，不能使用旧授权验证或发布');
+        if(await coding.capturePreparedDependencyFingerprint(isolatedRoot,{deadline,signal})!==preparedFingerprint)
+          throw new ProtocolError('REVISION_CONFLICT','隔离依赖输入已变化，不能复用旧验证');
       },
       createCommandTool:({rootPath})=>createCommandRecipeTool({workspaceRoot:rootPath,authorizedWorkspaceRoot:rootPath,
         nodeExecutable:boundNode,checkFiles:boundCheckFile?[{id:'node-check',path:boundCheckFile}]:[],
         allowProjectScripts:Boolean(boundNpmCli),jobHelperExecutable:boundProjectHelper,npmCliPath:boundNpmCli,
-        projectScriptEnvSource,maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
-    return repairHostPromise;
+        projectScriptEnvSource,isolateNpmConfiguration:true,maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
+    if(harness)harnessHostPromise=pending;else repairHostPromise=pending;
+    return pending;
   };
+  // Stable Main-only proxy. Every call keeps the original consent, task and revocation guards.
+  const harnessRepairHost=Object.freeze({...Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
+    .map(name=>[name,async(...args)=>{
+      const context={...args.at(-1)},parameters=structuredClone(args.slice(0,-1)),lease=generation,currentApplication=application;
+      assertHarnessWorkspace(context);
+      const controller=new AbortController();inflight.add(controller);
+      const scoped={...context,signal:AbortSignal.any([context.signal,controller.signal])};
+      try {
+        const host=await getRepairHost(true);assertHarnessWorkspace(scoped);
+        if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
+        const result=await host[name](...parameters,scoped);
+        assertHarnessWorkspace(scoped);
+        if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
+        return result;
+      } finally {inflight.delete(controller);}
+    }])),reconcileOriginalSession:input=>reconcileHarnessOriginalSession(input)});
   if(boundRoot && boundRepairPowerShell && typeof coding.createIsolatedCodingRepairTools==='function') {
-    const deferred=Object.fromEntries(['start','list','read','snapshot','preview','patch','verify','check','publish','reconcile']
-      .map(name=>[name,async(...args)=>(await getRepairHost())[name](...args)]));
+    const routedHarnessMethods=new Set(['publish','snapshot','readback','reconcile']);
+    const deferred=Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
+      .map(name=>[name,async(...args)=>{
+        const context={...args.at(-1)},parameters=structuredClone(args.slice(0,-1));
+        const sessionId=name==='publish'?parameters[0]?.sessionId:parameters[0];
+        const currentApplication=application,lease=generation;
+        if(routedHarnessMethods.has(name)&&typeof sessionId==='string'
+          &&typeof currentApplication?.isHarnessCodingRepairSession==='function') {
+          // The original Runtime validates its canonical session/run/Evidence. The model never picks a backend.
+          const permitted=await currentApplication.isHarnessCodingRepairSession(context,{sessionId,operation:name});
+          if(currentApplication!==application||lease!==generation||context.signal.aborted)
+            throw new ProtocolError('UNAUTHORIZED','原交付会话绑定已变化');
+          if(permitted===true)return harnessRepairHost[name](...parameters,context);
+        }
+        return (await getRepairHost())[name](...parameters,context);
+      }]));
     const repairTools=coding.createIsolatedCodingRepairTools(deferred);
     implementations.push(...repairTools);
     for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],
@@ -322,6 +364,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     catch {return false;}
   };
   const enabled=tool => active && Boolean(consent) && selectionsCurrent() && identityCurrent()
+    && (!(tool.descriptor.name.startsWith('coding.repair.')||tool.descriptor.name.startsWith('workflow.host.f15_')||tool.descriptor.name==='workspace.coding_snapshot')
+      ||!dependencyPreparation&&!dependencyPreparationReason)
     && commandReady(tool)
     && (tool.descriptor.sideEffect==='read' || (consent.cloudExportAllowed===true && (isProject(tool)
       ? consent.commandAllowed===true && consent.projectCodeAllowed===true && projectIdentityCurrent()
@@ -522,7 +566,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     projectCodeAllowed:consent?.projectCodeAllowed===true,
     commandReason:commandFailure || (tools.some(tool=>tool.descriptor.name==='workspace.node_check'
       && !commandReady(tool))?'命令文件或配置已变化，请重启应用重新装配':''),
-    projectReason:projectFailure || (tools.some(tool=>isProject(tool) && !commandReady(tool))
+    projectReason:dependencyPreparation?'正在核实原项目的锁定依赖':dependencyPreparationReason||projectFailure || (tools.some(tool=>isProject(tool) && !commandReady(tool))
       ?'项目命令文件或配置已变化，请重启应用重新装配':''),
     readAvailable:tools.some(tool=>tool.descriptor.name==='workspace.read_text') && enabled(tools[0]),
     writeAvailable:tools.some(tool=>tool.descriptor.name==='workspace.apply_text_patch' && enabled(tool)),
@@ -539,6 +583,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     try {workspaceReferenceExport?.dispose();} catch { /* No host details escape. */ }
     workspaceReferenceExport=undefined;workspaceExportProposals.clear();confirmedWorkspaceReads.clear();
     for (const controller of inflight) controller.abort();
+    dependencyFingerprint=undefined;dependencyPreparationReason=undefined;dependencyPreparation=undefined;repairHostPromise=undefined;harnessHostPromise=undefined;
     return snapshot();
   };
   function persist(root,node,selectedFile,npmCli) {
@@ -569,11 +614,12 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(!active||!boundRoot||!selectionsCurrent()||!identityCurrent())return undefined;
     const rootPath=boundRoot;
     const bindingId=createHash('sha256').update(JSON.stringify([rootPath,String(rootIdentity.dev),String(rootIdentity.ino),
-      String(rootIdentity.birthtimeNs),boundNode??null,boundCheckFile??null,boundNpmCli??null,boundProjectHelper??null])).digest('hex');
+      String(rootIdentity.birthtimeNs),boundNode??null,boundCheckFile??null,boundNpmCli??null,boundProjectHelper??null,
+      ...(dependencyFingerprint?[dependencyFingerprint]:[])])).digest('hex');
     const available=scope=>{
       if(typeof application?.readToolConversation!=='function')return false;
       const conversationId=application.readToolConversation(scope.taskId);
-      return typeof conversationId==='string'&&conversationId.length>0&&!scope.signal?.aborted&&Date.now()<Date.parse(scope.deadline)&&Boolean(consent)
+      return !dependencyPreparation&&!dependencyPreparationReason&&typeof conversationId==='string'&&conversationId.length>0&&!scope.signal?.aborted&&Date.now()<Date.parse(scope.deadline)&&Boolean(consent)
         &&active&&selectionsCurrent()&&identityCurrent()&&bound(scope.taskId,true);
     };
     const aliases={'node-check':'workspace.node_check','npm-build':'workspace.npm_build','npm-test':'workspace.npm_test'};
@@ -588,7 +634,93 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     return {bindingId,rootPath,metadataExportAllowed:false,available,
       assertCurrent:scope=>{if(!available(scope))throw new ProtocolError('UNAUTHORIZED','原开发工作区许可或配置已变化');},...(command?{command}:{})};
   };
-  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,
+  function assertHarnessWorkspace(context) {
+    if(dependencyPreparation||dependencyPreparationReason)throw new ProtocolError('UNSUPPORTED_CAPABILITY',dependencyPreparationReason??'原锁定依赖正在准备');
+    assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal);
+  }
+  function assertHarnessWorkspaceBinding(taskId,deadline,signal) {
+    if(!signal||signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
+    if(!Number.isFinite(Date.parse(deadline))||Date.now()>=Date.parse(deadline))throw new ProtocolError('TIMEOUT','原隔离编码操作已过期');
+    assertHarnessWorkspaceAuthorization();
+    if(!bound(taskId))throw new ProtocolError('UNAUTHORIZED','原隔离工作区任务绑定已变化');
+  }
+  function assertHarnessWorkspaceAuthorization() {
+    if(!application||!readWorkspaceBinding()||consent?.cloudExportAllowed!==true
+      ||consent.writeAllowed!==true||consent.commandAllowed!==true||!boundRepairPowerShell
+      ||!boundCheckFile&&!boundNpmCli||boundNpmCli&&(consent.projectCodeAllowed!==true||!projectIdentityCurrent()))
+      throw new ProtocolError('UNAUTHORIZED','原隔离工作区许可或命令绑定已变化');
+  }
+  function readHarnessExperienceCurrentSync() {
+    // Scope covers current source/package metadata and the sealed configuration,
+    // not live node_modules bytes. Actual execution proves those asynchronously.
+    try {
+      assertHarnessWorkspaceAuthorization();
+      if(typeof readHarnessVersions!=='function')return undefined;
+      const lease=generation,currentApplication=application,configuration=readDeveloperConfiguration();
+      const check=()=>{if(lease!==generation||currentApplication!==application)throw new ProtocolError('UNAUTHORIZED','原经验工作区绑定已变化');};
+      const readVersions=()=>{
+        const value=readHarnessVersions();
+        if(value&&typeof value.then==='function'){void Promise.resolve(value).catch(()=>{});return undefined;}
+        return value&&value.executionKind==='real_host'?structuredClone(value):undefined;
+      };
+      const versions=readVersions();check();if(!versions)return undefined;
+      const snapshot=coding.captureCodingRepairSnapshotSync(boundRoot,check).snapshot;
+      const after=readVersions();check();assertHarnessWorkspaceAuthorization();
+      if(!isDeepStrictEqual(versions,after)||configuration?.bindingId!==readDeveloperConfiguration()?.bindingId)return undefined;
+      const recipes=repairRecipes().map(recipe=>({...recipe,packageIds:snapshot.packages.map(pkg=>pkg.id)}));
+      if(!recipes.some(recipe=>recipe.required))return undefined;
+      const workspaceId=createHash('sha256').update(boundRoot).digest('hex'),recipeFingerprint=harnessCandidateRecipeFingerprint(recipes);
+      parseHarnessCandidateBinding({version:1,taskId:'experience-current',candidateId:'experience-current',artifactId:'experience-current',
+        trialTaskId:'experience-current',sessionId:'experience-current',workspaceId,baselineSnapshotId:snapshot.snapshotId,
+        inputDigest:'0'.repeat(64),configurationDigest:'0'.repeat(64),workflowVersion:versions.workflowVersion,
+        runtimeVersion:versions.runtimeVersion,executionKind:versions.executionKind,recipeFingerprint,artifactDigest:'0'.repeat(64),parentArtifactDigests:[]});
+      check();return {snapshot,versions,configuration:{bindingId:configuration.bindingId,workspaceId,recipeFingerprint}};
+    }catch{return undefined;}
+  }
+  async function reconcileHarnessOriginalSession(input) {
+    const {trialRunId,expectedRevision,deadline,signal,assertCurrent}=input;
+    const session=structuredClone(input.session),taskId=session?.session?.taskId,lease=generation,currentApplication=application;
+    if(typeof assertCurrent!=='function')throw new ProtocolError('UNAUTHORIZED','缺少原 Runtime 恢复权限检查');
+    const controller=new AbortController(),combined=AbortSignal.any([signal,controller.signal]);
+    const check=()=>{assertCurrent();assertHarnessWorkspaceBinding(taskId,deadline,combined);
+      if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原恢复工作区绑定已变化');};
+    check();inflight.add(controller);
+    try {
+      const host=await getRepairHost(true);check();
+      if(typeof host.reconcileOriginalSession!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','原会话原生核实尚未接入');
+      const result=await host.reconcileOriginalSession({session,trialRunId,expectedRevision,deadline,signal:combined,assertCurrent:check});
+      check();return result;
+    }finally{inflight.delete(controller);}
+  }
+  const readHarnessCandidateContext=async(context,scope)=>{
+    try {
+      context={...context};scope=structuredClone(scope);
+      assertHarnessWorkspace(context);
+      const lease=generation,currentApplication=application,configuration=readDeveloperConfiguration();
+      if(!scope||scope.actualTaskId!==context.taskId||scope.scopeRef!==context.authorizationRef
+        ||scope.deadline!==context.deadline||scope.workspaceRef!==configuration?.bindingId||!bound(scope.ownerTaskId)
+        ||!/^[a-f0-9]{64}$/.test(scope.inputDigest)||!/^[a-f0-9]{64}$/.test(scope.configurationRef)
+        ||typeof readHarnessVersions!=='function')return undefined;
+      const versions=structuredClone(await readHarnessVersions());
+      if(!versions||versions.executionKind!=='real_host')return undefined;
+      const baseline=(await coding.captureCodingRepairSnapshot(boundRoot)).snapshot;
+      const recipes=repairRecipes().map(recipe=>({...recipe,packageIds:baseline.packages.map(pkg=>pkg.id)}));
+      if(!recipes.some(recipe=>recipe.required))return undefined;
+      const currentVersions=await readHarnessVersions();
+      assertHarnessWorkspace(context);
+      if(lease!==generation||currentApplication!==application||configuration.bindingId!==readDeveloperConfiguration()?.bindingId
+        ||!isDeepStrictEqual(versions,currentVersions))return undefined;
+      const binding={version:1,taskId:scope.ownerTaskId,workspaceId:createHash('sha256').update(boundRoot).digest('hex'),
+        baselineSnapshotId:baseline.snapshotId,inputDigest:scope.inputDigest,configurationDigest:scope.configurationRef,
+        workflowVersion:versions.workflowVersion,runtimeVersion:versions.runtimeVersion,executionKind:versions.executionKind,
+        recipeFingerprint:harnessCandidateRecipeFingerprint(recipes)};
+      parseHarnessCandidateBinding({...binding,candidateId:'preflight',artifactId:'preflight',sessionId:'preflight',
+        trialTaskId:context.taskId,artifactDigest:'0'.repeat(64),parentArtifactDigests:[]});
+      return {binding,baseline,recipes,selectionPolicy:'unique_verified'};
+    }catch{return undefined;}
+  };
+  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,
+    reconcileHarnessOriginalSession,readHarnessExperienceCurrentSync,
     readWorkspaceExportConfigurationRef,readWorkspaceExportPreflightCandidate,
     readWorkspaceExportCandidate,readConfirmedWorkspaceExport,
     get patchReconciliation() { return applyHost ? patchReconciliation : undefined; },
@@ -651,7 +783,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       persist(savedRoot,savedNode,savedCheckFile,npmCli);revoke();savedNpmCli=npmCli;
       projectFailure='';return snapshot();
     },
-    authorize(input) {
+    async authorize(input) {
       if (!input || Array.isArray(input) || typeof input.cloudExportAllowed!=='boolean' || typeof input.writeAllowed!=='boolean'
         || typeof input.commandAllowed!=='boolean'
         || (input.projectCodeAllowed!==undefined && typeof input.projectCodeAllowed!=='boolean')
@@ -660,14 +792,30 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       if(input.projectCodeAllowed===true && (!input.commandAllowed || !snapshot().projectScriptsAvailable)) {
         throw Error('项目构建和测试尚未准备好，不能授权执行');
       }
-      revoke();consent={...input};return snapshot();
+      revoke();consent={...input};
+      if(input.cloudExportAllowed&&input.writeAllowed&&input.commandAllowed) {
+        try{if(coding.hasPreparedCodingDependenciesSync(boundRoot)) {
+          const lease=generation,controller=new AbortController();inflight.add(controller);
+          dependencyPreparation=coding.capturePreparedDependencyFingerprint(boundRoot,{signal:controller.signal})
+            .then(value=>{if(lease===generation)dependencyFingerprint=value;})
+            .catch(error=>{if(lease===generation)dependencyPreparationReason=error instanceof ProtocolError?error.message:'原项目的锁定依赖尚未安全准备好';})
+            .finally(()=>{inflight.delete(controller);if(lease===generation)dependencyPreparation=undefined;});
+        }}
+        catch(error){dependencyPreparationReason=error instanceof ProtocolError?error.message:'原项目的锁定依赖尚未安全准备好';}
+      }
+      if(dependencyPreparation) {
+        const lease=generation;
+        await dependencyPreparation;
+        if(lease!==generation||!active)throw new ProtocolError('UNAUTHORIZED','原工作区授权已撤销');
+      }
+      return snapshot();
     },
     revoke,
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
       publicEnumPaths:tool.descriptor.name==='coding.repair.start'?['/mode']:tool.descriptor.name==='coding.repair.publish'?['/version']:[],
       available:({taskId,signal})=>!signal.aborted && consent?.cloudExportAllowed===true && enabled(tool) && bound(taskId,true)})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
-      exportPolicyVersion:isProject(tool)?'authorized-project-script-redacted-v1'
+      exportPolicyVersion:codingRepairExportOperation(tool.descriptor.name)?'coding-repair-metadata-v1':isProject(tool)?'authorized-project-script-redacted-v1'
         :tool.descriptor.name==='workspace.node_check'
           ? 'authorized-node-check-redacted-v1':tool.descriptor.name==='workspace.read_text'
             ? 'workspace-reference-3.0.0':'coding-local-result-redacted-v2',
@@ -702,6 +850,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           return projection;
         }
         validateToolValue(tool.descriptor.outputSchema,result);
+        if(codingRepairExportOperation(tool.descriptor.name))return projectCodingRepairResult(tool.descriptor.name,result);
         if(tool.descriptor.name==='workspace.git_diff_check') {
           if(result.recipeId!=='git-diff-check') throw Error('命令结果无效');
           return {recipeId:'git-diff-check',exitCode:result.exitCode,passed:result.exitCode===0};
