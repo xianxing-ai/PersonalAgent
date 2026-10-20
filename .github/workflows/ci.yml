@@ -177,6 +177,10 @@ jobs:
             throw 'WindowsJobProcessHost build did not return an existing executable.'
           }
           "PA_TEST_JOB_HOST_EXE=$($jobHostBuild.helperPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Prepare Windows in-memory certificate backend (not cold-start validation)
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        if: matrix.kind == 'windows'
+        run: node scripts/ci/warm-knowledge-certificate.mjs
       - name: Run the complete original Windows check
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         if: matrix.kind == 'windows'
