@@ -33,6 +33,8 @@ export interface IsolatedCodingRepairHostOptions {
   createCommandTool?:(input:{rootPath:string;session:CodingRepairSession})=>RegisteredTool;
   /** Optional trusted dependency preparation. Never links writable main-root dependencies/outputs. */
   prepareWorkspace?:(input:{sourceRoot:string;isolatedRoot:string;session:CodingRepairSession;deadline:string;signal:AbortSignal})=>Promise<{ready:boolean;reason?:string}>;
+  /** Recheck copied dependency inputs at verification/publish boundaries, never by running install scripts. */
+  validatePreparedWorkspace?:(input:{isolatedRoot:string;session:CodingRepairSession;deadline:string;signal:AbortSignal})=>Promise<void>;
   assertRecoveryDirectory?:(path:string)=>void;
   /** Read original confirmed Runtime command/HostBridge Evidence, not model-supplied refs. */
   readVerificationEvidence?:(input:{session:CodingRepairSession;runId:string;originTaskId:string;originRunId:string})=>Promise<readonly string[]|undefined>;
@@ -125,6 +127,10 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
   }
   const save=(journal:RepairJournal,assertCurrent?:()=>void)=>atomicJournal(paths(journal.session.sessionId).journal,journal,assertCurrent);
   const requireStopped=(journal:RepairJournal)=>{if(journal.unknown)throw new ProtocolError('RESULT_UNKNOWN','Original repair operation requires stopped-process readback');};
+  const validatePreparation=async(journal:RepairJournal,context:ToolContext)=>{
+    await options.validatePreparedWorkspace?.({isolatedRoot:paths(journal.session.sessionId).workspace,session:clone(journal.session),deadline:context.deadline,signal:context.signal});
+    checkContext(context,scopes.verify,now);
+  };
   function requirePath(journal:RepairJournal,path:string):void {codingRepairRelativePath(path);if(!journal.allowedPaths.includes(path))throw new ProtocolError('SCOPE_DENIED','File is outside the original repair target set');}
   async function current(journal:RepairJournal):Promise<CapturedCodingRepairSnapshot>{return captureCodingRepairSnapshot(paths(journal.session.sessionId).workspace);}
   function statuses(journal:RepairJournal,snapshot:CapturedCodingRepairSnapshot):CodingRepairVerificationReceipt[] {
@@ -174,6 +180,7 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
   async function verify(journal:RepairJournal,recipeId:string,context:ToolContext):Promise<CodingRepairVerificationReceipt> {
     requireStopped(journal);const recipe=journal.recipes.find(item=>item.recipeId===recipeId);
     if(!recipe||!journal.prepared||!options.createCommandTool)throw new ProtocolError('UNSUPPORTED_CAPABILITY',journal.preparationReason??'Isolated verification recipe or dependency preparation is unavailable');
+    await validatePreparation(journal,context);
     const tool=options.createCommandTool({rootPath:paths(journal.session.sessionId).workspace,session:clone(journal.session)});
     if(tool.descriptor.name!=='workspace.run_allowed_command'||tool.descriptor.version!=='1.0.0')throw new ProtocolError('UNAUTHORIZED','Repair command must use the original fixed recipe tool');
     const input={recipeId};validateToolValue(tool.descriptor.inputSchema,input);
@@ -187,7 +194,9 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
       receipt.packageGraphDigest=codingRepairPackageGraphDigest(before.snapshot);
       journal.verification.push({receipt,snapshot:before.snapshot,originTaskId:context.taskId,originRunId:context.runId});await save(journal);throw error;}
     if(output.recipeId!==recipeId||!Number.isSafeInteger(output.exitCode)||typeof output.stdout!=='string'||typeof output.stderr!=='string')throw new ProtocolError('RESULT_UNKNOWN','Repair command output is invalid');
-    const after=await current(journal),same=before.snapshot.snapshotId===after.snapshot.snapshotId;
+    let dependenciesCurrent=true;
+    try{await validatePreparation(journal,context);}catch(error){if(context.signal.aborted||now()>=Date.parse(context.deadline))throw error;dependenciesCurrent=false;}
+    const after=await current(journal),same=dependenciesCurrent&&before.snapshot.snapshotId===after.snapshot.snapshotId;
     const receipt:CodingRepairVerificationReceipt={version:1,sessionId:journal.session.sessionId,runId,recipeId,packageIds:[...recipe.packageIds],
       inputSnapshotId:before.snapshot.snapshotId,files:before.snapshot.files,exitCode:output.exitCode,status:!same?'STALE':output.exitCode===0?'VALID':'FAILED',evidenceRefs:[],
       diagnostics:output.exitCode===0?[]:[{source:'command',message:(output.stderr||output.stdout||'Verification command failed').slice(0,8192)}]};
@@ -284,6 +293,8 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     publish:(value,context)=>exclusive(value.sessionId,context,scopes.patch,async journal=>{
       const request=parseCodingRepairPublishRequest(value);requireStopped(journal);
       if(journal.session.mode!=='main')throw new ProtocolError('SCOPE_DENIED','Isolated shadow session cannot publish to the user root');
+      await options.validatePreparedWorkspace?.({isolatedRoot:paths(journal.session.sessionId).workspace,session:clone(journal.session),deadline:context.deadline,signal:context.signal});
+      checkContext(context,scopes.patch,now);
       if(journal.delivery){
         if(!journal.publishIntent||JSON.stringify(journal.publishIntent)!==JSON.stringify(request))denied('Original publish input identity changed');
         if(journal.delivery.state==='published')return clone(journal.delivery);
@@ -323,6 +334,8 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
         if(repairSha256(await readFile(await codingRepairFilePath(sourceRoot,path)))!==file.sha256)throw new ProtocolError('RESULT_UNKNOWN','Repair publish readback failed');
         journal.delivery.files.push({path,beforeSha256:baseline?.sha256??null,afterSha256:file.sha256});await save(journal);}
       if((await current(journal)).snapshot.snapshotId!==snapshot.snapshot.snapshotId)throw new ProtocolError('RESULT_UNKNOWN','Isolated sources changed during publish; retain partial journal for readback');
+      await options.validatePreparedWorkspace?.({isolatedRoot:paths(journal.session.sessionId).workspace,session:clone(journal.session),deadline:context.deadline,signal:context.signal});
+      checkContext(context,scopes.patch,now);
       if(!await userReadSetCurrent(journal,selected,journal.delivery.files))throw new ProtocolError('RESULT_UNKNOWN','User verification read set changed after delivery');
       journal.delivery.state='published';delete journal.unknown;await save(journal);return clone(journal.delivery);
       }catch{journal.delivery.state='unknown';await save(journal);return clone(journal.delivery);}

@@ -37,7 +37,7 @@
  */
 
 import {createHash} from 'node:crypto';
-import {existsSync, lstatSync, readFileSync, realpathSync, statSync} from 'node:fs';
+import {existsSync, lstatSync, readFileSync, realpathSync, statSync,mkdirSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 
 const RECIPE_ID_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/u;
@@ -205,6 +205,28 @@ export function buildSafeProjectScriptEnv(envSource = process.env) {
   return Object.freeze(safeEnv);
 }
 
+function isolatedNpmConfiguration(root,node,safeEnv,create) {
+  const base=path.join(root,'.cache','coding-repair-npm');
+  for(const directory of [path.join(root,'.cache'),base,...['home','cache','tmp'].map(name=>path.join(base,name))]) {
+    if(!existsSync(directory)){if(!create)throw Error('Isolated npm configuration directory is unavailable');mkdirSync(directory);}
+    const info=lstatSync(directory);
+    if(info.isSymbolicLink()||!info.isDirectory()||realpathSync.native(directory)!==directory)throw Error('Isolated npm configuration cannot share an external directory');
+  }
+  if(existsSync(path.join(root,'.npmrc')))throw Error('Isolated workspace cannot consume project npm credentials or configuration');
+  const configs=['user.npmrc','global.npmrc'].map(name=>path.join(base,name));
+  for(const file of configs) {
+    if(!existsSync(file)){if(!create)throw Error('Isolated npm configuration is unavailable');writeFileSync(file,'',{flag:'wx',mode:0o600});}
+    const info=lstatSync(file);
+    if(info.isSymbolicLink()||!info.isFile()||info.nlink!==1||readFileSync(file).length)throw Error('Isolated npm configuration changed');
+  }
+  const home=path.join(base,'home'),temp=path.join(base,'tmp');
+  return Object.freeze({...safeEnv,HOME:home,USERPROFILE:home,APPDATA:home,LOCALAPPDATA:home,
+    HOMEDRIVE:process.platform==='win32'?path.parse(home).root.slice(0,2):'/',HOMEPATH:process.platform==='win32'?home.slice(2):home,
+    TEMP:temp,TMP:temp,PATH:path.dirname(node)+(safeEnv.PATH?path.delimiter+safeEnv.PATH:''),
+    NPM_CONFIG_USERCONFIG:configs[0],NPM_CONFIG_GLOBALCONFIG:configs[1],NPM_CONFIG_CACHE:path.join(base,'cache'),
+    NPM_CONFIG_OFFLINE:'true',NPM_CONFIG_IGNORE_SCRIPTS:'true',NPM_CONFIG_AUDIT:'false',NPM_CONFIG_FUND:'false',NPM_CONFIG_UPDATE_NOTIFIER:'false'});
+}
+
 function inspectPackageJson(canonicalRoot) {
   const pkgPath = path.join(canonicalRoot, 'package.json');
   if (!existsSync(pkgPath)) return {exists: false, scripts: []};
@@ -304,7 +326,9 @@ export function buildWorkspaceCommandRecipes({
   checkFiles = [],
   allowProjectScripts = false,
   projectScriptEnvSource = process.env,
+  isolateNpmConfiguration = false,
 } = {}) {
+  if(typeof isolateNpmConfiguration!=='boolean')throw Error('Isolated npm configuration must be selected by trusted Main');
   const canonicalRoot = canonicalDirectory(workspaceRoot, 'Workspace root');
   if (authorizedWorkspaceRoot !== undefined) {
     const canonicalAuthorized = canonicalDirectory(authorizedWorkspaceRoot, 'Authorized workspace root');
@@ -402,7 +426,8 @@ export function buildWorkspaceCommandRecipes({
 
     if (canonicalJobHelper && canonicalNpmCli && pkg.exists && !pkg.invalid && (hasNodeModules || standaloneNodeTest)) {
       const scriptNames = new Set(pkg.scripts);
-      const safeEnv = buildSafeProjectScriptEnv(projectScriptEnvSource);
+      const originalEnv=buildSafeProjectScriptEnv(projectScriptEnvSource);
+      const safeEnv = isolateNpmConfiguration?isolatedNpmConfiguration(canonicalRoot,canonicalNode,originalEnv,true):originalEnv;
       let exposedCount = 0;
 
       if (hasNodeModules && scriptNames.has('build')) {
@@ -596,6 +621,9 @@ export function createWorkspaceCommandRecipeTool(options = {}) {
     } catch {return false;}
     if (!verifyFilePin(pinnedNode)) return false;
     if (diagnostics.projectScriptsExposed) {
+      if(options.isolateNpmConfiguration) {
+        try {isolatedNpmConfiguration(workspaceRoot,diagnostics.nodeExecutable,{},false);}catch{return false;}
+      }
       if (!pinnedJobHelper || !verifyFilePin(pinnedJobHelper)) return false;
       if (!pinnedNpmCli || !verifyFilePin(pinnedNpmCli)) return false;
       if (!pinnedPackageJson || !verifyPackageJsonPin(pinnedPackageJson, workspaceRoot)) return false;

@@ -6,6 +6,8 @@ export type {HarnessTrialToolOptions,HarnessAdoptionToolOptions,HarnessTrialReco
 export type {IsolatedCodingRepairHost,IsolatedCodingRepairHostOptions,HarnessOriginalSessionReconciliation} from './isolated-repair.js';
 export {captureCodingRepairSnapshot,captureCodingRepairSnapshotSync,affectedCodingRepairPackages,codingRepairVerificationState,codingRepairPackageGraphDigest} from './repair-verification.js';
 export type {CapturedCodingRepairSnapshot} from './repair-verification.js';
+export {prepareIsolatedCodingDependencies,capturePreparedDependencyFingerprint,capturePreparedDependencyFingerprintSync,hasPreparedCodingDependenciesSync} from './isolated-dependencies.js';
+export type {IsolatedDependencyPreparation} from './isolated-dependencies.js';
 import { constants as fsConstants, realpathSync, statSync } from 'node:fs';
 import { lstat, open, opendir, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep, win32 } from 'node:path';

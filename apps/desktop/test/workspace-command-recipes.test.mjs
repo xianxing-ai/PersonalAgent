@@ -16,6 +16,28 @@ function createTempDir(prefix) {
   return mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+test('candidate npm recipes use empty private config/cache/home and reject later config replacement',async t=>{
+  const base=createTempDir('pa-isolated-npm-config-');t.after(()=>rmSync(base,{recursive:true,force:true}));
+  const root=path.join(base,'candidate'),profile=path.join(base,'user-profile');mkdirSync(root);mkdirSync(profile);
+  mkdirSync(path.join(root,'node_modules'));writeFileSync(path.join(root,'package.json'),JSON.stringify({name:'fixture',scripts:{test:'node --test'}}));
+  writeFileSync(path.join(profile,'.npmrc'),'explicit-account-fixture-do-not-read');
+  const helper=path.join(base,process.platform==='win32'?'WindowsJobProcessHost.exe':'job-helper'),npm=path.join(base,'npm-cli.js');
+  writeFileSync(helper,'explicit helper metadata fixture');writeFileSync(npm,'explicit npm metadata fixture');
+  let executions=0;
+  const options={workspaceRoot:root,nodeExecutable:process.execPath,jobHelperExecutable:helper,npmCliPath:npm,allowProjectScripts:true,
+    projectScriptEnvSource:{APPDATA:profile,HOME:profile,PATH:path.dirname(process.execPath),NPM_TOKEN:'explicit-not-forwarded'},
+    isolateNpmConfiguration:true,createWorkspaceCommandTool:()=>({descriptor:{},execute:async()=>{executions++;return {exitCode:0};}})};
+  const recipe=createWorkspaceCommandRecipeTool(options),env=recipe.recipes.find(r=>r.id==='npm-test').env;
+  assert.equal(env.NPM_CONFIG_OFFLINE,'true');assert.equal(env.NPM_CONFIG_IGNORE_SCRIPTS,'true');assert.equal(env.NPM_TOKEN,undefined);
+  for(const key of['NPM_CONFIG_USERCONFIG','NPM_CONFIG_GLOBALCONFIG'])assert.equal(readFileSync(env[key],'utf8'),'');
+  for(const key of['HOME','USERPROFILE','APPDATA','LOCALAPPDATA','NPM_CONFIG_CACHE'])assert.ok(env[key].startsWith(root+path.sep));
+  assert.equal(readFileSync(path.join(profile,'.npmrc'),'utf8'),'explicit-account-fixture-do-not-read');
+  assert.equal(recipe.available(),true);writeFileSync(env.NPM_CONFIG_USERCONFIG,'changed private npm config');
+  assert.equal(recipe.available(),false);await assert.rejects(recipe.execute({recipeId:'npm-test'},{}),/mutated/);assert.equal(executions,0);
+  const original=buildWorkspaceCommandRecipes({...options,isolateNpmConfiguration:false});
+  assert.equal(original.recipes.find(r=>r.id==='npm-test').env.NPM_CONFIG_USERCONFIG,undefined);
+});
+
 test('registered command recipes reject workspace replacement but allow ordinary file edits', async t => {
   const parent = createTempDir('pa-cmd-root-replacement-');
   t.after(() => rmSync(parent, {recursive: true, force: true}));
