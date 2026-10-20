@@ -2,7 +2,7 @@ import {spawn} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {closeSync, fsyncSync, lstatSync, openSync, readFileSync, realpathSync, statSync, writeSync} from 'node:fs';
 import {unlink} from 'node:fs/promises';
-import {isAbsolute, relative, resolve, sep} from 'node:path';
+import {basename, isAbsolute, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolDescriptor} from '@personal-agent/contracts';
@@ -37,6 +37,8 @@ export interface WorkspacePatchApplyHostOptions {
   recoveryRootPath: string;
   /** Absolute path to the trusted Windows PowerShell executable. */
   powerShellPath: string;
+  /** Optional absolute path to the trusted WindowsJobProcessHost executable for identity queries. */
+  processIdentityHelperPath?: string;
   /** Optional absolute path to a host-installed, byte-identical bundled helper outside workspace and recovery roots. */
   helperScriptPath?: string;
 }
@@ -91,6 +93,7 @@ function check(context: ToolContext, now: () => number): number {
 async function invokeHelper(
   executable: string,
   script: string,
+  processIdentityHelperPath: string | undefined,
   request: HelperRequest,
   inflightPath: string,
   context: ToolContext,
@@ -124,7 +127,13 @@ async function invokeHelper(
     if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid < 1) {
       throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper identity is unavailable');
     }
-    processIdentity = await captureWorkspacePatchProcessIdentity(pid, executable);
+    remaining = check(context, now);
+    processIdentity = await captureWorkspacePatchProcessIdentity(
+      pid,
+      executable,
+      processIdentityHelperPath,
+      {signal: context.signal, deadlineMs: remaining},
+    );
     if (earlyChildError || child.exitCode !== null) {
       throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper identity is unavailable');
     }
@@ -253,6 +262,18 @@ export function createWorkspacePatchApplyToolFromPreview(options: ApplyOptions):
   const root = realpathSync.native(options.rootPath);
   const recoveryRoot = realpathSync.native(options.recoveryRootPath);
   const powerShell = realpathSync.native(options.powerShellPath);
+  let processIdentityHelper: string | undefined;
+  if (options.processIdentityHelperPath !== undefined) {
+    if (typeof options.processIdentityHelperPath !== 'string' || !isAbsolute(options.processIdentityHelperPath)) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Process identity helper path must be an absolute trusted location');
+    }
+    try { processIdentityHelper = realpathSync.native(options.processIdentityHelperPath); }
+    catch { throw new ProtocolError('INVALID_ARGUMENT', 'Process identity helper is unavailable'); }
+    if (!statSync(processIdentityHelper).isFile()
+      || basename(processIdentityHelper).toLowerCase() !== 'windowsjobprocesshost.exe') {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Process identity helper must be WindowsJobProcessHost.exe');
+    }
+  }
   const scriptPath = options.helperScriptPath ?? helperPath;
   if (typeof scriptPath !== 'string' || !isAbsolute(scriptPath)) {
     throw new ProtocolError('INVALID_ARGUMENT', 'Patch helper path must be an absolute trusted location');
@@ -261,7 +282,9 @@ export function createWorkspacePatchApplyToolFromPreview(options: ApplyOptions):
   if (!statSync(root).isDirectory() || !statSync(recoveryRoot).isDirectory()
     || !statSync(powerShell).isFile() || !statSync(script).isFile()
     || atOrWithin(root, recoveryRoot) || atOrWithin(recoveryRoot, root)
-    || atOrWithin(root, powerShell) || atOrWithin(root, script) || atOrWithin(recoveryRoot, script)) {
+    || atOrWithin(root, powerShell) || atOrWithin(root, script) || atOrWithin(recoveryRoot, script)
+    || (processIdentityHelper !== undefined
+      && (atOrWithin(root, processIdentityHelper) || atOrWithin(recoveryRoot, processIdentityHelper)))) {
     throw new ProtocolError('INVALID_ARGUMENT', 'Patch apply host paths must be distinct trusted locations');
   }
   // Explicit relocation may use only the reviewed bundled helper, never arbitrary host/model script contents.
@@ -330,7 +353,7 @@ export function createWorkspacePatchApplyToolFromPreview(options: ApplyOptions):
       checkScript();
       // One durable marker per source, not per attempt: an unknown prior helper
       // blocks a second apply until a trusted reconciler confirms its process exited.
-      const response = await invokeHelper(powerShell, script, {
+      const response = await invokeHelper(powerShell, script, processIdentityHelper, {
         rootPath: root,
         sourcePath,
         backupPath: resolve(recoveryRoot, recoveryId),

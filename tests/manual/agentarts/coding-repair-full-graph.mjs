@@ -129,7 +129,7 @@ export async function runCodingRepairFullGraphFixture(options={}) {
   const createApplication=options.createApplication??createRuntimeApplication;
   app=createApplication(config);options.selector?.bindApplication?.(app);
   const hostConfig={workspaceRoot:user,sessionRoot:sessions,workspaceId:'synthetic-fixture-workspace',
-    configurationRef:sha('fixture-original-command-identity'),patch:{powerShellPath:options.powerShellPath??powerShellPath},
+    configurationRef:sha('fixture-original-command-identity'),patch:{powerShellPath:options.powerShellPath??powerShellPath,processIdentityHelperPath:process.env.PA_TEST_JOB_HOST_EXE},
     recipes:[{recipeId:'unit',packageIds:[],required:true}],
     createCommandTool:({rootPath})=>createWorkspaceCommandTool({rootPath,recipes:[{id:'unit',executable:process.execPath,args:options.fixture?.checkerArgs??['--test','checks/actual-check.cjs']}]}),
     resolveOriginalTaskId:taskId=>app.runtime.loadCheckpoint(taskId,'coding-repair:parent')?.taskId??taskId,

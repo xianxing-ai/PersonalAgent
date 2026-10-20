@@ -148,7 +148,7 @@ function durable(file: string, value: string | Uint8Array, exclusive = true): vo
 
 /** Windows locked write with durable recovery. Recovery root must have a host-verified private ACL. */
 export function openControlledVaultWriter(options: {
-  rootPath: string; recoveryRootPath: string; powerShellPath: string;
+  rootPath: string; recoveryRootPath: string; powerShellPath: string; processIdentityHelperPath?: string;
   sourceId: string; configRevision: number; allowedNotePaths: readonly string[];
   /** Trusted host binding, permission and ACL check, rechecked before dispatch and readback. */
   bindingCurrent: () => boolean;
@@ -170,7 +170,8 @@ export function openControlledVaultWriter(options: {
   const preview = createWorkspacePatchPreviewTool({rootPath: root, maxReadBytes: 512 * 1024,
     maxPreviewBytes: 512 * 1024});
   const apply = createWorkspacePatchApplyTool({rootPath: root, maxReadBytes: 512 * 1024,
-    maxPreviewBytes: 512 * 1024, recoveryRootPath: recovery, powerShellPath: options.powerShellPath});
+    maxPreviewBytes: 512 * 1024, recoveryRootPath: recovery, powerShellPath: options.powerShellPath,
+    ...(options.processIdentityHelperPath === undefined ? {} : {processIdentityHelperPath: options.processIdentityHelperPath})});
   const assertBinding = (): void => {if (!options.bindingCurrent()) deny('SCOPE_DENIED');};
   const receiptFile = (id: string): string => join(recovery, id + '.knowledge-operation.json');
   const pathLock = (path: string): string => join(recovery, hash(root + '\n' + path) + '.knowledge-pending');
@@ -246,6 +247,7 @@ export function openControlledVaultWriter(options: {
         || !allowed.has(notePath(record.path))) deny('SCOPE_DENIED');
       const helper = await reconcileWorkspacePatchApply({rootPath: root, recoveryRootPath: recovery,
         relativePath: record.path, powerShellPath: options.powerShellPath,
+        ...(options.processIdentityHelperPath === undefined ? {} : {processIdentityHelperPath: options.processIdentityHelperPath}),
         expectedRunId: input.runId, expectedArgumentsDigest: input.argumentsDigest,
         expectedBeforeSha256: record.beforeSha256, retainMarker: true});
       active(context); assertBinding();
@@ -258,6 +260,7 @@ export function openControlledVaultWriter(options: {
       // so this read-only bridge must never call it to release an interrupted helper automatically.
       const finalHelper = await reconcileWorkspacePatchApply({rootPath: root, recoveryRootPath: recovery,
         relativePath: record.path, powerShellPath: options.powerShellPath,
+        ...(options.processIdentityHelperPath === undefined ? {} : {processIdentityHelperPath: options.processIdentityHelperPath}),
         expectedRunId: input.runId, expectedArgumentsDigest: input.argumentsDigest,
         expectedBeforeSha256: record.beforeSha256, retainMarker: true});
       active(context); assertBinding();

@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
-import {readFile,writeFile,appendFile,mkdtemp} from 'node:fs/promises';
+import {readFile,writeFile,appendFile,mkdtemp,lstat} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -33,14 +33,33 @@ export async function packElectronCache(root,tempRoot,downloadImpl) {
   const directory=await mkdtemp(path.join(tempRoot,'ci-electron-transfer-'));
   const archive=path.join(directory,'electron-cache.tgz');
   execFileSync('tar',['-czf',archive,'.'],{cwd:cacheRoot,windowsHide:true,stdio:'pipe'});
-  return {directory,sha256:await hash(archive),version:locked.version};
+  return {directory,sha256:await hash(archive),size:(await lstat(archive)).size,version:locked.version};
 }
-export async function restoreElectronCache(root,directory,tempRoot,expectedDigest) {
+export async function prepareElectronTransfer(tempRoot) {
+  // A fresh destination prevents interrupted downloads from a previous attempt
+  // from being mistaken for this job's artifact. Never clean shared temp paths.
+  return mkdtemp(path.join(tempRoot,'ci-electron-download-'));
+}
+export async function restoreElectronCache(root,directory,tempRoot,expectedDigest,expectedSize) {
   const archive=path.join(directory,'electron-cache.tgz');
-  if(!/^[a-f0-9]{64}$/.test(expectedDigest??'')||await hash(archive)!==expectedDigest) throw Error('Electron cache archive digest mismatch');
+  if(!/^[a-f0-9]{64}$/.test(expectedDigest??'')) throw Error('Electron cache archive digest mismatch: invalid expected SHA256');
+  if(expectedSize!==undefined&&!/^[1-9]\d*$/.test(String(expectedSize))) throw Error('Invalid expected Electron cache archive size');
+  let metadata;
+  try { metadata=await lstat(archive); }
+  catch(error) {
+    if(error.code==='ENOENT') throw Error('Electron cache archive missing: artifact download did not produce electron-cache.tgz');
+    throw Error('Electron cache archive metadata could not be read');
+  }
+  if(!metadata.isFile()||metadata.isSymbolicLink()) throw Error('Electron cache archive must be a regular file');
+  const actualSha256=await hash(archive);
+  if(actualSha256!==expectedDigest||(expectedSize!==undefined&&String(metadata.size)!==String(expectedSize))) {
+    throw Error('Electron cache archive digest mismatch: '+JSON.stringify({size:metadata.size,expectedSize:expectedSize??null,actualSha256,expectedSha256:expectedDigest}));
+  }
   const locked=await lockedElectron(root);
   const cacheRoot=await mkdtemp(path.join(tempRoot,'ci-electron-ready-'));
-  execFileSync('tar',['-xzf',archive,'-C',cacheRoot],{windowsHide:true,stdio:'pipe'});
+  // GNU tar interprets a drive colon in -f as a remote host. Resolve the
+  // already verified artifact through cwd so both GNU tar and bsdtar work.
+  execFileSync('tar',['-xzf','electron-cache.tgz','-C',cacheRoot],{cwd:directory,windowsHide:true,stdio:'pipe'});
   const receipt=JSON.parse(await readFile(path.join(cacheRoot,'ci-receipt.json'),'utf8'));
   const filename=`electron-v${locked.version}-win32-x64.zip`;
   if(receipt.version!==locked.version||receipt.lockSha256!==locked.lockSha256||receipt.filename!==filename||
@@ -51,11 +70,14 @@ export async function restoreElectronCache(root,directory,tempRoot,expectedDiges
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   if(process.argv[2]==='pack') {
     const result=await packElectronCache(process.cwd(),process.env.RUNNER_TEMP);
-    await appendFile(process.env.GITHUB_OUTPUT,`directory=${result.directory}\nsha256=${result.sha256}\n`);
+    await appendFile(process.env.GITHUB_OUTPUT,`directory=${result.directory}\nsha256=${result.sha256}\nsize=${result.size}\n`);
     console.log(`Official Electron ${result.version} win32/x64 cache verified against the npm package's embedded checksum.`);
+  } else if(process.argv[2]==='prepare') {
+    const directory=await prepareElectronTransfer(process.env.RUNNER_TEMP);
+    await appendFile(process.env.GITHUB_OUTPUT,`directory=${directory}\n`);
   } else if(process.argv[2]==='restore') {
-    const cache=await restoreElectronCache(process.cwd(),path.join(process.env.RUNNER_TEMP,'ci-electron-transfer'),process.env.RUNNER_TEMP,process.env.CI_ELECTRON_CACHE_SHA256);
+    const cache=await restoreElectronCache(process.cwd(),process.env.CI_ELECTRON_TRANSFER_DIRECTORY??path.join(process.env.RUNNER_TEMP,'ci-electron-transfer'),process.env.RUNNER_TEMP,process.env.CI_ELECTRON_CACHE_SHA256,process.env.CI_ELECTRON_CACHE_SIZE);
     await appendFile(process.env.GITHUB_ENV,`electron_config_cache=${cache}\n`);
     console.log('Verified same-run Electron cache ready; the original npm ci and postinstall will still run.');
-  } else throw Error('Expected pack or restore');
+  } else throw Error('Expected pack, prepare or restore');
 }

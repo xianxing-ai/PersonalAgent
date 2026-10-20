@@ -81,7 +81,7 @@ function createHarness({duringMarker} = {}) {
     closeSync() {},
     async unlink() { markerPresent = false; },
   });
-  harness.start = () => invokeHelper('trusted-pwsh.exe', 'locked-apply.ps1', {
+  harness.start = () => invokeHelper('trusted-pwsh.exe', 'locked-apply.ps1', undefined, {
     rootPath: 'synthetic-root', sourcePath: 'synthetic-root/repair.txt',
     backupPath: 'synthetic-recovery/attempt.bak', beforeSha256: 'a'.repeat(64),
     afterSha256: 'b'.repeat(64), afterBase64: 'YWZ0ZXI=',
@@ -161,7 +161,7 @@ test('failed helper spawn rejects without an unhandled process error', () => {
     const controller = new AbortController();
     try {
       await invoke(join(tmpdir(), 'pa-missing-helper-' + randomUUID() + '.exe'),
-        'unused.ps1', {rootPath: process.cwd()}, 'unused.inflight', {
+        'unused.ps1', undefined, {rootPath: process.cwd()}, 'unused.inflight', {
           taskId: 'task-dispatch-synthetic', runId: 'run-dispatch-synthetic', argumentsDigest: 'c'.repeat(64),
           scopes: ['workspace:read', 'workspace:write', 'workspace:apply'],
           signal: controller.signal, deadline: new Date(Date.now() + 10000).toISOString(),

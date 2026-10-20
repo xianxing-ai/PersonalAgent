@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {existsSync} from 'node:fs';
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {delimiter, join} from 'node:path';
 import {test} from 'node:test';
 import {
   reconcileWorkspacePatchApply,
@@ -13,6 +15,58 @@ const sha = value => createHash('sha256').update(Buffer.from(value, 'utf8')).dig
 const startTimeTicks = '639262861336897246';
 const runId = 'host-tool-reconcile-test';
 const argumentsDigest = 'c'.repeat(64);
+const processIdentityHelperPath = process.env.PA_TEST_JOB_HOST_EXE
+  ?? join(import.meta.dirname, '..', 'native', 'bin', 'Release', 'net8.0-windows', 'WindowsJobProcessHost.exe');
+const nativeIdentityUnavailable = process.platform !== 'win32' || !existsSync(processIdentityHelperPath)
+  ? 'WindowsJobProcessHost.exe is unavailable' : false;
+const powerShellPath = process.env.PA_TEST_POWERSHELL
+  ?? process.env.PA_TEST_PWSH
+  ?? (process.env.PATH ?? '').split(delimiter).map(directory => join(directory, 'pwsh.exe')).find(existsSync)
+  ?? join(process.env.ProgramFiles ?? 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe');
+const powerShellUnavailable = process.platform !== 'win32' || !existsSync(powerShellPath)
+  ? 'PowerShell 7 is unavailable' : false;
+
+function close(child) {
+  return new Promise((resolve, reject) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve({code: child.exitCode, signal: child.signalCode});
+      return;
+    }
+    child.once('error', reject);
+    child.once('close', (code, signal) => resolve({code, signal}));
+  });
+}
+
+function queryNative(pid) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(processIdentityHelperPath, ['--query-process-start-time', String(pid)],
+      {windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
+    let stdout = '', stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', chunk => { stderr += chunk.toString('utf8'); });
+    child.once('error', reject);
+    child.once('close', (code, signal) => resolve({code, signal, stdout: stdout.trim(), stderr: stderr.trim()}));
+  });
+}
+
+function queryPowerShell(pid) {
+  return new Promise((resolve, reject) => {
+    const command = `$ErrorActionPreference='Stop'; [Console]::Out.Write((Get-Process -Id ${pid}).StartTime.ToUniversalTime().Ticks)`;
+    const child = spawn(powerShellPath, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command],
+      {windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
+    let stdout = '', stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', chunk => { stderr += chunk.toString('utf8'); });
+    child.once('error', reject);
+    child.once('close', (code, signal) => resolve({code, signal, stdout: stdout.trim(), stderr: stderr.trim()}));
+  });
+}
+
+async function waitForFile(path, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!existsSync(path) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(existsSync(path), true, `Timed out waiting for ${path}`);
+}
 
 async function fixture(t, source = 'before\n') {
   const base = await mkdtemp(join(tmpdir(), 'personal-agent-reconcile-'));
@@ -39,6 +93,75 @@ test('invalid patch helper PID reports a bounded reason before any recovery writ
     && error.message === 'Workspace patch helper identity is unavailable (invalid_pid, 0ms)');
   assert.deepEqual(await readFile(f.sourcePath), original);
   await assert.rejects(readFile(f.markerPath), {code: 'ENOENT'});
+});
+
+test('native process identity helper captures the current PID without PowerShell', {skip: nativeIdentityUnavailable}, async () => {
+  const identity = await captureWorkspacePatchProcessIdentity(process.pid, 'unused', processIdentityHelperPath);
+  assert.equal(identity.pid, process.pid);
+  assert.match(identity.startTimeTicks, /^[1-9]\d{0,19}$/u);
+});
+
+test('native process identity token matches the existing PowerShell token', {
+  skip: nativeIdentityUnavailable || powerShellUnavailable,
+}, async () => {
+  const native = await queryNative(process.pid);
+  const powershell = await queryPowerShell(process.pid);
+  assert.equal(native.code, 0, native.stderr);
+  assert.equal(powershell.code, 0, powershell.stderr);
+  assert.equal(native.stdout, powershell.stdout);
+  assert.match(native.stdout, /^[1-9]\d{0,19}$/u);
+});
+
+test('native query reports an exited process while another handle keeps its object alive', {
+  skip: nativeIdentityUnavailable || powerShellUnavailable,
+}, async t => {
+  const base = await mkdtemp(join(tmpdir(), 'personal-agent-native-query-'));
+  t.after(() => rm(base, {recursive: true, force: true}));
+  const readyPath = join(base, 'held-process.ready');
+  const releasePath = join(base, 'held-process.release');
+  const holderPath = join(base, 'hold-process.ps1');
+  await writeFile(holderPath, `
+param([int]$TargetPid, [string]$ReadyPath, [string]$ReleasePath)
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class NativeProcessHandleFixture {
+  [DllImport("kernel32.dll", SetLastError = true)]
+  public static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  public static extern bool CloseHandle(IntPtr handle);
+}
+'@
+$handle = [NativeProcessHandleFixture]::OpenProcess(0x1000, $false, [uint32]$TargetPid)
+if ($handle -eq [IntPtr]::Zero) { throw "OpenProcess failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())" }
+[IO.File]::WriteAllText($ReadyPath, 'ready')
+while (-not [IO.File]::Exists($ReleasePath)) { Start-Sleep -Milliseconds 10 }
+[void][NativeProcessHandleFixture]::CloseHandle($handle)
+`, 'utf8');
+  const target = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'],
+    {windowsHide: true, stdio: 'ignore'});
+  const holder = spawn(powerShellPath, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', holderPath,
+    String(target.pid), readyPath, releasePath], {windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
+  const targetClosed = close(target);
+  const holderClosed = close(holder);
+  let holderStderr = '';
+  holder.stderr.on('data', chunk => { holderStderr += chunk.toString('utf8'); });
+  try {
+    await waitForFile(readyPath);
+    target.kill();
+    await targetClosed;
+    const result = await queryNative(target.pid);
+    assert.equal(result.code, 3, result.stderr || result.stdout || holderStderr);
+    assert.equal(result.stdout, 'NOT_FOUND');
+  } finally {
+    await writeFile(releasePath, 'release', 'utf8');
+    await holderClosed;
+    if (target.exitCode === null) {
+      try { target.kill(); } catch {}
+      await targetClosed.catch(() => {});
+    }
+  }
 });
 
 test('missing marker is already clear', async t => {

@@ -173,6 +173,7 @@ export function createDevWorkflowsRuntime(options: DevWorkflowsRuntimeOptions): 
     if (!recoveryPort && options.workspace) {
       const {read, patch} = options.workspace;
       const paths = [read.rootPath, patch.recoveryRootPath, patch.powerShellPath,
+        ...(patch.processIdentityHelperPath ? [patch.processIdentityHelperPath] : []),
         ...(patch.helperScriptPath ? [patch.helperScriptPath] : [])];
       const identity = () => JSON.stringify(paths.map(value => {
         const canonical = realpathSync.native(value), stat = statSync(canonical, {bigint: true});
@@ -184,7 +185,8 @@ export function createDevWorkflowsRuntime(options: DevWorkflowsRuntimeOptions): 
         async reconcile(input) {
           if (identity() !== pinned) throw new ProtocolError('REVISION_CONFLICT', 'Trusted patch host binding changed');
           return reconcileWorkspacePatchApply({rootPath: read.rootPath, recoveryRootPath: patch.recoveryRootPath,
-            powerShellPath: patch.powerShellPath, ...input});
+            powerShellPath: patch.powerShellPath, ...input,
+            ...(patch.processIdentityHelperPath === undefined ? {} : {processIdentityHelperPath: patch.processIdentityHelperPath})});
         }};
     }
     if (recoveryPort) {

@@ -1721,6 +1721,7 @@ async function initializeRuntime() {
       knowledgeSourceConfig=await createKnowledgeSourceConfig({userData:app.getPath('userData'),safeStorage,namespace,
         hostIdentity:createHash('sha256').update(app.getPath('userData')).digest('hex'),
         powerShellPath:existsSync(powerShell)?powerShell:undefined,
+        processIdentityHelperPath:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async()=>{
           const choice=await dialog.showOpenDialog(admin,{title:'选择本机知识库',properties:['openDirectory']});
           return choice.canceled?undefined:choice.filePaths[0];

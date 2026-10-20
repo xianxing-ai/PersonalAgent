@@ -10,6 +10,9 @@ import {openControlledVaultWriter, createKnowledgeWriteTool, KNOWLEDGE_WRITE_SCO
 const powerShellPath = process.env.PA_TEST_POWERSHELL ?? (process.env.PATH ?? '').split(delimiter)
   .map(directory => join(directory, 'pwsh.exe')).find(existsSync);
 const windows = process.platform === 'win32' && Boolean(powerShellPath);
+const processIdentityHelperPath = process.env.PA_TEST_JOB_HOST_EXE;
+const nativeIdentity = process.platform === 'win32' && typeof processIdentityHelperPath === 'string'
+  && existsSync(processIdentityHelperPath) ? processIdentityHelperPath : undefined;
 const digest = value => createHash('sha256').update(value).digest('hex');
 const inputDigest = input => {
   const canonical = value => value === null || typeof value !== 'object' ? JSON.stringify(value)
@@ -18,7 +21,7 @@ const inputDigest = input => {
   return digest(canonical(input));
 };
 const original = '\uFEFF---\r\nowner: demo\r\n---\r\n# 公开合成笔记\r\n保留 [[来源]] 与 [文档](target.md)\r\n待整理段落\r\n';
-async function fixture(t) {
+async function fixture(t, useNativeIdentity = nativeIdentity !== undefined) {
   const parent = fileURLToPath(new URL('../../../data/test-tmp/', import.meta.url));
   await mkdir(parent, {recursive: true});
   const base = await mkdtemp(join(parent, 'knowledge-write-'));
@@ -28,7 +31,8 @@ async function fixture(t) {
   t.after(() => rm(base, {recursive: true, force: true}));
   let enabled = true;
   const options = {rootPath: root, recoveryRootPath: recovery, powerShellPath, sourceId: 'synthetic',
-    configRevision: 1, allowedNotePaths: ['demo.md'], bindingCurrent: () => enabled};
+    configRevision: 1, allowedNotePaths: ['demo.md'], bindingCurrent: () => enabled,
+    ...(useNativeIdentity && nativeIdentity ? {processIdentityHelperPath: nativeIdentity} : {})};
   const writer = openControlledVaultWriter(options);
   const input = {sourceId: 'synthetic', configRevision: 1, path: 'demo.md', expectedSha256: digest(original),
     edits: [{oldText: '待整理段落', newText: '已整理的合成段落'}]};
@@ -55,6 +59,24 @@ test('selected-note locked write preserves BOM/frontmatter/links and keeps a rec
   assert.equal((await reselected.reconcile({taskId: authorized.taskId, runId: authorized.runId,
     argumentsDigest: authorized.argumentsDigest}, authorized)).state, 'applied');
   assert.equal(JSON.stringify(result).includes(root), false);
+});
+
+test('selected-note locked write can use the trusted native process identity helper', {
+  skip: !windows || nativeIdentity === undefined,
+}, async t => {
+  const {root, recovery, writer, input, context} = await fixture(t, true);
+  const result = await createKnowledgeWriteTool(writer).execute(input, context());
+  assert.equal(result.state, 'verified');
+  assert.equal(await readFile(join(root, 'demo.md'), 'utf8'), original.replace('待整理段落', '已整理的合成段落'));
+  assert.equal(existsSync(join(recovery, result.backupId)), true);
+});
+
+test('selected-note locked write keeps the explicit PowerShell identity fallback', {skip: !windows}, async t => {
+  const {root, recovery, writer, input, context} = await fixture(t, false);
+  const result = await createKnowledgeWriteTool(writer).execute(input, context());
+  assert.equal(result.state, 'verified');
+  assert.equal(await readFile(join(root, 'demo.md'), 'utf8'), original.replace(String.fromCodePoint(0x5f85, 0x6574, 0x7406, 0x6bb5, 0x843d), String.fromCodePoint(0x5df2, 0x6574, 0x7406, 0x7684, 0x5408, 0x6210, 0x6bb5, 0x843d)));
+  assert.equal(existsSync(join(recovery, result.backupId)), true);
 });
 
 test('baseline conflict preserves user edit and produces no backup or write', {skip: !windows}, async t => {

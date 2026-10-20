@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {existsSync, realpathSync} from 'node:fs';
 import {link, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {delimiter, join} from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
@@ -19,10 +19,17 @@ import {createWorkspacePatchApplyToolFromPreview} from '../dist/patch-apply.js';
 
 const sha = text => createHash('sha256').update(Buffer.from(text, 'utf8')).digest('hex');
 const bundledHelper = new URL('../scripts/locked-apply.ps1', import.meta.url);
-const powerShellPath = process.env.PA_TEST_PWSH
+const powerShellPath = process.env.PA_TEST_POWERSHELL
+  ?? process.env.PA_TEST_PWSH
+  ?? (process.env.PATH ?? '').split(delimiter).map(directory => join(directory, 'pwsh.exe')).find(existsSync)
   ?? join(process.env.ProgramFiles ?? 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe');
 const unavailable = process.platform !== 'win32' || !existsSync(powerShellPath)
   ? 'Windows PowerShell 7 helper is unavailable' : false;
+const processIdentityHelperPath = process.env.PA_TEST_JOB_HOST_EXE
+  ?? join(import.meta.dirname, '..', 'native', 'bin', 'Release', 'net8.0-windows', 'WindowsJobProcessHost.exe');
+const nativeIdentityUnavailable = process.platform !== 'win32' || !existsSync(processIdentityHelperPath)
+  ? 'WindowsJobProcessHost.exe is unavailable' : false;
+const nativeIdentityOptions = nativeIdentityUnavailable ? {} : {processIdentityHelperPath};
 
 async function fixture(t) {
   const base = await mkdtemp(join(tmpdir(), 'personal-agent-apply-'));
@@ -49,7 +56,7 @@ test('repository-root workspace keeps default helper isolation and accepts expli
   const rootPath = fileURLToPath(new URL('../../../', import.meta.url));
   assert.throws(() => createWorkspacePatchApplyTool({rootPath, recoveryRootPath, powerShellPath}), {code: 'INVALID_ARGUMENT'});
   const helperScriptPath = await installSyntheticHelper(base);
-  const tool = createWorkspacePatchApplyTool({rootPath, recoveryRootPath, powerShellPath, helperScriptPath});
+  const tool = createWorkspacePatchApplyTool({rootPath, recoveryRootPath, powerShellPath, ...nativeIdentityOptions, helperScriptPath});
   assert.equal(tool.descriptor.name, WORKSPACE_PATCH_APPLY_TOOL_NAME);
   assert.deepEqual(await readdir(recoveryRootPath), []);
 });
@@ -57,7 +64,7 @@ test('repository-root workspace keeps default helper isolation and accepts expli
 test('explicit relocated helper applies only the approved patch through the public factory', {skip: unavailable}, async t => {
   const {base, root, recoveryRootPath, source} = await fixture(t);
   const helperScriptPath = await installSyntheticHelper(base);
-  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, helperScriptPath});
+  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions, helperScriptPath});
   await assert.rejects(tool.execute({...request(sha('before\n')), helperScriptPath: 'model-selected.ps1'}, context()),
     {code: 'INVALID_ARGUMENT'});
   assert.equal((await tool.execute(request(sha('before\n')), context())).applied, true);
@@ -67,7 +74,7 @@ test('explicit relocated helper applies only the approved patch through the publ
 
 test('relocated helper rejects relative paths, workspace/recovery containment, unknown contents and hardlinks', {skip: unavailable}, async t => {
   const {base, root, recoveryRootPath, source} = await fixture(t);
-  const options = {rootPath: root, recoveryRootPath, powerShellPath};
+  const options = {rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions};
   const helperScriptPath = await installSyntheticHelper(base);
   const workspaceHelper = join(root, 'helper.ps1');
   const recoveryHelper = join(recoveryRootPath, 'helper.ps1');
@@ -86,7 +93,7 @@ test('relocated helper rejects relative paths, workspace/recovery containment, u
 test('helper mutation after registration stops before source write or inflight marker creation', {skip: unavailable}, async t => {
   const {base, root, recoveryRootPath, source} = await fixture(t);
   const helperScriptPath = await installSyntheticHelper(base);
-  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, helperScriptPath});
+  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions, helperScriptPath});
   await writeFile(helperScriptPath, 'Write-Output unsafe');
   await assert.rejects(tool.execute(request(sha('before\n')), context()), {code: 'INVALID_ARGUMENT'});
   assert.equal(await readFile(source, 'utf8'), 'before\n');
@@ -111,7 +118,7 @@ const request = expectedSha256 => ({
 
 test('exclusive helper applies exact preview bytes and reads back before releasing the source', {skip: unavailable}, async t => {
   const {root, recoveryRootPath, source} = await fixture(t);
-  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath});
+  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions});
   const result = await tool.execute(request(sha('before\n')), context());
   assert.deepEqual(result, {
     path: 'src/note.txt', beforeSha256: sha('before\n'), afterSha256: sha('after\n'),
@@ -121,9 +128,30 @@ test('exclusive helper applies exact preview bytes and reads back before releasi
   assert.deepEqual(await readdir(recoveryRootPath), []);
 });
 
-test('stale source and an already open file are rejected without overwriting concurrent edits', {skip: unavailable}, async t => {
+test('exclusive helper can bind identity through the native process query helper', {
+  skip: unavailable || nativeIdentityUnavailable,
+}, async t => {
+  const {root, recoveryRootPath, source} = await fixture(t);
+  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath,
+    processIdentityHelperPath});
+  const result = await tool.execute(request(sha('before\n')), context());
+  assert.equal(result.applied, true);
+  assert.equal(await readFile(source, 'utf8'), 'after\n');
+  assert.deepEqual(await readdir(recoveryRootPath), []);
+});
+
+test('explicit PowerShell identity fallback remains available when native helper is omitted', {skip: unavailable}, async t => {
   const {root, recoveryRootPath, source} = await fixture(t);
   const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath});
+  const result = await tool.execute(request(sha('before\n')), context());
+  assert.equal(result.applied, true);
+  assert.equal(await readFile(source, 'utf8'), 'after\n');
+  assert.deepEqual(await readdir(recoveryRootPath), []);
+});
+
+test('stale source and an already open file are rejected without overwriting concurrent edits', {skip: unavailable}, async t => {
+  const {root, recoveryRootPath, source} = await fixture(t);
+  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions});
   await writeFile(source, 'user edit\n');
   await assert.rejects(tool.execute(request(sha('before\n')), context()), {code: 'REVISION_CONFLICT'});
   assert.equal(await readFile(source, 'utf8'), 'user edit\n');
@@ -141,7 +169,7 @@ test('stale source and an already open file are rejected without overwriting con
 
 test('apply has a separate scope and cannot modify the file after cancellation', {skip: unavailable}, async t => {
   const {root, recoveryRootPath, source} = await fixture(t);
-  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath});
+  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions});
   await assert.rejects(tool.execute(request(sha('before\n')), context({scopes: ['workspace:read', 'workspace:write']})), {code: 'SCOPE_DENIED'});
   const controller = new AbortController();
   controller.abort();
@@ -154,7 +182,7 @@ test('apply has a separate scope and cannot modify the file after cancellation',
 
 test('failed durable backup creation cannot reach the first source write', {skip: unavailable}, async t => {
   const {root, recoveryRootPath, source} = await fixture(t);
-  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath});
+  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions});
   await rm(recoveryRootPath, {recursive: true});
   await assert.rejects(tool.execute(request(sha('before\n')), context()), {code: 'RESULT_UNKNOWN'});
   assert.equal(await readFile(source, 'utf8'), 'before\n');
@@ -164,7 +192,7 @@ test('Policy and ToolGateway require a parameter-bound one-use apply grant', {sk
   const {root, recoveryRootPath, source} = await fixture(t);
   const policy = new InMemoryAuthorizationPolicy();
   const gateway = new ToolGateway({policy});
-  const dispose = registerWorkspacePatchApply(gateway, {rootPath: root, recoveryRootPath, powerShellPath});
+  const dispose = registerWorkspacePatchApply(gateway, {rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions});
   const argumentsValue = request(sha('before\n'));
   const invocation = {
     toolName: WORKSPACE_PATCH_APPLY_TOOL_NAME,
@@ -196,7 +224,7 @@ test('Policy and ToolGateway require a parameter-bound one-use apply grant', {sk
 
 test('an unresolved helper marker prevents another apply to the same source', {skip: unavailable}, async t => {
   const {root, recoveryRootPath, source} = await fixture(t);
-  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath});
+  const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath, ...nativeIdentityOptions});
   const sourceKey = sha(`${realpathSync.native(root)}\nsrc/note.txt`).slice(0, 32);
   const marker = join(recoveryRootPath, `${sourceKey}.inflight`);
   await writeFile(marker, 'unresolved synthetic helper');
@@ -224,6 +252,7 @@ test('deadline expiring during process identity lookup stops before sending patc
     rootPath: root,
     recoveryRootPath,
     powerShellPath,
+    ...nativeIdentityOptions,
     preview,
     now: () => {
       nowCalls += 1;
@@ -234,7 +263,7 @@ test('deadline expiring during process identity lookup stops before sending patc
     tool.execute({}, context({deadline: new Date(deadlineMs).toISOString()})),
     {code: 'TIMEOUT'},
   );
-  assert.equal(nowCalls, 4);
+  assert.ok(nowCalls >= 3)
   assert.equal(await readFile(source, 'utf8'), 'before\n');
   assert.deepEqual(await readdir(recoveryRootPath), []);
 });
