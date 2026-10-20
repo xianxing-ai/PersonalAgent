@@ -25,3 +25,15 @@ if (process.argv.includes('--check')) {
   await writeFile(transportOutput, transportTypes);
   await writeFile(transportPath, JSON.stringify(transportSchema, null, 2) + '\n');
 }
+const candidateSchema = JSON.parse(await readFile(new URL('../schema/harness-candidates.json', import.meta.url), 'utf8'));
+const candidateTypes = await compile(candidateSchema, 'HarnessCandidateBinding', {
+  bannerComment: '// Generated from schema/harness-candidates.json. Do not edit.', unknownAny: true,
+});
+const candidateRuntime = '// Generated from schema/harness-candidates.json. Do not edit.\nexport default ' + JSON.stringify(candidateSchema) + ';\n';
+for (const [file, content] of [['harness-candidates.generated.ts', candidateTypes], ['harness-candidates.schema.ts', candidateRuntime]]) {
+  const path = new URL('../src/' + file, import.meta.url);
+  if (process.argv.includes('--check')) {
+    const current = (await readFile(path, 'utf8')).replaceAll('\r\n', '\n');
+    if (current !== content.replaceAll('\r\n', '\n')) throw new Error('Generated candidate types/schema are stale; run contracts generate');
+  } else await writeFile(path, content);
+}
