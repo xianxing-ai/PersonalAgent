@@ -13,6 +13,11 @@ type Context = {signal: AbortSignal; deadline: string};
 export interface HarnessEventReceipt {
   deliveryId: string; eventDigest: string; taskId: string; parentTaskId: string; receiptRef: string;
 }
+export interface HarnessEventCancellation {
+  origin: HarnessEventOrigin; parentTaskId: string; revision: number; state: 'cancelled_before_dispatch';
+  /** Re-read exact original task/activity/attempt evidence immediately before ledger settlement. */
+  assertCurrent(): void;
+}
 export interface HarnessEventAnchor {
   sourceTaskId: string; parentTaskId: string; deadline: string;
   responsibility: Omit<ProactiveResponsibility, 'proof'>;
@@ -38,6 +43,8 @@ export interface RuntimeHarnessEventsOptions {
   delivery: {
     consume(input: {deliveryId: string; eventDigest: string; anchor: HarnessEventAnchor; event: Event}, context: Context): Promise<HarnessEventReceipt>;
     readReceipt(input: {deliveryId: string; eventDigest: string; anchor: HarnessEventAnchor}, context: Context): Promise<HarnessEventReceipt | undefined>;
+    /** Pure synchronous local read; never infers cancellation from a rejected promise or AbortSignal. */
+    readCancellation?(input: {deliveryId: string; eventDigest: string; anchor: HarnessEventAnchor}): HarnessEventCancellation | undefined;
   };
   now?(): number;
 }
@@ -171,6 +178,23 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
     }
     if (!atomic.compareAndSet(key(value.event), saved.revision, {...value, state: 'confirmed', receipt: structuredClone(receipt)})) fail('REVISION_CONFLICT');
   }
+  function settleCancelled(saved: {revision: number; value: unknown}): boolean {
+    const value = saved.value as Delivery, anchor = value.anchor;
+    if (value.state !== 'pending' || !anchor || !delivery.readCancellation) return false;
+    const cancellation = delivery.readCancellation({deliveryId: value.deliveryId, eventDigest: value.eventDigest, anchor: structuredClone(anchor)});
+    if (!cancellation) return false;
+    const origin = {deliveryId: value.deliveryId, eventDigest: value.eventDigest,
+      sourceTaskId: anchor.sourceTaskId, originalParentTaskId: anchor.parentTaskId};
+    if (cancellation.state !== 'cancelled_before_dispatch' || !isDeepStrictEqual(cancellation.origin, origin)
+      || !text(cancellation.parentTaskId) || !Number.isSafeInteger(cancellation.revision)
+      || typeof cancellation.assertCurrent !== 'function') fail('REVISION_CONFLICT');
+    const root = runtime.getTask(cancellation.parentTaskId);
+    if (root.state !== 'cancelled' || root.revision !== cancellation.revision
+      || !isDeepStrictEqual(runtime.loadCheckpoint(root.taskId, 'harness-event-origin'), origin)) fail('REVISION_CONFLICT');
+    cancellation.assertCurrent();
+    if (!atomic.compareAndSet(key(value.event), saved.revision, {...value, state: 'suppressed', reason: 'cancelled'})) fail('REVISION_CONFLICT');
+    return true;
+  }
   async function bounded<T>(operation: () => Promise<T>, context: Context): Promise<T> {
     if (context.signal.aborted) fail('CANCELLED');
     const ms = Date.parse(context.deadline) - now();
@@ -213,6 +237,7 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
           || value.event.sourceId !== event.sourceId || value.event.sourceVersion !== event.sourceVersion
           || value.event.change !== event.change) fail('REVISION_CONFLICT');
         if (value.state !== 'pending') continue;
+        if (settleCancelled(saved)) continue;
         const anchor = value.anchor;
         if (!anchor) fail('REVISION_CONFLICT');
         // Reopening can inspect the existing receipt, but can never send its intent again.
@@ -369,13 +394,15 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
     },
     /** A pending delivery has exactly one path: independently inspect its original Runtime receipt. */
     async reconcile(event: Event, context: Context) {
+      if (context.signal.aborted) fail('CANCELLED');
       const saved = atomic.read(key(event));
       if (!saved) return fail('NOT_FOUND');
       const value = saved.value as Delivery;
       if (value.state !== 'pending') return structuredClone(value);
+      if (hash(event) !== value.eventDigest) fail('REVISION_CONFLICT');
+      if (settleCancelled(saved)) return structuredClone(atomic.read(key(event))!.value as Delivery);
       const anchor = value.anchor;
       if (!anchor) fail('REVISION_CONFLICT');
-      if (hash(event) !== value.eventDigest) fail('REVISION_CONFLICT');
       if (!isDeepStrictEqual(anchor, options.resolveAnchor(structuredClone(value.event)))) fail('REVISION_CONFLICT');
       binding(value.event, anchor, context, 'readback');
       const receipt = await bounded(() => delivery.readReceipt({deliveryId: value.deliveryId, eventDigest: value.eventDigest,

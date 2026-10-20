@@ -97,3 +97,23 @@ contracts 使用原已存在产物，未安装／重建其他 workspace。
 lifecycle revision fence 和显式 control revision 改变后拒绝旧 pending。该单例不调用静态 startup reader；
 隔离装载器对这个未测入口注入显式抛错替身，不能据此声称静态 reader 或整图通过。
 旧四条 fixture、完整类型检查、H1/H2 生产装配和统一验证仍待执行，不以此单例完成整个 H6 验收。
+
+## 2026-10-20：原 root 分派前取消的终态核实
+
+456 原 native cancellation 可终结尚无首次 attempt 的 created event root，且不会生成 user-work child。
+H6 不能为此伪造 child receipt，现由投递 glue 提供可选同步纯 reader `readCancellation(input)`，
+input 仍是原 `{deliveryId,eventDigest,anchor}`，不接受任意 root ID。它按原 idempotency/origin
+独立读取 root 真正 cancelled 状态、全部原 child 列表与 canonical child、工具记录、原 cloud/loop/send
+检查点及 Application/TaskRuntime 活动观察。清成 null 的云检查点也视为既往 attempt 痕迹。
+
+工厂新增可选 `isHarnessEventTaskActive(origin)`，由 H1 只读观察同一原 root 的
+activeTextTasks 和 runtime.isTaskActive；缺少该读口时不推断 inactive，也不核实为已取消。
+reader 返回 `HarnessEventCancellation`，包含原 origin/root revision 与同步 `assertCurrent`，
+不提交、不分派、不改 root。原 manager 在 scan/reconcile 的 pending 分支独立核对 origin 与
+cancelled root/revision，重查 fence 后才 CAS 为 suppressed(reason=cancelled)。重复读取幂等。
+这条纯本机核实不要求失效执行 grant 假放行，也不靠 AbortSignal／CANCELLED 异常判断事实。
+证据不足、存在 child/attempt/active 时保持 pending，只能继续读原回执或由原取消路径处理。
+
+新增一条单例回归在 Node v24.19.0 运行，1/1 通过：阻断清空云 marker、active、任意 child、
+错误 origin 与 cancelling 状态；确认 cancelled 后只抑制，无成功 receipt、无新增 submit/consume。
+本轮仅运行该单例，静态 startup reader 仍未通过此夹具验证；未扩大测试或触发云/设备访问。

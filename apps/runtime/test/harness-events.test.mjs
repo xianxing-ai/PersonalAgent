@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
 import {createRuntimeHarnessEvents} from '../dist/application/harness-events.js';
+import {createRuntimeHarnessEventDelivery} from '../dist/application/harness-event-delivery.js';
 
 // Explicit in-memory original Runtime/host ports. No connector, cloud or user account.
 function fixture() {
@@ -116,6 +117,40 @@ test('suppression and rejected entries persist without blocking later authorized
   assert.equal([...f.state.values()].filter(v=>v.value?.state==='pending').length,1);
   f.settings.quiet=false;f.settings.revision='4';assert.equal(consumer.readOriginalDelivery(origin),undefined);
   await consumer.stop();assert.doesNotMatch(JSON.stringify(consumer.inspect()),/PRIVATE/);
+});
+
+test('cancelled before dispatch settles pending only from exact inactive original root evidence',async()=>{
+  const f=fixture();f.entries.first={event:f.event('a')};f.setUnknown(true);
+  const consumer=createRuntimeHarnessEvents(f.options);await consumer.start();
+  const pending=[...f.state.values()].map(v=>v.value).find(v=>v?.state==='pending');assert.ok(pending);
+  const origin={deliveryId:pending.deliveryId,eventDigest:pending.eventDigest,
+    sourceTaskId:pending.anchor.sourceTaskId,originalParentTaskId:pending.anchor.parentTaskId};
+  const root={taskId:'cancel-root-a',revision:3,state:'cancelled',steps:[],evidenceRefs:[]};
+  f.tasks.set(root.taskId,root);f.checkpoints.set(root.taskId+'harness-event-origin',origin);
+  let active=false,child=false,submits=0;
+  const runtime={...f.options.runtime,
+    findTaskByIdempotencyKey:key=>key==='harness-event-root:'+origin.deliveryId?root:undefined,
+    listTasks:()=>({items:child?[{taskId:'unexpected-child'}]:[]}),readToolExecutions:()=>[]};
+  const helper=createRuntimeHarnessEventDelivery({runtime,isHarnessEventTaskActive:()=>active,
+    resolveUserConversation:f.options.resolveUserConversation,assertCurrentAuthorization:()=>{},
+    submitHarnessEventTask:()=>{submits++;throw Error('Must not submit');}});
+  f.options.delivery.readCancellation=helper.readCancellation;
+  const input={deliveryId:origin.deliveryId,eventDigest:origin.eventDigest,anchor:pending.anchor};
+  f.checkpoints.set(root.taskId+'competition-cloud-inflight',null);
+  assert.equal(helper.readCancellation(input),undefined);await consumer.flush();
+  f.checkpoints.delete(root.taskId+'competition-cloud-inflight');active=true;
+  assert.equal(helper.readCancellation(input),undefined);active=false;child=true;
+  assert.equal(helper.readCancellation(input),undefined);child=false;
+  f.checkpoints.set(root.taskId+'harness-event-origin',{...origin,eventDigest:'wrong'});
+  assert.equal(helper.readCancellation(input),undefined);
+  f.checkpoints.set(root.taskId+'harness-event-origin',origin);root.state='cancelling';
+  assert.equal(helper.readCancellation(input),undefined);root.state='cancelled';
+  const proof=helper.readCancellation(input);assert.ok(proof);proof.assertCurrent();
+  active=true;assert.throws(()=>proof.assertCurrent());active=false;
+  await consumer.flush();await consumer.flush();await consumer.stop();
+  const saved=[...f.state.values()].map(v=>v.value).find(v=>v?.deliveryId===origin.deliveryId);
+  assert.equal(saved.state,'suppressed');assert.equal(saved.reason,'cancelled');assert.equal(saved.receipt,undefined);
+  assert.equal(f.counts().calls,1);assert.equal(submits,0);
 });
 
 test('restart overlapping stop scans new entries without resending the unknown delivery',async()=>{
