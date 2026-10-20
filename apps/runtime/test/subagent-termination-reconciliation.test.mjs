@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication,createDesktopSubagentDispatchTool} from '../dist/application.js';
 import {projectSubagentResult} from '../../desktop/electron/subagent-result-projection.js';
 import {SyntheticWebSocket,identity} from '../../../packages/coordination/test/fixtures/websocket.mjs';
-async function fixture({childTool=false,childFailure=false,wss=false}={}){
+async function fixture({childTool=false,childFailure=false,wss=false,legacyHold=false,children=1,path=':memory:'}={}){
   let app,clock=Date.now(),calls=0,invalid=true,hold;
   const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
@@ -18,9 +21,9 @@ async function fixture({childTool=false,childFailure=false,wss=false}={}){
     return query.continuation?{kind:'text',text:'56'}:query.goal?.includes('terminal child')?
       childTool?{kind:'tool_proposal',proposalId:'child-read',toolName:read.name,toolVersion:read.version,arguments:{}}:{kind:'text',text:'56'}:
       {kind:'tool_proposal',proposalId:'original-proposal',toolName:dispatch.descriptor.name,toolVersion:dispatch.descriptor.version,
-        arguments:{subtasks:[{subtaskId:'one',role:'coder',goal:'terminal child'}]}};
+        arguments:{subtasks:Array.from({length:children},(_,index)=>({subtaskId:'child-'+index,role:'coder',goal:'terminal child'}))}};
   };
-  app=createAgentArtsRuntimeApplication({path:':memory:',now:()=>new Date(clock),gatewayUrl:'https://agentarts.example.test',runtimeName:'termination',
+  const options={path,now:()=>new Date(clock),gatewayUrl:'https://agentarts.example.test',runtimeName:'termination',
     ...(wss?{transport:'wss',websocketUrl:'wss://agentarts.example.test/runtimes/termination/ws',
       websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'},websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{
         if(frame.type!=='invoke')return;socket.accepted(frame);
@@ -36,15 +39,130 @@ async function fixture({childTool=false,childFailure=false,wss=false}={}){
       if(wss)throw Error('Unexpected HTTP fallback');
       const value=response(JSON.parse(JSON.parse(init.body).query));
       return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify(value),index:0}}),{status:200,headers:{'content-type':'application/json'}});
-    }});
+    }};
+  const create=()=>{
+    app=createAgentArtsRuntimeApplication(options);
+    if(legacyHold){const hold=app.holdCompetitionExport.bind(app);app.holdCompetitionExport=id=>hold(id);}
+    return app;
+  };
+  create();
   const client=new Client(app,Date.now);await client.connect();
   const {taskId}=await client.call('task.submit',{goal:'Delegate',conversationId:'desktop-panel'},{idempotencyKey:'termination',timeoutMs:60000});
   for(let index=0;index<200 && app.activeTaskCount;index++)await new Promise(resolve=>setTimeout(resolve,5));
-  assert.equal(app.runtime.getTask(taskId).state,'waiting_reconciliation');assert.equal(calls,childTool?3:2);
+  assert.equal(app.runtime.getTask(taskId).state,'waiting_reconciliation');assert.equal(calls,1+(childTool?2:1)*children);
   const child=app.readSubagentTasks(taskId)[0],runId=`competition-tool-${taskId}-1`;
   invalid=false;
-  return {app,taskId,child,runId,calls:()=>calls,expire:()=>{clock+=120000;},invalid:()=>{invalid=true;},hold:value=>{hold=value;}};
+  return {get app(){return app;},taskId,child,runId,calls:()=>calls,expire:()=>{clock+=120000;},invalid:()=>{invalid=true;},valid:()=>{invalid=false;},hold:value=>{hold=value;},
+    reopen:()=>{app.close();return create();}};
 }
+test('confirmed child read followed by a matched WSS terminal error becomes durable failure without replay',async()=>{
+  const f=await fixture({wss:true,childTool:true,childFailure:true});try{
+    assert.equal(f.child.state,'failed');
+    assert.equal(f.app.runtime.readToolExecutions(f.child.taskId)[0].state,'confirmed');
+    assert.equal(f.app.runtime.loadCheckpoint(f.child.taskId,'competition-cloud-inflight'),null);
+    assert.equal(f.app.runtime.loadCheckpoint(f.child.taskId,'competition-cloud-received-failure').classification,'transport_terminal_error');
+    f.expire();assert.equal((await f.app.reconcileConfirmedSubagentTermination(f.taskId)).state,'failed');
+    assert.equal(f.calls(),3);
+  }finally{f.app.close();}
+});
+for(const cancelled of [false,true])test(`historical confirmed-read child and its original pending parent terminate ${cancelled?'cancelled':'expired'} locally`,async()=>{
+  const f=await fixture({wss:true,childTool:true,childFailure:true,legacyHold:true});try{
+    assert.equal(f.child.state,'waiting_reconciliation');
+    assert.equal(f.app.runtime.loadCheckpoint(f.taskId,'competition-export-withheld'),undefined);
+    const parentCache=f.app.runtime.loadCheckpoint(f.taskId,'tool-result-'+f.runId),childRecords=f.app.runtime.readToolExecutions(f.child.taskId);
+    if(cancelled)f.app.runtime.requestCancel(f.taskId);else f.expire();
+    assert.equal((await f.app.reconcileConfirmedSubagentTermination(f.taskId)).state,cancelled?'cancelled':'failed');
+    assert.equal(f.app.runtime.getTask(f.child.taskId).state,'failed');assert.equal(f.calls(),3);
+    assert.deepEqual(f.app.runtime.loadCheckpoint(f.taskId,'tool-result-'+f.runId),parentCache);
+    assert.deepEqual(f.app.runtime.readToolExecutions(f.child.taskId),childRecords);
+    assert.equal(f.app.runtime.loadCheckpoint(f.child.taskId,'competition-cloud-received-failure').cloudResent,false);
+    assert.equal(f.app.runtime.loadCheckpoint(f.child.taskId,'competition-cloud-terminal-error').kind,'wss_terminal_error');
+    assert.match(f.app.runtime.getTask(f.taskId).resultSummary,/1/);
+  }finally{f.app.close();}
+});
+for(const fault of ['unknown','active','unconfirmed-tool','session','run','context-task','context-loop','child-parent','parent-wait','parent-cache','missing-marker'])
+test(`held confirmed-read continuation refuses ${fault} without consuming original receipts`,async()=>{
+  const f=await fixture({wss:true,childTool:true,childFailure:true,legacyHold:true});try{
+    f.expire();const childId=f.child.taskId;
+    const received=f.app.runtime.loadCheckpoint(childId,'competition-cloud-received');
+    if(fault==='unknown')f.app.runtime.saveCheckpoint(childId,'competition-cloud-unknown',received);
+    if(fault==='active')f.app.activeTextTasks.set(childId,Promise.resolve());
+    if(fault==='unconfirmed-tool'){
+      const record=f.app.runtime.readToolExecutions(childId)[0];f.app.runtime.saveToolExecution({...record,state:'unknown'});
+    }
+    if(fault==='session'){
+      const other={...received,sessionId:'other-session'};
+      for(const key of ['competition-cloud-inflight','competition-cloud-received'])f.app.runtime.saveCheckpoint(childId,key,other);
+      f.app.runtime.saveCheckpoint(childId,'competition-cloud-terminal-error',{version:'1.0',kind:'wss_terminal_error',receipt:other});
+    }
+    if(fault==='run'){
+      const loop=f.app.runtime.loadCheckpoint(childId,'competition-loop');
+      f.app.runtime.saveCheckpoint(childId,'competition-loop',{...loop,receipts:loop.receipts.map(item=>({...item,runId:'foreign-run'}))});
+    }
+    if(fault==='context-task'||fault==='context-loop'){
+      const context=f.app.runtime.loadCheckpoint(childId,'competition-cloud-dispatch-context');
+      f.app.runtime.saveCheckpoint(childId,'competition-cloud-dispatch-context',{...context,
+        ...(fault==='context-task'?{taskId:f.taskId}:{loop:{...context.loop,checkpointDigest:'a'.repeat(64)}})});
+    }
+    if(fault==='child-parent'){
+      const binding=f.app.runtime.loadCheckpoint(childId,'subtask-parent');
+      f.app.runtime.saveCheckpoint(childId,'subtask-parent',{...binding,parentTaskId:'foreign-parent'});
+    }
+    if(fault==='parent-wait'){
+      const wait=f.app.runtime.loadCheckpoint(f.taskId,'subagent-parent-wait');
+      f.app.runtime.saveCheckpoint(f.taskId,'subagent-parent-wait',{...wait,runId:'foreign-run'});
+    }
+    if(fault==='parent-cache')f.app.runtime.saveCheckpoint(f.taskId,'tool-result-'+f.runId,{result:{total:999}});
+    if(fault==='missing-marker')f.app.runtime.saveCheckpoint(childId,'competition-cloud-terminal-error',null);
+    const before=f.app.runtime.getTask(f.taskId),child=f.app.runtime.getTask(childId),pair=f.app.runtime.loadCheckpoint(childId,'competition-cloud-received');
+    await assert.rejects(f.app.reconcileConfirmedSubagentTermination(f.taskId));
+    assert.deepEqual(f.app.runtime.getTask(f.taskId),before);assert.deepEqual(f.app.runtime.getTask(childId),child);
+    assert.deepEqual(f.app.runtime.loadCheckpoint(childId,'competition-cloud-received'),pair);
+    assert.equal(f.app.runtime.loadCheckpoint(childId,'competition-cloud-received-failure'),undefined);assert.equal(f.calls(),3);
+  }finally{f.app.activeTextTasks.clear();f.app.close();}
+});
+test('an independently proven child failure survives invalid parent projection and can be reconciled again after cancellation',async()=>{
+  const f=await fixture({wss:true,childTool:true,childFailure:true,legacyHold:true});try{
+    f.expire();f.invalid();const before=f.app.runtime.getTask(f.taskId);
+    await assert.rejects(f.app.reconcileConfirmedSubagentTermination(f.taskId),{code:'UNAUTHORIZED'});
+    assert.deepEqual(f.app.runtime.getTask(f.taskId),before);assert.equal(f.app.runtime.getTask(f.child.taskId).state,'failed');
+    f.app.runtime.requestCancel(f.taskId);f.valid();
+    assert.equal((await f.app.reconcileConfirmedSubagentTermination(f.taskId)).state,'cancelled');assert.equal(f.calls(),3);
+  }finally{f.app.close();}
+});
+test('direct child cancellation reconciles its original terminal error without resuming the parent',async()=>{
+  const f=await fixture({wss:true,childTool:true,childFailure:true,legacyHold:true});try{
+    const parent=f.app.runtime.getTask(f.taskId),childId=f.child.taskId;
+    f.app.runtime.requestCancel(childId);
+    assert.equal((await f.app.reconcileConfirmedSubagentTermination(childId)).state,'cancelled');
+    assert.deepEqual(f.app.runtime.getTask(f.taskId),parent);assert.equal(f.calls(),3);
+    assert.equal(f.app.runtime.loadCheckpoint(childId,'competition-cloud-inflight'),null);
+    f.expire();assert.equal((await f.app.reconcileConfirmedSubagentTermination(f.taskId)).state,'failed');
+  }finally{f.app.close();}
+});
+test('one unknown sibling prevents parent recovery from consuming any held child receipt',async()=>{
+  const f=await fixture({wss:true,childTool:true,childFailure:true,legacyHold:true,children:2});try{
+    f.expire();const children=f.app.readSubagentTasks(f.taskId);
+    f.app.runtime.saveCheckpoint(children[1].taskId,'competition-cloud-unknown',f.app.runtime.loadCheckpoint(children[1].taskId,'competition-cloud-inflight'));
+    const before=children.map(child=>f.app.runtime.getTask(child.taskId));
+    await assert.rejects(f.app.reconcileConfirmedSubagentTermination(f.taskId),{code:'RESULT_UNKNOWN'});
+    assert.deepEqual(children.map(child=>f.app.runtime.getTask(child.taskId)),before);assert.equal(f.calls(),5);
+    for(const child of children)assert.equal(f.app.runtime.loadCheckpoint(child.taskId,'competition-cloud-received-failure'),undefined);
+  }finally{f.app.close();}
+});
+test('SQLite reopen preserves original confirmed tools, transport failure and pending dispatch receipt',async()=>{
+  const folder=await mkdtemp(join(tmpdir(),'pa-reconcile-443-'));
+  const f=await fixture({wss:true,childTool:true,childFailure:true,legacyHold:true,path:join(folder,'runtime.sqlite')});try{
+    const before=f.app.runtime.readToolExecutions(f.child.taskId),cache=f.app.runtime.loadCheckpoint(f.taskId,'tool-result-'+f.runId);
+    f.reopen();assert.equal(f.app.runtime.getTask(f.child.taskId).state,'waiting_reconciliation');
+    f.app.runtime.requestCancel(f.taskId);assert.equal((await f.app.reconcileConfirmedSubagentTermination(f.taskId)).state,'cancelled');
+    const failure=f.app.runtime.loadCheckpoint(f.child.taskId,'competition-cloud-received-failure');
+    f.reopen();assert.equal(f.app.runtime.getTask(f.child.taskId).state,'failed');assert.equal(f.app.runtime.getTask(f.taskId).state,'cancelled');
+    assert.deepEqual(f.app.runtime.readToolExecutions(f.child.taskId),before);
+    assert.deepEqual(f.app.runtime.loadCheckpoint(f.taskId,'tool-result-'+f.runId),cache);
+    assert.deepEqual(f.app.runtime.loadCheckpoint(f.child.taskId,'competition-cloud-received-failure'),failure);assert.equal(f.calls(),3);
+  }finally{f.app.close();await rm(folder,{recursive:true,force:true});}
+});
 for(const cancelled of [false,true])test(`confirmed local receipt terminates ${cancelled?'cancelled':'expired'} without sending or altering records`,async()=>{
   const f=await fixture();try{
     const before=f.app.runtime.readToolExecutions(f.taskId),cache=f.app.runtime.loadCheckpoint(f.taskId,'tool-result-'+f.runId);

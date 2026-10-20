@@ -27,6 +27,7 @@ import {evidencePanelHtml} from './evidence-view.js';
 import {createWorkspacePatchRecoveryControls, workspacePatchRecoveryHtml} from './workspace-patch-recovery-controls.js';
 import {windowControlsHtml} from '../../ui/window-controls.js';
 import {matchesSettingSearch} from './setting-search.js';
+import {mountPageMotion} from '../../ui/page-motion.js';
 
 export const sections = {
   settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
@@ -158,7 +159,8 @@ export function mountAdmin(root, invoke, escape) {
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
   let installedSkillsControls,sisControls,notificationControls;
-  let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup;
+  let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
+  const showPage = mountPageMotion(root.querySelector('.main'));
 
   function capabilityTable(data) {
     const status = data.capabilityDirectory ?? {state: 'unavailable', reason: '可信宿主尚未报告能力目录状态'};
@@ -218,7 +220,7 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('退出应用', '结束托盘、ORB 与所有桌面窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>')],
       appearance: ['外观', '延续 ORB-02 冷光青与标准毛玻璃设计',
         settingRow('界面主题', '所有窗口统一使用黑白主题，支持跟随系统自动切换', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
-        settingRow('降低动效', '暂停轨道脉冲并缩短界面过渡', '<label class="switch-control"><input id="pref-calm" type="checkbox"><span></span></label>') +
+        settingRow('降低动效', '暂停轨道脉冲并移除界面位移动效', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>') +
         settingRow('玻璃材质', '标准毛玻璃，由当前设计方案锁定', '<span class="value-pill">标准</span>') +
         settingRow('ORB-02', '黑核、白色规则点阵、球体模糊关闭', '<span class="value-pill">当前方案</span>')],
       interaction: ['交互', '悬浮球、面板与输入行为',
@@ -341,6 +343,7 @@ export function mountAdmin(root, invoke, escape) {
     if (root.querySelector('#profile-dialog')?.open) return;
     patchRecovery.sync(data.tasks, section === 'tasks' || section === 'overview', section);
     root.querySelector('.main').dataset.section = section;
+    showPage(section);
     remoteMcpButton.hidden=!data.remoteMcp;
     if (section==='voice') {liveControls ??= mountLiveVoiceControls(root,invoke);sisControls ??= mountSisVoiceSettings(root,invoke);}
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
@@ -454,7 +457,10 @@ export function mountAdmin(root, invoke, escape) {
     if (section === 'memory' && data.privateMemory?.available && renderedSection === section
       && !refreshMemory && nextMemoryKey === memoryRenderKey) return;
     // Keep interactive task/model DOM when an unrelated snapshot changes.
-    const retainContent = ['models', 'tasks', 'overview'].includes(section)
+    const preferenceKey = section === 'appearance'
+      ? `${themePreference()}/${localStorage.getItem('pa-calm')}` : undefined;
+    const retainContent = (['models', 'tasks', 'overview'].includes(section)
+      || ['settings', 'appearance'].includes(section) && renderedPreferenceKey === preferenceKey)
       && renderedSection === section && renderedContentMarkup === content;
     const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
       ? document.activeElement.parentElement.dataset.taskDetails : undefined;
@@ -469,6 +475,7 @@ export function mountAdmin(root, invoke, escape) {
       });
     }
     renderedContentMarkup = content;
+    renderedPreferenceKey = preferenceKey;
     if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==page)page.append(card);}
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);
