@@ -43,6 +43,8 @@ test('repairLinks remains explicit boolean opt-in across configure, encrypted re
   await host.configure({enabled:false,configuration:config(undefined),token:'synthetic-private-token'});
   assert.equal(host.snapshot().configuration.github.repairLinks,undefined);
   for(const invalid of ['true',1,null,{}])await assert.rejects(host.configure({enabled:false,configuration:config(invalid)}),/字段无效/);
+  await assert.rejects(host.configure({enabled:false,configuration:{...config(true),
+    github:{...config(true).github,tokenFile:'must-not-read-token-file'}}}),/字段无效/);
   for(const value of [true,false]){
     await host.configure({enabled:false,configuration:config(value)});
     assert.equal(sources.at(-1).github.repairLinks,value);
@@ -55,10 +57,15 @@ test('repairLinks remains explicit boolean opt-in across configure, encrypted re
   assert.equal(readFileSync(path.join(userData,'developer-settings.json'),'utf8').includes('synthetic-private-token'),false);
   const target=path.join(userData,'developer-settings.json'),envelope=JSON.parse(readFileSync(target,'utf8'));
   const saved=JSON.parse(safeStorage.decryptString(Buffer.from(envelope.encrypted,'base64')));
-  saved.configuration.github.repairLinks='true';host.close();
+  for(const invalid of ['true',1,null,{}]){
+    saved.configuration.github.repairLinks=invalid;host.close();
+    writeFileSync(target,JSON.stringify({version:1,encrypted:safeStorage.encryptString(JSON.stringify(saved)).toString('base64')}));
+    host=createDeveloperSettingsHost(options);assert.equal(host.snapshot().state,'restore_failed');
+    assert.equal(host.snapshot().configuration,undefined);
+  }
+  saved.configuration.github.repairLinks=false;saved.configuration.github.tokenFile='must-not-read-token-file';host.close();
   writeFileSync(target,JSON.stringify({version:1,encrypted:safeStorage.encryptString(JSON.stringify(saved)).toString('base64')}));
   host=createDeveloperSettingsHost(options);assert.equal(host.snapshot().state,'restore_failed');
-  assert.equal(host.snapshot().configuration,undefined);
 });
 
 test('encrypted product settings switch original deployments behind fixed tools and revoke old task bindings',async t=>{
