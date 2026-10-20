@@ -13,5 +13,5 @@ test('the standard check gates root integration tests after workspace build and 
 });
 
 test('the integration runner serially discovers every root integration test without filtering failures', () => {
-  assert.equal(scripts['test:integration'], 'node --test --test-concurrency=1 tests/integration/*.test.mjs');
+  assert.equal(scripts['test:integration'], 'node --test --test-concurrency=1 --test-reporter=spec --test-reporter=./apps/desktop/test-support/node-test-failure-reporter.mjs --test-reporter-destination=stdout --test-reporter-destination=stderr tests/integration/*.test.mjs');
 });
