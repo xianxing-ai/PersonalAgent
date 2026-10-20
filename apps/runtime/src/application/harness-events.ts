@@ -19,6 +19,7 @@ export interface HarnessEventAnchor {
 }
 export interface HarnessOriginalDelivery {
   origin: HarnessEventOrigin; ledgerState: 'pending' | 'confirmed'; ledgerRevision: number;
+  lifecycleRevision: number; lifecycleRunning: boolean;
   event: Event; anchor: HarnessEventAnchor; control: {enabled: boolean; quiet: boolean; revision: string}; deadline: string;
   /** Synchronous recheck immediately before H1 resumes the same original created root. */
   assertCurrent(): void;
@@ -64,7 +65,7 @@ interface Delivery {
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const terminal = new Set(['succeeded', 'failed', 'cancelled', 'cancelling']);
 const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
-const fail = (code: string): never => {throw new ProtocolError(code, 'Original harness event delivery: ' + code);};
+const fail: (code: string) => never = code => {throw new ProtocolError(code, 'Original harness event delivery: ' + code);};
 const safeCodes = new Set(['INVALID_ARGUMENT', 'UNAUTHORIZED', 'SCOPE_DENIED', 'NOT_FOUND', 'UNSUPPORTED_CAPABILITY',
   'REVISION_CONFLICT', 'CANCELLED', 'TIMEOUT', 'RESULT_UNKNOWN', 'EXTERNAL_FAILURE']);
 const errorCode = (error: unknown) => error instanceof ProtocolError && safeCodes.has(error.code) ? error.code : 'RESULT_UNKNOWN';
@@ -288,7 +289,10 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
   function originalDelivery(origin: HarnessEventOrigin): Omit<HarnessOriginalDelivery, 'assertCurrent'> | undefined {
     if (!origin || Object.keys(origin).sort().join(',') !== 'deliveryId,eventDigest,originalParentTaskId,sourceTaskId'
       || !Object.values(origin).every(text)) fail('INVALID_ARGUMENT');
-    if (!running()) return undefined;
+    const lifecycle = atomic.read(lifecycleKey);
+    const lifecycleValue = lifecycle?.value as {version?: number; taskId?: string; sessionId?: string; running?: boolean} | undefined;
+    if (!lifecycle || lifecycleValue?.version !== 1 || lifecycleValue.taskId !== host.taskId
+      || lifecycleValue.sessionId !== host.sessionId || typeof lifecycleValue.running !== 'boolean') return undefined;
     const settings = control();
     if (!settings.enabled || settings.quiet || host.inspect().application.state.lastResult?.mode === 'paused') return undefined;
     for (const entry of Object.values(host.inspect().application.state.entries)) {
@@ -302,6 +306,7 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
       const value = saved.value as Delivery, anchor = value.anchor;
       if (value.version !== 1 || !anchor || !['pending', 'confirmed'].includes(value.state)
         || value.deliveryId !== origin.deliveryId || value.eventDigest !== origin.eventDigest
+        || value.controlRevision !== settings.revision
         || !isDeepStrictEqual(value.event, event) || anchor.sourceTaskId !== origin.sourceTaskId
         || anchor.parentTaskId !== origin.originalParentTaskId) return undefined;
       if (!isDeepStrictEqual(anchor, options.resolveAnchor(structuredClone(event))) || stoppedReason(event, anchor, settings)) return undefined;
@@ -311,6 +316,7 @@ export function createRuntimeHarnessEvents(options: RuntimeHarnessEventsOptions)
       const deadline = new Date(deadlineMs).toISOString();
       binding(event, anchor, {signal: new AbortController().signal, deadline}, 'dispatch');
       return {origin: structuredClone(origin), ledgerState: value.state as 'pending' | 'confirmed', ledgerRevision: saved.revision,
+        lifecycleRevision: lifecycle.revision, lifecycleRunning: lifecycleValue.running,
         event, anchor: structuredClone(anchor), control: settings, deadline};
     }
     return undefined;

@@ -76,6 +76,10 @@ H2 接入发现，先读 grant 再处理 quiet/disabled 会漏记 suppressed，�
 返回 `HarnessOriginalDelivery` 的原 event、anchor、control、deadline、ledger state/revision 和
 同步 `assertCurrent`。这些只读信息及 fence 供 H2 组合当前配置／权限，再由 H1 对同一 created root
 做已证明尚无 attempt 的原首次续排；H6 不创建替代 root，也不重新 consume。
+正常 shutdown 的 lifecycle.running=false 不代表用户撤权；纯 reader 读取 lifecycle revision/running
+并纳入 fence，以当前 enabled/quiet、有效原权限及 admitted controlRevision 精确相等为准。
+显式停用／暂停／再次开启产生新 control revision 时，旧 pending 不能用于首次续排或历史回填。
+H1/443 仍只允许 pending、created、无 cloud/tool attempt 的原 root；confirmed 只供读回，不能重新入队。
 
 启动阶段尚无 live host 时，`readPersistedRuntimeProactiveWorkflow(runtime,taskId,sessionId)`
 在原持久模块封装 application/session key，读取原 TaskRuntime atomic state；
@@ -85,8 +89,11 @@ H2 接入发现，先读 grant 再处理 quiet/disabled 会漏记 suppressed，�
 
 新增一条针对性组合回归已在 Node v24.19.0 运行，1/1 通过；覆盖 quiet 下失效 resolver、撤权后不回填、
 损坏旧 entry 后的新事件、unknown 保留与只读 origin fence。使用当前源码的隔离 transpile，
-仅改导入位置，contracts 使用原已存在产物，未安装／重建其他 workspace。
+contracts 使用原已存在产物，未安装／重建其他 workspace。
 隔离工具首轮 NodeNext 缺 package 上下文生成 CommonJS，导入 named export 失败；
 改为显式 ESM 后单例通过，此工具修正没有更改产品模块语义。
 随后追加的静态 startup reader 仅检查 TypeScript 语法及 Node --check，未扩大测试。
+最后按新增 shutdown 恢复要求扩展同一单例并补跑 1/1，覆盖 running=false 的只读恢复证据、
+lifecycle revision fence 和显式 control revision 改变后拒绝旧 pending。该单例不调用静态 startup reader；
+隔离装载器对这个未测入口注入显式抛错替身，不能据此声称静态 reader 或整图通过。
 旧四条 fixture、完整类型检查、H1/H2 生产装配和统一验证仍待执行，不以此单例完成整个 H6 验收。

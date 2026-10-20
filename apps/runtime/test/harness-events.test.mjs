@@ -107,9 +107,14 @@ test('suppression and rejected entries persist without blocking later authorized
     sourceTaskId:pending.anchor.sourceTaskId,originalParentTaskId:pending.anchor.parentTaskId};
   const before=f.counts().calls,readback=consumer.readOriginalDelivery(origin);assert.equal(readback.ledgerState,'pending');
   readback.assertCurrent();assert.equal(f.counts().calls,before);
+  await consumer.stop();const stopped=consumer.readOriginalDelivery(origin);
+  assert.equal(stopped.lifecycleRunning,false);stopped.assertCurrent();
+  await consumer.start();assert.throws(()=>stopped.assertCurrent());assert.equal(f.counts().calls,before);
   f.settings.quiet=true;f.settings.revision='3';assert.throws(()=>readback.assertCurrent());
+  assert.equal(consumer.readOriginalDelivery(origin),undefined);
   await consumer.flush();assert.equal(f.counts().calls,before);
   assert.equal([...f.state.values()].filter(v=>v.value?.state==='pending').length,1);
+  f.settings.quiet=false;f.settings.revision='4';assert.equal(consumer.readOriginalDelivery(origin),undefined);
   await consumer.stop();assert.doesNotMatch(JSON.stringify(consumer.inspect()),/PRIVATE/);
 });
 
