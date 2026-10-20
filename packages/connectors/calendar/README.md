@@ -1,5 +1,10 @@
 # @personal-agent/calendar
 
+CalDAV 写入仅支持公历年 `0001..9999` 的整秒 UTC（可带 `.000`）；非零毫秒在任何网络请求前拒绝。创建与更新的 start/end 均须与解析后的规范 UTC 原样往返：不存在的公历日期（含非闰年 2 月 29 日）、`24:00:00` 以及原读回端不支持的 `0000` 年在任何 GET/PUT 前返回 `INVALID_ARGUMENT`，不把非法字面写入 ICS 后再依赖读回发现。保留合法闰日与四位低年份，不用 `Date.UTC` 的 1900 年映射校验。更新未提供的时间边界保留原 VALUE/TZID 属性，全天事件仅修改一个时间边界时在写入前拒绝。
+
+事件写能力使用 Node 宿主。`calendar.create` 的 UID 可省略并由宿主随机生成，因此工具整体不声明幂等；未知结果须先核实原 UID，不能盲目重试。写后核对 UID、标题、起止瞬间、位置及备注；读回不一致不报告成功。ICS 按 75 UTF-8 字节折行。
+当前更新/取消尚未使用 ETag/If-Match，不能保证并发编辑不被覆盖；本片不宣称条件写入或跨客户端原子性，实际部署前仍需单独完成并发写保护和真实账号验收。
+
 <!-- current-design-20261009 -->
 > 当前设计与协作入口（2026-10-17）：[当前详细设计](../../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../../CONTRIBUTING.md) 和 [AGENTS](../../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 <!-- architecture-scope-20261013 -->
@@ -116,6 +121,12 @@ manifest 随**实际 Provider** 声明（不保留把真实提供者标为 fixtu
 - Fake `search` 为客户端标题过滤；真实提供商应实现服务端搜索。
 - `respond` 在 Fake 上同步 `confirmed`；真实提供商可能返回 `pending/unknown`，届时不得当作已完成（ADR-0003）。
 ## 2026-10-12 Foundation 时间边界修复
+
+2026-10-20 写路径补充：ICS 属性名及 BEGIN/END 组件标记按大小写不敏感处理，
+小写/混合大小写 RRULE、RDATE、EXDATE、RECURRENCE-ID 均在 PUT 前拒绝。
+更新原字段时按规范化属性名替换，保留未修改 DATE/TZID 边界及 attendee/alarm 原文，
+不扩展 recurring/multi-event 写入支持。Pinned Node 24.15.0：calendar build/typecheck
+通过；写入及工具文件 16/16，解析器文件 13 pass/2 原真实服务 skip；无真实账号操作。
 
 CalDAV 请求计时器触发时复查实际截止时间，提前触发则等待剩余时间；请求上限与宿主
 deadline 仍取较小值。真实到期保留原 TIMEOUT/EXTERNAL_FAILURE 分类，取消和无旧数据

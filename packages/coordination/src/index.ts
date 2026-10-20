@@ -55,6 +55,8 @@ export interface CoordinationRequest {
   readonly deadline: string;
   readonly signal: AbortSignal;
   readonly continuation?: CoordinationContinuation;
+  /** Original projected receipts, rechecked by the trusted host before every send. */
+  readonly priorContinuations?: readonly CoordinationContinuation[];
   readonly availableTools?: readonly CoordinationAvailableTool[];
   /** Trusted host selection exchange on the same cloud port; never accepts tools or continuation. */
   readonly textOnly?: true;
