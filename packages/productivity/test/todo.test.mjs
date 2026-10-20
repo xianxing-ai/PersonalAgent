@@ -22,6 +22,60 @@ function makeService() {
   return {service, storage};
 }
 
+test('工具创建和修改拒绝非法公历日期，原存储与revision保持不变', async () => {
+  const host = new FakeToolHost(() => NOW), storage = new FakeStorage().namespace('calendar-validation');
+  let counter = 0;
+  const unregister = register(host, {storage, conversationId: 'calendar-validation', now: () => NOW, idFactory: () => `t${++counter}`});
+  const context = {taskId: 'task', runId: 'calendar-validation', signal: new AbortController().signal,
+    deadline: '2026-09-07T01:00:00.000Z', authorizationRef: 'test', scopes: ['todo:read', 'todo:write']};
+  try {
+    const {item} = await host.invoke('todo.create', {title: '保留原条目', remindUtc: '2026-09-08T09:00:00Z'}, context);
+    const before = structuredClone(storage.get('todo:state'));
+    const trigger = buildReminderTrigger(item, 'calendar-validation');
+    for (const date of ['2026-02-30', '2026-02-29', '2026-04-31', '1900-02-29']) {
+      for (const field of ['due', 'remind']) {
+        const inputs = [{[`${field}Utc`]: `${date}T09:00:00Z`},
+          {[`${field}Utc`]: `${date}T09:00:00.12+08:00`},
+          {[`${field}Local`]: `${date} 09:00`, [`${field}TimeZone`]: 'Asia/Shanghai'}];
+        for (const input of inputs) {
+          await assert.rejects(host.invoke('todo.create', {title: '不可创建', ...input}, context), {code: 'INVALID_ARGUMENT'});
+          assert.deepEqual(storage.get('todo:state'), before, 'invalid create cannot persist an item or change the index');
+          await assert.rejects(host.invoke('todo.update', {id: item.id, title: '不可修改', ...input}, context), {code: 'INVALID_ARGUMENT'});
+          assert.deepEqual(storage.get('todo:state'), before, 'invalid update cannot persist title, reminder or revision changes');
+          const {items} = await host.invoke('todo.list', {}, context);
+          assert.deepEqual(buildReminderTrigger(items[0], 'calendar-validation'), trigger, 'the original reminder trigger is unchanged');
+        }
+      }
+    }
+  } finally {unregister();}
+});
+
+test('合法闰日可经Z、数值偏移和本地时间创建与修改', async () => {
+  const host = new FakeToolHost(() => NOW), storage = new FakeStorage().namespace('leap-validation');
+  let counter = 0;
+  const unregister = register(host, {storage, conversationId: 'leap-validation', now: () => NOW, idFactory: () => `t${++counter}`});
+  const context = {taskId: 'task', runId: 'leap-validation', signal: new AbortController().signal,
+    deadline: '2026-09-07T01:00:00.000Z', authorizationRef: 'test', scopes: ['todo:read', 'todo:write']};
+  try {
+    for (const year of ['2028', '2000']) {
+      for (const input of [{remindUtc: `${year}-02-29T09:00:00.12Z`},
+        {remindUtc: `${year}-02-29T17:00:00.12+08:00`},
+        {remindLocal: `${year}-02-29 17:00`, remindTimeZone: 'Asia/Shanghai'}]) {
+        const created = await host.invoke('todo.create', {title: '合法闰日', ...input}, context);
+        const updated = await host.invoke('todo.update', {id: created.item.id, title: '合法修改', ...input}, context);
+        assert.equal(updated.item.reminder.remindAt.utc, `${year}-02-29T09:00:00.${input.remindLocal ? '000' : '120'}Z`);
+        assert.equal(updated.reminderTrigger.runAt, updated.item.reminder.remindAt.utc);
+      }
+    }
+  } finally {unregister();}
+});
+
+test('公开localToUtc拒绝不存在的公历日期，不当作DST跳跃处理', () => {
+  for (const date of ['2026-02-30', '2026-02-29', '2026-04-31', '1900-02-29']) {
+    assert.throws(() => localToUtc(`${date}T09:00:00`, 'Asia/Shanghai'), {code: 'INVALID_ARGUMENT'});
+  }
+});
+
 test('本地时间 → UTC：北京无 DST 偏移正确', () => {
   assert.equal(localToUtc('2026-09-07T09:30:00', 'Asia/Shanghai'), Date.parse('2026-09-07T01:30:00.000Z'));
 });

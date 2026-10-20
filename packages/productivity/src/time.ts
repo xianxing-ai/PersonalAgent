@@ -24,6 +24,17 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new ProtocolError('INVALID_ARGUMENT', message);
 }
 
+/** Date.parse normalizes some impossible dates instead of rejecting them. */
+function assertCalendarDate(value: string, field: string): void {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ]/.exec(value);
+  assert(match, `${field} must contain a valid Gregorian date`);
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  assert(month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1]!,
+    `${field} must contain a valid Gregorian date`);
+}
+
 function validTimeZone(timeZone: string): boolean {
   try {
     new Intl.DateTimeFormat('en-US', {timeZone});
@@ -78,6 +89,7 @@ function formatInZone(instant: number, timeZone: string): string {
  * - 春季跳跃（本地时刻不存在）：向前推过跳跃（Temporal 'compatible' 语义）。
  */
 export function localToUtc(localDateTime: string, timeZone: string): number {
+  assertCalendarDate(localDateTime, 'localDateTime');
   const asIfUtc = Date.parse(`${localDateTime}Z`);
   const offsetHere = zoneOffsetMs(asIfUtc, timeZone);
   const guess = asIfUtc - offsetHere;
@@ -142,6 +154,7 @@ export function resolveWhen(input: WhenInput, field: string): TodoWhen {
   if (hasUtc) {
     const value = input.utc as string;
     assert(UTC_INPUT_PATTERN.test(value), `${field}.utc must be an ISO-8601 instant (UTC Z or numeric offset)`);
+    assertCalendarDate(value, `${field}.utc`);
     const instant = Date.parse(value);
     assert(Number.isFinite(instant), `${field}.utc is not a valid date`);
     if (value.endsWith('Z')) {
