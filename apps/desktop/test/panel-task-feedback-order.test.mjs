@@ -22,7 +22,7 @@ function visit(node){
   ts.forEachChild(node,visit);
 }
 visit(ast);assert.ok(handler,'actual panel submit handler');assert.equal(hostProjection,'syncHostFeedback(data.connectionError||voiceError,{preserveFeedback:preserveFeedback!==undefined})','actual passive snapshot render projects Host feedback');
-function fixture(){
+function fixture({nativeFlush=async()=>{}}={}){
   const documentBefore=globalThis.document,windowBefore=globalThis.window,optionBefore=globalThis.Option;
   const node=()=>({value:'',children:[],setAttribute(){},append(...items){this.children.push(...items);},replaceChildren(){},addEventListener(){}});
   const fields=new Map();globalThis.document={createElement(){const value=node();value.querySelector=selector=>{if(!fields.has(selector))fields.set(selector,node());return fields.get(selector);};return value;}};globalThis.window={addEventListener(){}};globalThis.Option=function(text,value){this.text=text;this.value=value;};
@@ -30,11 +30,16 @@ function fixture(){
   const current={conversationState:{activeId:'desktop-panel',draft:'synthetic draft',sessions:[{id:'desktop-panel',title:'original',archived:false}]}};
   const sessionControls=mountSessionControls(node(),input,async(name)=>{assert.equal(name,'conversation.draft');return {saved:true};},()=>{});sessionControls.update(current);
   globalThis.document=documentBefore;globalThis.window=windowBefore;globalThis.Option=optionBefore;
-  const context=vm.createContext({root:{querySelector:()=>error},input,sendBtn,sessionControls,isStopRequest,activeTasks:()=>[],current,Event,submitGeneration:0,pending:false,draftRevision:0,thread:{scrollTop:0,scrollHeight:100},requestAnimationFrame:callback=>callback(),setSendMode:()=>{},invoke:()=>new Promise((resolve,reject)=>calls.push({resolve,reject}))});
+  const context=vm.createContext({root:{querySelector:()=>error},input,sendBtn,sessionControls,nativeReasoning:{flush:nativeFlush},isStopRequest,activeTasks:()=>[],current,Event,submitGeneration:0,pending:false,draftRevision:0,thread:{scrollTop:0,scrollHeight:100},requestAnimationFrame:callback=>callback(),setSendMode:()=>{},invoke:()=>new Promise((resolve,reject)=>calls.push({resolve,reject}))});
   for(const declaration of dependencies.values())vm.runInContext(`let ${declaration};`,context);
   return {error,input,calls,context,submit:vm.runInContext(`(${handler})`,context),host:(value,preserveFeedback)=>vm.runInContext(`{const data={connectionError:${JSON.stringify(value)}},voiceError='',preserveFeedback=${preserveFeedback};${renderFeedback}}`,context),report:value=>vm.runInContext(`report(${JSON.stringify(value)})`,context)};
 }
 const event={preventDefault(){}};
+test('actual submit waits for native preference acknowledgement and a failed flush never submits',async()=>{
+  let release;const f=fixture({nativeFlush:()=>new Promise(resolve=>release=resolve)}),run=f.submit(event);await tick();assert.equal(f.calls.length,0);assert.equal(f.context.pending,true);
+  release();await tick();assert.equal(f.calls.length,1);f.calls[0].resolve();await run;
+  const failed=fixture({nativeFlush:async()=>{throw Error('native settings unsaved');}});await failed.submit(event);assert.equal(failed.calls.length,0);assert.equal(failed.input.value,'synthetic draft');assert.equal(failed.error.textContent,'native settings unsaved');
+});
 test('failed submit retains draft and operation feedback through ordinary snapshots',async()=>{
   const f=fixture(),run=f.submit(event);await tick();f.calls[0].reject(Error('submit failed'));await run;
   f.host('');f.host('');assert.equal(f.error.textContent,'submit failed');assert.equal(f.input.value,'synthetic draft');assert.equal(f.context.pending,false);

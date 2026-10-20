@@ -4,14 +4,14 @@
 ## 当前需求修订与验收范围（2026-10-18）
 
 [当前详细设计](design/CURRENT_DESIGN_20261015.md)是本轮行为入口，[28项状态](design/WORKFLOW_STATUS_20261015.md)
-区分目录、宿主实现和真实验收；本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 路径；AgentArts 竞赛资格与其他未验证集成仍须核实。2026-10-17 起，四位协作者（zemeng5208、goo122、Potatos498、2511375597-lab）的常规 PR 需一位非作者对当前提交有效批准，或记录 Owner 对具体 PR 的审核例外；最新必需技术 CI、主线同步、无冲突及阻断意见处理仍是合并前提，详见 [CONTRIBUTING](../CONTRIBUTING.md)。后文旧版本编号、当时三人分工及合并文字按原日期保留，不代表本轮实现状态或现行合并规则。
+区分目录、宿主实现和真实验收；Laya 仅属于独立 Local Profile，不属于 Competition 路径，当前仍是实验候选；AgentArts 竞赛资格与其他未验证集成仍须核实。2026-10-17 起，四位协作者（zemeng5208、goo122、Potatos498、2511375597-lab）的常规 PR 需一位非作者对当前提交有效批准，或记录 Owner 对具体 PR 的审核例外；最新必需技术 CI、主线同步、无冲突及阻断意见处理仍是合并前提，详见 [CONTRIBUTING](../CONTRIBUTING.md)。后文旧版本编号、当时三人分工及合并文字按原日期保留，不代表本轮实现状态或现行合并规则。
 
 1. 连接器持续观察带来源/版本的事件，联系原用户引文、目标、责任、记忆与上下文；无订阅不直接丢弃。
 2. 用户可无人值守，原期限/权限不扩张；离线设备明确等待，归来只总结仍有效变化和新增Evidence。
 3. 用户可设置静默、窗口/次数、渠道、安静时段和摘要方式；静默仍工作/摄取/feed，未读与已投递独立。
    同通知轮次原子预占，发送前复检最新策略，unknown不退款重发；没有擅设“每小时两次”等默认额度。
 4. 语音可主动询问并收最终确认；百炼走已有端口/本机加密配置，partial/echo/模型自报不授予权限，SIS平台不可用。
-5. 本机 Laya 仅作为独立 Local Profile 的实验候选；当前 Competition 路径由 AgentArts Agent/Workflow 承担，不调用 Laya，AgentArts 失败不静默回退。若未来独立启用 Local Profile，只有任务资格已验证时才可直接选择 Laya；复杂/未知/重要事项升级 DeepSeek，不能以模型置信证明资格。
+5. Laya 仅能由独立 Local Profile 使用，当前仍是实验候选；Competition 路径由 AgentArts Agent/Workflow 承担，不调用 Laya，AgentArts 失败不静默回退。若未来独立启用 Local Profile，只有任务资格已验证时才可直接选择 Laya；复杂/未知/重要事项升级 DeepSeek，不能以模型置信证明资格。
 6. 高级影子开关进入已有判断，不固定增加模型调用。主任务优先、机会资源/收益决定是否启动；未知升级DeepSeek。
    仅双方案择优任务等双方，其他任务可先交已验证主结果；影子隔离和configuration CAS/readback不绕过Policy。
 

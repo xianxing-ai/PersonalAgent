@@ -1,8 +1,11 @@
 /** Metadata controls and debounced per-conversation drafts; no execution loop. */
-export function mountSessionControls(root,input,invoke,report){
+export function mountSessionControls(root,input,invoke,report,{singleMain=false}={}){
   const box=document.createElement('section');box.className='conversation-sessions';
+  // Keep draft persistence for the small workspace without session-management UI.
+  box.hidden=singleMain;
   box.innerHTML='<label>对话<select data-session-list aria-label="当前对话"></select></label><button type="button" data-session-new>新对话</button><label>名称<input data-session-title maxlength="100" aria-label="对话名称"></label><button type="button" data-session-rename>保存名称</button><button type="button" data-session-archive>归档</button><details><summary>已归档</summary><div data-session-archived></div></details><p class="notice" data-session-status role="status"></p>';
   root.append(box);const select=box.querySelector('[data-session-list]'),title=box.querySelector('[data-session-title]'),status=box.querySelector('[data-session-status]'),archived=box.querySelector('[data-session-archived]');
+  if(singleMain)root.append(status);
   let active,state,busy=false,timer,titleDirty=false,titleRevision=0,signature='',closed=false,composing=false;
   const drafts=new Map(),versions=new Map(),dictations=new Set(),dictationQueues=new Map(),compositionWaiters=[];
   async function saveDraft(id=active){if(!id||!drafts.has(id))return;await invoke('conversation.draft',{conversationId:id,text:drafts.get(id)});}
