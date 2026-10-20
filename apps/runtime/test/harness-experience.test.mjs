@@ -25,7 +25,12 @@ async function fixture(t) {
   const session={version:1,sessionId:'main-session',taskId,workspaceId:'workspace',mode:'main',baselineSnapshotId:'baseline'};
   const recipes=[{recipeId:'unit',packageIds:['pkg'],required:true}];
   const mainInput={version:1,session,initialSnapshot:baseline,recipes};
-  const bindings=createHarnessExperienceBindings(runtime);
+  // Explicit Fake canonical-reader ports; the production producer is owned by MOD31, never this adapter.
+  const canonicalSessions=new Map(),canonicalOrigins=new Map();
+  const bindings=createHarnessExperienceBindings(runtime,{
+    readOriginalSessionForProvenance:({ownerTaskId,actualTaskId,runId})=>ownerTaskId===taskId&&actualTaskId===taskId?structuredClone(canonicalSessions.get(runId)):undefined,
+    readAdoptionOrigin:({ownerTaskId,actualTaskId,runId})=>ownerTaskId===taskId&&actualTaskId===taskId?structuredClone(canonicalOrigins.get(runId)):undefined,
+  });
   const checked={version:1,sessionId:session.sessionId,snapshot,verification:[{version:1,sessionId:session.sessionId,runId:'verification',
     recipeId:'unit',packageIds:['pkg'],inputSnapshotId:snapshot.snapshotId,files:snapshot.files,exitCode:0,status:'VALID',evidenceRefs:['adopt'],diagnostics:[]}]};
   const trialSession={...session,sessionId:'trial-session',mode:'isolated'};
@@ -41,10 +46,11 @@ async function fixture(t) {
   const invocations=new Map();
   for(const [name,result] of Object.entries(values))gateway.register({descriptor:{name,version:'1.0.0',inputSchema:{type:'object'},outputSchema:{},
     sideEffect:'local_write',requiredScopes:['workspace:write'],idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async(_args,context)=>{
-      if(name==='coding.repair.trial')bindings.saveSession(context,taskId,{...mainInput,session:trialSession});
+      if(name==='coding.repair.trial')canonicalSessions.set(context.runId,{...mainInput,session:trialSession});
       if(name==='coding.repair.prepare_adoption') {
-        bindings.saveSelection(context,{ownerTaskId:taskId,trial:{taskId,runId:'trial'},comparison:{taskId,runId:'compare'}});
-        bindings.saveSession(context,taskId,mainInput);
+        canonicalOrigins.set(context.runId,{version:1,ownerTaskId:taskId,candidateId:'candidate',adoption:{taskId,runId:context.runId},
+          trial:{taskId,runId:'trial'},comparison:{taskId,runId:'compare'}});
+        canonicalSessions.set(context.runId,structuredClone(mainInput));
       }
       return structuredClone(result);
     }});
@@ -74,6 +80,7 @@ test('actual Runtime confirmed adoption/publication feeds existing learning and 
   const f=await fixture(t);
   const candidate=f.propose();assert.equal(candidate.validation,'candidate');
   assert.deepEqual(f.bindings.publishedOrigins(f.taskId),[f.origin]);
+  assert.deepEqual(Object.keys(f.bindings).sort(),['publishedOrigins','readInvocation','readMainInput','readOrigin']);
   assert.equal(f.bindings.readMainInput({taskId:f.taskId,runId:'compare'}),undefined,'never guesses the latest main session');
   assert.equal(f.app.readApplicable('experience',f.scope,f.context),null);
   await f.app.validate('experience',1,f.context);
