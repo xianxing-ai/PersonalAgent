@@ -1424,9 +1424,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const task=this.runtime.getTask(request.taskId);
     const scope={taskId:task.taskId,conversationId:task.conversationId ?? '',publicGoal:request.goal,
       deadline:request.deadline,signal:request.signal};
-    let prepared=await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
+    const preparedSource=await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
+    const privateDerived=preparedSource!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
+    let prepared=preparedSource;
     this.assertInputActive(request);
-    if(experienceText&&prepared.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT)prepared+=experienceText;
+    if(!privateDerived&&experienceText&&prepared.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT)prepared+=experienceText;
     else this.experienceSendPolicies.delete(request.taskId);
     if(!nonEmptyText(prepared))throw new ProtocolError('INVALID_ARGUMENT','Empty ephemeral input');
     if(readUserTaskDelegation(this.runtime,task.taskId)
@@ -1455,7 +1457,6 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }).slice(-historyLimit);
     };
     const sourceContext=eligible(messages);
-    const privateDerived=prepared!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
     // Context is data, never instructions or an authorization. Only digests are checkpointed.
     try {
       let compacted:ContextCompactionResult|undefined;
@@ -1499,7 +1500,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const effective=Object.freeze({...request,goal});
       if(teacherScope)this.teacherRequestScopes.set(effective,teacherScope);
       this.ephemeralSends.set(leaseKey,effective);
-      this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:prepared});
+      this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:preparedSource});
       this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:sourceContext.flatMap(message=>message.taskId?[message.taskId]:[]),
         ...(compacted?.state==='compacted'?{assertCompactionCurrent:compacted.assertCurrent}:{})});
       this.assertCompetitionExportAllowed(effective);
