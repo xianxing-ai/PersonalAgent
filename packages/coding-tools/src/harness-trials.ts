@@ -4,7 +4,7 @@ import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {parseCodingRepairInput,parseCodingRepairPatch,parseCodingRepairCheckReadback} from '@personal-agent/contracts/coding-repair';
 import type {CodingRepairInput,CodingRepairPatch,CodingRepairCheckReadback} from '@personal-agent/contracts/coding-repair';
 import {parseHarnessCandidateTrial,parseHarnessCandidateBinding,harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
-import type {HarnessCandidateContext,HarnessCandidateTrial,HarnessCandidateComparison} from '@personal-agent/contracts/harness-candidates';
+import type {HarnessCandidateContext,HarnessCandidateTrial,HarnessCandidateComparison,HarnessTrialRecovery} from '@personal-agent/contracts/harness-candidates';
 import type {IsolatedCodingRepairHost} from './isolated-repair.js';
 import {codingRepairPackageGraphDigest} from './repair-verification.js';
 
@@ -14,7 +14,7 @@ export interface HarnessTrialToolOptions {
   /** Trusted original user-work binding; never taken from model arguments. */
   readBinding:(context:ToolContext,candidateId:string)=>Promise<HarnessCandidateContext>;
   /** Optional proven composition inputs; model claims are not accepted. */
-  readParentArtifactDigests?:(context:ToolContext,candidateId:string)=>Promise<readonly string[]>;
+  readParentArtifactDigests?:(context:ToolContext,candidateId:string,parentTrialRunIds:readonly string[],patches:readonly CodingRepairPatch[])=>Promise<readonly string[]>;
   /** Original Runtime checkpoint ports, bound to task/run/input, not a second task store. */
   readSession:(context:ToolContext)=>Promise<CodingRepairInput|undefined>;
   saveSession:(context:ToolContext,input:CodingRepairInput)=>Promise<void>;
@@ -22,9 +22,9 @@ export interface HarnessTrialToolOptions {
 }
 const scopes=['workspace:read','workspace:write','workspace:apply','workspace:execute'];
 const withoutContent=<T extends {content?:string}>(file:T):Omit<T,'content'>=>{const {content:_content,...metadata}=file;return metadata;};
-const metadata=(readback:CodingRepairCheckReadback,runId:string):CodingRepairCheckReadback=>({
+const metadata=(readback:CodingRepairCheckReadback,runId?:string):CodingRepairCheckReadback=>({
   ...readback,snapshot:{...readback.snapshot,files:readback.snapshot.files.map(withoutContent)},
-  verification:readback.verification.map(receipt=>({...receipt,files:receipt.files.map(withoutContent),evidenceRefs:[runId],
+  verification:readback.verification.map(receipt=>({...receipt,files:receipt.files.map(withoutContent),evidenceRefs:runId?[runId]:receipt.evidenceRefs,
     diagnostics:receipt.diagnostics.map(()=>({source:'command',message:'Original verification returned diagnostics; inspect its trusted local record'}))}))});
 /** One original Gateway invocation, one isolated candidate. No cloud call, scheduling or publish. */
 export function createHarnessCandidateTrialTool(inputOptions:HarnessTrialToolOptions):RegisteredTool {
@@ -33,7 +33,8 @@ export function createHarnessCandidateTrialTool(inputOptions:HarnessTrialToolOpt
   const descriptor:RegisteredTool['descriptor']={name:HARNESS_TRIAL_TOOL,version:'1.0.0',
     inputSchema:{type:'object',additionalProperties:false,required:['candidateId','patches','recipeIds'],properties:{
       candidateId:{type:'string',minLength:1,maxLength:256,pattern:'^[A-Za-z0-9@][A-Za-z0-9_.:/@-]*$'},
-      patches:{type:'array',items:{type:'object'}},recipeIds:{type:'array',minItems:1,uniqueItems:true,items:{type:'string',minLength:1}}}},
+      patches:{type:'array',items:{type:'object'}},recipeIds:{type:'array',minItems:1,uniqueItems:true,items:{type:'string',minLength:1}},
+      parentTrialRunIds:{type:'array',minItems:2,uniqueItems:true,items:{type:'string',minLength:1,maxLength:256}}}},
     outputSchema:{},sideEffect:'local_write',requiredScopes:scopes,idempotencySupport:false,recoverySupport:false,requiresPresence:false};
   function check(context:ToolContext):void {
     if(scopes.some(scope=>!context.scopes.includes(scope)))throw new ProtocolError('SCOPE_DENIED','Trial requires original approved coding scopes');
@@ -42,7 +43,7 @@ export function createHarnessCandidateTrialTool(inputOptions:HarnessTrialToolOpt
   }
   return {descriptor,async execute(value,context):Promise<HarnessCandidateTrial> {
     validateToolValue(descriptor.inputSchema,value);check(context);
-    const input=structuredClone(value) as {candidateId:string;patches:CodingRepairPatch[];recipeIds:string[]};
+    const input=structuredClone(value) as {candidateId:string;patches:CodingRepairPatch[];recipeIds:string[];parentTrialRunIds?:string[]};
     input.patches=input.patches.map(parseCodingRepairPatch);
     if(new Set(input.patches.map(p=>p.path)).size!==input.patches.length)throw new ProtocolError('INVALID_ARGUMENT','Combine exact edits per candidate path');
     const key=JSON.stringify([context.taskId,context.runId]);
@@ -51,8 +52,11 @@ export function createHarnessCandidateTrialTool(inputOptions:HarnessTrialToolOpt
     try {
       if(await options.readSession(context))throw new ProtocolError('RESULT_UNKNOWN','Read back the original trial session; do not replay candidate patches');
       const expected=structuredClone(await options.readBinding(context,input.candidateId));check(context);
-      const parentArtifactDigests=[...await options.readParentArtifactDigests?.(context,input.candidateId)??[]];check(context);
-      if(parentArtifactDigests.length===1)throw new ProtocolError('INVALID_ARGUMENT','A composition requires multiple proven parent artifacts');
+      const parentRuns=input.parentTrialRunIds??[];
+      if(parentRuns.includes(context.runId))throw new ProtocolError('INVALID_ARGUMENT','Candidate cannot depend on its own trial run');
+      if(parentRuns.length&&!options.readParentArtifactDigests)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original parent artifact readback is unavailable');
+      const parentArtifactDigests=parentRuns.length?[...await options.readParentArtifactDigests!(context,input.candidateId,parentRuns,input.patches)]:[];check(context);
+      if(parentArtifactDigests.length!==parentRuns.length)throw new ProtocolError('UNAUTHORIZED','Every composition parent requires original confirmed artifact readback');
       parseHarnessCandidateBinding({...expected.binding,trialTaskId:context.taskId,candidateId:input.candidateId,
         artifactId:'preflight',sessionId:'preflight',artifactDigest:harnessCandidateArtifactDigest(expected.baseline),parentArtifactDigests});
       if(expected.binding.baselineSnapshotId!==expected.baseline.snapshotId
@@ -70,7 +74,7 @@ export function createHarnessCandidateTrialTool(inputOptions:HarnessTrialToolOpt
       await options.saveSession(context,structuredClone(started));check(context);
       const readback=await options.host.check(started.session.sessionId,input.patches,input.recipeIds,context);check(context);
       const current=await options.readBinding(context,input.candidateId);check(context);
-      const parents=[...await options.readParentArtifactDigests?.(context,input.candidateId)??[]];check(context);
+      const parents=parentRuns.length?[...await options.readParentArtifactDigests!(context,input.candidateId,parentRuns,input.patches)]:[];check(context);
       if(JSON.stringify(current)!==JSON.stringify(expected)||JSON.stringify(parents)!==JSON.stringify(parentArtifactDigests))
         throw new ProtocolError('REVISION_CONFLICT','Original trial context changed during verification');
       // These are references to this invocation, accepted only after Runtime confirms its result.
@@ -79,6 +83,36 @@ export function createHarnessCandidateTrialTool(inputOptions:HarnessTrialToolOpt
         trialTaskId:context.taskId,sessionId:started.session.sessionId,artifactDigest:harnessCandidateArtifactDigest(checkReadback.snapshot),parentArtifactDigests},
         session:started.session,checkReadback});
     }finally{active.delete(key);}
+  }};
+}
+
+export const HARNESS_RECONCILE_TRIAL_TOOL='coding.repair.reconcile_trial';
+export interface HarnessTrialRecoveryToolOptions {
+  host:IsolatedCodingRepairHost;
+  /** Runtime verifies original run ownership/lineage before exposing its saved session. */
+  readOriginalSession:(context:ToolContext,trialRunId:string)=>Promise<CodingRepairInput|undefined>;
+  now?:()=>number;
+}
+/** Observes the original run. Clear is stopped journal state, never a new passing trial. */
+export function createHarnessCandidateRecoveryTool(inputOptions:HarnessTrialRecoveryToolOptions):RegisteredTool {
+  const options={...inputOptions},now=options.now??Date.now;
+  const descriptor:RegisteredTool['descriptor']={name:HARNESS_RECONCILE_TRIAL_TOOL,version:'1.0.0',
+    inputSchema:{type:'object',additionalProperties:false,required:['trialRunId'],properties:{trialRunId:{type:'string',minLength:1,maxLength:256}}},
+    outputSchema:{},sideEffect:'read',requiredScopes:['workspace:read'],idempotencySupport:false,recoverySupport:false,requiresPresence:false};
+  const check=(context:ToolContext)=>{
+    if(!context.scopes.includes('workspace:read'))throw new ProtocolError('SCOPE_DENIED','Original trial read scope is missing');
+    if(context.signal.aborted)throw new ProtocolError('CANCELLED','Original trial readback cancelled');
+    if(!Number.isFinite(Date.parse(context.deadline))||now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','Original trial readback expired');
+  };
+  return {descriptor,async execute(value,context):Promise<HarnessTrialRecovery> {
+    validateToolValue(descriptor.inputSchema,value);check(context);
+    const original=await options.readOriginalSession(context,(value as {trialRunId:string}).trialRunId);check(context);
+    if(!original||original.session.taskId!==context.taskId)throw new ProtocolError('UNAUTHORIZED','Readback requires the original actual trial task');
+    const session=parseCodingRepairInput(original).session;
+    const readback=await options.host.reconcile(session.sessionId,context);check(context);
+    const result:HarnessTrialRecovery={state:readback.state,sessionId:session.sessionId};
+    if(options.host.readback)result.checkReadback=metadata(parseCodingRepairCheckReadback(await options.host.readback(session.sessionId,context)));
+    check(context);return result;
   }};
 }
 

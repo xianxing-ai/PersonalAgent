@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
 export {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools} from './isolated-repair.js';
-export {createHarnessCandidateTrialTool,HARNESS_TRIAL_TOOL,createHarnessCandidateAdoptionTool,HARNESS_PREPARE_ADOPTION_TOOL} from './harness-trials.js';
-export type {HarnessTrialToolOptions,HarnessAdoptionToolOptions} from './harness-trials.js';
+export {createHarnessCandidateTrialTool,HARNESS_TRIAL_TOOL,createHarnessCandidateAdoptionTool,HARNESS_PREPARE_ADOPTION_TOOL,
+  createHarnessCandidateRecoveryTool,HARNESS_RECONCILE_TRIAL_TOOL} from './harness-trials.js';
+export type {HarnessTrialToolOptions,HarnessAdoptionToolOptions,HarnessTrialRecoveryToolOptions} from './harness-trials.js';
 export type {IsolatedCodingRepairHost,IsolatedCodingRepairHostOptions} from './isolated-repair.js';
 export {captureCodingRepairSnapshot,affectedCodingRepairPackages,codingRepairVerificationState,codingRepairPackageGraphDigest} from './repair-verification.js';
 export type {CapturedCodingRepairSnapshot} from './repair-verification.js';

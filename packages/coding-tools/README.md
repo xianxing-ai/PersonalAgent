@@ -3,7 +3,7 @@
 ## H3 候选隔离试跑（2026-10-20，接线中）
 
 `createHarnessCandidateTrialTool(options)` 返回普通 `coding.repair.trial@1.0.0` RegisteredTool。
-输入严格为 `{candidateId, patches: CodingRepairPatch[], recipeIds: string[]}`；一次原 ToolGateway
+输入为 `{candidateId, patches: CodingRepairPatch[], recipeIds: string[], parentTrialRunIds?: string[]}`；一次原 ToolGateway
 调用试跑一个候选，原 Policy 须授予 `workspace:read/write/apply/execute` 对应四个 scope。
 工具不产生授权，也不调度其他候选。模型不能指定工作区、命令、owner、配置或来源摘要。
 
@@ -16,8 +16,11 @@
 `readBinding` 返回唯一 `@personal-agent/contracts/harness-candidates` 的
 `HarnessCandidateContext`。共同 owner 为 `binding.taskId`，实际执行者为
 `binding.trialTaskId === session.taskId === context.taskId`；跨 task 合法性由 Runtime 原委派记录验证。
-需要组合时，`readParentArtifactDigests` 只返回实际输入并读回的父产物摘要，组合在新会话重新验证。
-未提供该端口时父列表为空，不接受模型自报父产物。
+需要组合时，模型仅提供两个以上原 `parentTrialRunIds` 引用；
+`readParentArtifactDigests(context,candidateId,parentTrialRunIds,patches)` 只从同 owner、合法执行者的已确认
+原 run 读回真实父产物并核对实际组合输入，拒绝跨 scope、未确认来源和循环，不能把模型摘要当来源。
+每个引用须有独立产物摘要，试跑前后重新核对；组合在新会话完整重新验证，不继承父检查。
+未提供该端口时普通候选父列表为空，组合请求明确返回 unsupported；工具也拒绝引用当前自身 run。
 
 宿主可用 `expectedBaselineSnapshotId` 锁定所有候选的原基线；基线变更会在新会话复制前拒绝。
 每个候选复用 F15 独立文件副本、依赖准备、精确补丁、固定 recipe 和原验证指纹。
@@ -41,6 +44,18 @@ Runtime 工具注册、原 task/run 检查点与比较消费由对应拥有者�
 之后原 `coding.repair.publish` 才能用该新 main session 的验证 run 经 Policy/CAS 交付并读回。
 没有原确认 Evidence、验证失败或用户并发修改时原宿主会拒绝或返回 conflict，保留双方文件。
 `recommendation.publishRequest` 中的隔离 session 只是产物建议引用，不能直接用作交付目标。
+
+`createHarnessCandidateRecoveryTool({host,readOriginalSession,now?})` 提供
+`coding.repair.reconcile_trial@1.0.0`，输入仅 `{trialRunId}`，返回唯一 `HarnessTrialRecovery`。
+Runtime 的可信 `readOriginalSession(context,trialRunId)` 从原 task/run 检查点读回 `CodingRepairInput`；
+必须保持实际 `context.taskId === session.taskId`。owner 核实子任务时，由 Runtime 沿原合法执行者调用，
+不能伪装 owner 身份去改写 child context。工具复用原 `reconcile`，以只读 `host.readback` 返回原
+snapshot/verification 元数据；没有新 patch、命令或验证，不用恢复 run 代替原验证 Evidence。
+`clear` 只表示原 journal 已没有未停操作，旧 UNKNOWN 验证仍为 UNKNOWN，不能当通过或重开终态。
+
+本包独立依赖安装和必要 contracts/models/agents/github/policy/tool-gateway/coding-tools 定向构建已完成，
+Node 24.15.0、TypeScript 编译通过。依用户“先完成全部代码，再统一验证”的最新优先级，
+`test/harness-trials.test.mjs` 的 13 项回归已保存但尚未执行；未声明实际 Runtime、云端或最终采用验收完成。
 
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
