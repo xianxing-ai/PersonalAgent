@@ -24,11 +24,17 @@ Wake 事件核原 workflow schedules、原 signed proposal/参数摘要、原 Sc
 
 ## 原 UNKNOWN 核实与启动恢复
 
-主对话的「核实并结束」仍通过原 surface/任务状态门禁。原编码试验 UNKNOWN 由 `readHarnessCandidateRecoveryAvailable` 解析 canonical `user-work`/合法 plan peer，用户不必猜子任务 ID。实际 action 核原 revision，再调用 `reconcileHarnessCandidateTask`；复用从原 Windows readback 提取的 `withNativeReadbackScope`。这是当前只读观察窗口，随原窗口关闭/用户 signal 中止，不延长旧执行授权、不重跑命令、不把 `clear` 当作试验验证成功。原 UNKNOWN 与待核实状态保留，native 对话框显示实际读回分类。
+主对话的「核实并结束」仍通过原 surface/任务状态门禁。原编码试验 UNKNOWN 由 `readHarnessCandidateRecoveryAvailable` 解析 canonical `user-work`/合法 plan peer，用户不必猜子任务 ID。实际 action 核原 revision，再调用 `reconcileHarnessCandidateTask`；复用从原 Windows readback 提取的 `withNativeReadbackScope`。这是当前只读观察窗口，随原窗口关闭/用户 signal 中止，不延长旧执行授权、不重跑命令、不把 `clear` 当作试验验证成功。原 UNKNOWN 事实不被改写；任务能否终结只由原 Runtime 根据真实读回决定。native 对话框显示实际读回分类与原任务当前状态。
 
 Main 在 register/client/原恢复任务泵之前 await 原 `createRuntimeStartupRecovery(...).recover()`，使用真实 single-instance ownership 与原 transport 的 durable WSS 标识。缺原 factory 或原 resume port 时报告 unavailable，不另建 fallback。事件 root/child 恢复还必须重读原 delivery ledger、原责任/来源/控制与当前 Harness/工作区配置 fence。UNKNOWN 和可能写入任务保持原分类，不能以缺少内存 active 标志推断未发送。
 
 H3 的 workflow identity 使用当前受信钉版 `deploymentVersion`，标签为 `agentarts-deployment:<version>`；拒绝 latest/current/default 别名。Runtime identity 使用公开 `readRuntimeBuildIdentity()` 的实际已加载 dist JS 路径/字节摘要，缺失或运行中变化返回 unavailable。两者不以 Desktop 分发版本或协议号替代；`real_host` 只在实际 Competition 非 Fake/非 Synthetic 组合提供，身份本身不证明真实平台执行。
+
+## 开发经验管理
+
+Main 在原 `workflow-learning.sqlite` 的 `SqliteLearningHost` 创建后调用 `configureHarnessExperience`。Runtime 原 owner/plan、四个原 run、采用/重新验证/发布回执与稳定配置仍由 Runtime 校验；Desktop 仅提供 `readHarnessExperienceCurrentSync()` 的当次完整工作区元数据和真实版本，以及原 native 激活确认。不拼接异步缓存或由 UI 构造 Runtime scope，也不新增经验库。
+
+`createHarnessExperienceAdminHost` 读取公开 `runtimeApplication.harnessExperience`；四个 `harness.experience.*` 动作限定原 admin/mainFrame，列表拒绝多余字段，具体版本/active revision 沿原 host 严格检查。每次变更在独立 native 用户操作 scope 中执行，结束后重新读权威状态。验证通过与启用分别呈现，启用须 native 明确确认。原模型设置 root 为控件分配独立容器；离页 dispose、返回重新挂载并只读刷新、关闭释放。Renderer 只接收版本/验证/启停元数据，不接收原 patch、源正文、工作区路径、凭据或权限。
 
 ## 当前检查
 

@@ -87,6 +87,7 @@ import {createCalendarConfig} from './calendar-config.js';
 import {createModelApiConfig} from './model-api-config.js';
 import {createDesktopHarnessContextHost} from './harness-context-host.js';
 import {createDesktopHarnessEventsHost} from './harness-events-host.js';
+import {createHarnessExperienceAdminHost} from './harness-experience-host.js';
 import {createDeveloperSettingsHost} from './developer-settings-host.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
@@ -263,6 +264,7 @@ let conversationToolAccess, voiceApprovalBridge, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let harnessEventsHost;
 let harnessEventsDisposal,harnessEventsDisposed=false;
+let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
 let p5UnavailableReason = '';
@@ -1283,6 +1285,8 @@ function applyEvent(event) {
   if (event.type === 'approval.requested' && event.payload) approvals.set(event.payload.approvalId, structuredClone(event.payload));
   if (event.type === 'task.cancelled' && event.payload?.taskId) {
     for (const [id, approval] of approvals) if (approval.taskId === event.payload.taskId) approvals.delete(id);
+    // Existing trusted Runtime events wake receipt-only reconciliation; no new poll or resubmit.
+    harnessEventsHost?.flush();
   }
 }
 
@@ -1444,7 +1448,8 @@ function readDesktopModelApiState() {
   const value=modelApiHost?.snapshot();
   if(!value)return undefined;
   let executionAvailable=false;try{executionAvailable=Boolean(readDesktopDeveloperHarnessConfiguration());}catch{}
-  return {...value,developerSettings:developerSettings?.snapshot(),harness:{...value.harness,executionAvailable,
+  return {...value,developerSettings:developerSettings?.snapshot(),harnessExperience:harnessExperienceAdminHost?.snapshot(),
+    harness:{...value.harness,executionAvailable,
     executionReason:executionAvailable?'按当前编程工作区的原许可接入':value.harness?.enabled
       ?'请在电脑操控中选择编程工作区，并启用本会话读取与结果出机许可':'开发任务规划未启用',
     contextAvailable:Boolean(harnessContextHost?.runtimeHooks),contextReason:harnessContextFailure}};
@@ -2130,6 +2135,18 @@ async function initializeRuntime() {
       knowledgeTools.bindApplication(runtimeApplication);
       const {openSqliteLearningHost}=await import('@personal-agent/learning');
       learningStore=openSqliteLearningHost(path.join(app.getPath('userData'),'workflow-learning.sqlite'));
+      runtimeApplication.configureHarnessExperience({namespace,learning:learningStore,
+        readCurrent:()=>codingWorkspace.readHarnessExperienceCurrentSync(),
+        confirmActivation:async(candidate,context)=>{
+          const owner=admin;if(!owner||owner.isDestroyed()||context.signal.aborted||Date.now()>=Date.parse(context.deadline))return false;
+          const answer=await dialog.showMessageBox(owner,{type:'question',title:'启用开发经验',
+            message:`启用开发经验 ${candidate.workflowId} 的版本 ${candidate.revision}？`,
+            detail:'此操作只启用已验证的描述性策略；后续任务仍使用当前工作区、预算与原工具权限。',
+            buttons:['启用此版本','取消'],defaultId:1,cancelId:1,noLink:true});
+          return answer.response===0&&owner===admin&&!owner.isDestroyed()&&!context.signal.aborted&&Date.now()<Date.parse(context.deadline);
+        }});
+      harnessExperienceAdminHost=createHarnessExperienceAdminHost({getApplication:()=>runtimeApplication.harnessExperience,
+        context:()=>{throw Error('开发经验操作需要当前受信观察范围');}});
       learningStore.resumeErasureMaintenance(namespace);
       learningApplication=runtimeModule.createWorkflowLearningApplication({profile:'huawei_ict_agentarts',namespace,
         learning:learningStore,runtime:runtimeApplication.runtime,
@@ -2638,6 +2655,17 @@ async function action(event, name, payload) {
     if(name==='developer.settings.read'&&payload!==undefined)throw Error('开发状态读取不接受参数');
     const result=name==='developer.settings.read'?developerSettings.snapshot()
       :name==='developer.settings.configure'?await developerSettings.configure(payload):await developerSettings.setEnabled(payload);
+    publish();return result;
+  }
+  if(['harness.experience.list','harness.experience.validate','harness.experience.activate','harness.experience.stop'].includes(name)) {
+    if(sender!==admin||!competitionMode||!harnessExperienceAdminHost)throw Error('请从正式管理后台管理开发经验');
+    if(name==='harness.experience.list'){
+      if(payload!==undefined&&(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).length))
+        throw Error('开发经验列表不接受额外参数');
+      return harnessExperienceAdminHost.snapshot();
+    }
+    const result=await withNativeReadbackScope({owner:admin},scope=>createHarnessExperienceAdminHost({
+      getApplication:()=>runtimeApplication.harnessExperience,context:()=>scope}).invoke(name,payload));
     publish();return result;
   }
   if (name === 'notepad.start' || name === 'notepad.cancel') {
@@ -3337,7 +3365,7 @@ async function action(event, name, payload) {
   }
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
     application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
-    reportNative:result=>dialog.showMessageBox(sender,{type:'info',message:'已读取原编码会话，任务仍待核实',
+    reportNative:result=>dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
       detail:(result.readbacks??[]).map(item=>`${item.taskId}：${({clear:'原宿主当前已空闲；这不证明未知试验成功',in_progress:'原宿主仍在执行',unknown:'原宿主状态仍无法确认'})[item.recovery.state]??'状态未知'}；证据 ${item.evidenceRef}`).join('\n')
         +'\n本次只读取原会话，没有重发试验或更改原 UNKNOWN。',buttons:['关闭'],noLink:true})});
   if (name === 'task.cancel') {
