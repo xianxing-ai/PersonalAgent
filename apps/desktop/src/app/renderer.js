@@ -21,6 +21,7 @@ import {mountWindowControls} from '../ui/window-controls.js';
 import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {mountProactiveControls} from './proactive-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
+import {isStopRequest} from '../features/conversation/stop-request.js';
 
 applyPreferences();
 mountDesktopShell();
@@ -87,6 +88,10 @@ else {
   const locateFeedback=new Map();let locateClosed=false;
   const approvalDecisions=new Map();
   const pendingCancelIds=new Set();
+  // Tasks the user explicitly stopped. They stop counting as "busy" the moment the stop is
+  // requested, so the composer is usable again without waiting for the runtime to unwind.
+  const truncatedTaskIds=new Set();
+  const activeTasks=()=>(current?.tasks??[]).filter(task=>!isTerminal(task)&&!truncatedTaskIds.has(task.taskId));
   let approvalExpiryTimer;
   let errorFeedbackRevision=0;
   const setFeedback=value=>{errorFeedbackRevision++;root.querySelector('#error').textContent=value;};
@@ -253,7 +258,7 @@ else {
     catch(error){if(request===panelPreferenceRequests[group]){panelPreferencePending[group]=null;projectPanelPreferences();report(error);panelPreferenceErrors[group]=errorFeedbackRevision;}}
     finally{if(request===panelPreferenceRequests[group]){panelPreferencePending[group]=null;syncPanelPreferenceBusy();}}
   };
-  const setSendMode=hasText=>{sendBtn.dataset.mode=hasText?'send':'live';sendBtn.title=hasText?'发送':current?.live?.active?'关闭 Live 实时语音':'开启 Live 实时语音';sendBtn.setAttribute('aria-label',sendBtn.title);sendBtn.setAttribute('aria-pressed',String(!hasText&&Boolean(current?.live?.active)));sendBtn.disabled=hasText&&(pending || current?.surfaceBusy===true || Boolean(current?.tasks.some(task=>!isTerminal(task))));};
+  const setSendMode=hasText=>{sendBtn.dataset.mode=hasText?'send':'live';sendBtn.title=hasText?'发送':current?.live?.active?'关闭 Live 实时语音':'开启 Live 实时语音';sendBtn.setAttribute('aria-label',sendBtn.title);sendBtn.setAttribute('aria-pressed',String(!hasText&&Boolean(current?.live?.active)));sendBtn.disabled=hasText&&(pending||activeTasks().length>0);};
   root.querySelector('#admin').onclick=()=>invoke('admin.open').catch(report);
   root.querySelector('#close').onclick=()=>invoke('panel.hide').catch(report);
   modelBtn.onclick=e=>{e.stopPropagation();const open=modelMenu.hidden;closeModel();closeBell();if(open){modelMenu.hidden=false;modelBtn.setAttribute('aria-expanded','true');}};
@@ -277,10 +282,39 @@ else {
     void liveControls.toggle();
   }else if(!pending)form.requestSubmit();});
   document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!modelMenu.hidden){const restore=modelMenu.contains(document.activeElement);closeModel();if(restore)modelBtn.focus({preventScroll:true});return;}if(!bellMenu.hidden){closeBell();return;}invoke('panel.hide').catch(report);});
-  form.onsubmit=async e=>{e.preventDefault();if(pending||sendBtn.disabled||!input.value.trim())return;const draftToken=sessionControls.capture(),submittedText=input.value,submittedGeneration=++submitGeneration,submittedConversation=current?.conversationState?.activeId,submittedRevision=draftRevision,feedbackRevision=errorFeedbackRevision;pending=true;setSendMode(true);try{await sessionControls.flush(draftToken);await invoke('task.submit',{text:submittedText,conversationId:submittedConversation});await sessionControls.submitted(draftToken);if(draftRevision===submittedRevision&&current?.conversationState?.activeId===submittedConversation&&input.value===submittedText){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));}requestAnimationFrame(()=>{thread.scrollTop=thread.scrollHeight;});if(submittedGeneration===submitGeneration&&feedbackRevision===errorFeedbackRevision){setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}}catch(err){if(submittedGeneration===submitGeneration)report(err);}finally{if(submittedGeneration===submitGeneration){pending=false;setSendMode(Boolean(input.value.trim()));}}};
+  form.onsubmit=async e=>{
+    e.preventDefault();if(pending||sendBtn.disabled||!input.value.trim())return;
+    // A bare stop instruction targets the running task, not the model.
+    if(isStopRequest(input.value)){
+      const running=activeTasks();
+      if(!running.length){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));setFeedback('当前没有正在执行的任务。');return;}
+      pending=true;
+      for(const task of running){truncatedTaskIds.add(task.taskId);pendingCancelIds.add(task.taskId);}
+      setSendMode(true);
+      try{
+        await Promise.all(running.map(task=>invoke('task.cancel',task.taskId).catch(error=>report(error))));
+        input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));
+        setFeedback(`已请求停止 ${running.length} 个正在执行的任务；是否停止以任务状态为准。`);
+      }finally{pending=false;setSendMode(Boolean(input.value.trim()));}
+      return;
+    }
+    const draftToken=sessionControls.capture(),submittedText=input.value,submittedGeneration=++submitGeneration,submittedConversation=current?.conversationState?.activeId,submittedRevision=draftRevision,feedbackRevision=errorFeedbackRevision;pending=true;setSendMode(true);try{await sessionControls.flush(draftToken);await invoke('task.submit',{text:submittedText,conversationId:submittedConversation});await sessionControls.submitted(draftToken);if(draftRevision===submittedRevision&&current?.conversationState?.activeId===submittedConversation&&input.value===submittedText){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));}requestAnimationFrame(()=>{thread.scrollTop=thread.scrollHeight;});if(submittedGeneration===submitGeneration&&feedbackRevision===errorFeedbackRevision){setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}}catch(err){if(submittedGeneration===submitGeneration)report(err);}finally{if(submittedGeneration===submitGeneration){pending=false;setSendMode(Boolean(input.value.trim()));}}};
   const stopButton=root.querySelector('#stop');
-  // Stopping playback never sends task.cancel to Runtime.
-  stopButton.onclick=async()=>{window.speechSynthesis?.cancel();try{const result=await invoke('voice.stop');if(!result?.stopped)report(result?.reason??'语音供应商尚未连接');}catch(err){report(err);}};
+  // With a running task this control truncates it locally first, then asks Runtime to stop;
+  // with nothing running it only stops playback.
+  stopButton.onclick=async()=>{
+    window.speechSynthesis?.cancel();
+    const running=activeTasks();
+    if(running.length){
+      for(const task of running){truncatedTaskIds.add(task.taskId);pendingCancelIds.add(task.taskId);}
+      setSendMode(Boolean(input.value.trim()));syncCancelButtons();
+      try{await Promise.all(running.map(task=>invoke('task.cancel',task.taskId)));setFeedback(`已请求停止 ${running.length} 个正在执行的任务；是否停止以任务状态为准。`);}
+      catch(err){report(err);}
+      finally{for(const task of running)pendingCancelIds.delete(task.taskId);syncCancelButtons();}
+      return;
+    }
+    try{const result=await invoke('voice.stop');if(!result?.stopped)report(result?.reason??'语音供应商尚未连接');}catch(err){report(err);}
+  };
   const talkButton=root.querySelector('#talk');
   let talkFeedbackRevision=0;
   talkButton.onclick=async()=>{
@@ -293,7 +327,7 @@ else {
     catch(err){if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)report(err);}
     finally{if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)talkButton.disabled=Boolean(current?.live?.active)||wakeBlocksCapture(current)||!current?.voice?.experimental||!['unavailable','error','listening','awaiting_speech'].includes(current?.voice?.status);}
   };
-  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on)likedTasks.add(b.dataset.id);else likedTasks.delete(b.dataset.id);b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
+  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on)likedTasks.add(b.dataset.id);else likedTasks.delete(b.dataset.id);b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);if(b.dataset.action==='task.cancel'){truncatedTaskIds.add(id);setSendMode(Boolean(input.value.trim()));}b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
   const syncApprovalButtons=()=>{
     for(const [id,phase] of approvalDecisions)if(phase==='submitted' && !(current?.approvals??[]).some(item=>
       item.approvalId===id && item.state==='pending' && current?.tasks.some(task=>task.taskId===item.taskId && task.state==='waiting_approval')))approvalDecisions.delete(id);
@@ -383,7 +417,9 @@ else {
     talkButton.setAttribute('aria-label',talkButton.title);
     const micStatus=voiceError || (voiceState==='listening'?'麦克风：正在采集，点击结束':voiceState==='acquiring'?'麦克风：等待设备就绪':voiceState==='recognizing'?'语音：正在转成文字':'');
     root.querySelector('.mic-state').textContent=micStatus;
-    stopButton.disabled=voiceState!=='speaking'&&!data.live?.active;stopButton.title=data.live?.active?'打断回答（保持 Live）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';
+    for(const id of [...truncatedTaskIds])if(data.tasks.some(item=>item.taskId===id&&isTerminal(item)))truncatedTaskIds.delete(id);
+    const hasActiveTask=activeTasks().length>0;
+    stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持 Live）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
     const emptyThread=!(data.tasks.length>0||Boolean(data.messages?.length));
     root.querySelector('.bubble').hidden=!emptyThread;quickStart.hidden=!emptyThread;
     const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label])]),data.messages,data.approvals]);

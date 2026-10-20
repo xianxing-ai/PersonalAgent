@@ -47,3 +47,14 @@ test('all-conversations window pages and opens validated identities but cannot s
   await assert.rejects(handleSubagentListAction({...ports,name:'subagentConversations.close',payload:{}}));
   assert.equal(calls.length,2);
 });
+
+test('all-conversations window can collapse every child without payload or rebinding',async()=>{
+  const f=fixture(),calls=[];
+  const ports={event:f.event,window:f.record.window,list:()=>({items:[]}),open:()=>({opened:true}),
+    collapse:()=>{calls.push('collapse');return {closed:2};}};
+  assert.deepEqual(await handleSubagentListAction({...ports,name:'subagentConversations.collapseAll'}),{closed:2});
+  assert.deepEqual(calls,['collapse']);
+  await assert.rejects(handleSubagentListAction({...ports,name:'subagentConversations.collapseAll',payload:{}}));
+  await assert.rejects(handleSubagentListAction({...ports,name:'subagentConversations.collapseAll',event:{sender:{},senderFrame:f.event.senderFrame}}));
+  assert.deepEqual(calls,['collapse'],'rejected senders and payloads never reach the collapse port');
+});
