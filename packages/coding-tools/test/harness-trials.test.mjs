@@ -128,6 +128,28 @@ test('composition accepts only trusted original run references and performs a ne
   assert.equal(f.commandRoots.length,3);
 });
 
+test('native original-session recovery needs no new ToolContext/run and a late revision fence preserves unknown state',async t=>{
+  let commands=0,revision=7,invalidate=false,stopState='running';
+  const f=await trialFixture(t,{createCommandTool:()=>({descriptor:{name:'workspace.run_allowed_command',version:'1.0.0',inputSchema:{}},
+    async execute(){commands++;throw Error('Explicit Fake unknown process outcome');}}),
+    readCommandStopState:async()=>{if(invalidate)revision++;return stopState;}});
+  const original=context('child-a');await assert.rejects(f.invoke(f.input('candidate-a'),original),{code:'RESULT_UNKNOWN'});
+  const session=[...f.stored.values()][0],request={session,trialRunId:original.runId,expectedRevision:7,
+    deadline:original.deadline,signal:original.signal,assertCurrent(){if(revision!==7){const error=Error('revision changed');error.code='REVISION_CONFLICT';throw error;}}};
+  const running=await f.host.reconcileOriginalSession(request);
+  assert.equal(running.state,'in_progress');assert.equal(running.checkReadback.verification[0].status,'UNKNOWN');
+  stopState='stopped';invalidate=true;
+  await assert.rejects(f.host.reconcileOriginalSession(request),{code:'REVISION_CONFLICT'});
+  assert.equal(JSON.parse(await readFile(path.join(f.sessions,session.session.sessionId,'journal.json'),'utf8')).unknown.kind,'command');
+  invalidate=false;const currentRevision=revision;
+  const stopped=await f.host.reconcileOriginalSession({...request,expectedRevision:currentRevision,assertCurrent(){assert.equal(revision,currentRevision);}});
+  assert.equal(stopped.state,'clear');assert.equal(stopped.checkReadback.verification[0].status,'UNKNOWN');
+  assert.deepEqual(stopped.checkReadback.verification[0].evidenceRefs,[original.runId]);
+  assert.equal(commands,1);assert.equal(f.stored.size,1);
+  await assert.rejects(f.host.reconcileOriginalSession({...request,assertCurrent(){},trialRunId:'other-run',
+    session:{...session,session:{...session.session,taskId:'forged-task'}}}),{code:'UNAUTHORIZED'});
+});
+
 test('cancellation and expiration stop a new trial before isolation or command execution',async t=>{
   const f=await trialFixture(t),controller=new AbortController();controller.abort();
   await assert.rejects(f.tool.execute(f.input('candidate-a'),context('child-a',{signal:controller.signal})),{code:'CANCELLED'});

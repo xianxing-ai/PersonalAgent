@@ -266,7 +266,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     return repairHostPromise;
   };
   // Stable Main-only proxy. Every call keeps the original consent, task and revocation guards.
-  const harnessRepairHost=Object.freeze(Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
+  const harnessRepairHost=Object.freeze({...Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
     .map(name=>[name,async(...args)=>{
       const context={...args.at(-1)},parameters=structuredClone(args.slice(0,-1)),lease=generation,currentApplication=application;
       assertHarnessWorkspace(context);
@@ -280,7 +280,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
         return result;
       } finally {inflight.delete(controller);}
-    }])));
+    }])),reconcileOriginalSession:input=>reconcileHarnessOriginalSession(input)});
   if(boundRoot && boundRepairPowerShell && typeof coding.createIsolatedCodingRepairTools==='function') {
     const repairTools=coding.createIsolatedCodingRepairTools(harnessRepairHost);
     implementations.push(...repairTools);
@@ -605,12 +605,30 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       assertCurrent:scope=>{if(!available(scope))throw new ProtocolError('UNAUTHORIZED','原开发工作区许可或配置已变化');},...(command?{command}:{})};
   };
   function assertHarnessWorkspace(context) {
-    if(!context?.signal||context.signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
-    if(!Number.isFinite(Date.parse(context.deadline))||Date.now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','原隔离编码操作已过期');
-    if(!application||!readWorkspaceBinding()||!bound(context.taskId)||consent?.cloudExportAllowed!==true
+    assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal);
+  }
+  function assertHarnessWorkspaceBinding(taskId,deadline,signal) {
+    if(!signal||signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
+    if(!Number.isFinite(Date.parse(deadline))||Date.now()>=Date.parse(deadline))throw new ProtocolError('TIMEOUT','原隔离编码操作已过期');
+    if(!application||!readWorkspaceBinding()||!bound(taskId)||consent?.cloudExportAllowed!==true
       ||consent.writeAllowed!==true||consent.commandAllowed!==true||!boundRepairPowerShell
       ||!boundCheckFile&&!boundNpmCli||boundNpmCli&&(consent.projectCodeAllowed!==true||!projectIdentityCurrent()))
       throw new ProtocolError('UNAUTHORIZED','原隔离工作区许可或命令绑定已变化');
+  }
+  async function reconcileHarnessOriginalSession(input) {
+    const {trialRunId,expectedRevision,deadline,signal,assertCurrent}=input;
+    const session=structuredClone(input.session),taskId=session?.session?.taskId,lease=generation,currentApplication=application;
+    if(typeof assertCurrent!=='function')throw new ProtocolError('UNAUTHORIZED','缺少原 Runtime 恢复权限检查');
+    const controller=new AbortController(),combined=AbortSignal.any([signal,controller.signal]);
+    const check=()=>{assertCurrent();assertHarnessWorkspaceBinding(taskId,deadline,combined);
+      if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原恢复工作区绑定已变化');};
+    check();inflight.add(controller);
+    try {
+      const host=await getRepairHost();check();
+      if(typeof host.reconcileOriginalSession!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','原会话原生核实尚未接入');
+      const result=await host.reconcileOriginalSession({session,trialRunId,expectedRevision,deadline,signal:combined,assertCurrent:check});
+      check();return result;
+    }finally{inflight.delete(controller);}
   }
   const readHarnessCandidateContext=async(context,scope)=>{
     try {
@@ -639,7 +657,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       return {binding,baseline,recipes,selectionPolicy:'unique_verified'};
     }catch{return undefined;}
   };
-  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,
+  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,reconcileHarnessOriginalSession,
     readWorkspaceExportConfigurationRef,readWorkspaceExportPreflightCandidate,
     readWorkspaceExportCandidate,readConfirmedWorkspaceExport,
     get patchReconciliation() { return applyHost ? patchReconciliation : undefined; },

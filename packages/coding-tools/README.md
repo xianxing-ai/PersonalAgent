@@ -66,6 +66,16 @@ Desktop 原 `WorkspaceConfigHost` 现公开稳定 `harnessRepairHost` deferred �
 Runtime 组合入口使用 `{host: workspace.harnessRepairHost,readContext: workspace.readHarnessCandidateContext}`，
 具体 main.js 注入由其唯一写入者完成；本包不覆盖 main/settings/停止按钮改动。
 
+等待核实的任务不能再执行模型工具，因此原生 `task.reconcile` 另使用
+`IsolatedCodingRepairHost.reconcileOriginalSession(input)`，Workspace 对外为
+`reconcileHarnessOriginalSession(input)`（也挂在 `harnessRepairHost`）。输入是
+`{session: CodingRepairInput,trialRunId,expectedRevision,deadline,signal,assertCurrent()}`，
+只由 Runtime 从原记录/会话/用户权限构造。该方法按原实际 task/session 精确读 journal，
+不伪造 ToolContext、不创建 Gateway run、不执行 patch/check/command，也不改原执行或 Evidence 为 confirmed。
+所有异步读回和 journal 保存前后执行 revision/权限 fence；补丁 marker 保留供原结果核实，
+`clear` 仅表示 journal 的操作已停，不代表 UNKNOWN 验证通过。Runtime 原生入口再沿原 UI 解释结果。
+此次仅该 native revision/停止读回关键单例 1/1 通过，余下行为回归仍后置。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
