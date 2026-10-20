@@ -137,12 +137,21 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       implementations.push(coding.createWorkspaceReadTool(options), coding.createWorkspaceListTool({rootPath:boundRoot}),
         coding.createWorkspacePatchPreviewTool(options),coding.createWorkspacePatchStageTool(options));
       const discovery={excludedDirectories:[boundRoot,recoveryPath(userData,boundRoot)]};
+      let helper;
+      if(jobHelperExecutable) {
+        try {
+          helper=outsideFile(jobHelperExecutable,boundRoot,'项目命令');
+          if(path.basename(helper).toLowerCase()!=='windowsjobprocesshost.exe') throw Error();
+          boundProjectHelper=helper;
+        } catch {projectFailure='项目命令所需的本机组件不可用';}
+      }
       const pwsh=findWindowsExecutable('pwsh.exe',discovery);
       if (pwsh) {
         boundRepairPowerShell=pwsh;
         try {
           applyHost=createDesktopCodingToolHost({workspaceRoot:boundRoot,authorizedWorkspaceRoot:boundRoot,
             recoveryRootPath:recoveryDirectory(userData,boundRoot,pwsh),powerShellPath:pwsh,
+            ...(helper===undefined?{}:{processIdentityHelperPath:helper}),
             ...(patchHelperScriptPath===undefined?{}:{helperScriptPath:patchHelperScriptPath}),
             createWorkspacePatchApplyTool:coding.createWorkspacePatchApplyTool,
             reconcileWorkspacePatchApply:coding.reconcileWorkspacePatchApply});
@@ -157,14 +166,6 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         implementations.push({descriptor:{...command.descriptor,name:'workspace.git_diff_check',
           inputSchema:{type:'object',properties:{},additionalProperties:false}},
           execute:(_input,context) => command.execute({recipeId:'git-diff-check'},context)});
-      }
-      let helper;
-      if(jobHelperExecutable) {
-        try {
-          helper=outsideFile(jobHelperExecutable,boundRoot,'项目命令');
-          if(path.basename(helper).toLowerCase()!=='windowsjobprocesshost.exe') throw Error();
-          boundProjectHelper=helper;
-        } catch {projectFailure='项目命令所需的本机组件不可用';}
       }
       const projectRequested=Boolean(helper && savedNpmCli);
       if (savedNode && (savedCheckFile || projectRequested) && typeof createCommandRecipeTool==='function') {
@@ -235,6 +236,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(!repairHostPromise)repairHostPromise=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
       sessionRoot:path.join(userData,'coding-isolation',createHash('sha256').update(boundRoot).digest('hex')),
       workspaceId:createHash('sha256').update(boundRoot).digest('hex'),patch:{powerShellPath:boundRepairPowerShell,
+         ...(boundProjectHelper===undefined?{}:{processIdentityHelperPath:boundProjectHelper}),
         ...(patchHelperScriptPath===undefined?{}:{helperScriptPath:patchHelperScriptPath})},
       recipes:[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
         ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])],
