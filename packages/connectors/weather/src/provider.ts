@@ -41,6 +41,31 @@ export interface ForecastRequest {
   locationQuery?: string;
 }
 
+/**
+ * Present conditions at the provider's own observation instant. Optional because a provider may
+ * only publish a daily aggregate; when present it lets a caller answer "is it a good time to go
+ * out" instead of only quoting a daily range.
+ */
+export interface ForecastCurrent {
+  /** ISO instant the provider reports for these values. */
+  observedAt: string;
+  temperature: number;
+  apparentTemperature: number | null;
+  relativeHumidity: number | null;
+  windSpeed: number | null;
+  windDirection: number | null;
+  weatherCode: number | null;
+}
+
+/** One local hour of the requested day, in the provider's order. */
+export interface ForecastHourlyPoint {
+  /** Local time as `YYYY-MM-DDTHH:mm` in the resolved place's timezone. */
+  time: string;
+  temperature: number;
+  precipitationProbability: number | null;
+  weatherCode: number | null;
+}
+
 export interface ForecastFetch {
   summary: string;
   temperatureMin: number;
@@ -50,6 +75,8 @@ export interface ForecastFetch {
   publishedTimeKind: PublishedTimeKind;
   coverage?: {start: string; end: string};
   resolved?: ResolvedPlace;
+  current?: ForecastCurrent;
+  hourly?: ForecastHourlyPoint[];
 }
 
 export interface WeatherProvider {

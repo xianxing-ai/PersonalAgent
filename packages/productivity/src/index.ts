@@ -5,7 +5,7 @@ import type { TodoCreateInput, TodoUpdateInput } from './service.js';
 import { buildReminderTrigger } from './triggers.js';
 import type { ReminderTrigger } from './triggers.js';
 import type { TodoItem, TodoStatus } from './item.js';
-import { resolveWhen } from './time.js';
+import { resolveWhen, toIsoUtc } from './time.js';
 import type { WhenInput } from './time.js';
 
 export { TodoService } from './service.js';
@@ -76,7 +76,6 @@ const reminderTriggerSchema: object = {
 };
 
 
-const toIsoUtc = (instant: number): string => `${new Date(instant).toISOString().slice(0, 19)}.000Z`;
 
 const whenInputProperties: Record<string, object> = {
   utc: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$', description: 'UTC 瞬间（ISO-8601，Z 或数值偏移结尾；偏移会被规范化存储）。'},

@@ -127,8 +127,8 @@ function findTransition(timeZone: string, low: number, high: number): number {
   return high;
 }
 
-function toIsoUtc(instant: number): string {
-  return `${new Date(instant).toISOString().slice(0, 19)}.000Z`;
+export function toIsoUtc(instant: number): string {
+  return new Date(instant).toISOString();
 }
 
 /** 解析时间输入为 TodoWhen。校验失败抛 INVALID_ARGUMENT。 */
@@ -144,17 +144,21 @@ export function resolveWhen(input: WhenInput, field: string): TodoWhen {
     assert(UTC_INPUT_PATTERN.test(value), `${field}.utc must be an ISO-8601 instant (UTC Z or numeric offset)`);
     const instant = Date.parse(value);
     assert(Number.isFinite(instant), `${field}.utc is not a valid date`);
-    if (UTC_PATTERN.test(value)) {
-      return {utc: value, timeZone: 'UTC', localDateTime: value.slice(0, 19)};
+    if (value.endsWith('Z')) {
+      return {utc: toIsoUtc(instant), timeZone: 'UTC', localDateTime: value.slice(0, 19)};
     }
     // 桥接：数值偏移（如 +08:00）规范化为规范 UTC 存储。整小时偏移保留为固定偏移
     // IANA 区（Etc/GMT 符号与 POSIX 相反），本地表示按该偏移渲染；半时区偏移退回 UTC 表示。
     const offsetMatch = /([+-])(\d{2}):(\d{2})$/.exec(value);
+    assert(offsetMatch, `${field}.utc must have a valid numeric offset`);
+    const hours = Number(offsetMatch[2]), minutes = Number(offsetMatch[3]);
+    assert(minutes < 60 && hours <= 14 && (hours < 14 || minutes === 0), `${field}.utc offset must be within ±14:00`);
     const sign = offsetMatch![1] === '-' ? -1 : 1;
     const offsetMinutes = sign * (Number(offsetMatch![2]) * 60 + Number(offsetMatch![3]));
-    const zone = offsetMinutes % 60 === 0
+    const fixedZone = offsetMinutes % 60 === 0
       ? `Etc/GMT${offsetMinutes <= 0 ? '+' : '-'}${Math.abs(offsetMinutes / 60)}`
       : 'UTC';
+    const zone = validTimeZone(fixedZone) ? fixedZone : 'UTC';
     return {utc: toIsoUtc(instant), timeZone: zone, localDateTime: formatInZone(instant, zone)};
   }
   const localRaw = input.localDateTime as string;

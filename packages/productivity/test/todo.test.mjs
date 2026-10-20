@@ -278,7 +278,7 @@ test('输入桥接：数值偏移 UTC、缺秒与空格分隔的本地时间全�
     assert.equal(loose.item.reminder.remindAt.localDateTime, '2026-09-07T09:30:00');
     const offsetDue = await host.invoke('todo.create', {title: '偏移到期',
       dueUtc: '2026-09-08T23:59:59.500+09:30'}, ctx());
-    assert.equal(offsetDue.item.due.utc, '2026-09-08T14:29:59.000Z');
+    assert.equal(offsetDue.item.due.utc, '2026-09-08T14:29:59.500Z');
   } finally { unregister(); }
 });
 
@@ -300,5 +300,26 @@ test('remindInMinutes：执行期解析为绝对时刻，与绝对输入互斥�
       {code: 'INVALID_ARGUMENT'});
     await assert.rejects(host.invoke('todo.create', {title: '越界', remindInMinutes: 0}, ctx()), {code: 'INVALID_ARGUMENT'});
     await assert.rejects(host.invoke('todo.create', {title: '越界上限', remindInMinutes: 525601}, ctx()), {code: 'INVALID_ARGUMENT'});
+  } finally { unregister(); }
+});
+
+test('time bridges preserve fractional seconds and safely handle extreme fixed offsets through tools', async () => {
+  const host = new FakeToolHost(() => NOW);
+  const scope = () => ({deadline: new Date(NOW + 60_000).toISOString(), signal: new AbortController().signal,
+    scopes: ['todo:write'], authorizationRef: 'test', runId: 'time-boundaries'});
+  const unregister = register(host, {storage: new FakeStorage().namespace('time-boundaries'), conversationId: 'time-boundaries', now: () => NOW});
+  try {
+    const created = await host.invoke('todo.create', {title: 'short fraction', remindUtc: '2026-09-07T00:05:00.1Z'}, scope());
+    assert.equal(created.item.reminder.remindAt.utc, '2026-09-07T00:05:00.100Z');
+    const updated = await host.invoke('todo.update', {id: created.item.id, remindUtc: '2026-09-07T00:05:00.12Z'}, scope());
+    assert.equal(updated.item.reminder.remindAt.utc, '2026-09-07T00:05:00.120Z');
+    for (const offset of ['-13:00', '-14:00', '+14:00', '+05:30']) {
+      const input = `2026-09-07T12:30:00.500${offset}`;
+      const result = await host.invoke('todo.create', {title: offset, dueUtc: input}, scope());
+      assert.equal(result.item.due.utc, new Date(input).toISOString());
+      assert.doesNotThrow(() => new Intl.DateTimeFormat('en-US', {timeZone: result.item.due.timeZone}));
+    }
+    for (const offset of ['+15:00', '-15:00', '+14:01', '-14:30', '+08:60'])
+      await assert.rejects(host.invoke('todo.create', {title: offset, remindUtc: `2026-09-07T12:30:00${offset}`}, scope()), {code: 'INVALID_ARGUMENT'});
   } finally { unregister(); }
 });

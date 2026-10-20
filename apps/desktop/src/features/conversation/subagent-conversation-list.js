@@ -11,8 +11,9 @@ export function mountSubagentConversationList(root, invoke) {
   const header = node('header', '', 'subagent-history-header');
   const title = node('h1', '全部子智能体对话');
   const refreshButton = action('刷新', () => refresh());
+  const collapseButton = action('收起全部子对话', () => collapseAll());
   const closeButton = action('关闭', close);
-  header.append(title, refreshButton, closeButton);
+  header.append(title, collapseButton, refreshButton, closeButton);
   const searchLabel = node('label', '搜索已加载记录', 'subagent-history-search');
   const search = node('input'); search.type = 'search';
   search.placeholder = '角色、任务目标或 ID（仅搜索已加载记录）';
@@ -40,6 +41,7 @@ export function mountSubagentConversationList(root, invoke) {
   };
   function syncBusy() {
     refreshButton.disabled = closing || closed || pending?.kind === 'refresh';
+    collapseButton.disabled = closing || closed;
     closeButton.disabled = closing || closed;
     more.disabled = closing || closed || Boolean(pending);
     more.hidden = !nextCursor;
@@ -121,6 +123,16 @@ export function mountSubagentConversationList(root, invoke) {
       if (opening.get(key) === version) opening.delete(key);
       if (!closed && !closing) render();
     }
+  }
+  async function collapseAll() {
+    if (closed || closing) return;
+    closing = true; render();
+    try {
+      const result = await invoke('subagentConversations.collapseAll');
+      const count = Number(result?.closed ?? 0);
+      feedback(count > 0 ? `已收起 ${count} 个子对话窗口。` : '当前没有打开的子对话窗口。');
+    } catch { feedback('无法收起子对话窗口，请重试。', true); }
+    finally { closing = false; if (!closed) render(); }
   }
   async function close() {
     if (closed || closing) return;
