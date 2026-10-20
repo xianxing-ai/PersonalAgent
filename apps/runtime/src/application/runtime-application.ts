@@ -301,6 +301,12 @@ export interface ThinkingState extends ThinkingConfig {
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
   /** Competition user submissions must execute in a durable child; the root only dispatches and summarizes. */
   delegateUserTasks?: true;
+  /**
+   * Trusted host router for the direct-answer exception (#430): returning true keeps this goal on
+   * the root task so a single read-only connector query is answered without a delegated child.
+   * It never widens Policy or tool scope; everything it declines keeps the mandatory delegation.
+   */
+  directAnswerEligible?: (goal: string) => boolean;
   /** Registers only the scoped host adapters; no source, model or device is enabled by this flag. */
   proactiveWorkflows?: true;
   proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
@@ -380,6 +386,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   readonly profile: 'local' | 'huawei_ict_agentarts';
   private readonly coordination: CoordinationPort | undefined;
   private readonly delegateUserTasks: boolean;
+  private readonly directAnswerEligible: ((goal: string) => boolean) | undefined;
   private readonly coordinationBinding: string;
   private readonly assertCoordinationBinding?: () => void;
   private readonly codingRepair?:RuntimeCodingRepairOptions;
@@ -424,6 +431,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Required user delegation needs Competition Profile');
     }
     this.delegateUserTasks = options.delegateUserTasks === true;
+    if (options.directAnswerEligible !== undefined
+      && (typeof options.directAnswerEligible !== 'function' || !this.delegateUserTasks)) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Direct-answer routing needs required user delegation');
+    }
+    this.directAnswerEligible = options.directAnswerEligible;
     this.storagePath = resolve(options.path);
     this.profile = options.profile ?? 'local';
     if (options.competitionMaxSteps !== undefined && (this.profile !== 'huawei_ict_agentarts'
@@ -3159,7 +3171,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId, 'task-thinking', {depth:config.depth,fast:config.fast,maxSteps});
       if (preference?.modelId) this.runtime.saveCheckpoint(taskId,'task-model-preference',{
         modelId:preference.modelId,...(preference.configurationRef?{configurationRef:preference.configurationRef}:{})});
-      if(this.delegateUserTasks) {
+      // A single read-only query may be answered on the root task (#430). The router is trusted
+      // host policy and only skips the wrapper; Policy, tool scope and the cloud call are unchanged.
+      if(this.delegateUserTasks && this.directAnswerEligible?.(goal) !== true) {
         const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
         this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline:request.deadline,maxSteps,
           subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal,thinkingDepth:config.depth,

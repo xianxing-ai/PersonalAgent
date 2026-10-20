@@ -85,6 +85,9 @@ else {
   root.querySelector('#close').before(expand);
   expand.onclick=()=>invoke('workspace.open').catch(error=>{setFeedback(error.message);});
   let current,pending=false,submitGeneration=0,lastTaskSignature='',draftRevision=0;const likedTasks=new Set();
+  // Bounded UI state: these collections only serve the current session and must not grow for the
+  // lifetime of a long-running panel (#435).
+  const capCollection=(collection,limit)=>{while(collection.size>limit){collection.delete(collection.keys().next().value);}};
   const locateFeedback=new Map();let locateClosed=false;
   const approvalDecisions=new Map();
   const pendingCancelIds=new Set();
@@ -138,7 +141,7 @@ else {
     if(locateClosed||!task)return;
     const request={text,taskState:task.state,message:'定位中…'};
     if(!currentLocateFailure(id,request))return;
-    locateFeedback.set(id,request);projectLocateFeedback();
+    locateFeedback.set(id,request);capCollection(locateFeedback,20);projectLocateFeedback();
     const isCurrent=()=>!locateClosed&&locateFeedback.get(id)===request&&currentLocateFailure(id,request);
     try {
       const response=await invoke('task.locate',{text});
@@ -298,7 +301,7 @@ else {
     catch(err){if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)report(err);}
     finally{if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)talkButton.disabled=Boolean(current?.live?.active)||wakeBlocksCapture(current)||!current?.voice?.experimental||!['unavailable','error','listening','awaiting_speech'].includes(current?.voice?.status);}
   };
-  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on)likedTasks.add(b.dataset.id);else likedTasks.delete(b.dataset.id);b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
+  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on){likedTasks.add(b.dataset.id);capCollection(likedTasks,200);}else likedTasks.delete(b.dataset.id);b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
   const syncApprovalButtons=()=>{
     for(const [id,phase] of approvalDecisions)if(phase==='submitted' && !(current?.approvals??[]).some(item=>
       item.approvalId===id && item.state==='pending' && current?.tasks.some(task=>task.taskId===item.taskId && task.state==='waiting_approval')))approvalDecisions.delete(id);

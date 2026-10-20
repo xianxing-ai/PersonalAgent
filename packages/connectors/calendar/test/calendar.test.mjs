@@ -136,3 +136,10 @@ test('窗口必须递增、游标损坏报 CURSOR_EXPIRED', async () => {
   await assert.rejects(() => service.listEvents(ACCOUNT, {fromUtc: '2026-09-08T00:00:00.000Z', toUtc: '2026-09-07T00:00:00.000Z'}, {}), /ascending/);
   void ProtocolError;
 });
+
+test('窗口校验错误消息以大写开头，与其余消息约定一致（#308）', async () => {
+  const {service} = makeService();
+  await assert.rejects(() => service.listEvents(ACCOUNT,
+    {fromUtc: '2026-09-08T00:00:00.000Z', toUtc: '2026-09-07T00:00:00.000Z'}, {}),
+    error => error.code === 'INVALID_ARGUMENT' && /^Calendar window/.test(error.message));
+});

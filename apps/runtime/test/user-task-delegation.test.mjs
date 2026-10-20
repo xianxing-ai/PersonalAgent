@@ -322,3 +322,45 @@ test('delegated execution cannot silently switch the original selected model cat
     assert.deepEqual(app.runtime.loadCheckpoint(task.taskId,'execution-model'),selection);
   } finally {app.close();}
 });
+
+test('a host-routed direct answer keeps a single read-only query on the root task',async()=>{
+  let app;const calls=[];
+  const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
+    runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
+  const tool={descriptor:read,execute:async(input,context)=>{calls.push(context.taskId);return {answer:56};}};
+  const port=new FakeCoordinationPort(async request=>{
+    assert.equal(app.runtime.getTask(request.taskId).conversationId,'user-chat');
+    if(!request.continuation)return {kind:'tool_proposal',proposalId:'root-weather',toolName:read.name,
+      toolVersion:read.version,arguments:{},verification:'unverified'};
+    return {kind:'text',text:'今天下午多云，适合户外活动。',verification:'mock'};
+  });
+  app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,
+    directAnswerEligible:goal=>goal==='北京今天下午适合跑步吗',
+    coordination:port,coordinationBinding:'fixed-fixture-config',tools:[dispatch,tool],
+    automaticTools:[{toolName:read.name,toolVersion:read.version}],
+    readConversationPreference:()=>({depth:2,fast:false}),
+    competitionToolExports:[dispatch,tool].map(item=>({toolName:item.descriptor.name,toolVersion:item.descriptor.version,
+      exportPolicyVersion:'fixture-v1',accepts:()=>true,project:({result})=>result})),
+    competitionToolAvailability:[dispatch,tool].map(item=>({toolName:item.descriptor.name,toolVersion:item.descriptor.version,
+      publicEnumPaths:[],available:()=>true}))});
+  try{
+    const client=new Client(app);await client.connect();
+    const task=await client.call('task.submit',{goal:'北京今天下午适合跑步吗',conversationId:'user-chat'},
+      {idempotencyKey:'direct-weather',timeoutMs:60000});
+    await until(()=>app.activeTaskCount===0);
+    const parent=app.runtime.getTask(task.taskId);
+    assert.equal(parent.state,'succeeded',JSON.stringify(parent.error));
+    assert.equal(app.runtime.loadCheckpoint(task.taskId,'required-subagent-delegation:v1'),undefined,
+      'a routed direct answer must not freeze a mandatory delegation binding');
+    assert.equal(app.readSubagentTasks(task.taskId).length,0,'no child task is created');
+    assert.deepEqual(calls,[task.taskId],'the read-only tool runs on the root task');
+    assert.deepEqual(app.runtime.readToolExecutions(task.taskId).map(record=>record.toolName),[read.name]);
+  }finally{app.close();}
+});
+
+test('direct-answer routing cannot be configured without mandatory delegation',()=>{
+  assert.throws(()=>createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+    directAnswerEligible:()=>true}),/Direct-answer routing/);
+  assert.throws(()=>createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+    delegateUserTasks:true,directAnswerEligible:'not-a-function'}),/Direct-answer routing/);
+});

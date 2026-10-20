@@ -2,6 +2,16 @@
 
 目标 Profile：`huawei_ict_agentarts`。Desktop 启用可信组合选项 `delegateUserTasks:true`：主对话只派发和汇总，实际工作经原 Runtime/Policy/ToolGateway 在持久化子任务中执行。
 
+### 直答例外（2026-10-20，#430）
+
+单一、只读、无副作用的问题（当前仅天气类：气温/降水/风力/「适合跑步吗」等）不再套一层子任务：Desktop 通过可信组合选项 `directAnswerEligible` 注入静态路由 `isDirectAnswerGoal`，Runtime 对该任务不冻结 `required-subagent-delegation`，根任务直接用原工具目录调用 `weather.forecast` 并作答。
+
+边界：
+- 这是**固定规则**，不是动态多执行器规划，也不是模型自选路由；含动作（整理/发送/创建/安排…）、多任务（并且/然后/分别…）或其它主题（邮件/代码/文件/会议…）的请求仍走强制委派。
+- 只改变「是否加一层子任务」，不改变 Policy、ToolGateway、工具范围、审批或 Evidence；根任务能看到的仍是原 `competitionToolCatalog`。
+- 省略该选项即恢复「所有新用户任务强制委派」的原行为；旧任务不追补。
+- 路由判定在提交时一次性完成，不因后续对话轮次改写原绑定。
+
 ## 问题与行为
 
 旧版工作区按当前工作区对话过滤父任务，导致语音面板所属对话的子任务被排除。实际旧版窗口读回：面板有 5 条子任务，工作区为 0 条。
