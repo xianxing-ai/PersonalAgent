@@ -12,6 +12,10 @@ import {bindFactProjectionStore} from './fact-projection-store.js';
 import type {FactProjectionStore} from './fact-projection-store.js';
 import {bindHostStateStore} from './host-state-store.js';
 export type {TrustedHostStateStore} from './host-state-store.js';
+export {readRuntimeBuildIdentity} from './build-identity.js';
+export {createRuntimeStartupRecovery} from './application/startup-recovery.js';
+export type {RuntimeStartupRecoveryOptions,RuntimeStartupRecovery,RuntimeStartupRecoveryReport,RuntimeStartupRecoveryItem,
+  RuntimeStartupResumeRequest} from './application/startup-recovery.js';
 export {createRuntimeAtomicStatePort} from './atomic-host-state.js';
 export type {RuntimeAtomicStatePort} from './atomic-host-state.js';
 
@@ -367,6 +371,21 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     const current=this.activeToolExecutions.get(JSON.stringify([record.taskId,record.evidenceId]));
     return current!==undefined && current===record.inputDigest;
   }
+
+  /** Process-local activity; startup recovery must never adopt a live worker. */
+  isTaskActive(taskId:string):boolean {
+    requireText(taskId,'taskId');
+    return this.active.has(taskId) || [...this.activeToolExecutions.keys()].some(key=>JSON.parse(key)[0]===taskId);
+  }
+
+  /** Trusted recovery metadata only; no additional wire operation. */
+  listCheckpointKeys(taskId:string):string[] {
+    this.getTask(taskId);
+    return (this.db.prepare('SELECT checkpoint_key FROM task_checkpoints WHERE task_id = ? ORDER BY checkpoint_key')
+      .all(taskId) as unknown as {checkpoint_key:string}[]).map(row=>row.checkpoint_key);
+  }
+
+  readToolDescriptors():ToolDescriptor[] {return structuredClone(this.toolGateway?.list()??[]);}
 
   constructor(path: string, options: RuntimeOptions = {}) {
     this.db = openStorage(path, RUNTIME_MIGRATIONS);
@@ -1422,9 +1441,17 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   recoverInterruptedTasks(): TaskSnapshot[] {
     const placeholders = interrupted.map(() => '?').join(', ');
     const rows = this.db.prepare('SELECT task_id FROM tasks WHERE state IN (' + placeholders + ') ORDER BY task_id').all(...interrupted) as unknown as {task_id: string}[];
-    return rows.map(row => this.transitionTask(row.task_id, 'waiting_reconciliation', {
-      error: {code: 'RESULT_UNKNOWN', message: 'Runtime stopped before the task result was confirmed', retryable: false}
-    }));
+    return rows.flatMap(row => {
+      if(this.isTaskActive(row.task_id))return [];
+      return [this.transaction(()=>{
+        const original=this.getTask(row.task_id);
+        this.saveCheckpoint(row.task_id,'runtime-interruption:v1',{version:'1.0',taskId:row.task_id,
+          originalState:original.state,originalRevision:original.revision,recoveredRevision:original.revision+1,
+          ...(original.error?{originalError:original.error}:{}),sessionRef:this.sessionRef,recoveredAt:this.timestamp()});
+        return this.updateTask(row.task_id,'waiting_reconciliation',{
+          error:{code:'RESULT_UNKNOWN',message:'Runtime stopped before the task result was confirmed',retryable:false}},true);
+      })];
+    });
   }
 
   reconcileTask(taskId: string, outcome: 'confirmed' | 'not_performed'): TaskSnapshot {
