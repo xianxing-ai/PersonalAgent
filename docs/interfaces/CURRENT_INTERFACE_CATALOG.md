@@ -1,6 +1,10 @@
 # 当前接口目录与冻结登记
 
-## 2026-10-20 会话完整性修缮（provisional，新云协议待验收）
+## 2026-10-20 已有邮件/日历工具接入（provisional）
+
+Desktop沿原Runtime/Policy/ToolGateway接入mail.inbox普通对话、mail.accounts/mark_seen/save_draft/reconcile_send及calendar.events，原本地信头分类/单事件会议绑定保留。账号配置、逐任务审批及完整metadata/result原生出机确认分开，配置撤销和异步取消重新校验，不扩大本地分类许可。GitHub修复链接由受信配置github.repairLinks:true单独注册。Windows Host/PipeBridge及固定Windows-MCP本机目录核对已有证据，当前48项登记不代表48项真实业务均可用。账号、工作区、界面出机、语音、默认并行检查失败及152项图适配缺口见[接入记录](../competition/EXISTING_TOOL_CONNECTIONS_20261020.md)。无Core wire/数据库迁移，不冻结整个连接器或Windows接口。
+
+## 2026-10-20 会话完整性修缮（provisional，固定1.7文字链路已验收）
 
 Competition 按事件截面保留失败/取消/未完成任务的公开用户原文，普通对话优先保留用户信息并披露助手历史省略，Skill/私人预检保持严格预算。新增同会话只读 `conversation.read_history`，按引用、内容散列及当前许可取回原文；来源撤销贯穿旧助手回答与子任务。可选 `continuationContext:'goal'`/`priorContinuations` 为 in-process/owned JSON 增量，默认关闭，不改冻结 Core wire。owned-1.7 已部署固定 `arm64-context-1-7-1020`，当前桌面显式启用；新版本真实文字上下文7项及历史取回通过。合成历史范围、自动化、默认并行检查失败及未验收项见 [评估记录](../competition/CONTEXT_INTEGRITY_20261020.md)，接口仍 provisional，不能据此冻结全部记忆或新协议。
 

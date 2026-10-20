@@ -38,6 +38,8 @@
     "@personal-agent/learning": "0.1.0-alpha.1",
     "@personal-agent/goals": "0.1.0-alpha.1",
     "@personal-agent/github": "0.1.0-alpha.1",
+    "@personal-agent/mail": "0.1.0-alpha.1",
+    "@personal-agent/calendar": "0.1.0-alpha.1",
     "@personal-agent/feeds": "0.1.0-alpha.1",
     "@personal-agent/productivity": "0.1.0-alpha.1",
     "@personal-agent/notifications": "0.1.0-alpha.1",

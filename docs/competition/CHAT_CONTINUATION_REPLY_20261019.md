@@ -1,6 +1,6 @@
 # Desktop 委派聊天答复修复（2026-10-19）
 
-目标 profile：`huawei_ict_agentarts`；分支 `codex/fix-chat-continuation`；基线 `db936167e1f6d5cf546d3558a2b3a98cb135a529`。实际工作树：`C:\Users\李广威\.codex\worktrees\27bb\Personal Agent`。
+目标 profile：`huawei_ict_agentarts`；分支 `codex/fix-chat-continuation`；基线 `db936167e1f6d5cf546d3558a2b3a98cb135a529`。实际隔离工作树：`27bb/Personal Agent`。
 
 ## 当前结果（2026-10-20）
 

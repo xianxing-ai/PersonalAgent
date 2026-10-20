@@ -1,6 +1,6 @@
 # 会话上下文完整性修缮与评估（2026-10-20）
 
-状态：in_progress；profile：`huawei_ict_agentarts`。工作树 `C:\Users\李广威\.codex\worktrees\27bb\Personal Agent`，分支 `codex/fix-chat-continuation`。保留既有修改、原始数据和待核实任务。用户已授权提交和推送本轮修复；交付提交以该分支 Git 记录为准，尚未合并主分支。
+状态：review；profile：`huawei_ict_agentarts`。隔离工作树 `27bb/Personal Agent`，原分支 `codex/fix-chat-continuation`，随 `codex/connect-existing-tools` 提交 PR。保留既有修改、原始数据和待核实任务。用户已授权提交和推送本轮修复；交付提交与审查状态以 Git/PR 记录为准，尚未合并主分支。
 
 ## 已实施
 
