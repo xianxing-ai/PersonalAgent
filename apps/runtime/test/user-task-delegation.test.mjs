@@ -17,7 +17,7 @@ async function until(predicate) {
   while(Date.now()<deadline){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}
   throw Error('Expected task state did not arrive');
 }
-function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,delegate=true,reply,execute,selected,
+function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,delegate=true,reply,execute,selected,beforeChildRequest,
   registered=true,coordination=true,descriptor=read,coordinationInput,fast=false,resolvedSelection=selected}={}) {
   let app;const calls=[];
   const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
@@ -29,6 +29,7 @@ function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,
     const task=app.runtime.getTask(request.taskId);
     if(reply)return reply(request,task,app);
     if(task.conversationId.startsWith('desktop-subtask:')) {
+      if(beforeChildRequest)await beforeChildRequest();
       assert.ok(request.availableTools===undefined || request.availableTools.every(tool=>tool.name!=='subagent.dispatch'));
       if(!request.continuation)return {kind:'tool_proposal',proposalId:'child-work',toolName:descriptor.name,
         toolVersion:descriptor.version,arguments:{},verification:'unverified'};
@@ -128,9 +129,19 @@ test('dispatch itself still waits for the existing Policy approval without creat
 
 test('child approval restart keeps original delegation without enabling the option again or repeating work',async()=>{
   const directory=await mkdtemp(path.join(os.tmpdir(),'pa-required-child-'));let first,restored;
+  const settle=async(app,taskId)=>{
+    await app.waitForHostToolTask(taskId);
+    for(const child of app.readSubagentTasks(taskId))await app.waitForHostToolTask(child.taskId);
+    // Child approval completion may resume the original parent summary.
+    await app.waitForHostToolTask(taskId);
+    assert.equal(app.activeTaskCount,0);
+  };
   try {
-    first=fixture({path:path.join(directory,'runtime.sqlite'),selected:selection});
-    const {task}=await submit(first.app);await until(()=>first.app.activeTaskCount===0);
+    // A valid original request may outlive the generic 5s observation helper.
+    // Keep its original 60s deadline and await its actual execution, not a new timeout.
+    first=fixture({path:path.join(directory,'runtime.sqlite'),selected:selection,
+      beforeChildRequest:()=>new Promise(resolve=>setTimeout(resolve,5100))});
+    const {task}=await submit(first.app);await settle(first.app,task.taskId);
     const [child]=first.app.readSubagentTasks(task.taskId);
     assert.equal(child.state,'waiting_approval');assert.equal(first.calls.length,0);assert.equal(first.port.requests.length,1);
     const binding=first.app.runtime.loadCheckpoint(task.taskId,'required-subagent-delegation:v1');
@@ -139,7 +150,7 @@ test('child approval restart keeps original delegation without enabling the opti
     restored=fixture({path:path.join(directory,'runtime.sqlite'),delegate:false,selected:selection});
     const client=new Client(restored.app);await client.connect();
     await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
-    await until(()=>restored.app.activeTaskCount===0);
+    await settle(restored.app,task.taskId);
     assert.equal(restored.app.runtime.getTask(task.taskId).state,'succeeded');assert.equal(restored.calls.length,1);
     assert.equal(restored.calls[0].taskId,child.taskId);assert.equal(restored.app.readSubagentTasks(task.taskId).length,1);
     assert.deepEqual(restored.app.runtime.loadCheckpoint(task.taskId,'required-subagent-delegation:v1'),binding);
