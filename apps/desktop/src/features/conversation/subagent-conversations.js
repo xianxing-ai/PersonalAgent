@@ -177,6 +177,12 @@ export function mountSubagentConversationPage(root, invoke) {
   // task as active, because waiting for the runtime to unwind is what made stop feel broken.
   let truncated = false;
   const current = version => !closed && !navigating && readVersion === version;
+  const beforeUnload=event=>{
+    if(!closed&&(input.value.trim()||sending)){event.preventDefault();event.returnValue=false;}
+  };
+  const dispose=()=>{closed=true;readVersion++;globalThis.window?.removeEventListener('beforeunload',beforeUnload);};
+  globalThis.window?.addEventListener('beforeunload',beforeUnload);
+  globalThis.window?.addEventListener('unload',dispose,{once:true});
 
   function syncControls() {
     const busy = closed || navigating;
@@ -334,13 +340,16 @@ export function mountSubagentConversationPage(root, invoke) {
 
   async function navigate(name, fallback) {
     if (closed || navigating) return;
+    if(name==='subagentConversation.close'&&(input.value.trim()||sending)){
+      showError(status,Error('请先发送或清空当前草稿，提交中的消息须等待受理'),fallback);return;
+    }
     navigating = true;
     readVersion++;
     content.setAttribute('aria-busy', 'false');
     syncControls();
     try {
       await invoke(name);
-      if (name === 'subagentConversation.close') closed = true;
+      if (name === 'subagentConversation.close') dispose();
       else {
         status.setAttribute('role', 'status');
         status.textContent = '已返回主对话。';

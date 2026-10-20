@@ -1042,7 +1042,8 @@ async function openSubagentConversation(payload){
   const key=JSON.stringify([detail.parentTaskId,detail.taskId]);
   const previous=subagentWindows.get(key);
   if(previous&&!previous.window.isDestroyed()){previous.lastUsedAt=Date.now();previous.window.show();previous.window.focus();return {opened:true};}
-  recycleSubagentWindows();
+  await recycleSubagentWindows();
+  if(subagentWindows.size>=SUBAGENT_WINDOW_LIMIT)throw Error('子对话窗口仍在使用，请先发送草稿或关闭空闲窗口');
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
   const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
@@ -1054,25 +1055,48 @@ async function openSubagentConversation(payload){
   return {opened:true};
 }
 /** Bounded child windows: close the least recently used one before opening another. */
-function recycleSubagentWindows(){
+async function canRecycleSubagentWindow(window){
+  if(window.isDestroyed())return true;
+  try{
+    // Read only a fixed boolean; drafts stay in their original renderer.
+    return await window.webContents.executeJavaScript(`(() => {
+      const input=document.querySelector('textarea');
+      return Boolean(input&&!input.disabled&&!input.value.trim()&&!document.querySelector('[aria-busy="true"]'));
+    })()`)===true;
+  }catch{return false;}
+}
+async function closeSubagentWindow(window){
+  if(window.isDestroyed())return true;
+  return new Promise(resolve=>{
+    let timer;
+    const finish=closed=>{clearTimeout(timer);window.removeListener('closed',closedEvent);window.webContents.removeListener('will-prevent-unload',prevented);resolve(closed);};
+    const closedEvent=()=>finish(true),prevented=()=>finish(false);
+    window.once('closed',closedEvent);window.webContents.once('will-prevent-unload',prevented);
+    timer=setTimeout(()=>finish(window.isDestroyed()),1000);
+    try{window.close();}catch{finish(false);}
+  });
+}
+async function recycleSubagentWindows(){
   while(subagentWindows.size>=SUBAGENT_WINDOW_LIMIT){
-    let oldestKey,oldest;
-    for(const [key,record] of subagentWindows){
-      if(record.window.isDestroyed()){subagentWindows.delete(key);continue;}
-      if(!oldest||(record.lastUsedAt??0)<(oldest.lastUsedAt??0)){oldestKey=key;oldest=record;}
+    let recycled=false;
+    const ordered=[...subagentWindows].sort((a,b)=>(a[1].lastUsedAt??0)-(b[1].lastUsedAt??0));
+    for(const [key,record] of ordered){
+      if(record.window.isDestroyed()){subagentWindows.delete(key);recycled=true;break;}
+      if(!await canRecycleSubagentWindow(record.window))continue;
+      if(await closeSubagentWindow(record.window)){recycled=true;break;}
     }
-    if(!oldest)return;
-    subagentWindows.delete(oldestKey);
-    if(!oldest.window.isDestroyed())oldest.window.close();
+    if(!recycled)throw Error('子对话窗口均有草稿或状态无法确认，已保留输入；请先发送草稿或关闭空闲窗口');
   }
 }
 /** One action closes every child conversation window, releasing their renderer processes. */
-function collapseAllSubagentConversations(keep){
-  let closed=0;
+async function collapseAllSubagentConversations(keep){
+  let closed=0,preserved=0;
   for(const [key,record] of [...subagentWindows]){
-    subagentWindows.delete(key);
-    if(!record.window.isDestroyed()){record.window.close();closed++;}
+    if(!await canRecycleSubagentWindow(record.window)){preserved++;continue;}
+    if(record.window.isDestroyed()){subagentWindows.delete(key);continue;}
+    if(await closeSubagentWindow(record.window))closed++;else preserved++;
   }
+  if(preserved)throw Error(`已收起 ${closed} 个子对话；${preserved} 个含草稿或状态无法确认的窗口已保留。`);
   if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow!==keep){subagentListWindow.close();closed++;}
   if(subagentListWindow===keep)subagentListWindow=keep;else subagentListWindow=undefined;
   return {closed};
@@ -2473,7 +2497,7 @@ async function action(event, name, payload) {
   if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow.webContents===event.sender)
     return handleSubagentListAction({event,name,payload,window:subagentListWindow,
       list:input=>runtimeApplication.listSubagentConversations(input),open:openSubagentConversation,
-      collapse:()=>{const result=collapseAllSubagentConversations(subagentListWindow);publish();return result;}});
+      collapse:async()=>{const result=await collapseAllSubagentConversations(subagentListWindow);publish();return result;}});
   const child=[...subagentWindows.values()].find(record=>record.window.webContents===event.sender);
   if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:readChildConversation,
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
@@ -2537,7 +2561,7 @@ async function action(event, name, payload) {
   }
   if(name==='subagentConversations.collapseAll'){
     if(![panel,workspace,admin].includes(sender)||payload!==undefined)throw Error('请从主对话或工作区收起子对话');
-    const result=collapseAllSubagentConversations();publish();return result;
+    const result=await collapseAllSubagentConversations();publish();return result;
   }
   if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }

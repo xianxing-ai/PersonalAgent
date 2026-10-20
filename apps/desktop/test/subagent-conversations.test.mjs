@@ -5,9 +5,12 @@ import {mountSubagentConversations, mountSubagentConversationPage} from '../src/
 // Explicit Fake DOM/IPC: real renderers execute without models, microphones or task writes.
 function fixture(t, kind = 'workspace', handler = () => ({})) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const previousWindow=globalThis.window,listeners=new Map();
+  globalThis.window={addEventListener(name,callback){listeners.set(name,callback);},removeEventListener(name){listeners.delete(name);}};
   t.after(() => {
     if (original) Object.defineProperty(globalThis, 'document', original);
     else delete globalThis.document;
+    if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;
   });
   class Element {
     constructor(tag) {
@@ -35,7 +38,7 @@ function fixture(t, kind = 'workspace', handler = () => ({})) {
   const walk = element => [element, ...element.children.flatMap(walk)];
   const section = root.children[0];
   const button = label => walk(root).find(element => element.tag === 'button' && element.textContent === label);
-  return {...control, root, section, document, calls, button, walk,
+  return {...control, root, section, document, calls, button, walk,listeners,
     list: section.children[0], entry: index => section.children[0].children[index],
     status: () => section.children[1], content: () => section.children[2],
     input: () => walk(root).find(element => element.tag === 'textarea'),
@@ -48,6 +51,16 @@ const record = (taskId, overrides = {}) => ({...child(taskId), goal: '保存的�
   resultSummary: '保存的回答', reasoningEffort: 'high', evidenceRefCount: 2,
   steps: [{label: '读取原记录', state: 'succeeded'}], transcriptAvailable: false, ...overrides});
 const settle = () => new Promise(resolve => setImmediate(resolve));
+test('child unload protects drafts and pending submissions but permits an empty idle page',async t=>{
+  const accepted=deferred();
+  const ui=fixture(t,'page',name=>name==='subagentConversation.submit'?accepted.promise:record('a',{canSubmit:true}));
+  await settle();
+  const blocked=()=>{let prevented=false;const event={preventDefault(){prevented=true;}};ui.listeners.get('beforeunload')(event);return prevented;};
+  assert.equal(blocked(),false);ui.input().value='未发送草稿';ui.input().oninput();assert.equal(blocked(),true);
+  const submission=ui.button('发送').onclick();ui.input().value='';assert.equal(blocked(),true);
+  accepted.resolve({acceptedTaskId:'next'});await submission;assert.equal(blocked(),false);
+  ui.listeners.get('unload')();assert.equal(ui.listeners.has('beforeunload'),false);
+});
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });

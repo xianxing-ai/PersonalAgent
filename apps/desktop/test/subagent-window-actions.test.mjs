@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+import ts from 'typescript';
+import {EventEmitter} from 'node:events';
 import {handleSubagentWindowAction,handleSubagentListAction} from '../electron/subagent-window-actions.js';
 
 function fixture(){
@@ -57,4 +61,41 @@ test('all-conversations window can collapse every child without payload or rebin
   await assert.rejects(handleSubagentListAction({...ports,name:'subagentConversations.collapseAll',payload:{}}));
   await assert.rejects(handleSubagentListAction({...ports,name:'subagentConversations.collapseAll',event:{sender:{},senderFrame:f.event.senderFrame}}));
   assert.deepEqual(calls,['collapse'],'rejected senders and payloads never reach the collapse port');
+});
+
+const source=await readFile(new URL('../electron/main.js',import.meta.url),'utf8');
+const ast=ts.createSourceFile('main.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
+const recyclingFunctions=['canRecycleSubagentWindow','closeSubagentWindow','recycleSubagentWindows','collapseAllSubagentConversations'];
+const recyclingSource=ast.statements.filter(node=>ts.isFunctionDeclaration(node)&&recyclingFunctions.includes(node.name?.text)).map(node=>node.getText(ast)).join('\n');
+function recycleFixture(states){
+  const closed=[],subagentWindows=new Map();
+  for(const [index,state] of states.entries()){
+    const window=new EventEmitter(),contents=new EventEmitter();let destroyed=false;
+    window.isDestroyed=()=>destroyed;window.webContents=contents;
+    window.close=()=>{if(state==='late-draft'){contents.emit('will-prevent-unload');return;}destroyed=true;closed.push(index);window.emit('closed');};
+    window.on('closed',()=>subagentWindows.delete(String(index)));
+    contents.executeJavaScript=async script=>{
+      assert.match(script,/document\.querySelector\('textarea'\)/);
+      if(state==='unknown')throw Error('renderer unavailable');return state==='empty'||state==='late-draft';
+    };
+    subagentWindows.set(String(index),{lastUsedAt:index,window});
+  }
+  const context=vm.createContext({subagentWindows,SUBAGENT_WINDOW_LIMIT:states.length,subagentListWindow:undefined,setTimeout,clearTimeout});
+  vm.runInContext(recyclingSource,context);return {closed,subagentWindows,context};
+}
+test('LRU recycling preserves draft and unknown windows and closes the oldest verified empty one',async()=>{
+  const f=recycleFixture(['draft','unknown','empty','empty']);await f.context.recycleSubagentWindows();
+  assert.deepEqual(f.closed,[2]);assert.equal(f.subagentWindows.has('0'),true);assert.equal(f.subagentWindows.has('1'),true);
+});
+test('opening beyond the limit is refused when every child has draft or unknown state',async()=>{
+  const f=recycleFixture(['draft','unknown']);await assert.rejects(f.context.recycleSubagentWindows(),/保留输入/);
+  assert.equal(f.subagentWindows.size,2);assert.deepEqual(f.closed,[]);
+});
+test('collapse keeps unsent child input and reports the partially closed result',async()=>{
+  const f=recycleFixture(['draft','empty','unknown']);await assert.rejects(f.context.collapseAllSubagentConversations(),/已收起 1.*2 个.*已保留/);
+  assert.deepEqual(f.closed,[1]);assert.equal(f.subagentWindows.size,2);
+});
+test('a draft typed after inspection blocks close and retains the registered child window',async()=>{
+  const f=recycleFixture(['late-draft']);await assert.rejects(f.context.recycleSubagentWindows(),/保留输入/);
+  assert.equal(f.subagentWindows.size,1);assert.deepEqual(f.closed,[]);
 });
