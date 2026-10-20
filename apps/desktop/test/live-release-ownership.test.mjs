@@ -58,7 +58,7 @@ function fixture({playbackReleaseFails = false, recognitionStopFails} = {}) {
         }};
       }},
       output:{speak(){assert.fail('recording alone must not speak');}}, async dispose(){}}});
-  const context = vm.createContext({liveVoice:live, panel, voiceInput:voice, voiceConfigurationPending:false,
+  const context = vm.createContext({voiceStartupHost:undefined, liveVoice:live, panel, voiceInput:voice, voiceConfigurationPending:false,
     panelHiding:false, wakeQuitUnknown:false, wakeVoice:undefined, Boolean, Error,
     liveToggleRevision:0, liveShortcut:{}, liveShortcutError:undefined, pinned:false,
     openPanel(){}, publish(){}, stopWakeVoice:()=>wake.disable()});

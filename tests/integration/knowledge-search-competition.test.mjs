@@ -203,7 +203,8 @@ test('explicit public-demo export lets an unverified proposal read only after ap
     approvalId: approval.approvalId, expectedRevision: approval.revision, decision: 'allow_once',
   });
   const task = await waitForState(app, taskId, ['succeeded', 'failed']);
-  assert.equal(task.state, 'succeeded');
+  assert.equal(task.state, 'succeeded', JSON.stringify({error:task.error,
+    deadline:app.runtime.loadCheckpoint(taskId,'application-deadline')}));
   assert.equal(reads, 1);
   assert.deepEqual(task.evidenceRefs, [approval.approvalId]);
   assert.equal(port.requests.length, 2);

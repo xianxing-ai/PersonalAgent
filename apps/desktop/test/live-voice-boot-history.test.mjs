@@ -8,6 +8,7 @@ import {Conversations} from '../electron/conversations.js';
 import {createLiveVoiceHistory} from '../electron/live-voice-history.js';
 import {createLiveVoiceHost} from '../electron/live-voice-host.js';
 import {createLiveHistoryFileStore} from '../electron/live-history-file-store.js';
+import {createDesktopVoiceStartupHost} from '../electron/voice-startup-host.js';
 
 const mainText = await readFile(new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', mainText, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -15,7 +16,7 @@ const initializer = ast.statements.find(node => ts.isFunctionDeclaration(node) &
 assert.ok(initializer);
 // Only the dynamic package import is an explicit Fake seam. The original main
 // initializer, including its Host construction and Conversations sink, is retained.
-const source = initializer.getText(ast).replace("await import('@personal-agent/voice')", 'voicePorts');
+const source = initializer.getText(ast).replaceAll("await import('@personal-agent/voice')", 'voicePorts');
 const message = {id:'synthetic-recovered-voice',sessionId:'synthetic-prior-live',role:'assistant',
   text:'Synthetic local history',createdAt:'2026-10-07T12:00:00.000Z'};
 
@@ -29,6 +30,7 @@ async function fixture(t) {
   const pendingTimers = new Set();
   const schedule = callback => {const token={callback,unref(){}};pendingTimers.add(token);return token;};
   const hosts = [];
+  const startupHosts = [];
   const boot = async () => {
     const conversations = new Conversations(conversationFile);
     const originalSink = conversations.addLiveMessage.bind(conversations);
@@ -39,7 +41,10 @@ async function fixture(t) {
     const context = vm.createContext({competitionMode:true,client:{call(){taskCalls++;assert.fail('No task at boot');}},
       // Voice package factories, microphone and Gateway are explicit Fakes that
       // reject any use. History, FileStore, Conversations and Host remain real.
-      voicePorts:{createVoicePcmFrameSourcePort:noResource,createRuntimeClientTranscriptConsumer:noResource},
+      voicePorts:{createVoicePcmFrameSourcePort:noResource,createRuntimeClientTranscriptConsumer:noResource,
+        createWindowsSystemSpeechPorts:()=>({output:{speak:noResource},async dispose(){}})},
+      voiceStartupHost:undefined,voiceStartupDisposed:false,voiceStartupDisposal:undefined,
+      createDesktopVoiceStartupHost:options=>{const host=createDesktopVoiceStartupHost(options);startupHosts.push(host);return host;},
       liveVoice:undefined,panel:undefined,liveConfig:{snapshot:()=>({configured:false}),current:()=>undefined},
       microphoneCaptureHost:{get binding(){return noResource();},snapshot:()=>({busy:false})},
       runtimeApplication:{createLiveVoiceModel:noResource},conversations,taskGoals:new Map(),path,
@@ -50,7 +55,7 @@ async function fixture(t) {
     await context.initializeLiveVoice();
     return {host:context.liveVoice,conversations};
   };
-  t.after(async()=>{for(const host of hosts)await host.dispose();assert.equal(pendingTimers.size,0);});
+  t.after(async()=>{for(const host of startupHosts)await host.dispose();for(const host of hosts)await host.dispose();assert.equal(pendingTimers.size,0);});
   return {store,cacheFile,conversationFile,boot,pendingTimers,seed(value=message){
     createLiveVoiceHistory({save(){throw Error('Synthetic prior process sink failure');},recoveryStore:store}).record(value);
   },setFailSink(value){failSink=value;},counts:()=>({resourceCalls,taskCalls,publications})};
