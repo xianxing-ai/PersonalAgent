@@ -76,7 +76,7 @@ test('repository-root Desktop host accepts only an external byte-identical bundl
       assert.throws(()=>verifyWindowsRecoveryAcl(paths.recoveryRootPath,powerShellPath),/ACL/,
         'Unicode path support must still reject an inherited ACL');
       assert.equal(workspace.snapshot().writeAvailable,false,'helper configuration does not restore consent');
-      workspace.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:false});
+      await workspace.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:false});
       assert.equal(workspace.snapshot().writeAvailable,true);
     } finally {workspace.close();}
     writeFileSync(helperScriptPath,'unknown script');
