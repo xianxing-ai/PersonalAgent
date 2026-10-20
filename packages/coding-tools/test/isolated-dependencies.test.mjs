@@ -60,7 +60,8 @@ test('workspace links are remapped inside the candidate and main build outputs a
   await symlink(path.join(f.source,relative),path.join(f.source,'node_modules','@fixture','local'),process.platform==='win32'?'junction':'dir');
   await writeFile(path.join(f.source,'node_modules','.package-lock.json'),JSON.stringify({lockfileVersion:3,packages:{
     'node_modules/fixture-lib':f.pinned,'node_modules/@fixture/local':{resolved:relative,link:true}}}));
-  assert.equal((await prepareIsolatedCodingDependencies(f.input)).ready,true);
+  const prepared=await prepareIsolatedCodingDependencies(f.input);
+  assert.equal(prepared.ready,true,prepared.reason??'workspace dependency preparation did not become ready');
   assert.equal(await realpath(path.join(f.isolated,'node_modules','@fixture','local')),await realpath(path.join(f.isolated,relative)));
   await assert.rejects(readFile(path.join(f.isolated,relative,'dist','old.js')),{code:'ENOENT'});
 });

@@ -128,7 +128,12 @@ test('confirmed original tool results survive restart and continue without anoth
   let worker = f.app.runProactiveTask(f.task.taskId);
   await until(() => Object.values(f.host.inspect().application.state.lastResult?.items ?? {}).some(item => item.state === 'blocked'));
   const records = f.app.runtime.readToolExecutions(f.task.taskId); assert.equal(records.length, 1); assert.equal(records[0].state, 'confirmed');
-  f.app.runtime.recoverInterruptedTasks(); f.host.notifyAvailabilityChanged(); assert.equal((await worker).state, 'waiting_reconciliation'); f.app.close();
+  assert.equal(f.app.runtime.recoverInterruptedTasks().length, 0, 'startup recovery cannot reclaim this live worker');
+  // Model process loss explicitly, as interrupt() does; recovery correctly ignores active workers.
+  f.app.runtime.transitionTask(f.task.taskId, 'waiting_reconciliation', {
+    error: {code: 'RESULT_UNKNOWN', message: 'Explicit fixture process-loss state; original receipts retained', retryable: false},
+  });
+  f.host.notifyAvailabilityChanged(); assert.equal((await worker).state, 'waiting_reconciliation'); f.app.close();
   const app = createRuntimeApplication(f.applicationOptions);
   try {
     app.createProactiveWorkflowHost(f.options); worker = app.runProactiveTask(f.task.taskId);
@@ -159,7 +164,11 @@ test('unknown original execution refuses both Runtime gate and Application resta
 test('verified continuation rejects stale revisions, cancellation, expiration, missing original result and terminal reopen', async () => {
   const f = fixture({local: true}); let worker = f.app.runProactiveTask(f.task.taskId);
   await until(() => Object.values(f.host.inspect().application.state.lastResult?.items ?? {}).some(item => item.state === 'blocked'));
-  f.app.runtime.recoverInterruptedTasks(); f.host.notifyAvailabilityChanged(); await worker;
+  assert.equal(f.app.runtime.recoverInterruptedTasks().length, 0, 'startup recovery cannot reclaim this live worker');
+  f.app.runtime.transitionTask(f.task.taskId, 'waiting_reconciliation', {
+    error: {code: 'RESULT_UNKNOWN', message: 'Explicit fixture process-loss state; original receipts retained', retryable: false},
+  });
+  f.host.notifyAvailabilityChanged(); assert.equal((await worker).state, 'waiting_reconciliation');
   try {
     const task = f.app.runtime.getTask(f.task.taskId), original = f.app.runtime.readToolExecutions(task.taskId)[0];
     assert.throws(() => f.app.runtime.prepareVerifiedContinuation(task.taskId, task.revision - 1), {code: 'REVISION_CONFLICT'});

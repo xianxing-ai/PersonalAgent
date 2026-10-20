@@ -36,7 +36,8 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
       if(!only(value,['version','revision','enabled','configuration','token','workspaceBindingId'])||value.version!==1
         ||typeof value.revision!=='string'||typeof value.enabled!=='boolean'||typeof value.token!=='string'
         ||!only(value.configuration,['version','repository','workspaceRoot','github','git','workflows'])
-        ||!only(value.configuration.github,['executable','environment'])
+        ||!only(value.configuration.github,['executable','environment','repairLinks'])
+        ||value.configuration.github.repairLinks!==undefined&&typeof value.configuration.github.repairLinks!=='boolean'
         ||!only(value.configuration.git,['sourceBranch','remoteName','remoteUrl','allowedPaths','authorName','authorEmail'])
         ||value.configuration.workflows!==undefined&&!only(value.configuration.workflows,
           ['bindingId','modelId','configurationRef','maxSteps','maxTokens','reviewRules','issueTriage','ciFix'])
@@ -119,7 +120,8 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
       workspace:{selected:Boolean(selected),bindingId:selected?.bindingId,rootPath:selected?.rootPath,
         recipeIds:selected?.command?.recipeIds??[]},
       configuration:configuration?{version:1,repository:configuration.repository,
-        github:{executable:configuration.github?.executable,environment:structuredClone(configuration.github?.environment??{})},
+        github:{executable:configuration.github?.executable,environment:structuredClone(configuration.github?.environment??{}),
+          ...(configuration.github?.repairLinks===undefined?{}:{repairLinks:configuration.github.repairLinks})},
         git:structuredClone(configuration.git),workflows:structuredClone(configuration.workflows)}:undefined,
       deployment:deployment?{configured:deployment.configured,modelConfigured:deployment.modelConfigured,
         workflowsConfigured:deployment.workflowsConfigured,exportConfirmationConfigured:deployment.exportConfirmationConfigured,
@@ -133,7 +135,8 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
     if(closed||saving)throw Error('开发配置宿主已关闭或正在保存');
     if(!only(input,['enabled','configuration','token'])||typeof input.enabled!=='boolean'
       ||!only(input.configuration,['version','repository','github','git','workflows'])
-      ||!only(input.configuration.github,['executable','environment']))throw Error('开发配置字段无效');
+      ||!only(input.configuration.github,['executable','environment','repairLinks'])
+      ||input.configuration.github.repairLinks!==undefined&&typeof input.configuration.github.repairLinks!=='boolean')throw Error('开发配置字段无效');
     if(writing&&input.enabled)throw Error('开发写入仍在进行，请先核实原任务结果');
     const selected=workspace();if(!selected)throw Error('请先选择原工作区');
     const token=input.token===undefined||input.token===''?record?.token:input.token;

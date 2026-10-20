@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chmodSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {TaskRuntime} from '@personal-agent/runtime';
 import {createDeveloperSettingsHost} from '../electron/developer-settings-host.js';
 import {projectDeveloperConversationStatus} from '../electron/developer-deployment-config.js';
 
@@ -24,10 +25,16 @@ test('encrypted settings round-trip through the original deployment factory with
   const options={cacheRootPath:toolCache,readModelGateway:()=>({deployment:{id:'synthetic-model'},
     complete(){assert.fail('Configuration must not call a model');}}),
     confirmExport(){assert.fail('Configuration must not request an external export');}};
-  const scope=taskId=>({taskId,signal:new AbortController().signal,deadline:new Date(Date.now()+60_000).toISOString(),
+  const runtime=new TaskRuntime(':memory:'),application={runtime};
+  const scope=label=>({taskId:runtime.submitTask({goal:'Synthetic '+label,conversationId:'real-factory-fixture',idempotencyKey:label}).taskId,
+    signal:new AbortController().signal,deadline:new Date(Date.now()+60_000).toISOString(),
     authorizationRef:'synthetic-original-grant',scopes:['github:read']});
-  let settings=createSettings();t.after(()=>settings.close());
+  let settings=createSettings();t.after(()=>{settings.close();runtime.close();});
   let deployment=await settings.createDeployment(options);
+  // The product binds the original Runtime before task-scoped tools are used.
+  // Without this lifecycle step the durable-binding gate correctly rejects
+  // unavailable capability before the tool's exact scope checks are reached.
+  deployment.host.bind(application);
   const names=deployment.host.tools.map(tool=>tool.descriptor.name);
   const repositoryTool=deployment.host.tools.find(tool=>tool.descriptor.name==='developer.repository_context');
   assert.ok(repositoryTool);assert.equal(settings.snapshot().available,false);
@@ -43,7 +50,8 @@ test('encrypted settings round-trip through the original deployment factory with
   assert.equal(deployment.host.tools.find(tool=>tool.descriptor.name==='developer.repository_context'),repositoryTool);
   await assert.rejects(repositoryTool.execute({},{...scope('missing-grant'),authorizationRef:undefined}),{code:'SCOPE_DENIED'});
   await assert.rejects(repositoryTool.execute({},{...scope('missing-scope'),scopes:[]}),{code:'SCOPE_DENIED'});
-  assert.deepEqual(await repositoryTool.execute({},scope('original-task')),{repository:'synthetic/repository'});
+  const originalScope=scope('original-task');
+  assert.deepEqual(await repositoryTool.execute({},originalScope),{repository:'synthetic/repository'});
   assert.ok(settings.readDeveloperWorkflows(scope('workflow-task'))?.model);
   for(const value of [settings.snapshot(),deployment.snapshot(),projectDeveloperConversationStatus(deployment.snapshot())])
     assert.equal(JSON.stringify(value).includes(token),false);
@@ -51,7 +59,10 @@ test('encrypted settings round-trip through the original deployment factory with
   assert.deepEqual(Object.keys(envelope).sort(),['encrypted','version']);
   assert.equal(JSON.stringify(envelope).includes(token),false);
   settings.close();settings=createSettings();deployment=await settings.createDeployment(options);
+  deployment.host.bind(application);
   assert.equal(settings.snapshot().available,true,'the original factory restores the encrypted configuration');
+  assert.deepEqual(await deployment.host.tools.find(tool=>tool.descriptor.name==='developer.repository_context')
+    .execute({},originalScope),{repository:'synthetic/repository'},'the same original task keeps its persisted checkpoint across settings-host reconstruction');
   assert.deepEqual(await deployment.host.tools.find(tool=>tool.descriptor.name==='developer.repository_context')
     .execute({},scope('restored-task')),{repository:'synthetic/repository'});
   const workflow=settings.readDeveloperWorkflows(scope('pinned-task'));assert.ok(workflow);

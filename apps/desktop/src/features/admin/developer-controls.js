@@ -8,6 +8,7 @@ export function mountDeveloperControls(root,invoke){
     '<label><input type="checkbox" data-developer-enabled>启用开发宿主</label><button type="button" class="btn btn-sm" data-developer-refresh>刷新状态</button>'+
     '<form class="settings-form" data-developer-form><label>GitHub 仓库<input name="repository" placeholder="owner/repository" required maxlength="201"></label>'+
     '<label>受信 gh 可执行文件<input name="executable" placeholder="选择工作区外的 gh.exe 绝对路径" required></label>'+
+    '<label><input name="repairLinks" type="checkbox">启用 GitHub 修复链接工具（仍需原任务审批）</label>'+
     '<label>GitHub 凭据<input name="token" type="password" autocomplete="new-password" maxlength="4096" placeholder="仅原宿主加密保存；留空保留已有凭据"></label>'+
     '<label>源分支<input name="sourceBranch" required maxlength="200"></label><label>远程名称<input name="remoteName" required maxlength="64"></label>'+
     '<label>允许提交的现有文件（每行一个相对路径）<textarea name="allowedPaths" required rows="3"></textarea></label>'+
@@ -31,6 +32,7 @@ export function mountDeveloperControls(root,invoke){
     if(editing||busy)return;
     const configuration=value.configuration??{},git=configuration.git??{},workflow=configuration.workflows;
     field('repository').value=configuration.repository??'';field('executable').value=configuration.github?.executable??'';
+    field('repairLinks').checked=configuration.github?.repairLinks===true;
     for(const key of ['sourceBranch','remoteName','authorName','authorEmail'])field(key).value=git[key]??'';
     field('allowedPaths').value=(git.allowedPaths??[]).join('\n');
     field('workflows').checked=Boolean(workflow);
@@ -49,7 +51,7 @@ export function mountDeveloperControls(root,invoke){
     try{
       const repository=field('repository').value.trim();
       const configuration={version:1,repository,github:{executable:field('executable').value.trim(),
-        environment:structuredClone(current.configuration?.github?.environment??{})},git:{
+        environment:structuredClone(current.configuration?.github?.environment??{}),repairLinks:field('repairLinks').checked},git:{
         sourceBranch:field('sourceBranch').value.trim(),remoteName:field('remoteName').value.trim(),remoteUrl:`https://github.com/${repository}.git`,
         authorName:field('authorName').value.trim(),authorEmail:field('authorEmail').value.trim(),
         allowedPaths:field('allowedPaths').value.split(/\r?\n/u).map(value=>value.trim()).filter(Boolean)}};
