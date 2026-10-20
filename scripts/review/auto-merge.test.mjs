@@ -25,7 +25,6 @@ for(const [name,change] of [
   ['wrong app',s=>s.checks[1].app.id=1],
   ['old head CI',s=>s.checks[1].head_sha=base],
   ['self approval',s=>s.reviews[0].user.login='zemeng5208'],
-  ['stale head approval',s=>s.reviews[0].commit_id=base],
   ['outsider approval',s=>s.reviews[0].user.login='outsider'],
   ['dismissed approval',s=>s.reviews.push({...s.reviews[0],id:2,state:'DISMISSED'})],
   ['changes requested',s=>s.reviews.push({id:2,user:{login:'Potatos498'},state:'CHANGES_REQUESTED',commit_id:head})],
@@ -72,8 +71,9 @@ function fakeApi(snapshot,requests=[]) {
     return {ok:true,status:200,json:async()=>result};
   };
 }
-test('PR green CI and current-head independent approval permit immediate protected merge',async()=>{
+test('PR green CI and initial independent approval permit immediate protected merge',async()=>{
   const snapshot=fixture(),calls=[],requests=[];
+  snapshot.reviews[0].commit_id='c'.repeat(40);
   snapshot.mainChecks=[];
   await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot,requests),executeImpl:async(...args)=>calls.push(args),log:()=>{}});
   assert.equal(requests.length,0);
@@ -102,8 +102,9 @@ test('main advancing before merge still prevents a stale merge request',async()=
   assert.equal(calls.length,0);
 });
 
-test('red current-head PR CI blocks even after approval',async()=>{
+test('red current-head PR CI blocks even after the initial approval',async()=>{
   const snapshot=fixture(),calls=[];
+  snapshot.reviews[0].commit_id='c'.repeat(40);
   snapshot.checks[1].conclusion='failure';
   await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>calls.push(1),log:()=>{}});
   assert.equal(calls.length,0);

@@ -1,4 +1,5 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
 import {parseEvent, parseRequest, parseResponse, PROTOCOL_VERSION, ProtocolError, validateContract} from '@personal-agent/contracts';
 import type {Event, Operation, Request, Response, Result, TaskSnapshot, ToolDescriptor} from '@personal-agent/contracts';
@@ -1160,10 +1161,12 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   transitionTask(taskId: string, state: TaskState, patch: TransitionPatch = {}): TaskSnapshot {
     return structuredClone(this.transaction(() => this.updateTask(requireText(taskId, 'taskId'), state, patch, true)));
   }
-  /** Read-only exact binding of a durable local failure and its received transport identity. */
+  /** Read-only exact binding of a durable failure, including a legacy held terminal continuation. */
   readReceivedCloudFailureBinding(taskId:string,allowHistorical=false):string|undefined {
     const task=this.getTask(taskId),inflight=this.loadCheckpoint(taskId,'competition-cloud-inflight'),received=this.loadCheckpoint(taskId,'competition-cloud-received');
-    if(task.state!=='failed' || !task.error || this.active.has(taskId) || this.loadCheckpoint(taskId,'competition-cloud-unknown')
+    const held=task.state==='waiting_reconciliation';
+    if((task.state!=='failed' && !held) || !task.error || this.active.has(taskId) || this.loadCheckpoint(taskId,'competition-cloud-unknown')
+      || this.loadCheckpoint(taskId,'private-copy-erasure')
       || !inflight || !received || typeof inflight!=='object' || typeof received!=='object')return undefined;
     const left=inflight as Record<string,unknown>,right=received as Record<string,unknown>;
     const fields=['sessionId','requestId','idempotencyKey','payloadDigest','accepted','serverInstanceId'];
@@ -1171,40 +1174,92 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       || ['sessionId','requestId','idempotencyKey'].some(key=>typeof left[key]!=='string' || !(left[key] as string).length)
       || typeof left.payloadDigest!=='string' || !/^[a-f0-9]{64}$/.test(left.payloadDigest)
       || typeof left.accepted!=='boolean' || (left.serverInstanceId!==undefined && (typeof left.serverInstanceId!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(left.serverInstanceId))))return undefined;
-    const loop=this.loadCheckpoint(taskId,'competition-loop') as {pending?:unknown}|undefined;
+    const loop=this.loadCheckpoint(taskId,'competition-loop') as {step?:number;pending?:unknown;
+      continuation?:{proposalId?:string;state?:string};receipts?:{runId?:string;proposal?:{proposalId?:string;toolName?:string;toolVersion?:string;arguments?:Record<string,unknown>};continuation?:unknown}[]}|undefined;
     const marker=this.loadCheckpoint(taskId,'competition-cloud-terminal-error') as {version?:string;kind?:string;receipt?:unknown}|undefined;
     const matchedTerminalMarker=marker?.version==='1.0' && marker.kind==='wss_terminal_error'
-      && JSON.stringify(marker.receipt)===JSON.stringify(received);
+      && Object.keys(marker).sort().join(',')==='kind,receipt,version' && isDeepStrictEqual(marker.receipt,received);
     if(marker!==undefined && !matchedTerminalMarker || !allowHistorical && !matchedTerminalMarker)return undefined;
     if(loop?.pending!==undefined)return undefined;
     const records=this.readToolExecutions(taskId),caches=records.map(record=>this.loadCheckpoint(taskId,'tool-result-'+record.evidenceId));
     if(records.some((record,index)=>record.state!=='confirmed' || !record.executionStarted || record.policyDecision!=='allow'
       || !caches[index] || typeof caches[index]!=='object' || !Object.hasOwn(caches[index] as object,'result')))return undefined;
-    return JSON.stringify({taskRevision:task.revision,error:task.error,inflight,received,loop,records,caches,marker,
+    const withheld=this.loadCheckpoint(taskId,'competition-export-withheld'),deadline=this.loadCheckpoint(taskId,'application-deadline');
+    const parent=this.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string;parentDeadline?:string}|undefined;
+    const configuration=this.loadCheckpoint(taskId,'competition-configuration-binding');
+    const childConfiguration=this.loadCheckpoint(taskId,'subtask-coordination-binding');
+    const dispatchBinding=this.loadCheckpoint(taskId,'competition-cloud-dispatch-binding');
+    const dispatchContext=this.loadCheckpoint(taskId,'competition-cloud-dispatch-context') as {snapshotVersion?:string;taskId?:string;configurationRef?:string;
+      invocation?:unknown;request?:{phase?:string;revision?:number;deadline?:string};loop?:{checkpointDigest?:string;step?:number}}|undefined;
+    // Historical waiting is eligible only for an exact terminal marker after an
+    // original confirmed continuation. A generic received response is insufficient.
+    if(held) {
+      const matches=Array.isArray(loop?.receipts)?loop.receipts.filter(item=>item.proposal?.proposalId===loop.continuation?.proposalId):[];
+      const receipt=matches.length===1?matches[0]:undefined;
+      const record=records.find(item=>item.evidenceId===receipt?.runId);
+      const {accepted:_,...invocation}=left;
+      if(!matchedTerminalMarker || !isDeepStrictEqual(withheld,{withheld:true})
+        || this.loadCheckpoint(taskId,'application-profile')!=='huawei_ict_agentarts'
+        || typeof deadline!=='string' || !Number.isFinite(Date.parse(deadline))
+        || !Number.isSafeInteger(loop?.step) || loop!.step!<2 || loop?.continuation?.state!=='confirmed'
+        || !receipt || !isDeepStrictEqual(receipt.continuation,loop.continuation)
+        || receipt.runId!==`competition-tool-${taskId}-${loop!.step!-1}`
+        || !record || record.toolName!==receipt.proposal?.toolName || record.toolVersion!==receipt.proposal?.toolVersion
+        || !receipt.proposal?.arguments || typeof receipt.proposal.arguments!=='object' || Array.isArray(receipt.proposal.arguments)
+        || !this.matchesToolExecutionInput(record,{arguments:receipt.proposal.arguments,scopeRef:receipt.runId})
+        || typeof configuration!=='string' || !configuration
+        || !isDeepStrictEqual(dispatchBinding,{bindingVersion:'1.0',configurationRef:configuration,invocation})
+        || dispatchContext?.snapshotVersion!=='1.0' || dispatchContext.taskId!==taskId
+        || dispatchContext.configurationRef!==configuration || !isDeepStrictEqual(dispatchContext.invocation,invocation)
+        || dispatchContext.request?.phase!=='continuation' || dispatchContext.request.deadline!==deadline
+        || !Number.isSafeInteger(dispatchContext.request.revision) || dispatchContext.request.revision!>task.revision
+        || dispatchContext.loop?.step!==loop!.step
+        || dispatchContext.loop?.checkpointDigest!==createHash('sha256').update(JSON.stringify(loop)).digest('hex')
+        || (parent!==undefined && (typeof parent.parentTaskId!=='string' || parent.parentDeadline!==deadline
+          || task.conversationId!==`desktop-subtask:${parent.parentTaskId}`
+          || !isDeepStrictEqual(childConfiguration,{profile:'huawei_ict_agentarts',configurationRef:configuration}))))return undefined;
+    }
+    return JSON.stringify({taskId,taskState:task.state,taskRevision:task.revision,error:task.error,inflight,received,loop,records,caches,marker,
+      ...(held?{withheld,deadline,parent,configuration,childConfiguration,dispatchBinding,dispatchContext}:{}),
       classification:matchedTerminalMarker?'transport_terminal_error':'historical_durable_local_failure'});
   }
   private consumeReceivedCloudFailure(taskId:string,binding:string,allowHistorical=false):void {
     if(this.readReceivedCloudFailureBinding(taskId,allowHistorical)!==binding)throw new RuntimeError('REVISION_CONFLICT','Original received failure binding changed');
-    const original=JSON.parse(binding) as {taskRevision:number;error:{code:string};received:unknown;classification:string};
+    const original=JSON.parse(binding) as {taskRevision:number;error:TaskError;received:unknown;classification:string};
     this.saveCheckpoint(taskId,'competition-cloud-received-failure',{version:'1.0',consumedAs:'durable_local_failure',
       taskRevision:original.taskRevision,errorCode:original.error.code,receipt:original.received,
       classification:original.classification,
+      originalError:original.error,
       cloudBusinessSuccess:false,cloudResent:false,consumedAt:this.timestamp()});
     this.saveCheckpoint(taskId,'competition-cloud-inflight',null);
     this.saveCheckpoint(taskId,'competition-cloud-received',null);
+  }
+  /** End an already received terminal failure; never replay tools or cloud work. */
+  finishReceivedCloudFailure(taskId:string,expectedRevision:number,binding:string):TaskSnapshot {
+    return structuredClone(this.transaction(()=>{
+      const task=this.getTask(taskId);
+      if(task.state!=='waiting_reconciliation' || task.revision!==expectedRevision
+        || this.readReceivedCloudFailureBinding(taskId)!==binding)
+        throw new RuntimeError('REVISION_CONFLICT','Original held cloud failure binding changed');
+      this.consumeReceivedCloudFailure(taskId,binding);
+      return this.updateTask(taskId,task.cancelRequested?'cancelled':'failed',{
+        evidenceRefs:[...new Set([...task.evidenceRefs,...this.readToolExecutions(taskId).map(record=>record.evidenceId)])],
+        error:task.cancelRequested?null:{code:'EXTERNAL_FAILURE',message:'Original cloud continuation ended with a bound transport failure; confirmed local receipts retained',retryable:false},
+      },true);
+    }));
   }
   /** Trusted host final commit after strict local receipt projection; never resumes work. */
   finishConfirmedSubagentTermination(taskId:string,expectedRevision:number,input:{runId:string;cacheJson:string;recordsJson:string;loopJson:string;
     failureReceipts:{taskId:string;binding:string}[];
     toolSnapshots:{taskId:string;recordsJson:string;caches:{key:string;valueJson:string}[]}[];
-    children:{taskId:string;revision:number}[];projectionDigest:string;deadline:string}):TaskSnapshot {
+    children:{taskId:string;revision:number}[];projectionDigest:string;deadline:string;resultSummary:string}):TaskSnapshot {
     return structuredClone(this.transaction(()=>{
       const task=this.getTask(taskId),now=this.now().getTime();
       const childIds=this.listTasks({conversationId:`desktop-subtask:${taskId}`,limit:100}).items.map(child=>child.taskId).sort();
       if(task.revision!==expectedRevision || task.state!=='waiting_reconciliation'
         || JSON.stringify(childIds)!==JSON.stringify(input.children.map(child=>child.taskId).sort())
         || this.active.has(taskId)
-        || !this.loadCheckpoint(taskId,'competition-export-withheld')
+        || (!this.loadCheckpoint(taskId,'competition-export-withheld') && !this.loadCheckpoint(taskId,'subagent-parent-wait'))
         || this.loadCheckpoint(taskId,'competition-cloud-inflight') || this.loadCheckpoint(taskId,'competition-cloud-unknown')
         || JSON.stringify(this.loadCheckpoint(taskId,'tool-result-'+input.runId))!==input.cacheJson
         || JSON.stringify(this.readToolExecutions(taskId))!==input.recordsJson
@@ -1227,8 +1282,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
         projectionDigest:input.projectionDigest,childTaskIds:input.children.map(child=>child.taskId),
         scope:'local_confirmed_receipt_projection',cloudResent:false,toolReexecuted:false,
         terminal:cancelled?'cancelled':'failed',reconciledAt:new Date(now).toISOString()});
-      return this.updateTask(taskId,cancelled?'cancelled':'failed',cancelled?{error:null,cancelRequested:true}:
-        {error:{code:'TIMEOUT',message:'Original task deadline expired after confirmed subagent receipt reconciliation',retryable:false}},true);
+      return this.updateTask(taskId,cancelled?'cancelled':'failed',{resultSummary:input.resultSummary,
+        ...(cancelled?{error:null,cancelRequested:true}:
+        {error:{code:'TIMEOUT',message:'Original task deadline expired after confirmed subagent receipt reconciliation',retryable:false} as TaskError})},true);
     }));
   }
 
@@ -1435,7 +1491,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       // A durable local failure consumes a matched received response as failure,
       // never as cloud business success. Unknown/unconfirmed writes retain holds.
       try {
-        const binding=this.readReceivedCloudFailureBinding(taskId);
+        const binding=this.getTask(taskId).state==='failed'?this.readReceivedCloudFailureBinding(taskId):undefined;
         if(binding!==undefined)this.transaction(()=>this.consumeReceivedCloudFailure(taskId,binding));
       } catch { /* Failure to prove consumption must preserve the original hold. */ }
     }

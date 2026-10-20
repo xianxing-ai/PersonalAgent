@@ -6,7 +6,7 @@ import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
-import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, Tray} from 'electron';
+import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -17,6 +17,7 @@ import {register, requestTaskCancellation, submitConversationTask} from './runti
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
+import {panelWindowAppearance, bindPanelMaterial} from './panel-material.js';
 import {desktopDataPaths} from './data-paths.js';
 import {restoreSyntheticRepairSubmission} from './competition-repair-submission.js';
 import {readCapabilityDirectory} from './capability-directory.js';
@@ -74,7 +75,7 @@ import {createDesktopRemoteMcpHost} from './remote-mcp-host.js';
 import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
-import {createAgentArtsModelSettings,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
+import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
@@ -147,6 +148,9 @@ let panel;
 let admin;
 let workspace;
 const subagentWindows=new Map();
+// Each child conversation owns a renderer process. Keeping every one alive across turns is what
+// made long sessions slow, so the host recycles the least recently used window past this bound.
+const SUBAGENT_WINDOW_LIMIT=6;
 let subagentListWindow;
 let adminNavigation = {page: 'settings', revision: 0};
 let tray;
@@ -648,11 +652,24 @@ function publishAudioLevel(){
 }
 function publish() {
   if (runtimeClosed) return;
+  // Orb and panel read the same 'panel' surface; build each surface once per broadcast instead of
+  // cloning every task four times. Each window still receives its own structured-clone copy.
+  const built = new Map();
   for (const win of [orb, panel, admin, workspace]) {
-    if (win && !win.isDestroyed()) win.webContents.send('desktop:update', snapshot(win === workspace ? 'workspace' : win === admin ? undefined : 'panel'));
+    if (!win || win.isDestroyed()) continue;
+    const surface = win === workspace ? 'workspace' : win === admin ? undefined : 'panel';
+    const key = surface ?? '';
+    if (!built.has(key)) built.set(key, snapshot(surface));
+    win.webContents.send('desktop:update', built.get(key));
   }
   for(const record of subagentWindows.values()){
     if(record.window.isDestroyed())continue;
+    // A hidden child keeps its last rendered state. Re-reading every child on every publish made
+    // idle cost grow with the number of open windows, which is what accumulated into stutter.
+    if(!record.window.isVisible()||record.window.isMinimized())continue;
+    const now=Date.now();
+    if(now-(record.checkedAt??0)<500)continue;
+    record.checkedAt=now;
     let revision='unavailable';
     try{
       const conversation=runtimeApplication?.readSubagentConversation(record.binding);
@@ -675,6 +692,7 @@ function windowFor(mode, bounds, options = {}) {
     if (mode === 'panel') void stopPanelVoice().catch(reportPanelVoiceFailure);
   });
   if (mode === 'panel') {
+    win.on('resize', () => applyShape(win, 24));
     win.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => {
       if (mainFrame) void stopPanelVoice().catch(reportPanelVoiceFailure);
     });
@@ -698,7 +716,8 @@ function windowFor(mode, bounds, options = {}) {
     presented = true;
     if (mode === 'orb') placeOrb(win, win.getBounds());
     if (centerOnPresent) win.center();
-    if (['panel','admin','workspace'].includes(mode)) applyShape(win, mode === 'panel' ? 20 : 12);
+    if (mode === 'panel') applyShape(win, 24);
+    if (mode === 'workspace') win.maximize();
     if (mode !== 'panel') win.show();
     publish();
   };
@@ -747,7 +766,7 @@ function openPanel(focus = false) {
   if (!orb || !panel || orb.isDestroyed() || panel.isDestroyed()) return;
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
   placePanel(panelBounds(orb.getBounds(), screen.getDisplayMatching(orb.getBounds()).workArea));
-  applyShape(panel, 20);
+  applyShape(panel, 24);
   if (focus) panel.show(); else panel.showInactive();
   away = 0;
 }
@@ -770,7 +789,7 @@ function movePanelGroup(point) {
   const next = draggedGroupBounds(panelDragOrigin.orb, panelDragOrigin.pointer, point, area);
   placeOrb(orb, next.orb);
   placePanel(next.panel);
-  applyShape(panel, 20);
+  applyShape(panel, 24);
 }
 
 function openAdmin(page) {
@@ -782,9 +801,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1120, area.width), height: Math.min(760, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, minWidth: 600, minHeight: 400});
-  admin.once('ready-to-show', () => applyShape(admin, 12));
-  admin.on('resize', () => applyShape(admin, admin.isMaximized() ? 0 : 12));
+    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: false, hasShadow: false, minWidth: 600, minHeight: 400});
   admin.on('closed', () => { admin = undefined; });
 }
 
@@ -984,13 +1001,12 @@ async function testPangu() {
 
 async function openWorkspace() {
   await hidePanel();
-  if (workspace && !workspace.isDestroyed()) { workspace.show(); workspace.focus(); publish(); return; }
+  if (workspace && !workspace.isDestroyed()) { workspace.maximize(); workspace.show(); workspace.focus(); publish(); return; }
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
-    {title: 'PersonalAgent · 工作区', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
-  workspace.once('ready-to-show', () => { applyShape(workspace, 12); workspace.focus(); });
-  workspace.on('resize', () => applyShape(workspace, workspace.isMaximized() ? 0 : 12));
+    {title: 'PersonalAgent · 工作区', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: false, hasShadow: false, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+  workspace.once('ready-to-show', () => workspace.focus());
   workspace.on('closed', () => { workspace = undefined; });
 }
 
@@ -1028,14 +1044,65 @@ async function openSubagentConversation(payload){
   const detail=await readChildConversation(payload);
   const key=JSON.stringify([detail.parentTaskId,detail.taskId]);
   const previous=subagentWindows.get(key);
-  if(previous&&!previous.window.isDestroyed()){previous.window.show();previous.window.focus();return {opened:true};}
+  if(previous&&!previous.window.isDestroyed()){previous.lastUsedAt=Date.now();previous.window.show();previous.window.focus();return {opened:true};}
+  await recycleSubagentWindows();
+  if(subagentWindows.size>=SUBAGENT_WINDOW_LIMIT)throw Error('子对话窗口仍在使用，请先发送草稿或关闭空闲窗口');
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
   const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
     {title:'PersonalAgent · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
-  subagentWindows.set(key,{window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt});
+  const record={window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt,lastUsedAt:Date.now(),checkedAt:0};
+  subagentWindows.set(key,record);
+  window.on('focus',()=>{record.lastUsedAt=Date.now();});
   window.on('closed',()=>subagentWindows.delete(key));
   return {opened:true};
+}
+/** Bounded child windows: close the least recently used one before opening another. */
+async function canRecycleSubagentWindow(window){
+  if(window.isDestroyed())return true;
+  try{
+    // Read only a fixed boolean; drafts stay in their original renderer.
+    return await window.webContents.executeJavaScript(`(() => {
+      const input=document.querySelector('textarea');
+      return Boolean(input&&!input.disabled&&!input.value.trim()&&!document.querySelector('[aria-busy="true"]'));
+    })()`)===true;
+  }catch{return false;}
+}
+async function closeSubagentWindow(window){
+  if(window.isDestroyed())return true;
+  return new Promise(resolve=>{
+    let timer;
+    const finish=closed=>{clearTimeout(timer);window.removeListener('closed',closedEvent);window.webContents.removeListener('will-prevent-unload',prevented);resolve(closed);};
+    const closedEvent=()=>finish(true),prevented=()=>finish(false);
+    window.once('closed',closedEvent);window.webContents.once('will-prevent-unload',prevented);
+    timer=setTimeout(()=>finish(window.isDestroyed()),1000);
+    try{window.close();}catch{finish(false);}
+  });
+}
+async function recycleSubagentWindows(){
+  while(subagentWindows.size>=SUBAGENT_WINDOW_LIMIT){
+    let recycled=false;
+    const ordered=[...subagentWindows].sort((a,b)=>(a[1].lastUsedAt??0)-(b[1].lastUsedAt??0));
+    for(const [key,record] of ordered){
+      if(record.window.isDestroyed()){subagentWindows.delete(key);recycled=true;break;}
+      if(!await canRecycleSubagentWindow(record.window))continue;
+      if(await closeSubagentWindow(record.window)){recycled=true;break;}
+    }
+    if(!recycled)throw Error('子对话窗口均有草稿或状态无法确认，已保留输入；请先发送草稿或关闭空闲窗口');
+  }
+}
+/** One action closes every child conversation window, releasing their renderer processes. */
+async function collapseAllSubagentConversations(keep){
+  let closed=0,preserved=0;
+  for(const [key,record] of [...subagentWindows]){
+    if(!await canRecycleSubagentWindow(record.window)){preserved++;continue;}
+    if(record.window.isDestroyed()){subagentWindows.delete(key);continue;}
+    if(await closeSubagentWindow(record.window))closed++;else preserved++;
+  }
+  if(preserved)throw Error(`已收起 ${closed} 个子对话；${preserved} 个含草稿或状态无法确认的窗口已保留。`);
+  if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow!==keep){subagentListWindow.close();closed++;}
+  if(subagentListWindow===keep)subagentListWindow=keep;else subagentListWindow=undefined;
+  return {closed};
 }
 function openAllSubagentConversations(){
   if(subagentListWindow&&!subagentListWindow.isDestroyed()){subagentListWindow.show();subagentListWindow.focus();return;}
@@ -1736,6 +1803,7 @@ async function initializeRuntime() {
       knowledgeSourceConfig=await createKnowledgeSourceConfig({userData:app.getPath('userData'),safeStorage,namespace,
         hostIdentity:createHash('sha256').update(app.getPath('userData')).digest('hex'),
         powerShellPath:existsSync(powerShell)?powerShell:undefined,
+        processIdentityHelperPath:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async()=>{
           const choice=await dialog.showOpenDialog(admin,{title:'选择本机知识库',properties:['openDirectory']});
           return choice.canceled?undefined:choice.filePaths[0];
@@ -1859,10 +1927,8 @@ async function initializeRuntime() {
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'}] : [])],
-        // Local deployment adaptation: the deployed runtime rejects catalog-list invocations (401 UNAUTHORIZED),
-        // so an unreadable catalog must degrade to "no explicit execution model" (the runtime still accepts a
-        // plain-goal dispatch with its own server-side model) instead of failing every submission.
-        readDefaultExecutionModel:role=>{try{return agentArtsModels.readExecutionModel(role);}catch{return undefined;}},
+        // A missing remote catalog omits only the implicit model; an invalid configured default remains an error.
+        readDefaultExecutionModel:role=>readDesktopExecutionModel(agentArtsModels,undefined,role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
         readConversationPreference: conversationId => {
           if (!conversations?.containsConversation(conversationId)) return undefined;
@@ -1870,13 +1936,7 @@ async function initializeRuntime() {
           const models=modelApiHost?.snapshot();
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
-          let executionModel;
-          if(preference.executionModel) executionModel=agentArtsModels.resolveExecutionModel(preference.executionModel);
-          else if(modelId) executionModel=agentArtsModels.resolveExecutionModel({modelId});
-          else {
-            try {executionModel=agentArtsModels.readExecutionModel();}
-            catch {/* Directory metadata is unavailable; dispatch without an implicit default model. */}
-          }
+          const executionModel=readDesktopExecutionModel(agentArtsModels,preference);
           return {...preference,modelId,...(executionModel!==undefined?{executionModel}:{}),configurationRef:selected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
@@ -2458,7 +2518,8 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
 async function action(event, name, payload) {
   if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow.webContents===event.sender)
     return handleSubagentListAction({event,name,payload,window:subagentListWindow,
-      list:input=>runtimeApplication.listSubagentConversations(input),open:openSubagentConversation});
+      list:input=>runtimeApplication.listSubagentConversations(input),open:openSubagentConversation,
+      collapse:async()=>{const result=await collapseAllSubagentConversations(subagentListWindow);publish();return result;}});
   const child=[...subagentWindows.values()].find(record=>record.window.webContents===event.sender);
   if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:readChildConversation,
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
@@ -2519,6 +2580,10 @@ async function action(event, name, payload) {
   if(name==='subagentConversations.openAll'){
     if(sender!==workspace||payload!==undefined)throw Error('请从工作区打开全部子智能体');
     openAllSubagentConversations();return;
+  }
+  if(name==='subagentConversations.collapseAll'){
+    if(![panel,workspace,admin].includes(sender)||payload!==undefined)throw Error('请从主对话或工作区收起子对话');
+    const result=await collapseAllSubagentConversations();publish();return result;
   }
   if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
@@ -3494,7 +3559,8 @@ app.whenReady().then(async () => {
   orb = windowFor('orb', {x: area.x + area.width - 150, y: area.y + area.height - 180, width: 112, height: 112},
     {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false});
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
-    {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, backgroundMaterial: 'none', roundedCorners: true});
+    {frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
+  bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
   createTray();

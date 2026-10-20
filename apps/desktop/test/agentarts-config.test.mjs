@@ -376,3 +376,42 @@ test('legacy encrypted version 1 three-field records remain valid without invent
   assert.equal(config.readAuthorization(config.binding()),value.authorization);assert.deepEqual(config.readTransportOptions(config.binding()),{});
   assert.equal(readFileSync(file,'utf8'),record);
 });
+
+test('a pinned WSS address supplies the deployment version the form left blank',t=>{
+  const userData=mkdtempSync(path.join(os.tmpdir(),'pa-cloud-pin-'));t.after(()=>rmSync(userData,{recursive:true,force:true}));
+  const config=createAgentArtsConfig({userData,environment:{},safeStorage:{isEncryptionAvailable:()=>true,
+    encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()}});
+  const base={gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'owned-runtime',
+    authorization:'Bearer synthetic-outer',transport:'wss',allowHttpsFallback:false,
+    websocketUrl:'wss://synthetic.huaweicloud-agentarts.com/runtimes/owned-runtime/ws?endpoint=arm64-laya-abc123',
+    appToken:'synthetic-inner-no-real-secret-at-least-32'};
+  const snapshot=config.configure(base);
+  assert.equal(snapshot.configured,true);
+  assert.equal(snapshot.deploymentVersion,'arm64-laya-abc123');
+  assert.equal(config.readTransportOptions(config.binding()).deploymentVersion,'arm64-laya-abc123');
+});
+
+test('a version that contradicts the pinned address is refused with both values named',t=>{
+  const userData=mkdtempSync(path.join(os.tmpdir(),'pa-cloud-pin-conflict-'));t.after(()=>rmSync(userData,{recursive:true,force:true}));
+  const config=createAgentArtsConfig({userData,environment:{},safeStorage:{isEncryptionAvailable:()=>true,
+    encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()}});
+  assert.throws(()=>config.configure({gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'owned-runtime',
+    authorization:'Bearer synthetic-outer',transport:'wss',allowHttpsFallback:false,deploymentVersion:'arm64-other',
+    websocketUrl:'wss://synthetic.huaweicloud-agentarts.com/runtimes/owned-runtime/ws?endpoint=arm64-laya-abc123',
+    appToken:'synthetic-inner-no-real-secret-at-least-32'}),/不一致/);
+  assert.equal(config.snapshot().configured,false,'a refused save writes nothing');
+});
+
+test('a first WSS save without the inner token names the missing field instead of the host environment',t=>{
+  const userData=mkdtempSync(path.join(os.tmpdir(),'pa-cloud-token-'));t.after(()=>rmSync(userData,{recursive:true,force:true}));
+  const config=createAgentArtsConfig({userData,environment:{},safeStorage:{isEncryptionAvailable:()=>true,
+    encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()}});
+  assert.throws(()=>config.configure({gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'owned-runtime',
+    authorization:'Bearer synthetic-outer',transport:'wss',allowHttpsFallback:false,
+    websocketUrl:'wss://synthetic.huaweicloud-agentarts.com/runtimes/owned-runtime/ws?endpoint=v1'}),
+    /独立镜像访问令牌/);
+  assert.throws(()=>config.configure({gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'owned-runtime',
+    authorization:'Bearer synthetic-outer',transport:'wss',allowHttpsFallback:false,deploymentVersion:'v1',
+    websocketUrl:'wss://synthetic.huaweicloud-agentarts.com/runtimes/owned-runtime/ws?endpoint=v1',appToken:'short'}),
+    /32–4096 位可见字符/);
+});
