@@ -2578,7 +2578,7 @@ async function action(event, name, payload) {
     const text = typeof payload?.text === 'string' ? payload.text : '';
     if (!text.trim() || text.length > 2 * 1024 * 1024) throw Error('无可定位的错误输出');
     const {locateTestFailures} = await import('@personal-agent/coding-tools');
-    const report = locateTestFailures(text, {root: repoRootForLocate(), contextLines: 2});
+    const report = locateTestFailures(text, {root: repoRootForLocate(), allowedPaths: [], maxSnippetReads: 0, contextLines: 2});
     return {failures: report.failures.map(f => ({name: f.name, error: f.error, timedOut: f.timedOut,
       frames: f.frames.map(fr => ({file: fr.file, line: fr.line, column: fr.column, confidence: fr.confidence,
         snippet: fr.snippet === undefined ? null : fr.snippet}))})),
