@@ -8,6 +8,8 @@ const containsCredential=(value,token)=>typeof value==='string'?value.includes(t
   :value&&typeof value==='object'&&Object.entries(value).some(([key,item])=>key.includes(token)||containsCredential(item,token));
 const error=(code,message)=>Object.assign(Error(message),{code});
 const unavailable=()=>{throw error('UNSUPPORTED_CAPABILITY','开发宿主未配置、已停用或原绑定已失效');};
+const TASK_BINDING_KEY='desktop-developer-settings-binding-v1';
+const STARTUP_SCAN_PAGE_LIMIT=10;
 
 /** One encrypted product view of the ORIGINAL deployment configuration, never a tool registry. */
 export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,readModels=()=>[],
@@ -15,7 +17,7 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
   const target=path.join(userData,'developer-settings.json');
   let record,restoreFailed=false,closed=false,saving=false,slot,options,application,stable;
   let writing=false,creating;
-  const taskBindings=new Map();
+  let bindingRuntime,startupSequence;
   const publish=()=>{try{onUpdate();}catch{}};
   const models=()=>{
     try {const value=readModels();return (Array.isArray(value)?value:value?.models??[])
@@ -49,12 +51,37 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
   const source=value=>Object.freeze({readConfiguration:()=>JSON.stringify(value.configuration),readToken:()=>value.token,
     current:()=>isCurrent(value)});
   const active=()=>slot&&isCurrent(slot.record)?slot:undefined;
+  // Task snapshots do not publish createdSequence. Search only the original
+  // startup snapshot, with a fixed page budget; exhaustion cannot mean new.
+  const existedAtStartup=task=>{
+    let beforeSequence;
+    for(let page=0;page<STARTUP_SCAN_PAGE_LIMIT;page++){
+      const result=bindingRuntime.listTasks({limit:100,snapshotSequence:startupSequence,
+        conversationId:task.conversationId,...(beforeSequence===undefined?{}:{beforeSequence})});
+      if(result?.snapshotSequence!==startupSequence||!Array.isArray(result.items)||result.items.length>100)return undefined;
+      if(result.items.some(item=>item.taskId===task.taskId))return true;
+      if(result.nextBeforeSequence===undefined)return false;
+      if(!Number.isSafeInteger(result.nextBeforeSequence)||result.nextBeforeSequence<1
+        ||result.nextBeforeSequence>startupSequence
+        ||beforeSequence!==undefined&&result.nextBeforeSequence>=beforeSequence)return undefined;
+      beforeSequence=result.nextBeforeSequence;
+    }
+    return undefined;
+  };
   const bound=(lease,scope,pin=false)=>{
-    if(active()!==lease||!scope?.taskId||scope.signal?.aborted)return false;
-    const binding=taskBindings.get(scope.taskId);
-    if(binding!==undefined&&binding!==lease.record.revision)return false;
-    if(pin&&binding===undefined)taskBindings.set(scope.taskId,lease.record.revision);
-    return true;
+    if(active()!==lease||typeof scope?.taskId!=='string'||!scope.taskId||scope.signal?.aborted||!bindingRuntime)return false;
+    try{
+      const matches=value=>only(value,['version','revision'])&&Object.keys(value).length===2
+        &&value.version===1&&value.revision===lease.record.revision;
+      const binding=bindingRuntime.loadCheckpoint(scope.taskId,TASK_BINDING_KEY);
+      if(binding!==undefined)return matches(binding);
+      const task=bindingRuntime.getTask(scope.taskId);
+      if(task?.taskId!==scope.taskId||existedAtStartup(task)!==false)return false;
+      if(!pin)return true;
+      bindingRuntime.saveCheckpointOnce(scope.taskId,TASK_BINDING_KEY,{version:1,revision:lease.record.revision});
+      return active()===lease&&!scope.signal?.aborted
+        &&matches(bindingRuntime.loadCheckpoint(scope.taskId,TASK_BINDING_KEY));
+    }catch{return false;}
   };
   const persist=value=>{
     if(!safeStorage.isEncryptionAvailable())throw Error('本机安全存储不可用，未保存开发配置');
@@ -185,7 +212,18 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
         const policy=selected.lease.deployment.host.competitionToolExports.find(item=>item.toolName===descriptor.name);
         if(!policy)unavailable();const result=await policy.project(input);if(!bound(selected.lease,input))throw changed();return result;}}));
     stable={host:{tools,competitionToolAvailability:availability,competitionToolExports:policies,runtimeOptions:{},
-      bind(value){if(application&&application!==value)throw Error('原 Runtime 绑定不可替换');application=value;slot?.deployment.host.bind(value);},
+      bind(value){
+        if(application&&application!==value)throw Error('原 Runtime 绑定不可替换');
+        if(application===value)return;
+        const runtime=value?.runtime;
+        if(!runtime||['loadCheckpoint','saveCheckpointOnce','getTask','listTasks'].some(key=>typeof runtime[key]!=='function'))
+          throw Error('开发设置需要原 Runtime 持久任务绑定');
+        let snapshot;try{snapshot=runtime.listTasks({limit:1});}
+        catch{throw Error('开发设置无法读取原 Runtime 启动边界');}
+        if(!Number.isSafeInteger(snapshot?.snapshotSequence)||snapshot.snapshotSequence<0)
+          throw Error('开发设置无法读取原 Runtime 启动边界');
+        bindingRuntime=runtime;startupSequence=snapshot.snapshotSequence;application=value;slot?.deployment.host.bind(value);
+      },
       close},async prepareExport(scope){const lease=active();if(!lease||!bound(lease,scope,true))unavailable();
         await lease.deployment.prepareExport(scope);if(!bound(lease,scope))throw changed();},
       snapshot:()=>({...active()?.deployment.snapshot(),configured:Boolean(active()),
@@ -197,7 +235,7 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
   }
   function readDeveloperWorkflows(context){const lease=active();return lease&&(!context||bound(lease,context,true))
     ?lease.deployment.host.runtimeOptions?.developerWorkflows:undefined;}
-  function close(){if(closed)return;closed=true;clearSlot();taskBindings.clear();record=undefined;publish();}
+  function close(){if(closed)return;closed=true;clearSlot();bindingRuntime=undefined;startupSequence=undefined;record=undefined;publish();}
   return {snapshot,configure,setEnabled,createDeployment(value){
     creating??=createStableDeployment(value).finally(()=>{creating=undefined;});return creating;
   },readDeveloperWorkflows,close};
