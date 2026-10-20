@@ -21,7 +21,7 @@ test('unique provisional contract rejects extra fields, missing executor and mal
 test('shared artifact fingerprint preserves existing F15 ordering and test/recipe identities',()=>{
   const c=context(),reversed=structuredClone(c.baseline);reversed.files.reverse();
   assert.equal(harnessCandidateArtifactDigest(c.baseline),harnessCandidateArtifactDigest(reversed));
-  reversed.files[0].sha256='b'.repeat(64);assert.notEqual(harnessCandidateArtifactDigest(c.baseline),harnessCandidateArtifactDigest(reversed));
+  reversed.files[0].sha256='c'.repeat(64);assert.notEqual(harnessCandidateArtifactDigest(c.baseline),harnessCandidateArtifactDigest(reversed));
   assert.equal(harnessCandidateRecipeFingerprint(c.recipes),c.binding.recipeFingerprint);
   assert.notEqual(harnessCandidateRecipeFingerprint([{...c.recipes[0],required:false}]),c.binding.recipeFingerprint);
 });
