@@ -31,6 +31,8 @@ async function fixture(t) {
   const client = {call(name, payload) { calls.push({name, payload}); return publicClient.call(name, payload); }};
   const eventCursor = new EventCursor('tasks');
   const context = vm.createContext({tasks, approvals, client, runtimeError: '',
+    // This event-batch fixture has no Harness event consumer installed.
+    harnessEventsHost: undefined,
     terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']), notifications: new Map(), structuredClone,
     eventBusy: false, eventCursor, runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,

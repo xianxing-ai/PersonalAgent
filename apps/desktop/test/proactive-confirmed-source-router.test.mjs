@@ -107,6 +107,59 @@ test('Synthetic original confirmed feed Evidence reaches durable sink; repeated 
   }finally{f.close();}
 });
 
+test('Synthetic native Harness reads the same confirmed invocation during sink notification and after acknowledgement',async()=>{
+  const f=await fixture();let unsubscribe;
+  try {
+    f.app.runtime.saveCheckpoint(f.original.taskId,'desktop-proactive-workflow-v1',{version:1,taskId:f.original.taskId,
+      sourceTaskId:f.source.taskId,taskDeadline:f.deadline});
+    const input=await f.read('harness-native-origin');let during;
+    unsubscribe=f.host.subscribe(()=>{
+      const entry=Object.values(f.host.inspect().application.state.entries).find(value=>value.event.entry==='connector');
+      if(entry)during={event:entry.event,origin:f.router.readHarnessSourceOrigin(f.original.taskId,entry.event),
+        authorization:f.router.readHarnessSourceAuthorization(f.original.taskId,entry.event)};
+    });
+    await f.router.routeConfirmedFeed(input,f.context());
+    assert.ok(during?.origin,'Original pending proof exists before the sink acknowledges');
+    assert.ok(during.authorization,'Only the exact confirmed Runtime Policy/source receipt authorizes native admission');
+    assert.deepEqual(f.router.readHarnessSourceOrigin(f.original.taskId,during.event),during.origin);
+    assert.deepEqual(f.router.readHarnessSourceAuthorization(f.original.taskId,during.event),during.authorization);
+    f.revoke();assert.equal(f.router.readHarnessSourceAuthorization(f.original.taskId,during.event),undefined);
+    assert.equal(f.providerCalls(),1,'Native readback never fetches another source');
+  }finally{unsubscribe?.();f.close();}
+});
+
+test('Synthetic equal-time source revisions retain exact current head across pending acknowledgement',async()=>{
+  const f=await fixture();let unsubscribe;
+  try {
+    f.app.runtime.saveCheckpoint(f.original.taskId,'desktop-proactive-workflow-v1',{version:1,taskId:f.original.taskId,
+      sourceTaskId:f.source.taskId,taskDeadline:f.deadline});
+    await f.router.routeConfirmedFeed(await f.read('same-time-first'),f.context());
+    const original=Object.values(f.host.inspect().application.state.entries).find(value=>value.event.entry==='connector').event;
+    const raw=f.result,revision=createHash('sha256').update('Synthetic revised public source body').digest('hex');
+    raw.items[0].summary='Synthetic changed content at the same observation time';
+    raw.sourceReceipt.sourceRevision=revision;raw.sourceReceipt.transport.decodedBodySha256=revision;
+    raw.sourceReceipt.citations[0].sourceRevision=revision;
+    raw.sourceReceipt.citations[0].contentSha256=feedItemContentSha256(raw.items[0]);
+    raw.sourceReceipt.contentSha256=createHash('sha256').update(JSON.stringify([raw.sourceReceipt.citations[0].contentSha256])).digest('hex');
+    const input=await f.read('same-time-second');let during;
+    unsubscribe=f.host.subscribe(()=>{
+      const entry=Object.values(f.host.inspect().application.state.entries).find(value=>value.event.entry==='connector'
+        &&value.event.sourceVersion!==original.sourceVersion);
+      if(entry)during={event:entry.event,authorization:f.router.readHarnessSourceAuthorization(f.original.taskId,entry.event),
+        oldAuthorization:f.router.readHarnessSourceAuthorization(f.original.taskId,original)};
+    });
+    await f.router.routeConfirmedFeed(input,f.context());
+    assert.equal(during?.event.observedAt,original.observedAt);
+    assert.notEqual(during.event.sourceVersion,original.sourceVersion);
+    assert.ok(during.authorization,'Exact pending.heads is authoritative before sink acknowledgement');
+    assert.equal(during.oldAuthorization,undefined);
+    assert.deepEqual(f.router.readHarnessSourceAuthorization(f.original.taskId,during.event),during.authorization,
+      'Moving the exact pending head to the acknowledged head preserves its proof');
+    assert.equal(f.router.readHarnessSourceAuthorization(f.original.taskId,original),undefined);
+    assert.equal(f.providerCalls(),2,'Only the two explicitly requested reads collect a source');
+  }finally{unsubscribe?.();f.close();}
+});
+
 test('Synthetic SQLite reopen plus ordinary maintenance tick recovers exact lost ack without another collection',async()=>{
   const f=await fixture();try {
     const {input}=await f.hostRead('poll-recovery'),persist=f.host.eventSink.persist;

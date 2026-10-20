@@ -17,6 +17,11 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     return () => ipcRenderer.removeListener('desktop:preferences', receive);
   },
   invoke: (action, payload) => ipcRenderer.invoke('desktop:action', action, payload),
+  flushDrafts: entries => {
+    // Only the final close boundary is synchronous; normal editing stays debounced.
+    const result=ipcRenderer.sendSync('desktop:draft-close',entries);
+    if(!result?.ok)throw Error(result?.error??'关闭前草稿保存未确认');
+  },
   onAudioLevel: listener => {
     if(typeof listener!=='function')throw Error('Audio level listener required');
     const receive=(_event,value)=>{if(typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=1)listener(value);};

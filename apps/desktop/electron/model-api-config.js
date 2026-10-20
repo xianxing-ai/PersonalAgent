@@ -1,6 +1,7 @@
 import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {validateHarnessConfiguration} from './harness-configuration.js';
 
 const providers = new Set(['pangu', 'openai-compatible']);
 const efforts = ['none', 'low', 'medium', 'high'];
@@ -59,9 +60,11 @@ function publicRequestBudget(value, binding, configurationRef) {
 }
 
 /** Trusted main process only. Snapshot is safe for IPC; no endpoint is contacted while saving. */
-export function createModelApiConfig({userData, safeStorage, createGateway, isDefaultExecutionAvailable, profile = 'huawei_ict_agentarts'}) {
+export function createModelApiConfig({userData, safeStorage, createGateway, createGuardedGateway,
+  fetchImpl=globalThis.fetch, isDefaultExecutionAvailable, profile = 'huawei_ict_agentarts'}) {
   const target = path.join(userData, 'model-api-config.json');
   let entries = new Map(), defaultId, restoreFailed = false, disposed = false;
+  let harness={version:1,revision:'unconfigured',enabled:false,context:{enabled:false},events:{enabled:false,quiet:false}};
   const gateways = new Map();
   const controllers = new Map();
   const requestBudgets = new Map();
@@ -79,7 +82,8 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
         restored.set(clean.id, {...clean, enabled: value.enabled});
       }
       if (data.defaultId !== undefined && (!restored.has(data.defaultId) || !restored.get(data.defaultId).enabled)) throw Error();
-      entries = restored; defaultId = data.defaultId;
+      const restoredHarness=data.harness===undefined?harness:validateHarnessConfiguration(data.harness);
+      entries = restored; defaultId = data.defaultId;harness=restoredHarness;
     } catch {restoreFailed = true;}
   }
   const active = () => {if (disposed) fail('模型配置宿主已释放');};
@@ -87,10 +91,10 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
     for (const controller of controllers.get(id) ?? []) controller.abort('Model configuration revoked');
     controllers.delete(id); gateways.delete(id); requestBudgets.delete(id);
   };
-  const persist = (next, selected) => {
+  const persist = (next, selected, nextHarness=harness) => {
     if (!safeStorage.isEncryptionAvailable()) fail('本机安全存储不可用，未保存模型配置');
     try {
-      const encrypted = safeStorage.encryptString(JSON.stringify({entries: [...next.values()], defaultId: selected})).toString('base64');
+      const encrypted = safeStorage.encryptString(JSON.stringify({entries: [...next.values()], defaultId: selected,harness:nextHarness})).toString('base64');
       mkdirSync(userData, {recursive: true});
       const temporary = `${target}.tmp-${randomUUID()}`;
       writeFileSync(temporary, JSON.stringify({version: 1, encrypted}), {encoding: 'utf8', mode: 0o600});
@@ -129,6 +133,8 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
     return {
     configured: !disposed && [...entries.values()].some(entry => entry.enabled && available(entry)),
     defaultId: defaultId ?? '',
+    harness:{...structuredClone(harness),contextModelAvailable:harness.context.enabled&&Boolean(selectedEntry(harness.context.modelId,harness.context.configurationRef)),
+      verification:'not_run'},
     defaultModelAvailable: Boolean(selectedEntry(undefined)),
     defaultAvailable: defaultReady,
     defaultExecution: {strategy: 'competition', available: defaultReady, verification: 'conditional',
@@ -151,19 +157,21 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
     })),
     };
   };
-  function getModelGateway(modelName, expectedConfigurationRef) {
-    active();
-    const entry = selectedEntry(modelName, expectedConfigurationRef);
-    if (!entry) return undefined;
+  function buildGateway(entry,factory,beforeSend) {
     const id = entry.id;
-    if (gateways.has(id)) return gateways.get(id);
     const assertCurrent = () => {
       if (disposed || entries.get(id) !== entry || !entry.enabled) fail('模型配置已撤销或更改');
     };
-    const modelGateway = createGateway({profile, provider: entry.provider, baseUrl: entry.baseUrl,
+    const modelGateway = factory({profile, provider: entry.provider, baseUrl: entry.baseUrl,
       model: entry.model, deployment: `${entry.id}@${entry.bindingId}`,
       ...(entry.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(entry.nativeReasoning)}),
-      apiKey: () => {assertCurrent(); return entry.apiKey;}});
+      apiKey: () => {assertCurrent(); return entry.apiKey;},
+      ...(beforeSend===undefined?{}:{fetch:(...args)=>{
+        assertCurrent();
+        const guarded=beforeSend();
+        if(guarded!==undefined){void Promise.resolve(guarded).catch(()=>undefined);fail('模型发送门禁必须同步完成');}
+        return fetchImpl(...args);
+      }})});
     if (!modelGateway || typeof modelGateway.complete !== 'function') fail('受信模型网关不可用');
     let latestRequest = 0;
     const gateway = {deployment: modelGateway.deployment, async complete(request) {
@@ -190,11 +198,43 @@ export function createModelApiConfig({userData, safeStorage, createGateway, isDe
         request.signal.removeEventListener('abort', abort); pending.delete(controller);
       }
     }};
-    gateways.set(id, gateway);
     return gateway;
   }
+  function getModelGateway(modelName, expectedConfigurationRef) {
+    active();
+    const entry=selectedEntry(modelName,expectedConfigurationRef);
+    if(!entry)return undefined;
+    if(!gateways.has(entry.id))gateways.set(entry.id,buildGateway(entry,createGateway));
+    return gateways.get(entry.id);
+  }
+  function getGuardedModelGateway(modelName,expectedConfigurationRef,beforeSend) {
+    active();
+    // This path never selects an implicit default or shares a mutable send guard.
+    if(typeof modelName!=='string'||!modelName||typeof expectedConfigurationRef!=='string'||!expectedConfigurationRef
+      ||typeof beforeSend!=='function'||typeof createGuardedGateway!=='function'||typeof fetchImpl!=='function')return undefined;
+    const entry=selectedEntry(modelName,expectedConfigurationRef);
+    return entry?buildGateway(entry,createGuardedGateway,beforeSend):undefined;
+  }
   return Object.freeze({
-    snapshot, getModelGateway, getModelReasoningEfforts, getModelReasoningState,
+    snapshot, getModelGateway, getGuardedModelGateway, getModelReasoningEfforts, getModelReasoningState,
+    readHarnessConfiguration(){active();return structuredClone(harness);},
+    configureHarness(input){
+      active();
+      if(profile!=='huawei_ict_agentarts'||!input||typeof input!=='object'||Array.isArray(input)
+        ||Object.keys(input).some(key=>!['expectedRevision','enabled','maxExecutorSteps','context','events'].includes(key))
+        ||input.expectedRevision!==harness.revision||typeof input.enabled!=='boolean'||!input.context||typeof input.context!=='object'
+        ||Array.isArray(input.context)||typeof input.context.enabled!=='boolean'
+        ||Object.keys(input.context).some(key=>!['enabled','modelId','configurationRef','maxOutputTokens','policy'].includes(key)))
+        fail('开发者 Harness 配置已变化，请刷新后保存');
+      const revision=randomUUID();
+      const context=input.context.enabled?{...input.context,policy:{...input.context.policy,version:'desktop-context:'+revision}}
+        :{...harness.context,enabled:false};
+      const next=validateHarnessConfiguration({version:1,revision,enabled:input.enabled,
+        ...(input.maxExecutorSteps===undefined?(harness.maxExecutorSteps===undefined?{}:{maxExecutorSteps:harness.maxExecutorSteps})
+          :{maxExecutorSteps:input.maxExecutorSteps}),context,events:input.events??harness.events});
+      if(next.context.enabled&&!selectedEntry(next.context.modelId,next.context.configurationRef))fail('请选择当前可用的摘要模型版本');
+      persist(entries,defaultId,next);harness=next;return snapshot();
+    },
     configure(input) {
       active();
       if (profile !== 'huawei_ict_agentarts') fail('当前模型配置只服务 AgentArts Competition Profile');

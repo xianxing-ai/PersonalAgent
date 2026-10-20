@@ -1,7 +1,24 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {mountNativeReasoning,nativeReasoningState} from '../src/features/conversation/native-reasoning.js';import {mountWorkspaceComposer} from '../src/features/conversation/workspace-composer.js';import {mountSessionControls} from '../src/features/conversation/session-controls.js';
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
+test('native reasoning tolerates missing/loading/unavailable catalogs and does not adopt stale defaults',()=>{
+  for(const value of [{},{agentArtsModels:{catalog:null,preferences:null}},{conversationPreference:{modelId:'old'},agentArtsModels:{catalog:null,preferences:null}}])assert.equal(nativeReasoningState(value).available,false);
+  const state={agentArtsModels:{catalog:{revision:'new',defaultModelId:'a',models:[{id:'a',type:'text',availability:'unverified',reasoningEfforts:[]}]},preferences:{catalogRevision:'old',defaultModelId:'b',reasoningEffort:'high'}}};
+  assert.equal(nativeReasoningState(state).modelId,'a');assert.equal(nativeReasoningState(state).reasoningEffort,undefined);
+});
 function dom(t){const originals={document:globalThis.document,Option:globalThis.Option,window:globalThis.window};t.after(()=>{for(const [key,value]of Object.entries(originals))if(value===undefined)delete globalThis[key];else globalThis[key]=value;});function node(){return {value:'',disabled:false,textContent:'',dataset:{},children:[],style:{setProperty(){}},listeners:{},attrs:{},append(...items){this.children.push(...items);},setAttribute(k,v){this.attrs[k]=v;},replaceChildren(...items){this.children=items;},addEventListener(name,handler){(this.listeners[name]??=[]).push(handler);},dispatchEvent(event){for(const listener of this.listeners[event.type]??[])listener(event);},remove(){}};}const fields=Object.fromEntries(['textarea','[data-send]','[data-stop]','[role=status]','[data-session-list]','[data-session-title]','[data-session-status]','[data-session-archived]','[data-session-new]','[data-session-rename]','[data-session-archive]'].map(name=>[name,node()]));const created=[];globalThis.document={createElement(tag){const value=node();value.querySelector=selector=>fields[selector];value.requestSubmit=()=>{value.submits=(value.submits??0)+1;};created.push({tag,value});return value;}};globalThis.Option=function(text,value){this.text=text;this.value=value;};globalThis.window={addEventListener(){}};return {node,fields,created,root:node()};}
 const data=(id='session-a')=>({conversationState:{activeId:id,draft:'saved '+id,sessions:[{id:'session-a',title:'A',archived:false},{id:'session-b',title:'B',archived:false}]},conversationPreference:{modelId:'text',executionModel:{catalogRevision:'a'.repeat(64),modelId:'text',reasoningEffort:'low'}},agentArtsModels:{catalog:{revision:'a'.repeat(64),models:[{id:'text',type:'text',availability:'unverified',reasoningEfforts:['low','high']}]}}});
+test('quit preparation persists before freezing; a failed write and cancellation preserve editable drafts',async t=>{
+  const f=dom(t),input=f.node(),events=new Map(),writes=[],errors=[];input.readOnly=false;
+  globalThis.window.addEventListener=(name,handler)=>events.set(name,handler);
+  let fail=true;const controls=mountSessionControls(f.root,input,async()=>{},e=>errors.push(e.message),{flushBeforeClose:entries=>{if(fail)throw Error('disk unavailable');writes.push(entries);}});
+  controls.update(data());input.value='latest unsaved text';
+  const event=()=>({detail:{handled:false},defaultPrevented:false,preventDefault(){this.defaultPrevented=true;}});
+  const failed=event();events.get('pa:prepare-quit')(failed);assert.equal(failed.defaultPrevented,true);assert.equal(input.readOnly,false);assert.equal(input.value,'latest unsaved text');assert.deepEqual(errors,['disk unavailable']);
+  fail=false;events.get('pa:prepare-quit')(event());assert.equal(input.readOnly,true);assert.equal(writes[0][0].text,'latest unsaved text');
+  await assert.rejects(controls.appendDictation({text:'late speech'}),/正在退出/);
+  events.get('beforeunload')(event());assert.equal(writes.length,1,'final unload cannot start a new fallible write after cleanup');
+  events.get('pa:cancel-quit')();assert.equal(input.readOnly,false);input.value='retry edits';events.get('beforeunload')(event());assert.equal(writes.at(-1)[0].text,'retry edits');
+});
 test('single main hides session management while keeping draft failure feedback visible',async t=>{
   const f=dom(t),input=f.node(),control=mountSessionControls(f.root,input,async()=>{throw Error('disk failed');},()=>{},{singleMain:true});control.update(data());
   assert.equal(f.root.children[0].hidden,true);assert.equal(f.root.children.at(-1),f.fields['[data-session-status]']);

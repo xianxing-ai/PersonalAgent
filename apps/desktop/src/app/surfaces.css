@@ -90,10 +90,14 @@
 .thread,.workspace-stage,.connector-board {scrollbar-width:none}
 .thread::-webkit-scrollbar,.workspace-stage::-webkit-scrollbar,.connector-board::-webkit-scrollbar {display:none;width:0;height:0}
 .conversation-rail {position:absolute;right:6px;top:74px;bottom:130px;width:22px;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:4;pointer-events:none}
+.panel {grid-template-rows:auto auto minmax(32px,1fr) auto}
 .panel>header {grid-row:1;grid-column:1}
-.panel>.thread {grid-row:2;grid-column:1}
-.panel>.composer {grid-row:3;grid-column:1;min-width:0}
-.panel>.conversation-rail {position:static;inset:auto;grid-row:2;grid-column:1;align-self:stretch;justify-self:end;margin:8px 6px}
+.panel>.conversation-session-root {grid-row:2;grid-column:1;min-height:0;max-height:25vh;overflow:auto}
+.panel>.thread {grid-row:3;grid-column:1;box-sizing:border-box}
+.panel>.composer {grid-row:4;grid-column:1;display:flex;flex-direction:column;min-width:0;max-height:45vh;box-sizing:border-box}
+.panel>.composer>.composer-bar {flex:0 0 auto}
+.panel>.composer>.wake-controls {min-height:0;overflow:auto}
+.panel>.conversation-rail {position:static;inset:auto;grid-row:3;grid-column:1;align-self:stretch;justify-self:end;margin:8px 6px}
 .conversation-rail button {position:relative;display:flex;align-items:center;justify-content:center;flex:0 1 12px;min-height:3px;width:22px;padding:0;border:0;background:transparent;pointer-events:auto}
 .rail-dash {display:block;width:7px;height:2px;background:var(--fg);opacity:.23;transition:width .15s,opacity .15s}
 .conversation-rail button[aria-current="true"] .rail-dash {width:14px;opacity:.9}
@@ -151,7 +155,7 @@
 
 .panel .composer textarea {box-sizing:border-box;min-width:0;field-sizing:content;max-height:min(160px,28vh);overflow-y:auto}
 .panel .model-box {position:static}
-.panel .model-menu {right:0;bottom:calc(100% + 8px);width:252px;max-width:calc(100% - 28px);max-height:calc(100vh - 104px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.panel .model-menu {right:0;bottom:calc(100% + 8px);width:252px;max-width:calc(100% - 28px);max-height:min(360px,50vh);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .panel .model-menu .mm-model {min-width:0;align-items:flex-start}
 .panel .model-menu #mm-model-label {min-width:0;flex:1;overflow-wrap:anywhere}
 .panel .model-menu .model-tag {flex:0 0 auto}
@@ -537,12 +541,16 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .conversation-sessions select,.conversation-sessions input {box-sizing:border-box;min-width:0;max-width:180px;width:130px;border:1px solid var(--glass-border);border-radius:6px;background:var(--surface-2);color:var(--fg);padding:5px 7px;font:inherit}
 .conversation-sessions button {border:1px solid var(--glass-border);border-radius:6px;padding:5px 8px;background:var(--surface-2);color:var(--fg);font:inherit}
 .conversation-sessions .notice:empty {display:none}.conversation-sessions details {position:relative}.conversation-sessions details>div {display:flex;flex-wrap:wrap;gap:6px}
+.conversation-sessions details {min-width:0;max-width:100%}
+.conversation-sessions details>div {max-height:25vh;overflow:auto;overscroll-behavior:contain}
+.conversation-sessions [data-restore-conversation] {max-width:100%;overflow-wrap:anywhere;text-align:left}
 .native-reasoning-control {display:flex;align-items:center;gap:8px;font-size:11px;min-width:0}.native-reasoning-control select {min-width:0;max-width:160px;padding:6px 8px;border:1px solid var(--glass-border);border-radius:6px;background:var(--surface-2);color:var(--fg);font:inherit}
 .workspace-composer {flex:0 0 auto;padding:12px 24px 16px;border-top:1px solid var(--glass-hairline)}.workspace-composer label {display:block;font-size:11px;color:var(--muted)}
 .workspace-composer textarea {box-sizing:border-box;display:block;width:100%;min-height:72px;max-height:180px;resize:vertical;margin-top:6px;padding:10px 12px;border:1px solid var(--glass-border);border-radius:10px;background:var(--surface-2);color:var(--fg);font:inherit;line-height:1.6}
 .workspace-composer-actions {display:flex;align-items:center;gap:12px;margin-top:8px}.workspace-composer-actions .notice {flex:1;margin:0}.workspace-composer-actions button {padding:7px 14px;border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2);color:var(--fg)}.workspace-composer-actions button:disabled {opacity:.45}
 .workspace-chat>.subagent-tasks {flex:0 0 auto;max-height:150px;overflow:auto;padding-inline:24px;font-size:11px}.workspace-chat>.workspace-error {position:static;margin:0;padding:4px 24px;text-align:left;flex:0 0 auto}
 .panel>.conversation-sessions,.panel>div:has(>.conversation-sessions) {flex:0 0 auto}
+
 /* Native window controls remain separate from the draggable title area. */
 .admin {grid-template-rows:40px minmax(0,1fr)}
 .admin,.workspace {background-color:var(--bg)}

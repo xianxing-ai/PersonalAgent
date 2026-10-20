@@ -2,6 +2,13 @@ import {mkdtempSync,rmSync,readdirSync,realpathSync,statSync} from 'node:fs';
 import path from 'node:path';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import * as coding from '@personal-agent/coding-tools';
+export const developerPublicEnumPaths={'github.actions.run.list':['/status'],'github.issue.list':['/state'],'github.pr.review.comment':['/side']};
+
+export const developerTestLocatorDescriptor={name:'workspace.locate_test_failures',version:'1.0.0',
+  inputSchema:{type:'object',properties:{output:{type:'string',maxLength:65536}},required:['output'],additionalProperties:false},
+  outputSchema:{type:'object',properties:{failures:{type:'array',items:{type:'object'}},totalFailures:{type:'integer'}},
+    required:['failures','totalFailures'],additionalProperties:false},
+  sideEffect:'read',requiredScopes:['workspace:read'],requiresPresence:false,idempotencySupport:true,recoverySupport:true};
 
 /** Main-only composition of the existing public developer ports. No ambient credentials or network calls. */
 export function createDesktopDeveloperToolsHost({githubModule,github,git,command,testLocate,workflows,
@@ -29,7 +36,7 @@ export function createDesktopDeveloperToolsHost({githubModule,github,git,command
       else missing('github.actions.repair.link','separate_checks_write_opt_in_required');
       for(const tool of tools.filter(tool=>!namesBefore.has(tool.descriptor.name))) {
         readiness.set(tool.descriptor.name,github.available);
-        const publicPaths={'github.actions.run.list':['/status'],'github.issue.list':['/state'],'github.pr.review.comment':['/side']};
+        const publicPaths=developerPublicEnumPaths;
         publicEnums.set(tool.descriptor.name,github.publicEnumPaths?.[tool.descriptor.name]??publicPaths[tool.descriptor.name]??[]);
       }
     }else missing('github','trusted_provider_repository_credentials_required');
@@ -73,11 +80,7 @@ export function createDesktopDeveloperToolsHost({githubModule,github,git,command
       // The public locator also reads source snippets. An empty host-owned parser root
       // exposes its deterministic log parser without granting a second source-read path.
       parserRoot=mkdtempSync(path.join(testLocate.cacheRootPath,'test-locate-'));parserIdentity=statSync(parserRoot,{bigint:true});
-      const descriptor={name:'workspace.locate_test_failures',version:'1.0.0',
-        inputSchema:{type:'object',properties:{output:{type:'string',maxLength:65536}},required:['output'],additionalProperties:false},
-        outputSchema:{type:'object',properties:{failures:{type:'array',items:{type:'object'}},totalFailures:{type:'integer'}},
-          required:['failures','totalFailures'],additionalProperties:false},
-        sideEffect:'read',requiredScopes:['workspace:read'],requiresPresence:false,idempotencySupport:true,recoverySupport:true};
+      const descriptor=structuredClone(developerTestLocatorDescriptor);
       disposers.push(host.register({descriptor,execute:async(input,context)=>{
         validateToolValue(descriptor.inputSchema,input);
         if(!context.authorizationRef||!context.scopes?.includes('workspace:read')||!current(context))throw new ProtocolError('SCOPE_DENIED','Test log parser requires original authorization');

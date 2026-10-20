@@ -7,7 +7,8 @@ const text=value=>typeof value==='string'&&!!value.trim();
 
 /** Desktop binds trusted configuration and user commands. The original Runtime owns its worker. */
 export function createDesktopProactiveWorkflowApplication({application,readConfiguration,notificationHost,
-  context,bindings,localDeviceAvailable,resolveUserConversation,onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter}) {
+  context,bindings,localDeviceAvailable,resolveUserConversation,onSession=()=>{},readPersistedSession,
+  onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter}) {
   const sessions=new Map(),controls=new Map();
   const publish=()=>{try{onUpdate();}catch{}};
   function configuration() {
@@ -55,7 +56,7 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
       ...(notificationHost?{notificationHost}:{}),...(contextPorts?{context:contextPorts}:{}),...(bindings?{bindings}:{}),
       verifyControlCommand:command=>controls.get(command.commandId)===digest(command),
       resumeWorker:()=>application.resumeProactiveTask(taskId)});
-    sessions.set(taskId,{binding,host});host.subscribe(publish);return sessions.get(taskId);
+    sessions.set(taskId,{binding,host});host.subscribe(publish);onSession(sessions.get(taskId));return sessions.get(taskId);
   }
   function summary(session) {
     const {binding,host}=session,result=host.inspect().application.state.lastResult;
@@ -69,6 +70,31 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
         pending:returned.pending.length,blocked:returned.blocked.length,replayedNotifications:0}}:{})};
   }
   return {
+    /** Pure startup projection over the original Runtime's public persisted reader. No bind/describe. */
+    readPersistedSessions() {
+      if(typeof readPersistedSession!=='function')return [];
+      const result=[];let beforeSequence,snapshotSequence;
+      do {
+        const page=application.runtime.listTasks({limit:100,...(beforeSequence===undefined?{}:{beforeSequence}),
+          ...(snapshotSequence===undefined?{}:{snapshotSequence})});
+        snapshotSequence=page.snapshotSequence;beforeSequence=page.nextBeforeSequence;
+        for(const task of page.items) {
+          const binding=application.runtime.loadCheckpoint(task.taskId,KEY);
+          if(binding?.version!==1||binding.taskId!==task.taskId||!binding.imageBinding)continue;
+          try {
+            if(binding.imageBinding!==imageBinding(configuration())||configuration().contractRef!==binding.contractRef)continue;
+            const snapshot=readPersistedSession(task.taskId,binding.sessionId);
+            if(!snapshot||snapshot.application.state.binding.taskDeadline!==binding.taskDeadline
+              ||snapshot.application.state.contractRef!==binding.contractRef)continue;
+            result.push({binding:structuredClone(binding),host:{taskId:task.taskId,sessionId:binding.sessionId,
+              get binding(){return readPersistedSession(task.taskId,binding.sessionId)?.application.state.binding;},
+              inspect(){const current=readPersistedSession(task.taskId,binding.sessionId);
+                if(!current)throw Error('原持久持续工作流不可用');return current;}}});
+          }catch{/* Missing original state cannot authorize startup. */}
+        }
+      }while(beforeSequence!==undefined);
+      return result;
+    },
     snapshot() {
       let configured=false;try{configuration();configured=true;}catch{}
       return {state:configured?'configured_not_verified':'unavailable',sessions:[...sessions.values()].map(({binding,host})=>({
@@ -81,15 +107,16 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
       if(!input||Object.keys(input).some(key=>!['sourceTaskId','commandId','taskDeadline'].includes(key))
         ||![input.sourceTaskId,input.commandId,input.taskDeadline].every(text))throw Error('持续工作流需要原指令、命令标识和期限');
       const source=application.runtime.getTask(input.sourceTaskId);
+      const conversationId=resolveUserConversation?resolveUserConversation(source.taskId):source.conversationId;
       if(!text(source.goal)||!text(source.conversationId)||application.runtime.loadCheckpoint(source.taskId,'private-copy-erasure')
-        ||application.runtime.loadCheckpoint(source.taskId,'private-copy-erasure-binding'))throw Error('原用户指令不可用');
+        ||application.runtime.loadCheckpoint(source.taskId,'private-copy-erasure-binding')||!text(conversationId))throw Error('原用户指令不可用');
       const configured=configuration(),ctx=lifetime({taskDeadline:input.taskDeadline},request);
       const identity={taskId:source.taskId,sessionId:'proactive-'+digest(input.commandId).slice(0,32),controlRevision:0,
         taskDeadline:input.taskDeadline,requestId:'describe-'+digest(input.commandId).slice(0,32),...ctx};
       const description=await createAdapter(configured.adapter).describe(identity);
       const contract=description.contracts.find(value=>value.id===configured.contractRef);
       if(!contract)throw Error('镜像没有发布当前持续工作流契约');
-      const task=application.runtime.submitTask({goal:source.goal,conversationId:source.conversationId,
+      const task=application.runtime.submitTask({goal:source.goal,conversationId,
         idempotencyKey:'desktop-proactive-'+digest(input.commandId)});
       const binding={version:1,taskId:task.taskId,sessionId:identity.sessionId,sourceTaskId:source.taskId,
         taskDeadline:input.taskDeadline,contractRef:contract.id,contractVersion:contract.version,imageBinding:imageBinding(configured)};

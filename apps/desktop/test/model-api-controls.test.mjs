@@ -4,25 +4,58 @@ import {mountModelApiControls,describeModelRequestBudget} from '../src/app/model
 
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
 
+// A scoped form DOM for the composed model settings surface. Sibling controls are mounted
+// normally; they cannot alias the independent API fields or its save/remove lock.
+class Element {
+  constructor(tag){this.tag=tag;this.children=[];this.attributes=new Map();this.listeners=new Map();
+    this.value='';this.checked=false;this.disabled=false;this.textContent='';this.dataset={};}
+  setAttribute(name,value){this.attributes.set(name,String(value));
+    if(name==='value')this.value=String(value);
+    if(name==='checked'||name==='disabled')this[name]=true;
+    if(name.startsWith('data-'))this.dataset[name.slice(5).replace(/-([a-z])/gu,(_,letter)=>letter.toUpperCase())]=String(value);}
+  append(...children){for(const child of children){child.parentElement=this;this.children.push(child);}}
+  replaceChildren(...children){for(const child of this.children)child.parentElement=undefined;this.children=[];this.value='';this.append(...children);}
+  set innerHTML(value){
+    this.replaceChildren();const stack=[this];
+    for(const token of value.match(/<[^>]+>|[^<]+/gu)??[]){
+      if(token.startsWith('</')){stack.pop();continue;}
+      if(!token.startsWith('<')){stack.at(-1).textContent+=token;continue;}
+      const tag=token.match(/^<([\w-]+)/u)?.[1];if(!tag)continue;
+      const node=new Element(tag);
+      for(const match of token.slice(tag.length+1,-1).matchAll(/([\w-]+)(?:="([^"]*)")?/gu))node.setAttribute(match[1],match[2]??'');
+      stack.at(-1).append(node);if(!['input','br','hr','img','link'].includes(tag))stack.push(node);
+    }
+  }
+  matches(selector){return selector.split(',').some(part=>{
+    const match=part.trim().match(/^([\w-]+)?(?:\[([\w-]+)(?:="([^"]*)")?\])?$/u);
+    return Boolean(match)&&(!match[1]||this.tag===match[1])
+      &&(!match[2]||this.attributes.has(match[2])&&(match[3]===undefined||this.attributes.get(match[2])===match[3]));
+  });}
+  querySelectorAll(selector){return this.children.flatMap(child=>[...(child.matches(selector)?[child]:[]),...child.querySelectorAll(selector)]);}
+  querySelector(selector){return this.querySelectorAll(selector)[0]??null;}
+  get elements(){return {namedItem:name=>this.querySelectorAll('input,select,textarea,button').find(node=>node.attributes.get('name')===name)??null};}
+  addEventListener(type,listener,options={}){this.listeners.set(type,listener);
+    options.signal?.addEventListener('abort',()=>{if(this.listeners.get(type)===listener)this.listeners.delete(type);},{once:true});}
+  contains(node){return node===this||this.children.some(child=>child.contains(node));}
+  remove(){this.removed=true;if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);this.parentElement=undefined;}
+}
+
 function fixture(t,invoke){
   const original=Object.getOwnPropertyDescriptor(globalThis,'document');
   t.after(()=>{if(original)Object.defineProperty(globalThis,'document',original);else delete globalThis.document;});
-  const names=['defaultExecution','saved','provider','displayName','baseUrl','model','key','enabled','default',
-    'reasoningConfirmed','capabilities','requestBudget','save','remove','status','nativeThinking','nativeEffort','outputTokenParameter'];
-  const fields=Object.fromEntries(names.map(name=>[name,{value:'',checked:false,disabled:false,listeners:new Map(),
-    addEventListener(type,listener){this.listeners.set(type,listener);},replaceChildren(){this.options=[];},
-    append(option){this.options.push(option);}}]));
-  const efforts=['none','minimal','low','medium','high','xhigh','max'].map(value=>({dataset:{modelEffort:value},checked:false,disabled:false,
-    listeners:new Map(),addEventListener(type,listener){this.listeners.set(type,listener);}}));
-  const controls=[...['saved','provider','displayName','baseUrl','model','key','enabled','default','reasoningConfirmed','save','remove',
-    'nativeThinking','nativeEffort','outputTokenParameter']
-    .map(name=>fields[name]),...efforts];
-  const settings={attributes:new Map(),querySelector:selector=>fields[/data-model-api="([^"]+)"/.exec(selector)[1]],
-    querySelectorAll:selector=>selector==='[data-model-effort]'?efforts:controls,
-    setAttribute(name,value){this.attributes.set(name,value);},remove(){this.removed=true;}};
-  let first=true;
-  globalThis.document={createElement(){if(first){first=false;return settings;}return {value:'',textContent:''};}};
-  const ui=mountModelApiControls({append(){}},invoke);
+  globalThis.document={createElement:tag=>new Element(tag)};
+  const root=new Element('main'),siblingCalls=[];
+  const ui=mountModelApiControls(root,(operation,payload)=>{
+    if(operation==='harness.experience.list'){
+      siblingCalls.push({operation,payload});return {available:false,entries:[],reason:'Explicit synthetic unavailable experience host'};
+    }
+    assert.ok(operation.startsWith('modelApi.'),'Only model API writes belong to this fixture');return invoke(operation,payload);
+  });
+  t.after(()=>ui.close());
+  assert.equal(siblingCalls.length,1,'The composed experience control performs its original read-only initial refresh');
+  const settings=root.children[0],fields=Object.fromEntries(settings.querySelectorAll('[data-model-api]')
+    .map(node=>[node.dataset.modelApi,node]));
+  const efforts=settings.querySelectorAll('[data-model-effort]'),controls=settings.querySelectorAll('input,select,button');
   return {fields,efforts,controls,settings,ui,save:()=>fields.save.onclick(),remove:()=>fields.remove.onclick()};
 }
 

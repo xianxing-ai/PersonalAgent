@@ -3,6 +3,50 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {EventEmitter} from 'node:events';
+import {createDraftQuitPreflight} from '../electron/draft-quit-preflight.js';
+
+test('actual Main commits draft receipts before cleanup and normal window destruction cannot cancel final quit',async()=>{
+  const f=fixture();
+  const windows=[0,1].map(()=>Object.assign(new EventEmitter(),{isDestroyed:()=>false,
+    webContents:Object.assign(new EventEmitter(),{mainFrame:{},isDestroyed:()=>false,executeJavaScript:async()=>true})}));
+  f.context.draftQuitPreflight=createDraftQuitPreflight({windows:()=>windows,retry:()=>f.app.quit(),
+    onFailure:error=>f.context.reportQuitFailure(error.message)});
+  f.app.quit();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.app.isQuitting,true);assert.equal(f.calls.filter(value=>value==='runtime-close').length,1);
+  for(const win of windows){win.webContents.emit('destroyed');win.emit('closed');}
+  assert.equal(f.app.isQuitting,true);assert.equal(f.context.runtimeError,'');
+});
+
+test('actual Main refuses cleanup if the final draft receipt cannot commit',async()=>{
+  const f=fixture();let retries=0;
+  f.context.wakeQuitHandled=true;f.context.voiceDisposed=true;
+  f.context.draftQuitPreflight={allow(){retries++;return true;},commit:()=>false};
+  f.app.quit();assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);
+  assert.equal(f.calls.includes('unregister-shortcuts'),false);assert.equal(retries,2);
+});
+
+test('a synchronous Runtime close failure after draft commit cancels and unfreezes retained pages',async()=>{
+  const f=fixture();let resumed=0;
+  const win=Object.assign(new EventEmitter(),{isDestroyed:()=>false,
+    webContents:Object.assign(new EventEmitter(),{mainFrame:{},isDestroyed:()=>false,
+      async executeJavaScript(script){if(script.includes('pa:cancel-quit'))resumed++;return true;}})});
+  f.context.draftQuitPreflight=createDraftQuitPreflight({windows:()=>[win],retry:()=>f.app.quit(),
+    onFailure:error=>f.context.reportQuitFailure(error.message)});
+  f.context.runtimeApplication.close=()=>{throw Error('synthetic Runtime close failure');};
+  f.app.quit();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(f.app.isQuitting,false);assert.equal(resumed,1);
+  assert.equal(win.webContents.eventNames().length,0);assert.match(f.context.runtimeError,/synthetic Runtime close failure/);
+});
+
+test('H6 close failure unlocks preflight drafts before retaining the original Runtime',async()=>{
+  const f=fixture();let cancelled=0;
+  Object.assign(f.context,{harnessEventsHost:{close:async()=>{throw Error('synthetic close failed');}},
+    harnessExperienceLifetime:new AbortController(),draftQuitPreflight:{allow:()=>true,cancel(){cancelled++;}}});
+  f.app.quit();await tick();await tick();
+  assert.equal(cancelled,1);assert.equal(f.exited,false);
+  assert.equal(f.calls.includes('runtime-close'),false);assert.match(f.context.runtimeError,/开发事件消费尚未停止/);
+});
 
 const main = readFileSync(process.env.QUIT_PREFLIGHT_MAIN_SOURCE || new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', main, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -38,9 +82,11 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
-    'windowsControlHost','developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog'];
+    'windowsControlHost','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
+    'harnessEventsHost','harnessEventsClosing','harnessContextHost'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
+    submitting:new Set(),draftQuitPreflight:{allow:()=>true,commit:()=>true,cancel(){}},
     runtimeStartup: {snapshot: () => ({state: startup})}, runtimeApplication: {activeTaskCount: count,
       close() {calls.push('runtime-close');}}, runtimeError: '', runtimeClosed: false,
     wakeQuitHandled: false, wakeQuitUnknown: false, wakeDisposal: undefined,
@@ -50,13 +96,13 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
     localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
-    windowsControlClosed: false, windowsControlClosing: undefined,
+    windowsControlClosed: false, windowsControlClosing: undefined, harnessEventsClosed:false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
     publish() {calls.push('publish');},
   });
-  for (const name of ['stopWakeVoice','disposeWakeForQuit','reportPanelVoiceFailure','stopOrbDrag']) {
+  for (const name of ['stopWakeVoice','disposeWakeForQuit','reportPanelVoiceFailure','reportQuitFailure','stopOrbDrag']) {
     vm.runInContext(declaration(name), context);
   }
   beforeQuit = vm.runInContext(callback, context);
@@ -71,6 +117,20 @@ test('an already active task refuses quit before permanent voice or wake disposa
   assert.equal(f.calls.includes('telemetry-stop'), false);assert.equal(f.calls.includes('runtime-close'), false);
   assert.equal((await f.voiceInput.beginCapture()).status, 'listening');
   assert.equal((await f.wakeVoice.enable()).phase, 'listening');
+});
+
+test('app.quit with a failed draft preflight preserves Runtime, tray and every host',async()=>{
+  const f=fixture();f.context.draftQuitPreflight={allow:()=>false};f.app.quit();await tick();
+  assert.equal(f.exited,false);assert.deepEqual(f.calls,['app-quit']);assert.equal(f.context.runtimeClosed,false);
+});
+
+test('an explicit quit cleanup failure unlocks drafts before reporting it',async()=>{
+  const f=fixture();let cancelled=0;
+  f.context.draftQuitPreflight={allow:()=>true,commit:()=>true,cancel(){cancelled++;}};
+  f.context.remoteMcpHost={dispose:async()=>{throw Error('release failed');}};
+  f.context.remoteMcpManagement={close(){}};f.app.quit();await tick();
+  assert.equal(cancelled,1);assert.equal(f.exited,false);assert.equal(f.context.runtimeClosed,false);
+  assert.match(f.context.runtimeError,/远程 MCP 关闭未确认/);
 });
 
 test('a task finishing does not resume a refused quit; the next explicit quit closes normally', async () => {
@@ -91,6 +151,16 @@ test('a zero-task quit retains the original cleanup sequence', async () => {
   assert.ok(f.calls.indexOf('voice-dispose') < f.calls.indexOf('runtime-close'));
   assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);
   assert.ok(f.calls.indexOf('installed-skills-close') < f.calls.indexOf('runtime-close'));
+});
+
+test('accepted quit releases the active orb drag timer', async () => {
+  const f = fixture(), cleared = [], timer = {};
+  f.context.orbDragPoll = timer;
+  f.context.clearInterval = value => cleared.push(value);
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited, true);
+  assert.ok(cleared.includes(timer));
+  assert.equal(f.context.orbDragPoll, undefined);
 });
 
 test('connector conversation permits close only after quit is accepted and before Runtime',async()=>{
