@@ -11,7 +11,7 @@ import type {RuntimeCodingRepairOptions} from './coding-repair-application.js';
 import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-capability.js';
 import {createRuntimeDeveloperWorkflowWorker,DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,
   developerWorkflowInputSchema,developerWorkflowConfigured,developerWorkflowRequiredTools,isDeveloperWorkflowTool} from './developer-workflows.js';
-import type {RuntimeDeveloperWorkflowsOptions} from './developer-workflows.js';
+import type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope} from './developer-workflows.js';
 import {createRuntimeDeveloperHarnessTool, assertDeveloperHarnessConfiguration, developerHarnessAvailable,
   developerHarnessConfigurationRef, readDeveloperHarnessConfiguration as readTrustedDeveloperHarnessConfiguration,
   DEVELOPER_HARNESS_TOOL_NAME, DEVELOPER_HARNESS_TOOL_VERSION} from './developer-harness.js';
@@ -331,6 +331,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   workflowShadowRelease?: RuntimeWorkflowShadowReleaseOptions;
   codingRepair?:RuntimeCodingRepairOptions;
   developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
+  /** Current trusted product configuration, pinned by its host to the original task revision. */
+  readDeveloperWorkflows?:(scope:RuntimeDeveloperWorkflowScope)=>RuntimeDeveloperWorkflowsOptions|undefined;
   /** Native user-work broker only; the interaction root retains its original forced delegation. */
   developerHarness?:RuntimeDeveloperHarnessOptions;
   /** Synchronous trusted host resolver; undefined disables admission without rebuilding the application. */
@@ -422,6 +424,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly codingRepair?:RuntimeCodingRepairOptions;
   private readonly codingWorker?:ReturnType<typeof createRuntimeCodingRepairWorkerCapability>;
   private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
+  private readonly readDeveloperWorkflows?:RuntimeApplicationOptions['readDeveloperWorkflows'];
   private readonly readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
   private readonly onHarnessEventProgress?:RuntimeApplicationOptions['onHarnessEventProgress'];
   private readonly developerWorker?:CoordinationWorkerCapabilityPort;
@@ -518,6 +521,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.coordinationBinding=options.coordinationBinding??'runtime-configured-coordination';
     if(options.assertCoordinationBinding!==undefined)this.assertCoordinationBinding=options.assertCoordinationBinding;
     if(options.codingRepair!==undefined)this.codingRepair={...options.codingRepair};
+    if(options.readDeveloperWorkflows!==undefined) {
+      if(typeof options.readDeveloperWorkflows!=='function'||options.developerWorkflows!==undefined
+        ||this.profile!=='huawei_ict_agentarts')throw new ProtocolError('INVALID_ARGUMENT','Use one trusted Competition developer workflow configuration source');
+      this.readDeveloperWorkflows=options.readDeveloperWorkflows;
+    }
     if(options.developerWorkflows!==undefined){
       if(this.profile!=='huawei_ict_agentarts')throw new ProtocolError('INVALID_ARGUMENT','Developer workflow workers require Competition Profile');
       const configured=options.developerWorkflows;
@@ -650,7 +658,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
           return policy.authorize(request);
         }}, now: () => (options.now?.() ?? new Date()).getTime()});
-        for (const tool of configuredTools) gateway.register(tool.descriptor.name===WORKSPACE_PATCH_APPLY_TOOL_NAME&&this.developerWorkflows
+        for (const tool of configuredTools) gateway.register(tool.descriptor.name===WORKSPACE_PATCH_APPLY_TOOL_NAME&&(this.developerWorkflows||this.readDeveloperWorkflows)
           ?{...tool,execute:(input,context)=>{
             if(!this.isDeveloperWorkerActive(context.taskId))return tool.execute(input,context);
             if(!this.developerPatchRecovery)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted developer patch recovery is unavailable');
@@ -690,7 +698,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.workspacePatchReconciliation = new WorkspacePatchReconciliationAdapter(
         this.runtime, options.workspacePatchReconciliation, this.hostUserNamespace, this.coordinationBinding);
       const preview=configuredTools.find(tool=>tool.descriptor.name==='workspace.preview_text_patch'&&tool.descriptor.version==='1.0.0');
-      if(this.developerWorkflows&&preview)this.developerPatchRecovery=new DevWorkflowPatchRecovery(this.runtime,options.workspacePatchReconciliation,preview);
+      if((this.developerWorkflows||this.readDeveloperWorkflows)&&preview)this.developerPatchRecovery=new DevWorkflowPatchRecovery(this.runtime,options.workspacePatchReconciliation,preview);
     }
     this.observationSessions = new SystemObservationSessions(() => this.now().getTime(), taskId => {
       this.runtime.policy.revoke(`host-tool-${taskId}`);
@@ -778,7 +786,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           this.runtime.saveCheckpointOnce(invocation.taskId,key,original);
           const loop=this.runtime.loadCheckpoint(invocation.taskId,'competition-loop') as {pending?:unknown}|undefined;
           const worker=this.runtime.loadCheckpoint(invocation.taskId,'developer-workflow:active') as {bindingId?:string;proposalDigest?:string}|undefined;
-          if(worker?.bindingId===this.developerWorkflows?.bindingId&&loop?.pending
+          if(worker&&worker.bindingId===this.developerWorkflowsFor({taskId:invocation.taskId,deadline:invocation.deadline,signal:invocation.signal})?.bindingId&&loop?.pending
             &&worker?.proposalDigest===createHash('sha256').update(JSON.stringify(loop.pending)).digest('hex'))
             this.runtime.saveCheckpoint(invocation.taskId,'developer-workflow:pending-approval',{...worker,approvalId:ref});
         }
@@ -858,7 +866,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           evidenceRefs: [...new Set([...result.evidenceRefs, ...children.flatMap(child => child.evidenceRefs)])]};
       }};
     }
-    if(this.developerWorkflows)this.developerWorker=createRuntimeDeveloperWorkflowWorker(this,this.developerWorkflows,taskId=>this.taskTools(taskId));
+    if(this.developerWorkflows||this.readDeveloperWorkflows) {
+      const workerFor=(scope:RuntimeDeveloperWorkflowScope)=>{
+        const configuration=this.developerWorkflowsFor(scope);
+        if(!configuration)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted developer workflow configuration is unavailable');
+        return createRuntimeDeveloperWorkflowWorker(this,configuration,taskId=>this.taskTools(taskId));
+      };
+      this.developerWorker={accepts:proposal=>proposal.toolVersion==='1.0.0'&&isDeveloperWorkflowTool(proposal.toolName),
+        dispatch:(proposal,context)=>workerFor(context).dispatch(proposal,context),
+        assertReceiptAllowed:(proposal,selection,result,context)=>workerFor(context).assertReceiptAllowed(proposal,selection,result,context)};
+    }
     if(this.codingRepair&&this.delegateUserTasks)this.codingWorker=createRuntimeCodingRepairWorkerCapability(this,this.codingRepair,taskId=>{
       const tools=this.taskTools(taskId),frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
       if(!tools||!Array.isArray(frozen))return undefined;
@@ -900,14 +917,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         },...DEVELOPER_WORKFLOW_KINDS.map(kind=>({toolName:developerWorkflowToolName(kind),toolVersion:'1.0.0',publicEnumPaths:[],
           sideEffect:kind==='ci_list'||kind==='issue_list'?'read' as const:'external_write' as const,
           requiredTool:{name:'github.repo.get',version:this.tools!.list().find(tool=>tool.name==='github.repo.get')?.version??'unavailable'},
-          describeRegistered:()=>this.developerWorkflows?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined,
+          describeRegistered:()=>this.developerWorkflows||this.readDeveloperWorkflows?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined,
           describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
-            if(!this.developerWorkflows||!developerWorkflowConfigured(this.developerWorkflows,kind))return undefined;
+            const configuration=this.developerWorkflowsFor(input);
+            if(!configuration||!developerWorkflowConfigured(configuration,kind))return undefined;
             if(kind==='ci_fix'&&!this.developerPatchRecovery)return undefined;
             const descriptors=this.taskTools(input.taskId)?.list()??[];
-            if(developerWorkflowRequiredTools(this.developerWorkflows,kind).some(name=>!descriptors.some(tool=>tool.name===name)))return undefined;
-            this.developerWorkflows.assertCurrent(input);
-            return await this.developerWorkflows.available(kind,input)?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined;
+            if(developerWorkflowRequiredTools(configuration,kind).some(name=>!descriptors.some(tool=>tool.name===name)))return undefined;
+            configuration.assertCurrent(input);
+            return await configuration.available(kind,input)?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined;
           }}))],options.isUserPresent===undefined?undefined:taskId=>{try{return options.isUserPresent?.(taskId)===true;}catch{return false;}});
     }
     this.textApplication = createTextApplication({...options.text, ...(this.tools ? {tools: this.tools} : {})});
@@ -922,10 +940,28 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   /** Public schema metadata, with no task readiness check, checkpoint or grant. */
   readConversationToolCapabilities(){return this.competitionToolCatalog?.describe()??[];}
 
+  private developerWorkflowsFor(scope:RuntimeDeveloperWorkflowScope):RuntimeDeveloperWorkflowsOptions|undefined {
+    if(scope.signal.aborted||this.runtime.getTask(scope.taskId).cancelRequested)return undefined;
+    const configuration=this.readDeveloperWorkflows?.(scope)??(this.readDeveloperWorkflows?undefined:this.developerWorkflows);
+    if(!configuration)return undefined;
+    const checked:unknown=configuration.assertCurrent({...scope});
+    if(checked!==undefined){void Promise.resolve(checked).catch(()=>{});
+      throw new ProtocolError('UNAUTHORIZED','Developer workflow configuration guard must complete synchronously');}
+    return configuration;
+  }
+
+  private developerWorkflowsForTask(taskId:string):RuntimeDeveloperWorkflowsOptions|undefined {
+    const deadline=this.runtime.loadCheckpoint(taskId,'application-deadline');
+    if(typeof deadline!=='string')return undefined;
+    return this.developerWorkflowsFor({taskId,deadline,signal:new AbortController().signal});
+  }
+
   private isDeveloperWorkerActive(taskId:string):boolean {
     const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {pending?:{toolName?:string}}|undefined;
     const active=this.runtime.loadCheckpoint(taskId,'developer-workflow:active') as {bindingId?:string;proposalDigest?:string}|undefined;
-    return !!this.developerWorkflows&&active?.bindingId===this.developerWorkflows.bindingId
+    if(!active||typeof loop?.pending?.toolName!=='string'||!isDeveloperWorkflowTool(loop.pending.toolName))return false;
+    const configuration=this.developerWorkflowsForTask(taskId);
+    return !!configuration&&active?.bindingId===configuration.bindingId
       &&typeof loop?.pending?.toolName==='string'&&isDeveloperWorkflowTool(loop.pending.toolName)
       &&active.proposalDigest===createHash('sha256').update(JSON.stringify(loop.pending)).digest('hex');
   }
@@ -1021,7 +1057,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private resolveDeveloperWorkerApproval(taskId:string,proposal:unknown):{runId:string;toolName:string;arguments:Record<string,unknown>}|undefined {
     if(!plainObject(proposal)||typeof proposal.toolName!=='string'||!isDeveloperWorkflowTool(proposal.toolName))return undefined;
     const saved=this.runtime.loadCheckpoint(taskId,'developer-workflow:pending-approval') as {approvalId?:string;bindingId?:string;proposalDigest?:string}|undefined;
-    if(!this.developerWorkflows||!saved||typeof saved.approvalId!=='string'||saved.bindingId!==this.developerWorkflows.bindingId
+    const configuration=this.developerWorkflowsForTask(taskId);
+    if(!configuration||!saved||typeof saved.approvalId!=='string'||saved.bindingId!==configuration.bindingId
       ||saved.proposalDigest!==createHash('sha256').update(JSON.stringify(proposal)).digest('hex'))
       throw new ProtocolError('UNAUTHORIZED','Original developer approval binding changed');
     const original=this.runtime.loadCheckpoint(taskId,'application-tool-invocation:'+saved.approvalId) as
