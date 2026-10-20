@@ -16,11 +16,9 @@ const inputDigest = source.match(/^const INPUT_DIGEST = .*;$/m)?.[0];
 assert.ok(inputDigest);
 const helperSource = `${inputDigest}\n${source.slice(checkStart, helperEnd)}\ninvokeHelper;`;
 
-function createHarness({duringMarker} = {}) {
+function createHarness({duringMarker, readyOutput} = {}) {
   const controller = new AbortController();
   let clock = 1_000;
-  let completeIdentity;
-  const identity = new Promise(resolve => { completeIdentity = resolve; });
   const sent = [];
   const timerDelays = [];
   let markerPresent = false;
@@ -58,15 +56,25 @@ function createHarness({duringMarker} = {}) {
   const harness = {
     controller,
     setClock(value) { clock = value; },
-    releaseIdentity() { completeIdentity({pid: 1234, startTimeTicks: '639000000000000000'}); },
     sent,
     timerDelays,
     get markerPresent() { return markerPresent; },
     get markerCreates() { return markerCreates; },
   };
   const invokeHelper = runInNewContext(helperSource, {
-    spawn: () => child,
-    captureWorkspacePatchProcessIdentity: () => identity,
+    spawn: () => {
+      queueMicrotask(() => {
+        child.stdout.emit('data', Buffer.from(readyOutput ?? '{"type":"ready","pid":1234,"startTimeTicks":"6390000000000000000"}\n'));
+      });
+      return child;
+    },
+    parseWorkspacePatchProcessReady(value, expectedPid) {
+      if (!value || value.type !== 'ready' || value.pid !== expectedPid
+        || typeof value.startTimeTicks !== 'string') {
+        throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper READY frame is invalid');
+      }
+      return {pid: expectedPid, startTimeTicks: value.startTimeTicks};
+    },
     ProtocolError,
     WORKSPACE_PATCH_APPLY_SCOPE: 'workspace:apply',
     MAX_HELPER_OUTPUT_BYTES: 8192,
@@ -90,12 +98,11 @@ function createHarness({duringMarker} = {}) {
 }
 
 for (const change of ['cancel', 'expire']) {
-  test(`apply sends no candidate after ${change} during process identity lookup`, async () => {
+  test(`apply sends no candidate after ${change} during helper READY handshake`, async () => {
     const harness = createHarness();
     const result = harness.start().then(value => ({value}), error => ({error}));
     if (change === 'cancel') harness.controller.abort();
     else harness.setClock(11_000);
-    harness.releaseIdentity();
     const settled = await result;
     assert.equal(harness.sent.length, 0, 'no candidate bytes may leave stdin');
     assert.equal(harness.markerCreates, 0, 'do not create an apply marker after failed preflight');
@@ -108,7 +115,6 @@ for (const change of ['cancel', 'expire']) {
       else current.setClock(11_000);
     }});
     const result = harness.start().then(value => ({value}), error => ({error}));
-    harness.releaseIdentity();
     const settled = await result;
     assert.equal(harness.sent.length, 0, 'no candidate bytes may leave stdin');
     assert.equal(harness.markerPresent, false, 'confirmed helper close clears this attempt marker');
@@ -116,20 +122,32 @@ for (const change of ['cancel', 'expire']) {
   });
 }
 
-test('apply dispatch timer uses the remaining budget after identity lookup', async () => {
+for (const [label, readyOutput] of [
+  ['duplicate READY', '{"type":"ready","pid":1234,"startTimeTicks":"6390000000000000000"}\n{"type":"ready","pid":1234,"startTimeTicks":"6390000000000000000"}\n'],
+  ['noise after READY', '{"type":"ready","pid":1234,"startTimeTicks":"6390000000000000000"}\nnoise\n'],
+]) {
+  test('apply rejects ' + label + ' before marker or candidate dispatch', async () => {
+    const harness = createHarness({readyOutput});
+    const settled = await harness.start().then(value => ({value}), error => ({error}));
+    assert.equal(harness.sent.length, 0, 'no candidate bytes may leave stdin');
+    assert.equal(harness.markerCreates, 0, 'preflight output must not create an apply marker');
+    assert.equal(harness.markerPresent, false);
+    assert.equal(settled.error?.code, 'RESULT_UNKNOWN');
+  });
+}
+
+test('apply dispatch timer uses the remaining budget after helper READY', async () => {
   const harness = createHarness();
   const result = harness.start();
   harness.setClock(10_000);
-  harness.releaseIdentity();
   assert.equal((await result).state, 'applied');
-  assert.equal(harness.timerDelays[0], 1000);
+  assert.equal(harness.timerDelays.at(-1), 1000);
   assert.equal(harness.sent.length, 1);
 });
 
 test('valid apply still sends exactly once and clears its marker on close', async () => {
   const harness = createHarness();
   const result = harness.start();
-  harness.releaseIdentity();
   assert.equal((await result).state, 'applied');
   assert.equal(harness.sent.length, 1);
   assert.equal(harness.markerCreates, 1);
@@ -153,11 +171,7 @@ test('failed helper spawn rejects without an unhandled process error', () => {
     const invoke = runInNewContext(readFileSync(0, 'utf8'), {
       spawn, ProtocolError, Buffer, setTimeout, clearTimeout, process: {env: {}},
       WORKSPACE_PATCH_APPLY_SCOPE: 'workspace:apply', MAX_HELPER_OUTPUT_BYTES: 8192,
-      STOP_GRACE_MS: 2000,
-      captureWorkspacePatchProcessIdentity: async () => {
-        throw new Error('failed spawn must not query an absent pid');
-      },
-    });
+      STOP_GRACE_MS: 2000,});
     const controller = new AbortController();
     try {
       await invoke(join(tmpdir(), 'pa-missing-helper-' + randomUUID() + '.exe'),

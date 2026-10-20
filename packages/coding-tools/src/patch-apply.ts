@@ -9,7 +9,7 @@ import type {RegisteredTool, ToolContext, ToolDescriptor} from '@personal-agent/
 import type {WorkspacePatchPreviewResult} from './patch-preview.js';
 import {checkedSource} from './patch-stage.js';
 import {
-  captureWorkspacePatchProcessIdentity,
+  parseWorkspacePatchProcessReady,
   workspacePatchInflightPathFromCanonical,
 } from './patch-reconcile.js';
 
@@ -90,6 +90,7 @@ function check(context: ToolContext, now: () => number): number {
   return remaining;
 }
 
+
 async function invokeHelper(
   executable: string,
   script: string,
@@ -99,6 +100,7 @@ async function invokeHelper(
   context: ToolContext,
   now: () => number,
 ): Promise<HelperResponse> {
+  void processIdentityHelperPath;
   let remaining = check(context, now);
   let child: ReturnType<typeof spawn>;
   try {
@@ -116,146 +118,248 @@ async function invokeHelper(
   } catch {
     throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper could not start');
   }
-  let earlyChildError = false;
-  const onEarlyChildError = (): void => { earlyChildError = true; };
-  // Install an error observer before the first await. Otherwise a spawn error
-  // can become an unhandled EventEmitter error while identity is queried.
-  child.once('error', onEarlyChildError);
-  let processIdentity: Awaited<ReturnType<typeof captureWorkspacePatchProcessIdentity>>;
+
+  let childClosed = false;
+  let closeCode: number | null = null;
+  let childError: ProtocolError | undefined;
+  let stdoutBuffer = '';
+  let outputBytes = 0;
+  let readyIdentity: Awaited<ReturnType<typeof parseWorkspacePatchProcessReady>> | undefined;
+  let readyResolve: (() => void) | undefined;
+  let readyReject: ((error: unknown) => void) | undefined;
+  let readySettled = false;
+  let requestSent = false;
+  let preflightFailure: ProtocolError | undefined;
+  const responseFrames: unknown[] = [];
+  let stopCurrent: ((error: ProtocolError) => void) | undefined;
+  const readyPromise = new Promise<void>((resolveResult, rejectResult) => {
+    readyResolve = resolveResult;
+    readyReject = rejectResult;
+  });
+  const closed = new Promise<void>(resolveResult => {
+    child.once('close', (code: number | null) => {
+      childClosed = true;
+      closeCode = code;
+      if (!readyIdentity && !readySettled) {
+        readySettled = true;
+        readyReject?.(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper exited before READY'));
+      }
+      resolveResult();
+    });
+  });
+  const rejectReady = (error: ProtocolError): void => {
+    if (readySettled) return;
+    readySettled = true;
+    readyReject?.(error);
+  };
+  const failBeforeMarker = (error: ProtocolError): void => {
+    if (!preflightFailure) preflightFailure = error;
+    rejectReady(error);
+    try { child.kill('SIGKILL'); } catch { /* close or grace timeout reports the outcome */ }
+  };
+  const parseFrame = (line: string): void => {
+    if (preflightFailure) return;
+    const value = line.trim();
+    if (!value) return;
+    let frame: unknown;
+    try { frame = JSON.parse(value) as unknown; }
+    catch {
+      const error = new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper emitted an invalid frame');
+      if (!readyIdentity || !requestSent) failBeforeMarker(error);
+      else stopCurrent?.(error);
+      return;
+    }
+    if (!readyIdentity) {
+      try {
+        readyIdentity = parseWorkspacePatchProcessReady(frame, child.pid ?? 0);
+        readySettled = true;
+        readyResolve?.();
+      } catch (error) {
+        failBeforeMarker(error instanceof ProtocolError
+          ? error : new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper READY frame is invalid'));
+      }
+      return;
+    }
+    if (!requestSent) {
+      failBeforeMarker(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper emitted data before request'));
+      return;
+    }
+    responseFrames.push(frame);
+  };
+  const onStdout = (chunk: Buffer): void => {
+    outputBytes += chunk.length;
+    if (outputBytes > MAX_HELPER_OUTPUT_BYTES) {
+      const error = new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper output exceeded limit');
+      if (!readyIdentity || !requestSent) failBeforeMarker(error);
+      else stopCurrent?.(error);
+      return;
+    }
+    stdoutBuffer += chunk.toString('utf8');
+    let newline = stdoutBuffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = stdoutBuffer.slice(0, newline).replace(/\r$/u, '');
+      stdoutBuffer = stdoutBuffer.slice(newline + 1);
+      parseFrame(line);
+      newline = stdoutBuffer.indexOf('\n');
+    }
+  };
+  child.stdout?.on('data', onStdout);
+  child.stderr?.on('data', (chunk: Buffer) => {
+    outputBytes += chunk.length;
+    if (outputBytes > MAX_HELPER_OUTPUT_BYTES) {
+      const error = new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper output exceeded limit');
+      if (!readyIdentity || !requestSent) failBeforeMarker(error);
+      else stopCurrent?.(error);
+    }
+  });
+  child.once('error', () => {
+    childError = new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper could not start');
+    if (!readyIdentity || !requestSent) failBeforeMarker(childError);
+    else stopCurrent?.(childError);
+  });
+
+  const waitAfterKill = async (): Promise<void> => {
+    if (childClosed) return;
+    await Promise.race([closed, new Promise<void>(resolveResult => setTimeout(resolveResult, STOP_GRACE_MS))]);
+    if (!childClosed) {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    }
+  };
+
+  const onReadyAbort = (): void => failBeforeMarker(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply was interrupted'));
+  context.signal.addEventListener('abort', onReadyAbort, {once: true});
+  const readyTimer = setTimeout(
+    () => failBeforeMarker(new ProtocolError('TIMEOUT', 'Workspace patch apply deadline expired')),
+    Math.min(remaining, 2_147_483_647),
+  );
   try {
-    const pid = child.pid;
-    if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid < 1) {
-      throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper identity is unavailable');
-    }
-    remaining = check(context, now);
-    processIdentity = await captureWorkspacePatchProcessIdentity(
-      pid,
-      executable,
-      processIdentityHelperPath,
-      {signal: context.signal, deadlineMs: remaining},
-    );
-    if (earlyChildError || child.exitCode !== null) {
-      throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper identity is unavailable');
-    }
+    await readyPromise;
+  } catch (error) {
+    clearTimeout(readyTimer);
+    context.signal.removeEventListener('abort', onReadyAbort);
+    await waitAfterKill();
+    throw error instanceof ProtocolError ? error : new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper READY was not confirmed');
+  }
+  if (preflightFailure) {
+    clearTimeout(readyTimer);
+    context.signal.removeEventListener('abort', onReadyAbort);
+    await waitAfterKill();
+    throw preflightFailure;
+  }
+  clearTimeout(readyTimer);
+  context.signal.removeEventListener('abort', onReadyAbort);
+  if (!readyIdentity || childClosed || childError) {
+    await waitAfterKill();
+    throw childError ?? new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper identity is unavailable');
+  }
+
+  try {
     remaining = check(context, now);
   } catch (error) {
-    child.once('error', () => {});
-    child.removeListener('error', onEarlyChildError);
-    try { child.kill('SIGKILL'); } catch { /* identity failure is already unknown */ }
-    await new Promise<void>(resolveResult => {
-      if (child.exitCode !== null) { resolveResult(); return; }
-      const timer = setTimeout(resolveResult, STOP_GRACE_MS);
-      child.once('close', () => { clearTimeout(timer); resolveResult(); });
-    });
-    throw error instanceof ProtocolError ? error : new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper identity is unavailable');
+    try { child.kill('SIGKILL'); } catch { /* no candidate bytes were sent */ }
+    await waitAfterKill();
+    throw error instanceof ProtocolError ? error : new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply preflight failed');
   }
-  child.removeListener('error', onEarlyChildError);
-  return new Promise<HelperResponse>((resolveResult, reject) => {
-    // Persist this marker before supplying any candidate bytes. A timeout may
-    // settle the Gateway early, but reconciliation must wait until close removes it.
-    let markerFd: number | undefined;
-    try {
-      markerFd = openSync(inflightPath, 'wx', 0o600);
-      writeSync(markerFd, JSON.stringify({
-        runId: context.runId,
-        argumentsDigest: context.argumentsDigest,
-        pid: processIdentity.pid,
-        startTimeTicks: processIdentity.startTimeTicks,
-        beforeSha256: request.beforeSha256,
-        afterSha256: request.afterSha256,
-      }));
-      fsyncSync(markerFd);
-      closeSync(markerFd);
-      markerFd = undefined;
-    } catch {
-      if (markerFd !== undefined) {
-        try { closeSync(markerFd); } catch { /* a durable marker may remain */ }
-      }
-      child.once('error', () => {});
-      child.stdin?.on('error', () => {});
-      // No candidate bytes were sent, but the spawned process can still hold cwd.
-      // Preserve any pre-existing marker and wait for this unused helper to exit.
-      let rejected = false;
-      const fail = (): void => {
-        if (rejected) return;
-        rejected = true;
-        clearTimeout(stopTimer);
-        reject(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch in-flight record could not be persisted'));
-      };
-      const stopTimer = setTimeout(fail, STOP_GRACE_MS);
-      child.once('close', fail);
-      try { child.kill('SIGKILL'); } catch { /* no request was sent */ }
-      child.stdin?.destroy();
-      return;
+
+  let markerFd: number | undefined;
+  try {
+    markerFd = openSync(inflightPath, 'wx', 0o600);
+    writeSync(markerFd, JSON.stringify({
+      runId: context.runId,
+      argumentsDigest: context.argumentsDigest,
+      pid: readyIdentity.pid,
+      startTimeTicks: readyIdentity.startTimeTicks,
+      beforeSha256: request.beforeSha256,
+      afterSha256: request.afterSha256,
+    }));
+    fsyncSync(markerFd);
+    closeSync(markerFd);
+    markerFd = undefined;
+  } catch {
+    if (markerFd !== undefined) {
+      try { closeSync(markerFd); } catch { /* a durable marker may remain */ }
     }
-    let finished = false;
-    let stopReason: ProtocolError | undefined;
-    let outputBytes = 0;
-    const chunks: Buffer[] = [];
-    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-    let stopTimer: ReturnType<typeof setTimeout> | undefined;
-    const finish = (error?: ProtocolError, result?: HelperResponse): void => {
-      if (finished) return;
-      finished = true;
-      if (deadlineTimer) clearTimeout(deadlineTimer);
-      if (stopTimer) clearTimeout(stopTimer);
+    try { child.kill('SIGKILL'); } catch { /* no candidate was sent */ }
+    await waitAfterKill();
+    throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch in-flight record could not be persisted');
+  }
+
+  let stopReason: ProtocolError | undefined;
+  let stopResolve: (() => void) | undefined;
+  const stopStarted = new Promise<void>(resolveResult => { stopResolve = resolveResult; });
+  const stop = (error: ProtocolError): void => {
+    if (stopReason) return;
+    stopReason = error;
+    try { child.kill('SIGKILL'); } catch { /* finish on close or grace timeout */ }
+    stopResolve?.();
+  };
+  stopCurrent = stop;
+  if (preflightFailure) stop(preflightFailure);
+  const onAbort = (): void => stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply was interrupted'));
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const stopInput = (): void => stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper input failed'));
+  child.stdin?.on('error', stopInput);
+  context.signal.addEventListener('abort', onAbort, {once: true});
+  try {
+    remaining = check(context, now);
+  } catch (error) {
+    stop(error instanceof ProtocolError ? error : new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply preflight failed'));
+  }
+  if (!stopReason) {
+    deadlineTimer = setTimeout(
+      () => stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply deadline expired')),
+      Math.min(remaining, 2_147_483_647),
+    );
+    requestSent = true;
+    try { child.stdin?.end(JSON.stringify(request)); }
+    catch { stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper input failed')); }
+  }
+  if (context.signal.aborted) onAbort();
+
+  await Promise.race([closed, stopStarted]);
+  if (!childClosed) {
+    await waitAfterKill();
+    if (!childClosed) {
       context.signal.removeEventListener('abort', onAbort);
-      if (error) reject(error);
-      else resolveResult(result!);
-    };
-    const stop = (error: ProtocolError): void => {
-      if (finished || stopReason) return;
-      stopReason = error;
-      try { child.kill('SIGKILL'); } catch { /* finish on close or grace timeout */ }
-      stopTimer = setTimeout(() => {
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        finish(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper stop is unconfirmed'));
-      }, STOP_GRACE_MS);
-    };
-    const onAbort = (): void => stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply was interrupted'));
-    child.stdout?.on('data', (chunk: Buffer) => {
-      outputBytes += chunk.length;
-      if (outputBytes > MAX_HELPER_OUTPUT_BYTES) stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper output exceeded limit'));
-      else chunks.push(chunk);
-    });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      outputBytes += chunk.length;
-      if (outputBytes > MAX_HELPER_OUTPUT_BYTES) stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper output exceeded limit'));
-    });
-    child.stdin?.on('error', () => stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper input failed')));
-    child.once('error', () => finish(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper could not start')));
-    child.once('close', async (code: number | null) => {
-      try {
-        await unlink(inflightPath);
-      } catch {
-        return finish(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper exited but in-flight record remains'));
-      }
-      if (stopReason) return finish(stopReason);
-      if (code !== 0) return finish(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper did not complete'));
-      try {
-        const response = JSON.parse(Buffer.concat(chunks).toString('utf8')) as HelperResponse;
-        if (response && (response.state === 'applied' || response.state === 'conflict' || response.state === 'unknown')
-          && (response.backupRetained === undefined || typeof response.backupRetained === 'boolean')) {
-          finish(undefined, response);
-        } else {
-          finish(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper returned an invalid receipt'));
-        }
-      } catch {
-        finish(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper returned an invalid receipt'));
-      }
-    });
-    context.signal.addEventListener('abort', onAbort, {once: true});
-    try { remaining = check(context, now); }
-    catch (error) {
-      stop(error instanceof ProtocolError ? error : new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply preflight failed'));
-      return;
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+      throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper stop is unconfirmed');
     }
-    deadlineTimer = setTimeout(() => stop(new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply deadline expired')), Math.min(remaining, 2_147_483_647));
-    child.stdin?.end(JSON.stringify(request));
-    if (context.signal.aborted) onAbort();
-  });
+  }
+  context.signal.removeEventListener('abort', onAbort);
+  if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+  if (stdoutBuffer.trim()) parseFrame(stdoutBuffer);
+  if (childError && !stopReason) stopReason = childError;
+  if (stopReason) {
+    if (!requestSent) { try { await unlink(inflightPath); } catch { /* no candidate was sent */ } }
+    throw stopReason;
+  }
+  if (closeCode !== 0) {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper did not complete');
+  }
+  if (responseFrames.length !== 1) {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper returned an invalid receipt');
+  }
+  const response = responseFrames[0];
+  if (!response || typeof response !== 'object' || Array.isArray(response)) {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper returned an invalid receipt');
+  }
+  const parsed = response as Record<string, unknown>;
+  if (!['applied', 'conflict', 'unknown'].includes(String(parsed.state))
+    || (parsed.backupRetained !== undefined && typeof parsed.backupRetained !== 'boolean')) {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper returned an invalid receipt');
+  }
+  if (parsed.state === 'unknown') {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper returned an unknown receipt');
+  }
+  try {
+    await unlink(inflightPath);
+  } catch {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper exited but in-flight record remains');
+  }
+  return parsed as unknown as HelperResponse;
 }
+
 
 export function createWorkspacePatchApplyToolFromPreview(options: ApplyOptions): RegisteredTool {
   if (process.platform !== 'win32') throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Locked patch apply requires Windows');

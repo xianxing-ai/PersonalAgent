@@ -185,7 +185,7 @@ export function createDevWorkflowsRuntime(options: DevWorkflowsRuntimeOptions): 
         async reconcile(input) {
           if (identity() !== pinned) throw new ProtocolError('REVISION_CONFLICT', 'Trusted patch host binding changed');
           return reconcileWorkspacePatchApply({rootPath: read.rootPath, recoveryRootPath: patch.recoveryRootPath,
-            powerShellPath: patch.powerShellPath, ...input,
+            ...input,
             ...(patch.processIdentityHelperPath === undefined ? {} : {processIdentityHelperPath: patch.processIdentityHelperPath})});
         }};
     }

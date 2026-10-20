@@ -71,7 +71,7 @@ test('selected-note locked write can use the trusted native process identity hel
   assert.equal(existsSync(join(recovery, result.backupId)), true);
 });
 
-test('selected-note locked write keeps the explicit PowerShell identity fallback', {skip: !windows}, async t => {
+test('selected-note locked write uses the helper READY handshake without a native identity helper', {skip: !windows}, async t => {
   const {root, recovery, writer, input, context} = await fixture(t, false);
   const result = await createKnowledgeWriteTool(writer).execute(input, context());
   assert.equal(result.state, 'verified');

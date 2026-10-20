@@ -140,7 +140,7 @@ test('exclusive helper can bind identity through the native process query helper
   assert.deepEqual(await readdir(recoveryRootPath), []);
 });
 
-test('explicit PowerShell identity fallback remains available when native helper is omitted', {skip: unavailable}, async t => {
+test('normal apply uses the helper READY handshake without an external identity query', {skip: unavailable}, async t => {
   const {root, recoveryRootPath, source} = await fixture(t);
   const tool = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath, powerShellPath});
   const result = await tool.execute(request(sha('before\n')), context());
@@ -234,7 +234,7 @@ test('an unresolved helper marker prevents another apply to the same source', {s
 });
 
 
-test('deadline expiring during process identity lookup stops before sending patch bytes', {skip: unavailable}, async t => {
+test('deadline expiring before helper request dispatch stops before sending patch bytes', {skip: unavailable}, async t => {
   const {root, recoveryRootPath, source} = await fixture(t);
   const deadlineMs = Date.now() + 60_000;
   let nowCalls = 0;

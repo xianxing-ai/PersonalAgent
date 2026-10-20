@@ -9,7 +9,7 @@ import {test} from 'node:test';
 import {
   reconcileWorkspacePatchApply,
 } from '../dist/index.js';
-import {captureWorkspacePatchProcessIdentity, workspacePatchInflightPath} from '../dist/patch-reconcile.js';
+import {parseWorkspacePatchProcessReady, workspacePatchInflightPath} from '../dist/patch-reconcile.js';
 
 const sha = value => createHash('sha256').update(Buffer.from(value, 'utf8')).digest('hex');
 const startTimeTicks = '639262861336897246';
@@ -85,20 +85,22 @@ async function marker(path, value) {
   await writeFile(path, JSON.stringify({startTimeTicks, runId, argumentsDigest, ...value}), {encoding: 'utf8'});
 }
 
-test('invalid patch helper PID reports a bounded reason before any recovery write', async t => {
+test('invalid READY frame reports an unconfirmed identity before any recovery write', async t => {
   const f = await fixture(t);
   const original = await readFile(f.sourcePath);
-  await assert.rejects(captureWorkspacePatchProcessIdentity(0, 'unused'), error =>
+  assert.throws(() => parseWorkspacePatchProcessReady({
+    type: 'ready', pid: 1234, startTimeTicks: '0',
+  }, 1235), error =>
     error?.code === 'RESULT_UNKNOWN'
-    && error.message === 'Workspace patch helper identity is unavailable (invalid_pid, 0ms)');
+    && error.message === 'Workspace patch helper READY frame is invalid');
   assert.deepEqual(await readFile(f.sourcePath), original);
   await assert.rejects(readFile(f.markerPath), {code: 'ENOENT'});
 });
 
-test('native process identity helper captures the current PID without PowerShell', {skip: nativeIdentityUnavailable}, async () => {
-  const identity = await captureWorkspacePatchProcessIdentity(process.pid, 'unused', processIdentityHelperPath);
-  assert.equal(identity.pid, process.pid);
-  assert.match(identity.startTimeTicks, /^[1-9]\d{0,19}$/u);
+test('native process identity helper reports the current PID token without PowerShell', {skip: nativeIdentityUnavailable}, async () => {
+  const result = await queryNative(process.pid);
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /^[1-9]\d{0,19}$/u);
 });
 
 test('native process identity token matches the existing PowerShell token', {

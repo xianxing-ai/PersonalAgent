@@ -246,7 +246,7 @@ export function openControlledVaultWriter(options: {
         || record.argumentsDigest !== input.argumentsDigest
         || !allowed.has(notePath(record.path))) deny('SCOPE_DENIED');
       const helper = await reconcileWorkspacePatchApply({rootPath: root, recoveryRootPath: recovery,
-        relativePath: record.path, powerShellPath: options.powerShellPath,
+        relativePath: record.path,
         ...(options.processIdentityHelperPath === undefined ? {} : {processIdentityHelperPath: options.processIdentityHelperPath}),
         expectedRunId: input.runId, expectedArgumentsDigest: input.argumentsDigest,
         expectedBeforeSha256: record.beforeSha256, retainMarker: true});
@@ -259,7 +259,7 @@ export function openControlledVaultWriter(options: {
       // Every shared readback retains its marker. The shared default clear also removes unknown markers,
       // so this read-only bridge must never call it to release an interrupted helper automatically.
       const finalHelper = await reconcileWorkspacePatchApply({rootPath: root, recoveryRootPath: recovery,
-        relativePath: record.path, powerShellPath: options.powerShellPath,
+        relativePath: record.path,
         ...(options.processIdentityHelperPath === undefined ? {} : {processIdentityHelperPath: options.processIdentityHelperPath}),
         expectedRunId: input.runId, expectedArgumentsDigest: input.argumentsDigest,
         expectedBeforeSha256: record.beforeSha256, retainMarker: true});
