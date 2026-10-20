@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,readdir,rm,realpath} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,readdir,rm,realpath,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {captureCodingRepairSnapshot,createIsolatedCodingRepairHost,createIsolatedCodingRepairTools,createWorkspaceCommandTool,
+import {captureCodingRepairSnapshot,captureCodingRepairSnapshotSync,createIsolatedCodingRepairHost,createIsolatedCodingRepairTools,createWorkspaceCommandTool,
   createHarnessCandidateTrialTool,createHarnessCandidateAdoptionTool,createHarnessCandidateRecoveryTool} from '../dist/index.js';
 import {harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
 import {ToolGateway,toolArgumentsDigest} from '@personal-agent/tool-gateway';
 
-const context=(taskId,extra={})=>({taskId,runId:'run-'+randomUUID(),authorizationRef:'explicit-fake-outer-grant',
+const context=(taskId,extra={})=>({taskId,runId:'run-'+randomUUID(),authorizationRef:'explicit-fake-outer-grant-'+randomUUID(),
   argumentsDigest:'d'.repeat(64),scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],
   deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal,...extra});
 async function fixture(t) {
@@ -33,11 +33,32 @@ test('candidate sessions keep one baseline but never share writable source or ta
   assert.equal(first.session.baselineSnapshotId,second.session.baselineSnapshotId);
   await f.host.patch(first.session.sessionId,{path:'candidate.txt',expectedSha256:null,edits:[],createText:'a only'},a);
   await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
-  await assert.rejects(f.host.read(second.session.sessionId,{path:'candidate.txt'},b),{code:'ENOENT'});
+  await assert.rejects(f.host.read(second.session.sessionId,{path:'candidate.txt'},b),{code:'NOT_FOUND'});
   await assert.rejects(f.host.snapshot(first.session.sessionId,b),{code:'UNAUTHORIZED'});
   assert.equal(await readFile(path.join(f.source,'note.txt'),'utf8'),'user uncommitted content');
   await assert.rejects(f.host.publish({version:1,sessionId:first.session.sessionId,baselineSnapshotId:f.baseline.snapshotId,
     snapshotId:(await f.host.snapshot(first.session.sessionId,a)).snapshotId,paths:['candidate.txt'],verificationRunIds:[]},a),{code:'SCOPE_DENIED'});
+});
+
+test('synchronous experience snapshot matches original F15 filtering, source hashes and package graph without caching',async t=>{
+  const f=await fixture(t),root=await realpath(f.source);
+  for(const name of ['a','b']) {
+    const directory=path.join(root,'packages',name);await mkdir(directory,{recursive:true});
+    await writeFile(path.join(directory,'package.json'),JSON.stringify({name:'@fixture/'+name,
+      ...(name==='b'?{dependencies:{'@fixture/a':'1.0.0'}}:{})}));
+    await writeFile(path.join(directory,'index.js'),'export const value=1;\n');
+  }
+  await mkdir(path.join(root,'node_modules'));await writeFile(path.join(root,'node_modules','generated.js'),'ignored output');
+  await writeFile(path.join(root,'.env'),'explicit-private-fixture');
+  const original=await captureCodingRepairSnapshot(root),synchronous=captureCodingRepairSnapshotSync(root);
+  assert.deepEqual(synchronous,original);assert.equal(synchronous.snapshot.files.some(file=>'content' in file),false);
+  assert.equal(synchronous.snapshot.files.some(file=>file.path==='.env'||file.path.startsWith('node_modules/')),false);
+  assert.deepEqual(synchronous.snapshot.packages.find(pkg=>pkg.id==='pkg:packages/b').dependencies,['pkg:packages/a']);
+  await writeFile(path.join(root,'note.txt'),'new actual source bytes');
+  assert.notEqual(captureCodingRepairSnapshotSync(root).snapshot.snapshotId,synchronous.snapshot.snapshotId);
+  await symlink(path.join(root,'packages','a'),path.join(root,'linked'),process.platform==='win32'?'junction':'dir');
+  assert.throws(()=>captureCodingRepairSnapshotSync(root),{code:'SCOPE_DENIED'});
+  await assert.rejects(captureCodingRepairSnapshot(root),{code:'SCOPE_DENIED'});
 });
 
 async function trialFixture(t,extra={}) {
@@ -126,6 +147,28 @@ test('composition accepts only trusted original run references and performs a ne
   await assert.rejects(f.tool.execute(value,context('child-d')),{code:'UNSUPPORTED_CAPABILITY'});
   await assert.rejects(f.tool.execute({...value,parentArtifactDigests:result.binding.parentArtifactDigests},context('child-d')));
   assert.equal(f.commandRoots.length,3);
+});
+
+test('native original-session recovery needs no new ToolContext/run and a late revision fence preserves unknown state',async t=>{
+  let commands=0,revision=7,invalidate=false,stopState='running';
+  const f=await trialFixture(t,{createCommandTool:()=>({descriptor:{name:'workspace.run_allowed_command',version:'1.0.0',inputSchema:{}},
+    async execute(){commands++;throw Error('Explicit Fake unknown process outcome');}}),
+    readCommandStopState:async()=>{if(invalidate)revision++;return stopState;}});
+  const original=context('child-a');await assert.rejects(f.invoke(f.input('candidate-a'),original),{code:'RESULT_UNKNOWN'});
+  const session=[...f.stored.values()][0],request={session,trialRunId:original.runId,expectedRevision:7,
+    deadline:original.deadline,signal:original.signal,assertCurrent(){if(revision!==7){const error=Error('revision changed');error.code='REVISION_CONFLICT';throw error;}}};
+  const running=await f.host.reconcileOriginalSession(request);
+  assert.equal(running.state,'in_progress');assert.equal(running.checkReadback.verification[0].status,'UNKNOWN');
+  stopState='stopped';invalidate=true;
+  await assert.rejects(f.host.reconcileOriginalSession(request),{code:'REVISION_CONFLICT'});
+  assert.equal(JSON.parse(await readFile(path.join(f.sessions,session.session.sessionId,'journal.json'),'utf8')).unknown.kind,'command');
+  invalidate=false;const currentRevision=revision;
+  const stopped=await f.host.reconcileOriginalSession({...request,expectedRevision:currentRevision,assertCurrent(){assert.equal(revision,currentRevision);}});
+  assert.equal(stopped.state,'clear');assert.equal(stopped.checkReadback.verification[0].status,'UNKNOWN');
+  assert.deepEqual(stopped.checkReadback.verification[0].evidenceRefs,[original.runId]);
+  assert.equal(commands,1);assert.equal(f.stored.size,1);
+  await assert.rejects(f.host.reconcileOriginalSession({...request,assertCurrent(){},trialRunId:'other-run',
+    session:{...session,session:{...session.session,taskId:'forged-task'}}}),{code:'UNAUTHORIZED'});
 });
 
 test('cancellation and expiration stop a new trial before isolation or command execution',async t=>{

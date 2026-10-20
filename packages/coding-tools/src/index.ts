@@ -3,8 +3,8 @@ export {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools} from './
 export {createHarnessCandidateTrialTool,HARNESS_TRIAL_TOOL,createHarnessCandidateAdoptionTool,HARNESS_PREPARE_ADOPTION_TOOL,
   createHarnessCandidateRecoveryTool,HARNESS_RECONCILE_TRIAL_TOOL} from './harness-trials.js';
 export type {HarnessTrialToolOptions,HarnessAdoptionToolOptions,HarnessTrialRecoveryToolOptions} from './harness-trials.js';
-export type {IsolatedCodingRepairHost,IsolatedCodingRepairHostOptions} from './isolated-repair.js';
-export {captureCodingRepairSnapshot,affectedCodingRepairPackages,codingRepairVerificationState,codingRepairPackageGraphDigest} from './repair-verification.js';
+export type {IsolatedCodingRepairHost,IsolatedCodingRepairHostOptions,HarnessOriginalSessionReconciliation} from './isolated-repair.js';
+export {captureCodingRepairSnapshot,captureCodingRepairSnapshotSync,affectedCodingRepairPackages,codingRepairVerificationState,codingRepairPackageGraphDigest} from './repair-verification.js';
 export type {CapturedCodingRepairSnapshot} from './repair-verification.js';
 import { constants as fsConstants, realpathSync, statSync } from 'node:fs';
 import { lstat, open, opendir, realpath, stat } from 'node:fs/promises';

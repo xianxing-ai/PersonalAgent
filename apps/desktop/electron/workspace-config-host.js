@@ -90,7 +90,9 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   selectNodeExecutable,selectCheckFile,selectNpmCli,jobHelperExecutable,patchHelperScriptPath,
   projectScriptEnvSource,createCommandRecipeTool,createWorkspaceReferenceExport,
   readWorkspaceExportPreflight,readWorkspaceExportAuthorization,
-  requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions}) {
+  requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions,
+  // Main-only injection supports offline discovery fixtures; never accepted from Renderer.
+  findExecutable=findWindowsExecutable}) {
   const file = path.join(userData,'coding-workspace.json');
   let savedRoot,savedNode,savedCheckFile,savedNpmCli,boundRoot,boundNode,boundCheckFile,boundNpmCli,boundProjectHelper,rootIdentity,nodeIdentity,application,active=true,consent,applyHost,failure='',commandFailure='',projectFailure='';
   let generation=randomUUID();
@@ -100,7 +102,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const workspaceExportProposals=new Map();
   const confirmedWorkspaceReads=new Map();
   let workspaceReferenceExport;
-  let boundRepairPowerShell,repairHostPromise,developerCommand;
+  let boundRepairPowerShell,repairHostPromise,harnessHostPromise,developerCommand;
   try {
     if (existsSync(file)) {
       if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -146,7 +148,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           boundProjectHelper=helper;
         } catch {projectFailure='项目命令所需的本机组件不可用';}
       }
-      const pwsh=findWindowsExecutable('pwsh.exe',discovery);
+      const pwsh=findExecutable('pwsh.exe',discovery);
       if (pwsh) {
         boundRepairPowerShell=pwsh;
         try {
@@ -159,7 +161,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           implementations.push(...applyHost.tools);
         } catch {failure='读取和候选生成可用；安全应用补丁所需的目录或 PowerShell 检查未通过';}
       } else failure='读取和候选生成可用；安全应用补丁需要 PowerShell 7';
-      const git=findWindowsExecutable('git.exe',discovery);
+      const git=findExecutable('git.exe',discovery);
       if (git) {
         const command=coding.createWorkspaceCommandTool({rootPath:boundRoot,recipes:[{id:'git-diff-check',
           executable:git,args:['--no-pager','-c','core.fsmonitor=false','diff','--no-ext-diff','--no-textconv','--check']}],
@@ -233,16 +235,20 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   };
   const repairRecipes=()=>[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
     ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])];
-  const getRepairHost=async()=>{
+  const getRepairHost=async(harness=false)=>{
     if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || (boundNpmCli&&!boundProjectHelper)
       || typeof createCommandRecipeTool!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
-    if(!repairHostPromise)repairHostPromise=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
-      sessionRoot:path.join(userData,'coding-isolation',createHash('sha256').update(boundRoot).digest('hex')),
-      workspaceId:createHash('sha256').update(boundRoot).digest('hex'),patch:{powerShellPath:boundRepairPowerShell,
+    if(harness?harnessHostPromise:repairHostPromise)return harness?harnessHostPromise:repairHostPromise;
+    const workspaceId=createHash('sha256').update(boundRoot).digest('hex');
+    // Reuse the same host implementation with separate journals: F15 retains owner-mapped
+    // sessions, while harness receipts bind the actual executor in the same workspace.
+    const pending=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
+      sessionRoot:path.join(userData,harness?'harness-isolation':'coding-isolation',workspaceId),
+      workspaceId,patch:{powerShellPath:boundRepairPowerShell,
          ...(boundProjectHelper===undefined?{}:{processIdentityHelperPath:boundProjectHelper}),
         ...(patchHelperScriptPath===undefined?{}:{helperScriptPath:patchHelperScriptPath})},
       recipes:repairRecipes(),
-      resolveOriginalTaskId:resolveRepairTask,
+      ...(harness?{}:{resolveOriginalTaskId:resolveRepairTask}),
       configurationRef:createHash('sha256').update(JSON.stringify({root:boundRoot,node:boundNode,check:boundCheckFile,npm:boundNpmCli,
         helper:boundProjectHelper,nodeIdentity:String(nodeIdentity?.ino)+':'+String(nodeIdentity?.mtimeNs)})).digest('hex'),
       readVerificationEvidence:async input=>readRuntimeCodingVerificationEvidence(application,input),
@@ -263,26 +269,29 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         nodeExecutable:boundNode,checkFiles:boundCheckFile?[{id:'node-check',path:boundCheckFile}]:[],
         allowProjectScripts:Boolean(boundNpmCli),jobHelperExecutable:boundProjectHelper,npmCliPath:boundNpmCli,
         projectScriptEnvSource,maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
-    return repairHostPromise;
+    if(harness)harnessHostPromise=pending;else repairHostPromise=pending;
+    return pending;
   };
   // Stable Main-only proxy. Every call keeps the original consent, task and revocation guards.
-  const harnessRepairHost=Object.freeze(Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
+  const harnessRepairHost=Object.freeze({...Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
     .map(name=>[name,async(...args)=>{
       const context={...args.at(-1)},parameters=structuredClone(args.slice(0,-1)),lease=generation,currentApplication=application;
       assertHarnessWorkspace(context);
       const controller=new AbortController();inflight.add(controller);
       const scoped={...context,signal:AbortSignal.any([context.signal,controller.signal])};
       try {
-        const host=await getRepairHost();assertHarnessWorkspace(scoped);
+        const host=await getRepairHost(true);assertHarnessWorkspace(scoped);
         if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
         const result=await host[name](...parameters,scoped);
         assertHarnessWorkspace(scoped);
         if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
         return result;
       } finally {inflight.delete(controller);}
-    }])));
+    }])),reconcileOriginalSession:input=>reconcileHarnessOriginalSession(input)});
   if(boundRoot && boundRepairPowerShell && typeof coding.createIsolatedCodingRepairTools==='function') {
-    const repairTools=coding.createIsolatedCodingRepairTools(harnessRepairHost);
+    const deferred=Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
+      .map(name=>[name,async(...args)=>(await getRepairHost())[name](...args)]));
+    const repairTools=coding.createIsolatedCodingRepairTools(deferred);
     implementations.push(...repairTools);
     for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],
       ['check','workflow.host.f15_n05'],['publish','workflow.host.f15_n06']]) {
@@ -605,12 +614,59 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       assertCurrent:scope=>{if(!available(scope))throw new ProtocolError('UNAUTHORIZED','原开发工作区许可或配置已变化');},...(command?{command}:{})};
   };
   function assertHarnessWorkspace(context) {
-    if(!context?.signal||context.signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
-    if(!Number.isFinite(Date.parse(context.deadline))||Date.now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','原隔离编码操作已过期');
-    if(!application||!readWorkspaceBinding()||!bound(context.taskId)||consent?.cloudExportAllowed!==true
+    assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal);
+  }
+  function assertHarnessWorkspaceBinding(taskId,deadline,signal) {
+    if(!signal||signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
+    if(!Number.isFinite(Date.parse(deadline))||Date.now()>=Date.parse(deadline))throw new ProtocolError('TIMEOUT','原隔离编码操作已过期');
+    assertHarnessWorkspaceAuthorization();
+    if(!bound(taskId))throw new ProtocolError('UNAUTHORIZED','原隔离工作区任务绑定已变化');
+  }
+  function assertHarnessWorkspaceAuthorization() {
+    if(!application||!readWorkspaceBinding()||consent?.cloudExportAllowed!==true
       ||consent.writeAllowed!==true||consent.commandAllowed!==true||!boundRepairPowerShell
       ||!boundCheckFile&&!boundNpmCli||boundNpmCli&&(consent.projectCodeAllowed!==true||!projectIdentityCurrent()))
       throw new ProtocolError('UNAUTHORIZED','原隔离工作区许可或命令绑定已变化');
+  }
+  function readHarnessExperienceCurrentSync() {
+    try {
+      assertHarnessWorkspaceAuthorization();
+      if(typeof readHarnessVersions!=='function')return undefined;
+      const lease=generation,currentApplication=application,configuration=readDeveloperConfiguration();
+      const check=()=>{if(lease!==generation||currentApplication!==application)throw new ProtocolError('UNAUTHORIZED','原经验工作区绑定已变化');};
+      const readVersions=()=>{
+        const value=readHarnessVersions();
+        if(value&&typeof value.then==='function'){void Promise.resolve(value).catch(()=>{});return undefined;}
+        return value&&value.executionKind==='real_host'?structuredClone(value):undefined;
+      };
+      const versions=readVersions();check();if(!versions)return undefined;
+      const snapshot=coding.captureCodingRepairSnapshotSync(boundRoot,check).snapshot;
+      const after=readVersions();check();assertHarnessWorkspaceAuthorization();
+      if(!isDeepStrictEqual(versions,after)||configuration?.bindingId!==readDeveloperConfiguration()?.bindingId)return undefined;
+      const recipes=repairRecipes().map(recipe=>({...recipe,packageIds:snapshot.packages.map(pkg=>pkg.id)}));
+      if(!recipes.some(recipe=>recipe.required))return undefined;
+      const workspaceId=createHash('sha256').update(boundRoot).digest('hex'),recipeFingerprint=harnessCandidateRecipeFingerprint(recipes);
+      parseHarnessCandidateBinding({version:1,taskId:'experience-current',candidateId:'experience-current',artifactId:'experience-current',
+        trialTaskId:'experience-current',sessionId:'experience-current',workspaceId,baselineSnapshotId:snapshot.snapshotId,
+        inputDigest:'0'.repeat(64),configurationDigest:'0'.repeat(64),workflowVersion:versions.workflowVersion,
+        runtimeVersion:versions.runtimeVersion,executionKind:versions.executionKind,recipeFingerprint,artifactDigest:'0'.repeat(64),parentArtifactDigests:[]});
+      check();return {snapshot,versions,configuration:{bindingId:configuration.bindingId,workspaceId,recipeFingerprint}};
+    }catch{return undefined;}
+  }
+  async function reconcileHarnessOriginalSession(input) {
+    const {trialRunId,expectedRevision,deadline,signal,assertCurrent}=input;
+    const session=structuredClone(input.session),taskId=session?.session?.taskId,lease=generation,currentApplication=application;
+    if(typeof assertCurrent!=='function')throw new ProtocolError('UNAUTHORIZED','缺少原 Runtime 恢复权限检查');
+    const controller=new AbortController(),combined=AbortSignal.any([signal,controller.signal]);
+    const check=()=>{assertCurrent();assertHarnessWorkspaceBinding(taskId,deadline,combined);
+      if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原恢复工作区绑定已变化');};
+    check();inflight.add(controller);
+    try {
+      const host=await getRepairHost(true);check();
+      if(typeof host.reconcileOriginalSession!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','原会话原生核实尚未接入');
+      const result=await host.reconcileOriginalSession({session,trialRunId,expectedRevision,deadline,signal:combined,assertCurrent:check});
+      check();return result;
+    }finally{inflight.delete(controller);}
   }
   const readHarnessCandidateContext=async(context,scope)=>{
     try {
@@ -640,6 +696,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     }catch{return undefined;}
   };
   return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,
+    reconcileHarnessOriginalSession,readHarnessExperienceCurrentSync,
     readWorkspaceExportConfigurationRef,readWorkspaceExportPreflightCandidate,
     readWorkspaceExportCandidate,readConfirmedWorkspaceExport,
     get patchReconciliation() { return applyHost ? patchReconciliation : undefined; },

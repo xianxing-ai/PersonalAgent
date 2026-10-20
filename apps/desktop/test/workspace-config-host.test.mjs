@@ -54,13 +54,15 @@ test('developer configuration is Main-only, preserves the original task lease an
 });
 
 test('harness workspace consumer preserves consent and actual scope with a stable deferred repair proxy',async t=>{
-  const {root,configuration,open}=await workspaceBindingFixture(t);
+  const {root,node,configuration,open}=await workspaceBindingFixture(t);
   await writeFile(path.join(root,'fixture.js'),'export const fixture = 1;\n');
   const record=JSON.parse(await readFile(configuration,'utf8'));
   record.encryptedCheckFile=Buffer.from('fixture.js').toString('base64');await writeFile(configuration,JSON.stringify(record));
   // Version and Runtime checkpoint ports are explicit metadata fixtures; no command/helper is invoked.
   let versions={workflowVersion:'F15-fixture-v1',runtimeVersion:'runtime-fixture-v1',executionKind:'real_host'},onVersionsRead;
-  const host=open({createCommandRecipeTool:createWorkspaceCommandRecipeTool,readHarnessVersions:()=>{onVersionsRead?.();return versions;}});
+  // Explicit discovery fixture; host.start copies real files but never launches this executable.
+  const host=open({findExecutable:name=>name==='pwsh.exe'?node:undefined,
+    createCommandRecipeTool:createWorkspaceCommandRecipeTool,readHarnessVersions:()=>{onVersionsRead?.();return versions;}});
   const checkpoints=new Map();
   host.bindApplication({readToolConversation:()=> 'fixture-conversation',runtime:{
     loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}});
@@ -77,9 +79,35 @@ test('harness workspace consumer preserves consent and actual scope with a stabl
   const result=await host.readHarnessCandidateContext(context,scope);
   assert.equal(result.binding.taskId,scope.ownerTaskId);assert.equal(result.binding.inputDigest,scope.inputDigest);
   assert.equal(result.binding.configurationDigest,scope.configurationRef);assert.equal(result.binding.runtimeVersion,'runtime-fixture-v1');
+  assert.equal(result.binding.workspaceId,createHash('sha256').update(root).digest('hex'));
+  assert.notEqual(result.binding.workspaceId,scope.workspaceRef,'workspace identity differs from the configuration grant');
   assert.deepEqual(result.recipes,[{recipeId:'node-check',packageIds:['root'],required:true}]);
   assert.equal(result.baseline.files.some(file=>'content' in file),false);
   assert.equal(Object.hasOwn(result,'rootPath'),false);
+  const current=host.readHarnessExperienceCurrentSync();
+  assert.deepEqual(current.snapshot,result.baseline);
+  assert.equal(current.configuration.workspaceId,result.binding.workspaceId);
+  assert.equal(current.configuration.recipeFingerprint,result.binding.recipeFingerprint);
+  assert.equal(Object.hasOwn(current,'rootPath'),false);
+  // This runtime deliberately has no getTask/taskLive port: a succeeded source owner is not a read fence.
+  assert.equal(typeof current.then,'undefined');
+  const synchronousVersions=versions;versions=Promise.resolve(synchronousVersions);
+  assert.equal(host.readHarnessExperienceCurrentSync(),undefined,'an asynchronous versions port cannot stand in for a current synchronous read');
+  versions=synchronousVersions;
+  const childContext={...context,taskId:'actual-child',runId:'child-run'};
+  checkpoints.set('actual-childcoding-repair:parent',{taskId:context.taskId});
+  const childScope={...scope,actualTaskId:childContext.taskId};
+  const childBinding=await host.readHarnessCandidateContext(childContext,childScope);
+  const started=await host.harnessRepairHost.start({mode:'isolated',allowedPaths:['fixture.js']},childContext);
+  assert.equal(started.session.taskId,childContext.taskId,'harness keeps the real executor identity');
+  assert.equal(started.session.workspaceId,childBinding.binding.workspaceId);
+  assert.equal(started.initialSnapshot.snapshotId,childBinding.baseline.snapshotId);
+  assert.deepEqual(started.recipes,childBinding.recipes);
+  const originalStart=host.tools.find(tool=>tool.descriptor.name==='coding.repair.start');
+  const original=await originalStart.execute({mode:'isolated',allowedPaths:['fixture.js']},childContext);
+  assert.equal(original.session.taskId,context.taskId,'existing F15 keeps its owner mapping');
+  assert.equal(original.session.workspaceId,createHash('sha256').update(root).digest('hex'));
+  assert.equal(original.session.workspaceId,started.session.workspaceId);
   assert.equal(await host.readHarnessCandidateContext(context,{...scope,actualTaskId:'forged-child'}),undefined);
   assert.equal(await host.readHarnessCandidateContext(context,{...scope,workspaceRef:'wrong-root'}),undefined);
   const retainedVersions=versions;
@@ -87,6 +115,7 @@ test('harness workspace consumer preserves consent and actual scope with a stabl
   versions=retainedVersions;let reads=0;onVersionsRead=()=>{if(++reads===2)host.revoke();};
   assert.equal(await host.readHarnessCandidateContext(context,scope),undefined,'late version reads cannot survive original consent revocation');
   assert.equal(await host.readHarnessCandidateContext(context,scope),undefined);
+  assert.equal(host.readHarnessExperienceCurrentSync(),undefined);
   await assert.rejects(host.harnessRepairHost.snapshot('unused',context),{code:'UNAUTHORIZED'});
 });
 
