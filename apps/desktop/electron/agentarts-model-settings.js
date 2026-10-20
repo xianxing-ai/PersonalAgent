@@ -1,3 +1,11 @@
+/** An unavailable implicit default never replaces an explicit user selection. */
+export function readDesktopExecutionModel(models,preference,role='primary') {
+  if(preference?.executionModel)return models.resolveExecutionModel(preference.executionModel);
+  if(preference?.modelId)return models.resolveExecutionModel({modelId:preference.modelId});
+  if(!models.snapshot().catalog)return undefined;
+  return models.readExecutionModel(role);
+}
+
 /** Host-owned catalog selection. Catalog availability is not provider verification. */
 export function createAgentArtsModelSettings({configuration,readCatalog}) {
   let catalog,reason='尚未读取当前部署模型目录';

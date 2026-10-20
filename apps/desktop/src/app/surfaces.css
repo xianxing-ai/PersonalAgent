@@ -68,7 +68,7 @@
 @media(max-width:900px){.workspace{grid-template-columns:210px minmax(0,1fr)}.workspace-brand strong{font-size:15px}.workspace-conversation{width:calc(100% - 32px)}.workspace-welcome{padding:16px 24px 30px}.profile-stats span{font-size:11px}.profile-toolbar{gap:10px}.profile-toolbar>div{gap:8px}.profile-action{font-size:11px}}
 @media(max-height:650px){.workspace-orb{width:78px;height:78px}.workspace-welcome{gap:8px;padding-bottom:16px}.workspace-welcome h1{font-size:23px}}
 
-.admin,.focused-workspace {--glass-bg:var(--bg);--glass-bg-strong:var(--surface);--glass-tint:transparent;--composer-bg:var(--surface-2);background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none}
+.admin,.workspace {--glass-bg:var(--bg);--glass-bg-strong:var(--surface);--glass-tint:transparent;--composer-bg:var(--surface-2);box-sizing:border-box;width:100%;height:100vh;border:0;border-radius:0;box-shadow:none;clip-path:none;background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none}
 .admin .side {background:var(--bg-2)}
 .activity-grid span {background:#c6dcf8}
 :root:not([data-theme="light"]) .activity-grid span {background:#1c3c66}

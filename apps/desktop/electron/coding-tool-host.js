@@ -73,7 +73,7 @@ export function listPendingCodingHelpers(recoveryRootPath) {
 /** Bind only trusted main-process paths and factory. inspectAcl is for isolated host tests.
  * Policy and ToolGateway still own every execution decision and result state. */
 export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceRoot,
-  recoveryRootPath, powerShellPath, helperScriptPath, createWorkspacePatchApplyTool,
+  recoveryRootPath, powerShellPath, processIdentityHelperPath, helperScriptPath, createWorkspacePatchApplyTool,
   reconcileWorkspacePatchApply,
   inspectAcl = verifyWindowsRecoveryAcl}) {
   if (process.platform !== 'win32') throw Error('Coding patch host requires Windows');
@@ -82,10 +82,16 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
   if (root !== authorized) throw Error('Workspace root is outside the fixed Desktop authorization');
   const recovery = canonicalDirectory(recoveryRootPath, 'Recovery root');
   const powerShell = canonicalFile(powerShellPath, 'PowerShell 7 executable');
+  const processIdentityHelper = processIdentityHelperPath === undefined
+    ? undefined : canonicalFile(processIdentityHelperPath, 'Windows process identity helper');
   const helper = helperScriptPath===undefined?undefined:canonicalFile(helperScriptPath,'Patch helper script');
   if (path.basename(powerShell).toLowerCase() !== 'pwsh.exe') throw Error('PowerShell 7 executable is required');
+  if (processIdentityHelper && path.basename(processIdentityHelper).toLowerCase() !== 'windowsjobprocesshost.exe') {
+    throw Error('Windows process identity helper must be WindowsJobProcessHost.exe');
+  }
   if (atOrWithin(root, recovery) || atOrWithin(recovery, root)
     || atOrWithin(root, powerShell) || atOrWithin(recovery, powerShell)
+    || (processIdentityHelper && (atOrWithin(root, processIdentityHelper) || atOrWithin(recovery, processIdentityHelper)))
     || (helper && (atOrWithin(root,helper) || atOrWithin(recovery,helper)))) {
     throw Error('Coding host paths must be separate from the workspace and recovery root');
   }
@@ -94,6 +100,8 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
     {source: workspaceRoot, canonical: root, directory: true, id: identity(root)},
     {source: recoveryRootPath, canonical: recovery, directory: true, id: identity(recovery)},
     {source: powerShellPath, canonical: powerShell, directory: false, id: identity(powerShell, true)},
+    ...(processIdentityHelper ? [{source: processIdentityHelperPath, canonical: processIdentityHelper,
+      directory: false, id: identity(processIdentityHelper, true)}] : []),
     ...(helper?[{source:helperScriptPath,canonical:helper,directory:false,id:identity(helper,true)}]:[]),
   ];
   const bindingId = createHash('sha256').update(JSON.stringify(pinned.map(entry => [entry.canonical,
@@ -101,7 +109,9 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
   const pendingHelpers = listPendingCodingHelpers(recovery);
   if (typeof createWorkspacePatchApplyTool !== 'function') throw Error('Public patch apply factory is unavailable');
   const implementation = createWorkspacePatchApplyTool({rootPath: root, recoveryRootPath: recovery,
-    powerShellPath: powerShell,...(helper?{helperScriptPath:helper}:{})});
+    powerShellPath: powerShell,
+    ...(processIdentityHelper ? {processIdentityHelperPath: processIdentityHelper} : {}),
+    ...(helper?{helperScriptPath:helper}:{})});
   if (implementation?.descriptor?.name !== 'workspace.apply_text_patch'
     || implementation.descriptor.version !== '1.0.0'
     || implementation.descriptor.sideEffect !== 'local_write'
@@ -115,7 +125,8 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
       for (const entry of pinned) {
         const current = entry.directory
           ? canonicalDirectory(entry.source, 'Pinned coding directory')
-          : canonicalFile(entry.source, 'Pinned PowerShell executable');
+          : canonicalFile(entry.source, entry.source === processIdentityHelperPath
+            ? 'Pinned Windows process identity helper' : 'Pinned PowerShell executable');
         if (current !== entry.canonical
           || !sameIdentity(entry.id, identity(current, !entry.directory))) return false;
       }
@@ -132,7 +143,8 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
     for (const entry of pinned) {
       const current = entry.directory
         ? canonicalDirectory(entry.source, 'Pinned coding directory')
-        : canonicalFile(entry.source, 'Pinned PowerShell executable');
+        : canonicalFile(entry.source, entry.source === processIdentityHelperPath
+          ? 'Pinned Windows process identity helper' : 'Pinned PowerShell executable');
       if (current !== entry.canonical || !sameIdentity(entry.id, identity(current, !entry.directory))) {
         throw Error('Coding patch host binding changed');
       }
@@ -145,7 +157,8 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
       assertRecoveryBinding();
       return reconcileWorkspacePatchApply({rootPath: root, recoveryRootPath: recovery,
         relativePath, expectedRunId, expectedArgumentsDigest, expectedBeforeSha256,
-        retainMarker, powerShellPath: powerShell});
+        retainMarker, powerShellPath: powerShell,
+        ...(processIdentityHelper ? {processIdentityHelperPath: processIdentityHelper} : {})});
     }}
     : undefined;
   return {
