@@ -39,3 +39,16 @@ node packages/coding-tools/native/build-helper.mjs --target-dir <trusted-externa
 1. **非 OS 权限沙箱**：执行进程仍以当前 Windows 用户凭据运行；
 2. **不能把 helper exit 直接当成孙进程停止证据**：helper 自身的退出并不构成孙进程灭活的充分证据，必须由 Windows 内核 Job Object 机制保证；
 3. **真实 npm 项目未验**：本机制在合成子进程树测试中已完成内核验证，但尚未在真实复杂 npm 项目中进行全链路验证；产品接口目录中命令能力继续维持 `unavailable`。
+
+## 进程身份查询
+
+同一个受信可执行文件还提供只读的
+`WindowsJobProcessHost.exe --query-process-start-time <pid>` 入口。它用
+`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` 与 `GetProcessTimes` 读取目标进程的
+创建时间，并输出与 PowerShell `DateTime.Ticks` 相同的十进制起始时间 token；PID 不存在时
+返回专用的 not-found 退出码，权限不足、竞态或查询失败返回其他失败码。该入口不创建
+Job Object、不启动目标进程、不缓存 PID，也不改变现有进程树宿主行为。
+
+## Process identity query budgets
+
+Normal apply does not perform a second process identity query. The trusted PowerShell helper emits a READY frame on its own stdout containing its PID and canonical process-start ticks; the parent validates that frame from the same child under the caller's ToolContext deadline and AbortSignal before sending any patch bytes. Cross-restart reconciliation uses the trusted native WindowsJobProcessHost.exe query with a bounded startup budget of up to 10,000 ms for cold native startup, while the caller's remaining deadline and AbortSignal always cap it earlier. The PowerShell path is the helper executable only. Cancellation, deadline expiry, query failure, output-limit failure, or an identity mismatch remains unconfirmed (unknown); no patch bytes may be sent or an in-flight marker cleared from those results.

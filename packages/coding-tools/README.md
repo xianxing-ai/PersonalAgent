@@ -80,8 +80,10 @@ ACL 已限权；正式组合在核验目录访问控制前不得注册 apply。�
 显式对账入口。它只接受可信宿主提供的工作区根、工作区外恢复目录和原相对源路径；先读取
 对应 `.inflight` 的严格记录（必须同时包含 PID 和进程起始时间 token），再由宿主注入的
 `isProcessAlive(identity)` 确认同一 helper 身份的状态。检查器必须返回 `running`、`exited`
-或 `unknown`；也可由可信宿主提供绝对 `powerShellPath`，让本包通过受信 PowerShell 查询
-PID 的起始时间并与 marker 比对。未提供检查器或 PowerShell 路径、PID 已复用、起始时间不匹配、
+或 `unknown`；也可由可信宿主提供绝对 `processIdentityHelperPath`，让本包通过受信
+`WindowsJobProcessHost.exe --query-process-start-time` 查询 PID 的起始时间并与 marker 比对；
+没有 native helper 时保留绝对 `powerShellPath` 兼容路径。未提供检查器、native helper 或
+PowerShell 路径、PID 已复用、起始时间不匹配、
 查询不可用或结果不确定，都保留 marker 并返回 `RESULT_UNKNOWN`。helper 仍存活时返回
 `in_progress`，不会删除标记、启动或终止进程。确认同一身份已退出后，它重新检查受保护源文件的真实身份并读回 SHA：当前值等于候选 SHA
 返回 `outcome=applied`，等于原 SHA 返回 `not_applied`，其他值返回 `unknown`；三种结果都
@@ -191,3 +193,7 @@ git diff --check
 CANCELLED，并确认孙进程退出。专项 `workspace-command.test.mjs` 24/24 通过、0 skip。
 日志保留在修复工作树 `.cache/readiness-tests.log` 和 `.cache/readiness-old-lease-repro.log`。
 此为 #321 Foundation 的本地修复证据，尚不等于新提交的远程 CI 已通过。
+
+## Process identity query budgets
+
+Normal apply does not perform a second process identity query. The trusted PowerShell helper emits a READY frame on its own stdout containing its PID and canonical process-start ticks; the parent validates that frame from the same child under the caller's ToolContext deadline and AbortSignal before sending any patch bytes. Cross-restart reconciliation uses the trusted native WindowsJobProcessHost.exe query with a bounded startup budget of up to 10,000 ms for cold native startup, while the caller's remaining deadline and AbortSignal always cap it earlier. The PowerShell path is the helper executable only. Cancellation, deadline expiry, query failure, output-limit failure, or an identity mismatch remains unconfirmed (unknown); no patch bytes may be sent or an in-flight marker cleared from those results.

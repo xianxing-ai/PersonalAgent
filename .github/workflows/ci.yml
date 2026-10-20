@@ -30,6 +30,7 @@ jobs:
       matrix: ${{ steps.route.outputs.matrix }}
       source_sha256: ${{ steps.source.outputs.sha256 }}
       electron_cache_sha256: ${{ steps.windows-cache.outputs.sha256 }}
+      electron_cache_size: ${{ steps.windows-cache.outputs.size }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,7 +99,7 @@ jobs:
         if: matrix.kind == 'image' && matrix.runner[0] == 'self-hosted'
         shell: bash
         run: echo '/opt/personalagent-review/toolchain/node/bin' >> "$GITHUB_PATH"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: matrix.runner[0] == 'self-hosted'
         with:
           name: ci-source-${{ github.run_id }}-${{ github.run_attempt }}
@@ -130,16 +131,23 @@ jobs:
       - name: Verify Node and npm versions
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         run: node -e "const fs=require('fs'),cp=require('child_process');if(process.version!=='v'+fs.readFileSync('.node-version','utf8').trim()||cp.execSync('npm --version',{encoding:'utf8'}).trim()!=='11.12.1')process.exit(1)"
-      - uses: actions/download-artifact@v4
+      - name: Create an empty job-specific Electron download directory
+        id: electron-transfer
+        if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
+        working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
+        run: node scripts/ci/electron-cache.mjs prepare
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
         with:
           name: windows-electron-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-electron-transfer
+          path: ${{ steps.electron-transfer.outputs.directory }}
       - name: Seed the verified official Electron cache without skipping postinstall
         if: matrix.kind == 'windows' && matrix.runner[0] == 'self-hosted'
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         env:
           CI_ELECTRON_CACHE_SHA256: ${{ needs.route.outputs.electron_cache_sha256 }}
+          CI_ELECTRON_CACHE_SIZE: ${{ needs.route.outputs.electron_cache_size }}
+          CI_ELECTRON_TRANSFER_DIRECTORY: ${{ steps.electron-transfer.outputs.directory }}
         run: node scripts/ci/electron-cache.mjs restore
       - name: Install Windows dependencies
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
