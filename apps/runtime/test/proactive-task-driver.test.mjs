@@ -56,7 +56,14 @@ async function interrupt(f) {
   const worker = f.app.runProactiveTask(f.task.taskId);
   await until(() => f.host.inspect().application.state.lastResult !== undefined && f.app.runtime.getTask(f.task.taskId).state === 'running');
   const recovered = f.app.runtime.recoverInterruptedTasks();
-  assert.ok(recovered.some(task => task.taskId === f.task.taskId));
+  assert.equal(recovered.some(task => task.taskId === f.task.taskId), false, 'startup recovery must not classify a live worker as interrupted');
+  assert.equal(f.app.runtime.getTask(f.task.taskId).state, 'running');
+  // Explicit crash-state fixture: the live worker cannot be reclaimed by startup
+  // recovery. Model the persisted interruption separately, then let that worker
+  // observe it and settle before reopening the same SQLite session below.
+  f.app.runtime.transitionTask(f.task.taskId, 'waiting_reconciliation', {
+    error: {code: 'RESULT_UNKNOWN', message: 'Explicit fixture process-loss state; original receipts retained', retryable: false},
+  });
   assert.throws(() => f.app.runtime.prepareVerifiedContinuation(f.task.taskId, f.app.runtime.getTask(f.task.taskId).revision), {code: 'REVISION_CONFLICT'}, 'an active original worker cannot be reopened');
   f.host.notifyAvailabilityChanged();
   assert.equal((await worker).state, 'waiting_reconciliation');
