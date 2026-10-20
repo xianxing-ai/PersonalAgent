@@ -23,10 +23,10 @@ const schema={type:'object',additionalProperties:false,required:['trialRunIds'],
 export function createRuntimeHarnessCandidateTools(application:Pick<RuntimeApplication,'runtime'>,
   options?:RuntimeHarnessCandidateOptions):RegisteredTool[] {
   if(!options)return [];
-  const runtime=application.runtime;
   return [{descriptor:{name:HARNESS_CANDIDATE_COMPARE_TOOL,version:'1.0.0',inputSchema:schema,outputSchema:{},
     sideEffect:'read',requiredScopes:['workspace:read'],idempotencySupport:true,recoverySupport:false,requiresPresence:false},
     execute:async(value,context)=>{
+      const runtime=application.runtime;
       validateToolValue(schema,value);
       const active=()=>{
         const task=runtime.getTask(context.taskId);

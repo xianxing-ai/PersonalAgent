@@ -58,6 +58,35 @@ tool/version、executionStarted/allow/confirmed、完整参数摘要、原 execu
 不调用 Shell、模型或目录写入工具；不在此复制执行循环。
 Runtime 将推荐精确关联 `recommendation.trialRunId`；纯比较器缺少可信来源时不填该字段。
 
+### 实际 Runtime bindings 适配
+
+`apps/runtime/src/application/harness-candidate-bindings.ts` 公开 `createRuntimeHarnessCandidateBindings(application, options)`。
+H1 共享 `application.ts` 的 export 与工具装配由其唯一写入者完成，本包不改共享文件。
+factory 及 compare factory 均在调用时才读取 `application.runtime`，可先建 RegisteredTool descriptors，再构造 Runtime。
+
+```typescript
+resolveHarnessScope(context: ToolContext, source?: {
+  actualTaskId: string; runId: string; scopeRef: string;
+}): RuntimeHarnessCandidateScope | undefined;
+readConfiguration(scope: RuntimeHarnessCandidateScope, context: ToolContext):
+  HarnessCandidateContext | Promise<HarnessCandidateContext>;
+```
+
+Scope 包含 ownerTaskId/actualTaskId/parentTaskId/scopeRef/configurationRef/inputDigest/deadline/workspaceRef。
+H1 先验当前 caller，再允许同 owner 或原计划/marker 中的历史 executor；源任务可已 settled。
+configurationDigest 与真实 configurationRef 相等，inputDigest 另行绑定原 owner 输入，不因配置跨任务稳定而允许借回执。
+返回 `trial`、`adoption`、`recovery` 端口组和 `compare` options，调用方分别组合 Windows 原 host 和三个 factory。
+
+helper 验原 application-tool-invocation、started/allow 和完整参数摘要，原 checkpoint 中只另存不含补丁的 run/scope/digest 定位。
+run→session 以含原定位和 CodingRepairInput 的单个 saveOnce 行保存并读回，不维护第二补丁库。
+精确补丁每次只从原 invocation 读取；confirmed 原记录、execution Evidence、task/session/artifact 均复核。
+恢复只开放原 actual executor 的 session，原 unknown 操作不要求被伪造为 confirmed。
+
+采用只消费 owner 最新的 confirmed 比较（后续 pending/unknown/failed/弃权不回退旧选择），
+重算同一输入的比较并与原确认结果逐字段核对，再交精确选中补丁。
+组合核原 refs/祖先无环和原候选输入，首版只接受精确补丁并集；同一路径冲突明确 unsupported。
+不存在模型摘要、任意跨任务 runId 或 isolated publish 的授权捷径。
+
 ## 比较、组合和采用
 
 比较绑定同一 owner/workspace/baseline/input/configuration/workflow/runtime/recipe/执行表面。
@@ -90,6 +119,9 @@ Windows runner 提供 `coding.repair.prepare_adoption@1.0.0` 的实现，输入�
 已完成唯一契约生成、新增 `.mjs` 语法检查，以及三个新增 TypeScript 模块的 parser 语法诊断；均通过。
 2026-10-20 用户进一步要求先接齐全部源码、只做最必要小检查，之后统一集成验证：
 本包未安装依赖、未执行 TypeScript 类型检查或行为测试，不将语法检查当类型/行为通过。
+新增 bindings 接线所需两个 Runtime 模块已补最小 `noEmit` 定向语法/语义诊断，0 项诊断；
+源码映射使用本树新增 contracts/agentarts，脚本和日志在 `.cache/harness-bindings-typecheck{.mjs,.log}`。
+这不等于 workspace 全量 typecheck、构建或行为测试。新增 bindings 专属测试源码仅 `node --check`，尚未执行回归。
 指定源码的只读子代理审查未发现阻断问题；不是仓库非作者 Approve，也不代替后续联调。
 本包用显式 synthetic trial 验证契约、绑定/失败/unknown/弃权/组合边界，Runtime 用真实 SQLite/
 Policy/ToolGateway 消费 synthetic 端口；Windows 真实 host/Node 固定配方由 runner 工作包独立取证。
