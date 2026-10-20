@@ -99,6 +99,12 @@ export interface RevokeHostAuthorizationRequest {
 
 export interface RevokeHostAuthorizationResult {revoked: boolean; grantPresent: false; approvalRevision: number;}
 
+/** Trusted composition identity for candidate/experience adapters; never a model-supplied permission. */
+export interface RuntimeHarnessScope {
+  ownerTaskId:string;actualTaskId:string;parentTaskId:string;scopeRef:string;configurationRef:string;
+  inputDigest:string;deadline:string;workspaceRef:string;
+}
+
 const CONVERSATION_HISTORY_LIMIT = 20;
 const MODEL_METADATA = /\s*\[model=[^;\]]+;\s*verification=[^;\]]+;\s*tokens=[^\]]+\]\s*$/;
 const HOST_TOOL_CHECKPOINT = 'host-tool-intent';
@@ -2165,6 +2171,49 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** The generic wire and the model ToolPort share the executor's original frozen subset. */
+  resolveHarnessScope(context:ToolContext,source?:{actualTaskId:string;runId:string;scopeRef:string}):RuntimeHarnessScope|undefined {
+    try {
+      const actual=this.runtime.getTask(context.taskId),peer=readRuntimeSubagentSibling(this.runtime,actual.taskId);
+      const owner=this.runtime.getTask(peer?.binding.ownerTaskId??actual.taskId);
+      const saved=this.runtime.loadCheckpoint(owner.taskId,'subtask-parent') as
+        (SubtaskDefinition&{parentTaskId:string;parentDeadline:string})|undefined;
+      const root=saved&&readUserTaskDelegation(this.runtime,saved.parentTaskId);
+      const configuration=this.readDeveloperHarnessConfiguration
+        ?readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration):undefined;
+      if(!configuration||!saved||!root||saved.subtaskId!=='user-work'
+        ||!isDeepStrictEqual(saved,{...root.subtask,parentTaskId:root.parentTaskId,parentDeadline:root.deadline})
+        ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${root.parentTaskId}-user-work`)?.taskId!==owner.taskId
+        ||actual.conversationId!==`desktop-subtask:${root.parentTaskId}`||context.deadline!==root.deadline
+        ||context.signal.aborted||actual.cancelRequested||owner.cancelRequested||actual.state!=='running'
+        ||!['running','waiting_approval','waiting_reconciliation'].includes(owner.state)
+        ||context.authorizationRef!==context.runId||this.now().getTime()>=Date.parse(root.deadline))return undefined;
+      const parent=this.runtime.getTask(root.parentTaskId);
+      if(parent.cancelRequested||!['running','waiting_approval','waiting_reconciliation'].includes(parent.state))return undefined;
+      if(peer)this.assertDeveloperHarnessExecutorCurrent(actual.taskId);
+      const loop=this.runtime.loadCheckpoint(actual.taskId,'competition-loop') as
+        {step?:number;pending?:{toolName?:string;toolVersion?:string;arguments?:Record<string,unknown>}}|undefined;
+      const execution=this.runtime.readToolExecutions(actual.taskId).find(item=>item.evidenceId===context.runId);
+      if(context.runId!==`competition-tool-${actual.taskId}-${loop?.step}`||!loop?.pending?.arguments
+        ||execution?.state!=='started'||!execution.executionStarted||execution.policyDecision!=='allow'
+        ||execution.toolName!==loop.pending.toolName||execution.toolVersion!==loop.pending.toolVersion
+        ||!this.runtime.matchesToolExecutionInput(execution,{arguments:loop.pending.arguments,scopeRef:context.authorizationRef}))return undefined;
+      const inputDigest=hashJson({parentTaskId:parent.taskId,ownerTaskId:owner.taskId,
+        parentGoal:parent.goal,ownerGoal:owner.goal,delegation:root});
+      const scope:RuntimeHarnessScope={ownerTaskId:owner.taskId,actualTaskId:actual.taskId,parentTaskId:parent.taskId,
+        scopeRef:context.authorizationRef,inputDigest,deadline:root.deadline,workspaceRef:configuration.workspaceRef,
+        configurationRef:hashJson([this.coordinationBinding,developerHarnessConfigurationRef(configuration),inputDigest])};
+      if(!source)return scope;
+      if(source.scopeRef!==source.runId)return undefined;
+      const sourceTask=this.runtime.getTask(source.actualTaskId),sourcePeer=readRuntimeSubagentSibling(this.runtime,source.actualTaskId);
+      if(sourceTask.conversationId!==actual.conversationId
+        ||source.actualTaskId!==owner.taskId&&(!sourcePeer||sourcePeer.binding.ownerTaskId!==owner.taskId
+          ||sourcePeer.binding.parentTaskId!==parent.taskId)
+        ||!this.runtime.readToolExecutions(source.actualTaskId).some(item=>item.evidenceId===source.runId))return undefined;
+      if(sourcePeer)this.assertDeveloperHarnessExecutorCurrent(source.actualTaskId);
+      return {...scope,actualTaskId:source.actualTaskId,scopeRef:source.scopeRef};
+    } catch {return undefined;}
+  }
+
   private assertDeveloperHarnessExecutorCurrent(taskId:string):void {
     const sibling=readRuntimeSubagentSibling(this.runtime,taskId);
     if(!sibling)return;
