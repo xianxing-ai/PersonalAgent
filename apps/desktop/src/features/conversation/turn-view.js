@@ -27,7 +27,9 @@ export function updateConversationTurns(container, html, {tasks,pendingCancelIds
         ?childIndex===freshChildren.indexOf(freshAction):!freshChildren[childIndex].contains(fresh)));
     plans.push({card,replacement,children,freshChildren,button,action,freshAction,canKeep});
   }
-  if(!safe) {container.innerHTML=html;return;}
+  // Reuse the nodes already parsed into `staged`: assigning innerHTML again would re-parse the
+  // whole transcript a second time for the same result.
+  if(!safe) {container.replaceChildren(...next);return;}
   for(const {card,replacement,children,freshChildren,button,action,freshAction,canKeep} of plans) {
     if(card.outerHTML===replacement.outerHTML)continue;
     if(!canKeep) {
