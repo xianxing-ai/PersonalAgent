@@ -32,7 +32,7 @@ configurationDigest 还须由宿主绑定实际命令配方实现、模型/参�
 
 ## 真实调用方和安全边界
 
-试跑工具锁定 `coding.repair.trial@1.0.0`，输入仅 `{candidateId,patches,recipeIds}`，
+试跑工具锁定 `coding.repair.trial@1.0.0`，输入为 `{candidateId,patches,recipeIds}`，组合可带原 `parentTrialRunIds`，
 候选/baseline/原输入/配置/版本来自可信宿主；每次实际试跑使用独立 session、原 Gateway run 与真实验证回执。
 外层工具所需 scopes 覆盖内部原 host 的 read/write/apply/execute，不直接调用别的 RegisteredTool.execute，
 不 publish。结果中引用本次外层 run，须等原 Runtime confirmed 后才能比较。
@@ -70,8 +70,10 @@ Runtime 将推荐精确关联 `recommendation.trialRunId`；纯比较器缺少�
 这不是语义质量评分，也不证明最优修复。输出 `verification: unverified`，仅建议/产物引用。
 
 组合记录须关联实际观察的父 artifact 摘要，提供新 artifact/session 和新验证 run；循环来源、
-继承父验证或缺父产物均拒绝。组合正文生成、真实父产物读取与写入属于隔离 runner，
-未绑定真实组合执行者时保持 unavailable；本包不伪造组合结果。
+继承父验证或缺父产物均拒绝。组合正文生成、真实父产物读取与写入属于隔离 runner；其可信回调
+须按原 parentTrialRunIds 读回已确认父产物、原参数及范围，核对实际组合输入并在执行前后复核，
+不接受模型提供 digest。未绑定该真实读取端口时保持 unavailable；本包不伪造组合结果。
+对应源码保存于 Windows runner 的 #450，实际共享调用方由 H1 包接线，行为回归按用户新优先级统一安排。
 
 推荐中的 publishRequest 是原产物的参数引用，**不是发布授权或已采用结果**。
 isolated session 不能直接 publish。最终采用应从原 confirmed trial 的精确 patch 读回，进入原 F15
