@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {openStorage, type Migration} from '@personal-agent/storage';
 export * from './evidence-validator.js';
+export * from './developer-experience.js';
 
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const MIGRATIONS: readonly Migration[] = [{version: 1, sql: `
@@ -336,7 +337,12 @@ export class SqliteLearningHost {
   }
 
   readActive(namespace: string, workflowId: string): WorkflowVersion | null {
-    const row = this.db.prepare(`SELECT v.* FROM learning_activations a
+    return this.readActiveSelection(namespace, workflowId)?.version ?? null;
+  }
+
+  /** One coherent selection identity: stop/reactivation of the same version invalidates old leases. */
+  readActiveSelection(namespace: string, workflowId: string): {version: WorkflowVersion; sequence: number} | null {
+    const row = this.db.prepare(`SELECT v.*, a.sequence FROM learning_activations a
       JOIN learning_versions v ON v.namespace = a.namespace
         AND v.workflow_id = a.workflow_id AND v.revision = a.to_revision
       WHERE a.namespace = ? AND a.workflow_id = ?
@@ -348,7 +354,7 @@ export class SqliteLearningHost {
           WHERE latest.namespace = a.namespace AND latest.workflow_id = a.workflow_id)
       ORDER BY a.sequence DESC LIMIT 1`)
       .get(label(namespace), label(workflowId)) as Row | undefined;
-    return row === undefined ? null : storedVersion(row);
+    return row === undefined ? null : {version: storedVersion(row), sequence: row.sequence as number};
   }
 
   activateVersion(request: ActivateWorkflowRequest): ActivationReceipt {
