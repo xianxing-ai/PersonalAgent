@@ -54,9 +54,9 @@ function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,
   });
   return {app,port,calls};
 }
-async function submit(app,key='original') {
+async function submit(app,key='original',goal='Do the requested work') {
   const client=new Client(app);await client.connect();
-  const task=await client.call('task.submit',{goal:'Do the requested work',conversationId:'user-chat'},
+  const task=await client.call('task.submit',{goal,conversationId:'user-chat'},
     {idempotencyKey:key,timeoutMs:60000});
   return {client,task};
 }
@@ -323,44 +323,21 @@ test('delegated execution cannot silently switch the original selected model cat
   } finally {app.close();}
 });
 
-test('a host-routed direct answer keeps a single read-only query on the root task',async()=>{
-  let app;const calls=[];
-  const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
-    runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
-  const tool={descriptor:read,execute:async(input,context)=>{calls.push(context.taskId);return {answer:56};}};
-  const port=new FakeCoordinationPort(async request=>{
-    assert.equal(app.runtime.getTask(request.taskId).conversationId,'user-chat');
-    if(!request.continuation)return {kind:'tool_proposal',proposalId:'root-weather',toolName:read.name,
-      toolVersion:read.version,arguments:{},verification:'unverified'};
-    return {kind:'text',text:'今天下午多云，适合户外活动。',verification:'mock'};
-  });
-  app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,
-    directAnswerEligible:goal=>goal==='北京今天下午适合跑步吗',
-    coordination:port,coordinationBinding:'fixed-fixture-config',tools:[dispatch,tool],
-    automaticTools:[{toolName:read.name,toolVersion:read.version}],
-    readConversationPreference:()=>({depth:2,fast:false}),
-    competitionToolExports:[dispatch,tool].map(item=>({toolName:item.descriptor.name,toolVersion:item.descriptor.version,
-      exportPolicyVersion:'fixture-v1',accepts:()=>true,project:({result})=>result})),
-    competitionToolAvailability:[dispatch,tool].map(item=>({toolName:item.descriptor.name,toolVersion:item.descriptor.version,
-      publicEnumPaths:[],available:()=>true}))});
+test('a short read-only weather request still executes only in the required user-work child',async()=>{
+  const {app,port,calls}=fixture({autoRead:true});
+  const goal='北京今天下午适合跑步吗';
   try{
-    const client=new Client(app);await client.connect();
-    const task=await client.call('task.submit',{goal:'北京今天下午适合跑步吗',conversationId:'user-chat'},
-      {idempotencyKey:'direct-weather',timeoutMs:60000});
+    const {task}=await submit(app,'weather-mandatory',goal);
     await until(()=>app.activeTaskCount===0);
-    const parent=app.runtime.getTask(task.taskId);
+    const parent=app.runtime.getTask(task.taskId),[child]=app.readSubagentTasks(task.taskId);
     assert.equal(parent.state,'succeeded',JSON.stringify(parent.error));
-    assert.equal(app.runtime.loadCheckpoint(task.taskId,'required-subagent-delegation:v1'),undefined,
-      'a routed direct answer must not freeze a mandatory delegation binding');
-    assert.equal(app.readSubagentTasks(task.taskId).length,0,'no child task is created');
-    assert.deepEqual(calls,[task.taskId],'the read-only tool runs on the root task');
-    assert.deepEqual(app.runtime.readToolExecutions(task.taskId).map(record=>record.toolName),[read.name]);
+    assert.ok(child,'read-only weather work must still create a durable child');
+    assert.equal(child.state,'succeeded');
+    assert.equal(app.runtime.loadCheckpoint(task.taskId,'required-subagent-delegation:v1').goal,goal);
+    assert.deepEqual(calls.map(call=>call.taskId),[child.taskId]);
+    assert.deepEqual(app.runtime.readToolExecutions(task.taskId).map(record=>record.toolName),['subagent.dispatch']);
+    assert.deepEqual(app.runtime.readToolExecutions(child.taskId).map(record=>record.toolName),[read.name]);
+    assert.ok(port.requests.filter(request=>request.taskId===parent.taskId).every(request=>request.continuation),
+      'the root receives the confirmed child result and never plans the weather tool call');
   }finally{app.close();}
-});
-
-test('direct-answer routing cannot be configured without mandatory delegation',()=>{
-  assert.throws(()=>createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
-    directAnswerEligible:()=>true}),/Direct-answer routing/);
-  assert.throws(()=>createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
-    delegateUserTasks:true,directAnswerEligible:'not-a-function'}),/Direct-answer routing/);
 });

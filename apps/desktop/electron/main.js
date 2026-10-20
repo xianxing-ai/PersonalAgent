@@ -5,7 +5,6 @@ import {projectSubagentResult} from './subagent-result-projection.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
 import {createMemoryWatchdog} from './memory-watchdog.js';
-import {isDirectAnswerGoal} from './direct-answer-routing.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, Tray} from 'electron';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
@@ -1789,7 +1788,6 @@ async function initializeRuntime() {
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         delegateUserTasks: true,
-        directAnswerEligible: isDirectAnswerGoal,
         proactiveWorkflows: true,
         proactiveDecision: {localChooser:localLaya},
         hostUserNamespace: namespace,

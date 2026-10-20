@@ -2,15 +2,11 @@
 
 目标 Profile：`huawei_ict_agentarts`。Desktop 启用可信组合选项 `delegateUserTasks:true`：主对话只派发和汇总，实际工作经原 Runtime/Policy/ToolGateway 在持久化子任务中执行。
 
-### 直答例外（2026-10-20，#430）
+### 主对话与实际执行边界（2026-10-20，#430）
 
-单一、只读、无副作用的问题（当前仅天气类：气温/降水/风力/「适合跑步吗」等）不再套一层子任务：Desktop 通过可信组合选项 `directAnswerEligible` 注入静态路由 `isDirectAnswerGoal`，Runtime 对该任务不冻结 `required-subagent-delegation`，根任务直接用原工具目录调用 `weather.forecast` 并作答。
+主对话负责用户交互、委派和汇总，实际工作继续由原持久化 `user-work` 子智能体执行。所有新用户工作都冻结原 `required-subagent-delegation` 绑定，短句、只读天气等查询也不例外；根任务只经 `subagent.dispatch` 派发，不直接调用业务工具。
 
-边界：
-- 这是**固定规则**，不是动态多执行器规划，也不是模型自选路由；含动作（整理/发送/创建/安排…）、多任务（并且/然后/分别…）或其它主题（邮件/代码/文件/会议…）的请求仍走强制委派。
-- 只改变「是否加一层子任务」，不改变 Policy、ToolGateway、工具范围、审批或 Evidence；根任务能看到的仍是原 `competitionToolCatalog`。
-- 省略该选项即恢复「所有新用户任务强制委派」的原行为；旧任务不追补。
-- 路由判定在提交时一次性完成，不因后续对话轮次改写原绑定。
+原拟加入的根任务直答路由已按用户确认撤回。单个成功子任务的结果可直接透传到主对话，避免重复协作汇总头，但这只是展示/汇总行为，不改变执行归属。Runtime、Policy、ToolGateway、审批、Evidence 与无 Local 静默回退的边界保持原有链路。
 
 ## 问题与行为
 
