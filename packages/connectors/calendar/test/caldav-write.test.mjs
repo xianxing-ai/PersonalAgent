@@ -32,6 +32,59 @@ function fakeServer() {
 
 const ctx = () => ({deadline: new Date(Date.now() + 30_000).toISOString(), signal: new AbortController().signal});
 
+test('nonzero milliseconds are rejected before any network request for either write boundary', async () => {
+  for (const operation of ['createEvent', 'updateEvent']) {
+    for (const field of ['startUtc', 'endUtc']) {
+      const server = fakeServer(), provider = new CalDavProvider({calendarUrl: URL_BASE, fetchImpl: server.fetchImpl});
+      const input = {uid: 'precision', summary: 'precision', startUtc: '2026-10-21T07:00:00.000Z', endUtc: '2026-10-21T08:00:00Z'};
+      input[field] = input[field].replace(/(?:\.000)?Z$/, '.123Z');
+      await assert.rejects(provider[operation](input, ctx()), {code: 'INVALID_ARGUMENT'});
+      assert.deepEqual(server.log, [], operation + ' must not fetch or write an unrepresentable instant');
+    }
+  }
+  const server = fakeServer(), provider = new CalDavProvider({calendarUrl: URL_BASE, fetchImpl: server.fetchImpl});
+  await provider.createEvent({uid: 'precision', summary: 'valid', startUtc: '2026-10-21T07:00:00Z', endUtc: '2026-10-21T08:00:00.000Z'}, ctx());
+  await provider.updateEvent({uid: 'precision', startUtc: '2026-10-21T07:30:00.000Z', endUtc: '2026-10-21T08:30:00Z'}, ctx());
+  assert.equal(server.log.filter(r => r.method === 'PUT').length, 2);
+});
+
+test('summary-only updates preserve original all-day boundaries, attendees and alarms', async () => {
+  const server = fakeServer(), provider = new CalDavProvider({calendarUrl: URL_BASE, fetchImpl: server.fetchImpl});
+  const original = ['BEGIN:VCALENDAR','VERSION:2.0','BEGIN:VEVENT','UID:all-day','DTSTART;VALUE=DATE:20261021',
+    'DTEND;VALUE=DATE:20261022','SUMMARY:original','ATTENDEE:mailto:original@example.invalid',
+    'BEGIN:VALARM','DESCRIPTION:alarm','TRIGGER:-PT15M','END:VALARM','END:VEVENT','END:VCALENDAR'].join('\r\n')+'\r\n';
+  server.resources.set('all-day.ics', original);
+  const updated = await provider.updateEvent({uid: 'all-day', summary: 'changed'}, ctx());
+  assert.equal(updated.title, 'changed');
+  const stored = server.resources.get('all-day.ics');
+  for (const line of ['DTSTART;VALUE=DATE:20261021','DTEND;VALUE=DATE:20261022','ATTENDEE:mailto:original@example.invalid',
+    'BEGIN:VALARM','DESCRIPTION:alarm','TRIGGER:-PT15M','END:VALARM']) assert.ok(stored.includes(line+'\r\n'));
+  assert.doesNotMatch(stored, /DTSTART:|DTEND:/);
+  const writes = server.log.filter(r => r.method === 'PUT').length;
+  await assert.rejects(provider.updateEvent({uid: 'all-day', startUtc: '2026-10-21T01:00:00Z'},ctx()),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(server.log.filter(r => r.method === 'PUT').length,writes);
+});
+
+test('changing one timed boundary preserves the other TZID property and checks it on readback', async () => {
+  for (const corruptReadback of [false, true]) {
+    const server = fakeServer();
+    server.resources.set('zoned.ics', ['BEGIN:VCALENDAR','VERSION:2.0','BEGIN:VEVENT','UID:zoned',
+      'DTSTART;TZID=Asia/Shanghai:20261021T150000','DTEND;TZID=Asia/Shanghai:20261021T160000',
+      'SUMMARY:zoned','END:VEVENT','END:VCALENDAR'].join('\r\n')+'\r\n');
+    let gets = 0;
+    const provider = new CalDavProvider({calendarUrl: URL_BASE, fetchImpl: async(url, init) => {
+      const response = await server.fetchImpl(url, init);
+      if (init.method !== 'GET' || ++gets !== 2 || !corruptReadback) return response;
+      return {...response, text: async() => (await response.text()).replace('DTEND;TZID=Asia/Shanghai:20261021T160000','DTEND:20261021T080000Z')};
+    }});
+    const update = provider.updateEvent({uid:'zoned',startUtc:'2026-10-21T07:30:00Z'},ctx());
+    if (corruptReadback) await assert.rejects(update,{code:'EXTERNAL_FAILURE'});
+    else assert.equal((await update).startUtc,'2026-10-21T07:30:00.000Z');
+    assert.match(server.resources.get('zoned.ics'),/DTEND;TZID=Asia\/Shanghai:20261021T160000\r\n/);
+    assert.equal(server.log.filter(r => r.method === 'PUT').length,1);
+  }
+});
+
 test('create 写入 ICS 并读回核对；字段与形态正确', async () => {
   const server = fakeServer();
   const provider = new CalDavProvider({calendarUrl: URL_BASE, authorization: 'Basic dGVzdA==', fetchImpl: server.fetchImpl});
