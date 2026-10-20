@@ -34,7 +34,7 @@ export interface TestLocateOptions {
   contextLines?: number;
   /** Maximum accepted input length. Default 2 MiB. */
   maxInputBytes?: number;
-  /** Trusted posix-relative file or directory prefixes. Outside entries never read. */
+  /** Trusted posix-relative file or directory prefixes. Absent or empty denies all snippet reads. */
   allowedPaths?: readonly string[];
   /** Whole-report budget for snippet file reads. Default 64; 0 disables snippets. */
   maxSnippetReads?: number;
@@ -199,16 +199,18 @@ function parseTap(output: string, root: string): RawFailure[] {
   return failures.filter(failure => !failure.container);
 }
 
-function readSnippet(file: string, line: number, context: number, root: string): string | undefined {
+function readSnippet(file: string, line: number, context: number, root: string, allowedPaths: readonly string[]): string | undefined {
   let fd: number | undefined;
   try {
     const candidate = absoluteOf(file, root);
     if (foreignWindowsPath(candidate) || !withinRoot(root, candidate)) return undefined;
     const canonical = realpathSync.native(candidate);
     if (!withinRoot(root, canonical)) return undefined;
+    const canonicalRelative = toPosix(relative(root, canonical));
+    if (!allowedPaths.some(prefix => canonicalRelative === prefix || canonicalRelative.startsWith(`${prefix}/`))) return undefined;
     fd = openSync(canonical, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
     const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.size > MAX_SOURCE_BYTES || realpathSync.native(candidate) !== canonical) return undefined;
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > MAX_SOURCE_BYTES || realpathSync.native(candidate) !== canonical) return undefined;
     const buffer = Buffer.alloc(MAX_SOURCE_BYTES + 1);
     let size = 0;
     while (size < buffer.length) {
@@ -246,15 +248,14 @@ export function locateTestFailures(output: string, options: TestLocateOptions = 
   if (!Number.isSafeInteger(contextLines) || contextLines < 0 || contextLines > 8) invalid('Invalid context line count');
   const maxSnippetReads = options.maxSnippetReads ?? 64;
   if (!Number.isSafeInteger(maxSnippetReads) || maxSnippetReads < 0 || maxSnippetReads > 64) invalid('Invalid snippet read budget');
-  const allowedPaths = options.allowedPaths;
+  const allowedPaths = options.allowedPaths ?? [];
   if (allowedPaths !== undefined) {
     if (!Array.isArray(allowedPaths) || allowedPaths.some(value => typeof value !== 'string' || !value.trim()
       || value.includes('\\') || value.startsWith('/') || value.split('/').some(part => part === '..' || part === ''))) {
       invalid('Allowed path prefixes must be relative posix paths');
     }
   }
-  const readAllowed = (file: string): boolean => allowedPaths === undefined
-    || allowedPaths.some(prefix => file === prefix || file.startsWith(`${prefix}/`));
+  const readAllowed = (file: string): boolean => allowedPaths.some(prefix => file === prefix || file.startsWith(`${prefix}/`));
   let snippetReads = 0;
   const root = realpathSync.native(options.root ?? process.cwd());
   const isTap = /^TAP version/mu.test(output) || /^not ok /mu.test(output);
@@ -273,7 +274,7 @@ export function locateTestFailures(output: string, options: TestLocateOptions = 
         // Being inside the workspace root is not read permission: only trusted
         // prefixes open files, within one whole-report read budget.
         const snippet = readAllowed(frame.file) && snippetReads < maxSnippetReads
-          ? (snippetReads++, readSnippet(frame.file, frame.line, contextLines, root)) : undefined;
+          ? (snippetReads++, readSnippet(frame.file, frame.line, contextLines, root, allowedPaths)) : undefined;
         return {...frame, ...(snippet === undefined ? {} : {snippet}),
           confidence: scoreFrame(index, f.frames.length, frame.file, f.timedOut)};
       }),
@@ -289,5 +290,6 @@ export function locateTestFailures(output: string, options: TestLocateOptions = 
     delete frame.snippet;
     truncated++;
   }
+  if (Buffer.byteLength(JSON.stringify(report), 'utf8') > 240_000) invalid('Test failure report exceeds the configured output budget');
   return truncated ? {...report, snippetsTruncated: truncated} : report;
 }

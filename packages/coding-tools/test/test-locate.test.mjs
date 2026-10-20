@@ -36,7 +36,7 @@ test('spec output maps failure frames to repo files with snippets and confidence
       '  AssertionError: expected 1 to be 2',
       '',
     ].join('\n');
-    const report = locateTestFailures(output, {root});
+    const report = locateTestFailures(output, {root, allowedPaths: ['src']});
     assert.equal(report.totalFailures, 1);
     const failure = report.failures[0];
     assert.equal(failure.name, 'adds numbers');
@@ -142,7 +142,7 @@ test('outside-root paths and symlink targets never become source snippets', asyn
       }
       throw error;
     }
-    const report = locateTestFailures('✖ link (1ms)\n  Error: synthetic\n      at fn (linked.js:1:1)',{root});
+    const report = locateTestFailures('✖ link (1ms)\n  Error: synthetic\n      at fn (linked.js:1:1)',{root,allowedPaths:['linked.js']});
     assert.equal(report.failures[0].frames[0].snippet,undefined);
   } finally { await rm(base,{recursive:true,force:true}); }
 });
@@ -151,7 +151,7 @@ test('source files beyond the snippet byte limit retain their frame without read
   const root = await repo();
   try {
     await writeFile(path.join(root,'large.js'),'x'.repeat(1024*1024+1));
-    const report = locateTestFailures('✖ large (1ms)\n      at fn (large.js:1:1)',{root});
+    const report = locateTestFailures('✖ large (1ms)\n      at fn (large.js:1:1)',{root,allowedPaths:['large.js']});
     assert.equal(report.failures[0].frames[0].file,'large.js');
     assert.equal(report.failures[0].frames[0].snippet,undefined);
   } finally { await rm(root,{recursive:true,force:true}); }
@@ -173,7 +173,7 @@ test('actual node TAP output locates multiline errors and nested failures with e
     delete environment.NODE_TEST_CONTEXT;
     const run = spawnSync(process.execPath,['--test','--test-reporter=tap',file],{encoding:'utf8',env:environment});
     assert.equal(run.status,1,run.stderr);
-    const report = locateTestFailures(run.stdout,{root});
+    const report = locateTestFailures(run.stdout,{root,allowedPaths:['actual failure.test.mjs']});
     assert.equal(report.totalFailures,1,JSON.stringify(report));
     const failure = report.failures[0];
     assert.equal(failure.name,'real failure');
@@ -202,4 +202,19 @@ test('allowedPaths denies snippet reads outside trusted prefixes and the read bu
     const none = locateTestFailures(output, {root, allowedPaths: [], contextLines: 2});
     assert.ok(none.failures.flatMap(f => f.frames).every(fr => fr.snippet === undefined), 'empty allowlist reads nothing');
   } finally { await rm(root, {recursive: true, force: true}); }
+});
+
+test('missing read policy and aliases into private source never expose snippets',async t=>{
+  const {mkdir,symlink}=await import('node:fs/promises');
+  const root=await repo();
+  try {
+    await mkdir(path.join(root,'private'));await writeFile(path.join(root,'private','secret.js'),'const marker = "restricted-alias-marker";');
+    const output='✖ private (1ms)\n  Error: synthetic\n      at fn (private/secret.js:1:1)';
+    assert.equal(locateTestFailures(output,{root}).failures[0].frames[0].snippet,undefined);
+    try {await symlink(path.join(root,'private','secret.js'),path.join(root,'src','alias.js'));}
+    catch(error){if(process.platform==='win32'&&error?.code==='EPERM'){t.diagnostic('Windows account lacks symlink creation privilege');return;}throw error;}
+    const aliased=locateTestFailures('✖ alias (1ms)\n      at fn (src/alias.js:1:1)',{root,allowedPaths:['src']});
+    assert.equal(aliased.failures[0].frames[0].snippet,undefined);
+    assert.equal(JSON.stringify(aliased).includes('restricted-alias-marker'),false);
+  } finally {await rm(root,{recursive:true,force:true});}
 });
