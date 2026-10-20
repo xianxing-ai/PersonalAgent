@@ -47,6 +47,7 @@ export function createRuntimeHarnessCandidateTools(application:Pick<RuntimeAppli
       const prior=runtime.loadCheckpoint(context.taskId,key);
       if(prior!==undefined&&!isDeepStrictEqual(prior,frozen))throw new ProtocolError('REVISION_CONFLICT','Original candidate comparison binding changed');
       runtime.saveCheckpointOnce(context.taskId,key,frozen);
+      if(!isDeepStrictEqual(runtime.loadCheckpoint(context.taskId,key),frozen))throw new ProtocolError('REVISION_CONFLICT','Candidate binding was claimed by another comparison');
       const {trialRunIds} = value as {trialRunIds:string[]};
       const trials=trialRunIds.map(runId=>{
         const origin=options.resolveTrialOrigin(frozen.binding.taskId,runId,context);
@@ -67,7 +68,8 @@ export function createRuntimeHarnessCandidateTools(application:Pick<RuntimeAppli
       const result=compareHarnessCandidates(frozen,trials);
       if(result.recommendation)result.recommendation.trialRunId=trialRunIds[trials.findIndex(t=>t.binding.candidateId===result.recommendation!.candidateId)]!;
       active();
-      if(!isDeepStrictEqual(options.getBinding(context),frozen))throw new ProtocolError('REVISION_CONFLICT','Candidate context changed during comparison');
+      if(!isDeepStrictEqual(options.getBinding(context),frozen)||!isDeepStrictEqual(runtime.loadCheckpoint(context.taskId,key),frozen))
+        throw new ProtocolError('REVISION_CONFLICT','Candidate context changed during comparison');
       // This is a recommendation only. Isolated sessions still cannot publish the main workspace.
       return {...result,evidenceRefs:[...trialRunIds]};
     }}];
