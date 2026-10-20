@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {lstat,opendir,readFile,realpath} from 'node:fs/promises';
+import {lstatSync,readdirSync,readFileSync,realpathSync} from 'node:fs';
 import {basename,isAbsolute,join,relative,resolve,sep,win32} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {CodingRepairFile,CodingRepairPackage,CodingRepairSnapshot,CodingRepairVerificationReceipt} from '@personal-agent/contracts/coding-repair';
@@ -69,6 +70,11 @@ export async function captureCodingRepairSnapshot(root:string):Promise<CapturedC
     if(basename(path)==='package.json')bytes.set(path,value);
     files.push({path,sha256:repairSha256(value),packageId:'root',kind:kind(path)});
   }
+  return assembleCodingRepairSnapshot(files,bytes);
+}
+/** Pure shared assembly keeps synchronous lifecycle fences on the exact F15 snapshot/graph semantics. */
+function assembleCodingRepairSnapshot(inputFiles:readonly CodingRepairFile[],bytes:ReadonlyMap<string,Buffer>):CapturedCodingRepairSnapshot {
+  const files=inputFiles.map(file=>({...file})),paths=files.map(file=>file.path);
   let graphKnown=true;
   const packages:CodingRepairPackage[]=[{id:'root',path:'',dependencies:[]}];
   const manifests=new Map<string,Record<string,unknown>>(),names=new Map<string,string>();
@@ -104,6 +110,41 @@ export async function captureCodingRepairSnapshot(root:string):Promise<CapturedC
   for(const file of files)file.packageId=[...packages].sort((a,b)=>b.path.length-a.path.length)
     .find(pkg=>!pkg.path||file.path.startsWith(pkg.path+'/'))!.id;
   return {snapshot:{snapshotId:repairSha256(JSON.stringify({files,packages})),files,packages},graphKnown};
+}
+/** Main/Runtime lifecycle fence only. Reads current bytes synchronously; never returns source content. */
+export function captureCodingRepairSnapshotSync(root:string,assertCurrent:()=>void=()=>{}):CapturedCodingRepairSnapshot {
+  assertCurrent();
+  if(realpathSync(root)!==root||lstatSync(root).isSymbolicLink())throw new ProtocolError('SCOPE_DENIED','Coding repair root changed');
+  const paths:string[]=[];
+  function walk(directory:string,prefix=''):void {
+    assertCurrent();
+    for(const entry of readdirSync(directory,{withFileTypes:true})) {
+      assertCurrent();if(ignored.has(entry.name.toLowerCase())||secret.test(entry.name))continue;
+      const path=prefix?prefix+'/'+entry.name:entry.name;codingRepairRelativePath(path);
+      const absolute=join(directory,entry.name),info=lstatSync(absolute);
+      if(info.isSymbolicLink())throw new ProtocolError('SCOPE_DENIED','Coding repair refuses linked source paths');
+      if(info.isDirectory())walk(absolute,path);
+      else if(info.isFile()&&info.nlink===1)paths.push(path);
+      else throw new ProtocolError('SCOPE_DENIED','Coding repair source must contain regular single-link files');
+    }
+  }
+  walk(root);paths.sort();
+  const bytes=new Map<string,Buffer>(),files:CodingRepairFile[]=[];
+  for(const path of paths) {
+    assertCurrent();let current=root;
+    for(const [index,segment] of path.split('/').entries()) {
+      current=join(current,segment);const info=lstatSync(current);
+      if(info.isSymbolicLink()||(index===path.split('/').length-1?!info.isFile()||info.nlink!==1:!info.isDirectory()))
+        throw new ProtocolError('SCOPE_DENIED','Coding repair refuses links and non-regular source paths');
+    }
+    if(realpathSync(current)!==current)throw new ProtocolError('SCOPE_DENIED','Coding repair canonical file changed');
+    const before=lstatSync(current),value=readFileSync(current),after=lstatSync(current);assertCurrent();
+    if(before.ino!==after.ino||before.dev!==after.dev||before.size!==after.size||before.mtimeMs!==after.mtimeMs||before.ctimeMs!==after.ctimeMs)
+      throw new ProtocolError('REVISION_CONFLICT','Coding repair source changed during snapshot');
+    if(basename(path)==='package.json')bytes.set(path,value);
+    files.push({path,sha256:repairSha256(value),packageId:'root',kind:kind(path)});
+  }
+  assertCurrent();const captured=assembleCodingRepairSnapshot(files,bytes);assertCurrent();return captured;
 }
 /** Conservative package + reverse-production-dependency closure; unknown graphs invalidate everything. */
 export function affectedCodingRepairPackages(before:CodingRepairSnapshot,after:CodingRepairSnapshot,graphKnown=true):Set<string> {
