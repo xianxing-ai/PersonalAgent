@@ -382,7 +382,7 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 | MOD-35 | M6 产品化 | review | `Potatos498` / #279 的确定性定位器与 zemeng #282 的源码边界、真实 TAP 修正已组合；定向 9/9，完整 coding-tools 55 通过、11 个 Windows 跳过；#279/#282 实现已进入 main，后续改动及真实消费分别验收，见 [登记与验收记录](modules/MOD-35-TEST-LOCATE-01.md) |
 | MOD-36 | M6 产品化 | review | `goo122`（2026-10-07 接续；历史作者不变） / #277/#297 已合并；新工作包保留 diff 缓存的 Evidence 引用，旧缓存经原端口刷新；真实 GitHub/Fake 模型/SQLite 恢复和拒绝评论通过，见 [恢复验收记录](modules/MOD-36-EVIDENCE-CACHE-20261007.md)。历史真实 gh+GLM 只读预审仍保留；真实评论写入及最新原场景验收分别记录 |
 | MOD-37 | M6 产品化（登记） | todo | `goo122` / API 文档自动维护（exports/接口目录↔docs 漂移比对→文档补丁 PR），负责人自审，同行评审按需；仅登记未开工 |
-| MOD-38 | M6 产品化 | review | `Potatos498`（2026-10-07 接续；历史作者不变） / #277/#297 分类、模型 framing、取消/期限与端口绑定修复已合并；Local 增量不计入比赛退出条件，真实标签/修复 PR/Issue 回链仍待验收 |
+| MOD-38 | M6 产品化 | review | `Potatos498`（2026-10-07 接续；历史作者不变） / #277/#297 分类、模型 framing、取消/期限与端口绑定修复已合并；Local 增量不计入比赛退出条件，真实标签/修复 PR/Issue 回链仍待验收；行为、依赖与验证边界见 [Issue 分类与受控修复 PR](modules/MOD-38-ISSUE-TRIAGE-01.md) |
 
 
 DEV-WORKFLOWS 历史真实验收：MOD-36 已取得只读模型预审回执；MOD-34 已取得 patch/tsc/commit 及人工 push/PR 收尾回执（#291 是不合并产物），证据与结论见 [真实验收记录](modules/DEV-WORKFLOWS-REAL-ACCEPTANCE-20261005.md)（2026-10-05）。
