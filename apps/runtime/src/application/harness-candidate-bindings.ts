@@ -89,9 +89,9 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
   }
   function frozen(scope:RuntimeHarnessCandidateScope):HarnessCandidateContext {
     const runtime=application.runtime;
-    const saved=runtime.loadCheckpoint(scope.ownerTaskId,freezeKey) as {configurationRef?:string;context?:HarnessCandidateContext}|undefined;
+    const saved=runtime.loadCheckpoint(scope.ownerTaskId,freezeKey) as {configurationRef?:string;workspaceRef?:string;context?:HarnessCandidateContext}|undefined;
     if(!saved?.context||saved.configurationRef!==scope.configurationRef||saved.context.binding.taskId!==scope.ownerTaskId
-      ||saved.context.binding.inputDigest!==scope.inputDigest||saved.context.binding.workspaceId!==scope.workspaceRef
+      ||saved.context.binding.inputDigest!==scope.inputDigest||saved.workspaceRef!==scope.workspaceRef
       ||saved.context.binding.configurationDigest!==scope.configurationRef)
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original harness configuration is not bound');
     return structuredClone(saved.context);
@@ -102,10 +102,10 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     const configuration=structuredClone(await options.readConfiguration(op.scope,context));
     if(!isDeepStrictEqual(current(context),op.scope))conflict('Harness configuration changed during acquisition');
     if(configuration.binding.taskId!==op.scope.ownerTaskId||configuration.binding.inputDigest!==op.scope.inputDigest
-      ||configuration.binding.workspaceId!==op.scope.workspaceRef||configuration.binding.configurationDigest!==op.scope.configurationRef)
+      ||configuration.binding.configurationDigest!==op.scope.configurationRef)
       denied('Harness configuration belongs to another input or workspace');
     compareHarnessCandidates(configuration,[]); // Existing parser and fixed comparison prerequisites, no execution.
-    once(op.scope.ownerTaskId,freezeKey,{configurationRef:op.scope.configurationRef,context:configuration});
+    once(op.scope.ownerTaskId,freezeKey,{configurationRef:op.scope.configurationRef,workspaceRef:op.scope.workspaceRef,context:configuration});
     return frozen(op.scope);
   }
   function source(context:ToolContext,runId:string,requireConfirmed=true):Operation {
@@ -132,6 +132,10 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     const cached=runtime.loadCheckpoint(op.scope.actualTaskId,'tool-result-'+runId);
     if(!plain(cached)||!Object.hasOwn(cached,'result'))denied('Original trial result unavailable');
     const trial=parseHarnessCandidateTrial(cached.result),configuration=frozen(current(context));
+    const saved=runtime.loadCheckpoint(op.scope.ownerTaskId,sessionKey(runId)) as SavedSession|undefined;
+    if(!saved||!isDeepStrictEqual(saved.operation,locator(op))
+      ||!isDeepStrictEqual(parseCodingRepairInput(saved.input).session,trial.session))
+      denied('Candidate result does not belong to the original saved session');
     if(trial.binding.taskId!==op.scope.ownerTaskId||trial.binding.trialTaskId!==op.scope.actualTaskId||trial.session.taskId!==op.scope.actualTaskId
       ||trial.session.mode!=='isolated'||trial.binding.sessionId!==trial.session.sessionId||trial.checkReadback.sessionId!==trial.session.sessionId
       ||trial.binding.candidateId!==op.arguments.candidateId||Object.entries(configuration.binding).some(([key,value])=>trial.binding[key as keyof typeof trial.binding]!==value)
@@ -157,7 +161,7 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
   }
   async function saveSession(context:ToolContext,input:CodingRepairInput):Promise<void> {
     const op=own(context,[trialTool,adoptTool]),parsed=parseCodingRepairInput(input),configuration=frozen(op.scope);
-    if(parsed.session.taskId!==context.taskId||parsed.session.workspaceId!==op.scope.workspaceRef
+    if(parsed.session.taskId!==context.taskId||parsed.session.workspaceId!==configuration.binding.workspaceId
       ||parsed.session.mode!==(op.toolName===trialTool?'isolated':'main')
       ||parsed.session.baselineSnapshotId!==configuration.binding.baselineSnapshotId
       ||parsed.initialSnapshot.files.some(f=>f.content!==undefined)
