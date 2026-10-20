@@ -1,5 +1,47 @@
 # 编程工具：可信工作区能力（MOD-18）
 
+## H3 候选隔离试跑（2026-10-20，接线中）
+
+`createHarnessCandidateTrialTool(options)` 返回普通 `coding.repair.trial@1.0.0` RegisteredTool。
+输入严格为 `{candidateId, patches: CodingRepairPatch[], recipeIds: string[]}`；一次原 ToolGateway
+调用试跑一个候选，原 Policy 须授予 `workspace:read/write/apply/execute` 对应四个 scope。
+工具不产生授权，也不调度其他候选。模型不能指定工作区、命令、owner、配置或来源摘要。
+
+可信宿主注入原 F15 `IsolatedCodingRepairHost`、`readBinding(context,candidateId)`、
+`readSession(context)` 和 `saveSession(context,input)`。后两者接原 Runtime 的 task/run/input
+检查点，须写入一次并保持同 run 幂等；在任何候选 patch 前先保存原会话。已有会话时拒绝重做，
+通过该原 session 的 `reconcile` 核实未知执行，不从新 run 或新目录重试。取消/期限沿原 ToolContext，
+已发生的隔离修改保留；命令仍不明确停止时不能发新的命令。
+
+`readBinding` 返回唯一 `@personal-agent/contracts/harness-candidates` 的
+`HarnessCandidateContext`。共同 owner 为 `binding.taskId`，实际执行者为
+`binding.trialTaskId === session.taskId === context.taskId`；跨 task 合法性由 Runtime 原委派记录验证。
+需要组合时，`readParentArtifactDigests` 只返回实际输入并读回的父产物摘要，组合在新会话重新验证。
+未提供该端口时父列表为空，不接受模型自报父产物。
+
+宿主可用 `expectedBaselineSnapshotId` 锁定所有候选的原基线；基线变更会在新会话复制前拒绝。
+每个候选复用 F15 独立文件副本、依赖准备、精确补丁、固定 recipe 和原验证指纹。
+所有 required recipe 必须实际调用，失败保留 FAILED，未知调用抛给原 Runtime 等待核实；
+未运行、超时或取消不伪造通过回执。输出只含绑定、文件摘要和验证元数据，省略文件正文及原命令诊断。
+验证引用当前外层 run；比较模块必须等 Runtime 确认该执行并核对原输入后才接受，引用本身不是 Evidence。
+
+候选会话始终 `isolated`，禁止发布主目录。选中后应由原主 F15 会话按精确补丁重新验证后 CAS/readback，
+比较建议不能直接把隔离会话改为可发布。目录隔离沿用 F15 应用层边界，不是任意恶意代码的 OS 沙箱。
+Runtime 工具注册、原 task/run 检查点与比较消费由对应拥有者接线；在联合验证前，本节不代表完整 H3 或云端验收通过。
+
+`createHarnessCandidateAdoptionTool(options)` 提供 `coding.repair.prepare_adoption@1.0.0`，
+模型只传 `{trialRunId}`。新增受信 `readSelection(context,trialRunId)` 从原 Runtime 已确认的比较/试跑
+及原精确调用参数读取 `{trial,comparison,patches}`，不能把模型提交的正文或选择声明当来源。
+该工具检查 owner、实际 child/session、原 run、共同配置与配方、所选 artifact 和原 required 验证，
+再从相同基线开新的 `main` 会话重新应用并执行检查。它返回新的 `CodingRepairCheckReadback`，
+失败配方保留真实状态；失败或 unknown 不构成可发布成果。新产物摘要须等于所选 artifact，
+期间选择/配置变化则拒绝；主目录到此仍未写入。
+
+采用准备、确认和发布分为原工具链中的不同调用：Runtime 先确认 prepare 的真实结果/Evidence，
+之后原 `coding.repair.publish` 才能用该新 main session 的验证 run 经 Policy/CAS 交付并读回。
+没有原确认 Evidence、验证失败或用户并发修改时原宿主会拒绝或返回 conflict，保留双方文件。
+`recommendation.publishRequest` 中的隔离 session 只是产物建议引用，不能直接用作交付目标。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 

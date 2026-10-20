@@ -21,6 +21,8 @@ export interface IsolatedCodingRepairHostOptions {
   workspaceRoot:string;sessionRoot:string;workspaceId:string;
   /** Stable trusted command/helper configuration identity, excluding credentials. */
   configurationRef?:string;
+  /** Trusted candidate trials pin every fresh session to the same captured baseline. */
+  expectedBaselineSnapshotId?:string;
   patch:Omit<WorkspacePatchApplyHostOptions,'recoveryRootPath'>;
   recipes:readonly CodingRepairRecipe[];
   /** Maps a verified HostBridge child to its original graph task. No context rewriting. */
@@ -85,7 +87,8 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     ||sourceInfo.isSymbolicLink()||sessionsInfo.isSymbolicLink())throw new ProtocolError('INVALID_ARGUMENT','Repair session root must be separate from the user workspace');
   const now=options.now??Date.now,active=new Set<string>();
   const configurationRef=repairSha256(JSON.stringify({version:1,sourceRoot,workspaceId:options.workspaceId,
-    patch:options.patch,recipes:options.recipes,configurationRef:options.configurationRef??null}));
+    patch:options.patch,recipes:options.recipes,configurationRef:options.configurationRef??null,
+    ...(options.expectedBaselineSnapshotId===undefined?{}:{expectedBaselineSnapshotId:options.expectedBaselineSnapshotId})}));
   const originalTask=(context:ToolContext)=>options.resolveOriginalTaskId?.(context.taskId)??context.taskId;
   async function rootCurrent():Promise<void> {
     const a=await lstat(sourceRoot),b=await lstat(sessionsRoot);
@@ -182,7 +185,10 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
   const host:IsolatedCodingRepairHost={
     async start(input,context){checkContext(context,scopes.patch,now);await rootCurrent();
       if(!['main','isolated'].includes(input.mode))throw new ProtocolError('INVALID_ARGUMENT','Invalid repair mode');
-      const captured=await captureCodingRepairSnapshot(sourceRoot),session:CodingRepairSession={version:1,sessionId:randomUUID(),taskId:originalTask(context),workspaceId:options.workspaceId,mode:input.mode,baselineSnapshotId:captured.snapshot.snapshotId};
+      const captured=await captureCodingRepairSnapshot(sourceRoot);
+      if(options.expectedBaselineSnapshotId!==undefined&&captured.snapshot.snapshotId!==options.expectedBaselineSnapshotId)
+        denied('Candidate trial baseline changed before isolation');
+      const session:CodingRepairSession={version:1,sessionId:randomUUID(),taskId:originalTask(context),workspaceId:options.workspaceId,mode:input.mode,baselineSnapshotId:captured.snapshot.snapshotId};
       const p=paths(session.sessionId);await mkdir(p.workspace,{recursive:true});await mkdir(p.baseline,{recursive:true});await mkdir(p.recovery,{recursive:true});
       const allowedPaths=input.allowedPaths??captured.snapshot.files.map(file=>file.path);for(const path of allowedPaths)codingRepairRelativePath(path);
       for(const file of captured.snapshot.files){checkContext(context,scopes.patch,now);const source=await codingRepairFilePath(sourceRoot,file.path),bytes=await readFile(source);
