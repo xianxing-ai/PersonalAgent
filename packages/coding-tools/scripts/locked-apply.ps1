@@ -148,11 +148,24 @@ function Invoke-LockedApply($Request) {
   }
 }
 
+
 try {
   [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
+  [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+  $process = [Diagnostics.Process]::GetCurrentProcess()
+  try {
+    $ticks = $process.StartTime.ToUniversalTime().Ticks.ToString([Globalization.CultureInfo]::InvariantCulture)
+    $ready = @{ type = 'ready'; pid = $process.Id; startTimeTicks = $ticks }
+    [Console]::Out.WriteLine(($ready | ConvertTo-Json -Compress))
+    [Console]::Out.Flush()
+  } finally {
+    $process.Dispose()
+  }
   $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
   $result = Invoke-LockedApply $request
   [Console]::Out.WriteLine(($result | ConvertTo-Json -Compress))
+  [Console]::Out.Flush()
 } catch {
   [Console]::Out.WriteLine('{"state":"unknown","backupRetained":false}')
+  [Console]::Out.Flush()
 }
