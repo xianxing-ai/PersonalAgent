@@ -4,7 +4,7 @@ import {isAbsolute,join,relative,resolve,sep} from 'node:path';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {parseCodingRepairPatch,parseCodingRepairPublishRequest} from '@personal-agent/contracts/coding-repair';
-import type {CodingRepairInput,CodingRepairPatch,CodingRepairPublishReadback,CodingRepairPublishRequest,CodingRepairRecipe,
+import type {CodingRepairInput,CodingRepairPatch,CodingRepairPublishReadback,CodingRepairPublishRequest,CodingRepairRecipe,CodingRepairCheckReadback,
   CodingRepairSession,CodingRepairSnapshot,CodingRepairVerificationReceipt} from '@personal-agent/contracts/coding-repair';
 import {createWorkspaceReadTool,createWorkspaceListTool,createWorkspacePatchPreviewTool,createWorkspacePatchApplyTool} from './index.js';
 import type {WorkspacePatchApplyHostOptions} from './patch-apply.js';
@@ -43,6 +43,8 @@ export interface IsolatedCodingRepairHost {
   list(sessionId:string,input:{path:string;limit?:number},context:ToolContext):Promise<unknown>;
   read(sessionId:string,input:{path:string;maxBytes?:number},context:ToolContext):Promise<unknown>;
   snapshot(sessionId:string,context:ToolContext):Promise<CodingRepairSnapshot>;
+  /** Read original statuses without re-running patches/recipes or declaring unknown execution successful. */
+  readback?(sessionId:string,context:ToolContext):Promise<CodingRepairCheckReadback>;
   /** approved means exact scope/preview passed, never Policy authorization or successful verification. */
   preview(sessionId:string,patches:readonly CodingRepairPatch[],context:ToolContext):Promise<{sessionId:string;approved:true;previewed:true;patches:unknown[]}>;
   patch(sessionId:string,patch:CodingRepairPatch,context:ToolContext):Promise<unknown>;
@@ -208,6 +210,9 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     list:(id,input,context)=>exclusive(id,context,scopes.list,journal=>createWorkspaceListTool({rootPath:paths(journal.session.sessionId).workspace}).execute(input,context)),
     read:(id,input,context)=>exclusive(id,context,scopes.read,async journal=>{requirePath(journal,input.path);return createWorkspaceReadTool({rootPath:paths(id).workspace}).execute(input,context);}),
     snapshot:(id,context)=>exclusive(id,context,scopes.read,async journal=>clone((await current(journal)).snapshot)),
+    readback:(id,context)=>exclusive(id,context,scopes.read,async journal=>{const observed=await current(journal);
+      return {version:1,sessionId:id,snapshot:clone(observed.snapshot),verification:statuses(journal,observed)
+        .map((receipt,index)=>({...receipt,evidenceRefs:[journal.verification[index]!.originRunId]}))};}),
     preview:(id,patches,context)=>exclusive(id,context,scopes.read,async journal=>{if(new Set(patches.map(patch=>patch.path)).size!==patches.length)throw new ProtocolError('INVALID_ARGUMENT','Combine ordered edits for each file into one exact patch');
       return {sessionId:id,approved:true,previewed:true,patches:await Promise.all(patches.map(patch=>previewPatch(journal,patch,context)))};}),
     patch:(id,patch,context)=>exclusive(id,context,scopes.patch,journal=>applyPatch(journal,patch,context)),
@@ -325,6 +330,10 @@ export function createIsolatedCodingRepairTools(host:IsolatedCodingRepairHost):R
     {name:'list',scope:[scopes.list],properties:{...id,path:string,limit:{type:'integer',minimum:1}},required:['sessionId','path'],run:(v,c)=>host.list(v.sessionId,{path:v.path,...(v.limit===undefined?{}:{limit:v.limit})},c)},
     {name:'read',scope:[scopes.read],properties:{...id,path:string,maxBytes:{type:'integer',minimum:1}},required:['sessionId','path'],run:(v,c)=>host.read(v.sessionId,{path:v.path,...(v.maxBytes===undefined?{}:{maxBytes:v.maxBytes})},c)},
     {name:'snapshot',scope:[scopes.read],properties:id,run:(v,c)=>host.snapshot(v.sessionId,c)},
+    {name:'readback',scope:[scopes.read],properties:id,run:(v,c)=>{
+      if(!host.readback)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original repair readback is unavailable');
+      return host.readback(v.sessionId,c);
+    }},
     {name:'preview',scope:[scopes.read],properties:{...id,patches:{type:'array',items:patchSchema}},run:async(v,c)=>{
       const preview=await host.preview(v.sessionId,v.patches,c);
       // Project before the original ToolGateway records/signs this result. Source text
@@ -342,6 +351,6 @@ export function createIsolatedCodingRepairTools(host:IsolatedCodingRepairHost):R
     {name:'publish',scope:['workspace:read','workspace:write',scopes.patch],properties:{version:{const:1},...id,baselineSnapshotId:string,snapshotId:string,paths:{type:'array',items:string},verificationRunIds:{type:'array',items:string}},run:(v,c)=>host.publish(v,c)},
     {name:'reconcile',scope:[scopes.read],properties:id,run:(v,c)=>host.reconcile(v.sessionId,c)},
   ];
-  return entries.map(entry=>{const descriptor:RegisteredTool['descriptor']={name:'coding.repair.'+entry.name,version:'1.0.0',inputSchema:{type:'object',properties:entry.properties,required:entry.required??Object.keys(entry.properties),additionalProperties:false},outputSchema:{},sideEffect:['read','list','snapshot','preview','reconcile'].includes(entry.name)?'read':'local_write',requiredScopes:entry.scope,idempotencySupport:false,recoverySupport:false,requiresPresence:false};
+  return entries.map(entry=>{const descriptor:RegisteredTool['descriptor']={name:'coding.repair.'+entry.name,version:'1.0.0',inputSchema:{type:'object',properties:entry.properties,required:entry.required??Object.keys(entry.properties),additionalProperties:false},outputSchema:{},sideEffect:['read','list','snapshot','readback','preview','reconcile'].includes(entry.name)?'read':'local_write',requiredScopes:entry.scope,idempotencySupport:false,recoverySupport:false,requiresPresence:false};
     return {descriptor,execute:async(value,context)=>{validateToolValue(descriptor.inputSchema,value);return entry.run(value,context);}};});
 }

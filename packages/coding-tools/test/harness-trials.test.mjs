@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {captureCodingRepairSnapshot,createIsolatedCodingRepairHost,createIsolatedCodingRepairTools,createWorkspaceCommandTool,
-  createHarnessCandidateTrialTool,createHarnessCandidateAdoptionTool} from '../dist/index.js';
+  createHarnessCandidateTrialTool,createHarnessCandidateAdoptionTool,createHarnessCandidateRecoveryTool} from '../dist/index.js';
 import {harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
 import {ToolGateway,toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -90,14 +90,42 @@ test('Policy denies a trial without all scopes; required recipes and bound metad
 });
 
 test('unknown command keeps the original session stopped-state requirement and never starts a replacement trial',async t=>{
-  let commands=0;
+  let commands=0,stopState='unknown';
   const f=await trialFixture(t,{createCommandTool:()=>({descriptor:{name:'workspace.run_allowed_command',version:'1.0.0',inputSchema:{}},
-    async execute(){commands++;throw Error('Explicit Fake unknown process outcome');}})});
+    async execute(){commands++;throw Error('Explicit Fake unknown process outcome');}}),readCommandStopState:async()=>stopState});
   const c=context('child-a');await assert.rejects(f.invoke(f.input('candidate-a'),c),{code:'RESULT_UNKNOWN'});
   const session=[...f.stored.values()][0].session;
   assert.equal((await f.host.reconcile(session.sessionId,context('child-a'))).state,'unknown');
+  const recovery=createHarnessCandidateRecoveryTool({host:f.host,readOriginalSession:async(ctx,runId)=>f.stored.get(JSON.stringify([ctx.taskId,runId]))});
+  const read=context('child-a',{scopes:['workspace:read']}),unknown=await recovery.execute({trialRunId:c.runId},read);
+  assert.equal(unknown.state,'unknown');assert.equal(unknown.checkReadback.verification[0].status,'UNKNOWN');
+  assert.deepEqual(unknown.checkReadback.verification[0].evidenceRefs,[c.runId]);
+  stopState='running';assert.equal((await recovery.execute({trialRunId:c.runId},read)).state,'in_progress');
+  stopState='stopped';const stopped=await recovery.execute({trialRunId:c.runId},read);
+  assert.equal(stopped.state,'clear');assert.equal(stopped.checkReadback.verification[0].status,'UNKNOWN','stopped does not turn unknown verification into passing');
+  await assert.rejects(recovery.execute({trialRunId:c.runId},context('owner-task')),{code:'UNAUTHORIZED'});
   await assert.rejects(createHarnessCandidateTrialTool(f.options).execute(f.input('candidate-a'),c),{code:'RESULT_UNKNOWN'});
   assert.equal(commands,1);assert.equal(f.stored.size,1);
+});
+
+test('composition accepts only trusted original run references and performs a new independent verification',async t=>{
+  const f=await trialFixture(t),a=context('child-a'),b=context('child-b');
+  const parentA=await f.invoke(f.input('parent-a'),a);
+  const second=f.input('parent-b');second.patches.push({path:'parent-note.txt',expectedSha256:null,edits:[],createText:'second parent'});
+  const parentB=await f.invoke(second,b),confirmed=new Map([[a.runId,parentA],[b.runId,parentB]]);
+  let reads=0;
+  const combined=createHarnessCandidateTrialTool({...f.options,readParentArtifactDigests:async(_ctx,_id,runs,patches)=>{
+    reads++;assert.deepEqual(patches,second.patches);
+    return runs.map(run=>{const trial=confirmed.get(run);if(!trial)throw Error('Explicit Fake Runtime rejects unconfirmed or foreign run');return trial.binding.artifactDigest;});}});
+  const value={...second,candidateId:'combined',parentTrialRunIds:[a.runId,b.runId]},c=context('child-c');
+  const result=await approved(combined,value,c);
+  assert.deepEqual(result.binding.parentArtifactDigests,[parentA.binding.artifactDigest,parentB.binding.artifactDigest]);
+  assert.notEqual(result.session.sessionId,parentA.session.sessionId);assert.notEqual(result.session.sessionId,parentB.session.sessionId);
+  assert.deepEqual(result.checkReadback.verification[0].evidenceRefs,[c.runId]);assert.equal(f.commandRoots.length,3);assert.equal(reads,2);
+  await assert.rejects(combined.execute({...value,parentTrialRunIds:[a.runId,'foreign-run']},context('child-d')));
+  await assert.rejects(f.tool.execute(value,context('child-d')),{code:'UNSUPPORTED_CAPABILITY'});
+  await assert.rejects(f.tool.execute({...value,parentArtifactDigests:result.binding.parentArtifactDigests},context('child-d')));
+  assert.equal(f.commandRoots.length,3);
 });
 
 test('cancellation and expiration stop a new trial before isolation or command execution',async t=>{
@@ -136,9 +164,9 @@ async function approved(tool,value,c) {
     argumentsDigest:toolArgumentsDigest(value),expiresAt:c.deadline,maxUses:1});
   return gateway.invoke({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:value,...c});
 }
-async function adoptionFixture(t) {
+async function adoptionFixture(t,extra={}) {
   const confirmed=new Set();
-  const f=await trialFixture(t,{readVerificationEvidence:async({originRunId})=>confirmed.has(originRunId)?[originRunId]:undefined});
+  const f=await trialFixture(t,{readVerificationEvidence:async({originRunId})=>confirmed.has(originRunId)?[originRunId]:undefined,...extra});
   const trialContext=context('child-a'),trial=await f.invoke(f.input('selected'),trialContext);
   // Explicit Fake Runtime selection/confirmation ports; trial and adoption commands/files are real.
   const selection={trial,comparison:{version:1,state:'selected',reason:'explicit-fake-runtime-comparison',candidates:[],verification:'unverified',
@@ -175,6 +203,18 @@ test('adoption refuses substituted selection and preserves a concurrent user CAS
   const result=await approved(publish,{version:1,sessionId:prepared.sessionId,baselineSnapshotId:f.baseline.snapshotId,
     snapshotId:prepared.snapshot.snapshotId,paths:['candidate.txt'],verificationRunIds:prepared.verification.map(r=>r.runId)},context('owner-task'));
   assert.equal(result.state,'conflict');assert.equal(await readFile(path.join(f.source,'note.txt'),'utf8'),'concurrent user change');
+  await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
+});
+
+test('a fresh adoption failure stays FAILED and cannot inherit a selected parent passing check',async t=>{
+  const f=await adoptionFixture(t,{createCommandTool:({rootPath,session})=>createWorkspaceCommandTool({rootPath,recipes:[{
+    id:'fixture-check',executable:process.execPath,args:['-e',session.mode==='main'?'process.exit(7)':'process.exit(0)']}]})});
+  const c=context('owner-task'),prepared=await approved(f.adopt,{trialRunId:f.trialContext.runId},c);f.confirmed.add(c.runId);
+  assert.equal(f.selection.trial.checkReadback.verification[0].status,'VALID');
+  assert.equal(prepared.verification[0].status,'FAILED');assert.equal(prepared.verification[0].exitCode,7);
+  const publish=createIsolatedCodingRepairTools(f.host).find(tool=>tool.descriptor.name==='coding.repair.publish');
+  await assert.rejects(approved(publish,{version:1,sessionId:prepared.sessionId,baselineSnapshotId:f.baseline.snapshotId,
+    snapshotId:prepared.snapshot.snapshotId,paths:['candidate.txt'],verificationRunIds:prepared.verification.map(r=>r.runId)},context('owner-task')),{code:'RESULT_UNKNOWN'});
   await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
 });
 
