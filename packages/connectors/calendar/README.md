@@ -3,7 +3,7 @@
 CalDAV 写入仅支持公历年 `0001..9999` 的整秒 UTC（可带 `.000`）；非零毫秒在任何网络请求前拒绝。创建与更新的 start/end 均须与解析后的规范 UTC 原样往返：不存在的公历日期（含非闰年 2 月 29 日）、`24:00:00` 以及原读回端不支持的 `0000` 年在任何 GET/PUT 前返回 `INVALID_ARGUMENT`，不把非法字面写入 ICS 后再依赖读回发现。保留合法闰日与四位低年份，不用 `Date.UTC` 的 1900 年映射校验。更新未提供的时间边界保留原 VALUE/TZID 属性，全天事件仅修改一个时间边界时在写入前拒绝。
 
 事件写能力使用 Node 宿主。`calendar.create` 的 UID 可省略并由宿主随机生成，因此工具整体不声明幂等；未知结果须先核实原 UID，不能盲目重试。写后核对 UID、标题、起止瞬间、位置及备注；读回不一致不报告成功。ICS 按 75 UTF-8 字节折行。
-当前分支创建使用If-None-Match，更新/取消使用GET读回的强ETag发If-Match；冲突不覆盖，缺强ETag明确不支持。UID定向REPORT解析真实资源地址并限制同源同集合，删除后须读回404；不猜测UID.ics，也不重试未知写入。保留读UID语法与XML转义、原时区/全天属性及提前计时器保护；非法日期在任何请求前拒绝，不接受自动归一。最终95项：92通过/3真实服务门控跳过；本机HTTP夹具不等于真实账号或跨客户端实际验收。Desktop消费、Runtime审批与精确出机确认详见[接线工作包](../../../docs/competition/CALENDAR_CONVERSATION_WRITES_20261020.md)，依赖未全部进入主线，不提高冻结等级。
+当前分支创建使用If-None-Match，更新/取消使用GET读回的强ETag发If-Match；冲突不覆盖，缺强ETag明确不支持。UID定向REPORT解析真实资源地址并限制同源同集合，删除后须读回404；不猜测UID.ics，也不重试未知写入。保留读UID语法与XML转义、原时区/全天属性及提前计时器保护；非法日期在任何请求前拒绝，不接受自动归一。合并父分支后最终123项：120通过/3真实服务门控跳过；本机HTTP夹具不等于真实账号或跨客户端实际验收。Desktop消费、Runtime审批与精确出机确认详见[接线工作包](../../../docs/competition/CALENDAR_CONVERSATION_WRITES_20261020.md)，依赖未全部进入主线，不提高冻结等级。
 
 <!-- current-design-20261009 -->
 > 当前设计与协作入口（2026-10-17）：[当前详细设计](../../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../../CONTRIBUTING.md) 和 [AGENTS](../../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。

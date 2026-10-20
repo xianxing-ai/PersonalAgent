@@ -336,12 +336,12 @@ function calDavFixture() {
     const name=String(url).slice(root.length);requests.push({method:init.method,name});
     const etag=versions.get(name)??'"original"';
     if(init.method==='PUT'){
-      if(init.headers['If-None-Match']==='*'&&resources.has(name)||init.headers['If-Match']!==undefined&&init.headers['If-Match']!==etag)return {status:412,text:async()=>''};
+      if(init.headers['if-none-match']==='*'&&resources.has(name)||init.headers['if-match']!==undefined&&init.headers['if-match']!==etag)return {status:412,text:async()=>''};
       resources.set(name,init.body);versions.set(name,`"${++revision}"`);return {status:201,text:async()=>''};
     }
     if(init.method==='GET')return {status:resources.has(name)?200:404,headers:{get:key=>key.toLowerCase()==='etag'?etag:null},text:async()=>resources.get(name)??''};
     if(init.method==='DELETE'){
-      if(init.headers['If-Match']!==etag)return {status:412,text:async()=>''};
+      if(init.headers['if-match']!==etag)return {status:412,text:async()=>''};
       return {status:resources.delete(name)?204:404,text:async()=>''};
     }
     if(init.method==='REPORT'){
