@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-20 Desktop 点击反馈与界面层次优化（review）
+
+`DESKTOP-INTERACTION-20261020`：目标 `huawei_ict_agentarts`，关联 MOD-11/12/13、PA-001/PA-002；从 `9eb2fb08` 独立交付 `codex/desktop-interaction-polish-20261020`。仅调整 Desktop 样式、设置页导航淡入及常规／外观页节点复用，不改 Runtime、AgentArts、公共协议、依赖或迁移。[接线、自审与验证记录](../apps/desktop/docs/INTERACTION_POLISH_20261020.md)包含 117 组 Electron 布局、窗口烟测、12 组交互布局和 14 项定向回归；完整套件的 .NET 8 SDK 环境缺项已在未修改 main 复现。模块归属仍按 MODULE_ASSIGNMENTS；实际执行 Codex，本机提交身份 `2511375597-lab`，拟审查 `zemeng5208`、拟合并 `Potatos498`（待实际接手）。用户授权提交 PR，未授权合并；独立批准、最新 CI 与集成状态以 PR 为准，不据本地通过标记模块 done。
+
 ## 2026-10-18 Desktop 前端交互与体验审查（review）
 
 前序 #409 的[审查历史](modules/DESKTOP_FRONTEND_UX_AUDIT_20261018.md)保留。本轮按用户“只改前端”的要求，从最新 main 独立整理 `codex/frontend-final-main-20261018`，不纳入 #404/#398 的核心改动；窗口/悬浮球、刷新/焦点、预算、侧栏、常用入口与搜索、任务进展和真实空态一并交付。[当前前端交付记录](modules/DESKTOP_FRONTEND_MAIN_DELIVERY_20261018.md)记录本工作树实际验证。Runtime、AgentArts、公共契约、依赖及迁移未修改；拟审查 goo122、拟合并 Potatos498，当前有效批准/CI/集成以 PR 为准，保持 review。
