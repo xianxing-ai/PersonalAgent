@@ -87,7 +87,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
         if(error instanceof ProtocolError)throw new ProtocolError(error.code,'连接器操作未完成；请按错误码核实原任务');
         throw new ProtocolError('EXTERNAL_FAILURE','连接器操作未完成；请核实原任务，勿重复未知写入');
       }finally{clearTimeout(timer);signal.removeEventListener('abort',onAbort);controllers.delete(controller);
-        providers.delete(controller);await dispose();}
+        providers.delete(controller);void dispose();}
     }});return ()=>{};
   }};
   disposers.push(mailModule.register(host,{provider:proxy('mail'),accountRef:MAIL_ACCOUNT}));

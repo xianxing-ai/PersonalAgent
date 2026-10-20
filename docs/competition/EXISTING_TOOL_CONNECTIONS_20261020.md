@@ -6,6 +6,7 @@
 - 异步凭据返回后按 combined signal 复核取消、宿主撤销和超时，阻止迟建 provider。原授权、账号、配置修订、出机确认、凭据过滤及 unknown 不重试语义保留。
 - Pinned Node 24.15.0/npm 11.12.1：完整 `connector-conversation-tools.test.mjs` **19/19**，包括双任务取消隔离、family 撤销、延迟凭据取消/超时/撤销零创建、超时零重试及原 Runtime 审批执行；Desktop `typecheck` 通过。新增测试初次语法错误已修正后完整重跑；未进行全仓或真实账号/设备验收。
 - 复用本机 `pr442-maintenance-20261020@db272758` 已构建依赖：比较 Runtime 与 packages（含 connectors）的 `src`、`package.json`、`tsconfig.json` 与本次合并头无差异；未使用 #451 Runtime 产物、安装依赖或重建大闭包。
+- 后续复核修复本轮引入的清理等待问题：执行 finally 只发起幂等 cleanup，不等待异步 dispose；family invalidate/close 原有等待语义不变。完整定向文件重跑 **22/22**，Desktop typecheck 与 diff check 通过。新增挂起 dispose 的取消/超时用例设 1 秒返回界限、3 秒测试 timeout，并在 finally/after 释放 cleanup，断言仅一次 dispose、一次原写入且无重试；这不是对真实网络或账号延迟的验收。
 
 状态：review（整仓首轮环境失败，重建helper后受影响工作区及桌面烟测通过；当前head CI与批准单独核对）；profile：huawei_ict_agentarts；隔离工作树 `27bb/Personal Agent`；分支 `codex/connect-existing-tools`，基线 `fe60cce4`。用户已授权提交 PR；提交、远端分支和审查状态以 Git/PR 记录为准。本分支同时包含此前已推送的上下文完整性修复，PR 对照 main 时一并列明。
 

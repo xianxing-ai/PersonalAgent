@@ -117,6 +117,24 @@ test('a hanging provider respects cancellation and deadline without retrying the
   });
 });
 
+test('hanging asynchronous disposal cannot delay cancellation or timeout',async t=>{
+  for(const timeout of [false,true])await t.test(timeout?'timeout':'cancel',{timeout:3000},async t=>{
+    let started,release,calls=0,disposals=0;const invoked=new Promise(r=>{started=r;});
+    const cleanup=new Promise(r=>{release=r;});t.after(()=>release());
+    const provider=new FakeMailProvider();provider.saveDraft=()=>{calls++;started();return new Promise(()=>{});};
+    provider.dispose=()=>{disposals++;return cleanup;};
+    const f=fixture(t,{createMailProvider:()=>provider}),tool=f.host.tools.find(t=>t.descriptor.name==='mail.save_draft');
+    const controller=new AbortController(),args={to:'synthetic@example.invalid',subject:'s',text:'t'},s=scope(tool,args,'hanging-dispose',controller);
+    if(timeout)s.deadline=new Date(Date.now()+100).toISOString();
+    await f.host.prepareExport({...s,phase:'preflight'});
+    const pending=tool.execute(args,s);await invoked;if(!timeout)controller.abort();
+    let timer;const bound=new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('execute waited for disposal')),1000);});
+    try {await assert.rejects(Promise.race([pending,bound]),{code:timeout?'TIMEOUT':'CANCELLED'});}
+    finally {clearTimeout(timer);release();}
+    assert.equal(disposals,1);assert.equal(calls,1);
+  });
+});
+
 test('asynchronous credential reads stop on cancellation and cannot create a provider after configuration rotation',async t=>{
   let release,started,creations=0;const called=new Promise(r=>{started=r;});let revision=1;
   const f=fixture(t,{calendar:{binding:()=>({calendarUrl:'https://calendar.example.invalid/',revision}),readAuthorization:()=>{
