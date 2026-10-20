@@ -633,7 +633,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原恢复工作区绑定已变化');};
     check();inflight.add(controller);
     try {
-      const host=await getRepairHost();check();
+      const host=await getRepairHost(true);check();
       if(typeof host.reconcileOriginalSession!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','原会话原生核实尚未接入');
       const result=await host.reconcileOriginalSession({session,trialRunId,expectedRevision,deadline,signal:combined,assertCurrent:check});
       check();return result;
