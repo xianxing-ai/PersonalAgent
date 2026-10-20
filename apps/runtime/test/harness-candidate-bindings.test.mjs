@@ -25,7 +25,8 @@ function fixture() {
     contexts.set(runId,ctx);runtime.saveCheckpointOnce(taskId,'application-deadline',deadline);
     const argumentsDigest=toolArgumentsDigest(args);
     runtime.saveCheckpointOnce(taskId,'application-tool-invocation:'+runId,{toolName,toolVersion:'1.0.0',arguments:args,argumentsDigest,deadline});
-    records.push({taskId,evidenceId:runId,toolName,toolVersion:'1.0.0',argumentsDigest,scopeRef:runId,policyDecision:'allow',executionStarted:true,state:'started'});
+    records.push({taskId,evidenceId:runId,toolName,toolVersion:'1.0.0',argumentsDigest,inputDigest:toolArgumentsDigest({taskId,toolName,arguments:args,scopeRef:runId}),
+      scopeRef:runId,policyDecision:'allow',executionStarted:true,state:'started'});
     return ctx;
   }
   function confirm(ctx,result) {records.find(r=>r.evidenceId===ctx.runId).state='confirmed';runtime.saveCheckpointOnce(ctx.taskId,'tool-result-'+ctx.runId,{result});}
@@ -104,4 +105,28 @@ test('composition consumes the exact original disjoint patch union and refuses a
   const overlap=g.begin('coding.repair.trial',{candidateId:'combined',patches:[a],recipeIds:['unit'],parentTrialRunIds:refs},'overlap');
   await g.bindings.trial.readBinding(overlap,'combined');
   await assert.rejects(g.bindings.trial.readParentArtifactDigests(overlap,'combined',refs,[a]),{code:'UNSUPPORTED_CAPABILITY'});
+});
+test('host-only provenance pins the captured comparison and reuses the canonical succeeded main session',async()=>{
+  const f=fixture(),a=await f.observed('one'),b=await f.observed('two','FAILED');
+  const ids=['run-one','run-two'],compare=f.begin('harness.candidates.compare',{trialRunIds:ids},'compare');
+  f.bindings.compare.getBinding(compare);
+  const result=compareHarnessCandidates(f.c,[a.result,b.result]);result.recommendation.trialRunId='run-one';
+  f.confirm(compare,{...result,evidenceRefs:ids});
+  const adopt=f.begin('coding.repair.prepare_adoption',{trialRunId:'run-one'},'adopt');
+  await f.bindings.adoption.readSelection(adopt,'run-one');
+  const saved=f.input(adopt,'main-session');saved.session.mode='main';await f.bindings.adoption.saveSession(adopt,saved);
+  const checked=structuredClone(a.result.checkReadback);checked.sessionId='main-session';
+  checked.verification.forEach(receipt=>{receipt.sessionId='main-session';receipt.runId='fresh-main-check';receipt.evidenceRefs=['adopt'];});
+  f.confirm(adopt,checked);
+  const request={ownerTaskId:f.c.binding.taskId,actualTaskId:f.c.binding.taskId,runId:'adopt'};
+  assert.throws(()=>f.bindings.readOriginalSessionForProvenance(request),{code:'UNAUTHORIZED'},'running task is not a succeeded experience source');
+  f.setTask(f.c.binding.taskId,'succeeded',8);
+  assert.deepEqual(f.bindings.readOriginalSessionForProvenance(request),saved);
+  const origin=f.bindings.readAdoptionOrigin(request);assert.equal(origin.comparison.runId,'compare');assert.equal(origin.trial.runId,'run-one');
+  assert.equal(origin.adoptionInputDigest,f.records.find(r=>r.evidenceId==='adopt').inputDigest);
+  assert.equal(f.runtime.loadCheckpoint(f.c.binding.taskId,'harness-candidates:adoption-origin:adopt').artifactId,a.result.binding.artifactId);
+  assert.equal(f.runtime.loadCheckpoint(f.c.binding.taskId,'harness-candidates:session:adopt').input.session.sessionId,'main-session');
+  assert.equal(f.runtime.loadCheckpoint(f.c.binding.taskId,'harness-candidates:selection:adopt'),undefined,'no competing selection journal');
+  f.records.find(r=>r.evidenceId==='compare').inputDigest='substituted';
+  assert.throws(()=>f.bindings.readAdoptionOrigin(request),{code:'UNAUTHORIZED'});
 });
