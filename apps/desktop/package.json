@@ -11,7 +11,7 @@
     "dev:fake": "electron . --fake-runtime",
     "typecheck": "node --check electron/main.js && node --check electron/runtime.js && node --check electron/conversations.js && node --check electron/preload.cjs && node --check src/app/renderer.js && node --check src/features/admin/view.js && node --check src/features/admin/profile.js && node --check src/features/workspace/view.js && node --check src/features/workspace/connectors.js && node --check src/features/orb/orb.js && node --check src/features/conversation/state.js && node --check src/features/conversation/rail.js && node --check src/ui/preferences.js",
     "dev:text-fake": "electron . --fake-model",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-reporter=spec --test-reporter=./test-support/node-test-failure-reporter.mjs --test-reporter-destination=stdout --test-reporter-destination=stderr test/*.test.mjs",
     "test:smoke": "node test/electron-smoke.cjs",
     "test:pr376-smoke": "node test/pr376-regressions-smoke.cjs",
 
