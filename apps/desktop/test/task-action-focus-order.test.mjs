@@ -3,6 +3,7 @@ import test from 'node:test';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {isTerminal} from '../src/features/conversation/state.js';
 
 for(const [surface,path,assignment] of [
   ['panel','../src/app/renderer.js',"root.querySelector('#tasks').onclick"],
@@ -11,12 +12,15 @@ for(const [surface,path,assignment] of [
   const source=await readFile(new URL(path,import.meta.url),'utf8');
   const ast=ts.createSourceFile(path,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
   const declarations=new Map();let handler;
+  const dependencies=surface==='panel'
+    ?['pendingCancelIds','syncCancelButtons','restoreTaskActionFocus','truncatedTaskIds','activeTasks','setSendMode']
+    :['pendingCancelIds','syncCancelButtons','restoreTaskActionFocus'];
   function visit(node){
     if(ts.isBinaryExpression(node)&&node.left.getText(ast)===assignment)handler=node.right.getText(ast);
-    if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&['pendingCancelIds','syncCancelButtons','restoreTaskActionFocus'].includes(node.name.text))declarations.set(node.name.text,node.getText(ast));
+    if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&dependencies.includes(node.name.text))declarations.set(node.name.text,node.getText(ast));
     ts.forEachChild(node,visit);
   }
-  visit(ast);assert.ok(handler);assert.equal(declarations.size,3,'actual consumer dependencies');
+  visit(ast);assert.ok(handler);assert.equal(declarations.size,dependencies.length,'actual consumer dependencies');
   function fixture(){
     const calls=[],errors=[],document={body:{},activeElement:null};document.activeElement=document.body;
     function button(action='cancel',id='task-1'){
@@ -24,7 +28,9 @@ for(const [surface,path,assignment] of [
       return {dataset,disabled:false,focus(options){this.focusOptions=options;document.activeElement=this;}};
     }
     let buttons=[button()];const container={querySelectorAll:()=>buttons};
-    const context=vm.createContext({document,conversation:container,tasksNode:container,current:{tasks:[{taskId:'task-1',state:'running'}]},report:error=>errors.push(error.message),invoke:(name,payload)=>new Promise((resolve,reject)=>calls.push({name,payload,resolve,reject}))});
+    const context=vm.createContext({document,conversation:container,tasksNode:container,input:{value:'next draft'},
+      sendBtn:{dataset:{},setAttribute(){}},pending:false,isTerminal,current:{tasks:[{taskId:'task-1',state:'running'}]},
+      report:error=>errors.push(error.message),invoke:(name,payload)=>new Promise((resolve,reject)=>calls.push({name,payload,resolve,reject}))});
     for(const declaration of declarations.values())vm.runInContext(`const ${declaration};`,context);
     const click=vm.runInContext(`(${handler})`,context);
     return {calls,errors,document,context,button,get buttons(){return buttons;},replace(next){buttons=next;vm.runInContext('syncCancelButtons()',context);},click:target=>click({target:{closest:()=>target}}),restore:target=>{context.focused=target;vm.runInContext('restoreTaskActionFocus(focused)',context);}};
