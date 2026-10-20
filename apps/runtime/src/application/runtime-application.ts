@@ -1056,11 +1056,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
   }
 
-  private consumeHarnessExperiencePolicy(invocation:{taskId:string;runId:string;toolName:string;arguments:Record<string,unknown>;
+  private consumeHarnessExperiencePolicy(invocation:{taskId:string;runId:string;toolName:string;arguments:unknown;
     deadline:string;signal:AbortSignal}):void {
     const policy=this.harnessExperiencePolicy(invocation.taskId,invocation);if(!policy)return;
-    if(invocation.toolName===HARNESS_TRIAL_TOOL&&(!Array.isArray(invocation.arguments.recipeIds)
-      ||policy.requiredRecipeIds.some(id=>!(invocation.arguments.recipeIds as unknown[]).includes(id))))
+    const recipeIds=plainObject(invocation.arguments)?invocation.arguments.recipeIds:undefined;
+    if(invocation.toolName===HARNESS_TRIAL_TOOL&&(!Array.isArray(recipeIds)
+      ||policy.requiredRecipeIds.some(id=>!recipeIds.includes(id))))
       throw new ProtocolError('SCOPE_DENIED','Candidate omits verification required by the active experience strategy');
     this.runtime.saveCheckpoint(invocation.taskId,'harness-experience:consumed:'+invocation.runId,
       {ownerTaskId:policy.ownerTaskId,workflowId:policy.lease.workflowId,revision:policy.lease.revision,
