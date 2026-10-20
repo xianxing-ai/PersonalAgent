@@ -47,6 +47,12 @@ H2 独占 Desktop main/settings。已向主控交付上述准确端口，由原 
 同 deliveryId 固定为 `harness-event-root:` idempotency key。helper 验证原 required-user-work 委派绑定及
 canonical 子任务，root 仅受理而尚无子任务时保留 RESULT_UNKNOWN；下一次只查原 child，不重新 submit。
 H1 原派发／完成通知需唤起 flush；不增加轮询。
+投递工厂允许 `runtime: () => application.runtime` 延迟读取；构造时不访问尚未初始化的 Runtime。
+H2 锚点读取位置为 `host.inspect().application.state.responsibilities[id]` 与原 `sourceQuotes`；
+原 host 的 quote 以 `messageId=sourceTaskId`、`quoteRef=runtime:task:<id>:goal` 和原 goal SHA 绑定，
+应读原任务核对，而非从事件自报 parent/authorization。wake 还须匹配原 `state.schedules`。
+新 root 的期限取当前有效责任/lease、事件过期和原持续 host 上限之交，不读取历史 source root 的旧 deadline；
+已过期 host 自身不能因新投递被延长，须由原生命周期策略处理。
 
 ## 本次验证范围
 
