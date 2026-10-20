@@ -6,6 +6,15 @@ const receipt = {role:'world',status:'completed',requestId:'request-1',promptVer
   spanId:'a35bb06c-bc63-4795-a735-dc11a3a66232',startedAt:'2026-10-13T01:00:00.000Z',
   endedAt:'2026-10-13T01:00:00.011Z',durationMs:10.25,totalTokens:23};
 
+test('failed role output includes only a fixed safe stage label',()=>{
+ const lines=[],write=createRoleReceiptWriter({write:line=>lines.push(line)});
+ for(const failureStage of ['model_gateway','response_shape','response_json','response_object','private-model-output'])write({...receipt,status:'failed',failureStage});
+ assert.deepEqual(lines.slice(0,4).map(line=>JSON.parse(line).failureStage),['model_gateway','response_shape','response_json','response_object']);
+ assert.equal(lines[4].includes('private-'),false);
+ write({...receipt,failureStage:'response_json'});
+ assert.equal(Object.hasOwn(JSON.parse(lines[5]),'failureStage'),false);
+});
+
 test('host receipt allows only correlation/timing/usage and explicit deployment metadata',()=>{
   const lines=[],write=createRoleReceiptWriter({deploymentVersion:'arm64-194799c6',write:line=>lines.push(line)});
   write({...receipt,query:'private-user-input',response:'private-model-output',error:'private-error',
