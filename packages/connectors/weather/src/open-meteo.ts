@@ -1,5 +1,5 @@
 import { ProtocolError } from '@personal-agent/contracts';
-import type { ForecastFetch, ForecastRequest, PlaceConfidence, ResolvedPlace, WeatherProvider } from './provider.js';
+import type { ForecastCurrent, ForecastFetch, ForecastHourlyPoint, ForecastRequest, PlaceConfidence, ResolvedPlace, WeatherProvider } from './provider.js';
 import { aliasForPlace } from './locale-aliases.js';
 
 export interface FetchResponseLike {
@@ -178,6 +178,54 @@ const asNumberArray = (value: unknown): (number | null)[] | undefined => {
 const label = (candidate: GeoCandidate): string =>
   [candidate.name, candidate.admin1, candidate.country].filter((part): part is string => typeof part === 'string' && part.length > 0).join(', ');
 
+/**
+ * The `current` block is a convenience, never the reason a forecast fails: a provider response
+ * without it still answers the daily question. Values keep the request's unit system.
+ */
+function readCurrent(value: unknown): ForecastCurrent | undefined {
+  const block = asRecord(value);
+  if (!block) return undefined;
+  const temperature = asFiniteNumber(block.temperature_2m);
+  const observedAt = typeof block.time === 'string' ? block.time : undefined;
+  if (temperature === undefined || observedAt === undefined) return undefined;
+  const windDirection = asFiniteNumber(block.wind_direction_10m);
+  return {
+    observedAt,
+    temperature,
+    apparentTemperature: asFiniteNumber(block.apparent_temperature) ?? null,
+    relativeHumidity: asFiniteNumber(block.relative_humidity_2m) ?? null,
+    windSpeed: asFiniteNumber(block.wind_speed_10m) ?? null,
+    // Open-Meteo reports 0–360°; anything outside that is an upstream fault, not a direction.
+    windDirection: windDirection !== undefined && windDirection >= 0 && windDirection <= 360 ? windDirection : null,
+    weatherCode: asFiniteNumber(block.weather_code) ?? null,
+  };
+}
+
+/** Hourly values are aligned by index; a partial or malformed block is dropped rather than guessed. */
+function readHourly(value: unknown, date: string): ForecastHourlyPoint[] {
+  const block = asRecord(value);
+  if (!block || !Array.isArray(block.time)) return [];
+  const times = block.time;
+  const temperatures = asNumberArray(block.temperature_2m);
+  const precipitation = asNumberArray(block.precipitation_probability);
+  const codes = asNumberArray(block.weather_code);
+  const points: ForecastHourlyPoint[] = [];
+  for (let index = 0; index < times.length; index++) {
+    const time = times[index];
+    const temperature = temperatures?.[index];
+    if (typeof time !== 'string' || !time.startsWith(date) || temperature === null || temperature === undefined) continue;
+    const chance = precipitation?.[index];
+    const code = codes?.[index];
+    points.push({
+      time,
+      temperature,
+      precipitationProbability: chance === null || chance === undefined ? null : Math.round(chance),
+      weatherCode: code === null || code === undefined ? null : code,
+    });
+  }
+  return points;
+}
+
 /** Different coordinates under the same admin region often produce identical labels; repeating them discloses nothing. */
 const distinctLabels = (labels: string[]): string[] => [...new Set(labels)];
 
@@ -260,6 +308,10 @@ export class OpenMeteoProvider implements WeatherProvider {
     const url = `${this.forecastBaseUrl}/v1/forecast`
       + `?latitude=${place.latitude}&longitude=${place.longitude}`
       + '&daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,weather_code'
+      // Present conditions and the requested day's hourly curve are what turn a daily range into
+      // an actionable answer ("下午适合跑步吗"). Both blocks are optional on read-back.
+      + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,weather_code'
+      + '&hourly=temperature_2m,precipitation_probability,weather_code'
       + `&timezone=${encodeURIComponent(place.timezone)}`
       + `&start_date=${request.date}&end_date=${request.date}`
       + `&temperature_unit=${temperatureUnit}`;
@@ -297,6 +349,10 @@ export class OpenMeteoProvider implements WeatherProvider {
       coverage: {start: coverageStart, end: new Date(zonedDayStartUtc(nextCalendarDate(request.date), place.timezone)).toISOString()},
       resolved: place,
     };
+    const current = readCurrent(body.current);
+    if (current) fetch.current = current;
+    const hourly = readHourly(body.hourly, request.date);
+    if (hourly.length) fetch.hourly = hourly;
     return fetch;
   }
 

@@ -816,15 +816,13 @@ test('tool output from the real provider passes the declared output schema', asy
   assert.equal(result.record.source, 'open-meteo');
   assert.equal(result.forecast.publishedTimeKind, 'coverage_start');
   assert.equal(result.forecast.precipitationProbability, null);
-  assert.equal(result.forecast.resolved.ambiguous, true);
-  assert.equal(result.forecast.resolved.timezone, 'Asia/Shanghai');
-  assert.equal(result.forecast.resolved.confidence, 'high');
+  assert.ok(!('resolved' in result.forecast), 'the tool answer carries the weather only, not the place resolution');
 
   dispose();
   await assert.rejects(host.invoke('weather.forecast', {location: '北京', date: DATE}, context), {code: 'UNSUPPORTED_CAPABILITY'});
 });
 
-test('the tool accepts a hint and reports a weak match through the declared schema', async () => {
+test('the hint stays a record-identity switch while the tool answer remains weather-only', async () => {
   const clock = new FakeClock(Date.parse('2026-09-06T02:00:00.000Z'));
   const context = {
     taskId: 't', runId: 'r', authorizationRef: 'fixture',
@@ -836,12 +834,9 @@ test('the tool accepts a hint and reports a weak match through the declared sche
   const weak = new FakeToolHost(clock.now);
   const disposeWeak = register(weak, {provider: makeProvider([captureRoutes(CAPTURES), forecastRoute(healthyDaily)]), now: clock.now});
   const unhinted = await weak.invoke('weather.forecast', {location: '伦敦', date: DATE}, context);
-  assert.equal(unhinted.forecast.resolved.confidence, 'low');
-  assert.equal(unhinted.forecast.resolved.timezone, 'America/Toronto', 'disclosed, not silently corrected');
   const hinted = await weak.invoke('weather.forecast', {location: '伦敦', locationQuery: 'London', date: DATE}, context);
-  assert.equal(hinted.forecast.resolved.timezone, 'Europe/London');
-  assert.equal(hinted.forecast.resolved.confidence, 'high');
   assert.notEqual(unhinted.record.dedupeKey, hinted.record.dedupeKey, 'the hint changes which place the record is about');
+  assert.ok(!('resolved' in unhinted.forecast) && !('resolved' in hinted.forecast), 'no place resolution is disclosed in the answer');
   disposeWeak();
 
   const guarded = new FakeToolHost(clock.now);
@@ -850,8 +845,7 @@ test('the tool accepts a hint and reports a weak match through the declared sche
     now: clock.now,
   });
   await assert.rejects(guarded.invoke('weather.forecast', {location: '伦敦', date: DATE}, context), {code: 'INVALID_ARGUMENT'});
-  const rescued = await guarded.invoke('weather.forecast', {location: '伦敦', locationQuery: 'London', date: DATE}, context);
-  assert.equal(rescued.forecast.resolved.timezone, 'Europe/London');
+  await guarded.invoke('weather.forecast', {location: '伦敦', locationQuery: 'London', date: DATE}, context);
   disposeGuarded();
 });
 
@@ -1138,4 +1132,35 @@ test('奥克兰 stays unresolved rather than answering for Oakland', async () =>
   const oakland = {id: 5378538, name: 'Oakland', latitude: 37.80437, longitude: -122.2708, timezone: 'America/Los_Angeles', feature_code: 'PPLA2', population: 419267, admin1: '加州', country: '美国'};
   const provider = makeProvider([nameRoutes({'奥克兰': {zh: [], en: []}, 'Oakland': {zh: [], en: [oakland]}})]);
   await assert.rejects(provider.resolvePlace('奥克兰', undefined, signal()), {code: 'NOT_FOUND'});
+});
+
+test('reads present conditions and the requested day hourly curve when the provider publishes them', async () => {
+  const route = ['api.open-meteo.com', url => {
+    const date = new URL(url).searchParams.get('start_date');
+    assert.match(url, /[?&]current=/);
+    assert.match(url, /[?&]hourly=/);
+    return jsonResponse({
+      latitude: 39.89, longitude: 116.36, timezone: 'Asia/Shanghai',
+      daily: {time: [date], temperature_2m_min: [22.3], temperature_2m_max: [31.4],
+        precipitation_probability_max: [12], weather_code: [3]},
+      current: {time: '2026-09-06T11:00', temperature_2m: 26.4, apparent_temperature: 27.1,
+        relative_humidity_2m: 58, wind_speed_10m: 9.7, wind_direction_10m: 135, weather_code: 3},
+      hourly: {time: ['2026-09-06T00:00', '2026-09-06T01:00', '2026-09-07T00:00'],
+        temperature_2m: [22.5, 22.1, 21.0], precipitation_probability: [5, 10, 0], weather_code: [3, 3, 1]},
+    });
+  }];
+  const {service} = makeService([geoRoute(beijingCandidates), route]);
+  const result = await service.getForecast({location: '北京', date: DATE});
+  assert.deepEqual(result.forecast.current, {observedAt: '2026-09-06T11:00', temperature: 26.4,
+    apparentTemperature: 27.1, relativeHumidity: 58, windSpeed: 9.7, windDirection: 135, weatherCode: 3});
+  assert.equal(result.forecast.hourly.length, 2, 'hours outside the requested local day are dropped');
+  assert.deepEqual(result.forecast.hourly[0], {time: '2026-09-06T00:00', temperature: 22.5,
+    precipitationProbability: 5, weatherCode: 3});
+});
+
+test('a provider without present conditions still answers the daily forecast', async () => {
+  const {service} = makeService([geoRoute(beijingCandidates), forecastRoute(healthyDaily)]);
+  const result = await service.getForecast({location: '北京', date: DATE});
+  assert.equal(result.forecast.current, undefined);
+  assert.equal(result.forecast.hourly, undefined);
 });
