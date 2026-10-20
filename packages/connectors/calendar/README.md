@@ -122,6 +122,12 @@ manifest 随**实际 Provider** 声明（不保留把真实提供者标为 fixtu
 - `respond` 在 Fake 上同步 `confirmed`；真实提供商可能返回 `pending/unknown`，届时不得当作已完成（ADR-0003）。
 ## 2026-10-12 Foundation 时间边界修复
 
+2026-10-20 写路径补充：ICS 属性名及 BEGIN/END 组件标记按大小写不敏感处理，
+小写/混合大小写 RRULE、RDATE、EXDATE、RECURRENCE-ID 均在 PUT 前拒绝。
+更新原字段时按规范化属性名替换，保留未修改 DATE/TZID 边界及 attendee/alarm 原文，
+不扩展 recurring/multi-event 写入支持。Pinned Node 24.15.0：calendar build/typecheck
+通过；写入及工具文件 16/16，解析器文件 13 pass/2 原真实服务 skip；无真实账号操作。
+
 CalDAV 请求计时器触发时复查实际截止时间，提前触发则等待剩余时间；请求上限与宿主
 deadline 仍取较小值。真实到期保留原 TIMEOUT/EXTERNAL_FAILURE 分类，取消和无旧数据
 返回语义不变，无接口、依赖或迁移变化。先用明确的合成时钟/计时器复现提前 1 ms

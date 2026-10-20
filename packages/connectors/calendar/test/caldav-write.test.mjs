@@ -32,6 +32,37 @@ function fakeServer() {
 
 const ctx = () => ({deadline: new Date(Date.now() + 30_000).toISOString(), signal: new AbortController().signal});
 
+test('recurrence property names reject lowercase and mixed case before PUT', async () => {
+  for (const [key,value] of [['RRULE','FREQ=DAILY'],['RDATE','20261022T070000Z'],
+    ['EXDATE','20261022T070000Z'],['RECURRENCE-ID','20261021T070000Z']]) {
+    for (const name of [key.toLowerCase(),key[0]+key.slice(1).toLowerCase()]) {
+      const server=fakeServer(),provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:server.fetchImpl});
+      server.resources.set('series.ics',['begin:vcalendar','version:2.0','bEgIn:vEvEnT','uid:series',
+        'dtstart:20261021T070000Z','dtend:20261021T080000Z','summary:original',`${name}:${value}`,
+        'eNd:vEvEnT','end:vcalendar'].join('\r\n')+'\r\n');
+      await assert.rejects(provider.updateEvent({uid:'series',summary:'unsafe'},ctx()),{code:'UNSUPPORTED_CAPABILITY'});
+      assert.equal(server.log.filter(r=>r.method==='PUT').length,0,name);
+    }
+  }
+});
+
+test('mixed-case event fields retain all-day and TZID boundaries without duplicate properties', async () => {
+  for (const allDay of [true,false]) {
+    const server=fakeServer(),provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:server.fetchImpl});
+    const start=allDay?'dtstart;value=DATE:20261021':'dtstart;tzid=Asia/Shanghai:20261021T150000';
+    const end=allDay?'DtEnD;value=DATE:20261022':'DtEnD;tzid=Asia/Shanghai:20261021T160000';
+    const extras=['attendee:mailto:original@example.invalid','begin:valarm','description:alarm','trigger:-PT15M','end:valarm'];
+    server.resources.set('mixed.ics',['begin:vcalendar','version:2.0','begin:vevent','uid:mixed',start,end,
+      'summary:original',...extras,'end:vevent','end:vcalendar'].join('\r\n')+'\r\n');
+    const input={uid:'mixed',summary:'changed',...(allDay?{}:{startUtc:'2026-10-21T07:30:00Z'})};
+    const result=await provider.updateEvent(input,ctx());assert.equal(result.title,'changed');
+    const stored=server.resources.get('mixed.ics'),lines=stored.split('\r\n');
+    for(const key of ['UID','SUMMARY','DTSTART','DTEND'])assert.equal(lines.filter(l=>l.split(/[:;]/)[0].toUpperCase()===key).length,1,key);
+    for(const line of [end,...extras,...(allDay?[start]:[])])assert.ok(lines.includes(line),line);
+    if(!allDay)assert.equal(result.startUtc,'2026-10-21T07:30:00.000Z');
+  }
+});
+
 test('nonzero milliseconds are rejected before any network request for either write boundary', async () => {
   for (const operation of ['createEvent', 'updateEvent']) {
     for (const field of ['startUtc', 'endUtc']) {
