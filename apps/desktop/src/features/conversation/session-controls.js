@@ -5,13 +5,24 @@ export function mountSessionControls(root,input,invoke,report,{flushBeforeClose}
   root.append(box);const select=box.querySelector('[data-session-list]'),title=box.querySelector('[data-session-title]'),status=box.querySelector('[data-session-status]'),archived=box.querySelector('[data-session-archived]');
   let active,state,busy=false,timer,titleDirty=false,titleRevision=0,signature='',closed=false,composing=false;
   const drafts=new Map(),versions=new Map(),dictations=new Set(),dictationQueues=new Map(),compositionWaiters=[];
-  window.addEventListener('beforeunload',event=>{
+  let quitPrepared=false,previousReadOnly=false;
+  const flushClose=event=>{
+    if(quitPrepared)return;
     if(!active||!flushBeforeClose)return;
     // A readonly archive may have newer late dictation in the cache.
     if(!input.readOnly)drafts.set(active,input.value);
     try{flushBeforeClose([...drafts].map(([conversationId,text])=>({conversationId,text})));}
     catch(error){event.preventDefault();event.returnValue='';report(error);}
+  };
+  window.addEventListener('beforeunload',flushClose);
+  window.addEventListener('pa:prepare-quit',event=>{
+    if(event.detail)event.detail.handled=true;
+    if(quitPrepared)return;
+    if(busy||composing||dictationQueues.size){event.preventDefault();report(Error('请先完成对话切换或输入，再退出'));return;}
+    flushClose(event);if(event.defaultPrevented)return;
+    quitPrepared=true;previousReadOnly=input.readOnly;input.readOnly=true;
   });
+  window.addEventListener('pa:cancel-quit',()=>{if(quitPrepared)input.readOnly=previousReadOnly;quitPrepared=false;});
   async function saveDraft(id=active){if(!id||!drafts.has(id))return;await invoke('conversation.draft',{conversationId:id,text:drafts.get(id)});}
   input.addEventListener('input',()=>{if(!active)return;drafts.set(active,input.value);versions.set(active,(versions.get(active)??0)+1);clearTimeout(timer);const id=active;timer=setTimeout(()=>{timer=undefined;void saveDraft(id).catch(report);},800);});
   input.addEventListener('blur',()=>{clearTimeout(timer);timer=undefined;void saveDraft().catch(report);});
@@ -44,6 +55,7 @@ export function mountSessionControls(root,input,invoke,report,{flushBeforeClose}
   window.addEventListener('unload',()=>{closed=true;clearTimeout(timer);});
   const capture=()=>({conversationId:active,text:input.value,revision:versions.get(active)??0});
   async function appendDictation(result){
+    if(quitPrepared)throw Error('正在退出，听写未填入草稿');
     const id=result?.conversationId??'desktop-panel',text=result?.text;
     if(typeof text!=='string'||!text.trim())return;
     const key=result.dictationId;if(key&&dictations.has(key))return;if(key)dictations.add(key);

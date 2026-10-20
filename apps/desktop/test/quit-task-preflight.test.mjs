@@ -41,6 +41,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'windowsControlHost','developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
+    submitting:new Set(),draftQuitPreflight:{allow:()=>true},
     runtimeStartup: {snapshot: () => ({state: startup})}, runtimeApplication: {activeTaskCount: count,
       close() {calls.push('runtime-close');}}, runtimeError: '', runtimeClosed: false,
     wakeQuitHandled: false, wakeQuitUnknown: false, wakeDisposal: undefined,
@@ -71,6 +72,11 @@ test('an already active task refuses quit before permanent voice or wake disposa
   assert.equal(f.calls.includes('telemetry-stop'), false);assert.equal(f.calls.includes('runtime-close'), false);
   assert.equal((await f.voiceInput.beginCapture()).status, 'listening');
   assert.equal((await f.wakeVoice.enable()).phase, 'listening');
+});
+
+test('app.quit with a failed draft preflight preserves Runtime, tray and every host',async()=>{
+  const f=fixture();f.context.draftQuitPreflight={allow:()=>false};f.app.quit();await tick();
+  assert.equal(f.exited,false);assert.deepEqual(f.calls,['app-quit']);assert.equal(f.context.runtimeClosed,false);
 });
 
 test('a task finishing does not resume a refused quit; the next explicit quit closes normally', async () => {

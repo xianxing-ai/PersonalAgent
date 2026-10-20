@@ -1,5 +1,6 @@
 import {handleConversationAction} from './conversation-actions.js';
 import {flushConversationDrafts} from './conversation-draft-close.js';
+import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
@@ -144,6 +145,7 @@ let eventPoll;
 let eventBusy = false;
 let orb;
 let panel;
+let draftQuitPreflight;
 let admin;
 let workspace;
 const subagentWindows=new Map();
@@ -646,6 +648,7 @@ function publishAudioLevel(){
   for(const win of [orb,panel,admin,workspace])if(win&&!win.isDestroyed())win.webContents.send('desktop:audio-level',level);
 }
 function publish() {
+  draftQuitPreflight?.checkFailure(runtimeError);
   if (runtimeClosed) return;
   // Orb and panel read the same 'panel' surface; build each surface once per broadcast instead of
   // cloning every task four times. Each window still receives its own structured-clone copy.
@@ -3513,17 +3516,20 @@ app.whenReady().then(async () => {
     if ((near && desktopHost.settings.hover) || inside || pinned) { away = 0; if (near && desktopHost.settings.hover && !panel.isVisible()) openPanel(); }
     else if (panel.isVisible()) { if (!away) away = Date.now(); else if (Date.now() - away > 520) { void hidePanel().catch(reportPanelVoiceFailure); away = 0; } }
   }, 80);
+  draftQuitPreflight=createDraftQuitPreflight({windows:()=>[panel,workspace],retry:()=>app.quit(),readError:()=>runtimeError,
+    onFailure:error=>{app.isQuitting=false;runtimeError=error.message;publish();}});
   app.on('before-quit', event => {
     if (runtimeStartup.snapshot().state === 'starting') {
       event.preventDefault(); runtimeError = 'Runtime 正在连接，请稍后退出'; publish(); return;
     }
-    if ((runtimeApplication?.activeTaskCount ?? 0) > 0) {
+    if ((runtimeApplication?.activeTaskCount ?? 0) > 0 || submitting.size > 0) {
       event.preventDefault();
       app.isQuitting = false;
       runtimeError = 'Runtime 仍有活动任务；请先等待完成或停止任务后再退出';
       publish();
       return;
     }
+    if(!draftQuitPreflight.allow()){event.preventDefault();return;}
     if(remoteMcpHost && !remoteMcpClosed) {
       event.preventDefault();
       if(!remoteMcpClosing) {

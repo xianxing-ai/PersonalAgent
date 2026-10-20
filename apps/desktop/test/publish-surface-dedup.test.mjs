@@ -20,7 +20,7 @@ function run(t) {
   const surfaces = [];
   const window = name => ({name, isDestroyed: () => false, webContents: {send: (channel, payload) => sent.push({name, channel, payload})}});
   const context = vm.createContext({
-    runtimeClosed: false,
+    runtimeClosed: false,draftQuitPreflight:undefined,runtimeError:'',
     orb: window('orb'),
     panel: window('panel'),
     admin: window('admin'),
