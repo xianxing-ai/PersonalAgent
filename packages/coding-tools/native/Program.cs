@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -18,6 +19,10 @@ internal static class Program
     private const uint HANDLE_FLAG_INHERIT = 0x00000001;
     private const int STD_INPUT_HANDLE = -10;
     private const uint INFINITE = 0xFFFFFFFF;
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    private const int ERROR_INVALID_PARAMETER = 87;
+    private const uint STILL_ACTIVE = 259;
+    private const long FILETIME_EPOCH_TICKS = 504911232000000000L;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SECURITY_ATTRIBUTES
@@ -58,6 +63,13 @@ internal static class Program
         public IntPtr hThread;
         public int dwProcessId;
         public int dwThreadId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_FILETIME
+    {
+        public uint LowDateTime;
+        public uint HighDateTime;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -158,8 +170,25 @@ internal static class Program
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetHandleInformation(IntPtr hObject, uint dwMask, uint dwFlags);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessTimes(
+        IntPtr hProcess,
+        out PROCESS_FILETIME creationTime,
+        out PROCESS_FILETIME exitTime,
+        out PROCESS_FILETIME kernelTime,
+        out PROCESS_FILETIME userTime);
+
     public static int Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--query-process-start-time")
+        {
+            return QueryProcessStartTime(args);
+        }
+
         string? cwd = null;
         string? exe = null;
         int targetArgsIndex = -1;
@@ -412,6 +441,54 @@ internal static class Program
         finally
         {
             if (hJob != IntPtr.Zero) CloseHandle(hJob);
+        }
+    }
+
+    private static int QueryProcessStartTime(string[] args)
+    {
+        if (args.Length != 2 || !uint.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out uint processId)
+            || processId == 0 || processId > int.MaxValue)
+        {
+            Console.Error.WriteLine("WindowsJobProcessHost: --query-process-start-time requires a positive PID.");
+            return 1;
+        }
+
+        IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (process == IntPtr.Zero)
+        {
+            if (Marshal.GetLastWin32Error() == ERROR_INVALID_PARAMETER)
+            {
+                Console.Out.Write("NOT_FOUND");
+                return 3;
+            }
+            return 4;
+        }
+
+        try
+        {
+            if (!GetProcessTimes(process, out PROCESS_FILETIME creationTime, out _, out _, out _)) return 4;
+            // A process handle remains valid after the process exits. GetProcessTimes
+            // may still return its creation time in that state, so the creation token
+            // alone cannot prove that the process is live. Query the documented exit
+            // status on the same limited-information handle before publishing it.
+            if (!GetExitCodeProcess(process, out uint exitCode)) return 4;
+            // STILL_ACTIVE is ambiguous when a process deliberately exits with 259;
+            // keep the conservative live result in either case. Any other exit code
+            // proves that this PID is no longer an active process object.
+            if (exitCode != STILL_ACTIVE)
+            {
+                Console.Out.Write("NOT_FOUND");
+                return 3;
+            }
+            ulong fileTimeTicks = ((ulong)creationTime.HighDateTime << 32) | creationTime.LowDateTime;
+            if (fileTimeTicks > long.MaxValue - FILETIME_EPOCH_TICKS) return 4;
+            long dateTimeTicks = (long)fileTimeTicks + FILETIME_EPOCH_TICKS;
+            Console.Out.WriteLine(dateTimeTicks.ToString(CultureInfo.InvariantCulture));
+            return 0;
+        }
+        finally
+        {
+            CloseHandle(process);
         }
     }
 
