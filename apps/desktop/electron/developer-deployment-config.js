@@ -277,8 +277,12 @@ export async function readDeveloperToolDescriptors({cacheRootPath}) {
   const descriptors=[];
   const unavailable={verification:'conditional',execute:async()=>{fail();},dispose(){}};
   // conditional is the SDK's unverified-provider type, not a live/fake account fallback.
-  const unregister=githubModule.register({register(tool){descriptors.push(structuredClone(tool.descriptor));return ()=>{};}},{provider:unavailable});
-  unregister();
+  const metadataHost={register(tool){descriptors.push(structuredClone(tool.descriptor));return ()=>{};}};
+  const unregister=githubModule.register(metadataHost,{provider:unavailable});
+  try {
+    const unregisterRepair=githubModule.registerGitHubRepairLinks(metadataHost,{provider:unavailable});
+    unregisterRepair();
+  } finally {unregister();}
   const git=coding.createGitTools({rootPath:cacheRootPath,repository:'unconfigured/unconfigured',allowedPaths:['metadata-only'],
     sourceBranch:'unavailable',remoteName:'origin',remoteUrl:'https://github.com/unconfigured/unconfigured',
     authorName:'Unavailable',authorEmail:'unavailable@invalid',getCredentials:async()=>{fail();}});

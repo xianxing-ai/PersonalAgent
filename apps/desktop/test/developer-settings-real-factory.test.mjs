@@ -5,6 +5,72 @@ import path from 'node:path';
 import {TaskRuntime} from '@personal-agent/runtime';
 import {createDeveloperSettingsHost} from '../electron/developer-settings-host.js';
 import {projectDeveloperConversationStatus} from '../electron/developer-deployment-config.js';
+import {createDesktopDeveloperToolsHost} from '../electron/developer-tools-host.js';
+import {createConversationToolSurface} from '../electron/conversation-tool-surface.js';
+import {RuntimeCompetitionToolCatalog} from '../../runtime/dist/application/tool-catalog.js';
+import {githubRepairCheckName,registerGitHubRepairLinks} from '@personal-agent/github';
+
+test('same registered H4 proxy exposes opt-in repair tools to the real model catalog and retains original gates',async t=>{
+  const base=path.resolve('.cache');mkdirSync(base,{recursive:true});const root=mkdtempSync(path.join(base,'repair-catalog-'));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const workspaceRoot=path.join(root,'workspace'),cacheRootPath=path.join(root,'cache');mkdirSync(workspaceRoot);mkdirSync(cacheRootPath);
+  writeFileSync(path.join(workspaceRoot,'source.txt'),'Synthetic source');
+  const executable=path.join(root,'synthetic-gh.exe');writeFileSync(executable,'never executed');chmodSync(executable,0o700);
+  const runtime=new TaskRuntime(':memory:');let calls=0,consents=0;
+  const identity={repo:'synthetic/repository',runId:31,expectedRunAttempt:2,sourceSha:'a'.repeat(40),repairPrNumber:9,
+    repairHeadSha:'b'.repeat(40),workflowExecutionId:'c'.repeat(64)};
+  const receipt={...identity,checkRunId:101,externalId:'101',url:'https://github.com/synthetic/repository/runs/101',
+    name:githubRepairCheckName(identity),detailsUrl:'https://github.com/synthetic/repository/pull/9',status:'completed',conclusion:'neutral',evidenceRefs:[]};
+  const settings=createDeveloperSettingsHost({userData:path.join(root,'user'),
+    safeStorage:{isEncryptionAvailable:()=>true,encryptString:v=>Buffer.from(v).reverse(),decryptString:v=>Buffer.from(v).reverse().toString()},
+    readWorkspace:()=>({bindingId:'original',rootPath:workspaceRoot,available:()=>true,assertCurrent(){}})});
+  t.after(()=>{settings.close();runtime.close();});
+  const deployment=await settings.createDeployment({cacheRootPath,confirmExport:async()=>{consents++;return true;},
+    createHost:options=>{
+      const original=options.github.provider;
+      try{return createDesktopDeveloperToolsHost({...options,github:{...options.github,
+        provider:{verification:'conditional',dispose(){original.dispose();},async execute(op){calls++;assert.equal(op,'actions.repair.get');return structuredClone(receipt);}}}});}
+      catch(error){original.dispose();throw error;}
+    }});
+  deployment.host.bind({runtime});
+  const tools={list:()=>deployment.host.tools.map(t=>t.descriptor),invoke:async()=>assert.fail('Catalog cannot execute tools')};
+  const catalog=new RuntimeCompetitionToolCatalog(runtime,tools,deployment.host.competitionToolExports,
+    createConversationToolSurface({profile:'huawei_ict_agentarts',tools:deployment.host.tools,
+      competitionToolAvailability:deployment.host.competitionToolAvailability}),[],()=>true);
+  const scope=label=>{
+    const task=runtime.submitTask({goal:'Synthetic '+label,conversationId:'repair-catalog',idempotencyKey:label});
+    runtime.transitionTask(task.taskId,'planning');runtime.transitionTask(task.taskId,'running');
+    const value={taskId:task.taskId,signal:new AbortController().signal,deadline:new Date(Date.now()+30000).toISOString(),
+      authorizationRef:'explicit-original-grant',scopes:['github:read']};
+    runtime.saveCheckpoint(value.taskId,'application-profile','huawei_ict_agentarts');runtime.saveCheckpoint(value.taskId,'application-deadline',value.deadline);return value;
+  };
+  const repairNames=['github.actions.repair.link','github.actions.repair.get'];
+  const upstream=[];
+  const unregister=registerGitHubRepairLinks({register(tool){upstream.push(structuredClone(tool.descriptor));return ()=>{};}},
+    {provider:{verification:'conditional',execute:async()=>assert.fail('Metadata collection cannot execute'),dispose(){}}});
+  unregister();
+  for(const descriptor of upstream)assert.deepEqual(tools.list().find(tool=>tool.name===descriptor.name),descriptor,
+    'proxy preserves the entire public descriptor, including schema, version, scopes and side effects');
+  const configuration={version:1,repository:identity.repo,github:{executable},git:{sourceBranch:'work',remoteName:'origin',
+    remoteUrl:'https://github.com/'+identity.repo+'.git',allowedPaths:['source.txt'],authorName:'Synthetic',authorEmail:'synthetic@example.invalid'}};
+  assert.equal((await catalog.prepare(scope('unconfigured'))).some(t=>repairNames.includes(t.name)),false);
+  await settings.configure({enabled:true,configuration,token:'synthetic-private-token'});
+  const old=scope('default-off');assert.equal((await catalog.prepare(old)).some(t=>repairNames.includes(t.name)),false);
+  await settings.configure({enabled:true,configuration:{...configuration,github:{executable,repairLinks:true}}});
+  const active=scope('enabled'),visible=await catalog.prepare(active);
+  for(const name of repairNames){const entry=visible.find(t=>t.name===name),original=tools.list().find(t=>t.name===name);
+    assert.ok(entry,name+' appears in actual model catalog');assert.equal(entry.version,original.version);assert.ok(entry.inputSchema);}
+  const tool=deployment.host.tools.find(t=>t.descriptor.name==='github.actions.repair.get'),args={...identity,checkRunId:101};
+  await assert.rejects(tool.execute(args,{...active,authorizationRef:undefined}),{code:'SCOPE_DENIED'});
+  await assert.rejects(tool.execute(args,{...active,scopes:[]}),{code:'SCOPE_DENIED'});assert.equal(calls,0);
+  assert.deepEqual(await tool.execute(args,active),receipt);assert.equal(calls,1);
+  await assert.rejects(tool.execute(args,old),{code:'UNSUPPORTED_CAPABILITY'});
+  await settings.configure({enabled:true,configuration:{...configuration,github:{executable,repairLinks:false}}});
+  assert.equal((await catalog.prepare(scope('disabled-option'))).some(t=>repairNames.includes(t.name)),false);
+  await assert.rejects(tool.execute(args,active),{code:'UNSUPPORTED_CAPABILITY'});
+  await settings.setEnabled({enabled:false});await assert.rejects(tool.execute(args,scope('revoked')),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(calls,1);assert.equal(consents,0,'catalog and direct scope checks cannot grant external export');
+});
 
 test('encrypted settings round-trip through the original deployment factory without executing external tools',async t=>{
   const cache=path.resolve('.cache');mkdirSync(cache,{recursive:true});

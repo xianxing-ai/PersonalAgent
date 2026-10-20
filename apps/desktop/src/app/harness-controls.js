@@ -21,7 +21,7 @@ export function mountHarnessControls(root,invoke) {
       <label><input data-harness="eventsQuiet" type="checkbox">静默期间不接入新事件</label>
       <p class="notice">需要原用户责任、公开来源跟踪许可或原日程的有效回执。停用或静默期间的事件不会在恢复后补发；原任务结果仍可核实。</p>
     </fieldset>
-    <div class="form-actions"><button data-harness="save" type="button">保存 Harness 设置</button><button data-harness="disable" type="button">停用规划、摘要与事件接入</button></div>
+    <div class="form-actions"><button class="btn" data-harness="save" type="button">保存 Harness 设置</button><button class="btn" data-harness="disable" type="button">停用规划、摘要与事件接入</button></div>
     <p data-harness="status" class="notice" role="status"></p></div>`;
   root.append(settings);
   const field=name=>settings.querySelector(`[data-harness="${name}"]`);
