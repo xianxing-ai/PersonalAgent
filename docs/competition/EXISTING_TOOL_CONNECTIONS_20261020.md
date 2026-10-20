@@ -1,5 +1,13 @@
 # 已有工具接入（2026-10-20）
 
+## 同账号任务取消隔离修复（2026-10-20）
+
+- 普通无冲突合并 main `93e00889`，保留原 PR 双方历史。provider 每次执行独占，完成及中断均幂等释放；单任务取消不关闭同账号另一任务连接。family 撤销仍中止全部该 family 在途操作。
+- 异步凭据返回后按 combined signal 复核取消、宿主撤销和超时，阻止迟建 provider。原授权、账号、配置修订、出机确认、凭据过滤及 unknown 不重试语义保留。
+- Pinned Node 24.15.0/npm 11.12.1：完整 `connector-conversation-tools.test.mjs` **19/19**，包括双任务取消隔离、family 撤销、延迟凭据取消/超时/撤销零创建、超时零重试及原 Runtime 审批执行；Desktop `typecheck` 通过。新增测试初次语法错误已修正后完整重跑；未进行全仓或真实账号/设备验收。
+- 复用本机 `pr442-maintenance-20261020@db272758` 已构建依赖：比较 Runtime 与 packages（含 connectors）的 `src`、`package.json`、`tsconfig.json` 与本次合并头无差异；未使用 #451 Runtime 产物、安装依赖或重建大闭包。
+- 后续复核修复本轮引入的清理等待问题：执行 finally 只发起幂等 cleanup，不等待异步 dispose；family invalidate/close 原有等待语义不变。完整定向文件重跑 **22/22**，Desktop typecheck 与 diff check 通过。新增挂起 dispose 的取消/超时用例设 1 秒返回界限、3 秒测试 timeout，并在 finally/after 释放 cleanup，断言仅一次 dispose、一次原写入且无重试；这不是对真实网络或账号延迟的验收。
+
 状态：review（整仓首轮环境失败，重建helper后受影响工作区及桌面烟测通过；当前head CI与批准单独核对）；profile：huawei_ict_agentarts；隔离工作树 `27bb/Personal Agent`；分支 `codex/connect-existing-tools`，基线 `fe60cce4`。用户已授权提交 PR；提交、远端分支和审查状态以 Git/PR 记录为准。本分支同时包含此前已推送的上下文完整性修复，PR 对照 main 时一并列明。
 
 用户授权把可以接入的接口接入正式项目。此包消费已有 mail/calendar/GitHub 公开实现及原 Runtime/Policy/ToolGateway；不创建第二注册表、任务库、发送循环或配置库。
@@ -56,3 +64,23 @@
 - 文字、工作区及Runtime Application三项桌面烟测均退出0，使用独立测试数据目录和显式合成配置；日志为本机 `pr442-current-*-smoke.log`，不冒充真实模型/业务账号验收。
 - 原用户桌面、数据、凭据和固定云镜像未因本轮自动化复验被重新发布或替换。新的host安装物与所有日志保留在忽略目录/受信临时目录，不提交二进制或个人绝对路径。
 - 本机日志：`pr442-sync-check.log`、`native-helper-build.log`、`pr442-current-coding.log`、`pr442-current-knowledge.log`、`pr442-current-agentarts.log`、`pr442-current-integration.log`。
+
+## 日历写工具共同对话入口增量（2026-10-20）
+
+本源分支正常吸收 #439 最终 `9080f52c8fd8706d7f882efbb91d9e0bb2a98f78` 的连接器依赖后，在原 `connector-conversation-tools.js` 增加精确的
+`calendar.create/update/cancel` allowlist 和真实 `CalendarEventWrites` 嵌套代理。文字与 Live
+继续使用 Main 已有的同一个工具集合、availability、prepareExport 和精确出口策略；没有第二注册入口。
+每次执行的原 provider 生命周期、配置身份、会话、原授权引用及 `calendar:write` 校验不变。
+原 Policy/Gateway 执行审批与 metadata/result 云出机确认分开，不能以本地读取许可代签写入。
+create 不声明幂等或恢复；已开始写入的取消/超时/配置撤销仍须沿原任务核实，不自动重发。
+
+新增测试使用显式 Fake CalDAV 传输与实际 Runtime/Policy/Gateway/SQLite，覆盖模型目录可见、
+三个写操作批准前零网络、allow_once 后一次写、独立出机确认，以及只读 scope 拒绝、取消和配置撤销不重发。
+原邮件/日历读取及 provider 生命周期回归保留。Node 24.15.0 于 2026-10-20 15:30–15:31 UTC：
+Calendar 当前源码 tsc build/noEmit、两个 JS 的 node --check 通过，完整 connector-conversation-tools 单文件
+33/33 通过（原22项保留，新增三个实际 Runtime 正例、三个 UNKNOWN 禁止续接/重复 proposal 子例及 scope/取消/撤销）。
+复用已构建树 db272758 的30个依赖 dist；逐包 src/package.json 比对完全一致，Runtime 没有重编，未 install。
+首次运行29过/4失败（含父聚合）仅因新增 fixture 把原 confirmed-only handoff 的 UNAUTHORIZED 错写成 RESULT_UNKNOWN；
+核对原 Runtime 源码后修正精确错误码，仍必须拒绝续接，未修改生产 gate 或删除原断言。原失败日志保留。
+最终日志 `.cache/pr442-calendar-write/consumer-final.log` SHA256 `d16df5760a8c61a300eaada984391332643e2a18d90d001cd4a000f9fc85cfee`。
+不宣称真实账号、平台验收或依赖 PR 已合并。#439 独立审查及本 PR 当前技术 CI/非作者批准仍各自保留。

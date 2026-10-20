@@ -20,3 +20,21 @@
 针对无响应 Renderer 与错误来源的意见，新增超时/迟到确认、同步崩溃、普通广播不解锁和明确退出清理失败解锁的回归，并补齐原 Live 退出 VM 使用的真实 helper 依赖，保留原断言。七份相关文件最终 60/60 通过；Desktop typecheck、原生退出 smoke 14 项及标准窗口/桥接 smoke 通过。最终原生退出回执：`apps/desktop/.cache/pr376-regressions/run-z2QAtn/receipts.json`。
 
 最终完整 Desktop workspace 回归 1371 项，唯一失败仍为 Windows HostFixture 要求稳定 .NET 8 SDK；没有跳过或放宽该断言。完整日志 `.cache/pr-maintenance/review-followup-desktop-final.log`；前次运行在修改前加载旧 Live VM 夹具产生的失败保留于 `review-followup-desktop.log`，不把旧运行当作最终结果。仍不宣称本机完整检查全绿；远端当前提交 CI、原评审者复审及合并需另行确认。
+
+## 同步单主对话与滑块后的回归入口
+
+协作者将 main 的 #407 普通合并到 `b859b5c4` 后，生产面板有意隐藏会话管理、将原生思考控件改为滑块。原手动 smoke 仍等待 `.conversation-sessions` 可见，已在实际隔离 Electron 复现 30 秒超时；这是夹具入口失效，没有证据表明草稿退出生产路径回归。
+
+本次仅更新 smoke：确认隐藏的会话组件仍挂载、按当前 `#mm-slider` 检查缺目录的禁用状态；面板 9 组尺寸/缩放检查继续验证线程、输入框与模型菜单可达性，不再向已隐藏的面板会话管理注入归档按钮。原 Workspace 会话组件、无任务输入框、通知 scope/revision、配置秘钥清空、关闭保存失败、app.quit 清理次数为零、失败后可编辑及显式重试后的最终草稿磁盘读回断言全部保留。没有恢复已移除的产品界面或修改生产代码。
+
+Node 24.15.0 / Electron 44.2.0 的实际 smoke 14 项通过，回执为 `apps/desktop/.cache/pr376-regressions/run-NmyBBj/receipts.json`；失败前日志和修正后日志分别保留在 `.cache/pr-maintenance/latest-native-{before,after}.log`。同步后的五份退出/会话/原生思考单元文件也通过。未重复完整 Desktop/全仓检查；真实账号、云、音频、现有数据与其他应用会话均未参与。
+
+## 退出回执绑定原页面生命周期
+
+后续静态复核发现：草稿预检 ready 后等待异步宿主关闭时，旧回执没有绑定原页面。若同窗口、同 PID 甚至同 mainFrame 对象重载，新页面可能未经预检就复用旧 ready 状态进入 Runtime/托盘清理。
+
+预检现绑定原窗口集合、webContents 与主 frame，并在主 frame 跨文档导航开始/提交、renderer 消失或销毁、窗口关闭时使 pending/ready 回执失效；同文档和子 frame 导航不撤销回执。每次 allow 仍核对原实体集合；加载中的替换页面拒绝预检，待就绪后显式重试。失效/取消/超时清理监听器和计时器，并尝试解冻仍存活的原页面及当前页面；旧异步成功不能再触发 quit。保持原 5 秒上限、原清理顺序和权限，不新增关停流程。
+
+初轮导航回归后补齐正常退出的最终提交边界：Main 完成全部异步释放及最后活动任务门禁后，在注销快捷键和同步 Runtime/托盘清理前调用 `commit()`。该调用同步重验 ready 页面，成功后移除生命周期监听器，正常窗口 destroyed/closed 不再报告退出失败；失败阻止清理并重新预检。同步清理失败仍沿 `reportQuitFailure` 调用 `cancel()`，解冻保留页面。手动 smoke 的显式 Fake before-quit 组合也对齐该提交边界，没有修改其保存或清理断言。
+
+对应轻量回归覆盖同窗同 frame 重载、窗口替换、pending 导航及迟到成功、重复取消清理、同文档/子 frame 导航、renderer 消失、加载中替换页、最终 commit 后正常两窗口销毁及同步 Runtime 关闭失败解冻。Node 24.15.0 下，`draft-quit-preflight`、`conversation-draft-close`、`quit-task-preflight` 三文件最终 38/38 通过，Desktop typecheck、smoke 语法与 diff 检查通过；日志在忽略目录 `.cache/pr-maintenance-20261020/pr404/page-generation-final-{tests,typecheck}.log`。未重跑实际 Electron smoke 或全仓测试，不沿用上节实际 smoke 结果冒充新版本验证。初轮 `f542ad93` 不含 final commit，不能作为最终交付版本。

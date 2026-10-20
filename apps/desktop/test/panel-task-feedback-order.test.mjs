@@ -122,15 +122,20 @@ test('task-row actions retain the like limit and truncate stopped output before 
   const likedTasks=new Set(Array.from({length:200},(_,index)=>`liked-${index}`));
   const pendingCancelIds=new Set(),truncatedTaskIds=new Set(),calls=[],errors=[],modes=[];
   let finish;
-  const context=vm.createContext({likedTasks,pendingCancelIds,truncatedTaskIds,input:{value:'unsent draft'},
+  const visibleLikes=[];
+  const context=vm.createContext({likedTasks,pendingCancelIds,truncatedTaskIds,input:{value:'unsent draft'},tasksNode:{querySelectorAll:()=>visibleLikes},
     invoke:(name,id)=>{calls.push([name,id]);return new Promise(resolve=>{finish=resolve;});},
     setSendMode:hasDraft=>modes.push(hasDraft),syncCancelButtons(){},report:error=>errors.push(error)});
   vm.runInContext(`const ${capDeclaration};`,context);
   const click=vm.runInContext(`(${rowHandler})`,context);
-  const button=dataset=>({dataset,disabled:false,classList:{toggle(){}},setAttribute(){}});
+  const button=dataset=>({dataset,disabled:false,classList:{toggle(name,value){this[name]=value;}},setAttribute(name,value){this[name]=value;}});
   const like=button({uiAction:'like',id:'new-liked'});
+  const oldest=button({uiAction:'like',id:'liked-0'});oldest.setAttribute('aria-pressed','true');
+  visibleLikes.push(oldest,like);
   await click({target:{closest:()=>like}});
   assert.equal(likedTasks.size,200);assert.equal(likedTasks.has('liked-0'),false);assert.equal(likedTasks.has('new-liked'),true);
+  assert.equal(oldest['aria-pressed'],'false');assert.equal(oldest.classList.active,false);
+  assert.equal(like['aria-pressed'],'true');
   const stop=button({action:'task.cancel',id:'running-task'});
   const pending=click({target:{closest:()=>stop}});
   assert.equal(truncatedTaskIds.has('running-task'),true);assert.equal(pendingCancelIds.has('running-task'),true);
@@ -138,4 +143,33 @@ test('task-row actions retain the like limit and truncate stopped output before 
   assert.equal(context.input.value,'unsent draft');
   finish({cancelAccepted:true});await pending;
   assert.equal(pendingCancelIds.size,0);assert.equal(truncatedTaskIds.has('running-task'),true);assert.deepEqual(errors,[]);
+});
+
+test('21 locate requests clear evicted progress and stale replies cannot overwrite a retry',async()=>{
+  const declarations=new Map(),names=['capCollection','currentLocateFailure','projectLocateFeedback','locateFailure'];
+  function capture(node){
+    if(ts.isVariableDeclaration(node)&&names.includes(node.name.getText(ast)))declarations.set(node.name.getText(ast),node.getText(ast));
+    ts.forEachChild(node,capture);
+  }
+  capture(ast);assert.equal(declarations.size,names.length);
+  const tasks=Array.from({length:21},(_,i)=>({taskId:`failed-${i}`,state:'failed',error:{message:`error-${i}`}}));
+  const nodes=tasks.map(task=>{
+    const result={hidden:true,textContent:''};
+    return {dataset:{locateId:task.taskId,locateText:task.error.message},result,
+      closest:()=>({querySelector:()=>result})};
+  });
+  const replies=[],locateFeedback=new Map();
+  const context=vm.createContext({current:{tasks},locateFeedback,locateClosed:false,isTerminal,
+    resultText:()=>'',tasksNode:{querySelectorAll:()=>nodes},escape:value=>value,
+    invoke:()=>new Promise(resolve=>replies.push(resolve))});
+  for(const name of names)vm.runInContext(`const ${declarations.get(name)};`,context);
+  const locate=vm.runInContext('locateFailure',context),pending=nodes.map(node=>locate(node));
+  assert.equal(locateFeedback.size,20);assert.equal(nodes[0].result.hidden,true);assert.equal(nodes[0].result.textContent,'');
+  const retry=locate(nodes[0]);assert.equal(nodes[0].result.textContent,'定位中…');
+  replies[0]({failures:[]});await pending[0];
+  assert.equal(nodes[0].result.textContent,'定位中…','evicted reply cannot replace the newer pending request');
+  replies[21]({failures:[]});await retry;
+  assert.equal(nodes[0].result.textContent,'未能从错误输出定位到源码位置');
+  for(let i=1;i<21;i++)replies[i]({failures:[]});await Promise.all(pending);
+  assert.equal(nodes[0].result.textContent,'未能从错误输出定位到源码位置');
 });

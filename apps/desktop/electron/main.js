@@ -3971,6 +3971,7 @@ app.whenReady().then(async () => {
       reportQuitFailure('Runtime 仍有活动任务；请先等待完成或停止任务后再退出');
       return;
     }
+    if(!draftQuitPreflight.commit()){event.preventDefault();draftQuitPreflight.allow();return;}
     globalShortcut.unregisterAll();
     try {
       p5DeviceNotificationHost?.dispose();

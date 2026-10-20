@@ -3,6 +3,41 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {EventEmitter} from 'node:events';
+import {createDraftQuitPreflight} from '../electron/draft-quit-preflight.js';
+
+test('actual Main commits draft receipts before cleanup and normal window destruction cannot cancel final quit',async()=>{
+  const f=fixture();
+  const windows=[0,1].map(()=>Object.assign(new EventEmitter(),{isDestroyed:()=>false,
+    webContents:Object.assign(new EventEmitter(),{mainFrame:{},isDestroyed:()=>false,executeJavaScript:async()=>true})}));
+  f.context.draftQuitPreflight=createDraftQuitPreflight({windows:()=>windows,retry:()=>f.app.quit(),
+    onFailure:error=>f.context.reportQuitFailure(error.message)});
+  f.app.quit();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.app.isQuitting,true);assert.equal(f.calls.filter(value=>value==='runtime-close').length,1);
+  for(const win of windows){win.webContents.emit('destroyed');win.emit('closed');}
+  assert.equal(f.app.isQuitting,true);assert.equal(f.context.runtimeError,'');
+});
+
+test('actual Main refuses cleanup if the final draft receipt cannot commit',async()=>{
+  const f=fixture();let retries=0;
+  f.context.wakeQuitHandled=true;f.context.voiceDisposed=true;
+  f.context.draftQuitPreflight={allow(){retries++;return true;},commit:()=>false};
+  f.app.quit();assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);
+  assert.equal(f.calls.includes('unregister-shortcuts'),false);assert.equal(retries,2);
+});
+
+test('a synchronous Runtime close failure after draft commit cancels and unfreezes retained pages',async()=>{
+  const f=fixture();let resumed=0;
+  const win=Object.assign(new EventEmitter(),{isDestroyed:()=>false,
+    webContents:Object.assign(new EventEmitter(),{mainFrame:{},isDestroyed:()=>false,
+      async executeJavaScript(script){if(script.includes('pa:cancel-quit'))resumed++;return true;}})});
+  f.context.draftQuitPreflight=createDraftQuitPreflight({windows:()=>[win],retry:()=>f.app.quit(),
+    onFailure:error=>f.context.reportQuitFailure(error.message)});
+  f.context.runtimeApplication.close=()=>{throw Error('synthetic Runtime close failure');};
+  f.app.quit();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(f.app.isQuitting,false);assert.equal(resumed,1);
+  assert.equal(win.webContents.eventNames().length,0);assert.match(f.context.runtimeError,/synthetic Runtime close failure/);
+});
 
 test('H6 close failure unlocks preflight drafts before retaining the original Runtime',async()=>{
   const f=fixture();let cancelled=0;
@@ -51,7 +86,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'harnessEventsHost','harnessEventsClosing','harnessContextHost'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
-    submitting:new Set(),draftQuitPreflight:{allow:()=>true,cancel(){}},
+    submitting:new Set(),draftQuitPreflight:{allow:()=>true,commit:()=>true,cancel(){}},
     runtimeStartup: {snapshot: () => ({state: startup})}, runtimeApplication: {activeTaskCount: count,
       close() {calls.push('runtime-close');}}, runtimeError: '', runtimeClosed: false,
     wakeQuitHandled: false, wakeQuitUnknown: false, wakeDisposal: undefined,
@@ -91,7 +126,7 @@ test('app.quit with a failed draft preflight preserves Runtime, tray and every h
 
 test('an explicit quit cleanup failure unlocks drafts before reporting it',async()=>{
   const f=fixture();let cancelled=0;
-  f.context.draftQuitPreflight={allow:()=>true,cancel(){cancelled++;}};
+  f.context.draftQuitPreflight={allow:()=>true,commit:()=>true,cancel(){cancelled++;}};
   f.context.remoteMcpHost={dispose:async()=>{throw Error('release failed');}};
   f.context.remoteMcpManagement={close(){}};f.app.quit();await tick();
   assert.equal(cancelled,1);assert.equal(f.exited,false);assert.equal(f.context.runtimeClosed,false);
