@@ -181,12 +181,12 @@ function containsLatinTerm(lowerTitle: string, term: string): boolean {
 }
 
 function cjkBigrams(text: string): Set<string> {
-  const chars = Array.from(text).filter(ch => CJK_CHAR.test(ch));
+  const chars = Array.from(text);
   const bigrams = new Set<string>();
   for (let i = 0; i + 1 < chars.length; i++) {
     const head = chars[i];
     const tail = chars[i + 1];
-    if (head === undefined || tail === undefined) continue;
+    if (head === undefined || tail === undefined || !CJK_CHAR.test(head) || !CJK_CHAR.test(tail)) continue;
     bigrams.add(head + tail);
   }
   return bigrams;

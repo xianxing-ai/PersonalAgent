@@ -56,6 +56,29 @@ test('#445 短查询阈值放宽：两字查询词（≥1 共享二元组）即�
   assert.equal(materials.length, 1, '2 字查询门槛=1 个共享二元组');
 });
 
+test('汉字桥不跨越题名或查询中的分隔符', async t => {
+  for (const separator of ['.', ' ', '\n', 'Latin']) {
+    const separated = ['金', '融', '风', '控'].join(separator);
+    for (const side of ['query', 'title']) await t.test(`${side}: ${JSON.stringify(separator)}`, async () => {
+      const provider = new OpenAlexProvider({fetchImpl: openAlexReturns([{
+        id: 'https://openalex.org/W8000000010', publication_date: '2025-01-01',
+        display_name: side === 'title' ? separated : '金融风控',
+      }])});
+      const materials = await provider.search(ACCOUNT, {query: side === 'query' ? separated : '金融风控', limit: 10});
+      assert.deepEqual(materials, [], '非相邻汉字不能因过滤分隔符被拼成相关词');
+    });
+  }
+});
+
+test('多个连续汉字片段仍可各自提供真实相邻二元组', async () => {
+  const provider = new OpenAlexProvider({fetchImpl: openAlexReturns([{
+    id: 'https://openalex.org/W8000000011', publication_date: '2025-01-01',
+    display_name: '知识图谱：金融风控研究',
+  }])});
+  const materials = await provider.search(ACCOUNT, {query: '知识图谱 金融风控', limit: 10});
+  assert.deepEqual(materials.map(item => item.externalId), ['W8000000011']);
+});
+
 test('#445 防回归边界：纯拉丁查询不做任何筛选，OpenAlex 原序原样透传', async () => {
   const provider = new OpenAlexProvider({fetchImpl: openAlexReturns([BAYLING, CLASSROOM])});
   const materials = await provider.search(ACCOUNT, {query: 'cross-lingual alignment instruction following', limit: 10});
