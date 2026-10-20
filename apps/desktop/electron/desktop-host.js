@@ -4,9 +4,11 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DesktopState, fitBounds, snapBounds} from './desktop-state.js';
 import {placeOrb} from './placement.js';
+import {createLoginItemHost} from './login-item-host.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 export function createDesktopHost() {
+  const loginItem=createLoginItemHost({app});
   const state = new DesktopState(path.join(app.getPath('userData'), 'desktop-state.json'));
   const logFile = path.join(app.getPath('userData'), 'logs', 'desktop.log');
   const windows = new Map();
@@ -186,6 +188,7 @@ export function createDesktopHost() {
   screen.on('display-metrics-changed', reposition);
   try { shortcut(state.value.settings.shortcut); } catch { state.update({shortcut:false}); log('shortcut-unavailable','desktop-settings'); }
   return {attach, restore, openSettings, logAgentArtsFailure,
+    loginItemSnapshot:loginItem.snapshot,readLoginItem:loginItem.read,configureLoginItem:loginItem.configure,
     hasSavedBounds: mode => Boolean(state.value.windows[mode]),
     logVoicePlayback(phase) {
       if (['dispatched','decoding','resuming','started','completed','stopped','error','release_failed'].includes(phase)) {

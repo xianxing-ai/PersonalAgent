@@ -1,4 +1,7 @@
 export {VoiceSessionError} from './errors.js';
+export {createVoiceStartupController, createVoiceHostListeningPort} from './startup.js';
+export type {ContinuousVoiceListeningPort, VoiceStartupRequest, VoiceStartupSnapshot,
+  VoiceStartupController} from './startup.js';
 export type {VoiceErrorCode} from './errors.js';
 export {
   MAX_AUDIO_BYTES,
