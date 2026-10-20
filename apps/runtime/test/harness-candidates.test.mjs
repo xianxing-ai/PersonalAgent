@@ -22,7 +22,7 @@ async function fixture(run,{originChange,resultChange,bindingChange}={}) {
       execute:async(args,ctx)=>{calls.push(ctx.runId);const result=trial(args.candidateId,c,args.candidateId==='bad'?'FAILED':'VALID',ctx.runId);
         resultChange?.(result);return result;}});
     const invoke=async(toolName,args,runId,scopes=['workspace:read','workspace:write','workspace:apply','workspace:execute'])=>{
-      runtime.policy.grant({authorizationRef:runId,taskId,toolName,scopes,expiresAt:deadline,argumentsDigest:toolArgumentsDigest(args)});
+      if(!runtime.policy.get(runId))runtime.policy.grant({authorizationRef:runId,taskId,toolName,scopes,expiresAt:deadline,argumentsDigest:toolArgumentsDigest(args)});
       origins.set(runId,{actualTaskId:taskId,arguments:args,scopeRef:runId});
       return client.call('tool.invoke',{toolName,toolVersion:'1.0.0',arguments:args,scopeRef:runId},{taskId,idempotencyKey:runId,timeoutMs:60000});
     };
@@ -60,7 +60,7 @@ test('confirmed tool result cannot change candidate/task/executor or claim unrel
 });
 test('missing read scope is rejected by actual Gateway before comparison and no runner is invoked',async()=>{
   await fixture(async({invoke,calls})=>{
-    await assert.rejects(invoke('harness.candidates.compare',{trialRunIds:['missing']},'denied',[]),{code:'SCOPE_DENIED'});
+    await assert.rejects(invoke('harness.candidates.compare',{trialRunIds:['missing']},'denied',['unrelated:read']),{code:'SCOPE_DENIED'});
     assert.equal(calls.length,0);
   });
 });
