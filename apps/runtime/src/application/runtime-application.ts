@@ -25,6 +25,7 @@ import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '
 import {parseCodingRepairInput,parseCodingRepairCheckReadback} from '@personal-agent/contracts/coding-repair';
 import {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL} from './harness-candidates.js';
 import {createRuntimeHarnessCandidateBindings} from './harness-candidate-bindings.js';
+import type {HarnessEventOrigin} from './harness-event-delivery.js';
 import {DevWorkflowPatchRecovery} from '../dev-workflows-patch-reconciliation.js';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {TaskRuntime} from '../index.js';
@@ -345,6 +346,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   harnessCandidates?:RuntimeHarnessCandidatesOptions;
   /** Trusted delivery wakeup only. Its consumer must revalidate original event authorization. */
   onHarnessEventProgress?:(taskId:string)=>void|Promise<void>;
+  /** Original native responsibility/lease/control check, including after asynchronous credential/model preparation. */
+  assertHarnessEventCurrent?:(rootTaskId:string,origin:HarnessEventOrigin)=>void;
   /** Main-process presence source, rechecked by the original Gateway at dispatch time. */
   isUserPresent?:(taskId:string)=>boolean;
   thinking?: ThinkingConfig;
@@ -434,6 +437,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly harnessCandidateBindings?:ReturnType<typeof createRuntimeHarnessCandidateBindings>;
   private readonly activeHarnessCandidateRecovery=new Map<string,Promise<{task:TaskSnapshot;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}>>();
   private readonly onHarnessEventProgress?:RuntimeApplicationOptions['onHarnessEventProgress'];
+  private readonly assertHarnessEventCurrentPort?:RuntimeApplicationOptions['assertHarnessEventCurrent'];
   private readonly developerWorker?:CoordinationWorkerCapabilityPort;
   private readonly developerPatchRecovery?:DevWorkflowPatchRecovery;
   private readonly competitionRealtimeModel: RuntimeApplicationOptions['competitionRealtimeModel'];
@@ -477,6 +481,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(options.onHarnessEventProgress!==undefined) {
       if(typeof options.onHarnessEventProgress!=='function')throw new ProtocolError('INVALID_ARGUMENT','Invalid harness event progress listener');
       this.onHarnessEventProgress=options.onHarnessEventProgress;
+    }
+    if(options.assertHarnessEventCurrent!==undefined) {
+      if(typeof options.assertHarnessEventCurrent!=='function')throw new ProtocolError('INVALID_ARGUMENT','Invalid native harness event guard');
+      this.assertHarnessEventCurrentPort=options.assertHarnessEventCurrent;
     }
     if (options.developerHarness !== undefined || options.readDeveloperHarnessConfiguration !== undefined) {
       if (options.developerHarness !== undefined && options.readDeveloperHarnessConfiguration !== undefined
@@ -643,6 +651,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       ...(options.idFactory ? {idFactory: options.idFactory} : {}),
       ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
+          this.assertHarnessEventCurrent(request.taskId);
           assertUserTaskDelegationInvocation(this.runtime, request);
           this.assertSubagentConversationInvocation(request.taskId,request.toolName);
           this.assertDeveloperHarnessToolScope(request.taskId,request.toolName);
@@ -740,6 +749,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return current;
       };
       this.tools = {list: currentDescriptors, invoke: async invocation => {
+        this.assertHarnessEventCurrent(invocation.taskId);
         assertUserTaskDelegationInvocation(this.runtime, {...invocation, argumentsDigest: toolArgumentsDigest(invocation.arguments)});
         this.assertSubagentConversationInvocation(invocation.taskId,invocation.toolName);
         this.assertDeveloperHarnessToolScope(invocation.taskId,invocation.toolName);
@@ -1121,6 +1131,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   get coordinationConfigurationRef():string {return this.coordinationBinding;}
 
   private assertInputActive(request:CoordinationRequest):void {
+    this.assertHarnessEventCurrent(request.taskId);
     this.assertDeveloperHarnessExecutorCurrent(request.taskId);
     const task=this.runtime.getTask(request.taskId);
     if(request.signal.aborted || task.cancelRequested || task.state!=='running'
@@ -1652,6 +1663,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (request.operation === 'authorization.respond' && request.payload.decision === 'allow_once'
       && this.profile === 'huawei_ict_agentarts') {
       const approval=this.runtime.getApproval(request.payload.approvalId);
+      this.assertHarnessEventCurrent(approval.taskId);
       if(this.runtime.loadCheckpoint(approval.taskId,'application-profile')==='huawei_ict_agentarts'
         || this.runtime.loadCheckpoint(approval.taskId,'competition-loop')!==undefined) {
         this.assertCompetitionTaskConfiguration(approval.taskId);
@@ -3153,6 +3165,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   resumeTask(taskId: string): void {
+    this.assertHarnessEventCurrent(taskId);
     if(this.runtime.loadCheckpoint(taskId,CODING_REPAIR_STATE)!==undefined) {this.resumeCodingRepairTask(taskId);return;}
     if(this.profile==='huawei_ict_agentarts'
       && (this.runtime.loadCheckpoint(taskId,'application-profile')==='huawei_ict_agentarts'
@@ -3714,6 +3727,34 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private notifyHarnessEventProgress(taskId:string):void {
     if(this.runtime.loadCheckpoint(taskId,'harness-event-origin')===undefined)return;
     try {void Promise.resolve(this.onHarnessEventProgress?.(taskId)).catch(()=>{});}catch {/* Wakeup never grants authority. */}
+  }
+
+  private assertHarnessEventCurrent(taskId:string):void {
+    const message=readSubagentConversationMessage(this.runtime,taskId);
+    const coding=this.runtime.loadCheckpoint(taskId,CODING_REPAIR_PARENT) as {taskId?:string}|undefined;
+    const sourceTaskId=message?.originTaskId??coding?.taskId??taskId;
+    const parent=this.runtime.loadCheckpoint(sourceTaskId,'subtask-parent') as
+      (SubtaskDefinition&{parentTaskId:string;parentDeadline:string})|undefined;
+    const rootTaskId=this.runtime.loadCheckpoint(sourceTaskId,'harness-event-origin')!==undefined
+      ?sourceTaskId:parent?.parentTaskId;
+    if(!rootTaskId)return;
+    const origin=this.runtime.loadCheckpoint(rootTaskId,'harness-event-origin') as HarnessEventOrigin|undefined;
+    if(origin===undefined)return;
+    const delegation=readUserTaskDelegation(this.runtime,rootTaskId);
+    if(!delegation)throw new ProtocolError('UNAUTHORIZED','Original event interaction delegation is unavailable');
+    if(sourceTaskId!==rootTaskId) {
+      const peer=readRuntimeSubagentSibling(this.runtime,sourceTaskId);
+      const owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${rootTaskId}-user-work`);
+      if(!owner||parent?.parentTaskId!==rootTaskId||parent.parentDeadline!==delegation.deadline
+        ||!peer&&(!isDeepStrictEqual(parent,{...delegation.subtask,parentTaskId:rootTaskId,parentDeadline:delegation.deadline})
+          ||sourceTaskId!==owner.taskId)
+        ||peer&&(peer.binding.parentTaskId!==rootTaskId||peer.binding.ownerTaskId!==owner.taskId))
+        throw new ProtocolError('SCOPE_DENIED','Event execution is outside the original owner or admitted plan');
+    }
+    if(!this.assertHarnessEventCurrentPort)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original native event authorization is unavailable');
+    const result:unknown=this.assertHarnessEventCurrentPort(rootTaskId,structuredClone(origin));
+    if(result!==undefined){void Promise.resolve(result).catch(()=>{});
+      throw new ProtocolError('UNAUTHORIZED','Native event authorization guard must complete synchronously');}
   }
 
   /** Trusted event delivery creates a fresh interaction turn; it never reopens its source parent. */
