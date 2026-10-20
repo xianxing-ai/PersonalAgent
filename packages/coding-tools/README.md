@@ -57,6 +57,15 @@ snapshot/verification 元数据；没有新 patch、命令或验证，不用恢�
 Node 24.15.0、TypeScript 编译通过。依用户“先完成全部代码，再统一验证”的最新优先级，
 `test/harness-trials.test.mjs` 的 13 项回归已保存但尚未执行；未声明实际 Runtime、云端或最终采用验收完成。
 
+Desktop 原 `WorkspaceConfigHost` 现公开稳定 `harnessRepairHost` deferred 代理和
+`readHarnessCandidateContext(context,scope)`。代理保留原 root/Node 身份、许可、任务绑定、代次与取消检查，
+参数进入异步操作前复制，返回前再次校验，不暴露新的根目录或绕开 Policy。上下文按原已选工作区
+捕获 baseline/recipes，owner/input/configuration 来自 Runtime 已校验的 `RuntimeHarnessScope`。
+主进程须注入 `readHarnessVersions()` 的可信 `{workflowVersion,runtimeVersion,executionKind:'real_host'}`，
+缺少版本或异步读回期间版本/授权变化时返回 unavailable；协议版本不能冒充运行版本。
+Runtime 组合入口使用 `{host: workspace.harnessRepairHost,readContext: workspace.readHarnessCandidateContext}`，
+具体 main.js 注入由其唯一写入者完成；本包不覆盖 main/settings/停止按钮改动。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 

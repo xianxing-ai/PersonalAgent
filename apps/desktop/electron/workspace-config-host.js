@@ -5,6 +5,7 @@ import {isDeepStrictEqual} from 'node:util';
 import path from 'node:path';
 import {PROTOCOL_VERSION, ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import * as coding from '@personal-agent/coding-tools';
+import {harnessCandidateRecipeFingerprint,parseHarnessCandidateBinding} from '@personal-agent/contracts/harness-candidates';
 import {readRuntimeCodingVerificationEvidence} from '@personal-agent/runtime/application';
 import {createDesktopCodingToolHost} from './coding-tool-host.js';
 import {findWindowsExecutable} from './windows-executable-discovery.js';
@@ -89,7 +90,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   selectNodeExecutable,selectCheckFile,selectNpmCli,jobHelperExecutable,patchHelperScriptPath,
   projectScriptEnvSource,createCommandRecipeTool,createWorkspaceReferenceExport,
   readWorkspaceExportPreflight,readWorkspaceExportAuthorization,
-  requestWorkspaceExportPreflight,requestWorkspaceExportExact}) {
+  requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions}) {
   const file = path.join(userData,'coding-workspace.json');
   let savedRoot,savedNode,savedCheckFile,savedNpmCli,boundRoot,boundNode,boundCheckFile,boundNpmCli,boundProjectHelper,rootIdentity,nodeIdentity,application,active=true,consent,applyHost,failure='',commandFailure='',projectFailure='';
   let generation=randomUUID();
@@ -230,6 +231,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const parent=application?.runtime.loadCheckpoint(taskId,'coding-repair:parent');
     return typeof parent?.taskId==='string'?parent.taskId:taskId;
   };
+  const repairRecipes=()=>[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
+    ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])];
   const getRepairHost=async()=>{
     if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || (boundNpmCli&&!boundProjectHelper)
       || typeof createCommandRecipeTool!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
@@ -238,8 +241,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       workspaceId:createHash('sha256').update(boundRoot).digest('hex'),patch:{powerShellPath:boundRepairPowerShell,
          ...(boundProjectHelper===undefined?{}:{processIdentityHelperPath:boundProjectHelper}),
         ...(patchHelperScriptPath===undefined?{}:{helperScriptPath:patchHelperScriptPath})},
-      recipes:[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
-        ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])],
+      recipes:repairRecipes(),
       resolveOriginalTaskId:resolveRepairTask,
       configurationRef:createHash('sha256').update(JSON.stringify({root:boundRoot,node:boundNode,check:boundCheckFile,npm:boundNpmCli,
         helper:boundProjectHelper,nodeIdentity:String(nodeIdentity?.ino)+':'+String(nodeIdentity?.mtimeNs)})).digest('hex'),
@@ -263,10 +265,24 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         projectScriptEnvSource,maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
     return repairHostPromise;
   };
+  // Stable Main-only proxy. Every call keeps the original consent, task and revocation guards.
+  const harnessRepairHost=Object.freeze(Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
+    .map(name=>[name,async(...args)=>{
+      const context={...args.at(-1)},parameters=structuredClone(args.slice(0,-1)),lease=generation,currentApplication=application;
+      assertHarnessWorkspace(context);
+      const controller=new AbortController();inflight.add(controller);
+      const scoped={...context,signal:AbortSignal.any([context.signal,controller.signal])};
+      try {
+        const host=await getRepairHost();assertHarnessWorkspace(scoped);
+        if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
+        const result=await host[name](...parameters,scoped);
+        assertHarnessWorkspace(scoped);
+        if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
+        return result;
+      } finally {inflight.delete(controller);}
+    }])));
   if(boundRoot && boundRepairPowerShell && typeof coding.createIsolatedCodingRepairTools==='function') {
-    const deferred=Object.fromEntries(['start','list','read','snapshot','preview','patch','verify','check','publish','reconcile']
-      .map(name=>[name,async(...args)=>(await getRepairHost())[name](...args)]));
-    const repairTools=coding.createIsolatedCodingRepairTools(deferred);
+    const repairTools=coding.createIsolatedCodingRepairTools(harnessRepairHost);
     implementations.push(...repairTools);
     for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],
       ['check','workflow.host.f15_n05'],['publish','workflow.host.f15_n06']]) {
@@ -588,7 +604,42 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     return {bindingId,rootPath,metadataExportAllowed:false,available,
       assertCurrent:scope=>{if(!available(scope))throw new ProtocolError('UNAUTHORIZED','原开发工作区许可或配置已变化');},...(command?{command}:{})};
   };
-  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,
+  function assertHarnessWorkspace(context) {
+    if(!context?.signal||context.signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
+    if(!Number.isFinite(Date.parse(context.deadline))||Date.now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','原隔离编码操作已过期');
+    if(!application||!readWorkspaceBinding()||!bound(context.taskId)||consent?.cloudExportAllowed!==true
+      ||consent.writeAllowed!==true||consent.commandAllowed!==true||!boundRepairPowerShell
+      ||!boundCheckFile&&!boundNpmCli||boundNpmCli&&(consent.projectCodeAllowed!==true||!projectIdentityCurrent()))
+      throw new ProtocolError('UNAUTHORIZED','原隔离工作区许可或命令绑定已变化');
+  }
+  const readHarnessCandidateContext=async(context,scope)=>{
+    try {
+      context={...context};scope=structuredClone(scope);
+      assertHarnessWorkspace(context);
+      const lease=generation,currentApplication=application,configuration=readDeveloperConfiguration();
+      if(!scope||scope.actualTaskId!==context.taskId||scope.scopeRef!==context.authorizationRef
+        ||scope.deadline!==context.deadline||scope.workspaceRef!==configuration?.bindingId||!bound(scope.ownerTaskId)
+        ||!/^[a-f0-9]{64}$/.test(scope.inputDigest)||!/^[a-f0-9]{64}$/.test(scope.configurationRef)
+        ||typeof readHarnessVersions!=='function')return undefined;
+      const versions=structuredClone(await readHarnessVersions());
+      if(!versions||versions.executionKind!=='real_host')return undefined;
+      const baseline=(await coding.captureCodingRepairSnapshot(boundRoot)).snapshot;
+      const recipes=repairRecipes().map(recipe=>({...recipe,packageIds:baseline.packages.map(pkg=>pkg.id)}));
+      if(!recipes.some(recipe=>recipe.required))return undefined;
+      const currentVersions=await readHarnessVersions();
+      assertHarnessWorkspace(context);
+      if(lease!==generation||currentApplication!==application||configuration.bindingId!==readDeveloperConfiguration()?.bindingId
+        ||!isDeepStrictEqual(versions,currentVersions))return undefined;
+      const binding={version:1,taskId:scope.ownerTaskId,workspaceId:createHash('sha256').update(boundRoot).digest('hex'),
+        baselineSnapshotId:baseline.snapshotId,inputDigest:scope.inputDigest,configurationDigest:scope.configurationRef,
+        workflowVersion:versions.workflowVersion,runtimeVersion:versions.runtimeVersion,executionKind:versions.executionKind,
+        recipeFingerprint:harnessCandidateRecipeFingerprint(recipes)};
+      parseHarnessCandidateBinding({...binding,candidateId:'preflight',artifactId:'preflight',sessionId:'preflight',
+        trialTaskId:context.taskId,artifactDigest:'0'.repeat(64),parentArtifactDigests:[]});
+      return {binding,baseline,recipes,selectionPolicy:'unique_verified'};
+    }catch{return undefined;}
+  };
+  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,
     readWorkspaceExportConfigurationRef,readWorkspaceExportPreflightCandidate,
     readWorkspaceExportCandidate,readConfirmedWorkspaceExport,
     get patchReconciliation() { return applyHost ? patchReconciliation : undefined; },

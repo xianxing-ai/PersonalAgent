@@ -53,6 +53,43 @@ test('developer configuration is Main-only, preserves the original task lease an
   assert.equal(Object.hasOwn(host.snapshot(),'rootPath'),false);
 });
 
+test('harness workspace consumer preserves consent and actual scope with a stable deferred repair proxy',async t=>{
+  const {root,configuration,open}=await workspaceBindingFixture(t);
+  await writeFile(path.join(root,'fixture.js'),'export const fixture = 1;\n');
+  const record=JSON.parse(await readFile(configuration,'utf8'));
+  record.encryptedCheckFile=Buffer.from('fixture.js').toString('base64');await writeFile(configuration,JSON.stringify(record));
+  // Version and Runtime checkpoint ports are explicit metadata fixtures; no command/helper is invoked.
+  let versions={workflowVersion:'F15-fixture-v1',runtimeVersion:'runtime-fixture-v1',executionKind:'real_host'},onVersionsRead;
+  const host=open({createCommandRecipeTool:createWorkspaceCommandRecipeTool,readHarnessVersions:()=>{onVersionsRead?.();return versions;}});
+  const checkpoints=new Map();
+  host.bindApplication({readToolConversation:()=> 'fixture-conversation',runtime:{
+    loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}});
+  const context={taskId:'owner-task',runId:'fixture-run',authorizationRef:'fixture-run',scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],
+    deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+  const configurationBinding=host.readDeveloperConfiguration();
+  const scope={ownerTaskId:context.taskId,actualTaskId:context.taskId,parentTaskId:'parent-task',scopeRef:context.runId,
+    configurationRef:'a'.repeat(64),inputDigest:'b'.repeat(64),deadline:context.deadline,workspaceRef:configurationBinding.bindingId};
+  assert.equal(Object.isFrozen(host.harnessRepairHost),true);
+  assert.equal(host.harnessRepairHost,host.harnessRepairHost);
+  assert.equal(await host.readHarnessCandidateContext(context,scope),undefined);
+  host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:true});
+  assert.equal(configurationBinding.available(context),true);
+  const result=await host.readHarnessCandidateContext(context,scope);
+  assert.equal(result.binding.taskId,scope.ownerTaskId);assert.equal(result.binding.inputDigest,scope.inputDigest);
+  assert.equal(result.binding.configurationDigest,scope.configurationRef);assert.equal(result.binding.runtimeVersion,'runtime-fixture-v1');
+  assert.deepEqual(result.recipes,[{recipeId:'node-check',packageIds:['root'],required:true}]);
+  assert.equal(result.baseline.files.some(file=>'content' in file),false);
+  assert.equal(Object.hasOwn(result,'rootPath'),false);
+  assert.equal(await host.readHarnessCandidateContext(context,{...scope,actualTaskId:'forged-child'}),undefined);
+  assert.equal(await host.readHarnessCandidateContext(context,{...scope,workspaceRef:'wrong-root'}),undefined);
+  const retainedVersions=versions;
+  versions=undefined;assert.equal(await host.readHarnessCandidateContext(context,scope),undefined);
+  versions=retainedVersions;let reads=0;onVersionsRead=()=>{if(++reads===2)host.revoke();};
+  assert.equal(await host.readHarnessCandidateContext(context,scope),undefined,'late version reads cannot survive original consent revocation');
+  assert.equal(await host.readHarnessCandidateContext(context,scope),undefined);
+  await assert.rejects(host.harnessRepairHost.snapshot('unused',context),{code:'UNAUTHORIZED'});
+});
+
 test('local read consent permits MCP binding without granting AgentArts availability or export',async t=>{
   const {root,open}=await workspaceBindingFixture(t);
   const host=open();
