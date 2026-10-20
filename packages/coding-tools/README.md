@@ -85,6 +85,13 @@ H1/H2 以真实稳定配置组装经验 scope，方法不接收模型 task/scope
 过滤、路径/链接拒绝、SHA 和 snapshot 语义保持一致。仅执行同步/异步过滤与包图一致性关键单例 1/1 通过；
 行为全测和真实经验次任务接线验收仍按统一顺序后置。
 
+原 `coding.repair.publish/snapshot/readback/reconcile` 通过 Main-only Runtime 只读方法
+`isHarnessCodingRepairSession(context,{sessionId,operation}): boolean` 核实原 H3 main session、实际调用者、
+当前 started 输入与已确认的 prepare 验证来源。只有明确 true 才转向 `harness-isolation`；
+缺方法或 false 保留原 F15 `coding-isolation`，异常直接拒绝。模型不能选择目录/后端，
+不合并两种 journal，不把实际 executor 改写为 owner；最终 publish 仍用原 Policy/CAS/readback。
+其他会话操作及 HostBridge 保持原路径，Runtime reader 不为其授予 H3 路由。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 

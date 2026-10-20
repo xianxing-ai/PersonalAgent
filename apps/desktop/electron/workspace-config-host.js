@@ -289,8 +289,22 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       } finally {inflight.delete(controller);}
     }])),reconcileOriginalSession:input=>reconcileHarnessOriginalSession(input)});
   if(boundRoot && boundRepairPowerShell && typeof coding.createIsolatedCodingRepairTools==='function') {
+    const routedHarnessMethods=new Set(['publish','snapshot','readback','reconcile']);
     const deferred=Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
-      .map(name=>[name,async(...args)=>(await getRepairHost())[name](...args)]));
+      .map(name=>[name,async(...args)=>{
+        const context={...args.at(-1)},parameters=structuredClone(args.slice(0,-1));
+        const sessionId=name==='publish'?parameters[0]?.sessionId:parameters[0];
+        const currentApplication=application,lease=generation;
+        if(routedHarnessMethods.has(name)&&typeof sessionId==='string'
+          &&typeof currentApplication?.isHarnessCodingRepairSession==='function') {
+          // The original Runtime validates its canonical session/run/Evidence. The model never picks a backend.
+          const permitted=await currentApplication.isHarnessCodingRepairSession(context,{sessionId,operation:name});
+          if(currentApplication!==application||lease!==generation||context.signal.aborted)
+            throw new ProtocolError('UNAUTHORIZED','原交付会话绑定已变化');
+          if(permitted===true)return harnessRepairHost[name](...parameters,context);
+        }
+        return (await getRepairHost())[name](...parameters,context);
+      }]));
     const repairTools=coding.createIsolatedCodingRepairTools(deferred);
     implementations.push(...repairTools);
     for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],

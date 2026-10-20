@@ -63,9 +63,12 @@ test('harness workspace consumer preserves consent and actual scope with a stabl
   // Explicit discovery fixture; host.start copies real files but never launches this executable.
   const host=open({findExecutable:name=>name==='pwsh.exe'?node:undefined,
     createCommandRecipeTool:createWorkspaceCommandRecipeTool,readHarnessVersions:()=>{onVersionsRead?.();return versions;}});
-  const checkpoints=new Map();
+  const checkpoints=new Map(),permittedHarnessSessions=new Set();
   host.bindApplication({readToolConversation:()=> 'fixture-conversation',runtime:{
-    loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}});
+    loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)},
+    // Explicit Fake Runtime canonical reader; it never trusts a model backend/directory argument.
+    isHarnessCodingRepairSession:(ctx,{sessionId,operation})=>ctx.taskId===context.taskId
+      &&['publish','snapshot','readback','reconcile'].includes(operation)&&permittedHarnessSessions.has(sessionId)});
   const context={taskId:'owner-task',runId:'fixture-run',authorizationRef:'fixture-run',scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],
     deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
   const configurationBinding=host.readDeveloperConfiguration();
@@ -108,6 +111,22 @@ test('harness workspace consumer preserves consent and actual scope with a stabl
   assert.equal(original.session.taskId,context.taskId,'existing F15 keeps its owner mapping');
   assert.equal(original.session.workspaceId,createHash('sha256').update(root).digest('hex'));
   assert.equal(original.session.workspaceId,started.session.workspaceId);
+  const prepare=await host.harnessRepairHost.start({mode:'main',allowedPaths:['fixture.js']},context);
+  const sessionId=prepare.session.sessionId;
+  const originalSnapshot=host.tools.find(tool=>tool.descriptor.name==='coding.repair.snapshot');
+  await assert.rejects(originalSnapshot.execute({sessionId},context),{code:'ENOENT'},'model sessionId alone does not select the harness backend');
+  permittedHarnessSessions.add(sessionId);
+  assert.equal((await originalSnapshot.execute({sessionId},context)).snapshotId,prepare.initialSnapshot.snapshotId);
+  const originalReadback=host.tools.find(tool=>tool.descriptor.name==='coding.repair.readback');
+  assert.equal((await originalReadback.execute({sessionId},context)).sessionId,sessionId);
+  const originalPublish=host.tools.find(tool=>tool.descriptor.name==='coding.repair.publish');
+  await assert.rejects(originalPublish.execute({version:1,sessionId,baselineSnapshotId:prepare.initialSnapshot.snapshotId,
+    snapshotId:prepare.initialSnapshot.snapshotId,paths:[],verificationRunIds:[]},context),{code:'REVISION_CONFLICT'},
+    'publish reaches the actual main journal then retains the original required verification guard');
+  const originalReconcile=host.tools.find(tool=>tool.descriptor.name==='coding.repair.reconcile');
+  assert.equal((await originalReconcile.execute({sessionId},context)).state,'clear');
+  assert.equal((await originalSnapshot.execute({sessionId:original.session.sessionId},childContext)).snapshotId,original.initialSnapshot.snapshotId,
+    'original F15 owner-mapped sessions retain their original backend');
   assert.equal(await host.readHarnessCandidateContext(context,{...scope,actualTaskId:'forged-child'}),undefined);
   assert.equal(await host.readHarnessCandidateContext(context,{...scope,workspaceRef:'wrong-root'}),undefined);
   const retainedVersions=versions;
