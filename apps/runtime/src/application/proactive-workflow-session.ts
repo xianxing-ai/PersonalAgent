@@ -60,6 +60,17 @@ function digest(value:unknown):string {
   return createHash('sha256').update(canonical(value)).digest('hex');
 }
 const conflict=():never=>{throw new ProtocolError('REVISION_CONFLICT','Proactive session changed; no new proposal released');};
+/** Host-only read of the original saved session. Never initializes, advances or verifies a new response. */
+export function readPersistedProactiveWorkflowSession(atomic:Pick<RuntimeAtomicStatePort,'read'>,binding:ProactiveSessionBinding) {
+  const saved=atomic.read('proactive.session:'+digest({taskId:binding.taskId,sessionId:binding.sessionId}));
+  if(!saved)return undefined;
+  const state=saved.value as ProactiveSessionState;
+  if(state?.version!==1||state.binding?.taskId!==binding.taskId||state.binding.sessionId!==binding.sessionId
+    ||state.binding.taskDeadline!==binding.taskDeadline||!Number.isSafeInteger(state.binding.controlRevision)
+    ||state.binding.controlRevision<0||state.binding.controlRevision>binding.controlRevision
+    ||[state.requests,state.proposals,state.operations].some(value=>!value||typeof value!=='object'||Array.isArray(value)))conflict();
+  return {revision:saved.revision,state:structuredClone(state)};
+}
 /** Host facade over the existing Runtime atomic namespace. It owns no scheduler, model loop or permissions. */
 export function createProactiveWorkflowSession<I extends ProactiveSessionRequest,R extends ProactiveSessionResult>(options:ProactiveWorkflowSessionOptions<I,R>) {
   const binding=structuredClone(options.binding),now=options.now??Date.now;

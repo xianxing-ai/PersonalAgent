@@ -20,6 +20,7 @@ import {parseWorkflowSelectionResult} from './workflow-shadow-policy.js';
 import {rankCodingRepairCandidates} from './coding-repair.js';
 export {OwnedWorkflowEngine,workflowJoinReady} from './owned-workflows.js';
 export * from './coding-repair.js';
+export * from './harness-candidates.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
 export {createProactiveHostProofs} from './proactive-host-proofs.js';
