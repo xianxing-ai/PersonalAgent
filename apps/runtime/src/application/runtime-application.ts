@@ -12,6 +12,10 @@ import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-
 import {createRuntimeDeveloperWorkflowWorker,DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,
   developerWorkflowInputSchema,developerWorkflowConfigured,developerWorkflowRequiredTools,isDeveloperWorkflowTool} from './developer-workflows.js';
 import type {RuntimeDeveloperWorkflowsOptions} from './developer-workflows.js';
+import {createRuntimeDeveloperHarnessTool, assertDeveloperHarnessConfiguration, developerHarnessAvailable,
+  developerHarnessConfigurationRef, readDeveloperHarnessConfiguration as readTrustedDeveloperHarnessConfiguration,
+  DEVELOPER_HARNESS_TOOL_NAME, DEVELOPER_HARNESS_TOOL_VERSION} from './developer-harness.js';
+import type {RuntimeDeveloperHarnessOptions} from './developer-harness.js';
 import {DevWorkflowPatchRecovery} from '../dev-workflows-patch-reconciliation.js';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {TaskRuntime} from '../index.js';
@@ -30,6 +34,8 @@ import {isDeepStrictEqual} from 'node:util';
 import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
   measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
 import type {CoordinationGoalTokenBudget} from './context-binding.js';
+import {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT} from './context-compaction.js';
+import type {RuntimeContextCompactionOptions,ContextCompactionResult,ContextCompactionScope} from './context-compaction.js';
 import {RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import type {CompetitionAvailableTool, CompetitionToolAvailability} from './tool-catalog.js';
 import {ScopedEvidenceReader} from './evidence-reader.js';
@@ -43,7 +49,7 @@ import type {StartSystemObservationSessionRequest, SystemObservationSession} fro
 import {MailReadSessions, MAIL_READ_SESSION_CHECKPOINT, MAIL_READ_TOOL, MAIL_READ_VERSION} from './mail-read-session.js';
 import type {StartMailReadSessionRequest, MailReadSession} from './mail-read-session.js';
 import {createRuntimeSubagentDispatchTool, resumeRuntimeSubagentTask, readRuntimeSubagentSummary,
-  SUBAGENT_DISPATCH_TOOL_NAME} from './subagent-host.js';
+  SUBAGENT_DISPATCH_TOOL_NAME, readRuntimeSubagentSibling} from './subagent-host.js';
 import {USER_TASK_DELEGATION, readUserTaskDelegation, assertUserTaskDelegationInvocation,
   userTaskDelegationPort} from './user-task-delegation.js';
 import {SUBAGENT_CONVERSATION_MESSAGE,assertConversationScope,readSubagentConversationOrigin,
@@ -307,6 +313,10 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   workflowShadowRelease?: RuntimeWorkflowShadowReleaseOptions;
   codingRepair?:RuntimeCodingRepairOptions;
   developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
+  /** Native user-work broker only; the interaction root retains its original forced delegation. */
+  developerHarness?:RuntimeDeveloperHarnessOptions;
+  /** Synchronous trusted host resolver; undefined disables admission without rebuilding the application. */
+  readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
   /** Main-process presence source, rechecked by the original Gateway at dispatch time. */
   isUserPresent?:(taskId:string)=>boolean;
   thinking?: ThinkingConfig;
@@ -343,10 +353,13 @@ export interface CloudSkillRuntimeHostPort {
 }
 export interface ConversationContextMessage {id:string; role:'user'|'assistant'; content:string; taskId?:string; withheld?:boolean;}
 /** Shared by trusted host preflight and the actual Coordination send. */
-export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
-  const goal=messages.length ? JSON.stringify({publicGoal,
+export function serializeCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
+  return messages.length ? JSON.stringify({publicGoal,
     ...(preparedGoal===publicGoal ? {} : {ephemeralGoal:preparedGoal}),
     conversationContext:{treatment:'untrusted_data',messages}}) : preparedGoal;
+}
+export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
+  const goal=serializeCoordinationGoal(publicGoal,preparedGoal,messages);
   if(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT)throw new ProtocolError('INVALID_ARGUMENT','任务、Skill 与对话上下文合并后超过 16000 字符限制，请缩短内容或减少对话历史');
   return goal;
 }
@@ -356,6 +369,8 @@ export interface CoordinationInputHooks {
   goalTokenBudget?: CoordinationGoalTokenBudget;
   prepareCoordinationGoal?: (scope:CoordinationGoalScope)=>Promise<string>;
   readConversationContext?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>Promise<readonly ConversationContextMessage[]>;
+  /** Explicit trusted policy and source egress; ordinary overlays require a sync snapshot. */
+  contextCompaction?:RuntimeContextCompactionOptions;
   /** Must be synchronous, and called by the adapter again after credential awaits. */
   beforeCoordinationSend: (request:CoordinationRequest, scope:{publicGoal:string;preparedGoal:string})=>void;
   /** Private-derived replies are withheld from Runtime history; host may display a volatile copy. */
@@ -385,6 +400,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly codingRepair?:RuntimeCodingRepairOptions;
   private readonly codingWorker?:ReturnType<typeof createRuntimeCodingRepairWorkerCapability>;
   private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
+  private readonly readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
   private readonly developerWorker?:CoordinationWorkerCapabilityPort;
   private readonly developerPatchRecovery?:DevWorkflowPatchRecovery;
   private readonly competitionRealtimeModel: RuntimeApplicationOptions['competitionRealtimeModel'];
@@ -392,7 +408,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly windowsHostRecovery: RuntimeApplicationOptions['windowsHostRecovery'];
   private readonly ephemeralSends = new Map<string, CoordinationRequest>();
   private readonly ephemeralGoals = new Map<string,{publicGoal:string;preparedGoal:string}>();
-  private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[]}>();
+  private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[];
+    assertCompactionCurrent?:()=>void}>();
   private readonly teacherRequestScopes=new WeakMap<CoordinationRequest,ProactiveTeacherScope>();
   private readonly teacherLeases=new Map<string,ProactiveTeacherScope>();
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
@@ -424,6 +441,18 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Required user delegation needs Competition Profile');
     }
     this.delegateUserTasks = options.delegateUserTasks === true;
+    if (options.developerHarness !== undefined || options.readDeveloperHarnessConfiguration !== undefined) {
+      if (options.developerHarness !== undefined && options.readDeveloperHarnessConfiguration !== undefined
+        || options.readDeveloperHarnessConfiguration !== undefined && typeof options.readDeveloperHarnessConfiguration !== 'function') {
+        throw new ProtocolError('INVALID_ARGUMENT', 'Use one trusted developer harness configuration source');
+      }
+      if (options.developerHarness !== undefined) assertDeveloperHarnessConfiguration(options.developerHarness);
+      if (!this.delegateUserTasks || options.profile !== 'huawei_ict_agentarts') {
+        throw new ProtocolError('INVALID_ARGUMENT', 'Developer harness requires the original Competition user-work delegation');
+      }
+      const fixed = options.developerHarness === undefined ? undefined : {...options.developerHarness};
+      this.readDeveloperHarnessConfiguration = options.readDeveloperHarnessConfiguration ?? (()=>fixed);
+    }
     this.storagePath = resolve(options.path);
     this.profile = options.profile ?? 'local';
     if (options.competitionMaxSteps !== undefined && (this.profile !== 'huawei_ict_agentarts'
@@ -505,6 +534,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
     }
     this.competitionToolExports = (options.competitionToolExports ?? []).map(binding => Object.freeze({...binding}));
+    if (this.readDeveloperHarnessConfiguration) this.competitionToolExports = [...this.competitionToolExports, {
+      toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
+      exportPolicyVersion:'developer-harness-runtime-facts-v1',accepts:()=>true,
+      project:({result})=>result,
+    }];
     if(this.codingRepair)this.competitionToolExports=[...this.competitionToolExports,{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
       exportPolicyVersion:'coding-repair-child-summary-v1',accepts:()=>true,project:({taskId}:{taskId:string})=>{
         const value=readRuntimeSubagentSummary(this.runtime,taskId);
@@ -522,7 +556,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       exportNames.add(key);
     }
     let gateway: ToolGateway | undefined;
-    const configuredTools = [...(options.tools ?? []),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
+    const harnessHost = this.readDeveloperHarnessConfiguration ? {getRuntime:()=>this.runtime,getTools:()=>this.tools,
+      getSubagentOptions:()=>({competitionOnly:true as const,getRuntime:()=>this.runtime,getTools:()=>this.tools,
+        runDefaultWorker:(subtask:SubtaskDefinition,worker:WorkerContext,tools:AgentToolPort)=>this.runDefaultSubagentWorker(subtask,worker,tools),
+        getToolsForSubtask:(subtask:SubtaskDefinition,worker:WorkerContext)=>this.tools
+          ? (this.getToolsForSubtask ? this.getToolsForSubtask(subtask,worker,this.tools) : this.tools) : undefined}),
+      configurationRef:this.coordinationBinding,readConfiguration:()=>this.readDeveloperHarnessConfiguration!(),
+      now:()=>this.now().getTime()} : undefined;
+    const harnessTool = harnessHost ? createRuntimeDeveloperHarnessTool(harnessHost) : undefined;
+    const configuredTools = [...(options.tools ?? []),...(harnessTool?[harnessTool]:[]),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
       ...(options.proactiveDecision?.localChooser&&!options.tools?.some(tool=>tool.descriptor.name==='decision.choose_candidate')
         ?[createWorkflowDecisionTool({selector:{select:async input=>{
           const value=await options.proactiveDecision!.localChooser!.choose({context:input.context,deadline:input.deadline,signal:input.signal,
@@ -546,10 +588,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.runtime = new TaskRuntime(options.path, {
       ...(options.now ? {now: options.now} : {}),
       ...(options.idFactory ? {idFactory: options.idFactory} : {}),
-      ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
+      ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
           assertUserTaskDelegationInvocation(this.runtime, request);
           this.assertSubagentConversationInvocation(request.taskId,request.toolName);
+          this.assertDeveloperHarnessToolScope(request.taskId,request.toolName);
           // Gate even the generic tool.invoke wire path: a persisted sample
           // grant alone cannot survive its process-local consent lease.
           const session = this.runtime.loadCheckpoint(request.taskId, SYSTEM_OBSERVATION_SESSION_CHECKPOINT);
@@ -626,6 +669,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.tools = {list: currentDescriptors, invoke: async invocation => {
         assertUserTaskDelegationInvocation(this.runtime, {...invocation, argumentsDigest: toolArgumentsDigest(invocation.arguments)});
         this.assertSubagentConversationInvocation(invocation.taskId,invocation.toolName);
+        this.assertDeveloperHarnessToolScope(invocation.taskId,invocation.toolName);
         const current=currentDescriptors();
         const tool = current.find(item => item.name === invocation.toolName && item.version === invocation.toolVersion);
         if (!tool) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Tool is not registered');
@@ -703,12 +747,36 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           if (approval.state === 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Tool grant was revoked');
           return {state: 'pending', evidenceRefs: []};
         }
-        const result = await new RuntimeToolInvoker(this.runtime,current).invoke({...invocation, authorizationRef: ref});
+        let result = await new RuntimeToolInvoker(this.runtime,current).invoke({...invocation, authorizationRef: ref});
+        if (tool.name === DEVELOPER_HARNESS_TOOL_NAME && result.state === 'confirmed' && harnessTool) {
+          if (confirmedDispatch && plainObject(result.result)
+            && ['waiting_approval','waiting_reconciliation'].includes(String(result.result.state))) {
+            result = {...result,result:await harnessTool.continueOriginal(invocation.arguments,
+              {...invocation,authorizationRef:ref,scopes:tool.requiredScopes})};
+          }
+          if (plainObject(result.result) && Array.isArray(result.result.executors)) {
+            const refs = result.result.executors.flatMap(item=>{
+              if(!plainObject(item)||typeof item.taskId!=='string')return [];
+              const sibling=readRuntimeSubagentSibling(this.runtime,item.taskId);
+              return sibling?.binding.ownerTaskId===invocation.taskId?this.runtime.getTask(item.taskId).evidenceRefs:[];
+            });
+            result={...result,evidenceRefs:[...new Set([...result.evidenceRefs,...refs])]};
+          }
+        }
+        if (tool.name === DEVELOPER_HARNESS_TOOL_NAME && result.state === 'confirmed' && plainObject(result.result)
+          && ['waiting_approval','waiting_reconciliation'].includes(String(result.result.state))) {
+          const unknown = result.result.state === 'waiting_reconciliation';
+          this.runtime.saveCheckpoint(invocation.taskId,'developer-harness:wait',{
+            runId:invocation.runId,planId:result.result.planId,argumentsDigest:toolArgumentsDigest(invocation.arguments)});
+          this.runtime.transitionTask(invocation.taskId,unknown?'waiting_reconciliation':'waiting_approval');
+          return {state:unknown?'unknown':'pending',evidenceRefs:result.evidenceRefs};
+        }
         if (!isRuntimeDispatchTool(tool.name) || result.state !== 'confirmed') return result;
         // Dispatch was confirmed; aggregate actual children without executing it again.
         const summary = readRuntimeSubagentSummary(this.runtime, invocation.taskId);
         this.runtime.saveCheckpoint(invocation.taskId, 'subagent-current-summary', summary);
-        const children = this.runtime.listTasks({conversationId: `desktop-subtask:${invocation.taskId}`, limit: 100}).items;
+        const children = this.subagentTaskSnapshots(invocation.taskId)
+          .filter(child => readRuntimeSubagentSibling(this.runtime,child.taskId) === undefined);
         const proactive = [...this.proactiveHosts.values()].find(host => host.taskId === invocation.taskId);
         if (proactive) for (const child of children) {
           try {await proactive.ingestSubtaskFeedback({childTaskId: child.taskId, expectedRevision: child.revision},
@@ -748,6 +816,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if (!this.tools) throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog needs registered tools');
       this.competitionToolCatalog = new RuntimeCompetitionToolCatalog(
         this.runtime, this.tools, this.competitionToolExports,[...options.competitionToolAvailability,
+          ...(harnessHost?[{toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
+            publicEnumPaths:['/tasks/*/role'],available:(input:{taskId:string;deadline:string;signal:AbortSignal})=>
+              developerHarnessAvailable(harnessHost,input.taskId,input.deadline,input.signal)}]:[]),
           ...(this.codingRepair?[{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
             publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort','/codingRepair/mode'],
             available:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
@@ -936,6 +1007,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   get coordinationConfigurationRef():string {return this.coordinationBinding;}
 
   private assertInputActive(request:CoordinationRequest):void {
+    this.assertDeveloperHarnessExecutorCurrent(request.taskId);
     const task=this.runtime.getTask(request.taskId);
     if(request.signal.aborted || task.cancelRequested || task.state!=='running'
       || task.revision!==request.revision || !Number.isFinite(Date.parse(request.deadline))
@@ -1087,24 +1159,63 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('UNAUTHORIZED','Delegated user summary requires public context; private input needs its own child confirmation');
     }
     const contextScope={taskId:task.taskId,conversationId:task.conversationId ?? '',deadline:request.deadline,signal:request.signal};
-    const messages=conversationMessage?this.readSubagentConversationContext(contextScope)
-      :await hooks.readConversationContext?.(contextScope) ?? [];
+    const compaction=hooks.contextCompaction,historyLimit=compaction?.policy.maxSourceMessages??CONVERSATION_HISTORY_LIMIT;
+    if(!Number.isSafeInteger(historyLimit)||historyLimit<1)throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted conversation range');
+    const compactionScope:ContextCompactionScope={...contextScope,cutoff:task.taskId};
+    if(compaction&&!conversationMessage&&!compaction.readSnapshot)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Conversation compaction requires a synchronous original overlay snapshot');
+    const readNative=()=>this.readSubagentConversationContext({...contextScope,maxMessages:historyLimit});
+    const readCompaction=()=>conversationMessage?readNative():compaction!.readSnapshot!(compactionScope,historyLimit);
+    const messages=compaction?readCompaction():conversationMessage?readNative():await hooks.readConversationContext?.(contextScope)??[];
     this.assertInputActive(request);
-    const ids=new Set<string>();
-    const context=messages.filter(message=> {
-      if(!nonEmptyText(message.id) || ids.has(message.id) || !['user','assistant'].includes(message.role)
-        || typeof message.content!=='string')throw new ProtocolError('INVALID_ARGUMENT','Invalid conversation context');
-      ids.add(message.id);
-      return !message.withheld && (!message.taskId || !this.isHistoryWithheld(message.taskId));
-    }).slice(-CONVERSATION_HISTORY_LIMIT);
+    const eligible=(messages:readonly ConversationContextMessage[])=>{
+      const ids=new Set<string>();
+      return messages.filter(message=>{
+        if(!nonEmptyText(message.id)||ids.has(message.id)||!['user','assistant'].includes(message.role)
+          ||typeof message.content!=='string')throw new ProtocolError('INVALID_ARGUMENT','Invalid conversation context');
+        ids.add(message.id);
+        return !message.withheld&&(!message.taskId||!this.isHistoryWithheld(message.taskId));
+      }).slice(-historyLimit);
+    };
+    const sourceContext=eligible(messages);
     const privateDerived=prepared!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
     // Context is data, never instructions or an authorization. Only digests are checkpointed.
     try {
+      let compacted:ContextCompactionResult|undefined;
+      if(compaction) {
+        if(compaction.policy.maxCharacters>COORDINATION_GOAL_CHARACTER_LIMIT)
+          throw new ProtocolError('INVALID_ARGUMENT','Compaction cannot enlarge the original Coordination character budget');
+        const modelConfigurationRef=compaction.modelConfigurationRef,summarize=compaction.summarize,
+          readSnapshot=compaction.readSnapshot,compactionKey=checkpointKey+':'+CONTEXT_COMPACTION_CHECKPOINT;
+        compacted=await compactConversationContext({scope:compactionScope,policy:compaction.policy,modelConfigurationRef,
+          ...(hooks.goalTokenBudget===undefined?{}:{goalTokenBudget:hooks.goalTokenBudget}),
+          readSnapshot:()=>{
+            const current=eligible(readCompaction());
+            if(!isDeepStrictEqual(current,sourceContext))throw new ProtocolError('REVISION_CONFLICT','Original conversation source changed');
+            return {configurationRef:this.coordinationBinding,messages:current};
+          },
+          compile:messages=>serializeCoordinationGoal(request.goal,prepared,messages),summarize,
+          assertCurrent:()=>{
+            this.assertCompetitionTaskConfiguration(request.taskId);this.assertInputActive(request);
+            if(hooks.contextCompaction!==compaction||compaction.modelConfigurationRef!==modelConfigurationRef
+              ||compaction.summarize!==summarize||compaction.readSnapshot!==readSnapshot)
+              throw new ProtocolError('REVISION_CONFLICT','Original conversation compaction host changed');
+            const guarded:unknown=compaction.assertCurrent(compactionScope);
+            if(guarded!==undefined){void Promise.resolve(guarded).catch(()=>undefined);
+              throw new ProtocolError('INVALID_ARGUMENT','Compaction host guard must be synchronous');}
+          },loadCheckpoint:()=>this.runtime.loadCheckpoint(task.taskId,compactionKey),
+          saveCheckpoint:receipt=>{
+            if(!this.runtime.saveCheckpointOnce(task.taskId,compactionKey,receipt))
+              assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,compactionKey),receipt);
+          },now:()=>this.now().getTime()});
+      }
+      const context=compacted?.messages??sourceContext;
       const goal=compileCoordinationGoal(request.goal,prepared,context);
       const binding=bindCompiledContext({taskId:task.taskId,conversationId:task.conversationId ?? '',
         deadline:request.deadline,configurationRef:this.coordinationBinding,publicGoal:request.goal,
         preparedGoal:prepared,compiledGoal:goal,messages:context,
-        privateBinding:this.readPrivateTaskBinding(task.taskId)},hooks.goalTokenBudget);
+        privateBinding:this.readPrivateTaskBinding(task.taskId),
+        ...(compacted?.state==='compacted'?{compactionReceipt:compacted.receipt}:{})},hooks.goalTokenBudget);
       if(!this.runtime.saveCheckpointOnce(task.taskId,checkpointKey,binding)) {
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,checkpointKey),binding);
       }
@@ -1112,7 +1223,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(teacherScope)this.teacherRequestScopes.set(effective,teacherScope);
       this.ephemeralSends.set(leaseKey,effective);
       this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:prepared});
-      this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:context.flatMap(message=>message.taskId?[message.taskId]:[])});
+      this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:sourceContext.flatMap(message=>message.taskId?[message.taskId]:[]),
+        ...(compacted?.state==='compacted'?{assertCompactionCurrent:compacted.assertCurrent}:{})});
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
       this.assertInputActive(request);
@@ -1152,14 +1264,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Original Runtime cutoff; a host merges Conversations/Live by message id, then re-filters. */
   readConversationContext(input:{taskId?:string;conversationId:string;deadline:string;signal:AbortSignal;
-    historyMessages?:readonly ConversationContextMessage[]}):ConversationContextMessage[] {
+    historyMessages?:readonly ConversationContextMessage[];maxMessages?:number}):ConversationContextMessage[] {
+    const historyLimit=input.maxMessages??CONVERSATION_HISTORY_LIMIT;
+    if(!Number.isSafeInteger(historyLimit)||historyLimit<1)throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted conversation range');
     const task=input.taskId ? this.runtime.getTask(input.taskId) : undefined;
     if((task && (task.conversationId!==input.conversationId || task.cancelRequested)) || !Number.isFinite(Date.parse(input.deadline)) || input.signal.aborted
       || this.now().getTime()>=Date.parse(input.deadline))throw new ProtocolError('UNAUTHORIZED','Conversation scope expired');
     const result=new Map<string,ConversationContextMessage>();
     const eligibleTasks=new Set<string>();
     // Without a task, a host can check the same bounded history before confirmation/acceptance.
-    const turns=this.runtime.readConversationHistory(input.conversationId,input.taskId,CONVERSATION_HISTORY_LIMIT);
+    const turns=this.runtime.readConversationHistory(input.conversationId,input.taskId,historyLimit);
     for(const turn of turns) {
       if(this.isHistoryWithheld(turn.taskId))continue;
       eligibleTasks.add(turn.taskId);
@@ -1174,7 +1288,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(message.withheld || (message.taskId && this.isHistoryWithheld(message.taskId)))result.delete(message.id);
       else if(!input.taskId || message.taskId!==input.taskId)result.set(message.id,structuredClone(message));
     }
-    return [...result.values()].slice(-CONVERSATION_HISTORY_LIMIT);
+    return [...result.values()].slice(-historyLimit);
   }
 
   configureThinking(config: ThinkingConfig): ThinkingState {
@@ -1367,7 +1481,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const selectedModel=worker.loadCheckpoint('execution-model') as ExecutionModelSelection|undefined;
     const selectedEffort=selectedModel?.reasoningEffort;
     const delegation=readUserTaskDelegation(this.runtime,binding.parentTaskId);
-    const maxSteps=delegation?.maxSteps??(subtask.thinkingDepth===undefined?6:Math.max(2,(subtask.thinkingDepth+1)*2));
+    const sibling=readRuntimeSubagentSibling(this.runtime,worker.taskId);
+    if(sibling) this.assertDeveloperHarnessExecutorCurrent(worker.taskId);
+    const maxSteps=sibling?.maxSteps??delegation?.maxSteps??(subtask.thinkingDepth===undefined?6:Math.max(2,(subtask.thinkingDepth+1)*2));
     worker.saveCheckpoint('subtask-thinking-binding',{depth:subtask.thinkingDepth??null,
       stepBudget:{maxSteps},
       modelReasoning:{requestedEffort:subtask.reasoningEffort??selectedEffort??null,effort:selectedEffort??null,
@@ -1424,13 +1540,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(this.runtime.loadCheckpoint(approval.taskId,'application-profile')==='huawei_ict_agentarts'
         || this.runtime.loadCheckpoint(approval.taskId,'competition-loop')!==undefined) {
         this.assertCompetitionTaskConfiguration(approval.taskId);
+        this.assertDeveloperHarnessExecutorCurrent(approval.taskId);
+        const message=readSubagentConversationMessage(this.runtime,approval.taskId);
+        if(message)this.assertDeveloperHarnessExecutorCurrent(message.originTaskId);
       }
     }
     const response = await this.runtime.send(request, signal);
     if (request.operation === 'task.submit' && response.outcome === 'ok') this.dispatchSubmittedTextTask(request, response);
     if (request.operation === 'task.cancel' && response.outcome === 'ok') {
       this.releaseEphemeralTask(request.payload.taskId);
-      for (const child of this.runtime.listTasks({conversationId: `desktop-subtask:${request.payload.taskId}`, limit: 100}).items) {
+      for (const child of this.subagentTaskSnapshots(request.payload.taskId)) {
         if (!['succeeded', 'failed', 'cancelled'].includes(child.state)) {
           this.releaseEphemeralTask(child.taskId);this.runtime.requestCancel(child.taskId, 'Parent task cancelled');
         }
@@ -1916,6 +2035,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   readEvents(afterSequence = 0): Event[] { return this.runtime.readEvents(afterSequence); }
+  private subagentTaskSnapshots(parentTaskId:string):TaskSnapshot[] {
+    const result:TaskSnapshot[]=[];let beforeSequence:number|undefined;let snapshotSequence:number|undefined;
+    for(;;){
+      const page=this.runtime.listTasks({conversationId:`desktop-subtask:${parentTaskId}`,limit:100,
+        ...(beforeSequence===undefined?{}:{beforeSequence}),...(snapshotSequence===undefined?{}:{snapshotSequence})});
+      result.push(...page.items);
+      if(page.nextBeforeSequence===undefined)return result;
+      beforeSequence=page.nextBeforeSequence;snapshotSequence=page.snapshotSequence;
+    }
+  }
   /** Durable child tasks only; model metadata is the original execution binding. */
   readSubagentTasks(parentTaskId:string): {parentTaskId:string;taskId:string;role:string;modelId:string;reasoningEffort?:NonNullable<ExecutionModelSelection['reasoningEffort']>;state:TaskSnapshot['state'];resultSummary?:string;error?:NonNullable<TaskSnapshot['error']>;evidenceRefs:string[]}[] {
     this.runtime.getTask(parentTaskId);
@@ -1928,6 +2057,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       beforeSequence=page.nextBeforeSequence;snapshotSequence=page.snapshotSequence;
     }
     return tasks.flatMap(task=>{
+      readRuntimeSubagentSibling(this.runtime,task.taskId);
       const binding=this.runtime.loadCheckpoint(task.taskId,'subtask-parent') as {parentTaskId?:string;role?:string;model?:string}|undefined;
       if(binding?.parentTaskId!==parentTaskId || typeof binding.role!=='string')return [];
       const selected=this.runtime.loadCheckpoint(task.taskId,'execution-model') as ExecutionModelSelection|undefined;
@@ -1964,6 +2094,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!binding||typeof binding.parentTaskId!=='string'||typeof binding.subtaskId!=='string'||typeof binding.role!=='string'
           ||task.conversationId!==`desktop-subtask:${binding.parentTaskId}`
           ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${binding.parentTaskId}-${binding.subtaskId}`)?.taskId!==task.taskId)continue;
+        readRuntimeSubagentSibling(this.runtime,task.taskId);
         const selected=this.runtime.loadCheckpoint(task.taskId,'execution-model') as ExecutionModelSelection|undefined;
         let latest=task;
         const followup=this.runtime.listTasks({conversationId:`desktop-subagent-conversation:${task.taskId}`,limit:1}).items[0];
@@ -2003,11 +2134,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   private subagentConversationOrigin(scope:SubagentConversationScope):SubagentConversationOrigin {
     if(this.profile!=='huawei_ict_agentarts')throw new ProtocolError('UNSUPPORTED_CAPABILITY','Subagent conversations require Competition Profile');
+    readRuntimeSubagentSibling(this.runtime,scope.taskId);
     return readSubagentConversationOrigin(this.runtime,scope);
   }
 
   private assertSubagentConversationCurrent(origin:SubagentConversationOrigin):void {
     if(!this.isDefaultSubagentAvailable()||!this.tools)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Competition subagent is unavailable');
+    this.assertDeveloperHarnessExecutorCurrent(origin.task.taskId);
     if(origin.configurationRef!==this.coordinationBinding||!sameConversationTools(origin.tools,this.tools.list())) {
       throw new ProtocolError('REVISION_CONFLICT','Original subagent deployment or tool scope changed');
     }
@@ -2028,6 +2161,41 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding');
     if(!isDeepStrictEqual(frozen,origin.tools)||!origin.tools.some(tool=>tool.name===toolName)||isRuntimeDispatchTool(toolName)) {
       throw new ProtocolError('SCOPE_DENIED','Tool is outside this subagent conversation');
+    }
+  }
+
+  /** The generic wire and the model ToolPort share the executor's original frozen subset. */
+  private assertDeveloperHarnessExecutorCurrent(taskId:string):void {
+    const sibling=readRuntimeSubagentSibling(this.runtime,taskId);
+    if(!sibling)return;
+    const current=this.readDeveloperHarnessConfiguration
+      ?readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration):undefined;
+    const budget=this.runtime.loadCheckpoint(sibling.binding.ownerTaskId,'developer-harness:budget:v1') as
+      {limit?:number;configurationRef?:string}|undefined;
+    const parent=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentDeadline?:string}|undefined;
+    if(!current || sibling.binding.workspaceRef!==current.workspaceRef
+      || sibling.binding.harnessConfigurationRef!==developerHarnessConfigurationRef(current)
+      || sibling.binding.configurationRef!==this.coordinationBinding
+      || sibling.binding.deadline!==parent?.parentDeadline
+      || budget?.limit!==current.maxExecutorSteps || budget.configurationRef!==sibling.binding.harnessConfigurationRef) {
+      throw new ProtocolError('REVISION_CONFLICT','Original developer executor composition changed');
+    }
+  }
+
+  private assertDeveloperHarnessToolScope(taskId:string,toolName:string):void {
+    const sibling=readRuntimeSubagentSibling(this.runtime,taskId);
+    if(!sibling)return;
+    this.assertDeveloperHarnessExecutorCurrent(taskId);
+    const root=readUserTaskDelegation(this.runtime,sibling.binding.parentTaskId);
+    const owner=this.runtime.getTask(sibling.binding.ownerTaskId);
+    const original=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
+    const descriptor=this.tools?.list().find(tool=>tool.name===toolName);
+    if(root?.deadline!==sibling.binding.deadline
+      || owner.cancelRequested || ['succeeded','failed','cancelled','cancelling'].includes(owner.state)
+      || !descriptor || !original?.some(tool=>isDeepStrictEqual(tool,descriptor))
+      || !sibling.binding.tools.some(tool=>isDeepStrictEqual(tool,descriptor))
+      || [SUBAGENT_DISPATCH_TOOL_NAME,DEVELOPER_HARNESS_TOOL_NAME].includes(toolName)) {
+      throw new ProtocolError('SCOPE_DENIED','Tool is outside the original developer executor scope');
     }
   }
 
@@ -2154,7 +2322,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Runtime-owned history from this unique channel; original private/Skill leases never transfer. */
-  readSubagentConversationContext(input:{taskId:string;conversationId:string;deadline:string;signal:AbortSignal}):ConversationContextMessage[] {
+  readSubagentConversationContext(input:{taskId:string;conversationId:string;deadline:string;signal:AbortSignal;maxMessages?:number}):ConversationContextMessage[] {
     const binding=readSubagentConversationMessage(this.runtime,input.taskId);
     if(!binding)throw new ProtocolError('SCOPE_DENIED','Task is not a subagent conversation message');
     const origin=this.subagentConversationOrigin({parentTaskId:binding.parentTaskId,taskId:binding.originTaskId});
@@ -2167,7 +2335,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       {id:origin.task.taskId+':user',taskId:origin.task.taskId,role:'user',content:origin.definition.goal},
       {id:origin.task.taskId+':assistant',taskId:origin.task.taskId,role:'assistant',content:assistantText(origin.task.resultSummary)},
     ]:[];
-    return [...initial,...history].slice(-CONVERSATION_HISTORY_LIMIT);
+    return [...initial,...history].slice(-(input.maxMessages??CONVERSATION_HISTORY_LIMIT));
   }
 
   /** Trusted host only: binds an independently verified public source to durable Fact/Graph projection. */
@@ -2277,6 +2445,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
         const lease=this.ephemeralContexts.get(leaseKey);
         if(!lease || lease.historyTaskIds.some(taskId=>this.isHistoryWithheld(taskId)))throw new Error();
+        lease.assertCompactionCurrent?.();
         const {binding}=lease;
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(request.taskId,checkpointKey),binding);
         assertCompiledContextUnchanged(binding.budget,measureCompiledGoal(request.goal,this.coordinationInput?.goalTokenBudget));
@@ -2702,6 +2871,19 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const binding = this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?: string} | undefined;
     if (typeof binding?.parentTaskId !== 'string') return;
     await this.activeTextTasks.get(binding.parentTaskId);
+    const sibling=readRuntimeSubagentSibling(this.runtime,childTaskId);
+    if(sibling) {
+      const owner=this.runtime.getTask(sibling.binding.ownerTaskId);
+      const plan=this.runtime.loadCheckpoint(owner.taskId,`developer-harness:plan:${sibling.binding.planId}`) as
+        {executors?:unknown[]}|undefined;
+      const admitted=this.subagentTaskSnapshots(binding.parentTaskId).filter(task=>{
+        const marker=readRuntimeSubagentSibling(this.runtime,task.taskId);
+        return marker?.binding.ownerTaskId===owner.taskId&&marker.binding.planDigest===sibling.binding.planDigest;
+      });
+      if(owner.state==='waiting_approval'&&!owner.cancelRequested&&!this.activeTextTasks.has(owner.taskId)
+        &&plan?.executors?.length===admitted.length&&admitted.length>0&&admitted.every(isTerminalTask))this.resumeTask(owner.taskId);
+      return;
+    }
     const proactive = [...this.proactiveHosts.values()].find(host => host.taskId === binding.parentTaskId);
     if (proactive && !this.runtime.getTask(binding.parentTaskId).cancelRequested) {
       const child = this.runtime.getTask(childTaskId);
@@ -2750,7 +2932,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!tool || tool.requiresPresence)throw new ProtocolError('UNAUTHORIZED','Original dispatch descriptor is unavailable');
         validateToolValue(tool.inputSchema,proposal.arguments);
         const definitions=proposal.arguments.subtasks as SubtaskDefinition[];
-        const children=this.runtime.listTasks({conversationId:`desktop-subtask:${taskId}`,limit:100}).items;
+        const children=this.subagentTaskSnapshots(taskId)
+          .filter(child=>readRuntimeSubagentSibling(this.runtime,child.taskId)===undefined);
         const failureReceipts=children.flatMap(child=>{
           const binding=this.runtime.readReceivedCloudFailureBinding(child.taskId,true);
           return binding===undefined?[]:[{taskId:child.taskId,binding}];
@@ -2856,7 +3039,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (!record || record.state !== 'confirmed' || !record.executionStarted || record.policyDecision !== 'allow'
       || record.toolName !== loop.pending.toolName || record.toolVersion !== wait.toolVersion
       || !this.runtime.matchesToolExecutionInput(record, {arguments: loop.pending.arguments, scopeRef: wait.runId})) return false;
-    const children=this.runtime.listTasks({conversationId: `desktop-subtask:${taskId}`, limit: 100}).items;
+    const children=this.subagentTaskSnapshots(taskId)
+      .filter(child=>readRuntimeSubagentSibling(this.runtime,child.taskId)===undefined);
     const subtasks=loop.pending.arguments.subtasks;
     return Array.isArray(subtasks) && subtasks.length>0 && children.length===subtasks.length
       && children.every(child=> {

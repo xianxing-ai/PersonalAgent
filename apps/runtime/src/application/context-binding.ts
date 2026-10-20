@@ -23,6 +23,7 @@ export interface CompiledContextInput {
   readonly compiledGoal: string;
   readonly messages: readonly {id:string;role:string;content:string;taskId?:string}[];
   readonly privateBinding?: unknown;
+  readonly compactionReceipt?: unknown;
 }
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
@@ -67,6 +68,7 @@ export function bindCompiledContext(input: CompiledContextInput, budget?: Coordi
     messages:input.messages.map(message=>({identityDigest:digest(JSON.stringify([message.id,message.taskId ?? null])),
       role:message.role,contentDigest:digest(message.content)})),
     ...(input.privateBinding === undefined ? {} : {privateBindingDigest:digest(JSON.stringify(input.privateBinding))}),
+    ...(input.compactionReceipt === undefined ? {} : {compactionReceiptDigest:digest(JSON.stringify(input.compactionReceipt))}),
     budget:measureCompiledGoal(input.compiledGoal,budget)};
 }
 

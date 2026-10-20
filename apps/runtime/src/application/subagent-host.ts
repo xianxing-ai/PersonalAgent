@@ -37,6 +37,43 @@ import {isDeepStrictEqual} from 'node:util';
 import type {TaskRuntime, WorkerContext, WorkerResult, SubmitTaskInput} from '../index.js';
 
 export {SUBAGENT_DISPATCH_TOOL_NAME, SUBAGENT_DISPATCH_TOOL_VERSION};
+export const DEVELOPER_HARNESS_TOOL_NAME = 'developer.harness.run';
+export const DEVELOPER_HARNESS_EXECUTOR = 'developer-harness-executor:v1';
+
+export interface RuntimeSubagentSiblingBinding {
+  version: '1.0'; parentTaskId: string; ownerTaskId: string; planId: string; planDigest: string;
+  workspaceRef: string; configurationRef: string; harnessConfigurationRef: string; deadline: string; tools: ToolDescriptor[];
+}
+export interface RuntimeSubagentSiblingExecutor {
+  binding: RuntimeSubagentSiblingBinding; definition: SubtaskDefinition; maxSteps: number;
+}
+
+/** A marker is recognized only against the owner's exact persisted admission. */
+export function readRuntimeSubagentSibling(runtime: TaskRuntime, taskId: string): RuntimeSubagentSiblingExecutor | undefined {
+  const marker = runtime.loadCheckpoint(taskId, DEVELOPER_HARNESS_EXECUTOR) as RuntimeSubagentSiblingExecutor | undefined;
+  if (marker === undefined) return undefined;
+  const binding = marker.binding;
+  const plan = binding && runtime.loadCheckpoint(binding.ownerTaskId, `developer-harness:plan:${binding.planId}`) as
+    {version?:string;binding?: RuntimeSubagentSiblingBinding; executors?: RuntimeSubagentSiblingExecutor[]} | undefined;
+  const parent = runtime.loadCheckpoint(taskId, 'subtask-parent') as ChildBinding | undefined;
+  const owner = binding && childBinding(runtime,binding.ownerTaskId);
+  const delegation = binding && runtime.loadCheckpoint(binding.parentTaskId,'required-subagent-delegation:v1') as
+    {version?:string;parentTaskId?:string;deadline?:string;subtask?:SubtaskDefinition}|undefined;
+  if (!binding || binding.version !== '1.0' || plan?.version !== '1.0' || !isDeepStrictEqual(plan.binding, binding)
+    || !plan?.executors?.some(item => isDeepStrictEqual(item, marker))
+    || !Number.isSafeInteger(marker.maxSteps) || marker.maxSteps < 1
+    || parent?.parentTaskId !== binding.parentTaskId || parent.parentDeadline !== binding.deadline
+    || computeSubtaskInputDigest(parent) !== computeSubtaskInputDigest(marker.definition)
+    || owner?.parentTaskId !== binding.parentTaskId || owner.subtaskId !== 'user-work' || owner.parentDeadline !== binding.deadline
+    || delegation?.version !== '1.0' || delegation.parentTaskId !== binding.parentTaskId || delegation.deadline !== binding.deadline
+    || !delegation.subtask || computeSubtaskInputDigest(owner) !== computeSubtaskInputDigest(delegation.subtask)
+    || runtime.findTaskByIdempotencyKey(`subagent-dispatch-${binding.parentTaskId}-user-work`)?.taskId !== binding.ownerTaskId
+    || runtime.findTaskByIdempotencyKey(`subagent-dispatch-${binding.parentTaskId}-${marker.definition.subtaskId}`)?.taskId !== taskId
+    || runtime.getTask(taskId).conversationId !== `desktop-subtask:${binding.parentTaskId}`) {
+    throw new ProtocolError('UNAUTHORIZED', 'Executor does not match its original broker admission');
+  }
+  return structuredClone(marker);
+}
 
 export interface ConfiguredSubagentModelOptions {
   profile?: 'huawei_ict_agentarts';
@@ -45,6 +82,7 @@ export interface ConfiguredSubagentModelOptions {
   model: string;
   deployment: string;
   apiKey: () => string | Promise<string>;
+  fetch?: typeof globalThis.fetch;
   nativeReasoning?: NativeReasoningConfiguration;
   contextLimitTokens?: number;
   requestTokenBudget?: VisibleRequestTokenBudget;
@@ -149,7 +187,15 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
   }
   childWorker.saveCheckpoint('subtask-execution-binding', {kind});
   const sourceTools = options.getToolsForSubtask ? options.getToolsForSubtask(subtask, childWorker) : options.getTools?.();
-  const descriptors = structuredClone(sourceTools?.list().filter(item => item.name !== SUBAGENT_DISPATCH_TOOL_NAME) ?? []);
+  const sibling = readRuntimeSubagentSibling(runtime, childWorker.taskId);
+  const required = runtime.loadCheckpoint(childBinding(runtime, childWorker.taskId).parentTaskId, 'required-subagent-delegation:v1') as
+    {subtask?: SubtaskDefinition} | undefined;
+  const isOriginalUserWorker = !sibling && subtask.subtaskId === 'user-work'
+    && required?.subtask !== undefined && computeSubtaskInputDigest(required.subtask) === computeSubtaskInputDigest(subtask);
+  const available = sourceTools?.list() ?? [];
+  const descriptors = structuredClone(available.filter(item => item.name !== SUBAGENT_DISPATCH_TOOL_NAME
+    && (item.name !== DEVELOPER_HARNESS_TOOL_NAME || isOriginalUserWorker)
+    && (!sibling || sibling.binding.tools.some(allowed => isDeepStrictEqual(allowed, item)))));
   descriptors.sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
   const previousTools = childWorker.loadCheckpoint('subtask-tools-binding');
   if (previousTools !== undefined && !isDeepStrictEqual(previousTools, descriptors)) {
@@ -259,7 +305,9 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
   const defaultChild = execution?.kind === 'competition' || runtime.loadCheckpoint(childTaskId, 'subtask-coordination-binding') !== undefined;
   const selectedModel = runtime.loadCheckpoint(childTaskId, 'execution-model');
   if (defaultChild && (binding.model !== undefined || selectedModel !== undefined)) {
-    const records = runtime.loadCheckpoint(binding.parentTaskId, 'subtask-progress-records') as Record<string, SubtaskProgressRecord> | undefined;
+    const sibling = readRuntimeSubagentSibling(runtime, childTaskId);
+    const records = runtime.loadCheckpoint(sibling?.binding.ownerTaskId ?? binding.parentTaskId,
+      sibling ? `developer-harness:progress:${sibling.binding.planId}` : 'subtask-progress-records') as Record<string, SubtaskProgressRecord> | undefined;
     const record = records && Object.hasOwn(records, binding.subtaskId) ? records[binding.subtaskId] : undefined;
     if (!isDeepStrictEqual(execution, {kind: 'competition'}) || !record
       || record.parentTaskId !== binding.parentTaskId || record.subtaskId !== binding.subtaskId
@@ -314,7 +362,8 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
     {toolName?:string;toolVersion?:string;argumentsDigest?:string;source?:string}|undefined;
   // A trusted routine invocation has no Approval object. Only its exact original
   // confirmed readback may resume the worker; an unknown or different run cannot.
-  if(defaultChild&&confirmedRecord&&replay?.runId===runId&&replay.inputDigest===confirmedRecord.inputDigest
+  if(defaultChild&&confirmedRecord&&((replay?.runId===runId&&replay.inputDigest===confirmedRecord.inputDigest)
+      || toolName===DEVELOPER_HARNESS_TOOL_NAME)
     &&routine?.source==='trusted-routine-tool-policy'&&routine.toolName===toolName
     &&routine.toolVersion===confirmedRecord.toolVersion&&routine.argumentsDigest===toolArgumentsDigest(argumentsValue))
     return runOriginalWorker();
@@ -368,6 +417,76 @@ export function readRuntimeSubagentSummary(runtime: TaskRuntime, parentTaskId: s
   const summary = `## 次级智能体协作汇总（共 ${progress.length} 项：成功 ${succeeded}，失败 ${failed}，取消 ${cancelled}，未完成 ${pending}）\n\n`
     + progress.map(item => `### 【${item.roleLabel}】(${item.role}) · ${item.state}\n${item.result ?? item.error ?? ''}`).join('\n\n');
   return {total: progress.length, succeeded, failed, cancelled, subtasks: progress, aggregatedSummary: summary, summary};
+}
+
+/** Internal broker entry, reached after the owner's Gateway authorization. No root ToolContext is fabricated. */
+export async function dispatchRuntimeSubagentSiblings(options: SubagentHostOptions,
+  input: {executors: readonly RuntimeSubagentSiblingExecutor[]; signal: AbortSignal;
+    assertCurrent: () => void; reportProgress: AgentWorkerContext['reportProgress']}): Promise<TaskSnapshot[]> {
+  const runtime = options.getRuntime();
+  const snapshots = new Map<string, TaskSnapshot>();
+  await Promise.all(input.executors.map(async executor => {
+    const {binding, definition} = executor;
+    const key = `developer-harness:progress:${binding.planId}`;
+    const bridge: AgentWorkerContext = {taskId: binding.parentTaskId, signal: input.signal, deadline: binding.deadline,
+      loadCheckpoint: name => {
+        if (name !== 'subtask-progress-records') return undefined;
+        const records = runtime.loadCheckpoint(binding.ownerTaskId, key) as Record<string, SubtaskProgressRecord> | undefined;
+        const record = records?.[definition.subtaskId];
+        return record ? {[definition.subtaskId]: record} : undefined;
+      },
+      saveCheckpoint: (name, value) => {
+        if (name !== 'subtask-progress-records') throw new ProtocolError('SCOPE_DENIED', 'Unexpected broker checkpoint');
+        runtime.saveCheckpoint(binding.ownerTaskId, key, {
+          ...runtime.loadCheckpoint(binding.ownerTaskId, key) as Record<string, SubtaskProgressRecord> | undefined,
+          ...value as Record<string, SubtaskProgressRecord>});
+      }, reportProgress: input.reportProgress};
+    await dispatchSubtasks(bridge, [definition], async (_definition, signal) => {
+      input.assertCurrent();
+      if (signal.aborted) throw new ProtocolError('CANCELLED', 'Broker cancelled before executor admission');
+      const idempotencyKey = `subagent-dispatch-${binding.parentTaskId}-${definition.subtaskId}`;
+      let child = runtime.findTaskByIdempotencyKey(idempotencyKey);
+      if (!child) child = runtime.submitTaskWithCheckpoint({idempotencyKey,
+        conversationId: `desktop-subtask:${binding.parentTaskId}`,
+        goal: `[${definition.roleLabel ?? DEFAULT_ROLE_LABELS[definition.role]}] ${definition.goal}`}, 'subtask-parent',
+      {...definition, parentTaskId: binding.parentTaskId, parentDeadline: binding.deadline});
+      const original = childBinding(runtime, child.taskId);
+      if (original.parentTaskId !== binding.parentTaskId || original.parentDeadline !== binding.deadline
+        || computeSubtaskInputDigest(original) !== computeSubtaskInputDigest(definition)) {
+        throw new ProtocolError('REVISION_CONFLICT', 'Executor identity belongs to another admission');
+      }
+      const previous = runtime.loadCheckpoint(child.taskId, DEVELOPER_HARNESS_EXECUTOR);
+      if (previous === undefined) {
+        if (child.state !== 'created' || runtime.readToolExecutions(child.taskId).length) {
+          throw new ProtocolError('UNAUTHORIZED', 'Existing execution cannot acquire broker authority');
+        }
+        runtime.saveCheckpointOnce(child.taskId, DEVELOPER_HARNESS_EXECUTOR, executor);
+      } else if (!isDeepStrictEqual(previous, executor)) throw new ProtocolError('REVISION_CONFLICT', 'Executor admission changed');
+      readRuntimeSubagentSibling(runtime, child.taskId);
+      const cancel = () => {
+        if (!['succeeded', 'failed', 'cancelled'].includes(runtime.getTask(child!.taskId).state)) {
+          runtime.requestCancel(child!.taskId, 'Original broker owner cancelled');
+        }
+      };
+      signal.addEventListener('abort', cancel, {once: true});
+      try {
+        input.assertCurrent();
+        if (signal.aborted) cancel();
+        if (child.state === 'created' && !signal.aborted) {
+          child = await runtime.runTask(child.taskId, worker => runSubagentWorker(options, definition, worker),
+            {deadline: binding.deadline, sideEffect: subagentSideEffect(options, runtime, child.taskId)});
+        }
+        child = runtime.getTask(child.taskId);
+        snapshots.set(definition.subtaskId, child);
+        if (child.state !== 'succeeded') throw new ProtocolError(child.state === 'waiting_reconciliation' ? 'RESULT_UNKNOWN'
+          : child.state === 'cancelled' ? 'CANCELLED' : 'EXTERNAL_FAILURE', `Executor is ${child.state}`);
+        return child.resultSummary ?? '';
+      } finally { signal.removeEventListener('abort', cancel); }
+    });
+    const child = runtime.findTaskByIdempotencyKey(`subagent-dispatch-${binding.parentTaskId}-${definition.subtaskId}`);
+    if (child) snapshots.set(definition.subtaskId, child);
+  }));
+  return [...snapshots.values()];
 }
 
 export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions): RegisteredTool {

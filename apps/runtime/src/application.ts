@@ -2,6 +2,11 @@ export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReeva
 export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult} from './application/runtime-application.js';
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
 export type {CoordinationGoalTokenBudget} from './application/context-binding.js';
+export {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT} from './application/context-compaction.js';
+export type {ContextCompactionPolicy,ContextCompactionScope,ContextSummaryRequest,ContextCompactionReceipt,
+  RuntimeContextCompactionOptions} from './application/context-compaction.js';
+export {createContextModelSummarizer} from './application/context-compaction-model.js';
+export type {ContextSummaryModelOptions} from './application/context-compaction-model.js';
 export type {PrepareCompetitionToolExport,CompetitionToolExport,CoordinationWorkerCapabilityPort} from './application/coordination.js';
 export type {CompetitionCloudRequestIdentityRecord, CompetitionCloudRequestIdentities,
   CompetitionCloudIdentitySelection} from './application/coordination.js';
@@ -17,6 +22,8 @@ export type {CompetitionAvailableTool, CompetitionToolAvailability} from './appl
 export type {ConversationToolCapability} from './application/tool-catalog.js';
 export {DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,developerWorkflowInputSchema} from './application/developer-workflows.js';
 export type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope,DeveloperWorkflowKind} from './application/developer-workflows.js';
+export {DEVELOPER_HARNESS_TOOL_NAME,DEVELOPER_HARNESS_TOOL_VERSION} from './application/developer-harness.js';
+export type {RuntimeDeveloperHarnessOptions,DeveloperHarnessResult} from './application/developer-harness.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
 export type {AgentArtsObservationApplication} from './application/agentarts.js';
 export {createCalendarEventReadTool, CALENDAR_EVENT_READ_TOOL, CALENDAR_EVENT_READ_VERSION} from './application/calendar-read.js';
