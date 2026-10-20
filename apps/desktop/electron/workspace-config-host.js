@@ -90,7 +90,9 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   selectNodeExecutable,selectCheckFile,selectNpmCli,jobHelperExecutable,patchHelperScriptPath,
   projectScriptEnvSource,createCommandRecipeTool,createWorkspaceReferenceExport,
   readWorkspaceExportPreflight,readWorkspaceExportAuthorization,
-  requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions}) {
+  requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions,
+  // Main-only injection supports offline discovery fixtures; never accepted from Renderer.
+  findExecutable=findWindowsExecutable}) {
   const file = path.join(userData,'coding-workspace.json');
   let savedRoot,savedNode,savedCheckFile,savedNpmCli,boundRoot,boundNode,boundCheckFile,boundNpmCli,boundProjectHelper,rootIdentity,nodeIdentity,application,active=true,consent,applyHost,failure='',commandFailure='',projectFailure='';
   let generation=randomUUID();
@@ -100,7 +102,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const workspaceExportProposals=new Map();
   const confirmedWorkspaceReads=new Map();
   let workspaceReferenceExport;
-  let boundRepairPowerShell,repairHostPromise,developerCommand;
+  let boundRepairPowerShell,repairHostPromise,harnessHostPromise,developerCommand;
   try {
     if (existsSync(file)) {
       if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -146,7 +148,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           boundProjectHelper=helper;
         } catch {projectFailure='项目命令所需的本机组件不可用';}
       }
-      const pwsh=findWindowsExecutable('pwsh.exe',discovery);
+      const pwsh=findExecutable('pwsh.exe',discovery);
       if (pwsh) {
         boundRepairPowerShell=pwsh;
         try {
@@ -159,7 +161,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           implementations.push(...applyHost.tools);
         } catch {failure='读取和候选生成可用；安全应用补丁所需的目录或 PowerShell 检查未通过';}
       } else failure='读取和候选生成可用；安全应用补丁需要 PowerShell 7';
-      const git=findWindowsExecutable('git.exe',discovery);
+      const git=findExecutable('git.exe',discovery);
       if (git) {
         const command=coding.createWorkspaceCommandTool({rootPath:boundRoot,recipes:[{id:'git-diff-check',
           executable:git,args:['--no-pager','-c','core.fsmonitor=false','diff','--no-ext-diff','--no-textconv','--check']}],
@@ -233,16 +235,20 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   };
   const repairRecipes=()=>[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
     ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])];
-  const getRepairHost=async()=>{
+  const getRepairHost=async(harness=false)=>{
     if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || (boundNpmCli&&!boundProjectHelper)
       || typeof createCommandRecipeTool!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
-    if(!repairHostPromise)repairHostPromise=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
-      sessionRoot:path.join(userData,'coding-isolation',createHash('sha256').update(boundRoot).digest('hex')),
-      workspaceId:createHash('sha256').update(boundRoot).digest('hex'),patch:{powerShellPath:boundRepairPowerShell,
+    if(harness?harnessHostPromise:repairHostPromise)return harness?harnessHostPromise:repairHostPromise;
+    const workspaceId=createHash('sha256').update(boundRoot).digest('hex');
+    // Reuse the same host implementation with separate journals: F15 retains owner-mapped
+    // sessions, while harness receipts bind the actual executor in the same workspace.
+    const pending=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
+      sessionRoot:path.join(userData,harness?'harness-isolation':'coding-isolation',workspaceId),
+      workspaceId,patch:{powerShellPath:boundRepairPowerShell,
          ...(boundProjectHelper===undefined?{}:{processIdentityHelperPath:boundProjectHelper}),
         ...(patchHelperScriptPath===undefined?{}:{helperScriptPath:patchHelperScriptPath})},
       recipes:repairRecipes(),
-      resolveOriginalTaskId:resolveRepairTask,
+      ...(harness?{}:{resolveOriginalTaskId:resolveRepairTask}),
       configurationRef:createHash('sha256').update(JSON.stringify({root:boundRoot,node:boundNode,check:boundCheckFile,npm:boundNpmCli,
         helper:boundProjectHelper,nodeIdentity:String(nodeIdentity?.ino)+':'+String(nodeIdentity?.mtimeNs)})).digest('hex'),
       readVerificationEvidence:async input=>readRuntimeCodingVerificationEvidence(application,input),
@@ -263,7 +269,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         nodeExecutable:boundNode,checkFiles:boundCheckFile?[{id:'node-check',path:boundCheckFile}]:[],
         allowProjectScripts:Boolean(boundNpmCli),jobHelperExecutable:boundProjectHelper,npmCliPath:boundNpmCli,
         projectScriptEnvSource,maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
-    return repairHostPromise;
+    if(harness)harnessHostPromise=pending;else repairHostPromise=pending;
+    return pending;
   };
   // Stable Main-only proxy. Every call keeps the original consent, task and revocation guards.
   const harnessRepairHost=Object.freeze(Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
@@ -273,7 +280,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       const controller=new AbortController();inflight.add(controller);
       const scoped={...context,signal:AbortSignal.any([context.signal,controller.signal])};
       try {
-        const host=await getRepairHost();assertHarnessWorkspace(scoped);
+        const host=await getRepairHost(true);assertHarnessWorkspace(scoped);
         if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
         const result=await host[name](...parameters,scoped);
         assertHarnessWorkspace(scoped);
@@ -282,7 +289,9 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       } finally {inflight.delete(controller);}
     }])));
   if(boundRoot && boundRepairPowerShell && typeof coding.createIsolatedCodingRepairTools==='function') {
-    const repairTools=coding.createIsolatedCodingRepairTools(harnessRepairHost);
+    const deferred=Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
+      .map(name=>[name,async(...args)=>(await getRepairHost())[name](...args)]));
+    const repairTools=coding.createIsolatedCodingRepairTools(deferred);
     implementations.push(...repairTools);
     for(const [source,name] of [['snapshot','workspace.coding_snapshot'],['preview','workflow.host.f15_n04'],
       ['check','workflow.host.f15_n05'],['publish','workflow.host.f15_n06']]) {

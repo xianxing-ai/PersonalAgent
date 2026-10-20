@@ -10,7 +10,7 @@ import {harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harne
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
 import {ToolGateway,toolArgumentsDigest} from '@personal-agent/tool-gateway';
 
-const context=(taskId,extra={})=>({taskId,runId:'run-'+randomUUID(),authorizationRef:'explicit-fake-outer-grant',
+const context=(taskId,extra={})=>({taskId,runId:'run-'+randomUUID(),authorizationRef:'explicit-fake-outer-grant-'+randomUUID(),
   argumentsDigest:'d'.repeat(64),scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],
   deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal,...extra});
 async function fixture(t) {
@@ -33,7 +33,7 @@ test('candidate sessions keep one baseline but never share writable source or ta
   assert.equal(first.session.baselineSnapshotId,second.session.baselineSnapshotId);
   await f.host.patch(first.session.sessionId,{path:'candidate.txt',expectedSha256:null,edits:[],createText:'a only'},a);
   await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
-  await assert.rejects(f.host.read(second.session.sessionId,{path:'candidate.txt'},b),{code:'ENOENT'});
+  await assert.rejects(f.host.read(second.session.sessionId,{path:'candidate.txt'},b),{code:'NOT_FOUND'});
   await assert.rejects(f.host.snapshot(first.session.sessionId,b),{code:'UNAUTHORIZED'});
   assert.equal(await readFile(path.join(f.source,'note.txt'),'utf8'),'user uncommitted content');
   await assert.rejects(f.host.publish({version:1,sessionId:first.session.sessionId,baselineSnapshotId:f.baseline.snapshotId,
