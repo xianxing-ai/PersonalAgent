@@ -1,11 +1,13 @@
 .subagent-conversations[hidden],.subagent-conversations-list[hidden]{display:none!important}
-.subagent-conversations{position:relative;box-sizing:border-box;margin:8px 0;min-width:0;max-width:100%;min-height:26px;padding-right:42px;color:var(--fg)}
+.subagent-conversations{position:relative;box-sizing:border-box;margin:8px 0;min-width:0;max-width:100%;min-height:26px;padding-right:82px;color:var(--fg)}
 .subagent-conversations-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .subagent-conversations button,.subagent-conversation-page button{font:inherit;color:inherit;cursor:pointer}
 .subagent-conversations-entry{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;height:34px;box-sizing:border-box;padding:6px 8px;border:1px solid var(--glass-border);border-radius:10px;background:var(--surface-2);font-size:12px;text-align:left;white-space:nowrap;overflow:hidden}
 .subagent-conversations-entry:hover{background:var(--composer-bg);border-color:var(--fg-2)}
-.subagent-conversations .subagent-conversations-more{position:absolute;top:1px;right:0;padding:5px 3px;border:0;background:transparent;color:var(--fg-2);font-size:11px;line-height:18px}
+.subagent-conversations .subagent-conversations-more{position:absolute;top:1px;right:42px;padding:5px 3px;border:0;background:transparent;color:var(--fg-2);font-size:11px;line-height:18px}
 .subagent-conversations .subagent-conversations-more:hover{color:var(--fg)}
+.subagent-conversations .subagent-conversations-collapse{position:absolute;top:1px;right:0;padding:5px 3px;border:0;background:transparent;color:var(--fg-2);font-size:11px;line-height:18px}
+.subagent-conversations .subagent-conversations-collapse:hover{color:var(--fg)}
 .subagent-conversations-role{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .subagent-conversations-id{flex:0 0 auto;color:var(--fg-2);font-size:11px}
 .subagent-conversations-state{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fg-2);font-size:11px}
