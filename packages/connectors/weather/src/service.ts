@@ -1,6 +1,6 @@
 import { ProtocolError, validateContract } from '@personal-agent/contracts';
 import type { ProtocolContracts } from '@personal-agent/contracts';
-import type { ForecastFetch, ForecastRequest, PublishedTimeKind, ResolvedPlace, WeatherProvider, WeatherUnits } from './provider.js';
+import type { ForecastCurrent, ForecastFetch, ForecastHourlyPoint, ForecastRequest, PublishedTimeKind, ResolvedPlace, WeatherProvider, WeatherUnits } from './provider.js';
 
 export type WeatherRecord = ProtocolContracts['connectorItem'];
 
@@ -25,6 +25,8 @@ export interface ForecastPayload {
   precipitationProbability: number | null;
   publishedTimeKind: PublishedTimeKind;
   resolved?: ResolvedPlace;
+  current?: ForecastCurrent;
+  hourly?: ForecastHourlyPoint[];
 }
 
 export interface CacheState {
@@ -152,6 +154,8 @@ export class WeatherService {
       publishedTimeKind: fetch.publishedTimeKind,
     };
     if (fetch.resolved) forecast.resolved = fetch.resolved;
+    if (fetch.current) forecast.current = fetch.current;
+    if (fetch.hourly?.length) forecast.hourly = fetch.hourly;
     const fresh: CacheEntry = {record, forecast, fetchedAtMs};
     this.cache.set(key, fresh);
     return {record: structuredClone(fresh.record), forecast: structuredClone(fresh.forecast), cache: cacheState('fetched', fresh, fetchedAtMs, this.ttlMs)};

@@ -132,6 +132,7 @@ test('approved child resumes the same invocation once and readback replaces pend
     const summary = readRuntimeSubagentSummary(app.runtime,parent.taskId);
     assert.equal(summary.succeeded,1); assert.equal(summary.failed,0);
     assert.match(summary.summary,/confirmed child result/);
+    assert.doesNotMatch(summary.summary,/次级智能体协作汇总/,'a single child answer is the answer');
     const replay = await tool.execute(input,dispatchContext);
     assert.equal(replay.succeeded,1); assert.equal(calls.length,1);
     assert.equal((await resumeRuntimeSubagentTask(options,child.taskId)).state,'succeeded');

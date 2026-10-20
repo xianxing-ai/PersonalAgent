@@ -486,7 +486,11 @@ export async function dispatchSubtasks(
     return `### 【${p.roleLabel}】(${p.role}) · 失败\n${p.error ?? '执行失败'}`;
   });
 
-  const aggregatedSummary = `## 次级智能体协作汇总（共 ${total} 项：成功 ${succeeded}，失败 ${failed}，取消 ${cancelled}）\n\n${sections.join('\n\n')}`;
+  // A single successful child is just this turn's answer: the parent passes the result through
+  // instead of prefixing an internal coordination header the user never asked for.
+  const aggregatedSummary = total === 1 && succeeded === 1
+    ? progressList[0]?.result?.trim() || '无输出'
+    : `## 次级智能体协作汇总（共 ${total} 项：成功 ${succeeded}，失败 ${failed}，取消 ${cancelled}）\n\n${sections.join('\n\n')}`;
 
   return {
     total,
