@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtemp,mkdir,writeFile,readFile,rm,readdir} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,readdir,rename} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {packSource,restoreSource} from './source-transfer.mjs';
@@ -33,6 +33,18 @@ test('same-run source transfer restores exact tracked source without untracked d
   const restoredPath=(await readFile(output,'utf8')).match(/^directory=(.+)$/m)?.[1];
   assert.ok(restoredPath);
   assert.equal(await readFile(path.join(restoredPath,'source.txt'),'utf8'),'exact source\n');
+  if(process.platform!=='win32'&&execFileSync('tar',['--version'],{encoding:'utf8'}).includes('GNU tar')) {
+    // Linux can model the exact GNU tar remote-host parsing of a Windows
+    // drive-prefixed archive without claiming a Windows host execution.
+    const colonDirectory=path.join(temp,'C:transfer');await rename(packed.directory,colonDirectory);
+    assert.throws(()=>execFileSync('tar',['-xzf','C:transfer/source.tgz','-C',temp],{cwd:temp,stdio:'pipe'}),error=>
+      error.status!==0&&/Cannot connect to C:/.test(error.stderr.toString()));
+    const moduleUrl=new URL('./source-transfer.mjs',import.meta.url).href;
+    const code=`import {restoreSource} from ${JSON.stringify(moduleUrl)};console.log(await restoreSource('C:transfer',${JSON.stringify(temp)},${JSON.stringify(sha)},${JSON.stringify(packed.sha256)}));`;
+    const colonRestored=execFileSync(process.execPath,['--input-type=module','-e',code],{cwd:temp,encoding:'utf8'}).trim();
+    assert.equal(await readFile(path.join(colonRestored,'source.txt'),'utf8'),'exact source\n');
+    t.diagnostic('GNU tar colon-path regression: old archive argument rejected with Cannot connect to C:; relative source.tgz + transfer cwd restored exact source. Linux simulation only.');
+  }
   git('config','http.https://github.com/.extraheader','synthetic-header');
   await assert.rejects(packSource(root,temp,sha),/authentication/);
 });

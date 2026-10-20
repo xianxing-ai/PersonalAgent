@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {existsSync} from 'node:fs';
 import {mkdir, readFile, writeFile, unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -15,6 +16,8 @@ const directory = process.env.PA_PATCH_RECOVERY_FIXTURE;
 if (!directory || !path.isAbsolute(directory) || app.isPackaged) throw Error('Isolated fixture directory required');
 app.setPath('userData', path.join(directory, 'electron-profile'));
 const rootPath = path.join(directory, 'workspace'), recoveryRootPath = path.join(directory, 'recovery');
+const processIdentityHelperPath = process.env.PA_TEST_JOB_HOST_EXE;
+const nativeIdentityOptions = process.platform === 'win32' && typeof processIdentityHelperPath === 'string' && existsSync(processIdentityHelperPath) ? {processIdentityHelperPath} : {};
 const source = path.join(rootPath, 'demo.mjs'), marker = path.join(recoveryRootPath, 'fixture-marker.json');
 const before = '\ufeffexport const value = "before";\r\n', after = before.replace('before', 'after_中文');
 const sha = value => createHash('sha256').update(value).digest('hex');
@@ -30,7 +33,7 @@ async function until(check) {
 function createApplication() {
   const read = createWorkspaceReadTool({rootPath});
   const descriptor = createWorkspacePatchApplyTool({rootPath,recoveryRootPath,
-    powerShellPath:process.env.PA_TEST_PWSH ?? 'C:/Program Files/PowerShell/7/pwsh.exe'}).descriptor;
+    powerShellPath:process.env.PA_TEST_PWSH ?? 'C:/Program Files/PowerShell/7/pwsh.exe',...nativeIdentityOptions}).descriptor;
   const tools = [read,{descriptor,async execute(input,context) {
     assert.deepEqual(input,patchInput); assert.equal(sha(await readFile(source)),sha(before));
     calls.write++; runId=context.runId;
