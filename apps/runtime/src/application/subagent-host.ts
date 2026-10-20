@@ -277,7 +277,7 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
 
 /** Reuse the exact child and pending agent invocation after trusted approval. */
 export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, childTaskId: string,
-  parentSignal?: AbortSignal): Promise<TaskSnapshot> {
+  parentSignal?: AbortSignal, startup?:{assertBeforeFirstSend:()=>void}): Promise<TaskSnapshot> {
   const runtime = options.getRuntime();
   const binding = childBinding(runtime, childTaskId);
   const child = runtime.getTask(childTaskId);
@@ -323,6 +323,17 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
     }
   }
   const competition=runtime.loadCheckpoint(childTaskId,'competition-loop') as {pending?:unknown;continuation?:unknown}|undefined;
+  if(startup) {
+    if(options.competitionOnly!==true||!defaultChild||competition!==undefined
+      ||runtime.readToolExecutions(childTaskId).length!==0
+      ||runtime.loadCheckpoint(childTaskId,'competition-cloud-inflight')
+      ||runtime.loadCheckpoint(childTaskId,'competition-cloud-unknown')
+      ||!Array.isArray(runtime.loadCheckpoint(childTaskId,'subtask-tools-binding'))) {
+      throw new ProtocolError('RESULT_UNKNOWN','Startup child requires its exact original unattempted Competition worker');
+    }
+    startup.assertBeforeFirstSend();
+    return runOriginalWorker();
+  }
   const replay=runtime.loadCheckpoint(childTaskId,'competition-confirmed-replay') as {runId:string;inputDigest:string}|undefined;
   if(defaultChild && !competition?.pending && competition?.continuation && replay
     && runtime.readToolExecutions(childTaskId).some(record=>record.evidenceId===replay.runId && record.inputDigest===replay.inputDigest
