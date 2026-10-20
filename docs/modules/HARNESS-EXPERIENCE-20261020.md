@@ -33,19 +33,19 @@ lease 仅提供描述性验证策略，不含 tools/scopes 或授权，也不能
 
 ## 原 receipts/session 适配（H3 owned）
 
-`createHarnessExperienceBindings(runtime)` 在 `harness-experience-bindings.ts`，直接复用原 `application-tool-invocation:<runId>` 和原 ToolExecutionRecord 输入摘要；无异步 journal 缓存、第二索引库或跨 owner 猜测。
+`createHarnessExperienceBindings(runtime, canonicalReaders)` 在 `harness-experience-bindings.ts`，直接复用原 `application-tool-invocation:<runId>` 和原 ToolExecutionRecord 输入摘要。它完全只读，不写 canonical session、selection 或 owner index，不复制第二份 session/patch，也不提供 saveSession/saveSelection hooks。
 
-H1/Windows 原 factory options 需要挂载以下实际调用：
+canonicalReaders 最小接口：
 
-1. 原 adoption `readSelection(context, trialRunId)` 已解析精确来源后，调用 `bindings.saveSelection(context,{ownerTaskId,trial:{taskId,runId},comparison:{taskId,runId}})`。此处正处原 started Gateway 调用，不能从模型参数接收 compare 身份。
-2. 原 trial/adoption `saveSession(context,input)` 调用 `bindings.saveSession(context,ownerTaskId,input)`；`readSession(context)` 调用 `bindings.readSession({taskId:context.taskId,runId:context.runId})`。在 patch 执行前不可变保存。
-3. 主 session 按 `harness-candidates:session:<runId>` 保存；owner 的 `harness-candidates:owner-session:<sessionId>` 引用真实 run。原选中回执按 `harness-candidates:selection:<adoptionRunId>` 固定。重试只读原 journal，不重放 patch。
-4. owner settled 后调用 `bindings.publishedOrigins(ownerTaskId)`，只解析原 published CAS readback，再经 H1 `assertOrigin` 和 `proposeFromConfirmed` 严格验证；不存在“最新 compare/adoption”回退。
-5. 工厂直接注入 `readInvocation:bindings.readInvocation` 与 `readMainInput:bindings.readMainInput`。configurationDigest 对齐 H1 稳定 `configurationRef`，不包含新任务或 goal；原 inputDigest 与 owner/plan 校验仍保留，不借用其他 owner 的回执。
+1. `readOriginalSessionForProvenance({ownerTaskId,actualTaskId,runId}): CodingRepairInput | undefined`：MOD31 factory 顶层同步 host-only reader 验证 owner 原 `harness-candidates:session:<runId>` 的 `{operation,input}` 并返回原 input；不能使用等待核实专用 Recovery reader 代替。
+2. `readAdoptionOrigin({ownerTaskId,actualTaskId,runId}): RuntimeHarnessCandidateAdoptionOrigin | undefined`：返回 MOD31 在实际 adoption.readSelection 核对原 confirmed trial/compare 后原子保存的 `harness-candidates:adoption-origin:<adoptionRunId>`。该唯一来源含 version、owner/adoption/trial/comparison refs、candidate/artifact 及原输入/配置 identity；经验端只读，不重定义或写另一份 envelope，仍由核心重复核对原 run/input/Evidence。
+3. `publishedOrigins(ownerTaskId)` 从原 confirmed publish 的准确 sessionId 在 canonical session reader 中寻找唯一匹配的 adoption run；多个匹配拒绝，不选择最新。随后只读取该 adoption 的原 origin，不能另造 selection。
+4. H1 不再重复 saveSession/saveSelection；原工具的 journal 写入全部保留 MOD31 唯一 writer。工厂注入 `readInvocation:bindings.readInvocation`、`readMainInput:bindings.readMainInput`，并保留 H1 settled owner/peer plan membership 的可信 `assertOrigin`。
+5. 经验自己的持久内容仅是 `harness-experience:source:<digest>` 下的小来源/作用域引用，无 session、patch、正文或独立索引。configurationDigest 对齐 H1 稳定 `configurationRef`，不包含新任务或 goal；原 inputDigest 与 owner/plan 校验仍保留，不借用其他 owner 的回执。
 
 ## 实际同步 workspace fence（Windows owned 接口要求）
 
-需要 Windows 原 `workspace-config-host` 提供 `readHarnessExperienceCurrentSync(ownerTaskId)`，在原工作区 identity/selection/consent 与版本配置 fence 下，当次同步读取完整源文件清单、每个内容 hash 和包依赖图，并在返回前复核目录身份、配置/recipe/部署版本。新增文件、删除、链接替换、依赖变化必须导致新快照或不可用。建议在原 coding-tools snapshot 实现旁复用相同忽略/密钥/路径规则提供同步捕获入口，不在 H3 复制一套快照策略。
+Windows 原 `workspace-config-host` 已公布 `readHarnessExperienceCurrentSync()`：返回 `{snapshot,versions:{workflowVersion,runtimeVersion,executionKind:'real_host'},configuration:{bindingId,workspaceId,recipeFingerprint}} | undefined`。复用 coding-tools `captureCodingRepairSnapshotSync` 原 metadata/包图/过滤/字段/SHA，并在当前 root/Node/consent/gen/config/同步版本前后双 fence；Promise 版本拒绝，不要求源 owner/task 仍 live。新增文件、删除、链接替换、依赖变化必须导致新快照或不可用，H3 不复制快照策略。
 
 返回 `{scope,snapshot}`。scope.workspaceDigest 用 `harnessExperienceWorkspaceDigest(snapshot)`，configurationDigest 用稳定的 Runtime scope.configurationRef。不能把 `captureCodingRepairSnapshot()` 的异步旧结果保存后当当前同步 authority；尚无真实同步端口时必须返回 undefined，不能启用/消费经验。
 
