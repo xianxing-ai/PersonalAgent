@@ -12,7 +12,7 @@ Main 只注册一次 H4 稳定工具代理，使用 `readDeveloperWorkflows(scop
 
 ## 来源事件与原会话
 
-`main.js` 在 startup classification 之前仅构造原 proactive wrapper、confirmed source router 和 Harness native adapter。纯持久读取使用公开 `readPersistedRuntimeProactiveWorkflow` / `readPersistedHarnessOriginalDelivery`，不创建原 host、不调用 describe、不发网络请求、不启动 worker。原 session 实际 bind 后的 `onSession` 将 consumer 挂到原 host；consumer 在 startup 分类完成后启动。原 Runtime 的 `onHarnessEventProgress` 只触发 receipt flush，不增加轮询或第二调度器。
+`main.js` 在 startup classification 之前先绑定原通知策略宿主，再仅构造原 proactive wrapper、confirmed source router 和 Harness native adapter。Client 注册后复用同一通知宿主，只补充连接。纯持久读取使用公开 `readPersistedRuntimeProactiveWorkflow` / `readPersistedHarnessOriginalDelivery`，不创建 proactive session host、不调用 describe、不发网络请求、不启动 worker。原维护泵完成原 session bind、来源读回、wake 入队及原 resume 后，通过 `afterNativeMaintenance(taskId,context)` 启动该 session 的 consumer。重复维护只复核绑定，不新增事件轮询；原 host 订阅及 Runtime `onHarnessEventProgress` 唤起 receipt flush。
 
 `harness-events-host.js` 核原责任的 `sourceQuotes`：任务 ID、原 goal 原文 SHA256、quoteRef、原会话、原子任务父链和私人撤回标记。新持续任务的 conversation 使用原结构解析的用户会话；来源若为 `user-work`，保留其真实 source ID 与原父链，而不把内部子会话当作新的用户会话。
 
@@ -42,4 +42,10 @@ Main 在原 `workflow-learning.sqlite` 的 `SqliteLearningHost` 创建后调用 
 
 新增原 sink 通知/ack 竞态的单例已保存在 `proactive-confirmed-source-router.test.mjs`。一次定向尝试在 import 时因 `@personal-agent/feeds/dist/index.js` 缺失而退出，未进入用例；没有补安装或扩大构建，状态为 not_run。后续按根 `.node-version` 的 Node 24.15.0，在统一依赖构建后执行。
 
-完整组合、最新源码的联合构建/回归、实际管理 UI 渲染与真实服务验收待主控统一执行。不能据这些源码或历史阶段通过把整体 Harness、云或实体设备标为完成。
+2026-10-20 的整合阶段使用仓库钉版 Node 24.15.0 / npm 11.12.1，构建 Runtime/Desktop 所需 29 个依赖 workspace，并在整合基线 `b983f031` 运行 14 个受影响测试文件，共 156/156 通过，包括实际 SQLite/Runtime/Gateway 的经验提案、独立确认、下一任务消费与撤销，事件来源/quiet/恢复，以及原 UNKNOWN 终态不重放。外部编码、模型和 native 对话框仍为明确 Synthetic/Fake；这不是 Windows、云端或实体设备验收。
+
+随后保留并发远端 `6cc98d93` / `af4a7b5d` 全部成果并正常合入 main `85e686fc`。合并后的 18 文件定向回归中，其余 185 项通过；两个失败组定位为经验 operationId 的非法冒号及退出 VM fixture 缺少新宿主变量。操作 ID 改为原 learning 格式允许的稳定标识；旧非法 intent 保留原记录，仅按相同来源确定性映射调用 ID，不放宽来源或权限校验。修复后在实际编译产物复验：经验消费 3/3、退出清理 16/16；另有 Main 实际组合 4/4、通知宿主 12/12。首次未配置开发经验的普通任务正常执行，并冻结“不消费”，不能在任务中途追随新激活。
+
+Main 组合测试执行原主入口函数和 action/退出回调，使用真实 Desktop 工厂及明确 Fake 原生端口，覆盖 startup 先绑定通知策略、动态共享配置、原事件 guard/flush、admin/mainFrame、原窗口替换、截止及退出撤销。通知回归使用实际 Runtime/Gateway，证明同 Runtime 的 Client 后绑定不重建宿主、保持原状态且不发通知。依赖缺产物时补建 productivity，再完整重跑该通知文件，12/12 通过；没有将 import 失败算作测试通过。
+
+完整全仓 `npm run check` 留给当前提交的 CI；本地按用户要求仅执行必要构建与定向回归，不启动 Laya。实际 UI 渲染、安全存储/Windows journal、付费模型、AgentArts 及其余 28 图 host/guard 仍分别标为未验证或原目录的 unavailable，不以本接线包代替整体验收。

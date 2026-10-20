@@ -78,6 +78,22 @@ test('Synthetic repeated poll does not keep re-entering an unresolved original w
   await pump.tick();await pump.tick();assert.equal(resumed,1);
 });
 
+test('native maintenance callback follows original source recovery and resume without changing worker reentry',async()=>{
+  const calls=[],deadline=new Date(Date.now()+60000).toISOString();
+  const binding={taskId:'original',sourceTaskId:'source',taskDeadline:deadline,imageBinding:'original-image'};
+  const workflow={snapshot:()=>({state:'configured_not_verified'}),
+    maintenancePage:()=>({items:[{binding,state:'waiting_reconciliation',conversationId:'desktop-panel'}]}),
+    acquireMaintenance:async()=>{calls.push('acquire');return {binding,host:{inspect:()=>({application:{state:{schedules:{}}}})}};}};
+  const app={runtime:{getTask:()=>({state:'waiting_reconciliation'})},resumeProactiveTask:()=>calls.push('resume')};
+  const pump=createDesktopProactiveRuntimePump({getApplication:()=>app,getWorkflow:()=>workflow,resolveUserConversation:()=> 'desktop-panel',
+    recoverSources:async()=>{calls.push('recover');return {state:'recovered'};},afterNativeMaintenance:async(taskId,context)=>{
+      assert.equal(taskId,binding.taskId);assert.equal(context.signal.aborted,false);
+      assert.ok(Date.parse(context.deadline)<=Date.parse(deadline));calls.push('attach');
+    }});
+  await pump.tick();assert.deepEqual(calls,['acquire','recover','resume','attach']);
+  calls.length=0;await pump.tick();assert.deepEqual(calls,['acquire','recover','attach']);
+});
+
 test('Synthetic bounded maintenance continues its original snapshot on the next existing poll',async()=>{
   const pages=[];
   const workflow={snapshot:()=>({state:'configured_not_verified'}),maintenancePage:input=>{

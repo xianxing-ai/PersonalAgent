@@ -25,12 +25,13 @@ import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '
 import {parseCodingRepairInput,parseCodingRepairCheckReadback,parseCodingRepairPublishRequest} from '@personal-agent/contracts/coding-repair';
 import {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL} from './harness-candidates.js';
 import {createRuntimeHarnessCandidateBindings} from './harness-candidate-bindings.js';
-import type {HarnessEventOrigin} from './harness-event-delivery.js';
-import {createRuntimeHarnessExperienceApplication,harnessExperienceWorkspaceDigest} from './harness-experience.js';
-import type {RuntimeHarnessExperienceOptions} from './harness-experience.js';
 import {createHarnessExperienceBindings} from './harness-experience-bindings.js';
-import type {DeveloperExperienceScope,DeveloperExperienceLease,LearningContext} from '@personal-agent/learning';
+import {createRuntimeHarnessExperienceApplication,harnessExperienceWorkspaceDigest} from './harness-experience.js';
+import type {HarnessExperienceOrigin} from './harness-experience.js';
+import type {SqliteLearningHost,WorkflowVersion,LearningContext,DeveloperExperienceScope,DeveloperExperienceLease} from '@personal-agent/learning';
 import type {CodingRepairSnapshot} from '@personal-agent/contracts/coding-repair';
+import type {HarnessEventOrigin} from './harness-event-delivery.js';
+import type {RuntimeHarnessExperienceOptions} from './harness-experience.js';
 import {DevWorkflowPatchRecovery} from '../dev-workflows-patch-reconciliation.js';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {TaskRuntime} from '../index.js';
@@ -130,6 +131,14 @@ export interface RuntimeHarnessExperienceHostOptions extends Pick<RuntimeHarness
   /** Fresh synchronous metadata from the same original workspace host; no cached async snapshot. */
   readCurrent:()=>{snapshot:CodingRepairSnapshot;versions:{workflowVersion:string;runtimeVersion:string;executionKind:'real_host'};
     configuration:{bindingId:string;workspaceId:string;recipeFingerprint:string}}|undefined;
+}
+
+/** Main-process composition only. The synchronous source reader conveys no execution grant. */
+export interface RuntimeHarnessExperienceApplicationOptions {
+  namespace:string;learning:SqliteLearningHost;
+  readCurrent():{snapshot:CodingRepairSnapshot;versions:{workflowVersion:string;runtimeVersion:string;executionKind:string};
+    configuration:{bindingId:string;workspaceId:string;recipeFingerprint:string}}|undefined;
+  confirmActivation(candidate:WorkflowVersion,context:LearningContext):Promise<boolean>;
 }
 
 const CONVERSATION_HISTORY_LIMIT = 20;
@@ -445,10 +454,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
   private readonly harnessCandidateOptions?:RuntimeHarnessCandidatesOptions;
   private readonly harnessCandidateBindings?:ReturnType<typeof createRuntimeHarnessCandidateBindings>;
+  private harnessExperienceState?:{application:ReturnType<typeof createRuntimeHarnessExperienceApplication>;
+    bindings:ReturnType<typeof createHarnessExperienceBindings>;options:RuntimeHarnessExperienceApplicationOptions};
   private readonly activeHarnessCandidateRecovery=new Map<string,Promise<{task:TaskSnapshot;trialRunId:string;recovery:HarnessTrialRecovery;evidenceRef:string}>>();
-  private harnessExperienceHost?:RuntimeHarnessExperienceHostOptions;
-  private harnessExperienceApplication?:ReturnType<typeof createRuntimeHarnessExperienceApplication>;
-  private harnessExperienceBindings?:ReturnType<typeof createHarnessExperienceBindings>;
   private readonly experienceSendPolicies=new Map<string,{ownerTaskId:string;lease:DeveloperExperienceLease}>();
   private readonly onHarnessEventProgress?:RuntimeApplicationOptions['onHarnessEventProgress'];
   private readonly assertHarnessEventCurrentPort?:RuntimeApplicationOptions['assertHarnessEventCurrent'];
@@ -665,6 +673,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       ...(options.idFactory ? {idFactory: options.idFactory} : {}),
       ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
+          this.harnessExperienceRecipes(request.taskId,{
+            deadline:this.runtime.loadCheckpoint(request.taskId,'application-deadline') as string,
+            signal:new AbortController().signal});
           this.assertHarnessEventCurrent(request.taskId);
           assertUserTaskDelegationInvocation(this.runtime, request);
           this.assertSubagentConversationInvocation(request.taskId,request.toolName);
@@ -763,6 +774,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return current;
       };
       this.tools = {list: currentDescriptors, invoke: async invocation => {
+        this.harnessExperienceRecipes(invocation.taskId,invocation);
         this.assertHarnessEventCurrent(invocation.taskId);
         this.consumeHarnessExperiencePolicy(invocation);
         assertUserTaskDelegationInvocation(this.runtime, {...invocation, argumentsDigest: toolArgumentsDigest(invocation.arguments)});
@@ -975,33 +987,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   get deployment(): TextApplication['deployment'] { this.requireLocalText(); return structuredClone(this.textApplication.deployment); }
   get activeTaskCount(): number { return this.activeTextTasks.size; }
-  get harnessExperience():ReturnType<typeof createRuntimeHarnessExperienceApplication>|undefined {return this.harnessExperienceApplication;}
+  get harnessExperience():ReturnType<typeof createRuntimeHarnessExperienceApplication>|undefined {return this.harnessExperienceState?.application;}
 
-  /** One composition on the existing learning database; current workspace/model authorities remain dynamic. */
+  /** Existing Main composition entry; createHarnessExperienceApplication is its compatible returning alias. */
   configureHarnessExperience(options:RuntimeHarnessExperienceHostOptions):void {
-    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks||!this.harnessCandidateBindings
-      ||!this.readDeveloperHarnessConfiguration||this.harnessExperienceApplication
-      ||typeof options.readCurrent!=='function'||typeof options.confirmActivation!=='function')
-      throw new ProtocolError('INVALID_ARGUMENT','Experience requires the original candidate and learning composition once');
-    this.harnessExperienceHost={...options};
-    const bindings=createHarnessExperienceBindings(this.runtime,this.harnessCandidateBindings);
-    this.harnessExperienceBindings=bindings;
-    this.harnessExperienceApplication=createRuntimeHarnessExperienceApplication({namespace:'developer-harness:'+hashJson(options.namespace),
-      learning:options.learning,runtime:this.runtime,confirmActivation:options.confirmActivation,
-      readInvocation:bindings.readInvocation,readMainInput:bindings.readMainInput,
-      readCurrent:ownerTaskId=>this.readHarnessExperienceCurrent(ownerTaskId),
-      assertOrigin:(origin,context)=>{
-        if(context.signal.aborted||this.now().getTime()>=Date.parse(context.deadline))
-          throw new ProtocolError('CANCELLED','Original experience observation is inactive');
-        const owner=this.originalHarnessOwner(origin.ownerTaskId);
-        if(!owner||owner.taskId!==origin.ownerTaskId)throw new ProtocolError('UNAUTHORIZED','Experience owner is not the original user worker');
-        const parent=this.runtime.loadCheckpoint(owner.taskId,'subtask-parent') as {parentTaskId:string};
-        for(const run of [origin.trial,origin.comparison,origin.adoption,origin.publication]) {
-          const marker=readRuntimeSubagentSibling(this.runtime,run.taskId);
-          if(run.taskId!==owner.taskId&&(!marker||marker.binding.ownerTaskId!==owner.taskId||marker.binding.parentTaskId!==parent.parentTaskId))
-            throw new ProtocolError('SCOPE_DENIED','Experience references another owner or execution plan');
-        }
-      }});
+    this.createHarnessExperienceApplication(options);
   }
 
   private originalHarnessOwner(taskId:string):TaskSnapshot|undefined {
@@ -1014,46 +1004,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return owner;
   }
 
-  private readHarnessExperienceCurrent(ownerTaskId:string):{scope:DeveloperExperienceScope;snapshot:CodingRepairSnapshot}|undefined {
-    try {
-      if(!this.originalHarnessOwner(ownerTaskId)||!this.harnessExperienceHost||!this.readDeveloperHarnessConfiguration)return undefined;
-      const configuration=readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration);
-      const current=this.harnessExperienceHost.readCurrent();
-      if(!configuration||!current||current.configuration.bindingId!==configuration.workspaceRef
-        ||current.versions.executionKind!=='real_host')return undefined;
-      return {snapshot:structuredClone(current.snapshot),scope:{workspaceId:current.configuration.workspaceId,
-        workspaceDigest:harnessExperienceWorkspaceDigest(current.snapshot),
-        configurationDigest:this.harnessStableConfigurationRef(configuration,ownerTaskId),workflowVersion:current.versions.workflowVersion,
-        runtimeVersion:current.versions.runtimeVersion,recipeFingerprint:current.configuration.recipeFingerprint}};
-    }catch{return undefined;}
-  }
-
-  private harnessExperienceWorkflowId(scope:DeveloperExperienceScope):string {
-    return 'developer-harness:'+hashJson({...scope,workspaceDigest:undefined}).slice(0,48);
-  }
-
-  private harnessExperiencePolicy(taskId:string,context:LearningContext,strict=false):
+  private harnessExperiencePolicy(taskId:string,context:LearningContext,_strict=false):
     {ownerTaskId:string;lease:DeveloperExperienceLease;requiredRecipeIds:readonly string[]}|undefined {
-    if(!this.harnessExperienceApplication)return undefined;
     const owner=this.originalHarnessOwner(taskId);if(!owner)return undefined;
-    const key='harness-experience:lease:v1';
-    if(this.runtime.loadCheckpoint(owner.taskId,'harness-experience:lease-invalidated:v1')!==undefined)return undefined;
-    try {
-      const current=this.readHarnessExperienceCurrent(owner.taskId);if(!current)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Current experience source is unavailable');
-      let lease=this.runtime.loadCheckpoint(owner.taskId,key) as DeveloperExperienceLease|null|undefined;
-      if(lease===undefined) {
-        lease=this.harnessExperienceApplication.readApplicable(this.harnessExperienceWorkflowId(current.scope),current.scope,context);
-        this.runtime.saveCheckpointOnce(owner.taskId,key,lease);
-      }
-      if(lease===null)return undefined;
-      const policy=this.harnessExperienceApplication.assertApplicable(lease,current.scope,context);
-      return {ownerTaskId:owner.taskId,lease,requiredRecipeIds:policy.requiredRecipeIds};
-    }catch(error){
-      this.runtime.saveCheckpoint(owner.taskId,'harness-experience:lease-invalidated:v1',{
-        at:this.now().toISOString(),reason:error instanceof ProtocolError?error.code:'REVISION_CONFLICT'});
-      if(strict)throw new ProtocolError('REVISION_CONFLICT','Original experience lease changed before consumption');
-      return undefined;
-    }
+    const requiredRecipeIds=this.harnessExperienceRecipes(taskId,context);
+    const saved=this.runtime.loadCheckpoint(owner.taskId,'harness-experience:lease:v1');
+    const lease=plainObject(saved)&&Object.hasOwn(saved,'lease')?saved.lease:saved;
+    if(!lease)return undefined;
+    return {ownerTaskId:owner.taskId,lease:lease as DeveloperExperienceLease,requiredRecipeIds};
   }
 
   private consumeHarnessExperiencePolicy(invocation:{taskId:string;runId:string;toolName:string;arguments:unknown;
@@ -1069,21 +1027,32 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private proposeHarnessExperienceFromOwner(ownerTaskId:string):void {
-    if(!this.harnessExperienceApplication||!this.harnessExperienceBindings||this.runtime.getTask(ownerTaskId).state!=='succeeded')return;
+    const host=this.harnessExperienceState;
+    if(!host||this.runtime.getTask(ownerTaskId).state!=='succeeded')return;
     try {
-      const current=this.readHarnessExperienceCurrent(ownerTaskId);if(!current)return;
+      const current=this.readHarnessExperienceCurrent(ownerTaskId,host.options);if(!current)return;
       const owner=this.runtime.getTask(ownerTaskId),deadline=this.runtime.loadCheckpoint(ownerTaskId,'application-deadline');
       if(typeof deadline!=='string'||this.now().getTime()>=Date.parse(deadline))return;
-      for(const origin of this.harnessExperienceBindings.publishedOrigins(ownerTaskId)) {
+      for(const origin of host.bindings.publishedOrigins(ownerTaskId)) {
         const key='harness-experience:proposal:'+hashJson(origin),workflowId=this.harnessExperienceWorkflowId(current.scope);
-        let intent=this.runtime.loadCheckpoint(ownerTaskId,key) as
+        const existing=this.runtime.loadCheckpoint(ownerTaskId,key);
+        // Earlier successful completion hooks stored the acknowledged revision here.
+        // Preserve that receipt; do not reinterpret it as a pending intent or propose again.
+        if(plainObject(existing)&&typeof existing.workflowId==='string'&&Number.isSafeInteger(existing.revision)
+          &&!Object.hasOwn(existing,'operationId'))continue;
+        let intent=existing as
           {workflowId:string;expectedRevision:number|null;operationId:string;createdAt:string}|undefined;
         if(intent===undefined) {
-          intent={workflowId,expectedRevision:this.harnessExperienceApplication.listCandidates().find(item=>item.workflowId===workflowId)?.revision??null,
-            operationId:'harness-experience:'+hashJson(origin),createdAt:owner.updatedAt};
+          intent={workflowId,expectedRevision:host.application.listCandidates().find(item=>item.workflowId===workflowId)?.revision??null,
+            operationId:'harness-experience-'+hashJson(origin),createdAt:owner.updatedAt};
           this.runtime.saveCheckpointOnce(ownerTaskId,key,intent);
         }
-        this.harnessExperienceApplication.proposeFromConfirmed(origin,{...intent,deadline,signal:new AbortController().signal});
+        // The former colon-prefixed ID could never pass the learning operation
+        // schema. Retain its original intent row and deterministically map only
+        // that known rejected spelling to the same valid per-origin operation.
+        const operationId=intent.operationId==='harness-experience:'+hashJson(origin)
+          ?'harness-experience-'+hashJson(origin):intent.operationId;
+        host.application.proposeFromConfirmed(origin,{...intent,operationId,deadline,signal:new AbortController().signal});
       }
     }catch(error){this.runtime.saveCheckpoint(ownerTaskId,'harness-experience:proposal-error',{
       code:error instanceof ProtocolError?error.code:'NOT_VALIDATED'});}
@@ -1263,7 +1232,137 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
   get coordinationConfigurationRef():string {return this.coordinationBinding;}
 
+  /** Connect the existing learning lifecycle to canonical original Runtime journals. */
+  createHarnessExperienceApplication(options:RuntimeHarnessExperienceApplicationOptions) {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks||!this.harnessCandidateBindings
+      ||!this.readDeveloperHarnessConfiguration||this.harnessExperienceState||typeof options.readCurrent!=='function'||typeof options.confirmActivation!=='function')
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original harness experience composition unavailable');
+    const bindings=createHarnessExperienceBindings(this.runtime,this.harnessCandidateBindings);
+    const application=createRuntimeHarnessExperienceApplication({...options,namespace:'developer-harness:'+hashJson(options.namespace),runtime:this.runtime,
+      readInvocation:bindings.readInvocation,readMainInput:bindings.readMainInput,
+      readCurrent:ownerTaskId=>this.readHarnessExperienceCurrent(ownerTaskId,options),
+      assertOrigin:origin=>this.assertHarnessExperienceOrigin(origin,options)});
+    this.harnessExperienceState={application,bindings,options:{...options}};
+    return application;
+  }
+
+  private readHarnessExperienceCurrent(ownerTaskId:string,options:RuntimeHarnessExperienceApplicationOptions):
+    {scope:DeveloperExperienceScope;snapshot:CodingRepairSnapshot}|undefined {
+    if(!this.originalHarnessOwner(ownerTaskId))return undefined;
+    const configuration=this.readDeveloperHarnessConfiguration
+      ?readTrustedDeveloperHarnessConfiguration(this.readDeveloperHarnessConfiguration):undefined;
+    const current=options.readCurrent();
+    if(!configuration||!current||current.configuration.bindingId!==configuration.workspaceRef
+      ||current.versions.executionKind!=='real_host')return undefined;
+    const task=this.runtime.getTask(ownerTaskId);
+    if(this.runtime.loadCheckpoint(ownerTaskId,'competition-configuration-binding')!==undefined||task.state==='succeeded')
+      this.assertCompetitionTaskConfiguration(ownerTaskId);
+    const selected=this.runtime.loadCheckpoint(ownerTaskId,'execution-model');
+    if(selected!==undefined) {
+      const original=parseExecutionModelSelection(selected);
+      const resolved=this.resolveExecutionModel?.({modelId:original.modelId,
+        ...(original.reasoningEffort?{reasoningEffort:original.reasoningEffort}:{})});
+      if(!isDeepStrictEqual(original,resolved))return undefined;
+    }
+    return {snapshot:structuredClone(current.snapshot),scope:{workspaceId:current.configuration.workspaceId,
+      workspaceDigest:harnessExperienceWorkspaceDigest(current.snapshot),
+      configurationDigest:this.harnessStableConfigurationRef(configuration,ownerTaskId),
+      workflowVersion:current.versions.workflowVersion,runtimeVersion:current.versions.runtimeVersion,
+      recipeFingerprint:current.configuration.recipeFingerprint}};
+  }
+
+  private assertHarnessExperienceOrigin(origin:HarnessExperienceOrigin,options:RuntimeHarnessExperienceApplicationOptions):void {
+    const owner=this.runtime.getTask(origin.ownerTaskId);
+    const saved=this.runtime.loadCheckpoint(owner.taskId,'subtask-parent');
+    const root=plainObject(saved)&&typeof saved.parentTaskId==='string'?readUserTaskDelegation(this.runtime,saved.parentTaskId):undefined;
+    const current=this.readHarnessExperienceCurrent(owner.taskId,options);
+    const frozen=this.runtime.loadCheckpoint(owner.taskId,'harness-candidates:configuration') as
+      {configurationRef?:string;workspaceRef?:string;context?:HarnessCandidateContext}|undefined;
+    if(!root||!current||owner.state!=='succeeded'||owner.cancelRequested
+      ||!isDeepStrictEqual(saved,{...root.subtask,parentTaskId:root.parentTaskId,parentDeadline:root.deadline})
+      ||owner.conversationId!==`desktop-subtask:${root.parentTaskId}`
+      ||this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${root.parentTaskId}-user-work`)?.taskId!==owner.taskId
+      ||this.runtime.getTask(root.parentTaskId).cancelRequested
+      ||frozen?.configurationRef!==current.scope.configurationDigest
+      ||frozen.context?.binding.workspaceId!==current.scope.workspaceId
+      ||frozen.workspaceRef!==this.readDeveloperHarnessConfiguration?.()?.workspaceRef
+      ||origin.adoption.taskId!==owner.taskId||origin.publication.taskId!==owner.taskId)
+      throw new ProtocolError('UNAUTHORIZED','Experience origin is not the original successful user-work');
+    const canonical=this.harnessExperienceState?.bindings.readOrigin(owner.taskId,origin.publication.runId);
+    if(!isDeepStrictEqual(canonical,origin))
+      throw new ProtocolError('UNAUTHORIZED','Experience origin differs from the canonical adoption and publication');
+    for(const reference of [origin.trial,origin.comparison,origin.adoption,origin.publication]) {
+      const task=this.runtime.getTask(reference.taskId);
+      if(task.state!=='succeeded'||task.cancelRequested||task.conversationId!==owner.conversationId)
+        throw new ProtocolError('UNAUTHORIZED','Experience source task is not an original successful member');
+      if(task.taskId!==owner.taskId) {
+        const peer=readRuntimeSubagentSibling(this.runtime,task.taskId);
+        if(!peer||peer.binding.ownerTaskId!==owner.taskId||peer.binding.parentTaskId!==root.parentTaskId
+          ||peer.binding.deadline!==root.deadline)
+          throw new ProtocolError('UNAUTHORIZED','Experience executor is outside its original persisted plan');
+        this.assertDeveloperHarnessExecutorCurrent(task.taskId);
+      }
+    }
+  }
+
+  private harnessExperienceWorkflowId(scope:DeveloperExperienceScope):string {
+    return 'developer-harness:'+hashJson({...scope,workspaceDigest:undefined}).slice(0,48);
+  }
+
+  private harnessExperienceOwner(taskId:string):string|undefined {
+    const peer=readRuntimeSubagentSibling(this.runtime,taskId);
+    if(peer)return peer.binding.ownerTaskId;
+    const binding=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string;subtaskId?:string}|undefined;
+    const root=binding?.parentTaskId?readUserTaskDelegation(this.runtime,binding.parentTaskId):undefined;
+    return root&&binding?.subtaskId==='user-work'
+      &&this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${root.parentTaskId}-user-work`)?.taskId===taskId?taskId:undefined;
+  }
+
+  private harnessExperienceRecipes(taskId:string,context:LearningContext,initialize=false):readonly string[] {
+    const ownerTaskId=this.harnessExperienceOwner(taskId);
+    if(!ownerTaskId)return [];
+    const key='harness-experience:lease:v1',host=this.harnessExperienceState;
+    const original=this.runtime.loadCheckpoint(ownerTaskId,key);
+    let saved=original as {ownerTaskId:string;scope:DeveloperExperienceScope|null;lease:DeveloperExperienceLease|null}|undefined;
+    if(original===null)saved={ownerTaskId,scope:null,lease:null};
+    else if(plainObject(original)&&!Object.hasOwn(original,'ownerTaskId')) {
+      const lease=original as unknown as DeveloperExperienceLease;
+      saved={ownerTaskId,scope:lease.source?.scope??null,lease};
+    }
+    if(this.runtime.loadCheckpoint(ownerTaskId,'harness-experience:lease-invalidated:v1')!==undefined) {
+      if(saved?.lease)throw new ProtocolError('REVISION_CONFLICT','Original experience lease was invalidated');
+      return [];
+    }
+    if(saved===undefined&&initialize&&host) {
+      const current=this.readHarnessExperienceCurrent(ownerTaskId,host.options);
+      const beforeFirstAttempt=this.runtime.loadCheckpoint(ownerTaskId,'competition-loop')===undefined
+        &&this.runtime.readToolExecutions(ownerTaskId).length===0;
+      const lease=current&&beforeFirstAttempt
+        ?host.application.readApplicable(this.harnessExperienceWorkflowId(current.scope),current.scope,context):null;
+      saved={ownerTaskId,scope:current?.scope??null,lease};
+      this.runtime.saveCheckpointOnce(ownerTaskId,key,saved);
+      if(!isDeepStrictEqual(this.runtime.loadCheckpoint(ownerTaskId,key),saved))
+        throw new ProtocolError('REVISION_CONFLICT','Original experience lease changed');
+    }
+    if(saved===undefined)return [];
+    if(saved.ownerTaskId!==ownerTaskId)throw new ProtocolError('UNAUTHORIZED','Original experience owner changed');
+    if(saved.scope===null&&saved.lease===null)return [];
+    if(!host||saved.scope===null)throw new ProtocolError('UNAUTHORIZED','Original experience reader unavailable');
+    const current=this.readHarnessExperienceCurrent(ownerTaskId,host.options);
+    // No recipe lease was consumed: normal original work may change its files,
+    // but a later activation or a different configuration cannot replace this decision.
+    if(saved.lease===null) {
+      if(!current||!isDeepStrictEqual({...current.scope,workspaceDigest:''},{...saved.scope,workspaceDigest:''}))
+        throw new ProtocolError('REVISION_CONFLICT','Original experience configuration changed');
+      return [];
+    }
+    if(!current||!isDeepStrictEqual(current.scope,saved.scope))
+      throw new ProtocolError('REVISION_CONFLICT','Original experience configuration or workspace changed');
+    return host.application.assertApplicable(saved.lease,current.scope,context).requiredRecipeIds;
+  }
+
   private assertInputActive(request:CoordinationRequest):void {
+    this.harnessExperienceRecipes(request.taskId,request);
     this.assertHarnessEventCurrent(request.taskId);
     this.assertDeveloperHarnessExecutorCurrent(request.taskId);
     const experience=this.experienceSendPolicies.get(request.taskId);
@@ -1416,7 +1515,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const withStrategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT
           ?Object.freeze({...request,goal:request.goal+experienceText}):request;
         if(withStrategy===request)this.experienceSendPolicies.delete(request.taskId);
-        this.assertInputActive(withStrategy);return await port.execute(withStrategy);
+        this.assertInputActive(withStrategy);
+        const result=await port.execute(withStrategy);
+        this.harnessExperienceRecipes(request.taskId,request);
+        return result;
       }catch(error) {
         if (!(error instanceof AgentArtsResultUnknownError)) this.holdCompetitionExport(request.taskId,error);
         throw error;
@@ -1795,6 +1897,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       || !isDeepStrictEqual(worker.loadCheckpoint('subtask-tools-binding'),descriptors)) {
       throw new ProtocolError('UNAUTHORIZED','Default child tool scope changed');
     }
+    if(binding.subtaskId==='user-work')this.harnessExperienceRecipes(worker.taskId,worker,true);
     const catalog=this.competitionToolCatalog?.restrict(tools);
     if(readRuntimeCodingRepairRequest(this,subtask,worker.taskId)) {
       if(!this.codingRepair)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original F15 image binding is unavailable');
@@ -1823,6 +1926,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (request.operation === 'authorization.respond' && request.payload.decision === 'allow_once'
       && this.profile === 'huawei_ict_agentarts') {
       const approval=this.runtime.getApproval(request.payload.approvalId);
+      this.harnessExperienceRecipes(approval.taskId,{deadline:request.deadline,signal});
       this.assertHarnessEventCurrent(approval.taskId);
       if(this.runtime.loadCheckpoint(approval.taskId,'application-profile')==='huawei_ict_agentarts'
         || this.runtime.loadCheckpoint(approval.taskId,'competition-loop')!==undefined) {
@@ -3373,6 +3477,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(this.profile!=='huawei_ict_agentarts'||this.activeTextTasks.has(request.taskId)||this.runtime.isTaskActive(request.taskId)
       ||typeof request.assertUnchanged!=='function'||!['before_first_send','confirmed_read'].includes(request.mode))return {accepted:false};
     request.assertUnchanged();
+    this.harnessExperienceRecipes(request.taskId,{deadline:request.deadline,signal:new AbortController().signal});
     const original=this.runtime.getTask(request.taskId),goal=this.runtime.loadCheckpoint(request.taskId,'application-goal');
     if(request.harnessEventOrigin) {
       const origin=request.harnessEventOrigin;
@@ -3443,6 +3548,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   resumeTask(taskId: string): void {
+    this.harnessExperienceRecipes(taskId,{deadline:this.runtime.loadCheckpoint(taskId,'application-deadline') as string,signal:new AbortController().signal});
     this.assertHarnessEventCurrent(taskId);
     if(this.runtime.loadCheckpoint(taskId,CODING_REPAIR_STATE)!==undefined) {this.resumeCodingRepairTask(taskId);return;}
     if(this.profile==='huawei_ict_agentarts'
@@ -3718,6 +3824,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Trusted readback consumer, resuming the same loop only after exact original run confirmation. */
   resumeConfirmedTask(taskId:string):void {
+    this.harnessExperienceRecipes(taskId,{deadline:this.runtime.loadCheckpoint(taskId,'application-deadline') as string,signal:new AbortController().signal});
     if (this.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
       throw new ProtocolError('RESULT_UNKNOWN', 'Confirmed local tool execution cannot replay an unknown cloud invocation');
     }

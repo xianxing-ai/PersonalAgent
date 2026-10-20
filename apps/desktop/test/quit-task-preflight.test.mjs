@@ -38,7 +38,8 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
-    'windowsControlHost','developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog'];
+    'windowsControlHost','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
+    'harnessEventsHost','harnessEventsClosing','harnessContextHost'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
     runtimeStartup: {snapshot: () => ({state: startup})}, runtimeApplication: {activeTaskCount: count,
@@ -50,7 +51,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
     localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
-    windowsControlClosed: false, windowsControlClosing: undefined,
+    windowsControlClosed: false, windowsControlClosing: undefined, harnessEventsClosed:false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
