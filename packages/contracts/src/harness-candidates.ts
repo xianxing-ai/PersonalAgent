@@ -31,7 +31,7 @@ export interface HarnessCandidateContext {
 export interface HarnessCandidateComparison {
   version:1;state:'selected'|'abstained';reason:string;
   candidates:{candidateId:string;artifactId:string;status:'verified'|'failed'|'unknown';changedFiles:number}[];
-  recommendation?:{candidateId:string;artifactId:string;artifactDigest:string;publishRequest:CodingRepairPublishRequest};
+  recommendation?:{candidateId:string;artifactId:string;artifactDigest:string;trialRunId?:string;publishRequest:CodingRepairPublishRequest};
   verification:'unverified';
 }
 export function parseHarnessCandidateBinding(value:unknown):HarnessCandidateBinding {
