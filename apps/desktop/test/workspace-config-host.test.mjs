@@ -47,17 +47,112 @@ test('developer configuration is Main-only, preserves the original task lease an
   host.bindApplication({readToolConversation:()=>canonical,runtime:{loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}});
   const configuration=host.readDeveloperConfiguration(),scope={taskId:'developer-task',deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
   assert.equal(configuration.rootPath,root);assert.equal(configuration.metadataExportAllowed,false);assert.equal(configuration.available(scope),false);
-  allowWorkspaceRead(host);assert.equal(configuration.available(scope),true);canonical=undefined;assert.equal(configuration.available(scope),false);
+  await allowWorkspaceRead(host);assert.equal(configuration.available(scope),true);canonical=undefined;assert.equal(configuration.available(scope),false);
   canonical='synthetic-user';host.revoke();assert.equal(configuration.available(scope),false);
   assert.throws(()=>configuration.assertCurrent(scope),{code:'UNAUTHORIZED'});
   assert.equal(Object.hasOwn(host.snapshot(),'rootPath'),false);
+});
+
+test('harness workspace consumer preserves consent and actual scope with a stable deferred repair proxy',async t=>{
+  const {root,node,configuration,open}=await workspaceBindingFixture(t);
+  await writeFile(path.join(root,'fixture.js'),'export const fixture = 1;\n');
+  const record=JSON.parse(await readFile(configuration,'utf8'));
+  record.encryptedCheckFile=Buffer.from('fixture.js').toString('base64');await writeFile(configuration,JSON.stringify(record));
+  // Version and Runtime checkpoint ports are explicit metadata fixtures; no command/helper is invoked.
+  let versions={workflowVersion:'F15-fixture-v1',runtimeVersion:'runtime-fixture-v1',executionKind:'real_host'},onVersionsRead;
+  // Explicit discovery fixture; host.start copies real files but never launches this executable.
+  const host=open({findExecutable:name=>name==='pwsh.exe'?node:undefined,
+    createCommandRecipeTool:createWorkspaceCommandRecipeTool,readHarnessVersions:()=>{onVersionsRead?.();return versions;}});
+  const checkpoints=new Map(),permittedHarnessSessions=new Set();
+  host.bindApplication({readToolConversation:()=> 'fixture-conversation',runtime:{
+    loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)},
+    // Explicit Fake Runtime canonical reader; it never trusts a model backend/directory argument.
+    isHarnessCodingRepairSession:(ctx,{sessionId,operation})=>ctx.taskId===context.taskId
+      &&['publish','snapshot','readback','reconcile'].includes(operation)&&permittedHarnessSessions.has(sessionId)});
+  const context={taskId:'owner-task',runId:'fixture-run',authorizationRef:'fixture-run',scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],
+    deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+  const configurationBinding=host.readDeveloperConfiguration();
+  const scope={ownerTaskId:context.taskId,actualTaskId:context.taskId,parentTaskId:'parent-task',scopeRef:context.runId,
+    configurationRef:'a'.repeat(64),inputDigest:'b'.repeat(64),deadline:context.deadline,workspaceRef:configurationBinding.bindingId};
+  assert.equal(Object.isFrozen(host.harnessRepairHost),true);
+  assert.equal(host.harnessRepairHost,host.harnessRepairHost);
+  assert.equal(await host.readHarnessCandidateContext(context,scope),undefined);
+  await host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:true});
+  assert.equal(configurationBinding.available(context),true);
+  const result=await host.readHarnessCandidateContext(context,scope);
+  assert.equal(result.binding.taskId,scope.ownerTaskId);assert.equal(result.binding.inputDigest,scope.inputDigest);
+  assert.equal(result.binding.configurationDigest,scope.configurationRef);assert.equal(result.binding.runtimeVersion,'runtime-fixture-v1');
+  assert.equal(result.binding.workspaceId,createHash('sha256').update(root).digest('hex'));
+  assert.notEqual(result.binding.workspaceId,scope.workspaceRef,'workspace identity differs from the configuration grant');
+  assert.deepEqual(result.recipes,[{recipeId:'node-check',packageIds:['root'],required:true}]);
+  assert.equal(result.baseline.files.some(file=>'content' in file),false);
+  assert.equal(Object.hasOwn(result,'rootPath'),false);
+  const current=host.readHarnessExperienceCurrentSync();
+  assert.deepEqual(current.snapshot,result.baseline);
+  assert.equal(current.configuration.workspaceId,result.binding.workspaceId);
+  assert.equal(current.configuration.recipeFingerprint,result.binding.recipeFingerprint);
+  assert.equal(Object.hasOwn(current,'rootPath'),false);
+  // This runtime deliberately has no getTask/taskLive port: a succeeded source owner is not a read fence.
+  assert.equal(typeof current.then,'undefined');
+  const synchronousVersions=versions;versions=Promise.resolve(synchronousVersions);
+  assert.equal(host.readHarnessExperienceCurrentSync(),undefined,'an asynchronous versions port cannot stand in for a current synchronous read');
+  versions=synchronousVersions;
+  const childContext={...context,taskId:'actual-child',runId:'child-run'};
+  checkpoints.set('actual-childcoding-repair:parent',{taskId:context.taskId});
+  const childScope={...scope,actualTaskId:childContext.taskId};
+  const childBinding=await host.readHarnessCandidateContext(childContext,childScope);
+  const started=await host.harnessRepairHost.start({mode:'isolated',allowedPaths:['fixture.js']},childContext);
+  assert.equal(started.session.taskId,childContext.taskId,'harness keeps the real executor identity');
+  assert.equal(started.session.workspaceId,childBinding.binding.workspaceId);
+  assert.equal(started.initialSnapshot.snapshotId,childBinding.baseline.snapshotId);
+  assert.deepEqual(started.recipes,childBinding.recipes);
+  const originalStart=host.tools.find(tool=>tool.descriptor.name==='coding.repair.start');
+  const original=await originalStart.execute({mode:'isolated',allowedPaths:['fixture.js']},childContext);
+  assert.equal(original.session.taskId,context.taskId,'existing F15 keeps its owner mapping');
+  assert.equal(original.session.workspaceId,createHash('sha256').update(root).digest('hex'));
+  assert.equal(original.session.workspaceId,started.session.workspaceId);
+  const prepare=await host.harnessRepairHost.start({mode:'main',allowedPaths:['fixture.js']},context);
+  const sessionId=prepare.session.sessionId;
+  const originalSnapshot=host.tools.find(tool=>tool.descriptor.name==='coding.repair.snapshot');
+  await assert.rejects(originalSnapshot.execute({sessionId},context),{code:'ENOENT'},'model sessionId alone does not select the harness backend');
+  permittedHarnessSessions.add(sessionId);
+  assert.equal((await originalSnapshot.execute({sessionId},context)).snapshotId,prepare.initialSnapshot.snapshotId);
+  const originalReadback=host.tools.find(tool=>tool.descriptor.name==='coding.repair.readback');
+  const readback=await originalReadback.execute({sessionId},context);
+  assert.equal(readback.sessionId,sessionId);
+  const readbackExport=host.competitionToolExports.find(item=>item.toolName==='coding.repair.readback');
+  assert.equal(readbackExport.exportPolicyVersion,'coding-repair-metadata-v1');
+  assert.equal(readbackExport.accepts({taskId:context.taskId}),true);
+  assert.deepEqual(readbackExport.project({taskId:context.taskId,result:readback,signal:context.signal}),readback);
+  const publishExport=host.competitionToolExports.find(item=>item.toolName==='coding.repair.publish');
+  const originalPublished={version:1,sessionId,state:'unknown',files:[],evidenceRefs:[]};
+  assert.deepEqual(publishExport.project({taskId:context.taskId,result:originalPublished,signal:context.signal}),originalPublished);
+  const originalPublish=host.tools.find(tool=>tool.descriptor.name==='coding.repair.publish');
+  await assert.rejects(originalPublish.execute({version:1,sessionId,baselineSnapshotId:prepare.initialSnapshot.snapshotId,
+    snapshotId:prepare.initialSnapshot.snapshotId,paths:[],verificationRunIds:[]},context),{code:'REVISION_CONFLICT'},
+    'publish reaches the actual main journal then retains the original required verification guard');
+  const originalReconcile=host.tools.find(tool=>tool.descriptor.name==='coding.repair.reconcile');
+  assert.equal((await originalReconcile.execute({sessionId},context)).state,'clear');
+  assert.equal((await originalSnapshot.execute({sessionId:original.session.sessionId},childContext)).snapshotId,original.initialSnapshot.snapshotId,
+    'original F15 owner-mapped sessions retain their original backend');
+  assert.equal(await host.readHarnessCandidateContext(context,{...scope,actualTaskId:'forged-child'}),undefined);
+  assert.equal(await host.readHarnessCandidateContext(context,{...scope,workspaceRef:'wrong-root'}),undefined);
+  const retainedVersions=versions;
+  versions=undefined;assert.equal(await host.readHarnessCandidateContext(context,scope),undefined);
+  versions=retainedVersions;let reads=0;onVersionsRead=()=>{if(++reads===2)host.revoke();};
+  assert.equal(await host.readHarnessCandidateContext(context,scope),undefined,'late version reads cannot survive original consent revocation');
+  assert.equal(await host.readHarnessCandidateContext(context,scope),undefined);
+  assert.equal(host.readHarnessExperienceCurrentSync(),undefined);
+  assert.equal(readbackExport.accepts({taskId:context.taskId}),false);
+  assert.throws(()=>publishExport.project({taskId:context.taskId,result:originalPublished,signal:context.signal}),{code:'UNAUTHORIZED'});
+  await assert.rejects(host.harnessRepairHost.snapshot('unused',context),{code:'UNAUTHORIZED'});
 });
 
 test('local read consent permits MCP binding without granting AgentArts availability or export',async t=>{
   const {root,open}=await workspaceBindingFixture(t);
   const host=open();
   assert.equal(host.readWorkspaceBinding(),undefined);
-  host.authorize({cloudExportAllowed:false,writeAllowed:false,commandAllowed:false});
+  await host.authorize({cloudExportAllowed:false,writeAllowed:false,commandAllowed:false});
   const binding=host.readWorkspaceBinding();
   assert.equal(binding.rootPath,root);
   host.bindApplication({runtime:{loadCheckpoint:(_taskId,key)=>
@@ -94,7 +189,7 @@ test('native selector cancellation receipts are explicit and never persist into 
     assert.equal(Object.hasOwn(host.snapshot(),'selectionCancelled'),false);
     assert.equal(await readFile(configuration,'utf8'),before);
   }
-  assert.equal(Object.hasOwn(host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false}),'selectionCancelled'),false);
+  assert.equal(Object.hasOwn(await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false}),'selectionCancelled'),false);
   assert.equal(Object.hasOwn(host.revoke(),'selectionCancelled'),false);
   const selected=await open({selectDirectory:async()=>root}).select();
   assert.equal(Object.hasOwn(selected,'selectionCancelled'),false);
@@ -128,7 +223,7 @@ test('revocation invalidates an outstanding native choice before it can overwrit
   const {configuration,open}=await workspaceBindingFixture(t);
   let settle;
   const host=open({selectDirectory:()=>new Promise(done=>{settle=done;})});
-  allowWorkspaceRead(host);
+  await allowWorkspaceRead(host);
   const before=await readFile(configuration,'utf8');
   const pending=host.select();host.revoke();
   const rejected=assert.rejects(pending,/选择已失效/);
@@ -155,7 +250,7 @@ test('trusted workspace binding requires session consent and invalidates old gen
   const host=open();
   assert.equal(host.readWorkspaceBinding(),undefined);
   const stored=await readFile(configuration,'utf8');
-  allowWorkspaceRead(host);
+  await allowWorkspaceRead(host);
   const binding=host.readWorkspaceBinding();
   assert.deepEqual(Object.keys(binding),['rootPath','nodeExecutable','bindingId']);
   assert.equal(binding.rootPath,root);assert.equal(binding.nodeExecutable,node);assert.ok(Object.isFrozen(binding));
@@ -171,7 +266,7 @@ test('trusted workspace binding requires session consent and invalidates old gen
   assert.equal(await readFile(configuration,'utf8'),stored);
   host.revoke();assert.equal(host.readWorkspaceBinding(),undefined);
   assert.equal(host.isWorkspaceBindingCurrent(binding),false);
-  allowWorkspaceRead(host);
+  await allowWorkspaceRead(host);
   const renewed=host.readWorkspaceBinding();
   assert.notEqual(renewed.bindingId,binding.bindingId);assert.equal(host.isWorkspaceBindingCurrent(binding),false);
   host.close();assert.equal(host.readWorkspaceBinding(),undefined);
@@ -181,16 +276,16 @@ test('trusted workspace binding requires session consent and invalidates old gen
 
 test('trusted workspace binding rejects changed selections until reassembly', async t=> {
   const {open}=await workspaceBindingFixture(t);
-  let host=open();allowWorkspaceRead(host);
+  let host=open();await allowWorkspaceRead(host);
   const original=host.readWorkspaceBinding();
   await host.selectNode();
   assert.equal(host.readWorkspaceBinding(),undefined);assert.equal(host.isWorkspaceBindingCurrent(original),false);
-  assert.throws(()=>allowWorkspaceRead(host),/重启/);assert.equal(host.readWorkspaceBinding(),undefined);
-  host.close();host=open();allowWorkspaceRead(host);
+  await assert.rejects(()=>allowWorkspaceRead(host),/重启/);assert.equal(host.readWorkspaceBinding(),undefined);
+  host.close();host=open();await allowWorkspaceRead(host);
   const rebound=host.readWorkspaceBinding();assert.ok(rebound);
   await host.select();
   assert.equal(host.readWorkspaceBinding(),undefined);assert.equal(host.isWorkspaceBindingCurrent(rebound),false);
-  assert.throws(()=>allowWorkspaceRead(host),/重启/);
+  await assert.rejects(()=>allowWorkspaceRead(host),/重启/);
 });
 
 test('changed command selections require reassembly instead of authorizing startup inputs',async t=>{
@@ -231,7 +326,7 @@ test('changed command selections require reassembly instead of authorizing start
         saveCheckpoint:(id,key,value)=>checkpoints.set(`${id}:${key}`,value)}};
       host.bindApplication(application);
       const permission={cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true};
-      host.authorize(permission);
+      await host.authorize(permission);
       const request={taskId:'before-selection',signal:new AbortController().signal};
       const available=name=>host.competitionToolAvailability.find(tool=>tool.toolName===name).available(request);
       assert.equal(available('workspace.node_check'),true);
@@ -240,7 +335,7 @@ test('changed command selections require reassembly instead of authorizing start
       selection={selectNode:node,selectCheckFile:first,selectNpmCli:firstNpm}[method];
       await host[method]();
       assert.equal(host.snapshot().authorizationAvailable,true);
-      host.authorize(permission);
+      await host.authorize(permission);
       assert.equal(available('workspace.node_check'),false,'renewing consent never revives an old task binding');
       request.taskId='after-unchanged-selection';
       assert.equal(available('workspace.node_check'),true);
@@ -251,13 +346,13 @@ test('changed command selections require reassembly instead of authorizing start
       assert.equal(host.snapshot().cloudExportAllowed,false);
       assert.equal(host.snapshot().projectScriptsAvailable,false);
       assert.match(host.snapshot().reason,/重启/);
-      assert.throws(()=>host.authorize(permission),/重启/);
+      await assert.rejects(()=>host.authorize(permission),/重启/);
       assert.equal(available('workspace.node_check'),false);
       assert.equal(available('workspace.npm_build'),false);
       await assert.rejects(host.tools.find(tool=>tool.descriptor.name==='workspace.node_check').execute({},request),/许可已撤销|绑定已改变/);
       assert.equal(executionCount,0,'stale command closures must not execute');
       host.close();host=open(options);host.bindApplication(application);
-      host.authorize({...permission,projectCodeAllowed:method!=='selectNode'});
+      await host.authorize({...permission,projectCodeAllowed:method!=='selectNode'});
       assert.equal(host.snapshot().authorizationAvailable,true);
       assert.equal(host.snapshot().nodeCheckAvailable,true);
       if(method==='selectCheckFile') assert.equal(host.snapshot().checkFileName,'second.js');
@@ -301,7 +396,7 @@ test('native workspace selections expose standalone Node tests and retain normal
       const checkpoints=new Map();host.bindApplication({runtime:{loadCheckpoint:(id,key)=>checkpoints.get(`${id}:${key}`),
         saveCheckpoint:(id,key,value)=>checkpoints.set(`${id}:${key}`,value)}});
       assert.equal(host.snapshot().projectScriptsAvailable,true);
-      const snapshot=host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true});
+      const snapshot=await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true});
       assert.equal(snapshot.nodeCheckAvailable,true);
       assert.deepEqual(snapshot.projectCommands,standalone?['test']:['build','test']);
       const request={taskId:'synthetic-test-task',signal:new AbortController().signal};
@@ -333,7 +428,7 @@ test('project recipe validation rejects mixed shapes and changed executable or w
     ['mixed npm and Node arguments',recipe=>({...recipe,args:['--cwd',root,'--exe',node,'--',npm,'--test']})],
     ['Node test mislabeled as build',recipe=>({...recipe,id:'npm-build'})],
   ];
-  for(const [name,mutate] of invalid)await t.test(name,()=>{
+  for(const [name,mutate] of invalid)await t.test(name,async()=>{
     let calls=0;
     const host=open({...selectors,jobHelperExecutable:helper,createCommandRecipeTool:options=>{
       const recipe=createWorkspaceCommandRecipeTool({...options,createWorkspaceCommandTool:()=>({
@@ -343,7 +438,7 @@ test('project recipe validation rejects mixed shapes and changed executable or w
     }});
     assert.equal(host.snapshot().projectScriptsAvailable,false);
     assert.match(host.snapshot().commandReason,/装配失败/);
-    assert.throws(()=>host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true}),/尚未准备好/);
+    await assert.rejects(()=>host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true}),/尚未准备好/);
     assert.equal(host.tools.some(tool=>['workspace.npm_test','workspace.npm_build'].includes(tool.descriptor.name)),false);
     assert.equal(calls,0);
   });
@@ -352,7 +447,7 @@ test('project recipe validation rejects mixed shapes and changed executable or w
 test('trusted workspace binding rejects root or Node replacement at the same path', async t=> {
   for(const changed of ['root','node']) {
     const {root,node,open}=await workspaceBindingFixture(t);
-    const host=open();allowWorkspaceRead(host);
+    const host=open();await allowWorkspaceRead(host);
     const binding=host.readWorkspaceBinding();
     if(changed==='node') {await rename(node,node+'.previous');await writeFile(node,'synthetic node C');}
     else {await rename(root,root+'-previous');await mkdir(root);}
@@ -368,7 +463,7 @@ test('workspace export gate keeps source local and redacts non-content result pr
   host.bindApplication({runtime:{loadCheckpoint:(id,key)=>checkpoints.get(id+key),
     saveCheckpoint:(id,key,value)=>checkpoints.set(id+key,value)}});
   await writeFile(path.join(root,'private.js'),'const privateValue="LOCAL_ONLY";\n');
-  host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:false});
+  await host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:false});
   const request={taskId:'export-private',proposalId:'proposal-private',
     signal:new AbortController().signal,deadline:new Date(Date.now()+30000).toISOString()};
   const local=async(name,args,scopes)=> {
@@ -418,7 +513,7 @@ test('selected workspace binds tasks, keeps consent session-only and rejects reu
   const context={...request,scopes:['workspace:read']};
   try {
     assert.equal(binding.available(request),false);
-    host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false});
+    await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false});
     assert.equal(binding.available(request),true);
     const result=await read.execute({path:'hello.js'},context);
     assert.equal(result.content,'console.log("hello");\n');
@@ -429,7 +524,7 @@ test('selected workspace binds tasks, keeps consent session-only and rejects reu
     assert.equal(policy.accepts(request),false); // Local consent supplies no exact PUBLIC grant.
     host.revoke();assert.equal(policy.accepts(request),false);
     await assert.rejects(read.execute({path:'hello.js'},context),/撤销|绑定/);
-    host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false});
+    await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false});
     assert.equal(binding.available(request),false);
     assert.equal(binding.available({...request,taskId:'task-two'}),true);
   } finally {host.close();}
@@ -471,7 +566,7 @@ async function confirmedExportFixture(t) {
   },readWorkspaceExportAuthorization:query=> {
     data.onAuthorization?.(query);return data.permission;
   }});
-  host.bindApplication({runtime});allowWorkspaceRead(host);
+  host.bindApplication({runtime});await allowWorkspaceRead(host);
   const signal=new AbortController();
   host.competitionToolAvailability.find(item=>item.toolName==='workspace.read_text')
     .available({taskId,signal:signal.signal});
@@ -560,7 +655,7 @@ test('workspace export rechecks native revocation, grant replacement, deadline a
   f.data.onPreflight=()=>f.host.revoke();
   assert.equal(f.exporter.accepts(f.request),false);
   assert.equal(f.host.readWorkspaceExportConfigurationRef(),undefined);
-  allowWorkspaceRead(f.host);
+  await allowWorkspaceRead(f.host);
   assert.notEqual(f.host.readWorkspaceExportConfigurationRef(),f.query.configurationRef);
   assert.equal(f.host.readWorkspaceExportCandidate(f.query),undefined);
 });

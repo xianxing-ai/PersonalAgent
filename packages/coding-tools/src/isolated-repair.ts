@@ -3,8 +3,10 @@ import {lstat,mkdir,open,readFile,realpath,readdir,rename,writeFile} from 'node:
 import {isAbsolute,join,relative,resolve,sep} from 'node:path';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
-import {parseCodingRepairPatch,parseCodingRepairPublishRequest} from '@personal-agent/contracts/coding-repair';
-import type {CodingRepairInput,CodingRepairPatch,CodingRepairPublishReadback,CodingRepairPublishRequest,CodingRepairRecipe,
+import {parseCodingRepairInput,parseCodingRepairPatch,parseCodingRepairPublishRequest} from '@personal-agent/contracts/coding-repair';
+import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
+import type {HarnessTrialRecovery} from '@personal-agent/contracts/harness-candidates';
+import type {CodingRepairInput,CodingRepairPatch,CodingRepairPublishReadback,CodingRepairPublishRequest,CodingRepairRecipe,CodingRepairCheckReadback,
   CodingRepairSession,CodingRepairSnapshot,CodingRepairVerificationReceipt} from '@personal-agent/contracts/coding-repair';
 import {createWorkspaceReadTool,createWorkspaceListTool,createWorkspacePatchPreviewTool,createWorkspacePatchApplyTool} from './index.js';
 import type {WorkspacePatchApplyHostOptions} from './patch-apply.js';
@@ -21,6 +23,8 @@ export interface IsolatedCodingRepairHostOptions {
   workspaceRoot:string;sessionRoot:string;workspaceId:string;
   /** Stable trusted command/helper configuration identity, excluding credentials. */
   configurationRef?:string;
+  /** Trusted candidate trials pin every fresh session to the same captured baseline. */
+  expectedBaselineSnapshotId?:string;
   patch:Omit<WorkspacePatchApplyHostOptions,'recoveryRootPath'>;
   recipes:readonly CodingRepairRecipe[];
   /** Maps a verified HostBridge child to its original graph task. No context rewriting. */
@@ -29,6 +33,8 @@ export interface IsolatedCodingRepairHostOptions {
   createCommandTool?:(input:{rootPath:string;session:CodingRepairSession})=>RegisteredTool;
   /** Optional trusted dependency preparation. Never links writable main-root dependencies/outputs. */
   prepareWorkspace?:(input:{sourceRoot:string;isolatedRoot:string;session:CodingRepairSession;deadline:string;signal:AbortSignal})=>Promise<{ready:boolean;reason?:string}>;
+  /** Recheck copied dependency inputs at verification/publish boundaries, never by running install scripts. */
+  validatePreparedWorkspace?:(input:{isolatedRoot:string;session:CodingRepairSession;deadline:string;signal:AbortSignal})=>Promise<void>;
   assertRecoveryDirectory?:(path:string)=>void;
   /** Read original confirmed Runtime command/HostBridge Evidence, not model-supplied refs. */
   readVerificationEvidence?:(input:{session:CodingRepairSession;runId:string;originTaskId:string;originRunId:string})=>Promise<readonly string[]|undefined>;
@@ -37,10 +43,14 @@ export interface IsolatedCodingRepairHostOptions {
   now?:()=>number;
 }
 export interface IsolatedCodingRepairHost {
+  /** Native Runtime task.reconcile only. It neither creates a ToolContext nor confirms the original execution. */
+  reconcileOriginalSession?(input:HarnessOriginalSessionReconciliation):Promise<HarnessTrialRecovery>;
   start(input:{mode:'main'|'isolated';allowedPaths?:string[]},context:ToolContext):Promise<CodingRepairInput>;
   list(sessionId:string,input:{path:string;limit?:number},context:ToolContext):Promise<unknown>;
   read(sessionId:string,input:{path:string;maxBytes?:number},context:ToolContext):Promise<unknown>;
   snapshot(sessionId:string,context:ToolContext):Promise<CodingRepairSnapshot>;
+  /** Read original statuses without re-running patches/recipes or declaring unknown execution successful. */
+  readback?(sessionId:string,context:ToolContext):Promise<CodingRepairCheckReadback>;
   /** approved means exact scope/preview passed, never Policy authorization or successful verification. */
   preview(sessionId:string,patches:readonly CodingRepairPatch[],context:ToolContext):Promise<{sessionId:string;approved:true;previewed:true;patches:unknown[]}>;
   patch(sessionId:string,patch:CodingRepairPatch,context:ToolContext):Promise<unknown>;
@@ -48,6 +58,10 @@ export interface IsolatedCodingRepairHost {
   check(sessionId:string,patches:readonly CodingRepairPatch[],recipeIds:readonly string[],context:ToolContext):Promise<{version:1;sessionId:string;snapshot:CodingRepairSnapshot;verification:CodingRepairVerificationReceipt[]}>;
   publish(input:CodingRepairPublishRequest,context:ToolContext):Promise<CodingRepairPublishReadback>;
   reconcile(sessionId:string,context:ToolContext):Promise<{state:'clear'|'in_progress'|'unknown';delivery?:CodingRepairPublishReadback}>;
+}
+export interface HarnessOriginalSessionReconciliation {
+  session:CodingRepairInput;trialRunId:string;expectedRevision:number;deadline:string;signal:AbortSignal;
+  assertCurrent():void;
 }
 const scopes={read:'workspace:read',list:'workspace:list',patch:'workspace:apply',verify:'workspace:execute'};
 const within=(root:string,value:string)=>{const p=relative(root,value);return !p||p!=='..'&&!p.startsWith('..'+sep)&&!isAbsolute(p);};
@@ -58,10 +72,11 @@ function checkContext(context:ToolContext,scope:string,now:()=>number):void {
   if(context.signal.aborted)throw new ProtocolError('CANCELLED','Coding repair operation cancelled');
   if(!Number.isFinite(Date.parse(context.deadline))||now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','Coding repair operation expired');
 }
-async function atomicJournal(file:string,journal:RepairJournal):Promise<void> {
+async function atomicJournal(file:string,journal:RepairJournal,assertCurrent:()=>void=()=>{}):Promise<void> {
+  assertCurrent();
   const temporary=file+'.'+randomUUID()+'.pending',handle=await open(temporary,'wx',0o600);
-  try{await handle.writeFile(JSON.stringify(journal));await handle.sync();}finally{await handle.close();}
-  await rename(temporary,file);
+  try{assertCurrent();await handle.writeFile(JSON.stringify(journal));assertCurrent();await handle.sync();assertCurrent();}finally{await handle.close();}
+  assertCurrent();await rename(temporary,file);assertCurrent();
 }
 async function validateDependencyIsolation(root:string):Promise<void> {
   async function visit(path:string):Promise<void> {
@@ -85,7 +100,8 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     ||sourceInfo.isSymbolicLink()||sessionsInfo.isSymbolicLink())throw new ProtocolError('INVALID_ARGUMENT','Repair session root must be separate from the user workspace');
   const now=options.now??Date.now,active=new Set<string>();
   const configurationRef=repairSha256(JSON.stringify({version:1,sourceRoot,workspaceId:options.workspaceId,
-    patch:options.patch,recipes:options.recipes,configurationRef:options.configurationRef??null}));
+    patch:options.patch,recipes:options.recipes,configurationRef:options.configurationRef??null,
+    ...(options.expectedBaselineSnapshotId===undefined?{}:{expectedBaselineSnapshotId:options.expectedBaselineSnapshotId})}));
   const originalTask=(context:ToolContext)=>options.resolveOriginalTaskId?.(context.taskId)??context.taskId;
   async function rootCurrent():Promise<void> {
     const a=await lstat(sourceRoot),b=await lstat(sessionsRoot);
@@ -95,21 +111,26 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
   }
   const paths=(id:string)=>{if(!/^[a-f0-9-]{36}$/.test(id))throw new ProtocolError('INVALID_ARGUMENT','Invalid repair session');
     const directory=join(sessionsRoot,id);return {directory,workspace:join(directory,'workspace'),baseline:join(directory,'baseline'),recovery:join(directory,'recovery'),journal:join(directory,'journal.json')};};
-  async function load(id:string,context:ToolContext):Promise<RepairJournal> {
+  async function loadForTask(id:string,taskId:string):Promise<RepairJournal> {
     await rootCurrent();const p=paths(id);const info=await lstat(p.journal);
     if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1||await realpath(p.directory)!==p.directory)denied('Repair journal binding changed');
     const journal=JSON.parse(await readFile(p.journal,'utf8')) as RepairJournal;
     if(journal.configurationRef!==configurationRef)denied('Original repair host configuration changed; restore its original command/helper binding');
-    if(journal.version!==1||journal.session.sessionId!==id||journal.session.taskId!==originalTask(context)
+    if(journal.version!==1||journal.session.sessionId!==id||journal.session.taskId!==taskId
       ||journal.session.workspaceId!==options.workspaceId)throw new ProtocolError('UNAUTHORIZED','Repair session does not belong to the original task');
     return journal;
   }
+  const load=(id:string,context:ToolContext)=>loadForTask(id,originalTask(context));
   async function exclusive<T>(id:string,context:ToolContext,scope:string,work:(journal:RepairJournal)=>Promise<T>):Promise<T> {
     checkContext(context,scope,now);if(active.has(id))denied('Repair session already has an active operation');active.add(id);
     try{const journal=await load(id,context);return await work(journal);}finally{active.delete(id);}
   }
-  const save=(journal:RepairJournal)=>atomicJournal(paths(journal.session.sessionId).journal,journal);
+  const save=(journal:RepairJournal,assertCurrent?:()=>void)=>atomicJournal(paths(journal.session.sessionId).journal,journal,assertCurrent);
   const requireStopped=(journal:RepairJournal)=>{if(journal.unknown)throw new ProtocolError('RESULT_UNKNOWN','Original repair operation requires stopped-process readback');};
+  const validatePreparation=async(journal:RepairJournal,context:ToolContext)=>{
+    await options.validatePreparedWorkspace?.({isolatedRoot:paths(journal.session.sessionId).workspace,session:clone(journal.session),deadline:context.deadline,signal:context.signal});
+    checkContext(context,scopes.verify,now);
+  };
   function requirePath(journal:RepairJournal,path:string):void {codingRepairRelativePath(path);if(!journal.allowedPaths.includes(path))throw new ProtocolError('SCOPE_DENIED','File is outside the original repair target set');}
   async function current(journal:RepairJournal):Promise<CapturedCodingRepairSnapshot>{return captureCodingRepairSnapshot(paths(journal.session.sessionId).workspace);}
   function statuses(journal:RepairJournal,snapshot:CapturedCodingRepairSnapshot):CodingRepairVerificationReceipt[] {
@@ -159,6 +180,7 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
   async function verify(journal:RepairJournal,recipeId:string,context:ToolContext):Promise<CodingRepairVerificationReceipt> {
     requireStopped(journal);const recipe=journal.recipes.find(item=>item.recipeId===recipeId);
     if(!recipe||!journal.prepared||!options.createCommandTool)throw new ProtocolError('UNSUPPORTED_CAPABILITY',journal.preparationReason??'Isolated verification recipe or dependency preparation is unavailable');
+    await validatePreparation(journal,context);
     const tool=options.createCommandTool({rootPath:paths(journal.session.sessionId).workspace,session:clone(journal.session)});
     if(tool.descriptor.name!=='workspace.run_allowed_command'||tool.descriptor.version!=='1.0.0')throw new ProtocolError('UNAUTHORIZED','Repair command must use the original fixed recipe tool');
     const input={recipeId};validateToolValue(tool.descriptor.inputSchema,input);
@@ -172,7 +194,9 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
       receipt.packageGraphDigest=codingRepairPackageGraphDigest(before.snapshot);
       journal.verification.push({receipt,snapshot:before.snapshot,originTaskId:context.taskId,originRunId:context.runId});await save(journal);throw error;}
     if(output.recipeId!==recipeId||!Number.isSafeInteger(output.exitCode)||typeof output.stdout!=='string'||typeof output.stderr!=='string')throw new ProtocolError('RESULT_UNKNOWN','Repair command output is invalid');
-    const after=await current(journal),same=before.snapshot.snapshotId===after.snapshot.snapshotId;
+    let dependenciesCurrent=true;
+    try{await validatePreparation(journal,context);}catch(error){if(context.signal.aborted||now()>=Date.parse(context.deadline))throw error;dependenciesCurrent=false;}
+    const after=await current(journal),same=dependenciesCurrent&&before.snapshot.snapshotId===after.snapshot.snapshotId;
     const receipt:CodingRepairVerificationReceipt={version:1,sessionId:journal.session.sessionId,runId,recipeId,packageIds:[...recipe.packageIds],
       inputSnapshotId:before.snapshot.snapshotId,files:before.snapshot.files,exitCode:output.exitCode,status:!same?'STALE':output.exitCode===0?'VALID':'FAILED',evidenceRefs:[],
       diagnostics:output.exitCode===0?[]:[{source:'command',message:(output.stderr||output.stdout||'Verification command failed').slice(0,8192)}]};
@@ -180,9 +204,62 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     journal.verification.push({receipt,snapshot:before.snapshot,originTaskId:context.taskId,originRunId:context.runId});delete journal.unknown;await save(journal);return clone(receipt);
   }
   const host:IsolatedCodingRepairHost={
+    async reconcileOriginalSession(input) {
+      const request={...input,session:parseCodingRepairInput(input.session)};
+      const check=()=>{request.assertCurrent();
+        if(request.signal.aborted)throw new ProtocolError('CANCELLED','Original session readback cancelled');
+        if(!Number.isSafeInteger(request.expectedRevision)||request.expectedRevision<1||!request.trialRunId)
+          throw new ProtocolError('INVALID_ARGUMENT','Original session revision/run is unavailable');
+        if(!Number.isFinite(Date.parse(request.deadline))||now()>=Date.parse(request.deadline))throw new ProtocolError('TIMEOUT','Original session readback expired');};
+      const step=async<T>(work:()=>Promise<T>):Promise<T>=>{check();const value=await work();check();return value;};
+      check();const id=request.session.session.sessionId;
+      if(active.has(id))throw new ProtocolError('RESULT_UNKNOWN','Original repair session is still active');active.add(id);
+      try {
+        const journal=await step(()=>loadForTask(id,request.session.session.taskId));
+        if(JSON.stringify(journal.session)!==JSON.stringify(request.session.session)
+          ||journal.baseline.snapshotId!==request.session.initialSnapshot.snapshotId
+          ||harnessCandidateArtifactDigest(journal.baseline)!==harnessCandidateArtifactDigest(request.session.initialSnapshot)
+          ||harnessCandidateRecipeFingerprint(journal.recipes)!==harnessCandidateRecipeFingerprint(request.session.recipes))
+          throw new ProtocolError('UNAUTHORIZED','Original saved trial session binding changed');
+        let state:HarnessTrialRecovery['state']='clear';
+        if(journal.unknown) {
+          const original=journal.unknown;
+          if(original.kind==='command') {
+            if(!journal.verification.some(item=>item.originRunId===request.trialRunId&&item.originTaskId===journal.session.taskId&&item.receipt.runId===original.runId))
+              throw new ProtocolError('UNAUTHORIZED','Original trial command run changed');
+            const stopped=await step(async()=>options.readCommandStopState?.({session:clone(journal.session),runId:original.runId}));
+            state=stopped==='running'?'in_progress':stopped==='stopped'?'clear':'unknown';
+          } else if(original.kind==='patch'&&original.runId===request.trialRunId&&original.path&&journal.pendingPatch) {
+            const p=paths(id),patch=journal.pendingPatch;
+            if(patch.expectedSha256!==null) {
+              const observed=await step(()=>reconcileWorkspacePatchApply({rootPath:p.workspace,recoveryRootPath:p.recovery,...options.patch,
+                relativePath:original.path!,expectedRunId:request.trialRunId,expectedBeforeSha256:patch.expectedSha256!,
+                ...(original.argumentsDigest?{expectedArgumentsDigest:original.argumentsDigest}:{}),retainMarker:true}));
+              state=observed.state==='in_progress'?'in_progress':observed.state==='reconciled'&&observed.outcome==='unknown'?'unknown':'clear';
+            }
+            if(state==='clear') {
+              const target=await step(()=>codingRepairFilePath(p.workspace,original.path!,true));
+              let actual:string|null=null;
+              try{actual=repairSha256(await step(()=>readFile(target)));}catch(error){if((error as {code?:string}).code!=='ENOENT')throw error;check();}
+              const after=patch.expectedSha256===null?repairSha256(patch.createText!):journal.pendingPatchAfterSha256;
+              if(actual!==patch.expectedSha256&&actual!==after)state='unknown';
+            }
+          } else state='unknown';
+          if(state==='clear') {delete journal.unknown;delete journal.pendingPatch;delete journal.pendingPatchAfterSha256;await step(()=>save(journal,check));}
+        }
+        const observed=await step(()=>current(journal)),withoutContent=(file:CodingRepairSnapshot['files'][number])=>{const {content:_content,...metadata}=file;return metadata;};
+        const checkReadback:CodingRepairCheckReadback={version:1,sessionId:id,snapshot:{...observed.snapshot,files:observed.snapshot.files.map(withoutContent)},
+          verification:statuses(journal,observed).map((receipt,index)=>({...receipt,files:receipt.files.map(withoutContent),
+            evidenceRefs:[journal.verification[index]!.originRunId],diagnostics:receipt.diagnostics.map(()=>({source:'command',message:'Inspect the original local verification record'}))}))};
+        check();return {state,sessionId:id,checkReadback};
+      } finally {active.delete(id);}
+    },
     async start(input,context){checkContext(context,scopes.patch,now);await rootCurrent();
       if(!['main','isolated'].includes(input.mode))throw new ProtocolError('INVALID_ARGUMENT','Invalid repair mode');
-      const captured=await captureCodingRepairSnapshot(sourceRoot),session:CodingRepairSession={version:1,sessionId:randomUUID(),taskId:originalTask(context),workspaceId:options.workspaceId,mode:input.mode,baselineSnapshotId:captured.snapshot.snapshotId};
+      const captured=await captureCodingRepairSnapshot(sourceRoot);
+      if(options.expectedBaselineSnapshotId!==undefined&&captured.snapshot.snapshotId!==options.expectedBaselineSnapshotId)
+        denied('Candidate trial baseline changed before isolation');
+      const session:CodingRepairSession={version:1,sessionId:randomUUID(),taskId:originalTask(context),workspaceId:options.workspaceId,mode:input.mode,baselineSnapshotId:captured.snapshot.snapshotId};
       const p=paths(session.sessionId);await mkdir(p.workspace,{recursive:true});await mkdir(p.baseline,{recursive:true});await mkdir(p.recovery,{recursive:true});
       const allowedPaths=input.allowedPaths??captured.snapshot.files.map(file=>file.path);for(const path of allowedPaths)codingRepairRelativePath(path);
       for(const file of captured.snapshot.files){checkContext(context,scopes.patch,now);const source=await codingRepairFilePath(sourceRoot,file.path),bytes=await readFile(source);
@@ -202,6 +279,9 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     list:(id,input,context)=>exclusive(id,context,scopes.list,journal=>createWorkspaceListTool({rootPath:paths(journal.session.sessionId).workspace}).execute(input,context)),
     read:(id,input,context)=>exclusive(id,context,scopes.read,async journal=>{requirePath(journal,input.path);return createWorkspaceReadTool({rootPath:paths(id).workspace}).execute(input,context);}),
     snapshot:(id,context)=>exclusive(id,context,scopes.read,async journal=>clone((await current(journal)).snapshot)),
+    readback:(id,context)=>exclusive(id,context,scopes.read,async journal=>{const observed=await current(journal);
+      return {version:1,sessionId:id,snapshot:clone(observed.snapshot),verification:statuses(journal,observed)
+        .map((receipt,index)=>({...receipt,evidenceRefs:[journal.verification[index]!.originRunId]}))};}),
     preview:(id,patches,context)=>exclusive(id,context,scopes.read,async journal=>{if(new Set(patches.map(patch=>patch.path)).size!==patches.length)throw new ProtocolError('INVALID_ARGUMENT','Combine ordered edits for each file into one exact patch');
       return {sessionId:id,approved:true,previewed:true,patches:await Promise.all(patches.map(patch=>previewPatch(journal,patch,context)))};}),
     patch:(id,patch,context)=>exclusive(id,context,scopes.patch,journal=>applyPatch(journal,patch,context)),
@@ -218,6 +298,10 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
         if(journal.delivery.state==='published')return clone(journal.delivery);
         if(journal.delivery.state!=='unknown')denied('Original delivery was reconciled without complete success; use a new baseline before another publish');
         throw new ProtocolError('RESULT_UNKNOWN','Original partial publish requires reconciliation');}
+      // An exact completed request is historical readback, not a new execution.
+      // Later environment changes cannot invalidate its original saved result.
+      await options.validatePreparedWorkspace?.({isolatedRoot:paths(journal.session.sessionId).workspace,session:clone(journal.session),deadline:context.deadline,signal:context.signal});
+      checkContext(context,scopes.patch,now);
       const snapshot=await current(journal);if(request.baselineSnapshotId!==journal.baseline.snapshotId||request.snapshotId!==snapshot.snapshot.snapshotId)denied('Repair publish snapshot binding changed');
       const originalFiles=new Map(journal.baseline.files.map(file=>[file.path,file.sha256]));
       const changed=snapshot.snapshot.files.filter(file=>originalFiles.get(file.path)!==file.sha256).map(file=>file.path).sort();
@@ -252,6 +336,8 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
         if(repairSha256(await readFile(await codingRepairFilePath(sourceRoot,path)))!==file.sha256)throw new ProtocolError('RESULT_UNKNOWN','Repair publish readback failed');
         journal.delivery.files.push({path,beforeSha256:baseline?.sha256??null,afterSha256:file.sha256});await save(journal);}
       if((await current(journal)).snapshot.snapshotId!==snapshot.snapshot.snapshotId)throw new ProtocolError('RESULT_UNKNOWN','Isolated sources changed during publish; retain partial journal for readback');
+      await options.validatePreparedWorkspace?.({isolatedRoot:paths(journal.session.sessionId).workspace,session:clone(journal.session),deadline:context.deadline,signal:context.signal});
+      checkContext(context,scopes.patch,now);
       if(!await userReadSetCurrent(journal,selected,journal.delivery.files))throw new ProtocolError('RESULT_UNKNOWN','User verification read set changed after delivery');
       journal.delivery.state='published';delete journal.unknown;await save(journal);return clone(journal.delivery);
       }catch{journal.delivery.state='unknown';await save(journal);return clone(journal.delivery);}
@@ -319,6 +405,10 @@ export function createIsolatedCodingRepairTools(host:IsolatedCodingRepairHost):R
     {name:'list',scope:[scopes.list],properties:{...id,path:string,limit:{type:'integer',minimum:1}},required:['sessionId','path'],run:(v,c)=>host.list(v.sessionId,{path:v.path,...(v.limit===undefined?{}:{limit:v.limit})},c)},
     {name:'read',scope:[scopes.read],properties:{...id,path:string,maxBytes:{type:'integer',minimum:1}},required:['sessionId','path'],run:(v,c)=>host.read(v.sessionId,{path:v.path,...(v.maxBytes===undefined?{}:{maxBytes:v.maxBytes})},c)},
     {name:'snapshot',scope:[scopes.read],properties:id,run:(v,c)=>host.snapshot(v.sessionId,c)},
+    {name:'readback',scope:[scopes.read],properties:id,run:(v,c)=>{
+      if(!host.readback)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original repair readback is unavailable');
+      return host.readback(v.sessionId,c);
+    }},
     {name:'preview',scope:[scopes.read],properties:{...id,patches:{type:'array',items:patchSchema}},run:async(v,c)=>{
       const preview=await host.preview(v.sessionId,v.patches,c);
       // Project before the original ToolGateway records/signs this result. Source text
@@ -336,6 +426,6 @@ export function createIsolatedCodingRepairTools(host:IsolatedCodingRepairHost):R
     {name:'publish',scope:['workspace:read','workspace:write',scopes.patch],properties:{version:{const:1},...id,baselineSnapshotId:string,snapshotId:string,paths:{type:'array',items:string},verificationRunIds:{type:'array',items:string}},run:(v,c)=>host.publish(v,c)},
     {name:'reconcile',scope:[scopes.read],properties:id,run:(v,c)=>host.reconcile(v.sessionId,c)},
   ];
-  return entries.map(entry=>{const descriptor:RegisteredTool['descriptor']={name:'coding.repair.'+entry.name,version:'1.0.0',inputSchema:{type:'object',properties:entry.properties,required:entry.required??Object.keys(entry.properties),additionalProperties:false},outputSchema:{},sideEffect:['read','list','snapshot','preview','reconcile'].includes(entry.name)?'read':'local_write',requiredScopes:entry.scope,idempotencySupport:false,recoverySupport:false,requiresPresence:false};
+  return entries.map(entry=>{const descriptor:RegisteredTool['descriptor']={name:'coding.repair.'+entry.name,version:'1.0.0',inputSchema:{type:'object',properties:entry.properties,required:entry.required??Object.keys(entry.properties),additionalProperties:false},outputSchema:{},sideEffect:['read','list','snapshot','readback','preview','reconcile'].includes(entry.name)?'read':'local_write',requiredScopes:entry.scope,idempotencySupport:false,recoverySupport:false,requiresPresence:false};
     return {descriptor,execute:async(value,context)=>{validateToolValue(descriptor.inputSchema,value);return entry.run(value,context);}};});
 }

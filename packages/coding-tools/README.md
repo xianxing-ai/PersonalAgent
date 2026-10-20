@@ -1,5 +1,133 @@
 # 编程工具：可信工作区能力（MOD-18）
 
+## H3 候选隔离试跑（2026-10-20，接线中）
+
+`createHarnessCandidateTrialTool(options)` 返回普通 `coding.repair.trial@1.0.0` RegisteredTool。
+输入为 `{candidateId, patches: CodingRepairPatch[], recipeIds: string[], parentTrialRunIds?: string[]}`；一次原 ToolGateway
+调用试跑一个候选，原 Policy 须授予 `workspace:read/write/apply/execute` 对应四个 scope。
+工具不产生授权，也不调度其他候选。模型不能指定工作区、命令、owner、配置或来源摘要。
+
+可信宿主注入原 F15 `IsolatedCodingRepairHost`、`readBinding(context,candidateId)`、
+`readSession(context)` 和 `saveSession(context,input)`。后两者接原 Runtime 的 task/run/input
+检查点，须写入一次并保持同 run 幂等；在任何候选 patch 前先保存原会话。已有会话时拒绝重做，
+通过该原 session 的 `reconcile` 核实未知执行，不从新 run 或新目录重试。取消/期限沿原 ToolContext，
+已发生的隔离修改保留；命令仍不明确停止时不能发新的命令。
+
+`readBinding` 返回唯一 `@personal-agent/contracts/harness-candidates` 的
+`HarnessCandidateContext`。共同 owner 为 `binding.taskId`，实际执行者为
+`binding.trialTaskId === session.taskId === context.taskId`；跨 task 合法性由 Runtime 原委派记录验证。
+需要组合时，模型仅提供两个以上原 `parentTrialRunIds` 引用；
+`readParentArtifactDigests(context,candidateId,parentTrialRunIds,patches)` 只从同 owner、合法执行者的已确认
+原 run 读回真实父产物并核对实际组合输入，拒绝跨 scope、未确认来源和循环，不能把模型摘要当来源。
+每个引用须有独立产物摘要，试跑前后重新核对；组合在新会话完整重新验证，不继承父检查。
+未提供该端口时普通候选父列表为空，组合请求明确返回 unsupported；工具也拒绝引用当前自身 run。
+
+宿主可用 `expectedBaselineSnapshotId` 锁定所有候选的原基线；基线变更会在新会话复制前拒绝。
+每个候选复用 F15 独立文件副本、依赖准备、精确补丁、固定 recipe 和原验证指纹。
+所有 required recipe 必须实际调用，失败保留 FAILED，未知调用抛给原 Runtime 等待核实；
+未运行、超时或取消不伪造通过回执。输出只含绑定、文件摘要和验证元数据，省略文件正文及原命令诊断。
+验证引用当前外层 run；比较模块必须等 Runtime 确认该执行并核对原输入后才接受，引用本身不是 Evidence。
+
+候选会话始终 `isolated`，禁止发布主目录。选中后应由原主 F15 会话按精确补丁重新验证后 CAS/readback，
+比较建议不能直接把隔离会话改为可发布。目录隔离沿用 F15 应用层边界，不是任意恶意代码的 OS 沙箱。
+Runtime 工具注册、原 task/run 检查点与比较消费由对应拥有者接线；在联合验证前，本节不代表完整 H3 或云端验收通过。
+
+`createHarnessCandidateAdoptionTool(options)` 提供 `coding.repair.prepare_adoption@1.0.0`，
+模型只传 `{trialRunId}`。新增受信 `readSelection(context,trialRunId)` 从原 Runtime 已确认的比较/试跑
+及原精确调用参数读取 `{trial,comparison,patches}`，不能把模型提交的正文或选择声明当来源。
+该工具检查 owner、实际 child/session、原 run、共同配置与配方、所选 artifact 和原 required 验证，
+再从相同基线开新的 `main` 会话重新应用并执行检查。它返回新的 `CodingRepairCheckReadback`，
+失败配方保留真实状态；失败或 unknown 不构成可发布成果。新产物摘要须等于所选 artifact，
+期间选择/配置变化则拒绝；主目录到此仍未写入。
+
+采用准备、确认和发布分为原工具链中的不同调用：Runtime 先确认 prepare 的真实结果/Evidence，
+之后原 `coding.repair.publish` 才能用该新 main session 的验证 run 经 Policy/CAS 交付并读回。
+没有原确认 Evidence、验证失败或用户并发修改时原宿主会拒绝或返回 conflict，保留双方文件。
+`recommendation.publishRequest` 中的隔离 session 只是产物建议引用，不能直接用作交付目标。
+
+`createHarnessCandidateRecoveryTool({host,readOriginalSession,now?})` 提供
+`coding.repair.reconcile_trial@1.0.0`，输入仅 `{trialRunId}`，返回唯一 `HarnessTrialRecovery`。
+Runtime 的可信 `readOriginalSession(context,trialRunId)` 从原 task/run 检查点读回 `CodingRepairInput`；
+必须保持实际 `context.taskId === session.taskId`。owner 核实子任务时，由 Runtime 沿原合法执行者调用，
+不能伪装 owner 身份去改写 child context。工具复用原 `reconcile`，以只读 `host.readback` 返回原
+snapshot/verification 元数据；没有新 patch、命令或验证，不用恢复 run 代替原验证 Evidence。
+`clear` 只表示原 journal 已没有未停操作，旧 UNKNOWN 验证仍为 UNKNOWN，不能当通过或重开终态。
+
+本包独立依赖安装和必要 contracts/models/agents/github/policy/tool-gateway/coding-tools 定向构建已完成，
+Node 24.15.0、TypeScript 编译通过。依用户“先完成全部代码，再统一验证”的最新优先级，
+`test/harness-trials.test.mjs` 的 13 项回归已保存但尚未执行；未声明实际 Runtime、云端或最终采用验收完成。
+
+Desktop 原 `WorkspaceConfigHost` 现公开稳定 `harnessRepairHost` deferred 代理和
+`readHarnessCandidateContext(context,scope)`。代理保留原 root/Node 身份、许可、任务绑定、代次与取消检查，
+参数进入异步操作前复制，返回前再次校验，不暴露新的根目录或绕开 Policy。上下文按原已选工作区
+捕获 baseline/recipes，owner/input/configuration 来自 Runtime 已校验的 `RuntimeHarnessScope`。
+主进程须注入 `readHarnessVersions()` 的可信 `{workflowVersion,runtimeVersion,executionKind:'real_host'}`，
+缺少版本或异步读回期间版本/授权变化时返回 unavailable；协议版本不能冒充运行版本。
+Runtime 组合入口使用 `{host: workspace.harnessRepairHost,readContext: workspace.readHarnessCandidateContext}`，
+具体 main.js 注入由其唯一写入者完成；本包不覆盖 main/settings/停止按钮改动。
+
+等待核实的任务不能再执行模型工具，因此原生 `task.reconcile` 另使用
+`IsolatedCodingRepairHost.reconcileOriginalSession(input)`，Workspace 对外为
+`reconcileHarnessOriginalSession(input)`（也挂在 `harnessRepairHost`）。输入是
+`{session: CodingRepairInput,trialRunId,expectedRevision,deadline,signal,assertCurrent()}`，
+只由 Runtime 从原记录/会话/用户权限构造。该方法按原实际 task/session 精确读 journal，
+不伪造 ToolContext、不创建 Gateway run、不执行 patch/check/command，也不改原执行或 Evidence 为 confirmed。
+所有异步读回和 journal 保存前后执行 revision/权限 fence；补丁 marker 保留供原结果核实，
+`clear` 仅表示 journal 的操作已停，不代表 UNKNOWN 验证通过。Runtime 原生入口再沿原 UI 解释结果。
+此次仅该 native revision/停止读回关键单例 1/1 通过，余下行为回归仍后置。
+
+经验生命周期的 Main-only `WorkspaceConfigHost.readHarnessExperienceCurrentSync()` 当次读取原源文件，
+返回 `{snapshot,versions,configuration:{bindingId,workspaceId,recipeFingerprint}} | undefined`。
+该同步方法不要求源 owner 仍 running；仍复核当前工作区/Node 身份、许可、代次、配置和同步版本来源。
+版本 port 若返回 Promise 则拒绝，不读取异步缓存，不轮询，也不在普通 publish 时自动扫描。
+H1/H2 以真实稳定配置组装经验 scope，方法不接收模型 task/scope，不返回正文或绝对根路径。
+底层 `captureCodingRepairSnapshotSync(root,assertCurrent?)` 与原异步 capture 共用同一 metadata/包图组装，
+过滤、路径/链接拒绝、SHA 和 snapshot 语义保持一致。仅执行同步/异步过滤与包图一致性关键单例 1/1 通过；
+行为全测和真实经验次任务接线验收仍按统一顺序后置。
+
+原 `coding.repair.publish/snapshot/readback/reconcile` 通过 Main-only Runtime 只读方法
+`isHarnessCodingRepairSession(context,{sessionId,operation}): boolean` 核实原 H3 main session、实际调用者、
+当前 started 输入与已确认的 prepare 验证来源。只有明确 true 才转向 `harness-isolation`；
+缺方法或 false 保留原 F15 `coding-isolation`，异常直接拒绝。模型不能选择目录/后端，
+不合并两种 journal，不把实际 executor 改写为 owner；最终 publish 仍用原 Policy/CAS/readback。
+其他会话操作及 HostBridge 保持原路径，Runtime reader 不为其授予 H3 路由。
+
+### 已准备依赖与安全结果投影增量
+
+依赖项目使用原 `package-lock.json` v2/v3 与 `node_modules/.package-lock.json`，核对根/工作区
+manifest、已安装版本/来源 metadata，再封存真实依赖字节指纹。原 Workspace `authorize(input)`
+现在返回 `Promise<原snapshot>`，Main 必须 await；一次授权内的临时 FS worker 完成并退出后才返回。
+准备期间开发配置和隔离工具明确 unavailable，撤销取消原 worker，旧代次不得回填。
+普通配置 getter 不遍历依赖。该指纹证明授权时已准备字节的一致性，不证明 registry tarball 真实性。
+
+`prepareIsolatedCodingDependencies` 仅独立复制这些已准备文件，保留目录内的 workspace/bin 链接，
+拒绝外部链接/未锁顶层包/敏感配置，不安装、联网或共享可写文件身份，不复制主目录构建输出。
+已有锁包中的 bundled/fixture payload 也纳入字节指纹。复制前后和实际 verify/publish 前后用
+可取消、原 deadline 限定的 worker 重新核实；改动或未知保持 closed。原固定配方按受信顺序先 build
+再 test，不能由模型倒序。候选 npm 使用空的私有配置、home/cache/tmp、offline 和 ignore-scripts，
+不能隐式消费账户 npm 配置。此仍是应用层约束，不是任意项目代码的 OS 沙箱。
+
+经验同步 scope 仍只表示当前源文件/包图、封存配置、真实版本与配方，不声明 live node_modules 字节；
+不在同步经验 final gate 扫描依赖，也不把授权指纹伪称当前执行证明。实际执行边界另做上述异步核实。
+
+Desktop 原 competition 出口为全部注册的 `coding.repair.*` 及 F15 原 aliases 增加
+`coding-repair-metadata-v1` 投影。保留 session/snapshot/相对文件 SHA/真实验证状态与原 run 引用；
+read 只返回路径/编码/字节数/SHA，省略正文，verify/check 省略自由诊断文本，preview/patch 省略正文。
+publish 保持 `{version,sessionId,state,files:[{path,beforeSha256,afterSha256}],evidenceRefs}`。
+原 ToolGateway cache/Evidence 不改写，原 consent/任务绑定/export policy 仍是前提，未知不能变成功。
+
+此增量 Node 24.15.0 的 coding-tools TypeScript 编译通过，依赖/投影小例 13/13、npm 私有配置
+小例 1/1 通过。真实本树 201 包只读指纹 probe 通过（38.466s，Main 事件循环计数 2409）；
+没有对真实依赖执行复制/安装/构建或云调用。实际 Workspace consumer 小例因本隔离树缺
+`@personal-agent/runtime/dist/application.js` 未加载，已适配全部旧授权测试调用方并保留断言，交整合树验证。
+未以此宣称整个 Runtime/Desktop、真实 AgentArts 或原补丁任务现场恢复验收完成。
+
+发布历史读回先匹配原 journal 中已保存的精确请求，再返回原 `published` 回执；后续源码或依赖
+变化不触发新的准备检查、命令或写入。变造请求仍拒绝，未完成发布仍需原 reconciliation。
+新发布继续执行依赖实时校验。新增回归以真实临时文件、原 Policy/ToolGateway 和固定 Node
+配方复现旧顺序的 `RESULT_UNKNOWN`，修复后 1/1 通过，并确认用户后续编辑未被覆盖；
+Runtime 选择/确认与依赖变更端口为显式 fixture，不代表真实云端或现场取消恢复验收。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 

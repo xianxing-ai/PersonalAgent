@@ -19,7 +19,9 @@
       "import": "./dist/agentarts-transport.js"
     },
     "./agentarts-transport-schema": "./schema/agentarts-transport.json",
-    "./coding-repair": {"types":"./dist/coding-repair.d.ts","import":"./dist/coding-repair.js"}
+    "./coding-repair": {"types":"./dist/coding-repair.d.ts","import":"./dist/coding-repair.js"},
+    "./harness-candidates": {"types":"./dist/harness-candidates.d.ts","import":"./dist/harness-candidates.js"},
+    "./harness-candidates-schema": "./schema/harness-candidates.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
