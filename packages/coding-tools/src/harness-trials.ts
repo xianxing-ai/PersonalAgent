@@ -72,7 +72,8 @@ export function createHarnessCandidateTrialTool(inputOptions:HarnessTrialToolOpt
         ||harnessCandidateRecipeFingerprint(started.recipes)!==expected.binding.recipeFingerprint)
         throw new ProtocolError('REVISION_CONFLICT','Original candidate baseline or recipe binding changed');
       await options.saveSession(context,structuredClone(started));check(context);
-      const readback=await options.host.check(started.session.sessionId,input.patches,input.recipeIds,context);check(context);
+      const orderedRecipes=expected.recipes.filter(recipe=>input.recipeIds.includes(recipe.recipeId)).map(recipe=>recipe.recipeId);
+      const readback=await options.host.check(started.session.sessionId,input.patches,orderedRecipes,context);check(context);
       const current=await options.readBinding(context,input.candidateId);check(context);
       const parents=parentRuns.length?[...await options.readParentArtifactDigests!(context,input.candidateId,parentRuns,input.patches)]:[];check(context);
       if(JSON.stringify(current)!==JSON.stringify(expected)||JSON.stringify(parents)!==JSON.stringify(parentArtifactDigests))

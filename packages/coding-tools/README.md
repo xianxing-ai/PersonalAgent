@@ -92,6 +92,36 @@ H1/H2 以真实稳定配置组装经验 scope，方法不接收模型 task/scope
 不合并两种 journal，不把实际 executor 改写为 owner；最终 publish 仍用原 Policy/CAS/readback。
 其他会话操作及 HostBridge 保持原路径，Runtime reader 不为其授予 H3 路由。
 
+### 已准备依赖与安全结果投影增量
+
+依赖项目使用原 `package-lock.json` v2/v3 与 `node_modules/.package-lock.json`，核对根/工作区
+manifest、已安装版本/来源 metadata，再封存真实依赖字节指纹。原 Workspace `authorize(input)`
+现在返回 `Promise<原snapshot>`，Main 必须 await；一次授权内的临时 FS worker 完成并退出后才返回。
+准备期间开发配置和隔离工具明确 unavailable，撤销取消原 worker，旧代次不得回填。
+普通配置 getter 不遍历依赖。该指纹证明授权时已准备字节的一致性，不证明 registry tarball 真实性。
+
+`prepareIsolatedCodingDependencies` 仅独立复制这些已准备文件，保留目录内的 workspace/bin 链接，
+拒绝外部链接/未锁顶层包/敏感配置，不安装、联网或共享可写文件身份，不复制主目录构建输出。
+已有锁包中的 bundled/fixture payload 也纳入字节指纹。复制前后和实际 verify/publish 前后用
+可取消、原 deadline 限定的 worker 重新核实；改动或未知保持 closed。原固定配方按受信顺序先 build
+再 test，不能由模型倒序。候选 npm 使用空的私有配置、home/cache/tmp、offline 和 ignore-scripts，
+不能隐式消费账户 npm 配置。此仍是应用层约束，不是任意项目代码的 OS 沙箱。
+
+经验同步 scope 仍只表示当前源文件/包图、封存配置、真实版本与配方，不声明 live node_modules 字节；
+不在同步经验 final gate 扫描依赖，也不把授权指纹伪称当前执行证明。实际执行边界另做上述异步核实。
+
+Desktop 原 competition 出口为全部注册的 `coding.repair.*` 及 F15 原 aliases 增加
+`coding-repair-metadata-v1` 投影。保留 session/snapshot/相对文件 SHA/真实验证状态与原 run 引用；
+read 只返回路径/编码/字节数/SHA，省略正文，verify/check 省略自由诊断文本，preview/patch 省略正文。
+publish 保持 `{version,sessionId,state,files:[{path,beforeSha256,afterSha256}],evidenceRefs}`。
+原 ToolGateway cache/Evidence 不改写，原 consent/任务绑定/export policy 仍是前提，未知不能变成功。
+
+此增量 Node 24.15.0 的 coding-tools TypeScript 编译通过，依赖/投影小例 13/13、npm 私有配置
+小例 1/1 通过。真实本树 201 包只读指纹 probe 通过（38.466s，Main 事件循环计数 2409）；
+没有对真实依赖执行复制/安装/构建或云调用。实际 Workspace consumer 小例因本隔离树缺
+`@personal-agent/runtime/dist/application.js` 未加载，已适配全部旧授权测试调用方并保留断言，交整合树验证。
+未以此宣称整个 Runtime/Desktop、真实 AgentArts 或原补丁任务现场恢复验收完成。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
