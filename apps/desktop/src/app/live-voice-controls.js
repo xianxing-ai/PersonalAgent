@@ -40,7 +40,9 @@ export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
       await invoke('live.configure', request);
       editing = editRevision !== submittedRevision;
       toggleErrorOwner = undefined;
-      result.textContent = editing ? '已保存本次提交；新修改尚未保存。' : '已保存；点圆形语音按钮或按快捷键开始 Live。';
+      result.textContent = editing ? '已保存本次提交；新修改尚未保存。'
+        : request.startupGreeting || request.continuousListening ? '已保存启动偏好；请查看启动与监听状态。'
+          : '已保存；点圆形语音按钮或按快捷键开始 Live。';
       if (!editing) settings.open = false;
     }
     catch (error) {toggleErrorOwner = undefined; result.textContent = error.message;}

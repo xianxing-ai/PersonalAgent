@@ -576,6 +576,7 @@ function snapshot(surface) {
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
+    loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     approvals: [...approvals.values()].filter(approval=>!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface)),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
@@ -2448,6 +2449,11 @@ async function action(event, name, payload) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel');
+  if(name==='app.startup.read'||name==='app.startup.configure'){
+    if(sender!==admin||(name==='app.startup.read'&&payload!==undefined))throw Error('请从可信管理后台设置登录自启');
+    const result=name==='app.startup.read'?desktopHost.readLoginItem():desktopHost.configureLoginItem(payload);
+    publish();return result;
+  }
   if(name==='remoteMcp.open') {
     if(sender!==admin || !competitionMode || !remoteMcpManagement || payload!==undefined)throw Error('请从正式管理后台打开远程 MCP 管理');
     remoteMcpManagement.open();return;
