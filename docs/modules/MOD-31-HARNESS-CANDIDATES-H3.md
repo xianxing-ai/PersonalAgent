@@ -85,11 +85,14 @@ Windows runner 提供 `coding.repair.prepare_adoption@1.0.0` 的实现，输入�
 
 ## 验证与 Evidence
 
-当前已完成唯一契约生成；必要定向编译/测试待本机重型槽释放后执行，尚未声明测试通过。
+已完成唯一契约生成、新增 `.mjs` 语法检查，以及三个新增 TypeScript 模块的 parser 语法诊断；均通过。
+2026-10-20 用户进一步要求先接齐全部源码、只做最必要小检查，之后统一集成验证：
+本包未安装依赖、未执行 TypeScript 类型检查或行为测试，不将语法检查当类型/行为通过。
+指定源码的只读子代理审查未发现阻断问题；不是仓库非作者 Approve，也不代替后续联调。
 本包用显式 synthetic trial 验证契约、绑定/失败/unknown/弃权/组合边界，Runtime 用真实 SQLite/
 Policy/ToolGateway 消费 synthetic 端口；Windows 真实 host/Node 固定配方由 runner 工作包独立取证。
 没有真实 AgentArts/付费模型调用或云发布授权，平台效果验收 not_run；这些必要工程检查不代替平台验收。
-未运行全仓 check；接口保持 provisional，不新增 Core wire、依赖或数据库迁移。
+未运行全仓 check，按用户新优先级交主控在代码接齐后统一安排；接口保持 provisional，不新增 Core wire、依赖或数据库迁移。
 
 所有源码、实际接线和验证结果将经独立 PR 交付；拟审查者 goo122，拟合并者 Potatos498，
 尚无独立批准或合并记录。本包不自行合并。
