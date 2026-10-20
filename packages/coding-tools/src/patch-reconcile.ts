@@ -11,7 +11,7 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const MAX_RELATIVE_PATH_LENGTH = 1024;
 const WINDOWS_RESERVED_NAME = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/iu;
 const PROCESS_START_TICKS = /^[1-9]\d{0,19}$/u;
-const PROCESS_QUERY_TIMEOUT_MS = 2_000;
+const NATIVE_PROCESS_QUERY_TIMEOUT_MS = 10_000;
 const MAX_PROCESS_QUERY_OUTPUT_BYTES = 256;
 
 export interface WorkspacePatchReconcileOptions {
@@ -25,6 +25,8 @@ export interface WorkspacePatchReconcileOptions {
   isProcessAlive?: (identity: WorkspacePatchProcessIdentity) => WorkspacePatchProcessState | Promise<WorkspacePatchProcessState>;
   /** Absolute trusted pwsh/powershell path used when no checker is injected. */
   powerShellPath?: string;
+  /** Absolute trusted WindowsJobProcessHost executable used for native identity queries. */
+  processIdentityHelperPath?: string;
   /** Original Runtime execution identity, checked before returning or clearing a marker. */
   expectedRunId?: string;
   expectedArgumentsDigest?: string;
@@ -187,15 +189,16 @@ function errorCode(error: unknown): string | undefined {
     ? String((error as {code?: unknown}).code) : undefined;
 }
 
-function canonicalPowerShellPath(powerShellPath: string): string {
-  if (typeof powerShellPath !== 'string' || !isAbsolute(powerShellPath)) {
-    invalid('Workspace patch process checker requires an absolute PowerShell path');
+
+function canonicalProcessIdentityHelperPath(helperPath: string): string {
+  if (typeof helperPath !== 'string' || !isAbsolute(helperPath)) {
+    invalid('Workspace patch process identity helper requires an absolute path');
   }
   let resolved: string;
-  try { resolved = realpathSync.native(powerShellPath); }
-  catch { invalid('Workspace patch process checker PowerShell path is unavailable'); }
-  if (!statSync(resolved).isFile() || !['pwsh.exe', 'powershell.exe'].includes(basename(resolved).toLowerCase())) {
-    invalid('Workspace patch process checker requires pwsh.exe or powershell.exe');
+  try { resolved = realpathSync.native(helperPath); }
+  catch { invalid('Workspace patch process identity helper is unavailable'); }
+  if (!statSync(resolved).isFile() || basename(resolved).toLowerCase() !== 'windowsjobprocesshost.exe') {
+    invalid('Workspace patch process identity helper must be WindowsJobProcessHost.exe');
   }
   return resolved;
 }
@@ -206,15 +209,18 @@ type ProcessStartQuery =
   | {state: 'not_found'; elapsedMs: number}
   | {state: 'unknown'; reason: ProcessQueryFailure; elapsedMs: number};
 
-function queryProcessStartTime(pid: number, powerShellPath: string): Promise<ProcessStartQuery> {
-  const executable = canonicalPowerShellPath(powerShellPath);
-  const command = `$ErrorActionPreference='Stop'; try { $p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($null -eq $p) { [Console]::Out.Write('NOT_FOUND'); exit 3 }; [Console]::Out.Write($p.StartTime.ToUniversalTime().Ticks) } catch { exit 4 }`;
+function queryNativeProcessStartTime(
+  pid: number,
+  processIdentityHelperPath: string,
+): Promise<ProcessStartQuery> {
+  const nativeHelper = canonicalProcessIdentityHelperPath(processIdentityHelperPath);
+  const args = ['--query-process-start-time', String(pid)];
   const startedAt = performance.now();
   const elapsedMs = (): number => Math.max(0, Math.round(performance.now() - startedAt));
   return new Promise(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command], {
+      child = spawn(nativeHelper, args, {
         windowsHide: true,
         shell: false,
         stdio: ['ignore', 'pipe', 'ignore'],
@@ -225,11 +231,11 @@ function queryProcessStartTime(pid: number, powerShellPath: string): Promise<Pro
     }
     let settled = false;
     let output = '';
-    const timer = setTimeout(() => finish({state: 'unknown', reason: 'query_timeout', elapsedMs: elapsedMs()}), PROCESS_QUERY_TIMEOUT_MS);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = (result: ProcessStartQuery): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
       child.stdout?.removeAllListeners('data');
       child.removeAllListeners('close');
       if (child.exitCode === null) {
@@ -237,6 +243,11 @@ function queryProcessStartTime(pid: number, powerShellPath: string): Promise<Pro
       }
       resolveResult(result);
     };
+    timer = setTimeout(() => finish({
+      state: 'unknown',
+      reason: 'query_timeout',
+      elapsedMs: elapsedMs(),
+    }), NATIVE_PROCESS_QUERY_TIMEOUT_MS);
     child.stdout?.on('data', (chunk: Buffer) => {
       output += chunk.toString('utf8');
       if (Buffer.byteLength(output, 'utf8') > MAX_PROCESS_QUERY_OUTPUT_BYTES) {
@@ -257,25 +268,33 @@ function queryProcessStartTime(pid: number, powerShellPath: string): Promise<Pro
   });
 }
 
-/** Captures the helper's OS start token before any candidate bytes are sent. */
-export async function captureWorkspacePatchProcessIdentity(
-  pid: number,
-  powerShellPath: string,
-): Promise<WorkspacePatchProcessIdentity> {
-  if (!Number.isSafeInteger(pid) || pid < 1) unknown('Workspace patch helper identity is unavailable (invalid_pid, 0ms)');
-  const result = await queryProcessStartTime(pid, powerShellPath);
-  if (result.state !== 'found') {
-    const reason = result.state === 'not_found' ? 'process_not_found' : result.reason;
-    unknown(`Workspace patch helper identity is unavailable (${reason}, ${result.elapsedMs}ms)`);
+export function parseWorkspacePatchProcessReady(
+  value: unknown,
+  expectedPid: number,
+): WorkspacePatchProcessIdentity {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    unknown('Workspace patch helper READY frame is invalid');
   }
-  return {pid, startTimeTicks: result.startTimeTicks};
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const pid = record.pid;
+  const startTimeTicks = record.startTimeTicks;
+  if (keys.length !== 3 || keys[0] !== 'pid' || keys[1] !== 'startTimeTicks' || keys[2] !== 'type'
+    || record.type !== 'ready'
+    || !Number.isSafeInteger(expectedPid) || expectedPid < 1
+    || typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid !== expectedPid
+    || typeof startTimeTicks !== 'string' || !PROCESS_START_TICKS.test(startTimeTicks)
+    || BigInt(startTimeTicks).toString() !== startTimeTicks) {
+    unknown('Workspace patch helper READY frame is invalid');
+  }
+  return {pid: expectedPid, startTimeTicks};
 }
 
 async function inspectWorkspacePatchProcess(
   identity: WorkspacePatchProcessIdentity,
-  powerShellPath: string,
+  processIdentityHelperPath: string,
 ): Promise<WorkspacePatchProcessState> {
-  const result = await queryProcessStartTime(identity.pid, powerShellPath);
+  const result = await queryNativeProcessStartTime(identity.pid, processIdentityHelperPath);
   if (result.state === 'not_found') return 'exited';
   if (result.state !== 'found' || result.startTimeTicks !== identity.startTimeTicks) return 'unknown';
   return 'running';
@@ -342,8 +361,10 @@ export async function reconcileWorkspacePatchApply(
     unknown('Workspace patch in-flight record does not match the original authorized operation');
   }
   const identity: WorkspacePatchProcessIdentity = {pid: marker.pid, startTimeTicks: marker.startTimeTicks};
-  const isAlive = options.isProcessAlive
-    ?? (options.powerShellPath ? (value: WorkspacePatchProcessIdentity) => inspectWorkspacePatchProcess(value, options.powerShellPath!) : undefined);
+    const isAlive = options.isProcessAlive
+    ?? (options.processIdentityHelperPath
+      ? (value: WorkspacePatchProcessIdentity) => inspectWorkspacePatchProcess(value, options.processIdentityHelperPath!)
+      : undefined);
   if (!isAlive) unknown('Workspace patch helper identity checker is unavailable');
   let state: WorkspacePatchProcessState;
   try {

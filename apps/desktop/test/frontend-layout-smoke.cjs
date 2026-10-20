@@ -31,6 +31,11 @@ const {_electron}=require('playwright');
   fs.writeFileSync(path.join(output,file),Buffer.from(png,'base64'));
  }
  async function windowControls(page,mode){
+  await app.evaluate(({BrowserWindow},mode)=>{
+   const win=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes(`mode=${mode}`));
+   if(win.isMaximized())win.unmaximize();
+  },mode);
+  await until(async()=>await page.locator('[data-window="maximize"]').getAttribute('data-maximized')==='false','initial restore state did not reach the controls');
   const english=await page.evaluate(()=>document.documentElement.lang.startsWith('en'));
   const buttons=page.locator('.window-controls [data-window]');assert.equal(await buttons.count(),3);
   assert.equal(await page.locator('.window-controls').evaluate(node=>getComputedStyle(node).webkitAppRegion),'no-drag');
