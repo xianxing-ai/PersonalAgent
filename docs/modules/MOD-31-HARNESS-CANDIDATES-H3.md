@@ -85,6 +85,14 @@ run→session 以含原定位和 CodingRepairInput 的单个 saveOnce 行保存�
 恢复只开放原 actual executor 的 session，原 unknown 操作不要求被伪造为 confirmed。
 readTrial 还须与原 saveOnce 的完整 session 逐字段相等，不能整套替换为同 owner 下的另一 session。
 
+真实 waiting_reconciliation 使用 factory 返回的 **host-only** `readOriginalSessionForRecovery(input)`：
+input 为 ownerTaskId/actualTaskId/trialRunId/expectedRevision/configurationRef。H1 先校验原生 task.reconcile
+用户权限、原 owner/plan/marker 和实际 workspace/config，再调用；不能将此函数注册到模型工具目录。
+reader 不创建 ToolContext、不调用 active scope gate、不要求 running 或 harness 开关；只核对原等待任务
+revision、operation/参数摘要/Evidence、saveOnce session 与冻结配置/基线，再返回原 metadata。
+允许过期或禁用后的原会话只读核实，但不接受更换 workspace/config，不写状态、回执或 Evidence。
+H1/Windows 随后仅读原 journal/current metadata，并在异步读回前后复核 revision；clear 仍不是验证成功。
+
 采用只消费 owner 最新的 confirmed 比较（后续 pending/unknown/failed/弃权不回退旧选择），
 重算同一输入的比较并与原确认结果逐字段核对，再交精确选中补丁。
 组合核原 refs/祖先无环和原候选输入，首版只接受精确补丁并集；同一路径冲突明确 unsupported。
@@ -129,9 +137,10 @@ workspaceId/workspaceRef 差异，仅用 Node 24.15.0 源码 loader 执行 `fact
 1/1 通过，日志 `.cache/harness-bindings-single-case.log`，其余行为回归未运行。loader 首次使用 strip-only
 因既有 ProtocolError 的 TypeScript parameter property 不受支持而失败，改用 `--experimental-transform-types` 后通过，
 没有编译产物或安装依赖；该检查不是正式 dist/Runtime 集成通过。
-只读增量审查发现的原 session 绑定缺口已修；另发现真实 unknown 恢复尚有接线阻碍：
-TaskRuntime 将 RESULT_UNKNOWN 转 waiting_reconciliation 后拒绝普通 tool.invoke，H1/Windows 尚需沿可信恢复入口
-核实原 session，不能伪造 running 或重发 trial。单独存在 reconcile_trial 目录不构成该闭环。
+只读增量审查发现的原 session 绑定缺口已修。针对普通工具无法从 waiting_reconciliation 进入的阻碍，
+本包已交上述 native-only reader，另用同一源码 loader 运行 `native recovery reads` 一个必要 Fake 端口单例，
+1/1 通过，日志 `.cache/harness-bindings-native-case.log`；原 state/Evidence 不变，过期 revision/换配置拒绝。
+H1/Windows 实际 native 调用方及真实 journal 联合路径仍待统一集成验证，不因目录或两个 Fake 单例宣称闭环已验。
 以上只读审查不是仓库非作者 Approve，也不代替后续联调。
 本包用显式 synthetic trial 验证契约、绑定/失败/unknown/弃权/组合边界，Runtime 用真实 SQLite/
 Policy/ToolGateway 消费 synthetic 端口；Windows 真实 host/Node 固定配方由 runner 工作包独立取证。
