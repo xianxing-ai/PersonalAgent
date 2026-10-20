@@ -65,3 +65,25 @@ F13/F14 已有独立系统观察/Windows-MCP 用户工具，不等于 graph alia
 - source450 新 head `2d30464b91edbd4979620b55f8ba2aa238cd44a6` 仅修改 `packages/coding-tools/test/isolated-dependencies.test.mjs`：以 `realpath` 后的规范 workspace target 创建 junction，并在准备依赖前通过 `lstat` 与 `realpath` 断言原链接身份和锁定 workspace 精确一致；没有修改生产校验或放宽安全门禁。
 - 执行方提供该夹具 Linux 定向结果 7/7、0 skip，日志 SHA256 `db015379f4c9a65e1eb0918910df29406573f4da329c9708dd095f6ebd3e39ba`。Windows TEMP 的 8.3 别名路径解释及此修复的 Windows 效果仍待新 head CI 验证，不能由 Linux 结果宣称已经通过。
 - 本轮整合仅合入上述测试夹具与此证据更新，未重跑构建、安装或整组测试，既有生产 tree `17c47668` 的产品内容保持不变；当前 head 的 CI 与非作者批准仍是实际合并门禁。
+
+## 后续 Windows CI 内存证书后端准备
+
+- source444 的 `65` 对应 GitHub 托管 Windows 运行出现唯一真实失败：首个 `ephemeralCertificate` 调用约 10.5 秒，超过原有 10 秒限制。该证据不是生产冷启动性能通过的证明。
+- 合入 source444 `50569978f3cadc1e5061fdb367f4a18f054c3b78`：仅 CI workflow 四行、新增 `scripts/ci/warm-knowledge-certificate.mjs` 及其测试。原 check 前单独执行最多 30 秒的 Windows 内存证书后端准备；后续原被测函数仍独立调用，原 10 秒限制不变。先前扩大 diagnostic wrapper 超时的方案已经撤回、从未发布，本次生产源码及 diagnostic wrappers 均无改动。
+- 准备脚本使用 Windows 系统目录固定 PowerShell，在内存生成、导出并释放临时自签名证书，不访问账户、网络或证书 store，不输出密钥材料、子进程 stdout/stderr 或命令行。日志仅记录阶段、状态、耗时及经过筛选的失败代码；准备失败会阻断后续原检查，不自动重试。
+- 执行方提供纯 JS 兼容检查 6/6 通过。本次仅正常合并及文档记录，没有重新运行测试、构建或安装。初始整合时实际 Windows 准备效果和生产冷启动性能尚未验；后续跟进确认 source444 精确 head `50569978f3cadc1e5061fdb367f4a18f054c3b78` 的完整 Windows check、Linux image、aggregate 与 approval 均成功。该结果仅归属 `50569978`，不能转记为其后 main 同步 head 或当前451已经通过；当前451仍须新 head CI。准备后完整检查通过不等于生产冷启动性能验收，后者仍未验。
+
+## Calendar458 联合验证与审查包后续
+
+- source458 `b6ab5e1ba1d85448b795acbbebbc74e616b1b38f` 正常合入后，验证源码 HEAD `580b0a626e320f09a7a7248cccf138cd16dd0927`、tree `afd3e103063a0792dfa157742024b172997bb952`。独立工作树使用 Node 24.15.0/npm 11.12.1、仓库外 TEMP、私有 node_modules 与 dist；Calendar 原 tsc 构建通过，另 31 个无源码变化包的产物复制后逐文件哈希一致，没有通过链接写入旧验证树。
+- Calendar 完整相关套件 124 项：121 pass / 0 fail / 3 真实服务 skip；Desktop 真实 Runtime/Gateway/SQLite 及本机 HTTP 消费小组 60/60、0 skip；原 integration 51 项：48 pass / 0 fail / 3 Windows skip。各命令 exit 0。合计六项真实平台跳过仍未验，未访问真实账号或运行全仓检查。
+- 日志位于独立验证缓存 `.cache/calendar458-validation/`：`calendar-build.log` SHA256 `5ecbce429d89e7fed549aded67a6dbdda69c10e7ceee1e7b02c3b8cc82d58dd7`；`calendar-tests.log` `20a38d2fbe1db72636e7986585738caefc8c65341339f6d982f698f328818be8`；`desktop-consumer-tests.log` `8cde97d8c558047ce01133abd1f595e9db4be9625f3fc8742987e7376821b897`；`integration-tests.log` `22ea3916aa86e58264d9d2ad279c5056703fc65b84c97459eae0d72810af7102`。
+- 用户可见“开发宿主”改为“代码开发工具”：主对话和语音可在选定工作区读代码、隔离试改、运行允许的命令，并按权限提交改动。此文案不增加权限；保存配置仍不授予执行、推送或出机权限。
+- 后续正常合入 main `1a77ecfb96c5047a59981f7153cdb48ad736e9c5` 与 source442 `a93734c195ceaff56d3e7a5654e320f3007b35f3`，保留全部历史。main 的 #441 增加 Desktop 与 Runtime 对本机回环 HTTP 日历的既有兼容接线；非回环 HTTP 仍拒绝。为该实际源码变化单独重建 Runtime，calendar-read、Desktop calendar-config/read-approval 与 connector-conversation-tools 小组 52/52、0 skip、exit 0；未重复无关套件。日志 `.cache/review-bundle-validation/runtime-build.log` SHA256 `9f53b1dee684fed3851c7928656b1ac906ebf6cbe200d1b3932256cb809321e8`，`main441-tests.log` `58790c2bdb586402b96d38520ae049a5cc9289ddbe8b71c2421da9da6b32df39`。
+- 同批正常合入 source450 `09d64aa015cd52bcfde9898f1975c21b2b01bcd1` 的原 Desktop failure reporter 双输出配置；原测试 glob、并发、断言和期限不变。旧 `2d30464b` 运行仍为失败，新 `09d64aa0` 的诊断 CI 待核；执行方提供的 6/6 与 2/2 仅证明诊断能力，不代表业务失败已经修好。未合入被要求修订的 #439 新内容 UID 补丁，也未合入 obsolete ARM smoke proxy 夹具修改。
+
+## 既有 ARM 镜像证据边界
+
+- 用户要求仅使用仓库已有 ARM 镜像，不新造镜像，不以 AMD 代替目标。历史 AMD 日志保留，但不计目标验收；该路线已经停止。
+- 只读证据 `.cache/harness-cleanup-20261020/arm-image-existing/latest-existing-arm-evidence.json` 记录最新 owned-1.7 / `arm64-context-1-7-1020` 引用 digest `sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004`。该 digest 与既有 SWR repository 拼接的引用未由本轮 manifest/config 核实，匿名读取为 401，精确 OCI source revision 不明，不能说它包含当前451。
+- 历史 GHCR ARM 制品可以匿名下载和 inspect，但不是最新1.7的等价证明。本机既有 ARM 制品及官方 Node ARM 的运行前置遇到 `exec format error`，下载成功不等于运行通过。实际 ARM 执行与最新1.7目标验收仍未完成；不以新 build、新 tag、AMD 或新代理夹具替代既有制品要求。

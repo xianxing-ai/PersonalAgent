@@ -3,9 +3,9 @@ const escape=value=>String(value??'').replace(/[&<>"']/gu,char=>({'&':'&amp;','<
 /** Admin-only product settings. No credentials are placed in snapshots or browser storage. */
 export function mountDeveloperControls(root,invoke){
   const view=document.createElement('section');view.className='sheet developer-settings';
-  view.innerHTML='<h2>开发宿主设置</h2><p class="notice">复用已选择的编程工作区和模型。保存配置不授予执行、推送或出机权限。</p>'+
+  view.innerHTML='<h2>代码开发工具设置</h2><p class="notice">主对话和语音可在选定工作区读代码、隔离试改、运行允许的命令，并按权限提交改动。复用已选择的编程工作区和模型；保存配置不授予执行、推送或出机权限。</p>'+
     '<p data-developer-status role="status"></p><p data-developer-workspace class="notice"></p>'+
-    '<label><input type="checkbox" data-developer-enabled>启用开发宿主</label><button type="button" class="btn btn-sm" data-developer-refresh>刷新状态</button>'+
+    '<label><input type="checkbox" data-developer-enabled>启用代码开发工具</label><button type="button" class="btn btn-sm" data-developer-refresh>刷新状态</button>'+
     '<form class="settings-form" data-developer-form><label>GitHub 仓库<input name="repository" placeholder="owner/repository" required maxlength="201"></label>'+
     '<label>受信 gh 可执行文件<input name="executable" placeholder="选择工作区外的 gh.exe 绝对路径" required></label>'+
     '<label><input name="repairLinks" type="checkbox">启用 GitHub 修复链接工具（仍需原任务审批）</label>'+
@@ -25,7 +25,7 @@ export function mountDeveloperControls(root,invoke){
   const setBusy=value=>{busy=value;view.querySelector('[data-developer-save]').disabled=value;enabled.disabled=value;};
   function render(value={}){
     current=value;
-    view.querySelector('[data-developer-status]').textContent=`${value.available?'原开发宿主已装配':'开发宿主未就绪'} · ${value.reason??''}`;
+    view.querySelector('[data-developer-status]').textContent=`${value.available?'代码开发工具已就绪':'代码开发工具未就绪'} · ${value.reason??''}`;
     view.querySelector('[data-developer-workspace]').textContent=value.workspace?.selected
       ?`原工作区：${value.workspace.rootPath}；可用命令：${(value.workspace.recipeIds??[]).join('、')||'未配置'}`:'请先在编程设置选择工作区';
     enabled.checked=value.enabled===true;
