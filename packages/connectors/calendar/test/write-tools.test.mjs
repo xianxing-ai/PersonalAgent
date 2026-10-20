@@ -39,6 +39,19 @@ test('provider 声明 writes 后公布 calendar.create/update/cancel，写后读
   } finally { f.unregister(); }
 });
 
+test('create metadata does not promise retry safety and Fake writes preserve location instead of changing organizer',async()=>{
+  const descriptors=[],provider=new FakeCalendarProvider([],{now:()=>NOW});
+  const remove=register({register(tool){descriptors.push(tool.descriptor);return ()=>{};}},{provider,accountRef:'fixture',now:()=>NOW});
+  try {
+    assert.equal(descriptors.find(item=>item.name==='calendar.create').idempotencySupport,false);
+    const first=await provider.writes.createEvent({uid:'location',summary:'synthetic',location:'room',notes:'notes',
+      startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00.000Z'});
+    assert.equal(first.sequence,0);assert.equal(first.updatedUtc,new Date(NOW).toISOString());
+    const updated=await provider.writes.updateEvent({uid:first.externalId,location:'new room'});
+    assert.equal(updated.location,'new room');assert.equal(updated.notes,'notes');assert.equal(updated.organizer,undefined);
+  } finally {remove();}
+});
+
 test('写工具 scope 隔离：calendar:read 不能调用写工具', async () => {
   const f = fixture();
   try {

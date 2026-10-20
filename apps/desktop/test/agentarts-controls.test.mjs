@@ -10,13 +10,13 @@ function harness(t,invoke) {
     addEventListener(name,listener){this.listeners.set(name,listener);},
     setAttribute(name,value){this.attributes.set(name,value);}});
   const fields=Object.fromEntries(['gatewayUrl','runtimeName','deploymentVersion','authorization','transport','websocketUrl','appToken','allowHttpsFallback'].map(key=>[key,node()]));
-  const submit=node(),revoke=node(),status=node(),form=node();
+  const submit=node(),revoke=node(),status=node(),form=node(),tokenHint=node();
   Object.assign(form,{elements:fields,querySelector:()=>submit,
     querySelectorAll:()=>[...Object.values(fields),submit,revoke],
     reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='wss';}});
   const wss=node();
   const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
-    querySelector:selector=>selector==='form'?form:selector==='[data-status]'?status:selector==='[data-wss]'?wss:revoke};
+    querySelector:selector=>selector==='form'?form:selector==='[data-status]'?status:selector==='[data-wss]'?wss:selector==='[data-token-hint]'?tokenHint:revoke};
   form.contains=target=>[...Object.values(fields),submit,revoke].includes(target);
   const body={},documentListeners=new Map();
   globalThis.document={body,activeElement:body,createElement:()=>section,
@@ -24,7 +24,7 @@ function harness(t,invoke) {
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,status,section,wss,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+  return {controls,fields,submit,revoke,status,section,wss,tokenHint,save:()=>form.listeners.get('submit')({preventDefault(){}}),
     blur:()=>{globalThis.document.activeElement=body;},
     focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
     clear:()=>revoke.listeners.get('click')(),
@@ -238,4 +238,37 @@ test('AgentArts fixed deployment version renders and saves without losing edits'
   assert.equal(ui.fields.authorization.value,'');
   ui.controls.render({deploymentVersion:'v6.release-2'});
   assert.equal(ui.fields.deploymentVersion.value,'v6.release-2');
+});
+
+test('a rejected save shows the host reason and keeps the typed credentials',async t=>{
+  const ui=harness(t,async()=>{throw Error('首次配置 WSS 主通道必须填写“独立镜像访问令牌”（至少 32 位可见字符）');});
+  ui.edit('authorization','Bearer synthetic-outer');
+  ui.edit('appToken','too-short');
+  await ui.save();
+  assert.match(ui.status.textContent,/首次配置 WSS 主通道必须填写/);
+  assert.equal(ui.status.attributes.get('role'),'alert');
+  assert.equal(ui.fields.authorization.value,'Bearer synthetic-outer','rejected input is not discarded');
+  assert.equal(ui.fields.appToken.value,'too-short');
+});
+
+test('a pasted pinned WSS address fills an empty fixed deployment version',async t=>{
+  let submitted;
+  const ui=harness(t,async(action,input)=>{submitted={...input};return {configured:true};});
+  ui.edit('websocketUrl','wss://example.huaweicloud-agentarts.com/runtimes/synthetic-runtime/ws?endpoint=arm64-laya-abc123');
+  assert.equal(ui.fields.deploymentVersion.value,'arm64-laya-abc123');
+  ui.edit('deploymentVersion','arm64-manual');
+  assert.equal(ui.fields.deploymentVersion.value,'arm64-manual','an explicit version is never overwritten');
+  ui.edit('authorization','Bearer synthetic-outer');
+  ui.edit('appToken','synthetic-inner-at-least-32-characters');
+  await ui.save();
+  assert.equal(submitted.deploymentVersion,'arm64-manual');
+  assert.equal(submitted.websocketUrl,'wss://example.huaweicloud-agentarts.com/runtimes/synthetic-runtime/ws?endpoint=arm64-laya-abc123');
+});
+
+test('the token hint states whether a credential is already stored',async t=>{
+  const ui=harness(t,async()=>({configured:true}));
+  ui.controls.render({configured:false,appTokenConfigured:false});
+  assert.match(ui.tokenHint.textContent,/必填/);
+  ui.controls.render({configured:true,appTokenConfigured:true});
+  assert.match(ui.tokenHint.textContent,/已在本机加密保存/);
 });

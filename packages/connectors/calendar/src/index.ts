@@ -156,7 +156,7 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
     const createTool: RegisteredTool = {
       descriptor: {...writeDescriptorBase, name: 'calendar.create',
         inputSchema: createEventInputSchema, outputSchema: writeOutputSchema,
-        idempotencySupport: true, recoverySupport: false},
+        idempotencySupport: false, recoverySupport: false},
       execute: async (input: unknown, context) => {
         const raw = input as {summary: string; startUtc: string; endUtc: string; location?: string; notes?: string; uid?: string};
         const record = await writes.createEvent({

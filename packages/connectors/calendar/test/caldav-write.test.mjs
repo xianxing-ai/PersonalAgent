@@ -90,3 +90,47 @@ test('非法输入与认证失败按契约报错', async () => {
   // 401：假服务器无认证校验，用 404 资源 GET 验 NOT_FOUND 路径
   await assert.rejects(provider.updateEvent({uid: 'missing-uid'}, ctx()), {code: 'NOT_FOUND'});
 });
+
+test('write readback rejects a server which retains UID but changes the requested fields', async () => {
+  for (const replace of [body => body.replace('SUMMARY:original','SUMMARY:changed'),
+    body => body.replace('DTSTART:20261021T070000Z','DTSTART:20261021T073000Z'),
+    body => body.replace('LOCATION:room','LOCATION:another')]) {
+    const server = fakeServer();
+    const provider = new CalDavProvider({calendarUrl: URL_BASE,fetchImpl:async(url,init)=>{
+      const result = await server.fetchImpl(url,init);
+      return init.method === 'GET' ? {...result,text:async()=>replace(await result.text())} : result;
+    }});
+    await assert.rejects(provider.createEvent({uid:'mismatch',summary:'original',location:'room',
+      startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00.000Z'},ctx()),{code:'EXTERNAL_FAILURE'});
+    assert.equal(server.log.filter(entry=>entry.method==='PUT').length,1,'an unconfirmed write is never replayed');
+  }
+});
+
+test('UTF-8 folding round-trips and update preserves unrelated original attendee and alarm fields',async()=>{
+  const server=fakeServer(),provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:server.fetchImpl});
+  const summary='中文会议'.repeat(80),notes='多字节备注'.repeat(100);
+  const created=await provider.createEvent({uid:'folded',summary,notes,location:'original-room',
+    startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00.000Z'},ctx());
+  assert.equal(created.title,summary);assert.equal(created.notes,notes);
+  const stored=server.resources.get('folded.ics');
+  for(const line of stored.split('\r\n'))assert.ok(Buffer.byteLength(line,'utf8')<=75);
+  assert.match(stored,/DTSTAMP:\d{8}T\d{6}Z/);
+  server.resources.set('folded.ics',stored.replace('END:VEVENT','ATTENDEE:mailto:original@example.invalid\r\nBEGIN:VALARM\r\nDESCRIPTION:original alarm\r\nEND:VALARM\r\nEND:VEVENT'));
+  const updated=await provider.updateEvent({uid:'folded',summary:'changed'},ctx());
+  assert.equal(updated.location,'original-room');assert.equal(updated.notes,notes);
+  assert.match(server.resources.get('folded.ics'),/ATTENDEE:mailto:original@example.invalid/);
+  assert.match(server.resources.get('folded.ics'),/DESCRIPTION:original alarm/);
+  server.resources.set('folded.ics',server.resources.get('folded.ics').replace('END:VEVENT','RRULE:FREQ=DAILY\r\nEND:VEVENT'));
+  const before=server.log.filter(entry=>entry.method==='PUT').length;
+  await assert.rejects(provider.updateEvent({uid:'folded',summary:'unsafe'},ctx()),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(server.log.filter(entry=>entry.method==='PUT').length,before);
+});
+
+test('caller cancellation bounds uncooperative write transport without a second request',async()=>{
+  const controller=new AbortController();let calls=0;
+  const provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:async()=>{calls++;controller.abort();return new Promise(()=>{});}});
+  await assert.rejects(provider.createEvent({uid:'cancelled-pending',summary:'pending',
+    startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00.000Z'},
+    {signal:controller.signal,deadline:new Date(Date.now()+30000).toISOString()}),{code:'CANCELLED'});
+  assert.equal(calls,1);
+});

@@ -161,6 +161,8 @@ interface ParsedCalDavEvent {
   sequence: number;
   lastModifiedMs: number | undefined;
   status: 'confirmed' | 'tentative' | 'cancelled';
+  location?: string;
+  notes?: string;
 }
 
 /** 读取属性值与其参数串：parseIcalEvents 会同时存 `KEY` 与 `KEY;params` 两个键。 */
@@ -212,6 +214,8 @@ function readEvent(props: Record<string, string>): ParsedCalDavEvent | undefined
     uid, summary, startMs, endMs, allDay, timeZone, sequence,
     lastModifiedMs: lastModifiedRaw === undefined ? undefined : parseIcalDate(lastModifiedRaw.split(';')[0] ?? ''),
     status,
+    ...(props.LOCATION === undefined ? {} : {location: unescapeIcalText(props.LOCATION)}),
+    ...(props.DESCRIPTION === undefined ? {} : {notes: unescapeIcalText(props.DESCRIPTION)}),
   };
 }
 
@@ -219,8 +223,9 @@ export function parseCalDavEvents(raw: string): ParsedCalDavEvent[] {
   const lines = unfoldLines(raw);
   const events: ParsedCalDavEvent[] = [];
   let current: Record<string, string> | undefined;
+  let nestedDepth = 0;
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { current = {}; continue; }
+    if (line === 'BEGIN:VEVENT') { current = {}; nestedDepth = 0; continue; }
     if (line === 'END:VEVENT') {
       if (current) {
         const parsed = readEvent(current);
@@ -230,6 +235,9 @@ export function parseCalDavEvents(raw: string): ParsedCalDavEvent[] {
       continue;
     }
     if (current === undefined) continue;
+    if (line.startsWith('BEGIN:')) {nestedDepth++;continue;}
+    if (line.startsWith('END:')) {nestedDepth = Math.max(0, nestedDepth - 1);continue;}
+    if (nestedDepth > 0) continue;
     const colon = line.indexOf(':');
     if (colon <= 0) continue;
     const left = line.slice(0, colon);
@@ -489,9 +497,10 @@ export class CalDavProvider implements CalendarProvider {
     const uid = input.uid === undefined ? randomUUID() : assertWriteUid(input.uid);
     const ics = buildIcs({uid, summary, startUtc, endUtc,
       ...(input.location === undefined ? {} : {location: String(input.location)}),
-      ...(input.notes === undefined ? {} : {notes: String(input.notes)})}, iso(Date.now()));
+      ...(input.notes === undefined ? {} : {notes: String(input.notes)})}, stamp(Date.now()));
     await this.writeRequest('PUT', this.resourceUrl(uid), ics, 'text/calendar; charset=utf-8', context, [200, 201, 204]);
-    return this.readBack(uid, context);
+    return this.readBack({uid, summary, startUtc, endUtc,
+      location: input.location?.trim() ?? '', notes: input.notes?.trim() ?? ''}, context);
   }
 
   /** 更新事件：GET 现值合并（SEQUENCE 递增）后 PUT，写后读回核对。 */
@@ -507,13 +516,29 @@ export class CalDavProvider implements CalendarProvider {
       summary: typeof input.summary === 'string' && input.summary.trim() ? input.summary.trim() : parsed.summary,
       startUtc: input.startUtc === undefined ? iso(parsed.startMs) : assertWriteUtc(input.startUtc, 'startUtc'),
       endUtc: input.endUtc === undefined ? iso(parsed.endMs) : assertWriteUtc(input.endUtc, 'endUtc'),
-      ...(input.location === undefined ? {} : {location: String(input.location)}),
-      ...(input.notes === undefined ? {} : {notes: String(input.notes)}),
+      location: input.location === undefined ? parsed.location ?? '' : String(input.location).trim(),
+      notes: input.notes === undefined ? parsed.notes ?? '' : String(input.notes).trim(),
     };
     if (Date.parse(merged.endUtc) <= Date.parse(merged.startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
-    const ics = buildIcs(merged, stamp(Date.now()), parsed.sequence + 1);
+    const originalLines = unfoldLines(current);
+    if (originalLines.filter(line => line === 'BEGIN:VEVENT').length !== 1
+      || originalLines.some(line => /^(?:RRULE|RDATE|EXDATE|RECURRENCE-ID)(?:;|:)/u.test(line)))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Recurring or multi-event resources require their original calendar editor');
+    const updated = unfoldLines(buildIcs(merged, stamp(Date.now()), parsed.sequence + 1));
+    const replacements = updated.slice(updated.indexOf('BEGIN:VEVENT') + 1, updated.indexOf('END:VEVENT'));
+    const keys = new Set(['UID','DTSTAMP','DTSTART','DTEND','SUMMARY','LOCATION','DESCRIPTION','SEQUENCE']);
+    // Preserve unrelated attendee, organizer, alarm and calendar properties rather than rebuilding the resource.
+    let depth = 0;
+    const preserved = originalLines.filter(line => {
+      if (line === 'BEGIN:VEVENT') {depth = 1;return true;}
+      if (depth && line.startsWith('BEGIN:')) {depth++;return true;}
+      if (depth && line.startsWith('END:')) {depth--;return true;}
+      return depth !== 1 || !keys.has(line.split(/[:;]/u)[0] ?? '');
+    });
+    preserved.splice(preserved.indexOf('END:VEVENT'), 0, ...replacements);
+    const ics = preserved.map(foldIcalLine).join('\r\n') + '\r\n';
     await this.writeRequest('PUT', resourceUrl, ics, 'text/calendar; charset=utf-8', context, [200, 201, 204]);
-    return this.readBack(uid, context);
+    return this.readBack(merged, context);
   }
 
   /** 取消事件：DELETE 资源。404 视为已不存在（幂等），状态如实返回。 */
@@ -532,10 +557,13 @@ export class CalDavProvider implements CalendarProvider {
     return `${this.calendarUrl}${encodeURIComponent(uid)}.ics`;
   }
 
-  private async readBack(uid: string, context?: CalendarReadContext): Promise<CalendarEventRecord> {
-    const {text} = await this.writeExchange('GET', this.resourceUrl(uid), undefined, undefined, context);
-    const parsed = parseCalDavEvents(text).find(event => event.uid === uid);
-    if (parsed === undefined) throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar write read-back could not find the written UID', false);
+  private async readBack(expected: {uid: string; summary: string; startUtc: string; endUtc: string; location: string; notes: string},
+    context?: CalendarReadContext): Promise<CalendarEventRecord> {
+    const text = await this.writeRequest('GET', this.resourceUrl(expected.uid), undefined, undefined, context, [200]);
+    const parsed = parseCalDavEvents(text).find(event => event.uid === expected.uid);
+    if (parsed === undefined || parsed.summary !== expected.summary || parsed.startMs !== Date.parse(expected.startUtc)
+      || parsed.endMs !== Date.parse(expected.endUtc) || (parsed.location ?? '') !== expected.location || (parsed.notes ?? '') !== expected.notes)
+      throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar write read-back differs from the requested event; do not retry an unknown write', false);
     return this.toRecord(parsed);
   }
 
@@ -565,22 +593,29 @@ export class CalDavProvider implements CalendarProvider {
     const remainingMs = context?.deadline === undefined ? this.requestTimeoutMs : Date.parse(context.deadline) - startedAt;
     const timeoutAt = startedAt + Math.min(this.requestTimeoutMs, remainingMs);
     let timeout = setTimeout((): void => controller.abort(), Math.max(0, timeoutAt - Date.now()));
-    const interrupted = (): ProtocolError => {
-      assertReadActive(context);
-      return new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 请求超时', true);
+    const bounded = async <T>(operation: () => Promise<T>): Promise<T> => {
+      const interrupted = (): never => {assertReadActive(context);throw new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 写入结果未确认，请先核实原资源', false);};
+      if (controller.signal.aborted) interrupted();
+      let onAbort: () => void = () => {};
+      const cancelled = new Promise<never>((_resolve, reject) => {
+        onAbort = () => {try {interrupted();} catch (error) {reject(error);}};
+        controller.signal.addEventListener('abort', onAbort, {once: true});
+      });
+      try {return await Promise.race([operation(), cancelled]);}
+      finally {controller.signal.removeEventListener('abort', onAbort);}
     };
     try {
       let response: CalDavFetchResponseLike;
       try {
-        response = await this.fetchImpl(url, {method, headers, ...(body === undefined ? {} : {body}),
-          signal: controller.signal, redirect: 'error'});
+        response = await bounded(() => this.fetchImpl(url, {method, headers, ...(body === undefined ? {} : {body}),
+          signal: controller.signal, redirect: 'error'}));
       } catch (error) {
         assertReadActive(context);
         if (error instanceof ProtocolError) throw error;
         throw new ProtocolError('EXTERNAL_FAILURE', controller.signal.aborted ? 'CalDAV 请求超时' : 'CalDAV 请求失败', true);
       }
       if (response.status === 429) throw new ProtocolError('RATE_LIMITED', 'CalDAV 服务器限流', true, 60_000);
-      const text = await response.text();
+      const text = await bounded(() => response.text());
       assertReadActive(context);
       return {status: response.status, text};
     } catch (error) {
@@ -589,7 +624,6 @@ export class CalDavProvider implements CalendarProvider {
     } finally {
       clearTimeout(timeout);
       context?.signal?.removeEventListener('abort', abort);
-      void interrupted;
     }
   }
 
@@ -609,6 +643,8 @@ export class CalDavProvider implements CalendarProvider {
       startLocal: localWall(event.startMs, event.timeZone),
       endLocal: localWall(event.endMs, event.timeZone),
       status: event.status,
+      ...(event.location === undefined ? {} : {location: event.location}),
+      ...(event.notes === undefined ? {} : {notes: event.notes}),
       sequence: event.sequence,
       updatedUtc: event.lastModifiedMs === undefined ? iso(event.startMs) : iso(event.lastModifiedMs),
     };
@@ -658,5 +694,16 @@ function buildIcs(input: {uid: string; summary: string; startUtc: string; endUtc
   if (input.notes !== undefined && input.notes.trim()) lines.push(`DESCRIPTION:${escapeIcal(input.notes.trim())}`);
   if (sequence !== undefined) lines.push(`SEQUENCE:${sequence}`);
   lines.push('END:VEVENT', 'END:VCALENDAR');
-  return `${lines.join('\r\n')}\r\n`;
+  return `${lines.map(foldIcalLine).join('\r\n')}\r\n`;
+}
+
+/** RFC 5545: fold at 75 octets without splitting a UTF-8 code point. */
+function foldIcalLine(line: string): string {
+  let result = '', current = '', bytes = 0;
+  for (const character of line) {
+    const size = Buffer.byteLength(character, 'utf8');
+    if (bytes + size > 75) {result += current + '\r\n';current = ' ';bytes = 1;}
+    current += character;bytes += size;
+  }
+  return result + current;
 }

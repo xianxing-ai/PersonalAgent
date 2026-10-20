@@ -79,6 +79,7 @@ export const defaultCalendarFixtures: CalendarEventRecord[] = [
 
 export interface FakeCalendarProviderOptions {
   pageSize?: number;
+  now?: () => number;
 }
 
 export class FakeCalendarProvider implements CalendarProvider {
@@ -86,6 +87,7 @@ export class FakeCalendarProvider implements CalendarProvider {
   readonly verification = 'mock';
   private readonly events = new Map<string, CalendarEventRecord>();
   private readonly responses = new Map<string, CalendarRespondInput>();
+  private nextEventId = 0;
 
   constructor(
     fixtures: CalendarEventRecord[] = defaultCalendarFixtures,
@@ -132,13 +134,15 @@ export class FakeCalendarProvider implements CalendarProvider {
       const startUtc = assertFakeUtc(input?.startUtc, 'startUtc');
       const endUtc = assertFakeUtc(input?.endUtc, 'endUtc');
       if (Date.parse(endUtc) <= Date.parse(startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
-      const uid = input.uid === undefined ? `evt-fake-${Date.now().toString(36)}` : assertFakeUid(input.uid);
+      const uid = input.uid === undefined ? `evt-fake-${++this.nextEventId}` : assertFakeUid(input.uid);
       if (this.events.has(uid)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event UID already exists');
       const record: CalendarEventRecord = {
         externalId: uid, calendarId: 'cal-fake', title: summary,
         startUtc, endUtc, timeZone: 'UTC',
         startLocal: startUtc.slice(0, 19), endLocal: endUtc.slice(0, 19),
-        status: 'confirmed', sequence: 1, updatedUtc: startUtc,
+        status: 'confirmed', sequence: 0, updatedUtc: new Date(this.options.now?.() ?? Date.now()).toISOString(),
+        ...(input.location === undefined ? {} : {location: input.location.trim()}),
+        ...(input.notes === undefined ? {} : {notes: input.notes.trim()}),
       };
       this.events.set(uid, record);
       return Promise.resolve(structuredClone(record));
@@ -151,9 +155,10 @@ export class FakeCalendarProvider implements CalendarProvider {
       if (input.startUtc !== undefined) merged.startUtc = assertFakeUtc(input.startUtc, 'startUtc');
       if (input.endUtc !== undefined) merged.endUtc = assertFakeUtc(input.endUtc, 'endUtc');
       if (Date.parse(merged.endUtc) <= Date.parse(merged.startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
-      if (input.location !== undefined) merged.organizer = String(input.location);
+      if (input.location !== undefined) merged.location = input.location.trim();
+      if (input.notes !== undefined) merged.notes = input.notes.trim();
       merged.sequence = existing.sequence + 1;
-      merged.updatedUtc = new Date().toISOString().slice(0, 19) + '.000Z';
+      merged.updatedUtc = new Date(this.options.now?.() ?? Date.now()).toISOString();
       this.events.set(merged.externalId, merged);
       return Promise.resolve(structuredClone(merged));
     },

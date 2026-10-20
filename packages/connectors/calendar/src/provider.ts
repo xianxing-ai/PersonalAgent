@@ -20,6 +20,8 @@ export interface CalendarEventRecord {
   endLocal: string;
   status: CalendarEventStatus;
   organizer?: string;
+  location?: string;
+  notes?: string;
   attendees?: string[];
   /** 提供商修订号：变更后递增，参与 dedupeKey。 */
   sequence: number;
