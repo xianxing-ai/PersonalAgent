@@ -1,6 +1,7 @@
 /** Desktop metadata only. Never changes Runtime task states. */
 export function handleConversationAction({name,payload,surface,conversations,tasks,taskSurface,submitting,publish}){
   if(!['panel','workspace'].includes(surface))throw Error('请从受信对话窗口管理会话');
+  if(surface==='panel'&&['conversation.new','conversation.switch','conversation.archive','conversation.restore'].includes(name))throw Error('小工作区只保留一个主对话');
   const input=payload??{};if(!input||typeof input!=='object'||Array.isArray(input))throw Error('对话操作格式无效');
   if(name==='conversation.readDraft'){if(Object.keys(input).some(k=>k!=='conversationId'))throw Error('草稿读取格式无效');const session=conversations.session(input.conversationId,surface);return {conversationId:session.id,text:session.draft};}
   if(name==='conversation.draft'){
