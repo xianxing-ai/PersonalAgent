@@ -3,14 +3,14 @@ import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
 import type {SubmitTaskInput, TaskRuntime} from '../index.js';
-import type {RuntimeHarnessEventsOptions, HarnessEventReceipt} from './harness-events.js';
+import type {RuntimeHarnessEventsOptions, HarnessEventReceipt, HarnessEventCancellation} from './harness-events.js';
 import {USER_TASK_DELEGATION} from './user-task-delegation.js';
 
 export interface HarnessEventOrigin {
   deliveryId: string; eventDigest: string; sourceTaskId: string; originalParentTaskId: string;
 }
 export type HarnessEventSubmitInput = SubmitTaskInput & {deadline: string; origin: HarnessEventOrigin};
-type DeliveryRuntime = Pick<TaskRuntime, 'getTask' | 'findTaskByIdempotencyKey' | 'loadCheckpoint'>;
+type DeliveryRuntime = Pick<TaskRuntime, 'getTask' | 'findTaskByIdempotencyKey' | 'loadCheckpoint' | 'readToolExecutions' | 'listTasks'>;
 export interface HarnessEventDeliveryOptions {
   /** Deferred accessor supports descriptor construction before Application.runtime exists. */
   runtime: DeliveryRuntime | (() => DeliveryRuntime);
@@ -20,8 +20,10 @@ export interface HarnessEventDeliveryOptions {
   submitHarnessEventTask(input: HarnessEventSubmitInput): TaskSnapshot;
   resolveUserConversation: RuntimeHarnessEventsOptions['resolveUserConversation'];
   assertCurrentAuthorization: RuntimeHarnessEventsOptions['assertCurrentAuthorization'];
+  /** H1 resolves this exact origin and observes both Application and TaskRuntime activity. */
+  isHarnessEventTaskActive?(origin: HarnessEventOrigin): boolean;
 }
-const fail = (code: string): never => {throw new ProtocolError(code, 'Original harness Runtime delivery: ' + code);};
+const fail: (code: string) => never = code => {throw new ProtocolError(code, 'Original harness Runtime delivery: ' + code);};
 const originFor = (input: Parameters<RuntimeHarnessEventsOptions['delivery']['readReceipt']>[0]): HarnessEventOrigin => ({
   deliveryId: input.deliveryId, eventDigest: input.eventDigest, sourceTaskId: input.anchor.sourceTaskId,
   originalParentTaskId: input.anchor.parentTaskId,
@@ -48,7 +50,35 @@ export function createRuntimeHarnessEventDelivery(options: HarnessEventDeliveryO
     return {deliveryId: input.deliveryId, eventDigest: input.eventDigest, parentTaskId: parent.taskId, taskId: child.taskId,
       receiptRef: 'runtime:harness-event:' + parent.taskId + ':' + child.taskId};
   }
+  function cancellation(input: Parameters<NonNullable<RuntimeHarnessEventsOptions['delivery']['readCancellation']>>[0]):
+    {parentTaskId: string; revision: number; origin: HarnessEventOrigin} | undefined {
+    const original = originFor(input);
+    const activity = options.isHarnessEventTaskActive;
+    if (!activity) return undefined; // Missing native observation is not evidence of inactivity.
+    const current = runtime(), root = current.findTaskByIdempotencyKey(key(input.deliveryId));
+    if (!root || root.state !== 'cancelled' || !isDeepStrictEqual(current.loadCheckpoint(root.taskId, 'harness-event-origin'), original)
+      || options.resolveUserConversation(root.taskId) !== input.anchor.responsibility.conversationId
+      || activity(original) !== false || root.steps.length || root.evidenceRefs.length
+      || current.findTaskByIdempotencyKey('subagent-dispatch-' + root.taskId + '-user-work')
+      || current.listTasks({conversationId: 'desktop-subtask:' + root.taskId, limit: 1}).items.length
+      || current.readToolExecutions(root.taskId).length) return undefined;
+    // These are original first-send/loop records. Even a cleared marker is prior-attempt evidence.
+    for (const name of ['competition-loop', 'competition-cloud-inflight', 'competition-cloud-unknown',
+      'competition-cloud-received', 'competition-cloud-request-identity', 'competition-cloud-terminal-error']) {
+      if (current.loadCheckpoint(root.taskId, name) !== undefined) return undefined;
+    }
+    const latest = current.getTask(root.taskId);
+    if (latest.state !== 'cancelled' || latest.revision !== root.revision || activity(original) !== false) return undefined;
+    return {parentTaskId: root.taskId, revision: root.revision, origin: original};
+  }
   return {
+    readCancellation(input): HarnessEventCancellation | undefined {
+      const proof = cancellation(input);
+      if (!proof) return undefined;
+      return {...structuredClone(proof), state: 'cancelled_before_dispatch', assertCurrent() {
+        if (!isDeepStrictEqual(proof, cancellation(input))) return fail('REVISION_CONFLICT');
+      }};
+    },
     async consume(input, context) {
       if (context.signal.aborted) return fail('CANCELLED');
       if (!Number.isFinite(Date.parse(context.deadline)) || Date.now() >= Date.parse(context.deadline)) return fail('TIMEOUT');

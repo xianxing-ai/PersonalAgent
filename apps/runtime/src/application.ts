@@ -123,8 +123,9 @@ export type {RuntimeHarnessCandidateOptions} from './application/harness-candida
 export {createRuntimeHarnessExperienceApplication,harnessExperienceWorkspaceDigest} from './application/harness-experience.js';
 export type {RuntimeHarnessExperienceOptions,HarnessExperienceOrigin,HarnessExperienceRun} from './application/harness-experience.js';
 export {createHarnessExperienceBindings} from './application/harness-experience-bindings.js';
-export {createRuntimeHarnessEvents} from './application/harness-events.js';
-export type {RuntimeHarnessEventsOptions,HarnessEventAnchor,HarnessEventReceipt} from './application/harness-events.js';
+export {createRuntimeHarnessEvents,readPersistedHarnessOriginalDelivery} from './application/harness-events.js';
+export type {RuntimeHarnessEventsOptions,HarnessEventAnchor,HarnessEventReceipt,HarnessEventCancellation,
+  HarnessOriginalDelivery,PersistedHarnessDeliveryOptions} from './application/harness-events.js';
 export {createRuntimeHarnessEventDelivery} from './application/harness-event-delivery.js';
 export type {HarnessEventOrigin,HarnessEventSubmitInput,HarnessEventDeliveryOptions} from './application/harness-event-delivery.js';
 export {createRuntimeOwnedWorkflowImageAdapter} from './application/owned-workflow-image-adapter.js';
@@ -134,7 +135,7 @@ export {createRuntimeProactiveDecisionTools,RUNTIME_PROACTIVE_DECISION_TOOLS} fr
 export type {RuntimeProactiveDecisionToolOptions} from './application/proactive-decision-tools.js';
 export type {RuntimeProactiveImageAdapterOptions,RuntimeProactiveImageResult,RuntimeProactiveImageContext,
   RuntimeProactiveImageDescription} from './application/proactive-image-adapter.js';
-export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,RUNTIME_PROACTIVE_TOOLS,
+export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,readPersistedRuntimeProactiveWorkflow,RUNTIME_PROACTIVE_TOOLS,
   RUNTIME_PROACTIVE_TOOL_VERSION} from './application/proactive-workflow-application.js';
 export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
   RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';
