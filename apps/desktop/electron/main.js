@@ -649,8 +649,15 @@ function publishAudioLevel(){
 }
 function publish() {
   if (runtimeClosed) return;
+  // Orb and panel read the same 'panel' surface; build each surface once per broadcast instead of
+  // cloning every task four times. Each window still receives its own structured-clone copy.
+  const built = new Map();
   for (const win of [orb, panel, admin, workspace]) {
-    if (win && !win.isDestroyed()) win.webContents.send('desktop:update', snapshot(win === workspace ? 'workspace' : win === admin ? undefined : 'panel'));
+    if (!win || win.isDestroyed()) continue;
+    const surface = win === workspace ? 'workspace' : win === admin ? undefined : 'panel';
+    const key = surface ?? '';
+    if (!built.has(key)) built.set(key, snapshot(surface));
+    win.webContents.send('desktop:update', built.get(key));
   }
   for(const record of subagentWindows.values()){
     if(record.window.isDestroyed())continue;
@@ -1757,6 +1764,7 @@ async function initializeRuntime() {
       knowledgeSourceConfig=await createKnowledgeSourceConfig({userData:app.getPath('userData'),safeStorage,namespace,
         hostIdentity:createHash('sha256').update(app.getPath('userData')).digest('hex'),
         powerShellPath:existsSync(powerShell)?powerShell:undefined,
+        processIdentityHelperPath:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async()=>{
           const choice=await dialog.showOpenDialog(admin,{title:'选择本机知识库',properties:['openDirectory']});
           return choice.canceled?undefined:choice.filePaths[0];

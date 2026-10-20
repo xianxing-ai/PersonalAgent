@@ -28,6 +28,25 @@ function identity(root) {
 function sameIdentity(left, right) {
   return left && ['dev', 'ino', 'birthtimeNs'].every(key => left[key] === right[key]);
 }
+function canonicalProcessIdentityHelper(value) {
+  if (typeof value !== 'string' || !path.isAbsolute(value)) throw Error('Process identity helper must be an absolute path');
+  const full = path.resolve(value);
+  if (lstatSync(full).isSymbolicLink()) throw Error('Process identity helper must not be a link');
+  const canonical = realpathSync.native(full);
+  if (!statSync(canonical).isFile() || path.basename(canonical).toLowerCase() !== 'windowsjobprocesshost.exe') {
+    throw Error('Process identity helper must be WindowsJobProcessHost.exe');
+  }
+  return canonical;
+}
+function executableIdentity(file) {
+  const stat = statSync(file, {bigint: true});
+  return {dev: String(stat.dev), ino: String(stat.ino), birthtimeNs: String(stat.birthtimeNs),
+    size: String(stat.size), mtimeNs: String(stat.mtimeNs)};
+}
+function sameExecutableIdentity(left, right) {
+  return left && right && Object.keys(left).length === Object.keys(right).length
+    && Object.keys(left).every(key => left[key] === right[key]);
+}
 function note(root, selected) {
   if (typeof selected !== 'string' || !path.isAbsolute(selected)) throw Error('请选择知识库内的 Markdown 笔记');
   const full = path.resolve(selected), relative = path.relative(root, full).split(path.sep).join('/');
@@ -83,19 +102,21 @@ Set-Acl -LiteralPath $target -AclObject $acl`;
  * No environment/default-directory fallback. Write/export consent always expires on restart.
  */
 export async function createKnowledgeSourceConfig({userData, safeStorage, namespace, hostIdentity,
-  selectDirectory, selectNoteFiles, confirmPermissions = async () => false, powerShellPath,
+  selectDirectory, selectNoteFiles, confirmPermissions = async () => false, powerShellPath, processIdentityHelperPath,
   prepareRecoveryDirectory = prepareRecovery}) {
   if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(namespace ?? '') || typeof hostIdentity !== 'string' || !hostIdentity) {
     throw Error('缺少受信知识源身份');
   }
   const file = path.join(userData, 'knowledge-source-config.json');
   let saved, vault, writer, busy = false, closed = false, failure = '';
+  let writerBindingCurrent = () => false;
+  const writerCurrent = () => { try { return writerBindingCurrent(); } catch { return false; } };
   let writeAllowed = false, cloudExportAllowed = false, publicQueries = [];
   const inflight = new Set();
   const invalidate = () => {
     for (const controller of inflight) controller.abort();
     vault?.clearIndex();
-    vault = undefined; writer = undefined; writeAllowed = false; cloudExportAllowed = false; publicQueries = [];
+    vault = undefined; writer = undefined; writerBindingCurrent = () => false; writeAllowed = false; cloudExportAllowed = false; publicQueries = [];
   };
   const current = () => {
     try {return !closed && Boolean(saved?.enabled && vault)
@@ -106,7 +127,7 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
     available: current(), sourceId: saved?.sourceId ?? '', namespace,
     configRevision: saved?.configRevision ?? 0, dataLevel: saved?.dataLevel ?? 'private',
     displayName: saved ? path.basename(saved.rootPath) : '',
-    allowedNotePaths: [...(saved?.allowedNotePaths ?? [])], writeAvailable: current() && writeAllowed && Boolean(writer),
+    allowedNotePaths: [...(saved?.allowedNotePaths ?? [])], writeAvailable: current() && writeAllowed && Boolean(writer) && writerCurrent(),
     cloudExportAllowed: current() && cloudExportAllowed && saved.dataLevel === 'public',
     publicQueries: cloudExportAllowed ? [...publicQueries] : [],
     reason: failure || (!saved ? '请选择知识库；尚未配置' : !saved.enabled ? '知识源已停用'
@@ -126,12 +147,29 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
         // Same physical Vault always uses the same durable note locks, across selection and source-ID changes.
         const recoveryKey = createHash('sha256').update(JSON.stringify([namespace, hostIdentity, record.rootPath, record.rootIdentity])).digest('hex');
         const recoveryRootPath = prepareRecoveryDirectory(userData, recoveryKey, powerShellPath);
+        const helperPath = processIdentityHelperPath === undefined
+          ? undefined : canonicalProcessIdentityHelper(processIdentityHelperPath);
+        const helperId = helperPath === undefined ? undefined : executableIdentity(helperPath);
+        const helperCurrent = () => {
+          if (helperPath === undefined) return true;
+          try {
+            const currentHelper = canonicalProcessIdentityHelper(processIdentityHelperPath);
+            return currentHelper === helperPath && sameExecutableIdentity(executableIdentity(currentHelper), helperId);
+          } catch { return false; }
+        };
+        const bindingCurrent = () => current() && saved === record && helperCurrent()
+          && (verifyWindowsRecoveryAcl(recoveryRootPath, powerShellPath), true);
+        writerBindingCurrent = bindingCurrent;
         writer = openControlledVaultWriter({rootPath: record.rootPath, recoveryRootPath, powerShellPath,
+          ...(helperPath === undefined ? {} : {processIdentityHelperPath: helperPath}),
           sourceId: record.sourceId, configRevision: record.configRevision, allowedNotePaths: record.allowedNotePaths,
-          bindingCurrent: () => current() && saved === record
-            && (verifyWindowsRecoveryAcl(recoveryRootPath, powerShellPath), true)});
+          bindingCurrent});
         writeAllowed = permissions.writeAllowed === true;
-      } catch {if (permissions.writeAllowed) failure = '只读已连接；安全整理宿主不可用，写入未启用';}
+      } catch {
+        writerBindingCurrent = () => false;
+        writer = undefined;
+        if (permissions.writeAllowed) failure = '只读已连接；安全整理宿主不可用，写入未启用';
+      }
     }
     if (permissions.writeAllowed && !writer) failure = '只读已连接；安全整理宿主不可用，写入未启用';
     cloudExportAllowed = permissions.cloudExportAllowed === true && record.enabled && record.dataLevel === 'public';
@@ -216,8 +254,9 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
       checkBinding(expected);
       const controller = new AbortController(); inflight.add(controller);
       let released = false;
-      const binding = snapshot(), selectedVault = vault, selectedWriter = writer;
-      return {binding, read: selectedVault, write: writeAllowed ? selectedWriter : undefined,
+      const binding = snapshot(), selectedVault = vault;
+      const selectedWriter = writeAllowed && writer && writerCurrent() ? writer : undefined;
+      return {binding, read: selectedVault, write: selectedWriter,
         reconcileWrite: selectedWriter ? (input, context) => selectedWriter.reconcile(input, context) : undefined,
         finalizeWrite: selectedWriter ? (accepted, context) => selectedWriter.finalize(accepted, context) : undefined,
         signal: AbortSignal.any([signal, controller.signal]),

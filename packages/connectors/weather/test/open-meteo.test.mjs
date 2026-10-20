@@ -788,15 +788,13 @@ test('tool output from the real provider passes the declared output schema', asy
   assert.equal(result.record.source, 'open-meteo');
   assert.equal(result.forecast.publishedTimeKind, 'coverage_start');
   assert.equal(result.forecast.precipitationProbability, null);
-  assert.equal(result.forecast.resolved.ambiguous, true);
-  assert.equal(result.forecast.resolved.timezone, 'Asia/Shanghai');
-  assert.equal(result.forecast.resolved.confidence, 'high');
+  assert.ok(!('resolved' in result.forecast), 'the tool answer carries the weather only, not the place resolution');
 
   dispose();
   await assert.rejects(host.invoke('weather.forecast', {location: '北京', date: DATE}, context), {code: 'UNSUPPORTED_CAPABILITY'});
 });
 
-test('the tool accepts a hint and reports a weak match through the declared schema', async () => {
+test('the hint stays a record-identity switch while the tool answer remains weather-only', async () => {
   const clock = new FakeClock(Date.parse('2026-09-06T02:00:00.000Z'));
   const context = {
     taskId: 't', runId: 'r', authorizationRef: 'fixture',
@@ -808,12 +806,9 @@ test('the tool accepts a hint and reports a weak match through the declared sche
   const weak = new FakeToolHost(clock.now);
   const disposeWeak = register(weak, {provider: makeProvider([captureRoutes(CAPTURES), forecastRoute(healthyDaily)]), now: clock.now});
   const unhinted = await weak.invoke('weather.forecast', {location: '伦敦', date: DATE}, context);
-  assert.equal(unhinted.forecast.resolved.confidence, 'low');
-  assert.equal(unhinted.forecast.resolved.timezone, 'America/Toronto', 'disclosed, not silently corrected');
   const hinted = await weak.invoke('weather.forecast', {location: '伦敦', locationQuery: 'London', date: DATE}, context);
-  assert.equal(hinted.forecast.resolved.timezone, 'Europe/London');
-  assert.equal(hinted.forecast.resolved.confidence, 'high');
   assert.notEqual(unhinted.record.dedupeKey, hinted.record.dedupeKey, 'the hint changes which place the record is about');
+  assert.ok(!('resolved' in unhinted.forecast) && !('resolved' in hinted.forecast), 'no place resolution is disclosed in the answer');
   disposeWeak();
 
   const guarded = new FakeToolHost(clock.now);
@@ -822,8 +817,7 @@ test('the tool accepts a hint and reports a weak match through the declared sche
     now: clock.now,
   });
   await assert.rejects(guarded.invoke('weather.forecast', {location: '伦敦', date: DATE}, context), {code: 'INVALID_ARGUMENT'});
-  const rescued = await guarded.invoke('weather.forecast', {location: '伦敦', locationQuery: 'London', date: DATE}, context);
-  assert.equal(rescued.forecast.resolved.timezone, 'Europe/London');
+  await guarded.invoke('weather.forecast', {location: '伦敦', locationQuery: 'London', date: DATE}, context);
   disposeGuarded();
 });
 

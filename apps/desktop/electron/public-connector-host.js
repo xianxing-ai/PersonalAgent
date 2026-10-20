@@ -14,6 +14,7 @@ const cacheProjection = cache => ({state:cache.state, fetchedAt:cache.fetchedAt,
  * exactly the previous Open-Meteo-only one.
  */
 const defaultWeatherProvider = () => new weather.OpenMeteoProvider({
+  locationResolution: 'strict',
   ...(process.env.PA_GEONAMES_USERNAME ? {geonamesUsername: process.env.PA_GEONAMES_USERNAME} : {}),
 });
 
@@ -59,10 +60,7 @@ export function createPublicConnectorHost({systemObservationFactory,
           ...(Array.isArray(result.forecast.hourly) && result.forecast.hourly.length ? {hourly:
             result.forecast.hourly.slice(0,24).map(point => ({time:point.time, temperature:point.temperature,
               precipitationProbability:point.precipitationProbability, weatherCode:point.weatherCode}))} : {}),
-          ...(result.forecast.resolved ? {resolved:{name:result.forecast.resolved.name,
-            country:result.forecast.resolved.country, admin1:result.forecast.resolved.admin1,
-            timezone:result.forecast.resolved.timezone, ambiguous:result.forecast.resolved.ambiguous,
-            confidence:result.forecast.resolved.confidence, alternatives:result.forecast.resolved.alternatives}} : {})},
+        },
         source:result.record.source, occurredAt:result.record.occurredAt, cache:cacheProjection(result.cache),
       })),
       publicResult('research.search', research.RESEARCH_MODULE_VERSION, result => ({
