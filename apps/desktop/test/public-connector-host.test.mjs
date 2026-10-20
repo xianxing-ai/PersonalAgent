@@ -135,6 +135,8 @@ test('the weather public projection publishes only the weather, never the place 
     const result = await policy.project({signal: new AbortController().signal, result: {
       forecast: {location: '北京', date: '2026-10-19', units: 'metric', summary: '晴',
         temperatureMin: 8, temperatureMax: 19, precipitationProbability: 12, publishedTimeKind: 'coverage_start',
+        current:{observedAt:'2026-10-19T12:00',temperature:18,apparentTemperature:17,relativeHumidity:50,windSpeed:5,windDirection:90,weatherCode:0,privateField:'omit'},
+        hourly:Array.from({length:30},(_,index)=>({time:`hour-${index}`,temperature:18,precipitationProbability:12,weatherCode:0,privateField:'omit'})),
         resolved: {name: '北京', latitude: 39.9, longitude: 116.4, timezone: 'Asia/Shanghai', ambiguous: true,
           alternatives: ['北京, 重庆市, 中国', '北京, 四川省, 中国'], confidence: 'high', featureCode: 'PPLC'}},
       record: {source: 'open-meteo', occurredAt: '2026-10-19T00:00:00.000Z'},
@@ -142,6 +144,9 @@ test('the weather public projection publishes only the weather, never the place 
     }});
     assert.equal(result.forecast.location, '北京');
     assert.equal(result.forecast.temperatureMax, 19);
+    assert.equal(result.forecast.current.temperature,18);
+    assert.equal(result.forecast.hourly.length,24,'bounded hourly weather survives the main conflict resolution');
+    assert.doesNotMatch(JSON.stringify(result),/privateField/);
     assert.ok(!('resolved' in result.forecast), 'projection strips the resolution block even if the service payload had one');
     assert.ok(!JSON.stringify(result).includes('Asia/Shanghai') && !JSON.stringify(result).includes('"confidence"'),
       'no resolution marker or confidence wording may leak into the public projection');

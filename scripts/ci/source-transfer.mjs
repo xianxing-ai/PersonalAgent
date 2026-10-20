@@ -15,6 +15,12 @@ async function digest(file) {
   return hash.digest('hex');
 }
 function checkSha(sha) { if(!/^[a-f0-9]{40}$/.test(sha??'')) throw Error('Invalid expected source SHA'); }
+export function validateRunAttempt(value) {
+  if(!/^[1-9]\d*$/.test(value??'')) throw Error('Invalid producer run attempt');
+  const attempt=Number(value);
+  if(!Number.isSafeInteger(attempt)||attempt<1) throw Error('Invalid producer run attempt');
+  return String(attempt);
+}
 
 export async function packSource(root,tempRoot,sha) {
   checkSha(sha);
@@ -61,5 +67,8 @@ if(process.argv[1]&&path.resolve(process.argv[1])===script) {
     const root=await restoreSource(path.dirname(script),process.env.RUNNER_TEMP,process.env.GITHUB_SHA,process.env.CI_SOURCE_SHA256);
     await appendFile(process.env.GITHUB_OUTPUT,`directory=${root}\n`);
     console.log(`Restored verified GitHub Actions source for ${process.env.GITHUB_SHA}; no Git network fetch used.`);
-  } else throw Error('Expected pack or restore');
+  } else if(process.argv[2]==='artifact-attempt') {
+    const attempt=validateRunAttempt(process.env.GITHUB_RUN_ATTEMPT);
+    await appendFile(process.env.GITHUB_OUTPUT,`producer_attempt=${attempt}\n`);
+  } else throw Error('Expected pack, restore or artifact-attempt');
 }

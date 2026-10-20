@@ -134,3 +134,13 @@ test('dispatchSubtasks rejects reusing completed result if subtask input changed
   ], async () => '新结果'), {code: 'REVISION_CONFLICT'});
 });
 
+
+test('a single successful subtask passes its answer through without the coordination header', async () => {
+  const ctx = mockContext();
+  const summary = await dispatchSubtasks(ctx, [{subtaskId: 'only', role: 'researcher', goal: '查询北京下午天气'}],
+    async () => '北京今天下午多云，气温 12–18℃，适合跑步。');
+  assert.equal(summary.total, 1);
+  assert.equal(summary.succeeded, 1);
+  assert.equal(summary.aggregatedSummary, '北京今天下午多云，气温 12–18℃，适合跑步。');
+  assert.doesNotMatch(summary.aggregatedSummary, /次级智能体协作汇总/);
+});

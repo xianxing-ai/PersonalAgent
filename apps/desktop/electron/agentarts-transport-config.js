@@ -15,7 +15,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
       || Object.keys(value).some(key=>!['appToken','deploymentVersion'].includes(key))
       || value.appToken!==undefined && (typeof value.appToken!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(value.appToken))
       || value.deploymentVersion!==undefined && (typeof value.deploymentVersion!=='string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(value.deploymentVersion))) {
-      throw Error('AgentArts 当前受信传输配置无效');
+      throw Error('AgentArts 受信传输配置无效：独立镜像访问令牌需为 32–4096 位可见字符，固定部署版本需为 1–128 位字母、数字、下划线、点或短横线');
     }
     if (deploymentBound && value.deploymentVersion!==boundDeploymentVersion) {
       throw Error('AgentArts 固定部署版本已改变，请重新绑定连接');
@@ -99,13 +99,14 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     throw Error('AgentArts WSS 必须使用同一网关与运行时地址');
   }
   if (rawQuery!=='' && (boundDeploymentVersion===undefined || rawQuery!=='?endpoint='+boundDeploymentVersion)) {
-    throw Error('AgentArts WSS 地址版本必须与当前受信部署版本完全一致');
+    throw Error('WSS 地址中的 endpoint 版本必须与“固定部署版本”一致'
+      + (boundDeploymentVersion===undefined ? '；当前尚未填写固定部署版本' : `（当前：${boundDeploymentVersion}）`));
   }
   if (boundDeploymentVersion!==undefined) address.searchParams.set('endpoint',boundDeploymentVersion);
   const readToken=()=>{
     const token=readAppToken?readAppToken():currentOptions().appToken??environment.PA_AGENTARTS_APP_TOKEN;
     if (typeof token!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(token)) {
-      throw Error('请在受信主机环境中配置 AgentArts 自有镜像入站凭据');
+      throw Error('独立镜像访问令牌不可用：请在设置页填写至少 32 位可见字符，或在受信主机环境配置 PA_AGENTARTS_APP_TOKEN');
     }
     return `Bearer ${token}`;
   };
