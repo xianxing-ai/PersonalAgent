@@ -7,27 +7,35 @@ const URL_BASE = 'https://caldav.test/potatos/mvp/';
 /** 假 CalDAV 服务器：记录请求并按脚本应答；资源表模拟 PUT/GET/DELETE 语义。 */
 function fakeServer() {
   const resources = new Map();
+  const versions = new Map();
   const log = [];
   const fetchImpl = async (url, init) => {
     const method = init.method;
-    log.push({method, url: String(url)});
+    log.push({method, url: String(url), headers: {...init.headers}});
     const path = String(url).replace(URL_BASE, '');
     if (method === 'PUT') {
+      if (init.headers['if-none-match'] === '*' && resources.has(path)
+        || init.headers['if-match'] !== undefined && init.headers['if-match'] !== `"${versions.get(path) ?? 0}"`)
+        return {ok: false, status: 412, text: async () => ''};
       resources.set(path, init.body);
+      versions.set(path, (versions.get(path) ?? 0) + 1);
       return {ok: true, status: resources.has(path) && log.filter(r => r.url === String(url) && r.method === 'PUT').length > 1 ? 204 : 201, text: async () => ''};
     }
     if (method === 'GET') {
       const body = resources.get(path);
       if (body === undefined) return {ok: false, status: 404, text: async () => ''};
-      return {ok: true, status: 200, text: async () => body};
+      const etag = `"${versions.get(path) ?? 0}"`;
+      return {ok: true, status: 200, headers: {get: name => name === 'etag' ? etag : null}, text: async () => body};
     }
     if (method === 'DELETE') {
+      if (init.headers['if-match'] !== undefined && init.headers['if-match'] !== `"${versions.get(path) ?? 0}"`)
+        return {ok: false, status: 412, text: async () => ''};
       const existed = resources.delete(path);
       return {ok: existed, status: existed ? 204 : 404, text: async () => ''};
     }
     throw Error('unexpected method ' + method);
   };
-  return {fetchImpl, log, resources};
+  return {fetchImpl, log, resources, versions};
 }
 
 const ctx = () => ({deadline: new Date(Date.now() + 30_000).toISOString(), signal: new AbortController().signal});
@@ -133,4 +141,54 @@ test('caller cancellation bounds uncooperative write transport without a second 
     startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00.000Z'},
     {signal:controller.signal,deadline:new Date(Date.now()+30000).toISOString()}),{code:'CANCELLED'});
   assert.equal(calls,1);
+});
+
+const originalEvent={uid:'guarded-event',summary:'original',startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00.000Z'};
+
+test('create never replaces an existing UID with different fields',async()=>{
+  const server=fakeServer(),provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:server.fetchImpl});
+  await provider.createEvent(originalEvent,ctx());const before=server.resources.get('guarded-event.ics');
+  await assert.rejects(provider.createEvent({...originalEvent,summary:'replacement'},ctx()),{code:'REVISION_CONFLICT'});
+  assert.equal(server.resources.get('guarded-event.ics'),before);
+  assert.ok(server.log.filter(r=>r.method==='PUT').every(r=>r.headers['if-none-match']==='*'));
+});
+
+test('update and cancel reject concurrent resource changes without overwriting or deleting them',async t=>{
+  for(const method of ['update','cancel'])await t.test(method,async()=>{
+    const server=fakeServer();let race=false;
+    const provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:async(url,init)=>{
+      const result=await server.fetchImpl(url,init);
+      if(race&&init.method==='GET'){
+        race=false;server.resources.set('guarded-event.ics',server.resources.get('guarded-event.ics').replace('SUMMARY:original','SUMMARY:external edit'));
+        server.versions.set('guarded-event.ics',server.versions.get('guarded-event.ics')+1);
+      }
+      return result;
+    }});
+    await provider.createEvent(originalEvent,ctx());race=true;
+    await assert.rejects(method==='update'?provider.updateEvent({uid:originalEvent.uid,summary:'local edit'},ctx()):provider.cancelEvent(originalEvent.uid,ctx()),{code:'REVISION_CONFLICT'});
+    assert.match(server.resources.get('guarded-event.ics'),/SUMMARY:external edit/);
+  });
+});
+
+test('missing or weak ETag prevents an update or delete before any write',async t=>{
+  for(const etag of [null,'W/"weak"','invalid','"bad\r\nheader"'])for(const method of ['update','cancel'])await t.test(`${method}:${JSON.stringify(etag)}`,async()=>{
+    const server=fakeServer();const provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:async(url,init)=>{
+      const result=await server.fetchImpl(url,init);
+      return init.method==='GET'?{...result,headers:{get:()=>etag}}:result;
+    }});
+    await provider.createEvent(originalEvent,ctx());const count=server.log.length;
+    await assert.rejects(method==='update'?provider.updateEvent({uid:originalEvent.uid,summary:'local edit'},ctx()):provider.cancelEvent(originalEvent.uid,ctx()),{code:'UNSUPPORTED_CAPABILITY'});
+    assert.deepEqual(server.log.slice(count).map(r=>r.method),['GET']);
+  });
+});
+
+test('cancel requires an absence readback and does not repeat a deletion which still reads present',async()=>{
+  const server=fakeServer();let deletions=0;
+  const provider=new CalDavProvider({calendarUrl:URL_BASE,fetchImpl:async(url,init)=>{
+    if(init.method==='DELETE'){deletions++;return {ok:true,status:204,text:async()=>''};}
+    return server.fetchImpl(url,init);
+  }});
+  await provider.createEvent(originalEvent,ctx());
+  await assert.rejects(provider.cancelEvent(originalEvent.uid,ctx()),{code:'EXTERNAL_FAILURE'});
+  assert.equal(deletions,1);assert.ok(server.resources.has('guarded-event.ics'));
 });

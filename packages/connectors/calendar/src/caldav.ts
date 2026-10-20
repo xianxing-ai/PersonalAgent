@@ -25,6 +25,7 @@ export type CalDavFetchLike = (url: string, init: {
 export interface CalDavFetchResponseLike {
   readonly ok: boolean;
   readonly status: number;
+  readonly headers?: {get(name: string): string | null};
   text(): Promise<string>;
 }
 
@@ -498,9 +499,11 @@ export class CalDavProvider implements CalendarProvider {
     const ics = buildIcs({uid, summary, startUtc, endUtc,
       ...(input.location === undefined ? {} : {location: String(input.location)}),
       ...(input.notes === undefined ? {} : {notes: String(input.notes)})}, stamp(Date.now()));
-    await this.writeRequest('PUT', this.resourceUrl(uid), ics, 'text/calendar; charset=utf-8', context, [200, 201, 204]);
+    const write = await this.writeRequest('PUT', this.resourceUrl(uid), ics, 'text/calendar; charset=utf-8', context,
+      [200, 201, 204, 412], {'if-none-match': '*'});
     return this.readBack({uid, summary, startUtc, endUtc,
-      location: input.location?.trim() ?? '', notes: input.notes?.trim() ?? ''}, context);
+      location: input.location?.trim() ?? '', notes: input.notes?.trim() ?? ''}, context,
+      write.status === 412 ? 'REVISION_CONFLICT' : 'EXTERNAL_FAILURE');
   }
 
   /** 更新事件：GET 现值合并（SEQUENCE 递增）后 PUT，写后读回核对。 */
@@ -508,7 +511,8 @@ export class CalDavProvider implements CalendarProvider {
     location?: string; notes?: string}, context?: CalendarReadContext): Promise<CalendarEventRecord> {
     const uid = assertWriteUid(input?.uid);
     const resourceUrl = this.resourceUrl(uid);
-    const current = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200]);
+    const {text: current, etag} = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200]);
+    const version = this.writeEtag(etag);
     const parsed = parseCalDavEvents(current).find(event => event.uid === uid);
     if (parsed === undefined) throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar event is unreadable after fetch', false);
     const merged = {
@@ -537,20 +541,27 @@ export class CalDavProvider implements CalendarProvider {
     });
     preserved.splice(preserved.indexOf('END:VEVENT'), 0, ...replacements);
     const ics = preserved.map(foldIcalLine).join('\r\n') + '\r\n';
-    await this.writeRequest('PUT', resourceUrl, ics, 'text/calendar; charset=utf-8', context, [200, 201, 204]);
+    await this.writeRequest('PUT', resourceUrl, ics, 'text/calendar; charset=utf-8', context, [200, 201, 204], {'if-match': version});
     return this.readBack(merged, context);
   }
 
   /** 取消事件：DELETE 资源。404 视为已不存在（幂等），状态如实返回。 */
   async cancelEvent(uid: string, context?: CalendarReadContext): Promise<{uid: string; state: 'cancelled' | 'already_absent'}> {
     const resourceUrl = this.resourceUrl(assertWriteUid(uid));
-    const {status} = await this.writeExchange('DELETE', resourceUrl, undefined, undefined, context);
+    const existing = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200, 404]);
+    if (existing.status === 404) return {uid, state: 'already_absent'};
+    const {status} = await this.writeRequest('DELETE', resourceUrl, undefined, undefined, context, [200, 204, 404],
+      {'if-match': this.writeEtag(existing.etag)});
     if (status === 404) return {uid, state: 'already_absent'};
-    if (status !== 200 && status !== 204) {
-      if (status === 401 || status === 403) throw new ProtocolError('UNAUTHORIZED', `CalDAV 认证被拒绝（HTTP ${status}）`);
-      throw new ProtocolError('EXTERNAL_FAILURE', `CalDAV 服务器返回异常（HTTP ${status}）`, status >= 500);
-    }
+    const readback = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200, 404]);
+    if (readback.status !== 404) throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar delete remains unconfirmed; do not repeat the original deletion', false);
     return {uid, state: 'cancelled'};
+  }
+
+  private writeEtag(value: string | undefined): string {
+    if (value === undefined || value.length > 1024 || !/^"[\x21\x23-\x7e\x80-\xff]*"$/u.test(value))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Calendar resource requires a strong ETag before modification');
+    return value;
   }
 
   private resourceUrl(uid: string): string {
@@ -558,31 +569,35 @@ export class CalDavProvider implements CalendarProvider {
   }
 
   private async readBack(expected: {uid: string; summary: string; startUtc: string; endUtc: string; location: string; notes: string},
-    context?: CalendarReadContext): Promise<CalendarEventRecord> {
-    const text = await this.writeRequest('GET', this.resourceUrl(expected.uid), undefined, undefined, context, [200]);
+    context?: CalendarReadContext, mismatchCode: 'REVISION_CONFLICT' | 'EXTERNAL_FAILURE' = 'EXTERNAL_FAILURE'): Promise<CalendarEventRecord> {
+    const {text} = await this.writeRequest('GET', this.resourceUrl(expected.uid), undefined, undefined, context, [200]);
     const parsed = parseCalDavEvents(text).find(event => event.uid === expected.uid);
     if (parsed === undefined || parsed.summary !== expected.summary || parsed.startMs !== Date.parse(expected.startUtc)
       || parsed.endMs !== Date.parse(expected.endUtc) || (parsed.location ?? '') !== expected.location || (parsed.notes ?? '') !== expected.notes)
-      throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar write read-back differs from the requested event; do not retry an unknown write', false);
+      throw new ProtocolError(mismatchCode, 'Calendar resource differs from the requested event; do not overwrite or retry an unknown write', false);
     return this.toRecord(parsed);
   }
 
   /** 写请求：与读请求同一超时/中止纪律；状态不在白名单时抛错并返回响应体文本。 */
   private async writeRequest(method: 'PUT' | 'GET' | 'DELETE', url: string, body: string | undefined,
-    contentType: string | undefined, context: CalendarReadContext | undefined, okStatuses: readonly number[]): Promise<string> {
-    const {status, text} = await this.writeExchange(method, url, body, contentType, context);
+    contentType: string | undefined, context: CalendarReadContext | undefined, okStatuses: readonly number[],
+    condition?: Readonly<Record<string, string>>): Promise<{status: number; text: string; etag?: string}> {
+    const response = await this.writeExchange(method, url, body, contentType, context, condition);
+    const {status} = response;
     if (!okStatuses.includes(status)) {
+      if (status === 412) throw new ProtocolError('REVISION_CONFLICT', 'Calendar resource changed; original write was not repeated');
       if (status === 401 || status === 403) throw new ProtocolError('UNAUTHORIZED', `CalDAV 认证被拒绝（HTTP ${status}）`);
       if (status === 404 && method === 'GET') throw new ProtocolError('NOT_FOUND', 'Calendar event resource is missing');
       throw new ProtocolError('EXTERNAL_FAILURE', `CalDAV 服务器返回异常（HTTP ${status}）`, status >= 500);
     }
-    return text;
+    return response;
   }
 
   private async writeExchange(method: 'PUT' | 'GET' | 'DELETE', url: string, body: string | undefined,
-    contentType: string | undefined, context?: CalendarReadContext): Promise<{status: number; text: string}> {
+    contentType: string | undefined, context?: CalendarReadContext,
+    condition?: Readonly<Record<string, string>>): Promise<{status: number; text: string; etag?: string}> {
     assertReadActive(context);
-    const headers: Record<string, string> = {'user-agent': USER_AGENT};
+    const headers: Record<string, string> = {'user-agent': USER_AGENT, ...condition};
     if (contentType !== undefined) headers['content-type'] = contentType;
     if (body !== undefined) headers['content-length'] = String(Buffer.byteLength(body, 'utf8'));
     if (this.authorization !== undefined) headers.authorization = this.authorization;
@@ -617,7 +632,8 @@ export class CalDavProvider implements CalendarProvider {
       if (response.status === 429) throw new ProtocolError('RATE_LIMITED', 'CalDAV 服务器限流', true, 60_000);
       const text = await bounded(() => response.text());
       assertReadActive(context);
-      return {status: response.status, text};
+      const etag = response.headers?.get('etag');
+      return {status: response.status, text, ...(typeof etag === 'string' ? {etag} : {})};
     } catch (error) {
       assertReadActive(context);
       throw error;
