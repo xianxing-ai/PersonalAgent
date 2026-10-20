@@ -19,7 +19,7 @@
     "typecheck": "npm run build && npm run typecheck --workspaces",
     "test": "npm run build && npm run test --workspaces",
     "check:architecture": "node --test tests/architecture/*.test.mjs",
-    "test:integration": "node --test tests/integration/*.test.mjs",
+    "test:integration": "node --test --test-concurrency=1 tests/integration/*.test.mjs",
     "test:mcp-tls-smoke": "node tests/manual/mcp/remote-tls-smoke.mjs",
     "test:dev-workflows": "node --test packages/connectors/github/test/*.test.mjs packages/coding-tools/test/ci-fix.test.mjs packages/coding-tools/test/git-tools.test.mjs packages/cognition/test/code-review.test.mjs packages/cognition/test/issue-triage.test.mjs apps/runtime/test/dev-workflows-runtime.test.mjs",
     "test:contract-fixtures": "node --test tests/contracts/*.test.mjs",
