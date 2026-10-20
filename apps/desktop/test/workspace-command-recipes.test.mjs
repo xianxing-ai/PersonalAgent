@@ -30,7 +30,13 @@ test('candidate npm recipes use empty private config/cache/home and reject later
   const recipe=createWorkspaceCommandRecipeTool(options),env=recipe.recipes.find(r=>r.id==='npm-test').env;
   assert.equal(env.NPM_CONFIG_OFFLINE,'true');assert.equal(env.NPM_CONFIG_IGNORE_SCRIPTS,'true');assert.equal(env.NPM_TOKEN,undefined);
   for(const key of['NPM_CONFIG_USERCONFIG','NPM_CONFIG_GLOBALCONFIG'])assert.equal(readFileSync(env[key],'utf8'),'');
-  for(const key of['HOME','USERPROFILE','APPDATA','LOCALAPPDATA','NPM_CONFIG_CACHE'])assert.ok(env[key].startsWith(root+path.sep));
+  // The production recipe uses realpathSync.native; Windows temp paths may use
+  // aliases/casing different from the original mkdtemp path spelling.
+  const canonicalRoot=realpathSync.native(root);
+  for(const key of['HOME','USERPROFILE','APPDATA','LOCALAPPDATA','NPM_CONFIG_CACHE']){
+    const confined=path.relative(canonicalRoot,realpathSync.native(env[key]));
+    assert.ok(confined!==''&&confined!=='..'&&!confined.startsWith('..'+path.sep)&&!path.isAbsolute(confined),key);
+  }
   assert.equal(readFileSync(path.join(profile,'.npmrc'),'utf8'),'explicit-account-fixture-do-not-read');
   assert.equal(recipe.available(),true);writeFileSync(env.NPM_CONFIG_USERCONFIG,'changed private npm config');
   assert.equal(recipe.available(),false);await assert.rejects(recipe.execute({recipeId:'npm-test'},{}),/mutated/);assert.equal(executions,0);
