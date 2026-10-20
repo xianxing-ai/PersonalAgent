@@ -2898,7 +2898,7 @@ async function action(event, name, payload) {
     if (name === 'coding.selectNode') selectionResult = await codingWorkspace.selectNode();
     if (name === 'coding.selectNpmCli') selectionResult = await codingWorkspace.selectNpmCli();
     if (name === 'coding.selectCheckFile') selectionResult = await codingWorkspace.selectCheckFile();
-    if (name === 'coding.authorize') codingWorkspace.authorize(payload);
+    if (name === 'coding.authorize') await codingWorkspace.authorize(payload);
     if (name === 'coding.revoke') codingWorkspace.revoke();
     publish();return {coding:codingWorkspace.snapshot(),
       ...(selectionResult?.selectionCancelled === true ? {codingSelectionCancelled:true} : {})};
