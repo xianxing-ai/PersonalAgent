@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {createDeveloperSettingsHost} from '../electron/developer-settings-host.js';
 
@@ -23,6 +23,50 @@ function runtimeFixture(){
       if(!this.lieAboutSave)checkpoints.set(marker,structuredClone(value));return true;},
   };
 }
+
+test('repairLinks remains explicit boolean opt-in across configure, encrypted restore and safe snapshot',async t=>{
+  const base=path.resolve('.cache');mkdirSync(base,{recursive:true});
+  const userData=mkdtempSync(path.join(base,'developer-repairlinks-'));
+  t.after(()=>rmSync(userData,{recursive:true,force:true}));
+  const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),
+    decryptString:value=>Buffer.from(value).reverse().toString()};
+  const sources=[],options={userData,safeStorage,readWorkspace:()=>({bindingId:'original',rootPath:userData}),
+    readToolDescriptors:async()=>[],createDeployment:async({configurationSource})=>{
+      sources.push(JSON.parse(configurationSource.readConfiguration()));
+      return {host:{tools:[],competitionToolAvailability:[],competitionToolExports:[],runtimeOptions:{},bind(){},close(){}},
+        snapshot:()=>({configured:true}),close(){}};
+    }};
+  let host=createDeveloperSettingsHost(options);t.after(()=>host.close());
+  await host.createDeployment({});
+  const config=flag=>({version:1,repository:'synthetic/repository',github:{executable:'synthetic-gh',
+    ...(flag===undefined?{}:{repairLinks:flag})},git:{}});
+  await host.configure({enabled:false,configuration:config(undefined),token:'synthetic-private-token'});
+  assert.equal(host.snapshot().configuration.github.repairLinks,undefined);
+  for(const invalid of ['true',1,null,{}])await assert.rejects(host.configure({enabled:false,configuration:config(invalid)}),/字段无效/);
+  await assert.rejects(host.configure({enabled:false,configuration:{...config(true),
+    github:{...config(true).github,tokenFile:'must-not-read-token-file'}}}),/字段无效/);
+  for(const value of [true,false]){
+    await host.configure({enabled:false,configuration:config(value)});
+    assert.equal(sources.at(-1).github.repairLinks,value);
+    assert.equal(host.snapshot().configuration.github.repairLinks,value);
+    assert.equal(JSON.stringify(host.snapshot()).includes('synthetic-private-token'),false);
+    host.close();host=createDeveloperSettingsHost(options);
+    assert.equal(host.snapshot().configuration.github.repairLinks,value);
+    await host.createDeployment({});
+  }
+  assert.equal(readFileSync(path.join(userData,'developer-settings.json'),'utf8').includes('synthetic-private-token'),false);
+  const target=path.join(userData,'developer-settings.json'),envelope=JSON.parse(readFileSync(target,'utf8'));
+  const saved=JSON.parse(safeStorage.decryptString(Buffer.from(envelope.encrypted,'base64')));
+  for(const invalid of ['true',1,null,{}]){
+    saved.configuration.github.repairLinks=invalid;host.close();
+    writeFileSync(target,JSON.stringify({version:1,encrypted:safeStorage.encryptString(JSON.stringify(saved)).toString('base64')}));
+    host=createDeveloperSettingsHost(options);assert.equal(host.snapshot().state,'restore_failed');
+    assert.equal(host.snapshot().configuration,undefined);
+  }
+  saved.configuration.github.repairLinks=false;saved.configuration.github.tokenFile='must-not-read-token-file';host.close();
+  writeFileSync(target,JSON.stringify({version:1,encrypted:safeStorage.encryptString(JSON.stringify(saved)).toString('base64')}));
+  host=createDeveloperSettingsHost(options);assert.equal(host.snapshot().state,'restore_failed');
+});
 
 test('encrypted product settings switch original deployments behind fixed tools and revoke old task bindings',async t=>{
   const base=path.resolve('.cache');mkdirSync(base,{recursive:true});
