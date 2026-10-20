@@ -94,3 +94,9 @@ F13/F14 已有独立系统观察/Windows-MCP 用户工具，不等于 graph alia
 - 随后正常合入 source450 `3015bcd396ab41f7dc24417e8d004fb238cea144` 与 source452 `726d86532db9e6c77a2c2888cf85c67b7681b52c`。source450 后续已定位知识模块首个冷证书调用超过原10秒，沿既有独立CI准备处理；被测生产调用的10秒期限不变。source452 的真正 MCP 文件级失败底层原因尚未核实，本轮只增加原失败 reporter 的双输出诊断，不改变测试 glob、并发、断言或期限，不把诊断能力当作业务失败已修复。
 - 相对451 `1472c6e2`，此批源码净增量仅 `packages/mcp/package.json` 的测试诊断命令及 `scripts/ci/mcp-failure-diagnostics.test.mjs`；所有 TypeScript 与产品源码字节不变，因此不重复构建或产品套件。Node 24.15.0、仓库外 TEMP 下运行 MCP 诊断、原 reporter 与证书准备三个纯JS测试文件：5/5、0 skip、exit 0。日志 `.cache/ready-validation/diagnostics-tests.log` SHA256 `4a5c5cd54975aa9c03af5adee54c83aaa39bfe63cf0a07fd8f880cc4a58f76ad`。
 - 当前代码实现与必要定向证据已具备交独立审查的条件；由owner发布后转 ready for review 并请求真实非作者审查。此判断不代表当前 head CI 已通过、不构成自我批准，也不把整MOD或真实平台验收标为完成。原 root check exit 1、所有真实平台未验及历史失败记录继续保留；新 head 技术CI与有效非作者批准仍约束合并。
+
+## source444 合并主线后的同步
+
+- source444 于 2026-10-20 18:10:03 UTC 正常 squash 合入 main `5b4a368b8abecd676ccb03b0c9dc63ead6b4a2c0`；451从 `782e3290ced337c4a12b52e26323e31caa938346` 正常合并该 main，无冲突，所有文件源码差异为零，合并 tree 仍为 `f5a1f8a15f6757ae56ad2544b7bb23b86e396b3c`。H1–H6 与此前全部安全收紧均保留，未借同步引入新产品功能。
+- 同轮正常合入 source450 已发布的主线同步 head `d447260fa325e4819630ba004cab3f3eaada0cf6`，合并本身同样无源码净变化；保留其原诊断与主线祖先，不复用它的旧 head 检查结果。
+- 该轮仅补主线祖先与此证据，没有重跑无源码变化的测试或构建。旧 head 的 Windows 作业与其他结果保留原归属，不转记为新 head CI 已通过；发布后的新 head 必需检查和真实非作者批准仍需各自满足。Ready、自动合并请求与独立审查请求不代表完成平台验收，原 root check 失败及实机未验边界继续有效。
