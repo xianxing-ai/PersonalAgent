@@ -19,10 +19,14 @@
 生产接线：`src/app/index.html` 加载 `interaction.css`；`features/admin/view.js` 消费 `ui/page-motion.js`。
 只改 Desktop 界面、测试和本模块说明。不新增依赖、IPC、公共协议、迁移或 Runtime 路径；不改变任务终态、审批、凭据及云端调用规则。
 
+`interaction.css` 有意在 `panel-glass.css` 后加载：Admin / Workspace 的容器及卡片采用不透明底，并取消重复 backdrop-filter；通用键盘焦点 outline-offset 从 2px 调为 3px。Panel 保留玻璃材质，textarea 的键盘焦点另用 2px 内侧描边，避免只靠容器边框提示焦点。这些覆盖与其他玻璃主题修改需一起核对。
+
 ## 验证
 
 环境：Windows，Node 24.15.0、npm 11.12.1、锁定 Electron 44.2.0。
 工作树独立安装锁定依赖；Electron 复用已安装同版本的二进制副本，两份 EXE SHA-256 相同。
+
+交互浏览器用例需显式设置 `PA_INTERACTION_UI_TEST=1`；默认要求本机安装 Edge（`C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe`），也可通过 `PA_INTERACTION_UI_BROWSER` 指定兼容 Chromium 的可执行文件。该门控用例不在默认 CI 中执行；如果未来接入 CI，应先提供对应浏览器环境，不能把默认跳过记为浏览器验收通过。
 
 | 检查 | 结果与证据 |
 | --- | --- |

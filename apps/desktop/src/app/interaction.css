@@ -98,7 +98,7 @@
 .workspace :is(.icon-btn,.workspace-task,.workspace-nav button):not(:disabled):hover {background:var(--ui-hover)}
 .panel .hdr-btn {min-width:32px;min-height:32px}
 .panel .composer {transition:border-color 160ms var(--ui-ease),box-shadow 160ms var(--ui-ease)}
-.panel .composer textarea:focus-visible {outline:none;box-shadow:none}
+.panel .composer textarea:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-2px;box-shadow:none}
 .panel :is(.bell-menu,.model-menu):not([hidden]) {
   transform-origin:bottom right;animation:ui-menu-enter 140ms var(--ui-ease);
 }

@@ -107,6 +107,23 @@ test('navigation and press feedback survive snapshots, rapid switching and reduc
       assert.deepEqual(issues, [], `${route}/${viewport.width}: no horizontal overflow`);
     }
   }
+  const panel = await browser.newPage({viewport: {width: 420, height: 720}});
+  panel.on('pageerror', error => errors.push(error.message));
+  await panel.goto(`http://127.0.0.1:${server.address().port}/?mode=panel`);
+  const composer = panel.locator('.composer textarea');
+  await composer.waitFor();
+  for (const theme of ['light', 'dark']) {
+    await panel.evaluate(theme => {localStorage.setItem('pa-theme', theme);window.dispatchEvent(new StorageEvent('storage', {key:'pa-theme'}));window.refresh();}, theme);
+    await composer.focus();await panel.keyboard.press('Tab');await panel.keyboard.press('Shift+Tab');
+    const focus = await composer.evaluate(el => {const style=getComputedStyle(el);return {
+      active:document.activeElement===el,visible:el.matches(':focus-visible'),
+      width:parseFloat(style.outlineWidth),style:style.outlineStyle,color:style.outlineColor,
+      offset:parseFloat(style.outlineOffset)};});
+    assert.equal(focus.active && focus.visible, true, `${theme}: keyboard focus returns to composer`);
+    assert.equal(focus.style, 'solid');assert.ok(focus.width >= 2, `${theme}: visible textarea focus ring`);
+    assert.notEqual(focus.color, 'rgba(0, 0, 0, 0)');assert.ok(focus.offset <= 0, `${theme}: ring stays inside the composer`);
+    await panel.screenshot({path:join(output,`composer-focus-${theme}.png`)});
+  }
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({snapshots:'stable',keyboard:'one activation',rapidNavigation:'latest route',reducedMotion:'app and OS',layouts:12,pageErrors:errors}));
+  console.log(JSON.stringify({snapshots:'stable',keyboard:'one activation',composerFocus:['light','dark'],rapidNavigation:'latest route',reducedMotion:'app and OS',layouts:12,pageErrors:errors}));
 });
