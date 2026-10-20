@@ -1,5 +1,7 @@
 # Runtime task core
 
+2026-10-20 Competition 上下文增量：新增 host-only 事件截面读取，保留所有公开用户请求及其当时执行状态；共享编译器在普通对话中优先保留用户原文，Skill/私人预检维持严格预算；来源撤销贯穿旧助手与子任务。冻结 Core wire、原任务终态与旧迁移不变；可选续接历史默认关闭，新云端验收待完成。见 [实现与评估](../../docs/competition/CONTEXT_INTEGRITY_20261020.md)。
+
 `delegateUserTasks:true` 是 Competition 可信组合选项：仅新用户任务冻结一次真实子任务委派，根任务经原 Policy/Gateway 派发后只汇总，模型、预算和恢复绑定保留。旧任务不补派；既有单任务私人记忆/Skill 许可不继承。`readDelegatedUserTaskParent()` 只提供经校验的公开历史范围。可信宿主通过 `readSubagentConversation` / `submitSubagentConversationMessage` / `cancelSubagentConversationTask` 访问同一子智能体的持久追加会话，每轮创建新任务，不重开原终态；`listSubagentConversations` 分页读取全部原子智能体，追加执行仍归原入口。实现、139 项定向验证（Runtime 51 项）及未知写/汇总失败恢复限制见 [子对话与委派说明](../desktop/docs/live-task-visibility-20261018.md)。
 
 

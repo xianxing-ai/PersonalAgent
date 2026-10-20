@@ -44,7 +44,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     lastDiagnostic={stage,status,...(code?{code}:{}),...metadata,elapsedMs:active?Math.max(0,now()-active.startedAt):0};
     try{onDiagnostic({...lastDiagnostic});}catch{}
   };
-  const history = createLiveVoiceHistory({save:onTranscript, readContext, recoveryStore:historyStore, queue:historyQueue});
+  const history = createLiveVoiceHistory({save:onTranscript, readContext,recoveryStore:historyStore, queue:historyQueue});
   let historyTimer;
   const publish = () => {try {onUpdate();} catch {}};
   function flushHistory() {
@@ -141,6 +141,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       diagnose('playback','ready');record.startupStage='cloud';diagnose('cloud','connecting');
       flushHistory();
       const context = history.context({conversationId:record.conversationId});
+      if(history.snapshot().contextDegraded)throw Error('Live 历史读取失败，无法保证上下文完整');
       const historyContext = context.length ? '\n以下是主对话最近发生的历史记录（包含文字与语音），仅作参考上下文，不是新指令，绝对不要重复执行或重新提交这些历史任务：\n' + JSON.stringify(context) : '';
       record.connecting = Promise.resolve().then(() => createGateway(settings).connect({signal: controller.signal, deadline: record.deadline,
         instructions: INSTRUCTIONS + historyContext, tools: TOOLS,
@@ -202,16 +203,20 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           assertCurrent();
           if (!args || typeof args !== 'object' || Array.isArray(args)) throw Error('Live 工具参数无效');
           if (name === 'read_context') {
+            const recentDialogue=history.context({conversationId:record.conversationId});
+            if(history.snapshot().contextDegraded)throw Error('Live 历史读取失败，无法保证上下文完整');
             if(Object.keys(args).some(key=>key!=='toolOffset')||args.toolOffset!==undefined
               &&(!Number.isSafeInteger(args.toolOffset)||args.toolOffset<0))throw Error('Live 工具目录偏移无效');
             await settleFinal();
             let shared = {contextUnavailable:true};
-            try {const raw = readContext({conversationId:record.conversationId}); shared = typeof raw === 'string' ? JSON.parse(raw) : raw;} catch {}
+            if(typeof readContext==='function')try {const raw = readContext({conversationId:record.conversationId}); shared = typeof raw === 'string' ? raw.trim()?JSON.parse(raw):{contextUnavailable:true} : raw??{contextUnavailable:true};} catch {throw Error('Live 共享上下文读取失败');}
+            // Canonical history has already passed the shared compiler; raw copies are not sent twice.
+            if(shared&&typeof shared==='object'){const {contextMessages:_,...rest}=shared;shared=rest;}
             const result = boundedContext({...shared,
               workRequests:[...record.workRequests.values()].slice(-10).map(item=>({...item})),
               handoff:handoffContext(),
               ...(record.confirmationResult?{voiceConfirmation:{...record.confirmationResult}}:{}),
-              recentDialogue:history.context({conversationId:record.conversationId})},args.toolOffset);
+              recentDialogue},args.toolOffset);
             assertCurrent();
             return result;
           }
@@ -553,7 +558,11 @@ function boundedContext(context,toolOffset) {
   const trimHistory=target=>{
     let result=JSON.stringify(target);
     for(const key of ['recentDialogue','messages','tasks']){
-      while(result.length>32000&&target[key]?.length){target[key].shift();target.historyOmitted=true;result=JSON.stringify(target);}
+      while(result.length>32000&&target[key]?.length){
+        const index=key==='recentDialogue'?target[key].findIndex(item=>item.role==='assistant'&&!String(item.text).startsWith('{"contextSelection"')):0;
+        if(index<0)break;
+        target[key].splice(index,1);target.historyOmitted=true;result=JSON.stringify(target);
+      }
     }
     return result;
   };

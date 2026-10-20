@@ -47,6 +47,7 @@ export interface AgentArtsRuntimeApplicationOptions
   workflowGoalInput?: string;
   responseMode?: 'text' | 'tool-proposal-json';
   initialRequestMode?: 'goal' | 'goal-with-tools-json';
+  continuationContext?: 'goal';
   authorizationProvider: AgentArtsAuthorizationProvider;
   fetchImpl?: AgentArtsFetch;
   transport?: 'https' | 'wss';
@@ -94,6 +95,7 @@ export function createAgentArtsRuntimeApplication(
     workflowGoalInput,
     responseMode,
     initialRequestMode,
+    continuationContext,
     repairCandidateVersion,
     authorizationProvider,
     fetchImpl,
@@ -138,6 +140,7 @@ export function createAgentArtsRuntimeApplication(
       ...(workflowGoalInput === undefined ? {} : {workflowGoalInput}),
       ...(responseMode === undefined ? {} : {responseMode}),
       ...(initialRequestMode === undefined ? {} : {initialRequestMode}),
+      ...(continuationContext === undefined ? {} : {continuationContext}),
       ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     },
     authorizationProvider,
@@ -190,6 +193,7 @@ export function createAgentArtsRuntimeApplication(
       ...(onTransportState?{onTransportState}:{}),...(readOwnedWorkflowReceiptSecret?{readReceiptSecret:readOwnedWorkflowReceiptSecret}:{})}):undefined;
   application = createRuntimeApplication({
     ...runtimeOptions,
+    retainPriorToolResults:continuationContext==='goal',
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
     ...(runtimeOptions.codingRepair?{}:ownedImage?{codingRepair:{image:ownedImage}}:{}),
