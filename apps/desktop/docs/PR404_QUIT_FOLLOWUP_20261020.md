@@ -28,3 +28,11 @@
 本次仅更新 smoke：确认隐藏的会话组件仍挂载、按当前 `#mm-slider` 检查缺目录的禁用状态；面板 9 组尺寸/缩放检查继续验证线程、输入框与模型菜单可达性，不再向已隐藏的面板会话管理注入归档按钮。原 Workspace 会话组件、无任务输入框、通知 scope/revision、配置秘钥清空、关闭保存失败、app.quit 清理次数为零、失败后可编辑及显式重试后的最终草稿磁盘读回断言全部保留。没有恢复已移除的产品界面或修改生产代码。
 
 Node 24.15.0 / Electron 44.2.0 的实际 smoke 14 项通过，回执为 `apps/desktop/.cache/pr376-regressions/run-NmyBBj/receipts.json`；失败前日志和修正后日志分别保留在 `.cache/pr-maintenance/latest-native-{before,after}.log`。同步后的五份退出/会话/原生思考单元文件也通过。未重复完整 Desktop/全仓检查；真实账号、云、音频、现有数据与其他应用会话均未参与。
+
+## 退出回执绑定原页面生命周期
+
+后续静态复核发现：草稿预检 ready 后等待异步宿主关闭时，旧回执没有绑定原页面。若同窗口、同 PID 甚至同 mainFrame 对象重载，新页面可能未经预检就复用旧 ready 状态进入 Runtime/托盘清理。
+
+预检现绑定原窗口集合、webContents 与主 frame，并在主 frame 跨文档导航开始/提交、renderer 消失或销毁、窗口关闭时使 pending/ready 回执失效；同文档和子 frame 导航不撤销回执。每次 allow 仍核对原实体集合；加载中的替换页面拒绝预检，待就绪后显式重试。失效/取消/超时清理监听器和计时器，并尝试解冻仍存活的原页面及当前页面；旧异步成功不能再触发 quit。保持原 5 秒上限、原清理顺序和权限，不新增关停流程。
+
+对应轻量回归补充同窗同 frame 重载、窗口替换、pending 导航及迟到成功、重复取消清理、同文档/子 frame 导航、renderer 消失和加载中替换页。Node 24.15.0 下，`draft-quit-preflight`、`conversation-draft-close`、`quit-task-preflight` 三文件 33/33 通过，Desktop typecheck 与 diff 检查通过；日志在忽略目录 `.cache/pr-maintenance-20261020/pr404/page-generation-{tests,typecheck}.log`。未重跑实际 Electron smoke 或全仓测试，不沿用上节实际 smoke 结果冒充新版本验证。
