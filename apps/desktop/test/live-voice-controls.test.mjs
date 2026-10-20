@@ -12,6 +12,17 @@ test('work feedback distinguishes unknown acceptance, accepted requests and retu
   assert.match(returned,/不代表子任务成功或已独立验证/);
 });
 
+test('saved startup opt-in is displayed and sent through the original Live configure action',async t=>{
+  const calls=[],f=fixture(t,async(name,payload)=>calls.push({name,payload}));
+  f.controls.render({configured:true,workspaceId:'fixture',hotkey:'F8',audioConsent:true,
+    startupGreeting:true,continuousListening:true,startup:{greeting:'failed'}});
+  assert.equal(f.fields['live-startup-greeting'].checked,true);
+  assert.equal(f.fields['live-continuous-listening'].checked,true);
+  assert.match(f.status.textContent,/启动问候未完成/);
+  await f.save();assert.equal(calls[0].name,'live.configure');
+  assert.equal(calls[0].payload.startupGreeting,true);assert.equal(calls[0].payload.continuousListening,true);
+});
+
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => {resolve = yes; reject = no;});
@@ -21,8 +32,9 @@ function deferred() {
 function fixture(t, invoke) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
   t.after(() => {if (original) Object.defineProperty(globalThis, 'document', original); else delete globalThis.document;});
-  const fields = Object.fromEntries(['live-key', 'live-workspace', 'live-hotkey', 'live-consent', 'live-save', 'live-config-result', 'summary']
-    .map(name => [name, {value: '', checked: false, textContent: ''}]));
+  const fields = Object.fromEntries(['live-key', 'live-workspace', 'live-hotkey', 'live-consent', 'live-save', 'live-config-result', 'summary',
+    'live-startup-greeting','live-continuous-listening']
+    .map(name => [name, {value: '', checked: false, textContent: '',insertAdjacentHTML(){}}]));
   // Model select value against the options actually mounted by the control.
   // HTML option text is its value when no explicit value attribute is present.
   let selectedIndex = -1;
@@ -125,7 +137,7 @@ test('restored supported F13 and F24 remain selected in ordinary blank-key saves
     assert.equal(f.fields['live-key'].value, '');
     await f.save();
     assert.deepEqual(calls.at(-1), {name: 'live.configure', payload: {
-      workspaceId: 'restored-workspace', apiKey: '', hotkey, audioConsent: true,
+      workspaceId: 'restored-workspace', apiKey: '', hotkey, audioConsent: true,startupGreeting:false,continuousListening:false,
     }});
     assert.equal(f.fields['live-save'].disabled, false);
   }
