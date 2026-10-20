@@ -1,9 +1,10 @@
 const terminal=new Set(['succeeded','failed','cancelled','cancelling']);
 
 /** Called by the existing Desktop poll. No timer, model, grant or second scheduler lives here. */
-export function createDesktopProactiveRuntimePump({getApplication,getWorkflow,resolveUserConversation,recoverSources,now=Date.now}) {
+export function createDesktopProactiveRuntimePump({getApplication,getWorkflow,resolveUserConversation,recoverSources,afterNativeMaintenance,now=Date.now}) {
   if([getApplication,getWorkflow,resolveUserConversation].some(value=>typeof value!=='function'))
     throw Error('Original Runtime, proactive host and structural conversation resolver required');
+  if(afterNativeMaintenance!==undefined&&typeof afterNativeMaintenance!=='function')throw Error('Native maintenance callback must be a function');
   const recovered=new Set(),reentered=new Set();let pending,scanCursor;
   async function run() {
     const application=getApplication(),workflow=getWorkflow();
@@ -41,6 +42,9 @@ export function createDesktopProactiveRuntimePump({getApplication,getWorkflow,re
           if(!reentered.has(binding.taskId)&&['created','waiting_approval','waiting_reconciliation'].includes(current.state)) {
             application.resumeProactiveTask(binding.taskId);reentered.add(binding.taskId);
           }
+          // Existing maintenance owns acquisition/recovery/resume. This only attaches a consumer;
+          // it introduces no timer and cannot replace or re-enter the original worker.
+          await afterNativeMaintenance?.(binding.taskId,context);
           status.push({taskId:binding.taskId,state:sourceRecovery?.state==='unavailable'?'source_unavailable':'bound',wakes,...(sourceRecovery?{sourceRecovery:{state:sourceRecovery.state,
             deliveries:sourceRecovery.deliveries?.length??0}}:{})});
         }catch(error){status.push({taskId:binding.taskId,state:'unavailable',

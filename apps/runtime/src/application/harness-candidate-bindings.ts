@@ -6,6 +6,7 @@ import type {CodingRepairInput,CodingRepairPatch} from '@personal-agent/contract
 import {parseHarnessCandidateTrial,harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import type {HarnessCandidateContext,HarnessCandidateTrial} from '@personal-agent/contracts/harness-candidates';
 import {compareHarnessCandidates,codingVerificationCurrent} from '@personal-agent/agentarts';
+import {parseCoordinationContinuation} from '@personal-agent/coordination';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import type {RuntimeApplication} from './runtime-application.js';
 import type {RuntimeHarnessCandidateOptions} from './harness-candidates.js';
@@ -318,12 +319,19 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     const loop=runtime.loadCheckpoint(input.ownerTaskId,'competition-loop');
     if(!plain(loop)||loop.pending!==undefined||!plain(loop.continuation)||loop.continuation.state!=='confirmed'
       ||typeof loop.continuation.proposalId!=='string'||!Array.isArray(loop.receipts))denied('Original publication continuation unavailable');
+    try {parseCoordinationContinuation(loop.continuation);}catch{denied('Original publication projection is not a valid continuation');}
+    const continuationProposalId=loop.continuation.proposalId;
     const receipts=loop.receipts.filter(item=>plain(item)&&item.runId===input.publicationRunId);
     const receipt=receipts[0];
     if(receipts.length!==1||!plain(receipt)||!plain(receipt.proposal)||receipt.proposal.proposalId!==loop.continuation.proposalId
-      ||receipt.proposal.toolName!==record.toolName||receipt.proposal.toolVersion!==record.toolVersion||receipt.proposal.verification==='mock'
+      ||loop.receipts.filter(item=>plain(item)&&plain(item.proposal)&&item.proposal.proposalId===continuationProposalId).length!==1
+      ||receipt.proposal.toolName!==record.toolName||receipt.proposal.toolVersion!==record.toolVersion||receipt.proposal.verification!=='unverified'
+      ||typeof receipt.exportPolicyVersion!=='string'||!receipt.exportPolicyVersion.trim()||receipt.exportPolicyVersion.length>128
+      ||!plain(receipt.proposal.arguments)||toolArgumentsDigest(receipt.proposal.arguments)!==invocation.argumentsDigest
       ||!isDeepStrictEqual(receipt.proposal.arguments,invocation.arguments)||!isDeepStrictEqual(receipt.continuation,loop.continuation)
-      ||!isDeepStrictEqual(loop.continuation.result,cached.result))denied('Publication continuation differs from its original cache and proposal');
+      )denied('Publication continuation differs from its original run, proposal or export receipt');
+    // The confirmed cache supplies CAS facts. Its original export binding may legitimately redact the
+    // continuation; the real send still checks that same current binding/version through Runtime.
     const request=parseCodingRepairPublishRequest(invocation.arguments),published=parseCodingRepairPublishReadback(cached.result);
     const origin=adoptionOrigin(input,input.ownerTaskId),session=sessionForProvenance(input,input.ownerTaskId);
     if(!origin||!session)return;

@@ -22,6 +22,12 @@ Desktop `subagent.dispatch` 导出策略更新为 `1.2.0`：`userRequest` 经原
 
 Desktop `subagent.dispatch` 导出策略 `1.1.0` 在现有有界 JSON result 中附加可选宿主原问题 `userRequest`，子任务正文与可信 footer 的 `resultMetadata` 分离。原问题仅来自当前任务的委派 checkpoint，不采信子任务同名字段；保留原任务/版本/导出守卫、状态与错误。云端为普通 continuation 注入用户答复提示，初始派发和修复报告路径不变。无 Core wire、公共 envelope、数据库迁移或新依赖；旧待核实任务不重绑、不重发。自动化、真实验证及限制见 [修复记录](../competition/CHAT_CONTINUATION_REPLY_20261019.md)，不扩大冻结或全部业务可用范围。
 
+## 2026-10-17 Desktop 审查回归修复（provisional）
+
+Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Conversations v4 草稿；Preload/主进程核验来源主 frame、窗口与对话归属，失败保留窗口。正常输入继续原异步防抖，不增加任务或凭据权限。原 `agentarts.configure` 表单补齐已有安全配置字段，没有新增 Core wire 或数据库迁移。
+
+`RuntimeProactiveImageAdapterOptions` 兼容增加可信 `config.deploymentVersion` 与 `assertDeploymentBinding`，Desktop 原组合传入已选部署，describe/advance 保留同版 HTTP endpoint，凭据等待期间绑定改变则拒绝发送。原版本未知时不假造已固定版本；现有签名、取消、deadline 与 unknown 核实语义保留。具体接线及离线测试边界见 [修复记录](../../apps/desktop/docs/PR376_REGRESSION_FIXES_20261017.md)；不扩大冻结或真实华为/设备验收范围。
+
 ## 2026-10-18 主文字／Live 工具消费接线（provisional）
 
 最新定向分组检查 226/226，包含远端并行整合后的重叠补测；teacher 多轮、DEV 提案隔离、首次 user-work／追加会话的自动补丁核实续接、Live 原等待期限及 Windows 夹具修复见 [增量证据](../competition/evidence/conversation-wiring-20261018/SUPPLEMENT.md)。F15 实际复用通用图驱动，F20 的 Synthetic 验证不构成其业务入口接通。

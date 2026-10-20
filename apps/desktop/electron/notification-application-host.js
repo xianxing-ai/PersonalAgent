@@ -121,8 +121,12 @@ export function createDesktopNotificationApplicationHost({namespace, channel, no
       return configureSettings({operationId:randomUUID(),expectedRevision:latest.revision,scope:legacyScope,legacyPolicy:structuredClone(policy)});
     },
     bindApplication(value, connection) {
+      if (disposed) throw Error('通知 Runtime 宿主已经释放');
       if (application && application !== value) throw Error('通知宿主不能重新绑定不同 Runtime');
-      application = value; client = connection;
+      // Startup needs the original local policy before Client exists. Later binding
+      // attaches only that connection; a second host would replace trusted closures.
+      if (host) {if(connection!==undefined)client=connection;return host;}
+      application = value; if(connection!==undefined)client=connection;
       host = value.createNotificationHost({policy: {}, settingsScopes: SETTINGS_SCOPES, now,
         verifyUserCommand: validCommand,
         resolveUserCommand: (_input, context) => commands.get(context.taskId)?.command});

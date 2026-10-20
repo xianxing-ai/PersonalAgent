@@ -13,6 +13,7 @@
     "dev:text-fake": "electron . --fake-model",
     "test": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter=./test-support/node-test-failure-reporter.mjs --test-reporter-destination=stdout --test-reporter-destination=stderr test/*.test.mjs",
     "test:smoke": "node test/electron-smoke.cjs",
+    "test:pr376-smoke": "node test/pr376-regressions-smoke.cjs",
     "test:frontend-layout": "node test/frontend-layout-smoke.cjs",
     "test:desktop-local": "node test/desktop-local-smoke.cjs",
     "check:desktop-local": "node --check electron/desktop-host.js && node --check electron/desktop-state.js && node --check electron/desktop-preload.cjs && node --check src/desktop-settings/settings.js && node --check src/ui/desktop-shell.js",

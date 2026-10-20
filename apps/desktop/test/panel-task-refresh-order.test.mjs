@@ -38,6 +38,8 @@ async function fixture(t) {
   const task = app.runtime.submitTask({goal: 'Local read-only cancellation fixture', conversationId: 'desktop-panel', idempotencyKey: 'refresh-order'});
   const tasks = new Map(), published = [], panel = {};
   const context = vm.createContext({tasks, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
+    // This cancellation/readback fixture has no Harness event consumer installed.
+    harnessEventsHost: undefined,
     conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
     approvals: new Map(), notifications: new Map(), structuredClone,
     publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});

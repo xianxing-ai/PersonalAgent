@@ -191,6 +191,11 @@ P1 本人发布后的完成汇报口另跑 `completion-only reader` 两项必要
 正确 owner running/peer succeeded 的原 publish 读回可用；旧公开 reader 仍拒 running，UNKNOWN、pending、错输入/
 缓存/run、权限拒绝和未成功 peer 均拒绝。日志 `.cache/harness-bindings-completion-case.log`，noEmit 诊断 0。
 这不代替 H1 的实际 active-lease 完成汇报联调；未运行全量 build/check。
+完成汇报 reader 同时保留原 unverified 提案、唯一 run/proposal receipt、原参数摘要与非空
+exportPolicyVersion 的闭环。合法脱敏投影无需等于本地 raw cache；CAS 和验证事实始终只读原
+confirmed cache。真实发送仍须原 Runtime 当前 export binding/policyVersion 再核，reader 不签发
+导出许可。新增脱敏正例及替换原读回、缺 policy、重复 receipt/提案、替换输入/投影拒绝回归，
+由整合工作包按 pinned Runtime 构建后定向运行；不以投影自报 published 当作发布证据。
 以上只读审查不是仓库非作者 Approve，也不代替后续联调。
 本包用显式 synthetic trial 验证契约、绑定/失败/unknown/弃权/组合边界，Runtime 用真实 SQLite/
 Policy/ToolGateway 消费 synthetic 端口；Windows 真实 host/Node 固定配方由 runner 工作包独立取证。

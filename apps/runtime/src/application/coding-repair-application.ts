@@ -170,6 +170,8 @@ export async function runRuntimeCodingRepairWorkflow(application:RuntimeApplicat
 
 /** Host-only reader supplied to the isolated host before CAS publication. */
 export function readRuntimeCodingVerificationEvidence(application:RuntimeApplication,input:{session:{taskId:string;sessionId:string};runId:string;originTaskId:string;originRunId:string}):readonly string[]|undefined {
+  const candidate=application.readHarnessCandidateVerificationEvidence?.(input);
+  if(candidate)return candidate;
   const parent=application.runtime.loadCheckpoint(input.originTaskId,CODING_REPAIR_PARENT) as {taskId?:string}|undefined;
   if(parent?.taskId!==input.session.taskId||input.originRunId!==`host-tool-${input.originTaskId}`)return undefined;
   const readback=application.readHostToolTask(input.originTaskId),value=readback.confirmed?.result;

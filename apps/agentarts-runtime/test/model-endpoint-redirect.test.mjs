@@ -20,7 +20,7 @@ async function fixture(t){
   await run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',path.join(directory,'key.pem'),
     '-out',path.join(directory,'cert.pem'),'-days','1','-subj','/CN=synthetic-owned-model','-addext','subjectAltName=IP:127.0.0.1']);
   const key=await readFile(path.join(directory,'key.pem')),cert=await readFile(path.join(directory,'cert.pem'));
-  const first=[],second=[];let mode='direct',disconnections=0;
+  const first=[],second=[],disconnections=[];let mode='direct';
   const answer=response=>{response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({
     choices:[{message:{content:JSON.stringify({kind:'text',text:'synthetic direct model reply'})},finish_reason:'stop'}]}));};
   const destination=httpsServer({key,cert},async(request,response)=>{
@@ -30,7 +30,7 @@ async function fixture(t){
   const source=httpsServer({key,cert},async(request,response)=>{
     let body='';for await(const chunk of request)body+=chunk;
     first.push({body,authorization:request.headers.authorization});
-    if(mode==='hang'){response.once('close',()=>disconnections++);return;}
+    if(mode==='hang'){response.once('close',()=>disconnections.push(body));return;}
     if(mode==='direct')return answer(response);
     response.writeHead(mode,{location:`https://127.0.0.1:${destination.address().port}/v1/chat/completions`});response.end();
   });await listen(source);
@@ -55,10 +55,11 @@ async function fixture(t){
   while(!stdout.includes('"event":"listening"')){assert.equal(child.exitCode,null);assert.ok(Date.now()<expires);await pause(10);}
   // Only the test control plane closes connections; the production HTTPS model transport is unchanged.
   // A killed child must not leave a reusable socket in this process's shared fetch pool.
-  const post=(headers={},signal)=>fetch(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,
+  const post=(headers={},signal,query=marker)=>fetch(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,
     headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers,connection:'close'},
-    body:JSON.stringify({query:marker})});
-  return {first,second,post,setMode:value=>mode=value,disconnections:()=>disconnections,logs:()=>({stdout,stderr})};
+    body:JSON.stringify({query})});
+  return {first,second,post,setMode:value=>mode=value,
+    disconnections:query=>disconnections.filter(body=>body.includes(query)).length,logs:()=>({stdout,stderr})};
 }
 for(const status of [307,308])test(`production model endpoint refuses HTTPS ${status} redirect to another origin`,async t=>{
   const f=await fixture(t);f.setMode(status);const response=await f.post(),body=await response.text();
@@ -74,14 +75,33 @@ test('production direct HTTPS model call preserves deadline and caller cancellat
   const direct=await f.post();assert.equal(direct.status,200);
   assert.equal(JSON.parse((await direct.json())[0].data.text).text,'synthetic direct model reply');
   assert.equal(f.first[0].authorization,'Bearer synthetic-model-secret');assert.equal(f.second.length,0);
+  t.diagnostic('control-plane phase: already-expired');
+  const alreadyExpired=await f.post({'x-pa-deadline':new Date(Date.now()-1).toISOString()});
+  assert.equal(alreadyExpired.status,504);await alreadyExpired.arrayBuffer();
+  assert.equal(f.first.length,1,'an expired invocation must not dispatch a model request');
   t.diagnostic('control-plane phase: expired');
-  f.setMode('hang');const expired=await f.post({'x-pa-deadline':new Date(Date.now()+200).toISOString()});
+  const expiredQuery=marker+'-deadline',expiredRequests=()=>f.first.filter(request=>request.body.includes(expiredQuery)).length;
+  f.setMode('hang');const expired=await f.post({'x-pa-deadline':new Date(Date.now()+200).toISOString()},undefined,expiredQuery);
   assert.equal(expired.status,504);
   await expired.arrayBuffer();
+  // The 200ms deadline can expire before dispatch on a busy host. Neither
+  // legitimate zero dispatch nor one cancelled dispatch permits a retry.
+  assert.ok(expiredRequests()<=1);assert.equal(f.first.length,1+expiredRequests());
+  // Check deadline cancellation before the caller-cancel phase, with a separate
+  // budget so that phase cannot consume or extend the deadline disconnect wait.
+  const expiredDisconnectLimit=Date.now()+2000;
+  while(f.disconnections(expiredQuery)<expiredRequests()){
+    assert.ok(Date.now()<expiredDisconnectLimit);await pause(5);
+  }
+  assert.equal(f.disconnections(expiredQuery),expiredRequests());
   t.diagnostic('control-plane phase: cancel');
-  const controller=new AbortController(),pending=f.post({},controller.signal);
-  const limit=Date.now()+2000;while(f.first.length<3){assert.ok(Date.now()<limit);await pause(5);}
+  const query=marker+'-caller-cancel',received=()=>f.first.filter(request=>request.body.includes(query)).length;
+  const controller=new AbortController(),pending=f.post({},controller.signal,query);
+  const limit=Date.now()+2000;while(received()<1){assert.ok(Date.now()<limit);await pause(5);}
   controller.abort();await assert.rejects(pending,{name:'AbortError'});
-  while(f.disconnections()<2){assert.ok(Date.now()<limit);await pause(5);}
-  assert.equal(f.first.length,3);assert.equal(f.second.length,0);assert.equal(f.logs().stderr,'');
+  while(f.disconnections(query)<1){assert.ok(Date.now()<limit);await pause(5);}
+  assert.equal(received(),1);assert.equal(f.disconnections(query),1);
+  assert.equal(f.disconnections(expiredQuery),expiredRequests());
+  assert.ok(expiredRequests()<=1);assert.equal(f.first.length,1+expiredRequests()+received());
+  assert.equal(f.second.length,0);assert.equal(f.logs().stderr,'');
 });

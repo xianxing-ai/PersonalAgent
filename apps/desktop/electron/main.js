@@ -1,6 +1,10 @@
 import {handleConversationAction} from './conversation-actions.js';
+import {flushConversationDrafts} from './conversation-draft-close.js';
+import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
+import {withNativeReadbackScope} from './native-readback-scope.js';
+import {ProtocolError} from '@personal-agent/contracts';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
@@ -60,7 +64,7 @@ import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
-import {createDesktopDeveloperDeployment,projectDeveloperConversationStatus} from './developer-deployment-config.js';
+import {projectDeveloperConversationStatus} from './developer-deployment-config.js';
 import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 import {createToolPresenceHost} from './tool-presence-host.js';
 import {createConversationToolSurface} from './conversation-tool-surface.js';
@@ -86,6 +90,10 @@ import {createDeferredRuntimeStartup} from './runtime-startup.js';
 import {createMailConfig} from './mail-config.js';
 import {createCalendarConfig} from './calendar-config.js';
 import {createModelApiConfig} from './model-api-config.js';
+import {createDesktopHarnessContextHost} from './harness-context-host.js';
+import {createDesktopHarnessEventsHost} from './harness-events-host.js';
+import {createHarnessExperienceAdminHost} from './harness-experience-host.js';
+import {createDeveloperSettingsHost} from './developer-settings-host.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
 import {createDesktopMailAnalysisHost} from './mail-analysis-host.js';
@@ -147,6 +155,7 @@ let eventPoll;
 let eventBusy = false;
 let orb;
 let panel;
+let draftQuitPreflight;
 let admin;
 let workspace;
 const subagentWindows=new Map();
@@ -228,6 +237,8 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
+const harnessExperienceLifetime=new AbortController();
+let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
 let installedSkillsHost;
 let remoteMcpConfig,remoteMcpHost,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
@@ -271,6 +282,7 @@ let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
 let conversationToolAccess, voiceApprovalBridge, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
+let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
 let p5UnavailableReason = '';
@@ -281,6 +293,11 @@ let p5FeedbackReading = false;
 let knowledgeWatchHost;
 let admitNativeFeedInterest;
 let modelApiHost;
+let harnessContextHost;
+let harnessContextFailure='';
+let harnessModelSummarizer;
+let runtimeBuildIdentityReader;
+let startupRecoveryStatus={state:'not_run',verification:'not_run'};
 let reviewedRepairLock = Promise.resolve();
 function withReviewedRepairLock(work) {
   const result = reviewedRepairLock.then(work);
@@ -291,6 +308,7 @@ let productTools;
 let connectorConversationTools;
 let codingWorkspace;
 let developerDeployment;
+let developerSettings;
 let developerDeploymentFailure='';
 let toolPresenceHost,windowsControlHost,windowsControlClosing;
 let computerControlLease;
@@ -603,7 +621,11 @@ function snapshot(surface) {
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
     model: structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model),
     agentArtsModels:agentArtsModels?.snapshot(),
-    modelApi: surface ? undefined : modelApiHost?.snapshot(),
+    modelApi: surface ? undefined : readDesktopModelApiState(),
+    harnessContext:surface?undefined:harnessContextHost?.snapshot()??{state:harnessContextFailure?'unavailable':'disabled',
+      enabled:false,reason:harnessContextFailure,verification:'not_run'},
+    startupRecovery:surface?undefined:startupRecoveryStatus,
+    harnessEvents:surface?undefined:harnessEventsHost?.snapshot(),
     modelChoices: featuredModelChoices(agentArtsModels?.snapshot().catalog?.models,{selectedId:conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking)?.modelId??''}),
     conversationPreference: conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking),
     thinking: {...thinking,...(conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking) ?? {}),
@@ -834,7 +856,7 @@ async function disposeWakeForQuit() {
     await Promise.race([stopWakeVoice(true), new Promise((_resolve, reject) => {
       timer = setTimeout(() => reject(Error('唤醒音频释放未确认')), 5000);
     })]);
-  } catch {wakeQuitUnknown = true; reportPanelVoiceFailure();}
+  } catch {wakeQuitUnknown = true; reportQuitFailure('语音资源释放未确认；请勿重新开启麦克风');}
   finally {clearTimeout(timer);}
   // This marks only the quit attempt as handled, never physical release verified.
   wakeQuitHandled = true;
@@ -843,6 +865,13 @@ async function disposeWakeForQuit() {
 
 function reportPanelVoiceFailure() {
   runtimeError = '语音资源释放未确认；请勿重新开启麦克风';
+  publish();
+}
+
+function reportQuitFailure(message) {
+  draftQuitPreflight?.cancel();
+  app.isQuitting = false;
+  runtimeError = message;
   publish();
 }
 
@@ -1282,6 +1311,8 @@ function applyEvent(event) {
   if (event.type === 'approval.requested' && event.payload) approvals.set(event.payload.approvalId, structuredClone(event.payload));
   if (event.type === 'task.cancelled' && event.payload?.taskId) {
     for (const [id, approval] of approvals) if (approval.taskId === event.payload.taskId) approvals.delete(id);
+    // Existing trusted Runtime events wake receipt-only reconciliation; no new poll or resubmit.
+    harnessEventsHost?.flush();
   }
 }
 
@@ -1392,7 +1423,7 @@ async function promptSyntheticRepairCandidate(taskId) {
   } finally { repairPrompts.delete(taskId); }
 }
 
-function readDesktopConversationContext(scope) {
+function readDesktopConversationContext(scope,maxMessages) {
   const requestingTaskId=scope.taskId;
   const parent=scope.taskId?runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId):undefined;
   if(parent)scope={...scope,taskId:parent.taskId,conversationId:parent.conversationId};
@@ -1405,14 +1436,129 @@ function readDesktopConversationContext(scope) {
   const messages=[...conversations.messagesFor(surface,scope.conversationId),...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
     .filter(message=>Date.parse(message.createdAt)<=Date.parse(cutoff))
     .map(message=>({id:message.id,role:message.role,content:message.text,createdAt:message.createdAt}));
-  let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages});
+  let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages,...(maxMessages===undefined?{}:{maxMessages})});
   if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
   const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
     .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
   if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,JSON.stringify(current));
   if(current.length)context.push({id:'knowledge-watch-current',role:'assistant',
     content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
+  if(maxMessages!==undefined&&(!Number.isSafeInteger(maxMessages)||maxMessages<1||context.length>maxMessages))
+    throw new ProtocolError('INVALID_ARGUMENT','Complete conversation exceeds the explicit source range');
   return context;
+}
+
+function refreshHarnessContextHost(createModelSummarizer=harnessModelSummarizer) {
+  harnessModelSummarizer=createModelSummarizer;
+  harnessContextHost?.dispose();harnessContextHost=undefined;harnessContextFailure='';
+  try {
+    harnessContextHost=createDesktopHarnessContextHost({readConfiguration:()=>modelApiHost?.readHarnessConfiguration().context??{enabled:false},
+      modelApi:modelApiHost,getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      readSnapshot:(scope,maxMessages)=>readDesktopConversationContext(scope,maxMessages),confirmExport:confirmDeveloperExport,createModelSummarizer});
+  }catch{harnessContextFailure='上下文摘要设置、原模型版本或发送门禁不可用；未启用摘要模型';}
+}
+
+function readDesktopDeveloperHarnessConfiguration() {
+  const setting=modelApiHost?.readHarnessConfiguration(),workspace=codingWorkspace?.readDeveloperConfiguration?.(),
+    permissionRef=codingWorkspace?.readWorkspaceExportConfigurationRef?.();
+  if(!setting?.enabled||!workspace||!permissionRef)return undefined;
+  const original={revision:setting.revision,workspaceRef:workspace.bindingId,permissionRef};
+  return {workspaceRef:workspace.bindingId,maxExecutorSteps:setting.maxExecutorSteps,
+    configurationRef:createHash('sha256').update(JSON.stringify(original)).digest('hex'),assertCurrent:()=>{
+      const current=modelApiHost?.readHarnessConfiguration(),latest=codingWorkspace?.readDeveloperConfiguration?.();
+      if(!current?.enabled||current.revision!==original.revision||latest?.bindingId!==original.workspaceRef
+        ||codingWorkspace?.readWorkspaceExportConfigurationRef?.()!==original.permissionRef)
+        throw Error('原开发者 Harness 设置或工作区许可已变化');
+    }};
+}
+
+function readDesktopModelApiState() {
+  const value=modelApiHost?.snapshot();
+  if(!value)return undefined;
+  let harnessExperience;
+  try{harnessExperience=harnessExperienceAdminHost?.snapshot();}
+  catch{harnessExperience={available:false,entries:[],reason:'原开发经验宿主暂不可读取'};}
+  let executionAvailable=false;try{executionAvailable=Boolean(readDesktopDeveloperHarnessConfiguration());}catch{}
+  return {...value,developerSettings:developerSettings?.snapshot(),harnessExperience,
+    harness:{...value.harness,executionAvailable,
+    executionReason:executionAvailable?'按当前编程工作区的原许可接入':value.harness?.enabled
+      ?'请在电脑操控中选择编程工作区，并启用本会话读取与结果出机许可':'开发任务规划未启用',
+    contextAvailable:Boolean(harnessContextHost?.runtimeHooks),contextReason:harnessContextFailure}};
+}
+
+function readDesktopHarnessVersions() {
+  if(!competitionMode||fakeMode||fakeModelMode||syntheticMvp)return undefined;
+  try {
+    const binding=agentArtsConfig.binding(),transport=agentArtsConfig.readTransportOptions(binding),
+      deploymentVersion=transport.deploymentVersion,runtimeVersion=runtimeBuildIdentityReader?.();
+    if(typeof deploymentVersion!=='string'||!deploymentVersion||/^(latest|current|default)$/iu.test(deploymentVersion)
+      ||typeof runtimeVersion!=='string'||!/^runtime-artifacts:sha256:[a-f0-9]{64}$/u.test(runtimeVersion))return undefined;
+    return {workflowVersion:'agentarts-deployment:'+deploymentVersion,runtimeVersion,executionKind:'real_host'};
+  }catch{return undefined;}
+}
+
+// The native workflow and event guards share this live deployment/configuration reader.
+// Reading it does not describe, advance or start a cloud session.
+function readProactiveWorkflowConfiguration() {
+  const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
+    contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
+  if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
+  const transport=agentArtsConfig.transportConfig(binding);
+  const assertDeploymentBinding=()=>{
+    transport.assertDeploymentBinding?.();
+    if(!agentArtsConfig.isTransportCurrent(transport))throw Error('持续工作流原部署已改变');
+  };
+  return {contractRef,adapter:{config:{...binding,
+    ...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{}),
+    ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
+    assertDeploymentBinding,fetchImpl:transport.fetchImpl,
+    authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
+    hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},invokeMode:agentArtsInvokeMode}};
+}
+
+function initializeHarnessEventPorts(runtimeModule) {
+  if(!competitionMode||!runtimeApplication?.startProactiveTask||proactiveWorkflowApplication)return;
+  proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,
+    resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
+    readPersistedSession:(taskId,sessionId)=>runtimeModule.readPersistedRuntimeProactiveWorkflow(runtimeApplication.runtime,taskId,sessionId),
+    notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
+    bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
+    context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
+      readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
+      readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
+    readConfiguration:readProactiveWorkflowConfiguration});
+  proactiveSourceRouter=createDesktopProactiveConfirmedSourceRouter({getApplication:()=>runtimeApplication,
+    getWorkflow:()=>proactiveWorkflowApplication,namespace:desktopHost.userNamespace,
+    resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
+    readSourceBinding:id=>feedsHost?.readSourceBinding(id),readTrackingGrant:query=>feedsHost?.readTrackingGrant(query)});
+  harnessEventsHost=createDesktopHarnessEventsHost({getApplication:()=>runtimeApplication,
+    getWorkflow:()=>proactiveWorkflowApplication,getNotifications:()=>notificationApplicationHost,
+    resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
+    readConfigurationRef:()=>runtimeApplication.coordinationConfigurationRef,
+    readWorkflowConfiguration:readProactiveWorkflowConfiguration,
+    readNativeConfiguration:()=>modelApiHost?.readHarnessConfiguration(),
+    readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
+    readSourceOrigin:(taskId,event)=>proactiveSourceRouter.readHarnessSourceOrigin(taskId,event),
+    readSourceAuthorization:(taskId,event)=>proactiveSourceRouter.readHarnessSourceAuthorization(taskId,event),
+    readPersistedWorkflow:runtimeModule.readPersistedRuntimeProactiveWorkflow,
+    readPersistedDelivery:runtimeModule.readPersistedHarnessOriginalDelivery,
+    namespace:desktopHost.userNamespace,readSourceBinding:id=>feedsHost?.readSourceBinding(id),
+    readTrackingGrant:query=>feedsHost?.readTrackingGrant(query)});
+}
+
+async function confirmHarnessExperienceActivation(version,context) {
+  const owner=admin;
+  const current=()=>{
+    if(harnessExperienceLifetime.signal.aborted||context.signal.aborted||!owner||owner!==admin||owner.isDestroyed()
+      ||!Number.isFinite(Date.parse(context.deadline))||Date.now()>=Date.parse(context.deadline))
+      throw new ProtocolError('CANCELLED','开发经验确认已失效');
+  };
+  current();
+  const answer=await dialog.showMessageBox(owner,{type:'question',title:'启用开发经验',
+    message:`启用开发经验 ${version.workflowId} 的版本 ${version.revision}？`,
+    detail:'后续开发任务仅会读取此版本已验证的检查配方；工作区、工具与出机许可仍需分别校验。',
+    buttons:['启用此版本','取消'],defaultId:1,cancelId:1,noLink:true});
+  current();return answer.response===0;
 }
 
 async function initializeInstalledSkills() {
@@ -1423,9 +1569,11 @@ async function initializeInstalledSkills() {
       readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
       validateRunInput:async publicGoal=>{
         const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
-        const context=await readDesktopConversationContext({conversationId:conversations.activeConversationId('workspace'),
-          deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal});
-        compileCoordinationGoal(publicGoal,publicGoal,context);
+        const limit=harnessContextHost?.runtimeHooks?.policy.maxSourceMessages;
+        const context=readDesktopConversationContext({conversationId:conversations.activeConversationId('workspace'),
+          deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal},limit);
+        if(harnessContextHost?.runtimeHooks)harnessContextHost.preflight(publicGoal,publicGoal,context,compileCoordinationGoal);
+        else compileCoordinationGoal(publicGoal,publicGoal,context);
       },
       selectDirectory:async()=>{
         const result=await dialog.showOpenDialog(admin,{title:'选择包含 SKILL.md 的 Skill 文件夹',properties:['openDirectory']});
@@ -1445,6 +1593,8 @@ async function initializeInstalledSkills() {
 
 async function initializeRuntime() {
   const runtimeModule = await import('@personal-agent/runtime/application');
+  const runtimeRoot=await import('@personal-agent/runtime');
+  runtimeBuildIdentityReader=runtimeRoot.readRuntimeBuildIdentity;
   const {createRuntimeApplication} = runtimeModule;
   conversationToolAccess=createConversationToolAccess({getApplication:()=>runtimeApplication,getConversations:()=>conversations});
   let readEvents;
@@ -1588,8 +1738,8 @@ async function initializeRuntime() {
           }),
           respond:payload => client.call('authorization.respond',payload),
           cancelTask:taskId => client.call('task.cancel',{taskId,reason:'用户停止记事本操作'}),
-          reconcileTask:taskId=>runtimeApplication.reconcileWindowsHostTask(taskId,
-            {deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal}),
+          reconcileTask:taskId=>withNativeReadbackScope({owner:admin},
+            scope=>runtimeApplication.reconcileWindowsHostTask(taskId,scope)),
           onUpdate:publish,
           onTask:({taskId,goal}) => {
             conversations.add(taskId,'panel',goal); rememberTaskGoal(taskId,goal);
@@ -1649,6 +1799,7 @@ async function initializeRuntime() {
       });
       const commandHelper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
       codingWorkspace = createWorkspaceConfigHost({userData:app.getPath('userData'),safeStorage,
+        readHarnessVersions:readDesktopHarnessVersions,
         patchHelperScriptPath:process.env.PA_CODING_PATCH_HELPER_SCRIPT,
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
         readWorkspaceExportPreflight:query=>publicReferenceConsent?.readPreflight(query),
@@ -1697,11 +1848,10 @@ async function initializeRuntime() {
             try{verifyWindowsRecoveryAcl(file,powerShellPath);return true;}catch{return false;}
           },
         };
-        try{developerDeployment=await createDesktopDeveloperDeployment(developerOptions);}
-        catch{
-          developerDeploymentFailure='开发部署配置无效或已失效；GitHub、Git 和开发工作流未启用';
-          developerDeployment=await createDesktopDeveloperDeployment({...developerOptions,configPath:undefined});
-        }
+        developerSettings=createDeveloperSettingsHost({userData:app.getPath('userData'),safeStorage,
+          readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),
+          readModels:()=>modelApiHost?.snapshot().models??[],onUpdate:publish});
+        developerDeployment=await developerSettings.createDeployment(developerOptions);
       }
       referenceHost=createDesktopReferenceHost({workspace:codingWorkspace,createMcp:runtimeModule.createReadonlyMcpHost,onUpdate:publish,
         hostUserNamespace:namespace,
@@ -1868,20 +2018,33 @@ async function initializeRuntime() {
       // 平台观测读回（MOD-32）默认装配为显式 unavailable：真实 ShowOpsTrace /
       // ListOpsAgentRunLog 需要 AK/SK 签名宿主与平台 applicationId（resource_id），
       // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
+      refreshHarnessContextHost(runtimeModule.createContextModelSummarizer);
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         delegateUserTasks: true,
+        assertHarnessEventCurrent:(rootTaskId,origin)=>{
+          if(!harnessEventsHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','原生事件授权宿主尚未装配');
+          harnessEventsHost.assertHarnessEventCurrent(rootTaskId,origin);
+        },
+        onHarnessEventProgress:()=>harnessEventsHost?.flush(),
+        readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
+        ...(codingWorkspace.harnessRepairHost&&typeof codingWorkspace.readHarnessCandidateContext==='function'?{
+          harnessCandidates:{host:codingWorkspace.harnessRepairHost,
+            readContext:(context,scope)=>codingWorkspace.readHarnessCandidateContext(context,scope),
+            reconcileOriginalSession:input=>codingWorkspace.reconcileHarnessOriginalSession(input)},
+        }:{}),
         proactiveWorkflows: true,
         proactiveDecision: {localChooser:localLaya},
         hostUserNamespace: namespace,
-        ...(developerDeployment?.host.runtimeOptions??{}),
+        ...(developerDeployment?{readDeveloperWorkflows:scope=>developerDeployment.readDeveloperWorkflows(scope)}:{}),
         isUserPresent:taskId=>toolPresenceHost?.isUserPresent(taskId)===true,
         ...(notepadHost ? {windowsHostRecovery:{recover:(taskId,runId)=>{
           const intent=runtimeApplication.runtime.loadCheckpoint(taskId,'host-tool-intent');
-          return notepadHost.recoverOriginalRun({taskId,runId,argumentsDigest:intent?.argumentsDigest},
-            {deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
+          return withNativeReadbackScope({owner:admin},scope=>notepadHost.recoverOriginalRun(
+            {taskId,runId,argumentsDigest:intent?.argumentsDigest},scope));
         }}} : {}),
         coordinationInput:{
+          get contextCompaction(){return harnessContextHost?.runtimeHooks;},
           prepareCoordinationGoal:async scope=>{
             const parent=runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId);
             if(parent){
@@ -1942,7 +2105,8 @@ async function initializeRuntime() {
             'workflow.image.catalog',
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
-          ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'}] : [])],
+          ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'},
+            {toolName:runtimeModule.DEVELOPER_HARNESS_TOOL_NAME,toolVersion:runtimeModule.DEVELOPER_HARNESS_TOOL_VERSION}] : [])],
         // A missing remote catalog omits only the implicit model; an invalid configured default remains an error.
         readDefaultExecutionModel:role=>readDesktopExecutionModel(agentArtsModels,undefined,role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
@@ -2040,6 +2204,11 @@ async function initializeRuntime() {
       knowledgeTools.bindApplication(runtimeApplication);
       const {openSqliteLearningHost}=await import('@personal-agent/learning');
       learningStore=openSqliteLearningHost(path.join(app.getPath('userData'),'workflow-learning.sqlite'));
+      runtimeApplication.configureHarnessExperience({namespace,learning:learningStore,
+        readCurrent:()=>codingWorkspace.readHarnessExperienceCurrentSync(),
+        confirmActivation:confirmHarnessExperienceActivation});
+      harnessExperienceAdminHost=createHarnessExperienceAdminHost({getApplication:()=>runtimeApplication.harnessExperience,
+        context:()=>{throw Error('开发经验操作需要当前受信观察范围');}});
       learningStore.resumeErasureMaintenance(namespace);
       learningApplication=runtimeModule.createWorkflowLearningApplication({profile:'huawei_ict_agentarts',namespace,
         learning:learningStore,runtime:runtimeApplication.runtime,
@@ -2098,12 +2267,25 @@ async function initializeRuntime() {
       calendarMeetingHost?.bindApplication(runtimeApplication);
       goalCloudHost?.bindApplication(runtimeApplication);
       notepadHost?.bind(runtimeApplication);
-      goalHost.resumeApproved();
+      // Startup guards read the same native policy host; the Client is attached after registration.
+      notificationApplicationHost?.bindApplication(runtimeApplication);
+      initializeHarnessEventPorts(runtimeModule);
+      let startupRecovered=false;
+      if(typeof runtimeRoot.createRuntimeStartupRecovery==='function'&&typeof runtimeApplication.resumeStartupTask==='function') {
+        const recovery=runtimeRoot.createRuntimeStartupRecovery({runtime:runtimeApplication.runtime,
+          configurationRef:runtimeApplication.coordinationConfigurationRef,exclusiveOwner:ownsDesktopInstance===true,
+          durableCloudDispatch:agentArtsTransportConfig.transport==='wss',
+          canResumeHarnessEvent:request=>harnessEventsHost?.canResumeHarnessEvent(request),
+          resumeOriginalTask:request=>runtimeApplication.resumeStartupTask(request)});
+        const recovered=await recovery.recover();startupRecovered=true;
+        startupRecoveryStatus={state:'classified',inspectedTasks:recovered.items.length,verification:'not_run'};
+      }else startupRecoveryStatus={state:'unavailable',reason:'原任务恢复门禁未装配，历史任务保留核实状态',verification:'not_run'};
+      if(startupRecovered)goalHost.resumeApproved();
       if (!syntheticMvp && competitionCatalog && !codingWorkspace.tools.length) competitionFactBridge = createDesktopCompetitionFactBridge({
         application: runtimeApplication, catalog: competitionCatalog,
         runtimePath: dbPath, userNamespace: namespace,
       });
-      await competitionFactBridge?.recover();
+      if(startupRecovered)await competitionFactBridge?.recover();
     } else {
       const createApplication = process.argv.includes('--weather-tools')
         ? (await import('@personal-agent/runtime/weather')).createOpenMeteoApplication
@@ -2139,42 +2321,12 @@ async function initializeRuntime() {
       prepareApproval:payload=>voiceCommandHost.prepareApproval(payload),
       readCurrentQuestion:({conversationId})=>voiceQuestionForConversation(conversationId)});
   }
-  if (competitionMode && runtimeApplication?.startProactiveTask) {
-    proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,
-      resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
-      notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
-      bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
-      context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
-        readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
-        readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
-      readConfiguration:()=>{
-        const binding=agentArtsConfig?.runtimeBinding(),receiptSecret=process.env.PA_WORKFLOW_RECEIPT_SECRET,
-          contractRef=process.env.PA_PROACTIVE_CONTRACT_REF,hostToken=process.env.PA_AGENT_WSS_AUTH_TOKEN;
-        if(!binding||!receiptSecret||!contractRef||!hostToken)return undefined;
-        const transport=agentArtsConfig.transportConfig(binding);
-        const assertDeploymentBinding=()=>{
-          transport.assertDeploymentBinding?.();
-          if(!agentArtsConfig.isTransportCurrent(transport))throw Error('持续工作流原部署已改变');
-        };
-        return {contractRef,adapter:{config:{...binding,
-          ...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{}),
-          ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
-          assertDeploymentBinding,fetchImpl:transport.fetchImpl,
-          authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
-          hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},
-          invokeMode:agentArtsInvokeMode}};
-      }});
-  }
   if(proactiveWorkflowApplication){
     proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,
       getWorkflow:()=>proactiveWorkflowApplication,
       recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),
+      afterNativeMaintenance:(taskId,context)=>harnessEventsHost?.start(taskId,context),
       resolveUserConversation:id=>conversationToolAccess.resolveConversation(id)});
-    proactiveSourceRouter=createDesktopProactiveConfirmedSourceRouter({getApplication:()=>runtimeApplication,
-      getWorkflow:()=>proactiveWorkflowApplication,namespace:desktopHost.userNamespace,
-      resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
-      readSourceBinding:id=>feedsHost?.readSourceBinding(id),
-      readTrackingGrant:query=>feedsHost?.readTrackingGrant(query)});
   }
   connectionLabel = fakeMode
     ? 'Fake Runtime · 联调模式'
@@ -2558,10 +2710,31 @@ async function action(event, name, payload) {
     if(sender!==admin || !competitionMode || !agentArtsModels)throw Error('请从模型设置管理 AgentArts 模型');
     const result=name==='agentartsModels.state'?agentArtsModels.snapshot():name==='agentartsModels.refresh'?await agentArtsModels.refresh():agentArtsModels.configure(payload);publish();return result;
   }
-  if (['modelApi.state','modelApi.configure','modelApi.remove'].includes(name)) {
+  if (['modelApi.state','modelApi.configure','modelApi.remove','modelApi.harness.configure'].includes(name)) {
     if (sender !== admin || !competitionMode || !modelApiHost) throw Error('请从模型设置管理辅助模型');
     const result = name === 'modelApi.state' ? modelApiHost.snapshot()
-      : name === 'modelApi.configure' ? modelApiHost.configure(payload) : modelApiHost.remove(payload);
+      : name === 'modelApi.configure' ? modelApiHost.configure(payload)
+        :name==='modelApi.harness.configure'?modelApiHost.configureHarness(payload):modelApiHost.remove(payload);
+    if(name!=='modelApi.state'){refreshHarnessContextHost();harnessEventsHost?.flush();}
+    publish();return {...result,...readDesktopModelApiState()};
+  }
+  if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(name)) {
+    if(sender!==admin||!competitionMode||!developerSettings)throw Error('请从正式管理后台配置开发宿主');
+    if(name==='developer.settings.read'&&payload!==undefined)throw Error('开发状态读取不接受参数');
+    const result=name==='developer.settings.read'?developerSettings.snapshot()
+      :name==='developer.settings.configure'?await developerSettings.configure(payload):await developerSettings.setEnabled(payload);
+    publish();return result;
+  }
+  if(['harness.experience.list','harness.experience.validate','harness.experience.activate','harness.experience.stop'].includes(name)) {
+    if(sender!==admin||!competitionMode||!harnessExperienceAdminHost||harnessExperienceLifetime.signal.aborted)
+      throw Error('请从正式管理后台操作开发经验');
+    if(name==='harness.experience.list') {
+      if(payload!==undefined&&(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).length))
+        throw Error('开发经验列表不接受额外参数');
+      return harnessExperienceAdminHost.snapshot();
+    }
+    const result=await withNativeReadbackScope({owner:admin,signal:harnessExperienceLifetime.signal},scope=>createHarnessExperienceAdminHost({
+      getApplication:()=>runtimeApplication.harnessExperience,context:()=>scope}).invoke(name,payload));
     publish();return result;
   }
   if (name === 'notepad.start' || name === 'notepad.cancel') {
@@ -2759,7 +2932,7 @@ async function action(event, name, payload) {
     if (name === 'coding.selectNode') selectionResult = await codingWorkspace.selectNode();
     if (name === 'coding.selectNpmCli') selectionResult = await codingWorkspace.selectNpmCli();
     if (name === 'coding.selectCheckFile') selectionResult = await codingWorkspace.selectCheckFile();
-    if (name === 'coding.authorize') codingWorkspace.authorize(payload);
+    if (name === 'coding.authorize') await codingWorkspace.authorize(payload);
     if (name === 'coding.revoke') codingWorkspace.revoke();
     publish();return {coding:codingWorkspace.snapshot(),
       ...(selectionResult?.selectionCancelled === true ? {codingSelectionCancelled:true} : {})};
@@ -3260,7 +3433,11 @@ async function action(event, name, payload) {
     return task;
     } finally { submitting.delete(conversationId); }
   }
-  if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,application:runtimeApplication,refresh,publish});
+  if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
+    application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
+    reportNative:result=>dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
+      detail:(result.readbacks??[]).map(item=>`${item.taskId}：${({clear:'原宿主当前已空闲；这不证明未知试验成功',in_progress:'原宿主仍在执行',unknown:'原宿主状态仍无法确认'})[item.recovery.state]??'状态未知'}；证据 ${item.evidenceRef}`).join('\n')
+        +'\n本次只读取原会话，没有重发试验或更改原 UNKNOWN。',buttons:['关闭'],noLink:true})});
   if (name === 'task.cancel') {
     if (typeof payload !== 'string' || !tasks.has(payload)) throw Error('Unknown task');
     if (sender !== admin && taskSurface(tasks.get(payload)) !== (sender === workspace ? 'workspace' : 'panel')) throw Error('无法停止其他工作区的任务');
@@ -3555,6 +3732,11 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  ipcMain.on('desktop:draft-close',(event,entries)=>{
+    try{flushConversationDrafts(event,entries,{panel,workspace,conversations});event.returnValue={ok:true};}
+    catch{event.returnValue={ok:false,error:'关闭前草稿保存未确认，请保持窗口打开并重试'};}
+  });
+
   if(competitionMode) {
     remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
     remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
@@ -3580,7 +3762,7 @@ app.whenReady().then(async () => {
     const {createConfiguredSubagentModelGateway} = await import('@personal-agent/runtime/application');
     modelApiHost = createModelApiConfig({userData:app.getPath('userData'),safeStorage,
       isDefaultExecutionAvailable:()=>runtimeApplication?.isDefaultSubagentAvailable()===true,
-      createGateway:createConfiguredSubagentModelGateway});
+      createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway});
   }
   if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage});
@@ -3646,6 +3828,8 @@ app.whenReady().then(async () => {
     if ((near && desktopHost.settings.hover) || inside || pinned) { away = 0; if (near && desktopHost.settings.hover && !panel.isVisible()) openPanel(); }
     else if (panel.isVisible()) { if (!away) away = Date.now(); else if (Date.now() - away > 520) { void hidePanel().catch(reportPanelVoiceFailure); away = 0; } }
   }, 80);
+  draftQuitPreflight=createDraftQuitPreflight({windows:()=>[panel,workspace],retry:()=>app.quit(),
+    onFailure:error=>{app.isQuitting=false;runtimeError=error.message;publish();}});
   // Long-running sessions grow a renderer past what the user can keep using (#435). A reload is
   // guarded: editable/unknown surfaces remain open, and active work or voice prevents recycling.
   memoryWatchdog = createMemoryWatchdog({
@@ -3676,13 +3860,20 @@ app.whenReady().then(async () => {
   memoryWatchdog.start();
   app.on('before-quit', event => {
     if (runtimeStartup.snapshot().state === 'starting') {
-      event.preventDefault(); runtimeError = 'Runtime 正在连接，请稍后退出'; publish(); return;
+      event.preventDefault(); reportQuitFailure('Runtime 正在连接，请稍后退出'); return;
     }
-    if ((runtimeApplication?.activeTaskCount ?? 0) > 0) {
+    if ((runtimeApplication?.activeTaskCount ?? 0) > 0 || submitting.size > 0) {
       event.preventDefault();
       app.isQuitting = false;
-      runtimeError = 'Runtime 仍有活动任务；请先等待完成或停止任务后再退出';
-      publish();
+      reportQuitFailure('Runtime 仍有活动任务；请先等待完成或停止任务后再退出');
+      return;
+    }
+    if(!draftQuitPreflight.allow()){event.preventDefault();return;}
+    if(harnessEventsHost&&!harnessEventsClosed) {
+      event.preventDefault();
+      harnessExperienceLifetime.abort();
+      harnessEventsClosing??=harnessEventsHost.close().then(()=>{harnessEventsClosed=true;app.quit();})
+        .catch(()=>{harnessEventsClosing=undefined;reportQuitFailure('开发事件消费尚未停止，未关闭原任务数据库');});
       return;
     }
     if(remoteMcpHost && !remoteMcpClosed) {
@@ -3690,7 +3881,7 @@ app.whenReady().then(async () => {
       if(!remoteMcpClosing) {
         remoteMcpManagement.close();
         remoteMcpClosing=remoteMcpHost.dispose().then(()=>{remoteMcpConfig.dispose();remoteMcpClosed=true;app.quit();})
-          .catch(()=>{remoteMcpClosing=undefined;runtimeError='远程 MCP 关闭未确认，请先断开连接后再退出';publish();});
+          .catch(()=>{remoteMcpClosing=undefined;reportQuitFailure('远程 MCP 关闭未确认，请先断开连接后再退出');});
       }
       return;
     }
@@ -3703,27 +3894,27 @@ app.whenReady().then(async () => {
     if(referenceHost && !referenceClosed) {
       event.preventDefault();
       referenceClosing??=referenceHost.dispose().then(()=>{referenceClosed=true;app.quit();})
-        .catch(()=>{referenceClosing=undefined;runtimeError='参考工具尚未停止，请稍后退出';publish();});
+        .catch(()=>{referenceClosing=undefined;reportQuitFailure('参考工具尚未停止，请稍后退出');});
       return;
     }
     proactiveHost?.stop();
     if(todoHost && !todoClosed) {
       event.preventDefault();
       todoClosing ??= todoHost.close().then(()=>{todoClosed=true;app.quit();})
-        .catch(()=>{todoClosing=undefined;runtimeError='提醒队列尚未结束，请稍后退出';publish();});
+        .catch(()=>{todoClosing=undefined;reportQuitFailure('提醒队列尚未结束，请稍后退出');});
       return;
     }
     if (notepadHost && !notepadClosed) {
       event.preventDefault();
       if (!notepadClosing) notepadClosing = notepadHost.close().then(() => {
         notepadClosed = true; app.quit();
-      }).catch(() => {notepadClosing = undefined;runtimeError = '本机操作停止尚未确认，请稍后退出';publish();});
+      }).catch(() => {notepadClosing = undefined;reportQuitFailure('本机操作停止尚未确认，请稍后退出');});
       return;
     }
     if(windowsControlHost&&!windowsControlClosed){
       event.preventDefault();
       windowsControlClosing??=windowsControlHost.close().then(()=>{windowsControlClosed=true;app.quit();})
-        .catch(()=>{windowsControlClosing=undefined;runtimeError='电脑控制进程停止尚未确认';publish();});
+        .catch(()=>{windowsControlClosing=undefined;reportQuitFailure('电脑控制进程停止尚未确认');});
       return;
     }
     if (!localServicesStopped && (mailHost || localLaya)) {
@@ -3735,35 +3926,36 @@ app.whenReady().then(async () => {
           const result = await localLaya?.stop();
           if (result?.state === 'stop_unconfirmed') throw Error('本地模型退出尚未确认');
           localServicesStopped = true; app.quit();
-        })().catch(() => {runtimeError = '本地分类服务退出尚未确认，请稍后再退出'; publish();})
+        })().catch(() => {reportQuitFailure('本地分类服务退出尚未确认，请稍后再退出');})
           .finally(() => {localServicesStopping = false;});
       }
       return;
     }
     if (voiceStartupHost && !voiceStartupDisposed) {
       event.preventDefault();
-      voiceStartupDisposal ??= voiceStartupHost.dispose().then(() => {voiceStartupDisposed=true;app.quit();})
-        .catch(() => {runtimeError='启动语音资源释放未确认';publish();});
+      voiceStartupDisposal ??= voiceStartupHost.dispose();
+      void voiceStartupDisposal.then(() => {if(!voiceStartupDisposed){voiceStartupDisposed=true;app.quit();}})
+        .catch(() => {reportQuitFailure('启动语音资源释放未确认');});
       return;
     }
     if (liveVoice?.hasActive()) {
       event.preventDefault();
       void liveVoice.stop().then(result => {
-        if (result.active) {runtimeError = result.reason || 'Live 音频资源释放未确认'; publish(); return;}
+        if (result.active) {reportQuitFailure(result.reason || 'Live 音频资源释放未确认'); return;}
         app.quit();
-      }).catch(() => {runtimeError = 'Live 音频资源释放未确认'; publish();});
+      }).catch(() => {reportQuitFailure('Live 音频资源释放未确认');});
       return;
     }
     if (voiceInput && !voiceDisposed) {
       event.preventDefault();
+      if(voiceDisposalFailed){reportQuitFailure('语音资源释放未确认');return;}
       if (!voiceDisposal && !voiceDisposalFailed) {
         voiceDisposal = voiceInput.dispose().then(() => {
           voiceDisposed = true;
           app.quit();
         }).catch(error => {
           voiceDisposalFailed = true;
-          runtimeError = '语音资源释放未确认';
-          publish();
+          reportQuitFailure('语音资源释放未确认');
         });
       }
       return;
@@ -3771,18 +3963,17 @@ app.whenReady().then(async () => {
     if (microphoneCaptureHost?.snapshot().busy) {
       event.preventDefault();
       void microphoneCaptureHost.revoke().then(() => app.quit()).catch(error => {
-        runtimeError = error instanceof Error ? error.message : '麦克风释放未确认';
-        publish();
+        reportQuitFailure(error instanceof Error ? error.message : '麦克风释放未确认');
       });
       return;
     }
     if ((runtimeApplication?.activeTaskCount ?? 0) > 0) {
       event.preventDefault();
       app.isQuitting = false;
-      runtimeError = 'Runtime 仍有活动任务；请先等待完成或停止任务后再退出';
-      publish();
+      reportQuitFailure('Runtime 仍有活动任务；请先等待完成或停止任务后再退出');
       return;
     }
+    if(!draftQuitPreflight.commit()){event.preventDefault();draftQuitPreflight.allow();return;}
     globalShortcut.unregisterAll();
     try {
       p5DeviceNotificationHost?.dispose();
@@ -3791,6 +3982,7 @@ app.whenReady().then(async () => {
       p5SystemObservationSource?.dispose();
       knowledgeWatchHost?.dispose();
       modelApiHost?.dispose();
+      harnessContextHost?.dispose();
       privateConsumption?.close();
       wikiSourceMonitor?.close();
       installedSkillsHost?.close();
@@ -3812,6 +4004,7 @@ app.whenReady().then(async () => {
       competitionCatalog?.close();
       productTools?.close();
       codingWorkspace?.close();
+      developerSettings?.close();
       developerDeployment?.close();
       toolPresenceHost?.close();
       computerControlLease?.close();
@@ -3824,8 +4017,7 @@ app.whenReady().then(async () => {
     } catch (error) {
       event.preventDefault();
       app.isQuitting = false;
-      runtimeError = error instanceof Error ? error.message : 'Runtime 仍有活动任务，无法安全退出';
-      publish();
+      reportQuitFailure(error instanceof Error ? error.message : 'Runtime 仍有活动任务，无法安全退出');
       return;
     }
     try { syntheticRepairHost?.close(); }

@@ -1,7 +1,13 @@
 export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReevaluator,REFERENCE_SKILL_WORKER_TOOL,compileCoordinationGoal} from './application/runtime-application.js';
-export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult} from './application/runtime-application.js';
+export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult,RuntimeHarnessScope,
+  RuntimeHarnessCandidatesOptions,RuntimeHarnessExperienceHostOptions} from './application/runtime-application.js';
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
 export type {CoordinationGoalTokenBudget} from './application/context-binding.js';
+export {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT} from './application/context-compaction.js';
+export type {ContextCompactionPolicy,ContextCompactionScope,ContextSummaryRequest,ContextCompactionReceipt,
+  RuntimeContextCompactionOptions} from './application/context-compaction.js';
+export {createContextModelSummarizer} from './application/context-compaction-model.js';
+export type {ContextSummaryModelOptions} from './application/context-compaction-model.js';
 export type {PrepareCompetitionToolExport,CompetitionToolExport,CoordinationWorkerCapabilityPort} from './application/coordination.js';
 export type {CompetitionCloudRequestIdentityRecord, CompetitionCloudRequestIdentities,
   CompetitionCloudIdentitySelection} from './application/coordination.js';
@@ -17,6 +23,8 @@ export type {CompetitionAvailableTool, CompetitionToolAvailability} from './appl
 export type {ConversationToolCapability} from './application/tool-catalog.js';
 export {DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,developerWorkflowInputSchema} from './application/developer-workflows.js';
 export type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope,DeveloperWorkflowKind} from './application/developer-workflows.js';
+export {DEVELOPER_HARNESS_TOOL_NAME,DEVELOPER_HARNESS_TOOL_VERSION} from './application/developer-harness.js';
+export type {RuntimeDeveloperHarnessOptions,DeveloperHarnessResult} from './application/developer-harness.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
 export type {AgentArtsObservationApplication} from './application/agentarts.js';
 export {createCalendarEventReadTool, CALENDAR_EVENT_READ_TOOL, CALENDAR_EVENT_READ_VERSION} from './application/calendar-read.js';
@@ -112,6 +120,15 @@ export type {RuntimeCodingRepairOptions,RuntimeCodingRepairImagePort} from './ap
 export {createRuntimeCodingRepairWorkerCapability} from './application/coding-repair-worker-capability.js';
 export {createRuntimeHarnessCandidateTools,HARNESS_CANDIDATE_COMPARE_TOOL,HARNESS_CANDIDATE_TRIAL_TOOL} from './application/harness-candidates.js';
 export type {RuntimeHarnessCandidateOptions} from './application/harness-candidates.js';
+export {createRuntimeHarnessEvents,readPersistedHarnessOriginalDelivery} from './application/harness-events.js';
+export type {RuntimeHarnessEventsOptions,HarnessEventAnchor,HarnessEventReceipt,HarnessEventCancellation,HarnessOriginalDelivery,
+  PersistedHarnessDeliveryOptions} from './application/harness-events.js';
+export {createRuntimeHarnessEventDelivery} from './application/harness-event-delivery.js';
+export type {HarnessEventOrigin,HarnessEventSubmitInput,HarnessEventDeliveryOptions} from './application/harness-event-delivery.js';
+export {createRuntimeHarnessExperienceApplication,harnessExperienceWorkspaceDigest} from './application/harness-experience.js';
+export type {RuntimeHarnessExperienceOptions,HarnessExperienceOrigin,HarnessExperienceRun} from './application/harness-experience.js';
+export {createHarnessExperienceBindings} from './application/harness-experience-bindings.js';
+export type {HarnessExperienceCanonicalReaders} from './application/harness-experience-bindings.js';
 export {createRuntimeOwnedWorkflowImageAdapter} from './application/owned-workflow-image-adapter.js';
 export type {RuntimeOwnedWorkflowImageOptions} from './application/owned-workflow-image-adapter.js';
 export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';
@@ -120,6 +137,6 @@ export type {RuntimeProactiveDecisionToolOptions} from './application/proactive-
 export type {RuntimeProactiveImageAdapterOptions,RuntimeProactiveImageResult,RuntimeProactiveImageContext,
   RuntimeProactiveImageDescription} from './application/proactive-image-adapter.js';
 export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,RUNTIME_PROACTIVE_TOOLS,
-  RUNTIME_PROACTIVE_TOOL_VERSION} from './application/proactive-workflow-application.js';
+  RUNTIME_PROACTIVE_TOOL_VERSION,readPersistedRuntimeProactiveWorkflow} from './application/proactive-workflow-application.js';
 export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
   RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';

@@ -16,7 +16,12 @@ export const PROTOCOL_VERSION = '1.0.0';
 export const MAX_FRAME_BYTES = 1024 * 1024;
 const ajv = new Ajv({allErrors: true, strict: false});
 ajv.addSchema(schema);
-const validator = (path: string) => ajv.compile({$ref: schema.$id + '#/properties/' + path});
+const referenceValidators = new Map<string, ReturnType<typeof ajv.compile>>();
+const validator = (path: string) => {
+  let valid = referenceValidators.get(path);
+  if (!valid) { valid = ajv.compile({$ref: schema.$id + '#/properties/' + path}); referenceValidators.set(path, valid); }
+  return valid;
+};
 const requestValidator = validator('request');
 const responseValidator = validator('response');
 const eventValidator = validator('event');

@@ -138,8 +138,10 @@ export function createDesktopProactiveConfirmedSourceRouter({getApplication,getW
       Object.assign(state.heads,pending.heads);
       if(Object.keys(state.heads).length>1000)fail('REVISION_CONFLICT','Bounded source history requires reconciliation');
       state.lastObservedAt=pending.observedAt;state.deliveries[pending.receiptId]=pending.batch.batchId;
+      state.deliveryOrigins??={};
+      state.deliveryOrigins[pending.receiptId]={origin:structuredClone(pending.origin),selection:structuredClone(pending.selection)};
       state.deliveryOrder.push(pending.receiptId);
-      if(state.deliveryOrder.length>64)delete state.deliveries[state.deliveryOrder.shift()];
+      if(state.deliveryOrder.length>64){const removed=state.deliveryOrder.shift();delete state.deliveries[removed];delete state.deliveryOrigins[removed];}
       delete state.pending;save();recoveryIndex(store,binding.taskId,selected.sourceId,false);
     }
     if(state.pending)await finish(); // Recover only the exact original batch; never collect again.
@@ -167,6 +169,52 @@ export function createDesktopProactiveConfirmedSourceRouter({getApplication,getW
     await finish();return {state:'persisted',batchId:batch.batchId,eventCount:events.length};
   }
   return {
+  /** Pure native readback of the original durable routing receipt, not a new source capability.
+   * Older entries without an invocation identity remain unavailable rather than inferred from text.
+   */
+  readHarnessSourceOrigin(workflowTaskId,event) {
+    const application=getApplication();if(!application?.runtime||event?.entry!=='connector')return undefined;
+    const state=stateStore(application).read(digest([workflowTaskId,event.sourceId]))?.value;
+    if(state?.version!==1||state.sourceId!==event.sourceId)return undefined;
+    // eventSink notifies synchronously before its durable acknowledgement returns. The exact
+    // original pending invocation was committed before that call and already has confirmed Policy Evidence.
+    const pending=state.pending;
+    if(pending?.batch?.sourceId===event.sourceId
+      &&event.payloadRef==='runtime:proactive-batch:'+pending.batch.batchId+':'+event.eventId
+      &&pending.batch.events.some(item=>item.eventId===event.eventId&&item.sourceRevision===event.sourceVersion
+        &&digest(item.item)===event.payloadDigest))
+      return structuredClone({receiptId:pending.receiptId,batchId:pending.batch.batchId,origin:pending.origin,selection:pending.selection});
+    for(const [receiptId,batchId]of Object.entries(state.deliveries??{})) {
+      const original=state.deliveryOrigins?.[receiptId];
+      if(event.payloadRef!=='runtime:proactive-batch:'+batchId+':'+event.eventId||!original
+        ||original.origin.receiptId!==receiptId||original.selection.sourceId!==event.sourceId)continue;
+      return structuredClone({receiptId,batchId,...original});
+    }
+    return undefined;
+  },
+  readHarnessSourceAuthorization(workflowTaskId,event) {
+    const application=getApplication(),original=this.readHarnessSourceOrigin(workflowTaskId,event);
+    if(!application?.runtime||!original)return undefined;
+    try {
+      const state=stateStore(application).read(digest([workflowTaskId,event.sourceId]))?.value;
+      // A persisted pending batch already owns this exact head while the sink notifies.
+      // Ack only moves it into heads; timestamps and historical entries are not authority.
+      const head=state?.pending?.heads?.[digest(event.entityRef)]??state?.heads?.[digest(event.entityRef)];
+      if(head?.revision!==event.sourceVersion||head.eventId!==event.eventId)return undefined;
+      const binding=application.runtime.loadCheckpoint(workflowTaskId,'desktop-proactive-workflow-v1');
+      if(binding?.version!==1||binding.taskId!==workflowTaskId)return undefined;
+      const input=originalPendingInput(workflowTaskId,original,application);
+      active(application,binding,input,{deadline:binding.taskDeadline,signal:new AbortController().signal},original.selection);
+      const proof=confirmed(application,input,original.selection);
+      if(proof.receipt?.receiptId!==original.receiptId)return undefined;
+      const item=proof.raw.items.find((item,index)=>item.record.dedupeKey===event.entityRef
+        &&digest(item.record)===event.payloadDigest&&proof.raw.sourceReceipt.citations[index]?.contentSha256===event.sourceVersion);
+      if(!item)return undefined;
+      return {expiresAt:original.selection.grantExpiresAt,
+        fence:digest({original,source:readSourceBinding(event.sourceId),receiptId:proof.receipt.receiptId,
+          eventDigest:digest(event)})};
+    }catch{return undefined;}
+  },
   /** Bind only the original still-created host read before finalizeHostToolTask executes it.
    * Main calls this solely from its native-interest task admission, never background collection. */
   bindPreparedFeedRead(input) {
