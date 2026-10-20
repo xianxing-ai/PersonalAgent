@@ -22,6 +22,60 @@ function makeService() {
   return {service, storage};
 }
 
+test('工具创建和修改拒绝非法公历日期，原存储与revision保持不变', async () => {
+  const host = new FakeToolHost(() => NOW), storage = new FakeStorage().namespace('calendar-validation');
+  let counter = 0;
+  const unregister = register(host, {storage, conversationId: 'calendar-validation', now: () => NOW, idFactory: () => `t${++counter}`});
+  const context = {taskId: 'task', runId: 'calendar-validation', signal: new AbortController().signal,
+    deadline: '2026-09-07T01:00:00.000Z', authorizationRef: 'test', scopes: ['todo:read', 'todo:write']};
+  try {
+    const {item} = await host.invoke('todo.create', {title: '保留原条目', remindUtc: '2026-09-08T09:00:00Z'}, context);
+    const before = structuredClone(storage.get('todo:state'));
+    const trigger = buildReminderTrigger(item, 'calendar-validation');
+    for (const date of ['2026-02-30', '2026-02-29', '2026-04-31', '1900-02-29']) {
+      for (const field of ['due', 'remind']) {
+        const inputs = [{[`${field}Utc`]: `${date}T09:00:00Z`},
+          {[`${field}Utc`]: `${date}T09:00:00.12+08:00`},
+          {[`${field}Local`]: `${date} 09:00`, [`${field}TimeZone`]: 'Asia/Shanghai'}];
+        for (const input of inputs) {
+          await assert.rejects(host.invoke('todo.create', {title: '不可创建', ...input}, context), {code: 'INVALID_ARGUMENT'});
+          assert.deepEqual(storage.get('todo:state'), before, 'invalid create cannot persist an item or change the index');
+          await assert.rejects(host.invoke('todo.update', {id: item.id, title: '不可修改', ...input}, context), {code: 'INVALID_ARGUMENT'});
+          assert.deepEqual(storage.get('todo:state'), before, 'invalid update cannot persist title, reminder or revision changes');
+          const {items} = await host.invoke('todo.list', {}, context);
+          assert.deepEqual(buildReminderTrigger(items[0], 'calendar-validation'), trigger, 'the original reminder trigger is unchanged');
+        }
+      }
+    }
+  } finally {unregister();}
+});
+
+test('合法闰日可经Z、数值偏移和本地时间创建与修改', async () => {
+  const host = new FakeToolHost(() => NOW), storage = new FakeStorage().namespace('leap-validation');
+  let counter = 0;
+  const unregister = register(host, {storage, conversationId: 'leap-validation', now: () => NOW, idFactory: () => `t${++counter}`});
+  const context = {taskId: 'task', runId: 'leap-validation', signal: new AbortController().signal,
+    deadline: '2026-09-07T01:00:00.000Z', authorizationRef: 'test', scopes: ['todo:read', 'todo:write']};
+  try {
+    for (const year of ['2028', '2000']) {
+      for (const input of [{remindUtc: `${year}-02-29T09:00:00.12Z`},
+        {remindUtc: `${year}-02-29T17:00:00.12+08:00`},
+        {remindLocal: `${year}-02-29 17:00`, remindTimeZone: 'Asia/Shanghai'}]) {
+        const created = await host.invoke('todo.create', {title: '合法闰日', ...input}, context);
+        const updated = await host.invoke('todo.update', {id: created.item.id, title: '合法修改', ...input}, context);
+        assert.equal(updated.item.reminder.remindAt.utc, `${year}-02-29T09:00:00.${input.remindLocal ? '000' : '120'}Z`);
+        assert.equal(updated.reminderTrigger.runAt, updated.item.reminder.remindAt.utc);
+      }
+    }
+  } finally {unregister();}
+});
+
+test('公开localToUtc拒绝不存在的公历日期，不当作DST跳跃处理', () => {
+  for (const date of ['2026-02-30', '2026-02-29', '2026-04-31', '1900-02-29']) {
+    assert.throws(() => localToUtc(`${date}T09:00:00`, 'Asia/Shanghai'), {code: 'INVALID_ARGUMENT'});
+  }
+});
+
 test('本地时间 → UTC：北京无 DST 偏移正确', () => {
   assert.equal(localToUtc('2026-09-07T09:30:00', 'Asia/Shanghai'), Date.parse('2026-09-07T01:30:00.000Z'));
 });
@@ -257,4 +311,69 @@ test('原子性：唯一写入点注入异常 → 悬空索引不可能存在，
   // 重试同一变更成功
   assert.equal(rebuilt.update(first.id, {title: '改标题'}).title, '改标题');
   assert.equal(rebuilt.list().length, 1);
+});
+
+test('输入桥接：数值偏移 UTC、缺秒与空格分隔的本地时间全部规范化', async () => {
+  const host = new FakeToolHost(() => NOW);
+  const ctx = () => ({deadline: new Date(NOW + 60_000).toISOString(), signal: new AbortController().signal,
+    scopes: ['todo:write'], authorizationRef: 'test', runId: 'test-bridge'});
+  const storage = new FakeStorage().namespace('todo-bridge');
+  let counter = 0;
+  const unregister = register(host, {storage, conversationId: 'conv-bridge', now: () => NOW, idFactory: () => `t${++counter}`});
+  try {
+    const created = await host.invoke('todo.create', {title: '偏移形态',
+      remindUtc: '2026-09-07T08:41:00+08:00'}, ctx());
+    assert.equal(created.item.reminder.remindAt.utc, '2026-09-07T00:41:00.000Z');
+    assert.equal(created.item.reminder.remindAt.timeZone, 'Etc/GMT-8');
+    assert.equal(created.item.reminder.remindAt.localDateTime, '2026-09-07T08:41:00');
+    const loose = await host.invoke('todo.create', {title: '宽松本地形态',
+      remindLocal: '2026-09-07 09:30', remindTimeZone: 'Asia/Shanghai'}, ctx());
+    assert.equal(loose.item.reminder.remindAt.utc, '2026-09-07T01:30:00.000Z');
+    assert.equal(loose.item.reminder.remindAt.localDateTime, '2026-09-07T09:30:00');
+    const offsetDue = await host.invoke('todo.create', {title: '偏移到期',
+      dueUtc: '2026-09-08T23:59:59.500+09:30'}, ctx());
+    assert.equal(offsetDue.item.due.utc, '2026-09-08T14:29:59.500Z');
+  } finally { unregister(); }
+});
+
+test('remindInMinutes：执行期解析为绝对时刻，与绝对输入互斥且边界拒绝', async () => {
+  const host = new FakeToolHost(() => NOW);
+  const ctx = () => ({deadline: new Date(NOW + 60_000).toISOString(), signal: new AbortController().signal,
+    scopes: ['todo:write'], authorizationRef: 'test', runId: 'test-relative'});
+  const storage = new FakeStorage().namespace('todo-relative');
+  let counter = 0;
+  const unregister = register(host, {storage, conversationId: 'conv-relative', now: () => NOW, idFactory: () => `t${++counter}`});
+  try {
+    const created = await host.invoke('todo.create', {title: '两分钟后', remindInMinutes: 2}, ctx());
+    assert.equal(created.item.reminder.remindAt.utc, '2026-09-07T00:02:00.000Z');
+    assert.equal(created.item.reminder.remindAt.timeZone, 'UTC');
+    const updated = await host.invoke('todo.update', {id: created.item.id, remindInMinutes: 60}, ctx());
+    assert.equal(updated.item.reminder.remindAt.utc, '2026-09-07T01:00:00.000Z');
+    await assert.rejects(
+      host.invoke('todo.create', {title: '互斥', remindUtc: '2026-09-07T00:05:00.000Z', remindInMinutes: 5}, ctx()),
+      {code: 'INVALID_ARGUMENT'});
+    await assert.rejects(host.invoke('todo.create', {title: '越界', remindInMinutes: 0}, ctx()), {code: 'INVALID_ARGUMENT'});
+    await assert.rejects(host.invoke('todo.create', {title: '越界上限', remindInMinutes: 525601}, ctx()), {code: 'INVALID_ARGUMENT'});
+  } finally { unregister(); }
+});
+
+test('time bridges preserve fractional seconds and safely handle extreme fixed offsets through tools', async () => {
+  const host = new FakeToolHost(() => NOW);
+  const scope = () => ({deadline: new Date(NOW + 60_000).toISOString(), signal: new AbortController().signal,
+    scopes: ['todo:write'], authorizationRef: 'test', runId: 'time-boundaries'});
+  const unregister = register(host, {storage: new FakeStorage().namespace('time-boundaries'), conversationId: 'time-boundaries', now: () => NOW});
+  try {
+    const created = await host.invoke('todo.create', {title: 'short fraction', remindUtc: '2026-09-07T00:05:00.1Z'}, scope());
+    assert.equal(created.item.reminder.remindAt.utc, '2026-09-07T00:05:00.100Z');
+    const updated = await host.invoke('todo.update', {id: created.item.id, remindUtc: '2026-09-07T00:05:00.12Z'}, scope());
+    assert.equal(updated.item.reminder.remindAt.utc, '2026-09-07T00:05:00.120Z');
+    for (const offset of ['-13:00', '-14:00', '+14:00', '+05:30']) {
+      const input = `2026-09-07T12:30:00.500${offset}`;
+      const result = await host.invoke('todo.create', {title: offset, dueUtc: input}, scope());
+      assert.equal(result.item.due.utc, new Date(input).toISOString());
+      assert.doesNotThrow(() => new Intl.DateTimeFormat('en-US', {timeZone: result.item.due.timeZone}));
+    }
+    for (const offset of ['+15:00', '-15:00', '+14:01', '-14:30', '+08:60'])
+      await assert.rejects(host.invoke('todo.create', {title: offset, remindUtc: `2026-09-07T12:30:00${offset}`}, scope()), {code: 'INVALID_ARGUMENT'});
+  } finally { unregister(); }
 });
