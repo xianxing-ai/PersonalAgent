@@ -13,6 +13,7 @@ function fixture() {
   const runtime={getTask:taskId=>tasks.get(taskId)??({taskId,state:'running',cancelRequested:false,revision:1}),
     loadCheckpoint:(taskId,name)=>structuredClone(checkpoints.get(key(taskId,name))),
     saveCheckpointOnce:(taskId,name,value)=>{const k=key(taskId,name);if(checkpoints.has(k))return false;checkpoints.set(k,structuredClone(value));return true;},
+    saveCheckpoint:(taskId,name,value)=>{checkpoints.set(key(taskId,name),structuredClone(value));},
     readToolExecutions:taskId=>records.filter(r=>r.taskId===taskId),
     matchesToolExecutionInput:(record,input)=>record.argumentsDigest===toolArgumentsDigest(input.arguments)&&record.scopeRef===input.scopeRef,
     readEvidence:taskId=>records.filter(r=>r.taskId===taskId&&r.executionStarted).map(r=>({evidenceId:r.evidenceId,kind:'execution',sourceRef:r.toolName}))};
@@ -32,10 +33,11 @@ function fixture() {
   function confirm(ctx,result) {records.find(r=>r.evidenceId===ctx.runId).state='confirmed';runtime.saveCheckpointOnce(ctx.taskId,'tool-result-'+ctx.runId,{result});}
   const input=(ctx,sessionId)=>({version:1,session:{version:1,sessionId,taskId:ctx.taskId,workspaceId:c.binding.workspaceId,mode:'isolated',baselineSnapshotId:c.baseline.snapshotId},
     initialSnapshot:structuredClone(c.baseline),recipes:structuredClone(c.recipes)});
-  async function observed(candidateId,status='VALID',patches=[],changeResult) {
-    const ctx=begin('coding.repair.trial',{candidateId,patches,recipeIds:['unit']},'run-'+candidateId);
+  async function observed(candidateId,status='VALID',patches=[],changeResult,taskId=c.binding.taskId) {
+    const ctx=begin('coding.repair.trial',{candidateId,patches,recipeIds:['unit']},'run-'+candidateId,taskId);
     await bindings.trial.readBinding(ctx,candidateId);await bindings.trial.saveSession(ctx,input(ctx,'session-'+candidateId));
-    const result=trial(candidateId,c,status,ctx.runId);changeResult?.(result);confirm(ctx,result);return {ctx,result};
+    const result=trial(candidateId,c,status,ctx.runId);result.binding.trialTaskId=ctx.taskId;result.session.taskId=ctx.taskId;
+    changeResult?.(result);confirm(ctx,result);return {ctx,result};
   }
   return {c,runtime,bindings,begin,confirm,input,observed,records,disableSources:()=>{sourcesAllowed=false;},
     setTask:(taskId,state,revision)=>tasks.set(taskId,{taskId,state,revision,cancelRequested:false})};
@@ -129,4 +131,49 @@ test('host-only provenance pins the captured comparison and reuses the canonical
   assert.equal(f.runtime.loadCheckpoint(f.c.binding.taskId,'harness-candidates:selection:adopt'),undefined,'no competing selection journal');
   f.records.find(r=>r.evidenceId==='compare').inputDigest='substituted';
   assert.throws(()=>f.bindings.readAdoptionOrigin(request),{code:'UNAUTHORIZED'});
+});
+async function completionFixture() {
+  const f=fixture(),a=await f.observed('one','VALID',[],undefined,'synthetic-peer'),b=await f.observed('two','FAILED');
+  f.setTask('synthetic-peer','succeeded',3);
+  const ids=['run-one','run-two'],compare=f.begin('harness.candidates.compare',{trialRunIds:ids},'compare');
+  f.bindings.compare.getBinding(compare);const result=compareHarnessCandidates(f.c,[a.result,b.result]);result.recommendation.trialRunId='run-one';
+  f.confirm(compare,{...result,evidenceRefs:ids});
+  const adopt=f.begin('coding.repair.prepare_adoption',{trialRunId:'run-one'},'adopt');
+  await f.bindings.adoption.readSelection(adopt,'run-one');
+  const saved=f.input(adopt,'main-session');saved.session.mode='main';await f.bindings.adoption.saveSession(adopt,saved);
+  const checked=structuredClone(a.result.checkReadback);checked.sessionId='main-session';
+  checked.verification.forEach(r=>{r.sessionId='main-session';r.runId='fresh-main-check';r.evidenceRefs=['adopt'];});f.confirm(adopt,checked);
+  const publicationArguments={version:1,sessionId:'main-session',baselineSnapshotId:'baseline',snapshotId:checked.snapshot.snapshotId,
+    paths:['src.js'],verificationRunIds:['fresh-main-check']};
+  const publish=f.begin('coding.repair.publish',publicationArguments,'publish');
+  const published={version:1,sessionId:'main-session',state:'published',files:[{path:'src.js',beforeSha256:f.c.baseline.files[0].sha256,
+    afterSha256:checked.snapshot.files[0].sha256}],evidenceRefs:['adopt']};f.confirm(publish,published);
+  const continuation={proposalId:'publish-proposal',state:'confirmed',result:published};
+  f.runtime.saveCheckpoint(f.c.binding.taskId,'competition-loop',{step:5,continuation,receipts:[{runId:'publish',
+    proposal:{kind:'tool_proposal',proposalId:'publish-proposal',toolName:'coding.repair.publish',toolVersion:'1.0.0',arguments:publicationArguments,verification:'unverified'},continuation}]});
+  f.setTask(f.c.binding.taskId,'running',8);
+  return {f,request:{ownerTaskId:f.c.binding.taskId,actualTaskId:f.c.binding.taskId,runId:'adopt',publicationRunId:'publish'},saved};
+}
+test('completion-only reader permits exact confirmed owner publication while strict provenance remains succeeded-only',async()=>{
+  const {f,request,saved}=await completionFixture();
+  assert.throws(()=>f.bindings.readAdoptionOrigin(request),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.bindings.readOriginalSessionForProvenance(request),{code:'UNAUTHORIZED'});
+  const completed=f.bindings.readAdoptionOriginForCompletion(request);
+  assert.deepEqual(completed.input,saved);assert.equal(completed.origin.trial.taskId,'synthetic-peer');
+  assert.equal(f.runtime.getTask(request.ownerTaskId).state,'running');assert.equal(f.records.length,5);
+});
+test('completion-only reader rejects unknown, pending, wrong cache, scope, input and unfinished peers',async()=>{
+  const cases=[
+    ({f})=>{f.records.find(r=>r.evidenceId==='publish').state='unknown';},
+    ({f})=>{f.records.find(r=>r.evidenceId==='publish').policyDecision='deny';},
+    ({f,request})=>{f.setTask(request.ownerTaskId,'waiting_reconciliation',9);},
+    ({f})=>{f.setTask('synthetic-peer','running',4);},
+    ({f,request})=>{const loop=f.runtime.loadCheckpoint(request.ownerTaskId,'competition-loop');loop.pending={toolName:'new-tool'};f.runtime.saveCheckpoint(request.ownerTaskId,'competition-loop',loop);},
+    ({f,request})=>{const loop=f.runtime.loadCheckpoint(request.ownerTaskId,'competition-loop');loop.continuation.proposalId='another';f.runtime.saveCheckpoint(request.ownerTaskId,'competition-loop',loop);},
+    ({f,request})=>{const cache=f.runtime.loadCheckpoint(request.ownerTaskId,'tool-result-publish');cache.result.state='unknown';f.runtime.saveCheckpoint(request.ownerTaskId,'tool-result-publish',cache);},
+    ({f,request})=>{const invocation=f.runtime.loadCheckpoint(request.ownerTaskId,'application-tool-invocation:publish');invocation.arguments.snapshotId='another';f.runtime.saveCheckpoint(request.ownerTaskId,'application-tool-invocation:publish',invocation);},
+    ({request})=>{request.publicationRunId='wrong-run';},
+  ];
+  for(const mutate of cases){const value=await completionFixture();mutate(value);
+    assert.throws(()=>value.f.bindings.readAdoptionOriginForCompletion(value.request),{code:'UNAUTHORIZED'});}
 });

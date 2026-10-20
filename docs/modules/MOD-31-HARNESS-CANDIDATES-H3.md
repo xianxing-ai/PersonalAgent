@@ -119,6 +119,23 @@ ToolExecutionRecord.inputDigest，不可混用。
 reader 不构成用户授权，不进入模型工具目录；经验 `proposeFromConfirmed` 仍必须执行 H1 assertOrigin、四条
 原 confirmed 回执、实际发布/测试读回和当前 workspace/configuration fence。本包不代验经验激活或学习效果。
 
+### 本人已确认发布后的完成汇报读取
+
+`readAdoptionOriginForCompletion({ownerTaskId,actualTaskId,runId,publicationRunId})` 返回 `{origin,input}`；
+请求类型 `RuntimeHarnessCandidateCompletionRequest` 仅为同 Runtime 内宿主参数，不新增 wire DTO 或存储。
+只有 actualTaskId 等于原 owner、owner 仍 running 且未取消/过期、最后一条执行是给定原 publish confirmed/allow
+时可用。原 publish 的参数摘要、缓存、execution Evidence、唯一 loop receipt 和 confirmed continuation
+必须精确相等；pending、其他后续工具及所有未核实执行拒绝。
+
+它在私有复用的 provenance 校验中仅允许该 owner 暂未 succeeded；其他源 peer 仍须 succeeded。
+原 main session、固定 adoption-origin、实际采用产物、新的 required 验证、CAS before/after 和完整变更路径
+均复核。原 `readAdoptionOrigin` / `readOriginalSessionForProvenance` 两个公开 reader 行为不变，仍只认 succeeded。
+没有公开放宽开关、状态/lease/activationSeq 写入或工具授权。
+
+本口严格用于 publish 已真正 exported/confirmed continuation 后的完成汇报，不接受 projection 中的 pending，
+不能用旧 continuation 给新工具放行。H1 继续校验实际当前文件摘要与 origin.artifactDigest、配置/版本/撤回和
+原经验 lease/activationSeq，并自行限制仅完成汇报；外部改动或下一任务不能借本口延续旧授权。
+
 采用只消费 owner 最新的 confirmed 比较（后续 pending/unknown/failed/弃权不回退旧选择），
 重算同一输入的比较并与原确认结果逐字段核对，再交精确选中补丁。
 组合核原 refs/祖先无环和原候选输入，首版只接受精确补丁并集；同一路径冲突明确 unsupported。
@@ -170,6 +187,10 @@ H1/Windows 实际 native 调用方及真实 journal 联合路径仍待统一集�
 经验来源接线另做一个必要源码 loader Fake 单例 `host-only provenance pins`，1/1 通过，
 日志 `.cache/harness-bindings-provenance-case.log`；覆盖只读 canonical main session、固定原来源及原输入摘要替换拒绝。
 定向 noEmit 诊断仍为 0；未扩大为全量行为回归，经验实际 sourceconsumer 组合验收另记。
+P1 本人发布后的完成汇报口另跑 `completion-only reader` 两项必要源码 loader Fake 回归，2/2 通过：
+正确 owner running/peer succeeded 的原 publish 读回可用；旧公开 reader 仍拒 running，UNKNOWN、pending、错输入/
+缓存/run、权限拒绝和未成功 peer 均拒绝。日志 `.cache/harness-bindings-completion-case.log`，noEmit 诊断 0。
+这不代替 H1 的实际 active-lease 完成汇报联调；未运行全量 build/check。
 以上只读审查不是仓库非作者 Approve，也不代替后续联调。
 本包用显式 synthetic trial 验证契约、绑定/失败/unknown/弃权/组合边界，Runtime 用真实 SQLite/
 Policy/ToolGateway 消费 synthetic 端口；Windows 真实 host/Node 固定配方由 runner 工作包独立取证。
