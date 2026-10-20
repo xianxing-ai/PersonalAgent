@@ -1,0 +1,138 @@
+/* Shared interaction finish. Keep native window controls and the draggable orb still. */
+:root {
+  --ui-ease:cubic-bezier(.2,.8,.2,1);
+  --ui-hover:color-mix(in srgb,var(--fg) 6%,transparent);
+  --ui-press:color-mix(in srgb,var(--fg) 11%,transparent);
+  --ui-line:color-mix(in srgb,var(--fg) 11%,transparent);
+  --ui-shadow:0 2px 5px rgba(0,0,0,.05),0 12px 28px rgba(0,0,0,.035);
+}
+:is(.admin,.workspace,.panel) button {
+  transition:background-color 140ms var(--ui-ease),color 140ms var(--ui-ease),
+    border-color 140ms var(--ui-ease),box-shadow 140ms var(--ui-ease),transform 100ms var(--ui-ease);
+}
+:is(.admin,.workspace,.panel) button:disabled {transform:none;box-shadow:none;cursor:default}
+:is(.admin,.workspace,.panel) button:not(:disabled):not([aria-disabled="true"]):not(.window-button):active {
+  transform:scale(.975);
+  transition-duration:65ms;
+}
+:is(.admin,.workspace,.panel) :is(button,summary,select,input,textarea):focus-visible {
+  outline:2px solid var(--focus-ring);
+  outline-offset:3px;
+}
+:is(.admin,.workspace,.panel) :is(input,textarea,select) {
+  transition:border-color 150ms var(--ui-ease),background-color 150ms var(--ui-ease),box-shadow 150ms var(--ui-ease);
+}
+.admin :is(.settings-form,.sis-fields) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select),
+.admin .setting-control select {min-height:38px;border-radius:10px;background:var(--surface-2)}
+.admin :is(.settings-form,.sis-fields) :is(input,textarea,select):focus-visible {
+  border-color:var(--focus-ring);box-shadow:0 0 0 3px var(--accent-soft);
+}
+.admin .btn {min-height:34px;border-radius:9px;padding:7px 13px;font-weight:500}
+.admin .btn:not(:disabled):hover {box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.admin .btn-primary:not(:disabled):hover {background:var(--accent-hover)}
+.admin .btn-danger:not(:disabled):hover {background:color-mix(in srgb,var(--danger) 10%,transparent)}
+
+/* An opaque base and a single quiet highlight avoid stacking blur on every card. */
+.admin,.workspace {backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
+.admin .side,.workspace-sidebar {
+  background:color-mix(in srgb,var(--surface-2) 66%,var(--bg));
+  border-right-color:var(--ui-line);
+}
+.admin .side {gap:16px;padding:20px 12px 14px}
+.admin .side-home {gap:5px;padding-inline:10px}
+.admin .side-home .brand {font-weight:650;letter-spacing:-.025em}
+.admin .side-home>span:last-child {color:var(--muted);font-size:11px}
+.admin .admin-search {
+  min-height:38px;padding:8px 10px;border-color:var(--ui-line);border-radius:11px;
+  background:var(--surface);color:var(--muted);
+  box-shadow:0 1px 2px rgba(0,0,0,.025);
+  transition:border-color 150ms var(--ui-ease),box-shadow 150ms var(--ui-ease);
+}
+.admin .admin-search:focus-within {border-color:var(--focus-ring);box-shadow:0 0 0 3px var(--accent-soft)}
+.admin .admin-search input:focus-visible {outline:none}
+.admin .nav-group {margin-bottom:20px}
+.admin .nav-group h2 {font-size:10px;font-weight:600;letter-spacing:.07em;margin:10px 12px 7px}
+.admin .side nav button {
+  position:relative;min-height:38px;border-radius:10px;margin-block:2px;padding:8px 12px;gap:10px;
+  border:1px solid transparent;background:transparent;isolation:isolate;
+}
+.admin .side nav button:not([aria-current="page"]):hover {background:var(--ui-hover);color:var(--fg)}
+.admin .side nav button[aria-current="page"] {
+  background:var(--surface);border-color:var(--ui-line);color:var(--fg);
+  box-shadow:0 2px 6px rgba(0,0,0,.045);font-weight:600;
+}
+.admin .side nav button::before {
+  content:"";position:absolute;left:0;top:50%;width:3px;height:16px;border-radius:3px;
+  background:var(--fg);opacity:0;transform:translateY(-50%) scaleY(.45);
+  transition:opacity 160ms var(--ui-ease),transform 180ms var(--ui-ease);
+}
+.admin .side nav button[aria-current="page"]::before {opacity:1;transform:translateY(-50%) scaleY(1)}
+.admin .side nav .nav-icon {opacity:.72}
+.admin .side nav button[aria-current="page"] .nav-icon {opacity:1}
+.admin .side footer {padding-top:12px;border-top:1px solid var(--ui-line);line-height:1.7;opacity:.75}
+.admin>.main {background:linear-gradient(155deg,color-mix(in srgb,var(--surface) 65%,transparent),transparent 50%)}
+.admin .settings-heading {margin-bottom:26px}
+.admin .settings-heading h2,.admin .page-lead h1 {letter-spacing:-.035em;font-weight:600}
+.admin .settings-heading p {margin-top:8px;line-height:1.7;max-width:62ch}
+.admin :is(.sheet,.settings-list,.model-list,.sis-settings,.card) {
+  backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--surface);
+  border-color:var(--ui-line);border-radius:16px;box-shadow:var(--ui-shadow);
+}
+.admin .setting-row {padding-block:18px;border-bottom-color:var(--ui-line)}
+.admin .setting-row small {line-height:1.65;margin-top:5px}
+.admin .setting-control {gap:10px}
+.admin .settings-list>.setting-row:last-child {border-bottom:0}
+.admin .settings-list .is-unavailable {opacity:.72}
+.admin .sheet .empty {padding-block:44px;line-height:1.85}
+.admin .switch-control span,.admin .switch-control span::after {
+  transition:background-color 160ms var(--ui-ease),transform 180ms var(--ui-ease);
+}
+.admin .switch-control {cursor:pointer}
+.admin .switch-control:has(input:disabled) {cursor:default}
+.admin .admin-bar,.workspace-titlebar {border-bottom:1px solid var(--ui-line)}
+.window-controls .window-button:active {transform:none}
+.window-controls .window-button:focus-visible {outline-offset:-4px}
+
+/* Conversation controls respond immediately; menus open without delaying their action. */
+.panel :is(.hdr-btn,.icon-btn,.model-select):not(:disabled):hover,
+.workspace :is(.icon-btn,.workspace-task,.workspace-nav button):not(:disabled):hover {background:var(--ui-hover)}
+.panel .hdr-btn {min-width:32px;min-height:32px}
+.panel .composer {transition:border-color 160ms var(--ui-ease),box-shadow 160ms var(--ui-ease)}
+.panel .composer textarea:focus-visible {outline:none;box-shadow:none}
+.panel :is(.bell-menu,.model-menu):not([hidden]) {
+  transform-origin:bottom right;animation:ui-menu-enter 140ms var(--ui-ease);
+}
+.panel .bell-menu {transform-origin:top right}
+.panel .quick-start button:not(:disabled):hover {border-color:var(--focus-ring);box-shadow:0 2px 7px rgba(0,0,0,.05)}
+.workspace .workspace-composer textarea:focus {border-color:var(--focus-ring);box-shadow:0 0 0 3px var(--accent-soft)}
+.workspace .workspace-composer-actions button:not(:disabled):hover {background:var(--surface-3);border-color:var(--focus-ring)}
+.workspace .workspace-nav button,.workspace .workspace-task {min-height:36px}
+.workspace .workspace-nav button:focus-visible,.workspace .workspace-task:focus-visible {outline-offset:-3px}
+@keyframes ui-menu-enter {from {opacity:0;transform:translateY(4px) scale(.985)} to {opacity:1;transform:none}}
+
+@media(max-width:820px) {
+  .admin .side {padding-inline:8px}
+  .admin .side nav button {padding-inline:10px;gap:8px}
+}
+@media(max-width:640px) {
+  .admin .side {gap:12px}
+  .admin .side nav button {padding-inline:8px;font-size:12px}
+  .admin .settings-single,.admin .feature-page {padding:28px 20px}
+  .admin .setting-row {padding-block:15px}
+}
+@media(max-height:520px) {.admin .side {padding-top:8px;gap:6px}.admin .nav-group {margin-bottom:12px}}
+
+/* Both the app setting and the OS preference remove movement, including press effects. */
+:root[data-calm="true"] *,
+:root[data-calm="true"] *::before,
+:root[data-calm="true"] *::after {animation:none!important;transition-duration:0s!important}
+:root[data-calm="true"] :is(.admin,.workspace,.panel) button:active {transform:none!important}
+@media(prefers-reduced-motion:reduce) {
+  :root *,:root *::before,:root *::after {animation:none!important;transition-duration:0s!important}
+  :is(.admin,.workspace,.panel) button:active {transform:none!important}
+}
+@media(forced-colors:active) {
+  .admin .side nav button[aria-current="page"] {border-color:Highlight}
+  .admin .side nav button::before {background:Highlight}
+  .admin :is(.sheet,.settings-list,.model-list,.sis-settings,.card) {box-shadow:none}
+}
