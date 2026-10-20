@@ -619,10 +619,39 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   function assertHarnessWorkspaceBinding(taskId,deadline,signal) {
     if(!signal||signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
     if(!Number.isFinite(Date.parse(deadline))||Date.now()>=Date.parse(deadline))throw new ProtocolError('TIMEOUT','原隔离编码操作已过期');
-    if(!application||!readWorkspaceBinding()||!bound(taskId)||consent?.cloudExportAllowed!==true
+    assertHarnessWorkspaceAuthorization();
+    if(!bound(taskId))throw new ProtocolError('UNAUTHORIZED','原隔离工作区任务绑定已变化');
+  }
+  function assertHarnessWorkspaceAuthorization() {
+    if(!application||!readWorkspaceBinding()||consent?.cloudExportAllowed!==true
       ||consent.writeAllowed!==true||consent.commandAllowed!==true||!boundRepairPowerShell
       ||!boundCheckFile&&!boundNpmCli||boundNpmCli&&(consent.projectCodeAllowed!==true||!projectIdentityCurrent()))
       throw new ProtocolError('UNAUTHORIZED','原隔离工作区许可或命令绑定已变化');
+  }
+  function readHarnessExperienceCurrentSync() {
+    try {
+      assertHarnessWorkspaceAuthorization();
+      if(typeof readHarnessVersions!=='function')return undefined;
+      const lease=generation,currentApplication=application,configuration=readDeveloperConfiguration();
+      const check=()=>{if(lease!==generation||currentApplication!==application)throw new ProtocolError('UNAUTHORIZED','原经验工作区绑定已变化');};
+      const readVersions=()=>{
+        const value=readHarnessVersions();
+        if(value&&typeof value.then==='function'){void Promise.resolve(value).catch(()=>{});return undefined;}
+        return value&&value.executionKind==='real_host'?structuredClone(value):undefined;
+      };
+      const versions=readVersions();check();if(!versions)return undefined;
+      const snapshot=coding.captureCodingRepairSnapshotSync(boundRoot,check).snapshot;
+      const after=readVersions();check();assertHarnessWorkspaceAuthorization();
+      if(!isDeepStrictEqual(versions,after)||configuration?.bindingId!==readDeveloperConfiguration()?.bindingId)return undefined;
+      const recipes=repairRecipes().map(recipe=>({...recipe,packageIds:snapshot.packages.map(pkg=>pkg.id)}));
+      if(!recipes.some(recipe=>recipe.required))return undefined;
+      const workspaceId=createHash('sha256').update(boundRoot).digest('hex'),recipeFingerprint=harnessCandidateRecipeFingerprint(recipes);
+      parseHarnessCandidateBinding({version:1,taskId:'experience-current',candidateId:'experience-current',artifactId:'experience-current',
+        trialTaskId:'experience-current',sessionId:'experience-current',workspaceId,baselineSnapshotId:snapshot.snapshotId,
+        inputDigest:'0'.repeat(64),configurationDigest:'0'.repeat(64),workflowVersion:versions.workflowVersion,
+        runtimeVersion:versions.runtimeVersion,executionKind:versions.executionKind,recipeFingerprint,artifactDigest:'0'.repeat(64),parentArtifactDigests:[]});
+      check();return {snapshot,versions,configuration:{bindingId:configuration.bindingId,workspaceId,recipeFingerprint}};
+    }catch{return undefined;}
   }
   async function reconcileHarnessOriginalSession(input) {
     const {trialRunId,expectedRevision,deadline,signal,assertCurrent}=input;
@@ -666,7 +695,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       return {binding,baseline,recipes,selectionPolicy:'unique_verified'};
     }catch{return undefined;}
   };
-  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,reconcileHarnessOriginalSession,
+  return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,
+    reconcileHarnessOriginalSession,readHarnessExperienceCurrentSync,
     readWorkspaceExportConfigurationRef,readWorkspaceExportPreflightCandidate,
     readWorkspaceExportCandidate,readConfirmedWorkspaceExport,
     get patchReconciliation() { return applyHost ? patchReconciliation : undefined; },

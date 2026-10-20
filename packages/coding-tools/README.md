@@ -76,6 +76,15 @@ Runtime 组合入口使用 `{host: workspace.harnessRepairHost,readContext: work
 `clear` 仅表示 journal 的操作已停，不代表 UNKNOWN 验证通过。Runtime 原生入口再沿原 UI 解释结果。
 此次仅该 native revision/停止读回关键单例 1/1 通过，余下行为回归仍后置。
 
+经验生命周期的 Main-only `WorkspaceConfigHost.readHarnessExperienceCurrentSync()` 当次读取原源文件，
+返回 `{snapshot,versions,configuration:{bindingId,workspaceId,recipeFingerprint}} | undefined`。
+该同步方法不要求源 owner 仍 running；仍复核当前工作区/Node 身份、许可、代次、配置和同步版本来源。
+版本 port 若返回 Promise 则拒绝，不读取异步缓存，不轮询，也不在普通 publish 时自动扫描。
+H1/H2 以真实稳定配置组装经验 scope，方法不接收模型 task/scope，不返回正文或绝对根路径。
+底层 `captureCodingRepairSnapshotSync(root,assertCurrent?)` 与原异步 capture 共用同一 metadata/包图组装，
+过滤、路径/链接拒绝、SHA 和 snapshot 语义保持一致。仅执行同步/异步过滤与包图一致性关键单例 1/1 通过；
+行为全测和真实经验次任务接线验收仍按统一顺序后置。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 

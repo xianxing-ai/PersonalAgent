@@ -84,6 +84,16 @@ test('harness workspace consumer preserves consent and actual scope with a stabl
   assert.deepEqual(result.recipes,[{recipeId:'node-check',packageIds:['root'],required:true}]);
   assert.equal(result.baseline.files.some(file=>'content' in file),false);
   assert.equal(Object.hasOwn(result,'rootPath'),false);
+  const current=host.readHarnessExperienceCurrentSync();
+  assert.deepEqual(current.snapshot,result.baseline);
+  assert.equal(current.configuration.workspaceId,result.binding.workspaceId);
+  assert.equal(current.configuration.recipeFingerprint,result.binding.recipeFingerprint);
+  assert.equal(Object.hasOwn(current,'rootPath'),false);
+  // This runtime deliberately has no getTask/taskLive port: a succeeded source owner is not a read fence.
+  assert.equal(typeof current.then,'undefined');
+  const synchronousVersions=versions;versions=Promise.resolve(synchronousVersions);
+  assert.equal(host.readHarnessExperienceCurrentSync(),undefined,'an asynchronous versions port cannot stand in for a current synchronous read');
+  versions=synchronousVersions;
   const childContext={...context,taskId:'actual-child',runId:'child-run'};
   checkpoints.set('actual-childcoding-repair:parent',{taskId:context.taskId});
   const childScope={...scope,actualTaskId:childContext.taskId};
@@ -105,6 +115,7 @@ test('harness workspace consumer preserves consent and actual scope with a stabl
   versions=retainedVersions;let reads=0;onVersionsRead=()=>{if(++reads===2)host.revoke();};
   assert.equal(await host.readHarnessCandidateContext(context,scope),undefined,'late version reads cannot survive original consent revocation');
   assert.equal(await host.readHarnessCandidateContext(context,scope),undefined);
+  assert.equal(host.readHarnessExperienceCurrentSync(),undefined);
   await assert.rejects(host.harnessRepairHost.snapshot('unused',context),{code:'UNAUTHORIZED'});
 });
 
