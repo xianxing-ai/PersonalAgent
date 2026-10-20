@@ -185,3 +185,13 @@ test('another host owner appearing before adapter startup is never stopped by th
   await assert.rejects(handle.ready,{code:'INVALID_STATE'});
   await handle.stop();assert.equal(starts,0);assert.equal(stops,0);
 });
+
+test('existing host renewal is not terminated by a second controller listening deadline',async t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout']});
+  let stops=0;
+  const controller=createVoiceStartupController({listening:createVoiceHostListeningPort({
+    async start(){return {status:'listening'};},async stop(){stops++;},hasActive:()=>false})});
+  await controller.start(request({greet:false,deadline:new Date(Date.now()+100).toISOString()}));
+  t.mock.timers.tick(101);await Promise.resolve();assert.equal(stops,0);
+  assert.equal(controller.snapshot().state,'listening');await controller.dispose();assert.equal(stops,1);
+});

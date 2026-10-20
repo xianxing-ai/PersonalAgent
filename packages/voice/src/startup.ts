@@ -4,6 +4,8 @@ import type {SpeechOutputPort, VoiceOperation} from './ports.js';
 
 /** Trusted host adapter to the existing Live/Wake lifecycle, not a new audio loop. */
 export interface ContinuousVoiceListeningPort {
+  /** Existing host owns each bounded capture lease and its renewal; no second expiry loop. */
+  readonly renewsOwnLease?: boolean;
   start(request: {readonly signal: AbortSignal; readonly deadline: string}): {
     readonly ready: Promise<void>;
     /** Must cover pending startup as well as an established session. */
@@ -11,13 +13,13 @@ export interface ContinuousVoiceListeningPort {
   };
 }
 
-/** Adapter for Desktop's existing Live/Wake host; it never owns a second session loop. */
+/** Adapter for Desktop's existing Live host; it never owns a second session loop. */
 export function createVoiceHostListeningPort(host: {
   start(): Promise<{readonly status: string}>;
   stop(): Promise<unknown>;
   hasActive(): boolean;
 }): ContinuousVoiceListeningPort {
-  return {start(request) {
+  return {renewsOwnLease:true, start(request) {
     if (request.signal.aborted || Date.now() >= Date.parse(request.deadline) || host.hasActive()) {
       throw new VoiceSessionError('INVALID_STATE', 'Voice host unavailable');
     }
@@ -167,6 +169,7 @@ export function createVoiceStartupController({output, listening}: {
         record.listening = listening.start({signal: record.controller.signal, deadline: record.request.deadline});
         await Promise.race([record.listening.ready, stopped]);
         assertCurrent(record);
+        if (listening.renewsOwnLease === true) clearTimeout(record.timer);
         state = 'listening';
         return snapshot();
       }

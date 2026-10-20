@@ -4,7 +4,8 @@ import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
-import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, Tray} from 'electron';
+import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, safeStorage, screen, session, Tray} from 'electron';
+import {createDesktopVoiceStartupHost} from './voice-startup-host.js';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -226,6 +227,7 @@ const runtimeStartup = createDeferredRuntimeStartup({
   initialize: initializeProductServices,
 });
 let liveVoice;
+let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
 let wakeQuitHandled = false;
 let wakeQuitUnknown = false;
@@ -586,7 +588,7 @@ function snapshot(surface) {
     conversationPreference: conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking),
     thinking: {...thinking,...(conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking) ?? {}),
       reason:'本对话的步骤预算在提交时固定；AgentArts 负责主编排，辅助任务使用当前对话的模型选择。原生思考能力以模型设置和实际参数回执为准。'},
-    live: {...(liveVoice?.snapshot() ?? liveConfig?.snapshot()), shortcut: {...liveShortcut}},
+    live: {...(liveVoice?.snapshot() ?? liveConfig?.snapshot()), startup:voiceStartupHost?.snapshot(), shortcut: {...liveShortcut}},
     wake: wakeQuitUnknown ? {...wakeVoice?.snapshot(),phase:'release_unconfirmed',verification:'unverified',
       reason:'唤醒音频释放未确认；本进程不能重新启用'} : wakeVoice?.snapshot()
       ?? {state:'disabled', phase:'unavailable', verification:'unverified',
@@ -824,7 +826,7 @@ async function stopPanelVoice() {
     results.push(...await Promise.allSettled([voiceInput.cancelCapture(panel?.webContents.id)]));
   }
   results.push(...await Promise.allSettled([
-    liveVoice?.stop(), sisPlaybackHost?.stop(), microphoneCaptureHost?.revoke(),
+    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(), microphoneCaptureHost?.revoke(),
   ]));
   if (results.some(result => result.status === 'rejected') || liveVoice?.hasActive()) throw Error('语音资源释放未确认');
   publish();
@@ -2886,6 +2888,7 @@ async function action(event, name, payload) {
       : {available: false, stopped: false, reason: '语音供应商尚未连接'};
   }
   if (name === 'voice.wake.enable' || name === 'voice.wake.disable') {
+    if (name === 'voice.wake.enable' && voiceStartupHost && !voiceStartupHost.snapshot().resourcesReleased) throw Error('请先结束启动语音');
     if (sender !== panel || !competitionMode || payload !== undefined) throw Error('唤醒只能从可信面板显式操作');
     if (name === 'voice.wake.disable') {
       await stopWakeVoice(); publish(); return snapshot('panel').wake;
@@ -2940,6 +2943,7 @@ async function action(event, name, payload) {
     if (sender !== panel || !voiceInput) throw Error('语音试用只允许从 Competition 可信面板调用');
     if (voiceConfigurationPending) throw Error('语音配置正在更新，请稍候');
     if (liveVoice?.hasActive()) throw Error('请先关闭 Live 再使用语音转文字');
+    if (voiceStartupHost && !voiceStartupHost.snapshot().resourcesReleased) throw Error('请先结束启动语音');
     const senderId = sender.webContents.id;
     if (name === 'voice.record.start') {
       if (panelHiding || !panel.isVisible()) throw Error('请先显示面板');
@@ -2963,10 +2967,15 @@ async function action(event, name, payload) {
     if (voiceConfigurationPending) throw Error('语音配置正在更新，请稍候');
     voiceConfigurationPending = true;
     try {
+      await voiceStartupHost?.stop();
       await stopWakeVoice();
       if (liveVoice?.hasActive() || voiceInput?.hasActive()) throw Error('请先结束语音再修改配置');
       const result = liveConfig.configure(payload);
-      registerLiveShortcut(); publish(); return result;
+      registerLiveShortcut(); publish();
+      if (Object.hasOwn(payload,'startupGreeting') || Object.hasOwn(payload,'continuousListening')) {
+        queueMicrotask(() => {void voiceStartupHost?.start().catch(reportPanelVoiceFailure);});
+      }
+      return result;
     } finally {voiceConfigurationPending = false;}
   }
   if (name === 'live.toggle') {
@@ -2974,6 +2983,7 @@ async function action(event, name, payload) {
     return toggleLive();
   }
   if (name === 'voice.capture.authorize') {
+    if (voiceStartupHost && !voiceStartupHost.snapshot().resourcesReleased) throw Error('请先结束启动语音');
     if (sender !== panel || !competitionMode) throw Error('麦克风只允许 Competition 可信面板启用');
     if (!client) throw Error('Runtime 未连接，麦克风采集尚不可用');
     if (!voicePcmSource) throw Error('Voice PCM 来源尚未接入');
@@ -2985,6 +2995,7 @@ async function action(event, name, payload) {
   if (name === 'voice.capture.revoke') {
     if (sender !== panel) throw Error('麦克风只能从可信面板关闭');
     await stopWakeVoice();
+    await voiceStartupHost?.stop();
     await liveVoice?.stop();
     await microphoneCaptureHost.revoke();
     publish();
@@ -3266,7 +3277,10 @@ async function toggleLive(shortcut) {
   try {
     if (!liveVoice) throw Error('Live 服务尚未装配');
     let result;
-    if (liveVoice.hasActive()) result = await liveVoice.stop();
+    if (liveVoice.hasActive()) {await voiceStartupHost?.stop();result = await liveVoice.stop();}
+    else if (voiceStartupHost && !voiceStartupHost.snapshot().resourcesReleased) {
+      await voiceStartupHost.stop();result=liveVoice.snapshot();
+    }
     else {
       if (voiceConfigurationPending || panelHiding) throw Error('请先结束面板或语音配置更新');
       await stopWakeVoice();
@@ -3399,6 +3413,20 @@ async function initializeLiveVoice() {
       note: '工具名称来自与文字任务相同的宿主目录；注册不代表本次已授权或已执行。需要工作时调用 request_work，由 Runtime 为实际任务检查目录、权限和参数；不能将注册列表冒充当前全部可用。任务成功以 Runtime 返回为准。'}),
   });
   liveVoice.flushHistory();
+  const {createWindowsSystemSpeechPorts} = await import('@personal-agent/voice');
+  if (voiceStartupHost) await voiceStartupHost.dispose();
+  const startupSpeech = createWindowsSystemSpeechPorts();
+  voiceStartupHost = createDesktopVoiceStartupHost({config:liveConfig,liveVoice,output:startupSpeech.output,
+    disposeOutput:()=>startupSpeech.dispose(), onUpdate:publish, async prepare() {
+      if (voiceConfigurationPending || panelHiding || app.isQuitting) throw Error('语音配置或窗口正在更新');
+      await stopWakeVoice();
+      if (voiceConfigurationPending || panelHiding || voiceInput?.hasActive() || wakeVoice?.hasActive()) throw Error('请先结束其他语音');
+      pinned=true;openPanel(true);publish();
+    }});
+  voiceStartupDisposed=false;voiceStartupDisposal=undefined;
+  if (panel && !panel.webContents.isLoadingMainFrame()) {
+    queueMicrotask(() => {void voiceStartupHost.start().catch(reportPanelVoiceFailure);});
+  }
 }
 
 app.whenReady().then(async () => {
@@ -3474,6 +3502,9 @@ app.whenReady().then(async () => {
   bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
+  panel.webContents.once('did-finish-load', () => {void voiceStartupHost?.start().catch(reportPanelVoiceFailure);});
+  powerMonitor.on('suspend', () => {void voiceStartupHost?.suspend().catch(reportPanelVoiceFailure);});
+  powerMonitor.on('resume', () => {void voiceStartupHost?.resume().catch(reportPanelVoiceFailure);});
   createTray();
   if (liveVoice) registerLiveShortcut();
   console.info('PersonalAgent startup',JSON.stringify({runtime:runtimeStartup.snapshot().state,
@@ -3571,6 +3602,12 @@ app.whenReady().then(async () => {
         })().catch(() => {runtimeError = '本地分类服务退出尚未确认，请稍后再退出'; publish();})
           .finally(() => {localServicesStopping = false;});
       }
+      return;
+    }
+    if (voiceStartupHost && !voiceStartupDisposed) {
+      event.preventDefault();
+      voiceStartupDisposal ??= voiceStartupHost.dispose().then(() => {voiceStartupDisposed=true;app.quit();})
+        .catch(() => {runtimeError='启动语音资源释放未确认';publish();});
       return;
     }
     if (liveVoice?.hasActive()) {
