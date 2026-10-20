@@ -1,3 +1,5 @@
+import {mountHarnessControls} from './harness-controls.js';
+
 /** Safe presentation only; the trusted host independently enforces the declaration. */
 export function describeModelThinking(entry, depth) {
   if (depth !== undefined && (!Number.isInteger(depth) || depth < 0 || depth > 5)) throw Error('思考深度无效');
@@ -62,6 +64,7 @@ export function mountModelApiControls(root, invoke) {
     <button data-model-api="remove" type="button">删除并撤销</button>
     <p data-model-api="status" class="notice" role="status"></p></div>`;
   root.append(settings);
+  const harness=mountHarnessControls(root,invoke);
   const field = name => settings.querySelector(`[data-model-api="${name}"]`);
   let state = {}, busy = false, closed = false, destinationChanged = false;
   const effortInputs = [...settings.querySelectorAll('[data-model-effort]')];
@@ -92,6 +95,7 @@ export function mountModelApiControls(root, invoke) {
   function render(value = {}, selectedId = field('saved').value) {
     if (closed) return;
     state = value;
+    harness.render(value);
     field('defaultExecution').textContent = value.defaultExecution?.reason
       ?? '默认 AgentArts 子任务执行器尚未公布；独立 API 按子对话明确选型使用';
     field('saved').replaceChildren();
@@ -153,7 +157,7 @@ export function mountModelApiControls(root, invoke) {
     if (closed) return;
     state = value;
     if (!destinationChanged) field('requestBudget').textContent = describeModelRequestBudget(state.models?.find(entry=>entry.id===field('saved').value));
-  }, showSettings(show) {settings.hidden = !show;}, close() {
-    closed = true; field('key').value = ''; settings.remove();
+  }, showSettings(show) {settings.hidden = !show;harness.showSettings(show);}, close() {
+    closed = true; field('key').value = ''; settings.remove();harness.close();
   }};
 }

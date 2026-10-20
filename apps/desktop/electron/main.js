@@ -82,6 +82,7 @@ import {createDeferredRuntimeStartup} from './runtime-startup.js';
 import {createMailConfig} from './mail-config.js';
 import {createCalendarConfig} from './calendar-config.js';
 import {createModelApiConfig} from './model-api-config.js';
+import {createDesktopHarnessContextHost} from './harness-context-host.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
 import {createDesktopMailAnalysisHost} from './mail-analysis-host.js';
@@ -261,6 +262,9 @@ let p5FeedbackReading = false;
 let knowledgeWatchHost;
 let admitNativeFeedInterest;
 let modelApiHost;
+let harnessContextHost;
+let harnessContextFailure='';
+let harnessModelSummarizer;
 let reviewedRepairLock = Promise.resolve();
 function withReviewedRepairLock(work) {
   const result = reviewedRepairLock.then(work);
@@ -582,6 +586,8 @@ function snapshot(surface) {
     model: structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model),
     agentArtsModels:agentArtsModels?.snapshot(),
     modelApi: surface ? undefined : modelApiHost?.snapshot(),
+    harnessContext:surface?undefined:harnessContextHost?.snapshot()??{state:harnessContextFailure?'unavailable':'disabled',
+      enabled:false,reason:harnessContextFailure,verification:'not_run'},
     modelChoices: featuredModelChoices(agentArtsModels?.snapshot().catalog?.models,{selectedId:conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking)?.modelId??''}),
     conversationPreference: conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking),
     thinking: {...thinking,...(conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking) ?? {}),
@@ -1313,7 +1319,7 @@ async function promptSyntheticRepairCandidate(taskId) {
   } finally { repairPrompts.delete(taskId); }
 }
 
-async function readDesktopConversationContext(scope) {
+function readDesktopConversationContext(scope,maxMessages=20) {
   const requestingTaskId=scope.taskId;
   const parent=scope.taskId?runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId):undefined;
   if(parent)scope={...scope,taskId:parent.taskId,conversationId:parent.conversationId};
@@ -1326,14 +1332,38 @@ async function readDesktopConversationContext(scope) {
   const messages=[...conversations.messagesFor(surface,scope.conversationId),...(liveVoice?.historyMessages({...scope,cutoff}) ?? [])]
     .filter(message=>Date.parse(message.createdAt)<=Date.parse(cutoff))
     .map(message=>({id:message.id,role:message.role,content:message.text}));
-  let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages});
+  let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages,maxMessages});
   if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
   const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
     .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
   if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,JSON.stringify(current));
   if(current.length)context.push({id:'knowledge-watch-current',role:'assistant',
     content:JSON.stringify({treatment:'untrusted_public_facts',items:current})});
-  return context.slice(-20);
+  return context.slice(-maxMessages);
+}
+
+function refreshHarnessContextHost(createModelSummarizer=harnessModelSummarizer) {
+  harnessModelSummarizer=createModelSummarizer;
+  harnessContextHost?.dispose();harnessContextHost=undefined;harnessContextFailure='';
+  try {
+    harnessContextHost=createDesktopHarnessContextHost({readConfiguration:()=>modelApiHost?.readHarnessConfiguration().context??{enabled:false},
+      modelApi:modelApiHost,getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      readSnapshot:(scope,maxMessages)=>readDesktopConversationContext(scope,maxMessages),confirmExport:confirmDeveloperExport,createModelSummarizer});
+  }catch{harnessContextFailure='上下文摘要设置、原模型版本或发送门禁不可用；未启用摘要模型';}
+}
+
+function readDesktopDeveloperHarnessConfiguration() {
+  const setting=modelApiHost?.readHarnessConfiguration(),workspace=codingWorkspace?.readDeveloperConfiguration?.(),
+    permissionRef=codingWorkspace?.readWorkspaceExportConfigurationRef?.();
+  if(!setting?.enabled||!workspace||!permissionRef)return undefined;
+  const original={revision:setting.revision,workspaceRef:workspace.bindingId,permissionRef};
+  return {workspaceRef:workspace.bindingId,maxExecutorSteps:setting.maxExecutorSteps,
+    configurationRef:createHash('sha256').update(JSON.stringify(original)).digest('hex'),assertCurrent:()=>{
+      const current=modelApiHost?.readHarnessConfiguration(),latest=codingWorkspace?.readDeveloperConfiguration?.();
+      if(!current?.enabled||current.revision!==original.revision||latest?.bindingId!==original.workspaceRef
+        ||codingWorkspace?.readWorkspaceExportConfigurationRef?.()!==original.permissionRef)
+        throw Error('原开发者 Harness 设置或工作区许可已变化');
+    }};
 }
 
 async function initializeInstalledSkills() {
@@ -1344,9 +1374,11 @@ async function initializeInstalledSkills() {
       readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
       validateRunInput:async publicGoal=>{
         const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
-        const context=await readDesktopConversationContext({conversationId:conversations.activeConversationId('workspace'),
-          deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal});
-        compileCoordinationGoal(publicGoal,publicGoal,context);
+        const limit=harnessContextHost?.runtimeHooks?.policy.maxSourceMessages??20;
+        const context=readDesktopConversationContext({conversationId:conversations.activeConversationId('workspace'),
+          deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal},limit);
+        if(harnessContextHost?.runtimeHooks)harnessContextHost.preflight(publicGoal,publicGoal,context,compileCoordinationGoal);
+        else compileCoordinationGoal(publicGoal,publicGoal,context);
       },
       selectDirectory:async()=>{
         const result=await dialog.showOpenDialog(admin,{title:'选择包含 SKILL.md 的 Skill 文件夹',properties:['openDirectory']});
@@ -1772,9 +1804,11 @@ async function initializeRuntime() {
       // 平台观测读回（MOD-32）默认装配为显式 unavailable：真实 ShowOpsTrace /
       // ListOpsAgentRunLog 需要 AK/SK 签名宿主与平台 applicationId（resource_id），
       // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
+      refreshHarnessContextHost(runtimeModule.createContextModelSummarizer);
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         delegateUserTasks: true,
+        readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
         proactiveWorkflows: true,
         proactiveDecision: {localChooser:localLaya},
         hostUserNamespace: namespace,
@@ -1786,6 +1820,7 @@ async function initializeRuntime() {
             {deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
         }}} : {}),
         coordinationInput:{
+          get contextCompaction(){return harnessContextHost?.runtimeHooks;},
           prepareCoordinationGoal:async scope=>{
             const parent=runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId);
             if(parent){
@@ -1846,7 +1881,8 @@ async function initializeRuntime() {
             'workflow.image.catalog',
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
-          ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'}] : [])],
+          ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'},
+            {toolName:runtimeModule.DEVELOPER_HARNESS_TOOL_NAME,toolVersion:runtimeModule.DEVELOPER_HARNESS_TOOL_VERSION}] : [])],
         // A missing remote catalog omits only the implicit model; an invalid configured default remains an error.
         readDefaultExecutionModel:role=>readDesktopExecutionModel(agentArtsModels,undefined,role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
@@ -2454,10 +2490,12 @@ async function action(event, name, payload) {
     if(sender!==admin || !competitionMode || !agentArtsModels)throw Error('请从模型设置管理 AgentArts 模型');
     const result=name==='agentartsModels.state'?agentArtsModels.snapshot():name==='agentartsModels.refresh'?await agentArtsModels.refresh():agentArtsModels.configure(payload);publish();return result;
   }
-  if (['modelApi.state','modelApi.configure','modelApi.remove'].includes(name)) {
+  if (['modelApi.state','modelApi.configure','modelApi.remove','modelApi.harness.configure'].includes(name)) {
     if (sender !== admin || !competitionMode || !modelApiHost) throw Error('请从模型设置管理辅助模型');
     const result = name === 'modelApi.state' ? modelApiHost.snapshot()
-      : name === 'modelApi.configure' ? modelApiHost.configure(payload) : modelApiHost.remove(payload);
+      : name === 'modelApi.configure' ? modelApiHost.configure(payload)
+        :name==='modelApi.harness.configure'?modelApiHost.configureHarness(payload):modelApiHost.remove(payload);
+    if(name!=='modelApi.state')refreshHarnessContextHost();
     publish();return result;
   }
   if (name === 'notepad.start' || name === 'notepad.cancel') {
@@ -3444,7 +3482,7 @@ app.whenReady().then(async () => {
     const {createConfiguredSubagentModelGateway} = await import('@personal-agent/runtime/application');
     modelApiHost = createModelApiConfig({userData:app.getPath('userData'),safeStorage,
       isDefaultExecutionAvailable:()=>runtimeApplication?.isDefaultSubagentAvailable()===true,
-      createGateway:createConfiguredSubagentModelGateway});
+      createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway});
   }
   if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage});
@@ -3618,6 +3656,7 @@ app.whenReady().then(async () => {
       p5SystemObservationSource?.dispose();
       knowledgeWatchHost?.dispose();
       modelApiHost?.dispose();
+      harnessContextHost?.dispose();
       privateConsumption?.close();
       wikiSourceMonitor?.close();
       installedSkillsHost?.close();
