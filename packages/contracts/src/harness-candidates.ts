@@ -20,6 +20,12 @@ export interface HarnessCandidateTrial {
   session:CodingRepairSession;
   checkReadback:CodingRepairCheckReadback;
 }
+/** Original-session readback only. clear is journal state, not candidate verification success. */
+export interface HarnessTrialRecovery {
+  state:'clear'|'in_progress'|'unknown';
+  sessionId:string;
+  checkReadback?:CodingRepairCheckReadback;
+}
 export interface HarnessCandidateContext {
   binding:Pick<HarnessCandidateBinding,'version'|'taskId'|'workspaceId'|'baselineSnapshotId'|'inputDigest'|'configurationDigest'
     |'workflowVersion'|'runtimeVersion'|'recipeFingerprint'|'executionKind'>;
