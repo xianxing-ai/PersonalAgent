@@ -37,6 +37,7 @@ function model(role,entry) {
     requestProfile:entry?.requestProfile??process.env.PA_AGENT_MODEL_REQUEST_PROFILE??'standard',onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')})
     :createOwnedModelFetch({endpoint,model:name});
   return new OpenAICompatibleModelProvider({baseUrl:endpoint,model:name,
+    responseFormat:'json_object',
     requestFormat:ownedModelRequestFormat({endpoint,model:name}),fetch,apiKey:readSecret,
     timeoutMs:integer('PA_AGENT_TIMEOUT_MS',60_000)});
 }
