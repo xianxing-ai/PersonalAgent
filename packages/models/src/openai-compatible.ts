@@ -25,6 +25,8 @@ export interface OpenAICompatibleModelProviderOptions {
   requestTokenBudget?: VisibleRequestTokenBudget;
   /** Competition host selection; no endpoint/model-name inference in the Provider. */
   requestFormat?: OpenAICompatibleRequestFormat;
+  /** Trusted JSON-only role output; does not imply native tools or JSON Schema support. */
+  responseFormat?: 'json_object';
 }
 
 function nativeReasoningConfiguration(value: NativeReasoningConfiguration): NativeReasoningConfiguration {
@@ -55,9 +57,14 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   private readonly timeoutMs: number;
   private readonly nativeReasoning: NativeReasoningConfiguration | undefined;
   private readonly requestFormat: OpenAICompatibleRequestFormat | undefined;
+  private readonly responseFormat: 'json_object' | undefined;
   private readonly tokenBudget: (RequestTokenBudgetBinding & {countInputTokens: VisibleRequestTokenBudget['countInputTokens']}) | undefined;
 
   constructor(options: OpenAICompatibleModelProviderOptions) {
+    if (options.responseFormat !== undefined && options.responseFormat !== 'json_object') {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Model response format is unsupported');
+    }
+    this.responseFormat = options.responseFormat;
     if (options.requestFormat !== undefined && options.requestFormat !== 'huawei-maas-deepseek-thinking-v1') {
       throw new ProtocolError('INVALID_ARGUMENT', 'Model request format is unsupported');
     }
@@ -164,6 +171,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
     const outputTokens = request.maxOutputTokens ?? this.tokenBudget?.reservedOutputTokens;
     const serializedBody = JSON.stringify({
       model: this.model, messages,
+      ...(this.responseFormat === undefined ? {} : {response_format: {type: this.responseFormat}}),
       ...(native === undefined ? {} : {thinking: {type: native.thinking}}),
       ...(outputTokens === undefined ? {} : {[native?.outputTokenParameter ?? 'max_tokens']: outputTokens}),
       ...(this.requestFormat === 'huawei-maas-deepseek-thinking-v1' && effort === 'none'
