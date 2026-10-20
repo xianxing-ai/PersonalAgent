@@ -57,3 +57,13 @@ Windows 原 `workspace-config-host` 已公布 `readHarnessExperienceCurrentSync(
 - 控件通过真实 validate/activate/stop 调用后读取宿主状态；未验证禁用启用按钮，最终启用仍须 `confirmActivation` 原宿主确认，旧 active revision 通过 CAS 绑定。没有 UI 本地布尔假启用，也不向 Renderer 发送 patch/源正文/路径/凭据。
 
 CI 报告的 learning strict narrowing 已通过改用明确 never 的函数声明修正；本地仅 learning 与两份 H3 Runtime 源文件的定向 noEmit 类型检查、JS/MJS 语法检查通过（复用既有声明依赖，不构建）。新增管理控件回归源码未运行。完整 CI 和实际挂载/下一任务消费仍待统一集成验证。
+
+## 本人发布后仅汇报的只读来源断言
+
+`RuntimeHarnessExperienceApplication.assertPublishedGuidanceSource(lease: DeveloperExperienceLease,currentScope: DeveloperExperienceScope,context: LearningContext): void` 只证明本任务已经消费的指导来源仍有效，不返回配方或新执行 lease，不改变 `readApplicable/assertApplicable/activate`。
+
+App 仅在本人原 canonical confirmed main CAS publish、当前 snapshot 与其新鲜 check/readback 精确匹配后调用，随后只允许完成汇报，不再准入新工具；下一任务重新选择经验。此断言不验证当前任务“本人发布”的条件，也不能单独替代 App 的该条件检查，外部变更不应进入此 reader。
+
+断言复用原 sourceRef 解析及四 confirmed run/provenance、原版本与 recipe 验证；只允许当前 workspaceDigest 不同。当前完整同步快照摘要仍必须等于 currentScope.workspaceDigest；除该摘要外 scope 必须精确匹配原来源，原来源摘要也重新绑定原 checked snapshot。启用 revision/activationSequence、sourceRef、passed validation/evidenceRef、原来源任务撤回/删除及源停止/失效仍拒绝；不复制私有 sourceRef 解析到 App，不写第二份 store。
+
+本增量验证：新 helper 定向 noEmit 通过；在本分支忽略缓存中只转译经验 helper/只读 canonical adapter，复用既有编译依赖，执行 `published guidance source` 两个关键小例 2/2 通过。使用实际 Runtime/Policy/Gateway/SQLite 与明确 Fake canonical 来源/发布后快照，不证明 H1 当前任务的真实 CAS、云端、模型或设备验收；未改整合树 dist，未跑全量 build/check。

@@ -101,3 +101,42 @@ test('altered original invocation, unknown publish and changed current workspace
   f.setCurrent({scope:f.scope,snapshot:{...f.snapshot,files:[{...f.snapshot.files[0],sha256:'f'.repeat(64)}]}});
   assert.throws(f.propose,{code:'REVISION_CONFLICT'});
 });
+
+async function activeGuidance(t) {
+  const f=await fixture(t);f.propose();await f.app.validate('experience',1,f.context);
+  await f.app.activate({...f.context,workflowId:'experience',revision:1,expectedActiveRevision:null,
+    operationId:'activate',activatedAt:new Date().toISOString()});
+  const lease=f.app.readApplicable('experience',f.scope,f.context);
+  const nextSnapshot={...f.snapshot,files:[{...f.snapshot.files[0],sha256:'f'.repeat(64)}]};
+  const nextScope={...f.scope,workspaceDigest:harnessExperienceWorkspaceDigest(nextSnapshot)};
+  // Explicit after-publication snapshot fixture. H1 separately proves this task's actual CAS/readback gate.
+  f.setCurrent({scope:nextScope,snapshot:nextSnapshot});
+  return {...f,lease,nextScope,nextSnapshot};
+}
+test('published guidance source assertion is void and never reissues an executable lease after workspace change',async t=>{
+  const f=await activeGuidance(t);
+  assert.equal(f.app.assertPublishedGuidanceSource(f.lease,f.nextScope,f.context),undefined);
+  assert.throws(()=>f.app.assertApplicable(f.lease,f.nextScope,f.context),{code:'REVISION_CONFLICT'});
+  assert.throws(()=>f.app.readApplicable('experience',f.nextScope,f.context),{code:'REVISION_CONFLICT'});
+  assert.equal(f.runtime.readToolExecutions(f.taskId).length,4,'source assertion does not execute or publish anything');
+});
+test('published guidance source still rejects config/version/selection drift, unknown or withdrawn sources',async t=>{
+  const f=await activeGuidance(t);
+  for(const field of ['workspaceId','configurationDigest','workflowVersion','runtimeVersion','recipeFingerprint']) {
+    const bad={...f.nextScope,[field]:field==='configurationDigest'||field==='recipeFingerprint'?'e'.repeat(64):'changed'};
+    f.setCurrent({scope:bad,snapshot:f.nextSnapshot});
+    assert.throws(()=>f.app.assertPublishedGuidanceSource(f.lease,bad,f.context),{code:'REVISION_CONFLICT'});
+  }
+  f.setCurrent({scope:f.nextScope,snapshot:f.nextSnapshot});
+  assert.throws(()=>f.app.assertPublishedGuidanceSource({...f.lease,activationSequence:f.lease.activationSequence+1},f.nextScope,f.context),{code:'REVISION_CONFLICT'});
+  assert.throws(()=>f.app.assertPublishedGuidanceSource({...f.lease,source:{...f.lease.source,requiredRecipeIds:['invented']}},f.nextScope,f.context),{code:'REVISION_CONFLICT'});
+  assert.throws(()=>f.app.assertPublishedGuidanceSource(f.lease,{...f.nextScope,workspaceDigest:'e'.repeat(64)},f.context),{code:'REVISION_CONFLICT'});
+  const cached=f.runtime.loadCheckpoint(f.taskId,'tool-result-publish');
+  f.runtime.saveCheckpoint(f.taskId,'tool-result-publish',{...cached,result:{...cached.result,state:'unknown'}});
+  assert.throws(()=>f.app.assertPublishedGuidanceSource(f.lease,f.nextScope,f.context),{code:'NOT_VALIDATED'});
+  f.runtime.saveCheckpoint(f.taskId,'tool-result-publish',cached);
+  f.runtime.saveCheckpoint(f.taskId,'private-copy-erasure',{state:'pending'});
+  assert.throws(()=>f.app.assertPublishedGuidanceSource(f.lease,f.nextScope,f.context),{code:'NOT_VALIDATED'});
+  f.app.stop({...f.context,workflowId:'experience',expectedActiveRevision:1,operationId:'stop',stoppedAt:new Date().toISOString()});
+  assert.throws(()=>f.app.assertPublishedGuidanceSource(f.lease,f.nextScope,f.context),{code:'REVISION_CONFLICT'});
+});

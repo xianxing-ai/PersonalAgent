@@ -5,7 +5,7 @@ import {parseCodingRepairInput,parseCodingRepairSession,parseCodingRepairCheckRe
   parseCodingRepairPublishReadback,parseCodingRepairPublishRequest,parseCodingRepairSnapshot} from '@personal-agent/contracts/coding-repair';
 import type {CodingRepairInput,CodingRepairSnapshot} from '@personal-agent/contracts/coding-repair';
 import {createDeveloperExperienceApplication,assertDeveloperExperienceScope} from '@personal-agent/learning';
-import type {DeveloperExperienceScope,DeveloperExperienceSource,DeveloperExperiencePorts,LearningContext,
+import type {DeveloperExperienceScope,DeveloperExperienceSource,DeveloperExperienceLease,DeveloperExperiencePorts,LearningContext,
   SqliteLearningHost,WorkflowVersion} from '@personal-agent/learning';
 import type {TaskRuntime} from '../index.js';
 
@@ -68,7 +68,8 @@ export function createRuntimeHarnessExperienceApplication(options:RuntimeHarness
       return denied('Experience needs original succeeded tasks and exact confirmed Policy/ToolGateway records');
     return {value:result.result,arguments:invocation.arguments,finishedAt:Date.parse(record.finishedAt)};
   };
-  const verify=(origin:HarnessExperienceOrigin,scope:DeveloperExperienceScope,context:LearningContext):DeveloperExperienceSource=>{
+  const verify=(origin:HarnessExperienceOrigin,scope:DeveloperExperienceScope,context:LearningContext,
+    publishedGuidanceScope?:DeveloperExperienceScope):DeveloperExperienceSource=>{
     active(context);options.assertOrigin(structuredClone(origin),context);assertDeveloperExperienceScope(scope);
     if(runtime.getTask(origin.ownerTaskId).state!=='succeeded'||origin.adoption.taskId!==origin.ownerTaskId
       ||origin.publication.taskId!==origin.ownerTaskId)return denied('Original user-work adoption owner differs');
@@ -118,23 +119,62 @@ export function createRuntimeHarnessExperienceApplication(options:RuntimeHarness
     // No await follows this joint current-authority fence.
     const current=options.readCurrent(origin.ownerTaskId);
     active(context);options.assertOrigin(structuredClone(origin),context);
-    if(!current||!isDeepStrictEqual(current.scope,scope)||scope.workspaceDigest!==harnessExperienceWorkspaceDigest(current.snapshot)
-      ||!isDeepStrictEqual(metadata(parseCodingRepairSnapshot(current.snapshot)),metadata(checked.snapshot)))
+    const expectedCurrent=publishedGuidanceScope??scope;
+    if(publishedGuidanceScope) {
+      assertDeveloperExperienceScope(publishedGuidanceScope);
+      if(!isDeepStrictEqual({...publishedGuidanceScope,workspaceDigest:scope.workspaceDigest},scope))
+        throw new ProtocolError('REVISION_CONFLICT','Published guidance configuration or source version changed');
+    }
+    if(!current||!isDeepStrictEqual(current.scope,expectedCurrent)
+      ||expectedCurrent.workspaceDigest!==harnessExperienceWorkspaceDigest(current.snapshot)
+      ||scope.workspaceDigest!==harnessExperienceWorkspaceDigest(checked.snapshot)
+      ||(!publishedGuidanceScope&&!isDeepStrictEqual(metadata(parseCodingRepairSnapshot(current.snapshot)),metadata(checked.snapshot))))
       throw new ProtocolError('REVISION_CONFLICT','Development workspace or configuration changed');
     const identity=sourceRef(origin,scope);
     return {sourceRef:identity.reference,scope:structuredClone(scope),requiredRecipeIds:recipes.map(r=>r.recipeId),
       evidenceRefs:[origin.trial.runId,origin.comparison.runId,origin.adoption.runId,origin.publication.runId]};
   };
-  const ports:DeveloperExperiencePorts={confirmActivation:options.confirmActivation,readConfirmedSource:(reference,context)=>{
+  const storedSource=(reference:string):{origin:HarnessExperienceOrigin;scope:DeveloperExperienceScope}|undefined=>{
     const match=/^developer-experience:v1:([A-Za-z0-9_-]{1,344}):([a-f0-9]{64})$/.exec(reference);
     if(!match)return undefined;
     const ownerTaskId=Buffer.from(match[1]!,'base64url').toString('utf8');
     const stored=runtime.loadCheckpoint(ownerTaskId,sourceKey(match[2]!)) as {origin:HarnessExperienceOrigin;scope:DeveloperExperienceScope}|undefined;
     if(!stored||stored.origin.ownerTaskId!==ownerTaskId||sourceRef(stored.origin,stored.scope).reference!==reference)return undefined;
-    return verify(stored.origin,stored.scope,context);
+    return structuredClone(stored);
+  };
+  const ports:DeveloperExperiencePorts={confirmActivation:options.confirmActivation,readConfirmedSource:(reference,context)=>{
+    const stored=storedSource(reference);
+    return stored?verify(stored.origin,stored.scope,context):undefined;
   }};
   const learning=createDeveloperExperienceApplication({namespace:options.namespace,learning:options.learning,ports});
   return Object.freeze({...learning,
+    /** Only validates already-consumed guidance. The caller must first prove its own confirmed CAS publish
+     * and exact current check/readback, then allow completion reporting only. No new tools or recipe lease. */
+    assertPublishedGuidanceSource(lease:DeveloperExperienceLease,currentScope:DeveloperExperienceScope,context:LearningContext):void {
+      active(context);assertDeveloperExperienceScope(currentScope);
+      if(!lease||lease.namespace!==options.namespace||!lease.source)
+        throw new ProtocolError('REVISION_CONFLICT','Published guidance lease namespace changed');
+      const selected=options.learning.readActiveSelection(options.namespace,lease.workflowId);
+      if(!selected||selected.sequence!==lease.activationSequence||selected.version.revision!==lease.revision
+        ||selected.version.sourceRef!==lease.source.sourceRef||selected.version.validation!=='passed'
+        ||selected.version.evidenceRef!==selected.version.sourceRef)
+        throw new ProtocolError('REVISION_CONFLICT','Published guidance selection was stopped, replaced or invalidated');
+      options.learning.assertSourceAvailable(options.namespace,selected.version.sourceRef);
+      const stored=storedSource(selected.version.sourceRef);
+      if(!stored)return denied('Original published guidance source unavailable');
+      for(const taskId of new Set([stored.origin.ownerTaskId,stored.origin.trial.taskId,stored.origin.comparison.taskId,
+        stored.origin.adoption.taskId,stored.origin.publication.taskId])) {
+        if(runtime.loadCheckpoint(taskId,'private-copy-erasure')!==undefined)
+          return denied('Original published guidance task was withdrawn or erased');
+      }
+      const verified=verify(stored.origin,stored.scope,context,currentScope);
+      if(!isDeepStrictEqual(verified,lease.source)
+        ||!isDeepStrictEqual(selected.version.steps,verified.requiredRecipeIds.map(id=>`verify:${id}`)))
+        throw new ProtocolError('REVISION_CONFLICT','Original consumed guidance differs from its validated version');
+      active(context);options.learning.assertSourceAvailable(options.namespace,selected.version.sourceRef);
+      if(!isDeepStrictEqual(options.learning.readActiveSelection(options.namespace,lease.workflowId),selected))
+        throw new ProtocolError('REVISION_CONFLICT','Published guidance selection changed during source validation');
+    },
     /** Call after the original user-work has succeeded, never during an unconfirmed publish. */
     proposeFromConfirmed(origin:HarnessExperienceOrigin,request:LearningContext&{
       workflowId:string;expectedRevision:number|null;operationId:string;createdAt:string;
@@ -151,3 +191,5 @@ export function createRuntimeHarnessExperienceApplication(options:RuntimeHarness
     },
   });
 }
+
+export type RuntimeHarnessExperienceApplication=ReturnType<typeof createRuntimeHarnessExperienceApplication>;
