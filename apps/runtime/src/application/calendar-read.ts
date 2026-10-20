@@ -83,6 +83,8 @@ export function createCalendarEventReadTool(options: CalendarEventReadOptions): 
           throw new ProtocolError('UNAUTHORIZED', 'Calendar credentials are unavailable');
         }
         const provider = new CalDavProvider({calendarUrl: binding.calendarUrl, authorization,
+          // allowLoopbackHttp 与 provider/桌面 collectionUrl 语义对齐：否决非回环明文，仅回环 HTTP 放行。
+          allowLoopbackHttp: /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/u.test(binding.calendarUrl),
           ...(binding.calendarName === undefined ? {} : {calendarName: binding.calendarName}),
           requestTimeoutMs: Math.max(1, Math.min(120_000, Date.parse(context.deadline) - now())),
           fetchImpl: (url, init) => {

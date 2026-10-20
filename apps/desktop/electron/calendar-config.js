@@ -5,11 +5,15 @@ import {randomUUID} from 'node:crypto';
 const text = (value, max) => typeof value === 'string' && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
 function collectionUrl(value) {
-  if (!text(value, 2048) || !value.trim()) throw Error('请填写 HTTPS 日历集合地址');
+  if (!text(value, 2048) || !value.trim()) throw Error('请填写日历集合地址');
   let url;
   try { url = new URL(value.trim()); } catch { throw Error('请填写有效的日历集合地址'); }
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
-    throw Error('日历集合地址必须为 HTTPS，且不能包含账号、密码、查询参数或片段');
+  // 与 packages/connectors/calendar 的 allowLoopbackHttp 语义对齐：仅 localhost/127.0.0.1/[::1]
+  // 允许明文 HTTP（本地 Radicale 等验收服务器）；非回环明文一律拒绝。
+  const loopback = /^(?:localhost|127\.0\.0\.1|\[::1\])$/i.test(url.hostname) || url.hostname === '::1';
+  if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))
+    || url.username || url.password || url.search || url.hash) {
+    throw Error('日历集合地址必须为 HTTPS；仅本机地址（localhost/127.0.0.1/[::1]）允许 HTTP，且不能包含账号、密码、查询参数或片段');
   }
   if (!url.pathname.endsWith('/')) url.pathname += '/';
   if (url.href.length > 2048) throw Error('日历集合地址过长');
