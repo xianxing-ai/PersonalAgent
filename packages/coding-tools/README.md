@@ -122,6 +122,12 @@ publish 保持 `{version,sessionId,state,files:[{path,beforeSha256,afterSha256}]
 `@personal-agent/runtime/dist/application.js` 未加载，已适配全部旧授权测试调用方并保留断言，交整合树验证。
 未以此宣称整个 Runtime/Desktop、真实 AgentArts 或原补丁任务现场恢复验收完成。
 
+发布历史读回先匹配原 journal 中已保存的精确请求，再返回原 `published` 回执；后续源码或依赖
+变化不触发新的准备检查、命令或写入。变造请求仍拒绝，未完成发布仍需原 reconciliation。
+新发布继续执行依赖实时校验。新增回归以真实临时文件、原 Policy/ToolGateway 和固定 Node
+配方复现旧顺序的 `RESULT_UNKNOWN`，修复后 1/1 通过，并确认用户后续编辑未被覆盖；
+Runtime 选择/确认与依赖变更端口为显式 fixture，不代表真实云端或现场取消恢复验收。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 

@@ -293,13 +293,15 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     publish:(value,context)=>exclusive(value.sessionId,context,scopes.patch,async journal=>{
       const request=parseCodingRepairPublishRequest(value);requireStopped(journal);
       if(journal.session.mode!=='main')throw new ProtocolError('SCOPE_DENIED','Isolated shadow session cannot publish to the user root');
-      await options.validatePreparedWorkspace?.({isolatedRoot:paths(journal.session.sessionId).workspace,session:clone(journal.session),deadline:context.deadline,signal:context.signal});
-      checkContext(context,scopes.patch,now);
       if(journal.delivery){
         if(!journal.publishIntent||JSON.stringify(journal.publishIntent)!==JSON.stringify(request))denied('Original publish input identity changed');
         if(journal.delivery.state==='published')return clone(journal.delivery);
         if(journal.delivery.state!=='unknown')denied('Original delivery was reconciled without complete success; use a new baseline before another publish');
         throw new ProtocolError('RESULT_UNKNOWN','Original partial publish requires reconciliation');}
+      // An exact completed request is historical readback, not a new execution.
+      // Later environment changes cannot invalidate its original saved result.
+      await options.validatePreparedWorkspace?.({isolatedRoot:paths(journal.session.sessionId).workspace,session:clone(journal.session),deadline:context.deadline,signal:context.signal});
+      checkContext(context,scopes.patch,now);
       const snapshot=await current(journal);if(request.baselineSnapshotId!==journal.baseline.snapshotId||request.snapshotId!==snapshot.snapshot.snapshotId)denied('Repair publish snapshot binding changed');
       const originalFiles=new Map(journal.baseline.files.map(file=>[file.path,file.sha256]));
       const changed=snapshot.snapshot.files.filter(file=>originalFiles.get(file.path)!==file.sha256).map(file=>file.path).sort();

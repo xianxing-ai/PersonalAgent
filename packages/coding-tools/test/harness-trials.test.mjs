@@ -222,7 +222,11 @@ async function adoptionFixture(t,extra={}) {
 }
 
 test('selected artifact is freshly checked in main session, then only a later confirmed operation can CAS publish',async t=>{
-  const f=await adoptionFixture(t),c=context('owner-task');
+  let dependenciesChanged=false,dependencyChecks=0;
+  const f=await adoptionFixture(t,{validatePreparedWorkspace:async()=>{
+    dependencyChecks++;
+    if(dependenciesChanged)throw Error('Explicit fixture: prepared dependencies changed after publication');
+  }}),c=context('owner-task');
   const prepared=await approved(f.adopt,{trialRunId:f.trialContext.runId},c);
   assert.notEqual(prepared.sessionId,f.selection.trial.session.sessionId);assert.equal(f.commandRoots.length,2);
   assert.equal(prepared.verification[0].status,'VALID');assert.deepEqual(prepared.verification[0].evidenceRefs,[c.runId]);
@@ -235,6 +239,15 @@ test('selected artifact is freshly checked in main session, then only a later co
   const result=await approved(publish,request,context('owner-task'));
   assert.equal(result.state,'published');assert.equal(await readFile(path.join(f.source,'candidate.txt'),'utf8'),'passes');
   assert.equal(f.commandRoots.length,2,'publish does not re-run either candidate command');
+  dependenciesChanged=true;
+  const priorChecks=dependencyChecks;
+  await writeFile(path.join(f.source,'candidate.txt'),'later user edit');
+  assert.deepEqual(await approved(publish,request,context('owner-task')),result,
+    'the exact completed publication remains a historical receipt after later dependency/source changes');
+  assert.equal(dependencyChecks,priorChecks,'cached completion does not perform a new execution preparation');
+  assert.equal(await readFile(path.join(f.source,'candidate.txt'),'utf8'),'later user edit','history read cannot repeat the write');
+  await assert.rejects(f.host.publish({...request,paths:['note.txt']},context('owner-task')),{code:'REVISION_CONFLICT'},
+    'the cached receipt still requires the original exact request');
 });
 
 test('adoption refuses substituted selection and preserves a concurrent user CAS conflict',async t=>{
