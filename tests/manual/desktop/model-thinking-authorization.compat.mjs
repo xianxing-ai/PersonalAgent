@@ -17,7 +17,7 @@ const wait=async check=>{for(let n=0;n<300;n++){const value=check();if(value)ret
 
 test('actual default/manual task model binding scopes once, permanent and exact export leases to the original destination',async()=>{
   const cache=new URL('../../../.cache/model-picker-authorization-compat/',import.meta.url);mkdirSync(cache,{recursive:true});
-  const directory=mkdtempSync(new URL('case-',cache)),namespace='Synthetic model authorization',conversationId='Synthetic-model-conversation';
+  const directory=mkdtempSync(new URL('case-',cache)),namespace='Synthetic-model-authorization',conversationId='Synthetic-model-conversation';
   const revision='a'.repeat(64),initialPreferences={catalogRevision:revision,defaultModelId:'deepseek-v4.1-flash',defaultSubmodelId:'qwen3.8-max',reasoningEffort:'medium',submodelReasoningEffort:'max'};
   let preferences=structuredClone(initialPreferences),app,durable;
   const models=createAgentArtsModelSettings({configuration:{snapshot:()=>({gatewayUrl:'https://synthetic.invalid',runtimeName:'compat',deploymentVersion:'1'}),
