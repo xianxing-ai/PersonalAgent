@@ -1,4 +1,6 @@
 import {handleConversationAction} from './conversation-actions.js';
+import {createConversationDelivery} from './conversation-delivery.js';
+import {readReconciliationStatus} from './reconciliation-status.js';
 import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
@@ -227,6 +229,7 @@ function rememberTaskGoal(taskId, goal) {
 }
 let conversations;
 const submitting = new Set();
+const conversationDelivery = createConversationDelivery(submitting);
 const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
 const approvals = new Map();
 const notifications = new Map();
@@ -596,12 +599,13 @@ function snapshot(surface) {
     subagentTasks:fakeMode?[]:(surface==='workspace'?runtimeApplication?.listSubagentConversations({limit:6}).items??[]:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
       readTask:taskId=>runtimeApplication.runtime.getTask(taskId)})),
-    tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
+    tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(original => {const task=conversationDelivery.project(original);return ({...structuredClone(task),
+      reconciliationStatus:readReconciliationStatus(runtimeApplication,task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
       userMessage: taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId),
       // UI summary is derived from trusted readback; TaskRuntime still owns state.
-      ...(notepadHost?.projectTask(task) ?? {})})),
+      ...(notepadHost?.projectTask(task) ?? {})});}),
     messages: conversations?.messagesFor(surface,surface?conversations.activeConversationId(surface):undefined) ?? [],
     conversationState:surface?conversations?.snapshot(surface):undefined,
     surfaceBusy:surface?[...tasks.values()].some(task=>visibleConversationTask(task,surface)&&!terminalTaskStates.has(task.state)):false,
@@ -2691,6 +2695,26 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
   isEnabled: () => competitionMode && !syntheticMvp, refresh,
 });
 
+async function interruptConversation(conversationId,surface,except,previous) {
+  const pending=conversationDelivery.interruptPending(conversationId,except)??previous;
+  const running=[...tasks.values()].filter(task=>conversations.conversationIdForTask(task)===conversationId
+    &&taskSurface(task)===surface&&!terminalTaskStates.has(task.state));
+  // Acceptance may precede the first task.get. A stalled readback cannot hide this task from Stop.
+  if(pending?.taskId&&!running.some(task=>task.taskId===pending.taskId))running.push({taskId:pending.taskId});
+  for(const task of running)conversationDelivery.truncate(task);
+  publish();
+  const results=await Promise.allSettled(running.map(async task=>{
+    const result=await client.call('task.cancel',{taskId:task.taskId,reason:'用户截断当前回答'});
+    conversationDelivery.acceptStop(task.taskId,result);
+    // A readback must never hold up a new message after cancellation is accepted.
+    void refresh(task.taskId).catch(()=>{});
+    return result;
+  }));
+  const failed=results.find(result=>result.status==='rejected');
+  if(failed)throw failed.reason;
+  return {interrupted:true};
+}
+
 async function action(event, name, payload) {
   if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow.webContents===event.sender)
     return handleSubagentListAction({event,name,payload,window:subagentListWindow,
@@ -3417,32 +3441,54 @@ async function action(event, name, payload) {
     }
     throw Error('Unsupported Goal action');
   }
+  if(name==='conversation.interrupt') {
+    if(sender!==panel)throw Error('请从主面板停止当前回答');
+    if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>key!=='conversationId')
+      ||payload.conversationId!==conversations.activeConversationId('panel'))throw Error('当前对话已切换，请重试');
+    return interruptConversation(payload.conversationId,'panel');
+  }
   if (name === 'task.submit' || name==='skill.run') {
     const skillRun=name==='skill.run';
     if(!skillRun&&sender===workspace)throw Error('请在主面板协调，或进入具体子智能体对话发送消息');
     if(skillRun ? sender!==admin || !competitionMode || !installedSkillsHost : sender !== panel && sender !== workspace) throw Error('请从可信界面提交任务');
     const text=typeof payload==='string'?payload:payload?.text;
-    if(!skillRun&&payload&&typeof payload==='object'&&Object.keys(payload).some(k=>!['text','conversationId'].includes(k)))throw Error('任务提交格式无效');
+    if(!skillRun&&payload&&typeof payload==='object'&&(Object.keys(payload).some(k=>!['text','conversationId','delivery'].includes(k))
+      ||payload.delivery!==undefined&&!['steer','send'].includes(payload.delivery)))throw Error('任务提交格式无效');
     if (!skillRun && (typeof text !== 'string' || !text.trim())) throw Error('请输入有效任务');
     if (competitionMode && !agentArtsConfig.snapshot().configured) throw Error('请先在设置 → 模型中保存 AgentArts Authorization；Live 语音配置无需重新填写');
     if (!fakeMode && model.enabled === false) throw Error('模型已停用，请先在模型设置中启用');
     const surface = skillRun || sender === workspace ? 'workspace' : 'panel';
     const conversationId=conversations.activeConversationId(surface);
     if(!skillRun&&payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新发送');
-    if (submitting.has(conversationId) || [...tasks.values()].some(task => conversations.conversationIdForTask(task)===conversationId && taskSurface(task) === surface && !terminalTaskStates.has(task.state))) throw Error('请等待当前回答完成，或先停止当前任务');
-    submitting.add(conversationId);
+    const steering=!skillRun&&payload?.delivery==='steer';
+    const previous=steering?conversationDelivery.interruptPending(conversationId):undefined;
+    if (!steering&&(submitting.has(conversationId) || [...tasks.values()].some(task => conversations.conversationIdForTask(task)===conversationId && taskSurface(task) === surface && !terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task)))) throw Error('请等待当前回答完成，或先停止当前任务');
+    const deliveryRequest=conversationDelivery.begin(conversationId);
     try {
+    if(steering)await interruptConversation(conversationId,surface,deliveryRequest,previous);
+    if(deliveryRequest.interrupted)return {interrupted:true};
     const prepared=skillRun?await installedSkillsHost.prepareRun(payload):undefined;
     if(prepared?.cancelled) return {cancelled:true};
+    if(deliveryRequest.interrupted)return {interrupted:true};
     const goal = skillRun?prepared.publicGoal:text.trim();
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode});
+    deliveryRequest.taskId=result.taskId;
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);
     rememberTaskGoal(result.taskId, userGoal);
+    const stopAcceptedTask=async()=>{
+      conversationDelivery.truncate({taskId:result.taskId});
+      const stopped=await client.call('task.cancel',{taskId:result.taskId,reason:'用户在任务受理前截断回答'});
+      conversationDelivery.acceptStop(result.taskId,stopped);
+      void refresh(result.taskId).catch(()=>{});
+      return {taskId:result.taskId,interrupted:true};
+    };
+    if(deliveryRequest.interrupted)return stopAcceptedTask();
     if (sender === panel) pinned = true;
     const task = await refresh(result.taskId);
+    if(deliveryRequest.interrupted)return stopAcceptedTask();
     return task;
-    } finally { submitting.delete(conversationId); }
+    } finally { conversationDelivery.finish(deliveryRequest); }
   }
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
     application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
@@ -3452,7 +3498,11 @@ async function action(event, name, payload) {
   if (name === 'task.cancel') {
     if (typeof payload !== 'string' || !tasks.has(payload)) throw Error('Unknown task');
     if (sender !== admin && taskSurface(tasks.get(payload)) !== (sender === workspace ? 'workspace' : 'panel')) throw Error('无法停止其他工作区的任务');
-    return requestTaskCancellation(client, payload, refresh);
+    conversationDelivery.truncate(tasks.get(payload));publish();
+    const result=await client.call('task.cancel',{taskId:payload,reason:'用户截断当前回答'});
+    conversationDelivery.acceptStop(payload,result);
+    void refresh(payload).catch(()=>{});
+    return result;
   }
   if (name === 'task.refresh') {
     if (!tasks.has(payload)) throw Error('Unknown task');
