@@ -50,7 +50,7 @@ export function ensureAuthorizationStyles(document) {
 }
 
 /** Renderer-only view/controller. Decisions carry identity and CAS, never grants or profiles. */
-export function mountAuthorizationQuestionCards(root,{invoke,onChanged=()=>{},now=Date.now}={}) {
+export function mountAuthorizationQuestionCards(root,{invoke,onChanged=()=>{},onPending=()=>{},now=Date.now}={}) {
   const document=root.ownerDocument??globalThis.document;
   ensureAuthorizationStyles(document);
   root.classList.add('authorization-question-list');
@@ -104,8 +104,12 @@ export function mountAuthorizationQuestionCards(root,{invoke,onChanged=()=>{},no
   root.addEventListener('click',choose);
   return {update(questions=[],{conversationId}={}) {
     if(closed)return;
+    const previous=new Set(current.filter(question=>pending(question,now())).map(question=>question.questionId));
     current=Array.isArray(questions)?questions.filter(q=>valid(q)&&(conversationId===undefined||q.conversationId===conversationId)):[];
     const keys=new Set(current.map(key));for(const token of submissions.keys())if(!keys.has(token))submissions.delete(token);
     paint();
+    const added=current.find(question=>pending(question,now())&&!previous.has(question.questionId));
+    if(added)onPending({questionId:added.questionId,element:[...root.querySelectorAll('[data-question-id]')]
+      .find(node=>node.dataset.questionId===added.questionId)});
   },dispose(){closed=true;clearTimeout(timer);submissions.clear();root.removeEventListener('click',choose);root.replaceChildren();}};
 }

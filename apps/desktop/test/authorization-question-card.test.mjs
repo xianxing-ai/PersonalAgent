@@ -12,6 +12,14 @@ const question=(extra={})=>({questionId:'synthetic-question',taskId:'task',conve
     {requirementId:'export',kind:'export',summary:'本次结果发送到 AgentArts',scopes:['cloud:context']}],
   sandbox:{label:'Synthetic 只读沙箱',mode:'read-only',revision:3},...extra});
 const deferred=()=>{let resolve,reject;return {promise:new Promise((yes,no)=>{resolve=yes;reject=no;}),resolve,reject};};
+test('Synthetic first pending question requests discovery once without taking focus or moving history on progress',t=>{
+  const f=authorizationDom(),announced=[];const controls=mountAuthorizationQuestionCards(f.root,{now:()=>instant,onPending:value=>announced.push(value)});
+  t.after(()=>controls.dispose());const focus=f.document.activeElement;
+  controls.update([question()],{conversationId:'main'});assert.equal(announced.length,1);assert.equal(announced[0].questionId,'synthetic-question');
+  assert.equal(f.document.activeElement,focus);controls.update([question()],{conversationId:'main'});assert.equal(announced.length,1);
+  controls.update([question({revision:3,state:'allowed'})],{conversationId:'main'});assert.equal(announced.length,1);
+  controls.update([question({questionId:'another'})],{conversationId:'main'});assert.equal(announced.length,2);
+});
 test('Synthetic exact source approval dedupe never hides a different approval on the same task',()=>{
   const approvals=[{approvalId:'run-a',taskId:'task'},{approvalId:'run-b',taskId:'task'}];
   assert.deepEqual(approvalsWithoutQuestionCards(approvals,[question({sourceApprovalId:'run-a'})],'main'),[approvals[1]]);
