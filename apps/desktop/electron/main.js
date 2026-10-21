@@ -60,6 +60,7 @@ import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.
 import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
+import {createDesktopNativeExecutionHost} from './native-execution-host.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
@@ -236,9 +237,10 @@ const approvals = new Map();
 const notifications = new Map();
 let runtimeApplication;
 let authorizationQuestionHost;
+let nativeExecutionHost,localAuthorizationOnly=false;
 let authorizationIntentHost;
 const authorizationQuestionPort=Object.freeze(Object.fromEntries([
-  'prepare','prepareExport','currentRequirement','authorizeExport','assertConsumedResult','deriveMailBatch','readResourceGeneration','rotateResourceGeneration',
+  'prepare','prepareExport','currentRequirement','authorizeExport','authorizeConsumedExport','assertConsumedResult','deriveMailBatch','readResourceGeneration','rotateResourceGeneration',
 ].map(name=>[name,(...args)=>{
   if(!authorizationQuestionHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前对话授权卡尚未装配');
   return authorizationQuestionHost[name](...args);
@@ -1604,23 +1606,52 @@ async function initializeInstalledSkills() {
   }
 }
 
-async function initializeRuntime() {
-  const runtimeModule = await import('@personal-agent/runtime/application');
-  const runtimeRoot=await import('@personal-agent/runtime');
-  runtimeBuildIdentityReader=runtimeRoot.readRuntimeBuildIdentity;
-  const {createRuntimeApplication} = runtimeModule;
+function initializeAuthorizationHosts(runtimeModule){
   authorizationQuestionHost?.close();
   authorizationQuestionHost=createDesktopAuthorizationQuestionHost({createQuestions:options=>new runtimeModule.AuthorizationQuestions(options),
     getApplication:()=>runtimeApplication,namespace:desktopHost.userNamespace,
     resolveConversation:taskId=>conversationToolAccess?.resolveConversation(taskId)
       ??conversations?.activeConversationId('panel'),
     available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:publish,
-    // Replaced only after the real native executor reports verified capability. No label implies isolation.
-    profiles:[{ref:'default-read-only',label:'只读（原生执行边界待验证）',mode:'read-only',revision:1,available:false,
-      reason:'原生沙箱执行后端尚未完成验证'}],defaultProfileRef:'default-read-only'});
+    profiles:[{ref:'default-read-only',label:'应用内只读权限',mode:'read-only',revision:1,available:true},
+      {ref:'workspace-write',label:'应用内受限写入／工作区权限',mode:'workspace-write',revision:1,available:true},
+      {ref:'full-access',label:'完全访问（当前普通用户，不提供进程隔离）',mode:'full-access',revision:1,available:true}],
+    defaultProfileRef:'default-read-only',
+    resolveProfile:(request,selected)=>selected.mode==='read-only'&&request.requirements.some(item=>
+      item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)))
+      &&request.toolName!=='workspace.node_check'?'workspace-write':selected.ref,
+    describeExecution:(request,profile)=>nativeExecutionHost?.describeExecution(request,profile)
+      ??{required:false,available:false,backend:'unavailable',enforced:false,reason:'本次为应用内工具；外部进程隔离未就绪'}});
   authorizationIntentHost?.close();
   authorizationIntentHost=createDesktopAuthorizationIntentHost({getApplication:()=>runtimeApplication,question:authorizationQuestionPort,
     openConversation:()=>openPanel(true)});
+}
+
+async function initializeLocalAuthorizationControlPlane(){
+  if(runtimeApplication)return;
+  const module=await import('@personal-agent/runtime/application');
+  initializeAuthorizationHosts(module);
+  // The same Competition TaskRuntime DB remains authoritative. No model/provider or substitute agent is created.
+  runtimeApplication=module.createRuntimeApplication({path:dataPaths.runtime,profile:'huawei_ict_agentarts',
+    hostUserNamespace:desktopHost.userNamespace,tools:[authorizationIntentHost.tool],hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
+    requestToolAuthorization:scope=>{authorizationIntentHost.prepareQuestion(scope);return authorizationQuestionHost.requestToolAuthorization(scope);},
+    requiresToolAuthorization:()=>true});
+  runtime=runtimeApplication.runtime;localAuthorizationOnly=true;
+  runtimeConnection=await register({transport:runtimeApplication,now:Date.now,readEvents:after=>runtimeApplication.readEvents(after),
+    attachClient:value=>{client=value;return()=>{client=undefined;};}});
+  client=runtimeConnection.client;eventCursor=new EventCursor('tasks');
+}
+
+async function initializeRuntime() {
+  const runtimeModule = await import('@personal-agent/runtime/application');
+  const runtimeRoot=await import('@personal-agent/runtime');
+  runtimeBuildIdentityReader=runtimeRoot.readRuntimeBuildIdentity;
+  const {createRuntimeApplication} = runtimeModule;
+  if(localAuthorizationOnly){
+    if(runtimeApplication.activeTaskCount)throw Error('请先完成或取消当前本机授权卡');
+    runtimeConnection?.dispose();runtimeApplication.close();runtimeApplication=undefined;runtime=undefined;localAuthorizationOnly=false;
+  }
+  initializeAuthorizationHosts(runtimeModule);
   conversationToolAccess=createConversationToolAccess({getApplication:()=>runtimeApplication,getConversations:()=>conversations});
   let readEvents;
   if (!['local', 'huawei_ict_agentarts'].includes(runtimeProfile)) {
@@ -1679,13 +1710,26 @@ async function initializeRuntime() {
           path.join(path.dirname(dbPath), 'mvp-synthetic-memory.sqlite'), {decision});
       }
       const {createGoalHost} = await import('./goal-host.js');
-      const {createWorkspaceReadTool,createWorkspaceCommandTool} = await import('@personal-agent/coding-tools');
+      const codingModule=await import('@personal-agent/coding-tools');
+      const {createWorkspaceReadTool}=codingModule;
+      nativeExecutionHost?.close();
+      nativeExecutionHost=createDesktopNativeExecutionHost({coding:codingModule,question:authorizationQuestionHost,getApplication:()=>runtimeApplication,
+        readConfiguration:()=>codingWorkspace?.readDeveloperConfiguration(),probeRootPath:path.join(app.getPath('userData'),'native-probes'),
+        systemRoot:process.env.SystemRoot,localAppData:app.getPath('userData'),onUpdate:publish,
+        ensureHelper:async()=>{
+          const helper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
+          if(existsSync(helper))return helper;
+          if(app.isPackaged)throw new ProtocolError('UNSUPPORTED_CAPABILITY','安装包缺少已发布的原生进程隔离组件');
+          const {buildNativeHelper}=await import('@personal-agent/coding-tools/native-helper');
+          return buildNativeHelper({targetDir:path.dirname(helper)}).helperPath;
+        }});
+      const createWorkspaceCommandTool=options=>nativeExecutionHost.createCommandTool(options);
       const {createDesktopCompetitionToolCatalog} = await import('./competition-tool-catalog.js');
       const namespace = desktopHost.userNamespace;
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
           onOutcome: outcome => notificationApplicationHost?.receipt(outcome)});
-        notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel, onUpdate: publish});
+        notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
       }
       goalHost = createGoalHost(namespace);
       if (!syntheticMvp && calendarConfig) {
@@ -1709,7 +1753,7 @@ async function initializeRuntime() {
           readTool: calendarReadTool, readArguments: (binding,externalId) => ({configurationId:calendarConfigurationId(binding),externalId}),
           onUpdate: publish});
       }
-      if (!syntheticMvp) goalCloudHost = createDesktopGoalCloudHost({goalHost, namespace,
+      if (!syntheticMvp) goalCloudHost = createDesktopGoalCloudHost({goalHost, namespace,question:authorizationQuestionPort,
         isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         readProactiveBinding: taskId => proactiveHost?.readRepairBinding?.(taskId)});
       if (!syntheticMvp) proactiveConversationTools=createDesktopProactiveConversationTools({
@@ -1828,6 +1872,7 @@ async function initializeRuntime() {
       });
       const commandHelper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
       codingWorkspace = createWorkspaceConfigHost({userData:app.getPath('userData'),safeStorage,
+        question:authorizationQuestionPort,createWorkspaceCommandTool,
         readHarnessVersions:readDesktopHarnessVersions,
         patchHelperScriptPath:process.env.PA_CODING_PATCH_HELPER_SCRIPT,
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
@@ -2167,15 +2212,22 @@ async function initializeRuntime() {
           authorizationIntentHost.prepareQuestion(scope);
           calendarMeetingHost?.prepareAuthorization?.(scope);
           mailHost?.prepareAuthorization?.(scope);
-          return authorizationQuestionHost.requestToolAuthorization(scope);
+          codingWorkspace?.prepareAuthorization?.(scope);
+          knowledgeSourceConfig?.prepareAuthorization?.(scope);
+          notificationApplicationHost?.prepareAuthorization?.(scope);
+          return nativeExecutionHost.prepare(scope).then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
         },
-        requiresToolAuthorization:scope=>authorizationQuestionHost.requiresAuthorization(scope),
+        requiresToolAuthorization:scope=>authorizationQuestionHost.requiresAuthorization(scope)
+          ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='notifications.interruption_policy.set'
+          ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
           await todoHost?.prepareExport?.(scope);
           await feedsHost?.prepareExport?.(scope);
           await developerDeployment?.prepareExport(scope);
           await connectorConversationTools?.prepareExport(scope);
+          await codingWorkspace?.prepareExport?.(scope);
+          await goalCloudHost?.prepareExport?.(scope);
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;
           if (!publicReferenceConsent || !['preflight','projection'].includes(phase)) throw Error('原生公开资料许可入口不可用');
           const configurationRef=proposal.toolName === 'workspace.read_text'
@@ -2943,17 +2995,16 @@ async function action(event, name, payload) {
         || typeof payload.taskId !== 'string') throw Error('请选择订阅和原始任务');
       const originAdmin=admin, originApplication=runtimeApplication, originFeeds=feedsHost;
       const choice=originFeeds.prepareNativeSourceChoice(payload);
-      const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'订阅来源与持续跟踪许可',
-        message:`订阅：${choice.title}\n原任务：${choice.taskId}\n用途：${choice.goal}`,
-        detail:`实际地址：${choice.url}\n许可到期：${choice.deadline}\n公开选择只适用于无需凭据的公共资料，并允许该原任务持续跟踪；来源获取仍需真实读取证据。分类改变会关闭本会话读取许可并使旧任务绑定失效，请重新允许本会话读取。`,
-        buttons:choice.containsCredentials ? ['取消','保持私人'] : ['取消','公开并允许本任务跟踪','保持私人'],
-        defaultId:0,cancelId:0,noLink:true});
+      if(choice.containsCredentials)throw new ProtocolError('UNAUTHORIZED','含凭据的来源保持私人，不能申请公开持续跟踪');
+      const allowed=await confirmApplicationAuthorization('feeds.classify',choice,{scope:{subscriptionId:choice.subscriptionId,
+        configurationRef:choice.configurationRef,generation:choice.generation,taskId:choice.taskId,purposeDigest:choice.purposeDigest},
+        summary:'将此无凭据订阅标记为公开资料，并允许所选原任务按其原期限跟踪；本卡不证明来源已实际读取',deadline:choice.deadline,
+        isCurrent:()=>admin===originAdmin&&!originAdmin.isDestroyed()&&runtimeApplication===originApplication&&feedsHost===originFeeds});
       if (admin !== originAdmin || originAdmin.isDestroyed() || runtimeApplication !== originApplication
         || feedsHost !== originFeeds) throw Error('订阅许可窗口已经改变');
-      if (answer.response === 0) return originFeeds.snapshot();
-      const result=originFeeds.applyNativeSourceChoice(choice,
-        !choice.containsCredentials && answer.response === 1 ? 'public' : 'private');
-      if (!choice.containsCredentials && answer.response === 1) {
+      if (!allowed) return originFeeds.snapshot();
+      const result=originFeeds.applyNativeSourceChoice(choice,'public');
+      if (allowed) {
         const storage=originApplication.createHostStateStore('knowledge-tracking');
         const key='feed-interest-intake:'+createHash('sha256').update(choice.taskId).digest('hex');
         const previous=storage.get(key);
@@ -3510,6 +3561,7 @@ async function action(event, name, payload) {
   if (name === 'authorization.respond') {
     if (!payload || typeof payload.approvalId !== 'string' || !['allow_once', 'deny'].includes(payload.decision) || !Number.isSafeInteger(payload.expectedRevision)) throw Error('授权决定格式无效');
     if(sender!==admin){const approval=approvals.get(payload.approvalId),surface=sender===workspace?'workspace':'panel';if(sender!==panel&&sender!==workspace||!approval||approval.taskId!==payload.taskId||!tasks.has(approval.taskId)||!visibleConversationTask(tasks.get(approval.taskId),surface))throw Error('审批不属于当前对话');}
+    if(authorizationQuestionHost?.hasPending(payload.approvalId))throw new ProtocolError('UNAUTHORIZED','请在原对话的统一授权卡完成本次决定');
     const result = await client.call('authorization.respond', {approvalId: payload.approvalId, decision: payload.decision, expectedRevision: payload.expectedRevision});
     approvals.delete(payload.approvalId);
     if (payload.taskId && tasks.has(payload.taskId)) await refresh(payload.taskId);
@@ -3828,6 +3880,7 @@ app.whenReady().then(async () => {
     if (!competitionMode) restoreModelConfig();
     const startup = await runtimeStartup.start();
     if (startup.state === 'configuration_required') {
+      await initializeLocalAuthorizationControlPlane();
       runtimeError = agentArtsConfig.snapshot().reason;
       connectionLabel = 'Runtime 等待配置';
     }
@@ -4053,6 +4106,7 @@ app.whenReady().then(async () => {
       void connectorConversationTools?.close();
       authorizationQuestionHost?.close();
       authorizationIntentHost?.close();
+      nativeExecutionHost?.close();
       mailAnalysisHost?.close();
       competitionFactBridge?.close();
       if (runtimeApplication) runtimeApplication.close();

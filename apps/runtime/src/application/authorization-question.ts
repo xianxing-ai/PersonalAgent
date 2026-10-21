@@ -238,6 +238,11 @@ export class AuthorizationQuestions {
       ||question.consumed[requirementId]!==consumerId||digest(this.input(question))!==digest(input)||!this.current(question)
       ||!this.options.canExecute(this.input(question)))fail('原任务当前不能执行此授权操作');
   }
+  executionProfile(receipt:AuthorizationQuestionReceipt,request:AuthorizationQuestionRequest):AuthorizationSandbox {
+    this.assertRequirement(receipt,request,'tool',request.runId+':tool');
+    const question=this.read().questions.find(item=>item.questionId===receipt.questionId)!;
+    return structuredClone(question.sandbox);
+  }
   /** For bounded local processing of the original confirmed read, never a new execution grant. */
   assertConsumedResult(receipt:AuthorizationQuestionReceipt,request:AuthorizationQuestionRequest,requirementId:string,consumerId:string):void {
     this.validate(request);
@@ -248,6 +253,16 @@ export class AuthorizationQuestions {
       ||profile.ref!==(question.baseSandboxRef??question.sandbox.ref)||profile.revision!==question.sandbox.revision||!profile.available
       ||binding?.conversationId!==question.conversationId||binding.digest!==question.ownerBinding
       ||this.liveBindings.get(question.questionId)?.()!==true)fail('原已确认结果的读取许可已失效');
+  }
+  /** Consume only a predeclared result-export requirement after the original confirmed tool, never another execution. */
+  consumeConfirmedExport(receipt:AuthorizationQuestionReceipt,request:AuthorizationQuestionRequest,requirementId:string,consumerId:string):void {
+    this.assertConsumedResult(receipt,request,'tool',request.runId+':tool');
+    this.mutate(state=>{
+      const question=state.questions.find(item=>item.questionId===receipt.questionId);
+      const requirement=question?.requirements.find(item=>item.requirementId===requirementId);
+      if(!question||requirement?.kind!=='export'||question.consumed[requirementId]!==undefined||!text(consumerId))fail('原结果出机许可不可消费');
+      question.consumed[requirementId]=consumerId;
+    });
   }
   /** Trusted fixed-session derivation. The caller must additionally prove original session membership. */
   deriveConsumedResult(parentReceipt:AuthorizationQuestionReceipt,parentRequest:AuthorizationQuestionRequest,requirementId:string,

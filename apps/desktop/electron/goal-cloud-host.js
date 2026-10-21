@@ -44,16 +44,17 @@ function projectedGoal(node) {
 }
 
 /** Trusted Desktop adapter. Goal writes still use the public Goal tools and Runtime Policy. */
-export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBinding,isConversationAllowed}) {
+export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBinding,isConversationAllowed,question}) {
   if(!goalHost || !Array.isArray(goalHost.tools) || typeof goalHost.list!=='function'
     || typeof goalHost.get!=='function') throw Error('Goal host is unavailable');
   const writes=goalHost.tools.filter(tool=>WRITE_NAMES.has(tool.descriptor?.name)
     && tool.descriptor.version===GOAL_TOOL_VERSION);
   if(writes.length!==2 || new Set(writes.map(tool=>tool.descriptor.name)).size!==2) throw Error('Goal write tools are unavailable');
   let application,allowed=false,active=true,generation=randomUUID();
-  const snapshot=()=>({available:Boolean(application)&&active,sessionAllowed:allowed&&active,
+  const resourceDigest=createHash('sha256').update(JSON.stringify(['goals',namespace])).digest('hex'),runs=new Map();
+  const snapshot=()=>({available:Boolean(application)&&active,sessionAllowed:!question&&allowed&&active,
     reason:allowed?'本会话可向 AgentArts 提供目标内容；目标写入仍需单独审批':'本会话目标云访问未开启'});
-  const permitted=()=>active&&allowed&&Boolean(application);
+  const permitted=()=>active&&Boolean(application)&&(question?question.readResourceGeneration(resourceDigest)===generation:allowed);
   function proactiveScope(taskId) {
     if(!namespace || typeof readProactiveBinding!=='function') return;
     try {
@@ -96,6 +97,8 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
   }
   function readable(taskId,signal,toolName) {
     if(signal?.aborted || !bound(taskId,false,toolName)) throw Error('Goal cloud session is unavailable');
+    if(question){const scope=runs.get(taskId);if(!scope)throw Error('Goal operation has no original question');
+      question.currentRequirement({...scope,signal},'goals-session');}
   }
   function scopedGoal(node,taskId) {
     const goal=projectedGoal(node);
@@ -220,15 +223,32 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
         value={kind:result.kind,graphRevision:result.graphRevision};
       } else throw Error('Goal result is invalid');
       if(Buffer.byteLength(JSON.stringify(value),'utf8')>MAX_GOAL_EXPORT_BYTES) throw Error('Goal result exceeds cloud projection limit');
+      if(question)question.authorizeExport({...runs.get(taskId),signal},value,'goals-export');
       return structuredClone(value);
     }}));
-  const revoke=()=>{allowed=false;generation=randomUUID();return snapshot();};
+  const revoke=()=>{allowed=false;if(question&&application)generation=question.rotateResourceGeneration(resourceDigest,generation);
+    else generation=randomUUID();runs.clear();return snapshot();};
   return Object.freeze({tools,competitionToolAvailability,competitionToolExports,snapshot,
+    prepareExport(scope){
+      if(!question||scope.phase!=='preflight'||!ALL_NAMES.has(scope.proposal?.toolName))return;
+      const original=application.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);if(!original||!permitted())throw Error('Goal authorization binding is unavailable');
+      const exact={...original,signal:scope.signal},captured=generation;
+      const stable=createHash('sha256').update(JSON.stringify([resourceDigest,captured,POLICY])).digest('hex');
+      question.prepare(exact,{requirements:[{requirementId:'goals-session',kind:'connector_session',scopes:['goals:cloud'],
+        bindingDigest:createHash('sha256').update(JSON.stringify([scope.taskId,original.runId,captured])).digest('hex'),
+        ruleBindingDigest:stable,summary:'仅此用户命名空间的目标资料；排除受限内容，目标写入仍绑定本次精确参数'}],
+        assertCurrent:()=>permitted()&&captured===generation});
+      question.prepareExport(exact,{requirementId:'goals-export',ruleBindingDigest:stable,
+        summary:'向本任务选定 AgentArts 模型发送目标的固定脱敏字段，每次最多 7500 字节；无凭据与来源路径'});
+      runs.set(scope.taskId,exact);
+    },
     bindApplication(value) {
       if(application || !active || value?.profile!=='huawei_ict_agentarts' || !value.runtime) throw Error('Goal cloud binding is invalid');
       application=value;
+      if(question)generation=question.readResourceGeneration(resourceDigest);
     },
     authorize(input) {
+      if(question)throw Error('请在当前对话的统一授权卡允许此操作');
       if(!application || !active || !input || Object.keys(input).length!==1
         || input.goalCloudConsent!==true) throw Error('请明确允许本会话目标内容用于云端');
       revoke();allowed=true;return snapshot();
@@ -247,6 +267,6 @@ export function createDesktopGoalCloudHost({goalHost,namespace,readProactiveBind
           || !currentReadResult(receipt.proposal.toolName,receipt.continuation.result,request.taskId)))
         throw Error('Goal read result is no longer exportable');
     },
-    close(){active=false;revoke();},
+    close(){active=false;allowed=false;runs.clear();},
   });
 }

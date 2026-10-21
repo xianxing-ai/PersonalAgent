@@ -11,6 +11,13 @@ const requestFields=scope=>({taskId:scope.taskId,proposalId:scope.proposalId,run
 /** Enforce declared fields recursively even when an old descriptor permits arbitrary keys. */
 function boundedProjection(schema,value,depth=0) {
   if(depth>24)denied();
+  const alternatives=schema?.anyOf??schema?.oneOf;
+  if(Array.isArray(alternatives)){
+    let matched=false;
+    for(const alternative of alternatives){try{validateToolValue(alternative,value);boundedProjection(alternative,value,depth+1);matched=true;break;}catch{}}
+    if(!matched)denied();return;
+  }
+  if(schema?.$ref)denied();
   if(value===null||typeof value!=='object')return;
   if(Array.isArray(value)){
     if(!schema?.items||Array.isArray(schema.items))denied();
@@ -139,13 +146,16 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
   function prepareExport(scope,{summary,scopes=['model:export'],bindingDigest,ruleBindingDigest,requirementId='export',projectionSchema,assertCurrent=()=>true}={}) {
     const source=original(scope),schema=projectionSchema??source.outputSchema;
     const projectionDigest=digest(schema);
+    const destination=getApplication().readAuthorizationQuestionDestination?.(source.taskId);
+    if(typeof destination!=='string')denied();
     const projectionKey=key(source)+':'+requirementId,prior=projections.get(projectionKey);
     if(prior&&digest(prior)!==projectionDigest)denied();
     projections.set(projectionKey,structuredClone(schema));
     prepare(source,{requirements:[{requirementId,kind:'export',scopes,
       bindingDigest:bindingDigest??digest({taskId:source.taskId,runId:source.runId,argumentsDigest:source.argumentsDigest,projectionDigest}),
-      ...(ruleBindingDigest?{ruleBindingDigest}:{}),
-      summary:summary??`向本任务选定的 AgentArts 模型发送 ${source.toolName} 已声明字段的结果（最多 960 KiB），不含额外字段或凭据`} ],assertCurrent});
+      ...(ruleBindingDigest?{ruleBindingDigest:digest({ruleBindingDigest,destination,projectionDigest})}:{}),
+      summary:summary??`向本任务选定的 AgentArts 模型发送 ${source.toolName} 已声明字段的结果（最多 960 KiB），不含额外字段或凭据`} ],
+      assertCurrent:()=>assertCurrent()&&getApplication().readAuthorizationQuestionDestination(source.taskId)===destination});
   }
   function authorizeExport(scope,result,requirementId='export') {
     const {source,entry}=operation(scope);
@@ -154,15 +164,40 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     if(Buffer.byteLength(JSON.stringify(result),'utf8')>960*1024)denied();
     currentRequirement(source,requirementId);
     const resultDigest=digest(result);
-    if(entry.resultDigest!==undefined&&entry.resultDigest!==resultDigest)denied();
-    entry.resultDigest=resultDigest;
+    const prior=entry.resultDigests??new Map();
+    if(prior.has(requirementId)&&prior.get(requirementId)!==resultDigest)denied();prior.set(requirementId,resultDigest);entry.resultDigests=prior;
+    getApplication().runtime.saveCheckpointOnce(source.taskId,'authorization-question-export:'+source.runId+':'+requirementId,
+      {questionId:entry.receipt.questionId,revision:entry.receipt.revision,leaseRef:entry.receipt.receiptRef,resultDigest,
+        schemaDigest:digest(schema),policyVersion:'desktop-declared-fields-v1',stage:requirementId,deadline:source.deadline});
     // A precise result hash supplements the bounded preflight rule. It grants no tool use.
     return {taskId:source.taskId,runId:source.runId,argumentsDigest:source.argumentsDigest,resultDigest,deadline:source.deadline};
+  }
+  function readExecutionPolicy(scope){
+    const {entry}=operation(scope);return service().executionProfile(entry.receipt,entry.request);
   }
   function assertConsumedResult(scope,requirementId){
     const entry=operations.get(key(scope)),consumerId=scope.runId+':'+requirementId;
     if(!entry||entry.request.taskId!==scope.taskId||entry.request.deadline!==scope.deadline)denied();
     service().assertConsumedResult(entry.receipt,entry.request,requirementId,consumerId);return true;
+  }
+  function authorizeConsumedExport(scope,result,requirementId='export'){
+    if(getApplication()?.runtime.getTask(scope.taskId).state==='running')return authorizeExport(scope,result,requirementId);
+    const entry=operations.get(key(scope));if(!entry||scope.signal?.aborted||entry.request.deadline!==scope.deadline)denied();
+    const schema=projections.get(key(scope)+':'+requirementId)??entry.outputSchema;
+    validateToolValue(schema,result);boundedProjection(schema,result);
+    if(Buffer.byteLength(JSON.stringify(result),'utf8')>960*1024)denied();
+    const consumerId=scope.runId+':'+requirementId;
+    if(!entry.consumers.has(requirementId)){
+      service().consumeConfirmedExport(entry.receipt,entry.request,requirementId,consumerId);entry.consumers.set(requirementId,consumerId);
+    }
+    service().assertConsumedResult(entry.receipt,entry.request,requirementId,consumerId);
+    const resultDigest=digest(result),previous=entry.confirmedResultDigests??new Map();
+    if(previous.has(requirementId)&&previous.get(requirementId)!==resultDigest)denied();previous.set(requirementId,resultDigest);
+    entry.confirmedResultDigests=previous;
+    getApplication().runtime.saveCheckpointOnce(scope.taskId,'authorization-question-export:'+scope.runId+':'+requirementId,
+      {questionId:entry.receipt.questionId,revision:entry.receipt.revision,leaseRef:entry.receipt.receiptRef,resultDigest,
+        schemaDigest:digest(schema),policyVersion:'desktop-declared-fields-v1',stage:requirementId,deadline:scope.deadline});
+    return {taskId:scope.taskId,runId:scope.runId,argumentsDigest:entry.request.argumentsDigest,resultDigest,deadline:scope.deadline};
   }
   function deriveMailBatch(parentScope,nextScope,{batchId,requirementId,assertCurrent}){
     if(typeof assertCurrent!=='function'||!assertCurrent())denied();
@@ -174,7 +209,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
   }
   return {
     requiresAuthorization:scope=>preparations.has(key(scope)),
-    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,assertConsumedResult,deriveMailBatch,
+    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,deriveMailBatch,readExecutionPolicy,
     readResourceGeneration,rotateResourceGeneration,
     request:(request,current)=>service().request(request,current),
     consume:(...args)=>service().consume(...args),assertRequirement:(...args)=>service().assertRequirement(...args),

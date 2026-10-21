@@ -1246,6 +1246,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** State may legitimately change running -> waiting_approval while the same proposal is displayed. */
+  readAuthorizationQuestionDestination(taskId:string):string {
+    this.runtime.getTask(taskId);
+    return hashJson({configurationRef:this.coordinationBinding,
+      model:this.runtime.loadCheckpoint(taskId,'execution-model'),
+      preference:this.runtime.loadCheckpoint(taskId,'task-model-preference'),
+      child:this.runtime.loadCheckpoint(taskId,'subtask-model-binding')});
+  }
+
   readAuthorizationQuestionBinding(input:Omit<AuthorizationQuestionRequest,'signal'>):{conversationId:string;digest:string}|undefined {
     const original=this.readAuthorizationQuestionInvocation(input.taskId,input.runId);
     if(!original||['proposalId','runId','toolName','toolVersion','argumentsDigest','deadline'].some(key=>
@@ -1258,6 +1266,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return {conversationId,digest:hashJson({conversationId,taskId:input.taskId,proposalId:original.proposalId,
       runId:original.runId,toolName:original.toolName,toolVersion:original.toolVersion,argumentsDigest:original.argumentsDigest,
       deadline:original.deadline,pendingRevision:loop?.pendingRevision,
+      destination:this.readAuthorizationQuestionDestination(input.taskId),
       profile:this.runtime.loadCheckpoint(input.taskId,'application-profile'),
       parent:this.runtime.loadCheckpoint(input.taskId,'subtask-parent')})};
   }
@@ -2300,6 +2309,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!this.codingRepair)return;
     this.codingRepair.projectSource=project;
     this.codingRepair.authorizeMetadata=authorizeMetadata;
+    this.codingRepair.requireProjectedMetadata=true;
   }
 
   private readHarnessCandidateRecoveryOrigin(taskId:string,expectedRevision:number) {
