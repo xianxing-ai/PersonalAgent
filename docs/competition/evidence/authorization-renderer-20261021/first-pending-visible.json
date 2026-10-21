@@ -1,0 +1,32 @@
+{
+  "kind": "Synthetic local Skill + actual product authorization",
+  "profile": "huawei_ict_agentarts",
+  "sourceHead": "fe0149c602244180cbc65bcb73cbb45587d43505",
+  "main": "actual",
+  "runtime": "actual TaskRuntime/Policy",
+  "preload": "actual",
+  "renderer": "actual",
+  "business": "isolated Synthetic Skill only",
+  "models": 0,
+  "accounts": 0,
+  "microphones": 0,
+  "phases": [
+    {
+      "phase": "allow-once",
+      "state": "verified",
+      "secondModal": false
+    },
+    {
+      "phase": "first-pending-visible",
+      "state": "verified",
+      "keyboardFocus": true,
+      "settingsRulesOnly": true
+    }
+  ],
+  "consoleErrors": [],
+  "network": {
+    "fetchCalls": 0,
+    "messageBoxes": 0
+  },
+  "state": "passed"
+}
