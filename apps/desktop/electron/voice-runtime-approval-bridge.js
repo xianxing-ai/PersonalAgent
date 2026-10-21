@@ -16,7 +16,7 @@ export function createVoiceRuntimeApprovalBridge({readPendingApproval,readCurren
       ||!(Date.parse(approval.expiresAt)>now()))return null;
     const card=readCurrentQuestion({conversationId:scope.conversationId});
     if(card?.state!=='pending'||card.sourceApprovalId!==approval.approvalId
-      ||card.argumentsDigest!==approval.argumentsDigest||![approval.taskId,scope.taskId].includes(card.taskId)
+      ||![approval.taskId,scope.taskId].includes(card.taskId)
       ||!(Date.parse(card.expiresAt)>now())||Date.parse(card.expiresAt)>Date.parse(approval.expiresAt))return null;
     focusQuestion(card);
     return {...card,guidance:'请在当前同一张提问卡完成授权；语音回答不会签发许可。'};

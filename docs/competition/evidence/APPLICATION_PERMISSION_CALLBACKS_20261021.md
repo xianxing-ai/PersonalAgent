@@ -12,6 +12,8 @@
 
 旧的“语音说同意即可写设置/消费审批”测试已改成“同意/拒绝都只引导原卡”的行为要求；旧同步 microphone authorize 的消费者均改为 await，测试注入显式 Fake 卡。旧管理审批入口现在明确拒绝，不能凭隐藏按钮保留授权捷径。此包没有 contracts/lock/数据库迁移。
 
+定点回读统一卡实际 snapshot 后，语音 consumer 只绑定其真实 `questionId/revision/sourceApprovalId/taskId`；没有添加快照不公开的 `argumentsDigest` 或 `sourceApprovalRevision` 字段。原 approval reader 继续校验 Runtime 参数摘要，语音回执仅用于聚焦/引导，不能将缺少摘要的 UI 投影当执行授权。
+
 ## 当前验证边界
 
 本树固定 Node 24.15.0，以下 3 个无需内部构建依赖的 test 文件实测 **9 通过、0 失败、0 跳过**：

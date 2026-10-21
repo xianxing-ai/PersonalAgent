@@ -34,7 +34,7 @@ export function createDesktopVoiceCommandHost({readCurrentQuestion=()=>null,focu
       if(!receipt||receipt.source!=='live_input_audio'||receipt.phase!=='final'||receipt.origin!=='user'
         ||receipt.echo!==false||receipt.signal?.aborted||typeof receipt.text!=='string'
         ||!receipt.sessionId||!receipt.utteranceId||receipt.questionId!==card.questionId
-        ||receipt.questionRevision!==card.revision||receipt.argumentsDigest!==card.argumentsDigest
+        ||receipt.questionRevision!==card.revision
         ||receipt.transcriptDigest!==digest(receipt.text)
         ||!(Date.parse(receipt.startedAt)>=Date.parse(card.guidanceIssuedAt))
         ||!(Date.parse(receipt.completedAt)>=Date.parse(receipt.startedAt))
@@ -46,7 +46,7 @@ export function createDesktopVoiceCommandHost({readCurrentQuestion=()=>null,focu
       const text=normalized(receipt.text);
       if(!yes.has(text)&&!no.has(text))return {consumed:false,reason:'requires_card_selection'};
       const fresh=snapshot();
-      if(!fresh||fresh.questionId!==card.questionId||fresh.revision!==card.revision||fresh.argumentsDigest!==card.argumentsDigest)
+      if(!fresh||fresh.questionId!==card.questionId||fresh.revision!==card.revision)
         return {consumed:false,reason:'current_parameters_changed'};
       focusQuestion(fresh);onUpdate();
       return {consumed:false,state:'awaiting_card',reason:'complete_in_conversation_card',questionId:fresh.questionId,
