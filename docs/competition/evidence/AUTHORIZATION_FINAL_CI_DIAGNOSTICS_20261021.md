@@ -26,3 +26,29 @@
 未知 baseline 不可分类为 unsupported 的定向断言。新独立树无依赖或 dist，未运行
 Windows 或全仓测试。本补丁只修明确夹具错误并增加诊断，**未证明 CI 已恢复**；
 下一步必须读取新 head 的真实 Windows 诊断后决定普通权限执行方案。
+
+## 9239b356 实际新 CI 与普通权限接线
+
+官方 Foundation `39630576674` / Windows `119327573339` 已失败，聚合 check 也失败。
+两个 native 测试实际诊断均为 `administratorToken:true`。Desktop 严格审批失效断言
+已通过，最后在原 native 不可用分支明确失败：task 为 REVISION_CONFLICT、prepare
+为 UNSUPPORTED_CAPABILITY、approval denied/revision 2，baseline 为
+`native-request:-2146233079`。coding-tools 本轮 baseline 和其他 probe 为
+`native-stop-or-protocol-unconfirmed`。保留这些不同实际回执，不能把所有 probe
+概括为同一 HRESULT。coding-tools 仍 302 pass / 1 fail / 1 skip、Desktop 仍
+1629 pass / 1 fail / 7 skip；本轮 Runtime 实际 1073/1073 pass。
+
+新增 CI-only `scripts/ci/windows-standard-token/`，不修改产品 native helper。
+当前标准 token 直接启动；elevated 时优先现有同用户 Limited linked token，只有
+缺 linked token 才尝试 own LUA restricted token。选择 token 和实际 suspended
+child 均严格校验 SID/session/primary/Elevation0/medium/Admin deny-only/UIAccess0，
+Job 纳管后才恢复。缺权限、句柄/ABI/Job 或 token 不符均失败，不登录、不创建账号、
+不改 UAC、不跳过 native。详见该目录 README 的 API 权限与真实未验证边界。
+
+ci.yml 在原 helper build 后编译新工具并执行短 smoke，只有成功才发布该 job 的
+完整原 `npm.cmd run check` 入口；全仓原测试和 required 聚合保留。没有重复 dispatch。
+静态复核已纠正 C# supervisor 分支局部变量重名。当前 Linux YAML parse、diff 与
+原 CI merge-group/source-transfer 两文件 16/16 pass；首次误用了不存在的
+`scripts/ci/cleanup.test.mjs`，该命令未执行测试，不计通过。没有 .NET/PowerShell，
+因此新 C# 编译、Win32 ABI、合法普通 token 获取、短 smoke 和完整新 head CI
+均**未验证**；必须由真实 Windows 新 CI 给结果，当前不得声称已恢复或可入队。

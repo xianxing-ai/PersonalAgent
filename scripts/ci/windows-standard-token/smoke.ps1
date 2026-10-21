@@ -6,6 +6,10 @@ $target = Join-Path $env:RUNNER_TEMP ('standard-token-smoke-' + [Guid]::NewGuid(
 & dotnet publish $project --configuration Release --runtime win-x64 --self-contained false --output $target
 if ($LASTEXITCODE -ne 0) { throw 'CI launcher compilation failed.' }
 $launcher = Join-Path $target 'WindowsStandardTokenLauncher.exe'
-# No run-check here. This short gate must succeed before root considers CI wiring.
+# No run-check here. Only an actual successful smoke publishes the complete-check entrypoint.
 & $launcher --smoke
-exit $LASTEXITCODE
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($env:GITHUB_ENV) {
+  "PA_CI_CHECK_LAUNCHER=$launcher" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+}
+exit 0

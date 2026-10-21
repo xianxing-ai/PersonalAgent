@@ -1,6 +1,6 @@
 # CI-only Windows standard-token draft
 
-Not connected to ci.yml. This is not a product execution backend and accepts no arbitrary
+Connected to the Windows ci.yml path behind the actual short smoke gate. This is not a product execution backend and accepts no arbitrary
 command, user, token, directory or credentials. Product native helper remains unchanged.
 
 The executable accepts `--smoke` or `--run-check`. The latter executes the original fixed
@@ -57,4 +57,4 @@ Linux author environment has no dotnet/C# compiler, PowerShell or Win32. No comp
 ABI, token acquisition, smoke, Windows tests or full check has been claimed. Diff/static
 review is preparation only. Root must review, compile and run the short Windows smoke;
 failure is a real blocker and does not authorize fallback or skip. Do not wire shared CI
-or dispatch another full check until actual new-head diagnostics and this smoke justify it.
+without requiring the actual short smoke to pass. Real new-head full CI remains mandatory.
