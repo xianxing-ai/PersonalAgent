@@ -39,4 +39,4 @@
 
 最小复现：在独立树按仓库 Node/npm 版本运行 `npm ci --ignore-scripts`；按安全回执 `build.workspaces` 的顺序逐一执行 `npm run build --workspace=<name>`；执行回执 `focused.files` 的 `node --test --test-concurrency=1`、Desktop typecheck 与 check:architecture。临时目录使用独立仓库外路径。实际 UI 复验使用 `node apps/desktop/test/native-reasoning-slider-smoke.cjs`，通过 PA_SLIDER_TEST_ELECTRON 指定已有 Electron 44.2.0、PA_PICKER_TEST_OUTPUT 指定独立输出目录；补充布局脚本为 `node apps/desktop/test/model-thinking-renderer-smoke.cjs`。
 
-本包没有部署或真实供应商推理质量验收，也没有用本分支的旧 Main 冒称新统一授权 PR 的组合验证。新授权分支的目的地仍绑定原 execution-model/task-model-preference/subtask-model-binding；本包只沿原入口提供选择，不增加授权、路由器或第二执行器。常规合并、真人审查及 CI 状态以 PR 的最新 head 为准。
+本包没有部署或真实供应商推理质量验收。随后在独立合并树新增了[明确的跨 PR 手动组合验证](MODEL_THINKING_AUTHORIZATION_COMPAT_20261021.md)：#491 + #484 + 停止主线 f89 的原模型 CP/精确出口、once/permanent 目的地隔离及新 scope 重新问卡通过；另补新冲突所需的 30 项与单一 Renderer 队列/停止/模型场景。该结果不表示 #491 单分支包含 #484，也不替代各自 required CI。新授权目的地继续绑定原 execution-model/task-model-preference/subtask-model-binding；本包只沿原入口提供选择，不增加授权、路由器或第二执行器。常规合并、真人审查及 CI 状态以 PR 的最新 head 为准。
