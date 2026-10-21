@@ -47,3 +47,11 @@ Node 24.15.0 执行，未安装本树依赖、未借用其他树生产 dist。�
 ## 未执行
 
 模型、音频、真实邮箱/账号、付费调用、云 API、镜像构建/推送、SWR、AgentArts 部署均为 `not_run`，调用次数为 0。没有改变用户现有 App、代理或配置。无正式非作者 Approve 或合并结果由此记录派生。
+
+## PR #485 首次技术 CI 与文案断言修复
+
+`4757c239` 的 [Foundation 39615718947 / Linux job 119276816527](https://github.com/xianxing-ai/PersonalAgent/actions/runs/39615718947/job/119276816527) 实际出现 694 pass / 1 fail。失败为 `packages/agentarts/test/orchestrator.test.mjs` 的 continuation 原目标/完整前序约束用例，仍匹配旧提示词“先直接回答用户问的那件事并给出可用结论”。本次仅将该断言替换为指定原文中的“直接、自然、沉稳地回答原问题本身”；同一用例的真实 goal、完整 continuation、较新更正、逐项覆盖、依据时间范围及非法 goal 拒绝断言全部保留。任何生产原文及另外八个声明不改。
+
+本树没有 node_modules 或 AgentArts dist，单文件运行需先安装/构建闭包。为避免与另一负责人重作业并行，本轮单文件 Runtime 回归为 `not_run`，正常推送给原 CI 验证；没有用其他树 dist 冒充。本轮只执行该 MJS `node --check`、原文 7/7 / 保留 8/8 / 文件 5/5 AST/hash 复核和 `git diff --check`，均通过。
+
+同 run 的 Windows 是 fail-fast `cancelled`，不是产品通过；汇总失败是连带状态。修复后的新 head 必需技术 CI 待实际结果，不回写原失败。正式审核状态以 PR 实时记录为准：已读取 goo122 于 2026-10-21T14:23:54Z 提交的 APPROVED；此审核不是本地静态检查产生的结果，也不豁免新 head 技术 CI。本轮未执行 queue、auto-merge 或合并。
