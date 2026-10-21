@@ -19,3 +19,14 @@
 另在本人五类 voice 消费中发现真实卡 DTO 不公开 `argumentsDigest`；该桥接曾误要求字段而无法聚焦卡。`84ceaeb9d83b2b1f1cb86460e449656f67556d44` 已改成真实 questionId/revision/sourceApprovalId/task 关系，原 approval reader 的摘要核对保留；voice 仍不能签发任何授权。对应 bridge-only Fake 回归 1/1 通过。
 
 除上述项目，在本次固定范围的静态执行与恢复路径中未发现新增执行越权阻断。结论不涵盖最终未审 head、所有 Main 类别、全部复杂恢复组合、真实 PSEC/UI/云工具闭环；最终集成负责人仍需在其实际新构建 head 上完成受影响检查并记录 P2 的实际修复结果。
+
+## 已确认结果与同一操作多阶段导出增量
+
+只读输入为 `a3e96a9b`、`63fd006b` 在 `e3105aa05813b37ec6becc4b0b12b6d1f8916477` 的组合，以及后续修复 `88731263e84a9cbfaa2e06031c501516d563cd34`。本轮没有启动测试、模型、设备或构建，也不将实施者测试回执记作审查者亲自运行。
+
+- 已确认导出重读只放宽 export 分支：原 task/run/tool/version/参数、未过期 deadline、confirmed execution record 与原 proposal checkpoint 仍逐项匹配；工具执行仍要求 pending。原结果摘要、精确投影、consumer 单次消费及当前配置/资源/模型目的地守卫保留，没有从 confirmed 结果补发执行 grant。
+- Developer/Harness 多阶段复用先核对原 owner task、同 action/scope/operation digest、同期限和已确认的 decision intent；每个实际阶段仍绑定自己的原 run、参数与精确 export lease。它不把一次决定解释为业务执行完成，也没有允许未知副作用重放。
+- 曾发现 Harness 的首卡措辞限定原历史范围，但 operation key 未包含完整范围，可能在同一 task 下复用到另一个历史范围。`88731263` 已让 Runtime 逐 segment 传入同一 whole-pass 的 configurationRef/sourceDigest/sourceCount/tailDigest/goalFrameDigest；宿主再将 conversation/cutoff、实际配置、模型目的地和整个 policy 绑定进 policyBinding，并在实际发送前重核。相同范围的多个 segment 可共享一次决定；范围变化不能继承旧 key。该静态问题已在此修复范围内闭合。
+- 同一修复的 `OwnedWorkflowHostBridge.projectReceiptResult` 在 writeOnce 后读取并比对完整原 receipt/result/projection/authorization audit，只有匹配才签名。已有 audit 被替换投影、租约或原 receipt 命中时拒绝，相同 audit 幂等，避免存储旧审计却签新投影。
+
+在上述增量范围未发现剩余静态阻断；此结论不扩大为最终全链路或真实云验收通过。
