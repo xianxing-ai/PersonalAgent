@@ -318,8 +318,11 @@ export class OwnedWorkflowHostBridge {
     const {signature:ignored,...body}=confirmed.proof as Record<string,unknown>;
     const projected=structuredClone(projection),proof={...body,resultDigest:hash(projected),
       originalResultDigest:hash(confirmed.result),projection:'host-authorized-fixed-fields-v1'};
-    this.options.checkpoints.writeOnce(request.taskId,'owned-workflow:projection:'+proposal.operationId,
-      {originalReceiptDigest:hash(confirmed),originalResultDigest:hash(confirmed.result),projectedResultDigest:hash(projected),...authorization});
+    const key='owned-workflow:projection:'+proposal.operationId,
+      audit={originalReceiptDigest:hash(confirmed),originalResultDigest:hash(confirmed.result),projectedResultDigest:hash(projected),...authorization};
+    this.options.checkpoints.writeOnce(request.taskId,key,audit);
+    if(hash(this.options.checkpoints.read(request.taskId,key))!==hash(audit))
+      invalid('Original receipt projection audit cannot change');
     return {...confirmed,result:projected,proof:{...proof,signature:this.sign(proof)}};
   }
   migration(previous:WorkflowRevisionIdentity,next:WorkflowRevisionIdentity,invalidatedNodeIds:readonly string[]):WorkflowRevisionMigration {
