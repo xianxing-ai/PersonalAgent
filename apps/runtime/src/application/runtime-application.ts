@@ -326,13 +326,13 @@ function assistantText(resultSummary: string): string {
 }
 
 /**
- * Wording for a task parked after a confirmed local tool write. "No readable receipt" reads as
- * "the write never happened" — callers then repeat a calendar cancel that already applied. The
- * message therefore names the tool and says the write is done; only the cloud continuation is
- * pending, and `resumeConfirmedTask` is the way back.
+ * Confirmation is about tool execution, not a domain write: read tools and tools returning
+ * business-level refusals can also have confirmed execution records.
  */
 export function withheldExportMessage(toolName?: string): string {
-  return `${toolName ?? 'local tool'} already applied locally; cloud continuation requires a fresh host check`;
+  return toolName
+    ? `${toolName} execution confirmed; result retained locally; cloud continuation requires a fresh host check`
+    : 'Current local tool execution and result require verification; cloud continuation requires a fresh host check';
 }
 
 export interface ThinkingConfig {
@@ -1752,15 +1752,22 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       && isDeepStrictEqual(this.runtime.loadCheckpoint(taskId,'competition-cloud-inflight'),error.receipt)
       && isDeepStrictEqual(this.runtime.loadCheckpoint(taskId,'competition-cloud-received'),error.receipt))return;
     this.releaseEphemeralTask(taskId);
-    const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {continuation?:unknown;pending?:{toolName?:string}}|undefined;
+    const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {step:number;
+      continuation?:{proposalId:string};pending?:import('@personal-agent/coordination').CoordinationToolProposalResult;
+      receipts?:{proposal:import('@personal-agent/coordination').CoordinationToolProposalResult;continuation:unknown;runId?:string}[]}|undefined;
     if(this.runtime.getTask(taskId).state==='running' && (loop?.continuation!==undefined
       || (loop?.pending && this.runtime.readToolExecutions(taskId).some(record=>record.state==='confirmed' && record.executionStarted && record.policyDecision==='allow')))) {
       this.runtime.saveCheckpoint(taskId,'competition-export-withheld',{withheld:true});
-      // Name the confirmed tool: "no readable receipt" reads as "the write never happened",
-      // which made callers repeat an already-applied calendar/mail write. The write is done;
-      // only the cloud continuation is pending, and resumeConfirmedTask is the way back.
-      const confirmed=this.runtime.readToolExecutions(taskId)
-        .filter(record=>record.state==='confirmed'&&record.executionStarted&&record.policyDecision==='allow').at(-1);
+      // Only name the exact pending run or current continuation receipt, never the latest
+      // task-wide execution (a replay may refer to an earlier tool). Ambiguity stays generic.
+      const receipts=loop?.receipts?.filter(item=>item.proposal.proposalId===loop.continuation?.proposalId)??[];
+      const receipt=receipts.length===1&&isDeepStrictEqual(receipts[0]!.continuation,loop?.continuation)?receipts[0]:undefined;
+      const proposal=loop?.pending??receipt?.proposal;
+      const runId=loop?.pending&&Number.isSafeInteger(loop.step)?`competition-tool-${taskId}-${loop.step}`:receipt?.runId;
+      const confirmed=runId&&proposal?this.runtime.readToolExecutions(taskId).find(record=>record.evidenceId===runId
+        &&record.state==='confirmed'&&record.executionStarted&&record.policyDecision==='allow'
+        &&record.toolName===proposal.toolName&&record.toolVersion===proposal.toolVersion
+        &&this.runtime.matchesToolExecutionInput(record,{arguments:proposal.arguments,scopeRef:runId})):undefined;
       this.runtime.transitionTask(taskId,'waiting_reconciliation',{error:{code:'UNAUTHORIZED',
         message:withheldExportMessage(confirmed?.toolName),retryable:false}});
     }
