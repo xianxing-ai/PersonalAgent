@@ -41,7 +41,7 @@ MOD-24 · 搜索与资料获取（PA-010，P0；OpenAlex 学术源 + Fake）。�
 
 | 工具 | 版本 | Scope | 副作用 | 幂等 | 恢复 |
 | --- | --- | --- | --- | --- | --- |
-| `research.search` | 0.1.0-alpha.1 | `research:read` | read | ✓ | ✓ |
+| `research.search` | 0.1.0-alpha.2 | `research:read` | read | ✓ | ✓ |
 
 `register(host, {provider, accountRef?, now?, maxAgeMs?, cacheTtlMs?})`：`provider` 必填（缺失抛 `INVALID_ARGUMENT`，Fake 仅测试用）。入参 `query`（必填）、`limit` 1..20（默认 10）。
 
@@ -55,7 +55,10 @@ manifest：`id=research`、`accountTypes=['openalex']`、`capabilities=['search'
 - 可选 `mailto` 进 polite pool（限速更稳），由装配层注入；
 - 响应映射：`id`→externalId（剥域名前缀）、`display_name`→标题、`publication_date`（YYYY-MM-DD）→当日 UTC 零点、`authorships[].author.display_name`、`primary_location.source.display_name`→venue、`doi`→url、`cited_by_count`；无标题条目跳过；
 - 错误映射：429→`RATE_LIMITED`（附 60s retryAfter）；网络→`EXTERNAL_FAILURE`（可重试）；取消不被吞。
-- 中文查询相关度桥接（#445，2026-10-20 实机证据）：OpenAlex 对 CJK 口语查询会返回与检索词毫无交集的高排名结果（Node.js 24 题命中《BayLing》/YOLOv11 教室论文）。现在题名与查询既无拉丁词桥（产品名/术语按词边界命中）又无足量汉字二元组桥（查询汉字数≥4 需 ≥2 个共享，2-3 字放宽为 ≥1）的命中不返回——诚实未命中优于呈现无关材料；拉丁查询不受影响（不做词面桥接，避免误伤 LLM vs large language models 一类合法英文结果）。
+- 中文查询相关度桥接（#445/#447/#473）：保留 C++/C#/版本号词边界，过滤前移除“论文/研究/方法/优化”等通用指令词，避免泛词误留。中文具体主题可经有限、可审计的双语短语映射命中题名或有界 OpenAlex 摘要，如内存分配→memory allocation、内存池→memory pool、知识图谱→knowledge graph；没有把 C++ 语言名推成分配器主题，也不以引用数/venue 放行。已识别主题须有主题依据，不能只靠 C++ 或重叠的“分配器”后缀放行。未覆盖主题继续使用题名 Latin/连续汉字桥；无桥仍过滤。纯拉丁查询保留提供商原序，`provider_rank` 不代表本机已验证语义相关性。
+- 完整覆盖的中文主题/指令词会用同一词表转换为明确英文主题（例如 `C++ 内存池 优化 论文`→`C++ memory pool optimization`），只发一个真实源请求，`queryRewrite` 明示原文、实际检索词和每项映射。未知中文主题、否定、日期/条件不被静默删掉，保持原查询。即使改写，仍须经过原中文主题相关度桥，不以英文请求本身放行。
+- `OpenAlexProvider.searchWithReceipt()` 在保留旧 `search(): ResearchMaterial[]` 的同时返回 `{materials, retrieval}`。`ResearchProvider` 的该方法可选；旧自定义/Fake 提供商无需改动，不伪造其原始命中数。`ResearchService` 与新注册 `research.search@0.1.0-alpha.2` 增加可选 `retrieval`，缓存 fresh/stale 保留原抓取回执，失败刷新不改写旧计数。旧 `alpha.1` 严格描述器会拒绝新字段，必须重新准备新版目录；不静默升级旧任务版本。npm 包、Connector manifest、Core wire、数据库和依赖不变，接口仍 provisional。
+- `retrieval` 披露本次页面的 `rawCount / invalidCount / filteredCount / returnedCount`（四者满足 raw=invalid+filtered+returned，非全库总数）、`policy`、`outcome`、中文 `message` 与保留材料逐条 `matches`（externalId、匹配字段/策略、词面依据）。`source_empty` 仅指本次源页面空；`filtered_empty` 指原始非空但本机筛空；`invalid_results` 指条目缺必要标识/题名。坏 envelope 报 `EXTERNAL_FAILURE`，不伪装源空。回答必须保留这个区别；筛空可以建议明确英文主题短语重查，不能说“没有这类文献”。匹配不是已读全文或语义结论。
 
 ## 取消、超时与重试
 
@@ -65,7 +68,7 @@ manifest：`id=research`、`accountTypes=['openalex']`、`capabilities=['search'
 
 ## 测试
 
-`node --test test/*.test.mjs`（36 项：35 离线通过 + 1 门控 live 跳过）：材料契约校验、失败/过期区分（1999 材料标 stale 仍返回）、无发布时间回退与标注、缓存三态（fresh/stale+lastError/不可重试照实抛）、无缓存失败照实抛、OpenAlex 规范化（日期归一/作者/venue/坏条目跳过）、连接器能力边界、工具 schema/scope、中文查询相关度桥接（#445：观察复现→空结果、拉丁词桥与词边界、汉字二元组桥、短查询阈值、拉丁查询透传防回归、空结果 envelope 仍入缓存；#447 评审整改：C++/C# 判据词保留、C++11/C#12 版本化词元正反例）。汉字二元组必须在原文中相邻，不能跨题名或查询中的标点、空白、换行或拉丁词拼接；多个连续汉字片段仍可各自成桥。新增边界用例先在旧实现下复现8个失败子用例，修复后全套通过；build/typecheck及diff检查通过。以上为显式假响应的离线验证，未开启真实OpenAlex调用，不提升conditional等级。
+`node --test test/*.test.mjs`：材料契约、失败/过期、取消与缓存、工具 schema/scope、#445 原跑题过滤、#447 C++/C#/版本词元及连续汉字分隔边界。#473 另覆盖跨语言具体主题、泛词/引用数/venue 负例、语言名不冒充主题、摘要缺口/冲突/尺寸边界、源空/筛空/坏条目/坏 envelope、已注册工具的披露及缓存深拷贝/stale 证据保留。默认离线 Fake 响应不证明真实连接；结果及明确公开 GET 样本见 [#473 记录](../../../docs/competition/evidence/RESEARCH_MIXED_QUERY_473_20261021.md)。
 
 真实读回（免 key）：
 
@@ -73,9 +76,17 @@ manifest：`id=research`、`accountTypes=['openalex']`、`capabilities=['search'
 PA_RESEARCH_LIVE=1 node --test packages/connectors/research/test/
 ```
 
+#473 的 7 个固定公开查询小矩阵（每题一个真实 GET、per-page=5，原 JSON 仅留 ignored cache，不使用账号/模型/桌面活库）：
+
+```sh
+node packages/connectors/research/test/live-mixed-query.mjs
+```
+
+输出 `.cache/issue473/live-receipt.json` 和各请求原始 JSON；HTTP/超时/解析失败独立记录，不算 raw0。源结果会变化，历史计数不能当作新查询的结果。
+
 ## 已知限制
 
 - `verification: 'conditional'`：真实读回依赖出站网络，实测样本为一次查询的 5 条结果；
 - 缓存为实例内存级（同 weather），跨进程不共享；TTL 内不感知源数据更新；
-- 材料不含正文摘要（OpenAlex 有 abstract_inverted_index，反排还原属后续增强）；相关度桥接为词面级（拉丁词/汉字二元组），**且存在误保留方向的放水**：查询中「研究/方法/知识」一类通用汉字二元组足以凑满阈值，无关中文题名可能被保留；两方向的残余风险都由语义级 rerank（后续增强）收口，当前承诺只有「桥接全空时如实返回空结果」；日语假名/韩文查询不在桥接覆盖内；
+- 摘要仅为本机有界主题比对输入，不作为全文材料导出；缺失/坏形状/超过 4096 位置或 32768 字符时不能成摘要桥。双语映射覆盖有限主题，不是翻译器或语义 reranker；存在词面误保留/误过滤的残余风险，回执显式披露，不能由 citedBy、venue 或 provider_rank 提升真实性/相关性结论。日语假名/韩文不在桥接覆盖内；
 - 仅学术源；通用 web 搜索待 Bing（需 key）或网络环境变化后的其他提供商。

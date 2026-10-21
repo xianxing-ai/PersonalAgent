@@ -1,6 +1,6 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import type { StoragePort, ProtocolContracts } from '@personal-agent/contracts';
-import type { Freshness, PublishedTimeKind, ResearchMaterial, ResearchProvider, ResearchSearchInput } from './provider.js';
+import type { Freshness, PublishedTimeKind, ResearchMaterial, ResearchProvider, ResearchSearchInput, ResearchRetrievalReceipt } from './provider.js';
 
 type ConnectorItem = ProtocolContracts['connectorItem'];
 
@@ -22,6 +22,8 @@ export interface MaterialResult {
 
 export interface ResearchResult {
   results: MaterialResult[];
+  /** Optional for legacy providers; OpenAlex discloses source-empty versus locally filtered. */
+  retrieval?: ResearchRetrievalReceipt;
   cache: {
     state: 'fresh' | 'fetched' | 'stale';
     fetchedAt: string;
@@ -34,6 +36,7 @@ export interface ResearchResult {
 interface CacheEntry {
   materials: ResearchMaterial[];
   fetchedAtMs: number;
+  retrieval?: ResearchRetrievalReceipt;
 }
 
 const CACHE_LIMIT = 100;
@@ -80,19 +83,27 @@ export class ResearchService {
     const cacheFresh = cached !== undefined && now >= cached.fetchedAtMs && now - cached.fetchedAtMs < this.cacheTtlMs;
 
     let materials: ResearchMaterial[];
+    let retrieval: ResearchRetrievalReceipt | undefined;
     let state: ResearchResult['cache']['state'];
     /** 实际提供本次材料的数据抓取时刻：fresh/stale 来自缓存条目，fetched 是现在。 */
     let servedAtMs: number;
     let lastError: ResearchResult['cache']['lastError'];
     if (cacheFresh && cached !== undefined) {
       materials = cached.materials;
+      retrieval = cached.retrieval;
       state = 'fresh';
       servedAtMs = cached.fetchedAtMs;
     } else {
       try {
         const searchArgs: ResearchSearchInput = {query, limit};
         if (options?.signal !== undefined) searchArgs.signal = options.signal;
-        materials = await this.provider.search(accountRef, searchArgs);
+        if (this.provider.searchWithReceipt !== undefined) {
+          const page = await this.provider.searchWithReceipt(accountRef, searchArgs);
+          materials = page.materials;
+          retrieval = page.retrieval;
+        } else {
+          materials = await this.provider.search(accountRef, searchArgs);
+        }
         if (options?.signal?.aborted) throw new ProtocolError('CANCELLED', 'Research query cancelled');
         state = 'fetched';
         servedAtMs = this.options.now();
@@ -100,12 +111,15 @@ export class ResearchService {
           const oldest = this.cache.keys().next().value;
           if (oldest !== undefined) this.cache.delete(oldest);
         }
-        this.cache.set(cacheKey, {materials: structuredClone(materials), fetchedAtMs: servedAtMs});
+        const entry: CacheEntry = {materials: structuredClone(materials), fetchedAtMs: servedAtMs};
+        if (retrieval !== undefined) entry.retrieval = structuredClone(retrieval);
+        this.cache.set(cacheKey, entry);
       } catch (error) {
         if (options?.signal?.aborted) throw new ProtocolError('CANCELLED', 'Research query cancelled');
         const protocolError = asProtocolError(error);
         if (protocolError !== undefined && protocolError.retryable && cached !== undefined) {
           materials = cached.materials;
+          retrieval = cached.retrieval;
           state = 'stale';
           servedAtMs = cached.fetchedAtMs;
           lastError = {code: protocolError.code, message: protocolError.message, retryable: true};
@@ -138,6 +152,7 @@ export class ResearchService {
         ttlMs: this.cacheTtlMs,
       },
     };
+    if (retrieval !== undefined) result.retrieval = retrieval;
     if (lastError !== undefined) result.cache.lastError = lastError;
     return structuredClone(result);
   }

@@ -12,15 +12,18 @@ export type { MaterialResult, ResearchResult, ResearchServiceOptions } from './s
 export { FakeResearchProvider, defaultResearchFixtures } from './fake-provider.js';
 export { OpenAlexProvider } from './openalex.js';
 export type { FetchLike, FetchResponseLike, OpenAlexOptions, OpenAlexWork } from './openalex.js';
-export type { Freshness, PublishedTimeKind, ResearchMaterial, ResearchProvider, ResearchSearchInput } from './provider.js';
+export type { Freshness, PublishedTimeKind, ResearchMaterial, ResearchProvider, ResearchSearchInput, ResearchSearchPage, ResearchRetrievalReceipt } from './provider.js';
+export type { RelevanceMatch, QueryRewrite } from './relevance.js';
 
 export const RESEARCH_MODULE_VERSION = '0.1.0-alpha.1';
+/** Tool output contract revision; old strict alpha.1 descriptors reject retrieval. */
+export const RESEARCH_SEARCH_VERSION = '0.1.0-alpha.2';
 
 const PROTOCOL_ID = 'https://personalagent.local/protocol/1.0.0';
 
 const searchInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '联网检索学术与公开资料（当前提供商为 OpenAlex 学术库）。每条结果披露来源（DOI/ venue）、发布时间（日期精度，无发布时间时回退抓取时刻并显式标注）与获取时间；发布时间超过 maxAgeMs 的材料标 freshness: stale（仍返回，由调用方取舍）。检索失败照实报错；提供商故障且缓存未过期时返回 stale 结果并附 lastError，不用旧结果冒充新结果。中文查询另做相关度底线筛选：结果题名与检索词既无拉丁词交集、又无足量连续汉字交集时不返回（宁可如实未命中，不呈现无关材料）；拉丁查询不受影响。',
+  description: '联网检索学术与公开资料（当前提供商为 OpenAlex 学术库）。每条结果披露来源（DOI/venue）、发布时间与获取时间；过旧材料仍返回并标 stale。提供商故障的旧缓存附 lastError。完整覆盖的中文主题可审计地改为英文源检索词，queryRewrite 披露原词/实际词/映射；未知条件保持原文。中文查询仍按题名词边界、有意义汉字及有限双语主题/摘要筛选，泛词不成桥。OpenAlex 返回 retrieval 原始/无效/过滤/保留条数及依据：filtered_empty 表示本机筛空，source_empty 表示本次源页面空，均不能声称语料不存在相关文献。matches 是词面线索，不是语义相关性或已读全文证明。纯拉丁查询保留提供商排序。',
   properties: {
     query: {type: 'string', minLength: 1, description: '检索词。'},
     limit: {type: 'integer', minimum: 1, maximum: 20, description: '返回条数上限，默认 10。'},
@@ -34,6 +37,37 @@ const searchOutputSchema: ToolDescriptor['outputSchema'] = {
   required: ['results', 'cache'],
   additionalProperties: false,
   properties: {
+    retrieval: {
+      type: 'object', additionalProperties: false,
+      description: '本次源页面的来源与本机过滤披露。随 cache 原样保留；stale 时不是新一次源请求。',
+      required: ['provider', 'sourceUrl', 'policy', 'rawCount', 'invalidCount', 'filteredCount', 'returnedCount', 'outcome', 'message', 'matches'],
+      properties: {
+        provider: {type: 'string', minLength: 1},
+        sourceUrl: {type: 'string', minLength: 1},
+        queryRewrite: {type: 'object', additionalProperties: false,
+          required: ['strategy', 'originalQuery', 'effectiveQuery', 'mappings'], properties: {
+            strategy: {const: 'bilingual_topics_v1'}, originalQuery: {type: 'string', minLength: 1},
+            effectiveQuery: {type: 'string', minLength: 1},
+            mappings: {type: 'array', minItems: 1, items: {type: 'object', additionalProperties: false,
+              required: ['source', 'target'], properties: {source: {type: 'string', minLength: 1}, target: {type: 'string', minLength: 1}}}},
+          }},
+        policy: {enum: ['provider_rank', 'cjk_topic_v2']},
+        rawCount: {type: 'integer', minimum: 0, maximum: 20},
+        invalidCount: {type: 'integer', minimum: 0, maximum: 20},
+        filteredCount: {type: 'integer', minimum: 0, maximum: 20},
+        returnedCount: {type: 'integer', minimum: 0, maximum: 20},
+        outcome: {enum: ['matched', 'source_empty', 'filtered_empty', 'invalid_results']},
+        message: {type: 'string', minLength: 1},
+        matches: {type: 'array', maxItems: 20, items: {
+          type: 'object', additionalProperties: false, required: ['externalId', 'basis', 'terms'],
+          properties: {
+            externalId: {type: 'string', minLength: 1},
+            basis: {enum: ['provider_rank', 'title_latin', 'title_cjk', 'title_topic', 'abstract_topic']},
+            terms: {type: 'array', items: {type: 'string', minLength: 1}},
+          },
+        }},
+      },
+    },
     results: {
       type: 'array',
       items: {
@@ -94,7 +128,7 @@ export function register(host: ToolHost, options: ResearchModuleOptions): () => 
   const tool: RegisteredTool = {
     descriptor: {
       name: 'research.search',
-      version: RESEARCH_CONNECTOR_VERSION,
+      version: RESEARCH_SEARCH_VERSION,
       inputSchema: searchInputSchema,
       outputSchema: searchOutputSchema,
       sideEffect: 'read',
