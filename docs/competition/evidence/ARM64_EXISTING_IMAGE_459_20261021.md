@@ -113,6 +113,10 @@ OCI config 没有 revision label。与 ARM member 关联的 SLSA 公布 `db93616
 
 Desktop、Windows helper 和其他本机模块不纳入镜像缺失清单，也没有整包塞入镜像。
 
+### 限定历史材料追溯
+
+在旧 `agentarts-owned-image` 工作树的 `.cache/` 和项目已有 `.cache/` 两处限定缓存中，按相关文件名筛出 18 份 build metadata、context manifest、build log 或 release notes；本轮查找未命中目标 `e99a4865…b1c004`、`arm64-context-1-7-1020` 或 `owned-1.7` 标识。进一步读取的两份 build metadata 分属 10 月 8 日和 12 日，其 digest 均不是本目标；六个 context 也属于 10 月 8–12 日的其他构建。该阴性结果仅覆盖这些已有材料，未取得目标镜像的 materials/context 绑定，whole-source revision 仍为 unknown；不据此声称所有位置均不存在相关证据。此追溯没有重新运行 Docker、安装或构建，也没有修改历史材料。
+
 ## 保留事项与恢复入口
 
 1. 本轮 PR 只交付原 smoke 最小修复与这次固定制品本地证据；没有修改生产镜像。#459 后续仍须处理 whole-source 身份 unknown，以及上述实际缺少的云侧入口是否应进入既有镜像工程。未经另行授权，不新 build/tag/push 或以别的 AMD/GHCR 制品替换目标。
