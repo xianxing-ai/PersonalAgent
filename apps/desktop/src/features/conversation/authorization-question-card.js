@@ -27,7 +27,7 @@ export function authorizationQuestionMarkup(question,{now=Date.now(),busy=false,
     <div class="authorization-question-actions"><button type="button" class="authorization-question-primary" data-authorization-decision="allow_once" ${!active||busy?'disabled':''}>仅允许本次</button>
       <button type="button" data-authorization-decision="allow_always" ${!active||busy||question.canAlways!==true?'disabled':''}>永久允许此规则</button>
       <button type="button" data-authorization-decision="deny" ${!active||busy?'disabled':''}>拒绝</button></div>
-    <p class="authorization-question-hint">永久规则仅适用于当前沙箱和列出的范围，可在安全页查看或撤销。此选择不代表操作已经完成。</p>
+    <p class="authorization-question-hint">${question.canAlways===true?'永久规则仅适用于当前沙箱和列出的范围，可在安全页查看或撤销。':'此范围尚不支持可信的永久规则，可选择仅本次或拒绝。'}此选择不代表操作已经完成。</p>
     <p class="authorization-question-status" role="status" aria-live="polite">${escape(feedback||status)}</p></section>`;
 }
 

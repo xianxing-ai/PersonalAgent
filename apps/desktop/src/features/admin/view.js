@@ -441,7 +441,10 @@ export function mountAdmin(root, invoke, escape) {
     } else if (section === 'tasks') {
       content = taskTable(data, escape, evidenceStates, patchRecovery.entries);
     } else if (section === 'authorizations') {
-      content = authorizationListHtml(data.approvals, escape, approvalNow, {canRevoke: true, revocations})
+      const questionMode=Array.isArray(data.authorizationQuestions);
+      content = (questionMode?'<p class="muted">需要决定的操作在原对话提问卡处理；此页只查看状态、配置沙箱和撤销规则。</p>':'')
+        + authorizationListHtml(questionMode?(data.approvals??[]).filter(item=>item.state!=='pending'):data.approvals,
+          escape, approvalNow, {canRevoke: true, revocations})
         + authorizationHistoryHtml(history.items, escape, history, approvalNow, {canRevoke: true, revocations});
     } else if (directSettings[section]) {
       content = settingsPane(data, directSettings[section]);

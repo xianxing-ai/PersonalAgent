@@ -22,7 +22,13 @@
 
 设置中移除 Todo/Feeds/Mail/Workspace 的旧会话允许开关及 Calendar 的重复确认按钮；保留账号/凭据、目录和运行组件配置、原业务入口及撤销。安全页只读/切换可信可用沙箱和查看/撤销规则，不签发执行授权。旧工作区“勾选后应用”交互用例随这个有意行为替换为“配置不能授权、读取真实就绪状态和撤销”检查，保留等待/失败/重试/焦点与取消的原边界。
 
-正式 connector consumer 正在对接 #475 的 prepare/currentRequirement/authorizeExport；它们完成前，不能仅靠引导、UI 或自报授权放行。最终由 #475 整合为一个完整 PR，卡真实消费和 Main/Runtime/Renderer 联合验证完成前不标记完整交付。当前没有像素一致的参考证据，仅按已确认的提问交互自实现；真实受影响渲染尚未执行。Browser plugin not available，后续复用原有 Electron/Playwright 隔离 Synthetic 流程。
+正式 connector consumer 已接 #475 的 prepare/currentRequirement/authorizeExport：Todo、Feeds 和原 Mail/Calendar 对话工具的目录只公布可提出精确挑战的已配置能力，preflight 登记原 task/proposal/run/tool/version/args/期限；执行和最终投影必须有对应真实回执，不能把目录可见或准备步骤当许可。Feeds 的分页提供者在原异步执行上下文逐次检查。原凭据/游标脱敏、结果大小、原模型出口和 Policy 门保留；最终投影 hash 也参与 final gate。
+
+永久规则资源 generation 仅用 #475 原 Runtime `trusted_host_state` 的 host-only get-or-create/CAS 口，不新建授权存储或持久 allowed。正常 close 不轮转；显式撤销/配置变更轮转，旧任务和旧规则无法借相同 task/run 重生。缺少这个实际端口不会假装永久有效。
+
+手动 Calendar 原 host-tool 通过 `prepareAuthorization` 登记固定单事件读取；工具 wrapper 的异步上下文供 Main 的实际 fetch 包装在凭据等待之后同步再验。Mail 配置保存不再授予读权限；其 `batchAuthorization` 与原 mail-triage 使用原 sessionId、单次 nonce、固定账户/INBOX/查询 digest、真实每页 limit 和原期限。首次卡允许后，后续每页仅由 #475 正式 `deriveMailBatch` 结合原 session membership 和首条已确认回执派生精确授权；分类只读断言已消费回执。无总页/条目预算时明确总量未知，不冒充每页 100 为总量；结束、取消、配置/资源变更或到期失效，不成为后台无限许可。
+
+最终由 #475 整合为一个完整 PR，Main/Runtime/Renderer 联合卡验证完成前不标记完整交付。当前没有像素一致的参考证据，仅按已确认的提问交互自实现；真实受影响渲染尚未执行。Browser plugin not available，后续复用原有 Electron/Playwright 隔离 Synthetic 流程。
 
 ## 验证记录
 
@@ -35,6 +41,10 @@
 | 临时上下文超预算/async拒绝、凭据等待期间 reader/计量漂移最终发送拒绝 | 本树 dist 定向回归通过，摘要/稳定 binding 不保存时钟正文 |
 | 原 context binding/conversation/delegation/teacher/todo 回归 | 连同上述共 8 份文件 70/70 通过；未运行全仓 check/真实服务 |
 | 单卡/规则设置及旧前置控件迁移 | 18/18 Synthetic 控件检查通过；实际 Electron、Main+Runtime 统一卡尚未验 |
+| Todo/Feeds/对话 Mail 精确 consumer | 4 个 Synthetic 回执用例均已取得通过：初次 2/4，2 个夹具修正后仅失败例复跑 2/2；不是实际统一卡或持久规则验收 |
+| Calendar 原 Runtime/ToolGateway → 卡 consumer → 凭据等待 → final fetch guard | 2/2 Synthetic 用例通过；正常读取可达，撤回卡许可后零 fetch；不访问真实日历 |
+| Mail 配置/单批次/派生/完成撤销 helper | 1/1 Synthetic 回执检查通过；未开网络、未授权真实邮箱 |
+| mail-triage readiness/逐页消费的新可选 Runtime port | 源码与定向用例完成，等待 #475 整合后新 Runtime 构建；旧 dist 不充作这项证据 |
 | 统一授权卡消费及本次/永久 | 待 #475 正式端口与实际组合验证；未伪造卡回执 |
 | 真实盘古/AgentArts 采用时间与引导、真实提醒/日历 | 未授权执行，`not_run`；Synthetic 发送载荷验证不提升平台或模型资格 |
 

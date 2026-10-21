@@ -370,7 +370,9 @@ else {
     for(const task of current.tasks) {
       const article=tasksNode.querySelector(`[data-turn="${CSS.escape(task.taskId)}"]`);
       if(!article)continue;
-      const markup=approvalCards(task,current.approvals,now);
+      const questionManaged=current.authorizationQuestions?.some(question=>question.taskId===task.taskId
+        &&question.conversationId===current.conversationState?.activeId);
+      const markup=questionManaged?'':approvalCards(task,current.approvals,now);
       if(article.approvalMarkup===markup)continue;
       for(const card of article.querySelectorAll('.approval-card'))card.remove();
       if(markup)article.insertAdjacentHTML('beforeend',markup);

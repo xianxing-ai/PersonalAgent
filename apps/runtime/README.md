@@ -455,3 +455,13 @@ approval recovery recheck the current native source/responsibility authorization
 only trigger receipt observation. Predispatch cancellation uses the exact original root activity and
 cancellation facts; it creates no delivery receipt. All these final callers are source integration;
 the combined pinned-runtime checks and real platform/device acceptance remain separate and pending.
+
+The optional trusted `QQMailTriageHostOptions.batchAuthorization` composition separates mailbox
+configuration readiness from page execution. It receives the original host-generated mail session,
+its nonce, account/folder/query digest, actual page limit and original expiry. A first-page question
+can cover that fixed manual batch; every following page retains its own Runtime tool run and exact
+Policy grant, derived by the question host from the first confirmed receipt and original session
+membership. Confirmed local classification uses a read-only receipt assertion, never a new execution
+grant. Finishing, cancellation, configuration/revoke generation changes or the original expiry stop
+the batch. Total mailbox size remains unknown; the page limit is not described as a total budget.
+The port is host-only and optional for legacy compositions, with no Core wire or Schema change.

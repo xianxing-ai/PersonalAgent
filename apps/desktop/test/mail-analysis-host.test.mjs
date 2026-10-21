@@ -16,7 +16,9 @@ test('mail cloud permission is separate from local read, revoked immediately and
   const options={userData:mkdtempSync(new URL('config-',cache)),safeStorage};
   const config=createMailConfig(options);
   await config.configure({user:'synthetic@qq.com',authCode:'syntheticonly',readConsent:true});
+  assert.equal(config.snapshot().sessionAllowed,false,'saving credentials never grants even a legacy read session');
   config.markBound(config.current().revision);
+  config.enableSession({readConsent:true}); // Explicit legacy host-only compatibility, not the production question path.
   assert.equal(config.cloudLease(),undefined);
   assert.throws(()=>config.enableCloudAnalysis({cloudAnalysisConsent:false}));
   config.enableCloudAnalysis({cloudAnalysisConsent:true});const first=config.cloudLease();assert.ok(first);
