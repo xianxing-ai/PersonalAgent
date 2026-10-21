@@ -13,9 +13,11 @@ function fixture(saved={}) {
   const original={...scope,proposalId:'proposal-1',toolName:'todo.create',toolVersion:'1',argumentsDigest:H,scopes:['todo:write'],
     outputSchema:{type:'object',required:['id'],additionalProperties:true,properties:{id:{type:'string'}}}};
   const application={runtime:{bindTrustedHostState:()=>store,getTask:()=>task,getApproval:()=>({expiresAt:scope.deadline}),
+    saveCheckpointOnce(){},
     invalidatePendingApproval(){task.state='failed';},expirePendingApprovals(){}},
     readAuthorizationQuestionInvocation:()=>['running','waiting_approval'].includes(task.state)?original:undefined,
     bindAuthorizationQuestion(){},
+    readAuthorizationQuestionDestination:()=>H,
     readAuthorizationQuestionBinding:()=>['running','waiting_approval'].includes(task.state)?{conversationId:'conversation-1',digest:'original-owner'}:undefined};
   const options={createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>application,namespace:'test',
     resolveConversation:()=> 'conversation-1',available:()=>true,onUpdate:()=>changes++,

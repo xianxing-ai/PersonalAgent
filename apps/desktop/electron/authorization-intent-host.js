@@ -29,6 +29,8 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
       ||entry.signal.aborted||scope.signal.aborted||now()>=Date.parse(entry.deadline)||!entry.current())denied();
     const saved=application.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);
     if(!saved||saved.toolName!==AUTHORIZATION_INTENT_TOOL||digest(saved.arguments)!==digest(entry.arguments))denied();
+    if(entry.operation)application.runtime.saveCheckpointOnce(scope.taskId,'desktop-authorization-operation',
+      {ownerTaskId:entry.operation.taskId,operationDigest:entry.operation.digest,deadline:entry.deadline});
     return entry;
   }
   return {
@@ -44,16 +46,21 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
       question.prepare(scope,{requirements:[{requirementId:'intent',kind:'tool',scopes:[entry.action],
         bindingDigest:digest({taskId:scope.taskId,runId:scope.runId,argumentsDigest:scope.argumentsDigest,scopeDigest:entry.arguments.scopeDigest}),
         ruleBindingDigest:digest({action:entry.action,scopeDigest:entry.arguments.scopeDigest}),summary:entry.summary}],assertCurrent:()=>entry.current()});
+      if(entry.parent)question.deriveHostIntent(entry.parent,scope,{operationDigest:entry.operation.digest,assertCurrent:()=>entry.current()});
     },
-    async request({action,payload,scope,summary,deadline=new Date(now()+180000).toISOString(),signal=new AbortController().signal,isCurrent}){
+    async request({action,payload,scope,summary,deadline=new Date(now()+180000).toISOString(),signal=new AbortController().signal,isCurrent,operation}){
       if(closed||!AUTHORIZATION_INTENT_ACTIONS.includes(action)||typeof isCurrent!=='function'||!isCurrent()
         ||signal.aborted||!Number.isFinite(Date.parse(deadline))||now()>=Date.parse(deadline)||typeof summary!=='string'||summary.length>512)return false;
       const application=getApplication();if(!application?.submitHostToolTask)return false;
       const payloadDigest=digest(payload),scopeDigest=digest(scope),args={action,payloadDigest,scopeDigest};
+      if(operation&&(!['developer.export','harness.export'].includes(action)||typeof operation.taskId!=='string'
+        ||!/^[a-f0-9]{64}$/u.test(operation.digest)))return false;
+      const operationKey=operation?'authorization-export-decision:'+digest([action,scopeDigest,operation.digest]):undefined;
+      const parent=operationKey?application.runtime.loadCheckpoint(operation.taskId,operationKey):undefined;
       const commandId='desktop-authorization-'+randomUUID();
       const current=()=>getApplication()===application&&!signal.aborted&&now()<Date.parse(deadline)
         &&isCurrent()&&digest(payload)===payloadDigest&&digest(scope)===scopeDigest;
-      const entry={application,action,arguments:args,summary,deadline,signal,current,executed:false,taskId:undefined};
+      const entry={application,action,arguments:args,summary,deadline,signal,current,executed:false,taskId:undefined,operation,parent};
       pending.set(commandId,entry);
       try{
         openConversation();
@@ -63,7 +70,10 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
         signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
         try{await application.waitForHostToolTask(entry.taskId);}finally{signal.removeEventListener('abort',abort);}
         const result=application.readHostToolTask(entry.taskId);
-        return current()&&entry.executed&&result.task.state==='succeeded'&&result.confirmed?.result?.decisionRecorded===true;
+        const allowed=current()&&entry.executed&&result.task.state==='succeeded'&&result.confirmed?.result?.decisionRecorded===true;
+        if(allowed&&operationKey)application.runtime.saveCheckpoint(operation.taskId,operationKey,
+          {taskId:entry.taskId,runId:'host-tool-'+entry.taskId,deadline,signal:undefined});
+        return allowed;
       }catch{return false;}finally{pending.delete(commandId);}
     },
     close(){closed=true;pending.clear();},

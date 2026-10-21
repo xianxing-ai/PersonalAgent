@@ -1331,6 +1331,26 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Only the existing fixed mailbox session may derive a next-page decision. */
+  assertHostIntentQuestionDerivative(parentTaskId:string,taskId:string,operationDigest:string):void {
+    const parent=this.runtime.loadCheckpoint(parentTaskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+    const child=this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+    const before=this.runtime.loadCheckpoint(parentTaskId,'desktop-authorization-operation') as
+      {ownerTaskId:string;operationDigest:string;deadline:string}|undefined;
+    const after=this.runtime.loadCheckpoint(taskId,'desktop-authorization-operation') as typeof before;
+    if(!parent||!child||parent.namespace!==this.hostUserNamespace||child.namespace!==this.hostUserNamespace
+      ||parent.toolName!=='desktop.authorization.intent'||child.toolName!==parent.toolName||!this.hostOnlyToolNames.has(child.toolName)
+      ||parent.toolVersion!==child.toolVersion||!before||!after||!isDeepStrictEqual(before,after)
+      ||before.operationDigest!==operationDigest||!['developer.export','harness.export'].includes(String(parent.arguments.action))
+      ||parent.arguments.action!==child.arguments.action||parent.arguments.scopeDigest!==child.arguments.scopeDigest
+      ||parent.deadline!==before.deadline||child.deadline!==before.deadline||Date.parse(before.deadline)<=this.now().getTime())
+      throw new ProtocolError('UNAUTHORIZED','Original bounded export operation changed');
+    const owner=this.runtime.getTask(before.ownerTaskId),readback=this.readHostToolTask(parentTaskId);
+    if(!['running','waiting_approval'].includes(owner.state)||owner.cancelRequested
+      ||this.runtime.loadCheckpoint(owner.taskId,'application-deadline')!==before.deadline
+      ||readback.task.state!=='succeeded'||(readback.confirmed?.result as {decisionRecorded?:boolean}|undefined)?.decisionRecorded!==true)
+      throw new ProtocolError('UNAUTHORIZED','Original export decision or owner is no longer current');
+  }
+
   assertMailReadQuestionPage(parentTaskId:string,taskId:string,batchId:string):void {
     this.mailReadSessions.assertPage(batchId,taskId);
     if(this.runtime.loadCheckpoint(parentTaskId,MAIL_READ_SESSION_CHECKPOINT)!==batchId

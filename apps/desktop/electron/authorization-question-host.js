@@ -115,13 +115,14 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     const derived=batchDerivations.get(identity);
     let receipt;
     if(derived){
-      getApplication().assertMailReadQuestionPage(derived.parent.request.taskId,source.taskId,derived.batchId);
+      if(derived.kind==='intent')getApplication().assertHostIntentQuestionDerivative(derived.parent.request.taskId,source.taskId,derived.operationDigest);
+      else getApplication().assertMailReadQuestionPage(derived.parent.request.taskId,source.taskId,derived.batchId);
       const parentConsumer=derived.parent.request.runId+':'+derived.requirementId;
       receipt=api.deriveConsumedResult(derived.parent.receipt,derived.parent.request,derived.requirementId,parentConsumer,request,
         ()=>current()&&derived.assertCurrent());
       getApplication().runtime.saveCheckpoint(source.taskId,'authorization-question-derived:'+source.runId,
         {questionId:receipt.questionId,parentQuestionId:derived.parent.receipt.questionId,requirementId:derived.requirementId,
-          batchId:derived.batchId,argumentsDigest:source.argumentsDigest,deadline:source.deadline});
+          ...(derived.kind==='intent'?{operationDigest:derived.operationDigest}:{batchId:derived.batchId}),argumentsDigest:source.argumentsDigest,deadline:source.deadline});
       batchDerivations.delete(identity);
     }else receipt=await api.request(request,current,expiry);
     if(receipt.decision==='deny')return 'deny';
@@ -207,9 +208,17 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     getApplication().assertMailReadQuestionPage(parent.request.taskId,source.taskId,batchId);
     batchDerivations.set(key(source),{parent,batchId,requirementId,assertCurrent});return true;
   }
+  function deriveHostIntent(parentScope,nextScope,{operationDigest,assertCurrent}){
+    if(typeof assertCurrent!=='function'||!assertCurrent())denied();
+    const parent=operations.get(key(parentScope));if(!parent)return false; // A restarted host asks a fresh card; it never revives old in-memory authority.
+    assertConsumedResult(parentScope,'intent');
+    const source=original(nextScope);
+    getApplication().assertHostIntentQuestionDerivative(parent.request.taskId,source.taskId,operationDigest);
+    batchDerivations.set(key(source),{kind:'intent',parent,operationDigest,requirementId:'intent',assertCurrent});return true;
+  }
   return {
     requiresAuthorization:scope=>preparations.has(key(scope)),
-    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,deriveMailBatch,readExecutionPolicy,
+    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,deriveMailBatch,deriveHostIntent,readExecutionPolicy,
     readResourceGeneration,rotateResourceGeneration,
     request:(request,current)=>service().request(request,current),
     consume:(...args)=>service().consume(...args),assertRequirement:(...args)=>service().assertRequirement(...args),

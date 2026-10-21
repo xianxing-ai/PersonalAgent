@@ -241,7 +241,7 @@ let authorizationQuestionHost;
 let nativeExecutionHost,localAuthorizationOnly=false;
 let authorizationIntentHost;
 const authorizationQuestionPort=Object.freeze(Object.fromEntries([
-  'prepare','prepareExport','currentRequirement','authorizeExport','authorizeConsumedExport','assertConsumedResult','deriveMailBatch','readResourceGeneration','rotateResourceGeneration',
+  'prepare','prepareExport','currentRequirement','authorizeExport','authorizeConsumedExport','assertConsumedResult','deriveMailBatch','deriveHostIntent','readResourceGeneration','rotateResourceGeneration',
 ].map(name=>[name,(...args)=>{
   if(!authorizationQuestionHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前对话授权卡尚未装配');
   return authorizationQuestionHost[name](...args);
@@ -2729,10 +2729,11 @@ async function confirmDeveloperExport(request) {
       if(!current()||Buffer.byteLength(JSON.stringify(request.payload),'utf8')>512*1024)return false;
       const harness=request.kind==='harness_context_summary';
       return confirmApplicationAuthorization(harness?'harness.export':'developer.export',request.payload,{
-        scope:{namespace:desktopHost.userNamespace,purpose:request.kind,destination,
+        operation:{taskId,digest:hash([taskId,proposal,request.policyBinding??request.payload?.destination,request.deadline])},
+        scope:{namespace:desktopHost.userNamespace,purpose:harness?'bounded-history-summary':'bounded-developer-workflow',destination,
           configuration:request.policyBinding??hash(request.payload?.destination)},deadline:request.deadline,signal:request.signal,
-        summary:harness?'向本次选定摘要模型发送当前已核对范围的对话历史；仅生成历史摘要，保留原来源与凭据过滤（最多 512 KiB）'
-          :'向当前固定开发模型发送这次已核对的开发消息或工作流结果；源码和诊断仍受原允许路径与凭据过滤，最多 512 KiB',
+        summary:harness?'本次历史摘要操作：仅已核对历史范围和选定模型，沿原摘要预算及截止时间；各次发送最多512KiB，保留来源和凭据过滤'
+          :'本次开发操作的模型消息、工具投影与最终总结共用本卡；仅原仓库/工作区和固定模型，沿原步骤/token预算及期限，每次最多512KiB',
         isCurrent:current});
     }
     return false;
@@ -2740,10 +2741,10 @@ async function confirmDeveloperExport(request) {
 }
 
 /** Existing callback compatibility: one card, a separately audited decision, no business success claim. */
-async function confirmApplicationAuthorization(action,payload,{scope={},summary,deadline,signal,isCurrent=()=>true}={}) {
+async function confirmApplicationAuthorization(action,payload,{scope={},summary,deadline,signal,operation,isCurrent=()=>true}={}) {
   const owner=admin??panel??workspace,application=runtimeApplication;
   if(!owner||owner.isDestroyed()||!authorizationIntentHost)return false;
-  const allowed=await authorizationIntentHost.request({action,payload,scope,summary,deadline,signal,
+  const allowed=await authorizationIntentHost.request({action,payload,scope,summary,deadline,signal,operation,
     isCurrent:()=>runtimeApplication===application&&!owner.isDestroyed()&&isCurrent()});
   if(!allowed){runtimeError='本次操作未获得有效授权，业务操作未执行；请查看当前对话卡或重新发起。';publish();}
   return allowed;
