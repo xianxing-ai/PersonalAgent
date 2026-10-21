@@ -3375,12 +3375,17 @@ async function action(event, name, payload) {
     const conversationId = conversations.activeConversationId(sender===workspace?'workspace':'panel');
     if(payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新操作');
     const previous = conversations.preference(conversationId,{depth:thinking.depth,fast:thinking.fast});
-    const value = conversations.setPreference(conversationId,{...previous,depth:payload?.depth,fast:payload?.fast});
+    const preference={...previous,depth:payload?.depth,fast:payload?.fast};
+    if(preference.modelSelection==='default')readDesktopExecutionModel(agentArtsModels,preference);
+    const value = conversations.setPreference(conversationId,preference);
     publish();return value;
   }
   if (name === 'conversation.model') {
     if (sender !== panel && sender !== workspace) throw Error('请从当前对话选择主思考模型');
-    if (!competitionMode || !payload || Object.keys(payload).some(key=>!['modelId','executionModel','conversationId'].includes(key))) throw Error('模型选择无效');
+    if (!competitionMode || !payload || Object.keys(payload).some(key=>!['modelId','executionModel','conversationId','modelSelection','depth','fast','catalogRevision'].includes(key))) throw Error('模型选择无效');
+    if(payload.modelSelection!==undefined&&(payload.modelSelection!=='default'||payload.modelId!==''||payload.executionModel!==undefined||!Number.isInteger(payload.depth)||payload.depth<0||payload.depth>5||typeof payload.fast!=='boolean'))throw Error('默认组合选择无效');
+    if(payload.modelSelection==='default'&&payload.catalogRevision!==agentArtsModels.snapshot().catalog?.revision)throw Error('模型目录已改变，请重新选择');
+    if(payload.modelSelection===undefined&&['depth','fast','catalogRevision'].some(key=>Object.hasOwn(payload,key)))throw Error('模型选择无效');
     const executionModel=payload.executionModel?agentArtsModels.resolveExecutionModel(payload.executionModel):payload.modelId?agentArtsModels.resolveExecutionModel({modelId:payload.modelId}):undefined;
     const id = executionModel?.modelId ?? payload.modelId;
     if (typeof id !== 'string' || (id && !executionModel && !agentArtsModels?.snapshot().catalog?.models.some(item=>item.id===id && item.available!==false))) {
@@ -3388,7 +3393,9 @@ async function action(event, name, payload) {
     }
     const conversationId = conversations.activeConversationId(sender===workspace?'workspace':'panel');
     if(payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新操作');
-    const value = conversations.setPreference(conversationId,{...conversations.preference(conversationId),modelId:id,executionModel});
+    const preference={...conversations.preference(conversationId),modelId:id,executionModel,modelSelection:payload.modelSelection,...(payload.modelSelection==='default'?{depth:payload.depth,fast:payload.fast}:{})};
+    if(payload.modelSelection==='default')readDesktopExecutionModel(agentArtsModels,preference);
+    const value = conversations.setPreference(conversationId,preference);
     publish();return value;
   }
   if (typeof name==='string' && name.startsWith('skill.') && name!=='skill.run') {

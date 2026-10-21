@@ -5,6 +5,7 @@ const catalog={version:'1.0',revision,defaultModelId:'deepseek-v4.1-flash',model
   {id:'deepseek-v4.1-flash',displayName:'Synthetic A',type:'text',availability:'unverified',requestProfile:'standard',reasoningEfforts:['low','medium','high']},
   {id:'qwen3.8-max',displayName:'Synthetic B',type:'text',availability:'unverified',requestProfile:'standard',reasoningEfforts:['max']},
   {id:'glm-5.3',displayName:'Synthetic Default',type:'text',availability:'unverified',requestProfile:'standard',reasoningEfforts:[]},
+  {id:'synthetic-catalog-only',displayName:'Catalog-only model',type:'text',availability:'unverified',requestProfile:'standard',reasoningEfforts:[]},
 ]};
 globalThis.reasoningSliderSmoke={queries:[],unexpectedRequests:0};
 globalThis.fetch=async(url,init)=>{

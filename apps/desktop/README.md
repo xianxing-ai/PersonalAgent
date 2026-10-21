@@ -9,15 +9,23 @@
 
 管理后台和大工作区统一原生最小化、最大化/还原及关闭操作；桌面偏好入口移至常规设置。窄窗口导航、短窗口空间和表单控件尺寸一并修正。实现边界、原生缩放矩阵和测试命令见[本次验证记录](docs/FRONTEND_LAYOUT_20261017.md)；`npm run test:frontend-layout --workspace=@personal-agent/desktop` 使用独立 Fake 配置检查实际窗口。
 
-## 2026-10-18 思考滑块与小工作区单主对话（provisional）
+## 2026-10-21 模型与思考入口（provisional）
 
-小工作区和大工作区的思考设置仅使用滑块：主思考模型显示实际名称，思考深度按当前受信目录的 `reasoningEfforts` 映射中文标签。首档是「供应商默认」，保存时省略 `reasoningEffort`；不支持调整的模型禁用强度滑块并说明原因。后台设置页保持原有控件。
+小面板与大工作区统一使用「模型名＋思考档位⌄」入口。菜单列出受信目录中的全部可用文本模型并支持搜索，不受首页精选列表限制；不提供不存在、不可用或非文本模型。后台设置页保持原有控件。
 
-原 0–5 值另列为「执行步骤预算」，Fast 继续独立保存，不映射成原生强度。模型与强度通过原 `conversation.model` / `executionModel` 串行保存；连续拖动合并尚未发送的中间选择。旧响应不能覆盖新选择，保存失败恢复已确认状态，提交任务前等待模型设置保存成功。切换会话或目录会废弃旧界面请求。
+菜单首先显示模型名称、档位及唯一的粗滑轨，点击名称旁的小箭头再展开可搜索模型列表。移除单独的模型滑块和「执行步骤预算」控件。「默认模型组合」的六个档位会实际选择已配置模型：最低／轻度使用默认子模型，平衡及以上使用默认主模型；目标原生强度依次为 minimal、low、medium、high、xhigh、max，仅取当前模型公布的最接近枚举，同距离选较低值。目录未公布的参数不发送；少数档位可能使用相同原生枚举，但仍有不同执行深度。不按名称猜测新模型或自动推断性能排名。
+
+默认模式保留设置中的主／子模型配置，每次执行从当前目录解析，改变默认配置后不会继续固定旧模型 ID。手动选择支持原生强度的模型后，滑块按该模型公布的枚举调整 `reasoningEffort`，并同步内部执行深度（none/minimal→0、low→1、medium→2、high→4、xhigh/max→5）；「默认」省略强度覆盖并保留执行深度。未公布原生强度的模型使用供应商默认，滑块仅调整执行深度，界面明确显示这一边界。
+
+Fast 使用顶部闪电按钮，保持独立开关。模型、原生强度和执行深度复用现有 `conversation.model`、`thinking.update`，由一个队列串行保存。Desktop 私有 `conversation.model` 兼容增加默认预设载荷 `{modelId:'',modelSelection:'default',depth,fast,catalogRevision}`，宿主校验来源、会话、目录和档位后原子保存；手动选择不接受这些额外字段。拖动期间预览，释放后保存；中间提交合并，旧响应不能覆盖新选择。失败展示已确认的实际状态，部分保存不伪称全部成功；提交任务前等待设置保存成功。切换会话或目录会废弃旧界面请求。不改变 Core Schema、Runtime 编排、模型网关或数据库。
+
+Conversations v4 兼容保留旧记录，增加可选 `modelSelection:'default'` 偏好；旧偏好不自动改写。首次启用前复制并核对同目录的 `.before-default-thinking-<digest>.bak`，保留原历史和草稿。旧客户端不认识此字段，回退须保留当前记录并移除该可选偏好或做迁移；启用前备份不包含之后新增的消息。
 
 小工作区保留原有当前主对话，隐藏会话管理，主进程拒绝该窗口的新建、切换、归档、恢复；已有历史和草稿保留，不删记录、不迁移数据库。大工作区仍可管理独立对话。子智能体派发、完成提示和独立页面属于另一个工作包。
 
-验证：`node --test test/native-reasoning.test.mjs` 覆盖合法映射、默认、连续操作、失败与会话隔离；`node test/native-reasoning-slider-smoke.cjs` 使用实际 Competition main/Preload/两个 Renderer、隔离 userData 与显式合成传输，捕获 `low` 和省略强度的任务请求。可用 `PA_SLIDER_TEST_ELECTRON` 指定已有 Electron。未调用真实模型、麦克风或外部账号；这些证据不提升平台或供应商验证等级。
+验证入口：`node --test test/default-thinking-selection.test.mjs` 经过实际控制器→main 偏好分支→Runtime→显式合成 AgentArts 传输，核对六档默认模型与强度、手动原生强度及供应商默认省略，共八个请求；也验证目录/会话失效、持久化、回退备份与默认配置变更。`node test/model-thinking-renderer-smoke.cjs` 使用实际面板/工作区源码、显式合成桌面桥和独立临时浏览器，验证粗滑轨、小箭头选模型、搜索、原生枚举、默认组合、保存失败/重试、Escape 焦点及 251px 深浅主题。可用 `PA_PICKER_BROWSER` 选择已有 Playwright 浏览器渠道，`PA_PICKER_TEST_OUTPUT` 指定仓库外截图/结果目录。
+
+完整产品脚本 `node test/native-reasoning-slider-smoke.cjs` 加载实际 Electron main、Preload、面板、工作区及 Runtime，使用独立 userData 和显式合成传输；核对手动模型及默认轻度档的委派执行与主对话汇总请求，全局默认配置不得被改写。它还检查目录扩展模型、工作区独立选择、单滑块、窄屏及页面/控制台错误。可用 `PA_SLIDER_TEST_ELECTRON` 指定已有 Electron。本独立分支在固定 `bff06880` 新构建后，72 项定向测试、Desktop typecheck、架构 3/3 及实际 Electron/Renderer 两脚本通过；原移交树的 74 项保留为历史结果。首次安装 DNS 和单项 TEMP rename 的外层限制及必要重试分别登记于[接手与验证记录](../../docs/competition/evidence/MODEL_THINKING_PICKER_REVIEW_20261021.md)。请求回执证明接线，不代表供应商真实推理质量或平台验收；没有真实模型、麦克风或外部账号调用。
 
 2026-10-20 交互优化工作包：统一侧栏、表单、按钮的悬停／按压／焦点反馈，设置切页采用可取消的短淡入；普通快照保留常规和外观页的交互节点。系统及应用降低动效时取消过渡。交付与证据范围见 [交互优化记录](docs/INTERACTION_POLISH_20261020.md)。已通过 PR #440 合入 main。
 

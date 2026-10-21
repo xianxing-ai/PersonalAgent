@@ -405,6 +405,10 @@ for (const startupDelayMs of [0, 11_000]) test(`WindowsJobProcessHost terminates
   } finally {
     controller.abort();
     await observation.settled;
+    // The earlier startup diagnostic may precede the host's settled outcome.
+    // Report only fixed categories, never raw stderr, messages, paths or PIDs.
+    t.diagnostic(JSON.stringify({jobHostSettled:observation.outcome?.code==='CANCELLED'?'cancelled':
+      observation.outcome?.code==='TIMEOUT'?'timeout':Number.isInteger(observation.outcome?.exitCode)?'exited':'other'}));
   }
 });
 
