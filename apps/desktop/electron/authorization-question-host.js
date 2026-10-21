@@ -136,7 +136,14 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     return {source,entry};
   }
   function currentRequirement(scope,requirementId) {
-    const {source,entry}=operation(scope),consumerId=source.runId+':'+requirementId;
+    const existing=operations.get(key(scope)),consumerId=scope.runId+':'+requirementId;
+    // A saved continuation has already consumed this exact export. Its final send
+    // guard reads the original confirmed result; it must not reopen tool execution.
+    if(existing?.consumers.has(requirementId)&&existing.request.requirements.some(item=>item.requirementId===requirementId&&item.kind==='export')
+      &&scope.deadline===existing.request.deadline&&!scope.signal?.aborted){
+      service().assertConsumedResult(existing.receipt,existing.request,requirementId,consumerId);return true;
+    }
+    const {source,entry}=operation(scope);
     const task=getApplication().runtime.getTask(source.taskId);
     if(task.state!=='running'||task.cancelRequested)denied();
     if(!entry.consumers.has(requirementId)){
@@ -167,11 +174,15 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     const resultDigest=digest(result);
     const prior=entry.resultDigests??new Map();
     if(prior.has(requirementId)&&prior.get(requirementId)!==resultDigest)denied();prior.set(requirementId,resultDigest);entry.resultDigests=prior;
-    getApplication().runtime.saveCheckpointOnce(source.taskId,'authorization-question-export:'+source.runId+':'+requirementId,
-      {questionId:entry.receipt.questionId,revision:entry.receipt.revision,leaseRef:entry.receipt.receiptRef,resultDigest,
-        schemaDigest:digest(schema),policyVersion:'desktop-declared-fields-v1',stage:requirementId,deadline:source.deadline});
+    saveExportLease(source,entry,schema,resultDigest,requirementId);
     // A precise result hash supplements the bounded preflight rule. It grants no tool use.
     return {taskId:source.taskId,runId:source.runId,argumentsDigest:source.argumentsDigest,resultDigest,deadline:source.deadline};
+  }
+  function saveExportLease(scope,entry,schema,resultDigest,requirementId){
+    const runtime=getApplication().runtime,name='authorization-question-export:'+scope.runId+':'+requirementId;
+    const lease={questionId:entry.receipt.questionId,revision:entry.receipt.revision,leaseRef:entry.receipt.receiptRef,resultDigest,
+      schemaDigest:digest(schema),policyVersion:'desktop-declared-fields-v1',stage:requirementId,deadline:scope.deadline};
+    if(runtime.saveCheckpointOnce(scope.taskId,name,lease)===false&&!same(runtime.loadCheckpoint(scope.taskId,name),lease))denied();
   }
   function readExecutionPolicy(scope){
     const {entry}=operation(scope);return service().executionProfile(entry.receipt,entry.request);
@@ -193,11 +204,10 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     }
     service().assertConsumedResult(entry.receipt,entry.request,requirementId,consumerId);
     const resultDigest=digest(result),previous=entry.confirmedResultDigests??new Map();
+    if(entry.resultDigests?.has(requirementId)&&entry.resultDigests.get(requirementId)!==resultDigest)denied();
     if(previous.has(requirementId)&&previous.get(requirementId)!==resultDigest)denied();previous.set(requirementId,resultDigest);
     entry.confirmedResultDigests=previous;
-    getApplication().runtime.saveCheckpointOnce(scope.taskId,'authorization-question-export:'+scope.runId+':'+requirementId,
-      {questionId:entry.receipt.questionId,revision:entry.receipt.revision,leaseRef:entry.receipt.receiptRef,resultDigest,
-        schemaDigest:digest(schema),policyVersion:'desktop-declared-fields-v1',stage:requirementId,deadline:scope.deadline});
+    saveExportLease(scope,entry,schema,resultDigest,requirementId);
     return {taskId:scope.taskId,runId:scope.runId,argumentsDigest:entry.request.argumentsDigest,resultDigest,deadline:scope.deadline};
   }
   function deriveMailBatch(parentScope,nextScope,{batchId,requirementId,assertCurrent}){

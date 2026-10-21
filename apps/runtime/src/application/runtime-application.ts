@@ -1254,7 +1254,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(hostIntent&&(hostIntent.namespace!==this.hostUserNamespace||requestedRunId!==`host-tool-${taskId}`
           ||hostIntent.argumentsDigest!==saved.argumentsDigest||hostIntent.toolName!==saved.toolName||hostIntent.toolVersion!==saved.toolVersion))return undefined;
         validateToolValue(descriptor.inputSchema,saved.arguments);
-        return {taskId,proposalId:!completedReceipt&&loop?.pending?loop.pending.proposalId:requestedRunId,runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
+        const anchor=this.runtime.loadCheckpoint(taskId,'authorization-question-binding:'+requestedRunId) as {proposalId?:string}|undefined;
+        return {taskId,proposalId:anchor?.proposalId??(!completedReceipt&&loop?.pending?loop.pending.proposalId:requestedRunId),runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
           outputSchema:structuredClone(descriptor.outputSchema)};
       }
       if(loop.pending.toolName===CLOUD_SKILL_TOOL_NAME){
