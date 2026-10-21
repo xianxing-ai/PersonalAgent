@@ -84,6 +84,8 @@ npm run demo:runtime
 
 check 校验生成类型一致性，按依赖顺序构建并执行严格类型检查与全部工作区测试。dev 是一次性存储示例；demo:protocol 展示 mock 消费者取消往返和连接器注册；demo:runtime 展示持久任务、检查点、进度和终态事件。这些不是桌面、模型或真实平台启动命令。
 
+**拉取新代码后先重建再启动**：各 workspace 的 `dist/` 是本地构建产物、不进 Git，`git pull` 只更新源码。桌面与 Runtime 启动时读取的是 `dist`，源码与产物不一致会直接导致启动失败——典型表现是 `Invalid product result export policy`（包缺少新导出的版本常量）或设置页整体空白，看起来像"配置丢了"，实际是 `initializeRuntime` 抛错、runtime 停在 `failed`。所以拉取或切换分支后先 `npm run build`，再 `npm run start:desktop`；`npm run check` 也会重建，但只想起桌面时不必跑全量检查。
+
 MOD-02 接入入口：[contracts](packages/contracts/README.md)、[client](packages/client/README.md)、[testkit 六场景与验证](packages/testkit/README.md)。
 
 MOD-03 接入入口：[Runtime 任务核心](apps/runtime/README.md)。
