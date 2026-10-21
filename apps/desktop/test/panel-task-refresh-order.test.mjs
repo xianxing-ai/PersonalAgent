@@ -8,6 +8,7 @@ import ts from 'typescript';
 import {Client} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {requestTaskCancellation} from '../electron/runtime.js';
+import {createConversationDelivery} from '../electron/conversation-delivery.js';
 
 const source = await readFile(new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -37,7 +38,7 @@ async function fixture(t) {
   await client.connect();
   const task = app.runtime.submitTask({goal: 'Local read-only cancellation fixture', conversationId: 'desktop-panel', idempotencyKey: 'refresh-order'});
   const tasks = new Map(), published = [], panel = {};
-  const context = vm.createContext({tasks, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
+  const context = vm.createContext({tasks, panel, workspace: {}, admin: {}, client, requestTaskCancellation,conversationDelivery:createConversationDelivery(new Set()),
     // This cancellation/readback fixture has no Harness event consumer installed.
     harnessEventsHost: undefined,
     conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
@@ -76,6 +77,8 @@ test('a delayed public task.get cannot revive a task cancelled through the actua
   const event = f.app.readEvents().findLast(event => event.taskId === f.task.taskId && event.type === 'task.cancelled');
   assert.ok(event);
   f.context.applyEvent(event);
+  // Cancellation now acknowledges before its independent readback settles.
+  await new Promise(resolve=>setImmediate(resolve));
   const current = f.tasks.get(f.task.taskId), count = f.published.length;
   assert.equal(current.state, 'cancelled');
   assert.ok(current.revision > captured.revision);

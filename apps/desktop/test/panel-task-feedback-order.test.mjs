@@ -6,12 +6,14 @@ import ts from 'typescript';
 import {mountSessionControls} from '../src/features/conversation/session-controls.js';
 import {isStopRequest} from '../src/features/conversation/stop-request.js';
 import {isTerminal} from '../src/features/conversation/state.js';
+import {createMessageQueue} from '../src/features/conversation/message-queue.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
 const source=await readFile(new URL('../src/app/renderer.js',import.meta.url),'utf8');
 const ast=ts.createSourceFile('renderer.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
-const dependencies=new Map();let handler,hostProjection,renderFeedback;
+const dependencies=new Map();let handler,hostProjection,renderFeedback,submitDeclaration;
 function visit(node){
+  if(ts.isFunctionDeclaration(node)&&node.name?.text==='submitMessage')submitDeclaration=node.getText(ast);
   if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='form.onsubmit')handler=node.right.getText(ast);
   if(ts.isCallExpression(node)&&node.expression.getText(ast)==='syncHostFeedback')hostProjection=node.getText(ast);
   if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='render'&&ts.isArrowFunction(node.right)){
@@ -32,8 +34,9 @@ function fixture({nativeFlush=async()=>{}}={}){
   const current={conversationState:{activeId:'desktop-panel',draft:'synthetic draft',sessions:[{id:'desktop-panel',title:'original',archived:false}]}};
   const sessionControls=mountSessionControls(node(),input,async(name)=>{assert.equal(name,'conversation.draft');return {saved:true};},()=>{});sessionControls.update(current);
   globalThis.document=documentBefore;globalThis.window=windowBefore;globalThis.Option=optionBefore;
-  const context=vm.createContext({root:{querySelector:()=>error},input,sendBtn,sessionControls,nativeReasoning:{flush:nativeFlush},isStopRequest,activeTasks:()=>[],current,Event,submitGeneration:0,pending:false,draftRevision:0,thread:{scrollTop:0,scrollHeight:100},requestAnimationFrame:callback=>callback(),setSendMode:()=>{},invoke:()=>new Promise((resolve,reject)=>calls.push({resolve,reject}))});
+  const context=vm.createContext({root:{querySelector:()=>error},input,sendBtn,sessionControls,nativeReasoning:{flush:nativeFlush},isStopRequest,activeTasks:()=>[],current,Event,submitGeneration:0,pending:false,draftRevision:0,wakeClosed:false,messageQueue:createMessageQueue(),sendingQueueIds:new Set(),renderQueue(){},deliveryMode:{value:'steer'},thread:{scrollTop:0,scrollHeight:100},requestAnimationFrame:callback=>callback(),setSendMode:()=>{},invoke:()=>new Promise((resolve,reject)=>calls.push({resolve,reject}))});
   for(const declaration of dependencies.values())vm.runInContext(`let ${declaration};`,context);
+  vm.runInContext(submitDeclaration,context);
   return {error,input,calls,context,submit:vm.runInContext(`(${handler})`,context),host:(value,preserveFeedback)=>vm.runInContext(`{const data={connectionError:${JSON.stringify(value)}},voiceError='',preserveFeedback=${preserveFeedback};${renderFeedback}}`,context),report:value=>vm.runInContext(`report(${JSON.stringify(value)})`,context)};
 }
 const event={preventDefault(){}};
@@ -65,86 +68,79 @@ test('a changed draft remains intact and busy until the receipt settles',async()
   const f=fixture(),run=f.submit(event);await tick();assert.equal(f.context.pending,true);f.input.value='new draft';f.input.dispatchEvent(new Event('input'));f.context.draftRevision++;f.host('');f.calls[0].resolve();await run;assert.equal(f.input.value,'new draft');assert.equal(f.context.pending,false);
 });
 
-// Exercise the actual renderer handlers: task cancellation and host playback are separate IPCs.
-function stopFixture({tasks=[{taskId:'task-1',state:'running'}],failures={}}={}){
-  const declarations=new Map();let stopHandler;
+// Exercise production stop handlers with deliberately stalled cleanup channels.
+function stopFixture({tasks=[{taskId:'task-1',state:'running'}],failures={},stall=false}={}){
   const names=['pendingCancelIds','truncatedTaskIds','activeTasks','setSendMode','syncCancelButtons','stopActiveTasks'];
+  const declarations=new Map();let stopHandler;
   function capture(node){
-    if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&names.includes(node.name.text))declarations.set(node.name.text,node.getText(ast));
+    if(ts.isVariableDeclaration(node)&&names.includes(node.name.getText(ast)))declarations.set(node.name.getText(ast),node.getText(ast));
     if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='stopButton.onclick')stopHandler=node.right.getText(ast);
     ts.forEachChild(node,capture);
   }
-  capture(ast);assert.equal(declarations.size,names.length);assert.ok(stopHandler);
+  capture(ast);
   const calls=[],errors=[],feedback=[],input={value:'',dispatchEvent(){}},sendBtn={dataset:{},setAttribute(name,value){this[name]=value;}};
-  const context=vm.createContext({input,sendBtn,current:{tasks,live:{active:true}},pending:false,Event,isStopRequest,isTerminal,
+  const context=vm.createContext({input,sendBtn,stopButton:{setAttribute(){}},stopPlaybackIcon:'playback',deliveryMode:{value:'steer'},deliveryHint:{},
+    current:{tasks,live:{active:true},conversationState:{activeId:'desktop-panel'}},pending:false,submitGeneration:0,
+    truncatedOutput:new Map(),structuredClone,Event,isStopRequest,isTerminal,wakeClosed:false,errorFeedbackRevision:0,
+    messageQueue:createMessageQueue(),lastTaskSignature:'',render(){},setTimeout:()=>1,clearTimeout(){},
     window:{speechSynthesis:{cancel:()=>calls.push('browser-playback-stop')}},tasksNode:{querySelectorAll:()=>[]},
     report:error=>errors.push(error?.message??String(error)),setFeedback:value=>feedback.push(value),
-    invoke:async(name,payload)=>{calls.push([name,payload]);if(failures[name])throw Error(failures[name]);return name==='voice.stop'?{stopped:true}:{cancelAccepted:true};}});
-  for(const declaration of declarations.values())vm.runInContext(`const ${declaration};`,context);
+    invoke:(name,payload)=>{calls.push([name,payload]);if(stall)return new Promise(()=>{});
+      if(failures[name])return Promise.reject(Error(failures[name]));
+      return Promise.resolve(name==='voice.stop'?{stopped:true}:{interrupted:true});}});
+  for(const declaration of declarations.values())vm.runInContext('const '+declaration+';',context);
   return {calls,errors,feedback,input,sendBtn,context,
     setText(value){input.value=value;vm.runInContext('setSendMode(Boolean(input.value.trim()))',context);},
-    stop:vm.runInContext(`(${stopHandler})`,context),submit:vm.runInContext(`(${handler})`,context)};
+    stop:vm.runInContext('('+stopHandler+')',context),submit:vm.runInContext('('+handler+')',context)};
 }
-test('panel stop interrupts host playback and cancels active tasks together',async()=>{
-  const f=stopFixture();f.setText('保留普通草稿');assert.equal(f.sendBtn.dataset.mode,'stop');
-  const stopping=f.stop();assert.equal(f.sendBtn.disabled,true);assert.equal(f.sendBtn['aria-busy'],'true');await stopping;
-  assert.deepEqual(f.calls,['browser-playback-stop',['voice.stop',undefined],['task.cancel','task-1']]);
-  assert.deepEqual(f.errors,[]);assert.equal(f.feedback.length,1);
+test('stop releases the composer immediately even when both host channels never settle',async()=>{
+  const f=stopFixture({stall:true});f.setText('保留普通草稿');
+  assert.equal(f.sendBtn.dataset.mode,'send','text remains sendable during work');
+  f.context.pending=true;const before=f.context.submitGeneration;
+  await f.stop();
+  assert.equal(f.context.pending,false);assert.ok(f.context.submitGeneration>before);
+  assert.equal(f.sendBtn.disabled,false);assert.equal(f.sendBtn['aria-busy'],'false');
+  assert.equal(f.input.value,'保留普通草稿');assert.equal(f.sendBtn.dataset.mode,'send');
   assert.equal(vm.runInContext('pendingCancelIds.size',f.context),0);
-  assert.equal(f.input.value,'保留普通草稿');assert.equal(f.sendBtn.dataset.mode,'send');assert.equal(f.sendBtn.disabled,false);
+  assert.equal(vm.runInContext('truncatedTaskIds.has("task-1")',f.context),true);
+  assert.equal(f.context.messageQueue.paused,true);
+  assert.deepEqual(structuredClone(f.calls),['browser-playback-stop',['conversation.interrupt',{conversationId:'desktop-panel'}],['voice.stop',undefined]]);
 });
-for(const channel of ['voice.stop','task.cancel'])test(`panel stop still attempts both channels when ${channel} fails`,async()=>{
-  const f=stopFixture({failures:{[channel]:'failed '+channel}});await f.stop();
-  assert.equal(f.calls.some(call=>call[0]==='voice.stop'),true);assert.equal(f.calls.some(call=>call[0]==='task.cancel'),true);
-  assert.deepEqual(f.errors,['failed '+channel]);assert.deepEqual(f.feedback,[]);
-  assert.equal(vm.runInContext('pendingCancelIds.size',f.context),0);
-  if(channel==='task.cancel'){assert.equal(f.sendBtn.dataset.mode,'stop');assert.equal(f.sendBtn.disabled,false);}
+for(const channel of ['voice.stop','conversation.interrupt'])test('stop attempts both channels when '+channel+' fails',async()=>{
+  const f=stopFixture({failures:{[channel]:'failed '+channel}});await f.stop();await tick();
+  assert.equal(f.calls.some(call=>call[0]==='voice.stop'),true);assert.equal(f.calls.some(call=>call[0]==='conversation.interrupt'),true);
+  assert.deepEqual(f.errors,['failed '+channel]);assert.equal(f.sendBtn.disabled,false);
+  assert.equal(vm.runInContext('truncatedTaskIds.has("task-1")',f.context),true,'failed cleanup never resumes old output');
 });
-test('panel natural-language stop remains sendable during work and never submits a new task',async()=>{
-  const f=stopFixture();f.setText('停止');assert.equal(f.sendBtn.disabled,false);await f.submit(event);
-  assert.equal(f.calls.some(call=>call[0]==='task.cancel'),true);assert.equal(f.calls.some(call=>call[0]==='voice.stop'),true);
-  assert.equal(f.calls.some(call=>call[0]==='task.submit'),false);assert.equal(f.context.pending,false);
-  assert.equal(vm.runInContext('pendingCancelIds.size',f.context),0);
-  const ordinary=stopFixture();ordinary.setText('另一个新任务');assert.equal(ordinary.sendBtn.dataset.mode,'stop');await ordinary.submit(event);
-  assert.equal(ordinary.calls.length,0,'Enter cannot submit an ordinary new task while running');
+test('natural-language stop cancels without submitting and can stop a pending acceptance',async()=>{
+  for(const tasks of [[{taskId:'task-1',state:'running'}],[]]){
+    const f=stopFixture({tasks,stall:true});f.context.pending=true;f.setText('停止');await f.submit(event);
+    assert.equal(f.calls.some(call=>call[0]==='conversation.interrupt'),true);
+    assert.equal(f.calls.some(call=>call[0]==='task.submit'),false);assert.equal(f.context.pending,false);assert.equal(f.input.value,'');
+  }
 });
-test('panel stop without an active task only interrupts playback',async()=>{
-  const f=stopFixture({tasks:[]});await f.stop();
-  assert.deepEqual(f.calls,['browser-playback-stop',['voice.stop',undefined]]);assert.deepEqual(f.errors,[]);
+test('stop with no task or pending acceptance only interrupts playback',async()=>{
+  const f=stopFixture({tasks:[]});await f.stop();assert.deepEqual(f.calls,['browser-playback-stop',['voice.stop',undefined]]);
 });
-
-test('task-row actions retain the like limit and truncate stopped output before the receipt',async()=>{
+test('task-row cancellation targets only its task and likes stay bounded',async()=>{
   let rowHandler,capDeclaration;
   function capture(node){
     if(ts.isBinaryExpression(node)&&node.left.getText(ast)==="root.querySelector('#tasks').onclick")rowHandler=node.right.getText(ast);
     if(ts.isVariableDeclaration(node)&&node.name.getText(ast)==='capCollection')capDeclaration=node.getText(ast);
     ts.forEachChild(node,capture);
   }
-  capture(ast);assert.ok(rowHandler);assert.ok(capDeclaration);
-  const likedTasks=new Set(Array.from({length:200},(_,index)=>`liked-${index}`));
-  const pendingCancelIds=new Set(),truncatedTaskIds=new Set(),calls=[],errors=[],modes=[];
-  let finish;
-  const visibleLikes=[];
-  const context=vm.createContext({likedTasks,pendingCancelIds,truncatedTaskIds,input:{value:'unsent draft'},tasksNode:{querySelectorAll:()=>visibleLikes},
-    invoke:(name,id)=>{calls.push([name,id]);return new Promise(resolve=>{finish=resolve;});},
-    setSendMode:hasDraft=>modes.push(hasDraft),syncCancelButtons(){},report:error=>errors.push(error)});
-  vm.runInContext(`const ${capDeclaration};`,context);
-  const click=vm.runInContext(`(${rowHandler})`,context);
+  capture(ast);
+  const likedTasks=new Set(Array.from({length:200},(_,i)=>'liked-'+i)),calls=[],visibleLikes=[];
+  const context=vm.createContext({likedTasks,input:{value:'unsent draft'},tasksNode:{querySelectorAll:()=>visibleLikes},
+    current:{tasks:[{taskId:'running-task',state:'running'}]},window:{speechSynthesis:{cancel(){}}},
+    stopTask:task=>calls.push(task)});
+  vm.runInContext('const '+capDeclaration+';',context);const click=vm.runInContext('('+rowHandler+')',context);
   const button=dataset=>({dataset,disabled:false,classList:{toggle(name,value){this[name]=value;}},setAttribute(name,value){this[name]=value;}});
-  const like=button({uiAction:'like',id:'new-liked'});
-  const oldest=button({uiAction:'like',id:'liked-0'});oldest.setAttribute('aria-pressed','true');
-  visibleLikes.push(oldest,like);
+  const like=button({uiAction:'like',id:'new-liked'}),oldest=button({uiAction:'like',id:'liked-0'});visibleLikes.push(oldest,like);
   await click({target:{closest:()=>like}});
-  assert.equal(likedTasks.size,200);assert.equal(likedTasks.has('liked-0'),false);assert.equal(likedTasks.has('new-liked'),true);
-  assert.equal(oldest['aria-pressed'],'false');assert.equal(oldest.classList.active,false);
-  assert.equal(like['aria-pressed'],'true');
-  const stop=button({action:'task.cancel',id:'running-task'});
-  const pending=click({target:{closest:()=>stop}});
-  assert.equal(truncatedTaskIds.has('running-task'),true);assert.equal(pendingCancelIds.has('running-task'),true);
-  assert.deepEqual(modes,[true]);assert.equal(stop.disabled,true);assert.deepEqual(calls,[['task.cancel','running-task']]);
-  assert.equal(context.input.value,'unsent draft');
-  finish({cancelAccepted:true});await pending;
-  assert.equal(pendingCancelIds.size,0);assert.equal(truncatedTaskIds.has('running-task'),true);assert.deepEqual(errors,[]);
+  assert.equal(likedTasks.size,200);assert.equal(likedTasks.has('liked-0'),false);assert.equal(oldest['aria-pressed'],'false');
+  await click({target:{closest:()=>button({action:'task.cancel',id:'running-task'})}});
+  assert.equal(calls.length,1);assert.equal(calls[0].taskId,'running-task');assert.equal(context.input.value,'unsent draft');
 });
 
 test('21 locate requests clear evicted progress and stale replies cannot overwrite a retry',async()=>{

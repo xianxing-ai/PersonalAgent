@@ -68,6 +68,17 @@ test('actual renderer expiry callback replaces only approval cards and removes e
   assert.match(article.markup,/授权已过期/);assert.equal(f.insertions,2);assert.equal(f.removals,1);assert.equal(f.timers.size,0);
 });
 
+test('merged stop truncation and exact conversation-question dedupe independently suppress legacy approval actions',()=>{
+  const f=fixture(),approval=grant(initialTime+500);
+  f.context.current={tasks:[{...task,outputTruncated:true}],approvals:[approval]};f.refresh();
+  assert.equal(f.article.buttons.length,0,'stopped output must not regain legacy decisions');
+  f.context.current={tasks:[task],approvals:[approval],conversationState:{activeId:'original-chat'},
+    authorizationQuestions:[{conversationId:'original-chat',sourceApprovalId:approval.approvalId}]};f.refresh();
+  assert.equal(f.article.buttons.length,0,'the same formal question must not produce a second allow button');
+  f.context.current.authorizationQuestions=[{conversationId:'foreign-chat',sourceApprovalId:approval.approvalId}];f.refresh();
+  assert.equal(f.article.buttons.length,2,'a different conversation cannot hide the original approval');
+});
+
 test('expiry callbacks use latest task and approval snapshots rather than the scheduled snapshot',()=>{
   const f=fixture();f.refresh();
   f.context.current={tasks:[{...task,state:'running'}],approvals:[grant(initialTime+100)]};

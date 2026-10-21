@@ -160,14 +160,18 @@ const {_electron}=require('playwright');
    const currentTaskId=await currentCancel.getAttribute('data-id');
    const currentTaskCancel=panel.locator(`[data-action="task.cancel"][data-id="${currentTaskId}"]`);
    await currentTaskCancel.click();
-   await panel.waitForFunction(()=>document.querySelector('#state').textContent==='正在取消');
+   await panel.waitForFunction(()=>document.querySelector('.output-truncated')&&document.querySelector('#send').dataset.mode!=='stop');
+   const cancelling=await panel.evaluate(id=>window.desktop.invoke('snapshot').then(result=>result.value.tasks.find(task=>task.taskId===id)),currentTaskId);
+   assert.equal(cancelling.cancelRequested,true);
+   assert.equal(cancelling.state,'cancelling');
+   assert.equal(await panel.locator('#send').isDisabled(),false);
    if(fake){
-     await panel.locator('[data-action="test.advance"]').click();
-     await panel.waitForFunction(()=>document.querySelector('#state').textContent==='已取消');
+     await panel.evaluate(id=>window.desktop.invoke('test.advance',id),currentTaskId);
+     await panel.waitForFunction(async id=>(await window.desktop.invoke('snapshot')).value.tasks.find(task=>task.taskId===id)?.state==='cancelled',currentTaskId);
    }
    if(fake)assert.equal(await panel.locator(`[data-action="task.cancel"][data-id="${currentTaskId}"]`).count(),0);
-   else assert.equal(await currentTaskCancel.isDisabled(),true);
-   assert.equal(await panel.locator('#stop').isDisabled(),true);
+   else assert.equal(await currentTaskCancel.innerText(),'重试停止');
+   assert.equal(await panel.locator('#stop').isHidden(),true);
    assert.deepEqual(errors,[]);
    console.log(`PASS: ${fake?'Fake':'local'} Runtime Electron windows, native 90px hover/open, explicit collapse, grouped edge-aware drag, isolated preload, ORB-02, tray host, 420px responsive panel, event-driven SDK submit/cancel, independent admin close, no page errors`);
  } finally {await app.close();}
