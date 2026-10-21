@@ -11,6 +11,7 @@ import {createGoalTools} from '@personal-agent/goals/tool';
 import {getGoal,listGoals} from '@personal-agent/goals/commands';
 import {createDesktopGoalCloudHost} from '../electron/goal-cloud-host.js';
 import {createGoalHost} from '../electron/goal-host.js';
+import {goalExportDiagnostic,assertGoalExportReceipt} from './support/goal-export-diagnostic.mjs';
 
 const cache=new URL('../../../.cache/goal-cloud-host-tests/',import.meta.url);
 mkdirSync(cache,{recursive:true});
@@ -232,8 +233,10 @@ for(const toolName of ['goals.get','goals.list'])for(const change of ['none','re
  let task;for(let i=0;i<200;i++){task=app.runtime.getTask(receipt.taskId);if(task.state==='waiting_approval'){const approval=(await client.call('approval.list',{taskId:task.taskId})).items[0];await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});}if(['succeeded','failed','waiting_reconciliation','cancelled'].includes(task.state))break;await new Promise(r=>setTimeout(r,5));}
  const oldSummarySent=queries.slice(1).some(q=>q.includes(exportGoal.summary));
  t.diagnostic(JSON.stringify({toolName,restrict,credentials,fetches:queries.length,state:task.state,currentGoalSensitivity:store.read().history.at(-1)?.sensitivity,currentRevision:store.read().revision,oldSummarySent,externalCloud:false}));
- assert.equal(task.state,restrict?'waiting_reconciliation':'succeeded');assert.equal(queries.length,restrict?1:2);assert.equal(oldSummarySent,!restrict&&change!=='empty');
- if(restrict){const receipt=app.runtime.loadCheckpoint(task.taskId,'competition-loop').receipts[0];assert.equal(receipt.continuation.state,'confirmed');assert.throws(()=>cloud.assertCloudSend({taskId:task.taskId,continuation:receipt.continuation,signal:new AbortController().signal}),/no longer exportable/);const binding=cloud.competitionToolExports.find(x=>x.toolName===toolName);assert.throws(()=>binding.project({taskId:task.taskId,result:receipt.continuation.result,signal:new AbortController().signal}),/no longer exportable/);}
+ const initialDiagnostic=goalExportDiagnostic({runtime:app.runtime,task,phase:'initial_goal',toolName,change,credentials,fetches:queries.length});
+ t.diagnostic(JSON.stringify(initialDiagnostic));
+ assert.equal(task.state,restrict?'waiting_reconciliation':'succeeded',JSON.stringify(initialDiagnostic));assert.equal(queries.length,restrict?1:2);assert.equal(oldSummarySent,!restrict&&change!=='empty');
+ if(restrict){const receipt=app.runtime.loadCheckpoint(task.taskId,'competition-loop')?.receipts?.[0];assertGoalExportReceipt(receipt,initialDiagnostic);assert.equal(receipt.continuation.state,'confirmed');assert.throws(()=>cloud.assertCloudSend({taskId:task.taskId,continuation:receipt.continuation,signal:new AbortController().signal}),/no longer exportable/);const binding=cloud.competitionToolExports.find(x=>x.toolName===toolName);assert.throws(()=>binding.project({taskId:task.taskId,result:receipt.continuation.result,signal:new AbortController().signal}),/no longer exportable/);}
  if(change==='restricted')assert.equal(store.read().history.at(-1).sensitivity,'restricted');
  if(restrict){
   const originalReceipt=app.runtime.loadCheckpoint(task.taskId,'competition-loop').receipts[0];
@@ -241,16 +244,8 @@ for(const toolName of ['goals.get','goals.list'])for(const change of ['none','re
   const next=await client.call('task.submit',{conversationId:'desktop-panel',goal:'Read the newly permitted current Goal'},{idempotencyKey:'synthetic-restored-read'});
   for(let i=0;i<400;i++){const current=app.runtime.getTask(next.taskId);if(current.state==='waiting_approval'){const approval=(await client.call('approval.list',{taskId:current.taskId})).items[0];await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});}if(['succeeded','failed','waiting_reconciliation'].includes(current.state))break;await new Promise(r=>setTimeout(r,5));}
   const restored=app.runtime.getTask(next.taskId);
-  const safeCodes=new Set(['TIMEOUT','CANCELLED','RESULT_UNKNOWN','UNAUTHORIZED','REVISION_CONFLICT','EXTERNAL_FAILURE','INVALID_ARGUMENT','UNSUPPORTED_CAPABILITY','SCOPE_DENIED','NOT_FOUND','NOT_CONFIRMED']);
-  const safeCode=value=>value===undefined?null:safeCodes.has(value)?value:'OTHER';
-  const savedDeadline=app.runtime.loadCheckpoint(next.taskId,'application-deadline');
-  const deadline=typeof savedDeadline==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(savedDeadline)
-    &&Number.isFinite(Date.parse(savedDeadline))?savedDeadline:null;
-  const now=new Date().toISOString();
   // Diagnose the restored task separately; this does not identify the earlier intermittent cause.
-  const restoredDiagnostic={phase:'restored_goal',toolName,change,state:restored.state,errorCode:safeCode(restored.error?.code),
-    deadline,now,deadlineExpired:deadline===null?null:Date.parse(now)>=Date.parse(deadline),credentials,fetches:queries.length,
-    tools:app.runtime.readToolExecutions(next.taskId).map(record=>({state:record.state,errorCode:safeCode(record.errorCode)})),externalCloud:false};
+  const restoredDiagnostic=goalExportDiagnostic({runtime:app.runtime,task:restored,phase:'restored_goal',toolName,change,credentials,fetches:queries.length});
   t.diagnostic(JSON.stringify(restoredDiagnostic));
   assert.equal(restored.state,'succeeded',JSON.stringify(restoredDiagnostic));assert.equal(queries.length,3);
   assert.equal(app.runtime.getTask(task.taskId).state,'waiting_reconciliation');
