@@ -6,10 +6,10 @@ test('voice focuses only the existing original card; no second question or appro
   const expiresAt=new Date(Date.now()+30000).toISOString(),scope={taskId:'parent',conversationId:'ui',deadline:expiresAt,signal:new AbortController().signal};
   let approval={taskId:'child',requestTaskId:'parent',conversationId:'ui',approvalId:'original',revision:2,
     state:'pending',taskState:'waiting_approval',argumentsDigest:'a'.repeat(64),expiresAt};
-  let card={taskId:'child',sourceApprovalId:'original',state:'pending',questionId:'formal',revision:4,argumentsDigest:approval.argumentsDigest,expiresAt},focused=0;
+  let card={taskId:'child',sourceApprovalId:'original',state:'pending',questionId:'formal',revision:4,expiresAt},focused=0;
   const bridge=createVoiceRuntimeApprovalBridge({readPendingApproval:()=>approval,readCurrentQuestion:()=>card,focusQuestion:()=>{focused++;}});
   assert.equal((await bridge.prepareTaskApproval(scope)).questionId,'formal');assert.equal(focused,1);
-  for(const change of [{sourceApprovalId:'other'},{argumentsDigest:'b'.repeat(64)},{taskId:'another'},{state:'answered'}]){
+  for(const change of [{sourceApprovalId:'other'},{taskId:'another'},{state:'answered'}]){
     const original=card;card={...card,...change};assert.equal(await bridge.prepareTaskApproval(scope),null);card=original;
   }
   for(const change of [{conversationId:'another'},{requestTaskId:'another'},{state:'allowed'}]){

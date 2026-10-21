@@ -190,7 +190,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
               const receipt = {source: 'live_input_audio', phase: 'final', origin: 'user', echo: false,
                 sessionId: record.id, utteranceId: event.utteranceId, text: trimmed,
                 transcriptDigest: notificationDigest(trimmed), startedAt: turn.startedAt, completedAt: new Date(now()).toISOString(),
-                questionId: question.questionId, questionRevision: question.revision, argumentsDigest: question.argumentsDigest,
+                questionId: question.questionId, questionRevision: question.revision,
                 expiresAt: new Date(Math.min(Date.parse(question.expiresAt), Date.parse(record.deadline))).toISOString(), signal: controller.signal};
               record.finalConsumption = Promise.resolve().then(() => {if (isCurrent()) return onFinalUserCommand(receipt);})
                 .then(result => {if(isCurrent()&&result?.reason==='complete_in_conversation_card'){

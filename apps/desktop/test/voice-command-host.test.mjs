@@ -7,12 +7,12 @@ import {createDesktopVoiceCommandHost} from '../electron/voice-command-host.js';
 function fixture(){
   let time=Date.now(),focused=0,writes=0,responses=0,sequence=0;
   let current={questionId:'formal',revision:2,state:'pending',sourceApprovalId:'original',taskId:'task',
-    argumentsDigest:'a'.repeat(64),expiresAt:new Date(time+30000).toISOString(),requirements:[{summary:'Only this write'}]};
+    expiresAt:new Date(time+30000).toISOString(),requirements:[{summary:'Only this write'}]};
   const voice=createDesktopVoiceCommandHost({now:()=>time,readCurrentQuestion:()=>current,focusQuestion:()=>{focused++;},
     notifications:{configureSettings:()=>{writes++;}},respondApproval:()=>{responses++;}});
   const final=(card,text='同意',extra={})=>({source:'live_input_audio',phase:'final',origin:'user',echo:false,sessionId:'live',utteranceId:String(++sequence),
     text,transcriptDigest:digest(text),startedAt:new Date(time).toISOString(),completedAt:new Date(time).toISOString(),expiresAt:card.expiresAt,
-    questionId:card.questionId,questionRevision:card.revision,argumentsDigest:card.argumentsDigest,signal:new AbortController().signal,...extra});
+    questionId:card.questionId,questionRevision:card.revision,signal:new AbortController().signal,...extra});
   return {voice,final,focused:()=>focused,writes:()=>writes,responses:()=>responses,set:value=>{current=value;},advance:()=>{time+=30001;}};
 }
 test('oral yes and no only guide to the same formal card; no settings or Policy mutation',async()=>{
@@ -30,7 +30,7 @@ test('oral yes and no only guide to the same formal card; no settings or Policy 
 test('partial, model, echo, substituted identity, duplicate and expired finals cannot select a card',async()=>{
   const f=fixture(),card=f.voice.snapshot();
   for(const extra of [{phase:'partial'},{origin:'model'},{echo:true},{source:'renderer'},{questionRevision:1},
-    {argumentsDigest:'b'.repeat(64)},{startedAt:new Date(Date.parse(card.guidanceIssuedAt)-1).toISOString()}]){
+    {questionId:'other'},{startedAt:new Date(Date.parse(card.guidanceIssuedAt)-1).toISOString()}]){
     assert.equal((await f.voice.consumeFinal(f.final(card,'同意',extra))).consumed,false);
   }
   assert.equal(f.focused(),0);const receipt=f.final(card);await f.voice.consumeFinal(receipt);
