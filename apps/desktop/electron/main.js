@@ -1612,7 +1612,8 @@ function initializeAuthorizationHosts(runtimeModule){
       {ref:'full-access',label:'完全访问（当前普通用户，不提供进程隔离）',mode:'full-access',revision:1,available:true}],
     defaultProfileRef:'default-read-only',
     resolveProfile:(request,selected)=>selected.mode==='read-only'&&request.requirements.some(item=>
-      item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)))
+      item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
+        ||scope==='notifications:settings'||/^(?:memory\.(?:save|erase|withdraw)|skill\.(?:install|enable|uninstall)|experience\.activate|workflow\.(?:enable|delete)|facts\.erase|feeds\.classify|knowledge\.(?:configure|pair)|remoteMcp\.configure)$/u.test(scope)))
       &&request.toolName!=='workspace.node_check'?'workspace-write':selected.ref,
     describeExecution:(request,profile)=>nativeExecutionHost?.describeExecution(request,profile)
       ??{required:false,available:false,backend:'unavailable',enforced:false,reason:'本次为应用内工具；外部进程隔离未就绪'}});
