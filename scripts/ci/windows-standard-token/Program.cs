@@ -32,10 +32,10 @@ internal static class Program
             if (args[0] == "--smoke") return Smoke(token.Value, sid, session);
             if (args[0] == "--smoke-supervisor")
             {
-                using var child = Start(token.Value, sid, session, Self, Quote(Self) + " --smoke-tree",
+                using var treeChild = Start(token.Value, sid, session, Self, Quote(Self) + " --smoke-tree",
                     GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError));
-                Console.WriteLine("tree-parent:" + GetProcessId(child.Process)); Console.Out.Flush();
-                return unchecked((int)child.Wait(60000));
+                Console.WriteLine("tree-parent:" + GetProcessId(treeChild.Process)); Console.Out.Flush();
+                return unchecked((int)treeChild.Wait(60000));
             }
             // Fixed npm operation; no caller-supplied command line, script, token, user or path.
             string cmd = CanonicalFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"));
