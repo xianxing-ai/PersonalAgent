@@ -236,7 +236,7 @@ test('physical track failure remains unknown and prevents microphone or Wake res
   assert.equal(f.wake.snapshot().phase, 'release_unconfirmed');
   assert.equal(f.wake.hasActive(), true);
   await assert.rejects(async () => f.wake.enable(7));
-  assert.throws(() => f.microphone.authorize(), /释放未确认/);
+  await assert.rejects(f.microphone.authorize(), /释放未确认/);
   assert.equal(f.commands.filter(command => command.type === 'start').length, 1);
 });
 
