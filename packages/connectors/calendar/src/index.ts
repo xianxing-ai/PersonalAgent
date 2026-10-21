@@ -91,6 +91,7 @@ function resolveEventId(raw: {externalId?: unknown; uid?: unknown}): string {
 const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
   description: '更新既有日历事件的字段（缺省字段保持原值）；SEQUENCE 递增后写回并读回核对。',
+  oneOf: [{required: ['uid']}, {required: ['externalId']}],
   additionalProperties: false,
   properties: {
     ...eventIdProperties,
@@ -105,6 +106,7 @@ const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
 const cancelEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
   description: '取消（删除）日历事件。资源不存在视为已取消（幂等），状态如实返回。',
+  oneOf: [{required: ['uid']}, {required: ['externalId']}],
   additionalProperties: false,
   properties: {...eventIdProperties},
 };
