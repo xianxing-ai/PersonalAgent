@@ -53,6 +53,32 @@ timeout or test filtering; original CI cancellation remains in force.
 
 ## Verification status
 
+On head 12083a7b the official Windows job 119340508898 compiled this tool and actually
+passed the restricted-own smoke, including both Job-close and killed-launcher descendant
+reclamation. The full original check then failed compiling the original voice host with
+Framework64 csc exit 3221225794 (0xC0000142), with npm internal CALL diagnostics also present.
+This does not establish a desktop cause or prove that native tests passed; they were not reached.
+
+The next short gate adds fixed `--compatibility` original-token/selected-token comparisons.
+Its Node script executes canonical cmd/npm prefix and csc /help (no output artifact) using
+both the full inherited environment and the exact voice SystemRoot/WINDIR/TEMP/TMP environment,
+shell:false/windowsHide:true. Reports contain only fixed stages, numeric exits and booleans.
+Read-only AccessCheck asks for full access to the inherited windowstation/desktop security
+descriptors and reports unknown separately from denial. Enabled logon SID existence/retention
+is reported only as booleans. The original elevated-token route is available only to these
+fixed diagnostics, never to the complete check. No existing desktop ACL is changed.
+
+Private noninteractive desktop remains a candidate, not an implemented or proven fix:
+CreateWindowStationW with a unique CI name, protected same-user/SYSTEM DACL and Medium label;
+temporarily SetProcessWindowStation only to CreateDesktopW on that station, then restore
+the original borrowed station in finally. Child StartupInfo.Desktop must name that exact
+private station\\desktop. Job descendants must terminate before CloseDesktop/CloseWindowStation;
+neither object may use CloseHandle or be inherited. No WinSta0/Default ACL modification,
+new account or login is permitted. Required access, successful full-env/minimal-env probes,
+and compatibility with all original desktop tests must be demonstrated before adoption.
+
+The added compatibility diagnostics are not compiled or run yet.
+
 Linux author environment has no dotnet/C# compiler, PowerShell or Win32. No compilation,
 ABI, token acquisition, smoke, Windows tests or full check has been claimed. Diff/static
 review is preparation only. Root must review, compile and run the short Windows smoke;

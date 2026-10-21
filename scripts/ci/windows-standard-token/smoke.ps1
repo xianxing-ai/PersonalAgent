@@ -9,6 +9,8 @@ $launcher = Join-Path $target 'WindowsStandardTokenLauncher.exe'
 # No run-check here. Only an actual successful smoke publishes the complete-check entrypoint.
 & $launcher --smoke
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $launcher --compatibility
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($env:GITHUB_ENV) {
   "PA_CI_CHECK_LAUNCHER=$launcher" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 }

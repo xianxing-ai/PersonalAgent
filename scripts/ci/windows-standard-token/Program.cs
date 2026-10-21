@@ -24,11 +24,12 @@ internal static class Program
         {
             if (args.Length != 1) throw new InvalidOperationException();
             if (args[0] is "--smoke-probe" or "--smoke-tree" or "--smoke-grandchild") return SmokeChild(args[0]);
-            if (args[0] is not ("--smoke" or "--run-check" or "--smoke-supervisor")) throw new InvalidOperationException();
+            if (args[0] is not ("--smoke" or "--run-check" or "--smoke-supervisor" or "--compatibility")) throw new InvalidOperationException();
             stage = "open-current-token";
             using var own = OpenToken(GetCurrentProcess(), Query | Duplicate | AssignPrimary | AdjustDefault);
             string sid = Sid(own.Value); int session = Integer(own.Value, 12);
             using var token = SelectToken(own.Value, sid, session);
+            if (args[0] == "--compatibility") return Compatibility(own.Value, token.Value, sid, session);
             if (args[0] == "--smoke") return Smoke(token.Value, sid, session);
             if (args[0] == "--smoke-supervisor")
             {
@@ -128,7 +129,7 @@ internal static class Program
     }
 
     static Child Start(IntPtr token, string sid, int session, string executable, string command,
-        IntPtr input, IntPtr output, IntPtr error)
+        IntPtr input, IntPtr output, IntPtr error, bool originalDiagnostic = false)
     {
         stage = "duplicate-stdio";
         using var stdin = CopyHandle(input, true); using var stdout = CopyHandle(output, true); using var stderr = CopyHandle(error, true);
@@ -156,7 +157,15 @@ internal static class Program
             stage = "assign-child-job";
             if (!AssignProcessToJobObject(job.Value, process.Process)) throw new Win32Exception();
             stage = "validate-actual-child-token";
-            using (var actual = OpenToken(process.Process, Query)) Validate(actual.Value, sid, session);
+            using (var actual = OpenToken(process.Process, Query))
+            {
+                if (originalDiagnostic)
+                {
+                    if (!useCurrentToken || Sid(actual.Value) != sid || Integer(actual.Value, 12) != session
+                        || Integer(actual.Value, 20) != Integer(token, 20)) throw new InvalidOperationException();
+                }
+                else Validate(actual.Value, sid, session);
+            }
             stage = "resume-child";
             if (ResumeThread(process.Thread) == uint.MaxValue) throw new Win32Exception();
             var result = new Child(process.Process, job.Detach()); process.Process = IntPtr.Zero; return result;
@@ -267,6 +276,63 @@ internal static class Program
     }
 
     static string CwdDigest() => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Cwd)));
+    static int Compatibility(IntPtr own, IntPtr selected, string sid, int session)
+    {
+        bool selectedUsesCurrent = useCurrentToken;
+        string node = CanonicalFile(Path.Combine(Path.GetDirectoryName(ResolveNpm())!, "node.exe"));
+        string script = CanonicalFile(Path.Combine(Cwd, "scripts", "ci", "windows-standard-token", "compatibility-probe.mjs"));
+        try
+        {
+            foreach (bool baseline in new[] { true, false })
+            {
+                useCurrentToken = baseline || selectedUsesCurrent;
+                IntPtr token = baseline ? own : selected;
+                Console.WriteLine("standard-token compatibility: " + (baseline ? "original-token" : "selected-token"));
+                Console.WriteLine("standard-token desktop-access: " + System.Text.Json.JsonSerializer.Serialize(DesktopAccess(token, own)));
+                using var probe = Start(token, sid, session, node, Quote(node) + " " + Quote(script),
+                    GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError), baseline);
+                uint exit = probe.Wait(60000); if (exit != 0) return unchecked((int)exit);
+            }
+            return 0;
+        }
+        finally { useCurrentToken = selectedUsesCurrent; }
+    }
+
+    static object DesktopAccess(IntPtr token, IntPtr original)
+    {
+        string? originalLogon = LogonSid(original), selectedLogon = LogonSid(token);
+        return new { originalEnabledLogonSidPresent = originalLogon != null, selectedEnabledLogonSidPresent = selectedLogon != null,
+            logonSidRetained = originalLogon != null && originalLogon == selectedLogon,
+            windowStation = ObjectAccess(GetProcessWindowStation(), token, 0xf037f),
+            desktop = ObjectAccess(GetThreadDesktop(GetCurrentThreadId()), token, 0xf01ff) };
+    }
+    static string? LogonSid(IntPtr token)
+    {
+        using var groups = Information(token, 2); int count = Marshal.ReadInt32(groups.Value);
+        for (int i = 0; i < count; i++)
+        {
+            var group = Marshal.PtrToStructure<SidAttributes>(IntPtr.Add(groups.Value, (IntPtr.Size == 8 ? 8 : 4) + i * Marshal.SizeOf<SidAttributes>()));
+            if ((group.Attributes & 0xc0000000) == 0xc0000000 && (group.Attributes & 4) != 0 && (group.Attributes & 0x10) == 0)
+                return new SecurityIdentifier(group.Sid).Value;
+        }
+        return null;
+    }
+    static object ObjectAccess(IntPtr handle, IntPtr token, uint desired)
+    {
+        // DACL/owner/group only: no SACL privilege, no ACL change, no identity/name logging.
+        uint information = 7; GetUserObjectSecurity(handle, ref information, IntPtr.Zero, 0, out uint bytes);
+        if (bytes == 0) return new { known = false, allowed = false, error = Marshal.GetLastWin32Error() };
+        using var descriptor = new Memory(checked((int)bytes));
+        if (!GetUserObjectSecurity(handle, ref information, descriptor.Value, bytes, out _))
+            return new { known = false, allowed = false, error = Marshal.GetLastWin32Error() };
+        if (!DuplicateToken(token, 2, out IntPtr impersonation))
+            return new { known = false, allowed = false, error = Marshal.GetLastWin32Error() };
+        using var copy = new Handle(impersonation); uint size = 1024;
+        using var privileges = new Memory((int)size); var mapping = new GenericMapping();
+        if (!AccessCheck(descriptor.Value, impersonation, desired, ref mapping, privileges.Value, ref size, out _, out bool allowed))
+            return new { known = false, allowed = false, error = Marshal.GetLastWin32Error() };
+        return new { known = true, allowed, error = 0 };
+    }
     static string Quote(string value)
     {
         if (value.IndexOfAny(new[] { '"', '\r', '\n', '%', '!', '&', '|', '<', '>', '^' }) >= 0) throw new InvalidOperationException();
@@ -339,6 +405,7 @@ internal static class Program
     }
 
     [StructLayout(LayoutKind.Sequential)] struct SidAttributes { public IntPtr Sid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential)] struct GenericMapping { public uint Read, Write, Execute, All; }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct Startup { public int Size; public IntPtr Reserved, Desktop, Title; public uint X,Y,Width,Height,CharsX,CharsY,Fill,Flags; public ushort Show, ReservedSize; public IntPtr ReservedBytes, Input, Output, Error; }
     [StructLayout(LayoutKind.Sequential)] struct StartupEx { public Startup Info; public IntPtr Attributes; }
     [StructLayout(LayoutKind.Sequential)] struct ProcessInfo { public IntPtr Process, Thread; public uint Pid, Tid; }
@@ -376,4 +443,10 @@ internal static class Program
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool ReadFile(IntPtr file,byte[] buffer,uint bytes,out uint read,IntPtr overlapped);
     [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
     [DllImport("kernel32.dll",SetLastError=true)] static extern uint GetProcessId(IntPtr process);
+    [DllImport("user32.dll",SetLastError=true)] static extern IntPtr GetProcessWindowStation();
+    [DllImport("user32.dll",SetLastError=true)] static extern IntPtr GetThreadDesktop(uint thread);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll",SetLastError=true)] static extern bool GetUserObjectSecurity(IntPtr handle,ref uint information,IntPtr descriptor,uint bytes,out uint needed);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool DuplicateToken(IntPtr token,int level,out IntPtr copy);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool AccessCheck(IntPtr descriptor,IntPtr token,uint desired,ref GenericMapping mapping,IntPtr privileges,ref uint bytes,out uint granted,out bool allowed);
 }

@@ -52,3 +52,20 @@ ci.yml 在原 helper build 后编译新工具并执行短 smoke，只有成功�
 `scripts/ci/cleanup.test.mjs`，该命令未执行测试，不计通过。没有 .NET/PowerShell，
 因此新 C# 编译、Win32 ABI、合法普通 token 获取、短 smoke 和完整新 head CI
 均**未验证**；必须由真实 Windows 新 CI 给结果，当前不得声称已恢复或可入队。
+
+## 12083a7b：真实短 smoke 成功，完整 check 的后续阻断
+
+Foundation `39634245104` / Windows `119340508898` 的实际 PR merge checkout 为
+`5ec29ac526d015b58c48248481cdba910a2070b3`（12083a7b 合入 352cb7a）。
+新增 launcher 真实编译通过，选择 `restricted-own`，stdout/stderr、exit23、env/cwd、
+主动 Job 关闭及杀死独立 launcher 后的原子孙 process-handle 回收全部通过。
+完整原 check 已开始，架构 3/3、契约 4/4、生成一致性通过；typecheck 的原 voice
+构建在 Framework64 csc.exe 以 3221225794/0xC0000142 失败。npm 内部 CALL/npm-prefix
+子命令同时输出不可识别诊断。没有到达原 native 测试，不宣称该链已恢复。
+
+后续仅加入原 token/普通 token 固定对照：同一 canonical cmd/npm prefix 与
+Framework64 csc /help（全环境及原 voice 四变量环境，shell:false/windowsHide:true），
+只记录数字退出码/能力布尔，不预编译产品；只读继承 windowstation/desktop
+AccessCheck、enabled logon SID 存在/保留布尔。不修改任何现有对象 ACL，不把
+HRESULT 当成 desktop 根因。私有非交互 desktop 方案保留为待实证候选，未接入。
+本次 Node syntax、Linux fail-closed 与 diff 通过；新增 C#/Win32 诊断仍待新 Windows CI。
