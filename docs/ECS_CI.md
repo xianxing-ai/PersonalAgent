@@ -70,7 +70,13 @@ main 两项原必需状态名 `check` 与 `ecs-linux-check` 及官方 Actions ap
 
 保留 strict 主线同步、管理员约束、一次有效非作者审批和会话解决规则。首轮需要四位既有协作者之一给出非作者批准；后续 CI 修复提交保留批准，不要求反复审批。显式撤销或 Changes Requested 仍然阻止合并。`Approved PR auto-merge` 从默认分支读取脚本，只处理同仓库到 main 的非 Draft PR；当前 head 的全部检查/状态必须成功。
 
-CI 完成事件触发受保护自动合并：`gh pr merge --squash --match-head-commit`，由 GitHub 再检查保护和会话。多条 PR 并行检查，合并请求串行且立即核对 main 是否变化；不再读取 main 的测试结果，也不补发合并后 CI。失败由原作者修复，更新后只测试该 PR 新版本。本 PR 不使用 Owner 审核例外或管理员绕过；原生 ruleset 仅关闭 `dismiss_stale_reviews_on_push`，仍要求一次批准，其他保护不变。AI 暂不启用。
+未启用 Merge Queue 时，CI 完成事件触发受保护自动合并：`gh pr merge --squash --match-head-commit`，由 GitHub 再检查保护和会话。多条 PR 并行检查，合并请求串行且立即核对 main 是否变化；不再读取 main 的测试结果，也不补发合并后 CI。更新后只测试该 PR 新版本。不使用 Owner 审核例外或管理员绕过；仍要求有效批准，其他保护不变。
+
+此防护合入默认分支后，启用 Merge Queue 时 `Approved PR auto-merge` 工作流只评估资格并记录 `no request sent`，不使用内置 `GITHUB_TOKEN` 自动入队。脚本不从 actor 名、token 字符串或缺失元数据推断外部身份，也没有环境变量开关。已有入队项保持不变；用户移出队列后，周期扫描不会将其重新放回。此防护不是全自动入队功能已恢复；尚未合入时，现有默认分支行为不受本 PR 改变。
+
+依据 [GitHub GITHUB_TOKEN 文档](https://docs.github.com/en/actions/concepts/security/github_token)（2026-10-21 核对），该 token 产生的事件通常不创建新工作流，`merge_group` 不在列出的例外中。#470 的自动入队日志、内置 token 接线和对应队列 SHA 零工作流支持事件抑制判断，但不等于已取得 GitHub 服务端投递诊断。不要用源 PR 绿灯替代队列检查，也不要手写成功状态。
+
+恢复单个 PR 时，由已获授权的非此 Actions token 身份在确认用户仍要求入队后执行正常入队，并读回队列 SHA 的真实 Foundation。库函数保留显式 `queueAdmissionImpl` 接口供未来受信调用方接入：它须自行验证执行身份与当前用户授权、遵守取消、匹配传入的精确 head 并使用正常队列保护；函数只传仓库、PR 编号和 head，不传工作流 token。当前 CLI 不提供该适配器，异常不回退到内置 token 或盲重试。新增 App/PAT 或持久凭据配置需单独授权，不在本防护内。
 
 同一 PR 的选中检查并行执行；首个失败会停止该 PR 的剩余检查，其他 PR 继续并行。`CI failure feedback` 在 Foundation 失败或超时完成事件后，从默认分支加载通知脚本，在对应的仍打开且 head 未变的 PR 中 `@原作者`，附实际失败 job 链接。评审者负责审批和验证，不代改代码。同 run/attempt 只通知一次；取消、旧 head、已关闭 PR 和手动探测不通知。通知只读取 API 元数据，不执行失败 PR 的代码或下载其工件。工作流须合入默认分支后才接收真实完成事件；消息到达时间取决于 GitHub 事件和通知投递。
 
