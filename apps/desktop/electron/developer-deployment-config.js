@@ -3,6 +3,7 @@ import {lstatSync,readFileSync,realpathSync} from 'node:fs';
 import path from 'node:path';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import * as githubModule from '@personal-agent/github';
+import {developerSettingsError,preserveDeveloperSettingsError} from '../shared/developer-settings-diagnostics.js';
 
 const PUBLIC_UNAVAILABLE=[
   ['github','trusted_provider_repository_credentials_required'],
@@ -25,7 +26,9 @@ export function projectDeveloperConversationStatus(snapshot) {
       .map(([capability,reason])=>({capability,reason}))};
 }
 
-const fail=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','Developer deployment configuration is invalid or unavailable');};
+const configurationError=(_code,message)=>new ProtocolError('UNSUPPORTED_CAPABILITY',message);
+const fail=(reason='DEV_SETTINGS_SAVE_FAILED')=>{throw developerSettingsError(reason,configurationError);};
+const inspect=(reason,read)=>{try{return read();}catch(cause){throw preserveDeveloperSettingsError(cause,reason,configurationError);}};
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','Exact developer export permission is unavailable');};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)??'undefined').digest('hex');
 export const developerRepositoryDescriptor={name:'developer.repository_context',version:'1.0.0',
@@ -37,16 +40,16 @@ const keys=(value,allowed)=>object(value)&&Object.keys(value).every(key=>allowed
 const branch=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/u.test(value)
   &&!value.includes('..')&&!value.endsWith('/')&&!value.endsWith('.lock');
 const inside=(root,candidate)=>{const relative=path.relative(root,candidate);return !relative||(!relative.startsWith('..'+path.sep)&&relative!=='..'&&!path.isAbsolute(relative));};
-function boundFile(name,maxBytes,{privateFile=false,workspaceRoot,assertPrivateFile,immutable=false,executable=false}={}) {
-  if(typeof name!=='string'||!path.isAbsolute(name)||name.includes('\0'))fail();
-  const canonical=realpathSync(name),initial=lstatSync(name,{bigint:true});
+function boundFile(name,maxBytes,{privateFile=false,workspaceRoot,assertPrivateFile,immutable=false,executable=false,diagnostic='DEV_SETTINGS_SAVE_FAILED'}={}) {
+  if(typeof name!=='string'||!path.isAbsolute(name)||name.includes('\0'))fail(diagnostic);
+  const canonical=inspect(diagnostic,()=>realpathSync(name)),initial=inspect(diagnostic,()=>lstatSync(name,{bigint:true}));
   if(path.resolve(name)!==canonical||!initial.isFile()||initial.isSymbolicLink()||initial.nlink!==1n
-    ||initial.size>BigInt(maxBytes)||workspaceRoot&&inside(workspaceRoot,canonical))fail();
+    ||initial.size>BigInt(maxBytes)||workspaceRoot&&inside(workspaceRoot,canonical))fail(diagnostic);
   if(privateFile){
     if(process.platform==='win32'){if(assertPrivateFile?.(canonical)!==true)fail();}
     else if((Number(initial.mode)&0o077)!==0||typeof process.getuid==='function'&&initial.uid!==BigInt(process.getuid()))fail();
   }else if(process.platform!=='win32'&&(Number(initial.mode)&0o022)!==0)fail();
-  if(executable&&(process.platform==='win32'?!/\.exe$/iu.test(canonical):(Number(initial.mode)&0o111)===0))fail();
+  if(executable&&(process.platform==='win32'?!/\.exe$/iu.test(canonical):(Number(initial.mode)&0o111)===0))fail(diagnostic);
   const identity=(verifyPrivate=false)=>{
     const current=lstatSync(canonical,{bigint:true});
     return current.isFile()&&!current.isSymbolicLink()&&current.nlink===1n&&current.dev===initial.dev&&current.ino===initial.ino
@@ -145,9 +148,10 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
   let provider,host,active=true;
   try {
     if(!workspace||typeof workspace.bindingId!=='string'||!workspace.bindingId||typeof workspace.available!=='function'
-      ||typeof workspace.assertCurrent!=='function'||!path.isAbsolute(workspace.rootPath))fail();
-    const root=realpathSync(workspace.rootPath),rootIdentity=lstatSync(root,{bigint:true});
-    if(!rootIdentity.isDirectory()||rootIdentity.isSymbolicLink())fail();
+      ||typeof workspace.assertCurrent!=='function'||typeof workspace.rootPath!=='string'||!path.isAbsolute(workspace.rootPath))fail('DEV_SETTINGS_WORKSPACE_INVALID');
+    const root=inspect('DEV_SETTINGS_WORKSPACE_INVALID',()=>realpathSync(workspace.rootPath)),
+      rootIdentity=inspect('DEV_SETTINGS_WORKSPACE_INVALID',()=>lstatSync(root,{bigint:true}));
+    if(!rootIdentity.isDirectory()||rootIdentity.isSymbolicLink())fail('DEV_SETTINGS_WORKSPACE_INVALID');
     // Product settings supply the same original configuration through a trusted encrypted host.
     // Never materialize credentials into a second plaintext configuration/token-file registry.
     const sourceRaw=configurationSource?.readConfiguration();
@@ -155,31 +159,36 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
     const file=configurationSource?{read:()=>sourceRaw,current:()=>configurationSource.current()===true
       &&configurationSource.readConfiguration()===sourceRaw}
       :boundFile(configPath,65536,{privateFile:true,workspaceRoot:root,assertPrivateFile,immutable:true});
-    const raw=file.read(),configuration=JSON.parse(raw);
+    const raw=file.read(),configuration=inspect('DEV_SETTINGS_INPUT_INVALID',()=>JSON.parse(raw));
     if(!keys(configuration,['version','repository','workspaceRoot','github','git','workflows'])||configuration.version!==1
-      ||typeof configuration.repository!=='string'||!/^[-\w.]+\/[-\w.]+$/u.test(configuration.repository)
-      ||configuration.repository.includes('..')||realpathSync(configuration.workspaceRoot)!==root
       ||!keys(configuration.github,['executable','tokenFile','environment','repairLinks'])
       ||configuration.github.repairLinks!==undefined&&typeof configuration.github.repairLinks!=='boolean'
-      ||!keys(configuration.git,['sourceBranch','remoteName','remoteUrl','allowedPaths','authorName','authorEmail']))fail();
+      ||!keys(configuration.git,['sourceBranch','remoteName','remoteUrl','allowedPaths','authorName','authorEmail']))fail('DEV_SETTINGS_INPUT_INVALID');
+    if(typeof configuration.repository!=='string'||!/^[-\w.]+\/[-\w.]+$/u.test(configuration.repository)
+      ||configuration.repository.includes('..'))fail('DEV_SETTINGS_GIT_INVALID');
+    if(inspect('DEV_SETTINGS_WORKSPACE_INVALID',()=>realpathSync(configuration.workspaceRoot))!==root)fail('DEV_SETTINGS_WORKSPACE_CHANGED');
     if(configurationSource&&configuration.github.tokenFile!==undefined)fail();
     const repository=configuration.repository,git=configuration.git;
     if(!branch(git.sourceBranch)||typeof git.remoteName!=='string'||! /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(git.remoteName)
       ||![`https://github.com/${repository}`,`https://github.com/${repository}.git`].includes(git.remoteUrl)
       ||typeof git.authorName!=='string'||!git.authorName||typeof git.authorEmail!=='string'||!git.authorEmail
-      ||/[\r\n\x00<>]/u.test(git.authorName+git.authorEmail)||!Array.isArray(git.allowedPaths)||!git.allowedPaths.length
-      ||git.allowedPaths.length>128||new Set(git.allowedPaths).size!==git.allowedPaths.length)fail();
+      ||/[\r\n\x00<>]/u.test(git.authorName+git.authorEmail))fail('DEV_SETTINGS_GIT_INVALID');
+    if(!Array.isArray(git.allowedPaths)||!git.allowedPaths.length||git.allowedPaths.length>128
+      ||new Set(git.allowedPaths).size!==git.allowedPaths.length)fail('DEV_SETTINGS_ALLOWED_PATHS_INVALID');
     for(const name of git.allowedPaths){
       if(typeof name!=='string'||!name||name.length>1023||name.startsWith('-')||path.isAbsolute(name)||name.includes('\\')
         ||/[\x00-\x1f]/u.test(name)||name.split('/').some(part=>!part||part==='.'||part==='..'||part==='.git'||part==='node_modules'
-          ||/^\.env(?:\.|$)/i.test(part)||/(?:credentials?|secrets?)(?:\.|$)/i.test(part)))fail();
-      const candidate=path.resolve(root,name),stat=lstatSync(candidate);
-      if(!inside(root,candidate)||!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||realpathSync(candidate)!==candidate)fail();
+          ||/^\.env(?:\.|$)/i.test(part)||/(?:credentials?|secrets?)(?:\.|$)/i.test(part)))fail('DEV_SETTINGS_ALLOWED_PATHS_INVALID');
+      const candidate=path.resolve(root,name),stat=inspect('DEV_SETTINGS_ALLOWED_FILE_UNAVAILABLE',()=>lstatSync(candidate));
+      if(!inside(root,candidate)||!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1
+        ||inspect('DEV_SETTINGS_ALLOWED_FILE_UNAVAILABLE',()=>realpathSync(candidate))!==candidate)fail('DEV_SETTINGS_ALLOWED_PATHS_INVALID');
     }
-    const binary=boundFile(configuration.github.executable,128*1024*1024,{workspaceRoot:root,immutable:true,executable:true});
+    const binary=boundFile(configuration.github.executable,128*1024*1024,
+      {workspaceRoot:root,immutable:true,executable:true,diagnostic:'DEV_SETTINGS_EXECUTABLE_INVALID'});
     const environment=configuration.github.environment??{};
     if(!keys(environment,['SystemRoot','TEMP','TMP'])||Object.values(environment).some(value=>typeof value!=='string'
-      ||!path.isAbsolute(value)||/[\x00-\x1f]/u.test(value)||!lstatSync(value).isDirectory()))fail();
+      ||!path.isAbsolute(value)||/[\x00-\x1f]/u.test(value)
+      ||!inspect('DEV_SETTINGS_ENVIRONMENT_INVALID',()=>lstatSync(value)).isDirectory()))fail('DEV_SETTINGS_ENVIRONMENT_INVALID');
     const token=configurationSource?{current:()=>file.current(),read:()=>configurationSource.readToken()}
       :boundFile(configuration.github.tokenFile,4096,{privateFile:true,workspaceRoot:root,assertPrivateFile,immutable:true});
     let tokenDigest;
@@ -204,12 +213,14 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
       ...(workspace.command?{command:{...workspace.command,available:async scope=>await ready('workspace.run_allowed_command',scope)
         &&await workspace.command.available(scope)===true}}:{}),
       testLocate:{cacheRootPath,available:scope=>ready('workspace.locate_test_failures',scope)},now};
-    if(!path.isAbsolute(cacheRootPath)||!lstatSync(cacheRootPath).isDirectory()||inside(root,realpathSync(cacheRootPath)))fail();
+    if(typeof cacheRootPath!=='string'||!path.isAbsolute(cacheRootPath)
+      ||!inspect('DEV_SETTINGS_CACHE_INVALID',()=>lstatSync(cacheRootPath)).isDirectory()
+      ||inside(root,inspect('DEV_SETTINGS_CACHE_INVALID',()=>realpathSync(cacheRootPath))))fail('DEV_SETTINGS_CACHE_INVALID');
     const workflow=configuration.workflows;
     if(workflow!==undefined){
       if(!keys(workflow,['bindingId','modelId','configurationRef','maxSteps','maxTokens','reviewRules','issueTriage','ciFix'])
         ||typeof workflow.bindingId!=='string'||!workflow.bindingId||!Number.isSafeInteger(workflow.maxSteps)||workflow.maxSteps<1||workflow.maxSteps>64
-        ||!Number.isSafeInteger(workflow.maxTokens)||workflow.maxTokens<1||workflow.maxTokens>131072)fail();
+        ||!Number.isSafeInteger(workflow.maxTokens)||workflow.maxTokens<1||workflow.maxTokens>131072)fail('DEV_SETTINGS_WORKFLOW_INVALID');
       const result={bindingId:hash([workspace.bindingId,hash(raw),workflow.bindingId]),repositories:[repository],maxSteps:workflow.maxSteps,maxTokens:workflow.maxTokens,
         available:(kind,scope)=>ready('developer.'+kind,scope),assertCurrent,
         ...(typeof confirmExport==='function'?{authorizeModelRequest:(request,scope)=>consent('developer_model_request',request,scope),
@@ -218,7 +229,7 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
       // never read permission for source snippets.
       if(root!==undefined)result.testLocate={root:workspace.rootPath,allowedPaths:[...git.allowedPaths]};
       if(workflow.modelId!==undefined||workflow.configurationRef!==undefined){
-        if(typeof workflow.modelId!=='string'||!workflow.modelId||typeof workflow.configurationRef!=='string'||!workflow.configurationRef)fail();
+        if(typeof workflow.modelId!=='string'||!workflow.modelId||typeof workflow.configurationRef!=='string'||!workflow.configurationRef)fail('DEV_SETTINGS_MODEL_REQUIRED');
         if(typeof readModelGateway==='function')try {
           const original=readModelGateway(workflow.modelId,workflow.configurationRef);
           const deployment=structuredClone(original?.deployment);
@@ -231,20 +242,20 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
       if(workflow.reviewRules!==undefined){
         if(!Array.isArray(workflow.reviewRules)||!workflow.reviewRules.length||workflow.reviewRules.length>32
           ||workflow.reviewRules.some(rule=>!keys(rule,['id','text'])||typeof rule.id!=='string'||!rule.id||rule.id.length>128
-            ||typeof rule.text!=='string'||!rule.text||rule.text.length>4000))fail();
+            ||typeof rule.text!=='string'||!rule.text||rule.text.length>4000))fail('DEV_SETTINGS_WORKFLOW_INVALID');
         result.reviewRules=structuredClone(workflow.reviewRules);
       }
       if(workflow.issueTriage!==undefined){
         const value=workflow.issueTriage,kinds=['bug','feature','docs','question'];
         if(!keys(value,['labels','minConfidence'])||!keys(value.labels,kinds)||Object.keys(value.labels).length!==kinds.length
           ||kinds.some(kind=>typeof value.labels[kind]!=='string'||!value.labels[kind].trim()||value.labels[kind].length>100)
-          ||typeof value.minConfidence!=='number'||!Number.isFinite(value.minConfidence)||value.minConfidence<0||value.minConfidence>1)fail();
+          ||typeof value.minConfidence!=='number'||!Number.isFinite(value.minConfidence)||value.minConfidence<0||value.minConfidence>1)fail('DEV_SETTINGS_WORKFLOW_INVALID');
         result.issueTriage=structuredClone(value);
       }
       if(workflow.ciFix!==undefined){
         const value=workflow.ciFix;if(!keys(value,['verifyRecipeId','baseBranch','maxAttempts','maxLogBytes'])||!branch(value.baseBranch)
           ||!workspace.command?.recipeIds?.includes(value.verifyRecipeId)||value.maxAttempts!==undefined&&(!Number.isInteger(value.maxAttempts)||value.maxAttempts<1||value.maxAttempts>4)
-          ||value.maxLogBytes!==undefined&&(!Number.isInteger(value.maxLogBytes)||value.maxLogBytes<1||value.maxLogBytes>512*1024))fail();
+          ||value.maxLogBytes!==undefined&&(!Number.isInteger(value.maxLogBytes)||value.maxLogBytes<1||value.maxLogBytes>512*1024))fail('DEV_SETTINGS_WORKFLOW_INVALID');
         result.ciFix={...value,sourcePaths:[...git.allowedPaths],headBranch:git.sourceBranch,
           gitTools:{head:'workspace.git.head',commit:'workspace.git.commit',push:'workspace.git.push',pullRequest:'github.pr.create',backlink:'github.issue.comment'}};
       }
@@ -270,7 +281,7 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
     return {host,prepareExport:exports.prepareExport,snapshot:()=>({configured:true,state:active?'configured':'closed',repository,
       workflowsConfigured:workflow!==undefined,modelConfigured:typeof options.workflows?.model?.complete==='function',
       exportConfirmationConfigured:typeof confirmExport==='function',unavailable}),close(){if(!active)return;active=false;exports.clear();host.close();}};
-  }catch{active=false;try{host?.close();provider?.dispose();}catch{}fail();}
+  }catch(cause){active=false;try{host?.close();provider?.dispose();}catch{}throw preserveDeveloperSettingsError(cause,'DEV_SETTINGS_SAVE_FAILED',configurationError);}
 }
 
 /** Original public descriptors only. None of the metadata-only handles below can execute. */

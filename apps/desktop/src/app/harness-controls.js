@@ -6,7 +6,7 @@ const budgetFields=[['maxOutputTokens','摘要输出 Token 预算',1],['triggerC
 export function mountHarnessControls(root,invoke) {
   const settings=document.createElement('details');settings.className='sis-settings';
   settings.innerHTML=`<summary>开发者 Harness</summary><div class="sis-fields">
-    <p class="notice">主对话负责交互、澄清与汇总，子智能体执行实际工作。工作区沿用「电脑操控」中已选择的编程工作区与原工具权限。</p>
+    <p class="notice">主对话负责交互、澄清与汇总，子智能体执行实际工作。请在「开发 → 环境 / Worktrees」选择本地工作区并重启装配；执行仍沿用原工具权限。</p>
     <label><input data-harness="enabled" type="checkbox">启用子智能体开发任务规划</label>
     <label>执行子智能体的总步骤预算<input data-harness="maxExecutorSteps" type="number" min="1" step="1" inputmode="numeric" placeholder="明确填写本次配置的总预算"></label>
     <fieldset><legend>执行会话的历史摘要</legend>

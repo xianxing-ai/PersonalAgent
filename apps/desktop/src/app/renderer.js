@@ -1,4 +1,5 @@
 import {mountSessionControls} from '../features/conversation/session-controls.js';
+import {readDeveloperSettingsDiagnostic} from '../../shared/developer-settings-diagnostics.js';
 import {mountSubagentConversationPage} from '../features/conversation/subagent-conversations.js';
 import {mountSubagentCompletionNotice} from '../features/conversation/subagent-completion-notice.js';
 import {mountSubagentConversationList} from '../features/conversation/subagent-conversation-list.js';
@@ -39,7 +40,13 @@ let activeDesktopConversationId;
 async function invoke(action,payload) {
   if(activeDesktopConversationId&&['task.submit','conversation.model','thinking.update'].includes(action))payload=action==='task.submit'?{...(typeof payload==='string'?{text:payload}:payload),conversationId:payload?.conversationId??activeDesktopConversationId}:{...payload,conversationId:payload?.conversationId??activeDesktopConversationId};
   if(!bridge) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
-  const response=await bridge.invoke(action,payload); if(!response.ok) throw Error(response.error); return response.value;
+  const response=await bridge.invoke(action,payload);
+  if(!response.ok){
+    const error=Error(response.error),diagnostic=readDeveloperSettingsDiagnostic(response.diagnostic);
+    if(diagnostic)error.diagnostic=diagnostic;
+    throw error;
+  }
+  return response.value;
 }
 let render, orb, reportSnapshotFailure, clearSnapshotFailure;
 if(mode==='orb') {
