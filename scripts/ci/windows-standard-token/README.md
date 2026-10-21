@@ -93,6 +93,29 @@ under each first-generation Node console variant. All token validation, stdio, e
 Job rules stay the same. This matrix changes no full-check flags and creates no private
 desktop or ACL. New output remains only fixed stages, numeric exits and booleans.
 
+86920567 actually compiled/passed smoke. Original token passed every console variant.
+The selected token directly launched csc with the inherited console successfully, but
+CREATE_NO_WINDOW caused both direct cmd/csc to return 0xC0000142. Node's hidden second-generation
+launches failed too. This identifies the console-dependent startup boundary, not the exact
+OS authorization failure; no claim of a CSRSS identity or desktop ACL root cause is made.
+
+The next candidate changes **only the newly created private restricted token**'s DefaultDACL
+to two explicit GENERIC_ALL allow ACEs, for its same user and SYSTEM. It does not mutate the
+current token, an existing linked token, any existing process/thread/windowstation/desktop
+ACL, integrity/elevation, privileges, or product guards. This is a template for subsequently
+created objects, not an authority grant to another account. Current and linked-token paths
+are unchanged. No private windowstation/desktop is created.
+
+Compatibility keeps an untouched primary-token copy before setting the new default. The
+old-copy matrix is evidence only: nonzero exits/errors are recorded and never counted as
+candidate success. Original and actual candidate matrices must pass every direct/Node probe,
+including exact npm prefix, stdout, empty stderr and both voice environments; otherwise the
+short gate fails and full check cannot run. The candidate is also used by the ordinary
+complete-check path, with all prior token/Job checks unchanged. DefaultDACL reports are only
+literal same-user/SYSTEM GENERIC_ALL ACE configuration booleans, not effective-rights or
+actual CSRSS access evidence. This candidate is not compiled or run yet; new Windows CI
+must prove whether it fixes startup and then run the full original check.
+
 Linux author environment has no dotnet/C# compiler, PowerShell or Win32. No compilation,
 ABI, token acquisition, smoke, Windows tests or full check has been claimed. Diff/static
 review is preparation only. Root must review, compile and run the short Windows smoke;

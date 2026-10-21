@@ -87,3 +87,20 @@ STARTF_USESHOWWINDOW|SW_HIDE；Node 二代 execFile/windowsHide 探针不改，�
 first-generation Node 的 CREATE_NO_WINDOW。stdio/env/cwd/Job/实际 child token 检验
 保留。未增加私有桌面、账号、登录、ACL 改动或完整 check 的新 flags。
 新增矩阵本机只有 syntax/diff 静态准备，未在 Windows 运行；须读取新 CI 再决定原因。
+
+## 86920567：console 触发差异及最小新 token 默认 DACL 候选
+
+官方 `39638147977` / Windows `119354451297` 编译及严格 smoke 通过。原 token
+direct cmd/csc 和 Node 二代的所有 console 变体均 exit0。普通 token 直接继承
+console 的 csc /help exit0；direct cmd/npm-prefix exit0 但有内部 CALL stderr。
+仅增加 CREATE_NO_WINDOW 后 direct cmd/csc 均 0xC0000142，无输出；Node 二代同样失败。
+最后 NO_WINDOW first-generation Node 也未进入脚本，本轮 gate 失败，完整 check 未启动。
+这区分了 console 初始化触发条件，仍未证明具体 CSRSS、MIC、默认 DACL 或桌面根因。
+
+按 root/独立 reviewer 统一的更小候选，仅为新建 private restricted token 设置
+same-user+SYSTEM 两条 GENERIC_ALL 默认 ACE；不修改 current/linked token 或任一
+existing object ACL，不新建桌面，不改生产 guard/隐藏窗口行为。保留旧默认 DACL
+primary-token 副本执行原固定矩阵作对照；旧失败只记录，新实际候选/原 token 的
+每个 direct/Node probe（包括精确 prefix 与 full/voice 环境）必须真实通过才运行
+完整原 check。日志仅 literal ACE 配置布尔，不伪称实际 CSRSS access。
+此候选本地仅 Node syntax/diff，未编译或 Windows 验证，仍须新 CI 证明。

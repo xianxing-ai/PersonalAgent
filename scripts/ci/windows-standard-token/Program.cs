@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Security.AccessControl;
 using System.Text;
 
 // CI-only: never imported by a product package. No credentials or general command input.
@@ -13,6 +14,7 @@ internal static class Program
     const int StdInput = -10, StdOutput = -11, StdError = -12;
     static readonly IntPtr Current = new(-1);
     static bool useCurrentToken;
+    static bool privateRestrictedToken;
     static string stage = "arguments";
     static string Self => CanonicalFile(Environment.ProcessPath ?? throw new InvalidOperationException());
     static string Cwd => CanonicalDirectory(Environment.CurrentDirectory);
@@ -29,7 +31,11 @@ internal static class Program
             using var own = OpenToken(GetCurrentProcess(), Query | Duplicate | AssignPrimary | AdjustDefault);
             string sid = Sid(own.Value); int session = Integer(own.Value, 12);
             using var token = SelectToken(own.Value, sid, session);
-            if (args[0] == "--compatibility") return Compatibility(own.Value, token.Value, sid, session);
+            // Keep a private pre-change copy only for the fixed A/B diagnostics. Never
+            // mutate the current token or a pre-existing linked token/default object ACL.
+            using var beforeDefault = args[0] == "--compatibility" && privateRestrictedToken ? DuplicatePrimary(token.Value) : null;
+            if (privateRestrictedToken) SetPrivateDefaultDacl(token.Value, sid);
+            if (args[0] == "--compatibility") return Compatibility(own.Value, token.Value, sid, session, beforeDefault?.Value ?? IntPtr.Zero);
             if (args[0] == "--smoke") return Smoke(token.Value, sid, session);
             if (args[0] == "--smoke-supervisor")
             {
@@ -88,6 +94,7 @@ internal static class Program
             stage = "set-restricted-integrity"; SetMediumIntegrity(restricted);
             stage = "validate-restricted-own-token";
             Validate(restricted, sid, session);
+            privateRestrictedToken = true;
             Console.WriteLine("standard-token: restricted-own"); return filtered;
         }
         catch { filtered.Dispose(); throw; }
@@ -277,7 +284,7 @@ internal static class Program
     }
 
     static string CwdDigest() => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Cwd)));
-    static int Compatibility(IntPtr own, IntPtr selected, string sid, int session)
+    static int Compatibility(IntPtr own, IntPtr selected, string sid, int session, IntPtr beforeDefault)
     {
         bool selectedUsesCurrent = useCurrentToken;
         string node = CanonicalFile(Path.Combine(Path.GetDirectoryName(ResolveNpm())!, "node.exe"));
@@ -287,26 +294,47 @@ internal static class Program
             "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"));
         try
         {
-            foreach (bool baseline in new[] { true, false })
+            var cases = new List<(string Name, IntPtr Token, bool Baseline, bool Required)> {
+                ("original-token", own, true, true) };
+            if (beforeDefault != IntPtr.Zero) cases.Add(("selected-before-default-dacl", beforeDefault, false, false));
+            cases.Add(("selected-token", selected, false, true));
+            foreach (var test in cases)
             {
-                useCurrentToken = baseline || selectedUsesCurrent;
-                IntPtr token = baseline ? own : selected;
-                Console.WriteLine("standard-token compatibility: " + (baseline ? "original-token" : "selected-token"));
-                Console.WriteLine("standard-token desktop-access: " + System.Text.Json.JsonSerializer.Serialize(DesktopAccess(token, own)));
-                foreach (bool noWindow in new[] { false, true })
+                try
                 {
+                    bool baseline = test.Baseline;
+                    useCurrentToken = baseline || selectedUsesCurrent;
+                    IntPtr token = test.Token;
+                    bool passed = true;
+                    Console.WriteLine("standard-token compatibility: " + test.Name);
+                    Console.WriteLine("standard-token default-dacl-config: " + System.Text.Json.JsonSerializer.Serialize(DefaultDaclConfiguration(token, sid)));
+                    Console.WriteLine("standard-token desktop-access: " + System.Text.Json.JsonSerializer.Serialize(DesktopAccess(token, own)));
+                    foreach (bool noWindow in new[] { false, true })
+                    {
                     // Only console connection changes. SW_HIDE is explicit in both variants;
                     // no CREATE_NEW_CONSOLE, DETACHED_PROCESS, visible UI or ACL change.
                     Console.WriteLine("standard-token compatibility-flags: createNoWindow=" + noWindow.ToString().ToLowerInvariant());
-                    DirectProbe(token, sid, session, cmd, Quote(cmd) + " /d /s /c \"\"" + ResolveNpm() + "\" prefix\"",
+                    passed &= DirectProbe(token, sid, session, cmd, Quote(cmd) + " /d /s /c \"\"" + ResolveNpm() + "\" prefix\"",
                         "direct-cmd-npm-prefix", baseline, noWindow);
-                    DirectProbe(token, sid, session, csc, Quote(csc) + " /help",
+                    passed &= DirectProbe(token, sid, session, csc, Quote(csc) + " /help",
                         "direct-framework-csc-help-full-env", baseline, noWindow);
                     // Keep Node's second-generation shell:false/windowsHide:true fixed, and
                     // compare only how its first-generation parent is attached to a console.
-                    using var probe = Start(token, sid, session, node, Quote(node) + " " + Quote(script),
+                    using var probe = Start(token, sid, session, node, Quote(node) + " " + Quote(script) + (test.Required ? " --require-success" : ""),
                         GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError), baseline, noWindow, true);
-                    uint exit = probe.Wait(60000); if (exit != 0) return unchecked((int)exit);
+                    uint exit = probe.Wait(60000);
+                    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { stage = "first-generation-node-probe", createNoWindow = noWindow, exitCode = exit }));
+                    passed &= exit == 0;
+                    }
+                    if (test.Required && !passed) return 125;
+                }
+                catch (Exception error) when (!test.Required)
+                {
+                    // The old private copy is evidence only. A known broken control must
+                    // not hide the candidate; candidate/original required failures propagate.
+                    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new {
+                        stage = "old-default-dacl-control-failure", failedStage = stage,
+                        errorCode = error is Win32Exception native ? native.NativeErrorCode : error.HResult }));
                 }
             }
             return 0;
@@ -314,7 +342,7 @@ internal static class Program
         finally { useCurrentToken = selectedUsesCurrent; }
     }
 
-    static void DirectProbe(IntPtr token, string sid, int session, string executable, string command,
+    static bool DirectProbe(IntPtr token, string sid, int session, string executable, string command,
         string label, bool baseline, bool noWindow)
     {
         using var output = new Pipe(); using var error = new Pipe();
@@ -326,6 +354,45 @@ internal static class Program
         if (!Task.WaitAll(new Task[] { stdout, stderr }, 10000)) throw new TimeoutException();
         Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { stage = label, createNoWindow = noWindow,
             exitCode = exit, stdoutPresent = stdout.Result.Length > 0, stderrPresent = stderr.Result.Length > 0 }));
+        return exit == 0 && stdout.Result.Length > 0 && stderr.Result.Length == 0
+            && (label != "direct-cmd-npm-prefix" || string.Equals(stdout.Result.Trim(), Cwd, StringComparison.OrdinalIgnoreCase));
+    }
+
+    static Handle DuplicatePrimary(IntPtr token)
+    {
+        if (!DuplicateTokenEx(token, Query | Duplicate | AssignPrimary | AdjustDefault, IntPtr.Zero, 2, 1, out IntPtr copy)) throw new Win32Exception();
+        return new Handle(copy);
+    }
+    static void SetPrivateDefaultDacl(IntPtr token, string sid)
+    {
+        stage = "set-new-restricted-token-default-dacl";
+        var acl = new RawAcl(2, 2);
+        acl.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x10000000, new SecurityIdentifier(sid), false, null));
+        acl.InsertAce(1, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x10000000, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), false, null));
+        byte[] bytes = new byte[acl.BinaryLength]; acl.GetBinaryForm(bytes, 0);
+        using var data = new Memory(bytes.Length); using var wrapper = new Memory(IntPtr.Size);
+        Marshal.Copy(bytes, 0, data.Value, bytes.Length); Marshal.WriteIntPtr(wrapper.Value, data.Value);
+        // TOKEN_DEFAULT_DACL is a PACL wrapper. The kernel copies its contents here;
+        // this sets defaults for future objects, never the ACL of any existing object.
+        // https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_default_dacl
+        if (!SetTokenInformation(token, 6, wrapper.Value, IntPtr.Size)) throw new Win32Exception();
+        Validate(token, sid, Integer(token, 12));
+    }
+    static object DefaultDaclConfiguration(IntPtr token, string sid)
+    {
+        using var info = Information(token, 6); IntPtr pointer = Marshal.ReadIntPtr(info.Value);
+        if (pointer == IntPtr.Zero) return new { nullDacl = true, selectedUserGenericAllAce = false, systemGenericAllAce = false };
+        int length = (ushort)Marshal.ReadInt16(pointer, 2); byte[] bytes = new byte[length]; Marshal.Copy(pointer, bytes, 0, length);
+        var acl = new RawAcl(bytes, 0); bool user = false, system = false;
+        foreach (GenericAce ace in acl)
+        {
+            if (ace is not CommonAce common || common.AceQualifier != AceQualifier.AccessAllowed
+                || (common.AceFlags & AceFlags.InheritOnly) != 0 || (common.AccessMask & 0x10000000) == 0) continue;
+            user |= common.SecurityIdentifier.Value == sid;
+            system |= common.SecurityIdentifier.IsWellKnown(WellKnownSidType.LocalSystemSid);
+        }
+        // Configuration only, not an effective-rights calculation or CSRSS identity test.
+        return new { nullDacl = false, selectedUserGenericAllAce = user, systemGenericAllAce = system };
     }
 
     static object DesktopAccess(IntPtr token, IntPtr original)
@@ -503,5 +570,6 @@ internal static class Program
     [DllImport("user32.dll",SetLastError=true)] static extern bool GetUserObjectSecurity(IntPtr handle,ref uint information,IntPtr descriptor,uint bytes,out uint needed);
     [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool GetUserObjectInformationW(IntPtr handle,int information,IntPtr value,uint bytes,out uint needed);
     [DllImport("advapi32.dll",SetLastError=true)] static extern bool DuplicateToken(IntPtr token,int level,out IntPtr copy);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool DuplicateTokenEx(IntPtr token,uint access,IntPtr security,int level,int type,out IntPtr copy);
     [DllImport("advapi32.dll",SetLastError=true)] static extern bool AccessCheck(IntPtr descriptor,IntPtr token,uint desired,ref GenericMapping mapping,IntPtr privileges,ref uint bytes,out uint granted,out bool allowed);
 }
