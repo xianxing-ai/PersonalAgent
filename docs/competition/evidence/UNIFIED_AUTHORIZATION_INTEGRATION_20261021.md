@@ -40,6 +40,12 @@
 - 原生整链 Hosted Server 初轮只等 card，未观察真实失败任务，因而以 30 秒 timeout 隐去准备失败。同 job 的 OS probe 连 full-access baseline 均在 spawn 前报告配置不可用，不能据此推断平台缺 PSEC。`400b5671` 仅将自有 fixture 目录/SystemRoot 规范为实际 canonical 路径，并从原运行记录即时读取准备结果；生产 alias/junction 拒绝保持。只有真实 full-access baseline 成功且全部受限 probe 明确报告已知 PSEC API 不支持时，非 REQUIRED 环境才能 skip；未知、配置失败和 OS 行为断言失败继续 fail，REQUIRED=1 永不 skip。
 - Native owner 在普通用户、专用 TEMP junction 模拟别名输入及 REQUIRED=1 下，本次受影响整链/严格分类 **2/2 pass、0 skip**；focused 文件实际 **7/7 pass、0 skip**，没有把父测试 name filter 冒称只跑 prelude。原始回执与边界由[原生证据](AUTHORIZATION_NATIVE_INTEGRATION_20261021.md)保存。此本机结果不证明 Hosted Server 已恢复；最终 current-head 完整 CI 仍须实际读回。
 
+## 同步外部 stop/steer/queue 主线
+
+普通合入 `f89de58a40bf7a2e7257193f9827868f08e0397f`，保留新停止/插话/排队行为与单卡授权。三处冲突仅按组合语义解决：Main 环境与 delivery/reconciliation imports 全保留；Renderer 问卡与队列 imports 全保留；审批 markup 同时执行原 `outputTruncated` 隐藏与精确 question/sourceApprovalId 去重。另加行为断言，确保截断任务不能再出现旧批准按钮、同一问题不能有第二组按钮、别的对话不能隐藏当前审批。
+
+合并提交 `66b40e145dfdd3b4a1eda6a6e33387f489de97ff` 的七文件 stop/admission/反馈/expiry/readback/reconciliation 定向组 **63 项：55 pass / 8 fail**。8 项均在新主线 task-action-focus 的 AST 夹具取到问卡 render wrapper、未选中原 cutoff 投影时失败；真实投影仍保留。仅改夹具为唯一含原 cutoff 的实际语句，并保留非空/唯一与 cutoff 断言，该文件重测 **14/14 pass、0 skip**。这些是有重叠的执行回执，不合计为 77 个独立用例。实际受影响 Renderer 首屏/键盘复核另由 UI owner 保存。
+
 ## 尚未由本记录证明
 
 - 实际 Electron 首屏可发现性和视觉复核已由 UI owner [独立保存](AUTHORIZATION_RENDERER_QA_20261021.md)：初轮业务通过但首屏视觉失败，修复后 `fe0149c6` render-only 通过并逐张检查 3 PNG；不重复声明所有业务/设备验收。
