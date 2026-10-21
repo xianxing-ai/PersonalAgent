@@ -69,3 +69,21 @@ Framework64 csc /help（全环境及原 voice 四变量环境，shell:false/wind
 AccessCheck、enabled logon SID 存在/保留布尔。不修改任何现有对象 ACL，不把
 HRESULT 当成 desktop 根因。私有非交互 desktop 方案保留为待实证候选，未接入。
 本次 Node syntax、Linux fail-closed 与 diff 通过；新增 C#/Win32 诊断仍待新 Windows CI。
+
+## 660b4fbc 对照结果与下一固定 console 矩阵
+
+官方 Foundation `39637244725` / Windows `119351167248` 真实编译和 smoke 通过。
+original-token 下 cmd/npm-prefix exit0、expectedPrefix=true、stdout=true/stderr=false；
+csc /help 的全环境和 voice 最小环境也均 exit0、stdout=true/stderr=false。
+selected-token 同三探针均 exit3221225794、无 stdout/stderr、无 timeout。
+两组现有 windowstation/desktop DACL 全权限查询均 known=true/allowed=true/error0，
+enabled logon SID 存在且保留。完整 check 仍在 voice 原 csc 以相同码失败，未到 native。
+这不能归因为最小环境、简单 DACL 拒绝或 logon SID 丢失；MIC、实际 child 的桌面连接、
+进程对象默认安全描述符与 console 初始化仍未区分，未修改任何这些权限或对象。
+
+与独立只读 reviewer/root 统一的下一增量仅比较 console 连接：每个原/普通 token 下，
+固定直接 cmd/npm-prefix 与 csc /help 对照原 flags/仅增加 CREATE_NO_WINDOW，两组均
+STARTF_USESHOWWINDOW|SW_HIDE；Node 二代 execFile/windowsHide 探针不改，仅切换
+first-generation Node 的 CREATE_NO_WINDOW。stdio/env/cwd/Job/实际 child token 检验
+保留。未增加私有桌面、账号、登录、ACL 改动或完整 check 的新 flags。
+新增矩阵本机只有 syntax/diff 静态准备，未在 Windows 运行；须读取新 CI 再决定原因。

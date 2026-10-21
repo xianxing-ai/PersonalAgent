@@ -129,7 +129,8 @@ internal static class Program
     }
 
     static Child Start(IntPtr token, string sid, int session, string executable, string command,
-        IntPtr input, IntPtr output, IntPtr error, bool originalDiagnostic = false)
+        IntPtr input, IntPtr output, IntPtr error, bool originalDiagnostic = false,
+        bool compatibilityNoWindow = false, bool compatibilityHidden = false)
     {
         stage = "duplicate-stdio";
         using var stdin = CopyHandle(input, true); using var stdout = CopyHandle(output, true); using var stderr = CopyHandle(error, true);
@@ -145,10 +146,10 @@ internal static class Program
             Marshal.Copy(new[] { stdin.Value, stdout.Value, stderr.Value }, 0, values, 3);
             if (!UpdateProcThreadAttribute(list, 0, new IntPtr(0x20002), values, new IntPtr(3 * IntPtr.Size), IntPtr.Zero, IntPtr.Zero))
                 throw new Win32Exception();
-            var startup = new StartupEx { Info = new Startup { Size = Marshal.SizeOf<StartupEx>(), Flags = 0x100,
+            var startup = new StartupEx { Info = new Startup { Size = Marshal.SizeOf<StartupEx>(), Flags = 0x100u | (compatibilityHidden ? 1u : 0u),
                 Input = stdin.Value, Output = stdout.Value, Error = stderr.Value }, Attributes = list };
             environment = GetEnvironmentStringsW(); if (environment == IntPtr.Zero) throw new Win32Exception();
-            uint flags = Suspended | UnicodeEnvironment | ExtendedStartup;
+            uint flags = Suspended | UnicodeEnvironment | ExtendedStartup | (compatibilityNoWindow ? 0x08000000u : 0u);
             stage = useCurrentToken ? "create-current-child" : "create-token-child";
             bool created = useCurrentToken
                 ? CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero, true, flags, environment, Cwd, ref startup, out process)
@@ -281,6 +282,9 @@ internal static class Program
         bool selectedUsesCurrent = useCurrentToken;
         string node = CanonicalFile(Path.Combine(Path.GetDirectoryName(ResolveNpm())!, "node.exe"));
         string script = CanonicalFile(Path.Combine(Cwd, "scripts", "ci", "windows-standard-token", "compatibility-probe.mjs"));
+        string cmd = CanonicalFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"));
+        string csc = CanonicalFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"));
         try
         {
             foreach (bool baseline in new[] { true, false })
@@ -289,13 +293,39 @@ internal static class Program
                 IntPtr token = baseline ? own : selected;
                 Console.WriteLine("standard-token compatibility: " + (baseline ? "original-token" : "selected-token"));
                 Console.WriteLine("standard-token desktop-access: " + System.Text.Json.JsonSerializer.Serialize(DesktopAccess(token, own)));
-                using var probe = Start(token, sid, session, node, Quote(node) + " " + Quote(script),
-                    GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError), baseline);
-                uint exit = probe.Wait(60000); if (exit != 0) return unchecked((int)exit);
+                foreach (bool noWindow in new[] { false, true })
+                {
+                    // Only console connection changes. SW_HIDE is explicit in both variants;
+                    // no CREATE_NEW_CONSOLE, DETACHED_PROCESS, visible UI or ACL change.
+                    Console.WriteLine("standard-token compatibility-flags: createNoWindow=" + noWindow.ToString().ToLowerInvariant());
+                    DirectProbe(token, sid, session, cmd, Quote(cmd) + " /d /s /c \"\"" + ResolveNpm() + "\" prefix\"",
+                        "direct-cmd-npm-prefix", baseline, noWindow);
+                    DirectProbe(token, sid, session, csc, Quote(csc) + " /help",
+                        "direct-framework-csc-help-full-env", baseline, noWindow);
+                    // Keep Node's second-generation shell:false/windowsHide:true fixed, and
+                    // compare only how its first-generation parent is attached to a console.
+                    using var probe = Start(token, sid, session, node, Quote(node) + " " + Quote(script),
+                        GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError), baseline, noWindow, true);
+                    uint exit = probe.Wait(60000); if (exit != 0) return unchecked((int)exit);
+                }
             }
             return 0;
         }
         finally { useCurrentToken = selectedUsesCurrent; }
+    }
+
+    static void DirectProbe(IntPtr token, string sid, int session, string executable, string command,
+        string label, bool baseline, bool noWindow)
+    {
+        using var output = new Pipe(); using var error = new Pipe();
+        using var child = Start(token, sid, session, executable, command, GetStdHandle(StdInput),
+            output.Write.Value, error.Write.Value, baseline, noWindow, true);
+        output.Write.Dispose(); error.Write.Dispose();
+        Task<string> stdout = Task.Run(output.ReadAll), stderr = Task.Run(error.ReadAll);
+        uint exit = child.Wait(30000);
+        if (!Task.WaitAll(new Task[] { stdout, stderr }, 10000)) throw new TimeoutException();
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { stage = label, createNoWindow = noWindow,
+            exitCode = exit, stdoutPresent = stdout.Result.Length > 0, stderrPresent = stderr.Result.Length > 0 }));
     }
 
     static object DesktopAccess(IntPtr token, IntPtr original)
@@ -422,7 +452,7 @@ internal static class Program
         {
             var bytes = new List<byte>(); var buffer = new byte[1];
             while (ReadFile(read.Value, buffer, 1, out uint size, IntPtr.Zero) && size == 1)
-            { bytes.Add(buffer[0]); if (bytes.Count > 4096) throw new InvalidOperationException(); if (line && buffer[0] == 10) break; }
+            { bytes.Add(buffer[0]); if (bytes.Count > 65536) throw new InvalidOperationException(); if (line && buffer[0] == 10) break; }
             return Encoding.UTF8.GetString(bytes.ToArray()).TrimEnd('\r', '\n');
         }
         public void Dispose() { Write.Dispose(); read.Dispose(); }

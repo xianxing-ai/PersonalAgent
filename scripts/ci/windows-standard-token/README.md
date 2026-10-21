@@ -79,6 +79,20 @@ and compatibility with all original desktop tests must be demonstrated before ad
 
 The added compatibility diagnostics are not compiled or run yet.
 
+Head 660b4fbc subsequently compiled and passed smoke. Original-token cmd/npm prefix and
+both csc /help environments returned 0; selected-token versions all returned 3221225794,
+without output or timeout. Both token DACL AccessChecks reported full access and retained
+enabled logon SID. This excludes a failure specific to the minimal voice environment or a
+simple observed DACL/logon-SID denial; it does not establish a desktop/MIC/console root cause.
+
+The next fixed matrix compares direct launcher-created cmd/npm prefix and csc /help with
+existing creation flags versus only CREATE_NO_WINDOW added, for both original and selected
+tokens. STARTF_USESHOWWINDOW/SW_HIDE is explicit in every variant; no new visible console
+or detached process is requested. The unchanged Node second-generation probes are also run
+under each first-generation Node console variant. All token validation, stdio, env, cwd and
+Job rules stay the same. This matrix changes no full-check flags and creates no private
+desktop or ACL. New output remains only fixed stages, numeric exits and booleans.
+
 Linux author environment has no dotnet/C# compiler, PowerShell or Win32. No compilation,
 ABI, token acquisition, smoke, Windows tests or full check has been claimed. Diff/static
 review is preparation only. Root must review, compile and run the short Windows smoke;
