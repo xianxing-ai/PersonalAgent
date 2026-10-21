@@ -24,13 +24,13 @@ async function composition(t){
   const directory=mkdtempSync(new URL('run-',cache)),prepared=[],resources=new Set(),fetches=[];
   let application,clock=Date.now();
   const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),
-    getApplication:()=>application,namespace:'Synthetic mailbox user',resolveConversation:()=> 'Synthetic mail conversation',
+    getApplication:()=>application,namespace:'synthetic-mailbox-user',resolveConversation:()=> 'Synthetic mail conversation',
     now:()=>clock,available:()=>true,
     profiles:[{ref:'application',label:'Application tools; no external process',mode:'workspace-write',revision:1,available:true}],
     defaultProfileRef:'application'});
   const readGeneration=question.readResourceGeneration;
   t.mock.method(question,'readResourceGeneration',resource=>{resources.add(resource);return readGeneration(resource);});
-  const config=createMailConfig({userData:directory,safeStorage,namespace:'Synthetic mailbox user',question,now:()=>clock});
+  const config=createMailConfig({userData:directory,safeStorage,namespace:'synthetic-mailbox-user',question,now:()=>clock});
   await config.configure({user:'synthetic@qq.com',authCode:'SyntheticOnlyAuthCode'});
   config.markBound(config.current().revision);
   const mailbox=new FakeMailProvider({inbox:[1,2].map(uid=>({uid,folder:'INBOX',from:'synthetic@example.invalid',
@@ -45,13 +45,13 @@ async function composition(t){
   ]))};}});
   const port=config.batchAuthorization;
   const host=createQQMailTriageHost({user:'synthetic@qq.com',authCode:'SyntheticOnlyAuthCode',accountRef:'desktop-qq-inbox',
-    namespace:'Synthetic mailbox user',storage:createEncryptedModuleStorage({userData:directory,safeStorage,filename:'classification.json'}),
+    namespace:'synthetic-mailbox-user',storage:createEncryptedModuleStorage({userData:directory,safeStorage,filename:'classification.json'}),
     triage:classifier,labels:{meeting:'Synthetic meeting',other:'Other'},isSessionAllowed:()=>false,
     batchAuthorization:{...port,preparePage(scope,batch,parent){
       prepared.push({scope,batch:structuredClone(batch),parent});return port.preparePage(scope,batch,parent);
     }}});
   application=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',
-    hostUserNamespace:'Synthetic mailbox user',now:()=>new Date(clock),tools:host.tools,
+    hostUserNamespace:'synthetic-mailbox-user',now:()=>new Date(clock),tools:host.tools,
     requiresToolAuthorization:scope=>question.requiresAuthorization(scope),requestToolAuthorization:scope=>{
       host.prepareAuthorization(scope);return question.requestToolAuthorization(scope);
     }});
@@ -69,7 +69,8 @@ async function composition(t){
       assert.match(card.requirements[1].summary,/不含正文、写信或云端分析/);
       assert.equal((await host.refresh()).status,'waiting_approval');
       question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_once'},card.conversationId);
-      await wait(()=>application.runtime.getTask(card.taskId).state==='succeeded');
+      await wait(()=>['succeeded','failed','cancelled','waiting_reconciliation'].includes(application.runtime.getTask(card.taskId).state));
+      assert.equal(application.runtime.getTask(card.taskId).state,'succeeded',JSON.stringify(application.runtime.getTask(card.taskId).error));
       return card;
     }};
   t.after(async()=>{await host.close();question.close();await wait(()=>application.activeTaskCount===0);application.close();});
