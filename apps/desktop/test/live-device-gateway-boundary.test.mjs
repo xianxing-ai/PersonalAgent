@@ -22,7 +22,7 @@ for(const blocked of [false,true])test(`synthetic device broker to PCM source to
     }
   }};
   const panel={webContents:contents,isDestroyed:()=>false,isVisible:()=>true};
-  microphone=createMicrophoneCaptureHost({getPanel:()=>panel,permissionGate:{grant:()=>()=>{}}});
+  microphone=createMicrophoneCaptureHost({getPanel:()=>panel,permissionGate:{grant:()=>()=>{}},confirmAuthorization:async()=>true}); // Explicit Fake application card.
   const gateway=new AgentArtsRealtimeModelGateway({websocketUrl:'wss://agentarts.example.test/runtimes/voice/ws?endpoint=fixed-release',
     authorizationProvider:{read:async()=>'Bearer synthetic-outer'},websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'}},SyntheticSocket);
   live=createLiveVoiceHost({getPanel:()=>panel,config:{snapshot:()=>({configured:true}),current:()=>({route:'agentarts-wss'})},microphoneHost:microphone,

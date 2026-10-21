@@ -144,7 +144,7 @@ test('approval denial never executes the connector', async () => {
   app.close();
 });
 
-test('expired approvals and conflicting revisions do not grant access; waiting task can be cancelled', async () => {
+test('expired approvals and conflicting revisions do not grant access; cancellation preserves the expired task', async () => {
   let now = new Date();
   const app = createRuntimeApplication({path: database(), now: () => now, tools: [{descriptor, execute: async () => ({})}], text: {provider: new FakeModelProvider([proposal])}});
   await app.send(request('task.submit', {goal: 'test', conversationId: 'test'}, {idempotencyKey: 'expire'}), signal());
@@ -155,7 +155,13 @@ test('expired approvals and conflicting revisions do not grant access; waiting t
   now = new Date(Date.now() + 660_000);
   assert.throws(() => app.runtime.respondApproval(approval.approvalId, 'allow_once', 1), {code: 'TIMEOUT'});
   assert.equal(app.runtime.policy.get(approval.approvalId), undefined);
-  assert.equal(app.runtime.requestCancel(approval.taskId).state, 'cancelled');
+  const expired = app.runtime.getTask(approval.taskId);
+  assert.equal(expired.state, 'failed');
+  assert.equal(expired.error.code, 'TIMEOUT');
+  assert.deepEqual(app.runtime.requestCancel(approval.taskId), {
+    taskId: approval.taskId, state: 'failed', cancelAccepted: false,
+  });
+  assert.deepEqual(app.runtime.getTask(approval.taskId), expired);
   app.close();
 });
 

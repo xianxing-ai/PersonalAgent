@@ -81,12 +81,18 @@ for(const count of [1,2])test(`same-conversation approval bridge: ${count} real 
       const child=application.readSubagentTasks(taskId)[0];
       assert.equal(pending.taskId,child.taskId);assert.equal(pending.requestTaskId,taskId);
       assert.match(pending.summary,/Synthetic exact input/);
-      const voice=createDesktopVoiceCommandHost({notifications:{},readApproval:access.readApproval,
-        respondApproval(){throw Error('Read path cannot grant approval');}});
+      let currentCard=null,focused=0;
+      const voice=createDesktopVoiceCommandHost({readCurrentQuestion:()=>currentCard,focusQuestion(){focused++;}});
       const bridge=createVoiceRuntimeApprovalBridge({readPendingApproval:access.readPendingApproval,
-        prepareApproval:input=>voice.prepareApproval(input),readCurrentQuestion:()=>voice.snapshot()});
+        readCurrentQuestion:()=>voice.snapshot('dynamic-ui'),focusQuestion(){focused++;}});
+      assert.equal(await bridge.prepareTaskApproval(scope),null,'voice cannot create a second permission question');
+      // Explicit Synthetic existing-card view. Original approval/task/args readback remains real Runtime data.
+      currentCard={questionId:'synthetic-existing-card',sourceApprovalId:pending.approvalId,taskId:child.taskId,
+        revision:1,state:'pending',expiresAt:pending.expiresAt};
       const question=await bridge.prepareTaskApproval(scope);
-      assert.equal(question.taskId,child.taskId);assert.equal(question.argumentsDigest,pending.argumentsDigest);
+      assert.equal(question.taskId,child.taskId);assert.equal(question.sourceApprovalId,pending.approvalId);
+      assert.equal(question.argumentsDigest,undefined,'public card never exposes the trusted argument digest');
+      assert.equal(focused,1);
       assert.equal((await bridge.prepareTaskApproval(scope)).revision,question.revision,'reuse current exact question');
       const expired=createConversationToolAccess({getApplication:()=>application,
         getConversations:()=>({containsConversation:()=>true}),now:()=>Date.parse(pending.expiresAt)+1});

@@ -8,6 +8,12 @@ import {createLocalLayaHost} from '../electron/laya-local-host.js';
 import {createDeferredRuntimeStartup} from '../electron/runtime-startup.js';
 import {mountLayaControls} from '../src/app/laya-controls.js';
 import {readDeveloperSettingsDiagnostic} from '../shared/developer-settings-diagnostics.js';
+import {createRuntimeApplication,AuthorizationQuestions} from '@personal-agent/runtime/application';
+import {EventCursor} from '@personal-agent/client';
+import {ProtocolError} from '@personal-agent/contracts';
+import {register} from '../electron/runtime.js';
+import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
+import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from '../electron/authorization-intent-host.js';
 
 const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const start = main.indexOf('async function initializeRuntime() {');
@@ -18,6 +24,9 @@ assert.ok(start >= 0 && end > start, 'actual Main startup must be present');
 const initialize = main.slice(start, end).replaceAll('await import(', 'await load(');
 const localInitialize = main.slice(main.indexOf('async function initializeLocalLaya() {'), start)
   .replaceAll('await import(', 'await load(');
+const authorizationInitialize = main.slice(main.indexOf('function initializeAuthorizationHosts('),main.indexOf('async function initializeLocalLaya() {'))
+  .replaceAll('await import(', 'await load(');
+const authorizationPort = main.slice(main.indexOf('const authorizationQuestionPort='),main.indexOf('\nlet syntheticRepairHost;'));
 const startupStart = main.indexOf('  try {\n    conversations = new Conversations(dataPaths.conversations);');
 const startupEnd = main.indexOf('\n\n  const area = screen.getPrimaryDisplay().workArea;', startupStart);
 assert.ok(startupStart>=0 && startupEnd>startupStart, 'actual application startup must be present');
@@ -35,21 +44,25 @@ async function fixture(t, {memory = 8 * 1024 ** 3} = {}) {
   const model = path.join(directory, 'model'), script = path.join(directory, 'batch-server.py');
   mkdirSync(model); writeFileSync(path.join(model, 'model.safetensors'), 'Synthetic weights');
   writeFileSync(path.join(model, 'config.json'), '{"synthetic":true}'); writeFileSync(script, '# Synthetic server');
-  let controls, child, launches = 0, clock = Date.now(), runtimeCreations = 0, currentMemory = memory;
+  let controls, child, launches = 0, clock = Date.now(), runtimeCreations = 0, localControlCreations = 0, currentMemory = memory;
   const nodes = Object.fromEntries(['start', 'stop', 'status'].map(name => [name, {disabled:false, textContent:''}]));
   const element = {querySelector:selector => nodes[selector.match(/"([^"]+)"/)[1]]};
   const previousDocument = globalThis.document;
   globalThis.document = {createElement:() => element};
   const admin = {}, calls = [];
   const context = vm.createContext({
-    path, mkdirSync, dir:path.join(directory, 'apps/desktop/electron'),
+    path, mkdirSync, Error, ProtocolError, dir:path.join(directory, 'apps/desktop/electron'),
+    createDesktopAuthorizationQuestionHost,createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL,EventCursor,register,
+    desktopHost:{userNamespace:'synthetic-laya'},authorizationQuestionHost:undefined,authorizationIntentHost:undefined,
+    nativeExecutionHost:undefined,localAuthorizationOnly:false,runtime:undefined,runtimeConnection:undefined,client:undefined,eventCursor:undefined,
+    panel:undefined,workspace:undefined,openPanel:()=>assert.fail('no authorization operation requested'),
     dataPaths:{runtime:path.join(directory, 'runtime.sqlite')},
     runtimeProfile:'huawei_ict_agentarts', competitionMode:true, fakeMode:false, fakeModelMode:false,
     syntheticMvp:false, agentArtsResponseMode:undefined, repairCandidateVersion:undefined,
     layaPort:undefined, layaKey:undefined, runtimeApplication:undefined, localLaya:undefined,
     mailConfig:undefined, mailHost:undefined, proactiveHost:undefined,
     runtimeBuildIdentityReader:undefined, conversationToolAccess:undefined, conversations:undefined,
-    Conversations:class {}, initializeInstalledSkills:async () => {}, runtimeError:'', connectionLabel:'',
+    Conversations:class {activeConversationId(){return 'desktop-panel';}}, initializeInstalledSkills:async () => {}, runtimeError:'', connectionLabel:'',
     createConversationToolAccess:() => ({}), admin,
     localServicesStopped:true, stopP5DeviceTelemetry:async () => {}, startP5DeviceTelemetry:async () => {},
     agentArtsConfig:{runtimeBinding:() => undefined, snapshot:() => ({reason:'请先配置 AgentArts'})},
@@ -68,7 +81,18 @@ async function fixture(t, {memory = 8 * 1024 ** 3} = {}) {
     },
     load:async name => {
       if(name==='@personal-agent/runtime/application') return {
-        createRuntimeApplication() {runtimeCreations++; throw Error('No Runtime may start without cloud binding');},
+        AuthorizationQuestions,
+        createRuntimeApplication(options) {
+          if(!options.hostOnlyTools?.includes(AUTHORIZATION_INTENT_TOOL)){
+            runtimeCreations++;throw Error('No cloud Runtime may start without cloud binding');
+          }
+          // The documented local authorization control plane is not a cloud or Local Agent fallback.
+          assert.equal(options.profile,'huawei_ict_agentarts');assert.equal(options.path,path.join(directory,'runtime.sqlite'));
+          assert.equal(options.coordination,undefined);assert.equal(options.text,undefined);assert.equal(options.model,undefined);
+          assert.deepEqual([...options.hostOnlyTools],[AUTHORIZATION_INTENT_TOOL]);
+          assert.deepEqual(Array.from(options.tools,tool=>tool.descriptor.name),[AUTHORIZATION_INTENT_TOOL]);
+          localControlCreations++;return createRuntimeApplication(options);
+        },
         createLocalInboxClassifier:() => ({classify:async () => {throw Error('No inference in this test');}}),
       };
       if(name==='@personal-agent/runtime') return {readRuntimeBuildIdentity:() => undefined};
@@ -76,10 +100,19 @@ async function fixture(t, {memory = 8 * 1024 ** 3} = {}) {
       throw Error('Unexpected public port: '+name);
     },
   });
-  const boot = vm.runInContext(`${localInitialize}\n${initialize}\ninitializeRuntime`, context);
+  t.after(async () => {
+    child?.emit('exit', 0); await context.localLaya?.stop();
+    context.authorizationQuestionHost?.close();context.authorizationIntentHost?.close();
+    context.runtimeConnection?.dispose();context.runtimeApplication?.close();
+    if(previousDocument===undefined)delete globalThis.document; else globalThis.document=previousDocument;
+    assert.equal(path.dirname(directory), realpathSync(base)); rmSync(directory,{recursive:true,force:true});
+  });
+  const boot = vm.runInContext(`${authorizationPort}\n${authorizationInitialize}\n${localInitialize}\n${initialize}\ninitializeRuntime`, context);
   context.runtimeStartup = createDeferredRuntimeStartup({isConfigured:() => false, initialize:boot});
   await vm.runInContext(`(async () => {${startup}})()`, context);
   assert.equal(context.runtimeStartup.snapshot().state,'configuration_required');
+  assert.equal(context.runtimeError,'请先配置 AgentArts');assert.equal(context.localAuthorizationOnly,true);
+  assert.equal(localControlCreations,1);assert.equal(runtimeCreations,0);assert.equal(context.runtimeApplication.activeTaskCount,0);
   const action = vm.runInContext(`(async function(event,name,payload){const sender=event.sender;
     if(name==='snapshot')return {laya:localLaya?.snapshot()};${route}${mailRoute}})`, context);
   context.action = action;
@@ -89,13 +122,8 @@ async function fixture(t, {memory = 8 * 1024 ** 3} = {}) {
   const invoke = vm.runInContext(`(${invokeSource})`, invokeContext);
   controls = mountLayaControls({querySelector:() => ({before() {}})}, invoke);
   controls.render(context.localLaya?.snapshot());
-  t.after(async () => {
-    child?.emit('exit', 0); await context.localLaya?.stop();
-    if(previousDocument===undefined)delete globalThis.document; else globalThis.document=previousDocument;
-    assert.equal(path.dirname(directory), realpathSync(base)); rmSync(directory,{recursive:true,force:true});
-  });
   return {context, boot, action, controls, nodes, calls, launches:() => launches,
-    runtimeCreations:() => runtimeCreations, setMemory:value => {currentMemory=value;}};
+    runtimeCreations:() => runtimeCreations, localControlCreations:()=>localControlCreations,setMemory:value => {currentMemory=value;}};
 }
 
 test('actual Main without cloud binding or mail configuration still dispatches the explicit Laya button to its original host', async t => {
@@ -114,6 +142,7 @@ test('actual Main without cloud binding or mail configuration still dispatches t
   assert.equal(f.context.localLaya.snapshot().state, 'stopped');
   assert.equal(f.nodes.status.textContent, '本地模型已停止');
   assert.equal(f.runtimeCreations(), 0, 'no cloud task or Local Agent fallback starts');
+  assert.equal(f.localControlCreations(),1,'cloud setup retry must not create another local authorization Runtime');
   assert.deepEqual(f.calls, ['laya.start','snapshot','laya.stop','snapshot']);
 });
 

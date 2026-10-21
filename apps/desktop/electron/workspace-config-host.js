@@ -7,9 +7,11 @@ import {PROTOCOL_VERSION, ProtocolError, validateToolValue} from '@personal-agen
 import * as coding from '@personal-agent/coding-tools';
 import {harnessCandidateRecipeFingerprint,parseHarnessCandidateBinding} from '@personal-agent/contracts/harness-candidates';
 import {readRuntimeCodingVerificationEvidence} from '@personal-agent/runtime/application';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createDesktopCodingToolHost} from './coding-tool-host.js';
 import {findWindowsExecutable} from './windows-executable-discovery.js';
 import {codingRepairExportOperation,projectCodingRepairResult} from './coding-repair-result-export.js';
+import {workspaceRepairProjectionSchema,workspaceWorkflowSummaryProjectionSchema} from './workspace-result-projection.js';
 
 function directory(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.startsWith('\\\\')
@@ -89,7 +91,7 @@ Set-Acl -LiteralPath $target -AclObject $acl`;
  */
 export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   selectNodeExecutable,selectCheckFile,selectNpmCli,jobHelperExecutable,patchHelperScriptPath,
-  projectScriptEnvSource,createCommandRecipeTool,createWorkspaceReferenceExport,
+  projectScriptEnvSource,createCommandRecipeTool,createWorkspaceCommandTool,createWorkspaceReferenceExport,question,
   readWorkspaceExportPreflight,readWorkspaceExportAuthorization,
   requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions,
   // Main-only injection supports offline discovery fixtures; never accepted from Renderer.
@@ -104,7 +106,14 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const confirmedWorkspaceReads=new Map();
   let workspaceReferenceExport;
   let boundRepairPowerShell,repairHostPromise,harnessHostPromise,developerCommand;
-  let dependencyFingerprint,dependencyPreparationReason,dependencyPreparation;
+  let dependencyFingerprint,dependencyPreparationReason,dependencyPreparation,dependencySeeded=false,authorizationFailure=false;
+  const commandFactory=typeof createWorkspaceCommandTool==='function'?createWorkspaceCommandTool
+    :question?undefined:coding.createWorkspaceCommandTool;
+  const nodeFlags=question?['--preserve-symlinks','--preserve-symlinks-main']:[];
+  const prepared=new Map(),resources=new Set();
+  const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const questionReady=()=>active&&!authorizationFailure&&Boolean(application)&&['prepare','prepareExport','currentRequirement','authorizeExport',
+    'readResourceGeneration','rotateResourceGeneration'].every(name=>typeof question?.[name]==='function');
   try {
     if (existsSync(file)) {
       if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -164,8 +173,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         } catch {failure='读取和候选生成可用；安全应用补丁所需的目录或 PowerShell 检查未通过';}
       } else failure='读取和候选生成可用；安全应用补丁需要 PowerShell 7';
       const git=findExecutable('git.exe',discovery);
-      if (git) {
-        const command=coding.createWorkspaceCommandTool({rootPath:boundRoot,recipes:[{id:'git-diff-check',
+      if (git && commandFactory) {
+        const command=commandFactory({rootPath:boundRoot,recipes:[{id:'git-diff-check',
           executable:git,args:['--no-pager','-c','core.fsmonitor=false','diff','--no-ext-diff','--no-textconv','--check']}],
           maxOutputBytes:4096,maxDurationMs:30000});
         implementations.push({descriptor:{...command.descriptor,name:'workspace.git_diff_check',
@@ -173,13 +182,14 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           execute:(_input,context) => command.execute({recipeId:'git-diff-check'},context)});
       }
       const projectRequested=Boolean(helper && savedNpmCli);
-      if (savedNode && (savedCheckFile || projectRequested) && typeof createCommandRecipeTool==='function') {
+      if (savedNode && (savedCheckFile || projectRequested) && typeof createCommandRecipeTool==='function' && commandFactory) {
         try {
           const commandImplementations=[];
           const options={workspaceRoot:boundRoot,authorizedWorkspaceRoot:boundRoot,
             nodeExecutable:savedNode,checkFiles:[{id:'node-check',path:savedCheckFile}],
             allowProjectScripts:projectRequested,jobHelperExecutable:helper,npmCliPath:savedNpmCli,
-            projectScriptEnvSource,maxOutputBytes:4096,maxDurationMs:30000,required:false};
+            projectScriptEnvSource,createWorkspaceCommandTool:commandFactory,nativeNodeResolution:Boolean(question),
+            maxOutputBytes:4096,maxDurationMs:30000,required:false};
           if(!savedCheckFile) options.checkFiles=[];
           let recipe;
           try {recipe=createCommandRecipeTool(options);}
@@ -196,8 +206,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           const nodeRecipe=recipe.recipes.find(item=>item.id==='node-check');
           if(savedCheckFile) {
             if(!nodeRecipe || nodeRecipe.executable!==savedNode
-              || nodeRecipe.args?.length!==2 || nodeRecipe.args[0]!=='--check'
-              || nodeRecipe.args[1]!==savedCheckFile) throw Error();
+              || !isDeepStrictEqual(nodeRecipe.args,[...nodeFlags,'--check',savedCheckFile])) throw Error();
             commandImplementations.push({descriptor:{...recipe.tool.descriptor,name:'workspace.node_check',
               inputSchema:{type:'object',properties:{},additionalProperties:false}},
               execute:(_input,context)=>recipe.tool.execute({recipeId:'node-check'},context)});
@@ -207,8 +216,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
               ['npm-test','workspace.npm_test','test']]) {
               const fixed=recipe.recipes.find(item=>item.id===id);
               if(!fixed) continue;
-              const npmArgs=['--cwd',boundRoot,'--exe',savedNode,'--',savedNpmCli,'run',script];
-              const nodeTestArgs=['--cwd',boundRoot,'--exe',savedNode,'--','--test'];
+              const npmArgs=['--cwd',boundRoot,'--exe',savedNode,'--',...nodeFlags,savedNpmCli,'run',script];
+              const nodeTestArgs=['--cwd',boundRoot,'--exe',savedNode,'--',...nodeFlags,'--test'];
               if(fixed.executable!==helper || !Array.isArray(fixed.args)
                 || !isDeepStrictEqual(fixed.args,npmArgs)
                   && !(script==='test' && isDeepStrictEqual(fixed.args,nodeTestArgs))) throw Error();
@@ -238,10 +247,11 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const repairRecipes=()=>[...(boundCheckFile?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
     ...(boundNpmCli&&developerCommand?.recipeIds.includes('npm-build')?[{recipeId:'npm-build',packageIds:[],required:true}]:[]),
     ...(boundNpmCli?[{recipeId:'npm-test',packageIds:[],required:true}]:[])];
-  const getRepairHost=async(harness=false)=>{
+  const getRepairHost=async(harness=false,context)=>{
+    if(question&&context)await prepareDependencies(context);
     if(dependencyPreparation)await dependencyPreparation;
     if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || (boundNpmCli&&!boundProjectHelper)
-      || typeof createCommandRecipeTool!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
+      || typeof createCommandRecipeTool!=='function'||!commandFactory)throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
     if(harness?harnessHostPromise:repairHostPromise)return harness?harnessHostPromise:repairHostPromise;
     const workspaceId=createHash('sha256').update(boundRoot).digest('hex');
     const preparedFingerprint=dependencyFingerprint,preparationReason=dependencyPreparationReason;
@@ -271,7 +281,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       createCommandTool:({rootPath})=>createCommandRecipeTool({workspaceRoot:rootPath,authorizedWorkspaceRoot:rootPath,
         nodeExecutable:boundNode,checkFiles:boundCheckFile?[{id:'node-check',path:boundCheckFile}]:[],
         allowProjectScripts:Boolean(boundNpmCli),jobHelperExecutable:boundProjectHelper,npmCliPath:boundNpmCli,
-        projectScriptEnvSource,isolateNpmConfiguration:true,maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
+        projectScriptEnvSource,isolateNpmConfiguration:true,createWorkspaceCommandTool:commandFactory,
+        nativeNodeResolution:Boolean(question),maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
     if(harness)harnessHostPromise=pending;else repairHostPromise=pending;
     return pending;
   };
@@ -283,7 +294,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       const controller=new AbortController();inflight.add(controller);
       const scoped={...context,signal:AbortSignal.any([context.signal,controller.signal])};
       try {
-        const host=await getRepairHost(true);assertHarnessWorkspace(scoped);
+        const host=await getRepairHost(true,scoped);assertHarnessWorkspace(scoped);
         if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原隔离工作区绑定已变化');
         const result=await host[name](...parameters,scoped);
         assertHarnessWorkspace(scoped);
@@ -306,7 +317,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
             throw new ProtocolError('UNAUTHORIZED','原交付会话绑定已变化');
           if(permitted===true)return harnessRepairHost[name](...parameters,context);
         }
-        return (await getRepairHost())[name](...parameters,context);
+        return (await getRepairHost(false,context))[name](...parameters,context);
       }]));
     const repairTools=coding.createIsolatedCodingRepairTools(deferred);
     implementations.push(...repairTools);
@@ -325,10 +336,124 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   // those tools until every selected command input has been reassembled.
   const selectionsCurrent=()=>savedRoot===boundRoot && savedNode===boundNode
     && savedCheckFile===boundCheckFile && savedNpmCli===boundNpmCli;
+  function resourceIdentity() {
+    const pin=file=>{if(!file)return null;const value=statSync(file,{bigint:true});
+      return [file,...['dev','ino','birthtimeNs','size','mtimeNs','ctimeNs'].map(key=>String(value[key]))];};
+    // No live dependency walk here. Dependencies are proven by the cancellable
+    // worker at actual prepare/verify/publish, not by a stale catalog cache.
+    return hash({kind:'desktop-workspace-v1',root:boundRoot,rootIdentity:rootIdentity&&
+      ['dev','ino','birthtimeNs'].map(key=>String(rootIdentity[key])),node:pin(boundNode),
+      check:boundCheckFile,npm:pin(boundNpmCli),helper:pin(boundProjectHelper),
+      recipes:developerCommand?.recipeIds??[],nativeNodeResolution:Boolean(question)});
+  }
+  function preparedEntry(scope) {
+    const matches=[...prepared.values()].filter(entry=>entry.scope.taskId===scope.taskId
+      &&(scope.runId?entry.scope.runId===scope.runId:entry.scope.proposalId===(scope.proposalId??scope.proposal?.proposalId)));
+    const entry=matches.length===1?matches[0]:undefined;
+    if(!entry||!questionReady()||scope.signal?.aborted||!bound(scope.taskId)||entry.generation!==generation
+      ||Date.parse(entry.scope.deadline)<=Date.now()||!selectionsCurrent()||!identityCurrent()
+      ||entry.resource!==resourceIdentity()||question.readResourceGeneration(entry.resource)!==entry.resourceGeneration)
+      throw new ProtocolError('UNAUTHORIZED','原工作区操作、配置或授权范围已变化');
+    return entry;
+  }
+  function assertQuestionAccess(context,input,toolName) {
+    if(!question)return;
+    const entry=preparedEntry(context);
+    if(toolName&&(entry.scope.toolName!==toolName||entry.argumentsDigest!==toolArgumentsDigest(input)))
+      throw new ProtocolError('UNAUTHORIZED','工作区操作与原授权参数不匹配');
+    question.currentRequirement({...entry.scope,...context},'workspace-session');
+  }
+  function projectionSchema(tool) {
+    const object=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
+    const boolean={type:'boolean'},name=tool.descriptor.name;
+    if(name==='workspace.git_diff_check'||name==='workspace.node_check'||isProject(tool))return object({
+      recipeId:{type:'string',enum:[name==='workspace.git_diff_check'?'git-diff-check':name==='workspace.node_check'?'node-check':name==='workspace.npm_build'?'npm-build':'npm-test']},
+      exitCode:{type:'integer'},passed:boolean});
+    if(name==='workspace.list_entries')return object({listed:boolean,truncated:boolean});
+    if(name==='workspace.preview_text_patch')return object({previewed:boolean,changed:boolean});
+    if(name==='workspace.stage_text_patch')return object({staged:boolean,changed:boolean});
+    if(name==='workspace.apply_text_patch')return object({applied:boolean,changed:boolean});
+    if(codingRepairExportOperation(name))return workspaceRepairProjectionSchema(codingRepairExportOperation(name));
+    return tool.descriptor.outputSchema;
+  }
+  function prepareQuestion(scope,exportRequested=false) {
+    if(!question)return;
+    const source=scope.proposal?{...scope.proposal,argumentsDigest:toolArgumentsDigest(scope.proposal.arguments)}
+      :application?.readAuthorizationQuestionInvocation?.(scope.taskId,scope.runId);
+    const tool=implementations.find(item=>item.descriptor.name===source?.toolName&&item.descriptor.version===source?.toolVersion);
+    const delegated=source?.toolName==='workspace.run_allowed_command'&&source.toolVersion===developerCommand?.descriptor.version;
+    const candidate=['coding.repair.trial','coding.repair.prepare_adoption','coding.repair.reconcile_trial','harness.candidates.compare'].includes(source?.toolName);
+    if(!tool&&!delegated&&!candidate)return;
+    if(!questionReady()||!scope.runId||scope.signal.aborted||Date.parse(scope.deadline)<=Date.now()
+      ||!selectionsCurrent()||!identityCurrent()||!bound(scope.taskId,true)||tool&&!enabled(tool))
+      throw new ProtocolError('UNAUTHORIZED','工作区配置或授权提问通路不可用');
+    const descriptor=tool?.descriptor??(delegated?developerCommand.descriptor:undefined);
+    if(descriptor)validateToolValue(descriptor.inputSchema,source.arguments);
+    for(const [key,value]of prepared)if(Date.parse(value.scope.deadline)<=Date.now())prepared.delete(key);
+    const resource=resourceIdentity(),resourceGeneration=question.readResourceGeneration(resource);resources.add(resource);
+    const request={taskId:scope.taskId,runId:scope.runId,proposalId:source.proposalId,toolName:source.toolName,
+      toolVersion:source.toolVersion,argumentsDigest:toolArgumentsDigest(source.arguments),deadline:scope.deadline,signal:scope.signal};
+    const key=JSON.stringify([request.taskId,request.runId]),previous=prepared.get(key);
+    const signature=hash({request:{...request,signal:undefined},generation,resource,resourceGeneration});
+    if(previous&&previous.signature!==signature)throw new ProtocolError('UNAUTHORIZED','原工作区操作不能替换参数或配置');
+    const entry=previous??{scope:request,argumentsDigest:request.argumentsDigest,generation,resource,resourceGeneration,signature};
+    prepared.set(key,entry);
+    const ruleBindingDigest=hash({resource,resourceGeneration,toolName:request.toolName,toolVersion:request.toolVersion,
+      scopes:descriptor?.requiredScopes??source.scopes,projectionVersion:'workspace-redacted-v3'});
+    question.prepare(request,{requirements:[{requirementId:'workspace-session',kind:'connector_session',
+      scopes:descriptor?.requiredScopes??source.scopes??[],bindingDigest:signature,ruleBindingDigest,
+      summary:'仅对已选择且仍有效的工作区执行本操作所列读写或固定命令；不开放任意路径、命令或其他任务'}],
+      assertCurrent:()=>{try{preparedEntry(request);return true;}catch{return false;}}});
+    const workflowRun=application.runtime.loadCheckpoint(scope.taskId,'coding-repair:graph')?.initialRunId===scope.runId
+      ||Boolean(application.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent'));
+    if(tool&&workflowRun&&codingRepairExportOperation(tool.descriptor.name)) {
+      const sourceRead=codingRepairExportOperation(tool.descriptor.name)==='read';
+      const sourceRule=sourceRead?{path:source.arguments.path,maxBytes:source.arguments.maxBytes??262144,
+        configurationRef:readWorkspaceExportConfigurationRef()}:{};
+      if(sourceRead)question.prepare(request,{requirements:[{requirementId:'public-reference-read',kind:'connector_session',
+        scopes:['workspace:read'],bindingDigest:hash({signature,kind:'public-read'}),
+        ruleBindingDigest:hash({ruleBindingDigest,kind:'public-read',...sourceRule}),
+        summary:'仅将本操作指定的源码作为公开参考资料读取；源码出机仍核原来源、版本、精确字节与 digest'}]});
+      question.prepareExport(request,{requirementId:sourceRead?'public-reference-export':'workspace-metadata-export',
+        projectionSchema:sourceRead?readTool.descriptor.outputSchema:projectionSchema(tool),
+        summary:sourceRead?'把本操作指定的公开参考源码发送到原任务选定模型，严格限原 maxBytes 与最终已确认内容，不包括其他文件'
+          :'仅将原隔离编码工具的固定脱敏元数据发送到该工作流模型，不含源码、stdout 或本机绝对路径',
+        bindingDigest:hash({signature,kind:sourceRead?'public-source':'workflow-metadata'}),
+        ruleBindingDigest:hash({ruleBindingDigest,kind:sourceRead?'public-source':'workflow-metadata',
+          ...sourceRule})});
+      if(tool.descriptor.name==='coding.repair.start')question.prepareExport(request,{
+        requirementId:'workspace-workflow-summary-export',projectionSchema:workspaceWorkflowSummaryProjectionSchema(),
+        summary:'仅发送本次 F15 工作流的最终状态、模式和已确认操作数；云端自报完成不代替本机原始验证',
+        bindingDigest:hash({signature,kind:'workflow-summary'}),ruleBindingDigest:hash({ruleBindingDigest,kind:'workflow-summary'})});
+    }
+    if(exportRequested&&tool&&tool.descriptor.name!=='workspace.read_text')question.prepareExport(request,{
+      requirementId:'workspace-export',projectionSchema:projectionSchema(tool),
+      summary:'仅将本操作的固定脱敏元数据发送到当前任务选定的 AgentArts 模型；不含源码、stdout 或本机绝对路径（最多 960 KiB）',
+      bindingDigest:hash({signature,kind:'export'}),ruleBindingDigest:hash({ruleBindingDigest,kind:'export',schema:projectionSchema(tool)})});
+  }
+  async function prepareDependencies(context) {
+    assertQuestionAccess(context);
+    if(!dependencySeeded&&!dependencyPreparation) {
+      const lease=generation,controller=new AbortController();inflight.add(controller);
+      dependencyPreparation=(async()=>{
+        if(coding.hasPreparedCodingDependenciesSync(boundRoot)) {
+          const fingerprint=await coding.capturePreparedDependencyFingerprint(boundRoot,{deadline:context.deadline,
+            signal:AbortSignal.any([context.signal,controller.signal])});
+          assertQuestionAccess(context);if(lease!==generation)throw new ProtocolError('UNAUTHORIZED','原依赖准备已撤销');
+          dependencyFingerprint=fingerprint;
+        }
+        dependencySeeded=true;
+      })().catch(error=>{if(lease===generation)dependencyPreparationReason='原项目的锁定依赖尚未安全准备好';throw error;})
+        .finally(()=>{inflight.delete(controller);if(lease===generation)dependencyPreparation=undefined;});
+    }
+    if(dependencyPreparation)await dependencyPreparation;
+    assertQuestionAccess(context);
+    if(dependencyPreparationReason)throw new ProtocolError('UNSUPPORTED_CAPABILITY',dependencyPreparationReason);
+  }
   // Trusted main-process configuration only. A getter cannot grant read or
   // execute permission, and this record must not enter Renderer/cloud output.
   const readWorkspaceBinding=() => {
-    if(!active || !consent || !selectionsCurrent() || !identityCurrent()
+    if(!active || !(question?questionReady():consent) || !selectionsCurrent() || !identityCurrent()
       || !boundNode || savedNode!==boundNode || !nodeIdentity) return undefined;
     try {
       if(fixedNode(boundNode,boundRoot)!==boundNode) return undefined;
@@ -363,11 +488,11 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       && boundProjectHelper && outsideFile(boundProjectHelper,boundRoot,'项目命令')===boundProjectHelper;}
     catch {return false;}
   };
-  const enabled=tool => active && Boolean(consent) && selectionsCurrent() && identityCurrent()
+  const enabled=tool => active && (question?questionReady():Boolean(consent)) && selectionsCurrent() && identityCurrent()
     && (!(tool.descriptor.name.startsWith('coding.repair.')||tool.descriptor.name.startsWith('workflow.host.f15_')||tool.descriptor.name==='workspace.coding_snapshot')
       ||!dependencyPreparation&&!dependencyPreparationReason)
     && commandReady(tool)
-    && (tool.descriptor.sideEffect==='read' || (consent.cloudExportAllowed===true && (isProject(tool)
+    && (question?(!isProject(tool)||projectIdentityCurrent()):tool.descriptor.sideEffect==='read' || (consent.cloudExportAllowed===true && (isProject(tool)
       ? consent.commandAllowed===true && consent.projectCodeAllowed===true && projectIdentityCurrent()
       : ['workspace.git_diff_check','workspace.node_check'].includes(tool.descriptor.name)
         ? consent.commandAllowed===true : consent.writeAllowed===true)))
@@ -390,7 +515,12 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   // These ports are Main-only. Session scope never grants PUBLIC export, and
   // only the original Runtime result checkpoint supplies bytes for confirmation.
   const readTool=implementations.find(tool=>tool.descriptor.name==='workspace.read_text');
-  const readWorkspaceExportConfigurationRef=() => consent?.cloudExportAllowed===true && readTool && enabled(readTool) ? generation : undefined;
+  const readWorkspaceExportConfigurationRef=() => {
+    if(!(question?questionReady():consent?.cloudExportAllowed===true)||!readTool||!enabled(readTool))return undefined;
+    if(!question)return generation;
+    const resource=resourceIdentity();resources.add(resource);
+    return hash({resource,resourceGeneration:question.readResourceGeneration(resource)});
+  };
   const readQuery=(query,withDigest=false,withArguments=false) => {
     if(!query || typeof query!=='object' || Array.isArray(query)
       || ![Object.prototype,null].includes(Object.getPrototypeOf(query))) return false;
@@ -451,7 +581,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   };
   const readWorkspaceExportPreflightCandidate=query => {
     const original=readOriginalWorkspaceProposal(query);
-    return original ? Object.freeze({query:Object.freeze({...query}),runId:original.runId,
+    return original ? Object.freeze({query:Object.freeze({...query}),runId:original.runId,...(original.readTaskId?{readTaskId:original.readTaskId}:{}),
       toolName:original.proposal.toolName,toolVersion:original.proposal.toolVersion,
       arguments:Object.freeze(structuredClone(original.proposal.arguments)),deadline:original.deadline}) : undefined;
   };
@@ -494,7 +624,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   };
   const readWorkspaceExportCandidate=query => {
     const original=readOriginalWorkspaceReceipt(query);
-    return original ? Object.freeze({query:Object.freeze({...query}),runId:original.runId,
+    const source=readOriginalWorkspaceProposal(query);
+    return original&&source ? Object.freeze({query:Object.freeze({...query}),runId:original.runId,...(source.readTaskId?{readTaskId:source.readTaskId}:{}),
       toolName:original.proposal.toolName,toolVersion:original.proposal.toolVersion,
       arguments:Object.freeze(structuredClone(original.proposal.arguments)),contentDigest:original.result.sha256,
       byteLength:original.result.byteLength,deadline:original.deadline}) : undefined;
@@ -549,11 +680,13 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   };
   const tools=implementations.map(tool => ({descriptor:tool.descriptor,execute:async(input,context) => {
     if (!enabled(tool) || !bound(context.taskId)) throw Error('工作区许可已撤销或任务绑定已改变');
-    if((tool.descriptor.name.startsWith('coding.repair.')||tool.descriptor.name.startsWith('workflow.host.f15_')||tool.descriptor.name==='workspace.coding_snapshot')
+    assertQuestionAccess(context,input,tool.descriptor.name);
+    if(!question&&(tool.descriptor.name.startsWith('coding.repair.')||tool.descriptor.name.startsWith('workflow.host.f15_')||tool.descriptor.name==='workspace.coding_snapshot')
       && (consent?.cloudExportAllowed!==true||consent.commandAllowed!==true||consent.writeAllowed!==true
         ||boundNpmCli&&consent.projectCodeAllowed!==true))throw new ProtocolError('UNAUTHORIZED','隔离编码需要当前工作区读取、写入、命令及出机许可');
     const controller=new AbortController();inflight.add(controller);
-    try {return await tool.execute(input,{...context,signal:AbortSignal.any([context.signal,controller.signal])});}
+    try {const result=await tool.execute(input,{...context,signal:AbortSignal.any([context.signal,controller.signal])});
+      assertQuestionAccess(context,input,tool.descriptor.name);return result;}
     finally {inflight.delete(controller);}
   }}));
   const snapshot=() => ({configured:Boolean(savedRoot),displayName:savedRoot?path.basename(savedRoot):'',
@@ -575,15 +708,24 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     authorizationAvailable:active && selectionsCurrent() && identityCurrent() && tools.length>0,
     writeAllowed:consent?.writeAllowed===true,
     commandAllowed:consent?.commandAllowed===true,
-    reason:!selectionsCurrent()?'工作区设置已保存，请重启应用完成工具装配后授权':failure || (consent
+    reason:authorizationFailure?'工作区规则状态暂不可核实，工具保持不可用；请重试撤销后重新发起操作'
+      :!selectionsCurrent()?'工作区设置已保存，请重启应用完成工具装配':failure || (question
+      ? '工作区配置就绪后，在原对话提问卡确认本次范围；应用内许可不代表外部进程已隔离'
+      :consent
       ? '当前工作区已授权；受限命令仍经过 Policy，项目脚本另需明确许可'
       : savedRoot?'请为本次应用会话授权工作区；重启后需要重新授权':'请选择编程工作区')});
-  const revoke=() => {
+  const revoke=(rotate=true) => {
     consent=undefined;generation=randomUUID();
+    prepared.clear();
     try {workspaceReferenceExport?.dispose();} catch { /* No host details escape. */ }
     workspaceReferenceExport=undefined;workspaceExportProposals.clear();confirmedWorkspaceReads.clear();
     for (const controller of inflight) controller.abort();
-    dependencyFingerprint=undefined;dependencyPreparationReason=undefined;dependencyPreparation=undefined;repairHostPromise=undefined;harnessHostPromise=undefined;
+    dependencyFingerprint=undefined;dependencyPreparationReason=undefined;dependencyPreparation=undefined;dependencySeeded=false;repairHostPromise=undefined;harnessHostPromise=undefined;
+    if(question&&rotate) {
+      authorizationFailure=true;
+      for(const resource of resources)question.rotateResourceGeneration(resource,question.readResourceGeneration(resource));
+      authorizationFailure=false;
+    }
     return snapshot();
   };
   function persist(root,node,selectedFile,npmCli) {
@@ -615,11 +757,11 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const rootPath=boundRoot;
     const bindingId=createHash('sha256').update(JSON.stringify([rootPath,String(rootIdentity.dev),String(rootIdentity.ino),
       String(rootIdentity.birthtimeNs),boundNode??null,boundCheckFile??null,boundNpmCli??null,boundProjectHelper??null,
-      ...(dependencyFingerprint?[dependencyFingerprint]:[])])).digest('hex');
+      ...(!question&&dependencyFingerprint?[dependencyFingerprint]:[])])).digest('hex');
     const available=scope=>{
       if(typeof application?.readToolConversation!=='function')return false;
       const conversationId=application.readToolConversation(scope.taskId);
-      return !dependencyPreparation&&!dependencyPreparationReason&&typeof conversationId==='string'&&conversationId.length>0&&!scope.signal?.aborted&&Date.now()<Date.parse(scope.deadline)&&Boolean(consent)
+      return !dependencyPreparation&&!dependencyPreparationReason&&typeof conversationId==='string'&&conversationId.length>0&&!scope.signal?.aborted&&Date.now()<Date.parse(scope.deadline)&&(question?questionReady():Boolean(consent))
         &&active&&selectionsCurrent()&&identityCurrent()&&bound(scope.taskId,true);
     };
     const aliases={'node-check':'workspace.node_check','npm-build':'workspace.npm_build','npm-test':'workspace.npm_test'};
@@ -629,6 +771,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         validateToolValue(developerCommand.descriptor.inputSchema,input);
         const alias=implementations.find(tool=>tool.descriptor.name===aliases[input.recipeId]);
         if(!available(context)||!alias||!enabled(alias))throw new ProtocolError('UNAUTHORIZED','原工作区命令许可或配置已变化');
+        assertQuestionAccess(context,input,'workspace.run_allowed_command');
         return alias.execute({},context);
       }}}:undefined;
     return {bindingId,rootPath,metadataExportAllowed:false,available,
@@ -637,6 +780,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   function assertHarnessWorkspace(context) {
     if(dependencyPreparation||dependencyPreparationReason)throw new ProtocolError('UNSUPPORTED_CAPABILITY',dependencyPreparationReason??'原锁定依赖正在准备');
     assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal);
+    assertQuestionAccess(context);
   }
   function assertHarnessWorkspaceBinding(taskId,deadline,signal) {
     if(!signal||signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
@@ -645,9 +789,9 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(!bound(taskId))throw new ProtocolError('UNAUTHORIZED','原隔离工作区任务绑定已变化');
   }
   function assertHarnessWorkspaceAuthorization() {
-    if(!application||!readWorkspaceBinding()||consent?.cloudExportAllowed!==true
-      ||consent.writeAllowed!==true||consent.commandAllowed!==true||!boundRepairPowerShell
-      ||!boundCheckFile&&!boundNpmCli||boundNpmCli&&(consent.projectCodeAllowed!==true||!projectIdentityCurrent()))
+    if(!application||!readWorkspaceBinding()||(!question&&(consent?.cloudExportAllowed!==true
+      ||consent.writeAllowed!==true||consent.commandAllowed!==true))||!boundRepairPowerShell||!commandFactory
+      ||!boundCheckFile&&!boundNpmCli||boundNpmCli&&(!projectIdentityCurrent()||!question&&consent.projectCodeAllowed!==true))
       throw new ProtocolError('UNAUTHORIZED','原隔离工作区许可或命令绑定已变化');
   }
   function readHarnessExperienceCurrentSync() {
@@ -719,23 +863,63 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       return {binding,baseline,recipes,selectionPolicy:'unique_verified'};
     }catch{return undefined;}
   };
+  function projectResult(tool,{taskId,proposalId,result,signal}) {
+    if(signal.aborted)throw new ProtocolError('CANCELLED','Workspace result export cancelled');
+    if(!(question?questionReady():consent?.cloudExportAllowed===true)||!enabled(tool)||!bound(taskId))
+      throw new ProtocolError('UNAUTHORIZED','Workspace result export consent changed');
+    if(tool.descriptor.name==='workspace.read_text') {
+      const exported=currentWorkspaceReferenceExport();
+      if(!exported)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Exact native-confirmed workspace read export is unavailable');
+      const projection=exported.project({taskId,proposalId,result,signal});
+      if(signal.aborted)throw new ProtocolError('CANCELLED','Workspace result export cancelled');
+      if(!taskLive(taskId)||!enabled(tool))throw new ProtocolError('UNAUTHORIZED','Workspace result export consent changed');
+      return projection;
+    }
+    validateToolValue(tool.descriptor.outputSchema,result);
+    if(tool.descriptor.name==='workspace.node_check'||isProject(tool)||tool.descriptor.name==='workspace.git_diff_check') {
+      const recipeId=tool.descriptor.name==='workspace.git_diff_check'?'git-diff-check':isProject(tool)
+        ?tool.descriptor.name==='workspace.npm_build'?'npm-build':'npm-test':'node-check';
+      if(result?.recipeId!==recipeId||!Number.isSafeInteger(result.exitCode))throw Error('命令结果无效');
+      return {recipeId,exitCode:result.exitCode,passed:result.exitCode===0};
+    }
+    if(codingRepairExportOperation(tool.descriptor.name))return projectCodingRepairResult(tool.descriptor.name,result);
+    if(tool.descriptor.name==='workspace.list_entries')return {listed:true,truncated:result.truncated};
+    if(tool.descriptor.name==='workspace.preview_text_patch')return {previewed:true,changed:result.changed};
+    if(tool.descriptor.name==='workspace.stage_text_patch')return {staged:true,changed:result.changed};
+    if(tool.descriptor.name==='workspace.apply_text_patch')return {applied:result.applied,changed:result.changed};
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY','Workspace result export is unavailable');
+  }
   return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,
     reconcileHarnessOriginalSession,readHarnessExperienceCurrentSync,
+    prepareAuthorization:scope=>prepareQuestion(scope),
+    prepareExport(scope) {
+      if(!question)return;
+      if(scope.phase==='preflight')prepareQuestion(scope,true);
+      else if(prepared.has(JSON.stringify([scope.taskId,scope.runId])))preparedEntry(scope);
+    },
     readWorkspaceExportConfigurationRef,readWorkspaceExportPreflightCandidate,
     readWorkspaceExportCandidate,readConfirmedWorkspaceExport,
     get patchReconciliation() { return applyHost ? patchReconciliation : undefined; },
     bindApplication(value){if(application && application!==value) revoke();application=value;
       if(typeof application?.configureCodingRepairSourceExport==='function')application.configureCodingRepairSourceExport(async input=>{
-        if(input.signal.aborted||consent?.cloudExportAllowed!==true||!bound(input.taskId)||!taskLive(input.taskId))
+        if(input.signal.aborted||!(question?questionReady():consent?.cloudExportAllowed===true)||!bound(input.taskId)||!taskLive(input.taskId))
           throw new ProtocolError('UNAUTHORIZED','编程源码出机许可已失效');
-        const query={taskId:input.taskId,proposalId:input.proposal.proposalId,path:input.proposal.arguments.path,configurationRef:generation};
+        const query={taskId:input.taskId,proposalId:input.proposal.proposalId,path:input.proposal.arguments.path,configurationRef:readWorkspaceExportConfigurationRef()};
         const candidate=readWorkspaceExportCandidate(query);
         if(!candidate||candidate.runId!=='host-tool-'+input.localTaskId||candidate.toolName!=='coding.repair.read'
           ||!isDeepStrictEqual(input.receipt.result,readOriginalWorkspaceReceipt(query)?.result))
           throw new ProtocolError('UNAUTHORIZED','F15 原始源码读回不匹配');
         if(typeof requestWorkspaceExportPreflight!=='function'||typeof requestWorkspaceExportExact!=='function')
           throw new ProtocolError('UNSUPPORTED_CAPABILITY','F15 原生源码出机确认尚未接入');
-        const context={signal:input.signal,deadline:input.deadline};
+        // This is the original Runtime local read identity, never a task/run
+        // supplied by Renderer. Native consent must also verify its graph link
+        // and consumed pre-execution receipt before minting the exact lease.
+        if(question&&(!input.authorization||input.authorization.taskId!==input.localTaskId
+          ||input.authorization.runId!==candidate.runId||typeof question.authorizeConsumedExport!=='function'))
+          throw new ProtocolError('UNAUTHORIZED','缺少原源码读取的精确授权关联');
+        const context={...(question?{authorization:{...input.authorization},result:structuredClone(input.receipt.result)}:{}),
+          taskId:input.localTaskId,runId:candidate.runId,proposalId:input.proposal.proposalId,toolName:candidate.toolName,
+          toolVersion:candidate.toolVersion,argumentsDigest:toolArgumentsDigest(candidate.arguments),signal:input.signal,deadline:input.deadline};
         await requestWorkspaceExportPreflight({...query,arguments:candidate.arguments},context);
         await requestWorkspaceExportExact({...query,arguments:candidate.arguments,contentDigest:candidate.contentDigest,byteLength:candidate.byteLength},context);
         const permission=readWorkspaceExportAuthorization({...query,arguments:candidate.arguments,contentDigest:candidate.contentDigest,byteLength:candidate.byteLength});
@@ -743,8 +927,31 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
           throw new ProtocolError('UNAUTHORIZED','F15 精确源码出机确认不匹配');
         return structuredClone(input.receipt.result);
       },input=>{
-        if(input.signal.aborted||consent?.cloudExportAllowed!==true||!bound(input.taskId)||!taskLive(input.taskId))
+        if(input.signal.aborted||!(question?questionReady():consent?.cloudExportAllowed===true)||!bound(input.taskId)||!taskLive(input.taskId))
           throw new ProtocolError('UNAUTHORIZED','编程目录、诊断和 SHA 元数据出机许可已失效');
+        if(question) {
+          if(!input.authorization||typeof question.authorizeConsumedExport!=='function')
+            throw new ProtocolError('UNAUTHORIZED','F15 元数据缺少原操作的精确授权绑定');
+          const entry=preparedEntry({...input.authorization,signal:input.signal});
+          if(input.stage==='completion') {
+            if(entry.scope.toolName!=='coding.repair.start')throw new ProtocolError('UNAUTHORIZED','工作流汇总缺少原初始操作关联');
+            validateToolValue(workspaceWorkflowSummaryProjectionSchema(),input.value);
+            question.authorizeConsumedExport({...entry.scope,signal:input.signal},input.value,'workspace-workflow-summary-export');
+            return structuredClone(input.value);
+          }
+          if(!['initial','receipt'].includes(input.stage))throw new ProtocolError('UNAUTHORIZED','缺少原工作流元数据阶段');
+          let result=input.value;
+          if(input.stage==='initial') {
+            if(entry.scope.toolName!=='coding.repair.start')throw new ProtocolError('UNAUTHORIZED','工作流初始关联不匹配');
+            if(!result||typeof result!=='object'||Array.isArray(result)||typeof result.goal!=='string'
+              ||!Object.hasOwn(result,'codingRepair')||Object.keys(result).some(key=>!['goal','codingRepair','executionModel'].includes(key)))
+              throw new ProtocolError('UNAUTHORIZED','F15 初始元数据不匹配原固定结构');
+            result=result.codingRepair;
+          }
+          const projection=projectCodingRepairResult(entry.scope.toolName,result);
+          question.authorizeConsumedExport({...entry.scope,signal:input.signal},projection,'workspace-metadata-export');
+          return input.stage==='initial'?{...input.value,codingRepair:projection}:projection;
+        }
       });},
     async select() {
       const startedGeneration=beginSelection();
@@ -784,6 +991,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       projectFailure='';return snapshot();
     },
     async authorize(input) {
+      if(question)throw new ProtocolError('UNAUTHORIZED','请在当前对话提问卡授权此操作');
       if (!input || Array.isArray(input) || typeof input.cloudExportAllowed!=='boolean' || typeof input.writeAllowed!=='boolean'
         || typeof input.commandAllowed!=='boolean'
         || (input.projectCodeAllowed!==undefined && typeof input.projectCodeAllowed!=='boolean')
@@ -813,54 +1021,45 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     revoke,
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
       publicEnumPaths:tool.descriptor.name==='coding.repair.start'?['/mode']:tool.descriptor.name==='coding.repair.publish'?['/version']:[],
-      available:({taskId,signal})=>!signal.aborted && consent?.cloudExportAllowed===true && enabled(tool) && bound(taskId,true)})),
+      available:({taskId,signal})=>!signal.aborted && (question?questionReady():consent?.cloudExportAllowed===true) && enabled(tool) && bound(taskId,true)})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
       exportPolicyVersion:codingRepairExportOperation(tool.descriptor.name)?'coding-repair-metadata-v1':isProject(tool)?'authorized-project-script-redacted-v1'
         :tool.descriptor.name==='workspace.node_check'
           ? 'authorized-node-check-redacted-v1':tool.descriptor.name==='workspace.read_text'
             ? 'workspace-reference-3.0.0':'coding-local-result-redacted-v2',
       accepts:input=> {
-        if(consent?.cloudExportAllowed!==true || !enabled(tool) || !bound(input.taskId)) return false;
+        if(!(question?questionReady():consent?.cloudExportAllowed===true) || !enabled(tool) || !bound(input.taskId)) return false;
+        if(question)try {
+          const entry=preparedEntry(input);if(entry.argumentsDigest!==toolArgumentsDigest(input.arguments))return false;
+          if(input.phase==='final') {
+            question.currentRequirement({...entry.scope,signal:input.signal??entry.scope.signal},'workspace-session');
+            if(tool.descriptor.name!=='workspace.read_text') {
+              if(!entry.projectionDigest||entry.projectionDigest!==hash(input.projection))return false;
+              question.currentRequirement({...entry.scope,signal:input.signal??entry.scope.signal},'workspace-export');
+            }
+          }
+        }catch{return false;}
         if(tool.descriptor.name!=='workspace.read_text') return true;
         try {
           if(!['preflight','final'].includes(input.phase)) return false;
           const candidate=readWorkspaceExportPreflightCandidate({taskId:input.taskId,proposalId:input.proposalId,
-            path:input.arguments?.path,configurationRef:generation});
+            path:input.arguments?.path,configurationRef:readWorkspaceExportConfigurationRef()});
           return Boolean(candidate && isDeepStrictEqual(candidate.arguments,input.arguments)
             && currentWorkspaceReferenceExport()?.accepts(input));
         } catch {return false;}
       },
-      project:({taskId,proposalId,result,signal})=> {
-        if(signal.aborted) throw new ProtocolError('CANCELLED','Workspace result export cancelled');
-        if(consent?.cloudExportAllowed!==true || !enabled(tool) || !bound(taskId)) throw new ProtocolError('UNAUTHORIZED','Workspace result export consent changed');
-        if (tool.descriptor.name==='workspace.node_check' || isProject(tool)) {
-          const recipeId=isProject(tool)
-            ? tool.descriptor.name==='workspace.npm_build'?'npm-build':'npm-test':'node-check';
-          if (result?.recipeId!==recipeId || !Number.isSafeInteger(result.exitCode)) throw Error('命令结果无效');
-          return {recipeId,exitCode:result.exitCode,passed:result.exitCode===0};
+      project:scope=> {
+        const entry=question?preparedEntry(scope):undefined;
+        if(entry)question.currentRequirement({...entry.scope,signal:scope.signal},'workspace-session');
+        const projection=projectResult(tool,scope);
+        if(entry&&tool.descriptor.name!=='workspace.read_text') {
+          question.authorizeExport({...entry.scope,signal:scope.signal},projection,'workspace-export');
+          const digest=hash(projection);if(entry.projectionDigest&&entry.projectionDigest!==digest)
+            throw new ProtocolError('UNAUTHORIZED','不能替换原工作区结果投影');
+          entry.projectionDigest=digest;
         }
-        // Session read consent permits local execution, not PUBLIC source export.
-        // Keep the real RegisteredTool result local; never relabel it as MCP data.
-        if(tool.descriptor.name==='workspace.read_text') {
-          const exported=currentWorkspaceReferenceExport();
-          if(!exported) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Exact native-confirmed workspace read export is unavailable');
-          const projection=exported.project({taskId,proposalId,result,signal});
-          if(signal.aborted) throw new ProtocolError('CANCELLED','Workspace result export cancelled');
-          if(!taskLive(taskId) || !enabled(tool)) throw new ProtocolError('UNAUTHORIZED','Workspace result export consent changed');
-          return projection;
-        }
-        validateToolValue(tool.descriptor.outputSchema,result);
-        if(codingRepairExportOperation(tool.descriptor.name))return projectCodingRepairResult(tool.descriptor.name,result);
-        if(tool.descriptor.name==='workspace.git_diff_check') {
-          if(result.recipeId!=='git-diff-check') throw Error('命令结果无效');
-          return {recipeId:'git-diff-check',exitCode:result.exitCode,passed:result.exitCode===0};
-        }
-        if(tool.descriptor.name==='workspace.list_entries') return {listed:true,truncated:result.truncated};
-        if(tool.descriptor.name==='workspace.preview_text_patch') return {previewed:true,changed:result.changed};
-        if(tool.descriptor.name==='workspace.stage_text_patch') return {staged:true,changed:result.changed};
-        if(tool.descriptor.name==='workspace.apply_text_patch') return {applied:result.applied,changed:result.changed};
-        throw new ProtocolError('UNSUPPORTED_CAPABILITY','Workspace result export is unavailable');
+        return projection;
       }})),
-    close(){active=false;revoke();applyHost?.close();},
+    close(){active=false;revoke(false);applyHost?.close();},
   };
 }

@@ -327,8 +327,13 @@ export function buildWorkspaceCommandRecipes({
   allowProjectScripts = false,
   projectScriptEnvSource = process.env,
   isolateNpmConfiguration = false,
+  nativeNodeResolution = false,
 } = {}) {
   if(typeof isolateNpmConfiguration!=='boolean')throw Error('Isolated npm configuration must be selected by trusted Main');
+  if(typeof nativeNodeResolution!=='boolean')throw Error('Native Node resolution must be selected by trusted Main');
+  // Fixed host recipes only. Keep Node from traversing volume ancestors while
+  // running inside the native root grant; model arguments cannot remove these.
+  const nodeFlags=nativeNodeResolution?['--preserve-symlinks','--preserve-symlinks-main']:[];
   const canonicalRoot = canonicalDirectory(workspaceRoot, 'Workspace root');
   if (authorizedWorkspaceRoot !== undefined) {
     const canonicalAuthorized = canonicalDirectory(authorizedWorkspaceRoot, 'Authorized workspace root');
@@ -376,7 +381,7 @@ export function buildWorkspaceCommandRecipes({
     recipes.push({
       id,
       executable: canonicalNode,
-      args: ['--check', relPath],
+      args: [...nodeFlags, '--check', relPath],
     });
   }
 
@@ -434,7 +439,7 @@ export function buildWorkspaceCommandRecipes({
         recipes.push({
           id: 'npm-build',
           executable: canonicalJobHelper,
-          args: ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', canonicalNpmCli, 'run', 'build'],
+          args: ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', ...nodeFlags, canonicalNpmCli, 'run', 'build'],
           env: safeEnv,
         });
         exposedCount++;
@@ -444,8 +449,8 @@ export function buildWorkspaceCommandRecipes({
           id: 'npm-test',
           executable: canonicalJobHelper,
           args: standaloneNodeTest
-            ? ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', '--test']
-            : ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', canonicalNpmCli, 'run', 'test'],
+            ? ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', ...nodeFlags, '--test']
+            : ['--cwd', canonicalRoot, '--exe', canonicalNode, '--', ...nodeFlags, canonicalNpmCli, 'run', 'test'],
           env: safeEnv,
         });
         exposedCount++;

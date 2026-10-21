@@ -18,12 +18,14 @@ function visit(node){
   if(ts.isCallExpression(node)&&node.expression.getText(ast)==='syncHostFeedback')hostProjection=node.getText(ast);
   if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='render'&&ts.isArrowFunction(node.right)){
     const body=ts.isBlock(node.right.body)?node.right.body.statements:[node.right.body];
-    renderFeedback=body.filter(statement=>/data\.connectionError\|\|voiceError|preserveFeedback===false&&hostFeedback/.test(statement.getText(ast))).map(statement=>statement.getText(ast)).join('\n');
+    const feedback=body.filter(statement=>/data\.connectionError\|\|voiceError|preserveFeedback===false&&hostFeedback/.test(statement.getText(ast)));
+    if(feedback.length){assert.equal(renderFeedback,undefined,'one actual panel Host feedback adapter');renderFeedback=feedback.map(statement=>statement.getText(ast)).join('\n');}
   }
   if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&!dependencies.has(node.name.text)&&['errorFeedbackRevision','setFeedback','hostFeedback','hostFeedbackRevision','syncHostFeedback','report'].includes(node.name.text))dependencies.set(node.name.text,node.getText(ast));
   ts.forEachChild(node,visit);
 }
 visit(ast);assert.ok(handler,'actual panel submit handler');assert.equal(hostProjection,'syncHostFeedback(data.connectionError||voiceError,{preserveFeedback:preserveFeedback!==undefined})','actual passive snapshot render projects Host feedback');
+assert.ok(renderFeedback,'actual panel Host feedback statements are extracted before the question wrapper');
 function fixture({nativeFlush=async()=>{}}={}){
   const documentBefore=globalThis.document,windowBefore=globalThis.window,optionBefore=globalThis.Option;
   const node=()=>({value:'',children:[],setAttribute(){},append(...items){this.children.push(...items);},replaceChildren(){},addEventListener(){}});

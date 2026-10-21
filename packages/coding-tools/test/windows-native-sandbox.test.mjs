@@ -6,6 +6,7 @@ import {dirname, join} from 'node:path';
 import test from 'node:test';
 import {createWindowsNativeSandboxExecutor, readWindowsNativeHelperAttestation} from '../dist/windows-native-sandbox.js';
 import {verifyWindowsNativeSandbox} from '../dist/native-sandbox-probe.js';
+import {nativeTokenDiagnostic,unsupportedPsec} from './native-sandbox-fixture.mjs';
 
 const helperPath = process.env.PA_TEST_JOB_HOST_EXE;
 const available = process.platform === 'win32' && helperPath && existsSync(helperPath);
@@ -17,12 +18,13 @@ test('requested native sandbox fails closed on unsupported platforms', {skip: pr
 });
 
 test('real Windows PSEC boundary, generation guards and lifecycle', {skip: !available && 'Explicit trusted PA_TEST_JOB_HOST_EXE unavailable'}, async t => {
-  const base = await mkdtemp(join(tmpdir(), 'personal-agent-psec-'));
+  t.diagnostic('Native probe inherited token: '+JSON.stringify(nativeTokenDiagnostic()));
+  const base = realpathSync.native(await mkdtemp(join(tmpdir(), 'personal-agent-psec-')));
   const pins = readWindowsNativeHelperAttestation(realpathSync.native(helperPath));
-  const node = realpathSync.native(process.execPath), systemRoot = process.env.SystemRoot;
+  const node = realpathSync.native(process.execPath), systemRoot = realpathSync.native(process.env.SystemRoot);
   const capabilities = await verifyWindowsNativeSandbox(pins, {probeRootPath:base,nodeExecutable:node,systemRoot,signal:new AbortController().signal});
-  if (!capabilities.available && !process.env.PA_TEST_NATIVE_SANDBOX_REQUIRED) {
-    t.skip('OS boundary unavailable: '+JSON.stringify(capabilities.results));return;
+  if (unsupportedPsec(capabilities) && process.env.PA_TEST_NATIVE_SANDBOX_REQUIRED!=='1') {
+    t.skip('Actual baseline passed; PSEC API unavailable: '+JSON.stringify(capabilities.results));return;
   }
   assert.equal(capabilities.available,true,JSON.stringify(capabilities));
   assert.equal(capabilities.networkDeny,true);assert.equal(capabilities.descendants,true);assert.equal(capabilities.reparse,true);

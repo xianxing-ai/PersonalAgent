@@ -88,21 +88,24 @@ test('actual Main forwards original event identity and progress to its current n
   context.harnessEventsHost=undefined;assert.throws(()=>guard('original-root',origin));
 });
 
-test('actual Main native experience confirmation rejects expired or revoked answers',async()=>{
+test('actual Main experience card confirmation rejects expired or revoked answers without another modal',async()=>{
   let now=1000,requested=0;const lifetime=new AbortController(),pending=deferred();
+  let decide=async()=>{requested++;await pending.promise;return true;};
   const context=vm.createContext({harnessExperienceLifetime:lifetime,Date:{now:()=>now,parse:Date.parse},ProtocolError,
-    admin:{isDestroyed:()=>false},dialog:{showMessageBox:async()=>{requested++;return pending.promise;}}});
+    admin:{isDestroyed:()=>false},confirmApplicationAuthorization:async(action,_payload,options)=>{
+      assert.equal(action,'experience.activate');assert.equal(options.isCurrent(),true);return decide();
+    },dialog:{showMessageBox:()=>assert.fail('experience permission must use the original conversation card')}});
   vm.runInContext(declaration('confirmHarnessExperienceActivation'),context);
   const signal=new AbortController().signal,version={workflowId:'original',revision:1};
   await assert.rejects(context.confirmHarnessExperienceActivation(version,{signal,deadline:new Date(999).toISOString()}),/开发经验确认已失效/);assert.equal(requested,0);
   const expired=context.confirmHarnessExperienceActivation(version,{signal,deadline:new Date(2000).toISOString()});
   now=2000;pending.resolve({response:0});await assert.rejects(expired,/开发经验确认已失效/);
-  now=1000;context.dialog.showMessageBox=async()=>({response:0});
+  now=1000;decide=async()=>true;
   assert.equal(await context.confirmHarnessExperienceActivation(version,{signal,deadline:new Date(3000).toISOString()}),true);
-  const replacement=deferred(),originalOwner=context.admin;context.dialog.showMessageBox=()=>replacement.promise;
+  const replacement=deferred(),originalOwner=context.admin;decide=async()=>{await replacement.promise;return true;};
   const oldOwner=context.confirmHarnessExperienceActivation(version,{signal,deadline:new Date(3000).toISOString()});
   context.admin={isDestroyed:()=>false};replacement.resolve({response:0});await assert.rejects(oldOwner,/开发经验确认已失效/);context.admin=originalOwner;
-  const second=deferred();context.dialog.showMessageBox=()=>second.promise;
+  const second=deferred();decide=async()=>{await second.promise;return true;};
   const revoked=context.confirmHarnessExperienceActivation(version,{signal,deadline:new Date(3000).toISOString()});
   // Execute the actual Main quit branch: invalidate native answers before awaiting consumer release.
   let quitBranch;function visit(node){if(ts.isIfStatement(node)&&node.expression.getText(ast)==='harnessEventsHost&&!harnessEventsClosed')quitBranch=node;

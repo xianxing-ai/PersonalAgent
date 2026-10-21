@@ -110,7 +110,11 @@ export function createRuntimeCodingRepairWorkerCapability(application:RuntimeApp
     if(completed.workflowId!=='F15'||completed.state!=='settled'||completed.mode!==request.mode)
       fail('EXTERNAL_FAILURE','Coding graph did not settle its original request');
     const result={workflowId:'F15',state:'settled',mode:request.mode,confirmedOperations:outcome.evidenceRefs?.length??0};
-    await options.authorizeMetadata({taskId:context.taskId,value:result,deadline:context.deadline,signal:context.signal});active(context);
+    const graph=context.loadCheckpoint('coding-repair:graph') as {initialRunId?:string}|undefined;
+    if(!graph?.initialRunId)fail('UNAUTHORIZED','Original coding completion authorization is unavailable');
+    const projection=await options.authorizeMetadata({taskId:context.taskId,stage:'completion',value:result,
+      authorization:{taskId:context.taskId,runId:graph.initialRunId},deadline:context.deadline,signal:context.signal});active(context);
+    if(projection!==undefined&&!isDeepStrictEqual(projection,result))fail('UNAUTHORIZED','Original coding completion projection changed');
     const selection={...bound,resultDigest:hash(result)};
     context.saveCheckpoint(KEY+':receipt',{selection,result});
     return {state:'confirmed',result,evidenceRefs:outcome.evidenceRefs??[],selection};

@@ -88,15 +88,16 @@ test('dedicated native input accepts only its own main frame, denies navigation 
   assert.equal(await cancelled, undefined); ui.close(); assert.equal(removed, true);
 });
 
-test('native approval uses default cancel and rejects a late acceptance after cancellation', async () => {
+test('pairing uses the original application card and rejects late acceptance after cancellation', async () => {
   let captured;
   const controller = new AbortController();
   const ui = createObsidianPairingUI({BrowserWindow: class {}, ipcMain: {handle() {}, removeHandler() {}},
-    owner: () => ({isDestroyed: () => false}), dialog: {async showMessageBox(_owner, options) {
-      captured = options; controller.abort(); return {response: 0};
-    }}});
+    owner: () => owner,confirmAuthorization:async request=>{
+      captured=request;controller.abort();return true;
+    }});
+  const owner={isDestroyed:()=>false};
   assert.equal(await ui.confirm({peer: {folder: 'Allowed'}, displayName: '合成 Vault', signal: controller.signal}), false);
-  assert.equal(captured.defaultId, 1); assert.equal(captured.cancelId, 1); assert.equal(captured.signal, controller.signal); ui.close();
+  assert.equal(captured.signal, controller.signal);assert.equal(captured.isCurrent(),false);assert.equal(captured.scope.folder,'Allowed');ui.close();
 });
 
 test('restart keeps plugin selection unavailable and stores no credentials; explicit revoke restores the file source', {skip: process.platform !== 'win32'}, async t => {

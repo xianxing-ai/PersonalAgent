@@ -21,8 +21,12 @@ for(const [surface,path,assignment] of [
   function visit(node){
     if(ts.isBinaryExpression(node)&&node.left.getText(ast)===assignment)handler=node.right.getText(ast);
     if(surface==='panel'&&ts.isBinaryExpression(node)&&node.left.getText(ast)==='render'&&ts.isArrowFunction(node.right)&&ts.isBlock(node.right.body)){
-      projection=node.right.body.statements[0].getText(ast);
-      renderSendMode=node.right.body.statements.find(statement=>ts.isExpressionStatement(statement)&&ts.isCallExpression(statement.expression)&&statement.expression.expression.getText(ast)==='setSendMode')?.getText(ast);
+      const candidate=node.right.body.statements[0].getText(ast);
+      if(candidate.includes('truncatedOutput.get(task.taskId)')){
+        assert.equal(projection,undefined,'the actual output-cutoff projection is unique');
+        projection=candidate;
+        renderSendMode=node.right.body.statements.find(statement=>ts.isExpressionStatement(statement)&&ts.isCallExpression(statement.expression)&&statement.expression.expression.getText(ast)==='setSendMode')?.getText(ast);
+      }
     }
     if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&dependencies.includes(node.name.text))declarations.set(node.name.text,node.getText(ast));
     ts.forEachChild(node,visit);

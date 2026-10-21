@@ -1,7 +1,9 @@
 import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import {createHash, randomUUID} from 'node:crypto';
+import {connectorResultProjectionSchema} from './connector-result-projection.js';
 import path from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import * as feeds from '@personal-agent/feeds';
 
 function subscription(value) {
@@ -20,11 +22,12 @@ function subscription(value) {
 /** Adapts the existing feed tools to Desktop configuration and session export consent.
  * Subscription URLs stay in encrypted host storage; Runtime still owns Policy and execution.
  */
-export function createDesktopFeedsHost({userData, safeStorage, provider = new feeds.HttpFeedProvider(), now = Date.now}) {
+export function createDesktopFeedsHost({userData, safeStorage, provider = new feeds.HttpFeedProvider(), question, now = Date.now}) {
   const file = path.join(userData, 'feeds-config.json');
   let saved = [], failure = '', allowed = false, active = true, generation = randomUUID();
   let boundRevision, application, release, namespace, grantStore;
   const implementations = [], tools = [], inflight = new Set(), sourceReceipts = new Map();
+  const execution=new AsyncLocalStorage(),prepared=new Map();
   try {
     if (existsSync(file)) {
       const record = JSON.parse(readFileSync(file, 'utf8'));
@@ -79,6 +82,24 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     } catch { return absent; }
   }
   const current = () => active && allowed && boundRevision === revision() && tools.length > 0;
+  const questionReady=()=>active&&Boolean(application)&&Boolean(namespace)&&boundRevision===revision()&&tools.length>0
+    &&['prepare','prepareExport','currentRequirement','authorizeExport','readResourceGeneration','rotateResourceGeneration']
+      .every(name=>typeof question?.[name]==='function');
+  const resource=()=>hash({namespace,kind:'desktop-feeds',configuration:revision(),provider:provider.source});
+  const preparationKey=scope=>JSON.stringify([scope.taskId,scope.proposalId??scope.proposal?.proposalId]);
+  function original(scope) {
+    const entry=prepared.get(preparationKey(scope));
+    if(!entry||!questionReady()||scope.signal?.aborted||entry.generation!==generation||Date.parse(entry.scope.deadline)<=now()
+      ||!bound(scope.taskId)||entry.resource!==resource()||question.readResourceGeneration(entry.resource)!==entry.resourceGeneration)throw Error('订阅本次授权已失效');
+    return entry;
+  }
+  function assertAccess(scope,input,tool) {
+    if(scope.signal.aborted||!bound(scope.taskId))throw Error('订阅读取许可已撤销');
+    if(!question){if(!current())throw Error('订阅读取许可已撤销');return;}
+    const entry=[...prepared.values()].find(value=>value.scope.taskId===scope.taskId&&value.scope.runId===scope.runId);
+    if(!entry||entry.toolName!==tool.descriptor.name||entry.argumentsDigest!==hash(input))throw Error('订阅原操作参数已改变');
+    original({...entry.scope,signal:scope.signal});question.currentRequirement({...entry.scope,...scope},'feeds-session');
+  }
   const bound = (taskId, claim = false) => {
     if (!application || !taskId) return false;
     const key = 'desktop-feeds-scope';
@@ -94,11 +115,14 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     reason:failure || (boundRevision !== undefined && boundRevision !== revision()
       ? '配置已保存，请重启应用接入新的订阅目录'
       : current() ? '已允许本会话读取订阅并交给 AgentArts 汇总；实际调用仍经过 Policy'
-      : '添加订阅后允许本会话读取与云端汇总；重启后许可自动关闭')});
+      : questionReady()?'在主对话发起订阅请求，通过该次提问卡确认访问与出机范围；配置本身不授权'
+      : '订阅请求需要原操作许可；配置本身不授予读取或云端发送权限')});
   function revoke(revokeTracking = true) {
     allowed = false; generation = randomUUID();
+    prepared.clear();
     for (const controller of inflight) controller.abort();
     sourceReceipts.clear();
+    if(question&&application&&namespace){const id=resource(),previous=question.readResourceGeneration(id);question.rotateResourceGeneration(id,previous);}
     if (revokeTracking && grantStore) {
       const keys = grantStore.get('feed-source-grant-index');
       for (const key of Array.isArray(keys) ? keys : []) {
@@ -126,15 +150,16 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     registerCurrentSources();
     for (const tool of implementations) tools.push({descriptor:tool.descriptor,
       async execute(input,context) {
-        if (context.signal.aborted || !current() || !bound(context.taskId)) throw Error('订阅读取许可已撤销或任务绑定已改变');
+        assertAccess(context,input,tool);
         const executing=implementations.find(item=>item.descriptor.name === tool.descriptor.name
           && item.descriptor.version === tool.descriptor.version);
         if (!executing) throw Error('订阅当前实例不可用');
         const config=input?.subscriptionId ? sourceBinding(input.subscriptionId) : null;
         const controller = new AbortController(); inflight.add(controller);
         try {
-          const result = await executing.execute(input,{...context,signal:AbortSignal.any([context.signal,controller.signal])});
-          if (!current() || !bound(context.taskId) || controller.signal.aborted || context.signal.aborted) throw Error('订阅读取已撤销');
+          const activeContext={...context,signal:AbortSignal.any([context.signal,controller.signal])};
+          const result = await execution.run({context:activeContext,input,tool},()=>executing.execute(input,activeContext));
+          assertAccess(activeContext,input,tool);
           if (result?.sourceReceipt) {
             if (!config || typeof feeds.assertFeedSourceReceiptMatches !== 'function') throw Error('订阅来源收据验证不可用');
             feeds.assertFeedSourceReceiptMatches(result.sourceReceipt,result,
@@ -149,7 +174,10 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     if (!['conditional','verified'].includes(provider.verification)) throw Error('需要真实订阅提供者');
     const next=[];
     const nextRelease=feeds.register({register(tool) {next.push(tool);return () => {};}},
-      {provider,subscriptions:saved,trackRevisions:true,isPaused:()=>!active || !allowed});
+      {provider,subscriptions:saved,trackRevisions:true,isPaused:()=>{
+        if(!question)return !active||!allowed;
+        try{const scope=execution.getStore();if(!scope)return true;assertAccess(scope.context,scope.input,scope.tool);return false;}catch{return true;}
+      }});
     if (tools.length && !isDeepStrictEqual(next.map(item=>item.descriptor),tools.map(item=>item.descriptor))) {
       nextRelease();throw Error('订阅目录定义已经改变，请重启接入');
     }
@@ -205,6 +233,7 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
       return save(saved.filter(item => item.id !== input.id));
     },
     authorize(input) {
+      if(question)throw Error('请在当前对话提问卡授权此操作');
       if (!input || Object.keys(input).length !== 1 || input.readAndCloudConsent !== true
         || !active || !application || !saved.length || boundRevision !== revision() || !tools.length) {
         throw Error('请先完成订阅装配，并确认读取及云端汇总用途');
@@ -213,6 +242,29 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     },
     revoke:() => revoke(),
     prepare,
+    prepareExport(scope) {
+      const tool=tools.find(item=>item.descriptor.name===scope.proposal?.toolName&&item.descriptor.version===scope.proposal?.toolVersion);
+      if(!tool||!question)return;
+      if(scope.phase!=='preflight'){original(scope);return;}
+      if(!questionReady()||!scope.runId||scope.signal.aborted||Date.parse(scope.deadline)<=now()||!bound(scope.taskId,true))throw Error('订阅授权提问通路不可用');
+      for(const [key,value]of prepared)if(Date.parse(value.scope.deadline)<=now())prepared.delete(key);
+      const id=resource(),resourceGeneration=question.readResourceGeneration(id),entry={scope:{taskId:scope.taskId,runId:scope.runId,
+        proposalId:scope.proposal.proposalId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+        deadline:scope.deadline,signal:scope.signal},resource:id,resourceGeneration,generation,
+        toolName:tool.descriptor.name,argumentsDigest:hash(scope.proposal.arguments)};
+      const key=preparationKey(scope),previous=prepared.get(key);
+      if(previous&&(previous.scope.runId!==entry.scope.runId||previous.argumentsDigest!==entry.argumentsDigest||previous.generation!==generation))throw Error('订阅原操作绑定已改变');
+      prepared.set(key,entry);
+      const ruleBindingDigest=hash({resource:id,resourceGeneration,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+        projection:tool.descriptor.outputSchema});
+      question.prepare(entry.scope,{requirements:[{requirementId:'feeds-session',kind:'connector_session',scopes:tool.descriptor.requiredScopes,
+        bindingDigest:hash({resource:id,resourceGeneration,generation,taskId:scope.taskId,runId:scope.runId,argumentsDigest:entry.argumentsDigest,deadline:scope.deadline}),
+        ruleBindingDigest,summary:'仅访问本任务所需的已配置订阅；不向其他任务授予订阅会话'}],
+        assertCurrent:()=>{try{original(scope);return true;}catch{return false;}}});
+      question.prepareExport(entry.scope,{requirementId:'feeds-export',projectionSchema:connectorResultProjectionSchema(tool.descriptor.outputSchema),summary:'将本次订阅工具声明的文章/分页结果发送到本任务选定 AgentArts 模型，排除配置中的凭据（最多 960 KiB）',
+        bindingDigest:hash({ruleBindingDigest,taskId:scope.taskId,runId:scope.runId,argumentsDigest:entry.argumentsDigest}),
+        ruleBindingDigest:hash({ruleBindingDigest,kind:'export'})});
+    },
     bindApplication(value, identity) {
       application=value;
       if (typeof identity === 'string' && identity.trim()) {
@@ -222,12 +274,22 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     get tools() {return [...tools];},
     get competitionToolAvailability() {return tools.map(tool => ({toolName:tool.descriptor.name,
       toolVersion:tool.descriptor.version,
-      available:({taskId,signal}) => !signal.aborted && current() && bound(taskId,true)}));},
+      available:({taskId,signal}) => !signal.aborted && (question?questionReady():current()) && bound(taskId,true)}));},
     get competitionToolExports() {return tools.map(tool => ({toolName:tool.descriptor.name,
-      toolVersion:tool.descriptor.version, exportPolicyVersion:'authorized-feeds-session-v1',
-      accepts:({taskId}) => current() && bound(taskId),
-      project:({taskId,result,signal}) => {
-        if (signal.aborted || !current() || !bound(taskId)) throw Error('订阅云端许可已失效');
+      toolVersion:tool.descriptor.version, exportPolicyVersion:question?'question-feeds-bounded-v2':'authorized-feeds-session-v1',
+      accepts:scope=>{
+        if(!question)return current()&&bound(scope.taskId);
+        try{const entry=original(scope);if(entry.argumentsDigest!==hash(scope.arguments))return false;
+          if(scope.phase==='final'){
+            if(!entry.projectionDigest||entry.projectionDigest!==hash(scope.projection))return false;
+            question.currentRequirement({...entry.scope,signal:scope.signal??entry.scope.signal},'feeds-export');
+          }return true;}catch{return false;}
+      },
+      project:scope => {
+        const {taskId,result,signal}=scope;
+        if(question){const entry=original(scope);question.currentRequirement({...entry.scope,signal},'feeds-session');
+          question.authorizeExport({...entry.scope,signal},result,'feeds-export');entry.projectionDigest=hash(result);}
+        else if (signal.aborted || !current() || !bound(taskId)) throw Error('订阅云端许可已失效');
         // The connector already redacts configured URLs. Also check the decoded cursor,
         // whose base64 encoding must not hide credentials reflected in response validators.
         const cursor = result.nextCursor ? feeds.decodeCursor(result.nextCursor) : undefined;
@@ -240,6 +302,7 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
         if (Buffer.byteLength(JSON.stringify(result),'utf8') > 960 * 1024) throw Error('订阅结果过大，请减小每页数量');
         return structuredClone(result);
       }}));},
-    close() {if (!active) return; active=false; revoke(false); release?.();},
+    close() {if (!active) return; active=false;allowed=false;prepared.clear();
+      for(const controller of inflight)controller.abort();sourceReceipts.clear();release?.();},
   };
 }

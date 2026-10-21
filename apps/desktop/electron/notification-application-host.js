@@ -8,7 +8,7 @@ const COMMAND_BINDING = 'desktop-notification-user-command';
 /** Desktop composition over the original Runtime host, ToolGateway and OS receipt port.
  * No renderer send endpoint, second queue, permission store or task executor lives here.
  */
-export function createDesktopNotificationApplicationHost({namespace, channel, now = Date.now, onUpdate = () => {}}) {
+export function createDesktopNotificationApplicationHost({namespace, channel, question,now = Date.now, onUpdate = () => {}}) {
   if (typeof namespace !== 'string' || !namespace || !channel
     || typeof channel.sendAdvisoryNotification !== 'function' || typeof channel.readDeliveryOutcome !== 'function') {
     throw Error('通知应用宿主缺少用户或真实回执端口');
@@ -31,6 +31,7 @@ export function createDesktopNotificationApplicationHost({namespace, channel, no
       && now() < Date.parse(original.command.expiresAt) && original.isCurrent());
   };
   const settingsTool = {descriptor, async execute(input, context) {
+    if(question)question.currentRequirement(context,'notifications-settings');
     return current().settingsTool.execute(input, context);
   }};
   const channelId = roundId => 'notification-round-' + digest(roundId);
@@ -57,7 +58,7 @@ export function createDesktopNotificationApplicationHost({namespace, channel, no
       if (read.confirmed) return {state: 'confirmed', taskId, result: read.confirmed.result, evidenceRefs: read.confirmed.evidenceRefs};
       if (['failed', 'cancelled'].includes(read.task.state)) throw Error(read.task.error?.message || '通知设置未应用，请读取原任务');
       if (read.task.state === 'waiting_reconciliation') return {state: 'unknown', taskId};
-      if (read.approval?.state === 'pending' && !responded) {
+      if (!question&&read.approval?.state === 'pending' && !responded) {
         if (!isCurrent()) throw Error('当前设置或最终语音确认已经失效');
         // The explicit settings submit/final is the user's decision for these exact
         // frozen arguments. Runtime's original approval owns the one-use grant.
@@ -111,6 +112,15 @@ export function createDesktopNotificationApplicationHost({namespace, channel, no
   }
   const api = {
     tools: [settingsTool], configureSettings, receipt,
+    prepareAuthorization(scope){
+      if(!question||scope.toolName!==descriptor.name)return;
+      const original=commands.get(scope.taskId);if(!original||!original.isCurrent())throw Error('原通知设置请求已失效');
+      question.prepare(scope,{requirements:[{requirementId:'notifications-settings',kind:'tool',scopes:SETTINGS_SCOPES,
+        bindingDigest:digest([scope.taskId,scope.runId,original.command.argumentsDigest,original.command.expiresAt]),
+        ruleBindingDigest:digest([namespace,original.command.settings.scope]),
+        summary:'仅所选通知范围的配置修改；执行前重新核对本次参数和设置版本，不授予其他业务权限'}],
+        assertCurrent:()=>!disposed&&original.isCurrent()&&now()<Date.parse(original.command.expiresAt)});
+    },
     restoreLegacySettings(policy) {
       savedLegacyPolicy=structuredClone(policy);
       if(host)return host.importLegacyPolicy(legacyScope,savedLegacyPolicy);
