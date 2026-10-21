@@ -9,9 +9,11 @@
 - 原聚焦组 63 项：35 pass，28 项 F15 实体隔离夹具在外层沙箱 `realpath EPERM` setup 失败，未执行产品断言；只对该失败文件按最小平台授权重跑，28/28 pass（0 skip，约 17.3 秒）。覆盖完整原 F15 图、隔离模式、N05 重启恢复、并发用户修改 CAS、云自报拒绝、取消及有界错误回执；未弱化路径/进程身份限制。
 - `node --test apps/desktop/test/approval-projection.test.mjs`：2/2 pass，包括 timer 到期后旧 pending UI 缓存按同一 Runtime approval ID/task/revision 刷新。
 - `authorization-question-host.test.mjs` 与新增 `authorization-runtime-integration.test.mjs` 的前两例联合 5/5 pass；新增第三例“同操作各阶段派生”单独 1/1 pass。
-- 8 份受影响知识/配对/remote MCP/语音消费者文件首轮 44 项为 29 pass / 15 fail。知识/配对的 12 项因外层进程/路径访问限制失败；只对其 2 文件最小授权并明确 PS7 路径重跑，15/15 pass。其余 remote MCP 两项、语音一项的后续修复与验证结果单独追加，不隐去首轮失败。
+- 8 份受影响知识/配对/remote MCP/语音消费者文件首轮 44 项为 29 pass / 15 fail。知识/配对的 12 项因外层进程/路径访问限制失败；只对其 2 文件最小授权并明确 PS7 路径重跑，15/15 pass。其余 remote MCP 撤销夹具区分“成功返回当前状态”和“旧配置成功保存”，仍要求 revoked/configured=false、原凭据不复活；语音改用 async rejects 保留原 release_unconfirmed 拒绝断言。只对这 2 文件最小平台重跑，14/14 pass，loopback connect 原断言未放宽。原 44 项分别取得通过，不冒充一次全组零失败。
 - 整轮摘要 source binding 的 Runtime 增量构建通过；`harness-context-host.test.mjs` 与 `context-compaction.test.mjs` 67/67 pass。同一原范围不同 segment 的 policy binding 相同，更换来源范围不同；缺受信整轮来源时在询问/发送前拒绝。
 - AgentArts 投影审计增量构建通过。原 `owned-workflow-driver` 6/6 pass；`owned-workflow-host-bridge` 首轮 1/2 pass，另一项因外层原目录 realpath setup 失败；只对该文件最小平台授权重跑，2/2 pass。实际 SQLite/ToolGateway 原结果与签名保留，已签投影可幂等读回，替换原 receipt、投影或 lease 均拒绝。
+- 架构门禁 3/3、契约夹具 4/4、contracts 生成文件一致性检查通过。普通同步 main 的 Research 源码只定向重建该 workspace 通过，未重复全部依赖构建。
+- [实际 Mail 本机批次组合](MAIL_BATCH_AUTHORIZATION_20261021.md)在 `5951d8e4` 新文件 6/6 pass、0 skip（约 1.83 秒）：101 条 Synthetic 信头经原每页 limit 100 形成两个原 Runtime 页，一张卡、各 run 独立 grant/confirmed。范围替换、撤销、配置/resource generation 变化、取消和到期均阻断，零云许可及零 export lease。首轮非法 Synthetic namespace、第二轮 provider 小页被生产正确聚合的夹具错误均保留，没有修改业务分页限制。
 
 ## 新组合实际证明
 
