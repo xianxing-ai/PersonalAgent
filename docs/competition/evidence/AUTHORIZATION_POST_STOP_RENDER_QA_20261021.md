@@ -26,7 +26,7 @@
 
 ## 截图
 
-实际 PNG 编码尺寸为面板 525×800、安全页 1402×953；这里只记录捕获图像像素，不将其冒充独立 CSS viewport/DPI 测试。
+实际 PNG 编码尺寸为面板 525×800、安全页 1403×953；这里只记录捕获图像像素，不将其冒充独立 CSS viewport/DPI 测试。
 
 ![首屏授权问题及保留的发送方式](authorization-post-stop-render-20261021/first-pending.png)
 
