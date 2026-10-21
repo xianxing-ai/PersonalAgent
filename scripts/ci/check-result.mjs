@@ -1,6 +1,7 @@
 import {appendFile,readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {validateMergeGroup} from './merge-group-context.mjs';
 
 export const DEFAULT_WAIT_MS=10*60*1000;
 export const DEFAULT_RETRY_DELAY_MS=5000;
@@ -11,7 +12,8 @@ function normalizeSha(value) {
   return typeof value==='string'&&SHA_PATTERN.test(value)?value.toLowerCase():undefined;
 }
 
-export function selectExpectedHeadSha({eventName,eventPayload,githubSha}) {
+export function selectExpectedHeadSha({eventName,eventPayload,githubSha,repository,ref}) {
+  if(eventName==='merge_group') return validateMergeGroup({event:eventPayload,sha:githubSha,repository,ref});
   if(eventName==='pull_request'||eventName==='pull_request_target') {
     const headSha=normalizeSha(eventPayload?.pull_request?.head?.sha);
     if(!headSha) throw Error('Missing trusted PR head SHA');
@@ -22,9 +24,9 @@ export function selectExpectedHeadSha({eventName,eventPayload,githubSha}) {
   return headSha;
 }
 
-export async function readExpectedHeadSha({eventName,eventPath,githubSha,readFileImpl=readFile}) {
+export async function readExpectedHeadSha({eventName,eventPath,githubSha,repository,ref,readFileImpl=readFile}) {
   let eventPayload;
-  if(eventName==='pull_request'||eventName==='pull_request_target') {
+  if(['pull_request','pull_request_target','merge_group'].includes(eventName)) {
     if(typeof eventPath!=='string'||!eventPath) throw Error('Missing trusted run context');
     try {
       eventPayload=JSON.parse(await readFileImpl(eventPath,'utf8'));
@@ -32,13 +34,18 @@ export async function readExpectedHeadSha({eventName,eventPath,githubSha,readFil
       throw Error('Missing trusted run context');
     }
   }
-  return selectExpectedHeadSha({eventName,eventPayload,githubSha});
+  return selectExpectedHeadSha({eventName,eventPayload,githubSha,repository,ref});
 }
 
-function validateSelectionMatrix(matrix) {
+function validateSelectionMatrix(matrix,eventName) {
   if(!Array.isArray(matrix?.include)||matrix.include.length<1||matrix.include.length>2||
     new Set(matrix.include.map(job=>job.kind)).size!==matrix.include.length||
     new Set(matrix.include.map(job=>job.name)).size!==matrix.include.length) throw Error('Missing or invalid selected CI matrix');
+  if(eventName==='merge_group'&&(matrix.include.length!==2||
+    !matrix.include.some(job=>job.kind==='windows')||!matrix.include.some(job=>job.kind==='image')||
+    matrix.include.some(job=>JSON.stringify(job.runner)!==JSON.stringify(job.kind==='windows'?['windows-latest']:['ubuntu-24.04'])))) {
+    throw Error('Merge group requires both GitHub-hosted platforms');
+  }
   return matrix.include.map(selected=>{
     if(!['windows','image'].includes(selected.kind)||typeof selected.name!=='string'||!selected.name||
       !Array.isArray(selected.runner)||!selected.runner.length||selected.runner.some(label=>typeof label!=='string'||!label)) throw Error('Invalid selected platform');
@@ -65,9 +72,9 @@ function assertPendingRunnerLabels(job,selected) {
   if(!Array.isArray(job.labels)||!selected.runner.every(label=>job.labels.includes(label))) throw Error(`Runner evidence missing or mismatched: ${selected.name}`);
 }
 
-export function verifySelectedJobs({routeResult,ciResult,matrix,jobs,expectedRunId,expectedAttempt,expectedHeadSha}) {
+export function verifySelectedJobs({routeResult,ciResult,matrix,jobs,expectedRunId,expectedAttempt,expectedHeadSha,eventName}) {
   if(routeResult!=='success'||ciResult!=='success') throw Error('Router and selected CI must both succeed');
-  const selections=validateSelectionMatrix(matrix);
+  const selections=validateSelectionMatrix(matrix,eventName);
   return selections.map(selected=>{
     const matches=jobs.filter(job=>job.name===selected.name);
     if(matches.length!==1) throw Error(`Missing or ambiguous actual job: ${selected.name}`);
@@ -217,10 +224,10 @@ function timeoutError(timeoutMs,pending,lastTransient) {
   return Error(`Timed out waiting for selected CI jobs after ${timeoutMs}ms: ${detail}`);
 }
 
-export async function waitForSelectedJobs({routeResult,ciResult,matrix,repository,runId,attempt,token,expectedHeadSha,fetchImpl=fetch,
+export async function waitForSelectedJobs({routeResult,ciResult,matrix,repository,runId,attempt,token,expectedHeadSha,eventName,fetchImpl=fetch,
   sleep=defaultSleep,now=Date.now,timeoutMs=DEFAULT_WAIT_MS,retryDelayMs=DEFAULT_RETRY_DELAY_MS,signal}) {
   if(routeResult!=='success'||ciResult!=='success') throw Error('Router and selected CI must both succeed');
-  validateSelectionMatrix(matrix);
+  validateSelectionMatrix(matrix,eventName);
   validateTrustedRunContext({repository,runId,attempt,token});
   if(!Number.isFinite(timeoutMs)||timeoutMs<0||!Number.isFinite(retryDelayMs)||retryDelayMs<0) throw Error('Invalid CI job wait settings');
   const currentTime=()=>{
@@ -248,7 +255,7 @@ export async function waitForSelectedJobs({routeResult,ciResult,matrix,repositor
     }
     if(currentTime()>deadline) throw timeoutError(timeoutMs,pending,deadlineReadError());
     const state=inspectSelectedJobs({matrix,jobs,expectedRunId:runId,expectedAttempt:attempt,expectedHeadSha});
-    if(state.kind==='success') return verifySelectedJobs({routeResult,ciResult,matrix,jobs,expectedRunId:runId,expectedAttempt:attempt,expectedHeadSha});
+    if(state.kind==='success') return verifySelectedJobs({routeResult,ciResult,matrix,jobs,expectedRunId:runId,expectedAttempt:attempt,expectedHeadSha,eventName});
     pending=state.pending;
     if(currentTime()>=deadline) throw timeoutError(timeoutMs,pending,lastTransient);
     const remaining=deadline-currentTime();
@@ -260,10 +267,11 @@ async function main() {
   // Fail before any API request when a dependency was skipped, cancelled or red.
   if(process.env.ROUTE_RESULT!=='success'||process.env.CI_RESULT!=='success') throw Error('Router or selected CI did not succeed');
   const matrix=JSON.parse(process.env.CI_MATRIX);
-  const expectedHeadSha=await readExpectedHeadSha({eventName:process.env.GITHUB_EVENT_NAME,eventPath:process.env.GITHUB_EVENT_PATH,githubSha:process.env.GITHUB_SHA});
+  const expectedHeadSha=await readExpectedHeadSha({eventName:process.env.GITHUB_EVENT_NAME,eventPath:process.env.GITHUB_EVENT_PATH,githubSha:process.env.GITHUB_SHA,
+    repository:process.env.GITHUB_REPOSITORY,ref:process.env.GITHUB_REF});
   const receipts=await waitForSelectedJobs({routeResult:process.env.ROUTE_RESULT,ciResult:process.env.CI_RESULT,matrix,
     repository:process.env.GITHUB_REPOSITORY,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,
-    token:process.env.GITHUB_TOKEN,expectedHeadSha});
+    token:process.env.GITHUB_TOKEN,expectedHeadSha,eventName:process.env.GITHUB_EVENT_NAME});
   console.log(JSON.stringify(receipts));
   const lines=['| Platform | Actual job | runner_name | Result |','| --- | --- | --- | --- |'];
   for(const platform of ['windows','image']) {
