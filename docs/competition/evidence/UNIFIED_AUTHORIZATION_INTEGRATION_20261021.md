@@ -46,6 +46,10 @@
 
 合并提交 `66b40e145dfdd3b4a1eda6a6e33387f489de97ff` 的七文件 stop/admission/反馈/expiry/readback/reconciliation 定向组 **63 项：55 pass / 8 fail**。8 项均在新主线 task-action-focus 的 AST 夹具取到问卡 render wrapper、未选中原 cutoff 投影时失败；真实投影仍保留。仅改夹具为唯一含原 cutoff 的实际语句，并保留非空/唯一与 cutoff 断言，该文件重测 **14/14 pass、0 skip**。这些是有重叠的执行回执，不合计为 77 个独立用例。实际受影响 Renderer 首屏/键盘复核另由 UI owner 保存。
 
+停止仍经 Main `interruptConversation` 发送原 `task.cancel`；`outputTruncated` 只是可见投影，不是授权状态。question host 执行检查要求原 Runtime task 为 running 且未请求取消，原 invocation reader 在取消后不再提供可执行 scope；旧 sourceApprovalId 不能从旧 IPC 旁路授予。既有真实 Runtime `approval-lifecycle` 用例确认取消后迟到 allow 不生成 Policy authority；`authorization-runtime-integration` 的原 workflow 单卡派生用例确认取消 owner 后不创建后续阶段。上述后端证据与本轮 Main 停止/迟到受理及 Renderer 投影用例分开，不把 UI 复核当成全部取消执行链验证。
+
+实际 `186aaac68debcdd824489689ba22a2828c027f9a` 的[合并后短界面复核](AUTHORIZATION_POST_STOP_RENDER_QA_20261021.md)退出 0：首卡标题在真实线程首屏，Tab 依次聚焦三个决定、Shift+Tab 回本次、Enter 仅执行一次；精确 sourceApprovalId 无第二组批准动作，设置仅配置/撤销。逐张检查 3 PNG，0 pageerror/fetch/第二 MessageBox/模型，未重跑原永久规则业务矩阵。
+
 ## 尚未由本记录证明
 
 - 实际 Electron 首屏可发现性和视觉复核已由 UI owner [独立保存](AUTHORIZATION_RENDERER_QA_20261021.md)：初轮业务通过但首屏视觉失败，修复后 `fe0149c6` render-only 通过并逐张检查 3 PNG；不重复声明所有业务/设备验收。
