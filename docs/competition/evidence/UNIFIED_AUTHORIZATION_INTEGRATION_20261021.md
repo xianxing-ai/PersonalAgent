@@ -50,6 +50,8 @@
 
 实际 `186aaac68debcdd824489689ba22a2828c027f9a` 的[合并后短界面复核](AUTHORIZATION_POST_STOP_RENDER_QA_20261021.md)退出 0：首卡标题在真实线程首屏，Tab 依次聚焦三个决定、Shift+Tab 回本次、Enter 仅执行一次；精确 sourceApprovalId 无第二组批准动作，设置仅配置/撤销。逐张检查 3 PNG，0 pageerror/fetch/第二 MessageBox/模型，未重跑原永久规则业务矩阵。
 
+最终推送期间远端新增 `ef1cef4bce73897c1d64a0c45acadd403ebeccfd`，仅强化原 Laya 启动夹具：实际构造本机授权 Competition Runtime，不吞初始化失败，并保持零云模型/重复 Runtime 断言。普通合并后的 `1e65b4287f7e2a1e009dc912bd6ec19ed0dfd7b2` 只对 `laya-main-startup.test.mjs` 运行一次，**3/3 pass、0 skip**（Node 24.15.0，约 1.61 秒）；Laya 进程/模型为显式 Synthetic，不证明真实模型启动。按用户要求此后移交“同步仓库”继续当前 head 的远端 CI/评审收尾，本 owner 不新增实现或检查。
+
 ## 尚未由本记录证明
 
 - 实际 Electron 首屏可发现性和视觉复核已由 UI owner [独立保存](AUTHORIZATION_RENDERER_QA_20261021.md)：初轮业务通过但首屏视觉失败，修复后 `fe0149c6` render-only 通过并逐张检查 3 PNG；不重复声明所有业务/设备验收。
