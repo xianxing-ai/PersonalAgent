@@ -71,7 +71,11 @@ test('save cancellation, window closure and concurrent revoke cannot resurrect a
       if(mode==='revoke'){s.setAnswer(async()=>({response:1}));assert.equal((await s.call('revoke')).ok,true);finish({response:1});}
       const result=await pending;
       if(mode==='deny'){assert.equal(result.ok,true);assert.equal(s.config.snapshot().configured,true);}
-      else {if(mode==='revoke')assert.equal(result.ok,false);assert.equal(s.config.snapshot().configured,mode!=='revoke');}
+      else {
+        // A stale card decision is handled without saving; revocation must remain effective.
+        if(mode==='revoke')assert.equal(result.ok,true);
+        assert.equal(s.config.snapshot().configured,mode!=='revoke');
+      }
       if(mode!=='revoke')assert.equal(s.config.secretStore.read(s.config.binding().credential.secretRef,new AbortController().signal),'synthetic-token-only');
     }finally{await s.close();}
   }
