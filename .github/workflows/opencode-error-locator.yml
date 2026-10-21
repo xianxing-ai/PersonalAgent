@@ -1,0 +1,76 @@
+name: CI error location suggestions
+on:
+  workflow_run:
+    workflows: [Foundation]
+    types: [completed]
+permissions: {}
+concurrency:
+  group: ci-locator-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+jobs:
+  locate:
+    if: >-
+      github.repository == 'xianxing-ai/PersonalAgent' &&
+      (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'merge_group') &&
+      (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      pull-requests: read
+    outputs:
+      ready: ${{ steps.locate.outputs.ready }}
+    steps:
+      # workflow_run executes trusted default-branch code, never the failing commit's scripts.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.15.0'
+      - name: Install pinned official CLI binary without install scripts
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}
+        run: npm install --prefix "$RUNNER_TEMP/opencode-cli" --registry https://registry.npmjs.org --ignore-scripts --no-audit --no-fund opencode-linux-x64-baseline@1.19.3
+      - name: Locate errors from bounded sanitized evidence
+        id: locate
+        run: node scripts/ci/opencode-error-locator.mjs collect "$RUNNER_TEMP/diagnostic.json" "$RUNNER_TEMP/opencode-cli/node_modules/opencode-linux-x64-baseline/bin/opencode"
+        env:
+          # Trusted fetcher only. Model subprocess receives a new credential-free environment.
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.locate.outputs.ready == 'true'
+        with:
+          name: ci-error-location
+          path: ${{ runner.temp }}/diagnostic.json
+          retention-days: 1
+  publish:
+    needs: locate
+    if: needs.locate.outputs.ready == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.15.0'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ci-error-location
+          path: ${{ runner.temp }}/ci-error-location
+      - name: Publish suggestions, never approve or modify code
+        run: node scripts/ci/opencode-error-locator.mjs publish "$RUNNER_TEMP/ci-error-location/diagnostic.json"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
