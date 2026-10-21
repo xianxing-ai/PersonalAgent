@@ -86,8 +86,7 @@ test('project scripts need a trusted helper, factory receipt and separate sessio
     assert.equal(input.jobHelperExecutable,helper);
     const recipes=[{id:'node-check',executable:input.nodeExecutable,args:['--check','syntax.js']},
       {id:'npm-build',executable:helper,args:['--cwd',root,'--exe',input.nodeExecutable,'--',npmCli,'run','build']}];
-    const tool={descriptor:{name:'workspace.run_allowed_command',version:'1.0.0',sideEffect:'local_write',
-      requiredScopes:['workspace:execute']},
+    const tool={descriptor:coding.createWorkspaceCommandTool({rootPath:root,recipes}).descriptor,
     execute:async({recipeId})=>({recipeId,exitCode:0,stdout:'private source',stderr:`${root} private path`})};
     return {tool,recipes,diagnostics:{projectScriptsExposed:true}};
   };
