@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-21：#474 每次交换的可信环境数据（provisional）
+
+`CoordinationInputHooks.readRequestContext(scope)` 兼容增加可选同步 host-only 文本读取，通过原获准 goal 出口临时发送；每次实际 Competition 交换采样，完整实际目标受原发送 lease/预算/来源门约束，稳定历史 checkpoint 不保存正文。Desktop 仅投影当前设备 UTC/IANA/offset 及无私人内容的能力授权引导，不把 metadata 视为许可或可调用目录。无 Core wire、Schema、数据库或冻结状态变化。统一对话卡授权待 #475 正式端口消费；当前接线与验证缺项见 [#474 记录](../../apps/desktop/docs/issue-474-time-context-20261021.md)。
+
 ## 2026-10-17 Desktop 审查回归修复（provisional）
 
 Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Conversations v4 草稿；Preload/主进程核验来源主 frame、窗口与对话归属，失败保留窗口。正常输入继续原异步防抖，不增加任务或凭据权限。原 `agentarts.configure` 表单补齐已有安全配置字段，没有新增 Core wire 或数据库迁移。

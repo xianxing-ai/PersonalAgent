@@ -1,4 +1,5 @@
 import {handleConversationAction} from './conversation-actions.js';
+import {createConversationEnvironmentContext} from './conversation-environment-context.js';
 import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
@@ -1424,6 +1425,11 @@ async function promptSyntheticRepairCandidate(taskId) {
   } finally { repairPrompts.delete(taskId); }
 }
 
+function readDesktopRequestContext(scope) {
+  if (!conversationToolAccess?.resolveConversation(scope.taskId)) return;
+  return createConversationEnvironmentContext({readTodoState:current=>todoHost?.readConversationGuidance?.(current)})(scope);
+}
+
 function readDesktopConversationContext(scope,maxMessages) {
   const requestingTaskId=scope.taskId;
   const parent=scope.taskId?runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId):undefined;
@@ -2047,6 +2053,7 @@ async function initializeRuntime() {
         }}} : {}),
         coordinationInput:{
           get contextCompaction(){return harnessContextHost?.runtimeHooks;},
+          readRequestContext:readDesktopRequestContext,
           prepareCoordinationGoal:async scope=>{
             const parent=runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId);
             if(parent){

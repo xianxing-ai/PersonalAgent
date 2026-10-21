@@ -115,6 +115,10 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
   const revoke=()=>{allowed=false;generation=randomUUID();return snapshot();};
   return {
     tools,snapshot,tick,
+    // Environment guidance must not enumerate private todos or mint task leases.
+    readConversationGuidance:()=>({registered:active && Boolean(application),
+      availability:!active||!application?'unavailable':current()?'ready':'consent_required',
+      reasonCode:!active||!application?'TODO_RUNTIME_UNAVAILABLE':current()?'TODO_TASK_CATALOG_REQUIRED':'TODO_CONSENT_REQUIRED'}),
     bindApplication(value) {application=value;delivery=createDeliveryHost({runtime:value.runtime,conversationId,
       enqueue,readReceipt:id=>Boolean(records()[id]),now});},
     authorize(input) {
