@@ -69,12 +69,18 @@ const {_electron}=require('playwright');
    assert.ok(groupAfter.panel.x+groupAfter.panel.width<=groupAfter.orb.x||groupAfter.orb.x+groupAfter.orb.width<=groupAfter.panel.x);
    assert.match(await panel.locator('#connection').innerText(),fake?/Fake Runtime/:/本地 Runtime/);
    await panel.locator('#model').click();
-   assert.equal(await panel.locator('#mm-slider').isDisabled(),false);
-   await panel.locator('#mm-slider').fill('3');
-   await panel.locator('#mm-slider').dispatchEvent('input');
+   // This local/Fake fixture publishes no native reasoning catalog. The panel must
+   // keep that control unavailable; the admin step budget below is independent.
+   assert.equal(await panel.locator('#mm-slider').isDisabled(),true);
+   assert.equal(await panel.locator('#mm-slider').getAttribute('aria-valuetext'),'不可用');
+   const unsupportedThinking=await panel.evaluate(()=>window.desktop.invoke('snapshot'));
+   await panel.locator('#mm-slider').evaluate(slider=>{
+     slider.value='1';slider.dispatchEvent(new Event('input',{bubbles:true}));
+   });
    await panel.waitForTimeout(100);
    const panelThinking=await panel.evaluate(()=>window.desktop.invoke('snapshot'));
-   assert.equal(panelThinking.value.thinking.depth,3);
+   assert.equal(panelThinking.value.thinking.depth,unsupportedThinking.value.thinking.depth);
+   assert.deepEqual(panelThinking.value.conversationPreference,unsupportedThinking.value.conversationPreference);
    assert.equal(await panel.locator('#model').evaluate(button=>{
      const bounds=button.getBoundingClientRect();
      return document.elementFromPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)?.closest('#model')===button;
