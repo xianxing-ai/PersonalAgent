@@ -40,6 +40,30 @@ const {chromium}=require('playwright');
     const capture=async name=>{const file=path.join(output,name);await page.screenshot({path:file});screenshots.push(file);};
     const checkMenu=async()=>{const box=await page.locator('.model-thinking-menu').boundingBox();const size=page.viewportSize();assert.ok(box&&box.x>=0&&box.y>=0&&box.x+box.width<=size.width+1&&box.y+box.height<=size.height+1,JSON.stringify({box,size}));};
     await page.goto(url+'?mode=panel');await page.locator('[data-picker-model]').filter({hasText:'示例旗舰模型'}).waitFor();
+    if(process.env.PA_PICKER_STOP_QA==='1'){
+      assert.match(page.url(),/mode=panel/);assert.match(await page.title(),/PersonalAgent/);
+      await page.evaluate(()=>{const f=window.pickerFixture;f.state.tasks=[{taskId:'synthetic-stop-compat',goal:'Synthetic active task',state:'running',createdAt:new Date().toISOString(),steps:[],resultSummary:'Synthetic before stop'}];f.publish();});
+      await page.getByRole('combobox',{name:'对话中发送方式',exact:true}).selectOption('queue');
+      await page.getByRole('textbox',{name:'任务内容',exact:true}).fill('Synthetic queued draft');await page.locator('#send').click();
+      await page.waitForFunction(()=>document.querySelectorAll('.queued-message').length===1&&document.querySelector('textarea').value==='');
+      assert.equal(await page.evaluate(()=>window.pickerFixture.calls.filter(call=>call.name==='task.submit').length),0);
+      await page.locator('#stop').click();
+      await page.waitForFunction(()=>window.pickerFixture.calls.some(call=>call.name==='task.cancel'&&call.payload==='synthetic-stop-compat'));
+      await page.evaluate(()=>{const f=window.pickerFixture;f.state.tasks[0]={...f.state.tasks[0],state:'succeeded',resultSummary:'LATE CONTENT MUST NOT APPEAR'};f.publish();});
+      await page.waitForFunction(()=>document.querySelector('#state').textContent==='已截断');
+      assert.doesNotMatch(await page.locator('#tasks').innerText(),/LATE CONTENT MUST NOT APPEAR/);
+      assert.equal(await page.locator('.queued-message').count(),1);assert.equal(await page.evaluate(()=>window.pickerFixture.calls.filter(call=>call.name==='task.submit').length),0);
+      await page.getByRole('button',{name:'模型与思考',exact:true}).click();await openChoices();
+      await page.getByRole('button',{name:'示例轻量模型',exact:true}).click();await settled();
+      assert.equal(await range().getAttribute('max'),'1');assert.equal(await page.locator('input[type=range]').count(),1);
+      await page.getByRole('button',{name:'快速模式',exact:true}).click();await settled();
+      assert.equal(await page.evaluate(()=>window.pickerFixture.state.conversationPreference.fast),true);
+      assert.equal(await page.locator('.queued-message').count(),1);await checkMenu();await capture('stop-queue-picker.png');
+      assert.deepEqual(errors,[]);
+      const result={state:'passed',renderer:'actual merged panel source',bridge:'explicit synthetic',runtime:'not exercised',realModelCalls:0,
+        checks:['queue does not submit while running','stop retains paused draft','late result remains truncated','picker and Fast remain usable','one slider','no page or console errors'],screenshots,errors};
+      fs.writeFileSync(path.join(output,'stop-queue-result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));return;
+    }
     assert.match(page.url(),/mode=panel/);assert.match(await page.title(),/PersonalAgent/);
     assert.equal(await page.locator('input[type=range]').count(),1);assert.equal(await page.getByRole('slider',{name:/执行步骤预算|主思考模型/}).count(),0);
     await page.getByRole('button',{name:'模型与思考',exact:true}).click();await checkMenu();
