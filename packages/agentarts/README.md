@@ -1,5 +1,7 @@
 # 自有 AgentArts 编排包
 
+2026-10-21 源码增量 `owned-1.8`：按用户提供的 JARVIS 原文仅替换指定声明，保留另外八个声明源码和执行门禁。此处版本是源码/角色诊断标识，**不表示已部署云端版本**；现有 Desktop 仍使用独立钉版 deployment 配置，不自动切换部署。原文 SHA、AST/hash 静态验证及未运行项见 [源码验证记录](../../docs/competition/evidence/JARVIS_EXACT_PROMPT_VALIDATION_20261021.md)。本轮没有真实模型、音频、镜像或平台部署。
+
 2026-10-20 增量 `owned-1.7`：续接可接收经过宿主门禁的 `goal` 与 `priorContinuations`，增加补充、更正、来源省略和回答覆盖要求。旧 JSON 仍兼容；固定 `arm64-context-1-7-1020` 已部署，隔离真实文字上下文7项及历史原文工具取回通过，当前桌面显式启用新版。覆盖范围、启动配置和非全绿检查见 [会话完整性记录](../../docs/competition/CONTEXT_INTEGRITY_20261020.md)。
 
 2026-10-19～20：`owned-1.6` 区分初始派发与 continuation 用户答复提示，分开助手身份与内部执行角色，避免将问候/写作/上下文回忆默认生成执行报告；保留严格 JSON、ModelGateway 和执行门禁。宿主投影、最终八项真实测试及整仓检查限制见 [修复记录](../../docs/competition/CHAT_CONTINUATION_REPLY_20261019.md)。

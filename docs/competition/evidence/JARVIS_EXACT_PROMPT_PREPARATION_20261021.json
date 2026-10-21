@@ -1,0 +1,117 @@
+{
+  "sourceSha256": "ade6a1068cbe00e141d71288102be14ccdc901a542f17042bfec1e08dbf0dca3",
+  "source": "JARVIS_PERSONAL_AGENT_PROMPTS.md",
+  "mode": "local-only preparation; no deployment authorization claimed",
+  "declarations": [
+    {
+      "file": "packages/agentarts/src/prompts.ts",
+      "label": "PROMPT_VERSION",
+      "sourceDeclarationSha256": "b040e2768f03068c00a09ee269e1675a6cc370f8634b96d9c1041e191a8ad704",
+      "originalDeclarationSha256": "fe8b5d9f259886c0710a7608cfe7fc03a4836a88e2617cc53d8fe12bb4cfeded"
+    },
+    {
+      "file": "packages/agentarts/src/prompts.ts",
+      "label": "boundary",
+      "sourceDeclarationSha256": "e3568a4b843d5c44c12583a9e57608d463ebdf00e1bf7d3b1da60d284116757d",
+      "originalDeclarationSha256": "e0807a5f01eab8311b2adbfa283b3552e01a95c1e12e215ac413a42e7a09dbe9"
+    },
+    {
+      "file": "packages/agentarts/src/prompts.ts",
+      "label": "FAST_PROMPT",
+      "sourceDeclarationSha256": "7ecdeba5f30dabb1eab99a69ce084e8dc8306eba93da40dcac58126b02e03208",
+      "originalDeclarationSha256": "2a37edffe58e55b2874c90ac5c494d2bf38e90694108f642d450c8541bc0b2fe"
+    },
+    {
+      "file": "packages/agentarts/src/prompts.ts",
+      "label": "CONTINUATION_REPLY_PROMPT",
+      "sourceDeclarationSha256": "1e5b511f25ac10e8ce75a553b521720554113ade438bfb61e27ac9c6f35dab54",
+      "originalDeclarationSha256": "a0beae2cd71de2a73b48000d7725f27b00c26b0c07344a3523a5d1f1eaa63ec9"
+    },
+    {
+      "file": "apps/desktop/electron/live-voice-host.js",
+      "label": "INSTRUCTIONS",
+      "sourceDeclarationSha256": "66e3aeb40d67e47a7f20dd0e3176b4997d9ecb51f10084cceb50c108302a5dc7",
+      "originalDeclarationSha256": "08eb51f419241b3f8efde8b16fbb2e599e12ad765fb076ed32d54df8f9481c51"
+    },
+    {
+      "file": "apps/runtime/src/application/subagent-host.ts",
+      "label": "rolePrompt",
+      "sourceDeclarationSha256": "5e86d14f40d80cfe93b98d5393f8e51ec47af5d3755bbfcfb420a293711de423",
+      "originalDeclarationSha256": "4b06301bdea682bf4941128bd849ac45bfa20903f99ebaa9f0febbd14b95f137"
+    },
+    {
+      "file": "apps/desktop/electron/mail-analysis-host.js",
+      "label": "project return",
+      "sourceDeclarationSha256": "4bddeb53ba377ae0784bc767b24ebfe79ef756ef5da34f955175fe14e6548788",
+      "originalDeclarationSha256": "af6b8d34fcae94148436a5fa0b1a1e9111ccc6b6f18a8511704acb4bfefd6860"
+    }
+  ],
+  "preservedDeclarations": [
+    {
+      "name": "HISTORY_LOOKUP_PROMPT",
+      "sha256": "795b8a90628bff4f36e1e19e6cff8de8ef8231e25a3949fdcdc9af7b8a0cb2cc"
+    },
+    {
+      "name": "CONTINUATION_CONTEXT_PROMPT",
+      "sha256": "a33b55d438aa1db2224cb19a22883699df534a6de21a7c5c0c262ba7af5bb9f4"
+    },
+    {
+      "name": "CONTEXT_INTEGRITY_PROMPT",
+      "sha256": "b0f2b519c0f3dbb5b277f985e211ae72d121a593b3af1277becaf49d8dab4cf5"
+    },
+    {
+      "name": "WORLD_GUIDANCE_PROMPT",
+      "sha256": "f11eb9618df11c28e16dcfb2678eabec6262c4de91df72dd672e588da0bfc275"
+    },
+    {
+      "name": "DISPATCH_PROMPT",
+      "sha256": "cfe267afb5adb5531dc38fb7eade6868e9ace8192793afdd4f889800314f15ab"
+    },
+    {
+      "name": "WORLD_PROMPT",
+      "sha256": "7b32ecc00397406882c7244746b2e5e052ae27a87622c7436abf038fd4326241"
+    },
+    {
+      "name": "PLAN_PROMPT",
+      "sha256": "f436f0d78cb2a27829d62a112317a531888d9a52371561ef2d5655d60bee1a4f"
+    },
+    {
+      "name": "REVIEW_PROMPT",
+      "sha256": "444b2921e998a5e677b6463972ab8571e36bbac3d1fa713cac0acbbea94acb44"
+    }
+  ],
+  "files": [
+    {
+      "file": "packages/agentarts/src/prompts.ts",
+      "sha256": "530d1ef456a24a77ce2a51d9be8dcb923b032e410cbbe9ba6c11841f53bf381a"
+    },
+    {
+      "file": "apps/desktop/electron/live-voice-host.js",
+      "sha256": "07fef3d4ce1094f8c3a4f4c46bf45b3a42a1fa6fd50b465ea79d6d7b3a70f1b1"
+    },
+    {
+      "file": "apps/runtime/src/application/subagent-host.ts",
+      "sha256": "570c53a02be852d325a1ad70614b0e0246e52bd4ed772c7ae828d1fa07615eda"
+    },
+    {
+      "file": "apps/desktop/electron/mail-analysis-host.js",
+      "sha256": "867503e19fcbafdef1ea433540cd0f23f0b37b2472b137458eec9ceaa5941c6e"
+    },
+    {
+      "file": "apps/desktop/test/live-voice-host.test.mjs",
+      "sha256": "a53c447199ca2897c544f64e8d99b32f4e5550424b7931537f0db55b8177f5f8"
+    }
+  ],
+  "checks": {
+    "typescriptAstParse": "passed",
+    "fourExactPromptDeclarations": "passed",
+    "otherEightDeclarationsUnchanged": "passed",
+    "liveVoiceAssertions": "three matching substrings on two existing lines; no assertions removed",
+    "modelCalls": 0,
+    "build": "not_run",
+    "liveVoiceIntegration": "not_run",
+    "postEditHashes": "5/5 matched"
+  },
+  "base": "ac28a58e0e8045a859d2f1b4d20b0db9f4afcfc2",
+  "hashEncoding": "UTF-8, LF normalized source declarations/files; authoritative Markdown hash uses original bytes"
+}
