@@ -6,6 +6,7 @@ import {validateMergeGroup} from './merge-group-context.mjs';
 const imageRoot='apps/agentarts-runtime/';
 const sharedImageRoots=['packages/contracts/','packages/models/','packages/coordination/','packages/agentarts/','packages/client/','apps/runtime/','scripts/agentarts/','scripts/laya/','.github/workflows/','.github/actions/','scripts/ci/','tests/architecture/','tests/contracts/'];
 const sharedImageFiles=new Set(['package.json','package-lock.json','tsconfig.base.json','.node-version','.npmrc','tests/integration/owned-agentarts-image.test.mjs']);
+function defaultPullRequestPool(number) {return number%10<=6?'github':'ecs';}
 function validPath(name) {return typeof name==='string'&&name.length>0&&!name.startsWith('/')&&!name.includes('\\')&&!name.split('/').some(part=>part==='..'||part==='.'||part==='');}
 export function classifyPullRequest(files,expectedCount) {
   if(!Array.isArray(files)||!files.length||!Number.isSafeInteger(expectedCount)||files.length!==expectedCount) return {mode:'both',reason:'incomplete or empty changed-file evidence'};
@@ -37,7 +38,8 @@ export function selectWindowsRunner({fork=false,number,windowsRunner='auto',wind
   if(number!==undefined&&Object.hasOwn(overrides,String(number))) return {pool:overrides[number],reason:`explicit override for PR #${number}`};
   if(windowsRunner!=='auto') return {pool:windowsRunner,reason:'explicit repository Windows runner switch'};
   if(number===undefined) return {pool:'github',reason:'explicit manual validation uses GitHub Windows'};
-  return {pool:number%2?'ecs':'github',reason:`PR #${number} is ${number%2?'odd: shared ECS pool':'even: GitHub Windows'}`};
+  const pool=defaultPullRequestPool(number);
+  return {pool,reason:`PR #${number} ends in ${number%10}: ${pool==='ecs'?'shared ECS pool':'GitHub-hosted'}`};
 }
 // Approved one-off integration only; do not broaden this to a branch prefix or global switch.
 export function isHostedIntegrationPullRequest({eventName,repository,pr}={}) {
@@ -45,15 +47,19 @@ export function isHostedIntegrationPullRequest({eventName,repository,pr}={}) {
     pr?.head?.repo?.full_name===repository&&pr.head.ref==='codex/pr-harness-big-batch-20261020'&&
     pr?.base?.repo?.full_name===repository&&pr.base.ref==='main';
 }
-export function matrixFor(mode,{fork=false,imageRunner='ecs',...windowsOptions}={}) {
-  if(!['windows','image','both'].includes(mode)||!['ecs','github'].includes(imageRunner)) throw Error('Invalid CI routing configuration');
+export function matrixFor(mode,{fork=false,imageRunner='auto',...windowsOptions}={}) {
+  if(!['windows','image','both'].includes(mode)||!['auto','ecs','github'].includes(imageRunner)) throw Error('Invalid CI routing configuration');
   const windows=selectWindowsRunner({fork,...windowsOptions});
+  // Manual Linux validation keeps its existing ECS default. Ordinary PRs use
+  // the same digit policy for both platforms unless explicitly overridden.
+  const imagePool=fork?'github':imageRunner!=='auto'?imageRunner:
+    windowsOptions.number===undefined?'ecs':defaultPullRequestPool(windowsOptions.number);
   const include=[];
   if(mode!=='image')include.push({kind:'windows',name:`Windows CI (${windows.pool==='ecs'?'ECS':'GitHub'})`,runner:windows.pool==='ecs'?['self-hosted','Windows','X64','personalagent-windows']:['windows-latest']});
-  if(mode!=='windows')include.push({kind:'image',name:'Linux image CI',runner:fork||imageRunner==='github'?['ubuntu-24.04']:['self-hosted','Linux','X64','personalagent-ecs']});
+  if(mode!=='windows')include.push({kind:'image',name:'Linux image CI',runner:imagePool==='github'?['ubuntu-24.04']:['self-hosted','Linux','X64','personalagent-ecs']});
   return {include};
 }
-export async function resolveRoute({event,eventName,ref,sha,repository,token,imageRunner='ecs',windowsRunner='auto',windowsOverrides='{}',fetchImpl=fetch}) {
+export async function resolveRoute({event,eventName,ref,sha,repository,token,imageRunner='auto',windowsRunner='auto',windowsOverrides='{}',fetchImpl=fetch}) {
   if(!/^[-\w]+\/[-\w.]+$/.test(repository??'')||!token) throw Error('Missing trusted GitHub context');
   if(['push','repository_dispatch'].includes(eventName)) throw Error('Automatic post-merge CI is disabled');
   if(!['pull_request','workflow_dispatch','merge_group'].includes(eventName)) throw Error('Unsupported CI event');
@@ -101,7 +107,7 @@ export async function resolveRoute({event,eventName,ref,sha,repository,token,ima
 async function route() {
   const event=JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH,'utf8'));
   const {selection,windows,matrix}=await resolveRoute({event,eventName:process.env.GITHUB_EVENT_NAME,ref:process.env.GITHUB_REF,sha:process.env.GITHUB_SHA,
-    repository:process.env.GITHUB_REPOSITORY,token:process.env.GITHUB_TOKEN,imageRunner:process.env.PA_IMAGE_RUNNER||'ecs',
+    repository:process.env.GITHUB_REPOSITORY,token:process.env.GITHUB_TOKEN,imageRunner:process.env.PA_IMAGE_RUNNER||'auto',
     windowsRunner:process.env.PA_WINDOWS_RUNNER||'auto',windowsOverrides:process.env.PA_WINDOWS_RUNNER_OVERRIDES||'{}'});
   await appendFile(process.env.GITHUB_OUTPUT,`matrix=${JSON.stringify(matrix)}\nmode=${selection.mode}\n`);
   if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,`CI route: **${selection.mode}** — ${selection.reason}.\n\nWindows policy: ${windows.reason}.\n\nSelected jobs: ${matrix.include.map(job=>`${job.name} (${job.runner.join(', ')})`).join('; ')}\n\nUnselected platforms are not tested, not counted as successful. ECS jobs queue for a matching idle runner; they do not automatically move to GitHub-hosted runners.\n`);
