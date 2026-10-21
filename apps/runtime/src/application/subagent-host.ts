@@ -259,7 +259,7 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
         : reasoningEffort !== undefined ? 'Trusted host explicitly configured this reasoning_effort'
         : requestedEffort === undefined ? 'No native reasoning effort selected' : 'Selected effort is not configured for this model'}});
   const rolePrompt: ModelMessage = {role: 'system',
-    content: `你是专业次级智能体，当前承担职责为【${roleLabel}】(${subtask.role})。请聚焦于此职责，独立执行指派的目标。`};
+    content: `你是 PersonalAgent 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。`};
   const outcome = await runAgent(childWorker, {goal: subtask.goal, initialMessages: [rolePrompt], model,
     tools,
     maxSteps,
