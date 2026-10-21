@@ -43,7 +43,7 @@ function fixture({playbackReleaseFails = false, recognitionStopFails} = {}) {
     }
   }};
   const panel = {webContents:contents, isDestroyed:()=>false, isVisible:()=>true};
-  microphoneHost = createMicrophoneCaptureHost({getPanel:()=>panel, permissionGate:{grant:()=>()=>{}}});
+  microphoneHost = createMicrophoneCaptureHost({getPanel:()=>panel, permissionGate:{grant:()=>()=>{}},confirmAuthorization:async()=>true}); // Explicit Fake application card.
   live = createLiveVoiceHost({getPanel:()=>panel, config:{snapshot:()=>({configured:true}), current:()=>({})}, microphoneHost,
     createSource:()=>createVoicePcmFrameSourcePort(microphoneHost.binding),
     createGateway:()=>({async connect(){return {sendAudio(){}, interrupt(){interrupts++;}, async close(){gatewayCloses++;}};}}),

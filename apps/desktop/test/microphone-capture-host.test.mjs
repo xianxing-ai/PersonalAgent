@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createMicrophoneCaptureHost} from '../electron/microphone-capture-host.js';
 
-function fixture() {
+function fixture(confirmAuthorization=async()=>true) {
   const commands = [];
   let lease;
   const contents = {mainFrame: {}, isDestroyed: () => false,
@@ -12,18 +12,32 @@ function fixture() {
     lease = options;
     return () => { const callback = lease?.onRevoke; lease = undefined; callback?.(); };
   }};
-  const host = createMicrophoneCaptureHost({permissionGate: gate, getPanel: () => panel});
+  const host = createMicrophoneCaptureHost({permissionGate: gate, getPanel: () => panel,confirmAuthorization});
   const event = {sender: contents, senderFrame: contents.mainFrame};
   return {host, commands, event, contents, panel, lease: () => lease};
 }
 
 async function tick() { await new Promise(resolve => setImmediate(resolve)); }
 
+test('application card precedes device permission; denial, revoke and stale panel cannot authorize',async()=>{
+  const denied=fixture(async()=>false);await assert.rejects(denied.host.authorize(),/对话卡授权/);
+  assert.equal(denied.commands.length,0);assert.equal(denied.lease(),undefined);
+  for(const mode of ['revoke','panel']){
+    let finish,request;const f=fixture(value=>{request=value;return new Promise(resolve=>{finish=resolve;});});
+    const pending=f.host.authorize({purpose:'live'});assert.equal(f.host.snapshot().busy,true);
+    assert.equal(f.host.snapshot().authorized,false);assert.equal(f.lease(),undefined);
+    await assert.rejects(f.host.authorize(),/已存在/);
+    if(mode==='revoke')await f.host.revoke();else f.panel.isVisible=()=>false;
+    assert.equal(request.isCurrent(),false);finish(true);await assert.rejects(pending,/对话卡授权/);
+    assert.equal(f.host.snapshot().authorized,false);assert.equal(f.commands.length,0);
+  }
+});
+
 test('one explicit panel authorization shares one physical capture; last subscriber waits for track readback', async () => {
   const {host, commands, event, contents, lease} = fixture();
   const framesA = [], framesB = [];
   await assert.rejects(host.binding.start({onFrame: () => {}}), /明确启用/);
-  host.authorize();
+  await host.authorize();
   const first = host.binding.start({onFrame: frame => framesA.push([...frame])});
   const second = host.binding.start({onFrame: frame => framesB.push([...frame])});
   assert.equal(commands.length, 1);
@@ -54,7 +68,7 @@ test('one explicit panel authorization shares one physical capture; last subscri
 test('permission revoke stops active capture and cannot claim release without stopped tracks', async () => {
   const {host, commands, event, lease} = fixture();
   let revoked = 0;
-  host.authorize();
+  await host.authorize();
   const pending = host.binding.start({onFrame: () => {}, onRevoked: () => { revoked++; }});
   const token = commands[0].token;
   host.receive(event, {type: 'ready', token, trackLive: true, sampleRate: 16000});
@@ -66,13 +80,13 @@ test('permission revoke stops active capture and cannot claim release without st
   host.receive(event, {type: 'stopped', token, tracksStopped: false});
   await assert.rejects(sub.release(), /track 未全部停止/);
   assert.equal(host.snapshot().lastRelease.verified, false);
-  assert.throws(() => host.authorize(), /释放未确认/);
+  await assert.rejects(host.authorize(), /释放未确认/);
 });
 
 test('two subscriptions using the same sink keep capture until both handles release', async () => {
   const {host, commands, event} = fixture();
   const sink = {onFrame: () => {}};
-  host.authorize();
+  await host.authorize();
   const first = host.binding.start(sink);
   const second = host.binding.start(sink);
   const token = commands[0].token;

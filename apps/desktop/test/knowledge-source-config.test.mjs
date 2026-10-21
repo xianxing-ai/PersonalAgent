@@ -48,13 +48,16 @@ test('replacing the bound native process identity helper disables only the write
     assert.ok(powerShellPath, 'PowerShell 7 is required for Windows recovery tests');
     const processIdentityHelperPath = join(f.userData, 'WindowsJobProcessHost.exe');
     await writeFile(processIdentityHelperPath, 'synthetic helper v1');
-    const host = await createKnowledgeSourceConfig({...f.options, powerShellPath, processIdentityHelperPath});
+    const question={currentRequirement:()=>{}}; // Explicit Fake current-card port; never a product grant.
+    const host = await createKnowledgeSourceConfig({...f.options, powerShellPath, processIdentityHelperPath,question});
     t.after(() => host.close());
     await host.select(); await host.selectNotes(binding(host));
     await host.configure({...binding(host), enabled: true, dataLevel: 'private', writeAllowed: true,
       cloudExportAllowed: false, publicQueries: []});
     assert.equal(host.snapshot().writeAvailable, true, host.snapshot().reason);
-    const before = host.acquire(binding(host), new AbortController().signal);
+    const context={taskId:'synthetic-task',runId:'synthetic-run',toolName:'knowledge.apply_note_patch',deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal};
+    assert.equal(host.acquire(binding(host),context.signal).write,undefined);
+    const before = host.withAuthorization(context,()=>host.acquire(binding(host), context.signal));
     assert.ok(before.write);
     await writeFile(processIdentityHelperPath, 'synthetic helper replacement with a different identity');
     assert.equal(host.snapshot().available, true);
@@ -80,6 +83,22 @@ test('missing config is unavailable; native selection persists a host-bound root
   assert.equal(restarted.snapshot().sourceId, current.sourceId);
   assert.equal(restarted.snapshot().configRevision, current.configRevision);
   assert.equal(restarted.snapshot().available, true);
+});
+
+test('configured knowledge preferences do not authorize a tool or publish its private catalog',async t=>{
+  const f=await fixture(t);let requirement,allowed=false,catalogCalls=0;
+  const question={prepare(_scope,options){requirement=options;},currentRequirement(){if(!allowed)throw Error('Synthetic original card not consumed');}};
+  const host=await createKnowledgeSourceConfig({...f.options,question,confirmCatalog:async request=>{catalogCalls++;return request.isCurrent();}});t.after(()=>host.close());
+  await host.select();const controller=new AbortController(),scope={taskId:'task',runId:'run',toolName:'knowledge.search',
+    deadline:new Date(Date.now()+30000).toISOString(),signal:controller.signal};
+  host.prepareAuthorization(scope);assert.equal(requirement.requirements[0].requirementId,'knowledge-source');
+  assert.throws(()=>host.withAuthorization(scope,()=>{}),/not consumed/);
+  assert.equal(await host.authorizeCatalog(scope),false);assert.equal(catalogCalls,0);
+  allowed=true;const lease=host.withAuthorization(scope,()=>host.acquire(binding(host),scope.signal));
+  lease.assertCurrent();allowed=false;assert.throws(()=>lease.assertCurrent(),/not consumed/);lease.release();
+  await host.configure({...binding(host),enabled:true,dataLevel:'public',writeAllowed:false,cloudExportAllowed:true,publicQueries:['公开合成']});
+  assert.equal(await host.authorizeCatalog(scope),true);assert.equal(catalogCalls,1);
+  controller.abort();assert.equal(await host.authorizeCatalog(scope),false);
 });
 
 test('switch and revoke abort old leases; old source/version never silently binds the next Vault', async t => {

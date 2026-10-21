@@ -9,7 +9,7 @@ const exact=(value,keys)=>value && typeof value==='object' && !Array.isArray(val
 function reject(){throw Error('远程 MCP 操作被拒绝；请检查配置、原任务与当前会话');}
 
 /** Dedicated trusted window; the regular admin can only open it. One owner per userData. */
-export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,config,host,application,client,namespace,onUpdate=()=>{}}){
+export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,config,host,application,client,namespace,confirmAuthorization=async()=>false,onUpdate=()=>{}}){
   const channel='desktop:remote-mcp';
   let current,closed=false,busy=false,configurationEpoch=0;
   function readTask(taskId){
@@ -33,9 +33,12 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
   function assertWindow(origin){if(closed || !origin || current!==origin || origin.window.isDestroyed() || origin.signal.aborted)reject();}
   async function confirm(origin,title,message,detail,signal=origin.signal){
     assertWindow(origin);
-    const answer=await dialog.showMessageBox(origin.window,{type:'question',title,message,detail,
-      buttons:['取消','确认'],defaultId:0,cancelId:0,noLink:true,signal});
-    return current===origin && !origin.window.isDestroyed() && !signal.aborted && answer.response===1;
+    const epoch=configurationEpoch;
+    const isCurrent=()=>!closed&&current===origin&&!origin.window.isDestroyed()&&!origin.signal.aborted&&!signal.aborted&&epoch===configurationEpoch;
+    const accepted=await confirmAuthorization({payload:{title,message,detail,configurationEpoch:epoch},
+      scope:{operation:title,configurationEpoch:epoch},summary:(title+'：'+message+'；'+detail).replace(/[\u0000-\u001f]/gu,' ').slice(0,512),
+      signal:AbortSignal.any([signal,origin.signal]),deadline:new Date(Date.now()+180000).toISOString(),isCurrent});
+    return accepted===true&&isCurrent();
   }
   const request=async(event,name,payload)=>{
     const origin=current;
@@ -86,19 +89,8 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
         if(!exact(payload,['taskId']))reject();return readTask(payload.taskId);
       }
       if(name==='respond'){
-        if(!exact(payload,['taskId','expectedRevision','decision']) || !['allow_once','deny'].includes(payload.decision))reject();
-        const app=application(),read=readTask(payload.taskId);
-        if(read.state!=='waiting_approval' || read.approval?.state!=='pending' || read.approval.revision!==payload.expectedRevision)reject();
-        if(payload.decision==='allow_once'){
-          host.arguments(read.arguments);
-          if(!await confirm(origin,'批准单次 MCP 调用',`仅批准原任务 ${read.taskId} 的一次只读调用？`,
-            `工具：${read.toolName} @ ${read.toolVersion}\n参数：${JSON.stringify(read.arguments)}\n只调用已确认连接，不发送给模型。`))return readTask(read.taskId);
-          assertWindow(origin);if(application()!==app)reject();host.arguments(read.arguments);
-          const intent=app.runtime.loadCheckpoint(read.taskId,'host-tool-intent');
-          if(host.arguments(read.arguments).bindingRef!==intent.arguments.bindingRef)reject();
-        }
-        await client().call('authorization.respond',{approvalId:read.approval.approvalId,expectedRevision:payload.expectedRevision,decision:payload.decision});
-        return readTask(read.taskId);
+        // All allow/deny decisions bind the original conversation question and revision.
+        throw new ProtocolError('UNAUTHORIZED','请在原任务的对话提问卡处理本次 MCP 调用');
       }
       if(name==='cancel'){
         if(!exact(payload,['taskId']))reject();readTask(payload.taskId);

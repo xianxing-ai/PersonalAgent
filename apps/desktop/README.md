@@ -2,6 +2,8 @@
 
 每轮主对话及合法 Competition 子代理的设备时间、IANA/offset 和待办安全授权引导接线见 [#474 工作记录](docs/issue-474-time-context-20261021.md)。仅为原获准上下文出口的环境数据；统一提问卡消费仍按该记录依赖 #475，未授权能力不因此可执行。
 
+2026-10-21：PUBLIC 参考、知识源、远程 MCP、Obsidian 应用配对与语音权限回调接入原任务同一卡。口头 yes/no 仅引导原卡；系统权限与真实配对继续使用原流程。实现、兼容变化及 Fake/集成验证边界见[权限回调记录](../../docs/competition/evidence/APPLICATION_PERMISSION_CALLBACKS_20261021.md)。
+
 2026-10-17 审查回归修复与验证边界见 [PR #376 修复记录](docs/PR376_REGRESSION_FIXES_20261017.md)。
 
 

@@ -161,7 +161,7 @@ test('actual Live release unknown rejects aggregate panel stop even when microph
   const event = {sender: contents, senderFrame: contents.mainFrame};
   let live, gatewayCloses = 0;
   const microphone = createMicrophoneCaptureHost({getPanel: () => f.context.panel,
-    permissionGate: {grant: () => () => {}}});
+    permissionGate: {grant: () => () => {}},confirmAuthorization:async()=>true}); // Explicit Fake application card.
   // Explicit Fake renderer receipts exercise actual public hosts and PCM; no native device.
   contents.send = (channel, message) => queueMicrotask(() => {
     if (channel === 'desktop:microphone-command') {
