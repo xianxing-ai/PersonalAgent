@@ -74,7 +74,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       const actual=coding.createWindowsNativeSandboxExecutor({...verified.pins,assertCurrent:assertBinding});
       return actual.execute(request);
     }};
-    return coding.createWorkspaceCommandTool({...options,trustedSandbox:{executor,
+    return coding.createWorkspaceCommandTool({...options,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
       bind(context,executionDeadline){
         const entry=runs.get(JSON.stringify([context.taskId,context.runId]));if(!entry||digest(identity(root))!==digest(rootIdentity))blocked();
         const policy=question.readExecutionPolicy(entry);
