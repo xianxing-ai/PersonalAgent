@@ -94,6 +94,7 @@ import {createDesktopHarnessContextHost} from './harness-context-host.js';
 import {createDesktopHarnessEventsHost} from './harness-events-host.js';
 import {createHarnessExperienceAdminHost} from './harness-experience-host.js';
 import {createDeveloperSettingsHost} from './developer-settings-host.js';
+import {developerSettingsError,developerSettingsErrorResponse} from '../shared/developer-settings-diagnostics.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
 import {createDesktopMailAnalysisHost} from './mail-analysis-host.js';
@@ -1482,7 +1483,7 @@ function readDesktopModelApiState() {
   return {...value,developerSettings:developerSettings?.snapshot(),harnessExperience,
     harness:{...value.harness,executionAvailable,
     executionReason:executionAvailable?'按当前编程工作区的原许可接入':value.harness?.enabled
-      ?'请在电脑操控中选择编程工作区，并启用本会话读取与结果出机许可':'开发任务规划未启用',
+      ?'请在「开发 → 环境 / Worktrees」选择本地工作区并重启装配，再启用原本会话读取与结果出机许可':'开发任务规划未启用',
     contextAvailable:Boolean(harnessContextHost?.runtimeHooks),contextReason:harnessContextFailure}};
 }
 
@@ -1850,6 +1851,7 @@ async function initializeRuntime() {
         };
         developerSettings=createDeveloperSettingsHost({userData:app.getPath('userData'),safeStorage,
           readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),
+          readWorkspaceStatus:()=>codingWorkspace.snapshot(),
           readModels:()=>modelApiHost?.snapshot().models??[],onUpdate:publish});
         developerDeployment=await developerSettings.createDeployment(developerOptions);
       }
@@ -2719,8 +2721,8 @@ async function action(event, name, payload) {
     publish();return {...result,...readDesktopModelApiState()};
   }
   if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(name)) {
-    if(sender!==admin||!competitionMode||!developerSettings)throw Error('请从正式管理后台配置开发宿主');
-    if(name==='developer.settings.read'&&payload!==undefined)throw Error('开发状态读取不接受参数');
+    if(sender!==admin||!competitionMode||!developerSettings)throw developerSettingsError('DEV_SETTINGS_ACCESS_DENIED');
+    if(name==='developer.settings.read'&&payload!==undefined)throw developerSettingsError('DEV_SETTINGS_INPUT_INVALID');
     const result=name==='developer.settings.read'?developerSettings.snapshot()
       :name==='developer.settings.configure'?await developerSettings.configure(payload):await developerSettings.setEnabled(payload);
     publish();return result;
@@ -3804,7 +3806,11 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('desktop:action', async (...args) => {
     try { return {ok: true, value: await action(...args)}; }
-    catch (error) { return {ok: false, error: error instanceof Error ? error.message : '操作失败'}; }
+    catch (error) {
+      if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(args[1]))
+        return developerSettingsErrorResponse(error);
+      return {ok: false, error: error instanceof Error ? error.message : '操作失败'};
+    }
   });
   // First-run configuration must be reachable even when cloud credentials prevent Runtime startup.
   if (competitionMode && !agentArtsConfig.snapshot().configured) openAdmin('models');

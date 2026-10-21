@@ -1,3 +1,5 @@
+import {developerSettingsError,developerSettingsFeedback} from '../../../shared/developer-settings-diagnostics.js';
+
 const escape=value=>String(value??'').replace(/[&<>"']/gu,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 
 /** Admin-only product settings. No credentials are placed in snapshots or browser storage. */
@@ -27,7 +29,9 @@ export function mountDeveloperControls(root,invoke){
     current=value;
     view.querySelector('[data-developer-status]').textContent=`${value.available?'代码开发工具已就绪':'代码开发工具未就绪'} · ${value.reason??''}`;
     view.querySelector('[data-developer-workspace]').textContent=value.workspace?.selected
-      ?`原工作区：${value.workspace.rootPath}；可用命令：${(value.workspace.recipeIds??[]).join('、')||'未配置'}`:'请先在编程设置选择工作区';
+      ?`原工作区：${value.workspace.rootPath}；可用命令：${(value.workspace.recipeIds??[]).join('、')||'未配置'}`
+      :value.workspace?.requiresRestart?'工作区设置已保存但未完成装配，请到「开发 → 环境 / Worktrees」核对并重启应用。'
+        :'请先到「开发 → 环境 / Worktrees」选择本地工作区并重启装配；仓库字段只填写 GitHub owner/repo。';
     enabled.checked=value.enabled===true;
     if(editing||busy)return;
     const configuration=value.configuration??{},git=configuration.git??{},workflow=configuration.workflows;
@@ -57,9 +61,9 @@ export function mountDeveloperControls(root,invoke){
         allowedPaths:field('allowedPaths').value.split(/\r?\n/u).map(value=>value.trim()).filter(Boolean)}};
       if(field('workflows').checked){
         const model=(current.models??[]).find(item=>item.id===field('modelId').value);
-        if(!model)throw Error('请选择原宿主已启用的模型');
-        const advanced=JSON.parse(field('advanced').value||'{}');
-        if(!advanced||typeof advanced!=='object'||Array.isArray(advanced)||Object.keys(advanced).some(key=>!['issueTriage','ciFix'].includes(key)))throw Error('可选规则只支持 issueTriage / ciFix');
+        if(!model)throw developerSettingsError('DEV_SETTINGS_MODEL_REQUIRED');
+        let advanced;try{advanced=JSON.parse(field('advanced').value||'{}');}catch{throw developerSettingsError('DEV_SETTINGS_WORKFLOW_INVALID');}
+        if(!advanced||typeof advanced!=='object'||Array.isArray(advanced)||Object.keys(advanced).some(key=>!['issueTriage','ciFix'].includes(key)))throw developerSettingsError('DEV_SETTINGS_WORKFLOW_INVALID');
         const rules=field('reviewRules').value.split(/\r?\n/u).map(text=>text.trim()).filter(Boolean).map((text,index)=>({id:`rule-${index+1}`,text}));
         configuration.workflows={...advanced,modelId:model.id,configurationRef:model.configurationRef,
           maxSteps:Number(field('maxSteps').value),maxTokens:Number(field('maxTokens').value),
@@ -69,18 +73,18 @@ export function mountDeveloperControls(root,invoke){
       const result=await invoke('developer.settings.configure',request);
       editing=revision!==submitted;setBusy(false);render(result);
       feedback.textContent=editing?'本次提交已保存；新修改尚未保存':'已保存，按原任务授权读回开发能力；未执行外部写入';
-    }catch{feedback.textContent='开发配置未保存，请检查工作区、模型、预算、路径和凭据';}
+    }catch(cause){feedback.textContent=developerSettingsFeedback(cause);}
     finally{if(request)request.token='';setBusy(false);}
   });
   enabled.addEventListener('change',async()=>{
     if(busy)return;setBusy(true);
     try{const result=await invoke('developer.settings.toggle',{enabled:enabled.checked});setBusy(false);render(result);feedback.textContent='启停状态已保存；原任务/工具授权保持独立';}
-    catch{enabled.checked=current.enabled===true;feedback.textContent='启停未确认，请刷新原宿主状态';}
+    catch(cause){enabled.checked=current.enabled===true;feedback.textContent=developerSettingsFeedback(cause);}
     finally{setBusy(false);}
   });
   view.querySelector('[data-developer-refresh]').addEventListener('click',async()=>{
     try{render(await invoke('developer.settings.read'));feedback.textContent='已读取原宿主当前状态';}
-    catch{feedback.textContent='开发状态读取失败';}
+    catch(cause){feedback.textContent=developerSettingsFeedback(cause);}
   });
   return {render,update:render,showSettings(show){view.hidden=!show;if(!show)field('token').value='';},
     close(){field('token').value='';view.remove();}};

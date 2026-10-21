@@ -82,3 +82,33 @@ H2 负责实际导航、挂载、快照更新与生命周期。控件只临时�
 ### 原 Runtime 持久绑定修复验证（2026-10-20）
 
 完整 `developer-settings-host.test.mjs` 现为 6/6 通过，使用显式 Fake 原 Runtime checkpoint 接口，覆盖同 revision 重启保留、R1→R2 后旧任务跨重启拒绝、旧版无 marker 任务拒绝/新任务准入、持久写失败与假成功零执行、错误不回显凭据及有界历史预算耗尽拒绝。Desktop typecheck 与 diff 检查通过。未安装依赖、未重建依赖闭包；`developer-deployment-config` 消费集成所需的 Client/Runtime/Cognition 构建产物在该隔离树缺失，未将未运行算作通过。真实 Runtime SQLite 组合、Windows safeStorage 和实际管理调用方仍待对应集成验证；本次不写入 H2/H1 调用方。
+
+## 2026-10-21：设置保存诊断与实际工作区入口（Refs #464 B）
+
+本地目录入口是管理后台「开发 → 环境 / Worktrees」，不是「电脑操控」。开发表单的仓库字段
+只填写 GitHub `owner/repo`，不选择本地目录。首次选择目录先保存设置，原工作区绑定需重启后
+装配；本次根据原宿主只读状态区分「未选择」与「设置已保存但绑定尚未就绪」，提供相应提示，
+不自动重启、不替换原 Runtime，也不豁免工作区、文件范围或任务授权。
+
+原部署验证、设置宿主、Main 私有 IPC 和表单曾依次丢弃校验类别，使多种保存失败呈现同一提示。
+现在只由固定目录签发 `DEV_SETTINGS_*` 诊断，带固定中文提示与字段类别。Main 仅在三个
+`developer.settings.*` 操作中返回该安全诊断；表单经原 invoke 接收并展示固定文本。未知异常或
+伪造的 code/message/diagnostic 一律返回固定 `DEV_SETTINGS_SAVE_FAILED`，不传原异常、堆栈、
+文件名、绝对路径或凭据。密钥仍在提交后立即清空，原加密信封版本及原子保存不变。
+
+主要诊断包括工作区未选择／待装配／已变化、允许文件缺失／范围不安全、gh 可执行文件、
+仓库与 Git 字段、工作流模型／规则、安全存储不可用及写入失败。未勾选开发工作流仍需有效的
+原 GitHub/Git 配置与已有文件清单。报告人的具体失败分支仍未知，不把推测当成现场根因。
+普通任务预检误拒的主修复由 [PR #465](https://github.com/xianxing-ai/PersonalAgent/pull/465) 独立负责；
+本增量不包含该补丁，也不关闭整个 [Issue #464](https://github.com/xianxing-ai/PersonalAgent/issues/464)。
+
+验证使用该工作树的 Node 24.15.0/npm 11.12.0，锁定依赖安装禁用安装脚本，仅构建 contracts 与
+GitHub 依赖。原设置宿主／repairLinks 表单回归 8/8、新增原 Main IPC → Renderer invoke → 实际
+表单 → 原设置与部署验证器组合 5/5 通过；Desktop typecheck、变更 JS/MJS 的语法和 diff 检查通过。
+新增组合验证实际文件、硬链接拒绝、加密信封写入与纠正后重试；下游工具提供方和 safeStorage
+为显式 Synthetic，无 gh 进程或账号操作。沙箱临时目录的 rename、hardlink 被拒后，夹具改用
+项目 ignored cache，并经最小本机测试权限验证硬链接，未放宽生产门禁或跳过断言。
+
+未运行完整 Runtime/仓库检查、Electron 渲染、Windows 真实 safeStorage、真实模型、云端或账号
+验收；本次没有样式布局变更，表单与错误回执以原实际回调的定向交互验证为依据。无 Core wire、
+数据库迁移、新依赖或冻结等级变化。
