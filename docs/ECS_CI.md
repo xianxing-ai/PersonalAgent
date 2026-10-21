@@ -1,6 +1,6 @@
 # ECS 与 GitHub 托管 Runner 的 PR 分流
 
-Linux ECS 负责 AgentArts 镜像相关 PR；普通 PR 的完整 Windows 检查在 GitHub 托管 Windows 与远程 Windows ECS 公共池之间分流。同类自建节点共享用途标签，GitHub 将任务派给匹配且空闲的 Runner，不为每个 PR 在每台机器重复完整检查。仓库工作流不注册、安装或配置主机；工具链、长期服务、自启动与资源保护由各主机负责人管理。
+同仓库普通 PR 按编号个位数分流：0–6 的所选 Windows/Linux 检查使用 GitHub 托管机器，7–9 使用对应系统的 ECS 公共池。同类自建节点共享用途标签，GitHub 将任务派给匹配且空闲的 Runner，忙时排队，不为每个 PR 在每台机器重复完整检查。仓库工作流不注册、安装或配置主机；工具链、长期服务、自启动与资源保护由各主机负责人管理。
 
 `windows-latest` 只选择 GitHub 托管 Windows。自建 Windows 必须显式选择 `[self-hosted,Windows,X64,personalagent-windows]`。公共池不固定机器数量：已注册且在线、完成主机准入配置的第二、第三、第四台 Windows 才能实际领取；未注册机器不算已验收。
 
@@ -10,7 +10,7 @@ Linux ECS 负责 AgentArts 镜像相关 PR；普通 PR 的完整 Windows 检查�
 
 Foundation 接收 `merge_group: checks_requested`，验证 payload 的仓库、`refs/heads/main` 基线、队列 ref 与 `GITHUB_REF` 一致、组合 SHA 与 `GITHUB_SHA` 一致。队列按整个组合提交执行 Windows 和 Linux 两条原有检查，不按某个 PR 的文件清单缩减覆盖。
 
-队列始终使用 GitHub 托管 `windows-latest` / `ubuntu-24.04`，忽略普通 PR 的 ECS 开关与 override。队列分支属于目标仓库不代表其中所有代码均来自同仓库，故不能据此把 fork 代码交给持久 ECS。普通 PR 的文件路由、Windows 奇偶策略、override 和 Linux ECS 分配不变。
+队列始终使用 GitHub 托管 `windows-latest` / `ubuntu-24.04`，忽略普通 PR 的个位数分流、ECS 开关与 override。队列分支属于目标仓库不代表其中所有代码均来自同仓库，故不能据此把 fork 代码交给持久 ECS。普通 PR 仍按文件决定所需平台，再按下述策略选择机器池。
 
 最终 `check` 独立要求两个托管平台实际通过，回执必须匹配本次 run、attempt 和组合 SHA；缺少、跳过、取消、失败或身份不符都不能通过。普通 PR 仍绑定 PR head，不能与队列的组合 SHA 混用。不新增 main push 全量检查，不推送镜像或部署。
 
@@ -22,7 +22,7 @@ Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件�
 
 | PR 修改范围 | 实际 CI |
 | --- | --- |
-| 仅 `apps/agentarts-runtime/**` | Linux image CI，在 ECS 构建和测试镜像 |
+| 仅 `apps/agentarts-runtime/**` | Linux image CI，在所选 Linux 池构建和测试镜像 |
 | 普通 Windows、桌面、连接器及其他文件 | 一条 Windows CI，执行完整 `npm run check` |
 | 同时涉及镜像目录和其他目录 | Windows CI + Linux image CI |
 | 镜像共享依赖、根依赖或 CI 配置 | Windows CI + Linux image CI |
@@ -32,15 +32,17 @@ Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件�
 
 Windows 保留 .NET 8 Job process helper、原始完整架构/契约/生成类型/类型检查/全部 workspace 单测/全部集成测试，以及三个示例。示例复用本次已构建的 dist，避免重复全仓构建。此前将同一 PR 的单测分成两份的配置已移除。
 
-同仓库 PR 的 Windows 默认策略为奇数 PR → `Windows CI (ECS)`，偶数 PR → `Windows CI (GitHub)`。PR 更新和重跑保持同一分配，多条奇数 PR 由公共池中空闲节点分担。手动完整验证默认使用托管 Windows。main push 和合并后 dispatch 不再触发 CI；合并前 PR 当前提交通过即可，不增加主线复测或主线证据复用层。fork 两个平台均强制托管，显式开关也不能把 fork 送入常驻 ECS。该策略是稳定分流，不是实时资源预测；`online` 不表示磁盘、内存或工具链已经通过。
+同仓库 PR 的默认策略为编号个位数 0–6 → GitHub 托管，7–9 → 对应系统的 ECS 公共池，Windows 和 Linux 使用同一个默认分组。例如 #465、#466 选托管，#467、#468、#469 选 ECS，#470 再选托管。PR 更新和重跑保持同一分配，ECS 忙时等待同系统的匹配空闲节点，不自动跨池改派。这是按 PR 编号约七三分流，不保证任务数、运行时间或资源负载七三分，也不预留托管并发名额。手动完整验证保持原默认：托管 Windows、ECS Linux。main push 和合并后 dispatch 不再触发 CI；合并前 PR 当前提交通过即可，不增加主线复测或主线证据复用层。fork 两个平台均强制托管，显式开关也不能把 fork 送入常驻 ECS。该策略不是实时资源预测；`online` 不表示磁盘、内存或工具链已经通过。
 
 | Actions 仓库变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `PA_WINDOWS_RUNNER` | `auto` | `auto` 使用奇偶策略；`github` / `ecs` 显式选择 Windows 池 |
+| `PA_WINDOWS_RUNNER` | `auto` | `auto` 使用 PR 个位数策略；`github` / `ecs` 显式选择 Windows 池 |
 | `PA_WINDOWS_RUNNER_OVERRIDES` | `{}` | 按 PR 定点切换，例如 `{"421":"github"}`；优先于仓库 Windows 开关 |
-| `PA_IMAGE_RUNNER` | `ecs` | `github` 显式切换镜像检查到 GitHub Ubuntu |
+| `PA_IMAGE_RUNNER` | `auto` | `auto` 使用 PR 个位数策略；`github` / `ecs` 显式选择 Linux 池；没有 PR 编号时 `auto` 保留 ECS |
 
 变量由有权限的维护者修改；不从 PR 正文、评论或模型输出读取调度指令。无效值使路由失败。路由只用本次 Actions 短期 token 读取 PR 文件，无需向主机分发个人 PAT 或提升 runner-list API 权限。
+
+启用默认个位数分流时须核对现存配置：两个池变量应为空或 `auto`，且目标 PR 无 Windows 定点 override。已设置的 `ecs` / `github` 仍优先，Windows 定点 override 仍只覆盖 Windows、不改变 Linux；本源码改动不会清除仓库变量。保留这些显式故障切换能力，不将旧配置误报成新默认已在所有 PR 生效。
 
 本次已获批准的一次性例外：仅当真实 `pull_request` 事件对应 `zemeng5208/PersonalAgent` 同仓库源分支 `codex/pr-harness-big-batch-20261020`、目标同仓库 `main`，且现有 PR API/head/文件证据验证成功时，所有实际选中的 Windows/Linux 检查均使用现有 GitHub 托管 job。匹配采用可信 PR API 返回的精确仓库及分支名，不采用正文、评论或分支前缀，也不猜 PR 编号；其他分支、仓库、事件和默认分流不变。原始配置仍先严格校验，合法的显式 ECS 选择在这一个分支上被一次性托管例外覆盖。没有修改全局变量、工作流权限、必需状态名称或测试步骤。
 
@@ -54,7 +56,7 @@ ECS 的 Git HTTPS 直连曾在实际短任务中失败。工作流因此由托�
 
 Linux 使用 Node 24.15.0 / npm 11.12.1，执行架构、契约夹具、生成类型检查、五个镜像 workspace 的类型检查及模型/协调/传输/编排/镜像应用测试、owned-agentarts-image 集成测试。已有镜像测试还导入真实 Runtime/SQLite 宿主 fixture，因此先用原 `npm run build` 补全测试输入，不将缺依赖用例跳过；Linux 不运行完整 Windows 测试集。随后使用现有 allowlist 导出上下文，实际构建 `linux/arm64` 并检查产物架构。QEMU 用于在 X64 ECS 构建 ARM64。构建不推送、不部署、不调用模型；通过只证明这些 CI 检查，不能代替 AgentArts 平台和真实工具链验收。
 
-Linux 的 `npm ci --ignore-scripts` 避开无关 Electron GUI 下载；新增必要依赖安装脚本时须显式接入。Windows 使用完整 `npm ci`。同仓库镜像任务使用 `[self-hosted,Linux,X64,personalagent-ecs]`；fork 镜像任务使用 GitHub Ubuntu 24.04，避免把外部 PR 交给常驻 ECS。没有给未选平台创建跳过状态来充当通过。
+Linux 的 `npm ci --ignore-scripts` 避开无关 Electron GUI 下载；新增必要依赖安装脚本时须显式接入。Windows 使用完整 `npm ci`。选中 ECS 的镜像任务使用 `[self-hosted,Linux,X64,personalagent-ecs]`；选中托管及所有 fork 镜像任务使用 GitHub Ubuntu 24.04，避免把外部 PR 交给常驻 ECS。没有给未选平台创建跳过状态来充当通过。
 
 Windows ECS 的 Electron 安装包直连 GitHub 也曾失败。选中 ECS 时，托管路由作业只安装锁定的 npm 包而不执行安装脚本，再用锁定的官方 `@electron/get` 从官方发布地址下载 Windows x64 Electron，核验 Electron npm 包内嵌 SHA256。官方缓存布局通过同 run、路由生产 attempt 的独立 artifact 传给 ECS，使用与源码一致的 `producer_attempt` 绑定；恢复时校验归档 SHA256、完整锁文件摘要、版本与文件摘要，并设置本 job 的 `electron_config_cache`。原始 `npm ci` 和 Electron `postinstall` 仍执行并使用官方内嵌校验和；没有跳过安装、修改依赖、使用第三方二进制源或改主机配置。缓存工件保留一天，不能借用其他 run 或不同锁文件的缓存。
 
@@ -94,7 +96,7 @@ Linux Foundation 调用 checkout 之外 `/opt/personalagent-ci/maintenance/resou
 
 Windows ECS 使用主机负责人安装的 `C:\ProgramData\PersonalAgentCI` 前后 hooks。仓库只读验证实际 PreJob context：非 fixture、run/attempt/job 匹配、真实 Runner.Worker 启动身份、资源门槛、单核 affinity 及继承的 Node/.NET 设置。缺项直接失败，不能用在仓库内重新调用 hook 来冒充自动加载成功。Node heap1536 MiB 是每进程限制，整机聚合硬内存上限未配置；真实进程树峰值与 PostJob 记录须另外回读。
 
-默认 `PA_IMAGE_RUNNER=ecs`。ECS 故障时可将仓库 Actions 变量 `PA_IMAGE_RUNNER` 设为 `github` 后重跑，让镜像任务在 GitHub Ubuntu 执行；恢复后删除变量或设回 `ecs`。这是显式切换，GitHub 不会因自托管 Runner 离线而自动改派其他系统。不得跳过镜像构建来制造绿灯。
+默认 `PA_IMAGE_RUNNER=auto`。ECS 故障时可将仓库 Actions 变量 `PA_IMAGE_RUNNER` 设为 `github`，取消旧 run 并确认结束，再重新运行全部 jobs，让路由重新选择 GitHub Ubuntu；仅重跑失败 job 会复用旧 route。恢复后删除变量或设回 `auto`。这是显式切换，GitHub 不会因自托管 Runner 离线而自动改派其他系统。不得跳过镜像构建来制造绿灯。
 
 Windows 故障或公共池繁忙时，先查看 GitHub runner 注册、online/busy 状态与 job 是否已领取。可以等待空闲节点；需迁出时设置该 PR 的 `PA_WINDOWS_RUNNER_OVERRIDES` 为 `github`，取消旧 run 并确认已结束，再 **Re-run all jobs**。仅重跑失败 job 会复用旧 route 输出，不能用来切换池。全池故障可设置 `PA_WINDOWS_RUNNER=github`，同时清除冲突的逐 PR override。已领取但资源不足的任务会由主机准入失败；不杀其他进程、不把排队当通过，不假定 GitHub 自动迁移已领取任务。恢复后清除临时 override；已有运行不会因此原地改派。
 
