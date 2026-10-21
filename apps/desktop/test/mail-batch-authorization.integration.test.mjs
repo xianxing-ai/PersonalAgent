@@ -33,8 +33,8 @@ async function composition(t){
   const config=createMailConfig({userData:directory,safeStorage,namespace:'synthetic-mailbox-user',question,now:()=>clock});
   await config.configure({user:'synthetic@qq.com',authCode:'SyntheticOnlyAuthCode'});
   config.markBound(config.current().revision);
-  const mailbox=new FakeMailProvider({inbox:[1,2].map(uid=>({uid,folder:'INBOX',from:'synthetic@example.invalid',
-    to:'synthetic@qq.com',subject:'Synthetic meeting '+uid,sentAt:'2026-10-21T00:00:00Z',seen:false})),sent:[]},{pageSize:1});
+  const mailbox=new FakeMailProvider({inbox:Array.from({length:101},(_,index)=>({uid:index+1,folder:'INBOX',from:'synthetic@example.invalid',
+    to:'synthetic@qq.com',subject:'Synthetic meeting '+index,sentAt:'2026-10-21T00:00:00Z',seen:false})),sent:[]},{pageSize:100});
   t.mock.method(QQMailProvider.prototype,'fetchPage',async(account,input)=>{
     fetches.push({account,folder:input.folder,limit:input.limit,cursor:structuredClone(input.cursor)});
     return mailbox.fetchPage(account,input);
@@ -83,7 +83,7 @@ function confirmedPage(f,index){
   assert.equal(read.confirmed.runId,scope.runId);
   assert.equal(read.confirmed.result.account,batch.accountRef);
   assert.equal(read.confirmed.result.folder,'INBOX');
-  assert.equal(read.confirmed.result.items.length,1);
+  assert.equal(read.confirmed.result.items.length,index===0?100:1);
   const record=f.application.runtime.readToolExecutions(scope.taskId).find(item=>item.evidenceId===scope.runId);
   assert.equal(record.state,'confirmed');assert.equal(record.policyDecision,'allow');assert.equal(record.executionStarted,true);
   const intent=f.application.runtime.loadCheckpoint(scope.taskId,'host-tool-intent');
@@ -115,7 +115,7 @@ test('actual MailReadSessions/Question/Policy/Gateway read two pages after one c
   assert.equal(derived.parentQuestionId,card.questionId);assert.equal(derived.batchId,first.batch.batchId);
   assert.equal(derived.argumentsDigest,second.intent.argumentsDigest);assert.equal(derived.deadline,f.deadline);
   assert.deepEqual(f.question.snapshot().map(item=>[item.questionId,item.state]),[[card.questionId,'allowed']]);
-  const completed=await f.host.refresh();assert.equal(completed.status,'complete');assert.equal(completed.counts.total,2);
+  const completed=await f.host.refresh();assert.equal(completed.status,'complete');assert.equal(completed.counts.total,101);
   assert.equal(f.fetches.length,2);assert.ok(f.fetches.every(item=>item.limit===100&&item.folder==='INBOX'));
   assert.equal(f.config.snapshot().sessionAllowed,false);assert.equal(f.config.snapshot().cloudAnalysisAllowed,false);
   assert.equal(f.config.cloudLease(),undefined);assert.equal(f.application.isDefaultSubagentAvailable(),false);
