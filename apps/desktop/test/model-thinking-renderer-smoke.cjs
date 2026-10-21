@@ -47,7 +47,7 @@ const {chromium}=require('playwright');
       await page.getByRole('textbox',{name:'任务内容',exact:true}).fill('Synthetic queued draft');await page.locator('#send').click();
       await page.waitForFunction(()=>document.querySelectorAll('.queued-message').length===1&&document.querySelector('textarea').value==='');
       assert.equal(await page.evaluate(()=>window.pickerFixture.calls.filter(call=>call.name==='task.submit').length),0);
-      await page.locator('#stop').click();
+      await page.locator('#send[data-mode="stop"]').click();
       await page.waitForFunction(()=>window.pickerFixture.calls.some(call=>call.name==='task.cancel'&&call.payload==='synthetic-stop-compat'));
       await page.evaluate(()=>{const f=window.pickerFixture;f.state.tasks[0]={...f.state.tasks[0],state:'succeeded',resultSummary:'LATE CONTENT MUST NOT APPEAR'};f.publish();});
       await page.waitForFunction(()=>document.querySelector('#state').textContent==='已截断');
