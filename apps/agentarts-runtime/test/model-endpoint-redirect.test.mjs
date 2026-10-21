@@ -4,6 +4,7 @@ import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {once} from 'node:events';
 import {createServer as httpsServer} from 'node:https';
+import {request as httpRequest} from 'node:http';
 import {createServer as tcpServer} from 'node:net';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import os from 'node:os';
@@ -53,11 +54,20 @@ async function fixture(t){
   });
   const expires=Date.now()+5000;
   while(!stdout.includes('"event":"listening"')){assert.equal(child.exitCode,null);assert.ok(Date.now()<expires);await pause(10);}
-  // Only the test control plane closes connections; the production HTTPS model transport is unchanged.
-  // A killed child must not leave a reusable socket in this process's shared fetch pool.
-  const post=(headers={},signal,query=marker)=>fetch(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,
-    headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers,connection:'close'},
-    body:JSON.stringify({query})});
+  // Give each test-control request its own socket. A Connection: close header
+  // alone does not give the fixture ownership of global fetch's pooled client.
+  // The production HTTPS model transport remains unchanged; never retry here.
+  const post=(headers={},signal,query=marker)=>new Promise((resolve,reject)=>{
+    const request=httpRequest(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,agent:false,
+      headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers,connection:'close'}},response=>{
+      const chunks=[];
+      response.on('data',chunk=>chunks.push(chunk));
+      response.once('error',reject);
+      response.once('end',()=>resolve(new Response(Buffer.concat(chunks),{status:response.statusCode})));
+    });
+    request.once('error',reject);
+    request.end(JSON.stringify({query}));
+  });
   return {first,second,post,setMode:value=>mode=value,
     disconnections:query=>disconnections.filter(body=>body.includes(query)).length,logs:()=>({stdout,stderr})};
 }
