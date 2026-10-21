@@ -53,11 +53,12 @@ export function createRuntimeCodingRepairDispatchTool(getApplication:()=>Runtime
       return original().execute({subtasks:v.subtasks},context);
     }};
 }
-/** Shared public input shape for the original root dispatcher and same-worker capability. */
-export function codingRepairWorkflowInputSchema():Record<string,unknown> {
+/** Root dispatch may select a new worker; an existing worker retains its bound execution configuration. */
+export function codingRepairWorkflowInputSchema(options:{sameWorker?:true}={}):Record<string,unknown> {
   return {type:'object',properties:{subtasks:{type:'array',minItems:1,maxItems:1,items:{type:'object',properties:{
     subtaskId:{type:'string',minLength:1},role:{type:'string',enum:['coder']},roleLabel:{type:'string'},goal:{type:'string',minLength:1},
-    model:{type:'string',minLength:1},reasoningEffort:{enum:['none','minimal','low','medium','high','xhigh','max']},thinkingDepth:{type:'integer',minimum:0,maximum:5}},
+    ...(options.sameWorker?{}:{model:{type:'string',minLength:1},reasoningEffort:{enum:['none','minimal','low','medium','high','xhigh','max']},
+      thinkingDepth:{type:'integer',minimum:0,maximum:5}})},
     required:['subtaskId','role','goal'],additionalProperties:false}},codingRepair:{type:'object',properties:{
       mode:{enum:['main','isolated']},allowedPaths:{type:'array',items:{type:'string',minLength:1}}},required:['mode'],additionalProperties:false}},
     required:['subtasks','codingRepair'],additionalProperties:false};

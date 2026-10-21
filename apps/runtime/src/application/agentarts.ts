@@ -153,7 +153,7 @@ export function createAgentArtsRuntimeApplication(
       if (!request.availableTools) throw new ProtocolError('UNAUTHORIZED', 'Initial Competition tool catalog is missing');
       return application.assertCompetitionToolCatalogAllowed({taskId: request.taskId,
         revision: request.revision, deadline: request.deadline, signal: request.signal,
-        availableTools: request.availableTools});
+        availableTools: request.availableTools,...(request.continuation?{continuation:true as const}:{})});
     },
     onDiagnostic,
     transport !== 'wss' && websocketAuthorizationProvider === undefined && websocketFactory === undefined
@@ -209,6 +209,7 @@ export function createAgentArtsRuntimeApplication(
       ...(deploymentVersion === undefined ? {} : {deploymentVersion}),
       invokeMode:invokeMode??'published',workflowGoalInput:workflowGoalInput??null,
       responseMode:responseMode??'text',initialRequestMode:initialRequestMode??'goal',
+      ...(continuationContext==='goal'?{continuationContext:'goal'}:{}),
       ...(transport === 'wss' ? {transport,websocketUrl,allowHttpsFallback:allowHttpsFallback??false} : {}),
       ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion})})).digest('hex'),
     coordination: new CompetitionCoordinator(cloud),

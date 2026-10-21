@@ -42,7 +42,7 @@ async function fixture(t) {
   const eventCursor = new EventCursor('tasks');
   const context = vm.createContext({tasks, approvals, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
     // This cancellation/readback fixture has no Harness event consumer installed.
-    harnessEventsHost: undefined,
+    harnessEventsHost: undefined,connectorChangeHost:undefined,
     conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
     notifications: new Map(), structuredClone, eventBusy: false, eventCursor,
     runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,

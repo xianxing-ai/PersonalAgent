@@ -7,7 +7,7 @@ import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
 import type {AgentInput, RepairContext, RepairRef, RepairSource} from './input.js';
-import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
+import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTINUATION_TOOL_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
 import {ownedBinding} from './bindings.js';
 import {worldGuidance} from './world-guidance.js';
 import type {OwnedBinding} from './bindings.js';
@@ -201,7 +201,8 @@ export class OwnedAgentOrchestrator {
       if (deterministic) return deterministic;
       raw = await this.call('fast', input.kind === 'goal_analysis'
         ? FAST_PROMPT + '\n仅分析宿主 RECHECK 数据；只返回 text，不提出工具或修复候选。没有执行授权，尚未执行或修改计划。'
-        : FAST_PROMPT + CONTEXT_INTEGRITY_PROMPT + HISTORY_LOOKUP_PROMPT + (input.kind==='continuation'?CONTINUATION_REPLY_PROMPT+CONTINUATION_CONTEXT_PROMPT:DISPATCH_PROMPT), input, request);
+        : FAST_PROMPT + CONTEXT_INTEGRITY_PROMPT + HISTORY_LOOKUP_PROMPT + (input.kind==='continuation'
+          ?(input.availableTools===undefined?CONTINUATION_REPLY_PROMPT:CONTINUATION_TOOL_PROMPT)+CONTINUATION_CONTEXT_PROMPT:DISPATCH_PROMPT), input, request);
     }
     return this.selectOutput(this.applicationOutput(raw, input, repair, reviewedChanges, request), input, request);
   }
@@ -290,8 +291,10 @@ export class OwnedAgentOrchestrator {
       catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Analysis output exceeds the application contract'); }
     }
     if (result.kind === 'tool_proposal') {
-      if (input.kind !== 'initial' || repair) throw new ProtocolError('EXTERNAL_FAILURE', 'Tool proposal on a result-only route');
-      const tool = input.availableTools.find(item => item.name === result.toolName && item.version === result.toolVersion);
+      const availableTools=input.kind==='initial'?input.availableTools
+        :input.kind==='continuation'&&input.goal!==undefined?input.availableTools:undefined;
+      if (availableTools===undefined || repair) throw new ProtocolError('EXTERNAL_FAILURE', 'Tool proposal on a result-only route');
+      const tool = availableTools.find(item => item.name === result.toolName && item.version === result.toolVersion);
       if (!tool) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Proposed tool is absent from the host catalog');
       validateToolValue(tool.inputSchema, result.arguments);
     }
@@ -590,6 +593,9 @@ export class OwnedAgentOrchestrator {
     if (typeof result.recipeId !== 'string' || !Object.hasOwn(names, result.recipeId)
       || !Number.isSafeInteger(result.exitCode) || typeof result.passed !== 'boolean'
       || result.passed !== (result.exitCode === 0)) throw new ProtocolError('INVALID_ARGUMENT', 'Inconsistent confirmed command result');
+    // A valid check receipt can be one step in a larger user request. Only the
+    // new explicitly goal/catalog-bound route asks the model what remains.
+    if(input.availableTools!==undefined)return undefined;
     return {kind:'text', text:`传入的已确认检查回执显示：${names[result.recipeId]}${result.passed ? '通过' : '未通过'}，退出码 ${result.exitCode}。`};
   }
   private commandIntent(input: AgentInput, request: AgentInvocation): AgentOutput | undefined {

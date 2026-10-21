@@ -59,6 +59,9 @@ import {createConversationToolAccess,projectComputerConversationStatus} from './
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
+import {createDesktopConnectorChangeHost} from './connector-change-host.js';
+import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {createConnectorReadOrigin} from './connector-read-origin.js';
 import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
 import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
@@ -283,6 +286,7 @@ let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
 let conversationToolAccess, voiceApprovalBridge, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
+let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
@@ -342,6 +346,12 @@ let knowledgeStatus = {configured: false, available: false, reason: '知识库�
 let localServicesStopping = false;
 let localServicesStopped = false;
 let nextMailRefresh = 0;
+let activeConnectorMailRead;
+let manualMailReadConversationId;
+const connectorMailReadOrigin=createConnectorReadOrigin({getApplication:()=>runtimeApplication,
+  // Binding an independently approved conversation read must not require the
+  // separate local classification session. Change consumption still checks it.
+  readSourceAuthorization:source=>({...readConnectorSourceAuthorization(source),available:Boolean(mailConfig?.current())})});
 
 function mailSnapshot() {
   const config = mailConfig?.snapshot() ?? {configured:false, status:'unconfigured', sessionAllowed:false};
@@ -351,6 +361,17 @@ function mailSnapshot() {
     counts:host?.counts, analyses:mailAnalysisHost?.snapshot(), localModelReady:localLaya?.snapshot().ready === true,
     reason:host?.status === 'stop_unconfirmed' ? '已撤销新读取；现有邮箱连接退出尚未确认'
       : mailFailure || (config.sessionAllowed ? host?.reason ?? config.reason : config.reason)};
+}
+
+function readConnectorSourceAuthorization(source) {
+  if(source==='mail') {
+    const status=mailConfig?.snapshot(),config=mailConfig?.current();
+    return {available:Boolean(mailHost&&status?.sessionAllowed&&!status.requiresRestart&&config),
+      configurationRef:createHash('sha256').update(JSON.stringify(['mail',config?.user,config?.revision])).digest('hex')};
+  }
+  const descriptor=runtimeApplication?.tools?.list().find(tool=>tool.name==='weather.forecast');
+  return {available:source==='weather'&&descriptor?.sideEffect==='read',
+    configurationRef:createHash('sha256').update(JSON.stringify(['weather',descriptor?.version])).digest('hex')};
 }
 
 async function refreshMail() {
@@ -467,7 +488,8 @@ function proactiveSnapshot() {
     summary: p5.ready ? 'P5 设备提醒已接入当前观察会话' : `P5 设备提醒不可用：${p5.reason}`};
   const suggestions = [...(base.suggestions ?? []), ...deviceSuggestions];
   if (proactiveHost && !p5.ready && base.enabled) suggestions.push(p5DeviceStatus);
-  return {...base, p5, suggestions};
+  return {...base, p5, suggestions,...(runtimeApplication&&!runtimeClosed
+    ?{connectorChanges:connectorChangeHost?.snapshot(),connectorWatches:connectorWatchHost?.snapshot()}:{})};
 }
 
 async function startP5DeviceTelemetry() {
@@ -1327,6 +1349,8 @@ async function pumpEvents() {
     const accepted = eventCursor.accept(events);
     for (const event of accepted) {
       applyEvent(event);
+      if(['task.completed','task.progress'].includes(event.type)&&event.taskId)
+        connectorChangeHost?.observeTask(event.taskId);
       if (event.type === 'task.completed' && p5DeviceTelemetrySubscription
         && p5Cognition?.snapshot().state === 'running' && proactiveHost?.snapshot().enabled) {
         p5SystemObservationSource?.publishCompletedTask(event.taskId);
@@ -1346,6 +1370,7 @@ async function pumpEvents() {
     const failedProgressReadback = progressReadbacks.find(result => result.status === 'rejected');
     if (failedProgressReadback) throw failedProgressReadback.reason;
     if (accepted.length) publish();
+    void connectorChangeHost?.flush();
   } catch (error) {
     runtimeError = error instanceof Error ? error.message : '事件流读取失败';
     publish();
@@ -1688,6 +1713,23 @@ async function initializeRuntime() {
         getApplication:()=>runtimeApplication,getHost:()=>proactiveWorkflowApplication,
         isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)});
+      if(!syntheticMvp)connectorWatchHost=createDesktopConnectorWatchHost({getApplication:()=>runtimeApplication,
+        namespace,readSourceAuthorization:readConnectorSourceAuthorization,
+        resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        startMailRead:input=>{
+          if(!readConnectorSourceAuthorization('mail').available)return false;
+          if(!['ready','complete'].includes(mailHost.snapshot().status))return false;
+          const token={watchId:input.watchId,commandId:input.commandId,sessionId:randomUUID()};
+          activeConnectorMailRead=token;
+          try {mailHost.startBatch({expiresAt:input.expiresAt});return {sessionId:token.sessionId};}
+          catch(error){if(activeConnectorMailRead===token)activeConnectorMailRead=undefined;throw error;}
+        },readMailStatus:scope=>activeConnectorMailRead?.watchId===scope.watchId&&activeConnectorMailRead.sessionId===scope.sessionId
+          ?{sessionId:scope.sessionId,state:mailHost?.snapshot().status??'unavailable'}:{state:'unavailable'},
+        stopMailRead:scope=>{
+          if(activeConnectorMailRead?.watchId!==scope.watchId||activeConnectorMailRead.sessionId!==scope.sessionId)return;
+          activeConnectorMailRead=undefined;return mailHost?.cancel();
+        },
+        observeTask:taskId=>connectorChangeHost?.observeTask(taskId),onUpdate:publish});
       if (!syntheticMvp) {
         try {todoHost = createDesktopTodoHost({userData:app.getPath('userData'),safeStorage,namespace,
           notificationHost:notificationApplicationHost,
@@ -1893,13 +1935,18 @@ async function initializeRuntime() {
         createChooser:({port,getApiKey}) => new LayaActionChoiceService(new LocalLayaHttpTransport(port,getApiKey)),
         onUpdate:publish});
       mailConfig = createMailConfig({userData:app.getPath('userData'), safeStorage,
-        onRevoke:async () => {await connectorConversationTools?.invalidate('mail');await mailHost?.cancel();},
+        onRevoke:async () => {activeConnectorMailRead=undefined;await connectorConversationTools?.invalidate('mail');await mailHost?.cancel();},
         onCloudRevoke:async () => {await mailAnalysisHost?.revoke();}});
       const configuredMail = mailConfig.current();
       if (configuredMail) {
         try {
           const {user, authCode, revision} = configuredMail;
           mailHost = runtimeModule.createQQMailTriageHost({user, authCode, accountRef:'desktop-qq-inbox',
+            onReadTask:({taskId})=>{
+              if(activeConnectorMailRead)connectorWatchHost?.bindMailRead(taskId,activeConnectorMailRead);
+              const conversationId=activeConnectorMailRead?connectorWatchHost?.resolveUserConversation(taskId):manualMailReadConversationId;
+              connectorMailReadOrigin.bind({taskId,conversationId});
+            },
             storage:createMailMetadataStorage({userData:app.getPath('userData'), safeStorage}),
             namespace:`${namespace}:qq-inbox:${user.toLowerCase()}`, triage:localLaya,
             getClassifierFingerprint:() => {
@@ -1922,6 +1969,7 @@ async function initializeRuntime() {
       if(!syntheticMvp)connectorConversationTools=createConnectorConversationTools({mail:mailConfig,calendar:calendarConfig,
         localInbox:mailHost?.tools.find(tool=>tool.descriptor.name==='mail.inbox'),
         getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        onReadTask:({taskId})=>connectorMailReadOrigin.bind({taskId,conversationId:conversationToolAccess.resolveConversation(taskId)}),
         confirmExport:confirmDeveloperExport});
       const {
         createDesktopSubagentDispatchTool,
@@ -2009,7 +2057,7 @@ async function initializeRuntime() {
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
-        ...(proactiveConversationTools?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
+        ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[])];
@@ -2164,8 +2212,8 @@ async function initializeRuntime() {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
             profile:'huawei_ict_agentarts',tools:conversationTools,
-            competitionToolAvailability:[...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
-          competitionToolExports: [...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
+            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
+          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -2353,6 +2401,17 @@ async function initializeRuntime() {
       rememberTaskGoal(taskId, goal);
     },
   });
+  if(competitionMode&&!syntheticMvp)connectorChangeHost=createDesktopConnectorChangeHost({application:runtimeApplication,
+    namespace:desktopHost.userNamespace,chooser:{snapshot:()=>localLaya?.snapshot()??{ready:false},choose:input=>localLaya.choose(input)},
+    notifications:notificationApplicationHost,readSourceAuthorization:readConnectorSourceAuthorization,
+    resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)??connectorWatchHost?.resolveUserConversation(taskId)
+      ??connectorMailReadOrigin.read(taskId)?.conversationId,
+    readOriginalSourceBinding:taskId=>connectorMailReadOrigin.read(taskId),
+    readWatchOrigin:taskId=>connectorWatchHost?.readOrigin(taskId),
+    onDecisionTask:({taskId,goal,conversationId})=>{
+      if(!conversations.turns.has(taskId))conversations.add(taskId,'panel',goal,conversationId);
+      rememberTaskGoal(taskId,goal);void refresh(taskId).then(publish).catch(()=>{});
+    },onUpdate:publish});
   if(competitionMode && memoryLearningHost && proactiveHost) {
     const publicErasure=proactiveHost.createPublicFactErasureApplication({confirm:async ref=>{
       const answer=await dialog.showMessageBox(admin,{type:'warning',title:'删除公共事实及关联记录',
@@ -2610,6 +2669,7 @@ async function initializeRuntime() {
     }
   }
   eventPoll = setInterval(() => {void pumpEvents(); void tickProactiveP5(); void refreshMail(); void notepadHost?.refresh(); void todoHost?.tick();tickKnowledgeSchedules();
+    void connectorWatchHost?.tick().catch(()=>{});
     void proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
@@ -3003,7 +3063,14 @@ async function action(event, name, payload) {
       if (!mailHost || mailConfig.snapshot().requiresRestart) throw Error('邮箱配置将在下次启动应用时接入');
       if (!localLaya.snapshot().ready) throw Error('请先启动本地 Laya');
       if (mailHost.snapshot().status === 'classification_unavailable') mailHost.retryClassification();
-      else mailHost.startBatch({expiresAt:new Date(Date.now() + 8 * 60 * 60_000).toISOString()});
+      else {
+        if(activeConnectorMailRead&&!['ready','complete','disabled'].includes(mailHost.snapshot().status))
+          throw Error('邮箱持续订阅仍在读取，请先停止该订阅或等待本批读取完成');
+        const previous=activeConnectorMailRead,previousConversation=manualMailReadConversationId;activeConnectorMailRead=undefined;
+        manualMailReadConversationId=conversations.activeConversationId('panel');
+        try {mailHost.startBatch({expiresAt:new Date(Date.now() + 8 * 60 * 60_000).toISOString()});}
+        catch(error){activeConnectorMailRead=previous;manualMailReadConversationId=previousConversation;throw error;}
+      }
       localServicesStopped = false;
     }
     publish(); return mailSnapshot();
@@ -3875,6 +3942,13 @@ app.whenReady().then(async () => {
       return;
     }
     if(!draftQuitPreflight.allow()){event.preventDefault();return;}
+    if((connectorChangeHost||connectorWatchHost)&&!connectorTriggersClosed) {
+      event.preventDefault();
+      connectorTriggersClosing??=Promise.resolve().then(()=>connectorWatchHost?.close()).then(()=>connectorChangeHost?.close())
+        .then(()=>{connectorTriggersClosed=true;app.quit();})
+        .catch(()=>{connectorTriggersClosing=undefined;reportQuitFailure('连接器变化判断尚未停止，未关闭原任务数据库');});
+      return;
+    }
     if(harnessEventsHost&&!harnessEventsClosed) {
       event.preventDefault();
       harnessExperienceLifetime.abort();

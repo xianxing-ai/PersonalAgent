@@ -125,8 +125,11 @@ export function recordCompetitionCloudStatusBinding(runtime:TaskRuntime,taskId:s
     if(phase==='initial') {
       const catalog=runtime.loadCheckpoint(taskId,'competition-tool-catalog');
       if(!isDeepStrictEqual(request.availableTools,catalog===undefined?undefined:object(catalog).entries))throw Error();
-    } else if(request.availableTools!==undefined
-      || !isDeepStrictEqual(request.continuation,object(runtime.loadCheckpoint(taskId,'competition-loop')).continuation))throw Error();
+    } else {
+      if(request.availableTools!==undefined
+        &&!isDeepStrictEqual(request.availableTools,object(runtime.loadCheckpoint(taskId,'competition-tool-catalog')).entries))throw Error();
+      if(!isDeepStrictEqual(request.continuation,object(runtime.loadCheckpoint(taskId,'competition-loop')).continuation))throw Error();
+    }
   } catch {throw new ProtocolError('RESULT_UNKNOWN','Cloud send context is not bound to the original task');}
   runtime.saveCheckpoint(taskId,BINDING,{bindingVersion:'1.0',configurationRef,invocation:identity(saved)});
   runtime.saveCheckpoint(taskId,CONTEXT,context);

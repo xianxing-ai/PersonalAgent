@@ -101,10 +101,10 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
       && Object.prototype.hasOwnProperty.call(request, 'textOnly');
     const hasExecutionModel=request!==null && typeof request==='object' && Object.prototype.hasOwnProperty.call(request,'executionModel');
     const hasPrior=request!==null && typeof request==='object' && Object.prototype.hasOwnProperty.call(request,'priorContinuations');
-    const fields=hasContinuation ? [...continuationRequestFields,...(hasPrior?['priorContinuations']:[])]
+    const fields=hasContinuation ? [...continuationRequestFields,...(hasAvailableTools?['availableTools']:[]),...(hasPrior?['priorContinuations']:[])]
       : hasAvailableTools ? availableToolsRequestFields : textOnly ? textOnlyRequestFields : requestFields;
     if (request === null || typeof request !== 'object' || Array.isArray(request)
-      || (hasContinuation && hasAvailableTools) || (textOnly && (hasContinuation || hasAvailableTools))
+      || (textOnly && (hasContinuation || hasAvailableTools))
       || !hasExactEnumerableKeys(request,hasExecutionModel?[...fields,'executionModel']:fields)
       || (textOnly && request.textOnly !== true)) invalidRequest();
     taskId = request.taskId;

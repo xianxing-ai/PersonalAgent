@@ -214,7 +214,7 @@ function freezeJsonSnapshot(value: unknown): void {
 }
 
 function validateRequest(request: CoordinationRequest, responseMode: 'text' | 'tool-proposal-json',
-  initialRequestMode: 'goal' | 'goal-with-tools-json'): {
+  initialRequestMode: 'goal' | 'goal-with-tools-json', continuationContext?: 'goal'): {
   taskId: string; revision: number; goal: string; deadline: string;
   deadlineMs: number; signal: AbortSignal; continuation?: CoordinationContinuation;
   priorContinuations?:readonly CoordinationContinuation[];
@@ -245,7 +245,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
     // The final host guard must inspect exactly the serialized transport snapshot.
     freezeJsonSnapshot(continuation);
   }
-  if (input.availableTools !== undefined && continuation !== undefined) {
+  if (input.availableTools !== undefined && continuation !== undefined && continuationContext !== 'goal') {
     invalid('AgentArts continuation cannot include an initial tool directory');
   }
   if (input.availableTools !== undefined && initialRequestMode !== 'goal-with-tools-json') {
@@ -1220,20 +1220,25 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   async invoke(request: CoordinationRequest): Promise<CoordinationResult> {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
     const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, priorContinuations, availableTools, textOnly,executionModel} =
-      validateRequest(request, this.responseMode, this.initialRequestMode);
+      validateRequest(request, this.responseMode, this.initialRequestMode, this.continuationContext);
     if (continuation !== undefined && this.beforeSend === undefined) {
       throw new ProtocolError('UNAUTHORIZED', 'AgentArts continuation export guard is unavailable');
     }
     if (availableTools !== undefined && this.beforeInitialToolCatalogSend === undefined) {
       throw new ProtocolError('UNAUTHORIZED', 'AgentArts initial tool catalog guard is unavailable');
     }
+    if(availableTools!==undefined&&this.repairCandidateVersion==='1.0'&&asPlainObject(continuation?.result)
+      &&Object.prototype.hasOwnProperty.call(continuation!.result,'repairContext')) {
+      invalid('Repair continuation cannot include a tool directory');
+    }
     const modelSelection = executionModel===undefined?{}:{executionModel};
     const query = continuation === undefined
       ? availableTools === undefined && executionModel===undefined ? goal : JSON.stringify({goal, availableTools:availableTools??[],...modelSelection})
-      : this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
+      : availableTools === undefined && this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
         && Object.prototype.hasOwnProperty.call(continuation.result, 'repairContext')
         ? executionModel===undefined?candidateContinuationQuery(continuation):JSON.stringify({continuation,...modelSelection})
         : JSON.stringify({continuation,...(this.continuationContext==='goal'?{goal,
+          ...(availableTools===undefined?{}:{availableTools}),
           ...(priorContinuations?.length?{priorContinuations}:{})}:{}),...modelSelection});
     if(new TextEncoder().encode(query).byteLength>1_100_000)invalid('AgentArts complete query exceeds the byte limit');
     if (continuation === undefined && availableTools !== undefined

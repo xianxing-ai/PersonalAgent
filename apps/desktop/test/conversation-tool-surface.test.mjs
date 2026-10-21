@@ -9,12 +9,29 @@ import {createConversationToolSurface} from '../electron/conversation-tool-surfa
 const profile='huawei_ict_agentarts',empty={type:'object',properties:{},additionalProperties:false};
 const plain=name=>({descriptor:{name,version:'1.0.0',inputSchema:empty,outputSchema:{type:'object'},sideEffect:'read',requiredScopes:['fixture:read'],requiresPresence:false,idempotencySupport:true,recoverySupport:true},execute:async()=>({})});
 const bindings=tools=>tools.map(t=>({toolName:t.descriptor.name,toolVersion:t.descriptor.version,available:()=>true}));
-test('trusted surface retains original binding/readiness and marks only exact graph nodes and canonical aliases',()=>{
+test('trusted surface retains graph binding/readiness and folds only task-ready canonical aliases',async()=>{
   const names=['coding.repair.start','coding.repair.list','coding.repair.read','coding.repair.snapshot','coding.repair.preview','coding.repair.patch','coding.repair.verify','coding.repair.check','coding.repair.publish','coding.repair.reconcile','workspace.coding_snapshot','workflow.host.f15_n04','workflow.host.f15_n05','workflow.host.f15_n06','workspace.git_diff_check','workspace.node_check','workspace.npm_build','workspace.npm_test'];
   const tools=[...names.map(plain),plain('workspace.run_allowed_command'),plain('coding.repair.workflow'),plain('coding.repair.future'),plain('workflow.host.f15_future')],original=bindings(tools);
   const result=createConversationToolSurface({profile,tools,competitionToolAvailability:original});
-  assert.equal(result.length,original.length);result.forEach((b,i)=>{assert.equal(b.available,original[i].available);assert.equal(b.modelExposure,names.includes(b.toolName)?'internal':undefined);});
+  assert.equal(result.length,original.length);
+  for(const [i,b]of result.entries()) {
+    const alias=['workspace.git_diff_check','workspace.node_check','workspace.npm_build','workspace.npm_test'].includes(b.toolName);
+    if(alias){assert.equal(b.modelExposure,undefined);assert.equal(await b.available({taskId:'fixture'}),false);}
+    else {assert.equal(b.available,original[i].available);assert.equal(b.modelExposure,names.includes(b.toolName)?'internal':undefined);}
+  }
   assert.ok(original.every(b=>b.modelExposure===undefined));
+});
+
+test('a registered but unavailable canonical command preserves approved fixed aliases for that task',async()=>{
+  let commandReady=false,aliasReady=true;const scopes=[];
+  const tools=[plain('workspace.npm_test'),plain('workspace.run_allowed_command')],original=bindings(tools);
+  original[0].available=scope=>{scopes.push(scope.taskId);return aliasReady;};
+  original[1].available=async()=>commandReady;
+  const [alias]=createConversationToolSurface({profile,tools,competitionToolAvailability:original});
+  assert.equal(await alias.available({taskId:'original-task'}),true);
+  commandReady=true;assert.equal(await alias.available({taskId:'original-task'}),false);
+  commandReady=false;aliasReady=false;assert.equal(await alias.available({taskId:'other-task'}),false);
+  assert.deepEqual(scopes,['original-task','original-task','other-task']);
 });
 test('fixed commands remain visible without a registered canonical command; non-Competition input is rejected',()=>{
   const tools=[plain('workspace.node_check'),plain('coding.repair.start')],original=bindings(tools);

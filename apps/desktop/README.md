@@ -1,5 +1,9 @@
 # PersonalAgent Desktop
 
+2026-10-21 新邮件、明显天气变化的订阅与本机 Laya 提醒判断，见
+[接线、使用和验收边界](../../docs/competition/CONNECTOR_CHANGE_TRIGGERS_20261021.md)。
+仅在原工具审批后持续读取，poll-only 不等于远端推送；其他连接器和默认云闭环分别验收。
+
 2026-10-17 审查回归修复与验证边界见 [PR #376 修复记录](docs/PR376_REGRESSION_FIXES_20261017.md)。
 
 

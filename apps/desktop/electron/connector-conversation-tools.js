@@ -12,7 +12,7 @@ const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('h
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','连接器配置或本次任务许可已失效');};
 
 /** Main-only adapters. Local inbox consent is not reused for writes or cloud export. */
-export function createConnectorConversationTools({mail,calendar,localInbox,getApplication,resolveConversation,confirmExport,
+export function createConnectorConversationTools({mail,calendar,localInbox,getApplication,resolveConversation,confirmExport,onReadTask,
   createMailProvider=options=>new mailModule.QQMailProvider(options),
   createCalendarProvider=options=>new calendarModule.CalDavProvider(options),now=Date.now}={}) {
   const execution=new AsyncLocalStorage(),bindings=new Map(),providers=new Map(),controllers=new Map(),secrets=new Set(),tools=[],disposers=[];
@@ -57,6 +57,16 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       if(!context.authorizationRef||!tool.descriptor.requiredScopes.every(scope=>context.scopes?.includes(scope)))denied();
       const selected=bindings.get(bindingKey(context.taskId,kind));
       if(kind==='mail'&&input?.account!==undefined&&input.account!==MAIL_ACCOUNT)denied();
+      if(tool.descriptor.name==='mail.inbox'&&onReadTask!==undefined) {
+        if(typeof context.runId!=='string'||!context.runId)denied();
+        // Synchronous trusted binding only: no headers, arguments or credentials.
+        // A failed binding must prevent even construction of a provider connection.
+        try {
+          const result=onReadTask(Object.freeze({taskId:context.taskId,runId:context.runId}));
+          if(result!==undefined){void Promise.resolve(result).catch(()=>{});denied();}
+        }catch{denied();}
+        assertCurrent(context);
+      }
       const controller=new AbortController(),signal=AbortSignal.any([context.signal,controller.signal]);controllers.set(controller,kind);
       // Each execution owns its connection: cancelling one task must not close another's socket.
       let provider,timer,onAbort,disposal,timedOut=false;

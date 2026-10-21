@@ -262,6 +262,16 @@ export class RuntimeCompetitionToolCatalog {
     return structuredClone(selected);
   }
 
+  /** A continuation reuses only the original selection. Approval may advance the
+   * task revision; new registrations or newly ready capabilities never expand it. */
+  async prepareContinuation(input: {taskId: string; deadline: string; signal: AbortSignal}): Promise<CompetitionAvailableTool[]> {
+    const revision=this.runtime.getTask(input.taskId).revision;
+    const saved=this.runtime.loadCheckpoint(input.taskId,CHECKPOINT) as CatalogCheckpoint|undefined;
+    if(!saved)throw new ProtocolError('UNAUTHORIZED','Original Competition tool catalog is missing');
+    await this.assertSelectionCurrent({...input,revision,availableTools:saved.entries,continuation:true});
+    return structuredClone(saved.entries);
+  }
+
   /** A cloud proposal must match the persisted selection and the original local Schema. */
   async assertProposal(input: {taskId: string; toolName: string; toolVersion: string;
     arguments: Record<string, unknown>; deadline: string; signal: AbortSignal;
@@ -295,10 +305,10 @@ export class RuntimeCompetitionToolCatalog {
 
   /** Final check immediately before sending the selected directory to a cloud adapter. */
   async assertSelectionCurrent(input: {taskId: string; revision: number; deadline: string; signal: AbortSignal;
-    availableTools: readonly CompetitionAvailableTool[]}): Promise<void> {
+    availableTools: readonly CompetitionAvailableTool[];continuation?:true}): Promise<void> {
     this.assertCurrent(input);
     const saved = this.runtime.loadCheckpoint(input.taskId, CHECKPOINT) as CatalogCheckpoint | undefined;
-    if (!saved || saved.revision !== input.revision || saved.deadline !== input.deadline
+    if (!saved || (input.continuation?saved.revision>input.revision:saved.revision!==input.revision) || saved.deadline !== input.deadline
       || !isDeepStrictEqual(saved.entries, input.availableTools)) {
       throw new ProtocolError('UNAUTHORIZED', 'Competition tool catalog changed before export');
     }
