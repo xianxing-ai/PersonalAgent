@@ -54,7 +54,7 @@ const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonica
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/u.test(value);
 const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=512&&!/[\x00-\x1f]/u.test(value);
-const fail=(message:string):never=>{throw new ProtocolError('UNAUTHORIZED',message);};
+const fail:(message:string)=>never=message=>{throw new ProtocolError('UNAUTHORIZED',message);};
 const requirementRule=(requirement:AuthorizationRequirement)=>({requirementId:requirement.requirementId,
   kind:requirement.kind,scopes:[...requirement.scopes].sort(),ruleBindingDigest:requirement.ruleBindingDigest});
 
@@ -184,7 +184,7 @@ export class AuthorizationQuestions {
     clearTimeout(waiter.timer);waiter.signal.removeEventListener('abort',waiter.abort);this.waiters.delete(question.questionId);
     if(question.state==='allowed'||question.state==='denied')waiter.finish(this.receipt(question));
     else waiter.reject(new ProtocolError(question.state==='expired'?'TIMEOUT':question.state==='cancelled'?'CANCELLED':'UNAUTHORIZED',
-      question.state==='denied'?'用户未允许本次操作':'原授权请求已失效，未执行操作'));
+      '原授权请求已失效，未执行操作'));
   }
   private end(questionId:string,state:AuthorizationQuestionState,reason:string):void {
     const question=this.mutate(saved=>{const item=saved.questions.find(value=>value.questionId===questionId);
