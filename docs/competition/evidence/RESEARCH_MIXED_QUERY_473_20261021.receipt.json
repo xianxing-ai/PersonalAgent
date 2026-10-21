@@ -1,0 +1,1095 @@
+{
+  "version": 1,
+  "kind": "real_public_openalex_get",
+  "scope": "Issue #473 provider/service public readback; not AgentArts, model, account or UI acceptance",
+  "initialUnrewritten": {
+    "startedAt": "2026-10-21T11:42:20.517Z",
+    "completedAt": "2026-10-21T11:42:27.822Z",
+    "node": "v24.15.0",
+    "toolVersion": "0.1.0-alpha.2",
+    "limit": 5,
+    "source": "https://api.openalex.org/works",
+    "sourceSha256": {
+      "packages/connectors/research/src/index.ts": "37b9f333aadebc59e4402856c856c603246ac9d6ae1a2b75e9f3a618201f5e65",
+      "packages/connectors/research/src/openalex.ts": "b1199a4a91bf47d880bc713f282eabf6221977addb8ab557d05cc0c6ec880fd1",
+      "packages/connectors/research/src/provider.ts": "82e419a337d67721e5bd3cdcc4766cacdcc66380d931d5b35488a527b0d92200",
+      "packages/connectors/research/src/relevance.ts": "5d73a769d80b50747d10f1d1ec2b5fe994416af3444b9f1a1ee000d93acd7ad6",
+      "packages/connectors/research/src/service.ts": "ecc614471d6757971a02d4476b1731f5b3d753dac32804e35ff3f8e66da577fe"
+    },
+    "rows": [
+      {
+        "query": "搜一下 C++ 内存分配器优化的论文",
+        "startedAt": "2026-10-21T11:42:20.525Z",
+        "completedAt": "2026-10-21T11:42:22.240Z",
+        "wallMs": 1713,
+        "requestUrl": "https://api.openalex.org/works?search=%E6%90%9C%E4%B8%80%E4%B8%8B%20C%2B%2B%20%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%E5%99%A8%E4%BC%98%E5%8C%96%E7%9A%84%E8%AE%BA%E6%96%87&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "fbf4eb61edf2975e5aff952697bc00b801d8bf0bbeb0c80a71f10e0e3b2e0d7d",
+        "rawWorks": [
+          {
+            "externalId": "W7166134351",
+            "title": "时变需求下汽车零部件整包配送库存路径优化",
+            "doi": "https://doi.org/10.37155/2717-5197-0809-71",
+            "abstractSha256": "c3b0c1e932ffc6d72b4f90e52ee7390b5f2091eb688dcf6dfaea5910144adc0c"
+          },
+          {
+            "externalId": "W4417029527",
+            "title": "面向存内计算架构的模型量化",
+            "doi": "https://doi.org/10.1360/ssi-2025-0503",
+            "abstractSha256": "31b021e2fe5e8860219bbfdcdb38f77ee78e6beff81d2e396f0387736732d860"
+          },
+          {
+            "externalId": "W4390285384",
+            "title": "可见光通信中无人机搜寻通信光源的优化方法",
+            "doi": "https://doi.org/10.37188/cjl.20230223",
+            "abstractSha256": "b5c3e96c6680b452b8e361774f7d4e9d6359f72d555577adae63e833fe30c566"
+          },
+          {
+            "externalId": "W2603932509",
+            "title": "K近邻优化的密度峰值快速搜索聚类算法",
+            "doi": "https://doi.org/10.1360/n112015-00135-20",
+            "abstractSha256": "e6ed38db245a10410506430d49de61ded0fbb85a3ebf402add6e6598a8b56f65"
+          },
+          {
+            "externalId": "W4406425795",
+            "title": "基于改进灰狼优化算法的滤波天线优化设计",
+            "doi": "https://doi.org/10.3788/lop241069",
+            "abstractSha256": "75286c505ef5dcd0810ce94b360ea33a16653c2e23501d283c58ef8728c1d280"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=%E6%90%9C%E4%B8%80%E4%B8%8B+C%2B%2B+%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%E5%99%A8%E4%BC%98%E5%8C%96%E7%9A%84%E8%AE%BA%E6%96%87&per-page=5",
+          "policy": "cjk_topic_v2",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 5,
+          "returnedCount": 0,
+          "outcome": "filtered_empty",
+          "message": "OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 5 条，返回 0 条。本机词面/主题桥接未确认相关材料，不表示语料中没有相关文献；可使用明确的英文主题短语重查。",
+          "matches": []
+        },
+        "results": []
+      },
+      {
+        "query": "C++ 内存池 优化 论文",
+        "startedAt": "2026-10-21T11:42:22.241Z",
+        "completedAt": "2026-10-21T11:42:23.078Z",
+        "wallMs": 837,
+        "requestUrl": "https://api.openalex.org/works?search=C%2B%2B%20%E5%86%85%E5%AD%98%E6%B1%A0%20%E4%BC%98%E5%8C%96%20%E8%AE%BA%E6%96%87&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "d8018f658970f874ac405238311ea7a70b9b1ef3b9ae2810eaf096295c5287c7",
+        "rawWorks": [
+          {
+            "externalId": "W4412783555",
+            "title": "新能源汽车全铝电池箱结构分析及优化",
+            "doi": "https://doi.org/10.37155/2717-5197-0716-10",
+            "abstractSha256": "c3b0c1e932ffc6d72b4f90e52ee7390b5f2091eb688dcf6dfaea5910144adc0c"
+          },
+          {
+            "externalId": "W7203613663",
+            "title": "昕魂:面向确定性实时计算的 C++98 符号主义游戏 AI 框架设计 XinHun: A Symbolic Game AI Framework Based on Deterministic Computing and C++98",
+            "doi": "https://doi.org/10.5281/zenodo.21974512",
+            "abstractSha256": "163038e74cd33cd1000d00d5e8d821068fad51e6f16deaf45ec3d1c757187dbd"
+          },
+          {
+            "externalId": "W7204273373",
+            "title": "城镇内涝治理中排水管网系统优化设计探讨",
+            "doi": "https://doi.org/10.37155/2717-5162-0803-21",
+            "abstractSha256": "3ba01def6f01c6755d4a51e71e7024100f1e7358cdcaef62631ee5308e5838aa"
+          },
+          {
+            "externalId": "W4240200451",
+            "title": "绿色发展观的文化渊源与主要内涵",
+            "doi": "https://doi.org/10.26549/cjygl.v4i4.3848",
+            "abstractSha256": "b1e0549dcc2016cc805ff04c7cd87b4f711503f909d026d5a63e6fd9854b393b"
+          },
+          {
+            "externalId": "W3160404297",
+            "title": "金属氧化物纳米点与石墨烯复合材料的设计、制备及电化学电容、电池行为",
+            "doi": null,
+            "abstractSha256": "f43e72a13da68425a1166ee2fd830dd4630065f25aaac5f152125f11769f7ed2"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=C%2B%2B+%E5%86%85%E5%AD%98%E6%B1%A0+%E4%BC%98%E5%8C%96+%E8%AE%BA%E6%96%87&per-page=5",
+          "policy": "cjk_topic_v2",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 4,
+          "returnedCount": 1,
+          "outcome": "matched",
+          "message": "OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 4 条，返回 1 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W7203613663",
+              "basis": "abstract_topic",
+              "terms": [
+                "内存池"
+              ]
+            }
+          ]
+        },
+        "results": [
+          {
+            "externalId": "W7203613663",
+            "fetchedAt": "2026-10-21T11:42:23.000Z",
+            "publishedAt": "2026-08-17T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "query": "C++ 内存分配器 调优",
+        "startedAt": "2026-10-21T11:42:23.078Z",
+        "completedAt": "2026-10-21T11:42:23.772Z",
+        "wallMs": 694,
+        "requestUrl": "https://api.openalex.org/works?search=C%2B%2B%20%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%E5%99%A8%20%E8%B0%83%E4%BC%98&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "6e4aece2c4142b81d0c54b20da541e9bb7c9eee6894b6968e0ac6eda09fffd5b",
+        "rawWorks": [
+          {
+            "externalId": "W7203569984",
+            "title": "LvXin Browser 基于确定性流模型的浏览器内核架构设计",
+            "doi": "https://doi.org/10.5281/zenodo.21967126",
+            "abstractSha256": "a6c0f0ceeecbc252478f2e15dc4ac9c98e5a5e3e719e6195a025df994c29f388"
+          },
+          {
+            "externalId": "W4415060660",
+            "title": "电站锅炉燃烧优化调整分析",
+            "doi": "https://doi.org/10.37155/2717-5197-0720-39",
+            "abstractSha256": "c3b0c1e932ffc6d72b4f90e52ee7390b5f2091eb688dcf6dfaea5910144adc0c"
+          },
+          {
+            "externalId": "W4412921531",
+            "title": "原位调制的相变光子多值器件结构优化",
+            "doi": "https://doi.org/10.3788/aos250687",
+            "abstractSha256": "bb08ec04c16ead8f92da196c88996272cdd5a1fb5360b8c6023048a3694afbab"
+          },
+          {
+            "externalId": "W4401188323",
+            "title": "室内VLC‑NOMA的自适应用户分组和功率分配",
+            "doi": "https://doi.org/10.3788/cjl231531",
+            "abstractSha256": "f8b7c77a40deb75da6d4bc6ad5a29ad79ebfab503162c0c4c506af34b83cdf26"
+          },
+          {
+            "externalId": "W4381515575",
+            "title": "快轴可调弹光调制器闭环稳定控制研究",
+            "doi": "https://doi.org/10.3788/lop223051",
+            "abstractSha256": "f63bd8942c9f09e0850d8d9a5fdebfbb318bb8117e947e3c489dbb98b76f5027"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=C%2B%2B+%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%E5%99%A8+%E8%B0%83%E4%BC%98&per-page=5",
+          "policy": "cjk_topic_v2",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 5,
+          "returnedCount": 0,
+          "outcome": "filtered_empty",
+          "message": "OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 5 条，返回 0 条。本机词面/主题桥接未确认相关材料，不表示语料中没有相关文献；可使用明确的英文主题短语重查。",
+          "matches": []
+        },
+        "results": []
+      },
+      {
+        "query": "C++ 动态内存分配 论文",
+        "startedAt": "2026-10-21T11:42:23.773Z",
+        "completedAt": "2026-10-21T11:42:24.959Z",
+        "wallMs": 1186,
+        "requestUrl": "https://api.openalex.org/works?search=C%2B%2B%20%E5%8A%A8%E6%80%81%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%20%E8%AE%BA%E6%96%87&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "842677b8c2e23b0d3eb8ab6c48a2148e550b2a0ab41bf27a501c4d74b790808b",
+        "rawWorks": [
+          {
+            "externalId": "W7211957399",
+            "title": "GCLAT五态分形宇宙论:阴阳时相交替下的动态宇宙图景",
+            "doi": "https://doi.org/10.5281/zenodo.22667512",
+            "abstractSha256": "7227e2e9b4a8fec51b8b9b2cafaa156f40a7a729bb946be42c963e3fdc89b23d"
+          },
+          {
+            "externalId": "W4407999861",
+            "title": "TextLLM：基于动态分辨率的文档多模态大模型",
+            "doi": "https://doi.org/10.11834/jig.240608",
+            "abstractSha256": "8acadf46cf318ef6c8740977d576e117c71ae24c699a2ae5ee024877f0ef1927"
+          },
+          {
+            "externalId": "W7203613663",
+            "title": "昕魂:面向确定性实时计算的 C++98 符号主义游戏 AI 框架设计 XinHun: A Symbolic Game AI Framework Based on Deterministic Computing and C++98",
+            "doi": "https://doi.org/10.5281/zenodo.21974512",
+            "abstractSha256": "163038e74cd33cd1000d00d5e8d821068fad51e6f16deaf45ec3d1c757187dbd"
+          },
+          {
+            "externalId": "W7213488037",
+            "title": "Dynamic Structural Ontology (动态结构本体论)",
+            "doi": null,
+            "abstractSha256": "af71ee5844da7396060d3f90cf716e813589651f5c25bdbf4ffcf0f8e339f146"
+          },
+          {
+            "externalId": "W4240698305",
+            "title": "动态信息理论和动力学系统信息描述",
+            "doi": "https://doi.org/10.1360/2010-40-2-158",
+            "abstractSha256": "39e22cb77f690273f4be50814e4dfb1ed00151adfcfd557e52cb1888fbf26fe5"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=C%2B%2B+%E5%8A%A8%E6%80%81%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D+%E8%AE%BA%E6%96%87&per-page=5",
+          "policy": "cjk_topic_v2",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 4,
+          "returnedCount": 1,
+          "outcome": "matched",
+          "message": "OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 4 条，返回 1 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W7203613663",
+              "basis": "abstract_topic",
+              "terms": [
+                "内存分配",
+                "动态内存分配"
+              ]
+            }
+          ]
+        },
+        "results": [
+          {
+            "externalId": "W7203613663",
+            "fetchedAt": "2026-10-21T11:42:24.000Z",
+            "publishedAt": "2026-08-17T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "query": "C++ memory allocator",
+        "startedAt": "2026-10-21T11:42:24.961Z",
+        "completedAt": "2026-10-21T11:42:25.976Z",
+        "wallMs": 1015,
+        "requestUrl": "https://api.openalex.org/works?search=C%2B%2B%20memory%20allocator&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "408264ae87eb3fb5993cef8ed76ec8036e10f5a5b543ab5926d7298c45c77f10",
+        "rawWorks": [
+          {
+            "externalId": "W1585590911",
+            "title": "Security of memory allocators for C and C",
+            "doi": null,
+            "abstractSha256": "f4d55c43a78e917a9a7f5f1c8ed845edb64153251cc94cacac512a91f625f4b2"
+          },
+          {
+            "externalId": "W1981015239",
+            "title": "Who allocated my memory? Detecting custom memory allocators in C binaries",
+            "doi": "https://doi.org/10.1109/wcre.2013.6671277",
+            "abstractSha256": "b99b512151da853ec76c0caf55c8590b35e1bf9ea375015b56a62be4df80eddc"
+          },
+          {
+            "externalId": "W3194902558",
+            "title": "Randomized C/C++ dynamic memory allocator",
+            "doi": "https://doi.org/10.1088/1742-6596/2001/1/012006",
+            "abstractSha256": "a5058a4819529eaaf09c7fba6ee07e3e69e017723a8aa822a2f9e3b940a4c57e"
+          },
+          {
+            "externalId": "W2888177224",
+            "title": "A Memory Allocator with Garbage Collection for C.",
+            "doi": null,
+            "abstractSha256": null
+          },
+          {
+            "externalId": "W1971289424",
+            "title": "On the detection of custom memory allocators in C binaries",
+            "doi": "https://doi.org/10.1007/s10664-015-9362-z",
+            "abstractSha256": "d53d3b25f65a993bd38958bc459d943a7be6268dd5cd7e89acb4893b0f68090a"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=C%2B%2B+memory+allocator&per-page=5",
+          "policy": "provider_rank",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 0,
+          "returnedCount": 5,
+          "outcome": "matched",
+          "message": "OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 0 条，返回 5 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W1585590911",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W1981015239",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W3194902558",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W2888177224",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W1971289424",
+              "basis": "provider_rank",
+              "terms": []
+            }
+          ]
+        },
+        "results": [
+          {
+            "externalId": "W1585590911",
+            "fetchedAt": "2026-10-21T11:42:25.000Z",
+            "publishedAt": "2005-07-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W1981015239",
+            "fetchedAt": "2026-10-21T11:42:25.000Z",
+            "publishedAt": "2013-10-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W3194902558",
+            "fetchedAt": "2026-10-21T11:42:25.000Z",
+            "publishedAt": "2021-08-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2888177224",
+            "fetchedAt": "2026-10-21T11:42:25.000Z",
+            "publishedAt": "1988-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W1971289424",
+            "fetchedAt": "2026-10-21T11:42:25.000Z",
+            "publishedAt": "2015-03-29T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "query": "memory allocator optimization",
+        "startedAt": "2026-10-21T11:42:25.976Z",
+        "completedAt": "2026-10-21T11:42:26.794Z",
+        "wallMs": 818,
+        "requestUrl": "https://api.openalex.org/works?search=memory%20allocator%20optimization&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "0ec803dfdfc0ff2df5c8aa7f88fbc9641a810c17d84d69185e9e836fbe4a6e25",
+        "rawWorks": [
+          {
+            "externalId": "W2121687244",
+            "title": "Reducing memory fragmentation in network applications with dynamic memory allocators optimized for performance",
+            "doi": "https://doi.org/10.1016/j.comcom.2006.01.031",
+            "abstractSha256": null
+          },
+          {
+            "externalId": "W2146707680",
+            "title": "Reducing Memory Fragmentation with Performance-Optimized Dynamic Memory Allocators in Network Applications",
+            "doi": "https://doi.org/10.1007/11424505_34",
+            "abstractSha256": null
+          },
+          {
+            "externalId": "W2584932762",
+            "title": "Reducing Memory Fragmentation with Performance-Optimized Dynamic Memory Allocators in Network Applications",
+            "doi": null,
+            "abstractSha256": "82c2b65d0333ec754acaaa7199dea8f9e0f9014ffa78819dc2fbdfe3b0706b39"
+          },
+          {
+            "externalId": "W4285797368",
+            "title": "Zallocator: A High Throughput Write-Optimized Persistent Allocator for Non-Volatile Memory",
+            "doi": "https://doi.org/10.1145/3549528",
+            "abstractSha256": "9ad13cba1975cd5a3d12561283520d6ebbb73bee139342d48edb79b3dc3663ce"
+          },
+          {
+            "externalId": "W2156052901",
+            "title": "The Embedded Genetic Allocator-a system to automatically optimize the use of memory resources in high performance, scalable computing systems",
+            "doi": "https://doi.org/10.1109/icsmc.1998.724976",
+            "abstractSha256": "4df5f560810506274da20c47414a2c9e7ba91133cee3a1ef0ffbfc7fcb3754b6"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=memory+allocator+optimization&per-page=5",
+          "policy": "provider_rank",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 0,
+          "returnedCount": 5,
+          "outcome": "matched",
+          "message": "OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 0 条，返回 5 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W2121687244",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W2146707680",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W2584932762",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W4285797368",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W2156052901",
+              "basis": "provider_rank",
+              "terms": []
+            }
+          ]
+        },
+        "results": [
+          {
+            "externalId": "W2121687244",
+            "fetchedAt": "2026-10-21T11:42:26.000Z",
+            "publishedAt": "2006-03-21T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2146707680",
+            "fetchedAt": "2026-10-21T11:42:26.000Z",
+            "publishedAt": "2005-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2584932762",
+            "fetchedAt": "2026-10-21T11:42:26.000Z",
+            "publishedAt": "2005-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W4285797368",
+            "fetchedAt": "2026-10-21T11:42:26.000Z",
+            "publishedAt": "2022-07-19T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2156052901",
+            "fetchedAt": "2026-10-21T11:42:26.000Z",
+            "publishedAt": "2002-11-27T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "query": "jemalloc",
+        "startedAt": "2026-10-21T11:42:26.795Z",
+        "completedAt": "2026-10-21T11:42:27.818Z",
+        "wallMs": 1023,
+        "requestUrl": "https://api.openalex.org/works?search=jemalloc&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "da00c24ec846dc54767122b06d9083bfe8ff70c43f241af078e534dbdc952da9",
+        "rawWorks": [
+          {
+            "externalId": "W1888906484",
+            "title": "Исследование влияния профилирования памяти средствами библиотеки jemalloc на время выполнения многопоточных приложений",
+            "doi": "https://doi.org/10.15827/0236-235x.110.055-059",
+            "abstractSha256": "b6dad832854a85e7fd2e57fccef65a8e853523ea01c77fdfb0a2935e06589cf3"
+          },
+          {
+            "externalId": "W4389924002",
+            "title": "Enhancing a Lock-and-Key Scheme With MTE to Mitigate Use-After-Frees",
+            "doi": "https://doi.org/10.1109/access.2023.3343777",
+            "abstractSha256": "d236586e6ee1f036cbef57d9984b71fc5fd93c987c11a59c296c53c3da45a082"
+          },
+          {
+            "externalId": "W1988149968",
+            "title": "Tick Tock, malloc Needs a Clock",
+            "doi": "https://doi.org/10.1145/2742580.2742807",
+            "abstractSha256": "5d4c30fa394fcd477139abb77f5b0f666cc0daf41cd1dd27b61cee542f7b8ae4"
+          },
+          {
+            "externalId": "W1587038198",
+            "title": "A study of real-time memory management - evaluating operating system's performance",
+            "doi": "https://doi.org/10.7494/automat.2013.17.1.29",
+            "abstractSha256": "de83bc6ba34d5c516e1f23301dc495a5a2a3792c7957632e973c407f1d3f64cb"
+          },
+          {
+            "externalId": "W3033802101",
+            "title": "Automatic Techniques to Systematically Discover New Heap Exploitation Primitives",
+            "doi": "https://doi.org/10.48550/arxiv.1903.00503",
+            "abstractSha256": "f885e33a936a84e975842306b78cde9faf95a8c0b74d835914cf1e0ffd36756e"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=jemalloc&per-page=5",
+          "policy": "provider_rank",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 0,
+          "returnedCount": 5,
+          "outcome": "matched",
+          "message": "OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 0 条，返回 5 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W1888906484",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W4389924002",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W1988149968",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W1587038198",
+              "basis": "provider_rank",
+              "terms": []
+            },
+            {
+              "externalId": "W3033802101",
+              "basis": "provider_rank",
+              "terms": []
+            }
+          ]
+        },
+        "results": [
+          {
+            "externalId": "W1888906484",
+            "fetchedAt": "2026-10-21T11:42:27.000Z",
+            "publishedAt": "2015-06-02T00:00:00.000Z"
+          },
+          {
+            "externalId": "W4389924002",
+            "fetchedAt": "2026-10-21T11:42:27.000Z",
+            "publishedAt": "2023-12-18T00:00:00.000Z"
+          },
+          {
+            "externalId": "W1988149968",
+            "fetchedAt": "2026-10-21T11:42:27.000Z",
+            "publishedAt": "2015-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W1587038198",
+            "fetchedAt": "2026-10-21T11:42:27.000Z",
+            "publishedAt": "2013-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W3033802101",
+            "fetchedAt": "2026-10-21T11:42:27.000Z",
+            "publishedAt": "2019-03-01T00:00:00.000Z"
+          }
+        ]
+      }
+    ]
+  },
+  "finalCovered": {
+    "startedAt": "2026-10-21T12:01:52.765Z",
+    "completedAt": "2026-10-21T12:01:58.356Z",
+    "node": "v24.15.0",
+    "toolVersion": "0.1.0-alpha.2",
+    "limit": 5,
+    "source": "https://api.openalex.org/works",
+    "sourceSha256": {
+      "packages/connectors/research/src/index.ts": "e5490bdeb1a82f147c94256b73181b222358072f1ac636645014b07a32975860",
+      "packages/connectors/research/src/openalex.ts": "cde1adae98763c8be3520889f7b2cb961ac46edb3078987b57d8eae5a5dfeb25",
+      "packages/connectors/research/src/provider.ts": "d3ab657bb39a4e5e45f83be0b1f8064baed24f773d33c88e90c254550bd240e0",
+      "packages/connectors/research/src/relevance.ts": "d2373c1bea0e6fb90477903070380796b05a766df2494499d6a15ba99a399bdb",
+      "packages/connectors/research/src/service.ts": "ecc614471d6757971a02d4476b1731f5b3d753dac32804e35ff3f8e66da577fe"
+    },
+    "rows": [
+      {
+        "query": "搜一下 C++ 内存分配器优化的论文",
+        "startedAt": "2026-10-21T12:01:52.768Z",
+        "completedAt": "2026-10-21T12:01:54.694Z",
+        "wallMs": 1926,
+        "requestUrl": "https://api.openalex.org/works?search=C%2B%2B%20memory%20allocator%20optimization&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "f55ad6346bd5dd3202bd926fbb4dc8c1668f3ea8742687a187a1fa1eee6fe6a3",
+        "rawWorks": [
+          {
+            "externalId": "W2124644142",
+            "title": "Optimizing transactions for captured memory",
+            "doi": "https://doi.org/10.1145/1583991.1584049",
+            "abstractSha256": "81f943dc4580f1e2ed58414398ffcba594b78a4c01e7ee4e03e64b2627df2b90"
+          },
+          {
+            "externalId": "W4403212041",
+            "title": "Brug: An Adaptive Memory (Re-)Allocator",
+            "doi": "https://doi.org/10.1109/ccgrid59990.2024.00017",
+            "abstractSha256": "124ce9fe831d2ad0b6fe6891298ff8a9e70d0d5603250132738efc4f05c33d3f"
+          },
+          {
+            "externalId": "W2101027854",
+            "title": "A method for automatic optimization of dynamic memory management in C++",
+            "doi": "https://doi.org/10.1109/icpp.2001.952096",
+            "abstractSha256": "44ecb8dc40812f958a2539bd3d83cae4ed27503cf261b16d191d164f48720d27"
+          },
+          {
+            "externalId": "W7162889876",
+            "title": "Architectural Patterns of Specialized Memory Allocators in C++ and Trade-Offs between Latency and Fragmentation",
+            "doi": "https://doi.org/10.70315/uloap.ulete.2026.0302013",
+            "abstractSha256": "3cc0b2d2de01dbe0f45a4389b06561870db7163610853031fbb430937d2d876e"
+          },
+          {
+            "externalId": "W2928722280",
+            "title": "Performance of Memory Deallocation in C++, C# and Java",
+            "doi": null,
+            "abstractSha256": "f21b415b4ad7f59a64c7ff3141d65c78397dfb5e1c4bc413abaa34e280582f81"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=C%2B%2B+memory+allocator+optimization&per-page=5",
+          "policy": "cjk_topic_v2",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 2,
+          "returnedCount": 3,
+          "outcome": "matched",
+          "message": "已用可审计双语主题映射检索：C++ memory allocator optimization；原查询及映射见 queryRewrite。OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 2 条，返回 3 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W4403212041",
+              "basis": "abstract_topic",
+              "terms": [
+                "memory allocator",
+                "memory allocators",
+                "memory allocation"
+              ]
+            },
+            {
+              "externalId": "W2101027854",
+              "basis": "abstract_topic",
+              "terms": [
+                "memory allocator",
+                "memory allocation"
+              ]
+            },
+            {
+              "externalId": "W7162889876",
+              "basis": "title_topic",
+              "terms": [
+                "memory allocators"
+              ]
+            }
+          ],
+          "queryRewrite": {
+            "strategy": "bilingual_topics_v1",
+            "originalQuery": "搜一下 C++ 内存分配器优化的论文",
+            "effectiveQuery": "C++ memory allocator optimization",
+            "mappings": [
+              {
+                "source": "内存分配器",
+                "target": "memory allocator"
+              }
+            ]
+          }
+        },
+        "results": [
+          {
+            "externalId": "W4403212041",
+            "fetchedAt": "2026-10-21T12:01:54.000Z",
+            "publishedAt": "2024-05-06T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2101027854",
+            "fetchedAt": "2026-10-21T12:01:54.000Z",
+            "publishedAt": "2001-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W7162889876",
+            "fetchedAt": "2026-10-21T12:01:54.000Z",
+            "publishedAt": "2026-05-30T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "query": "C++ 内存池 优化 论文",
+        "startedAt": "2026-10-21T12:01:54.696Z",
+        "completedAt": "2026-10-21T12:01:55.573Z",
+        "wallMs": 877,
+        "requestUrl": "https://api.openalex.org/works?search=C%2B%2B%20memory%20pool%20optimization&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "88a1deb05d12be7c4d0396f75b709e2efe53ef32c8bc09fb5456725b56d4b549",
+        "rawWorks": [
+          {
+            "externalId": "W2147278401",
+            "title": "Automatic pool allocation",
+            "doi": "https://doi.org/10.1145/1064978.1065027",
+            "abstractSha256": "b443b16c6ce275a5a3ee3dd0a5ca12255cd7bd42130c8ea513ef42a7248162fd"
+          },
+          {
+            "externalId": "W4236944756",
+            "title": "Automatic pool allocation",
+            "doi": "https://doi.org/10.1145/1065010.1065027",
+            "abstractSha256": "989add60ef334cd05ea8dbdc40b7c85c8df8a44943b57fb54bc3ba9dbd3e6b7e"
+          },
+          {
+            "externalId": "W3157424490",
+            "title": "Evolutionary shuffled frog leaping with memory pool for parameter optimization",
+            "doi": "https://doi.org/10.1016/j.egyr.2021.01.001",
+            "abstractSha256": "1dd49f047737a7187df0476467877bb36f42cc9878b71de3f63f5efe2376a4f1"
+          },
+          {
+            "externalId": "W2989575510",
+            "title": "Dynamic Memory Managment in C",
+            "doi": null,
+            "abstractSha256": "469b1072a170b30f19454e7140557fa955c48bd74a370730144fda237c461f3d"
+          },
+          {
+            "externalId": "W7163869923",
+            "title": "Optimizing OpenFOAM for Systems with CPUs and GPUs and Unified Memory Architecture",
+            "doi": "https://doi.org/10.23919/isc.2026.11520483",
+            "abstractSha256": "8609af5bcb8b079e3b7beeb636a93f8564115361ef8adc344c9eb99599a24a76"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=C%2B%2B+memory+pool+optimization&per-page=5",
+          "policy": "cjk_topic_v2",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 1,
+          "returnedCount": 4,
+          "outcome": "matched",
+          "message": "已用可审计双语主题映射检索：C++ memory pool optimization；原查询及映射见 queryRewrite。OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 1 条，返回 4 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W2147278401",
+              "basis": "abstract_topic",
+              "terms": [
+                "memory pools"
+              ]
+            },
+            {
+              "externalId": "W4236944756",
+              "basis": "abstract_topic",
+              "terms": [
+                "memory pools"
+              ]
+            },
+            {
+              "externalId": "W3157424490",
+              "basis": "title_topic",
+              "terms": [
+                "memory pool"
+              ]
+            },
+            {
+              "externalId": "W2989575510",
+              "basis": "abstract_topic",
+              "terms": [
+                "memory pool",
+                "memory pools"
+              ]
+            }
+          ],
+          "queryRewrite": {
+            "strategy": "bilingual_topics_v1",
+            "originalQuery": "C++ 内存池 优化 论文",
+            "effectiveQuery": "C++ memory pool optimization",
+            "mappings": [
+              {
+                "source": "内存池",
+                "target": "memory pool"
+              }
+            ]
+          }
+        },
+        "results": [
+          {
+            "externalId": "W2147278401",
+            "fetchedAt": "2026-10-21T12:01:55.000Z",
+            "publishedAt": "2005-06-12T00:00:00.000Z"
+          },
+          {
+            "externalId": "W4236944756",
+            "fetchedAt": "2026-10-21T12:01:55.000Z",
+            "publishedAt": "2005-06-12T00:00:00.000Z"
+          },
+          {
+            "externalId": "W3157424490",
+            "fetchedAt": "2026-10-21T12:01:55.000Z",
+            "publishedAt": "2021-01-21T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2989575510",
+            "fetchedAt": "2026-10-21T12:01:55.000Z",
+            "publishedAt": "2019-01-01T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "query": "C++ 内存分配器 调优",
+        "startedAt": "2026-10-21T12:01:55.574Z",
+        "completedAt": "2026-10-21T12:01:56.634Z",
+        "wallMs": 1060,
+        "requestUrl": "https://api.openalex.org/works?search=C%2B%2B%20memory%20allocator%20optimization&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "cf3883a0282d3caebcb423d0279b78f08c8d547de980471d0400c9cbdf0525ed",
+        "rawWorks": [
+          {
+            "externalId": "W2124644142",
+            "title": "Optimizing transactions for captured memory",
+            "doi": "https://doi.org/10.1145/1583991.1584049",
+            "abstractSha256": "81f943dc4580f1e2ed58414398ffcba594b78a4c01e7ee4e03e64b2627df2b90"
+          },
+          {
+            "externalId": "W4403212041",
+            "title": "Brug: An Adaptive Memory (Re-)Allocator",
+            "doi": "https://doi.org/10.1109/ccgrid59990.2024.00017",
+            "abstractSha256": "124ce9fe831d2ad0b6fe6891298ff8a9e70d0d5603250132738efc4f05c33d3f"
+          },
+          {
+            "externalId": "W2101027854",
+            "title": "A method for automatic optimization of dynamic memory management in C++",
+            "doi": "https://doi.org/10.1109/icpp.2001.952096",
+            "abstractSha256": "44ecb8dc40812f958a2539bd3d83cae4ed27503cf261b16d191d164f48720d27"
+          },
+          {
+            "externalId": "W7162889876",
+            "title": "Architectural Patterns of Specialized Memory Allocators in C++ and Trade-Offs between Latency and Fragmentation",
+            "doi": "https://doi.org/10.70315/uloap.ulete.2026.0302013",
+            "abstractSha256": "3cc0b2d2de01dbe0f45a4389b06561870db7163610853031fbb430937d2d876e"
+          },
+          {
+            "externalId": "W2928722280",
+            "title": "Performance of Memory Deallocation in C++, C# and Java",
+            "doi": null,
+            "abstractSha256": "f21b415b4ad7f59a64c7ff3141d65c78397dfb5e1c4bc413abaa34e280582f81"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=C%2B%2B+memory+allocator+optimization&per-page=5",
+          "policy": "cjk_topic_v2",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 2,
+          "returnedCount": 3,
+          "outcome": "matched",
+          "message": "已用可审计双语主题映射检索：C++ memory allocator optimization；原查询及映射见 queryRewrite。OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 2 条，返回 3 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W4403212041",
+              "basis": "abstract_topic",
+              "terms": [
+                "memory allocator",
+                "memory allocators",
+                "memory allocation"
+              ]
+            },
+            {
+              "externalId": "W2101027854",
+              "basis": "abstract_topic",
+              "terms": [
+                "memory allocator",
+                "memory allocation"
+              ]
+            },
+            {
+              "externalId": "W7162889876",
+              "basis": "title_topic",
+              "terms": [
+                "memory allocators"
+              ]
+            }
+          ],
+          "queryRewrite": {
+            "strategy": "bilingual_topics_v1",
+            "originalQuery": "C++ 内存分配器 调优",
+            "effectiveQuery": "C++ memory allocator optimization",
+            "mappings": [
+              {
+                "source": "内存分配器",
+                "target": "memory allocator"
+              }
+            ]
+          }
+        },
+        "results": [
+          {
+            "externalId": "W4403212041",
+            "fetchedAt": "2026-10-21T12:01:56.000Z",
+            "publishedAt": "2024-05-06T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2101027854",
+            "fetchedAt": "2026-10-21T12:01:56.000Z",
+            "publishedAt": "2001-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W7162889876",
+            "fetchedAt": "2026-10-21T12:01:56.000Z",
+            "publishedAt": "2026-05-30T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "query": "C++ 动态内存分配 论文",
+        "startedAt": "2026-10-21T12:01:56.635Z",
+        "completedAt": "2026-10-21T12:01:58.355Z",
+        "wallMs": 1720,
+        "requestUrl": "https://api.openalex.org/works?search=C%2B%2B%20dynamic%20memory%20allocation&per-page=5",
+        "httpStatus": 200,
+        "bodySha256": "243549a952afd3bce08c2b3682308f6eb6bff73043efb6cc4c5f68c4b6b5b0a1",
+        "rawWorks": [
+          {
+            "externalId": "W4254403712",
+            "title": "Dynamic Memory Allocation in C++",
+            "doi": "https://doi.org/10.1017/9781316534489.011",
+            "abstractSha256": "91a0c0e49fd1364a573b60c5e20863b45b995417bc0b4afc4cca449f2c4fa867"
+          },
+          {
+            "externalId": "W2157788945",
+            "title": "Resolution of dynamic memory allocation and pointers for the behavioral synthesis form C",
+            "doi": "https://doi.org/10.1145/343647.343788",
+            "abstractSha256": "8d2337dcbc9ad8365119833f1043ff807eb614b0ad8dc2e6741450af527de387"
+          },
+          {
+            "externalId": "W2144543133",
+            "title": "Model Checking C Programs with Dynamic Memory Allocation",
+            "doi": "https://doi.org/10.1109/compsac.2008.143",
+            "abstractSha256": "f82c773f36e5085950e9b5c01326e95b208380f5d5880929158b1bd9b33b1d82"
+          },
+          {
+            "externalId": "W2360113046",
+            "title": "Dynamic memory allocation scheme and implementation based on C~*Core",
+            "doi": null,
+            "abstractSha256": "ce51f2eb17a0d51506489e18ca4a27579a7b34b6f4b2bb0a76e8405ab610b731"
+          },
+          {
+            "externalId": "W4242453223",
+            "title": "Resolution of dynamic memory allocation and pointers for the behavioral synthesis from C",
+            "doi": "https://doi.org/10.1109/date.2000.840289",
+            "abstractSha256": "d36984daf3825f82e876785f180a73c011ee539701543bba3484a4d4f419124f"
+          }
+        ],
+        "retrieval": {
+          "provider": "openalex",
+          "sourceUrl": "https://api.openalex.org/works?search=C%2B%2B+dynamic+memory+allocation&per-page=5",
+          "policy": "cjk_topic_v2",
+          "rawCount": 5,
+          "invalidCount": 0,
+          "filteredCount": 0,
+          "returnedCount": 5,
+          "outcome": "matched",
+          "message": "已用可审计双语主题映射检索：C++ dynamic memory allocation；原查询及映射见 queryRewrite。OpenAlex 本次页面原始 5 条，无效 0 条，本机相关度过滤 0 条，返回 5 条。保留依据见 matches；词面/主题命中不等于语义相关性已验证。",
+          "matches": [
+            {
+              "externalId": "W4254403712",
+              "basis": "title_topic",
+              "terms": [
+                "memory allocation"
+              ]
+            },
+            {
+              "externalId": "W2157788945",
+              "basis": "title_topic",
+              "terms": [
+                "memory allocation"
+              ]
+            },
+            {
+              "externalId": "W2144543133",
+              "basis": "title_topic",
+              "terms": [
+                "memory allocation"
+              ]
+            },
+            {
+              "externalId": "W2360113046",
+              "basis": "title_topic",
+              "terms": [
+                "memory allocation"
+              ]
+            },
+            {
+              "externalId": "W4242453223",
+              "basis": "title_topic",
+              "terms": [
+                "memory allocation"
+              ]
+            }
+          ],
+          "queryRewrite": {
+            "strategy": "bilingual_topics_v1",
+            "originalQuery": "C++ 动态内存分配 论文",
+            "effectiveQuery": "C++ dynamic memory allocation",
+            "mappings": [
+              {
+                "source": "动态内存分配",
+                "target": "dynamic memory allocation"
+              }
+            ]
+          }
+        },
+        "results": [
+          {
+            "externalId": "W4254403712",
+            "fetchedAt": "2026-10-21T12:01:58.000Z",
+            "publishedAt": "2016-10-18T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2157788945",
+            "fetchedAt": "2026-10-21T12:01:58.000Z",
+            "publishedAt": "2000-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2144543133",
+            "fetchedAt": "2026-10-21T12:01:58.000Z",
+            "publishedAt": "2008-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W2360113046",
+            "fetchedAt": "2026-10-21T12:01:58.000Z",
+            "publishedAt": "2011-01-01T00:00:00.000Z"
+          },
+          {
+            "externalId": "W4242453223",
+            "fetchedAt": "2026-10-21T12:01:58.000Z",
+            "publishedAt": "2002-11-07T00:00:00.000Z"
+          }
+        ]
+      }
+    ]
+  },
+  "validation": {
+    "build": [
+      "storage",
+      "contracts",
+      "client",
+      "testkit",
+      "research",
+      "weather"
+    ],
+    "researchTypecheck": "passed",
+    "researchTests": {
+      "tests": 47,
+      "passed": 46,
+      "skipped": 1,
+      "failed": 0
+    },
+    "publicHostTests": {
+      "tests": 6,
+      "passed": 6,
+      "failed": 0
+    },
+    "architectureTests": {
+      "tests": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    "setupFailures": [
+      "Sandbox DNS ENOTFOUND registry.npmmirror.com caused npm Exit handler never called; same scoped install succeeded with minimum platform network permission.",
+      "Sandbox denied own weather workspace junction; first host module load failed. Minimum platform permission created only that own-worktree link, and only host tests were rerun: 6/6 pass.",
+      "PowerShell case-insensitive JSON parser rejected Browser/browser abstract keys; final readbacks use Node JSON and never counted this as raw0."
+    ]
+  },
+  "notRun": [
+    "AgentArts deployment/workflow evaluation",
+    "real model/account/private desktop database",
+    "UI interaction",
+    "local full repository check"
+  ]
+}

@@ -1,5 +1,16 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-21 research.search 混合主题与来源披露（provisional）
+
+MOD-24 / PA-010 / #473 的工具输出契约单独修订为 `research.search@0.1.0-alpha.2`；npm 包、Connector manifest、Core wire 和数据库版本不变。
+新描述器兼容接收缺少回执的旧提供商/缓存载荷，OpenAlex 新结果增加可选 `retrieval`：实际源 URL、有限双语改写及原词映射、原始/无效/过滤/返回计数、本次页面空或本机筛空的区别、逐材料词面/摘要依据。
+计数仅指这次实际请求页面（不是全库命中总量）；新回执不虚构旧缓存计数。只有中文主题和指令词均被明确覆盖时才改写源查询，未知中文条件/否定/时间范围保持原文。
+来源与相关性等级不提升：保留主题桥不代表语义验证，纯拉丁 `provider_rank` 也不作为语义真凭据。
+
+旧 `alpha.1` 描述器的严格输出 Schema 会拒绝新字段，不能声称它可直接消费新输出；新组合/目录按注册的 `alpha.2` 准备。
+ToolGateway 原版本核验继续拒绝旧任务请求被自动改绑新版。Desktop 公开 research 投影绑定相同工具版本及 `public-research-retrieval-v2`，透传白名单来源回执，保持账号/错误私有字段不外发。
+详细实现、消费验证与公开 GET 范围见 [#473 记录](../competition/evidence/RESEARCH_MIXED_QUERY_473_20261021.md)。接口保持 `provisional`，不宣称正式 AgentArts 整图或所有主题已验收。
+
 ## 2026-10-17 Desktop 审查回归修复（provisional）
 
 Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Conversations v4 草稿；Preload/主进程核验来源主 frame、窗口与对话归属，失败保留窗口。正常输入继续原异步防抖，不增加任务或凭据权限。原 `agentarts.configure` 表单补齐已有安全配置字段，没有新增 Core wire 或数据库迁移。

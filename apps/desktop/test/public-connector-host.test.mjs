@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPublicConnectorHost} from '../electron/public-connector-host.js';
 import {OpenMeteoProvider} from '@personal-agent/weather';
-import {OpenAlexProvider} from '@personal-agent/research';
+import {OpenAlexProvider, RESEARCH_SEARCH_VERSION} from '@personal-agent/research';
 
 test('public providers assemble without calls and only publish bounded public result fields', async () => {
   let calls = 0;
@@ -30,6 +30,39 @@ test('public providers assemble without calls and only publish bounded public re
     host.close();
     assert.equal(policy.accepts({}), false);
     await assert.rejects(policy.project(context), /unavailable/);
+  } finally {host.close();}
+});
+
+test('#473 actual research registration/export preserves filtering evidence and binds the new tool version', async () => {
+  const provider = new OpenAlexProvider({fetchImpl: async () => ({ok:true,status:200,json:async()=>({results:[
+    {id:'https://openalex.org/W-topic',display_name:'StarMalloc: a hardened memory allocator'},
+    {id:'https://openalex.org/W-nope',display_name:'K近邻优化的密度峰值搜索聚类算法'},
+  ]})})});
+  const host = createPublicConnectorHost({researchProvider:provider});
+  try {
+    const tool = host.tools.find(item=>item.descriptor.name==='research.search');
+    const policy = host.competitionToolExports.find(item=>item.toolName==='research.search');
+    const availability = host.competitionToolAvailability.find(item=>item.toolName==='research.search');
+    assert.equal(tool.descriptor.version, RESEARCH_SEARCH_VERSION);
+    assert.equal(policy.toolVersion, RESEARCH_SEARCH_VERSION);
+    assert.equal(availability.toolVersion, RESEARCH_SEARCH_VERSION);
+    assert.notEqual(policy.toolVersion, '0.1.0-alpha.1', 'old task/tool identity is not silently reused');
+    assert.equal(policy.exportPolicyVersion, 'public-research-retrieval-v2');
+    const result = await tool.execute({query:'C++ 内存分配器 调优',limit:5}, {signal:new AbortController().signal});
+    result.retrieval.privateField='do not export';
+    result.retrieval.matches[0].privateField='do not export';
+    const exported = await policy.project({result,signal:new AbortController().signal});
+    assert.equal(exported.results.length,1);
+    assert.equal(exported.retrieval.rawCount,2);
+    assert.equal(exported.retrieval.filteredCount,1);
+    assert.equal(exported.retrieval.matches[0].basis,'title_topic');
+    assert.equal(exported.retrieval.queryRewrite.effectiveQuery,'C++ memory allocator optimization');
+    assert.doesNotMatch(JSON.stringify(exported),/privateField|do not export|accountRef|abstract_inverted_index/);
+    const oldResult = await policy.project({result:{results:[],cache:result.cache},signal:new AbortController().signal});
+    assert.ok(!Object.hasOwn(oldResult,'retrieval'), 'old payloads do not gain fabricated counts');
+    const freshHost = createPublicConnectorHost({researchProvider:provider});
+    try {assert.equal(freshHost.competitionToolAvailability.find(item=>item.toolName==='research.search').toolVersion,RESEARCH_SEARCH_VERSION);}
+    finally {freshHost.close();}
   } finally {host.close();}
 });
 
