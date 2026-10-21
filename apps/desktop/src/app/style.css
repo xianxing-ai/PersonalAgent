@@ -15,6 +15,18 @@ button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cu
 .composer textarea {display:block;width:100%;resize:none;border:0;background:transparent;color:var(--fg);min-height:44px;max-height:160px;padding:6px 4px 2px;font-size:14px;line-height:1.6}
 .composer textarea::placeholder {color:var(--fg-placeholder)}
 .composer-bar {display:flex;align-items:center;gap:2px;margin-top:4px}
+.message-delivery {display:flex;flex:0 0 auto;flex-wrap:wrap;align-items:center;gap:5px 12px;margin-bottom:6px;font-size:12px;color:var(--fg-2)}
+.message-delivery label {display:flex;align-items:center;gap:6px;white-space:nowrap}
+.message-delivery select {color:var(--fg);background:var(--panel-control,var(--surface-2));border:1px solid var(--glass-border);border-radius:8px;padding:4px 6px;font:inherit}
+.delivery-hint {flex:1;min-width:140px;font-size:11px;line-height:1.5;color:var(--muted)}
+.panel>.composer:has(.message-queue:not([hidden])) {max-height:60vh}
+.message-queue {display:flex;flex:0 0 auto;flex-direction:column;max-height:124px;overflow:auto;margin:0 0 8px;gap:6px}
+.queued-message {display:flex;flex-shrink:0;align-items:center;gap:8px;padding:8px;border-radius:10px;border:1px solid var(--glass-border);background:var(--panel-control,var(--surface-2));font-size:12px}
+.queued-text {flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:60px;overflow:auto;color:var(--fg)}
+.queued-actions {display:flex;gap:4px;flex-shrink:0}
+.queued-actions button {font:inherit;color:var(--fg-2);border:1px solid var(--glass-border);border-radius:7px;background:transparent;padding:5px 6px}
+.queued-actions button:hover:not(:disabled) {background:var(--panel-control-hover,var(--surface-2));color:var(--fg)}
+.output-truncated {font-size:12px;color:var(--muted);margin:6px 0}
 .panel .wake-controls {margin-top:8px;padding-top:9px;border-top:1px solid var(--glass-hairline);min-width:0}
 .panel .wake-control-row {display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--fg-2)}
 .panel .wake-control-row button {border:1px solid var(--glass-border);border-radius:8px;background:var(--accent-soft);color:var(--fg);padding:6px 9px;font-size:11px}
