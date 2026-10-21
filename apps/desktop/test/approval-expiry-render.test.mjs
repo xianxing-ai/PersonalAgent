@@ -53,6 +53,7 @@ const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
       querySelectorAll: key => key === '[data-approval]' ? buttons : []};
     const calls = [];
     const render = mountAdmin(root, async (...args) => {
+      if(args[0]==='authorization.sandbox.read')return {selected:{label:'Synthetic unavailable',mode:'unavailable',revision:0},profiles:[],rules:[]};
       if (args[0] === 'approval.history') return {items: []};
       calls.push(args);
     }, escape);

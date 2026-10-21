@@ -42,7 +42,9 @@ async function harness(t, invoke) {
         .map(([, revoke, task, revision]) => ({...element(), dataset: {revoke, task, revision}}));
     },
   });
-  const render = mountAdmin(root, invoke, escape);
+  const render = mountAdmin(root, (...args)=>args[0]==='authorization.sandbox.read'
+    ?Promise.resolve({selected:{label:'Synthetic unavailable',mode:'unavailable',revision:0},profiles:[],rules:[]})
+    :invoke(...args), escape);
   const base = {tasks: [], approvals: [], capabilities: [], health: [], connection: 'fixture'};
   return {render, base, root, html: () => html, content: nodes.get('#content'), buttons: () => revokeButtons, quitButton:()=>nodes.get('#quit'),
     unload: () => {for (const listener of windowListeners.get('unload') ?? []) listener();}};

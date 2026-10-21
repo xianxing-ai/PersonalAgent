@@ -52,4 +52,11 @@ test('Synthetic todo consent guidance is metadata only, refreshed after enable/r
   assert.equal(missing.state,'configuration_required');
   assert.match(missing.guidance,/授权卡不能替代/);
   assert.doesNotMatch(JSON.stringify(missing),/Synthetic-private-detail/);
+  let configured = false;
+  const calendar = createConversationEnvironmentContext({readCalendarState:()=>({registered:true,configured,
+    calendarName:'Synthetic private calendar',password:'Synthetic-only'})});
+  assert.equal(JSON.parse(calendar()).capabilityGuidance[0].state,'configuration_required');
+  assert.doesNotMatch(calendar(),/Synthetic private calendar|Synthetic-only|password/);
+  configured = true;
+  assert.equal(JSON.parse(calendar()).capabilityGuidance[0].state,'check_task_catalog');
 });

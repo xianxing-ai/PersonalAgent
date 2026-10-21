@@ -26,7 +26,8 @@ function localAt(date, timeZone) {
 /** Main-only environmental data. No source bodies, account details or grants. */
 export function createConversationEnvironmentContext({now = () => new Date(),
   readTimeZone = () => new Intl.DateTimeFormat().resolvedOptions().timeZone,
-  readUtcOffsetMinutes = date => -date.getTimezoneOffset(), readTodoState = () => undefined} = {}) {
+  readUtcOffsetMinutes = date => -date.getTimezoneOffset(), readTodoState = () => undefined,
+  readCalendarState = () => undefined} = {}) {
   return scope => {
     const date = now();
     if (!(date instanceof Date) || !Number.isFinite(date.getTime())) throw Error('Trusted clock is unavailable');
@@ -58,6 +59,13 @@ export function createConversationEnvironmentContext({now = () => new Date(),
           : '待办宿主当前不可用或缺少受信配置。明确说明配置或连接缺项；授权卡不能替代账号、凭据或未装配的能力，不声称工具可调用。',
       relativeReminder:'实际目录公布 todo.create 且支持 remindInMinutes 时，相对分钟直接使用该参数，由本机执行时解析；无需用户补当前日期或时区。',
     }] : [];
+    const calendar = readCalendarState(scope);
+    if(calendar?.registered === true) capabilityGuidance.push({capability:'calendar',
+      state:calendar.configured === true ? 'check_task_catalog' : 'configuration_required',callable:false,
+      guidance:calendar.configured === true
+        ? '日历已有本机配置；这不证明账号连接、写入或出机已获许可。按当前任务工具目录和原授权提问卡处理，不能自动创建事件。'
+        : '日历工具已装配，但尚缺有效的 CalDAV 账号配置。请用户在设置→连接→CalDAV 日历配置填写本人已有配置；不要索取聊天中的密码，授权提问卡不能替代账号配置。',
+    });
     return JSON.stringify({source:'trusted_desktop_environment', time, interpretation:timeRules, capabilityGuidance});
   };
 }

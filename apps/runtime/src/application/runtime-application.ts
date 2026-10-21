@@ -432,7 +432,7 @@ export interface CoordinationInputHooks {
   goalTokenBudget?: CoordinationGoalTokenBudget;
   prepareCoordinationGoal?: (scope:CoordinationGoalScope)=>Promise<string>;
   readConversationContext?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>Promise<readonly ConversationContextMessage[]>;
-  /** Fresh trusted environment/guidance data, sampled once per cloud exchange.
+  /** Fresh trusted environment/guidance data, sampled once per conversational cloud exchange.
    * It is not history or a grant; only the existing authorized goal export carries it.
    * Bodies remain transient, outside the stable conversation checkpoint. */
   readRequestContext?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>string|undefined;
@@ -1709,7 +1709,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         privateBinding:this.readPrivateTaskBinding(task.taskId),
         ...(compacted?.state==='compacted'?{compactionReceipt:compacted.receipt}:{})},hooks.goalTokenBudget);
       const requestContextReader=hooks.readRequestContext;
-      const requestContext:unknown=requestContextReader?.(contextScope);
+      // Typed proactive-teacher payloads keep their original parsing contract.
+      const requestContext:unknown=teacherScope?undefined:requestContextReader?.(contextScope);
       if(requestContext!==undefined && (typeof requestContext!=='string'||!requestContext.trim())) {
         if(requestContext && typeof (requestContext as Promise<unknown>).then==='function')
           void Promise.resolve(requestContext).catch(()=>undefined);

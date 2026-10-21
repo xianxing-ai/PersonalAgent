@@ -10,7 +10,7 @@
 - 纯 `createConversationEnvironmentContext` 每次调用重新读取宿主时钟，输出 UTC instant、IANA 设备时区、该瞬间 offset 和本地日期时间。未知 IANA 时明确标记 offset-only；不静默假定 UTC/上海，不用当前 offset 计算未来 DST。明确用户指定的时区优先于设备默认。
 - `todoHost.readConversationGuidance` 只返回 registered、availability、固定 reasonCode，不枚举待办正文、不创建任务许可。缺操作许可、缺配置和宿主不可用分别说明；相对分钟提示使用原 `todo.create.remindInMinutes`，由本地工具在实际执行时解析。
 - `CoordinationInputHooks.readRequestContext(scope)` 是可选、同步、host-only 的 provisional 扩展。内容通过已有获准 goal 出口作为环境数据发送，不成为 system 指令、工具目录或授权。旧调用不配置此项时保持原目标与检查逻辑。
-- 环境快照在每次实际 `executeCoordination` 临时采样。稳定历史 binding/checkpoint 不保存时钟正文，避免 continuation 因时间改变产生历史漂移；本次发送 lease 精确绑定实际目标，预算对完整最终串计量。替换 hook、改变计量/配置、取消、deadline、来源撤回及原出机守卫仍可拒绝。
+- 环境快照在每次普通对话实际 `executeCoordination` 临时采样；原 typed proactive-teacher 载荷不加此前缀，保留其解析契约。稳定历史 binding/checkpoint 不保存时钟正文，避免 continuation 因时间改变产生历史漂移；本次发送 lease 精确绑定实际目标，预算对完整最终串计量。替换 hook、改变计量/配置、取消、deadline、来源撤回及原出机守卫仍可拒绝。
 
 没有 frozen Core wire、公共 Schema、数据库、调度器、模型入口或依赖变更。上下文新增字符仍受原字符/token 预算，不能扩大预算或丢弃私人/Skill 门禁来容纳元数据。没有新增云端日志或私人 prompt 存储。
 
@@ -18,7 +18,11 @@
 
 授权引导已按当前要求改为在原对话请求实际公布的提问卡，本次/永久选择由用户决定，不再指引去设置重复勾选一次。卡不能替代账号、凭据或未装配的真实配置。
 
-统一卡的后台挑战、持久许可和交互由 #475 工作包负责；其正式端口尚待交接。本包当前只消费稳定只读状态，原 `todo` availability/execute 守卫保持，不能仅靠引导文案或自报授权放行。卡真实消费接线与联合验证完成前，不将本工作包标为完整交付。
+统一卡的后台挑战与持久许可由 #475 工作包负责。本包已实现原生 HTML 提问卡及安全页规则管理，并挂接实际 Renderer 主面板/工作区；卡仅提交问题 id、revision 与决定，等待可信宿主状态，不把提交当操作成功。按 conversationId 过滤，不向其他对话展示问题；一次/永久/拒绝、禁重复、键盘焦点、过期/取消/stale 和脱敏错误反馈均有控件回归。显示内容统一转义，模型或工具文字不能成为 HTML/URL 指令。
+
+设置中移除 Todo/Feeds/Mail/Workspace 的旧会话允许开关及 Calendar 的重复确认按钮；保留账号/凭据、目录和运行组件配置、原业务入口及撤销。安全页只读/切换可信可用沙箱和查看/撤销规则，不签发执行授权。旧工作区“勾选后应用”交互用例随这个有意行为替换为“配置不能授权、读取真实就绪状态和撤销”检查，保留等待/失败/重试/焦点与取消的原边界。
+
+正式 connector consumer 正在对接 #475 的 prepare/currentRequirement/authorizeExport；它们完成前，不能仅靠引导、UI 或自报授权放行。最终由 #475 整合为一个完整 PR，卡真实消费和 Main/Runtime/Renderer 联合验证完成前不标记完整交付。当前没有像素一致的参考证据，仅按已确认的提问交互自实现；真实受影响渲染尚未执行。Browser plugin not available，后续复用原有 Electron/Playwright 隔离 Synthetic 流程。
 
 ## 验证记录
 
@@ -26,11 +30,14 @@
 
 | 检查 | 当前结果 |
 | --- | --- |
-| 纯环境 helper：重新采样、上海跨日、纽约 DST、offset-only、无效时钟、授权状态与脱敏 | 3 项小回归已通过；后续新增配置分支将在最终定向验证一起运行 |
-| 实际 Main callback → 原 canonical conversation resolver → 强制 Competition 子任务 → 工具 continuation → 主控汇总 | 源码用例已完成，待本树依赖/build 后运行；不可当已通过 |
-| 临时上下文超预算/async拒绝、凭据等待期间 reader/计量漂移最终发送拒绝 | 源码用例已完成，待本树 dist 验证 |
-| 旧 context binding/compaction/delegation/todo 回归 | 待最小受影响闭包验证槽，不跑模型/Docker |
+| 纯环境 helper：重新采样、上海跨日、纽约 DST、offset-only、无效时钟、授权状态与脱敏 | 本树 Node24 构建后 3/3 通过，包含 Calendar 配置缺项 |
+| 实际 Main callback → 原 canonical conversation resolver → 强制 Competition 子任务 → 工具 continuation → 主控汇总 | 本树真实调用方 Synthetic 用例通过；三轮分别重新采时、跨日、保留强制委派与私人过滤；未创建真实待办/日历 |
+| 临时上下文超预算/async拒绝、凭据等待期间 reader/计量漂移最终发送拒绝 | 本树 dist 定向回归通过，摘要/稳定 binding 不保存时钟正文 |
+| 原 context binding/conversation/delegation/teacher/todo 回归 | 连同上述共 8 份文件 70/70 通过；未运行全仓 check/真实服务 |
+| 单卡/规则设置及旧前置控件迁移 | 18/18 Synthetic 控件检查通过；实际 Electron、Main+Runtime 统一卡尚未验 |
 | 统一授权卡消费及本次/永久 | 待 #475 正式端口与实际组合验证；未伪造卡回执 |
 | 真实盘古/AgentArts 采用时间与引导、真实提醒/日历 | 未授权执行，`not_run`；Synthetic 发送载荷验证不提升平台或模型资格 |
 
 本树原始日志与测试生成物放 ignored `.cache/issue-474-*`。公开 Evidence 只记录 Synthetic/固定元数据及检查结论，不包含账号、凭据、来源正文或私人 availability reason。
+
+第一轮环境：Node 24.15.0 / npm 11.12.0；本树 `npm ci --ignore-scripts --no-audit --no-fund`，从 Runtime/Productivity/Client 的已声明内部依赖串行构建，未借用其他工作树生产 dist。重资源槽在 70/70 后释放，无后台模型或测试进程。

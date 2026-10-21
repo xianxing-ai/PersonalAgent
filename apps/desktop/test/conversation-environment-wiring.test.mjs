@@ -29,6 +29,7 @@ test('Synthetic actual Main callback feeds fresh time and consent guidance throu
   const access = createConversationToolAccess({getApplication:() => app,
     getConversations:() => ({containsConversation:id => id === 'synthetic-main'}), now:() => clock});
   const readRequestContext = vm.runInNewContext(`(${source})`, {conversationToolAccess:access,todoHost:host,
+    connectorConversationTools:{tools:[{descriptor:{name:'calendar.create'}}]},calendarConfig:{snapshot:()=>({configured:false})},
     createConversationEnvironmentContext:options => createConversationEnvironmentContext({...options,
       now:() => new Date(clock),readTimeZone:() => 'Asia/Shanghai'})});
   const dispatch = createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:() => app.runtime,
@@ -83,6 +84,7 @@ test('Synthetic actual Main callback feeds fresh time and consent guidance throu
   assert.match(captured[3].request.goal,/明天上午10点/);
   assert.equal(captured[3].data.time.timeZone,'Asia/Shanghai');
   assert.match(captured[3].data.time.localDateTime,/^2030-10-22T/);
+  assert.equal(captured[3].data.capabilityGuidance.find(item=>item.capability==='calendar').state,'configuration_required');
   assert.equal(host.snapshot().items.length,0,'no todo or calendar is created by context or a guide');
   assert.deepEqual(host.readConversationGuidance(),{registered:true,availability:'consent_required',reasonCode:'TODO_CONSENT_REQUIRED'});
   assert.equal(readRequestContext({taskId:'unknown-scope'}),undefined,'unknown/internal scope does not receive chat environment data');

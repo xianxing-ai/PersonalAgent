@@ -1427,7 +1427,9 @@ async function promptSyntheticRepairCandidate(taskId) {
 
 function readDesktopRequestContext(scope) {
   if (!conversationToolAccess?.resolveConversation(scope.taskId)) return;
-  return createConversationEnvironmentContext({readTodoState:current=>todoHost?.readConversationGuidance?.(current)})(scope);
+  return createConversationEnvironmentContext({readTodoState:current=>todoHost?.readConversationGuidance?.(current),
+    readCalendarState:()=>({registered:connectorConversationTools?.tools.some(tool=>tool.descriptor.name==='calendar.create')===true,
+      configured:calendarConfig?.snapshot().configured===true})})(scope);
 }
 
 function readDesktopConversationContext(scope,maxMessages) {
