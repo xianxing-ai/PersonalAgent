@@ -8,7 +8,7 @@ import * as coding from '@personal-agent/coding-tools';
 import {AuthorizationQuestions,createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 import {createDesktopNativeExecutionHost} from '../electron/native-execution-host.js';
-import {unsupportedPsec} from '../../../packages/coding-tools/test/native-sandbox-fixture.mjs';
+import {nativeTokenDiagnostic,unsupportedPsec} from '../../../packages/coding-tools/test/native-sandbox-fixture.mjs';
 
 const explicitHelper=process.env.PA_TEST_JOB_HOST_EXE;
 const required=process.env.PA_TEST_NATIVE_SANDBOX_REQUIRED==='1';
@@ -36,6 +36,7 @@ test('one real original question gates a production PSEC command and never reple
   skip:!configured&&!required?'Explicit trusted Windows PA_TEST_JOB_HOST_EXE unavailable':false,timeout:120000,
 },async t=>{
   assert.ok(configured,'Required native integration needs Windows and the explicit trusted helper');
+  t.diagnostic('Native integration inherited token: '+JSON.stringify(nativeTokenDiagnostic()));
   const helperPath=realpathSync.native(explicitHelper),pins=coding.readWindowsNativeHelperAttestation(helperPath);
   const nodeExecutable=realpathSync.native(process.execPath),systemRoot=realpathSync.native(process.env.SystemRoot);
   await mkdir(integrationCache,{recursive:true});
@@ -87,8 +88,20 @@ test('one real original question gates a production PSEC command and never reple
     return ['failed','cancelled','waiting_reconciliation'].includes(task.state)?{task}:undefined;
   },'original question or terminal readiness failure');
   if(!prepared.card){
-    assert.equal(prepared.task.state,'failed');assert.equal(prepared.task.error?.code,'UNSUPPORTED_CAPABILITY');
+    // The authorization host rejects preparation, then Runtime invalidates the original
+    // pending approval. Its terminal error describes that stale authority, not the host error.
+    const approval=app.runtime.getApproval(runId),records=app.runtime.readToolExecutions(taskId);
+    t.diagnostic('Native preparation failure: '+JSON.stringify({taskState:prepared.task.state,
+      taskErrorCode:prepared.task.error?.code,preparationErrorCode:preparationError?.code,
+      approvalState:approval.state,approvalRevision:approval.revision,
+      readiness:readiness?{backend:readiness.backend,available:readiness.available,enforced:readiness.enforced,results:readiness.results}:null}));
+    assert.equal(prepared.task.state,'failed');assert.equal(prepared.task.error?.code,'REVISION_CONFLICT');
     assert.equal(preparationError?.code,'UNSUPPORTED_CAPABILITY');
+    assert.equal(approval.state,'denied');assert.equal(approval.revision,2);
+    assert.equal(approval.resolution?.actor,'system');assert.equal(approval.resolution?.reason,'stale');
+    assert.equal(records.length,1);assert.equal(records[0].evidenceId,runId+'-question-invalidation');
+    assert.equal(records[0].errorCode,'REVISION_CONFLICT');assert.equal(records[0].state,'failed');
+    assert.equal(records[0].policyDecision,'deny');assert.equal(records[0].executionStarted,false);
     assert.equal(existsSync(marker),false);assert.equal(existsSync(substituted),false);
     assert.equal(app.runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId),undefined);
     assert.equal(app.runtime.policy.get(runId),undefined);assert.equal(question.snapshot().length,0);
