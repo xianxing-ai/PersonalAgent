@@ -4,6 +4,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import * as mailModule from '@personal-agent/mail';
 import * as calendarModule from '@personal-agent/calendar';
 import {attachExactExports} from './developer-deployment-config.js';
+import {connectorResultProjectionSchema} from './connector-result-projection.js';
 
 const MAIL_ACCOUNT='desktop-qq-inbox';
 const MAIL_TOOLS=new Set(['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send']);
@@ -169,7 +170,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
           bindingDigest:digest({resource:source,resourceGeneration,taskId:scope.taskId,runId:scope.runId,argumentsDigest:entry.argumentsDigest,deadline:scope.deadline}),
           ruleBindingDigest,summary:kind==='mail'?'访问本任务所需的已配置邮箱范围；不允许其他任务或任意账号':'访问本任务所需的已配置日历范围；卡片不能替代账号配置'}],
           assertCurrent:()=>{try{return current(exact);}catch{return false;}}});
-        question.prepareExport(exact,{requirementId:kind+'-export',summary:`将本次 ${tool.descriptor.name} 已声明字段的结果发送到本任务选定 AgentArts 模型；排除凭据与额外字段（最多 512 KiB）`,
+        question.prepareExport(exact,{requirementId:kind+'-export',projectionSchema:connectorResultProjectionSchema(tool.descriptor.outputSchema),summary:`将本次 ${tool.descriptor.name} 已声明字段的结果发送到本任务选定 AgentArts 模型；排除凭据与额外字段（最多 512 KiB）`,
           bindingDigest:digest({ruleBindingDigest,taskId:scope.taskId,runId:scope.runId,argumentsDigest:entry.argumentsDigest}),
           ruleBindingDigest:digest({ruleBindingDigest,kind:'export'})});
       }

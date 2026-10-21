@@ -1,5 +1,6 @@
 import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import {createHash, randomUUID} from 'node:crypto';
+import {connectorResultProjectionSchema} from './connector-result-projection.js';
 import path from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {AsyncLocalStorage} from 'node:async_hooks';
@@ -260,7 +261,7 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
         bindingDigest:hash({resource:id,resourceGeneration,generation,taskId:scope.taskId,runId:scope.runId,argumentsDigest:entry.argumentsDigest,deadline:scope.deadline}),
         ruleBindingDigest,summary:'仅访问本任务所需的已配置订阅；不向其他任务授予订阅会话'}],
         assertCurrent:()=>{try{original(scope);return true;}catch{return false;}}});
-      question.prepareExport(entry.scope,{requirementId:'feeds-export',summary:'将本次订阅工具声明的文章/分页结果发送到本任务选定 AgentArts 模型，排除配置中的凭据（最多 960 KiB）',
+      question.prepareExport(entry.scope,{requirementId:'feeds-export',projectionSchema:connectorResultProjectionSchema(tool.descriptor.outputSchema),summary:'将本次订阅工具声明的文章/分页结果发送到本任务选定 AgentArts 模型，排除配置中的凭据（最多 960 KiB）',
         bindingDigest:hash({ruleBindingDigest,taskId:scope.taskId,runId:scope.runId,argumentsDigest:entry.argumentsDigest}),
         ruleBindingDigest:hash({ruleBindingDigest,kind:'export'})});
     },

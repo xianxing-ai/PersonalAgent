@@ -38,7 +38,9 @@ test('Synthetic todo consent guidance is metadata only, refreshed after enable/r
   const first = JSON.parse(read()).capabilityGuidance[0];
   assert.equal(first.state, 'authorization_required');
   assert.equal(first.callable, false);
-  assert.match(first.guidance, /当前对话请求提问卡/);
+  assert.match(first.guidance, /若当前工具目录实际公布 todo.create/);
+  assert.match(first.guidance, /宿主在执行前显示当前对话提问卡/);
+  assert.match(first.guidance, /不要编造授权工具或调用授权 IPC/);
   assert.match(first.guidance, /本次\/永久/);
   assert.match(first.relativeReminder, /remindInMinutes/);
   assert.doesNotMatch(read(), /Synthetic private|Synthetic-private-reference|secretRef|items/);

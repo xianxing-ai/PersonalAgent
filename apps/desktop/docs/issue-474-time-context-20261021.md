@@ -28,6 +28,12 @@
 
 手动 Calendar 原 host-tool 通过 `prepareAuthorization` 登记固定单事件读取；工具 wrapper 的异步上下文供 Main 的实际 fetch 包装在凭据等待之后同步再验。Mail 配置保存不再授予读权限；其 `batchAuthorization` 与原 mail-triage 使用原 sessionId、单次 nonce、固定账户/INBOX/查询 digest、真实每页 limit 和原期限。首次卡允许后，后续每页仅由 #475 正式 `deriveMailBatch` 结合原 session membership 和首条已确认回执派生精确授权；分类只读断言已消费回执。无总页/条目预算时明确总量未知，不冒充每页 100 为总量；结束、取消、配置/资源变更或到期失效，不成为后台无限许可。
 
+工作区目录/Node/npm 配置与执行许可分开：配置 getters 不能授权操作；原 task/run/args、目录/可执行文件/固定 recipe 与持久资源 generation 必须匹配。应用内卡不要求先配置 Node/PSEC；外部命令仍必须由 Main 注入的可信 native factory 实际实施隔离。有 question 而缺该工厂时命令不装配，不能回退裸执行。所有命令入口（含 git、原开发 alias 与隔离 repair）传同工厂，原固定 Node recipes 加 `--preserve-symlinks`/`--preserve-symlinks-main`，模型不能改 argv。原依赖封存/复制/校验仍在实际获许可后由可取消 worker 证明，不在同步经验 scope 扫 node_modules。
+
+F15 的元数据和源码只消费原 Runtime 提供的 `authorization:{taskId,runId}` 与阶段，不能从 Renderer 或已结束 localTask 猜身份。初始、已确认 read 及最终摘要各用执行前已登记的精确 export requirement；`authorizeConsumedExport` 不产生新执行许可。固定脱敏 schema 排除源码/诊断正文/绝对路径，实际返回投影供 Runtime 发送，本地 raw receipt/Evidence 保留。源码仍走原 PUBLIC candidate/config/source-version/digest/bytes/撤回 proof；原已确认 readTaskId/runId 加入关联，不新增 PRIVATE 全文出机分支或第二卡。固定 schema helper 仅展开公开 ConnectorItem/ConnectorAction 元数据引用，未知引用拒绝。
+
+统一卡以正式 `sourceApprovalId` 精确去重原 pending，不能因同 taskId 隐藏另一个审批。卡/安全页分别展示应用内 Policy 与真实 native backend available/enforced；“不启动外部进程”不冒充 OS 隔离。安全页不签发本操作许可。
+
 最终由 #475 整合为一个完整 PR，Main/Runtime/Renderer 联合卡验证完成前不标记完整交付。当前没有像素一致的参考证据，仅按已确认的提问交互自实现；真实受影响渲染尚未执行。Browser plugin not available，后续复用原有 Electron/Playwright 隔离 Synthetic 流程。
 
 ## 验证记录
@@ -44,6 +50,8 @@
 | Todo/Feeds/对话 Mail 精确 consumer | 4 个 Synthetic 回执用例均已取得通过：初次 2/4，2 个夹具修正后仅失败例复跑 2/2；不是实际统一卡或持久规则验收 |
 | Calendar 原 Runtime/ToolGateway → 卡 consumer → 凭据等待 → final fetch guard | 2/2 Synthetic 用例通过；正常读取可达，撤回卡许可后零 fetch；不访问真实日历 |
 | Mail 配置/单批次/派生/完成撤销 helper | 1/1 Synthetic 回执检查通过；未开网络、未授权真实邮箱 |
+| Workspace 无旧会话许可、精确执行/投影、正常重启资源/撤销、可信工厂与 native argv | 3 个 Synthetic 用例均已取得 pass；沙箱 native realpath 首次 EPERM 后经平台最小授权执行，2 个夹具原缺 path 修正后仅失败例复跑 2/2；没有真实执行命令/native 沙箱资格声明 |
+| 固定 Node native recipes / F15 元数据初始与 summary helper / ConnectorItem/Action 固定字段 / exact approval 去重与 native 状态 | 分别 1/1、1/1、1/1、2/2 小回归通过；F15 使用显式 Synthetic question/Runtime 元数据，不等于实际 Main+Runtime graph 验收 |
 | mail-triage readiness/逐页消费的新可选 Runtime port | 源码与定向用例完成，等待 #475 整合后新 Runtime 构建；旧 dist 不充作这项证据 |
 | 统一授权卡消费及本次/永久 | 待 #475 正式端口与实际组合验证；未伪造卡回执 |
 | 真实盘古/AgentArts 采用时间与引导、真实提醒/日历 | 未授权执行，`not_run`；Synthetic 发送载荷验证不提升平台或模型资格 |

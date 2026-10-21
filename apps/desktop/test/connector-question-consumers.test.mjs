@@ -7,6 +7,8 @@ import {FakeMailProvider} from '@personal-agent/mail';
 import {createDesktopTodoHost} from '../electron/todo-host.js';
 import {createDesktopFeedsHost} from '../electron/feeds-host.js';
 import {createConnectorConversationTools} from '../electron/connector-conversation-tools.js';
+import {connectorResultProjectionSchema} from '../electron/connector-result-projection.js';
+import {validateContract,validateToolValue} from '@personal-agent/contracts';
 
 const cache=new URL('../../../.cache/connector-question-consumers/',import.meta.url);mkdirSync(cache,{recursive:true});
 const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()};
@@ -39,6 +41,20 @@ function operation(tool,args,id='synthetic-task') {
     scopes:tool.descriptor.requiredScopes,authorizationRef:'Synthetic original ToolGateway grant',
     proposal:{proposalId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:args}};
 }
+
+test('Synthetic fixed connector projection inlines only the two public metadata contracts and rejects extra provider fields',()=>{
+  const prefix='https://personalagent.local/protocol/1.0.0#/definitions/';
+  const item={source:'mail',accountRef:'Synthetic',externalId:'one',occurredAt:'2030-10-21T02:00:00Z',
+    fetchedAt:'2030-10-21T02:00:00Z',contentRef:'Synthetic receipt',sensitivity:'private',dedupeKey:'one'};
+  const action={actionId:'one',state:'confirmed',evidenceRefs:['Synthetic receipt']};
+  for(const [name,value,contract]of [['ConnectorItem',item,'connectorItem'],['ConnectorAction',action,'connectorAction']]) {
+    validateContract(contract,value);const schema=connectorResultProjectionSchema({$ref:prefix+name});
+    validateToolValue(schema,value);assert.equal(JSON.stringify(schema).includes('$ref'),false);
+    assert.throws(()=>validateToolValue(schema,{...value,rawBody:'Synthetic private body'}));
+  }
+  assert.throws(()=>connectorResultProjectionSchema({$ref:prefix+'Unknown'}));
+  assert.throws(()=>connectorResultProjectionSchema({$ref:'https://untrusted.invalid/schema'}));
+});
 
 test('Synthetic Todo with old consent false can prepare one exact question but cannot execute or export before its receipt',async t=>{
   const question=questions(),host=createDesktopTodoHost({userData:mkdtempSync(new URL('todo-',cache)),safeStorage,namespace:'Synthetic',question,
