@@ -124,7 +124,7 @@ test('original task deadline remains authoritative after export-approved proposa
   const f = await fixture(t, {now: () => time});
   await state(f.app, f.taskId, ['waiting_approval']);
   time = Date.parse(f.app.runtime.loadCheckpoint(f.taskId, 'application-deadline')) + 1;
-  await f.approve('allow_once');
+  await assert.rejects(f.approve('allow_once'), {code: 'TIMEOUT'});
   const task = await state(f.app, f.taskId, ['failed']);
   assert.equal(task.error.code, 'TIMEOUT');
   assert.equal(f.executions(), 0);
