@@ -3,12 +3,18 @@ import assert from 'node:assert/strict';
 import {existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import ts from 'typescript';
 import {createDeveloperSettingsHost} from '../electron/developer-settings-host.js';
 
 // Execute the actual Desktop composition callback without starting Electron.
 // Other participants are explicit Fakes; this is not a cloud/UI or full Runtime test.
 const main=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8');
-const callbacks=[...main.matchAll(/prepareCompetitionToolExport:(async \(\{phase,taskId,proposal,deadline,signal\}\)=>\{[\s\S]*?\n        \}),/g)];
+const ast=ts.createSourceFile('main.js',main,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS),callbacks=[];
+function visit(node){
+  if(ts.isPropertyAssignment(node)&&node.name.getText(ast)==='prepareCompetitionToolExport')callbacks.push(node.initializer.getText(ast));
+  ts.forEachChild(node,visit);
+}
+visit(ast);
 assert.equal(callbacks.length,1,'actual Main export-preparation callback must remain uniquely identifiable');
 const descriptor={name:'developer.repository_context',version:'1.0.0',sideEffect:'read',requiredScopes:['github:read']};
 const proposal=(toolName,toolVersion='1.0.0',args={})=>({kind:'tool_proposal',proposalId:'composition-proposal',
@@ -29,7 +35,7 @@ async function fixture(t,{connectorFailure,publicFailure,publicAvailable=true}={
   t.after(()=>{settings.close();rmSync(userData,{recursive:true,force:true});});
   const developerDeployment=await settings.createDeployment({});
   assert.equal(existsSync(path.join(userData,'developer-settings.json')),false);
-  const context=vm.createContext({developerDeployment,connectorConversationTools:{async prepareExport(scope){
+  const context=vm.createContext({developerDeployment,todoHost:undefined,feedsHost:undefined,goalCloudHost:undefined,connectorConversationTools:{async prepareExport(scope){
     calls.push({participant:'connector',scope});if(connectorFailure)throw connectorFailure;
   }},publicReferenceConsent:publicAvailable?{
     async requestPreflight(query,scope){calls.push({participant:'public-preflight',query,scope});if(publicFailure)throw publicFailure;},
@@ -37,8 +43,8 @@ async function fixture(t,{connectorFailure,publicFailure,publicAvailable=true}={
   }:undefined,codingWorkspace:{readWorkspaceExportConfigurationRef:()=> 'original-public-binding'},
   referenceHost:{bindTask:()=> 'original-public-binding'},
   readNativePublicSkillSource:()=>({path:'public/guide.md'})});
-  const prepare=vm.runInContext(`(${callbacks[0][1]})`,context);
-  const scope={taskId:'original-user-task',deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+  const prepare=vm.runInContext(`(${callbacks[0]})`,context);
+  const scope={taskId:'original-user-task',runId:'original-trusted-run',deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
   return {calls,scope,async run(phase,value){return prepare({...scope,phase,proposal:value});}};
 }
 
@@ -48,6 +54,7 @@ test('Main composition allows mandatory-delegation-shaped proposals through an u
     await f.run(phase,p);
     const call=f.calls.at(-1);assert.equal(call.participant,'connector');
     assert.equal(call.scope.phase,phase);assert.equal(call.scope.proposal,p);
+    assert.equal(call.scope.runId,f.scope.runId);
     assert.equal(call.scope.signal,f.scope.signal);assert.equal(call.scope.deadline,f.scope.deadline);
   }
   assert.equal(f.calls.length,2);

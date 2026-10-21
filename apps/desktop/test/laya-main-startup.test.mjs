@@ -46,7 +46,8 @@ async function fixture(t, {memory = 8 * 1024 ** 3} = {}) {
     dataPaths:{runtime:path.join(directory, 'runtime.sqlite')},
     runtimeProfile:'huawei_ict_agentarts', competitionMode:true, fakeMode:false, fakeModelMode:false,
     syntheticMvp:false, agentArtsResponseMode:undefined, repairCandidateVersion:undefined,
-    layaPort:undefined, layaKey:undefined, runtimeApplication:undefined, localLaya:undefined,
+    layaPort:undefined, layaKey:undefined, runtimeApplication:undefined, localAuthorizationOnly:false, localLaya:undefined,
+    initializeAuthorizationHosts() {}, // Explicit Fake card assembly; no task or model is created by this Laya-only fixture.
     mailConfig:undefined, mailHost:undefined, proactiveHost:undefined,
     runtimeBuildIdentityReader:undefined, conversationToolAccess:undefined, conversations:undefined,
     Conversations:class {}, initializeInstalledSkills:async () => {}, runtimeError:'', connectionLabel:'',
