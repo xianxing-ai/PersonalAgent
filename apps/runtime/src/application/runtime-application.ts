@@ -1208,13 +1208,38 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Trusted question adapter: derive the original proposal, never trust a Renderer binding. */
+  bindPublicReferenceQuestion(candidate:{query:{taskId:string;proposalId:string;path:string;configurationRef:string};
+    runId:string;toolName:string;toolVersion:string;arguments:{path:string};deadline:string}):true {
+    const task=this.runtime.getTask(candidate.query.taskId);
+    const loop=this.runtime.loadCheckpoint(task.taskId,'competition-loop') as {pending?:{proposalId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>}}|undefined;
+    const proposal=loop?.pending,manifest=this.referenceSkillSnapshot().manifest;
+    if(!proposal||proposal.toolName!==CLOUD_SKILL_TOOL_NAME||proposal.toolVersion!==CLOUD_SKILL_TOOL_VERSION
+      ||proposal.proposalId!==candidate.query.proposalId||!manifest||!['running','waiting_approval'].includes(task.state)||task.cancelRequested)
+      throw new ProtocolError('UNAUTHORIZED','Original public Skill proposal is unavailable');
+    validateToolValue(CLOUD_SKILL_CHOICE_SCHEMA,proposal.arguments);
+    const choice=proposal.arguments;
+    if(choice.skillId!==manifest.id||choice.version!==manifest.version||choice.digest!==manifest.digest
+      ||candidate.runId!==`skill-read-${task.taskId}-${manifest.digest.slice(0,16)}`
+      ||candidate.toolName!=='mcp.workspace.read_text'||candidate.toolVersion!=='1.0.0'
+      ||candidate.arguments.path!==candidate.query.path||typeof candidate.query.configurationRef!=='string'||!candidate.query.configurationRef
+      ||candidate.deadline!==this.runtime.loadCheckpoint(task.taskId,'application-deadline')||Date.parse(candidate.deadline)<=this.now().getTime())
+      throw new ProtocolError('UNAUTHORIZED','Original public Skill source binding changed');
+    const descriptor=this.tools?.list().find(tool=>tool.name===candidate.toolName&&tool.version===candidate.toolVersion);
+    if(!descriptor)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original public reference tool is unavailable');
+    validateToolValue(descriptor.inputSchema,candidate.arguments);
+    this.runtime.saveCheckpointOnce(task.taskId,'authorization-public-reference:'+proposal.proposalId,
+      {candidate:structuredClone(candidate),choice:structuredClone(choice)});
+    return true;
+  }
+
   readAuthorizationQuestionInvocation(taskId:string,requestedRunId?:string,completedReceipt=false) {
     try {
       const task=this.runtime.getTask(taskId);
-      if(task.cancelRequested||!(completedReceipt?task.state==='succeeded':['running','waiting_approval'].includes(task.state)))return undefined;
+      if(task.cancelRequested||!(completedReceipt?['running','succeeded'].includes(task.state):['running','waiting_approval'].includes(task.state)))return undefined;
       const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {step:number;pending?:{
         proposalId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>};pendingRevision?:number}|undefined;
-      if(completedReceipt||!loop?.pending){
+      if(completedReceipt||!loop?.pending||requestedRunId!==undefined
+        &&this.runtime.loadCheckpoint(taskId,'application-tool-invocation:'+requestedRunId)!==undefined){
         if(!requestedRunId)return undefined;
         const saved=this.runtime.loadCheckpoint(taskId,'application-tool-invocation:'+requestedRunId) as
           {toolName:string;toolVersion:string;arguments:Record<string,unknown>;argumentsDigest:string;deadline:string}|undefined;
@@ -1229,11 +1254,27 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(hostIntent&&(hostIntent.namespace!==this.hostUserNamespace||requestedRunId!==`host-tool-${taskId}`
           ||hostIntent.argumentsDigest!==saved.argumentsDigest||hostIntent.toolName!==saved.toolName||hostIntent.toolVersion!==saved.toolVersion))return undefined;
         validateToolValue(descriptor.inputSchema,saved.arguments);
-        return {taskId,proposalId:requestedRunId,runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
+        return {taskId,proposalId:!completedReceipt&&loop?.pending?loop.pending.proposalId:requestedRunId,runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
           outputSchema:structuredClone(descriptor.outputSchema)};
+      }
+      if(loop.pending.toolName===CLOUD_SKILL_TOOL_NAME){
+        const source=this.runtime.loadCheckpoint(taskId,'authorization-public-reference:'+loop.pending.proposalId) as
+          {candidate:{query:{path:string;configurationRef:string};runId:string;toolName:string;toolVersion:string;arguments:{path:string};deadline:string};choice:unknown}|undefined;
+        const manifest=this.referenceSkillSnapshot().manifest;
+        if(!source||!manifest||!isDeepStrictEqual(source.choice,loop.pending.arguments)
+          ||loop.pending.arguments.digest!==manifest.digest||loop.pending.arguments.skillId!==manifest.id
+          ||loop.pending.arguments.version!==manifest.version||requestedRunId!==undefined&&requestedRunId!==source.candidate.runId)return undefined;
+        const intent=this.runtime.loadCheckpoint(taskId,REFERENCE_SKILL_TASK) as {input:ReferenceSummaryInput}|undefined;
+        if(intent&&(intent.input.path!==source.candidate.arguments.path||intent.input.digest!==manifest.digest))return undefined;
+        const descriptor=this.tools?.list().find(tool=>tool.name===source.candidate.toolName&&tool.version===source.candidate.toolVersion);
+        if(!descriptor)return undefined;
+        return {taskId,proposalId:loop.pending.proposalId,runId:source.candidate.runId,toolName:descriptor.name,toolVersion:descriptor.version,
+          arguments:structuredClone(source.candidate.arguments),argumentsDigest:toolArgumentsDigest(source.candidate.arguments),
+          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],outputSchema:structuredClone(descriptor.outputSchema)};
       }
       const nested=this.resolveOriginalWorkerApproval(taskId,loop.pending);
       const runId=nested?.runId??`competition-tool-${taskId}-${loop.step}`;
+      if(requestedRunId!==undefined&&requestedRunId!==runId)return undefined;
       const toolName=nested?.toolName??loop.pending.toolName,args=nested?.arguments??loop.pending.arguments;
       const descriptor=this.tools?.list().find(tool=>tool.name===toolName&&(!nested?tool.version===loop.pending!.toolVersion:true));
       const deadline=this.runtime.loadCheckpoint(taskId,'application-deadline');

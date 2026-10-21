@@ -79,7 +79,8 @@ export function attachExactExports(host,{current,ready,assertCurrent,confirmExpo
     });
     try {
       const allowed=await Promise.race([Promise.resolve().then(()=>{
-        if(controller.signal.aborted)denied();return confirmExport({taskId:scope.taskId,kind,payload:exact,deadline:scope.deadline,signal:controller.signal});
+        if(controller.signal.aborted)denied();return confirmExport({taskId:scope.taskId,kind,payload:exact,policyBinding,
+          deadline:scope.deadline,signal:controller.signal});
       }),interrupted]);if(allowed!==true)denied();
     }catch{denied();}finally{clearTimeout(timer);scope.signal.removeEventListener('abort',onAbort);}
     assertCurrent(scope);

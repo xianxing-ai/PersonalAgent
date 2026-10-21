@@ -2715,6 +2715,28 @@ async function confirmDeveloperExport(request) {
     if(request.kind?.endsWith('_tool_result')){
       authorizationQuestionHost.authorizeExport(request,request.payload?.result);return true;
     }
+    if(['developer_model_request','developer_workflow_result','harness_context_summary'].includes(request.kind)){
+      const application=runtimeApplication,taskId=request.taskId;
+      const hash=value=>createHash('sha256').update(JSON.stringify(value)??'undefined').digest('hex');
+      const proposal=hash(application.runtime.loadCheckpoint(taskId,'competition-loop')?.pending);
+      const destination=application.readAuthorizationQuestionDestination(taskId);
+      const current=()=>{
+        try{const task=application.runtime.getTask(taskId);
+          return runtimeApplication===application&&!request.signal.aborted&&!task.cancelRequested
+            &&['running','waiting_approval'].includes(task.state)&&Date.now()<Date.parse(request.deadline)
+            &&proposal===hash(application.runtime.loadCheckpoint(taskId,'competition-loop')?.pending)
+            &&destination===application.readAuthorizationQuestionDestination(taskId);
+        }catch{return false;}
+      };
+      if(!current()||Buffer.byteLength(JSON.stringify(request.payload),'utf8')>512*1024)return false;
+      const harness=request.kind==='harness_context_summary';
+      return confirmApplicationAuthorization(harness?'harness.export':'developer.export',request.payload,{
+        scope:{namespace:desktopHost.userNamespace,purpose:request.kind,destination,
+          configuration:request.policyBinding??hash(request.payload?.destination)},deadline:request.deadline,signal:request.signal,
+        summary:harness?'向本次选定摘要模型发送当前已核对范围的对话历史；仅生成历史摘要，保留原来源与凭据过滤（最多 512 KiB）'
+          :'向当前固定开发模型发送这次已核对的开发消息或工作流结果；源码和诊断仍受原允许路径与凭据过滤，最多 512 KiB',
+        isCurrent:current});
+    }
     return false;
   }catch{runtimeError='原操作的出机许可不可用或已失效，未发送新的私人资料';publish();return false;}
 }
