@@ -5,5 +5,9 @@ export function projectDesktopApproval(item, runtime) {
   const systemExpired = item.state === 'denied' && stored?.state === 'denied'
     && stored.taskId === item.taskId && stored.revision === item.revision
     && stored.resolution?.actor === 'system' && stored.resolution.reason === 'expired';
-  return {...item, ...(systemExpired ? {systemExpired: true} : {})};
+  const systemInvalidated=item.state==='denied'&&stored?.state==='denied'&&stored.taskId===item.taskId
+    &&stored.revision===item.revision&&stored.resolution?.actor==='system'
+    &&['stale','cancelled'].includes(stored.resolution.reason);
+  return {...item, ...(systemExpired ? {systemExpired: true} : {}),
+    ...(systemInvalidated?{systemInvalidated:stored.resolution.reason}:{})};
 }

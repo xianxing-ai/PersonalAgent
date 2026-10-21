@@ -91,6 +91,7 @@ import {createRuntimeNotificationHost} from './notification-host.js';
 import type {RuntimeNotificationHost, RuntimeNotificationHostOptions} from './notification-host.js';
 import {createRuntimeProactiveWorkflowHost, createRuntimeProactiveWorkflowTools} from './proactive-workflow-application.js';
 import type {RuntimeProactiveWorkflowHost, RuntimeProactiveWorkflowHostOptions} from './proactive-workflow-application.js';
+import type {AuthorizationQuestionRequest} from './authorization-question.js';
 import {createRuntimeOwnedWorkflowHost, createRuntimeOwnedWorkflowTools} from './owned-workflow-application.js';
 import type {RuntimeOwnedWorkflowHostOptions, RuntimeWorkflowShadowReleaseOptions} from './owned-workflow-application.js';
 import {createRuntimeProactiveTaskDriver} from './proactive-task-driver.js';
@@ -395,6 +396,12 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   windowsHostRecovery?: {recover(taskId:string,runId:string):Promise<WindowsHostRecovery>};
   cloudSkill?:CloudSkillRuntimeHostPort;
   prepareCompetitionToolExport?:PrepareCompetitionToolExport;
+  /** Trusted conversation question host. Answers are not execution grants. */
+  requestToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;
+    scopes:readonly string[];deadline:string;signal:AbortSignal})=>Promise<'allow_once'|'deny'>;
+  requiresToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;deadline:string;signal:AbortSignal})=>boolean;
+  /** Composition-only tools require a persisted original submitHostToolTask intent, even if a model guesses the name. */
+  hostOnlyTools?:readonly string[];
 }
 export interface CoordinationGoalScope {taskId:string; conversationId:string; publicGoal:string; deadline:string; signal:AbortSignal;}
 export interface CloudSkillRuntimeHostPort {
@@ -455,6 +462,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly activeTextTasks = new Map<string, Promise<unknown>>();
   private readonly subagentTerminationLocks=new Set<string>();
   private readonly tools: AgentToolPort | undefined;
+  private readonly hostOnlyToolNames:ReadonlySet<string>;
+  private readonly hasToolAuthorizationHost:boolean;
   readonly profile: 'local' | 'huawei_ict_agentarts';
   private readonly coordination: CoordinationPort | undefined;
   private readonly delegateUserTasks: boolean;
@@ -510,6 +519,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly knowledgeWriteReconciliation?: KnowledgeWriteReconciliationAdapter;
 
   constructor(options: RuntimeApplicationOptions) {
+    this.hostOnlyToolNames=new Set(options.hostOnlyTools??[]);
+    this.hasToolAuthorizationHost=typeof options.requestToolAuthorization==='function';
     if (options.delegateUserTasks !== undefined && (options.delegateUserTasks !== true || options.profile !== 'huawei_ict_agentarts')) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Required user delegation needs Competition Profile');
     }
@@ -807,6 +818,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const current=currentDescriptors();
         const tool = current.find(item => item.name === invocation.toolName && item.version === invocation.toolVersion);
         if (!tool) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Tool is not registered');
+        if(options.hostOnlyTools?.includes(tool.name)){
+          const intent=this.runtime.loadCheckpoint(invocation.taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+          if(!this.hostUserNamespace||!intent||intent.namespace!==this.hostUserNamespace||intent.toolName!==tool.name
+            ||intent.toolVersion!==tool.version||intent.argumentsDigest!==toolArgumentsDigest(invocation.arguments)
+            ||invocation.runId!==`host-tool-${invocation.taskId}`||!isDeepStrictEqual(intent.arguments,invocation.arguments))
+            throw new ProtocolError('UNAUTHORIZED','Tool requires its original trusted host intent');
+        }
         validateToolValue(tool.inputSchema, invocation.arguments);
         if (tool.name === WORKSPACE_PATCH_APPLY_TOOL_NAME
           && this.runtime.loadCheckpoint(invocation.taskId, HOST_TOOL_CHECKPOINT) === undefined) {
@@ -837,6 +855,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             && record.state === 'confirmed' && record.executionStarted && record.policyDecision === 'allow'
             && this.runtime.matchesToolExecutionInput(record, {arguments: invocation.arguments as Record<string, unknown>, scopeRef: ref}));
         let routineEligible = automaticTools.has(JSON.stringify([tool.name, tool.version]));
+        if(options.requestToolAuthorization&&options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
+          toolName:tool.name,toolVersion:tool.version,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;
         if (routineEligible && tool.name === 'cognition.commit_repair') {
           const intent = this.runtime.loadCheckpoint(invocation.taskId, LOCAL_REPAIR_CHECKPOINT) as
             {sourceKind?: string; sourceTaskId: string; reviewTaskId: string; binding: unknown} | undefined;
@@ -882,7 +902,32 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           const approval = this.runtime.requestToolApproval(ref, invocation.taskId, tool, expiresAt, toolArgumentsDigest(invocation.arguments));
           if (approval.state === 'denied') throw new ProtocolError('UNAUTHORIZED', 'Tool approval was denied');
           if (approval.state === 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Tool grant was revoked');
-          return {state: 'pending', evidenceRefs: []};
+          if(!options.requestToolAuthorization)return {state:'pending',evidenceRefs:[]};
+          this.runtime.saveCheckpoint(invocation.taskId,'authorization-question-active:'+ref,{state:'pending',
+            argumentsDigest:toolArgumentsDigest(invocation.arguments),approvalRevision:approval.revision});
+          let decision:'allow_once'|'deny';
+          try {
+            decision=await options.requestToolAuthorization({taskId:invocation.taskId,runId:ref,toolName:tool.name,
+              toolVersion:tool.version,argumentsDigest:toolArgumentsDigest(invocation.arguments),scopes:tool.requiredScopes,
+              deadline:invocation.deadline,signal:invocation.signal});
+          }catch(error){
+            this.runtime.expirePendingApprovals();
+            this.runtime.invalidatePendingApproval(ref,invocation.signal.aborted?'cancelled':'stale');
+            throw error;
+          }
+          const pending=this.readPendingToolInvocation(invocation.taskId,ref);
+          if(invocation.signal.aborted||!pending||pending.toolName!==tool.name||pending.toolVersion!==tool.version
+            ||pending.argumentsDigest!==toolArgumentsDigest(invocation.arguments)||pending.deadline!==invocation.deadline)
+            throw new ProtocolError('REVISION_CONFLICT','Original authorization invocation changed');
+          const latest=this.runtime.getApproval(ref);
+          this.runtime.respondApproval(ref,decision,latest.revision);
+          this.runtime.saveCheckpoint(invocation.taskId,'authorization-question-active:'+ref,{state:'resolved',
+            argumentsDigest:toolArgumentsDigest(invocation.arguments),approvalRevision:this.runtime.getApproval(ref).revision});
+          if(decision==='deny')throw new ProtocolError('UNAUTHORIZED','User denied this operation');
+          // Continue the original worker that is awaiting this host promise, never dispatch a second one.
+          if(this.runtime.getTask(invocation.taskId).state!=='waiting_approval'||!this.runtime.policy.get(ref))
+            throw new ProtocolError('REVISION_CONFLICT','Original task cannot continue');
+          this.runtime.transitionTask(invocation.taskId,'running');
         }
         let result = await new RuntimeToolInvoker(this.runtime,current).invoke({...invocation, authorizationRef: ref});
         if(tool.name===SUBAGENT_DISPATCH_TOOL_NAME&&readUserTaskDelegation(this.runtime,invocation.taskId)) {
@@ -1155,6 +1200,95 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         ||toolArgumentsDigest(saved.arguments)!==saved.argumentsDigest||!isDeepStrictEqual(approval.scopes,descriptor.requiredScopes))return undefined;
       validateToolValue(descriptor.inputSchema,saved.arguments);return structuredClone(saved);
     }catch{return undefined;}
+  }
+
+  /** Trusted question adapter: derive the original proposal, never trust a Renderer binding. */
+  readAuthorizationQuestionInvocation(taskId:string,requestedRunId?:string,completedReceipt=false) {
+    try {
+      const task=this.runtime.getTask(taskId);
+      if(task.cancelRequested||!(completedReceipt?task.state==='succeeded':['running','waiting_approval'].includes(task.state)))return undefined;
+      const loop=this.runtime.loadCheckpoint(taskId,'competition-loop') as {step:number;pending?:{
+        proposalId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>};pendingRevision?:number}|undefined;
+      if(completedReceipt||!loop?.pending){
+        if(!requestedRunId)return undefined;
+        const saved=this.runtime.loadCheckpoint(taskId,'application-tool-invocation:'+requestedRunId) as
+          {toolName:string;toolVersion:string;arguments:Record<string,unknown>;argumentsDigest:string;deadline:string}|undefined;
+        if(!saved||toolArgumentsDigest(saved.arguments)!==saved.argumentsDigest||Date.parse(saved.deadline)<=this.now().getTime())return undefined;
+        const descriptor=this.tools?.list().find(tool=>tool.name===saved.toolName&&tool.version===saved.toolVersion);
+        if(!descriptor)return undefined;
+        if(completedReceipt&&!this.runtime.readToolExecutions(taskId).some(record=>record.evidenceId===requestedRunId
+          &&record.taskId===taskId&&record.toolName===saved.toolName&&record.toolVersion===saved.toolVersion
+          &&record.state==='confirmed'&&record.executionStarted&&record.policyDecision==='allow'
+          &&this.runtime.matchesToolExecutionInput(record,{arguments:saved.arguments,scopeRef:requestedRunId})))return undefined;
+        const hostIntent=this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+        if(hostIntent&&(hostIntent.namespace!==this.hostUserNamespace||requestedRunId!==`host-tool-${taskId}`
+          ||hostIntent.argumentsDigest!==saved.argumentsDigest||hostIntent.toolName!==saved.toolName||hostIntent.toolVersion!==saved.toolVersion))return undefined;
+        validateToolValue(descriptor.inputSchema,saved.arguments);
+        return {taskId,proposalId:requestedRunId,runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
+          outputSchema:structuredClone(descriptor.outputSchema)};
+      }
+      const nested=this.resolveOriginalWorkerApproval(taskId,loop.pending);
+      const runId=nested?.runId??`competition-tool-${taskId}-${loop.step}`;
+      const toolName=nested?.toolName??loop.pending.toolName,args=nested?.arguments??loop.pending.arguments;
+      const descriptor=this.tools?.list().find(tool=>tool.name===toolName&&(!nested?tool.version===loop.pending!.toolVersion:true));
+      const deadline=this.runtime.loadCheckpoint(taskId,'application-deadline');
+      if(!descriptor||typeof deadline!=='string'||Date.parse(deadline)<=this.now().getTime())return undefined;
+      validateToolValue(descriptor.inputSchema,args);
+      return {taskId,proposalId:loop.pending.proposalId,runId,toolName,toolVersion:descriptor.version,
+        arguments:structuredClone(args),argumentsDigest:toolArgumentsDigest(args),deadline,scopes:[...descriptor.requiredScopes],
+        outputSchema:structuredClone(descriptor.outputSchema)};
+    }catch{return undefined;}
+  }
+
+  /** State may legitimately change running -> waiting_approval while the same proposal is displayed. */
+  readAuthorizationQuestionBinding(input:Omit<AuthorizationQuestionRequest,'signal'>):{conversationId:string;digest:string}|undefined {
+    const original=this.readAuthorizationQuestionInvocation(input.taskId,input.runId);
+    if(!original||['proposalId','runId','toolName','toolVersion','argumentsDigest','deadline'].some(key=>
+      original[key as keyof typeof original]!==input[key as keyof typeof input]))return undefined;
+    const conversationId=this.readToolConversation(input.taskId)??this.runtime.getTask(input.taskId).conversationId;
+    if(!conversationId)return undefined;
+    const toolRequirement=input.requirements.find(item=>item.kind==='tool');
+    if(toolRequirement&&!isDeepStrictEqual([...toolRequirement.scopes].sort(),[...original.scopes].sort()))return undefined;
+    const loop=this.runtime.loadCheckpoint(input.taskId,'competition-loop') as {pendingRevision?:number};
+    return {conversationId,digest:hashJson({conversationId,taskId:input.taskId,proposalId:original.proposalId,
+      runId:original.runId,toolName:original.toolName,toolVersion:original.toolVersion,argumentsDigest:original.argumentsDigest,
+      deadline:original.deadline,pendingRevision:loop?.pendingRevision,
+      profile:this.runtime.loadCheckpoint(input.taskId,'application-profile'),
+      parent:this.runtime.loadCheckpoint(input.taskId,'subtask-parent')})};
+  }
+
+  bindAuthorizationQuestion(input:Omit<AuthorizationQuestionRequest,'signal'>):void {
+    const binding=this.readAuthorizationQuestionBinding(input);
+    if(!binding)throw new ProtocolError('UNAUTHORIZED','Original question binding is unavailable');
+    const anchor={binding,taskId:input.taskId,proposalId:input.proposalId,runId:input.runId,toolName:input.toolName,
+      toolVersion:input.toolVersion,argumentsDigest:input.argumentsDigest,deadline:input.deadline};
+    this.runtime.saveCheckpointOnce(input.taskId,'authorization-question-binding:'+input.runId,anchor);
+  }
+
+  /** Read-only use of an already confirmed result; never permission for a further tool execution. */
+  readAuthorizationQuestionReceiptBinding(input:Omit<AuthorizationQuestionRequest,'signal'>):{conversationId:string;digest:string}|undefined {
+    const original=this.readAuthorizationQuestionInvocation(input.taskId,input.runId,true);
+    const anchor=this.runtime.loadCheckpoint(input.taskId,'authorization-question-binding:'+input.runId) as
+      {binding:{conversationId:string;digest:string};proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;deadline:string}|undefined;
+    if(!original||!anchor||['proposalId','runId','toolName','toolVersion','argumentsDigest','deadline'].some(key=>
+      anchor[key as keyof typeof anchor]!==input[key as keyof typeof input]))return undefined;
+    return structuredClone(anchor.binding);
+  }
+
+  /** Only the existing fixed mailbox session may derive a next-page decision. */
+  assertMailReadQuestionPage(parentTaskId:string,taskId:string,batchId:string):void {
+    this.mailReadSessions.assertPage(batchId,taskId);
+    if(this.runtime.loadCheckpoint(parentTaskId,MAIL_READ_SESSION_CHECKPOINT)!==batchId
+      ||this.runtime.loadCheckpoint(taskId,MAIL_READ_SESSION_CHECKPOINT)!==batchId)
+      throw new ProtocolError('UNAUTHORIZED','Mailbox page does not belong to the original batch');
+    const parent=this.runtime.loadCheckpoint(parentTaskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+    const child=this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+    if(!parent||!child||parent.namespace!==this.hostUserNamespace||child.namespace!==this.hostUserNamespace
+      ||parent.toolName!==MAIL_READ_TOOL||child.toolName!==MAIL_READ_TOOL||parent.toolVersion!==MAIL_READ_VERSION||child.toolVersion!==MAIL_READ_VERSION
+      ||parent.deadline!==child.deadline||!['account','folder','limit'].every(key=>parent.arguments[key]===child.arguments[key])
+      ||parent.arguments.folder!=='INBOX'||!Number.isSafeInteger(parent.arguments.limit)
+      ||this.readHostToolTask(parentTaskId).task.state!=='succeeded')
+      throw new ProtocolError('UNAUTHORIZED','Original mailbox batch scope changed');
   }
 
   /** Historical structural identity only. Execution/permission/deadline checks remain at their original ports. */
@@ -2084,6 +2218,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   async send(request: Request, signal: AbortSignal): Promise<Response> {
     this.runtime.expirePendingApprovals();
+    if(request.operation==='tool.invoke'&&this.hostOnlyToolNames.has(request.payload.toolName))
+      throw new ProtocolError('UNAUTHORIZED','Host-only tools cannot be called through the public transport');
+    if(request.operation==='authorization.respond'){
+      const approval=this.runtime.getApproval(request.payload.approvalId);
+      const question=this.runtime.loadCheckpoint(approval.taskId,'authorization-question-active:'+approval.approvalId) as {state?:string}|undefined;
+      if(question?.state==='pending'&&approval.state==='pending')throw new ProtocolError('UNAUTHORIZED','请通过当前对话中的统一授权卡决定');
+    }
     // Approval state and one-shot grants must remain untouched when an original
     // Competition task cannot continue against its original trusted deployment.
     if (request.operation === 'authorization.respond' && request.payload.decision === 'allow_once'
@@ -2505,7 +2646,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (mailSession !== undefined) {
       this.mailReadSessions.bind(mailSession, task.taskId);
       this.runtime.saveCheckpoint(task.taskId, MAIL_READ_SESSION_CHECKPOINT, mailSession);
-      this.runtime.policy.grant({authorizationRef: `host-tool-${task.taskId}`, taskId: task.taskId,
+      if(!this.hasToolAuthorizationHost)this.runtime.policy.grant({authorizationRef: `host-tool-${task.taskId}`, taskId: task.taskId,
         toolName: MAIL_READ_TOOL, scopes: ['mail:read'], expiresAt: request.deadline,
         maxUses: 1, argumentsDigest: intent.argumentsDigest});
     }

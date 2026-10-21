@@ -106,7 +106,7 @@ export interface ToolApproval {
   revision: number;
   state: 'pending' | 'allowed' | 'denied';
   /** Private audit metadata; frozen approval.list continues to expose denied. */
-  resolution?: {actor: 'system'; reason: 'expired'; resolvedAt: string};
+  resolution?: {actor: 'system'; reason: 'expired' | 'cancelled' | 'stale'; resolvedAt: string};
 }
 
 export interface WorkerContext {
@@ -746,6 +746,34 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     });
     this.expirePendingApprovals();
     return this.getApproval(result.approvalId);
+  }
+
+  /** Host-question invalidation resolves the same pending approval without issuing a grant. */
+  invalidatePendingApproval(approvalId:string,reason:'cancelled'|'stale'):void {
+    const resolved=this.transaction(()=>{
+      const approval=this.getApproval(approvalId);
+      if(approval.state!=='pending')return [];
+      approval.state='denied';approval.revision++;approval.resolution={actor:'system',reason,resolvedAt:this.timestamp()};
+      this.policy.revoke(approvalId);
+      this.db.prepare('UPDATE tool_approvals SET value_json = ? WHERE approval_id = ?').run(JSON.stringify(approval),approvalId);
+      const task=this.getTask(approval.taskId);
+      const evidenceId=approvalId+'-question-invalidation';
+      const record:ToolExecutionRecord={evidenceId,inputDigest:createHash('sha256').update(approvalId).digest('hex'),
+        protocolVersion:PROTOCOL_VERSION,requestId:approvalId,taskId:approval.taskId,toolName:approval.toolName,toolVersion:'approval',
+        startedAt:this.timestamp(),finishedAt:this.timestamp(),state:'failed',errorCode:reason==='cancelled'?'CANCELLED':'REVISION_CONFLICT',
+        policyDecision:'deny',executionStarted:false};
+      this.db.prepare('INSERT INTO tool_execution_records (evidence_id, task_id, record_json) VALUES (?, ?, ?)')
+        .run(evidenceId,approval.taskId,JSON.stringify(record));
+      if(task.state==='waiting_approval'&&!task.cancelRequested){
+        const unknown=this.readToolExecutions(task.taskId).some(value=>value.state==='started'||value.state==='unknown')
+          ||Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-inflight'))||Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-unknown'));
+        this.updateTask(task.taskId,unknown?'waiting_reconciliation':reason==='cancelled'?'cancelled':'failed',
+          {evidenceRefs:[...new Set([...task.evidenceRefs,evidenceId])],error:{code:unknown?'RESULT_UNKNOWN':reason==='cancelled'?'CANCELLED':'REVISION_CONFLICT',retryable:false,
+            message:unknown?'原授权请求已失效；已有操作结果仍待核实，不会重新执行。':'原授权请求已失效，本次操作未执行；请在当前对话重新提出。'}},true);
+      }
+      return [approval];
+    });
+    this.afterApprovalExpiry(resolved);
   }
 
   /** The Runtime owns expiry, including pending approvals left by an earlier process. */
