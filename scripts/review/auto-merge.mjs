@@ -11,9 +11,12 @@ const actionsAppId=15368;
 export function evaluateMerge({pr,mainSha,reviews,checks,statuses,repository,mergeQueueEnabled=false}) {
   if(pr.state!=='open'||pr.draft||pr.merged||pr.base?.ref!=='main'||
     pr.base.repo.full_name!==repository||pr.head?.repo?.full_name!==repository) return 'ineligible PR';
+  // Queue admission checks the latest concrete CI below. GitHub's aggregate
+  // "unstable" state is not itself a conflict; the protected queue still
+  // enforces repository requirements and validates the combined commit.
   if(!/^[a-f0-9]{40}$/.test(pr.head.sha)||
     (!mergeQueueEnabled&&pr.base.sha!==mainSha)||pr.mergeable!==true||
-    !(mergeQueueEnabled?['clean','behind']:['clean']).includes(pr.mergeable_state)) return 'branch protection or main update pending';
+    !(mergeQueueEnabled?['clean','behind','unstable']:['clean']).includes(pr.mergeable_state)) return 'branch protection or main update pending';
   if(!evaluateReviews({headSha:pr.head.sha,author:pr.user.login,reviews}).passed) return 'one eligible non-author approval required';
   const latest=new Map();
   for(const check of checks) {
