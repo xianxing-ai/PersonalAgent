@@ -1,0 +1,379 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Security.Principal;
+using System.Text;
+
+// CI-only: never imported by a product package. No credentials or general command input.
+internal static class Program
+{
+    const uint Query = 8, Duplicate = 2, AssignPrimary = 1, AdjustDefault = 0x80;
+    const uint Infinite = 0xffffffff, Suspended = 4, UnicodeEnvironment = 0x400, ExtendedStartup = 0x80000;
+    const int StdInput = -10, StdOutput = -11, StdError = -12;
+    static readonly IntPtr Current = new(-1);
+    static bool useCurrentToken;
+    static string stage = "arguments";
+    static string Self => CanonicalFile(Environment.ProcessPath ?? throw new InvalidOperationException());
+    static string Cwd => CanonicalDirectory(Environment.CurrentDirectory);
+
+    public static int Main(string[] args)
+    {
+        if (!OperatingSystem.IsWindows()) { Console.Error.WriteLine("standard-token: Windows required"); return 125; }
+        try
+        {
+            if (args.Length != 1) throw new InvalidOperationException();
+            if (args[0] is "--smoke-probe" or "--smoke-tree" or "--smoke-grandchild") return SmokeChild(args[0]);
+            if (args[0] is not ("--smoke" or "--run-check" or "--smoke-supervisor")) throw new InvalidOperationException();
+            stage = "open-current-token";
+            using var own = OpenToken(GetCurrentProcess(), Query | Duplicate | AssignPrimary | AdjustDefault);
+            string sid = Sid(own.Value); int session = Integer(own.Value, 12);
+            using var token = SelectToken(own.Value, sid, session);
+            if (args[0] == "--smoke") return Smoke(token.Value, sid, session);
+            if (args[0] == "--smoke-supervisor")
+            {
+                using var child = Start(token.Value, sid, session, Self, Quote(Self) + " --smoke-tree",
+                    GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError));
+                Console.WriteLine("tree-parent:" + GetProcessId(child.Process)); Console.Out.Flush();
+                return unchecked((int)child.Wait(60000));
+            }
+            // Fixed npm operation; no caller-supplied command line, script, token, user or path.
+            string cmd = CanonicalFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"));
+            string npm = ResolveNpm();
+            string command = Quote(cmd) + " /d /s /c \"\"" + npm + "\" run check\"";
+            using var child = Start(token.Value, sid, session, cmd, command,
+                GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError));
+            uint exit = child.Wait();
+            return unchecked((int)exit);
+        }
+        catch (Exception error)
+        {
+            // Do not leak paths, usernames, SID, environment or native exception messages.
+            Console.Error.WriteLine("standard-token: failed closed (" + stage + "," + error.GetType().Name + ","
+                + (error is Win32Exception native ? native.NativeErrorCode : error.HResult) + ")");
+            return 125;
+        }
+    }
+
+    static Handle SelectToken(IntPtr own, string sid, int session)
+    {
+        stage = "validate-current-token";
+        if (Integer(own, 20) == 0) { Validate(own, sid, session); useCurrentToken = true; return CopyHandle(own, false); }
+        // Only a missing linked token permits the own-token restricted alternative. Malformed
+        // or wrong-user linked tokens are failures, never an excuse to select another identity.
+        IntPtr linked = IntPtr.Zero;
+        stage = "read-linked-token";
+        IntPtr buffer = Marshal.AllocHGlobal(IntPtr.Size);
+        try
+        {
+            if (GetTokenInformation(own, 19, buffer, IntPtr.Size, out _)) linked = Marshal.ReadIntPtr(buffer);
+            else if (Marshal.GetLastWin32Error() is not (87 or 1312)) throw new Win32Exception();
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+        if (linked != IntPtr.Zero)
+        {
+            var result = new Handle(linked);
+            try { stage = "validate-linked-token"; Validate(linked, sid, session); if (Integer(linked, 18) != 3) throw new InvalidOperationException(); Console.WriteLine("standard-token: existing-linked"); return result; }
+            catch { result.Dispose(); throw; }
+        }
+        // LUA_TOKEN + DISABLE_MAX_PRIVILEGE. Neither flag is accepted as proof of elevation:
+        // validate the returned token and actual child below. No login or privilege grant.
+        stage = "create-restricted-own-token";
+        if (!CreateRestrictedToken(own, 5, 0, IntPtr.Zero, 0, IntPtr.Zero, 0, IntPtr.Zero, out IntPtr restricted))
+            throw new Win32Exception();
+        var filtered = new Handle(restricted);
+        try
+        {
+            stage = "set-restricted-integrity"; SetMediumIntegrity(restricted);
+            stage = "validate-restricted-own-token";
+            Validate(restricted, sid, session);
+            Console.WriteLine("standard-token: restricted-own"); return filtered;
+        }
+        catch { filtered.Dispose(); throw; }
+    }
+
+    static void Validate(IntPtr token, string expectedSid, int session)
+    {
+        if (Sid(token) != expectedSid || Integer(token, 8) != 1 || Integer(token, 20) != 0 || Integer(token, 18) is not (1 or 3)
+            || Integer(token, 26) != 0 || Integer(token, 12) != session) throw new InvalidOperationException();
+        using var integrity = Information(token, 25);
+        IntPtr label = Marshal.ReadIntPtr(integrity.Value);
+        byte count = Marshal.ReadByte(GetSidSubAuthorityCount(label));
+        if (count == 0 || Marshal.ReadInt32(GetSidSubAuthority(label, (uint)(count - 1))) != 0x2000)
+            throw new InvalidOperationException();
+        using var groups = Information(token, 2);
+        int length = Marshal.ReadInt32(groups.Value);
+        int offset = IntPtr.Size == 8 ? 8 : 4, size = Marshal.SizeOf<SidAttributes>();
+        for (int i = 0; i < length; i++)
+        {
+            var group = Marshal.PtrToStructure<SidAttributes>(IntPtr.Add(groups.Value, offset + i * size));
+            if (new SecurityIdentifier(group.Sid).IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid)
+                && ((group.Attributes & 0x10) == 0 || (group.Attributes & 4) != 0)) throw new InvalidOperationException();
+        }
+    }
+
+    static void SetMediumIntegrity(IntPtr token)
+    {
+        var sid = new SecurityIdentifier("S-1-16-8192");
+        byte[] binary = new byte[sid.BinaryLength]; sid.GetBinaryForm(binary, 0);
+        int size = Marshal.SizeOf<SidAttributes>(); IntPtr buffer = Marshal.AllocHGlobal(size + binary.Length);
+        try
+        {
+            IntPtr sidPointer = IntPtr.Add(buffer, size); Marshal.Copy(binary, 0, sidPointer, binary.Length);
+            var label = new SidAttributes { Sid = sidPointer, Attributes = 0x20 };
+            Marshal.StructureToPtr(label, buffer, false);
+            if (!SetTokenInformation(token, 25, buffer, size + binary.Length)) throw new Win32Exception();
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    static Child Start(IntPtr token, string sid, int session, string executable, string command,
+        IntPtr input, IntPtr output, IntPtr error)
+    {
+        stage = "duplicate-stdio";
+        using var stdin = CopyHandle(input, true); using var stdout = CopyHandle(output, true); using var stderr = CopyHandle(error, true);
+        IntPtr list = IntPtr.Zero, values = IntPtr.Zero, environment = IntPtr.Zero;
+        bool initialized = false; IntPtr bytes = IntPtr.Zero;
+        using var job = NewJob(); ProcessInfo process = default;
+        try
+        {
+            InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref bytes);
+            list = Marshal.AllocHGlobal(bytes); values = Marshal.AllocHGlobal(3 * IntPtr.Size);
+            if (!InitializeProcThreadAttributeList(list, 1, 0, ref bytes)) throw new Win32Exception();
+            initialized = true;
+            Marshal.Copy(new[] { stdin.Value, stdout.Value, stderr.Value }, 0, values, 3);
+            if (!UpdateProcThreadAttribute(list, 0, new IntPtr(0x20002), values, new IntPtr(3 * IntPtr.Size), IntPtr.Zero, IntPtr.Zero))
+                throw new Win32Exception();
+            var startup = new StartupEx { Info = new Startup { Size = Marshal.SizeOf<StartupEx>(), Flags = 0x100,
+                Input = stdin.Value, Output = stdout.Value, Error = stderr.Value }, Attributes = list };
+            environment = GetEnvironmentStringsW(); if (environment == IntPtr.Zero) throw new Win32Exception();
+            uint flags = Suspended | UnicodeEnvironment | ExtendedStartup;
+            stage = useCurrentToken ? "create-current-child" : "create-token-child";
+            bool created = useCurrentToken
+                ? CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero, true, flags, environment, Cwd, ref startup, out process)
+                : CreateProcessAsUserW(token, executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero, true, flags, environment, Cwd, ref startup, out process);
+            if (!created) throw new Win32Exception();
+            stage = "assign-child-job";
+            if (!AssignProcessToJobObject(job.Value, process.Process)) throw new Win32Exception();
+            stage = "validate-actual-child-token";
+            using (var actual = OpenToken(process.Process, Query)) Validate(actual.Value, sid, session);
+            stage = "resume-child";
+            if (ResumeThread(process.Thread) == uint.MaxValue) throw new Win32Exception();
+            var result = new Child(process.Process, job.Detach()); process.Process = IntPtr.Zero; return result;
+        }
+        finally
+        {
+            if (process.Thread != IntPtr.Zero) CloseHandle(process.Thread);
+            if (process.Process != IntPtr.Zero) { TerminateProcess(process.Process, 125); WaitForSingleObject(process.Process, 10000); CloseHandle(process.Process); }
+            if (environment != IntPtr.Zero) FreeEnvironmentStringsW(environment);
+            if (initialized) DeleteProcThreadAttributeList(list);
+            if (list != IntPtr.Zero) Marshal.FreeHGlobal(list);
+            if (values != IntPtr.Zero) Marshal.FreeHGlobal(values);
+        }
+    }
+
+    static Handle NewJob()
+    {
+        stage = "create-kill-on-close-job";
+        var job = new Handle(CreateJobObjectW(IntPtr.Zero, null));
+        try
+        {
+            var limits = new JobLimits { Basic = new BasicLimits { Flags = 0x2000 } };
+            int size = Marshal.SizeOf<JobLimits>(); IntPtr buffer = Marshal.AllocHGlobal(size);
+            try { Marshal.StructureToPtr(limits, buffer, false); if (!SetInformationJobObject(job.Value, 9, buffer, (uint)size)) throw new Win32Exception(); }
+            finally { Marshal.FreeHGlobal(buffer); }
+            return job;
+        }
+        catch { job.Dispose(); throw; }
+    }
+
+    static int Smoke(IntPtr token, string sid, int session)
+    {
+        Environment.SetEnvironmentVariable("PA_CI_TOKEN_SMOKE", "fixed-inherited-value");
+        using (var output = new Pipe()) using (var error = new Pipe())
+        {
+            using var child = Start(token, sid, session, Self, Quote(Self) + " --smoke-probe",
+                GetStdHandle(StdInput), output.Write.Value, error.Write.Value);
+            output.Write.Dispose(); error.Write.Dispose();
+            Task<string> stdout = Task.Run(output.ReadAll), stderr = Task.Run(error.ReadAll);
+            if (child.Wait(30000) != 23) throw new InvalidOperationException();
+            if (!Task.WaitAll(new Task[] { stdout, stderr }, 10000)) throw new TimeoutException();
+            if (stdout.Result.Trim() != "stdout:" + CwdDigest() || stderr.Result.Trim() != "stderr:fixed-inherited-value") throw new InvalidOperationException();
+        }
+        using (var output = new Pipe()) using (var error = new Pipe())
+        {
+            using var child = Start(token, sid, session, Self, Quote(Self) + " --smoke-tree",
+                GetStdHandle(StdInput), output.Write.Value, error.Write.Value);
+            output.Write.Dispose(); error.Write.Dispose();
+            Task<string> firstLine = Task.Run(output.ReadLine);
+            if (!firstLine.Wait(15000) || !uint.TryParse(firstLine.Result, out uint pid)) throw new InvalidOperationException();
+            using var descendant = new Handle(OpenProcess(0x100000 | 0x1000, false, pid));
+            using (var actual = OpenToken(descendant.Value, Query)) Validate(actual.Value, sid, session);
+            child.KillTree(); child.Wait(10000);
+            if (WaitForSingleObject(descendant.Value, 10000) != 0) throw new InvalidOperationException();
+        }
+        // A separate launcher instance owns this Job. Kill just that launcher, then wait
+        // on already-opened identities of both descendants, not recycled PID lookups.
+        using (var supervisor = Process.Start(new ProcessStartInfo(Self, "--smoke-supervisor") {
+            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+            WorkingDirectory = Cwd }) ?? throw new InvalidOperationException())
+        {
+            Handle? parent = null, descendant = null;
+            Task<string> errors = supervisor.StandardError.ReadToEndAsync();
+            try
+            {
+                var deadline = Stopwatch.StartNew();
+                while ((parent == null || descendant == null) && deadline.ElapsedMilliseconds < 20000)
+                {
+                    var lineTask = supervisor.StandardOutput.ReadLineAsync();
+                    if (!lineTask.Wait(20000 - (int)deadline.ElapsedMilliseconds)) throw new TimeoutException();
+                    string? line = lineTask.Result;
+                    if (line == null) throw new InvalidOperationException();
+                    if (line.StartsWith("tree-parent:", StringComparison.Ordinal) && uint.TryParse(line[12..], out uint directPid))
+                        parent = new Handle(OpenProcess(0x100000 | 0x1000, false, directPid));
+                    else if (uint.TryParse(line, out uint descendantPid))
+                        descendant = new Handle(OpenProcess(0x100000 | 0x1000, false, descendantPid));
+                }
+                if (parent == null || descendant == null) throw new InvalidOperationException();
+                using (var actual = OpenToken(parent.Value, Query)) Validate(actual.Value, sid, session);
+                using (var actual = OpenToken(descendant.Value, Query)) Validate(actual.Value, sid, session);
+                supervisor.Kill();
+                if (!supervisor.WaitForExit(10000) || WaitForSingleObject(parent.Value, 10000) != 0
+                    || WaitForSingleObject(descendant.Value, 10000) != 0) throw new InvalidOperationException();
+                if (!errors.Wait(10000) || errors.Result.Length != 0) throw new InvalidOperationException();
+            }
+            finally
+            {
+                if (!supervisor.HasExited) { supervisor.Kill(); supervisor.WaitForExit(10000); }
+                parent?.Dispose(); descendant?.Dispose();
+            }
+        }
+        Console.WriteLine("standard-token smoke: stdio, exit23, env/cwd, job-close and killed-launcher descendant termination verified"); return 0;
+    }
+
+    static int SmokeChild(string mode)
+    {
+        if (mode == "--smoke-probe")
+        {
+            if (Environment.GetEnvironmentVariable("PA_CI_TOKEN_SMOKE") != "fixed-inherited-value") return 124;
+            Console.WriteLine("stdout:" + CwdDigest()); Console.Error.WriteLine("stderr:fixed-inherited-value"); return 23;
+        }
+        if (mode == "--smoke-tree")
+        {
+            using var descendant = Process.Start(new ProcessStartInfo(Self, "--smoke-grandchild") { UseShellExecute = false }) ?? throw new InvalidOperationException();
+            Console.WriteLine(descendant.Id); Console.Out.Flush(); descendant.WaitForExit(); return 124;
+        }
+        Thread.Sleep(60000); return 124;
+    }
+
+    static string CwdDigest() => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Cwd)));
+    static string Quote(string value)
+    {
+        if (value.IndexOfAny(new[] { '"', '\r', '\n', '%', '!', '&', '|', '<', '>', '^' }) >= 0) throw new InvalidOperationException();
+        return "\"" + value + "\"";
+    }
+    static string ResolveNpm()
+    {
+        foreach (string directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+        {
+            if (!Path.IsPathFullyQualified(directory)) continue;
+            string candidate = Path.Combine(directory, "npm.cmd");
+            if (File.Exists(candidate)) { string result = CanonicalFile(candidate); Quote(result); return result; }
+        }
+        throw new InvalidOperationException();
+    }
+    static string CanonicalFile(string value) { string full = Canonical(value); if (!File.Exists(full)) throw new InvalidOperationException(); return full; }
+    static string CanonicalDirectory(string value) { string full = Canonical(value); if (!Directory.Exists(full)) throw new InvalidOperationException(); return full; }
+    static string Canonical(string value)
+    {
+        if (!Path.IsPathFullyQualified(value) || value.StartsWith("\\\\", StringComparison.Ordinal)) throw new InvalidOperationException();
+        string full = Path.GetFullPath(value);
+        for (string? current = full; current != null; current = Path.GetDirectoryName(current))
+            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException();
+        return full;
+    }
+
+    static string Sid(IntPtr token) { using var value = Information(token, 1); return new SecurityIdentifier(Marshal.ReadIntPtr(value.Value)).Value; }
+    static int Integer(IntPtr token, int kind) { using var value = Information(token, kind); return Marshal.ReadInt32(value.Value); }
+    static Memory Information(IntPtr token, int kind)
+    {
+        GetTokenInformation(token, kind, IntPtr.Zero, 0, out int size); if (size <= 0) throw new Win32Exception();
+        var memory = new Memory(size); try { if (!GetTokenInformation(token, kind, memory.Value, size, out _)) throw new Win32Exception(); return memory; }
+        catch { memory.Dispose(); throw; }
+    }
+    static Handle OpenToken(IntPtr process, uint access) { if (!OpenProcessToken(process, access, out IntPtr token)) throw new Win32Exception(); return new Handle(token); }
+    static Handle CopyHandle(IntPtr value, bool inherit)
+    {
+        if (!DuplicateHandle(Current, value, Current, out IntPtr copy, 0, inherit, 2)) throw new Win32Exception(); return new Handle(copy);
+    }
+    sealed class Memory : IDisposable { public IntPtr Value; public Memory(int size) { Value = Marshal.AllocHGlobal(size); } public void Dispose() { if (Value != IntPtr.Zero) { Marshal.FreeHGlobal(Value); Value = IntPtr.Zero; } } }
+    sealed class Handle : IDisposable
+    {
+        public IntPtr Value; public Handle(IntPtr value) { if (value == IntPtr.Zero || value == new IntPtr(-1)) throw new Win32Exception(); Value = value; }
+        public IntPtr Detach() { IntPtr value = Value; Value = IntPtr.Zero; return value; }
+        public void Dispose() { if (Value != IntPtr.Zero) { CloseHandle(Value); Value = IntPtr.Zero; } }
+    }
+    sealed class Child : IDisposable
+    {
+        readonly Handle process; readonly Handle job;
+        public IntPtr Process => process.Value;
+        public Child(IntPtr process, IntPtr job) { this.process = new Handle(process); this.job = new Handle(job); }
+        public uint Wait(uint timeout = Infinite) { if (WaitForSingleObject(process.Value, timeout) != 0) throw new TimeoutException(); if (!GetExitCodeProcess(process.Value, out uint code)) throw new Win32Exception(); return code; }
+        public void KillTree() => job.Dispose();
+        public void Dispose() { job.Dispose(); process.Dispose(); }
+    }
+    sealed class Pipe : IDisposable
+    {
+        public readonly Handle Write; readonly Handle read;
+        public Pipe() { if (!CreatePipe(out IntPtr r, out IntPtr w, IntPtr.Zero, 0)) throw new Win32Exception(); read = new Handle(r); Write = new Handle(w); }
+        public string ReadAll() => Read(false);
+        public string ReadLine() => Read(true);
+        string Read(bool line)
+        {
+            var bytes = new List<byte>(); var buffer = new byte[1];
+            while (ReadFile(read.Value, buffer, 1, out uint size, IntPtr.Zero) && size == 1)
+            { bytes.Add(buffer[0]); if (bytes.Count > 4096) throw new InvalidOperationException(); if (line && buffer[0] == 10) break; }
+            return Encoding.UTF8.GetString(bytes.ToArray()).TrimEnd('\r', '\n');
+        }
+        public void Dispose() { Write.Dispose(); read.Dispose(); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] struct SidAttributes { public IntPtr Sid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct Startup { public int Size; public IntPtr Reserved, Desktop, Title; public uint X,Y,Width,Height,CharsX,CharsY,Fill,Flags; public ushort Show, ReservedSize; public IntPtr ReservedBytes, Input, Output, Error; }
+    [StructLayout(LayoutKind.Sequential)] struct StartupEx { public Startup Info; public IntPtr Attributes; }
+    [StructLayout(LayoutKind.Sequential)] struct ProcessInfo { public IntPtr Process, Thread; public uint Pid, Tid; }
+    [StructLayout(LayoutKind.Sequential)] struct BasicLimits { public long ProcessTime, JobTime; public uint Flags; public UIntPtr Min, Max; public uint Active; public UIntPtr Affinity; public uint Priority, Scheduling; }
+    [StructLayout(LayoutKind.Sequential)] struct IoCounters { public ulong ReadOps,WriteOps,OtherOps,ReadBytes,WriteBytes,OtherBytes; }
+    [StructLayout(LayoutKind.Sequential)] struct JobLimits { public BasicLimits Basic; public IoCounters Io; public UIntPtr ProcessMemory, JobMemory, PeakProcess, PeakJob; }
+    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool DuplicateHandle(IntPtr sourceProcess,IntPtr source,IntPtr targetProcess,out IntPtr target,uint access,bool inherit,uint options);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetTokenInformation(IntPtr token,int kind,IntPtr value,int bytes,out int returned);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool SetTokenInformation(IntPtr token,int kind,IntPtr value,int bytes);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool CreateRestrictedToken(IntPtr existing,uint flags,uint disabled,IntPtr disable,uint deleted,IntPtr delete,uint restricted,IntPtr restrict,out IntPtr token);
+    [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool ConvertStringSidToSidW(string text,out IntPtr sid);
+    [DllImport("advapi32.dll")] static extern uint GetLengthSid(IntPtr sid);
+    [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
+    [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthority(IntPtr sid,uint index);
+    [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr value);
+    [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool CreateProcessAsUserW(IntPtr token,string application,StringBuilder command,IntPtr processSecurity,IntPtr threadSecurity,bool inherit,uint flags,IntPtr environment,string cwd,ref StartupEx startup,out ProcessInfo process);
+    [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool CreateProcessW(string application,StringBuilder command,IntPtr processSecurity,IntPtr threadSecurity,bool inherit,uint flags,IntPtr environment,string cwd,ref StartupEx startup,out ProcessInfo process);
+    [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr CreateJobObjectW(IntPtr security,string? name);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int kind,IntPtr value,uint bytes);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern uint ResumeThread(IntPtr thread);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool TerminateProcess(IntPtr process,uint code);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern uint WaitForSingleObject(IntPtr handle,uint timeout);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetExitCodeProcess(IntPtr process,out uint exit);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool InitializeProcThreadAttributeList(IntPtr list,int count,uint flags,ref IntPtr bytes);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool UpdateProcThreadAttribute(IntPtr list,uint flags,IntPtr kind,IntPtr value,IntPtr bytes,IntPtr previous,IntPtr returned);
+    [DllImport("kernel32.dll")] static extern void DeleteProcThreadAttributeList(IntPtr list);
+    [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr GetEnvironmentStringsW();
+    [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] static extern bool FreeEnvironmentStringsW(IntPtr environment);
+    [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int kind);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool CreatePipe(out IntPtr read,out IntPtr write,IntPtr security,uint bytes);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool ReadFile(IntPtr file,byte[] buffer,uint bytes,out uint read,IntPtr overlapped);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern uint GetProcessId(IntPtr process);
+}
