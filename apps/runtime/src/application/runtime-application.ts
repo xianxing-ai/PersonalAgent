@@ -686,6 +686,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.runtime = new TaskRuntime(options.path, {
       ...(options.now ? {now: options.now} : {}),
       ...(options.idFactory ? {idFactory: options.idFactory} : {}),
+      onApprovalsExpired:taskIds=>{
+        for(const taskId of taskIds) {
+          this.releaseEphemeralTask(taskId);
+          void Promise.resolve(this.activeTextTasks.get(taskId))
+            .then(()=>this.refreshSubagentParent(taskId)).catch(()=>{});
+        }
+      },
       ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
           this.harnessExperienceRecipes(request.taskId,{
@@ -870,7 +877,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             scopes:tool.requiredScopes,argumentsDigest,maxUses:1,expiresAt:invocation.deadline});
         }
         if (!confirmedDispatch && !this.runtime.policy.get(ref)) {
-          const expiresAt = new Date((options.now?.() ?? new Date()).getTime() + 600_000).toISOString();
+          const expiresAt = new Date(Math.min(Date.parse(invocation.deadline),
+            (options.now?.() ?? new Date()).getTime() + 600_000)).toISOString();
           const approval = this.runtime.requestToolApproval(ref, invocation.taskId, tool, expiresAt, toolArgumentsDigest(invocation.arguments));
           if (approval.state === 'denied') throw new ProtocolError('UNAUTHORIZED', 'Tool approval was denied');
           if (approval.state === 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Tool grant was revoked');
@@ -2075,19 +2083,22 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   async send(request: Request, signal: AbortSignal): Promise<Response> {
+    this.runtime.expirePendingApprovals();
     // Approval state and one-shot grants must remain untouched when an original
     // Competition task cannot continue against its original trusted deployment.
     if (request.operation === 'authorization.respond' && request.payload.decision === 'allow_once'
       && this.profile === 'huawei_ict_agentarts') {
       const approval=this.runtime.getApproval(request.payload.approvalId);
-      this.harnessExperienceRecipes(approval.taskId,{deadline:request.deadline,signal});
-      this.assertHarnessEventCurrent(approval.taskId);
-      if(this.runtime.loadCheckpoint(approval.taskId,'application-profile')==='huawei_ict_agentarts'
-        || this.runtime.loadCheckpoint(approval.taskId,'competition-loop')!==undefined) {
-        this.assertCompetitionTaskConfiguration(approval.taskId);
-        this.assertDeveloperHarnessExecutorCurrent(approval.taskId);
-        const message=readSubagentConversationMessage(this.runtime,approval.taskId);
-        if(message)this.assertDeveloperHarnessExecutorCurrent(message.originTaskId);
+      if(approval.resolution?.reason!=='expired') {
+        this.harnessExperienceRecipes(approval.taskId,{deadline:request.deadline,signal});
+        this.assertHarnessEventCurrent(approval.taskId);
+        if(this.runtime.loadCheckpoint(approval.taskId,'application-profile')==='huawei_ict_agentarts'
+          || this.runtime.loadCheckpoint(approval.taskId,'competition-loop')!==undefined) {
+          this.assertCompetitionTaskConfiguration(approval.taskId);
+          this.assertDeveloperHarnessExecutorCurrent(approval.taskId);
+          const message=readSubagentConversationMessage(this.runtime,approval.taskId);
+          if(message)this.assertDeveloperHarnessExecutorCurrent(message.originTaskId);
+        }
       }
     }
     const response = await this.runtime.send(request, signal);

@@ -15,7 +15,7 @@ export function approvalPresentation(item, now = Date.now()) {
   const expiresAtMillis = expiryMillis(item?.expiresAt);
   const hasValidExpiry = Number.isFinite(expiresAtMillis);
   const sourceState = ['pending', 'allowed', 'denied'].includes(item?.state) ? item.state : 'invalid';
-  const state = sourceState === 'pending'
+  const state = sourceState === 'denied' && item?.systemExpired === true ? 'expired' : sourceState === 'pending'
     ? (!hasValidExpiry ? 'invalid' : expiresAtMillis <= now ? 'expired' : 'pending')
     : sourceState;
   const scopes = Array.isArray(item?.scopes)

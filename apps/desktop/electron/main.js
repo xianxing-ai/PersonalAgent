@@ -29,6 +29,7 @@ import {restoreSyntheticRepairSubmission} from './competition-repair-submission.
 import {readCapabilityDirectory} from './capability-directory.js';
 import {createMicrophonePermissionGate} from './microphone-permission.js';
 import {readApprovalPage} from './approval-history.js';
+import {projectDesktopApproval} from './approval-projection.js';
 import {createPrivateMemoryController} from './private-memory.js';
 import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
@@ -615,7 +616,8 @@ function snapshot(surface) {
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
-    approvals: [...approvals.values()].filter(approval=>!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface)),
+    approvals: [...approvals.values()].filter(approval=>!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
+      .map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime)),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
     voiceQuestion: surface?voiceQuestionForConversation(conversations?.activeConversationId(surface)):voiceCommandHost?.snapshot(),
@@ -3453,7 +3455,8 @@ async function action(event, name, payload) {
   if (name === 'capability.list') { await syncCapabilities(); publish(); return {manifests: capabilities, health}; }
   if (name === 'approval.history') {
     if (sender !== admin) throw Error('授权历史只能从管理后台读取');
-    return readApprovalPage(client, payload);
+    const page=await readApprovalPage(client, payload);
+    return {...page,items:page.items.map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime))};
   }
   if (name === 'settings.get') return client.call('settings.get', {namespace: String(payload ?? 'desktop')});
   if (name === 'settings.update') return client.call('settings.update', payload);

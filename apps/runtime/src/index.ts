@@ -105,6 +105,8 @@ export interface ToolApproval {
   expiresAt: string;
   revision: number;
   state: 'pending' | 'allowed' | 'denied';
+  /** Private audit metadata; frozen approval.list continues to expose denied. */
+  resolution?: {actor: 'system'; reason: 'expired'; resolvedAt: string};
 }
 
 export interface WorkerContext {
@@ -162,6 +164,8 @@ export interface RuntimeToolGateway {
 
 export interface RuntimeOptions {
   now?: () => Date;
+  /** Trusted Application lifecycle notification, after the expiry transaction commits. */
+  onApprovalsExpired?: (taskIds: readonly string[]) => void;
   idFactory?: () => string;
   toolGateway?: RuntimeToolGateway;
   createToolGateway?: (policy: AuthorizationPolicy) => RuntimeToolGateway;
@@ -235,7 +239,7 @@ const allowed: Record<TaskState, readonly TaskState[]> = {
   created: ['planning', 'cancelling', 'failed'],
   planning: ['running', 'waiting_approval', 'waiting_external', 'waiting_reconciliation', 'cancelling', 'failed'],
   running: ['waiting_approval', 'waiting_external', 'waiting_reconciliation', 'verifying', 'cancelling', 'failed'],
-  waiting_approval: ['running', 'cancelling', 'cancelled', 'failed'],
+  waiting_approval: ['running', 'waiting_reconciliation', 'cancelling', 'cancelled', 'failed'],
   waiting_external: ['running', 'waiting_reconciliation', 'cancelling', 'failed'],
   waiting_reconciliation: ['running', 'verifying', 'cancelling', 'cancelled', 'failed'],
   verifying: ['succeeded', 'waiting_reconciliation', 'cancelling', 'failed'],
@@ -374,6 +378,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly sessionRef = 'runtime-' + randomUUID();
   private readonly active = new Map<string, AbortController>();
   private readonly activeToolExecutions = new Map<string,string>();
+  private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
+  private closed = false;
 
   /** Trusted host handoff observation only; Policy remains the authorization source. */
   isToolExecutionActive(record:Pick<ToolExecutionRecord,'taskId'|'evidenceId'|'inputDigest'>):boolean {
@@ -402,6 +409,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.idFactory = options.idFactory ?? randomUUID;
     this.policy = new AuthorizationPolicy(new SqliteAuthorizationStore(this.db));
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
+    this.onApprovalsExpired = options.onApprovalsExpired;
+    this.expirePendingApprovals();
   }
 
   /** Trusted host only; provisioning never clears an existing graph. */
@@ -427,6 +436,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
 
   close(): void {
     if (this.active.size) throw new RuntimeError('REVISION_CONFLICT', 'Cannot close runtime while workers are active');
+    this.closed = true;
+    clearTimeout(this.approvalExpiryTimer);
     this.db.close();
   }
 
@@ -508,6 +519,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   listApprovals(input: {approvalId?: string; taskId?: string; state?: 'pending' | 'allowed' | 'denied'; beforeRowId?: number; limit?: number}): Result<'approval.list'> {
+    this.expirePendingApprovals();
     const limit = input.limit ?? 50;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RuntimeError('INVALID_ARGUMENT', 'limit must be between 1 and 100');
     const clauses: string[] = []; const params: SQLInputValue[] = [];
@@ -716,7 +728,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   requestToolApproval(approvalId: string, taskId: string, tool: ToolDescriptor, expiresAt: string, argumentsDigest: string): ToolApproval {
-    return this.transaction(() => {
+    parseTime(expiresAt, 'expiresAt');
+    this.expirePendingApprovals();
+    const result = this.transaction(() => {
       const existing = this.db.prepare('SELECT value_json FROM tool_approvals WHERE approval_id = ?').get(approvalId);
       if (existing) {
         const approval = JSON.parse(existing.value_json as string) as ToolApproval;
@@ -730,11 +744,83 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       this.emit('approval.requested', {approvalId, taskId, revision: 1, action: tool.name}, taskId);
       return approval;
     });
+    this.expirePendingApprovals();
+    return this.getApproval(result.approvalId);
+  }
+
+  /** The Runtime owns expiry, including pending approvals left by an earlier process. */
+  expirePendingApprovals(): ToolApproval[] {
+    const expired = this.transaction(() => {
+      const time = this.now().getTime();
+      const pending = this.db.prepare("SELECT value_json FROM tool_approvals WHERE json_extract(value_json, '$.state') = 'pending'")
+        .all().map(row => JSON.parse(row.value_json as string) as ToolApproval);
+      return pending.filter(approval => !Number.isFinite(Date.parse(approval.expiresAt)) || Date.parse(approval.expiresAt) <= time)
+        .map(approval => this.expireApprovalInTransaction(approval));
+    });
+    this.afterApprovalExpiry(expired);
+    return structuredClone(expired);
+  }
+
+  private expireApprovalInTransaction(approval: ToolApproval): ToolApproval {
+    approval.state = 'denied';
+    approval.revision++;
+    approval.resolution = {actor:'system',reason:'expired',resolvedAt:this.timestamp()};
+    this.policy.revoke(approval.approvalId);
+    this.db.prepare('UPDATE tool_approvals SET value_json = ? WHERE approval_id = ?')
+      .run(JSON.stringify(approval), approval.approvalId);
+    const task = this.getTask(approval.taskId);
+    const evidenceId = approval.approvalId + '-expiration';
+    const record: ToolExecutionRecord = {evidenceId, inputDigest:createHash('sha256').update(approval.approvalId).digest('hex'),
+      protocolVersion:PROTOCOL_VERSION,requestId:approval.approvalId,taskId:approval.taskId,
+      toolName:approval.toolName,toolVersion:'approval',startedAt:this.timestamp(),finishedAt:this.timestamp(),
+      state:'failed',errorCode:'TIMEOUT',policyDecision:'deny',executionStarted:false};
+    this.db.prepare('INSERT INTO tool_execution_records (evidence_id, task_id, record_json) VALUES (?, ?, ?)')
+      .run(evidenceId, approval.taskId, JSON.stringify(record));
+    if (task.state === 'waiting_approval' && !task.cancelRequested) {
+      const unknown = this.readToolExecutions(task.taskId).some(value => value.state === 'started' || value.state === 'unknown')
+        || Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-inflight'))
+        || Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-unknown'));
+      this.updateTask(task.taskId, unknown ? 'waiting_reconciliation' : 'failed', {
+        evidenceRefs:[...new Set([...task.evidenceRefs,evidenceId])],
+        error:{code:unknown?'RESULT_UNKNOWN':'TIMEOUT',retryable:false,
+          message:unknown?'操作授权已过期；原操作结果仍待核实，不会重新执行。':'操作授权已过期，本次操作未获允许；请重新发起任务。'},
+      }, true);
+    }
+    return approval;
+  }
+
+  private afterApprovalExpiry(expired: readonly ToolApproval[]): void {
+    clearTimeout(this.approvalExpiryTimer);
+    this.approvalExpiryTimer = undefined;
+    const taskIds = [...new Set(expired.map(value => value.taskId))];
+    for (const taskId of taskIds) this.active.get(taskId)?.abort();
+    if (taskIds.length && this.onApprovalsExpired) queueMicrotask(() => {
+      if (!this.closed) {try {this.onApprovalsExpired?.(taskIds);} catch {/* Expiry already committed; never grant on callback failure. */}}
+    });
+    if (this.closed) return;
+    const pending = this.db.prepare("SELECT value_json FROM tool_approvals WHERE json_extract(value_json, '$.state') = 'pending'")
+      .all().map(row => JSON.parse(row.value_json as string) as ToolApproval);
+    if (!pending.length) return;
+    const nearest = pending.reduce((value, approval) => Math.min(value, Date.parse(approval.expiresAt)), Infinity);
+    const expire = () => {
+      if (this.closed) return;
+      try {this.expirePendingApprovals();}
+      catch {
+        // A transient storage error must not authorize anything or lose the next attempt.
+        this.approvalExpiryTimer = setTimeout(expire, 1000);
+        this.approvalExpiryTimer.unref();
+      }
+    };
+    this.approvalExpiryTimer = setTimeout(expire, Math.max(1, Math.min(2_147_483_647, nearest - this.now().getTime())));
+    this.approvalExpiryTimer.unref();
   }
 
   respondApproval(approvalId: string, decision: 'allow_once' | 'deny', expectedRevision: number): {accepted: boolean; approvalState: 'allowed' | 'denied'} {
-    return this.transaction(() => {
+    this.expirePendingApprovals();
+    const expired: ToolApproval[] = [];
+    const result = this.transaction<{accepted: boolean; approvalState: 'allowed' | 'denied'} | undefined>(() => {
       const approval = this.getApproval(approvalId);
+      if (approval.resolution?.reason === 'expired') return undefined;
       const state = decision === 'allow_once' ? 'allowed' : 'denied';
       if (approval.state !== 'pending') {
         if (approval.state !== state || expectedRevision !== approval.revision - 1) throw new RuntimeError('REVISION_CONFLICT', 'Approval was already resolved');
@@ -742,7 +828,10 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       }
       if (approval.revision !== expectedRevision) throw new RuntimeError('REVISION_CONFLICT', 'Approval revision mismatch');
       if (this.getTask(approval.taskId).state !== 'waiting_approval') throw new RuntimeError('REVISION_CONFLICT', 'Task is not awaiting approval');
-      if (Date.parse(approval.expiresAt) <= this.now().getTime()) throw new RuntimeError('TIMEOUT', 'Approval expired');
+      if (!Number.isFinite(Date.parse(approval.expiresAt)) || Date.parse(approval.expiresAt) <= this.now().getTime()) {
+        expired.push(this.expireApprovalInTransaction(approval));
+        return undefined;
+      }
       approval.state = state;
       approval.revision++;
       if (state === 'allowed') this.policy.grant({authorizationRef: approvalId, taskId: approval.taskId, toolName: approval.toolName, scopes: approval.scopes, expiresAt: approval.expiresAt, maxUses: 1, argumentsDigest: approval.argumentsDigest});
@@ -757,6 +846,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       }
       return {accepted: true, approvalState: state};
     });
+    this.afterApprovalExpiry(expired);
+    if (!result) throw new RuntimeError('TIMEOUT', '操作授权已过期，本次操作未获允许');
+    return result;
   }
 
   private saveToolExecution(record: ToolExecutionRecord, result?: unknown): void {
