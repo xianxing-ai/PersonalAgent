@@ -65,13 +65,35 @@ const createEventInputSchema: ToolDescriptor['inputSchema'] = {
   },
 };
 
+/**
+ * 读工具返回的事件标识字段叫 `externalId`，写工具历史上叫 `uid`。云端工具目录由
+ * `safeSchema()` 投影，只保留 type/properties/required 等结构字段、**不发送 description**，
+ * 所以模型只能靠字段名判断语义：`calendar.events` 给出 `externalId`，`calendar.cancel` 却要
+ * `uid`，两者不同名又没有说明，模型只能向用户索要一个用户不可能知道的"事件标识"（实测 2026-10-21）。
+ * 两个名字都进 properties、语义相同，模型拿哪个都能对上；`uid` 保留用于已保存提案的回放。
+ */
+const EVENT_ID_PATTERN = '^[^\\u0000-\\u001f\\u007f]+$';
+const eventIdProperties = {
+  externalId: {type: 'string', minLength: 1, maxLength: 512, pattern: EVENT_ID_PATTERN},
+  uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'},
+} as const;
+
+/** 恰好一个标识：两者都给（即使相同）说明调用方意图不明确，直接拒绝而不是猜。 */
+function resolveEventId(raw: {externalId?: unknown; uid?: unknown}): string {
+  const externalId = typeof raw.externalId === 'string' && raw.externalId.length > 0 ? raw.externalId : undefined;
+  const uid = typeof raw.uid === 'string' && raw.uid.length > 0 ? raw.uid : undefined;
+  if ((externalId === undefined) === (uid === undefined)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Provide exactly one of externalId or uid');
+  }
+  return (externalId ?? uid) as string;
+}
+
 const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
   description: '更新既有日历事件的字段（缺省字段保持原值）；SEQUENCE 递增后写回并读回核对。',
-  required: ['uid'],
   additionalProperties: false,
   properties: {
-    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'},
+    ...eventIdProperties,
     summary: {type: 'string', minLength: 1, maxLength: 512},
     startUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
     endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
@@ -83,9 +105,8 @@ const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
 const cancelEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
   description: '取消（删除）日历事件。资源不存在视为已取消（幂等），状态如实返回。',
-  required: ['uid'],
   additionalProperties: false,
-  properties: {uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'}},
+  properties: {...eventIdProperties},
 };
 
 const writeOutputSchema: ToolDescriptor['outputSchema'] = {
@@ -173,9 +194,9 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         inputSchema: updateEventInputSchema, outputSchema: writeOutputSchema,
         idempotencySupport: true, recoverySupport: true},
       execute: async (input: unknown, context) => {
-        const raw = input as {uid: string; summary?: string; startUtc?: string; endUtc?: string; location?: string; notes?: string};
+        const raw = input as {externalId?: string; uid?: string; summary?: string; startUtc?: string; endUtc?: string; location?: string; notes?: string};
         const record = await writes.updateEvent({
-          uid: raw.uid,
+          uid: resolveEventId(raw),
           ...(raw.summary === undefined ? {} : {summary: raw.summary}),
           ...(raw.startUtc === undefined ? {} : {startUtc: raw.startUtc}),
           ...(raw.endUtc === undefined ? {} : {endUtc: raw.endUtc}),
@@ -190,14 +211,15 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         inputSchema: cancelEventInputSchema, outputSchema: writeOutputSchema,
         idempotencySupport: true, recoverySupport: true},
       execute: async (input: unknown, context) => {
-        const raw = input as {uid: string};
-        const result = await writes.cancelEvent(raw.uid, {signal: context.signal, deadline: context.deadline});
+        const raw = input as {externalId?: string; uid?: string};
+        const eventId = resolveEventId(raw);
+        const result = await writes.cancelEvent(eventId, {signal: context.signal, deadline: context.deadline});
         // DELETE 后资源已移除，多数服务器读不回条目；能读回（如状态标记式实现）才附带 item。
         const item = result.state === 'cancelled'
-          ? await service.getEventItem(accountRef, raw.uid, {signal: context.signal, deadline: context.deadline}).catch(() => undefined)
+          ? await service.getEventItem(accountRef, eventId, {signal: context.signal, deadline: context.deadline}).catch(() => undefined)
           : undefined;
         return item === undefined
-          ? {uid: raw.uid, state: result.state}
+          ? {uid: eventId, state: result.state}
           : {item, state: result.state};
       },
     };
