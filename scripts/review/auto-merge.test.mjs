@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {evaluateMerge,mergeApproved} from './auto-merge.mjs';
+import {evaluateMerge,mergeApproved,readMergeQueueState} from './auto-merge.mjs';
 
 const head='a'.repeat(40),base='b'.repeat(40),repository='zemeng5208/PersonalAgent';
 function fixture() {
@@ -46,8 +46,16 @@ test('a later successful rerun and latest status supersede old failures',()=>{
   assert.equal(evaluateMerge(snapshot),null);
 });
 function fakeApi(snapshot,requests=[]) {
-  let mainReads=0;
+  let mainReads=0,queueReads=0;
   return async (url,init={})=>{
+    if(url==='https://api.github.com/graphql') {
+      assert.equal(init.method,'POST');
+      const query=JSON.parse(init.body);
+      assert.ok(query.query.startsWith('query QueueState('),'only a read-only GraphQL query');
+      assert.deepEqual(query.variables,{owner:'zemeng5208',name:'PersonalAgent',number:1});
+      const queue=snapshot.queueSequence?.[queueReads++]??snapshot.queue??{};
+      return {ok:true,status:200,json:async()=>({data:{repository:{pullRequest:{number:1,headRefOid:head,baseRefName:'main',isMergeQueueEnabled:false,isInMergeQueue:false,autoMergeRequest:null,...queue}}}})};
+    }
     const route=url.split('/repos/'+repository+'/')[1];
     if(init.method==='POST') {
       if(route!=='dispatches') throw Error('Unexpected write');
@@ -88,7 +96,7 @@ for(const conclusion of [undefined,'failure','cancelled','skipped']) test('main 
   const fetchImpl=fakeApi(snapshot,requests);
   await mergeApproved({repository,token:'fixture-token',fetchImpl:async(url,init)=>{
     assert.ok(!url.includes('commits/'+base+'/check-runs'),'main test results must not be read');
-    assert.notEqual(init?.method,'POST','no automatic postmerge CI dispatch');
+    if(url!=='https://api.github.com/graphql') assert.notEqual(init?.method,'POST','no automatic postmerge CI dispatch');
     return fetchImpl(url,init);
   },executeImpl:async()=>calls.push(1),log:()=>{}});
   assert.equal(calls.length,1);
@@ -131,13 +139,81 @@ test('a confirmed merge never dispatches another main test round',async()=>{
 });
 
 test('unreadable final merge state is not retried as another merge request',async()=>{
-  const snapshot=fixture(),calls=[];
-  await assert.rejects(mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>{calls.push(1);snapshot.unreadablePr=true;},log:()=>{}}),/GitHub read failed/);
+  const snapshot=fixture(),calls=[],logs=[];
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>{calls.push(1);snapshot.unreadablePr=true;},log:message=>logs.push(message)});
   assert.equal(calls.length,1);
+  assert.match(logs.at(-1),/outcome unconfirmed/);
 });
 
 test('unreadable repository evidence and invalid main SHA fail closed',async()=>{
   const bad=fixture();bad.mainSha='not-a-sha';
   await assert.rejects(mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(bad),executeImpl:async()=>assert.fail('merge'),log:()=>{}}),/Invalid main SHA/);
   await assert.rejects(mergeApproved({repository,token:'fixture-token',fetchImpl:async()=>({ok:false,status:503}),executeImpl:async()=>assert.fail('merge'),log:()=>{}}),/GitHub read failed/);
+});
+
+test('behind is eligible only for an enabled queue; main movement does not invalidate queue admission',async()=>{
+  const snapshot=fixture(),calls=[],logs=[];
+  snapshot.pr.mergeable_state='behind';
+  snapshot.mainSha='c'.repeat(40);
+  assert.ok(evaluateMerge(snapshot));
+  assert.equal(evaluateMerge({...snapshot,mergeQueueEnabled:true}),null);
+  snapshot.queue={isMergeQueueEnabled:true};
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async(...args)=>{
+    calls.push(args);snapshot.queue.isInMergeQueue=true;
+  },log:message=>logs.push(message)});
+  assert.deepEqual(calls[0][1],['pr','merge','1','--repo',repository,'--match-head-commit',head]);
+  assert.match(logs.at(-1),/queued for protected merge; not merged yet/);
+});
+
+for(const [name,change] of [
+  ['blocked',s=>s.pr.mergeable_state='blocked'],
+  ['conflict',s=>s.pr.mergeable=false],
+  ['unknown',s=>s.pr.mergeable_state='unknown'],
+  ['no independent approval',s=>s.reviews=[]],
+  ['red CI',s=>s.checks[0].conclusion='failure'],
+  ['old head',s=>s.checks[0].head_sha=base],
+  ['fork',s=>s.pr.head.repo.full_name='outside/fork']
+]) test('queue does not bypass '+name,()=>{
+  const snapshot=fixture();snapshot.mergeQueueEnabled=true;change(snapshot);
+  assert.ok(evaluateMerge(snapshot));
+});
+
+for(const state of [
+  {isMergeQueueEnabled:true,isInMergeQueue:true},
+  {isMergeQueueEnabled:true,autoMergeRequest:{enabledAt:'2026-10-21T00:00:00Z'}}
+]) test('already queued or auto-merge enabled does not submit twice '+JSON.stringify(state),async()=>{
+  const snapshot=fixture();snapshot.queue=state;
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>assert.fail('duplicate merge'),log:()=>{}});
+});
+
+for(const next of [
+  {isMergeQueueEnabled:false},
+  {isMergeQueueEnabled:true,headRefOid:base},
+  {isMergeQueueEnabled:true,isInMergeQueue:true}
+]) test('changed preflight queue policy/head/request prevents command '+JSON.stringify(next),async()=>{
+  const snapshot=fixture();snapshot.queueSequence=[{isMergeQueueEnabled:true},next];
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>assert.fail('stale merge'),log:()=>{}});
+});
+
+for(const outcome of ['auto','unknown','changed-head']) test('queue readback classifies '+outcome,async()=>{
+  const snapshot=fixture(),logs=[];snapshot.queue={isMergeQueueEnabled:true};
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>{
+    if(outcome==='auto') snapshot.queue.autoMergeRequest={enabledAt:'2026-10-21T00:00:00Z'};
+    if(outcome==='changed-head') snapshot.queue.headRefOid=base;
+  },log:message=>logs.push(message)});
+  assert.match(logs.at(-1),outcome==='auto'?/auto-merge enabled; waiting/:/unconfirmed/);
+});
+
+test('uncertain CLI outcome is never retried',async()=>{
+  const snapshot=fixture(),logs=[];snapshot.queue={isMergeQueueEnabled:true};let calls=0;
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>{calls++;throw Error('timed out after possible submission');},log:message=>logs.push(message)});
+  assert.equal(calls,1);assert.match(logs.at(-1),/outcome unconfirmed/);
+});
+
+for(const result of [
+  {},{errors:[{message:'forbidden'}]},
+  {data:{repository:{pullRequest:{number:1,headRefOid:head,baseRefName:'main',isInMergeQueue:false,autoMergeRequest:null}}}},
+  {data:{repository:{pullRequest:{number:1,headRefOid:head,baseRefName:'other',isMergeQueueEnabled:false,isInMergeQueue:false,autoMergeRequest:null}}}}
+]) test('missing or invalid queue evidence fails closed '+JSON.stringify(result),async()=>{
+  await assert.rejects(readMergeQueueState({repository,number:1,headSha:head,token:'fixture-token',fetchImpl:async()=>({ok:true,json:async()=>result})}),/Incomplete or stale/);
 });

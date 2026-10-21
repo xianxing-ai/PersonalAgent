@@ -6,6 +6,18 @@ Linux ECS 负责 AgentArts 镜像相关 PR；普通 PR 的完整 Windows 检查�
 
 ## 路由与验证
 
+### Merge Queue 兼容（组织仓库）
+
+Foundation 接收 `merge_group: checks_requested`，验证 payload 的仓库、`refs/heads/main` 基线、队列 ref 与 `GITHUB_REF` 一致、组合 SHA 与 `GITHUB_SHA` 一致。队列按整个组合提交执行 Windows 和 Linux 两条原有检查，不按某个 PR 的文件清单缩减覆盖。
+
+队列始终使用 GitHub 托管 `windows-latest` / `ubuntu-24.04`，忽略普通 PR 的 ECS 开关与 override。队列分支属于目标仓库不代表其中所有代码均来自同仓库，故不能据此把 fork 代码交给持久 ECS。普通 PR 的文件路由、Windows 奇偶策略、override 和 Linux ECS 分配不变。
+
+最终 `check` 独立要求两个托管平台实际通过，回执必须匹配本次 run、attempt 和组合 SHA；缺少、跳过、取消、失败或身份不符都不能通过。普通 PR 仍绑定 PR head，不能与队列的组合 SHA 混用。不新增 main push 全量检查，不推送镜像或部署。
+
+代码合并、必要 CI 通过后才能由管理员启用队列规则，保留原审批及必需检查。建议初始 Merge commit、构建并发 1、每组合并 1–5 个 PR、所有条目必须通过；超时应按历史真实 CI 耗时设置。此文档不是设置已开启的证明，必须以 GitHub 规则读回和实际 `merge_group` 运行验收为准。
+
+官方依据：[队列管理](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)、[merge_group 事件](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group)。
+
 Foundation 的 `ecs-linux-check` 读取 GitHub 当前 PR 的完整分页文件列表，再生成仅包含所选任务的矩阵：
 
 | PR 修改范围 | 实际 CI |

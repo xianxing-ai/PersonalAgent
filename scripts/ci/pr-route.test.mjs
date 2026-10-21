@@ -79,18 +79,18 @@ function fakeFiles({files,count=files.length,finalHead=head,status=200}) {
 test('the CLI router includes the second file page before deciding image-only',async()=>{
   const files=Array.from({length:100},(_,i)=>({filename:`apps/agentarts-runtime/${i}.mjs`}));
   files.push({filename:'apps/desktop/main.js'});
-  const result=await resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files})});
+  const result=await resolveRoute({event,eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files})});
   assert.equal(result.selection.mode,'both');
   assert.equal(result.matrix.include[0].name,'Windows CI (ECS)');
 });
 test('API failures and a moving PR head cannot produce a successful route',async()=>{
   const files=[{filename:'apps/agentarts-runtime/a.mjs'}];
-  await assert.rejects(resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files,status:403})}),/read failed/);
-  await assert.rejects(resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files,finalHead:sha})}),/head moved/);
-  await assert.rejects(resolveRoute({event:{pull_request:{...event.pull_request,head:{sha}}},repository,token:'fixture',fetchImpl:fakeFiles({files})}),/head moved/);
+  await assert.rejects(resolveRoute({event,eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files,status:403})}),/read failed/);
+  await assert.rejects(resolveRoute({event,eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files,finalHead:sha})}),/head moved/);
+  await assert.rejects(resolveRoute({event:{pull_request:{...event.pull_request,head:{sha}}},eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files})}),/head moved/);
 });
 test('incomplete file evidence requires both actual platforms',async()=>{
-  const result=await resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files:[{filename:'apps/agentarts-runtime/a'}],count:3001})});
+  const result=await resolveRoute({event,eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files:[{filename:'apps/agentarts-runtime/a'}],count:3001})});
   assert.equal(result.selection.mode,'both');
 });
 test('automatic main reruns are disabled; explicit manual validation still checks both platforms',async()=>{
