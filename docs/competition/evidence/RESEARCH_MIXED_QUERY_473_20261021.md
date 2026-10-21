@@ -58,6 +58,7 @@ host 检查实际新注册工具、availability/export 同版绑定、主题/筛
 所有 invalid 均为 0；按原中文主题继续过滤，4 题共过滤 5 条，没有因改写成英文而全部放行。
 每条保留材料都有题名或摘要的实际主题词依据；这不是语义准确率或全文验收。
 两阶段逐请求 source URL、HTTP、原响应 SHA、元数据/摘要 hash、材料 ID、依据及实现文件 hash 见 [安全回执](RESEARCH_MIXED_QUERY_473_20261021.receipt.json)。
+`sourceSha256` 是本机实际执行的检出文件原始字节（既有四份 TS 为 CRLF，新增 relevance.ts 为 LF），不是 Git 规范化 LF blob 的 hash；跨平台复现须区分换行归一与逻辑差异。
 
 复现（先构建本模块及依赖）：
 
