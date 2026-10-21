@@ -1,4 +1,10 @@
 import {createHash} from 'node:crypto';
+export {createWindowsNativeSandboxExecutor, readWindowsNativeHelperAttestation} from './windows-native-sandbox.js';
+export {verifyWindowsNativeSandbox} from './native-sandbox-probe.js';
+export type {WindowsNativeSandboxProbeOptions, WindowsNativeSandboxCapabilities} from './native-sandbox-probe.js';
+export type {NativeSandboxMode,NativeSandboxBackend,NativeSandboxNetworkPolicy,TrustedSandboxProfile,
+  TrustedSandboxBinding,TrustedSandboxExecutionRequest,SandboxExecutionResult,TrustedSandboxExecutor,
+  WindowsNativeSandboxExecutorOptions} from './native-sandbox.js';
 export {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools} from './isolated-repair.js';
 export {createHarnessCandidateTrialTool,HARNESS_TRIAL_TOOL,createHarnessCandidateAdoptionTool,HARNESS_PREPARE_ADOPTION_TOOL,
   createHarnessCandidateRecoveryTool,HARNESS_RECONCILE_TRIAL_TOOL} from './harness-trials.js';
@@ -43,7 +49,7 @@ export {
   WORKSPACE_COMMAND_TOOL_NAME,
   WORKSPACE_COMMAND_TOOL_VERSION,
 } from './command.js';
-export type {WorkspaceCommandOptions, WorkspaceCommandRecipe, WorkspaceCommandResult} from './command.js';
+export type {WorkspaceCommandOptions, WorkspaceCommandRecipe, WorkspaceCommandResult, WorkspaceCommandSandbox} from './command.js';
 export {
   MAX_SERIALIZED_WORKSPACE_PATCH_INPUT_BYTES,
   MAX_WORKSPACE_PATCH_EDITS,
