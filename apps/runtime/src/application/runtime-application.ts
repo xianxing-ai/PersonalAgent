@@ -325,6 +325,16 @@ function assistantText(resultSummary: string): string {
   return resultSummary.replace(MODEL_METADATA, '').trim();
 }
 
+/**
+ * Wording for a task parked after a confirmed local tool write. "No readable receipt" reads as
+ * "the write never happened" — callers then repeat a calendar cancel that already applied. The
+ * message therefore names the tool and says the write is done; only the cloud continuation is
+ * pending, and `resumeConfirmedTask` is the way back.
+ */
+export function withheldExportMessage(toolName?: string): string {
+  return `${toolName ?? 'local tool'} already applied locally; cloud continuation requires a fresh host check`;
+}
+
 export interface ThinkingConfig {
   depth: number;
   fast: boolean;
@@ -1746,7 +1756,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(this.runtime.getTask(taskId).state==='running' && (loop?.continuation!==undefined
       || (loop?.pending && this.runtime.readToolExecutions(taskId).some(record=>record.state==='confirmed' && record.executionStarted && record.policyDecision==='allow')))) {
       this.runtime.saveCheckpoint(taskId,'competition-export-withheld',{withheld:true});
-      this.runtime.transitionTask(taskId,'waiting_reconciliation',{error:{code:'UNAUTHORIZED',message:'Local confirmed receipt retained; cloud continuation requires a fresh host check',retryable:false}});
+      // Name the confirmed tool: "no readable receipt" reads as "the write never happened",
+      // which made callers repeat an already-applied calendar/mail write. The write is done;
+      // only the cloud continuation is pending, and resumeConfirmedTask is the way back.
+      const confirmed=this.runtime.readToolExecutions(taskId)
+        .filter(record=>record.state==='confirmed'&&record.executionStarted&&record.policyDecision==='allow').at(-1);
+      this.runtime.transitionTask(taskId,'waiting_reconciliation',{error:{code:'UNAUTHORIZED',
+        message:withheldExportMessage(confirmed?.toolName),retryable:false}});
     }
   }
 
