@@ -1596,6 +1596,16 @@ async function initializeInstalledSkills() {
   }
 }
 
+async function initializeLocalLaya() {
+  if (!competitionMode || localLaya) return;
+  const {createLocalInboxClassifier} = await import('@personal-agent/runtime/application');
+  const {LayaActionChoiceService, LocalLayaHttpTransport} = await import('@personal-agent/cognition');
+  localLaya = createLocalLayaHost({projectRoot:path.resolve(dir, '../../..'),
+    createService:createLocalInboxClassifier,
+    createChooser:({port,getApiKey}) => new LayaActionChoiceService(new LocalLayaHttpTransport(port,getApiKey)),
+    onUpdate:publish});
+}
+
 async function initializeRuntime() {
   const runtimeModule = await import('@personal-agent/runtime/application');
   const runtimeRoot=await import('@personal-agent/runtime');
@@ -1639,6 +1649,7 @@ async function initializeRuntime() {
     const dbPath = dataPaths.runtime;
     mkdirSync(path.dirname(dbPath), {recursive: true});
     if (competitionMode) {
+      await initializeLocalLaya();
       const cloudBinding=agentArtsConfig.runtimeBinding();
       if (!cloudBinding) throw Error(agentArtsConfig.snapshot().reason);
       activeCloudBinding = cloudBinding;
@@ -1891,11 +1902,6 @@ async function initializeRuntime() {
             learningApplication.assertDispatchBinding(saved);
           }
         }});
-      const {LayaActionChoiceService, LocalLayaHttpTransport} = await import('@personal-agent/cognition');
-      localLaya = createLocalLayaHost({projectRoot:path.resolve(dir, '../../..'),
-        createService:runtimeModule.createLocalInboxClassifier,
-        createChooser:({port,getApiKey}) => new LayaActionChoiceService(new LocalLayaHttpTransport(port,getApiKey)),
-        onUpdate:publish});
       mailConfig = createMailConfig({userData:app.getPath('userData'), safeStorage,
         onRevoke:async () => {await connectorConversationTools?.invalidate('mail');await mailHost?.cancel();},
         onCloudRevoke:async () => {await mailAnalysisHost?.revoke();}});
@@ -3002,8 +3008,8 @@ async function action(event, name, payload) {
     const response = await client.call('authorization.respond', calendarApprovalResponse(payload));
     publish();return response;
   }
-  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.enableCloud','mail.disableCloud','laya.start','laya.stop'].includes(name)) {
-    if (sender !== admin || !competitionMode || !mailConfig || !localLaya) throw Error('此操作仅允许从本项目设置调用');
+  if (name === 'laya.start' || name === 'laya.stop') {
+    if (sender !== admin || !competitionMode || !localLaya) throw Error('此操作仅允许从本项目设置调用');
     if (name === 'laya.start') {
       localServicesStopped = false;
       const result = await localLaya.start();
@@ -3018,6 +3024,9 @@ async function action(event, name, payload) {
       publish();
       return result;
     }
+  }
+  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.enableCloud','mail.disableCloud'].includes(name)) {
+    if (sender !== admin || !competitionMode || !mailConfig || !localLaya) throw Error('此操作仅允许从本项目设置调用');
     if (name === 'mail.configure') {await mailConfig.configure(payload); mailFailure = '';}
     if (name === 'mail.enable') mailConfig.enableSession(payload);
     if (name === 'mail.disable') await mailConfig.revoke();
@@ -3824,6 +3833,9 @@ app.whenReady().then(async () => {
   });
   try {
     conversations = new Conversations(dataPaths.conversations);
+    // The cloud startup gate must not defer explicit local service management.
+    // Constructing this owned host does not load weights or start a process.
+    await initializeLocalLaya();
     await initializeInstalledSkills();
     if (!competitionMode) restoreModelConfig();
     const startup = await runtimeStartup.start();

@@ -1,0 +1,432 @@
+{
+  "kind": "arm64_existing_image_source_trace",
+  "version": 1,
+  "issue": 459,
+  "profile": "huawei_ict_agentarts",
+  "image": {
+    "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+    "indexDigest": "sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+    "memberDigest": "sha256:119e0cb2cbaa940e91c578d0e8030cf0c10ffff76bef3ffff07aaee917c15f8f",
+    "configDigest": "sha256:6095b00793ecc08a46d4973e260b929d37a4cf6d8d63d65d8d03e1ddd01d6a49",
+    "created": "2026-10-20T09:54:25.136922351Z",
+    "os": "linux",
+    "architecture": "arm64",
+    "user": "node",
+    "workingDirectory": "/opt/personal-agent"
+  },
+  "immutableArchive": {
+    "bytes": 96164864,
+    "sha256": "826170625dff104dac047fed2804b7fa346e353a43030c3a6b1a5c2d074eca0b",
+    "rawCommitted": false
+  },
+  "recovery": {
+    "retainedFiles": 111,
+    "retainedWriteVersions": 116,
+    "treeSha256": "1f798029c64a14633b69fb025bf8bb9dd7a15fb6c2bbb569c86b0c0f5c263b50",
+    "blobChecks": [
+      {
+        "digest": "sha256:10c63fb2a2011ac33da39cb3bd0d56c640a734566eca7b46a67add7785f18853",
+        "bytes": 3310
+      },
+      {
+        "digest": "sha256:119e0cb2cbaa940e91c578d0e8030cf0c10ffff76bef3ffff07aaee917c15f8f",
+        "bytes": 2384
+      },
+      {
+        "digest": "sha256:17104268d255fc4ef56577bf2f03e09542567085e9cc222922f504a60c939942",
+        "bytes": 1737
+      },
+      {
+        "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "bytes": 2
+      },
+      {
+        "digest": "sha256:51809ea1719c01b43b214dce501b84dd4df8f0b34265dca122a9765e05c528e3",
+        "bytes": 1712603
+      },
+      {
+        "digest": "sha256:542354021777165fa79e5e6241767c38b5ce78bd082b07d08596625901d8798f",
+        "bytes": 122
+      },
+      {
+        "digest": "sha256:6095b00793ecc08a46d4973e260b929d37a4cf6d8d63d65d8d03e1ddd01d6a49",
+        "bytes": 9901
+      },
+      {
+        "digest": "sha256:88ac5587c276f128eee364ec3639c5761741a72153ad0aee4e977668428f6028",
+        "bytes": 837
+      },
+      {
+        "digest": "sha256:a86139c8545fe38d81a160767eab8791023f36897db9f36820bc0480e75eb7e4",
+        "bytes": 49651454
+      },
+      {
+        "digest": "sha256:aa2c12bd65cbbf4b51c60fdb879e87d87851e756fe205078fffcf87c98adb138",
+        "bytes": 16386154
+      },
+      {
+        "digest": "sha256:bb393ff08855fbc19cd1d0cdab2753b6719eecb571e7c01b8c283fc43f71c752",
+        "bytes": 925
+      },
+      {
+        "digest": "sha256:bd77fc27dc8f8a29f6098d33cd8adae153af4da0797633f97b9c6cf86ce475a1",
+        "bytes": 198798
+      },
+      {
+        "digest": "sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+        "bytes": 856
+      },
+      {
+        "digest": "sha256:eefd98dee2235079ed2a9b229ec33ee600e532d5debcf7ab3f5bc802b2a80434",
+        "bytes": 49690
+      },
+      {
+        "digest": "sha256:f400d36d7784570c9fb7558e367d2b5d38e8b2f1d6faee041815acea7f87e669",
+        "bytes": 28115043
+      },
+      {
+        "digest": "sha256:f7bcc4c653d85847f8fa23ff6cd64a337cc26b47816970be2f4a24d43a80cb61",
+        "bytes": 11635
+      },
+      {
+        "digest": "sha256:fc03b5e40b38afd0c82e19e179133ea7b9b0740e12099f6464202f5c54f004c7",
+        "bytes": 444
+      }
+    ],
+    "layers": [
+      {
+        "index": 0,
+        "digest": "sha256:f400d36d7784570c9fb7558e367d2b5d38e8b2f1d6faee041815acea7f87e669",
+        "bytes": 28115043,
+        "diffId": "sha256:3bfd0b5a99a1f25a488230217defd5c2781ad861f692f5df22d9734bbddfc53d",
+        "commandSha256": "24fa1633a457e7432734cad0d66a8df739d4dfbdd84b9cb855315a15682a8dab",
+        "inputCopy": false,
+        "recoveredVersions": 0
+      },
+      {
+        "index": 1,
+        "digest": "sha256:10c63fb2a2011ac33da39cb3bd0d56c640a734566eca7b46a67add7785f18853",
+        "bytes": 3310,
+        "diffId": "sha256:2e5e7ab91620df7fcf97edd65e7b2e8e12828af60a991dcc46d5eb53c15ab3e0",
+        "commandSha256": "360dfe4e834b5394f3517c38b128ec0999d38b0561515450abf4a4f84ae58204",
+        "inputCopy": false,
+        "recoveredVersions": 0
+      },
+      {
+        "index": 2,
+        "digest": "sha256:a86139c8545fe38d81a160767eab8791023f36897db9f36820bc0480e75eb7e4",
+        "bytes": 49651454,
+        "diffId": "sha256:c5b64edb664f7d78bdb50c872b5cdd776f8f1afca1ac83a14b3d98daa09133ea",
+        "commandSha256": "7c917ba3e8305355a2d56fa6e6ea326c427a497fa1ac2f88f9c345745eacf2b3",
+        "inputCopy": false,
+        "recoveredVersions": 0
+      },
+      {
+        "index": 3,
+        "digest": "sha256:51809ea1719c01b43b214dce501b84dd4df8f0b34265dca122a9765e05c528e3",
+        "bytes": 1712603,
+        "diffId": "sha256:f7075477d1d450009b2809a03d1a053c0e98e78d527fb2dae55568961c5602ff",
+        "commandSha256": "7225cdbad45c82e7cd07b19fb461f74ed434e8e95c76d12ac3efeb2c6f4f9b7e",
+        "inputCopy": false,
+        "recoveredVersions": 0
+      },
+      {
+        "index": 4,
+        "digest": "sha256:fc03b5e40b38afd0c82e19e179133ea7b9b0740e12099f6464202f5c54f004c7",
+        "bytes": 444,
+        "diffId": "sha256:9616104f110f470dad9e9dfb831de6d170683e0db0e1d19fa1645c2e27e34d33",
+        "commandSha256": "2a89cd8a5874f4fef91c2a9c2b0a3141347caa66387af15e98df0c348b9f3dbd",
+        "inputCopy": false,
+        "recoveredVersions": 0
+      },
+      {
+        "index": 5,
+        "digest": "sha256:542354021777165fa79e5e6241767c38b5ce78bd082b07d08596625901d8798f",
+        "bytes": 122,
+        "diffId": "sha256:1a3bfb7a1dd3d232f1dff122aa43966da70dcc573e7ccab2ef65fedeb9512390",
+        "commandSha256": "c110e93dbf52b05468d6c93b35a213546dd585589781e7c701af7cabc14a4a29",
+        "inputCopy": false,
+        "recoveredVersions": 0
+      },
+      {
+        "index": 6,
+        "digest": "sha256:f7bcc4c653d85847f8fa23ff6cd64a337cc26b47816970be2f4a24d43a80cb61",
+        "bytes": 11635,
+        "diffId": "sha256:4e793c75d73927bc8d68b6df4dedb94099e75633113c98782497af47516c3ec4",
+        "commandSha256": "c3c62ba1cd851f1d727fa20157bb8fe088de3232df1c221ffd67f2a72d634033",
+        "inputCopy": true,
+        "recoveredVersions": 3
+      },
+      {
+        "index": 7,
+        "digest": "sha256:bb393ff08855fbc19cd1d0cdab2753b6719eecb571e7c01b8c283fc43f71c752",
+        "bytes": 925,
+        "diffId": "sha256:aafdf6e4ef825ab9d1038290cfbe486a632515a582c43355e58eaca552d18775",
+        "commandSha256": "2664fabdc3d30a3101caf36d20c9712433b9bdc5c034b53859acdabf76a1fb41",
+        "inputCopy": true,
+        "recoveredVersions": 5
+      },
+      {
+        "index": 8,
+        "digest": "sha256:aa2c12bd65cbbf4b51c60fdb879e87d87851e756fe205078fffcf87c98adb138",
+        "bytes": 16386154,
+        "diffId": "sha256:e0111dd4ac739e67dbb277c880099e4765fc36e9e8f7cd7b8fc75629952f5291",
+        "commandSha256": "7f8e4527eb8916080cd83169abb6a3433e175c80a8df932bfb1ceb3a0e516498",
+        "inputCopy": false,
+        "recoveredVersions": 0
+      },
+      {
+        "index": 9,
+        "digest": "sha256:bd77fc27dc8f8a29f6098d33cd8adae153af4da0797633f97b9c6cf86ce475a1",
+        "bytes": 198798,
+        "diffId": "sha256:9f02df714ef0215303e151d5f145f5f4e855cfb960cf2d5225dc756553b24c4c",
+        "commandSha256": "e15a4ec412408767567e4d47a188375be205ec2dc47e194fd058e9af15b951f4",
+        "inputCopy": true,
+        "recoveredVersions": 85
+      },
+      {
+        "index": 10,
+        "digest": "sha256:eefd98dee2235079ed2a9b229ec33ee600e532d5debcf7ab3f5bc802b2a80434",
+        "bytes": 49690,
+        "diffId": "sha256:7b004e00d9e8276799347c4dd916f32c7afaa555737fd25c0272fc80ac656006",
+        "commandSha256": "979e5a6e02c5bc001b7fab0ca9dbac31fb9cc3734365f69021522659f03a5d61",
+        "inputCopy": true,
+        "recoveredVersions": 23
+      }
+    ],
+    "manifestSha256": "68f3c95ddf7ac922d15833beb01e1f3063620f880d16d550135925deb6b056d2",
+    "allLayerDiffIdsVerified": true
+  },
+  "provenance": [
+    {
+      "digest": "sha256:17104268d255fc4ef56577bf2f03e09542567085e9cc222922f504a60c939942",
+      "predicateType": "https://slsa.dev/provenance/v1",
+      "buildType": "https://github.com/moby/buildkit/blob/master/docs/attestations/slsa-definitions.md",
+      "invocationId": "ybprz5ffee6d8sn0dwndf4v0x",
+      "startedOn": "2026-10-20T09:54:21.704603206Z",
+      "finishedOn": "2026-10-20T09:54:25.283936147Z",
+      "declaredVcs": {
+        "source": "https://github.com/zemeng5208/PersonalAgent.git",
+        "revision": "db936167e1f6d5cf546d3558a2b3a98cb135a529",
+        "contextLeaf": "context-xyzC6Y",
+        "dirtyFieldPresent": false
+      },
+      "baseDependencies": [
+        {
+          "sha256": "4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d",
+          "uriSha256": "e86c98dd77341ae78d810a2afef2c7ef106f3ee9e53c25c1796dd87c25fbdd10"
+        }
+      ]
+    }
+  ],
+  "candidate": {
+    "revision": "fe60cce45de113e58df5ede35a98058b1b726fef",
+    "tree": "77b086593d8334ef69df0a5a9d7a2cd7ea6c3ada",
+    "commit": [
+      "fe60cce45de113e58df5ede35a98058b1b726fef",
+      "db936167e1f6d5cf546d3558a2b3a98cb135a529",
+      "2026-10-20T18:10:32+08:00",
+      "2026-10-20T18:10:32+08:00"
+    ],
+    "generatedOrStrippedConfigurationExact": 8,
+    "directSourceLfEquivalent": 29,
+    "compilerOutputExact": 74,
+    "totalCovered": 111,
+    "sourceLock": {
+      "path": "package-lock.json",
+      "gitBlob": "326e426c54d2390b799ca9a830584cc602e3dea4",
+      "sha256": "34a6d4573a3d5f0ad376ed2b0ce133033e479ffa997f512a35b6e75f676b1a4f",
+      "lfSha256": "34a6d4573a3d5f0ad376ed2b0ce133033e479ffa997f512a35b6e75f676b1a4f",
+      "bytes": 90354
+    },
+    "contextGenerator": {
+      "path": "apps/agentarts-runtime/scripts/image-context.mjs",
+      "gitBlob": "a51f4100afe13736c69b792bed6f966809564f11",
+      "sha256": "96b3a048d484f66f1297feeac3e1353a2a20209ef8b6a1eb8bf774acdfd2453e",
+      "lfSha256": "96b3a048d484f66f1297feeac3e1353a2a20209ef8b6a1eb8bf774acdfd2453e",
+      "bytes": 6367
+    },
+    "dockerfile": {
+      "path": "apps/agentarts-runtime/Dockerfile",
+      "gitBlob": "bfd97b7b84361ec71964c6d0435d35c7af633d03",
+      "sha256": "652d37513e0844f3c69f005b7ea05b25b603d242a64459efd3a8791f8d72a397",
+      "lfSha256": "652d37513e0844f3c69f005b7ea05b25b603d242a64459efd3a8791f8d72a397",
+      "bytes": 1061
+    }
+  },
+  "alternatives": [
+    {
+      "revision": "db936167e1f6d5cf546d3558a2b3a98cb135a529",
+      "summary": {
+        "exactBytes": 8,
+        "lfOnly": 26,
+        "different": 3,
+        "missing": 0,
+        "compilerVerificationPending": 74
+      },
+      "materialDifferences": [
+        {
+          "path": "apps/agentarts-runtime/src/main.mjs",
+          "method": "direct_copy",
+          "imageSha256": "335cc4ea2906630251eeca7bf868e558487093bb7452168a659f2e5e0a4a6f31",
+          "expectedSha256": "a7ebda7dd11911776a8ade80b7ad0ba54b2f09014ea7d4158ab777c4b5d3508d",
+          "source": {
+            "path": "apps/agentarts-runtime/src/main.mjs",
+            "gitBlob": "f0afe70633c2e851bcb07a37378a84cc9c207c4a",
+            "sha256": "a7ebda7dd11911776a8ade80b7ad0ba54b2f09014ea7d4158ab777c4b5d3508d",
+            "lfSha256": "a7ebda7dd11911776a8ade80b7ad0ba54b2f09014ea7d4158ab777c4b5d3508d",
+            "bytes": 7789
+          }
+        },
+        {
+          "path": "apps/agentarts-runtime/src/model-proxy.mjs",
+          "method": "direct_copy",
+          "imageSha256": "8bb86c5d1ec69a4999cb5152aeb50c8d8b875242a4f74a528fe0239c90100c14",
+          "expectedSha256": "b17af7bfad0f9094df70d1eacc302f7d21df7c430c03b8b637f1f264cdcc5041",
+          "source": {
+            "path": "apps/agentarts-runtime/src/model-proxy.mjs",
+            "gitBlob": "783c94da32b7a3e61ee56b5a1a500719148dbc05",
+            "sha256": "b17af7bfad0f9094df70d1eacc302f7d21df7c430c03b8b637f1f264cdcc5041",
+            "lfSha256": "b17af7bfad0f9094df70d1eacc302f7d21df7c430c03b8b637f1f264cdcc5041",
+            "bytes": 5553
+          }
+        },
+        {
+          "path": "apps/agentarts-runtime/src/role-receipts.mjs",
+          "method": "direct_copy",
+          "imageSha256": "7a55951b55772b397ba9fa2bbc2149bda4ecf1602fa0e792802466d5705b2816",
+          "expectedSha256": "67fb4b624f4adf6636dc10588464f3bc403207ee3d7e7351df9704c3a77714c0",
+          "source": {
+            "path": "apps/agentarts-runtime/src/role-receipts.mjs",
+            "gitBlob": "91ec892a3672b6cf087eb88584cfd4d80328f5a2",
+            "sha256": "67fb4b624f4adf6636dc10588464f3bc403207ee3d7e7351df9704c3a77714c0",
+            "lfSha256": "67fb4b624f4adf6636dc10588464f3bc403207ee3d7e7351df9704c3a77714c0",
+            "bytes": 4071
+          }
+        }
+      ]
+    },
+    {
+      "revision": "19ee32e1b76a824d09bede8bb8844a6a31c0e70d",
+      "summary": {
+        "exactBytes": 7,
+        "lfOnly": 29,
+        "different": 1,
+        "missing": 0,
+        "compilerVerificationPending": 74
+      },
+      "materialDifferences": [
+        {
+          "path": "packages/contracts/package.json",
+          "method": "stripped_workspace_manifest",
+          "imageSha256": "4c75d8776d046045eb16eb1bdccc2d503540098a65b0ba600a7afff494969d72",
+          "expectedSha256": "f852cb0591dbadd8df78790ebb337d6b2f78fedab5d6e27e38f2839c80f9e9ab",
+          "source": {
+            "path": "packages/contracts/package.json",
+            "gitBlob": "e737fa7a76c5432efa99f76916e53a876830dabf",
+            "sha256": "2bc4a94014e22b47c15c6fd2971f5243b3ff844dd23cf78c8fcd992f15268708",
+            "lfSha256": "2bc4a94014e22b47c15c6fd2971f5243b3ff844dd23cf78c8fcd992f15268708",
+            "bytes": 1292
+          }
+        }
+      ]
+    }
+  ],
+  "historyLookup": [
+    {
+      "context": "desktop-linux",
+      "runningContainers": 0,
+      "records": 29,
+      "firstCreatedAt": "2026-10-08T12:55:20.040606586Z",
+      "lastCreatedAt": "2026-10-17T04:53:36.741533019Z",
+      "targetInvocationPresent": false
+    },
+    {
+      "context": "default",
+      "runningContainers": 0,
+      "records": 29,
+      "firstCreatedAt": "2026-10-08T12:55:20.040606586Z",
+      "lastCreatedAt": "2026-10-17T04:53:36.741533019Z",
+      "targetInvocationPresent": false
+    }
+  ],
+  "remoteEvidence": {
+    "safeChainSha256": "cc996218ddcfdef7af373ddf713fff7e26d720ef6d34ce77bb36d9061852b343",
+    "candidate": {
+      "commit": "fe60cce45de113e58df5ede35a98058b1b726fef",
+      "parent": "db936167e1f6d5cf546d3558a2b3a98cb135a529",
+      "authorDate": "2026-10-20T10:10:32Z",
+      "committerDate": "2026-10-20T10:10:32Z",
+      "secondsAfterConfigCreation": 966.863077649
+    },
+    "releaseSourceSemantics": "sourceRevision and sourceDirty are read when release.json is written, after optional build/push; built=false does not bind those values to the earlier build",
+    "originalReleaseReceiptRelativePath": ".cache/verification-20261019/context-release/release.json",
+    "buildWindow": {
+      "from": "2026-10-20T08:30:00Z",
+      "to": "2026-10-20T11:00:00Z",
+      "totalRuns": 66,
+      "previewOrPublishRunCount": 0
+    },
+    "provenanceHeadRuns": {
+      "head": "db936167e1f6d5cf546d3558a2b3a98cb135a529",
+      "total": 26,
+      "workflowNames": [
+        "Approved PR auto-merge",
+        "CI failure feedback"
+      ]
+    },
+    "candidateHeadRuns": {
+      "head": "fe60cce45de113e58df5ede35a98058b1b726fef",
+      "total": 0
+    },
+    "releases": {
+      "count": 7,
+      "newestPublished": "2026-10-16T04:41:45Z",
+      "targetIdentifierMatches": 0
+    },
+    "delegatedGitHubApi": {
+      "fixedSubjectAttestationsHttpStatus": 404,
+      "attestationCount": null,
+      "statusMeaning": "404 is not proof that OCI or external attestations do not exist",
+      "artifactCollectionHttpStatus": 200,
+      "artifactTotalCount": 386,
+      "pagesRead": 4,
+      "buildWindowCandidateCount": 2,
+      "buildWindowCandidateIds": [
+        12257348311,
+        12257128281
+      ],
+      "legacyNamedCandidateCount": 29,
+      "targetDigestInvocationOrContextNameMatches": 0,
+      "artifactDownloads": 0
+    },
+    "sessionHeaderLookup": {
+      "dateDirectories": [
+        "2026-10-19",
+        "2026-10-20"
+      ],
+      "fileCount": 243,
+      "sessionMetaFirstLineCount": 243,
+      "parseFailureCount": 0,
+      "inaccessibleCount": 0,
+      "matchCount": 0,
+      "messageBodiesRead": 0
+    }
+  },
+  "originalSanitizedReceiptHashes": {
+    "recovery": "2e09405dd73dc8c09fa287f9792c36ac88dc32ef1c0dc1ef854385c2df6fecda",
+    "comparison": "3796254069f596cf7ae9af6b84cc7ec3ac675ef1d09474486579c29818e23180",
+    "emit": "07cb637e21084bfc5ed9948b3acffd001ffb181bda5dfbca2705b582d2edce67"
+  },
+  "privacyAudit": {
+    "files": 111,
+    "credentialPatternMatches": [],
+    "privatePathPatternMatches": [],
+    "registryCredentials": false,
+    "lockResolvedHosts": [
+      "repo.huaweicloud.com"
+    ]
+  },
+  "uniqueHistoricalGitSourceEstablished": false,
+  "conclusion": "All 111 retained immutable-image inputs are recovered and mapped to a reproducible committed candidate. The recovered image differs from a clean db936 checkout in three direct runtime files; the declared VCS revision alone cannot identify the local context inputs. A post-build candidate and compiler equivalence do not identify a unique historical Git HEAD or unretained compiler/context bytes."
+}
