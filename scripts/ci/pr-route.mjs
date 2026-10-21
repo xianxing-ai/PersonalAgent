@@ -1,6 +1,7 @@
 import {readFile,appendFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {validateMergeGroup} from './merge-group-context.mjs';
 
 const imageRoot='apps/agentarts-runtime/';
 const sharedImageRoots=['packages/contracts/','packages/models/','packages/coordination/','packages/agentarts/','packages/client/','apps/runtime/','scripts/agentarts/','scripts/laya/','.github/workflows/','.github/actions/','scripts/ci/','tests/architecture/','tests/contracts/'];
@@ -55,6 +56,16 @@ export function matrixFor(mode,{fork=false,imageRunner='ecs',...windowsOptions}=
 export async function resolveRoute({event,eventName,ref,sha,repository,token,imageRunner='ecs',windowsRunner='auto',windowsOverrides='{}',fetchImpl=fetch}) {
   if(!/^[-\w]+\/[-\w.]+$/.test(repository??'')||!token) throw Error('Missing trusted GitHub context');
   if(['push','repository_dispatch'].includes(eventName)) throw Error('Automatic post-merge CI is disabled');
+  if(!['pull_request','workflow_dispatch','merge_group'].includes(eventName)) throw Error('Unsupported CI event');
+  if(eventName==='merge_group') {
+    validateMergeGroup({event,repository,ref,sha});
+    // Group refs are in this repository even when they include fork code. Never
+    // infer trusted provenance from that ref or reuse ordinary PR ECS overrides.
+    return {selection:{mode:'both',reason:'merge queue validates the complete synthetic group on both platforms'},
+      windows:{pool:'github',reason:'merge queue uses isolated GitHub-hosted runners'},
+      matrix:matrixFor('both',{imageRunner:'github',windowsRunner:'github'})};
+  }
+  if(eventName==='pull_request'&&!event?.pull_request) throw Error('Missing PR event');
   let selection={mode:'both',reason:'explicit manual validation'},fork=false,number,hostedIntegration=false;
   if(event.pull_request) {
     number=event.pull_request.number;
