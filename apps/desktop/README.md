@@ -4,6 +4,8 @@
 
 2026-10-21：PUBLIC 参考、知识源、远程 MCP、Obsidian 应用配对与语音权限回调接入原任务同一卡。口头 yes/no 仅引导原卡；系统权限与真实配对继续使用原流程。实现、兼容变化及 Fake/集成验证边界见[权限回调记录](../../docs/competition/evidence/APPLICATION_PERMISSION_CALLBACKS_20261021.md)。
 
+2026-10-21 Laya 设置「启动本地模型」修复：未配置云或邮件时也装配原本机服务管理宿主；仍仅管理员 Competition 设置可启动，保留模型发现、内存与停止门禁。真实模型健康、Synthetic 按钮验证和首次真实 UI 超时分别记录于[接线与验收说明](docs/laya-settings-startup-20261021.md)。
+
 2026-10-17 审查回归修复与验证边界见 [PR #376 修复记录](docs/PR376_REGRESSION_FIXES_20261017.md)。
 
 

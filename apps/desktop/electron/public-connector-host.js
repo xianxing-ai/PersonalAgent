@@ -6,6 +6,16 @@ const cacheProjection = cache => ({state:cache.state, fetchedAt:cache.fetchedAt,
   ageMs:cache.ageMs, ttlMs:cache.ttlMs,
   ...(cache.lastError ? {lastError:{code:cache.lastError.code, retryable:cache.lastError.retryable}} : {})});
 
+const researchRetrievalProjection = receipt => ({provider:receipt.provider, sourceUrl:receipt.sourceUrl,
+  policy:receipt.policy, rawCount:receipt.rawCount, invalidCount:receipt.invalidCount,
+  filteredCount:receipt.filteredCount, returnedCount:receipt.returnedCount, outcome:receipt.outcome,
+  message:receipt.message, matches:receipt.matches.slice(0,20).map(match=>({externalId:match.externalId,
+    basis:match.basis, terms:match.terms.slice(0,20)})),
+  ...(receipt.queryRewrite ? {queryRewrite:{strategy:receipt.queryRewrite.strategy,
+    originalQuery:receipt.queryRewrite.originalQuery, effectiveQuery:receipt.queryRewrite.effectiveQuery,
+    mappings:receipt.queryRewrite.mappings.map(mapping=>({source:mapping.source,target:mapping.target}))}} : {}),
+});
+
 /**
  * The GeoNames exact-name tier is the only path that resolves simplified-Chinese foreign city
  * names: Open-Meteo's `zh` index is Traditional and incomplete, so 纽约 and 首尔 match nothing at
@@ -63,12 +73,13 @@ export function createPublicConnectorHost({systemObservationFactory,
         },
         source:result.record.source, occurredAt:result.record.occurredAt, cache:cacheProjection(result.cache),
       })),
-      publicResult('research.search', research.RESEARCH_MODULE_VERSION, result => ({
+      {...publicResult('research.search', research.RESEARCH_SEARCH_VERSION, result => ({
         results:result.results.map(item => ({citation:item.record.contentRef,
           source:item.record.source, publishedAt:item.publishedAt,
           publishedTimeKind:item.publishedTimeKind, freshness:item.freshness, ageMs:item.ageMs})),
         cache:cacheProjection(result.cache),
-      })),
+        ...(result.retrieval ? {retrieval:researchRetrievalProjection(result.retrieval)} : {}),
+      })), exportPolicyVersion:'public-research-retrieval-v2'},
     ],
   });
   return Object.freeze({...composition, competitionToolAvailability:Object.freeze(
