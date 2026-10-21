@@ -76,8 +76,14 @@ test('production direct HTTPS model call preserves deadline and caller cancellat
   assert.equal(JSON.parse((await direct.json())[0].data.text).text,'synthetic direct model reply');
   assert.equal(f.first[0].authorization,'Bearer synthetic-model-secret');assert.equal(f.second.length,0);
   t.diagnostic('control-plane phase: already-expired');
-  const alreadyExpired=await f.post({'x-pa-deadline':new Date(Date.now()-1).toISOString()});
+  // This phase tests an already-expired deadline, not the relative precision
+  // of wall clocks in the test process and the separately spawned runtime.
+  // Keep the deadline unambiguously in the past on both sides of the request.
+  const alreadyExpiredQuery=marker+'-already-expired';
+  const alreadyExpired=await f.post({'x-pa-deadline':'2000-01-01T00:00:00.000Z'},undefined,alreadyExpiredQuery);
   assert.equal(alreadyExpired.status,504);await alreadyExpired.arrayBuffer();
+  assert.equal(f.first.filter(request=>request.body.includes(alreadyExpiredQuery)).length,0,
+    'an already-expired invocation must never reach the model origin');
   assert.equal(f.first.length,1,'an expired invocation must not dispatch a model request');
   t.diagnostic('control-plane phase: expired');
   const expiredQuery=marker+'-deadline',expiredRequests=()=>f.first.filter(request=>request.body.includes(expiredQuery)).length;
