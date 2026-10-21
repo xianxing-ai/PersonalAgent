@@ -17,6 +17,43 @@ function fixture() {
 test('two current-head CI checks and an eligible independent approval permit the request',()=>{
   assert.equal(evaluateMerge(fixture()),null);
 });
+test('unstable queue admission uses latest concrete checks, not the aggregate state',async()=>{
+  const snapshot=fixture(),calls=[],logs=[];
+  snapshot.pr.mergeable_state='unstable';
+  snapshot.checks.push({...snapshot.checks[0],id:3,name:'design-review-approval',conclusion:'failure'},
+    {...snapshot.checks[0],id:4,name:'design-review-approval'});
+  assert.ok(evaluateMerge(snapshot),'non-queue behavior stays fail-closed');
+  assert.equal(evaluateMerge({...snapshot,mergeQueueEnabled:true}),null);
+  snapshot.queue={isMergeQueueEnabled:true};
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async(...args)=>{
+    calls.push(args);snapshot.queue.isInMergeQueue=true;
+  },log:message=>logs.push(message)});
+  assert.equal(calls.length,1);
+  assert.deepEqual(calls[0][1],['pr','merge','1','--repo',repository,'--match-head-commit',head]);
+  assert.match(logs.at(-1),/queued for protected merge; not merged yet/);
+});
+
+for(const [name,change] of [
+  ['latest failure',s=>s.checks.push({...s.checks[0],id:5,conclusion:'failure'})],
+  ['latest running',s=>s.checks.push({...s.checks[0],id:5,status:'in_progress',conclusion:null})],
+  ['missing required check',s=>s.checks.pop()],
+  ['other failed check',s=>s.checks.push({...s.checks[0],id:5,name:'other',conclusion:'failure'})],
+  ['no approval',s=>s.reviews=[]],
+  ['unknown mergeability',s=>s.pr.mergeable=null],
+  ['conflict',s=>s.pr.mergeable=false],
+  ['unknown state',s=>s.pr.mergeable_state='unknown'],
+  ['dirty state',s=>s.pr.mergeable_state='dirty'],
+  ['blocked state',s=>s.pr.mergeable_state='blocked']
+]) test(`unstable queue eligibility still refuses ${name}`,async()=>{
+  const snapshot=fixture(),calls=[];
+  snapshot.pr.mergeable_state='unstable';
+  snapshot.queue={isMergeQueueEnabled:true};
+  change(snapshot);
+  assert.ok(evaluateMerge({...snapshot,mergeQueueEnabled:true}));
+  await mergeApproved({repository,token:'fixture-token',fetchImpl:fakeApi(snapshot),executeImpl:async()=>calls.push(1),log:()=>{}});
+  assert.equal(calls.length,0);
+});
+
 for(const [name,change] of [
   ['missing ECS CI',s=>s.checks.pop()],
   ['pending CI',s=>s.checks[1].status='in_progress'],
