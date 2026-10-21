@@ -106,6 +106,10 @@ Windows ECS 使用主机负责人安装的 `C:\ProgramData\PersonalAgentCI` 前�
 
 Windows 故障或公共池繁忙时，先查看 GitHub runner 注册、online/busy 状态与 job 是否已领取。可以等待空闲节点；需迁出时设置该 PR 的 `PA_WINDOWS_RUNNER_OVERRIDES` 为 `github`，取消旧 run 并确认已结束，再 **Re-run all jobs**。仅重跑失败 job 会复用旧 route 输出，不能用来切换池。全池故障可设置 `PA_WINDOWS_RUNNER=github`，同时清除冲突的逐 PR override。已领取但资源不足的任务会由主机准入失败；不杀其他进程、不把排队当通过，不假定 GitHub 自动迁移已领取任务。恢复后清除临时 override；已有运行不会因此原地改派。
 
+PR 也可显式添加精确标签 `ci:windows-github`，将所选 Windows 检查迁至普通 GitHub 托管池。路由从现有 PR API 的最后一次读回获取标签，不信任事件载荷里的标签。标签仅能选择 GitHub，不能选择 ECS 或自定义 Runner；先验证原有配置，非法变量或 override 仍失败。有效标签优先于有效的 Windows 变量、逐 PR override 和尾号分流；Linux 选择、平台分类、全部技术检查和合并门禁保持原规则，fork 继续强制隔离，merge group 继续使用既有双托管平台。
+
+添加或移除标签本身不会触发 Foundation，也不会修改已有运行。需要新的既有 PR 事件（例如先添加标签再正常推送代码触发 synchronize），或完整重跑原 PR 的所有 jobs 让 route 重算；仅重跑失败平台不会重算池。标签是池选择，不是健康证明或绿灯捷径；仍须核对准确 head、真实 Runner 和最终必需检查成功。手动 workflow_dispatch 的成功证据与 PR 必需检查的实际接受状态分别核实。
+
 ## 验证与证据
 
 `Runner probe` 是短任务，不包含安装或全量构建。默认不会随普通 PR 执行。合并后可手动选择 `windows-github`、`windows-pool`、`windows-pool-pair`、`windows-pool-three` 或 `ecs-17f8`；`ecs-17f8` 需要主机的同名定点标签。合并前可将待审提交普通推送至 `codex/ci-probe/<target>/<unique-suffix>` 触发相同流程，无需绕过 main 保护。只在刚读取的注册状态及主机负责人确认都满足时创建该探测 ref；pair/three 分别仅用于至少两台/三台已准备好的 Windows，验证多 job 在公共池的分配，不能假定任务必然落在不同机器。

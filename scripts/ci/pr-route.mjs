@@ -72,7 +72,7 @@ export async function resolveRoute({event,eventName,ref,sha,repository,token,ima
       matrix:matrixFor('both',{imageRunner:'github',windowsRunner:'github'})};
   }
   if(eventName==='pull_request'&&!event?.pull_request) throw Error('Missing PR event');
-  let selection={mode:'both',reason:'explicit manual validation'},fork=false,number,hostedIntegration=false;
+  let selection={mode:'both',reason:'explicit manual validation'},fork=false,number,hostedIntegration=false,hostedWindows=false;
   if(event.pull_request) {
     number=event.pull_request.number;
     if(!Number.isSafeInteger(number)||number<1)throw Error('Invalid PR number');
@@ -91,7 +91,10 @@ export async function resolveRoute({event,eventName,ref,sha,repository,token,ima
       files.push(...batch);if(batch.length<100)break;
     }
     selection=classifyPullRequest(files,pr.changed_files);
-    if((await api(`pulls/${number}`)).head.sha!==pr.head.sha)throw Error('PR head moved during file listing; use the new run');
+    const currentPr=await api(`pulls/${number}`);
+    if(currentPr.head.sha!==pr.head.sha)throw Error('PR head moved during file listing; use the new run');
+    hostedWindows=eventName==='pull_request'&&Array.isArray(currentPr.labels)&&
+      currentPr.labels.some(label=>label?.name==='ci:windows-github');
     hostedIntegration=isHostedIntegrationPullRequest({eventName,repository,pr});
   }
   const windows=selectWindowsRunner({fork,number,windowsRunner,windowsOverrides});
@@ -101,6 +104,13 @@ export async function resolveRoute({event,eventName,ref,sha,repository,token,ima
     selection,
     windows:{pool:'github',reason:'approved one-off integration branch; every selected platform uses GitHub-hosted runners'},
     matrix:matrixFor(selection.mode,{fork,number,imageRunner:'github',windowsRunner:'github',windowsOverrides:'{}'})
+  };
+  // A hosted-only opt-in takes precedence over valid pool selectors. Validate
+  // those selectors above first; a label must never conceal invalid config.
+  if(hostedWindows) return {
+    selection,
+    windows:{pool:'github',reason:'explicit ci:windows-github PR label'},
+    matrix:matrixFor(selection.mode,{fork,number,imageRunner,windowsRunner:'github',windowsOverrides:'{}'})
   };
   return {selection,windows,matrix};
 }
