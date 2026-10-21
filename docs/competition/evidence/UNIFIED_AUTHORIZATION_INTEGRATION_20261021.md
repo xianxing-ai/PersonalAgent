@@ -37,7 +37,8 @@
 - 外部提交 `e7607ecb` 只修 Runtime 三份旧测试：expiry 不得晚于原 deadline，迟到 approve 明确 TIMEOUT，已到期 failed 任务不能被 cancel 重开成另一终态。保留零执行/零 grant 与原失败事实。
 - `1cead754` 修五份 Main/桥接夹具：AST 读取真实新增 runId 回调；注入三个新 optional cleanup host；Laya-only fixture 明确本机授权初始化参与者且仍不创建云任务/模型；开发经验等待原卡并验证无第二 modal；语音仅映射现有卡，不能创造卡或显示私有参数摘要。连同上述 Runtime 三文件，实际定向 **82/82 pass、0 skip**，没有产品修改。
 - UI owner 的 `d654bd4d` 只修四份夹具：Renderer 使用真实审批去重 helper；反馈 AST 只选择唯一非空实际反馈语句；workspace Fake 工厂消费公开命令 descriptor/outputSchema；路径按真实 Windows canonical 路径比较。集成 `2a2075dd` 定向 **23/23 pass、0 skip**（两 panel 文件 21 项、原 workspace 失败 case 1 项、固定 recipe metadata 1 项），保留原权限、错误归属与取消断言。
-- 剩余原生整链 Hosted Server 不就绪检查单独诊断；不能把普通 Windows 平台或 helper 文件存在冒充 PSEC 支持，也不能凭本机实际 1/1 通过直接把 Hosted CI timeout 改成通过。最终修复和 current-head CI 结果另记。
+- 原生整链 Hosted Server 初轮只等 card，未观察真实失败任务，因而以 30 秒 timeout 隐去准备失败。同 job 的 OS probe 连 full-access baseline 均在 spawn 前报告配置不可用，不能据此推断平台缺 PSEC。`400b5671` 仅将自有 fixture 目录/SystemRoot 规范为实际 canonical 路径，并从原运行记录即时读取准备结果；生产 alias/junction 拒绝保持。只有真实 full-access baseline 成功且全部受限 probe 明确报告已知 PSEC API 不支持时，非 REQUIRED 环境才能 skip；未知、配置失败和 OS 行为断言失败继续 fail，REQUIRED=1 永不 skip。
+- Native owner 在普通用户、专用 TEMP junction 模拟别名输入及 REQUIRED=1 下，本次受影响整链/严格分类 **2/2 pass、0 skip**；focused 文件实际 **7/7 pass、0 skip**，没有把父测试 name filter 冒称只跑 prelude。原始回执与边界由[原生证据](AUTHORIZATION_NATIVE_INTEGRATION_20261021.md)保存。此本机结果不证明 Hosted Server 已恢复；最终 current-head 完整 CI 仍须实际读回。
 
 ## 尚未由本记录证明
 
