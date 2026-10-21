@@ -33,7 +33,7 @@ Browser plugin not available；原执行沿仓库已有 Playwright/Electron 路�
 
 ## 可复查入口与限制
 
-原实施者脚本为 `apps/desktop/test/native-reasoning-slider-smoke.cjs`（实际 Product）及 `apps/desktop/test/model-thinking-renderer-smoke.cjs`（Renderer + Synthetic bridge）；构建/72 项聚焦测试由实施者另记，本次不重复计数或代签。完整原图 13 份的叶名、尺寸与 hash 均在独立 JSON 中；下面只复制最少五张已查看且安全的原图，字节不重绘、不替换实施者原件。
+原实施者脚本为 `apps/desktop/test/native-reasoning-slider-smoke.cjs`（实际 Product）及 `apps/desktop/test/model-thinking-renderer-smoke.cjs`（Renderer + Synthetic bridge）；构建/72 项聚焦测试由实施者另记，本次不重复计数或代签。[实施者脱敏回执与源/图 hash 索引](MODEL_THINKING_PICKER_20261021.receipt.json) 已由原 owner 在 `96eac987` 保存，随 picker 分支统一交付。完整原图 13 份的叶名、尺寸与 hash 另经本独立 JSON 复核；下面只复制最少五张已查看且安全的原图，字节不重绘、不替换实施者原件。
 
 真实模型/云、麦克风、账号、安装包、物理多屏/DPI 和 251px 完整展开搜索清单未由本记录验证。没有像素级 Codex 参考图，不宣称像素一致。静态或 Synthetic 检查不提升任何模型/平台接口的真实可用性。
 
