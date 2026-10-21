@@ -25,7 +25,7 @@ Conversations v4 兼容保留旧记录，增加可选 `modelSelection:'default'`
 
 验证入口：`node --test test/default-thinking-selection.test.mjs` 经过实际控制器→main 偏好分支→Runtime→显式合成 AgentArts 传输，核对六档默认模型与强度、手动原生强度及供应商默认省略，共八个请求；也验证目录/会话失效、持久化、回退备份与默认配置变更。`node test/model-thinking-renderer-smoke.cjs` 使用实际面板/工作区源码、显式合成桌面桥和独立临时浏览器，验证粗滑轨、小箭头选模型、搜索、原生枚举、默认组合、保存失败/重试、Escape 焦点及 251px 深浅主题。可用 `PA_PICKER_BROWSER` 选择已有 Playwright 浏览器渠道，`PA_PICKER_TEST_OUTPUT` 指定仓库外截图/结果目录。
 
-完整产品脚本 `node test/native-reasoning-slider-smoke.cjs` 加载实际 Electron main、Preload、面板、工作区及 Runtime，使用独立 userData 和显式合成传输；核对手动模型及默认轻度档的委派执行与主对话汇总请求，全局默认配置不得被改写。它还检查目录扩展模型、工作区独立选择、单滑块、窄屏及页面/控制台错误。可用 `PA_SLIDER_TEST_ELECTRON` 指定已有 Electron。移交方在旧 `f6c0dcc0` 工作树报告了 74 项定向检查及这两个渲染脚本通过；该历史回执不代替本独立分支新构建后的验证，当前分支结果见[接手与验证记录](../../docs/competition/evidence/MODEL_THINKING_PICKER_REVIEW_20261021.md)。请求回执证明接线，不代表供应商真实推理质量或平台验收；没有真实模型、麦克风或外部账号调用。
+完整产品脚本 `node test/native-reasoning-slider-smoke.cjs` 加载实际 Electron main、Preload、面板、工作区及 Runtime，使用独立 userData 和显式合成传输；核对手动模型及默认轻度档的委派执行与主对话汇总请求，全局默认配置不得被改写。它还检查目录扩展模型、工作区独立选择、单滑块、窄屏及页面/控制台错误。可用 `PA_SLIDER_TEST_ELECTRON` 指定已有 Electron。本独立分支在固定 `bff06880` 新构建后，72 项定向测试、Desktop typecheck、架构 3/3 及实际 Electron/Renderer 两脚本通过；原移交树的 74 项保留为历史结果。首次安装 DNS 和单项 TEMP rename 的外层限制及必要重试分别登记于[接手与验证记录](../../docs/competition/evidence/MODEL_THINKING_PICKER_REVIEW_20261021.md)。请求回执证明接线，不代表供应商真实推理质量或平台验收；没有真实模型、麦克风或外部账号调用。
 
 2026-10-20 交互优化工作包：统一侧栏、表单、按钮的悬停／按压／焦点反馈，设置切页采用可取消的短淡入；普通快照保留常规和外观页的交互节点。系统及应用降低动效时取消过渡。交付与证据范围见 [交互优化记录](docs/INTERACTION_POLISH_20261020.md)。已通过 PR #440 合入 main。
 
