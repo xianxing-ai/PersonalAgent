@@ -15,7 +15,10 @@ export interface AuthorizationQuestionRequest {
 }
 export interface AuthorizationSandbox {
   ref:string;label:string;mode:'read-only'|'workspace-write'|'full-access';revision:number;available:boolean;reason?:string;
+  kind?:'application_policy';native?:AuthorizationNativeExecution;
 }
+export interface AuthorizationNativeExecution {required:boolean;available:boolean;backend:'windows-psec'|'none'|'unavailable';enforced:boolean;
+  reason?:string;bindingDigest?:string;}
 export interface AuthorizationQuestionReceipt {
   questionId:string;revision:number;decision:AuthorizationDecision;receiptRef:string;
 }
@@ -23,6 +26,7 @@ interface Question {
   questionId:string;revision:number;state:AuthorizationQuestionState;taskId:string;conversationId:string;
   proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;deadline:string;expiresAt:string;
   requirements:AuthorizationRequirement[];sandbox:AuthorizationSandbox;ownerBinding:string;
+  baseSandboxRef?:string;
   decision?:AuthorizationDecision;receiptRef?:string;reason?:string;consumed:Record<string,string>;
   derivedFrom?:string;
 }
@@ -40,6 +44,8 @@ export interface AuthorizationQuestionsOptions {
   available():boolean;
   /** Real side effects require the original Runtime execution state in addition to the decision. */
   canExecute(request:Omit<AuthorizationQuestionRequest,'signal'>):boolean;
+  resolveProfile?:(request:Omit<AuthorizationQuestionRequest,'signal'>,selected:AuthorizationSandbox)=>string;
+  describeExecution?:(request:Omit<AuthorizationQuestionRequest,'signal'>|undefined,profile:AuthorizationSandbox)=>AuthorizationNativeExecution;
   onInvalidated?:(binding:{taskId:string;runId:string},state:'expired'|'cancelled'|'stale')=>void;
   now?:()=>number;onChange?:()=>void;
 }
@@ -108,7 +114,12 @@ export class AuthorizationQuestions {
   private current(question:Question):boolean {
     if(this.closed||this.now()>=Date.parse(question.state==='pending'?question.expiresAt:question.deadline))return false;
     const profile=this.profile();
-    if(profile.ref!==question.sandbox.ref||profile.revision!==question.sandbox.revision||!profile.available)return false;
+    if(profile.ref!==(question.baseSandboxRef??question.sandbox.ref)||profile.revision!==question.sandbox.revision||!profile.available)return false;
+    if(question.sandbox.native?.required){
+      const current=this.options.describeExecution?.(this.input(question),question.sandbox);
+      if(!current?.available||current.backend!==question.sandbox.native.backend
+        ||current.enforced!==question.sandbox.native.enforced||current.bindingDigest!==question.sandbox.native.bindingDigest)return false;
+    }
     const binding=this.options.readBinding(this.input(question));
     return binding?.conversationId===question.conversationId&&binding.digest===question.ownerBinding
       &&this.liveBindings.get(question.questionId)?.()===true;
@@ -131,12 +142,19 @@ export class AuthorizationQuestions {
     try {
       this.validate(request);
       if(this.closed||!this.options.available())fail('当前对话授权卡不可用，操作未获允许');
-      const signal=request.signal,input=this.normalize(request),binding=this.options.readBinding(input),profile=this.profile();
-      if(!binding||!profile.available||!assertCurrent())fail('原任务或沙箱已变化，操作未获允许');
+      const signal=request.signal,input=this.normalize(request),binding=this.options.readBinding(input),selected=this.profile();
+      const profileRef=this.options.resolveProfile?.(input,selected)??selected.ref;
+      const resolved=this.options.profiles.find(profile=>profile.ref===profileRef);
+      if(!resolved||profileRef!==selected.ref&&resolved.mode==='full-access')fail('不允许自动扩大为完全访问');
+      const profile={...resolved,revision:selected.revision,kind:'application_policy' as const,
+        native:this.options.describeExecution?.(input,resolved)??{required:false,available:false,backend:'unavailable' as const,enforced:false}};
+      if(!binding||!profile.available||!assertCurrent())fail('原任务或权限策略已变化，操作未获允许');
+      if(profile.native.required&&(!profile.native.available||profile.native.backend==='windows-psec'&&!profile.native.enforced))
+        fail(profile.native.reason??'本次外部进程执行后端不可用');
       if(!Number.isFinite(Date.parse(decisionDeadline))||Date.parse(decisionDeadline)<=this.now())fail('授权决定期限已过');
       const question:Question={questionId:randomUUID(),revision:1,state:'pending',...structuredClone(input),
         expiresAt:new Date(Math.min(Date.parse(request.deadline),Date.parse(decisionDeadline))).toISOString(),
-        conversationId:binding.conversationId,sandbox:profile,ownerBinding:binding.digest,consumed:{}};
+        conversationId:binding.conversationId,sandbox:profile,baseSandboxRef:selected.ref,ownerBinding:binding.digest,consumed:{}};
       this.liveBindings.set(question.questionId,()=>!signal.aborted&&assertCurrent());
       this.mutate(state=>{
         state.questions=state.questions.filter(item=>item.state==='pending'||this.now()<Date.parse(item.expiresAt)+86400000);
@@ -227,7 +245,7 @@ export class AuthorizationQuestions {
     const input=this.normalize(request),binding=this.options.readReceiptBinding?.(input);
     if(!question||question.state!=='allowed'||question.receiptRef!==receipt.receiptRef||question.revision!==receipt.revision
       ||question.consumed[requirementId]!==consumerId||digest(this.input(question))!==digest(input)
-      ||profile.ref!==question.sandbox.ref||profile.revision!==question.sandbox.revision||!profile.available
+      ||profile.ref!==(question.baseSandboxRef??question.sandbox.ref)||profile.revision!==question.sandbox.revision||!profile.available
       ||binding?.conversationId!==question.conversationId||binding.digest!==question.ownerBinding
       ||this.liveBindings.get(question.questionId)?.()!==true)fail('原已确认结果的读取许可已失效');
   }
@@ -246,7 +264,7 @@ export class AuthorizationQuestions {
     if(!binding||!sandbox.available)fail('原批次页不可执行');
     const question:Question={...input,questionId:randomUUID(),revision:1,state:'allowed',decision:'allow_once',receiptRef:randomUUID(),
       expiresAt:request.deadline,sandbox,conversationId:binding.conversationId,ownerBinding:binding.digest,
-      consumed:{},derivedFrom:parentReceipt.questionId};
+      baseSandboxRef:sandbox.ref,consumed:{},derivedFrom:parentReceipt.questionId};
     this.liveBindings.set(question.questionId,()=>!request.signal.aborted&&assertCurrent());
     this.mutate(state=>{
       // Completed derived pages already retain their exact approval/anchor in TaskRuntime.
@@ -258,11 +276,15 @@ export class AuthorizationQuestions {
   }
   snapshot(conversationId?:string) {
     return this.read().questions.filter(question=>!question.derivedFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
-      questionId:question.questionId,taskId:question.taskId,conversationId:question.conversationId,revision:question.revision,state:question.state,
+      questionId:question.questionId,taskId:question.taskId,conversationId:question.conversationId,sourceApprovalId:question.runId,
+      revision:question.revision,state:question.state,
       title:'允许本次操作？',description:'本次决定覆盖以下独立权限；执行前仍逐项校验原任务、参数、期限与沙箱。',toolName:question.toolName,
       expiresAt:question.expiresAt,canAlways:question.requirements.every(requirement=>hash(requirement.ruleBindingDigest)),
       requirements:question.requirements.map(({requirementId,kind,summary,scopes})=>({requirementId,kind,summary,scopes:[...scopes]})),
-      sandbox:{label:question.sandbox.label,mode:question.sandbox.mode,revision:question.sandbox.revision},
+      sandbox:{kind:'application_policy' as const,label:question.sandbox.label,mode:question.sandbox.mode,revision:question.sandbox.revision,
+        ...(question.sandbox.native?{native:{required:question.sandbox.native.required,available:question.sandbox.native.available,
+          backend:question.sandbox.native.backend,enforced:question.sandbox.native.enforced,
+          ...(question.sandbox.native.reason?{reason:question.sandbox.native.reason}:{})}}:{})},
     }));
   }
   hasPending(runId:string):boolean {return this.read().questions.some(question=>question.runId===runId&&question.state==='pending');}
@@ -272,7 +294,10 @@ export class AuthorizationQuestions {
   }
   sandboxSnapshot() {
     const state=this.read(),selected=this.profile(state);
+    const execution=this.options.describeExecution?.(undefined,selected);
     return {selected:{label:selected.label,mode:selected.mode,revision:selected.revision},
+      nativeExecution:execution?{available:execution.available,backend:execution.backend,enforced:execution.enforced,
+        ...(execution.reason?{reason:execution.reason}:{})}:{available:false,backend:'unavailable',enforced:false},
       profiles:this.options.profiles.map(({ref,label,mode,available,reason})=>({ref,label,mode,available,...(reason?{reason}:{})})),
       rules:state.rules.map(({ruleId,revision,summary,sandboxLabel,active})=>({ruleId,revision,summary,sandboxLabel,active}))};
   }

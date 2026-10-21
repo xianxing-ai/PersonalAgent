@@ -97,7 +97,7 @@ export {createReadonlyMcpHost, MCP_READ_TOOL_NAME, MCP_READ_TOOL_VERSION, MCP_RE
 export type {ReadonlyMcpOptions, McpHealth} from '@personal-agent/mcp';
 export {AuthorizationQuestions} from './application/authorization-question.js';
 export type {AuthorizationDecision,AuthorizationRequirement,AuthorizationQuestionRequest,AuthorizationQuestionReceipt,
-  AuthorizationQuestionsOptions,AuthorizationSandbox} from './application/authorization-question.js';
+  AuthorizationQuestionsOptions,AuthorizationSandbox,AuthorizationNativeExecution} from './application/authorization-question.js';
 export {createReferenceSummarySkill, REFERENCE_SUMMARY_SKILL_ID, REFERENCE_SUMMARY_SKILL_VERSION} from '@personal-agent/skills';
 export type {SkillManifest, SkillOutcome, ReferenceSummaryInput, ReferenceSummaryOptions,
   SkillReadReconciliationPort, SkillReadReconciliationQuery} from '@personal-agent/skills';

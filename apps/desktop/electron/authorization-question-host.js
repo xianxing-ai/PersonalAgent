@@ -23,8 +23,8 @@ function boundedProjection(schema,value,depth=0) {
 
 /** Trusted Main adapter. Never receives a profile, task binding or requirement from Renderer. */
 export function createDesktopAuthorizationQuestionHost({createQuestions,getApplication,namespace,resolveConversation,
-  available,onUpdate=()=>{},profiles,defaultProfileRef,now=Date.now}) {
-  const preparations=new Map(),operations=new Map(),owners=new Map(),batchDerivations=new Map();let application,questions,closed=false;
+  available,onUpdate=()=>{},profiles,defaultProfileRef,resolveProfile,describeExecution,now=Date.now}) {
+  const preparations=new Map(),operations=new Map(),owners=new Map(),batchDerivations=new Map(),projections=new Map();let application,questions,closed=false;
   function stateStore(){
     const current=getApplication();if(closed||!current?.runtime)denied();
     return current.runtime.bindTrustedHostState('desktop-authorization:'+digest(namespace));
@@ -50,7 +50,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     if(current!==application){
       questions?.close();application=current;
       questions=createQuestions({store:current.runtime.bindTrustedHostState('desktop-authorization:'+digest(namespace)),profiles,
-        defaultProfileRef,now,available,onChange:onUpdate,
+        defaultProfileRef,now,available,onChange:onUpdate,resolveProfile,describeExecution,
         readBinding:request=>{
           const original=current.readAuthorizationQuestionBinding(request);
           if(!original||getApplication()!==current)return undefined;
@@ -136,9 +136,12 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     }
     service().assertRequirement(entry.receipt,entry.request,requirementId,consumerId);return true;
   }
-  function prepareExport(scope,{summary,scopes=['model:export'],bindingDigest,ruleBindingDigest,requirementId='export',assertCurrent=()=>true}={}) {
-    const source=original(scope),schema=source.outputSchema;
+  function prepareExport(scope,{summary,scopes=['model:export'],bindingDigest,ruleBindingDigest,requirementId='export',projectionSchema,assertCurrent=()=>true}={}) {
+    const source=original(scope),schema=projectionSchema??source.outputSchema;
     const projectionDigest=digest(schema);
+    const projectionKey=key(source)+':'+requirementId,prior=projections.get(projectionKey);
+    if(prior&&digest(prior)!==projectionDigest)denied();
+    projections.set(projectionKey,structuredClone(schema));
     prepare(source,{requirements:[{requirementId,kind:'export',scopes,
       bindingDigest:bindingDigest??digest({taskId:source.taskId,runId:source.runId,argumentsDigest:source.argumentsDigest,projectionDigest}),
       ...(ruleBindingDigest?{ruleBindingDigest}:{}),
@@ -146,7 +149,8 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
   }
   function authorizeExport(scope,result,requirementId='export') {
     const {source,entry}=operation(scope);
-    validateToolValue(entry.outputSchema,result);boundedProjection(entry.outputSchema,result);
+    const schema=projections.get(key(source)+':'+requirementId)??entry.outputSchema;
+    validateToolValue(schema,result);boundedProjection(schema,result);
     if(Buffer.byteLength(JSON.stringify(result),'utf8')>960*1024)denied();
     currentRequirement(source,requirementId);
     const resultDigest=digest(result);
@@ -178,6 +182,6 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     snapshot:conversationId=>closed||!getApplication()?.runtime?[]:service().snapshot(conversationId),
     hasPending:runId=>!closed&&Boolean(getApplication()?.runtime)&&service().hasPending(runId),
     sandboxSnapshot:()=>service().sandboxSnapshot(),selectSandbox:input=>service().selectSandbox(input),revokeRule:input=>service().revokeRule(input),
-    close(){closed=true;questions?.close();preparations.clear();operations.clear();owners.clear();batchDerivations.clear();},
+    close(){closed=true;questions?.close();preparations.clear();operations.clear();owners.clear();batchDerivations.clear();projections.clear();},
   };
 }
