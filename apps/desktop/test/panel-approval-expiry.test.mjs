@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
 import {approvalCards,nextApprovalExpiry} from '../src/features/conversation/approval-card.js';
+import {approvalsWithoutQuestionCards} from '../src/features/conversation/authorization-question-card.js';
 
 const source=await readFile(new URL('../src/app/renderer.js',import.meta.url),'utf8');
 const ast=ts.createSourceFile('renderer.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
@@ -36,7 +37,7 @@ function fixture() {
     querySelectorAll(selector){assert.equal(selector,'[data-approval-decision]');return article.buttons;},
     set innerHTML(_value){assert.fail('expiry must not rebuild task DOM');}};
   const context=vm.createContext({current:{tasks:[task],approvals:[grant(initialTime+100)]},wakeClosed:false,locateClosed:false,locateFeedback:new Map(),
-    tasksNode,approvalDecisions:new Map(),approvalCards,nextApprovalExpiry,CSS:{escape:value=>value},Date:{now:()=>now},
+    tasksNode,approvalDecisions:new Map(),approvalCards,nextApprovalExpiry,approvalsWithoutQuestionCards,CSS:{escape:value=>value},Date:{now:()=>now},
     setTimeout(callback,delay){const id=++nextTimer;timers.set(id,{callback,delay});return id;},
     clearTimeout(id){timers.delete(id);}});
   vm.runInContext(`let approvalExpiryTimer;const syncApprovalButtons=${syncButtons};${functions.get('refreshApprovalCards')}\n${functions.get('scheduleApprovalExpiry')}\nconst unload=${unload};`,context);

@@ -28,7 +28,7 @@ test('native fixed Node recipes preserve symlink resolution for checks and proje
   const flags=['--preserve-symlinks','--preserve-symlinks-main'];
   assert.deepEqual(native.recipes.find(r=>r.id==='node-check').args,[...flags,'--check','index.js']);
   for(const script of ['build','test'])assert.deepEqual(native.recipes.find(r=>r.id==='npm-'+script).args,
-    ['--cwd',native.workspaceRoot,'--exe',process.execPath,'--',...flags,npm,'run',script]);
+    ['--cwd',native.workspaceRoot,'--exe',realpathSync.native(process.execPath),'--',...flags,realpathSync.native(npm),'run',script]);
   const legacy=buildWorkspaceCommandRecipes(options);assert.deepEqual(legacy.recipes.find(r=>r.id==='node-check').args,['--check','index.js']);
   assert.throws(()=>buildWorkspaceCommandRecipes({...options,nativeNodeResolution:'model-choice'}));
 });
