@@ -8,6 +8,7 @@ import * as coding from '@personal-agent/coding-tools';
 import {AuthorizationQuestions,createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 import {createDesktopNativeExecutionHost} from '../electron/native-execution-host.js';
+import {unsupportedPsec} from '../../../packages/coding-tools/test/native-sandbox-fixture.mjs';
 
 const explicitHelper=process.env.PA_TEST_JOB_HOST_EXE;
 const required=process.env.PA_TEST_NATIVE_SANDBOX_REQUIRED==='1';
@@ -19,6 +20,16 @@ async function until(read,label,timeout=30000){
   throw Error('Native authorization integration did not reach '+label);
 }
 
+test('optional native integration requires a successful baseline and explicit unavailable PSEC API diagnostics',()=>{
+  const unavailable={backend:'windows-psec',enforced:false,outcome:'unavailable',exitCode:null,stopped:true,reason:'native-create-environment:-2146233053'};
+  const receipt={available:false,enforced:false,results:{baseline:{backend:'none',outcome:'exited',exitCode:0,stopped:true},readOnly:unavailable,workspaceWrite:unavailable,cancel:unavailable}};
+  assert.equal(unsupportedPsec(receipt),true);
+  for(const patch of [undefined,{...receipt,results:{}},{...receipt,available:true},
+    {...receipt,results:{...receipt.results,baseline:{...receipt.results.baseline,exitCode:23}}},
+    {...receipt,results:{...receipt.results,readOnly:{...unavailable,reason:'invalid-or-unavailable-trusted-configuration'}}},
+    {...receipt,results:{...receipt.results,workspaceWrite:{...unavailable,reason:'native-create-environment:-2147467259'}}}])assert.equal(unsupportedPsec(patch),false);
+});
+
 // Real Runtime, Policy, ToolGateway, question service/host and native execution host.
 // Only the user's card decision and workspace contents are synthetic; no model or account is opened.
 test('one real original question gates a production PSEC command and never replenishes authority',{
@@ -26,19 +37,21 @@ test('one real original question gates a production PSEC command and never reple
 },async t=>{
   assert.ok(configured,'Required native integration needs Windows and the explicit trusted helper');
   const helperPath=realpathSync.native(explicitHelper),pins=coding.readWindowsNativeHelperAttestation(helperPath);
-  const nodeExecutable=realpathSync.native(process.execPath),systemRoot=process.env.SystemRoot;
+  const nodeExecutable=realpathSync.native(process.execPath),systemRoot=realpathSync.native(process.env.SystemRoot);
   await mkdir(integrationCache,{recursive:true});
-  const base=await mkdtemp(path.join(integrationCache,'case-')),workspace=path.join(base,'workspace');
+  // Canonicalize only this newly created trusted fixture, never weaken production alias rejection.
+  const base=realpathSync.native(await mkdtemp(path.join(integrationCache,'case-'))),workspace=path.join(base,'workspace');
   await mkdir(workspace);
   const marker=path.join(workspace,'once.txt'),substituted=path.join(workspace,'substituted.txt');
-  let app,native,configurationEnabled=true,authorizationCalls=0,originalScope;
+  let app,native,configurationEnabled=true,authorizationCalls=0,originalScope,readiness,preparationError;
   const getApplication=()=>app;
   const profiles=[{ref:'native-workspace-write',label:'Synthetic workspace / real Windows boundary',mode:'workspace-write',revision:1,available:true}];
   const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),
     getApplication,namespace:'native-integration',resolveConversation:taskId=>app.readToolConversation(taskId),
     available:()=>true,profiles,defaultProfileRef:profiles[0].ref,
     describeExecution:(request,profile)=>native.describeExecution(request,profile)});
-  native=createDesktopNativeExecutionHost({coding,question,getApplication,
+  const observedCoding={...coding,async verifyWindowsNativeSandbox(...args){readiness=await coding.verifyWindowsNativeSandbox(...args);return readiness;}};
+  native=createDesktopNativeExecutionHost({coding:observedCoding,question,getApplication,
     readConfiguration:()=>configurationEnabled?{rootPath:workspace,nodeExecutable,bindingId:'synthetic-fixed-root'}:undefined,
     ensureHelper:async()=>helperPath,probeRootPath:path.join(base,'readiness'),systemRoot,localAppData:workspace});
   // Match production node-check/git callers: the factory must inject its minimal environment.
@@ -54,7 +67,8 @@ test('one real original question gates a production PSEC command and never reple
     tools:[tool],requiresToolAuthorization:scope=>question.requiresAuthorization(scope),
     requestToolAuthorization:async scope=>{
       authorizationCalls++;originalScope=scope;
-      await native.prepare(scope);return question.requestToolAuthorization(scope);
+      try{await native.prepare(scope);}catch(error){preparationError=error;throw error;}
+      return question.requestToolAuthorization(scope);
     }});
   t.after(async()=>{
     question.close();native.close();
@@ -66,7 +80,28 @@ test('one real original question gates a production PSEC command and never reple
     arguments:{recipeId:'write-once'},deadline};
   const submitted=app.submitHostToolTask(input);taskIds.push(submitted.task.taskId);
   const taskId=submitted.task.taskId,runId='host-tool-'+taskId;
-  const card=await until(()=>question.snapshot().find(value=>value.state==='pending'),'original question');
+  const prepared=await until(()=>{
+    const card=question.snapshot().find(value=>value.taskId===taskId&&value.state==='pending');
+    if(card)return {card};
+    const task=app.runtime.getTask(taskId);
+    return ['failed','cancelled','waiting_reconciliation'].includes(task.state)?{task}:undefined;
+  },'original question or terminal readiness failure');
+  if(!prepared.card){
+    assert.equal(prepared.task.state,'failed');assert.equal(prepared.task.error?.code,'UNSUPPORTED_CAPABILITY');
+    assert.equal(preparationError?.code,'UNSUPPORTED_CAPABILITY');
+    assert.equal(existsSync(marker),false);assert.equal(existsSync(substituted),false);
+    assert.equal(app.runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId),undefined);
+    assert.equal(app.runtime.policy.get(runId),undefined);assert.equal(question.snapshot().length,0);
+    const diagnostic={required,taskState:prepared.task.state,errorCode:prepared.task.error.code,
+      readiness:readiness?{backend:readiness.backend,available:readiness.available,enforced:readiness.enforced,results:readiness.results}:null};
+    await writeFile(path.join(base,'unavailable-receipt.json'),JSON.stringify(diagnostic,null,2));
+    t.diagnostic('Actual native readiness: '+JSON.stringify(diagnostic));
+    if(!required&&unsupportedPsec(readiness)){
+      t.skip('Actual baseline passed; this runner lacks the required PSEC API (see native-create-environment diagnostics)');return;
+    }
+    assert.fail('Required or unexpected native backend failure; no command executed: '+JSON.stringify(diagnostic));
+  }
+  const {card}=prepared;
   assert.equal(app.runtime.getTask(taskId).state,'waiting_approval');assert.equal(card.taskId,taskId);assert.equal(card.sourceApprovalId,runId);
   assert.equal(card.sandbox.native.backend,'windows-psec');assert.equal(card.sandbox.native.available,true);assert.equal(card.sandbox.native.enforced,true);
   assert.deepEqual(card.requirements.map(value=>value.requirementId),['tool','native-execution']);
