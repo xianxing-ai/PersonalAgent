@@ -37,6 +37,7 @@ function fixture(t, options = {}) {
   const panel = {webContents: contents, isDestroyed: () => false, isVisible: () => true};
   const event = {sender: contents, senderFrame: contents.mainFrame};
   microphone = createMicrophoneCaptureHost({getPanel: () => panel,
+    confirmAuthorization:async()=>true, // Explicit Fake application card.
     permissionGate: {grant(lease) {
       permission = lease;
       let revoked = false;

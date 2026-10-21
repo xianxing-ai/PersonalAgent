@@ -31,7 +31,8 @@ function setup(extra={}){
   writeFileSync(selected,JSON.stringify(definition()));
   const host=createDesktopRemoteMcpHost({config,fetch:extra.fetch,confirmConnection:request=>management.confirmConnection(request)});
   management=createRemoteMcpManagement({BrowserWindow:Window,ipcMain,dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[selected]}),showMessageBox:(...args)=>answer(...args)},
-    owner:()=>({isDestroyed:()=>false}),config,host,application:()=>extra.app?.(),client:()=>extra.client?.(),namespace:'synthetic-management'});
+    owner:()=>({isDestroyed:()=>false}),config,host,application:()=>extra.app?.(),client:()=>extra.client?.(),namespace:'synthetic-management',
+    confirmAuthorization:async request=>{const result=await answer(request);return result.response===1&&request.isCurrent();}}); // Explicit Fake card decision.
   management.open();const window=Window.all.at(-1);
   const call=(name,payload,event={sender:window.webContents,senderFrame:window.webContents.mainFrame})=>handlers.get('desktop:remote-mcp')(event,name,payload);
   return {config,host,management,window,userData,call,setAnswer:value=>{answer=value;},setFile:value=>{writeFileSync(selected,JSON.stringify(value));},
@@ -76,7 +77,7 @@ test('save cancellation, window closure and concurrent revoke cannot resurrect a
   }
 });
 
-test('actual Runtime approvals and local readback are used; disconnected or stale approval cannot execute',async()=>{
+test('legacy management approval IPC cannot grant; original Runtime readback and cancellation remain available',async()=>{
   const f=await fixture({requiredAuthorization:'Bearer synthetic-token-only'});let app,client;
   const s=setup({saved:true,fetch:f.fetch,app:()=>app,client:()=>client});
   app=createRuntimeApplication({path:path.join(s.userData,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-management',tools:s.host.tools});
@@ -89,17 +90,15 @@ test('actual Runtime approvals and local readback are used; disconnected or stal
     assert.equal((await s.call('respond',{taskId:id,expectedRevision:read.approval.revision+1,decision:'allow_once'})).ok,false);
     await s.call('disconnect');assert.equal((await s.call('respond',{taskId:id,expectedRevision:read.approval.revision,decision:'allow_once'})).ok,false);
     assert.equal(f.calls().length,0);await s.call('connect');
-    assert.equal((await s.call('respond',{taskId:id,expectedRevision:read.approval.revision,decision:'allow_once'})).ok,true);
-    await until(app,id,'succeeded');await idle(app);
-    const done=(await s.call('task',{taskId:id})).value;assert.deepEqual(done.result,{text:'public synthetic reference'});
-    assert.equal(f.calls().length,1);assert.equal(app.runtime.readToolExecutions(id)[0].policyDecision,'allow');
-    assert.equal(app.runtime.readEvidence(id)[0].verification,'conditional');
     assert.equal((await s.call('respond',{taskId:id,expectedRevision:read.approval.revision,decision:'allow_once'})).ok,false);
-    assert.equal(f.calls().length,1);
+    assert.equal(f.calls().length,0);assert.equal(app.runtime.getTask(id).state,'waiting_approval');
+    assert.equal((await s.call('respond',{taskId:id,expectedRevision:read.approval.revision,decision:'allow_once'})).ok,false);
+    assert.equal(f.calls().length,0);
+    assert.equal((await s.call('cancel',{taskId:id})).ok,true);await idle(app);
     const unowned=app.submitHostToolTask({commandId:'other-host',toolName:descriptor.name,toolVersion:'2.0.0',arguments:s.host.arguments({key:'public'}),deadline:new Date(Date.now()+60000).toISOString()});
     assert.equal((await s.call('task',{taskId:unowned.task.taskId})).ok,false);
     app.runtime.requestCancel(unowned.task.taskId,'synthetic cleanup');await idle(app);
-    await s.call('revoke');assert.equal((await s.call('submit',{key:'public'})).ok,false);assert.equal(f.calls().length,1);
+    await s.call('revoke');assert.equal((await s.call('submit',{key:'public'})).ok,false);assert.equal(f.calls().length,0);
   }finally{await idle(app);app.close();await s.close();await f.close();}
 });
 

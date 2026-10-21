@@ -83,6 +83,7 @@ import {createRemoteMcpConfig} from './remote-mcp-config.js';
 import {createDesktopRemoteMcpHost} from './remote-mcp-host.js';
 import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
+import {createPublicReferenceQuestionConsent} from './public-reference-question.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
@@ -384,14 +385,7 @@ function taskSurface(task) {
 }
 
 function voiceQuestionForConversation(conversationId){
-  const question=voiceCommandHost?.snapshot();if(!question?.taskId)return question;
-  if(question.kind==='approval'&&question.state==='pending'){
-    const approval=conversationToolAccess?.readApproval(question.approvalId);
-    if(!approval||approval.state!=='pending'||approval.taskState!=='waiting_approval'
-      ||approval.revision!==question.approvalRevision||approval.argumentsDigest!==question.argumentsDigest
-      ||approval.expiresAt!==question.expiresAt)return null;
-  }
-  return conversationToolAccess?.authorizeTaskRead({taskId:question.taskId,conversationId})?question:null;
+  return voiceCommandHost?.snapshot(conversationId)??null;
 }
 function p5DevicePanelSuggestions() {
   if (!p5DeviceReceiptStore) return [];
@@ -1780,6 +1774,16 @@ async function initializeRuntime() {
       }
       const publicReferenceModule=await import('@personal-agent/mcp');
       publicReferenceConsent?.close();
+      const referenceApplication=runtimeApplication;
+      const confirmPublicReference=createPublicReferenceQuestionConsent({question:authorizationQuestionPort,confirmApplicationAuthorization,
+        readMcpDescriptor:()=>referenceHost?.tools?.[0]?.descriptor,readSkillManifest:()=>runtimeApplication?.referenceSkillSnapshot().manifest,
+        bindOriginalReference:request=>{
+          const candidate=referenceHost?.readPublicReferencePreflightCandidate(request.query);
+          if(candidate?.toolName!=='mcp.workspace.read_text')return false;
+          runtimeApplication.bindPublicReferenceQuestion(candidate);return true;
+        },
+        readOriginalScope:(taskId,runId,completed=false)=>runtimeApplication?.readAuthorizationQuestionInvocation(taskId,runId,completed),
+        isCurrent:()=>runtimeApplication===referenceApplication});
       publicReferenceConsent=createNativePublicReferenceConsent({
         readPreflightCandidate:query=>codingWorkspace?.readWorkspaceExportPreflightCandidate?.(query)
           ?? referenceHost?.readPublicReferencePreflightCandidate?.(query),
@@ -1794,29 +1798,7 @@ async function initializeRuntime() {
         isCatalogCurrent:input=>{
           try {return referenceHost?.bindTask(input.taskId) === input.configurationRef;} catch {return false;}
         },
-        confirmNative:async (request,context)=>{
-          if (context.signal.aborted || Date.now() >= Date.parse(context.deadline)) return false;
-          openAdmin('computer');const originAdmin=admin,originApplication=runtimeApplication;
-          if (!originAdmin || originAdmin.isDestroyed()) return false;
-          const purpose=request.purpose === 'coding-reference' ? '编程参考' : '参考资料摘要';
-          if (request.phase === 'catalog') {
-            const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'公开参考能力目录',
-              message:request.catalogKind === 'skill' ? '允许本任务向 AgentArts 公布参考摘要 Skill 的公开版本参数？' : '允许本任务向 AgentArts 公布只读参考工具的公开能力目录？',
-              detail:`原任务：${request.query.taskId}\n到期：${request.expiresAt}`
-                + (request.publicParameters ? `\n公开版本：${JSON.stringify(request.publicParameters)}` : '')
-                + '\n能力目录不含文件路径或正文。具体资料读取和内容出机会分别确认。',
-              buttons:['取消','仅允许本任务'],defaultId:0,cancelId:0,noLink:true});
-            return answer.response === 1 && admin === originAdmin && !originAdmin.isDestroyed()
-              && runtimeApplication === originApplication && !context.signal.aborted && Date.now() < Date.parse(context.deadline);
-          }
-          const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'本任务公开资料许可',
-            message:request.phase === 'preflight' ? `允许读取此公开资料用于${purpose}？` : `允许向 AgentArts 发送这份已读回的公开内容用于${purpose}？`,
-            detail:`原任务：${request.query.taskId}\n资料：${request.query.path}\n内容上限：${request.maxExportBytes} 字节\n到期：${request.expiresAt}`
-              + (request.phase === 'confirmed' ? `\n实际大小：${request.byteLength} 字节\nSHA256：${request.contentDigest}` : '\n仅选择公开资料；此步骤尚未发送文件内容。'),
-            buttons:['取消','确认仅本任务使用此公开资料'],defaultId:0,cancelId:0,noLink:true});
-          return answer.response === 1 && admin === originAdmin && !originAdmin.isDestroyed()
-            && runtimeApplication === originApplication && !context.signal.aborted && Date.now() < Date.parse(context.deadline);
-        },
+        confirmNative:confirmPublicReference,
       });
       const commandHelper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
       codingWorkspace = createWorkspaceConfigHost({userData:app.getPath('userData'),safeStorage,
@@ -1989,6 +1971,8 @@ async function initializeRuntime() {
 
       const powerShell=path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell','7','pwsh.exe');
       knowledgeSourceConfig=await createKnowledgeSourceConfig({userData:app.getPath('userData'),safeStorage,namespace,
+        question:authorizationQuestionPort,
+        confirmCatalog:request=>confirmApplicationAuthorization('knowledge.catalog',request.payload,request),
         hostIdentity:createHash('sha256').update(app.getPath('userData')).digest('hex'),
         powerShellPath:existsSync(powerShell)?powerShell:undefined,
         processIdentityHelperPath:existsSync(commandHelper)?commandHelper:undefined,
@@ -2000,21 +1984,26 @@ async function initializeRuntime() {
             properties:['openFile','multiSelections'],filters:[{name:'Markdown',extensions:['md']}]});
           return choice.canceled?undefined:choice.filePaths;
         },confirmPermissions:async details=>{
-          const choice=await dialog.showMessageBox(admin,{type:'question',title:'知识源本会话许可',
-            message:'确认所选知识源的本会话范围？',
-            detail:details.displayName+'\n所选笔记：'+details.noteCount+'\n允许整理：'+details.writeAllowed+
-              '\n允许向 AgentArts 发送公开结果：'+details.cloudExportAllowed+'\n公开查询：'+details.publicQueries.join('、'),
-            buttons:['确认本会话范围','取消'],defaultId:1,cancelId:1,noLink:true});
-          return choice.response===0 && admin && !admin.isDestroyed();
+          const {isCurrent,...payload}=details;
+          return confirmApplicationAuthorization('knowledge.configure',payload,{scope:{sourceId:details.sourceId,configRevision:details.configRevision},
+            summary:`配置知识源 ${details.displayName} 的能力偏好：整理=${details.writeAllowed}、PUBLIC查询出机=${details.cloudExportAllowed}；这不是会话读写或出机许可，实际操作仍逐次原卡核对。`.slice(0,512),isCurrent});
         }});
       obsidianPairing=createDesktopObsidianPairing({source:knowledgeSourceConfig,
         userData:app.getPath('userData'),
         createPairingHost:runtimeModule.createObsidianPairingHost,
-        ui:createObsidianPairingUI({BrowserWindow,ipcMain,dialog,owner:()=>admin}),
+        ui:createObsidianPairingUI({BrowserWindow,ipcMain,owner:()=>admin,
+          confirmAuthorization:request=>confirmApplicationAuthorization('knowledge.pair',request.payload,request)}),
         changed:()=>{cancelKnowledgeTasks();publish();}});
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(obsidianPairing.source, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
+      knowledgeTools={...knowledgeTools,
+        tools:knowledgeTools.tools.map(tool=>({get descriptor(){return tool.descriptor;},execute:(input,context)=>
+          knowledgeSourceConfig.withAuthorization(context,async()=>{const result=await tool.execute(input,context);
+            knowledgeSourceConfig.assertAuthorization(context);return result;})})),
+        competitionToolAvailability:knowledgeTools.competitionToolAvailability.map(entry=>({...entry,available:async scope=>
+          await entry.available(scope)&&await knowledgeSourceConfig.authorizeCatalog(scope)})),
+      };
       const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
       const desktopControl={
         tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[])],
@@ -2167,6 +2156,16 @@ async function initializeRuntime() {
           await feedsHost?.prepareExport?.(scope);
           await developerDeployment?.prepareExport(scope);
           await connectorConversationTools?.prepareExport(scope);
+          if(['knowledge.search','knowledge.apply_note_patch'].includes(proposal?.toolName)) {
+            const binding=knowledgeSourceConfig.snapshot();
+            const isCurrent=()=>{const value=knowledgeSourceConfig.snapshot();return value.available&&value.sourceId===binding.sourceId
+              &&value.configRevision===binding.configRevision&&value.dataLevel==='public'&&value.cloudExportAllowed;};
+            if(!isCurrent())throw Error('知识公开结果出机范围不可用');
+            if(phase==='preflight')authorizationQuestionPort.prepareExport(scope,{requirementId:'knowledge-export',
+              summary:'向本任务模型发送所选PUBLIC查询的最多5条、每条最多200字符摘要（总计16KiB内），或只含state/changed的整理回执。',assertCurrent:isCurrent});
+            else authorizationQuestionPort.currentRequirement(scope,'knowledge-export');
+            return;
+          }
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;
           if (!publicReferenceConsent || !['preflight','projection'].includes(phase)) throw Error('原生公开资料许可入口不可用');
           const configurationRef=proposal.toolName === 'workspace.read_text'
@@ -2175,8 +2174,8 @@ async function initializeRuntime() {
             ? readNativePublicSkillSource({taskId,sourceRef:proposal.arguments.sourceRef,configurationRef}) : undefined;
           const query={taskId,proposalId:proposal.proposalId,path:selected?.path ?? proposal.arguments.path,
             configurationRef,arguments:selected ? {path:selected.path} : proposal.arguments};
-          if (phase === 'preflight') await publicReferenceConsent.requestPreflight(query,{deadline,signal});
-          else await publicReferenceConsent.requestExact(query,{deadline,signal});
+          if (phase === 'preflight') await publicReferenceConsent.requestPreflight(query,scope);
+          else await publicReferenceConsent.requestExact(query,scope);
         },
         ...(codingWorkspace.patchReconciliation ? {workspacePatchReconciliation: codingWorkspace.patchReconciliation} : {}),
         localRepair: syntheticMvp ? syntheticRepairHost.localRepair : {
@@ -2339,14 +2338,13 @@ async function initializeRuntime() {
   client = runtimeConnection.client;
   if (notificationApplicationHost) {
     notificationApplicationHost.bindApplication(runtimeApplication, client);
-    voiceCommandHost = createDesktopVoiceCommandHost({notifications:notificationApplicationHost,onUpdate:publish,
-      readApproval:approvalId=>conversationToolAccess.readApproval(approvalId),respondApproval:async payload=>{
-        const result=await client.call('authorization.respond',payload);
-        approvals.delete(payload.approvalId);await pumpEvents();publish();return result;
-      }});
+    voiceCommandHost = createDesktopVoiceCommandHost({onUpdate:publish,
+      readCurrentQuestion:({conversationId}={})=>authorizationQuestionHost?.snapshot(conversationId??conversations.activeConversationId('panel'))
+        .find(question=>question.state==='pending')??null,
+      focusQuestion:question=>{if(question.conversationId!==conversations.activeConversationId('panel'))return;pinned=true;openPanel(true);publish();}});
     voiceApprovalBridge=createVoiceRuntimeApprovalBridge({
       readPendingApproval:scope=>conversationToolAccess.readPendingApproval(scope),
-      prepareApproval:payload=>voiceCommandHost.prepareApproval(payload),
+      focusQuestion:question=>{if(question.conversationId===conversations.activeConversationId('panel')){pinned=true;openPanel(true);publish();}},
       readCurrentQuestion:({conversationId})=>voiceQuestionForConversation(conversationId)});
   }
   if(proactiveWorkflowApplication){
@@ -2917,6 +2915,7 @@ async function action(event, name, payload) {
     if ((sender!==admin && sender!==panel) || !voiceCommandHost) throw Error('当前语音确认宿主不可用');
     if(name==='voice.confirmation.prepareApproval') {
       const approval=runtimeApplication.runtime.getApproval(payload?.approvalId),task=tasks.get(approval.taskId);
+      if(approval.state!=='pending'||approval.revision!==payload?.expectedRevision)throw Error('原审批已改变，请回当前对话提问卡');
       if(sender===panel && (!task || taskSurface(task)!=='panel')) throw Error('无法确认其他工作区的审批');
       const question=voiceCommandHost.prepareApproval(payload);
       return {...question,questionDelivery:liveVoice?.askCurrentQuestion()??{state:'unavailable',accepted:false}};
@@ -3058,13 +3057,20 @@ async function action(event, name, payload) {
     if(sender!==admin || !competitionMode || !knowledgeSourceConfig || !knowledgeTools) throw Error('知识源仅在正式管理后台可用');
     const action=name.slice('knowledge.source.'.length);
     if(['select','selectNotes','configure','revoke'].includes(action)) {
-      obsidianPairing?.useFilesystem();
+      const before=knowledgeSourceConfig.snapshot();
       const result=await knowledgeSourceConfig[action](payload);
+      if(before.sourceId!==result.sourceId||before.configRevision!==result.configRevision||action==='revoke')obsidianPairing?.useFilesystem();
       cancelKnowledgeTasks();
       publish();return result;
     }
     if(['readNote','submitPatch'].includes(action) && obsidianPairing?.snapshot().mode==='plugin') throw Error('插件配对仅支持只读检索；请先显式撤销配对以整理文件源');
-    if(action==='readNote') return knowledgeSourceConfig.readSelectedNote(payload);
+    if(action==='readNote') {
+      const binding=knowledgeSourceConfig.snapshot();
+      const isCurrent=()=>{const value=knowledgeSourceConfig.snapshot();return value.available&&value.sourceId===binding.sourceId&&value.configRevision===binding.configRevision;};
+      if(!isCurrent()||!await confirmApplicationAuthorization('knowledge.read',payload,{scope:{sourceId:binding.sourceId,configRevision:binding.configRevision,path:payload?.path},
+        summary:`只读显示当前知识源中所选笔记 ${payload?.path??''}；不向模型发送正文。`.slice(0,512),isCurrent}))throw Error('本次笔记读取未获有效原卡授权');
+      return knowledgeSourceConfig.readSelectedNote(payload);
+    }
     if(action==='reconcile') {
       if(!payload || Object.keys(payload).some(key=>key!=='taskId') || typeof payload.taskId!=='string')throw Error('原知识任务标识无效');
       const task=await runtimeApplication.reconcileKnowledgeWriteTask(payload.taskId,
@@ -3310,7 +3316,7 @@ async function action(event, name, payload) {
     if (!client) throw Error('Runtime 未连接，麦克风采集尚不可用');
     if (!voicePcmSource) throw Error('Voice PCM 来源尚未接入');
     if (voiceConfigurationPending || panelHiding || wakeQuitUnknown || wakeVoice?.hasActive() || liveVoice?.hasActive()) throw Error('请先结束唤醒或 Live 会话');
-    const result = microphoneCaptureHost.authorize();
+    const result = await microphoneCaptureHost.authorize({purpose:'dictation'});
     publish();
     return result;
   }
@@ -3659,13 +3665,14 @@ async function chooseNativePublicSkillSource(input) {
   if (!relative || path.isAbsolute(relative) || relative === '..' || relative.startsWith('..'+path.sep)
     || !/\.(md|txt)$/i.test(relative)) throw Error('公开资料必须位于已许可的当前工作区内');
   const sourcePath=relative.split(path.sep).join('/');
-  const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'本任务公开参考来源',
-    message:`公开参考资料：${sourcePath}`,
-    detail:`原任务：${input.taskId}\n公开别名：public-reference\n到期：${input.deadline}\n仅将此文件作为公开参考来源。此步骤未读取正文；实际工具读取和对应内容出机会另行核对。`,
-    buttons:['取消','确认这是本任务的公开资料'],defaultId:0,cancelId:0,noLink:true});
+  const accepted=await confirmApplicationAuthorization('reference.source',
+    {taskId:input.taskId,configurationRef:input.configurationRef,sourceRef:'public-reference',path:sourcePath,expiresAt:input.deadline},
+    {scope:{taskId:input.taskId,configurationRef:input.configurationRef,workspace:workspaceBinding},
+      summary:`选择 ${sourcePath} 为本任务PUBLIC参考来源；此步骤不读取正文，实际读取与有界出机由原工具同一卡核对。`.slice(0,512),
+      deadline:input.deadline,signal:input.signal,isCurrent:current});
   if (!current()) return undefined;
   referenceHost.assertTask(input.taskId);
-  if (answer.response !== 1) {publicSkillSources.set(key,{denied:true});return undefined;}
+  if (!accepted) {publicSkillSources.set(key,{denied:true});return undefined;}
   publicSkillSources.set(key,{taskId:input.taskId,configurationRef:input.configurationRef,sourceRef:'public-reference',
     path:sourcePath,expiresAt:input.deadline,workspace:workspaceBinding});
   return readNativePublicSkillSource({...input,sourceRef:'public-reference'});
@@ -3767,6 +3774,13 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler(microphonePermissionGate.request);
   session.defaultSession.setPermissionCheckHandler(microphonePermissionGate.check);
   microphoneCaptureHost = createMicrophoneCaptureHost({permissionGate: microphonePermissionGate,
+    confirmAuthorization:request=>{
+      const {signal,isCurrent,...payload}=request;
+      return confirmApplicationAuthorization('voice.capture',payload,{scope:{panelId:payload.panelId,purpose:payload.purpose,expiresAt:payload.expiresAt},
+        summary:`允许本次${payload.purpose==='live'?'Live语音与所选AgentArts音频服务':payload.purpose==='wake'?'本机关键词唤醒及后续听写':'麦克风听写'}，期限至${payload.expiresAt}；系统麦克风权限仍单独核验，停止立即撤销。`,
+        deadline:new Date(Math.min(Date.parse(payload.expiresAt),Date.now()+180000)).toISOString(),signal,
+        isCurrent:()=>!voiceConfigurationPending&&!panelHiding&&isCurrent()});
+    },
     getPanel: () => panel, onLevel: noteMicLevel});
   ipcMain.on('desktop:microphone-event', (event, message) => {
     if (microphoneCaptureHost.receive(event, message) && message.type!=='frame') publish();
@@ -3784,6 +3798,7 @@ app.whenReady().then(async () => {
     remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
     remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
     remoteMcpManagement=createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner:()=>admin,
+      confirmAuthorization:request=>confirmApplicationAuthorization('remoteMcp.configure',request.payload,request),
       config:remoteMcpConfig,host:remoteMcpHost,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
       namespace:desktopHost.userNamespace,onUpdate:publish});
   }

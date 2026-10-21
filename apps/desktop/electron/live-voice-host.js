@@ -138,7 +138,9 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       const timer = setTimeout(() => record.playReady.reject(Error('Live 播放设备启动超时')), 5000);
       try {await record.playReady.promise;} finally {clearTimeout(timer);}
       assertCurrent();
-      diagnose('playback','ready');record.startupStage='cloud';diagnose('cloud','connecting');
+      diagnose('playback','ready');record.startupStage='authorization';
+      await microphoneHost.authorize({deadline:record.deadline,purpose:'live',signal:controller.signal});
+      assertCurrent();record.startupStage='cloud';diagnose('cloud','connecting');
       flushHistory();
       const context = history.context({conversationId:record.conversationId});
       if(history.snapshot().contextDegraded)throw Error('Live 历史读取失败，无法保证上下文完整');
@@ -153,7 +155,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
             record.userSpeaking = true;
             record.finalTurn = {utteranceId: event.utteranceId, startedAt: new Date(now()).toISOString(), question,
               echo: record.phase === 'speaking' || record.outputActive === true,
-              captured: record.lastFrameAt !== undefined && question && record.lastFrameAt >= Date.parse(question.issuedAt)};
+              captured: record.lastFrameAt !== undefined && question && record.lastFrameAt >= Date.parse(question.guidanceIssuedAt??question.issuedAt)};
           }
           if (event.type === 'speech_stopped') {
             record.userSpeaking = false;
@@ -191,7 +193,9 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
                 questionId: question.questionId, questionRevision: question.revision, argumentsDigest: question.argumentsDigest,
                 expiresAt: new Date(Math.min(Date.parse(question.expiresAt), Date.parse(record.deadline))).toISOString(), signal: controller.signal};
               record.finalConsumption = Promise.resolve().then(() => {if (isCurrent()) return onFinalUserCommand(receipt);})
-                .then(result => {if (isCurrent() && result?.consumed) {record.confirmationResult = {
+                .then(result => {if(isCurrent()&&result?.reason==='complete_in_conversation_card'){
+                  record.confirmationResult={state:'awaiting_card',questionId:question.questionId,revision:question.revision,guidance:result.guidance};publish();
+                }else if (isCurrent() && result?.consumed) {record.confirmationResult = {
                   state:result.state,questionId:question.questionId,revision:question.revision}; publish();}})
                 .catch(() => {if (isCurrent()) {record.confirmationResult = {
                   state:'unknown',questionId:question.questionId,revision:question.revision}; publish();}});
@@ -440,7 +444,6 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       if (controller.signal.aborted) {await closeSession(record, record.session); return snapshot();}
       assertCurrent();
       diagnose('cloud','connected');record.startupStage='microphone';diagnose('microphone','acquiring');
-      microphoneHost.authorize({deadline: record.deadline});
       record.source = createSource();
       record.subscription = record.source.subscribe({signal: controller.signal, deadline: record.deadline,
         onFrame(frame) {
