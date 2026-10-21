@@ -1,0 +1,392 @@
+{
+  "version": "1.0",
+  "profile": "huawei_ict_agentarts",
+  "recordedAt": "2026-10-21T14:40:13Z",
+  "worktree": ".worktrees/model-thinking-picker",
+  "branch": "codex/model-thinking-picker",
+  "validatedHead": "bff0688008afa681d1b8e0e27643d4fb398b3dc7",
+  "validatedTree": "41f6d11453c635767bff50a92b8eb74e17f0678d",
+  "sourceCheckpoint": "240a2901eb2a9fa30f2efffd36ed26b3d65916cc",
+  "toolchain": {
+    "node": "24.15.0",
+    "npm": "11.12.1",
+    "typescript": "5.9.3",
+    "electron": "44.2.0",
+    "platform": "Windows 10.0.26200"
+  },
+  "installation": {
+    "state": "passed",
+    "addedPackages": 201,
+    "ignoreScripts": true,
+    "lockChanged": false,
+    "initialAttempt": {
+      "state": "setup_failed",
+      "cause": "sandbox DNS ENOTFOUND for locked public registry; npm exited with Exit handler never called"
+    },
+    "retry": {
+      "context": "ordinary user, same npm ci and lock",
+      "state": "passed"
+    }
+  },
+  "build": {
+    "state": "passed",
+    "mode": "sequential Desktop production workspace dependency closure",
+    "workspaces": [
+      "@personal-agent/contracts",
+      "@personal-agent/coordination",
+      "@personal-agent/models",
+      "@personal-agent/agentarts",
+      "@personal-agent/agents",
+      "@personal-agent/github",
+      "@personal-agent/coding-tools",
+      "@personal-agent/connector-host",
+      "@personal-agent/mcp",
+      "@personal-agent/skills",
+      "@personal-agent/client",
+      "@personal-agent/knowledge",
+      "@personal-agent/goals",
+      "@personal-agent/cognition",
+      "@personal-agent/storage",
+      "@personal-agent/learning",
+      "@personal-agent/mail",
+      "@personal-agent/calendar",
+      "@personal-agent/feeds",
+      "@personal-agent/productivity",
+      "@personal-agent/notifications",
+      "@personal-agent/memory",
+      "@personal-agent/weather",
+      "@personal-agent/research",
+      "@personal-agent/policy",
+      "@personal-agent/tool-gateway",
+      "@personal-agent/windows-client",
+      "@personal-agent/runtime",
+      "@personal-agent/voice-wake",
+      "@personal-agent/voice"
+    ],
+    "borrowedWorkspaceDist": false
+  },
+  "focused": {
+    "files": [
+      "apps/desktop/test/default-thinking-selection.test.mjs",
+      "apps/desktop/test/panel-preference-feedback.test.mjs",
+      "apps/desktop/test/workspace-preference-feedback.test.mjs",
+      "apps/desktop/test/native-reasoning.test.mjs",
+      "apps/desktop/test/agentarts-model-settings.test.mjs",
+      "apps/desktop/test/conversation-preference.test.mjs",
+      "apps/desktop/test/conversations.test.mjs",
+      "apps/desktop/test/conversation-sessions.test.mjs",
+      "apps/desktop/test/conversation-main-actions.test.mjs",
+      "apps/desktop/test/featured-model-choices.test.mjs",
+      "apps/desktop/test/task-action-focus-order.test.mjs"
+    ],
+    "uniqueTests": 72,
+    "firstAttempt": {
+      "passed": 71,
+      "failed": 1,
+      "skipped": 0,
+      "cause": "AppContainer TEMP rename EPERM in default mode backup fixture"
+    },
+    "retry": {
+      "file": "apps/desktop/test/default-thinking-selection.test.mjs",
+      "context": "ordinary user with isolated repository-external TEMP/TMP",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "uniqueFinalCoverage": {
+      "passed": 72,
+      "failed": 0,
+      "skipped": 0
+    },
+    "syntheticRuntimeRequests": 8,
+    "originalExecutionModelCheckpointAsserted": true
+  },
+  "typecheck": {
+    "workspace": "@personal-agent/desktop",
+    "state": "passed",
+    "additionalChangedJavaScriptSyntaxFiles": 14
+  },
+  "architecture": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0
+  },
+  "product": {
+    "state": "passed",
+    "profile": "huawei_ict_agentarts",
+    "main": "actual Electron product",
+    "preload": "actual IPC",
+    "renderer": "panel and workspace",
+    "transport": "synthetic fetch",
+    "realModelCalls": 0,
+    "oneSliderPerSurface": true,
+    "defaultCombinationPreserved": true,
+    "queries": [
+      {
+        "catalogRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "high"
+      },
+      {
+        "catalogRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "high"
+      },
+      {
+        "catalogRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modelId": "qwen3.8-max",
+        "reasoningEffort": "max"
+      },
+      {
+        "catalogRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modelId": "qwen3.8-max",
+        "reasoningEffort": "max"
+      }
+    ],
+    "errors": []
+  },
+  "renderer": {
+    "state": "passed",
+    "renderer": "actual panel and workspace source",
+    "bridge": "explicit synthetic",
+    "runtime": "not exercised",
+    "checks": [
+      "all published models",
+      "search",
+      "native enums",
+      "default combination",
+      "save failure and retry",
+      "Escape focus",
+      "251px dark and light",
+      "workspace selection"
+    ],
+    "errors": []
+  },
+  "visualReview": {
+    "state": "passed",
+    "checks": [
+      "meaningful panel/workspace identity",
+      "one slider per surface",
+      "menu contained by viewport",
+      "251px dark/light contrast and layout",
+      "model and effort visible",
+      "workspace independent control",
+      "no page or console errors"
+    ],
+    "browserPlugin": "not available; existing repository Playwright/Electron scripts used"
+  },
+  "images": [
+    {
+      "surface": "product",
+      "name": "product-panel-default.png",
+      "width": 420,
+      "height": 640,
+      "sha256": "a6cba6f8cb22155d605d23189f1d604bb4b281f720e808fec47a21d81818290a"
+    },
+    {
+      "surface": "product",
+      "name": "product-panel-manual-high.png",
+      "width": 420,
+      "height": 640,
+      "sha256": "4a6901e76c2bc2ca47470cdebc1ae922e9e3d01a4bec0e04e7bb266c02021cb3"
+    },
+    {
+      "surface": "product",
+      "name": "product-workspace-manual-max.png",
+      "width": 1920,
+      "height": 1032,
+      "sha256": "b2c0f67c8618cf46611f66c4a9a1595a121322c7a88c2223552846295456d4dd"
+    },
+    {
+      "surface": "product",
+      "name": "product-panel-narrow.png",
+      "width": 251,
+      "height": 600,
+      "sha256": "e593bfa5e8b451e91fc4f1aead8c52e591020bfe53c50b621cd5ab96dd13b21b"
+    },
+    {
+      "surface": "product",
+      "name": "product-panel-narrow-light.png",
+      "width": 251,
+      "height": 600,
+      "sha256": "609cc1ec79388e85ebbb562bfb6d6a77bae880ba5e4854a1991c1afc935d6b31"
+    },
+    {
+      "surface": "renderer",
+      "name": "panel-default.png",
+      "width": 420,
+      "height": 700,
+      "sha256": "dd08505a3a4f45e7dea66861b28c7f5705e462d6a49c5a35e4ed444c2a43e372"
+    },
+    {
+      "surface": "renderer",
+      "name": "panel-model-choices.png",
+      "width": 420,
+      "height": 700,
+      "sha256": "df907373cb6b67217183aea462258c28059f27232828eb37fa280b0102fe0252"
+    },
+    {
+      "surface": "renderer",
+      "name": "panel-manual-high.png",
+      "width": 420,
+      "height": 700,
+      "sha256": "f41c58a0ad8fdf0c0a541ccb1ce3e1b55afff0c7269cf7833826b878583f7801"
+    },
+    {
+      "surface": "renderer",
+      "name": "panel-compact-entry.png",
+      "width": 144,
+      "height": 33,
+      "sha256": "62b8984e4d6e58d713fae3a80c27867281e10a371885890827cd893024e09885"
+    },
+    {
+      "surface": "renderer",
+      "name": "panel-narrow.png",
+      "width": 251,
+      "height": 600,
+      "sha256": "ca2ec3eaace2f3548cb8e15e02625cdfc96b515a905435fb8e316d1a9ea0dba3"
+    },
+    {
+      "surface": "renderer",
+      "name": "power-slider.png",
+      "width": 235,
+      "height": 95,
+      "sha256": "ce4427c87fb7297326c6f126b80d7ad7e653457552006c639aa72552fc6e19c2"
+    },
+    {
+      "surface": "renderer",
+      "name": "panel-narrow-light.png",
+      "width": 251,
+      "height": 600,
+      "sha256": "f3a6987b72316ece390d11a212af39ef09c1f59488f3fc9e2e9849b55d57425b"
+    },
+    {
+      "surface": "renderer",
+      "name": "workspace-max.png",
+      "width": 1000,
+      "height": 760,
+      "sha256": "a2ee65da22bd3a660b0521b3a19f5ac5741ca7426c5a3c44b60f9fef9ff53b59"
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "apps/desktop/electron/agentarts-model-settings.js",
+      "sha256": "635ab2ceed56af3008b5dc1d9cf3e08e1ef2d5df656fab24b829fce52ee2c176"
+    },
+    {
+      "path": "apps/desktop/electron/conversations.js",
+      "sha256": "09e952897600da9f3498561ed1f9099da5e4066850e9da49e7a92a96fbdab926"
+    },
+    {
+      "path": "apps/desktop/electron/main.js",
+      "sha256": "22e6343f46f8753915c6a02aeec13ea7ba2423e7898e5534f7af95c84a05ce44"
+    },
+    {
+      "path": "apps/desktop/src/app/renderer.js",
+      "sha256": "4d09dfaa3cc644adf600c8fd5cf268b9a8f33779fd3e6f9681d658742c189518"
+    },
+    {
+      "path": "apps/desktop/src/app/style.css",
+      "sha256": "fa482391ee0300f524d336ee4b86a7990abea175f6db5697dffeb744a50c1539"
+    },
+    {
+      "path": "apps/desktop/src/app/surfaces.css",
+      "sha256": "068725edbd8ba16cd56c1493cf20f7b3475c28a9cd3841bea35e34faa5af93fd"
+    },
+    {
+      "path": "apps/desktop/src/features/workspace/view.js",
+      "sha256": "b12dfe3b3a9db9ae27b89acf5ade80fb4127ccd210275906768cd7115b434db7"
+    },
+    {
+      "path": "apps/desktop/shared/thinking-selection.js",
+      "sha256": "f4d995424d47f2728ade31bb31d951bd06e54a39996ef3e68bfbbfe39bc24521"
+    },
+    {
+      "path": "apps/desktop/src/features/conversation/model-thinking-picker.js",
+      "sha256": "0bebd9a642f53b33eea6be7c00a9badf62c7a6a1e441f0b12c754bdbc8af2cb6"
+    },
+    {
+      "path": "apps/desktop/test-support/model-thinking-fixture.mjs",
+      "sha256": "8ebb74ca0a5b54e9153574fffc1ad1fe749268e306d2ea054ac87980a7de97e5"
+    },
+    {
+      "path": "apps/desktop/test/default-thinking-selection.test.mjs",
+      "sha256": "7aebd8643c788d14b7f9b2be8483d81281c1a5c99a1c05120487967bd783c8a1"
+    },
+    {
+      "path": "apps/desktop/test/model-thinking-renderer-smoke.cjs",
+      "sha256": "afc31cecb6a3075e282a339823b6f2a3695f7341d357f438e503f6ed3878b360"
+    },
+    {
+      "path": "apps/desktop/test/native-reasoning-slider-fixture.mjs",
+      "sha256": "627b511e413d6314cc3f4c7f6db41566d143cd69196447767fabd479cb8d0348"
+    },
+    {
+      "path": "apps/desktop/test/native-reasoning-slider-smoke.cjs",
+      "sha256": "642b953a9604be750b1550e4ac7fdd3a445dc38912219574ebd2f3ca6317d12d"
+    },
+    {
+      "path": "apps/desktop/test/panel-preference-feedback.test.mjs",
+      "sha256": "c4b148595b7c8c61e66ce2b522b71e6dfeb77b64c735070033133804ef919567"
+    },
+    {
+      "path": "apps/desktop/test/workspace-preference-feedback.test.mjs",
+      "sha256": "c827208fbc6dc1a22fa9c4cb1c52e9e983c27c1ab8d6ab521b1ec0043506a30e"
+    }
+  ],
+  "ignoredLogDigests": [
+    {
+      "name": "npm-ci.log",
+      "sha256": "600d56cbe080db8154dd730d39b35278358ae5a16d1beab9fba13fc49fe4bfa2"
+    },
+    {
+      "name": "npm-ci-normal-user.log",
+      "sha256": "e4a2fed2ea2f8e45ddfb759354be3d8dffbcae982a03034a661b7d53316d78d6"
+    },
+    {
+      "name": "build.log",
+      "sha256": "6975909c94622e8eaf8599012869549f0be15566c01905e1614e4788e71511e2"
+    },
+    {
+      "name": "focused.log",
+      "sha256": "a6b31050e35aa8ce8c3a0501dbefd2ecf376defcf8936f4780e874edd316382c"
+    },
+    {
+      "name": "default-normal-user.log",
+      "sha256": "2805293f65e5e2f2f1671b9aba887b9b758906b3dad907862aa7515740bba98e"
+    },
+    {
+      "name": "desktop-typecheck.log",
+      "sha256": "09a0286f32d3e7b48abf19108d9f7b9376b05901f7e28a34faba92736bc38c79"
+    },
+    {
+      "name": "architecture.log",
+      "sha256": "ef6a37d75cc142171321646072475133bef869de6a521aef02044b0e58076db5"
+    },
+    {
+      "name": "product.log",
+      "sha256": "b7bd1171b4cd01c9b49301129d76f3df0d2e5d041de2c9124e71f2f53083cd20"
+    },
+    {
+      "name": "renderer.log",
+      "sha256": "dd76124ed0a1d4e170f955a1916facab51c2648c75650204cdf1aaefe52d9206"
+    }
+  ],
+  "limits": {
+    "realModels": 0,
+    "realAccounts": 0,
+    "microphoneUsed": false,
+    "deployed": false,
+    "cloudOrProviderQualityValidated": false,
+    "unifiedAuthorizationPrIntegrationValidated": false,
+    "historicalHandoffTests": 74,
+    "historicalHandoffUsedAsCurrentPass": false,
+    "persistentPreferenceBackupDoesNotCoverLaterMessages": true,
+    "narrowViewportExpandedSearchTested": false
+  },
+  "privacy": {
+    "absoluteHostPathsOmitted": true,
+    "userDataAndSqliteOmitted": true,
+    "secretsAndPromptSourceOmitted": true
+  }
+}

@@ -12,6 +12,12 @@ Issue 474/475 复用现有 TaskRuntime/Policy/ToolGateway 与 `trusted_host_stat
 
 `CoordinationInputHooks.readRequestContext(scope)` 兼容增加可选同步 host-only 文本读取，通过原获准 goal 出口临时发送；每次实际 Competition 交换采样，完整实际目标受原发送 lease/预算/来源门约束，稳定历史 checkpoint 不保存正文。Desktop 仅投影当前设备 UTC/IANA/offset 及无私人内容的能力授权引导，不把 metadata 视为许可或可调用目录。无 Core wire、Schema、数据库或冻结状态变化。统一对话卡授权待 #475 正式端口消费；当前接线与验证缺项见 [#474 记录](../../apps/desktop/docs/issue-474-time-context-20261021.md)。
 
+## 2026-10-21 Desktop 默认模型档位（provisional）
+
+仅扩展 Desktop 私有 `conversation.model`：默认模式载荷为 `{modelId:'',modelSelection:'default',depth,fast,catalogRevision}`，校验窗口来源、当前会话与受信目录后原子保存；手动模式拒绝这些额外字段。`thinking.update` 在默认模式保存前重验实际目录。Conversations v4 增加可选偏好 `modelSelection:'default'`，不能同时保存显式 modelId/executionModel；首次启用前保留并核对原文件备份，旧客户端回退须迁移该字段。
+
+默认档位只从配置的主/子模型及其公布的 reasoningEfforts 解析执行选择；省略未公布的原生强度。按原 conversationId 在任务受理时保存 execution-model，原 user-work 委派继承同选择，原模型网关、任务恢复与授权目的地继续消费该绑定；不读取当前活动窗口来改写其他任务，不改全局模型偏好。无 Core wire、公共 Schema、数据库或新 Provider 变更。验证与真实调用边界见[接手记录](../competition/evidence/MODEL_THINKING_PICKER_REVIEW_20261021.md)。
+
 ## 2026-10-21 research.search 混合主题与来源披露（provisional）
 
 MOD-24 / PA-010 / #473 的工具输出契约单独修订为 `research.search@0.1.0-alpha.2`；npm 包、Connector manifest、Core wire 和数据库版本不变。

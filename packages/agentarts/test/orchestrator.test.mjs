@@ -24,7 +24,7 @@ test('every continuation can carry the guarded original goal and full prior user
  assert.equal(input.goal,goal);assert.deepEqual(input.continuation,continuation);
  assert.match(models.fast.requests[0].messages[0].content,/更正以较新的用户原文/);
  assert.match(models.fast.requests[0].messages[0].content,/逐项覆盖/);
- assert.match(models.fast.requests[0].messages[0].content,/先直接回答用户问的那件事并给出可用结论/);
+ assert.match(models.fast.requests[0].messages[0].content,/直接、自然、沉稳地回答原问题本身/);
  assert.match(models.fast.requests[0].messages[0].content,/说明依据的时间与范围/);
  for(const bad of [null,'',42,'x'.repeat(16001)])assert.throws(()=>parseAgentInput(JSON.stringify({goal:bad,continuation})),{code:'INVALID_ARGUMENT'});
 });

@@ -599,8 +599,8 @@ test('Local/Synthetic natural handoff retains dynamic conversation, message orde
       return {replyText:'Original result after interruption'};
     })()};}};}});
   await fixture.host.start();
-  assert.match(fixture.request.instructions,/用户无需重述目标或切换界面/);
-  assert.match(fixture.request.instructions,/承接一次/);assert.match(fixture.request.instructions,/不要念给用户/);
+  assert.match(fixture.request.instructions,/用户无需重复上下文/);
+  assert.match(fixture.request.instructions,/先用一句自然干脆的话/);assert.match(fixture.request.instructions,/绝对禁止念给用户听/);
   fixture.request.onEvent({type:'transcript',id:'work-goal',role:'user',text:'继续帮我完成刚才的工作'});
   const work=fixture.request.onTool('request_work',{goal:'Original same-conversation work'},'natural-work');
   const repeated=fixture.request.onTool('request_work',{goal:'Original same-conversation work'},'natural-work');
