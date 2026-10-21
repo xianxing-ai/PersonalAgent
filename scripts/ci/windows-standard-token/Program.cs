@@ -303,8 +303,12 @@ internal static class Program
         string? originalLogon = LogonSid(original), selectedLogon = LogonSid(token);
         return new { originalEnabledLogonSidPresent = originalLogon != null, selectedEnabledLogonSidPresent = selectedLogon != null,
             logonSidRetained = originalLogon != null && originalLogon == selectedLogon,
-            windowStation = ObjectAccess(GetProcessWindowStation(), token, 0xf037f),
-            desktop = ObjectAccess(GetThreadDesktop(GetCurrentThreadId()), token, 0xf01ff) };
+            windowStation = StationAccess(token),
+            // https://learn.microsoft.com/en-us/windows/win32/winstation/desktop-security-and-access-rights
+            // Read: ENUMERATE|READOBJECTS; Write: CREATEMENU|CREATEWINDOW|HOOKCONTROL|
+            // JOURNALPLAYBACK|JOURNALRECORD|WRITEOBJECTS; Execute: SWITCHDESKTOP.
+            desktop = ObjectAccess(GetThreadDesktop(GetCurrentThreadId()), token,
+                new GenericMapping { Read = 0x20041, Write = 0x200be, Execute = 0x20100, All = 0xf01ff }) };
     }
     static string? LogonSid(IntPtr token)
     {
@@ -317,7 +321,27 @@ internal static class Program
         }
         return null;
     }
-    static object ObjectAccess(IntPtr handle, IntPtr token, uint desired)
+    static object StationAccess(IntPtr token)
+    {
+        IntPtr station = GetProcessWindowStation();
+        // WinSta0 is the only interactive station. Read its name solely to choose the
+        // documented object-type mapping; never log it or change any existing ACL.
+        GetUserObjectInformationW(station, 2, IntPtr.Zero, 0, out uint bytes);
+        if (bytes == 0) return new { known = false, allowed = false, error = Marshal.GetLastWin32Error() };
+        using var name = new Memory(checked((int)bytes));
+        if (!GetUserObjectInformationW(station, 2, name.Value, bytes, out _))
+            return new { known = false, allowed = false, error = Marshal.GetLastWin32Error() };
+        bool interactive = string.Equals(Marshal.PtrToStringUni(name.Value), "WinSta0", StringComparison.OrdinalIgnoreCase);
+        // Microsoft Window Station Security and Access Rights: interactive/noninteractive
+        // mappings differ in READSCREEN and WRITEATTRIBUTES. STANDARD_RIGHTS_READ/WRITE/
+        // EXECUTE are READ_CONTROL (0x20000); STANDARD_RIGHTS_REQUIRED is 0xf0000.
+        // https://learn.microsoft.com/en-us/windows/win32/winstation/window-station-security-and-access-rights
+        var mapping = interactive
+            ? new GenericMapping { Read = 0x20303, Write = 0x2001c, Execute = 0x20060, All = 0xf037f }
+            : new GenericMapping { Read = 0x20103, Write = 0x2000c, Execute = 0x20060, All = 0xf016f };
+        return ObjectAccess(station, token, mapping);
+    }
+    static object ObjectAccess(IntPtr handle, IntPtr token, GenericMapping mapping)
     {
         // DACL/owner/group only: no SACL privilege, no ACL change, no identity/name logging.
         uint information = 7; GetUserObjectSecurity(handle, ref information, IntPtr.Zero, 0, out uint bytes);
@@ -328,8 +352,8 @@ internal static class Program
         if (!DuplicateToken(token, 2, out IntPtr impersonation))
             return new { known = false, allowed = false, error = Marshal.GetLastWin32Error() };
         using var copy = new Handle(impersonation); uint size = 1024;
-        using var privileges = new Memory((int)size); var mapping = new GenericMapping();
-        if (!AccessCheck(descriptor.Value, impersonation, desired, ref mapping, privileges.Value, ref size, out _, out bool allowed))
+        using var privileges = new Memory((int)size);
+        if (!AccessCheck(descriptor.Value, impersonation, mapping.All, ref mapping, privileges.Value, ref size, out _, out bool allowed))
             return new { known = false, allowed = false, error = Marshal.GetLastWin32Error() };
         return new { known = true, allowed, error = 0 };
     }
@@ -447,6 +471,7 @@ internal static class Program
     [DllImport("user32.dll",SetLastError=true)] static extern IntPtr GetThreadDesktop(uint thread);
     [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
     [DllImport("user32.dll",SetLastError=true)] static extern bool GetUserObjectSecurity(IntPtr handle,ref uint information,IntPtr descriptor,uint bytes,out uint needed);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool GetUserObjectInformationW(IntPtr handle,int information,IntPtr value,uint bytes,out uint needed);
     [DllImport("advapi32.dll",SetLastError=true)] static extern bool DuplicateToken(IntPtr token,int level,out IntPtr copy);
     [DllImport("advapi32.dll",SetLastError=true)] static extern bool AccessCheck(IntPtr descriptor,IntPtr token,uint desired,ref GenericMapping mapping,IntPtr privileges,ref uint bytes,out uint granted,out bool allowed);
 }
