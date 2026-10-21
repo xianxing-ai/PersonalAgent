@@ -1,56 +1,81 @@
-/* Panel-local material. Admin, workspace and the orb keep their existing styles. */
+/* One continuous native Acrylic surface; controls are gently raised lenses.
+   The desktop is blurred by DWM, never copied into the renderer. */
 .panel {
-  --panel-coat:rgba(25,31,43,.79);
-  --panel-edge:rgba(255,255,255,.24);
-  --panel-inner:rgba(255,255,255,.1);
-  --panel-control:rgba(255,255,255,.075);
-  --panel-control-hover:rgba(255,255,255,.15);
-  --panel-composer:rgba(20,25,35,.68);
-  --panel-line:rgba(255,255,255,.12);
-  --panel-glow:rgba(205,222,255,.1);
+  --panel-coat:rgba(20,24,30,.40);--panel-lens:rgba(232,241,255,.065);
+  --panel-hover:rgba(232,241,255,.12);--panel-glint:rgba(240,247,255,.20);
+  --panel-line:rgba(229,239,255,.09);--panel-menu:#252a32;
+  --fg:#f5f7fa;--fg-2:#e2e7ee;--muted:#bdc5cf;--faint:#aeb8c5;
+  --fg-placeholder:#b8c1cc;--focus-ring:#adccf2;
   position:relative;box-sizing:border-box;grid-template-rows:auto auto minmax(0,1fr) auto;
-  border-radius:24px;border:1px solid var(--panel-edge);
-  background:radial-gradient(ellipse at 0 0,var(--panel-glow),transparent 64%),linear-gradient(145deg,rgba(255,255,255,.08),transparent 45%),var(--panel-coat);
-  /* The native backdrop blurs desktop content; avoid redundant GPU layers. */
+  border:0;border-radius:40px;clip-path:inset(0 round 40px);
+  background:linear-gradient(145deg,rgba(222,237,255,.09),transparent 43%),var(--panel-coat);
   backdrop-filter:none;-webkit-backdrop-filter:none;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(255,255,255,.045),0 18px 54px rgba(8,16,35,.23);
-  clip-path:inset(0 round 24px);
+  box-shadow:inset 0 1px 0 var(--panel-glint),inset 0 -1px 0 rgba(0,0,0,.14);
 }
 :root[data-theme="light"] .panel {
-  --panel-coat:rgba(244,248,255,.8);--panel-edge:rgba(255,255,255,.86);
-  --panel-inner:rgba(255,255,255,.68);--panel-control:rgba(255,255,255,.44);
-  --panel-control-hover:rgba(255,255,255,.8);--panel-composer:rgba(255,255,255,.67);
-  --panel-line:rgba(76,96,128,.14);--panel-glow:rgba(211,227,255,.46);
+  --panel-coat:rgba(241,245,250,.48);--panel-lens:rgba(255,255,255,.23);
+  --panel-hover:rgba(255,255,255,.44);--panel-glint:rgba(255,255,255,.66);
+  --panel-line:rgba(43,60,82,.10);--panel-menu:#f2f5f9;
+  --fg:#17212e;--fg-2:#2d3b4c;--muted:#48586b;--faint:#526174;
+  --fg-placeholder:#536175;--focus-ring:#44678f;
 }
-.panel::before {content:"";position:absolute;inset:1px;border:1px solid var(--panel-inner);border-radius:22px;pointer-events:none;z-index:8}
-.panel>header {padding:12px 14px;gap:7px;border-bottom-color:var(--panel-line);background:linear-gradient(180deg,rgba(255,255,255,.08),transparent)}
-.panel>header strong {font-size:14px;letter-spacing:-.015em}
-.panel .hdr-btn {width:30px;height:30px;border-radius:11px;background:var(--panel-control);box-shadow:inset 0 1px 0 var(--panel-inner)}
-.panel .hdr-btn:hover:not(:disabled) {background:var(--panel-control-hover)}
+.panel::before {
+  content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;
+  background:radial-gradient(ellipse 330px 260px at var(--light-x,12%) var(--light-y,0%),rgba(218,237,255,.065),transparent 80%);
+}
+.panel>header {padding:18px 20px 12px;gap:7px;border:0;background:transparent}
+.panel>header strong {font-size:14px;letter-spacing:-.025em}
+.panel>header .status {font-size:11px;color:var(--muted)}
+.panel .dot {width:6px;height:6px;background:#d9e8f9;box-shadow:0 0 9px rgba(216,236,255,.35)}
+.panel .hdr-btn {width:32px;height:32px;border-radius:50%;background:var(--panel-lens);box-shadow:inset 0 1px 0 var(--panel-glint)}
+.panel .hdr-btn:hover:not(:disabled) {background:var(--panel-hover)}
 .panel>div:has(>.conversation-sessions) {grid-row:2;grid-column:1;min-height:0;min-width:0}
-.panel .conversation-sessions {padding:8px 14px;gap:7px 9px;max-height:104px;overflow:auto;border-bottom:1px solid var(--panel-line);background:rgba(127,146,178,.035)}
-.panel .conversation-sessions :is(select,input,button) {border-color:var(--panel-line);border-radius:9px;min-height:28px;background:var(--panel-control);box-shadow:inset 0 1px 0 var(--panel-inner)}
-.panel .conversation-sessions label {max-width:100%}
-.panel .conversation-sessions :is(input,select) {width:112px}
-.panel .conversation-sessions details[open]>div {max-height:90px;overflow:auto;margin-top:6px}
-.panel>.thread {grid-row:3;padding:16px 18px 18px 20px}
+.panel>div:has(>.conversation-sessions)>[data-session-status]:empty {display:none}
+.panel>div:has(>.conversation-sessions)>[data-session-status]:not(:empty) {margin:4px 22px}
+.panel .conversation-sessions {max-height:100px;overflow:auto;padding:8px 20px;border:0}
+.panel>.thread {grid-row:3;padding:14px 24px 22px;overscroll-behavior:contain;scrollbar-gutter:stable}
 .panel>.conversation-rail {grid-row:3}
-.panel .thread>.bubble {font-size:20px;font-weight:600;letter-spacing:-.03em;padding:18px 10px 12px}
-.panel .thread>.who {font-size:11px;line-height:1.5;opacity:.85}
-.panel .thread .notice {font-size:12px;line-height:1.65}
-.panel .quick-start {gap:7px;margin:8px 0 14px}
-.panel .quick-start button {padding:8px 12px;border:1px solid var(--panel-line);background:var(--panel-control);box-shadow:inset 0 1px 0 var(--panel-inner);font-weight:500}
-.panel .quick-start button:hover {background:var(--panel-control-hover)}
-.panel .user-message {background:var(--panel-control);border-color:var(--panel-line);box-shadow:inset 0 1px 0 var(--panel-inner)}
-.panel>.composer {grid-row:4;margin:0 12px 12px;padding:12px 13px 10px;border-radius:20px;border:1px solid var(--panel-line);background:linear-gradient(160deg,rgba(255,255,255,.07),transparent 65%),var(--panel-composer);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:inset 0 1px 0 var(--panel-inner),0 5px 18px rgba(8,16,35,.06)}
-.panel .composer textarea {box-sizing:border-box;min-height:48px;font-size:14px;line-height:1.6}
-.panel .composer:focus-within {border-color:var(--focus-ring);box-shadow:inset 0 1px 0 var(--panel-inner),0 0 0 2px var(--accent-soft)}
-.panel .composer-bar {gap:5px}
-.panel .composer-bar>.send-btn {box-shadow:0 3px 9px rgba(10,20,40,.14)}
-.panel .task-progress,.panel .sis-settings {border-color:var(--panel-line);background:var(--panel-control);box-shadow:inset 0 1px 0 var(--panel-inner)}
-.panel .bell-menu,.panel .model-menu {border-color:var(--panel-edge);border-radius:17px;background:var(--surface);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:0 14px 38px rgba(8,16,35,.24),inset 0 1px 0 var(--panel-inner)}
-:root[data-theme="light"] .panel :is(.bell-menu,.model-menu) {background:#f7f9fd}
+.panel .thread>.who {font-size:10.5px;line-height:1.6;margin-bottom:14px;color:var(--muted)}
+.panel .thread>.bubble {background:transparent;border:0;box-shadow:none;text-align:left;font-size:27px;line-height:1.35;font-weight:600;letter-spacing:-.045em;padding:14px 0 22px}
+.panel .quick-start {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 24px}
+.panel .quick-start button {
+  min-height:48px;padding:12px;text-align:left;white-space:normal;line-height:1.5;
+  border:0;border-radius:17px;background:linear-gradient(130deg,rgba(237,245,255,.035),transparent),var(--panel-lens);
+  box-shadow:inset 0 1px 0 var(--panel-glint),0 4px 12px rgba(0,0,0,.025);
+  color:var(--fg-2);font-size:12px;font-weight:500;
+}
+.panel .quick-start button:not(:disabled):hover {background:var(--panel-hover);box-shadow:inset 0 1px 0 var(--panel-glint)}
+.panel .thread .notice {font-size:11px;line-height:1.8;color:var(--muted)}
+.panel .voice-runtime-controls {margin:16px 0 12px;padding:12px 14px;border-radius:17px;background:var(--panel-lens)}
+.panel .voice-runtime-controls .notice {margin:0 0 8px}
+.panel #live-open-settings {border:0;border-radius:999px;padding:6px 11px;background:var(--panel-lens);color:var(--fg-2);font:inherit;font-size:11px;box-shadow:inset 0 1px 0 var(--panel-glint)}
+.panel .user-message {border:0;border-radius:19px 19px 6px 19px;background:var(--panel-hover);box-shadow:none}
+.panel>.composer {
+  grid-row:4;margin:0 12px 12px;padding:14px 14px 10px;border:0;border-radius:25px;
+  background:linear-gradient(155deg,rgba(233,244,255,.06),transparent 70%),var(--panel-lens);
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  box-shadow:inset 0 1px 0 var(--panel-glint),0 8px 24px rgba(0,0,0,.055);
+}
+.panel>.composer:focus-within {box-shadow:inset 0 1px 0 var(--panel-glint),inset 0 0 0 1px rgba(168,199,234,.25),0 8px 24px rgba(0,0,0,.055)}
+.panel .composer textarea {min-height:55px;max-height:min(140px,23vh);font-size:14px;line-height:1.65;padding:4px 4px 8px}
+.panel .composer textarea:focus-visible {outline:none}
+.panel .composer-bar {gap:4px}
+.panel .composer-bar>:is(.icon-btn,.send-btn) {border-radius:50%;height:34px}
+.panel .composer-bar>.goal-open {background:var(--panel-lens);border:0;border-radius:999px;font-size:10.5px}
+.panel .model-select {border-radius:999px;color:var(--fg-2);font-size:11px}
+.panel .send-btn {background:#edf3fa;color:#19212b;box-shadow:inset 0 1px 0 #fff,0 3px 10px rgba(0,0,0,.12)}
+:root[data-theme="light"] .panel .send-btn {background:#293746;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.panel .wake-controls {margin-top:11px;padding:9px 4px 0;border-top:1px solid var(--panel-line)}
+.panel .wake-controls>summary {cursor:pointer;font-size:10.5px;color:var(--muted);padding:3px 0;min-height:16px}
+.panel .wake-controls[open]>.wake-control-row {padding-top:10px}
+.panel .wake-control-row button {background:var(--panel-lens);border:0;border-radius:999px}
+.panel .task-progress,.panel .sis-settings {border-color:var(--panel-line);background:var(--panel-lens);box-shadow:none}
+/* Popovers have a stable backing for dense controls and text. */
+.panel :is(.bell-menu,.model-menu) {border:0;border-radius:20px;background:var(--panel-menu);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:inset 0 1px 0 var(--panel-glint),0 14px 38px rgba(0,0,0,.25)}
 .panel :is(button,input,select,summary):focus-visible {outline:2px solid var(--focus-ring);outline-offset:2px}
-@media(max-width:360px) {.panel .conversation-sessions {gap:6px;padding-inline:10px}.panel .conversation-sessions :is(select,input) {width:94px}.panel>header {padding-inline:10px}.panel>.thread {padding-inline:14px}.panel>.composer {margin-inline:8px}.panel .composer-bar {gap:2px}}
-@media(prefers-reduced-transparency:reduce) {.panel {--panel-coat:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none}.panel>.composer {background:var(--surface-2)}}
-@media(forced-colors:active) {.panel,.panel>.composer,.panel .conversation-sessions {background:Canvas;color:CanvasText;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;border-color:CanvasText}.panel::before {display:none}.panel :is(button,input,select,textarea) {forced-color-adjust:auto}}
+@media(max-width:360px) {.panel>header {padding-inline:16px;gap:4px}.panel>.thread {padding-inline:19px}.panel .thread>.bubble {font-size:24px}.panel>.composer {margin-inline:10px;padding-inline:12px}.panel .quick-start {gap:7px}.panel .quick-start button {padding:10px}}
+@media(max-height:540px) {.panel>header {padding-block:12px 8px}.panel>.thread {padding-block:6px 12px}.panel .thread>.bubble {padding-top:4px}.panel .composer textarea {min-height:40px;max-height:18vh}.panel>.composer {padding-top:10px}.panel .wake-controls[open] {max-height:90px;overflow:auto}}
+@media(prefers-reduced-transparency:reduce) {.panel {--panel-coat:var(--bg);--panel-lens:var(--surface-2)}.panel::before {display:none}}
+@media(prefers-reduced-motion:reduce) {.panel::before {display:none}}
+:root[data-calm="true"] .panel::before {display:none}
+@media(forced-colors:active) {.panel,.panel>.composer,.panel .quick-start button,.panel .voice-runtime-controls,.panel :is(.bell-menu,.model-menu) {background:Canvas;color:CanvasText;box-shadow:none;border:1px solid CanvasText}.panel::before {display:none}.panel :is(button,input,select,textarea) {forced-color-adjust:auto}}

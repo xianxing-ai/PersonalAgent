@@ -730,7 +730,7 @@ function windowFor(mode, bounds, options = {}) {
     if (mode === 'panel') void stopPanelVoice().catch(reportPanelVoiceFailure);
   });
   if (mode === 'panel') {
-    win.on('resize', () => applyShape(win, 24));
+    win.on('resize', () => applyShape(win, 40));
     win.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => {
       if (mainFrame) void stopPanelVoice().catch(reportPanelVoiceFailure);
     });
@@ -754,7 +754,7 @@ function windowFor(mode, bounds, options = {}) {
     presented = true;
     if (mode === 'orb') placeOrb(win, win.getBounds());
     if (centerOnPresent) win.center();
-    if (mode === 'panel') applyShape(win, 24);
+    if (mode === 'panel') applyShape(win, 40);
     if (mode === 'workspace') win.maximize();
     if (mode !== 'panel') win.show();
     publish();
@@ -788,7 +788,9 @@ function roundedRects(width, height, radius) {
 
 function applyShape(win, radius) {
   const bounds = win.getBounds();
-  win.setShape(roundedRects(bounds.width, bounds.height, radius));
+  // Leave one DIP for the per-pixel visual/CSS antialiasing; the native region
+  // is the hit mask, not the final optical edge of the clipped glass layer.
+  win.setShape(roundedRects(bounds.width, bounds.height, Math.max(0, radius * win.webContents.getZoomFactor() - 1)));
 }
 
 function placePanel(bounds) {
@@ -804,7 +806,7 @@ function openPanel(focus = false) {
   if (!orb || !panel || orb.isDestroyed() || panel.isDestroyed()) return;
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
   placePanel(panelBounds(orb.getBounds(), screen.getDisplayMatching(orb.getBounds()).workArea));
-  applyShape(panel, 24);
+  applyShape(panel, 40);
   if (focus) panel.show(); else panel.showInactive();
   away = 0;
 }
@@ -827,7 +829,7 @@ function movePanelGroup(point) {
   const next = draggedGroupBounds(panelDragOrigin.orb, panelDragOrigin.pointer, point, area);
   placeOrb(orb, next.orb);
   placePanel(next.panel);
-  applyShape(panel, 24);
+  applyShape(panel, 40);
 }
 
 function openAdmin(page) {
@@ -3789,7 +3791,7 @@ app.whenReady().then(async () => {
     {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false});
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
     {frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
-  bindPanelMaterial(panel, nativeTheme);
+  const panelMaterial=bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
   panel.webContents.once('did-finish-load', () => {void voiceStartupHost?.start().catch(reportPanelVoiceFailure);});
@@ -3973,6 +3975,9 @@ app.whenReady().then(async () => {
       reportQuitFailure('Runtime 仍有活动任务；请先等待完成或停止任务后再退出');
       return;
     }
+    // A cross-process child HWND must exit while the parent UI thread can
+    // still process messages, before native parent destruction begins.
+    if(!panelMaterial.allowQuit(()=>app.quit())){event.preventDefault();return;}
     if(!draftQuitPreflight.commit()){event.preventDefault();draftQuitPreflight.allow();return;}
     globalShortcut.unregisterAll();
     try {

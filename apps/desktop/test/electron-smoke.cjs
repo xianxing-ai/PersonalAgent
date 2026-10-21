@@ -2,6 +2,7 @@ const assert=require('node:assert/strict');
 const path=require('node:path');
 const fs=require('node:fs');
 const {_electron}=require('playwright');
+const {closeDesktop}=require('../test-support/close-desktop.cjs');
 (async()=>{
  const output=path.resolve(__dirname,'../.cache/qa');fs.mkdirSync(output,{recursive:true});
  const localElectron=path.resolve(__dirname,'../node_modules/electron/dist/electron.exe');
@@ -69,9 +70,12 @@ const {_electron}=require('playwright');
    assert.ok(groupAfter.panel.x+groupAfter.panel.width<=groupAfter.orb.x||groupAfter.orb.x+groupAfter.orb.width<=groupAfter.panel.x);
    assert.match(await panel.locator('#connection').innerText(),fake?/Fake Runtime/:/本地 Runtime/);
    await panel.locator('#model').click();
-   assert.equal(await panel.locator('#mm-slider').isDisabled(),false);
-   await panel.locator('#mm-slider').fill('3');
-   await panel.locator('#mm-slider').dispatchEvent('input');
+   // Native reasoning is capability gated since #407; this check is the
+   // independent Runtime step budget, not provider reasoning support.
+   const stepBudget=panel.getByRole('slider',{name:'模型执行步骤预算',exact:true});
+   assert.equal(await stepBudget.isDisabled(),false);
+   await stepBudget.fill('3');
+   await stepBudget.dispatchEvent('change');
    await panel.waitForTimeout(100);
    const panelThinking=await panel.evaluate(()=>window.desktop.invoke('snapshot'));
    assert.equal(panelThinking.value.thinking.depth,3);
@@ -164,5 +168,5 @@ const {_electron}=require('playwright');
    assert.equal(await panel.locator('#stop').isDisabled(),true);
    assert.deepEqual(errors,[]);
    console.log(`PASS: ${fake?'Fake':'local'} Runtime Electron windows, native 90px hover/open, explicit collapse, grouped edge-aware drag, isolated preload, ORB-02, tray host, 420px responsive panel, event-driven SDK submit/cancel, independent admin close, no page errors`);
- } finally {await app.close();}
+ } finally {await closeDesktop(app);}
 })();

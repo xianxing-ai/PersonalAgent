@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-21 悬浮面板玻璃主题与原生圆角（review）
+
+`DESKTOP-LIQUID-GLASS-20261021`：目标 `huawei_ict_agentarts`，MOD-11/12，PA-001/PA-002。用户确认本机深色玻璃和真实外层圆角后授权提交 PR；从 `61b05cf1` 独立交付 `codex/panel-liquid-glass-20261021`。仅修改 Desktop 面板展示、原生材质与必要验证；没有纳入并行工作区重排、Runtime/AgentArts、公共协议、依赖或迁移。实际接线、Windows SDK/.NET Framework 要求、不透明回退和验证边界见 [交付记录](../apps/desktop/docs/PANEL_LIQUID_GLASS_20261021.md)。实施 Codex / 提交 `2511375597-lab`，拟审查 `Potatos498`、拟合并 `goo122`（均待实际接手）；未授权合并，不据本机 Fake 界面或视觉批准声明真实云能力完成。
+
 ## 2026-10-20 开发者 harness 优先交付（in_progress）
 
 Owner 本轮要求先交付开发者可直接使用的完整 harness，再承接常驻智能体；最新路线为参考 Harness² / DeepSeek Harness 的能力和方法自主实现。[当前工作包](design/DEVELOPER_HARNESS_20261020.md)登记受控多执行者、持续会话/恢复、候选试跑/经验、主对话 CI、启动语音和主动事件的唯一责任与验收。现有 Runtime、权限、工具、隔离与持久记录继续复用，开发用子智能体不计入产品功能。
