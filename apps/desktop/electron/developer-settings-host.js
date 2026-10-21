@@ -185,6 +185,9 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
     await factories();options={...originalOptions};delete options.configPath;delete options.configurationSource;delete options.workspace;
     const catalog=await readToolDescriptors(options);
     const descriptors=Array.isArray(catalog)?catalog:catalog.descriptors;
+    // Participation follows the stable catalog, even while its deployment is unavailable.
+    // Match names so an unsupported version of our own tool still fails closed below.
+    const toolNames=new Set(descriptors.map(descriptor=>descriptor.name));
     const select=descriptor=>{
       const lease=active();
       const tool=lease?.deployment.host.tools.find(item=>item.descriptor.name===descriptor.name&&item.descriptor.version===descriptor.version);
@@ -227,7 +230,8 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
           throw Error('开发设置无法读取原 Runtime 启动边界');
         bindingRuntime=runtime;startupSequence=snapshot.snapshotSequence;application=value;slot?.deployment.host.bind(value);
       },
-      close},async prepareExport(scope){const lease=active();if(!lease||!bound(lease,scope,true))unavailable();
+      close},async prepareExport(scope){if(!toolNames.has(scope?.proposal?.toolName))return;
+        const lease=active();if(!lease||!bound(lease,scope,true))unavailable();
         await lease.deployment.prepareExport(scope);if(!bound(lease,scope))throw changed();},
       snapshot:()=>({...active()?.deployment.snapshot(),configured:Boolean(active()),
         state:closed?'closed':active()?'configured':'unavailable',
