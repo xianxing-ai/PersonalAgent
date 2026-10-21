@@ -67,11 +67,11 @@ const createEventInputSchema: ToolDescriptor['inputSchema'] = {
 
 const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '更新既有日历事件的字段（缺省字段保持原值）；SEQUENCE 递增后写回并读回核对。',
+  description: '更新既有日历事件的字段（缺省字段保持原值）；SEQUENCE 递增后写回并读回核对。uid 取 calendar.events 返回条目的 externalId。',
   required: ['uid'],
   additionalProperties: false,
   properties: {
-    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'},
+    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$', description: '事件的资源 UID，即 calendar.events 返回条目的 externalId。'},
     summary: {type: 'string', minLength: 1, maxLength: 512},
     startUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
     endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
@@ -82,10 +82,10 @@ const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
 
 const cancelEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '取消（删除）日历事件。资源不存在视为已取消（幂等），状态如实返回。',
+  description: '取消（删除）日历事件。uid 取 calendar.events 返回条目的 externalId（同一 UID 体系），不需要另外索要事件标识；资源不存在视为已取消（幂等），状态如实返回。对象明确时直接调用本工具，执行前的授权由 Policy 以审批呈现，不必在对话里重复征得口头许可。',
   required: ['uid'],
   additionalProperties: false,
-  properties: {uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'}},
+  properties: {uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$', description: '事件的资源 UID，即 calendar.events 返回条目的 externalId。'}},
 };
 
 const writeOutputSchema: ToolDescriptor['outputSchema'] = {

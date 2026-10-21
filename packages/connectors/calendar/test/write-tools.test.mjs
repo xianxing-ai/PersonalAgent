@@ -82,3 +82,22 @@ test('无 writes 能力时写工具不注册（只读 provider 保持只读目�
     assert.ok(true);
   } finally { unregister(); }
 });
+
+/**
+ * 2026-10-21 实测：模型拿到 calendar.events 的 externalId 后仍反复向用户索要"事件标识"，
+ * 因为读返回 externalId、写要求 uid，而说明里没有把两者绑定。这段说明是模型唯一能读到的契约。
+ */
+test('模型可见的取消/更新说明把 uid 绑定到 calendar.events 的 externalId', () => {
+  const descriptors = new Map();
+  const unregister = register({register(tool) {descriptors.set(tool.descriptor.name, tool.descriptor); return () => {};}},
+    {provider: new FakeCalendarProvider(), accountRef: 'cal', now: () => NOW});
+  try {
+    for (const name of ['calendar.cancel', 'calendar.update']) {
+      const schema = descriptors.get(name).inputSchema;
+      assert.match(schema.description, /externalId/, `${name} 的说明必须指出 uid 就是 externalId`);
+      assert.match(schema.properties.uid.description, /externalId/);
+    }
+    // 取消是 external_write：授权由 Policy 以审批呈现，说明不应让模型在对话里反复索要口头许可。
+    assert.match(descriptors.get('calendar.cancel').inputSchema.description, /Policy/);
+  } finally {unregister();}
+});
