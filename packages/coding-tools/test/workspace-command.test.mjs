@@ -63,6 +63,26 @@ const context = (overrides = {}) => ({
   ...overrides,
 });
 
+test('trusted native adapter binds original run, records host outcome and never falls back', async t => {
+  const root=await fixture(t);let executions=0;const records=[];
+  const current=context({argumentsDigest:'a'.repeat(64)});
+  const profile={sandboxRef:'profile',revision:1,mode:'read-only',backend:'windows-psec',readRoots:[root],writeRoots:[],executableAllowlist:[process.execPath],network:{mode:'deny'}};
+  const result={backend:'windows-psec',enforced:true,outcome:'exited',exitCode:0,signal:null,stdout:'synthetic',stderr:'',executionStarted:true,stopped:true,sideEffects:'possible'};
+  let next=result;
+  const tool=createWorkspaceCommandTool({rootPath:root,recipes:[{id:'fixed',executable:process.execPath,args:['-e','process.exit(91)']}],trustedSandbox:{
+    bind:ctx=>({...ctx,profile,sandboxRef:profile.sandboxRef,revision:profile.revision}),
+    executor:{execute:async request=>{executions++;assert.equal(request.taskId,current.taskId);assert.deepEqual(request.argv,['-e','process.exit(91)']);return next}},
+    recordResult:(_ctx,value)=>records.push(value),
+  }});
+  assert.deepEqual(await tool.execute({recipeId:'fixed'},current),{recipeId:'fixed',exitCode:0,stdout:'synthetic',stderr:''});
+  next={...result,enforced:false,outcome:'unavailable',executionStarted:false,exitCode:null,sideEffects:'none'};
+  await assert.rejects(tool.execute({recipeId:'fixed'},current),{code:'UNSUPPORTED_CAPABILITY'});
+  next={...result,outcome:'unknown',stopped:false};
+  await assert.rejects(tool.execute({recipeId:'fixed'},current),{code:'RESULT_UNKNOWN'});
+  assert.equal(executions,3);assert.equal(records.length,3);
+  await assert.rejects(tool.execute({recipeId:'fixed'},context()),{code:'SCOPE_DENIED'});assert.equal(executions,3);
+});
+
 test('completed fixed commands reject elapsed execution leases and invalid clocks', async t => {
   for (const scenario of ['deadline', 'duration', 'invalid clock', 'throwing clock']) await t.test(scenario, async t => {
     const root = await fixture(t);

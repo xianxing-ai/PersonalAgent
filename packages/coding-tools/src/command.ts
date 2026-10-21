@@ -3,6 +3,7 @@ import {realpathSync, statSync} from 'node:fs';
 import {isAbsolute, relative, sep} from 'node:path';
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolDescriptor, ToolHost} from '@personal-agent/contracts';
+import type {SandboxExecutionResult, TrustedSandboxExecutionRequest, TrustedSandboxExecutor} from './native-sandbox.js';
 
 export const WORKSPACE_COMMAND_TOOL_NAME = 'workspace.run_allowed_command';
 export const WORKSPACE_COMMAND_TOOL_VERSION = '1.0.0';
@@ -31,6 +32,17 @@ export interface WorkspaceCommandOptions {
   maxDurationMs?: number;
   now?: () => number;
   env?: Readonly<Record<string, string>>;
+  /** Host-only. Competition composition supplies this; requested isolation never falls back to spawn. */
+  trustedSandbox?: WorkspaceCommandSandbox;
+}
+
+export interface WorkspaceCommandSandbox {
+  readonly executor: TrustedSandboxExecutor;
+  readonly bind: (context: ToolContext, executionDeadline: string) =>
+    Promise<Pick<TrustedSandboxExecutionRequest, 'profile' | 'sandboxRef' | 'revision' | 'taskId' | 'runId' | 'authorizationRef' | 'argumentsDigest'>>
+    | Pick<TrustedSandboxExecutionRequest, 'profile' | 'sandboxRef' | 'revision' | 'taskId' | 'runId' | 'authorizationRef' | 'argumentsDigest'>;
+  /** Trusted execution record/Evidence only, never fields asserted by target stdout. */
+  readonly recordResult: (context: ToolContext, result: SandboxExecutionResult) => void | Promise<void>;
 }
 
 export interface WorkspaceCommandResult {
@@ -176,6 +188,34 @@ export function createWorkspaceCommandTool(options: WorkspaceCommandOptions): Re
       }
       const recipeId = (input as {recipeId: string}).recipeId;
       const recipe = recipes.get(recipeId)!;
+      if (options.trustedSandbox) {
+        const sandbox = options.trustedSandbox;
+        const currentIdentity = statSync(root, {bigint: true});
+        if (realpathSync.native(root) !== root || currentIdentity.dev !== rootIdentity.dev || currentIdentity.ino !== rootIdentity.ino) {
+          throw new ProtocolError('SCOPE_DENIED', 'Workspace command root binding changed');
+        }
+        const binding = await sandbox.bind(context, new Date(executionDeadline).toISOString());
+        if (binding.taskId !== context.taskId || binding.runId !== context.runId || binding.authorizationRef !== context.authorizationRef
+          || !context.argumentsDigest || binding.argumentsDigest !== context.argumentsDigest) {
+          throw new ProtocolError('SCOPE_DENIED', 'Sandbox execution binding changed');
+        }
+        const boundIdentity = statSync(root, {bigint: true});
+        if (realpathSync.native(root) !== root || boundIdentity.dev !== rootIdentity.dev || boundIdentity.ino !== rootIdentity.ino) {
+          throw new ProtocolError('SCOPE_DENIED', 'Workspace command root binding changed');
+        }
+        const result = await sandbox.executor.execute({...binding, executable: recipe.executable, argv: recipe.args,
+          env: recipe.env ?? {}, cwd: root, deadline: new Date(executionDeadline).toISOString(), signal: context.signal, maxOutputBytes});
+        try { await sandbox.recordResult(context, result); }
+        catch { throw new ProtocolError('RESULT_UNKNOWN', 'Sandbox execution receipt could not be saved'); }
+        if (result.executionStarted && !result.stopped) throw new ProtocolError('RESULT_UNKNOWN', 'Sandbox process tree stop is unconfirmed');
+        if (result.outcome === 'unavailable') throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Requested native sandbox is unavailable');
+        if (result.outcome === 'cancelled') throw new ProtocolError('CANCELLED', 'Workspace command was cancelled');
+        if (result.outcome === 'timeout') throw new ProtocolError('TIMEOUT', 'Workspace command deadline expired');
+        if (result.outcome !== 'exited' || result.exitCode === null) throw new ProtocolError('RESULT_UNKNOWN', 'Sandbox command result is unknown');
+        if (context.signal.aborted) throw new ProtocolError('CANCELLED', 'Workspace command was cancelled');
+        if (readClock() >= executionDeadline) throw new ProtocolError('TIMEOUT', 'Workspace command deadline expired');
+        return {recipeId, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr};
+      }
       // No shell, caller-provided argv, caller-provided cwd, or inherited environment.
       // A recipe can still access anything its OS account can access: this is not isolation.
       return new Promise<WorkspaceCommandResult>((resolve, reject) => {

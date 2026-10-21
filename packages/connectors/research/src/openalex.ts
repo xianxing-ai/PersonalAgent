@@ -1,5 +1,6 @@
 import { ProtocolError } from '@personal-agent/contracts';
-import type { ResearchMaterial, ResearchProvider, ResearchSearchInput } from './provider.js';
+import type { ResearchMaterial, ResearchProvider, ResearchSearchInput, ResearchSearchPage, ResearchRetrievalReceipt } from './provider.js';
+import { hasCjk, matchQuery, readAbstract, sourceQuery } from './relevance.js';
 
 export interface OpenAlexOptions {
   /** 联系邮箱：进入 OpenAlex 的 polite pool（更稳定的限速），不发送任何隐私内容。可选。 */
@@ -29,6 +30,7 @@ export interface OpenAlexWork {
   primary_location?: unknown;
   cited_by_count?: unknown;
   language?: unknown;
+  abstract_inverted_index?: unknown;
 }
 
 export class OpenAlexProvider implements ResearchProvider {
@@ -46,28 +48,58 @@ export class OpenAlexProvider implements ResearchProvider {
   }
 
   async search(_accountRef: string, input: ResearchSearchInput & {signal?: AbortSignal}): Promise<ResearchMaterial[]> {
+    return (await this.searchWithReceipt(_accountRef, input)).materials;
+  }
+
+  async searchWithReceipt(_accountRef: string, input: ResearchSearchInput): Promise<ResearchSearchPage> {
     if (typeof input.query !== 'string' || input.query.trim().length === 0) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Research query must be a non-empty string');
     }
     if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 20) {
       throw new ProtocolError('INVALID_ARGUMENT', 'limit must be 1..20');
     }
-    const url = `${this.baseUrl}/works?search=${encodeURIComponent(input.query.trim())}&per-page=${input.limit}`
+    const source = sourceQuery(input.query.trim());
+    const url = `${this.baseUrl}/works?search=${encodeURIComponent(source.query)}&per-page=${input.limit}`
       + (this.mailto !== undefined ? `&mailto=${encodeURIComponent(this.mailto)}` : '');
     const body = asRecord(await this.getJson(url, input.signal ?? new AbortController().signal));
-    const results = Array.isArray(body?.results) ? body.results : [];
+    if (!Array.isArray(body?.results) || body.results.length > input.limit) {
+      throw new ProtocolError('EXTERNAL_FAILURE', 'OpenAlex returned an invalid results page', true);
+    }
+    const results = body.results;
     const materials: ResearchMaterial[] = [];
+    const matches: ResearchRetrievalReceipt['matches'] = [];
+    let invalidCount = 0;
+    let filteredCount = 0;
     for (const entry of results) {
       const material = readWork(entry);
-      if (material !== undefined) materials.push(material);
+      if (material === undefined) {
+        invalidCount++;
+        continue;
+      }
+      const match = matchQuery(input.query, material.title, readAbstract(asRecord(entry)?.abstract_inverted_index));
+      if (match === undefined) {
+        filteredCount++;
+        continue;
+      }
+      materials.push(material);
+      matches.push({externalId: material.externalId, ...match});
     }
-    // 中文查询做相关度底线筛选（#445）：OpenAlex 对 CJK 口语查询会返回与检索词毫无
-    // 交集的高排名结果（实机两例：Node.js 24 题命中《BayLing》与 YOLOv11 教室论文）。
-    // 两桥皆空的命中不返回——诚实未命中优于呈现无关材料；拉丁查询不受影响。
-    if (hasCjk(input.query)) {
-      return materials.filter(material => bridgedToCjkQuery(input.query, material.title));
-    }
-    return materials;
+    const outcome = materials.length > 0 ? 'matched' : results.length === 0 ? 'source_empty'
+      : filteredCount > 0 ? 'filtered_empty' : 'invalid_results';
+    const message = (source.rewrite === undefined ? '' : `已用可审计双语主题映射检索：${source.query}；原查询及映射见 queryRewrite。`)
+      + `OpenAlex 本次页面原始 ${results.length} 条，无效 ${invalidCount} 条，本机相关度过滤 ${filteredCount} 条，返回 ${materials.length} 条。`
+      + (outcome === 'filtered_empty' ? '本机词面/主题桥接未确认相关材料，不表示语料中没有相关文献；可使用明确的英文主题短语重查。'
+        : outcome === 'source_empty' ? '本次源页面没有命中，不代表整个语料不存在相关文献。'
+          : outcome === 'invalid_results' ? '源页面条目缺少必要标识或题名，未作为材料返回。'
+            : '保留依据见 matches；词面/主题命中不等于语义相关性已验证。');
+    const sourceUrl = new URL(url);
+    sourceUrl.username = '';
+    sourceUrl.password = '';
+    sourceUrl.searchParams.delete('mailto');
+    const retrieval: ResearchRetrievalReceipt = {provider: this.providerKind, sourceUrl: sourceUrl.toString(), policy: hasCjk(input.query) ? 'cjk_topic_v2' : 'provider_rank',
+      rawCount: results.length, invalidCount, filteredCount, returnedCount: materials.length, outcome, message, matches};
+    if (source.rewrite !== undefined) retrieval.queryRewrite = source.rewrite;
+    return {materials, retrieval};
   }
 
   private async getJson(url: string, signal: AbortSignal): Promise<unknown> {
@@ -100,7 +132,7 @@ function readWork(entry: unknown): ResearchMaterial | undefined {
   if (!record) return undefined;
   const id = record.id;
   const title = typeof record.display_name === 'string' ? record.display_name : typeof record.title === 'string' ? record.title : undefined;
-  if (typeof id !== 'string' || id.length === 0 || title === undefined || title.length === 0) return undefined;
+  if (typeof id !== 'string' || id.trim().length === 0 || title === undefined || title.trim().length === 0) return undefined;
   const externalId = id.startsWith('https://openalex.org/') ? id.slice('https://openalex.org/'.length) : id;
   const material: ResearchMaterial = {externalId, title, publishedAt: null, authors: []};
   if (typeof record.publication_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.publication_date)) {
@@ -132,74 +164,4 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-// —— 中文（CJK）查询的相关度桥接（#445，2026-10-20 实机证据）——
-// OpenAlex /works?search= 对中文口语查询的跨语言召回会给出与检索词毫无交集的高排名
-// 结果（实机收据：Node.js 24 题命中《BayLing: Bridging Cross-lingual Alignment…》
-// 与《Design of an Intelligent Classroom Attentiveness Analysis System Based on
-// YOLOv11》）。桥接判据（命中其一才保留，都在题名上判定）：
-// ① 拉丁词桥：查询里的拉丁词（产品名/术语，如 node.js）在题名按词边界出现；
-// ② 汉字二元组桥：题名与查询共享 ≥2 个连续汉字二元组（查询仅 2-3 个汉字时放宽为 ≥1，
-//    否则两字查询词永远无法构成桥）。
-// 两桥皆空 → 视为不相关，不返回：诚实未命中优于呈现无关材料。
-// 拉丁查询不经此筛选：OpenAlex 自排质量已可用，且词面桥接会误伤合法英文结果
-//（如「LLM」题名不含「large language models」字面）。日语假名/韩文/query 语义级
-// rerank 均为后续增强（见 README 已知限制）。
-const CJK_CHAR = /[\u3400-\u9fff]/;
-const LATIN_TERM = /[a-z][a-z0-9+#.]*/g;
-const LATIN_STOPWORDS = new Set([
-  'a', 'an', 'the', 'of', 'and', 'or', 'for', 'with', 'on', 'in', 'to', 'is', 'are', 'be',
-  'by', 'as', 'at', 'vs', 'via', 'using', 'based', 'new', 'how',
-]);
-
-function hasCjk(text: string): boolean {
-  return CJK_CHAR.test(text);
-}
-
-/** 查询里的拉丁判据词（小写）：纯数字（如「24」）不构成判据——在任意题名里都过度命中，
- * 只会放水；虚词丢弃；长度 <2 丢弃。 */
-function latinQueryTerms(query: string): string[] {
-  const terms: string[] = [];
-  for (const match of query.toLowerCase().matchAll(LATIN_TERM)) {
-    const raw = match[0];
-    if (raw === undefined) continue;
-    // 只剥尾部句点；+/# 是 C++/C# 判据词的字面本体（#447 评审 P2）——剥掉后只剩单字母
-    // 被长度门槛丢弃，这类题就永远只剩汉字桥，英文题名命中全筛掉。
-    const term = raw.replace(/[.]+$/, '');
-    if (term.length < 2 || LATIN_STOPWORDS.has(term)) continue;
-    terms.push(term);
-  }
-  return terms;
-}
-
-function containsLatinTerm(lowerTitle: string, term: string): boolean {
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // 边界把 +/# 视为词内字符（#447 评审 P3）：c++/c# 是完整词元，不受半边界系统
-  // 另外 C++11/C#12 这类紧邻数字的版本化写法也能整体命中。
-  return new RegExp(`(^|[^a-z0-9+#])${escaped}($|[^a-z0-9+#])`).test(lowerTitle);
-}
-
-function cjkBigrams(text: string): Set<string> {
-  const chars = Array.from(text);
-  const bigrams = new Set<string>();
-  for (let i = 0; i + 1 < chars.length; i++) {
-    const head = chars[i];
-    const tail = chars[i + 1];
-    if (head === undefined || tail === undefined || !CJK_CHAR.test(head) || !CJK_CHAR.test(tail)) continue;
-    bigrams.add(head + tail);
-  }
-  return bigrams;
-}
-
-function bridgedToCjkQuery(query: string, title: string): boolean {
-  const lowerTitle = title.toLowerCase();
-  if (latinQueryTerms(query).some(term => containsLatinTerm(lowerTitle, term))) return true;
-  const queryBigrams = cjkBigrams(query);
-  if (queryBigrams.size === 0) return false;
-  const titleBigrams = cjkBigrams(title);
-  let shared = 0;
-  for (const bigram of queryBigrams) if (titleBigrams.has(bigram)) shared++;
-  const queryCjkCount = Array.from(query).filter(ch => CJK_CHAR.test(ch)).length;
-  return shared >= (queryCjkCount >= 4 ? 2 : 1);
 }
