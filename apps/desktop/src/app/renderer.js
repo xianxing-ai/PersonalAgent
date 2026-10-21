@@ -465,7 +465,15 @@ if(bridge&&authorizationThread) {
   const questionRoot=document.createElement('div');authorizationThread.append(questionRoot);
   const previousRender=render;
   let questionClosed=false,questionSnapshotRevision=0;
-  const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onChanged:async()=>{
+  const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onPending:({questionId})=>{
+    // Run after the ordinary task projection's follow-to-bottom callback. A new
+    // question must be discoverable at its heading, without repeatedly moving
+    // history or taking keyboard focus on unrelated progress snapshots.
+    requestAnimationFrame(()=>{if(questionClosed)return;
+      const element=[...questionRoot.querySelectorAll('[data-question-id]')].find(node=>node.dataset.questionId===questionId);
+      if(element?.isConnected&&element.querySelector('[data-authorization-decision]:not(:disabled)'))
+        element.querySelector('.authorization-question-title')?.scrollIntoView({block:'start',behavior:'instant'});});
+  },onChanged:async()=>{
     const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
     if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
   }});
