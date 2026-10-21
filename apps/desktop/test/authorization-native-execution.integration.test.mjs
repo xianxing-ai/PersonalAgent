@@ -8,6 +8,7 @@ import * as coding from '@personal-agent/coding-tools';
 import {AuthorizationQuestions,createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 import {createDesktopNativeExecutionHost} from '../electron/native-execution-host.js';
+import {unsupportedPsec} from '../../../packages/coding-tools/test/native-sandbox-fixture.mjs';
 
 const explicitHelper=process.env.PA_TEST_JOB_HOST_EXE;
 const required=process.env.PA_TEST_NATIVE_SANDBOX_REQUIRED==='1';
@@ -17,16 +18,6 @@ async function until(read,label,timeout=30000){
   const expires=Date.now()+timeout;
   while(Date.now()<expires){const value=read();if(value)return value;await new Promise(resolve=>setTimeout(resolve,10));}
   throw Error('Native authorization integration did not reach '+label);
-}
-
-// Only explicit native API absence is optional on general hosted Windows runners.
-// Configuration failures, empty/failed probes and failed OS assertions remain failures.
-function unsupportedPsec(receipt){
-  const baseline=receipt?.results?.baseline;
-  const unavailable=result=>result?.backend==='windows-psec'&&result.enforced===false&&result.outcome==='unavailable'&&result.stopped===true
-    &&/^native-create-environment:(?:-2146233067|-2146233052|-2146233053|50|120)$/u.test(result.reason??'');
-  return receipt?.available===false&&receipt.enforced===false&&baseline?.backend==='none'&&baseline.outcome==='exited'
-    &&baseline.exitCode===0&&baseline.stopped===true&&['readOnly','workspaceWrite','cancel'].every(key=>unavailable(receipt.results[key]));
 }
 
 test('optional native integration requires a successful baseline and explicit unavailable PSEC API diagnostics',()=>{
@@ -46,9 +37,10 @@ test('one real original question gates a production PSEC command and never reple
 },async t=>{
   assert.ok(configured,'Required native integration needs Windows and the explicit trusted helper');
   const helperPath=realpathSync.native(explicitHelper),pins=coding.readWindowsNativeHelperAttestation(helperPath);
-  const nodeExecutable=realpathSync.native(process.execPath),systemRoot=process.env.SystemRoot;
+  const nodeExecutable=realpathSync.native(process.execPath),systemRoot=realpathSync.native(process.env.SystemRoot);
   await mkdir(integrationCache,{recursive:true});
-  const base=await mkdtemp(path.join(integrationCache,'case-')),workspace=path.join(base,'workspace');
+  // Canonicalize only this newly created trusted fixture, never weaken production alias rejection.
+  const base=realpathSync.native(await mkdtemp(path.join(integrationCache,'case-'))),workspace=path.join(base,'workspace');
   await mkdir(workspace);
   const marker=path.join(workspace,'once.txt'),substituted=path.join(workspace,'substituted.txt');
   let app,native,configurationEnabled=true,authorizationCalls=0,originalScope,readiness,preparationError;
