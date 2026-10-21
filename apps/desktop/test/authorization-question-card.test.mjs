@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {authorizationQuestionMarkup,authorizationQuestionResponse,mountAuthorizationQuestionCards} from '../src/features/conversation/authorization-question-card.js';
+import {authorizationQuestionMarkup,authorizationQuestionResponse,mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../src/features/conversation/authorization-question-card.js';
 import {authorizationSettingsMarkup,mountAuthorizationSettings} from '../src/features/conversation/authorization-settings-controls.js';
 import {authorizationDom} from '../test-support/authorization-dom.mjs';
 
@@ -12,6 +12,20 @@ const question=(extra={})=>({questionId:'synthetic-question',taskId:'task',conve
     {requirementId:'export',kind:'export',summary:'本次结果发送到 AgentArts',scopes:['cloud:context']}],
   sandbox:{label:'Synthetic 只读沙箱',mode:'read-only',revision:3},...extra});
 const deferred=()=>{let resolve,reject;return {promise:new Promise((yes,no)=>{resolve=yes;reject=no;}),resolve,reject};};
+test('Synthetic exact source approval dedupe never hides a different approval on the same task',()=>{
+  const approvals=[{approvalId:'run-a',taskId:'task'},{approvalId:'run-b',taskId:'task'}];
+  assert.deepEqual(approvalsWithoutQuestionCards(approvals,[question({sourceApprovalId:'run-a'})],'main'),[approvals[1]]);
+  assert.deepEqual(approvalsWithoutQuestionCards(approvals,[question({sourceApprovalId:'run-a',conversationId:'other'})],'main'),approvals);
+  assert.deepEqual(approvalsWithoutQuestionCards(approvals,[question()],'main'),approvals);
+});
+test('Synthetic internal tools and external native enforcement are shown as separate facts with escaped reasons',()=>{
+  const internal=authorizationQuestionMarkup(question({sandbox:{kind:'application_policy',label:'应用内受限权限',native:{required:false,available:false,backend:'none',enforced:false}}}),{now:instant});
+  assert.match(internal,/本次使用应用内工具，不启动外部进程/);assert.doesNotMatch(internal,/本次需要外部进程隔离/);
+  const external=authorizationQuestionMarkup(question({sandbox:{kind:'application_policy',native:{required:true,available:false,backend:'unavailable',enforced:false,reason:'<img src=x onerror=alert(1)>'}}}),{now:instant});
+  assert.match(external,/本次需要外部进程隔离/);assert.match(external,/执行边界尚未确认/);assert.doesNotMatch(external,/<img/);
+  const settings=authorizationSettingsMarkup({nativeExecution:{available:false,enforced:false,backend:'unavailable',reason:'<script>private</script>'}});
+  assert.match(settings,/无需先配置 Node/);assert.doesNotMatch(settings,/<script>/);
+});
 
 test('Synthetic question shows exact scopes, escapes external text and never emits a profile or grant',()=>{
   const value=question({title:'<script>private</script>',description:'"scope" & value'}),html=authorizationQuestionMarkup(value,{now:instant});

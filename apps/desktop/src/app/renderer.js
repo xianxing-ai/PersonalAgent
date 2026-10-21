@@ -24,7 +24,7 @@ import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {mountProactiveControls} from './proactive-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
-import {mountAuthorizationQuestionCards} from '../features/conversation/authorization-question-card.js';
+import {mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../features/conversation/authorization-question-card.js';
 
 applyPreferences();
 mountDesktopShell();
@@ -370,9 +370,9 @@ else {
     for(const task of current.tasks) {
       const article=tasksNode.querySelector(`[data-turn="${CSS.escape(task.taskId)}"]`);
       if(!article)continue;
-      const questionManaged=current.authorizationQuestions?.some(question=>question.taskId===task.taskId
-        &&question.conversationId===current.conversationState?.activeId);
-      const markup=questionManaged?'':approvalCards(task,current.approvals,now);
+      const visibleApprovals=approvalsWithoutQuestionCards(current.approvals,current.authorizationQuestions,
+        current.conversationState?.activeId);
+      const markup=approvalCards(task,visibleApprovals,now);
       if(article.approvalMarkup===markup)continue;
       for(const card of article.querySelectorAll('.approval-card'))card.remove();
       if(markup)article.insertAdjacentHTML('beforeend',markup);

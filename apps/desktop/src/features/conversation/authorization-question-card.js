@@ -7,6 +7,16 @@ const valid=q=>q&&typeof q.questionId==='string'&&q.questionId&&Number.isSafeInt
   &&Object.hasOwn(states,q.state)&&Array.isArray(q.requirements)&&q.requirements.every(item=>
     item&&Object.hasOwn(kinds,item.kind)&&Array.isArray(item.scopes)&&item.scopes.every(scope=>typeof scope==='string'));
 const pending=(q,now)=>valid(q)&&q.state==='pending'&&Number.isFinite(Date.parse(q.expiresAt))&&Date.parse(q.expiresAt)>now;
+export function approvalsWithoutQuestionCards(approvals=[],questions=[],conversationId) {
+  const linked=new Set(questions.filter(question=>conversationId&&question.conversationId===conversationId
+    &&typeof question.sourceApprovalId==='string'&&question.sourceApprovalId).map(question=>question.sourceApprovalId));
+  return approvals.filter(approval=>!linked.has(approval.approvalId));
+}
+function nativeMarkup(native,escape) {
+  if(native?.required===false)return '<p class="authorization-question-hint">本次使用应用内工具，不启动外部进程；应用内权限不声明外部进程隔离。</p>';
+  if(native?.required!==true)return '<p class="authorization-question-hint">未提供外部进程隔离状态；不会据此声明已隔离。</p>';
+  return `<p class="authorization-question-hint">本次需要外部进程隔离：${escape(native.backend??'unavailable')} · ${native.available===true?'后端可用':'后端不可用'} · ${native.enforced===true?'执行边界已启用':'执行边界尚未确认'}${native.reason?` · ${escape(native.reason)}`:''}</p>`;
+}
 
 export function authorizationQuestionResponse(questionId,decision,questions,now=Date.now()) {
   const question=questions.find(item=>item.questionId===questionId);
@@ -21,7 +31,8 @@ export function authorizationQuestionMarkup(question,{now=Date.now(),busy=false,
   const status=expired?'授权期限已失效，请读取最新问题':states[question.state];
   return `<section class="authorization-question-card" data-question-id="${escape(question.questionId)}" role="group" aria-label="操作授权提问">
     <p class="authorization-question-eyebrow">需要你决定</p><h3 class="authorization-question-title" tabindex="-1">${escape(question.title||'允许这次操作吗？')}</h3>
-    <p>${escape(question.description)}</p><div class="authorization-question-sandbox"><span>沙箱</span><strong>${escape(question.sandbox?.label||'未提供可信沙箱')}</strong><small>${escape(question.sandbox?.mode)} · 版本 ${escape(question.sandbox?.revision)}</small></div>
+    <p>${escape(question.description)}</p><div class="authorization-question-sandbox"><span>应用内权限</span><strong>${escape(question.sandbox?.label||'未提供可信权限配置')}</strong><small>${escape(question.sandbox?.mode)} · 版本 ${escape(question.sandbox?.revision)}</small></div>
+    ${nativeMarkup(question.sandbox?.native,escape)}
     <ul class="authorization-question-requirements">${question.requirements.map(item=>`<li><strong>${escape(kinds[item.kind])}</strong><span>${escape(item.summary)}</span><small>${escape(item.scopes.join(' · '))}</small></li>`).join('')}</ul>
     <p class="authorization-question-hint">工具：${escape(question.toolName)} · ${Number.isFinite(Date.parse(question.expiresAt))?escape(new Date(question.expiresAt).toLocaleString()):'期限不可用'} 前有效</p>
     <div class="authorization-question-actions"><button type="button" class="authorization-question-primary" data-authorization-decision="allow_once" ${!active||busy?'disabled':''}>仅允许本次</button>
