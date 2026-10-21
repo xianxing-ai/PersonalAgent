@@ -1,5 +1,7 @@
 # PersonalAgent Desktop
 
+每轮主对话及合法 Competition 子代理的设备时间、IANA/offset 和待办安全授权引导接线见 [#474 工作记录](docs/issue-474-time-context-20261021.md)。仅为原获准上下文出口的环境数据；统一提问卡消费仍按该记录依赖 #475，未授权能力不因此可执行。
+
 2026-10-17 审查回归修复与验证边界见 [PR #376 修复记录](docs/PR376_REGRESSION_FIXES_20261017.md)。
 
 

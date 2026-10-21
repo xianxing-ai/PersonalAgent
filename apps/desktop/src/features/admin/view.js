@@ -28,6 +28,7 @@ import {createWorkspacePatchRecoveryControls, workspacePatchRecoveryHtml} from '
 import {windowControlsHtml} from '../../ui/window-controls.js';
 import {matchesSettingSearch} from './setting-search.js';
 import {mountPageMotion} from '../../ui/page-motion.js';
+import {mountAuthorizationSettings} from '../conversation/authorization-settings-controls.js';
 
 export const sections = {
   settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
@@ -160,6 +161,8 @@ export function mountAdmin(root, invoke, escape) {
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
   let installedSkillsControls,sisControls,notificationControls;
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
+  let authorizationSettingsRoot,authorizationSettingsControls;
+  window.addEventListener('unload',()=>authorizationSettingsControls?.dispose(),{once:true});
   const showPage = mountPageMotion(root.querySelector('.main'));
 
   function capabilityTable(data) {
@@ -236,7 +239,7 @@ export function mountAdmin(root, invoke, escape) {
       notifications: ['通知', '任务状态与需要用户处理的提醒',
         settingRow('应用内通知', '当前只显示真实 Runtime 状态', '<span class="value-pill">已启用</span>') +
         settingRow('系统通知', '按当前打扰策略投递，系统 show 回执与用户已读分别核实', `<span class="value-pill">${data.notificationCenter?.available?'宿主已装配，设备待验':'等待 Runtime'}</span>`) +
-        settingRow('授权提醒', '待处理授权会出现在“授权”页面', '<button class="btn btn-sm" data-jump="authorizations">查看授权</button>')],
+        settingRow('授权提醒', '需要授权时在当前对话显示提问卡；安全页管理沙箱与已保存规则', '<button class="btn btn-sm" data-jump="authorizations">查看规则</button>')],
       privacy: ['隐私与数据', '敏感数据与本地运行边界',
         (agentArts
           ? settingRow('AgentArts 凭据', '已保存的密钥不回传界面；在模型页面配置或更换', '<button class="btn btn-sm" data-jump="models">管理配置</button>')
@@ -246,7 +249,7 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('数据导出与清除', '对应模块尚未接入，避免提供无效操作', '<span class="status-note">待接入</span>', 'is-unavailable')],
       permissions: ['权限', '所有副作用操作都由 Runtime 校验',
         settingRow('默认策略', '外部内容不能提升权限，工具声明不构成授权', '<span class="value-pill">拒绝优先</span>') +
-        settingRow('一次性授权', '在执行前逐项允许或拒绝', '<button class="btn btn-sm" data-jump="authorizations">处理授权</button>') +
+        settingRow('操作授权', '在当前对话的提问卡选择本次、永久规则或拒绝，无需在此预先允许', '<button class="btn btn-sm" data-jump="authorizations">沙箱与规则</button>') +
         settingRow('能力范围', '查看 Runtime 当前公开的能力与作用域', '<button class="btn btn-sm" data-jump="capabilities">查看能力</button>')],
       shortcuts: ['快捷键', '当前可用的桌面输入快捷键',
         settingRow('发送消息', '输入框内提交任务', '<kbd>Enter</kbd>') +
@@ -438,7 +441,10 @@ export function mountAdmin(root, invoke, escape) {
     } else if (section === 'tasks') {
       content = taskTable(data, escape, evidenceStates, patchRecovery.entries);
     } else if (section === 'authorizations') {
-      content = authorizationListHtml(data.approvals, escape, approvalNow, {canRevoke: true, revocations})
+      const questionMode=Array.isArray(data.authorizationQuestions);
+      content = (questionMode?'<p class="muted">需要决定的操作在原对话提问卡处理；此页只查看状态、配置沙箱和撤销规则。</p>':'')
+        + authorizationListHtml(questionMode?(data.approvals??[]).filter(item=>item.state!=='pending'):data.approvals,
+          escape, approvalNow, {canRevoke: true, revocations})
         + authorizationHistoryHtml(history.items, escape, history, approvalNow, {canRevoke: true, revocations});
     } else if (directSettings[section]) {
       content = settingsPane(data, directSettings[section]);
@@ -477,6 +483,15 @@ export function mountAdmin(root, invoke, escape) {
     }
     renderedContentMarkup = content;
     renderedPreferenceKey = preferenceKey;
+    if(section==='authorizations') {
+      if(!authorizationSettingsControls) {
+        authorizationSettingsRoot=document.createElement('div');
+        authorizationSettingsControls=mountAuthorizationSettings(authorizationSettingsRoot,invoke);
+      }
+      const contentRoot=root.querySelector('#content');
+      if(authorizationSettingsRoot.parentElement!==contentRoot.parentElement)contentRoot.before(authorizationSettingsRoot);
+    }
+    authorizationSettingsControls?.show(section==='authorizations');
     if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==page)page.append(card);}
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);

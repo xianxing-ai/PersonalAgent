@@ -4,6 +4,10 @@
 
 Issue 474/475 复用现有 TaskRuntime/Policy/ToolGateway 与 `trusted_host_state` CAS，新增 host-only question request/decision receipt、sandbox revision/resource generation 和限定原 MailReadSessions 的分页派生；不是新的 Core wire 或独立任务/授权库。Desktop 私有 IPC 只允许 question ID/revision/decision，不能由 Renderer 提供可信 profile/任务/参数绑定。既有回调通过受信 `desktop.authorization.intent` 记录授权决定，不能冒充实际业务写入；模型猜名称与公共 `tool.invoke` 不构成可信 origin。冻结 `approval.list` enum 不变，系统过期/失效写入私有 resolution 元数据并通过原 Runtime 状态机结束或保留核实。完整集成、原生执行与实际 UI 验证尚在进行，范围与兼容边界见[工作包](../competition/UNIFIED_AUTHORIZATION_474_475_20261021.md)；不提升 frozen 或真实平台验收级别。
 
+## 2026-10-21：#474 每次交换的可信环境数据（provisional）
+
+`CoordinationInputHooks.readRequestContext(scope)` 兼容增加可选同步 host-only 文本读取，通过原获准 goal 出口临时发送；每次实际 Competition 交换采样，完整实际目标受原发送 lease/预算/来源门约束，稳定历史 checkpoint 不保存正文。Desktop 仅投影当前设备 UTC/IANA/offset 及无私人内容的能力授权引导，不把 metadata 视为许可或可调用目录。无 Core wire、Schema、数据库或冻结状态变化。统一对话卡授权待 #475 正式端口消费；当前接线与验证缺项见 [#474 记录](../../apps/desktop/docs/issue-474-time-context-20261021.md)。
+
 ## 2026-10-17 Desktop 审查回归修复（provisional）
 
 Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Conversations v4 草稿；Preload/主进程核验来源主 frame、窗口与对话归属，失败保留窗口。正常输入继续原异步防抖，不增加任务或凭据权限。原 `agentarts.configure` 表单补齐已有安全配置字段，没有新增 Core wire 或数据库迁移。

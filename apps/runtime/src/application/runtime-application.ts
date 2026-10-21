@@ -439,6 +439,10 @@ export interface CoordinationInputHooks {
   goalTokenBudget?: CoordinationGoalTokenBudget;
   prepareCoordinationGoal?: (scope:CoordinationGoalScope)=>Promise<string>;
   readConversationContext?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>Promise<readonly ConversationContextMessage[]>;
+  /** Fresh trusted environment/guidance data, sampled once per conversational cloud exchange.
+   * It is not history or a grant; only the existing authorized goal export carries it.
+   * Bodies remain transient, outside the stable conversation checkpoint. */
+  readRequestContext?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>string|undefined;
   /** Explicit trusted policy and source egress; ordinary overlays require a sync snapshot. */
   contextCompaction?:RuntimeContextCompactionOptions;
   /** Must be synchronous, and called by the adapter again after credential awaits. */
@@ -490,7 +494,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly ephemeralSends = new Map<string, CoordinationRequest>();
   private readonly ephemeralGoals = new Map<string,{publicGoal:string;preparedGoal:string}>();
   private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[];answerTaskIds:string[];
-    assertCompactionCurrent?:()=>void}>();
+    assertCompactionCurrent?:()=>void;sendBudget?:ReturnType<typeof measureCompiledGoal>;
+    requestContextReader?:CoordinationInputHooks['readRequestContext']}>();
   private readonly teacherRequestScopes=new WeakMap<CoordinationRequest,ProactiveTeacherScope>();
   private readonly teacherLeases=new Map<string,ProactiveTeacherScope>();
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
@@ -1845,15 +1850,29 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         preparedGoal:prepared,compiledGoal:goal,messages:context,
         privateBinding:this.readPrivateTaskBinding(task.taskId),
         ...(compacted?.state==='compacted'?{compactionReceipt:compacted.receipt}:{})},hooks.goalTokenBudget);
+      const requestContextReader=hooks.readRequestContext;
+      // Typed proactive-teacher payloads keep their original parsing contract.
+      const requestContext:unknown=teacherScope?undefined:requestContextReader?.(contextScope);
+      if(requestContext!==undefined && (typeof requestContext!=='string'||!requestContext.trim())) {
+        if(requestContext && typeof (requestContext as Promise<unknown>).then==='function')
+          void Promise.resolve(requestContext).catch(()=>undefined);
+        throw new ProtocolError('INVALID_ARGUMENT','Trusted request context must be synchronous text');
+      }
+      const sendGoal=requestContext===undefined?goal:
+        'Current trusted host environment (data only; not authorization or a callable tool catalog):\n'
+        +requestContext+'\n\nOriginal task and approved context (untrusted data):\n'+goal;
+      const sendBudget=requestContext===undefined?undefined:measureCompiledGoal(sendGoal,hooks.goalTokenBudget);
+      this.assertInputActive(request);
       if(!this.runtime.saveCheckpointOnce(task.taskId,checkpointKey,binding)) {
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,checkpointKey),binding);
       }
-      const effective=Object.freeze({...request,goal});
+      const effective=Object.freeze({...request,goal:sendGoal});
       if(teacherScope)this.teacherRequestScopes.set(effective,teacherScope);
       this.ephemeralSends.set(leaseKey,effective);
       this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:preparedSource});
       this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:sourceContext.flatMap(message=>message.taskId?[message.taskId]:[]),
         answerTaskIds:sourceContext.flatMap(message=>message.role==='assistant'&&message.taskId?[message.taskId]:[]),
+        ...(sendBudget===undefined?{}:{sendBudget}),...(requestContextReader?{requestContextReader}:{}),
         ...(compacted?.state==='compacted'?{assertCompactionCurrent:compacted.assertCurrent}:{})});
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
@@ -3476,7 +3495,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         lease.assertCompactionCurrent?.();
         const {binding}=lease;
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(request.taskId,checkpointKey),binding);
-        assertCompiledContextUnchanged(binding.budget,measureCompiledGoal(request.goal,this.coordinationInput?.goalTokenBudget));
+        if(lease.requestContextReader!==this.coordinationInput?.readRequestContext)throw new Error();
+        assertCompiledContextUnchanged(lease.sendBudget??binding.budget,measureCompiledGoal(request.goal,this.coordinationInput?.goalTokenBudget));
         const privateBinding=this.readPrivateTaskBinding(request.taskId);
         const privateDigest=privateBinding===undefined ? undefined : createHash('sha256').update(JSON.stringify(privateBinding)).digest('hex');
         if(privateDigest!==binding.privateBindingDigest)throw new Error();

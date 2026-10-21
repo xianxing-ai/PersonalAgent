@@ -24,6 +24,7 @@ import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {mountProactiveControls} from './proactive-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
+import {mountAuthorizationQuestionCards} from '../features/conversation/authorization-question-card.js';
 
 applyPreferences();
 mountDesktopShell();
@@ -369,7 +370,9 @@ else {
     for(const task of current.tasks) {
       const article=tasksNode.querySelector(`[data-turn="${CSS.escape(task.taskId)}"]`);
       if(!article)continue;
-      const markup=approvalCards(task,current.approvals,now);
+      const questionManaged=current.authorizationQuestions?.some(question=>question.taskId===task.taskId
+        &&question.conversationId===current.conversationState?.activeId);
+      const markup=questionManaged?'':approvalCards(task,current.approvals,now);
       if(article.approvalMarkup===markup)continue;
       for(const card of article.querySelectorAll('.approval-card'))card.remove();
       if(markup)article.insertAdjacentHTML('beforeend',markup);
@@ -454,6 +457,27 @@ else {
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();setSendMode(Boolean(input.value.trim()));
     if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}};
+}
+// These cards belong to the canonical user conversation, including requests from its workers.
+// Keep their DOM outside the task projection so unrelated progress snapshots preserve focus.
+const authorizationThread=root.querySelector(mode==='workspace'?'#workspace-stage':'.thread');
+if(bridge&&authorizationThread) {
+  const questionRoot=document.createElement('div');authorizationThread.append(questionRoot);
+  const previousRender=render;
+  let questionClosed=false,questionSnapshotRevision=0;
+  const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onChanged:async()=>{
+    const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
+    if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
+  }});
+  render=(data,...options)=>{
+    questionSnapshotRevision++;
+    previousRender(data,...options);
+    // Missing conversation identity must not widen the view to another conversation's questions.
+    const conversationId=data.conversationState?.activeId;
+    questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
+  };
+  render.setAudioLevel=previousRender.setAudioLevel;
+  window.addEventListener('unload',()=>{questionClosed=true;questions.dispose();},{once:true});
 }
 if(bridge&&['admin','workspace'].includes(mode)) {
   mountWindowControls(root,invoke,mode,error=>{
