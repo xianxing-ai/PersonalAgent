@@ -30,6 +30,15 @@
 
 独立复核还发现历史摘要的阶段派生未绑定整轮来源。Runtime 现在提供原 configuration/source/tail/goal-frame 摘要与数量，Main 结合原 conversation/cutoff 和模型配置/策略绑定；不是从模型生成的 segment 文本猜范围，也不按每个分段多问。签名投影写入既有审计后必须读回相同记录，不能忽略 write-once 冲突而签另一份投影。
 
+## 全仓 CI 发现与有界修复
+
+`38b34d951a0aeec168cd0ed2a1a4e0b06121c0cf` 的 [Foundation 39617732454](https://github.com/xianxing-ai/PersonalAgent/actions/runs/39617732454) 中 Linux image、ecs-linux-check 成功，Windows [job 119283688561](https://github.com/xianxing-ai/PersonalAgent/actions/runs/39617732454/job/119283688561) 在完整原 `npm run check` 失败：Desktop 1613 项为 1576 pass / 30 fail / 7 skip；Runtime 1063 项为 1059 pass / 4 fail。此前本机聚焦通过不覆盖这些旧消费夹具，也不替代此失败门禁。
+
+- 外部提交 `e7607ecb` 只修 Runtime 三份旧测试：expiry 不得晚于原 deadline，迟到 approve 明确 TIMEOUT，已到期 failed 任务不能被 cancel 重开成另一终态。保留零执行/零 grant 与原失败事实。
+- `1cead754` 修五份 Main/桥接夹具：AST 读取真实新增 runId 回调；注入三个新 optional cleanup host；Laya-only fixture 明确本机授权初始化参与者且仍不创建云任务/模型；开发经验等待原卡并验证无第二 modal；语音仅映射现有卡，不能创造卡或显示私有参数摘要。连同上述 Runtime 三文件，实际定向 **82/82 pass、0 skip**，没有产品修改。
+- UI owner 的 `d654bd4d` 只修四份夹具：Renderer 使用真实审批去重 helper；反馈 AST 只选择唯一非空实际反馈语句；workspace Fake 工厂消费公开命令 descriptor/outputSchema；路径按真实 Windows canonical 路径比较。集成 `2a2075dd` 定向 **23/23 pass、0 skip**（两 panel 文件 21 项、原 workspace 失败 case 1 项、固定 recipe metadata 1 项），保留原权限、错误归属与取消断言。
+- 剩余原生整链 Hosted Server 不就绪检查单独诊断；不能把普通 Windows 平台或 helper 文件存在冒充 PSEC 支持，也不能凭本机实际 1/1 通过直接把 Hosted CI timeout 改成通过。最终修复和 current-head CI 结果另记。
+
 ## 尚未由本记录证明
 
 - 实际 Electron 首屏可发现性和视觉复核已由 UI owner [独立保存](AUTHORIZATION_RENDERER_QA_20261021.md)：初轮业务通过但首屏视觉失败，修复后 `fe0149c6` render-only 通过并逐张检查 3 PNG；不重复声明所有业务/设备验收。
