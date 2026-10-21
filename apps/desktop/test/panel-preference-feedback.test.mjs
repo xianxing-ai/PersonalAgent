@@ -1,65 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
-import vm from 'node:vm';
-import ts from 'typescript';
+import {fixture,snapshot,selection,tick,revision} from '../test-support/model-thinking-fixture.mjs';
 
-const source=await readFile(new URL('../src/app/renderer.js',import.meta.url),'utf8');
-const ast=ts.createSourceFile('renderer.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
-const declarations=[],projection=[];
-function visit(node){
-  if(ts.isStatement(node)){
-    const text=node.getText(ast);
-    if(/^(const panelPreferenceRequests=|let panelPreferenceEditing=|const syncPanelPreferenceBusy=|const projectPanelPreferences=|const requestPanelPreference=|budget\.addEventListener\('(input|change)'|fastBtn\.onclick=)/.test(text))declarations.push(text);
-    if(node.pos>source.indexOf('render=(data,')&&text==='projectPanelPreferences();')projection.push(text);
+test('single default slider restores observed settings on save failure and blocks submission',async()=>{
+  const f=fixture(),pending=f.commit(5),flush=f.controller.flush();
+  assert.deepEqual(f.calls[0].payload,{modelId:'',modelSelection:'default',catalogRevision:revision,depth:5,fast:false,conversationId:'conversation-1'});
+  f.calls[0].reject(Error('disk failed'));await pending;await assert.rejects(flush,/未保存/);
+  assert.equal(f.state.index,1);assert.equal(f.state.saving,false);assert.deepEqual(f.errors,['disk failed']);
+});
+test('serialized slider commits coalesce and old failure preserves the latest choice',async()=>{
+  const f=fixture(),pending=f.commit(5);f.commit(3);f.commit(4);f.update(snapshot());
+  assert.equal(f.calls.length,1);assert.equal(f.state.index,4);
+  f.calls[0].reject(Error('old failure'));await tick();
+  assert.equal(f.calls.length,2);assert.equal(f.calls[1].payload.depth,4);assert.deepEqual(f.errors,[]);
+  f.calls[1].resolve();await pending;assert.equal(f.state.index,4);await f.controller.flush();
+});
+test('Fast shares the writer and keeps the latest complete depth and mode pair',async()=>{
+  const f=fixture(),pending=f.commit(5);f.controller.setFast(true);f.update(snapshot(3,true));
+  assert.equal(f.state.preference.depth,5);assert.equal(f.state.preference.fast,true);
+  f.calls[0].reject(Error('old'));await tick();
+  assert.deepEqual(f.calls[1].payload,{modelId:'',modelSelection:'default',catalogRevision:revision,depth:5,fast:true,conversationId:'conversation-1'});
+  f.calls[1].reject(Error('fast failed'));await pending;
+  assert.equal(f.state.preference.depth,3);assert.equal(f.state.preference.fast,true);
+});
+test('successful explicit retry clears only feedback belonging to this picker',async()=>{
+  for(const newer of [false,true]){
+    const f=fixture(),first=f.commit(5);f.calls[0].reject(Error('failed'));await first;
+    const retry=f.commit(5);if(newer)f.newerError();f.calls[1].resolve();await retry;
+    assert.equal(f.cleared,newer?0:1);
   }
-  ts.forEachChild(node,visit);
-}
-visit(ast);
-assert.equal(declarations.length,8);assert.equal(projection.length,1);
-const observed=(depth=1,fast=false)=>({conversationPreference:{depth,fast},thinking:{depth,fast}});
-function fixture(){
-  const control=value=>({value,attrs:{},handlers:{},setAttribute(name,value){this.attrs[name]=value;},getAttribute(name){return this.attrs[name];},addEventListener(name,handler){this.handlers[name]=handler;}});
-  const budget=control('1'),fastBtn=control(''),classes=new Map(),calls=[];
-  const context=vm.createContext({budget,fastBtn,modelMenu:{classList:{toggle(name,value){classes.set(name,value);}}},current:observed(),errorFeedbackRevision:0,hostFeedback:'',hostFeedbackRevision:-1,
-    invoke:(name,payload)=>new Promise((resolve,reject)=>calls.push({name,payload,resolve,reject}))});
-  vm.runInContext("let feedback='';const setFeedback=value=>{errorFeedbackRevision++;feedback=value;};const report=error=>setFeedback(typeof error==='string'?error:error.message);",context);
-  vm.runInContext(declarations.join('\n'),context);
-  const update=vm.runInContext(`data=>{current=data;${projection.join('\n')}}`,context);update(observed());
-  return {context,budget,fastBtn,classes,calls,update,error:()=>vm.runInContext('feedback',context),report:vm.runInContext('report',context)};
-}
-const pair=f=>[f.budget.value,f.fastBtn.attrs['aria-pressed']];
-const payload=call=>JSON.parse(JSON.stringify(call.payload));
-const commitRange=f=>{f.budget.handlers.input();return f.budget.handlers.change();};
-
-test('step budget failure restores observed pair without touching native effort',async()=>{
-  const f=fixture();f.budget.value='5';const pending=commitRange(f);
-  f.calls[0].reject(Error('budget failed'));await pending;assert.deepEqual(pair(f),['1','false']);assert.equal(f.error(),'budget failed');
-  assert.equal(f.budget.attrs['aria-busy'],'false');assert.equal(f.calls[0].name,'thinking.update');assert.deepEqual(payload(f.calls[0]),{depth:5,fast:false});
 });
-test('ordinary snapshots and old failure preserve latest full step/fast intent',async()=>{
-  const f=fixture();f.budget.value='5';const old=commitRange(f);f.budget.value='4';const next=commitRange(f);f.update(observed());
-  f.calls[0].reject(Error('old failure'));await old;assert.deepEqual(pair(f),['4','false']);assert.equal(f.error(),'');
-  f.update(observed(4));f.calls[1].resolve();await next;assert.equal(f.budget.attrs['aria-busy'],'false');
-});
-test('Fast keeps step depth independent from native strength and restores latest snapshot on failure',async()=>{
-  const f=fixture();f.budget.value='5';const old=commitRange(f);const fast=f.fastBtn.onclick();assert.deepEqual(payload(f.calls[1]),{depth:5,fast:true});
-  f.update(observed(3,true));f.calls[0].reject(Error('old'));await old;assert.deepEqual(pair(f),['5','true']);
-  f.calls[1].reject(Error('fast failed'));await fast;assert.deepEqual(pair(f),['3','true']);assert.equal(f.classes.get('fast'),true);
-});
-test('successful explicit budget retry clears only its own error',async()=>{
-  for(const newer of ['none','workspace','host']){const f=fixture();const first=f.fastBtn.onclick();f.calls[0].reject(Error('failed'));await first;
-    const retry=f.fastBtn.onclick();if(newer==='workspace')f.report('new failure');if(newer==='host')f.context.hostFeedback='Current Host failure';f.calls[1].resolve();await retry;assert.equal(f.error(),newer==='workspace'?'new failure':newer==='host'?'Current Host failure':'');}
-});
-
-test('drag previews each level without IPC and commits once on release',async()=>{
+test('drag previews without IPC, survives snapshots and saves once on release',async()=>{
   const f=fixture();
-  for(const level of [2,3,4,5]){f.budget.value=String(level);f.budget.handlers.input();f.update(observed());assert.equal(f.budget.value,String(level));}
-  assert.equal(f.calls.length,0);assert.equal(f.budget.attrs['aria-busy'],'false');
-  const saved=f.budget.handlers.change();assert.equal(f.calls.length,1);assert.deepEqual(payload(f.calls[0]),{depth:5,fast:false});f.calls[0].resolve();await saved;
+  for(const level of [2,3,4,5]){f.preview(level);f.update(snapshot());assert.equal(f.state.index,level);}
+  assert.equal(f.calls.length,0);const pending=f.controller.commitLevel(5);
+  assert.equal(f.calls.length,1);f.calls[0].resolve();await pending;
 });
-test('old request failure cannot discard a new uncommitted drag and changing conversation releases it',async()=>{
-  const f=fixture();f.budget.value='3';const old=commitRange(f);f.budget.value='5';f.budget.handlers.input();f.calls[0].reject(Error('old commit failed'));await old;
-  assert.equal(f.budget.value,'5');assert.equal(f.calls.length,1);
-  f.update({...observed(2),conversationState:{activeId:'different-session'}});assert.equal(f.budget.value,'2');
+test('uncommitted preview survives an old failure; session change discards it and late replies',async()=>{
+  const f=fixture(),pending=f.commit(3);f.preview(5);f.calls[0].reject(Error('old'));await pending;
+  assert.equal(f.state.index,5);
+  const next={...snapshot(2),conversationState:{activeId:'conversation-2'}};f.update(next);
+  assert.equal(f.state.index,2);assert.equal(f.state.failure,undefined);
+  const save=f.commit(4);f.update(snapshot(1));f.calls[1].reject(Error('previous session'));await save;
+  assert.equal(f.state.index,1);assert.equal(f.errors.length,1);
+});
+test('manual model native effort updates one slider and hidden execution depth together',async()=>{
+  const f=fixture(snapshot(1,false,{modelId:'a',executionModel:selection('a')}));
+  assert.equal(f.state.nativeSlider,true);assert.equal(f.state.max,3);
+  const pending=f.commit(3);assert.deepEqual(f.calls[0].payload,{executionModel:selection('a','high'),conversationId:'conversation-1'});
+  f.calls[0].resolve();await tick();assert.deepEqual(f.calls[1].payload,{depth:4,fast:false,conversationId:'conversation-1'});
+  f.calls[1].resolve();await pending;assert.equal(f.state.level,'高');await f.controller.flush();
 });

@@ -76,7 +76,7 @@
 .panel .composer textarea {min-height:38px;font-size:14px;padding:4px 4px 0}
 .panel .composer-bar {position:relative;margin-top:2px;min-width:0}
 .panel .composer-bar>.icon-btn,.panel .composer-bar>.send-btn {width:32px;height:32px;flex:0 0 32px}
-.panel .model-box {flex:0 1 148px;min-width:0;max-width:148px}
+.panel .model-box {flex:0 1 210px;min-width:0;max-width:210px}
 .panel .model-select {display:flex;width:100%;min-width:0;max-width:100%;overflow:hidden;font-size:12px;padding:4px 5px;white-space:nowrap}
 .panel .model-select #model-label {display:block;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .panel .model-select svg {flex:0 0 14px}
@@ -171,17 +171,12 @@
 .panel .composer-bar>.send-btn[data-mode="live"]::after {content:"Live";font-size:11px;font-weight:650;line-height:1}
 .panel .composer-bar>.send-btn[data-mode="live"][aria-pressed="true"] {background:var(--accent);color:var(--accent-ink)}
 .workspace-main>.conversation-preferences {display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;flex:0 0 auto;min-width:0;padding:8px 24px;border-bottom:1px solid var(--glass-hairline);color:var(--muted)}
-.workspace-main>.conversation-preferences label {display:flex;align-items:center;gap:8px;min-width:0;color:var(--muted);font-size:11px;line-height:1.4}
-.workspace-main>.conversation-preferences .conversation-model-choice {width:180px;max-width:100%;flex:0 1 180px;padding:6px 8px}
-.workspace-main>.conversation-preferences input[type="range"] {width:96px;height:24px;margin:0;accent-color:var(--accent)}
+.workspace-main>.conversation-preferences label {min-width:0;line-height:1.4}
 .workspace-main>.conversation-preferences input[type="checkbox"] {width:16px;height:16px;margin:0;accent-color:var(--accent)}
 .workspace-main>.conversation-preferences :focus-visible {outline:2px solid var(--focus-ring);outline-offset:2px}
 .workspace-main>.conversation-preferences :disabled {opacity:.55;cursor:not-allowed}
 @media(max-width:640px) {
   .workspace-main>.conversation-preferences {gap:8px 12px;padding:8px 16px}
-  .workspace-main>.conversation-preferences label {flex:1 1 160px}
-  .workspace-main>.conversation-preferences label:nth-child(3) {flex:0 0 auto}
-  .workspace-main>.conversation-preferences .conversation-model-choice {max-width:calc(100% - 76px);flex:0 1 145px}
 }
 @media(max-width:360px) {
   .panel .composer-bar {display:grid;grid-template-columns:32px minmax(0,1fr) 32px 58px;grid-template-rows:32px 32px;gap:4px 2px}
