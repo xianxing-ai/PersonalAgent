@@ -107,6 +107,45 @@ test('an explicit recovery toggle preserves the configured pin, destination and 
   assert.doesNotMatch(JSON.stringify(config.snapshot()),/synthetic-inner|synthetic-outer|Bearer/);
 });
 
+test('explicit restore selects same-runtime unpinned HTTPS, preserves encrypted credentials and invalidates old routes',async t=>{
+  const f=wssFixture(t,{PA_AGENTARTS_TRANSPORT:'wss',PA_AGENTARTS_WSS_URL:'wss://stale.example/ws'}),calls=[];
+  f.options.fetchImpl=async(url,init)=>{calls.push({url,init});return {status:200};};
+  const config=createAgentArtsConfig(f.options);
+  config.configure({...f.input,deploymentVersion:'configured-r3',websocketUrl:f.input.websocketUrl+'?endpoint=configured-r3'});
+  config.saveModelPreferences({catalogRevision:'a'.repeat(64),defaultModelId:'old-model',defaultSubmodelId:'old-submodel'});
+  const binding=config.binding(),old=config.transportConfig(binding),originalFile=readFileSync(f.file,'utf8');
+  assert.throws(()=>config.restoreDefaultConnection({runtimeName:'other'}),/不接受参数/);
+  assert.equal(readFileSync(f.file,'utf8'),originalFile);assert.equal(calls.length,0);
+  const result=config.restoreDefaultConnection();
+  assert.equal(result.transport,'https');assert.equal(result.effectiveTransport,'https');assert.equal(result.transportSource,'saved');
+  assert.equal(result.deploymentVersion,'');assert.equal(result.deploymentSelection,'latest');assert.equal(result.websocketUrl,'');
+  assert.equal(result.allowHttpsFallback,false);assert.equal(result.canRestoreDefaultConnection,true);assert.equal(calls.length,0);
+  assert.deepEqual(config.binding(),binding);assert.equal(config.readModelPreferences(),undefined,'old pinned catalog preferences need refresh');
+  assert.throws(()=>config.readAuthorization(binding,old),/已改变/);await assert.rejects(old.websocketAuthorizationProvider.read(),/已改变/);
+  const reloaded=createAgentArtsConfig(f.options),options=reloaded.transportConfig(binding);
+  assert.equal(reloaded.snapshot().websocketUrl,'','stale launcher WSS cannot leak back into saved HTTPS snapshots');
+  assert.equal(options.websocketUrl,undefined);assert.equal(options.deploymentVersion,undefined);
+  assert.equal(reloaded.readAuthorization(binding,options),f.input.authorization);
+  assert.deepEqual(reloaded.readTransportOptions(binding),{appToken:f.input.appToken});
+  const url=binding.gatewayUrl+'/runtimes/'+binding.runtimeName+'/invocations';
+  await options.fetchImpl(url,{method:'POST',redirect:'error',headers:{Authorization:f.input.authorization},
+    signal:new AbortController().signal,body:'{"query":"public fixture"}'});
+  assert.equal(calls.length,1);assert.equal(calls[0].url,url);assert.equal(new URL(calls[0].url).search,'');
+  assert.equal(new Headers(calls[0].init.headers).get('X-PA-Agent-Token'),'Bearer '+f.input.appToken);
+  for(const serialized of [JSON.stringify(result),JSON.stringify(options),readFileSync(f.file,'utf8')])assert.doesNotMatch(serialized,/synthetic-inner|synthetic-outer|Bearer/);
+});
+
+test('restore is unavailable without a saved instance and failed storage preserves the original pinned connection',async t=>{
+  const f=wssFixture(t);assert.equal(f.config.snapshot().canRestoreDefaultConnection,false);
+  assert.throws(()=>f.config.restoreDefaultConnection(),/请先保存/);assert.equal(existsSync(f.file),false);
+  f.config.configure({...f.input,deploymentVersion:'original-pin'});const binding=f.config.binding(),old=f.config.transportConfig(binding);
+  const record=readFileSync(f.file,'utf8');f.options.safeStorage.isEncryptionAvailable=()=>false;
+  assert.throws(()=>f.config.restoreDefaultConnection(),/本机安全存储不可用/);
+  assert.equal(readFileSync(f.file,'utf8'),record);assert.equal(f.config.snapshot().deploymentVersion,'original-pin');
+  assert.equal(f.config.readAuthorization(binding,old),f.input.authorization);
+  assert.equal(await old.websocketAuthorizationProvider.read(),'Bearer '+f.input.appToken);
+});
+
 test('failed WSS disk revoke disables both in-memory credentials and retries remove the encrypted record',async t=>{
   const f=wssFixture(t);f.config.configure(f.input);
   const binding=f.config.binding(),transport=f.config.transportConfig(binding);
