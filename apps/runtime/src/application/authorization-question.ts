@@ -326,7 +326,9 @@ export class AuthorizationQuestions {
     return this.read().questions.filter(question=>!question.derivedFrom&&!question.taskConsentFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
       questionId:question.questionId,taskId:question.taskId,conversationId:question.conversationId,sourceApprovalId:question.runId,
       revision:question.revision,state:question.state,
-      title:'同意这项操作？',description:question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='tool')?.summary??'同意后继续完成这项操作。',toolName:question.toolName,
+      title:'同意这项操作？',description:(question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='intent')?.summary
+        ??question.requirements.find(item=>item.requirementId==='tool')?.summary??'完成这项操作。')
+        +(question.requirements.some(item=>item.kind==='export')&&!/云端|模型/u.test(question.taskConsent?.summary??'')?' 必要结果将用于本次云端对话。':''),toolName:question.toolName,
       expiresAt:question.expiresAt,canAlways:question.requirements.every(requirement=>hash(requirement.ruleBindingDigest)),
       canReuseTask:canReuse(question),suggestedDecision:canReuse(question)?'allow_task' as const:'allow_once' as const,
       requirements:question.requirements.map(({requirementId,kind,summary,scopes})=>({requirementId,kind,summary,scopes:[...scopes]})),

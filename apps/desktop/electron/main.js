@@ -50,6 +50,7 @@ import {createDesktopSisConfigHost} from './huawei-sis-config.js';
 import {acquireHuaweiSisToken} from './huawei-iam-login.js';
 import {createLiveVoiceConfig} from './live-voice-config.js';
 import {createLiveVoiceHost} from './live-voice-host.js';
+import {needsMicrophoneApproval} from './authorization-operation-policy.js';
 import {createDesktopWakeVoiceHost} from './wake-voice-host.js';
 import {createDesktopProactiveHost} from './proactive-host.js';
 import {createP5SystemObservationSource} from './p5-system-observation-source.js';
@@ -58,7 +59,6 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
-import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
 import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
@@ -302,7 +302,7 @@ let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
-let conversationToolAccess, voiceApprovalBridge, proactiveConversationTools;
+let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
@@ -2095,7 +2095,6 @@ async function initializeRuntime() {
       const powerShell=path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell','7','pwsh.exe');
       knowledgeSourceConfig=await createKnowledgeSourceConfig({userData:app.getPath('userData'),safeStorage,namespace,
         question:authorizationQuestionPort,
-        confirmCatalog:request=>confirmApplicationAuthorization('knowledge.catalog',request.payload,request),
         hostIdentity:createHash('sha256').update(app.getPath('userData')).digest('hex'),
         powerShellPath:existsSync(powerShell)?powerShell:undefined,
         processIdentityHelperPath:existsSync(commandHelper)?commandHelper:undefined,
@@ -2109,7 +2108,7 @@ async function initializeRuntime() {
         },confirmPermissions:async details=>{
           const {isCurrent,...payload}=details;
           return confirmApplicationAuthorization('knowledge.configure',payload,{scope:{sourceId:details.sourceId,configRevision:details.configRevision},
-            summary:`配置知识源 ${details.displayName} 的能力偏好：整理=${details.writeAllowed}、PUBLIC查询出机=${details.cloudExportAllowed}；这不是会话读写或出机许可，实际操作仍逐次原卡核对。`.slice(0,512),isCurrent});
+            summary:`配置知识源 ${details.displayName}：${details.writeAllowed?'可整理选定笔记；':''}${details.cloudExportAllowed?'向本任务模型公布选定PUBLIC查询与笔记目录；':''}具体内容操作在任务卡片确认。`.slice(0,512),isCurrent});
         }});
       obsidianPairing=createDesktopObsidianPairing({source:knowledgeSourceConfig,
         userData:app.getPath('userData'),
@@ -2294,7 +2293,9 @@ async function initializeRuntime() {
               &&value.configRevision===binding.configRevision&&value.dataLevel==='public'&&value.cloudExportAllowed;};
             if(!isCurrent())throw Error('知识公开结果出机范围不可用');
             if(phase==='preflight')authorizationQuestionPort.prepareExport(scope,{requirementId:'knowledge-export',
-              summary:'向本任务模型发送所选PUBLIC查询的最多5条、每条最多200字符摘要（总计16KiB内），或只含state/changed的整理回执。',assertCurrent:isCurrent});
+              ruleBindingDigest:createHash('sha256').update(JSON.stringify({sourceId:binding.sourceId,configRevision:binding.configRevision,
+                publicQueries:binding.publicQueries,allowedNotePaths:binding.allowedNotePaths,projection:'knowledge-public-summary-v1'})).digest('hex'),
+              summary:'把PUBLIC查询的有界摘要或整理结果用于本次对话。',assertCurrent:isCurrent});
             else authorizationQuestionPort.currentRequirement(scope,'knowledge-export');
             return;
           }
@@ -2474,10 +2475,6 @@ async function initializeRuntime() {
       readCurrentQuestion:({conversationId}={})=>authorizationQuestionHost?.snapshot(conversationId??conversations.activeConversationId('panel'))
         .find(question=>question.state==='pending')??null,
       focusQuestion:question=>{if(question.conversationId!==conversations.activeConversationId('panel'))return;pinned=true;openPanel(true);publish();}});
-    voiceApprovalBridge=createVoiceRuntimeApprovalBridge({
-      readPendingApproval:scope=>conversationToolAccess.readPendingApproval(scope),
-      focusQuestion:question=>{if(question.conversationId===conversations.activeConversationId('panel')){pinned=true;openPanel(true);publish();}},
-      readCurrentQuestion:({conversationId})=>voiceQuestionForConversation(conversationId)});
   }
   if(proactiveWorkflowApplication){
     proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,
@@ -2904,7 +2901,8 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
-  if(['todo.authorize','feeds.authorize','goalCloud.authorize','coding.authorize','mail.enable','mail.enableCloud','calendar.respond'].includes(name))
+  if(['todo.authorize','feeds.authorize','goalCloud.authorize','coding.authorize','mail.enable','mail.enableCloud','calendar.respond',
+    'notifications.confirmation.prepare','voice.confirmation.prepareApproval','voice.confirmation.cancel','voice.confirmation.reconcile'].includes(name))
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','旧会话允许入口已移除；请在当前对话操作卡中决定本次权限');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
@@ -2922,6 +2920,7 @@ async function action(event, name, payload) {
     if(name==='authorization.sandbox.read'&&payload!==undefined)throw Error('授权管理读取不接受额外字段');
     const result=name==='authorization.sandbox.read'?authorizationQuestionHost.sandboxSnapshot()
       :name==='authorization.sandbox.select'?authorizationQuestionHost.selectSandbox(payload):authorizationQuestionHost.revokeRule(payload);
+    if(name==='authorization.sandbox.select')await microphoneCaptureHost?.revoke();
     publish();return result;
   }
   if(name==='app.startup.read'||name==='app.startup.configure'){
@@ -3082,7 +3081,7 @@ async function action(event, name, payload) {
     if ((sender !== admin && sender !== workspace && sender !== panel) || !competitionMode || syntheticMvp || !todoHost) throw Error('请从正式应用待办设置操作');
     const result = await todoHost[name.slice(5)](payload); publish(); return result;
   }
-  if (['notifications.get','notifications.configure','notifications.confirmation.prepare','notifications.read','notifications.digest'].includes(name)) {
+  if (['notifications.get','notifications.configure','notifications.read','notifications.digest'].includes(name)) {
     if (sender!==admin || !competitionMode || syntheticMvp || !notificationApplicationHost) throw Error('请从通知设置页操作');
     if (name==='notifications.get') return notificationApplicationHost.snapshot(payload?.scope??{kind:'global'});
     if (name==='notifications.configure') {
@@ -3090,24 +3089,8 @@ async function action(event, name, payload) {
       const result=await host.configureSettings(payload,{isCurrent:()=>admin===origin && !origin.isDestroyed() && host===notificationApplicationHost});
       publish();return {...result,notificationCenter:host.snapshot(payload.scope)};
     }
-    if (name==='notifications.confirmation.prepare') {
-      const question=voiceCommandHost.prepareSettings(payload,{
-        expiresAt:new Date(Date.now()+30_000).toISOString(),summary:`通知设置：${JSON.stringify(payload.scope)}；${JSON.stringify(payload.patch)}。是否确认当前参数？`});
-      return {...question,questionDelivery:liveVoice?.askCurrentQuestion()??{state:'unavailable',accepted:false}};
-    }
     if (name==='notifications.read') return notificationApplicationHost.acknowledgeRead(payload);
     return notificationApplicationHost.getDigest(payload);
-  }
-  if (['voice.confirmation.prepareApproval','voice.confirmation.cancel','voice.confirmation.reconcile'].includes(name)) {
-    if ((sender!==admin && sender!==panel) || !voiceCommandHost) throw Error('当前语音确认宿主不可用');
-    if(name==='voice.confirmation.prepareApproval') {
-      const approval=runtimeApplication.runtime.getApproval(payload?.approvalId),task=tasks.get(approval.taskId);
-      if(approval.state!=='pending'||approval.revision!==payload?.expectedRevision)throw Error('原审批已改变，请回当前对话提问卡');
-      if(sender===panel && (!task || taskSurface(task)!=='panel')) throw Error('无法确认其他工作区的审批');
-      const question=voiceCommandHost.prepareApproval(payload);
-      return {...question,questionDelivery:liveVoice?.askCurrentQuestion()??{state:'unavailable',accepted:false}};
-    }
-    return name.endsWith('cancel')?voiceCommandHost.cancel():voiceCommandHost.reconcile();
   }
   if (['goalCloud.authorize','goalCloud.revoke'].includes(name)) {
     if(sender!==admin || !competitionMode || syntheticMvp || !goalCloudHost) throw Error('请从正式应用目标管理设置操作');
@@ -3938,8 +3921,6 @@ async function initializeLiveVoice() {
     onLevel: noteVoiceLevel,
     onTranscript: message => conversations.addLiveMessage(message),
     readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
-    onFinalUserCommand:receipt=>voiceCommandHost?.consumeFinal(receipt),
-    prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope),
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
@@ -4006,6 +3987,8 @@ app.whenReady().then(async () => {
   microphoneCaptureHost = createMicrophoneCaptureHost({permissionGate: microphonePermissionGate,
     confirmAuthorization:request=>{
       const {signal,isCurrent,...payload}=request;
+      if(!isCurrent()||voiceConfigurationPending||panelHiding)return false;
+      if(!needsMicrophoneApproval(authorizationQuestionHost?.sandboxSnapshot().selected.mode,payload.purpose))return true;
       return confirmApplicationAuthorization('voice.capture',payload,{scope:{panelId:payload.panelId,purpose:payload.purpose,expiresAt:payload.expiresAt},
         summary:`允许本次${payload.purpose==='live'?'Live语音与所选AgentArts音频服务':payload.purpose==='wake'?'本机关键词唤醒及后续听写':'麦克风听写'}，期限至${payload.expiresAt}；系统麦克风权限仍单独核验，停止立即撤销。`,
         deadline:new Date(Math.min(Date.parse(payload.expiresAt),Date.now()+180000)).toISOString(),signal,

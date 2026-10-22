@@ -14,8 +14,8 @@ export function createDesktopVoiceCommandHost({readCurrentQuestion=()=>null,focu
     const key=card.questionId+':'+card.revision;
     if(!observed.has(key))observed.set(key,new Date(now()).toISOString());
     return {...structuredClone(card),kind:'authorization',
-      summary:card.summary??card.requirements?.map(item=>item.summary).join('；')??'请在当前对话提问卡核对本次权限',
-      guidanceIssuedAt:observed.get(key),guidance:'语音仅解释权限；请在当前同一张提问卡点击允许一次、允许一直或拒绝。'};
+      summary:card.description??card.summary??'请查看当前对话授权卡',
+      guidanceIssuedAt:observed.get(key),guidance:'请在当前对话授权卡点击同意或拒绝。'};
   }
   return {
     snapshot,

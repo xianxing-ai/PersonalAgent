@@ -12,6 +12,7 @@ test('notification page submits current scope/revision, preserves draft and sepa
   skip:process.env.PA_NOTIFICATION_UI_TEST!=='1',timeout:60000,
 },async t=>{
   const {chromium}=await import('playwright'),source=resolve(fileURLToPath(new URL('../src',import.meta.url)));
+  const shared=resolve(fileURLToPath(new URL('../shared',import.meta.url)));
   const fixture={tasks:[],messages:[],approvals:[],notifications:[],capabilities:[],health:[],connection:'隔离通知页面',
     model:{provider:'agentarts',configured:true,status:'configured'},modelChoices:[],thinking:{depth:1,fast:false},
     adminNavigation:{revision:1,page:'notifications'},notificationCenter:{available:true,policy:{state:'unconfigured',revision:0,scope:{kind:'global'},effective:null},
@@ -30,8 +31,9 @@ test('notification page submits current scope/revision, preserves draft and sepa
   const server=createServer(async(req,res)=>{try{
     const pathname=new URL(req.url,'http://127.0.0.1').pathname;
     if(pathname==='/'){res.setHeader('content-type','text/html; charset=utf-8');res.end(html);return;}
-    const file=resolve(source,'.'+decodeURIComponent(pathname));
-    if(!file.startsWith(source+'/')&&!file.startsWith(source+'\\')){res.writeHead(403).end();return;}
+    const base=pathname.startsWith('/shared/')?shared:source;
+    const file=resolve(base,'.'+decodeURIComponent(base===shared?pathname.slice('/shared'.length):pathname));
+    if(!file.startsWith(base+'/')&&!file.startsWith(base+'\\')){res.writeHead(403).end();return;}
     res.setHeader('content-type',extname(file)==='.css'?'text/css':'text/javascript');res.end(await readFile(file));
   }catch{res.writeHead(404).end();}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
@@ -52,9 +54,8 @@ test('notification page submits current scope/revision, preserves draft and sepa
   await controls.getByRole('button',{name:'读取当前范围',exact:true}).click();await page.waitForFunction(()=>window.calls.some(c=>c.name==='notifications.get'));
   await controls.locator('[name=mode]').selectOption('silent');
   await page.evaluate(()=>window.update(structuredClone(window.fixture)));assert.equal(await controls.locator('[name=mode]').inputValue(),'silent');
-  await controls.getByRole('button',{name:'用当前 Live 最终语音确认',exact:true}).click();
-  await page.waitForFunction(()=>window.calls.some(c=>c.name==='notifications.confirmation.prepare'));
-  assert.match(await controls.locator('[data-notifications=question]').textContent(),/当前版本 2/);
+  assert.equal(await controls.locator('[data-notifications=voice]').count(),0,'approval only happens in the original card');
+  assert.match(await controls.locator('[data-notifications=question]').textContent(),/授权卡/);
   await controls.getByRole('button',{name:'查看归来摘要',exact:true}).click();
   await page.waitForFunction(()=>window.calls.some(c=>c.name==='notifications.digest'));
   assert.equal((await page.evaluate(()=>window.calls)).some(c=>c.name==='notifications.read'),false);
@@ -128,25 +129,22 @@ test('notification settings preserve selected scope and revision',{concurrency:f
     const h=scopeFixture(t);await loadMail(h);
     h.render(center(globalScope,5));
     assert.equal(h.inputs.mode.value,'silent');assert.equal(h.inputs.window.value,'20');
-    h.reply({summary:'fixture',revision:1,state:'pending'});await h.act('voice');
-    assert.equal(h.calls[0].action,'notifications.confirmation.prepare');
-    assert.equal(h.calls[0].payload.expectedRevision,2);
-    assert.deepEqual(h.calls[0].payload.scope,mailScope);
     h.input('window','23');
     h.render(center(globalScope,6));h.render(center(mailScope,9,basePolicy));
     assert.equal(h.inputs.window.value,'23');
     h.reply({state:'confirmed',taskId:'fixture',notificationCenter:center(mailScope,3)});
     await h.act('submit');
-    assert.equal(h.calls[1].action,'notifications.configure');
-    assert.equal(h.calls[1].payload.expectedRevision,2);
-    assert.deepEqual(h.calls[1].payload.patch,{...mailPolicy,windowMinutes:23});
+    assert.equal(h.calls[0].action,'notifications.configure');
+    assert.equal(h.calls[0].payload.expectedRevision,2);
+    assert.deepEqual(h.calls[0].payload.scope,mailScope);
+    assert.deepEqual(h.calls[0].payload.patch,{...mailPolicy,windowMinutes:23});
   });
   await t.test('a changed scope or mismatched readback cannot submit',async t=>{
     const h=scopeFixture(t);await loadMail(h);
     h.input('connector','calendar');await h.act('submit');
     assert.deepEqual(h.calls,[]);
     h.reply(center(globalScope,5));await h.act('load');
-    await h.act('submit');await h.act('voice');
+    await h.act('submit');
     assert.deepEqual(h.calls.map(call=>call.action),['notifications.get']);
   });
 });

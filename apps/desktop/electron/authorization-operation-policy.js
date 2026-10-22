@@ -30,3 +30,5 @@ export function operationSummary(source) {
   if(name.startsWith('todo.'))return '处理本任务中的待办事项。';
   return `执行 ${clean(name)}。`;
 }
+
+export const needsMicrophoneApproval=(mode,purpose)=>!(mode==='full-access'&&purpose==='live');

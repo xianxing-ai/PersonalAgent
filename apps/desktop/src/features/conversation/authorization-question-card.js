@@ -32,10 +32,11 @@ export function authorizationQuestionMarkup(question,{now=Date.now(),busy=false,
   const escape=escapeAuthorizationText,active=pending(question,now),expired=question.state==='pending'&&!active;
   const status=expired?'请求已过期':states[question.state];
   const purpose=question.title||'允许这次操作吗？';
-  const summaries=[...new Set(question.requirements.map(item=>item.summary).filter(Boolean))];
+  const summary=question.description||question.requirements.find(item=>item.requirementId==='tool')?.summary||'完成这项操作。';
   return `<section class="authorization-question-card" data-question-id="${escape(question.questionId)}" role="group" aria-label="操作授权提问">
     <h3 class="authorization-question-title" tabindex="-1">${escape(purpose)}</h3>
-    <ul class="authorization-question-summary">${summaries.map(summary=>`<li>${escape(summary)}</li>`).join('')}</ul>
+    <p class="authorization-question-summary">${escape(summary)}</p>
+    ${authorizationQuestionDefaultDecision(question)==='allow_task'?'<p class="authorization-question-hint">本任务内相同范围不再询问。</p>':''}
     <details class="authorization-question-details" data-authorization-details ${expanded?'open':''}><summary data-authorization-details-toggle>查看详情</summary>
       <p>${escape(question.description)}</p><div class="authorization-question-sandbox"><span>应用内权限</span><strong>${escape(question.sandbox?.label||'未提供权限配置')}</strong><small>${escape(question.sandbox?.mode)} · 版本 ${escape(question.sandbox?.revision)}</small></div>
       ${nativeMarkup(question.sandbox?.native,escape)}

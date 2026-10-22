@@ -104,7 +104,7 @@ Set-Acl -LiteralPath $target -AclObject $acl`;
  */
 export async function createKnowledgeSourceConfig({userData, safeStorage, namespace, hostIdentity,
   selectDirectory, selectNoteFiles, confirmPermissions = async () => false, powerShellPath, processIdentityHelperPath,
-  question, confirmCatalog=async()=>false,
+  question,
   prepareRecoveryDirectory = prepareRecovery}) {
   if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(namespace ?? '') || typeof hostIdentity !== 'string' || !hostIdentity) {
     throw Error('缺少受信知识源身份');
@@ -139,7 +139,7 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
     cloudExportAllowed: current() && cloudExportAllowed && saved.dataLevel === 'public',
     publicQueries: cloudExportAllowed ? [...publicQueries] : [],
     reason: failure || (!saved ? '请选择知识库；尚未配置' : !saved.enabled ? '知识源已停用'
-      : !current() ? '知识库身份已改变，请重新选择' : writeAllowed ? '已连接；整理仍需逐次 Policy 审批' : '已连接，只读；私人内容仅留本机')});
+      : !current() ? '知识库身份已改变，请重新选择' : writeAllowed ? '已连接，可整理选定笔记' : '已连接，只读；私人内容仅留本机')});
   const persist = record => {
     if (!safeStorage.isEncryptionAvailable()) throw Error('本机安全存储不可用，未保存知识源');
     const encrypted = safeStorage.encryptString(JSON.stringify(record)).toString('base64');
@@ -219,20 +219,17 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
       const bindingDigest=createHash('sha256').update(JSON.stringify({sourceId:record.sourceId,configRevision:record.configRevision,
         rootIdentity:record.rootIdentity,dataLevel:record.dataLevel,allowedNotePaths:record.allowedNotePaths})).digest('hex');
       question.prepare(scope,{requirements:[{requirementId:authorizationKey,kind:'tool',scopes:[writing?'knowledge:write':'knowledge:read'],
-        bindingDigest,summary:writing?'按原精确参数整理所选知识笔记；仅本次写入，保留原冲突与恢复记录。':'只读查询所选知识源；仅原查询与本次结果，不自动授权正文出机。'}],
+        bindingDigest,ruleBindingDigest:createHash('sha256').update(JSON.stringify({bindingDigest,writing})).digest('hex'),
+        summary:writing?'整理选定知识笔记，并保留修改与恢复记录。':'查询选定知识源。'}],
         assertCurrent:()=>current()&&saved===record&&(!writing||writeAllowed)});
     },
     assertAuthorization,
     withAuthorization(context,work) {assertAuthorization(context);return executionContext.run({...context},work);},
     async authorizeCatalog(scope) {
       if(!current()||!cloudExportAllowed||saved.dataLevel!=='public'||scope.signal?.aborted)return false;
-      const record=saved,payload={sourceId:record.sourceId,configRevision:record.configRevision,dataLevel:record.dataLevel,
-        publicQueries:[...publicQueries],allowedNotePaths:[...record.allowedNotePaths],writeConfigured:writeAllowed};
-      const isCurrent=()=>current()&&saved===record&&cloudExportAllowed&&!scope.signal.aborted&&Date.now()<Date.parse(scope.deadline);
-      const allowed=await confirmCatalog({payload,scope:{taskId:scope.taskId,sourceId:record.sourceId,configRevision:record.configRevision},
-        summary:`向本任务公布已标记PUBLIC的知识查询/笔记范围目录（${publicQueries.length}个查询、${record.allowedNotePaths.length}篇笔记）；实际读写与内容出机仍由原工具卡核对。`,
-        deadline:scope.deadline,signal:scope.signal,isCurrent});
-      return allowed===true&&isCurrent();
+      // Configuring PUBLIC export already approves this fixed capability directory.
+      // Actual content access and its bounded export remain on the original tool card.
+      return Number.isFinite(Date.parse(scope.deadline))&&Date.now()<Date.parse(scope.deadline);
     },
     clearIndex() {
       for (const controller of inflight) controller.abort();
