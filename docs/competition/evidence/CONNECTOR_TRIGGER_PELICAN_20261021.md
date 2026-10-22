@@ -154,6 +154,42 @@ ToolGateway/统一问题宿主与 consumed export lease，推理仍是显式 Fak
 须由主控整合源码并重新 build、在模型槽与可用内存达到原 2 GiB 门槛后，用上方 `--workflow` 新建唯一公开 fixture 验收。
 沿用当前源码构建的四个 WindowsJobProcessHost 产物与受信 Node/npm；不重放 `LUCLdz` 或其他旧未决任务。
 
+## 2026-10-22 设置导航回归与验收同步
+
+主控整合上一增量后，新独立运行 `desktop-pelican-default-wn3zWB` 在
+`start-original-local-laya` 阶段失败：原启动按钮已存在，但 Playwright 等待可见性 30 秒后超时。
+该轮尚未启动 Laya、尚未提交默认主任务，原三个文件和失败回执保留；不能算作模型或 F15 验收。
+旧回执未采集当时的 DOM section、host navigation revision 和隐藏祖先，因此该轮具体触发原因仍为 unknown。
+另在空配置的隔离导航回归中观察到 `webContents.capturePage` 可在切页后立即返回上一页的合成帧；
+旧截图不能单独证明当时的 DOM 页面或侧栏 `aria-current`。
+
+本增量基于 `7e95cbccc10927d3440e67bafdeee68a8706c48f`，仅调整 admin view、对应导航测试和 runner。
+可复现的独立缺陷是 view 用 `revision !== previous` 消费倒序快照：修复前，新回归用例在
+revision 5 后接收 revision 4 会真实退回常规页，定向结果 10/11；修复后只消费有效且递增的 host revision。
+正文、挂载控件和监听器完成后才一起提交侧栏、main/content 页标记与 `aria-busy=false`；
+中途渲染失败不会声明新页已完成。相同 host revision 的日常更新仍保留本地侧栏选择，新的合法 IPC 导航仍生效。
+
+runner 的 `openSettings` 先等待原 IPC 返回后读取到的 host revision 已渲染，再确认正文页标记、
+侧栏和目标真实控件可见。成功与失败都记录固定字段的导航/可见性诊断，不记录配置值、正文或凭据。
+保留主控对启动子进程剔除全部继承 `PA_*` 的修改，不强制点击隐藏按钮、不缩短原等待、不启动替身。
+
+实际检查：
+
+| 检查 | 当前结果 |
+|---|---|
+| admin Evidence/导航与 runner 原 SQLite 绑定定向检查 | 14/14，0 fail、0 skip；日志 `.cache/admin-navigation-focused.log` |
+| Desktop 原 `typecheck`（变更 view、renderer 等原语法脚本）及 smoke/runner 语法 | exit 0 |
+| `admin-navigation-smoke.cjs` | 原 Competition Main/preload/renderer，独立空 userData，实际导航及确切送达的旧公开快照回归通过 |
+| 模型、任务、网络与异常 | Laya 始终 stopped、tasks=0、health=0、external blocked=0、renderer errors=0 |
+| 原生 Electron 画面 | Playwright 正常截图并人工回看连接页 Laya 控件和环境页工作区控件；无隐藏点击 |
+
+Browser plugin 不在当前可用能力中，回归使用仓库已有 Playwright 与受信 Electron。
+轻量回归收据和正确截图保留于本机专属临时目录 `pa-admin-navigation-lCesn6`，
+项目运行入口和回执路径在 `.cache/admin-navigation-smoke.log`；旧公开快照倒序是显式 synthetic ordering case，
+不冒充真实 AgentArts/Laya 推理。主控新增的 Main `environment` IPC allowlist 不在本工作树编辑范围；
+根集成后需运行同一脚本的 `--require-environment-ipc`，核对原 host page/revision 确实变化。
+当前仍未进行新真实鹈鹕聚合运行，完整必验项继续等待主控的新唯一 fixture，不重放任何旧未决任务。
+
 ## 证据边界
 
 默认 Desktop 公开文件修复通过，也只证明当前配置下该 fixture 的父子任务与本地工具闭环；不自动证明 F15 `workflow-advance` 六节点整图、平台 Trace API 逐条对账、物理语音/审批、任意项目自主编码或其余工作流通过。邮件/天气触发器的本地持久去重与 Laya 决策测试，也不自动证明所有连接器能实时推送或已完成真实账号持续接收。
