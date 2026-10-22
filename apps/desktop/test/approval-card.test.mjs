@@ -6,7 +6,9 @@ test('current pending action renders a usable decision and submits the current r
   const approval={approvalId:'grant',taskId:'task',action:'workspace.apply_text_patch',scopes:['workspace:write'],
     state:'pending',revision:3,expiresAt:'2030-01-01T00:00:00.000Z',argumentsDigest:'a'.repeat(64),argumentSummary:'redacted'};
   const now=Date.parse('2026-09-27T00:00:00.000Z');
-  assert.match(approvalCards(task,[approval],now),/批准并继续/);
+  assert.match(approvalCards(task,[approval],now),/>同意<\/button>/);
+  assert.match(approvalCards(task,[approval],now),/>拒绝<\/button>/);
+  assert.match(approvalCards(task,[approval],now),/<details[^>]*><summary>查看详情<\/summary>/);
   assert.match(approvalCards(task,[approval],now),/workspace\.apply_text_patch/);
   assert.doesNotMatch(approvalCards(task,[approval],now),/undefined/);
   assert.deepEqual(approvalResponse('grant','allow_once',[task],[approval],now),
@@ -54,5 +56,5 @@ test('tool display uses escaped public action and never reads raw parameters or 
   assert.match(html,/&lt;img src=x onerror=&quot;unsafe\(\)&quot;&gt;/);
   assert.doesNotMatch(html,/<img|bbbbbbbb|redacted/);
   for(const action of [undefined,null,'','   ']) assert.match(approvalCards(task,[{...approval,action}],Date.parse('2026-10-07')),
-    /Runtime 未公开工具/);
+    /允许本次操作/);
 });

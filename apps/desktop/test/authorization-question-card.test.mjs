@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {authorizationQuestionMarkup,authorizationQuestionResponse,mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../src/features/conversation/authorization-question-card.js';
+import {authorizationQuestionMarkup,authorizationQuestionResponse,authorizationQuestionDefaultDecision,mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../src/features/conversation/authorization-question-card.js';
 import {authorizationSettingsMarkup,mountAuthorizationSettings} from '../src/features/conversation/authorization-settings-controls.js';
 import {authorizationDom} from '../test-support/authorization-dom.mjs';
 
@@ -38,7 +38,10 @@ test('Synthetic internal tools and external native enforcement are shown as sepa
 test('Synthetic question shows exact scopes, escapes external text and never emits a profile or grant',()=>{
   const value=question({title:'<script>private</script>',description:'"scope" & value'}),html=authorizationQuestionMarkup(value,{now:instant});
   assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/&quot;scope&quot; &amp;/);
-  assert.match(html,/仅允许本次/);assert.match(html,/永久允许此规则/);assert.match(html,/拒绝/);
+  assert.match(html,/>同意<\/button>/);assert.match(html,/>拒绝<\/button>/);
+  assert.equal((html.match(/data-authorization-decision=/g)??[]).length,2);
+  assert.doesNotMatch(html,/data-authorization-decision="allow_always"|永久允许|<input|<textarea|<select/);
+  assert.match(html,/<details[^>]*data-authorization-details\s*>/);assert.match(html,/<summary[^>]*>查看详情<\/summary>/);
   assert.match(html,/Synthetic 只读沙箱/);assert.match(html,/访问待办/);assert.match(html,/todo:write/);
   for(const decision of ['allow_once','allow_always','deny'])assert.deepEqual(authorizationQuestionResponse(value.questionId,decision,[value],instant),{
     questionId:value.questionId,expectedRevision:2,decision});
@@ -48,20 +51,20 @@ test('Synthetic question shows exact scopes, escapes external text and never emi
   assert.throws(()=>authorizationQuestionResponse(value.questionId,'allow_once',[value],instant+60_000));
 });
 
-for(const decision of ['allow_once','allow_always','deny'])test(`Synthetic ${decision} submits once, waits for authoritative state and preserves keyboard focus`,async t=>{
+for(const decision of ['allow_once','allow_task','deny'])test(`Synthetic ${decision} submits once, waits for authoritative state and preserves keyboard focus`,async t=>{
   const f=authorizationDom(),pending=deferred(),calls=[];let refreshes=0;
   const controls=mountAuthorizationQuestionCards(f.root,{now:()=>instant,invoke:(...args)=>{calls.push(args);return pending.promise;},onChanged:()=>{refreshes++;}});
-  t.after(()=>controls.dispose());controls.update([question(),question({questionId:'other',conversationId:'different'})],{conversationId:'main'});
+  t.after(()=>controls.dispose());controls.update([question(decision==='allow_task'?{canReuseTask:true,suggestedDecision:'allow_task'}:{}),question({questionId:'other',conversationId:'different'})],{conversationId:'main'});
   assert.equal(f.root.querySelectorAll('[data-question-id]').length,1);
   f.button(decision).focus();const submitting=f.root.fire('click',f.button(decision));
   assert.equal(f.document.activeElement.className,'authorization-question-title','disabled origin moves focus to its question, never another card');
-  assert.equal(f.button(decision).disabled,true);assert.match(f.root.html,/正在提交选择/);
+  assert.equal(f.button(decision).disabled,true);assert.match(f.root.html,/正在提交/);
   await f.root.fire('click',f.button('deny'));assert.equal(calls.length,1);
   assert.deepEqual(calls[0],['authorization.question.respond',{questionId:'synthetic-question',expectedRevision:2,decision}]);
   pending.resolve({accepted:true,questionId:'synthetic-question',revision:3,state:decision==='deny'?'denied':'allowed'});await submitting;
-  assert.match(f.root.html,/等待宿主核验/);assert.doesNotMatch(f.root.html,/操作已完成/);assert.equal(refreshes,1);
+  assert.match(f.root.html,decision==='deny'?/已拒绝/:/已同意/);assert.doesNotMatch(f.root.html,/操作已完成/);assert.equal(refreshes,1);
   controls.update([question({revision:3,state:decision==='deny'?'denied':'allowed'})],{conversationId:'main'});
-  assert.equal(f.button('allow_once').disabled,true);assert.match(f.root.html,decision==='deny'?/已拒绝本次请求/:/操作结果仍由原任务确认/);
+  assert.equal(f.button('allow_once').disabled,true);assert.match(f.root.html,decision==='deny'?/已拒绝/:/已同意/);
 });
 
 test('Synthetic revision, expiration, cancellation and failed submission cannot reuse stale decisions',async t=>{
@@ -70,15 +73,50 @@ test('Synthetic revision, expiration, cancellation and failed submission cannot 
   t.after(()=>controls.dispose());controls.update([question()]);
   const submitting=f.root.fire('click',f.button('allow_once'));
   controls.update([question({revision:3,state:'stale'})]);pending.resolve({accepted:true,questionId:'synthetic-question'});await submitting;
-  assert.equal(refreshes,0);assert.match(f.root.html,/操作或沙箱已变化/);assert.equal(f.button('allow_once').disabled,true);
-  controls.update([question({revision:4,state:'cancelled'})]);assert.match(f.root.html,/原任务已取消/);
-  time=instant+60_000;controls.update([question({revision:5})]);assert.match(f.root.html,/期限已失效/);
+  assert.equal(refreshes,0);assert.match(f.root.html,/请求已更新/);assert.equal(f.button('allow_once').disabled,true);
+  controls.update([question({revision:4,state:'cancelled'})]);assert.match(f.root.html,/任务已取消/);
+  time=instant+60_000;controls.update([question({revision:5})]);assert.match(f.root.html,/请求已过期/);
   await f.root.fire('click',f.button('allow_once'));assert.equal(calls,1);
   controls.dispose();controls.update([question()]);assert.equal(f.root.children.length,0);
   const broken=authorizationDom(),retry=mountAuthorizationQuestionCards(broken.root,{now:()=>instant,invoke:async()=>{throw Error('private token');}});
   t.after(()=>retry.dispose());retry.update([question()]);await broken.root.fire('click',broken.button('allow_once'));
-  assert.equal(broken.button('allow_once').disabled,false);assert.match(broken.root.querySelector('[role="status"]').textContent,/没有授予权限/);
+  assert.equal(broken.button('allow_once').disabled,false);assert.match(broken.root.querySelector('[role="status"]').textContent,/提交失败/);
   assert.doesNotMatch(broken.root.querySelector('[role="status"]').textContent,/private token/);
+});
+
+test('Synthetic default agreement follows only the host task reuse suggestion and never guesses from permanent support',()=>{
+  for(const extra of [{},{canAlways:true},{canReuseTask:true},{canReuseTask:false,suggestedDecision:'allow_task'},
+    {canReuseTask:true,suggestedDecision:'allow_always'},{canReuseTask:true,suggestedDecision:'unknown'}]) {
+    const value=question(extra);assert.equal(authorizationQuestionDefaultDecision(value),'allow_once');
+    assert.match(authorizationQuestionMarkup(value,{now:instant}),/data-authorization-decision="allow_once"/);
+    assert.throws(()=>authorizationQuestionResponse(value.questionId,'allow_task',[value],instant));
+  }
+  const value=question({canReuseTask:true,suggestedDecision:'allow_task'}),html=authorizationQuestionMarkup(value,{now:instant});
+  assert.equal(authorizationQuestionDefaultDecision(value),'allow_task');assert.match(html,/data-authorization-decision="allow_task"/);
+  assert.ok(html.indexOf('本任务相同范围不再询问')>html.indexOf('<details'));
+  assert.deepEqual(authorizationQuestionResponse(value.questionId,'allow_task',[value],instant),{
+    questionId:value.questionId,expectedRevision:2,decision:'allow_task'});
+  assert.deepEqual(authorizationQuestionResponse(value.questionId,'deny',[value],instant),{
+    questionId:value.questionId,expectedRevision:2,decision:'deny'});
+  assert.doesNotMatch(authorizationQuestionMarkup(question(),{now:instant}),/本任务相同范围不再询问/);
+});
+
+test('Synthetic progress preserves expanded details and their keyboard focus',t=>{
+  const f=authorizationDom(),controls=mountAuthorizationQuestionCards(f.root,{now:()=>instant});t.after(()=>controls.dispose());
+  controls.update([question()]);const details=f.root.querySelector('[data-authorization-details]');details.open=true;
+  f.root.querySelector('[data-authorization-details-toggle]').focus();controls.update([question(),question({questionId:'new'})]);
+  assert.equal(f.root.querySelector('[data-authorization-details]').open,true);
+  assert.equal(f.document.activeElement.hasAttribute('data-authorization-details-toggle'),true);
+});
+
+test('Synthetic an accepted decision stays submitted when the following snapshot refresh fails',async t=>{
+  const f=authorizationDom(),calls=[];
+  const controls=mountAuthorizationQuestionCards(f.root,{now:()=>instant,invoke:async(name,body)=>{
+    calls.push({name,body});return {accepted:true,questionId:body.questionId,revision:3,state:'denied'};
+  },onChanged:async()=>{throw Error('Synthetic refresh unavailable');}});t.after(()=>controls.dispose());
+  controls.update([question()]);await f.root.fire('click',f.button('deny'));
+  assert.equal(f.button('deny').disabled,true);assert.match(f.root.html,/已拒绝/);assert.doesNotMatch(f.root.html,/提交失败/);
+  await f.root.fire('click',f.button('deny'));assert.equal(calls.length,1);
 });
 
 test('Synthetic safety settings only select available sandbox and revoke exact rule revision',async t=>{

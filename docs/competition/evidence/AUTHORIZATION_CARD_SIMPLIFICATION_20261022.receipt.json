@@ -1,0 +1,24 @@
+{
+  "kind": "Synthetic real DOM only",
+  "recordedAt": "2026-10-22T06:04:02Z",
+  "profile": "huawei_ict_agentarts",
+  "integrationBase": "39918d61f5e2cfe982f134593988acd4a08fefd6",
+  "state": "passed",
+  "models": 0,
+  "accounts": 0,
+  "tools": 0,
+  "consoleErrors": [],
+  "phases": [
+    "compact-two-buttons",
+    "details-keyboard-and-progress-focus",
+    "one-click-once-and-duplicate-suppression",
+    "trusted-task-default",
+    "one-click-deny",
+    "untrusted-task-default-falls-back",
+    "legacy-exact-binding"
+  ],
+  "focusedTests": {"passed": 16, "failed": 0, "skipped": 0},
+  "productHostChain": "not_run",
+  "backendTaskReuse": "not_run",
+  "realModelOrBusiness": "not_run"
+}
