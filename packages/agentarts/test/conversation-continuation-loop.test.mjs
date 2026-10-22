@@ -31,7 +31,7 @@ test('goal-bound continuation preserves its bounded frozen catalog, prior receip
   assert.equal(parsed.kind,'continuation');assert.equal(parsed.goal,goal);assert.deepEqual(parsed.availableTools,tools);
   assert.deepEqual(parsed.priorContinuations,priorContinuations);assert.deepEqual(parsed.executionModel,executionModel);
   assert.equal(Object.isFrozen(parsed.availableTools),true);assert.equal(Object.isFrozen(parsed.availableTools[1].inputSchema),true);
-  assert.equal(PROMPT_VERSION,'owned-1.8');
+  assert.equal(PROMPT_VERSION,'owned-1.9');
 });
 
 test('ordinary conversation can propose read, preview, apply and check before answering from explicit Fake receipts',async()=>{
@@ -52,7 +52,8 @@ test('ordinary conversation can propose read, preview, apply and check before an
   assert.equal(finalInput.goal,goal);assert.deepEqual(finalInput.availableTools,tools);assert.equal(finalInput.priorContinuations.length,4);
   for(const request of f.fast.requests.slice(1)){
     const prompt=request.messages[0].content;
-    assert.match(prompt,/一个必要的下一步工具提案/);assert.match(prompt,/仍由本地Runtime\/Policy独立审批执行/);
+    assert.match(prompt,/一个必要的下一步工具提案/);assert.match(prompt,/不在聊天文本中索要批准/);
+    assert.match(prompt,/由原统一宿主卡片处理审批/);assert.doesNotMatch(prompt,/独立审批执行|不追加动作/);
     assert.doesNotMatch(prompt,/只输出text类型的合法JSON对象/);assert.equal(request.maxOutputTokens,512);
   }
 });

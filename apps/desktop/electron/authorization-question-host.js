@@ -1,5 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
+import {operationSummary,taskOperationBinding} from './authorization-operation-policy.js';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','原操作的精确授权已失效，未执行或发送新的资料');};
@@ -88,23 +89,27 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       ||value.deadline!==scope.deadline)denied();
     return {...value,signal:scope.signal};
   }
-  function prepare(scope,{requirements=[],assertCurrent=()=>true}={}) {
+  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent}={}) {
     const source=original(scope),identity=key(source),prior=preparations.get(identity);
     if(operations.has(identity))denied();
     const requested=structuredClone(requirements);
     if(prior&&prior.argumentsDigest!==source.argumentsDigest)denied();
+    if(prior?.taskConsent&&taskConsent&&!same(prior.taskConsent,taskConsent))denied();
     const merged=new Map((prior?.requirements??[]).map(item=>[item.requirementId,item]));
     for(const requirement of requested){const old=merged.get(requirement.requirementId);if(old&&!same(old,requirement))denied();merged.set(requirement.requirementId,requirement);}
     preparations.set(identity,{...requestFields(source),requirements:[...merged.values()],
+      ...((taskConsent??prior?.taskConsent)?{taskConsent:structuredClone(taskConsent??prior.taskConsent)}:{}),
       assertCurrent:()=>assertCurrent()&&(prior?.assertCurrent?.()??true)});
   }
   function buildRequest(source,prepared){
     const tool={requirementId:'tool',kind:'tool',scopes:[...source.scopes],bindingDigest:digest({taskId:source.taskId,runId:source.runId,
       toolName:source.toolName,toolVersion:source.toolVersion,argumentsDigest:source.argumentsDigest,deadline:source.deadline}),
       ...((prepared?.requirements??[]).some(item=>item.requirementId!=='tool'&&item.ruleBindingDigest)
-        ?{ruleBindingDigest:digest({toolName:source.toolName,toolVersion:source.toolVersion,scopes:[...source.scopes].sort()})}:{}),
-      summary:`执行 ${source.toolName}；仅本操作参数及所列范围`};
-    return {...requestFields(source),requirements:[tool,...(prepared?.requirements??[]).filter(item=>item.requirementId!=='tool')]};
+        ?{ruleBindingDigest:digest({toolName:source.toolName,toolVersion:source.toolVersion,scopes:[...source.scopes].sort()}),
+          taskBindingDigest:taskOperationBinding(source)}:{}),
+      summary:operationSummary(source)};
+    return {...requestFields(source),...(prepared?.taskConsent?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
+      requirements:[tool,...(prepared?.requirements??[]).filter(item=>item.requirementId!=='tool')]};
   }
   async function requestToolAuthorization(scope) {
     const source=original(scope),identity=key(source),prepared=preparations.get(identity),request=buildRequest(source,prepared);
@@ -228,6 +233,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
   }
   return {
     requiresAuthorization:scope=>preparations.has(key(scope)),
+    requiresNativeForAuthorization:scope=>preparations.get(key(scope))?.taskConsent?.requiresNative===true,
     prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,deriveMailBatch,deriveHostIntent,readExecutionPolicy,
     readResourceGeneration,rotateResourceGeneration,
     request:(request,current)=>service().request(request,current),

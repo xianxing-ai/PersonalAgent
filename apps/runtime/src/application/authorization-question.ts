@@ -2,16 +2,20 @@ import {createHash,randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TrustedHostStateStore} from '../host-state-store.js';
 
-export type AuthorizationDecision='allow_once'|'allow_always'|'deny';
+export type AuthorizationDecision='allow_once'|'allow_task'|'allow_always'|'deny';
 export type AuthorizationQuestionState='pending'|'allowed'|'denied'|'expired'|'cancelled'|'stale';
 export interface AuthorizationRequirement {
   requirementId:string;kind:'tool'|'export'|'connector_session';scopes:string[];bindingDigest:string;summary:string;
   /** Trusted resource/configuration/projection rule, never supplied by a model or Renderer. */
   ruleBindingDigest?:string;
+  /** Optional narrower task scope, supplied only by the trusted host (for example an exact external write). */
+  taskBindingDigest?:string;
 }
 export interface AuthorizationQuestionRequest {
   taskId:string;proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;
   deadline:string;signal:AbortSignal;requirements:AuthorizationRequirement[];
+  /** Trusted workflow grouping, never accepted from Renderer or a model proposal. */
+  taskConsent?:{taskId:string;bindingDigest:string;summary:string;mode:'read-only'|'workspace-write';requiresNative?:boolean};
 }
 export interface AuthorizationSandbox {
   ref:string;label:string;mode:'read-only'|'workspace-write'|'full-access';revision:number;available:boolean;reason?:string;
@@ -29,6 +33,8 @@ interface Question {
   baseSandboxRef?:string;
   decision?:AuthorizationDecision;receiptRef?:string;reason?:string;consumed:Record<string,string>;
   derivedFrom?:string;
+  taskConsentFrom?:string;
+  taskConsent?:AuthorizationQuestionRequest['taskConsent'];
 }
 interface Rule {ruleId:string;revision:number;active:boolean;toolName:string;toolVersion:string;
   sandboxRef:string;sandboxRevision:number;sandboxLabel:string;requirements:AuthorizationRequirement[];summary:string;}
@@ -57,6 +63,11 @@ const text=(value:unknown):value is string=>typeof value==='string'&&value.lengt
 const fail:(message:string)=>never=message=>{throw new ProtocolError('UNAUTHORIZED',message);};
 const requirementRule=(requirement:AuthorizationRequirement)=>({requirementId:requirement.requirementId,
   kind:requirement.kind,scopes:[...requirement.scopes].sort(),ruleBindingDigest:requirement.ruleBindingDigest});
+const reusable=(requirements:AuthorizationRequirement[])=>requirements.every(item=>hash(item.ruleBindingDigest));
+const taskRule=(requirements:AuthorizationRequirement[])=>digest(requirements.map(item=>({...requirementRule(item),
+  ruleBindingDigest:item.taskBindingDigest??item.ruleBindingDigest})).sort((a,b)=>a.requirementId.localeCompare(b.requirementId)));
+const canReuse=(question:Pick<Question,'requirements'|'taskConsent'>)=>Boolean(question.taskConsent)||reusable(question.requirements);
+const consentNative=(native:AuthorizationNativeExecution|undefined)=>native?.required?native:{required:false};
 
 /** Durable user decisions only. Policy grants and exact export leases remain separate consumers. */
 export class AuthorizationQuestions {
@@ -64,6 +75,8 @@ export class AuthorizationQuestions {
   private readonly waiters=new Map<string,{finish:(value:AuthorizationQuestionReceipt)=>void;reject:(error:unknown)=>void;
     signal:AbortSignal;abort:()=>void;timer:ReturnType<typeof setTimeout>}>();
   private readonly liveBindings=new Map<string,()=>boolean>();
+  // Task consent is never restored from disk or transferred to another task.
+  private readonly taskConsents=new Map<string,AbortSignal>();
   private closed=false;
   constructor(private readonly options:AuthorizationQuestionsOptions) {
     this.now=options.now??Date.now;
@@ -102,14 +115,16 @@ export class AuthorizationQuestions {
   private input(question:Question):Omit<AuthorizationQuestionRequest,'signal'> {
     return {taskId:question.taskId,proposalId:question.proposalId,runId:question.runId,toolName:question.toolName,
       toolVersion:question.toolVersion,argumentsDigest:question.argumentsDigest,deadline:question.deadline,
-      requirements:structuredClone(question.requirements)};
+      requirements:structuredClone(question.requirements),...(question.taskConsent?{taskConsent:structuredClone(question.taskConsent)}:{})};
   }
   private normalize(request:AuthorizationQuestionRequest):Omit<AuthorizationQuestionRequest,'signal'> {
     return {taskId:request.taskId,proposalId:request.proposalId,runId:request.runId,toolName:request.toolName,
       toolVersion:request.toolVersion,argumentsDigest:request.argumentsDigest,deadline:request.deadline,
+      ...(request.taskConsent?{taskConsent:structuredClone(request.taskConsent)}:{}),
       requirements:request.requirements.map(requirement=>({requirementId:requirement.requirementId,kind:requirement.kind,
         scopes:[...requirement.scopes],bindingDigest:requirement.bindingDigest,summary:requirement.summary,
-        ...(requirement.ruleBindingDigest!==undefined?{ruleBindingDigest:requirement.ruleBindingDigest}:{})}))};
+        ...(requirement.ruleBindingDigest!==undefined?{ruleBindingDigest:requirement.ruleBindingDigest}:{}),
+        ...(requirement.taskBindingDigest!==undefined?{taskBindingDigest:requirement.taskBindingDigest}:{})}))};
   }
   private current(question:Question):boolean {
     if(this.closed||this.now()>=Date.parse(question.state==='pending'?question.expiresAt:question.deadline))return false;
@@ -130,9 +145,14 @@ export class AuthorizationQuestions {
       ||!request.signal||request.signal.aborted||!Array.isArray(request.requirements)||request.requirements.length<1||request.requirements.length>24)
       throw new ProtocolError('INVALID_ARGUMENT','Invalid authorization question binding');
     const ids=new Set<string>();
+    if(request.taskConsent&&(!text(request.taskConsent.taskId)||!hash(request.taskConsent.bindingDigest)
+      ||!text(request.taskConsent.summary)||!['read-only','workspace-write'].includes(request.taskConsent.mode)
+      ||request.taskConsent.requiresNative!==undefined&&typeof request.taskConsent.requiresNative!=='boolean'))
+      throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted task consent scope');
     for(const requirement of request.requirements){
       if(!text(requirement.requirementId)||ids.has(requirement.requirementId)||!['tool','export','connector_session'].includes(requirement.kind)
         ||!hash(requirement.bindingDigest)||requirement.ruleBindingDigest!==undefined&&!hash(requirement.ruleBindingDigest)
+        ||requirement.taskBindingDigest!==undefined&&!hash(requirement.taskBindingDigest)
         ||!text(requirement.summary)||!Array.isArray(requirement.scopes)||requirement.scopes.length>32
         ||requirement.scopes.some(scope=>!text(scope)))throw new ProtocolError('INVALID_ARGUMENT','Invalid authorization requirement');
       ids.add(requirement.requirementId);
@@ -164,6 +184,17 @@ export class AuthorizationQuestions {
           &&question.requirements.every(requirement=>hash(requirement.ruleBindingDigest))
           &&digest(item.requirements.map(requirementRule))===digest(question.requirements.map(requirementRule)));
         if(rule){question.state='allowed';question.decision='allow_always';question.receiptRef=randomUUID();}
+        if(question.state==='pending'&&canReuse(question)){
+          const consent=state.questions.find(item=>this.taskConsents.has(item.questionId)&&!this.taskConsents.get(item.questionId)!.aborted
+            &&item.state==='allowed'&&item.decision==='allow_task'&&item.conversationId===question.conversationId
+            &&item.sandbox.ref===profile.ref&&item.sandbox.revision===profile.revision
+            &&digest(consentNative(item.sandbox.native))===digest(consentNative(profile.native))&&Date.parse(item.deadline)>this.now()
+            &&Date.parse(question.deadline)<=Date.parse(item.deadline)
+            &&(question.taskConsent?item.taskConsent&&digest(item.taskConsent)===digest(question.taskConsent)
+              :!item.taskConsent&&item.taskId===question.taskId&&item.toolName===question.toolName&&item.toolVersion===question.toolVersion
+                &&taskRule(item.requirements)===taskRule(question.requirements)));
+          if(consent){question.state='allowed';question.decision='allow_task';question.receiptRef=randomUUID();question.taskConsentFrom=consent.questionId;}
+        }
         state.questions.push(question);
       });
       if(question.state==='allowed'){this.options.onChange?.();return Promise.resolve(this.receipt(question));}
@@ -171,6 +202,7 @@ export class AuthorizationQuestions {
         const abort=()=>this.end(question.questionId,'cancelled','request_cancelled');
         const timer=setTimeout(()=>this.end(question.questionId,'expired','deadline'),Math.max(1,Math.min(2147483647,Date.parse(question.expiresAt)-this.now())));
         timer.unref?.();this.waiters.set(question.questionId,{finish,reject,signal,abort,timer});
+        this.taskConsents.set(question.questionId,signal);
         signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
         this.options.onChange?.();
       });
@@ -194,7 +226,7 @@ export class AuthorizationQuestions {
   }
   respond(input:{questionId:string;expectedRevision:number;decision:AuthorizationDecision},conversationId:string) {
     if(!input||Object.keys(input).some(key=>!['questionId','expectedRevision','decision'].includes(key))
-      ||!text(input.questionId)||!Number.isSafeInteger(input.expectedRevision)||!['allow_once','allow_always','deny'].includes(input.decision))
+      ||!text(input.questionId)||!Number.isSafeInteger(input.expectedRevision)||!['allow_once','allow_task','allow_always','deny'].includes(input.decision))
       throw new ProtocolError('INVALID_ARGUMENT','Invalid question decision');
     const question=this.mutate(state=>{
       const item=state.questions.find(value=>value.questionId===input.questionId);
@@ -203,6 +235,7 @@ export class AuthorizationQuestions {
       if(!this.current(item!)){item!.state=this.now()>=Date.parse(item!.expiresAt)?'expired':'stale';item!.revision++;return item!;}
       const canAlways=item!.requirements.every(requirement=>hash(requirement.ruleBindingDigest));
       if(input.decision==='allow_always'&&!canAlways)fail('此请求不能保存为永久规则');
+      if(input.decision==='allow_task'&&!canReuse(item!))fail('此请求尚未绑定可复用的任务范围');
       item!.state=input.decision==='deny'?'denied':'allowed';item!.decision=input.decision;item!.revision++;
       item!.receiptRef=randomUUID();
       if(input.decision==='allow_always'){
@@ -290,11 +323,12 @@ export class AuthorizationQuestions {
     return this.receipt(question);
   }
   snapshot(conversationId?:string) {
-    return this.read().questions.filter(question=>!question.derivedFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
+    return this.read().questions.filter(question=>!question.derivedFrom&&!question.taskConsentFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
       questionId:question.questionId,taskId:question.taskId,conversationId:question.conversationId,sourceApprovalId:question.runId,
       revision:question.revision,state:question.state,
-      title:'允许本次操作？',description:'本次决定覆盖以下独立权限；执行前仍逐项校验原任务、参数、期限与沙箱。',toolName:question.toolName,
+      title:'同意这项操作？',description:question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='tool')?.summary??'同意后继续完成这项操作。',toolName:question.toolName,
       expiresAt:question.expiresAt,canAlways:question.requirements.every(requirement=>hash(requirement.ruleBindingDigest)),
+      canReuseTask:canReuse(question),suggestedDecision:canReuse(question)?'allow_task' as const:'allow_once' as const,
       requirements:question.requirements.map(({requirementId,kind,summary,scopes})=>({requirementId,kind,summary,scopes:[...scopes]})),
       sandbox:{kind:'application_policy' as const,label:question.sandbox.label,mode:question.sandbox.mode,revision:question.sandbox.revision,
         ...(question.sandbox.native?{native:{required:question.sandbox.native.required,available:question.sandbox.native.available,
@@ -335,5 +369,5 @@ export class AuthorizationQuestions {
     for(const questionId of this.waiters.keys())this.end(questionId,'stale','rule_revoked');
     this.options.onChange?.();return this.sandboxSnapshot();
   }
-  close():void {this.closed=true;for(const questionId of this.waiters.keys())this.end(questionId,'cancelled','host_closed');this.liveBindings.clear();}
+  close():void {this.closed=true;for(const questionId of this.waiters.keys())this.end(questionId,'cancelled','host_closed');this.liveBindings.clear();this.taskConsents.clear();}
 }

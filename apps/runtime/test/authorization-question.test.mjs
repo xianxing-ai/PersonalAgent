@@ -94,3 +94,63 @@ test('card decision deadline is bounded independently from the original invocati
   assert.equal(f.respond().state,'expired');await rejected;
   assert.equal(f.state.invalidated.at(-1).status,'expired');f.host.close();
 });
+
+test('one task decision reuses the same resource while every new run keeps its exact one-use receipt',async()=>{
+  const f=fixture(),first=f.request(),pending=f.host.request(first);
+  assert.equal(f.host.snapshot()[0].suggestedDecision,'allow_task');f.respond('allow_task');const original=await pending;
+  f.host.consume(original,first,'tool','first');
+  const second=f.request({runId:'second',proposalId:'second',argumentsDigest:'b'.repeat(64)});
+  const receipt=await f.host.request(second);assert.notEqual(receipt.receiptRef,original.receiptRef);
+  assert.equal(f.host.snapshot().length,1,'no duplicate visible card');f.host.consume(receipt,second,'tool','second');
+  f.host.assertRequirement(receipt,second,'tool','second');assert.throws(()=>f.host.consume(receipt,second,'tool','again'),/已消费/);
+  const other=f.host.request(f.request({taskId:'other',runId:'other'}));f.respond('deny');await other;
+  const changed=f.host.request(f.request({runId:'changed',requirements:first.requirements.map(item=>({...item,ruleBindingDigest:'d'.repeat(64)}))}));
+  f.respond('deny');await changed;f.host.close();
+});
+
+test('external mutation task bindings keep the exact target and change set',async()=>{
+  const f=fixture(),first=f.request({requirements:f.request().requirements.map(item=>({...item,taskBindingDigest:H}))});
+  const pending=f.host.request(first);f.respond('allow_task');await pending;
+  const changed=f.host.request(f.request({runId:'changed',requirements:first.requirements.map(item=>({...item,taskBindingDigest:R}))}));
+  assert.equal(f.host.snapshot().at(-1).state,'pending');f.respond('deny');await changed;f.host.close();
+});
+
+test('task consent stops at restart, cancellation, sandbox revision and the original deadline',async()=>{
+  for(const change of ['restart','abort','sandbox','deadline']){
+    const f=fixture(),controller=new AbortController(),first=f.request({signal:controller.signal}),pending=f.host.request(first);
+    f.respond('allow_task');await pending;let host=f.host;
+    if(change==='restart')host=new AuthorizationQuestions(f.options);
+    if(change==='abort')controller.abort();
+    if(change==='sandbox')host.selectSandbox({profileRef:'read',expectedRevision:1});
+    if(change==='deadline')f.state.now+=60001;
+    const next=host.request(f.request({runId:'next'}));const card=host.snapshot().at(-1);assert.equal(card.state,'pending',change);
+    host.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'deny'},card.conversationId);await next;
+    host.close();if(host!==f.host)f.host.close();
+  }
+});
+
+test('trusted workflow groups reuse only their declared owner, group, sandbox and native boundary',async()=>{
+  const f=fixture(),group={taskId:'owner',bindingDigest:H,summary:'Review this workflow',mode:'workspace-write'},
+    first=f.request({taskConsent:group}),pending=f.host.request(first);
+  f.respond('allow_task');await pending;
+  const second=f.request({taskId:'child',toolName:'other.read',runId:'child',taskConsent:group,
+    requirements:[{requirementId:'tool',kind:'tool',scopes:['workspace:read'],bindingDigest:R,summary:'Read original source'}]});
+  const receipt=await f.host.request(second);assert.equal(receipt.decision,'allow_task');f.host.consume(receipt,second,'tool','child');
+  assert.equal(f.host.snapshot().length,1);
+  for(const taskConsent of [{...group,taskId:'another-owner'},{...group,bindingDigest:R},{...group,mode:'read-only'}]){
+    const next=f.host.request({...second,runId:Math.random().toString(),taskConsent});f.respond('deny');await next;
+  }
+  assert.throws(()=>f.respond('allow_task',{...f.host.snapshot()[0],revision:1}),/已处理/);f.host.close();
+});
+
+test('a grouped native check must present the same verified backend before task consent can be reused',async()=>{
+  const f=fixture();let native={required:true,available:true,backend:'windows-psec',enforced:true,bindingDigest:H};
+  f.options.describeExecution=()=>native;
+  const group={taskId:'owner',bindingDigest:H,summary:'Edit and check the isolated workspace',mode:'workspace-write',requiresNative:true};
+  const first=f.host.request(f.request({taskConsent:group}));f.respond('allow_task');await first;
+  native={...native,bindingDigest:R};
+  const changed=f.host.request(f.request({taskId:'check-child',runId:'check',taskConsent:group}));
+  assert.equal(f.host.snapshot().at(-1).state,'pending');f.respond('deny');await changed;
+  native={...native,available:false,enforced:false};
+  await assert.rejects(f.host.request(f.request({runId:'unavailable',taskConsent:group})),/后端不可用/);f.host.close();
+});

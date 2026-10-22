@@ -190,6 +190,33 @@ Browser plugin 不在当前可用能力中，回归使用仓库已有 Playwright
 根集成后需运行同一脚本的 `--require-environment-ipc`，核对原 host page/revision 确实变化。
 当前仍未进行新真实鹈鹕聚合运行，完整必验项继续等待主控的新唯一 fixture，不重放任何旧未决任务。
 
+### 原 start 提问失效与私有诊断
+
+主控整合导航修复及 `environment` 原 IPC 后，独立空配置导航回归
+`pa-admin-navigation-Y3Ufl9` 的 `--require-environment-ipc` 已通过（主控执行）。
+随后公开运行 `desktop-pelican-default-b14XGw` 的 Laya 实际 ready，耗时 52,656ms，
+启动前/后可用内存分别为 2,484,318,208 / 877,944,832 bytes；默认父任务
+`0f5186c6-d99c-4ceb-ab8c-0d97dd224439` 最终 succeeded，但原子任务
+`0efabfe0-35a3-4ce5-b88d-76232a8de95a` failed，验收器正确拒绝通过。
+
+仅只读检查该明确公开 fixture 的 `runtime.sqlite`：start 原审批在
+`05:45:29.319Z` 创建，`05:45:29.369Z` 被系统以 stale 撤销；原 invocation、参数摘要、期限及
+question binding anchor 已存，而 durable questions 数组为空。F15 sequence/advance 为 0、没有 host task，
+没有 N01 typed 诊断或文件写入。失效范围收敛在原卡持久化之前，但原抛错未保留，
+不能确定是校验、卡不可用、策略或资源 current 检查中的哪一项；不能倒推 Laya 原因。
+
+新增原 start 调用的私有 `coding-repair:start-failure:v1:<runId>`，仅保留固定 code/reason 及
+task/run/工具版本/参数摘要/期限；workspace current 拒绝同样保存首个固定原因和资源摘要，
+后续取消不会覆盖最初失效。自由错误文本、源文件、账号与绝对路径不进入诊断，诊断不授予权限或出机许可。
+runner 本地读回将诊断重新与原 invocation 核对，不向工作流模型发送。
+
+原默认父子→user-work→F15 start→真实 Runtime/Policy/SQLite/question host 的公开 Synthetic 回归能够正常发布原卡；
+卡前撤销资源版本的反例正确拒绝、零执行且记录 `question_current_changed` 与 `resource_generation_changed`。
+该反例证明诊断可定位这类失效，不代表旧真实运行必由资源版本变化触发。
+必要 Runtime TypeScript 构建通过；diagnostics、decision、workspace host 与 runner 四个定向文件
+83/83、0 fail、0 skip，原日志 `.cache/pelican-start-diagnostics-focused.log`；语法及差异检查通过。
+本增量没有启动真实服务、重放旧任务或修改全局授权 guard。下一轮仍须新唯一公开 fixture 完成全部原必验项。
+
 ## 证据边界
 
 默认 Desktop 公开文件修复通过，也只证明当前配置下该 fixture 的父子任务与本地工具闭环；不自动证明 F15 `workflow-advance` 六节点整图、平台 Trace API 逐条对账、物理语音/审批、任意项目自主编码或其余工作流通过。邮件/天气触发器的本地持久去重与 Laya 决策测试，也不自动证明所有连接器能实时推送或已完成真实账号持续接收。
