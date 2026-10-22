@@ -651,7 +651,7 @@ function snapshot(surface) {
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     authorizationQuestions,
-    approvals: [...approvals.values()].filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
+    approvals: (authorizationQuestionHost?.automaticallyApproves()?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
       &&!authorizationQuestions.some(question=>question.state==='pending'&&question.taskId===approval.taskId))
       .map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime)),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
@@ -1651,7 +1651,7 @@ function initializeAuthorizationHosts(runtimeModule){
     available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:publish,
     profiles:[{ref:'default-read-only',label:'应用内只读权限',mode:'read-only',revision:1,available:true},
       {ref:'workspace-write',label:'应用内受限写入／工作区权限',mode:'workspace-write',revision:1,available:true},
-      {ref:'full-access',label:'完全访问（当前普通用户，不提供进程隔离）',mode:'full-access',revision:1,available:true}],
+      {ref:'full-access',label:'完全访问（自动同意；以当前用户权限执行）',mode:'full-access',revision:1,available:true}],
     defaultProfileRef:'default-read-only',
     resolveProfile:(request,selected)=>selected.mode==='read-only'&&(request.taskConsent?.mode==='workspace-write'||request.requirements.some(item=>
       item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
@@ -2278,7 +2278,7 @@ async function initializeRuntime() {
           return nativeExecutionHost.prepare(scope,{forTaskConsent:authorizationQuestionHost.requiresNativeForAuthorization(scope)})
             .then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
         },
-        requiresToolAuthorization:scope=>authorizationQuestionHost.requiresAuthorization(scope)
+        requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='notifications.interruption_policy.set'
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{

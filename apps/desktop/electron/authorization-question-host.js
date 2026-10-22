@@ -275,6 +275,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     respond:(input,conversationId)=>service().respond(input,conversationId),
     snapshot:conversationId=>closed||!getApplication()?.runtime?[]:service().snapshot(conversationId),
     hasPending:runId=>!closed&&Boolean(getApplication()?.runtime)&&service().hasPending(runId),
+    automaticallyApproves:()=>!closed&&Boolean(getApplication()?.runtime)&&service().sandboxSnapshot().selected.mode==='full-access',
     sandboxSnapshot:()=>service().sandboxSnapshot(),selectSandbox:input=>service().selectSandbox(input),revokeRule:input=>service().revokeRule(input),
     close(){closed=true;questions?.close();preparations.clear();operations.clear();owners.clear();batchDerivations.clear();projections.clear();},
   };
