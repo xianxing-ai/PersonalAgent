@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {ProtocolError} from '@personal-agent/contracts';
+import {ProtocolError,parseRequest} from '@personal-agent/contracts';
 import {Client} from '@personal-agent/client';
 import {createRuntimeAtomicStatePort} from '@personal-agent/runtime';
 import {createRuntimeApplication,completeRuntimeConnectorWatchWake} from '@personal-agent/runtime/application';
@@ -193,6 +193,31 @@ test('mail owns one live token; second mail subscription is rejected and restart
   assert.equal(starts,1);assert.equal(f.host.snapshot().watches[0].state,'needs_reauthorization');
   assert.equal(f.host.snapshot().watches[0].enabled,false);
   assert.deepEqual(stops,[{watchId:started.result.result.watchId,sessionId:'live-process-only'}]);
+});
+
+test('mail watch retains exact approved expiry but canonicalizes the equal instant at the Core request boundary',async t=>{
+  const received=[],request=deadline=>({kind:'request',protocolVersion:'1.0.0',requestId:'synthetic-deadline-request',taskId:'synthetic-deadline-task',
+    operation:'tool.invoke',deadline,payload:{toolName:'mail.inbox',toolVersion:'0.1.0-alpha.1',arguments:{account:'desktop-qq-inbox',folder:'INBOX',limit:100},scopeRef:'synthetic-deadline-grant'}});
+  const f=await fixture(t,{mailCallbacks:{startMailRead:input=>{
+    received.push(input.expiresAt);parseRequest(request(input.expiresAt));return{sessionId:'canonical-deadline-fixture'};},
+    readMailStatus:()=>({sessionId:'canonical-deadline-fixture',state:'complete'}),stopMailRead:()=>{}}});
+  const canonical=f.input().expiresAt,raw=canonical.replace('Z','1234Z');
+  assert.throws(()=>parseRequest(request(raw)),{code:'INVALID_ARGUMENT'});
+  const started=await f.invoke('start',{source:'mail',intervalMs:1000,expiresAt:raw});assert.equal(started.result.state,'confirmed');
+  assert.equal(f.saved().value.watches[started.result.result.watchId].input.expiresAt,raw,'original approved input must remain unchanged');
+  await f.host.tick();assert.deepEqual(received,[canonical]);
+  assert.equal(Date.parse(received[0]),Date.parse(raw),'canonicalization must never extend the authorized instant');
+  await f.host.tick();assert.equal(f.saved().value.watches[started.result.result.watchId].sequence,1);
+});
+
+test('mail expiry normalization does not accept invalid dates or unknown input fields',async t=>{
+  let starts=0;const f=await fixture(t,{mailCallbacks:{startMailRead:()=>{starts++;return{sessionId:'invalid-must-not-start'};},
+    readMailStatus:()=>({sessionId:'invalid-must-not-start',state:'complete'}),stopMailRead:()=>{}}});
+  for(const input of [{source:'mail',intervalMs:1000,expiresAt:'invalid-date'},
+    {source:'mail',intervalMs:1000,expiresAt:f.input().expiresAt,unknown:true}]){
+    const result=await f.invoke('start',input);assert.notEqual(result.result?.state,'confirmed');
+  }
+  assert.equal(starts,0);assert.equal(f.host.snapshot().watches.length,0);
 });
 
 test('mail starting intent without a saved token is unknown and never starts a second batch after restart',async t=>{

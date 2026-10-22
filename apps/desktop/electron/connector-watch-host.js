@@ -142,7 +142,10 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
     if(watch.source==='mail'){
       current(watch);if(!startMailRead||!readMailStatus||!stopMailRead)fail('UNSUPPORTED_CAPABILITY');
       update(value=>{value.watches[watch.id].pending={kind:'mail',commandId:commandId(watch)};value.watches[watch.id].state='reading';});
-      const started=await startMailRead({watchId:watch.id,commandId:commandId(watch),expiresAt:watch.input.expiresAt});
+      // Keep the exact approved watch input, but Core request deadlines require
+      // canonical UTC milliseconds. Date.parse's instant is unchanged (never extended).
+      const started=await startMailRead({watchId:watch.id,commandId:commandId(watch),
+        expiresAt:new Date(Date.parse(watch.input.expiresAt)).toISOString()});
       if(!started){update(value=>{delete value.watches[watch.id].pending;value.watches[watch.id].state='waiting_source';});return;}
       if(typeof started.sessionId!=='string'||!started.sessionId)fail('RESULT_UNKNOWN');
       try{current(watch);update(value=>{value.watches[watch.id].pending.sessionId=started.sessionId;});}
