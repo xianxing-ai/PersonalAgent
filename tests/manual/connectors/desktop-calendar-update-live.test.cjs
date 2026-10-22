@@ -1,7 +1,21 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),{DatabaseSync}=require('node:sqlite');
-const {testCollection,publicIcs,strongEtag,verifyCalendarGet,verifyCards,readback}=require('./desktop-calendar-update-live.cjs');
+const {testCollection,publicIcs,strongEtag,verifyCalendarGet,verifyCards,readback,calendarUpdateArgs}=require('./desktop-calendar-update-live.cjs');
+const {weatherLaunchOptions}=require('./desktop-weather-watch-live.cjs');
 const before={uid:'pa-public-synthetic-uid',summary:'Public original',startUtc:'2026-10-23T10:00:00.000Z',endUtc:'2026-10-23T11:00:00.000Z'};
+test('calendar tool args use externalId while independent GET retains the original UID',()=>{
+  assert.deepEqual(calendarUpdateArgs(before),{externalId:before.uid,summary:before.summary,startUtc:before.startUtc,endUtc:before.endUtc});
+  assert.equal(Object.hasOwn(calendarUpdateArgs(before),'uid'),false);assert.equal(before.uid,'pa-public-synthetic-uid');
+});
+test('weather/calendar explicit Electron launch reuses the pinned official readiness loader and bounded helpers',()=>{
+  const userData=path.resolve(__dirname,'../../../.cache/synthetic-calendar-loader/user-data');
+  const options=weatherLaunchOptions('D:\\synthetic-electron.exe',userData,{PA_DESKTOP_SYNTHETIC_MVP:'1',ELECTRON_RUN_AS_NODE:'1'});
+  assert.equal(options.args[0],'-r');assert.equal(options.args[1],fs.realpathSync.native(path.join(path.dirname(require.resolve('playwright-core/package.json')),'lib/server/electron/loader.js')));
+  assert.equal(options.args[2],path.resolve(__dirname,'../../../apps/desktop'));
+  assert.match(options.args[3],/^--pa-public-weather-watch-acceptance=/);
+  assert.equal(options.env.PA_DESKTOP_TEST_USER_DATA,userData);assert.equal(options.env.PA_DESKTOP_SYNTHETIC_MVP,undefined);
+  assert.equal(options.env.ELECTRON_RUN_AS_NODE,undefined);assert.equal(options.env.PA_RUNTIME_PROFILE,'huawei_ict_agentarts');
+});
 test('live calendar runner accepts only fresh explicit public principal loopback collections',()=>{
   assert.equal(testCollection('http://127.0.0.1:5232/pa-public-calendar-test/calendar-1234/'),
     'http://127.0.0.1:5232/pa-public-calendar-test/calendar-1234/');
